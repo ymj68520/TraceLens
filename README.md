@@ -34,7 +34,7 @@ cd ForensicsProject
 
 # Install required dependencies (Ubuntu/Debian)
 sudo apt-get update
-sudo apt-get install -y build-essential cmake git libsqlite3-dev libewf-dev libhivex-dev libevtx-dev libolecf-dev libasio-dev nlohmann-json3-dev libboost-system-dev libboost-thread-dev libesedb-dev libxapian-dev
+sudo apt-get install -y build-essential cmake git libsqlite3-dev libewf-dev libhivex-dev libevtx-dev libolecf-dev libasio-dev nlohmann-json3-dev libboost-system-dev libboost-thread-dev libesedb-dev libxapian-dev libpoppler-cpp-dev
 
 # Build the project
 mkdir build && cd build
@@ -98,6 +98,9 @@ sudo apt-get install -y libolecf-dev libolecf-utils
 
 # 安装 Xapian 以支持全文搜索
 sudo apt-get install -y libxapian-dev
+
+# 安装 Poppler 以支持 PDF 解析
+sudo apt-get install -y libpoppler-cpp-dev
 
 # 安装 HTTP 服务支持
 sudo apt-get install libasio-dev nlohmann-json3-dev

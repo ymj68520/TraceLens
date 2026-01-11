@@ -14,7 +14,8 @@
 /tests/android_image_src/
 /tests/test_assets/
 /tests/system_assets/
-/test/system
+/tests/system
+/tests/TestResources
 AGENTS.md
 GEMINI.md
 CLAUDE.md

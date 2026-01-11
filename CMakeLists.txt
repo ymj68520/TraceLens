@@ -19,6 +19,7 @@ pkg_check_modules(LIBBFIO REQUIRED libbfio)
 pkg_check_modules(LIBESEDB REQUIRED libesedb)
 pkg_check_modules(LIBOLECF REQUIRED libolecf)
 pkg_check_modules(XAPIAN REQUIRED xapian-core)
+pkg_check_modules(POPPLER REQUIRED poppler-cpp)
 
 # Find nlohmann/json (try multiple methods)
 find_package(nlohmann_json QUIET)
@@ -79,6 +80,7 @@ include_directories(
   ${LIBESEDB_INCLUDE_DIRS}
   ${LIBOLECF_INCLUDE_DIRS}
   ${XAPIAN_INCLUDE_DIRS}
+  ${POPPLER_INCLUDE_DIRS}
   ${CMAKE_SOURCE_DIR}/libs/sqlite3
   # Source root
   ${CMAKE_SOURCE_DIR}/src
@@ -103,6 +105,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
   ${CMAKE_SOURCE_DIR}/src/analyzers/ImageAnalyzer
   ${CMAKE_SOURCE_DIR}/src/analyzers/VisionAnalysis
+  ${CMAKE_SOURCE_DIR}/src/analyzers/PDFAnalyzer
   # Network modules
   ${CMAKE_SOURCE_DIR}/src/network
   ${CMAKE_SOURCE_DIR}/src/network/HTTPServer
@@ -124,6 +127,7 @@ link_directories(${TSK_LIBRARY_DIR})
 # Source files Common source files
 set(LIB_SOURCES
     src/analyzers/ImageAnalyzer/ImageAnalyzer.cpp
+    src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp
     src/core/DatabaseManager/DatabaseManager.cpp
     src/core/DatabaseManager/EventExtractor/EventExtractor.cpp
     src/core/DatabaseManager/FileClassifier/FileClassifier.cpp
@@ -196,6 +200,7 @@ else()
     ${LIBESEDB_LIBRARIES}
     ${LIBOLECF_LIBRARIES}
     ${XAPIAN_LIBRARIES}
+    ${POPPLER_LIBRARIES}
     cpp_dotenv
     ${PLATFORM_LIBRARIES})
 endif()

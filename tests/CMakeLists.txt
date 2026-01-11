@@ -191,6 +191,19 @@ target_link_libraries(test_llm_integration ${GTEST_LIBRARIES}
 
 add_test(NAME LLMIntegrationGTests COMMAND test_llm_integration)
 
+# PDF Analyzer Tests
+add_executable(test_pdf_analyzer UnitTest/test_pdf_analyzer.cpp
+                                 ../src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp)
+
+target_link_libraries(test_pdf_analyzer ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
+                      ${POPPLER_LIBRARIES} pthread)
+
+# Should include PDFAnalyzer directory
+target_include_directories(test_pdf_analyzer
+                           PRIVATE ../src/analyzers/PDFAnalyzer)
+
+add_test(NAME PDFAnalyzerTests COMMAND test_pdf_analyzer)
+
 # ============================================================================
 # Installation Rules
 # ============================================================================
