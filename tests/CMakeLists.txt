@@ -14,63 +14,29 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/..)
 include_directories(${CURL_INCLUDE_DIRS})
 
 # Test scripts for running different test suites
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_unit_tests.sh.in"
-               "${CMAKE_CURRENT_BINARY_DIR}/run_unit_tests.sh" @ONLY)
+# configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_unit_tests.sh.in"
+# "${CMAKE_CURRENT_BINARY_DIR}/run_unit_tests.sh" @ONLY)
+#
+# configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_integration_tests.sh.in"
+# "${CMAKE_CURRENT_BINARY_DIR}/run_integration_tests.sh" @ONLY)
+#
+# configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_performance_tests.sh.in"
+# "${CMAKE_CURRENT_BINARY_DIR}/run_performance_tests.sh" @ONLY)
+#
+# configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_all_tests.sh.in"
+# "${CMAKE_CURRENT_BINARY_DIR}/run_all_tests.sh" @ONLY)
 
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_integration_tests.sh.in"
-               "${CMAKE_CURRENT_BINARY_DIR}/run_integration_tests.sh" @ONLY)
-
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_performance_tests.sh.in"
-               "${CMAKE_CURRENT_BINARY_DIR}/run_performance_tests.sh" @ONLY)
-
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_all_tests.sh.in"
-               "${CMAKE_CURRENT_BINARY_DIR}/run_all_tests.sh" @ONLY)
-
-# Make scripts executable
-file(
-  CHMOD
-  ${CMAKE_CURRENT_BINARY_DIR}/run_unit_tests.sh
-  FILE_PERMISSIONS
-  OWNER_READ
-  OWNER_WRITE
-  OWNER_EXECUTE
-  GROUP_READ
-  GROUP_EXECUTE
-  WORLD_READ
-  WORLD_EXECUTE)
-file(
-  CHMOD
-  ${CMAKE_CURRENT_BINARY_DIR}/run_integration_tests.sh
-  FILE_PERMISSIONS
-  OWNER_READ
-  OWNER_WRITE
-  OWNER_EXECUTE
-  GROUP_READ
-  GROUP_EXECUTE
-  WORLD_READ
-  WORLD_EXECUTE)
-file(
-  CHMOD
-  ${CMAKE_CURRENT_BINARY_DIR}/run_performance_tests.sh
-  FILE_PERMISSIONS
-  OWNER_READ
-  OWNER_WRITE
-  OWNER_EXECUTE
-  GROUP_READ
-  GROUP_EXECUTE
-  WORLD_READ
-  WORLD_EXECUTE)
-file(
-  CHMOD
-  ${CMAKE_CURRENT_BINARY_DIR}/run_all_tests.sh
-  FILE_PERMISSIONS
-  OWNER_READ
-  OWNER_WRITE
-  OWNER_EXECUTE
-  GROUP_READ
-  GROUP_EXECUTE
-  WORLD_READ
-  WORLD_EXECUTE)
+# Make scripts executable file( CHMOD
+# ${CMAKE_CURRENT_BINARY_DIR}/run_unit_tests.sh FILE_PERMISSIONS OWNER_READ
+# OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+# file( CHMOD ${CMAKE_CURRENT_BINARY_DIR}/run_integration_tests.sh
+# FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+# WORLD_READ WORLD_EXECUTE) file( CHMOD
+# ${CMAKE_CURRENT_BINARY_DIR}/run_performance_tests.sh FILE_PERMISSIONS
+# OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ
+# WORLD_EXECUTE) file( CHMOD ${CMAKE_CURRENT_BINARY_DIR}/run_all_tests.sh
+# FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+# WORLD_READ WORLD_EXECUTE)
 
 # ============================================================================
 # New GTest-based Unit Tests
@@ -203,6 +169,19 @@ target_include_directories(test_pdf_analyzer
                            PRIVATE ../src/analyzers/PDFAnalyzer)
 
 add_test(NAME PDFAnalyzerTests COMMAND test_pdf_analyzer)
+
+# Office Analyzer Tests
+add_executable(
+  test_office_analyzer UnitTest/test_office_analyzer.cpp
+                       ../src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp)
+
+target_link_libraries(test_office_analyzer ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} duckx pthread)
+
+target_include_directories(test_office_analyzer
+                           PRIVATE ../src/analyzers/OfficeAnalyzer)
+
+add_test(NAME OfficeAnalyzerTests COMMAND test_office_analyzer)
 
 # ============================================================================
 # Installation Rules

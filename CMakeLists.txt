@@ -109,6 +109,8 @@ include_directories(
   # Network modules
   ${CMAKE_SOURCE_DIR}/src/network
   ${CMAKE_SOURCE_DIR}/src/network/HTTPServer
+  # Office Module
+  ${CMAKE_SOURCE_DIR}/src/analyzers/OfficeAnalyzer
   # Integration modules
   ${CMAKE_SOURCE_DIR}/src/integration
   ${CMAKE_SOURCE_DIR}/src/integration/LLMIntegration
@@ -121,6 +123,7 @@ include_directories(
 
 # Add cpp-dotenv as subdirectory
 add_subdirectory(libs/cpp-dotenv)
+add_subdirectory(libs/DuckX)
 
 link_directories(${TSK_LIBRARY_DIR})
 
@@ -139,6 +142,7 @@ set(LIB_SOURCES
     src/network/HTTPServer/HTTPserver.cpp
     src/network/HTTPServer/TaskManager.cpp
     src/network/HTTPServer/SQLiteHelper.cpp
+    src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp
     src/analyzers/AndroidAnalyzer/AndroidAnalyzerCore.cpp
     src/analyzers/AndroidAnalyzer/AndroidDataParsers.cpp
     src/analyzers/AndroidAnalyzer/AndroidSystemParsers.cpp
@@ -202,6 +206,7 @@ else()
     ${XAPIAN_LIBRARIES}
     ${POPPLER_LIBRARIES}
     cpp_dotenv
+    duckx
     ${PLATFORM_LIBRARIES})
 endif()
 
