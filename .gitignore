@@ -390,7 +390,6 @@ AndroidAdbExtractor/adbTest.exe
 AndroidAdbExtractor/test_console_encoding.exe
 AndroidAdbExtractor/TEST_METHODS.md
 device_build.prop
-.gitignore
 AndroidAnalyzer/BUILD_PROP_ANALYZER_README.md
 tests/system/build.prop
 AndroidAnalyzer/UNRECOGNIZED_PROPERTIES_DOCUMENTATION.md
@@ -407,10 +406,10 @@ tests/run_performance_tests.sh.in
 tests/run_unit_tests.sh.in
 AuditLog/IMPLEMENTATION.md
 docs/Classification_Analysis.md
-.gitignore
+
 docs/Project_Analysis.md
 tests/test_merged_classifier
-.gitignore
+
 tests/test_advanced_classifier
 tests/test_advanced_classifier.cpp
 tests/test_classifier
