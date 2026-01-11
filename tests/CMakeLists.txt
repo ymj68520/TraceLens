@@ -166,6 +166,30 @@ target_link_libraries(test_image_analyzer_gtest ${GTEST_LIBRARIES}
 
 add_test(NAME ImageAnalyzerGTests COMMAND test_image_analyzer_gtest)
 
+# LLM Integration Tests
+add_executable(
+  test_llm_integration
+  UnitTest/test_llm_integration.cpp
+  ../LLMIntegration/LLMClient.cpp
+  ../LLMIntegration/ModelRouter.cpp
+  ../LLMIntegration/FileAnalyzer.cpp
+  ../libs/cpp-mcp/src/mcp_message.cpp
+  ../libs/cpp-mcp/src/mcp_resource.cpp
+  ../libs/cpp-mcp/src/mcp_server.cpp
+  ../libs/cpp-mcp/src/mcp_sse_client.cpp
+  ../libs/cpp-mcp/src/mcp_tool.cpp)
+
+target_include_directories(
+  test_llm_integration
+  PRIVATE ${CMAKE_SOURCE_DIR}/LLMIntegration
+          ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/include
+          ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/common)
+
+target_link_libraries(test_llm_integration ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME LLMIntegrationGTests COMMAND test_llm_integration)
+
 # ============================================================================
 # Installation Rules
 # ============================================================================

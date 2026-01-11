@@ -1,0 +1,111 @@
+#pragma once
+
+#include "LLMDataTypes.h"
+#include "ModelRouter.h"
+#include <memory>
+#include <string>
+#include <vector>
+#include <functional>
+
+namespace forensics {
+namespace llm {
+
+/**
+ * @brief File content analyzer using LLM
+ * 
+ * Reads file contents and uses LLM to:
+ * - Generate summaries
+ * - Extract keywords
+ * - Create descriptions
+ * - Identify file type and purpose
+ */
+class FileAnalyzer {
+public:
+    /**
+     * @brief Constructor
+     * @param router Model router for LLM requests
+     */
+    explicit FileAnalyzer(std::shared_ptr<ModelRouter> router);
+    ~FileAnalyzer();
+    
+    // Non-copyable
+    FileAnalyzer(const FileAnalyzer&) = delete;
+    FileAnalyzer& operator=(const FileAnalyzer&) = delete;
+    
+    /**
+     * @brief Analyze a single file
+     * @param filePath Path to the file
+     * @param maxContentLength Maximum content length to send to LLM
+     * @return Analysis result with summary, keywords, description
+     */
+    AnalysisResult analyzeFile(const std::string& filePath, 
+                               size_t maxContentLength = 10000);
+    
+    /**
+     * @brief Analyze multiple files
+     * @param request Batch analysis request
+     * @return Vector of analysis results
+     */
+    std::vector<AnalysisResult> analyzeBatch(const BatchAnalysisRequest& request);
+    
+    /**
+     * @brief Generate a summary for file content
+     * @param content File content to summarize
+     * @param context Optional context (file path, type, etc.)
+     * @return Summary text
+     */
+    std::string summarize(const std::string& content, 
+                          const std::string& context = "");
+    
+    /**
+     * @brief Generate a natural language description
+     * @param filePath Path to the file
+     * @return Description text
+     */
+    std::string generateDescription(const std::string& filePath);
+    
+    /**
+     * @brief Generate description for multiple files
+     * @param filePaths Paths to files
+     * @return Combined description
+     */
+    std::string generateDescription(const std::vector<std::string>& filePaths);
+    
+    /**
+     * @brief Extract keywords from content
+     * @param content Content to analyze
+     * @param maxKeywords Maximum number of keywords
+     * @return Vector of keywords
+     */
+    std::vector<std::string> extractKeywords(const std::string& content, 
+                                              size_t maxKeywords = 10);
+    
+    /**
+     * @brief Set custom system prompts
+     */
+    void setSummaryPrompt(const std::string& prompt);
+    void setDescriptionPrompt(const std::string& prompt);
+    void setKeywordPrompt(const std::string& prompt);
+    
+    /**
+     * @brief Set progress callback for batch operations
+     */
+    using ProgressCallback = std::function<void(size_t current, size_t total, 
+                                                 const std::string& currentFile)>;
+    void setProgressCallback(ProgressCallback callback);
+
+private:
+    std::shared_ptr<ModelRouter> router_;
+    std::string summaryPrompt_;
+    std::string descriptionPrompt_;
+    std::string keywordPrompt_;
+    ProgressCallback progressCallback_;
+    
+    std::string readFileContent(const std::string& path, size_t maxBytes);
+    std::string detectFileType(const std::string& path);
+    std::vector<std::string> parseKeywords(const std::string& llmResponse);
+    void initDefaultPrompts();
+};
+
+} // namespace llm
+} // namespace forensics

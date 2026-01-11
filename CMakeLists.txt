@@ -94,8 +94,17 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/LinuxFilesAnalyzer/Core
   ${CMAKE_SOURCE_DIR}/LinuxFilesAnalyzer/Database
   ${CMAKE_SOURCE_DIR}/LinuxFilesAnalyzer/Parsers
+  # LLMIntegration and cpp-mcp
+  ${CMAKE_SOURCE_DIR}/LLMIntegration
+  ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/include
+  ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/common
+  # cpp-dotenv (include only, linked via add_subdirectory)
+  ${CMAKE_SOURCE_DIR}/libs/cpp-dotenv/include
   # Add Crow include path if needed, e.g., ${CMAKE_SOURCE_DIR}/crow/include
 )
+
+# Add cpp-dotenv as subdirectory
+add_subdirectory(libs/cpp-dotenv)
 
 link_directories(${TSK_LIBRARY_DIR})
 
@@ -141,7 +150,19 @@ set(LIB_SOURCES
     AuditLog/AuditLog.cpp
     FullTextSearch/FullTextSearch.cpp
     FullTextSearch/TextExtractor.cpp
-    FileCarving/FileCarver.cpp)
+    FileCarving/FileCarver.cpp
+    # LLMIntegration module
+    LLMIntegration/LLMClient.cpp
+    LLMIntegration/ModelRouter.cpp
+    LLMIntegration/MCPIntegration.cpp
+    LLMIntegration/FileAnalyzer.cpp
+    LLMIntegration/ConfigManager.cpp
+    # cpp-mcp library sources
+    libs/cpp-mcp/src/mcp_message.cpp
+    libs/cpp-mcp/src/mcp_resource.cpp
+    libs/cpp-mcp/src/mcp_server.cpp
+    libs/cpp-mcp/src/mcp_sse_client.cpp
+    libs/cpp-mcp/src/mcp_tool.cpp)
 
 # Create executable Create executable
 add_executable(forensic_analyzer main.cpp ${LIB_SOURCES})
@@ -164,6 +185,7 @@ else()
     ${LIBESEDB_LIBRARIES}
     ${LIBOLECF_LIBRARIES}
     ${XAPIAN_LIBRARIES}
+    cpp_dotenv
     ${PLATFORM_LIBRARIES})
 endif()
 
