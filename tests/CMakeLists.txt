@@ -80,9 +80,9 @@ file(
 add_executable(
   test_linux_analyzer_gtest
   UnitTest/test_linux_analyzer_gtest.cpp
-  ../LinuxFilesAnalyzer/Parsers/LinuxLogParser.cpp
-  ../LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp
-  ../LinuxFilesAnalyzer/Parsers/LinuxHistoryParser.cpp)
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxLogParser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxHistoryParser.cpp)
 
 target_link_libraries(test_linux_analyzer_gtest ${GTEST_LIBRARIES}
                       ${GMOCK_LIBRARIES} sqlite3 pthread)
@@ -93,9 +93,9 @@ add_test(NAME LinuxAnalyzerGTests COMMAND test_linux_analyzer_gtest)
 add_executable(
   test_file_classifier
   UnitTest/test_file_classifier.cpp
-  ../DatabaseManager/FileClassifier/FileClassifier.cpp
-  ../DatabaseManager/FileClassifier/EncryptionUtils.cpp
-  ../AuditLog/AuditLog.cpp)
+  ../src/core/DatabaseManager/FileClassifier/FileClassifier.cpp
+  ../src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
+  ../src/core/AuditLog/AuditLog.cpp)
 
 target_link_libraries(
   test_file_classifier ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} sqlite3 pthread
@@ -105,7 +105,7 @@ add_test(NAME FileClassifierTests COMMAND test_file_classifier)
 
 # Audit Log GTest Tests
 add_executable(test_audit_log_gtest UnitTest/test_audit_log_gtest.cpp
-                                    ../AuditLog/AuditLog.cpp)
+                                    ../src/core/AuditLog/AuditLog.cpp)
 
 target_link_libraries(
   test_audit_log_gtest ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} sqlite3 pthread
@@ -115,7 +115,7 @@ add_test(NAME AuditLogGTests COMMAND test_audit_log_gtest)
 
 # File Carving Tests
 add_executable(test_file_carving UnitTest/test_file_carving.cpp
-                                 ../FileCarving/FileCarver.cpp)
+                                 ../src/analyzers/FileCarving/FileCarver.cpp)
 
 target_link_libraries(test_file_carving ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
                       sqlite3 tsk pthread)
@@ -150,8 +150,9 @@ add_test(NAME AndroidAnalyzerGTests COMMAND test_android_analyzer_gtest)
 # FullText Search Tests (with Xapian integration)
 add_executable(
   test_fulltext_search_gtest
-  UnitTest/test_fulltext_search_gtest.cpp ../FullTextSearch/FullTextSearch.cpp
-  ../FullTextSearch/TextExtractor.cpp)
+  UnitTest/test_fulltext_search_gtest.cpp
+  ../src/core/FullTextSearch/FullTextSearch.cpp
+  ../src/core/FullTextSearch/TextExtractor.cpp)
 
 target_link_libraries(test_fulltext_search_gtest ${GTEST_LIBRARIES}
                       ${GMOCK_LIBRARIES} xapian pthread)
@@ -170,9 +171,9 @@ add_test(NAME ImageAnalyzerGTests COMMAND test_image_analyzer_gtest)
 add_executable(
   test_llm_integration
   UnitTest/test_llm_integration.cpp
-  ../LLMIntegration/LLMClient.cpp
-  ../LLMIntegration/ModelRouter.cpp
-  ../LLMIntegration/FileAnalyzer.cpp
+  ../src/integration/LLMIntegration/LLMClient.cpp
+  ../src/integration/LLMIntegration/ModelRouter.cpp
+  ../src/integration/LLMIntegration/FileAnalyzer.cpp
   ../libs/cpp-mcp/src/mcp_message.cpp
   ../libs/cpp-mcp/src/mcp_resource.cpp
   ../libs/cpp-mcp/src/mcp_server.cpp
@@ -181,7 +182,7 @@ add_executable(
 
 target_include_directories(
   test_llm_integration
-  PRIVATE ${CMAKE_SOURCE_DIR}/LLMIntegration
+  PRIVATE ${CMAKE_SOURCE_DIR}/src/integration/LLMIntegration
           ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/include
           ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/common)
 

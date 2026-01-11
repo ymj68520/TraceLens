@@ -79,30 +79,42 @@ include_directories(
   ${LIBESEDB_INCLUDE_DIRS}
   ${LIBOLECF_INCLUDE_DIRS}
   ${XAPIAN_INCLUDE_DIRS}
-  ${CMAKE_SOURCE_DIR}/FullTextSearch
-  # FileCarving
-  ${CMAKE_SOURCE_DIR}/FileCarving
-  # WindowsFilesAnalyzer includes
-  ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer
-  ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer/Common
-  ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer/Core
-  ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer/Database
-  ${CMAKE_SOURCE_DIR}/WindowsFilesAnalyzer/Parsers
-  # LinuxFilesAnalyzer includes
-  ${CMAKE_SOURCE_DIR}/LinuxFilesAnalyzer
-  ${CMAKE_SOURCE_DIR}/LinuxFilesAnalyzer/Common
-  ${CMAKE_SOURCE_DIR}/LinuxFilesAnalyzer/Core
-  ${CMAKE_SOURCE_DIR}/LinuxFilesAnalyzer/Database
-  ${CMAKE_SOURCE_DIR}/LinuxFilesAnalyzer/Parsers
-  # LLMIntegration and cpp-mcp
-  ${CMAKE_SOURCE_DIR}/LLMIntegration
-  ${CMAKE_SOURCE_DIR}/VisionAnalysis
+  ${CMAKE_SOURCE_DIR}/libs/sqlite3
+  # Source root
+  ${CMAKE_SOURCE_DIR}/src
+  # Core modules
+  ${CMAKE_SOURCE_DIR}/src/core
+  ${CMAKE_SOURCE_DIR}/src/core/FullTextSearch
+  ${CMAKE_SOURCE_DIR}/src/core/DatabaseManager
+  ${CMAKE_SOURCE_DIR}/src/core/AuditLog
+  # Analyzer modules
+  ${CMAKE_SOURCE_DIR}/src/analyzers
+  ${CMAKE_SOURCE_DIR}/src/analyzers/FileCarving
+  ${CMAKE_SOURCE_DIR}/src/analyzers/WindowsFilesAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/WindowsFilesAnalyzer/Common
+  ${CMAKE_SOURCE_DIR}/src/analyzers/WindowsFilesAnalyzer/Core
+  ${CMAKE_SOURCE_DIR}/src/analyzers/WindowsFilesAnalyzer/Database
+  ${CMAKE_SOURCE_DIR}/src/analyzers/WindowsFilesAnalyzer/Parsers
+  ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common
+  ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Core
+  ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Database
+  ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+  ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/ImageAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/VisionAnalysis
+  # Network modules
+  ${CMAKE_SOURCE_DIR}/src/network
+  ${CMAKE_SOURCE_DIR}/src/network/HTTPServer
+  # Integration modules
+  ${CMAKE_SOURCE_DIR}/src/integration
+  ${CMAKE_SOURCE_DIR}/src/integration/LLMIntegration
+  ${CMAKE_SOURCE_DIR}/src/integration/AndroidAdbExtractor
+  # Libs
   ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/include
   ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/common
   # cpp-dotenv (include only, linked via add_subdirectory)
-  ${CMAKE_SOURCE_DIR}/libs/cpp-dotenv/include
-  # Add Crow include path if needed, e.g., ${CMAKE_SOURCE_DIR}/crow/include
-)
+  ${CMAKE_SOURCE_DIR}/libs/cpp-dotenv/include)
 
 # Add cpp-dotenv as subdirectory
 add_subdirectory(libs/cpp-dotenv)
@@ -111,54 +123,52 @@ link_directories(${TSK_LIBRARY_DIR})
 
 # Source files Common source files
 set(LIB_SOURCES
-    ImageAnalyzer/ImageAnalyzer.cpp
-    DatabaseManager/DatabaseManager.cpp
-    DatabaseManager/EventExtractor/EventExtractor.cpp
-    DatabaseManager/FileClassifier/FileClassifier.cpp
-    DatabaseManager/FileClassifier/EncryptionUtils.cpp
-    DatabaseManager/FileExtractor/FileExtractor.cpp
-    ImageAnalyzer/XFSHelper.cpp
-    ImageAnalyzer/XFSHelper.cpp
-    ImageAnalyzer/NativeFilesystemWalker.cpp
-    ImageAnalyzer/TskFilesystemWalker.cpp
-    HTTPServer/HTTPserver.cpp
-    HTTPServer/TaskManager.cpp
-    HTTPServer/SQLiteHelper.cpp
-    AndroidAnalyzer/AndroidAnalyzerCore.cpp
-    AndroidAnalyzer/AndroidDataParsers.cpp
-    AndroidAnalyzer/AndroidSystemParsers.cpp
-    AndroidAnalyzer/AndroidAnalysisDatabase.cpp
-    AndroidAnalyzer/BuildPropAnalyzer.cpp
-    WindowsFilesAnalyzer/Core/WindowsFilesAnalyzerCore.cpp
-    WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
-    WindowsFilesAnalyzer/Parsers/WindowsRegistryParser.cpp
-    WindowsFilesAnalyzer/Parsers/WindowsEventLogParser.cpp
-    WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers.cpp
-    WindowsFilesAnalyzer/Parsers/WindowsPrefetchParser.cpp
-    WindowsFilesAnalyzer/Parsers/WindowsLnkParser.cpp
-    WindowsFilesAnalyzer/Parsers/WindowsAmcacheParser.cpp
-    WindowsFilesAnalyzer/Parsers/WindowsSrumParser.cpp
-    WindowsFilesAnalyzer/Parsers/WindowsBrowserParser.cpp
-    WindowsFilesAnalyzer/Parsers/WindowsBrowserAnalyzer.cpp
-    WindowsFilesAnalyzer/Parsers/WindowsJumpListParser.cpp
-    LinuxFilesAnalyzer/Core/LinuxFilesAnalyzerCore.cpp
-    LinuxFilesAnalyzer/Database/LinuxAnalysisDatabase.cpp
-    LinuxFilesAnalyzer/Parsers/LinuxLogParser.cpp
-    LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp
-    LinuxFilesAnalyzer/Parsers/LinuxHistoryParser.cpp
-    LinuxFilesAnalyzer/Parsers/LinuxArtifactsParsers.cpp
-    LinuxFilesAnalyzer/Parsers/LinuxArtifactsParsers.cpp
-    AuditLog/AuditLog.cpp
-    FullTextSearch/FullTextSearch.cpp
-    FullTextSearch/TextExtractor.cpp
-    FileCarving/FileCarver.cpp
+    src/analyzers/ImageAnalyzer/ImageAnalyzer.cpp
+    src/core/DatabaseManager/DatabaseManager.cpp
+    src/core/DatabaseManager/EventExtractor/EventExtractor.cpp
+    src/core/DatabaseManager/FileClassifier/FileClassifier.cpp
+    src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
+    src/core/DatabaseManager/FileExtractor/FileExtractor.cpp
+    src/analyzers/ImageAnalyzer/XFSHelper.cpp
+    src/analyzers/ImageAnalyzer/NativeFilesystemWalker.cpp
+    src/analyzers/ImageAnalyzer/TskFilesystemWalker.cpp
+    src/network/HTTPServer/HTTPserver.cpp
+    src/network/HTTPServer/TaskManager.cpp
+    src/network/HTTPServer/SQLiteHelper.cpp
+    src/analyzers/AndroidAnalyzer/AndroidAnalyzerCore.cpp
+    src/analyzers/AndroidAnalyzer/AndroidDataParsers.cpp
+    src/analyzers/AndroidAnalyzer/AndroidSystemParsers.cpp
+    src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp
+    src/analyzers/AndroidAnalyzer/BuildPropAnalyzer.cpp
+    src/analyzers/WindowsFilesAnalyzer/Core/WindowsFilesAnalyzerCore.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsRegistryParser.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsEventLogParser.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsPrefetchParser.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsLnkParser.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsAmcacheParser.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsSrumParser.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserParser.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserAnalyzer.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsJumpListParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Core/LinuxFilesAnalyzerCore.cpp
+    src/analyzers/LinuxFilesAnalyzer/Database/LinuxAnalysisDatabase.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxHistoryParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxArtifactsParsers.cpp
+    src/core/AuditLog/AuditLog.cpp
+    src/core/FullTextSearch/FullTextSearch.cpp
+    src/core/FullTextSearch/TextExtractor.cpp
+    src/analyzers/FileCarving/FileCarver.cpp
     # LLMIntegration module
-    LLMIntegration/LLMClient.cpp
-    LLMIntegration/ModelRouter.cpp
-    LLMIntegration/MCPIntegration.cpp
-    LLMIntegration/FileAnalyzer.cpp
-    LLMIntegration/ConfigManager.cpp
-    VisionAnalysis/VisionAnalyzer.cpp
+    src/integration/LLMIntegration/LLMClient.cpp
+    src/integration/LLMIntegration/ModelRouter.cpp
+    src/integration/LLMIntegration/MCPIntegration.cpp
+    src/integration/LLMIntegration/FileAnalyzer.cpp
+    src/integration/LLMIntegration/ConfigManager.cpp
+    src/analyzers/VisionAnalysis/VisionAnalyzer.cpp
     # cpp-mcp library sources
     libs/cpp-mcp/src/mcp_message.cpp
     libs/cpp-mcp/src/mcp_resource.cpp
@@ -167,7 +177,7 @@ set(LIB_SOURCES
     libs/cpp-mcp/src/mcp_tool.cpp)
 
 # Create executable Create executable
-add_executable(forensic_analyzer main.cpp ${LIB_SOURCES})
+add_executable(forensic_analyzer src/main.cpp ${LIB_SOURCES})
 
 # Link libraries
 if(WIN32)
@@ -183,7 +193,6 @@ else()
     ${HIVEX_LIBRARIES}
     ${LIBEVTX_LIBRARIES}
     ${LIBBFIO_LIBRARIES}
-    ${LIBESEDB_LIBRARIES}
     ${LIBESEDB_LIBRARIES}
     ${LIBOLECF_LIBRARIES}
     ${XAPIAN_LIBRARIES}
