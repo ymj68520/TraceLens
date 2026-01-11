@@ -96,6 +96,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/LinuxFilesAnalyzer/Parsers
   # LLMIntegration and cpp-mcp
   ${CMAKE_SOURCE_DIR}/LLMIntegration
+  ${CMAKE_SOURCE_DIR}/VisionAnalysis
   ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/include
   ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/common
   # cpp-dotenv (include only, linked via add_subdirectory)
@@ -156,8 +157,8 @@ set(LIB_SOURCES
     LLMIntegration/ModelRouter.cpp
     LLMIntegration/MCPIntegration.cpp
     LLMIntegration/FileAnalyzer.cpp
-    LLMIntegration/VisionAnalyzer.cpp
     LLMIntegration/ConfigManager.cpp
+    VisionAnalysis/VisionAnalyzer.cpp
     # cpp-mcp library sources
     libs/cpp-mcp/src/mcp_message.cpp
     libs/cpp-mcp/src/mcp_resource.cpp

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "LLMDataTypes.h"
-#include "ModelRouter.h"
+#include "../LLMIntegration/LLMDataTypes.h"
+#include "../LLMIntegration/ModelRouter.h"
 #include <memory>
 #include <string>
 #include <vector>

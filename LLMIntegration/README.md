@@ -19,7 +19,7 @@ LLM (Large Language Model) integration module for forensic file analysis using L
 | `ModelRouter` | Multi-model routing with priority, round-robin, and fallback strategies |
 | `MCPIntegration` | MCP server with file analysis tools |
 | `FileAnalyzer` | High-level file analysis with LLM (text model) |
-| `VisionAnalyzer` | Image/video analysis with vision models (Qwen3 VL) |
+| `VisionAnalyzer` | Image/video analysis with vision models (Qwen3 VL) - *Moved to `VisionAnalysis/`* |
 | `ConfigManager` | Load configuration from `.env` file |
 
 ## Usage
