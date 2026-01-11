@@ -194,7 +194,48 @@ std::string LLMClient::buildRequestBody(const std::vector<ChatMessage>& messages
     for (const auto& msg : messages) {
         json msgObj;
         msgObj["role"] = msg.role;
-        msgObj["content"] = msg.content;
+        
+        // Check if message contains images (vision format)
+        if (msg.hasImages()) {
+            // Use array content format for vision
+            json contentArray = json::array();
+            
+            // Add text content first
+            if (!msg.content.empty()) {
+                contentArray.push_back({
+                    {"type", "text"},
+                    {"text", msg.content}
+                });
+            }
+            
+            // Add image content
+            for (const auto& img : msg.images) {
+                json imageObj;
+                imageObj["type"] = "image_url";
+                
+                json imageUrl;
+                if (img.isBase64()) {
+                    // Format: data:image/jpeg;base64,{base64_data}
+                    std::string mimeType = img.mimeType.empty() ? "image/jpeg" : img.mimeType;
+                    imageUrl["url"] = "data:" + mimeType + ";base64," + img.base64Data;
+                } else if (img.isUrl()) {
+                    imageUrl["url"] = img.url;
+                }
+                
+                if (!img.detail.empty()) {
+                    imageUrl["detail"] = img.detail;
+                }
+                
+                imageObj["image_url"] = imageUrl;
+                contentArray.push_back(imageObj);
+            }
+            
+            msgObj["content"] = contentArray;
+        } else {
+            // Standard text format
+            msgObj["content"] = msg.content;
+        }
+        
         if (!msg.name.empty()) {
             msgObj["name"] = msg.name;
         }

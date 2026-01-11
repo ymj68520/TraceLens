@@ -56,20 +56,7 @@ double ConfigManager::getDouble(const std::string& key, double defaultValue) con
     }
 }
 
-// LLM Settings
-LLMConfig ConfigManager::getLLMConfig() const {
-    LLMConfig config;
-    config.baseUrl = getLLMBaseUrl();
-    config.endpoint = getLLMEndpoint();
-    config.apiKey = getLLMApiKey();
-    config.model = getLLMModel();
-    config.maxTokens = getLLMMaxTokens();
-    config.temperature = getLLMTemperature();
-    config.timeoutSeconds = getLLMTimeoutSeconds();
-    config.maxRetries = getLLMMaxRetries();
-    return config;
-}
-
+// LLM Settings - Common
 std::string ConfigManager::getLLMBaseUrl() const {
     return get("LLM_BASE_URL", "http://localhost:1234");
 }
@@ -82,24 +69,69 @@ std::string ConfigManager::getLLMApiKey() const {
     return get("LLM_API_KEY", "");
 }
 
-std::string ConfigManager::getLLMModel() const {
-    return get("LLM_MODEL", "");
-}
-
-int ConfigManager::getLLMMaxTokens() const {
-    return getInt("LLM_MAX_TOKENS", 2048);
-}
-
-double ConfigManager::getLLMTemperature() const {
-    return getDouble("LLM_TEMPERATURE", 0.7);
-}
-
 int ConfigManager::getLLMTimeoutSeconds() const {
-    return getInt("LLM_TIMEOUT_SECONDS", 60);
+    return getInt("LLM_TIMEOUT_SECONDS", 120);
 }
 
 int ConfigManager::getLLMMaxRetries() const {
     return getInt("LLM_MAX_RETRIES", 3);
+}
+
+// Text Model Settings (GPT OSS)
+std::string ConfigManager::getTextModel() const {
+    return get("LLM_TEXT_MODEL", "gpt-oss");
+}
+
+int ConfigManager::getTextMaxTokens() const {
+    return getInt("LLM_TEXT_MAX_TOKENS", 2048);
+}
+
+double ConfigManager::getTextTemperature() const {
+    return getDouble("LLM_TEXT_TEMPERATURE", 0.7);
+}
+
+LLMConfig ConfigManager::getTextModelConfig() const {
+    LLMConfig config;
+    config.baseUrl = getLLMBaseUrl();
+    config.endpoint = getLLMEndpoint();
+    config.apiKey = getLLMApiKey();
+    config.model = getTextModel();
+    config.maxTokens = getTextMaxTokens();
+    config.temperature = getTextTemperature();
+    config.timeoutSeconds = getLLMTimeoutSeconds();
+    config.maxRetries = getLLMMaxRetries();
+    return config;
+}
+
+// Vision Model Settings (Qwen3 VL)
+std::string ConfigManager::getVisionModel() const {
+    return get("LLM_VISION_MODEL", "qwen3-vl");
+}
+
+int ConfigManager::getVisionMaxTokens() const {
+    return getInt("LLM_VISION_MAX_TOKENS", 4096);
+}
+
+double ConfigManager::getVisionTemperature() const {
+    return getDouble("LLM_VISION_TEMPERATURE", 0.5);
+}
+
+LLMConfig ConfigManager::getVisionModelConfig() const {
+    LLMConfig config;
+    config.baseUrl = getLLMBaseUrl();
+    config.endpoint = getLLMEndpoint();
+    config.apiKey = getLLMApiKey();
+    config.model = getVisionModel();
+    config.maxTokens = getVisionMaxTokens();
+    config.temperature = getVisionTemperature();
+    config.timeoutSeconds = getLLMTimeoutSeconds();
+    config.maxRetries = getLLMMaxRetries();
+    return config;
+}
+
+// Legacy support - returns text model config
+LLMConfig ConfigManager::getLLMConfig() const {
+    return getTextModelConfig();
 }
 
 // MCP Settings

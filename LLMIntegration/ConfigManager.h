@@ -32,16 +32,27 @@ public:
      */
     bool isLoaded() const;
     
-    // LLM Settings
-    LLMConfig getLLMConfig() const;
+    // LLM Settings - Common
     std::string getLLMBaseUrl() const;
     std::string getLLMEndpoint() const;
     std::string getLLMApiKey() const;
-    std::string getLLMModel() const;
-    int getLLMMaxTokens() const;
-    double getLLMTemperature() const;
     int getLLMTimeoutSeconds() const;
     int getLLMMaxRetries() const;
+    
+    // Text Model Settings (GPT OSS)
+    LLMConfig getTextModelConfig() const;
+    std::string getTextModel() const;
+    int getTextMaxTokens() const;
+    double getTextTemperature() const;
+    
+    // Vision Model Settings (Qwen3 VL)
+    LLMConfig getVisionModelConfig() const;
+    std::string getVisionModel() const;
+    int getVisionMaxTokens() const;
+    double getVisionTemperature() const;
+    
+    // Legacy support - returns text model config
+    LLMConfig getLLMConfig() const;
     
     // MCP Settings
     int getMCPServerPort() const;

@@ -30,7 +30,33 @@ enum class ModelCapability {
     CodeGeneration,
     Summarization,
     Analysis,
-    Translation
+    Translation,
+    Vision,           // Image/video understanding
+    ImageAnalysis     // Specialized image analysis
+};
+
+/**
+ * @brief Content type for routing decisions
+ */
+enum class ContentType {
+    Text,
+    Image,
+    Video,
+    Audio,
+    Mixed  // Contains both text and media
+};
+
+/**
+ * @brief Image content for vision models
+ */
+struct ImageContent {
+    std::string url;           // URL or base64 data URL
+    std::string base64Data;    // Raw base64 encoded image
+    std::string mimeType;      // e.g., "image/png", "image/jpeg"
+    std::string detail = "auto"; // "low", "high", or "auto"
+    
+    bool isBase64() const { return !base64Data.empty(); }
+    bool isUrl() const { return !url.empty() && base64Data.empty(); }
 };
 
 /**
@@ -43,6 +69,7 @@ struct ModelInfo {
     int priority = 0;  // Higher = preferred
     bool available = true;
     int contextLength = 4096;
+    bool supportsVision = false;  // Whether model can process images
     
     bool hasCapability(ModelCapability cap) const {
         for (const auto& c : capabilities) {
@@ -53,17 +80,29 @@ struct ModelInfo {
 };
 
 /**
- * @brief Chat message structure (OpenAI format)
+ * @brief Chat message structure (OpenAI format with vision support)
  */
 struct ChatMessage {
     std::string role;     // "system", "user", "assistant", "tool"
-    std::string content;
+    std::string content;  // Text content
     std::string name;     // Optional: function name for tool messages
     std::string toolCallId;  // Optional: for tool responses
     
+    // Vision support
+    std::vector<ImageContent> images;  // Images to include with the message
+    ContentType contentType = ContentType::Text;
+    
     ChatMessage() = default;
     ChatMessage(const std::string& r, const std::string& c) 
-        : role(r), content(c) {}
+        : role(r), content(c), contentType(ContentType::Text) {}
+    
+    // Constructor with image
+    ChatMessage(const std::string& r, const std::string& c, const ImageContent& img)
+        : role(r), content(c), contentType(ContentType::Image) {
+        images.push_back(img);
+    }
+    
+    bool hasImages() const { return !images.empty(); }
 };
 
 /**

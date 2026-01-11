@@ -6,8 +6,10 @@ LLM (Large Language Model) integration module for forensic file analysis using L
 
 - **OpenAI-Compatible API Client** - Connect to LM Studio or other local/remote LLM servers
 - **Multi-Model Routing** - Route requests to multiple models with fallback and load balancing
+- **Content-Type Based Routing** - Automatically route text to GPT OSS and images to Qwen3 VL
 - **MCP Protocol Support** - Expose file analysis tools via Model Context Protocol
 - **File Analysis** - Generate summaries, descriptions, and keywords for files
+- **Vision Analysis** - Analyze images, extract text (OCR), and compare images
 
 ## Components
 
@@ -16,7 +18,9 @@ LLM (Large Language Model) integration module for forensic file analysis using L
 | `LLMClient` | HTTP client for OpenAI-compatible chat completions API |
 | `ModelRouter` | Multi-model routing with priority, round-robin, and fallback strategies |
 | `MCPIntegration` | MCP server with file analysis tools |
-| `FileAnalyzer` | High-level file analysis with LLM |
+| `FileAnalyzer` | High-level file analysis with LLM (text model) |
+| `VisionAnalyzer` | Image/video analysis with vision models (Qwen3 VL) |
+| `ConfigManager` | Load configuration from `.env` file |
 
 ## Usage
 

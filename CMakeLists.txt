@@ -156,6 +156,7 @@ set(LIB_SOURCES
     LLMIntegration/ModelRouter.cpp
     LLMIntegration/MCPIntegration.cpp
     LLMIntegration/FileAnalyzer.cpp
+    LLMIntegration/VisionAnalyzer.cpp
     LLMIntegration/ConfigManager.cpp
     # cpp-mcp library sources
     libs/cpp-mcp/src/mcp_message.cpp
