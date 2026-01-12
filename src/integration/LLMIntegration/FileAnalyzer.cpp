@@ -1,5 +1,8 @@
 #include "FileAnalyzer.h"
 #include "json.hpp"
+#include <iostream>
+#include "../../analyzers/PDFAnalyzer/PDFAnalyzer.h"
+#include "../../analyzers/OfficeAnalyzer/OfficeAnalyzer.h"
 
 #include <filesystem>
 #include <fstream>
@@ -61,11 +64,70 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
     result.fileType = detectFileType(filePath);
     
     // Read content
-    std::string content = readFileContent(filePath, maxContentLength);
+    std::string content;
+    std::string ext = fs::path(filePath).extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    
+    std::cout << "[DEBUG] File: " << filePath << ", Ext: " << ext << std::endl;
+
+    if (ext == ".pdf") {
+        std::cout << "[DEBUG] Using PDFAnalyzer" << std::endl;
+        content = forensics::analyzers::PDFAnalyzer::extractText(filePath);
+    } else if (ext == ".docx" || ext == ".doc") {
+        std::cout << "[DEBUG] Using OfficeAnalyzer" << std::endl;
+        OfficeAnalyzer officeAnalyzer;
+        content = officeAnalyzer.analyze(filePath);
+    } else if (result.fileType == "Archive" || result.fileType == "Binary" || result.fileType == "Database") {
+        std::cout << "[DEBUG] Binary/Archive detected. Skipping content read." << std::endl;
+        content = "[Binary/Archive File Content Omitted. Analysis based on metadata only.]";
+    } else {
+        std::cout << "[DEBUG] Using Raw Read" << std::endl;
+        content = readFileContent(filePath, maxContentLength);
+    }
+
     if (content.empty()) {
-        result.errorMessage = "Failed to read file content";
+        result.errorMessage = "Failed to read file content or content is empty";
         return result;
     }
+    
+    // Sanitize UTF-8
+    auto sanitize = [](std::string& str) {
+        std::string res;
+        res.reserve(str.size());
+        for (size_t i = 0; i < str.size(); ++i) {
+            unsigned char c = static_cast<unsigned char>(str[i]);
+            if (c < 0x80) {
+                res += c;
+            } else {
+                // Determine sequence length
+                int len = 0;
+                if ((c & 0xE0) == 0xC0) len = 2;
+                else if ((c & 0xF0) == 0xE0) len = 3;
+                else if ((c & 0xF8) == 0xF0) len = 4;
+                
+                bool valid = len > 0 && (i + len <= str.size());
+                if (valid) {
+                    for (int j = 1; j < len; ++j) {
+                        if ((static_cast<unsigned char>(str[i+j]) & 0xC0) != 0x80) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                }
+                
+                if (valid) {
+                    res += str.substr(i, len);
+                    i += len - 1;
+                } else {
+                    // Replace invalid byte with space or ?
+                    res += '?';
+                }
+            }
+        }
+        str = std::move(res);
+    };
+    
+    sanitize(content);
     
     if (!router_) {
         result.errorMessage = "No LLM router configured";
@@ -90,6 +152,7 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
         "KEYWORDS: [comma-separated keywords]";
     
     auto response = router_->chat(combinedPrompt, systemPrompt);
+    
     
     if (!response.success) {
         result.errorMessage = "LLM analysis failed: " + response.errorMessage;

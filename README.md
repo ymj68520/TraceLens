@@ -76,6 +76,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **The Sleuth Kit**: 4.14.0 版本
 - **SQLite3**: 3.30 或更高版本
 - **libewf**: 用于 E01 镜像支持
+- **libhivex**: 用于 Windows 系统文件分析
+- **libevtx**: 用于 Windows 事件日志分析
+- **libolecf**: 用于 Office 文件分析
+- **libxapian**: 用于全文搜索
+- **libpoppler-cpp**: 用于 PDF 文件分析
+- **antiword**: 用于 Word 文件分析
+- **libzip**: 用于压缩文件分析
+- **libpugixml**: 用于 XML 文件分析
 
 ### Ubuntu/Debian 安装
 

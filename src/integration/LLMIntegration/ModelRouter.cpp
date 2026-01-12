@@ -1,4 +1,5 @@
 #include "ModelRouter.h"
+#include "LLMClient.h"
 #include <algorithm>
 #include <limits>
 
@@ -74,8 +75,8 @@ LLMResponse ModelRouter::chat(const std::vector<ChatMessage>& messages,
                 break;
             case RoutingStrategy::Fallback:
             default:
-                return response = selectByFallback(requiredCapability, response) 
-                    ? response : response;
+                client = selectByFallback(requiredCapability, response);
+                break;
         }
     }
     

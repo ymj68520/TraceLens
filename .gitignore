@@ -15,6 +15,7 @@
 /tests/test_assets/
 /tests/system_assets/
 /tests/system
+/tests/test_data_13
 /tests/TestResources
 AGENTS.md
 GEMINI.md
@@ -415,3 +416,4 @@ tests/test_advanced_classifier
 tests/test_advanced_classifier.cpp
 tests/test_classifier
 docs/Code_Statistics_Report.md
+docs/LLM_Integration_Test_Manual.md

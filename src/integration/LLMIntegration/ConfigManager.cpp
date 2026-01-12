@@ -78,6 +78,10 @@ int ConfigManager::getLLMMaxRetries() const {
 }
 
 // Text Model Settings (GPT OSS)
+std::string ConfigManager::getTextBaseUrl() const {
+    return get("LLM_TEXT_BASE_URL", getLLMBaseUrl());
+}
+
 std::string ConfigManager::getTextModel() const {
     return get("LLM_TEXT_MODEL", "gpt-oss");
 }
@@ -92,7 +96,7 @@ double ConfigManager::getTextTemperature() const {
 
 LLMConfig ConfigManager::getTextModelConfig() const {
     LLMConfig config;
-    config.baseUrl = getLLMBaseUrl();
+    config.baseUrl = getTextBaseUrl();
     config.endpoint = getLLMEndpoint();
     config.apiKey = getLLMApiKey();
     config.model = getTextModel();
@@ -104,6 +108,10 @@ LLMConfig ConfigManager::getTextModelConfig() const {
 }
 
 // Vision Model Settings (Qwen3 VL)
+std::string ConfigManager::getVisionBaseUrl() const {
+    return get("LLM_VISION_BASE_URL", getLLMBaseUrl());
+}
+
 std::string ConfigManager::getVisionModel() const {
     return get("LLM_VISION_MODEL", "qwen3-vl");
 }
@@ -118,7 +126,7 @@ double ConfigManager::getVisionTemperature() const {
 
 LLMConfig ConfigManager::getVisionModelConfig() const {
     LLMConfig config;
-    config.baseUrl = getLLMBaseUrl();
+    config.baseUrl = getVisionBaseUrl();
     config.endpoint = getLLMEndpoint();
     config.apiKey = getLLMApiKey();
     config.model = getVisionModel();

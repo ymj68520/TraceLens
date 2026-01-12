@@ -41,12 +41,14 @@ public:
     
     // Text Model Settings (GPT OSS)
     LLMConfig getTextModelConfig() const;
+    std::string getTextBaseUrl() const;
     std::string getTextModel() const;
     int getTextMaxTokens() const;
     double getTextTemperature() const;
     
     // Vision Model Settings (Qwen3 VL)
     LLMConfig getVisionModelConfig() const;
+    std::string getVisionBaseUrl() const;
     std::string getVisionModel() const;
     int getVisionMaxTokens() const;
     double getVisionTemperature() const;

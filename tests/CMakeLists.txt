@@ -198,3 +198,39 @@ install(
           test_fulltext_search_gtest
           test_image_analyzer_gtest
   RUNTIME DESTINATION bin/tests)
+
+# Test for 13 Files Multi-Model Analysis
+add_executable(
+  llm_files_test
+  llm_files_test.cpp
+  ../src/integration/LLMIntegration/ConfigManager.cpp
+  ../src/integration/LLMIntegration/LLMClient.cpp
+  ../src/integration/LLMIntegration/ModelRouter.cpp
+  ../src/integration/LLMIntegration/FileAnalyzer.cpp
+  ../src/analyzers/VisionAnalysis/VisionAnalyzer.cpp
+  ../src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp
+  ../src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp
+  ../libs/cpp-mcp/src/mcp_message.cpp
+  ../libs/cpp-mcp/src/mcp_resource.cpp
+  ../libs/cpp-mcp/src/mcp_server.cpp
+  ../libs/cpp-mcp/src/mcp_sse_client.cpp
+  ../libs/cpp-mcp/src/mcp_tool.cpp)
+
+target_include_directories(
+  llm_files_test
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/include
+          ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/common
+          ${CMAKE_SOURCE_DIR}/libs/cpp-dotenv/include
+          ${CMAKE_SOURCE_DIR}/libs/nlohmann_json/include
+          ${CMAKE_SOURCE_DIR}/libs/antlr4-runtime/runtime/src)
+
+target_link_libraries(
+  llm_files_test
+  ${CURL_LIBRARIES}
+  pthread
+  antlr4_cpp_runtime
+  curl
+  cpp_dotenv
+  duckx
+  ${POPPLER_LIBRARIES})
