@@ -19,6 +19,7 @@ SearchRoutes::SearchRoutes(crow::App<>& app) {
 
 crow::response SearchRoutes::handle_fulltext_search(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     try {
         std::string query = "";
         std::string index_path = "";
@@ -86,6 +87,7 @@ crow::response SearchRoutes::handle_fulltext_search(const crow::request& req) {
 
 crow::response SearchRoutes::handle_fulltext_index(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     try {
         auto body = json::parse(req.body);
 
@@ -149,6 +151,12 @@ crow::response SearchRoutes::handle_fulltext_index(const crow::request& req) {
         res.write(error.dump());
     }
     return res;
+}
+
+void SearchRoutes::add_cors_headers(crow::response& res) {
+    res.set_header("Access-Control-Allow-Origin", "*");
+    res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
 }
 
 } // namespace forensics

@@ -110,5 +110,10 @@ namespace forensics {
         ForensicsRoutes forensics_routes_;
         SystemRoutes system_routes_;
         SearchRoutes search_routes_;
+
+        // Static file serving
+        void setup_static_routes();
+        std::string get_mime_type(const std::string& path);
+        bool serve_static_file(crow::response& res, const std::string& relative_path);
     };
 }

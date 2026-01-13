@@ -1,0 +1,2 @@
+/usr/bin/ar qc libcpp_dotenv.a CMakeFiles/cpp_dotenv.dir/src/dotenv.cpp.o
+/usr/bin/ranlib libcpp_dotenv.a

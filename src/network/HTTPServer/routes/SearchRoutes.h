@@ -18,6 +18,9 @@ private:
     // Search operations
     crow::response handle_fulltext_search(const crow::request& req);
     crow::response handle_fulltext_index(const crow::request& req);
+
+    // CORS helper
+    static void add_cors_headers(crow::response& res);
 };
 
 } // namespace forensics

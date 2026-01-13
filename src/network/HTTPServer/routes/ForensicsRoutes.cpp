@@ -103,6 +103,7 @@ std::string ForensicsRoutes::get_database_path(const std::string& task_id, const
 // Timeline Analysis Endpoints
 crow::response ForensicsRoutes::handle_timeline_comprehensive(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
     std::string start_time = params.get("start_time") ? params.get("start_time") : "";
@@ -133,6 +134,7 @@ crow::response ForensicsRoutes::handle_timeline_comprehensive(const crow::reques
 
 crow::response ForensicsRoutes::handle_timeline_file_activity(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
     std::string file_path = params.get("file_path") ? params.get("file_path") : "";
@@ -164,6 +166,7 @@ crow::response ForensicsRoutes::handle_timeline_file_activity(const crow::reques
 
 crow::response ForensicsRoutes::handle_timeline_suspicious_patterns(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
 
@@ -192,6 +195,7 @@ crow::response ForensicsRoutes::handle_timeline_suspicious_patterns(const crow::
 
 crow::response ForensicsRoutes::handle_timeline_user_activity(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
 
@@ -221,6 +225,7 @@ crow::response ForensicsRoutes::handle_timeline_user_activity(const crow::reques
 // File Analysis Endpoints
 crow::response ForensicsRoutes::handle_files_largest(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
     std::string limit_str = params.get("limit") ? params.get("limit") : "50";
@@ -250,6 +255,7 @@ crow::response ForensicsRoutes::handle_files_largest(const crow::request& req) {
 
 crow::response ForensicsRoutes::handle_files_recent(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
     std::string hours = params.get("hours") ? params.get("hours") : "24";
@@ -278,6 +284,7 @@ crow::response ForensicsRoutes::handle_files_recent(const crow::request& req) {
 
 crow::response ForensicsRoutes::handle_files_suspicious(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
 
@@ -306,6 +313,7 @@ crow::response ForensicsRoutes::handle_files_suspicious(const crow::request& req
 
 crow::response ForensicsRoutes::handle_files_duplicates(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
 
@@ -333,6 +341,7 @@ crow::response ForensicsRoutes::handle_files_duplicates(const crow::request& req
 
 crow::response ForensicsRoutes::handle_files_extensions_analysis(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
 
@@ -361,6 +370,7 @@ crow::response ForensicsRoutes::handle_files_extensions_analysis(const crow::req
 // Android Forensics Endpoints
 crow::response ForensicsRoutes::handle_android_communication_summary(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
 
@@ -388,6 +398,7 @@ crow::response ForensicsRoutes::handle_android_communication_summary(const crow:
 
 crow::response ForensicsRoutes::handle_android_app_usage(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
 
@@ -415,6 +426,7 @@ crow::response ForensicsRoutes::handle_android_app_usage(const crow::request& re
 
 crow::response ForensicsRoutes::handle_android_device_info(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
 
@@ -442,6 +454,7 @@ crow::response ForensicsRoutes::handle_android_device_info(const crow::request& 
 
 crow::response ForensicsRoutes::handle_android_media_analysis(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
 
@@ -470,6 +483,7 @@ crow::response ForensicsRoutes::handle_android_media_analysis(const crow::reques
 // Statistics Endpoints
 crow::response ForensicsRoutes::handle_statistics_overview(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
 
@@ -499,6 +513,7 @@ crow::response ForensicsRoutes::handle_statistics_overview(const crow::request& 
 
 crow::response ForensicsRoutes::handle_statistics_file_distribution(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
 
@@ -526,6 +541,7 @@ crow::response ForensicsRoutes::handle_statistics_file_distribution(const crow::
 
 crow::response ForensicsRoutes::handle_statistics_activity_patterns(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
 
@@ -553,6 +569,7 @@ crow::response ForensicsRoutes::handle_statistics_activity_patterns(const crow::
 
 crow::response ForensicsRoutes::handle_statistics_deleted_files_analysis(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id");
 
@@ -576,6 +593,12 @@ crow::response ForensicsRoutes::handle_statistics_deleted_files_analysis(const c
         res.write(error.dump());
     }
     return res;
+}
+
+void ForensicsRoutes::add_cors_headers(crow::response& res) {
+    res.set_header("Access-Control-Allow-Origin", "*");
+    res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
 }
 
 } // namespace forensics

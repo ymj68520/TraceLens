@@ -1,0 +1,2 @@
+/usr/bin/ar qc libline_listeners.a CMakeFiles/line_listeners.dir/ExpanderListener.cpp.o CMakeFiles/line_listeners.dir/ExternalResolverListener.cpp.o CMakeFiles/line_listeners.dir/ReferencesListener.cpp.o CMakeFiles/line_listeners.dir/LocalResolverListener.cpp.o CMakeFiles/line_listeners.dir/UndefinedListener.cpp.o CMakeFiles/line_listeners.dir/UnresolvableListener.cpp.o
+/usr/bin/ranlib libline_listeners.a

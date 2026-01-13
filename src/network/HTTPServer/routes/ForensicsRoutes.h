@@ -45,6 +45,9 @@ private:
     
     // Helper
     std::string get_database_path(const std::string& task_id, const std::string& db_type);
+
+    // CORS helper
+    static void add_cors_headers(crow::response& res);
 };
 
 } // namespace forensics

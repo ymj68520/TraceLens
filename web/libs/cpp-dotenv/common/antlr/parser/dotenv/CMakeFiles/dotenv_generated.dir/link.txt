@@ -1,0 +1,2 @@
+/usr/bin/ar qc libdotenv_generated.a CMakeFiles/dotenv_generated.dir/DotenvBaseListener.cpp.o CMakeFiles/dotenv_generated.dir/DotenvLexer.cpp.o CMakeFiles/dotenv_generated.dir/DotenvListener.cpp.o CMakeFiles/dotenv_generated.dir/DotenvParser.cpp.o
+/usr/bin/ranlib libdotenv_generated.a

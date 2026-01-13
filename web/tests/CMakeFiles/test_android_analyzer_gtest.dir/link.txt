@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/test_android_analyzer_gtest.dir/UnitTest/test_android_analyzer_gtest.cpp.o -o test_android_analyzer_gtest   -L/usr/local/lib  -Wl,-rpath,/usr/local/lib: /usr/local/lib/libgtest.a -lpthread 

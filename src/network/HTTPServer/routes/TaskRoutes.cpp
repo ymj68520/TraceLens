@@ -6,6 +6,124 @@ namespace forensics {
 using json = nlohmann::json;
 
 TaskRoutes::TaskRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()) {
+    // CORS OPTIONS handlers - must be registered before other routes
+    CROW_ROUTE(app, "/tasks").methods("OPTIONS"_method)([](const crow::request& req){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
+    CROW_ROUTE(app, "/tasks/<string>").methods("OPTIONS"_method)([](const crow::request& req, const std::string& task_id){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
+    CROW_ROUTE(app, "/tasks/<string>/results").methods("OPTIONS"_method)([](const crow::request& req, const std::string& task_id){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
+    CROW_ROUTE(app, "/api/tasks/list").methods("OPTIONS"_method)([](const crow::request& req){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
+    CROW_ROUTE(app, "/api/tasks/<string>").methods("OPTIONS"_method)([](const crow::request& req, const std::string& task_id){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
+    CROW_ROUTE(app, "/api/tasks/<string>/progress").methods("OPTIONS"_method)([](const crow::request& req, const std::string& task_id){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
+    CROW_ROUTE(app, "/api/tasks/statistics").methods("OPTIONS"_method)([](const crow::request& req){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
+    CROW_ROUTE(app, "/api/tasks/cleanup").methods("OPTIONS"_method)([](const crow::request& req){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
+    CROW_ROUTE(app, "/api/tasks/batch-create").methods("OPTIONS"_method)([](const crow::request& req){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
+    CROW_ROUTE(app, "/api/tasks/batch-status").methods("OPTIONS"_method)([](const crow::request& req){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
+    CROW_ROUTE(app, "/api/tasks/batch-cancel").methods("OPTIONS"_method)([](const crow::request& req){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
+    CROW_ROUTE(app, "/api/tasks/<string>/audit-log").methods("OPTIONS"_method)([](const crow::request& req, const std::string& task_id){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
+    CROW_ROUTE(app, "/api/tasks/<string>/priority").methods("OPTIONS"_method)([](const crow::request& req, const std::string& task_id){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
     // Basic task management routes
     CROW_ROUTE(app, "/tasks").methods("POST"_method)([this](const crow::request& req) {
         return handle_create_task(req);
@@ -65,6 +183,7 @@ TaskRoutes::TaskRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()
 
 crow::response TaskRoutes::handle_create_task(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     try {
         auto body = json::parse(req.body);
         std::string image_path = body["image_path"];
@@ -139,6 +258,7 @@ crow::response TaskRoutes::handle_create_task(const crow::request& req) {
 
 crow::response TaskRoutes::handle_get_task(const crow::request& req, const std::string& task_id) {
     crow::response res;
+    add_cors_headers(res);
     AnalysisTask task = task_manager_.get_task(task_id);
 
     if (task.id.empty()) {
@@ -157,6 +277,7 @@ crow::response TaskRoutes::handle_get_task(const crow::request& req, const std::
 
 crow::response TaskRoutes::handle_get_task_results(const crow::request& req, const std::string& task_id) {
     crow::response res;
+    add_cors_headers(res);
     AnalysisTask task = task_manager_.get_task(task_id);
 
     if (task.id.empty()) {
@@ -214,6 +335,7 @@ crow::response TaskRoutes::handle_get_task_results(const crow::request& req, con
 
 crow::response TaskRoutes::handle_list_tasks(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     try {
         std::string status_filter = "";
         std::string priority_filter = "";
@@ -238,10 +360,11 @@ crow::response TaskRoutes::handle_list_tasks(const crow::request& req) {
 
         for (const auto& task : all_tasks) {
             bool matches = true;
-            if (!status_filter.empty() && status_to_string(task.status) != status_filter) {
+            // Skip filtering if value is "all" to show all tasks
+            if (!status_filter.empty() && status_filter != "all" && status_to_string(task.status) != status_filter) {
                 matches = false;
             }
-            if (!priority_filter.empty() && priority_to_string(task.priority) != priority_filter) {
+            if (!priority_filter.empty() && priority_filter != "all" && priority_to_string(task.priority) != priority_filter) {
                 matches = false;
             }
             if (matches) {
@@ -281,6 +404,7 @@ crow::response TaskRoutes::handle_list_tasks(const crow::request& req) {
 
 crow::response TaskRoutes::handle_cancel_task(const crow::request& req, const std::string& task_id) {
     crow::response res;
+    add_cors_headers(res);
     try {
         std::string reason = "Cancelled via API";
         try {
@@ -321,6 +445,7 @@ crow::response TaskRoutes::handle_cancel_task(const crow::request& req, const st
 
 crow::response TaskRoutes::handle_get_task_progress(const crow::request& req, const std::string& task_id) {
     crow::response res;
+    add_cors_headers(res);
     try {
         AnalysisTask task = task_manager_.get_task(task_id);
 
@@ -356,6 +481,7 @@ crow::response TaskRoutes::handle_get_task_progress(const crow::request& req, co
 
 crow::response TaskRoutes::handle_get_task_statistics(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     try {
         json stats = task_manager_.get_task_statistics();
         res.set_header("Content-Type", "application/json");
@@ -371,6 +497,7 @@ crow::response TaskRoutes::handle_get_task_statistics(const crow::request& req) 
 
 crow::response TaskRoutes::handle_cleanup_tasks(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     try {
         int max_age_hours = 24;
         try {
@@ -401,6 +528,7 @@ crow::response TaskRoutes::handle_cleanup_tasks(const crow::request& req) {
 
 crow::response TaskRoutes::handle_batch_create_tasks(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     try {
         auto body = json::parse(req.body);
         std::vector<std::string> image_paths;
@@ -443,6 +571,7 @@ crow::response TaskRoutes::handle_batch_create_tasks(const crow::request& req) {
 
 crow::response TaskRoutes::handle_batch_status(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     try {
         auto body = json::parse(req.body);
         std::vector<json> statuses;
@@ -483,6 +612,7 @@ crow::response TaskRoutes::handle_batch_status(const crow::request& req) {
 
 crow::response TaskRoutes::handle_batch_cancel(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     try {
         auto body = json::parse(req.body);
         std::vector<std::string> task_ids;
@@ -513,6 +643,7 @@ crow::response TaskRoutes::handle_batch_cancel(const crow::request& req) {
 
 crow::response TaskRoutes::handle_get_task_audit_log(const crow::request& req, const std::string& task_id) {
     crow::response res;
+    add_cors_headers(res);
     try {
         int limit = 50;
         int offset = 0;
@@ -555,6 +686,7 @@ crow::response TaskRoutes::handle_get_task_audit_log(const crow::request& req, c
 
 crow::response TaskRoutes::handle_update_task_priority(const crow::request& req, const std::string& task_id) {
     crow::response res;
+    add_cors_headers(res);
     try {
         auto body = json::parse(req.body);
         TaskPriority new_priority = priority_from_string(body["priority"]);
@@ -674,6 +806,12 @@ std::string TaskRoutes::phase_to_string(TaskPhase phase) {
         case TaskPhase::FINALIZING: return "finalizing";
         default: return "unknown";
     }
+}
+
+void TaskRoutes::add_cors_headers(crow::response& res) {
+    res.set_header("Access-Control-Allow-Origin", "*");
+    res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
 }
 
 } // namespace forensics

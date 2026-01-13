@@ -42,6 +42,7 @@ SystemRoutes::SystemRoutes(crow::App<>& app) : task_manager_(TaskManager::instan
 
 crow::response SystemRoutes::handle_system_health(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     try {
         auto task_stats = task_manager_.get_task_statistics();
 
@@ -76,6 +77,7 @@ crow::response SystemRoutes::handle_system_health(const crow::request& req) {
 
 crow::response SystemRoutes::handle_system_info(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     try {
         json info = {
             {"name", "Forensics Analyzer"},
@@ -108,6 +110,7 @@ crow::response SystemRoutes::handle_system_info(const crow::request& req) {
 
 crow::response SystemRoutes::handle_system_databases(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     try {
         std::string task_id = "";
         if (req.url_params.get("task_id") != nullptr) {
@@ -161,6 +164,7 @@ crow::response SystemRoutes::handle_system_databases(const crow::request& req) {
 
 crow::response SystemRoutes::handle_system_database_schema(const crow::request& req, const std::string& db_type) {
     crow::response res;
+    add_cors_headers(res);
     try {
         json schema;
 
@@ -215,6 +219,7 @@ crow::response SystemRoutes::handle_system_database_schema(const crow::request& 
 
 crow::response SystemRoutes::handle_docs_endpoints(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     try {
         json endpoints = {
             {"task_management", {
@@ -268,6 +273,7 @@ crow::response SystemRoutes::handle_docs_endpoints(const crow::request& req) {
 
 crow::response SystemRoutes::handle_docs_database_schema(const crow::request& req) {
     crow::response res;
+    add_cors_headers(res);
     try {
         json schema = {
             {"raw_database", {
@@ -301,6 +307,7 @@ crow::response SystemRoutes::handle_docs_database_schema(const crow::request& re
 
 crow::response SystemRoutes::handle_export_results(const crow::request& req, const std::string& task_id) {
     crow::response res;
+    add_cors_headers(res);
     try {
         AnalysisTask task = task_manager_.get_task(task_id);
 
@@ -349,6 +356,12 @@ crow::response SystemRoutes::handle_export_results(const crow::request& req, con
         res.write(error.dump());
     }
     return res;
+}
+
+void SystemRoutes::add_cors_headers(crow::response& res) {
+    res.set_header("Access-Control-Allow-Origin", "*");
+    res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
 }
 
 } // namespace forensics

@@ -1,0 +1,2 @@
+/usr/bin/ar qc libduckx.a CMakeFiles/duckx.dir/src/duckx.cpp.o CMakeFiles/duckx.dir/thirdparty/zip/zip.c.o CMakeFiles/duckx.dir/thirdparty/pugixml/pugixml.cpp.o
+/usr/bin/ranlib libduckx.a

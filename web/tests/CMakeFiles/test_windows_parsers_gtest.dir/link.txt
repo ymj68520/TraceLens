@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/test_windows_parsers_gtest.dir/UnitTest/test_windows_parsers_gtest.cpp.o -o test_windows_parsers_gtest   -L/usr/local/lib  -Wl,-rpath,/usr/local/lib: /usr/local/lib/libgtest.a -lpthread 

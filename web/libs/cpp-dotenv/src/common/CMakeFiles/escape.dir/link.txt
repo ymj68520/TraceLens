@@ -1,0 +1,2 @@
+/usr/bin/ar qc libescape.a CMakeFiles/escape.dir/escape.cpp.o
+/usr/bin/ranlib libescape.a

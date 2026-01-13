@@ -45,6 +45,9 @@ private:
     std::string priority_to_string(TaskPriority priority);
     std::string status_to_string(TaskStatus status);
     std::string phase_to_string(TaskPhase phase);
+
+    // CORS helper
+    static void add_cors_headers(crow::response& res);
 };
 
 } // namespace forensics
