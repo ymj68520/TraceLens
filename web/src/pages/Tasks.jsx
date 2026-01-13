@@ -238,7 +238,7 @@ const Tasks = () => {
                         </button>
                       )}
                       {task.status === TASK_STATUS.COMPLETED && (
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                        <>
                           <Link
                             to={`/timeline?task_id=${task.id}`}
                             className="text-blue-600 hover:text-blue-900"
@@ -247,25 +247,25 @@ const Tasks = () => {
                           </Link>
                           <Link
                             to={`/files?task_id=${task.id}`}
-                            className="text-green-600 hover:text-green-900"
+                            className="text-green-600 hover:text-green-900 ml-2"
                           >
                             Files
                           </Link>
                           <Link
                             to={`/statistics?task_id=${task.id}`}
-                            className="text-purple-600 hover:text-purple-900"
+                            className="text-purple-600 hover:text-purple-900 ml-2"
                           >
-                            Statistics
+                            Stats
                           </Link>
                           {task.llm_analyze && (
                             <Link
                               to={`/llm-descriptions?task_id=${task.id}`}
-                              className="text-orange-600 hover:text-orange-900"
+                              className="text-orange-600 hover:text-orange-900 ml-2"
                             >
                               AI
                             </Link>
                           )}
-                        </td>
+                        </>
                       )}
                     </td>
                   </tr>
