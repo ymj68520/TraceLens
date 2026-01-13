@@ -14,6 +14,7 @@ const Layout = ({ children }) => {
     { name: 'Tasks', href: '/tasks', icon: '📋' },
     { name: 'Timeline', href: '/timeline', icon: '📈' },
     { name: 'Files', href: '/files', icon: '📁' },
+    { name: 'AI Descriptions', href: '/llm-descriptions', icon: '🧠' },
     { name: 'Android', href: '/android', icon: '🤖' },
     { name: 'Search', href: '/search', icon: '🔍' },
     { name: 'Statistics', href: '/statistics', icon: '📊' },
@@ -61,9 +62,8 @@ const Layout = ({ children }) => {
 
       {/* Sidebar - Desktop */}
       <div
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 pt-16 transition-transform duration-300 ease-in-out lg:translate-x-0 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } ${mobileMenuOpen ? 'translate-x-0' : ''}`}
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 pt-16 transition-transform duration-300 ease-in-out lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          } ${mobileMenuOpen ? 'translate-x-0' : ''}`}
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
@@ -80,11 +80,10 @@ const Layout = ({ children }) => {
                 <li key={item.name}>
                   <Link
                     to={item.href}
-                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                      isActive(item.href)
+                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${isActive(item.href)
                         ? 'bg-blue-50 text-blue-700'
                         : 'text-gray-700 hover:bg-gray-100'
-                    }`}
+                      }`}
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     <span className="mr-3 text-lg">{item.icon}</span>
@@ -109,9 +108,8 @@ const Layout = ({ children }) => {
 
       {/* Main content */}
       <div
-        className={`lg:pl-64 pt-16 lg:pt-0 transition-all duration-300 ${
-          sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
-        }`}
+        className={`lg:pl-64 pt-16 lg:pt-0 transition-all duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
+          }`}
       >
         {/* Header */}
         <header className="bg-white border-b border-gray-200 px-6 py-4">

@@ -23,6 +23,7 @@ public:
     static nlohmann::json get_suspicious_files(const std::string& raw_db, const std::string& files_db);
     static nlohmann::json get_duplicate_files(const std::string& files_db);
     static nlohmann::json get_extensions_analysis(const std::string& files_db);
+    static nlohmann::json get_llm_results(const std::string& descriptions_db);
 
     // Android Forensics Specialized Endpoints
     static nlohmann::json get_android_communication_summary(const std::string& android_db);

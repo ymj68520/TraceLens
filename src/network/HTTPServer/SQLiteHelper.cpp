@@ -465,6 +465,23 @@ json SQLiteHelper::get_extensions_analysis(const std::string& files_db) {
     return result;
 }
 
+json SQLiteHelper::get_llm_results(const std::string& descriptions_db) {
+    json result;
+    sqlite3* db = open_database(descriptions_db, result);
+    if (!db) return result;
+
+    result["descriptions"] = execute_query(db, "SELECT file_path, description, summary, keywords, created_at FROM file_descriptions ORDER BY created_at DESC");
+    
+    // Summary stats
+    json stats = execute_query(db, "SELECT COUNT(*) as total_analyzed FROM file_descriptions");
+    if (stats.is_array() && !stats.empty()) {
+        result["stats"] = stats[0];
+    }
+
+    sqlite3_close(db);
+    return result;
+}
+
 // Android Forensics Implementation
 json SQLiteHelper::get_android_communication_summary(const std::string& android_db) {
     json result;

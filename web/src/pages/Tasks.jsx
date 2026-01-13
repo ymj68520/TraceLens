@@ -257,6 +257,14 @@ const Tasks = () => {
                           >
                             Statistics
                           </Link>
+                          {task.llm_analyze && (
+                            <Link
+                              to={`/llm-descriptions?task_id=${task.id}`}
+                              className="text-orange-600 hover:text-orange-900"
+                            >
+                              AI
+                            </Link>
+                          )}
                         </td>
                       )}
                     </td>

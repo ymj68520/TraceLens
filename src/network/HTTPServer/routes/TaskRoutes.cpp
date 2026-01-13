@@ -316,6 +316,13 @@ crow::response TaskRoutes::handle_get_task_results(const crow::request& req, con
             {"output_files_db", task.output_files_db}
         };
 
+        // Add LLM results if available
+        if (task.llm_analyze && !task.output_descriptions_db.empty()) {
+            auto llm_results = SQLiteHelper::get_llm_results(task.output_descriptions_db);
+            response["llm_results"] = llm_results;
+            response["output_descriptions_db"] = task.output_descriptions_db;
+        }
+
         task_manager_.cache_result(task_id, response.dump());
 
         res.set_header("Content-Type", "application/json");

@@ -9,6 +9,7 @@ import Android from './pages/Android';
 import Search from './pages/Search';
 import Statistics from './pages/Statistics';
 import Settings from './pages/Settings';
+import LLMDescriptions from './pages/LLMDescriptions';
 
 const router = createBrowserRouter([
   {
@@ -50,6 +51,10 @@ const router = createBrowserRouter([
       {
         path: 'settings',
         element: <Settings />,
+      },
+      {
+        path: 'llm-descriptions',
+        element: <LLMDescriptions />,
       },
     ],
   },
