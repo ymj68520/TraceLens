@@ -1,4 +1,4 @@
-import React from 'react';
+
 
 const Spinner = ({ size = 'md', color = 'blue', className = '' }) => {
   const sizes = {

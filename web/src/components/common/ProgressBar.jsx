@@ -1,4 +1,4 @@
-import React from 'react';
+
 
 const ProgressBar = ({ value = 0, max = 100, size = 'md', color = 'blue', showLabel = false, label, className = '' }) => {
   const percentage = Math.min(Math.max((value / max) * 100, 0), 100);

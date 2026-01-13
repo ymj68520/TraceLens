@@ -50,7 +50,7 @@ export const useTaskPolling = (taskId, options = {}) => {
     return () => {
       stopPolling();
     };
-  }, [taskId, enabled, interval]);
+  }, [taskId, enabled, interval, dispatch, onComplete, onError]);
 
   const stopPolling = () => {
     if (intervalRef.current) {

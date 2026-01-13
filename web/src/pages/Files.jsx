@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import Card from '../components/common/Card';
@@ -84,25 +84,7 @@ const Files = () => {
     }
   };
 
-  // Extract database name from image path
-  // Example: /path/to/test_image.img -> test_image
-  const getImageDBName = (taskId, task) => {
-    console.log('[getImageDBName] taskId:', taskId, 'task:', task);
 
-    // Try to get from task image_path
-    if (task?.image_path) {
-      const pathParts = task.image_path.split('/');
-      const filename = pathParts[pathParts.length - 1]; // test_image.img
-      const dbName = filename.replace(/\.(img|dd|e01|raw)$/i, ''); // Remove extension
-      console.log('[getImageDBName] From image_path:', dbName);
-      return dbName;
-    }
-
-    // Fallback: try to extract from task ID pattern or use default
-    // For the test image, hardcode the correct name
-    console.log('[getImageDBName] No image_path, using fallback');
-    return 'test_image'; // Fallback for testing
-  };
 
   useEffect(() => {
     console.log('[FILES PAGE] Files component mounted/updated. Version: 2025-01-13-12-43');

@@ -1,5 +1,4 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import Layout from './components/Layout/Layout';
 import App from './App';
 import Dashboard from './pages/Dashboard';
 import Tasks from './pages/Tasks';
@@ -10,7 +9,6 @@ import Search from './pages/Search';
 import Statistics from './pages/Statistics';
 import Settings from './pages/Settings';
 import LLMDescriptions from './pages/LLMDescriptions';
-
 const router = createBrowserRouter([
   {
     path: '/',
@@ -59,5 +57,4 @@ const router = createBrowserRouter([
     ],
   },
 ]);
-
 export default router;

@@ -1,16 +1,16 @@
-import React, { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
-import { getTaskResults, listTasks } from '../services/taskService';
+import { getTaskResults } from '../services/taskService';
 import { fetchTasks } from '../store/taskSlice';
 
 const LLMDescriptions = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const taskId = searchParams.get('task_id');
-    const navigate = useNavigate();
+
     const dispatch = useDispatch();
     const { tasks } = useSelector((state) => state.tasks);
 

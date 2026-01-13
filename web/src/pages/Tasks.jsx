@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Link } from 'react-router-dom';
-import { fetchTasks, cancelTask, createTask } from '../store/taskSlice';
+import { fetchTasks, cancelTask, createTask, setFilters } from '../store/taskSlice';
 import { openModal, closeModal } from '../store/uiSlice';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -29,7 +29,6 @@ const Tasks = () => {
     dispatch(fetchTasks(filters))
       .then((result) => {
         console.log('fetchTasks result:', result);
-        console.log('Current tasks in state:', tasks);
       })
       .catch((err) => {
         console.error('fetchTasks error:', err);

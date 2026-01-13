@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { useSelector, useDispatch } from 'react-redux';
 import { updateSettings, resetSettings } from '../store/settingsSlice';
 import Card from '../components/common/Card';

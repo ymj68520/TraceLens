@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { searchFulltext, createSearchIndex } from '../services/searchService';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -60,21 +60,19 @@ const Search = () => {
         <nav className="-mb-px flex space-x-8" aria-label="Tabs">
           <button
             onClick={() => setActiveTab('search')}
-            className={`${
-              activeTab === 'search'
+            className={`${activeTab === 'search'
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
           >
             Search
           </button>
           <button
             onClick={() => setActiveTab('index')}
-            className={`${
-              activeTab === 'index'
+            className={`${activeTab === 'index'
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
           >
             Create Index
           </button>
@@ -97,7 +95,7 @@ const Search = () => {
                 placeholder="Enter search terms... (e.g., 'forensics', 'password', 'error')"
               />
               <p className="mt-1 text-xs text-gray-500">
-                Supports boolean operators: AND, OR, NOT (e.g., 'forensics AND password')
+                Supports boolean operators: AND, OR, NOT (e.g., &apos;forensics AND password&apos;)
               </p>
             </div>
             <div>

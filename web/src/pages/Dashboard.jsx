@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { fetchTasks, fetchTaskStatistics } from '../store/taskSlice';
@@ -7,14 +7,14 @@ import Badge from '../components/common/Badge';
 
 const Dashboard = () => {
   const dispatch = useDispatch();
-  const { tasks, statistics, status } = useSelector((state) => state.tasks);
+  const { tasks, status } = useSelector((state) => state.tasks);
 
   useEffect(() => {
     dispatch(fetchTasks({ limit: 10 }));
     dispatch(fetchTaskStatistics());
   }, [dispatch]);
 
-  const stats = React.useMemo(() => {
+  const stats = useMemo(() => {
     return {
       total: tasks.length,
       running: tasks.filter((t) => t.status === 'running').length,
@@ -127,10 +127,10 @@ const Dashboard = () => {
                           task.status === 'completed'
                             ? 'green'
                             : task.status === 'failed'
-                            ? 'red'
-                            : task.status === 'running'
-                            ? 'blue'
-                            : 'gray'
+                              ? 'red'
+                              : task.status === 'running'
+                                ? 'blue'
+                                : 'gray'
                         }
                       >
                         {task.status}

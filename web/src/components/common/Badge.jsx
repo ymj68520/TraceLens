@@ -1,4 +1,4 @@
-import React from 'react';
+
 
 const Badge = ({ children, variant = 'gray', size = 'md', className = '' }) => {
   const variants = {
