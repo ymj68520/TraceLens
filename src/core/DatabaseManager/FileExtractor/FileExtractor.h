@@ -40,7 +40,7 @@ public:
      * @param outputDir Output directory for extracted files
      * @return Number of files extracted
      */
-    int extractByName(const std::string& pattern, const std::string& outputDir);
+    int extractByName(const std::string& pattern, const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr);
 
     /**
      * Extract files by extension(s)
@@ -48,7 +48,7 @@ public:
      * @param outputDir Output directory for extracted files
      * @return Number of files extracted
      */
-    int extractByExtension(const std::string& extensions, const std::string& outputDir);
+    int extractByExtension(const std::string& extensions, const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr);
 
     /**
      * Extract all files from the image
@@ -56,14 +56,14 @@ public:
      * @param includeDeleted Include deleted files (default: false)
      * @return Number of files extracted
      */
-    int extractAll(const std::string& outputDir, bool includeDeleted = false);
+    int extractAll(const std::string& outputDir, bool includeDeleted = false, bool overwrite = false, int* skippedCount = nullptr);
 
     /**
      * Extract only deleted files from the image
      * @param outputDir Output directory for extracted files
      * @return Number of files extracted
      */
-    int extractDeleted(const std::string& outputDir);
+    int extractDeleted(const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr);
 
     /**
      * Extract a specific file by inode
@@ -110,7 +110,7 @@ private:
      * @param outputPath Output file path
      * @return true if successful
      */
-    bool extractFile(const FileRecord& record, const std::string& outputPath);
+    bool extractFile(const FileRecord& record, const std::string& outputPath, bool overwrite, int* skippedCount);
 
     /**
      * Read file content using TSK

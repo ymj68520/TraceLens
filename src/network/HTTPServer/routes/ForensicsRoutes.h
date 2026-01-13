@@ -4,6 +4,10 @@
 #include <nlohmann/json.hpp>
 #include "../TaskManager.h"
 #include "../SQLiteHelper.h"
+#include "../HTTPServerDataTypes.h"
+#include <mutex>
+#include <unordered_map>
+#include <thread>
 
 namespace forensics {
 
@@ -18,6 +22,10 @@ public:
 private:
     TaskManager& task_manager_;
     
+    // Extraction job tracking
+    std::unordered_map<std::string, ExtractionJob> extraction_jobs_;
+    std::mutex extraction_mutex_;
+    
     // Timeline Analysis
     crow::response handle_timeline_comprehensive(const crow::request& req);
     crow::response handle_timeline_file_activity(const crow::request& req);
@@ -30,6 +38,11 @@ private:
     crow::response handle_files_suspicious(const crow::request& req);
     crow::response handle_files_duplicates(const crow::request& req);
     crow::response handle_files_extensions_analysis(const crow::request& req);
+    
+    // File Extraction
+    crow::response handle_extract_files(const crow::request& req);
+    crow::response handle_extraction_status(const crow::request& req);
+    void run_extraction_job(const std::string& job_id);
     
     // Android Forensics
     crow::response handle_android_communication_summary(const crow::request& req);
@@ -45,9 +58,11 @@ private:
     
     // Helper
     std::string get_database_path(const std::string& task_id, const std::string& db_type);
+    std::string get_image_path_for_task(const std::string& task_id);
 
     // CORS helper
     static void add_cors_headers(crow::response& res);
 };
 
 } // namespace forensics
+

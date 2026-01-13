@@ -236,7 +236,10 @@ if(BUILD_WEB_FRONTEND)
 
   if(NOT NODE_EXECUTABLE OR NOT NPM_EXECUTABLE)
     message(WARNING "Node.js and npm not found. Skipping frontend build.")
-    message(WARNING "Install Node.js to build the frontend: sudo apt-get install nodejs npm")
+    message(
+      WARNING
+        "Install Node.js to build the frontend: sudo apt-get install nodejs npm"
+    )
   else()
     # Frontend build configuration
     set(WEB_SOURCE_DIR "${CMAKE_SOURCE_DIR}/web")
@@ -249,33 +252,30 @@ if(BUILD_WEB_FRONTEND)
       add_custom_command(
         OUTPUT ${WEB_SOURCE_DIR}/node_modules/.timestamp
         COMMAND ${NPM_EXECUTABLE} install
-        COMMAND ${CMAKE_COMMAND} -E touch ${WEB_SOURCE_DIR}/node_modules/.timestamp
+        COMMAND ${CMAKE_COMMAND} -E touch
+                ${WEB_SOURCE_DIR}/node_modules/.timestamp
         WORKING_DIRECTORY ${WEB_SOURCE_DIR}
-        COMMENT "Installing frontend dependencies"
-      )
+        COMMENT "Installing frontend dependencies")
 
-      # Build frontend with Vite
-      add_custom_command(
-        OUTPUT ${WEB_OUTPUT_DIR}/index.html
-        DEPENDS ${WEB_SOURCE_DIR}/node_modules/.timestamp
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${WEB_OUTPUT_DIR}
+      # Single custom target that always runs (letting Vite handle caching) This
+      # builds the frontend and copies it to the build directory
+      add_custom_target(
+        web_frontend ALL
         COMMAND ${NPM_EXECUTABLE} run build
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${WEB_OUTPUT_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${WEB_SOURCE_DIR}/dist
+                ${WEB_OUTPUT_DIR}
         WORKING_DIRECTORY ${WEB_SOURCE_DIR}
-        COMMENT "Building React frontend with Vite"
-      )
+        COMMENT "Building and copying Web Frontend")
 
-      # Custom target for frontend
-      add_custom_target(web_frontend ALL
-        DEPENDS ${WEB_OUTPUT_DIR}/index.html
-        COMMENT "Frontend build complete"
-      )
-
-      # Install built frontend to binary directory
+      # Install built frontend to binary directoryInstall built frontend to
+      # binary
+      # directory
       install(
         DIRECTORY ${WEB_OUTPUT_DIR}/
         DESTINATION bin/web
-        FILES_MATCHING PATTERN *
-      )
+        FILES_MATCHING
+        PATTERN *)
 
       message(STATUS "Web frontend build configured")
       message(STATUS "  Source: ${WEB_SOURCE_DIR}")
@@ -283,7 +283,8 @@ if(BUILD_WEB_FRONTEND)
       message(STATUS "  Output: ${WEB_OUTPUT_DIR}")
     else()
       message(WARNING "Web source directory not found: ${WEB_SOURCE_DIR}")
-      message(WARNING "Skipping frontend build. Create the web/ directory to enable.")
+      message(
+        WARNING "Skipping frontend build. Create the web/ directory to enable.")
     endif()
   endif()
 endif()

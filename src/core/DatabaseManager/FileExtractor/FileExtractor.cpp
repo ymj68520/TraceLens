@@ -239,7 +239,7 @@ bool FileExtractor::matchWildcard(const std::string& filename, const std::string
     return ppos == plen;
 }
 
-int FileExtractor::extractByName(const std::string& pattern, const std::string& outputDir) {
+int FileExtractor::extractByName(const std::string& pattern, const std::string& outputDir, bool overwrite, int* skippedCount) {
     std::cout << "Searching files matching pattern: " << pattern << std::endl;
 
     // Get all files from database
@@ -264,7 +264,7 @@ int FileExtractor::extractByName(const std::string& pattern, const std::string& 
         std::string outputPath = generateOutputPath(outputDir, file);
         std::cout << "Extracting: " << file.path << " -> " << outputPath << std::endl;
 
-        if (extractFile(file, outputPath)) {
+        if (extractFile(file, outputPath, overwrite, skippedCount)) {
             extracted++;
         } else {
             std::cerr << "  Failed to extract: " << file.path << std::endl;
@@ -274,7 +274,7 @@ int FileExtractor::extractByName(const std::string& pattern, const std::string& 
     return extracted;
 }
 
-int FileExtractor::extractByExtension(const std::string& extensions, const std::string& outputDir) {
+int FileExtractor::extractByExtension(const std::string& extensions, const std::string& outputDir, bool overwrite, int* skippedCount) {
     std::cout << "Searching files with extensions: " << extensions << std::endl;
 
     // Parse extensions
@@ -314,7 +314,7 @@ int FileExtractor::extractByExtension(const std::string& extensions, const std::
         std::string outputPath = generateOutputPath(outputDir, file);
         std::cout << "Extracting: " << file.path << " -> " << outputPath << std::endl;
 
-        if (extractFile(file, outputPath)) {
+        if (extractFile(file, outputPath, overwrite, skippedCount)) {
             extracted++;
         } else {
             std::cerr << "  Failed to extract: " << file.path << std::endl;
@@ -324,7 +324,7 @@ int FileExtractor::extractByExtension(const std::string& extensions, const std::
     return extracted;
 }
 
-int FileExtractor::extractAll(const std::string& outputDir, bool includeDeleted) {
+int FileExtractor::extractAll(const std::string& outputDir, bool includeDeleted, bool overwrite, int* skippedCount) {
     std::cout << "Extracting all files..." << std::endl;
 
     // Extract from main files table
@@ -351,7 +351,7 @@ int FileExtractor::extractAll(const std::string& outputDir, bool includeDeleted)
                       << file.path << std::endl;
         }
 
-        if (extractFile(file, outputPath)) {
+        if (extractFile(file, outputPath, overwrite, skippedCount)) {
             extracted++;
         }
     }
@@ -359,7 +359,7 @@ int FileExtractor::extractAll(const std::string& outputDir, bool includeDeleted)
     return extracted;
 }
 
-int FileExtractor::extractDeleted(const std::string& outputDir) {
+int FileExtractor::extractDeleted(const std::string& outputDir, bool overwrite, int* skippedCount) {
     std::cout << "Extracting deleted files (Metadata Recovery)..." << std::endl;
 
     // files where is_deleted = 1
@@ -385,7 +385,7 @@ int FileExtractor::extractDeleted(const std::string& outputDir) {
                       << file.path << std::endl;
         }
 
-        if (extractFile(file, outputPath)) {
+        if (extractFile(file, outputPath, overwrite, skippedCount)) {
             extracted++;
         } else {
              std::cerr << "  Failed to recover: " << file.path << " (Content might be overwritten)" << std::endl;
@@ -402,7 +402,8 @@ bool FileExtractor::extractFileByInode(int64_t inode, const std::string& outputP
         return false;
     }
 
-    return extractFile(files[0], outputPath);
+    // Single file extraction implies overwrite intent usually
+    return extractFile(files[0], outputPath, true, nullptr);
 }
 
 bool FileExtractor::extractFileByPath(const std::string& filePath, const std::string& outputPath) {
@@ -412,18 +413,35 @@ bool FileExtractor::extractFileByPath(const std::string& filePath, const std::st
         return false;
     }
 
-    return extractFile(files[0], outputPath);
+    return extractFile(files[0], outputPath, true, nullptr);
 }
 
-bool FileExtractor::extractFile(const FileRecord& record, const std::string& outputPath) {
+bool FileExtractor::extractFile(const FileRecord& record, const std::string& outputPath, bool overwrite, int* skippedCount) {
     // Skip directories
     if (record.type == "DIR") {
         return false;
     }
+    
+    // Check if file exists
+    if (fs::exists(outputPath)) {
+        if (!overwrite) {
+            // Check if size matches
+            try {
+                if (fs::file_size(outputPath) == static_cast<uintmax_t>(record.size)) {
+                    // File exists and size matches - skip
+                    if (skippedCount) {
+                        (*skippedCount)++;
+                    }
+                    return true; // Treat as success
+                }
+            } catch (const std::exception& e) {
+                // If checking size fails, proceed to overwrite attempt
+            }
+        }
+    }
 
-    // Skip empty files
+    // Skip empty files (create empty file)
     if (record.size == 0) {
-        // Create empty file
         createDirectories(outputPath);
         std::ofstream ofs(outputPath);
         return ofs.good();
@@ -523,9 +541,11 @@ std::string FileExtractor::generateOutputPath(const std::string& outputDir, cons
     // Build full output path
     outPath /= relPath;
 
-    // Handle path conflicts (file already exists)
     std::string pathStr = outPath.string();
-    if (fs::exists(pathStr)) {
+    
+    // Only resolve conflicts for deleted files map to same path (since inodes differ but path persists)
+    // For allocated files, we assume path uniqueness (or we want to update the file at that path)
+    if (record.isDeleted && fs::exists(pathStr)) {
         // Append inode to make unique
         fs::path p(pathStr);
         std::string stem = p.stem().string();

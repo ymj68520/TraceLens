@@ -140,6 +140,8 @@ add_executable(
   ../src/integration/LLMIntegration/LLMClient.cpp
   ../src/integration/LLMIntegration/ModelRouter.cpp
   ../src/integration/LLMIntegration/FileAnalyzer.cpp
+  ../src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp
+  ../src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp
   ../libs/cpp-mcp/src/mcp_message.cpp
   ../libs/cpp-mcp/src/mcp_resource.cpp
   ../libs/cpp-mcp/src/mcp_server.cpp
@@ -150,10 +152,12 @@ target_include_directories(
   test_llm_integration
   PRIVATE ${CMAKE_SOURCE_DIR}/src/integration/LLMIntegration
           ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/include
-          ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/common)
+          ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/common
+          ${CMAKE_SOURCE_DIR}/src/analyzers/PDFAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/OfficeAnalyzer)
 
 target_link_libraries(test_llm_integration ${GTEST_LIBRARIES}
-                      ${GMOCK_LIBRARIES} pthread)
+                      ${GMOCK_LIBRARIES} pthread duckx ${POPPLER_LIBRARIES})
 
 add_test(NAME LLMIntegrationGTests COMMAND test_llm_integration)
 

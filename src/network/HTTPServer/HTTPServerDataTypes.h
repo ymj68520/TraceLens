@@ -196,4 +196,69 @@ struct AsyncTask {
     };
 };
 
+/**
+ * @brief File extraction mode
+ */
+enum class ExtractionMode { 
+    ALL,        // Extract all files
+    EXTENSION,  // Extract by extension
+    NAME,       // Extract by name pattern
+    DELETED     // Extract deleted files only
+};
+
+/**
+ * @brief Extraction job status
+ */
+enum class ExtractionStatus { 
+    PENDING, 
+    RUNNING, 
+    COMPLETED, 
+    FAILED, 
+    CANCELLED 
+};
+
+/**
+ * @brief Extraction job configuration
+ * Extensible structure for future limit options
+ */
+struct ExtractionConfig {
+    ExtractionMode mode = ExtractionMode::ALL;
+    std::string pattern;              // For NAME or EXTENSION mode
+    std::string output_dir = "extracted_files";
+    bool include_deleted = false;
+    bool overwrite = false;           // If false, skip existing files
+    
+    // Future extensibility - limits (currently unused, reserved for future)
+    int max_files = 0;                // 0 = no limit
+    int64_t max_total_size = 0;       // 0 = no limit (bytes)
+    int64_t max_file_size = 0;        // 0 = no limit per file (bytes)
+};
+
+/**
+ * @brief Extraction job information
+ */
+struct ExtractionJob {
+    std::string id;
+    std::string task_id;              // Related analysis task
+    ExtractionStatus status = ExtractionStatus::PENDING;
+    ExtractionConfig config;
+    
+    // Progress tracking
+    int total_files = 0;
+    int extracted_files = 0;
+    int skipped_files = 0;
+    int failed_files = 0;
+    std::string current_file;
+    std::string message;
+    std::string error_details;
+    
+    // Timing
+    std::chrono::system_clock::time_point created_time;
+    std::chrono::system_clock::time_point started_time;
+    std::chrono::system_clock::time_point completed_time;
+    
+    // Output location
+    std::string output_path;          // Final output directory path
+};
+
 #endif // HTTP_SERVER_DATA_TYPES_H
