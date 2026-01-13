@@ -124,7 +124,7 @@ const LLMDescriptions = () => {
                         <a href="/tasks" className="text-blue-600 hover:text-blue-800 underline">
                             Tasks page
                         </a>{' '}
-                        to see AI file descriptions here.
+                        or use the task selector in the top bar to see AI file descriptions here.
                     </p>
                 </div>
             ) : (

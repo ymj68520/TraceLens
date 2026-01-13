@@ -74,7 +74,7 @@ const Statistics = () => {
             <a href="/tasks" className="text-blue-600 hover:text-blue-800">
               Tasks page
             </a>{' '}
-            to view statistics.
+            or use the task selector in the top bar to view statistics.
           </p>
         </Card>
       </div>

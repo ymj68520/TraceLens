@@ -1,12 +1,15 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { toggleSidebar } from '../../store/uiSlice';
+import TaskSelector from '../common/TaskSelector';
 
 const Layout = ({ children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const dispatch = useDispatch();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const currentTaskId = searchParams.get('task_id');
   const { sidebarOpen } = useSelector((state) => state.ui);
 
   const navigation = [
@@ -22,6 +25,17 @@ const Layout = ({ children }) => {
   ];
 
   const isActive = (path) => location.pathname === path;
+
+  // Helper to construct link URL with preserved task_id
+  const getLinkUrl = (href) => {
+    // List of pages that should preserve the task context
+    const taskContextPages = ['/timeline', '/files', '/llm-descriptions', '/android', '/search', '/statistics'];
+
+    if (currentTaskId && taskContextPages.includes(href)) {
+      return `${href}?task_id=${currentTaskId}`;
+    }
+    return href;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -79,10 +93,10 @@ const Layout = ({ children }) => {
               {navigation.map((item) => (
                 <li key={item.name}>
                   <Link
-                    to={item.href}
+                    to={getLinkUrl(item.href)}
                     className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${isActive(item.href)
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-700 hover:bg-gray-100'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-100'
                       }`}
                     onClick={() => setMobileMenuOpen(false)}
                   >
@@ -139,6 +153,7 @@ const Layout = ({ children }) => {
               </h2>
             </div>
             <div className="flex items-center space-x-4">
+              <TaskSelector />
               <div className="text-sm text-gray-500">
                 System Status: <span className="text-green-600 font-medium">● Online</span>
               </div>

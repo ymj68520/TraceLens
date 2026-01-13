@@ -95,8 +95,12 @@ public:
     // Enhanced start_analysis with progress tracking and cancellation support
     void start_analysis(const std::string& task_id);
 
+    // Persistence
+    void save_tasks();
+    void load_tasks();
+
 private:
-    TaskManager() = default;
+    TaskManager();
 
     // Helper methods
     int calculate_overall_percentage(TaskPhase phase, int phase_percentage);

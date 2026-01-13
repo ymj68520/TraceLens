@@ -57,7 +57,7 @@ const Timeline = () => {
             <a href="/tasks" className="text-blue-600 hover:text-blue-800">
               Tasks page
             </a>{' '}
-            to view timeline analysis.
+            or use the task selector in the top bar to view timeline analysis.
           </p>
         </Card>
       </div>
@@ -220,10 +220,10 @@ const Timeline = () => {
                           event.event_type === 'CREATED'
                             ? 'green'
                             : event.event_type === 'MODIFIED'
-                            ? 'blue'
-                            : event.event_type === 'DELETED'
-                            ? 'red'
-                            : 'gray'
+                              ? 'blue'
+                              : event.event_type === 'DELETED'
+                                ? 'red'
+                                : 'gray'
                         }
                       >
                         {event.event_type}
