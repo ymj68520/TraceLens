@@ -234,7 +234,22 @@ target_link_libraries(
   ${CURL_LIBRARIES}
   pthread
   antlr4_cpp_runtime
-  curl
   cpp_dotenv
   duckx
   ${POPPLER_LIBRARIES})
+
+# Config Manager Tests
+add_executable(
+  test_config_manager
+  UnitTest/test_config_manager.cpp
+  ../src/integration/LLMIntegration/ConfigManager.cpp
+  ../libs/cpp-dotenv/include/dotenv.h)
+
+target_include_directories(
+  test_config_manager PRIVATE ${CMAKE_SOURCE_DIR}/src/integration/LLMIntegration
+                              ${CMAKE_SOURCE_DIR}/libs/cpp-dotenv/include)
+
+target_link_libraries(test_config_manager ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
+                      pthread cpp_dotenv)
+
+add_test(NAME ConfigManagerTests COMMAND test_config_manager)

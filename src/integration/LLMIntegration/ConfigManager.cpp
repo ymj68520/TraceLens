@@ -2,7 +2,9 @@
 #include "dotenv.h"
 
 #include <sstream>
+#include <sstream>
 #include <algorithm>
+#include <filesystem>
 
 namespace forensics {
 namespace llm {
@@ -13,14 +15,29 @@ ConfigManager& ConfigManager::instance() {
 }
 
 bool ConfigManager::load(const std::string& envPath) {
-    try {
-        dotenv::env.load_dotenv(envPath, false, true);
-        loaded_ = true;
-        return true;
-    } catch (...) {
-        loaded_ = false;
-        return false;
+    std::vector<std::string> searchPaths = {
+        envPath,
+        "../" + envPath,
+        "../../" + envPath,
+        "../../../" + envPath
+    };
+
+    for (const auto& path : searchPaths) {
+        if (!std::filesystem::exists(path)) {
+            continue;
+        }
+
+        try {
+            dotenv::env.load_dotenv(path, false, true);
+            loaded_ = true;
+            return true;
+        } catch (...) {
+            // Continue to next path
+        }
     }
+
+    loaded_ = false;
+    return false;
 }
 
 bool ConfigManager::isLoaded() const {
