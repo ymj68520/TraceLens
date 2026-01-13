@@ -97,6 +97,12 @@ public:
      * @brief Get last used model name
      */
     std::string getLastUsedModel() const;
+    
+    /**
+     * @brief Get configuration of the preferred/primary model
+     * @return LLMConfig of the primary model (or default if none)
+     */
+    const LLMConfig& getConfig() const;
 
 private:
     struct ModelEntry {

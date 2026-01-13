@@ -20,6 +20,23 @@ struct LLMConfig {
     double temperature = 0.7;
     int timeoutSeconds = 60;
     int maxRetries = 3;
+    
+    // Context window management
+    int contextLength = 4096;         // Total context window size in tokens
+    int reservedTokens = 512;         // Reserved for system prompt + response
+    double charsPerToken = 4.0;       // Estimated characters per token (Chinese ~1.5, English ~4)
+    bool enableChunkedAnalysis = true; // Enable chunked analysis for large files
+    int maxChunks = 5;                // Maximum chunks for analysis
+};
+
+/**
+ * @brief Chunked analysis configuration
+ */
+struct ChunkConfig {
+    size_t chunkSize = 2000;          // Characters per chunk
+    size_t overlapSize = 200;         // Overlap between chunks for context continuity
+    int maxChunks = 5;                // Maximum chunks to analyze
+    bool smartBoundary = true;        // Try to break at sentence/paragraph boundaries
 };
 
 /**

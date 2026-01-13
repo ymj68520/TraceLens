@@ -10,6 +10,7 @@
 #include <chrono>
 #include <algorithm>
 #include <regex>
+#include <set>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -132,6 +133,16 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
     if (!router_) {
         result.errorMessage = "No LLM router configured";
         return result;
+    }
+    
+    // Apply smart content truncation based on context window
+    size_t calculatedMaxLength = calculateMaxContentLength();
+    size_t effectiveMaxLength = std::min(maxContentLength, calculatedMaxLength);
+    
+    if (content.size() > effectiveMaxLength) {
+        std::cout << "[DEBUG] Content exceeds limit (" << content.size() 
+                  << " > " << effectiveMaxLength << "), applying smart truncation" << std::endl;
+        content = truncateContent(content, effectiveMaxLength);
     }
     
     // Build combined analysis prompt
@@ -457,6 +468,355 @@ std::vector<std::string> FileAnalyzer::parseKeywords(const std::string& llmRespo
     }
     
     return keywords;
+}
+
+// ===== Context Window Management Methods =====
+
+void FileAnalyzer::setChunkConfig(const ChunkConfig& config) {
+    chunkConfig_ = config;
+}
+
+const ChunkConfig& FileAnalyzer::getChunkConfig() const {
+    return chunkConfig_;
+}
+
+size_t FileAnalyzer::estimateTokens(const std::string& content, double charsPerToken) {
+    if (content.empty() || charsPerToken <= 0) {
+        return 0;
+    }
+    return static_cast<size_t>(content.size() / charsPerToken);
+}
+
+size_t FileAnalyzer::calculateMaxContentLength() const {
+    if (!router_) {
+        return 10000; // Default fallback
+    }
+    
+    // Get config from router's primary client
+    const auto& config = router_->getConfig();
+    
+    // Available tokens = context length - reserved tokens - max output tokens
+    int availableTokens = config.contextLength - config.reservedTokens - config.maxTokens;
+    if (availableTokens < 100) {
+        availableTokens = 100; // Minimum
+    }
+    
+    // Convert to characters
+    size_t maxChars = static_cast<size_t>(availableTokens * config.charsPerToken);
+    
+    std::cout << "[DEBUG] Context optimization: contextLength=" << config.contextLength 
+              << ", reserved=" << config.reservedTokens 
+              << ", maxTokens=" << config.maxTokens
+              << ", availableTokens=" << availableTokens
+              << ", maxChars=" << maxChars << std::endl;
+    
+    return maxChars;
+}
+
+std::string FileAnalyzer::truncateContent(const std::string& content, size_t maxLength) const {
+    if (content.size() <= maxLength) {
+        return content;
+    }
+    
+    if (maxLength < 100) {
+        return content.substr(0, maxLength);
+    }
+    
+    // Reserve space for indicator
+    const std::string indicator = "\n\n[... Content truncated due to context window limit ...]\n\n";
+    size_t effectiveMax = maxLength - indicator.size();
+    
+    // Split: 70% from beginning, 30% from end
+    size_t headSize = static_cast<size_t>(effectiveMax * 0.7);
+    size_t tailSize = effectiveMax - headSize;
+    
+    // Find smart boundaries
+    size_t headEnd = findSmartBoundary(content, headSize);
+    size_t tailStart = content.size() - tailSize;
+    
+    // Adjust tail start to a smart boundary (look forward)
+    for (size_t i = tailStart; i < content.size() && i < tailStart + 200; ++i) {
+        char c = content[i];
+        if (c == '\n' || c == '.' || c == '!' || c == '?') {
+            tailStart = i + 1;
+            break;
+        }
+    }
+    
+    std::string result;
+    result.reserve(maxLength);
+    result += content.substr(0, headEnd);
+    result += indicator;
+    if (tailStart < content.size()) {
+        result += content.substr(tailStart);
+    }
+    
+    std::cout << "[DEBUG] Content truncated: original=" << content.size() 
+              << " chars, truncated=" << result.size() << " chars" << std::endl;
+    
+    return result;
+}
+
+size_t FileAnalyzer::findSmartBoundary(const std::string& content, size_t targetPos) const {
+    if (targetPos >= content.size()) {
+        return content.size();
+    }
+    
+    // Search window: look back up to 200 chars for a good break point
+    size_t searchStart = (targetPos > 200) ? targetPos - 200 : 0;
+    
+    // Priority 1: Paragraph break (double newline)
+    size_t lastParagraph = std::string::npos;
+    for (size_t i = searchStart; i < targetPos - 1 && i < content.size() - 1; ++i) {
+        if (content[i] == '\n' && content[i + 1] == '\n') {
+            lastParagraph = i + 2;
+        }
+    }
+    if (lastParagraph != std::string::npos && lastParagraph > searchStart) {
+        return lastParagraph;
+    }
+    
+    // Priority 2: Sentence end (. ! ?)
+    size_t lastSentence = std::string::npos;
+    for (size_t i = searchStart; i < targetPos && i < content.size(); ++i) {
+        char c = content[i];
+        if ((c == '.' || c == '!' || c == '?') && 
+            (i + 1 >= content.size() || content[i + 1] == ' ' || content[i + 1] == '\n')) {
+            lastSentence = i + 1;
+        }
+    }
+    if (lastSentence != std::string::npos && lastSentence > searchStart) {
+        return lastSentence;
+    }
+    
+    // Priority 3: Line break
+    size_t lastLine = std::string::npos;
+    for (size_t i = searchStart; i < targetPos && i < content.size(); ++i) {
+        if (content[i] == '\n') {
+            lastLine = i + 1;
+        }
+    }
+    if (lastLine != std::string::npos && lastLine > searchStart) {
+        return lastLine;
+    }
+    
+    // Priority 4: Word break (space)
+    size_t lastSpace = std::string::npos;
+    for (size_t i = searchStart; i < targetPos && i < content.size(); ++i) {
+        if (content[i] == ' ') {
+            lastSpace = i + 1;
+        }
+    }
+    if (lastSpace != std::string::npos && lastSpace > searchStart) {
+        return lastSpace;
+    }
+    
+    // Fallback: hard cut at target position
+    return targetPos;
+}
+
+std::vector<std::string> FileAnalyzer::splitIntoChunks(const std::string& content) const {
+    std::vector<std::string> chunks;
+    
+    if (content.empty()) {
+        return chunks;
+    }
+    
+    size_t chunkSize = chunkConfig_.chunkSize;
+    size_t overlap = chunkConfig_.overlapSize;
+    int maxChunks = chunkConfig_.maxChunks;
+    
+    if (content.size() <= chunkSize) {
+        chunks.push_back(content);
+        return chunks;
+    }
+    
+    size_t pos = 0;
+    while (pos < content.size() && static_cast<int>(chunks.size()) < maxChunks) {
+        size_t endPos = std::min(pos + chunkSize, content.size());
+        
+        // Find smart boundary for chunk end
+        if (endPos < content.size() && chunkConfig_.smartBoundary) {
+            endPos = findSmartBoundary(content, endPos);
+        }
+        
+        chunks.push_back(content.substr(pos, endPos - pos));
+        
+        // Move position with overlap
+        if (endPos >= content.size()) {
+            break;
+        }
+        pos = (endPos > overlap) ? endPos - overlap : endPos;
+    }
+    
+    std::cout << "[DEBUG] Split content into " << chunks.size() << " chunks" << std::endl;
+    
+    return chunks;
+}
+
+AnalysisResult FileAnalyzer::analyzeFileChunked(const std::string& filePath) {
+    AnalysisResult result;
+    result.filePath = filePath;
+    
+    auto startTime = std::chrono::high_resolution_clock::now();
+    
+    if (!fs::exists(filePath)) {
+        result.errorMessage = "File not found: " + filePath;
+        return result;
+    }
+    
+    result.fileSize = fs::file_size(filePath);
+    result.fileType = detectFileType(filePath);
+    
+    // Read full content
+    std::string content = readFileContent(filePath, 0); // Read all
+    
+    if (content.empty()) {
+        result.errorMessage = "Failed to read file content or content is empty";
+        return result;
+    }
+    
+    // Calculate max content length
+    size_t maxLength = calculateMaxContentLength();
+    
+    // If content fits, use regular analysis
+    if (content.size() <= maxLength) {
+        return analyzeFile(filePath, maxLength);
+    }
+    
+    std::cout << "[DEBUG] File too large (" << content.size() << " chars), using chunked analysis" << std::endl;
+    
+    // Split into chunks
+    auto chunks = splitIntoChunks(content);
+    
+    if (chunks.empty()) {
+        result.errorMessage = "Failed to split content into chunks";
+        return result;
+    }
+    
+    // Analyze each chunk
+    std::vector<AnalysisResult> chunkResults;
+    for (size_t i = 0; i < chunks.size(); ++i) {
+        std::cout << "[DEBUG] Analyzing chunk " << (i + 1) << "/" << chunks.size() << std::endl;
+        
+        // Create temp analysis for this chunk
+        std::string chunkPrompt = 
+            "Analyze the following content (chunk " + std::to_string(i + 1) + 
+            " of " + std::to_string(chunks.size()) + "):\n\n" +
+            "File: " + filePath + "\n" +
+            "Type: " + result.fileType + "\n\n" +
+            "Content:\n" + chunks[i];
+        
+        std::string systemPrompt = 
+            "You are a forensic file analyst. Provide structured analysis in this exact format:\n"
+            "SUMMARY: [summary here]\n"
+            "DESCRIPTION: [description here]\n"
+            "KEYWORDS: [comma-separated keywords]";
+        
+        auto response = router_->chat(chunkPrompt, systemPrompt);
+        
+        AnalysisResult chunkResult;
+        chunkResult.filePath = filePath;
+        chunkResult.success = response.success;
+        
+        if (response.success) {
+            // Parse chunk response
+            std::string responseText = response.content;
+            
+            std::regex summaryRegex("SUMMARY:\\s*(.+?)(?=DESCRIPTION:|$)", std::regex::icase);
+            std::smatch summaryMatch;
+            if (std::regex_search(responseText, summaryMatch, summaryRegex)) {
+                chunkResult.summary = summaryMatch[1].str();
+            }
+            
+            std::regex descRegex("DESCRIPTION:\\s*(.+?)(?=KEYWORDS:|$)", std::regex::icase);
+            std::smatch descMatch;
+            if (std::regex_search(responseText, descMatch, descRegex)) {
+                chunkResult.description = descMatch[1].str();
+            }
+            
+            std::regex keywordRegex("KEYWORDS:\\s*(.+)$", std::regex::icase);
+            std::smatch keywordMatch;
+            if (std::regex_search(responseText, keywordMatch, keywordRegex)) {
+                chunkResult.keywords = parseKeywords(keywordMatch[1].str());
+            }
+            
+            chunkResult.tokensUsed = response.promptTokens + response.completionTokens;
+        }
+        
+        chunkResults.push_back(chunkResult);
+    }
+    
+    // Merge results
+    result = mergeChunkResults(chunkResults, filePath);
+    result.fileSize = fs::file_size(filePath);
+    result.fileType = detectFileType(filePath);
+    
+    auto endTime = std::chrono::high_resolution_clock::now();
+    result.analysisTimeMs = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+    
+    return result;
+}
+
+AnalysisResult FileAnalyzer::mergeChunkResults(const std::vector<AnalysisResult>& results, 
+                                                const std::string& filePath) const {
+    AnalysisResult merged;
+    merged.filePath = filePath;
+    merged.success = false;
+    
+    if (results.empty()) {
+        merged.errorMessage = "No chunk results to merge";
+        return merged;
+    }
+    
+    // Merge summaries
+    std::ostringstream summaryStream;
+    std::ostringstream descStream;
+    std::set<std::string> allKeywords;
+    int totalTokens = 0;
+    int successCount = 0;
+    
+    for (size_t i = 0; i < results.size(); ++i) {
+        const auto& r = results[i];
+        if (!r.success) continue;
+        
+        successCount++;
+        totalTokens += r.tokensUsed;
+        
+        if (!r.summary.empty()) {
+            if (summaryStream.tellp() > 0) summaryStream << " ";
+            summaryStream << r.summary;
+        }
+        
+        if (!r.description.empty()) {
+            if (descStream.tellp() > 0) descStream << " ";
+            descStream << r.description;
+        }
+        
+        for (const auto& kw : r.keywords) {
+            allKeywords.insert(kw);
+        }
+    }
+    
+    if (successCount == 0) {
+        merged.errorMessage = "All chunk analyses failed";
+        return merged;
+    }
+    
+    merged.summary = summaryStream.str();
+    merged.description = descStream.str();
+    merged.keywords = std::vector<std::string>(allKeywords.begin(), allKeywords.end());
+    merged.tokensUsed = totalTokens;
+    merged.success = true;
+    
+    if (router_) {
+        merged.modelUsed = router_->getLastUsedModel();
+    }
+    
+    std::cout << "[DEBUG] Merged " << successCount << "/" << results.size() 
+              << " chunk results, " << merged.keywords.size() << " unique keywords" << std::endl;
+    
+    return merged;
 }
 
 } // namespace llm

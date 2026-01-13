@@ -148,6 +148,27 @@ std::string ModelRouter::getLastUsedModel() const {
     return lastUsedModel_;
 }
 
+const LLMConfig& ModelRouter::getConfig() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    // Return config from preferred model if exists
+    if (!preferredModel_.empty()) {
+        auto it = models_.find(preferredModel_);
+        if (it != models_.end()) {
+            return it->second->config;
+        }
+    }
+    
+    // Return first available model's config
+    if (!models_.empty()) {
+        return models_.begin()->second->config;
+    }
+    
+    // Return static default config if no models
+    static LLMConfig defaultConfig;
+    return defaultConfig;
+}
+
 LLMClient* ModelRouter::selectByPriority(ModelCapability cap) {
     ModelEntry* best = nullptr;
     int highestPriority = std::numeric_limits<int>::min();
