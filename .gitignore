@@ -417,3 +417,4 @@ tests/test_advanced_classifier.cpp
 tests/test_classifier
 docs/Code_Statistics_Report.md
 docs/LLM_Integration_Test_Manual.md
+.mcp.json

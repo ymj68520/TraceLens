@@ -23,6 +23,7 @@
 #include "DatabaseManager/FileClassifier/FileClassifier.h"
 #include "AndroidAnalyzer/AndroidAnalyzer.h"
 #include "AuditLog/AuditLog.h"
+#include "LLMAnalysisService.h"
 
 
 
@@ -47,6 +48,8 @@ public:
     void set_result_db(const std::string& id, const std::string& db_path);
 
     void set_android_analyze_options(const std::string& id, bool android_analyze, XFSMode xfs_mode, const std::string& db_output_dir);
+
+    void set_llm_analyze_options(const std::string& id, bool llm_analyze, const std::string& llm_mode);
 
     AnalysisTask get_task(const std::string& id);
 

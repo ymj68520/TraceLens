@@ -8,7 +8,8 @@ std::string TaskManager::create_task(const std::string& path, TaskPriority prior
     boost::uuids::uuid uuid = boost::uuids::random_generator()();
     std::string id = boost::uuids::to_string(uuid);
 
-    auto now = std::chrono::steady_clock::now();
+    auto now_steady = std::chrono::steady_clock::now();
+    auto now_system = std::chrono::system_clock::now();
     AnalysisTask new_task;
     new_task.id = id;
     new_task.image_path = path;
@@ -18,10 +19,11 @@ std::string TaskManager::create_task(const std::string& path, TaskPriority prior
     new_task.output_raw_db = "";
     new_task.output_events_db = "";
     new_task.priority = priority;
-    new_task.progress = {TaskPhase::INITIALIZING, 0, 0, "Waiting to start", now, now};
-    new_task.created_time = now;
-    new_task.started_time = now;
-    new_task.completed_time = now;
+    new_task.progress = {TaskPhase::INITIALIZING, 0, 0, "Waiting to start", now_steady, now_steady};
+    new_task.created_time = now_system;
+    new_task.started_time = now_system;
+    new_task.completed_time = now_system;
+    new_task.execution_start_time = now_steady;
     new_task.dependencies = dependencies;
     new_task.dependents = {};
     new_task.result_cache = "";
@@ -50,11 +52,14 @@ void TaskManager::update_status(const std::string& id, TaskStatus status, const 
         tasks_[id].status = status;
         if (!msg.empty()) tasks_[id].message = msg;
 
-        auto now = std::chrono::steady_clock::now();
+        auto now_steady = std::chrono::steady_clock::now();
+        auto now_system = std::chrono::system_clock::now();
+        
         if (status == TaskStatus::RUNNING && tasks_[id].started_time == tasks_[id].created_time) {
-            tasks_[id].started_time = now;
+            tasks_[id].started_time = now_system;
+            tasks_[id].execution_start_time = now_steady;
         } else if (status == TaskStatus::COMPLETED || status == TaskStatus::FAILED || status == TaskStatus::CANCELLED) {
-            tasks_[id].completed_time = now;
+            tasks_[id].completed_time = now_system;
         }
 
         add_audit_log(id, "STATUS_CHANGE", "Status changed to " + std::to_string(static_cast<int>(status)));
@@ -75,10 +80,10 @@ void TaskManager::update_progress(const std::string& id, TaskPhase phase, int ph
         task.progress.phase_start_time = now;
 
         // Estimate completion time based on current progress
-        if (phase_percentage > 0) {
-            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - task.started_time).count();
+        if (task.progress.overall_percentage > 0) {
+            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - task.execution_start_time).count();
             auto total_estimated = (elapsed * 100) / task.progress.overall_percentage;
-            task.progress.estimated_completion = task.started_time + std::chrono::seconds(total_estimated);
+            task.progress.estimated_completion = task.execution_start_time + std::chrono::seconds(total_estimated);
         }
     }
 }
@@ -97,6 +102,15 @@ void TaskManager::set_android_analyze_options(const std::string& id, bool androi
         tasks_[id].android_analyze = android_analyze;
         tasks_[id].xfs_mode = xfs_mode;
         tasks_[id].db_output_dir = db_output_dir;
+    }
+}
+
+void TaskManager::set_llm_analyze_options(const std::string& id, bool llm_analyze, const std::string& llm_mode) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (tasks_.count(id)) {
+        tasks_[id].llm_analyze = llm_analyze;
+        tasks_[id].llm_mode = llm_mode;
+        add_audit_log(id, "LLM_CONFIG", "LLM analysis: " + std::string(llm_analyze ? "enabled" : "disabled") + ", mode: " + llm_mode);
     }
 }
 
@@ -247,7 +261,7 @@ nlohmann::json TaskManager::get_task_statistics() {
 // Cleanup operations
 int TaskManager::cleanup_completed_tasks(int max_age_hours) {
     std::lock_guard<std::mutex> lock(mtx_);
-    auto cutoff_time = std::chrono::steady_clock::now() - std::chrono::hours(max_age_hours);
+    auto cutoff_time = std::chrono::system_clock::now() - std::chrono::hours(max_age_hours);
 
     auto it = tasks_.begin();
     int removed = 0;
@@ -400,7 +414,60 @@ void TaskManager::start_analysis(const std::string& task_id) {
             }
             update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 100, "File classification completed");
 
-            // 4. Android Analysis (Optional)
+            // 4. LLM Analysis (Optional)
+            if (task.llm_analyze) {
+                if (task.cancellation_requested) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+                update_progress(task_id, TaskPhase::LLM_ANALYSIS, 10, "Starting LLM file description generation...");
+                
+                std::string descriptionsDbPath = outPrefix + baseName + "_descriptions.db";
+                {
+                    std::lock_guard<std::mutex> lock(mtx_);
+                    tasks_[task_id].output_descriptions_db = descriptionsDbPath;
+                }
+                
+                forensics::LLMAnalysisService llmService;
+                if (llmService.initialize()) {
+                    forensics::LLMAnalysisService::AnalysisOptions llmOpts;
+                    llmOpts.maxFiles = 500;
+                    llmOpts.maxContentLength = 10000;
+                    llmOpts.skipBinaryFiles = true;
+                    
+                    int analyzedCount = 0;
+                    
+                    if (task.llm_mode == "full") {
+                        // Full mode: analyze all files
+                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 30, "Full mode: Analyzing all files...");
+                        analyzedCount = llmService.analyzeAllFiles(fileDbPath, descriptionsDbPath, llmOpts,
+                            [this, task_id](int current, int total, const std::string& file) {
+                                int progress = 30;
+                                if (total > 0) {
+                                    progress += (current * 60 / total);
+                                }
+                                update_progress(task_id, TaskPhase::LLM_ANALYSIS, progress, 
+                                    "Analyzing file " + std::to_string(current) + "/" + std::to_string(total));
+                            });
+                    } else {
+                        // Smart mode: LLM selects important files first
+                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 20, "Smart mode: Selecting important files...");
+                        analyzedCount = llmService.analyzeSmartFiles(fileDbPath, descriptionsDbPath, llmOpts,
+                            [this, task_id](int current, int total, const std::string& file) {
+                                int progress = 30;
+                                if (total > 0) {
+                                    progress += (current * 60 / total);
+                                }
+                                update_progress(task_id, TaskPhase::LLM_ANALYSIS, progress, 
+                                    "Analyzing important file " + std::to_string(current) + "/" + std::to_string(total));
+                            });
+                    }
+                    
+                    update_progress(task_id, TaskPhase::LLM_ANALYSIS, 100, 
+                        "LLM analysis completed: " + std::to_string(analyzedCount) + " files analyzed");
+                } else {
+                    std::cerr << "Warning: Failed to initialize LLM analysis service" << std::endl;
+                }
+            }
+
+            // 5. Android Analysis (Optional)
             if (task.android_analyze) {
                 if (task.cancellation_requested) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
                 update_progress(task_id, TaskPhase::ANDROID_ANALYSIS, 10, "Analyzing Android artifacts...");

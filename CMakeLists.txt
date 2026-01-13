@@ -109,6 +109,7 @@ include_directories(
   # Network modules
   ${CMAKE_SOURCE_DIR}/src/network
   ${CMAKE_SOURCE_DIR}/src/network/HTTPServer
+  ${CMAKE_SOURCE_DIR}/src/network/HTTPServer/routes
   # Office Module
   ${CMAKE_SOURCE_DIR}/src/analyzers/OfficeAnalyzer
   # Integration modules
@@ -142,6 +143,11 @@ set(LIB_SOURCES
     src/network/HTTPServer/HTTPserver.cpp
     src/network/HTTPServer/TaskManager.cpp
     src/network/HTTPServer/SQLiteHelper.cpp
+    src/network/HTTPServer/LLMAnalysisService.cpp
+    src/network/HTTPServer/routes/TaskRoutes.cpp
+    src/network/HTTPServer/routes/ForensicsRoutes.cpp
+    src/network/HTTPServer/routes/SystemRoutes.cpp
+    src/network/HTTPServer/routes/SearchRoutes.cpp
     src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp
     src/analyzers/AndroidAnalyzer/AndroidAnalyzerCore.cpp
     src/analyzers/AndroidAnalyzer/AndroidDataParsers.cpp
