@@ -1,18 +1,49 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { fetchTasks, fetchTaskStatistics } from '../store/taskSlice';
+import { getSystemHealth } from '../services/systemService';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 
 const Dashboard = () => {
   const dispatch = useDispatch();
   const { tasks, status } = useSelector((state) => state.tasks);
+  const { autoRefresh, refreshInterval } = useSelector((state) => state.settings);
+
+  // System health state
+  const [systemHealth, setSystemHealth] = useState({ status: 'checking', message: 'Checking...' });
 
   useEffect(() => {
     dispatch(fetchTasks({ limit: 10 }));
     dispatch(fetchTaskStatistics());
+
+    // Check system health
+    const checkHealth = async () => {
+      try {
+        const health = await getSystemHealth();
+        setSystemHealth({ status: 'online', message: 'Online', data: health });
+      } catch (error) {
+        setSystemHealth({ status: 'offline', message: 'Offline', error: error.message });
+      }
+    };
+
+    checkHealth();
   }, [dispatch]);
+
+  // Auto-refresh for running tasks
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const hasRunningTasks = tasks.some(t => t.status === 'running');
+    if (!hasRunningTasks) return;
+
+    const interval = setInterval(() => {
+      dispatch(fetchTasks({ limit: 10 }));
+    }, refreshInterval || 5000);
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshInterval, tasks, dispatch]);
 
   const stats = useMemo(() => {
     return {
@@ -141,13 +172,31 @@ const Dashboard = () => {
                         ? `${task.progress.overall_percentage.toFixed(1)}%`
                         : '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <Link
-                        to={`/tasks`}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        View Details
-                      </Link>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                      {task.status === 'completed' && (
+                        <>
+                          <Link
+                            to={`/timeline?task_id=${task.id}`}
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            Timeline
+                          </Link>
+                          <Link
+                            to={`/files?task_id=${task.id}`}
+                            className="text-green-600 hover:text-green-900"
+                          >
+                            Files
+                          </Link>
+                        </>
+                      )}
+                      {task.status !== 'completed' && (
+                        <Link
+                          to={`/tasks`}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          View
+                        </Link>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -163,13 +212,18 @@ const Dashboard = () => {
           <div>
             <p className="text-sm font-medium text-gray-500">Server Status</p>
             <p className="mt-1 text-sm text-gray-900 flex items-center">
-              <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-              Online
+              <span className={`w-2 h-2 rounded-full mr-2 ${systemHealth.status === 'online' ? 'bg-green-500' :
+                  systemHealth.status === 'checking' ? 'bg-yellow-500 animate-pulse' :
+                    'bg-red-500'
+                }`}></span>
+              {systemHealth.message}
             </p>
           </div>
           <div>
             <p className="text-sm font-medium text-gray-500">API Version</p>
-            <p className="mt-1 text-sm text-gray-900">v1.0.0</p>
+            <p className="mt-1 text-sm text-gray-900">
+              {systemHealth.data?.version || 'v1.0.0'}
+            </p>
           </div>
           <div>
             <p className="text-sm font-medium text-gray-500">Backend</p>

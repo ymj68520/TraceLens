@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Link } from 'react-router-dom';
-import { fetchTasks, cancelTask, createTask, setFilters } from '../store/taskSlice';
+import { fetchTasks, cancelTask, createTask, setFilters, deleteTask } from '../store/taskSlice';
 import { openModal, closeModal } from '../store/uiSlice';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -14,6 +14,7 @@ const Tasks = () => {
   const dispatch = useDispatch();
   const { tasks, status, error, filters } = useSelector((state) => state.tasks);
   const { modal } = useSelector((state) => state.ui);
+  const { autoRefresh, refreshInterval } = useSelector((state) => state.settings);
   const [taskData, setTaskData] = useState({
     image_path: '',
     priority: 'normal',
@@ -34,6 +35,20 @@ const Tasks = () => {
         console.error('fetchTasks error:', err);
       });
   }, [dispatch, filters]);
+
+  // Auto-refresh for running tasks
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const hasRunningTasks = tasks.some(t => t.status === TASK_STATUS.RUNNING);
+    if (!hasRunningTasks) return;
+
+    const interval = setInterval(() => {
+      dispatch(fetchTasks(filters));
+    }, refreshInterval || 5000);
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshInterval, tasks, dispatch, filters]);
 
   const handleFilterChange = (filterType, value) => {
     dispatch(setFilters({ [filterType]: value }));
@@ -80,6 +95,18 @@ const Tasks = () => {
         dispatch(fetchTasks(filters));
       } catch (err) {
         console.error('Failed to cancel task:', err);
+      }
+    }
+  };
+
+  const handleDeleteTask = async (taskId) => {
+    if (window.confirm('Are you sure you want to delete this task? This action cannot be undone.')) {
+      try {
+        await dispatch(deleteTask(taskId)).unwrap();
+        dispatch(fetchTasks(filters));
+      } catch (err) {
+        console.error('Failed to delete task:', err);
+        alert('Failed to delete task: ' + (err?.message || err));
       }
     }
   };
@@ -266,6 +293,18 @@ const Tasks = () => {
                           )}
                         </>
                       )}
+                      {/* Delete button for completed, failed, or cancelled tasks */}
+                      {(task.status === TASK_STATUS.COMPLETED ||
+                        task.status === TASK_STATUS.FAILED ||
+                        task.status === TASK_STATUS.CANCELLED) && (
+                          <button
+                            onClick={() => handleDeleteTask(task.id)}
+                            className="text-gray-400 hover:text-red-600 ml-2"
+                            title="Delete task"
+                          >
+                            🗑️
+                          </button>
+                        )}
                     </td>
                   </tr>
                 ))}

@@ -49,6 +49,19 @@ export const cancelTask = createAsyncThunk(
   }
 );
 
+export const deleteTask = createAsyncThunk(
+  'tasks/delete',
+  async (taskId, { rejectWithValue }) => {
+    try {
+      // Use cancel endpoint with delete reason - backend will handle it
+      const response = await taskService.cancelTask(taskId, 'Deleted by user');
+      return { taskId, ...response };
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message);
+    }
+  }
+);
+
 export const fetchTaskStatistics = createAsyncThunk(
   'tasks/fetchStatistics',
   async (_, { rejectWithValue }) => {
@@ -153,6 +166,10 @@ const taskSlice = createSlice({
         if (index !== -1) {
           state.tasks[index].status = 'cancelled';
         }
+      })
+      // Delete task
+      .addCase(deleteTask.fulfilled, (state, action) => {
+        state.tasks = state.tasks.filter((t) => t.id !== action.payload.taskId);
       })
       // Fetch statistics
       .addCase(fetchTaskStatistics.fulfilled, (state, action) => {

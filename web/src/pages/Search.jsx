@@ -1,18 +1,37 @@
-import { useState } from 'react';
+
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { searchFulltext, createSearchIndex } from '../services/searchService';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Spinner from '../components/common/Spinner';
+import Badge from '../components/common/Badge';
 
 const Search = () => {
+  const [searchParams] = useSearchParams();
+  const taskId = searchParams.get('task_id');
+  const { tasks } = useSelector((state) => state.tasks);
+
+  const currentTask = tasks.find((t) => t.id === taskId);
+
   const [query, setQuery] = useState('');
-  const [index, setIndex] = useState('search_index');
-  const [sourcePath, setSourcePath] = useState('extracted_files');
+  // Auto-populate paths based on task
+  const [index, setIndex] = useState(taskId ? `search_index_${taskId.substring(0, 8)}` : 'search_index');
+  const [sourcePath, setSourcePath] = useState(taskId ? `extracted_files/${taskId}` : 'extracted_files');
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [indexing, setIndexing] = useState(false);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('search');
+
+  // Update paths when task changes
+  useEffect(() => {
+    if (taskId) {
+      setIndex(`search_index_${taskId.substring(0, 8)}`);
+      setSourcePath(`extracted_files/${taskId}`);
+    }
+  }, [taskId]);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -41,6 +60,8 @@ const Search = () => {
       const result = await createSearchIndex(sourcePath, index, true);
       alert('Index created successfully! You can now search.');
       console.log('Index created:', result);
+      // Switch to search tab after indexing
+      setActiveTab('search');
     } catch (err) {
       setError(err.message || 'Failed to create index');
     } finally {
@@ -53,7 +74,25 @@ const Search = () => {
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Full-Text Search</h1>
         <p className="mt-2 text-gray-600">Search indexed file contents</p>
+        {currentTask && (
+          <div className="mt-2">
+            <Badge variant="blue">{currentTask.status}</Badge>
+            <span className="ml-2 text-sm text-gray-600">
+              Task: {currentTask.image_path?.split('/').pop() || taskId}
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* Task context info */}
+      {taskId && (
+        <Card className="bg-blue-50 border-blue-200">
+          <div className="flex items-center space-x-2 text-sm text-blue-800">
+            <span className="font-medium">📋 Task Context:</span>
+            <span>Searching files from task {taskId.substring(0, 8)}...</span>
+          </div>
+        </Card>
+      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
@@ -61,20 +100,20 @@ const Search = () => {
           <button
             onClick={() => setActiveTab('search')}
             className={`${activeTab === 'search'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
           >
-            Search
+            🔍 Search
           </button>
           <button
             onClick={() => setActiveTab('index')}
             className={`${activeTab === 'index'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
           >
-            Create Index
+            ⚡ Create Index
           </button>
         </nav>
       </div>
@@ -109,6 +148,11 @@ const Search = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="/path/to/search/index"
               />
+              {taskId && (
+                <p className="mt-1 text-xs text-blue-600">
+                  ℹ️ Index path auto-populated based on current task
+                </p>
+              )}
             </div>
             <Button type="submit" disabled={loading}>
               {loading ? 'Searching...' : '🔍 Search'}
@@ -122,6 +166,11 @@ const Search = () => {
         <Card title="Create Search Index">
           <p className="text-sm text-gray-600 mb-4">
             Before searching, you need to create a search index from extracted files.
+            {taskId && (
+              <span className="text-blue-600 ml-1">
+                Recommended: Extract files first from the Files page, then create an index here.
+              </span>
+            )}
           </p>
           <form onSubmit={handleCreateIndex} className="space-y-4">
             <div>
@@ -138,6 +187,11 @@ const Search = () => {
               <p className="mt-1 text-xs text-gray-500">
                 Directory containing files you want to search
               </p>
+              {taskId && (
+                <p className="mt-1 text-xs text-blue-600">
+                  ℹ️ Source path auto-populated based on current task
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
