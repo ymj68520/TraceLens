@@ -55,11 +55,11 @@ const TaskSelector = () => {
 
     return (
         <div className="flex items-center space-x-2 mr-4">
-            <span className="text-sm font-medium text-gray-700 whitespace-nowrap">Current Task:</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">Current Task:</span>
             <select
                 value={currentTaskId || ''}
                 onChange={handleTaskChange}
-                className="block w-64 pl-3 pr-10 py-1.5 text-sm border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md"
+                className="block w-64 pl-3 pr-10 py-1.5 text-sm border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
                 <option value="">Select a task...</option>
                 {tasks.map((task) => (
