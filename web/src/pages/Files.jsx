@@ -150,14 +150,14 @@ const Files = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">File Analysis</h1>
-          <p className="mt-2 text-gray-600">Analyze and explore classified files</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">File Analysis</h1>
+          <p className="mt-2 text-gray-600 dark:text-gray-300">Analyze and explore classified files</p>
         </div>
 
         <Card title="Select a Task">
-          <p className="text-gray-500">
+          <p className="text-gray-500 dark:text-gray-400">
             Select a completed task from the{' '}
-            <a href="/tasks" className="text-blue-600 hover:text-blue-800">
+            <a href="/tasks" className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
               Tasks page
             </a>{' '}
             or use the task selector in the top bar to view file analysis.
@@ -171,13 +171,13 @@ const Files = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">File Analysis</h1>
-          <p className="mt-2 text-gray-600">Task: {currentTask?.image_path || taskId}</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">File Analysis</h1>
+          <p className="mt-2 text-gray-600 dark:text-gray-300">Task: {currentTask?.image_path || taskId}</p>
         </div>
         <Card>
           <div className="flex items-center justify-center h-64">
             <Spinner size="lg" />
-            <span className="ml-4 text-gray-600">Loading file data...</span>
+            <span className="ml-4 text-gray-600 dark:text-gray-300">Loading file data...</span>
           </div>
         </Card>
       </div>
@@ -188,13 +188,13 @@ const Files = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">File Analysis</h1>
-          <p className="mt-2 text-gray-600">Task: {currentTask?.image_path || taskId}</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">File Analysis</h1>
+          <p className="mt-2 text-gray-600 dark:text-gray-300">Task: {currentTask?.image_path || taskId}</p>
         </div>
 
         <Card title="Error">
-          <div className="p-4 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-red-800">{error}</p>
+          <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md">
+            <p className="text-red-800 dark:text-red-200">{error}</p>
           </div>
         </Card>
       </div>
@@ -205,8 +205,8 @@ const Files = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">File Analysis</h1>
-        <p className="mt-2 text-gray-600">Task: {currentTask?.image_path || taskId}</p>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">File Analysis</h1>
+        <p className="mt-2 text-gray-600 dark:text-gray-300">Task: {currentTask?.image_path || taskId}</p>
         {currentTask && (
           <div className="mt-2">
             <Badge variant="blue">{currentTask.status}</Badge>
@@ -215,27 +215,27 @@ const Files = () => {
       </div>
 
       {/* File Extraction */}
-      <Card title="📁 File Extraction" className="bg-blue-50 border-blue-200">
+      <Card title="📁 File Extraction" className="bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
         <div className="space-y-4">
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-gray-700 dark:text-gray-300">
             Extract files from the disk image to enable full-text search and detailed analysis.
           </p>
 
           {/* Extraction Controls */}
-          <div className="bg-white p-4 rounded-md border border-gray-200">
-            <h4 className="font-medium text-gray-900 mb-3">Extract Files</h4>
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-md border border-gray-200 dark:border-gray-700">
+            <h4 className="font-medium text-gray-900 dark:text-white mb-3">Extract Files</h4>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               {/* Mode Selector */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Extraction Mode
                 </label>
                 <select
                   value={extractionMode}
                   onChange={(e) => setExtractionMode(e.target.value)}
                   disabled={extractionStatus === 'running'}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
                 >
                   <option value="all">All Files</option>
                   <option value="extension">By Extension</option>
@@ -247,7 +247,7 @@ const Files = () => {
               {/* Pattern Input (for extension/name modes) */}
               {(extractionMode === 'extension' || extractionMode === 'name') && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     {extractionMode === 'extension' ? 'Extensions (e.g., .log,.conf)' : 'Name Pattern (e.g., config*)'}
                   </label>
                   <input
@@ -256,7 +256,7 @@ const Files = () => {
                     onChange={(e) => setExtractionPattern(e.target.value)}
                     disabled={extractionStatus === 'running'}
                     placeholder={extractionMode === 'extension' ? '.log,.txt,.conf' : '*.log'}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
                   />
                 </div>
               )}
@@ -273,7 +273,7 @@ const Files = () => {
                       disabled={extractionStatus === 'running'}
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
-                    <label htmlFor="includeDeleted" className="ml-2 text-sm text-gray-700">
+                    <label htmlFor="includeDeleted" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
                       Include deleted files
                     </label>
                   </div>
@@ -288,7 +288,7 @@ const Files = () => {
                     disabled={extractionStatus === 'running'}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
-                  <label htmlFor="overwrite" className="ml-2 text-sm text-gray-700">
+                  <label htmlFor="overwrite" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
                     Overwrite existing files
                   </label>
                 </div>
@@ -313,9 +313,9 @@ const Files = () => {
               </Button>
 
               {extractionStatus && extractionStatus !== 'idle' && (
-                <span className={`text-sm font-medium ${extractionStatus === 'completed' ? 'text-green-600' :
-                  extractionStatus === 'failed' ? 'text-red-600' :
-                    'text-blue-600'
+                <span className={`text-sm font-medium ${extractionStatus === 'completed' ? 'text-green-600 dark:text-green-400' :
+                  extractionStatus === 'failed' ? 'text-red-600 dark:text-red-400' :
+                    'text-blue-600 dark:text-blue-400'
                   }`}>
                   {extractionMessage}
                 </span>
@@ -325,17 +325,17 @@ const Files = () => {
             {/* Progress Bar */}
             {(extractionStatus === 'running' || extractionStatus === 'pending') && (
               <div className="mt-4">
-                <div className="flex justify-between text-sm text-gray-600 mb-1">
+                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-300 mb-1">
                   <span>Progress</span>
                   <span>{extractionProgress}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5">
                   <div
-                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                    className="bg-blue-600 dark:bg-blue-500 h-2.5 rounded-full transition-all duration-300"
                     style={{ width: `${extractionProgress}%` }}
                   ></div>
                 </div>
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
                   <span>Extracted: {extractedCount}</span>
                   {skippedCount > 0 && <span>Skipped: {skippedCount}</span>}
                 </div>
@@ -344,18 +344,18 @@ const Files = () => {
 
             {/* Success Message */}
             {extractionStatus === 'completed' && (
-              <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
-                <p className="text-sm text-green-800">
+              <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-md">
+                <p className="text-sm text-green-800 dark:text-green-200">
                   ✅ Operation completed. Extracted: {extractedCount}, Skipped: {skippedCount}.
-                  Files are in <code className="bg-green-100 px-1 rounded">extracted_files/</code>
+                  Files are in <code className="bg-green-100 dark:bg-green-900/50 px-1 rounded">extracted_files/</code>
                 </p>
               </div>
             )}
 
             {/* Error Message */}
             {extractionStatus === 'failed' && extractionError && (
-              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
-                <p className="text-sm text-red-800">
+              <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md">
+                <p className="text-sm text-red-800 dark:text-red-200">
                   ❌ Extraction failed: {extractionError}
                 </p>
               </div>
@@ -375,13 +375,13 @@ const Files = () => {
       </Card>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-gray-200 dark:border-gray-700">
         <nav className="-mb-px flex space-x-8" aria-label="Tabs">
           <button
             onClick={() => setActiveTab('largest')}
             className={`${activeTab === 'largest'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:border-gray-600'
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
           >
             Largest Files
@@ -389,8 +389,8 @@ const Files = () => {
           <button
             onClick={() => setActiveTab('extensions')}
             className={`${activeTab === 'extensions'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:border-gray-600'
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
           >
             Extension Analysis
@@ -402,39 +402,39 @@ const Files = () => {
       {activeTab === 'largest' && (
         <Card title={`Top ${largestFiles.length} Largest Files`}>
           {largestFiles.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">No files found</div>
+            <div className="text-center py-12 text-gray-500 dark:text-gray-400">No files found</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-800">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Rank
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       File Path
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Size
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Extension
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {largestFiles.map((file, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                         #{index + 1}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 max-w-md truncate" title={file.path || file.file_path}>
+                      <td className="px-6 py-4 text-sm text-gray-900 dark:text-white max-w-md truncate" title={file.path || file.file_path}>
                         {file.path || file.file_path}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-mono">
                         {formatFileSize(file.size || file.file_size)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                         {file.extension || '-'}
                       </td>
                     </tr>
@@ -451,24 +451,24 @@ const Files = () => {
         <Card title="File Distribution by Extension">
           {extensionAnalysis.extension_analysis && extensionAnalysis.extension_analysis.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-800">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Extension
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Count
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Total Size
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Percentage
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {extensionAnalysis.extension_analysis
                     .sort((a, b) => (b.file_count || 0) - (a.file_count || 0))
                     .map((ext, index) => {
@@ -484,19 +484,19 @@ const Files = () => {
                         typeof_file_count: typeof ext.file_count
                       });
                       return (
-                        <tr key={index} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
                               {ext.extension || '(no extension)'}
                             </span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                             {ext.file_count || 0}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-mono">
                             {formatFileSize(ext.total_size || 0)}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                             {percentage}%
                           </td>
                         </tr>
@@ -506,7 +506,7 @@ const Files = () => {
               </table>
             </div>
           ) : (
-            <div className="text-center py-12 text-gray-500">No extension data found</div>
+            <div className="text-center py-12 text-gray-500 dark:text-gray-400">No extension data found</div>
           )}
         </Card>
       )}

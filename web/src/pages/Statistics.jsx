@@ -64,14 +64,14 @@ const Statistics = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Statistics</h1>
-          <p className="mt-2 text-gray-600">Comprehensive analysis statistics and reports</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Statistics</h1>
+          <p className="mt-2 text-gray-600 dark:text-gray-300">Comprehensive analysis statistics and reports</p>
         </div>
 
         <Card title="Select a Task">
-          <p className="text-gray-500">
+          <p className="text-gray-500 dark:text-gray-400">
             Select a completed task from the{' '}
-            <a href="/tasks" className="text-blue-600 hover:text-blue-800">
+            <a href="/tasks" className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
               Tasks page
             </a>{' '}
             or use the task selector in the top bar to view statistics.
@@ -85,13 +85,13 @@ const Statistics = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Statistics</h1>
-          <p className="mt-2 text-gray-600">Task: {currentTask?.image_path || taskId}</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Statistics</h1>
+          <p className="mt-2 text-gray-600 dark:text-gray-300">Task: {currentTask?.image_path || taskId}</p>
         </div>
         <Card>
           <div className="flex items-center justify-center h-64">
             <Spinner size="lg" />
-            <span className="ml-4 text-gray-600">Loading statistics...</span>
+            <span className="ml-4 text-gray-600 dark:text-gray-300">Loading statistics...</span>
           </div>
         </Card>
       </div>
@@ -102,13 +102,13 @@ const Statistics = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Statistics</h1>
-          <p className="mt-2 text-gray-600">Task: {currentTask?.image_path || taskId}</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Statistics</h1>
+          <p className="mt-2 text-gray-600 dark:text-gray-300">Task: {currentTask?.image_path || taskId}</p>
         </div>
 
         <Card title="Error">
-          <div className="p-4 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-red-800">{error}</p>
+          <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md">
+            <p className="text-red-800 dark:text-red-200">{error}</p>
           </div>
         </Card>
       </div>
@@ -124,8 +124,8 @@ const Statistics = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Statistics</h1>
-        <p className="mt-2 text-gray-600">Task: {currentTask?.image_path || taskId}</p>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Statistics</h1>
+        <p className="mt-2 text-gray-600 dark:text-gray-300">Task: {currentTask?.image_path || taskId}</p>
         {currentTask && (
           <div className="mt-2">
             <Badge variant="blue">{currentTask.status}</Badge>
@@ -137,32 +137,32 @@ const Statistics = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <div className="text-center">
-            <p className="text-sm font-medium text-gray-500">Total Files</p>
-            <p className="text-3xl font-bold text-gray-900 mt-2">
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Files</p>
+            <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">
               {rawStats.total_files || 0}
             </p>
           </div>
         </Card>
         <Card>
           <div className="text-center">
-            <p className="text-sm font-medium text-gray-500">Total Size</p>
-            <p className="text-3xl font-bold text-gray-900 mt-2">
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Size</p>
+            <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">
               {formatFileSize(rawStats.total_size || 0)}
             </p>
           </div>
         </Card>
         <Card>
           <div className="text-center">
-            <p className="text-sm font-medium text-gray-500">Categorized Files</p>
-            <p className="text-3xl font-bold text-blue-900 mt-2">
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Categorized Files</p>
+            <p className="text-3xl font-bold text-blue-900 dark:text-blue-300 mt-2">
               {filesStats.categorized_files || 0}
             </p>
           </div>
         </Card>
         <Card>
           <div className="text-center">
-            <p className="text-sm font-medium text-gray-500">Deleted Files</p>
-            <p className="text-3xl font-bold text-red-600 mt-2">
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Deleted Files</p>
+            <p className="text-3xl font-bold text-red-600 dark:text-red-400 mt-2">
               {rawStats.deleted_files || 0}
             </p>
           </div>
@@ -172,30 +172,30 @@ const Statistics = () => {
       {/* Database Statistics */}
       <Card title="Database Statistics">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 bg-blue-50 rounded-lg">
-            <p className="text-sm font-medium text-blue-800">Raw Database</p>
-            <p className="text-2xl font-bold text-blue-900 mt-2">
+          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Raw Database</p>
+            <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-2">
               {rawStats.total_files || 0} files
             </p>
-            <p className="text-sm text-blue-700 mt-1">
+            <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
               {formatFileSize(rawStats.total_size || 0)}
             </p>
           </div>
-          <div className="p-4 bg-green-50 rounded-lg">
-            <p className="text-sm font-medium text-green-800">Files Database</p>
-            <p className="text-2xl font-bold text-green-900 mt-2">
+          <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+            <p className="text-sm font-medium text-green-800 dark:text-green-200">Files Database</p>
+            <p className="text-2xl font-bold text-green-900 dark:text-green-100 mt-2">
               {filesStats.categorized_files || 0} files
             </p>
-            <p className="text-sm text-green-700 mt-1">
+            <p className="text-sm text-green-700 dark:text-green-300 mt-1">
               {filesStats.categories || 0} categories
             </p>
           </div>
-          <div className="p-4 bg-purple-50 rounded-lg">
-            <p className="text-sm font-medium text-purple-800">Events Database</p>
-            <p className="text-2xl font-bold text-purple-900 mt-2">
+          <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+            <p className="text-sm font-medium text-purple-800 dark:text-purple-200">Events Database</p>
+            <p className="text-2xl font-bold text-purple-900 dark:text-purple-100 mt-2">
               {eventsStats.total_events || 0} events
             </p>
-            <p className="text-sm text-purple-700 mt-1">
+            <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">
               {eventsStats.unique_files_affected || 0} files
             </p>
           </div>
@@ -206,15 +206,15 @@ const Statistics = () => {
       {eventsStats && (
         <Card title="Timeline Activity">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <p className="text-sm font-medium text-gray-600">Event Types</p>
-              <p className="text-2xl font-bold text-gray-900 mt-2">
+            <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Event Types</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white mt-2">
                 {eventsStats.event_types || 0}
               </p>
             </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <p className="text-sm font-medium text-gray-600">Unique Files Affected</p>
-              <p className="text-2xl font-bold text-gray-900 mt-2">
+            <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Unique Files Affected</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white mt-2">
                 {eventsStats.unique_files_affected || 0}
               </p>
             </div>
