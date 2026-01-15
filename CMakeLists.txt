@@ -116,6 +116,8 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/integration
   ${CMAKE_SOURCE_DIR}/src/integration/LLMIntegration
   ${CMAKE_SOURCE_DIR}/src/integration/AndroidAdbExtractor
+  # TOONExporter
+  ${CMAKE_SOURCE_DIR}/src/core/TOONExporter
   # Libs
   ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/include
   ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/common
@@ -175,6 +177,7 @@ set(LIB_SOURCES
     src/core/AuditLog/AuditLog.cpp
     src/core/FullTextSearch/FullTextSearch.cpp
     src/core/FullTextSearch/TextExtractor.cpp
+    src/core/TOONExporter/TOONExporter.cpp
     src/analyzers/FileCarving/FileCarver.cpp
     # LLMIntegration module
     src/integration/LLMIntegration/LLMClient.cpp
@@ -269,8 +272,7 @@ if(BUILD_WEB_FRONTEND)
         COMMENT "Building and copying Web Frontend")
 
       # Install built frontend to binary directoryInstall built frontend to
-      # binary
-      # directory
+      # binary directory
       install(
         DIRECTORY ${WEB_OUTPUT_DIR}/
         DESTINATION bin/web

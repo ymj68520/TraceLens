@@ -56,6 +56,9 @@ private:
     crow::response handle_statistics_activity_patterns(const crow::request& req);
     crow::response handle_statistics_deleted_files_analysis(const crow::request& req);
     
+    // Export
+    crow::response handle_export_toon(const crow::request& req);
+    
     // Helper
     std::string get_database_path(const std::string& task_id, const std::string& db_type);
     std::string get_image_path_for_task(const std::string& task_id);

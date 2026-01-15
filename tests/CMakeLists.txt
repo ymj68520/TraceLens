@@ -288,3 +288,16 @@ target_link_libraries(test_error_handling ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
                       pthread)
 
 add_test(NAME ErrorHandlingTests COMMAND test_error_handling)
+
+# TOONExporter Tests
+add_executable(test_toon_exporter UnitTest/test_toon_exporter.cpp
+                                  ../src/core/TOONExporter/TOONExporter.cpp)
+
+target_include_directories(
+  test_toon_exporter PRIVATE ${CMAKE_SOURCE_DIR}/src
+                             ${CMAKE_SOURCE_DIR}/src/core/TOONExporter)
+
+target_link_libraries(test_toon_exporter ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
+                      sqlite3 pthread)
+
+add_test(NAME TOONExporterTests COMMAND test_toon_exporter)
