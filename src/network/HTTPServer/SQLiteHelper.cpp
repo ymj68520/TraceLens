@@ -548,9 +548,17 @@ json SQLiteHelper::get_android_app_usage(const std::string& android_db) {
     // System apps
     json system_apps = execute_query(db, "SELECT COUNT(*) as system_app_count FROM system_apps");
 
+    // App database files (with name and full path for disambiguation)
+    json app_db_files = execute_query(db, R"(
+        SELECT package_name, file_name, file_path, file_size
+        FROM app_database_files
+        ORDER BY package_name, file_name
+    )");
+
     result["installed_apps"] = apps;
     result["usage_statistics"] = usage_stats;
     result["system_apps_count"] = system_apps;
+    result["app_database_files"] = app_db_files;
 
     sqlite3_close(db);
     return result;

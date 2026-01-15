@@ -124,6 +124,14 @@ const char* CREATE_ALL_TABLES = R"(
         last_time_used INTEGER,
         interval_start INTEGER
     );
+    CREATE TABLE IF NOT EXISTS app_database_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        package_name TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        file_size INTEGER DEFAULT 0,
+        UNIQUE(package_name, file_path)
+    );
 )";
 
 // ============================================================================
@@ -169,6 +177,9 @@ const char* INSERT_INSTALLED_PACKAGE =
 
 const char* INSERT_USAGE_STAT = 
     "INSERT INTO usage_stats (package_name, total_time_foreground, last_time_used, interval_start) VALUES (?, ?, ?, ?);";
+
+const char* INSERT_APP_DATABASE_FILE = 
+    "INSERT OR IGNORE INTO app_database_files (package_name, file_name, file_path, file_size) VALUES (?, ?, ?, ?);";
 
 } // namespace AndroidAnalysisSQL
 

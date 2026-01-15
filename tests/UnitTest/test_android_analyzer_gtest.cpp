@@ -7,6 +7,7 @@
 #include <filesystem>
 
 #include "AndroidAnalyzer/AndroidDataTypes.h"
+#include "DatabaseManager/DatabaseManagerDataTypes.h"
 
 using ::testing::Eq;
 using ::testing::IsEmpty;
@@ -30,10 +31,22 @@ TEST_F(AppDataTest, PopulatedValues) {
     AppData data;
     data.packageName = "com.example.app";
     data.installPath = "/data/app/com.example.app";
-    data.dbFiles = {"database1.db", "database2.db"};
+    
+    // 使用 FileRecord 替代简单字符串，包含完整路径信息
+    FileRecord db1;
+    db1.name = "database1.db";
+    db1.path = "/data/data/com.example.app/databases/database1.db";
+    
+    FileRecord db2;
+    db2.name = "database2.db";
+    db2.path = "/data/data/com.example.app/databases/database2.db";
+    
+    data.dbFiles = {db1, db2};
     
     EXPECT_EQ(data.packageName, "com.example.app");
     EXPECT_EQ(data.dbFiles.size(), 2u);
+    EXPECT_EQ(data.dbFiles[0].name, "database1.db");
+    EXPECT_EQ(data.dbFiles[0].path, "/data/data/com.example.app/databases/database1.db");
 }
 
 // ============================================================================

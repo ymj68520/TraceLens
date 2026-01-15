@@ -412,7 +412,10 @@ const Files = () => {
                       Rank
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                      File Path
+                      Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Path
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Size
@@ -428,8 +431,11 @@ const Files = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                         #{index + 1}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 dark:text-white max-w-md truncate" title={file.path || file.file_path}>
-                        {file.path || file.file_path}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                        {file.name || (file.path || file.file_path || '').split('/').pop() || '-'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 max-w-md truncate font-mono" title={file.path || file.file_path}>
+                        {file.path || file.file_path || '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-mono">
                         {formatFileSize(file.size || file.file_size)}

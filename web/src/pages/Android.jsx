@@ -327,6 +327,43 @@ const Android = () => {
           ) : (
             <p className="text-center py-8 text-gray-500">No application data available</p>
           )}
+
+          {/* App Database Files Section */}
+          {appUsageData && appUsageData.app_database_files && appUsageData.app_database_files.length > 0 && (
+            <div className="mt-8">
+              <h4 className="font-medium text-gray-900 mb-3">🗄️ App Database Files ({appUsageData.app_database_files.length})</h4>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">File Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Full Path</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Package</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Size</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {appUsageData.app_database_files.slice(0, 100).map((dbFile, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {dbFile.file_name}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 font-mono max-w-md truncate" title={dbFile.file_path}>
+                          {dbFile.file_path}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 font-mono">
+                          {dbFile.package_name}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                          {dbFile.file_size ? `${(dbFile.file_size / 1024).toFixed(2)} KB` : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 

@@ -8,11 +8,12 @@
 #include <map>
 #include <cstdint>
 #include "fileSystem.h"
+#include "DatabaseManager/DatabaseManagerDataTypes.h"
 
 struct AppData {
     std::string packageName;
     std::string installPath;
-    std::vector<std::string> dbFiles;
+    std::vector<FileRecord> dbFiles;  // 使用 FileRecord 以包含完整路径信息
 };
 
 struct ChatMessage {
