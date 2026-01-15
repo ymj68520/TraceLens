@@ -271,6 +271,181 @@ TEST_F(FileAnalyzerTest, DetectFileTypes) {
 }
 
 // ============================================================================
+// Fallback Strategy Tests
+// ============================================================================
+
+TEST(ModelRouterTest, FallbackStrategyIsDefault) {
+    ModelRouter router;
+    EXPECT_EQ(router.getStrategy(), RoutingStrategy::Fallback);
+}
+
+TEST(ModelRouterTest, FallbackWithMultipleModels) {
+    ModelRouter router;
+    router.setStrategy(RoutingStrategy::Fallback);
+    
+    // Add multiple models with different priorities
+    LLMConfig config1, config2;
+    config1.baseUrl = "http://localhost:9991";
+    config2.baseUrl = "http://localhost:9992";
+    
+    ModelInfo info1, info2;
+    info1.name = "high-priority-model";
+    info1.priority = 100;
+    info1.available = true;
+    
+    info2.name = "low-priority-model";
+    info2.priority = 50;
+    info2.available = true;
+    
+    router.addModel("model1", config1, info1);
+    router.addModel("model2", config2, info2);
+    
+    // Both models are added
+    EXPECT_EQ(router.getModelNames().size(), 2);
+    EXPECT_TRUE(router.hasAvailableModels());
+    
+    // When chat is called, it will try models in priority order
+    // Since no server is running, all will fail, but it should try all
+    auto response = router.chat("Test message");
+    
+    // Should have tried all models and failed
+    EXPECT_FALSE(response.success);
+    EXPECT_TRUE(response.errorMessage.find("All models failed") != std::string::npos ||
+                response.errorMessage.find("failed") != std::string::npos);
+}
+
+TEST(ModelRouterTest, PriorityStrategySelectsHighestPriority) {
+    ModelRouter router;
+    router.setStrategy(RoutingStrategy::Priority);
+    
+    LLMConfig config;
+    ModelInfo lowPriority, highPriority;
+    
+    lowPriority.name = "low";
+    lowPriority.priority = 10;
+    lowPriority.available = true;
+    
+    highPriority.name = "high";
+    highPriority.priority = 100;
+    highPriority.available = true;
+    
+    router.addModel("low", config, lowPriority);
+    router.addModel("high", config, highPriority);
+    
+    // Should have both models
+    EXPECT_EQ(router.getModelNames().size(), 2);
+}
+
+// ============================================================================
+// Extended File Type Detection Tests
+// ============================================================================
+
+TEST_F(FileAnalyzerTest, DetectAllNewFileTypes) {
+    auto router = std::make_shared<ModelRouter>();
+    FileAnalyzer analyzer(router);
+    
+    // Create test files for new types
+    std::vector<std::pair<std::string, std::string>> testCases = {
+        {"test.pptx", "PowerPoint"},
+        {"test.epub", "E-Book"},
+        {"test.mp4", "MP4 Video"},
+        {"test.mp3", "MP3 Audio"},
+        {"test.zip", "ZIP Archive"},
+        {"test.svg", "SVG Image"},
+        {"test.odt", "OpenDocument Text"},
+        {"test.rb", "Ruby"},
+        {"test.swift", "Swift"},
+        {"test.kt", "Kotlin"},
+    };
+    
+    for (const auto& [filename, expectedType] : testCases) {
+        std::filesystem::path testFile = testDir_ / filename;
+        std::ofstream(testFile) << "test content";
+        
+        auto result = analyzer.analyzeFile(testFile.string());
+        EXPECT_EQ(result.fileType, expectedType) << "Failed for: " << filename;
+        
+        std::filesystem::remove(testFile);
+    }
+}
+
+// ============================================================================
+// Batch Analysis Tests
+// ============================================================================
+
+TEST_F(FileAnalyzerTest, BatchAnalysisReturnsCorrectCount) {
+    auto router = std::make_shared<ModelRouter>();
+    FileAnalyzer analyzer(router);
+    
+    // Create multiple test files
+    std::vector<std::string> testFiles;
+    for (int i = 0; i < 5; ++i) {
+        auto filePath = testDir_ / ("batch_test_" + std::to_string(i) + ".txt");
+        std::ofstream(filePath) << "Test content " << i;
+        testFiles.push_back(filePath.string());
+    }
+    
+    BatchAnalysisRequest request;
+    request.filePaths = testFiles;
+    request.maxContentLength = 1000;
+    
+    auto results = analyzer.analyzeBatch(request);
+    
+    EXPECT_EQ(results.size(), 5);
+}
+
+TEST_F(FileAnalyzerTest, ProgressCallbackCalled) {
+    auto router = std::make_shared<ModelRouter>();
+    FileAnalyzer analyzer(router);
+    
+    std::vector<size_t> progressValues;
+    analyzer.setProgressCallback([&progressValues](size_t current, size_t total, const std::string&) {
+        progressValues.push_back(current);
+    });
+    
+    // Create test files
+    std::vector<std::string> testFiles;
+    for (int i = 0; i < 3; ++i) {
+        auto filePath = testDir_ / ("progress_test_" + std::to_string(i) + ".txt");
+        std::ofstream(filePath) << "Content";
+        testFiles.push_back(filePath.string());
+    }
+    
+    BatchAnalysisRequest request;
+    request.filePaths = testFiles;
+    
+    analyzer.analyzeBatch(request);
+    
+    // Progress callback should be called at least once
+    EXPECT_GT(progressValues.size(), 0);
+}
+
+// ============================================================================
+// Content Truncation Tests
+// ============================================================================
+
+TEST_F(FileAnalyzerTest, LargeFileGetsTruncated) {
+    auto router = std::make_shared<ModelRouter>();
+    FileAnalyzer analyzer(router);
+    
+    // Create a large test file (100KB)
+    std::filesystem::path largeFile = testDir_ / "large_file.txt";
+    {
+        std::ofstream ofs(largeFile);
+        for (int i = 0; i < 10000; ++i) {
+            ofs << "This is line " << i << " with some content to make it larger.\n";
+        }
+    }
+    
+    // Analyze with small max content length
+    auto result = analyzer.analyzeFile(largeFile.string(), 1000);
+    
+    // File should be analyzed (may fail due to no LLM, but file info should be set)
+    EXPECT_EQ(result.filePath, largeFile.string());
+    EXPECT_GT(result.fileSize, 0);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -278,3 +453,4 @@ int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+

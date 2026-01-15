@@ -50,7 +50,6 @@ RoutingStrategy ModelRouter::getStrategy() const {
 LLMResponse ModelRouter::chat(const std::vector<ChatMessage>& messages,
                               ModelCapability requiredCapability) {
     LLMResponse response;
-    LLMClient* client = nullptr;
     
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -59,6 +58,67 @@ LLMResponse ModelRouter::chat(const std::vector<ChatMessage>& messages,
             response.errorMessage = "No models registered";
             return response;
         }
+    }
+    
+    // For Fallback strategy, try all models in order until one succeeds
+    if (strategy_ == RoutingStrategy::Fallback) {
+        std::vector<ModelEntry*> available;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            available = getAvailableModels(requiredCapability);
+            
+            // Sort by priority (highest first) then by failure count (lowest first)
+            std::sort(available.begin(), available.end(), 
+                [](const ModelEntry* a, const ModelEntry* b) {
+                    if (a->info.priority != b->info.priority) {
+                        return a->info.priority > b->info.priority;
+                    }
+                    return a->failureCount.load() < b->failureCount.load();
+                });
+        }
+        
+        if (available.empty()) {
+            response.errorMessage = "No suitable model available";
+            return response;
+        }
+        
+        // Try each model until one succeeds
+        for (auto* entry : available) {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                lastUsedModel_ = entry->name;
+                entry->currentLoad++;
+            }
+            
+            response = entry->client->chat(messages);
+            
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                entry->currentLoad--;
+            }
+            
+            if (response.success) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                entry->failureCount = 0;  // Reset failure count on success
+                return response;
+            }
+            
+            // Track failure
+            entry->failureCount++;
+            
+            // Continue to next model if more available
+        }
+        
+        // All models failed
+        response.errorMessage = "All models failed. Last error: " + response.errorMessage;
+        return response;
+    }
+    
+    // For other strategies, use single-model approach
+    LLMClient* client = nullptr;
+    
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
         
         switch (strategy_) {
             case RoutingStrategy::Priority:
@@ -73,9 +133,8 @@ LLMResponse ModelRouter::chat(const std::vector<ChatMessage>& messages,
             case RoutingStrategy::LoadBalance:
                 client = selectByLoadBalance(requiredCapability);
                 break;
-            case RoutingStrategy::Fallback:
             default:
-                client = selectByFallback(requiredCapability, response);
+                client = selectByPriority(requiredCapability);
                 break;
         }
     }

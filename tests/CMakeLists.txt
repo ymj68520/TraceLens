@@ -253,3 +253,38 @@ target_link_libraries(test_config_manager ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
                       pthread cpp_dotenv)
 
 add_test(NAME ConfigManagerTests COMMAND test_config_manager)
+
+# ============================================================================
+# New Core Module Tests
+# ============================================================================
+
+# ThreadPool Tests
+add_executable(test_thread_pool UnitTest/test_thread_pool.cpp
+                                ../src/core/ThreadPool/ThreadPool.cpp)
+
+target_include_directories(test_thread_pool PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(test_thread_pool ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
+                      pthread)
+
+add_test(NAME ThreadPoolTests COMMAND test_thread_pool)
+
+# Logger Tests
+add_executable(test_logger UnitTest/test_logger.cpp
+                           ../src/core/Logger/Logger.cpp)
+
+target_include_directories(test_logger PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(test_logger ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME LoggerTests COMMAND test_logger)
+
+# ErrorHandling Tests
+add_executable(test_error_handling UnitTest/test_error_handling.cpp)
+
+target_include_directories(test_error_handling PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(test_error_handling ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
+                      pthread)
+
+add_test(NAME ErrorHandlingTests COMMAND test_error_handling)

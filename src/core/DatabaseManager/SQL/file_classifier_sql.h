@@ -24,7 +24,12 @@ const char* CREATE_MAIN_FILES_TABLE = R"(
         mtime INTEGER,
         ctime INTEGER,
         is_deleted INTEGER,
-        md5 TEXT
+        md5 TEXT,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT
     );
 )";
 
@@ -45,12 +50,92 @@ const char* CREATE_CATEGORY_TABLE_TEMPLATE = R"(
 )";
 
 // ============================================================================
+// LLM Analysis Tables (Issue 3 & 6)
+// ============================================================================
+
+// Analysis progress tracking table (Issue 6)
+const char* CREATE_ANALYSIS_PROGRESS_TABLE = R"(
+    CREATE TABLE IF NOT EXISTS analysis_progress (
+        task_id TEXT PRIMARY KEY,
+        total_files INTEGER,
+        completed_files INTEGER,
+        current_file TEXT,
+        started_at INTEGER,
+        last_updated INTEGER,
+        status TEXT DEFAULT 'running'
+    );
+)";
+
+// Migration: Add LLM columns to existing files table
+const char* ALTER_FILES_ADD_LLM_COLUMNS[] = {
+    "ALTER TABLE files ADD COLUMN llm_summary TEXT;",
+    "ALTER TABLE files ADD COLUMN llm_description TEXT;",
+    "ALTER TABLE files ADD COLUMN llm_keywords TEXT;",
+    "ALTER TABLE files ADD COLUMN llm_analyzed_at INTEGER;",
+    "ALTER TABLE files ADD COLUMN llm_model_used TEXT;"
+};
+const int ALTER_FILES_ADD_LLM_COLUMNS_COUNT = 5;
+
+// Update LLM analysis result for a file
+const char* UPDATE_FILE_LLM_ANALYSIS = R"(
+    UPDATE files SET
+        llm_summary = ?,
+        llm_description = ?,
+        llm_keywords = ?,
+        llm_analyzed_at = ?,
+        llm_model_used = ?
+    WHERE path = ?;
+)";
+
+// Get file LLM analysis by path
+const char* SELECT_FILE_LLM_ANALYSIS = R"(
+    SELECT llm_summary, llm_description, llm_keywords, llm_analyzed_at, llm_model_used
+    FROM files WHERE path = ?;
+)";
+
+// Get files pending LLM analysis
+const char* SELECT_FILES_PENDING_ANALYSIS = R"(
+    SELECT path FROM files 
+    WHERE llm_analyzed_at IS NULL 
+    ORDER BY size ASC 
+    LIMIT ?;
+)";
+
+// Progress tracking statements
+const char* INSERT_ANALYSIS_PROGRESS = R"(
+    INSERT INTO analysis_progress (task_id, total_files, completed_files, current_file, started_at, last_updated, status)
+    VALUES (?, ?, 0, '', ?, ?, 'running');
+)";
+
+const char* UPDATE_ANALYSIS_PROGRESS = R"(
+    UPDATE analysis_progress SET
+        completed_files = ?,
+        current_file = ?,
+        last_updated = ?
+    WHERE task_id = ?;
+)";
+
+const char* COMPLETE_ANALYSIS_PROGRESS = R"(
+    UPDATE analysis_progress SET
+        completed_files = total_files,
+        status = 'completed',
+        last_updated = ?
+    WHERE task_id = ?;
+)";
+
+const char* SELECT_ANALYSIS_PROGRESS = R"(
+    SELECT task_id, total_files, completed_files, current_file, started_at, last_updated, status
+    FROM analysis_progress WHERE task_id = ?;
+)";
+
+// ============================================================================
 // CREATE INDEX Statements
 // ============================================================================
 
 const char* CREATE_MAIN_FILES_INDICES = R"(
     CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
     CREATE INDEX IF NOT EXISTS idx_files_category ON files(category);
+    CREATE INDEX IF NOT EXISTS idx_files_llm_analyzed ON files(llm_analyzed_at);
 )";
 
 // Template for category table indices

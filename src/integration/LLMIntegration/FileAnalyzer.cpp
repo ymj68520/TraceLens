@@ -1,6 +1,8 @@
 #include "FileAnalyzer.h"
 #include "json.hpp"
-#include <iostream>
+#include "ConfigManager.h"
+#include "../../core/Logger/Logger.h"
+#include "../../core/ThreadPool/ThreadPool.h"
 #include "../../analyzers/PDFAnalyzer/PDFAnalyzer.h"
 #include "../../analyzers/OfficeAnalyzer/OfficeAnalyzer.h"
 
@@ -11,12 +13,21 @@
 #include <algorithm>
 #include <regex>
 #include <set>
+#include <future>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
 namespace forensics {
 namespace llm {
+
+// Static regex initialization (Issue 9 - pre-compiled for performance)
+const std::regex FileAnalyzer::SUMMARY_REGEX(
+    "SUMMARY:\\\\s*(.+?)(?=DESCRIPTION:|$)", std::regex::icase);
+const std::regex FileAnalyzer::DESCRIPTION_REGEX(
+    "DESCRIPTION:\\\\s*(.+?)(?=KEYWORDS:|$)", std::regex::icase);
+const std::regex FileAnalyzer::KEYWORD_REGEX(
+    "KEYWORDS:\\\\s*(.+)$", std::regex::icase);
 
 FileAnalyzer::FileAnalyzer(std::shared_ptr<ModelRouter> router)
     : router_(router) {
@@ -69,20 +80,20 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
     std::string ext = fs::path(filePath).extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     
-    std::cout << "[DEBUG] File: " << filePath << ", Ext: " << ext << std::endl;
+    LOG_DEBUG("File: " + filePath + ", Ext: " + ext);
 
     if (ext == ".pdf") {
-        std::cout << "[DEBUG] Using PDFAnalyzer" << std::endl;
+        LOG_DEBUG("Using PDFAnalyzer");
         content = forensics::analyzers::PDFAnalyzer::extractText(filePath);
     } else if (ext == ".docx" || ext == ".doc") {
-        std::cout << "[DEBUG] Using OfficeAnalyzer" << std::endl;
+        LOG_DEBUG("Using OfficeAnalyzer");
         OfficeAnalyzer officeAnalyzer;
         content = officeAnalyzer.analyze(filePath);
     } else if (result.fileType == "Archive" || result.fileType == "Binary" || result.fileType == "Database") {
-        std::cout << "[DEBUG] Binary/Archive detected. Skipping content read." << std::endl;
+        LOG_DEBUG("Binary/Archive detected. Skipping content read.");
         content = "[Binary/Archive File Content Omitted. Analysis based on metadata only.]";
     } else {
-        std::cout << "[DEBUG] Using Raw Read" << std::endl;
+        LOG_DEBUG("Using Raw Read");
         content = readFileContent(filePath, maxContentLength);
     }
 
@@ -135,13 +146,14 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
         return result;
     }
     
-    // Apply smart content truncation based on context window
+    // Apply smart content truncation based on context window (Issue 7)
     size_t calculatedMaxLength = calculateMaxContentLength();
-    size_t effectiveMaxLength = std::min(maxContentLength, calculatedMaxLength);
+    size_t configLimit = static_cast<size_t>(ConfigManager::instance().getMaxContentLimit());
+    size_t effectiveMaxLength = std::min({maxContentLength, calculatedMaxLength, configLimit});
     
     if (content.size() > effectiveMaxLength) {
-        std::cout << "[DEBUG] Content exceeds limit (" << content.size() 
-                  << " > " << effectiveMaxLength << "), applying smart truncation" << std::endl;
+        LOG_DEBUG("Content exceeds limit (" + std::to_string(content.size()) + 
+                  " > " + std::to_string(effectiveMaxLength) + "), applying smart truncation");
         content = truncateContent(content, effectiveMaxLength);
     }
     
@@ -173,13 +185,12 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
     result.modelUsed = router_->getLastUsedModel();
     result.tokensUsed = response.promptTokens + response.completionTokens;
     
-    // Parse response
+    // Parse response using pre-compiled static regex (Issue 9)
     std::string responseText = response.content;
     
     // Extract summary
-    std::regex summaryRegex("SUMMARY:\\s*(.+?)(?=DESCRIPTION:|$)", std::regex::icase);
     std::smatch summaryMatch;
-    if (std::regex_search(responseText, summaryMatch, summaryRegex)) {
+    if (std::regex_search(responseText, summaryMatch, SUMMARY_REGEX)) {
         result.summary = summaryMatch[1].str();
         // Trim whitespace
         result.summary.erase(0, result.summary.find_first_not_of(" \t\n\r"));
@@ -187,18 +198,16 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
     }
     
     // Extract description
-    std::regex descRegex("DESCRIPTION:\\s*(.+?)(?=KEYWORDS:|$)", std::regex::icase);
     std::smatch descMatch;
-    if (std::regex_search(responseText, descMatch, descRegex)) {
+    if (std::regex_search(responseText, descMatch, DESCRIPTION_REGEX)) {
         result.description = descMatch[1].str();
         result.description.erase(0, result.description.find_first_not_of(" \t\n\r"));
         result.description.erase(result.description.find_last_not_of(" \t\n\r") + 1);
     }
     
     // Extract keywords
-    std::regex keywordRegex("KEYWORDS:\\s*(.+)$", std::regex::icase);
     std::smatch keywordMatch;
-    if (std::regex_search(responseText, keywordMatch, keywordRegex)) {
+    if (std::regex_search(responseText, keywordMatch, KEYWORD_REGEX)) {
         result.keywords = parseKeywords(keywordMatch[1].str());
     }
     
@@ -217,21 +226,45 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
 
 std::vector<AnalysisResult> FileAnalyzer::analyzeBatch(const BatchAnalysisRequest& request) {
     std::vector<AnalysisResult> results;
-    results.reserve(request.filePaths.size());
+    results.resize(request.filePaths.size());
     
-    size_t current = 0;
-    for (const auto& path : request.filePaths) {
-        if (progressCallback_) {
-            progressCallback_(current, request.filePaths.size(), path);
+    // Get thread pool size from config (Issue 2 - concurrent batch analysis)
+    int poolSize = ConfigManager::instance().getThreadPoolSize();
+    
+    if (poolSize > 1 && request.filePaths.size() > 1) {
+        // Use thread pool for concurrent analysis
+        ThreadPool pool(static_cast<size_t>(poolSize));
+        std::vector<std::future<AnalysisResult>> futures;
+        futures.reserve(request.filePaths.size());
+        
+        for (const auto& path : request.filePaths) {
+            futures.push_back(pool.enqueue([this, path, &request]() {
+                return analyzeFile(path, request.maxContentLength);
+            }));
         }
         
-        auto result = analyzeFile(path, request.maxContentLength);
-        results.push_back(result);
-        current++;
-    }
-    
-    if (progressCallback_) {
-        progressCallback_(current, request.filePaths.size(), "Complete");
+        // Collect results and call progress callback
+        for (size_t i = 0; i < futures.size(); ++i) {
+            results[i] = futures[i].get();
+            if (progressCallback_) {
+                progressCallback_(i + 1, futures.size(), results[i].filePath);
+            }
+        }
+    } else {
+        // Serial processing for single thread or single file
+        size_t current = 0;
+        for (const auto& path : request.filePaths) {
+            if (progressCallback_) {
+                progressCallback_(current, request.filePaths.size(), path);
+            }
+            
+            results[current] = analyzeFile(path, request.maxContentLength);
+            current++;
+        }
+        
+        if (progressCallback_) {
+            progressCallback_(results.size(), request.filePaths.size(), "Complete");
+        }
     }
     
     return results;
@@ -385,8 +418,9 @@ std::string FileAnalyzer::detectFileType(const std::string& path) {
     std::string ext = fs::path(path).extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     
-    // Common file types
+    // Extended file type mapping (Issue 10)
     static const std::map<std::string, std::string> typeMap = {
+        // Text files
         {".txt", "Text"},
         {".md", "Markdown"},
         {".json", "JSON"},
@@ -394,8 +428,13 @@ std::string FileAnalyzer::detectFileType(const std::string& path) {
         {".html", "HTML"},
         {".htm", "HTML"},
         {".css", "CSS"},
+        {".rtf", "Rich Text"},
+        
+        // Programming languages
         {".js", "JavaScript"},
+        {".jsx", "JavaScript React"},
         {".ts", "TypeScript"},
+        {".tsx", "TypeScript React"},
         {".py", "Python"},
         {".cpp", "C++"},
         {".c", "C"},
@@ -404,22 +443,129 @@ std::string FileAnalyzer::detectFileType(const std::string& path) {
         {".java", "Java"},
         {".rs", "Rust"},
         {".go", "Go"},
+        {".rb", "Ruby"},
+        {".php", "PHP"},
+        {".cs", "C#"},
+        {".swift", "Swift"},
+        {".kt", "Kotlin"},
+        {".scala", "Scala"},
+        {".r", "R"},
+        {".lua", "Lua"},
+        {".pl", "Perl"},
+        
+        // Shell and scripts
         {".sh", "Shell Script"},
+        {".bash", "Bash Script"},
+        {".zsh", "Zsh Script"},
         {".bat", "Batch Script"},
+        {".cmd", "Command Script"},
         {".ps1", "PowerShell"},
+        
+        // Data formats
         {".sql", "SQL"},
         {".log", "Log File"},
         {".csv", "CSV"},
+        {".tsv", "TSV"},
         {".yaml", "YAML"},
         {".yml", "YAML"},
+        {".toml", "TOML"},
         {".ini", "INI Config"},
         {".conf", "Config"},
         {".cfg", "Config"},
+        {".properties", "Properties"},
+        
+        // Documents
         {".pdf", "PDF"},
         {".doc", "Word Document"},
         {".docx", "Word Document"},
         {".xls", "Excel"},
         {".xlsx", "Excel"},
+        {".ppt", "PowerPoint"},
+        {".pptx", "PowerPoint"},
+        {".odt", "OpenDocument Text"},
+        {".ods", "OpenDocument Spreadsheet"},
+        {".odp", "OpenDocument Presentation"},
+        {".odg", "OpenDocument Graphics"},
+        
+        // E-Books
+        {".epub", "E-Book"},
+        {".mobi", "Kindle E-Book"},
+        {".azw", "Kindle E-Book"},
+        {".azw3", "Kindle E-Book"},
+        
+        // Images
+        {".jpg", "JPEG Image"},
+        {".jpeg", "JPEG Image"},
+        {".png", "PNG Image"},
+        {".gif", "GIF Image"},
+        {".bmp", "Bitmap Image"},
+        {".svg", "SVG Image"},
+        {".webp", "WebP Image"},
+        {".ico", "Icon"},
+        {".tiff", "TIFF Image"},
+        {".tif", "TIFF Image"},
+        {".psd", "Photoshop"},
+        {".ai", "Illustrator"},
+        {".raw", "RAW Image"},
+        
+        // Video
+        {".mp4", "MP4 Video"},
+        {".mkv", "MKV Video"},
+        {".avi", "AVI Video"},
+        {".mov", "QuickTime Video"},
+        {".wmv", "WMV Video"},
+        {".flv", "Flash Video"},
+        {".webm", "WebM Video"},
+        {".m4v", "M4V Video"},
+        {".mpeg", "MPEG Video"},
+        {".mpg", "MPEG Video"},
+        
+        // Audio
+        {".mp3", "MP3 Audio"},
+        {".wav", "WAV Audio"},
+        {".flac", "FLAC Audio"},
+        {".ogg", "OGG Audio"},
+        {".aac", "AAC Audio"},
+        {".wma", "WMA Audio"},
+        {".m4a", "M4A Audio"},
+        {".aiff", "AIFF Audio"},
+        {".opus", "Opus Audio"},
+        
+        // Archives
+        {".zip", "ZIP Archive"},
+        {".rar", "RAR Archive"},
+        {".7z", "7-Zip Archive"},
+        {".tar", "TAR Archive"},
+        {".gz", "GZip Archive"},
+        {".bz2", "BZip2 Archive"},
+        {".xz", "XZ Archive"},
+        {".lz", "LZ Archive"},
+        {".lzma", "LZMA Archive"},
+        
+        // Executables and libraries
+        {".exe", "Windows Executable"},
+        {".dll", "Windows Library"},
+        {".so", "Linux Library"},
+        {".dylib", "macOS Library"},
+        {".app", "macOS Application"},
+        {".apk", "Android Package"},
+        {".deb", "Debian Package"},
+        {".rpm", "RPM Package"},
+        
+        // Database
+        {".db", "Database"},
+        {".sqlite", "SQLite Database"},
+        {".sqlite3", "SQLite Database"},
+        {".mdb", "Access Database"},
+        {".accdb", "Access Database"},
+        
+        // Certificates and keys
+        {".pem", "PEM Certificate"},
+        {".crt", "Certificate"},
+        {".cer", "Certificate"},
+        {".key", "Private Key"},
+        {".p12", "PKCS12 Certificate"},
+        {".pfx", "PFX Certificate"},
     };
     
     auto it = typeMap.find(ext);

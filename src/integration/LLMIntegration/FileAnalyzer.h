@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <regex>
 
 namespace forensics {
 namespace llm {
@@ -143,6 +144,11 @@ private:
     std::string keywordPrompt_;
     ProgressCallback progressCallback_;
     ChunkConfig chunkConfig_;
+    
+    // Pre-compiled regex patterns for response parsing (Issue 9)
+    static const std::regex SUMMARY_REGEX;
+    static const std::regex DESCRIPTION_REGEX;
+    static const std::regex KEYWORD_REGEX;
     
     std::string readFileContent(const std::string& path, size_t maxBytes);
     std::string detectFileType(const std::string& path);

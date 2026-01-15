@@ -235,5 +235,31 @@ int ConfigManager::getMaxBatchSize() const {
     return getInt("MAX_BATCH_SIZE", 100);
 }
 
+// Context Window Settings
+int ConfigManager::getContextLength() const {
+    return getInt("LLM_CONTEXT_LENGTH", 4096);
+}
+
+int ConfigManager::getReservedTokens() const {
+    return getInt("LLM_RESERVED_TOKENS", 512);
+}
+
+double ConfigManager::getCharsPerToken() const {
+    return getDouble("LLM_CHARS_PER_TOKEN", 4.0);
+}
+
+int ConfigManager::getMaxContentLimit() const {
+    return getInt("FILE_ANALYSIS_MAX_CONTENT_LIMIT", 50000);
+}
+
+// Debug Settings
+std::string ConfigManager::getDebugOutputMode() const {
+    return get("DEBUG_OUTPUT_MODE", "stdout");
+}
+
+std::string ConfigManager::getDebugLogFile() const {
+    return get("DEBUG_LOG_FILE", "debug.log");
+}
+
 } // namespace llm
 } // namespace forensics

@@ -81,6 +81,16 @@ public:
     int getThreadPoolSize() const;
     int getMaxBatchSize() const;
     
+    // Context Window Settings
+    int getContextLength() const;
+    int getReservedTokens() const;
+    double getCharsPerToken() const;
+    int getMaxContentLimit() const;
+    
+    // Debug Settings
+    std::string getDebugOutputMode() const;
+    std::string getDebugLogFile() const;
+    
     /**
      * @brief Get raw value by key (returns empty string if not found)
      */
