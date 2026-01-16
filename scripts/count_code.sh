@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Default exclude directories
-DEFAULT_EXCLUDES="build,libs,.git,.claude,node_modules,vendor,third_party"
+DEFAULT_EXCLUDES="build,libs,.git,.claude,node_modules,vendor,third_party,graphiti"
 
 # Output timestamp
 TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
