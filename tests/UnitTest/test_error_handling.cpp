@@ -28,7 +28,7 @@ TEST(ErrorCodeTest, ErrorCodeToString) {
     EXPECT_STREQ(errorCodeToString(ErrorCode::LLMConnectionFailed), "LLM connection failed");
     EXPECT_STREQ(errorCodeToString(ErrorCode::NoModelsAvailable), "No LLM models available");
     EXPECT_STREQ(errorCodeToString(ErrorCode::AllModelsFailed), "All models failed");
-    EXPECT_STREQ(errorCodeToString(ErrorCode::Timeout), "Operation cancelled"); // Check if correct
+    EXPECT_STREQ(errorCodeToString(ErrorCode::Cancelled), "Operation cancelled"); // Check if correct
 }
 
 // ============================================================================

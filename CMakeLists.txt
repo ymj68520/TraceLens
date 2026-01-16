@@ -139,6 +139,8 @@ set(LIB_SOURCES
     src/core/DatabaseManager/FileClassifier/FileClassifier.cpp
     src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
     src/core/DatabaseManager/FileExtractor/FileExtractor.cpp
+    src/core/Logger/Logger.cpp
+    src/core/ThreadPool/ThreadPool.cpp
     src/analyzers/ImageAnalyzer/XFSHelper.cpp
     src/analyzers/ImageAnalyzer/NativeFilesystemWalker.cpp
     src/analyzers/ImageAnalyzer/TskFilesystemWalker.cpp

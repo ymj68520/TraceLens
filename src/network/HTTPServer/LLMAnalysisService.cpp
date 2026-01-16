@@ -1,9 +1,11 @@
 #include "LLMAnalysisService.h"
+#include "DatabaseManager/SQL/file_classifier_sql.h"
 #include <sqlite3.h>
 #include <iostream>
 #include <filesystem>
 #include <sstream>
 #include <algorithm>
+#include <ctime>
 
 namespace forensics {
 
@@ -33,7 +35,6 @@ bool LLMAnalysisService::initialize() {
 }
 
 int LLMAnalysisService::analyzeAllFiles(const std::string& filesDbPath,
-                                         const std::string& descriptionsDbPath,
                                          const AnalysisOptions& options,
                                          ProgressCallback progressCallback) {
     if (!initialized_) {
@@ -42,13 +43,7 @@ int LLMAnalysisService::analyzeAllFiles(const std::string& filesDbPath,
         }
     }
 
-    // Create descriptions database
-    if (!createDescriptionsDatabase(descriptionsDbPath)) {
-        std::cerr << "Failed to create descriptions database" << std::endl;
-        return 0;
-    }
-
-    // Get files to analyze
+    // Get files to analyze from the database
     auto files = getFilesFromDatabase(filesDbPath, options);
     if (files.empty()) {
         return 0;
@@ -73,8 +68,10 @@ int LLMAnalysisService::analyzeAllFiles(const std::string& filesDbPath,
             auto result = fileAnalyzer_->analyzeFile(filePath, options.maxContentLength);
             
             if (result.success) {
-                storeDescription(descriptionsDbPath, filePath, 
-                                result.description, result.summary, result.keywords);
+                // Store directly to _files.db in the files table
+                storeDescription(filesDbPath, filePath, 
+                                result.description, result.summary, result.keywords,
+                                result.modelUsed);
                 analyzed++;
             }
         } catch (const std::exception& e) {
@@ -86,19 +83,12 @@ int LLMAnalysisService::analyzeAllFiles(const std::string& filesDbPath,
 }
 
 int LLMAnalysisService::analyzeSmartFiles(const std::string& filesDbPath,
-                                           const std::string& descriptionsDbPath,
                                            const AnalysisOptions& options,
                                            ProgressCallback progressCallback) {
     if (!initialized_) {
         if (!initialize()) {
             return 0;
         }
-    }
-
-    // Create descriptions database
-    if (!createDescriptionsDatabase(descriptionsDbPath)) {
-        std::cerr << "Failed to create descriptions database" << std::endl;
-        return 0;
     }
 
     // First, select important files using LLM
@@ -122,8 +112,10 @@ int LLMAnalysisService::analyzeSmartFiles(const std::string& filesDbPath,
             auto result = fileAnalyzer_->analyzeFile(filePath, options.maxContentLength);
             
             if (result.success) {
-                storeDescription(descriptionsDbPath, filePath,
-                                result.description, result.summary, result.keywords);
+                // Store directly to _files.db in the files table
+                storeDescription(filesDbPath, filePath,
+                                result.description, result.summary, result.keywords,
+                                result.modelUsed);
                 analyzed++;
             }
         } catch (const std::exception& e) {
@@ -197,47 +189,16 @@ Do not include any explanation, only the JSON array.)";
     }
 }
 
-bool LLMAnalysisService::createDescriptionsDatabase(const std::string& dbPath) {
-    sqlite3* db = nullptr;
-    int rc = sqlite3_open(dbPath.c_str(), &db);
-    if (rc != SQLITE_OK) {
-        return false;
-    }
-
-    const char* sql = R"(
-        CREATE TABLE IF NOT EXISTS file_descriptions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_path TEXT UNIQUE NOT NULL,
-            description TEXT,
-            summary TEXT,
-            keywords TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE INDEX IF NOT EXISTS idx_file_path ON file_descriptions(file_path);
-    )";
-
-    char* errMsg = nullptr;
-    rc = sqlite3_exec(db, sql, nullptr, nullptr, &errMsg);
-    
-    if (rc != SQLITE_OK) {
-        std::cerr << "SQL error: " << (errMsg ? errMsg : "unknown") << std::endl;
-        sqlite3_free(errMsg);
-        sqlite3_close(db);
-        return false;
-    }
-
-    sqlite3_close(db);
-    return true;
-}
-
 bool LLMAnalysisService::storeDescription(const std::string& dbPath,
                                            const std::string& filePath,
                                            const std::string& description,
                                            const std::string& summary,
-                                           const std::vector<std::string>& keywords) {
+                                           const std::vector<std::string>& keywords,
+                                           const std::string& modelUsed) {
     sqlite3* db = nullptr;
     int rc = sqlite3_open(dbPath.c_str(), &db);
     if (rc != SQLITE_OK) {
+        std::cerr << "Failed to open database: " << dbPath << std::endl;
         return false;
     }
 
@@ -249,28 +210,43 @@ bool LLMAnalysisService::storeDescription(const std::string& dbPath,
     }
     std::string keywordsStr = ss.str();
 
-    const char* sql = R"(
-        INSERT OR REPLACE INTO file_descriptions (file_path, description, summary, keywords)
-        VALUES (?, ?, ?, ?);
-    )";
+    // Get current timestamp
+    int64_t currentTime = static_cast<int64_t>(std::time(nullptr));
 
+    // Use UPDATE_FILE_LLM_ANALYSIS from file_classifier_sql.h
+    // UPDATE files SET llm_summary=?, llm_description=?, llm_keywords=?, llm_analyzed_at=?, llm_model_used=? WHERE path=?
     sqlite3_stmt* stmt = nullptr;
-    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
+    rc = sqlite3_prepare_v2(db, FileClassifierSQL::UPDATE_FILE_LLM_ANALYSIS, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
         sqlite3_close(db);
         return false;
     }
 
-    sqlite3_bind_text(stmt, 1, filePath.c_str(), -1, SQLITE_TRANSIENT);
+    // Bind parameters: llm_summary, llm_description, llm_keywords, llm_analyzed_at, llm_model_used, path
+    sqlite3_bind_text(stmt, 1, summary.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, description.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 3, summary.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 4, keywordsStr.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, keywordsStr.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 4, currentTime);
+    sqlite3_bind_text(stmt, 5, modelUsed.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, filePath.c_str(), -1, SQLITE_TRANSIENT);
 
     rc = sqlite3_step(stmt);
+    int changes = sqlite3_changes(db);
     sqlite3_finalize(stmt);
     sqlite3_close(db);
 
-    return rc == SQLITE_DONE;
+    if (rc != SQLITE_DONE) {
+        std::cerr << "Failed to update LLM analysis for file: " << filePath << std::endl;
+        return false;
+    }
+
+    if (changes == 0) {
+        std::cerr << "Warning: No rows updated for file: " << filePath << std::endl;
+        return false;
+    }
+
+    return true;
 }
 
 std::vector<std::string> LLMAnalysisService::getFilesFromDatabase(const std::string& dbPath,

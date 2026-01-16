@@ -610,16 +610,10 @@ void TaskManager::start_analysis(const std::string& task_id) {
             }
             update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 100, "File classification completed");
 
-            // 4. LLM Analysis (Optional)
+            // 4. LLM Analysis (Optional) - Stores descriptions directly in _files.db
             if (task.llm_analyze) {
                 if (task.cancellation_requested) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
                 update_progress(task_id, TaskPhase::LLM_ANALYSIS, 10, "Starting LLM file description generation...");
-                
-                std::string descriptionsDbPath = outPrefix + baseName + "_descriptions.db";
-                {
-                    std::lock_guard<std::mutex> lock(mtx_);
-                    tasks_[task_id].output_descriptions_db = descriptionsDbPath;
-                }
                 
                 forensics::LLMAnalysisService llmService;
                 if (llmService.initialize()) {
@@ -633,7 +627,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     if (task.llm_mode == "full") {
                         // Full mode: analyze all files
                         update_progress(task_id, TaskPhase::LLM_ANALYSIS, 30, "Full mode: Analyzing all files...");
-                        analyzedCount = llmService.analyzeAllFiles(fileDbPath, descriptionsDbPath, llmOpts,
+                        analyzedCount = llmService.analyzeAllFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) {
                                 int progress = 30;
                                 if (total > 0) {
@@ -645,7 +639,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     } else {
                         // Smart mode: LLM selects important files first
                         update_progress(task_id, TaskPhase::LLM_ANALYSIS, 20, "Smart mode: Selecting important files...");
-                        analyzedCount = llmService.analyzeSmartFiles(fileDbPath, descriptionsDbPath, llmOpts,
+                        analyzedCount = llmService.analyzeSmartFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) {
                                 int progress = 30;
                                 if (total > 0) {
@@ -657,7 +651,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     }
                     
                     update_progress(task_id, TaskPhase::LLM_ANALYSIS, 100, 
-                        "LLM analysis completed: " + std::to_string(analyzedCount) + " files analyzed");
+                        "LLM analysis completed: " + std::to_string(analyzedCount) + " files analyzed (stored in _files.db)");
                 } else {
                     std::cerr << "Warning: Failed to initialize LLM analysis service" << std::endl;
                 }

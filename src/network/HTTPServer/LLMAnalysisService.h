@@ -54,16 +54,14 @@ public:
      * @brief Full mode: Analyze all files matching criteria
      * 
      * Reads files from filesDbPath, generates descriptions using LLM,
-     * and stores results in descriptionsDbPath.
+     * and stores results directly in the files table (llm_* columns).
      * 
-     * @param filesDbPath Path to the classified files database
-     * @param descriptionsDbPath Output path for descriptions database
+     * @param filesDbPath Path to the classified files database (_files.db)
      * @param options Analysis options
      * @param progressCallback Progress callback function
      * @return Number of files analyzed
      */
     int analyzeAllFiles(const std::string& filesDbPath,
-                        const std::string& descriptionsDbPath,
                         const AnalysisOptions& options,
                         ProgressCallback progressCallback = nullptr);
 
@@ -71,16 +69,14 @@ public:
      * @brief Smart mode: Let LLM select important files, then analyze them
      * 
      * First sends file list summary to LLM to identify important files,
-     * then analyzes only those files.
+     * then analyzes only those files and stores results in files table.
      * 
-     * @param filesDbPath Path to the classified files database
-     * @param descriptionsDbPath Output path for descriptions database
+     * @param filesDbPath Path to the classified files database (_files.db)
      * @param options Analysis options
      * @param progressCallback Progress callback function
      * @return Number of files analyzed
      */
     int analyzeSmartFiles(const std::string& filesDbPath,
-                          const std::string& descriptionsDbPath,
                           const AnalysisOptions& options,
                           ProgressCallback progressCallback = nullptr);
 
@@ -99,12 +95,12 @@ private:
     bool initialized_ = false;
 
     // Internal helpers
-    bool createDescriptionsDatabase(const std::string& dbPath);
     bool storeDescription(const std::string& dbPath, 
                           const std::string& filePath,
                           const std::string& description,
                           const std::string& summary,
-                          const std::vector<std::string>& keywords);
+                          const std::vector<std::string>& keywords,
+                          const std::string& modelUsed);
     std::vector<std::string> getFilesFromDatabase(const std::string& dbPath,
                                                    const AnalysisOptions& options);
     std::string buildFileListSummary(const std::vector<std::string>& files);

@@ -137,6 +137,9 @@ add_test(NAME ImageAnalyzerGTests COMMAND test_image_analyzer_gtest)
 add_executable(
   test_llm_integration
   UnitTest/test_llm_integration.cpp
+  ../src/integration/LLMIntegration/ConfigManager.cpp
+  ../src/core/Logger/Logger.cpp
+  ../src/core/ThreadPool/ThreadPool.cpp
   ../src/integration/LLMIntegration/LLMClient.cpp
   ../src/integration/LLMIntegration/ModelRouter.cpp
   ../src/integration/LLMIntegration/FileAnalyzer.cpp
@@ -156,8 +159,14 @@ target_include_directories(
           ${CMAKE_SOURCE_DIR}/src/analyzers/PDFAnalyzer
           ${CMAKE_SOURCE_DIR}/src/analyzers/OfficeAnalyzer)
 
-target_link_libraries(test_llm_integration ${GTEST_LIBRARIES}
-                      ${GMOCK_LIBRARIES} pthread duckx ${POPPLER_LIBRARIES})
+target_link_libraries(
+  test_llm_integration
+  ${GTEST_LIBRARIES}
+  ${GMOCK_LIBRARIES}
+  pthread
+  duckx
+  ${POPPLER_LIBRARIES}
+  cpp_dotenv)
 
 add_test(NAME LLMIntegrationGTests COMMAND test_llm_integration)
 
@@ -208,6 +217,8 @@ add_executable(
   llm_files_test
   llm_files_test.cpp
   ../src/integration/LLMIntegration/ConfigManager.cpp
+  ../src/core/Logger/Logger.cpp
+  ../src/core/ThreadPool/ThreadPool.cpp
   ../src/integration/LLMIntegration/LLMClient.cpp
   ../src/integration/LLMIntegration/ModelRouter.cpp
   ../src/integration/LLMIntegration/FileAnalyzer.cpp
