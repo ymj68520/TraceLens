@@ -1,0 +1,269 @@
+"""
+Graphiti ingestor module for batch ingestion into the knowledge graph.
+"""
+
+import asyncio
+import logging
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
+
+from graphiti_core import Graphiti
+from graphiti_core.nodes import EpisodeType
+from graphiti_core.llm_client.config import LLMConfig
+from graphiti_core.llm_client.openai_generic_client import OpenAIGenericClient
+from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
+from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
+
+from .config import GraphitiConfig
+from .exceptions import IngestionError
+from .toon_transformer import EpisodeData
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class IngestionResult:
+    """Result of an ingestion operation."""
+    
+    total_episodes: int = 0
+    successful: int = 0
+    failed: int = 0
+    errors: list = None
+    
+    def __post_init__(self):
+        if self.errors is None:
+            self.errors = []
+    
+    @property
+    def success_rate(self) -> float:
+        """Calculate success rate as percentage."""
+        if self.total_episodes == 0:
+            return 0.0
+        return (self.successful / self.total_episodes) * 100
+
+
+class GraphitiIngestor:
+    """
+    Handles batch ingestion of episodes into Graphiti knowledge graph.
+    
+    Uses the Graphiti SDK to add episodes that will be processed into
+    nodes and edges in the graph database.
+    """
+    
+    def __init__(
+        self,
+        config: GraphitiConfig,
+        graphiti_client: Optional[Graphiti] = None,
+    ):
+        """
+        Initialize ingestor.
+        
+        Args:
+            config: Graphiti configuration.
+            graphiti_client: Optional pre-configured Graphiti client.
+        """
+        self.config = config
+        self._client = graphiti_client
+        self._initialized = False
+    
+    def _create_llm_client(self) -> OpenAIGenericClient:
+        """Create LLM client configured for local or OpenAI."""
+        llm_config = LLMConfig(
+            api_key=self.config.llm_api_key,
+            model=self.config.llm_model,
+            small_model=self.config.llm_model,  # Use same model for both
+            base_url=self.config.llm_base_url,
+        )
+        return OpenAIGenericClient(config=llm_config)
+    
+    def _create_embedder(self) -> OpenAIEmbedder:
+        """Create embedder - uses local LLM or OpenAI based on config."""
+        if self.config.use_local_llm:
+            # Use local LLM for embeddings too
+            embedder_config = OpenAIEmbedderConfig(
+                api_key=self.config.llm_api_key or "local",
+                embedding_model="text-embedding-ada-002",  # Model name for compatible server
+                embedding_dim=self.config.embedder_dim,
+                base_url=self.config.llm_base_url,
+            )
+        else:
+            # Use OpenAI
+            embedder_config = OpenAIEmbedderConfig(
+                api_key=self.config.embedder_api_key,
+                embedding_model=self.config.embedder_model,
+                embedding_dim=self.config.embedder_dim,
+            )
+        return OpenAIEmbedder(config=embedder_config)
+    
+    async def initialize(self) -> None:
+        """
+        Initialize Graphiti client and database indices.
+        
+        This should be called before ingestion to ensure the graph
+        database is ready.
+        """
+        if self._client is None:
+            logger.info(f"Connecting to Neo4j at {self.config.neo4j_uri}")
+            
+            if self.config.use_local_llm:
+                logger.info(f"Using local LLM at {self.config.llm_base_url}")
+                logger.info(f"Model: {self.config.llm_model}")
+                
+                llm_client = self._create_llm_client()
+                embedder = self._create_embedder()
+                
+                # Create reranker using the same LLM client
+                llm_config = LLMConfig(
+                    api_key=self.config.llm_api_key,
+                    model=self.config.llm_model,
+                    base_url=self.config.llm_base_url,
+                )
+                cross_encoder = OpenAIRerankerClient(
+                    client=llm_client,
+                    config=llm_config,
+                )
+                
+                self._client = Graphiti(
+                    uri=self.config.neo4j_uri,
+                    user=self.config.neo4j_user,
+                    password=self.config.neo4j_password,
+                    llm_client=llm_client,
+                    embedder=embedder,
+                    cross_encoder=cross_encoder,
+                )
+            else:
+                # Default OpenAI-based configuration
+                self._client = Graphiti(
+                    uri=self.config.neo4j_uri,
+                    user=self.config.neo4j_user,
+                    password=self.config.neo4j_password,
+                )
+        
+        # Build indices and constraints
+        logger.info("Building Graphiti indices and constraints...")
+        await self._client.build_indices_and_constraints()
+        self._initialized = True
+        logger.info("Graphiti initialized successfully")
+    
+    async def close(self) -> None:
+        """Close the Graphiti client connection."""
+        if self._client:
+            await self._client.close()
+            self._client = None
+            self._initialized = False
+    
+    async def ingest_episode(
+        self,
+        episode: EpisodeData,
+        group_id: Optional[str] = None,
+    ) -> bool:
+        """
+        Ingest a single episode into Graphiti.
+        
+        Args:
+            episode: The episode data to ingest.
+            group_id: Optional group ID for organizing data.
+        
+        Returns:
+            True if successful, False otherwise.
+        
+        Raises:
+            IngestionError: If ingestion fails after retries.
+        """
+        if not self._initialized:
+            await self.initialize()
+        
+        group_id = group_id or self.config.group_id
+        
+        last_error = None
+        for attempt in range(self.config.max_retries):
+            try:
+                await self._client.add_episode(
+                    name=episode.name,
+                    episode_body=episode.episode_body,
+                    source_description=episode.source_description,
+                    reference_time=episode.reference_time,
+                    source=EpisodeType.json,  # We're sending structured JSON
+                    group_id=group_id,
+                )
+                return True
+            
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    f"Ingestion attempt {attempt + 1}/{self.config.max_retries} "
+                    f"failed for {episode.name}: {e}"
+                )
+                if attempt < self.config.max_retries - 1:
+                    await asyncio.sleep(self.config.retry_delay * (attempt + 1))
+        
+        raise IngestionError(
+            f"Failed to ingest episode {episode.name} after {self.config.max_retries} attempts: {last_error}"
+        )
+    
+    async def batch_ingest(
+        self,
+        episodes: list[EpisodeData],
+        group_id: Optional[str] = None,
+        progress_callback: Optional[callable] = None,
+    ) -> IngestionResult:
+        """
+        Ingest a batch of episodes into Graphiti.
+        
+        Args:
+            episodes: List of episodes to ingest.
+            group_id: Optional group ID for organizing data.
+            progress_callback: Optional callback(current, total) for progress tracking.
+        
+        Returns:
+            IngestionResult with statistics and any errors.
+        """
+        if not self._initialized:
+            await self.initialize()
+        
+        result = IngestionResult(total_episodes=len(episodes))
+        
+        for i, episode in enumerate(episodes):
+            try:
+                await self.ingest_episode(episode, group_id)
+                result.successful += 1
+                logger.debug(f"Ingested episode: {episode.name}")
+            
+            except IngestionError as e:
+                result.failed += 1
+                result.errors.append({
+                    "episode": episode.name,
+                    "file_path": episode.file_path,
+                    "error": str(e),
+                })
+                logger.error(f"Failed to ingest episode {episode.name}: {e}")
+            
+            except Exception as e:
+                result.failed += 1
+                result.errors.append({
+                    "episode": episode.name,
+                    "file_path": episode.file_path,
+                    "error": str(e),
+                })
+                logger.error(f"Unexpected error ingesting {episode.name}: {e}")
+            
+            # Progress callback
+            if progress_callback:
+                progress_callback(i + 1, len(episodes))
+        
+        logger.info(
+            f"Batch ingestion complete: {result.successful}/{result.total_episodes} "
+            f"successful ({result.success_rate:.1f}%)"
+        )
+        
+        return result
+    
+    async def __aenter__(self):
+        """Async context manager entry."""
+        await self.initialize()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.close()
