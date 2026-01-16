@@ -216,6 +216,7 @@ async def run_pipeline(
     batch_size: int = 50,
     dry_run: bool = False,
     group_id: str = "forensics_files",
+    filter_analyzed_only: bool = False,
 ) -> PipelineResult:
     """
     Convenience function to run the pipeline with minimal configuration.
@@ -228,6 +229,7 @@ async def run_pipeline(
         batch_size: Number of records per batch.
         dry_run: If True, transform but don't ingest.
         group_id: Graphiti group ID for organizing data.
+        filter_analyzed_only: If True, only process files with LLM analysis.
     
     Returns:
         PipelineResult with statistics.
@@ -238,6 +240,7 @@ async def run_pipeline(
         neo4j_password=neo4j_password,
         batch_size=batch_size,
         group_id=group_id,
+        filter_analyzed_only=filter_analyzed_only,
     )
     
     pipeline = GraphitiPipeline(config)
@@ -300,6 +303,11 @@ Examples:
         action="store_true",
         help="Enable verbose logging",
     )
+    parser.add_argument(
+        "--analyzed-only",
+        action="store_true",
+        help="Only process files that have LLM analysis (default: process all files)",
+    )
     
     args = parser.parse_args()
     
@@ -320,6 +328,7 @@ Examples:
             batch_size=args.batch_size,
             dry_run=args.dry_run,
             group_id=args.group_id,
+            filter_analyzed_only=args.analyzed_only,
         ))
         
         print("\n" + result.summary())

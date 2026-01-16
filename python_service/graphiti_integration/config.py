@@ -39,7 +39,7 @@ class GraphitiConfig:
     retry_delay: float = 1.0  # seconds
     
     # Filtering options
-    filter_analyzed_only: bool = True  # Only process files with LLM analysis
+    filter_analyzed_only: bool = False  # Process all files, not just LLM-analyzed ones
     filter_categories: list[str] = field(default_factory=list)  # Empty = all
     
     # Graphiti group_id for organizing data
