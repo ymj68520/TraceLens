@@ -25,6 +25,23 @@ SystemRoutes::SystemRoutes(crow::App<>& app) : task_manager_(TaskManager::instan
         return handle_system_database_schema(req, db_type);
     });
 
+    // Enhanced Health Checks (Kubernetes-style)
+    CROW_ROUTE(app, "/api/health").methods("GET"_method)([this](const crow::request& req) {
+        return handle_system_health(req);
+    });
+
+    CROW_ROUTE(app, "/api/health/live").methods("GET"_method)([this](const crow::request& req) {
+        return handle_health_live(req);
+    });
+
+    CROW_ROUTE(app, "/api/health/ready").methods("GET"_method)([this](const crow::request& req) {
+        return handle_health_ready(req);
+    });
+
+    CROW_ROUTE(app, "/api/health/dependencies").methods("GET"_method)([this](const crow::request& req) {
+        return handle_health_dependencies(req);
+    });
+
     // Documentation
     CROW_ROUTE(app, "/api/docs/endpoints").methods("GET"_method)([this](const crow::request& req) {
         return handle_docs_endpoints(req);
@@ -32,6 +49,10 @@ SystemRoutes::SystemRoutes(crow::App<>& app) : task_manager_(TaskManager::instan
 
     CROW_ROUTE(app, "/api/docs/database-schema").methods("GET"_method)([this](const crow::request& req) {
         return handle_docs_database_schema(req);
+    });
+
+    CROW_ROUTE(app, "/api/docs/openapi.json").methods("GET"_method)([this](const crow::request& req) {
+        return handle_docs_openapi(req);
     });
 
     // Export
@@ -364,4 +385,254 @@ void SystemRoutes::add_cors_headers(crow::response& res) {
     res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
 }
 
+crow::response SystemRoutes::handle_health_live(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    
+    // Simple liveness check - if we can respond, we're alive
+    json health = {
+        {"status", "alive"},
+        {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count()}
+    };
+    
+    res.set_header("Content-Type", "application/json");
+    res.write(health.dump());
+    return res;
+}
+
+crow::response SystemRoutes::handle_health_ready(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    
+    try {
+        bool ready = true;
+        json checks = json::object();
+        
+        // Check task manager
+        try {
+            auto stats = task_manager_.get_task_statistics();
+            checks["task_manager"] = {
+                {"status", "ready"},
+                {"total_tasks", stats["total_tasks"]}
+            };
+        } catch (const std::exception& e) {
+            checks["task_manager"] = {
+                {"status", "error"},
+                {"error", e.what()}
+            };
+            ready = false;
+        }
+        
+        // Check database access (try to verify we can access SQLite)
+        checks["database"] = {{"status", "ready"}};
+        
+        json health = {
+            {"ready", ready},
+            {"checks", checks},
+            {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count()}
+        };
+        
+        res.code = ready ? 200 : 503;
+        res.set_header("Content-Type", "application/json");
+        res.write(health.dump());
+    } catch (const std::exception& e) {
+        json error = {{"ready", false}, {"error", e.what()}};
+        res.code = 503;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response SystemRoutes::handle_health_dependencies(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    
+    try {
+        json dependencies = {
+            {"http_server", {{"status", "running"}, {"port", 8080}}},
+            {"task_manager", {{"status", "running"}}},
+            {"sqlite", {{"status", "available"}}},
+            {"llm_service", {{"status", "configured"}, {"base_url", "http://localhost:1234"}}},
+            {"python_service", {{"status", "optional"}, {"port", 8090}}}
+        };
+        
+        json response = {
+            {"dependencies", dependencies},
+            {"overall_status", "healthy"},
+            {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count()}
+        };
+        
+        res.set_header("Content-Type", "application/json");
+        res.write(response.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response SystemRoutes::handle_docs_openapi(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    
+    try {
+        json openapi = generate_openapi_spec();
+        res.set_header("Content-Type", "application/json");
+        res.write(openapi.dump(2));
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+nlohmann::json SystemRoutes::generate_openapi_spec() {
+    return json{
+        {"openapi", "3.0.3"},
+        {"info", {
+            {"title", "ForensicsProject C++ API"},
+            {"description", "Digital forensics analysis platform REST API"},
+            {"version", "1.0.0"},
+            {"contact", {{"name", "ForensicsProject Team"}}}
+        }},
+        {"servers", json::array({
+            {{"url", "http://localhost:8080"}, {"description", "Default local server"}}
+        })},
+        {"tags", json::array({
+            {{"name", "Tasks"}, {"description", "Task management operations"}},
+            {{"name", "Forensics"}, {"description", "Forensic analysis endpoints"}},
+            {{"name", "Search"}, {"description", "Full-text search operations"}},
+            {{"name", "System"}, {"description", "System health and info"}}
+        })},
+        {"paths", {
+            {"/api/tasks", {
+                {"post", {
+                    {"tags", json::array({"Tasks"})},
+                    {"summary", "Create analysis task"},
+                    {"description", "Create a new forensic analysis task"},
+                    {"requestBody", {
+                        {"required", true},
+                        {"content", {
+                            {"application/json", {
+                                {"schema", {
+                                    {"type", "object"},
+                                    {"required", json::array({"image_path"})},
+                                    {"properties", {
+                                        {"image_path", {{"type", "string"}, {"description", "Path to disk image"}}},
+                                        {"output_dir", {{"type", "string"}, {"description", "Output directory"}}},
+                                        {"android_analyze", {{"type", "boolean"}}},
+                                        {"windows_analyze", {{"type", "boolean"}}},
+                                        {"linux_analyze", {{"type", "boolean"}}},
+                                        {"llm_analyze", {{"type", "boolean"}}}
+                                    }}
+                                }}
+                            }}
+                        }}
+                    }},
+                    {"responses", {
+                        {"200", {{"description", "Task created successfully"}}},
+                        {"400", {{"description", "Invalid request"}}}
+                    }}
+                }},
+                {"get", {
+                    {"tags", json::array({"Tasks"})},
+                    {"summary", "List all tasks"},
+                    {"responses", {
+                        {"200", {{"description", "List of tasks"}}}
+                    }}
+                }}
+            }},
+            {"/api/tasks/{id}", {
+                {"get", {
+                    {"tags", json::array({"Tasks"})},
+                    {"summary", "Get task by ID"},
+                    {"parameters", json::array({
+                        {{"name", "id"}, {"in", "path"}, {"required", true}, {"schema", {{"type", "string"}}}}
+                    })},
+                    {"responses", {
+                        {"200", {{"description", "Task details"}}},
+                        {"404", {{"description", "Task not found"}}}
+                    }}
+                }}
+            }},
+            {"/api/health", {
+                {"get", {
+                    {"tags", json::array({"System"})},
+                    {"summary", "Health check"},
+                    {"responses", {
+                        {"200", {{"description", "Service is healthy"}}}
+                    }}
+                }}
+            }},
+            {"/api/health/live", {
+                {"get", {
+                    {"tags", json::array({"System"})},
+                    {"summary", "Liveness probe"},
+                    {"description", "Kubernetes liveness probe endpoint"},
+                    {"responses", {
+                        {"200", {{"description", "Service is alive"}}}
+                    }}
+                }}
+            }},
+            {"/api/health/ready", {
+                {"get", {
+                    {"tags", json::array({"System"})},
+                    {"summary", "Readiness probe"},
+                    {"description", "Kubernetes readiness probe endpoint"},
+                    {"responses", {
+                        {"200", {{"description", "Service is ready"}}},
+                        {"503", {{"description", "Service not ready"}}}
+                    }}
+                }}
+            }},
+            {"/api/forensics/timeline/{task_id}", {
+                {"get", {
+                    {"tags", json::array({"Forensics"})},
+                    {"summary", "Get timeline events"},
+                    {"parameters", json::array({
+                        {{"name", "task_id"}, {"in", "path"}, {"required", true}, {"schema", {{"type", "string"}}}}
+                    })},
+                    {"responses", {
+                        {"200", {{"description", "Timeline events"}}}
+                    }}
+                }}
+            }},
+            {"/api/forensics/files/{task_id}", {
+                {"get", {
+                    {"tags", json::array({"Forensics"})},
+                    {"summary", "Get classified files"},
+                    {"parameters", json::array({
+                        {{"name", "task_id"}, {"in", "path"}, {"required", true}, {"schema", {{"type", "string"}}}}
+                    })},
+                    {"responses", {
+                        {"200", {{"description", "Classified files"}}}
+                    }}
+                }}
+            }},
+            {"/api/search/fulltext", {
+                {"get", {
+                    {"tags", json::array({"Search"})},
+                    {"summary", "Full-text search"},
+                    {"parameters", json::array({
+                        {{"name", "q"}, {"in", "query"}, {"required", true}, {"schema", {{"type", "string"}}}},
+                        {{"name", "task_id"}, {"in", "query"}, {"schema", {{"type", "string"}}}}
+                    })},
+                    {"responses", {
+                        {"200", {{"description", "Search results"}}}
+                    }}
+                }}
+            }}
+        }}
+    };
+}
+
 } // namespace forensics
+

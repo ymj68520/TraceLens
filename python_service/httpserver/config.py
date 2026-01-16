@@ -1,0 +1,112 @@
+"""
+Configuration management for the HTTP server.
+
+Loads settings from environment variables and .env file.
+Uses pydantic-settings for validation and type safety.
+"""
+
+import os
+from functools import lru_cache
+from pathlib import Path
+from typing import Optional
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def find_env_file() -> Optional[Path]:
+    """Find .env file by searching from current directory up to project root."""
+    current = Path.cwd()
+    while current != current.parent:
+        env_path = current / ".env"
+        if env_path.exists():
+            return env_path
+        current = current.parent
+    return None
+
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+    
+    model_config = SettingsConfigDict(
+        env_file=find_env_file(),
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+    
+    # Server Settings
+    python_http_port: int = Field(default=8090, alias="PYTHON_HTTP_PORT")
+    python_http_host: str = Field(default="0.0.0.0", alias="PYTHON_HTTP_HOST")
+    
+    # C++ Backend Settings
+    cpp_backend_url: str = Field(default="http://localhost:8080", alias="CPP_BACKEND_URL")
+    http_server_port: int = Field(default=8080, alias="HTTP_SERVER_PORT")
+    http_server_host: str = Field(default="0.0.0.0", alias="HTTP_SERVER_HOST")
+    
+    # LLM Settings
+    llm_base_url: str = Field(default="http://localhost:1234", alias="LLM_BASE_URL")
+    llm_endpoint: str = Field(default="/v1/chat/completions", alias="LLM_ENDPOINT")
+    llm_api_key: str = Field(default="", alias="LLM_API_KEY")
+    
+    llm_text_base_url: str = Field(default="http://localhost:1234", alias="LLM_TEXT_BASE_URL")
+    llm_text_model: str = Field(default="openai/gpt-oss-20b", alias="LLM_TEXT_MODEL")
+    llm_text_max_tokens: int = Field(default=4096, alias="LLM_TEXT_MAX_TOKENS")
+    llm_text_temperature: float = Field(default=0.7, alias="LLM_TEXT_TEMPERATURE")
+    
+    llm_vision_base_url: str = Field(default="http://localhost:1234", alias="LLM_VISION_BASE_URL")
+    llm_vision_model: str = Field(default="qwen/qwen3-vl-4b", alias="LLM_VISION_MODEL")
+    llm_vision_max_tokens: int = Field(default=4096, alias="LLM_VISION_MAX_TOKENS")
+    llm_vision_temperature: float = Field(default=0.5, alias="LLM_VISION_TEMPERATURE")
+    
+    llm_timeout_seconds: int = Field(default=120, alias="LLM_TIMEOUT_SECONDS")
+    llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
+    llm_context_length: int = Field(default=4096, alias="LLM_CONTEXT_LENGTH")
+    
+    # Neo4j / Graphiti Settings
+    neo4j_uri: str = Field(default="neo4j://127.0.0.1:7687", alias="NEO4J_URI")
+    neo4j_user: str = Field(default="neo4j", alias="NEO4J_USER")
+    neo4j_password: str = Field(default="", alias="NEO4J_PASSWORD")
+    
+    graphiti_use_local_llm: bool = Field(default=True, alias="GRAPHITI_USE_LOCAL_LLM")
+    graphiti_batch_size: int = Field(default=50, alias="GRAPHITI_BATCH_SIZE")
+    graphiti_max_retries: int = Field(default=3, alias="GRAPHITI_MAX_RETRIES")
+    graphiti_group_id: str = Field(default="forensics_files", alias="GRAPHITI_GROUP_ID")
+    
+    # Database Settings
+    db_output_dir: str = Field(default="./output", alias="DB_OUTPUT_DIR")
+    db_name: str = Field(default="forensics.db", alias="DB_NAME")
+    
+    # File Analysis Settings
+    file_analysis_max_content: int = Field(default=10000, alias="FILE_ANALYSIS_MAX_CONTENT")
+    file_analysis_max_keywords: int = Field(default=10, alias="FILE_ANALYSIS_MAX_KEYWORDS")
+    file_analysis_max_content_limit: int = Field(default=50000, alias="FILE_ANALYSIS_MAX_CONTENT_LIMIT")
+    
+    # Logging Settings
+    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    log_file: str = Field(default="forensics.log", alias="LOG_FILE")
+    debug_output_mode: str = Field(default="stdout", alias="DEBUG_OUTPUT_MODE")
+    
+    # Performance Settings
+    thread_pool_size: int = Field(default=4, alias="THREAD_POOL_SIZE")
+    max_batch_size: int = Field(default=100, alias="MAX_BATCH_SIZE")
+    
+    @property
+    def cpp_backend_base_url(self) -> str:
+        """Get the full C++ backend URL."""
+        return f"http://{self.http_server_host}:{self.http_server_port}"
+    
+    @property
+    def llm_full_endpoint(self) -> str:
+        """Get the full LLM endpoint URL."""
+        return f"{self.llm_base_url}{self.llm_endpoint}"
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    """Get cached settings instance."""
+    return Settings()
+
+
+# Module-level settings access
+settings = get_settings()
