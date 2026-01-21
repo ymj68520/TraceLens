@@ -1,35 +1,220 @@
-# ImageAnalyzer
+# ImageAnalyzer - 磁盘镜像分析引擎
 
-## Overview
-The ImageAnalyzer module handles the low-level processing of forensic disk images. It opens images, detects partitions and file systems, traverses directories, and extracts file metadata into the raw database.
+## 1. 模块概述 (Overview)
 
-## Features
-- **Image Support**: Reads raw (DD) and EnCase (E01) images.
-- **Filesystem Support**: Analyzes NTFS, FAT, EXT2/3/4, and XFS.
-- **XFS Fallback**: Provides alternative parsing strategies for XFS when TSK fails:
-  - **Native**: Uses system mount (Linux only, requires root).
-  - **Pure**: Custom XFS structure parsing.
-- **Metadata Extraction**: Captures MAC times, permissions, file type, and size.
+**ImageAnalyzer** 是本系统的核心分析引擎,负责从各种格式的磁盘镜像中深度提取文件系统元数据和文件结构信息。它是整个数字取证分析流程的入口点,为客户解决"如何从海量磁盘中快速定位和提取关键证据"的痛点。
 
-## Components
-- **Core**:
-  - `ImageAnalyzer`: Main interface for image and filesystem operations.
-- **Helpers**:
-  - `XFSHelper`: Implements custom XFS parsing logic.
-  - `NativeFilesystemWalker`: interacting with mounted filesystems.
+该模块支持业界主流的磁盘镜像格式(包括 EnCase E01、DD 原始镜像、以及各类物理磁盘直采格式),并能够识别和分析 NTFS、FAT、EXT2/3/4、XFS 等多种文件系统。无论是在电子数据取证、事故响应还是内部调查场景中,ImageAnalyzer 都能为您提供准确、完整的文件清单和元数据记录。
 
-## Usage
-Usually called by the main application loop:
+**核心业务价值:**
+- **高兼容性**:单一引擎支持 10+ 种磁盘格式和文件系统,降低工具切换成本
+- **智能元数据提取**:自动提取文件的创建时间、修改时间、访问时间、权限等关键取证信息
+- **删除文件识别**:能够识别并标记已被删除但尚未被覆盖的文件,为数据恢复提供线索
+- **高速处理**:采用优化的文件系统遍历算法,大幅缩短大规模磁盘分析时间
 
-```cpp
-ImageAnalyzer imgAnalyzer(imagePath);
-if (imgAnalyzer.openImage()) {
-    // Extract metadata to raw database
-    imgAnalyzer.extractToDatabase(dbPath);
-}
+---
+
+## 2. 核心功能列表 (Key Features)
+
+- **多格式镜像支持**
+  - 支持 EnCase E01 格式(含压缩和分卷)
+  - 支持 DD/RAW 原始镜像格式
+  - 支持物理设备直读(需适当权限)
+
+- **跨平台文件系统识别**
+  - Windows 文件系统:NTFS、FAT12/FAT16/FAT32/exFAT
+  - Linux 文件系统:EXT2/EXT3/EXT4、XFS
+  - 自动检测分区布局和文件系统类型
+
+- **元数据完整性提取**
+  - 文件路径与名称(含完整目录结构)
+  - 文件大小、类型、扩展名
+  - 时间戳:创建时间、修改时间、访问时间、元数据变更时间
+  - 文件权限与所有者信息(Linux/Unix 系统)
+  - inode 节点编号(用于唯一标识文件)
+
+- **删除文件识别**
+  - 自动标记已删除但可恢复的文件
+  - 区分正常删除与彻底清除
+  - 提供删除时间估算(基于文件系统元数据)
+
+- **分区布局分析**
+  - 自动识别磁盘分区表(MBR/GPT)
+  - 记录每个分区的起始位置、大小、类型
+  - 支持多层嵌套分区识别
+
+- **XFS 文件系统增强支持**
+  - 自动模式:根据运行平台智能选择最佳解析方式
+  - 原生模式(Linux):通过内核驱动挂载,提供完整功能支持
+  - 纯解析模式(跨平台):自定义解析器,无需系统依赖
+
+---
+
+## 3. 业务流程/使用场景 (Use Cases)
+
+### 场景一:企业内部数据泄露调查
+
+**背景**:某公司怀疑前员工在离职前通过 U 盘拷贝了大量机密文件,需要对其办公电脑进行取证分析。
+
+**业务流程**:
+1. 调查人员使用专业工具对嫌疑电脑的硬盘制作 E01 格式镜像
+2. 将镜像文件输入 ImageAnalyzer 进行分析
+3. 系统自动扫描整个文件系统,提取所有文件的元数据
+4. 分析人员通过时间线筛选嫌疑离职前一周内的文件变动
+5. 重点检查 USB 存储设备连接记录和大文件拷贝痕迹
+6. 结合删除文件识别功能,发现嫌疑人曾删除多个大型压缩文件
+7. 将筛选出的可疑文件路径移交后续恢复和分析模块
+
+**价值体现**:通过完整的时间线记录和删除文件识别,为调查提供关键证据线索。
+
+### 场景二:服务器入侵事件响应
+
+**背景**:某 Linux 服务器遭受黑客入侵,安全团队需要快速了解被篡改和新增的文件范围。
+
+**业务流程**:
+1. 应急响应团队对受损服务器制作磁盘镜像
+2. ImageAnalyzer 自动识别 EXT4 文件系统并提取元数据
+3. 通过分析时间戳,按"修改时间"排序定位入侵时间窗口内变动的文件
+4. 利用 inode 信息识别文件内容是否被替换(相同 inode 表示覆盖,不同 inode 表示新建)
+5. 导出可疑文件清单供恶意代码分析团队使用
+
+**价值体现**:快速缩小排查范围,帮助安全团队在黄金时间内完成初步评估。
+
+---
+
+## 4. 部署与配置要求 (Deployment & Configuration)
+
+### 环境依赖
+
+**操作系统支持:**
+- Linux:Ubuntu 20.04+、CentOS 7+、Debian 10+
+- Windows:Windows 10/11、Windows Server 2016+
+- macOS:macOS 11+(部分功能受限)
+
+**必需的外部库:**
+- The Sleuth Kit (TSK) 4.14.0 或更高版本
+  - Linux:通过包管理器安装或编译源码
+  - Windows:使用项目提供的预编译版本
+- libewf(E01 格式支持)
+- SQLite 3.x(用于存储分析结果)
+
+**可选依赖(用于 XFS 原生模式):**
+- Linux 内核 XFS 驱动
+- sudo 权限(用于 loop 设备挂载)
+
+### 关键配置项
+
+在系统配置文件或命令行参数中可设置以下选项:
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `--xfs-mode` | XFS 文件系统解析模式 | `auto` |
+| `--db-dir` | 分析结果数据库输出目录 | 当前目录 |
+| `--threads` | 并行分析线程数 | CPU 核心数 |
+
+**XFS 解析模式选择建议:**
+- `auto`:不确定时选择此选项,系统会自动判断
+- `native`:Linux 环境且有 sudo 权限,功能最完整
+- `pure`:跨平台需求或无 sudo 权限,功能受限但兼容性好
+
+---
+
+## 5. 接口与集成说明 (API & Integration)
+
+ImageAnalyzer 作为底层分析引擎,主要通过以下方式与系统集成:
+
+### 命令行接口(CLI)
+
+```bash
+# 基本分析命令
+forensic_analyzer disk_image.E01
+
+# 指定输出目录
+forensic_analyzer disk_image.dd --db-dir /path/to/output
+
+# 指定 XFS 解析模式
+sudo forensic_analyzer server.img --xfs-mode native
 ```
 
-## Dependencies
-- **The Sleuth Kit (TSK)**: For image and filesystem parsing.
-- **libewf**: For E01 image support.
-- **DatabaseManager**: For inserting file records.
+### 数据库输出
+
+分析完成后,系统会生成三个 SQLite 数据库文件:
+- `镜像名_raw.db`:原始文件元数据(含文件表、分区表)
+- `镜像名_events.db`:时间线事件(由后续模块生成)
+- `镜像名_files.db`:分类文件清单(由后续模块生成)
+
+### C++ 编程接口
+
+```cpp
+#include "ImageAnalyzerCore.h"
+
+// 创建分析器实例
+ImageAnalyzer analyzer;
+
+// 配置分析选项
+ImageAnalyzer::Config config;
+config.xfsMode = XFSMode::AUTO;
+config.outputDir = "/path/to/output";
+
+// 执行分析
+analyzer.analyze("disk_image.E01", config);
+
+// 访问分析结果
+auto files = analyzer.getExtractedFiles();
+auto partitions = analyzer.getPartitionInfo();
+```
+
+---
+
+## 6. 常见问题 (FAQ)
+
+**Q1:为什么分析某些大型镜像时速度很慢?**
+
+A:分析速度受以下因素影响:
+- 磁盘 I/O 性能(建议使用 SSD 存储镜像文件)
+- 文件数量和目录结构复杂度
+- 是否启用了删除文件深度扫描
+
+**优化建议**:
+- 将镜像文件放在高速存储设备上
+- 对于初步调查,可考虑只分析特定分区
+- 增加分析线程数(`--threads` 参数)
+
+---
+
+**Q2:分析报告中显示的文件时间与操作系统显示的不一致?**
+
+A:时间戳差异可能由以下原因造成:
+- **时区转换**:系统默认使用本地时区显示,而元数据存储的是 UTC 时间
+- **文件系统差异**:FAT 文件系统时间精度为 2 秒,NTFS 为 100 纳秒
+- **系统时间被篡改**:嫌疑主机可能故意修改系统时间
+
+**处理建议**:
+- 所有时间戳均以 UTC 为准,避免时区混淆
+- 对比多个文件的时间逻辑关系,识别异常时间点
+
+---
+
+**Q3:XFS 文件系统分析时报错"无法挂载文件系统"?**
+
+A:这是因为选择了 `native` 模式但缺少必要权限或依赖。
+
+**解决方法**:
+- 确保有 sudo 权限:`sudo forensic_analyzer ...`
+- 检查内核是否加载 XFS 模块:`lsmod | grep xfs`
+- 切换到 `pure` 模式:`--xfs-mode pure`
+
+**注意**:`pure` 模式功能有限,如需完整功能建议在 Linux 环境下使用 `native` 模式。
+
+---
+
+**Q4:能否分析加密的磁盘镜像?**
+
+A:ImageAnalyzer 本身不支持加密镜像解密。对于 BitLocker、LUKS 等加密磁盘,需要先使用其他工具解密后再进行分析。
+
+**建议流程**:
+1. 使用专用解密工具(如 BitLocker 恢复工具)解密镜像
+2. 将解密后的镜像保存为 DD/RAW 格式
+3. 使用 ImageAnalyzer 分析解密后的镜像
+
+---
