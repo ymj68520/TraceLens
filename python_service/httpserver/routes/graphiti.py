@@ -1,10 +1,10 @@
 """
 Graphiti knowledge graph integration routes.
 
-Provides endpoints for:
-- Ingesting forensic data into the knowledge graph
-- Searching entities and relationships
-- Managing graph operations
+Provides endpoints for task-specific knowledge graphs:
+- Ingesting forensic data into task-specific graph
+- Searching entities and relationships within task scope
+- Managing graph operations per task
 """
 
 import logging
@@ -24,7 +24,7 @@ router = APIRouter()
 
 class IngestRequest(BaseModel):
     """Request model for data ingestion."""
-    task_id: str = Field(..., description="Task ID to ingest data from")
+    task_id: str = Field(..., description="Task ID to ingest data from (also used as graph namespace)")
     include_llm_descriptions: bool = Field(default=True, description="Include LLM-generated descriptions")
     batch_size: int = Field(default=50, ge=1, le=500, description="Batch size for processing")
 
@@ -43,6 +43,7 @@ class IngestResponse(BaseModel):
 class SearchRequest(BaseModel):
     """Request model for graph search."""
     query: str = Field(..., min_length=1, description="Search query")
+    task_id: str = Field(..., description="Task ID to search within")
     entity_types: Optional[List[str]] = Field(default=None, description="Filter by entity types")
     limit: int = Field(default=100, ge=1, le=1000, description="Maximum results")
     include_relationships: bool = Field(default=True, description="Include related entities")
@@ -62,6 +63,7 @@ class SearchResponse(BaseModel):
     """Response model for search operation."""
     success: bool
     query: str
+    task_id: str
     results: List[SearchResult]
     total_count: int
     timestamp: str
@@ -70,6 +72,7 @@ class SearchResponse(BaseModel):
 class EntityListResponse(BaseModel):
     """Response model for entity listing."""
     success: bool
+    task_id: str
     entities: List[Dict[str, Any]]
     total_count: int
     page: int
@@ -80,6 +83,7 @@ class EntityListResponse(BaseModel):
 class RelationshipListResponse(BaseModel):
     """Response model for relationship listing."""
     success: bool
+    task_id: str
     relationships: List[Dict[str, Any]]
     total_count: int
     page: int
@@ -93,7 +97,15 @@ class GraphitiStatusResponse(BaseModel):
     neo4j_connected: bool
     total_entities: int
     total_relationships: int
-    group_id: str
+    task_id: Optional[str] = None
+    timestamp: str
+
+
+class TaskGraphsResponse(BaseModel):
+    """Response model for listing task graphs."""
+    success: bool
+    task_ids: List[str]
+    count: int
     timestamp: str
 
 
@@ -106,10 +118,9 @@ async def ingest_data(
     settings: Settings = Depends(get_settings),
 ):
     """
-    Ingest forensic data from a task into the knowledge graph.
+    Ingest forensic data from a task into the task-specific knowledge graph.
     
-    This operation runs in the background and returns immediately
-    with a job ID that can be used to track progress.
+    Each task gets its own isolated graph namespace using task_id as group_id.
     """
     try:
         from ..services import get_service_manager
@@ -131,7 +142,7 @@ async def ingest_data(
             success=True,
             task_id=request.task_id,
             job_id=job_id,
-            message="Ingestion started in background",
+            message=f"Ingestion started for task {request.task_id}",
             timestamp=datetime.now().isoformat(),
         )
     except HTTPException:
@@ -147,9 +158,9 @@ async def search_graph(
     settings: Settings = Depends(get_settings),
 ):
     """
-    Search the knowledge graph for entities and relationships.
+    Search the knowledge graph for a specific task.
     
-    Supports natural language queries and filtering by entity types.
+    Only returns results from the task-specific graph namespace.
     """
     try:
         from ..services import get_service_manager
@@ -157,6 +168,7 @@ async def search_graph(
         
         results = await service_manager.graphiti_service.search(
             query=request.query,
+            task_id=request.task_id,
             entity_types=request.entity_types,
             limit=request.limit,
             include_relationships=request.include_relationships,
@@ -165,6 +177,7 @@ async def search_graph(
         return SearchResponse(
             success=True,
             query=request.query,
+            task_id=request.task_id,
             results=[
                 SearchResult(
                     entity_id=r.get("id", ""),
@@ -186,21 +199,21 @@ async def search_graph(
 
 @router.get("/entities", response_model=EntityListResponse)
 async def list_entities(
+    task_id: str = Query(..., description="Task ID to list entities from"),
     entity_type: Optional[str] = Query(None, description="Filter by entity type"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=500, description="Page size"),
     settings: Settings = Depends(get_settings),
 ):
     """
-    List entities in the knowledge graph.
-    
-    Supports pagination and filtering by entity type.
+    List entities in the knowledge graph for a specific task.
     """
     try:
         from ..services import get_service_manager
         service_manager = get_service_manager()
         
         entities, total_count = await service_manager.graphiti_service.list_entities(
+            task_id=task_id,
             entity_type=entity_type,
             page=page,
             page_size=page_size,
@@ -208,6 +221,7 @@ async def list_entities(
         
         return EntityListResponse(
             success=True,
+            task_id=task_id,
             entities=entities,
             total_count=total_count,
             page=page,
@@ -221,6 +235,7 @@ async def list_entities(
 
 @router.get("/relationships", response_model=RelationshipListResponse)
 async def list_relationships(
+    task_id: str = Query(..., description="Task ID to list relationships from"),
     relationship_type: Optional[str] = Query(None, description="Filter by relationship type"),
     source_id: Optional[str] = Query(None, description="Filter by source entity ID"),
     target_id: Optional[str] = Query(None, description="Filter by target entity ID"),
@@ -229,15 +244,14 @@ async def list_relationships(
     settings: Settings = Depends(get_settings),
 ):
     """
-    List relationships in the knowledge graph.
-    
-    Supports pagination and filtering by relationship type, source, or target.
+    List relationships in the knowledge graph for a specific task.
     """
     try:
         from ..services import get_service_manager
         service_manager = get_service_manager()
         
         relationships, total_count = await service_manager.graphiti_service.list_relationships(
+            task_id=task_id,
             relationship_type=relationship_type,
             source_id=source_id,
             target_id=target_id,
@@ -247,6 +261,7 @@ async def list_relationships(
         
         return RelationshipListResponse(
             success=True,
+            task_id=task_id,
             relationships=relationships,
             total_count=total_count,
             page=page,
@@ -259,24 +274,27 @@ async def list_relationships(
 
 
 @router.get("/status", response_model=GraphitiStatusResponse)
-async def get_status(settings: Settings = Depends(get_settings)):
+async def get_status(
+    task_id: Optional[str] = Query(None, description="Task ID for task-specific status"),
+    settings: Settings = Depends(get_settings),
+):
     """
     Get the status of the Graphiti knowledge graph service.
     
-    Returns connection status, entity/relationship counts, and configuration.
+    If task_id is provided, returns status for that specific task graph.
     """
     try:
         from ..services import get_service_manager
         service_manager = get_service_manager()
         
-        status = await service_manager.graphiti_service.get_status()
+        status = await service_manager.graphiti_service.get_status(task_id=task_id)
         
         return GraphitiStatusResponse(
             status=status.get("status", "unknown"),
             neo4j_connected=status.get("neo4j_connected", False),
             total_entities=status.get("total_entities", 0),
             total_relationships=status.get("total_relationships", 0),
-            group_id=settings.graphiti_group_id,
+            task_id=task_id,
             timestamp=datetime.now().isoformat(),
         )
     except Exception as e:
@@ -286,6 +304,53 @@ async def get_status(settings: Settings = Depends(get_settings)):
             neo4j_connected=False,
             total_entities=0,
             total_relationships=0,
-            group_id=settings.graphiti_group_id,
+            task_id=task_id,
             timestamp=datetime.now().isoformat(),
         )
+
+
+@router.get("/tasks", response_model=TaskGraphsResponse)
+async def list_task_graphs(settings: Settings = Depends(get_settings)):
+    """
+    List all task IDs that have knowledge graph data.
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+        
+        task_ids = await service_manager.graphiti_service.list_task_graphs()
+        
+        return TaskGraphsResponse(
+            success=True,
+            task_ids=task_ids,
+            count=len(task_ids),
+            timestamp=datetime.now().isoformat(),
+        )
+    except Exception as e:
+        logger.error(f"List task graphs failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/tasks/{task_id}")
+async def delete_task_graph(
+    task_id: str,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Delete a task-specific knowledge graph.
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+        
+        deleted = await service_manager.graphiti_service.delete_task_graph(task_id)
+        
+        return {
+            "success": deleted,
+            "task_id": task_id,
+            "message": f"Graph {'deleted' if deleted else 'not found'}",
+            "timestamp": datetime.now().isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Delete task graph failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
