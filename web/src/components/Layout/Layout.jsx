@@ -20,6 +20,7 @@ const Layout = ({ children }) => {
     { name: t('nav.timeline'), href: '/timeline', icon: '📈' },
     { name: t('nav.files'), href: '/files', icon: '📁' },
     { name: t('nav.ai_descriptions'), href: '/llm-descriptions', icon: '🧠' },
+    { name: t('nav.knowledge_graph'), href: '/knowledge-graph', icon: '🕸️' },
     { name: t('nav.android'), href: '/android', icon: '🤖' },
     { name: t('nav.search'), href: '/search', icon: '🔍' },
     { name: t('nav.statistics'), href: '/statistics', icon: '📊' },
@@ -31,7 +32,7 @@ const Layout = ({ children }) => {
   // Helper to construct link URL with preserved task_id
   const getLinkUrl = (href) => {
     // List of pages that should preserve the task context
-    const taskContextPages = ['/timeline', '/files', '/llm-descriptions', '/android', '/search', '/statistics'];
+    const taskContextPages = ['/timeline', '/files', '/llm-descriptions', '/knowledge-graph', '/android', '/search', '/statistics'];
 
     if (currentTaskId && taskContextPages.includes(href)) {
       return `${href}?task_id=${currentTaskId}`;

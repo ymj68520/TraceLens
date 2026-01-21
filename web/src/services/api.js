@@ -1,14 +1,27 @@
 import axios from 'axios';
 
 // Use relative path in production, or configured URL in development
+// C++ 后端 (端口 8080)
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+// Python 服务 (端口 8090)
+const PYTHON_API_BASE_URL = import.meta.env.VITE_PYTHON_API_URL || 'http://localhost:8090';
 
+// C++ 后端 API 客户端
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
   timeout: 30000, // 30 seconds
+});
+
+// Python 服务 API 客户端
+const pythonApi = axios.create({
+  baseURL: PYTHON_API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 60000, // 60 seconds (LLM 请求可能较慢)
 });
 
 // Request interceptor
@@ -57,4 +70,41 @@ api.interceptors.response.use(
   }
 );
 
+// Python API 请求拦截器
+pythonApi.interceptors.request.use(
+  (config) => {
+    console.log('Python API Request:', config.method?.toUpperCase(), config.url, config.data);
+    return config;
+  },
+  (error) => {
+    console.error('Python API Request error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Python API 响应拦截器
+pythonApi.interceptors.response.use(
+  (response) => {
+    console.log('Python API Response:', response.config.url, response.status, response.data);
+    return response.data;
+  },
+  (error) => {
+    console.error('Python API Response error:', error.config?.url, error.message);
+    console.error('Error details:', error.response?.data || error.response?.statusText);
+
+    // Create a more detailed error object
+    const enhancedError = {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      config: error.config,
+    };
+
+    return Promise.reject(enhancedError);
+  }
+);
+
+export { pythonApi };
 export default api;
+

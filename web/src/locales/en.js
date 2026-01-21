@@ -5,6 +5,7 @@ export default {
     'nav.timeline': 'Timeline',
     'nav.files': 'Files',
     'nav.ai_descriptions': 'AI Descriptions',
+    'nav.knowledge_graph': 'Knowledge Graph',
     'nav.android': 'Android',
     'nav.search': 'Search',
     'nav.statistics': 'Statistics',

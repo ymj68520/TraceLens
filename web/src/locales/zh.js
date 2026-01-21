@@ -5,6 +5,7 @@ export default {
     'nav.timeline': '时间线',
     'nav.files': '文件管理',
     'nav.ai_descriptions': 'AI 描述',
+    'nav.knowledge_graph': '知识图谱',
     'nav.android': '安卓取证',
     'nav.search': '搜索',
     'nav.statistics': '统计',

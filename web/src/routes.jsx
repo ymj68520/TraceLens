@@ -9,6 +9,8 @@ import Search from './pages/Search';
 import Statistics from './pages/Statistics';
 import Settings from './pages/Settings';
 import LLMDescriptions from './pages/LLMDescriptions';
+import KnowledgeGraph from './pages/KnowledgeGraph';
+
 const router = createBrowserRouter([
   {
     path: '/',
@@ -54,7 +56,12 @@ const router = createBrowserRouter([
         path: 'llm-descriptions',
         element: <LLMDescriptions />,
       },
+      {
+        path: 'knowledge-graph',
+        element: <KnowledgeGraph />,
+      },
     ],
   },
 ]);
 export default router;
+
