@@ -1,4 +1,5 @@
 #include "SearchRoutes.h"
+#include "../../Swagger/Swagger.h"
 #include "FullTextSearch.h"
 #include "TextExtractor.h"
 #include <filesystem>
@@ -11,10 +12,31 @@ SearchRoutes::SearchRoutes(crow::App<>& app) {
     CROW_ROUTE(app, "/api/search/fulltext").methods("GET"_method)([this](const crow::request& req) {
         return handle_fulltext_search(req);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/search/fulltext", "GET",
+        "Full-text search",
+        "Search for text content across analyzed files.",
+        {"Search"},
+        {
+            {"q", "query", "Search query term", true},
+            {"index", "query", "Index path", false},
+            {"limit", "query", "Results limit", false, "integer"},
+            {"offset", "query", "Pagination offset", false, "integer"}
+        },
+        {{200, "Search results"}, {400, "Missing query or parameters"}, {500, "Internal server error"}}
+    );
 
     CROW_ROUTE(app, "/api/search/index").methods("POST"_method)([this](const crow::request& req) {
         return handle_fulltext_index(req);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/search/index", "POST",
+        "Create search index",
+        "Create or update a full-text search index for a given directory.",
+        {"Search"},
+        {},
+        {{200, "Indexing result"}, {400, "Invalid parameters"}, {500, "Internal server error"}}
+    );
 }
 
 crow::response SearchRoutes::handle_fulltext_search(const crow::request& req) {

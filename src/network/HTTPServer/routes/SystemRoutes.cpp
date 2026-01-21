@@ -1,4 +1,5 @@
 #include "SystemRoutes.h"
+#include "../../Swagger/Swagger.h"
 #include <chrono>
 #include <fstream>
 #include <filesystem>
@@ -53,6 +54,10 @@ SystemRoutes::SystemRoutes(crow::App<>& app) : task_manager_(TaskManager::instan
 
     CROW_ROUTE(app, "/api/docs/openapi.json").methods("GET"_method)([this](const crow::request& req) {
         return handle_docs_openapi(req);
+    });
+
+    CROW_ROUTE(app, "/api/docs").methods("GET"_method)([this](const crow::request& req) {
+        return handle_docs_ui(req);
     });
 
     // Export
@@ -494,144 +499,46 @@ crow::response SystemRoutes::handle_docs_openapi(const crow::request& req) {
     return res;
 }
 
-nlohmann::json SystemRoutes::generate_openapi_spec() {
-    return json{
-        {"openapi", "3.0.3"},
-        {"info", {
-            {"title", "ForensicsProject C++ API"},
-            {"description", "Digital forensics analysis platform REST API"},
-            {"version", "1.0.0"},
-            {"contact", {{"name", "ForensicsProject Team"}}}
-        }},
-        {"servers", json::array({
-            {{"url", "http://localhost:8080"}, {"description", "Default local server"}}
-        })},
-        {"tags", json::array({
-            {{"name", "Tasks"}, {"description", "Task management operations"}},
-            {{"name", "Forensics"}, {"description", "Forensic analysis endpoints"}},
-            {{"name", "Search"}, {"description", "Full-text search operations"}},
-            {{"name", "System"}, {"description", "System health and info"}}
-        })},
-        {"paths", {
-            {"/api/tasks", {
-                {"post", {
-                    {"tags", json::array({"Tasks"})},
-                    {"summary", "Create analysis task"},
-                    {"description", "Create a new forensic analysis task"},
-                    {"requestBody", {
-                        {"required", true},
-                        {"content", {
-                            {"application/json", {
-                                {"schema", {
-                                    {"type", "object"},
-                                    {"required", json::array({"image_path"})},
-                                    {"properties", {
-                                        {"image_path", {{"type", "string"}, {"description", "Path to disk image"}}},
-                                        {"output_dir", {{"type", "string"}, {"description", "Output directory"}}},
-                                        {"android_analyze", {{"type", "boolean"}}},
-                                        {"windows_analyze", {{"type", "boolean"}}},
-                                        {"linux_analyze", {{"type", "boolean"}}},
-                                        {"llm_analyze", {{"type", "boolean"}}}
-                                    }}
-                                }}
-                            }}
-                        }}
-                    }},
-                    {"responses", {
-                        {"200", {{"description", "Task created successfully"}}},
-                        {"400", {{"description", "Invalid request"}}}
-                    }}
-                }},
-                {"get", {
-                    {"tags", json::array({"Tasks"})},
-                    {"summary", "List all tasks"},
-                    {"responses", {
-                        {"200", {{"description", "List of tasks"}}}
-                    }}
-                }}
-            }},
-            {"/api/tasks/{id}", {
-                {"get", {
-                    {"tags", json::array({"Tasks"})},
-                    {"summary", "Get task by ID"},
-                    {"parameters", json::array({
-                        {{"name", "id"}, {"in", "path"}, {"required", true}, {"schema", {{"type", "string"}}}}
-                    })},
-                    {"responses", {
-                        {"200", {{"description", "Task details"}}},
-                        {"404", {{"description", "Task not found"}}}
-                    }}
-                }}
-            }},
-            {"/api/health", {
-                {"get", {
-                    {"tags", json::array({"System"})},
-                    {"summary", "Health check"},
-                    {"responses", {
-                        {"200", {{"description", "Service is healthy"}}}
-                    }}
-                }}
-            }},
-            {"/api/health/live", {
-                {"get", {
-                    {"tags", json::array({"System"})},
-                    {"summary", "Liveness probe"},
-                    {"description", "Kubernetes liveness probe endpoint"},
-                    {"responses", {
-                        {"200", {{"description", "Service is alive"}}}
-                    }}
-                }}
-            }},
-            {"/api/health/ready", {
-                {"get", {
-                    {"tags", json::array({"System"})},
-                    {"summary", "Readiness probe"},
-                    {"description", "Kubernetes readiness probe endpoint"},
-                    {"responses", {
-                        {"200", {{"description", "Service is ready"}}},
-                        {"503", {{"description", "Service not ready"}}}
-                    }}
-                }}
-            }},
-            {"/api/forensics/timeline/{task_id}", {
-                {"get", {
-                    {"tags", json::array({"Forensics"})},
-                    {"summary", "Get timeline events"},
-                    {"parameters", json::array({
-                        {{"name", "task_id"}, {"in", "path"}, {"required", true}, {"schema", {{"type", "string"}}}}
-                    })},
-                    {"responses", {
-                        {"200", {{"description", "Timeline events"}}}
-                    }}
-                }}
-            }},
-            {"/api/forensics/files/{task_id}", {
-                {"get", {
-                    {"tags", json::array({"Forensics"})},
-                    {"summary", "Get classified files"},
-                    {"parameters", json::array({
-                        {{"name", "task_id"}, {"in", "path"}, {"required", true}, {"schema", {{"type", "string"}}}}
-                    })},
-                    {"responses", {
-                        {"200", {{"description", "Classified files"}}}
-                    }}
-                }}
-            }},
-            {"/api/search/fulltext", {
-                {"get", {
-                    {"tags", json::array({"Search"})},
-                    {"summary", "Full-text search"},
-                    {"parameters", json::array({
-                        {{"name", "q"}, {"in", "query"}, {"required", true}, {"schema", {{"type", "string"}}}},
-                        {{"name", "task_id"}, {"in", "query"}, {"schema", {{"type", "string"}}}}
-                    })},
-                    {"responses", {
-                        {"200", {{"description", "Search results"}}}
-                    }}
-                }}
-            }}
-        }}
+crow::response SystemRoutes::handle_docs_ui(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    
+    std::string html = R"(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Forensics API Documentation</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css" />
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js" crossorigin></script>
+<script>
+    window.onload = () => {
+        window.ui = SwaggerUIBundle({
+            url: '/api/docs/openapi.json',
+            dom_id: '#swagger-ui',
+            presets: [
+                SwaggerUIBundle.presets.apis,
+                SwaggerUIBundle.SwaggerUIStandalonePreset
+            ],
+            layout: "BaseLayout",
+        });
     };
+</script>
+</body>
+</html>
+    )";
+    
+    res.set_header("Content-Type", "text/html");
+    res.write(html);
+    return res;
+}
+
+nlohmann::json SystemRoutes::generate_openapi_spec() {
+    return Swagger::instance().GetSwaggerJSON();
 }
 
 } // namespace forensics

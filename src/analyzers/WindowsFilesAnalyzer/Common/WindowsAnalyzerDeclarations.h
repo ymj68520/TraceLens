@@ -17,27 +17,48 @@ class DatabaseManager;
 class FileExtractor;
 struct FileRecord;
 
+/**
+ * @brief Analyzes Windows file system and artifacts
+ * Handles parsing of Registry, Event Logs, Prefetch, LNK, and other Windows artifacts.
+ */
 class WindowsFilesAnalyzer {
 public:
     WindowsFilesAnalyzer();
+    /**
+     * @brief Construct a new Windows Files Analyzer
+     * @param imagePath Path to disk image
+     * @param dbManager Database manager
+     */
     WindowsFilesAnalyzer(const std::string& imagePath, DatabaseManager* dbManager);
     ~WindowsFilesAnalyzer();
 
+    // Initialization
     // Initialization
     bool initialize();
     void setOutputDatabasePath(const std::string& path) { outputDbPath_ = path; }
     void setExtractDirectory(const std::string& path) { extractDir_ = path; }
 
-    // Main analysis entry point
+    /**
+     * @brief Main analysis entry point
+     * Orchestrates the analysis of all Windows artifacts.
+     */
     void analyzeWindowsData();
 
     // Windows system file analysis
+    // Windows system file analysis
+    /** @brief Analyze Registry hives (SYSTEM, SOFTWARE, SAM, etc.) */
     void analyzeRegistryHives();
+    /** @brief Analyze Windows Event Logs (.evtx) */
     void analyzeEventLogs();
+    /** @brief Analyze Prefetch files */
     void analyzePrefetchFiles();
+    /** @brief Analyze Shortcut (.lnk) files */
     void analyzeLnkFiles();
+    /** @brief Analyze Jump Lists */
     void analyzeJumpLists();
+    /** @brief Analyze Recycle Bin ($Recycle.Bin) */
     void analyzeRecycleBin();
+    /** @brief Analyze NTFS metadata (MFT) */
     void analyzeNTFSMetadata();
 
     // System configuration analysis

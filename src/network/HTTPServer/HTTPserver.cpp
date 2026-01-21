@@ -1,3 +1,8 @@
+/**
+ * @file HTTPserver.cpp
+ * @brief Implementation of the HTTP Server and helper classes
+ */
+
 #include "HTTPserver.h"
 #include "FullTextSearch/FullTextSearch.h"
 #include "FullTextSearch/TextExtractor.h"

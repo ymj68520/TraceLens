@@ -44,7 +44,13 @@ class SystemInfoResponse(BaseModel):
 _start_time = time.time()
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get(
+    "/health", 
+    response_model=HealthResponse,
+    responses={
+        200: {"description": "Service is healthy"}
+    }
+)
 async def health_check():
     """
     Basic health check endpoint.
@@ -59,7 +65,13 @@ async def health_check():
     )
 
 
-@router.get("/health/live", response_model=HealthResponse)
+@router.get(
+    "/health/live", 
+    response_model=HealthResponse,
+    responses={
+        200: {"description": "Service is alive"}
+    }
+)
 async def liveness_check():
     """
     Kubernetes liveness probe endpoint.
@@ -75,7 +87,13 @@ async def liveness_check():
     )
 
 
-@router.get("/health/ready", response_model=ReadinessResponse)
+@router.get(
+    "/health/ready", 
+    response_model=ReadinessResponse,
+    responses={
+        200: {"description": "Service check completed (check ready field)"}
+    }
+)
 async def readiness_check(settings: Settings = Depends(get_settings)):
     """
     Kubernetes readiness probe endpoint.
@@ -143,7 +161,14 @@ async def readiness_check(settings: Settings = Depends(get_settings)):
     )
 
 
-@router.get("/api/system/info", response_model=SystemInfoResponse)
+@router.get(
+    "/api/system/info", 
+    response_model=SystemInfoResponse,
+    responses={
+        200: {"description": "System info retrieved successfully"},
+        500: {"description": "Internal server error"}
+    }
+)
 async def system_info(settings: Settings = Depends(get_settings)):
     """
     Get system and configuration information.

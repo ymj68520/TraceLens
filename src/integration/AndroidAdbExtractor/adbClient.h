@@ -23,7 +23,10 @@ typedef SOCKET socket_t;
 typedef int socket_t;
 #endif
 
-// Initialize Windows console encoding for proper Unicode/Chinese character display
+/**
+ * @brief Initialize Windows console encoding
+ * Sets console code page to UTF-8 for proper Unicode display
+ */
 void initializeConsoleEncoding();
 
 class ADBClient
@@ -36,25 +39,50 @@ private:
     std::string current_serial; // Store selected device serial
     bool in_sync_mode; // Track if currently in sync mode
 
-    // 初始化socket库（Windows only）
+    /**
+     * @brief Initialize socket library (Windows only)
+     */
     void initSocket();
 
-    // 清理socket
+    /**
+     * @brief Cleanup socket resources
+     */
     void cleanupSocket();
 
-    // 发送数据
+    /**
+     * @brief Send raw data to the socket
+     * @param data The data string to send
+     * @return true if sent successfully
+     */
     bool sendData(const std::string &data);
 
-    // 接收数据
+    /**
+     * @brief Receive data from socket
+     * @param length Number of bytes to receive
+     * @return Received data as string
+     */
     std::string receiveData(int length);
 
-    // 接收固定长度数据
+    /**
+     * @brief Receive exact number of bytes
+     * @param buffer Buffer to store received data
+     * @param length Number of bytes to receive
+     * @return true if all bytes received successfully
+     */
     bool receiveExact(char *buffer, int length);
 
-    // 发送ADB命令格式：4字节长度（hex）+ 命令
+    /**
+     * @brief Send an ADB command
+     * Format: 4-byte hex length + command string
+     * @param cmd The ADB command to send
+     * @return true if sent successfully
+     */
     bool sendADBCommand(const std::string &cmd);
 
-    // 接收abd响应状态
+    /**
+     * @brief Receive ADB command status
+     * @return true if status is OKAY
+     */
     bool receiveADBStatus();
 
 public:
@@ -62,25 +90,51 @@ public:
 
     ~ADBClient();
 
-    // 连接ABD服务器
+    /**
+     * @brief Connect to ADB server
+     * @return true if connection successful
+     */
     bool connect();
 
-    // 断开连接
+    /**
+     * @brief Disconnect from ADB server
+     * @return true if disconnected successfully
+     */
     bool disconnect();
 
-    // 获取设备列表
+    /**
+     * @brief Get list of connected devices
+     * @return Vector of device serial numbers
+     */
     std::vector<std::string> getDevices();
 
-    // 选择设备（用于后续命令）
+    /**
+     * @brief Select a target device for subsequent commands
+     * @param serial Device serial number
+     * @return true if selected successfully
+     */
     bool selectDevice(const std::string &serial);
 
-    // 执行shell命令
+    /**
+     * @brief Execute a shell command on the device
+     * @param command Shell command to execute
+     * @return Command output
+     */
     std::string executeShell(const std::string &command);
 
-    // 同步连接(传输文件)
+    /**
+     * @brief Establish sync connection for file operations
+     * @return true if sync mode established
+     */
     bool syncConnect();
 
-    // 接收文件
+    /**
+     * @brief Receive a file from the device
+     * @param remote_path Source path on device
+     * @param local_path Destination path on host
+     * @param total_file_size Optional total size for progress tracking
+     * @return true if transfer successful
+     */
     bool receiveFile(const std::string &remote_path, const std::string &local_path, uint32_t total_file_size = 0);
 
     struct SyncEntry {
@@ -90,19 +144,40 @@ public:
         uint32_t time;
     };
 
-    // 列出目录 (Sync mode)
+    /**
+     * @brief List directory contents in sync mode
+     * @param path Directory path
+     * @return Vector of file entries
+     */
     std::vector<SyncEntry> listDirectory(const std::string &path);
 
-    // 获取文件信息 (Sync mode)
+    /**
+     * @brief Get file statistics in sync mode
+     * @param remote_path Path on device
+     * @param mode Output file mode
+     * @param size Output file size
+     * @param time Output file modification time
+     * @return true if successful
+     */
     bool statFile(const std::string& remote_path, uint32_t& mode, uint32_t& size, uint32_t& time);
 
-    // 检查是否有root权限
+    /**
+     * @brief Check if root access is available
+     * @return true if running as root
+     */
     bool checkRootAccess();
 
-    // 尝试获取root权限
+    /**
+     * @brief Attempt to acquire root privileges
+     * @return true if root acquired
+     */
     bool acquireRoot();
 
-    // 使用root权限执行命令
+    /**
+     * @brief Execute a shell command with root privileges
+     * @param command Command to execute
+     * @return Command output
+     */
     std::string executeShellAsRoot(const std::string& command);
 
     // Raw execution (no PTY, useful for binary data)

@@ -105,7 +105,14 @@ class TaskDatabasesResponse(BaseModel):
 
 # Routes
 
-@router.get("/tasks", response_model=Dict[str, Any])
+@router.get(
+    "/tasks", 
+    response_model=Dict[str, Any],
+    responses={
+        200: {"description": "Tasks listed successfully"},
+        500: {"description": "Internal server error"}
+    }
+)
 async def list_tasks(
     status: Optional[str] = Query(None, description="Filter by status"),
     page: int = Query(1, ge=1, description="Page number"),
@@ -138,7 +145,15 @@ async def list_tasks(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/tasks/{task_id}", response_model=Dict[str, Any])
+@router.get(
+    "/tasks/{task_id}", 
+    response_model=Dict[str, Any],
+    responses={
+        200: {"description": "Task details retrieved successfully"},
+        404: {"description": "Task not found"},
+        500: {"description": "Internal server error"}
+    }
+)
 async def get_task(
     task_id: str,
     settings: Settings = Depends(get_settings),
@@ -167,7 +182,11 @@ async def get_task(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/tasks/{task_id}/databases", response_model=TaskDatabasesResponse)
+    responses={
+        200: {"description": "Databases listed successfully"},
+        500: {"description": "Internal server error"}
+    }
+)
 async def list_task_databases(
     task_id: str,
     settings: Settings = Depends(get_settings),
@@ -192,7 +211,14 @@ async def list_task_databases(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/tasks/{task_id}/files", response_model=FileListResponse)
+@router.get(
+    "/tasks/{task_id}/files", 
+    response_model=FileListResponse,
+    responses={
+        200: {"description": "Files retrieved successfully"},
+        500: {"description": "Internal server error"}
+    }
+)
 async def get_task_files(
     task_id: str,
     file_type: Optional[str] = Query(None, description="Filter by file type"),
@@ -253,7 +279,14 @@ async def get_task_files(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/tasks/{task_id}/events", response_model=EventListResponse)
+@router.get(
+    "/tasks/{task_id}/events", 
+    response_model=EventListResponse,
+    responses={
+        200: {"description": "Events retrieved successfully"},
+        500: {"description": "Internal server error"}
+    }
+)
 async def get_task_events(
     task_id: str,
     event_type: Optional[str] = Query(None, description="Filter by event type"),
@@ -305,7 +338,15 @@ async def get_task_events(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/query", response_model=QueryResponse)
+@router.post(
+    "/query", 
+    response_model=QueryResponse,
+    responses={
+        200: {"description": "Query executed successfully"},
+        400: {"description": "Invalid query or parameters"},
+        500: {"description": "Internal server error"}
+    }
+)
 async def execute_query(
     request: QueryRequest,
     settings: Settings = Depends(get_settings),
@@ -358,7 +399,13 @@ async def execute_query(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/tasks/{task_id}/export/toon")
+@router.get(
+    "/tasks/{task_id}/export/toon",
+    responses={
+        200: {"description": "TOON export successful"},
+        500: {"description": "Internal server error during export"}
+    }
+)
 async def export_toon(
     task_id: str,
     include_llm: bool = Query(True, description="Include LLM descriptions"),
@@ -392,7 +439,13 @@ async def export_toon(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/tasks/{task_id}/export/json")
+@router.get(
+    "/tasks/{task_id}/export/json",
+    responses={
+        200: {"description": "JSON export successful"},
+        500: {"description": "Internal server error during export"}
+    }
+)
 async def export_json(
     task_id: str,
     database_type: str = Query("files", description="Database type to export"),

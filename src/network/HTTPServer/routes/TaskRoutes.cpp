@@ -1,4 +1,5 @@
 #include "TaskRoutes.h"
+#include "../../Swagger/Swagger.h"
 #include <ctime>
 
 namespace forensics {
@@ -128,57 +129,170 @@ TaskRoutes::TaskRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()
     CROW_ROUTE(app, "/tasks").methods("POST"_method)([this](const crow::request& req) {
         return handle_create_task(req);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/tasks", "POST",
+        "Create task",
+        "Create a new forensic analysis task.",
+        {"Tasks"},
+        {}, // Body parameters are handled via schema in JSON usually, but here we can't easily express body schema in this helper yet without update
+        {{201, "Task created"}, {400, "Invalid request"}}
+    );
 
     CROW_ROUTE(app, "/tasks/<string>").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
         return handle_get_task(req, task_id);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/tasks/{id}", "GET",
+        "Get task details",
+        "Retrieve the status and details of a specific task.",
+        {"Tasks"},
+        {{"id", "path", "Task ID", true}},
+        {{200, "Task details"}, {404, "Task not found"}}
+    );
 
     CROW_ROUTE(app, "/tasks/<string>/results").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
         return handle_get_task_results(req, task_id);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/tasks/{id}/results", "GET",
+        "Get task results",
+        "Retrieve the results of a completed task.",
+        {"Tasks"},
+        {{"id", "path", "Task ID", true}},
+        {{200, "Task results"}, {202, "Task in progress"}, {404, "Task not found"}}
+    );
 
     // Enhanced task management routes
     CROW_ROUTE(app, "/api/tasks/list").methods("GET"_method)([this](const crow::request& req) {
         return handle_list_tasks(req);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/list", "GET",
+        "List tasks",
+        "List all analysis tasks with optional filtering.",
+        {"Tasks"},
+        {
+            {"status", "query", "Filter by status", false},
+            {"priority", "query", "Filter by priority", false},
+            {"limit", "query", "Results limit", false, "integer"},
+            {"offset", "query", "Pagination offset", false, "integer"}
+        },
+        {{200, "List of tasks"}}
+    );
 
     CROW_ROUTE(app, "/api/tasks/<string>").methods("DELETE"_method)([this](const crow::request& req, const std::string& task_id) {
         return handle_cancel_task(req, task_id);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/{id}", "DELETE",
+        "Cancel task",
+        "Cancel a running or pending task.",
+        {"Tasks"},
+        {{"id", "path", "Task ID", true}},
+        {{200, "Task cancelled"}, {400, "Cancellation failed"}, {500, "Internal error"}}
+    );
 
     CROW_ROUTE(app, "/api/tasks/<string>/progress").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
         return handle_get_task_progress(req, task_id);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/{id}/progress", "GET",
+        "Get task progress",
+        "Get detailed progress information for a task.",
+        {"Tasks"},
+        {{"id", "path", "Task ID", true}},
+        {{200, "Progress info"}, {404, "Task not found"}}
+    );
 
     CROW_ROUTE(app, "/api/tasks/statistics").methods("GET"_method)([this](const crow::request& req) {
         return handle_get_task_statistics(req);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/statistics", "GET",
+        "Get system task statistics",
+        "Get overall statistics about tasks in the system.",
+        {"Tasks"},
+        {},
+        {{200, "System statistics"}}
+    );
 
     CROW_ROUTE(app, "/api/tasks/cleanup").methods("POST"_method)([this](const crow::request& req) {
         return handle_cleanup_tasks(req);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/cleanup", "POST",
+        "Cleanup tasks",
+        "Remove old completed or failed tasks.",
+        {"Tasks"},
+        {},
+        {{200, "Cleanup result"}}
+    );
 
     // Batch operations routes
     CROW_ROUTE(app, "/api/tasks/batch-create").methods("POST"_method)([this](const crow::request& req) {
         return handle_batch_create_tasks(req);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/batch-create", "POST",
+        "Batch create tasks",
+        "Create multiple analysis tasks at once.",
+        {"Tasks"},
+        {},
+        {{201, "Batch created"}, {400, "Invalid request"}}
+    );
 
     CROW_ROUTE(app, "/api/tasks/batch-status").methods("POST"_method)([this](const crow::request& req) {
         return handle_batch_status(req);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/batch-status", "POST",
+        "Batch task status",
+        "Get the status of multiple tasks at once.",
+        {"Tasks"},
+        {},
+        {{200, "Batch statuses"}, {400, "Invalid request"}}
+    );
 
     CROW_ROUTE(app, "/api/tasks/batch-cancel").methods("POST"_method)([this](const crow::request& req) {
         return handle_batch_cancel(req);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/batch-cancel", "POST",
+        "Batch cancel tasks",
+        "Cancel multiple tasks at once.",
+        {"Tasks"},
+        {},
+        {{200, "Batch cancellation result"}, {400, "Invalid request"}}
+    );
 
     // Advanced task features routes
     CROW_ROUTE(app, "/api/tasks/<string>/audit-log").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
         return handle_get_task_audit_log(req, task_id);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/{id}/audit-log", "GET",
+        "Get task audit log",
+        "Retrieve the audit log for a specific task.",
+        {"Tasks"},
+        {
+            {"id", "path", "Task ID", true},
+            {"limit", "query", "Results limit", false, "integer"},
+            {"offset", "query", "Pagination offset", false, "integer"}
+        },
+        {{200, "Audit logs"}, {500, "Internal error"}}
+    );
 
     CROW_ROUTE(app, "/api/tasks/<string>/priority").methods("PUT"_method)([this](const crow::request& req, const std::string& task_id) {
         return handle_update_task_priority(req, task_id);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/{id}/priority", "PUT",
+        "Update task priority",
+        "Update the priority of a specific task.",
+        {"Tasks"},
+        {{"id", "path", "Task ID", true}},
+        {{200, "Priority updated"}, {400, "Invalid request"}}
+    );
 }
 
 crow::response TaskRoutes::handle_create_task(const crow::request& req) {

@@ -15,12 +15,30 @@ class XFSHelper;
 class NativeFilesystemWalker;
 class TskFilesystemWalker;
 
+/**
+ * @brief Analyzes forensic disk images
+ * Handles image opening, file system detection, and artifact extraction.
+ */
 class ImageAnalyzer {
 public:
+	/**
+	 * @brief Construct a new Image Analyzer
+	 * @param imagePath Path to the disk image file
+	 */
 	explicit ImageAnalyzer(const std::string& imagePath);
 	~ImageAnalyzer();
 
+	/**
+	 * @brief Perform full image analysis
+	 * @return true if analysis successful
+	 */
 	bool analyze();
+
+	/**
+	 * @brief Extract artifacts to database
+	 * @param dbPath Path to output database
+	 * @return true if extraction successful
+	 */
 	bool extractToDatabase(const std::string& dbPath);
 	
 	void setXFSMode(XFSMode mode) { xfsMode_ = mode; }

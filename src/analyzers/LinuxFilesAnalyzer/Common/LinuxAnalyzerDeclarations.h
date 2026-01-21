@@ -16,9 +16,18 @@ class FileExtractor;
 struct FileRecord;
 class LinuxAnalysisDatabase;
 
+/**
+ * @brief Analyzes Linux file system and artifacts
+ * Handles parsing of logs, user accounts, history, and system configuration.
+ */
 class LinuxFilesAnalyzer {
 public:
     LinuxFilesAnalyzer();
+    /**
+     * @brief Construct a new Linux Files Analyzer
+     * @param imagePath Path to disk image
+     * @param dbManager Database manager
+     */
     LinuxFilesAnalyzer(const std::string& imagePath, DatabaseManager* dbManager);
     ~LinuxFilesAnalyzer();
 
@@ -27,18 +36,30 @@ public:
     void setOutputDatabasePath(const std::string& path) { outputDbPath_ = path; }
     void setExtractDirectory(const std::string& path) { extractDir_ = path; }
 
-    // Main analysis entry point
+    /**
+     * @brief Main analysis entry point
+     * Orchestrates the analysis of all Linux artifacts.
+     */
     void analyzeLinuxData();
 
     // System log analysis
+    // System log analysis
+    /** @brief Analyze system logs (syslog, messages) */
     void analyzeSystemLogs();
+    /** @brief Analyze authentication logs (auth.log, secure) */
     void analyzeAuthLogs();
+    /** @brief Analyze kernel logs (kern.log) */
     void analyzeKernelLogs();
+    /** @brief Analyze application specific logs */
     void analyzeApplicationLogs();
 
     // User and authentication analysis
+    // User and authentication analysis
+    /** @brief Analyze user accounts (/etc/passwd, shadow) */
     void analyzeUserAccounts();
+    /** @brief Analyze login history (wtmp, btmp) */
     void analyzeLoginHistory();
+    /** @brief Analyze SSH keys and config */
     void analyzeSSHArtifacts();
 
     // Shell and command history

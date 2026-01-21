@@ -144,6 +144,7 @@ set(LIB_SOURCES
     src/analyzers/ImageAnalyzer/XFSHelper.cpp
     src/analyzers/ImageAnalyzer/NativeFilesystemWalker.cpp
     src/analyzers/ImageAnalyzer/TskFilesystemWalker.cpp
+    src/network/Swagger/Swagger.cpp
     src/network/HTTPServer/HTTPserver.cpp
     src/network/HTTPServer/TaskManager.cpp
     src/network/HTTPServer/SQLiteHelper.cpp
@@ -313,23 +314,25 @@ option(BUILD_PYTHON_SERVICE "Setup Python service environment" ON)
 if(BUILD_PYTHON_SERVICE)
   # Find Python3
   find_package(Python3 COMPONENTS Interpreter)
-  
+
   if(NOT Python3_FOUND)
     message(WARNING "Python3 not found. Skipping Python service setup.")
-    message(WARNING "Install Python3: sudo apt-get install python3 python3-venv python3-pip")
+    message(
+      WARNING
+        "Install Python3: sudo apt-get install python3 python3-venv python3-pip"
+    )
   else()
     set(PYTHON_SERVICE_DIR "${CMAKE_SOURCE_DIR}/python_service")
     set(PYTHON_VENV_DIR "${PYTHON_SERVICE_DIR}/.venv")
     set(PYTHON_REQUIREMENTS "${PYTHON_SERVICE_DIR}/httpserver/requirements.txt")
-    
+
     if(EXISTS "${PYTHON_SERVICE_DIR}")
       # Create virtual environment
       add_custom_command(
         OUTPUT ${PYTHON_VENV_DIR}/pyvenv.cfg
         COMMAND ${Python3_EXECUTABLE} -m venv ${PYTHON_VENV_DIR}
-        COMMENT "Creating Python virtual environment"
-      )
-      
+        COMMENT "Creating Python virtual environment")
+
       # Install dependencies
       add_custom_command(
         OUTPUT ${PYTHON_VENV_DIR}/.deps_installed
@@ -338,41 +341,38 @@ if(BUILD_PYTHON_SERVICE)
         COMMAND ${PYTHON_VENV_DIR}/bin/pip install -r ${PYTHON_REQUIREMENTS}
         COMMAND ${CMAKE_COMMAND} -E touch ${PYTHON_VENV_DIR}/.deps_installed
         WORKING_DIRECTORY ${PYTHON_SERVICE_DIR}
-        COMMENT "Installing Python dependencies"
-      )
-      
+        COMMENT "Installing Python dependencies")
+
       # Python service setup target
       add_custom_target(
         python_service
         DEPENDS ${PYTHON_VENV_DIR}/.deps_installed
-        COMMENT "Python service environment ready"
-      )
-      
+        COMMENT "Python service environment ready")
+
       # Python syntax check target (optional)
       add_custom_target(
         python_check
-        COMMAND ${PYTHON_VENV_DIR}/bin/python -m py_compile
+        COMMAND
+          ${PYTHON_VENV_DIR}/bin/python -m py_compile
           ${PYTHON_SERVICE_DIR}/httpserver/main.py
           ${PYTHON_SERVICE_DIR}/httpserver/config.py
         WORKING_DIRECTORY ${PYTHON_SERVICE_DIR}
-        COMMENT "Checking Python syntax"
-      )
-      
+        COMMENT "Checking Python syntax")
+
       # Start Python service target (for development)
       add_custom_target(
         run_python_service
         COMMAND ${PYTHON_VENV_DIR}/bin/python -m httpserver.main
         WORKING_DIRECTORY ${PYTHON_SERVICE_DIR}
-        COMMENT "Starting Python HTTP service on port 8090"
-      )
-      
+        COMMENT "Starting Python HTTP service on port 8090")
+
       message(STATUS "Python service setup configured")
       message(STATUS "  Source: ${PYTHON_SERVICE_DIR}")
       message(STATUS "  Venv: ${PYTHON_VENV_DIR}")
       message(STATUS "  Requirements: ${PYTHON_REQUIREMENTS}")
     else()
-      message(WARNING "Python service directory not found: ${PYTHON_SERVICE_DIR}")
+      message(
+        WARNING "Python service directory not found: ${PYTHON_SERVICE_DIR}")
     endif()
   endif()
 endif()
-

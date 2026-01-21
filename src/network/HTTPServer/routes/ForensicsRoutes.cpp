@@ -1,4 +1,5 @@
 #include "ForensicsRoutes.h"
+#include "../../Swagger/Swagger.h"
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
 #include "TOONExporter/TOONExporter.h"
 #include <random>
@@ -28,6 +29,14 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
     CROW_ROUTE(app, "/api/forensics/timeline/comprehensive").methods("GET"_method)([this](const crow::request& req) {
         return handle_timeline_comprehensive(req);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/timeline/comprehensive", "GET", 
+        "Get comprehensive timeline", 
+        "Retrieve a comprehensive timeline of events combined from multiple sources.",
+        {"Forensics", "Timeline"},
+        {{"task_id", "query", "Task ID", true}, {"start_time", "query", "Start timestamp (ISO)", false}, {"end_time", "query", "End timestamp (ISO)", false}},
+        {{200, "Timeline data retrieved"}}
+    );
 
     CROW_ROUTE(app, "/api/forensics/timeline/file-activity").methods("GET"_method)([this](const crow::request& req) {
         return handle_timeline_file_activity(req);
@@ -45,6 +54,14 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
     CROW_ROUTE(app, "/api/forensics/files/largest").methods("GET"_method)([this](const crow::request& req) {
         return handle_files_largest(req);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/files/largest", "GET", 
+        "Get largest files", 
+        "Retrieve a list of the largest files found in the image.",
+        {"Forensics", "Files"},
+        {{"task_id", "query", "Task ID", true}, {"limit", "query", "Number of files to return", false, "integer"}},
+        {{200, "List of largest files"}}
+    );
 
     CROW_ROUTE(app, "/api/forensics/files/recent").methods("GET"_method)([this](const crow::request& req) {
         return handle_files_recent(req);
@@ -70,6 +87,14 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
     CROW_ROUTE(app, "/api/forensics/android/app-usage").methods("GET"_method)([this](const crow::request& req) {
         return handle_android_app_usage(req);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/android/app-usage", "GET", 
+        "Get Android app usage", 
+        "Retrieve usage statistics for installed Android applications.",
+        {"Forensics", "Android"},
+        {{"task_id", "query", "Task ID", true}},
+        {{200, "App usage statistics"}}
+    );
 
     CROW_ROUTE(app, "/api/forensics/android/device-info").methods("GET"_method)([this](const crow::request& req) {
         return handle_android_device_info(req);
@@ -106,6 +131,14 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         }
         return handle_extract_files(req);
     });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/extract", "POST",
+        "Extract files",
+        "Start a background job to extract files from the image.",
+        {"Forensics", "Extraction"},
+        {},
+        {{202, "Extraction job started"}, {400, "Invalid request"}}
+    );
 
     CROW_ROUTE(app, "/api/forensics/extract/<string>").methods("GET"_method)([this](const crow::request& req, const std::string& job_id) {
         // Create a modified request to pass job_id

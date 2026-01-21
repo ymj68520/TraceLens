@@ -16,7 +16,19 @@ public:
     
 private:
     // Search operations
+    // Search operations
+    /**
+     * @brief Perform full-text search
+     * @param req The HTTP request containing search parameters
+     * @return JSON response with search results
+     */
     crow::response handle_fulltext_search(const crow::request& req);
+
+    /**
+     * @brief Create or update search index
+     * @param req The HTTP request containing indexing parameters
+     * @return JSON response with indexing status
+     */
     crow::response handle_fulltext_index(const crow::request& req);
 
     // CORS helper

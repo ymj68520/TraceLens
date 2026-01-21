@@ -13,19 +13,46 @@
 class DatabaseManager;
 class FileExtractor;
 
+/**
+ * @brief Analyzes Android device data
+ * Handles parsing of Android artifacts including databases, logs, and system configs.
+ */
 class AndroidAnalyzer {
 public:
     AndroidAnalyzer();
+    /**
+     * @brief Construct a new Android Analyzer
+     * @param imagePath Path to the disk image or directory
+     * @param dbManager Database manager for storing results
+     */
     AndroidAnalyzer(const std::string& imagePath, DatabaseManager* dbManager);
     ~AndroidAnalyzer();
 
-    // Main entry point to analyze a directory (mounted image or extracted backup)
+    /**
+     * @brief Main entry point to analyze a directory
+     * @param rootPath Root path of the mounted image or backup
+     */
     void analyze(const std::string& rootPath);
 
     // Android specific analysis
+    // Android specific analysis
+    /**
+     * @brief Initialize the analyzer
+     * @return true if initialization successful
+     */
     bool initialize();
+    
     void setOutputDatabasePath(const std::string& path) { outputDbPath_ = path; }
+    
+    /**
+     * @brief Analyze all Android data
+     */
     void analyzeAndroidData();
+
+    /**
+     * @brief Analyze the /system directory
+     * @param systemPath Path to system directory
+     */
     void analyzeSystemDirectory(const std::string& systemPath);
 
     // Specific analyzers

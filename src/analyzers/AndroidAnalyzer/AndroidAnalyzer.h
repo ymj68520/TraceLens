@@ -1,16 +1,19 @@
-// AndroidAnalyzer.h
-// Main header for Android Analyzer module
+/**
+ * @file AndroidAnalyzer.h
+ * @brief Main header for Android Analyzer module
+ * Aggregates necessary includes and dependencies.
+ */
 
 #pragma once
 
-// IO、字符串与流
+// IO, Strings and Streams
 #include <iostream>
 #include <sstream>
 #include <fstream>
 #include <streambuf>
 #include <iomanip>
 
-// 容器与迭代器
+// Containers and Iterators
 #include <vector>
 #include <deque>
 #include <list>

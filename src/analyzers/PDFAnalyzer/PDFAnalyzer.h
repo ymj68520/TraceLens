@@ -21,13 +21,32 @@ struct PDFMetadata {
     bool isEncrypted = false;
 };
 
+/**
+ * @brief Analyzes PDF documents
+ * Extracts text, metadata, and generates LLM reports.
+ */
 class PDFAnalyzer {
 public:
+    /**
+     * @brief Extract raw text from PDF
+     * @param pdfPath Path to PDF file
+     * @return Extracted text content
+     */
     static std::string extractText(const std::string& pdfPath);
+
+    /**
+     * @brief Extract PDF metadata
+     * @param pdfPath Path to PDF file
+     * @return PDFMetadata structure
+     */
     static PDFMetadata extractMetadata(const std::string& pdfPath);
     
-    // Generates a comprehensive markdown report for LLM Analysis
-    // Returns true if successful, false otherwise.
+    /**
+     * @brief Generate comprehensive markdown report for LLM Analysis
+     * @param pdfPath Path to PDF file
+     * @param outputPath Path to write the report
+     * @return true if successful
+     */
     static bool createLLMReport(const std::string& pdfPath, const std::string& outputPath);
 
 private:

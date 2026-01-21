@@ -1,4 +1,10 @@
-﻿#include <iostream>
+﻿/**
+ * @file main.cpp
+ * @brief Main entry point for the Forensics Analyzer application
+ * Handles command-line argument parsing and initializes analysis modes.
+ */
+
+#include <iostream>
 #include <string>
 #include <filesystem>
 #include <memory>
