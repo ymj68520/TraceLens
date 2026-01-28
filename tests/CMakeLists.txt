@@ -341,7 +341,10 @@ add_executable(
   ../src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp
-  ../src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp)
+  ../src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp
+  ../src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp
+  ../src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp
+  ../src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp)
 
 target_include_directories(
   test_database_analyzer_gtest

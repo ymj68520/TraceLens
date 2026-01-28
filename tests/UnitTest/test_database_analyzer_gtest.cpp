@@ -11,6 +11,9 @@
 #include "DatabaseAnalyzer/Parsers/IDBParser.h"
 #include "DatabaseAnalyzer/Parsers/DBParserFactory.h"
 #include "DatabaseAnalyzer/Parsers/SQLiteAnalyzer.h"
+#include "DatabaseAnalyzer/Parsers/MySQLBinlogParser.h"
+#include "DatabaseAnalyzer/Parsers/InnoDBParser.h"
+#include "DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.h"
 #include "DatabaseAnalyzer/Database/DBAnalysisDatabase.h"
 
 namespace fs = std::filesystem;
@@ -394,7 +397,167 @@ TEST_F(DatabaseAnalyzerTest, DBAnalysisDatabaseTransaction) {
     EXPECT_EQ(tables.size(), 10u);
 }
 
+// ========== MySQL Binlog解析器测试 ==========
+
+TEST_F(DatabaseAnalyzerTest, BinlogEventTypeToString) {
+    EXPECT_EQ(binlogEventTypeToString(BinlogEventType::QUERY_EVENT), "QUERY");
+    EXPECT_EQ(binlogEventTypeToString(BinlogEventType::WRITE_ROWS_EVENT), "INSERT");
+    EXPECT_EQ(binlogEventTypeToString(BinlogEventType::UPDATE_ROWS_EVENT), "UPDATE");
+    EXPECT_EQ(binlogEventTypeToString(BinlogEventType::DELETE_ROWS_EVENT), "DELETE");
+    EXPECT_EQ(binlogEventTypeToString(BinlogEventType::XID_EVENT), "COMMIT");
+    EXPECT_EQ(binlogEventTypeToString(BinlogEventType::UNKNOWN_EVENT), "UNKNOWN");
+}
+
+TEST_F(DatabaseAnalyzerTest, BinlogParserOpenNonexistent) {
+    MySQLBinlogParser parser;
+    EXPECT_FALSE(parser.open("/nonexistent/binlog.000001"));
+    EXPECT_FALSE(parser.getLastError().empty());
+}
+
+TEST_F(DatabaseAnalyzerTest, BinlogParserOpenInvalidFile) {
+    // 创建一个非binlog文件
+    std::string fakeBinlog = (test_dir_ / "mysql-bin.000001").string();
+    std::ofstream ofs(fakeBinlog, std::ios::binary);
+    ofs << "This is not a binlog file";
+    ofs.close();
+    
+    MySQLBinlogParser parser;
+    EXPECT_FALSE(parser.open(fakeBinlog));
+    EXPECT_FALSE(parser.getLastError().empty());
+}
+
+TEST_F(DatabaseAnalyzerTest, BinlogEventStructDefaults) {
+    BinlogEvent event;
+    EXPECT_EQ(event.timestamp, 0u);
+    EXPECT_EQ(event.eventType, BinlogEventType::UNKNOWN_EVENT);
+    EXPECT_EQ(event.serverId, 0u);
+    EXPECT_TRUE(event.database.empty());
+    EXPECT_TRUE(event.query.empty());
+    EXPECT_TRUE(event.beforeRows.empty());
+    EXPECT_TRUE(event.afterRows.empty());
+}
+
+TEST_F(DatabaseAnalyzerTest, BinlogHeaderStructDefaults) {
+    BinlogHeader header;
+    EXPECT_EQ(header.magic[0], 0xfe);
+    EXPECT_EQ(header.magic[1], 0x62);
+    EXPECT_EQ(header.magic[2], 0x69);
+    EXPECT_EQ(header.magic[3], 0x6e);
+    EXPECT_TRUE(header.serverVersion.empty());
+}
+
+TEST_F(DatabaseAnalyzerTest, InnoDBPageTypeValues) {
+    EXPECT_EQ(static_cast<uint16_t>(InnoDBPageType::FIL_PAGE_INDEX), 17855);
+    EXPECT_EQ(static_cast<uint16_t>(InnoDBPageType::FIL_PAGE_TYPE_ALLOCATED), 0);
+}
+
+TEST_F(DatabaseAnalyzerTest, InnoDBPageStructDefaults) {
+    InnoDBPage page;
+    EXPECT_EQ(page.pageNumber, 0u);
+    EXPECT_EQ(page.nRecords, 0);
+    EXPECT_FALSE(page.isLeaf);
+    EXPECT_TRUE(page.isCompact);
+}
+
+TEST_F(DatabaseAnalyzerTest, ArtifactTypeNewValues) {
+    // 验证新增的工件类型
+    EXPECT_NE(static_cast<int>(ArtifactType::BINLOG_EVENT), 0);
+    EXPECT_NE(static_cast<int>(ArtifactType::INNODB_PAGE), 0);
+    EXPECT_NE(static_cast<int>(ArtifactType::INNODB_DELETED), 0);
+    EXPECT_NE(static_cast<int>(ArtifactType::PG_HEAP_TUPLE), 0);
+}
+
+// ========== InnoDB解析器测试 ==========
+
+TEST_F(DatabaseAnalyzerTest, InnoDBParserOpenNonexistent) {
+    InnoDBParser parser;
+    EXPECT_FALSE(parser.open("/nonexistent/table.ibd"));
+    EXPECT_FALSE(parser.getLastError().empty());
+}
+
+TEST_F(DatabaseAnalyzerTest, InnoDBParserOpenInvalidFile) {
+    std::string fakeIbd = (test_dir_ / "test.ibd").string();
+    std::ofstream ofs(fakeIbd, std::ios::binary);
+    ofs << "Not an InnoDB file";
+    ofs.close();
+    
+    InnoDBParser parser;
+    // 应该能打开但会检测为未知格式
+    EXPECT_TRUE(parser.open(fakeIbd));
+    EXPECT_EQ(parser.getPageSize(), 16384);  // 默认页大小
+}
+
+TEST_F(DatabaseAnalyzerTest, InnoDBPageConstants) {
+    using namespace InnoDB;
+    EXPECT_EQ(DEFAULT_PAGE_SIZE, 16384);
+    EXPECT_EQ(FIL_PAGE_DATA, 38);
+    EXPECT_EQ(PAGE_NEW_INFIMUM, 99);
+    EXPECT_EQ(PAGE_NEW_SUPREMUM, 112);
+}
+
+TEST_F(DatabaseAnalyzerTest, InnoDBColumnDefDefaults) {
+    InnoDBColumnDef col;
+    EXPECT_TRUE(col.name.empty());
+    EXPECT_TRUE(col.isNullable);
+    EXPECT_FALSE(col.isVariable);
+}
+
+TEST_F(DatabaseAnalyzerTest, InnoDBPageTypeToString) {
+    EXPECT_EQ(innoDBPageTypeToString(InnoDBPageType::FIL_PAGE_INDEX), "INDEX");
+    EXPECT_EQ(innoDBPageTypeToString(InnoDBPageType::FIL_PAGE_UNDO_LOG), "UNDO_LOG");
+    EXPECT_EQ(innoDBPageTypeToString(InnoDBPageType::FIL_PAGE_TYPE_FSP_HDR), "FSP_HDR");
+}
+
+// ========== PostgreSQL Heap解析器测试 ==========
+
+TEST_F(DatabaseAnalyzerTest, PostgreSQLHeapParserOpenNonexistent) {
+    PostgreSQLHeapParser parser;
+    EXPECT_FALSE(parser.open("/nonexistent/heap"));
+    EXPECT_FALSE(parser.getLastError().empty());
+}
+
+TEST_F(DatabaseAnalyzerTest, PostgreSQLHeapParserOpenEmptyFile) {
+    std::string emptyHeap = (test_dir_ / "empty_heap").string();
+    std::ofstream ofs(emptyHeap, std::ios::binary);
+    ofs.close();
+    
+    PostgreSQLHeapParser parser;
+    EXPECT_FALSE(parser.open(emptyHeap));
+}
+
+TEST_F(DatabaseAnalyzerTest, PostgreSQLHeapConstants) {
+    using namespace PG;
+    EXPECT_EQ(DEFAULT_BLOCK_SIZE, 8192);
+    EXPECT_EQ(PAGE_HEADER_SIZE, 24);
+    EXPECT_EQ(LP_NORMAL, 1);
+    EXPECT_EQ(LP_DEAD, 3);
+}
+
+TEST_F(DatabaseAnalyzerTest, PGColumnDefDefaults) {
+    PGColumnDef col;
+    EXPECT_TRUE(col.name.empty());
+    EXPECT_TRUE(col.nullable);
+    EXPECT_FALSE(col.typbyval);
+}
+
+TEST_F(DatabaseAnalyzerTest, PGHeapTupleDefaults) {
+    PGHeapTuple tuple;
+    EXPECT_EQ(tuple.blockNumber, 0u);
+    EXPECT_EQ(tuple.offsetNumber, 0);
+    EXPECT_FALSE(tuple.isDead);
+    EXPECT_TRUE(tuple.values.empty());
+}
+
+TEST_F(DatabaseAnalyzerTest, PGTupleVisibilityDefaults) {
+    PGTupleVisibility vis;
+    EXPECT_EQ(vis.xmin, 0u);
+    EXPECT_EQ(vis.xmax, 0u);
+    EXPECT_FALSE(vis.hasNulls);
+    EXPECT_FALSE(vis.hasExternal);
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+

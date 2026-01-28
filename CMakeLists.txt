@@ -216,6 +216,9 @@ set(LIB_SOURCES
     src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp
+    src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp
+    src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp
+    src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp
     # cpp-mcp library sources
     libs/cpp-mcp/src/mcp_message.cpp
     libs/cpp-mcp/src/mcp_resource.cpp

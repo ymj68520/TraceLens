@@ -82,7 +82,170 @@ enum class ArtifactType {
     CONFIG_ENTRY,        // 配置条目
     USER_ACCOUNT,        // 用户账户
     TRANSACTION_LOG,     // 事务日志
-    SCHEMA_CHANGE        // Schema变更
+    SCHEMA_CHANGE,       // Schema变更
+    // 直接文件分析相关
+    BINLOG_EVENT,        // MySQL binlog事件
+    INNODB_PAGE,         // InnoDB页
+    INNODB_DELETED,      // InnoDB删除记录
+    PG_HEAP_TUPLE,       // PostgreSQL元组
+    PG_DEAD_TUPLE        // PostgreSQL死元组
+};
+
+// ============================================================================
+// MySQL Binlog 相关类型
+// ============================================================================
+
+/**
+ * @brief Binlog 事件类型
+ */
+enum class BinlogEventType : uint8_t {
+    UNKNOWN_EVENT = 0,
+    START_EVENT_V3 = 1,
+    QUERY_EVENT = 2,
+    STOP_EVENT = 3,
+    ROTATE_EVENT = 4,
+    INTVAR_EVENT = 5,
+    LOAD_EVENT = 6,
+    SLAVE_EVENT = 7,
+    CREATE_FILE_EVENT = 8,
+    APPEND_BLOCK_EVENT = 9,
+    EXEC_LOAD_EVENT = 10,
+    DELETE_FILE_EVENT = 11,
+    FORMAT_DESCRIPTION_EVENT = 15,
+    XID_EVENT = 16,
+    TABLE_MAP_EVENT = 19,
+    // Row-based events (version 1)
+    WRITE_ROWS_EVENT_V1 = 23,
+    UPDATE_ROWS_EVENT_V1 = 24,
+    DELETE_ROWS_EVENT_V1 = 25,
+    // Row-based events (version 2)
+    WRITE_ROWS_EVENT = 30,
+    UPDATE_ROWS_EVENT = 31,
+    DELETE_ROWS_EVENT = 32,
+    GTID_LOG_EVENT = 33,
+    ANONYMOUS_GTID_LOG_EVENT = 34,
+    PREVIOUS_GTIDS_LOG_EVENT = 35
+};
+
+/**
+ * @brief Binlog 事件
+ */
+struct BinlogEvent {
+    uint32_t timestamp = 0;          // 事件时间戳
+    BinlogEventType eventType = BinlogEventType::UNKNOWN_EVENT;
+    uint32_t serverId = 0;           // 服务器ID
+    uint32_t eventLength = 0;        // 事件长度
+    uint32_t nextPosition = 0;       // 下一事件位置
+    uint16_t flags = 0;
+    
+    // QUERY_EVENT 相关
+    std::string database;            // 数据库名
+    std::string query;               // SQL语句
+    
+    // TABLE_MAP_EVENT 相关
+    uint64_t tableId = 0;
+    std::string tableName;
+    std::vector<uint8_t> columnTypes;
+    
+    // ROW events 相关
+    std::vector<std::map<std::string, std::string>> beforeRows;  // UPDATE/DELETE前
+    std::vector<std::map<std::string, std::string>> afterRows;   // INSERT/UPDATE后
+};
+
+/**
+ * @brief Binlog 文件头
+ */
+struct BinlogHeader {
+    uint8_t magic[4] = {0xfe, 0x62, 0x69, 0x6e};  // 0xfe 'bin'
+    uint16_t binlogVersion = 0;
+    std::string serverVersion;
+    uint32_t createTimestamp = 0;
+    uint8_t headerLength = 0;
+};
+
+// ============================================================================
+// InnoDB 相关类型
+// ============================================================================
+
+/**
+ * @brief InnoDB 页类型
+ */
+enum class InnoDBPageType : uint16_t {
+    FIL_PAGE_TYPE_ALLOCATED = 0,
+    FIL_PAGE_UNDO_LOG = 2,
+    FIL_PAGE_INODE = 3,
+    FIL_PAGE_IBUF_FREE_LIST = 4,
+    FIL_PAGE_IBUF_BITMAP = 5,
+    FIL_PAGE_TYPE_SYS = 6,
+    FIL_PAGE_TYPE_TRX_SYS = 7,
+    FIL_PAGE_TYPE_FSP_HDR = 8,
+    FIL_PAGE_TYPE_XDES = 9,
+    FIL_PAGE_TYPE_BLOB = 10,
+    FIL_PAGE_INDEX = 17855,          // B-Tree节点
+    FIL_PAGE_RTREE = 17854,          // R-Tree节点
+    FIL_PAGE_SDI = 17853             // SDI页
+};
+
+/**
+ * @brief InnoDB 页信息
+ */
+struct InnoDBPage {
+    uint32_t pageNumber = 0;
+    uint32_t spaceId = 0;
+    InnoDBPageType pageType = InnoDBPageType::FIL_PAGE_TYPE_ALLOCATED;
+    uint32_t prevPage = 0;
+    uint32_t nextPage = 0;
+    uint64_t lsn = 0;                // Log Sequence Number
+    uint16_t nRecords = 0;           // 记录数
+    uint16_t heapTop = 0;            // 堆顶偏移
+    uint16_t nHeap = 0;              // 堆中记录数（含deleted）
+    uint16_t freeOffset = 0;         // 空闲空间偏移
+    uint16_t garbage = 0;            // 已删除记录占用空间
+    bool isLeaf = false;
+    bool isCompact = true;           // Compact格式
+};
+
+/**
+ * @brief InnoDB 记录头
+ */
+struct InnoDBRecordHeader {
+    uint16_t nextRecordOffset = 0;
+    uint8_t nOwned = 0;              // 拥有的记录数
+    uint8_t heapNo = 0;              // 堆编号
+    uint8_t recordType = 0;          // 0=conventional, 1=node ptr, 2=infimum, 3=supremum
+    bool isDeleted = false;
+    bool isMinRec = false;           // 最小记录
+};
+
+// ============================================================================
+// PostgreSQL Heap 相关类型
+// ============================================================================
+
+/**
+ * @brief PostgreSQL 元组可见性
+ */
+struct PGTupleVisibility {
+    uint32_t xmin = 0;               // 插入事务ID
+    uint32_t xmax = 0;               // 删除事务ID
+    uint32_t cmin = 0;               // 命令ID
+    uint32_t cmax = 0;
+    bool isHotUpdated = false;
+    bool hasNulls = false;
+    bool hasVarwidth = false;
+    bool hasExternal = false;        // TOAST
+};
+
+/**
+ * @brief PostgreSQL 堆元组
+ */
+struct PGHeapTuple {
+    uint32_t blockNumber = 0;        // 块号
+    uint16_t offsetNumber = 0;       // 行指针偏移
+    PGTupleVisibility visibility;
+    uint16_t tupleLength = 0;
+    uint16_t dataOffset = 0;
+    std::map<std::string, std::string> values;
+    bool isDead = false;             // 是否为死元组
 };
 
 // ============================================================================
