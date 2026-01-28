@@ -312,3 +312,23 @@ target_link_libraries(test_toon_exporter ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
                       sqlite3 pthread)
 
 add_test(NAME TOONExporterTests COMMAND test_toon_exporter)
+
+# OSS Analyzer Tests (Database and Data Types only - no SDK dependency)
+add_executable(
+  test_oss_analyzer_gtest
+  UnitTest/test_oss_analyzer_gtest.cpp
+  ../src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp
+  ../src/core/AuditLog/AuditLog.cpp ../src/core/Logger/Logger.cpp)
+
+target_include_directories(
+  test_oss_analyzer_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/core
+          ${CMAKE_SOURCE_DIR}/src/analyzers/OSSAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/OSSAnalyzer/Common
+          ${CMAKE_SOURCE_DIR}/src/analyzers/OSSAnalyzer/Database)
+
+target_link_libraries(test_oss_analyzer_gtest ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} sqlite3 pthread)
+
+add_test(NAME OSSAnalyzerGTests COMMAND test_oss_analyzer_gtest)

@@ -1,0 +1,5 @@
+.cache
+.vs
+.vscode
+build
+winbuild

@@ -118,6 +118,15 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/integration/AndroidAdbExtractor
   # TOONExporter
   ${CMAKE_SOURCE_DIR}/src/core/TOONExporter
+  # OSSAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/OSSAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/OSSAnalyzer/Common
+  ${CMAKE_SOURCE_DIR}/src/analyzers/OSSAnalyzer/Core
+  ${CMAKE_SOURCE_DIR}/src/analyzers/OSSAnalyzer/Client
+  ${CMAKE_SOURCE_DIR}/src/analyzers/OSSAnalyzer/Database
+  ${CMAKE_SOURCE_DIR}/src/analyzers/OSSAnalyzer/Exporters
+  # Aliyun OSS SDK
+  ${CMAKE_SOURCE_DIR}/libs/aliyun-oss-cpp-sdk/sdk/include
   # Libs
   ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/include
   ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/common
@@ -129,6 +138,7 @@ add_subdirectory(libs/cpp-dotenv)
 add_subdirectory(libs/DuckX)
 
 link_directories(${TSK_LIBRARY_DIR})
+link_directories(${CMAKE_SOURCE_DIR}/libs/aliyun-oss-cpp-sdk/build/lib)
 
 # Source files Common source files
 set(LIB_SOURCES
@@ -153,6 +163,7 @@ set(LIB_SOURCES
     src/network/HTTPServer/routes/ForensicsRoutes.cpp
     src/network/HTTPServer/routes/SystemRoutes.cpp
     src/network/HTTPServer/routes/SearchRoutes.cpp
+    src/network/HTTPServer/routes/OSSRoutes.cpp
     src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp
     src/analyzers/AndroidAnalyzer/AndroidAnalyzerCore.cpp
     src/analyzers/AndroidAnalyzer/AndroidDataParsers.cpp
@@ -189,6 +200,10 @@ set(LIB_SOURCES
     src/integration/LLMIntegration/FileAnalyzer.cpp
     src/integration/LLMIntegration/ConfigManager.cpp
     src/analyzers/VisionAnalysis/VisionAnalyzer.cpp
+    # OSSAnalyzer module
+    src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp
+    src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp
+    src/analyzers/OSSAnalyzer/Client/OSSClient.cpp
     # cpp-mcp library sources
     libs/cpp-mcp/src/mcp_message.cpp
     libs/cpp-mcp/src/mcp_resource.cpp
@@ -219,6 +234,8 @@ else()
     ${POPPLER_LIBRARIES}
     cpp_dotenv
     duckx
+    alibabacloud-oss-cpp-sdk
+    curl
     ${PLATFORM_LIBRARIES})
 endif()
 
