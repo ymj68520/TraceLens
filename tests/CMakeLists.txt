@@ -332,3 +332,26 @@ target_link_libraries(test_oss_analyzer_gtest ${GTEST_LIBRARIES}
                       ${GMOCK_LIBRARIES} sqlite3 pthread)
 
 add_test(NAME OSSAnalyzerGTests COMMAND test_oss_analyzer_gtest)
+
+# Database Analyzer Tests
+add_executable(
+  test_database_analyzer_gtest
+  UnitTest/test_database_analyzer_gtest.cpp
+  ../src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp
+  ../src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp
+  ../src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp
+  ../src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp
+  ../src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp)
+
+target_include_directories(
+  test_database_analyzer_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Common
+          ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Database
+          ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Parsers)
+
+target_link_libraries(test_database_analyzer_gtest ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} sqlite3 pthread)
+
+add_test(NAME DatabaseAnalyzerGTests COMMAND test_database_analyzer_gtest)

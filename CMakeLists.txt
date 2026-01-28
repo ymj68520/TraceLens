@@ -125,6 +125,11 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/analyzers/OSSAnalyzer/Client
   ${CMAKE_SOURCE_DIR}/src/analyzers/OSSAnalyzer/Database
   ${CMAKE_SOURCE_DIR}/src/analyzers/OSSAnalyzer/Exporters
+  # DatabaseAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Common
+  ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Database
+  ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Parsers
   # Aliyun OSS SDK
   ${CMAKE_SOURCE_DIR}/libs/aliyun-oss-cpp-sdk/sdk/include
   # Libs
@@ -204,6 +209,13 @@ set(LIB_SOURCES
     src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp
     src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp
     src/analyzers/OSSAnalyzer/Client/OSSClient.cpp
+    # DatabaseAnalyzer module
+    src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp
+    src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp
+    src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp
+    src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp
+    src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp
+    src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp
     # cpp-mcp library sources
     libs/cpp-mcp/src/mcp_message.cpp
     libs/cpp-mcp/src/mcp_resource.cpp
