@@ -163,6 +163,7 @@ target_link_libraries(
   test_llm_integration
   ${GTEST_LIBRARIES}
   ${GMOCK_LIBRARIES}
+  ${CURL_LIBRARIES}
   pthread
   duckx
   ${POPPLER_LIBRARIES}
@@ -189,7 +190,7 @@ add_executable(
                        ../src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp)
 
 target_link_libraries(test_office_analyzer ${GTEST_LIBRARIES}
-                      ${GMOCK_LIBRARIES} duckx pthread)
+                      ${GMOCK_LIBRARIES} duckx ${CURL_LIBRARIES} pthread)
 
 target_include_directories(test_office_analyzer
                            PRIVATE ../src/analyzers/OfficeAnalyzer)

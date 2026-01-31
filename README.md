@@ -96,7 +96,7 @@ cd ForensicsProject
 # Install required dependencies (Ubuntu/Debian)
 # libzip-dev libpugixml-dev is optional
 sudo apt-get update
-sudo apt-get install -y build-essential cmake git libsqlite3-dev libewf-dev libhivex-dev libevtx-dev libolecf-dev libasio-dev nlohmann-json3-dev libboost-system-dev libboost-thread-dev libesedb-dev libxapian-dev libpoppler-cpp-dev antiword libzip-dev libpugixml-dev
+sudo apt-get install -y build-essential cmake git libsqlite3-dev libewf-dev libhivex-dev libevtx-dev libolecf-dev libasio-dev nlohmann-json3-dev libboost-system-dev libboost-thread-dev libesedb-dev libxapian-dev libpoppler-cpp-dev antiword libzip-dev libpugixml-dev libxlsxwriter-dev
 
 # Build the project
 mkdir build && cd build
@@ -174,6 +174,9 @@ sudo apt-get install -y libpoppler-cpp-dev
 
 # 安装 antiword 以支持 doc 解析
 sudo apt-get install -y antiword
+
+# 安装 libxlsxwriter 以支持 Excel 文件分析
+sudo apt-get install -y libxlsxwriter-dev
 
 # 安装 DuckX 依赖, 可选，DuckX已经自带
 sudo apt-get install -y libzip-dev libpugixml-dev

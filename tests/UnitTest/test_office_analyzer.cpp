@@ -88,7 +88,99 @@ TEST_F(OfficeAnalyzerTest, AnalyzeInvalidExtension) {
     EXPECT_THAT(result, ::testing::HasSubstr("Error: Unsupported file format"));
 }
 
+// Test that new file extensions are recognized (requires Python service for actual parsing)
+TEST_F(OfficeAnalyzerTest, RecognizesXlsxExtension) {
+    OfficeAnalyzer analyzer;
+    // Without Python service running, we expect an error but not "Unsupported file format"
+    std::string result = analyzer.analyze("test.xlsx");
+    EXPECT_THAT(result, ::testing::Not(::testing::HasSubstr("Unsupported file format")));
+}
+
+TEST_F(OfficeAnalyzerTest, RecognizesXlsExtension) {
+    OfficeAnalyzer analyzer;
+    std::string result = analyzer.analyze("test.xls");
+    EXPECT_THAT(result, ::testing::Not(::testing::HasSubstr("Unsupported file format")));
+}
+
+TEST_F(OfficeAnalyzerTest, RecognizesPptxExtension) {
+    OfficeAnalyzer analyzer;
+    std::string result = analyzer.analyze("test.pptx");
+    EXPECT_THAT(result, ::testing::Not(::testing::HasSubstr("Unsupported file format")));
+}
+
+TEST_F(OfficeAnalyzerTest, RecognizesPptExtension) {
+    OfficeAnalyzer analyzer;
+    std::string result = analyzer.analyze("test.ppt");
+    EXPECT_THAT(result, ::testing::Not(::testing::HasSubstr("Unsupported file format")));
+}
+
+TEST_F(OfficeAnalyzerTest, SetPythonServiceUrl) {
+    OfficeAnalyzer analyzer;
+    // Test that we can set the Python service URL without crashing
+    analyzer.setPythonServiceUrl("http://localhost:8090");
+    // Should work after setting URL
+    std::string result = analyzer.analyze("test.xlsx");
+    EXPECT_THAT(result, ::testing::Not(::testing::HasSubstr("Unsupported file format")));
+}
+
+TEST_F(OfficeAnalyzerTest, AnalyzeDocxToFile) {
+    // Create a simple docx first
+    std::string content = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+                          "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
+                          "<w:body><w:p><w:r><w:t>Test Content for File</w:t></w:r></w:p></w:body></w:document>";
+    
+    system("mkdir -p word");
+    system("mkdir -p _rels");
+    
+    std::ofstream xml("word/document.xml");
+    xml << content;
+    xml.close();
+    
+    std::string contentTypes = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+                               "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+                               "<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+                               "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+                               "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>\n"
+                               "</Types>";
+    std::ofstream ct("[Content_Types].xml");
+    ct << contentTypes;
+    ct.close();
+    
+    std::string rels = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+                       "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+                       "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/>\n"
+                       "</Relationships>";
+    std::ofstream r("_rels/.rels");
+    r << rels;
+    r.close();
+
+    system("zip -r test_output.docx [Content_Types].xml word _rels > /dev/null");
+    system("rm -rf word _rels [Content_Types].xml");
+
+    OfficeAnalyzer analyzer;
+    std::string mdPath = analyzer.analyzeToFile("test_output.docx", ".");
+    
+    // Verify the Markdown file was created
+    EXPECT_FALSE(mdPath.empty());
+    EXPECT_THAT(mdPath, ::testing::EndsWith(".md"));
+    
+    // Check file exists and has content
+    std::ifstream mdFile(mdPath);
+    EXPECT_TRUE(mdFile.good());
+    
+    std::stringstream buffer;
+    buffer << mdFile.rdbuf();
+    std::string mdContent = buffer.str();
+    
+    EXPECT_THAT(mdContent, ::testing::HasSubstr("Test Content for File"));
+    
+    // Cleanup
+    remove(mdPath.c_str());
+    remove("test_output.docx");
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+

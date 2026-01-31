@@ -1,5 +1,5 @@
 """Routes package for the HTTP server."""
 
-from . import health, graphiti, llm, database
+from . import health, graphiti, llm, database, office
 
-__all__ = ["health", "graphiti", "llm", "database"]
+__all__ = ["health", "graphiti", "llm", "database", "office"]
