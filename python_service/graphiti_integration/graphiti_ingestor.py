@@ -83,7 +83,7 @@ class GraphitiIngestor:
             # Use local LLM for embeddings too
             embedder_config = OpenAIEmbedderConfig(
                 api_key=self.config.llm_api_key or "local",
-                embedding_model="text-embedding-ada-002",  # Model name for compatible server
+                embedding_model=self.config.embedder_model,  # Configured embedding model
                 embedding_dim=self.config.embedder_dim,
                 base_url=self.config.llm_base_url,
             )
