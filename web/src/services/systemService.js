@@ -1,4 +1,4 @@
-import api from './api';
+import api, { pythonApi } from './api';
 
 export const getSystemHealth = async () => {
   return await api.get('/api/system/health');
@@ -27,3 +27,23 @@ export const getDatabaseSchemaDocs = async () => {
 export const exportResults = async (taskId, format = 'json') => {
   return await api.post(`/api/export/${taskId}`, { format });
 };
+
+/** K8s-style health checks */
+export const getHealthDependencies = async () => {
+  return await api.get('/api/health/dependencies');
+};
+
+export const getLivenessCheck = async () => {
+  return await api.get('/api/health/live');
+};
+
+/** Python service health check */
+export const getPythonHealth = async () => {
+  return await pythonApi.get('/health');
+};
+
+/** TOON data export */
+export const exportToon = async (taskId) => {
+  return await api.post('/api/forensics/export/toon', { task_id: taskId });
+};
+

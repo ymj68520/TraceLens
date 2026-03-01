@@ -8,6 +8,7 @@ import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
 import ProgressBar from '../components/common/ProgressBar';
 import Spinner from '../components/common/Spinner';
+import { useToast } from '../components/common/ToastContext';
 import { TASK_STATUS, TASK_PRIORITY, STATUS_COLORS, PRIORITY_COLORS } from '../utils/constants';
 
 const Tasks = () => {
@@ -15,10 +16,13 @@ const Tasks = () => {
   const { tasks, status, error, filters } = useSelector((state) => state.tasks);
   const { modal } = useSelector((state) => state.ui);
   const { autoRefresh, refreshInterval } = useSelector((state) => state.settings);
+  const toast = useToast();
   const [taskData, setTaskData] = useState({
     image_path: '',
     priority: 'normal',
     android_analyze: false,
+    windows_analyze: false,
+    linux_analyze: false,
     xfs_mode: 'auto',
     llm_analyze: false,
     llm_mode: 'smart',
@@ -69,6 +73,8 @@ const Tasks = () => {
         image_path: '',
         priority: 'normal',
         android_analyze: false,
+        windows_analyze: false,
+        linux_analyze: false,
         xfs_mode: 'auto',
         llm_analyze: false,
         llm_mode: 'smart',
@@ -78,7 +84,7 @@ const Tasks = () => {
       dispatch(fetchTasks(filters));
 
       // Show success message
-      alert('Task created successfully! Check the task list for progress.');
+      toast.success('Task created successfully! Check the task list for progress.');
     } catch (err) {
       console.error('Failed to create task:', err);
       const errorMessage = err?.message || err?.toString?.() || String(err) || 'Failed to create task. Please try again.';
@@ -92,9 +98,10 @@ const Tasks = () => {
     if (window.confirm('Are you sure you want to cancel this task?')) {
       try {
         await dispatch(cancelTask({ taskId, reason: 'Cancelled by user' })).unwrap();
+        toast.success('Task cancelled successfully.');
         dispatch(fetchTasks(filters));
       } catch (err) {
-        console.error('Failed to cancel task:', err);
+        toast.error('Failed to cancel task: ' + (err?.message || err));
       }
     }
   };
@@ -103,10 +110,10 @@ const Tasks = () => {
     if (window.confirm('Are you sure you want to delete this task? This action cannot be undone.')) {
       try {
         await dispatch(deleteTask(taskId)).unwrap();
+        toast.success('Task deleted successfully.');
         dispatch(fetchTasks(filters));
       } catch (err) {
-        console.error('Failed to delete task:', err);
-        alert('Failed to delete task: ' + (err?.message || err));
+        toast.error('Failed to delete task: ' + (err?.message || err));
       }
     }
   };
@@ -399,6 +406,26 @@ const Tasks = () => {
                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
                   />
                   <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">LLM Analysis</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={taskData.windows_analyze}
+                    disabled={isCreating}
+                    onChange={(e) => setTaskData({ ...taskData, windows_analyze: e.target.checked })}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                  />
+                  <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">Windows Analysis</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={taskData.linux_analyze}
+                    disabled={isCreating}
+                    onChange={(e) => setTaskData({ ...taskData, linux_analyze: e.target.checked })}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                  />
+                  <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">Linux Analysis</span>
                 </label>
               </div>
               <div className="flex justify-end space-x-3 pt-4">

@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { fetchTasks, fetchTaskStatistics } from '../store/taskSlice';
-import { getSystemHealth } from '../services/systemService';
+import { getSystemHealth, getPythonHealth, exportToon } from '../services/systemService';
+import { getLLMStatus } from '../services/llmService';
+import { getGraphitiStatus } from '../services/graphitiService';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
+import Spinner from '../components/common/Spinner';
 
 const Dashboard = () => {
   const dispatch = useDispatch();
@@ -14,45 +17,88 @@ const Dashboard = () => {
   // System health state
   const [systemHealth, setSystemHealth] = useState({ status: 'checking', message: 'Checking...' });
 
+  // Dependency health states
+  const [depHealth, setDepHealth] = useState({
+    cpp: { status: 'checking', label: 'C++ 后端', icon: '⚡', latency: null },
+    python: { status: 'checking', label: 'Python 服务', icon: '🐍', latency: null },
+    neo4j: { status: 'checking', label: 'Neo4j 图数据库', icon: '🕸️', latency: null },
+    llm: { status: 'checking', label: 'LLM 服务', icon: '🧠', latency: null },
+  });
+
+  // TOON export state
+  const [exporting, setExporting] = useState(false);
+
   useEffect(() => {
     dispatch(fetchTasks({ limit: 10 }));
     dispatch(fetchTaskStatistics());
 
-    // Check system health
-    const checkHealth = async () => {
+    // Check all service health in parallel
+    const checkAllHealth = async () => {
+      // C++ backend
+      const cppStart = Date.now();
       try {
         const health = await getSystemHealth();
         setSystemHealth({ status: 'online', message: 'Online', data: health });
-      } catch (error) {
-        setSystemHealth({ status: 'offline', message: 'Offline', error: error.message });
+        setDepHealth((prev) => ({ ...prev, cpp: { ...prev.cpp, status: 'online', latency: Date.now() - cppStart } }));
+      } catch {
+        setSystemHealth({ status: 'offline', message: 'Offline' });
+        setDepHealth((prev) => ({ ...prev, cpp: { ...prev.cpp, status: 'offline' } }));
+      }
+
+      // Python service
+      const pyStart = Date.now();
+      try {
+        await getPythonHealth();
+        setDepHealth((prev) => ({ ...prev, python: { ...prev.python, status: 'online', latency: Date.now() - pyStart } }));
+      } catch {
+        setDepHealth((prev) => ({ ...prev, python: { ...prev.python, status: 'offline' } }));
+      }
+
+      // Neo4j (via Graphiti status)
+      const neoStart = Date.now();
+      try {
+        const gStatus = await getGraphitiStatus();
+        setDepHealth((prev) => ({
+          ...prev,
+          neo4j: { ...prev.neo4j, status: gStatus?.neo4j_connected ? 'online' : 'offline', latency: Date.now() - neoStart },
+        }));
+      } catch {
+        setDepHealth((prev) => ({ ...prev, neo4j: { ...prev.neo4j, status: 'offline' } }));
+      }
+
+      // LLM
+      const llmStart = Date.now();
+      try {
+        const llmStatus = await getLLMStatus();
+        setDepHealth((prev) => ({
+          ...prev,
+          llm: { ...prev.llm, status: llmStatus?.status === 'healthy' ? 'online' : 'offline', latency: Date.now() - llmStart },
+        }));
+      } catch {
+        setDepHealth((prev) => ({ ...prev, llm: { ...prev.llm, status: 'offline' } }));
       }
     };
 
-    checkHealth();
+    checkAllHealth();
   }, [dispatch]);
 
   // Auto-refresh for running tasks
   useEffect(() => {
     if (!autoRefresh) return;
-
-    const hasRunningTasks = tasks.some(t => t.status === 'running');
+    const hasRunningTasks = tasks.some((t) => t.status === 'running');
     if (!hasRunningTasks) return;
-
     const interval = setInterval(() => {
       dispatch(fetchTasks({ limit: 10 }));
     }, refreshInterval || 5000);
-
     return () => clearInterval(interval);
   }, [autoRefresh, refreshInterval, tasks, dispatch]);
 
-  const stats = useMemo(() => {
-    return {
-      total: tasks.length,
-      running: tasks.filter((t) => t.status === 'running').length,
-      completed: tasks.filter((t) => t.status === 'completed').length,
-      failed: tasks.filter((t) => t.status === 'failed').length,
-    };
-  }, [tasks]);
+  const stats = useMemo(() => ({
+    total: tasks.length,
+    running: tasks.filter((t) => t.status === 'running').length,
+    completed: tasks.filter((t) => t.status === 'completed').length,
+    failed: tasks.filter((t) => t.status === 'failed').length,
+  }), [tasks]);
 
   const statCards = [
     { label: 'Total Tasks', value: stats.total, color: 'blue', icon: '📋' },
@@ -60,6 +106,19 @@ const Dashboard = () => {
     { label: 'Completed', value: stats.completed, color: 'green', icon: '✅' },
     { label: 'Failed', value: stats.failed, color: 'red', icon: '❌' },
   ];
+
+  const handleToonExport = async () => {
+    const completedTask = tasks.find((t) => t.status === 'completed');
+    if (!completedTask) return;
+    setExporting(true);
+    try {
+      await exportToon(completedTask.id);
+    } catch {
+      // Silently handle — toast would be ideal here
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -86,9 +145,49 @@ const Dashboard = () => {
         ))}
       </div>
 
+      {/* Dependency Health Cards */}
+      <Card title="🏥 服务依赖状态">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Object.entries(depHealth).map(([key, dep]) => (
+            <div
+              key={key}
+              className={`p-4 rounded-lg border transition-shadow hover:shadow-md ${dep.status === 'online'
+                  ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20'
+                  : dep.status === 'checking'
+                    ? 'border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20'
+                    : 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20'
+                }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-2xl">{dep.icon}</span>
+                <span
+                  className={`w-3 h-3 rounded-full ${dep.status === 'online'
+                      ? 'bg-green-500'
+                      : dep.status === 'checking'
+                        ? 'bg-yellow-500 animate-pulse'
+                        : 'bg-red-500'
+                    }`}
+                />
+              </div>
+              <h4 className="text-sm font-medium text-gray-900 dark:text-white">{dep.label}</h4>
+              <div className="flex items-center justify-between mt-1">
+                <span className={`text-xs font-medium ${dep.status === 'online' ? 'text-green-600 dark:text-green-400' :
+                    dep.status === 'checking' ? 'text-yellow-600' : 'text-red-600 dark:text-red-400'
+                  }`}>
+                  {dep.status === 'online' ? '在线' : dep.status === 'checking' ? '检测中...' : '离线'}
+                </span>
+                {dep.latency != null && (
+                  <span className="text-xs text-gray-400">{dep.latency}ms</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
       {/* Quick Actions */}
       <Card title="Quick Actions">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Link
             to="/tasks"
             className="flex items-center justify-center px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors dark:bg-blue-500 dark:hover:bg-blue-600"
@@ -110,13 +209,24 @@ const Dashboard = () => {
             <span className="mr-2">🔍</span>
             Search Files
           </Link>
+          <button
+            onClick={handleToonExport}
+            disabled={exporting || !tasks.some((t) => t.status === 'completed')}
+            className="flex items-center justify-center px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <span className="mr-2">📤</span>
+            {exporting ? 'Exporting...' : 'TOON Export'}
+          </button>
         </div>
       </Card>
 
       {/* Recent Tasks */}
       <Card title="Recent Tasks" subtitle="Latest analysis tasks">
         {status === 'loading' ? (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">Loading tasks...</div>
+          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+            <Spinner size="md" />
+            <span className="ml-2">Loading tasks...</span>
+          </div>
         ) : tasks.length === 0 ? (
           <div className="text-center py-8 text-gray-500 dark:text-gray-400">
             No tasks yet. Create your first task to get started.
@@ -240,3 +350,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+

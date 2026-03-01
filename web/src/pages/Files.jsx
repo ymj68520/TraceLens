@@ -9,6 +9,7 @@ import { getLargestFiles, getExtensionAnalysis } from '../services/forensicsServ
 import { startExtraction, pollExtractionStatus } from '../services/extractionService';
 import { analyzeContent, startBatchAnalysis, pollBatchStatus, getLLMStatus } from '../services/llmService';
 import { ingestTaskData, getGraphitiStatus } from '../services/graphitiService';
+import { parseFile } from '../services/officeService';
 import { getTaskResults } from '../services/taskService';
 
 const Files = () => {
@@ -58,6 +59,11 @@ const Files = () => {
   const [extractedCount, setExtractedCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
   const [extractionError, setExtractionError] = useState(null);
+
+  // Office preview state
+  const [officePreview, setOfficePreview] = useState(null);
+  const [officeParsing, setOfficeParsing] = useState(false);
+  const [officeError, setOfficeError] = useState(null);
 
   const currentTask = tasks.find((t) => t.id === taskId);
 
@@ -656,6 +662,7 @@ const Files = () => {
           {[
             { id: 'largest', label: '文件列表' },
             { id: 'extensions', label: '扩展名分析' },
+            { id: 'office', label: '📄 Office 预览' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -829,6 +836,127 @@ const Files = () => {
           ) : (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">无扩展名数据</div>
           )}
+        </Card>
+      )}
+
+      {/* Office Preview Tab */}
+      {activeTab === 'office' && (
+        <Card title="📄 Office 文档预览">
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              选择一个 Office 文件 (PPT, Excel) 解析并预览内容。支持 .pptx, .xlsx, .xls 格式。
+            </p>
+            {/* File selector for Office files */}
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">选择文件</h4>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {filteredFiles
+                  .filter(f => {
+                    const ext = (f.extension || '').toLowerCase();
+                    return ['.pptx', '.ppt', '.xlsx', '.xls', '.docx', '.doc'].includes(ext);
+                  })
+                  .map((file, idx) => {
+                    const filePath = file.path || file.file_path;
+                    return (
+                      <button
+                        key={idx}
+                        onClick={async () => {
+                          setOfficeParsing(true);
+                          setOfficeError(null);
+                          setOfficePreview(null);
+                          try {
+                            const result = await parseFile(filePath);
+                            setOfficePreview({ file, ...result });
+                          } catch (err) {
+                            setOfficeError(err.message || '解析失败');
+                          } finally {
+                            setOfficeParsing(false);
+                          }
+                        }}
+                        disabled={officeParsing}
+                        className="w-full text-left px-3 py-2 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 text-sm text-gray-700 dark:text-gray-300 flex items-center gap-2"
+                      >
+                        <Badge variant="blue">{file.extension}</Badge>
+                        <span className="truncate">{file.name || filePath?.split('/').pop()}</span>
+                      </button>
+                    );
+                  })}
+                {filteredFiles.filter(f => {
+                  const ext = (f.extension || '').toLowerCase();
+                  return ['.pptx', '.ppt', '.xlsx', '.xls', '.docx', '.doc'].includes(ext);
+                }).length === 0 && (
+                    <p className="text-gray-400 text-sm py-4 text-center">无 Office 文件</p>
+                  )}
+              </div>
+            </div>
+
+            {officeParsing && (
+              <div className="flex items-center justify-center py-8">
+                <Spinner size="lg" />
+                <span className="ml-3 text-gray-600 dark:text-gray-300">解析中...</span>
+              </div>
+            )}
+
+            {officeError && (
+              <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 rounded text-sm">
+                ❌ {officeError}
+              </div>
+            )}
+
+            {officePreview && (
+              <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                <h4 className="font-medium text-gray-900 dark:text-white mb-3">
+                  📄 {officePreview.file?.name || '文档内容'}
+                </h4>
+                {/* Slides / Sheets */}
+                {officePreview.slides && (
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-500">幻灯片: {officePreview.slides.length} 页</p>
+                    {officePreview.slides.map((slide, i) => (
+                      <div key={i} className="p-3 bg-gray-50 dark:bg-gray-900 rounded border">
+                        <p className="text-xs text-gray-400 mb-1">第 {i + 1} 页</p>
+                        <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{slide.text || slide.content || '(无文本)'}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {officePreview.sheets && (
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-500">工作表: {officePreview.sheets.length} 个</p>
+                    {officePreview.sheets.map((sheet, i) => (
+                      <div key={i} className="p-3 bg-gray-50 dark:bg-gray-900 rounded border">
+                        <p className="text-xs text-gray-400 mb-1">{sheet.name || `工作表 ${i + 1}`}</p>
+                        {sheet.data && sheet.data.length > 0 ? (
+                          <div className="overflow-x-auto">
+                            <table className="text-xs">
+                              <tbody>
+                                {sheet.data.slice(0, 20).map((row, ri) => (
+                                  <tr key={ri}>
+                                    {(Array.isArray(row) ? row : [row]).map((cell, ci) => (
+                                      <td key={ci} className="px-2 py-1 border border-gray-200 dark:border-gray-600">{String(cell ?? '')}</td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {sheet.data.length > 20 && <p className="text-xs text-gray-400 mt-1">… 还有 {sheet.data.length - 20} 行</p>}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-400">(无数据)</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* Raw text fallback */}
+                {officePreview.text && !officePreview.slides && !officePreview.sheets && (
+                  <pre className="text-sm text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 p-4 rounded overflow-auto max-h-96 whitespace-pre-wrap">
+                    {officePreview.text}
+                  </pre>
+                )}
+              </div>
+            )}
+          </div>
         </Card>
       )}
     </div>

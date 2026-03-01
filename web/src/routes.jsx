@@ -10,8 +10,14 @@ import Statistics from './pages/Statistics';
 import Settings from './pages/Settings';
 import LLMDescriptions from './pages/LLMDescriptions';
 import KnowledgeGraph from './pages/KnowledgeGraph';
+import OSS from './pages/OSS';
+import Login from './pages/Login';
 
 const router = createBrowserRouter([
+  {
+    path: '/login',
+    element: <Login />,
+  },
   {
     path: '/',
     element: <App />,
@@ -39,6 +45,10 @@ const router = createBrowserRouter([
       {
         path: 'android',
         element: <Android />,
+      },
+      {
+        path: 'oss',
+        element: <OSS />,
       },
       {
         path: 'search',

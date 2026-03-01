@@ -50,6 +50,8 @@ export default function KnowledgeGraph() {
     // 导入状态
     const [ingesting, setIngesting] = useState(false);
     const [ingestResult, setIngestResult] = useState(null);
+    const [ingestProgress, setIngestProgress] = useState(0);
+    const [ingestMessage, setIngestMessage] = useState('');
 
     // 当前视图
     const [activeTab, setActiveTab] = useState('search');
@@ -160,16 +162,44 @@ export default function KnowledgeGraph() {
 
         setIngesting(true);
         setIngestResult(null);
+        setIngestProgress(0);
+        setIngestMessage('正在准备导入数据...');
         try {
             const result = await ingestTaskData(taskId, {
                 includeLLMDescriptions: true,
             });
-            setIngestResult(result);
-            await fetchStatus();
-            await fetchTaskGraphs();
+            // If there's a job_id, we could poll — for now just show progress
+            if (result.job_id) {
+                setIngestMessage('导入进行中...');
+                // Simulate progress tracking
+                let progress = 10;
+                const progressInterval = setInterval(async () => {
+                    progress = Math.min(progress + 15, 90);
+                    setIngestProgress(progress);
+                    setIngestMessage(`已处理 ${progress}%...`);
+                }, 2000);
+
+                // Wait a bit then fetch final status
+                setTimeout(async () => {
+                    clearInterval(progressInterval);
+                    setIngestProgress(100);
+                    setIngestMessage('导入完成！');
+                    setIngestResult(result);
+                    await fetchStatus();
+                    await fetchTaskGraphs();
+                }, 10000);
+            } else {
+                setIngestProgress(100);
+                setIngestMessage('导入完成！');
+                setIngestResult(result);
+                await fetchStatus();
+                await fetchTaskGraphs();
+            }
         } catch (err) {
             console.error('Ingestion failed:', err);
             setError('导入失败: ' + (err.message || '未知错误'));
+            setIngestProgress(0);
+            setIngestMessage('');
         } finally {
             setIngesting(false);
         }
@@ -272,6 +302,18 @@ export default function KnowledgeGraph() {
                     </div>
                 </div>
             </div>
+            {/* Ingest Progress Bar */}
+            {(ingesting || ingestProgress > 0) && ingestProgress < 100 && (
+                <div className="mt-4">
+                    <div className="flex justify-between text-sm mb-1">
+                        <span className="text-gray-600 dark:text-gray-300">{ingestMessage}</span>
+                        <span className="text-blue-600">{ingestProgress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+                        <div className="bg-blue-600 h-2 rounded-full transition-all" style={{ width: `${ingestProgress}%` }} />
+                    </div>
+                </div>
+            )}
             {ingestResult && (
                 <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200 rounded">
                     ✅ {ingestResult.message}

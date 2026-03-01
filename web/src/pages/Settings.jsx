@@ -1,13 +1,26 @@
+import { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { updateSettings, resetSettings } from '../store/settingsSlice';
 import { useTranslation } from '../hooks/useTranslation';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
+import Badge from '../components/common/Badge';
+import Spinner from '../components/common/Spinner';
+import { getLLMStatus, getModels } from '../services/llmService';
+import { getGraphitiStatus } from '../services/graphitiService';
 
 const Settings = () => {
   const dispatch = useDispatch();
   const settings = useSelector((state) => state.settings);
   const { t } = useTranslation();
+
+  // LLM model info
+  const [llmInfo, setLlmInfo] = useState(null);
+  const [llmLoading, setLlmLoading] = useState(false);
+
+  // Neo4j test
+  const [neo4jStatus, setNeo4jStatus] = useState(null);
+  const [neo4jTesting, setNeo4jTesting] = useState(false);
 
   const handleSettingChange = (key, value) => {
     dispatch(updateSettings({ [key]: value }));
@@ -18,6 +31,39 @@ const Settings = () => {
       dispatch(resetSettings());
     }
   };
+
+  // Load LLM model info
+  const loadLLMInfo = async () => {
+    setLlmLoading(true);
+    try {
+      const [status, models] = await Promise.all([
+        getLLMStatus().catch(() => ({ status: 'error' })),
+        getModels().catch(() => ({ models: [] })),
+      ]);
+      setLlmInfo({ ...status, models: models.models || models });
+    } catch {
+      setLlmInfo({ status: 'error' });
+    } finally {
+      setLlmLoading(false);
+    }
+  };
+
+  // Test Neo4j connection
+  const testNeo4j = async () => {
+    setNeo4jTesting(true);
+    try {
+      const status = await getGraphitiStatus();
+      setNeo4jStatus(status);
+    } catch (err) {
+      setNeo4jStatus({ neo4j_connected: false, error: err.message });
+    } finally {
+      setNeo4jTesting(false);
+    }
+  };
+
+  useEffect(() => {
+    loadLLMInfo();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -30,7 +76,7 @@ const Settings = () => {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              {t('settings.api_url')}
+              {t('settings.api_url')} (C++ 后端)
             </label>
             <input
               type="text"
@@ -39,6 +85,106 @@ const Settings = () => {
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Python 服务 URL
+            </label>
+            <input
+              type="text"
+              value={settings.pythonApiUrl}
+              onChange={(e) => handleSettingChange('pythonApiUrl', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+        </div>
+      </Card>
+
+      {/* LLM Model Configuration */}
+      <Card title="🧠 LLM 模型配置">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${llmInfo?.status === 'healthy' ? 'bg-green-500' : 'bg-red-500'}`} />
+              <span className="text-sm font-medium text-gray-900 dark:text-white">
+                状态: {llmInfo?.status === 'healthy' ? '在线' : llmInfo?.status === 'error' ? '离线' : '未知'}
+              </span>
+            </div>
+            <Button variant="outline" size="sm" onClick={loadLLMInfo} disabled={llmLoading}>
+              {llmLoading ? <Spinner size="sm" /> : '🔄 刷新'}
+            </Button>
+          </div>
+
+          {llmInfo && llmInfo.status !== 'error' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Text Model */}
+              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📝 文本模型</h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">模型:</span>
+                    <span className="font-mono text-gray-900 dark:text-white">{llmInfo.text_model || '-'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Base URL:</span>
+                    <span className="font-mono text-gray-900 dark:text-white text-xs">{llmInfo.text_base_url || '-'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Max Tokens:</span>
+                    <span className="font-mono">{llmInfo.text_max_tokens || '-'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Vision Model */}
+              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">👁️ 视觉模型</h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">模型:</span>
+                    <span className="font-mono text-gray-900 dark:text-white">{llmInfo.vision_model || '-'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Base URL:</span>
+                    <span className="font-mono text-gray-900 dark:text-white text-xs">{llmInfo.vision_base_url || '-'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Max Tokens:</span>
+                    <span className="font-mono">{llmInfo.vision_max_tokens || '-'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {llmInfo?.status === 'error' && (
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 rounded text-sm">
+              ⚠️ LLM 服务不可用，请检查 LM Studio 或 OpenAI 服务是否运行。
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Neo4j Connection Test */}
+      <Card title="🕸️ Neo4j 连接">
+        <div className="space-y-4">
+          <div className="flex items-center gap-4">
+            <Button variant="outline" onClick={testNeo4j} disabled={neo4jTesting}>
+              {neo4jTesting ? <><Spinner size="sm" className="mr-2" />测试中...</> : '🔗 测试连接'}
+            </Button>
+            {neo4jStatus && (
+              <Badge variant={neo4jStatus.neo4j_connected ? 'green' : 'red'}>
+                {neo4jStatus.neo4j_connected ? '✅ 连接成功' : '❌ 连接失败'}
+              </Badge>
+            )}
+          </div>
+          {neo4jStatus && (
+            <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+              {neo4jStatus.total_entities != null && (
+                <p>实体: {neo4jStatus.total_entities} | 关系: {neo4jStatus.total_relationships || 0}</p>
+              )}
+              {neo4jStatus.error && <p className="text-red-600">错误: {neo4jStatus.error}</p>}
+            </div>
+          )}
         </div>
       </Card>
 
@@ -126,3 +272,4 @@ const Settings = () => {
 };
 
 export default Settings;
+

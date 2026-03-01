@@ -24,6 +24,7 @@ const settingsSlice = createSlice({
   name: 'settings',
   initialState: {
     apiUrl: 'http://localhost:8080',
+    pythonApiUrl: 'http://localhost:8090',
     refreshInterval: 5000,
     autoRefresh: true,
     theme: 'light',
@@ -39,6 +40,7 @@ const settingsSlice = createSlice({
     resetSettings: (state) => {
       Object.assign(state, {
         apiUrl: 'http://localhost:8080',
+        pythonApiUrl: 'http://localhost:8090',
         refreshInterval: 5000,
         autoRefresh: true,
         theme: 'light',
