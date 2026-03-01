@@ -182,11 +182,10 @@ async def get_task(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-    responses={
-        200: {"description": "Databases listed successfully"},
-        500: {"description": "Internal server error"}
-    }
-)
+@router.get("/tasks/{task_id}/databases", response_model=TaskDatabasesResponse, responses={
+    200: {"description": "Databases listed successfully"},
+    500: {"description": "Internal server error"}
+})
 async def list_task_databases(
     task_id: str,
     settings: Settings = Depends(get_settings),

@@ -67,16 +67,35 @@ class GraphitiService:
             await self.initialize()
         
         try:
-            # Create task-specific graph with task_id as group_id
-            graph = self._graphiti_class(
+            from graphiti_integration.config import GraphitiConfig
+
+            # Build GraphitiConfig from server Settings
+            config = GraphitiConfig(
                 neo4j_uri=self.settings.neo4j_uri,
                 neo4j_user=self.settings.neo4j_user,
                 neo4j_password=self.settings.neo4j_password,
-                group_id=task_id,  # Task-specific namespace
+                llm_base_url=self.settings.llm_text_base_url
+                    if not self.settings.llm_text_base_url.endswith("/v1")
+                    else self.settings.llm_text_base_url,
+                llm_model=self.settings.llm_text_model,
+                llm_api_key=self.settings.llm_api_key or "local",
+                batch_size=self.settings.graphiti_batch_size,
+                max_retries=self.settings.graphiti_max_retries,
+                group_id=task_id,  # Per-image isolation
+                use_local_llm=self.settings.graphiti_use_local_llm,
             )
-            self._task_graphs[task_id] = graph
+
+            # Create ingestor with proper config
+            from graphiti_integration import GraphitiIngestor
+            ingestor = GraphitiIngestor(config)
+            await ingestor.initialize()
+
+            self._task_graphs[task_id] = {
+                "config": config,
+                "ingestor": ingestor,
+            }
             logger.info(f"Created Graphiti graph for task: {task_id}")
-            return graph
+            return self._task_graphs[task_id]
         except Exception as e:
             logger.error(f"Failed to create task graph for {task_id}: {e}")
             raise
@@ -85,7 +104,9 @@ class GraphitiService:
         """Shutdown all Graphiti connections."""
         for task_id, graph in self._task_graphs.items():
             try:
-                if hasattr(graph, 'close'):
+                if isinstance(graph, dict) and "ingestor" in graph:
+                    await graph["ingestor"].close()
+                elif hasattr(graph, 'close'):
                     await graph.close()
             except Exception as e:
                 logger.warning(f"Error closing graph for task {task_id}: {e}")
@@ -100,6 +121,8 @@ class GraphitiService:
         try:
             if task_id:
                 graph = await self._get_task_graph(task_id)
+                if isinstance(graph, dict) and "ingestor" in graph:
+                    return True
                 if hasattr(graph, 'check_connection'):
                     return await graph.check_connection()
             return True
@@ -141,30 +164,73 @@ class GraphitiService:
         include_llm_descriptions: bool,
         batch_size: int,
     ):
-        """Run the actual ingestion in background."""
+        """Run the actual ingestion using MultiSourcePipeline."""
         try:
-            graph = await self._get_task_graph(task_id)
-            
-            if graph and hasattr(graph, 'ingest_task'):
-                result = await graph.ingest_task(
-                    task_id=task_id,
-                    include_llm=include_llm_descriptions,
-                    batch_size=batch_size,
-                    progress_callback=lambda p: self._update_job_progress(job_id, p),
-                )
-                
-                self._jobs[job_id].update({
-                    "status": "completed",
-                    "progress": 1.0,
-                    "entities_created": result.get("entities", 0),
-                    "relationships_created": result.get("relationships", 0),
-                })
-            else:
-                self._jobs[job_id].update({
-                    "status": "completed",
-                    "progress": 1.0,
-                    "message": "Graphiti not configured - simulated completion",
-                })
+            # Get task info from C++ backend to find database paths
+            from ..services import get_service_manager
+            service_manager = get_service_manager()
+
+            # Try to get database info for this task
+            task_data = None
+            try:
+                task_data = await service_manager.cpp_backend.get_task(task_id)
+            except Exception as e:
+                logger.warning(f"Could not fetch task data from C++ backend: {e}")
+
+            # Build config for multi-source pipeline
+            from graphiti_integration.config import GraphitiConfig
+            from graphiti_integration.pipeline import MultiSourcePipeline
+
+            config = GraphitiConfig(
+                neo4j_uri=self.settings.neo4j_uri,
+                neo4j_user=self.settings.neo4j_user,
+                neo4j_password=self.settings.neo4j_password,
+                llm_base_url=self.settings.llm_text_base_url
+                    if not self.settings.llm_text_base_url.endswith("/v1")
+                    else self.settings.llm_text_base_url,
+                llm_model=self.settings.llm_text_model,
+                llm_api_key=self.settings.llm_api_key or "local",
+                batch_size=batch_size,
+                group_id=task_id,
+                use_local_llm=self.settings.graphiti_use_local_llm,
+                filter_analyzed_only=not include_llm_descriptions,
+            )
+
+            # Determine the output_dir and base_name from task data
+            output_dir = self.settings.db_output_dir
+            base_name = None
+            any_db_path = None
+
+            if task_data:
+                # Try to extract image name from task data
+                if isinstance(task_data, dict):
+                    base_name = task_data.get("image_name") or task_data.get("name")
+                    output_dir = task_data.get("output_dir", output_dir)
+                    any_db_path = task_data.get("db_path")
+
+            pipeline = MultiSourcePipeline(config)
+
+            def progress_cb(source, phase, current, total):
+                self._update_job_progress(job_id, current / total if total > 0 else 0)
+
+            result = await pipeline.run(
+                base_name=base_name,
+                output_dir=output_dir,
+                any_db_path=any_db_path,
+                group_id=task_id,
+                dry_run=False,
+                progress_callback=progress_cb,
+            )
+
+            self._jobs[job_id].update({
+                "status": "completed",
+                "progress": 1.0,
+                "entities_created": result.total_ingested,
+                "relationships_created": 0,
+                "sources_processed": result.sources_processed,
+                "summary": result.summary(),
+            })
+
         except Exception as e:
             logger.error(f"Ingestion job {job_id} failed: {e}")
             self._jobs[job_id].update({

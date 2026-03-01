@@ -99,13 +99,12 @@ class LLMStatusResponse(BaseModel):
 
 # Routes
 
-    responses={
-        200: {"description": "Content analyzed successfully"},
-        400: {"description": "Invalid request parameters"},
-        404: {"description": "File not found"},
-        500: {"description": "Internal server error during analysis"}
-    }
-)
+@router.post("/analyze", response_model=AnalyzeResponse, responses={
+    200: {"description": "Content analyzed successfully"},
+    400: {"description": "Invalid request parameters"},
+    404: {"description": "File not found"},
+    500: {"description": "Internal server error during analysis"}
+})
 async def analyze_content(
     request: AnalyzeRequest,
     settings: Settings = Depends(get_settings),
@@ -220,12 +219,11 @@ async def analyze_uploaded_file(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-    responses={
-        200: {"description": "Batch analysis started successfully"},
-        404: {"description": "Task not found"},
-        500: {"description": "Internal server error during batch analysis"}
-    }
-)
+@router.post("/batch", response_model=BatchAnalyzeResponse, responses={
+    200: {"description": "Batch analysis started successfully"},
+    404: {"description": "Task not found"},
+    500: {"description": "Internal server error during batch analysis"}
+})
 async def batch_analyze(
     request: BatchAnalyzeRequest,
     background_tasks: BackgroundTasks,
@@ -274,12 +272,11 @@ async def batch_analyze(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-    responses={
-        200: {"description": "Status retrieved successfully"},
-        404: {"description": "Job not found"},
-        500: {"description": "Internal server error"}
-    }
-)
+@router.get("/batch/{job_id}", response_model=BatchStatusResponse, responses={
+    200: {"description": "Status retrieved successfully"},
+    404: {"description": "Job not found"},
+    500: {"description": "Internal server error"}
+})
 async def get_batch_status(
     job_id: str,
     settings: Settings = Depends(get_settings),
@@ -313,11 +310,10 @@ async def get_batch_status(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-    responses={
-        200: {"description": "Models listed successfully"},
-        500: {"description": "Internal server error"}
-    }
-)
+@router.get("/models", response_model=ModelsResponse, responses={
+    200: {"description": "Models listed successfully"},
+    500: {"description": "Internal server error"}
+})
 async def list_models(settings: Settings = Depends(get_settings)):
     """
     List available LLM models and their configurations.
@@ -359,11 +355,10 @@ async def list_models(settings: Settings = Depends(get_settings)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-    responses={
-        200: {"description": "Status retrieved successfully"},
-        500: {"description": "Internal server error"}
-    }
-)
+@router.get("/status", response_model=LLMStatusResponse, responses={
+    200: {"description": "Status retrieved successfully"},
+    500: {"description": "Internal server error"}
+})
 async def get_status(settings: Settings = Depends(get_settings)):
     """
     Get the status of LLM services.

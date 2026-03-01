@@ -111,12 +111,11 @@ class TaskGraphsResponse(BaseModel):
 
 # Routes
 
-    responses={
-        200: {"description": "Ingestion started successfully"},
-        404: {"description": "Task not found"},
-        500: {"description": "Internal server error during ingestion"}
-    }
-)
+@router.post("/ingest", response_model=IngestResponse, responses={
+    200: {"description": "Ingestion started successfully"},
+    404: {"description": "Task not found"},
+    500: {"description": "Internal server error during ingestion"}
+})
 async def ingest_data(
     request: IngestRequest,
     background_tasks: BackgroundTasks,
@@ -157,11 +156,10 @@ async def ingest_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-    responses={
-        200: {"description": "Search executed successfully"},
-        500: {"description": "Internal server error during search"}
-    }
-)
+@router.post("/search", response_model=SearchResponse, responses={
+    200: {"description": "Search executed successfully"},
+    500: {"description": "Internal server error during search"}
+})
 async def search_graph(
     request: SearchRequest,
     settings: Settings = Depends(get_settings),
@@ -206,11 +204,10 @@ async def search_graph(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-    responses={
-        200: {"description": "Entities listed successfully"},
-        500: {"description": "Internal server error during listing"}
-    }
-)
+@router.get("/entities", response_model=EntityListResponse, responses={
+    200: {"description": "Entities listed successfully"},
+    500: {"description": "Internal server error during listing"}
+})
 async def list_entities(
     task_id: str = Query(..., description="Task ID to list entities from"),
     entity_type: Optional[str] = Query(None, description="Filter by entity type"),
@@ -246,11 +243,10 @@ async def list_entities(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-    responses={
-        200: {"description": "Relationships listed successfully"},
-        500: {"description": "Internal server error during listing"}
-    }
-)
+@router.get("/relationships", response_model=RelationshipListResponse, responses={
+    200: {"description": "Relationships listed successfully"},
+    500: {"description": "Internal server error during listing"}
+})
 async def list_relationships(
     task_id: str = Query(..., description="Task ID to list relationships from"),
     relationship_type: Optional[str] = Query(None, description="Filter by relationship type"),

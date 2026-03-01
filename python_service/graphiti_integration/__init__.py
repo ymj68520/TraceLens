@@ -4,8 +4,17 @@
 # file descriptions) with Graphiti to build a RAG knowledge graph.
 
 from .config import GraphitiConfig
-from .database_reader import ForensicsDatabase, FileRecord
-from .toon_transformer import TOONTransformer, EpisodeData
+from .database_reader import (
+    ForensicsDatabase,
+    FileRecord,
+    EventsDatabase,
+    WindowsDatabase,
+    LinuxDatabase,
+    AndroidDatabase,
+    ForensicsDatabaseFactory,
+    DiscoveredDatabases,
+)
+from .toon_transformer import TOONTransformer, EpisodeData, ForensicEpisodeTransformer
 from .exceptions import (
     GraphitiIntegrationError,
     DatabaseError,
@@ -19,8 +28,8 @@ def _get_graphiti_ingestor():
     return GraphitiIngestor
 
 def _get_graphiti_pipeline():
-    from .pipeline import GraphitiPipeline, run_pipeline
-    return GraphitiPipeline, run_pipeline
+    from .pipeline import GraphitiPipeline, run_pipeline, MultiSourcePipeline, run_multi_source_pipeline
+    return GraphitiPipeline, run_pipeline, MultiSourcePipeline, run_multi_source_pipeline
 
 __all__ = [
     # Config
@@ -28,14 +37,23 @@ __all__ = [
     # Database
     "ForensicsDatabase",
     "FileRecord",
+    "EventsDatabase",
+    "WindowsDatabase",
+    "LinuxDatabase",
+    "AndroidDatabase",
+    "ForensicsDatabaseFactory",
+    "DiscoveredDatabases",
     # Transformer
     "TOONTransformer",
     "EpisodeData",
+    "ForensicEpisodeTransformer",
     # Ingestor (lazy)
     "GraphitiIngestor",
     # Pipeline (lazy)
     "GraphitiPipeline",
     "run_pipeline",
+    "MultiSourcePipeline",
+    "run_multi_source_pipeline",
     # Exceptions
     "GraphitiIntegrationError",
     "DatabaseError",
@@ -43,7 +61,7 @@ __all__ = [
     "IngestionError",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # Lazy loading support
 def __getattr__(name):
@@ -55,5 +73,12 @@ def __getattr__(name):
     elif name == "run_pipeline":
         pipeline_mod = _get_graphiti_pipeline()
         return pipeline_mod[1]
+    elif name == "MultiSourcePipeline":
+        pipeline_mod = _get_graphiti_pipeline()
+        return pipeline_mod[2]
+    elif name == "run_multi_source_pipeline":
+        pipeline_mod = _get_graphiti_pipeline()
+        return pipeline_mod[3]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
