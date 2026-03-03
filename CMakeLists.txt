@@ -11,6 +11,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Find required packages
 find_package(SQLite3 REQUIRED)
+find_package(OpenSSL REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system thread)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(HIVEX REQUIRED hivex)
@@ -251,6 +252,8 @@ else()
     duckx
     alibabacloud-oss-cpp-sdk
     curl
+    OpenSSL::SSL
+    OpenSSL::Crypto
     ${PLATFORM_LIBRARIES})
 endif()
 

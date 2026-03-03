@@ -311,8 +311,8 @@ void OSSRoutes::run_analysis_job(const std::string& job_id) {
             }
         }
 
-        // 更新任务元数据
-        task_manager_.update_task_metadata(job.task_id, "oss_db", oss_db_path);
+        // OSS分析db路径按约定在 get_oss_database_path 中推算，无需额外持久化
+        std::cerr << "[OSS] Analysis complete, oss_db: " << oss_db_path << std::endl;
 
     } catch (const std::exception& e) {
         std::lock_guard<std::mutex> lock(jobs_mutex_);

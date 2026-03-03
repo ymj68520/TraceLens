@@ -13,12 +13,34 @@
 #include <alibabacloud/oss/client/ClientConfiguration.h>
 
 #include <chrono>
+#include <ctime>
 #include <fstream>
+#include <iomanip>
+#include <sstream>
 
 namespace ForensicAnalyzer {
 namespace OSS {
 
 using namespace AlibabaCloud::OSS;
+
+/**
+ * @brief 解析 OSS 返回的 ISO 8601 时间字符串为 Unix 时间戳
+ * 格式示例: "2024-01-15T08:30:00.000Z" 或 "2024-01-15T08:30:00Z"
+ */
+static int64_t parseOssDateTime(const std::string& dt) {
+    if (dt.empty()) return 0;
+    try {
+        std::tm tm = {};
+        std::istringstream ss(dt);
+        // Try "%Y-%m-%dT%H:%M:%S"
+        ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+        if (ss.fail()) return 0;
+        tm.tm_isdst = -1;
+        return static_cast<int64_t>(timegm(&tm));
+    } catch (...) {
+        return 0;
+    }
+}
 
 /**
  * @brief OSSClient的内部实现类（pimpl模式）
@@ -142,7 +164,7 @@ std::vector<OSSBucketInfo> OSSClient::listBuckets() {
             OSSBucketInfo info;
             info.name = bucket.Name();
             info.region = bucket.Location();
-            info.creationDate = bucket.CreationDate().UnixTimeStamp();
+            info.creationDate = parseOssDateTime(bucket.CreationDate());
             info.storageClass = bucket.StorageClass();
             results.push_back(info);
         }
@@ -170,9 +192,9 @@ OSSBucketInfo OSSClient::getBucketInfo(const std::string& bucketName) {
         if (infoOutcome.isSuccess()) {
             info.name = bucketName;
             info.region = infoOutcome.result().Location();
-            info.acl = infoOutcome.result().Acl().String();
+            info.acl = std::to_string(static_cast<int>(infoOutcome.result().Acl()));
             info.storageClass = infoOutcome.result().StorageClass();
-            info.creationDate = infoOutcome.result().CreationDate().UnixTimeStamp();
+            info.creationDate = parseOssDateTime(infoOutcome.result().CreationDate());
             info.owner = infoOutcome.result().Owner().Id();
         }
         
@@ -235,7 +257,7 @@ std::vector<OSSObjectInfo> OSSClient::listObjects(
             info.key = obj.Key();
             info.size = obj.Size();
             info.etag = obj.ETag();
-            info.lastModified = obj.LastModified().UnixTimeStamp();
+            info.lastModified = parseOssDateTime(obj.LastModified());
             info.storageClass = obj.StorageClass();
             info.owner = obj.Owner().Id();
             results.push_back(info);
@@ -283,7 +305,7 @@ int64_t OSSClient::listAllObjects(
                 info.key = obj.Key();
                 info.size = obj.Size();
                 info.etag = obj.ETag();
-                info.lastModified = obj.LastModified().UnixTimeStamp();
+                info.lastModified = parseOssDateTime(obj.LastModified());
                 info.storageClass = obj.StorageClass();
                 info.owner = obj.Owner().Id();
                 
@@ -327,7 +349,7 @@ OSSObjectInfo OSSClient::getObjectMeta(const std::string& bucketName, const std:
         info.key = objectKey;
         info.size = outcome.result().ContentLength();
         info.etag = outcome.result().ETag();
-        info.lastModified = outcome.result().LastModified().UnixTimeStamp();
+        info.lastModified = parseOssDateTime(outcome.result().LastModified());
         info.contentType = outcome.result().ContentType();
         
         // 获取用户自定义元数据
@@ -361,9 +383,11 @@ bool OSSClient::downloadObject(
         });
         
         if (progressCallback) {
-            request.setTransferProgress([&progressCallback](size_t increment, int64_t transferred, int64_t total, void* userData) {
+            AlibabaCloud::OSS::TransferProgress tp;
+            tp.Handler = [&progressCallback](size_t /*increment*/, int64_t transferred, int64_t total, void* /*userData*/) {
                 progressCallback(transferred, total);
-            });
+            };
+            request.setTransferProgress(tp);
         }
         
         auto outcome = impl_->client->GetObject(request);

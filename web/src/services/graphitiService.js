@@ -94,6 +94,17 @@ export const deleteTaskGraph = async (taskId) => {
     return await pythonApi.delete(`/api/graphiti/tasks/${taskId}`);
 };
 
+/**
+ * 获取图谱可视化数据 (节点 + 关系)
+ * @param {string} taskId - 任务 ID
+ * @param {number} maxNodes - 最多返回节点数量
+ */
+export const getGraphData = async (taskId, maxNodes = 200) => {
+    return await pythonApi.get('/api/graphiti/graph', {
+        params: { task_id: taskId, max_nodes: maxNodes },
+    });
+};
+
 export default {
     ingestTaskData,
     searchGraph,
@@ -102,4 +113,5 @@ export default {
     getGraphitiStatus,
     listTaskGraphs,
     deleteTaskGraph,
+    getGraphData,
 };

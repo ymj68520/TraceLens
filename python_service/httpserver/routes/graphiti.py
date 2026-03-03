@@ -367,3 +367,39 @@ async def delete_task_graph(
     except Exception as e:
         logger.error(f"Delete task graph failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/graph", responses={
+    200: {"description": "Graph data for visualization"},
+    500: {"description": "Internal server error"},
+})
+async def get_graph_data(
+    task_id: str = Query(..., description="Task ID to get graph data for"),
+    max_nodes: int = Query(200, ge=1, le=1000, description="Maximum nodes to return"),
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Get graph data (nodes + links) for visual rendering of the knowledge graph.
+    Returns a force-graph compatible format: { nodes: [...], links: [...] }  
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+
+        nodes, links = await service_manager.graphiti_service.get_graph_data(
+            task_id=task_id,
+            max_nodes=max_nodes,
+        )
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "nodes": nodes,
+            "links": links,
+            "node_count": len(nodes),
+            "link_count": len(links),
+            "timestamp": datetime.now().isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Get graph data failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

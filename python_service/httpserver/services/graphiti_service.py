@@ -273,32 +273,75 @@ class GraphitiService:
     ) -> List[Dict[str, Any]]:
         """
         Search the knowledge graph for a specific task.
-        
-        Args:
-            query: Search query.
-            task_id: Task ID to search within.
-            entity_types: Filter by entity types.
-            limit: Maximum results.
-            include_relationships: Include related entities.
+        Uses graphiti ingestor's search if initialized, else falls back to Neo4j text search.
         """
         if not self._initialized:
-            logger.warning("Graphiti not initialized")
-            return []
+            # Fallback: Neo4j full-text search
+            return await self._neo4j_text_search(query, task_id, limit)
         
         try:
-            graph = await self._get_task_graph(task_id)
-            if graph and hasattr(graph, 'search'):
-                return await graph.search(
-                    query=query,
-                    entity_types=entity_types,
-                    limit=limit,
-                    include_relationships=include_relationships,
-                )
-            return []
+            graph_entry = self._task_graphs.get(task_id)
+            if graph_entry and isinstance(graph_entry, dict):
+                ingestor = graph_entry.get("ingestor")
+                if ingestor and ingestor._client:
+                    results = await ingestor._client.search(
+                        query=query,
+                        group_ids=[task_id],
+                        num_results=limit,
+                    )
+                    return [
+                        {
+                            "id": str(getattr(r, "uuid", "") or ""),
+                            "name": getattr(r, "name", "") or "",
+                            "type": getattr(r, "entity_type", "unknown") or "unknown",
+                            "properties": {},
+                            "score": getattr(r, "score", 0.5) or 0.5,
+                        }
+                        for r in (results or [])
+                    ]
+            # Fallback to Neo4j text search
+            return await self._neo4j_text_search(query, task_id, limit)
         except Exception as e:
             logger.error(f"Graphiti search failed for task {task_id}: {e}")
-            raise
-    
+            return await self._neo4j_text_search(query, task_id, limit)
+
+    async def _neo4j_text_search(
+        self, query: str, task_id: str, limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Fallback text search using Neo4j CONTAINS."""
+        try:
+            from neo4j import AsyncGraphDatabase
+            driver = AsyncGraphDatabase.driver(
+                self.settings.neo4j_uri,
+                auth=(self.settings.neo4j_user, self.settings.neo4j_password),
+            )
+            try:
+                async with driver.session() as session:
+                    result = await session.run(
+                        "MATCH (n:Entity {group_id: $gid}) "
+                        "WHERE toLower(n.name) CONTAINS toLower($q) "
+                        "   OR toLower(coalesce(n.summary, '')) CONTAINS toLower($q) "
+                        "RETURN n.uuid AS id, n.name AS name, n.entity_type AS type "
+                        "LIMIT $lim",
+                        gid=task_id, q=query, lim=limit,
+                    )
+                    rows = [dict(r) async for r in result]
+                return [
+                    {
+                        "id": r.get("id", ""),
+                        "name": r.get("name", ""),
+                        "type": r.get("type", "unknown"),
+                        "properties": {},
+                        "score": 0.8,
+                    }
+                    for r in rows
+                ]
+            finally:
+                await driver.close()
+        except Exception as e:
+            logger.error(f"Neo4j text search failed: {e}")
+            return []
+
     async def list_entities(
         self,
         task_id: str,
@@ -308,24 +351,50 @@ class GraphitiService:
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
         List entities in the knowledge graph for a specific task.
+        Queries Neo4j directly instead of through graphiti ingestor.
         """
-        if not self._initialized:
-            return [], 0
-        
         try:
-            graph = await self._get_task_graph(task_id)
-            if graph and hasattr(graph, 'list_entities'):
-                result = await graph.list_entities(
-                    entity_type=entity_type,
-                    skip=(page - 1) * page_size,
-                    limit=page_size,
-                )
-                return result.get("entities", []), result.get("total", 0)
-            return [], 0
+            from neo4j import AsyncGraphDatabase
+            driver = AsyncGraphDatabase.driver(
+                self.settings.neo4j_uri,
+                auth=(self.settings.neo4j_user, self.settings.neo4j_password),
+            )
+            try:
+                async with driver.session() as session:
+                    skip = (page - 1) * page_size
+                    if entity_type:
+                        count_res = await session.run(
+                            "MATCH (n:Entity {group_id: $gid}) WHERE $et IN n.labels "
+                            "RETURN count(n) AS cnt",
+                            gid=task_id, et=entity_type,
+                        )
+                        data_res = await session.run(
+                            "MATCH (n:Entity {group_id: $gid}) WHERE $et IN n.labels "
+                            "RETURN n.uuid AS id, n.name AS name, n.labels AS type "
+                            "SKIP $skip LIMIT $lim",
+                            gid=task_id, et=entity_type, skip=skip, lim=page_size,
+                        )
+                    else:
+                        count_res = await session.run(
+                            "MATCH (n:Entity {group_id: $gid}) RETURN count(n) AS cnt",
+                            gid=task_id,
+                        )
+                        data_res = await session.run(
+                            "MATCH (n:Entity {group_id: $gid}) "
+                            "RETURN n.uuid AS id, n.name AS name, n.labels AS type "
+                            "SKIP $skip LIMIT $lim",
+                            gid=task_id, skip=skip, lim=page_size,
+                        )
+                    count_row = await count_res.single()
+                    total = count_row["cnt"] if count_row else 0
+                    entities = [dict(record) async for record in data_res]
+                return entities, total
+            finally:
+                await driver.close()
         except Exception as e:
             logger.error(f"List entities failed for task {task_id}: {e}")
-            raise
-    
+            return [], 0
+
     async def list_relationships(
         self,
         task_id: str,
@@ -337,88 +406,248 @@ class GraphitiService:
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
         List relationships in the knowledge graph for a specific task.
+        Queries Neo4j directly.
         """
-        if not self._initialized:
-            return [], 0
-        
         try:
-            graph = await self._get_task_graph(task_id)
-            if graph and hasattr(graph, 'list_relationships'):
-                result = await graph.list_relationships(
-                    relationship_type=relationship_type,
-                    source_id=source_id,
-                    target_id=target_id,
-                    skip=(page - 1) * page_size,
-                    limit=page_size,
-                )
-                return result.get("relationships", []), result.get("total", 0)
-            return [], 0
+            from neo4j import AsyncGraphDatabase
+            driver = AsyncGraphDatabase.driver(
+                self.settings.neo4j_uri,
+                auth=(self.settings.neo4j_user, self.settings.neo4j_password),
+            )
+            try:
+                async with driver.session() as session:
+                    skip = (page - 1) * page_size
+                    count_res = await session.run(
+                        "MATCH (s:Entity {group_id: $gid})-[r:RELATES_TO]->(t:Entity {group_id: $gid}) "
+                        "RETURN count(r) AS cnt",
+                        gid=task_id,
+                    )
+                    data_res = await session.run(
+                        "MATCH (s:Entity {group_id: $gid})-[r:RELATES_TO]->(t:Entity {group_id: $gid}) "
+                        "RETURN s.uuid AS source_id, s.name AS source_name, "
+                        "       r.uuid AS id, r.name AS type, "
+                        "       t.uuid AS target_id, t.name AS target_name "
+                        "SKIP $skip LIMIT $lim",
+                        gid=task_id, skip=skip, lim=page_size,
+                    )
+                    count_row = await count_res.single()
+                    total = count_row["cnt"] if count_row else 0
+                    rels = [dict(record) async for record in data_res]
+                return rels, total
+            finally:
+                await driver.close()
         except Exception as e:
             logger.error(f"List relationships failed for task {task_id}: {e}")
-            raise
-    
+            return [], 0
+
     async def get_status(self, task_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Get the status of the Graphiti service, optionally for a specific task.
+        Does NOT create or initialize a task graph - only reads existing data.
         """
-        if not self._initialized:
+        # Check basic Neo4j connectivity without initializing graphiti
+        try:
+            connected = await self._check_neo4j_connection()
+        except Exception:
+            connected = False
+
+        if not connected:
             return {
-                "status": "not_initialized",
+                "status": "disconnected",
                 "neo4j_connected": False,
                 "total_entities": 0,
                 "total_relationships": 0,
                 "task_id": task_id,
             }
-        
+
+        # Query Neo4j directly for counts (no LLM involved)
         try:
-            if task_id:
-                graph = await self._get_task_graph(task_id)
-                if graph and hasattr(graph, 'get_stats'):
-                    stats = await graph.get_stats()
-                    return {
-                        "status": "connected",
-                        "neo4j_connected": True,
-                        "total_entities": stats.get("entities", 0),
-                        "total_relationships": stats.get("relationships", 0),
-                        "task_id": task_id,
-                    }
-            
-            connected = await self.health_check(task_id)
+            entity_count, rel_count = await self._query_neo4j_counts(task_id)
             return {
-                "status": "connected" if connected else "disconnected",
-                "neo4j_connected": connected,
-                "total_entities": 0,
-                "total_relationships": 0,
+                "status": "connected",
+                "neo4j_connected": True,
+                "total_entities": entity_count,
+                "total_relationships": rel_count,
                 "task_id": task_id,
             }
         except Exception as e:
-            logger.error(f"Get status failed: {e}")
+            logger.error(f"Get status query failed: {e}")
             return {
-                "status": "error",
-                "neo4j_connected": False,
-                "error": str(e),
+                "status": "connected",
+                "neo4j_connected": True,
                 "total_entities": 0,
                 "total_relationships": 0,
                 "task_id": task_id,
             }
-    
+
+    async def _check_neo4j_connection(self) -> bool:
+        """Check Neo4j connectivity without initializing graphiti."""
+        try:
+            from neo4j import AsyncGraphDatabase
+            uri = self.settings.neo4j_uri
+            user = self.settings.neo4j_user
+            password = self.settings.neo4j_password
+            driver = AsyncGraphDatabase.driver(uri, auth=(user, password))
+            async with driver.session() as session:
+                await session.run("RETURN 1")
+            await driver.close()
+            return True
+        except Exception as e:
+            logger.debug(f"Neo4j connection check failed: {e}")
+            return False
+
+    async def _query_neo4j_counts(
+        self, task_id: Optional[str] = None
+    ) -> tuple:
+        """Query Neo4j directly for entity and relationship counts."""
+        from neo4j import AsyncGraphDatabase
+        uri = self.settings.neo4j_uri
+        user = self.settings.neo4j_user
+        password = self.settings.neo4j_password
+        driver = AsyncGraphDatabase.driver(uri, auth=(user, password))
+        try:
+            async with driver.session() as session:
+                if task_id:
+                    entity_res = await session.run(
+                        "MATCH (n:Entity {group_id: $gid}) RETURN count(n) AS cnt",
+                        gid=task_id,
+                    )
+                    rel_res = await session.run(
+                        "MATCH (s:Entity {group_id: $gid})-[r:RELATES_TO]->(t:Entity {group_id: $gid}) "
+                        "RETURN count(r) AS cnt",
+                        gid=task_id,
+                    )
+                else:
+                    entity_res = await session.run("MATCH (n:Entity) RETURN count(n) AS cnt")
+                    rel_res = await session.run("MATCH ()-[r:RELATES_TO]->() RETURN count(r) AS cnt")
+                entity_row = await entity_res.single()
+                rel_row = await rel_res.single()
+                entity_count = entity_row["cnt"] if entity_row else 0
+                rel_count = rel_row["cnt"] if rel_row else 0
+            return entity_count, rel_count
+        finally:
+            await driver.close()
+
     async def list_task_graphs(self) -> List[str]:
-        """List all task IDs that have graph data."""
-        return list(self._task_graphs.keys())
-    
+        """
+        List all task IDs that have knowledge graph data.
+        Queries Neo4j directly to find distinct group_ids.
+        """
+        try:
+            from neo4j import AsyncGraphDatabase
+            driver = AsyncGraphDatabase.driver(
+                self.settings.neo4j_uri,
+                auth=(self.settings.neo4j_user, self.settings.neo4j_password),
+            )
+            try:
+                async with driver.session() as session:
+                    result = await session.run(
+                        "MATCH (n:Entity) WHERE n.group_id IS NOT NULL "
+                        "RETURN DISTINCT n.group_id AS gid"
+                    )
+                    task_ids = [record["gid"] async for record in result]
+                return task_ids
+            finally:
+                await driver.close()
+        except Exception as e:
+            logger.debug(f"list_task_graphs Neo4j query failed: {e}")
+            return list(self._task_graphs.keys())
+
     async def delete_task_graph(self, task_id: str) -> bool:
-        """Delete a task-specific graph and its data."""
+        """Delete a task-specific graph and its data from Neo4j and cache."""
+        deleted = False
+        try:
+            from neo4j import AsyncGraphDatabase
+            driver = AsyncGraphDatabase.driver(
+                self.settings.neo4j_uri,
+                auth=(self.settings.neo4j_user, self.settings.neo4j_password),
+            )
+            async with driver.session() as session:
+                await session.run(
+                    "MATCH (n {group_id: $gid}) DETACH DELETE n",
+                    gid=task_id,
+                )
+            await driver.close()
+            deleted = True
+            logger.info(f"Deleted Neo4j data for task: {task_id}")
+        except Exception as e:
+            logger.error(f"Failed to delete Neo4j data for task {task_id}: {e}")
+
         if task_id in self._task_graphs:
             try:
                 graph = self._task_graphs[task_id]
-                if hasattr(graph, 'clear_all'):
-                    await graph.clear_all()
-                if hasattr(graph, 'close'):
+                if isinstance(graph, dict) and "ingestor" in graph:
+                    await graph["ingestor"].close()
+                elif hasattr(graph, "close"):
                     await graph.close()
                 del self._task_graphs[task_id]
-                logger.info(f"Deleted graph for task: {task_id}")
-                return True
             except Exception as e:
-                logger.error(f"Failed to delete graph for task {task_id}: {e}")
-                raise
-        return False
+                logger.warning(f"Error closing cached graph for {task_id}: {e}")
+
+        return deleted
+
+    async def get_graph_data(
+        self,
+        task_id: str,
+        max_nodes: int = 200,
+    ) -> tuple:
+        """
+        Get graph data for visualization as (nodes, links) tuple.
+        Returns react-force-graph-2d compatible format.
+        """
+        from neo4j import AsyncGraphDatabase
+        driver = AsyncGraphDatabase.driver(
+            self.settings.neo4j_uri,
+            auth=(self.settings.neo4j_user, self.settings.neo4j_password),
+        )
+        try:
+            async with driver.session() as session:
+                # Fetch entity nodes with summary
+                node_result = await session.run(
+                    "MATCH (n:Entity {group_id: $gid}) "
+                    "RETURN n.uuid AS id, n.name AS name, "
+                    "       n.labels AS labels, n.summary AS summary "
+                    "LIMIT $lim",
+                    gid=task_id, lim=max_nodes,
+                )
+                node_rows = [dict(r) async for r in node_result]
+
+                # Collect node IDs to filter edges
+                node_ids = {r["id"] for r in node_rows}
+
+                # Fetch relationships between those nodes
+                rel_result = await session.run(
+                    "MATCH (s:Entity {group_id: $gid})-[r:RELATES_TO]->(t:Entity {group_id: $gid}) "
+                    "WHERE s.uuid IN $ids AND t.uuid IN $ids "
+                    "RETURN s.uuid AS source, t.uuid AS target, "
+                    "       coalesce(r.name, 'RELATES_TO') AS label "
+                    "LIMIT $lim",
+                    gid=task_id, ids=list(node_ids), lim=max_nodes * 3,
+                )
+                rel_rows = [dict(r) async for r in rel_result]
+
+            nodes = [
+                {
+                    "id": r["id"],
+                    "name": r["name"] or r["id"],
+                    "label": (r["labels"][0] if isinstance(r.get("labels"), list) and r["labels"] else "Entity"),
+                    "summary": r.get("summary") or "",
+                }
+                for r in node_rows
+                if r.get("id")
+            ]
+
+            links = [
+                {
+                    "source": r["source"],
+                    "target": r["target"],
+                    "label": r.get("label", "RELATES_TO"),
+                }
+                for r in rel_rows
+                if r.get("source") and r.get("target")
+                   and r["source"] in node_ids and r["target"] in node_ids
+            ]
+
+            return nodes, links
+        finally:
+            await driver.close()
