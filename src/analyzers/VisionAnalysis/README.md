@@ -436,7 +436,7 @@ python -m uvicorn httpserver.main:app --host 0.0.0.0 --port 8080
 
 ```bash
 # LLM服务配置
-LLM_BASE_URL=http://localhost:1234/v1
+LLM_BASE_URL=http://localhost:1234
 LLM_API_KEY=sk-xxxxxxxxxxxxx
 LLM_MODEL=qwen-vl-plus
 LLM_MAX_TOKENS=4096
@@ -466,7 +466,7 @@ LOG_FILE=/var/log/forensic/vision.log
 // 创建ModelRouter
 auto config = std::make_shared<LLMConfig>();
 config->api_key = "sk-xxxxxxxxxxxxx";
-config->base_url = "http://localhost:1234/v1";
+config->base_url = "http://localhost:1234";
 config->model = "qwen-vl-plus";
 config->max_tokens = 4096;
 
@@ -626,7 +626,7 @@ int main() {
     // 1. 创建ModelRouter
     auto config = std::make_shared<LLMConfig>();
     config->api_key = "sk-xxxxxxxxxxxxx";
-    config->base_url = "http://localhost:1234/v1";
+    config->base_url = "http://localhost:1234";
     config->model = "qwen-vl-plus";
 
     auto router = std::make_shared<ModelRouter>(config);
@@ -1222,7 +1222,7 @@ class RealTimeVisionAnalyzer:
 1. **本地部署** (推荐):
    ```bash
    # 完全本地部署,数据不离开内网
-   export LLM_BASE_URL=http://internal-server:1234/v1
+   export LLM_BASE_URL=http://internal-server:1234
    export LLM_API_KEY=local-key
 
    # 使用本地LLM(例如:Ollama)

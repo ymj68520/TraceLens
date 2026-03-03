@@ -232,7 +232,7 @@ GRAPHITI_GROUP_ID=forensics_project
 GRAPHITI_ENABLED=true
 
 # LLM配置
-LLM_BASE_URL=http://localhost:1234/v1
+LLM_BASE_URL=http://localhost:1234
 LLM_API_KEY=your-api-key
 LLM_MODEL=qwen2.5:7b
 LLM_MAX_TOKENS=4096

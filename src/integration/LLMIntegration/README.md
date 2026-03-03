@@ -181,7 +181,7 @@
 - **配置项**
   ```env
   # LLM服务配置
-  LLM_BASE_URL=http://localhost:1234/v1
+  LLM_BASE_URL=http://localhost:1234
   LLM_API_KEY=your-api-key
   LLM_MODEL=qwen2.5:7b
   LLM_MAX_TOKENS=4096
@@ -238,7 +238,7 @@
 
    // 配置备用模型(本地Qwen,低延迟)
    LLMConfig qwenConfig;
-   qwenConfig.baseUrl = "http://localhost:1234/v1";
+   qwenConfig.baseUrl = "http://localhost:1234";
    qwenConfig.model = "qwen2.5:7b";
    qwenConfig.priority = 5;
 
@@ -501,7 +501,7 @@ sudo dpkg -i lmstudio_*.deb
 2. 搜索并下载模型(如 `qwen2.5:7b`)
 3. 启动本地服务器(Settings → Server)
 4. 默认端口:1234
-5. API端点:`http://localhost:1234/v1`
+5. API端点:`http://localhost:1234/v1`(代码中自动添加/v1/)
 
 ### 配置文件(.env)
 
@@ -586,7 +586,7 @@ ConfigManager::instance().load(".env");
 
 // 2. 创建LLM客户端
 LLMConfig config;
-config.baseUrl = "http://localhost:1234/v1";
+config.baseUrl = "http://localhost:1234";
 config.model = "qwen2.5:7b";
 config.maxTokens = 2048;
 config.temperature = 0.7;
@@ -655,7 +655,7 @@ router->addModel("gpt4", primaryConfig, primaryInfo);
 
 // 添加备用模型
 LLMConfig fallbackConfig;
-fallbackConfig.baseUrl = "http://localhost:1234/v1";
+fallbackConfig.baseUrl = "http://localhost:1234";
 fallbackConfig.model = "qwen2.5:7b";
 fallbackConfig.priority = 5;
 
@@ -1295,7 +1295,7 @@ A:多层次数据安全保护:
 ```cpp
 // 完全本地处理,数据不离开网络
 LLMConfig config;
-config.baseUrl = "http://localhost:1234/v1";  // 本地LM Studio
+config.baseUrl = "http://localhost:1234";  // 本地LM Studio
 ```
 
 **2. 数据脱敏**

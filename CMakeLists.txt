@@ -401,6 +401,13 @@ if(BUILD_PYTHON_SERVICE)
         WORKING_DIRECTORY ${PYTHON_SERVICE_DIR}
         COMMENT "Starting Python HTTP service on port 8090")
 
+      # Start all services target (C++ + Python + Web)
+      add_custom_target(
+        start_all
+        COMMAND ${CMAKE_SOURCE_DIR}/scripts/start_all_services.sh
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Starting all services (C++ server, Python service, Web frontend)")
+
       message(STATUS "Python service setup configured")
       message(STATUS "  Source: ${PYTHON_SERVICE_DIR}")
       message(STATUS "  Venv: ${PYTHON_VENV_DIR}")

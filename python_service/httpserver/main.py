@@ -197,7 +197,7 @@ def run_server(
 ):
     """
     Run the HTTP server.
-    
+
     Args:
         host: Server host. Uses settings if None.
         port: Server port. Uses settings if None.
@@ -205,19 +205,21 @@ def run_server(
         workers: Number of worker processes.
     """
     settings = get_settings()
-    
+
     host = host or settings.python_http_host
     port = port or settings.python_http_port
-    
+
     logger.info(f"Starting server at http://{host}:{port}")
-    
+
+    # Get app instance directly to avoid module import issues
+    app = get_app()
+
     uvicorn.run(
-        "python_service.httpserver.main:get_app",
+        app,
         host=host,
         port=port,
         reload=reload,
         workers=workers,
-        factory=True,
     )
 
 
