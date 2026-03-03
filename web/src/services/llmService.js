@@ -22,6 +22,7 @@ export const analyzeContent = async (options = {}) => {
         prompt: options.prompt,
         max_tokens: options.maxTokens,
         temperature: options.temperature,
+        files_db_path: options.filesDbPath || null,
     };
     return await pythonApi.post('/api/llm/analyze', payload);
 };
@@ -64,7 +65,7 @@ export const startBatchAnalysis = async (taskId, options = {}) => {
         limit: options.limit || 100,
         model_type: options.modelType || 'text',
     };
-    return await pythonApi.post('/api/llm/batch-analyze', payload);
+    return await pythonApi.post('/api/llm/batch', payload);
 };
 
 /**
@@ -72,7 +73,7 @@ export const startBatchAnalysis = async (taskId, options = {}) => {
  * @param {string} jobId - 任务 ID
  */
 export const getBatchStatus = async (jobId) => {
-    return await pythonApi.get(`/api/llm/batch-analyze/${jobId}`);
+    return await pythonApi.get(`/api/llm/batch/${jobId}`);
 };
 
 /**

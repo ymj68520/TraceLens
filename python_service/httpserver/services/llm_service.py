@@ -12,6 +12,8 @@ Supports both text and vision models via OpenAI-compatible API.
 import asyncio
 import base64
 import logging
+import sqlite3
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -80,6 +82,68 @@ class LLMService:
         
         self._initialized = False
     
+    def persist_to_files_db(
+        self,
+        db_path: str,
+        file_path: str,
+        description: str,
+        summary: str,
+        keywords: str,
+        model_used: str = "",
+    ) -> bool:
+        """
+        Persist LLM analysis result to C++ _files.db SQLite database.
+        
+        Writes the analysis result into the `files` table (llm_summary,
+        llm_description, llm_keywords, llm_analyzed_at, llm_model_used)
+        exactly where the C++ LLMAnalysisService would write.
+        
+        Args:
+            db_path:     Absolute path to the _files.db SQLite file.
+            file_path:   Path of the analyzed file (matches `path` column).
+            description: Full LLM description text.
+            summary:     Short summary (first 200 chars of description if empty).
+            keywords:    Comma-separated keyword string.
+            model_used:  Model identifier.
+        
+        Returns:
+            True if a row was updated, False otherwise.
+        """
+        if not db_path or not Path(db_path).exists():
+            logger.debug(f"persist_to_files_db: db not found at {db_path!r}, skipping")
+            return False
+        
+        sql = """
+            UPDATE files SET
+                llm_summary = ?,
+                llm_description = ?,
+                llm_keywords = ?,
+                llm_analyzed_at = ?,
+                llm_model_used = ?
+            WHERE path = ?
+        """
+        try:
+            with sqlite3.connect(db_path, timeout=10) as conn:
+                cur = conn.cursor()
+                cur.execute(sql, (
+                    summary or description[:200],
+                    description,
+                    keywords,
+                    int(time.time()),
+                    model_used,
+                    file_path,
+                ))
+                conn.commit()
+                if cur.rowcount > 0:
+                    logger.debug(f"Persisted LLM result for {file_path!r} → {db_path!r}")
+                    return True
+                else:
+                    logger.debug(f"persist_to_files_db: no row matched path={file_path!r} in {db_path!r}")
+                    return False
+        except Exception as e:
+            logger.warning(f"persist_to_files_db failed for {file_path!r}: {e}")
+            return False
+    
     async def health_check(self) -> bool:
         """
         Check if LLM service is healthy.
@@ -103,18 +167,23 @@ class LLMService:
         """
         try:
             if model_type == "text":
-                client = self._text_client or httpx.AsyncClient(
-                    base_url=self.settings.llm_text_base_url,
-                    timeout=httpx.Timeout(10.0),
-                )
+                if self._text_client:
+                    response = await self._text_client.get("/v1/models")
+                    return response.status_code == 200
+                base_url = self.settings.llm_text_base_url
             else:
-                client = self._vision_client or httpx.AsyncClient(
-                    base_url=self.settings.llm_vision_base_url,
-                    timeout=httpx.Timeout(10.0),
-                )
+                if self._vision_client:
+                    response = await self._vision_client.get("/v1/models")
+                    return response.status_code == 200
+                base_url = self.settings.llm_vision_base_url
             
-            response = await client.get("/v1/models")
-            return response.status_code == 200
+            # No persistent client available, create a temporary one (auto-closed)
+            async with httpx.AsyncClient(
+                base_url=base_url,
+                timeout=httpx.Timeout(10.0),
+            ) as tmpClient:
+                response = await tmpClient.get("/v1/models")
+                return response.status_code == 200
         except Exception as e:
             logger.warning(f"Model status check failed for {model_type}: {e}")
             return False
@@ -171,18 +240,19 @@ class LLMService:
         """
         # Select model settings
         if model_type == "text":
-            client = self._text_client or httpx.AsyncClient(
-                base_url=self.settings.llm_text_base_url,
-                timeout=httpx.Timeout(self.settings.llm_timeout_seconds),
-            )
+            client = self._text_client
+            if not client:
+                # Ensure we're initialized
+                await self.initialize()
+                client = self._text_client
             model = self.settings.llm_text_model
             default_max_tokens = self.settings.llm_text_max_tokens
             default_temperature = self.settings.llm_text_temperature
         else:
-            client = self._vision_client or httpx.AsyncClient(
-                base_url=self.settings.llm_vision_base_url,
-                timeout=httpx.Timeout(self.settings.llm_timeout_seconds),
-            )
+            client = self._vision_client
+            if not client:
+                await self.initialize()
+                client = self._vision_client
             model = self.settings.llm_vision_model
             default_max_tokens = self.settings.llm_vision_max_tokens
             default_temperature = self.settings.llm_vision_temperature
@@ -309,6 +379,7 @@ Describe what you see in the image and note any potentially relevant forensic de
         self,
         files: List[Dict[str, Any]],
         model_type: str = "text",
+        files_db_path: Optional[str] = None,
     ) -> str:
         """
         Start batch analysis of files.
@@ -316,6 +387,7 @@ Describe what you see in the image and note any potentially relevant forensic de
         Args:
             files: List of file info dicts with 'path' key.
             model_type: 'text' or 'vision'.
+            files_db_path: Optional path to _files.db for persisting results.
         
         Returns:
             Job ID for tracking progress.
@@ -332,7 +404,7 @@ Describe what you see in the image and note any potentially relevant forensic de
         }
         
         # Start background task
-        asyncio.create_task(self._run_batch_analysis(job_id, files, model_type))
+        asyncio.create_task(self._run_batch_analysis(job_id, files, model_type, files_db_path))
         
         return job_id
     
@@ -341,23 +413,39 @@ Describe what you see in the image and note any potentially relevant forensic de
         job_id: str,
         files: List[Dict[str, Any]],
         model_type: str,
+        files_db_path: Optional[str] = None,
     ):
-        """Run batch analysis in background."""
+        """Run batch analysis in background and optionally persist to SQLite."""
         try:
             total = len(files)
             for i, file_info in enumerate(files):
+                file_path = file_info.get("path") or file_info.get("file_path", "")
                 try:
-                    file_path = file_info.get("path") or file_info.get("file_path")
                     if not file_path:
                         continue
                     
                     content = await self.read_file_content(file_path)
                     result = await self.analyze(content, model_type)
+                    analysis = result.get("analysis", {})
+                    description = analysis.get("description", "")
                     
                     self._jobs[job_id]["results"].append({
                         "file_path": file_path,
-                        "analysis": result.get("analysis"),
+                        "analysis": analysis,
                     })
+                    
+                    # Persist to C++ SQLite _files.db if path provided
+                    if files_db_path and description:
+                        keywords = ", ".join(analysis.get("keywords", []))
+                        model_used = result.get("model", "")
+                        self.persist_to_files_db(
+                            db_path=files_db_path,
+                            file_path=file_path,
+                            description=description,
+                            summary=analysis.get("summary") or description[:200],
+                            keywords=keywords,
+                            model_used=model_used,
+                        )
                 except Exception as e:
                     self._jobs[job_id]["errors"].append(f"{file_path}: {str(e)}")
                 

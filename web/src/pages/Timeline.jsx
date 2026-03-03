@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
@@ -51,14 +52,14 @@ const Timeline = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Timeline Analysis</h1>
-          <p className="mt-2 text-gray-600">View comprehensive timeline of file system events</p>
+          <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900">Timeline Analysis</motion.h1>
+          <p className="mt-2 text-slate-600">View comprehensive timeline of file system events</p>
         </div>
 
         <Card title="Select a Task">
-          <p className="text-gray-500">
+          <p className="text-slate-500">
             Select a completed task from the{' '}
-            <a href="/tasks" className="text-blue-600 hover:text-blue-800">
+            <a href="/tasks" className="text-primary-600 hover:text-blue-800">
               Tasks page
             </a>{' '}
             or use the task selector in the top bar to view timeline analysis.
@@ -72,15 +73,15 @@ const Timeline = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Timeline Analysis</h1>
-          <p className="mt-2 text-gray-600">
+          <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900">Timeline Analysis</motion.h1>
+          <p className="mt-2 text-slate-600">
             Task: {currentTask?.image_path || taskId}
           </p>
         </div>
         <Card>
           <div className="flex items-center justify-center h-64">
             <Spinner size="lg" />
-            <span className="ml-4 text-gray-600">Loading timeline data...</span>
+            <span className="ml-4 text-slate-600">Loading timeline data...</span>
           </div>
         </Card>
       </div>
@@ -91,14 +92,14 @@ const Timeline = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Timeline Analysis</h1>
-          <p className="mt-2 text-gray-600">
+          <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900">Timeline Analysis</motion.h1>
+          <p className="mt-2 text-slate-600">
             Task: {currentTask?.image_path || taskId}
           </p>
         </div>
 
         <Card title="Error">
-          <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+          <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
             <p className="text-red-800">{error}</p>
             <p className="text-sm text-red-600 mt-2">
               Make sure the task has completed analysis and try again.
@@ -140,8 +141,8 @@ const Timeline = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Timeline Analysis</h1>
-        <p className="mt-2 text-gray-600">
+        <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900">Timeline Analysis</motion.h1>
+        <p className="mt-2 text-slate-600">
           Task: {currentTask?.image_path || taskId}
         </p>
         {currentTask && (
@@ -155,13 +156,13 @@ const Timeline = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <div className="text-center">
-            <p className="text-sm font-medium text-gray-500">Total Events</p>
-            <p className="text-2xl font-bold text-gray-900">{totalCount}</p>
+            <p className="text-sm font-medium text-slate-500">Total Events</p>
+            <p className="text-2xl font-bold text-slate-900">{totalCount}</p>
           </div>
         </Card>
         <Card>
           <div className="text-center">
-            <p className="text-sm font-medium text-gray-500">File Created</p>
+            <p className="text-sm font-medium text-slate-500">File Created</p>
             <p className="text-2xl font-bold text-green-600">
               {events.filter((e) => e.event_type === 'CREATED').length}
             </p>
@@ -169,15 +170,15 @@ const Timeline = () => {
         </Card>
         <Card>
           <div className="text-center">
-            <p className="text-sm font-medium text-gray-500">File Modified</p>
-            <p className="text-2xl font-bold text-blue-600">
+            <p className="text-sm font-medium text-slate-500">File Modified</p>
+            <p className="text-2xl font-bold text-primary-600">
               {events.filter((e) => e.event_type === 'MODIFIED').length}
             </p>
           </div>
         </Card>
         <Card>
           <div className="text-center">
-            <p className="text-sm font-medium text-gray-500">File Deleted</p>
+            <p className="text-sm font-medium text-slate-500">File Deleted</p>
             <p className="text-2xl font-bold text-red-600">
               {events.filter((e) => e.event_type === 'DELETED').length}
             </p>
@@ -188,38 +189,38 @@ const Timeline = () => {
       {/* Timeline */}
       <Card title={`Timeline Events (${totalCount} total)`}>
         {events.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-slate-500">
             No timeline events found for this task.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Timestamp
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Type
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     File Path
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Size
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Inode
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Description
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white divide-y divide-slate-200">
                 {currentEvents.map((event, index) => (
-                  <tr key={startIndex + index} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-mono">
+                  <tr key={startIndex + index} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-900 font-mono">
                       {formatTimestamp(event.timestamp)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -237,16 +238,16 @@ const Timeline = () => {
                         {event.event_type}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900 max-w-md truncate" title={event.file_path}>
+                    <td className="px-4 py-3 text-sm text-slate-900 max-w-md truncate" title={event.file_path}>
                       {event.file_path}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600">
                       {formatFileSize(event.file_size)}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 font-mono">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600 font-mono">
                       {event.inode || '-'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
+                    <td className="px-4 py-3 text-sm text-slate-500">
                       {event.description || '-'}
                     </td>
                   </tr>
@@ -256,9 +257,9 @@ const Timeline = () => {
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-4">
+              <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4">
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-slate-700">
                     Showing {startIndex + 1} to {Math.min(endIndex, totalCount)} of {totalCount} events
                   </span>
                   <select
@@ -267,7 +268,7 @@ const Timeline = () => {
                       setPageSize(Number(e.target.value));
                       setCurrentPage(1);
                     }}
-                    className="ml-4 px-2 py-1 text-sm border border-gray-300 rounded-md"
+                    className="ml-4 px-2 py-1 text-sm border border-slate-300 rounded-xl"
                   >
                     <option value={25}>25 per page</option>
                     <option value={50}>50 per page</option>
@@ -279,31 +280,31 @@ const Timeline = () => {
                   <button
                     onClick={() => setCurrentPage(1)}
                     disabled={currentPage === 1}
-                    className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-1 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     First
                   </button>
                   <button
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-1 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Previous
                   </button>
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-slate-700">
                     Page {currentPage} of {totalPages}
                   </span>
                   <button
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
-                    className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-1 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Next
                   </button>
                   <button
                     onClick={() => setCurrentPage(totalPages)}
                     disabled={currentPage === totalPages}
-                    className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-1 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Last
                   </button>

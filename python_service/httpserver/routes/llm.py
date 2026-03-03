@@ -30,6 +30,7 @@ class AnalyzeRequest(BaseModel):
     prompt: Optional[str] = Field(None, description="Custom analysis prompt")
     max_tokens: Optional[int] = Field(None, ge=1, le=8192, description="Max response tokens")
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0, description="Model temperature")
+    files_db_path: Optional[str] = Field(None, description="Path to _files.db for persisting result")
 
 
 class AnalyzeResponse(BaseModel):
@@ -69,6 +70,7 @@ class BatchStatusResponse(BaseModel):
     files_processed: int
     files_total: int
     errors: List[str]
+    results: List[Dict[str, Any]] = []
     timestamp: str
 
 
@@ -143,10 +145,25 @@ async def analyze_content(
         )
         
         processing_time = (time.time() - start_time) * 1000
+        analysis = result.get("analysis", {})
+        description = analysis.get("description", "")
+        
+        # Persist to C++ SQLite _files.db if db path and file path are provided
+        if request.files_db_path and request.file_path and description:
+            keywords_list = analysis.get("keywords", [])
+            keywords_str = ", ".join(keywords_list) if isinstance(keywords_list, list) else str(keywords_list)
+            service_manager.llm_service.persist_to_files_db(
+                db_path=request.files_db_path,
+                file_path=request.file_path,
+                description=description,
+                summary=analysis.get("summary") or description[:200],
+                keywords=keywords_str,
+                model_used=result.get("model", ""),
+            )
         
         return AnalyzeResponse(
             success=True,
-            analysis=result.get("analysis", {}),
+            analysis=analysis,
             model_used=result.get("model", "unknown"),
             tokens_used=result.get("tokens_used", 0),
             processing_time_ms=processing_time,
@@ -239,10 +256,13 @@ async def batch_analyze(
         from ..services import get_service_manager
         service_manager = get_service_manager()
         
-        # Check if task exists via C++ backend
-        task_exists = await service_manager.cpp_backend.check_task_exists(request.task_id)
-        if not task_exists:
+        # Get task info to find the _files.db path for result persistence
+        task_info = await service_manager.cpp_backend.get_task(request.task_id)
+        if not task_info:
             raise HTTPException(status_code=404, detail=f"Task {request.task_id} not found")
+        
+        # Extract the _files.db path for persisting LLM results
+        files_db_path: str = task_info.get("output_files_db") or ""
         
         # Get files to analyze
         files = await service_manager.cpp_backend.get_task_files(
@@ -251,10 +271,11 @@ async def batch_analyze(
             limit=request.limit,
         )
         
-        # Start background batch analysis
+        # Start background batch analysis (results will be persisted to _files.db)
         job_id = await service_manager.llm_service.start_batch_analysis(
             files=files,
             model_type=request.model_type,
+            files_db_path=files_db_path or None,
         )
         
         return BatchAnalyzeResponse(
@@ -301,6 +322,7 @@ async def get_batch_status(
             files_processed=status.get("files_processed", 0),
             files_total=status.get("files_total", 0),
             errors=status.get("errors", []),
+            results=status.get("results", []),
             timestamp=datetime.now().isoformat(),
         )
     except HTTPException:

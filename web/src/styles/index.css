@@ -1,41 +1,116 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Global styles */
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ── Base ─────────────────────────────────────────── */
+@layer base {
+  body {
+    @apply font-sans antialiased;
+    margin: 0;
+  }
+
+  /* Mesh gradient backgrounds */
+  .bg-mesh-light {
+    background:
+      radial-gradient(ellipse at 20% 0%, rgba(99,102,241,0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 100%, rgba(168,85,247,0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, rgba(59,130,246,0.04) 0%, transparent 70%),
+      linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  }
+
+  .bg-mesh-dark {
+    background:
+      radial-gradient(ellipse at 20% 0%, rgba(99,102,241,0.12) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 100%, rgba(168,85,247,0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, rgba(59,130,246,0.05) 0%, transparent 70%),
+      linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  }
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+/* ── Components ───────────────────────────────────── */
+@layer components {
+  /* Glassmorphism card */
+  .glass {
+    @apply bg-white/70 dark:bg-slate-800/60
+           backdrop-blur-xl
+           border border-white/20 dark:border-slate-700/40
+           shadow-glass;
+  }
+
+  .glass-strong {
+    @apply bg-white/85 dark:bg-slate-800/75
+           backdrop-blur-2xl
+           border border-white/30 dark:border-slate-600/40
+           shadow-glass-lg;
+  }
+
+  /* Gradient text */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-500 to-purple-500;
+  }
+
+  /* Shimmer effect for progress bars */
+  .shimmer-bar {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255,255,255,0.3) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite linear;
+  }
+
+  /* Status dot with glow */
+  .status-dot {
+    @apply w-2.5 h-2.5 rounded-full;
+  }
+  .status-dot-online {
+    @apply bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)];
+  }
+  .status-dot-offline {
+    @apply bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)];
+  }
+  .status-dot-checking {
+    @apply bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.6)] animate-pulse;
+  }
 }
 
-/* Custom scrollbar */
+/* ── Utilities ────────────────────────────────────── */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* ── Scrollbar ────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
-
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 999px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: rgba(148, 163, 184, 0.5);
 }
 
-/* Utility classes */
-.text-balance {
-  text-wrap: balance;
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.15);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.3);
+}
+
+/* ── Selection ────────────────────────────────────── */
+::selection {
+  background: rgba(99, 102, 241, 0.25);
+  color: inherit;
 }

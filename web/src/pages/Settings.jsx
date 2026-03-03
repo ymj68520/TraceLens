@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { updateSettings, resetSettings } from '../store/settingsSlice';
@@ -68,32 +69,32 @@ const Settings = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">{t('settings.title')}</h1>
-        <p className="mt-2 text-gray-600 dark:text-gray-400">{t('settings.subtitle')}</p>
+        <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900 dark:text-slate-100">{t('settings.title')}</motion.h1>
+        <p className="mt-2 text-slate-600 dark:text-slate-400">{t('settings.subtitle')}</p>
       </div>
 
       <Card title={t('settings.api_config')}>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               {t('settings.api_url')} (C++ 后端)
             </label>
             <input
               type="text"
               value={settings.apiUrl}
               onChange={(e) => handleSettingChange('apiUrl', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-700 dark:text-white"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               Python 服务 URL
             </label>
             <input
               type="text"
               value={settings.pythonApiUrl}
               onChange={(e) => handleSettingChange('pythonApiUrl', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-700 dark:text-white"
             />
           </div>
         </div>
@@ -104,9 +105,9 @@ const Settings = () => {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className={`w-2.5 h-2.5 rounded-full ${llmInfo?.status === 'healthy' ? 'bg-green-500' : 'bg-red-500'}`} />
-              <span className="text-sm font-medium text-gray-900 dark:text-white">
-                状态: {llmInfo?.status === 'healthy' ? '在线' : llmInfo?.status === 'error' ? '离线' : '未知'}
+              <span className={`w-2.5 h-2.5 rounded-full ${(llmInfo?.status === 'healthy' || llmInfo?.status === 'available') ? 'bg-green-500' : 'bg-red-500'}`} />
+              <span className="text-sm font-medium text-slate-900 dark:text-white">
+                状态: {(llmInfo?.status === 'healthy' || llmInfo?.status === 'available') ? '在线' : llmInfo?.status === 'error' ? '离线' : '未知'}
               </span>
             </div>
             <Button variant="outline" size="sm" onClick={loadLLMInfo} disabled={llmLoading}>
@@ -117,38 +118,38 @@ const Settings = () => {
           {llmInfo && llmInfo.status !== 'error' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Text Model */}
-              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📝 文本模型</h4>
+              <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">📝 文本模型</h4>
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">模型:</span>
-                    <span className="font-mono text-gray-900 dark:text-white">{llmInfo.text_model || '-'}</span>
+                    <span className="text-slate-500">模型:</span>
+                    <span className="font-mono text-slate-900 dark:text-white">{llmInfo.text_model?.name || (typeof llmInfo.text_model === 'string' ? llmInfo.text_model : '-')}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Base URL:</span>
-                    <span className="font-mono text-gray-900 dark:text-white text-xs">{llmInfo.text_base_url || '-'}</span>
+                    <span className="text-slate-500">Base URL:</span>
+                    <span className="font-mono text-slate-900 dark:text-white text-xs">{llmInfo.text_model?.base_url || llmInfo.text_base_url || '-'}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Max Tokens:</span>
+                    <span className="text-slate-500">Max Tokens:</span>
                     <span className="font-mono">{llmInfo.text_max_tokens || '-'}</span>
                   </div>
                 </div>
               </div>
 
               {/* Vision Model */}
-              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">👁️ 视觉模型</h4>
+              <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">👁️ 视觉模型</h4>
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">模型:</span>
-                    <span className="font-mono text-gray-900 dark:text-white">{llmInfo.vision_model || '-'}</span>
+                    <span className="text-slate-500">模型:</span>
+                    <span className="font-mono text-slate-900 dark:text-white">{llmInfo.vision_model?.name || (typeof llmInfo.vision_model === 'string' ? llmInfo.vision_model : '-')}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Base URL:</span>
-                    <span className="font-mono text-gray-900 dark:text-white text-xs">{llmInfo.vision_base_url || '-'}</span>
+                    <span className="text-slate-500">Base URL:</span>
+                    <span className="font-mono text-slate-900 dark:text-white text-xs">{llmInfo.vision_model?.base_url || llmInfo.vision_base_url || '-'}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Max Tokens:</span>
+                    <span className="text-slate-500">Max Tokens:</span>
                     <span className="font-mono">{llmInfo.vision_max_tokens || '-'}</span>
                   </div>
                 </div>
@@ -178,7 +179,7 @@ const Settings = () => {
             )}
           </div>
           {neo4jStatus && (
-            <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+            <div className="text-sm text-slate-600 dark:text-slate-400 space-y-1">
               {neo4jStatus.total_entities != null && (
                 <p>实体: {neo4jStatus.total_entities} | 关系: {neo4jStatus.total_relationships || 0}</p>
               )}
@@ -191,26 +192,26 @@ const Settings = () => {
       <Card title={t('settings.display')}>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               {t('settings.theme')}
             </label>
             <select
               value={settings.theme}
               onChange={(e) => handleSettingChange('theme', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-700 dark:text-white"
             >
               <option value="light">{t('settings.theme.light')}</option>
               <option value="dark">{t('settings.theme.dark')}</option>
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               {t('settings.language')}
             </label>
             <select
               value={settings.language}
               onChange={(e) => handleSettingChange('language', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-700 dark:text-white"
             >
               <option value="en">English</option>
               <option value="zh">中文</option>
@@ -222,27 +223,27 @@ const Settings = () => {
       <Card title={t('settings.task_settings')}>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               {t('settings.items_per_page')}
             </label>
             <input
               type="number"
               value={settings.itemsPerPage}
               onChange={(e) => handleSettingChange('itemsPerPage', parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-700 dark:text-white"
               min="5"
               max="100"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               {t('settings.refresh_interval')}
             </label>
             <input
               type="number"
               value={settings.refreshInterval}
               onChange={(e) => handleSettingChange('refreshInterval', parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-700 dark:text-white"
               min="1000"
               max="60000"
               step="1000"
@@ -253,9 +254,9 @@ const Settings = () => {
               type="checkbox"
               checked={settings.autoRefresh}
               onChange={(e) => handleSettingChange('autoRefresh', e.target.checked)}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
             />
-            <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('settings.auto_refresh')}</span>
+            <span className="ml-2 text-sm text-slate-700 dark:text-slate-300">{t('settings.auto_refresh')}</span>
           </label>
         </div>
       </Card>

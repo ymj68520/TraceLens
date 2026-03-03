@@ -1,4 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { CheckCircle, XCircle, Info, AlertTriangle, X } from 'lucide-react';
 
 const ToastContext = createContext(null);
 
@@ -32,43 +34,48 @@ export function ToastProvider({ children }) {
         warning: (msg, dur) => addToast('warning', msg, dur ?? 6000),
     };
 
-    const iconMap = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
-    const bgMap = {
-        success: 'bg-green-600',
-        error: 'bg-red-600',
-        info: 'bg-blue-600',
-        warning: 'bg-yellow-500 text-gray-900',
+    const iconMap = {
+        success: <CheckCircle size={18} className="text-emerald-400" />,
+        error: <XCircle size={18} className="text-rose-400" />,
+        info: <Info size={18} className="text-primary-400" />,
+        warning: <AlertTriangle size={18} className="text-amber-400" />,
+    };
+
+    const borderMap = {
+        success: 'border-l-emerald-500',
+        error: 'border-l-rose-500',
+        info: 'border-l-primary-500',
+        warning: 'border-l-amber-500',
     };
 
     return (
         <ToastContext.Provider value={toast}>
             {children}
             {/* Toast Container */}
-            <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-3 max-w-sm">
-                {toasts.map((t) => (
-                    <div
-                        key={t.id}
-                        className={`${bgMap[t.type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-start gap-3 animate-slide-in`}
-                        role="alert"
-                    >
-                        <span className="text-lg flex-shrink-0">{iconMap[t.type]}</span>
-                        <p className="text-sm flex-1">{t.message}</p>
-                        <button
-                            onClick={() => removeToast(t.id)}
-                            className="text-white/70 hover:text-white flex-shrink-0 text-lg leading-none"
+            <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-3 max-w-sm pointer-events-none">
+                <AnimatePresence>
+                    {toasts.map((t) => (
+                        <motion.div
+                            key={t.id}
+                            initial={{ opacity: 0, x: 80, scale: 0.95 }}
+                            animate={{ opacity: 1, x: 0, scale: 1 }}
+                            exit={{ opacity: 0, x: 80, scale: 0.95 }}
+                            transition={{ duration: 0.25, ease: 'easeOut' }}
+                            className={`pointer-events-auto glass-strong rounded-xl border-l-4 ${borderMap[t.type]} px-4 py-3 flex items-start gap-3`}
+                            role="alert"
                         >
-                            ×
-                        </button>
-                    </div>
-                ))}
+                            <span className="flex-shrink-0 mt-0.5">{iconMap[t.type]}</span>
+                            <p className="text-sm flex-1 text-slate-700 dark:text-slate-200">{t.message}</p>
+                            <button
+                                onClick={() => removeToast(t.id)}
+                                className="flex-shrink-0 p-0.5 rounded hover:bg-slate-200/50 dark:hover:bg-slate-700/50 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                            >
+                                <X size={14} />
+                            </button>
+                        </motion.div>
+                    ))}
+                </AnimatePresence>
             </div>
-            <style>{`
-        @keyframes slideIn {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-        .animate-slide-in { animation: slideIn 0.3s ease-out; }
-      `}</style>
         </ToastContext.Provider>
     );
 }

@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
@@ -116,12 +117,12 @@ const LLMDescriptions = () => {
             {llmEnabledTasks.length === 0 ? (
                 <div className="text-center py-8">
                     <div className="text-5xl mb-4">🔍</div>
-                    <p className="text-gray-500 mb-4">
+                    <p className="text-slate-500 mb-4">
                         No completed tasks with LLM analysis found.
                     </p>
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-slate-400">
                         Create a task with LLM analysis enabled from the{' '}
-                        <a href="/tasks" className="text-blue-600 hover:text-blue-800 underline">
+                        <a href="/tasks" className="text-primary-600 hover:text-blue-800 underline">
                             Tasks page
                         </a>{' '}
                         or use the task selector in the top bar to see AI file descriptions here.
@@ -129,7 +130,7 @@ const LLMDescriptions = () => {
                 </div>
             ) : (
                 <div className="space-y-3">
-                    <p className="text-sm text-gray-600 mb-4">
+                    <p className="text-sm text-slate-600 mb-4">
                         Select a completed task with LLM analysis to view AI-generated file descriptions:
                     </p>
                     <div className="space-y-2">
@@ -137,16 +138,16 @@ const LLMDescriptions = () => {
                             <button
                                 key={task.id}
                                 onClick={() => handleTaskSelect(task.id)}
-                                className="w-full text-left p-4 border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all group"
+                                className="w-full text-left p-4 border border-slate-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all group"
                             >
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center space-x-3">
                                         <span className="text-xl">📊</span>
                                         <div>
-                                            <p className="font-mono text-sm text-gray-700 group-hover:text-blue-700">
+                                            <p className="font-mono text-sm text-slate-700 group-hover:text-blue-700">
                                                 {task.id.substring(0, 8)}...
                                             </p>
-                                            <p className="text-sm text-gray-500 truncate max-w-md">
+                                            <p className="text-sm text-slate-500 truncate max-w-md">
                                                 {task.image_path}
                                             </p>
                                         </div>
@@ -172,8 +173,8 @@ const LLMDescriptions = () => {
         return (
             <div className="space-y-6">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">🤖 AI File Descriptions</h1>
-                    <p className="mt-2 text-gray-600">View AI-generated descriptions for analyzed files</p>
+                    <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900">🤖 AI File Descriptions</motion.h1>
+                    <p className="mt-2 text-slate-600">View AI-generated descriptions for analyzed files</p>
                 </div>
                 <TaskSelector />
             </div>
@@ -185,13 +186,13 @@ const LLMDescriptions = () => {
         return (
             <div className="space-y-6">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">🤖 AI File Descriptions</h1>
-                    <p className="mt-2 text-gray-600">Task: {currentTask?.image_path || taskId}</p>
+                    <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900">🤖 AI File Descriptions</motion.h1>
+                    <p className="mt-2 text-slate-600">Task: {currentTask?.image_path || taskId}</p>
                 </div>
                 <Card>
                     <div className="flex items-center justify-center h-64">
                         <Spinner size="lg" />
-                        <span className="ml-4 text-gray-600">Loading AI analysis results...</span>
+                        <span className="ml-4 text-slate-600">Loading AI analysis results...</span>
                     </div>
                 </Card>
             </div>
@@ -203,12 +204,12 @@ const LLMDescriptions = () => {
         return (
             <div className="space-y-6">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">🤖 AI File Descriptions</h1>
-                    <p className="mt-2 text-gray-600">Task: {currentTask?.image_path || taskId}</p>
+                    <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900">🤖 AI File Descriptions</motion.h1>
+                    <p className="mt-2 text-slate-600">Task: {currentTask?.image_path || taskId}</p>
                 </div>
 
                 <Card title="Error">
-                    <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
                         <p className="text-red-800">{error}</p>
                     </div>
                 </Card>
@@ -224,8 +225,8 @@ const LLMDescriptions = () => {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">🤖 AI File Descriptions</h1>
-                    <p className="mt-2 text-gray-600">Task: {currentTask?.image_path || taskId}</p>
+                    <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900">🤖 AI File Descriptions</motion.h1>
+                    <p className="mt-2 text-slate-600">Task: {currentTask?.image_path || taskId}</p>
                     {currentTask && (
                         <div className="mt-2">
                             <Badge variant="blue">{currentTask.status}</Badge>
@@ -237,7 +238,7 @@ const LLMDescriptions = () => {
                 </div>
                 <button
                     onClick={() => setSearchParams({})}
-                    className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                    className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
                 >
                     ← Back to Task List
                 </button>
@@ -246,19 +247,19 @@ const LLMDescriptions = () => {
             {/* Statistics */}
             <Card title="📊 Analysis Statistics">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-blue-50 rounded-lg p-4">
-                        <p className="text-sm text-blue-600 font-medium">Total Files Analyzed</p>
+                    <div className="bg-blue-50 rounded-xl p-4">
+                        <p className="text-sm text-primary-600 font-medium">Total Files Analyzed</p>
                         <p className="text-2xl font-bold text-blue-900">
                             {llmResults?.stats?.total_analyzed || llmResults?.descriptions?.length || 0}
                         </p>
                     </div>
-                    <div className="bg-green-50 rounded-lg p-4">
+                    <div className="bg-green-50 rounded-xl p-4">
                         <p className="text-sm text-green-600 font-medium">Matching Search</p>
                         <p className="text-2xl font-bold text-green-900">
                             {filteredDescriptions.length}
                         </p>
                     </div>
-                    <div className="bg-purple-50 rounded-lg p-4">
+                    <div className="bg-purple-50 rounded-xl p-4">
                         <p className="text-sm text-purple-600 font-medium">Analysis Mode</p>
                         <p className="text-2xl font-bold text-purple-900">
                             {currentTask?.llm_mode || 'smart'}
@@ -276,12 +277,12 @@ const LLMDescriptions = () => {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="Search by file name, summary, or keywords..."
-                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="flex-1 px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     />
                     {searchQuery && (
                         <button
                             onClick={() => setSearchQuery('')}
-                            className="px-3 py-2 text-gray-500 hover:text-gray-700"
+                            className="px-3 py-2 text-slate-500 hover:text-slate-700"
                         >
                             ✕
                         </button>
@@ -292,7 +293,7 @@ const LLMDescriptions = () => {
             {/* File Descriptions List */}
             <Card title={`📄 File Descriptions (${filteredDescriptions.length})`}>
                 {filteredDescriptions.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500">
+                    <div className="text-center py-12 text-slate-500">
                         {searchQuery
                             ? 'No files match your search criteria.'
                             : 'No AI descriptions available.'}
@@ -302,17 +303,17 @@ const LLMDescriptions = () => {
                         {filteredDescriptions.map((item, index) => (
                             <div
                                 key={index}
-                                className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-sm transition-all"
+                                className="border border-slate-200 rounded-xl p-4 hover:border-blue-300 hover:shadow-sm transition-all"
                             >
                                 {/* File Path */}
                                 <div className="flex items-start justify-between">
                                     <div className="flex items-center space-x-2 flex-1 min-w-0">
                                         <span className="text-lg">📄</span>
-                                        <p className="font-mono text-sm text-gray-900 truncate" title={item.file_path}>
+                                        <p className="font-mono text-sm text-slate-900 truncate" title={item.file_path}>
                                             {item.file_path}
                                         </p>
                                     </div>
-                                    <span className="text-xs text-gray-400 ml-2 whitespace-nowrap">
+                                    <span className="text-xs text-slate-400 ml-2 whitespace-nowrap">
                                         {formatDate(item.created_at)}
                                     </span>
                                 </div>
@@ -320,8 +321,8 @@ const LLMDescriptions = () => {
                                 {/* Summary */}
                                 {item.summary && (
                                     <div className="mt-3">
-                                        <p className="text-sm font-medium text-gray-700">Summary:</p>
-                                        <p className="text-sm text-gray-600 mt-1">{item.summary}</p>
+                                        <p className="text-sm font-medium text-slate-700">Summary:</p>
+                                        <p className="text-sm text-slate-600 mt-1">{item.summary}</p>
                                     </div>
                                 )}
 
@@ -346,14 +347,14 @@ const LLMDescriptions = () => {
                                     <div className="mt-3">
                                         <button
                                             onClick={() => toggleExpanded(index)}
-                                            className="flex items-center text-sm text-blue-600 hover:text-blue-800"
+                                            className="flex items-center text-sm text-primary-600 hover:text-blue-800"
                                         >
                                             <span className="mr-1">{expandedItems[index] ? '▼' : '▶'}</span>
                                             {expandedItems[index] ? 'Hide' : 'Show'} full description
                                         </button>
                                         {expandedItems[index] && (
-                                            <div className="mt-2 p-3 bg-gray-50 rounded-md">
-                                                <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                                            <div className="mt-2 p-3 bg-slate-50 rounded-xl">
+                                                <p className="text-sm text-slate-700 whitespace-pre-wrap">
                                                     {item.description}
                                                 </p>
                                             </div>

@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
@@ -7,7 +8,7 @@ import Spinner from '../components/common/Spinner';
 import Button from '../components/common/Button';
 import { getLargestFiles, getExtensionAnalysis } from '../services/forensicsService';
 import { startExtraction, pollExtractionStatus } from '../services/extractionService';
-import { analyzeContent, startBatchAnalysis, pollBatchStatus, getLLMStatus } from '../services/llmService';
+import { analyzeContent, startBatchAnalysis, pollBatchStatus, getLLMStatus, getBatchStatus } from '../services/llmService';
 import { ingestTaskData, getGraphitiStatus } from '../services/graphitiService';
 import { parseFile } from '../services/officeService';
 import { getTaskResults } from '../services/taskService';
@@ -164,15 +165,16 @@ const Files = () => {
       const result = await analyzeContent({
         filePath: filePath,
         modelType: 'text',
+        filesDbPath: currentTask?.output_files_db || null,
       });
 
-      if (result.success) {
+      if (result.success && result.analysis) {
         setLlmResults(prev => ({
           ...prev,
           [filePath]: {
-            summary: result.summary || result.description?.substring(0, 200),
-            description: result.description,
-            keywords: result.keywords,
+            summary: result.analysis.summary || result.analysis.description?.substring(0, 200),
+            description: result.analysis.description,
+            keywords: result.analysis.keywords || [],
           }
         }));
       }
@@ -211,14 +213,20 @@ const Files = () => {
         }, 2000);
 
         setLlmMessage('批量分析完成！');
-        // Reload LLM descriptions
-        const results = await getTaskResults(taskId);
-        if (results.llm_results?.descriptions) {
-          const descMap = {};
-          results.llm_results.descriptions.forEach((desc) => {
-            descMap[desc.file_path] = desc;
+        // Read results from final batch job status
+        const finalStatus = await getBatchStatus(result.job_id);
+        if (finalStatus.results && Array.isArray(finalStatus.results)) {
+          const newDesc = {};
+          finalStatus.results.forEach((r) => {
+            if (r.file_path && r.analysis) {
+              newDesc[r.file_path] = {
+                summary: r.analysis.summary || r.analysis.description?.substring(0, 200),
+                description: r.analysis.description,
+                keywords: r.analysis.keywords || [],
+              };
+            }
           });
-          setExistingLlmDescriptions(descMap);
+          setLlmResults(prev => ({ ...prev, ...newDesc }));
         }
       }
     } catch (err) {
@@ -373,14 +381,14 @@ const Files = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">文件分析</h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-300">分析和浏览分类后的文件</p>
+          <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900 dark:text-white">文件分析</motion.h1>
+          <p className="mt-2 text-slate-600 dark:text-slate-300">分析和浏览分类后的文件</p>
         </div>
 
         <Card title="选择任务">
-          <p className="text-gray-500 dark:text-gray-400">
+          <p className="text-slate-500 dark:text-slate-400">
             请从{' '}
-            <a href="/tasks" className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+            <a href="/tasks" className="text-primary-600 hover:text-blue-800 dark:text-primary-400 dark:hover:text-blue-300">
               任务页面
             </a>{' '}
             选择一个已完成的任务，或使用顶部的任务选择器。
@@ -394,13 +402,13 @@ const Files = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">文件分析</h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-300">任务: {currentTask?.image_path || taskId}</p>
+          <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900 dark:text-white">文件分析</motion.h1>
+          <p className="mt-2 text-slate-600 dark:text-slate-300">任务: {currentTask?.image_path || taskId}</p>
         </div>
         <Card>
           <div className="flex items-center justify-center h-64">
             <Spinner size="lg" />
-            <span className="ml-4 text-gray-600 dark:text-gray-300">加载文件数据...</span>
+            <span className="ml-4 text-slate-600 dark:text-slate-300">加载文件数据...</span>
           </div>
         </Card>
       </div>
@@ -411,12 +419,12 @@ const Files = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">文件分析</h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-300">任务: {currentTask?.image_path || taskId}</p>
+          <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900 dark:text-white">文件分析</motion.h1>
+          <p className="mt-2 text-slate-600 dark:text-slate-300">任务: {currentTask?.image_path || taskId}</p>
         </div>
 
         <Card title="错误">
-          <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md">
+          <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl">
             <p className="text-red-800 dark:text-red-200">{error}</p>
           </div>
         </Card>
@@ -428,12 +436,12 @@ const Files = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">文件分析</h1>
-        <p className="mt-2 text-gray-600 dark:text-gray-300">任务: {currentTask?.image_path || taskId}</p>
+        <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900 dark:text-white">文件分析</motion.h1>
+        <p className="mt-2 text-slate-600 dark:text-slate-300">任务: {currentTask?.image_path || taskId}</p>
         {currentTask && (
           <div className="mt-2 flex gap-2">
             <Badge variant="blue">{currentTask.status}</Badge>
-            {llmStatus?.status === 'healthy' && <Badge variant="green">LLM 可用</Badge>}
+            {(llmStatus?.status === 'healthy' || llmStatus?.status === 'available') && <Badge variant="green">LLM 可用</Badge>}
             {graphitiStatus?.neo4j_connected && <Badge variant="purple">Graphiti 已连接</Badge>}
           </div>
         )}
@@ -442,15 +450,15 @@ const Files = () => {
       {/* LLM Analysis Panel */}
       <Card title="🧠 AI 文件分析" className="bg-purple-50 dark:bg-purple-900/10 border-purple-200 dark:border-purple-800">
         <div className="space-y-4">
-          <p className="text-sm text-gray-700 dark:text-gray-300">
+          <p className="text-sm text-slate-700 dark:text-slate-300">
             选择文件后使用 AI 生成描述，并导入知识图谱进行关联分析。
           </p>
 
           {/* Service Status */}
           <div className="flex gap-4 text-sm">
-            <span className={`flex items-center gap-1 ${llmStatus?.status === 'healthy' ? 'text-green-600' : 'text-red-600'}`}>
-              <span className={`w-2 h-2 rounded-full ${llmStatus?.status === 'healthy' ? 'bg-green-500' : 'bg-red-500'}`} />
-              LLM: {llmStatus?.status === 'healthy' ? '就绪' : '不可用'}
+            <span className={`flex items-center gap-1 ${(llmStatus?.status === 'healthy' || llmStatus?.status === 'available') ? 'text-green-600' : 'text-red-600'}`}>
+              <span className={`w-2 h-2 rounded-full ${(llmStatus?.status === 'healthy' || llmStatus?.status === 'available') ? 'bg-green-500' : 'bg-red-500'}`} />
+              LLM: {(llmStatus?.status === 'healthy' || llmStatus?.status === 'available') ? '就绪' : '不可用'}
             </span>
             <span className={`flex items-center gap-1 ${graphitiStatus?.neo4j_connected ? 'text-green-600' : 'text-red-600'}`}>
               <span className={`w-2 h-2 rounded-full ${graphitiStatus?.neo4j_connected ? 'bg-green-500' : 'bg-red-500'}`} />
@@ -459,8 +467,8 @@ const Files = () => {
           </div>
 
           {/* Selection Stats & Actions */}
-          <div className="flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-            <div className="text-sm text-gray-700 dark:text-gray-300">
+          <div className="flex items-center justify-between bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+            <div className="text-sm text-slate-700 dark:text-slate-300">
               已选择 <span className="font-bold text-purple-600">{selectedFiles.size}</span> 个文件
               {Object.keys(existingLlmDescriptions).length > 0 && (
                 <span className="ml-4">
@@ -473,7 +481,7 @@ const Files = () => {
                 variant="primary"
                 size="sm"
                 onClick={handleBatchAnalyze}
-                disabled={selectedFiles.size === 0 || llmAnalyzing || llmStatus?.status !== 'healthy'}
+                disabled={selectedFiles.size === 0 || llmAnalyzing || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
               >
                 {llmAnalyzing ? (
                   <>
@@ -504,12 +512,12 @@ const Files = () => {
 
           {/* LLM Progress */}
           {llmAnalyzing && (
-            <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
               <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-600 dark:text-gray-300">{llmMessage}</span>
+                <span className="text-slate-600 dark:text-slate-300">{llmMessage}</span>
                 <span className="text-purple-600">{llmProgress}%</span>
               </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+              <div className="w-full bg-slate-200 dark:bg-gray-600 rounded-full h-2">
                 <div className="bg-purple-600 h-2 rounded-full transition-all" style={{ width: `${llmProgress}%` }} />
               </div>
             </div>
@@ -517,7 +525,7 @@ const Files = () => {
 
           {/* Graphiti Message */}
           {graphitiMessage && (
-            <div className={`p-3 rounded-lg text-sm ${graphitiIngesting ? 'bg-blue-50 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200' : 'bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-200'}`}>
+            <div className={`p-3 rounded-xl text-sm ${graphitiIngesting ? 'bg-blue-50 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200' : 'bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-200'}`}>
               {graphitiMessage}
             </div>
           )}
@@ -527,21 +535,21 @@ const Files = () => {
       {/* File Extraction */}
       <Card title="📁 文件提取" className="bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
         <div className="space-y-4">
-          <p className="text-sm text-gray-700 dark:text-gray-300">
+          <p className="text-sm text-slate-700 dark:text-slate-300">
             从磁盘镜像提取文件以启用全文搜索和详细分析。
           </p>
 
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-md border border-gray-200 dark:border-gray-700">
-            <h4 className="font-medium text-gray-900 dark:text-white mb-3">提取文件</h4>
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+            <h4 className="font-medium text-slate-900 dark:text-white mb-3">提取文件</h4>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">提取模式</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">提取模式</label>
                 <select
                   value={extractionMode}
                   onChange={(e) => setExtractionMode(e.target.value)}
                   disabled={extractionStatus === 'running'}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
                 >
                   <option value="all">全部文件</option>
                   <option value="extension">按扩展名</option>
@@ -552,7 +560,7 @@ const Files = () => {
 
               {(extractionMode === 'extension' || extractionMode === 'name') && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                     {extractionMode === 'extension' ? '扩展名 (如: .log,.conf)' : '名称模式 (如: config*)'}
                   </label>
                   <input
@@ -560,7 +568,7 @@ const Files = () => {
                     value={extractionPattern}
                     onChange={(e) => setExtractionPattern(e.target.value)}
                     disabled={extractionStatus === 'running'}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
                   />
                 </div>
               )}
@@ -568,12 +576,12 @@ const Files = () => {
 
             <div className="flex items-center gap-4 mb-4">
               {extractionMode === 'all' && (
-                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
                   <input type="checkbox" checked={includeDeleted} onChange={(e) => setIncludeDeleted(e.target.checked)} disabled={extractionStatus === 'running'} />
                   包含已删除文件
                 </label>
               )}
-              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
                 <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} disabled={extractionStatus === 'running'} />
                 覆盖已存在文件
               </label>
@@ -584,7 +592,7 @@ const Files = () => {
                 {extractionStatus === 'running' ? <><Spinner size="sm" className="mr-2" />提取中...</> : '🚀 开始提取'}
               </Button>
               {extractionStatus !== 'idle' && (
-                <span className={`text-sm font-medium ${extractionStatus === 'completed' ? 'text-green-600' : extractionStatus === 'failed' ? 'text-red-600' : 'text-blue-600'}`}>
+                <span className={`text-sm font-medium ${extractionStatus === 'completed' ? 'text-green-600' : extractionStatus === 'failed' ? 'text-red-600' : 'text-primary-600'}`}>
                   {extractionMessage}
                 </span>
               )}
@@ -592,10 +600,10 @@ const Files = () => {
 
             {(extractionStatus === 'running' || extractionStatus === 'pending') && (
               <div className="mt-4">
-                <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5">
-                  <div className="bg-blue-600 h-2.5 rounded-full transition-all" style={{ width: `${extractionProgress}%` }} />
+                <div className="w-full bg-slate-200 dark:bg-gray-600 rounded-full h-2.5">
+                  <div className="bg-primary-600 h-2.5 rounded-full transition-all" style={{ width: `${extractionProgress}%` }} />
                 </div>
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <div className="flex justify-between text-xs text-slate-500 mt-1">
                   <span>已提取: {extractedCount}</span>
                   {skippedCount > 0 && <span>已跳过: {skippedCount}</span>}
                 </div>
@@ -603,13 +611,13 @@ const Files = () => {
             )}
 
             {extractionStatus === 'completed' && (
-              <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-md text-sm text-green-800 dark:text-green-200">
+              <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl text-sm text-green-800 dark:text-green-200">
                 ✅ 完成: 已提取 {extractedCount} 个文件，跳过 {skippedCount} 个
               </div>
             )}
 
             {extractionStatus === 'failed' && extractionError && (
-              <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-800 dark:text-red-200">
+              <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-800 dark:text-red-200">
                 ❌ 失败: {extractionError}
               </div>
             )}
@@ -621,43 +629,43 @@ const Files = () => {
       <Card title="🔍 筛选文件">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">按扩展名</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">按扩展名</label>
             <input
               type="text"
               value={filterExtension}
               onChange={(e) => setFilterExtension(e.target.value)}
               placeholder=".jpg, .pdf, .doc"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">最小大小 (KB)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">最小大小 (KB)</label>
             <input
               type="number"
               value={filterMinSize}
               onChange={(e) => setFilterMinSize(e.target.value)}
               placeholder="0"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">最大大小 (KB)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">最大大小 (KB)</label>
             <input
               type="number"
               value={filterMaxSize}
               onChange={(e) => setFilterMaxSize(e.target.value)}
               placeholder="无限制"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
             />
           </div>
         </div>
-        <div className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+        <div className="mt-3 text-sm text-slate-500 dark:text-slate-400">
           显示 {filteredFiles.length} / {largestFiles.length} 个文件
         </div>
       </Card>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200 dark:border-gray-700">
+      <div className="border-b border-slate-200 dark:border-slate-700">
         <nav className="-mb-px flex space-x-8">
           {[
             { id: 'largest', label: '文件列表' },
@@ -668,8 +676,8 @@ const Files = () => {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`${activeTab === tab.id
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                ? 'border-blue-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400'
                 } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
             >
               {tab.label}
@@ -682,11 +690,11 @@ const Files = () => {
       {activeTab === 'largest' && (
         <Card title={`文件列表 (${filteredFiles.length})`}>
           {filteredFiles.length === 0 ? (
-            <div className="text-center py-12 text-gray-500 dark:text-gray-400">无文件</div>
+            <div className="text-center py-12 text-slate-500 dark:text-slate-400">无文件</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-800">
+              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                <thead className="bg-slate-50 dark:bg-slate-800">
                   <tr>
                     <th className="px-3 py-3 w-10">
                       <input
@@ -696,15 +704,15 @@ const Files = () => {
                         className="h-4 w-4 text-purple-600 rounded"
                       />
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">#</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">名称</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">路径</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">大小</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">扩展名</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">AI 分析</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">#</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">名称</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">路径</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">大小</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">扩展名</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">AI 分析</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                   {filteredFiles.map((file, index) => {
                     const filePath = file.path || file.file_path;
                     const llmDesc = getLLMDescription(file);
@@ -713,7 +721,7 @@ const Files = () => {
 
                     return (
                       <>
-                        <tr key={index} className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${selectedFiles.has(index) ? 'bg-purple-50 dark:bg-purple-900/20' : ''}`}>
+                        <tr key={index} className={`hover:bg-slate-50 dark:hover:bg-slate-700 ${selectedFiles.has(index) ? 'bg-purple-50 dark:bg-purple-900/20' : ''}`}>
                           <td className="px-3 py-4">
                             <input
                               type="checkbox"
@@ -722,17 +730,17 @@ const Files = () => {
                               className="h-4 w-4 text-purple-600 rounded"
                             />
                           </td>
-                          <td className="px-4 py-4 text-sm font-medium text-gray-900 dark:text-white">#{index + 1}</td>
-                          <td className="px-4 py-4 text-sm font-medium text-gray-900 dark:text-white">
+                          <td className="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white">#{index + 1}</td>
+                          <td className="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white">
                             {file.name || filePath?.split('/').pop() || '-'}
                           </td>
-                          <td className="px-4 py-4 text-sm text-gray-600 dark:text-gray-300 max-w-xs truncate font-mono" title={filePath}>
+                          <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-300 max-w-xs truncate font-mono" title={filePath}>
                             {filePath || '-'}
                           </td>
-                          <td className="px-4 py-4 text-sm text-gray-900 dark:text-white font-mono">
+                          <td className="px-4 py-4 text-sm text-slate-900 dark:text-white font-mono">
                             {formatFileSize(file.size || file.file_size)}
                           </td>
-                          <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
+                          <td className="px-4 py-4 text-sm text-slate-500 dark:text-slate-400">
                             <Badge variant="blue">{file.extension || '-'}</Badge>
                           </td>
                           <td className="px-4 py-4">
@@ -749,7 +757,7 @@ const Files = () => {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleAnalyzeSingleFile(file, index)}
-                                  disabled={isAnalyzing || llmStatus?.status !== 'healthy'}
+                                  disabled={isAnalyzing || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
                                 >
                                   {isAnalyzing ? <Spinner size="sm" /> : '🧠'}
                                 </Button>
@@ -759,13 +767,13 @@ const Files = () => {
                         </tr>
                         {/* Expanded LLM Description Row */}
                         {isExpanded && llmDesc && (
-                          <tr className="bg-gray-50 dark:bg-gray-900/50">
+                          <tr className="bg-slate-50 dark:bg-slate-900/50">
                             <td colSpan={7} className="px-6 py-4">
                               <div className="space-y-2">
                                 {llmDesc.summary && (
                                   <div>
-                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">摘要: </span>
-                                    <span className="text-sm text-gray-600 dark:text-gray-400">{llmDesc.summary}</span>
+                                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">摘要: </span>
+                                    <span className="text-sm text-slate-600 dark:text-slate-400">{llmDesc.summary}</span>
                                   </div>
                                 )}
                                 {llmDesc.keywords && (
@@ -779,8 +787,8 @@ const Files = () => {
                                 )}
                                 {llmDesc.description && (
                                   <details className="text-sm">
-                                    <summary className="cursor-pointer text-blue-600 hover:text-blue-800">查看完整描述</summary>
-                                    <p className="mt-2 p-3 bg-white dark:bg-gray-800 rounded text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
+                                    <summary className="cursor-pointer text-primary-600 hover:text-blue-800">查看完整描述</summary>
+                                    <p className="mt-2 p-3 bg-white dark:bg-slate-800 rounded text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
                                       {llmDesc.description}
                                     </p>
                                   </details>
@@ -804,29 +812,29 @@ const Files = () => {
         <Card title="按扩展名分布">
           {extensionAnalysis.extension_analysis && extensionAnalysis.extension_analysis.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-800">
+              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                <thead className="bg-slate-50 dark:bg-slate-800">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">扩展名</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">数量</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">总大小</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">占比</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">扩展名</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">数量</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">总大小</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">占比</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                   {extensionAnalysis.extension_analysis
                     .sort((a, b) => (b.file_count || 0) - (a.file_count || 0))
                     .map((ext, index) => {
                       const totalCount = extensionAnalysis.total_count || extensionAnalysis.extension_analysis.reduce((sum, e) => sum + (e.file_count || 0), 0);
                       const percentage = totalCount > 0 ? ((ext.file_count || 0) / totalCount * 100).toFixed(1) : '0.0';
                       return (
-                        <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <tr key={index} className="hover:bg-slate-50 dark:hover:bg-slate-700">
                           <td className="px-6 py-4">
                             <Badge variant="blue">{ext.extension || '(无扩展名)'}</Badge>
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">{ext.file_count || 0}</td>
-                          <td className="px-6 py-4 text-sm text-gray-900 dark:text-white font-mono">{formatFileSize(ext.total_size || 0)}</td>
-                          <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">{percentage}%</td>
+                          <td className="px-6 py-4 text-sm text-slate-900 dark:text-white">{ext.file_count || 0}</td>
+                          <td className="px-6 py-4 text-sm text-slate-900 dark:text-white font-mono">{formatFileSize(ext.total_size || 0)}</td>
+                          <td className="px-6 py-4 text-sm text-slate-900 dark:text-white">{percentage}%</td>
                         </tr>
                       );
                     })}
@@ -834,7 +842,7 @@ const Files = () => {
               </table>
             </div>
           ) : (
-            <div className="text-center py-12 text-gray-500 dark:text-gray-400">无扩展名数据</div>
+            <div className="text-center py-12 text-slate-500 dark:text-slate-400">无扩展名数据</div>
           )}
         </Card>
       )}
@@ -843,12 +851,12 @@ const Files = () => {
       {activeTab === 'office' && (
         <Card title="📄 Office 文档预览">
           <div className="space-y-4">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
               选择一个 Office 文件 (PPT, Excel) 解析并预览内容。支持 .pptx, .xlsx, .xls 格式。
             </p>
             {/* File selector for Office files */}
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">选择文件</h4>
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+              <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">选择文件</h4>
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {filteredFiles
                   .filter(f => {
@@ -874,7 +882,7 @@ const Files = () => {
                           }
                         }}
                         disabled={officeParsing}
-                        className="w-full text-left px-3 py-2 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 text-sm text-gray-700 dark:text-gray-300 flex items-center gap-2"
+                        className="w-full text-left px-3 py-2 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 text-sm text-slate-700 dark:text-slate-300 flex items-center gap-2"
                       >
                         <Badge variant="blue">{file.extension}</Badge>
                         <span className="truncate">{file.name || filePath?.split('/').pop()}</span>
@@ -885,7 +893,7 @@ const Files = () => {
                   const ext = (f.extension || '').toLowerCase();
                   return ['.pptx', '.ppt', '.xlsx', '.xls', '.docx', '.doc'].includes(ext);
                 }).length === 0 && (
-                    <p className="text-gray-400 text-sm py-4 text-center">无 Office 文件</p>
+                    <p className="text-slate-400 text-sm py-4 text-center">无 Office 文件</p>
                   )}
               </div>
             </div>
@@ -893,7 +901,7 @@ const Files = () => {
             {officeParsing && (
               <div className="flex items-center justify-center py-8">
                 <Spinner size="lg" />
-                <span className="ml-3 text-gray-600 dark:text-gray-300">解析中...</span>
+                <span className="ml-3 text-slate-600 dark:text-slate-300">解析中...</span>
               </div>
             )}
 
@@ -904,28 +912,28 @@ const Files = () => {
             )}
 
             {officePreview && (
-              <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                <h4 className="font-medium text-gray-900 dark:text-white mb-3">
+              <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                <h4 className="font-medium text-slate-900 dark:text-white mb-3">
                   📄 {officePreview.file?.name || '文档内容'}
                 </h4>
                 {/* Slides / Sheets */}
                 {officePreview.slides && (
                   <div className="space-y-3">
-                    <p className="text-sm text-gray-500">幻灯片: {officePreview.slides.length} 页</p>
+                    <p className="text-sm text-slate-500">幻灯片: {officePreview.slides.length} 页</p>
                     {officePreview.slides.map((slide, i) => (
-                      <div key={i} className="p-3 bg-gray-50 dark:bg-gray-900 rounded border">
-                        <p className="text-xs text-gray-400 mb-1">第 {i + 1} 页</p>
-                        <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{slide.text || slide.content || '(无文本)'}</p>
+                      <div key={i} className="p-3 bg-slate-50 dark:bg-slate-900 rounded border">
+                        <p className="text-xs text-slate-400 mb-1">第 {i + 1} 页</p>
+                        <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap">{slide.text || slide.content || '(无文本)'}</p>
                       </div>
                     ))}
                   </div>
                 )}
                 {officePreview.sheets && (
                   <div className="space-y-3">
-                    <p className="text-sm text-gray-500">工作表: {officePreview.sheets.length} 个</p>
+                    <p className="text-sm text-slate-500">工作表: {officePreview.sheets.length} 个</p>
                     {officePreview.sheets.map((sheet, i) => (
-                      <div key={i} className="p-3 bg-gray-50 dark:bg-gray-900 rounded border">
-                        <p className="text-xs text-gray-400 mb-1">{sheet.name || `工作表 ${i + 1}`}</p>
+                      <div key={i} className="p-3 bg-slate-50 dark:bg-slate-900 rounded border">
+                        <p className="text-xs text-slate-400 mb-1">{sheet.name || `工作表 ${i + 1}`}</p>
                         {sheet.data && sheet.data.length > 0 ? (
                           <div className="overflow-x-auto">
                             <table className="text-xs">
@@ -933,16 +941,16 @@ const Files = () => {
                                 {sheet.data.slice(0, 20).map((row, ri) => (
                                   <tr key={ri}>
                                     {(Array.isArray(row) ? row : [row]).map((cell, ci) => (
-                                      <td key={ci} className="px-2 py-1 border border-gray-200 dark:border-gray-600">{String(cell ?? '')}</td>
+                                      <td key={ci} className="px-2 py-1 border border-slate-200 dark:border-slate-600">{String(cell ?? '')}</td>
                                     ))}
                                   </tr>
                                 ))}
                               </tbody>
                             </table>
-                            {sheet.data.length > 20 && <p className="text-xs text-gray-400 mt-1">… 还有 {sheet.data.length - 20} 行</p>}
+                            {sheet.data.length > 20 && <p className="text-xs text-slate-400 mt-1">… 还有 {sheet.data.length - 20} 行</p>}
                           </div>
                         ) : (
-                          <p className="text-sm text-gray-400">(无数据)</p>
+                          <p className="text-sm text-slate-400">(无数据)</p>
                         )}
                       </div>
                     ))}
@@ -950,7 +958,7 @@ const Files = () => {
                 )}
                 {/* Raw text fallback */}
                 {officePreview.text && !officePreview.slides && !officePreview.sheets && (
-                  <pre className="text-sm text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 p-4 rounded overflow-auto max-h-96 whitespace-pre-wrap">
+                  <pre className="text-sm text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-900 p-4 rounded overflow-auto max-h-96 whitespace-pre-wrap">
                     {officePreview.text}
                   </pre>
                 )}

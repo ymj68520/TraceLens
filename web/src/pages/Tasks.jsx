@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Link } from 'react-router-dom';
@@ -140,8 +141,8 @@ const Tasks = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Tasks</h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-300">Manage and monitor analysis tasks</p>
+          <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900 dark:text-white">Tasks</motion.h1>
+          <p className="mt-2 text-slate-600 dark:text-slate-300">Manage and monitor analysis tasks</p>
         </div>
         <Button onClick={() => dispatch(openModal({ type: 'createTask' }))}>
           ➕ Create Task
@@ -152,13 +153,13 @@ const Tasks = () => {
       <Card>
         <div className="flex flex-wrap gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               Status
             </label>
             <select
               value={filters.status}
               onChange={(e) => handleFilterChange('status', e.target.value)}
-              className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md dark:bg-gray-700 dark:text-white"
+              className="block w-full pl-3 pr-10 py-2 text-base border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-xl dark:bg-slate-700 dark:text-white"
             >
               <option value="all">All</option>
               <option value={TASK_STATUS.PENDING}>Pending</option>
@@ -169,13 +170,13 @@ const Tasks = () => {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               Priority
             </label>
             <select
               value={filters.priority}
               onChange={(e) => handleFilterChange('priority', e.target.value)}
-              className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md dark:bg-gray-700 dark:text-white"
+              className="block w-full pl-3 pr-10 py-2 text-base border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-xl dark:bg-slate-700 dark:text-white"
             >
               <option value="all">All</option>
               <option value={TASK_PRIORITY.LOW}>Low</option>
@@ -190,47 +191,47 @@ const Tasks = () => {
       {/* Task List */}
       <Card>
         {error && (
-          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md">
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl">
             <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
           </div>
         )}
 
         {filteredTasks.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-500 dark:text-gray-400">No tasks found. Create your first task to get started.</p>
+            <p className="text-slate-500 dark:text-slate-400">No tasks found. Create your first task to get started.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead className="bg-gray-50 dark:bg-gray-800">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+              <thead className="bg-slate-50 dark:bg-slate-800">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
                     Task ID
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
                     Image Path
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
                     Priority
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
                     Progress
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+              <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                 {filteredTasks.map((task) => (
-                  <tr key={task.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
+                  <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-slate-700">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-slate-900 dark:text-white">
                       {task.id?.substring(0, 8)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
                       {task.image_path}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -251,12 +252,12 @@ const Tasks = () => {
                             showLabel={false}
                             size="sm"
                           />
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                             {task.progress?.phase_description || 'Processing...'}
                           </p>
                         </div>
                       ) : (
-                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                        <span className="text-sm text-slate-500 dark:text-slate-400">
                           {task.status === TASK_STATUS.COMPLETED ? '100%' : '-'}
                         </span>
                       )}
@@ -274,7 +275,7 @@ const Tasks = () => {
                         <>
                           <Link
                             to={`/timeline?task_id=${task.id}`}
-                            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                            className="text-primary-600 hover:text-blue-900 dark:text-primary-400 dark:hover:text-blue-300"
                           >
                             Timeline
                           </Link>
@@ -306,7 +307,7 @@ const Tasks = () => {
                         task.status === TASK_STATUS.CANCELLED) && (
                           <button
                             onClick={() => handleDeleteTask(task.id)}
-                            className="text-gray-400 hover:text-red-600 ml-2 dark:hover:text-red-400"
+                            className="text-slate-400 hover:text-red-600 ml-2 dark:hover:text-red-400"
                             title="Delete task"
                           >
                             🗑️
@@ -324,25 +325,25 @@ const Tasks = () => {
       {/* Create Task Modal */}
       {modal.open && modal.type === 'createTask' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Create New Task</h2>
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Create New Task</h2>
               <button
                 onClick={() => dispatch(closeModal())}
-                className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+                className="text-slate-400 hover:text-slate-500 dark:hover:text-slate-300"
               >
                 ✕
               </button>
             </div>
             <form onSubmit={handleCreateTask} className="px-6 py-4 space-y-4">
               {createError && (
-                <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md">
+                <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl">
                   <p className="text-sm text-red-800 dark:text-red-200">{createError}</p>
                 </div>
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                   Image Path *
                 </label>
                 <input
@@ -351,19 +352,19 @@ const Tasks = () => {
                   disabled={isCreating}
                   value={taskData.image_path}
                   onChange={(e) => setTaskData({ ...taskData, image_path: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-700 dark:bg-gray-700 dark:text-white"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-100 dark:disabled:bg-slate-700 dark:bg-slate-700 dark:text-white"
                   placeholder="/path/to/disk_image.dd"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                   Priority
                 </label>
                 <select
                   value={taskData.priority}
                   disabled={isCreating}
                   onChange={(e) => setTaskData({ ...taskData, priority: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-700 dark:bg-gray-700 dark:text-white"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-100 dark:disabled:bg-slate-700 dark:bg-slate-700 dark:text-white"
                 >
                   <option value="low">Low</option>
                   <option value="normal">Normal</option>
@@ -372,14 +373,14 @@ const Tasks = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                   XFS Mode
                 </label>
                 <select
                   value={taskData.xfs_mode}
                   disabled={isCreating}
                   onChange={(e) => setTaskData({ ...taskData, xfs_mode: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-700 dark:bg-gray-700 dark:text-white"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-100 dark:disabled:bg-slate-700 dark:bg-slate-700 dark:text-white"
                 >
                   <option value="auto">Auto</option>
                   <option value="native">Native (Linux only)</option>
@@ -393,9 +394,9 @@ const Tasks = () => {
                     checked={taskData.android_analyze}
                     disabled={isCreating}
                     onChange={(e) => setTaskData({ ...taskData, android_analyze: e.target.checked })}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                    className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
                   />
-                  <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">Android Analysis</span>
+                  <span className="ml-2 text-sm text-slate-700 dark:text-slate-300">Android Analysis</span>
                 </label>
                 <label className="flex items-center">
                   <input
@@ -403,9 +404,9 @@ const Tasks = () => {
                     checked={taskData.llm_analyze}
                     disabled={isCreating}
                     onChange={(e) => setTaskData({ ...taskData, llm_analyze: e.target.checked })}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                    className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
                   />
-                  <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">LLM Analysis</span>
+                  <span className="ml-2 text-sm text-slate-700 dark:text-slate-300">LLM Analysis</span>
                 </label>
                 <label className="flex items-center">
                   <input
@@ -413,9 +414,9 @@ const Tasks = () => {
                     checked={taskData.windows_analyze}
                     disabled={isCreating}
                     onChange={(e) => setTaskData({ ...taskData, windows_analyze: e.target.checked })}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                    className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
                   />
-                  <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">Windows Analysis</span>
+                  <span className="ml-2 text-sm text-slate-700 dark:text-slate-300">Windows Analysis</span>
                 </label>
                 <label className="flex items-center">
                   <input
@@ -423,9 +424,9 @@ const Tasks = () => {
                     checked={taskData.linux_analyze}
                     disabled={isCreating}
                     onChange={(e) => setTaskData({ ...taskData, linux_analyze: e.target.checked })}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                    className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
                   />
-                  <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">Linux Analysis</span>
+                  <span className="ml-2 text-sm text-slate-700 dark:text-slate-300">Linux Analysis</span>
                 </label>
               </div>
               <div className="flex justify-end space-x-3 pt-4">

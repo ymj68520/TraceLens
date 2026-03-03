@@ -4,6 +4,11 @@ import { useSelector, useDispatch } from 'react-redux';
 import { toggleSidebar } from '../../store/uiSlice';
 import TaskSelector from '../common/TaskSelector';
 import { useTranslation } from '../../hooks/useTranslation';
+import { motion } from 'framer-motion';
+import {
+  LayoutDashboard, ListTodo, Clock, FolderOpen, Brain, Network,
+  Smartphone, Cloud, Search, BarChart3, Settings, Menu, X, ChevronLeft, ChevronRight,
+} from 'lucide-react';
 
 const Layout = ({ children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -15,26 +20,23 @@ const Layout = ({ children }) => {
   const { t } = useTranslation();
 
   const navigation = [
-    { name: t('nav.dashboard'), href: '/dashboard', icon: '📊' },
-    { name: t('nav.tasks'), href: '/tasks', icon: '📋' },
-    { name: t('nav.timeline'), href: '/timeline', icon: '📈' },
-    { name: t('nav.files'), href: '/files', icon: '📁' },
-    { name: t('nav.ai_descriptions'), href: '/llm-descriptions', icon: '🧠' },
-    { name: t('nav.knowledge_graph'), href: '/knowledge-graph', icon: '🕸️' },
-    { name: t('nav.android'), href: '/android', icon: '🤖' },
-    { name: 'OSS 分析', href: '/oss', icon: '☁️' },
-    { name: t('nav.search'), href: '/search', icon: '🔍' },
-    { name: t('nav.statistics'), href: '/statistics', icon: '📊' },
-    { name: t('nav.settings'), href: '/settings', icon: '⚙️' },
+    { name: t('nav.dashboard'), href: '/dashboard', icon: LayoutDashboard },
+    { name: t('nav.tasks'), href: '/tasks', icon: ListTodo },
+    { name: t('nav.timeline'), href: '/timeline', icon: Clock },
+    { name: t('nav.files'), href: '/files', icon: FolderOpen },
+    { name: t('nav.ai_descriptions'), href: '/llm-descriptions', icon: Brain },
+    { name: t('nav.knowledge_graph'), href: '/knowledge-graph', icon: Network },
+    { name: t('nav.android'), href: '/android', icon: Smartphone },
+    { name: 'OSS 分析', href: '/oss', icon: Cloud },
+    { name: t('nav.search'), href: '/search', icon: Search },
+    { name: t('nav.statistics'), href: '/statistics', icon: BarChart3 },
+    { name: t('nav.settings'), href: '/settings', icon: Settings },
   ];
 
   const isActive = (path) => location.pathname === path;
 
-  // Helper to construct link URL with preserved task_id
   const getLinkUrl = (href) => {
-    // List of pages that should preserve the task context
     const taskContextPages = ['/timeline', '/files', '/llm-descriptions', '/knowledge-graph', '/android', '/oss', '/search', '/statistics'];
-
     if (currentTaskId && taskContextPages.includes(href)) {
       return `${href}?task_id=${currentTaskId}`;
     }
@@ -42,83 +44,80 @@ const Layout = ({ children }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+    <div className="min-h-screen bg-mesh-light dark:bg-mesh-dark transition-colors duration-300">
       {/* Mobile menu button */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 glass-strong px-4 py-3 flex items-center">
         <button
           type="button"
-          className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+          className="p-2 rounded-xl text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
         >
           <span className="sr-only">Open sidebar</span>
-          <svg
-            className="h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth="1.5"
-            stroke="currentColor"
-          >
-            {mobileMenuOpen ? (
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M6 18L18 6M6 6l12 12"
-              />
-            ) : (
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
-              />
-            )}
-          </svg>
+          {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
-        <h1 className="ml-3 text-lg font-semibold text-gray-900 dark:text-white">
+        <h1 className="ml-3 text-lg font-bold text-slate-900 dark:text-white tracking-tight">
           {t('app.title')}
         </h1>
       </div>
 
-      {/* Sidebar - Desktop */}
+      {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 pt-16 transition-transform duration-300 ease-in-out lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed inset-y-0 left-0 z-40 w-64 transition-transform duration-300 ease-in-out lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           } ${mobileMenuOpen ? 'translate-x-0' : ''}`}
       >
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full bg-gradient-to-b from-slate-900 via-slate-900 to-primary-950 border-r border-slate-700/30">
           {/* Logo */}
-          <div className="hidden lg:flex items-center justify-center h-16 border-b border-gray-200 dark:border-gray-700 px-6">
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-              {t('app.title')}
-            </h1>
+          <div className="hidden lg:flex items-center h-16 px-6 border-b border-slate-700/30">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-purple-500 flex items-center justify-center">
+                <Search size={16} className="text-white" />
+              </div>
+              <h1 className="text-lg font-bold text-white tracking-tight">{t('app.title')}</h1>
+            </div>
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto px-3 py-4">
+          <nav className="flex-1 overflow-y-auto px-3 py-4 pt-20 lg:pt-4">
             <ul className="space-y-1">
-              {navigation.map((item) => (
-                <li key={item.name}>
-                  <Link
-                    to={getLinkUrl(item.href)}
-                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${isActive(item.href)
-                      ? 'bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-100'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                      }`}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <span className="mr-3 text-lg">{item.icon}</span>
-                    {item.name}
-                  </Link>
-                </li>
-              ))}
+              {navigation.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(item.href);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      to={getLinkUrl(item.href)}
+                      className={`group flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 ${active
+                          ? 'bg-primary-500/20 text-primary-300 shadow-[inset_0_0_0_1px_rgba(99,102,241,0.3)]'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                        }`}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Icon
+                        size={18}
+                        className={`flex-shrink-0 transition-colors ${active ? 'text-primary-400' : 'text-slate-500 group-hover:text-slate-300'
+                          }`}
+                      />
+                      <span>{item.name}</span>
+                      {active && (
+                        <motion.div
+                          layoutId="active-indicator"
+                          className="ml-auto w-1.5 h-1.5 rounded-full bg-primary-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]"
+                        />
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           </nav>
 
           {/* Sidebar footer */}
-          <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+          <div className="border-t border-slate-700/30 p-4">
             <button
               onClick={() => dispatch(toggleSidebar())}
-              className="w-full flex items-center justify-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-slate-400 hover:text-slate-200 bg-white/5 rounded-xl hover:bg-white/10 transition-all"
             >
-              {sidebarOpen ? `« ${t('sidebar.collapse')}` : `» ${t('sidebar.expand')}`}
+              {sidebarOpen ? <><ChevronLeft size={16} />{t('sidebar.collapse')}</> : <><ChevronRight size={16} />{t('sidebar.expand')}</>}
             </button>
           </div>
         </div>
@@ -130,49 +129,39 @@ const Layout = ({ children }) => {
           }`}
       >
         {/* Header */}
-        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 transition-colors duration-200">
+        <header className="sticky top-0 z-30 glass-strong border-b border-white/10 dark:border-slate-700/30 px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <button
                 onClick={() => dispatch(toggleSidebar())}
-                className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                className="lg:hidden p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors"
               >
-                <svg
-                  className="h-6 w-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth="1.5"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
-                  />
-                </svg>
+                <Menu size={20} />
               </button>
-              <h2 className="ml-4 text-2xl font-semibold text-gray-900 dark:text-white">
-                {navigation.find((item) => isActive(item.href))?.name ||
-                  t('nav.dashboard')}
+              <h2 className="ml-2 text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+                {navigation.find((item) => isActive(item.href))?.name || t('nav.dashboard')}
               </h2>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-4">
               <TaskSelector />
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                {t('system.status')}: <span className="text-green-600 font-medium">● {t('system.online')}</span>
+              <div className="hidden sm:flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                <div className="status-dot status-dot-online" />
+                <span>{t('system.online')}</span>
               </div>
             </div>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="p-6 transition-colors duration-200">{children}</main>
+        <main className="p-6 lg:p-8">{children}</main>
       </div>
 
       {/* Mobile sidebar overlay */}
       {mobileMenuOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-gray-600 bg-opacity-75 lg:hidden"
+        <motion.div
+          className="fixed inset-0 z-30 bg-slate-900/60 backdrop-blur-sm lg:hidden"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           onClick={() => setMobileMenuOpen(false)}
         />
       )}

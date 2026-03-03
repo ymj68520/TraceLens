@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
@@ -239,13 +240,13 @@ export default function KnowledgeGraph() {
     const renderTaskSelector = () => (
         <Card className="mb-6">
             <div className="flex items-center gap-4">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
                     选择镜像任务:
                 </label>
                 <select
                     value={taskId || ''}
                     onChange={(e) => handleTaskChange(e.target.value)}
-                    className="flex-1 max-w-md px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    className="flex-1 max-w-md px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                 >
                     <option value="">请选择任务...</option>
                     {tasks.filter(t => t.status === 'completed').map((task) => (
@@ -269,26 +270,26 @@ export default function KnowledgeGraph() {
                 <div className="flex items-center gap-4">
                     <div className={`w-3 h-3 rounded-full ${status?.neo4j_connected ? 'bg-green-500' : 'bg-red-500'}`} />
                     <div>
-                        <h3 className="font-medium text-gray-900 dark:text-white">
+                        <h3 className="font-medium text-slate-900 dark:text-white">
                             {currentTask?.image_path?.split('/').pop() || '未选择任务'}
                         </h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
                             Neo4j: {status?.neo4j_connected ? '已连接' : '未连接'}
                         </p>
                     </div>
                 </div>
                 <div className="flex items-center gap-8">
                     <div className="text-center">
-                        <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                        <div className="text-2xl font-bold text-primary-600 dark:text-primary-400">
                             {status?.total_entities || 0}
                         </div>
-                        <div className="text-sm text-gray-500">实体</div>
+                        <div className="text-sm text-slate-500">实体</div>
                     </div>
                     <div className="text-center">
                         <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
                             {status?.total_relationships || 0}
                         </div>
-                        <div className="text-sm text-gray-500">关系</div>
+                        <div className="text-sm text-slate-500">关系</div>
                     </div>
                     <div className="flex gap-2">
                         <Button size="sm" onClick={handleIngest} disabled={!taskId || ingesting}>
@@ -306,11 +307,11 @@ export default function KnowledgeGraph() {
             {(ingesting || ingestProgress > 0) && ingestProgress < 100 && (
                 <div className="mt-4">
                     <div className="flex justify-between text-sm mb-1">
-                        <span className="text-gray-600 dark:text-gray-300">{ingestMessage}</span>
-                        <span className="text-blue-600">{ingestProgress}%</span>
+                        <span className="text-slate-600 dark:text-slate-300">{ingestMessage}</span>
+                        <span className="text-primary-600">{ingestProgress}%</span>
                     </div>
-                    <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
-                        <div className="bg-blue-600 h-2 rounded-full transition-all" style={{ width: `${ingestProgress}%` }} />
+                    <div className="w-full bg-slate-200 dark:bg-gray-600 rounded-full h-2">
+                        <div className="bg-primary-600 h-2 rounded-full transition-all" style={{ width: `${ingestProgress}%` }} />
                     </div>
                 </div>
             )}
@@ -324,7 +325,7 @@ export default function KnowledgeGraph() {
 
     // 渲染标签页
     const renderTabs = () => (
-        <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
+        <div className="flex border-b border-slate-200 dark:border-slate-700 mb-6">
             {[
                 { id: 'search', label: '搜索' },
                 { id: 'entities', label: '实体' },
@@ -334,8 +335,8 @@ export default function KnowledgeGraph() {
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
-                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                        ? 'border-blue-500 text-primary-600 dark:text-primary-400'
+                        : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400'
                         }`}
                 >
                     {tab.label}
@@ -355,7 +356,7 @@ export default function KnowledgeGraph() {
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="搜索实体或关系..."
                         disabled={!taskId}
-                        className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white disabled:opacity-50"
+                        className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white disabled:opacity-50"
                     />
                     <Button type="submit" disabled={searching || !searchQuery.trim() || !taskId}>
                         {searching ? '搜索中...' : '搜索'}
@@ -364,10 +365,10 @@ export default function KnowledgeGraph() {
             </form>
 
             {!taskId ? (
-                <p className="text-center text-gray-500 py-8">请先选择一个任务</p>
+                <p className="text-center text-slate-500 py-8">请先选择一个任务</p>
             ) : searchResults.length > 0 ? (
                 <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                    <h3 className="text-lg font-medium text-slate-900 dark:text-white">
                         搜索结果 ({searchResults.length})
                     </h3>
                     <div className="grid gap-4">
@@ -375,12 +376,12 @@ export default function KnowledgeGraph() {
                             <Card key={result.entity_id || index}>
                                 <div className="flex justify-between items-start">
                                     <div>
-                                        <h4 className="font-medium text-gray-900 dark:text-white">
+                                        <h4 className="font-medium text-slate-900 dark:text-white">
                                             {result.name || '未命名实体'}
                                         </h4>
                                         <Badge variant="blue">{result.entity_type}</Badge>
                                     </div>
-                                    <span className="text-sm text-gray-400">
+                                    <span className="text-sm text-slate-400">
                                         相关度: {(result.score * 100).toFixed(1)}%
                                     </span>
                                 </div>
@@ -396,7 +397,7 @@ export default function KnowledgeGraph() {
     const renderEntities = () => (
         <div>
             {!taskId ? (
-                <p className="text-center text-gray-500 py-8">请先选择一个任务</p>
+                <p className="text-center text-slate-500 py-8">请先选择一个任务</p>
             ) : (
                 <>
                     <div className="flex justify-between items-center mb-4">
@@ -408,7 +409,7 @@ export default function KnowledgeGraph() {
                         </div>
                     </div>
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-50 dark:bg-gray-700">
+                        <thead className="bg-slate-50 dark:bg-slate-700">
                             <tr>
                                 <th className="px-4 py-3 text-left">ID</th>
                                 <th className="px-4 py-3 text-left">名称</th>
@@ -417,7 +418,7 @@ export default function KnowledgeGraph() {
                         </thead>
                         <tbody className="divide-y">
                             {entities.map((e, i) => (
-                                <tr key={e.id || i} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                                <tr key={e.id || i} className="hover:bg-slate-50 dark:hover:bg-slate-800">
                                     <td className="px-4 py-3 font-mono text-xs">{e.id?.substring(0, 8)}...</td>
                                     <td className="px-4 py-3">{e.name || '-'}</td>
                                     <td className="px-4 py-3"><Badge variant="blue">{e.type}</Badge></td>
@@ -425,7 +426,7 @@ export default function KnowledgeGraph() {
                             ))}
                         </tbody>
                     </table>
-                    {entities.length === 0 && <p className="text-center text-gray-500 py-8">暂无实体数据</p>}
+                    {entities.length === 0 && <p className="text-center text-slate-500 py-8">暂无实体数据</p>}
                 </>
             )}
         </div>
@@ -435,7 +436,7 @@ export default function KnowledgeGraph() {
     const renderRelationships = () => (
         <div>
             {!taskId ? (
-                <p className="text-center text-gray-500 py-8">请先选择一个任务</p>
+                <p className="text-center text-slate-500 py-8">请先选择一个任务</p>
             ) : (
                 <>
                     <div className="flex justify-between items-center mb-4">
@@ -447,7 +448,7 @@ export default function KnowledgeGraph() {
                         </div>
                     </div>
                     <table className="w-full text-sm">
-                        <thead className="bg-gray-50 dark:bg-gray-700">
+                        <thead className="bg-slate-50 dark:bg-slate-700">
                             <tr>
                                 <th className="px-4 py-3 text-left">源实体</th>
                                 <th className="px-4 py-3 text-left">关系</th>
@@ -456,7 +457,7 @@ export default function KnowledgeGraph() {
                         </thead>
                         <tbody className="divide-y">
                             {relationships.map((r, i) => (
-                                <tr key={r.id || i} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                                <tr key={r.id || i} className="hover:bg-slate-50 dark:hover:bg-slate-800">
                                     <td className="px-4 py-3">{r.source_name || r.source_id?.substring(0, 8)}</td>
                                     <td className="px-4 py-3"><Badge variant="purple">{r.type}</Badge></td>
                                     <td className="px-4 py-3">{r.target_name || r.target_id?.substring(0, 8)}</td>
@@ -464,7 +465,7 @@ export default function KnowledgeGraph() {
                             ))}
                         </tbody>
                     </table>
-                    {relationships.length === 0 && <p className="text-center text-gray-500 py-8">暂无关系数据</p>}
+                    {relationships.length === 0 && <p className="text-center text-slate-500 py-8">暂无关系数据</p>}
                 </>
             )}
         </div>
@@ -473,14 +474,14 @@ export default function KnowledgeGraph() {
     return (
         <div className="p-6">
             <div className="mb-6">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">知识图谱</h1>
-                <p className="mt-1 text-gray-500 dark:text-gray-400">
+                <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-2xl font-bold text-slate-900 dark:text-white">知识图谱</motion.h1>
+                <p className="mt-1 text-slate-500 dark:text-slate-400">
                     每个镜像任务有独立的知识图谱 - 选择任务查看或导入图谱数据
                 </p>
             </div>
 
             {error && (
-                <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 rounded-lg">
+                <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 rounded-xl">
                     {error}
                     <button onClick={() => setError(null)} className="ml-4 text-sm underline">关闭</button>
                 </div>

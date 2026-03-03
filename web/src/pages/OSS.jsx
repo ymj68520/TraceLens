@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
@@ -129,12 +130,12 @@ export default function OSS() {
         return (
             <div className="space-y-6">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">OSS 对象存储分析</h1>
-                    <p className="mt-2 text-gray-600 dark:text-gray-300">对象存储取证分析</p>
+                    <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900 dark:text-white">OSS 对象存储分析</motion.h1>
+                    <p className="mt-2 text-slate-600 dark:text-slate-300">对象存储取证分析</p>
                 </div>
                 <Card title="选择任务">
-                    <p className="text-gray-500 dark:text-gray-400">
-                        请从 <a href="/tasks" className="text-blue-600 hover:text-blue-800 dark:text-blue-400">任务页面</a> 选择一个已完成的任务。
+                    <p className="text-slate-500 dark:text-slate-400">
+                        请从 <a href="/tasks" className="text-primary-600 hover:text-blue-800 dark:text-primary-400">任务页面</a> 选择一个已完成的任务。
                     </p>
                 </Card>
             </div>
@@ -145,8 +146,8 @@ export default function OSS() {
         <div className="space-y-6">
             {/* Header */}
             <div>
-                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">OSS 对象存储分析</h1>
-                <p className="mt-2 text-gray-600 dark:text-gray-300">
+                <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900 dark:text-white">OSS 对象存储分析</motion.h1>
+                <p className="mt-2 text-slate-600 dark:text-slate-300">
                     任务: {currentTask?.image_path || taskId}
                 </p>
             </div>
@@ -156,14 +157,14 @@ export default function OSS() {
                 <div className="space-y-4">
                     <div className="flex gap-4 items-end">
                         <div className="flex-1">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">数据源路径</label>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">数据源路径</label>
                             <input
                                 type="text"
                                 value={sourcePath}
                                 onChange={(e) => setSourcePath(e.target.value)}
                                 placeholder="/path/to/oss/export 或 OSS 配置文件路径"
                                 disabled={analyzing}
-                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
+                                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
                             />
                         </div>
                         <Button onClick={handleStartAnalysis} disabled={analyzing}>
@@ -171,9 +172,9 @@ export default function OSS() {
                         </Button>
                     </div>
                     {analysisProgress && (
-                        <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
                             <div className="flex justify-between text-sm mb-1">
-                                <span className="text-gray-600 dark:text-gray-300">
+                                <span className="text-slate-600 dark:text-slate-300">
                                     已分析 {analysisProgress.objects_analyzed || 0} 对象, {analysisProgress.logs_analyzed || 0} 日志
                                 </span>
                                 <Badge variant={analysisProgress.status === 'COMPLETED' ? 'green' : 'blue'}>
@@ -186,22 +187,22 @@ export default function OSS() {
             </Card>
 
             {error && (
-                <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 rounded-lg">
+                <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 rounded-xl">
                     {error}
                     <button onClick={() => setError(null)} className="ml-4 text-sm underline">关闭</button>
                 </div>
             )}
 
             {/* Tabs */}
-            <div className="border-b border-gray-200 dark:border-gray-700">
+            <div className="border-b border-slate-200 dark:border-slate-700">
                 <nav className="-mb-px flex space-x-8">
                     {tabs.map((tab) => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             className={`${activeTab === tab.id
-                                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                                ? 'border-blue-500 text-primary-600 dark:text-primary-400'
+                                : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400'
                                 } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
                         >
                             {tab.label}
@@ -214,7 +215,7 @@ export default function OSS() {
                 <Card>
                     <div className="flex items-center justify-center h-48">
                         <Spinner size="lg" />
-                        <span className="ml-4 text-gray-600 dark:text-gray-300">加载中...</span>
+                        <span className="ml-4 text-slate-600 dark:text-slate-300">加载中...</span>
                     </div>
                 </Card>
             ) : (
@@ -233,8 +234,8 @@ export default function OSS() {
                                         <div className="flex items-center">
                                             <div className="text-3xl mr-4">{stat.icon}</div>
                                             <div>
-                                                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{stat.label}</p>
-                                                <p className="text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
+                                                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{stat.label}</p>
+                                                <p className="text-2xl font-bold text-slate-900 dark:text-white">{stat.value}</p>
                                             </div>
                                         </div>
                                     </Card>
@@ -247,10 +248,10 @@ export default function OSS() {
                                     <div className="space-y-3">
                                         {(storageStats.statistics || []).map((s, i) => (
                                             <div key={i} className="flex items-center justify-between">
-                                                <span className="text-sm text-gray-700 dark:text-gray-300">{s.storage_class || 'Standard'}</span>
+                                                <span className="text-sm text-slate-700 dark:text-slate-300">{s.storage_class || 'Standard'}</span>
                                                 <div className="flex items-center gap-4">
                                                     <span className="text-sm font-medium">{s.count || 0} 对象</span>
-                                                    <span className="text-sm text-gray-500">{formatSize(s.total_size || 0)}</span>
+                                                    <span className="text-sm text-slate-500">{formatSize(s.total_size || 0)}</span>
                                                 </div>
                                             </div>
                                         ))}
@@ -263,7 +264,7 @@ export default function OSS() {
                                 <Card title="文件扩展名分布">
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                         {(extensionStats.statistics || []).slice(0, 12).map((s, i) => (
-                                            <div key={i} className="flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded">
+                                            <div key={i} className="flex justify-between items-center px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded">
                                                 <Badge variant="blue">{s.extension || 'N/A'}</Badge>
                                                 <span className="text-sm font-medium">{s.count || 0}</span>
                                             </div>
@@ -278,25 +279,25 @@ export default function OSS() {
                     {activeTab === 'objects' && (
                         <Card title={`对象列表 (${objects.length})`}>
                             {objects.length === 0 ? (
-                                <div className="text-center py-12 text-gray-500 dark:text-gray-400">暂无对象数据</div>
+                                <div className="text-center py-12 text-slate-500 dark:text-slate-400">暂无对象数据</div>
                             ) : (
                                 <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                        <thead className="bg-gray-50 dark:bg-gray-800">
+                                    <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                                        <thead className="bg-slate-50 dark:bg-slate-800">
                                             <tr>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Key</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">大小</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">存储类型</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">修改时间</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">Key</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">大小</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">存储类型</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">修改时间</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                        <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                                             {objects.map((obj, i) => (
-                                                <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                                                    <td className="px-4 py-3 text-sm font-mono text-gray-900 dark:text-white max-w-xs truncate" title={obj.key}>{obj.key || obj.name || '-'}</td>
-                                                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-white font-mono">{formatSize(obj.size)}</td>
+                                                <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-700">
+                                                    <td className="px-4 py-3 text-sm font-mono text-slate-900 dark:text-white max-w-xs truncate" title={obj.key}>{obj.key || obj.name || '-'}</td>
+                                                    <td className="px-4 py-3 text-sm text-slate-900 dark:text-white font-mono">{formatSize(obj.size)}</td>
                                                     <td className="px-4 py-3"><Badge variant="blue">{obj.storage_class || 'Standard'}</Badge></td>
-                                                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{formatDate(obj.last_modified)}</td>
+                                                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{formatDate(obj.last_modified)}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -310,26 +311,26 @@ export default function OSS() {
                     {activeTab === 'logs' && (
                         <Card title={`访问日志 (${accessLogs.length})`}>
                             {accessLogs.length === 0 ? (
-                                <div className="text-center py-12 text-gray-500 dark:text-gray-400">暂无日志数据</div>
+                                <div className="text-center py-12 text-slate-500 dark:text-slate-400">暂无日志数据</div>
                             ) : (
                                 <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                        <thead className="bg-gray-50 dark:bg-gray-800">
+                                    <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                                        <thead className="bg-slate-50 dark:bg-slate-800">
                                             <tr>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">时间</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">操作</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Key</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">IP</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">状态</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">时间</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">操作</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">Key</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">IP</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">状态</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                        <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                                             {accessLogs.map((log, i) => (
-                                                <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                                                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{formatDate(log.timestamp || log.time)}</td>
+                                                <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-700">
+                                                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{formatDate(log.timestamp || log.time)}</td>
                                                     <td className="px-4 py-3"><Badge variant={log.operation === 'GET' ? 'green' : log.operation === 'DELETE' ? 'red' : 'blue'}>{log.operation || '-'}</Badge></td>
-                                                    <td className="px-4 py-3 text-sm font-mono text-gray-900 dark:text-white max-w-xs truncate">{log.key || '-'}</td>
-                                                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono">{log.remote_ip || log.ip || '-'}</td>
+                                                    <td className="px-4 py-3 text-sm font-mono text-slate-900 dark:text-white max-w-xs truncate">{log.key || '-'}</td>
+                                                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 font-mono">{log.remote_ip || log.ip || '-'}</td>
                                                     <td className="px-4 py-3 text-sm">{log.http_status || log.status || '-'}</td>
                                                 </tr>
                                             ))}
@@ -344,21 +345,21 @@ export default function OSS() {
                     {activeTab === 'buckets' && (
                         <Card title={`Buckets (${buckets.length})`}>
                             {buckets.length === 0 ? (
-                                <div className="text-center py-12 text-gray-500 dark:text-gray-400">暂无 Bucket 数据</div>
+                                <div className="text-center py-12 text-slate-500 dark:text-slate-400">暂无 Bucket 数据</div>
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {buckets.map((bucket, i) => (
                                         <Card key={i} className="hover:shadow-md transition-shadow">
                                             <div className="space-y-2">
-                                                <h3 className="font-medium text-gray-900 dark:text-white text-lg">🪣 {bucket.name || 'Unknown'}</h3>
+                                                <h3 className="font-medium text-slate-900 dark:text-white text-lg">🪣 {bucket.name || 'Unknown'}</h3>
                                                 <div className="grid grid-cols-2 gap-2 text-sm">
-                                                    <span className="text-gray-500">区域:</span>
-                                                    <span className="text-gray-900 dark:text-white">{bucket.region || '-'}</span>
-                                                    <span className="text-gray-500">创建时间:</span>
-                                                    <span className="text-gray-900 dark:text-white">{formatDate(bucket.creation_date)}</span>
-                                                    <span className="text-gray-500">对象数:</span>
+                                                    <span className="text-slate-500">区域:</span>
+                                                    <span className="text-slate-900 dark:text-white">{bucket.region || '-'}</span>
+                                                    <span className="text-slate-500">创建时间:</span>
+                                                    <span className="text-slate-900 dark:text-white">{formatDate(bucket.creation_date)}</span>
+                                                    <span className="text-slate-500">对象数:</span>
                                                     <span className="font-medium">{bucket.object_count || 0}</span>
-                                                    <span className="text-gray-500">总大小:</span>
+                                                    <span className="text-slate-500">总大小:</span>
                                                     <span className="font-medium">{formatSize(bucket.total_size || 0)}</span>
                                                 </div>
                                             </div>

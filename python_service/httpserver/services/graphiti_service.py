@@ -12,6 +12,7 @@ import asyncio
 import logging
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
+from pathlib import Path
 
 from ..config import Settings
 
@@ -74,9 +75,11 @@ class GraphitiService:
                 neo4j_uri=self.settings.neo4j_uri,
                 neo4j_user=self.settings.neo4j_user,
                 neo4j_password=self.settings.neo4j_password,
-                llm_base_url=self.settings.llm_text_base_url
+                llm_base_url=(
+                    self.settings.llm_text_base_url.rstrip("/") + "/v1"
                     if not self.settings.llm_text_base_url.endswith("/v1")
-                    else self.settings.llm_text_base_url,
+                    else self.settings.llm_text_base_url
+                ),
                 llm_model=self.settings.llm_text_model,
                 llm_api_key=self.settings.llm_api_key or "local",
                 batch_size=self.settings.graphiti_batch_size,
@@ -185,9 +188,11 @@ class GraphitiService:
                 neo4j_uri=self.settings.neo4j_uri,
                 neo4j_user=self.settings.neo4j_user,
                 neo4j_password=self.settings.neo4j_password,
-                llm_base_url=self.settings.llm_text_base_url
+                llm_base_url=(
+                    self.settings.llm_text_base_url.rstrip("/") + "/v1"
                     if not self.settings.llm_text_base_url.endswith("/v1")
-                    else self.settings.llm_text_base_url,
+                    else self.settings.llm_text_base_url
+                ),
                 llm_model=self.settings.llm_text_model,
                 llm_api_key=self.settings.llm_api_key or "local",
                 batch_size=batch_size,
@@ -204,9 +209,20 @@ class GraphitiService:
             if task_data:
                 # Try to extract image name from task data
                 if isinstance(task_data, dict):
-                    base_name = task_data.get("image_name") or task_data.get("name")
-                    output_dir = task_data.get("output_dir", output_dir)
-                    any_db_path = task_data.get("db_path")
+                    base_name = task_data.get("image_name") or task_data.get("image_path") or task_data.get("name")
+                    if base_name and "." in base_name:
+                        base_name = base_name.rsplit(".", 1)[0]
+                        
+                    t_out_dir = task_data.get("db_output_dir") or task_data.get("output_dir")
+                    if t_out_dir:
+                        output_dir = t_out_dir
+                        
+                    # Also try to search in build directory as a fallback
+                    if not any(Path(output_dir).glob(f"{base_name}*.db")):
+                        if any(Path("build").glob(f"{base_name}*.db")):
+                            output_dir = "build"
+                            
+                    any_db_path = task_data.get("output_files_db") or task_data.get("db_path")
 
             pipeline = MultiSourcePipeline(config)
 

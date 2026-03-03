@@ -13,8 +13,7 @@ const TaskSelector = () => {
 
     const currentTaskId = searchParams.get('task_id') || currentTask?.id;
 
-    // Only show on relevant pages
-    const relevantPaths = ['/timeline', '/files', '/statistics', '/llm-descriptions', '/android'];
+    const relevantPaths = ['/timeline', '/files', '/statistics', '/llm-descriptions', '/android', '/oss'];
     const isRelevantPage = relevantPaths.some(path => location.pathname.startsWith(path));
 
     useEffect(() => {
@@ -23,18 +22,14 @@ const TaskSelector = () => {
         }
     }, [dispatch, status]);
 
-    // Sync current task with URL
     useEffect(() => {
-        // 1. URL -> Redux: If URL has task_id, update Redux
         if (searchParams.get('task_id') && tasks.length > 0) {
             const urlTaskId = searchParams.get('task_id');
             const task = tasks.find(t => t.id === urlTaskId);
             if (task && (!currentTask || currentTask.id !== urlTaskId)) {
                 dispatch(setCurrentTask(task));
             }
-        }
-        // 2. Redux -> URL: If URL missing task_id but Redux has it, update URL (on relevant pages)
-        else if (!searchParams.get('task_id') && currentTask && isRelevantPage) {
+        } else if (!searchParams.get('task_id') && currentTask && isRelevantPage) {
             setSearchParams({ ...Object.fromEntries(searchParams), task_id: currentTask.id });
         }
     }, [searchParams, tasks, dispatch, currentTask, isRelevantPage, setSearchParams]);
@@ -42,7 +37,6 @@ const TaskSelector = () => {
     const handleTaskChange = (e) => {
         const newTaskId = e.target.value;
         if (newTaskId) {
-            // Update URL
             setSearchParams({ ...Object.fromEntries(searchParams), task_id: newTaskId });
         } else {
             const newParams = Object.fromEntries(searchParams);
@@ -54,14 +48,16 @@ const TaskSelector = () => {
     if (!isRelevantPage) return null;
 
     return (
-        <div className="flex items-center space-x-2 mr-4">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">Current Task:</span>
+        <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap hidden md:inline">
+                Task:
+            </span>
             <select
                 value={currentTaskId || ''}
                 onChange={handleTaskChange}
-                className="block w-64 pl-3 pr-10 py-1.5 text-sm border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="block w-48 md:w-56 pl-3 pr-8 py-1.5 text-sm rounded-xl border-0 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm text-slate-700 dark:text-slate-200 ring-1 ring-slate-200/50 dark:ring-slate-700/50 focus:ring-2 focus:ring-primary-500/50 transition-all"
             >
-                <option value="">Select a task...</option>
+                <option value="">Select task...</option>
                 {tasks.map((task) => (
                     <option key={task.id} value={task.id}>
                         {task.image_path.split('/').pop()} ({task.id.substring(0, 8)}) - {task.status}

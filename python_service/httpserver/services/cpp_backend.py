@@ -99,6 +99,16 @@ class CppBackendService:
             try:
                 response = await self.client.request(method, path, **kwargs)
                 response.raise_for_status()
+                if not response.content:
+                    return {}
+                
+                content_type = response.headers.get("Content-Type", "").lower()
+                if "text/html" in content_type:
+                    # C++ backend SPA fallback matched instead of an API route
+                    if response.status_code == 200:
+                        return {"status": "ok", "message": "HTML fallback matched"}
+                    return {}
+                    
                 return response.json()
             except httpx.HTTPStatusError as e:
                 if e.response.status_code >= 500 and attempt < max_retries - 1:
@@ -138,13 +148,19 @@ class CppBackendService:
         if status:
             params["status"] = status
         
-        return await self._request("GET", "/api/tasks", params=params)
+        return await self._request("GET", "/api/tasks/list", params=params)
     
     async def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific task."""
         try:
-            result = await self._request("GET", f"/api/tasks/{task_id}")
-            return result.get("data", result)
+            result = await self.list_tasks(page_size=1000)
+            tasks = result.get("tasks", [])
+            for task in tasks:
+                if task.get("id") == task_id:
+                    if "image_path" in task and "image_name" not in task:
+                        task["image_name"] = task["image_path"]
+                    return task
+            return None
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 return None

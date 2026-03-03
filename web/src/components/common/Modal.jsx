@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X } from 'lucide-react';
 
 const Modal = ({
   isOpen = false,
@@ -20,8 +22,6 @@ const Modal = ({
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   const sizes = {
     sm: 'max-w-sm',
     md: 'max-w-md',
@@ -39,45 +39,60 @@ const Modal = ({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50"
-      onClick={handleBackdropClick}
-    >
-      <div
-        className={`bg-white rounded-lg shadow-xl w-full ${sizes[size]} max-h-[90vh] overflow-hidden flex flex-col`}
-      >
-        {/* Header */}
-        {(title || showCloseButton) && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-            {title && <h2 className="text-xl font-semibold text-gray-900">{title}</h2>}
-            {showCloseButton && (
-              <button
-                type="button"
-                className="text-gray-400 hover:text-gray-500 focus:outline-none"
-                onClick={onClose}
-              >
-                <svg
-                  className="h-6 w-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth="2"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            )}
-          </div>
-        )}
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={handleBackdropClick}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          {/* Backdrop */}
+          <motion.div
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          />
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">{children}</div>
-      </div>
-    </div>
+          {/* Panel */}
+          <motion.div
+            className={`relative glass-strong rounded-2xl shadow-2xl w-full ${sizes[size]} max-h-[90vh] overflow-hidden flex flex-col`}
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+          >
+            {/* Header */}
+            {(title || showCloseButton) && (
+              <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 dark:border-slate-700/40">
+                {title && (
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+                    {title}
+                  </h2>
+                )}
+                {showCloseButton && (
+                  <motion.button
+                    type="button"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100/50 dark:hover:text-slate-300 dark:hover:bg-slate-700/50 transition-colors"
+                    onClick={onClose}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                  >
+                    <X size={20} />
+                  </motion.button>
+                )}
+              </div>
+            )}
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-4">{children}</div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };
 
