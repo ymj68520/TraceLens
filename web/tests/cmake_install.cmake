@@ -54,7 +54,7 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_linux_analyzer_gtest")
     file(RPATH_CHANGE
          FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_linux_analyzer_gtest"
-         OLD_RPATH "/usr/local/lib:"
+         OLD_RPATH "/usr/local/lib:/home/ymj68520/projects/Forensics/ForensicsProject/libs/aliyun-oss-cpp-sdk/build/lib:"
          NEW_RPATH "")
     if(CMAKE_INSTALL_DO_STRIP)
       execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_linux_analyzer_gtest")
@@ -74,7 +74,7 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_file_classifier")
     file(RPATH_CHANGE
          FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_file_classifier"
-         OLD_RPATH "/usr/local/lib:"
+         OLD_RPATH "/usr/local/lib:/home/ymj68520/projects/Forensics/ForensicsProject/libs/aliyun-oss-cpp-sdk/build/lib:"
          NEW_RPATH "")
     if(CMAKE_INSTALL_DO_STRIP)
       execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_file_classifier")
@@ -94,7 +94,7 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_audit_log_gtest")
     file(RPATH_CHANGE
          FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_audit_log_gtest"
-         OLD_RPATH "/usr/local/lib:"
+         OLD_RPATH "/usr/local/lib:/home/ymj68520/projects/Forensics/ForensicsProject/libs/aliyun-oss-cpp-sdk/build/lib:"
          NEW_RPATH "")
     if(CMAKE_INSTALL_DO_STRIP)
       execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_audit_log_gtest")
@@ -114,7 +114,7 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_file_carving")
     file(RPATH_CHANGE
          FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_file_carving"
-         OLD_RPATH "/usr/local/lib:"
+         OLD_RPATH "/usr/local/lib:/home/ymj68520/projects/Forensics/ForensicsProject/libs/aliyun-oss-cpp-sdk/build/lib:"
          NEW_RPATH "")
     if(CMAKE_INSTALL_DO_STRIP)
       execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_file_carving")
@@ -134,7 +134,7 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_windows_parsers_gtest")
     file(RPATH_CHANGE
          FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_windows_parsers_gtest"
-         OLD_RPATH "/usr/local/lib:"
+         OLD_RPATH "/usr/local/lib:/home/ymj68520/projects/Forensics/ForensicsProject/libs/aliyun-oss-cpp-sdk/build/lib:"
          NEW_RPATH "")
     if(CMAKE_INSTALL_DO_STRIP)
       execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_windows_parsers_gtest")
@@ -154,7 +154,7 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_android_analyzer_gtest")
     file(RPATH_CHANGE
          FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_android_analyzer_gtest"
-         OLD_RPATH "/usr/local/lib:"
+         OLD_RPATH "/usr/local/lib:/home/ymj68520/projects/Forensics/ForensicsProject/libs/aliyun-oss-cpp-sdk/build/lib:"
          NEW_RPATH "")
     if(CMAKE_INSTALL_DO_STRIP)
       execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_android_analyzer_gtest")
@@ -174,7 +174,7 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_fulltext_search_gtest")
     file(RPATH_CHANGE
          FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_fulltext_search_gtest"
-         OLD_RPATH "/usr/local/lib:"
+         OLD_RPATH "/usr/local/lib:/home/ymj68520/projects/Forensics/ForensicsProject/libs/aliyun-oss-cpp-sdk/build/lib:"
          NEW_RPATH "")
     if(CMAKE_INSTALL_DO_STRIP)
       execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_fulltext_search_gtest")
@@ -194,7 +194,7 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_image_analyzer_gtest")
     file(RPATH_CHANGE
          FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_image_analyzer_gtest"
-         OLD_RPATH "/usr/local/lib:"
+         OLD_RPATH "/usr/local/lib:/home/ymj68520/projects/Forensics/ForensicsProject/libs/aliyun-oss-cpp-sdk/build/lib:"
          NEW_RPATH "")
     if(CMAKE_INSTALL_DO_STRIP)
       execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/tests/test_image_analyzer_gtest")

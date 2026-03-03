@@ -83,10 +83,52 @@ tests/CMakeFiles/test_llm_integration.dir/UnitTest/test_llm_integration.cpp.s: c
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/test_llm_integration.dir/UnitTest/test_llm_integration.cpp.s"
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ymj68520/projects/Forensics/ForensicsProject/tests/UnitTest/test_llm_integration.cpp -o CMakeFiles/test_llm_integration.dir/UnitTest/test_llm_integration.cpp.s
 
+tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.o: tests/CMakeFiles/test_llm_integration.dir/flags.make
+tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.o: /home/ymj68520/projects/Forensics/ForensicsProject/src/integration/LLMIntegration/ConfigManager.cpp
+tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.o: tests/CMakeFiles/test_llm_integration.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.o"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.o -MF CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.o.d -o CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.o -c /home/ymj68520/projects/Forensics/ForensicsProject/src/integration/LLMIntegration/ConfigManager.cpp
+
+tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.i"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ymj68520/projects/Forensics/ForensicsProject/src/integration/LLMIntegration/ConfigManager.cpp > CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.i
+
+tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.s"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ymj68520/projects/Forensics/ForensicsProject/src/integration/LLMIntegration/ConfigManager.cpp -o CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.s
+
+tests/CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.o: tests/CMakeFiles/test_llm_integration.dir/flags.make
+tests/CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.o: /home/ymj68520/projects/Forensics/ForensicsProject/src/core/Logger/Logger.cpp
+tests/CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.o: tests/CMakeFiles/test_llm_integration.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.o"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.o -MF CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.o.d -o CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.o -c /home/ymj68520/projects/Forensics/ForensicsProject/src/core/Logger/Logger.cpp
+
+tests/CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.i"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ymj68520/projects/Forensics/ForensicsProject/src/core/Logger/Logger.cpp > CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.i
+
+tests/CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.s"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ymj68520/projects/Forensics/ForensicsProject/src/core/Logger/Logger.cpp -o CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.s
+
+tests/CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.o: tests/CMakeFiles/test_llm_integration.dir/flags.make
+tests/CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.o: /home/ymj68520/projects/Forensics/ForensicsProject/src/core/ThreadPool/ThreadPool.cpp
+tests/CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.o: tests/CMakeFiles/test_llm_integration.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.o"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.o -MF CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.o.d -o CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.o -c /home/ymj68520/projects/Forensics/ForensicsProject/src/core/ThreadPool/ThreadPool.cpp
+
+tests/CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.i"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ymj68520/projects/Forensics/ForensicsProject/src/core/ThreadPool/ThreadPool.cpp > CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.i
+
+tests/CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.s"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ymj68520/projects/Forensics/ForensicsProject/src/core/ThreadPool/ThreadPool.cpp -o CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.s
+
 tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/LLMClient.cpp.o: tests/CMakeFiles/test_llm_integration.dir/flags.make
 tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/LLMClient.cpp.o: /home/ymj68520/projects/Forensics/ForensicsProject/src/integration/LLMIntegration/LLMClient.cpp
 tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/LLMClient.cpp.o: tests/CMakeFiles/test_llm_integration.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/LLMClient.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/LLMClient.cpp.o"
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/LLMClient.cpp.o -MF CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/LLMClient.cpp.o.d -o CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/LLMClient.cpp.o -c /home/ymj68520/projects/Forensics/ForensicsProject/src/integration/LLMIntegration/LLMClient.cpp
 
 tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/LLMClient.cpp.i: cmake_force
@@ -100,7 +142,7 @@ tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/LLMC
 tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ModelRouter.cpp.o: tests/CMakeFiles/test_llm_integration.dir/flags.make
 tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ModelRouter.cpp.o: /home/ymj68520/projects/Forensics/ForensicsProject/src/integration/LLMIntegration/ModelRouter.cpp
 tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ModelRouter.cpp.o: tests/CMakeFiles/test_llm_integration.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ModelRouter.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ModelRouter.cpp.o"
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ModelRouter.cpp.o -MF CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ModelRouter.cpp.o.d -o CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ModelRouter.cpp.o -c /home/ymj68520/projects/Forensics/ForensicsProject/src/integration/LLMIntegration/ModelRouter.cpp
 
 tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ModelRouter.cpp.i: cmake_force
@@ -114,7 +156,7 @@ tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/Mode
 tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/FileAnalyzer.cpp.o: tests/CMakeFiles/test_llm_integration.dir/flags.make
 tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/FileAnalyzer.cpp.o: /home/ymj68520/projects/Forensics/ForensicsProject/src/integration/LLMIntegration/FileAnalyzer.cpp
 tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/FileAnalyzer.cpp.o: tests/CMakeFiles/test_llm_integration.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/FileAnalyzer.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/FileAnalyzer.cpp.o"
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/FileAnalyzer.cpp.o -MF CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/FileAnalyzer.cpp.o.d -o CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/FileAnalyzer.cpp.o -c /home/ymj68520/projects/Forensics/ForensicsProject/src/integration/LLMIntegration/FileAnalyzer.cpp
 
 tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/FileAnalyzer.cpp.i: cmake_force
@@ -125,10 +167,38 @@ tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/File
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/FileAnalyzer.cpp.s"
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ymj68520/projects/Forensics/ForensicsProject/src/integration/LLMIntegration/FileAnalyzer.cpp -o CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/FileAnalyzer.cpp.s
 
+tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.o: tests/CMakeFiles/test_llm_integration.dir/flags.make
+tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.o: /home/ymj68520/projects/Forensics/ForensicsProject/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp
+tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.o: tests/CMakeFiles/test_llm_integration.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.o"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.o -MF CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.o.d -o CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.o -c /home/ymj68520/projects/Forensics/ForensicsProject/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp
+
+tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.i"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ymj68520/projects/Forensics/ForensicsProject/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp > CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.i
+
+tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.s"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ymj68520/projects/Forensics/ForensicsProject/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp -o CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.s
+
+tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o: tests/CMakeFiles/test_llm_integration.dir/flags.make
+tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o: /home/ymj68520/projects/Forensics/ForensicsProject/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp
+tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o: tests/CMakeFiles/test_llm_integration.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o -MF CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o.d -o CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o -c /home/ymj68520/projects/Forensics/ForensicsProject/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp
+
+tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.i"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ymj68520/projects/Forensics/ForensicsProject/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp > CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.i
+
+tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.s"
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ymj68520/projects/Forensics/ForensicsProject/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp -o CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.s
+
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_message.cpp.o: tests/CMakeFiles/test_llm_integration.dir/flags.make
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_message.cpp.o: /home/ymj68520/projects/Forensics/ForensicsProject/libs/cpp-mcp/src/mcp_message.cpp
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_message.cpp.o: tests/CMakeFiles/test_llm_integration.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_message.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_message.cpp.o"
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_message.cpp.o -MF CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_message.cpp.o.d -o CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_message.cpp.o -c /home/ymj68520/projects/Forensics/ForensicsProject/libs/cpp-mcp/src/mcp_message.cpp
 
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_message.cpp.i: cmake_force
@@ -142,7 +212,7 @@ tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_message.cpp.s:
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_resource.cpp.o: tests/CMakeFiles/test_llm_integration.dir/flags.make
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_resource.cpp.o: /home/ymj68520/projects/Forensics/ForensicsProject/libs/cpp-mcp/src/mcp_resource.cpp
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_resource.cpp.o: tests/CMakeFiles/test_llm_integration.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_resource.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_resource.cpp.o"
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_resource.cpp.o -MF CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_resource.cpp.o.d -o CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_resource.cpp.o -c /home/ymj68520/projects/Forensics/ForensicsProject/libs/cpp-mcp/src/mcp_resource.cpp
 
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_resource.cpp.i: cmake_force
@@ -156,7 +226,7 @@ tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_resource.cpp.s
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_server.cpp.o: tests/CMakeFiles/test_llm_integration.dir/flags.make
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_server.cpp.o: /home/ymj68520/projects/Forensics/ForensicsProject/libs/cpp-mcp/src/mcp_server.cpp
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_server.cpp.o: tests/CMakeFiles/test_llm_integration.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_server.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_server.cpp.o"
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_server.cpp.o -MF CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_server.cpp.o.d -o CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_server.cpp.o -c /home/ymj68520/projects/Forensics/ForensicsProject/libs/cpp-mcp/src/mcp_server.cpp
 
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_server.cpp.i: cmake_force
@@ -170,7 +240,7 @@ tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_server.cpp.s: 
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_sse_client.cpp.o: tests/CMakeFiles/test_llm_integration.dir/flags.make
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_sse_client.cpp.o: /home/ymj68520/projects/Forensics/ForensicsProject/libs/cpp-mcp/src/mcp_sse_client.cpp
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_sse_client.cpp.o: tests/CMakeFiles/test_llm_integration.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_sse_client.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_sse_client.cpp.o"
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_sse_client.cpp.o -MF CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_sse_client.cpp.o.d -o CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_sse_client.cpp.o -c /home/ymj68520/projects/Forensics/ForensicsProject/libs/cpp-mcp/src/mcp_sse_client.cpp
 
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_sse_client.cpp.i: cmake_force
@@ -184,7 +254,7 @@ tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_sse_client.cpp
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_tool.cpp.o: tests/CMakeFiles/test_llm_integration.dir/flags.make
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_tool.cpp.o: /home/ymj68520/projects/Forensics/ForensicsProject/libs/cpp-mcp/src/mcp_tool.cpp
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_tool.cpp.o: tests/CMakeFiles/test_llm_integration.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_tool.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building CXX object tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_tool.cpp.o"
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_tool.cpp.o -MF CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_tool.cpp.o.d -o CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_tool.cpp.o -c /home/ymj68520/projects/Forensics/ForensicsProject/libs/cpp-mcp/src/mcp_tool.cpp
 
 tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_tool.cpp.i: cmake_force
@@ -198,9 +268,14 @@ tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_tool.cpp.s: cm
 # Object files for target test_llm_integration
 test_llm_integration_OBJECTS = \
 "CMakeFiles/test_llm_integration.dir/UnitTest/test_llm_integration.cpp.o" \
+"CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.o" \
+"CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.o" \
+"CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.o" \
 "CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/LLMClient.cpp.o" \
 "CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ModelRouter.cpp.o" \
 "CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/FileAnalyzer.cpp.o" \
+"CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.o" \
+"CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o" \
 "CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_message.cpp.o" \
 "CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_resource.cpp.o" \
 "CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_server.cpp.o" \
@@ -211,9 +286,14 @@ test_llm_integration_OBJECTS = \
 test_llm_integration_EXTERNAL_OBJECTS =
 
 tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/UnitTest/test_llm_integration.cpp.o
+tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.o
+tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.o
+tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.o
 tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/LLMClient.cpp.o
 tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ModelRouter.cpp.o
 tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/FileAnalyzer.cpp.o
+tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.o
+tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o
 tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_message.cpp.o
 tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_resource.cpp.o
 tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_server.cpp.o
@@ -221,8 +301,21 @@ tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/__/libs/cp
 tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/__/libs/cpp-mcp/src/mcp_tool.cpp.o
 tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/build.make
 tests/test_llm_integration: /usr/local/lib/libgtest.a
+tests/test_llm_integration: libs/DuckX/libduckx.a
+tests/test_llm_integration: libs/cpp-dotenv/libcpp_dotenv.a
+tests/test_llm_integration: libs/cpp-dotenv/src/libparser.a
+tests/test_llm_integration: libs/cpp-dotenv/src/listeners/dotenv/libdotenv_listeners.a
+tests/test_llm_integration: libs/cpp-dotenv/common/antlr/parser/dotenv/libdotenv_generated.a
+tests/test_llm_integration: libs/cpp-dotenv/src/listeners/line/libline_listeners.a
+tests/test_llm_integration: libs/cpp-dotenv/src/common/libenviron.a
+tests/test_llm_integration: libs/cpp-dotenv/src/common/liberrors.a
+tests/test_llm_integration: libs/cpp-dotenv/common/antlr/parser/line/libline_generated.a
+tests/test_llm_integration: libs/cpp-dotenv/src/common/libescape.a
+tests/test_llm_integration: libs/cpp-dotenv/src/common/liblogger.a
+tests/test_llm_integration: libs/cpp-dotenv/src/structures/libstructures.a
+tests/test_llm_integration: libs/cpp-dotenv/common/libs/antlr4-cpp-runtime/runtime/libantlr4_cpp_runtime.a
 tests/test_llm_integration: tests/CMakeFiles/test_llm_integration.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Linking CXX executable test_llm_integration"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/ymj68520/projects/Forensics/ForensicsProject/web/CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Linking CXX executable test_llm_integration"
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web/tests && $(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/test_llm_integration.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.

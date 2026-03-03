@@ -103,9 +103,9 @@ namespace forensics {
 
     // SQLiteHelperEnhanced implementation - will be added from HTTPServerEnhanced.cpp (merged)
 
-    HTTPServer::HTTPServer(asio::io_context& ioc) 
-        : app_(), 
-          task_manager_(TaskManager::instance()), 
+    HTTPServer::HTTPServer(asio::io_context& ioc)
+        : app_(),
+          task_manager_(TaskManager::instance()),
           ioc_(ioc),
           task_routes_(app_),
           forensics_routes_(app_),

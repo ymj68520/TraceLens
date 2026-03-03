@@ -339,6 +339,104 @@ llm_files_test/fast:
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/build
 .PHONY : llm_files_test/fast
 
+# Convenience name for target.
+tests/CMakeFiles/test_config_manager.dir/rule:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 tests/CMakeFiles/test_config_manager.dir/rule
+.PHONY : tests/CMakeFiles/test_config_manager.dir/rule
+
+# Convenience name for target.
+test_config_manager: tests/CMakeFiles/test_config_manager.dir/rule
+.PHONY : test_config_manager
+
+# fast build rule for target.
+test_config_manager/fast:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_config_manager.dir/build.make tests/CMakeFiles/test_config_manager.dir/build
+.PHONY : test_config_manager/fast
+
+# Convenience name for target.
+tests/CMakeFiles/test_thread_pool.dir/rule:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 tests/CMakeFiles/test_thread_pool.dir/rule
+.PHONY : tests/CMakeFiles/test_thread_pool.dir/rule
+
+# Convenience name for target.
+test_thread_pool: tests/CMakeFiles/test_thread_pool.dir/rule
+.PHONY : test_thread_pool
+
+# fast build rule for target.
+test_thread_pool/fast:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_thread_pool.dir/build.make tests/CMakeFiles/test_thread_pool.dir/build
+.PHONY : test_thread_pool/fast
+
+# Convenience name for target.
+tests/CMakeFiles/test_logger.dir/rule:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 tests/CMakeFiles/test_logger.dir/rule
+.PHONY : tests/CMakeFiles/test_logger.dir/rule
+
+# Convenience name for target.
+test_logger: tests/CMakeFiles/test_logger.dir/rule
+.PHONY : test_logger
+
+# fast build rule for target.
+test_logger/fast:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_logger.dir/build.make tests/CMakeFiles/test_logger.dir/build
+.PHONY : test_logger/fast
+
+# Convenience name for target.
+tests/CMakeFiles/test_error_handling.dir/rule:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 tests/CMakeFiles/test_error_handling.dir/rule
+.PHONY : tests/CMakeFiles/test_error_handling.dir/rule
+
+# Convenience name for target.
+test_error_handling: tests/CMakeFiles/test_error_handling.dir/rule
+.PHONY : test_error_handling
+
+# fast build rule for target.
+test_error_handling/fast:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_error_handling.dir/build.make tests/CMakeFiles/test_error_handling.dir/build
+.PHONY : test_error_handling/fast
+
+# Convenience name for target.
+tests/CMakeFiles/test_toon_exporter.dir/rule:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 tests/CMakeFiles/test_toon_exporter.dir/rule
+.PHONY : tests/CMakeFiles/test_toon_exporter.dir/rule
+
+# Convenience name for target.
+test_toon_exporter: tests/CMakeFiles/test_toon_exporter.dir/rule
+.PHONY : test_toon_exporter
+
+# fast build rule for target.
+test_toon_exporter/fast:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_toon_exporter.dir/build.make tests/CMakeFiles/test_toon_exporter.dir/build
+.PHONY : test_toon_exporter/fast
+
+# Convenience name for target.
+tests/CMakeFiles/test_oss_analyzer_gtest.dir/rule:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 tests/CMakeFiles/test_oss_analyzer_gtest.dir/rule
+.PHONY : tests/CMakeFiles/test_oss_analyzer_gtest.dir/rule
+
+# Convenience name for target.
+test_oss_analyzer_gtest: tests/CMakeFiles/test_oss_analyzer_gtest.dir/rule
+.PHONY : test_oss_analyzer_gtest
+
+# fast build rule for target.
+test_oss_analyzer_gtest/fast:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_oss_analyzer_gtest.dir/build.make tests/CMakeFiles/test_oss_analyzer_gtest.dir/build
+.PHONY : test_oss_analyzer_gtest/fast
+
+# Convenience name for target.
+tests/CMakeFiles/test_database_analyzer_gtest.dir/rule:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 tests/CMakeFiles/test_database_analyzer_gtest.dir/rule
+.PHONY : tests/CMakeFiles/test_database_analyzer_gtest.dir/rule
+
+# Convenience name for target.
+test_database_analyzer_gtest: tests/CMakeFiles/test_database_analyzer_gtest.dir/rule
+.PHONY : test_database_analyzer_gtest
+
+# fast build rule for target.
+test_database_analyzer_gtest/fast:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/build
+.PHONY : test_database_analyzer_gtest/fast
+
 UnitTest/test_android_analyzer_gtest.o: UnitTest/test_android_analyzer_gtest.cpp.o
 .PHONY : UnitTest/test_android_analyzer_gtest.o
 
@@ -386,6 +484,78 @@ UnitTest/test_audit_log_gtest.s: UnitTest/test_audit_log_gtest.cpp.s
 UnitTest/test_audit_log_gtest.cpp.s:
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_audit_log_gtest.dir/build.make tests/CMakeFiles/test_audit_log_gtest.dir/UnitTest/test_audit_log_gtest.cpp.s
 .PHONY : UnitTest/test_audit_log_gtest.cpp.s
+
+UnitTest/test_config_manager.o: UnitTest/test_config_manager.cpp.o
+.PHONY : UnitTest/test_config_manager.o
+
+# target to build an object file
+UnitTest/test_config_manager.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_config_manager.dir/build.make tests/CMakeFiles/test_config_manager.dir/UnitTest/test_config_manager.cpp.o
+.PHONY : UnitTest/test_config_manager.cpp.o
+
+UnitTest/test_config_manager.i: UnitTest/test_config_manager.cpp.i
+.PHONY : UnitTest/test_config_manager.i
+
+# target to preprocess a source file
+UnitTest/test_config_manager.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_config_manager.dir/build.make tests/CMakeFiles/test_config_manager.dir/UnitTest/test_config_manager.cpp.i
+.PHONY : UnitTest/test_config_manager.cpp.i
+
+UnitTest/test_config_manager.s: UnitTest/test_config_manager.cpp.s
+.PHONY : UnitTest/test_config_manager.s
+
+# target to generate assembly for a file
+UnitTest/test_config_manager.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_config_manager.dir/build.make tests/CMakeFiles/test_config_manager.dir/UnitTest/test_config_manager.cpp.s
+.PHONY : UnitTest/test_config_manager.cpp.s
+
+UnitTest/test_database_analyzer_gtest.o: UnitTest/test_database_analyzer_gtest.cpp.o
+.PHONY : UnitTest/test_database_analyzer_gtest.o
+
+# target to build an object file
+UnitTest/test_database_analyzer_gtest.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/UnitTest/test_database_analyzer_gtest.cpp.o
+.PHONY : UnitTest/test_database_analyzer_gtest.cpp.o
+
+UnitTest/test_database_analyzer_gtest.i: UnitTest/test_database_analyzer_gtest.cpp.i
+.PHONY : UnitTest/test_database_analyzer_gtest.i
+
+# target to preprocess a source file
+UnitTest/test_database_analyzer_gtest.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/UnitTest/test_database_analyzer_gtest.cpp.i
+.PHONY : UnitTest/test_database_analyzer_gtest.cpp.i
+
+UnitTest/test_database_analyzer_gtest.s: UnitTest/test_database_analyzer_gtest.cpp.s
+.PHONY : UnitTest/test_database_analyzer_gtest.s
+
+# target to generate assembly for a file
+UnitTest/test_database_analyzer_gtest.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/UnitTest/test_database_analyzer_gtest.cpp.s
+.PHONY : UnitTest/test_database_analyzer_gtest.cpp.s
+
+UnitTest/test_error_handling.o: UnitTest/test_error_handling.cpp.o
+.PHONY : UnitTest/test_error_handling.o
+
+# target to build an object file
+UnitTest/test_error_handling.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_error_handling.dir/build.make tests/CMakeFiles/test_error_handling.dir/UnitTest/test_error_handling.cpp.o
+.PHONY : UnitTest/test_error_handling.cpp.o
+
+UnitTest/test_error_handling.i: UnitTest/test_error_handling.cpp.i
+.PHONY : UnitTest/test_error_handling.i
+
+# target to preprocess a source file
+UnitTest/test_error_handling.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_error_handling.dir/build.make tests/CMakeFiles/test_error_handling.dir/UnitTest/test_error_handling.cpp.i
+.PHONY : UnitTest/test_error_handling.cpp.i
+
+UnitTest/test_error_handling.s: UnitTest/test_error_handling.cpp.s
+.PHONY : UnitTest/test_error_handling.s
+
+# target to generate assembly for a file
+UnitTest/test_error_handling.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_error_handling.dir/build.make tests/CMakeFiles/test_error_handling.dir/UnitTest/test_error_handling.cpp.s
+.PHONY : UnitTest/test_error_handling.cpp.s
 
 UnitTest/test_file_carving.o: UnitTest/test_file_carving.cpp.o
 .PHONY : UnitTest/test_file_carving.o
@@ -531,6 +701,30 @@ UnitTest/test_llm_integration.cpp.s:
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/UnitTest/test_llm_integration.cpp.s
 .PHONY : UnitTest/test_llm_integration.cpp.s
 
+UnitTest/test_logger.o: UnitTest/test_logger.cpp.o
+.PHONY : UnitTest/test_logger.o
+
+# target to build an object file
+UnitTest/test_logger.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_logger.dir/build.make tests/CMakeFiles/test_logger.dir/UnitTest/test_logger.cpp.o
+.PHONY : UnitTest/test_logger.cpp.o
+
+UnitTest/test_logger.i: UnitTest/test_logger.cpp.i
+.PHONY : UnitTest/test_logger.i
+
+# target to preprocess a source file
+UnitTest/test_logger.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_logger.dir/build.make tests/CMakeFiles/test_logger.dir/UnitTest/test_logger.cpp.i
+.PHONY : UnitTest/test_logger.cpp.i
+
+UnitTest/test_logger.s: UnitTest/test_logger.cpp.s
+.PHONY : UnitTest/test_logger.s
+
+# target to generate assembly for a file
+UnitTest/test_logger.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_logger.dir/build.make tests/CMakeFiles/test_logger.dir/UnitTest/test_logger.cpp.s
+.PHONY : UnitTest/test_logger.cpp.s
+
 UnitTest/test_office_analyzer.o: UnitTest/test_office_analyzer.cpp.o
 .PHONY : UnitTest/test_office_analyzer.o
 
@@ -555,6 +749,30 @@ UnitTest/test_office_analyzer.cpp.s:
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_office_analyzer.dir/build.make tests/CMakeFiles/test_office_analyzer.dir/UnitTest/test_office_analyzer.cpp.s
 .PHONY : UnitTest/test_office_analyzer.cpp.s
 
+UnitTest/test_oss_analyzer_gtest.o: UnitTest/test_oss_analyzer_gtest.cpp.o
+.PHONY : UnitTest/test_oss_analyzer_gtest.o
+
+# target to build an object file
+UnitTest/test_oss_analyzer_gtest.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_oss_analyzer_gtest.dir/build.make tests/CMakeFiles/test_oss_analyzer_gtest.dir/UnitTest/test_oss_analyzer_gtest.cpp.o
+.PHONY : UnitTest/test_oss_analyzer_gtest.cpp.o
+
+UnitTest/test_oss_analyzer_gtest.i: UnitTest/test_oss_analyzer_gtest.cpp.i
+.PHONY : UnitTest/test_oss_analyzer_gtest.i
+
+# target to preprocess a source file
+UnitTest/test_oss_analyzer_gtest.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_oss_analyzer_gtest.dir/build.make tests/CMakeFiles/test_oss_analyzer_gtest.dir/UnitTest/test_oss_analyzer_gtest.cpp.i
+.PHONY : UnitTest/test_oss_analyzer_gtest.cpp.i
+
+UnitTest/test_oss_analyzer_gtest.s: UnitTest/test_oss_analyzer_gtest.cpp.s
+.PHONY : UnitTest/test_oss_analyzer_gtest.s
+
+# target to generate assembly for a file
+UnitTest/test_oss_analyzer_gtest.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_oss_analyzer_gtest.dir/build.make tests/CMakeFiles/test_oss_analyzer_gtest.dir/UnitTest/test_oss_analyzer_gtest.cpp.s
+.PHONY : UnitTest/test_oss_analyzer_gtest.cpp.s
+
 UnitTest/test_pdf_analyzer.o: UnitTest/test_pdf_analyzer.cpp.o
 .PHONY : UnitTest/test_pdf_analyzer.o
 
@@ -578,6 +796,54 @@ UnitTest/test_pdf_analyzer.s: UnitTest/test_pdf_analyzer.cpp.s
 UnitTest/test_pdf_analyzer.cpp.s:
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_pdf_analyzer.dir/build.make tests/CMakeFiles/test_pdf_analyzer.dir/UnitTest/test_pdf_analyzer.cpp.s
 .PHONY : UnitTest/test_pdf_analyzer.cpp.s
+
+UnitTest/test_thread_pool.o: UnitTest/test_thread_pool.cpp.o
+.PHONY : UnitTest/test_thread_pool.o
+
+# target to build an object file
+UnitTest/test_thread_pool.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_thread_pool.dir/build.make tests/CMakeFiles/test_thread_pool.dir/UnitTest/test_thread_pool.cpp.o
+.PHONY : UnitTest/test_thread_pool.cpp.o
+
+UnitTest/test_thread_pool.i: UnitTest/test_thread_pool.cpp.i
+.PHONY : UnitTest/test_thread_pool.i
+
+# target to preprocess a source file
+UnitTest/test_thread_pool.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_thread_pool.dir/build.make tests/CMakeFiles/test_thread_pool.dir/UnitTest/test_thread_pool.cpp.i
+.PHONY : UnitTest/test_thread_pool.cpp.i
+
+UnitTest/test_thread_pool.s: UnitTest/test_thread_pool.cpp.s
+.PHONY : UnitTest/test_thread_pool.s
+
+# target to generate assembly for a file
+UnitTest/test_thread_pool.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_thread_pool.dir/build.make tests/CMakeFiles/test_thread_pool.dir/UnitTest/test_thread_pool.cpp.s
+.PHONY : UnitTest/test_thread_pool.cpp.s
+
+UnitTest/test_toon_exporter.o: UnitTest/test_toon_exporter.cpp.o
+.PHONY : UnitTest/test_toon_exporter.o
+
+# target to build an object file
+UnitTest/test_toon_exporter.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_toon_exporter.dir/build.make tests/CMakeFiles/test_toon_exporter.dir/UnitTest/test_toon_exporter.cpp.o
+.PHONY : UnitTest/test_toon_exporter.cpp.o
+
+UnitTest/test_toon_exporter.i: UnitTest/test_toon_exporter.cpp.i
+.PHONY : UnitTest/test_toon_exporter.i
+
+# target to preprocess a source file
+UnitTest/test_toon_exporter.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_toon_exporter.dir/build.make tests/CMakeFiles/test_toon_exporter.dir/UnitTest/test_toon_exporter.cpp.i
+.PHONY : UnitTest/test_toon_exporter.cpp.i
+
+UnitTest/test_toon_exporter.s: UnitTest/test_toon_exporter.cpp.s
+.PHONY : UnitTest/test_toon_exporter.s
+
+# target to generate assembly for a file
+UnitTest/test_toon_exporter.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_toon_exporter.dir/build.make tests/CMakeFiles/test_toon_exporter.dir/UnitTest/test_toon_exporter.cpp.s
+.PHONY : UnitTest/test_toon_exporter.cpp.s
 
 UnitTest/test_windows_parsers_gtest.o: UnitTest/test_windows_parsers_gtest.cpp.o
 .PHONY : UnitTest/test_windows_parsers_gtest.o
@@ -738,6 +1004,198 @@ __/libs/cpp-mcp/src/mcp_tool.cpp.s:
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/libs/cpp-mcp/src/mcp_tool.cpp.s
 .PHONY : __/libs/cpp-mcp/src/mcp_tool.cpp.s
 
+__/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.o: __/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.o
+
+# target to build an object file
+__/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.o
+
+__/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.i: __/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.i
+
+# target to preprocess a source file
+__/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.i
+
+__/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.s: __/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.s
+
+# target to generate assembly for a file
+__/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.s
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.o: __/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.o
+
+# target to build an object file
+__/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.o
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.i: __/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.i
+
+# target to preprocess a source file
+__/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.i
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.s: __/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.s
+
+# target to generate assembly for a file
+__/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.s
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.o: __/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.o
+
+# target to build an object file
+__/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.o
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.i: __/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.i
+
+# target to preprocess a source file
+__/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.i
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.s: __/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.s
+
+# target to generate assembly for a file
+__/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.s
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.o: __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.o
+
+# target to build an object file
+__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.o
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.i: __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.i
+
+# target to preprocess a source file
+__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.i
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.s: __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.s
+
+# target to generate assembly for a file
+__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.s
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.o: __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.o
+
+# target to build an object file
+__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.o
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.i: __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.i
+
+# target to preprocess a source file
+__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.i
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.s: __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.s
+
+# target to generate assembly for a file
+__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.s
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.o: __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.o
+
+# target to build an object file
+__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.o
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.i: __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.i
+
+# target to preprocess a source file
+__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.i
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.s: __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.s
+
+# target to generate assembly for a file
+__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.s
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.o: __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.o
+
+# target to build an object file
+__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.o
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.i: __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.i
+
+# target to preprocess a source file
+__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.i
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.s: __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.s
+
+# target to generate assembly for a file
+__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.s
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.o: __/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.o
+
+# target to build an object file
+__/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.o
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.o
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.i: __/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.i
+
+# target to preprocess a source file
+__/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.i
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.i
+
+__/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.s: __/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.s
+
+# target to generate assembly for a file
+__/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/__/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.s
+.PHONY : __/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.s
+
 __/src/analyzers/FileCarving/FileCarver.o: __/src/analyzers/FileCarving/FileCarver.cpp.o
 .PHONY : __/src/analyzers/FileCarving/FileCarver.o
 
@@ -834,11 +1292,36 @@ __/src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp.s:
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_linux_analyzer_gtest.dir/build.make tests/CMakeFiles/test_linux_analyzer_gtest.dir/__/src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp.s
 .PHONY : __/src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp.s
 
+__/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.o: __/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.o
+.PHONY : __/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.o
+
+# target to build an object file
+__/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_oss_analyzer_gtest.dir/build.make tests/CMakeFiles/test_oss_analyzer_gtest.dir/__/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.o
+.PHONY : __/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.o
+
+__/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.i: __/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.i
+.PHONY : __/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.i
+
+# target to preprocess a source file
+__/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_oss_analyzer_gtest.dir/build.make tests/CMakeFiles/test_oss_analyzer_gtest.dir/__/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.i
+.PHONY : __/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.i
+
+__/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.s: __/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.s
+.PHONY : __/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.s
+
+# target to generate assembly for a file
+__/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_oss_analyzer_gtest.dir/build.make tests/CMakeFiles/test_oss_analyzer_gtest.dir/__/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.s
+.PHONY : __/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.s
+
 __/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.o: __/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o
 .PHONY : __/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.o
 
 # target to build an object file
 __/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_office_analyzer.dir/build.make tests/CMakeFiles/test_office_analyzer.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o
 .PHONY : __/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o
@@ -848,6 +1331,7 @@ __/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.i: __/src/analyzers/OfficeAnalyze
 
 # target to preprocess a source file
 __/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.i
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_office_analyzer.dir/build.make tests/CMakeFiles/test_office_analyzer.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.i
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.i
 .PHONY : __/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.i
@@ -857,6 +1341,7 @@ __/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.s: __/src/analyzers/OfficeAnalyze
 
 # target to generate assembly for a file
 __/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.s
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_office_analyzer.dir/build.make tests/CMakeFiles/test_office_analyzer.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.s
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.s
 .PHONY : __/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.s
@@ -866,6 +1351,7 @@ __/src/analyzers/PDFAnalyzer/PDFAnalyzer.o: __/src/analyzers/PDFAnalyzer/PDFAnal
 
 # target to build an object file
 __/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.o
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_pdf_analyzer.dir/build.make tests/CMakeFiles/test_pdf_analyzer.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.o
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.o
 .PHONY : __/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.o
@@ -875,6 +1361,7 @@ __/src/analyzers/PDFAnalyzer/PDFAnalyzer.i: __/src/analyzers/PDFAnalyzer/PDFAnal
 
 # target to preprocess a source file
 __/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.i
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_pdf_analyzer.dir/build.make tests/CMakeFiles/test_pdf_analyzer.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.i
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.i
 .PHONY : __/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.i
@@ -884,6 +1371,7 @@ __/src/analyzers/PDFAnalyzer/PDFAnalyzer.s: __/src/analyzers/PDFAnalyzer/PDFAnal
 
 # target to generate assembly for a file
 __/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.s
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_pdf_analyzer.dir/build.make tests/CMakeFiles/test_pdf_analyzer.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.s
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.s
 .PHONY : __/src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp.s
@@ -919,6 +1407,7 @@ __/src/core/AuditLog/AuditLog.o: __/src/core/AuditLog/AuditLog.cpp.o
 __/src/core/AuditLog/AuditLog.cpp.o:
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_file_classifier.dir/build.make tests/CMakeFiles/test_file_classifier.dir/__/src/core/AuditLog/AuditLog.cpp.o
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_audit_log_gtest.dir/build.make tests/CMakeFiles/test_audit_log_gtest.dir/__/src/core/AuditLog/AuditLog.cpp.o
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_oss_analyzer_gtest.dir/build.make tests/CMakeFiles/test_oss_analyzer_gtest.dir/__/src/core/AuditLog/AuditLog.cpp.o
 .PHONY : __/src/core/AuditLog/AuditLog.cpp.o
 
 __/src/core/AuditLog/AuditLog.i: __/src/core/AuditLog/AuditLog.cpp.i
@@ -928,6 +1417,7 @@ __/src/core/AuditLog/AuditLog.i: __/src/core/AuditLog/AuditLog.cpp.i
 __/src/core/AuditLog/AuditLog.cpp.i:
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_file_classifier.dir/build.make tests/CMakeFiles/test_file_classifier.dir/__/src/core/AuditLog/AuditLog.cpp.i
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_audit_log_gtest.dir/build.make tests/CMakeFiles/test_audit_log_gtest.dir/__/src/core/AuditLog/AuditLog.cpp.i
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_oss_analyzer_gtest.dir/build.make tests/CMakeFiles/test_oss_analyzer_gtest.dir/__/src/core/AuditLog/AuditLog.cpp.i
 .PHONY : __/src/core/AuditLog/AuditLog.cpp.i
 
 __/src/core/AuditLog/AuditLog.s: __/src/core/AuditLog/AuditLog.cpp.s
@@ -937,6 +1427,7 @@ __/src/core/AuditLog/AuditLog.s: __/src/core/AuditLog/AuditLog.cpp.s
 __/src/core/AuditLog/AuditLog.cpp.s:
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_file_classifier.dir/build.make tests/CMakeFiles/test_file_classifier.dir/__/src/core/AuditLog/AuditLog.cpp.s
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_audit_log_gtest.dir/build.make tests/CMakeFiles/test_audit_log_gtest.dir/__/src/core/AuditLog/AuditLog.cpp.s
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_oss_analyzer_gtest.dir/build.make tests/CMakeFiles/test_oss_analyzer_gtest.dir/__/src/core/AuditLog/AuditLog.cpp.s
 .PHONY : __/src/core/AuditLog/AuditLog.cpp.s
 
 __/src/core/DatabaseManager/FileClassifier/EncryptionUtils.o: __/src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp.o
@@ -1035,12 +1526,101 @@ __/src/core/FullTextSearch/TextExtractor.cpp.s:
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_fulltext_search_gtest.dir/build.make tests/CMakeFiles/test_fulltext_search_gtest.dir/__/src/core/FullTextSearch/TextExtractor.cpp.s
 .PHONY : __/src/core/FullTextSearch/TextExtractor.cpp.s
 
+__/src/core/Logger/Logger.o: __/src/core/Logger/Logger.cpp.o
+.PHONY : __/src/core/Logger/Logger.o
+
+# target to build an object file
+__/src/core/Logger/Logger.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.o
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/core/Logger/Logger.cpp.o
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_logger.dir/build.make tests/CMakeFiles/test_logger.dir/__/src/core/Logger/Logger.cpp.o
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_oss_analyzer_gtest.dir/build.make tests/CMakeFiles/test_oss_analyzer_gtest.dir/__/src/core/Logger/Logger.cpp.o
+.PHONY : __/src/core/Logger/Logger.cpp.o
+
+__/src/core/Logger/Logger.i: __/src/core/Logger/Logger.cpp.i
+.PHONY : __/src/core/Logger/Logger.i
+
+# target to preprocess a source file
+__/src/core/Logger/Logger.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.i
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/core/Logger/Logger.cpp.i
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_logger.dir/build.make tests/CMakeFiles/test_logger.dir/__/src/core/Logger/Logger.cpp.i
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_oss_analyzer_gtest.dir/build.make tests/CMakeFiles/test_oss_analyzer_gtest.dir/__/src/core/Logger/Logger.cpp.i
+.PHONY : __/src/core/Logger/Logger.cpp.i
+
+__/src/core/Logger/Logger.s: __/src/core/Logger/Logger.cpp.s
+.PHONY : __/src/core/Logger/Logger.s
+
+# target to generate assembly for a file
+__/src/core/Logger/Logger.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/core/Logger/Logger.cpp.s
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/core/Logger/Logger.cpp.s
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_logger.dir/build.make tests/CMakeFiles/test_logger.dir/__/src/core/Logger/Logger.cpp.s
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_oss_analyzer_gtest.dir/build.make tests/CMakeFiles/test_oss_analyzer_gtest.dir/__/src/core/Logger/Logger.cpp.s
+.PHONY : __/src/core/Logger/Logger.cpp.s
+
+__/src/core/TOONExporter/TOONExporter.o: __/src/core/TOONExporter/TOONExporter.cpp.o
+.PHONY : __/src/core/TOONExporter/TOONExporter.o
+
+# target to build an object file
+__/src/core/TOONExporter/TOONExporter.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_toon_exporter.dir/build.make tests/CMakeFiles/test_toon_exporter.dir/__/src/core/TOONExporter/TOONExporter.cpp.o
+.PHONY : __/src/core/TOONExporter/TOONExporter.cpp.o
+
+__/src/core/TOONExporter/TOONExporter.i: __/src/core/TOONExporter/TOONExporter.cpp.i
+.PHONY : __/src/core/TOONExporter/TOONExporter.i
+
+# target to preprocess a source file
+__/src/core/TOONExporter/TOONExporter.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_toon_exporter.dir/build.make tests/CMakeFiles/test_toon_exporter.dir/__/src/core/TOONExporter/TOONExporter.cpp.i
+.PHONY : __/src/core/TOONExporter/TOONExporter.cpp.i
+
+__/src/core/TOONExporter/TOONExporter.s: __/src/core/TOONExporter/TOONExporter.cpp.s
+.PHONY : __/src/core/TOONExporter/TOONExporter.s
+
+# target to generate assembly for a file
+__/src/core/TOONExporter/TOONExporter.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_toon_exporter.dir/build.make tests/CMakeFiles/test_toon_exporter.dir/__/src/core/TOONExporter/TOONExporter.cpp.s
+.PHONY : __/src/core/TOONExporter/TOONExporter.cpp.s
+
+__/src/core/ThreadPool/ThreadPool.o: __/src/core/ThreadPool/ThreadPool.cpp.o
+.PHONY : __/src/core/ThreadPool/ThreadPool.o
+
+# target to build an object file
+__/src/core/ThreadPool/ThreadPool.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.o
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/core/ThreadPool/ThreadPool.cpp.o
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_thread_pool.dir/build.make tests/CMakeFiles/test_thread_pool.dir/__/src/core/ThreadPool/ThreadPool.cpp.o
+.PHONY : __/src/core/ThreadPool/ThreadPool.cpp.o
+
+__/src/core/ThreadPool/ThreadPool.i: __/src/core/ThreadPool/ThreadPool.cpp.i
+.PHONY : __/src/core/ThreadPool/ThreadPool.i
+
+# target to preprocess a source file
+__/src/core/ThreadPool/ThreadPool.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.i
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/core/ThreadPool/ThreadPool.cpp.i
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_thread_pool.dir/build.make tests/CMakeFiles/test_thread_pool.dir/__/src/core/ThreadPool/ThreadPool.cpp.i
+.PHONY : __/src/core/ThreadPool/ThreadPool.cpp.i
+
+__/src/core/ThreadPool/ThreadPool.s: __/src/core/ThreadPool/ThreadPool.cpp.s
+.PHONY : __/src/core/ThreadPool/ThreadPool.s
+
+# target to generate assembly for a file
+__/src/core/ThreadPool/ThreadPool.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/core/ThreadPool/ThreadPool.cpp.s
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/core/ThreadPool/ThreadPool.cpp.s
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_thread_pool.dir/build.make tests/CMakeFiles/test_thread_pool.dir/__/src/core/ThreadPool/ThreadPool.cpp.s
+.PHONY : __/src/core/ThreadPool/ThreadPool.cpp.s
+
 __/src/integration/LLMIntegration/ConfigManager.o: __/src/integration/LLMIntegration/ConfigManager.cpp.o
 .PHONY : __/src/integration/LLMIntegration/ConfigManager.o
 
 # target to build an object file
 __/src/integration/LLMIntegration/ConfigManager.cpp.o:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.o
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.o
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_config_manager.dir/build.make tests/CMakeFiles/test_config_manager.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.o
 .PHONY : __/src/integration/LLMIntegration/ConfigManager.cpp.o
 
 __/src/integration/LLMIntegration/ConfigManager.i: __/src/integration/LLMIntegration/ConfigManager.cpp.i
@@ -1048,7 +1628,9 @@ __/src/integration/LLMIntegration/ConfigManager.i: __/src/integration/LLMIntegra
 
 # target to preprocess a source file
 __/src/integration/LLMIntegration/ConfigManager.cpp.i:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.i
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.i
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_config_manager.dir/build.make tests/CMakeFiles/test_config_manager.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.i
 .PHONY : __/src/integration/LLMIntegration/ConfigManager.cpp.i
 
 __/src/integration/LLMIntegration/ConfigManager.s: __/src/integration/LLMIntegration/ConfigManager.cpp.s
@@ -1056,7 +1638,9 @@ __/src/integration/LLMIntegration/ConfigManager.s: __/src/integration/LLMIntegra
 
 # target to generate assembly for a file
 __/src/integration/LLMIntegration/ConfigManager.cpp.s:
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_llm_integration.dir/build.make tests/CMakeFiles/test_llm_integration.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.s
 	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.s
+	cd /home/ymj68520/projects/Forensics/ForensicsProject/web && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_config_manager.dir/build.make tests/CMakeFiles/test_config_manager.dir/__/src/integration/LLMIntegration/ConfigManager.cpp.s
 .PHONY : __/src/integration/LLMIntegration/ConfigManager.cpp.s
 
 __/src/integration/LLMIntegration/FileAnalyzer.o: __/src/integration/LLMIntegration/FileAnalyzer.cpp.o
@@ -1180,14 +1764,21 @@ help:
 	@echo "... llm_files_test"
 	@echo "... test_android_analyzer_gtest"
 	@echo "... test_audit_log_gtest"
+	@echo "... test_config_manager"
+	@echo "... test_database_analyzer_gtest"
+	@echo "... test_error_handling"
 	@echo "... test_file_carving"
 	@echo "... test_file_classifier"
 	@echo "... test_fulltext_search_gtest"
 	@echo "... test_image_analyzer_gtest"
 	@echo "... test_linux_analyzer_gtest"
 	@echo "... test_llm_integration"
+	@echo "... test_logger"
 	@echo "... test_office_analyzer"
+	@echo "... test_oss_analyzer_gtest"
 	@echo "... test_pdf_analyzer"
+	@echo "... test_thread_pool"
+	@echo "... test_toon_exporter"
 	@echo "... test_windows_parsers_gtest"
 	@echo "... UnitTest/test_android_analyzer_gtest.o"
 	@echo "... UnitTest/test_android_analyzer_gtest.i"
@@ -1195,6 +1786,15 @@ help:
 	@echo "... UnitTest/test_audit_log_gtest.o"
 	@echo "... UnitTest/test_audit_log_gtest.i"
 	@echo "... UnitTest/test_audit_log_gtest.s"
+	@echo "... UnitTest/test_config_manager.o"
+	@echo "... UnitTest/test_config_manager.i"
+	@echo "... UnitTest/test_config_manager.s"
+	@echo "... UnitTest/test_database_analyzer_gtest.o"
+	@echo "... UnitTest/test_database_analyzer_gtest.i"
+	@echo "... UnitTest/test_database_analyzer_gtest.s"
+	@echo "... UnitTest/test_error_handling.o"
+	@echo "... UnitTest/test_error_handling.i"
+	@echo "... UnitTest/test_error_handling.s"
 	@echo "... UnitTest/test_file_carving.o"
 	@echo "... UnitTest/test_file_carving.i"
 	@echo "... UnitTest/test_file_carving.s"
@@ -1213,12 +1813,24 @@ help:
 	@echo "... UnitTest/test_llm_integration.o"
 	@echo "... UnitTest/test_llm_integration.i"
 	@echo "... UnitTest/test_llm_integration.s"
+	@echo "... UnitTest/test_logger.o"
+	@echo "... UnitTest/test_logger.i"
+	@echo "... UnitTest/test_logger.s"
 	@echo "... UnitTest/test_office_analyzer.o"
 	@echo "... UnitTest/test_office_analyzer.i"
 	@echo "... UnitTest/test_office_analyzer.s"
+	@echo "... UnitTest/test_oss_analyzer_gtest.o"
+	@echo "... UnitTest/test_oss_analyzer_gtest.i"
+	@echo "... UnitTest/test_oss_analyzer_gtest.s"
 	@echo "... UnitTest/test_pdf_analyzer.o"
 	@echo "... UnitTest/test_pdf_analyzer.i"
 	@echo "... UnitTest/test_pdf_analyzer.s"
+	@echo "... UnitTest/test_thread_pool.o"
+	@echo "... UnitTest/test_thread_pool.i"
+	@echo "... UnitTest/test_thread_pool.s"
+	@echo "... UnitTest/test_toon_exporter.o"
+	@echo "... UnitTest/test_toon_exporter.i"
+	@echo "... UnitTest/test_toon_exporter.s"
 	@echo "... UnitTest/test_windows_parsers_gtest.o"
 	@echo "... UnitTest/test_windows_parsers_gtest.i"
 	@echo "... UnitTest/test_windows_parsers_gtest.s"
@@ -1237,6 +1849,30 @@ help:
 	@echo "... __/libs/cpp-mcp/src/mcp_tool.o"
 	@echo "... __/libs/cpp-mcp/src/mcp_tool.i"
 	@echo "... __/libs/cpp-mcp/src/mcp_tool.s"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.o"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.i"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.s"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.o"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.i"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.s"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.o"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.i"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.s"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.o"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.i"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.s"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.o"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.i"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.s"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.o"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.i"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.s"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.o"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.i"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.s"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.o"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.i"
+	@echo "... __/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.s"
 	@echo "... __/src/analyzers/FileCarving/FileCarver.o"
 	@echo "... __/src/analyzers/FileCarving/FileCarver.i"
 	@echo "... __/src/analyzers/FileCarving/FileCarver.s"
@@ -1249,6 +1885,9 @@ help:
 	@echo "... __/src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.o"
 	@echo "... __/src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.i"
 	@echo "... __/src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.s"
+	@echo "... __/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.o"
+	@echo "... __/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.i"
+	@echo "... __/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.s"
 	@echo "... __/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.o"
 	@echo "... __/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.i"
 	@echo "... __/src/analyzers/OfficeAnalyzer/OfficeAnalyzer.s"
@@ -1273,6 +1912,15 @@ help:
 	@echo "... __/src/core/FullTextSearch/TextExtractor.o"
 	@echo "... __/src/core/FullTextSearch/TextExtractor.i"
 	@echo "... __/src/core/FullTextSearch/TextExtractor.s"
+	@echo "... __/src/core/Logger/Logger.o"
+	@echo "... __/src/core/Logger/Logger.i"
+	@echo "... __/src/core/Logger/Logger.s"
+	@echo "... __/src/core/TOONExporter/TOONExporter.o"
+	@echo "... __/src/core/TOONExporter/TOONExporter.i"
+	@echo "... __/src/core/TOONExporter/TOONExporter.s"
+	@echo "... __/src/core/ThreadPool/ThreadPool.o"
+	@echo "... __/src/core/ThreadPool/ThreadPool.i"
+	@echo "... __/src/core/ThreadPool/ThreadPool.s"
 	@echo "... __/src/integration/LLMIntegration/ConfigManager.o"
 	@echo "... __/src/integration/LLMIntegration/ConfigManager.i"
 	@echo "... __/src/integration/LLMIntegration/ConfigManager.s"

@@ -64,7 +64,7 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/forensic_analyzer")
     file(RPATH_CHANGE
          FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/forensic_analyzer"
-         OLD_RPATH "/usr/local/lib:"
+         OLD_RPATH "/usr/local/lib:/home/ymj68520/projects/Forensics/ForensicsProject/libs/aliyun-oss-cpp-sdk/build/lib:"
          NEW_RPATH "")
     if(CMAKE_INSTALL_DO_STRIP)
       execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/forensic_analyzer")

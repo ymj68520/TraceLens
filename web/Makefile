@@ -198,6 +198,58 @@ web_frontend/fast:
 .PHONY : web_frontend/fast
 
 #=============================================================================
+# Target rules for targets named python_service
+
+# Build rule for target.
+python_service: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 python_service
+.PHONY : python_service
+
+# fast build rule for target.
+python_service/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/python_service.dir/build.make CMakeFiles/python_service.dir/build
+.PHONY : python_service/fast
+
+#=============================================================================
+# Target rules for targets named python_check
+
+# Build rule for target.
+python_check: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 python_check
+.PHONY : python_check
+
+# fast build rule for target.
+python_check/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/python_check.dir/build.make CMakeFiles/python_check.dir/build
+.PHONY : python_check/fast
+
+#=============================================================================
+# Target rules for targets named run_python_service
+
+# Build rule for target.
+run_python_service: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 run_python_service
+.PHONY : run_python_service
+
+# fast build rule for target.
+run_python_service/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_python_service.dir/build.make CMakeFiles/run_python_service.dir/build
+.PHONY : run_python_service/fast
+
+#=============================================================================
+# Target rules for targets named start_all
+
+# Build rule for target.
+start_all: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 start_all
+.PHONY : start_all
+
+# fast build rule for target.
+start_all/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/start_all.dir/build.make CMakeFiles/start_all.dir/build
+.PHONY : start_all/fast
+
+#=============================================================================
 # Target rules for targets named cpp_dotenv
 
 # Build rule for target.
@@ -522,6 +574,97 @@ llm_files_test/fast:
 	$(MAKE) $(MAKESILENT) -f tests/CMakeFiles/llm_files_test.dir/build.make tests/CMakeFiles/llm_files_test.dir/build
 .PHONY : llm_files_test/fast
 
+#=============================================================================
+# Target rules for targets named test_config_manager
+
+# Build rule for target.
+test_config_manager: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_config_manager
+.PHONY : test_config_manager
+
+# fast build rule for target.
+test_config_manager/fast:
+	$(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_config_manager.dir/build.make tests/CMakeFiles/test_config_manager.dir/build
+.PHONY : test_config_manager/fast
+
+#=============================================================================
+# Target rules for targets named test_thread_pool
+
+# Build rule for target.
+test_thread_pool: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_thread_pool
+.PHONY : test_thread_pool
+
+# fast build rule for target.
+test_thread_pool/fast:
+	$(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_thread_pool.dir/build.make tests/CMakeFiles/test_thread_pool.dir/build
+.PHONY : test_thread_pool/fast
+
+#=============================================================================
+# Target rules for targets named test_logger
+
+# Build rule for target.
+test_logger: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_logger
+.PHONY : test_logger
+
+# fast build rule for target.
+test_logger/fast:
+	$(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_logger.dir/build.make tests/CMakeFiles/test_logger.dir/build
+.PHONY : test_logger/fast
+
+#=============================================================================
+# Target rules for targets named test_error_handling
+
+# Build rule for target.
+test_error_handling: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_error_handling
+.PHONY : test_error_handling
+
+# fast build rule for target.
+test_error_handling/fast:
+	$(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_error_handling.dir/build.make tests/CMakeFiles/test_error_handling.dir/build
+.PHONY : test_error_handling/fast
+
+#=============================================================================
+# Target rules for targets named test_toon_exporter
+
+# Build rule for target.
+test_toon_exporter: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_toon_exporter
+.PHONY : test_toon_exporter
+
+# fast build rule for target.
+test_toon_exporter/fast:
+	$(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_toon_exporter.dir/build.make tests/CMakeFiles/test_toon_exporter.dir/build
+.PHONY : test_toon_exporter/fast
+
+#=============================================================================
+# Target rules for targets named test_oss_analyzer_gtest
+
+# Build rule for target.
+test_oss_analyzer_gtest: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_oss_analyzer_gtest
+.PHONY : test_oss_analyzer_gtest
+
+# fast build rule for target.
+test_oss_analyzer_gtest/fast:
+	$(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_oss_analyzer_gtest.dir/build.make tests/CMakeFiles/test_oss_analyzer_gtest.dir/build
+.PHONY : test_oss_analyzer_gtest/fast
+
+#=============================================================================
+# Target rules for targets named test_database_analyzer_gtest
+
+# Build rule for target.
+test_database_analyzer_gtest: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_database_analyzer_gtest
+.PHONY : test_database_analyzer_gtest
+
+# fast build rule for target.
+test_database_analyzer_gtest/fast:
+	$(MAKE) $(MAKESILENT) -f tests/CMakeFiles/test_database_analyzer_gtest.dir/build.make tests/CMakeFiles/test_database_analyzer_gtest.dir/build
+.PHONY : test_database_analyzer_gtest/fast
+
 libs/cpp-mcp/src/mcp_message.o: libs/cpp-mcp/src/mcp_message.cpp.o
 .PHONY : libs/cpp-mcp/src/mcp_message.o
 
@@ -761,6 +904,222 @@ src/analyzers/AndroidAnalyzer/BuildPropAnalyzer.s: src/analyzers/AndroidAnalyzer
 src/analyzers/AndroidAnalyzer/BuildPropAnalyzer.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/AndroidAnalyzer/BuildPropAnalyzer.cpp.s
 .PHONY : src/analyzers/AndroidAnalyzer/BuildPropAnalyzer.cpp.s
+
+src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.o: src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.o
+
+# target to build an object file
+src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp.o
+
+src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.i: src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.i
+
+# target to preprocess a source file
+src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp.i
+
+src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.s: src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.s
+
+# target to generate assembly for a file
+src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp.s
+
+src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.o: src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.o
+
+# target to build an object file
+src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.o
+
+src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.i: src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.i
+
+# target to preprocess a source file
+src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.i
+
+src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.s: src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.s
+
+# target to generate assembly for a file
+src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp.s
+
+src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.o: src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.o
+
+# target to build an object file
+src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.o
+
+src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.i: src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.i
+
+# target to preprocess a source file
+src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.i
+
+src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.s: src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.s
+
+# target to generate assembly for a file
+src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp.s
+
+src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.o: src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.o
+
+# target to build an object file
+src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.o
+
+src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.i: src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.i
+
+# target to preprocess a source file
+src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.i
+
+src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.s: src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.s
+
+# target to generate assembly for a file
+src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp.s
+
+src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.o: src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.o
+
+# target to build an object file
+src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.o
+
+src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.i: src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.i
+
+# target to preprocess a source file
+src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.i
+
+src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.s: src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.s
+
+# target to generate assembly for a file
+src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp.s
+
+src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.o: src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.o
+
+# target to build an object file
+src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.o
+
+src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.i: src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.i
+
+# target to preprocess a source file
+src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.i
+
+src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.s: src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.s
+
+# target to generate assembly for a file
+src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp.s
+
+src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.o: src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.o
+
+# target to build an object file
+src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.o
+
+src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.i: src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.i
+
+# target to preprocess a source file
+src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.i
+
+src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.s: src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.s
+
+# target to generate assembly for a file
+src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp.s
+
+src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.o: src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.o
+
+# target to build an object file
+src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.o
+
+src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.i: src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.i
+
+# target to preprocess a source file
+src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.i
+
+src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.s: src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.s
+
+# target to generate assembly for a file
+src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp.s
+
+src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.o: src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.o
+
+# target to build an object file
+src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.o
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.o
+
+src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.i: src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.i
+
+# target to preprocess a source file
+src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.i
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.i
+
+src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.s: src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.s
+
+# target to generate assembly for a file
+src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.s
+.PHONY : src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp.s
 
 src/analyzers/FileCarving/FileCarver.o: src/analyzers/FileCarving/FileCarver.cpp.o
 .PHONY : src/analyzers/FileCarving/FileCarver.o
@@ -1025,6 +1384,78 @@ src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.s: src/analyzers/LinuxF
 src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp.s
 .PHONY : src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp.s
+
+src/analyzers/OSSAnalyzer/Client/OSSClient.o: src/analyzers/OSSAnalyzer/Client/OSSClient.cpp.o
+.PHONY : src/analyzers/OSSAnalyzer/Client/OSSClient.o
+
+# target to build an object file
+src/analyzers/OSSAnalyzer/Client/OSSClient.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/OSSAnalyzer/Client/OSSClient.cpp.o
+.PHONY : src/analyzers/OSSAnalyzer/Client/OSSClient.cpp.o
+
+src/analyzers/OSSAnalyzer/Client/OSSClient.i: src/analyzers/OSSAnalyzer/Client/OSSClient.cpp.i
+.PHONY : src/analyzers/OSSAnalyzer/Client/OSSClient.i
+
+# target to preprocess a source file
+src/analyzers/OSSAnalyzer/Client/OSSClient.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/OSSAnalyzer/Client/OSSClient.cpp.i
+.PHONY : src/analyzers/OSSAnalyzer/Client/OSSClient.cpp.i
+
+src/analyzers/OSSAnalyzer/Client/OSSClient.s: src/analyzers/OSSAnalyzer/Client/OSSClient.cpp.s
+.PHONY : src/analyzers/OSSAnalyzer/Client/OSSClient.s
+
+# target to generate assembly for a file
+src/analyzers/OSSAnalyzer/Client/OSSClient.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/OSSAnalyzer/Client/OSSClient.cpp.s
+.PHONY : src/analyzers/OSSAnalyzer/Client/OSSClient.cpp.s
+
+src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.o: src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp.o
+.PHONY : src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.o
+
+# target to build an object file
+src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp.o
+.PHONY : src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp.o
+
+src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.i: src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp.i
+.PHONY : src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.i
+
+# target to preprocess a source file
+src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp.i
+.PHONY : src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp.i
+
+src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.s: src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp.s
+.PHONY : src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.s
+
+# target to generate assembly for a file
+src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp.s
+.PHONY : src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp.s
+
+src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.o: src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.o
+.PHONY : src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.o
+
+# target to build an object file
+src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.o
+.PHONY : src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.o
+
+src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.i: src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.i
+.PHONY : src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.i
+
+# target to preprocess a source file
+src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.i
+.PHONY : src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.i
+
+src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.s: src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.s
+.PHONY : src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.s
+
+# target to generate assembly for a file
+src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.s
+.PHONY : src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp.s
 
 src/analyzers/OfficeAnalyzer/OfficeAnalyzer.o: src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp.o
 .PHONY : src/analyzers/OfficeAnalyzer/OfficeAnalyzer.o
@@ -1578,6 +2009,78 @@ src/core/FullTextSearch/TextExtractor.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/core/FullTextSearch/TextExtractor.cpp.s
 .PHONY : src/core/FullTextSearch/TextExtractor.cpp.s
 
+src/core/Logger/Logger.o: src/core/Logger/Logger.cpp.o
+.PHONY : src/core/Logger/Logger.o
+
+# target to build an object file
+src/core/Logger/Logger.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/core/Logger/Logger.cpp.o
+.PHONY : src/core/Logger/Logger.cpp.o
+
+src/core/Logger/Logger.i: src/core/Logger/Logger.cpp.i
+.PHONY : src/core/Logger/Logger.i
+
+# target to preprocess a source file
+src/core/Logger/Logger.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/core/Logger/Logger.cpp.i
+.PHONY : src/core/Logger/Logger.cpp.i
+
+src/core/Logger/Logger.s: src/core/Logger/Logger.cpp.s
+.PHONY : src/core/Logger/Logger.s
+
+# target to generate assembly for a file
+src/core/Logger/Logger.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/core/Logger/Logger.cpp.s
+.PHONY : src/core/Logger/Logger.cpp.s
+
+src/core/TOONExporter/TOONExporter.o: src/core/TOONExporter/TOONExporter.cpp.o
+.PHONY : src/core/TOONExporter/TOONExporter.o
+
+# target to build an object file
+src/core/TOONExporter/TOONExporter.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/core/TOONExporter/TOONExporter.cpp.o
+.PHONY : src/core/TOONExporter/TOONExporter.cpp.o
+
+src/core/TOONExporter/TOONExporter.i: src/core/TOONExporter/TOONExporter.cpp.i
+.PHONY : src/core/TOONExporter/TOONExporter.i
+
+# target to preprocess a source file
+src/core/TOONExporter/TOONExporter.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/core/TOONExporter/TOONExporter.cpp.i
+.PHONY : src/core/TOONExporter/TOONExporter.cpp.i
+
+src/core/TOONExporter/TOONExporter.s: src/core/TOONExporter/TOONExporter.cpp.s
+.PHONY : src/core/TOONExporter/TOONExporter.s
+
+# target to generate assembly for a file
+src/core/TOONExporter/TOONExporter.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/core/TOONExporter/TOONExporter.cpp.s
+.PHONY : src/core/TOONExporter/TOONExporter.cpp.s
+
+src/core/ThreadPool/ThreadPool.o: src/core/ThreadPool/ThreadPool.cpp.o
+.PHONY : src/core/ThreadPool/ThreadPool.o
+
+# target to build an object file
+src/core/ThreadPool/ThreadPool.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/core/ThreadPool/ThreadPool.cpp.o
+.PHONY : src/core/ThreadPool/ThreadPool.cpp.o
+
+src/core/ThreadPool/ThreadPool.i: src/core/ThreadPool/ThreadPool.cpp.i
+.PHONY : src/core/ThreadPool/ThreadPool.i
+
+# target to preprocess a source file
+src/core/ThreadPool/ThreadPool.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/core/ThreadPool/ThreadPool.cpp.i
+.PHONY : src/core/ThreadPool/ThreadPool.cpp.i
+
+src/core/ThreadPool/ThreadPool.s: src/core/ThreadPool/ThreadPool.cpp.s
+.PHONY : src/core/ThreadPool/ThreadPool.s
+
+# target to generate assembly for a file
+src/core/ThreadPool/ThreadPool.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/core/ThreadPool/ThreadPool.cpp.s
+.PHONY : src/core/ThreadPool/ThreadPool.cpp.s
+
 src/integration/LLMIntegration/ConfigManager.o: src/integration/LLMIntegration/ConfigManager.cpp.o
 .PHONY : src/integration/LLMIntegration/ConfigManager.o
 
@@ -1842,6 +2345,30 @@ src/network/HTTPServer/routes/ForensicsRoutes.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/network/HTTPServer/routes/ForensicsRoutes.cpp.s
 .PHONY : src/network/HTTPServer/routes/ForensicsRoutes.cpp.s
 
+src/network/HTTPServer/routes/OSSRoutes.o: src/network/HTTPServer/routes/OSSRoutes.cpp.o
+.PHONY : src/network/HTTPServer/routes/OSSRoutes.o
+
+# target to build an object file
+src/network/HTTPServer/routes/OSSRoutes.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/network/HTTPServer/routes/OSSRoutes.cpp.o
+.PHONY : src/network/HTTPServer/routes/OSSRoutes.cpp.o
+
+src/network/HTTPServer/routes/OSSRoutes.i: src/network/HTTPServer/routes/OSSRoutes.cpp.i
+.PHONY : src/network/HTTPServer/routes/OSSRoutes.i
+
+# target to preprocess a source file
+src/network/HTTPServer/routes/OSSRoutes.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/network/HTTPServer/routes/OSSRoutes.cpp.i
+.PHONY : src/network/HTTPServer/routes/OSSRoutes.cpp.i
+
+src/network/HTTPServer/routes/OSSRoutes.s: src/network/HTTPServer/routes/OSSRoutes.cpp.s
+.PHONY : src/network/HTTPServer/routes/OSSRoutes.s
+
+# target to generate assembly for a file
+src/network/HTTPServer/routes/OSSRoutes.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/network/HTTPServer/routes/OSSRoutes.cpp.s
+.PHONY : src/network/HTTPServer/routes/OSSRoutes.cpp.s
+
 src/network/HTTPServer/routes/SearchRoutes.o: src/network/HTTPServer/routes/SearchRoutes.cpp.o
 .PHONY : src/network/HTTPServer/routes/SearchRoutes.o
 
@@ -1914,6 +2441,30 @@ src/network/HTTPServer/routes/TaskRoutes.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/network/HTTPServer/routes/TaskRoutes.cpp.s
 .PHONY : src/network/HTTPServer/routes/TaskRoutes.cpp.s
 
+src/network/Swagger/Swagger.o: src/network/Swagger/Swagger.cpp.o
+.PHONY : src/network/Swagger/Swagger.o
+
+# target to build an object file
+src/network/Swagger/Swagger.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/network/Swagger/Swagger.cpp.o
+.PHONY : src/network/Swagger/Swagger.cpp.o
+
+src/network/Swagger/Swagger.i: src/network/Swagger/Swagger.cpp.i
+.PHONY : src/network/Swagger/Swagger.i
+
+# target to preprocess a source file
+src/network/Swagger/Swagger.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/network/Swagger/Swagger.cpp.i
+.PHONY : src/network/Swagger/Swagger.cpp.i
+
+src/network/Swagger/Swagger.s: src/network/Swagger/Swagger.cpp.s
+.PHONY : src/network/Swagger/Swagger.s
+
+# target to generate assembly for a file
+src/network/Swagger/Swagger.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/forensic_analyzer.dir/build.make CMakeFiles/forensic_analyzer.dir/src/network/Swagger/Swagger.cpp.s
+.PHONY : src/network/Swagger/Swagger.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -1927,6 +2478,10 @@ help:
 	@echo "... list_install_components"
 	@echo "... rebuild_cache"
 	@echo "... test"
+	@echo "... python_check"
+	@echo "... python_service"
+	@echo "... run_python_service"
+	@echo "... start_all"
 	@echo "... web_frontend"
 	@echo "... antlr4_cpp_runtime"
 	@echo "... cpp_dotenv"
@@ -1945,14 +2500,21 @@ help:
 	@echo "... structures"
 	@echo "... test_android_analyzer_gtest"
 	@echo "... test_audit_log_gtest"
+	@echo "... test_config_manager"
+	@echo "... test_database_analyzer_gtest"
+	@echo "... test_error_handling"
 	@echo "... test_file_carving"
 	@echo "... test_file_classifier"
 	@echo "... test_fulltext_search_gtest"
 	@echo "... test_image_analyzer_gtest"
 	@echo "... test_linux_analyzer_gtest"
 	@echo "... test_llm_integration"
+	@echo "... test_logger"
 	@echo "... test_office_analyzer"
+	@echo "... test_oss_analyzer_gtest"
 	@echo "... test_pdf_analyzer"
+	@echo "... test_thread_pool"
+	@echo "... test_toon_exporter"
 	@echo "... test_windows_parsers_gtest"
 	@echo "... libs/cpp-mcp/src/mcp_message.o"
 	@echo "... libs/cpp-mcp/src/mcp_message.i"
@@ -1984,6 +2546,33 @@ help:
 	@echo "... src/analyzers/AndroidAnalyzer/BuildPropAnalyzer.o"
 	@echo "... src/analyzers/AndroidAnalyzer/BuildPropAnalyzer.i"
 	@echo "... src/analyzers/AndroidAnalyzer/BuildPropAnalyzer.s"
+	@echo "... src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.o"
+	@echo "... src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.i"
+	@echo "... src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.s"
+	@echo "... src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.o"
+	@echo "... src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.i"
+	@echo "... src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.s"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.o"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.i"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.s"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.o"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.i"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.s"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.o"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.i"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.s"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.o"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.i"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.s"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.o"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.i"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.s"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.o"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.i"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.s"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.o"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.i"
+	@echo "... src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.s"
 	@echo "... src/analyzers/FileCarving/FileCarver.o"
 	@echo "... src/analyzers/FileCarving/FileCarver.i"
 	@echo "... src/analyzers/FileCarving/FileCarver.s"
@@ -2017,6 +2606,15 @@ help:
 	@echo "... src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.o"
 	@echo "... src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.i"
 	@echo "... src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.s"
+	@echo "... src/analyzers/OSSAnalyzer/Client/OSSClient.o"
+	@echo "... src/analyzers/OSSAnalyzer/Client/OSSClient.i"
+	@echo "... src/analyzers/OSSAnalyzer/Client/OSSClient.s"
+	@echo "... src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.o"
+	@echo "... src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.i"
+	@echo "... src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.s"
+	@echo "... src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.o"
+	@echo "... src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.i"
+	@echo "... src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.s"
 	@echo "... src/analyzers/OfficeAnalyzer/OfficeAnalyzer.o"
 	@echo "... src/analyzers/OfficeAnalyzer/OfficeAnalyzer.i"
 	@echo "... src/analyzers/OfficeAnalyzer/OfficeAnalyzer.s"
@@ -2086,6 +2684,15 @@ help:
 	@echo "... src/core/FullTextSearch/TextExtractor.o"
 	@echo "... src/core/FullTextSearch/TextExtractor.i"
 	@echo "... src/core/FullTextSearch/TextExtractor.s"
+	@echo "... src/core/Logger/Logger.o"
+	@echo "... src/core/Logger/Logger.i"
+	@echo "... src/core/Logger/Logger.s"
+	@echo "... src/core/TOONExporter/TOONExporter.o"
+	@echo "... src/core/TOONExporter/TOONExporter.i"
+	@echo "... src/core/TOONExporter/TOONExporter.s"
+	@echo "... src/core/ThreadPool/ThreadPool.o"
+	@echo "... src/core/ThreadPool/ThreadPool.i"
+	@echo "... src/core/ThreadPool/ThreadPool.s"
 	@echo "... src/integration/LLMIntegration/ConfigManager.o"
 	@echo "... src/integration/LLMIntegration/ConfigManager.i"
 	@echo "... src/integration/LLMIntegration/ConfigManager.s"
@@ -2119,6 +2726,9 @@ help:
 	@echo "... src/network/HTTPServer/routes/ForensicsRoutes.o"
 	@echo "... src/network/HTTPServer/routes/ForensicsRoutes.i"
 	@echo "... src/network/HTTPServer/routes/ForensicsRoutes.s"
+	@echo "... src/network/HTTPServer/routes/OSSRoutes.o"
+	@echo "... src/network/HTTPServer/routes/OSSRoutes.i"
+	@echo "... src/network/HTTPServer/routes/OSSRoutes.s"
 	@echo "... src/network/HTTPServer/routes/SearchRoutes.o"
 	@echo "... src/network/HTTPServer/routes/SearchRoutes.i"
 	@echo "... src/network/HTTPServer/routes/SearchRoutes.s"
@@ -2128,6 +2738,9 @@ help:
 	@echo "... src/network/HTTPServer/routes/TaskRoutes.o"
 	@echo "... src/network/HTTPServer/routes/TaskRoutes.i"
 	@echo "... src/network/HTTPServer/routes/TaskRoutes.s"
+	@echo "... src/network/Swagger/Swagger.o"
+	@echo "... src/network/Swagger/Swagger.i"
+	@echo "... src/network/Swagger/Swagger.s"
 .PHONY : help
 
 

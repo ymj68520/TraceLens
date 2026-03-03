@@ -85,25 +85,38 @@ const Files = () => {
     checkServices();
   }, []);
 
-  // Load existing LLM descriptions
+  // Load existing LLM descriptions from largestFiles data
   useEffect(() => {
-    const loadLLMDescriptions = async () => {
-      if (!taskId) return;
-      try {
-        const results = await getTaskResults(taskId);
-        if (results.llm_results?.descriptions) {
-          const descMap = {};
-          results.llm_results.descriptions.forEach((desc) => {
-            descMap[desc.file_path] = desc;
-          });
-          setExistingLlmDescriptions(descMap);
+    if (!taskId || largestFiles.length === 0) return;
+
+    const extractDescriptions = () => {
+      const descMap = {};
+      largestFiles.forEach((file) => {
+        const filePath = file.path || file.file_path;
+
+        // Check if file has LLM fields (from database)
+        if (file.llm_summary || file.llm_description || file.llm_keywords) {
+          descMap[filePath] = {
+            summary: file.llm_summary,
+            description: file.llm_description,
+            keywords: file.llm_keywords ? (
+              typeof file.llm_keywords === 'string'
+                ? file.llm_keywords.split(',').map(k => k.trim())
+                : file.llm_keywords
+            ) : [],
+            model: file.llm_model_used,
+            timestamp: file.llm_analyzed_at
+          };
         }
-      } catch (err) {
-        console.error('Failed to load LLM descriptions:', err);
+      });
+
+      if (Object.keys(descMap).length > 0) {
+        setExistingLlmDescriptions(prev => ({ ...prev, ...descMap }));
       }
     };
-    loadLLMDescriptions();
-  }, [taskId]);
+
+    extractDescriptions();
+  }, [taskId, largestFiles]);
 
   // Apply filters to files
   const getFilteredFiles = useCallback(() => {
@@ -156,30 +169,96 @@ const Files = () => {
 
   // Analyze single file
   const handleAnalyzeSingleFile = async (file, index) => {
-    const filePath = file.path || file.file_path;
+    let filePath = file.path || file.file_path;
     if (!filePath) return;
+
+    // If path is not absolute, assume it's relative to extraction directory
+    const isAbsolutePath = filePath.startsWith('/') || filePath.includes(':');
+    if (!isAbsolutePath && currentTask?.extraction_directory) {
+      filePath = `${currentTask.extraction_directory}/${filePath}`;
+    }
+    // Fallback to default extraction directory
+    else if (!isAbsolutePath) {
+      filePath = `/home/ymj68520/projects/Forensics/ForensicsProject/build/extracted_files/${filePath}`;
+    }
+
+    // Check file extension and size
+    const extension = (file.extension || filePath.split('.').pop()).toLowerCase();
+    const fileSize = file.size || file.file_size || 0;
+
+    // Determine model type based on file extension
+    // Images use vision model, text files use text model
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif'];
+    const isImage = imageExtensions.includes(extension);
+    const modelType = isImage ? 'vision' : 'text';
+
+    // Skip binary files and large files (except images which use vision model)
+    const binaryExtensions = ['pdf', 'zip', 'tar', 'gz', 'exe', 'dll', 'so', 'bin', 'img', 'iso'];
+    const maxFileSize = isImage ? 10 * 1024 * 1024 : 1024 * 1024; // 10MB for images, 1MB for text
+
+    if (binaryExtensions.includes(extension)) {
+      alert(`⚠️ ${extension.toUpperCase()} 文件不支持直接分析\n\n建议：\n- 对于 PDF：请使用专门的 PDF 解析工具\n- 对于压缩文件：请先解压后分析文本文件`);
+      return;
+    }
+
+    if (fileSize > maxFileSize) {
+      const maxSizeMB = (maxFileSize / (1024 * 1024)).toFixed(0);
+      alert(`⚠️ 文件过大 (${(fileSize / 1024).toFixed(1)} KB)\n\n${isImage ? '图像分析' : '文本分析'}限制：最大 ${maxSizeMB} MB\n\n建议：\n- 分段分析文件内容\n- 或使用更小的文本样本`);
+      return;
+    }
 
     setLlmAnalyzingFiles(prev => new Set(prev).add(index));
 
     try {
+      console.log('Analyzing file:', filePath, `(${extension}, ${(fileSize / 1024).toFixed(1)} KB, model: ${modelType})`);
+
       const result = await analyzeContent({
         filePath: filePath,
-        modelType: 'text',
+        modelType: modelType,
         filesDbPath: currentTask?.output_files_db || null,
       });
 
+      console.log('Analysis result:', result);
+
       if (result.success && result.analysis) {
+        // Map Python API response to our format
+        const analysis = result.analysis;
+        const descData = {
+          summary: analysis.summary || analysis.description?.substring(0, 200),
+          description: analysis.description,
+          keywords: analysis.keywords || [],
+          model: result.model_used,
+          timestamp: result.timestamp || new Date().toISOString()
+        };
+
+        console.log('Setting LLM result for', filePath, ':', descData);
+
         setLlmResults(prev => ({
           ...prev,
-          [filePath]: {
-            summary: result.analysis.summary || result.analysis.description?.substring(0, 200),
-            description: result.analysis.description,
-            keywords: result.analysis.keywords || [],
-          }
+          [filePath]: descData
         }));
+
+        // Also update the file in largestFiles to reflect the change
+        setLargestFiles(prev => prev.map((f, i) =>
+          i === index ? { ...f, llm_summary: descData.summary, llm_description: descData.description, llm_keywords: descData.keywords } : f
+        ));
+      } else {
+        console.error('Analysis failed: no success in response');
+        alert('分析失败：未收到有效响应');
       }
     } catch (err) {
       console.error('Failed to analyze file:', err);
+
+      // Better error messages
+      let errorMsg = err.response?.data?.detail || err.message || '未知错误';
+
+      if (err.response?.status === 400) {
+        errorMsg = '文件内容不兼容（可能是二进制文件或编码问题）';
+      } else if (err.response?.status === 500) {
+        errorMsg = '服务器处理失败（文件可能过大或格式不支持）';
+      }
+
+      alert(`分析失败: ${errorMsg}\n\n文件: ${file.name || filePath}\n类型: ${extension.toUpperCase()}\n大小: ${(fileSize / 1024).toFixed(1)} KB`);
     } finally {
       setLlmAnalyzingFiles(prev => {
         const next = new Set(prev);
@@ -271,7 +350,29 @@ const Files = () => {
   // Get LLM description for a file
   const getLLMDescription = (file) => {
     const filePath = file.path || file.file_path;
-    return llmResults[filePath] || existingLlmDescriptions[filePath];
+
+    // First check from session results
+    if (llmResults[filePath]) {
+      return llmResults[filePath];
+    }
+
+    // Then check from pre-loaded descriptions
+    if (existingLlmDescriptions[filePath]) {
+      return existingLlmDescriptions[filePath];
+    }
+
+    // Finally check if file object has LLM fields directly (from database)
+    if (file.llm_summary || file.llm_description || file.llm_keywords) {
+      return {
+        summary: file.llm_summary,
+        description: file.llm_description,
+        keywords: file.llm_keywords,
+        model: file.llm_model_used,
+        timestamp: file.llm_analyzed_at
+      };
+    }
+
+    return null;
   };
 
   // Handle extraction start
@@ -718,6 +819,7 @@ const Files = () => {
                     const llmDesc = getLLMDescription(file);
                     const isAnalyzing = llmAnalyzingFiles.has(index);
                     const isExpanded = expandedDescriptions.has(filePath);
+                    const hasDescription = llmDesc && (llmDesc.summary || llmDesc.description);
 
                     return (
                       <>
@@ -744,55 +846,132 @@ const Files = () => {
                             <Badge variant="blue">{file.extension || '-'}</Badge>
                           </td>
                           <td className="px-4 py-4">
-                            <div className="flex items-center gap-2">
-                              {llmDesc ? (
-                                <button
-                                  onClick={() => toggleDescription(filePath)}
-                                  className="text-green-600 hover:text-green-800 text-sm flex items-center gap-1"
-                                >
-                                  ✅ {isExpanded ? '收起' : '查看'}
-                                </button>
+                            <div className="flex flex-col gap-2">
+                              {/* LLM Description Display */}
+                              {hasDescription ? (
+                                <div className="max-w-md">
+                                  <div className="flex items-start gap-2">
+                                    <span className="text-green-500 mt-0.5">✨</span>
+                                    <div className="flex-1 min-w-0">
+                                      {/* Summary - always visible */}
+                                      {llmDesc.summary && (
+                                        <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2 mb-1">
+                                          {llmDesc.summary}
+                                        </p>
+                                      )}
+
+                                      {/* Keywords */}
+                                      {llmDesc.keywords && llmDesc.keywords.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mb-1">
+                                          {(typeof llmDesc.keywords === 'string'
+                                            ? llmDesc.keywords.split(',')
+                                            : llmDesc.keywords
+                                          ).slice(0, 3).map((kw, i) => (
+                                            <span key={i} className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded-full">
+                                              {kw.trim()}
+                                            </span>
+                                          ))}
+                                          {(typeof llmDesc.keywords === 'string'
+                                            ? llmDesc.keywords.split(',')
+                                            : llmDesc.keywords
+                                          ).length > 3 && (
+                                            <span className="text-xs text-slate-500">
+                                              +{(typeof llmDesc.keywords === 'string'
+                                                ? llmDesc.keywords.split(',')
+                                                : llmDesc.keywords
+                                              ).length - 3} more
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {/* Expand/Collapse button for full description */}
+                                      {llmDesc.description && (
+                                        <button
+                                          onClick={() => toggleDescription(filePath)}
+                                          className="text-xs text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300"
+                                        >
+                                          {isExpanded ? '收起详情 ▲' : '展开详情 ▼'}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
                               ) : (
+                                /* Analyze Button - only show if no description */
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleAnalyzeSingleFile(file, index)}
                                   disabled={isAnalyzing || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
+                                  className="text-xs"
                                 >
-                                  {isAnalyzing ? <Spinner size="sm" /> : '🧠'}
+                                  {isAnalyzing ? (
+                                    <>
+                                      <Spinner size="sm" />
+                                      <span className="ml-2">分析中...</span>
+                                    </>
+                                  ) : (
+                                    '🧠 AI 分析'
+                                  )}
                                 </Button>
                               )}
                             </div>
                           </td>
                         </tr>
-                        {/* Expanded LLM Description Row */}
-                        {isExpanded && llmDesc && (
-                          <tr className="bg-slate-50 dark:bg-slate-900/50">
+
+                        {/* Expanded Full Description Row */}
+                        {isExpanded && hasDescription && llmDesc.description && (
+                          <tr className="bg-purple-50 dark:bg-purple-900/20">
                             <td colSpan={7} className="px-6 py-4">
-                              <div className="space-y-2">
+                              <div className="space-y-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-lg">📝</span>
+                                  <h4 className="font-medium text-slate-900 dark:text-white">AI 完整分析</h4>
+                                </div>
+
+                                {/* Summary */}
                                 {llmDesc.summary && (
-                                  <div>
-                                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">摘要: </span>
-                                    <span className="text-sm text-slate-600 dark:text-slate-400">{llmDesc.summary}</span>
+                                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
+                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">摘要</span>
+                                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
+                                      {llmDesc.summary}
+                                    </p>
                                   </div>
                                 )}
-                                {llmDesc.keywords && (
-                                  <div className="flex flex-wrap gap-1">
-                                    {(typeof llmDesc.keywords === 'string' ? llmDesc.keywords.split(',') : llmDesc.keywords).map((kw, i) => (
-                                      <span key={i} className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded-full">
-                                        {kw.trim()}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
+
+                                {/* Full Description */}
                                 {llmDesc.description && (
-                                  <details className="text-sm">
-                                    <summary className="cursor-pointer text-primary-600 hover:text-blue-800">查看完整描述</summary>
-                                    <p className="mt-2 p-3 bg-white dark:bg-slate-800 rounded text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
+                                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
+                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">详细描述</span>
+                                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
                                       {llmDesc.description}
                                     </p>
-                                  </details>
+                                  </div>
                                 )}
+
+                                {/* All Keywords */}
+                                {llmDesc.keywords && llmDesc.keywords.length > 0 && (
+                                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
+                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">关键词</span>
+                                    <div className="mt-2 flex flex-wrap gap-1">
+                                      {(typeof llmDesc.keywords === 'string'
+                                        ? llmDesc.keywords.split(',')
+                                        : llmDesc.keywords
+                                      ).map((kw, i) => (
+                                        <span key={i} className="px-2 py-1 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded-full">
+                                          {kw.trim()}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Metadata */}
+                                <div className="text-xs text-slate-500 dark:text-slate-400">
+                                  {llmDesc.model && <span>模型: {llmDesc.model} | </span>}
+                                  {llmDesc.timestamp && <span>分析时间: {new Date(llmDesc.timestamp).toLocaleString()}</span>}
+                                </div>
                               </div>
                             </td>
                           </tr>
