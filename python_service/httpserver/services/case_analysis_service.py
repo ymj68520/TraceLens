@@ -29,10 +29,15 @@ class CaseAnalysisService:
         self.settings = settings
         # Will be injected after ServiceManager init
         self._llm_service = None
+        self._graphiti_service = None
 
     def set_llm_service(self, llm_service):
         """Inject the LLM service dependency."""
         self._llm_service = llm_service
+
+    def set_graphiti_service(self, graphiti_service):
+        """Inject the Graphiti knowledge graph service (optional)."""
+        self._graphiti_service = graphiti_service
 
     # ------------------------------------------------------------------
     # 1. File Filtering — LLM selects forensically relevant files
@@ -204,7 +209,126 @@ class CaseAnalysisService:
         return results
 
     # ------------------------------------------------------------------
-    # 3. Final Case Report Generation
+    # 3. Knowledge Graph Ingestion (Graphiti)
+    # ------------------------------------------------------------------
+    async def ingest_to_knowledge_graph(
+        self,
+        task_id: str,
+        case_description: str,
+        file_descriptions: List[Dict[str, Any]],
+    ) -> bool:
+        """
+        Ingest case description and file descriptions into Graphiti.
+
+        This enables semantic retrieval during report generation,
+        overcoming LLM context length limitations.
+
+        Args:
+            task_id: Task identifier (used as graph group_id).
+            case_description: Full case description text.
+            file_descriptions: List of per-file analysis results.
+
+        Returns:
+            True if ingestion succeeded, False otherwise.
+        """
+        if not self._graphiti_service:
+            logger.info("Graphiti service not available, skipping KG ingestion")
+            return False
+
+        try:
+            from graphiti_integration.toon_transformer import EpisodeData
+            from datetime import datetime
+
+            # Ensure graphiti is initialized
+            await self._graphiti_service.initialize()
+
+            # Get or create task graph
+            graph_entry = await self._graphiti_service._get_task_graph(task_id)
+            if not graph_entry or not isinstance(graph_entry, dict):
+                logger.warning(f"Could not get task graph for {task_id}")
+                return False
+
+            ingestor = graph_entry.get("ingestor")
+            if not ingestor:
+                logger.warning(f"No ingestor available for task {task_id}")
+                return False
+
+            episodes = []
+
+            # 1. Ingest case description (chunk long descriptions)
+            desc_chunks = self._chunk_text(case_description, max_chars=3000)
+            for i, chunk in enumerate(desc_chunks):
+                episodes.append(EpisodeData(
+                    name=f"案情描述 (第{i+1}部分)" if len(desc_chunks) > 1 else "案情描述",
+                    body=chunk,
+                    source="case_description",
+                    source_description=f"用户提供的案情描述 - 第{i+1}/{len(desc_chunks)}部分",
+                    reference_time=datetime.now(),
+                ))
+
+            # 2. Ingest each file description
+            successful = [f for f in file_descriptions if f.get("success") and f.get("description")]
+            for desc in successful:
+                file_path = desc.get("file_path", "")
+                description = desc.get("description", "")
+                if description:
+                    # Chunk long descriptions
+                    chunks = self._chunk_text(description, max_chars=3000)
+                    for j, chunk in enumerate(chunks):
+                        ep_name = f"文件分析: {file_path}"
+                        if len(chunks) > 1:
+                            ep_name += f" (第{j+1}部分)"
+                        episodes.append(EpisodeData(
+                            name=ep_name,
+                            body=f"文件路径: {file_path}\n\n{chunk}",
+                            source="file_description",
+                            source_description=f"LLM分析结果 - {file_path}",
+                            reference_time=datetime.now(),
+                        ))
+
+            if not episodes:
+                logger.info("No episodes to ingest")
+                return True
+
+            # Batch ingest
+            logger.info(f"Ingesting {len(episodes)} episodes into Graphiti for task {task_id}")
+            result = await ingestor.batch_ingest(
+                episodes=episodes,
+                group_id=task_id,
+            )
+            logger.info(
+                f"Graphiti ingestion complete: {result.successful}/{result.total_episodes} successful"
+            )
+            return result.successful > 0
+
+        except ImportError:
+            logger.warning("graphiti_integration not available, skipping KG ingestion")
+            return False
+        except Exception as e:
+            logger.error(f"Knowledge graph ingestion failed: {e}", exc_info=True)
+            return False
+
+    @staticmethod
+    def _chunk_text(text: str, max_chars: int = 3000) -> List[str]:
+        """Split text into chunks, breaking at paragraph boundaries."""
+        if len(text) <= max_chars:
+            return [text]
+
+        chunks = []
+        paragraphs = text.split("\n\n")
+        current = ""
+        for para in paragraphs:
+            if len(current) + len(para) + 2 > max_chars and current:
+                chunks.append(current.strip())
+                current = para
+            else:
+                current = current + "\n\n" + para if current else para
+        if current.strip():
+            chunks.append(current.strip())
+        return chunks if chunks else [text]
+
+    # ------------------------------------------------------------------
+    # 4. Final Case Report Generation (Graph-enhanced)
     # ------------------------------------------------------------------
     async def generate_case_report(
         self,
@@ -215,6 +339,10 @@ class CaseAnalysisService:
     ) -> Dict[str, Any]:
         """
         Generate a comprehensive case analysis report.
+
+        If Graphiti is available, uses per-chapter semantic search to
+        retrieve the most relevant context. Falls back to full
+        concatenation when Graphiti is unavailable.
 
         Args:
             case_description: Original case description.
@@ -228,11 +356,137 @@ class CaseAnalysisService:
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
 
-        # Build evidence summary from file descriptions
-        evidence_section = self._build_evidence_summary(file_descriptions)
+        use_graph = (
+            self._graphiti_service is not None
+            and task_id is not None
+        )
 
-        system_prompt = """你是一名资深数字取证分析师，正在撰写一份正式的案情分析报告。
-请使用Markdown格式撰写报告，报告应当专业、条理清晰、逻辑严密。"""
+        if use_graph:
+            try:
+                report_text = await self._generate_report_with_graph(
+                    case_description, task_id
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Graph-enhanced report generation failed, falling back: {e}"
+                )
+                report_text = await self._generate_report_fallback(
+                    case_description, file_descriptions
+                )
+        else:
+            report_text = await self._generate_report_fallback(
+                case_description, file_descriptions
+            )
+
+        # Persist report to database
+        if files_db_path and report_text:
+            self._persist_case_report(
+                files_db_path, task_id or "", case_description, report_text
+            )
+
+        return {
+            "report": report_text,
+            "case_description": case_description,
+            "files_analyzed": len(file_descriptions),
+            "files_successful": sum(1 for f in file_descriptions if f.get("success")),
+            "model_used": "graph-enhanced" if use_graph else "direct",
+            "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+    async def _generate_report_with_graph(
+        self, case_description: str, task_id: str
+    ) -> str:
+        """
+        Generate report by searching the knowledge graph per chapter.
+
+        Each report chapter uses a targeted query to retrieve the most
+        relevant knowledge fragments, keeping each LLM call within
+        context limits.
+        """
+        chapters = [
+            {
+                "title": "案件概述",
+                "query": f"案件背景 概述 {case_description[:200]}",
+                "instruction": "请根据以下案情信息，撰写案件概述，简要描述案件背景和调查范围。",
+            },
+            {
+                "title": "证据分析",
+                "query": "关键证据 文件分析 可疑内容 重要发现",
+                "instruction": "请根据以下证据信息，对关键文件进行详细分析，说明每份证据的取证意义。",
+            },
+            {
+                "title": "关键发现",
+                "query": "可疑信息 异常 线索 关键发现 嫌疑",
+                "instruction": "请根据以下信息，总结有价值的发现和线索，标注可疑或异常之处。",
+            },
+            {
+                "title": "时间线梳理",
+                "query": "时间 日期 顺序 操作记录 日志 访问时间",
+                "instruction": "请根据以下信息，尝试梳理事件的时间线，按时间顺序排列关键活动。",
+            },
+            {
+                "title": "结论与建议",
+                "query": f"结论 总结 建议 {case_description[:100]}",
+                "instruction": "请根据之前的分析，总结调查结论并提出后续建议。",
+            },
+        ]
+
+        report_parts = []
+        for chapter in chapters:
+            # Search the knowledge graph for relevant context
+            search_results = await self._graphiti_service.search(
+                query=chapter["query"],
+                task_id=task_id,
+                limit=20,
+                include_relationships=True,
+            )
+
+            # Build context from search results
+            context_lines = []
+            for r in search_results:
+                name = r.get("name", "")
+                props = r.get("properties", {})
+                body = props.get("body", "") or props.get("summary", "") or name
+                if body:
+                    context_lines.append(f"- {body[:500]}")
+
+            context = "\n".join(context_lines) if context_lines else "无相关信息。"
+
+            prompt = f"""你是资深数字取证分析师，正在撰写报告的「{chapter['title']}」章节。
+
+## 案情描述
+{case_description}
+
+## 相关证据与信息
+{context}
+
+{chapter['instruction']}
+请使用Markdown格式，输出该章节内容（不要重复标题）。"""
+
+            try:
+                result = await self._llm_service.analyze(
+                    content=prompt,
+                    model_type="text",
+                    prompt=prompt,
+                    max_tokens=self.settings.llm_text_max_tokens,
+                )
+                chapter_text = result.get("analysis", {}).get("description", "")
+            except Exception as e:
+                logger.warning(f"Failed to generate chapter '{chapter['title']}': {e}")
+                chapter_text = f"（该章节生成失败：{e}）"
+
+            report_parts.append(f"## {chapter['title']}\n\n{chapter_text}")
+
+        return "\n\n---\n\n".join(report_parts)
+
+    async def _generate_report_fallback(
+        self, case_description: str, file_descriptions: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Fallback: concatenate all evidence and generate in one shot.
+        Used when Graphiti is unavailable.
+        """
+        evidence_section = self._build_evidence_summary(file_descriptions)
 
         user_prompt = f"""请根据以下案情描述和文件分析结果，生成一份完整的数字取证案情分析报告。
 
@@ -251,33 +505,13 @@ class CaseAnalysisService:
 
 请确保报告语言专业、证据引用准确。"""
 
-        try:
-            result = await self._llm_service.analyze(
-                content=user_prompt,
-                model_type="text",
-                prompt=user_prompt,
-                max_tokens=self.settings.llm_text_max_tokens,
-            )
-
-            report_text = result.get("analysis", {}).get("description", "")
-
-            # Persist report to database
-            if files_db_path and report_text:
-                self._persist_case_report(
-                    files_db_path, task_id or "", case_description, report_text
-                )
-
-            return {
-                "report": report_text,
-                "case_description": case_description,
-                "files_analyzed": len(file_descriptions),
-                "files_successful": sum(1 for f in file_descriptions if f.get("success")),
-                "model_used": result.get("model", ""),
-                "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            }
-        except Exception as e:
-            logger.error(f"Case report generation failed: {e}", exc_info=True)
-            raise
+        result = await self._llm_service.analyze(
+            content=user_prompt,
+            model_type="text",
+            prompt=user_prompt,
+            max_tokens=self.settings.llm_text_max_tokens,
+        )
+        return result.get("analysis", {}).get("description", "")
 
     # ------------------------------------------------------------------
     # Full Pipeline — run all steps sequentially
@@ -342,7 +576,27 @@ class CaseAnalysisService:
         )
         result["steps"]["descriptions"] = descriptions
 
-        # Step 3: Generate case report
+        # Step 2.5: Ingest into knowledge graph (if Graphiti available)
+        if self._graphiti_service:
+            if progress_callback:
+                await progress_callback(
+                    "ingesting", "正在将分析结果摄入知识图谱..."
+                )
+            try:
+                kg_ok = await self.ingest_to_knowledge_graph(
+                    task_id, case_description, descriptions
+                )
+                result["steps"]["knowledge_graph"] = {
+                    "ingested": kg_ok,
+                    "episodes": len(descriptions) + 1,
+                }
+            except Exception as e:
+                logger.warning(f"KG ingestion failed (non-fatal): {e}")
+                result["steps"]["knowledge_graph"] = {
+                    "ingested": False, "error": str(e)
+                }
+
+        # Step 3: Generate case report (graph-enhanced if available)
         if progress_callback:
             await progress_callback("reporting", "正在生成综合案情分析报告...")
         report = await self.generate_case_report(

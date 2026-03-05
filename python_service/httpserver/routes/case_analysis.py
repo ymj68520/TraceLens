@@ -322,6 +322,13 @@ def _get_case_analysis_service(service_manager):
         from ..services.case_analysis_service import CaseAnalysisService
         svc = CaseAnalysisService(service_manager.settings)
         svc.set_llm_service(service_manager.llm_service)
+        # Inject Graphiti service if available (optional dependency)
+        try:
+            graphiti_svc = service_manager.graphiti_service
+            if graphiti_svc and graphiti_svc._initialized:
+                svc.set_graphiti_service(graphiti_svc)
+        except Exception:
+            pass  # Graphiti is optional; proceed without it
         service_manager._case_analysis_service = svc
     return service_manager._case_analysis_service
 
