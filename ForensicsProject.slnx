@@ -1,7 +1,0 @@
-<Solution>
-  <Configurations>
-    <Platform Name="x64" />
-    <Platform Name="x86" />
-  </Configurations>
-  <Project Path="ForensicsProject.vcxproj" Id="2a563301-5a48-406d-9b0c-cd172dc96824" />
-</Solution>
