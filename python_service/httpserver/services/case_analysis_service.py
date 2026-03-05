@@ -18,6 +18,20 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..config import Settings
+from ..prompts import (
+    FILE_FILTER_SYSTEM,
+    FILE_FILTER_USER_TEMPLATE,
+    FILE_DESCRIPTION_TEMPLATE,
+    FILE_REANALYSIS_HEADER,
+    FILE_REANALYSIS_CONTEXT_CASE,
+    FILE_REANALYSIS_CONTEXT_KG,
+    FILE_REANALYSIS_CONTEXT_HINT,
+    FILE_REANALYSIS_CONTEXT_FILE,
+    FILE_REANALYSIS_INSTRUCTION,
+    REPORT_CHAPTERS,
+    REPORT_CHAPTER_TEMPLATE,
+    REPORT_FALLBACK_TEMPLATE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,27 +84,14 @@ class CaseAnalysisService:
         # Build a concise file summary for the LLM
         file_summary = self._build_file_summary(all_files)
 
-        system_prompt = """你是一名数字取证专家。根据案情描述，从文件列表中挑选出与案情最相关的文件。
-请以严格的JSON格式返回结果，不要包含任何其他文字或markdown标记。
+        system_prompt = FILE_FILTER_SYSTEM
 
-返回格式：
-{
-  "selected_files": ["文件路径1", "文件路径2", ...],
-  "reasoning": "筛选理由的简要说明"
-}
-
-注意：
-- 优先选择可能包含关键证据的文件（文档、聊天记录、图片、日志等）
-- 排除明显无关的系统文件和二进制文件
-- 选择数量适中，不超过指定上限"""
-
-        user_prompt = f"""案情描述：
-{case_description}
-
-文件列表（共 {len(all_files)} 个文件）：
-{file_summary}
-
-请从中筛选出与案情最相关的文件（最多 {max_files} 个）。"""
+        user_prompt = FILE_FILTER_USER_TEMPLATE.format(
+            case_description=case_description,
+            file_count=len(all_files),
+            file_summary=file_summary,
+            max_files=max_files,
+        )
 
         try:
             result = await self._llm_service.analyze(
@@ -149,20 +150,11 @@ class CaseAnalysisService:
             try:
                 content = await self._llm_service.read_file_content(file_path)
 
-                custom_prompt = f"""你是数字取证专家。请结合以下案情背景，分析该文件内容。
-
-案情背景：{case_description}
-
-文件路径：{file_path}
-
-文件内容：
-{content}
-
-请提供：
-1. 文件内容的简要描述
-2. 与案情可能的关联
-3. 关键发现或可疑信息
-4. 推荐关注的要点"""
+                custom_prompt = FILE_DESCRIPTION_TEMPLATE.format(
+                    case_description=case_description,
+                    file_path=file_path,
+                    content=content,
+                )
 
                 result = await self._llm_service.analyze(
                     content=content,
@@ -386,18 +378,26 @@ class CaseAnalysisService:
             try:
                 content = await self._llm_service.read_file_content(file_path)
 
-                prompt_parts = ["你是数字取证专家。请结合以下所有上下文信息，对该文件进行深度重新分析。"]
+                prompt_parts = [FILE_REANALYSIS_HEADER]
 
                 if case_description:
-                    prompt_parts.append(f"\n## 案情背景\n{case_description}")
+                    prompt_parts.append(FILE_REANALYSIS_CONTEXT_CASE.format(
+                        case_description=case_description
+                    ))
 
                 if kg_context:
-                    prompt_parts.append(f"\n## 已有分析上下文（知识图谱）\n{kg_context}")
+                    prompt_parts.append(FILE_REANALYSIS_CONTEXT_KG.format(
+                        kg_context=kg_context
+                    ))
 
-                prompt_parts.append(f"\n## 用户补充说明\n{user_hint}")
-                prompt_parts.append(f"\n## 文件路径\n{file_path}")
-                prompt_parts.append(f"\n## 文件内容\n{content}")
-                prompt_parts.append("\n请提供：\n1. 更详细的文件内容描述\n2. 与案情的深度关联分析\n3. 关键发现或可疑信息\n4. 需要进一步调查的方向")
+                prompt_parts.append(FILE_REANALYSIS_CONTEXT_HINT.format(
+                    user_hint=user_hint
+                ))
+                prompt_parts.append(FILE_REANALYSIS_CONTEXT_FILE.format(
+                    file_path=file_path,
+                    content=content,
+                ))
+                prompt_parts.append(FILE_REANALYSIS_INSTRUCTION)
 
                 custom_prompt = "\n".join(prompt_parts)
 
@@ -519,30 +519,13 @@ class CaseAnalysisService:
         """
         chapters = [
             {
-                "title": "案件概述",
-                "query": f"案件背景 概述 {case_description[:200]}",
-                "instruction": "请根据以下案情信息，撰写案件概述，简要描述案件背景和调查范围。",
-            },
-            {
-                "title": "证据分析",
-                "query": "关键证据 文件分析 可疑内容 重要发现",
-                "instruction": "请根据以下证据信息，对关键文件进行详细分析，说明每份证据的取证意义。",
-            },
-            {
-                "title": "关键发现",
-                "query": "可疑信息 异常 线索 关键发现 嫌疑",
-                "instruction": "请根据以下信息，总结有价值的发现和线索，标注可疑或异常之处。",
-            },
-            {
-                "title": "时间线梳理",
-                "query": "时间 日期 顺序 操作记录 日志 访问时间",
-                "instruction": "请根据以下信息，尝试梳理事件的时间线，按时间顺序排列关键活动。",
-            },
-            {
-                "title": "结论与建议",
-                "query": f"结论 总结 建议 {case_description[:100]}",
-                "instruction": "请根据之前的分析，总结调查结论并提出后续建议。",
-            },
+                "title": ch["title"],
+                "query": ch["query_template"].format(
+                    case_desc_short=case_description[:200]
+                ),
+                "instruction": ch["instruction"],
+            }
+            for ch in REPORT_CHAPTERS
         ]
 
         report_parts = []
@@ -566,20 +549,12 @@ class CaseAnalysisService:
 
             context = "\n".join(context_lines) if context_lines else "无相关信息。"
 
-            prompt = f"""你是资深数字取证分析师，正在撰写报告的「{chapter['title']}」章节。
-
-## 案情描述
-{case_description}
-
-## 相关证据与信息
-{context}
-
-{chapter['instruction']}
-
-重要格式要求：
-- 请使用Markdown格式输出该章节内容（不要重复标题）
-- 当提及具体文件时，请使用 [[file:完整文件路径]] 格式引用，例如 [[file:/data/chat.db]]
-- 引用要自然融入正文，不要使用学术论文式的引注编号"""
+            prompt = REPORT_CHAPTER_TEMPLATE.format(
+                chapter_title=chapter["title"],
+                case_description=case_description,
+                context=context,
+                chapter_instruction=chapter["instruction"],
+            )
 
             try:
                 result = await self._llm_service.analyze(
@@ -606,25 +581,10 @@ class CaseAnalysisService:
         """
         evidence_section = self._build_evidence_summary(file_descriptions)
 
-        user_prompt = f"""请根据以下案情描述和文件分析结果，生成一份完整的数字取证案情分析报告。
-
-## 案情描述
-{case_description}
-
-## 文件分析结果
-{evidence_section}
-
-请生成报告，包含以下章节：
-1. **案件概述** — 简要描述案件背景
-2. **证据分析** — 对关键文件的详细分析
-3. **关键发现** — 有价值的发现和线索
-4. **时间线梳理** — 如果可以从文件中推断时间线
-5. **结论与建议** — 总结分析结果，提出后续建议
-
-重要格式要求：
-- 请确保报告语言专业、证据引用准确
-- 当提及具体文件时，请使用 [[file:完整文件路径]] 格式引用，例如 [[file:/data/chat.db]]
-- 引用要自然融入正文，不要使用学术论文式的引注编号"""
+        user_prompt = REPORT_FALLBACK_TEMPLATE.format(
+            case_description=case_description,
+            evidence_section=evidence_section,
+        )
 
         result = await self._llm_service.analyze(
             content=user_prompt,

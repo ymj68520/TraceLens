@@ -21,6 +21,12 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from ..config import Settings
+from ..prompts import (
+    TEXT_ANALYSIS_SYSTEM,
+    TEXT_ANALYSIS_USER_TEMPLATE,
+    VISION_ANALYSIS_SYSTEM,
+    VISION_ANALYSIS_USER_DEFAULT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -258,16 +264,9 @@ class LLMService:
             default_temperature = self.settings.llm_vision_temperature
         
         # Build prompt
-        system_prompt = """You are a digital forensics expert analyzing file content.
-Provide a concise analysis including:
-1. Brief description of the content
-2. Key findings or notable information
-3. Potential forensic significance
-4. Any suspicious patterns or indicators
-
-Be specific and factual in your analysis."""
+        system_prompt = TEXT_ANALYSIS_SYSTEM
         
-        user_prompt = prompt or f"Analyze the following file content:\n\n{content}"
+        user_prompt = prompt or TEXT_ANALYSIS_USER_TEMPLATE.format(content=content)
         
         # Make API request
         try:
@@ -327,10 +326,9 @@ Be specific and factual in your analysis."""
             timeout=httpx.Timeout(self.settings.llm_timeout_seconds),
         )
         
-        system_prompt = """You are a digital forensics expert analyzing image content.
-Describe what you see in the image and note any potentially relevant forensic details."""
+        system_prompt = VISION_ANALYSIS_SYSTEM
         
-        user_prompt = prompt or "Analyze this image for forensic significance."
+        user_prompt = prompt or VISION_ANALYSIS_USER_DEFAULT
         
         try:
             response = await client.post(
