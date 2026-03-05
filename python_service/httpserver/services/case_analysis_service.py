@@ -146,21 +146,45 @@ class CaseAnalysisService:
         results = []
         total = len(file_paths)
 
+        # Image file extensions for auto-detection
+        IMAGE_EXTENSIONS = {
+            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif',
+            '.svg', '.ico', '.heic', '.heif', '.raw', '.cr2', '.nef', '.arw'
+        }
+
         for i, file_path in enumerate(file_paths):
             try:
-                content = await self._llm_service.read_file_content(file_path)
+                file_ext = Path(file_path).suffix.lower()
+                is_image = file_ext in IMAGE_EXTENSIONS
 
-                custom_prompt = FILE_DESCRIPTION_TEMPLATE.format(
-                    case_description=case_description,
-                    file_path=file_path,
-                    content=content,
-                )
+                if is_image:
+                    # Use vision model for images
+                    logger.info(f"Using vision model for image file: {file_path}")
+                    try:
+                        with open(file_path, 'rb') as f:
+                            image_data = f.read()
+                        result = await self._llm_service.analyze_image(
+                            image_data=image_data,
+                            prompt=f"请分析这张图像在案情背景下的取证价值。\n案情描述：{case_description}",
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to analyze {file_path} as image: {e}")
+                        raise
+                else:
+                    # Use text model for text files
+                    content = await self._llm_service.read_file_content(file_path)
 
-                result = await self._llm_service.analyze(
-                    content=content,
-                    model_type="text",
-                    prompt=custom_prompt,
-                )
+                    custom_prompt = FILE_DESCRIPTION_TEMPLATE.format(
+                        case_description=case_description,
+                        file_path=file_path,
+                        content=content,
+                    )
+
+                    result = await self._llm_service.analyze(
+                        content=content,
+                        model_type="text",
+                        prompt=custom_prompt,
+                    )
 
                 analysis = result.get("analysis", {})
                 description = analysis.get("description", "")
@@ -349,6 +373,11 @@ class CaseAnalysisService:
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
 
+        logger.info(f"Starting reanalyze_files - task_id: {task_id}, "
+                   f"files_count: {len(file_paths)}, "
+                   f"files_db_path: {files_db_path!r}, "
+                   f"case_description: {len(case_description) if case_description else 0} chars")
+
         # Retrieve knowledge graph context if available
         kg_context = ""
         if self._graphiti_service and task_id:
@@ -374,45 +403,108 @@ class CaseAnalysisService:
         results = []
         total = len(file_paths)
 
+        # Image file extensions for auto-detection
+        IMAGE_EXTENSIONS = {
+            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif',
+            '.svg', '.ico', '.heic', '.heif', '.raw', '.cr2', '.nef', '.arw'
+        }
+
         for i, file_path in enumerate(file_paths):
             try:
-                content = await self._llm_service.read_file_content(file_path)
+                logger.info(f"Starting re-analysis for file {i+1}/{total}: {file_path}")
 
-                prompt_parts = [FILE_REANALYSIS_HEADER]
+                # Check if file exists
+                if not Path(file_path).exists():
+                    logger.error(f"File not found: {file_path}")
+                    results.append({
+                        "file_path": file_path,
+                        "description": "",
+                        "error": f"File not found: {file_path}",
+                        "success": False,
+                        "reanalysis": True,
+                    })
+                    continue
 
-                if case_description:
-                    prompt_parts.append(FILE_REANALYSIS_CONTEXT_CASE.format(
-                        case_description=case_description
+                file_ext = Path(file_path).suffix.lower()
+                is_image = file_ext in IMAGE_EXTENSIONS
+
+                if is_image:
+                    # Use vision model for images with custom prompt
+                    logger.info(f"Using vision model for image re-analysis: {file_path}")
+
+                    # Build vision prompt with case context
+                    vision_prompt_parts = []
+                    if case_description:
+                        vision_prompt_parts.append(f"案情背景：{case_description}")
+                    if user_hint:
+                        vision_prompt_parts.append(f"调查人员补充说明：{user_hint}")
+                    if kg_context:
+                        vision_prompt_parts.append(f"相关上下文：{kg_context}")
+
+                    vision_prompt = "请根据以上信息重新分析这张图像的取证价值。\n\n" + "\n".join(vision_prompt_parts)
+
+                    try:
+                        with open(file_path, 'rb') as f:
+                            image_data = f.read()
+
+                        logger.info(f"Read {len(image_data)} bytes from {file_path}, sending to vision model")
+                        result = await self._llm_service.analyze_image(
+                            image_data=image_data,
+                            prompt=vision_prompt,
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to analyze {file_path} as image: {e}", exc_info=True)
+                        results.append({
+                            "file_path": file_path,
+                            "description": "",
+                            "error": f"Vision analysis failed: {str(e)}",
+                            "success": False,
+                            "reanalysis": True,
+                        })
+                        continue
+                else:
+                    # Use text model for text files
+                    content = await self._llm_service.read_file_content(file_path)
+                    logger.info(f"Read {len(content)} characters from {file_path}")
+
+                    prompt_parts = [FILE_REANALYSIS_HEADER]
+
+                    if case_description:
+                        prompt_parts.append(FILE_REANALYSIS_CONTEXT_CASE.format(
+                            case_description=case_description
+                        ))
+
+                    if kg_context:
+                        prompt_parts.append(FILE_REANALYSIS_CONTEXT_KG.format(
+                            kg_context=kg_context
+                        ))
+
+                    prompt_parts.append(FILE_REANALYSIS_CONTEXT_HINT.format(
+                        user_hint=user_hint
                     ))
-
-                if kg_context:
-                    prompt_parts.append(FILE_REANALYSIS_CONTEXT_KG.format(
-                        kg_context=kg_context
+                    prompt_parts.append(FILE_REANALYSIS_CONTEXT_FILE.format(
+                        file_path=file_path,
+                        content=content,
                     ))
+                    prompt_parts.append(FILE_REANALYSIS_INSTRUCTION)
 
-                prompt_parts.append(FILE_REANALYSIS_CONTEXT_HINT.format(
-                    user_hint=user_hint
-                ))
-                prompt_parts.append(FILE_REANALYSIS_CONTEXT_FILE.format(
-                    file_path=file_path,
-                    content=content,
-                ))
-                prompt_parts.append(FILE_REANALYSIS_INSTRUCTION)
+                    custom_prompt = "\n".join(prompt_parts)
+                    logger.info(f"Sending re-analysis request to LLM for {file_path}")
 
-                custom_prompt = "\n".join(prompt_parts)
-
-                result = await self._llm_service.analyze(
-                    content=content,
-                    model_type="text",
-                    prompt=custom_prompt,
-                )
+                    result = await self._llm_service.analyze(
+                        content=content,
+                        model_type="text",
+                        prompt=custom_prompt,
+                    )
 
                 analysis = result.get("analysis", {})
                 description = analysis.get("description", "")
 
+                logger.info(f"Received LLM response for {file_path}: {len(description)} characters")
+
                 # Persist updated description to _files.db
                 if files_db_path and description:
-                    self._llm_service.persist_to_files_db(
+                    persisted = self._llm_service.persist_to_files_db(
                         db_path=files_db_path,
                         file_path=file_path,
                         description=description,
@@ -420,6 +512,12 @@ class CaseAnalysisService:
                         keywords="",
                         model_used=result.get("model", ""),
                     )
+                    if persisted:
+                        logger.info(f"Successfully persisted re-analysis for {file_path}")
+                    else:
+                        logger.warning(f"Failed to persist re-analysis for {file_path} (no matching row)")
+                elif not files_db_path:
+                    logger.warning(f"No files_db_path provided - re-analysis result for {file_path} will NOT be saved to database")
 
                 results.append({
                     "file_path": file_path,
@@ -430,7 +528,7 @@ class CaseAnalysisService:
                 })
 
             except Exception as e:
-                logger.warning(f"Re-analysis failed for {file_path}: {e}")
+                logger.error(f"Re-analysis failed for {file_path}: {e}", exc_info=True)
                 results.append({
                     "file_path": file_path,
                     "description": "",
@@ -439,6 +537,7 @@ class CaseAnalysisService:
                     "reanalysis": True,
                 })
 
+        logger.info(f"Re-analysis completed: {sum(1 for r in results if r.get('success'))}/{len(results)} files successful")
         return results
 
     # ------------------------------------------------------------------

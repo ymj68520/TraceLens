@@ -247,6 +247,13 @@ async def reanalyze_files(
         case_service = _get_case_analysis_service(service_manager)
 
         job_id = str(uuid.uuid4())
+
+        # Log request details
+        logger.info(f"Reanalyze request received - task_id: {request.task_id}, "
+                   f"files: {len(request.file_paths)}, "
+                   f"files_db_path: {request.files_db_path!r}, "
+                   f"user_hint: {request.user_hint[:50] if request.user_hint else ''}...")
+
         _analysis_jobs[job_id] = {
             "status": "running",
             "current_step": "重新分析",
@@ -255,14 +262,26 @@ async def reanalyze_files(
             "result": None,
         }
 
-        # Get case description if not provided
+        # Get case description and files_db_path from task info if not provided
         case_desc = request.case_description
-        if not case_desc:
+        files_db_path = request.files_db_path
+
+        if not case_desc or not files_db_path:
             try:
                 task_info = await service_manager.cpp_backend.get_task(request.task_id)
-                case_desc = task_info.get("case_description", "") if task_info else ""
-            except Exception:
-                pass
+                if task_info:
+                    if not case_desc:
+                        case_desc = task_info.get("case_description", "")
+                    if not files_db_path:
+                        files_db_path = task_info.get("output_files_db") or task_info.get("output_files_db_path", "")
+                        logger.info(f"Retrieved files_db_path from task info: {files_db_path!r}")
+            except Exception as e:
+                logger.warning(f"Failed to get task info: {e}")
+
+        # Warn if files_db_path is still empty
+        if not files_db_path:
+            logger.warning(f"No files_db_path provided for task {request.task_id}. "
+                         f"Results will NOT be persisted to database!")
 
         asyncio.create_task(
             _run_reanalyze_background(
@@ -271,7 +290,7 @@ async def reanalyze_files(
                 task_id=request.task_id,
                 file_paths=request.file_paths,
                 user_hint=request.user_hint,
-                files_db_path=request.files_db_path,
+                files_db_path=files_db_path,
                 case_description=case_desc,
             )
         )

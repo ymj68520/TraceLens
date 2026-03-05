@@ -112,7 +112,7 @@ const Files = () => {
 
         // Check if file has LLM fields (from database)
         if (file.llm_summary || file.llm_description || file.llm_keywords) {
-          descMap[filePath] = {
+          const descData = {
             summary: file.llm_summary,
             description: file.llm_description,
             keywords: file.llm_keywords ? (
@@ -123,6 +123,15 @@ const Files = () => {
             model: file.llm_model_used,
             timestamp: file.llm_analyzed_at
           };
+
+          // Store with multiple keys for robust lookup
+          descMap[filePath] = descData;
+
+          // Also store with basename
+          const basename = filePath.split('/').pop();
+          if (basename && basename !== filePath) {
+            descMap[basename] = descData;
+          }
         }
       });
 
@@ -355,7 +364,11 @@ const Files = () => {
 
   // Open re-analysis modal for single or multiple files
   const openReanalyzeModal = (filePaths) => {
-    setReanalyzeTargetFiles(filePaths);
+    // Convert relative paths to absolute paths
+    const absolutePaths = filePaths.map(toAbsolutePath);
+
+    console.log('Opening reanalyze modal with paths:', absolutePaths);
+    setReanalyzeTargetFiles(absolutePaths);
     setReanalyzeHint('');
     setReanalyzeMessage('');
     setShowReanalyzeModal(true);
@@ -369,35 +382,74 @@ const Files = () => {
     setReanalyzeMessage(`正在重新分析 ${reanalyzeTargetFiles.length} 个文件...`);
 
     try {
+      const filesDbPath = currentTask?.output_files_db || currentTask?.output_files_db_path || '';
+      console.log('Starting reanalyze with:', {
+        taskId,
+        fileCount: reanalyzeTargetFiles.length,
+        filesDbPath,
+        hint: reanalyzeHint.trim(),
+      });
+
       const result = await reanalyzeFiles(
         taskId,
         reanalyzeTargetFiles,
         reanalyzeHint.trim(),
-        currentTask?.output_files_db || '',
+        filesDbPath,
       );
+
+      console.log('Reanalyze started:', result);
 
       if (result.job_id) {
         // Poll for completion
         const poll = async () => {
           try {
             const status = await getCaseAnalysisStatus(result.job_id);
+            console.log('Reanalyze status:', status);
+
             if (status.status === 'completed') {
               setReanalyzeMessage(`✅ 重新分析完成`);
-              // Refresh file list
+              // Refresh file list - update both llmResults and existingLlmDescriptions
               if (status.result?.results) {
                 const newDesc = {};
                 status.result.results.forEach((r) => {
                   if (r.file_path && r.success) {
-                    newDesc[r.file_path] = {
+                    console.log(`Updating description for ${r.file_path}`);
+
+                    const descData = {
                       summary: r.description?.substring(0, 200),
                       description: r.description,
                       keywords: [],
                       model: r.model_used,
                       timestamp: new Date().toISOString(),
                     };
+
+                    // Store with multiple keys for robust lookup
+                    // 1. Full path (as returned from backend)
+                    newDesc[r.file_path] = descData;
+
+                    // 2. Basename only (for matching with file.path)
+                    const basename = r.file_path.split('/').pop();
+                    if (basename && basename !== r.file_path) {
+                      newDesc[basename] = descData;
+                    }
+                  } else if (r.file_path && r.error) {
+                    console.error(`Failed to analyze ${r.file_path}:`, r.error);
                   }
                 });
+
+                console.log('New descriptions to add:', Object.keys(newDesc));
+
+                // Update both states to ensure new descriptions are displayed
                 setLlmResults(prev => ({ ...prev, ...newDesc }));
+                setExistingLlmDescriptions(prev => ({ ...prev, ...newDesc }));
+
+                // Also refresh the file data from backend to get latest database values
+                try {
+                  const refreshedData = await getLargestFiles(taskId, 100);
+                  setLargestFiles(refreshedData.largest_files || refreshedData.files || refreshedData || []);
+                } catch (err) {
+                  console.error('Failed to refresh file data:', err);
+                }
               }
               setReanalyzing(false);
               setTimeout(() => setShowReanalyzeModal(false), 1500);
@@ -432,21 +484,28 @@ const Files = () => {
     setExpandedDescriptions(newExpanded);
   };
 
+  // Convert relative file path to absolute path
+  const toAbsolutePath = (filePath) => {
+    if (!filePath) return filePath;
+
+    // If path is already absolute, return as is
+    const isAbsolutePath = filePath.startsWith('/') || filePath.includes(':');
+    if (isAbsolutePath) return filePath;
+
+    // Try to use extraction directory from task
+    if (currentTask?.extraction_directory) {
+      return `${currentTask.extraction_directory}/${filePath}`;
+    }
+
+    // Fallback to default extraction directory
+    return `/home/ymj68520/projects/Forensics/ForensicsProject/build/extracted_files/${filePath}`;
+  };
+
   // Get LLM description for a file
   const getLLMDescription = (file) => {
     const filePath = file.path || file.file_path;
 
-    // First check from session results
-    if (llmResults[filePath]) {
-      return llmResults[filePath];
-    }
-
-    // Then check from pre-loaded descriptions
-    if (existingLlmDescriptions[filePath]) {
-      return existingLlmDescriptions[filePath];
-    }
-
-    // Finally check if file object has LLM fields directly (from database)
+    // First check if file object has LLM fields directly (from database)
     if (file.llm_summary || file.llm_description || file.llm_keywords) {
       return {
         summary: file.llm_summary,
@@ -455,6 +514,35 @@ const Files = () => {
         model: file.llm_model_used,
         timestamp: file.llm_analyzed_at
       };
+    }
+
+    // Then check from session results and pre-loaded descriptions
+    // Try multiple key formats: full path, basename, etc.
+    const basename = filePath.split('/').pop() || filePath;
+
+    // Check with full path
+    if (llmResults[filePath]) {
+      return llmResults[filePath];
+    }
+    if (existingLlmDescriptions[filePath]) {
+      return existingLlmDescriptions[filePath];
+    }
+
+    // Check with basename
+    if (llmResults[basename]) {
+      return llmResults[basename];
+    }
+    if (existingLlmDescriptions[basename]) {
+      return existingLlmDescriptions[basename];
+    }
+
+    // Check with absolute path
+    const absolutePath = toAbsolutePath(filePath);
+    if (llmResults[absolutePath]) {
+      return llmResults[absolutePath];
+    }
+    if (existingLlmDescriptions[absolutePath]) {
+      return existingLlmDescriptions[absolutePath];
     }
 
     return null;

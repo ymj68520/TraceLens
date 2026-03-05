@@ -114,46 +114,82 @@ async def analyze_content(
 ):
     """
     Analyze content using LLM.
-    
+
     Provide either a file path or direct content for analysis.
-    Supports both text and vision models.
+    Supports both text and vision models with auto-detection.
     """
     import time
+    from pathlib import Path
     start_time = time.time()
-    
+
     if not request.file_path and not request.content:
         raise HTTPException(
             status_code=400,
             detail="Either file_path or content must be provided"
         )
-    
+
     try:
         from ..services import get_service_manager
         service_manager = get_service_manager()
-        
-        # Get content from file if path provided
-        content = request.content
+
+        # Image file extensions for auto-detection
+        IMAGE_EXTENSIONS = {
+            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif',
+            '.svg', '.ico', '.heic', '.heif', '.raw', '.cr2', '.nef', '.arw'
+        }
+
+        result = None
+
+        # Handle file path
         if request.file_path:
-            content = await service_manager.llm_service.read_file_content(request.file_path)
-        
-        # Analyze content
-        result = await service_manager.llm_service.analyze(
-            content=content,
-            model_type=request.model_type,
-            prompt=request.prompt,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-        )
-        
+            file_ext = Path(request.file_path).suffix.lower()
+            is_image = file_ext in IMAGE_EXTENSIONS
+
+            if is_image:
+                # Read as binary and use vision model
+                logger.info(f"Auto-detected image file: {request.file_path}, using vision model")
+                try:
+                    with open(request.file_path, 'rb') as f:
+                        image_data = f.read()
+                    result = await service_manager.llm_service.analyze_image(
+                        image_data=image_data,
+                        prompt=request.prompt,
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to analyze {request.file_path} as image: {e}")
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Failed to analyze image: {str(e)}"
+                    )
+            else:
+                # Read as text
+                content = await service_manager.llm_service.read_file_content(request.file_path)
+                result = await service_manager.llm_service.analyze(
+                    content=content,
+                    model_type=request.model_type or "text",
+                    prompt=request.prompt,
+                    max_tokens=request.max_tokens,
+                    temperature=request.temperature,
+                )
+        else:
+            # Direct content analysis (text only)
+            result = await service_manager.llm_service.analyze(
+                content=request.content,
+                model_type=request.model_type or "text",
+                prompt=request.prompt,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+            )
+
         processing_time = (time.time() - start_time) * 1000
         analysis = result.get("analysis", {})
         description = analysis.get("description", "")
-        
+
         # Persist to C++ SQLite _files.db if db path and file path are provided
         if request.files_db_path and (request.db_file_path or request.file_path) and description:
             keywords_list = analysis.get("keywords", [])
             keywords_str = ", ".join(keywords_list) if isinstance(keywords_list, list) else str(keywords_list)
-            
+
             db_path_to_save = request.db_file_path or request.file_path
             service_manager.llm_service.persist_to_files_db(
                 db_path=request.files_db_path,
@@ -163,7 +199,7 @@ async def analyze_content(
                 keywords=keywords_str,
                 model_used=result.get("model", "unknown")
             )
-        
+
         return AnalyzeResponse(
             success=True,
             analysis=analysis,
@@ -174,6 +210,8 @@ async def analyze_content(
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Analysis failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -195,22 +233,25 @@ async def analyze_uploaded_file(
 ):
     """
     Analyze an uploaded file using LLM.
-    
+
     Accepts file uploads and returns analysis results.
     """
     import time
     start_time = time.time()
-    
+
     try:
         from ..services import get_service_manager
         service_manager = get_service_manager()
-        
+
         # Read file content
         content = await file.read()
-        
+        file_size_kb = len(content) / 1024
+
+        logger.info(f"Analyzing uploaded file: {file.filename}, size: {file_size_kb:.2f} KB, type: {file.content_type}, model: {model_type}")
+
         # Determine content type
         if model_type == "vision" or file.content_type.startswith("image/"):
-            # Handle as image
+            # Handle as image (let vision model determine if image is valid)
             result = await service_manager.llm_service.analyze_image(
                 image_data=content,
                 prompt=prompt,
@@ -223,9 +264,9 @@ async def analyze_uploaded_file(
                 model_type="text",
                 prompt=prompt,
             )
-        
+
         processing_time = (time.time() - start_time) * 1000
-        
+
         return AnalyzeResponse(
             success=True,
             analysis=result.get("analysis", {}),
@@ -234,9 +275,15 @@ async def analyze_uploaded_file(
             processing_time_ms=processing_time,
             timestamp=datetime.now().isoformat(),
         )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        # Handle specific validation errors (like image too large)
+        logger.error(f"File validation failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"File analysis failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"File analysis failed: {str(e)}")
 
 
 @router.post("/batch", response_model=BatchAnalyzeResponse, responses={

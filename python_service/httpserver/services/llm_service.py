@@ -136,6 +136,8 @@ class LLMService:
         try:
             with sqlite3.connect(db_path, timeout=10) as conn:
                 cur = conn.cursor()
+
+                # Try exact match first
                 cur.execute(sql, (
                     summary or description[:200],
                     description,
@@ -145,14 +147,58 @@ class LLMService:
                     file_path,
                 ))
                 conn.commit()
+
                 if cur.rowcount > 0:
-                    logger.debug(f"Persisted LLM result for {file_path!r} → {db_path!r}")
+                    logger.info(f"Persisted LLM result for {file_path!r} → {db_path!r} ({len(description)} chars)")
                     return True
-                else:
-                    logger.debug(f"persist_to_files_db: no row matched path={file_path!r} in {db_path!r}")
-                    return False
+
+                # If exact match failed, try basename matching
+                basename = Path(file_path).name
+                logger.info(f"Exact match failed for {file_path!r}, trying basename: {basename!r}")
+
+                cur.execute(sql, (
+                    summary or description[:200],
+                    description,
+                    keywords,
+                    int(time.time()),
+                    model_used,
+                    basename,
+                ))
+                conn.commit()
+
+                if cur.rowcount > 0:
+                    logger.info(f"Persisted LLM result using basename {basename!r} → {db_path!r} ({len(description)} chars)")
+                    return True
+
+                # If still failed, try path ends with
+                logger.info(f"basename match failed, trying path ends with for {file_path!r}")
+                sql_like = """
+                    UPDATE files SET
+                        llm_summary = ?,
+                        llm_description = ?,
+                        llm_keywords = ?,
+                        llm_analyzed_at = ?,
+                        llm_model_used = ?
+                    WHERE path LIKE ?
+                """
+                cur.execute(sql_like, (
+                    summary or description[:200],
+                    description,
+                    keywords,
+                    int(time.time()),
+                    model_used,
+                    f"%{basename}",
+                ))
+                conn.commit()
+
+                if cur.rowcount > 0:
+                    logger.info(f"Persisted LLM result using LIKE pattern for {file_path!r} → {db_path!r} ({len(description)} chars)")
+                    return True
+
+                logger.warning(f"persist_to_files_db: no row matched path={file_path!r} (basename={basename!r}) in {db_path!r}")
+                return False
         except Exception as e:
-            logger.warning(f"persist_to_files_db failed for {file_path!r}: {e}")
+            logger.error(f"persist_to_files_db failed for {file_path!r}: {e}", exc_info=True)
             return False
     
     async def health_check(self) -> bool:
@@ -238,45 +284,51 @@ class LLMService:
     ) -> Dict[str, Any]:
         """
         Analyze content using LLM.
-        
+
         Args:
             content: Content to analyze.
             model_type: 'text' or 'vision'.
             prompt: Custom prompt (optional).
             max_tokens: Max response tokens (optional).
             temperature: Model temperature (optional).
-        
+
         Returns:
             Analysis result dict.
         """
+        # Ensure service is initialized
+        if not self._initialized:
+            logger.info("LLM service not initialized, initializing now...")
+            await self.initialize()
+
         # Select model settings
         if model_type == "text":
             client = self._text_client
             if not client:
-                # Ensure we're initialized
-                await self.initialize()
-                client = self._text_client
+                raise RuntimeError("Text model client not initialized")
             model = self.settings.llm_text_model
             default_max_tokens = self.settings.llm_text_max_tokens
             default_temperature = self.settings.llm_text_temperature
+            logger.info(f"Using text model: {model} at {self.settings.llm_text_base_url}")
         else:
             client = self._vision_client
             if not client:
-                await self.initialize()
-                client = self._vision_client
+                raise RuntimeError("Vision model client not initialized")
             model = self.settings.llm_vision_model
             default_max_tokens = self.settings.llm_vision_max_tokens
             default_temperature = self.settings.llm_vision_temperature
-        
+            logger.info(f"Using vision model: {model} at {self.settings.llm_vision_base_url}")
+
         # Build prompt
         system_prompt = TEXT_ANALYSIS_SYSTEM
-        
+
         user_prompt = prompt or TEXT_ANALYSIS_USER_TEMPLATE.format(content=content)
         
         # Make API request
+        # Note: client is already initialized with the correct base_url (text or vision)
+        # We only need to provide the endpoint path
         try:
             response = await client.post(
-                "/v1/chat/completions",
+                self.settings.llm_endpoint,  # e.g., "/v1/chat/completions"
                 json={
                     "model": model,
                     "messages": [
@@ -304,8 +356,14 @@ class LLMService:
                 "model": model,
                 "tokens_used": tokens_used,
             }
+        except httpx.HTTPStatusError as e:
+            logger.error(f"LLM HTTP error: {e.response.status_code} - {e.response.text}")
+            raise RuntimeError(f"LLM request failed with status {e.response.status_code}: {e.response.text}") from e
+        except httpx.ConnectError as e:
+            logger.error(f"LLM connection error: {e}")
+            raise RuntimeError(f"Cannot connect to LLM service at {self.settings.llm_text_base_url if model_type == 'text' else self.settings.llm_vision_base_url}") from e
         except Exception as e:
-            logger.error(f"LLM analysis failed: {e}")
+            logger.error(f"LLM analysis failed: {e}", exc_info=True)
             raise
     
     async def analyze_image(
@@ -315,29 +373,44 @@ class LLMService:
     ) -> Dict[str, Any]:
         """
         Analyze an image using vision model.
-        
+
         Args:
             image_data: Image binary data.
             prompt: Custom prompt (optional).
-        
+
         Returns:
             Analysis result dict.
         """
+        # Compress image if too large (base64 encoding increases size by ~33%)
+        max_image_size = 20 * 1024 * 1024  # 20MB limit before compression
+        if len(image_data) > max_image_size:
+            logger.warning(f"Image size {len(image_data)} bytes exceeds limit, attempting compression")
+            try:
+                image_data = self._compress_image(image_data, max_size=3 * 1024 * 1024)  # Compress to 3MB
+                logger.info(f"Image compressed to {len(image_data)} bytes")
+            except Exception as e:
+                logger.warning(f"Image compression failed: {e}, proceeding with original size")
+
         # Encode image to base64
         image_b64 = base64.b64encode(image_data).decode("utf-8")
-        
-        client = self._vision_client or httpx.AsyncClient(
-            base_url=self.settings.llm_vision_base_url,
-            timeout=httpx.Timeout(self.settings.llm_timeout_seconds),
-        )
-        
+        encoded_size_kb = len(image_b64) / 1024
+        logger.info(f"Base64 encoded image size: {encoded_size_kb:.2f} KB")
+
+        # Use prompts from prompts.py
         system_prompt = VISION_ANALYSIS_SYSTEM
-        
         user_prompt = prompt or VISION_ANALYSIS_USER_DEFAULT
-        
+
+        # Ensure vision client is initialized
+        if not self._vision_client:
+            await self.initialize()
+
+        # Check if image is still too large after compression
+        if len(image_b64) > 10 * 1024 * 1024:  # 10MB base64 limit
+            raise ValueError(f"Image too large even after compression ({encoded_size_kb:.2f} KB). Please provide a smaller image.")
+
         try:
-            response = await client.post(
-                "/v1/chat/completions",
+            response = await self._vision_client.post(
+                self.settings.llm_endpoint,
                 json={
                     "model": self.settings.llm_vision_model,
                     "messages": [
@@ -349,23 +422,26 @@ class LLMService:
                                 {
                                     "type": "image_url",
                                     "image_url": {
-                                        "url": f"data:image/jpeg;base64,{image_b64}"
+                                        "url": f"data:image/jpeg;base64,{image_b64}",
+                                        "detail": "low"  # Use low detail for large images
                                     },
                                 },
                             ],
                         },
                     ],
-                    "max_tokens": self.settings.llm_vision_max_tokens,
+                    "max_tokens": 2048,  # Reduce max tokens for context space
                     "temperature": self.settings.llm_vision_temperature,
                 },
                 headers={"Authorization": f"Bearer {self.settings.llm_api_key}"} if self.settings.llm_api_key else {},
             )
             response.raise_for_status()
-            
+
             result = response.json()
             analysis_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             tokens_used = result.get("usage", {}).get("total_tokens", 0)
-            
+
+            logger.info(f"Vision analysis completed, tokens used: {tokens_used}")
+
             return {
                 "analysis": {
                     "description": analysis_text,
@@ -374,9 +450,66 @@ class LLMService:
                 "model": self.settings.llm_vision_model,
                 "tokens_used": tokens_used,
             }
+        except httpx.HTTPStatusError as e:
+            if "context" in e.response.text.lower() and "overflow" in e.response.text.lower():
+                raise ValueError(f"Image analysis failed: Image is too large or complex for the vision model's context window ({self.settings.llm_context_length} tokens). Try: 1) Using a smaller image, 2) Reducing image quality, or 3) Using a model with larger context") from e
+            logger.error(f"LLM HTTP error: {e.response.status_code} - {e.response.text}")
+            raise RuntimeError(f"LLM request failed with status {e.response.status_code}: {e.response.text}") from e
         except Exception as e:
-            logger.error(f"Vision analysis failed: {e}")
+            logger.error(f"Vision analysis failed: {e}", exc_info=True)
             raise
+
+    @staticmethod
+    def _compress_image(image_data: bytes, max_size: int = 3 * 1024 * 1024) -> bytes:
+        """
+        Compress image using Pillow to reduce file size.
+
+        Args:
+            image_data: Original image bytes.
+            max_size: Maximum target size in bytes.
+
+        Returns:
+            Compressed image bytes.
+        """
+        try:
+            from io import BytesIO
+            from PIL import Image
+
+            img = Image.open(BytesIO(image_data))
+
+            # Convert to RGB if necessary (handles RGBA, grayscale, etc.)
+            if img.mode in ('RGBA', 'LA', 'P'):
+                # Create white background for transparent images
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                img = background
+            elif img.mode != 'RGB':
+                img = img.convert('RGB')
+
+            # Calculate target dimensions (reduce by up to 50%)
+            original_width, original_height = img.size
+            scale_factor = min(1.0, (max_size / len(image_data)) ** 0.5)  # Square root for area
+            new_width = int(original_width * scale_factor)
+            new_height = int(original_height * scale_factor)
+
+            # Resize with high quality
+            if new_width < original_width or new_height < original_height:
+                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+            # Compress with progressive JPEG
+            output = BytesIO()
+            img.save(output, format='JPEG', quality=75, optimize=True, progressive=True)
+            compressed_data = output.getvalue()
+
+            return compressed_data
+        except ImportError:
+            # Pillow not available, return original
+            return image_data
+        except Exception as e:
+            # Compression failed, return original
+            return image_data
     
     async def start_batch_analysis(
         self,
@@ -419,6 +552,12 @@ class LLMService:
         files_db_path: Optional[str] = None,
     ):
         """Run batch analysis in background and optionally persist to SQLite."""
+        # Image file extensions that should use vision model
+        IMAGE_EXTENSIONS = {
+            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif',
+            '.svg', '.ico', '.heic', '.heif', '.raw', '.cr2', '.nef', '.arw'
+        }
+
         try:
             total = len(files)
             for i, file_info in enumerate(files):
@@ -426,17 +565,36 @@ class LLMService:
                 try:
                     if not file_path:
                         continue
-                    
-                    content = await self.read_file_content(file_path)
-                    result = await self.analyze(content, model_type)
+
+                    # Auto-detect if file is an image based on extension
+                    file_ext = Path(file_path).suffix.lower()
+                    is_image = file_ext in IMAGE_EXTENSIONS
+
+                    if is_image:
+                        # Read as binary and use vision model
+                        logger.info(f"Detected image file: {file_path}, using vision model")
+                        try:
+                            with open(file_path, 'rb') as f:
+                                image_data = f.read()
+                            result = await self.analyze_image(image_data)
+                        except Exception as e:
+                            logger.warning(f"Failed to analyze {file_path} as image: {e}, falling back to text analysis")
+                            # Fallback to text analysis
+                            content = await self.read_file_content(file_path)
+                            result = await self.analyze(content, model_type)
+                    else:
+                        # Read as text and use specified model
+                        content = await self.read_file_content(file_path)
+                        result = await self.analyze(content, model_type)
+
                     analysis = result.get("analysis", {})
                     description = analysis.get("description", "")
-                    
+
                     self._jobs[job_id]["results"].append({
                         "file_path": file_path,
                         "analysis": analysis,
                     })
-                    
+
                     # Persist to C++ SQLite _files.db if path provided
                     if files_db_path and description:
                         keywords = ", ".join(analysis.get("keywords", []))
@@ -450,11 +608,12 @@ class LLMService:
                             model_used=model_used,
                         )
                 except Exception as e:
+                    logger.error(f"Failed to analyze {file_path}: {e}", exc_info=True)
                     self._jobs[job_id]["errors"].append(f"{file_path}: {str(e)}")
-                
+
                 self._jobs[job_id]["files_processed"] = i + 1
                 self._jobs[job_id]["progress"] = (i + 1) / total
-            
+
             self._jobs[job_id]["status"] = "completed"
         except Exception as e:
             logger.error(f"Batch analysis job {job_id} failed: {e}")
