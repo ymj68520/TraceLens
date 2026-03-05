@@ -72,7 +72,8 @@ void to_json(nlohmann::json& j, const AnalysisTask& t) {
         {"metadata", t.metadata},
         {"llm_analyze", t.llm_analyze},
         {"llm_mode", t.llm_mode},
-        {"output_descriptions_db", t.output_descriptions_db}
+        {"output_descriptions_db", t.output_descriptions_db},
+        {"case_description", t.case_description}
     };
     
     // Convert timestamps to string/int for storage
@@ -100,6 +101,7 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     if(j.contains("llm_analyze")) j.at("llm_analyze").get_to(t.llm_analyze);
     if(j.contains("llm_mode")) j.at("llm_mode").get_to(t.llm_mode);
     if(j.contains("output_descriptions_db")) j.at("output_descriptions_db").get_to(t.output_descriptions_db);
+    if(j.contains("case_description")) j.at("case_description").get_to(t.case_description);
 
     // Restore timestamps
     if (j.contains("created_time")) {
@@ -304,6 +306,15 @@ void TaskManager::set_llm_analyze_options(const std::string& id, bool llm_analyz
         tasks_[id].llm_mode = llm_mode;
         add_audit_log(id, "LLM_CONFIG", "LLM analysis: " + std::string(llm_analyze ? "enabled" : "disabled") + ", mode: " + llm_mode);
         
+        save_tasks(); // Persist changes
+    }
+}
+
+void TaskManager::set_case_description(const std::string& id, const std::string& case_description) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (tasks_.count(id)) {
+        tasks_[id].case_description = case_description;
+        add_audit_log(id, "CASE_DESC", "Case description updated (" + std::to_string(case_description.size()) + " chars)");
         save_tasks(); // Persist changes
     }
 }

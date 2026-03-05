@@ -85,6 +85,7 @@ struct AnalysisTask {
     bool llm_analyze = false;           // Enable LLM file description generation
     std::string llm_mode = "smart";     // "full" or "smart"
     std::string output_descriptions_db; // Database for LLM-generated descriptions
+    std::string case_description;       // Case description for LLM analysis
 
     // Make it copyable and movable by handling the atomic properly
     AnalysisTask() = default;
@@ -101,7 +102,8 @@ struct AnalysisTask {
           cancellation_requested(other.cancellation_requested.load()),
           error_details(other.error_details), metadata(other.metadata),
           llm_analyze(other.llm_analyze), llm_mode(other.llm_mode),
-          output_descriptions_db(other.output_descriptions_db) {}
+          output_descriptions_db(other.output_descriptions_db),
+          case_description(other.case_description) {}
 
     AnalysisTask& operator=(const AnalysisTask& other) {
         if (this != &other) {
@@ -130,6 +132,7 @@ struct AnalysisTask {
             llm_analyze = other.llm_analyze;
             llm_mode = other.llm_mode;
             output_descriptions_db = other.output_descriptions_db;
+            case_description = other.case_description;
         }
         return *this;
     }
@@ -149,7 +152,8 @@ struct AnalysisTask {
           cancellation_requested(other.cancellation_requested.load()),
           error_details(std::move(other.error_details)), metadata(std::move(other.metadata)),
           llm_analyze(other.llm_analyze), llm_mode(std::move(other.llm_mode)),
-          output_descriptions_db(std::move(other.output_descriptions_db)) {}
+          output_descriptions_db(std::move(other.output_descriptions_db)),
+          case_description(std::move(other.case_description)) {}
 
     AnalysisTask& operator=(AnalysisTask&& other) noexcept {
         if (this != &other) {
@@ -178,6 +182,7 @@ struct AnalysisTask {
             llm_analyze = other.llm_analyze;
             llm_mode = std::move(other.llm_mode);
             output_descriptions_db = std::move(other.output_descriptions_db);
+            case_description = std::move(other.case_description);
         }
         return *this;
     }

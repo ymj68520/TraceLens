@@ -91,6 +91,13 @@ public:
     void set_llm_analyze_options(const std::string& id, bool llm_analyze, const std::string& llm_mode);
 
     /**
+     * @brief Set case description for LLM analysis
+     * @param id Task ID
+     * @param case_description Case description text
+     */
+    void set_case_description(const std::string& id, const std::string& case_description);
+
+    /**
      * @brief Retrieve task by ID
      * @param id Task ID
      * @return AnalysisTask object (empty ID if not found)

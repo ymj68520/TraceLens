@@ -7,7 +7,7 @@ import { useTranslation } from '../../hooks/useTranslation';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, ListTodo, Clock, FolderOpen, Brain, Network,
-  Smartphone, Cloud, Search, BarChart3, Settings, Menu, X, ChevronLeft, ChevronRight,
+  Smartphone, Cloud, Search, BarChart3, Settings, Menu, X, ChevronLeft, ChevronRight, FileText,
 } from 'lucide-react';
 
 const Layout = ({ children }) => {
@@ -25,6 +25,7 @@ const Layout = ({ children }) => {
     { name: t('nav.timeline'), href: '/timeline', icon: Clock },
     { name: t('nav.files'), href: '/files', icon: FolderOpen },
     { name: t('nav.ai_descriptions'), href: '/llm-descriptions', icon: Brain },
+    { name: '案情报告', href: '/case-report', icon: FileText },
     { name: t('nav.knowledge_graph'), href: '/knowledge-graph', icon: Network },
     { name: t('nav.android'), href: '/android', icon: Smartphone },
     { name: 'OSS 分析', href: '/oss', icon: Cloud },
@@ -36,7 +37,7 @@ const Layout = ({ children }) => {
   const isActive = (path) => location.pathname === path;
 
   const getLinkUrl = (href) => {
-    const taskContextPages = ['/timeline', '/files', '/llm-descriptions', '/knowledge-graph', '/android', '/oss', '/search', '/statistics'];
+    const taskContextPages = ['/timeline', '/files', '/llm-descriptions', '/case-report', '/knowledge-graph', '/android', '/oss', '/search', '/statistics'];
     if (currentTaskId && taskContextPages.includes(href)) {
       return `${href}?task_id=${currentTaskId}`;
     }
@@ -87,8 +88,8 @@ const Layout = ({ children }) => {
                     <Link
                       to={getLinkUrl(item.href)}
                       className={`group flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 ${active
-                          ? 'bg-primary-500/20 text-primary-300 shadow-[inset_0_0_0_1px_rgba(99,102,241,0.3)]'
-                          : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                        ? 'bg-primary-500/20 text-primary-300 shadow-[inset_0_0_0_1px_rgba(99,102,241,0.3)]'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                         }`}
                       onClick={() => setMobileMenuOpen(false)}
                     >

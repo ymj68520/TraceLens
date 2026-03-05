@@ -27,6 +27,7 @@ const Tasks = () => {
     xfs_mode: 'auto',
     llm_analyze: false,
     llm_mode: 'smart',
+    case_description: '',
   });
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -79,6 +80,7 @@ const Tasks = () => {
         xfs_mode: 'auto',
         llm_analyze: false,
         llm_mode: 'smart',
+        case_description: '',
       });
 
       // Refresh task list
@@ -292,12 +294,20 @@ const Tasks = () => {
                             Stats
                           </Link>
                           {task.llm_analyze && (
-                            <Link
-                              to={`/llm-descriptions?task_id=${task.id}`}
-                              className="text-orange-600 hover:text-orange-900 ml-2 dark:text-orange-400 dark:hover:text-orange-300"
-                            >
-                              AI
-                            </Link>
+                            <>
+                              <Link
+                                to={`/llm-descriptions?task_id=${task.id}`}
+                                className="text-orange-600 hover:text-orange-900 ml-2 dark:text-orange-400 dark:hover:text-orange-300"
+                              >
+                                AI
+                              </Link>
+                              <Link
+                                to={`/case-report?task_id=${task.id}`}
+                                className="text-teal-600 hover:text-teal-900 ml-2 dark:text-teal-400 dark:hover:text-teal-300"
+                              >
+                                报告
+                              </Link>
+                            </>
                           )}
                         </>
                       )}
@@ -408,6 +418,24 @@ const Tasks = () => {
                   />
                   <span className="ml-2 text-sm text-slate-700 dark:text-slate-300">LLM Analysis</span>
                 </label>
+                {taskData.llm_analyze && (
+                  <div className="ml-6 mt-2 space-y-2">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                      案情描述
+                    </label>
+                    <textarea
+                      id="case-description-textarea"
+                      value={taskData.case_description}
+                      disabled={isCreating}
+                      onChange={(e) => setTaskData({ ...taskData, case_description: e.target.value })}
+                      className="w-full px-3 py-2 h-24 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-100 dark:disabled:bg-slate-700 dark:bg-slate-700 dark:text-white text-sm resize-none"
+                      placeholder="请输入案情描述，例如：一起涉嫌网络诈骗案件..."
+                    />
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      案情描述将用于 AI 智能筛选相关文件并生成分析报告
+                    </p>
+                  </div>
+                )}
                 <label className="flex items-center">
                   <input
                     type="checkbox"

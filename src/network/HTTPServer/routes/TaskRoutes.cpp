@@ -341,10 +341,16 @@ crow::response TaskRoutes::handle_create_task(const crow::request& req) {
         // LLM analysis options (new)
         bool llm_analyze = body.value("llm_analyze", false);
         std::string llm_mode = body.value("llm_mode", "smart"); // "full" or "smart"
+        std::string case_description = body.value("case_description", "");
 
         std::string task_id = task_manager_.create_task(image_path, priority, metadata, dependencies);
         task_manager_.set_android_analyze_options(task_id, android_analyze, xfs_mode, db_output_dir);
         task_manager_.set_llm_analyze_options(task_id, llm_analyze, llm_mode);
+
+        // Set case description if provided
+        if (!case_description.empty()) {
+            task_manager_.set_case_description(task_id, case_description);
+        }
 
         // Check if task can start immediately
         if (task_manager_.can_start_task(task_id)) {
@@ -876,6 +882,7 @@ nlohmann::json TaskRoutes::task_to_json(const AnalysisTask& task) {
         {"android_analyze", task.android_analyze},
         {"llm_analyze", task.llm_analyze},
         {"llm_mode", task.llm_mode},
+        {"case_description", task.case_description},
         {"xfs_mode", task.xfs_mode == XFSMode::Native ? "native" :
                    task.xfs_mode == XFSMode::Pure ? "pure" : "auto"},
         {"db_output_dir", task.db_output_dir},

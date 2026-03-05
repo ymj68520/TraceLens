@@ -165,6 +165,7 @@ set(LIB_SOURCES
     src/network/HTTPServer/TaskManager.cpp
     src/network/HTTPServer/SQLiteHelper.cpp
     src/network/HTTPServer/LLMAnalysisService.cpp
+    src/network/HTTPServer/LLMPythonProxy.cpp
     src/network/HTTPServer/routes/TaskRoutes.cpp
     src/network/HTTPServer/routes/ForensicsRoutes.cpp
     src/network/HTTPServer/routes/SystemRoutes.cpp
