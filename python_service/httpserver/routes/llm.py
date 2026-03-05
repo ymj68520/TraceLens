@@ -25,6 +25,7 @@ router = APIRouter()
 class AnalyzeRequest(BaseModel):
     """Request model for file analysis."""
     file_path: Optional[str] = Field(None, description="Path to file to analyze")
+    db_file_path: Optional[str] = Field(None, description="Path to file in DB (for persistence)")
     content: Optional[str] = Field(None, description="Direct content to analyze")
     model_type: str = Field(default="text", description="Model type: 'text' or 'vision'")
     prompt: Optional[str] = Field(None, description="Custom analysis prompt")
@@ -149,16 +150,18 @@ async def analyze_content(
         description = analysis.get("description", "")
         
         # Persist to C++ SQLite _files.db if db path and file path are provided
-        if request.files_db_path and request.file_path and description:
+        if request.files_db_path and (request.db_file_path or request.file_path) and description:
             keywords_list = analysis.get("keywords", [])
             keywords_str = ", ".join(keywords_list) if isinstance(keywords_list, list) else str(keywords_list)
+            
+            db_path_to_save = request.db_file_path or request.file_path
             service_manager.llm_service.persist_to_files_db(
                 db_path=request.files_db_path,
-                file_path=request.file_path,
+                file_path=db_path_to_save,
                 description=description,
                 summary=analysis.get("summary") or description[:200],
                 keywords=keywords_str,
-                model_used=result.get("model", ""),
+                model_used=result.get("model", "unknown")
             )
         
         return AnalyzeResponse(

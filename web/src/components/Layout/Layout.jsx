@@ -61,10 +61,9 @@ const Layout = ({ children }) => {
         </h1>
       </div>
 
-      {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-40 w-64 transition-transform duration-300 ease-in-out lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          } ${mobileMenuOpen ? 'translate-x-0' : ''}`}
+        className={`fixed inset-y-0 left-0 z-40 w-64 transition-transform duration-300 ease-in-out ${sidebarOpen ? 'lg:translate-x-0' : 'lg:-translate-x-full'
+          } ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="flex flex-col h-full bg-gradient-to-b from-slate-900 via-slate-900 to-primary-950 border-r border-slate-700/30">
           {/* Logo */}
@@ -126,7 +125,7 @@ const Layout = ({ children }) => {
 
       {/* Main content */}
       <div
-        className={`lg:pl-64 pt-16 lg:pt-0 transition-all duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
+        className={`pt-16 lg:pt-0 transition-all duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
           }`}
       >
         {/* Header */}
@@ -135,7 +134,7 @@ const Layout = ({ children }) => {
             <div className="flex items-center">
               <button
                 onClick={() => dispatch(toggleSidebar())}
-                className="lg:hidden p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors"
+                className={`p-2 mr-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors ${sidebarOpen ? 'hidden' : 'block'}`}
               >
                 <Menu size={20} />
               </button>

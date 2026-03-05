@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
+import { fetchTasks } from '../store/taskSlice';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
@@ -18,6 +19,13 @@ const Files = () => {
   const [searchParams] = useSearchParams();
   const taskId = searchParams.get('task_id');
   const { tasks } = useSelector((state) => state.tasks);
+  const dispatch = useDispatch();
+
+  useEffect(() => {
+    if (taskId && tasks.length === 0) {
+      dispatch(fetchTasks());
+    }
+  }, [taskId, tasks.length, dispatch]);
 
   const [largestFiles, setLargestFiles] = useState([]);
   const [extensionAnalysis, setExtensionAnalysis] = useState(null);
@@ -222,6 +230,7 @@ const Files = () => {
 
       const result = await analyzeContent({
         filePath: filePath,
+        dbFilePath: file.path || file.file_path,
         modelType: modelType,
         filesDbPath: currentTask?.output_files_db || null,
       });

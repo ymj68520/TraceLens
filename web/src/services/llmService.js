@@ -18,6 +18,7 @@ export const analyzeContent = async (options = {}) => {
     const payload = {
         content: options.content,
         file_path: options.filePath,
+        db_file_path: options.dbFilePath,
         model_type: options.modelType || 'text',
         prompt: options.prompt,
         max_tokens: options.maxTokens,
