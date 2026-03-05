@@ -88,6 +88,24 @@ class AnalysisStatusResponse(BaseModel):
     timestamp: str
 
 
+class ReanalyzeRequest(BaseModel):
+    """Request to re-analyze files with user hints."""
+    task_id: str = Field(..., description="Task ID")
+    file_paths: List[str] = Field(..., min_length=1, description="要重新分析的文件路径列表")
+    user_hint: str = Field(..., min_length=1, description="用户补充描述")
+    files_db_path: str = Field(..., description="Path to _files.db")
+    case_description: str = Field(default="", description="案情描述（可选，为空时自动获取）")
+
+
+class ReanalyzeResponse(BaseModel):
+    """Response for file re-analysis."""
+    success: bool
+    job_id: str
+    file_count: int
+    message: str
+    timestamp: str
+
+
 # ------------------------------------------------------------------
 # Background job tracking
 # ------------------------------------------------------------------
@@ -199,6 +217,74 @@ async def start_case_analysis(
         )
     except Exception as e:
         logger.error(f"Start case analysis failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/reanalyze-files", response_model=ReanalyzeResponse, responses={
+    200: {"description": "Re-analysis started successfully"},
+    400: {"description": "Invalid request"},
+    500: {"description": "Internal server error"},
+})
+async def reanalyze_files(
+    request: ReanalyzeRequest,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Re-analyze files with additional user context.
+
+    Used for secondary analysis when the user is unsatisfied with
+    the initial description. Combines case description + knowledge
+    graph context + user hint for improved results.
+
+    Supports multiple files with the same user hint.
+    """
+    import uuid
+
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+
+        case_service = _get_case_analysis_service(service_manager)
+
+        job_id = str(uuid.uuid4())
+        _analysis_jobs[job_id] = {
+            "status": "running",
+            "current_step": "重新分析",
+            "detail": f"正在重新分析 {len(request.file_paths)} 个文件...",
+            "task_id": request.task_id,
+            "result": None,
+        }
+
+        # Get case description if not provided
+        case_desc = request.case_description
+        if not case_desc:
+            try:
+                task_info = await service_manager.cpp_backend.get_task(request.task_id)
+                case_desc = task_info.get("case_description", "") if task_info else ""
+            except Exception:
+                pass
+
+        asyncio.create_task(
+            _run_reanalyze_background(
+                job_id=job_id,
+                case_service=case_service,
+                task_id=request.task_id,
+                file_paths=request.file_paths,
+                user_hint=request.user_hint,
+                files_db_path=request.files_db_path,
+                case_description=case_desc,
+            )
+        )
+
+        return ReanalyzeResponse(
+            success=True,
+            job_id=job_id,
+            file_count=len(request.file_paths),
+            message=f"已启动 {len(request.file_paths)} 个文件的重新分析",
+            timestamp=datetime.now().isoformat(),
+        )
+    except Exception as e:
+        logger.error(f"Start reanalyze failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -365,6 +451,41 @@ async def _run_case_analysis_background(
         }
     except Exception as e:
         logger.error(f"Background case analysis failed: {e}", exc_info=True)
+        _analysis_jobs[job_id]["status"] = "failed"
+        _analysis_jobs[job_id]["current_step"] = "错误"
+        _analysis_jobs[job_id]["detail"] = str(e)
+
+
+async def _run_reanalyze_background(
+    job_id: str,
+    case_service,
+    task_id: str,
+    file_paths: List[str],
+    user_hint: str,
+    files_db_path: str,
+    case_description: str,
+):
+    """Run file re-analysis in the background."""
+    try:
+        results = await case_service.reanalyze_files(
+            task_id=task_id,
+            file_paths=file_paths,
+            user_hint=user_hint,
+            files_db_path=files_db_path,
+            case_description=case_description,
+        )
+
+        successful = sum(1 for r in results if r.get("success"))
+        _analysis_jobs[job_id]["status"] = "completed"
+        _analysis_jobs[job_id]["current_step"] = "完成"
+        _analysis_jobs[job_id]["detail"] = f"重新分析完成: {successful}/{len(results)} 个文件成功"
+        _analysis_jobs[job_id]["result"] = {
+            "total": len(results),
+            "successful": successful,
+            "results": results,
+        }
+    except Exception as e:
+        logger.error(f"Background re-analysis failed: {e}", exc_info=True)
         _analysis_jobs[job_id]["status"] = "failed"
         _analysis_jobs[job_id]["current_step"] = "错误"
         _analysis_jobs[job_id]["detail"] = str(e)

@@ -89,6 +89,24 @@ export const getFilteredFiles = async (taskId) => {
     return await pythonApi.get(`/api/llm/filtered-files/${taskId}`);
 };
 
+/**
+ * 重新分析文件（二次分析）
+ * @param {string} taskId - 任务 ID
+ * @param {string[]} filePaths - 要重新分析的文件路径
+ * @param {string} userHint - 用户补充描述
+ * @param {string} filesDbPath - _files.db 路径
+ * @param {string} caseDescription - 案情描述（可选）
+ */
+export const reanalyzeFiles = async (taskId, filePaths, userHint, filesDbPath, caseDescription = '') => {
+    return await pythonApi.post('/api/llm/reanalyze-files', {
+        task_id: taskId,
+        file_paths: filePaths,
+        user_hint: userHint,
+        files_db_path: filesDbPath,
+        case_description: caseDescription,
+    });
+};
+
 export default {
     saveCaseDescription,
     startCaseAnalysis,
@@ -96,4 +114,5 @@ export default {
     pollCaseAnalysis,
     getCaseReport,
     getFilteredFiles,
+    reanalyzeFiles,
 };

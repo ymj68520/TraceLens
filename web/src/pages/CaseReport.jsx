@@ -1,10 +1,11 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
+import Button from '../components/common/Button';
 import { fetchTasks } from '../store/taskSlice';
 import {
     getCaseReport,
@@ -16,6 +17,7 @@ import {
 
 const CaseReport = () => {
     const [searchParams, setSearchParams] = useSearchParams();
+    const navigate = useNavigate();
     const taskId = searchParams.get('task_id');
 
     const dispatch = useDispatch();
@@ -217,18 +219,42 @@ const CaseReport = () => {
     };
 
     const renderInlineStyles = (text) => {
-        // Bold: **text**
-        const parts = text.split(/(\*\*[^*]+\*\*)/g);
-        return parts.map((part, i) => {
-            if (part.startsWith('**') && part.endsWith('**')) {
+        // First handle [[file:path]] references
+        const fileRefParts = text.split(/(\[\[file:[^\]]+\]\])/g);
+        const processed = fileRefParts.map((part, i) => {
+            const fileMatch = part.match(/^\[\[file:(.+)\]\]$/);
+            if (fileMatch) {
+                const filePath = fileMatch[1];
+                const fileName = filePath.split('/').pop();
                 return (
-                    <strong key={i} className="font-semibold text-slate-900">
-                        {part.slice(2, -2)}
-                    </strong>
+                    <a
+                        key={`file-${i}`}
+                        href={`/files?task_id=${taskId}&highlight=${encodeURIComponent(filePath)}`}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            navigate(`/files?task_id=${taskId}&highlight=${encodeURIComponent(filePath)}`);
+                        }}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md text-xs font-mono hover:bg-blue-100 dark:hover:bg-blue-800/40 transition-colors cursor-pointer border border-blue-200 dark:border-blue-700"
+                        title={filePath}
+                    >
+                        📄 {fileName}
+                    </a>
                 );
             }
-            return part;
+            // Then handle bold: **text**
+            const boldParts = part.split(/(\*\*[^*]+\*\*)/g);
+            return boldParts.map((bp, j) => {
+                if (bp.startsWith('**') && bp.endsWith('**')) {
+                    return (
+                        <strong key={`b-${i}-${j}`} className="font-semibold text-slate-900">
+                            {bp.slice(2, -2)}
+                        </strong>
+                    );
+                }
+                return bp;
+            });
         });
+        return processed;
     };
 
     // ---- Render: Task Selector ----
@@ -397,8 +423,8 @@ const CaseReport = () => {
                             onClick={handleStartAnalysis}
                             disabled={analyzing || !caseDescription.trim()}
                             className={`px-6 py-2.5 rounded-xl text-sm font-medium transition-all ${analyzing || !caseDescription.trim()
-                                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                                    : 'bg-gradient-to-r from-primary-500 to-purple-500 text-white hover:from-primary-600 hover:to-purple-600 shadow-lg hover:shadow-xl'
+                                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                : 'bg-gradient-to-r from-primary-500 to-purple-500 text-white hover:from-primary-600 hover:to-purple-600 shadow-lg hover:shadow-xl'
                                 }`}
                         >
                             {analyzing ? (
@@ -497,6 +523,13 @@ const CaseReport = () => {
                                     className="text-sm text-primary-600 hover:text-blue-800"
                                 >
                                     {showReport ? '收起' : '展开'}
+                                </button>
+                                <button
+                                    onClick={handleStartAnalysis}
+                                    disabled={analyzing || !caseDescription.trim()}
+                                    className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {analyzing ? '生成中...' : '🔄 重新生成'}
                                 </button>
                                 <button
                                     onClick={() => {

@@ -328,6 +328,120 @@ class CaseAnalysisService:
         return chunks if chunks else [text]
 
     # ------------------------------------------------------------------
+    # 3b. File Re-analysis (secondary analysis with user hints)
+    # ------------------------------------------------------------------
+    async def reanalyze_files(
+        self,
+        task_id: str,
+        file_paths: List[str],
+        user_hint: str,
+        files_db_path: str,
+        case_description: str = "",
+    ) -> List[Dict[str, Any]]:
+        """
+        Re-analyze files with additional user context.
+
+        Combines: case description + knowledge graph context + user hint
+        to generate an improved description.
+
+        Args:
+            task_id: Task identifier.
+            file_paths: List of file paths to re-analyze.
+            user_hint: User-provided additional description/hint.
+            files_db_path: Path to _files.db for persisting results.
+            case_description: Case description text.
+
+        Returns:
+            List of re-analysis results.
+        """
+        if not self._llm_service:
+            raise RuntimeError("LLM service not initialized")
+
+        # Retrieve knowledge graph context if available
+        kg_context = ""
+        if self._graphiti_service and task_id:
+            try:
+                search_results = await self._graphiti_service.search(
+                    query=user_hint,
+                    task_id=task_id,
+                    limit=10,
+                    include_relationships=True,
+                )
+                context_lines = []
+                for r in search_results:
+                    name = r.get("name", "")
+                    props = r.get("properties", {})
+                    body = props.get("body", "") or props.get("summary", "") or name
+                    if body:
+                        context_lines.append(f"- {body[:300]}")
+                if context_lines:
+                    kg_context = "\n".join(context_lines)
+            except Exception as e:
+                logger.warning(f"KG search for re-analysis failed: {e}")
+
+        results = []
+        total = len(file_paths)
+
+        for i, file_path in enumerate(file_paths):
+            try:
+                content = await self._llm_service.read_file_content(file_path)
+
+                prompt_parts = ["你是数字取证专家。请结合以下所有上下文信息，对该文件进行深度重新分析。"]
+
+                if case_description:
+                    prompt_parts.append(f"\n## 案情背景\n{case_description}")
+
+                if kg_context:
+                    prompt_parts.append(f"\n## 已有分析上下文（知识图谱）\n{kg_context}")
+
+                prompt_parts.append(f"\n## 用户补充说明\n{user_hint}")
+                prompt_parts.append(f"\n## 文件路径\n{file_path}")
+                prompt_parts.append(f"\n## 文件内容\n{content}")
+                prompt_parts.append("\n请提供：\n1. 更详细的文件内容描述\n2. 与案情的深度关联分析\n3. 关键发现或可疑信息\n4. 需要进一步调查的方向")
+
+                custom_prompt = "\n".join(prompt_parts)
+
+                result = await self._llm_service.analyze(
+                    content=content,
+                    model_type="text",
+                    prompt=custom_prompt,
+                )
+
+                analysis = result.get("analysis", {})
+                description = analysis.get("description", "")
+
+                # Persist updated description to _files.db
+                if files_db_path and description:
+                    self._llm_service.persist_to_files_db(
+                        db_path=files_db_path,
+                        file_path=file_path,
+                        description=description,
+                        summary=description[:200],
+                        keywords="",
+                        model_used=result.get("model", ""),
+                    )
+
+                results.append({
+                    "file_path": file_path,
+                    "description": description,
+                    "model_used": result.get("model", ""),
+                    "success": True,
+                    "reanalysis": True,
+                })
+
+            except Exception as e:
+                logger.warning(f"Re-analysis failed for {file_path}: {e}")
+                results.append({
+                    "file_path": file_path,
+                    "description": "",
+                    "error": str(e),
+                    "success": False,
+                    "reanalysis": True,
+                })
+
+        return results
+
+    # ------------------------------------------------------------------
     # 4. Final Case Report Generation (Graph-enhanced)
     # ------------------------------------------------------------------
     async def generate_case_report(
@@ -461,7 +575,11 @@ class CaseAnalysisService:
 {context}
 
 {chapter['instruction']}
-请使用Markdown格式，输出该章节内容（不要重复标题）。"""
+
+重要格式要求：
+- 请使用Markdown格式输出该章节内容（不要重复标题）
+- 当提及具体文件时，请使用 [[file:完整文件路径]] 格式引用，例如 [[file:/data/chat.db]]
+- 引用要自然融入正文，不要使用学术论文式的引注编号"""
 
             try:
                 result = await self._llm_service.analyze(
@@ -503,7 +621,10 @@ class CaseAnalysisService:
 4. **时间线梳理** — 如果可以从文件中推断时间线
 5. **结论与建议** — 总结分析结果，提出后续建议
 
-请确保报告语言专业、证据引用准确。"""
+重要格式要求：
+- 请确保报告语言专业、证据引用准确
+- 当提及具体文件时，请使用 [[file:完整文件路径]] 格式引用，例如 [[file:/data/chat.db]]
+- 引用要自然融入正文，不要使用学术论文式的引注编号"""
 
         result = await self._llm_service.analyze(
             content=user_prompt,

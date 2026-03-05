@@ -9,6 +9,7 @@ import Button from '../components/common/Button';
 import { getLargestFiles, getExtensionAnalysis } from '../services/forensicsService';
 import { startExtraction, pollExtractionStatus } from '../services/extractionService';
 import { analyzeContent, startBatchAnalysis, pollBatchStatus, getLLMStatus, getBatchStatus } from '../services/llmService';
+import { reanalyzeFiles, getCaseAnalysisStatus } from '../services/caseAnalysisService';
 import { ingestTaskData, getGraphitiStatus } from '../services/graphitiService';
 import { parseFile } from '../services/officeService';
 import { getTaskResults } from '../services/taskService';
@@ -65,6 +66,13 @@ const Files = () => {
   const [officePreview, setOfficePreview] = useState(null);
   const [officeParsing, setOfficeParsing] = useState(false);
   const [officeError, setOfficeError] = useState(null);
+
+  // Re-analysis state
+  const [showReanalyzeModal, setShowReanalyzeModal] = useState(false);
+  const [reanalyzeHint, setReanalyzeHint] = useState('');
+  const [reanalyzeTargetFiles, setReanalyzeTargetFiles] = useState([]);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [reanalyzeMessage, setReanalyzeMessage] = useState('');
 
   const currentTask = tasks.find((t) => t.id === taskId);
 
@@ -336,6 +344,74 @@ const Files = () => {
     }
   };
 
+  // Open re-analysis modal for single or multiple files
+  const openReanalyzeModal = (filePaths) => {
+    setReanalyzeTargetFiles(filePaths);
+    setReanalyzeHint('');
+    setReanalyzeMessage('');
+    setShowReanalyzeModal(true);
+  };
+
+  // Handle re-analysis submission
+  const handleReanalyze = async () => {
+    if (!reanalyzeHint.trim() || reanalyzeTargetFiles.length === 0) return;
+
+    setReanalyzing(true);
+    setReanalyzeMessage(`正在重新分析 ${reanalyzeTargetFiles.length} 个文件...`);
+
+    try {
+      const result = await reanalyzeFiles(
+        taskId,
+        reanalyzeTargetFiles,
+        reanalyzeHint.trim(),
+        currentTask?.output_files_db || '',
+      );
+
+      if (result.job_id) {
+        // Poll for completion
+        const poll = async () => {
+          try {
+            const status = await getCaseAnalysisStatus(result.job_id);
+            if (status.status === 'completed') {
+              setReanalyzeMessage(`✅ 重新分析完成`);
+              // Refresh file list
+              if (status.result?.results) {
+                const newDesc = {};
+                status.result.results.forEach((r) => {
+                  if (r.file_path && r.success) {
+                    newDesc[r.file_path] = {
+                      summary: r.description?.substring(0, 200),
+                      description: r.description,
+                      keywords: [],
+                      model: r.model_used,
+                      timestamp: new Date().toISOString(),
+                    };
+                  }
+                });
+                setLlmResults(prev => ({ ...prev, ...newDesc }));
+              }
+              setReanalyzing(false);
+              setTimeout(() => setShowReanalyzeModal(false), 1500);
+            } else if (status.status === 'failed') {
+              setReanalyzeMessage(`❌ 分析失败: ${status.detail}`);
+              setReanalyzing(false);
+            } else {
+              setReanalyzeMessage(status.detail || '分析中...');
+              setTimeout(poll, 2000);
+            }
+          } catch (err) {
+            setReanalyzeMessage(`❌ 状态查询失败: ${err.message}`);
+            setReanalyzing(false);
+          }
+        };
+        poll();
+      }
+    } catch (err) {
+      setReanalyzeMessage(`❌ 启动失败: ${err.message || '未知错误'}`);
+      setReanalyzing(false);
+    }
+  };
+
   // Toggle LLM description expansion
   const toggleDescription = (filePath) => {
     const newExpanded = new Set(expandedDescriptions);
@@ -592,6 +668,20 @@ const Files = () => {
                 ) : (
                   '🧠 批量分析'
                 )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const paths = [...selectedFiles].map(idx => {
+                    const f = filteredFiles[idx];
+                    return f.path || f.file_path;
+                  }).filter(Boolean);
+                  if (paths.length > 0) openReanalyzeModal(paths);
+                }}
+                disabled={selectedFiles.size === 0 || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
+              >
+                🔄 批量重新分析
               </Button>
               <Button
                 variant="outline"
@@ -875,13 +965,13 @@ const Files = () => {
                                             ? llmDesc.keywords.split(',')
                                             : llmDesc.keywords
                                           ).length > 3 && (
-                                            <span className="text-xs text-slate-500">
-                                              +{(typeof llmDesc.keywords === 'string'
-                                                ? llmDesc.keywords.split(',')
-                                                : llmDesc.keywords
-                                              ).length - 3} more
-                                            </span>
-                                          )}
+                                              <span className="text-xs text-slate-500">
+                                                +{(typeof llmDesc.keywords === 'string'
+                                                  ? llmDesc.keywords.split(',')
+                                                  : llmDesc.keywords
+                                                ).length - 3} more
+                                              </span>
+                                            )}
                                         </div>
                                       )}
 
@@ -915,6 +1005,16 @@ const Files = () => {
                                     '🧠 AI 分析'
                                   )}
                                 </Button>
+                              )}
+                              {/* Re-analyze button - shown when description exists */}
+                              {hasDescription && (
+                                <button
+                                  onClick={() => openReanalyzeModal([filePath])}
+                                  disabled={llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available'}
+                                  className="text-xs text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300 flex items-center gap-1 mt-1"
+                                >
+                                  🔄 重新分析
+                                </button>
                               )}
                             </div>
                           </td>
@@ -1146,6 +1246,107 @@ const Files = () => {
           </div>
         </Card>
       )}
+      {/* Re-analysis Modal */}
+      <ReanalyzeModal
+        show={showReanalyzeModal}
+        onClose={() => !reanalyzing && setShowReanalyzeModal(false)}
+        targetFiles={reanalyzeTargetFiles}
+        hint={reanalyzeHint}
+        setHint={setReanalyzeHint}
+        onSubmit={handleReanalyze}
+        reanalyzing={reanalyzing}
+        message={reanalyzeMessage}
+      />
+    </div>
+  );
+};
+
+// Re-analysis Modal
+const ReanalyzeModal = ({ show, onClose, targetFiles, hint, setHint, onSubmit, reanalyzing, message }) => {
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full mx-4 p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+            🔄 重新分析文件
+          </h3>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="mb-4">
+          <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">
+            将对 <span className="font-bold text-purple-600">{targetFiles.length}</span> 个文件进行二次分析，结合案情描述和知识图谱上下文。
+          </p>
+          {targetFiles.length <= 3 && (
+            <div className="space-y-1 mb-3">
+              {targetFiles.map((f, i) => (
+                <div key={i} className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate">
+                  📄 {f}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+            补充描述 / 分析提示
+          </label>
+          <textarea
+            value={hint}
+            onChange={(e) => setHint(e.target.value)}
+            placeholder="请输入对该文件的额外描述或分析方向，例如：请重点关注转账记录和可疑联系人..."
+            className="w-full h-28 px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white text-sm resize-none focus:ring-2 focus:ring-purple-500"
+            disabled={reanalyzing}
+          />
+        </div>
+
+        {message && (
+          <div className={`mb-4 p-3 rounded-xl text-sm ${message.startsWith('✅') ? 'bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-200' :
+            message.startsWith('❌') ? 'bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200' :
+              'bg-blue-50 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
+            }`}>
+            {message}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl"
+            disabled={reanalyzing}
+          >
+            取消
+          </button>
+          <button
+            onClick={onSubmit}
+            disabled={reanalyzing || !hint.trim()}
+            className={`px-6 py-2 rounded-xl text-sm font-medium transition-all ${reanalyzing || !hint.trim()
+              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-lg'
+              }`}
+          >
+            {reanalyzing ? (
+              <span className="flex items-center">
+                <Spinner size="sm" />
+                <span className="ml-2">分析中...</span>
+              </span>
+            ) : (
+              '🔄 开始重新分析'
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
