@@ -1,5 +1,6 @@
 #include "ConfigManager.h"
 #include "dotenv.h"
+#include "PathManager/PathManager.h"
 
 #include <sstream>
 #include <sstream>
@@ -21,6 +22,19 @@ bool ConfigManager::load(const std::string& envPath) {
         "../../" + envPath,
         "../../../" + envPath
     };
+
+    // Also search in PathManager-derived directories (exe dir, project root)
+    try {
+        auto& pm = forensics::PathManager::instance();
+        if (pm.isInitialized()) {
+            searchPaths.insert(searchPaths.begin() + 1,
+                (pm.getExeDir() / envPath).string());
+            searchPaths.insert(searchPaths.begin() + 2,
+                (pm.getProjectRoot() / envPath).string());
+        }
+    } catch (...) {
+        // PathManager not initialized yet, skip
+    }
 
     for (const auto& path : searchPaths) {
         if (!std::filesystem::exists(path)) {

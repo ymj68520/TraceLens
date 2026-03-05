@@ -26,6 +26,9 @@
 #include "FullTextSearch/FullTextSearch.h"
 #include "FullTextSearch/TextExtractor.h"
 #include "FileCarving/FileCarver.h"
+#include "PathManager/PathManager.h"
+#include "LLMIntegration/ConfigManager.h"
+#include "AuditLog/AuditLog.h"
 
 
 namespace fs = std::filesystem;
@@ -224,8 +227,31 @@ int main(int argc, char* argv[]) {
 	CommandLineArgs cmdArgs = parseArgs(argc, argv);
 #endif
 
+	// Initialize PathManager with executable path
+	forensics::PathManager::instance().initialize(argv[0]);
+
 	if (cmdArgs.httpServer) {
 		std::cout << "Starting HTTP Server on port " << cmdArgs.httpPort << std::endl;
+
+		// Apply .env settings to PathManager (PROJECT_ROOT, DATA_DIR)
+		auto& configMgr = forensics::llm::ConfigManager::instance();
+		if (configMgr.load(".env")) {
+			auto& pm = forensics::PathManager::instance();
+			std::string projectRoot = configMgr.get("PROJECT_ROOT", "");
+			std::string dataDir = configMgr.get("DATA_DIR", "data");
+			pm.setProjectRoot(projectRoot);
+			pm.setDataDirName(dataDir);
+			pm.ensureDirectories();
+		} else {
+			// Even without .env, ensure directories with defaults
+			forensics::PathManager::instance().ensureDirectories();
+		}
+
+		// Initialize AuditLog with PathManager-derived path
+		AuditLogConfig auditConfig;
+		auditConfig.db_path = forensics::PathManager::instance().getAuditDbPath().string();
+		AuditLog::instance(auditConfig);
+
 		asio::io_context ioc;
 		forensics::HTTPServer server(ioc);
 		server.run(cmdArgs.httpPort);

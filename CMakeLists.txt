@@ -90,6 +90,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/core/FullTextSearch
   ${CMAKE_SOURCE_DIR}/src/core/DatabaseManager
   ${CMAKE_SOURCE_DIR}/src/core/AuditLog
+  ${CMAKE_SOURCE_DIR}/src/core/PathManager
   # Analyzer modules
   ${CMAKE_SOURCE_DIR}/src/analyzers
   ${CMAKE_SOURCE_DIR}/src/analyzers/FileCarving
@@ -196,6 +197,7 @@ set(LIB_SOURCES
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxHistoryParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxArtifactsParsers.cpp
     src/core/AuditLog/AuditLog.cpp
+    src/core/PathManager/PathManager.cpp
     src/core/FullTextSearch/FullTextSearch.cpp
     src/core/FullTextSearch/TextExtractor.cpp
     src/core/TOONExporter/TOONExporter.cpp
@@ -407,7 +409,8 @@ if(BUILD_PYTHON_SERVICE)
         start_all
         COMMAND ${CMAKE_SOURCE_DIR}/scripts/start_all_services.sh
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        COMMENT "Starting all services (C++ server, Python service, Web frontend)")
+        COMMENT
+          "Starting all services (C++ server, Python service, Web frontend)")
 
       message(STATUS "Python service setup configured")
       message(STATUS "  Source: ${PYTHON_SERVICE_DIR}")

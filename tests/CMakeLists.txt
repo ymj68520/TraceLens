@@ -138,6 +138,7 @@ add_executable(
   test_llm_integration
   UnitTest/test_llm_integration.cpp
   ../src/integration/LLMIntegration/ConfigManager.cpp
+  ../src/core/PathManager/PathManager.cpp
   ../src/core/Logger/Logger.cpp
   ../src/core/ThreadPool/ThreadPool.cpp
   ../src/integration/LLMIntegration/LLMClient.cpp
@@ -154,6 +155,7 @@ add_executable(
 target_include_directories(
   test_llm_integration
   PRIVATE ${CMAKE_SOURCE_DIR}/src/integration/LLMIntegration
+          ${CMAKE_SOURCE_DIR}/src/core/PathManager
           ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/include
           ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/common
           ${CMAKE_SOURCE_DIR}/src/analyzers/PDFAnalyzer
@@ -218,6 +220,7 @@ add_executable(
   llm_files_test
   llm_files_test.cpp
   ../src/integration/LLMIntegration/ConfigManager.cpp
+  ../src/core/PathManager/PathManager.cpp
   ../src/core/Logger/Logger.cpp
   ../src/core/ThreadPool/ThreadPool.cpp
   ../src/integration/LLMIntegration/LLMClient.cpp
@@ -255,11 +258,13 @@ add_executable(
   test_config_manager
   UnitTest/test_config_manager.cpp
   ../src/integration/LLMIntegration/ConfigManager.cpp
-  ../libs/cpp-dotenv/include/dotenv.h)
+  ../src/core/PathManager/PathManager.cpp ../libs/cpp-dotenv/include/dotenv.h)
 
 target_include_directories(
-  test_config_manager PRIVATE ${CMAKE_SOURCE_DIR}/src/integration/LLMIntegration
-                              ${CMAKE_SOURCE_DIR}/libs/cpp-dotenv/include)
+  test_config_manager
+  PRIVATE ${CMAKE_SOURCE_DIR}/src/integration/LLMIntegration
+          ${CMAKE_SOURCE_DIR}/src/core/PathManager
+          ${CMAKE_SOURCE_DIR}/libs/cpp-dotenv/include)
 
 target_link_libraries(test_config_manager ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
                       pthread cpp_dotenv)

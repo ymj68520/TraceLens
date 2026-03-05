@@ -1,0 +1,133 @@
+#include "PathManager.h"
+#include <iostream>
+
+namespace forensics {
+
+PathManager& PathManager::instance() {
+    static PathManager inst;
+    return inst;
+}
+
+void PathManager::initialize(const std::string& executablePath) {
+    namespace fs = std::filesystem;
+
+    try {
+        // Resolve symlinks and get absolute path of the executable
+        fs::path exePath;
+        
+        // Try /proc/self/exe first (Linux-specific, most reliable)
+#ifdef __linux__
+        if (fs::exists("/proc/self/exe")) {
+            exePath = fs::canonical("/proc/self/exe");
+        } else
+#endif
+        {
+            exePath = fs::canonical(executablePath);
+        }
+        
+        exeDir_ = exePath.parent_path();
+    } catch (const fs::filesystem_error&) {
+        // Fallback: use current directory
+        exeDir_ = fs::current_path();
+        std::cerr << "[PathManager] Warning: could not resolve executable path, "
+                     "falling back to CWD: " << exeDir_ << std::endl;
+    }
+
+    // Default projectRoot_ to exeDir_ (overridden later if PROJECT_ROOT is set)
+    projectRoot_ = exeDir_;
+    initialized_ = true;
+
+    std::cout << "[PathManager] Executable dir : " << exeDir_ << std::endl;
+    std::cout << "[PathManager] Data dir       : " << getDataDir() << std::endl;
+}
+
+void PathManager::ensureDirectories() const {
+    namespace fs = std::filesystem;
+    fs::create_directories(getDataDir());
+    fs::create_directories(getDataDir() / "tasks");
+    fs::create_directories(getAuditDir());
+    fs::create_directories(getLogsDir());
+}
+
+// --- root paths ---
+
+std::filesystem::path PathManager::getExeDir() const {
+    return exeDir_;
+}
+
+std::filesystem::path PathManager::getProjectRoot() const {
+    return projectRoot_;
+}
+
+std::filesystem::path PathManager::getDataDir() const {
+    return exeDir_ / dataDirName_;
+}
+
+// --- sub-directories ---
+
+std::filesystem::path PathManager::getTaskDir(const std::string& taskId) const {
+    return getDataDir() / "tasks" / taskId;
+}
+
+std::filesystem::path PathManager::getAuditDir() const {
+    return getDataDir() / "audit";
+}
+
+std::filesystem::path PathManager::getLogsDir() const {
+    return getDataDir() / "logs";
+}
+
+// --- specific file paths ---
+
+std::filesystem::path PathManager::getTasksJsonPath() const {
+    return getDataDir() / "tasks.json";
+}
+
+std::filesystem::path PathManager::getAuditDbPath() const {
+    return getAuditDir() / "forensics_audit.db";
+}
+
+std::filesystem::path PathManager::getLogFilePath() const {
+    return getLogsDir() / "forensics.log";
+}
+
+std::filesystem::path PathManager::getDebugLogPath() const {
+    return getLogsDir() / "debug.log";
+}
+
+// --- per-task database paths ---
+
+PathManager::TaskDbPaths PathManager::getTaskDbPaths(
+        const std::string& taskId,
+        const std::string& /*imageName*/) const {
+    auto dir = getTaskDir(taskId);
+    return {
+        dir / "raw.db",
+        dir / "events.db",
+        dir / "files.db",
+        dir / "android.db",
+        dir / "oss.db",
+        dir / "windows.db",
+        dir / "linux.db"
+    };
+}
+
+void PathManager::ensureTaskDir(const std::string& taskId) const {
+    std::filesystem::create_directories(getTaskDir(taskId));
+}
+
+// --- configuration helpers ---
+
+void PathManager::setDataDirName(const std::string& name) {
+    if (!name.empty()) {
+        dataDirName_ = name;
+    }
+}
+
+void PathManager::setProjectRoot(const std::string& root) {
+    if (!root.empty()) {
+        projectRoot_ = root;
+    }
+}
+
+} // namespace forensics

@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     python_http_port: int = Field(default=8090, alias="PYTHON_HTTP_PORT")
     python_http_host: str = Field(default="0.0.0.0", alias="PYTHON_HTTP_HOST")
     
+    # Project Path Settings
+    project_root: str = Field(default="", alias="PROJECT_ROOT")
+    data_dir: str = Field(default="data", alias="DATA_DIR")
+    
     # C++ Backend Settings
     cpp_backend_url: str = Field(default="http://localhost:8080", alias="CPP_BACKEND_URL")
     http_server_port: int = Field(default=8080, alias="HTTP_SERVER_PORT")

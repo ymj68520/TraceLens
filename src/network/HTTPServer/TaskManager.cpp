@@ -1,5 +1,6 @@
 #include "TaskManager.h"
 #include <fstream>
+#include "PathManager/PathManager.h"
 
 // JSON serialization helpers
 NLOHMANN_JSON_SERIALIZE_ENUM(TaskStatus, {
@@ -154,7 +155,8 @@ void TaskManager::save_tasks() {
         j.push_back(pair.second);
     }
     
-    std::ofstream out("tasks.json");
+    auto tasksPath = forensics::PathManager::instance().getTasksJsonPath();
+    std::ofstream out(tasksPath);
     if(out.is_open()) {
         out << j.dump(4);
     }
@@ -162,7 +164,8 @@ void TaskManager::save_tasks() {
 
 void TaskManager::load_tasks() {
     std::lock_guard<std::mutex> lock(mtx_);
-    std::ifstream in("tasks.json");
+    auto tasksPath = forensics::PathManager::instance().getTasksJsonPath();
+    std::ifstream in(tasksPath);
     if(in.is_open()) {
         try {
             nlohmann::json j;
@@ -566,14 +569,26 @@ void TaskManager::start_analysis(const std::string& task_id) {
             // Generate DB paths
             std::filesystem::path p(imagePath);
             std::string baseName = p.stem().string();
-            std::string outPrefix = "";
+
+            // Use PathManager for per-task directory (HTTP Server mode)
+            auto& pm = forensics::PathManager::instance();
+            std::string rawDbPath, eventDbPath, fileDbPath;
+
             if (!task.db_output_dir.empty()) {
+                // Legacy override: use user-specified db_output_dir
                 std::filesystem::create_directories(task.db_output_dir);
-                outPrefix = task.db_output_dir + "/";
+                std::string outPrefix = task.db_output_dir + "/";
+                rawDbPath = outPrefix + baseName + "_raw.db";
+                eventDbPath = outPrefix + baseName + "_events.db";
+                fileDbPath = outPrefix + baseName + "_files.db";
+            } else {
+                // New default: data/tasks/<task_id>/
+                pm.ensureTaskDir(task_id);
+                auto dbPaths = pm.getTaskDbPaths(task_id, baseName);
+                rawDbPath = dbPaths.rawDb.string();
+                eventDbPath = dbPaths.eventsDb.string();
+                fileDbPath = dbPaths.filesDb.string();
             }
-            std::string rawDbPath = outPrefix + baseName + "_raw.db";
-            std::string eventDbPath = outPrefix + baseName + "_events.db";
-            std::string fileDbPath = outPrefix + baseName + "_files.db";
 
             // Set database paths in the task
             {
@@ -675,7 +690,12 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 auto dbManager = std::make_unique<DatabaseManager>(rawDbPath);
                 auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(imagePath, dbManager.get());
 
-                std::string androidDbPath = outPrefix + baseName + "_android.db";
+                std::string androidDbPath;
+                if (!task.db_output_dir.empty()) {
+                    androidDbPath = task.db_output_dir + "/" + baseName + "_android.db";
+                } else {
+                    androidDbPath = pm.getTaskDbPaths(task_id, baseName).androidDb.string();
+                }
                 androidAnalyzer->setOutputDatabasePath(androidDbPath);
 
                 if (androidAnalyzer->initialize()) {
