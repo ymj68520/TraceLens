@@ -10,6 +10,7 @@ Workflow:
 All results are persisted to the _files.db SQLite database.
 """
 
+import os
 import json
 import logging
 import sqlite3
@@ -44,6 +45,7 @@ class CaseAnalysisService:
         # Will be injected after ServiceManager init
         self._llm_service = None
         self._graphiti_service = None
+        self._cpp_backend = None
 
     def set_llm_service(self, llm_service):
         """Inject the LLM service dependency."""
@@ -53,29 +55,317 @@ class CaseAnalysisService:
         """Inject the Graphiti knowledge graph service (optional)."""
         self._graphiti_service = graphiti_service
 
+    def set_cpp_backend(self, cpp_backend):
+        """Inject the C++ backend service dependency."""
+        self._cpp_backend = cpp_backend
+
     # ------------------------------------------------------------------
     # 1. File Filtering — LLM selects forensically relevant files
+    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # 1. File Filtering — LLM selects forensically relevant files (Streaming with TOON)
     # ------------------------------------------------------------------
     async def filter_files_by_case(
         self,
         files_db_path: str,
         case_description: str,
         max_files: int = 200,
+        batch_size: int = 50,
+        use_streaming: bool = True,
+        task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Let LLM select important files based on case description.
-
-        Args:
-            files_db_path: Path to the _files.db.
-            case_description: User-provided case description.
-            max_files: Max number of files to select.
-
-        Returns:
-            Dict with filtered_files list and llm reasoning.
         """
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
 
+        # If streaming is disabled, fall back to old method
+        if not use_streaming:
+            return await self._filter_files_by_case_legacy(
+                files_db_path, case_description, max_files, task_id
+            )
+
+        return await self._filter_files_by_case_streaming(
+            files_db_path, case_description, max_files, batch_size, task_id
+        )
+
+    async def _filter_files_by_case_streaming(
+        self,
+        files_db_path: str,
+        case_description: str,
+        max_files: int,
+        batch_size: int,
+        task_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Streaming file filtering using TOON format to avoid context overflow."""
+        if not self._cpp_backend:
+            raise RuntimeError("C++ backend service not initialized for TOON export")
+
+        try:
+            # Get task_id from files_db_path if not provided
+            if not task_id:
+                import re
+                # Try new path format: .../tasks/<uuid>/files.db
+                task_match = re.search(r'tasks/([a-f0-9-]+)/', files_db_path)
+                if not task_match:
+                    # Try legacy format: <task_id>_files.db
+                    task_match = re.search(r'(\w+)_files\.db$', files_db_path)
+                
+                if not task_match:
+                    raise RuntimeError(f"Cannot extract task_id from {files_db_path}")
+                task_id = task_match.group(1)
+
+            logger.info(f"Fetching TOON data for task {task_id}...")
+            toon_data = await self._cpp_backend.get_files_toon_stream(
+                task_id=task_id,
+                batch_size=batch_size,
+                include_llm=False,
+            )
+
+            schema = toon_data.get("schema", "")
+            data_lines = toon_data.get("data_lines", [])
+            total_files = toon_data.get("total_files", 0)
+
+            if total_files == 0:
+                return {
+                    "filtered_files": [],
+                    "reasoning": "No files found in database.",
+                    "total_files": 0,
+                    "selected_count": 0,
+                    "streaming_used": True,
+                }
+
+            logger.info(f"Processing {total_files} files in batches of {batch_size}")
+
+            # Split into batches
+            batches = []
+            for i in range(0, len(data_lines), batch_size):
+                batches.append(data_lines[i:i + batch_size])
+
+            all_selected_files = []
+            batch_reasonings = []
+
+            # Process each batch
+            for batch_idx, batch_lines in enumerate(batches):
+                logger.info(f"Processing batch {batch_idx + 1}/{len(batches)} ({len(batch_lines)} files)")
+
+                # Build TOON prompt for this batch
+                batch_toon = f"{schema}\n" + "\n".join(batch_lines)
+
+                batch_prompt = self._build_batch_filter_prompt(
+                    case_description=case_description,
+                    batch_toon=batch_toon,
+                    batch_number=batch_idx + 1,
+                    total_batches=len(batches),
+                    max_files=max_files,
+                    already_selected=len(all_selected_files),
+                )
+
+                try:
+                    result = await self._llm_service.analyze(
+                        content=batch_toon,
+                        model_type="text",
+                        prompt=batch_prompt,
+                        max_tokens=self.settings.llm_text_max_tokens,
+                    )
+
+                    response_text = result.get("analysis", {}).get("description", "")
+                    parsed = self._parse_toon_filter_response(response_text, batch_lines)
+
+                    # Accumulate selected files
+                    all_selected_files.extend(parsed["selected_files"])
+                    if parsed.get("reasoning"):
+                        batch_reasonings.append(parsed["reasoning"])
+
+                    logger.info(f"Batch {batch_idx + 1}: selected {len(parsed['selected_files'])} files (total: {len(all_selected_files)})")
+
+                    # Stop if we've reached max_files
+                    if len(all_selected_files) >= max_files:
+                        logger.info(f"Reached max_files limit ({max_files}), stopping early")
+                        break
+
+                except Exception as e:
+                    logger.warning(f"Batch {batch_idx + 1} failed: {e}")
+                    continue
+
+            # Deduplicate while preserving order
+            seen = set()
+            unique_selected = []
+            for f in all_selected_files:
+                if f not in seen:
+                    seen.add(f)
+                    unique_selected.append(f)
+
+            # Trim to max_files if needed
+            final_selected = unique_selected[:max_files]
+
+            # Persist filtered file list to database
+            # Extract task_id from files_db_path
+            import re
+            task_id_extracted = "_latest"
+            task_match = re.search(r'tasks/([a-f0-9-]+)/', files_db_path)
+            if task_match:
+                task_id_extracted = task_match.group(1)
+            
+            self._persist_filtered_files(files_db_path, task_id_extracted, final_selected)
+
+            logger.info(f"Task {task_id_extracted}: Filtering complete. Selected {len(final_selected)} files.")
+            if not final_selected:
+                logger.warning(f"Task {task_id_extracted}: No files matched case description in LLM output.")
+
+            combined_reasoning = " | ".join(batch_reasonings) if batch_reasonings else "Streaming filtering completed"
+
+            return {
+                "filtered_files": final_selected,
+                "reasoning": combined_reasoning,
+                "total_files": total_files,
+                "selected_count": len(final_selected),
+                "model_used": "streaming_llm",
+                "streaming_used": True,
+                "batches_processed": len(batches),
+            }
+
+        except Exception as e:
+            logger.error(f"Streaming file filtering failed: {e}", exc_info=True)
+            # Fall back to legacy method
+            logger.info("Falling back to legacy filtering method")
+            return await self._filter_files_by_case_legacy(
+                files_db_path, case_description, max_files
+            )
+
+    def _build_batch_filter_prompt(
+        self,
+        case_description: str,
+        batch_toon: str,
+        batch_number: int,
+        total_batches: int,
+        max_files: int,
+        already_selected: int,
+    ) -> str:
+        """Build prompt for batch filtering with TOON format."""
+        return f"""你是数字取证专家，正在分析一个案件。
+
+## 案情描述
+{case_description}
+
+## 文件列表（TOON格式 - 第{batch_number}/{total_batches}批）
+{batch_toon}
+
+## 任务
+从上述文件列表中选择与案情相关的文件。注意：
+1. 这是第{batch_number}/{total_batches}批数据
+2. 全局最多选择{max_files}个文件，已选择{already_selected}个
+3. 返回JSON格式：{{"selected_files": ["path1", "path2", ...], "reasoning": "选择原因"}}"""
+
+    def _parse_toon_filter_response(
+        self,
+        response_text: str,
+        batch_lines: List[str],
+    ) -> Dict[str, Any]:
+        """Parse LLM response from TOON batch filtering with robustness."""
+        selected_files = []
+        reasoning = ""
+
+        try:
+            # 1. Pre-process text to find JSON
+            text = response_text.strip()
+            # Remove markdown code blocks if present
+            if "```" in text:
+                import re
+                json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
+                if json_match:
+                    text = json_match.group(1)
+            
+            # Find the first '[' or '{' and last ']' or '}'
+            start_idx = text.find('[')
+            start_brace = text.find('{')
+            if start_brace != -1 and (start_idx == -1 or start_brace < start_idx):
+                start_idx = start_brace
+            
+            end_idx = text.rfind(']')
+            end_brace = text.rfind('}')
+            if end_brace != -1 and (end_idx == -1 or end_brace > end_idx):
+                end_idx = end_brace
+                
+            if start_idx != -1 and end_idx != -1:
+                text = text[start_idx:end_idx+1]
+
+            # 2. Parse JSON
+            parsed = json.loads(text)
+            
+            selected_paths = []
+            if isinstance(parsed, list):
+                # Format: ["path1", "path2"]
+                selected_paths = parsed
+            elif isinstance(parsed, dict):
+                # Format: {"selected_files": [...], "reasoning": "..."}
+                selected_paths = parsed.get("selected_files", []) or parsed.get("filtered_files", [])
+                reasoning = parsed.get("reasoning", "")
+            
+            # 3. Match against batch lines
+            all_paths_in_batch = []
+            for line in batch_lines:
+                parts = line.split(" | ")
+                if parts:
+                    all_paths_in_batch.append(parts[0].strip())
+
+            for path in selected_paths:
+                if not isinstance(path, str): continue
+                path_clean = path.strip().strip('"').strip("'")
+                # 1. Exact match in batch
+                matching_paths = [p for p in all_paths_in_batch if p == path_clean]
+                
+                # 2. Filename match (if only filename provided)
+                if not matching_paths:
+                    matching_paths = [p for p in all_paths_in_batch if Path(p).name == path_clean]
+                
+                # 3. Partial path match (case insensitive)
+                if not matching_paths:
+                    matching_paths = [p for p in all_paths_in_batch if path_clean.lower() in p.lower()]
+                
+                selected_files.extend(matching_paths)
+
+        except Exception as e:
+            logger.warning(f"JSON parse failed for filter response: {e}. Falling back to text pattern matching.")
+            # Aggressive fallback: search every filename in the response text
+            for line in batch_lines:
+                parts = line.split(" | ")
+                if parts:
+                    full_path = parts[0].strip()
+                    filename = Path(full_path).name
+                    # Look for filename as a separate word in the response
+                    import re
+                    if re.search(rf'\b{re.escape(filename)}\b', response_text) or \
+                       re.search(rf'"{re.escape(filename)}"', response_text):
+                        selected_files.append(full_path)
+
+        # Deduplicate while preserving order
+        seen = set()
+        unique_files = []
+        for f in selected_files:
+            if f not in seen:
+                unique_files.append(f)
+                seen.add(f)
+
+        return {
+            "selected_files": unique_files,
+            "reasoning": reasoning,
+        }
+
+    async def _filter_files_by_case_legacy(
+        self,
+        files_db_path: str,
+        case_description: str,
+        max_files: int = 200,
+        task_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+
+        """
+        Legacy file filtering method (single large prompt).
+
+        NOT RECOMMENDED for large file sets due to context overflow risk.
+        """
         # Read file list from database
         all_files = self._get_file_list_from_db(files_db_path)
         if not all_files:
@@ -83,8 +373,6 @@ class CaseAnalysisService:
 
         # Build a concise file summary for the LLM
         file_summary = self._build_file_summary(all_files)
-
-        system_prompt = FILE_FILTER_SYSTEM
 
         user_prompt = FILE_FILTER_USER_TEMPLATE.format(
             case_description=case_description,
@@ -104,8 +392,15 @@ class CaseAnalysisService:
             response_text = result.get("analysis", {}).get("description", "")
             parsed = self._parse_filter_response(response_text, all_files)
 
+            # Extract task_id from files_db_path if not provided
+            task_id_extracted = "_latest"
+            import re
+            task_match = re.search(r'tasks/([a-f0-9-]+)/', files_db_path)
+            if task_match:
+                task_id_extracted = task_match.group(1)
+
             # Persist filtered file list to database
-            self._persist_filtered_files(files_db_path, parsed["selected_files"])
+            self._persist_filtered_files(files_db_path, task_id_extracted, parsed["selected_files"])
 
             return {
                 "filtered_files": parsed["selected_files"],
@@ -113,116 +408,228 @@ class CaseAnalysisService:
                 "total_files": len(all_files),
                 "selected_count": len(parsed["selected_files"]),
                 "model_used": result.get("model", ""),
+                "streaming_used": False,
             }
         except Exception as e:
             logger.error(f"File filtering failed: {e}", exc_info=True)
             raise
 
+    async def extract_filtered_files(
+        self,
+        task_id: str,
+        file_paths: List[str],
+        extraction_dir: Optional[str] = None,
+        progress_callback=None,
+    ) -> Dict[str, Any]:
+        """
+        Extract filtered files to local disk.
+
+        Calls C++ backend's file extraction API to extract selected files
+        from the disk image so they can be analyzed by LLM.
+
+        Args:
+            task_id: Task ID
+            file_paths: List of file paths to extract
+            extraction_dir: Extraction directory (None = use default)
+            progress_callback: Progress callback (current, total, file_path)
+
+        Returns:
+            Dict containing extraction results
+        """
+        if not file_paths:
+            return {"success": True, "extracted_count": 0, "extraction_dir": ""}
+
+        if not self._cpp_backend:
+            raise RuntimeError("C++ backend service not initialized")
+
+        try:
+            # Get task info to determine extraction directory
+            task_info = await self._cpp_backend.get_task(task_id)
+            if not task_info:
+                logger.error(f"Task {task_id} not found when trying to extract files.")
+                raise RuntimeError(f"Task {task_id} not found")
+
+            # Determine extraction directory
+            # Priority: extraction_dir parameter > task's extraction_directory > default
+            if not extraction_dir:
+                extraction_dir = task_info.get("extraction_directory", "")
+            
+            # Make it absolute if it's not
+            if extraction_dir and not os.path.isabs(extraction_dir):
+                project_root = os.path.abspath(os.path.join(os.getcwd(), ".."))
+                if not os.path.exists(os.path.join(project_root, "build")):
+                    project_root = os.getcwd()
+                extraction_dir = os.path.join(project_root, extraction_dir)
+
+            if not extraction_dir:
+                # Use task-specific directory under default extracted_files
+                project_root = os.path.abspath(os.path.join(os.getcwd(), ".."))
+                if not os.path.exists(os.path.join(project_root, "build")):
+                    project_root = os.getcwd()
+                extraction_dir = os.path.join(project_root, "build", "data", "tasks", task_id, "extracted_files")
+
+            logger.info(f"Task {task_id}: Final determined extraction directory: {extraction_dir}")
+            logger.info(f"Task {task_id}: Starting targeted extraction of {len(file_paths)} files")
+
+            # Start extraction task
+            extract_result = await self._cpp_backend.extract_files(
+                task_id=task_id,
+                file_paths=file_paths,
+                output_dir=extraction_dir,
+                overwrite=False,  # Don't overwrite existing files
+            )
+
+            job_id = extract_result.get("job_id")
+            if not job_id:
+                logger.error(f"Task {task_id}: Extraction API failed to return job_id. Result: {extract_result}")
+                raise RuntimeError("Extract API did not return a job_id")
+
+            logger.info(f"Task {task_id}: Extraction job {job_id} started. Waiting for completion...")
+
+            # Poll for completion
+            import asyncio
+            max_wait = 600  # 10 minutes timeout
+            start_time = asyncio.get_event_loop().time()
+            poll_interval = 2  # Check every 2 seconds
+
+            while True:
+                status = await self._cpp_backend.get_extraction_status(job_id)
+                state = status.get("status", "unknown")
+                
+                # Log progress periodically
+                if state == "running":
+                    logger.info(f"Job {job_id} progress: {status.get('progress', 0)}% ({status.get('extracted_files', 0)}/{status.get('total_files', len(file_paths))})")
+
+                if state == "completed":
+                    logger.info(f"Task {task_id}: Extraction job {job_id} completed successfully.")
+                    return {
+                        "success": True,
+                        "extracted_count": status.get("extracted_files", 0),
+                        "extraction_dir": status.get("output_path", extraction_dir),
+                    }
+                elif state == "failed":
+                    error_msg = status.get("error_details", "Unknown error")
+                    raise RuntimeError(f"Extraction failed: {error_msg}")
+                elif state == "cancelled":
+                    raise RuntimeError("Extraction was cancelled")
+
+                # Check timeout
+                if asyncio.get_event_loop().time() - start_time > max_wait:
+                    raise RuntimeError("Extraction timeout after 10 minutes")
+
+                # Report progress
+                if progress_callback:
+                    extracted = status.get("extracted_files", 0)
+                    total_files = status.get("total_files", len(file_paths))
+                    await progress_callback(extracted, total_files, f"提取中... ({extracted}/{total_files})")
+
+                await asyncio.sleep(poll_interval)
+
+        except RuntimeError:
+            raise
+        except Exception as e:
+            logger.error(f"File extraction failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "extracted_count": 0,
+                "extraction_dir": "",
+            }
+
     # ------------------------------------------------------------------
-    # 2. Per-file Description Generation
+    # 3. Per-file Description Generation
     # ------------------------------------------------------------------
     async def generate_file_descriptions(
         self,
         files_db_path: str,
         file_paths: List[str],
         case_description: str,
+        extraction_dir: Optional[str] = None,
         progress_callback=None,
     ) -> List[Dict[str, Any]]:
         """
-        Generate LLM description for each file in the list.
-
-        Args:
-            files_db_path: Path to _files.db for persisting results.
-            file_paths: List of file paths to analyze.
-            case_description: Case context for better descriptions.
-            progress_callback: Optional async callback(current, total, file_path).
-
-        Returns:
-            List of analysis results.
+        Generate LLM description for each file in the list using concurrency.
         """
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
 
-        results = []
         total = len(file_paths)
-
-        # Image file extensions for auto-detection
         IMAGE_EXTENSIONS = {
             '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif',
             '.svg', '.ico', '.heic', '.heif', '.raw', '.cr2', '.nef', '.arw'
         }
 
-        for i, file_path in enumerate(file_paths):
-            try:
-                file_ext = Path(file_path).suffix.lower()
-                is_image = file_ext in IMAGE_EXTENSIONS
+        # Concurrency control (semaphore)
+        sem = asyncio.Semaphore(self.settings.llm_max_concurrency if hasattr(self.settings, "llm_max_concurrency") else 5)
+        
+        # Track progress
+        processed_count = 0
 
-                if is_image:
-                    # Use vision model for images
-                    logger.info(f"Using vision model for image file: {file_path}")
-                    try:
-                        with open(file_path, 'rb') as f:
+        async def analyze_file(file_path: str) -> Dict[str, Any]:
+            nonlocal processed_count
+            async with sem:
+                try:
+                    file_ext = Path(file_path).suffix.lower()
+                    is_image = file_ext in IMAGE_EXTENSIONS
+
+                    # Resolve full file path
+                    full_path = file_path
+                    if not Path(file_path).is_absolute() and extraction_dir:
+                        full_path = str(Path(extraction_dir) / file_path)
+
+                    # Check if file exists
+                    if not Path(full_path).exists():
+                        return {"file_path": file_path, "description": "", "error": f"File not found: {full_path}", "success": False}
+
+                    if is_image:
+                        with open(full_path, 'rb') as f:
                             image_data = f.read()
                         result = await self._llm_service.analyze_image(
                             image_data=image_data,
                             prompt=f"请分析这张图像在案情背景下的取证价值。\n案情描述：{case_description}",
                         )
-                    except Exception as e:
-                        logger.warning(f"Failed to analyze {file_path} as image: {e}")
-                        raise
-                else:
-                    # Use text model for text files
-                    content = await self._llm_service.read_file_content(file_path)
+                    else:
+                        content = await self._llm_service.read_file_content(full_path)
+                        custom_prompt = FILE_DESCRIPTION_TEMPLATE.format(
+                            case_description=case_description,
+                            file_path=file_path,
+                            content=content,
+                        )
+                        result = await self._llm_service.analyze(content=content, model_type="text", prompt=custom_prompt)
 
-                    custom_prompt = FILE_DESCRIPTION_TEMPLATE.format(
-                        case_description=case_description,
-                        file_path=file_path,
-                        content=content,
-                    )
+                    analysis = result.get("analysis", {})
+                    description = analysis.get("description", "")
 
-                    result = await self._llm_service.analyze(
-                        content=content,
-                        model_type="text",
-                        prompt=custom_prompt,
-                    )
+                    # Persist to _files.db
+                    if files_db_path and description:
+                        try:
+                            self._llm_service.persist_to_files_db(
+                                db_path=files_db_path,
+                                file_path=file_path,
+                                description=description,
+                                summary=description[:200],
+                                keywords="",
+                                model_used=result.get("model", ""),
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to persist {file_path} analysis: {e}")
 
-                analysis = result.get("analysis", {})
-                description = analysis.get("description", "")
+                    processed_count += 1
+                    if progress_callback:
+                        await progress_callback(processed_count, total, file_path)
 
-                # Persist to _files.db
-                if files_db_path and description:
-                    self._llm_service.persist_to_files_db(
-                        db_path=files_db_path,
-                        file_path=file_path,
-                        description=description,
-                        summary=description[:200],
-                        keywords="",
-                        model_used=result.get("model", ""),
-                    )
+                    return {"file_path": file_path, "description": description, "model_used": result.get("model", ""), "success": True}
 
-                results.append({
-                    "file_path": file_path,
-                    "description": description,
-                    "model_used": result.get("model", ""),
-                    "success": True,
-                })
+                except Exception as e:
+                    logger.warning(f"Failed to analyze file {file_path}: {e}")
+                    processed_count += 1
+                    if progress_callback:
+                        await progress_callback(processed_count, total, file_path)
+                    return {"file_path": file_path, "description": "", "error": str(e), "success": False}
 
-            except Exception as e:
-                logger.warning(f"Failed to analyze file {file_path}: {e}")
-                results.append({
-                    "file_path": file_path,
-                    "description": "",
-                    "error": str(e),
-                    "success": False,
-                })
-
-            if progress_callback:
-                try:
-                    await progress_callback(i + 1, total, file_path)
-                except Exception:
-                    pass
-
-        return results
+        # Run all tasks concurrently
+        tasks = [analyze_file(fp) for fp in file_paths]
+        return await asyncio.gather(*tasks)
 
     # ------------------------------------------------------------------
     # 3. Knowledge Graph Ingestion (Graphiti)
@@ -313,9 +720,9 @@ class CaseAnalysisService:
                 group_id=task_id,
             )
             logger.info(
-                f"Graphiti ingestion complete: {result.successful}/{result.total_episodes} successful"
+                f"Graphiti ingestion complete: {getattr(result, 'successful', 0)}/{getattr(result, 'total_episodes', len(episodes))} successful"
             )
-            return result.successful > 0
+            return getattr(result, 'successful', 0) > 0
 
         except ImportError:
             logger.warning("graphiti_integration not available, skipping KG ingestion")
@@ -574,35 +981,47 @@ class CaseAnalysisService:
             and task_id is not None
         )
 
+        report_text = ""
+        model_used = "direct"
+
         if use_graph:
             try:
                 report_text = await self._generate_report_with_graph(
                     case_description, task_id
                 )
+                model_used = "graph-enhanced"
             except Exception as e:
                 logger.warning(
                     f"Graph-enhanced report generation failed, falling back: {e}"
                 )
+                # Fallthrough to standard generation
+        
+        # Determine strict necessity to fallback
+        if not report_text:
+            try:
                 report_text = await self._generate_report_fallback(
                     case_description, file_descriptions
                 )
-        else:
-            report_text = await self._generate_report_fallback(
-                case_description, file_descriptions
-            )
+                model_used = "direct"
+            except Exception as e:
+                logger.error(f"Fallback generation also failed: {e}", exc_info=True)
+                report_text = "生成报告时发生错误：" + str(e)
 
         # Persist report to database
-        if files_db_path and report_text:
-            self._persist_case_report(
-                files_db_path, task_id or "", case_description, report_text
-            )
+        if files_db_path and report_text and not report_text.startswith("生成报告时发生错误"):
+            try:
+                self._persist_case_report(
+                    files_db_path, task_id or "", case_description, report_text
+                )
+            except Exception as e:
+                logger.warning(f"Failed to persist case report to db: {e}")
 
         return {
             "report": report_text,
             "case_description": case_description,
             "files_analyzed": len(file_descriptions),
             "files_successful": sum(1 for f in file_descriptions if f.get("success")),
-            "model_used": "graph-enhanced" if use_graph else "direct",
+            "model_used": model_used,
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
 
@@ -732,31 +1151,67 @@ class CaseAnalysisService:
         if progress_callback:
             await progress_callback("filtering", "正在使用 LLM 筛选相关文件...")
         filter_result = await self.filter_files_by_case(
-            files_db_path, case_description, max_filter_files
+            files_db_path, case_description, max_filter_files, task_id=task_id
         )
         result["steps"]["filter"] = filter_result
         filtered_files = filter_result.get("filtered_files", [])
 
+        # Persist the list so we can recover if subsequent steps fail
+        self._persist_filtered_files(files_db_path, task_id, filtered_files)
+
         if not filtered_files:
+            msg = "LLM 未能在样本中筛选出与案情高度相关的文件。分析已终止。"
+            logger.info(f"Task {task_id}: {msg}")
+            result["steps"]["extraction"] = {"extraction_dir": "", "extracted_count": 0}
             result["steps"]["descriptions"] = []
             result["steps"]["report"] = {
-                "report": "未找到与案情相关的文件，无法生成报告。",
+                "report": msg,
                 "files_analyzed": 0,
             }
             return result
 
-        # Step 2: Generate per-file descriptions
+        # Step 2: Extract filtered files to local disk
         if progress_callback:
-            await progress_callback(
-                "describing",
-                f"正在分析 {len(filtered_files)} 个相关文件..."
+            await progress_callback("extracting", f"正在提取 {len(filtered_files)} 个文件到本地...")
+        
+        extract_result = {"success": False, "extracted_count": 0, "extraction_dir": ""}
+        try:
+            extract_result = await self.extract_filtered_files(
+                task_id, filtered_files, progress_callback=progress_callback
             )
-        descriptions = await self.generate_file_descriptions(
-            files_db_path, filtered_files, case_description
-        )
-        result["steps"]["descriptions"] = descriptions
+            result["steps"]["extraction"] = extract_result
+        except Exception as e:
+            logger.error(f"Extraction step critical failure: {e}", exc_info=True)
+            result["steps"]["extraction"] = {"success": False, "error": str(e), "extracted_count": 0}
 
-        # Step 2.5: Ingest into knowledge graph (if Graphiti available)
+        extraction_dir = extract_result.get("extraction_dir", "")
+
+        # Check if extraction succeeded (allow partial success)
+        if not extract_result.get("success") and extract_result.get("extracted_count", 0) == 0:
+            msg = f"文件提取完全失败。请检查 C++ 后端日志。错误: {extract_result.get('error', 'Unknown')}"
+            logger.error(f"Task {task_id}: {msg}")
+            # Instead of returning, raise so the job status shows 'failed'
+            raise RuntimeError(msg)
+
+        # Step 3: Generate per-file descriptions
+        if progress_callback:
+            await progress_callback("describing", f"正在分析 {len(filtered_files)} 个相关文件...")
+        
+        descriptions = []
+        try:
+            descriptions = await self.generate_file_descriptions(
+                files_db_path, filtered_files, case_description, extraction_dir=extraction_dir,
+                progress_callback=progress_callback
+            )
+            result["steps"]["descriptions"] = descriptions
+        except Exception as e:
+            logger.error(f"Description step failure: {e}", exc_info=True)
+            # If we failed completely here, raise
+            if not descriptions:
+                raise RuntimeError(f"文件描述生成失败: {e}")
+            # If we have some descriptions, we can still try to generate a report
+
+        # Step 3.5: Ingest into knowledge graph (if Graphiti available)
         if self._graphiti_service:
             if progress_callback:
                 await progress_callback(
@@ -776,13 +1231,20 @@ class CaseAnalysisService:
                     "ingested": False, "error": str(e)
                 }
 
-        # Step 3: Generate case report (graph-enhanced if available)
+        # Step 4: Generate case report (graph-enhanced if available)
         if progress_callback:
             await progress_callback("reporting", "正在生成综合案情分析报告...")
         report = await self.generate_case_report(
             case_description, descriptions, files_db_path, task_id
         )
         result["steps"]["report"] = report
+
+        logger.info(f"Task {task_id}: Full analysis pipeline completed.")
+        logger.info(f"  - Files filtered: {len(filtered_files)}")
+        logger.info(f"  - Files extracted: {extract_result.get('extracted_count', 0)}")
+        logger.info(f"  - Files described: {len(descriptions)}")
+        if self._graphiti_service:
+            logger.info(f"  - KG ingestion: {result['steps'].get('knowledge_graph', {}).get('ingested', False)}")
 
         return result
 
@@ -961,8 +1423,8 @@ class CaseAnalysisService:
         except Exception as e:
             logger.warning(f"Failed to create case_analysis table: {e}")
 
-    def _persist_filtered_files(self, db_path: str, filtered_files: List[str]):
-        """Persist the filtered file list to database."""
+    def _persist_filtered_files(self, db_path: str, task_id: str, filtered_files: List[str]):
+        """Persist the filtered file list to database using the correct task_id."""
         self._ensure_case_analysis_table(db_path)
         now = int(time.time())
         try:
@@ -972,10 +1434,10 @@ class CaseAnalysisService:
                         (task_id, filtered_files, created_at, updated_at)
                     VALUES
                         (?, ?, ?, ?)
-                """, ("_latest", json.dumps(filtered_files), now, now))
+                """, (task_id, json.dumps(filtered_files), now, now))
                 conn.commit()
         except Exception as e:
-            logger.warning(f"Failed to persist filtered files: {e}")
+            logger.warning(f"Failed to persist filtered files for task {task_id}: {e}")
 
     def _persist_case_report(
         self, db_path: str, task_id: str,

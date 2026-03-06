@@ -16,6 +16,7 @@ const Layout = ({ children }) => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const currentTaskId = searchParams.get('task_id');
+  const { theme, showTerminal } = useSelector((state) => state.settings);
   const { sidebarOpen } = useSelector((state) => state.ui);
   const { t } = useTranslation();
 
@@ -33,6 +34,11 @@ const Layout = ({ children }) => {
     { name: t('nav.statistics'), href: '/statistics', icon: BarChart3 },
     { name: t('nav.settings'), href: '/settings', icon: Settings },
   ];
+
+  // Add Terminal if enabled in settings
+  if (showTerminal) {
+    navigation.push({ name: '系统终端', href: '/terminal', icon: Search });
+  }
 
   const isActive = (path) => location.pathname === path;
 

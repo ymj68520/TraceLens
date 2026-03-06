@@ -1,5 +1,6 @@
 #include "TaskRoutes.h"
 #include "../../Swagger/Swagger.h"
+#include "PathManager/PathManager.h"
 #include <ctime>
 
 namespace forensics {
@@ -437,10 +438,11 @@ crow::response TaskRoutes::handle_get_task_results(const crow::request& req, con
         };
 
         // Add LLM results if available
-        if (task.llm_analyze && !task.output_descriptions_db.empty()) {
-            auto llm_results = SQLiteHelper::get_llm_results(task.output_descriptions_db);
+        if (task.llm_analyze && !task.output_files_db.empty()) {
+            auto llm_results = SQLiteHelper::get_llm_results(task.output_files_db);
             response["llm_results"] = llm_results;
-            response["output_descriptions_db"] = task.output_descriptions_db;
+            // Frontend might expect output_descriptions_db, alias it to output_files_db
+            response["output_descriptions_db"] = task.output_files_db;
         }
 
         task_manager_.cache_result(task_id, response.dump());
@@ -533,21 +535,13 @@ crow::response TaskRoutes::handle_cancel_task(const crow::request& req, const st
     crow::response res;
     add_cors_headers(res);
     try {
-        std::string reason = "Cancelled via API";
-        try {
-            auto body = json::parse(req.body);
-            if (body.contains("reason")) {
-                reason = body["reason"];
-            }
-        } catch (...) {}
-
-        bool success = task_manager_.cancel_task(task_id, reason);
+        bool success = task_manager_.delete_task(task_id);
 
         if (success) {
             json response = {
                 {"success", true},
                 {"task_id", task_id},
-                {"message", "Task cancelled successfully"}
+                {"message", "Task deleted successfully"}
             };
             res.set_header("Content-Type", "application/json");
             res.write(response.dump());
@@ -555,9 +549,9 @@ crow::response TaskRoutes::handle_cancel_task(const crow::request& req, const st
             json error = {
                 {"success", false},
                 {"task_id", task_id},
-                {"message", "Task could not be cancelled (may be completed or not found)"}
+                {"message", "Task could not be deleted (not found)"}
             };
-            res.code = 400;
+            res.code = 404;
             res.set_header("Content-Type", "application/json");
             res.write(error.dump());
         }
@@ -886,6 +880,7 @@ nlohmann::json TaskRoutes::task_to_json(const AnalysisTask& task) {
         {"xfs_mode", task.xfs_mode == XFSMode::Native ? "native" :
                    task.xfs_mode == XFSMode::Pure ? "pure" : "auto"},
         {"db_output_dir", task.db_output_dir},
+        {"extraction_directory", forensics::PathManager::instance().getTaskExtractDir(task.id).string()},
         {"cancellation_requested", task.cancellation_requested.load()},
         {"dependencies", dependencies_json},
         {"dependents_count", task.dependents.size()},

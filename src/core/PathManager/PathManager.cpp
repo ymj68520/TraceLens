@@ -112,10 +112,6 @@ PathManager::TaskDbPaths PathManager::getTaskDbPaths(
     };
 }
 
-void PathManager::ensureTaskDir(const std::string& taskId) const {
-    std::filesystem::create_directories(getTaskDir(taskId));
-}
-
 // --- configuration helpers ---
 
 void PathManager::setDataDirName(const std::string& name) {

@@ -2,6 +2,8 @@
 #include "../../Swagger/Swagger.h"
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
 #include "TOONExporter/TOONExporter.h"
+#include "../../core/PathManager/PathManager.h"
+#include <filesystem>
 #include <random>
 #include <sstream>
 #include <iomanip>
@@ -730,6 +732,18 @@ crow::response ForensicsRoutes::handle_extract_files(const crow::request& req) {
         if (body.contains("output_dir")) {
             job.config.output_dir = body["output_dir"].get<std::string>();
         }
+        
+        std::filesystem::path task_extract_dir = PathManager::instance().getTaskExtractDir(task_id);
+        if (!job.config.output_dir.empty() && job.config.output_dir != "extracted_files") {
+            std::filesystem::path user_path(job.config.output_dir);
+            if (user_path.is_absolute()) {
+                task_extract_dir = user_path;
+            } else {
+                task_extract_dir = std::filesystem::absolute(user_path);
+            }
+        }
+        job.config.output_dir = task_extract_dir.string();
+        job.output_path = task_extract_dir.string();
         
         if (body.contains("include_deleted")) {
             job.config.include_deleted = body["include_deleted"].get<bool>();

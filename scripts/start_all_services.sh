@@ -49,6 +49,10 @@ WEB_PORT=${CPP_PORT}  # Web is served by C++ server
 CPP_PID=""
 PYTHON_PID=""
 
+# Create logs directory
+LOG_DIR="$BUILD_DIR/logs"
+mkdir -p "$LOG_DIR"
+
 # Health check function
 check_service() {
     local url=$1
@@ -114,13 +118,13 @@ if [ ! -f "$BUILD_DIR/forensic_analyzer" ]; then
 fi
 
 cd "$BUILD_DIR"
-./forensic_analyzer --http-server $CPP_PORT &
+./forensic_analyzer --http-server $CPP_PORT > "$LOG_DIR/cpp_server.log" 2>&1 &
 CPP_PID=$!
-echo -e "${GREEN}✓ C++ server started${NC}    PID: ${BOLD}$CPP_PID${NC}"
+echo -e "${GREEN}✓ C++ server started${NC}    PID: ${BOLD}$CPP_PID${NC} (Logging to $LOG_DIR/cpp_server.log)"
 
 # Wait for C++ server to be ready
 if ! check_service "http://localhost:$CPP_PORT/api/system/health" "C++ server" 10; then
-    echo -e "${RED}✗ C++ server failed to start. Check logs above.${NC}"
+    echo -e "${RED}✗ C++ server failed to start. Check logs at $LOG_DIR/cpp_server.log${NC}"
     exit 1
 fi
 
@@ -163,13 +167,13 @@ import sys
 sys.path.insert(0, '$PROJECT_ROOT/python_service')
 from httpserver.main import run_server
 run_server()
-" &
+" > "$LOG_DIR/python_service.log" 2>&1 &
 PYTHON_PID=$!
-echo -e "${GREEN}✓ Python service started${NC}  PID: ${BOLD}$PYTHON_PID${NC}"
+echo -e "${GREEN}✓ Python service started${NC}  PID: ${BOLD}$PYTHON_PID${NC} (Logging to $LOG_DIR/python_service.log)"
 
 # Wait for Python service to be ready
 if ! check_service "http://localhost:$PYTHON_PORT/health" "Python service" 15; then
-    echo -e "${YELLOW}⚠ Python service health check failed, but continuing...${NC}"
+    echo -e "${YELLOW}⚠ Python service health check failed. Check logs at $LOG_DIR/python_service.log${NC}"
 fi
 
 # ========================================================================

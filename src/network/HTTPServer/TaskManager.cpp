@@ -77,6 +77,8 @@ void to_json(nlohmann::json& j, const AnalysisTask& t) {
         {"case_description", t.case_description}
     };
     
+    j["extraction_directory"] = forensics::PathManager::instance().getTaskExtractDir(t.id).string();
+    
     // Convert timestamps to string/int for storage
     j["created_time"] = std::chrono::duration_cast<std::chrono::seconds>(t.created_time.time_since_epoch()).count();
     j["started_time"] = std::chrono::duration_cast<std::chrono::seconds>(t.started_time.time_since_epoch()).count();
@@ -308,8 +310,7 @@ void TaskManager::set_llm_analyze_options(const std::string& id, bool llm_analyz
         tasks_[id].llm_analyze = llm_analyze;
         tasks_[id].llm_mode = llm_mode;
         add_audit_log(id, "LLM_CONFIG", "LLM analysis: " + std::string(llm_analyze ? "enabled" : "disabled") + ", mode: " + llm_mode);
-        
-        save_tasks(); // Persist changes
+        save_tasks(); // Persist immediately
     }
 }
 
@@ -378,6 +379,68 @@ bool TaskManager::cancel_task(const std::string& id, const std::string& reason) 
         }
     }
     return false;
+}
+
+bool TaskManager::delete_task(const std::string& id) {
+    std::string task_dir;
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        if (tasks_.count(id) == 0) {
+            return false;
+        }
+        
+        // If task is running, cancel it first implicitly
+        if (tasks_[id].status == TaskStatus::RUNNING) {
+            tasks_[id].cancellation_requested = true;
+            // Best effort sleep to let background thread exit cleanly
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+        
+        // Try getting task dir from PathManager to delete from disk later
+        try {
+            task_dir = forensics::PathManager::instance().getTaskExtractDir(id).string();
+            // Also clean up output directory (if different from extract dir, or data DBs)
+        } catch(...) {
+            task_dir = "";
+        }
+
+        // Remove from memory
+        tasks_.erase(id);
+        
+        // Save tasks JSON without this task
+        nlohmann::json j = nlohmann::json::array();
+        for(const auto& pair : tasks_) {
+            j.push_back(pair.second);
+        }
+        
+        auto tasksPath = forensics::PathManager::instance().getTasksJsonPath();
+        std::ofstream out(tasksPath);
+        if(out.is_open()) {
+            out << j.dump(4);
+        }
+    }
+
+    // Delete task directories from disk (outside the lock)
+    if (!task_dir.empty() && std::filesystem::exists(task_dir)) {
+        try {
+            // Be VERY careful to only delete the specific task directory
+            std::filesystem::remove_all(task_dir);
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to remove task directory " << task_dir << ": " << e.what() << std::endl;
+            return false;
+        }
+    }
+    
+    // Also remove output directories
+    try {
+        auto& pm = forensics::PathManager::instance();
+        std::string task_root = pm.getTaskDir(id).string();
+        if (!task_root.empty() && std::filesystem::exists(task_root)) {
+            std::filesystem::remove_all(task_root);
+        }
+    } catch (...) {}
+
+    return true;
 }
 
 // Batch operations

@@ -142,6 +142,22 @@ async def analyze_content(
 
         # Handle file path
         if request.file_path:
+            # Check if file exists before attempting to read
+            from pathlib import Path as FilePath
+            file_path_obj = FilePath(request.file_path)
+
+            if not file_path_obj.exists():
+                error_msg = (
+                    f"File not found: {request.file_path}\n\n"
+                    f"Files must be extracted from the disk image before AI analysis.\n"
+                    f"Suggestion: Use the file extraction feature first via the Files page, "
+                    f"or ensure the extraction directory is correctly configured."
+                )
+                raise HTTPException(
+                    status_code=404,
+                    detail=error_msg
+                )
+
             file_ext = Path(request.file_path).suffix.lower()
             is_image = file_ext in IMAGE_EXTENSIONS
 
@@ -321,11 +337,15 @@ async def batch_analyze(
             limit=request.limit,
         )
         
+        # Extract the extraction_directory for resolving relative file paths
+        extraction_dir: str = task_info.get("extraction_directory") or ""
+        
         # Start background batch analysis (results will be persisted to _files.db)
         job_id = await service_manager.llm_service.start_batch_analysis(
             files=files,
             model_type=request.model_type,
             files_db_path=files_db_path or None,
+            extraction_dir=extraction_dir or None,
         )
         
         return BatchAnalyzeResponse(

@@ -19,7 +19,7 @@ const Search = () => {
   const [query, setQuery] = useState('');
   // Auto-populate paths based on task
   const [index, setIndex] = useState(taskId ? `search_index_${taskId.substring(0, 8)}` : 'search_index');
-  const [sourcePath, setSourcePath] = useState(taskId ? `extracted_files/${taskId}` : 'extracted_files');
+  const [sourcePath, setSourcePath] = useState(taskId ? (currentTask?.extraction_directory || `../build/data/tasks/${taskId}/extracted_files`) : 'extracted_files');
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [indexing, setIndexing] = useState(false);
@@ -30,9 +30,9 @@ const Search = () => {
   useEffect(() => {
     if (taskId) {
       setIndex(`search_index_${taskId.substring(0, 8)}`);
-      setSourcePath(`extracted_files/${taskId}`);
+      setSourcePath(currentTask?.extraction_directory || `../build/data/tasks/${taskId}/extracted_files`);
     }
-  }, [taskId]);
+  }, [taskId, currentTask]);
 
   const handleSearch = async (e) => {
     e.preventDefault();

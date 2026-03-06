@@ -240,14 +240,39 @@ bool FileExtractor::matchWildcard(const std::string& filename, const std::string
 }
 
 int FileExtractor::extractByName(const std::string& pattern, const std::string& outputDir, bool overwrite, int* skippedCount) {
-    std::cout << "Searching files matching pattern: " << pattern << std::endl;
+    std::cout << "Searching files matching patterns: " << pattern << std::endl;
+
+    // Parse patterns (comma-separated)
+    std::vector<std::string> patterns;
+    std::stringstream ss(pattern);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        // Trim whitespace
+        item.erase(0, item.find_first_not_of(" \t"));
+        item.erase(item.find_last_not_of(" \t") + 1);
+        if (!item.empty()) {
+            patterns.push_back(item);
+        }
+    }
+
+    if (patterns.empty()) {
+        return 0;
+    }
 
     // Get all files from database
     auto files = searchFiles("type='REG' AND is_allocated=1");
 
     std::vector<FileRecord> matches;
     for (const auto& file : files) {
-        if (matchWildcard(file.name, pattern)) {
+        bool matched = false;
+        for (const auto& p : patterns) {
+            // Check if it's an exact path match or a wildcard filename match
+            if (file.path == p || matchWildcard(file.name, p)) {
+                matched = true;
+                break;
+            }
+        }
+        if (matched) {
             matches.push_back(file);
         }
     }

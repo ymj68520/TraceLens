@@ -13,6 +13,7 @@ import KnowledgeGraph from './pages/KnowledgeGraph';
 import CaseReport from './pages/CaseReport';
 import OSS from './pages/OSS';
 import Login from './pages/Login';
+import Terminal from './pages/Terminal';
 
 const router = createBrowserRouter([
   {
@@ -75,8 +76,11 @@ const router = createBrowserRouter([
         path: 'case-report',
         element: <CaseReport />,
       },
+      {
+        path: 'terminal',
+        element: <Terminal />,
+      },
     ],
   },
 ]);
 export default router;
-

@@ -12,12 +12,17 @@ import Spinner from '../components/common/Spinner';
 import { useToast } from '../components/common/ToastContext';
 import { TASK_STATUS, TASK_PRIORITY, STATUS_COLORS, PRIORITY_COLORS } from '../utils/constants';
 
+import { startCaseAnalysis, getCaseReport } from '../services/caseAnalysisService';
+
 const Tasks = () => {
   const dispatch = useDispatch();
   const { tasks, status, error, filters } = useSelector((state) => state.tasks);
   const { modal } = useSelector((state) => state.ui);
   const { autoRefresh, refreshInterval } = useSelector((state) => state.settings);
   const toast = useToast();
+  
+  // Track which tasks have already triggered AI analysis to prevent loops
+  const [triggeredAiTasks, setTriggeredAiTasks] = useState(new Set());
   const [taskData, setTaskData] = useState({
     image_path: '',
     priority: 'normal',
@@ -33,28 +38,55 @@ const Tasks = () => {
   const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
-    dispatch(fetchTasks(filters))
-      .then((result) => {
-        console.log('fetchTasks result:', result);
-      })
-      .catch((err) => {
-        console.error('fetchTasks error:', err);
-      });
+    dispatch(fetchTasks(filters));
   }, [dispatch, filters]);
 
-  // Auto-refresh for running tasks
+  // Auto-refresh and Automatic AI Trigger
   useEffect(() => {
     if (!autoRefresh) return;
 
-    const hasRunningTasks = tasks.some(t => t.status === TASK_STATUS.RUNNING);
-    if (!hasRunningTasks) return;
+    const interval = setInterval(async () => {
+      const result = await dispatch(fetchTasks(filters)).unwrap();
+      const currentTasks = result.tasks || [];
 
-    const interval = setInterval(() => {
-      dispatch(fetchTasks(filters));
+      // Check for newly completed tasks that need AI analysis
+      for (const task of currentTasks) {
+        if (
+          task.status === TASK_STATUS.COMPLETED && 
+          task.llm_analyze && 
+          !triggeredAiTasks.has(task.id)
+        ) {
+          // Check if report already exists before triggering
+          try {
+            const report = await getCaseReport(task.id);
+            if (report && report.report) {
+              setTriggeredAiTasks(prev => new Set(prev).add(task.id));
+              continue;
+            }
+          } catch (e) {
+            // 404 means no report, proceed to trigger
+          }
+
+          console.log(`Automatically triggering AI analysis for task ${task.id}`);
+          setTriggeredAiTasks(prev => new Set(prev).add(task.id));
+          
+          try {
+            await startCaseAnalysis({
+              taskId: task.id,
+              filesDbPath: task.output_files_db,
+              caseDescription: task.case_description || '自动分析',
+              maxFilterFiles: 200
+            });
+            toast.success(`Task ${task.id.substring(0,8)}: AI analysis started automatically.`);
+          } catch (err) {
+            console.error('Failed to auto-trigger AI:', err);
+          }
+        }
+      }
     }, refreshInterval || 5000);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, refreshInterval, tasks, dispatch, filters]);
+  }, [autoRefresh, refreshInterval, dispatch, filters, triggeredAiTasks, toast]);
 
   const handleFilterChange = (filterType, value) => {
     dispatch(setFilters({ [filterType]: value }));

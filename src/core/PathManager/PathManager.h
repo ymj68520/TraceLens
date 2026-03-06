@@ -101,10 +101,22 @@ public:
                                const std::string& imageName = "") const;
 
     /**
-     * @brief Ensure the task directory exists (creates it if needed).
-     * @param taskId UUID of the task
+     * @brief Ensure a specific task directory exists
+     * @param taskId The task UUID
      */
-    void ensureTaskDir(const std::string& taskId) const;
+    void ensureTaskDir(const std::string& taskId) const {
+        auto taskDir = getTaskDir(taskId);
+        std::filesystem::create_directories(taskDir);
+    }
+
+    /**
+     * @brief Get the extraction output directory for a specific task
+     * @param taskId The task UUID
+     * @return Path like <exe_dir>/data/tasks/<taskId>/extracted_files/
+     */
+    std::filesystem::path getTaskExtractDir(const std::string& taskId) const {
+        return getTaskDir(taskId) / "extracted_files";
+    }
 
     // ---- configuration helpers -----------------------------------------
 

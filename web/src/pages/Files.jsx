@@ -194,8 +194,11 @@ const Files = () => {
 
   // Analyze single file
   const handleAnalyzeSingleFile = async (file, index) => {
-    let filePath = file.path || file.file_path;
-    if (!filePath) return;
+    let filePath = file.path || file.file_path || file.name;
+    if (!filePath) {
+      alert('无法获取文件路径，分析失败');
+      return;
+    }
 
     // If path is not absolute, assume it's relative to extraction directory
     const isAbsolutePath = filePath.startsWith('/') || filePath.includes(':');
@@ -204,7 +207,7 @@ const Files = () => {
     }
     // Fallback to default extraction directory
     else if (!isAbsolutePath) {
-      filePath = `/home/ymj68520/projects/Forensics/ForensicsProject/build/extracted_files/${filePath}`;
+      filePath = `../build/data/tasks/${taskId}/extracted_files/${filePath}`;
     }
 
     // Check file extension and size
@@ -278,8 +281,28 @@ const Files = () => {
       // Better error messages
       let errorMsg = err.response?.data?.detail || err.message || '未知错误';
 
-      if (err.response?.status === 400) {
-        errorMsg = '文件内容不兼容（可能是二进制文件或编码问题）';
+      // Check for Python service not available
+      if (!err.response && err.code === 'ERR_NETWORK') {
+        errorMsg = `Python LLM 服务未运行\n\n提示：\n1. 请启动 Python 服务：python -m python_service.httpserver.main\n2. 或使用启动脚本：./scripts/start_services.sh`;
+      }
+      // Check for file not found error
+      else if (err.response?.status === 400 || err.response?.status === 404) {
+        const detail = err.response?.data?.detail || err.message || '';
+        if (detail.includes('No such file or directory') || detail.includes('[Errno 2]') || detail.includes('not found')) {
+          errorMsg = `❌ 文件未找到
+
+${detail}
+
+建议操作：
+1. 使用"批量提取"功能先提取所有文件
+2. 或使用案情分析功能（会自动提取和分析文件）
+
+当前路径：${filePath}`;
+        } else if (err.response?.status === 400) {
+          errorMsg = '文件内容不兼容（可能是二进制文件或编码问题）';
+        } else if (err.response?.status === 404) {
+          errorMsg = 'LLM API 端点未找到，请检查 Python 服务是否正常运行';
+        }
       } else if (err.response?.status === 500) {
         errorMsg = '服务器处理失败（文件可能过大或格式不支持）';
       }
@@ -336,7 +359,21 @@ const Files = () => {
       }
     } catch (err) {
       console.error('Batch analysis failed:', err);
-      setLlmMessage('批量分析失败: ' + (err.message || '未知错误'));
+
+      // Better error messages
+      let errorMsg = err.response?.data?.detail || err.message || '未知错误';
+
+      // Check for Python service not available
+      if (!err.response && err.code === 'ERR_NETWORK') {
+        errorMsg = `Python LLM 服务未运行\n\n提示：\n1. 请启动 Python 服务：python -m python_service.httpserver.main\n2. 或使用启动脚本：./scripts/start_services.sh`;
+      } else if (err.response?.status === 404) {
+        errorMsg = 'LLM API 端点未找到，请检查 Python 服务是否正常运行';
+      } else if (err.response?.status === 500) {
+        errorMsg = '服务器处理失败，请检查日志获取详细信息';
+      }
+
+      setLlmMessage('批量分析失败: ' + errorMsg);
+      alert(`批量分析失败: ${errorMsg}`);
     } finally {
       setLlmAnalyzing(false);
     }
@@ -498,7 +535,7 @@ const Files = () => {
     }
 
     // Fallback to default extraction directory
-    return `/home/ymj68520/projects/Forensics/ForensicsProject/build/extracted_files/${filePath}`;
+    return `../build/data/tasks/${taskId}/extracted_files/${filePath}`;
   };
 
   // Get LLM description for a file

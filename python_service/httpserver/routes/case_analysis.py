@@ -427,6 +427,7 @@ def _get_case_analysis_service(service_manager):
         from ..services.case_analysis_service import CaseAnalysisService
         svc = CaseAnalysisService(service_manager.settings)
         svc.set_llm_service(service_manager.llm_service)
+        svc.set_cpp_backend(service_manager.cpp_backend)  # Inject C++ backend service
         # Inject Graphiti service if available (optional dependency)
         try:
             graphiti_svc = service_manager.graphiti_service

@@ -137,7 +137,34 @@ class LLMService:
             with sqlite3.connect(db_path, timeout=10) as conn:
                 cur = conn.cursor()
 
-                # Try exact match first
+                # Ensure table exists (C++ backend expects this table in some views)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS file_descriptions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        file_path TEXT UNIQUE,
+                        description TEXT,
+                        summary TEXT,
+                        keywords TEXT,
+                        model_used TEXT,
+                        created_at INTEGER
+                    )
+                """)
+
+                # Insert or Replace in descriptions table
+                cur.execute("""
+                    INSERT OR REPLACE INTO file_descriptions 
+                        (file_path, description, summary, keywords, model_used, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    file_path,
+                    description,
+                    summary or description[:200],
+                    keywords,
+                    model_used,
+                    int(time.time())
+                ))
+
+                # Also update the main files table for backward compatibility
                 cur.execute(sql, (
                     summary or description[:200],
                     description,
@@ -516,6 +543,7 @@ class LLMService:
         files: List[Dict[str, Any]],
         model_type: str = "text",
         files_db_path: Optional[str] = None,
+        extraction_dir: Optional[str] = None,
     ) -> str:
         """
         Start batch analysis of files.
@@ -524,6 +552,7 @@ class LLMService:
             files: List of file info dicts with 'path' key.
             model_type: 'text' or 'vision'.
             files_db_path: Optional path to _files.db for persisting results.
+            extraction_dir: Optional file extraction directory to resolve relative paths.
         
         Returns:
             Job ID for tracking progress.
@@ -540,7 +569,7 @@ class LLMService:
         }
         
         # Start background task
-        asyncio.create_task(self._run_batch_analysis(job_id, files, model_type, files_db_path))
+        asyncio.create_task(self._run_batch_analysis(job_id, files, model_type, files_db_path, extraction_dir))
         
         return job_id
     
@@ -550,6 +579,7 @@ class LLMService:
         files: List[Dict[str, Any]],
         model_type: str,
         files_db_path: Optional[str] = None,
+        extraction_dir: Optional[str] = None,
     ):
         """Run batch analysis in background and optionally persist to SQLite."""
         # Image file extensions that should use vision model
@@ -566,25 +596,30 @@ class LLMService:
                     if not file_path:
                         continue
 
+                    # Resolve actual path if relative
+                    actual_path = file_path
+                    if extraction_dir and not Path(file_path).is_absolute():
+                        actual_path = str(Path(extraction_dir) / file_path)
+
                     # Auto-detect if file is an image based on extension
-                    file_ext = Path(file_path).suffix.lower()
+                    file_ext = Path(actual_path).suffix.lower()
                     is_image = file_ext in IMAGE_EXTENSIONS
 
                     if is_image:
                         # Read as binary and use vision model
-                        logger.info(f"Detected image file: {file_path}, using vision model")
+                        logger.info(f"Detected image file: {actual_path}, using vision model")
                         try:
-                            with open(file_path, 'rb') as f:
+                            with open(actual_path, 'rb') as f:
                                 image_data = f.read()
                             result = await self.analyze_image(image_data)
                         except Exception as e:
-                            logger.warning(f"Failed to analyze {file_path} as image: {e}, falling back to text analysis")
+                            logger.warning(f"Failed to analyze {actual_path} as image: {e}, falling back to text analysis")
                             # Fallback to text analysis
-                            content = await self.read_file_content(file_path)
+                            content = await self.read_file_content(actual_path)
                             result = await self.analyze(content, model_type)
                     else:
                         # Read as text and use specified model
-                        content = await self.read_file_content(file_path)
+                        content = await self.read_file_content(actual_path)
                         result = await self.analyze(content, model_type)
 
                     analysis = result.get("analysis", {})

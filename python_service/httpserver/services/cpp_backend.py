@@ -81,45 +81,38 @@ class CppBackendService:
         **kwargs,
     ) -> Dict[str, Any]:
         """
-        Make an HTTP request to the C++ backend.
-        
-        Args:
-            method: HTTP method (GET, POST, etc.)
-            path: API path
-            **kwargs: Additional arguments for httpx
-        
-        Returns:
-            Response JSON data.
-        
-        Raises:
-            httpx.HTTPError: On request failure.
+        Make an HTTP request to the C++ backend with detailed logging.
         """
+        payload_preview = kwargs.get('json') or kwargs.get('params')
+        logger.info(f"C++ Request: {method} {path} - Payload: {payload_preview}")
+        
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 response = await self.client.request(method, path, **kwargs)
-                response.raise_for_status()
-                if not response.content:
-                    return {}
                 
+                # Check for HTML content (usually means 404 or SPA fallback)
                 content_type = response.headers.get("Content-Type", "").lower()
                 if "text/html" in content_type:
-                    # C++ backend SPA fallback matched instead of an API route
-                    if response.status_code == 200:
-                        return {"status": "ok", "message": "HTML fallback matched"}
+                    logger.error(f"C++ API returned HTML instead of JSON! Status: {response.status_code}")
+                    return {"success": False, "error": "Backend returned HTML", "status": response.status_code}
+
+                if response.status_code >= 400:
+                    logger.error(f"C++ API Error ({response.status_code}): {response.text}")
+                    return {"success": False, "error": response.text, "status": response.status_code}
+                
+                if not response.content:
                     return {}
                     
-                return response.json()
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code >= 500 and attempt < max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)
-                    continue
-                raise
-            except httpx.RequestError as e:
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)
-                    continue
-                raise
+                result = response.json()
+                logger.info(f"C++ Response from {path}: {str(result)[:200]}...")
+                return result
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"C++ backend request failed after {max_retries} attempts: {e}")
+                    return {"success": False, "error": str(e)}
+                await asyncio.sleep(1)
+        return {"success": False, "error": "Max retries exceeded"}
     
     async def health_check(self) -> bool:
         """
@@ -277,8 +270,55 @@ class CppBackendService:
             "rows": result.get("rows", []),
         }
     
+    # File Extraction Operations
+
+    async def extract_files(
+        self,
+        task_id: str,
+        file_paths: List[str],
+        output_dir: Optional[str] = None,
+        overwrite: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Extract specified file list to local disk.
+
+        Args:
+            task_id: Task ID
+            file_paths: List of file paths to extract
+            output_dir: Output directory (None = use default extracted_files)
+            overwrite: Whether to overwrite existing files
+
+        Returns:
+            Response containing job_id for tracking extraction progress
+        """
+        # Use "name" mode with comma-separated file paths as pattern
+        # This is the current API interface; may need C++ backend extension for true list mode
+        payload = {
+            "task_id": task_id,
+            "mode": "name",
+            "pattern": ",".join(file_paths),  # Comma-separated paths
+            "output_dir": output_dir or "extracted_files",
+            "overwrite": overwrite,
+        }
+
+        result = await self._request("POST", "/api/forensics/extract", json=payload)
+        return result
+
+    async def get_extraction_status(self, job_id: str) -> Dict[str, Any]:
+        """
+        Get file extraction task status.
+
+        Args:
+            job_id: Extraction task ID
+
+        Returns:
+            Extraction status information including progress and results
+        """
+        result = await self._request("GET", "/api/forensics/extract/status", params={"job_id": job_id})
+        return result
+
     # Export Operations
-    
+
     async def export_toon(
         self,
         task_id: str,
@@ -292,7 +332,49 @@ class CppBackendService:
         )
         response.raise_for_status()
         return response.text
-    
+
+    async def get_files_toon_stream(
+        self,
+        task_id: str,
+        batch_size: int = 100,
+        include_llm: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Get files in TOON format for streaming processing.
+
+        Returns TOON data that can be split into batches for LLM processing.
+        This is useful for file filtering without context overflow.
+
+        Args:
+            task_id: Task ID
+            batch_size: Number of files per batch (for reference)
+            include_llm: Include LLM analysis columns
+
+        Returns:
+            Dict with TOON schema and data lines
+        """
+        toon_data = await self.export_toon(task_id, include_llm=include_llm)
+
+        lines = toon_data.split('\n')
+        schema_line = None
+        data_lines = []
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith('TOON.schema:'):
+                schema_line = line
+            else:
+                data_lines.append(line)
+
+        return {
+            "schema": schema_line,
+            "data_lines": data_lines,
+            "total_files": len(data_lines),
+            "batch_size": batch_size,
+        }
+
     async def export_json(
         self,
         task_id: str,

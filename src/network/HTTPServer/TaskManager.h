@@ -125,7 +125,7 @@ public:
      */
     std::vector<AnalysisTask> get_tasks_by_priority(TaskPriority priority);
 
-    // Task cancellation
+    // Task cancellation & deletion
     /**
      * @brief Cancel a specific task
      * @param id Task ID
@@ -133,6 +133,13 @@ public:
      * @return true if cancellation was initiated/successful
      */
     bool cancel_task(const std::string& id, const std::string& reason = "");
+
+    /**
+     * @brief Delete a specific task and its data
+     * @param id Task ID
+     * @return true if the task was successfully deleted
+     */
+    bool delete_task(const std::string& id);
 
     // Batch operations
     /**

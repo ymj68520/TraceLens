@@ -43,6 +43,11 @@ SystemRoutes::SystemRoutes(crow::App<>& app) : task_manager_(TaskManager::instan
         return handle_health_dependencies(req);
     });
 
+    // Logs
+    CROW_ROUTE(app, "/api/system/logs").methods("GET"_method)([this](const crow::request& req) {
+        return handle_system_logs(req);
+    });
+
     // Documentation
     CROW_ROUTE(app, "/api/docs/endpoints").methods("GET"_method)([this](const crow::request& req) {
         return handle_docs_endpoints(req);
@@ -539,6 +544,93 @@ crow::response SystemRoutes::handle_docs_ui(const crow::request& req) {
 
 nlohmann::json SystemRoutes::generate_openapi_spec() {
     return Swagger::instance().GetSwaggerJSON();
+}
+
+crow::response SystemRoutes::handle_system_logs(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+
+    try {
+        // Get query parameters
+        int lines = 100;
+        if (const char* lines_str = req.url_params.get("lines"); lines_str != nullptr) {
+            try {
+                lines = std::min(std::stoi(lines_str), 1000); // Max 1000 lines
+            } catch (...) {}
+        }
+
+        json logs = json::array();
+
+        // Try to read from log file
+        std::vector<std::string> log_paths = {
+            "logs/forensic_analyzer.log",
+            "forensic_analyzer.log",
+            "/tmp/forensic_analyzer.log"
+        };
+
+        std::string log_file;
+        for (const auto& path : log_paths) {
+            if (std::filesystem::exists(path)) {
+                log_file = path;
+                break;
+            }
+        }
+
+        if (!log_file.empty()) {
+            std::ifstream file(log_file);
+            if (file.is_open()) {
+                std::string line;
+                std::vector<std::string> all_lines;
+
+                while (std::getline(file, line)) {
+                    all_lines.push_back(line);
+                }
+
+                // Get last N lines
+                int start = std::max(0, (int)all_lines.size() - lines);
+                for (int i = start; i < (int)all_lines.size(); i++) {
+                    // Parse log line
+                    std::string timestamp = "";
+                    std::string level = "INFO";
+                    std::string message = all_lines[i];
+
+                    // Simple parsing for common log formats
+                    // Format: [2026-03-06 12:46:05] LEVEL message
+                    size_t close_bracket = all_lines[i].find(']');
+                    if (all_lines[i][0] == '[' && close_bracket != std::string::npos) {
+                        timestamp = all_lines[i].substr(1, close_bracket - 1);
+                        size_t level_start = close_bracket + 2;
+                        size_t level_end = all_lines[i].find(' ', level_start);
+                        if (level_end != std::string::npos) {
+                            level = all_lines[i].substr(level_start, level_end - level_start);
+                            message = all_lines[i].substr(level_end + 1);
+                        }
+                    }
+
+                    logs.push_back({
+                        {"timestamp", timestamp.empty() ? "N/A" : timestamp},
+                        {"level", level},
+                        {"message", message}
+                    });
+                }
+            }
+        }
+
+        json response = {
+            {"service", "cpp-backend"},
+            {"logs", logs},
+            {"total_count", logs.size()}
+        };
+
+        res.set_header("Content-Type", "application/json");
+        res.write(response.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
 }
 
 } // namespace forensics

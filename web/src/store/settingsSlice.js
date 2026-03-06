@@ -30,6 +30,7 @@ const settingsSlice = createSlice({
     theme: 'light',
     language: 'en',
     itemsPerPage: 20,
+    showTerminal: false,
     ...loadSettings(),
   },
   reducers: {

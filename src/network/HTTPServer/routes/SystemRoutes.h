@@ -104,6 +104,9 @@ private:
     // Export
     crow::response handle_export_results(const crow::request& req, const std::string& task_id);
 
+    // Logs
+    crow::response handle_system_logs(const crow::request& req);
+
     // CORS helper
     static void add_cors_headers(crow::response& res);
     
