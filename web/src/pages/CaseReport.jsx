@@ -7,6 +7,7 @@ import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
 import Button from '../components/common/Button';
 import { fetchTasks } from '../store/taskSlice';
+import { useToast } from '../components/common/ToastContext';
 import {
     getCaseReport,
     getFilteredFiles,
@@ -17,10 +18,10 @@ import {
 
 const CaseReport = () => {
     const [searchParams, setSearchParams] = useSearchParams();
+    const taskId = searchParams.get('taskId');
     const navigate = useNavigate();
-    const taskId = searchParams.get('task_id');
-
     const dispatch = useDispatch();
+    const toast = useToast();
     const { tasks } = useSelector((state) => state.tasks);
 
     const [report, setReport] = useState(null);
@@ -94,6 +95,7 @@ const CaseReport = () => {
         setAnalyzing(true);
         setAnalysisProgress({ step: '初始化', detail: '正在准备案情分析...' });
         setError(null);
+        // DO NOT reset report and filteredFiles here to keep the UI from flashing empty
 
         try {
             // Save description first
@@ -123,26 +125,25 @@ const CaseReport = () => {
                 3000
             );
 
-            // Fetch the generated report
-            try {
-                const reportData = await getCaseReport(taskId);
-                if (reportData && reportData.report) {
-                    setReport(reportData);
-                }
-            } catch (err) {
-                console.warn('Report fetch after analysis:', err);
-            }
+            // Fetch the generated report and filtered files ONLY AFTER SUCCESS
+            const [reportData, filesData] = await Promise.all([
+                getCaseReport(taskId).catch(err => {
+                    console.error("Failed to fetch report after job completion:", err);
+                    return null;
+                }),
+                getFilteredFiles(taskId).catch(() => null)
+            ]);
 
-            try {
-                const filesData = await getFilteredFiles(taskId);
-                if (filesData && filesData.filtered_files) {
-                    setFilteredFiles(filesData.filtered_files);
-                }
-            } catch (err) {
-                // Ignore
+            if (reportData && reportData.report) {
+                setReport(reportData);
+            }
+            
+            if (filesData && filesData.filtered_files) {
+                setFilteredFiles(filesData.filtered_files);
             }
 
             setAnalysisProgress(null);
+            toast.success('案情分析生成成功！');
         } catch (err) {
             console.error('Case analysis failed:', err);
             setError(typeof err === 'string' ? err : err.message || '案情分析失败');
@@ -150,7 +151,7 @@ const CaseReport = () => {
         } finally {
             setAnalyzing(false);
         }
-    }, [taskId, caseDescription, currentTask, maxFilterFiles]);
+    }, [taskId, caseDescription, currentTask, maxFilterFiles, toast]);
 
     // Filter tasks that have completed + have a files DB
     const completedTasks = tasks.filter(
@@ -158,7 +159,7 @@ const CaseReport = () => {
     );
 
     const handleTaskSelect = (selectedTaskId) => {
-        setSearchParams({ task_id: selectedTaskId });
+        setSearchParams({ taskId: selectedTaskId });
     };
 
     const toggleFileExpanded = (index) => {
@@ -381,7 +382,12 @@ const CaseReport = () => {
                     )}
                 </div>
                 <button
-                    onClick={() => setSearchParams({})}
+                    onClick={() => {
+                        const newParams = Object.fromEntries(searchParams);
+                        delete newParams.taskId;
+                        delete newParams.task_id;
+                        setSearchParams(newParams);
+                    }}
                     className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
                 >
                     ← 返回任务列表

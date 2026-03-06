@@ -478,6 +478,17 @@ class LLMService:
                 "tokens_used": tokens_used,
             }
         except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                error_msg = e.response.text
+                if "corrupt" in error_msg.lower() or "header" in error_msg.lower():
+                    logger.warning(f"Image analysis rejected by LLM (likely corrupt image): {error_msg}")
+                    # Special return to signal fallback needed
+                    return {
+                        "analysis": {"description": f"[IMAGE_CORRUPT_OR_INVALID] {error_msg}", "model_type": "vision"},
+                        "error_type": "image_decode_failed",
+                        "success": False
+                    }
+            
             if "context" in e.response.text.lower() and "overflow" in e.response.text.lower():
                 raise ValueError(f"Image analysis failed: Image is too large or complex for the vision model's context window ({self.settings.llm_context_length} tokens). Try: 1) Using a smaller image, 2) Reducing image quality, or 3) Using a model with larger context") from e
             logger.error(f"LLM HTTP error: {e.response.status_code} - {e.response.text}")

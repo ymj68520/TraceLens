@@ -11,9 +11,9 @@ const TaskSelector = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const { tasks, currentTask, status } = useSelector((state) => state.tasks);
 
-    const currentTaskId = searchParams.get('task_id') || currentTask?.id;
+    const currentTaskId = searchParams.get('taskId') || searchParams.get('task_id') || currentTask?.id;
 
-    const relevantPaths = ['/timeline', '/files', '/statistics', '/llm-descriptions', '/android', '/oss'];
+    const relevantPaths = ['/timeline', '/files', '/statistics', '/llm-descriptions', '/android', '/oss', '/case-report', '/knowledge-graph'];
     const isRelevantPage = relevantPaths.some(path => location.pathname.startsWith(path));
 
     useEffect(() => {
@@ -23,23 +23,32 @@ const TaskSelector = () => {
     }, [dispatch, status]);
 
     useEffect(() => {
-        if (searchParams.get('task_id') && tasks.length > 0) {
-            const urlTaskId = searchParams.get('task_id');
+        const urlTaskId = searchParams.get('taskId') || searchParams.get('task_id');
+        if (urlTaskId && tasks.length > 0) {
             const task = tasks.find(t => t.id === urlTaskId);
             if (task && (!currentTask || currentTask.id !== urlTaskId)) {
                 dispatch(setCurrentTask(task));
             }
-        } else if (!searchParams.get('task_id') && currentTask && isRelevantPage) {
-            setSearchParams({ ...Object.fromEntries(searchParams), task_id: currentTask.id });
+        } else if (!urlTaskId && currentTask && isRelevantPage) {
+            const paramName = location.pathname.startsWith('/case-report') ? 'taskId' : 'task_id';
+            setSearchParams({ ...Object.fromEntries(searchParams), [paramName]: currentTask.id });
         }
-    }, [searchParams, tasks, dispatch, currentTask, isRelevantPage, setSearchParams]);
+    }, [searchParams, tasks, dispatch, currentTask, isRelevantPage, setSearchParams, location.pathname]);
 
     const handleTaskChange = (e) => {
         const newTaskId = e.target.value;
+        const paramName = location.pathname.startsWith('/case-report') ? 'taskId' : 'task_id';
+        
         if (newTaskId) {
-            setSearchParams({ ...Object.fromEntries(searchParams), task_id: newTaskId });
+            const newParams = Object.fromEntries(searchParams);
+            // Clean up both possible names to avoid confusion
+            delete newParams.taskId;
+            delete newParams.task_id;
+            newParams[paramName] = newTaskId;
+            setSearchParams(newParams);
         } else {
             const newParams = Object.fromEntries(searchParams);
+            delete newParams.taskId;
             delete newParams.task_id;
             setSearchParams(newParams);
         }

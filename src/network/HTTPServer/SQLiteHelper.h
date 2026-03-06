@@ -162,6 +162,7 @@ private:
     // Helper methods
     static sqlite3* open_database(const std::string& db_path, nlohmann::json& error_result);
     static nlohmann::json execute_query(sqlite3* db, const std::string& sql);
+    static bool table_exists(sqlite3* db, const std::string& table_name);
     static std::string format_timestamp(int64_t timestamp);
     static int64_t parse_timestamp(const std::string& time_str);
     static bool is_suspicious_extension(const std::string& ext);

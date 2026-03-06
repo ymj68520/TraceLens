@@ -449,9 +449,19 @@ async def _run_case_analysis_background(
 ):
     """Run the full case analysis pipeline in the background."""
     try:
-        async def progress_cb(step, detail):
-            _analysis_jobs[job_id]["current_step"] = step
-            _analysis_jobs[job_id]["detail"] = detail
+        async def progress_cb(step, detail=None, extra=None):
+            # Handle variable arguments from different pipeline steps
+            if extra is not None:
+                # Step 3 (describing) sends: current, total, file_path
+                current, total, file_path = step, detail, extra
+                percentage = int((current / total) * 100) if total > 0 else 0
+                _analysis_jobs[job_id]["current_step"] = "分析文件"
+                _analysis_jobs[job_id]["detail"] = f"正在分析第 {current}/{total} 个文件: {file_path}"
+                _analysis_jobs[job_id]["progress"] = percentage
+            else:
+                # Other steps send: step_name, detail_text
+                _analysis_jobs[job_id]["current_step"] = step
+                _analysis_jobs[job_id]["detail"] = detail or ""
 
         result = await case_service.run_full_analysis(
             task_id=task_id,

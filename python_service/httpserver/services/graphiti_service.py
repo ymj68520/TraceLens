@@ -11,6 +11,7 @@ This service provides integration with the Graphiti knowledge graph:
 import asyncio
 import logging
 import uuid
+import os
 from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 
@@ -202,27 +203,38 @@ class GraphitiService:
             )
 
             # Determine the output_dir and base_name from task data
+            # New structure: build/data/tasks/<uuid>/files.db
             output_dir = self.settings.db_output_dir
-            base_name = None
+            base_name = "forensics"
             any_db_path = None
 
             if task_data:
-                # Try to extract image name from task data
-                if isinstance(task_data, dict):
-                    base_name = task_data.get("image_name") or task_data.get("image_path") or task_data.get("name")
-                    if base_name and "." in base_name:
-                        base_name = base_name.rsplit(".", 1)[0]
-                        
-                    t_out_dir = task_data.get("db_output_dir") or task_data.get("output_dir")
+                # 1. Use the explicit files.db path if available
+                any_db_path = task_data.get("output_files_db")
+                
+                # 2. Extract base_name from image path for potential other databases
+                img_path = task_data.get("image_path", "")
+                if img_path:
+                    base_name = os.path.basename(img_path).split('.')[0]
+                
+                # 3. If any_db_path is set, ensure output_dir is its parent
+                if any_db_path:
+                    output_dir = os.path.dirname(any_db_path)
+                else:
+                    # Fallback to task-specific directory
+                    t_out_dir = task_data.get("db_output_dir")
                     if t_out_dir:
                         output_dir = t_out_dir
-                        
-                    # Also try to search in build directory as a fallback
-                    if not any(Path(output_dir).glob(f"{base_name}*.db")):
-                        if any(Path("build").glob(f"{base_name}*.db")):
-                            output_dir = "build"
-                            
-                    any_db_path = task_data.get("output_files_db") or task_data.get("db_path")
+
+            # Safe globbing: only use relative patterns
+            try:
+                # We only need to check if directory exists, MultiSourcePipeline will handle the rest
+                if not any_db_path and output_dir and os.path.exists(output_dir):
+                    # Only glob if we don't have a direct path, and ensure pattern is simple
+                    safe_pattern = f"*{base_name}*.db"
+                    logger.info(f"Searching for databases in {output_dir} with pattern {safe_pattern}")
+            except Exception as e:
+                logger.warning(f"Database discovery warning: {e}")
 
             pipeline = MultiSourcePipeline(config)
 
@@ -248,11 +260,14 @@ class GraphitiService:
             })
 
         except Exception as e:
+            import traceback
             logger.error(f"Ingestion job {job_id} failed: {e}")
+            logger.error(traceback.format_exc())
             self._jobs[job_id].update({
                 "status": "failed",
-                "errors": [str(e)],
+                "message": str(e),
             })
+
     
     def _update_job_progress(self, job_id: str, progress: float):
         """Update job progress."""
@@ -308,7 +323,7 @@ class GraphitiService:
     async def _neo4j_text_search(
         self, query: str, task_id: str, limit: int = 50
     ) -> List[Dict[str, Any]]:
-        """Fallback text search using Neo4j CONTAINS."""
+        """Fallback text search using Neo4j CONTAINS through Episodic nodes."""
         try:
             from neo4j import AsyncGraphDatabase
             driver = AsyncGraphDatabase.driver(
@@ -318,10 +333,10 @@ class GraphitiService:
             try:
                 async with driver.session() as session:
                     result = await session.run(
-                        "MATCH (n:Entity {group_id: $gid}) "
+                        "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) "
                         "WHERE toLower(n.name) CONTAINS toLower($q) "
                         "   OR toLower(coalesce(n.summary, '')) CONTAINS toLower($q) "
-                        "RETURN n.uuid AS id, n.name AS name, n.entity_type AS type "
+                        "RETURN DISTINCT n.uuid AS id, n.name AS name, labels(n)[0] AS type "
                         "LIMIT $lim",
                         gid=task_id, q=query, lim=limit,
                     )
@@ -351,7 +366,6 @@ class GraphitiService:
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
         List entities in the knowledge graph for a specific task.
-        Queries Neo4j directly instead of through graphiti ingestor.
         """
         try:
             from neo4j import AsyncGraphDatabase
@@ -364,24 +378,25 @@ class GraphitiService:
                     skip = (page - 1) * page_size
                     if entity_type:
                         count_res = await session.run(
-                            "MATCH (n:Entity {group_id: $gid}) WHERE $et IN n.labels "
-                            "RETURN count(n) AS cnt",
+                            "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) WHERE $et IN labels(n) "
+                            "RETURN count(DISTINCT n) AS cnt",
                             gid=task_id, et=entity_type,
                         )
                         data_res = await session.run(
-                            "MATCH (n:Entity {group_id: $gid}) WHERE $et IN n.labels "
-                            "RETURN n.uuid AS id, n.name AS name, n.labels AS type "
+                            "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) WHERE $et IN labels(n) "
+                            "RETURN DISTINCT n.uuid AS id, n.name AS name, labels(n) AS type "
                             "SKIP $skip LIMIT $lim",
                             gid=task_id, et=entity_type, skip=skip, lim=page_size,
                         )
                     else:
                         count_res = await session.run(
-                            "MATCH (n:Entity {group_id: $gid}) RETURN count(n) AS cnt",
+                            "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) "
+                            "RETURN count(DISTINCT n) AS cnt",
                             gid=task_id,
                         )
                         data_res = await session.run(
-                            "MATCH (n:Entity {group_id: $gid}) "
-                            "RETURN n.uuid AS id, n.name AS name, n.labels AS type "
+                            "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) "
+                            "RETURN DISTINCT n.uuid AS id, n.name AS name, labels(n) AS type "
                             "SKIP $skip LIMIT $lim",
                             gid=task_id, skip=skip, lim=page_size,
                         )
@@ -499,7 +514,7 @@ class GraphitiService:
     async def _query_neo4j_counts(
         self, task_id: Optional[str] = None
     ) -> tuple:
-        """Query Neo4j directly for entity and relationship counts."""
+        """Query Neo4j directly for entity and relationship counts with correct grouping."""
         from neo4j import AsyncGraphDatabase
         uri = self.settings.neo4j_uri
         user = self.settings.neo4j_user
@@ -508,25 +523,91 @@ class GraphitiService:
         try:
             async with driver.session() as session:
                 if task_id:
+                    # Entities are linked to Episodic nodes which have the group_id
                     entity_res = await session.run(
-                        "MATCH (n:Entity {group_id: $gid}) RETURN count(n) AS cnt",
+                        "MATCH (e:Episodic {group_id: $gid})-[r:MENTIONS]->(n:Entity) "
+                        "RETURN count(DISTINCT n) AS cnt",
                         gid=task_id,
                     )
                     rel_res = await session.run(
-                        "MATCH (s:Entity {group_id: $gid})-[r:RELATES_TO]->(t:Entity {group_id: $gid}) "
-                        "RETURN count(r) AS cnt",
+                        "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(s:Entity)-[r:RELATES_TO]->(t:Entity) "
+                        "WHERE (e)-[:MENTIONS]->(t) "
+                        "RETURN count(DISTINCT r) AS cnt",
                         gid=task_id,
                     )
+                    
+                    entity_row = await entity_res.single()
+                    rel_row = await rel_res.single()
+                    entity_count = entity_row["cnt"] if entity_row else 0
+                    rel_count = rel_row["cnt"] if rel_row else 0
+                    
+                    logger.info(f"Neo4j counts for task {task_id}: {entity_count} entities, {rel_count} relationships")
                 else:
                     entity_res = await session.run("MATCH (n:Entity) RETURN count(n) AS cnt")
                     rel_res = await session.run("MATCH ()-[r:RELATES_TO]->() RETURN count(r) AS cnt")
-                entity_row = await entity_res.single()
-                rel_row = await rel_res.single()
-                entity_count = entity_row["cnt"] if entity_row else 0
-                rel_count = rel_row["cnt"] if rel_row else 0
+                    entity_row = await entity_res.single()
+                    rel_row = await rel_res.single()
+                    entity_count = entity_row["cnt"] if entity_row else 0
+                    rel_count = rel_row["cnt"] if rel_row else 0
             return entity_count, rel_count
         finally:
             await driver.close()
+
+    async def list_relationships(
+        self,
+        task_id: str,
+        relationship_type: Optional[str] = None,
+        source_id: Optional[str] = None,
+        target_id: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """
+        List relationships in the knowledge graph for a specific task.
+        """
+        try:
+            from neo4j import AsyncGraphDatabase
+            driver = AsyncGraphDatabase.driver(
+                self.settings.neo4j_uri,
+                auth=(self.settings.neo4j_user, self.settings.neo4j_password),
+            )
+            try:
+                async with driver.session() as session:
+                    skip = (page - 1) * page_size
+                    # Relationships between entities mentioned in episodes of this task
+                    match_clause = "MATCH (e:Episodic {group_id: $gid})-[m1:MENTIONS]->(s:Entity)-[r:RELATES_TO]->(t:Entity)"
+                    where_clauses = ["(e)-[:MENTIONS]->(t)"]
+                    
+                    if relationship_type:
+                        where_clauses.append("r.name = $rt")
+                    if source_id:
+                        where_clauses.append("s.uuid = $sid")
+                    if target_id:
+                        where_clauses.append("t.uuid = $tid")
+                    
+                    where_str = " WHERE " + " AND ".join(where_clauses)
+                    
+                    count_res = await session.run(
+                        f"{match_clause} {where_str} RETURN count(DISTINCT r) AS cnt",
+                        gid=task_id, rt=relationship_type, sid=source_id, tid=target_id
+                    )
+                    data_res = await session.run(
+                        f"{match_clause} {where_str} "
+                        "RETURN DISTINCT r.uuid AS id, s.uuid AS source_id, s.name AS source_name, "
+                        "t.uuid AS target_id, t.name AS target_name, r.name AS type "
+                        "SKIP $skip LIMIT $lim",
+                        gid=task_id, rt=relationship_type, sid=source_id, tid=target_id, skip=skip, lim=page_size
+                    )
+                    
+                    count_row = await count_res.single()
+                    total = count_row["cnt"] if count_row else 0
+                    rels = [dict(record) async for record in data_res]
+                return rels, total
+            finally:
+                await driver.close()
+        except Exception as e:
+            logger.error(f"List relationships failed for task {task_id}: {e}")
+            return [], 0
 
     async def list_task_graphs(self) -> List[str]:
         """
@@ -592,8 +673,7 @@ class GraphitiService:
         max_nodes: int = 200,
     ) -> tuple:
         """
-        Get graph data for visualization as (nodes, links) tuple.
-        Returns react-force-graph-2d compatible format.
+        Get graph data for visualization filtered by task_id.
         """
         from neo4j import AsyncGraphDatabase
         driver = AsyncGraphDatabase.driver(
@@ -602,27 +682,26 @@ class GraphitiService:
         )
         try:
             async with driver.session() as session:
-                # Fetch entity nodes with summary
+                # Fetch entities linked to episodes of this task
                 node_result = await session.run(
-                    "MATCH (n:Entity {group_id: $gid}) "
-                    "RETURN n.uuid AS id, n.name AS name, "
-                    "       n.labels AS labels, n.summary AS summary "
+                    "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) "
+                    "RETURN DISTINCT n.uuid AS id, n.name AS name, "
+                    "       labels(n) AS labels, n.summary AS summary "
                     "LIMIT $lim",
                     gid=task_id, lim=max_nodes,
                 )
                 node_rows = [dict(r) async for r in node_result]
 
-                # Collect node IDs to filter edges
                 node_ids = {r["id"] for r in node_rows}
 
                 # Fetch relationships between those nodes
                 rel_result = await session.run(
-                    "MATCH (s:Entity {group_id: $gid})-[r:RELATES_TO]->(t:Entity {group_id: $gid}) "
+                    "MATCH (s:Entity)-[r:RELATES_TO]->(t:Entity) "
                     "WHERE s.uuid IN $ids AND t.uuid IN $ids "
                     "RETURN s.uuid AS source, t.uuid AS target, "
-                    "       coalesce(r.name, 'RELATES_TO') AS label "
+                    "       r.name AS label "
                     "LIMIT $lim",
-                    gid=task_id, ids=list(node_ids), lim=max_nodes * 3,
+                    ids=list(node_ids), lim=max_nodes * 3,
                 )
                 rel_rows = [dict(r) async for r in rel_result]
 
@@ -645,7 +724,6 @@ class GraphitiService:
                 }
                 for r in rel_rows
                 if r.get("source") and r.get("target")
-                   and r["source"] in node_ids and r["target"] in node_ids
             ]
 
             return nodes, links

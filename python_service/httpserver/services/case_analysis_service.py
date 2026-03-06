@@ -16,6 +16,7 @@ import logging
 import sqlite3
 import asyncio
 import time
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -582,22 +583,30 @@ class CaseAnalysisService:
                     if not Path(full_path).exists():
                         return {"file_path": file_path, "description": "", "error": f"File not found: {full_path}", "success": False}
 
+                    result = None
                     if is_image:
                         with open(full_path, 'rb') as f:
                             image_data = f.read()
                         
-                        # Use professional vision analysis prompt
                         vision_prompt = f"请结合案情背景对这张图像进行深度取证分析。\n案情背景：{case_description}\n\n要求：提取文字信息、识别人物/账号、发现时间线索，并评估取证价值。"
                         
-                        result = await self._llm_service.analyze_image(
-                            image_data=image_data,
-                            prompt=vision_prompt,
-                        )
-                    else:
+                        try:
+                            result = await self._llm_service.analyze_image(
+                                image_data=image_data,
+                                prompt=vision_prompt,
+                            )
+                            # Check for the special error return from enhanced analyze_image
+                            if result.get("error_type") == "image_decode_failed":
+                                logger.info(f"Image decode failed for {file_path}, falling back to text analysis")
+                                result = None # Trigger fallback below
+                        except Exception as e:
+                            logger.warning(f"Vision model failed for {file_path}, attempting text fallback: {e}")
+                            result = None
+
+                    if not result:
+                        # Fallback or normal text analysis
                         content = await self._llm_service.read_file_content(full_path)
                         
-                        # Build a professional forensic analysis prompt similar to manual analysis
-                        # but contextualized with the case description
                         custom_prompt = f"""作为资深取证专家，请对以下文件进行深度分析。
 
 ## 案情背景
@@ -628,12 +637,10 @@ class CaseAnalysisService:
                     description = analysis.get("description", "")
 
                     # Extract metadata for better persistence
-                    summary = description[:200].split('\n')[0] # First line or first 200 chars
+                    summary = description[:200].split('\n')[0] 
                     
-                    # Simple keyword extraction from description
                     keywords = ""
-                    import re
-                    # Look for things that look like keywords or key entities
+                    # re is now global
                     found_entities = re.findall(r'[\u4e00-\u9fa5]{2,6}', description[:500])
                     if found_entities:
                         keywords = ", ".join(list(set(found_entities))[:5])
@@ -997,22 +1004,26 @@ class CaseAnalysisService:
     ) -> Dict[str, Any]:
         """
         Generate a comprehensive case analysis report.
-
-        If Graphiti is available, uses per-chapter semantic search to
-        retrieve the most relevant context. Falls back to full
-        concatenation when Graphiti is unavailable.
-
-        Args:
-            case_description: Original case description.
-            file_descriptions: List of per-file analysis results.
-            files_db_path: Path to _files.db for persisting the report.
-            task_id: Task ID for associating the report.
-
-        Returns:
-            Dict with the generated report.
         """
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
+
+        # Robustness: Load existing descriptions from database if input list is empty
+        if not file_descriptions and files_db_path and task_id:
+            logger.info(f"Task {task_id}: Input file_descriptions is empty, attempting to load from database...")
+            try:
+                with sqlite3.connect(files_db_path) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cur = conn.execute("SELECT file_path, description FROM file_descriptions")
+                    rows = cur.fetchall()
+                    if rows:
+                        file_descriptions = [
+                            {"file_path": row["file_path"], "description": row["description"], "success": True}
+                            for row in rows
+                        ]
+                        logger.info(f"Task {task_id}: Successfully loaded {len(file_descriptions)} descriptions from database.")
+            except Exception as e:
+                logger.warning(f"Failed to load existing descriptions for report: {e}")
 
         use_graph = (
             self._graphiti_service is not None
@@ -1024,19 +1035,21 @@ class CaseAnalysisService:
 
         if use_graph:
             try:
+                logger.info(f"Task {task_id}: Attempting graph-enhanced report generation...")
                 report_text = await self._generate_report_with_graph(
                     case_description, task_id
                 )
-                model_used = "graph-enhanced"
+                if report_text:
+                    model_used = "graph-enhanced"
             except Exception as e:
                 logger.warning(
                     f"Graph-enhanced report generation failed, falling back: {e}"
                 )
-                # Fallthrough to standard generation
         
-        # Determine strict necessity to fallback
+        # Fallback if graph failed or returned nothing
         if not report_text:
             try:
+                logger.info(f"Task {task_id}: Using fallback (concatenation) report generation...")
                 report_text = await self._generate_report_fallback(
                     case_description, file_descriptions
                 )
