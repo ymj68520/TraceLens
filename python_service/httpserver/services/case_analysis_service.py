@@ -14,6 +14,7 @@ import os
 import json
 import logging
 import sqlite3
+import asyncio
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -584,31 +585,68 @@ class CaseAnalysisService:
                     if is_image:
                         with open(full_path, 'rb') as f:
                             image_data = f.read()
+                        
+                        # Use professional vision analysis prompt
+                        vision_prompt = f"请结合案情背景对这张图像进行深度取证分析。\n案情背景：{case_description}\n\n要求：提取文字信息、识别人物/账号、发现时间线索，并评估取证价值。"
+                        
                         result = await self._llm_service.analyze_image(
                             image_data=image_data,
-                            prompt=f"请分析这张图像在案情背景下的取证价值。\n案情描述：{case_description}",
+                            prompt=vision_prompt,
                         )
                     else:
                         content = await self._llm_service.read_file_content(full_path)
-                        custom_prompt = FILE_DESCRIPTION_TEMPLATE.format(
-                            case_description=case_description,
-                            file_path=file_path,
-                            content=content,
+                        
+                        # Build a professional forensic analysis prompt similar to manual analysis
+                        # but contextualized with the case description
+                        custom_prompt = f"""作为资深取证专家，请对以下文件进行深度分析。
+
+## 案情背景
+{case_description}
+
+## 待分析文件路径
+{file_path}
+
+## 文件内容
+{content}
+
+## 分析要求
+请针对上述案情背景，详细分析该文件的取证价值。重点关注：
+1. 文件内容与案件的关联性
+2. 关键人物、账号、时间、金额等信息的提取
+3. 任何可疑的活动痕迹或异常点
+4. 综合评估该证据的效力
+
+请输出纯文本，不要使用 Markdown。"""
+                        
+                        result = await self._llm_service.analyze(
+                            content=content, 
+                            model_type="text", 
+                            prompt=custom_prompt
                         )
-                        result = await self._llm_service.analyze(content=content, model_type="text", prompt=custom_prompt)
 
                     analysis = result.get("analysis", {})
                     description = analysis.get("description", "")
 
-                    # Persist to _files.db
+                    # Extract metadata for better persistence
+                    summary = description[:200].split('\n')[0] # First line or first 200 chars
+                    
+                    # Simple keyword extraction from description
+                    keywords = ""
+                    import re
+                    # Look for things that look like keywords or key entities
+                    found_entities = re.findall(r'[\u4e00-\u9fa5]{2,6}', description[:500])
+                    if found_entities:
+                        keywords = ", ".join(list(set(found_entities))[:5])
+
+                    # Persist to _files.db (this will update both 'files' and 'file_descriptions' tables)
                     if files_db_path and description:
                         try:
                             self._llm_service.persist_to_files_db(
                                 db_path=files_db_path,
                                 file_path=file_path,
                                 description=description,
-                                summary=description[:200],
-                                keywords="",
+                                summary=summary,
+                                keywords=keywords,
                                 model_used=result.get("model", ""),
                             )
                         except Exception as e:
