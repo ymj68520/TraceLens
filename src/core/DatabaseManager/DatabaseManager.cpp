@@ -1,6 +1,6 @@
 #include "DatabaseManager.h"
 #include "AuditLog/AuditLog.h"
-#include "LLMIntegration/ConfigManager.h"
+#include "ConfigManager/ConfigManager.h"
 #include <iostream>
 #include <sstream>
 #include <sqlite3.h>

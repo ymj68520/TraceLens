@@ -1,4 +1,4 @@
-#include "ConfigManager.h"
+#include "ConfigManager/ConfigManager.h"
 #include "dotenv.h"
 #include "PathManager/PathManager.h"
 

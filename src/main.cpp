@@ -27,7 +27,7 @@
 #include "FullTextSearch/TextExtractor.h"
 #include "FileCarving/FileCarver.h"
 #include "PathManager/PathManager.h"
-#include "LLMIntegration/ConfigManager.h"
+#include "ConfigManager/ConfigManager.h"
 #include "AuditLog/AuditLog.h"
 
 

@@ -126,7 +126,7 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     t.cancellation_requested = false;
 }
 
-#include "LLMIntegration/ConfigManager.h"
+#include "ConfigManager/ConfigManager.h"
 
 TaskManager::TaskManager() {
     // Sync with Python settings from ConfigManager (.env)

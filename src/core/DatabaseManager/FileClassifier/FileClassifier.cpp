@@ -2,7 +2,7 @@
 #include "DatabaseManager/SQL/file_classifier_sql.h"
 #include "AuditLog/AuditLog.h"
 #include "EncryptionUtils.h"
-#include "LLMIntegration/ConfigManager.h"
+#include "ConfigManager/ConfigManager.h"
 #include <iostream>
 #include <sstream>
 #include <iomanip>

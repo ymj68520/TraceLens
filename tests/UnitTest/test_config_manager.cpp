@@ -2,7 +2,7 @@
 #include <gmock/gmock.h>
 #include <filesystem>
 #include <fstream>
-#include "LLMIntegration/ConfigManager.h"
+#include "ConfigManager/ConfigManager.h"
 
 namespace fs = std::filesystem;
 using namespace forensics::llm;

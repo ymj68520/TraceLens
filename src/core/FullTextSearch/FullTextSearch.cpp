@@ -1,4 +1,4 @@
-#include "LLMIntegration/ConfigManager.h"
+#include "ConfigManager/ConfigManager.h"
 #include "FullTextSearch.h"
 #include "TextExtractor.h"
 #include <iostream>

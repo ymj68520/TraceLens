@@ -4,7 +4,7 @@
 #include "NativeFilesystemWalker.h"
 #include "TskFilesystemWalker.h"
 #include "AuditLog/AuditLog.h"
-#include "LLMIntegration/ConfigManager.h"
+#include "ConfigManager/ConfigManager.h"
 #include <iostream>
 #include <cstring>
 #include <sstream>

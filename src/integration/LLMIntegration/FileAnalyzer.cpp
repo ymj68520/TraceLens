@@ -1,6 +1,6 @@
 #include "FileAnalyzer.h"
 #include "json.hpp"
-#include "ConfigManager.h"
+#include "ConfigManager/ConfigManager.h"
 #include "../../core/Logger/Logger.h"
 #include "../../core/ThreadPool/ThreadPool.h"
 #include "../../analyzers/PDFAnalyzer/PDFAnalyzer.h"

@@ -207,7 +207,7 @@ set(LIB_SOURCES
     src/integration/LLMIntegration/ModelRouter.cpp
     src/integration/LLMIntegration/MCPIntegration.cpp
     src/integration/LLMIntegration/FileAnalyzer.cpp
-    src/integration/LLMIntegration/ConfigManager.cpp
+    src/core/ConfigManager/ConfigManager.cpp
     src/analyzers/VisionAnalysis/VisionAnalyzer.cpp
     # OSSAnalyzer module
     src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp

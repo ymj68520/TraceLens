@@ -62,7 +62,7 @@ add_executable(
   ../src/core/DatabaseManager/FileClassifier/FileClassifier.cpp
   ../src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
   ../src/core/AuditLog/AuditLog.cpp
-  ../src/integration/LLMIntegration/ConfigManager.cpp
+  ../src/core/ConfigManager/ConfigManager.cpp
   ../src/core/PathManager/PathManager.cpp
   ../src/core/Logger/Logger.cpp)
 
@@ -122,7 +122,7 @@ add_executable(
   UnitTest/test_fulltext_search_gtest.cpp
   ../src/core/FullTextSearch/FullTextSearch.cpp
   ../src/core/FullTextSearch/TextExtractor.cpp
-  ../src/integration/LLMIntegration/ConfigManager.cpp
+  ../src/core/ConfigManager/ConfigManager.cpp
   ../src/core/PathManager/PathManager.cpp
   ../src/core/Logger/Logger.cpp)
 
@@ -143,7 +143,7 @@ add_test(NAME ImageAnalyzerGTests COMMAND test_image_analyzer_gtest)
 add_executable(
   test_llm_integration
   UnitTest/test_llm_integration.cpp
-  ../src/integration/LLMIntegration/ConfigManager.cpp
+  ../src/core/ConfigManager/ConfigManager.cpp
   ../src/core/PathManager/PathManager.cpp
   ../src/core/Logger/Logger.cpp
   ../src/core/ThreadPool/ThreadPool.cpp
@@ -225,7 +225,7 @@ install(
 add_executable(
   llm_files_test
   llm_files_test.cpp
-  ../src/integration/LLMIntegration/ConfigManager.cpp
+  ../src/core/ConfigManager/ConfigManager.cpp
   ../src/core/PathManager/PathManager.cpp
   ../src/core/Logger/Logger.cpp
   ../src/core/ThreadPool/ThreadPool.cpp
@@ -263,7 +263,7 @@ target_link_libraries(
 add_executable(
   test_config_manager
   UnitTest/test_config_manager.cpp
-  ../src/integration/LLMIntegration/ConfigManager.cpp
+  ../src/core/ConfigManager/ConfigManager.cpp
   ../src/core/PathManager/PathManager.cpp ../libs/cpp-dotenv/include/dotenv.h)
 
 target_include_directories(

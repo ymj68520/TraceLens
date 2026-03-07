@@ -7,7 +7,7 @@
 #include "LLMIntegration/LLMDataTypes.h"
 #include "LLMIntegration/FileAnalyzer.h"
 #include "LLMIntegration/ModelRouter.h"
-#include "LLMIntegration/ConfigManager.h"
+#include "ConfigManager/ConfigManager.h"
 
 namespace forensics {
 

@@ -1,4 +1,4 @@
-#include "integration/LLMIntegration/ConfigManager.h"
+#include "ConfigManager/ConfigManager.h"
 #include "integration/LLMIntegration/ModelRouter.h"
 #include "integration/LLMIntegration/FileAnalyzer.h"
 #include "analyzers/VisionAnalysis/VisionAnalyzer.h"
