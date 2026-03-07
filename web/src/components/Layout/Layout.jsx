@@ -25,8 +25,7 @@ const Layout = ({ children }) => {
     { name: t('nav.tasks'), href: '/tasks', icon: ListTodo },
     { name: t('nav.timeline'), href: '/timeline', icon: Clock },
     { name: t('nav.files'), href: '/files', icon: FolderOpen },
-    { name: t('nav.ai_descriptions'), href: '/llm-descriptions', icon: Brain },
-    { name: '案情报告', href: '/case-report', icon: FileText },
+    { name: '研判中心', href: '/case-report', icon: Brain },
     { name: t('nav.knowledge_graph'), href: '/knowledge-graph', icon: Network },
     { name: t('nav.android'), href: '/android', icon: Smartphone },
     { name: 'OSS 分析', href: '/oss', icon: Cloud },
@@ -43,7 +42,7 @@ const Layout = ({ children }) => {
   const isActive = (path) => location.pathname === path;
 
   const getLinkUrl = (href) => {
-    const taskContextPages = ['/timeline', '/files', '/llm-descriptions', '/case-report', '/knowledge-graph', '/android', '/oss', '/search', '/statistics'];
+    const taskContextPages = ['/timeline', '/files', '/case-report', '/knowledge-graph', '/android', '/oss', '/search', '/statistics'];
     if (currentTaskId && taskContextPages.includes(href)) {
       return `${href}?task_id=${currentTaskId}`;
     }

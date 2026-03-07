@@ -993,11 +993,18 @@ class CaseAnalysisService:
                     "reanalysis": True,
                 })
 
+        # KG INCREMENTAL SYNC: Trigger ingestion for newly analyzed files
+        if self._graphiti_service and any(r.get("success") for r in results):
+            logger.info(f"Task {task_id}: Triggering incremental Graphiti sync for re-analyzed files...")
+            asyncio.create_task(self.ingest_to_knowledge_graph(
+                task_id, case_description, results
+            ))
+
         logger.info(f"Re-analysis completed: {sum(1 for r in results if r.get('success'))}/{len(results)} files successful")
         return results
 
     # ------------------------------------------------------------------
-    # 4. Final Case Report Generation (Graph-enhanced)
+    # 4. Final Case Report Generation (Graph-enhanced & Dynamic Aggregation)
     # ------------------------------------------------------------------
     async def generate_case_report(
         self,
@@ -1008,26 +1015,38 @@ class CaseAnalysisService:
     ) -> Dict[str, Any]:
         """
         Generate a comprehensive case analysis report.
+        Aggregates ALL available file descriptions from the database.
         """
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
 
-        # Robustness: Load existing descriptions from database if input list is empty
-        if not file_descriptions and files_db_path and task_id:
-            logger.info(f"Task {task_id}: Input file_descriptions is empty, attempting to load from database...")
+        # DYNAMIC AGGREGATION: Always pull the latest descriptions from database
+        # This ensures manually re-analyzed or analyzed files are included in the report
+        if files_db_path and task_id:
+            logger.info(f"Task {task_id}: Aggregating all relevant evidence descriptions from database...")
             try:
                 with sqlite3.connect(files_db_path) as conn:
                     conn.row_factory = sqlite3.Row
-                    cur = conn.execute("SELECT file_path, description FROM file_descriptions")
+                    # CRITICAL: Only include files marked as relevant (is_relevant = 1)
+                    cur = conn.execute("SELECT file_path, description, model_used FROM file_descriptions WHERE is_relevant = 1")
                     rows = cur.fetchall()
                     if rows:
+                        # Convert DB rows to the format expected by build_evidence_summary
                         file_descriptions = [
-                            {"file_path": row["file_path"], "description": row["description"], "success": True}
+                            {
+                                "file_path": row["file_path"], 
+                                "description": row["description"], 
+                                "success": True,
+                                "model_used": row["model_used"]
+                            }
                             for row in rows
                         ]
-                        logger.info(f"Task {task_id}: Successfully loaded {len(file_descriptions)} descriptions from database.")
+                        logger.info(f"Task {task_id}: Integrated {len(file_descriptions)} relevant evidence files into report.")
+                    else:
+                        file_descriptions = []
+                        logger.info(f"Task {task_id}: No relevant evidence found in database.")
             except Exception as e:
-                logger.warning(f"Failed to load existing descriptions for report: {e}")
+                logger.warning(f"Failed to aggregate evidence from database: {e}")
 
         use_graph = (
             self._graphiti_service is not None
@@ -1340,22 +1359,36 @@ class CaseAnalysisService:
             logger.warning(f"Failed to retrieve case report: {e}")
         return None
 
-    def get_filtered_files(self, files_db_path: str) -> List[str]:
-        """Retrieve the filtered file list from database."""
+    def get_filtered_files(self, files_db_path: str, task_id: str = "") -> List[str]:
+        """
+        Retrieve the list of case-relevant files.
+        Prioritizes files that already have LLM descriptions in the database.
+        """
         if not files_db_path or not Path(files_db_path).exists():
             return []
 
         try:
             with sqlite3.connect(files_db_path, timeout=10) as conn:
                 cur = conn.cursor()
+                
+                # 1. First, get files that have been analyzed (dynamic evidence)
+                cur.execute("SELECT DISTINCT file_path FROM file_descriptions")
+                analyzed_files = [row[0] for row in cur.fetchall()]
+                
+                # 2. Also get files from the initial filter list
                 cur.execute(
-                    "SELECT filtered_files FROM case_analysis ORDER BY updated_at DESC LIMIT 1"
+                    "SELECT filtered_files FROM case_analysis WHERE task_id = ?",
+                    (task_id,)
                 )
                 row = cur.fetchone()
-                if row and row[0]:
-                    return json.loads(row[0])
+                initial_filtered = json.loads(row[0]) if row and row[0] else []
+                
+                # Combine and deduplicate
+                all_relevant = list(dict.fromkeys(analyzed_files + initial_filtered))
+                return all_relevant
+                
         except Exception as e:
-            logger.warning(f"Failed to retrieve filtered files: {e}")
+            logger.warning(f"Failed to retrieve case-relevant files: {e}")
         return []
 
     # ------------------------------------------------------------------

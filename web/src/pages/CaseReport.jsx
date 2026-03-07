@@ -477,7 +477,7 @@ const CaseReport = () => {
                 <Card title="📊 分析统计">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="bg-blue-50 rounded-xl p-4">
-                            <p className="text-sm text-primary-600 font-medium">筛选文件数</p>
+                            <p className="text-sm text-primary-600 font-medium">证据文件数</p>
                             <p className="text-2xl font-bold text-blue-900">
                                 {filteredFiles.length || report?.filtered_files?.length || 0}
                             </p>
@@ -500,7 +500,10 @@ const CaseReport = () => {
 
             {/* Filtered Files */}
             {filteredFiles.length > 0 && (
-                <Card title={`🗂️ LLM 筛选的关键文件 (${filteredFiles.length})`}>
+                <Card title={`🗂️ 案情相关证据文件 (${filteredFiles.length})`}>
+                    <div className="max-h-64 overflow-y-auto space-y-1 text-sm text-slate-600 mb-3 px-3 italic">
+                        包含初始 AI 筛选及后续深度研判的所有关键文件
+                    </div>
                     <div className="max-h-64 overflow-y-auto space-y-1">
                         {filteredFiles.map((filePath, index) => (
                             <div

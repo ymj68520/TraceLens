@@ -41,7 +41,6 @@ class AnalyzeResponse(BaseModel):
     model_used: str
     tokens_used: int
     processing_time_ms: float
-    timestamp: str
 
 
 class BatchAnalyzeRequest(BaseModel):
@@ -60,7 +59,6 @@ class BatchAnalyzeResponse(BaseModel):
     job_id: str
     message: str
     total_files: int
-    timestamp: str
 
 
 class BatchStatusResponse(BaseModel):
@@ -73,7 +71,6 @@ class BatchStatusResponse(BaseModel):
     files_total: int
     errors: List[str]
     results: List[Dict[str, Any]] = []
-    timestamp: str
 
 
 class ModelInfo(BaseModel):
@@ -90,7 +87,6 @@ class ModelsResponse(BaseModel):
     """Response model for models listing."""
     success: bool
     models: List[ModelInfo]
-    timestamp: str
 
 
 class LLMStatusResponse(BaseModel):
@@ -98,7 +94,12 @@ class LLMStatusResponse(BaseModel):
     status: str
     text_model: Dict[str, Any]
     vision_model: Dict[str, Any]
-    timestamp: str
+
+class ToggleRelevanceRequest(BaseModel):
+    """Request model for toggling file evidence relevance."""
+    task_id: str
+    file_path: str
+    is_relevant: bool
 
 
 # Routes
@@ -454,6 +455,38 @@ async def list_models(settings: Settings = Depends(get_settings)):
         logger.error(f"List models failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.post("/toggle-relevance")
+async def toggle_relevance(
+    request: ToggleRelevanceRequest,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Toggle the relevance of a file description.
+    Irrelevant files will be excluded from the final case report.
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+        
+        task_info = await service_manager.cpp_backend.get_task(request.task_id)
+        if not task_info:
+            raise HTTPException(status_code=404, detail=f"Task {request.task_id} not found")
+            
+        db_path = task_info.get("output_files_db") or ""
+        success = service_manager.llm_service.set_file_relevance(
+            db_path, request.file_path, request.is_relevant
+        )
+        
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to update relevance. File description may not exist.")
+            
+        return {"success": True, "message": f"File relevance updated to {request.is_relevant}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error toggling relevance: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/status", response_model=LLMStatusResponse, responses={
     200: {"description": "Status retrieved successfully"},

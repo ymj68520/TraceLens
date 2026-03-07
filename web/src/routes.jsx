@@ -8,9 +8,8 @@ import Android from './pages/Android';
 import Search from './pages/Search';
 import Statistics from './pages/Statistics';
 import Settings from './pages/Settings';
-import LLMDescriptions from './pages/LLMDescriptions';
 import KnowledgeGraph from './pages/KnowledgeGraph';
-import CaseReport from './pages/CaseReport';
+import CaseIntelligence from './pages/CaseIntelligence';
 import OSS from './pages/OSS';
 import Login from './pages/Login';
 import Terminal from './pages/Terminal';
@@ -65,16 +64,12 @@ const router = createBrowserRouter([
         element: <Settings />,
       },
       {
-        path: 'llm-descriptions',
-        element: <LLMDescriptions />,
-      },
-      {
         path: 'knowledge-graph',
         element: <KnowledgeGraph />,
       },
       {
         path: 'case-report',
-        element: <CaseReport />,
+        element: <CaseIntelligence />,
       },
       {
         path: 'terminal',

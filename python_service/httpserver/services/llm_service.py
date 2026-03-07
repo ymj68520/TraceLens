@@ -135,26 +135,22 @@ class LLMService:
         """
         try:
             with sqlite3.connect(db_path, timeout=10) as conn:
+                # SELF-HEALING: Ensure schema is correct
+                self._ensure_file_descriptions_schema(conn)
+                
                 cur = conn.cursor()
 
-                # Ensure table exists (C++ backend expects this table in some views)
+                # Insert or Replace in descriptions table (preserve is_relevant if row exists)
                 cur.execute("""
-                    CREATE TABLE IF NOT EXISTS file_descriptions (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        file_path TEXT UNIQUE,
-                        description TEXT,
-                        summary TEXT,
-                        keywords TEXT,
-                        model_used TEXT,
-                        created_at INTEGER
-                    )
-                """)
-
-                # Insert or Replace in descriptions table
-                cur.execute("""
-                    INSERT OR REPLACE INTO file_descriptions 
-                        (file_path, description, summary, keywords, model_used, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO file_descriptions 
+                        (file_path, description, summary, keywords, model_used, is_relevant, created_at)
+                    VALUES (?, ?, ?, ?, ?, 1, ?)
+                    ON CONFLICT(file_path) DO UPDATE SET
+                        description = excluded.description,
+                        summary = excluded.summary,
+                        keywords = excluded.keywords,
+                        model_used = excluded.model_used,
+                        created_at = excluded.created_at
                 """, (
                     file_path,
                     description,
@@ -670,6 +666,53 @@ class LLMService:
         """Get the status of a batch analysis job."""
         return self._jobs.get(job_id)
     
+    def _ensure_file_descriptions_schema(self, conn: sqlite3.Connection):
+        """Ensure file_descriptions table and its columns exist."""
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS file_descriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path TEXT UNIQUE,
+                description TEXT,
+                summary TEXT,
+                keywords TEXT,
+                model_used TEXT,
+                is_relevant INTEGER DEFAULT 1,
+                created_at INTEGER
+            )
+        """)
+        
+        # Check for is_relevant column
+        cur.execute("PRAGMA table_info(file_descriptions)")
+        columns = [col[1] for col in cur.fetchall()]
+        if "is_relevant" not in columns:
+            logger.info("Migrating table: adding is_relevant column")
+            cur.execute("ALTER TABLE file_descriptions ADD COLUMN is_relevant INTEGER DEFAULT 1")
+
+    def set_file_relevance(self, db_path: str, file_path: str, is_relevant: bool) -> bool:
+        """
+        Mark a file as relevant or irrelevant for the case report.
+        """
+        if not db_path or not Path(db_path).exists():
+            logger.warning(f"set_file_relevance: DB not found at {db_path}")
+            return False
+            
+        try:
+            with sqlite3.connect(db_path, timeout=10) as conn:
+                # SELF-HEALING: Ensure schema is correct before update
+                self._ensure_file_descriptions_schema(conn)
+                
+                cur = conn.cursor()
+                cur.execute(
+                    "UPDATE file_descriptions SET is_relevant = ? WHERE file_path = ?",
+                    (1 if is_relevant else 0, file_path)
+                )
+                conn.commit()
+                return cur.rowcount > 0
+        except Exception as e:
+            logger.error(f"Failed to set file relevance for {file_path}: {e}")
+            return False
+
     async def get_status(self) -> Dict[str, Any]:
         """
         Get the status of LLM services.

@@ -125,6 +125,20 @@ export const getLLMStatus = async () => {
     return await pythonApi.get('/api/llm/status');
 };
 
+/**
+ * 切换文件的证据相关性（是否进入报告）
+ * @param {string} taskId - 任务 ID
+ * @param {string} filePath - 文件路径
+ * @param {boolean} isRelevant - 是否相关
+ */
+export const toggleFileRelevance = async (taskId, filePath, isRelevant) => {
+    return await pythonApi.post('/api/llm/toggle-relevance', {
+        task_id: taskId,
+        file_path: filePath,
+        is_relevant: isRelevant
+    });
+};
+
 export default {
     analyzeContent,
     analyzeFile,
@@ -133,4 +147,5 @@ export default {
     pollBatchStatus,
     getModels,
     getLLMStatus,
+    toggleFileRelevance,
 };
