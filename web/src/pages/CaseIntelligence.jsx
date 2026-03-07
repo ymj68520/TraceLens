@@ -217,27 +217,66 @@ const CaseIntelligence = () => {
 
     const scrollToFile = (targetPath) => {
         if (!targetPath) return;
+        
+        // 1. Clear search to ensure DOM elements exist
         setSearchQuery('');
         
-        const normalize = (p) => p.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').toLowerCase();
-        const normalizedTarget = normalize(targetPath);
+        /**
+         * Ultra-robust path normalization for forensic contexts
+         */
+        const superNormalize = (p) => {
+            if (!p) return '';
+            return p.trim()
+                .replace(/\\/g, '/')           // Backslashes to forward
+                .replace(/^\.\/+/g, '')        // Remove leading ./
+                .replace(/\/+/g, '/')          // Dedup slashes
+                .replace(/^\/+|\/+$/g, '')     // Remove start/end slashes
+                .toLowerCase();
+        };
+
+        const normalizedTarget = superNormalize(targetPath);
+        console.log(`[Indexing] Target: "${targetPath}" -> Normalized: "${normalizedTarget}"`);
 
         setTimeout(() => {
             const allItems = llmResults?.descriptions || [];
-            const foundItem = allItems.find(d => d.file_path === targetPath) || 
-                              allItems.find(d => normalize(d.file_path) === normalizedTarget);
+            
+            // TIER 1: Exact Match
+            let foundItem = allItems.find(d => d.file_path === targetPath);
+            
+            // TIER 2: Normalized Match
+            if (!foundItem) {
+                foundItem = allItems.find(d => superNormalize(d.file_path) === normalizedTarget);
+            }
+            
+            // TIER 3: Tail Match (for cases where LLM uses short path)
+            if (!foundItem && normalizedTarget.length > 3) {
+                foundItem = allItems.find(d => {
+                    const normDb = superNormalize(d.file_path);
+                    return normDb.endsWith(normalizedTarget) || normalizedTarget.endsWith(normDb);
+                });
+            }
             
             if (foundItem) {
                 const elementId = pathToId(foundItem.file_path);
                 const element = document.getElementById(elementId);
+                
+                console.log(`[Indexing] Match found: "${foundItem.file_path}". Element ID: ${elementId}`);
+
                 if (element) {
                     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     element.classList.add('ring-4', 'ring-purple-500', 'ring-opacity-60', 'scale-[1.02]');
                     setTimeout(() => element.classList.remove('ring-4', 'ring-purple-500', 'ring-opacity-60', 'scale-[1.02]'), 3000);
+                    
                     setExpandedItems(p => ({ ...p, [foundItem.file_path]: true }));
-                } else { toast.error('定位失败，请尝试刷新列表。'); }
-            } else { toast.error('未在研判列表中找到匹配的证据路径'); }
-        }, 300);
+                } else {
+                    console.error('[Indexing] Element not found in DOM:', elementId);
+                    toast.error('渲染延迟，请再点一次');
+                }
+            } else {
+                console.warn('[Indexing] No evidence match for:', targetPath);
+                toast.error(`未在证据库中找到: ${targetPath.split('/').pop()}`);
+            }
+        }, 350);
     };
 
     const renderMarkdown = (text) => {
