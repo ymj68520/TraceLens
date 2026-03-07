@@ -98,6 +98,10 @@ cleanup() {
 
     echo -e "${GREEN}✓ All services stopped${NC}"
     echo -e "${YELLOW}───────────────────────────────────────────────────────${NC}"
+    
+    # Crucial for Make: exit with 0 to prevent "Error 130" when user presses Ctrl+C
+    trap - EXIT INT TERM
+    exit 0
 }
 
 # Trap signals for graceful shutdown
