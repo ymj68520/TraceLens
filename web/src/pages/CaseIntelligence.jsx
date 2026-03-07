@@ -180,6 +180,14 @@ const CaseIntelligence = () => {
         return `../build/data/tasks/${taskId}/extracted_files/${filePath}`;
     };
 
+    const openReanalyzeModal = (filePaths) => {
+        const absolutePaths = filePaths.map(toAbsolutePath);
+        setReanalyzeTargetFiles(absolutePaths);
+        setReanalyzeHint('');
+        setReanalyzeMessage('');
+        setShowReanalyzeModal(true);
+    };
+
     const handleReanalyzeSubmission = async () => {
         if (!reanalyzeHint.trim() || reanalyzeTargetFiles.length === 0) return;
         setReanalyzing(true);
@@ -369,8 +377,29 @@ const CaseIntelligence = () => {
                                             <input type="checkbox" checked={selectedItems.has(index)} onChange={() => { const next = new Set(selectedItems); next.has(index) ? next.delete(index) : next.add(index); setSelectedItems(next); }} className="mt-1 h-4 w-4 text-purple-600 rounded" />
                                             <div className="flex-1 space-y-2">
                                                 <div className="flex items-start justify-between gap-2">
-                                                    <p className="font-mono text-[11px] font-bold text-slate-500 truncate max-w-[80%]">{item.file_path}</p>
-                                                    <button onClick={() => handleToggleRelevance(item.file_path, isRelevant)} className={`text-[10px] font-bold px-2 py-1 rounded-lg ${isRelevant ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700' : 'bg-slate-200 text-slate-500 hover:bg-purple-100 hover:text-purple-700'}`}>{isRelevant ? '✅ 设为证据' : '🚫 标记无关'}</button>
+                                                    <p className="font-mono text-[11px] font-bold text-slate-500 truncate max-w-[70%]" title={item.file_path}>
+                                                        {item.file_path}
+                                                    </p>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => openReanalyzeModal([item.file_path])}
+                                                            className="text-[10px] font-bold text-amber-600 hover:text-amber-700 px-2 py-1 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors flex items-center gap-1"
+                                                            title="为此文件提供补充指令并重新分析"
+                                                        >
+                                                            <span>🔄</span>
+                                                            <span className="hidden sm:inline">重新研判</span>
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleToggleRelevance(item.file_path, isRelevant)}
+                                                            className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors ${
+                                                                isRelevant 
+                                                                    ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700' 
+                                                                    : 'bg-slate-200 text-slate-500 hover:bg-purple-100 hover:text-purple-700'
+                                                            }`}
+                                                        >
+                                                            {isRelevant ? '✅ 设为证据' : '🚫 标记无关'}
+                                                        </button>
+                                                    </div>
                                                 </div>
                                                 <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{item.summary}</p>
                                                 <button onClick={() => setExpandedItems(p => ({ ...p, [item.file_path]: !p[item.file_path] }))} className="text-[10px] font-bold text-purple-500 hover:underline">{expandedItems[item.file_path] ? '收起详情 ▲' : '查看分析全文 ▼'}</button>
