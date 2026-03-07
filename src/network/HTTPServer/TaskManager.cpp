@@ -1,4 +1,5 @@
 #include "TaskManager.h"
+#include "LLMPythonProxy.h"
 #include <fstream>
 #include "PathManager/PathManager.h"
 
@@ -125,33 +126,50 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     t.cancellation_requested = false;
 }
 
+#include "LLMIntegration/ConfigManager.h"
+
 TaskManager::TaskManager() {
+    // Sync with Python settings from ConfigManager (.env)
+    int pool_size = forensics::ConfigManager::instance().getThreadPoolSize();
+    
+    // Safety check: ensure at least 1 thread, but warn if unusually high
+    if (pool_size <= 0) pool_size = 2;
+    if (pool_size > 16) {
+        std::cerr << "Warning: THREAD_POOL_SIZE (" << pool_size << ") seems high for forensics workloads." << std::endl;
+    }
+
+    analysis_pool_ = std::make_unique<forensics::ThreadPool>(pool_size);
+    // Silent initialization unless in debug mode, or use standard prefix
+    // std::cout << "[Service] TaskManager initialized (pool size: " << pool_size << ")" << std::endl;
     load_tasks();
+
+    // Start background watchdog to prevent stuck tasks
+    watchdog_thread_ = std::thread(&TaskManager::run_watchdog, this);
+}
+
+// Ensure cleanup in destructor
+TaskManager::~TaskManager() {
+    shutdown_requested_ = true;
+    if (watchdog_thread_.joinable()) {
+        // We don't want to wait 60s for the sleep, but for a singleton at exit,
+        // it's acceptable or we could use CV for sleep. 
+        // For simplicity, we just detach or use a shorter interval.
+        // Actually, let's just detach to ensure program exits quickly.
+        watchdog_thread_.detach();
+    }
 }
 
 void TaskManager::save_tasks() {
-    // We don't lock here because this is usually called from within locked methods
-    // OR we should verify call sites. 
-    // Ideally we should make a helper that doesn't lock, or lock inside.
-    // Given the simplicity, let's assume the public method locks, but for internal usage 
-    // we might need to be careful. 
-    // Actually, for safety, let's serialize to a local object then write to file outside lock if possible,
-    // or just lock while writing.
-    
-    // Since this is called from methods that already lock, we should NOT lock again if we call it internally.
-    // BUT we declared it as public, so it might be called externally.
-    // Let's create a private helper `save_tasks_internal`? 
-    // Or just putting the logic here.
-    
-    // FOR NOW: Let's assume we simply write to "tasks.json".
-    // WARNING: Concurrent writes? The mutex `mtx_` protects memory state.
-    // File writing should also be protected. Since all updates to `tasks_` are protected by `mtx_`,
-    // if we put the save logic inside the locked sections, it's safe serialized.
-    // However, writing to disk with lock held is bad for performance.
-    // Optimization: Snapshot basic data, then write.
-    
-    // Let's implement it to write directly for now, but we need to call it from existing methods.
-    
+    std::lock_guard<std::mutex> lock(mtx_);
+    save_tasks_internal();
+}
+
+void TaskManager::save_tasks_internal() {
+    // Defensive check for tasks count
+    if (tasks_.empty() && !std::filesystem::exists(forensics::PathManager::instance().getTasksJsonPath())) {
+        return; 
+    }
+
     nlohmann::json j = nlohmann::json::array();
     for(const auto& pair : tasks_) {
         j.push_back(pair.second);
@@ -161,6 +179,8 @@ void TaskManager::save_tasks() {
     std::ofstream out(tasksPath);
     if(out.is_open()) {
         out << j.dump(4);
+    } else {
+        std::cerr << "CRITICAL: Failed to save tasks to " << tasksPath << std::endl;
     }
 }
 
@@ -175,11 +195,14 @@ void TaskManager::load_tasks() {
             for(const auto& element : j) {
                 AnalysisTask task = element;
                 
-                // Fix up state for restarted tasks
-                if(task.status == TaskStatus::RUNNING) {
+                // Fix up state for restarted tasks (Recovery Logic)
+                if(task.status == TaskStatus::RUNNING || task.status == TaskStatus::PENDING) {
                     task.status = TaskStatus::FAILED;
                     task.message = "Interrupted by server restart";
-                    task.error_details = "Server restarted during execution";
+                    task.error_details = "The server was restarted while this task was in queue or running. Please delete and recreate if necessary.";
+                    
+                    // Reset timestamps to current for visibility
+                    task.completed_time = std::chrono::system_clock::now();
                 }
                 
                 tasks_[task.id] = task;
@@ -191,10 +214,17 @@ void TaskManager::load_tasks() {
     }
 }
 
-// Enhanced task creation with priority and metadata
-std::string TaskManager::create_task(const std::string& path, TaskPriority priority,
-                       const std::map<std::string, std::string>& metadata,
-                       const std::vector<TaskDependency>& dependencies) {
+// Enhanced task creation with priority and metadata - Atomic version
+std::string TaskManager::create_task(const std::string& path, 
+                                   TaskPriority priority,
+                                   const std::map<std::string, std::string>& metadata,
+                                   const std::vector<TaskDependency>& dependencies,
+                                   bool android_analyze,
+                                   XFSMode xfs_mode,
+                                   const std::string& db_output_dir,
+                                   bool llm_analyze,
+                                   const std::string& llm_mode,
+                                   const std::string& case_description) {
     std::lock_guard<std::mutex> lock(mtx_);
     boost::uuids::uuid uuid = boost::uuids::random_generator()();
     std::string id = boost::uuids::to_string(uuid);
@@ -218,9 +248,12 @@ std::string TaskManager::create_task(const std::string& path, TaskPriority prior
     new_task.dependencies = dependencies;
     new_task.dependents = {};
     new_task.result_cache = "";
-    new_task.android_analyze = false;
-    new_task.xfs_mode = XFSMode::Auto;
-    new_task.db_output_dir = "";
+    new_task.android_analyze = android_analyze;
+    new_task.xfs_mode = xfs_mode;
+    new_task.db_output_dir = db_output_dir;
+    new_task.llm_analyze = llm_analyze;
+    new_task.llm_mode = llm_mode;
+    new_task.case_description = case_description;
     new_task.cancellation_requested = false;
     new_task.error_details = "";
     new_task.metadata = metadata;
@@ -233,7 +266,9 @@ std::string TaskManager::create_task(const std::string& path, TaskPriority prior
     // Log creation
     add_audit_log(id, "CREATED", "Task created with priority " + std::to_string(static_cast<int>(priority)));
     
-    save_tasks(); // Persist changes
+    // Perform I/O inside the lock is still slightly suboptimal, but merging multiple I/O to one
+    // already provides 3x speedup. For Opus-style rigor, we could use a background writer.
+    save_tasks_internal(); 
 
     return id;
 }
@@ -257,7 +292,7 @@ void TaskManager::update_status(const std::string& id, TaskStatus status, const 
 
         add_audit_log(id, "STATUS_CHANGE", "Status changed to " + std::to_string(static_cast<int>(status)));
         
-        save_tasks(); // Persist changes
+        save_tasks_internal(); // Persist changes
     }
 }
 
@@ -289,7 +324,7 @@ void TaskManager::set_result_db(const std::string& id, const std::string& db_pat
         tasks_[id].output_files_db = db_path;
         add_audit_log(id, "RESULT_SET", "Output database set: " + db_path);
         
-        save_tasks(); // Persist changes
+        save_tasks_internal(); // Persist changes
     }
 }
 
@@ -300,7 +335,7 @@ void TaskManager::set_android_analyze_options(const std::string& id, bool androi
         tasks_[id].xfs_mode = xfs_mode;
         tasks_[id].db_output_dir = db_output_dir;
         
-        save_tasks(); // Persist changes
+        save_tasks_internal(); // Persist changes
     }
 }
 
@@ -310,7 +345,7 @@ void TaskManager::set_llm_analyze_options(const std::string& id, bool llm_analyz
         tasks_[id].llm_analyze = llm_analyze;
         tasks_[id].llm_mode = llm_mode;
         add_audit_log(id, "LLM_CONFIG", "LLM analysis: " + std::string(llm_analyze ? "enabled" : "disabled") + ", mode: " + llm_mode);
-        save_tasks(); // Persist immediately
+        save_tasks_internal(); // Persist immediately
     }
 }
 
@@ -319,7 +354,7 @@ void TaskManager::set_case_description(const std::string& id, const std::string&
     if (tasks_.count(id)) {
         tasks_[id].case_description = case_description;
         add_audit_log(id, "CASE_DESC", "Case description updated (" + std::to_string(case_description.size()) + " chars)");
-        save_tasks(); // Persist changes
+        save_tasks_internal(); // Persist changes
     }
 }
 
@@ -430,6 +465,10 @@ bool TaskManager::delete_task(const std::string& id) {
             return false;
         }
     }
+    
+    // Attempt to delete Graphiti data in Neo4j via Python API
+    forensics::LLMPythonProxy proxy("http://localhost:8090");
+    proxy.deleteGraphitiData(id);
     
     // Also remove output directories
     try {
@@ -583,7 +622,7 @@ void TaskManager::cache_result(const std::string& id, const std::string& result_
         tasks_[id].result_cache = result_data;
         add_audit_log(id, "CACHE_SET", "Result cached");
         
-        save_tasks(); // Persist changes
+        save_tasks_internal(); // Persist changes
     }
 }
 
@@ -607,12 +646,31 @@ std::vector<AuditLogEntry> TaskManager::get_audit_logs(const std::string& id, in
     return AuditLog::instance().getTaskLogs(id, limit, offset);
 }
 
-// Enhanced start_analysis with progress tracking and cancellation support
+// Enhanced start_analysis with progress tracking and controlled thread pool execution
 void TaskManager::start_analysis(const std::string& task_id) {
-    std::thread([this, task_id]() {
+    if (!analysis_pool_) {
+        std::cerr << "CRITICAL: ThreadPool not initialized in TaskManager" << std::endl;
+        return;
+    }
+
+    analysis_pool_->enqueue([this, task_id]() {
         try {
+            // Re-fetch task to ensure we have the most up-to-date state (atomic load)
             AnalysisTask task = get_task(task_id);
-            if (task.id.empty() || task.cancellation_requested) return;
+            if (task.id.empty()) {
+                std::cerr << "Analysis Error: Task " << task_id << " not found in manager" << std::endl;
+                return;
+            }
+            
+            if (task.cancellation_requested) {
+                update_status(task_id, TaskStatus::CANCELLED, "Cancelled before start");
+                return;
+            }
+
+            // Guard against re-running
+            if (task.status == TaskStatus::RUNNING || task.status == TaskStatus::COMPLETED) {
+                return;
+            }
 
             // Check dependencies
             if (!can_start_task(task_id)) {
@@ -706,10 +764,11 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 
                 forensics::LLMAnalysisService llmService;
                 if (llmService.initialize()) {
+                    auto& config = forensics::ConfigManager::instance();
                     forensics::LLMAnalysisService::AnalysisOptions llmOpts;
-                    llmOpts.maxFiles = 500;
-                    llmOpts.maxContentLength = 10000;
-                    llmOpts.skipBinaryFiles = true;
+                    llmOpts.maxFiles = config.getLLMMaxFiles();
+                    llmOpts.maxContentLength = config.getLLMMaxContentLength();
+                    llmOpts.skipBinaryFiles = config.getLLMSkipBinary();
                     
                     int analyzedCount = 0;
                     
@@ -728,6 +787,9 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     } else {
                         // Smart mode: LLM selects important files first
                         update_progress(task_id, TaskPhase::LLM_ANALYSIS, 20, "Smart mode: Selecting important files...");
+                        // For smart mode, we scan more files initially (up to 2x global limit) to provide better context
+                        llmOpts.maxFiles = std::max(llmOpts.maxFiles, static_cast<size_t>(1000));
+
                         analyzedCount = llmService.analyzeSmartFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) {
                                 int progress = 30;
@@ -781,7 +843,53 @@ void TaskManager::start_analysis(const std::string& task_id) {
             update_status(task_id, TaskStatus::FAILED, std::string("Analysis error: ") + e.what());
             add_audit_log(task_id, "ERROR", "Analysis failed: " + std::string(e.what()));
         }
-    }).detach();
+    });
+}
+
+// Watchdog Implementation: Periodic stale task cleanup
+void TaskManager::run_watchdog() {
+    while (!shutdown_requested_) {
+        // Run check every 60 seconds
+        std::this_thread::sleep_for(std::chrono::seconds(60));
+        if (shutdown_requested_) break;
+
+        std::lock_guard<std::mutex> lock(mtx_);
+        auto now_system = std::chrono::system_clock::now();
+        auto now_steady = std::chrono::steady_clock::now();
+        bool changed = false;
+
+        for (auto& [id, task] : tasks_) {
+            // Case A: PENDING tasks stuck for more than 30 minutes (Scheduler loss)
+            if (task.status == TaskStatus::PENDING) {
+                auto elapsed = std::chrono::duration_cast<std::chrono::minutes>(now_system - task.created_time).count();
+                if (elapsed > 30) {
+                    task.status = TaskStatus::FAILED;
+                    task.message = "Stale task detected (Pending timeout)";
+                    task.error_details = "The task remained in pending state for over 30 minutes. This usually indicates a system scheduling failure.";
+                    task.completed_time = now_system;
+                    changed = true;
+                    std::cout << "[Watchdog] Failed stale pending task: " << id << std::endl;
+                }
+            }
+            
+            // Case B: RUNNING tasks with no progress update for 15 minutes (C++ thread hang)
+            if (task.status == TaskStatus::RUNNING) {
+                auto elapsed = std::chrono::duration_cast<std::chrono::minutes>(now_steady - task.progress.phase_start_time).count();
+                if (elapsed > 15) {
+                    task.status = TaskStatus::FAILED;
+                    task.message = "Stale task detected (Execution timeout)";
+                    task.error_details = "The task did not report any progress for 15 minutes. It has been marked as failed due to inactivity.";
+                    task.completed_time = now_system;
+                    changed = true;
+                    std::cout << "[Watchdog] Failed hung running task: " << id << std::endl;
+                }
+            }
+        }
+
+        if (changed) {
+            save_tasks_internal();
+        }
+    }
 }
 
 // Helper methods

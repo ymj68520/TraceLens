@@ -17,7 +17,7 @@ class GraphitiConfig:
     # Neo4j connection
     neo4j_uri: str = "neo4j://127.0.0.1:7687"
     neo4j_user: str = "neo4j"
-    neo4j_password: str = "11111111"
+    neo4j_password: str = ""
     
     # LLM settings (supports local OpenAI-compatible servers like LM Studio)
     llm_base_url: str = "http://192.168.31.199:1234/v1"
@@ -77,7 +77,7 @@ class GraphitiConfig:
         return cls(
             neo4j_uri=os.getenv("NEO4J_URI", "neo4j://127.0.0.1:7687"),
             neo4j_user=os.getenv("NEO4J_USER", "neo4j"),
-            neo4j_password=os.getenv("NEO4J_PASSWORD", "password"),
+            neo4j_password=os.getenv("NEO4J_PASSWORD", ""),
             llm_base_url=llm_base_url,
             llm_model=os.getenv("LLM_TEXT_MODEL", "openai/gpt-oss-20b"),
             llm_api_key=os.getenv("LLM_API_KEY", "local"),

@@ -4,6 +4,7 @@
 #include "NativeFilesystemWalker.h"
 #include "TskFilesystemWalker.h"
 #include "AuditLog/AuditLog.h"
+#include "LLMIntegration/ConfigManager.h"
 #include <iostream>
 #include <cstring>
 #include <sstream>
@@ -250,9 +251,13 @@ bool ImageAnalyzer::extractToDatabase(const std::string& dbPath) {
 		bool success = tskWalker_->walk([this, &fileCount](const FileRecord& record) -> bool {
 			if (dbManager_->insertFileRecord(record)) {
 				fileCount++;
-				if (fileCount <= 20) {
-					std::cout << "  [" << fileCount << "] " << record.path << std::endl;
+				int max_log = forensics::ConfigManager::instance().getMaxLogDisplayFiles();
+				if (fileCount <= max_log) {
+				        std::cout << "  [" << fileCount << "] " << record.path << std::endl;
+				} else if (fileCount % (max_log * 5) == 0) {
+				        std::cout << "  ... processing: [" << fileCount << "] " << record.path << " ..." << std::endl;
 				}
+
 			}
 			return true;
 		});
@@ -378,11 +383,15 @@ bool ImageAnalyzer::extractWithXFS(const std::string& dbPath) {
 		// Insert into database
 		if (dbManager_->insertFileRecord(record)) {
 			fileCount++;
-			if (fileCount <= 20) {
-				std::cout << "  [" << fileCount << "] " << record.path << std::endl;
-			} else if (fileCount == 21) {
-				std::cout << "  (showing first 20 files only...)" << std::endl;
+			int max_log = forensics::ConfigManager::instance().getMaxLogDisplayFiles();
+			if (fileCount <= max_log) {
+			    // For XFS/Native we might be using different struct names, but they both have .name and .size
+			    // In this scope, we'll try to find the record or the source file object
+			    std::cout << "  [" << fileCount << "] " << record.name << " (" << record.size << " bytes)" << std::endl;
+			} else if (fileCount % (max_log * 5) == 0) {
+			    std::cout << "  ... processing: [" << fileCount << "] " << record.name << " ..." << std::endl;
 			}
+
 		}
 
 		return true;  // Continue walking
@@ -452,11 +461,15 @@ bool ImageAnalyzer::extractWithNativeMount(const std::string& dbPath) {
 		// Insert into database
 		if (dbManager_->insertFileRecord(record)) {
 			fileCount++;
-			if (fileCount <= 20) {
-				std::cout << "  [" << fileCount << "] " << record.path << std::endl;
-			} else if (fileCount == 21) {
-				std::cout << "  (showing first 20 files only...)" << std::endl;
+			int max_log = forensics::ConfigManager::instance().getMaxLogDisplayFiles();
+			if (fileCount <= max_log) {
+			    // For XFS/Native we might be using different struct names, but they both have .name and .size
+			    // In this scope, we'll try to find the record or the source file object
+			    std::cout << "  [" << fileCount << "] " << record.name << " (" << record.size << " bytes)" << std::endl;
+			} else if (fileCount % (max_log * 5) == 0) {
+			    std::cout << "  ... processing: [" << fileCount << "] " << record.name << " ..." << std::endl;
 			}
+
 		}
 
 		return true;  // Continue walking

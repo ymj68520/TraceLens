@@ -148,7 +148,7 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
     
     // Apply smart content truncation based on context window (Issue 7)
     size_t calculatedMaxLength = calculateMaxContentLength();
-    size_t configLimit = static_cast<size_t>(ConfigManager::instance().getMaxContentLimit());
+    size_t configLimit = static_cast<size_t>(ConfigManager::instance().getLLMMaxContentLength());
     size_t effectiveMaxLength = std::min({maxContentLength, calculatedMaxLength, configLimit});
     
     if (content.size() > effectiveMaxLength) {

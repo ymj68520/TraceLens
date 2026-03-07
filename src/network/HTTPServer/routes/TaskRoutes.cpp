@@ -344,14 +344,19 @@ crow::response TaskRoutes::handle_create_task(const crow::request& req) {
         std::string llm_mode = body.value("llm_mode", "smart"); // "full" or "smart"
         std::string case_description = body.value("case_description", "");
 
-        std::string task_id = task_manager_.create_task(image_path, priority, metadata, dependencies);
-        task_manager_.set_android_analyze_options(task_id, android_analyze, xfs_mode, db_output_dir);
-        task_manager_.set_llm_analyze_options(task_id, llm_analyze, llm_mode);
-
-        // Set case description if provided
-        if (!case_description.empty()) {
-            task_manager_.set_case_description(task_id, case_description);
-        }
+        // ATOMIC TASK CREATION: All options in one go to prevent lock contention and redundant disk I/O
+        std::string task_id = task_manager_.create_task(
+            image_path, 
+            priority, 
+            metadata, 
+            dependencies,
+            android_analyze,
+            xfs_mode,
+            db_output_dir,
+            llm_analyze,
+            llm_mode,
+            case_description
+        );
 
         // Check if task can start immediately
         if (task_manager_.can_start_task(task_id)) {

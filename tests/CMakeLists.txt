@@ -61,11 +61,14 @@ add_executable(
   UnitTest/test_file_classifier.cpp
   ../src/core/DatabaseManager/FileClassifier/FileClassifier.cpp
   ../src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
-  ../src/core/AuditLog/AuditLog.cpp)
+  ../src/core/AuditLog/AuditLog.cpp
+  ../src/integration/LLMIntegration/ConfigManager.cpp
+  ../src/core/PathManager/PathManager.cpp
+  ../src/core/Logger/Logger.cpp)
 
 target_link_libraries(
   test_file_classifier ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} sqlite3 pthread
-  nlohmann_json::nlohmann_json)
+  nlohmann_json::nlohmann_json cpp_dotenv)
 
 add_test(NAME FileClassifierTests COMMAND test_file_classifier)
 
@@ -118,10 +121,13 @@ add_executable(
   test_fulltext_search_gtest
   UnitTest/test_fulltext_search_gtest.cpp
   ../src/core/FullTextSearch/FullTextSearch.cpp
-  ../src/core/FullTextSearch/TextExtractor.cpp)
+  ../src/core/FullTextSearch/TextExtractor.cpp
+  ../src/integration/LLMIntegration/ConfigManager.cpp
+  ../src/core/PathManager/PathManager.cpp
+  ../src/core/Logger/Logger.cpp)
 
 target_link_libraries(test_fulltext_search_gtest ${GTEST_LIBRARIES}
-                      ${GMOCK_LIBRARIES} xapian pthread)
+                      ${GMOCK_LIBRARIES} xapian pthread cpp_dotenv)
 
 add_test(NAME FullTextSearchGTests COMMAND test_fulltext_search_gtest)
 

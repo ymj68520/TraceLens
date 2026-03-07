@@ -117,4 +117,24 @@ bool LLMPythonProxy::isServiceAvailable() {
     }
 }
 
+bool LLMPythonProxy::deleteGraphitiData(const std::string& task_id) {
+    try {
+        httplib::Client cli(python_service_url_);
+        cli.set_connection_timeout(5);
+        cli.set_read_timeout(10);
+
+        nlohmann::json body = {
+            {"task_id", task_id}
+        };
+
+        auto res = cli.Delete(("/api/graphiti/tasks/" + task_id).c_str(), body.dump(), "application/json");
+        if (res && (res->status == 200 || res->status == 404)) {
+            return true; // Return true if deleted or didn't exist
+        }
+    } catch (...) {
+        // Fall back gracefully
+    }
+    return false;
+}
+
 } // namespace forensics

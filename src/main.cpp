@@ -230,34 +230,38 @@ int main(int argc, char* argv[]) {
 	// Initialize PathManager with executable path
 	forensics::PathManager::instance().initialize(argv[0]);
 
-	if (cmdArgs.httpServer) {
-		std::cout << "Starting HTTP Server on port " << cmdArgs.httpPort << std::endl;
-
-		// Apply .env settings to PathManager (PROJECT_ROOT, DATA_DIR)
-		auto& configMgr = forensics::llm::ConfigManager::instance();
-		if (configMgr.load(".env")) {
-			auto& pm = forensics::PathManager::instance();
-			std::string projectRoot = configMgr.get("PROJECT_ROOT", "");
-			std::string dataDir = configMgr.get("DATA_DIR", "data");
-			pm.setProjectRoot(projectRoot);
-			pm.setDataDirName(dataDir);
-			pm.ensureDirectories();
-		} else {
-			// Even without .env, ensure directories with defaults
-			forensics::PathManager::instance().ensureDirectories();
-		}
-
-		// Initialize AuditLog with PathManager-derived path
-		AuditLogConfig auditConfig;
-		auditConfig.db_path = forensics::PathManager::instance().getAuditDbPath().string();
-		AuditLog::instance(auditConfig);
-
-		asio::io_context ioc;
-		forensics::HTTPServer server(ioc);
-		server.run(cmdArgs.httpPort);
-		return 0;
+	// Global Configuration (Single Source of Truth)
+	auto& configMgr = forensics::ConfigManager::instance();
+	if (configMgr.load(".env")) {
+	        auto& pm = forensics::PathManager::instance();
+	        std::string projectRoot = configMgr.get("PROJECT_ROOT", "");
+	        std::string dataDir = configMgr.get("DATA_DIR", "data");
+	        pm.setProjectRoot(projectRoot);
+	        pm.setDataDirName(dataDir);
+	        pm.ensureDirectories();
+	} else {
+	        // Even without .env, ensure directories with defaults
+	        forensics::PathManager::instance().ensureDirectories();
 	}
 
+	// Initialize AuditLog with PathManager-derived path
+	AuditLogConfig auditConfig;
+	auditConfig.db_path = forensics::PathManager::instance().getAuditDbPath().string();
+	AuditLog::instance(auditConfig);
+
+	if (cmdArgs.httpServer) {
+	        // Use port from config if not specified via command line
+	        int port = cmdArgs.httpPort;
+	        if (port == 8080) { // Default in code
+	            port = configMgr.getHTTPServerPort();
+	        }
+
+	        asio::io_context ioc;
+	        forensics::HTTPServer server(ioc);
+	        server.run(port);
+	        return 0;
+
+	}
 	// ========== FULL-TEXT SEARCH MODE ==========
 	if (!cmdArgs.indexDir.empty() || cmdArgs.searchMode) {
 		std::string indexDbPath = "search_index_xapian";

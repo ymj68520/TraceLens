@@ -36,9 +36,6 @@ void PathManager::initialize(const std::string& executablePath) {
     // Default projectRoot_ to exeDir_ (overridden later if PROJECT_ROOT is set)
     projectRoot_ = exeDir_;
     initialized_ = true;
-
-    std::cout << "[PathManager] Executable dir : " << exeDir_ << std::endl;
-    std::cout << "[PathManager] Data dir       : " << getDataDir() << std::endl;
 }
 
 void PathManager::ensureDirectories() const {

@@ -52,7 +52,7 @@ TEST_F(ConfigManagerTest, LoadFromCurrentDirectory) {
     auto currentPath = fs::current_path();
     fs::current_path(testDir_);
     
-    auto& config = ConfigManager::instance();
+    auto& config = forensics::ConfigManager::instance();
     bool loaded = config.load(".env");
     
     EXPECT_TRUE(loaded);
@@ -68,7 +68,7 @@ TEST_F(ConfigManagerTest, LoadFromParentDirectory) {
     auto currentPath = fs::current_path();
     fs::current_path(childDir_);
     
-    auto& config = ConfigManager::instance();
+    auto& config = forensics::ConfigManager::instance();
     // Force reload/search
     bool loaded = config.load(".env");
     
@@ -86,7 +86,7 @@ TEST_F(ConfigManagerTest, LoadFromGrandParentDirectory) {
     auto currentPath = fs::current_path();
     fs::current_path(grandchildDir_);
     
-    auto& config = ConfigManager::instance();
+    auto& config = forensics::ConfigManager::instance();
     bool loaded = config.load(".env");
     
     EXPECT_TRUE(loaded);

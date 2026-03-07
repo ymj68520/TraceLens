@@ -2,6 +2,7 @@
 #include "DatabaseManager/SQL/file_classifier_sql.h"
 #include "AuditLog/AuditLog.h"
 #include "EncryptionUtils.h"
+#include "LLMIntegration/ConfigManager.h"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -439,9 +440,13 @@ void FileClassifier::initializeExtensionMap() {
 		// Modern formats
 		"avif", "jxl", "webp2", "apng",
 		// RAW formats
-		"orf", "rw2", "raf", "3fr", "dcr", "k25", "kdc", "mrw", "nrw", "pef", "sr2", "srf", "x3f"
-	};
-	for (const auto& ext : imageExts) {
+		        "orf", "rw2", "raf", "3fr", "dcr", "k25", "kdc", "mrw", "nrw", "pef", "sr2", "srf", "x3f"
+		};
+		auto extraImageExts = forensics::ConfigManager::instance().getExtraExtensions("IMAGE");
+		imageExts.insert(imageExts.end(), extraImageExts.begin(), extraImageExts.end());
+
+		for (const auto& ext : imageExts) {
+
 		extensionMap_[ext] = FileCategory::IMAGE;
 	}
 
@@ -455,6 +460,8 @@ void FileClassifier::initializeExtensionMap() {
 		// Additional formats
 		"mpe", "m2v", "m4p", "qt", "yuv"
 	};
+        auto extraVideoExts = forensics::ConfigManager::instance().getExtraExtensions("VIDEO");
+        videoExts.insert(videoExts.end(), extraVideoExts.begin(), extraVideoExts.end());
 	for (const auto& ext : videoExts) {
 		extensionMap_[ext] = FileCategory::VIDEO;
 	}
@@ -468,6 +475,8 @@ void FileClassifier::initializeExtensionMap() {
 		// Additional formats
 		"mka", "oga", "mogg", "pcm", "aif", "aifc", "caf", "sd2"
 	};
+        auto extraAudioExts = forensics::ConfigManager::instance().getExtraExtensions("AUDIO");
+        audioExts.insert(audioExts.end(), extraAudioExts.begin(), extraAudioExts.end());
 	for (const auto& ext : audioExts) {
 		extensionMap_[ext] = FileCategory::AUDIO;
 	}
@@ -486,6 +495,8 @@ void FileClassifier::initializeExtensionMap() {
 		// Other
 		"msg", "oft"
 	};
+        auto extraDocExts = forensics::ConfigManager::instance().getExtraExtensions("DOCUMENT");
+        documentExts.insert(documentExts.end(), extraDocExts.begin(), extraDocExts.end());
 	for (const auto& ext : documentExts) {
 		extensionMap_[ext] = FileCategory::DOCUMENT;
 	}
@@ -500,6 +511,8 @@ void FileClassifier::initializeExtensionMap() {
 		// Additional formats
 		"cpio", "shar", "lha", "lzh", "zoo", "arc"
 	};
+        auto extraArchiveExts = forensics::ConfigManager::instance().getExtraExtensions("ARCHIVE");
+        archiveExts.insert(archiveExts.end(), extraArchiveExts.begin(), extraArchiveExts.end());
 	for (const auto& ext : archiveExts) {
 		extensionMap_[ext] = FileCategory::ARCHIVE;
 	}
@@ -516,6 +529,8 @@ void FileClassifier::initializeExtensionMap() {
 		// macOS
 		"dmg", "pkg"
 	};
+        auto extraExecExts = forensics::ConfigManager::instance().getExtraExtensions("EXECUTABLE");
+        executableExts.insert(executableExts.end(), extraExecExts.begin(), extraExecExts.end());
 	for (const auto& ext : executableExts) {
 		extensionMap_[ext] = FileCategory::EXECUTABLE;
 	}
@@ -527,6 +542,8 @@ void FileClassifier::initializeExtensionMap() {
 		// NoSQL and modern databases
 		"realm", "leveldb", "rocksdb", "bdb"
 	};
+        auto extraDbExts = forensics::ConfigManager::instance().getExtraExtensions("DATABASE");
+        databaseExts.insert(databaseExts.end(), extraDbExts.begin(), extraDbExts.end());
 	for (const auto& ext : databaseExts) {
 		extensionMap_[ext] = FileCategory::DATABASE;
 	}
@@ -542,6 +559,8 @@ void FileClassifier::initializeExtensionMap() {
 		// Additional
 		"coffee", "elm", "erl", "ex", "exs", "fs", "fsx", "groovy", "hx"
 	};
+        auto extraSourceExts = forensics::ConfigManager::instance().getExtraExtensions("SOURCE_CODE");
+        sourceCodeExts.insert(sourceCodeExts.end(), extraSourceExts.begin(), extraSourceExts.end());
 	for (const auto& ext : sourceCodeExts) {
 		extensionMap_[ext] = FileCategory::SOURCE_CODE;
 	}
@@ -552,6 +571,8 @@ void FileClassifier::initializeExtensionMap() {
 		"json", "yaml", "yml", "jsp", "asp", "aspx", "php", "cgi",
 		"rss", "atom", "wsdl", "xsl", "xslt", "dtd"
 	};
+        auto extraWebExts = forensics::ConfigManager::instance().getExtraExtensions("WEB");
+        webExts.insert(webExts.end(), extraWebExts.begin(), extraWebExts.end());
 	for (const auto& ext : webExts) {
 		extensionMap_[ext] = FileCategory::WEB;
 	}
@@ -560,6 +581,8 @@ void FileClassifier::initializeExtensionMap() {
 	std::vector<std::string> emailExts = {
 		"eml", "msg", "pst", "ost", "mbox", "emlx", "mbx", "dbx"
 	};
+        auto extraEmailExts = forensics::ConfigManager::instance().getExtraExtensions("EMAIL");
+        emailExts.insert(emailExts.end(), extraEmailExts.begin(), extraEmailExts.end());
 	for (const auto& ext : emailExts) {
 		extensionMap_[ext] = FileCategory::EMAIL;
 	}
@@ -569,6 +592,8 @@ void FileClassifier::initializeExtensionMap() {
 		"ini", "cfg", "conf", "config", "reg", "dat", "tmp", "temp",
 		"cache", "bak", "old", "swp", "swo", "lock", "pid", "core"
 	};
+        auto extraSystemExts = forensics::ConfigManager::instance().getExtraExtensions("SYSTEM");
+        systemExts.insert(systemExts.end(), extraSystemExts.begin(), extraSystemExts.end());
 	for (const auto& ext : systemExts) {
 		extensionMap_[ext] = FileCategory::SYSTEM;
 	}
@@ -580,6 +605,8 @@ void FileClassifier::initializeExtensionMap() {
 		// Modern encryption
 		"age", "luks"
 	};
+        auto extraEncryptedExts = forensics::ConfigManager::instance().getExtraExtensions("ENCRYPTED");
+        encryptedExts.insert(encryptedExts.end(), extraEncryptedExts.begin(), extraEncryptedExts.end());
 	for (const auto& ext : encryptedExts) {
 		extensionMap_[ext] = FileCategory::ENCRYPTED;
 	}

@@ -1,7 +1,9 @@
 #include "DatabaseManager.h"
 #include "AuditLog/AuditLog.h"
+#include "LLMIntegration/ConfigManager.h"
 #include <iostream>
 #include <sstream>
+#include <sqlite3.h>
 
 DatabaseManager::DatabaseManager(const std::string& dbPath)
 	: dbPath_(dbPath), db_(nullptr) {
@@ -19,6 +21,17 @@ bool DatabaseManager::initialize() {
 		std::cerr << "Cannot open database: " << sqlite3_errmsg(db_) << std::endl;
 		AuditLog::instance().log("SYSTEM", "DB_INIT_FAILED", "Failed to open database: " + dbPath_);
 		return false;
+	}
+
+	// Apply performance settings from ConfigManager
+	auto& config = forensics::ConfigManager::instance();
+	sqlite3_busy_timeout(db_, config.getDBBusyTimeoutMs());
+	
+	std::string journalMode = config.getDBJournalMode();
+	executeSQL("PRAGMA journal_mode = " + journalMode + ";");
+	
+	if (config.getDBSyncOff()) {
+		executeSQL("PRAGMA synchronous = OFF;");
 	}
 
 	// Enable foreign keys

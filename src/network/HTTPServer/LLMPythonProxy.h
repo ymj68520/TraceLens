@@ -72,6 +72,13 @@ public:
      */
     bool isServiceAvailable();
 
+    /**
+     * @brief Delete knowledge graph data associated with a task
+     * @param task_id Task identifier
+     * @return true if deletion request succeeded or if it already didn't exist
+     */
+    bool deleteGraphitiData(const std::string& task_id);
+
 private:
     std::string python_service_url_;
 };

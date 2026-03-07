@@ -15,34 +15,34 @@ int main() {
     std::cout << "=== Testing 13 Files with Multi-Model LLM ===" << std::endl;
 
     // 1. Load Config
-    if (!ConfigManager::instance().load(".env")) {
+    if (!forensics::ConfigManager::instance().load(".env")) {
         std::cerr << "Failed to load .env" << std::endl;
         return 1;
     }
 
     std::cout << "Configuration Loaded:" << std::endl;
-    std::cout << "Text Base URL: " << ConfigManager::instance().getTextBaseUrl() << std::endl;
-    std::cout << "Vision Base URL: " << ConfigManager::instance().getVisionBaseUrl() << std::endl;
+    std::cout << "Text Base URL: " << forensics::ConfigManager::instance().getTextBaseUrl() << std::endl;
+    std::cout << "Vision Base URL: " << forensics::ConfigManager::instance().getVisionBaseUrl() << std::endl;
 
     // 2. Setup Router
     auto router = std::make_shared<ModelRouter>();
     
     // Add Text Model
     ModelInfo textInfo;
-    textInfo.name = ConfigManager::instance().getTextModel();
+    textInfo.name = forensics::ConfigManager::instance().getTextModel();
     std::cout << "Text Model Name: '" << textInfo.name << "'" << std::endl;
     textInfo.capabilities = {ModelCapability::TextGeneration, ModelCapability::Analysis};
     textInfo.priority = 10;
-    router->addModel("text-model", ConfigManager::instance().getTextModelConfig(), textInfo);
+    router->addModel("text-model", forensics::ConfigManager::instance().getTextModelConfig(), textInfo);
 
     // Add Vision Model
     ModelInfo visionInfo;
-    visionInfo.name = ConfigManager::instance().getVisionModel();
+    visionInfo.name = forensics::ConfigManager::instance().getVisionModel();
     std::cout << "Vision Model Name: '" << visionInfo.name << "'" << std::endl;
     visionInfo.capabilities = {ModelCapability::Vision, ModelCapability::ImageAnalysis};
     visionInfo.supportsVision = true;
     visionInfo.priority = 10;
-    router->addModel("vision-model", ConfigManager::instance().getVisionModelConfig(), visionInfo);
+    router->addModel("vision-model", forensics::ConfigManager::instance().getVisionModelConfig(), visionInfo);
 
     // 3. Setup Analyzers
     FileAnalyzer fileAnalyzer(router);
@@ -50,7 +50,7 @@ int main() {
 
     // DEBUG: Direct LLMClient Test
     std::cout << "\n[DEBUG] Running Direct LLMClient Test..." << std::endl;
-    LLMClient debugClient(ConfigManager::instance().getTextModelConfig());
+    LLMClient debugClient(forensics::ConfigManager::instance().getTextModelConfig());
     if (debugClient.testConnection()) {
          std::cout << "[DEBUG] Connection Test Passed" << std::endl;
          auto resp = debugClient.chat("Hello", "You are a test.");

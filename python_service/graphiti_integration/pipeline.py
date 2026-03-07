@@ -210,12 +210,12 @@ class GraphitiPipeline:
 
 async def run_pipeline(
     db_path: str,
-    neo4j_uri: str = "neo4j://127.0.0.1:7687",
-    neo4j_user: str = "neo4j",
-    neo4j_password: str = "password",
-    batch_size: int = 50,
+    neo4j_uri: Optional[str] = None,
+    neo4j_user: Optional[str] = None,
+    neo4j_password: Optional[str] = None,
+    batch_size: Optional[int] = None,
     dry_run: bool = False,
-    group_id: str = "forensics_files",
+    group_id: Optional[str] = None,
     filter_analyzed_only: bool = False,
 ) -> PipelineResult:
     """
@@ -234,14 +234,20 @@ async def run_pipeline(
     Returns:
         PipelineResult with statistics.
     """
-    config = GraphitiConfig(
-        neo4j_uri=neo4j_uri,
-        neo4j_user=neo4j_user,
-        neo4j_password=neo4j_password,
-        batch_size=batch_size,
-        group_id=group_id,
-        filter_analyzed_only=filter_analyzed_only,
-    )
+    config = GraphitiConfig.from_env()
+    
+    if neo4j_uri is not None:
+        config.neo4j_uri = neo4j_uri
+    if neo4j_user is not None:
+        config.neo4j_user = neo4j_user
+    if neo4j_password is not None and neo4j_password != "":
+        config.neo4j_password = neo4j_password
+        
+    if batch_size is not None:
+        config.batch_size = batch_size
+    if group_id is not None:
+        config.group_id = group_id
+    config.filter_analyzed_only = filter_analyzed_only
     
     pipeline = GraphitiPipeline(config)
     return await pipeline.run(db_path=db_path, dry_run=dry_run)
@@ -279,8 +285,8 @@ Examples:
     )
     parser.add_argument(
         "--neo4j-password",
-        default="password",
-        help="Neo4j password (default: password)",
+        default="",
+        help="Neo4j password",
     )
     parser.add_argument(
         "--batch-size",
@@ -597,11 +603,11 @@ async def run_multi_source_pipeline(
     base_name: Optional[str] = None,
     output_dir: Optional[str] = None,
     any_db_path: Optional[str] = None,
-    group_id: str = "forensics_default",
-    neo4j_uri: str = "neo4j://127.0.0.1:7687",
-    neo4j_user: str = "neo4j",
-    neo4j_password: str = "password",
-    batch_size: int = 50,
+    group_id: Optional[str] = None,
+    neo4j_uri: Optional[str] = None,
+    neo4j_user: Optional[str] = None,
+    neo4j_password: Optional[str] = None,
+    batch_size: Optional[int] = None,
     dry_run: bool = False,
 ) -> MultiSourceResult:
     """
@@ -621,20 +627,26 @@ async def run_multi_source_pipeline(
     Returns:
         MultiSourceResult with per-source and aggregated statistics.
     """
-    config = GraphitiConfig(
-        neo4j_uri=neo4j_uri,
-        neo4j_user=neo4j_user,
-        neo4j_password=neo4j_password,
-        batch_size=batch_size,
-        group_id=group_id,
-    )
+    config = GraphitiConfig.from_env()
+    
+    if neo4j_uri is not None:
+        config.neo4j_uri = neo4j_uri
+    if neo4j_user is not None:
+        config.neo4j_user = neo4j_user
+    if neo4j_password is not None and neo4j_password != "":
+        config.neo4j_password = neo4j_password
+        
+    if batch_size is not None:
+        config.batch_size = batch_size
+    if group_id is not None:
+        config.group_id = group_id
 
     pipeline = MultiSourcePipeline(config)
     return await pipeline.run(
         base_name=base_name,
         output_dir=output_dir,
         any_db_path=any_db_path,
-        group_id=group_id,
+        group_id=config.group_id,
         dry_run=dry_run,
     )
 

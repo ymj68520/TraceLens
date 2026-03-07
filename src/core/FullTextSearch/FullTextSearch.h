@@ -86,8 +86,6 @@ private:
     // Static content cache for snippet generation
     static std::unordered_map<std::string, ContentCacheEntry> contentCache_;
     static std::mutex cacheMutex_;
-    static constexpr size_t MAX_CACHE_SIZE = 1000;
-    static constexpr size_t MAX_CONTENT_LENGTH = 50000;  // 50KB per document
     
     void cacheContent(const std::string& path, const std::string& content);
     

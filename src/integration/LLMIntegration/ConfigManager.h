@@ -5,13 +5,12 @@
 #include <vector>
 
 namespace forensics {
-namespace llm {
 
 /**
- * @brief Configuration manager that loads settings from .env files
+ * @brief Global configuration manager for the Forensics C++ Service
  * 
- * Uses cpp-dotenv to load configuration from .env file at project root.
- * Provides typed access to all LLMIntegration configuration values.
+ * Centralized settings management that coordinates with Python services via .env.
+ * Provides typed access to performance, security, and analysis parameters.
  */
 class ConfigManager {
 public:
@@ -32,67 +31,69 @@ public:
      */
     bool isLoaded() const;
     
-    // LLM Settings - Common
+    // --- LLM Analysis Settings ---
     std::string getLLMBaseUrl() const;
     std::string getLLMEndpoint() const;
     std::string getLLMApiKey() const;
     int getLLMTimeoutSeconds() const;
     int getLLMMaxRetries() const;
+    int getLLMMaxFiles() const;
+    int getLLMMaxContentLength() const;
+    bool getLLMSkipBinary() const;
     
-    // Text Model Settings (GPT OSS)
-    LLMConfig getTextModelConfig() const;
+    // Text Model Settings
+    llm::LLMConfig getTextModelConfig() const;
     std::string getTextBaseUrl() const;
     std::string getTextModel() const;
     int getTextMaxTokens() const;
     double getTextTemperature() const;
     
-    // Vision Model Settings (Qwen3 VL)
-    LLMConfig getVisionModelConfig() const;
+    // Vision Model Settings
+    llm::LLMConfig getVisionModelConfig() const;
     std::string getVisionBaseUrl() const;
     std::string getVisionModel() const;
     int getVisionMaxTokens() const;
     double getVisionTemperature() const;
     
-    // Legacy support - returns text model config
-    LLMConfig getLLMConfig() const;
-    
-    // MCP Settings
-    int getMCPServerPort() const;
-    std::string getMCPServerHost() const;
-    std::vector<std::string> getMCPAllowedPaths() const;
-    
-    // File Analysis Settings
-    int getFileAnalysisMaxContent() const;
-    int getFileAnalysisMaxKeywords() const;
-    
-    // Database Settings
-    std::string getDBOutputDir() const;
-    std::string getDBName() const;
-    
-    // HTTP Server Settings
+    // --- System & Performance Settings ---
+    int getThreadPoolSize() const;
+    int getMaxBatchSize() const;
     int getHTTPServerPort() const;
     std::string getHTTPServerHost() const;
     
-    // Logging Settings
-    std::string getLogLevel() const;
-    std::string getLogFile() const;
+    // --- Database Settings ---
+    int getDBBusyTimeoutMs() const;
+    std::string getDBJournalMode() const;
+    bool getDBSyncOff() const;
     
-    // Performance Settings
-    int getThreadPoolSize() const;
-    int getMaxBatchSize() const;
+    // --- Full-Text Search Settings ---
+    int getSearchMaxCacheSize() const;
+    int getSearchMaxContentLength() const;
+    int getSearchSnippetLength() const;
+    int getSearchDefaultLimit() const;
     
-    // Context Window Settings
+    // --- Analysis Thresholds ---
+    int getMaxLogDisplayFiles() const;
+    int getFileAnalysisMaxContent() const;
+    int getFileAnalysisMaxKeywords() const;
     int getContextLength() const;
-    int getReservedTokens() const;
-    double getCharsPerToken() const;
-    int getMaxContentLimit() const;
-    
-    // Debug Settings
-    std::string getDebugOutputMode() const;
-    std::string getDebugLogFile() const;
     
     /**
-     * @brief Get raw value by key (returns empty string if not found)
+     * @brief Get extra extensions for a category from config
+     * @param categoryName e.g., "IMAGE", "VIDEO"
+     * @return List of extensions from .env (e.g., EXTRA_IMAGE_EXTS="webp,avif")
+     */
+    std::vector<std::string> getExtraExtensions(const std::string& categoryName) const;
+    
+    // --- Storage & Logging ---
+    std::string getDBOutputDir() const;
+    std::string getDBName() const;
+    std::string getLogLevel() const;
+    std::string getLogFile() const;
+    std::string getDebugOutputMode() const;
+
+    /**
+     * @brief Get raw value by key
      */
     std::string get(const std::string& key, const std::string& defaultValue = "") const;
     
@@ -106,16 +107,19 @@ public:
      */
     double getDouble(const std::string& key, double defaultValue = 0.0) const;
     
+    /**
+     * @brief Get boolean value by key
+     */
+    bool getBool(const std::string& key, bool defaultValue = false) const;
+    
 private:
     ConfigManager() = default;
     ~ConfigManager() = default;
     
-    // Non-copyable
     ConfigManager(const ConfigManager&) = delete;
     ConfigManager& operator=(const ConfigManager&) = delete;
     
     bool loaded_ = false;
 };
 
-} // namespace llm
 } // namespace forensics

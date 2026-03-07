@@ -14,11 +14,14 @@ LLMAnalysisService::~LLMAnalysisService() = default;
 
 bool LLMAnalysisService::initialize() {
     try {
-        auto& configManager = llm::ConfigManager::instance();
+        auto& configManager = ConfigManager::instance();
         if (!configManager.isLoaded()) {
             configManager.load();
         }
-        auto config = configManager.getLLMConfig();
+        
+        // Use standard text model config for forensics analysis
+        auto config = configManager.getTextModelConfig();
+        
         router_ = std::make_shared<llm::ModelRouter>();
         router_->addModel("default", config, llm::ModelInfo{
             "default", 

@@ -52,7 +52,6 @@ async def lifespan(app: FastAPI):
         from .services import get_service_manager
         service_manager = get_service_manager()
         await service_manager.initialize()
-        logger.info("All services initialized successfully")
     except Exception as e:
         logger.warning(f"Some services failed to initialize: {e}")
     

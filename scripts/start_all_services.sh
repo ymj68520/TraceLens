@@ -172,7 +172,7 @@ PYTHON_PID=$!
 echo -e "${GREEN}✓ Python service started${NC}  PID: ${BOLD}$PYTHON_PID${NC} (Logging to $LOG_DIR/python_service.log)"
 
 # Wait for Python service to be ready
-if ! check_service "http://localhost:$PYTHON_PORT/health" "Python service" 15; then
+if ! check_service "http://localhost:$PYTHON_PORT/health" "Python service" 30; then
     echo -e "${YELLOW}⚠ Python service health check failed. Check logs at $LOG_DIR/python_service.log${NC}"
 fi
 

@@ -1,3 +1,4 @@
+#include "LLMIntegration/ConfigManager.h"
 #include "FullTextSearch.h"
 #include "TextExtractor.h"
 #include <iostream>
@@ -62,7 +63,7 @@ void XapianIndexer::cacheContent(const std::string& path, const std::string& con
     std::lock_guard<std::mutex> lock(cacheMutex_);
     
     // Enforce cache size limit
-    if (contentCache_.size() >= MAX_CACHE_SIZE) {
+    if (contentCache_.size() >= static_cast<size_t>(forensics::ConfigManager::instance().getSearchMaxCacheSize())) {
         // Simple eviction: remove oldest entry
         auto oldest = contentCache_.begin();
         int64_t oldestTime = std::numeric_limits<int64_t>::max();
@@ -79,7 +80,7 @@ void XapianIndexer::cacheContent(const std::string& path, const std::string& con
     
     // Cache truncated content
     ContentCacheEntry entry;
-    entry.content = content.substr(0, MAX_CONTENT_LENGTH);
+    entry.content = content.substr(0, static_cast<size_t>(forensics::ConfigManager::instance().getSearchMaxContentLength()));
     entry.indexTime = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     

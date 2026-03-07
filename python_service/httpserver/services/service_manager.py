@@ -57,7 +57,6 @@ class ServiceManager:
             from .cpp_backend import CppBackendService
             self._cpp_backend = CppBackendService(self.settings)
             await self._cpp_backend.initialize()
-            logger.info("C++ backend service initialized")
         except Exception as e:
             logger.warning(f"C++ backend service initialization failed: {e}")
         
@@ -66,7 +65,6 @@ class ServiceManager:
             from .graphiti_service import GraphitiService
             self._graphiti_service = GraphitiService(self.settings)
             await self._graphiti_service.initialize()
-            logger.info("Graphiti service initialized")
         except Exception as e:
             logger.warning(f"Graphiti service initialization failed: {e}")
         
@@ -75,12 +73,11 @@ class ServiceManager:
             from .llm_service import LLMService
             self._llm_service = LLMService(self.settings)
             await self._llm_service.initialize()
-            logger.info("LLM service initialized")
         except Exception as e:
             logger.warning(f"LLM service initialization failed: {e}")
         
         self._initialized = True
-        logger.info("All services initialized")
+        logger.info("All services initialized successfully")
     
     async def shutdown(self):
         """Shutdown all services gracefully."""

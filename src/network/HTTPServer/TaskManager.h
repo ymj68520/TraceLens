@@ -27,6 +27,8 @@
 
 
 
+#include "../../core/ThreadPool/ThreadPool.h"
+
 class TaskManager {
 public:
     static TaskManager& instance() {
@@ -34,18 +36,33 @@ public:
         return instance;
     }
 
+    ~TaskManager();
+
     // Enhanced task creation with priority and metadata
     /**
-     * @brief Create a new analysis task
+     * @brief Create a new analysis task with full configuration (atomic)
      * @param path Path to the disk image file
-     * @param priority Task execution priority (default: NORMAL)
+     * @param priority Task execution priority
      * @param metadata Optional key-value metadata map
      * @param dependencies Optional list of task dependencies
+     * @param android_analyze Enable Android analysis
+     * @param xfs_mode XFS handling mode
+     * @param db_output_dir Directory for database output
+     * @param llm_analyze Enable LLM analysis
+     * @param llm_mode LLM analysis mode ("smart" or "full")
+     * @param case_description Case description for LLM
      * @return The unique ID of the created task
      */
-    std::string create_task(const std::string& path, TaskPriority priority = TaskPriority::NORMAL,
+    std::string create_task(const std::string& path, 
+                           TaskPriority priority = TaskPriority::NORMAL,
                            const std::map<std::string, std::string>& metadata = {},
-                           const std::vector<TaskDependency>& dependencies = {});
+                           const std::vector<TaskDependency>& dependencies = {},
+                           bool android_analyze = false,
+                           XFSMode xfs_mode = XFSMode::Auto,
+                           const std::string& db_output_dir = "",
+                           bool llm_analyze = false,
+                           const std::string& llm_mode = "smart",
+                           const std::string& case_description = "");
 
     // Task status management
     /**
@@ -239,6 +256,9 @@ public:
 private:
     TaskManager();
 
+    // Internal save without locking
+    void save_tasks_internal();
+
     // Helper methods
     int calculate_overall_percentage(TaskPhase phase, int phase_percentage);
 
@@ -257,4 +277,11 @@ private:
     std::mutex mtx_;
     std::condition_variable cv_;
     std::atomic<bool> shutdown_requested_{false};
+
+    // Use a controlled thread pool instead of uncontrolled detaching
+    std::unique_ptr<forensics::ThreadPool> analysis_pool_;
+
+    // Watchdog for stale/stuck tasks
+    std::thread watchdog_thread_;
+    void run_watchdog();
 };
