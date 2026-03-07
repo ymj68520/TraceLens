@@ -470,7 +470,13 @@ json SQLiteHelper::get_llm_results(const std::string& descriptions_db) {
     sqlite3* db = open_database(descriptions_db, result);
     if (!db) return result;
 
-    result["descriptions"] = execute_query(db, "SELECT file_path, description, summary, keywords, created_at FROM file_descriptions ORDER BY created_at DESC");
+    // Use COALESCE to handle older databases that might have NULL in is_relevant (default to 1)
+    // Also use a subquery check or just select it if the migration logic ensures it exists
+    // Given the Python service migration, it should exist.
+    result["descriptions"] = execute_query(db, 
+        "SELECT file_path, description, summary, keywords, "
+        "COALESCE(is_relevant, 1) as is_relevant, created_at "
+        "FROM file_descriptions ORDER BY created_at DESC");
     
     // Summary stats
     json stats = execute_query(db, "SELECT COUNT(*) as total_analyzed FROM file_descriptions");

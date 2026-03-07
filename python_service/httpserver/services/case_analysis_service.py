@@ -1027,8 +1027,9 @@ class CaseAnalysisService:
             try:
                 with sqlite3.connect(files_db_path) as conn:
                     conn.row_factory = sqlite3.Row
-                    # CRITICAL: Only include files marked as relevant (is_relevant = 1)
-                    cur = conn.execute("SELECT file_path, description, model_used FROM file_descriptions WHERE is_relevant = 1")
+                    # CRITICAL: Include files NOT explicitly marked as irrelevant (is_relevant IS NOT 0)
+                    # This handles NULL (legacy/default) and 1 (explicitly marked)
+                    cur = conn.execute("SELECT file_path, description, model_used FROM file_descriptions WHERE is_relevant IS NOT 0")
                     rows = cur.fetchall()
                     if rows:
                         # Convert DB rows to the format expected by build_evidence_summary
@@ -1060,7 +1061,7 @@ class CaseAnalysisService:
             try:
                 logger.info(f"Task {task_id}: Attempting graph-enhanced report generation...")
                 report_text = await self._generate_report_with_graph(
-                    case_description, task_id
+                    case_description, task_id, file_descriptions
                 )
                 if report_text:
                     model_used = "graph-enhanced"
@@ -1100,15 +1101,20 @@ class CaseAnalysisService:
         }
 
     async def _generate_report_with_graph(
-        self, case_description: str, task_id: str
+        self, case_description: str, task_id: str, file_descriptions: List[Dict[str, Any]] = None
     ) -> str:
         """
-        Generate report by searching the knowledge graph per chapter.
-
-        Each report chapter uses a targeted query to retrieve the most
-        relevant knowledge fragments, keeping each LLM call within
-        context limits.
+        Generate report by searching the knowledge graph per chapter,
+        BUT also force-feeding the explicit evidence list to ensure alignment.
         """
+        # Build an explicit evidence context from the file descriptions table
+        evidence_context = "当前研判确定的关键证据文件：\n"
+        if file_descriptions:
+            for d in file_descriptions:
+                evidence_context += f"- 文件: {d.file_path}\n  摘要: {d.description[:300]}\n"
+        else:
+            evidence_context += "（无显式证据文件，主要基于图谱推导）"
+
         chapters = [
             {
                 "title": ch["title"],
@@ -1139,13 +1145,16 @@ class CaseAnalysisService:
                 if body:
                     context_lines.append(f"- {body[:500]}")
 
-            context = "\n".join(context_lines) if context_lines else "无相关信息。"
+            kg_context = "\n".join(context_lines) if context_lines else "无相关图谱信息。"
+
+            # COMBINED PROMPT: Case + KG + Explicit Evidence
+            combined_context = f"【知识图谱背景】\n{kg_context}\n\n【显式证据文件】\n{evidence_context}"
 
             prompt = REPORT_CHAPTER_TEMPLATE.format(
                 chapter_title=chapter["title"],
                 case_description=case_description,
-                context=context,
-                chapter_instruction=chapter["instruction"],
+                context=combined_context,
+                chapter_instruction=chapter["instruction"] + " 必须引用上述【显式证据文件】中的具体内容，并使用 [[file:路径]] 格式进行标注。",
             )
 
             try:
@@ -1372,7 +1381,8 @@ class CaseAnalysisService:
                 cur = conn.cursor()
                 
                 # 1. First, get files that have been analyzed (dynamic evidence)
-                cur.execute("SELECT DISTINCT file_path FROM file_descriptions")
+                # Exclude explicitly marked irrelevant files
+                cur.execute("SELECT DISTINCT file_path FROM file_descriptions WHERE is_relevant IS NOT 0")
                 analyzed_files = [row[0] for row in cur.fetchall()]
                 
                 # 2. Also get files from the initial filter list

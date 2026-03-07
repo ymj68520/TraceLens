@@ -66,9 +66,14 @@ const CaseIntelligence = () => {
                 setLlmResults(results.llm_results);
             }
             
+            // Try to fetch existing report
             const reportData = await getCaseReport(taskId);
-            if (reportData && reportData.report) {
-                setReport(reportData);
+            if (reportData && (reportData.report || reportData.case_report)) {
+                // Handle different field names from API (report vs case_report)
+                setReport({
+                    ...reportData,
+                    report: reportData.report || reportData.case_report
+                });
                 setCaseDescription(reportData.case_description || '');
             }
         } catch (err) {
@@ -191,16 +196,79 @@ const CaseIntelligence = () => {
         }
     };
 
+    // --- Actions: Scrolling & Highlighting ---
+    const scrollToFile = (filePath) => {
+        // 1. Clear search to ensure the file is visible
+        setSearchQuery('');
+        
+        // 2. Small delay to allow list to re-render without filter
+        setTimeout(() => {
+            const element = document.getElementById(`file-card-${btoa(filePath)}`);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Add a temporary highlight class
+                element.classList.add('ring-4', 'ring-purple-500', 'ring-opacity-50');
+                setTimeout(() => {
+                    element.classList.remove('ring-4', 'ring-purple-500', 'ring-opacity-50');
+                }, 3000);
+                
+                // Also expand the description
+                const index = filteredDescriptions.findIndex(d => d.file_path === filePath);
+                if (index !== -1) {
+                    setExpandedItems(p => ({ ...p, [index]: true }));
+                }
+            } else {
+                toast.error('未在当前列表中找到该文件');
+            }
+        }, 100);
+    };
+
     // --- Rendering: Markdown ---
+    const renderInlineStyles = (text) => {
+        if (!text) return text;
+        
+        // Handle [[file:path]] references
+        const parts = text.split(/(\[\[file:[^\]]+\]\])/g);
+        return parts.map((part, i) => {
+            const fileMatch = part.match(/^\[\[file:(.+)\]\]$/);
+            if (fileMatch) {
+                const filePath = fileMatch[1];
+                const fileName = filePath.split('/').pop();
+                return (
+                    <button
+                        key={i}
+                        onClick={() => scrollToFile(filePath)}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-md text-[13px] font-mono hover:bg-purple-100 dark:hover:bg-purple-800/50 transition-all border border-purple-200 dark:border-purple-700 font-bold"
+                        title={filePath}
+                    >
+                        📄 {fileName}
+                    </button>
+                );
+            }
+            
+            // Handle bold **text**
+            const boldParts = part.split(/(\*\*[^*]+\*\*)/g);
+            return boldParts.map((bp, j) => {
+                if (bp.startsWith('**') && bp.endsWith('**')) {
+                    return <strong key={`${i}-${j}`} className="font-bold text-slate-900 dark:text-white">{bp.slice(2, -2)}</strong>;
+                }
+                return bp;
+            });
+        });
+    };
+
     const renderMarkdown = (text) => {
         if (!text) return null;
         return <div className="prose prose-slate max-w-none dark:prose-invert">
             {text.split('\n').map((line, i) => {
-                if (line.startsWith('# ')) return <h1 key={i} className="text-2xl font-bold mt-6 mb-3">{line.slice(2)}</h1>;
-                if (line.startsWith('## ')) return <h2 key={i} className="text-xl font-semibold mt-5 mb-2">{line.slice(3)}</h2>;
-                if (line.startsWith('### ')) return <h3 key={i} className="text-lg font-semibold mt-4 mb-2">{line.slice(4)}</h3>;
+                if (line.startsWith('# ')) return <h1 key={i} className="text-2xl font-bold mt-6 mb-3">{renderInlineStyles(line.slice(2))}</h1>;
+                if (line.startsWith('## ')) return <h2 key={i} className="text-xl font-semibold mt-5 mb-2">{renderInlineStyles(line.slice(3))}</h2>;
+                if (line.startsWith('### ')) return <h3 key={i} className="text-lg font-semibold mt-4 mb-2">{renderInlineStyles(line.slice(4))}</h3>;
+                if (line.startsWith('- ') || line.startsWith('* ')) {
+                    return <li key={i} className="text-sm text-slate-700 dark:text-slate-300 ml-4 mb-1 list-disc">{renderInlineStyles(line.slice(2))}</li>;
+                }
                 if (line.trim() === '') return <div key={i} className="h-2" />;
-                return <p key={i} className="text-sm mb-2 leading-relaxed">{line}</p>;
+                return <p key={i} className="text-sm mb-2 leading-relaxed text-slate-700 dark:text-slate-300">{renderInlineStyles(line)}</p>;
             })}
         </div>;
     };
@@ -257,7 +325,7 @@ const CaseIntelligence = () => {
                         </div>
                         <div>
                             <p className="text-[10px] font-bold text-purple-400 uppercase">入报证据</p>
-                            <p className="text-2xl font-bold text-purple-600">{llmResults?.descriptions?.filter(d => d.is_relevant).length || 0}</p>
+                            <p className="text-2xl font-bold text-purple-600">{llmResults?.descriptions?.filter(d => d.is_relevant !== 0).length || 0}</p>
                         </div>
                     </div>
                 </Card>
@@ -296,10 +364,11 @@ const CaseIntelligence = () => {
                                 return (
                                     <motion.div
                                         key={item.file_path}
+                                        id={`file-card-${btoa(item.file_path)}`}
                                         layout
                                         initial={{ opacity: 0, x: -20 }}
                                         animate={{ opacity: 1, x: 0 }}
-                                        className={`p-4 rounded-2xl border-2 transition-all ${
+                                        className={`p-4 rounded-2xl border-2 transition-all duration-500 ${
                                             isRelevant 
                                                 ? 'bg-white dark:bg-slate-800 border-purple-100 dark:border-purple-900/30 shadow-sm' 
                                                 : 'bg-slate-50/50 dark:bg-slate-900/20 border-transparent opacity-60 grayscale'
