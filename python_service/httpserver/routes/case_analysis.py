@@ -46,6 +46,7 @@ class CaseAnalysisRequest(BaseModel):
     files_db_path: str = Field(..., description="Path to _files.db")
     case_description: str = Field(..., min_length=1, description="案情描述")
     max_filter_files: int = Field(default=200, ge=1, le=2000, description="Max files to filter")
+    run_filtering: bool = Field(default=False, description="是否重新运行 LLM 文件筛选")
 
 
 class CaseAnalysisResponse(BaseModel):
@@ -205,6 +206,7 @@ async def start_case_analysis(
                 files_db_path=request.files_db_path,
                 case_description=request.case_description,
                 max_filter_files=request.max_filter_files,
+                run_filtering=request.run_filtering,
             )
         )
 
@@ -446,6 +448,7 @@ async def _run_case_analysis_background(
     files_db_path: str,
     case_description: str,
     max_filter_files: int,
+    run_filtering: bool = True,
 ):
     """Run the full case analysis pipeline in the background."""
     try:
@@ -462,12 +465,17 @@ async def _run_case_analysis_background(
                 # Other steps send: step_name, detail_text
                 _analysis_jobs[job_id]["current_step"] = step
                 _analysis_jobs[job_id]["detail"] = detail or ""
+                # Default progress
+                if step == "filtering": _analysis_jobs[job_id]["progress"] = 10
+                if step == "extracting": _analysis_jobs[job_id]["progress"] = 20
+                if step == "reporting": _analysis_jobs[job_id]["progress"] = 90
 
         result = await case_service.run_full_analysis(
             task_id=task_id,
             files_db_path=files_db_path,
             case_description=case_description,
             max_filter_files=max_filter_files,
+            run_filtering=run_filtering,
             progress_callback=progress_cb,
         )
 

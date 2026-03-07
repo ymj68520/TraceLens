@@ -24,7 +24,8 @@ std::string LLMPythonProxy::startCaseAnalysis(
             {"task_id", task_id},
             {"files_db_path", files_db_path},
             {"case_description", case_description},
-            {"max_filter_files", max_filter_files}
+            {"max_filter_files", max_filter_files},
+            {"run_filtering", true} // ALWAYS run filtering when called from C++ backend orchestrator
         };
 
         auto res = cli.Post("/api/llm/case-analysis", body.dump(), "application/json");

@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { fetchTasks } from '../store/taskSlice';
+import { setBatchJob, updateBatchProgress, clearBatchJob } from '../store/intelligenceSlice';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
@@ -18,9 +19,17 @@ import { getTaskResults } from '../services/taskService';
 const Files = () => {
   const [searchParams] = useSearchParams();
   const taskId = searchParams.get('task_id');
-  const { tasks } = useSelector((state) => state.tasks);
   const dispatch = useDispatch();
+  
+  // 1. Hooks - State from Redux
+  const { tasks } = useSelector((state) => state.tasks);
+  const { activeBatchJobs } = useSelector((state) => state.intelligence);
 
+  // 2. Derived State - MUST happen after hooks
+  const activeBatch = activeBatchJobs[taskId];
+  const isBatchRunning = activeBatch && activeBatch.status === "running";
+
+  // 3. Initial effects
   useEffect(() => {
     if (taskId && tasks.length === 0) {
       dispatch(fetchTasks());
@@ -44,14 +53,53 @@ const Files = () => {
 
   // LLM Analysis state
   const [llmStatus, setLlmStatus] = useState(null);
-  const [llmAnalyzing, setLlmAnalyzing] = useState(false);
   const [llmAnalyzingFiles, setLlmAnalyzingFiles] = useState(new Set());
-  const [llmBatchJobId, setLlmBatchJobId] = useState(null);
-  const [llmProgress, setLlmProgress] = useState(0);
-  const [llmMessage, setLlmMessage] = useState('');
   const [llmResults, setLlmResults] = useState({});
   const [existingLlmDescriptions, setExistingLlmDescriptions] = useState({});
   const [expandedDescriptions, setExpandedDescriptions] = useState(new Set());
+
+  // AUTO-RESUME: Detect active batch job on mount
+  useEffect(() => {
+    if (activeBatch && activeBatch.status === 'running' && activeBatch.jobId) {
+      console.log(`[Files] Auto-resuming batch analysis polling: ${activeBatch.jobId}`);
+      startBatchAnalysisPolling(activeBatch.jobId);
+    }
+  }, [taskId]); // Re-run if taskId changes
+
+  const startBatchAnalysisPolling = useCallback(async (jobId) => {
+    try {
+      const finalStatus = await pollBatchStatus(jobId, (status) => {
+        const processed = status.files_processed || 0;
+        const total = status.files_total || 1;
+        dispatch(updateBatchProgress({
+          taskId,
+          progress: Math.round((processed / total) * 100),
+          message: status.message || `正在分析: ${processed}/${total}`
+        }));
+      }, 2000);
+
+      // Success processing
+      if (finalStatus.results) {
+        const newDesc = {};
+        finalStatus.results.forEach((r) => {
+          if (r.file_path && r.analysis) {
+            newDesc[r.file_path] = {
+              summary: r.analysis.summary || r.analysis.description?.substring(0, 200),
+              description: r.analysis.description,
+              keywords: r.analysis.keywords || [],
+            };
+          }
+        });
+        setLlmResults(prev => ({ ...prev, ...newDesc }));
+      }
+      
+      dispatch(updateBatchProgress({ taskId, status: 'completed', message: '✅ 批量分析完成' }));
+      setTimeout(() => dispatch(clearBatchJob({ taskId })), 10000);
+    } catch (err) {
+      console.error('Batch polling failed:', err);
+      dispatch(updateBatchProgress({ taskId, status: 'failed', message: '❌ 失败: ' + err.message }));
+    }
+  }, [taskId, dispatch]);
 
   // Graphiti state
   const [graphitiStatus, setGraphitiStatus] = useState(null);
@@ -324,7 +372,6 @@ ${detail}
       return;
     }
 
-    // Map selected indices to actual file paths
     const selectedPaths = [...selectedFiles]
       .map(idx => filteredFiles[idx])
       .filter(Boolean)
@@ -336,10 +383,6 @@ ${detail}
       return;
     }
 
-    setLlmAnalyzing(true);
-    setLlmProgress(0);
-    setLlmMessage(`启动对 ${selectedPaths.length} 个文件的批量分析...`);
-
     try {
       const result = await startBatchAnalysis(taskId, {
         filePaths: selectedPaths,
@@ -347,44 +390,13 @@ ${detail}
       });
 
       if (result.job_id) {
-        setLlmBatchJobId(result.job_id);
-
-        const finalStatus = await pollBatchStatus(result.job_id, (status) => {
-          const processed = status.files_processed || 0;
-          const total = status.files_total || selectedPaths.length;
-          const progress = Math.round((processed / total) * 100);
-          setLlmProgress(progress);
-          setLlmMessage(status.message || `正在分析: ${processed}/${total}`);
-        }, 2000);
-
-        setLlmMessage('✅ 批量分析完成！');
-        
-        // Refresh local data to show new descriptions
-        if (finalStatus.results) {
-          const newDesc = {};
-          finalStatus.results.forEach((r) => {
-            if (r.file_path && r.analysis) {
-              newDesc[r.file_path] = {
-                summary: r.analysis.summary || r.analysis.description?.substring(0, 200),
-                description: r.analysis.description,
-                keywords: r.analysis.keywords || [],
-              };
-            }
-          });
-          setLlmResults(prev => ({ ...prev, ...newDesc }));
-        }
-        
-        // Optional: clear selection after success
-        // setSelectedFiles(new Set());
-        // setSelectAll(false);
+        dispatch(setBatchJob({ taskId, jobId: result.job_id }));
+        startBatchAnalysisPolling(result.job_id);
       }
     } catch (err) {
       console.error('Batch analysis failed:', err);
       const errorMsg = err.response?.data?.detail || err.message || '未知错误';
-      setLlmMessage('❌ 失败: ' + errorMsg);
       alert(`批量分析启动失败: ${errorMsg}`);
-    } finally {
-      setLlmAnalyzing(false);
     }
   };
 
@@ -880,10 +892,10 @@ ${detail}
                     variant="primary"
                     size="sm"
                     onClick={handleBatchAnalyze}
-                    disabled={selectedFiles.size === 0 || llmAnalyzing || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
+                    disabled={selectedFiles.size === 0 || isBatchRunning || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
                     className="bg-purple-600 hover:bg-purple-700 text-white"
                   >
-                    {llmAnalyzing ? <Spinner size="sm" /> : '🧠 批量分析'}
+                    {isBatchRunning ? <Spinner size="sm" /> : '🧠 批量分析'}
                   </Button>
                   <Button
                     variant="outline"
@@ -906,17 +918,17 @@ ${detail}
                   </Button>
                   
                   {/* AI Progress */}
-                  {(llmAnalyzing || graphitiIngesting || graphitiMessage) && (
+                  {(isBatchRunning || graphitiIngesting || graphitiMessage) && (
                     <div className="flex-1 flex items-center gap-3 px-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg min-w-[200px]">
-                      {llmAnalyzing && (
+                      {isBatchRunning && (
                         <>
                           <div className="flex-1 h-1.5 bg-purple-200 dark:bg-purple-800 rounded-full overflow-hidden">
-                            <div className="bg-purple-600 h-full transition-all" style={{ width: `${llmProgress}%` }} />
+                            <div className="bg-purple-600 h-full transition-all" style={{ width: `${activeBatch?.progress || 0}%` }} />
                           </div>
-                          <span className="text-[10px] font-mono text-purple-700 dark:text-purple-300 whitespace-nowrap">{llmMessage}</span>
+                          <span className="text-[10px] font-mono text-purple-700 dark:text-purple-300 whitespace-nowrap">{activeBatch?.message || ""}</span>
                         </>
                       )}
-                      {!llmAnalyzing && graphitiMessage && (
+                      {!isBatchRunning && graphitiMessage && (
                         <span className="text-xs text-purple-700 dark:text-purple-300 truncate">
                           {graphitiIngesting && <Spinner size="sm" className="mr-2" />}
                           {graphitiMessage}

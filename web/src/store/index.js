@@ -3,6 +3,7 @@ import taskReducer from './taskSlice';
 import uiReducer from './uiSlice';
 import dataReducer from './dataSlice';
 import settingsReducer from './settingsSlice';
+import intelligenceReducer from './intelligenceSlice';
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const store = configureStore({
     ui: uiReducer,
     data: dataReducer,
     settings: settingsReducer,
+    intelligence: intelligenceReducer,
   },
 });
 

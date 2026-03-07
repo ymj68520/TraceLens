@@ -1104,16 +1104,22 @@ class CaseAnalysisService:
         self, case_description: str, task_id: str, file_descriptions: List[Dict[str, Any]] = None
     ) -> str:
         """
-        Generate report by searching the knowledge graph per chapter,
-        BUT also force-feeding the explicit evidence list to ensure alignment.
+        Generate report using Graphiti RAG with optimized context management.
+        
+        Implementation:
+        - Option A: Lightweight evidence list (paths only) to save space.
+        - Option C: Tunable retrieval limits from config.py.
         """
-        # Build an explicit evidence context from the file descriptions table
-        evidence_context = "当前研判确定的关键证据文件：\n"
+        # [Option A] LIGHTWEIGHT CHECKLIST:
+        # Since full descriptions are already in the Knowledge Graph, we only need to provide
+        # a checklist of file paths to ensure the LLM includes them in the final report.
+        evidence_list_str = "本案关键证据文件清单（细节请参考下文【知识图谱背景】）：\n"
         if file_descriptions:
+            # Only list the file paths to save thousands of tokens
             for d in file_descriptions:
-                evidence_context += f"- 文件: {d.file_path}\n  摘要: {d.description[:300]}\n"
+                evidence_list_str += f"- [[file:{d.file_path}]]\n"
         else:
-            evidence_context += "（无显式证据文件，主要基于图谱推导）"
+            evidence_list_str += "（无显式证据文件，基于全局图谱分析）"
 
         chapters = [
             {
@@ -1127,34 +1133,44 @@ class CaseAnalysisService:
         ]
 
         report_parts = []
+        # [Option C] TUNABLE RETRIEVAL:
+        search_limit = getattr(self.settings, 'graphiti_search_limit', 10)
+        content_limit = getattr(self.settings, 'graphiti_context_item_limit', 250)
+
         for chapter in chapters:
             # Search the knowledge graph for relevant context
             search_results = await self._graphiti_service.search(
                 query=chapter["query"],
                 task_id=task_id,
-                limit=20,
+                limit=search_limit,
                 include_relationships=True,
             )
 
-            # Build context from search results
+            # Build context from search results with dynamic truncation
             context_lines = []
             for r in search_results:
                 name = r.get("name", "")
                 props = r.get("properties", {})
                 body = props.get("body", "") or props.get("summary", "") or name
                 if body:
-                    context_lines.append(f"- {body[:500]}")
+                    # Apply fine-tuned truncation
+                    truncated_body = body[:content_limit] + "..." if len(body) > content_limit else body
+                    context_lines.append(f"- {truncated_body}")
 
             kg_context = "\n".join(context_lines) if context_lines else "无相关图谱信息。"
 
-            # COMBINED PROMPT: Case + KG + Explicit Evidence
-            combined_context = f"【知识图谱背景】\n{kg_context}\n\n【显式证据文件】\n{evidence_context}"
+            # CONSOLIDATED PROMPT: Dramatically reduced size but high information density
+            combined_context = f"【核心证据清单】\n{evidence_list_str}\n\n【图谱研判背景】\n{kg_context}"
 
             prompt = REPORT_CHAPTER_TEMPLATE.format(
                 chapter_title=chapter["title"],
                 case_description=case_description,
                 context=combined_context,
-                chapter_instruction=chapter["instruction"] + " 必须引用上述【显式证据文件】中的具体内容，并使用 [[file:路径]] 格式进行标注。",
+                chapter_instruction=chapter["instruction"] + 
+                "\n\nCRITICAL INSTRUCTION: "
+                "1. 你必须在分析中显式引用【核心证据清单】中的文件路径；"
+                "2. 每一个引用的文件必须严格遵循 [[file:路径]] 格式（例如 [[file:/usr/bin/cmd]]）；"
+                "3. 严禁虚构不存在的文件路径。",
             )
 
             try:
@@ -1204,25 +1220,16 @@ class CaseAnalysisService:
         files_db_path: str,
         case_description: str,
         max_filter_files: int = 200,
+        run_filtering: bool = True,
         progress_callback=None,
     ) -> Dict[str, Any]:
         """
         Run the complete case analysis pipeline.
 
         Steps:
-            1. Filter files by case relevance
+            1. Filter files by case relevance (Optional)
             2. Generate per-file descriptions
             3. Generate final case report
-
-        Args:
-            task_id: Task identifier.
-            files_db_path: Path to _files.db.
-            case_description: Case description text.
-            max_filter_files: Max files to select in filtering step.
-            progress_callback: Optional async callback(step, detail).
-
-        Returns:
-            Complete analysis result.
         """
         result = {
             "task_id": task_id,
@@ -1230,91 +1237,84 @@ class CaseAnalysisService:
             "steps": {},
         }
 
-        # Step 1: Filter files
-        if progress_callback:
-            await progress_callback("filtering", "正在使用 LLM 筛选相关文件...")
-        filter_result = await self.filter_files_by_case(
-            files_db_path, case_description, max_filter_files, task_id=task_id
-        )
-        result["steps"]["filter"] = filter_result
-        filtered_files = filter_result.get("filtered_files", [])
+        filtered_files = []
+        descriptions = []
+        extraction_dir = ""
+        
+        if run_filtering:
+            # --- FULL PIPELINE MODE (Initial Task or Explicit Re-scan) ---
+            
+            # Step 1: Filter files via LLM
+            if progress_callback:
+                await progress_callback("filtering", "正在使用 LLM 自动筛选关键文件...")
+            filter_result = await self.filter_files_by_case(
+                files_db_path, case_description, max_filter_files, task_id=task_id
+            )
+            result["steps"]["filter"] = filter_result
+            filtered_files = filter_result.get("filtered_files", [])
+            
+            # Persist the list so we can recover if subsequent steps fail
+            self._persist_filtered_files(files_db_path, task_id, filtered_files)
 
-        # Persist the list so we can recover if subsequent steps fail
-        self._persist_filtered_files(files_db_path, task_id, filtered_files)
+            if not filtered_files:
+                msg = "LLM 未能在样本中筛选出与案情高度相关的文件。跳过文件提取和描述阶段。"
+                logger.info(f"Task {task_id}: {msg}")
+                result["steps"]["extraction"] = {"extraction_dir": "", "extracted_count": 0}
+                result["steps"]["descriptions"] = []
+            else:
+                # Step 2: Extract filtered files to local disk
+                if progress_callback:
+                    await progress_callback("extracting", f"正在提取 {len(filtered_files)} 个文件到本地...")
+                
+                try:
+                    extract_result = await self.extract_filtered_files(
+                        task_id, filtered_files, progress_callback=progress_callback
+                    )
+                    result["steps"]["extraction"] = extract_result
+                    extraction_dir = extract_result.get("extraction_dir", "")
+                except Exception as e:
+                    logger.error(f"Extraction step critical failure: {e}", exc_info=True)
+                    result["steps"]["extraction"] = {"success": False, "error": str(e), "extracted_count": 0}
 
-        if not filtered_files:
-            msg = "LLM 未能在样本中筛选出与案情高度相关的文件。跳过文件提取和描述阶段。"
-            logger.info(f"Task {task_id}: {msg}")
-            result["steps"]["extraction"] = {"extraction_dir": "", "extracted_count": 0}
-            result["steps"]["descriptions"] = []
-            extract_result = {"success": True, "extracted_count": 0, "extraction_dir": ""}
-            descriptions = []
-            extraction_dir = ""
+                # Step 3: Generate per-file descriptions
+                if progress_callback:
+                    await progress_callback("describing", f"正在分析 {len(filtered_files)} 个相关文件...")
+                
+                try:
+                    descriptions = await self.generate_file_descriptions(
+                        files_db_path, filtered_files, case_description, extraction_dir=extraction_dir,
+                        progress_callback=progress_callback
+                    )
+                    result["steps"]["descriptions"] = descriptions
+                except Exception as e:
+                    logger.error(f"Description step failure: {e}", exc_info=True)
+
+                # Step 3.5: Ingest into knowledge graph
+                if self._graphiti_service:
+                    if progress_callback:
+                        await progress_callback("ingesting", "正在将分析结果摄入知识图谱...")
+                    try:
+                        kg_ok = await self.ingest_to_knowledge_graph(
+                            task_id, case_description, descriptions
+                        )
+                        result["steps"]["knowledge_graph"] = {"ingested": kg_ok, "episodes": len(descriptions) + 1}
+                    except Exception as e:
+                        logger.warning(f"KG ingestion failed (non-fatal): {e}")
+
         else:
-            # Step 2: Extract filtered files to local disk
+            # --- FAST REPORTING MODE (Manual Review / Refinement) ---
             if progress_callback:
-                await progress_callback("extracting", f"正在提取 {len(filtered_files)} 个文件到本地...")
+                await progress_callback("reporting_init", "跳过前置分析，正在根据当前研判结论生成报告...")
             
-            extract_result = {"success": False, "extracted_count": 0, "extraction_dir": ""}
-            try:
-                extract_result = await self.extract_filtered_files(
-                    task_id, filtered_files, progress_callback=progress_callback
-                )
-                result["steps"]["extraction"] = extract_result
-            except Exception as e:
-                logger.error(f"Extraction step critical failure: {e}", exc_info=True)
-                result["steps"]["extraction"] = {"success": False, "error": str(e), "extracted_count": 0}
+            # When run_filtering is False, we pass an empty descriptions list
+            # generate_case_report will then automatically pull ALL 'relevant' 
+            # descriptions directly from the database.
+            logger.info(f"Task {task_id}: Fast reporting mode. Skipping filter/extract/describe.")
 
-            extraction_dir = extract_result.get("extraction_dir", "")
-
-            # Check if extraction succeeded (allow partial success)
-            if not extract_result.get("success") and extract_result.get("extracted_count", 0) == 0:
-                msg = f"文件提取完全失败。请检查 C++ 后端日志。错误: {extract_result.get('error', 'Unknown')}"
-                logger.error(f"Task {task_id}: {msg}")
-                # Instead of returning, raise so the job status shows 'failed'
-                raise RuntimeError(msg)
-
-            # Step 3: Generate per-file descriptions
-            if progress_callback:
-                await progress_callback("describing", f"正在分析 {len(filtered_files)} 个相关文件...")
-            
-            descriptions = []
-            try:
-                descriptions = await self.generate_file_descriptions(
-                    files_db_path, filtered_files, case_description, extraction_dir=extraction_dir,
-                    progress_callback=progress_callback
-                )
-                result["steps"]["descriptions"] = descriptions
-            except Exception as e:
-                logger.error(f"Description step failure: {e}", exc_info=True)
-                # If we failed completely here, raise
-                if not descriptions:
-                    raise RuntimeError(f"文件描述生成失败: {e}")
-                # If we have some descriptions, we can still try to generate a report
-
-        # Step 3.5: Ingest into knowledge graph (if Graphiti available)
-        if self._graphiti_service:
-            if progress_callback:
-                await progress_callback(
-                    "ingesting", "正在将分析结果摄入知识图谱..."
-                )
-            try:
-                kg_ok = await self.ingest_to_knowledge_graph(
-                    task_id, case_description, descriptions
-                )
-                result["steps"]["knowledge_graph"] = {
-                    "ingested": kg_ok,
-                    "episodes": len(descriptions) + 1,
-                }
-            except Exception as e:
-                logger.warning(f"KG ingestion failed (non-fatal): {e}")
-                result["steps"]["knowledge_graph"] = {
-                    "ingested": False, "error": str(e)
-                }
-
-        # Step 4: Generate case report (graph-enhanced if available)
+        # Step 4: Final Case Report Generation (Common Path)
         if progress_callback:
-            await progress_callback("reporting", "正在生成综合案情分析报告...")
+            await progress_callback("reporting", "正在合成综合案情分析报告...")
+        
         report = await self.generate_case_report(
             case_description, descriptions, files_db_path, task_id
         )
