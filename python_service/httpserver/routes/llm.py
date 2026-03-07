@@ -48,6 +48,7 @@ class BatchAnalyzeRequest(BaseModel):
     """Request model for batch analysis."""
     task_id: str = Field(..., description="Task ID to analyze files from")
     file_types: Optional[List[str]] = Field(None, description="Filter by file types")
+    file_paths: Optional[List[str]] = Field(None, description="Explicit list of file paths to analyze")
     limit: int = Field(default=100, ge=1, le=1000, description="Maximum files to analyze")
     model_type: str = Field(default="text", description="Model type: 'text' or 'vision'")
 
@@ -331,11 +332,18 @@ async def batch_analyze(
         files_db_path: str = task_info.get("output_files_db") or ""
         
         # Get files to analyze
-        files = await service_manager.cpp_backend.get_task_files(
-            task_id=request.task_id,
-            file_types=request.file_types,
-            limit=request.limit,
-        )
+        if request.file_paths:
+            # Use explicit file paths provided by user
+            files = [{"path": p} for p in request.file_paths]
+            logger.info(f"Starting targeted batch analysis for {len(files)} selected files")
+        else:
+            # Fallback to automatic discovery based on types/limit
+            files = await service_manager.cpp_backend.get_task_files(
+                task_id=request.task_id,
+                file_types=request.file_types,
+                limit=request.limit,
+            )
+            logger.info(f"Starting automatic batch analysis for {len(files)} discovered files")
         
         # Extract the extraction_directory for resolving relative file paths
         extraction_dir: str = task_info.get("extraction_directory") or ""

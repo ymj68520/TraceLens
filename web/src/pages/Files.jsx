@@ -319,31 +319,48 @@ ${detail}
 
   // Batch analyze selected files
   const handleBatchAnalyze = async () => {
-    if (selectedFiles.size === 0) return;
+    if (selectedFiles.size === 0) {
+      alert('请先勾选需要分析的文件');
+      return;
+    }
+
+    // Map selected indices to actual file paths
+    const selectedPaths = [...selectedFiles]
+      .map(idx => filteredFiles[idx])
+      .filter(Boolean)
+      .map(f => f.path || f.file_path)
+      .filter(Boolean);
+
+    if (selectedPaths.length === 0) {
+      alert('选中的文件无效或路径缺失');
+      return;
+    }
 
     setLlmAnalyzing(true);
     setLlmProgress(0);
-    setLlmMessage('启动批量分析...');
+    setLlmMessage(`启动对 ${selectedPaths.length} 个文件的批量分析...`);
 
     try {
       const result = await startBatchAnalysis(taskId, {
-        fileTypes: filterExtension ? filterExtension.split(',') : undefined,
-        limit: selectedFiles.size,
+        filePaths: selectedPaths,
         modelType: 'text',
       });
 
       if (result.job_id) {
         setLlmBatchJobId(result.job_id);
 
-        await pollBatchStatus(result.job_id, (status) => {
-          setLlmProgress(status.progress || 0);
-          setLlmMessage(status.message || `已分析 ${status.processed || 0} 个文件`);
+        const finalStatus = await pollBatchStatus(result.job_id, (status) => {
+          const processed = status.files_processed || 0;
+          const total = status.files_total || selectedPaths.length;
+          const progress = Math.round((processed / total) * 100);
+          setLlmProgress(progress);
+          setLlmMessage(status.message || `正在分析: ${processed}/${total}`);
         }, 2000);
 
-        setLlmMessage('批量分析完成！');
-        // Read results from final batch job status
-        const finalStatus = await getBatchStatus(result.job_id);
-        if (finalStatus.results && Array.isArray(finalStatus.results)) {
+        setLlmMessage('✅ 批量分析完成！');
+        
+        // Refresh local data to show new descriptions
+        if (finalStatus.results) {
           const newDesc = {};
           finalStatus.results.forEach((r) => {
             if (r.file_path && r.analysis) {
@@ -356,24 +373,16 @@ ${detail}
           });
           setLlmResults(prev => ({ ...prev, ...newDesc }));
         }
+        
+        // Optional: clear selection after success
+        // setSelectedFiles(new Set());
+        // setSelectAll(false);
       }
     } catch (err) {
       console.error('Batch analysis failed:', err);
-
-      // Better error messages
-      let errorMsg = err.response?.data?.detail || err.message || '未知错误';
-
-      // Check for Python service not available
-      if (!err.response && err.code === 'ERR_NETWORK') {
-        errorMsg = `Python LLM 服务未运行\n\n提示：\n1. 请启动 Python 服务：python -m python_service.httpserver.main\n2. 或使用启动脚本：./scripts/start_services.sh`;
-      } else if (err.response?.status === 404) {
-        errorMsg = 'LLM API 端点未找到，请检查 Python 服务是否正常运行';
-      } else if (err.response?.status === 500) {
-        errorMsg = '服务器处理失败，请检查日志获取详细信息';
-      }
-
-      setLlmMessage('批量分析失败: ' + errorMsg);
-      alert(`批量分析失败: ${errorMsg}`);
+      const errorMsg = err.response?.data?.detail || err.message || '未知错误';
+      setLlmMessage('❌ 失败: ' + errorMsg);
+      alert(`批量分析启动失败: ${errorMsg}`);
     } finally {
       setLlmAnalyzing(false);
     }
@@ -758,234 +767,167 @@ ${detail}
         )}
       </div>
 
-      {/* LLM Analysis Panel */}
-      <Card title="🧠 AI 文件分析" className="bg-purple-50 dark:bg-purple-900/10 border-purple-200 dark:border-purple-800">
-        <div className="space-y-4">
-          <p className="text-sm text-slate-700 dark:text-slate-300">
-            选择文件后使用 AI 生成描述，并导入知识图谱进行关联分析。
-          </p>
-
-          {/* Service Status */}
-          <div className="flex gap-4 text-sm">
-            <span className={`flex items-center gap-1 ${(llmStatus?.status === 'healthy' || llmStatus?.status === 'available') ? 'text-green-600' : 'text-red-600'}`}>
-              <span className={`w-2 h-2 rounded-full ${(llmStatus?.status === 'healthy' || llmStatus?.status === 'available') ? 'bg-green-500' : 'bg-red-500'}`} />
-              LLM: {(llmStatus?.status === 'healthy' || llmStatus?.status === 'available') ? '就绪' : '不可用'}
-            </span>
-            <span className={`flex items-center gap-1 ${graphitiStatus?.neo4j_connected ? 'text-green-600' : 'text-red-600'}`}>
-              <span className={`w-2 h-2 rounded-full ${graphitiStatus?.neo4j_connected ? 'bg-green-500' : 'bg-red-500'}`} />
-              Graphiti: {graphitiStatus?.neo4j_connected ? '已连接' : '未连接'}
-            </span>
-          </div>
-
-          {/* Selection Stats & Actions */}
-          <div className="flex items-center justify-between bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-            <div className="text-sm text-slate-700 dark:text-slate-300">
-              已选择 <span className="font-bold text-purple-600">{selectedFiles.size}</span> 个文件
-              {Object.keys(existingLlmDescriptions).length > 0 && (
-                <span className="ml-4">
-                  已有描述: <span className="font-bold text-green-600">{Object.keys(existingLlmDescriptions).length}</span>
+      {/* Unified Forensic Control Console */}
+      <Card className="border-t-4 border-t-purple-500 shadow-lg">
+        <div className="space-y-6">
+          {/* Header Status & Selection Info */}
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-700">
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                <span className="text-slate-500 dark:text-slate-400 font-medium">服务状态:</span>
+                <span className={`flex items-center gap-1.5 ${(llmStatus?.status === 'healthy' || llmStatus?.status === 'available') ? 'text-green-600' : 'text-red-600'}`}>
+                  <span className={`w-2 h-2 rounded-full ${(llmStatus?.status === 'healthy' || llmStatus?.status === 'available') ? 'bg-green-500' : 'bg-red-500'}`} />
+                  AI
                 </span>
-              )}
+                <span className={`flex items-center gap-1.5 ${graphitiStatus?.neo4j_connected ? 'text-green-600' : 'text-red-600'}`}>
+                  <span className={`w-2 h-2 rounded-full ${graphitiStatus?.neo4j_connected ? 'bg-green-500' : 'bg-red-500'}`} />
+                  KG
+                </span>
+              </div>
+              <div className="text-slate-600 dark:text-slate-300">
+                已选: <span className="font-bold text-purple-600">{selectedFiles.size}</span>
+                {Object.keys(existingLlmDescriptions).length > 0 && (
+                  <span className="ml-3 opacity-75">
+                    (含描述: <span className="text-green-600">{Object.keys(existingLlmDescriptions).length}</span>)
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleBatchAnalyze}
-                disabled={selectedFiles.size === 0 || llmAnalyzing || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
-              >
-                {llmAnalyzing ? (
-                  <>
-                    <Spinner size="sm" className="mr-2" />
-                    分析中 ({llmProgress}%)
-                  </>
-                ) : (
-                  '🧠 批量分析'
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const paths = [...selectedFiles].map(idx => {
-                    const f = filteredFiles[idx];
-                    return f.path || f.file_path;
-                  }).filter(Boolean);
-                  if (paths.length > 0) openReanalyzeModal(paths);
-                }}
-                disabled={selectedFiles.size === 0 || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
-              >
-                🔄 批量重新分析
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleGraphitiIngest}
-                disabled={graphitiIngesting || !graphitiStatus?.neo4j_connected}
-              >
-                {graphitiIngesting ? (
-                  <>
-                    <Spinner size="sm" className="mr-2" />
-                    导入中...
-                  </>
-                ) : (
-                  '🕸️ 导入知识图谱'
-                )}
-              </Button>
+            
+            <div className="flex gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <span>显示 {filteredFiles.length} / {largestFiles.length} 个文件</span>
             </div>
           </div>
 
-          {/* LLM Progress */}
-          {llmAnalyzing && (
-            <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-slate-600 dark:text-slate-300">{llmMessage}</span>
-                <span className="text-purple-600">{llmProgress}%</span>
-              </div>
-              <div className="w-full bg-slate-200 dark:bg-gray-600 rounded-full h-2">
-                <div className="bg-purple-600 h-2 rounded-full transition-all" style={{ width: `${llmProgress}%` }} />
-              </div>
-            </div>
-          )}
-
-          {/* Graphiti Message */}
-          {graphitiMessage && (
-            <div className={`p-3 rounded-xl text-sm ${graphitiIngesting ? 'bg-blue-50 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200' : 'bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-200'}`}>
-              {graphitiMessage}
-            </div>
-          )}
-        </div>
-      </Card>
-
-      {/* File Extraction */}
-      <Card title="📁 文件提取" className="bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
-        <div className="space-y-4">
-          <p className="text-sm text-slate-700 dark:text-slate-300">
-            从磁盘镜像提取文件以启用全文搜索和详细分析。
-          </p>
-
-          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-            <h4 className="font-medium text-slate-900 dark:text-white mb-3">提取文件</h4>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">提取模式</label>
-                <select
-                  value={extractionMode}
-                  onChange={(e) => setExtractionMode(e.target.value)}
-                  disabled={extractionStatus === 'running'}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
-                >
-                  <option value="all">全部文件</option>
-                  <option value="extension">按扩展名</option>
-                  <option value="name">按名称模式</option>
-                  <option value="deleted">仅删除文件</option>
-                </select>
-              </div>
-
-              {(extractionMode === 'extension' || extractionMode === 'name') && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    {extractionMode === 'extension' ? '扩展名 (如: .log,.conf)' : '名称模式 (如: config*)'}
-                  </label>
+          {/* Configuration Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Column 1: Filters (4/12) */}
+            <div className="lg:col-span-4 space-y-4 pr-0 lg:pr-6 lg:border-r border-slate-100 dark:border-slate-700">
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">🔍 筛选器</h4>
+              <div className="space-y-3">
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-slate-400">🏷️</span>
                   <input
                     type="text"
-                    value={extractionPattern}
-                    onChange={(e) => setExtractionPattern(e.target.value)}
-                    disabled={extractionStatus === 'running'}
-                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
+                    value={filterExtension}
+                    onChange={(e) => setFilterExtension(e.target.value)}
+                    placeholder="扩展名 (如 .jpg)"
+                    className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
                   />
                 </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-4 mb-4">
-              {extractionMode === 'all' && (
-                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-                  <input type="checkbox" checked={includeDeleted} onChange={(e) => setIncludeDeleted(e.target.checked)} disabled={extractionStatus === 'running'} />
-                  包含已删除文件
-                </label>
-              )}
-              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-                <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} disabled={extractionStatus === 'running'} />
-                覆盖已存在文件
-              </label>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <Button variant="primary" onClick={handleStartExtraction} disabled={extractionStatus === 'running'}>
-                {extractionStatus === 'running' ? <><Spinner size="sm" className="mr-2" />提取中...</> : '🚀 开始提取'}
-              </Button>
-              {extractionStatus !== 'idle' && (
-                <span className={`text-sm font-medium ${extractionStatus === 'completed' ? 'text-green-600' : extractionStatus === 'failed' ? 'text-red-600' : 'text-primary-600'}`}>
-                  {extractionMessage}
-                </span>
-              )}
-            </div>
-
-            {(extractionStatus === 'running' || extractionStatus === 'pending') && (
-              <div className="mt-4">
-                <div className="w-full bg-slate-200 dark:bg-gray-600 rounded-full h-2.5">
-                  <div className="bg-primary-600 h-2.5 rounded-full transition-all" style={{ width: `${extractionProgress}%` }} />
-                </div>
-                <div className="flex justify-between text-xs text-slate-500 mt-1">
-                  <span>已提取: {extractedCount}</span>
-                  {skippedCount > 0 && <span>已跳过: {skippedCount}</span>}
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    value={filterMinSize}
+                    onChange={(e) => setFilterMinSize(e.target.value)}
+                    placeholder="最小 KB"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
+                  />
+                  <input
+                    type="number"
+                    value={filterMaxSize}
+                    onChange={(e) => setFilterMaxSize(e.target.value)}
+                    placeholder="最大 KB"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
+                  />
                 </div>
               </div>
-            )}
+            </div>
 
-            {extractionStatus === 'completed' && (
-              <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl text-sm text-green-800 dark:text-green-200">
-                ✅ 完成: 已提取 {extractedCount} 个文件，跳过 {skippedCount} 个
+            {/* Column 2: Extraction & AI Actions (8/12) */}
+            <div className="lg:col-span-8 space-y-6">
+              {/* Row 1: Extract Controls */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">📁 数据提取</h4>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+                      <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} disabled={extractionStatus === 'running'} className="rounded text-primary-600 h-3.5 w-3.5" />
+                      覆盖
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+                      <input type="checkbox" checked={includeDeleted} onChange={(e) => setIncludeDeleted(e.target.checked)} disabled={extractionStatus === 'running'} className="rounded text-primary-600 h-3.5 w-3.5" />
+                      含已删除
+                    </label>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="primary" size="sm" onClick={handleStartExtraction} disabled={extractionStatus === 'running'}>
+                    {extractionStatus === 'running' ? <Spinner size="sm" /> : '🚀 提取所有匹配'}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={async () => {
+                    const names = [...selectedFiles].map(idx => filteredFiles[idx].name || (filteredFiles[idx].path || filteredFiles[idx].file_path)?.split('/').pop()).filter(Boolean);
+                    if (names.length > 0) { setExtractionMode('name'); setExtractionPattern(names.join(',')); handleStartExtraction(); }
+                  }} disabled={selectedFiles.size === 0 || extractionStatus === 'running'}>
+                    📥 提取选中 ({selectedFiles.size})
+                  </Button>
+                  {extractionStatus !== 'idle' && (
+                    <div className="flex-1 flex items-center gap-3 px-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg min-w-[200px]">
+                      <div className="flex-1 h-1.5 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
+                        <div className="bg-blue-600 h-full transition-all" style={{ width: `${extractionProgress}%` }} />
+                      </div>
+                      <span className="text-[10px] font-mono text-blue-700 dark:text-blue-300 whitespace-nowrap">{extractionMessage}</span>
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
 
-            {extractionStatus === 'failed' && extractionError && (
-              <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-800 dark:text-red-200">
-                ❌ 失败: {extractionError}
+              {/* Row 2: AI & KG Actions */}
+              <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-700">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">🧠 AI 取证 & 建模</h4>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleBatchAnalyze}
+                    disabled={selectedFiles.size === 0 || llmAnalyzing || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
+                    className="bg-purple-600 hover:bg-purple-700 text-white"
+                  >
+                    {llmAnalyzing ? <Spinner size="sm" /> : '🧠 批量分析'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const paths = [...selectedFiles].map(idx => filteredFiles[idx].path || filteredFiles[idx].file_path).filter(Boolean);
+                      if (paths.length > 0) openReanalyzeModal(paths);
+                    }}
+                    disabled={selectedFiles.size === 0 || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
+                  >
+                    🔄 批量重新分析
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGraphitiIngest}
+                    disabled={graphitiIngesting || !graphitiStatus?.neo4j_connected}
+                  >
+                    {graphitiIngesting ? <Spinner size="sm" /> : '🕸️ 导入图谱'}
+                  </Button>
+                  
+                  {/* AI Progress */}
+                  {(llmAnalyzing || graphitiIngesting || graphitiMessage) && (
+                    <div className="flex-1 flex items-center gap-3 px-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg min-w-[200px]">
+                      {llmAnalyzing && (
+                        <>
+                          <div className="flex-1 h-1.5 bg-purple-200 dark:bg-purple-800 rounded-full overflow-hidden">
+                            <div className="bg-purple-600 h-full transition-all" style={{ width: `${llmProgress}%` }} />
+                          </div>
+                          <span className="text-[10px] font-mono text-purple-700 dark:text-purple-300 whitespace-nowrap">{llmMessage}</span>
+                        </>
+                      )}
+                      {!llmAnalyzing && graphitiMessage && (
+                        <span className="text-xs text-purple-700 dark:text-purple-300 truncate">
+                          {graphitiIngesting && <Spinner size="sm" className="mr-2" />}
+                          {graphitiMessage}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
           </div>
-        </div>
-      </Card>
-
-      {/* Filters */}
-      <Card title="🔍 筛选文件">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">按扩展名</label>
-            <input
-              type="text"
-              value={filterExtension}
-              onChange={(e) => setFilterExtension(e.target.value)}
-              placeholder=".jpg, .pdf, .doc"
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">最小大小 (KB)</label>
-            <input
-              type="number"
-              value={filterMinSize}
-              onChange={(e) => setFilterMinSize(e.target.value)}
-              placeholder="0"
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">最大大小 (KB)</label>
-            <input
-              type="number"
-              value={filterMaxSize}
-              onChange={(e) => setFilterMaxSize(e.target.value)}
-              placeholder="无限制"
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
-            />
-          </div>
-        </div>
-        <div className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-          显示 {filteredFiles.length} / {largestFiles.length} 个文件
         </div>
       </Card>
 
@@ -1035,11 +977,13 @@ ${detail}
                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">大小</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">扩展名</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">AI 分析</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">操作</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                   {filteredFiles.map((file, index) => {
                     const filePath = file.path || file.file_path;
+                    const fileName = file.name || filePath?.split('/').pop() || '-';
                     const llmDesc = getLLMDescription(file);
                     const isAnalyzing = llmAnalyzingFiles.has(index);
                     const isExpanded = expandedDescriptions.has(filePath);
@@ -1058,7 +1002,7 @@ ${detail}
                           </td>
                           <td className="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white">#{index + 1}</td>
                           <td className="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white">
-                            {file.name || filePath?.split('/').pop() || '-'}
+                            {fileName}
                           </td>
                           <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-300 max-w-xs truncate font-mono" title={filePath}>
                             {filePath || '-'}
@@ -1071,7 +1015,7 @@ ${detail}
                           </td>
                           <td className="px-4 py-4">
                             <div className="flex flex-col gap-2">
-                              {/* LLM Description Display */}
+                              {/* ... (existing LLM analysis UI) */}
                               {hasDescription ? (
                                 <div className="max-w-md">
                                   <div className="flex items-start gap-2">
@@ -1151,6 +1095,22 @@ ${detail}
                                 </button>
                               )}
                             </div>
+                          </td>
+                          <td className="px-4 py-4 text-sm font-medium">
+                            <button
+                              onClick={() => {
+                                setExtractionMode('name');
+                                setExtractionPattern(fileName);
+                                handleStartExtraction();
+                              }}
+                              disabled={extractionStatus === 'running'}
+                              className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                              title={`从镜像中提取 ${fileName}`}
+                              aria-label={`提取 ${fileName}`}
+                            >
+                              <span className="text-lg">📥</span>
+                              <span>提取</span>
+                            </button>
                           </td>
                         </tr>
 

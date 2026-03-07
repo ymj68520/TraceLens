@@ -56,6 +56,7 @@ export const analyzeFile = async (file, modelType = 'text', prompt = null) => {
  * @param {string} taskId - 任务 ID
  * @param {Object} options - 批量分析选项
  * @param {string[]} options.fileTypes - 文件类型过滤
+ * @param {string[]} options.filePaths - 指定文件路径列表 (精准分析)
  * @param {number} options.limit - 最大文件数
  * @param {string} options.modelType - 模型类型
  */
@@ -63,6 +64,7 @@ export const startBatchAnalysis = async (taskId, options = {}) => {
     const payload = {
         task_id: taskId,
         file_types: options.fileTypes,
+        file_paths: options.filePaths,
         limit: options.limit || 100,
         model_type: options.modelType || 'text',
     };
