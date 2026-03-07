@@ -728,10 +728,12 @@ class CaseAnalysisService:
             for i, chunk in enumerate(desc_chunks):
                 episodes.append(EpisodeData(
                     name=f"案情描述 (第{i+1}部分)" if len(desc_chunks) > 1 else "案情描述",
-                    body=chunk,
-                    source="case_description",
+                    episode_body=json.dumps({"text": chunk}, ensure_ascii=False),
                     source_description=f"用户提供的案情描述 - 第{i+1}/{len(desc_chunks)}部分",
                     reference_time=datetime.now(),
+                    file_path="",
+                    file_id=0,
+                    category="case_description"
                 ))
 
             # 2. Ingest each file description
@@ -748,10 +750,12 @@ class CaseAnalysisService:
                             ep_name += f" (第{j+1}部分)"
                         episodes.append(EpisodeData(
                             name=ep_name,
-                            body=f"文件路径: {file_path}\n\n{chunk}",
-                            source="file_description",
+                            episode_body=json.dumps({"file_path": file_path, "analysis": chunk}, ensure_ascii=False),
                             source_description=f"LLM分析结果 - {file_path}",
                             reference_time=datetime.now(),
+                            file_path=file_path,
+                            file_id=0,
+                            category="file_description"
                         ))
 
             if not episodes:
@@ -1211,56 +1215,54 @@ class CaseAnalysisService:
         self._persist_filtered_files(files_db_path, task_id, filtered_files)
 
         if not filtered_files:
-            msg = "LLM 未能在样本中筛选出与案情高度相关的文件。分析已终止。"
+            msg = "LLM 未能在样本中筛选出与案情高度相关的文件。跳过文件提取和描述阶段。"
             logger.info(f"Task {task_id}: {msg}")
             result["steps"]["extraction"] = {"extraction_dir": "", "extracted_count": 0}
             result["steps"]["descriptions"] = []
-            result["steps"]["report"] = {
-                "report": msg,
-                "files_analyzed": 0,
-            }
-            return result
+            extract_result = {"success": True, "extracted_count": 0, "extraction_dir": ""}
+            descriptions = []
+            extraction_dir = ""
+        else:
+            # Step 2: Extract filtered files to local disk
+            if progress_callback:
+                await progress_callback("extracting", f"正在提取 {len(filtered_files)} 个文件到本地...")
+            
+            extract_result = {"success": False, "extracted_count": 0, "extraction_dir": ""}
+            try:
+                extract_result = await self.extract_filtered_files(
+                    task_id, filtered_files, progress_callback=progress_callback
+                )
+                result["steps"]["extraction"] = extract_result
+            except Exception as e:
+                logger.error(f"Extraction step critical failure: {e}", exc_info=True)
+                result["steps"]["extraction"] = {"success": False, "error": str(e), "extracted_count": 0}
 
-        # Step 2: Extract filtered files to local disk
-        if progress_callback:
-            await progress_callback("extracting", f"正在提取 {len(filtered_files)} 个文件到本地...")
-        
-        extract_result = {"success": False, "extracted_count": 0, "extraction_dir": ""}
-        try:
-            extract_result = await self.extract_filtered_files(
-                task_id, filtered_files, progress_callback=progress_callback
-            )
-            result["steps"]["extraction"] = extract_result
-        except Exception as e:
-            logger.error(f"Extraction step critical failure: {e}", exc_info=True)
-            result["steps"]["extraction"] = {"success": False, "error": str(e), "extracted_count": 0}
+            extraction_dir = extract_result.get("extraction_dir", "")
 
-        extraction_dir = extract_result.get("extraction_dir", "")
+            # Check if extraction succeeded (allow partial success)
+            if not extract_result.get("success") and extract_result.get("extracted_count", 0) == 0:
+                msg = f"文件提取完全失败。请检查 C++ 后端日志。错误: {extract_result.get('error', 'Unknown')}"
+                logger.error(f"Task {task_id}: {msg}")
+                # Instead of returning, raise so the job status shows 'failed'
+                raise RuntimeError(msg)
 
-        # Check if extraction succeeded (allow partial success)
-        if not extract_result.get("success") and extract_result.get("extracted_count", 0) == 0:
-            msg = f"文件提取完全失败。请检查 C++ 后端日志。错误: {extract_result.get('error', 'Unknown')}"
-            logger.error(f"Task {task_id}: {msg}")
-            # Instead of returning, raise so the job status shows 'failed'
-            raise RuntimeError(msg)
-
-        # Step 3: Generate per-file descriptions
-        if progress_callback:
-            await progress_callback("describing", f"正在分析 {len(filtered_files)} 个相关文件...")
-        
-        descriptions = []
-        try:
-            descriptions = await self.generate_file_descriptions(
-                files_db_path, filtered_files, case_description, extraction_dir=extraction_dir,
-                progress_callback=progress_callback
-            )
-            result["steps"]["descriptions"] = descriptions
-        except Exception as e:
-            logger.error(f"Description step failure: {e}", exc_info=True)
-            # If we failed completely here, raise
-            if not descriptions:
-                raise RuntimeError(f"文件描述生成失败: {e}")
-            # If we have some descriptions, we can still try to generate a report
+            # Step 3: Generate per-file descriptions
+            if progress_callback:
+                await progress_callback("describing", f"正在分析 {len(filtered_files)} 个相关文件...")
+            
+            descriptions = []
+            try:
+                descriptions = await self.generate_file_descriptions(
+                    files_db_path, filtered_files, case_description, extraction_dir=extraction_dir,
+                    progress_callback=progress_callback
+                )
+                result["steps"]["descriptions"] = descriptions
+            except Exception as e:
+                logger.error(f"Description step failure: {e}", exc_info=True)
+                # If we failed completely here, raise
+                if not descriptions:
+                    raise RuntimeError(f"文件描述生成失败: {e}")
+                # If we have some descriptions, we can still try to generate a report
 
         # Step 3.5: Ingest into knowledge graph (if Graphiti available)
         if self._graphiti_service:
@@ -1369,7 +1371,7 @@ class CaseAnalysisService:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute(
-                    "SELECT path, file_type, size FROM files ORDER BY path"
+                    "SELECT path, type as file_type, size FROM files ORDER BY path"
                 )
                 rows = cur.fetchall()
                 return [

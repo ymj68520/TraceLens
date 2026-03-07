@@ -928,6 +928,12 @@ class ForensicsDatabaseFactory:
             candidate = search_dir / f"{base_name}{suffix}"
             if candidate.exists():
                 setattr(result, attr, candidate)
+            else:
+                # Also fall back to pure names like files.db, events.db
+                pure_name = suffix.lstrip('_')
+                candidate_pure = search_dir / pure_name
+                if candidate_pure.exists():
+                    setattr(result, attr, candidate_pure)
 
         return result
 

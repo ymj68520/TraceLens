@@ -788,9 +788,10 @@ void TaskManager::start_analysis(const std::string& task_id) {
 int TaskManager::calculate_overall_percentage(TaskPhase phase, int phase_percentage) {
     std::map<TaskPhase, int> phase_weights = {
         {TaskPhase::INITIALIZING, 5},
-        {TaskPhase::IMAGE_ANALYSIS, 40},
-        {TaskPhase::EVENT_EXTRACTION, 20},
-        {TaskPhase::FILE_CLASSIFICATION, 25},
+        {TaskPhase::IMAGE_ANALYSIS, 30},
+        {TaskPhase::EVENT_EXTRACTION, 15},
+        {TaskPhase::FILE_CLASSIFICATION, 20},
+        {TaskPhase::LLM_ANALYSIS, 20},
         {TaskPhase::ANDROID_ANALYSIS, 8},
         {TaskPhase::FINALIZING, 2}
     };
