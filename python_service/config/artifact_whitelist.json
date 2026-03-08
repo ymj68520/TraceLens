@@ -1,0 +1,15 @@
+{
+  "high_value_extensions": [
+    ".db", ".sqlite", ".sqlite3", ".plist", 
+    ".evt", ".evtx", ".log", ".json", 
+    ".rdb", ".bson", ".vmdk", ".vhd",
+    ".edb", ".xml", ".csv"
+  ],
+  "high_value_filenames": [
+    "SAM", "SYSTEM", "SECURITY", "SOFTWARE", "DEFAULT",
+    "config.json", "history.dat", "shadow", "passwd",
+    "known_hosts", "authorized_keys", "ntuser.dat",
+    "usrclass.dat", "index.dat", "places.sqlite",
+    "webdata", "cookies.sqlite", "logindata", "history"
+  ]
+}

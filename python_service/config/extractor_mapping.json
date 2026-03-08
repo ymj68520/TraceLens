@@ -1,0 +1,12 @@
+{
+    "PDFExtractor": [".pdf"],
+    "DocxExtractor": [".docx"],
+    "OfficeServiceAdapter": [".xlsx", ".xls", ".pptx", ".ppt"],
+    "DocExtractorProxy": [".doc"],
+    "SQLiteExtractor": [".db", ".sqlite", ".sqlite3"],
+    "SqlDumpExtractor": [".sql"],
+    "LevelDBExtractor": ["leveldb"],
+    "RedisExtractor": [".rdb"],
+    "MongoBsonExtractor": [".bson"],
+    "ArchiveExtractor": [".zip", ".tar", ".gz", ".tgz", ".rar", ".7z"]
+}
