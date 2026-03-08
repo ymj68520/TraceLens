@@ -269,11 +269,11 @@ const Files = () => {
     const modelType = isImage ? 'vision' : 'text';
 
     // Skip binary files and large files (except images which use vision model)
-    const binaryExtensions = ['zip', 'tar', 'gz', 'exe', 'dll', 'so', 'bin', 'img', 'iso', 'db', 'sqlite'];
-    const documentExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
+    const binaryExtensions = ['zip', 'tar', 'gz', 'exe', 'dll', 'so', 'bin', 'img', 'iso'];
+    const documentExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'db', 'sqlite', 'sqlite3', 'sql', 'leveldb'];
     const isDocument = documentExtensions.includes(extension);
 
-    const maxFileSize = isImage ? 10 * 1024 * 1024 : (isDocument ? 20 * 1024 * 1024 : 1024 * 1024); // 10MB for images, 20MB for docs, 1MB for text
+    const maxFileSize = isImage ? 10 * 1024 * 1024 : (isDocument ? 20 * 1024 * 1024 : 1024 * 1024); // 10MB for images, 20MB for docs/dbs, 1MB for text
 
     if (binaryExtensions.includes(extension)) {
       alert(`⚠️ ${extension.toUpperCase()} 文件不支持分析\n\n建议：\n- 对于压缩文件：请先解压后分析`);

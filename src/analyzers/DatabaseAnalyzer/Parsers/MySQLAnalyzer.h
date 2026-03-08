@@ -9,7 +9,9 @@
 #pragma once
 
 #include "IDBParser.h"
+#include "MySQLDaemon.h"
 #include <filesystem>
+#include <memory>
 
 namespace ForensicAnalyzer {
 namespace Database {
@@ -92,6 +94,7 @@ private:
     std::string dataDir_;
     std::string version_;
     bool isOpen_ = false;
+    std::unique_ptr<MySQLDaemon> daemon_;
     
     // 缓存的数据库列表
     mutable std::vector<std::string> databases_;

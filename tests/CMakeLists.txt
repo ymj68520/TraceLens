@@ -353,7 +353,9 @@ add_executable(
   ../src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp
+  ../src/analyzers/DatabaseAnalyzer/Parsers/MySQLDaemon.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp
+  ../src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLDaemon.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp)
@@ -364,9 +366,31 @@ target_include_directories(
           ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer
           ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Common
           ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Database
-          ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Parsers)
+          ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Parsers
+          /usr/include/postgresql
+          /usr/include/postgresql/16/server
+          /usr/include/mysql)
 
 target_link_libraries(test_database_analyzer_gtest ${GTEST_LIBRARIES}
-                      ${GMOCK_LIBRARIES} sqlite3 pthread)
+                      ${GMOCK_LIBRARIES} sqlite3 pthread mysqlclient pq)
 
 add_test(NAME DatabaseAnalyzerGTests COMMAND test_database_analyzer_gtest)
+
+# Integration Test for MySQL Daemon
+add_executable(
+  test_mysql_daemon
+  test_mysql_daemon.cpp
+  ../src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp
+  ../src/analyzers/DatabaseAnalyzer/Parsers/MySQLDaemon.cpp
+  ../src/core/Logger/Logger.cpp)
+
+target_include_directories(
+  test_mysql_daemon
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Common
+          ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Database
+          ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Parsers
+          /usr/include/mysql)
+
+target_link_libraries(test_mysql_daemon pthread mysqlclient)

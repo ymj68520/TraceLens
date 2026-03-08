@@ -9,7 +9,9 @@
 #pragma once
 
 #include "IDBParser.h"
+#include "PostgreSQLDaemon.h"
 #include <filesystem>
+#include <memory>
 
 namespace ForensicAnalyzer {
 namespace Database {
@@ -91,6 +93,7 @@ private:
     std::string dataDir_;
     std::string version_;
     bool isOpen_ = false;
+    std::unique_ptr<PostgreSQLDaemon> daemon_;
     
     // 扫描数据目录
     void scanDataDirectory();

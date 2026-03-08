@@ -61,6 +61,15 @@ bool MySQLAnalyzer::open(const std::string& path) {
     isOpen_ = true;
     clearError();
     
+    // Launch background daemon to allow record extraction
+    daemon_ = std::make_unique<MySQLDaemon>(dataDir_);
+    if (!daemon_->start()) {
+        // We do not fail the whole open() process if daemon fails,
+        // because we can still extract artifacts/metadata offline.
+        // We just log the warning.
+        reportProgress("Warning: Cannot start mysqld daemon: " + daemon_->getLastError(), 0, 0);
+    }
+    
     return true;
 }
 
@@ -73,6 +82,11 @@ bool MySQLAnalyzer::connect(const DBConnectionConfig& config) {
 }
 
 void MySQLAnalyzer::close() {
+    if (daemon_) {
+        daemon_->stop();
+        daemon_.reset();
+    }
+    
     dataDir_.clear();
     version_.clear();
     databases_.clear();
@@ -260,14 +274,72 @@ std::vector<DBRecordInfo> MySQLAnalyzer::getRecords(
     int limit,
     int offset) {
     
-    // 数据目录分析模式不支持直接读取记录
-    // 需要直接连接或使用专门的InnoDB解析工具
-    (void)tableName;
-    (void)limit;
-    (void)offset;
+    std::vector<DBRecordInfo> records;
+    if (!isOpen_) return records;
     
-    setError("Record extraction requires direct database connection. Use connect() method (not yet implemented).");
-    return {};
+    if (!daemon_ || !daemon_->isRunning()) {
+        setError("Record extraction requires mysqld daemon to be running. Daemon failed: " + 
+                 (daemon_ ? daemon_->getLastError() : "Not initialized"));
+        return records;
+    }
+    
+    MYSQL* conn = daemon_->getConnection();
+    if (!conn) {
+        setError("MySQL connection is null.");
+        return records;
+    }
+    
+    // Find which schema this table belongs to
+    std::string schemaName;
+    for (const auto& db : databases_) {
+        fs::path frmPath = fs::path(dataDir_) / db / (tableName + ".frm");
+        fs::path ibdPath = fs::path(dataDir_) / db / (tableName + ".ibd");
+        if (fs::exists(frmPath) || fs::exists(ibdPath)) {
+            schemaName = db;
+            break;
+        }
+    }
+    
+    if (schemaName.empty()) {
+        setError("Schema for table " + tableName + " not found.");
+        return records;
+    }
+    
+    std::string query = "SELECT * FROM `" + schemaName + "`.`" + tableName + "`";
+    if (limit > 0) {
+        query += " LIMIT " + std::to_string(limit);
+        if (offset > 0) {
+            query += " OFFSET " + std::to_string(offset);
+        }
+    }
+    
+    if (mysql_query(conn, query.c_str()) != 0) {
+        setError(std::string("Query failed: ") + mysql_error(conn));
+        return records;
+    }
+    
+    MYSQL_RES* result = mysql_store_result(conn);
+    if (!result) {
+        setError(std::string("Failed to store result: ") + mysql_error(conn));
+        return records;
+    }
+    
+    int numFields = mysql_num_fields(result);
+    MYSQL_FIELD* fields = mysql_fetch_fields(result);
+    
+    MYSQL_ROW row;
+    while ((row = mysql_fetch_row(result))) {
+        DBRecordInfo recordInfo;
+        for (int i = 0; i < numFields; i++) {
+            std::string colName = fields[i].name ? fields[i].name : "col_" + std::to_string(i);
+            std::string colValue = row[i] ? row[i] : "NULL";
+            recordInfo.values[colName] = colValue;
+        }
+        records.push_back(std::move(recordInfo));
+    }
+    
+    mysql_free_result(result);
+    return records;
 }
 
 std::vector<DBUserInfo> MySQLAnalyzer::getUsers() {

@@ -22,6 +22,10 @@ pkg_check_modules(LIBOLECF REQUIRED libolecf)
 pkg_check_modules(XAPIAN REQUIRED xapian-core)
 pkg_check_modules(POPPLER REQUIRED poppler-cpp)
 
+# Optional database connectors
+pkg_check_modules(MYSQLCLIENT mysqlclient)
+pkg_check_modules(LIBPQ libpq)
+
 # Find nlohmann/json (try multiple methods)
 find_package(nlohmann_json QUIET)
 if(NOT nlohmann_json_FOUND)
@@ -83,6 +87,9 @@ include_directories(
   ${XAPIAN_INCLUDE_DIRS}
   ${POPPLER_INCLUDE_DIRS}
   ${CMAKE_SOURCE_DIR}/libs/sqlite3
+  /usr/include/postgresql
+  /usr/include/postgresql/16/server
+  /usr/include/mysql
   # Source root
   ${CMAKE_SOURCE_DIR}/src
   # Core modules
@@ -219,7 +226,9 @@ set(LIB_SOURCES
     src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp
+    src/analyzers/DatabaseAnalyzer/Parsers/MySQLDaemon.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp
+    src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLDaemon.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp
@@ -251,6 +260,8 @@ else()
     ${LIBOLECF_LIBRARIES}
     ${XAPIAN_LIBRARIES}
     ${POPPLER_LIBRARIES}
+    mysqlclient
+    pq
     cpp_dotenv
     duckx
     alibabacloud-oss-cpp-sdk
