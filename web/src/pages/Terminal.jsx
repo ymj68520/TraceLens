@@ -2,19 +2,20 @@ import { useState } from 'react';
 import TerminalOutput from '../components/common/TerminalOutput';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
+import { useTranslation } from '../hooks/useTranslation';
 
 const Terminal = () => {
-  const [selectedTask, setSelectedTask] = useState(null);
+  const { t } = useTranslation();
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
-          🖥️ Terminal Output
+          🖥️ {t('terminal.title')}
         </h1>
         <p className="mt-2 text-slate-600 dark:text-slate-300">
-          Real-time logs from all services
+          {t('terminal.placeholder')}
         </p>
       </div>
 

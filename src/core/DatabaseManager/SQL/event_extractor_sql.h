@@ -139,7 +139,7 @@ const char* CREATE_HOURLY_ACTIVITY_VIEW = R"(
 
 const char* INSERT_EVENT = R"(
     INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type)
-    VALUES (?, ?, ?, ?, ?, 0, '');
+    VALUES (?, ?, ?, ?, ?, ?, ?);
 )";
 
 const char* INSERT_CREATION_EVENT = R"(

@@ -36,6 +36,20 @@ private:
     crow::response handle_timeline_comprehensive(const crow::request& req);
 
     /**
+     * @brief Get detailed events within a specific cluster
+     * @param req The HTTP request
+     * @return JSON response with detailed events
+     */
+    crow::response handle_timeline_details(const crow::request& req);
+
+    /**
+     * @brief Get chronological distribution of timeline events
+     * @param req The HTTP request
+     * @return JSON response with timeline distribution
+     */
+    crow::response handle_timeline_distribution(const crow::request& req);
+
+    /**
      * @brief Get file system activity timeline
      * @param req The HTTP request
      * @return JSON response with file activity events

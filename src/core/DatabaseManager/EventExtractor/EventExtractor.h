@@ -13,6 +13,8 @@ struct TimelineEvent {
 	std::string filePath;
 	int64_t inode;
 	std::string description;
+	int64_t fileSize;
+	std::string fileType;
 };
 
 class EventExtractor {

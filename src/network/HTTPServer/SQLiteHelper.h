@@ -17,10 +17,34 @@ public:
      * @param events_db Path to events database
      * @param start_time Optional start timestamp filter
      * @param end_time Optional end timestamp filter
+     * @param limit Maximum number of records (default 1000)
+     * @param offset Number of records to skip (default 0)
+     * @param event_type Optional event type filter
+     * @param cluster_events Whether to group similar events into clusters
      * @return JSON object with timeline events
      */
     static nlohmann::json get_comprehensive_timeline(const std::string& raw_db, const std::string& events_db,
-                                                     const std::string& start_time = "", const std::string& end_time = "");
+                                                     const std::string& start_time = "", const std::string& end_time = "",
+                                                     int limit = 1000, int offset = 0, const std::string& event_type = "",
+                                                     bool cluster_events = false);
+
+    /**
+     * @brief Get detailed events within a specific cluster
+     * @return JSON object with detailed events
+     */
+    static nlohmann::json get_timeline_details(const std::string& events_db, 
+                                              int64_t time_window, 
+                                              const std::string& event_type, 
+                                              const std::string& parent_dir,
+                                              int limit = 1000, int offset = 0,
+                                              const std::string& search = "");
+
+    /**
+     * @brief Get chronological distribution of timeline events
+     * @param events_db Path to events database
+     * @return JSON object with timeline statistical distribution
+     */
+    static nlohmann::json get_timeline_distribution(const std::string& events_db);
 
     /**
      * @brief Get file system activity timeline

@@ -7,6 +7,18 @@ export const getComprehensiveTimeline = async (taskId, params = {}) => {
   });
 };
 
+export const getTimelineDetails = async (taskId, params = {}) => {
+  return await api.get('/api/forensics/timeline/details', {
+    params: { task_id: taskId, ...params },
+  });
+};
+
+export const getTimelineDistribution = async (taskId, params = {}) => {
+  return await api.get('/api/forensics/timeline/distribution', {
+    params: { task_id: taskId, ...params },
+  });
+};
+
 export const getFileActivity = async (taskId, params = {}) => {
   return await api.get('/api/forensics/timeline/file-activity', {
     params: { task_id: taskId, ...params },

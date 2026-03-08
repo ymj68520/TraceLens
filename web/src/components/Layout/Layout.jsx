@@ -25,10 +25,10 @@ const Layout = ({ children }) => {
     { name: t('nav.tasks'), href: '/tasks', icon: ListTodo },
     { name: t('nav.timeline'), href: '/timeline', icon: Clock },
     { name: t('nav.files'), href: '/files', icon: FolderOpen },
-    { name: '研判中心', href: '/case-report', icon: Brain },
+    { name: t('nav.case_center'), href: '/case-report', icon: Brain },
     { name: t('nav.knowledge_graph'), href: '/knowledge-graph', icon: Network },
     { name: t('nav.android'), href: '/android', icon: Smartphone },
-    { name: 'OSS 分析', href: '/oss', icon: Cloud },
+    { name: t('nav.oss_analysis'), href: '/oss', icon: Cloud },
     { name: t('nav.search'), href: '/search', icon: Search },
     { name: t('nav.statistics'), href: '/statistics', icon: BarChart3 },
     { name: t('nav.settings'), href: '/settings', icon: Settings },
@@ -36,7 +36,7 @@ const Layout = ({ children }) => {
 
   // Add Terminal if enabled in settings
   if (showTerminal) {
-    navigation.push({ name: '系统终端', href: '/terminal', icon: Search });
+    navigation.push({ name: t('nav.terminal'), href: '/terminal', icon: Search });
   }
 
   const isActive = (path) => location.pathname === path;

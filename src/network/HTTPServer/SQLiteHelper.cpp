@@ -40,20 +40,17 @@ json SQLiteHelper::get_file_summary(const std::string& db_path) {
     return result;
 }
 
-// Timeline Analysis Implementation
-json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const std::string& events_db,
-                                               const std::string& start_time, const std::string& end_time) {
+json SQLiteHelper::get_timeline_details(const std::string& events_db, 
+                                       int64_t time_window, 
+                                       const std::string& event_type, 
+                                       const std::string& parent_dir,
+                                       int limit, int offset,
+                                       const std::string& search) {
     json result;
-    sqlite3* raw = open_database(raw_db, result);
     sqlite3* events = open_database(events_db, result);
+    if (!events) return result;
 
-    if (!raw || !events) {
-        if (raw) sqlite3_close(raw);
-        if (events) sqlite3_close(events);
-        return result;
-    }
-
-    // Build SQL with optional time filters
+    // Build query to find all events in this cluster
     std::string sql = R"(
         SELECT
             timestamp,
@@ -64,31 +61,162 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
             file_size,
             file_type
         FROM events
-        WHERE 1=1
-    )";
+        WHERE (timestamp / 60) = )" + std::to_string(time_window) + R"(
+        AND event_type = ')" + event_type + "'";
+    
+    if (!parent_dir.empty()) {
+        if (parent_dir == "/") {
+            sql += " AND (file_path NOT LIKE '%/%' OR file_path LIKE '/%')";
+        } else {
+            sql += " AND file_path LIKE '" + parent_dir + "%'";
+        }
+    }
 
+    if (!search.empty()) {
+        sql += " AND file_path LIKE '%" + search + "%'";
+    }
+
+    sql += " ORDER BY timestamp ASC LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string(offset);
+
+    json events_data = execute_query(events, sql);
+    result["events"] = events_data;
+    
+    sqlite3_close(events);
+    return result;
+}
+
+json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const std::string& events_db,
+                                               const std::string& start_time, const std::string& end_time,
+                                               int limit, int offset, const std::string& event_type,
+                                               bool cluster_events) {
+    json result;
+    sqlite3* raw = open_database(raw_db, result);
+    sqlite3* events = open_database(events_db, result);
+
+    if (!raw || !events) {
+        if (raw) sqlite3_close(raw);
+        if (events) sqlite3_close(events);
+        return result;
+    }
+
+    // Build WHERE clause for filters
+    std::string where_clause = " WHERE 1=1";
     if (!start_time.empty()) {
-        sql += " AND timestamp >= " + std::to_string(parse_timestamp(start_time));
+        where_clause += " AND timestamp >= " + std::to_string(parse_timestamp(start_time));
     }
     if (!end_time.empty()) {
-        sql += " AND timestamp <= " + std::to_string(parse_timestamp(end_time));
+        where_clause += " AND timestamp <= " + std::to_string(parse_timestamp(end_time));
+    }
+    if (!event_type.empty()) {
+        where_clause += " AND event_type = '" + event_type + "'";
     }
 
-    sql += " ORDER BY timestamp DESC LIMIT 1000";
+    // Get total count for pagination metadata
+    // If clustering is enabled, total_count is the number of clusters
+    std::string count_sql;
+    if (cluster_events) {
+        count_sql = "SELECT COUNT(DISTINCT (timestamp / 60) || '_' || event_type) FROM events" + where_clause;
+    } else {
+        count_sql = "SELECT COUNT(*) FROM events" + where_clause;
+    }
+    
+    sqlite3_stmt* count_stmt;
+    int64_t total_count = 0;
+    if (sqlite3_prepare_v2(events, count_sql.c_str(), -1, &count_stmt, nullptr) == SQLITE_OK) {
+        if (sqlite3_step(count_stmt) == SQLITE_ROW) {
+            total_count = sqlite3_column_int64(count_stmt, 0);
+        }
+        sqlite3_finalize(count_stmt);
+    }
+
+    // Build main query
+    std::string sql;
+    if (cluster_events) {
+        // Advanced SQL trick to get parent directory in SQLite
+        // It finds the substring before the last slash
+        std::string parent_dir_sql = "(CASE WHEN file_path LIKE '%/%' THEN SUBSTR(file_path, 1, LENGTH(file_path) - INSTR(REPLACE(file_path, '/', char(1)), char(1)) + 1) ELSE '' END)";
+        
+        sql = R"(
+            SELECT
+                MIN(timestamp) as timestamp,
+                MAX(timestamp) as end_timestamp,
+                event_type,
+                COUNT(*) as cluster_count,
+                file_path, -- Representative file path
+                )" + parent_dir_sql + R"( as parent_directory,
+                inode,
+                description,
+                SUM(COALESCE(file_size, 0)) as file_size,
+                file_type
+            FROM events
+        )";
+        sql += where_clause;
+        // Group by time window, type, and parent directory
+        sql += " GROUP BY (timestamp / 60), event_type, parent_directory";
+    } else {
+        sql = R"(
+            SELECT
+                timestamp,
+                timestamp as end_timestamp,
+                event_type,
+                1 as cluster_count,
+                file_path,
+                inode,
+                description,
+                file_size,
+                file_type
+            FROM events
+        )";
+        sql += where_clause;
+    }
+
+    sql += " ORDER BY timestamp DESC LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string(offset);
 
     json events_data = execute_query(events, sql);
 
     // Add metadata
     json metadata;
-    metadata["total_events"] = events_data.is_array() ? events_data.size() : 0;
+    metadata["total_events"] = total_count;
+    metadata["returned_events"] = events_data.is_array() ? events_data.size() : 0;
+    metadata["limit"] = limit;
+    metadata["offset"] = offset;
+    metadata["has_more"] = (offset + limit) < total_count;
     metadata["start_time"] = start_time.empty() ? "all" : start_time;
     metadata["end_time"] = end_time.empty() ? "all" : end_time;
+    metadata["event_type_filter"] = event_type.empty() ? "all" : event_type;
+    metadata["clustered"] = cluster_events;
 
     result["metadata"] = metadata;
     result["timeline"] = events_data;
 
     sqlite3_close(raw);
     sqlite3_close(events);
+    return result;
+}
+
+json SQLiteHelper::get_timeline_distribution(const std::string& events_db) {
+    json result;
+    sqlite3* db = open_database(events_db, result);
+    if (!db) return result;
+
+    // Use SQLite date function to group by exact date string YYYY-MM-DD
+    std::string sql = R"(
+        SELECT
+            date(timestamp, 'unixepoch') as event_date,
+            event_type,
+            COUNT(*) as count
+        FROM events
+        WHERE timestamp > 0
+        GROUP BY event_date, event_type
+        ORDER BY event_date ASC
+    )";
+
+    result["distribution"] = execute_query(db, sql);
+    
+    // Add overall counts if needed
+    result["metadata"]["total_days"] = 0; // Will be properly computed client-side
+    
+    sqlite3_close(db);
     return result;
 }
 

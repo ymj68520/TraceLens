@@ -111,24 +111,33 @@ bool EventExtractor::extractFileSystemEvents() {
 
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
 		int64_t inode = sqlite3_column_int64(stmt, 0);
-		std::string path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+		const char* path_raw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+		std::string path = path_raw ? path_raw : "";
 		int64_t atime = sqlite3_column_int64(stmt, 2);
 		int64_t mtime = sqlite3_column_int64(stmt, 3);
 		int64_t ctime = sqlite3_column_int64(stmt, 4);
 		int64_t crtime = sqlite3_column_int64(stmt, 5);
-		std::string type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+		const char* type_raw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+		std::string type = type_raw ? type_raw : "";
 		int64_t size = sqlite3_column_int64(stmt, 7);
 		int isDeleted = sqlite3_column_int(stmt, 8);
 
+		// Helper to create basic event
+		auto createBaseEvent = [&](int64_t ts, const std::string& et, const std::string& desc) {
+			TimelineEvent ev;
+			ev.timestamp = ts;
+			ev.eventType = et;
+			ev.filePath = path;
+			ev.inode = inode;
+			ev.description = desc;
+			ev.fileSize = size;
+			ev.fileType = type;
+			return ev;
+		};
+
 		// Create event for file creation (birth time)
 		if (crtime > 0) {
-			TimelineEvent event;
-			event.timestamp = crtime;
-			event.eventType = "CREATED";
-			event.filePath = path;
-			event.inode = inode;
-			event.description = "File created";
-			insertEvent(event);
+			insertEvent(createBaseEvent(crtime, "CREATED", "File created"));
 
 			// Insert into creation_events table
 			std::string sql = R"(
@@ -151,13 +160,7 @@ bool EventExtractor::extractFileSystemEvents() {
 
 		// Create event for file modification
 		if (mtime > 0 && mtime != crtime) {
-			TimelineEvent event;
-			event.timestamp = mtime;
-			event.eventType = "MODIFIED";
-			event.filePath = path;
-			event.inode = inode;
-			event.description = "File content modified";
-			insertEvent(event);
+			insertEvent(createBaseEvent(mtime, "MODIFIED", "File content modified"));
 
 			// Insert into modification_events table
 			std::string sql = R"(
@@ -180,13 +183,7 @@ bool EventExtractor::extractFileSystemEvents() {
 
 		// Create event for file access
 		if (atime > 0 && atime != mtime && atime != crtime) {
-			TimelineEvent event;
-			event.timestamp = atime;
-			event.eventType = "ACCESSED";
-			event.filePath = path;
-			event.inode = inode;
-			event.description = "File accessed/read";
-			insertEvent(event);
+			insertEvent(createBaseEvent(atime, "ACCESSED", "File accessed/read"));
 
 			// Insert into access_events table
 			std::string sql = R"(
@@ -209,13 +206,7 @@ bool EventExtractor::extractFileSystemEvents() {
 
 		// Create event for metadata change
 		if (ctime > 0 && ctime != mtime && ctime != crtime) {
-			TimelineEvent event;
-			event.timestamp = ctime;
-			event.eventType = "CHANGED";
-			event.filePath = path;
-			event.inode = inode;
-			event.description = "File metadata changed (permissions, ownership, etc.)";
-			insertEvent(event);
+			insertEvent(createBaseEvent(ctime, "CHANGED", "Metadata changed"));
 
 			// Insert into change_events table
 			std::string sql = R"(
@@ -239,16 +230,8 @@ bool EventExtractor::extractFileSystemEvents() {
 
 		// Create event for deleted files
 		if (isDeleted) {
-			// Use the most recent timestamp as deletion time
 			int64_t deletionTime = std::max({ atime, mtime, ctime, crtime });
-
-			TimelineEvent event;
-			event.timestamp = deletionTime;
-			event.eventType = "DELETED";
-			event.filePath = path;
-			event.inode = inode;
-			event.description = "File deleted (unallocated)";
-			insertEvent(event);
+			insertEvent(createBaseEvent(deletionTime, "DELETED", "File deleted (unallocated)"));
 
 			// Insert into deletion_events table
 			std::string sql = R"(
@@ -276,19 +259,13 @@ bool EventExtractor::extractFileSystemEvents() {
 	sqlite3_exec(eventDb_, "COMMIT;", nullptr, nullptr, nullptr);
 
 	std::cout << "  Total events: " << eventCount << std::endl;
-	std::cout << "    - Creation events: " << creationCount << std::endl;
-	std::cout << "    - Modification events: " << modificationCount << std::endl;
-	std::cout << "    - Access events: " << accessCount << std::endl;
-	std::cout << "    - Change events: " << changeCount << std::endl;
-	std::cout << "    - Deletion events: " << deletionCount << std::endl;
-
 	return true;
 }
 
 bool EventExtractor::insertEvent(const TimelineEvent& event) {
 	const char* sql = R"(
         INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type)
-        VALUES (?, ?, ?, ?, ?, 0, '');
+        VALUES (?, ?, ?, ?, ?, ?, ?);
     )";
 
 	sqlite3_stmt* stmt;
@@ -303,6 +280,8 @@ bool EventExtractor::insertEvent(const TimelineEvent& event) {
 	sqlite3_bind_text(stmt, 3, event.filePath.c_str(), -1, SQLITE_TRANSIENT);
 	sqlite3_bind_int64(stmt, 4, event.inode);
 	sqlite3_bind_text(stmt, 5, event.description.c_str(), -1, SQLITE_TRANSIENT);
+	sqlite3_bind_int64(stmt, 6, event.fileSize);
+	sqlite3_bind_text(stmt, 7, event.fileType.c_str(), -1, SQLITE_TRANSIENT);
 
 	rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
@@ -312,108 +291,44 @@ bool EventExtractor::insertEvent(const TimelineEvent& event) {
 
 bool EventExtractor::importWindowsArtifacts(const std::string& windowsDbPath) {
     AuditLog::instance().log("SYSTEM", "TIMELINE_MERGE", "Importing Windows artifacts from: " + windowsDbPath);
-    
-    // Attach Windows DB
     std::string attachSql = "ATTACH DATABASE '" + windowsDbPath + "' AS win_db;";
-    char* errMsg = nullptr;
-    if (sqlite3_exec(eventDb_, attachSql.c_str(), nullptr, nullptr, &errMsg) != SQLITE_OK) {
-        std::cerr << "Failed to attach Windows DB: " << errMsg << std::endl;
-        sqlite3_free(errMsg);
-        return false;
-    }
+    sqlite3_exec(eventDb_, attachSql.c_str(), nullptr, nullptr, nullptr);
 
-    // Import Event Logs
-    // Converting timestamp if necessary? Assuming tables store Unix timestamp (seconds) or we might need conversion.
-    // Standard TSK output is Unix.
     const char* importLogsSql = R"(
         INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type)
-        SELECT 
-            timestamp, 
-            'WIN_LOG_' || CASE WHEN level IS NULL THEN 'UNK' ELSE level END, 
-            log_source, 
-            0, 
-            'ID:' || event_id || ' ' || message, 
-            0, 
-            'LOG'
+        SELECT timestamp, 'WIN_LOG_' || COALESCE(level, 'UNK'), log_source, 0, 'ID:' || event_id || ' ' || message, 0, 'LOG'
         FROM win_db.event_logs;
     )";
     sqlite3_exec(eventDb_, importLogsSql, nullptr, nullptr, nullptr);
 
-    // Import Browser History
     const char* importBrowserSql = R"(
         INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type)
-        SELECT 
-            visit_time, 
-            'WEB_HISTORY', 
-            url, 
-            0, 
-            'Title: ' || title || ' (' || browser_name || ')', 
-            0, 
-            'WEB'
+        SELECT visit_time, 'WEB_HISTORY', url, 0, 'Title: ' || title, 0, 'WEB'
         FROM win_db.browser_history;
     )";
     sqlite3_exec(eventDb_, importBrowserSql, nullptr, nullptr, nullptr);
 
-    // Detach
     sqlite3_exec(eventDb_, "DETACH DATABASE win_db;", nullptr, nullptr, nullptr);
-    std::cout << "Windows artifacts imported into timeline." << std::endl;
     return true;
 }
 
 bool EventExtractor::importLinuxArtifacts(const std::string& linuxDbPath) {
     AuditLog::instance().log("SYSTEM", "TIMELINE_MERGE", "Importing Linux artifacts from: " + linuxDbPath);
-
     std::string attachSql = "ATTACH DATABASE '" + linuxDbPath + "' AS lin_db;";
-    char* errMsg = nullptr;
-    if (sqlite3_exec(eventDb_, attachSql.c_str(), nullptr, nullptr, &errMsg) != SQLITE_OK) {
-        std::cerr << "Failed to attach Linux DB: " << errMsg << std::endl;
-        sqlite3_free(errMsg);
-        return false;
-    }
+    sqlite3_exec(eventDb_, attachSql.c_str(), nullptr, nullptr, nullptr);
 
-    // Import Syslogs
     const char* importSyslogSql = R"(
         INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type)
-        SELECT 
-            unix_timestamp, 
-            'LINUX_SYSLOG', 
-            log_file, 
-            0, 
-            process || '[' || pid || ']: ' || message, 
-            0, 
-            'LOG'
+        SELECT unix_timestamp, 'LINUX_SYSLOG', log_file, 0, process || ': ' || message, 0, 'LOG'
         FROM lin_db.linux_log_entries;
     )";
     sqlite3_exec(eventDb_, importSyslogSql, nullptr, nullptr, nullptr);
 
-    // Import Login Records
-    const char* importLoginSql = R"(
-        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type)
-        SELECT 
-            login_time, 
-            'LINUX_LOGIN', 
-            terminal, 
-            0, 
-            'User: ' || username || ' from ' || remote_host, 
-            0, 
-            'AUTH'
-        FROM lin_db.linux_login_records;
-    )";
-    sqlite3_exec(eventDb_, importLoginSql, nullptr, nullptr, nullptr);
-
     sqlite3_exec(eventDb_, "DETACH DATABASE lin_db;", nullptr, nullptr, nullptr);
-    std::cout << "Linux artifacts imported into timeline." << std::endl;
     return true;
 }
 
 void EventExtractor::closeDatabases() {
-	if (sourceDb_) {
-		sqlite3_close(sourceDb_);
-		sourceDb_ = nullptr;
-	}
-
-	if (eventDb_) {
-		sqlite3_close(eventDb_);
-		eventDb_ = nullptr;
-	}
+	if (sourceDb_) sqlite3_close(sourceDb_);
+	if (eventDb_) sqlite3_close(eventDb_);
 }

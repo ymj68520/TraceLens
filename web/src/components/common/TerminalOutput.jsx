@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import Card from './Card';
 import Button from './Button';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useTranslation } from '../../hooks/useTranslation';
 
 const TERMINAL_COLORS = {
   cpp: '#10b981',    // green
@@ -15,6 +16,7 @@ if (!window.forensics_web_logs) {
 }
 
 const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('cpp');
   const [logs, setLogs] = useState({
     cpp: [],
@@ -111,8 +113,6 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
     const originalLog = console.log;
     const originalError = console.error;
     const originalWarn = console.warn;
-
-    const webLogs = [];
 
     const addLog = (level, ...args) => {
       const timestamp = new Date().toISOString();
@@ -224,7 +224,7 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4">
           <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-            🖥️ Terminal Output
+            🖥️ {t('terminal.title')}
           </h3>
           {isStreaming && (
             <span className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
@@ -260,7 +260,7 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
             onClick={handleClear}
             className="px-3 py-1"
           >
-            🗑️ Clear
+            🗑️ {t('terminal.clear')}
           </Button>
         </div>
       </div>
@@ -295,7 +295,7 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
       >
         {logs[activeTab].length === 0 ? (
           <div className="text-slate-500 text-center py-8">
-            No logs available. Make sure the service is running.
+            {t('timeline.status.empty')}
           </div>
         ) : (
           <>
@@ -310,7 +310,7 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
       {/* Status Bar */}
       <div className="mt-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
         <span>
-          {logs[activeTab].length} log entries
+          {logs[activeTab].length} entries
         </span>
         <span>
           {activeTab === 'cpp' && 'Port 8080'}
