@@ -11,5 +11,6 @@ addition of new communication protocols (gRPC, WebSocket, etc.)
 """
 
 from .service_manager import ServiceManager, get_service_manager
+from .document_extractor import get_document_extractor_locator
 
-__all__ = ["ServiceManager", "get_service_manager"]
+__all__ = ["ServiceManager", "get_service_manager", "get_document_extractor_locator"]

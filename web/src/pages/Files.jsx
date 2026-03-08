@@ -20,7 +20,7 @@ const Files = () => {
   const [searchParams] = useSearchParams();
   const taskId = searchParams.get('task_id');
   const dispatch = useDispatch();
-  
+
   // 1. Hooks - State from Redux
   const { tasks } = useSelector((state) => state.tasks);
   const { activeBatchJobs } = useSelector((state) => state.intelligence);
@@ -92,7 +92,7 @@ const Files = () => {
         });
         setLlmResults(prev => ({ ...prev, ...newDesc }));
       }
-      
+
       dispatch(updateBatchProgress({ taskId, status: 'completed', message: '✅ 批量分析完成' }));
       setTimeout(() => dispatch(clearBatchJob({ taskId })), 10000);
     } catch (err) {
@@ -269,11 +269,14 @@ const Files = () => {
     const modelType = isImage ? 'vision' : 'text';
 
     // Skip binary files and large files (except images which use vision model)
-    const binaryExtensions = ['pdf', 'zip', 'tar', 'gz', 'exe', 'dll', 'so', 'bin', 'img', 'iso'];
-    const maxFileSize = isImage ? 10 * 1024 * 1024 : 1024 * 1024; // 10MB for images, 1MB for text
+    const binaryExtensions = ['zip', 'tar', 'gz', 'exe', 'dll', 'so', 'bin', 'img', 'iso', 'db', 'sqlite'];
+    const documentExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
+    const isDocument = documentExtensions.includes(extension);
+
+    const maxFileSize = isImage ? 10 * 1024 * 1024 : (isDocument ? 20 * 1024 * 1024 : 1024 * 1024); // 10MB for images, 20MB for docs, 1MB for text
 
     if (binaryExtensions.includes(extension)) {
-      alert(`⚠️ ${extension.toUpperCase()} 文件不支持直接分析\n\n建议：\n- 对于 PDF：请使用专门的 PDF 解析工具\n- 对于压缩文件：请先解压后分析文本文件`);
+      alert(`⚠️ ${extension.toUpperCase()} 文件不支持分析\n\n建议：\n- 对于压缩文件：请先解压后分析`);
       return;
     }
 
@@ -805,7 +808,7 @@ ${detail}
                 )}
               </div>
             </div>
-            
+
             <div className="flex gap-2 text-xs text-slate-500 dark:text-slate-400">
               <span>显示 {filteredFiles.length} / {largestFiles.length} 个文件</span>
             </div>
@@ -916,7 +919,7 @@ ${detail}
                   >
                     {graphitiIngesting ? <Spinner size="sm" /> : '🕸️ 导入图谱'}
                   </Button>
-                  
+
                   {/* AI Progress */}
                   {(isBatchRunning || graphitiIngesting || graphitiMessage) && (
                     <div className="flex-1 flex items-center gap-3 px-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg min-w-[200px]">

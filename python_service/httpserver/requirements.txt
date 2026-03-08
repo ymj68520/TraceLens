@@ -43,3 +43,7 @@ xlrd>=2.0.1
 
 # Image Processing
 Pillow>=10.0.0
+
+# Document/PDF Extraction
+PyMuPDF>=1.23.0
+python-docx>=1.1.0

@@ -131,7 +131,7 @@ async def analyze_content(
         )
 
     try:
-        from ..services import get_service_manager
+        from ..services import get_service_manager, get_document_extractor_locator
         service_manager = get_service_manager()
 
         # Image file extensions for auto-detection
@@ -180,15 +180,36 @@ async def analyze_content(
                         detail=f"Failed to analyze image: {str(e)}"
                     )
             else:
-                # Read as text
-                content = await service_manager.llm_service.read_file_content(request.file_path)
-                result = await service_manager.llm_service.analyze(
-                    content=content,
-                    model_type=request.model_type or "text",
-                    prompt=request.prompt,
-                    max_tokens=request.max_tokens,
-                    temperature=request.temperature,
-                )
+                doc_locator = get_document_extractor_locator()
+                extractor = doc_locator.get_extractor(request.file_path)
+                
+                if extractor:
+                    logger.info(f"Auto-detected document file: {request.file_path}, using document extractor")
+                    try:
+                        content = await extractor.extract_to_markdown(request.file_path)
+                        result = await service_manager.llm_service.analyze(
+                            content=content,
+                            model_type=request.model_type or "text",
+                            prompt=request.prompt,
+                            max_tokens=request.max_tokens,
+                            temperature=request.temperature,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to extract document {request.file_path}: {e}")
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Failed to extract document content: {str(e)}"
+                        )
+                else:
+                    # Read as text
+                    content = await service_manager.llm_service.read_file_content(request.file_path)
+                    result = await service_manager.llm_service.analyze(
+                        content=content,
+                        model_type=request.model_type or "text",
+                        prompt=request.prompt,
+                        max_tokens=request.max_tokens,
+                        temperature=request.temperature,
+                    )
         else:
             # Direct content analysis (text only)
             result = await service_manager.llm_service.analyze(
@@ -258,7 +279,7 @@ async def analyze_uploaded_file(
     start_time = time.time()
 
     try:
-        from ..services import get_service_manager
+        from ..services import get_service_manager, get_document_extractor_locator
         service_manager = get_service_manager()
 
         # Read file content
@@ -275,13 +296,40 @@ async def analyze_uploaded_file(
                 prompt=prompt,
             )
         else:
-            # Handle as text
-            text_content = content.decode("utf-8", errors="replace")
-            result = await service_manager.llm_service.analyze(
-                content=text_content,
-                model_type="text",
-                prompt=prompt,
-            )
+            doc_locator = get_document_extractor_locator()
+            extractor = doc_locator.get_extractor(file.filename) if getattr(file, "filename", None) else None
+            
+            if extractor:
+                import tempfile
+                import os
+                from pathlib import Path
+                
+                logger.info(f"Auto-detected document file upload: {file.filename}, using document extractor")
+                
+                temp_fd, temp_path = tempfile.mkstemp(suffix=Path(file.filename).suffix)
+                try:
+                    with os.fdopen(temp_fd, 'wb') as temp_file:
+                        temp_file.write(content)
+                    
+                    extracted_text = await extractor.extract_to_markdown(temp_path)
+                    result = await service_manager.llm_service.analyze(
+                        content=extracted_text,
+                        model_type="text",
+                        prompt=prompt,
+                    )
+                finally:
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        pass
+            else:
+                # Handle as text
+                text_content = content.decode("utf-8", errors="replace")
+                result = await service_manager.llm_service.analyze(
+                    content=text_content,
+                    model_type="text",
+                    prompt=prompt,
+                )
 
         processing_time = (time.time() - start_time) * 1000
 
