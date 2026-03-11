@@ -15,18 +15,45 @@ A comprehensive digital forensics imaging analysis tool built on The Sleuth Kit.
 
 基于 The Sleuth Kit (TSK) 4.14.0 构建的综合性数字取证工具，用于分析磁盘镜像并将取证数据提取到结构化的 SQLite 数据库中。
 
+## 📚 文档
+
+完整的技术文档请参阅 [docs/README.md](docs/README.md)：
+
+- **[快速入门指南](docs/getting-started/QuickStart.md)** - 30 分钟完成安装和第一次分析
+- **[架构总览](docs/architecture/Overview.md)** - 系统整体架构和技术栈
+- **[C++ REST API](docs/api_reference/CPP_REST_API.md)** - C++ 服务 API 参考（端口 8080）
+- **[Python REST API](docs/api_reference/Python_REST_API.md)** - Python 服务 API 参考（端口 8090）
+
 ## 功能特性
 
 - **多格式支持**: 分析 E01 (EnCase) 和 DD (原始) 磁盘镜像
-- **跨平台分析**: 支持 Windows (NTFS, FAT)、Linux (EXT2/3/4) 和 USB 设备文件系统
+- **跨平台分析**: 支持 Windows (NTFS, FAT)、Linux (EXT2/3/4, XFS) 和 USB 设备文件系统
 - **三层数据库架构**:
   1. **原始数据库**: 通过 TSK API 提取的完整文件系统元数据
-  2. **事件数据库**: 文件系统事件时间线（创建、修改、访问、删除）
-  3. **文件数据库**: 按类型分类的文件（13 个类别）
-- **测试镜像生成**: 提供脚本生成包含多种文件类型的测试镜像，支持 SQLite 数据库、图片、PDF、日志、脚本等。
-- **LLM 文件分析**: 通过 OpenAI 兼容 API 实现 AI 驱动的文件描述生成
-- **知识图谱**: 通过 Graphiti 实现取证数据关联分析
-- **全文搜索**: 基于 Xapian 的高性能内容索引和搜索
+  2. **事件数据库**: 文件系统事件时间线（创建、修改、访问、删除），支持聚类分析和可视化
+  3. **文件数据库**: 按类型分类的文件（13 个类别），集成 LLM 分析结果
+- **平台专项分析**:
+  - **Android 取证**: 分析短信、联系人、通话记录、应用使用、设备信息、媒体文件
+  - **Windows 取证**: 解析注册表、事件日志、Prefetch、浏览器历史、Jump Lists、SRUM、Amcache
+  - **Linux 取证**: 分析系统日志、用户账户、Shell 历史、认证数据、Cron 任务
+- **LLM 智能分析**:
+  - 通过 OpenAI 兼容 API 实现 AI 驱动的文件描述生成
+  - 支持图像自动检测和视觉模型分析（OCR、场景识别）
+  - 案件智能分析：集成报告生成、证据相关性评估
+  - 文件重新分析：支持用户提示的深度分析
+- **知识图谱**: 通过 Graphiti 实现取证数据关联分析，支持实体搜索和关系发现
+- **全文搜索**: 基于 Xapian 的高性能内容索引和搜索，支持 90+ 文件类型
+- **文档解析**:
+  - PDF 元数据和内容提取（Poppler）
+  - Office 文档解析（DOCX, XLSX, PPTX）及 Markdown 导出
+  - 支持从压缩文件和数据库中提取文档
+- **数据库分析**:
+  - SQLite、MySQL、PostgreSQL 数据库解析
+  - 支持 InnoDB、PostgreSQL Heap、MySQL Binlog 格式
+  - 数据库守护进程支持（PostgreSQL、MySQL）
+- **文件雕刻**: 基于签名的已删除文件恢复，支持 30+ 文件类型
+- **TOON 导出**: Token-Oriented Object Notation 格式，节省 30-60% LLM 提示 token
+- **对象存储**: 集成阿里云 OSS，支持文件上传和管理
 
 ## 多服务架构
 
@@ -45,7 +72,11 @@ A comprehensive digital forensics imaging analysis tool built on The Sleuth Kit.
 │  │  • 取证分析核心      │      │  • LLM 分析服务          │  │
 │  │  • 任务管理         │      │  • Graphiti 知识图谱      │  │
 │  │  • 数据库操作       │      │  • 数据库导出 (TOON/JSON) │  │
-│  │  • 文件提取         │      │  • 批量处理              │  │
+│  │  • 文件提取         │      │  • Office 文档解析       │  │
+│  │  • 文件雕刻         │      │  • 批量处理              │  │
+│  │  • 全文搜索         │      │  • 配置管理              │  │
+│  │  • TOON 导出        │      │  • Swagger 文档生成      │  │
+│  │                     │      │  • C++ 后端代理          │  │
 │  └─────────────────────┘      └─────────────────────────┘  │
 │                                          ↓                  │
 │                              ┌─────────────────────┐        │
@@ -77,14 +108,19 @@ cd web && npm run dev
 | 页面 | 功能 |
 |------|------|
 | 仪表盘 | 系统概览和快速操作入口 |
-| 任务列表 | 创建、管理取证分析任务 |
-| 时间线 | 文件系统事件可视化 |
-| 文件管理 | 按类型浏览和提取文件 |
-| AI 描述 | 查看 LLM 生成的文件分析结果 |
-| 知识图谱 | Graphiti 实体和关系搜索 |
-| 安卓取证 | Android 设备数据分析 |
+| 任务列表 | 创建、管理取证分析任务，支持任务删除 |
+| 时间线 | 文件系统事件可视化，支持聚类、分布图、分页、详细事件视图 |
+| 文件管理 | 按类型浏览和提取文件，支持 LLM 分析和文件重新分析 |
+| AI 描述 | 查看 LLM 生成的文件分析结果，支持图像视觉分析 |
+| 案件智能 | 集成 LLM 分析、报告生成、证据相关性管理 |
+| 知识图谱 | Graphiti 实体和关系搜索，支持任务隔离的知识图谱实例 |
+| 安卓取证 | Android 设备数据分析，包含应用数据库详细信息 |
+| Windows 取证 | Windows 系统 artifacts 分析 |
+| Linux 取证 | Linux 系统日志和用户活动分析 |
 | 搜索 | 全文内容搜索 |
 | 统计 | 文件分布和活动模式分析 |
+| 系统 | 系统监控和终端访问 |
+| API 文档 | Swagger/OpenAPI 自动生成的 API 文档 |
 
 ## Installation
 
@@ -94,9 +130,19 @@ git clone https://github.com/yourusername/ForensicsProject.git
 cd ForensicsProject
 
 # Install required dependencies (Ubuntu/Debian)
-# libzip-dev libpugixml-dev is optional
 sudo apt-get update
-sudo apt-get install -y build-essential cmake git libsqlite3-dev libewf-dev libhivex-dev libevtx-dev libolecf-dev libasio-dev nlohmann-json3-dev libboost-system-dev libboost-thread-dev libesedb-dev libxapian-dev libpoppler-cpp-dev antiword libzip-dev libpugixml-dev libxlsxwriter-dev
+sudo apt-get install -y build-essential cmake git pkg-config
+sudo apt-get install -y libsqlite3-dev libewf-dev
+sudo apt-get install -y libhivex-dev libevtx-dev libasio-dev
+sudo apt-get install -y nlohmann-json3-dev libboost-system-dev libboost-thread-dev
+sudo apt-get install -y libesedb-dev libolecf-dev libxapian-dev
+sudo apt-get install -y libpoppler-cpp-dev antiword
+sudo apt-get install -y libzip-dev libpugixml-dev libxlsxwriter-dev
+sudo apt-get install -y libgtest-dev libgmock-dev
+sudo apt-get install -y libcurl4-openssl-dev
+
+# Python service dependencies (optional, for LLM and knowledge graph)
+# Python 3.10+, pip, and requirements.txt packages
 
 # Build the project
 mkdir build && cd build
@@ -118,7 +164,13 @@ The tool generates three SQLite databases:
 
 ## Documentation
 
-For detailed analysis and architecture documentation, please refer to [Project Analysis](docs/Project_Analysis.md).
+For detailed documentation, please refer to:
+- **API Reference**: [docs/API_REFERENCE.md](docs/API_REFERENCE.md) - Complete REST API documentation
+- **API Usage Guide**: [docs/API_USAGE_GUIDE.md](docs/API_USAGE_GUIDE.md) - API usage examples and workflows
+- **Project Analysis**: [docs/Project_Analysis.md](docs/Project_Analysis.md) - Detailed module analysis and design
+- **Architecture**: [docs/architecture.md](docs/architecture.md) - Module relationships and deployment architecture
+- **Classification Analysis**: [docs/Classification_Analysis.md](docs/Classification_Analysis.md) - File categorization logic
+- **Module READMEs**: Located in individual source directories under `src/*/README.md`
 
 ## Contributing
 
@@ -132,19 +184,46 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ### 依赖项
 
+**核心依赖**:
 - **C++ 编译器**: GCC 9+ 或 Clang 10+，支持 C++20 标准
 - **CMake**: 3.20 或更高版本
 - **The Sleuth Kit**: 4.14.0 版本
 - **SQLite3**: 3.30 或更高版本
+
+**格式支持**:
 - **libewf**: 用于 E01 镜像支持
-- **libhivex**: 用于 Windows 系统文件分析
-- **libevtx**: 用于 Windows 事件日志分析
-- **libolecf**: 用于 Office 文件分析
-- **libxapian**: 用于全文搜索
-- **libpoppler-cpp**: 用于 PDF 文件分析
-- **antiword**: 用于 Word 文件分析
 - **libzip**: 用于压缩文件分析
 - **libpugixml**: 用于 XML 文件分析
+
+**Windows 取证**:
+- **libhivex**: 用于 Windows 注册表分析
+- **libevtx**: 用于 Windows 事件日志分析
+- **libolecf**: 用于 OLE 结构化存储（Legacy Office）
+- **libesedb**: 用于 ESE 数据库（Windows 搜索、Active Directory）
+
+**文档分析**:
+- **libpoppler-cpp**: 用于 PDF 文件分析
+- **antiword**: 用于 Word (DOC) 文件分析
+- **libxlsxwriter**: 用于 Excel 文件生成
+
+**网络和 HTTP**:
+- **libasio**: 异步 I/O 和网络
+- **Crow**: C++ HTTP 框架（需要单独编译安装）
+- **nlohmann-json**: JSON 解析和生成
+- **Boost**: System 和 Thread 库
+
+**搜索和索引**:
+- **libxapian**: 用于全文搜索
+
+**测试**:
+- **libgtest/libgmock**: Google 测试框架
+
+**可选（Python 服务）**:
+- **Python 3.10+**
+- **FastAPI**: Python Web 框架
+- **Graphiti**: 知识图谱库
+- **Neo4j**: 图数据库（用于知识图谱后端）
+- **OpenAI SDK**: 或其他兼容的 LLM API
 
 ### Ubuntu/Debian 安装
 
@@ -214,11 +293,51 @@ sudo cmake --build build      # 编译
 sudo cmake --install build    # 把 .a 装到 /usr/local/lib，把头文件放到 /usr/local/include
 ```
 
-## 测试镜像生成
+## 测试
+
+### 单元测试
+
+项目包含全面的 GTest 单元测试套件：
+
+```bash
+cd build
+
+# 运行所有测试
+ctest --output-on-failure
+
+# 运行特定测试套件
+./test_file_classifier      # 文件分类测试
+./test_audit_log_gtest      # 审计日志测试
+./test_file_carving         # 文件雕刻测试
+./test_fulltext_search_gtest # 全文搜索测试
+./test_llm_integration      # LLM 集成测试
+./test_pdf_analyzer         # PDF 分析测试
+./test_office_analyzer      # Office 文档测试
+./test_toon_exporter        # TOON 导出测试
+```
+
+### Python 测试
+
+```bash
+cd python_service
+pytest tests/ -v
+```
+
+### 集成测试
+
+```bash
+# Android 分析测试
+bash tests/create_android_image.sh
+
+# HTTP 服务器测试
+bash tests/test_e01_http.sh
+```
+
+### 测试镜像生成
 
 项目提供了 `tests/create_android_image.sh` 脚本，用于生成包含多种文件类型的测试镜像，便于验证分析工具的功能。
 
-### 生成的测试镜像内容
+#### 生成的测试镜像内容
 
 - **SQLite 数据库**: 包含短信 (SMS) 和 WhatsApp 消息的示例数据库
 - **多种文件类型**:
@@ -231,7 +350,7 @@ sudo cmake --install build    # 把 .a 装到 /usr/local/lib，把头文件放�
   - 大文件 (4MB 二进制文件)
   - 隐藏文件
 
-### 使用方法
+#### 使用方法
 
 运行以下命令生成测试镜像：
 
@@ -242,6 +361,46 @@ bash tests/create_android_image.sh
 生成的镜像文件位于 `tests/android_test_gen.img`，可直接用于分析工具测试。
 
 如果系统未安装 `debugfs`，脚本会尝试使用 loop 设备挂载镜像并复制文件（需要 root 权限）。
+
+## 配置
+
+项目使用 `.env` 文件进行集中配置管理。创建 `.env` 文件（参考 `.env.example`）：
+
+```env
+# 数据库配置
+DATABASE_DIR=./data
+SQLITE_JOURNAL_MODE=WAL
+
+# LLM 配置
+LLM_BASE_URL=http://localhost:1234
+LLM_MODEL=local-model
+LLM_MAX_TOKENS=2000
+LLM_TIMEOUT=30
+
+# Neo4j 配置（知识图谱）
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password
+GRAPHITI_GROUP_ID=forensics_project
+
+# 全文搜索配置
+XAPIAN_INDEX_DIR=./xapian_index
+
+# 日志配置
+LOG_LEVEL=INFO
+LOG_FILE=forensic_analyzer.log
+
+# HTTP 服务配置
+CPP_SERVER_PORT=8080
+PYTHON_SERVER_PORT=8090
+
+# 对象存储（可选）
+OSS_ENABLED=false
+OSS_ACCESS_KEY_ID=your_access_key
+OSS_ACCESS_KEY_SECRET=your_secret
+OSS_ENDPOINT=oss-cn-hangzhou.aliyuncs.com
+OSS_BUCKET_NAME=your_bucket
+```
 
 # 详细描述
 
@@ -281,15 +440,46 @@ sudo cmake --install .
 ### 基本用法
 
 ```bash
+# 分析磁盘镜像
 ./forensic_analyzer <镜像路径>
+
+# 指定输出目录
+./forensic_analyzer <镜像路径> --db-dir /path/to/output
+
+# 启动 HTTP 服务器
+./forensic_analyzer --http-server 8080
+
+# 文件提取
+./forensic_analyzer --database <镜像路径>_raw.db --extract-file "*.log"
+./forensic_analyzer --database <镜像路径>_raw.db --extract-all --output-dir extracted/
+
+# 全文搜索
+./forensic_analyzer --index /path/to/extracted_files
+./forensic_analyzer --search "keyword" --db-dir /path/to/databases
+
+# 文件雕刻（恢复已删除文件）
+./forensic_analyzer <镜像路径> --carve --carve-out recovered_files/
+
+# 平台专项分析
+./forensic_analyzer <镜像路径> --android-analyze
+./forensic_analyzer <镜像路径> --windows-analyze
+./forensic_analyzer <镜像路径> --linux-analyze
+
+# XFS 文件系统分析（选择解析模式）
+sudo ./forensic_analyzer <镜像路径> --xfs-mode native    # 本地挂载（完整支持）
+./forensic_analyzer <镜像路径> --xfs-mode pure          # 纯解析（跨平台）
 ```
+
 ### 输出结果
 
-工具会生成三个 SQLite 数据库：
+工具会生成多个 SQLite 数据库：
 
-1. <镜像名>_raw.db: 原始取证数据
-2. <镜像名>_events.db: 文件系统时间线事件
-3. <镜像名>_files.db: 按类型分类的文件
+1. **<镜像名>_raw.db**: 原始取证数据（文件系统元数据）
+2. **<镜像名>_events.db**: 文件系统时间线事件
+3. **<镜像名>_files.db**: 按类型分类的文件（含 LLM 分析结果）
+4. **<镜像名>_android.db**: Android 专项分析数据（可选）
+5. **<镜像名>_windows.db**: Windows 专项分析数据（可选）
+6. **<镜像名>_linux.db**: Linux 专项分析数据（可选）
 
 ## 数据库架构
 
@@ -570,5 +760,51 @@ UNION ALL
 SELECT 'Videos', name, path, size, extension FROM videos WHERE is_deleted = 1
 -- ... 其他类别
 ```
+
+## 最新功能更新
+
+### 2024-2025 年度主要更新
+
+**智能分析增强**:
+- 案件智能分析系统：集成 LLM 报告生成、证据相关性评估
+- 文件重新分析功能：支持用户提示的深度 LLM 分析
+- 图像自动检测和视觉模型分析（OCR、场景识别）
+- 可配置的嵌入模型用于知识图谱
+
+**时间线改进**:
+- 事件聚类分析和可视化
+- 活动分布图表
+- 分页浏览和详细事件视图
+- UI 本地化支持
+
+**文档处理**:
+- 模块化文档提取架构
+- Office 文档（DOCX, XLSX, PPTX）解析和 Markdown 导出
+- 从压缩文件和数据库中提取文档
+- PostgreSQL 和 MySQL 守护进程支持
+
+**知识图谱**:
+- 任务隔离的知识图谱实例
+- 延迟加载和过滤选项
+- 实体和关系搜索 API
+
+**系统架构**:
+- 集中式配置管理（ConfigManager + .env）
+- 路径管理器（PathManager）
+- Python FastAPI 服务集成
+- Swagger/OpenAPI 自动文档生成
+
+**前端 UI**:
+- 黑暗模式支持
+- WebSocket 实时更新
+- Toast 通知系统
+- 响应式侧边栏
+- 登录页面
+
+**后端增强**:
+- Aliyun OSS C++ SDK 集成
+- TOON 导出功能（节省 30-60% LLM token）
+- 数据库分析器（SQLite, MySQL, PostgreSQL）
+- 连接池和标准化 API 响应
 
 # 结束

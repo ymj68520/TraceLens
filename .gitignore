@@ -4,7 +4,7 @@
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
 # Custom files
-/docs/
+# 注意：docs/ 目录已从忽略列表中移除，以便追踪文档
 /logs/
 /.claude
 /sleuthkit
@@ -408,25 +408,19 @@ AndroidAnalyzer/UNRECOGNIZED_PROPERTIES_DOCUMENTATION.md
 build_prop_analysis_report.txt
 simple_build_prop_test.exe
 test_compile.o
-docs/API_USAGE_GUIDE.md
-HTTPServer/API_USAGE_EXAMPLES.md
-HTTPServer/COMPLETE_API_DOCUMENTATION.md
-HTTPServer/DATABASE_API_DOCUMENTATION.md
+# 旧的 docs 文件忽略规则已移除（文件已删除）
 tests/run_all_tests.sh.in
 tests/run_integration_tests.sh.in
 tests/run_performance_tests.sh.in
 tests/run_unit_tests.sh.in
 AuditLog/IMPLEMENTATION.md
-docs/Classification_Analysis.md
-
-docs/Project_Analysis.md
+# 旧的 docs 文件忽略规则已移除（文件已删除）
 tests/test_merged_classifier
 
 tests/test_advanced_classifier
 tests/test_advanced_classifier.cpp
 tests/test_classifier
-docs/Code_Statistics_Report.md
-docs/LLM_Integration_Test_Manual.md
+# 旧的 docs 文件忽略规则已移除（文件已删除）
 .mcp.json
 web/BUILD_TEST_REPORT.md
 web/forensic_analyzer

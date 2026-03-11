@@ -1,0 +1,1928 @@
+# C++ REST API 参考文档
+
+## 概述
+
+C++ HTTP 服务运行在端口 **8080**，提供高性能的取证分析、任务管理和数据库查询功能。
+
+**服务器地址**：`http://localhost:8080`
+
+**API 文档**：
+- Swagger UI: http://localhost:8080/api/docs/ui
+- OpenAPI JSON: http://localhost:8080/api/docs/openapi
+- Endpoint 列表: http://localhost:8080/api/docs/endpoints
+
+---
+
+## 目录
+
+1. [任务管理 API](#1-任务管理-api)
+2. [取证分析 API](#2-取证分析-api)
+3. [全文搜索 API](#3-全文搜索-api)
+4. [系统信息 API](#4-系统信息-api)
+
+---
+
+## 1. 任务管理 API
+
+### POST /tasks
+
+**描述**：创建新的取证分析任务。
+
+**请求体**：
+```json
+{
+  "image_path": "/path/to/evidence.E01",
+  "case_name": "Case #123",
+  "priority": "NORMAL",
+  "options": {
+    "android_analyze": true,
+    "windows_analyze": true,
+    "llm_analysis": true
+  }
+}
+```
+
+**参数说明**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `image_path` | string | ✅ | - | 磁盘镜像文件路径 |
+| `case_name` | string | ❌ | - | 案例名称 |
+| `priority` | string | ❌ | NORMAL | 任务优先级（LOW/NORMAL/HIGH/CRITICAL） |
+| `options` | object | ❌ | - | 分析选项 |
+
+**分析选项**：
+
+| 选项 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `android_analyze` | boolean | false | 是否执行 Android 分析 |
+| `windows_analyze` | boolean | false | 是否执行 Windows 分析 |
+| `linux_analyze` | boolean | false | 是否执行 Linux 分析 |
+| `llm_analysis` | boolean | false | 是否执行 LLM 分析 |
+| `file_carving` | boolean | false | 是否执行文件雕刻 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "message": "Task created successfully",
+  "data": {
+    "task_id": "task_abc123",
+    "status": "PENDING",
+    "priority": "NORMAL",
+    "created_at": "2024-01-16T10:00:00Z",
+    "image_path": "/path/to/evidence.E01"
+  },
+  "timestamp": "Tue Jan 16 10:00:00 2024"
+}
+```
+
+**HTTP 状态码**：
+- `201` - 任务创建成功
+- `400` - 请求参数无效
+- `500` - 服务器内部错误
+
+---
+
+### GET /tasks/{task_id}
+
+**描述**：获取指定任务的详细信息。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `task_id` | string | ✅ | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "id": "task_abc123",
+    "case_name": "Case #123",
+    "image_path": "/path/to/evidence.E01",
+    "status": "RUNNING",
+    "phase": "FILE_CLASSIFICATION",
+    "priority": "NORMAL",
+    "progress": 45,
+    "error_message": "",
+    "created_at": "2024-01-16T10:00:00Z",
+    "started_at": "2024-01-16T10:00:05Z",
+    "completed_at": null,
+    "output_raw_db": "/output/task_abc123_raw.db",
+    "output_events_db": "/output/task_abc123_events.db",
+    "output_files_db": "/output/task_abc123_files.db",
+    "metadata": {}
+  }
+}
+```
+
+**任务状态**：
+- `PENDING` - 等待执行
+- `RUNNING` - 正在运行
+- `COMPLETED` - 已完成
+- `FAILED` - 执行失败
+- `CANCELLED` - 已取消
+
+**任务阶段**：
+- `INITIALIZING` - 初始化中
+- `IMAGE_ANALYSIS` - 镜像分析
+- `EVENT_EXTRACTION` - 事件提取
+- `FILE_CLASSIFICATION` - 文件分类
+- `LLM_ANALYSIS` - LLM 分析
+- `ANDROID_ANALYSIS` - Android 分析
+- `FINALIZING` - 完成中
+
+---
+
+### GET /tasks/{task_id}/results
+
+**描述**：获取已完成任务的分析结果。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `task_id` | string | ✅ | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "task_id": "task_abc123",
+    "status": "COMPLETED",
+    "statistics": {
+      "total_files": 50000,
+      "deleted_files": 1500,
+      "total_size": 10737418240,
+      "duration_seconds": 300
+    },
+    "databases": [
+      {
+        "type": "raw",
+        "path": "/output/task_abc123_raw.db",
+        "size_bytes": 104857600
+      },
+      {
+        "type": "events",
+        "path": "/output/task_abc123_events.db",
+        "size_bytes": 52428800
+      },
+      {
+        "type": "files",
+        "path": "/output/task_abc123_files.db",
+        "size_bytes": 209715200
+      }
+    ]
+  }
+}
+```
+
+**HTTP 状态码**：
+- `200` - 结果获取成功
+- `202` - 任务仍在运行
+- `404` - 任务不存在
+
+---
+
+### GET /api/tasks/list
+
+**描述**：列出所有任务，支持过滤和分页。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `status` | string | ❌ | - | 按状态过滤 |
+| `priority` | string | ❌ | - | 按优先级过滤 |
+| `limit` | integer | ❌ | 50 | 返回结果数量 |
+| `offset` | integer | ❌ | 0 | 分页偏移量 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "tasks": [
+      {
+        "id": "task_abc123",
+        "case_name": "Case #123",
+        "status": "COMPLETED",
+        "priority": "NORMAL",
+        "created_at": "2024-01-16T10:00:00Z"
+      },
+      {
+        "id": "task_def456",
+        "case_name": "Case #456",
+        "status": "RUNNING",
+        "priority": "HIGH",
+        "created_at": "2024-01-16T11:00:00Z"
+      }
+    ],
+    "total_count": 25,
+    "pagination": {
+      "limit": 50,
+      "offset": 0,
+      "has_more": false
+    }
+  }
+}
+```
+
+---
+
+### DELETE /api/tasks/{task_id}
+
+**描述**：取消正在运行或等待中的任务。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `task_id` | string | ✅ | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "message": "Task cancelled successfully",
+  "data": {
+    "task_id": "task_abc123",
+    "previous_status": "RUNNING",
+    "new_status": "CANCELLED"
+  }
+}
+```
+
+**HTTP 状态码**：
+- `200` - 任务取消成功
+- `400` - 任务无法取消（已完成或不存在）
+- `500` - 服务器内部错误
+
+---
+
+### GET /api/tasks/{task_id}/progress
+
+**描述**：获取任务的详细进度信息。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `task_id` | string | ✅ | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "task_id": "task_abc123",
+    "status": "RUNNING",
+    "phase": "FILE_CLASSIFICATION",
+    "progress": 45,
+    "phase_progress": 60,
+    "estimated_time_remaining_seconds": 180,
+    "started_at": "2024-01-16T10:00:00Z",
+    "current_operation": "Classifying files...",
+    "processed_files": 30000,
+    "total_files": 50000
+  }
+}
+```
+
+---
+
+### GET /api/tasks/statistics
+
+**描述**：获取系统级任务统计信息。
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "total_tasks": 150,
+    "by_status": {
+      "PENDING": 10,
+      "RUNNING": 5,
+      "COMPLETED": 125,
+      "FAILED": 8,
+      "CANCELLED": 2
+    },
+    "by_priority": {
+      "LOW": 30,
+      "NORMAL": 100,
+      "HIGH": 15,
+      "CRITICAL": 5
+    },
+    "average_duration_seconds": 450,
+    "total_processed_size_bytes": 1073741824000
+  }
+}
+```
+
+---
+
+### POST /api/tasks/cleanup
+
+**描述**：清理旧的已完成或失败的任务。
+
+**请求体**：
+```json
+{
+  "older_than_days": 30,
+  "statuses": ["COMPLETED", "FAILED"],
+  "delete_databases": true
+}
+```
+
+**参数说明**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `older_than_days` | integer | ❌ | 7 | 清理多少天前的任务 |
+| `statuses` | array | ❌ | 所有 | 要清理的任务状态列表 |
+| `delete_databases` | boolean | ❌ | false | 是否删除相关数据库文件 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "message": "Cleanup completed",
+  "data": {
+    "tasks_deleted": 15,
+    "databases_deleted": 45,
+    "space_freed_bytes": 5368709120
+  }
+}
+```
+
+---
+
+### POST /api/tasks/batch-create
+
+**描述**：批量创建多个分析任务。
+
+**请求体**：
+```json
+{
+  "images": [
+    "/path/to/evidence1.E01",
+    "/path/to/evidence2.E01",
+    "/path/to/evidence3.E01"
+  ],
+  "priority": "NORMAL",
+  "options": {
+    "android_analyze": true
+  }
+}
+```
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "tasks": [
+      {"task_id": "task_abc123", "image_path": "/path/to/evidence1.E01"},
+      {"task_id": "task_def456", "image_path": "/path/to/evidence2.E01"},
+      {"task_id": "task_ghi789", "image_path": "/path/to/evidence3.E01"}
+    ],
+    "total_created": 3
+  }
+}
+```
+
+---
+
+### POST /api/tasks/batch-status
+
+**描述**：批量获取多个任务的状态。
+
+**请求体**：
+```json
+{
+  "task_ids": [
+    "task_abc123",
+    "task_def456",
+    "task_ghi789"
+  ]
+}
+```
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "tasks": [
+      {
+        "task_id": "task_abc123",
+        "status": "COMPLETED",
+        "progress": 100
+      },
+      {
+        "task_id": "task_def456",
+        "status": "RUNNING",
+        "progress": 45
+      },
+      {
+        "task_id": "task_ghi789",
+        "status": "FAILED",
+        "error": "Disk read error"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### POST /api/tasks/batch-cancel
+
+**描述**：批量取消多个任务。
+
+**请求体**：
+```json
+{
+  "task_ids": [
+    "task_abc123",
+    "task_def456"
+  ]
+}
+```
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "results": [
+      {"task_id": "task_abc123", "cancelled": true},
+      {"task_id": "task_def456", "cancelled": false, "error": "Task already completed"}
+    ],
+    "total_cancelled": 1
+  }
+}
+```
+
+---
+
+### GET /api/tasks/{task_id}/audit-log
+
+**描述**：获取任务的审计日志。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `task_id` | string | ✅ | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "task_id": "task_abc123",
+    "audit_log": [
+      {
+        "timestamp": "2024-01-16T10:00:00Z",
+        "action": "TASK_CREATED",
+        "user": "system",
+        "details": "Task created by admin"
+      },
+      {
+        "timestamp": "2024-01-16T10:00:05Z",
+        "action": "PHASE_CHANGED",
+        "user": "system",
+        "details": "Phase changed from INITIALIZING to IMAGE_ANALYSIS"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### PUT /api/tasks/{task_id}/priority
+
+**描述**：更新任务的优先级。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `task_id` | string | ✅ | 任务 ID |
+
+**请求体**：
+```json
+{
+  "priority": "HIGH"
+}
+```
+
+**响应**：
+```json
+{
+  "success": true,
+  "message": "Priority updated successfully",
+  "data": {
+    "task_id": "task_abc123",
+    "previous_priority": "NORMAL",
+    "new_priority": "HIGH"
+  }
+}
+```
+
+---
+
+## 2. 取证分析 API
+
+### Timeline Analysis
+
+#### GET /api/forensics/timeline/comprehensive
+
+**描述**：获取综合时间线（合并多个数据源）。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `start_time` | string | ❌ | - | 开始时间（ISO 8601） |
+| `end_time` | string | ❌ | - | 结束时间（ISO 8601） |
+| `limit` | integer | ❌ | 1000 | 最大事件数 |
+| `event_types` | string | ❌ | - | 事件类型过滤（逗号分隔） |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "task_id": "task_abc123",
+    "timeline": [
+      {
+        "timestamp": "2024-01-15T10:30:00Z",
+        "event_type": "FILE_CREATED",
+        "description": "Created document.pdf",
+        "source": "filesystem",
+        "file_path": "/Users/john/Documents/document.pdf",
+        "file_size": 2048576,
+        "metadata": {}
+      },
+      {
+        "timestamp": "2024-01-15T11:00:00Z",
+        "event_type": "SMS_SENT",
+        "description": "Sent SMS to +1234567890",
+        "source": "android",
+        "metadata": {
+          "phone_number": "+1234567890",
+          "message_preview": "Meeting at 3pm"
+        }
+      }
+    ],
+    "total_events": 5000,
+    "time_range": {
+      "start": "2024-01-01T00:00:00Z",
+      "end": "2024-01-16T10:00:00Z"
+    }
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/timeline/details
+
+**描述**：获取特定时间簇的详细事件。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `cluster_id` | string | ✅ | - | 簇 ID |
+| `limit` | integer | ❌ | 100 | 最大事件数 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "cluster_id": "cluster_123",
+    "events": [
+      {
+        "id": 1,
+        "timestamp": "2024-01-15T10:30:00Z",
+        "event_type": "FILE_MODIFIED",
+        "description": "Modified report.docx",
+        "file_path": "/Users/john/Documents/report.docx"
+      }
+    ],
+    "total_events": 50
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/timeline/distribution
+
+**描述**：获取时间线事件的时间分布。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `granularity` | string | ❌ | hour | 时间粒度（hour/day/week/month） |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "distribution": [
+      {
+        "time_bucket": "2024-01-15T10:00:00Z",
+        "event_count": 150,
+        "event_types": {
+          "FILE_CREATED": 80,
+          "FILE_MODIFIED": 50,
+          "FILE_ACCESSED": 20
+        }
+      },
+      {
+        "time_bucket": "2024-01-15T11:00:00Z",
+        "event_count": 120,
+        "event_types": {
+          "FILE_CREATED": 60,
+          "FILE_MODIFIED": 40,
+          "FILE_ACCESSED": 20
+        }
+      }
+    ],
+    "total_events": 5000
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/timeline/file-activity
+
+**描述**：获取文件系统活动时间线。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `file_path` | string | ❌ | - | 文件路径过滤 |
+| `limit` | integer | ❌ | 500 | 最大事件数 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "file_activity": [
+      {
+        "timestamp": "2024-01-15T10:30:00Z",
+        "file_path": "/Users/john/Documents/report.docx",
+        "action": "MODIFIED",
+        "file_size": 1048576,
+        "inode": 12345
+      }
+    ],
+    "total_events": 1500
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/timeline/suspicious-patterns
+
+**描述**：获取可疑活动模式。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "suspicious_events": [
+      {
+        "timestamp": "2024-01-15T02:00:00Z",
+        "event_type": "FILE_DELETED",
+        "severity": "HIGH",
+        "description": "Sensitive file deleted at unusual time",
+        "file_path": "/Users/john/Documents/secret.docx",
+        "reason": "Deleted at 2 AM, outside normal working hours"
+      },
+      {
+        "timestamp": "2024-01-15T15:30:00Z",
+        "event_type": "FILE_CREATED",
+        "severity": "MEDIUM",
+        "description": "Executable created in temp directory",
+        "file_path": "/tmp/unknown.exe",
+        "reason": "Executable in temporary directory"
+      }
+    ],
+    "total_suspicious": 15
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/timeline/user-activity
+
+**描述**：获取用户活动时间线。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `user` | string | ❌ | - | 用户名过滤 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "user_activity": [
+      {
+        "timestamp": "2024-01-15T10:30:00Z",
+        "user": "john",
+        "activity_type": "FILE_ACCESS",
+        "description": "Accessed confidential.pdf",
+        "file_path": "/Users/john/Documents/confidential.pdf"
+      }
+    ],
+    "total_activities": 300
+  }
+}
+```
+
+---
+
+### File Analysis
+
+#### GET /api/forensics/files/largest
+
+**描述**：获取镜像中最大的文件列表。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `limit` | integer | ❌ | 50 | 返回文件数 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "largest_files": [
+      {
+        "name": "database.db",
+        "path": "/data/database.db",
+        "size": 5368709120,
+        "category": "databases",
+        "deleted": false,
+        "modified_time": "2024-01-15T10:00:00Z"
+      },
+      {
+        "name": "backup.tar",
+        "path": "/backup/backup.tar",
+        "size": 2147483648,
+        "category": "archives",
+        "deleted": false,
+        "modified_time": "2024-01-14T15:30:00Z"
+      }
+    ],
+    "total_files": 50000
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/files/recent
+
+**描述**：获取最近访问或修改的文件。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `sort_by` | string | ❌ | mtime | 排序字段（mtime/atime/ctime） |
+| `limit` | integer | ❌ | 100 | 返回文件数 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "recent_files": [
+      {
+        "name": "document.docx",
+        "path": "/Users/john/Documents/document.docx",
+        "size": 1048576,
+        "category": "documents",
+        "modified_time": "2024-01-16T09:55:00Z",
+        "accessed_time": "2024-01-16T10:00:00Z"
+      }
+    ],
+    "total_files": 50000
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/files/suspicious
+
+**描述**：获取可疑文件列表。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `limit` | integer | ❌ | 100 | 返回文件数 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "suspicious_files": [
+      {
+        "name": "hidden.exe",
+        "path": "/Windows/Temp/hidden.exe",
+        "size": 2048576,
+        "category": "executables",
+        "suspicion_reason": "Executable in temp directory",
+        "severity": "HIGH"
+      },
+      {
+        "name": "passwords.txt",
+        "path": "/Users/john/passwords.txt",
+        "size": 1024,
+        "category": "documents",
+        "suspicion_reason": "Filename contains sensitive keyword",
+        "severity": "MEDIUM"
+      }
+    ],
+    "total_suspicious": 25
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/files/duplicates
+
+**描述**：获取重复文件列表（基于哈希值）。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `limit` | integer | ❌ | 50 | 返回组数 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "duplicate_groups": [
+      {
+        "hash": "a1b2c3d4e5f6",
+        "size": 1048576,
+        "count": 3,
+        "files": [
+          {
+            "path": "/Users/john/Documents/report.docx",
+            "modified_time": "2024-01-15T10:00:00Z"
+          },
+          {
+            "path": "/Backup/report.docx",
+            "modified_time": "2024-01-14T10:00:00Z"
+          },
+          {
+            "path": "/Downloads/report.docx",
+            "modified_time": "2024-01-13T10:00:00Z"
+          }
+        ],
+        "wasted_space": 2097152
+      }
+    ],
+    "total_wasted_space": 104857600
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/files/extensions-analysis
+
+**描述**：获取文件扩展名统计分析。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "extension_stats": [
+      {
+        "extension": ".pdf",
+        "count": 1500,
+        "total_size": 5368709120,
+        "average_size": 3579139,
+        "category": "documents"
+      },
+      {
+        "extension": ".jpg",
+        "count": 8000,
+        "total_size": 8589934592,
+        "average_size": 1073741,
+        "category": "images"
+      }
+    ],
+    "total_extensions": 250,
+    "total_files": 50000
+  }
+}
+```
+
+---
+
+### File Extraction
+
+#### POST /api/forensics/extract
+
+**描述**：启动文件提取后台任务。
+
+**请求体**：
+```json
+{
+  "task_id": "task_abc123",
+  "filters": {
+    "extensions": [".pdf", ".docx", ".txt"],
+    "patterns": ["*.log"],
+    "categories": ["documents", "images"]
+  },
+  "output_dir": "/extracted_files",
+  "preserve_structure": true
+}
+```
+
+**参数说明**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `filters` | object | ❌ | - | 提取过滤条件 |
+| `output_dir` | string | ❌ | - | 输出目录 |
+| `preserve_structure` | boolean | ❌ | true | 是否保留目录结构 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "message": "Extraction job started",
+  "data": {
+    "job_id": "ext-12345678",
+    "status": "RUNNING",
+    "estimated_files": 5000
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/extract/status
+
+**描述**：获取文件提取任务状态。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `job_id` | string | ✅ | - | 提取任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "job_id": "ext-12345678",
+    "status": "RUNNING",
+    "progress": 45,
+    "files_extracted": 2250,
+    "total_files": 5000,
+    "bytes_extracted": 5368709120,
+    "output_dir": "/extracted_files",
+    "started_at": "2024-01-16T10:00:00Z",
+    "estimated_completion": "2024-01-16T10:10:00Z"
+  }
+}
+```
+
+**提取状态**：
+- `PENDING` - 等待开始
+- `RUNNING` - 正在提取
+- `COMPLETED` - 提取完成
+- `FAILED` - 提取失败
+- `CANCELLED` - 已取消
+
+---
+
+### Android Forensics
+
+#### GET /api/forensics/android/communication-summary
+
+**描述**：获取 Android 通信摘要（短信和通话）。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "communication": {
+      "sms": {
+        "total": 5000,
+        "sent": 2500,
+        "received": 2500,
+        "top_contacts": [
+          {
+            "phone_number": "+1234567890",
+            "message_count": 150,
+            "last_contact": "2024-01-15T10:00:00Z"
+          }
+        ]
+      },
+      "calls": {
+        "total": 1000,
+        "incoming": 600,
+        "outgoing": 400,
+        "missed": 50,
+        "total_duration_seconds": 18000
+      }
+    }
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/android/app-usage
+
+**描述**：获取 Android 应用使用统计。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `limit` | integer | ❌ | 50 | 返回应用数 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "app_usage": [
+      {
+        "package_name": "com.whatsapp",
+        "app_name": "WhatsApp",
+        "usage_time_seconds": 3600,
+        "last_used": "2024-01-16T09:00:00Z",
+        "install_time": "2023-06-15T10:00:00Z"
+      },
+      {
+        "package_name": "com.facebook.katana",
+        "app_name": "Facebook",
+        "usage_time_seconds": 2400,
+        "last_used": "2024-01-16T08:30:00Z",
+        "install_time": "2023-05-10T10:00:00Z"
+      }
+    ],
+    "total_apps": 150
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/android/device-info
+
+**描述**：获取 Android 设备信息。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "device_info": {
+      "manufacturer": "Samsung",
+      "model": "Galaxy S21",
+      "android_version": "13",
+      "build_number": "TP1A.220624.014",
+      "serial_number": "R58CT123ABC",
+      "imei": "123456789012345",
+      "first_boot_time": "2023-01-15T10:00:00Z"
+    }
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/android/media-analysis
+
+**描述**：获取 Android 媒体文件分析。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "media_stats": {
+      "images": {
+        "count": 5000,
+        "total_size": 5368709120,
+        "formats": {
+          "JPEG": 3000,
+          "PNG": 1500,
+          "GIF": 500
+        }
+      },
+      "videos": {
+        "count": 500,
+        "total_size": 10737418240,
+        "total_duration_seconds": 7200,
+        "formats": {
+          "MP4": 400,
+          "AVI": 100
+        }
+      },
+      "audio": {
+        "count": 1000,
+        "total_size": 2147483648,
+        "total_duration_seconds": 10800,
+        "formats": {
+          "MP3": 800,
+          "AAC": 200
+        }
+      }
+    }
+  }
+}
+```
+
+---
+
+### Statistics
+
+#### GET /api/forensics/statistics/overview
+
+**描述**：获取取证分析统计概览。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "overview": {
+      "total_files": 50000,
+      "deleted_files": 1500,
+      "total_size": 107374182400,
+      "file_categories": {
+        "documents": 10000,
+        "images": 15000,
+        "videos": 2000,
+        "audio": 3000,
+        "archives": 5000,
+        "executables": 2000,
+        "databases": 500,
+        "source_code": 3000,
+        "web_files": 4000,
+        "email_files": 1000,
+        "system_files": 3000,
+        "encrypted_files": 500,
+        "unknown": 1000
+      },
+      "timeline_events": 25000,
+      "android_artifacts": 5000,
+      "windows_artifacts": 8000,
+      "linux_artifacts": 2000
+    }
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/statistics/file-distribution
+
+**描述**：获取文件大小和类型分布统计。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "size_distribution": [
+      {
+        "range": "0-1KB",
+        "count": 5000,
+        "total_size": 2560000
+      },
+      {
+        "range": "1KB-100KB",
+        "count": 25000,
+        "total_size": 524288000
+      },
+      {
+        "range": "100KB-1MB",
+        "count": 15000,
+        "total_size": 5368709120
+      },
+      {
+        "range": ">1MB",
+        "count": 5000,
+        "total_size": 101681099520
+      }
+    ],
+    "type_distribution": {
+      "documents": {"count": 10000, "percentage": 20},
+      "images": {"count": 15000, "percentage": 30}
+    }
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/statistics/activity-patterns
+
+**描述**：获取活动模式统计。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "hourly_activity": [
+      {"hour": 0, "event_count": 50},
+      {"hour": 1, "event_count": 30},
+      {"hour": 9, "event_count": 500},
+      {"hour": 10, "event_count": 800}
+    ],
+    "daily_activity": [
+      {"day": "2024-01-15", "event_count": 5000},
+      {"day": "2024-01-16", "event_count": 6000}
+    ],
+    "peak_hours": [10, 11, 14, 15],
+    "quiet_hours": [0, 1, 2, 3, 4, 5]
+  }
+}
+```
+
+---
+
+#### GET /api/forensics/statistics/deleted-files-analysis
+
+**描述**：获取已删除文件分析统计。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "deleted_files": {
+      "total": 1500,
+      "by_category": {
+        "documents": 500,
+        "images": 300,
+        "videos": 100,
+        "archives": 200
+      },
+      "recoverable": 1200,
+      "total_size": 5368709120,
+      "deletion_time_distribution": [
+        {"date": "2024-01-15", "count": 100},
+        {"date": "2024-01-14", "count": 80}
+      ]
+    }
+  }
+}
+```
+
+---
+
+### Export
+
+#### GET /api/forensics/export/toon
+
+**描述**：导出取证数据为 TOON 格式（Token-Oriented Object Notation）。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `database_type` | string | ❌ | files | 数据库类型 |
+| `include_llm` | boolean | ❌ | true | 包含 LLM 分析字段 |
+| `limit` | integer | ❌ | 1000 | 最大记录数 |
+
+**响应**：
+```
+TOON.schema: name | path | category | size | llm_summary | llm_keywords
+# records[150]
+document.pdf | /evidence/document.pdf | documents | 2048576 | 保密协议文档 | 保密,协议,合同
+database.db | /evidence/database.db | databases | 5242880 | SQLite 数据库 | 数据库,SQLite
+...
+```
+
+---
+
+## 3. 全文搜索 API
+
+### POST /api/search/index
+
+**描述**：创建或更新全文搜索索引。
+
+**请求体**：
+```json
+{
+  "task_id": "task_abc123",
+  "directory": "/extracted_files",
+  "force_reindex": false
+}
+```
+
+**参数说明**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `directory` | string | ✅ | - | 要索引的目录 |
+| `force_reindex` | boolean | ❌ | false | 是否强制重新索引 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "message": "Indexing started",
+  "data": {
+    "job_id": "index-12345678",
+    "directory": "/extracted_files",
+    "estimated_files": 10000
+  }
+}
+```
+
+---
+
+### GET /api/search
+
+**描述**：执行全文搜索查询。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `query` | string | ✅ | - | 搜索查询 |
+| `task_id` | string | ❌ | - | 任务 ID |
+| `path_filter` | string | ❌ | - | 路径过滤 |
+| `extension_filter` | string | ❌ | - | 扩展名过滤 |
+| `limit` | integer | ❌ | 100 | 最大结果数 |
+| `offset` | integer | ❌ | 0 | 分页偏移量 |
+
+**搜索语法**：
+- `keyword` - 简单搜索
+- `"exact phrase"` - 精确短语
+- `keyword1 AND keyword2` - 与操作
+- `keyword1 OR keyword2` - 或操作
+- `keyword NOT excluded` - 非操作
+- `key*` - 通配符
+- `filename:.txt` - 字段搜索
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "query": "malware AND password",
+    "total_matches": 150,
+    "results": [
+      {
+        "file_path": "/extracted_files/report.txt",
+        "score": 0.95,
+        "snippet": "...detected <b>malware</b> with <b>password</b> stealing...",
+        "file_size": 1024,
+        "modified_time": "2024-01-15T10:00:00Z"
+      },
+      {
+        "file_path": "/extracted_files/log.txt",
+        "score": 0.85,
+        "snippet": "...<b>malware</b> infection via stolen <b>password</b>...",
+        "file_size": 2048,
+        "modified_time": "2024-01-15T11:00:00Z"
+      }
+    ],
+    "pagination": {
+      "limit": 100,
+      "offset": 0,
+      "has_more": true
+    }
+  }
+}
+```
+
+---
+
+## 4. 系统信息 API
+
+### Health Checks
+
+#### GET /api/health
+
+**描述**：基础健康检查。
+
+**响应**：
+```json
+{
+  "status": "healthy",
+  "version": "1.0.0",
+  "timestamp": "Tue Jan 16 10:00:00 2024"
+}
+```
+
+---
+
+#### GET /api/health/live
+
+**描述**：Kubernetes 存活探针。
+
+**响应**：
+```
+OK
+```
+
+**HTTP 状态码**：
+- `200` - 服务存活
+- `503` - 服务不可用
+
+---
+
+#### GET /api/health/ready
+
+**描述**：Kubernetes 就绪探针。
+
+**响应**：
+```json
+{
+  "status": "ready",
+  "dependencies": {
+    "database": "healthy",
+    "task_manager": "healthy"
+  }
+}
+```
+
+**HTTP 状态码**：
+- `200` - 服务就绪
+- `503` - 服务未就绪
+
+---
+
+#### GET /api/health/dependencies
+
+**描述**：检查依赖服务状态。
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "dependencies": [
+      {
+        "name": "SQLite",
+        "status": "healthy",
+        "details": "Database connections available"
+      },
+      {
+        "name": "Xapian",
+        "status": "healthy",
+        "details": "Search index available"
+      }
+    ],
+    "overall_status": "healthy"
+  }
+}
+```
+
+---
+
+### System Information
+
+#### GET /api/system/info
+
+**描述**：获取系统信息。
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "version": "1.0.0",
+    "build_date": "2024-01-15T10:00:00Z",
+    "compiler": "GCC 11.4.0",
+    "platform": "Linux",
+    "architecture": "x86_64",
+    "uptime_seconds": 3600,
+    "memory_usage": {
+      "current": 536870912,
+      "peak": 1073741824
+    },
+    "active_tasks": 5,
+    "total_tasks_processed": 150
+  }
+}
+```
+
+---
+
+#### GET /api/system/databases
+
+**描述**：列出任务的数据库文件。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "task_id": "task_abc123",
+    "databases": [
+      {
+        "type": "raw",
+        "path": "/output/task_abc123_raw.db",
+        "size_bytes": 104857600,
+        "table_count": 3
+      },
+      {
+        "type": "events",
+        "path": "/output/task_abc123_events.db",
+        "size_bytes": 52428800,
+        "table_count": 8
+      },
+      {
+        "type": "files",
+        "path": "/output/task_abc123_files.db",
+        "size_bytes": 209715200,
+        "table_count": 15
+      }
+    ]
+  }
+}
+```
+
+---
+
+#### GET /api/system/database-schema/{db_type}
+
+**描述**：获取特定数据库类型的模式。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `db_type` | string | ✅ | 数据库类型（raw/events/files/android/windows/linux） |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "database_type": "files",
+    "schema": [
+      {
+        "table_name": "documents",
+        "columns": [
+          {"name": "id", "type": "INTEGER", "primary_key": true},
+          {"name": "name", "type": "TEXT", "nullable": false},
+          {"name": "path", "type": "TEXT", "nullable": false},
+          {"name": "size", "type": "INTEGER", "nullable": false},
+          {"name": "llm_summary", "type": "TEXT", "nullable": true}
+        ]
+      },
+      {
+        "table_name": "images",
+        "columns": [
+          {"name": "id", "type": "INTEGER", "primary_key": true},
+          {"name": "name", "type": "TEXT", "nullable": false},
+          {"name": "width", "type": "INTEGER", "nullable": true},
+          {"name": "height", "type": "INTEGER", "nullable": true}
+        ]
+      }
+    ]
+  }
+}
+```
+
+---
+
+#### GET /api/system/logs
+
+**描述**：获取系统日志。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `lines` | integer | ❌ | 100 | 返回行数 |
+| `level` | string | ❌ | INFO | 日志级别 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "logs": [
+      {
+        "timestamp": "2024-01-16T10:00:00Z",
+        "level": "INFO",
+        "message": "Task task_abc123 started"
+      },
+      {
+        "timestamp": "2024-01-16T10:00:05Z",
+        "level": "INFO",
+        "message": "Image analysis started"
+      }
+    ],
+    "total_lines": 100
+  }
+}
+```
+
+---
+
+### Documentation
+
+#### GET /api/docs/endpoints
+
+**描述**：获取所有 API 端点列表。
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "endpoints": [
+      {
+        "path": "/tasks",
+        "method": "POST",
+        "description": "Create a new analysis task",
+        "tags": ["Tasks"]
+      },
+      {
+        "path": "/api/forensics/timeline/comprehensive",
+        "method": "GET",
+        "description": "Get comprehensive timeline",
+        "tags": ["Forensics", "Timeline"]
+      }
+    ],
+    "total_endpoints": 85
+  }
+}
+```
+
+---
+
+#### GET /api/docs/database-schema
+
+**描述**：获取所有数据库模式的完整文档。
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "schemas": {
+      "raw": {
+        "description": "Raw file system metadata",
+        "tables": ["files", "partitions"]
+      },
+      "events": {
+        "description": "Timeline events",
+        "tables": ["events", "creation_events", "modification_events"]
+      },
+      "files": {
+        "description": "Classified files by type",
+        "tables": ["documents", "images", "videos", "executables"]
+      }
+    }
+  }
+}
+```
+
+---
+
+#### GET /api/docs/openapi
+
+**描述**：获取 OpenAPI/Swagger JSON 规范。
+
+**响应**：OpenAPI 3.0 JSON 规范
+
+---
+
+#### GET /api/docs/ui
+
+**描述**：获取 Swagger UI HTML 页面。
+
+**响应**：HTML 页面（Swagger UI）
+
+---
+
+### Export
+
+#### GET /api/export/results/{task_id}
+
+**描述**：导出任务结果。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `task_id` | string | ✅ | 任务 ID |
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `format` | string | ❌ | json | 导出格式（json/csv/toon） |
+| `include_llm` | boolean | ❌ | true | 包含 LLM 分析 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "task_id": "task_abc123",
+    "format": "json",
+    "results": [
+      {
+        "name": "document.pdf",
+        "path": "/evidence/document.pdf",
+        "category": "documents",
+        "size": 2048576,
+        "llm_summary": "Legal document"
+      }
+    ],
+    "total_results": 50000
+  }
+}
+```
+
+---
+
+## 错误响应
+
+所有 API 在出错时返回以下格式：
+
+```json
+{
+  "success": false,
+  "message": "错误描述",
+  "error_code": "ERROR_CODE",
+  "timestamp": "Tue Jan 16 10:00:00 2024"
+}
+```
+
+**常见 HTTP 状态码**：
+
+| 状态码 | 说明 |
+|--------|------|
+| 200 | 成功 |
+| 201 | 创建成功 |
+| 202 | 已接受（任务异步执行） |
+| 204 | 无内容（DELETE 成功） |
+| 400 | 请求参数错误 |
+| 404 | 资源不存在 |
+| 500 | 服务器内部错误 |
+| 503 | 服务不可用 |
+
+---
+
+## CORS 支持
+
+所有端点支持 CORS（跨域资源共享）：
+
+**响应头**：
+```
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS
+Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With
+```
+
+---
+
+## 速率限制
+
+当前版本未实施速率限制。建议在生产环境中通过反向代理（如 Nginx）添加速率限制保护。
+
+---
+
+## 认证
+
+当前版本未实施认证机制。建议在生产环境中添加以下认证方式之一：
+
+- **JWT Token**: 基于 JSON Web Token 的认证
+- **API Key**: API 密钥认证
+- **OAuth 2.0**: 标准 OAuth 2.0 授权框架
+
+---
+
+## 相关文档
+
+- **[Python REST API 参考](./Python_REST_API.md)** - Python 服务 API
+- **[快速入门指南](../getting-started/QuickStart.md)** - 服务启动和使用
+- **[HTTPServer 模块文档](../modules/cpp/network/HTTPServer.md)** - C++ HTTP 服务器架构
+- **[TaskManager 模块文档](../modules/cpp/network/TaskManager.md)** - 任务管理器
+
+---
+
+**最后更新**: 2026-03-11
+**维护者**: ymj68520
