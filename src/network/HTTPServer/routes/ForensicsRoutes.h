@@ -70,6 +70,57 @@ private:
      */
     crow::response handle_timeline_user_activity(const crow::request& req);
     
+    // System Events
+    /**
+     * @brief Get system events
+     * @param req The HTTP request
+     * @return JSON response with system events
+     */
+    crow::response handle_system_events(const crow::request& req);
+
+    /**
+     * @brief Get system event summary
+     * @param req The HTTP request
+     * @return JSON response with system event summary
+     */
+    crow::response handle_system_event_summary(const crow::request& req);
+    
+    // Enhanced Timeline Analysis
+    /**
+     * @brief Get timeline by event type
+     * @param req The HTTP request
+     * @return JSON response with events filtered by type
+     */
+    crow::response handle_timeline_by_type(const crow::request& req);
+    
+    /**
+     * @brief Get timeline with time range filter
+     * @param req The HTTP request
+     * @return JSON response with events in time range
+     */
+    crow::response handle_timeline_by_time_range(const crow::request& req);
+    
+    /**
+     * @brief Get timeline for specific files
+     * @param req The HTTP request
+     * @return JSON response with events for specific file
+     */
+    crow::response handle_timeline_by_file(const crow::request& req);
+    
+    /**
+     * @brief Get timeline with full details
+     * @param req The HTTP request
+     * @return JSON response with full timeline
+     */
+    crow::response handle_timeline_full(const crow::request& req);
+    
+    /**
+     * @brief Get event statistics by time period
+     * @param req The HTTP request
+     * @return JSON response with event statistics
+     */
+    crow::response handle_event_statistics_by_period(const crow::request& req);
+    
     // File Analysis
     // File Analysis
     /**
@@ -194,6 +245,28 @@ private:
      * @return JSON response with export status or data
      */
     crow::response handle_export_toon(const crow::request& req);
+    
+    // Event Export Endpoints
+    /**
+     * @brief Export events to JSON format
+     * @param req The HTTP request
+     * @return JSON response with export status
+     */
+    crow::response handle_export_events_json(const crow::request& req);
+    
+    /**
+     * @brief Export events to CSV format
+     * @param req The HTTP request
+     * @return JSON response with export status
+     */
+    crow::response handle_export_events_csv(const crow::request& req);
+    
+    /**
+     * @brief Export events for visualization
+     * @param req The HTTP request
+     * @return JSON response with export status
+     */
+    crow::response handle_export_events_visualization(const crow::request& req);
     
     // Helper
     /**

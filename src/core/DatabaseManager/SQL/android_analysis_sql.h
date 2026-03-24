@@ -132,6 +132,17 @@ const char* CREATE_ALL_TABLES = R"(
         file_size INTEGER DEFAULT 0,
         UNIQUE(package_name, file_path)
     );
+    CREATE TABLE IF NOT EXISTS system_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER,
+        log_level TEXT,
+        tag TEXT,
+        process TEXT,
+        pid INTEGER,
+        message TEXT,
+        log_file TEXT,
+        log_source TEXT
+    );
 )";
 
 // ============================================================================
@@ -180,6 +191,9 @@ const char* INSERT_USAGE_STAT =
 
 const char* INSERT_APP_DATABASE_FILE = 
     "INSERT OR IGNORE INTO app_database_files (package_name, file_name, file_path, file_size) VALUES (?, ?, ?, ?);";
+
+const char* INSERT_SYSTEM_LOG = 
+    "INSERT INTO system_logs (timestamp, log_level, tag, process, pid, message, log_file, log_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
 
 } // namespace AndroidAnalysisSQL
 

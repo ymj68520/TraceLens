@@ -34,6 +34,7 @@ public:
     bool insertChromeHistory(const ChromeHistoryItem& item);
     bool insertInstalledPackage(const InstalledPackageInfo& pkg);
     bool insertUsageStat(const UsageStatRecord& stat);
+    bool insertSystemLog(const SystemLogEntry& log);
 
 private:
     std::string dbPath_;

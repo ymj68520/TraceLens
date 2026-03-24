@@ -151,8 +151,9 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
             FROM events
         )";
         sql += where_clause;
-        // Group by time window, type, and parent directory
-        sql += " GROUP BY (timestamp / 60), event_type, parent_directory";
+        // Group by parent directory first, then time window and event type
+        // This creates separate clusters for different directories
+        sql += " GROUP BY parent_directory, (timestamp / 60), event_type";
     } else {
         sql = R"(
             SELECT
@@ -435,6 +436,96 @@ json SQLiteHelper::get_user_activity_analysis(const std::string& raw_db, const s
     result["user_directory_activity"] = user_dirs;
 
     sqlite3_close(raw);
+    sqlite3_close(events);
+    return result;
+}
+
+json SQLiteHelper::get_system_events(const std::string& events_db, const std::string& start_time, const std::string& end_time, int limit, int offset) {
+    json result;
+    sqlite3* events = open_database(events_db, result);
+    if (!events) return result;
+
+    // Build WHERE clause for filters
+    std::string where_clause = " WHERE event_type LIKE 'SYSTEM_%' OR event_type LIKE 'WINDOWS_%' OR event_type LIKE 'LINUX_%' OR event_type LIKE 'SERVICE_%' OR event_type LIKE 'PROCESS_%' OR event_type LIKE 'NETWORK_%'";
+    
+    if (!start_time.empty()) {
+        where_clause += " AND timestamp >= " + std::to_string(parse_timestamp(start_time));
+    }
+    if (!end_time.empty()) {
+        where_clause += " AND timestamp <= " + std::to_string(parse_timestamp(end_time));
+    }
+
+    // Get total count for pagination metadata
+    std::string count_sql = "SELECT COUNT(*) FROM events" + where_clause;
+    sqlite3_stmt* count_stmt;
+    int64_t total_count = 0;
+    if (sqlite3_prepare_v2(events, count_sql.c_str(), -1, &count_stmt, nullptr) == SQLITE_OK) {
+        if (sqlite3_step(count_stmt) == SQLITE_ROW) {
+            total_count = sqlite3_column_int64(count_stmt, 0);
+        }
+        sqlite3_finalize(count_stmt);
+    }
+
+    // Build main query
+    std::string sql = R"(
+        SELECT
+            timestamp,
+            event_type,
+            description,
+            file_path,
+            inode,
+            file_size,
+            file_type
+        FROM events
+    )";
+    sql += where_clause;
+    sql += " ORDER BY timestamp DESC LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string(offset);
+
+    json events_data = execute_query(events, sql);
+
+    // Add metadata
+    json metadata;
+    metadata["total_system_events"] = total_count;
+    metadata["returned_events"] = events_data.is_array() ? events_data.size() : 0;
+    metadata["limit"] = limit;
+    metadata["offset"] = offset;
+    metadata["has_more"] = (offset + limit) < total_count;
+    metadata["start_time"] = start_time.empty() ? "all" : start_time;
+    metadata["end_time"] = end_time.empty() ? "all" : end_time;
+
+    result["metadata"] = metadata;
+    result["system_events"] = events_data;
+
+    sqlite3_close(events);
+    return result;
+}
+
+json SQLiteHelper::get_system_event_summary(const std::string& events_db) {
+    json result;
+    sqlite3* events = open_database(events_db, result);
+    if (!events) return result;
+
+    // System event type distribution
+    std::string event_type_sql = R"(
+        SELECT
+            event_type,
+            COUNT(*) as count,
+            MIN(timestamp) as first_seen,
+            MAX(timestamp) as last_seen
+        FROM events
+        GROUP BY event_type
+        ORDER BY count DESC
+    )";
+
+    // System event type distribution (all types)
+    result["event_type_distribution"] = execute_query(events, event_type_sql);
+    
+    // These fields are not available in the current events table schema
+    // Returning empty arrays for compatibility
+    result["priority_distribution"] = json::array();
+    result["severity_distribution"] = json::array();
+    result["source_distribution"] = json::array();
+
     sqlite3_close(events);
     return result;
 }
@@ -1107,4 +1198,311 @@ bool SQLiteHelper::is_suspicious_path(const std::string& path) {
     }
 
     return false;
+}
+
+// Enhanced Timeline Analysis Implementation
+json SQLiteHelper::get_timeline_by_type(const std::string& events_db, const std::string& event_type, int limit) {
+    json result;
+    sqlite3* db = open_database(events_db, result);
+    if (!db) return result;
+
+    std::string sql = "SELECT * FROM events WHERE event_type = '" + event_type + "' ORDER BY timestamp DESC LIMIT " + std::to_string(limit);
+    result["events"] = execute_query(db, sql);
+    result["event_type"] = event_type;
+    result["limit"] = limit;
+
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::get_timeline_by_time_range(const std::string& events_db, int64_t start_time, int64_t end_time, int limit) {
+    json result;
+    sqlite3* db = open_database(events_db, result);
+    if (!db) return result;
+
+    std::string sql = "SELECT * FROM events WHERE timestamp >= " + std::to_string(start_time) + 
+                     " AND timestamp <= " + std::to_string(end_time) + 
+                     " ORDER BY timestamp DESC LIMIT " + std::to_string(limit);
+    result["events"] = execute_query(db, sql);
+    result["time_range"] = {
+        {"start", start_time},
+        {"end", end_time}
+    };
+    result["limit"] = limit;
+
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::get_timeline_by_file(const std::string& events_db, const std::string& file_path, int limit) {
+    json result;
+    sqlite3* db = open_database(events_db, result);
+    if (!db) return result;
+
+    std::string sql = "SELECT * FROM events WHERE file_path = '" + file_path + "' ORDER BY timestamp DESC LIMIT " + std::to_string(limit);
+    result["events"] = execute_query(db, sql);
+    result["file_path"] = file_path;
+    result["limit"] = limit;
+
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::get_timeline_full(const std::string& events_db, int limit, int offset) {
+    json result;
+    sqlite3* db = open_database(events_db, result);
+    if (!db) return result;
+
+    std::string sql = "SELECT * FROM events ORDER BY timestamp DESC LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string(offset);
+    result["events"] = execute_query(db, sql);
+    result["limit"] = limit;
+    result["offset"] = offset;
+    result["total"] = get_total_event_count(db);
+
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::get_event_statistics_by_period(const std::string& events_db, const std::string& period) {
+    json result;
+    sqlite3* db = open_database(events_db, result);
+    if (!db) return result;
+
+    std::string date_format;
+    std::string period_label;
+    
+    if (period == "hour") {
+        date_format = "%Y-%m-%d %H:00:00";
+        period_label = "hourly";
+    } else if (period == "day") {
+        date_format = "%Y-%m-%d";
+        period_label = "daily";
+    } else if (period == "week") {
+        date_format = "%Y-%W";
+        period_label = "weekly";
+    } else if (period == "month") {
+        date_format = "%Y-%m";
+        period_label = "monthly";
+    } else {
+        date_format = "%Y-%m-%d";
+        period_label = "daily";
+    }
+
+    std::string sql = R"(
+        SELECT 
+            strftime(')" + date_format + R"(', datetime(timestamp, 'unixepoch')) as time_period,
+            event_type,
+            COUNT(*) as event_count,
+            COUNT(DISTINCT file_path) as unique_files
+        FROM events
+        GROUP BY time_period, event_type
+        ORDER BY time_period DESC, event_type
+    )";
+
+    result["statistics"] = execute_query(db, sql);
+    result["period"] = period_label;
+
+    sqlite3_close(db);
+    return result;
+}
+
+int SQLiteHelper::get_total_event_count(sqlite3* db) {
+    sqlite3_stmt* stmt;
+    int count = 0;
+    
+    if (sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM events", -1, &stmt, nullptr) == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            count = sqlite3_column_int(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+    
+    return count;
+}
+
+// Event Export Implementation
+json SQLiteHelper::export_events_to_json(const std::string& events_db, const std::string& output_file, const std::string& query) {
+    json result;
+    sqlite3* db = open_database(events_db, result);
+    if (!db) return result;
+
+    std::string sql = query.empty() ? "SELECT * FROM events ORDER BY timestamp DESC" : query;
+    json events = execute_query(db, sql);
+
+    try {
+        std::ofstream file(output_file);
+        if (!file.is_open()) {
+            result["error"] = "Cannot open output file: " + output_file;
+            sqlite3_close(db);
+            return result;
+        }
+
+        file << events.dump(4);
+        file.close();
+
+        result["success"] = true;
+        result["output_file"] = output_file;
+        result["events_count"] = events.size();
+        result["format"] = "json";
+    } catch (const std::exception& e) {
+        result["error"] = "Export failed: " + std::string(e.what());
+    }
+
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::export_events_to_csv(const std::string& events_db, const std::string& output_file, const std::string& query) {
+    json result;
+    sqlite3* db = open_database(events_db, result);
+    if (!db) return result;
+
+    std::string sql = query.empty() ? "SELECT * FROM events ORDER BY timestamp DESC" : query;
+
+    try {
+        sqlite3_stmt* stmt;
+        int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+        if (rc != SQLITE_OK) {
+            result["error"] = "Query preparation failed";
+            sqlite3_close(db);
+            return result;
+        }
+
+        std::ofstream file(output_file);
+        if (!file.is_open()) {
+            result["error"] = "Cannot open output file: " + output_file;
+            sqlite3_finalize(stmt);
+            sqlite3_close(db);
+            return result;
+        }
+
+        int event_count = 0;
+
+        // Write CSV header
+        int column_count = sqlite3_column_count(stmt);
+        for (int i = 0; i < column_count; i++) {
+            if (i > 0) file << ",";
+            file << sqlite3_column_name(stmt, i);
+        }
+        file << "\n";
+
+        // Write data rows
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            for (int i = 0; i < column_count; i++) {
+                if (i > 0) file << ",";
+                
+                const char* value = reinterpret_cast<const char*>(sqlite3_column_text(stmt, i));
+                if (value) {
+                    file << "\"" << value << "\"";
+                } else {
+                    file << "";
+                }
+            }
+            file << "\n";
+            event_count++;
+        }
+
+        file.close();
+        sqlite3_finalize(stmt);
+
+        result["success"] = true;
+        result["output_file"] = output_file;
+        result["events_count"] = event_count;
+        result["format"] = "csv";
+    } catch (const std::exception& e) {
+        result["error"] = "Export failed: " + std::string(e.what());
+    }
+
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::export_events_for_visualization(const std::string& events_db, const std::string& output_file) {
+    json result;
+    sqlite3* db = open_database(events_db, result);
+    if (!db) return result;
+
+    std::string sql = R"(
+        SELECT 
+            timestamp,
+            event_type,
+            file_path,
+            file_size,
+            description,
+            event_source
+        FROM events
+        ORDER BY timestamp DESC
+        LIMIT 10000
+    )";
+
+    try {
+        sqlite3_stmt* stmt;
+        int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+        if (rc != SQLITE_OK) {
+            result["error"] = "Query preparation failed";
+            sqlite3_close(db);
+            return result;
+        }
+
+        std::ofstream file(output_file);
+        if (!file.is_open()) {
+            result["error"] = "Cannot open output file: " + output_file;
+            sqlite3_finalize(stmt);
+            sqlite3_close(db);
+            return result;
+        }
+
+        file << "[\n";
+
+        int event_count = 0;
+        bool first = true;
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            if (!first) {
+                file << ",\n";
+            }
+            first = false;
+
+            file << "  {\n";
+
+            for (int i = 0; i < sqlite3_column_count(stmt); i++) {
+                const char* name = sqlite3_column_name(stmt, i);
+                const char* value = reinterpret_cast<const char*>(sqlite3_column_text(stmt, i));
+                
+                file << "    \"" << name << "\": ";
+                if (value) {
+                    if (i == 0) { // timestamp
+                        file << sqlite3_column_int64(stmt, i);
+                    } else if (i == 3) { // file_size (number)
+                        file << sqlite3_column_int64(stmt, i);
+                    } else {
+                        file << "\"" << value << "\"";
+                    }
+                } else {
+                    file << "null";
+                }
+
+                if (i < sqlite3_column_count(stmt) - 1) {
+                    file << ",";
+                }
+                file << "\n";
+            }
+
+            file << "  }";
+            event_count++;
+        }
+
+        file << "\n]\n";
+        file.close();
+        sqlite3_finalize(stmt);
+
+        result["success"] = true;
+        result["output_file"] = output_file;
+        result["events_count"] = event_count;
+        result["format"] = "visualization_json";
+    } catch (const std::exception& e) {
+        result["error"] = "Export failed: " + std::string(e.what());
+    }
+
+    sqlite3_close(db);
+    return result;
 }

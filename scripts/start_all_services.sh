@@ -164,14 +164,10 @@ if [ "$FORCE_INSTALL" = "true" ] || [ ! -f "$VENV_DIR/.deps_installed" ]; then
 fi
 
 # Start Python service with virtual environment
-# Run the module directly to avoid RuntimeWarning
-PYTHONPATH="$PROJECT_ROOT/python_service" \
-    $PYTHON_EXEC -c "
-import sys
-sys.path.insert(0, '$PROJECT_ROOT/python_service')
-from httpserver.main import run_server
-run_server()
-" > "$LOG_DIR/python_service.log" 2>&1 &
+# Run as module directly to avoid RuntimeWarning
+cd "$PROJECT_ROOT/python_service"
+PYTHONPATH="$PROJECT_ROOT/python_service:$PYTHONPATH" \
+    $PYTHON_EXEC -m httpserver.main > "$LOG_DIR/python_service.log" 2>&1 &
 PYTHON_PID=$!
 echo -e "${GREEN}✓ Python service started${NC}  PID: ${BOLD}$PYTHON_PID${NC} (Logging to $LOG_DIR/python_service.log)"
 

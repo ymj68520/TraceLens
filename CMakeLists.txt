@@ -98,6 +98,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/core/DatabaseManager
   ${CMAKE_SOURCE_DIR}/src/core/AuditLog
   ${CMAKE_SOURCE_DIR}/src/core/PathManager
+  ${CMAKE_SOURCE_DIR}/src/core/DatabaseManager/EventCorrelationEngine
   # Analyzer modules
   ${CMAKE_SOURCE_DIR}/src/analyzers
   ${CMAKE_SOURCE_DIR}/src/analyzers/FileCarving
@@ -185,6 +186,7 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/AndroidSystemParsers.cpp
     src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp
     src/analyzers/AndroidAnalyzer/BuildPropAnalyzer.cpp
+    src/analyzers/AndroidAnalyzer/AndroidLogParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Core/WindowsFilesAnalyzerCore.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsRegistryParser.cpp
@@ -209,6 +211,8 @@ set(LIB_SOURCES
     src/core/FullTextSearch/TextExtractor.cpp
     src/core/TOONExporter/TOONExporter.cpp
     src/analyzers/FileCarving/FileCarver.cpp
+    # EventCorrelationEngine module
+    src/core/EventCorrelationEngine/EventCorrelationEngine.cpp
     # LLMIntegration module
     src/integration/LLMIntegration/LLMClient.cpp
     src/integration/LLMIntegration/ModelRouter.cpp

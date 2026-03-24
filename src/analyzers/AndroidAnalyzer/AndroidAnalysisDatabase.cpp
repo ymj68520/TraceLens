@@ -219,6 +219,25 @@ bool AndroidAnalysisDatabase::insertUsageStat(const UsageStatRecord& stat) {
     return success;
 }
 
+bool AndroidAnalysisDatabase::insertSystemLog(const SystemLogEntry& log) {
+    const char* sql = "INSERT INTO system_logs (timestamp, log_level, tag, process, pid, message, log_file, log_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_int64(stmt, 1, log.timestamp);
+    sqlite3_bind_text(stmt, 2, log.logLevel.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, log.tag.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, log.process.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 5, log.pid);
+    sqlite3_bind_text(stmt, 6, log.message.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 7, log.logFile.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 8, log.logSource.c_str(), -1, SQLITE_TRANSIENT);
+
+    bool success = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return success;
+}
+
 bool AndroidAnalysisDatabase::executeSQL(const std::string& sql) {
     char* errMsg = nullptr;
     int rc = sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &errMsg);

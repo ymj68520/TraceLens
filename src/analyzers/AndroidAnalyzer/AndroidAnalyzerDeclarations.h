@@ -68,6 +68,11 @@ public:
     
     // APK Analysis
     ApkSignatureInfo analyzeApk(const std::string& apkPath);
+    
+    // System Log Analysis
+    void analyzeSystemLogs();
+    std::vector<SystemLogEntry> parseSystemLogFile(const std::string& filePath, const std::string& originalPath);
+    std::string getLogTypeFromPath(const std::string& path);
 
 private:
     void scanUserData(const std::string& dataPath);

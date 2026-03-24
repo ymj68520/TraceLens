@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
+#include <fstream>
 
 class SQLiteHelper {
 public:
@@ -72,6 +73,24 @@ public:
      * @return JSON object with user activity analysis
      */
     static nlohmann::json get_user_activity_analysis(const std::string& raw_db, const std::string& events_db);
+
+    /**
+     * @brief Get system events
+     * @param events_db Path to events database
+     * @param start_time Optional start timestamp filter
+     * @param end_time Optional end timestamp filter
+     * @param limit Maximum number of records
+     * @param offset Number of records to skip
+     * @return JSON object with system events
+     */
+    static nlohmann::json get_system_events(const std::string& events_db, const std::string& start_time = "", const std::string& end_time = "", int limit = 1000, int offset = 0);
+
+    /**
+     * @brief Get system event summary
+     * @param events_db Path to events database
+     * @return JSON object with system event summary
+     */
+    static nlohmann::json get_system_event_summary(const std::string& events_db);
 
     // File Analysis Endpoints
     // File Analysis Endpoints
@@ -182,6 +201,79 @@ public:
      */
     static nlohmann::json get_deleted_files_analysis(const std::string& raw_db);
 
+    // Enhanced Timeline Analysis Endpoints
+    /**
+     * @brief Get timeline by event type
+     * @param events_db Path to events database
+     * @param event_type Event type filter (CREATED, MODIFIED, ACCESSED, CHANGED, DELETED)
+     * @param limit Maximum number of events to return
+     * @return JSON array of events filtered by type
+     */
+    static nlohmann::json get_timeline_by_type(const std::string& events_db, const std::string& event_type, int limit = 100);
+
+    /**
+     * @brief Get timeline with time range filter
+     * @param events_db Path to events database
+     * @param start_time Start timestamp
+     * @param end_time End timestamp
+     * @param limit Maximum number of events to return
+     * @return JSON array of events in time range
+     */
+    static nlohmann::json get_timeline_by_time_range(const std::string& events_db, int64_t start_time, int64_t end_time, int limit = 100);
+
+    /**
+     * @brief Get timeline for specific files
+     * @param events_db Path to events database
+     * @param file_path File path to filter
+     * @param limit Maximum number of events to return
+     * @return JSON array of events for specific file
+     */
+    static nlohmann::json get_timeline_by_file(const std::string& events_db, const std::string& file_path, int limit = 100);
+
+    /**
+     * @brief Get timeline with full details
+     * @param events_db Path to events database
+     * @param limit Maximum number of events to return
+     * @param offset Offset for pagination
+     * @return JSON array of events with full details
+     */
+    static nlohmann::json get_timeline_full(const std::string& events_db, int limit = 100, int offset = 0);
+
+    /**
+     * @brief Get event statistics by time period
+     * @param events_db Path to events database
+     * @param period Period type (hour, day, week, month)
+     * @return JSON object with event statistics
+     */
+    static nlohmann::json get_event_statistics_by_period(const std::string& events_db, const std::string& period = "day");
+
+    // Event Export Endpoints
+    /**
+     * @brief Export events to JSON format
+     * @param events_db Path to events database
+     * @param output_file Output file path
+     * @param query Optional SQL query for filtering
+     * @return JSON object with export status
+     */
+    static nlohmann::json export_events_to_json(const std::string& events_db, const std::string& output_file, const std::string& query = "");
+
+    /**
+     * @brief Export events to CSV format
+     * @param events_db Path to events database
+     * @param output_file Output file path
+     * @param query Optional SQL query for filtering
+     * @return JSON object with export status
+     */
+    static nlohmann::json export_events_to_csv(const std::string& events_db, const std::string& output_file, const std::string& query = "");
+
+    /**
+     * @brief Export events for visualization (timeline format)
+     * @param events_db Path to events database
+     * @param output_file Output file path
+     * @return JSON object with export status
+     */
+    static nlohmann::json export_events_for_visualization(const std::string& events_db, const std::string& output_file);
+
 private:
     // Helper methods
     static sqlite3* open_database(const std::string& db_path, nlohmann::json& error_result);
@@ -191,4 +283,5 @@ private:
     static int64_t parse_timestamp(const std::string& time_str);
     static bool is_suspicious_extension(const std::string& ext);
     static bool is_suspicious_path(const std::string& path);
+    static int get_total_event_count(sqlite3* db);
 };

@@ -160,3 +160,14 @@ struct BuildPropAnalysisResult {
     std::vector<BuildPropEntry> unrecognizedEntries;
     std::vector<BuildPropEntry> securityRelevantEntries;
 };
+
+struct SystemLogEntry {
+    int64_t timestamp;
+    std::string logLevel;
+    std::string tag;
+    std::string process;
+    int pid;
+    std::string message;
+    std::string logFile;
+    std::string logSource;
+};

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-// Use relative path in production, or configured URL in development
+// Use relative path for Vite proxy
 // C++ 后端 (端口 8080)
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 // Python 服务 (端口 8090)

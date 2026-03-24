@@ -598,6 +598,9 @@ int main(int argc, char* argv[]) {
             auto eventExtractor = std::make_unique<EventExtractor>(rawDbPath, eventDbPath);
             if (eventExtractor->extractEvents()) {
                 // Import optional artifacts
+                if (cmdArgs.androidAnalyze && fs::exists(outPrefix + baseName + "_android.db")) {
+                    eventExtractor->importAndroidArtifacts(outPrefix + baseName + "_android.db");
+                }
                 if (cmdArgs.windowsAnalyze && fs::exists(outPrefix + baseName + "_windows.db")) {
                     eventExtractor->importWindowsArtifacts(outPrefix + baseName + "_windows.db");
                 }

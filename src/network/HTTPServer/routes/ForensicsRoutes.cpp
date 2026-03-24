@@ -68,6 +68,92 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_timeline_user_activity(req);
     });
 
+    // System Event Routes
+    CROW_ROUTE(app, "/api/forensics/system/events").methods("GET"_method)([this](const crow::request& req) {
+        return handle_system_events(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/system/events", "GET", 
+        "Get system events", 
+        "Retrieve system events with filtering and pagination.",
+        {"Forensics", "System Events"},
+        {{"task_id", "query", "Task ID", true}, {"start_time", "query", "Start timestamp (ISO)", false}, {"end_time", "query", "End timestamp (ISO)", false}, {"limit", "query", "Number of events to return", false, "integer"}, {"offset", "query", "Number of events to skip", false, "integer"}},
+        {{200, "System events retrieved"}}
+    );
+
+    CROW_ROUTE(app, "/api/forensics/system/summary").methods("GET"_method)([this](const crow::request& req) {
+        return handle_system_event_summary(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/system/summary", "GET", 
+        "Get system event summary", 
+        "Retrieve summary statistics for system events.",
+        {"Forensics", "System Events"},
+        {{"task_id", "query", "Task ID", true}},
+        {{200, "System event summary retrieved"}}
+    );
+
+    // Enhanced Timeline Analysis Routes
+    CROW_ROUTE(app, "/api/forensics/timeline/by-type").methods("GET"_method)([this](const crow::request& req) {
+        return handle_timeline_by_type(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/timeline/by-type", "GET", 
+        "Get timeline by event type", 
+        "Retrieve timeline events filtered by event type (CREATED, MODIFIED, ACCESSED, CHANGED, DELETED).",
+        {"Forensics", "Timeline"},
+        {{"task_id", "query", "Task ID", true}, {"event_type", "query", "Event type filter", false}, {"limit", "query", "Number of events to return", false, "integer"}},
+        {{200, "Timeline events by type retrieved"}}
+    );
+
+    CROW_ROUTE(app, "/api/forensics/timeline/by-time-range").methods("GET"_method)([this](const crow::request& req) {
+        return handle_timeline_by_time_range(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/timeline/by-time-range", "GET", 
+        "Get timeline by time range", 
+        "Retrieve timeline events within a specific time range.",
+        {"Forensics", "Timeline"},
+        {{"task_id", "query", "Task ID", true}, {"start_time", "query", "Start timestamp", false}, {"end_time", "query", "End timestamp", false}, {"limit", "query", "Number of events to return", false, "integer"}},
+        {{200, "Timeline events in time range retrieved"}}
+    );
+
+    CROW_ROUTE(app, "/api/forensics/timeline/by-file").methods("GET"_method)([this](const crow::request& req) {
+        return handle_timeline_by_file(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/timeline/by-file", "GET", 
+        "Get timeline by file", 
+        "Retrieve timeline events for a specific file.",
+        {"Forensics", "Timeline"},
+        {{"task_id", "query", "Task ID", true}, {"file_path", "query", "File path to filter", false}, {"limit", "query", "Number of events to return", false, "integer"}},
+        {{200, "Timeline events for file retrieved"}}
+    );
+
+    CROW_ROUTE(app, "/api/forensics/timeline/full").methods("GET"_method)([this](const crow::request& req) {
+        return handle_timeline_full(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/timeline/full", "GET", 
+        "Get full timeline", 
+        "Retrieve full timeline with pagination support.",
+        {"Forensics", "Timeline"},
+        {{"task_id", "query", "Task ID", true}, {"limit", "query", "Number of events to return", false, "integer"}, {"offset", "query", "Number of events to skip", false, "integer"}},
+        {{200, "Full timeline retrieved"}}
+    );
+
+    CROW_ROUTE(app, "/api/forensics/timeline/statistics-by-period").methods("GET"_method)([this](const crow::request& req) {
+        return handle_event_statistics_by_period(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/timeline/statistics-by-period", "GET", 
+        "Get event statistics by period", 
+        "Retrieve event statistics grouped by time period (hour, day, week, month).",
+        {"Forensics", "Timeline"},
+        {{"task_id", "query", "Task ID", true}, {"period", "query", "Time period (hour/day/week/month)", false}},
+        {{200, "Event statistics by period retrieved"}}
+    );
+
     // File Analysis Routes
     CROW_ROUTE(app, "/api/forensics/files/largest").methods("GET"_method)([this](const crow::request& req) {
         return handle_files_largest(req);
@@ -173,6 +259,42 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
     CROW_ROUTE(app, "/api/forensics/export/toon").methods("GET"_method)([this](const crow::request& req) {
         return handle_export_toon(req);
     });
+
+    CROW_ROUTE(app, "/api/forensics/export/events/json").methods("GET"_method)([this](const crow::request& req) {
+        return handle_export_events_json(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/export/events/json", "GET", 
+        "Export events to JSON", 
+        "Export timeline events to JSON format.",
+        {"Forensics", "Export"},
+        {{"task_id", "query", "Task ID", true}, {"query", "query", "Optional SQL query for filtering", false}},
+        {{200, "Export completed"}}
+    );
+
+    CROW_ROUTE(app, "/api/forensics/export/events/csv").methods("GET"_method)([this](const crow::request& req) {
+        return handle_export_events_csv(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/export/events/csv", "GET", 
+        "Export events to CSV", 
+        "Export timeline events to CSV format.",
+        {"Forensics", "Export"},
+        {{"task_id", "query", "Task ID", true}, {"query", "query", "Optional SQL query for filtering", false}},
+        {{200, "Export completed"}}
+    );
+
+    CROW_ROUTE(app, "/api/forensics/export/events/visualization").methods("GET"_method)([this](const crow::request& req) {
+        return handle_export_events_visualization(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/export/events/visualization", "GET", 
+        "Export events for visualization", 
+        "Export timeline events in a format optimized for visualization.",
+        {"Forensics", "Export"},
+        {{"task_id", "query", "Task ID", true}},
+        {{200, "Export completed"}}
+    );
 }
 
 std::string ForensicsRoutes::get_database_path(const std::string& task_id, const std::string& db_type) {
@@ -377,6 +499,227 @@ crow::response ForensicsRoutes::handle_timeline_user_activity(const crow::reques
         std::string raw_db = get_database_path(task_id, "raw");
         std::string events_db = get_database_path(task_id, "events");
         json result = SQLiteHelper::get_user_activity_analysis(raw_db, events_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+// System Event Endpoints
+crow::response ForensicsRoutes::handle_system_events(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+    std::string start_time = params.get("start_time") ? params.get("start_time") : "";
+    std::string end_time = params.get("end_time") ? params.get("end_time") : "";
+    std::string limit_str = params.get("limit") ? params.get("limit") : "1000";
+    std::string offset_str = params.get("offset") ? params.get("offset") : "0";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        int limit = std::stoi(limit_str);
+        int offset = std::stoi(offset_str);
+        json result = SQLiteHelper::get_system_events(events_db, start_time, end_time, limit, offset);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_system_event_summary(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id");
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_system_event_summary(events_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+// Enhanced Timeline Analysis Endpoints
+crow::response ForensicsRoutes::handle_timeline_by_type(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id");
+    std::string event_type = params.get("event_type") ? params.get("event_type") : "CREATED";
+    std::string limit_str = params.get("limit") ? params.get("limit") : "100";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        int limit = std::stoi(limit_str);
+        json result = SQLiteHelper::get_timeline_by_type(events_db, event_type, limit);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_timeline_by_time_range(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id");
+    std::string start_time_str = params.get("start_time") ? params.get("start_time") : "0";
+    std::string end_time_str = params.get("end_time") ? params.get("end_time") : "9999999999";
+    std::string limit_str = params.get("limit") ? params.get("limit") : "100";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        int64_t start_time = std::stoll(start_time_str);
+        int64_t end_time = std::stoll(end_time_str);
+        int limit = std::stoi(limit_str);
+        json result = SQLiteHelper::get_timeline_by_time_range(events_db, start_time, end_time, limit);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_timeline_by_file(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id");
+    std::string file_path = params.get("file_path") ? params.get("file_path") : "";
+    std::string limit_str = params.get("limit") ? params.get("limit") : "100";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        int limit = std::stoi(limit_str);
+        json result = SQLiteHelper::get_timeline_by_file(events_db, file_path, limit);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_timeline_full(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id");
+    std::string limit_str = params.get("limit") ? params.get("limit") : "100";
+    std::string offset_str = params.get("offset") ? params.get("offset") : "0";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        int limit = std::stoi(limit_str);
+        int offset = std::stoi(offset_str);
+        json result = SQLiteHelper::get_timeline_full(events_db, limit, offset);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_event_statistics_by_period(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id");
+    std::string period = params.get("period") ? params.get("period") : "day";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_event_statistics_by_period(events_db, period);
         res.set_header("Content-Type", "application/json");
         res.write(result.dump());
     } catch (const std::exception& e) {
@@ -1116,6 +1459,95 @@ crow::response ForensicsRoutes::handle_export_toon(const crow::request& req) {
         res.write(error.dump());
     }
     
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_export_events_json(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+    std::string query = params.get("query") ? params.get("query") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        std::string output_file = task_id + "_events.json";
+        json result = SQLiteHelper::export_events_to_json(events_db, output_file, query);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_export_events_csv(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+    std::string query = params.get("query") ? params.get("query") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        std::string output_file = task_id + "_events.csv";
+        json result = SQLiteHelper::export_events_to_csv(events_db, output_file, query);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_export_events_visualization(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        std::string output_file = task_id + "_events_viz.json";
+        json result = SQLiteHelper::export_events_for_visualization(events_db, output_file);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
     return res;
 }
 

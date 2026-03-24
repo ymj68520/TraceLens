@@ -73,6 +73,9 @@ void AndroidAnalyzer::analyzeAndroidData() {
     // Analyze Chrome History
     extractAndParseDB("data/data/com.android.chrome/app_chrome/Default/History", "parseChromeHistory");
 
+    // Analyze System Logs
+    analyzeSystemLogs();
+
     std::cout << "Android data analysis completed." << std::endl;
     AuditLog::instance().log("SYSTEM", "ANDROID_ANALYSIS_COMPLETE", "Android data analysis completed for: " + imagePath_);
 }

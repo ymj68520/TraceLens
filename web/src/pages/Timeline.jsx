@@ -90,13 +90,17 @@ const Timeline = () => {
         cluster: isClustered
       };
 
+      console.log('Fetching timeline with params:', params);
+
       if (selectedDate) {
         const start = Math.floor(new Date(selectedDate).getTime() / 1000);
         params.start_time = start.toString();
         params.end_time = (start + 86400).toString();
       }
 
+      console.log('Final params:', params);
       const data = await getComprehensiveTimeline(taskId, params);
+      console.log('Received timeline data:', data);
       setTimelineData(data);
       if (virtuosoRef.current) virtuosoRef.current.scrollToIndex({ index: 0 });
     } catch (err) {
@@ -175,7 +179,10 @@ const Timeline = () => {
     updateParams({ type: '', date: '', page: 1, cluster: 'true' });
   };
 
-  const events = useMemo(() => timelineData?.timeline || [], [timelineData]);
+  const events = useMemo(() => {
+    console.log('Timeline data:', timelineData);
+    return timelineData?.timeline || [];
+  }, [timelineData]);
   const metadata = timelineData?.metadata || {};
   const totalCount = metadata.total_events || 0;
   const totalPages = Math.ceil(totalCount / pageSize);

@@ -394,3 +394,51 @@ target_include_directories(
           /usr/include/mysql)
 
 target_link_libraries(test_mysql_daemon pthread mysqlclient)
+
+# Event Correlation Engine Tests
+add_executable(
+  test_event_correlation_engine
+  UnitTest/test_event_correlation_engine.cpp
+  ../src/core/EventCorrelationEngine/EventCorrelationEngine.cpp
+  ../src/core/AuditLog/AuditLog.cpp)
+
+target_include_directories(
+  test_event_correlation_engine
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/core
+          ${CMAKE_SOURCE_DIR}/src/core/EventCorrelationEngine
+          ${CMAKE_SOURCE_DIR}/src/core/AuditLog)
+
+target_link_libraries(test_event_correlation_engine ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} sqlite3 pthread cpp_dotenv nlohmann_json::nlohmann_json)
+
+add_test(NAME EventCorrelationEngineTests COMMAND test_event_correlation_engine)
+
+# Event Timeline Tests
+add_executable(
+  test_event_timeline
+  UnitTest/test_event_timeline_gtest.cpp
+  ../src/core/DatabaseManager/EventExtractor/EventExtractor.cpp
+  ../src/core/DatabaseManager/DatabaseManager.cpp
+  ../src/core/AuditLog/AuditLog.cpp
+  ../src/network/HTTPServer/SQLiteHelper.cpp
+  ../src/core/EventCorrelationEngine/EventCorrelationEngine.cpp
+  ../src/core/ConfigManager/ConfigManager.cpp
+  ../src/core/PathManager/PathManager.cpp)
+
+target_include_directories(
+  test_event_timeline
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/core
+          ${CMAKE_SOURCE_DIR}/src/core/DatabaseManager
+          ${CMAKE_SOURCE_DIR}/src/core/AuditLog
+          ${CMAKE_SOURCE_DIR}/src/network/HTTPServer
+          ${CMAKE_SOURCE_DIR}/src/core/EventCorrelationEngine
+          ${CMAKE_SOURCE_DIR}/src/core/ConfigManager
+          ${CMAKE_SOURCE_DIR}/src/core/PathManager)
+
+target_link_libraries(test_event_timeline ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} sqlite3 pthread cpp_dotenv nlohmann_json::nlohmann_json)
+
+add_test(NAME EventTimelineTests COMMAND test_event_timeline)
+
