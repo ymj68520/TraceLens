@@ -1,5 +1,6 @@
 #include "TaskManager.h"
 #include "LLMPythonProxy.h"
+#include "EventClusterAnalyzer.h"
 #include <fstream>
 #include "PathManager/PathManager.h"
 
@@ -808,7 +809,34 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 }
             }
 
-            // 5. Android Analysis (Optional)
+            // 5. Event Cluster Analysis (Optional) - Similar to LLM analysis for files
+            if (task.llm_analyze) {
+                if (task.cancellation_requested) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+                update_progress(task_id, TaskPhase::LLM_ANALYSIS, 90, "Starting event cluster analysis...");
+                
+                forensics::EventClusterAnalyzer clusterAnalyzer;
+                if (clusterAnalyzer.initialize()) {
+                    int analyzedCount = 0;
+                    
+                    if (task.llm_mode == "full") {
+                        // Full mode: analyze all event clusters
+                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 92, "Full mode: Analyzing all event clusters...");
+                        auto allClusters = clusterAnalyzer.getAllEventClusters(eventDbPath);
+                        analyzedCount = clusterAnalyzer.analyzeEventClusters(eventDbPath, allClusters);
+                    } else {
+                        // Smart mode: LLM selects important event clusters first
+                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 92, "Smart mode: Selecting important event clusters...");
+                        analyzedCount = clusterAnalyzer.analyzeSmartEventClusters(eventDbPath, 100); // 分析最多100个重要事件簇
+                    }
+                    
+                    update_progress(task_id, TaskPhase::LLM_ANALYSIS, 95, 
+                        "Event cluster analysis completed: " + std::to_string(analyzedCount) + " clusters analyzed");
+                } else {
+                    std::cerr << "Warning: Failed to initialize event cluster analyzer" << std::endl;
+                }
+            }
+
+            // 6. Android Analysis (Optional)
             if (task.android_analyze) {
                 if (task.cancellation_requested) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
                 update_progress(task_id, TaskPhase::ANDROID_ANALYSIS, 10, "Analyzing Android artifacts...");

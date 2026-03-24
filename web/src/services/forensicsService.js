@@ -117,3 +117,39 @@ export const getDeletedFilesAnalysis = async (taskId) => {
     params: { task_id: taskId },
   });
 };
+
+// Event Cluster AI Analysis
+export const analyzeEventCluster = async (taskId, cluster) => {
+  return await api.post('/api/forensics/timeline/clusters/analyze', {
+    task_id: taskId,
+    time_window: Math.floor(cluster.timestamp / 60),
+    event_type: cluster.event_type,
+    parent_directory: cluster.parent_directory || ''
+  });
+};
+
+export const analyzeEventClustersBatch = async (taskId, clusters) => {
+  return await api.post('/api/forensics/timeline/clusters/batch-analyze', {
+    task_id: taskId,
+    clusters: clusters.map(cluster => ({
+      time_window: Math.floor(cluster.timestamp / 60),
+      event_type: cluster.event_type,
+      parent_directory: cluster.parent_directory || ''
+    }))
+  });
+};
+
+export const reanalyzeEventCluster = async (taskId, cluster) => {
+  return await api.post('/api/forensics/timeline/clusters/reanalyze', {
+    task_id: taskId,
+    time_window: Math.floor(cluster.timestamp / 60),
+    event_type: cluster.event_type,
+    parent_directory: cluster.parent_directory || ''
+  });
+};
+
+export const getAnalyzedEventClusters = async (taskId) => {
+  return await api.get('/api/forensics/timeline/clusters/analyzed', {
+    params: { task_id: taskId }
+  });
+};

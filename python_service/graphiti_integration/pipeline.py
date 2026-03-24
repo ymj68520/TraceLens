@@ -549,10 +549,14 @@ class MultiSourcePipeline:
     async def _process_events(
         self, reader, transformer, group_id, dry_run, progress_callback
     ) -> PipelineResult:
-        """Process events database."""
+        """Process events database, including event clusters with AI analysis."""
         res = PipelineResult(started_at=datetime.now())
-        res.total_files = reader.count_events()
-
+        
+        # Process regular events
+        logger.info("Processing regular events...")
+        event_count = reader.count_events()
+        res.total_files += event_count
+        
         for batch in reader.iter_events_batched(batch_size=self.config.batch_size):
             episodes, errors = transformer.transform_events_batch(batch)
             res.transformed += len(episodes)
@@ -564,6 +568,28 @@ class MultiSourcePipeline:
                 res.failed += ingestion_result.failed
             elif dry_run:
                 res.ingested += len(episodes)
+        
+        # Process event clusters with AI analysis
+        logger.info("Processing event clusters with AI analysis...")
+        cluster_stats = reader.get_event_cluster_stats()
+        cluster_count = cluster_stats.get("analyzed_clusters", 0)
+        res.total_files += cluster_count
+        
+        if cluster_count > 0:
+            for batch in reader.iter_event_clusters_batched(
+                batch_size=self.config.batch_size,
+                analyzed_only=True
+            ):
+                episodes, errors = transformer.transform_event_clusters_batch(batch)
+                res.transformed += len(episodes)
+                res.failed += len(errors)
+
+                if not dry_run and episodes and self.ingestor:
+                    ingestion_result = await self.ingestor.batch_ingest(episodes, group_id=group_id)
+                    res.ingested += ingestion_result.successful
+                    res.failed += ingestion_result.failed
+                elif dry_run:
+                    res.ingested += len(episodes)
 
         res.completed_at = datetime.now()
         return res

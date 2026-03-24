@@ -32,6 +32,51 @@ class TimelineEvent:
             return datetime.fromtimestamp(self.timestamp)
         return None
 
+@dataclass
+class EventCluster:
+    """Event cluster with AI analysis from the events database."""
+    id: int
+    timestamp: int
+    event_type: str  # CREATED, MODIFIED, ACCESSED, CHANGED, DELETED
+    file_path: str
+    inode: int = 0
+    description: str = ""
+    file_size: int = 0
+    file_type: str = ""
+    # LLM analysis fields
+    llm_summary: Optional[str] = None
+    llm_description: Optional[str] = None
+    llm_keywords: Optional[str] = None
+    llm_analyzed_at: Optional[int] = None
+    llm_model_used: Optional[str] = None
+    llm_is_relevant: bool = False
+
+    @property
+    def timestamp_datetime(self) -> Optional[datetime]:
+        if self.timestamp and self.timestamp > 0:
+            return datetime.fromtimestamp(self.timestamp)
+        return None
+
+    @property
+    def has_llm_analysis(self) -> bool:
+        """Check if this event cluster has LLM analysis."""
+        return self.llm_analyzed_at is not None and self.llm_analyzed_at > 0
+
+    @property
+    def keywords_list(self) -> list[str]:
+        """Parse keywords string into list."""
+        if not self.llm_keywords:
+            return []
+        # Keywords may be comma-separated or JSON array
+        keywords = self.llm_keywords.strip()
+        if keywords.startswith("["):
+            import json
+            try:
+                return json.loads(keywords)
+            except json.JSONDecodeError:
+                pass
+        return [k.strip() for k in keywords.split(",") if k.strip()]
+
 
 # =============================================================================
 # Raw Database (_raw.db) - additional records beyond FileRecord

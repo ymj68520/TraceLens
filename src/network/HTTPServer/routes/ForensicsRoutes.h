@@ -268,6 +268,35 @@ private:
      */
     crow::response handle_export_events_visualization(const crow::request& req);
     
+    // Event Cluster AI Analysis
+    /**
+     * @brief Analyze event cluster with AI
+     * @param req The HTTP request
+     * @return JSON response with analysis result
+     */
+    crow::response handle_analyze_event_cluster(const crow::request& req);
+
+    /**
+     * @brief Batch analyze event clusters with AI
+     * @param req The HTTP request
+     * @return JSON response with batch analysis result
+     */
+    crow::response handle_batch_analyze_event_clusters(const crow::request& req);
+
+    /**
+     * @brief Reanalyze event cluster with AI
+     * @param req The HTTP request
+     * @return JSON response with reanalysis result
+     */
+    crow::response handle_reanalyze_event_cluster(const crow::request& req);
+
+    /**
+     * @brief Get analyzed event clusters
+     * @param req The HTTP request
+     * @return JSON response with analyzed clusters
+     */
+    crow::response handle_get_analyzed_clusters(const crow::request& req);
+    
     // Helper
     /**
      * @brief Helper to construct database file path

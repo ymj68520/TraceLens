@@ -8,9 +8,9 @@ import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
 import Button from '../components/common/Button';
 import { useTranslation } from '../hooks/useTranslation';
-import { getComprehensiveTimeline, getTimelineDistribution, getTimelineDetails } from '../services/forensicsService';
+import { getComprehensiveTimeline, getTimelineDistribution, getTimelineDetails, analyzeEventCluster, reanalyzeEventCluster } from '../services/forensicsService';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Calendar, Filter, X, ChevronLeft, ChevronRight, FileText, Clock, Layers, Folder, ArrowRight, Search } from 'lucide-react';
+import { Calendar, Filter, X, ChevronLeft, ChevronRight, FileText, Clock, Layers, Folder, ArrowRight, Search, Brain, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 // --- Helper Functions ---
 const formatTimestamp = (timestamp) => {
@@ -60,6 +60,10 @@ const Timeline = () => {
   const [clusterDetails, setClusterDetails] = useState([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [drawerSearch, setDrawerSearch] = useState('');
+  
+  // AI Analysis State
+  const [analyzingClusters, setAnalyzingClusters] = useState(new Set());
+  const [analyzedClusters, setAnalyzedClusters] = useState(new Set());
 
   const virtuosoRef = useRef();
   const currentTask = tasks.find((t) => t.id === taskId);
@@ -167,6 +171,46 @@ const Timeline = () => {
     }, 350);
     return () => clearTimeout(timer);
   }, [drawerSearch, selectedCluster, fetchClusterDetails]);
+  
+  // Handle AI Analysis for Event Clusters
+  const handleAnalyzeCluster = async (cluster) => {
+    const clusterKey = `${cluster.timestamp}-${cluster.event_type}-${cluster.parent_directory}`;
+    setAnalyzingClusters(prev => new Set(prev).add(clusterKey));
+    
+    try {
+      await analyzeEventCluster(taskId, cluster);
+      setAnalyzedClusters(prev => new Set(prev).add(clusterKey));
+      // Refresh timeline data to show AI analysis results
+      fetchTimeline();
+    } catch (error) {
+      console.error('Failed to analyze event cluster:', error);
+    } finally {
+      setAnalyzingClusters(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(clusterKey);
+        return newSet;
+      });
+    }
+  };
+  
+  const handleReanalyzeCluster = async (cluster) => {
+    const clusterKey = `${cluster.timestamp}-${cluster.event_type}-${cluster.parent_directory}`;
+    setAnalyzingClusters(prev => new Set(prev).add(clusterKey));
+    
+    try {
+      await reanalyzeEventCluster(taskId, cluster);
+      // Refresh timeline data to show updated AI analysis results
+      fetchTimeline();
+    } catch (error) {
+      console.error('Failed to reanalyze event cluster:', error);
+    } finally {
+      setAnalyzingClusters(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(clusterKey);
+        return newSet;
+      });
+    }
+  };
 
   const handleBarClick = (data) => {
     if (data && data.activePayload && data.activePayload[0]) {
@@ -212,8 +256,58 @@ const Timeline = () => {
                     </h3>
                     <p className="text-[10px] text-slate-500 font-mono mt-0.5">{selectedCluster.event_type} @ {formatTimeOnly(selectedCluster.timestamp)}</p>
                 </div>
-                <button onClick={() => setSelectedCluster(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={18} /></button>
+                <div className="flex items-center space-x-2">
+                  {selectedCluster.llm_summary ? (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      icon={RefreshCw} 
+                      onClick={() => handleReanalyzeCluster(selectedCluster)}
+                      disabled={analyzingClusters.has(`${selectedCluster.timestamp}-${selectedCluster.event_type}-${selectedCluster.parent_directory}`)}
+                    >
+                      Reanalyze
+                    </Button>
+                  ) : (
+                    <Button 
+                      variant="primary" 
+                      size="sm" 
+                      icon={Brain} 
+                      onClick={() => handleAnalyzeCluster(selectedCluster)}
+                      disabled={analyzingClusters.has(`${selectedCluster.timestamp}-${selectedCluster.event_type}-${selectedCluster.parent_directory}`)}
+                    >
+                      {analyzingClusters.has(`${selectedCluster.timestamp}-${selectedCluster.event_type}-${selectedCluster.parent_directory}`) ? 'Analyzing...' : 'AI Analyze'}
+                    </Button>
+                  )}
+                  <button onClick={() => setSelectedCluster(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={18} /></button>
+                </div>
               </div>
+              
+              {/* AI Analysis Results */}
+              {selectedCluster.llm_summary && (
+                <div className="px-4 py-3 border-b border-slate-100 bg-primary-50/30">
+                  <div className="flex items-start space-x-3">
+                    <div className="flex-shrink-0 mt-1">
+                      <CheckCircle2 size={16} className="text-green-500" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-xs font-bold text-slate-700 mb-1">AI Analysis</h4>
+                      <p className="text-[11px] text-slate-600 mb-1.5">{selectedCluster.llm_summary}</p>
+                      {selectedCluster.llm_keywords && (
+                        <div className="flex flex-wrap gap-1">
+                          {selectedCluster.llm_keywords.split(',').map((keyword, idx) => (
+                            <span key={idx} className="text-[9px] bg-white px-1.5 py-0.5 rounded-full border border-slate-200 text-slate-600">
+                              {keyword.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {selectedCluster.llm_is_relevant && (
+                        <Badge variant="green" className="mt-1.5">Relevant to investigation</Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Drawer Search Bar */}
               <div className="px-4 py-3 border-b border-slate-100 bg-white sticky top-0 z-10">
@@ -412,6 +506,11 @@ const Timeline = () => {
                                 {isCluster && (
                                   <Badge variant="blue" icon={Layers} className="text-[9px] px-1.5 py-0 font-bold">
                                     {event.cluster_count} {t('timeline.node.items')}
+                                  </Badge>
+                                )}
+                                {isCluster && event.llm_summary && (
+                                  <Badge variant="green" icon={CheckCircle2} className="text-[9px] px-1.5 py-0 font-bold">
+                                    AI Analyzed
                                   </Badge>
                                 )}
                               </div>

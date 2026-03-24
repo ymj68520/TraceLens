@@ -223,6 +223,69 @@ class LLMService:
         except Exception as e:
             logger.error(f"persist_to_files_db failed for {file_path!r}: {e}", exc_info=True)
             return False
+            
+    def persist_to_events_db(
+        self,
+        db_path: str,
+        event_id: int,
+        description: str,
+        summary: str,
+        keywords: str,
+        model_used: str = "",
+        is_relevant: bool = True,
+    ) -> bool:
+        """
+        Persist LLM analysis result to C++ _events.db SQLite database for event clusters.
+        
+        Args:
+            db_path:     Absolute path to the _events.db SQLite file.
+            event_id:    ID of the event cluster (matches `id` column).
+            description: Full LLM description text.
+            summary:     Short summary (first 200 chars of description if empty).
+            keywords:    Comma-separated keyword string.
+            model_used:  Model identifier.
+            is_relevant: Whether the event cluster is relevant.
+        
+        Returns:
+            True if a row was updated, False otherwise.
+        """
+        if not db_path or not Path(db_path).exists():
+            logger.debug(f"persist_to_events_db: db not found at {db_path!r}, skipping")
+            return False
+        
+        sql = """
+            UPDATE events SET
+                llm_summary = ?,
+                llm_description = ?,
+                llm_keywords = ?,
+                llm_analyzed_at = ?,
+                llm_model_used = ?,
+                llm_is_relevant = ?
+            WHERE id = ?
+        """
+        try:
+            with sqlite3.connect(db_path, timeout=10) as conn:
+                cur = conn.cursor()
+                cur.execute(sql, (
+                    summary or description[:200],
+                    description,
+                    keywords,
+                    int(time.time()),
+                    model_used,
+                    1 if is_relevant else 0,
+                    event_id,
+                ))
+                conn.commit()
+
+                if cur.rowcount > 0:
+                    logger.info(f"Persisted LLM result for event cluster {event_id} → {db_path!r} ({len(description)} chars)")
+                    return True
+
+                logger.warning(f"persist_to_events_db: no row matched event_id={event_id} in {db_path!r}")
+                return False
+        except Exception as e:
+            logger.error(f"persist_to_events_db failed for event_id={event_id}: {e}", exc_info=True)
+            return False
     
     async def health_check(self) -> bool:
         """
@@ -736,3 +799,95 @@ class LLMService:
                 "available": vision_available,
             },
         }
+    
+    async def analyze_event_cluster(
+        self,
+        event_data: Dict[str, Any],
+        model_type: str = "text",
+        prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Analyze an event cluster using LLM.
+
+        Args:
+            event_data: Event cluster data with event_type, file_path, description, etc.
+            model_type: 'text' or 'vision'.
+            prompt: Custom prompt (optional).
+            max_tokens: Max response tokens (optional).
+            temperature: Model temperature (optional).
+
+        Returns:
+            Analysis result dict.
+        """
+        # Ensure service is initialized
+        if not self._initialized:
+            logger.info("LLM service not initialized, initializing now...")
+            await self.initialize()
+
+        # Build event cluster content for analysis
+        event_type = event_data.get("event_type", "UNKNOWN")
+        file_path = event_data.get("file_path", "")
+        description = event_data.get("description", "")
+        timestamp = event_data.get("timestamp", 0)
+        
+        # Create content for LLM analysis
+        content = f"Event Type: {event_type}\n"
+        content += f"File Path: {file_path}\n"
+        content += f"Timestamp: {timestamp}\n"
+        content += f"Description: {description}\n"
+
+        # Select model settings
+        client = self._text_client
+        if not client:
+            raise RuntimeError("Text model client not initialized")
+        model = self.settings.llm_text_model
+        default_max_tokens = self.settings.llm_text_max_tokens
+        default_temperature = self.settings.llm_text_temperature
+        logger.info(f"Using text model: {model} for event cluster analysis")
+
+        # Build prompt
+        system_prompt = "You are a digital forensics expert analyzing event clusters. Provide a concise summary, detailed description, and relevant keywords for each event cluster."
+        user_prompt = prompt or f"Analyze this event cluster and provide: 1) A short summary, 2) A detailed description of what happened, 3) Key keywords related to the event.\n\n{content}"
+        
+        # Make API request
+        try:
+            response = await client.post(
+                self.settings.llm_endpoint,  # e.g., "/v1/chat/completions"
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "max_tokens": max_tokens or default_max_tokens,
+                    "temperature": temperature or default_temperature,
+                },
+                headers={"Authorization": f"Bearer {self.settings.llm_api_key}"} if self.settings.llm_api_key else {},
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            
+            # Extract response
+            analysis_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            tokens_used = result.get("usage", {}).get("total_tokens", 0)
+            
+            return {
+                "analysis": {
+                    "description": analysis_text,
+                    "model_type": model_type,
+                },
+                "model": model,
+                "tokens_used": tokens_used,
+            }
+        except httpx.HTTPStatusError as e:
+            logger.error(f"LLM HTTP error: {e.response.status_code} - {e.response.text}")
+            raise RuntimeError(f"LLM request failed with status {e.response.status_code}: {e.response.text}") from e
+        except httpx.ConnectError as e:
+            logger.error(f"LLM connection error: {e}")
+            raise RuntimeError(f"Cannot connect to LLM service at {self.settings.llm_text_base_url}") from e
+        except Exception as e:
+            logger.error(f"LLM analysis failed: {e}", exc_info=True)
+            raise

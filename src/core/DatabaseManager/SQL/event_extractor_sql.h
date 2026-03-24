@@ -11,7 +11,7 @@ namespace EventExtractorSQL {
 // CREATE TABLE Statements
 // ============================================================================
 
-const char* CREATE_EVENTS_TABLE = R"(
+inline constexpr const char* CREATE_EVENTS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp INTEGER NOT NULL,
@@ -27,11 +27,17 @@ const char* CREATE_EVENTS_TABLE = R"(
         event_source TEXT,     -- 事件来源: FILE_SYSTEM, WINDOWS_EVENT_LOG, LINUX_SYSLOG, etc.
         event_category TEXT,   -- 事件类别: FILE_OPERATION, SYSTEM_ACTIVITY, etc.
         normalized_type TEXT,  -- 标准化事件类型
-        source_id TEXT         -- 事件来源ID
+        source_id TEXT,        -- 事件来源ID
+        llm_summary TEXT,      -- AI生成的事件簇摘要
+        llm_description TEXT,  -- AI生成的详细描述
+        llm_keywords TEXT,     -- AI提取的关键词（逗号分隔）
+        llm_analyzed_at INTEGER, -- 分析时间戳
+        llm_model_used TEXT,   -- 使用的AI模型
+        llm_is_relevant INTEGER -- 事件簇是否有价值（0/1）
     );
 )";
 
-const char* CREATE_CREATION_EVENTS_TABLE = R"(
+inline constexpr const char* CREATE_CREATION_EVENTS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS creation_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp INTEGER NOT NULL,
@@ -42,7 +48,7 @@ const char* CREATE_CREATION_EVENTS_TABLE = R"(
     );
 )";
 
-const char* CREATE_MODIFICATION_EVENTS_TABLE = R"(
+inline constexpr const char* CREATE_MODIFICATION_EVENTS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS modification_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp INTEGER NOT NULL,
@@ -53,7 +59,7 @@ const char* CREATE_MODIFICATION_EVENTS_TABLE = R"(
     );
 )";
 
-const char* CREATE_ACCESS_EVENTS_TABLE = R"(
+inline constexpr const char* CREATE_ACCESS_EVENTS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS access_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp INTEGER NOT NULL,
@@ -64,7 +70,7 @@ const char* CREATE_ACCESS_EVENTS_TABLE = R"(
     );
 )";
 
-const char* CREATE_CHANGE_EVENTS_TABLE = R"(
+inline constexpr const char* CREATE_CHANGE_EVENTS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS change_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp INTEGER NOT NULL,
@@ -76,7 +82,7 @@ const char* CREATE_CHANGE_EVENTS_TABLE = R"(
     );
 )";
 
-const char* CREATE_DELETION_EVENTS_TABLE = R"(
+inline constexpr const char* CREATE_DELETION_EVENTS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS deletion_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp INTEGER NOT NULL,
@@ -87,7 +93,7 @@ const char* CREATE_DELETION_EVENTS_TABLE = R"(
     );
 )";
 
-const char* CREATE_SYSTEM_EVENTS_TABLE = R"(
+inline constexpr const char* CREATE_SYSTEM_EVENTS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS system_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp INTEGER NOT NULL,
@@ -104,7 +110,7 @@ const char* CREATE_SYSTEM_EVENTS_TABLE = R"(
     );
 )";
 
-const char* CREATE_EVENT_CORRELATIONS_TABLE = R"(
+inline constexpr const char* CREATE_EVENT_CORRELATIONS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS event_correlations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         event_id1 INTEGER NOT NULL,
@@ -121,7 +127,7 @@ const char* CREATE_EVENT_CORRELATIONS_TABLE = R"(
 // CREATE INDEX Statements
 // ============================================================================
 
-const char* CREATE_EVENT_INDICES = R"(
+inline constexpr const char* CREATE_EVENT_INDICES = R"(
     CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
     CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
     CREATE INDEX IF NOT EXISTS idx_events_path ON events(file_path);
@@ -139,7 +145,7 @@ const char* CREATE_EVENT_INDICES = R"(
 // CREATE VIEW Statements
 // ============================================================================
 
-const char* CREATE_TIMELINE_VIEW = R"(
+inline constexpr const char* CREATE_TIMELINE_VIEW = R"(
     CREATE VIEW IF NOT EXISTS timeline AS
     SELECT
         datetime(timestamp, 'unixepoch') as event_time,
@@ -153,7 +159,7 @@ const char* CREATE_TIMELINE_VIEW = R"(
     ORDER BY timestamp DESC;
 )";
 
-const char* CREATE_STATISTICS_VIEW = R"(
+inline constexpr const char* CREATE_STATISTICS_VIEW = R"(
     CREATE VIEW IF NOT EXISTS event_statistics AS
     SELECT
         event_type,
@@ -166,7 +172,7 @@ const char* CREATE_STATISTICS_VIEW = R"(
     GROUP BY event_type;
 )";
 
-const char* CREATE_HOURLY_ACTIVITY_VIEW = R"(
+inline constexpr const char* CREATE_HOURLY_ACTIVITY_VIEW = R"(
     CREATE VIEW IF NOT EXISTS hourly_activity AS
     SELECT
         strftime('%Y-%m-%d %H:00:00', datetime(timestamp, 'unixepoch')) as hour,
@@ -177,7 +183,7 @@ const char* CREATE_HOURLY_ACTIVITY_VIEW = R"(
     ORDER BY hour DESC;
 )";
 
-const char* CREATE_SYSTEM_EVENT_VIEW = R"(
+inline constexpr const char* CREATE_SYSTEM_EVENT_VIEW = R"(
     CREATE VIEW IF NOT EXISTS system_event_view AS
     SELECT
         id,
@@ -196,7 +202,7 @@ const char* CREATE_SYSTEM_EVENT_VIEW = R"(
     ORDER BY timestamp DESC;
 )";
 
-const char* CREATE_EVENT_CORRELATION_VIEW = R"(
+inline constexpr const char* CREATE_EVENT_CORRELATION_VIEW = R"(
     CREATE VIEW IF NOT EXISTS event_correlation_view AS
     SELECT
         ec.id,
@@ -217,7 +223,7 @@ const char* CREATE_EVENT_CORRELATION_VIEW = R"(
     ORDER BY ec.confidence DESC;
 )";
 
-const char* CREATE_ENHANCED_TIMELINE_VIEW = R"(
+inline constexpr const char* CREATE_ENHANCED_TIMELINE_VIEW = R"(
     CREATE VIEW IF NOT EXISTS enhanced_timeline AS
     SELECT
         id,
@@ -243,7 +249,7 @@ const char* CREATE_ENHANCED_TIMELINE_VIEW = R"(
     ORDER BY timestamp DESC;
 )";
 
-const char* CREATE_ENHANCED_STATISTICS_VIEW = R"(
+inline constexpr const char* CREATE_ENHANCED_STATISTICS_VIEW = R"(
     CREATE VIEW IF NOT EXISTS enhanced_event_statistics AS
     SELECT
         event_type,
@@ -272,42 +278,42 @@ const char* CREATE_ENHANCED_STATISTICS_VIEW = R"(
 // INSERT Statements
 // ============================================================================
 
-const char* INSERT_EVENT = R"(
+inline constexpr const char* INSERT_EVENT = R"(
     INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type, system_context, priority, severity, event_source, event_category, normalized_type, source_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 )";
 
-const char* INSERT_CREATION_EVENT = R"(
+inline constexpr const char* INSERT_CREATION_EVENT = R"(
     INSERT INTO creation_events (timestamp, file_path, inode, file_size, file_type)
     VALUES (?, ?, ?, ?, ?);
 )";
 
-const char* INSERT_MODIFICATION_EVENT = R"(
+inline constexpr const char* INSERT_MODIFICATION_EVENT = R"(
     INSERT INTO modification_events (timestamp, file_path, inode, file_size, file_type)
     VALUES (?, ?, ?, ?, ?);
 )";
 
-const char* INSERT_ACCESS_EVENT = R"(
+inline constexpr const char* INSERT_ACCESS_EVENT = R"(
     INSERT INTO access_events (timestamp, file_path, inode, file_size, file_type)
     VALUES (?, ?, ?, ?, ?);
 )";
 
-const char* INSERT_CHANGE_EVENT = R"(
+inline constexpr const char* INSERT_CHANGE_EVENT = R"(
     INSERT INTO change_events (timestamp, file_path, inode, file_size, file_type, description)
     VALUES (?, ?, ?, ?, ?, ?);
 )";
 
-const char* INSERT_DELETION_EVENT = R"(
+inline constexpr const char* INSERT_DELETION_EVENT = R"(
     INSERT INTO deletion_events (timestamp, file_path, inode, file_size, file_type)
     VALUES (?, ?, ?, ?, ?);
 )";
 
-const char* INSERT_SYSTEM_EVENT = R"(
+inline constexpr const char* INSERT_SYSTEM_EVENT = R"(
     INSERT INTO system_events (timestamp, event_type, source, user, process, ip_address, port, service, description, severity, system_context)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 )";
 
-const char* INSERT_EVENT_CORRELATION = R"(
+inline constexpr const char* INSERT_EVENT_CORRELATION = R"(
     INSERT INTO event_correlations (event_id1, event_id2, correlation_type, confidence, description)
     VALUES (?, ?, ?, ?, ?);
 )";
@@ -316,7 +322,7 @@ const char* INSERT_EVENT_CORRELATION = R"(
 // SELECT Statements
 // ============================================================================
 
-const char* SELECT_FILES_FOR_EVENT_EXTRACTION = R"(
+inline constexpr const char* SELECT_FILES_FOR_EVENT_EXTRACTION = R"(
     SELECT inode, path, atime, mtime, ctime, crtime, type, size, is_deleted
     FROM files
     WHERE type = 'REG';
@@ -326,9 +332,38 @@ const char* SELECT_FILES_FOR_EVENT_EXTRACTION = R"(
 // Transaction Statements
 // ============================================================================
 
-const char* BEGIN_TRANSACTION = "BEGIN TRANSACTION;";
-const char* COMMIT_TRANSACTION = "COMMIT;";
-const char* ROLLBACK_TRANSACTION = "ROLLBACK;";
+inline constexpr const char* BEGIN_TRANSACTION = "BEGIN TRANSACTION;";
+inline constexpr const char* COMMIT_TRANSACTION = "COMMIT;";
+inline constexpr const char* ROLLBACK_TRANSACTION = "ROLLBACK;";
+
+// ============================================================================
+// UPDATE Statements for LLM Analysis
+// ============================================================================
+
+inline constexpr const char* UPDATE_EVENT_LLM_ANALYSIS = R"(
+    UPDATE events SET 
+        llm_summary = ?, 
+        llm_description = ?, 
+        llm_keywords = ?, 
+        llm_analyzed_at = ?, 
+        llm_model_used = ?, 
+        llm_is_relevant = ? 
+    WHERE id = ?
+);
+)";
+
+inline constexpr const char* UPDATE_EVENT_CLUSTER_LLM_ANALYSIS = R"(
+    UPDATE events SET 
+        llm_summary = ?, 
+        llm_description = ?, 
+        llm_keywords = ?, 
+        llm_analyzed_at = ?, 
+        llm_model_used = ?, 
+        llm_is_relevant = ? 
+    WHERE (timestamp / 60) = ? AND event_type = ? AND 
+          (CASE WHEN file_path LIKE '%/%' THEN SUBSTR(file_path, 1, LENGTH(file_path) - INSTR(REPLACE(file_path, '/', char(1)), char(1)) + 1) ELSE '' END) = ?
+);
+)";
 
 } // namespace EventExtractorSQL
 

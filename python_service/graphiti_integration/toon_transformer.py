@@ -291,6 +291,62 @@ class ForensicEpisodeTransformer:
             category="timeline_event",
         )
 
+    def transform_event_cluster(self, cluster) -> EpisodeData:
+        """Transform an EventCluster into an EpisodeData."""
+        body = {
+            "event_type": cluster.event_type,
+            "file_path": cluster.file_path,
+            "timestamp": cluster.timestamp,
+            "description": cluster.description,
+            "file_size": cluster.file_size,
+            "file_type": cluster.file_type,
+            "inode": cluster.inode,
+            "llm_is_relevant": cluster.llm_is_relevant,
+        }
+        
+        # Add LLM analysis if available
+        if cluster.has_llm_analysis:
+            body["analysis"] = {}
+            if cluster.llm_summary:
+                body["analysis"]["summary"] = cluster.llm_summary
+            if cluster.llm_description:
+                body["analysis"]["description"] = cluster.llm_description
+            if cluster.llm_keywords:
+                body["analysis"]["keywords"] = cluster.keywords_list
+            if cluster.llm_model_used:
+                body["analysis"]["model"] = cluster.llm_model_used
+        
+        ref_time = (
+            datetime.fromtimestamp(cluster.timestamp, tz=timezone.utc)
+            if cluster.timestamp > 0
+            else datetime.now(timezone.utc)
+        )
+        
+        return EpisodeData(
+            name=f"event_cluster:{cluster.event_type}:{cluster.file_path}",
+            episode_body=json.dumps(body, ensure_ascii=False),
+            source_description=f"{self.source_description}:event_clusters",
+            reference_time=ref_time,
+            file_path=cluster.file_path,
+            file_id=cluster.id,
+            category="event_cluster",
+        )
+
+    def transform_event_clusters_batch(
+        self, clusters: list, skip_errors: bool = True
+    ) -> tuple[list[EpisodeData], list[tuple]]:
+        """Transform a batch of EventCluster objects."""
+        episodes, errors = [], []
+        for cluster in clusters:
+            try:
+                episodes.append(self.transform_event_cluster(cluster))
+            except Exception as e:
+                if skip_errors:
+                    errors.append((cluster, e))
+                else:
+                    raise
+        return episodes, errors
+
     def transform_events_batch(
         self, events: list, skip_errors: bool = True
     ) -> tuple[list[EpisodeData], list[tuple]]:
