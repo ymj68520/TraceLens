@@ -37,8 +37,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_timeline_details(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/timeline/comprehensive", "GET", 
-        "Get comprehensive timeline", 
+        "/api/forensics/timeline/comprehensive", "GET",
+        "Get comprehensive timeline",
         "Retrieve a comprehensive timeline of events combined from multiple sources.",
         {"Forensics", "Timeline"},
         {{"task_id", "query", "Task ID", true}, {"start_time", "query", "Start timestamp (ISO)", false}, {"end_time", "query", "End timestamp (ISO)", false}},
@@ -49,8 +49,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_timeline_distribution(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/timeline/distribution", "GET", 
-        "Get timeline distribution", 
+        "/api/forensics/timeline/distribution", "GET",
+        "Get timeline distribution",
         "Retrieve a chronological distribution of timeline events.",
         {"Forensics", "Timeline"},
         {{"task_id", "query", "Task ID", true}},
@@ -74,8 +74,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_system_events(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/system/events", "GET", 
-        "Get system events", 
+        "/api/forensics/system/events", "GET",
+        "Get system events",
         "Retrieve system events with filtering and pagination.",
         {"Forensics", "System Events"},
         {{"task_id", "query", "Task ID", true}, {"start_time", "query", "Start timestamp (ISO)", false}, {"end_time", "query", "End timestamp (ISO)", false}, {"limit", "query", "Number of events to return", false, "integer"}, {"offset", "query", "Number of events to skip", false, "integer"}},
@@ -86,8 +86,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_system_event_summary(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/system/summary", "GET", 
-        "Get system event summary", 
+        "/api/forensics/system/summary", "GET",
+        "Get system event summary",
         "Retrieve summary statistics for system events.",
         {"Forensics", "System Events"},
         {{"task_id", "query", "Task ID", true}},
@@ -99,8 +99,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_timeline_by_type(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/timeline/by-type", "GET", 
-        "Get timeline by event type", 
+        "/api/forensics/timeline/by-type", "GET",
+        "Get timeline by event type",
         "Retrieve timeline events filtered by event type (CREATED, MODIFIED, ACCESSED, CHANGED, DELETED).",
         {"Forensics", "Timeline"},
         {{"task_id", "query", "Task ID", true}, {"event_type", "query", "Event type filter", false}, {"limit", "query", "Number of events to return", false, "integer"}},
@@ -111,8 +111,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_timeline_by_time_range(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/timeline/by-time-range", "GET", 
-        "Get timeline by time range", 
+        "/api/forensics/timeline/by-time-range", "GET",
+        "Get timeline by time range",
         "Retrieve timeline events within a specific time range.",
         {"Forensics", "Timeline"},
         {{"task_id", "query", "Task ID", true}, {"start_time", "query", "Start timestamp", false}, {"end_time", "query", "End timestamp", false}, {"limit", "query", "Number of events to return", false, "integer"}},
@@ -123,8 +123,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_timeline_by_file(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/timeline/by-file", "GET", 
-        "Get timeline by file", 
+        "/api/forensics/timeline/by-file", "GET",
+        "Get timeline by file",
         "Retrieve timeline events for a specific file.",
         {"Forensics", "Timeline"},
         {{"task_id", "query", "Task ID", true}, {"file_path", "query", "File path to filter", false}, {"limit", "query", "Number of events to return", false, "integer"}},
@@ -135,8 +135,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_timeline_full(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/timeline/full", "GET", 
-        "Get full timeline", 
+        "/api/forensics/timeline/full", "GET",
+        "Get full timeline",
         "Retrieve full timeline with pagination support.",
         {"Forensics", "Timeline"},
         {{"task_id", "query", "Task ID", true}, {"limit", "query", "Number of events to return", false, "integer"}, {"offset", "query", "Number of events to skip", false, "integer"}},
@@ -147,8 +147,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_event_statistics_by_period(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/timeline/statistics-by-period", "GET", 
-        "Get event statistics by period", 
+        "/api/forensics/timeline/statistics-by-period", "GET",
+        "Get event statistics by period",
         "Retrieve event statistics grouped by time period (hour, day, week, month).",
         {"Forensics", "Timeline"},
         {{"task_id", "query", "Task ID", true}, {"period", "query", "Time period (hour/day/week/month)", false}},
@@ -160,8 +160,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_files_largest(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/files/largest", "GET", 
-        "Get largest files", 
+        "/api/forensics/files/largest", "GET",
+        "Get largest files",
         "Retrieve a list of the largest files found in the image.",
         {"Forensics", "Files"},
         {{"task_id", "query", "Task ID", true}, {"limit", "query", "Number of files to return", false, "integer"}},
@@ -193,8 +193,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_android_app_usage(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/android/app-usage", "GET", 
-        "Get Android app usage", 
+        "/api/forensics/android/app-usage", "GET",
+        "Get Android app usage",
         "Retrieve usage statistics for installed Android applications.",
         {"Forensics", "Android"},
         {{"task_id", "query", "Task ID", true}},
@@ -265,8 +265,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_export_events_json(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/export/events/json", "GET", 
-        "Export events to JSON", 
+        "/api/forensics/export/events/json", "GET",
+        "Export events to JSON",
         "Export timeline events to JSON format.",
         {"Forensics", "Export"},
         {{"task_id", "query", "Task ID", true}, {"query", "query", "Optional SQL query for filtering", false}},
@@ -277,8 +277,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_export_events_csv(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/export/events/csv", "GET", 
-        "Export events to CSV", 
+        "/api/forensics/export/events/csv", "GET",
+        "Export events to CSV",
         "Export timeline events to CSV format.",
         {"Forensics", "Export"},
         {{"task_id", "query", "Task ID", true}, {"query", "query", "Optional SQL query for filtering", false}},
@@ -289,8 +289,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_export_events_visualization(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/export/events/visualization", "GET", 
-        "Export events for visualization", 
+        "/api/forensics/export/events/visualization", "GET",
+        "Export events for visualization",
         "Export timeline events in a format optimized for visualization.",
         {"Forensics", "Export"},
         {{"task_id", "query", "Task ID", true}},
@@ -308,8 +308,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_analyze_event_cluster(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/timeline/clusters/analyze", "POST", 
-        "Analyze event cluster", 
+        "/api/forensics/timeline/clusters/analyze", "POST",
+        "Analyze event cluster",
         "Analyze a single event cluster with AI and generate description.",
         {"Forensics", "Timeline", "AI"},
         {},
@@ -326,8 +326,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_batch_analyze_event_clusters(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/timeline/clusters/batch-analyze", "POST", 
-        "Batch analyze event clusters", 
+        "/api/forensics/timeline/clusters/batch-analyze", "POST",
+        "Batch analyze event clusters",
         "Analyze multiple event clusters with AI.",
         {"Forensics", "Timeline", "AI"},
         {},
@@ -344,8 +344,8 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_reanalyze_event_cluster(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/timeline/clusters/reanalyze", "POST", 
-        "Reanalyze event cluster", 
+        "/api/forensics/timeline/clusters/reanalyze", "POST",
+        "Reanalyze event cluster",
         "Reanalyze an event cluster with AI.",
         {"Forensics", "Timeline", "AI"},
         {},
@@ -356,14 +356,14 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::
         return handle_get_analyzed_clusters(req);
     });
     Swagger::instance().RegisterEndpoint(
-        "/api/forensics/timeline/clusters/analyzed", "GET", 
-        "Get analyzed clusters", 
+        "/api/forensics/timeline/clusters/analyzed", "GET",
+        "Get analyzed clusters",
         "Retrieve event clusters that have been analyzed by AI.",
         {"Forensics", "Timeline", "AI"},
         {{"task_id", "query", "Task ID", true}},
         {{200, "Analyzed clusters retrieved"}, {400, "Invalid request"}}
     );
-} 
+}
 
 std::string ForensicsRoutes::get_database_path(const std::string& task_id, const std::string& db_type) {
     AnalysisTask task = task_manager_.get_task(task_id);
@@ -385,791 +385,6 @@ std::string ForensicsRoutes::get_database_path(const std::string& task_id, const
     } else {
         throw std::runtime_error("Unknown database type: " + db_type);
     }
-}
-
-// Timeline Analysis Endpoints
-crow::response ForensicsRoutes::handle_timeline_details(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
-    std::string window_str = params.get("window") ? params.get("window") : "0";
-    std::string type = params.get("type") ? params.get("type") : "";
-    std::string dir = params.get("dir") ? params.get("dir") : "";
-    std::string search = params.get("search") ? params.get("search") : "";
-    std::string limit_str = params.get("limit") ? params.get("limit") : "1000";
-    std::string offset_str = params.get("offset") ? params.get("offset") : "0";
-
-    if (task_id.empty()) {
-        res.code = 400;
-        return res;
-    }
-
-    try {
-        std::string events_db = get_database_path(task_id, "events");
-        int64_t window = std::stoll(window_str);
-        int limit = std::stoi(limit_str);
-        int offset = std::stoi(offset_str);
-        
-        json result = SQLiteHelper::get_timeline_details(events_db, window, type, dir, limit, offset, search);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        res.code = 500;
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_timeline_comprehensive(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
-    std::string start_time = params.get("start_time") ? params.get("start_time") : "";
-    std::string end_time = params.get("end_time") ? params.get("end_time") : "";
-    std::string limit_str = params.get("limit") ? params.get("limit") : "1000";
-    std::string offset_str = params.get("offset") ? params.get("offset") : "0";
-    std::string event_type = params.get("event_type") ? params.get("event_type") : "";
-    std::string cluster_str = params.get("cluster") ? params.get("cluster") : "false";
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string raw_db = get_database_path(task_id, "raw");
-        std::string events_db = get_database_path(task_id, "events");
-        
-        int limit = std::stoi(limit_str);
-        int offset = std::stoi(offset_str);
-        bool cluster = (cluster_str == "true" || cluster_str == "1");
-        
-        json result = SQLiteHelper::get_comprehensive_timeline(raw_db, events_db, start_time, end_time, limit, offset, event_type, cluster);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_timeline_distribution(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string events_db = get_database_path(task_id, "events");
-        json result = SQLiteHelper::get_timeline_distribution(events_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_timeline_file_activity(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-    std::string file_path = params.get("file_path") ? params.get("file_path") : "";
-    std::string inode_str = params.get("inode") ? params.get("inode") : "";
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string raw_db = get_database_path(task_id, "raw");
-        std::string events_db = get_database_path(task_id, "events");
-        int64_t inode = inode_str.empty() ? -1 : std::stoll(inode_str);
-        json result = SQLiteHelper::get_file_activity_timeline(raw_db, events_db, file_path, inode);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_timeline_suspicious_patterns(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string raw_db = get_database_path(task_id, "raw");
-        std::string events_db = get_database_path(task_id, "events");
-        json result = SQLiteHelper::get_suspicious_patterns(raw_db, events_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_timeline_user_activity(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string raw_db = get_database_path(task_id, "raw");
-        std::string events_db = get_database_path(task_id, "events");
-        json result = SQLiteHelper::get_user_activity_analysis(raw_db, events_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-// System Event Endpoints
-crow::response ForensicsRoutes::handle_system_events(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
-    std::string start_time = params.get("start_time") ? params.get("start_time") : "";
-    std::string end_time = params.get("end_time") ? params.get("end_time") : "";
-    std::string limit_str = params.get("limit") ? params.get("limit") : "1000";
-    std::string offset_str = params.get("offset") ? params.get("offset") : "0";
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string events_db = get_database_path(task_id, "events");
-        int limit = std::stoi(limit_str);
-        int offset = std::stoi(offset_str);
-        json result = SQLiteHelper::get_system_events(events_db, start_time, end_time, limit, offset);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_system_event_summary(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string events_db = get_database_path(task_id, "events");
-        json result = SQLiteHelper::get_system_event_summary(events_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-// Enhanced Timeline Analysis Endpoints
-crow::response ForensicsRoutes::handle_timeline_by_type(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-    std::string event_type = params.get("event_type") ? params.get("event_type") : "CREATED";
-    std::string limit_str = params.get("limit") ? params.get("limit") : "100";
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string events_db = get_database_path(task_id, "events");
-        int limit = std::stoi(limit_str);
-        json result = SQLiteHelper::get_timeline_by_type(events_db, event_type, limit);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_timeline_by_time_range(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-    std::string start_time_str = params.get("start_time") ? params.get("start_time") : "0";
-    std::string end_time_str = params.get("end_time") ? params.get("end_time") : "9999999999";
-    std::string limit_str = params.get("limit") ? params.get("limit") : "100";
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string events_db = get_database_path(task_id, "events");
-        int64_t start_time = std::stoll(start_time_str);
-        int64_t end_time = std::stoll(end_time_str);
-        int limit = std::stoi(limit_str);
-        json result = SQLiteHelper::get_timeline_by_time_range(events_db, start_time, end_time, limit);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_timeline_by_file(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-    std::string file_path = params.get("file_path") ? params.get("file_path") : "";
-    std::string limit_str = params.get("limit") ? params.get("limit") : "100";
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string events_db = get_database_path(task_id, "events");
-        int limit = std::stoi(limit_str);
-        json result = SQLiteHelper::get_timeline_by_file(events_db, file_path, limit);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_timeline_full(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-    std::string limit_str = params.get("limit") ? params.get("limit") : "100";
-    std::string offset_str = params.get("offset") ? params.get("offset") : "0";
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string events_db = get_database_path(task_id, "events");
-        int limit = std::stoi(limit_str);
-        int offset = std::stoi(offset_str);
-        json result = SQLiteHelper::get_timeline_full(events_db, limit, offset);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_event_statistics_by_period(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-    std::string period = params.get("period") ? params.get("period") : "day";
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string events_db = get_database_path(task_id, "events");
-        json result = SQLiteHelper::get_event_statistics_by_period(events_db, period);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-// File Analysis Endpoints
-crow::response ForensicsRoutes::handle_files_largest(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-    std::string limit_str = params.get("limit") ? params.get("limit") : "50";
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string files_db = get_database_path(task_id, "files");
-        int limit = std::stoi(limit_str);
-        json result = SQLiteHelper::get_largest_files(files_db, limit);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_files_recent(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-    std::string hours = params.get("hours") ? params.get("hours") : "24";
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string files_db = get_database_path(task_id, "files");
-        json result = SQLiteHelper::get_recent_files(files_db, hours);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_files_suspicious(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string raw_db = get_database_path(task_id, "raw");
-        std::string files_db = get_database_path(task_id, "files");
-        json result = SQLiteHelper::get_suspicious_files(raw_db, files_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_files_duplicates(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string files_db = get_database_path(task_id, "files");
-        json result = SQLiteHelper::get_duplicate_files(files_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_files_extensions_analysis(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string files_db = get_database_path(task_id, "files");
-        json result = SQLiteHelper::get_extensions_analysis(files_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-// Android Forensics Endpoints
-crow::response ForensicsRoutes::handle_android_communication_summary(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string android_db = get_database_path(task_id, "android");
-        json result = SQLiteHelper::get_android_communication_summary(android_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_android_app_usage(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string android_db = get_database_path(task_id, "android");
-        json result = SQLiteHelper::get_android_app_usage(android_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_android_device_info(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string android_db = get_database_path(task_id, "android");
-        json result = SQLiteHelper::get_android_device_info(android_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_android_media_analysis(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string android_db = get_database_path(task_id, "android");
-        json result = SQLiteHelper::get_android_media_analysis(android_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-// Statistics Endpoints
-crow::response ForensicsRoutes::handle_statistics_overview(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string raw_db = get_database_path(task_id, "raw");
-        std::string files_db = get_database_path(task_id, "files");
-        std::string events_db = get_database_path(task_id, "events");
-        json result = SQLiteHelper::get_overview_statistics(raw_db, files_db, events_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_statistics_file_distribution(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string files_db = get_database_path(task_id, "files");
-        json result = SQLiteHelper::get_file_distribution_analysis(files_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_statistics_activity_patterns(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string events_db = get_database_path(task_id, "events");
-        json result = SQLiteHelper::get_activity_patterns(events_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
-}
-
-crow::response ForensicsRoutes::handle_statistics_deleted_files_analysis(const crow::request& req) {
-    crow::response res;
-    add_cors_headers(res);
-    auto params = crow::query_string(req.url_params);
-    std::string task_id = params.get("task_id");
-
-    if (task_id.empty()) {
-        json error = {{"error", "task_id parameter is required"}};
-        res.code = 400;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-        return res;
-    }
-
-    try {
-        std::string raw_db = get_database_path(task_id, "raw");
-        json result = SQLiteHelper::get_deleted_files_analysis(raw_db);
-        res.set_header("Content-Type", "application/json");
-        res.write(result.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.set_header("Content-Type", "application/json");
-        res.write(error.dump());
-    }
-    return res;
 }
 
 void ForensicsRoutes::add_cors_headers(crow::response& res) {
@@ -1210,7 +425,7 @@ crow::response ForensicsRoutes::handle_batch_analyze_event_clusters(const crow::
 
     try {
         json body = json::parse(req.body);
-        
+
         // Validate required fields
         if (!body.contains("task_id") || body["task_id"].get<std::string>().empty()) {
             json error = {{"error", "task_id is required"}};
@@ -1284,7 +499,7 @@ crow::response ForensicsRoutes::handle_reanalyze_event_cluster(const crow::reque
 
     try {
         json body = json::parse(req.body);
-        
+
         // Validate required fields
         if (!body.contains("task_id") || body["task_id"].get<std::string>().empty()) {
             json error = {{"error", "task_id is required"}};
@@ -1364,7 +579,7 @@ crow::response ForensicsRoutes::handle_get_analyzed_clusters(const crow::request
 
     try {
         std::string events_db = get_database_path(task_id, "events");
-        
+
         // Query analyzed clusters
         sqlite3* db = nullptr;
         int rc = sqlite3_open(events_db.c_str(), &db);
@@ -1376,9 +591,9 @@ crow::response ForensicsRoutes::handle_get_analyzed_clusters(const crow::request
         }
 
         std::string sql = R"(
-            SELECT DISTINCT 
-                (timestamp / 60) as time_window, 
-                event_type, 
+            SELECT DISTINCT
+                (timestamp / 60) as time_window,
+                event_type,
                 CASE WHEN file_path LIKE '%/%' THEN SUBSTR(file_path, 1, LENGTH(file_path) - INSTR(REPLACE(file_path, '/', char(1)), char(1)) + 1) ELSE '' END as parent_directory,
                 MAX(llm_summary) as llm_summary,
                 MAX(llm_description) as llm_description,
@@ -1444,7 +659,7 @@ crow::response ForensicsRoutes::handle_extract_files(const crow::request& req) {
 
     try {
         json body = json::parse(req.body);
-        
+
         // Validate required fields
         if (!body.contains("task_id") || body["task_id"].get<std::string>().empty()) {
             json error = {{"error", "task_id is required"}};
@@ -1454,14 +669,14 @@ crow::response ForensicsRoutes::handle_extract_files(const crow::request& req) {
         }
 
         std::string task_id = body["task_id"].get<std::string>();
-        
+
         // Create extraction job
         ExtractionJob job;
         job.id = generate_job_id();
         job.task_id = task_id;
         job.status = ExtractionStatus::PENDING;
         job.created_time = std::chrono::system_clock::now();
-        
+
         // Parse extraction config
         if (body.contains("mode")) {
             std::string mode = body["mode"].get<std::string>();
@@ -1470,15 +685,15 @@ crow::response ForensicsRoutes::handle_extract_files(const crow::request& req) {
             else if (mode == "name") job.config.mode = ExtractionMode::NAME;
             else if (mode == "deleted") job.config.mode = ExtractionMode::DELETED;
         }
-        
+
         if (body.contains("pattern")) {
             job.config.pattern = body["pattern"].get<std::string>();
         }
-        
+
         if (body.contains("output_dir")) {
             job.config.output_dir = body["output_dir"].get<std::string>();
         }
-        
+
         std::filesystem::path task_extract_dir = PathManager::instance().getTaskExtractDir(task_id);
         if (!job.config.output_dir.empty() && job.config.output_dir != "extracted_files") {
             std::filesystem::path user_path(job.config.output_dir);
@@ -1490,15 +705,15 @@ crow::response ForensicsRoutes::handle_extract_files(const crow::request& req) {
         }
         job.config.output_dir = task_extract_dir.string();
         job.output_path = task_extract_dir.string();
-        
+
         if (body.contains("include_deleted")) {
             job.config.include_deleted = body["include_deleted"].get<bool>();
         }
-        
+
         if (body.contains("overwrite")) {
             job.config.overwrite = body["overwrite"].get<bool>();
         }
-        
+
         // Future extensibility: parse limits if provided
         if (body.contains("max_files")) {
             job.config.max_files = body["max_files"].get<int>();
@@ -1506,19 +721,19 @@ crow::response ForensicsRoutes::handle_extract_files(const crow::request& req) {
         if (body.contains("max_total_size")) {
             job.config.max_total_size = body["max_total_size"].get<int64_t>();
         }
-        
+
         // Store job
         {
             std::lock_guard<std::mutex> lock(extraction_mutex_);
             extraction_jobs_[job.id] = job;
         }
-        
+
         // Start async extraction
         std::string job_id = job.id;
         std::thread([this, job_id]() {
             run_extraction_job(job_id);
         }).detach();
-        
+
         // Return job info
         json response = {
             {"success", true},
@@ -1528,7 +743,7 @@ crow::response ForensicsRoutes::handle_extract_files(const crow::request& req) {
         };
         res.code = 202; // Accepted
         res.write(response.dump());
-        
+
     } catch (const json::exception& e) {
         json error = {{"error", std::string("Invalid JSON: ") + e.what()}};
         res.code = 400;
@@ -1538,7 +753,7 @@ crow::response ForensicsRoutes::handle_extract_files(const crow::request& req) {
         res.code = 500;
         res.write(error.dump());
     }
-    
+
     return res;
 }
 
@@ -1546,10 +761,10 @@ crow::response ForensicsRoutes::handle_extraction_status(const crow::request& re
     crow::response res;
     add_cors_headers(res);
     res.set_header("Content-Type", "application/json");
-    
+
     auto params = crow::query_string(req.url_params);
     std::string job_id = params.get("job_id") ? params.get("job_id") : "";
-    
+
     if (job_id.empty()) {
         // Try to get from URL path
         std::string url = req.url;
@@ -1562,14 +777,14 @@ crow::response ForensicsRoutes::handle_extraction_status(const crow::request& re
             }
         }
     }
-    
+
     if (job_id.empty()) {
         json error = {{"error", "job_id parameter is required"}};
         res.code = 400;
         res.write(error.dump());
         return res;
     }
-    
+
     std::lock_guard<std::mutex> lock(extraction_mutex_);
     auto it = extraction_jobs_.find(job_id);
     if (it == extraction_jobs_.end()) {
@@ -1578,9 +793,9 @@ crow::response ForensicsRoutes::handle_extraction_status(const crow::request& re
         res.write(error.dump());
         return res;
     }
-    
+
     const ExtractionJob& job = it->second;
-    
+
     std::string status_str;
     switch (job.status) {
         case ExtractionStatus::PENDING: status_str = "pending"; break;
@@ -1589,7 +804,7 @@ crow::response ForensicsRoutes::handle_extraction_status(const crow::request& re
         case ExtractionStatus::FAILED: status_str = "failed"; break;
         case ExtractionStatus::CANCELLED: status_str = "cancelled"; break;
     }
-    
+
     std::string mode_str;
     switch (job.config.mode) {
         case ExtractionMode::ALL: mode_str = "all"; break;
@@ -1597,12 +812,12 @@ crow::response ForensicsRoutes::handle_extraction_status(const crow::request& re
         case ExtractionMode::NAME: mode_str = "name"; break;
         case ExtractionMode::DELETED: mode_str = "deleted"; break;
     }
-    
+
     int progress = 0;
     if (job.total_files > 0) {
         progress = (job.extracted_files + job.failed_files) * 100 / job.total_files;
     }
-    
+
     json response = {
         {"job_id", job.id},
         {"task_id", job.task_id},
@@ -1620,7 +835,7 @@ crow::response ForensicsRoutes::handle_extraction_status(const crow::request& re
         {"error_details", job.error_details},
         {"output_path", job.output_path}
     };
-    
+
     res.write(response.dump());
     return res;
 }
@@ -1629,13 +844,13 @@ void ForensicsRoutes::run_extraction_job(const std::string& job_id) {
     ExtractionJob* job_ptr = nullptr;
     std::string task_id;
     ExtractionConfig config;
-    
+
     // Get job info
     {
         std::lock_guard<std::mutex> lock(extraction_mutex_);
         auto it = extraction_jobs_.find(job_id);
         if (it == extraction_jobs_.end()) return;
-        
+
         job_ptr = &it->second;
         job_ptr->status = ExtractionStatus::RUNNING;
         job_ptr->started_time = std::chrono::system_clock::now();
@@ -1643,12 +858,12 @@ void ForensicsRoutes::run_extraction_job(const std::string& job_id) {
         task_id = job_ptr->task_id;
         config = job_ptr->config;
     }
-    
+
     try {
         // Get image and database paths
         std::string image_path = get_image_path_for_task(task_id);
         std::string raw_db = get_database_path(task_id, "raw");
-        
+
         // Initialize FileExtractor
         auto extractor = std::make_unique<FileExtractor>(image_path, raw_db);
         if (!extractor->initialize()) {
@@ -1658,14 +873,14 @@ void ForensicsRoutes::run_extraction_job(const std::string& job_id) {
             job_ptr->completed_time = std::chrono::system_clock::now();
             return;
         }
-        
+
         // Update job status
         {
             std::lock_guard<std::mutex> lock(extraction_mutex_);
             job_ptr->message = "Extracting files...";
             job_ptr->output_path = config.output_dir;
         }
-        
+
         // Run extraction based on mode
         int extracted = 0;
         int skipped = 0;
@@ -1683,7 +898,7 @@ void ForensicsRoutes::run_extraction_job(const std::string& job_id) {
                 extracted = extractor->extractDeleted(config.output_dir, config.overwrite, &skipped);
                 break;
         }
-        
+
         // Update final status
         {
             std::lock_guard<std::mutex> lock(extraction_mutex_);
@@ -1691,14 +906,14 @@ void ForensicsRoutes::run_extraction_job(const std::string& job_id) {
             job_ptr->skipped_files = skipped;
             job_ptr->total_files = extracted + skipped; // Approximation
             job_ptr->status = ExtractionStatus::COMPLETED;
-            
+
             std::stringstream msg;
             msg << "Extraction completed: " << extracted << " extracted, " << skipped << " skipped";
             job_ptr->message = msg.str();
-            
+
             job_ptr->completed_time = std::chrono::system_clock::now();
         }
-        
+
     } catch (const std::exception& e) {
         std::lock_guard<std::mutex> lock(extraction_mutex_);
         job_ptr->status = ExtractionStatus::FAILED;
@@ -1712,12 +927,12 @@ void ForensicsRoutes::run_extraction_job(const std::string& job_id) {
 crow::response ForensicsRoutes::handle_export_toon(const crow::request& req) {
     crow::response res;
     add_cors_headers(res);
-    
+
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id") ? params.get("task_id") : "";
     std::string fields_param = params.get("fields") ? params.get("fields") : "";
     std::string filter = params.get("filter") ? params.get("filter") : "";
-    
+
     if (task_id.empty()) {
         json error = {{"error", "task_id parameter is required"}};
         res.code = 400;
@@ -1725,10 +940,10 @@ crow::response ForensicsRoutes::handle_export_toon(const crow::request& req) {
         res.write(error.dump());
         return res;
     }
-    
+
     try {
         std::string files_db = get_database_path(task_id, "files");
-        
+
         // Open database
         sqlite3* db = nullptr;
         int rc = sqlite3_open_v2(files_db.c_str(), &db, SQLITE_OPEN_READONLY, nullptr);
@@ -1739,11 +954,11 @@ crow::response ForensicsRoutes::handle_export_toon(const crow::request& req) {
             res.write(error.dump());
             return res;
         }
-        
+
         // Configure export
         TOONExportConfig config;
         config.whereClause = filter;
-        
+
         // Parse fields parameter (comma-separated)
         if (!fields_param.empty()) {
             std::stringstream ss(fields_param);
@@ -1757,26 +972,26 @@ crow::response ForensicsRoutes::handle_export_toon(const crow::request& req) {
                 }
             }
         }
-        
+
         // Export to TOON
         TOONExporter exporter;
         std::string toon_content = exporter.exportToTOON(db, config);
-        
+
         sqlite3_close(db);
-        
+
         // Return TOON content
         res.code = 200;
         res.set_header("Content-Type", "text/toon; charset=utf-8");
         res.set_header("Content-Disposition", "attachment; filename=\"files_export.toon\"");
         res.write(toon_content);
-        
+
     } catch (const std::exception& e) {
         json error = {{"error", e.what()}};
         res.code = 500;
         res.set_header("Content-Type", "application/json");
         res.write(error.dump());
     }
-    
+
     return res;
 }
 
@@ -1858,6 +1073,699 @@ crow::response ForensicsRoutes::handle_export_events_visualization(const crow::r
         std::string events_db = get_database_path(task_id, "events");
         std::string output_file = task_id + "_events_viz.json";
         json result = SQLiteHelper::export_events_for_visualization(events_db, output_file);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+
+// ============================================================================
+// Missing Implementations
+// ============================================================================
+
+crow::response ForensicsRoutes::handle_timeline_comprehensive(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+    std::string start_time = params.get("start_time") ? params.get("start_time") : "";
+    std::string end_time = params.get("end_time") ? params.get("end_time") : "";
+    std::string event_type = params.get("event_type") ? params.get("event_type") : "";
+    int limit = params.get("limit") ? std::stoi(params.get("limit")) : 1000;
+    int offset = params.get("offset") ? std::stoi(params.get("offset")) : 0;
+    bool cluster = params.get("cluster") ? (std::string(params.get("cluster")) == "true") : false;
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string raw_db = get_database_path(task_id, "raw");
+        std::string events_db = get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_comprehensive_timeline(raw_db, events_db, start_time, end_time, limit, offset, event_type, cluster);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_timeline_details(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+    int64_t window = params.get("window") ? std::stoll(params.get("window")) : 300;
+    std::string type = params.get("type") ? params.get("type") : "";
+    std::string parent = params.get("parent") ? params.get("parent") : "";
+    int limit = params.get("limit") ? std::stoi(params.get("limit")) : 1000;
+    int offset = params.get("offset") ? std::stoi(params.get("offset")) : 0;
+    std::string search = params.get("search") ? params.get("search") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_timeline_details(events_db, window, type, parent, limit, offset, search);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_timeline_distribution(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_timeline_distribution(events_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_timeline_file_activity(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+    std::string file_path = params.get("file_path") ? params.get("file_path") : "";
+    int64_t inode = params.get("inode") ? std::stoll(params.get("inode")) : -1;
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string raw_db = get_database_path(task_id, "raw");
+        std::string events_db = get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_file_activity_timeline(raw_db, events_db, file_path, inode);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_timeline_suspicious_patterns(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string raw_db = get_database_path(task_id, "raw");
+        std::string events_db = get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_suspicious_patterns(raw_db, events_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_timeline_user_activity(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string raw_db = get_database_path(task_id, "raw");
+        std::string events_db = get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_user_activity_analysis(raw_db, events_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_system_events(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+    std::string start_time = params.get("start_time") ? params.get("start_time") : "";
+    std::string end_time = params.get("end_time") ? params.get("end_time") : "";
+    int limit = params.get("limit") ? std::stoi(params.get("limit")) : 1000;
+    int offset = params.get("offset") ? std::stoi(params.get("offset")) : 0;
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_system_events(events_db, start_time, end_time, limit, offset);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_system_event_summary(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_system_event_summary(events_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_timeline_by_type(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+    std::string type = params.get("type") ? params.get("type") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string raw_db = get_database_path(task_id, "raw");
+        std::string events_db = get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_comprehensive_timeline(raw_db, events_db, "", "", 1000, 0, type);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_timeline_by_time_range(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+    std::string start = params.get("start") ? params.get("start") : "";
+    std::string end = params.get("end") ? params.get("end") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string raw_db = get_database_path(task_id, "raw");
+        std::string events_db = get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_comprehensive_timeline(raw_db, events_db, start, end);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_timeline_by_file(const crow::request& req) {
+    return handle_timeline_file_activity(req);
+}
+
+crow::response ForensicsRoutes::handle_timeline_full(const crow::request& req) {
+    return handle_timeline_comprehensive(req);
+}
+
+crow::response ForensicsRoutes::handle_event_statistics_by_period(const crow::request& req) {
+    return handle_timeline_distribution(req);
+}
+
+crow::response ForensicsRoutes::handle_files_largest(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+    int limit = params.get("limit") ? std::stoi(params.get("limit")) : 50;
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string files_db = get_database_path(task_id, "files");
+        json result = SQLiteHelper::get_largest_files(files_db, limit);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_files_recent(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+    std::string hours = params.get("hours") ? params.get("hours") : "24";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string files_db = get_database_path(task_id, "files");
+        json result = SQLiteHelper::get_recent_files(files_db, hours);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_files_suspicious(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string raw_db = get_database_path(task_id, "raw");
+        std::string files_db = get_database_path(task_id, "files");
+        json result = SQLiteHelper::get_suspicious_files(raw_db, files_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_files_duplicates(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string files_db = get_database_path(task_id, "files");
+        json result = SQLiteHelper::get_duplicate_files(files_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_files_extensions_analysis(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string files_db = get_database_path(task_id, "files");
+        json result = SQLiteHelper::get_extensions_analysis(files_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_android_communication_summary(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string android_db = get_database_path(task_id, "android");
+        json result = SQLiteHelper::get_android_communication_summary(android_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_android_app_usage(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string android_db = get_database_path(task_id, "android");
+        json result = SQLiteHelper::get_android_app_usage(android_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_android_device_info(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string android_db = get_database_path(task_id, "android");
+        json result = SQLiteHelper::get_android_device_info(android_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_android_media_analysis(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string android_db = get_database_path(task_id, "android");
+        json result = SQLiteHelper::get_android_media_analysis(android_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_statistics_overview(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string raw_db = get_database_path(task_id, "raw");
+        std::string files_db = get_database_path(task_id, "files");
+        std::string events_db = get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_overview_statistics(raw_db, files_db, events_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_statistics_file_distribution(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string files_db = get_database_path(task_id, "files");
+        json result = SQLiteHelper::get_file_distribution_analysis(files_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_statistics_activity_patterns(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string events_db = get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_activity_patterns(events_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+    return res;
+}
+
+crow::response ForensicsRoutes::handle_statistics_deleted_files_analysis(const crow::request& req) {
+    crow::response res;
+    add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    try {
+        std::string raw_db = get_database_path(task_id, "raw");
+        json result = SQLiteHelper::get_deleted_files_analysis(raw_db);
         res.set_header("Content-Type", "application/json");
         res.write(result.dump());
     } catch (const std::exception& e) {

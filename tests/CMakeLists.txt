@@ -399,7 +399,11 @@ target_link_libraries(test_mysql_daemon pthread mysqlclient)
 add_executable(
   test_event_correlation_engine
   UnitTest/test_event_correlation_engine.cpp
-  ../src/core/EventCorrelationEngine/EventCorrelationEngine.cpp
+  ../src/core/EventCorrelationEngine/Detail/EventCorrelationEngineCore.cpp
+  ../src/core/EventCorrelationEngine/Detail/EventCorrelationAnalyzer.cpp
+  ../src/core/EventCorrelationEngine/Detail/EventChainBuilder.cpp
+  ../src/core/EventCorrelationEngine/Detail/EventCorrelationExporter.cpp
+  ../src/core/EventCorrelationEngine/Detail/EventCorrelationUtils.cpp
   ../src/core/AuditLog/AuditLog.cpp)
 
 target_include_directories(
@@ -422,7 +426,11 @@ add_executable(
   ../src/core/DatabaseManager/DatabaseManager.cpp
   ../src/core/AuditLog/AuditLog.cpp
   ../src/network/HTTPServer/SQLiteHelper.cpp
-  ../src/core/EventCorrelationEngine/EventCorrelationEngine.cpp
+  ../src/core/EventCorrelationEngine/Detail/EventCorrelationEngineCore.cpp
+  ../src/core/EventCorrelationEngine/Detail/EventCorrelationAnalyzer.cpp
+  ../src/core/EventCorrelationEngine/Detail/EventChainBuilder.cpp
+  ../src/core/EventCorrelationEngine/Detail/EventCorrelationExporter.cpp
+  ../src/core/EventCorrelationEngine/Detail/EventCorrelationUtils.cpp
   ../src/core/ConfigManager/ConfigManager.cpp
   ../src/core/PathManager/PathManager.cpp)
 

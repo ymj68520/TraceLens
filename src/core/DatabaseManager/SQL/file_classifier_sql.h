@@ -11,7 +11,7 @@ namespace FileClassifierSQL {
 // CREATE TABLE Statements
 // ============================================================================
 
-inline const char* CREATE_MAIN_FILES_TABLE = R"(
+inline constexpr const char* CREATE_MAIN_FILES_TABLE = R"(
     CREATE TABLE IF NOT EXISTS files (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         inode INTEGER,
@@ -34,7 +34,7 @@ inline const char* CREATE_MAIN_FILES_TABLE = R"(
 )";
 
 // Template for category tables - use with table name substitution
-inline const char* CREATE_CATEGORY_TABLE_TEMPLATE = R"(
+inline constexpr const char* CREATE_CATEGORY_TABLE_TEMPLATE = R"(
     CREATE TABLE IF NOT EXISTS %TABLE_NAME% (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         inode INTEGER,
@@ -54,7 +54,7 @@ inline const char* CREATE_CATEGORY_TABLE_TEMPLATE = R"(
 // ============================================================================
 
 // Analysis progress tracking table (Issue 6)
-inline const char* CREATE_ANALYSIS_PROGRESS_TABLE = R"(
+inline constexpr const char* CREATE_ANALYSIS_PROGRESS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS analysis_progress (
         task_id TEXT PRIMARY KEY,
         total_files INTEGER,
@@ -67,7 +67,7 @@ inline const char* CREATE_ANALYSIS_PROGRESS_TABLE = R"(
 )";
 
 // Migration: Add LLM columns to existing files table
-inline const char* ALTER_FILES_ADD_LLM_COLUMNS[] = {
+inline constexpr const char* ALTER_FILES_ADD_LLM_COLUMNS[] = {
     "ALTER TABLE files ADD COLUMN llm_summary TEXT;",
     "ALTER TABLE files ADD COLUMN llm_description TEXT;",
     "ALTER TABLE files ADD COLUMN llm_keywords TEXT;",
@@ -77,7 +77,7 @@ inline const char* ALTER_FILES_ADD_LLM_COLUMNS[] = {
 inline const int ALTER_FILES_ADD_LLM_COLUMNS_COUNT = 5;
 
 // Update LLM analysis result for a file
-inline const char* UPDATE_FILE_LLM_ANALYSIS = R"(
+inline constexpr const char* UPDATE_FILE_LLM_ANALYSIS = R"(
     UPDATE files SET
         llm_summary = ?,
         llm_description = ?,
@@ -88,13 +88,13 @@ inline const char* UPDATE_FILE_LLM_ANALYSIS = R"(
 )";
 
 // Get file LLM analysis by path
-inline const char* SELECT_FILE_LLM_ANALYSIS = R"(
+inline constexpr const char* SELECT_FILE_LLM_ANALYSIS = R"(
     SELECT llm_summary, llm_description, llm_keywords, llm_analyzed_at, llm_model_used
     FROM files WHERE path = ?;
 )";
 
 // Get files pending LLM analysis
-inline const char* SELECT_FILES_PENDING_ANALYSIS = R"(
+inline constexpr const char* SELECT_FILES_PENDING_ANALYSIS = R"(
     SELECT path FROM files 
     WHERE llm_analyzed_at IS NULL 
     ORDER BY size ASC 
@@ -102,12 +102,12 @@ inline const char* SELECT_FILES_PENDING_ANALYSIS = R"(
 )";
 
 // Progress tracking statements
-inline const char* INSERT_ANALYSIS_PROGRESS = R"(
+inline constexpr const char* INSERT_ANALYSIS_PROGRESS = R"(
     INSERT INTO analysis_progress (task_id, total_files, completed_files, current_file, started_at, last_updated, status)
     VALUES (?, ?, 0, '', ?, ?, 'running');
 )";
 
-inline const char* UPDATE_ANALYSIS_PROGRESS = R"(
+inline constexpr const char* UPDATE_ANALYSIS_PROGRESS = R"(
     UPDATE analysis_progress SET
         completed_files = ?,
         current_file = ?,
@@ -115,7 +115,7 @@ inline const char* UPDATE_ANALYSIS_PROGRESS = R"(
     WHERE task_id = ?;
 )";
 
-inline const char* COMPLETE_ANALYSIS_PROGRESS = R"(
+inline constexpr const char* COMPLETE_ANALYSIS_PROGRESS = R"(
     UPDATE analysis_progress SET
         completed_files = total_files,
         status = 'completed',
@@ -123,7 +123,7 @@ inline const char* COMPLETE_ANALYSIS_PROGRESS = R"(
     WHERE task_id = ?;
 )";
 
-inline const char* SELECT_ANALYSIS_PROGRESS = R"(
+inline constexpr const char* SELECT_ANALYSIS_PROGRESS = R"(
     SELECT task_id, total_files, completed_files, current_file, started_at, last_updated, status
     FROM analysis_progress WHERE task_id = ?;
 )";
@@ -132,22 +132,22 @@ inline const char* SELECT_ANALYSIS_PROGRESS = R"(
 // CREATE INDEX Statements
 // ============================================================================
 
-inline const char* CREATE_MAIN_FILES_INDICES = R"(
+inline constexpr const char* CREATE_MAIN_FILES_INDICES = R"(
     CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
     CREATE INDEX IF NOT EXISTS idx_files_category ON files(category);
     CREATE INDEX IF NOT EXISTS idx_files_llm_analyzed ON files(llm_analyzed_at);
 )";
 
 // Template for category table indices
-inline const char* CREATE_CATEGORY_INDEX_PATH_TEMPLATE = "CREATE INDEX IF NOT EXISTS idx_%TABLE_NAME%_path ON %TABLE_NAME%(path);";
-inline const char* CREATE_CATEGORY_INDEX_EXTENSION_TEMPLATE = "CREATE INDEX IF NOT EXISTS idx_%TABLE_NAME%_extension ON %TABLE_NAME%(extension);";
-inline const char* CREATE_CATEGORY_INDEX_SIZE_TEMPLATE = "CREATE INDEX IF NOT EXISTS idx_%TABLE_NAME%_size ON %TABLE_NAME%(size);";
+inline constexpr const char* CREATE_CATEGORY_INDEX_PATH_TEMPLATE = "CREATE INDEX IF NOT EXISTS idx_%TABLE_NAME%_path ON %TABLE_NAME%(path);";
+inline constexpr const char* CREATE_CATEGORY_INDEX_EXTENSION_TEMPLATE = "CREATE INDEX IF NOT EXISTS idx_%TABLE_NAME%_extension ON %TABLE_NAME%(extension);";
+inline constexpr const char* CREATE_CATEGORY_INDEX_SIZE_TEMPLATE = "CREATE INDEX IF NOT EXISTS idx_%TABLE_NAME%_size ON %TABLE_NAME%(size);";
 
 // ============================================================================
 // CREATE VIEW Statements
 // ============================================================================
 
-inline const char* CREATE_FILE_SUMMARY_VIEW = R"(
+inline constexpr const char* CREATE_FILE_SUMMARY_VIEW = R"(
     CREATE VIEW IF NOT EXISTS file_summary AS
     SELECT
         'Images' as category,
@@ -204,7 +204,7 @@ inline const char* CREATE_FILE_SUMMARY_VIEW = R"(
     SELECT 'Unknown', COUNT(*), SUM(size), ROUND(AVG(size), 2), MAX(size) FROM unknown_files;
 )";
 
-inline const char* CREATE_EXTENSION_STATISTICS_VIEW = R"(
+inline constexpr const char* CREATE_EXTENSION_STATISTICS_VIEW = R"(
     CREATE VIEW IF NOT EXISTS extension_statistics AS
     SELECT extension, COUNT(*) as count, SUM(size) as total_size
     FROM (
@@ -237,7 +237,7 @@ inline const char* CREATE_EXTENSION_STATISTICS_VIEW = R"(
     ORDER BY count DESC;
 )";
 
-inline const char* CREATE_DELETED_FILES_VIEW = R"(
+inline constexpr const char* CREATE_DELETED_FILES_VIEW = R"(
     CREATE VIEW IF NOT EXISTS deleted_files AS
     SELECT 'Images' as category, name, path, size, extension FROM images WHERE is_deleted = 1
     UNION ALL
@@ -293,11 +293,11 @@ inline const char* CREATE_DELETED_FILES_VIEW = R"(
 // ============================================================================
 
 // Template for inserting into category tables
-inline const char* INSERT_INTO_CATEGORY_TABLE_TEMPLATE = 
+inline constexpr const char* INSERT_INTO_CATEGORY_TABLE_TEMPLATE = 
     "INSERT INTO %TABLE_NAME% (inode, name, path, size, extension, mtime, ctime, is_deleted, md5) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
-inline const char* INSERT_INTO_FILES_TABLE = 
+inline constexpr const char* INSERT_INTO_FILES_TABLE = 
     "INSERT INTO files (inode, name, path, size, extension, category, type, mtime, ctime, is_deleted, md5) "
     "VALUES (?, ?, ?, ?, ?, ?, 'REG', ?, ?, ?, ?);";
 
@@ -305,7 +305,7 @@ inline const char* INSERT_INTO_FILES_TABLE =
 // SELECT Statements
 // ============================================================================
 
-inline const char* SELECT_FILES_FOR_CLASSIFICATION = R"(
+inline constexpr const char* SELECT_FILES_FOR_CLASSIFICATION = R"(
     SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5
     FROM files
     WHERE type = 'REG';
@@ -315,9 +315,9 @@ inline const char* SELECT_FILES_FOR_CLASSIFICATION = R"(
 // Transaction Statements
 // ============================================================================
 
-inline const char* BEGIN_TRANSACTION = "BEGIN TRANSACTION;";
-inline const char* COMMIT_TRANSACTION = "COMMIT;";
-inline const char* ROLLBACK_TRANSACTION = "ROLLBACK;";
+inline constexpr const char* BEGIN_TRANSACTION = "BEGIN TRANSACTION;";
+inline constexpr const char* COMMIT_TRANSACTION = "COMMIT;";
+inline constexpr const char* ROLLBACK_TRANSACTION = "ROLLBACK;";
 
 } // namespace FileClassifierSQL
 

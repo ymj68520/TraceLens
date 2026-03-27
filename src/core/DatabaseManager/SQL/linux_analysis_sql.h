@@ -11,7 +11,7 @@ namespace LinuxAnalysisSQL {
 // CREATE TABLE Statements
 // ============================================================================
 
-const char* CREATE_LOG_ENTRIES_TABLE = R"(
+inline constexpr const char* CREATE_LOG_ENTRIES_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_log_entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         log_file TEXT,
@@ -28,7 +28,7 @@ const char* CREATE_LOG_ENTRIES_TABLE = R"(
     CREATE INDEX IF NOT EXISTS idx_log_file ON linux_log_entries(log_file);
 )";
 
-const char* CREATE_USERS_TABLE = R"(
+inline constexpr const char* CREATE_USERS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE,
@@ -50,7 +50,7 @@ const char* CREATE_USERS_TABLE = R"(
     CREATE INDEX IF NOT EXISTS idx_users_uid ON linux_users(uid);
 )";
 
-const char* CREATE_GROUPS_TABLE = R"(
+inline constexpr const char* CREATE_GROUPS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_groups (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         group_name TEXT UNIQUE,
@@ -59,7 +59,7 @@ const char* CREATE_GROUPS_TABLE = R"(
     );
 )";
 
-const char* CREATE_LOGIN_RECORDS_TABLE = R"(
+inline constexpr const char* CREATE_LOGIN_RECORDS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_login_records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT,
@@ -75,7 +75,7 @@ const char* CREATE_LOGIN_RECORDS_TABLE = R"(
     CREATE INDEX IF NOT EXISTS idx_login_user ON linux_login_records(username);
 )";
 
-const char* CREATE_SHELL_HISTORY_TABLE = R"(
+inline constexpr const char* CREATE_SHELL_HISTORY_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_shell_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT,
@@ -89,7 +89,7 @@ const char* CREATE_SHELL_HISTORY_TABLE = R"(
     CREATE INDEX IF NOT EXISTS idx_history_time ON linux_shell_history(timestamp);
 )";
 
-const char* CREATE_CRON_JOBS_TABLE = R"(
+inline constexpr const char* CREATE_CRON_JOBS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_cron_jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT,
@@ -104,7 +104,7 @@ const char* CREATE_CRON_JOBS_TABLE = R"(
     );
 )";
 
-const char* CREATE_SSH_KEYS_TABLE = R"(
+inline constexpr const char* CREATE_SSH_KEYS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_ssh_keys (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT,
@@ -116,7 +116,7 @@ const char* CREATE_SSH_KEYS_TABLE = R"(
     );
 )";
 
-const char* CREATE_SSH_KNOWN_HOSTS_TABLE = R"(
+inline constexpr const char* CREATE_SSH_KNOWN_HOSTS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_ssh_known_hosts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT,
@@ -127,7 +127,7 @@ const char* CREATE_SSH_KNOWN_HOSTS_TABLE = R"(
     );
 )";
 
-const char* CREATE_PACKAGES_TABLE = R"(
+inline constexpr const char* CREATE_PACKAGES_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_packages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
@@ -142,7 +142,7 @@ const char* CREATE_PACKAGES_TABLE = R"(
     CREATE INDEX IF NOT EXISTS idx_pkg_name ON linux_packages(name);
 )";
 
-const char* CREATE_NETWORK_CONNECTIONS_TABLE = R"(
+inline constexpr const char* CREATE_NETWORK_CONNECTIONS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_network_connections (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         protocol TEXT,
@@ -158,7 +158,7 @@ const char* CREATE_NETWORK_CONNECTIONS_TABLE = R"(
     );
 )";
 
-const char* CREATE_SYSTEMD_SERVICES_TABLE = R"(
+inline constexpr const char* CREATE_SYSTEMD_SERVICES_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_systemd_services (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         service_name TEXT,
@@ -173,7 +173,7 @@ const char* CREATE_SYSTEMD_SERVICES_TABLE = R"(
     );
 )";
 
-const char* CREATE_KERNEL_MODULES_TABLE = R"(
+inline constexpr const char* CREATE_KERNEL_MODULES_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_kernel_modules (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         module_name TEXT,
@@ -185,7 +185,7 @@ const char* CREATE_KERNEL_MODULES_TABLE = R"(
     );
 )";
 
-const char* CREATE_FIREWALL_RULES_TABLE = R"(
+inline constexpr const char* CREATE_FIREWALL_RULES_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_firewall_rules (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         chain TEXT,
@@ -200,7 +200,7 @@ const char* CREATE_FIREWALL_RULES_TABLE = R"(
     );
 )";
 
-const char* CREATE_AUDIT_LOGS_TABLE = R"(
+inline constexpr const char* CREATE_AUDIT_LOGS_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_audit_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp INTEGER,
@@ -216,7 +216,7 @@ const char* CREATE_AUDIT_LOGS_TABLE = R"(
     CREATE INDEX IF NOT EXISTS idx_audit_type ON linux_audit_logs(type);
 )";
 
-const char* CREATE_BROWSER_PROFILES_TABLE = R"(
+inline constexpr const char* CREATE_BROWSER_PROFILES_TABLE = R"(
     CREATE TABLE IF NOT EXISTS linux_browser_profiles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         browser_type INTEGER,
@@ -231,77 +231,77 @@ const char* CREATE_BROWSER_PROFILES_TABLE = R"(
 // INSERT Statements
 // ============================================================================
 
-const char* INSERT_LOG_ENTRY = 
+inline constexpr const char* INSERT_LOG_ENTRY = 
     "INSERT INTO linux_log_entries "
     "(log_file, timestamp, unix_timestamp, hostname, process, pid, message, level, facility) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-const char* INSERT_USER_INFO = 
+inline constexpr const char* INSERT_USER_INFO = 
     "INSERT OR REPLACE INTO linux_users "
     "(username, uid, gid, full_name, home_directory, shell, password_hash, "
     "last_password_change, password_max_age, password_min_age, password_warn_days, "
     "inactive_days, account_expires, is_locked, is_system_account) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-const char* INSERT_GROUP_INFO = 
+inline constexpr const char* INSERT_GROUP_INFO = 
     "INSERT OR REPLACE INTO linux_groups (group_name, gid, members) VALUES (?, ?, ?)";
 
-const char* INSERT_LOGIN_RECORD = 
+inline constexpr const char* INSERT_LOGIN_RECORD = 
     "INSERT INTO linux_login_records "
     "(username, terminal, remote_host, login_time, logout_time, login_type, is_success, pid) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
-const char* INSERT_SHELL_HISTORY = 
+inline constexpr const char* INSERT_SHELL_HISTORY = 
     "INSERT INTO linux_shell_history "
     "(username, shell_type, command, timestamp, line_number, history_file) "
     "VALUES (?, ?, ?, ?, ?, ?)";
 
-const char* INSERT_CRON_JOB = 
+inline constexpr const char* INSERT_CRON_JOB = 
     "INSERT INTO linux_cron_jobs "
     "(username, minute, hour, day_of_month, month, day_of_week, command, cron_file, cron_type) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-const char* INSERT_SSH_KEY = 
+inline constexpr const char* INSERT_SSH_KEY = 
     "INSERT INTO linux_ssh_keys "
     "(username, key_type, public_key, key_path, comment, options) "
     "VALUES (?, ?, ?, ?, ?, ?)";
 
-const char* INSERT_SSH_KNOWN_HOST = 
+inline constexpr const char* INSERT_SSH_KNOWN_HOST = 
     "INSERT INTO linux_ssh_known_hosts "
     "(username, hostname, key_type, public_key, is_hashed) "
     "VALUES (?, ?, ?, ?, ?)";
 
-const char* INSERT_PACKAGE_INFO = 
+inline constexpr const char* INSERT_PACKAGE_INFO = 
     "INSERT INTO linux_packages "
     "(name, version, architecture, install_time, package_manager, status, description, maintainer) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
-const char* INSERT_NETWORK_CONNECTION = 
+inline constexpr const char* INSERT_NETWORK_CONNECTION = 
     "INSERT INTO linux_network_connections "
     "(protocol, local_address, local_port, remote_address, remote_port, state, uid, inode, process, pid) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-const char* INSERT_SYSTEMD_SERVICE = 
+inline constexpr const char* INSERT_SYSTEMD_SERVICE = 
     "INSERT INTO linux_systemd_services "
     "(service_name, description, load_state, active_state, sub_state, unit_file, exec_start, user, is_enabled) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-const char* INSERT_KERNEL_MODULE = 
+inline constexpr const char* INSERT_KERNEL_MODULE = 
     "INSERT INTO linux_kernel_modules "
     "(module_name, size, used_count, used_by, state, filename) "
     "VALUES (?, ?, ?, ?, ?, ?)";
 
-const char* INSERT_FIREWALL_RULE = 
+inline constexpr const char* INSERT_FIREWALL_RULE = 
     "INSERT INTO linux_firewall_rules "
     "(chain, table_name, protocol, source, destination, source_port, destination_port, action, rule_spec) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-const char* INSERT_AUDIT_LOG = 
+inline constexpr const char* INSERT_AUDIT_LOG = 
     "INSERT INTO linux_audit_logs "
     "(timestamp, serial_number, type, message, subject, object, action, result) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
-const char* INSERT_BROWSER_PROFILE = 
+inline constexpr const char* INSERT_BROWSER_PROFILE = 
     "INSERT INTO linux_browser_profiles "
     "(browser_type, browser_name, profile_name, profile_path, username) "
     "VALUES (?, ?, ?, ?, ?)";
@@ -310,59 +310,59 @@ const char* INSERT_BROWSER_PROFILE =
 // SELECT Statements
 // ============================================================================
 
-const char* SELECT_LOG_ENTRIES_BASE = 
+inline constexpr const char* SELECT_LOG_ENTRIES_BASE = 
     "SELECT log_file, timestamp, unix_timestamp, hostname, process, pid, message, level, facility "
     "FROM linux_log_entries";
 
-const char* SELECT_USERS_BASE = 
+inline constexpr const char* SELECT_USERS_BASE = 
     "SELECT username, uid, gid, full_name, home_directory, shell, password_hash, "
     "last_password_change, password_max_age, password_min_age, password_warn_days, "
     "inactive_days, account_expires, is_locked, is_system_account FROM linux_users";
 
-const char* SELECT_GROUPS_BASE = 
+inline constexpr const char* SELECT_GROUPS_BASE = 
     "SELECT group_name, gid, members FROM linux_groups";
 
-const char* SELECT_LOGIN_RECORDS_BASE = 
+inline constexpr const char* SELECT_LOGIN_RECORDS_BASE = 
     "SELECT username, terminal, remote_host, login_time, logout_time, login_type, is_success, pid "
     "FROM linux_login_records";
 
-const char* SELECT_SHELL_HISTORY_BASE = 
+inline constexpr const char* SELECT_SHELL_HISTORY_BASE = 
     "SELECT username, shell_type, command, timestamp, line_number, history_file "
     "FROM linux_shell_history";
 
-const char* SELECT_CRON_JOBS_BASE = 
+inline constexpr const char* SELECT_CRON_JOBS_BASE = 
     "SELECT username, minute, hour, day_of_month, month, day_of_week, command, cron_file, cron_type "
     "FROM linux_cron_jobs";
 
-const char* SELECT_SSH_KEYS_BASE = 
+inline constexpr const char* SELECT_SSH_KEYS_BASE = 
     "SELECT username, key_type, public_key, key_path, comment, options FROM linux_ssh_keys";
 
-const char* SELECT_SSH_KNOWN_HOSTS_BASE = 
+inline constexpr const char* SELECT_SSH_KNOWN_HOSTS_BASE = 
     "SELECT username, hostname, key_type, public_key, is_hashed FROM linux_ssh_known_hosts";
 
-const char* SELECT_PACKAGES_BASE = 
+inline constexpr const char* SELECT_PACKAGES_BASE = 
     "SELECT name, version, architecture, install_time, package_manager, status, description, maintainer "
     "FROM linux_packages";
 
-const char* SELECT_NETWORK_CONNECTIONS_BASE = 
+inline constexpr const char* SELECT_NETWORK_CONNECTIONS_BASE = 
     "SELECT protocol, local_address, local_port, remote_address, remote_port, state, uid, inode, process, pid "
     "FROM linux_network_connections";
 
-const char* SELECT_SYSTEMD_SERVICES_BASE = 
+inline constexpr const char* SELECT_SYSTEMD_SERVICES_BASE = 
     "SELECT service_name, description, load_state, active_state, sub_state, unit_file, exec_start, user, is_enabled "
     "FROM linux_systemd_services";
 
-const char* SELECT_KERNEL_MODULES_BASE = 
+inline constexpr const char* SELECT_KERNEL_MODULES_BASE = 
     "SELECT module_name, size, used_count, used_by, state, filename FROM linux_kernel_modules";
 
-const char* SELECT_FIREWALL_RULES_BASE = 
+inline constexpr const char* SELECT_FIREWALL_RULES_BASE = 
     "SELECT chain, table_name, protocol, source, destination, source_port, destination_port, action, rule_spec "
     "FROM linux_firewall_rules";
 
-const char* SELECT_AUDIT_LOGS_BASE = 
+inline constexpr const char* SELECT_AUDIT_LOGS_BASE = 
     "SELECT timestamp, serial_number, type, message, subject, object, action, result FROM linux_audit_logs";
 
-const char* SELECT_BROWSER_PROFILES_BASE = 
+inline constexpr const char* SELECT_BROWSER_PROFILES_BASE = 
     "SELECT browser_type, browser_name, profile_name, profile_path, username FROM linux_browser_profiles";
 
 } // namespace LinuxAnalysisSQL

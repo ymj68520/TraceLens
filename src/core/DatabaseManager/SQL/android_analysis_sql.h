@@ -11,7 +11,7 @@ namespace AndroidAnalysisSQL {
 // CREATE TABLE Statements
 // ============================================================================
 
-const char* CREATE_ALL_TABLES = R"(
+inline constexpr const char* CREATE_ALL_TABLES = R"(
     CREATE TABLE IF NOT EXISTS system_build_properties (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         property_key TEXT NOT NULL UNIQUE,
@@ -149,50 +149,50 @@ const char* CREATE_ALL_TABLES = R"(
 // INSERT Statements
 // ============================================================================
 
-const char* INSERT_BUILD_PROPERTY = 
+inline constexpr const char* INSERT_BUILD_PROPERTY = 
     "INSERT OR REPLACE INTO system_build_properties (property_key, property_value) VALUES (?, ?);";
 
-const char* INSERT_SYSTEM_APP = 
+inline constexpr const char* INSERT_SYSTEM_APP = 
     "INSERT OR IGNORE INTO system_apps (package_name, apk_path, version_name, version_code, is_system_app, is_privileged) "
     "VALUES (?, ?, ?, ?, ?, ?);";
 
-const char* INSERT_FRAMEWORK_FILE = 
+inline constexpr const char* INSERT_FRAMEWORK_FILE = 
     "INSERT OR IGNORE INTO framework_files (file_name, file_path, file_type, file_size) VALUES (?, ?, ?, ?);";
 
-const char* INSERT_SMS = 
+inline constexpr const char* INSERT_SMS = 
     "INSERT INTO sms_messages (address, body, date, type) VALUES (?, ?, ?, ?);";
 
-const char* INSERT_CONTACT = 
+inline constexpr const char* INSERT_CONTACT = 
     "INSERT INTO contacts (display_name, phone_number) VALUES (?, ?);";
 
-const char* INSERT_CALL_LOG = 
+inline constexpr const char* INSERT_CALL_LOG = 
     "INSERT INTO call_logs (number, date, duration, type) VALUES (?, ?, ?, ?);";
 
-const char* INSERT_WHATSAPP = 
+inline constexpr const char* INSERT_WHATSAPP = 
     "INSERT INTO whatsapp_messages (sender, receiver, content, timestamp) VALUES (?, ?, ?, ?);";
 
-const char* INSERT_TELEGRAM = 
+inline constexpr const char* INSERT_TELEGRAM = 
     "INSERT INTO telegram_messages (sender, receiver, content, timestamp) VALUES (?, ?, ?, ?);";
 
-const char* INSERT_WECHAT = 
+inline constexpr const char* INSERT_WECHAT = 
     "INSERT INTO wechat_messages (sender, receiver, content, timestamp) VALUES (?, ?, ?, ?);";
 
-const char* INSERT_WIFI = 
+inline constexpr const char* INSERT_WIFI = 
     "INSERT INTO wifi_networks (ssid, pre_shared_key, key_mgmt) VALUES (?, ?, ?);";
 
-const char* INSERT_CHROME_HISTORY = 
+inline constexpr const char* INSERT_CHROME_HISTORY = 
     "INSERT INTO chrome_history (url, title, visit_count, last_visit_time) VALUES (?, ?, ?, ?);";
 
-const char* INSERT_INSTALLED_PACKAGE = 
+inline constexpr const char* INSERT_INSTALLED_PACKAGE = 
     "INSERT OR REPLACE INTO installed_packages (package_name, code_path, version, installer) VALUES (?, ?, ?, ?);";
 
-const char* INSERT_USAGE_STAT = 
+inline constexpr const char* INSERT_USAGE_STAT = 
     "INSERT INTO usage_stats (package_name, total_time_foreground, last_time_used, interval_start) VALUES (?, ?, ?, ?);";
 
-const char* INSERT_APP_DATABASE_FILE = 
+inline constexpr const char* INSERT_APP_DATABASE_FILE = 
     "INSERT OR IGNORE INTO app_database_files (package_name, file_name, file_path, file_size) VALUES (?, ?, ?, ?);";
 
-const char* INSERT_SYSTEM_LOG = 
+inline constexpr const char* INSERT_SYSTEM_LOG = 
     "INSERT INTO system_logs (timestamp, log_level, tag, process, pid, message, log_file, log_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
 
 } // namespace AndroidAnalysisSQL

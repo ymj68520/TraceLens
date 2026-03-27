@@ -1,40 +1,38 @@
 """
-Database reader module for fetching file records from SQLite database.
+Database reader module for fetching records from SQLite databases.
 
-This is a backward-compatible facade that re-exports all classes and functions
-from the modular database_reader package (raw_reader, files_reader, events_reader).
+This module provides a modular interface for reading different types of forensics databases:
+- Raw database (raw_reader): File metadata and LLM analysis
+- Platform-specific databases: Windows, Linux, Android artifacts
+- Events database (events_reader): Timeline events and event clusters
 
-The original monolithic database_reader.py has been split into:
-- database_reader/raw_reader.py - Raw database with FileRecord and ForensicsDatabase
-- database_reader/files_reader.py - Platform-specific databases (Windows, Linux, Android)
-- database_reader/events_reader.py - Events/timeline database
-
-This file maintains backward compatibility for existing imports.
+Backward compatibility: All classes and functions from the original database_reader.py
+are re-exported from this module.
 """
 
-# Re-export everything from the modular structure
-from .database_reader.raw_reader import (
+# Import all classes and functions from submodules
+from .raw_reader import (
     FileRecord,
     ForensicsDatabase,
     read_raw_database,
     get_files_metadata,
 )
-from .database_reader.base_reader import _BaseForensicsReader
-from .database_reader.windows_reader import WindowsDatabase
-from .database_reader.linux_reader import LinuxDatabase
-from .database_reader.android_reader import AndroidDatabase
-from .database_reader.events_reader import (
+from .base_reader import _BaseForensicsReader
+from .windows_reader import WindowsDatabase
+from .linux_reader import LinuxDatabase
+from .android_reader import AndroidDatabase
+from .events_reader import (
     EventsDatabase,
     read_events_database,
     get_timeline_events,
 )
 
-# Factory classes (defined below in this file)
+# Import factory classes - define them here to avoid circular import
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from .exceptions import DatabaseError
+from ..exceptions import DatabaseError
 
 
 @dataclass
@@ -239,25 +237,25 @@ def get_classified_files(
 
     return method(limit=limit, offset=offset)
 
-
 __all__ = [
-    # Raw database
+    # Raw database reader
     "FileRecord",
     "ForensicsDatabase",
     "read_raw_database",
     "get_files_metadata",
-    # Files databases
+    # Base reader
     "_BaseForensicsReader",
+    # Platform-specific database readers
     "WindowsDatabase",
     "LinuxDatabase",
     "AndroidDatabase",
     "read_files_database",
     "get_classified_files",
-    # Events database
+    # Events database reader
     "EventsDatabase",
     "read_events_database",
     "get_timeline_events",
-    # Factory
+    # Factory classes
     "DiscoveredDatabases",
     "ForensicsDatabaseFactory",
 ]

@@ -120,6 +120,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/network
   ${CMAKE_SOURCE_DIR}/src/network/HTTPServer
   ${CMAKE_SOURCE_DIR}/src/network/HTTPServer/routes
+  ${CMAKE_SOURCE_DIR}/src/network/HTTPServer/Queries
   # Office Module
   ${CMAKE_SOURCE_DIR}/src/analyzers/OfficeAnalyzer
   # Integration modules
@@ -160,7 +161,10 @@ set(LIB_SOURCES
     src/analyzers/ImageAnalyzer/ImageAnalyzer.cpp
     src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp
     src/core/DatabaseManager/DatabaseManager.cpp
-    src/core/DatabaseManager/EventExtractor/EventExtractor.cpp
+    src/core/DatabaseManager/EventExtractor/Detail/EventExtractorCore.cpp
+    src/core/DatabaseManager/EventExtractor/Detail/FileSystemEventExtractor.cpp
+    src/core/DatabaseManager/EventExtractor/Detail/SystemEventExtractor.cpp
+    src/core/DatabaseManager/EventExtractor/Detail/EventCorrelationExtractor.cpp
     src/core/DatabaseManager/FileClassifier/FileClassifier.cpp
     src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
     src/core/DatabaseManager/FileExtractor/FileExtractor.cpp
@@ -202,10 +206,10 @@ set(LIB_SOURCES
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsJumpListParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Core/LinuxFilesAnalyzerCore.cpp
     src/analyzers/LinuxFilesAnalyzer/Database/LinuxAnalysisDatabase.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxArtifactsParsers.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxLogParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxHistoryParser.cpp
-    src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxArtifactsParsers.cpp
     src/core/AuditLog/AuditLog.cpp
     src/core/PathManager/PathManager.cpp
     src/core/FullTextSearch/FullTextSearch.cpp
@@ -213,7 +217,11 @@ set(LIB_SOURCES
     src/core/TOONExporter/TOONExporter.cpp
     src/analyzers/FileCarving/FileCarver.cpp
     # EventCorrelationEngine module
-    src/core/EventCorrelationEngine/EventCorrelationEngine.cpp
+    src/core/EventCorrelationEngine/Detail/EventCorrelationEngineCore.cpp
+    src/core/EventCorrelationEngine/Detail/EventCorrelationAnalyzer.cpp
+    src/core/EventCorrelationEngine/Detail/EventChainBuilder.cpp
+    src/core/EventCorrelationEngine/Detail/EventCorrelationExporter.cpp
+    src/core/EventCorrelationEngine/Detail/EventCorrelationUtils.cpp
     # LLMIntegration module
     src/integration/LLMIntegration/LLMClient.cpp
     src/integration/LLMIntegration/ModelRouter.cpp
