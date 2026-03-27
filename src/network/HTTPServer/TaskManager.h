@@ -253,6 +253,13 @@ public:
     void save_tasks();
     void load_tasks();
 
+    /**
+     * @brief Check if a task has been requested to be cancelled
+     * @param id Task ID
+     * @return true if cancellation requested or task not found
+     */
+    bool is_task_cancelled(const std::string& id);
+
 private:
     TaskManager();
 

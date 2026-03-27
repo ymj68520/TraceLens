@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { fetchTasks } from '../store/taskSlice';
-import { setBatchJob, updateBatchProgress, clearBatchJob } from '../store/intelligenceSlice';
+import { setBatchJob, updateBatchProgress, clearBatchJob, setRefreshFlag } from '../store/intelligenceSlice';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
@@ -91,6 +91,9 @@ const Files = () => {
           }
         });
         setLlmResults(prev => ({ ...prev, ...newDesc }));
+
+        // Set refresh flag to notify CaseIntelligence to refresh
+        dispatch(setRefreshFlag({ type: 'files' }));
       }
 
       dispatch(updateBatchProgress({ taskId, status: 'completed', message: '✅ 批量分析完成' }));
@@ -326,6 +329,9 @@ const Files = () => {
         setLargestFiles(prev => prev.map((f, i) =>
           i === index ? { ...f, llm_summary: descData.summary, llm_description: descData.description, llm_keywords: descData.keywords } : f
         ));
+
+        // Set refresh flag to notify CaseIntelligence to refresh
+        dispatch(setRefreshFlag({ type: 'files' }));
       } else {
         console.error('Analysis failed: no success in response');
         alert('分析失败：未收到有效响应');
@@ -515,6 +521,9 @@ ${detail}
                 } catch (err) {
                   console.error('Failed to refresh file data:', err);
                 }
+
+                // Set refresh flag to notify CaseIntelligence to refresh
+                dispatch(setRefreshFlag({ type: 'files' }));
               }
               setReanalyzing(false);
               setTimeout(() => setShowReanalyzeModal(false), 1500);

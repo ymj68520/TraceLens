@@ -36,6 +36,24 @@ TaskRoutes::TaskRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()
         return res;
     });
 
+    CROW_ROUTE(app, "/api/tasks/<string>/results").methods("OPTIONS"_method)([](const crow::request& req, const std::string& task_id){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
+    CROW_ROUTE(app, "/api/tasks").methods("OPTIONS"_method)([](const crow::request& req){
+        crow::response res;
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        res.code = 204;
+        return res;
+    });
+
     CROW_ROUTE(app, "/api/tasks/list").methods("OPTIONS"_method)([](const crow::request& req){
         crow::response res;
         res.set_header("Access-Control-Allow-Origin", "*");
@@ -127,6 +145,22 @@ TaskRoutes::TaskRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()
     });
 
     // Basic task management routes
+    CROW_ROUTE(app, "/tasks").methods("GET"_method)([this](const crow::request& req) {
+        return handle_list_tasks(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/tasks", "GET",
+        "List tasks",
+        "List all analysis tasks with optional filtering.",
+        {"Tasks"},
+        {
+            {"status", "query", "Filter by status", false},
+            {"priority", "query", "Filter by priority", false},
+            {"limit", "query", "Results limit", false, "integer"},
+            {"offset", "query", "Pagination offset", false, "integer"}
+        },
+        {{200, "List of tasks"}}
+    );
     CROW_ROUTE(app, "/tasks").methods("POST"_method)([this](const crow::request& req) {
         return handle_create_task(req);
     });
@@ -138,7 +172,6 @@ TaskRoutes::TaskRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()
         {}, // Body parameters are handled via schema in JSON usually, but here we can't easily express body schema in this helper yet without update
         {{201, "Task created"}, {400, "Invalid request"}}
     );
-
     CROW_ROUTE(app, "/tasks/<string>").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
         return handle_get_task(req, task_id);
     });
@@ -164,11 +197,17 @@ TaskRoutes::TaskRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()
     );
 
     // Enhanced task management routes
+    CROW_ROUTE(app, "/api/tasks").methods("GET"_method)([this](const crow::request& req) {
+        return handle_list_tasks(req);
+    });
     CROW_ROUTE(app, "/api/tasks/list").methods("GET"_method)([this](const crow::request& req) {
         return handle_list_tasks(req);
     });
+    CROW_ROUTE(app, "/api/tasks").methods("POST"_method)([this](const crow::request& req) {
+        return handle_create_task(req);
+    });
     Swagger::instance().RegisterEndpoint(
-        "/api/tasks/list", "GET",
+        "/api/tasks", "GET",
         "List tasks",
         "List all analysis tasks with optional filtering.",
         {"Tasks"},
@@ -181,29 +220,21 @@ TaskRoutes::TaskRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()
         {{200, "List of tasks"}}
     );
 
-    CROW_ROUTE(app, "/api/tasks/<string>").methods("DELETE"_method)([this](const crow::request& req, const std::string& task_id) {
-        return handle_cancel_task(req, task_id);
+    CROW_ROUTE(app, "/api/tasks/<string>/results").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
+        return handle_get_task_results(req, task_id);
     });
-    Swagger::instance().RegisterEndpoint(
-        "/api/tasks/{id}", "DELETE",
-        "Cancel task",
-        "Cancel a running or pending task.",
-        {"Tasks"},
-        {{"id", "path", "Task ID", true}},
-        {{200, "Task cancelled"}, {400, "Cancellation failed"}, {500, "Internal error"}}
-    );
 
     CROW_ROUTE(app, "/api/tasks/<string>/progress").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
         return handle_get_task_progress(req, task_id);
     });
-    Swagger::instance().RegisterEndpoint(
-        "/api/tasks/{id}/progress", "GET",
-        "Get task progress",
-        "Get detailed progress information for a task.",
-        {"Tasks"},
-        {{"id", "path", "Task ID", true}},
-        {{200, "Progress info"}, {404, "Task not found"}}
-    );
+
+    CROW_ROUTE(app, "/api/tasks/<string>/audit-log").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
+        return handle_get_task_audit_log(req, task_id);
+    });
+
+    CROW_ROUTE(app, "/api/tasks/<string>").methods("GET"_method, "PUT"_method)([this](const crow::request& req, const std::string& task_id) {
+        return handle_get_task(req, task_id);
+    });
 
     CROW_ROUTE(app, "/api/tasks/statistics").methods("GET"_method)([this](const crow::request& req) {
         return handle_get_task_statistics(req);
@@ -264,23 +295,6 @@ TaskRoutes::TaskRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()
         {"Tasks"},
         {},
         {{200, "Batch cancellation result"}, {400, "Invalid request"}}
-    );
-
-    // Advanced task features routes
-    CROW_ROUTE(app, "/api/tasks/<string>/audit-log").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
-        return handle_get_task_audit_log(req, task_id);
-    });
-    Swagger::instance().RegisterEndpoint(
-        "/api/tasks/{id}/audit-log", "GET",
-        "Get task audit log",
-        "Retrieve the audit log for a specific task.",
-        {"Tasks"},
-        {
-            {"id", "path", "Task ID", true},
-            {"limit", "query", "Results limit", false, "integer"},
-            {"offset", "query", "Pagination offset", false, "integer"}
-        },
-        {{200, "Audit logs"}, {500, "Internal error"}}
     );
 
     CROW_ROUTE(app, "/api/tasks/<string>/priority").methods("PUT"_method)([this](const crow::request& req, const std::string& task_id) {
@@ -385,6 +399,17 @@ crow::response TaskRoutes::handle_create_task(const crow::request& req) {
 crow::response TaskRoutes::handle_get_task(const crow::request& req, const std::string& task_id) {
     crow::response res;
     add_cors_headers(res);
+
+    // CRITICAL: Prevent route collision with static paths like /api/tasks/list
+    if (task_id == "list" || task_id == "statistics" || task_id == "cleanup" || 
+        task_id == "batch-create" || task_id == "batch-status" || task_id == "batch-cancel") {
+        json error = {{"error", "Task not found"}, {"task_id", task_id}};
+        res.code = 404;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
     AnalysisTask task = task_manager_.get_task(task_id);
 
     if (task.id.empty()) {
@@ -490,6 +515,7 @@ crow::response TaskRoutes::handle_list_tasks(const crow::request& req) {
         }
 
         auto all_tasks = task_manager_.get_all_tasks();
+        std::cout << "[DEBUG] handle_list_tasks: Total tasks in manager: " << all_tasks.size() << std::endl;
         std::vector<json> filtered_tasks;
 
         for (const auto& task : all_tasks) {
@@ -505,6 +531,7 @@ crow::response TaskRoutes::handle_list_tasks(const crow::request& req) {
                 filtered_tasks.push_back(task_to_json(task));
             }
         }
+        std::cout << "[DEBUG] handle_list_tasks: Tasks after filtering (status=" << status_filter << "): " << filtered_tasks.size() << std::endl;
 
         int total = filtered_tasks.size();
         auto start_it = filtered_tasks.begin() + std::min(offset, total);
@@ -866,6 +893,8 @@ nlohmann::json TaskRoutes::task_to_json(const AnalysisTask& task) {
         {"priority", priority_to_string(task.priority)},
         {"message", task.message},
         {"output_files_db", task.output_files_db},
+        {"output_raw_db", task.output_raw_db},
+        {"output_events_db", task.output_events_db},
         {"progress", {
             {"current_phase", phase_to_string(task.progress.current_phase)},
             {"phase_percentage", task.progress.phase_percentage},

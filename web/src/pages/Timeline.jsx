@@ -1,7 +1,8 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
+import { setRefreshFlag } from '../store/intelligenceSlice';
 import { Virtuoso } from 'react-virtuoso';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
@@ -10,7 +11,7 @@ import Button from '../components/common/Button';
 import { useTranslation } from '../hooks/useTranslation';
 import { getComprehensiveTimeline, getTimelineDistribution, getTimelineDetails, analyzeEventCluster, reanalyzeEventCluster } from '../services/forensicsService';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Calendar, Filter, X, ChevronLeft, ChevronRight, FileText, Clock, Layers, Folder, ArrowRight, Search, Brain, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Calendar, Filter, X, ChevronLeft, ChevronRight, FileText, Clock, Layers, Folder, ArrowRight, Search, Brain, RefreshCw, CheckCircle } from 'lucide-react';
 
 // --- Helper Functions ---
 const formatTimestamp = (timestamp) => {
@@ -66,6 +67,7 @@ const Timeline = () => {
   const [analyzedClusters, setAnalyzedClusters] = useState(new Set());
 
   const virtuosoRef = useRef();
+  const dispatch = useDispatch();
   const currentTask = tasks.find((t) => t.id === taskId);
 
   const updateParams = useCallback((newParams) => {
@@ -105,6 +107,23 @@ const Timeline = () => {
       console.log('Final params:', params);
       const data = await getComprehensiveTimeline(taskId, params);
       console.log('Received timeline data:', data);
+      
+      // Debug: Check if timeline exists and has data
+      if (!data) {
+        console.error('Timeline data is null or undefined');
+        setError('Received empty timeline data');
+        return;
+      }
+      
+      if (!data.timeline || data.timeline.length === 0) {
+        console.warn('Timeline is empty, no events found');
+        setTimelineData(data);
+        return;
+      }
+      
+      console.log('Timeline has', data.timeline.length, 'events');
+      console.log('Sample event:', data.timeline[0]);
+      
       setTimelineData(data);
       if (virtuosoRef.current) virtuosoRef.current.scrollToIndex({ index: 0 });
     } catch (err) {
@@ -131,9 +150,105 @@ const Timeline = () => {
     }
   }, [taskId]);
 
+  // 自动分析重要的事件簇
   useEffect(() => {
     fetchTimeline();
   }, [fetchTimeline]);
+  
+  // 分析状态管理
+  const [analysisInProgress, setAnalysisInProgress] = useState(false);
+
+  // 当数据加载完成后，分析事件簇
+  useEffect(() => {
+    if (!taskId || !timelineData?.timeline?.length || analysisInProgress) return;
+    
+    const autoAnalyzeClusters = async () => {
+      setAnalysisInProgress(true);
+      try {
+        // 筛选未分析的重要事件簇
+        // 双重检查：1) llm_summary不存在 2) 不在analyzedClusters中
+        const unanalyzedClusters = timelineData.timeline.filter(event => {
+          const clusterKey = `${event.timestamp}-${event.event_type}-${event.parent_directory}`;
+          return event.cluster_count > 1 && !event.llm_summary && !analyzedClusters.has(clusterKey);
+        });
+        
+        console.log('Auto-analyze: Found', unanalyzedClusters.length, 'unanalyzed clusters');
+        
+        if (unanalyzedClusters.length === 0) {
+          console.log('Auto-analyze: No clusters to analyze');
+          return;
+        }
+        
+        // 按事件数量排序，优先分析事件数多的簇
+        unanalyzedClusters.sort((a, b) => (b.cluster_count || 0) - (a.cluster_count || 0));
+        
+        // 限制每次最多分析5个簇，避免过多请求
+        const clustersToAnalyze = unanalyzedClusters.slice(0, 5);
+        
+        console.log('Auto-analyze: Will analyze', clustersToAnalyze.length, 'clusters (max 5)');
+        
+        for (const cluster of clustersToAnalyze) {
+          // 检查是否已经在分析中
+          const clusterKey = `${cluster.timestamp}-${cluster.event_type}-${cluster.parent_directory}`;
+          if (!analyzingClusters.has(clusterKey)) {
+            console.log('Auto-analyze: Analyzing cluster:', clusterKey);
+            // 立即将簇添加到analyzedClusters，防止重复分析
+            setAnalyzedClusters(prev => new Set(prev).add(clusterKey));
+            
+            // 创建一个局部的分析函数，避免闭包问题
+            const analyzeCluster = async (clusterData) => {
+              const key = `${clusterData.timestamp}-${clusterData.event_type}-${clusterData.parent_directory}`;
+              setAnalyzingClusters(prev => new Set(prev).add(key));
+              
+              try {
+                await analyzeEventCluster(taskId, clusterData);
+                console.log('Auto-analyze: Completed analysis for cluster:', key);
+              } catch (error) {
+                console.error('Failed to analyze event cluster:', error);
+                // 失败时从analyzedClusters中移除，允许重试
+                setAnalyzedClusters(prev => {
+                  const newSet = new Set(prev);
+                  newSet.delete(key);
+                  return newSet;
+                });
+              } finally {
+                setAnalyzingClusters(prev => {
+                  const newSet = new Set(prev);
+                  newSet.delete(key);
+                  return newSet;
+                });
+              }
+            };
+            
+            await analyzeCluster(cluster);
+            // 间隔2秒，避免请求过多
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } else {
+            console.log('Auto-analyze: Cluster already being analyzed:', clusterKey);
+          }
+        }
+        
+        // 所有分析完成后刷新数据
+        setTimeout(() => {
+          // Refresh timeline data to show AI analysis results
+          fetchTimeline();
+          // Set refresh flag to notify CaseIntelligence to refresh
+          dispatch(setRefreshFlag({ type: 'clusters' }));
+        }, 2000);
+      } catch (error) {
+        console.error('Auto-analyze error:', error);
+      } finally {
+        setAnalysisInProgress(false);
+      }
+    };
+    
+    // 延迟执行自动分析，确保数据已加载
+    const timer = setTimeout(() => {
+      autoAnalyzeClusters();
+    }, 1000);
+    
+    return () => clearTimeout(timer);
+  }, [taskId, timelineData, analyzingClusters, fetchTimeline, dispatch, analysisInProgress, analyzedClusters]);
 
   // Cluster Detail Fetching with Search Support
   const fetchClusterDetails = useCallback(async (cluster, search) => {
@@ -174,16 +289,44 @@ const Timeline = () => {
   
   // Handle AI Analysis for Event Clusters
   const handleAnalyzeCluster = async (cluster) => {
+    // 验证 taskId
+    if (!taskId) {
+      console.error('[AI分析] taskId 为空，无法分析');
+      alert('错误: 未选择任务。请先从任务页面选择一个任务。');
+      return;
+    }
+
     const clusterKey = `${cluster.timestamp}-${cluster.event_type}-${cluster.parent_directory}`;
     setAnalyzingClusters(prev => new Set(prev).add(clusterKey));
-    
+
     try {
-      await analyzeEventCluster(taskId, cluster);
+      console.log('[AI分析] 开始分析 cluster:', clusterKey);
+      console.log('[AI分析] cluster 数据:', cluster);
+
+      const result = await analyzeEventCluster(taskId, cluster);
+      console.log('[AI分析] 分析成功:', result);
+
       setAnalyzedClusters(prev => new Set(prev).add(clusterKey));
       // Refresh timeline data to show AI analysis results
       fetchTimeline();
+      // Set refresh flag to notify CaseIntelligence to refresh
+      dispatch(setRefreshFlag({ type: 'clusters' }));
     } catch (error) {
-      console.error('Failed to analyze event cluster:', error);
+      console.error('[AI分析] 分析失败:', error);
+
+      // 向用户显示详细错误
+      let errorMsg = 'AI 分析失败';
+      if (error.message) {
+        errorMsg += `: ${error.message}`;
+      }
+      if (error.data) {
+        errorMsg += `\n详细信息: ${JSON.stringify(error.data)}`;
+      }
+      if (error.status) {
+        errorMsg += `\nHTTP 状态码: ${error.status}`;
+      }
+
+      alert(errorMsg);
     } finally {
       setAnalyzingClusters(prev => {
         const newSet = new Set(prev);
@@ -194,15 +337,43 @@ const Timeline = () => {
   };
   
   const handleReanalyzeCluster = async (cluster) => {
+    // 验证 taskId
+    if (!taskId) {
+      console.error('[AI重新分析] taskId 为空，无法分析');
+      alert('错误: 未选择任务。请先从任务页面选择一个任务。');
+      return;
+    }
+
     const clusterKey = `${cluster.timestamp}-${cluster.event_type}-${cluster.parent_directory}`;
     setAnalyzingClusters(prev => new Set(prev).add(clusterKey));
-    
+
     try {
-      await reanalyzeEventCluster(taskId, cluster);
+      console.log('[AI重新分析] 开始重新分析 cluster:', clusterKey);
+      console.log('[AI重新分析] cluster 数据:', cluster);
+
+      const result = await reanalyzeEventCluster(taskId, cluster);
+      console.log('[AI重新分析] 分析成功:', result);
+
       // Refresh timeline data to show updated AI analysis results
       fetchTimeline();
+      // Set refresh flag to notify CaseIntelligence to refresh
+      dispatch(setRefreshFlag({ type: 'clusters' }));
     } catch (error) {
-      console.error('Failed to reanalyze event cluster:', error);
+      console.error('[AI重新分析] 分析失败:', error);
+
+      // 向用户显示详细错误
+      let errorMsg = 'AI 重新分析失败';
+      if (error.message) {
+        errorMsg += `: ${error.message}`;
+      }
+      if (error.data) {
+        errorMsg += `\n详细信息: ${JSON.stringify(error.data)}`;
+      }
+      if (error.status) {
+        errorMsg += `\nHTTP 状态码: ${error.status}`;
+      }
+
+      alert(errorMsg);
     } finally {
       setAnalyzingClusters(prev => {
         const newSet = new Set(prev);
@@ -223,13 +394,25 @@ const Timeline = () => {
     updateParams({ type: '', date: '', page: 1, cluster: 'true' });
   };
 
+  // 计算事件数据
   const events = useMemo(() => {
     console.log('Timeline data:', timelineData);
     return timelineData?.timeline || [];
   }, [timelineData]);
-  const metadata = timelineData?.metadata || {};
-  const totalCount = metadata.total_events || 0;
-  const totalPages = Math.ceil(totalCount / pageSize);
+  
+  // 计算元数据
+  const metadata = useMemo(() => {
+    return timelineData?.metadata || {};
+  }, [timelineData]);
+  
+  // 计算总事件数和总页数
+  const totalCount = useMemo(() => {
+    return metadata.total_events || 0;
+  }, [metadata]);
+  
+  const totalPages = useMemo(() => {
+    return Math.ceil(totalCount / pageSize);
+  }, [totalCount, pageSize]);
 
   if (!taskId) return <div className="p-8 text-center text-slate-500">Please select a task...</div>;
 
@@ -287,7 +470,7 @@ const Timeline = () => {
                 <div className="px-4 py-3 border-b border-slate-100 bg-primary-50/30">
                   <div className="flex items-start space-x-3">
                     <div className="flex-shrink-0 mt-1">
-                      <CheckCircle2 size={16} className="text-green-500" />
+                      <CheckCircle size={16} className="text-green-500" />
                     </div>
                     <div className="flex-1">
                       <h4 className="text-xs font-bold text-slate-700 mb-1">AI Analysis</h4>
@@ -509,12 +692,59 @@ const Timeline = () => {
                                   </Badge>
                                 )}
                                 {isCluster && event.llm_summary && (
-                                  <Badge variant="green" icon={CheckCircle2} className="text-[9px] px-1.5 py-0 font-bold">
+                                  <Badge variant="green" icon={CheckCircle} className="text-[9px] px-1.5 py-0 font-bold">
                                     AI Analyzed
                                   </Badge>
                                 )}
                               </div>
-                              {isCluster && <ArrowRight size={14} className="text-primary-400 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                              {isCluster && (
+                                <div className="flex items-center gap-2">
+                                  {!event.llm_summary ? (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleAnalyzeCluster(event);
+                                      }}
+                                      disabled={analyzingClusters.has(`${event.timestamp}-${event.event_type}-${event.parent_directory}`)}
+                                      className="text-[10px] font-bold text-purple-600 hover:text-purple-700 px-2 py-1 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors flex items-center gap-1"
+                                    >
+                                      {analyzingClusters.has(`${event.timestamp}-${event.event_type}-${event.parent_directory}`) ? (
+                                        <>
+                                          <Spinner size="sm" />
+                                          <span>分析中...</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Brain size={12} />
+                                          <span>AI分析</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleReanalyzeCluster(event);
+                                      }}
+                                      disabled={analyzingClusters.has(`${event.timestamp}-${event.event_type}-${event.parent_directory}`)}
+                                      className="text-[10px] font-bold text-amber-600 hover:text-amber-700 px-2 py-1 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors flex items-center gap-1"
+                                    >
+                                      {analyzingClusters.has(`${event.timestamp}-${event.event_type}-${event.parent_directory}`) ? (
+                                        <>
+                                          <Spinner size="sm" />
+                                          <span>分析中...</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <RefreshCw size={12} />
+                                          <span>重新分析</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
+                                  <ArrowRight size={14} className="text-primary-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
+                              )}
                               {!isCluster && <span className="text-[10px] font-mono text-slate-400 opacity-60">ID:{event.inode}</span>}
                             </div>
                             
@@ -526,6 +756,20 @@ const Timeline = () => {
                                 <p className="text-[11px] text-slate-600 truncate bg-slate-50 p-1.5 rounded-lg border border-slate-100 border-dashed font-mono">
                                   {t('timeline.node.sample')}: {event.file_path.split('/').pop()}
                                 </p>
+                                {event.llm_summary && (
+                                  <div className="bg-green-50 border border-green-100 rounded-lg p-2">
+                                    <p className="text-[11px] text-green-800 font-medium">{event.llm_summary}</p>
+                                    {event.llm_keywords && (
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                        {event.llm_keywords.split(',').map((keyword, idx) => (
+                                          <span key={idx} className="text-[9px] bg-white px-1.5 py-0.5 rounded-full border border-green-200 text-green-600">
+                                            {keyword.trim()}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             ) : (
                               <p className="text-[13px] text-slate-700 font-medium break-all mb-1 leading-relaxed">

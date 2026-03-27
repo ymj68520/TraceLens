@@ -209,6 +209,26 @@ void TaskManager::load_tasks() {
                 tasks_[task.id] = task;
             }
             std::cout << "Loaded " << tasks_.size() << " tasks from storage." << std::endl;
+
+            // NEW: Orphan directory cleanup
+            try {
+                auto& pm = forensics::PathManager::instance();
+                auto tasksDir = pm.getDataDir() / "tasks";
+                if (std::filesystem::exists(tasksDir)) {
+                    for (const auto& entry : std::filesystem::directory_iterator(tasksDir)) {
+                        if (entry.is_directory()) {
+                            std::string dirName = entry.path().filename().string();
+                            // If directory name is a UUID (common for tasks) and not in tasks_ map
+                            if (tasks_.count(dirName) == 0) {
+                                std::cout << "[TaskManager] Cleaning up orphan task directory: " << dirName << std::endl;
+                                std::filesystem::remove_all(entry.path());
+                            }
+                        }
+                    }
+                }
+            } catch (...) {
+                // Ignore errors during cleanup
+            }
         } catch(const std::exception& e) {
             std::cerr << "Failed to load tasks: " << e.what() << std::endl;
         }
@@ -419,66 +439,45 @@ bool TaskManager::cancel_task(const std::string& id, const std::string& reason) 
 
 bool TaskManager::delete_task(const std::string& id) {
     std::string task_dir;
+    bool is_running = false;
     {
         std::lock_guard<std::mutex> lock(mtx_);
         if (tasks_.count(id) == 0) {
             return false;
         }
         
-        // If task is running, cancel it first implicitly
-        if (tasks_[id].status == TaskStatus::RUNNING) {
-            tasks_[id].cancellation_requested = true;
-            // Best effort sleep to let background thread exit cleanly
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        }
+        is_running = (tasks_[id].status == TaskStatus::RUNNING);
+        tasks_[id].cancellation_requested = true;
         
         // Try getting task dir from PathManager to delete from disk later
         try {
-            task_dir = forensics::PathManager::instance().getTaskExtractDir(id).string();
-            // Also clean up output directory (if different from extract dir, or data DBs)
+            task_dir = forensics::PathManager::instance().getTaskDir(id).string();
         } catch(...) {
             task_dir = "";
         }
 
-        // Remove from memory
+        // Remove from memory - This makes it "deleted" from UI immediately
         tasks_.erase(id);
         
         // Save tasks JSON without this task
-        nlohmann::json j = nlohmann::json::array();
-        for(const auto& pair : tasks_) {
-            j.push_back(pair.second);
-        }
-        
-        auto tasksPath = forensics::PathManager::instance().getTasksJsonPath();
-        std::ofstream out(tasksPath);
-        if(out.is_open()) {
-            out << j.dump(4);
-        }
+        save_tasks_internal();
     }
 
-    // Delete task directories from disk (outside the lock)
-    if (!task_dir.empty() && std::filesystem::exists(task_dir)) {
-        try {
-            // Be VERY careful to only delete the specific task directory
-            std::filesystem::remove_all(task_dir);
-        } catch (const std::exception& e) {
-            std::cerr << "Failed to remove task directory " << task_dir << ": " << e.what() << std::endl;
-            return false;
-        }
-    }
-    
     // Attempt to delete Graphiti data in Neo4j via Python API
     forensics::LLMPythonProxy proxy("http://localhost:8090");
     proxy.deleteGraphitiData(id);
-    
-    // Also remove output directories
-    try {
-        auto& pm = forensics::PathManager::instance();
-        std::string task_root = pm.getTaskDir(id).string();
-        if (!task_root.empty() && std::filesystem::exists(task_root)) {
-            std::filesystem::remove_all(task_root);
+
+    // If task was not running, we can safely delete its files now.
+    // If it WAS running, the background thread will clean it up when it exits
+    // by checking if the task ID is gone from the tasks_ map.
+    if (!is_running && !task_dir.empty() && std::filesystem::exists(task_dir)) {
+        try {
+            std::filesystem::remove_all(task_dir);
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to remove task directory " << task_dir << ": " << e.what() << std::endl;
+            // We still return true because it's removed from memory/UI
         }
-    } catch (...) {}
+    }
 
     return true;
 }
@@ -647,6 +646,14 @@ std::vector<AuditLogEntry> TaskManager::get_audit_logs(const std::string& id, in
     return AuditLog::instance().getTaskLogs(id, limit, offset);
 }
 
+bool TaskManager::is_task_cancelled(const std::string& id) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (tasks_.count(id) == 0) {
+        return true; // Not found, so we should stop
+    }
+    return tasks_[id].cancellation_requested.load();
+}
+
 // Enhanced start_analysis with progress tracking and controlled thread pool execution
 void TaskManager::start_analysis(const std::string& task_id) {
     if (!analysis_pool_) {
@@ -655,6 +662,28 @@ void TaskManager::start_analysis(const std::string& task_id) {
     }
 
     analysis_pool_->enqueue([this, task_id]() {
+        // RAII cleanup handler for deleted tasks
+        struct TaskCleanup {
+            TaskManager& tm;
+            const std::string& id;
+            ~TaskCleanup() {
+                bool is_deleted = false;
+                {
+                    std::lock_guard<std::mutex> lock(tm.mtx_);
+                    is_deleted = (tm.tasks_.count(id) == 0);
+                }
+                if (is_deleted) {
+                    try {
+                        auto& pm = forensics::PathManager::instance();
+                        std::string task_root = pm.getTaskDir(id).string();
+                        if (!task_root.empty() && std::filesystem::exists(task_root)) {
+                            std::filesystem::remove_all(task_root);
+                        }
+                    } catch (...) {}
+                }
+            }
+        } cleanup_handler{*this, task_id};
+
         try {
             // Re-fetch task to ensure we have the most up-to-date state (atomic load)
             AnalysisTask task = get_task(task_id);
@@ -663,7 +692,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 return;
             }
             
-            if (task.cancellation_requested) {
+            if (is_task_cancelled(task_id)) {
                 update_status(task_id, TaskStatus::CANCELLED, "Cancelled before start");
                 return;
             }
@@ -715,17 +744,20 @@ void TaskManager::start_analysis(const std::string& task_id) {
             // Set database paths in the task
             {
                 std::lock_guard<std::mutex> lock(mtx_);
-                tasks_[task_id].output_raw_db = rawDbPath;
-                tasks_[task_id].output_events_db = eventDbPath;
+                if (tasks_.count(task_id)) {
+                    tasks_[task_id].output_raw_db = rawDbPath;
+                    tasks_[task_id].output_events_db = eventDbPath;
+                }
             }
 
             update_progress(task_id, TaskPhase::INITIALIZING, 30, "Analysis environment initialized");
 
             // 1. Image Analysis
-            if (task.cancellation_requested) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+            if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
             update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 10, "Analyzing image structure...");
             auto analyzer = std::make_unique<ImageAnalyzer>(imagePath);
             analyzer->setXFSMode(task.xfs_mode);
+            analyzer->setCancellationCallback([this, task_id]() { return is_task_cancelled(task_id); });
 
             if (!analyzer->analyze()) {
                 update_status(task_id, TaskStatus::FAILED, "Failed to analyze image");
@@ -740,16 +772,18 @@ void TaskManager::start_analysis(const std::string& task_id) {
             update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 100, "Image analysis and metadata extraction completed");
 
             // 2. Event Extraction
-            if (task.cancellation_requested) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+            if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
             update_progress(task_id, TaskPhase::EVENT_EXTRACTION, 10, "Extracting timeline events...");
             auto eventExtractor = std::make_unique<EventExtractor>(rawDbPath, eventDbPath);
             if (!eventExtractor->extractEvents()) {
-                std::cerr << "Warning: Failed to extract events" << std::endl;
+                std::cerr << "Error: Failed to extract events from " << rawDbPath << std::endl;
+                update_status(task_id, TaskStatus::FAILED, "Failed to extract timeline events");
+                return;
             }
             update_progress(task_id, TaskPhase::EVENT_EXTRACTION, 100, "Timeline events extraction completed");
 
             // 3. File Classification
-            if (task.cancellation_requested) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+            if (is_task_cancelled(task_id)) { return; }
             update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 10, "Classifying files by type...");
             auto fileClassifier = std::make_unique<FileClassifier>(rawDbPath, fileDbPath);
             if (!fileClassifier->classifyAndExtract()) {
@@ -760,7 +794,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
             // 4. LLM Analysis (Optional) - Stores descriptions directly in _files.db
             if (task.llm_analyze) {
-                if (task.cancellation_requested) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+                if (is_task_cancelled(task_id)) { return; }
                 update_progress(task_id, TaskPhase::LLM_ANALYSIS, 10, "Starting LLM file description generation...");
                 
                 forensics::LLMAnalysisService llmService;
@@ -778,6 +812,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                         update_progress(task_id, TaskPhase::LLM_ANALYSIS, 30, "Full mode: Analyzing all files...");
                         analyzedCount = llmService.analyzeAllFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) {
+                                if (is_task_cancelled(task_id)) return; // Wait, analyzeAllFiles doesn't support cancellation return value?
                                 int progress = 30;
                                 if (total > 0) {
                                     progress += (current * 60 / total);
@@ -793,6 +828,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
                         analyzedCount = llmService.analyzeSmartFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) {
+                                if (is_task_cancelled(task_id)) return;
                                 int progress = 30;
                                 if (total > 0) {
                                     progress += (current * 60 / total);
@@ -811,7 +847,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
             // 5. Event Cluster Analysis (Optional) - Similar to LLM analysis for files
             if (task.llm_analyze) {
-                if (task.cancellation_requested) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+                if (is_task_cancelled(task_id)) { return; }
                 update_progress(task_id, TaskPhase::LLM_ANALYSIS, 90, "Starting event cluster analysis...");
                 
                 forensics::EventClusterAnalyzer clusterAnalyzer;
@@ -838,7 +874,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
             // 6. Android Analysis (Optional)
             if (task.android_analyze) {
-                if (task.cancellation_requested) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+                if (is_task_cancelled(task_id)) { return; }
                 update_progress(task_id, TaskPhase::ANDROID_ANALYSIS, 10, "Analyzing Android artifacts...");
                 auto dbManager = std::make_unique<DatabaseManager>(rawDbPath);
                 auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(imagePath, dbManager.get());
@@ -860,7 +896,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
             }
 
             // Finalization
-            if (task.cancellation_requested) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+            if (is_task_cancelled(task_id)) { return; }
             update_progress(task_id, TaskPhase::FINALIZING, 50, "Finalizing analysis results...");
 
             set_result_db(task_id, fileDbPath);

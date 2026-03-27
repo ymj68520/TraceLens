@@ -10,7 +10,9 @@ import { fetchTasks } from '../store/taskSlice';
 import { 
     setAnalysisJob, 
     updateAnalysisProgress, 
-    clearAnalysisJob 
+    clearAnalysisJob,
+    setRefreshFlag, 
+    clearRefreshFlag
 } from '../store/intelligenceSlice';
 import { useToast } from '../components/common/ToastContext';
 import { getTaskResults } from '../services/taskService';
@@ -32,7 +34,7 @@ const CaseIntelligence = () => {
     const dispatch = useDispatch();
     const toast = useToast();
     const { tasks } = useSelector((state) => state.tasks);
-    const { activeAnalysisJobs } = useSelector((state) => state.intelligence);
+    const { activeAnalysisJobs, refreshFlags } = useSelector((state) => state.intelligence);
 
     // Get current job state from Redux
     const activeJob = activeAnalysisJobs[taskId];
@@ -43,12 +45,14 @@ const CaseIntelligence = () => {
     const [showReport, setShowReport] = useState(true);
     const [runFiltering, setRunFiltering] = useState(false);
 
-    // --- State: Evidence (LLM Descriptions) ---
+    // --- State: Evidence (LLM Descriptions & Event Clusters) ---
     const [llmResults, setLlmResults] = useState(null);
+    const [eventClusters, setEventClusters] = useState([]);
     const [loadingEvidence, setLoadingEvidence] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [expandedItems, setExpandedItems] = useState({});
     const [selectedItems, setSelectedItems] = useState(new Set());
+    const [viewMode, setViewMode] = useState('all'); // 'all', 'files', 'clusters'
 
     // --- State: Re-analysis Modal ---
     const [showReanalyzeModal, setShowReanalyzeModal] = useState(false);
@@ -69,27 +73,128 @@ const CaseIntelligence = () => {
         if (!taskId) return;
         setLoadingEvidence(true);
         try {
-            const results = await getTaskResults(taskId);
-            if (results.llm_results) setLlmResults(results.llm_results);
+            console.log('Fetching task results for taskId:', taskId);
             
-            const reportData = await getCaseReport(taskId);
-            if (reportData && (reportData.report || reportData.case_report)) {
-                setReport({
-                    ...reportData,
-                    report: reportData.report || reportData.case_report
-                });
-                setCaseDescription(reportData.case_description || '');
+            // 尝试从多个来源获取LLM结果
+            let llmResultsData = null;
+            
+            // 1. 首先尝试从任务结果获取
+            try {
+                const results = await getTaskResults(taskId);
+                console.log('Task results:', results);
+                if (results.llm_results) {
+                    console.log('LLM results found in task results:', results.llm_results);
+                    llmResultsData = results.llm_results;
+                }
+            } catch (err) {
+                console.error('Failed to fetch task results:', err);
+            }
+            
+            // 2. 如果没有，尝试直接从LLM API获取
+            if (!llmResultsData) {
+                try {
+                    const { pythonApi } = await import('../services/api');
+                    const llmData = await pythonApi.get(`/api/llm/results/${taskId}`);
+                    if (llmData.descriptions) {
+                        console.log('Direct LLM results from Python API:', llmData);
+                        llmResultsData = llmData;
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch direct LLM results:', err);
+                }
+            }
+            
+            // 3. 如果仍然没有，尝试从Python API获取分析文件列表
+            if (!llmResultsData) {
+                try {
+                    const { pythonApi } = await import('../services/api');
+                    const analyzedFiles = await pythonApi.get(`/api/db/query`, {
+                        params: {
+                            task_id: taskId,
+                            query_type: 'analyzed_files'
+                        }
+                    });
+                    if (analyzedFiles && analyzedFiles.length > 0) {
+                        console.log('Analyzed files from Python API:', analyzedFiles);
+                        llmResultsData = {
+                            descriptions: analyzedFiles.map(file => ({
+                                file_path: file.file_path,
+                                summary: file.llm_summary || file.summary,
+                                description: file.llm_description || file.description,
+                                keywords: file.llm_keywords || file.keywords,
+                                is_relevant: file.llm_is_relevant || file.is_relevant
+                            }))
+                        };
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch analyzed files:', err);
+                }
+            }
+            
+            if (llmResultsData) {
+                setLlmResults(llmResultsData);
+            } else {
+                console.log('No LLM results found from any source');
+                // 设置空的结果，确保UI正常显示
+                setLlmResults({ descriptions: [] });
+            }
+            
+            // 获取案例报告
+            try {
+                const reportData = await getCaseReport(taskId);
+                if (reportData && (reportData.report || reportData.case_report)) {
+                    setReport({
+                        ...reportData,
+                        report: reportData.report || reportData.case_report
+                    });
+                    setCaseDescription(reportData.case_description || '');
+                }
+            } catch (err) {
+                console.error('Failed to fetch case report:', err);
+            }
+            
+            // 获取事件簇分析结果
+            try {
+                const { getAnalyzedEventClusters } = await import('../services/forensicsService');
+                const clusterData = await getAnalyzedEventClusters(taskId);
+                if (clusterData && clusterData.clusters && clusterData.clusters.length > 0) {
+                    console.log('Event cluster analysis results:', clusterData.clusters);
+                    setEventClusters(clusterData.clusters);
+                } else {
+                    setEventClusters([]);
+                }
+            } catch (err) {
+                console.error('Failed to fetch cluster analysis results:', err);
+                setEventClusters([]);
             }
         } catch (err) {
             console.error('Failed to fetch intelligence data:', err);
+            // 确保即使出错也设置空的结果
+            setLlmResults({ descriptions: [] });
         } finally {
             setLoadingEvidence(false);
         }
     }, [taskId]);
 
+    // 初始加载数据
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // 监听刷新标志，当文件描述变化时刷新数据
+    useEffect(() => {
+        if (refreshFlags.files || refreshFlags.clusters) {
+            console.log('Refresh flag detected, fetching data...');
+            fetchData();
+            // 清除刷新标志
+            if (refreshFlags.files) {
+                dispatch(clearRefreshFlag({ type: 'files' }));
+            }
+            if (refreshFlags.clusters) {
+                dispatch(clearRefreshFlag({ type: 'clusters' }));
+            }
+        }
+    }, [refreshFlags, fetchData, dispatch]);
 
     // --- Actions: Case Analysis (Report Generation) ---
     const startPolling = useCallback(async (jobId) => {
@@ -155,22 +260,60 @@ const CaseIntelligence = () => {
         const items = llmResults?.descriptions || [];
         if (!searchQuery) return items;
         const query = searchQuery.toLowerCase();
-        return items.filter(item => 
+        return items.filter(item =>
             (item.file_path && item.file_path.toLowerCase().includes(query)) ||
             (item.summary && item.summary.toLowerCase().includes(query))
         );
     }, [llmResults, searchQuery]);
 
-    const handleToggleRelevance = async (filePath, currentStatus) => {
+    const filteredClusters = useMemo(() => {
+        if (!searchQuery) return eventClusters;
+        const query = searchQuery.toLowerCase();
+        return eventClusters.filter(cluster =>
+            (cluster.event_type && cluster.event_type.toLowerCase().includes(query)) ||
+            (cluster.parent_directory && cluster.parent_directory.toLowerCase().includes(query)) ||
+            (cluster.llm_summary && cluster.llm_summary.toLowerCase().includes(query)) ||
+            (cluster.file_path && cluster.file_path.toLowerCase().includes(query))
+        );
+    }, [eventClusters, searchQuery]);
+
+    // 根据视图模式过滤显示内容
+    const displayFiles = viewMode === 'clusters' ? [] : filteredDescriptions;
+    const displayClusters = viewMode === 'files' ? [] : filteredClusters;
+
+    const handleToggleRelevance = async (item, itemType, currentStatus) => {
         try {
             const newStatus = !currentStatus;
-            await toggleFileRelevance(taskId, filePath, newStatus);
-            setLlmResults(prev => ({
-                ...prev,
-                descriptions: prev.descriptions.map(d => d.file_path === filePath ? { ...d, is_relevant: newStatus ? 1 : 0 } : d)
-            }));
-            toast.success(newStatus ? '已标记为案情证据' : '已剔除出报告');
-        } catch (err) { toast.error('操作失败: ' + err.message); }
+
+            if (itemType === 'file') {
+                await toggleFileRelevance(taskId, item.file_path, newStatus);
+                setLlmResults(prev => ({
+                    ...prev,
+                    descriptions: prev.descriptions.map(d => d.file_path === item.file_path ? { ...d, is_relevant: newStatus ? 1 : 0 } : d)
+                }));
+                toast.success(newStatus ? '已标记为案情证据' : '已剔除出报告');
+            } else if (itemType === 'cluster') {
+                // 切换事件簇的相关性
+                const { pythonApi } = await import('../services/api');
+                await pythonApi.post('/api/llm/toggle-cluster-relevance', {
+                    task_id: taskId,
+                    time_window: Math.floor(item.timestamp / 60),
+                    event_type: item.event_type,
+                    is_relevant: newStatus
+                });
+                setEventClusters(prev =>
+                    prev.map(c =>
+                        (c.timestamp === item.timestamp && c.event_type === item.event_type)
+                            ? { ...c, llm_is_relevant: newStatus ? 1 : 0 }
+                            : c
+                    )
+                );
+                toast.success(newStatus ? '已标记事件簇为相关' : '已标记事件簇为无关');
+            }
+        } catch (err) {
+            console.error('Toggle relevance error:', err);
+            toast.error('操作失败: ' + err.message);
+        }
     };
 
     const toAbsolutePath = (filePath) => {
@@ -350,8 +493,10 @@ const CaseIntelligence = () => {
                 </Card>
                 <Card className="lg:w-80 flex flex-col justify-center bg-slate-50 dark:bg-slate-900/50">
                     <div className="grid grid-cols-2 gap-4 text-center">
-                        <div><p className="text-[10px] font-bold text-slate-400">总分析文件</p><p className="text-2xl font-bold text-slate-700 dark:text-white">{llmResults?.descriptions?.length || 0}</p></div>
+                        <div><p className="text-[10px] font-bold text-slate-400">文件证据</p><p className="text-2xl font-bold text-slate-700 dark:text-white">{llmResults?.descriptions?.length || 0}</p></div>
+                        <div><p className="text-[10px] font-bold text-blue-400">事件簇</p><p className="text-2xl font-bold text-blue-600">{eventClusters.length || 0}</p></div>
                         <div><p className="text-[10px] font-bold text-purple-400">入报证据</p><p className="text-2xl font-bold text-purple-600">{llmResults?.descriptions?.filter(d => d.is_relevant !== 0).length || 0}</p></div>
+                        <div><p className="text-[10px] font-bold text-green-400">相关簇</p><p className="text-2xl font-bold text-green-600">{eventClusters.filter(c => c.llm_is_relevant !== 0).length || 0}</p></div>
                     </div>
                 </Card>
             </div>
@@ -359,26 +504,32 @@ const CaseIntelligence = () => {
             {/* Content Area */}
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
                 <div className="xl:col-span-7 space-y-4">
-                    <div className="flex items-center gap-4 px-2">
-                        <div className="relative flex-1 max-w-md">
+                    <div className="flex items-center gap-4 px-2 flex-wrap">
+                        <div className="relative flex-1 max-w-md min-w-[200px]">
                             <span className="absolute left-3 top-2 text-slate-400 text-sm">🔍</span>
-                            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="搜索证据..." className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-full dark:bg-slate-800" />
+                            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="搜索证据或事件簇..." className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-full dark:bg-slate-800" />
                         </div>
-                        <Button variant="outline" size="sm" disabled={selectedItems.size === 0} onClick={() => openReanalyzeModal([...selectedItems].map(idx => filteredDescriptions[idx].file_path).map(toAbsolutePath))}>🔄 批量研判 ({selectedItems.size})</Button>
+                        <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-full p-1">
+                            <button onClick={() => setViewMode('all')} className={`px-3 py-1 text-xs font-bold rounded-full transition-all ${viewMode === 'all' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>全部</button>
+                            <button onClick={() => setViewMode('files')} className={`px-3 py-1 text-xs font-bold rounded-full transition-all ${viewMode === 'files' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>文件</button>
+                            <button onClick={() => setViewMode('clusters')} className={`px-3 py-1 text-xs font-bold rounded-full transition-all ${viewMode === 'clusters' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>事件簇</button>
+                        </div>
+                        <Button variant="outline" size="sm" disabled={selectedItems.size === 0} onClick={() => openReanalyzeModal([...selectedItems].map(idx => displayFiles[idx].file_path).map(toAbsolutePath))}>🔄 批量研判 ({selectedItems.size})</Button>
                     </div>
 
                     <div className="space-y-3 h-[calc(100vh-320px)] overflow-y-auto pr-2 custom-scrollbar">
                         <AnimatePresence>
-                            {filteredDescriptions.map((item, index) => {
+                            {/* 文件卡片 */}
+                            {displayFiles.map((item, index) => {
                                 const isRelevant = item.is_relevant !== 0;
                                 return (
-                                    <motion.div key={item.file_path} id={pathToId(item.file_path)} layout initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className={`p-4 rounded-2xl border-2 transition-all duration-500 ${isRelevant ? 'bg-white dark:bg-slate-800 border-purple-100 dark:border-purple-900/30 shadow-sm' : 'bg-slate-50/50 opacity-60 grayscale'}`}>
+                                    <motion.div key={`file-${item.file_path}`} id={pathToId(item.file_path)} layout initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className={`p-4 rounded-2xl border-2 transition-all duration-500 ${isRelevant ? 'bg-white dark:bg-slate-800 border-purple-100 dark:border-purple-900/30 shadow-sm' : 'bg-slate-50/50 opacity-60 grayscale'}`}>
                                         <div className="flex gap-4">
-                                            <input type="checkbox" checked={selectedItems.has(index)} onChange={() => { const next = new Set(selectedItems); next.has(index) ? next.delete(index) : next.add(index); setSelectedItems(next); }} className="mt-1 h-4 w-4 text-purple-600 rounded" />
+                                            <input type="checkbox" checked={selectedItems.has(`file-${index}`)} onChange={() => { const next = new Set(selectedItems); next.has(`file-${index}`) ? next.delete(`file-${index}`) : next.add(`file-${index}`); setSelectedItems(next); }} className="mt-1 h-4 w-4 text-purple-600 rounded" />
                                             <div className="flex-1 space-y-2">
                                                 <div className="flex items-start justify-between gap-2">
                                                     <p className="font-mono text-[11px] font-bold text-slate-500 truncate max-w-[70%]" title={item.file_path}>
-                                                        {item.file_path}
+                                                        📄 {item.file_path}
                                                     </p>
                                                     <div className="flex items-center gap-2">
                                                         <button
@@ -389,11 +540,11 @@ const CaseIntelligence = () => {
                                                             <span>🔄</span>
                                                             <span className="hidden sm:inline">重新研判</span>
                                                         </button>
-                                                        <button 
-                                                            onClick={() => handleToggleRelevance(item.file_path, isRelevant)}
+                                                        <button
+                                                            onClick={() => handleToggleRelevance(item, 'file', isRelevant)}
                                                             className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors ${
-                                                                isRelevant 
-                                                                    ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700' 
+                                                                isRelevant
+                                                                    ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700'
                                                                     : 'bg-slate-200 text-slate-500 hover:bg-purple-100 hover:text-purple-700'
                                                             }`}
                                                         >
@@ -404,6 +555,98 @@ const CaseIntelligence = () => {
                                                 <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{item.summary}</p>
                                                 <button onClick={() => setExpandedItems(p => ({ ...p, [item.file_path]: !p[item.file_path] }))} className="text-[10px] font-bold text-purple-500 hover:underline">{expandedItems[item.file_path] ? '收起详情 ▲' : '查看分析全文 ▼'}</button>
                                                 {expandedItems[item.file_path] && <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="mt-2 p-3 bg-slate-50 dark:bg-slate-900 rounded-xl text-xs text-slate-600 border whitespace-pre-wrap">{item.description}</motion.div>}
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
+
+                            {/* 事件簇卡片 */}
+                            {displayClusters.map((cluster, clusterIndex) => {
+                                const isRelevant = cluster.llm_is_relevant !== 0;
+                                const timestamp = new Date(cluster.timestamp * 1000).toLocaleString();
+                                return (
+                                    <motion.div key={`cluster-${cluster.timestamp}-${cluster.event_type}`} layout initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className={`p-4 rounded-2xl border-2 transition-all duration-500 ${isRelevant ? 'bg-blue-50 dark:bg-slate-800 border-blue-100 dark:border-blue-900/30 shadow-sm' : 'bg-slate-50/50 opacity-60 grayscale'}`}>
+                                        <div className="space-y-3">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <span className="text-lg">🔗</span>
+                                                        <Badge variant={
+                                                            cluster.event_type === 'CREATED' ? 'green' :
+                                                            cluster.event_type === 'MODIFIED' ? 'blue' :
+                                                            cluster.event_type === 'DELETED' ? 'red' : 'gray'
+                                                        } className="text-[9px] px-2 py-0.5 font-bold">
+                                                            {cluster.event_type}
+                                                        </Badge>
+                                                        <Badge variant="blue" className="text-[9px] px-2 py-0.5 font-bold">
+                                                            {cluster.cluster_count || 0} 个事件
+                                                        </Badge>
+                                                        {isRelevant && (
+                                                            <Badge variant="green" className="text-[9px] px-2 py-0.5 font-bold">
+                                                                ✓ 相关
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                    <p className="font-mono text-[10px] text-slate-500 mb-1">
+                                                        ⏰ {timestamp}
+                                                    </p>
+                                                    <p className="font-mono text-[10px] text-slate-500 mb-1">
+                                                        📁 {cluster.parent_directory || '/'}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            // 导航到 Timeline 页面并定位到此事件簇
+                                                            navigate(`/timeline?task_id=${taskId}&type=${cluster.event_type}&cluster=true`);
+                                                        }}
+                                                        className="text-[10px] font-bold text-blue-600 hover:text-blue-700 px-2 py-1 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors flex items-center gap-1"
+                                                        title="在 Timeline 中查看"
+                                                    >
+                                                        <span>📍</span>
+                                                        <span className="hidden sm:inline">查看时间线</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleToggleRelevance(cluster, 'cluster', isRelevant)}
+                                                        className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors ${
+                                                            isRelevant
+                                                                ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700'
+                                                                : 'bg-slate-200 text-slate-500 hover:bg-blue-100 hover:text-blue-700'
+                                                        }`}
+                                                        title={isRelevant ? '标记为无关' : '标记为相关'}
+                                                    >
+                                                        {isRelevant ? '✓' : '○'}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {cluster.llm_summary && (
+                                                <div className="bg-white dark:bg-slate-900 rounded-xl p-3 border border-blue-200 dark:border-blue-800">
+                                                    <div className="flex items-start gap-2 mb-2">
+                                                        <span className="text-sm">🤖</span>
+                                                        <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300">AI 分析</h4>
+                                                    </div>
+                                                    <p className="text-xs text-slate-600 dark:text-slate-400 mb-2">{cluster.llm_summary}</p>
+                                                    {cluster.llm_keywords && (
+                                                        <div className="flex flex-wrap gap-1 mt-2">
+                                                            {cluster.llm_keywords.split(',').map((keyword, kwIdx) => (
+                                                                <span key={kwIdx} className="text-[9px] bg-blue-100 dark:bg-blue-900 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 font-medium">
+                                                                    {keyword.trim()}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-center justify-between text-[10px] text-slate-500">
+                                                <span>样本文件: {cluster.file_path?.split('/').pop() || 'N/A'}</span>
+                                                {cluster.cluster_count > 1 && (
+                                                    <button className="text-blue-500 hover:underline">
+                                                        查看全部 {cluster.cluster_count} 个事件 →
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     </motion.div>

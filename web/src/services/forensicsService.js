@@ -1,9 +1,71 @@
-import api from './api';
+import api, { pythonApi } from './api';
 
 // Timeline Analysis
 export const getComprehensiveTimeline = async (taskId, params = {}) => {
   return await api.get('/api/forensics/timeline/comprehensive', {
     params: { task_id: taskId, ...params },
+  });
+};
+
+/**
+ * 分析事件簇 (AI 研判)
+ * 彻底切换到 Python 服务执行，不再使用 C++ 侧的 LLM 逻辑
+ */
+export const analyzeEventCluster = async (taskId, cluster) => {
+  // 防御性验证：确保 cluster 对象有效
+  if (!cluster || typeof cluster !== 'object') {
+    throw new Error('Invalid cluster: cluster object is required');
+  }
+  if (!cluster?.timestamp || typeof cluster.timestamp !== 'number') {
+    throw new Error('Invalid cluster: timestamp is required and must be a number');
+  }
+  if (!cluster?.event_type || typeof cluster.event_type !== 'string') {
+    throw new Error('Invalid cluster: event_type is required and must be a string');
+  }
+
+  return await pythonApi.post('/api/llm/analyze-event-cluster', {
+    task_id: taskId,
+    time_window: Math.floor(cluster.timestamp / 60),
+    event_type: cluster.event_type,
+    parent_directory: cluster.parent_directory || "",
+  });
+};
+
+/**
+ * 批量分析事件簇
+ */
+export const analyzeEventClustersBatch = async (taskId, clusters) => {
+  const promises = clusters.map(cluster => analyzeEventCluster(taskId, cluster));
+  return Promise.all(promises);
+};
+
+/**
+ * 重新分析事件簇
+ */
+export const reanalyzeEventCluster = async (taskId, cluster) => {
+  // 防御性验证：确保 cluster 对象有效
+  if (!cluster || typeof cluster !== 'object') {
+    throw new Error('Invalid cluster: cluster object is required');
+  }
+  if (!cluster?.timestamp || typeof cluster.timestamp !== 'number') {
+    throw new Error('Invalid cluster: timestamp is required and must be a number');
+  }
+  if (!cluster?.event_type || typeof cluster.event_type !== 'string') {
+    throw new Error('Invalid cluster: event_type is required and must be a string');
+  }
+
+  return await pythonApi.post('/api/llm/analyze-event-cluster', {
+    task_id: taskId,
+    time_window: Math.floor(cluster.timestamp / 60),
+    event_type: cluster.event_type,
+    parent_directory: cluster.parent_directory || "",
+    prompt: "请重新审视该事件簇，深度挖掘潜在威胁。",
+  });
+};
+
+export const getAnalyzedEventClusters = async (taskId) => {
+  return await api.get('/api/forensics/timeline/clusters/analyzed', {
+    params: { task_id: taskId },
   });
 };
 
@@ -115,41 +177,5 @@ export const getActivityPatterns = async (taskId) => {
 export const getDeletedFilesAnalysis = async (taskId) => {
   return await api.get('/api/forensics/statistics/deleted-files-analysis', {
     params: { task_id: taskId },
-  });
-};
-
-// Event Cluster AI Analysis
-export const analyzeEventCluster = async (taskId, cluster) => {
-  return await api.post('/api/forensics/timeline/clusters/analyze', {
-    task_id: taskId,
-    time_window: Math.floor(cluster.timestamp / 60),
-    event_type: cluster.event_type,
-    parent_directory: cluster.parent_directory || ''
-  });
-};
-
-export const analyzeEventClustersBatch = async (taskId, clusters) => {
-  return await api.post('/api/forensics/timeline/clusters/batch-analyze', {
-    task_id: taskId,
-    clusters: clusters.map(cluster => ({
-      time_window: Math.floor(cluster.timestamp / 60),
-      event_type: cluster.event_type,
-      parent_directory: cluster.parent_directory || ''
-    }))
-  });
-};
-
-export const reanalyzeEventCluster = async (taskId, cluster) => {
-  return await api.post('/api/forensics/timeline/clusters/reanalyze', {
-    task_id: taskId,
-    time_window: Math.floor(cluster.timestamp / 60),
-    event_type: cluster.event_type,
-    parent_directory: cluster.parent_directory || ''
-  });
-};
-
-export const getAnalyzedEventClusters = async (taskId) => {
-  return await api.get('/api/forensics/timeline/clusters/analyzed', {
-    params: { task_id: taskId }
   });
 };

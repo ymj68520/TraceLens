@@ -249,6 +249,7 @@ bool ImageAnalyzer::extractToDatabase(const std::string& dbPath) {
 		
 		int fileCount = 0;
 		bool success = tskWalker_->walk([this, &fileCount](const FileRecord& record) -> bool {
+			if (isCancelled()) return false;
 			if (dbManager_->insertFileRecord(record)) {
 				fileCount++;
 				int max_log = forensics::ConfigManager::instance().getMaxLogDisplayFiles();
@@ -264,6 +265,8 @@ bool ImageAnalyzer::extractToDatabase(const std::string& dbPath) {
 
 		tskWalker_->close();
 		
+		if (isCancelled()) return false;
+
 		if (success && fileCount > 0) {
 			std::cout << "Filesystem walk completed. Total files: " << fileCount << std::endl;
 			AuditLog::instance().log("SYSTEM", "EXTRACTION_COMPLETE", "Filesystem walk completed for: " + imagePath_);

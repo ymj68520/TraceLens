@@ -1,15 +1,15 @@
 import api from './api';
 
-export const createTask = async (taskData) => {
-  return await api.post('/tasks', taskData);
+export const fetchTasks = async (params = {}) => {
+  return await api.get('/api/tasks', { params });
 };
 
-export const getTask = async (taskId) => {
-  return await api.get(`/tasks/${taskId}`);
+export const fetchTaskById = async (taskId) => {
+  return await api.get(`/api/tasks/${taskId}`);
 };
 
 export const listTasks = async (params = {}) => {
-  return await api.get('/api/tasks/list', { params });
+  return await api.get('/api/tasks', { params });
 };
 
 export const getTaskProgress = async (taskId) => {
@@ -17,11 +17,15 @@ export const getTaskProgress = async (taskId) => {
 };
 
 export const getTaskResults = async (taskId) => {
-  return await api.get(`/tasks/${taskId}/results`);
+  return await api.get(`/api/tasks/${taskId}/results`);
 };
 
 export const cancelTask = async (taskId, reason = '') => {
   return await api.delete(`/api/tasks/${taskId}`, { data: { reason } });
+};
+
+export const deleteTask = async (taskId) => {
+  return await api.delete(`/api/tasks/${taskId}`);
 };
 
 export const getTaskStatistics = async () => {
@@ -53,4 +57,8 @@ export const updateTaskPriority = async (taskId, priority) => {
 
 export const cleanupOldTasks = async (maxAgeHours = 24) => {
   return await api.post('/api/tasks/cleanup', { max_age_hours: maxAgeHours });
+};
+
+export const createTask = async (taskData) => {
+  return await api.post('/api/tasks', taskData);
 };

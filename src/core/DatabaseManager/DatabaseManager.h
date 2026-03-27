@@ -78,6 +78,7 @@ private:
 
 	bool createTables();
 	bool executeSQL(const std::string& sql);
+	void checkAndMigrate();
 };
 
 #endif // DATABASE_MANAGER_H

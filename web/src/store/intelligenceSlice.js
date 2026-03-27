@@ -7,6 +7,11 @@ const intelligenceSlice = createSlice({
     activeAnalysisJobs: {},
     // File batch analysis jobs: { [taskId]: { jobId, status, progress, message } }
     activeBatchJobs: {},
+    // Refresh flags for case intelligence
+    refreshFlags: {
+      files: false, // 当文件描述变化时设置为true
+      clusters: false // 当事件簇描述变化时设置为true
+    },
   },
   reducers: {
     // --- Case Analysis Jobs ---
@@ -45,12 +50,31 @@ const intelligenceSlice = createSlice({
     clearBatchJob: (state, action) => {
       delete state.activeBatchJobs[action.payload.taskId];
     },
+
+    // --- Refresh Flags ---    
+    setRefreshFlag: (state, action) => {
+      const { type } = action.payload;
+      if (type === 'files') {
+        state.refreshFlags.files = true;
+      } else if (type === 'clusters') {
+        state.refreshFlags.clusters = true;
+      }
+    },
+    clearRefreshFlag: (state, action) => {
+      const { type } = action.payload;
+      if (type === 'files') {
+        state.refreshFlags.files = false;
+      } else if (type === 'clusters') {
+        state.refreshFlags.clusters = false;
+      }
+    },
   },
 });
 
 export const { 
   setAnalysisJob, updateAnalysisProgress, clearAnalysisJob,
-  setBatchJob, updateBatchProgress, clearBatchJob
+  setBatchJob, updateBatchProgress, clearBatchJob,
+  setRefreshFlag, clearRefreshFlag
 } = intelligenceSlice.actions;
 
 export default intelligenceSlice.reducer;

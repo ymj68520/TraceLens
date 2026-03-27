@@ -101,10 +101,24 @@ const CaseReport = () => {
             // Save description first
             await saveCaseDescription(taskId, caseDescription);
 
+            // Get the correct files_db_path
+            let filesDbPath = currentTask?.output_files_db || currentTask?.output_files_db_path || '';
+            
+            console.log('Starting case analysis with:', {
+                taskId,
+                filesDbPath,
+                caseDescription: caseDescription.trim(),
+                maxFilterFiles
+            });
+
+            if (!filesDbPath) {
+                throw new Error('无法找到_files.db路径，请确保任务已完成分析');
+            }
+
             // Start analysis
             const result = await startCaseAnalysis({
                 taskId,
-                filesDbPath: currentTask?.output_files_db || '',
+                filesDbPath: filesDbPath,
                 caseDescription: caseDescription.trim(),
                 maxFilterFiles,
             });

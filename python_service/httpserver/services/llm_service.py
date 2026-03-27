@@ -26,6 +26,9 @@ from ..prompts import (
     TEXT_ANALYSIS_USER_TEMPLATE,
     VISION_ANALYSIS_SYSTEM,
     VISION_ANALYSIS_USER_DEFAULT,
+    EVENT_CLUSTER_ANALYSIS_SYSTEM,
+    EVENT_CLUSTER_ANALYSIS_DEFAULT,
+    EVENT_CLUSTER_REANALYSIS_PROMPT,
 )
 
 logger = logging.getLogger(__name__)
@@ -131,7 +134,7 @@ class LLMService:
                 llm_keywords = ?,
                 llm_analyzed_at = ?,
                 llm_model_used = ?
-            WHERE path = ?
+            WHERE path = ? OR path LIKE ? OR instr(path, ?) > 0
         """
         try:
             with sqlite3.connect(db_path, timeout=10) as conn:
@@ -140,7 +143,7 @@ class LLMService:
                 
                 cur = conn.cursor()
 
-                # Insert or Replace in descriptions table (preserve is_relevant if row exists)
+                # 1. 优先尝试写入专用的 file_descriptions 表
                 cur.execute("""
                     INSERT INTO file_descriptions 
                         (file_path, description, summary, keywords, model_used, is_relevant, created_at)
@@ -160,70 +163,49 @@ class LLMService:
                     int(time.time())
                 ))
 
-                # Also update the main files table for backward compatibility
-                cur.execute(sql, (
-                    summary or description[:200],
-                    description,
-                    keywords,
-                    int(time.time()),
-                    model_used,
+                # 2. 增强型更新主 files 表
+                # 构造多种可能的路径格式以提高匹配率
+                path_variants = [
                     file_path,
-                ))
-                conn.commit()
-
-                if cur.rowcount > 0:
-                    logger.info(f"Persisted LLM result for {file_path!r} → {db_path!r} ({len(description)} chars)")
-                    return True
-
-                # If exact match failed, try basename matching
-                basename = Path(file_path).name
-                logger.info(f"Exact match failed for {file_path!r}, trying basename: {basename!r}")
-
+                    f"%{Path(file_path).name}",
+                    Path(file_path).name
+                ]
+                
                 cur.execute(sql, (
                     summary or description[:200],
                     description,
                     keywords,
                     int(time.time()),
                     model_used,
-                    basename,
+                    path_variants[0], # Exact match
+                    path_variants[1], # LIKE match
+                    path_variants[2]  # Instr match
                 ))
                 conn.commit()
 
-                if cur.rowcount > 0:
-                    logger.info(f"Persisted LLM result using basename {basename!r} → {db_path!r} ({len(description)} chars)")
+                if cur.rowcount > 0 or conn.total_changes > 0:
+                    logger.info(f"Successfully persisted LLM result for {file_path!r}")
                     return True
-
-                # If still failed, try path ends with
-                logger.info(f"basename match failed, trying path ends with for {file_path!r}")
-                sql_like = """
-                    UPDATE files SET
-                        llm_summary = ?,
-                        llm_description = ?,
-                        llm_keywords = ?,
-                        llm_analyzed_at = ?,
-                        llm_model_used = ?
-                    WHERE path LIKE ?
-                """
-                cur.execute(sql_like, (
-                    summary or description[:200],
-                    description,
-                    keywords,
-                    int(time.time()),
-                    model_used,
-                    f"%{basename}",
-                ))
-                conn.commit()
-
-                if cur.rowcount > 0:
-                    logger.info(f"Persisted LLM result using LIKE pattern for {file_path!r} → {db_path!r} ({len(description)} chars)")
-                    return True
-
-                logger.warning(f"persist_to_files_db: no row matched path={file_path!r} (basename={basename!r}) in {db_path!r}")
+                
+                logger.warning(f"Path match failed for {file_path!r} in {db_path!r}. No rows updated.")
                 return False
         except Exception as e:
             logger.error(f"persist_to_files_db failed for {file_path!r}: {e}", exc_info=True)
             return False
             
+    def _ensure_events_schema(self, conn: sqlite3.Connection):
+        """Ensure the events table has AI-related columns."""
+        cols = ["llm_summary", "llm_description", "llm_keywords", "llm_analyzed_at", "llm_model_used", "llm_is_relevant"]
+        cur = conn.cursor()
+        for col in cols:
+            try:
+                # Catch the error if column already exists
+                col_type = "INTEGER" if "at" in col or "relevant" in col else "TEXT"
+                cur.execute(f"ALTER TABLE events ADD COLUMN {col} {col_type}")
+            except sqlite3.OperationalError:
+                pass # Column already exists
+        conn.commit()
+
     def persist_to_events_db(
         self,
         db_path: str,
@@ -236,36 +218,27 @@ class LLMService:
     ) -> bool:
         """
         Persist LLM analysis result to C++ _events.db SQLite database for event clusters.
-        
-        Args:
-            db_path:     Absolute path to the _events.db SQLite file.
-            event_id:    ID of the event cluster (matches `id` column).
-            description: Full LLM description text.
-            summary:     Short summary (first 200 chars of description if empty).
-            keywords:    Comma-separated keyword string.
-            model_used:  Model identifier.
-            is_relevant: Whether the event cluster is relevant.
-        
-        Returns:
-            True if a row was updated, False otherwise.
         """
         if not db_path or not Path(db_path).exists():
             logger.debug(f"persist_to_events_db: db not found at {db_path!r}, skipping")
             return False
         
-        sql = """
-            UPDATE events SET
-                llm_summary = ?,
-                llm_description = ?,
-                llm_keywords = ?,
-                llm_analyzed_at = ?,
-                llm_model_used = ?,
-                llm_is_relevant = ?
-            WHERE id = ?
-        """
         try:
             with sqlite3.connect(db_path, timeout=10) as conn:
+                # CRITICAL: Fix schema if missing AI columns
+                self._ensure_events_schema(conn)
+                
                 cur = conn.cursor()
+                sql = """
+                    UPDATE events SET
+                        llm_summary = ?,
+                        llm_description = ?,
+                        llm_keywords = ?,
+                        llm_analyzed_at = ?,
+                        llm_model_used = ?,
+                        llm_is_relevant = ?
+                    WHERE id = ?
+                """
                 cur.execute(sql, (
                     summary or description[:200],
                     description,
@@ -831,12 +804,10 @@ class LLMService:
         file_path = event_data.get("file_path", "")
         description = event_data.get("description", "")
         timestamp = event_data.get("timestamp", 0)
-        
-        # Create content for LLM analysis
-        content = f"Event Type: {event_type}\n"
-        content += f"File Path: {file_path}\n"
-        content += f"Timestamp: {timestamp}\n"
-        content += f"Description: {description}\n"
+        time_window = event_data.get("time_window", 0)
+
+        # Count events in description for context
+        event_count = description.count('\n') + 1 if description else 0
 
         # Select model settings
         client = self._text_client
@@ -847,9 +818,30 @@ class LLMService:
         default_temperature = self.settings.llm_text_temperature
         logger.info(f"Using text model: {model} for event cluster analysis")
 
-        # Build prompt
-        system_prompt = "You are a digital forensics expert analyzing event clusters. Provide a concise summary, detailed description, and relevant keywords for each event cluster."
-        user_prompt = prompt or f"Analyze this event cluster and provide: 1) A short summary, 2) A detailed description of what happened, 3) Key keywords related to the event.\n\n{content}"
+        # Build prompt using professional Chinese prompts
+        system_prompt = EVENT_CLUSTER_ANALYSIS_SYSTEM
+
+        # Use custom prompt if provided, otherwise use default template
+        if prompt and "重新" in prompt:
+            # Reanalysis mode
+            user_prompt = EVENT_CLUSTER_REANALYSIS_PROMPT.format(
+                case_context=prompt,
+                event_type=event_type,
+                time_window=time_window,
+                event_count=event_count,
+                description=description
+            )
+        elif prompt:
+            # Custom prompt provided
+            user_prompt = f"{prompt}\n\n事件类型：{event_type}\n时间窗口：{time_window}\n事件数量：{event_count}\n事件描述：\n{description}"
+        else:
+            # Default analysis mode
+            user_prompt = EVENT_CLUSTER_ANALYSIS_DEFAULT.format(
+                event_type=event_type,
+                time_window=time_window,
+                event_count=event_count,
+                description=description
+            )
         
         # Make API request
         try:
@@ -869,15 +861,20 @@ class LLMService:
             response.raise_for_status()
             
             result = response.json()
-            
+
             # Extract response
             analysis_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             tokens_used = result.get("usage", {}).get("total_tokens", 0)
-            
+
+            # Parse structured analysis from LLM response
+            parsed_analysis = self._parse_event_cluster_analysis(analysis_text)
+
             return {
                 "analysis": {
-                    "description": analysis_text,
-                    "model_type": model_type,
+                    "summary": parsed_analysis.get("summary", ""),
+                    "description": parsed_analysis.get("description", analysis_text),
+                    "keywords": parsed_analysis.get("keywords", []),
+                    "is_relevant": parsed_analysis.get("is_relevant", True),
                 },
                 "model": model,
                 "tokens_used": tokens_used,
@@ -891,3 +888,116 @@ class LLMService:
         except Exception as e:
             logger.error(f"LLM analysis failed: {e}", exc_info=True)
             raise
+
+    def _parse_event_cluster_analysis(self, analysis_text: str) -> Dict[str, Any]:
+        """
+        Parse LLM analysis response into structured fields.
+
+        Args:
+            analysis_text: Raw LLM response text.
+
+        Returns:
+            Dict with keys: summary, description, keywords, is_relevant.
+        """
+        import re
+
+        result = {
+            "summary": "",
+            "description": analysis_text,
+            "keywords": [],
+            "is_relevant": True,
+        }
+
+        if not analysis_text:
+            return result
+
+        lines = analysis_text.split('\n')
+        current_section = None
+        content_parts = []
+
+        for line in lines:
+            line = line.strip()
+
+            # Detect summary section
+            if re.match(r'^(简要总结|总结|摘要|summary)', line, re.IGNORECASE):
+                if content_parts:
+                    if current_section == "description":
+                        result["description"] = '\n'.join(content_parts).strip()
+                    content_parts = []
+                current_section = "summary"
+                continue
+
+            # Detect detailed description section
+            elif re.match(r'^(详细分析|描述|详细描述|description|分析)', line, re.IGNORECASE):
+                if content_parts and current_section == "summary":
+                    result["summary"] = '\n'.join(content_parts).strip()
+                    content_parts = []
+                elif content_parts and current_section == "description":
+                    result["description"] = '\n'.join(content_parts).strip()
+                    content_parts = []
+                current_section = "description"
+                continue
+
+            # Detect keywords section
+            elif re.match(r'^(关键词|keywords)', line, re.IGNORECASE):
+                if content_parts:
+                    if current_section == "summary":
+                        result["summary"] = '\n'.join(content_parts).strip()
+                    elif current_section == "description":
+                        result["description"] = '\n'.join(content_parts).strip()
+                    content_parts = []
+                current_section = "keywords"
+                # Extract keywords from same line if present
+                keywords_match = re.search(r'[:：]\s*(.+)', line)
+                if keywords_match:
+                    keywords_text = keywords_match.group(1)
+                    result["keywords"] = [kw.strip() for kw in re.split(r'[,，、]', keywords_text) if kw.strip()]
+                continue
+
+            # Detect forensic value section
+            elif re.match(r'^(取证价值|价值评估|forensic.*value)', line, re.IGNORECASE):
+                if content_parts and current_section == "description":
+                    result["description"] = '\n'.join(content_parts).strip()
+                    content_parts = []
+                current_section = "value"
+                continue
+
+            # Process content based on current section
+            if current_section == "keywords":
+                # Extract keywords from content lines
+                if line and not line.startswith('-') and not line.startswith('•'):
+                    keywords_match = re.search(r'[:：]\s*(.+)', line)
+                    if keywords_match:
+                        keywords_text = keywords_match.group(1)
+                        result["keywords"].extend([kw.strip() for kw in re.split(r'[,，、]', keywords_text) if kw.strip()])
+                    else:
+                        result["keywords"].extend([kw.strip() for kw in re.split(r'[,，、]', line) if kw.strip()])
+            elif current_section == "value":
+                # Check if value is low
+                if '低' in line or '无关' in line:
+                    result["is_relevant"] = False
+            elif current_section in ["summary", "description"]:
+                content_parts.append(line)
+
+        # Handle remaining content
+        if content_parts:
+            if current_section == "summary":
+                result["summary"] = '\n'.join(content_parts).strip()
+            elif current_section == "description" or not current_section:
+                result["description"] = '\n'.join(content_parts).strip()
+
+        # Fallback: if no summary found, use first 200 chars of description
+        if not result["summary"] and result["description"]:
+            result["summary"] = result["description"][:200] + ("..." if len(result["description"]) > 200 else "")
+
+        # Clean up keywords (deduplicate and limit)
+        if result["keywords"]:
+            seen = set()
+            unique_keywords = []
+            for kw in result["keywords"]:
+                if kw.lower() not in seen:
+                    seen.add(kw.lower())
+                    unique_keywords.append(kw)
+            result["keywords"] = unique_keywords[:5]
+
+        return result

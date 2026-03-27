@@ -1192,68 +1192,14 @@ crow::response ForensicsRoutes::handle_analyze_event_cluster(const crow::request
     add_cors_headers(res);
     res.set_header("Content-Type", "application/json");
 
-    try {
-        json body = json::parse(req.body);
-        
-        // Validate required fields
-        if (!body.contains("task_id") || body["task_id"].get<std::string>().empty()) {
-            json error = {{"error", "task_id is required"}};
-            res.code = 400;
-            res.write(error.dump());
-            return res;
-        }
-        if (!body.contains("time_window")) {
-            json error = {{"error", "time_window is required"}};
-            res.code = 400;
-            res.write(error.dump());
-            return res;
-        }
-        if (!body.contains("event_type") || body["event_type"].get<std::string>().empty()) {
-            json error = {{"error", "event_type is required"}};
-            res.code = 400;
-            res.write(error.dump());
-            return res;
-        }
-
-        std::string task_id = body["task_id"].get<std::string>();
-        int64_t time_window = body["time_window"].get<int64_t>();
-        std::string event_type = body["event_type"].get<std::string>();
-        std::string parent_directory = body.value("parent_directory", "");
-
-        // Get events database path
-        std::string events_db = get_database_path(task_id, "events");
-
-        // Analyze event cluster
-        EventClusterAnalyzer analyzer;
-        bool success = analyzer.analyzeEventCluster(events_db, time_window, event_type, parent_directory);
-
-        if (success) {
-            json response = {{
-                "success", true,
-                "message", "Event cluster analyzed successfully"
-            }};
-            res.write(response.dump());
-        } else {
-            json error = {{
-                "error", "Failed to analyze event cluster"
-            }};
-            res.code = 500;
-            res.write(error.dump());
-        }
-    } catch (const json::exception& e) {
-        json error = {{
-            "error", std::string("Invalid JSON: ") + e.what()
-        }};
-        res.code = 400;
-        res.write(error.dump());
-    } catch (const std::exception& e) {
-        json error = {{
-            "error", e.what()
-        }};
-        res.code = 500;
-        res.write(error.dump());
-    }
-
+    // Architecture Shift: C++ backend no longer handles LLM analysis requests directly.
+    // All AI/LLM logic has been migrated to the Python Service (Port 8090).
+    json response = {
+        {"success", false},
+        {"message", "DEPRECATED: Please use Python API /api/llm/analyze-event-cluster (Port 8090) instead."}
+    };
+    res.code = 410; // Gone / Deprecated
+    res.write(response.dump());
     return res;
 }
 

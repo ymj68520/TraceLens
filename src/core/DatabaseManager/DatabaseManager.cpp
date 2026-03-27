@@ -1,6 +1,7 @@
 #include "DatabaseManager.h"
 #include "AuditLog/AuditLog.h"
 #include "ConfigManager/ConfigManager.h"
+#include "SQL/file_classifier_sql.h"  // Include migration SQL
 #include <iostream>
 #include <sstream>
 #include <sqlite3.h>
@@ -38,11 +39,40 @@ bool DatabaseManager::initialize() {
 	executeSQL("PRAGMA foreign_keys = ON;");
 
 	// Create tables
-	bool result = createTables();
-	if (result) {
-		AuditLog::instance().log("SYSTEM", "DB_INIT", "Database initialized: " + dbPath_);
+	if (!createTables()) {
+		return false;
 	}
-	return result;
+
+    // Migration: Check and add LLM columns if they don't exist
+    checkAndMigrate();
+
+	AuditLog::instance().log("SYSTEM", "DB_INIT", "Database initialized: " + dbPath_);
+	return true;
+}
+
+void DatabaseManager::checkAndMigrate() {
+    // Check if llm_summary column exists in files table
+    sqlite3_stmt* stmt;
+    const char* checkSql = "PRAGMA table_info(files);";
+    bool hasLlmSummary = false;
+
+    if (sqlite3_prepare_v2(db_, checkSql, -1, &stmt, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            const char* colName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+            if (colName && std::string(colName) == "llm_summary") {
+                hasLlmSummary = true;
+                break;
+            }
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    if (!hasLlmSummary) {
+        std::cout << "[DB Migration] Adding LLM columns to files table in " << dbPath_ << std::endl;
+        for (int i = 0; i < FileClassifierSQL::ALTER_FILES_ADD_LLM_COLUMNS_COUNT; ++i) {
+            executeSQL(FileClassifierSQL::ALTER_FILES_ADD_LLM_COLUMNS[i]);
+        }
+    }
 }
 
 bool DatabaseManager::createTables() {
@@ -64,7 +94,12 @@ bool DatabaseManager::createTables() {
             is_allocated INTEGER,
             permissions TEXT,
             uid INTEGER,
-            gid INTEGER
+            gid INTEGER,
+            llm_summary TEXT,
+            llm_description TEXT,
+            llm_keywords TEXT,
+            llm_analyzed_at INTEGER,
+            llm_model_used TEXT
         );
     )";
 

@@ -99,6 +99,14 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
         return result;
     }
 
+    // Ensure events table has AI columns (Self-healing)
+    const char* ai_cols[] = {"llm_summary", "llm_description", "llm_keywords", "llm_analyzed_at", "llm_model_used", "llm_is_relevant"};
+    for (const char* col : ai_cols) {
+        std::string type = (std::string(col).find("_at") != std::string::npos || std::string(col).find("_is_") != std::string::npos) ? "INTEGER" : "TEXT";
+        std::string alter_sql = "ALTER TABLE events ADD COLUMN " + std::string(col) + " " + type + ";";
+        sqlite3_exec(events, alter_sql.c_str(), nullptr, nullptr, nullptr);
+    }
+
     // Build WHERE clause for filters
     std::string where_clause = " WHERE 1=1";
     if (!start_time.empty()) {
@@ -147,7 +155,11 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
                 inode,
                 description,
                 SUM(COALESCE(file_size, 0)) as file_size,
-                file_type
+                file_type,
+                llm_summary,
+                llm_description,
+                llm_keywords,
+                llm_is_relevant
             FROM events
         )";
         sql += where_clause;

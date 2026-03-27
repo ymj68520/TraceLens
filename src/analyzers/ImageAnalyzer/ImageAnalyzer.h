@@ -3,6 +3,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <functional>
 #include <tsk/libtsk.h>
 #include "ImageAnalyzerDataTypes.h"
 
@@ -46,7 +47,19 @@ public:
 	TSK_IMG_INFO* getImageInfo() const { return imgInfo_; }
 	TSK_FS_INFO* getFileSystemInfo() const { return fsInfo_; }
 
+	/**
+	 * @brief Set a callback to check for cancellation
+	 * @param callback Callback that returns true if analysis should be cancelled
+	 */
+	void setCancellationCallback(std::function<bool()> callback) { 
+		cancellationCallback_ = callback; 
+	}
+
 private:
+	bool isCancelled() const {
+		return cancellationCallback_ && cancellationCallback_();
+	}
+
 	bool openImage();
 	bool openFileSystem();
 	void closeImage();
@@ -68,4 +81,6 @@ private:
 	std::unique_ptr<XFSHelper> xfsHelper_;
 	std::unique_ptr<NativeFilesystemWalker> nativeWalker_;
 	std::unique_ptr<TskFilesystemWalker> tskWalker_;
+
+	std::function<bool()> cancellationCallback_;
 };

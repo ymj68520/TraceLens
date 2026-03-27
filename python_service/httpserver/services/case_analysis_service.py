@@ -1289,6 +1289,27 @@ class CaseAnalysisService:
                 except Exception as e:
                     logger.error(f"Description step failure: {e}", exc_info=True)
 
+                # Step 3.6: Auto-analyze top event clusters for Timeline
+                try:
+                    if progress_callback:
+                        await progress_callback("analyzing_clusters", "正在自动研判关键时间线事件簇...")
+                    
+                    task_info = await self._cpp_backend.get_task(task_id)
+                    events_db = task_info.get("output_events_db") or ""
+                    
+                    if events_db and os.path.exists(events_db):
+                        cluster_results = await self._analyze_high_frequency_clusters(
+                            events_db, case_description, limit=5
+                        )
+                        result["steps"]["event_clusters"] = {
+                            "analyzed_count": len(cluster_results),
+                            "success": True
+                        }
+                    else:
+                        logger.warning(f"Task {task_id}: No events database found for cluster analysis")
+                except Exception as e:
+                    logger.error(f"Event cluster auto-analysis failed: {e}", exc_info=True)
+
                 # Step 3.5: Ingest into knowledge graph
                 if self._graphiti_service:
                     if progress_callback:
@@ -1500,6 +1521,94 @@ class CaseAnalysisService:
             if description:
                 lines.append(f"### 文件: {file_path}\n{description}\n")
         return "\n".join(lines) if lines else "无有效的文件分析结果。"
+
+    async def _analyze_high_frequency_clusters(
+        self,
+        events_db: str,
+        case_description: str,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Identify and analyze the most frequent event clusters.
+        """
+        if not self._llm_service:
+            return []
+
+        # 1. Get the top N clusters by event count
+        clusters = []
+        try:
+            with sqlite3.connect(events_db, timeout=10) as conn:
+                conn.row_factory = sqlite3.Row
+                # Use same grouping logic as C++ Timeline
+                sql = R"(
+                    SELECT 
+                        (timestamp / 60) as time_window, 
+                        event_type, 
+                        COUNT(*) as cluster_count,
+                        CASE WHEN file_path LIKE '%/%' THEN SUBSTR(file_path, 1, LENGTH(file_path) - INSTR(REPLACE(file_path, '/', char(1)), char(1)) + 1) ELSE '' END as parent_directory,
+                        GROUP_CONCAT(COALESCE(description, ''), '\n') as group_desc,
+                        GROUP_CONCAT(COALESCE(file_path, ''), '\n') as group_paths,
+                        id as first_event_id
+                    FROM events
+                    WHERE llm_analyzed_at IS NULL
+                    GROUP BY time_window, event_type, parent_directory
+                    ORDER BY cluster_count DESC
+                    LIMIT ?
+                )"
+                cur = conn.execute(sql, (limit,))
+                rows = cur.fetchall()
+                clusters = [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Failed to query top clusters: {e}")
+            return []
+
+        if not clusters:
+            return []
+
+        # 2. Analyze each cluster concurrently
+        results = []
+        for cluster in clusters:
+            try:
+                # Prepare cluster context for LLM
+                content = f"### 事件簇信息\n"
+                content += f"- 类型: {cluster['event_type']}\n"
+                content += f"- 数量: {cluster['cluster_count']}\n"
+                content += f"- 目录: {cluster['parent_directory'] or '/'}\n"
+                content += f"\n### 事件详情 (样本)\n"
+                
+                paths = cluster['group_paths'].split('\n')[:10]
+                descs = cluster['group_desc'].split('\n')[:10]
+                for p, d in zip(paths, descs):
+                    content += f"- {p}: {d}\n"
+
+                # Analyze via LLM
+                prompt = f"案情背景：{case_description}\n\n请针对以上案情背景，分析这个事件簇在取证上的意义，并给出研判结论。"
+                
+                analysis_result = await self._llm_service.analyze_event_cluster(
+                    event_data={
+                        "event_type": cluster['event_type'],
+                        "description": content,
+                        "time_window": cluster['time_window']
+                    },
+                    prompt=prompt
+                )
+                
+                # Persist result (llm_service will handle Schema update)
+                analysis = analysis_result.get("analysis", {})
+                self._llm_service.persist_to_events_db(
+                    db_path=events_db,
+                    event_id=cluster['first_event_id'],
+                    description=analysis.get("description", ""),
+                    summary=analysis.get("summary") or analysis.get("description", "")[:200],
+                    keywords=", ".join(analysis.get("keywords", [])) if isinstance(analysis.get("keywords"), list) else "",
+                    model_used=analysis_result.get("model", "unknown")
+                )
+                
+                results.append(analysis_result)
+            except Exception as e:
+                logger.warning(f"Failed to analyze cluster {cluster['time_window']}: {e}")
+
+        return results
 
     def _ensure_case_analysis_table(self, db_path: str):
         """Create case_analysis table if it doesn't exist."""

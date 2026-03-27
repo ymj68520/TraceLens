@@ -23,6 +23,7 @@ const Tasks = () => {
   
   // Track which tasks have already triggered AI analysis to prevent loops
   const [triggeredAiTasks, setTriggeredAiTasks] = useState(new Set());
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [taskData, setTaskData] = useState({
     image_path: '',
     priority: 'normal',
@@ -46,47 +47,56 @@ const Tasks = () => {
     if (!autoRefresh) return;
 
     const interval = setInterval(async () => {
-      const result = await dispatch(fetchTasks(filters)).unwrap();
-      const currentTasks = result.tasks || [];
+      try {
+        const result = await dispatch(fetchTasks(filters)).unwrap();
+        const currentTasks = result.tasks || [];
 
-      // Check for newly completed tasks that need AI analysis
-      for (const task of currentTasks) {
-        if (
-          task.status === TASK_STATUS.COMPLETED && 
-          task.llm_analyze && 
-          !triggeredAiTasks.has(task.id)
-        ) {
-          // Check if report already exists before triggering
-          try {
-            const report = await getCaseReport(task.id);
-            if (report && report.report) {
-              setTriggeredAiTasks(prev => new Set(prev).add(task.id));
-              continue;
+        // Protection: On first load, mark existing tasks as "seen" but don't trigger AI
+        if (isInitialLoad) {
+          const initialSet = new Set();
+          currentTasks.forEach(t => {
+            if (t.status?.toLowerCase() === 'completed') initialSet.add(t.id);
+          });
+          setTriggeredAiTasks(initialSet);
+          setIsInitialLoad(false);
+          return;
+        }
+
+        // Subsequent polls: Trigger only for new completions
+        for (const task of currentTasks) {
+          const taskStatus = task.status?.toLowerCase();
+          if (
+            taskStatus === 'completed' && 
+            task.llm_analyze && 
+            !triggeredAiTasks.has(task.id)
+          ) {
+            setTriggeredAiTasks(prev => new Set(prev).add(task.id));
+            
+            try {
+              const report = await getCaseReport(task.id);
+              if (report && report.report) continue;
+            } catch (e) {
+              try {
+                await startCaseAnalysis({
+                  taskId: task.id,
+                  filesDbPath: task.output_files_db,
+                  caseDescription: task.case_description || '自动分析',
+                  maxFilterFiles: 200
+                });
+                toast.success(`Task ${task.id.substring(0,8)} finished! AI analysis started.`);
+              } catch (err) {
+                console.error('Failed to auto-trigger AI:', err);
+              }
             }
-          } catch (e) {
-            // 404 means no report, proceed to trigger
-          }
-
-          console.log(`Automatically triggering AI analysis for task ${task.id}`);
-          setTriggeredAiTasks(prev => new Set(prev).add(task.id));
-          
-          try {
-            await startCaseAnalysis({
-              taskId: task.id,
-              filesDbPath: task.output_files_db,
-              caseDescription: task.case_description || '自动分析',
-              maxFilterFiles: 200
-            });
-            toast.success(`Task ${task.id.substring(0,8)}: AI analysis started automatically.`);
-          } catch (err) {
-            console.error('Failed to auto-trigger AI:', err);
           }
         }
+      } catch (err) {
+        console.error('Refresh error:', err);
       }
     }, refreshInterval || 5000);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, refreshInterval, dispatch, filters, triggeredAiTasks, toast]);
+  }, [autoRefresh, refreshInterval, dispatch, filters, toast, triggeredAiTasks, isInitialLoad]);
 
   const handleFilterChange = (filterType, value) => {
     dispatch(setFilters({ [filterType]: value }));
@@ -153,14 +163,30 @@ const Tasks = () => {
     }
   };
 
+  const formatDate = (timestamp) => {
+    if (!timestamp || timestamp === 0) return '-';
+    // If it's a Unix timestamp in seconds, convert to ms
+    const date = new Date(timestamp * 1000);
+    return date.toLocaleString();
+  };
+
   const filteredTasks = tasks.filter((task) => {
-    if (filters.status !== 'all' && task.status !== filters.status) return false;
-    if (filters.priority !== 'all' && task.priority !== filters.priority) return false;
+    const taskStatus = task.status?.toLowerCase();
+    const filterStatus = filters.status?.toLowerCase();
+    const taskPriority = task.priority?.toLowerCase();
+    const filterPriority = filters.priority?.toLowerCase();
+
+    if (filterStatus !== 'all' && taskStatus !== filterStatus) return false;
+    if (filterPriority !== 'all' && taskPriority !== filterPriority) return false;
     return true;
   });
 
-  console.log('Tasks state:', { tasks, status, error, filters });
-  console.log('Filtered tasks:', filteredTasks);
+  console.log('Tasks diagnostics:', { 
+    totalTasksCount: tasks.length, 
+    filteredTasksCount: filteredTasks.length,
+    filters,
+    rawTasks: tasks 
+  });
 
   if (status === 'loading' && tasks.length === 0) {
     return (
@@ -235,69 +261,84 @@ const Tasks = () => {
             <p className="text-slate-500 dark:text-slate-400">No tasks found. Create your first task to get started.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-              <thead className="bg-slate-50 dark:bg-slate-800">
+          <div className="overflow-x-auto overflow-y-hidden">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700 table-fixed">
+              <thead className="bg-slate-50 dark:bg-slate-900/50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
-                    Task ID
+                  <th className="w-20 px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
+                    ID
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
                     Image Path
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
+                  <th className="w-28 px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
+                  <th className="w-24 px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
                     Priority
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
+                  <th className="w-44 px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
+                    Timeline
+                  </th>
+                  <th className="w-40 px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
                     Progress
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
+                  <th className="w-48 px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                 {filteredTasks.map((task) => (
-                  <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-slate-700">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-slate-900 dark:text-white">
+                  <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                    <td className="px-4 py-4 whitespace-nowrap text-[10px] font-mono text-slate-500 dark:text-slate-400">
                       {task.id?.substring(0, 8)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
+                    <td className="px-4 py-4 text-sm text-slate-900 dark:text-white truncate max-w-[200px]" title={task.image_path}>
                       {task.image_path}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <Badge variant={STATUS_COLORS[task.status]?.split('-')[1] || 'gray'}>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <Badge variant={STATUS_COLORS[task.status?.toLowerCase()]?.split('-')[1] || 'gray'}>
                         {task.status}
                       </Badge>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <Badge variant={PRIORITY_COLORS[task.priority]?.split('-')[1] || 'gray'}>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <Badge variant={PRIORITY_COLORS[task.priority?.toLowerCase()]?.split('-')[1] || 'gray'}>
                         {task.priority}
                       </Badge>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {task.status === TASK_STATUS.RUNNING ? (
-                        <div className="w-48">
+                    <td className="px-4 py-4 whitespace-nowrap leading-tight">
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center text-[10px] text-slate-400">
+                          <span className="w-8 uppercase">Start:</span>
+                          <span className="text-slate-600 dark:text-slate-300 font-medium">{formatDate(task.timestamps?.created)}</span>
+                        </div>
+                        <div className="flex items-center text-[10px] text-slate-400">
+                          <span className="w-8 uppercase">End:</span>
+                          <span className="text-slate-600 dark:text-slate-300 font-medium">{formatDate(task.timestamps?.completed)}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      {task.status?.toLowerCase() === 'running' ? (
+                        <div className="w-full">
                           <ProgressBar
                             value={task.progress?.overall_percentage || 0}
                             showLabel={false}
-                            size="sm"
+                            size="xs"
                           />
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 truncate">
                             {task.progress?.phase_description || 'Processing...'}
                           </p>
                         </div>
                       ) : (
-                        <span className="text-sm text-slate-500 dark:text-slate-400">
-                          {task.status === TASK_STATUS.COMPLETED ? '100%' : '-'}
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {task.status?.toLowerCase() === 'completed' ? '100%' : '-'}
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                      {task.status === TASK_STATUS.RUNNING && (
+                    <td className="px-4 py-4 whitespace-nowrap text-xs font-medium space-x-1">
+                      {task.status?.toLowerCase() === 'running' && (
                         <button
                           onClick={() => handleCancelTask(task.id)}
                           className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
@@ -305,56 +346,22 @@ const Tasks = () => {
                           Cancel
                         </button>
                       )}
-                      {task.status === TASK_STATUS.COMPLETED && (
-                        <>
-                          <Link
-                            to={`/timeline?task_id=${task.id}`}
-                            className="text-primary-600 hover:text-blue-900 dark:text-primary-400 dark:hover:text-blue-300"
-                          >
-                            Timeline
-                          </Link>
-                          <Link
-                            to={`/files?task_id=${task.id}`}
-                            className="text-green-600 hover:text-green-900 ml-2 dark:text-green-400 dark:hover:text-green-300"
-                          >
-                            Files
-                          </Link>
-                          <Link
-                            to={`/statistics?task_id=${task.id}`}
-                            className="text-purple-600 hover:text-purple-900 ml-2 dark:text-purple-400 dark:hover:text-purple-300"
-                          >
-                            Stats
-                          </Link>
-                          {task.llm_analyze && (
-                            <>
-                              <Link
-                                to={`/llm-descriptions?task_id=${task.id}`}
-                                className="text-orange-600 hover:text-orange-900 ml-2 dark:text-orange-400 dark:hover:text-orange-300"
-                              >
-                                AI
-                              </Link>
-                              <Link
-                                to={`/case-report?task_id=${task.id}`}
-                                className="text-teal-600 hover:text-teal-900 ml-2 dark:text-teal-400 dark:hover:text-teal-300"
-                              >
-                                报告
-                              </Link>
-                            </>
-                          )}
-                        </>
+                      {task.status?.toLowerCase() === 'completed' && (
+                        <div className="flex items-center space-x-2">
+                          <Link to={`/timeline?task_id=${task.id}`} className="text-primary-600 hover:underline">Timeline</Link>
+                          <Link to={`/files?task_id=${task.id}`} className="text-green-600 hover:underline">Files</Link>
+                          {task.llm_analyze && <Link to={`/case-report?task_id=${task.id}`} className="text-teal-600 hover:underline">Report</Link>}
+                        </div>
                       )}
-                      {/* Delete button for completed, failed, or cancelled tasks */}
-                      {(task.status === TASK_STATUS.COMPLETED ||
-                        task.status === TASK_STATUS.FAILED ||
-                        task.status === TASK_STATUS.CANCELLED) && (
-                          <button
-                            onClick={() => handleDeleteTask(task.id)}
-                            className="text-slate-400 hover:text-red-600 ml-2 dark:hover:text-red-400"
-                            title="Delete task"
-                          >
-                            🗑️
-                          </button>
-                        )}
+                      {(['completed', 'failed', 'cancelled'].includes(task.status?.toLowerCase())) && (
+                        <button
+                          onClick={() => handleDeleteTask(task.id)}
+                          className="text-slate-400 hover:text-red-600 ml-2"
+                          title="Delete task"
+                        >
+                          🗑️
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

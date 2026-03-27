@@ -102,7 +102,136 @@ class ToggleRelevanceRequest(BaseModel):
     is_relevant: bool
 
 
+class EventClusterAnalyzeRequest(BaseModel):
+    """Request model for event cluster analysis."""
+    task_id: str = Field(..., description="Task ID")
+    time_window: int = Field(..., description="Time window (timestamp / 60)")
+    event_type: str = Field(..., description="Event type")
+    parent_directory: Optional[str] = Field("", description="Parent directory of the events")
+    prompt: Optional[str] = Field(None, description="Custom prompt")
+
+
+class ToggleClusterRelevanceRequest(BaseModel):
+    """Request model for toggling event cluster relevance."""
+    task_id: str = Field(..., description="Task ID")
+    time_window: int = Field(..., description="Time window (timestamp / 60)")
+    event_type: str = Field(..., description="Event type")
+    is_relevant: bool = Field(..., description="Relevance status")
+
+
 # Routes
+
+@router.post("/analyze-event-cluster")
+async def analyze_event_cluster(
+    request: EventClusterAnalyzeRequest,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Analyze an event cluster using LLM.
+    
+    This endpoint replaces the legacy C++ EventClusterAnalyzer LLM logic.
+    It aggregates events for the given cluster and generates an AI summary.
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+        
+        # 1. Get database path
+        task_info = await service_manager.cpp_backend.get_task(request.task_id)
+        if not task_info:
+            raise HTTPException(status_code=404, detail="Task not found")
+            
+        events_db = task_info.get("output_events_db") or ""
+        if not events_db:
+            raise HTTPException(status_code=400, detail="No events database for this task")
+
+        # 2. Extract event data for the cluster
+        # Using the same logic as C++ for consistency
+        import sqlite3
+        events_summary = ""
+        try:
+            with sqlite3.connect(events_db) as conn:
+                conn.row_factory = sqlite3.Row
+                sql = "SELECT timestamp, event_type, file_path, description FROM events WHERE (timestamp / 60) = ? AND event_type = ?"
+                params = [request.time_window, request.event_type]
+                
+                if request.parent_directory:
+                    sql += " AND file_path LIKE ?"
+                    params.append(f"{request.parent_directory}%")
+                
+                sql += " LIMIT 50"
+                cur = conn.execute(sql, params)
+                rows = cur.fetchall()
+                
+                if not rows:
+                    raise HTTPException(status_code=404, detail="No events found in this cluster")
+                    
+                lines = [f"- {r['timestamp']}: {r['event_type']} | {r['file_path']} | {r['description'] or ''}" for r in rows]
+                events_summary = "\n".join(lines)
+        except Exception as e:
+            logger.error(f"Failed to read events for cluster: {e}")
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+        # 3. Call LLM for analysis
+        result = await service_manager.llm_service.analyze_event_cluster(
+            event_data={
+                "event_type": request.event_type,
+                "description": events_summary,
+                "time_window": request.time_window
+            },
+            prompt=request.prompt
+        )
+        
+        analysis = result.get("analysis", {})
+        
+        # 4. Persist result back to _events.db using the cluster identifier
+        # Note: We update ALL events in this cluster
+        sql_update = """
+            UPDATE events SET 
+                llm_summary = ?, 
+                llm_description = ?, 
+                llm_keywords = ?, 
+                llm_analyzed_at = ?, 
+                llm_model_used = ?, 
+                llm_is_relevant = ? 
+            WHERE (timestamp / 60) = ? AND event_type = ?
+        """
+        update_params = [
+            analysis.get("summary") or analysis.get("description", "")[:200],
+            analysis.get("description", ""),
+            ", ".join(analysis.get("keywords", [])) if isinstance(analysis.get("keywords"), list) else "",
+            int(datetime.now().timestamp()),
+            result.get("model", "unknown"),
+            1 if analysis.get("is_relevant", True) else 0,
+            request.time_window,
+            request.event_type
+        ]
+        
+        if request.parent_directory:
+            sql_update += " AND file_path LIKE ?"
+            update_params.append(f"{request.parent_directory}%")
+
+        try:
+            with sqlite3.connect(events_db) as conn:
+                cur = conn.execute(sql_update, update_params)
+                conn.commit()
+                logger.info(f"Updated {cur.rowcount} events in cluster {request.time_window}")
+        except Exception as e:
+            logger.warning(f"Failed to persist cluster analysis: {e}")
+
+        return {
+            "success": True,
+            "analysis": analysis,
+            "model_used": result.get("model"),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Event cluster analysis failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/analyze", response_model=AnalyzeResponse, responses={
     200: {"description": "Content analyzed successfully"},
@@ -528,13 +657,62 @@ async def toggle_relevance(
         
         if not success:
             raise HTTPException(status_code=400, detail="Failed to update relevance. File description may not exist.")
-            
+
         return {"success": True, "message": f"File relevance updated to {request.is_relevant}"}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error toggling relevance: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/toggle-cluster-relevance")
+async def toggle_cluster_relevance(
+    request: ToggleClusterRelevanceRequest,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Toggle the relevance of an event cluster.
+    Irrelevant clusters will be excluded from the final case report.
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+
+        task_info = await service_manager.cpp_backend.get_task(request.task_id)
+        if not task_info:
+            raise HTTPException(status_code=404, detail=f"Task {request.task_id} not found")
+
+        events_db = task_info.get("output_events_db") or ""
+        if not events_db:
+            raise HTTPException(status_code=400, detail="No events database for this task")
+
+        # Update all events in this cluster
+        import sqlite3
+        try:
+            with sqlite3.connect(events_db) as conn:
+                sql_update = """
+                    UPDATE events SET
+                        llm_is_relevant = ?
+                    WHERE (timestamp / 60) = ? AND event_type = ?
+                """
+                params = [1 if request.is_relevant else 0, request.time_window, request.event_type]
+
+                cur = conn.execute(sql_update, params)
+                conn.commit()
+                logger.info(f"Updated {cur.rowcount} events in cluster {request.time_window} for relevance to {request.is_relevant}")
+
+        except Exception as e:
+            logger.warning(f"Failed to persist cluster relevance: {e}")
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+        return {"success": True, "message": f"Event cluster relevance updated to {request.is_relevant}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error toggling cluster relevance: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/status", response_model=LLMStatusResponse, responses={
     200: {"description": "Status retrieved successfully"},

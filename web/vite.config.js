@@ -6,18 +6,29 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
       '/tasks': {
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
-      '/py': {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/api/graphiti': {
         target: 'http://localhost:8090',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/py/, ''),
+      },
+      '/api/llm': {
+        target: 'http://localhost:8090',
+        changeOrigin: true,
+      },
+      '/api/office': {
+        target: 'http://localhost:8090',
+        changeOrigin: true,
+      },
+      '/api/db': {
+        target: 'http://localhost:8090',
+        changeOrigin: true,
       },
     },
   },
