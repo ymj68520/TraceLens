@@ -1,0 +1,296 @@
+/**
+ * @file DBAnalysisDatabase.cpp
+ * @brief 数据库分析结果存储模块核心实现
+ * Database lifecycle management - initialization, table creation, transactions
+ */
+
+#include "DBAnalysisDatabase.h"
+
+#include <sstream>
+#include <chrono>
+
+namespace ForensicAnalyzer {
+namespace Database {
+
+DBAnalysisDatabase::DBAnalysisDatabase(const std::string& dbPath)
+    : dbPath_(dbPath) {}
+
+DBAnalysisDatabase::~DBAnalysisDatabase() {
+    if (db_) {
+        sqlite3_close(db_);
+        db_ = nullptr;
+    }
+}
+
+bool DBAnalysisDatabase::initialize() {
+    if (db_) {
+        sqlite3_close(db_);
+        db_ = nullptr;
+    }
+
+    int rc = sqlite3_open(dbPath_.c_str(), &db_);
+    if (rc != SQLITE_OK) {
+        setError("Failed to open database: " + std::string(sqlite3_errmsg(db_)));
+        return false;
+    }
+
+    // 启用外键约束
+    sqlite3_exec(db_, "PRAGMA foreign_keys = ON", nullptr, nullptr, nullptr);
+
+    return createTables();
+}
+
+bool DBAnalysisDatabase::createTables() {
+    const char* sql = R"(
+        -- 分析会话表
+        CREATE TABLE IF NOT EXISTS db_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_path TEXT NOT NULL,
+            database_type INTEGER NOT NULL,
+            version TEXT,
+            file_size INTEGER DEFAULT 0,
+            table_count INTEGER DEFAULT 0,
+            total_records INTEGER DEFAULT 0,
+            deleted_records INTEGER DEFAULT 0,
+            user_count INTEGER DEFAULT 0,
+            artifact_count INTEGER DEFAULT 0,
+            started_at INTEGER NOT NULL,
+            completed_at INTEGER,
+            last_error TEXT
+        );
+
+        -- 表信息
+        CREATE TABLE IF NOT EXISTS db_tables (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            schema_name TEXT,
+            row_count INTEGER DEFAULT 0,
+            size_bytes INTEGER DEFAULT 0,
+            create_statement TEXT,
+            engine TEXT,
+            collation TEXT,
+            columns_json TEXT,
+            indexes_json TEXT,
+            FOREIGN KEY (session_id) REFERENCES db_sessions(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_db_tables_session ON db_tables(session_id);
+
+        -- 记录
+        CREATE TABLE IF NOT EXISTS db_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            table_name TEXT NOT NULL,
+            row_id INTEGER,
+            values_json TEXT NOT NULL,
+            is_deleted INTEGER DEFAULT 0,
+            page_number INTEGER,
+            cell_offset INTEGER,
+            FOREIGN KEY (session_id) REFERENCES db_sessions(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_db_records_session ON db_records(session_id);
+        CREATE INDEX IF NOT EXISTS idx_db_records_table ON db_records(session_id, table_name);
+
+        -- 工件
+        CREATE TABLE IF NOT EXISTS db_artifacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            type INTEGER NOT NULL,
+            source TEXT,
+            description TEXT,
+            data_json TEXT,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES db_sessions(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_db_artifacts_session ON db_artifacts(session_id);
+        CREATE INDEX IF NOT EXISTS idx_db_artifacts_type ON db_artifacts(type);
+
+        -- 用户
+        CREATE TABLE IF NOT EXISTS db_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            type INTEGER NOT NULL,
+            privileges TEXT,
+            last_login INTEGER,
+            FOREIGN KEY (session_id) REFERENCES db_sessions(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_db_users_session ON db_users(session_id);
+    )";
+
+    char* errMsg = nullptr;
+    int rc = sqlite3_exec(db_, sql, nullptr, nullptr, &errMsg);
+    if (rc != SQLITE_OK) {
+        std::string error = errMsg ? errMsg : "Unknown error";
+        sqlite3_free(errMsg);
+        setError("Failed to create tables: " + error);
+        return false;
+    }
+
+    return true;
+}
+
+bool DBAnalysisDatabase::beginTransaction() {
+    return sqlite3_exec(db_, "BEGIN TRANSACTION", nullptr, nullptr, nullptr) == SQLITE_OK;
+}
+
+bool DBAnalysisDatabase::commit() {
+    return sqlite3_exec(db_, "COMMIT", nullptr, nullptr, nullptr) == SQLITE_OK;
+}
+
+bool DBAnalysisDatabase::rollback() {
+    return sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK;
+}
+
+void DBAnalysisDatabase::setError(const std::string& error) {
+    lastError_ = error;
+}
+
+// =============================================================================
+// JSON Helper Methods
+// =============================================================================
+
+std::string DBAnalysisDatabase::mapToJson(const std::map<std::string, std::string>& m) {
+    std::ostringstream oss;
+    oss << "{";
+    bool first = true;
+    for (const auto& [key, value] : m) {
+        if (!first) oss << ",";
+        first = false;
+        // 简单转义
+        std::string escapedValue = value;
+        size_t pos = 0;
+        while ((pos = escapedValue.find('"', pos)) != std::string::npos) {
+            escapedValue.replace(pos, 1, "\\\"");
+            pos += 2;
+        }
+        oss << "\"" << key << "\":\"" << escapedValue << "\"";
+    }
+    oss << "}";
+    return oss.str();
+}
+
+std::map<std::string, std::string> DBAnalysisDatabase::jsonToMap(const std::string& json) {
+    std::map<std::string, std::string> m;
+    // 简单解析（不处理嵌套）
+    // 格式: {"key1":"value1","key2":"value2"}
+
+    if (json.size() < 2 || json[0] != '{') return m;
+
+    size_t pos = 1;
+    while (pos < json.size() - 1) {
+        // 查找key
+        size_t keyStart = json.find('"', pos);
+        if (keyStart == std::string::npos) break;
+        size_t keyEnd = json.find('"', keyStart + 1);
+        if (keyEnd == std::string::npos) break;
+
+        std::string key = json.substr(keyStart + 1, keyEnd - keyStart - 1);
+
+        // 查找:
+        size_t colonPos = json.find(':', keyEnd);
+        if (colonPos == std::string::npos) break;
+
+        // 查找value
+        size_t valStart = json.find('"', colonPos);
+        if (valStart == std::string::npos) break;
+
+        // 处理转义
+        size_t valEnd = valStart + 1;
+        while (valEnd < json.size()) {
+            if (json[valEnd] == '\\' && valEnd + 1 < json.size() && json[valEnd + 1] == '"') {
+                valEnd += 2;  // 跳过转义的引号
+            } else if (json[valEnd] == '"') {
+                break;  // 找到结束引号
+            } else {
+                valEnd++;
+            }
+        }
+
+        if (valEnd >= json.size()) break;
+
+        std::string value = json.substr(valStart + 1, valEnd - valStart - 1);
+        // 移除转义
+        size_t escapePos = 0;
+        while ((escapePos = value.find("\\\"", escapePos)) != std::string::npos) {
+            value.replace(escapePos, 2, "\"");
+            escapePos += 1;
+        }
+
+        m[key] = value;
+        pos = valEnd + 1;
+
+        // 跳到下一个键值对
+        if (pos < json.size() && json[pos] == ',') pos++;
+    }
+
+    return m;
+}
+
+std::string DBAnalysisDatabase::vectorToJson(const std::vector<std::string>& v) {
+    std::ostringstream oss;
+    oss << "[";
+    bool first = true;
+    for (const auto& s : v) {
+        if (!first) oss << ",";
+        first = false;
+        // 简单转义
+        std::string escaped = s;
+        size_t pos = 0;
+        while ((pos = escaped.find('"', pos)) != std::string::npos) {
+            escaped.replace(pos, 1, "\\\"");
+            pos += 2;
+        }
+        oss << "\"" << escaped << "\"";
+    }
+    oss << "]";
+    return oss.str();
+}
+
+std::vector<std::string> DBAnalysisDatabase::jsonToVector(const std::string& json) {
+    std::vector<std::string> v;
+    // 简单解析 JSON 数组
+    // 格式: ["item1","item2","item3"]
+
+    if (json.size() < 2 || json[0] != '[') return v;
+
+    size_t pos = 1;
+    while (pos < json.size() - 1) {
+        // 查找下一个引号
+        size_t start = json.find('"', pos);
+        if (start == std::string::npos) break;
+
+        // 查找结束引号
+        size_t end = start + 1;
+        while (end < json.size()) {
+            if (json[end] == '\\' && end + 1 < json.size() && json[end + 1] == '"') {
+                end += 2;  // 跳过转义的引号
+            } else if (json[end] == '"') {
+                break;  // 找到结束引号
+            } else {
+                end++;
+            }
+        }
+
+        if (end >= json.size()) break;
+
+        std::string value = json.substr(start + 1, end - start - 1);
+        // 移除转义
+        size_t escapePos = 0;
+        while ((escapePos = value.find("\\\"", escapePos)) != std::string::npos) {
+            value.replace(escapePos, 2, "\"");
+            escapePos += 1;
+        }
+
+        v.push_back(value);
+        pos = end + 1;
+
+        // 跳过逗号
+        if (pos < json.size() && json[pos] == ',') pos++;
+    }
+
+    return v;
+}
+
+} // namespace Database
+} // namespace ForensicAnalyzer

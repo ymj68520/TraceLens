@@ -10,6 +10,10 @@
 #include <algorithm>
 #include <cctype>
 
+// Initialization methods are now in separate files:
+// - FileClassifierMappings.cpp (initializeExtensionMap, initializeExtendedExtensionMap)
+// - FileClassifierPatterns.cpp (initializePathPatterns, initializeFilenamePatterns)
+
 FileClassifier::FileClassifier(const std::string& sourceDbPath,
 	const std::string& fileDbPath)
 	: sourceDbPath_(sourceDbPath), fileDbPath_(fileDbPath),
@@ -26,7 +30,7 @@ FileClassifier::~FileClassifier() {
 
 bool FileClassifier::classifyAndExtract() {
 	AuditLog::instance().log("SYSTEM", "CLASSIFICATION_START", "Starting file classification from: " + sourceDbPath_);
-	
+
 	if (!openDatabases()) {
 		return false;
 	}
@@ -63,7 +67,7 @@ bool FileClassifier::openDatabases() {
 
 bool FileClassifier::createCategoryTables() {
     using namespace FileClassifierSQL;
-    
+
     //  CREATE main files table
     char* errMsg = nullptr;
     int rc = sqlite3_exec(fileDb_, CREATE_MAIN_FILES_TABLE, nullptr, nullptr, &errMsg);
@@ -193,7 +197,7 @@ bool FileClassifier::classifyFiles() {
 
 		// Determine category using integrated classification logic
 		FileCategory category = determineCategory(name, path);
-		
+
 		categoryCounts[category]++;
 
 		// Get extension
@@ -283,7 +287,7 @@ FileCategory FileClassifier::determineCategory(const std::string& filename,
 	}
 
 	// 3. Enhanced Classification Logic
-	
+
 	// Priority 0: Check for encryption (Magic Bytes & High Entropy)
 	// This overrides extension based check if meaningful encryption is detected
 	if (EncryptionUtils::isEncrypted(path)) {
@@ -294,11 +298,11 @@ FileCategory FileClassifier::determineCategory(const std::string& filename,
 	if (isSystemConfigFile(filename)) {
 		return FileCategory::OS_CONFIG;
 	}
-	
+
 	if (isBootFile(filename)) {
 		return FileCategory::OS_BOOT;
 	}
-	
+
 	if (isLogFile(filename)) {
 		return FileCategory::LOG_FILE;
 	}
@@ -311,7 +315,7 @@ FileCategory FileClassifier::determineCategory(const std::string& filename,
 			return FileCategory::FS_JOURNAL;
 		}
 		// Metadata files
-		if (filename == "$MFT" || filename == "$MFTMirr" || filename == "$Bitmap" || 
+		if (filename == "$MFT" || filename == "$MFTMirr" || filename == "$Bitmap" ||
 			filename == "$Boot" || filename == "$Volume" || filename == "$AttrDef" ||
 			filename == "$BadClus" || filename == "$Secure" || filename == "$UpCase" ||
 			filename == "$Extend" || filename == "$ObjId" || filename == "$Quota" ||
@@ -320,53 +324,53 @@ FileCategory FileClassifier::determineCategory(const std::string& filename,
 			return FileCategory::FS_METADATA;
 		}
 	}
-	
+
 	// Check for ext4/Linux filesystem metadata
-	if (filename == "lost+found" || filename == ".journal" || 
+	if (filename == "lost+found" || filename == ".journal" ||
 	    filename.find("journal") == 0) {
 		return FileCategory::FS_METADATA;
 	}
-	
+
 	// Check for additional boot files
 	if (filename == "BOOTNXT" || filename == "bootnxt") {
 		return FileCategory::OS_BOOT;
 	}
-	
+
 	if (isBackupFile(filename)) {
 		return FileCategory::BACKUP;
 	}
-	
+
 	// Priority 2: Check path patterns
 	if (isOSConfigPath(path)) {
 		return FileCategory::OS_CONFIG;
 	}
-	
+
 	if (isBootPath(path)) {
 		return FileCategory::OS_BOOT;
 	}
-	
+
 	if (isLibraryPath(path)) {
 		return FileCategory::OS_LIBRARY;
 	}
-	
+
 	if (isLogPath(path)) {
 		return FileCategory::LOG_FILE;
 	}
-	
+
 	if (isCachePath(path)) {
 		return FileCategory::CACHE;
 	}
-	
+
 	if (isTempPath(path)) {
 		return FileCategory::TEMP;
 	}
-	
+
 	// Priority 3: Check extended extension map
 	auto extendedIt = extendedExtensionMap_.find(extension);
 	if (extendedIt != extendedExtensionMap_.end()) {
 		return extendedIt->second;
 	}
-	
+
 	// Priority 4: Return basic category
 	return category;
 }
@@ -431,199 +435,16 @@ std::string FileClassifier::getCategoryTableName(FileCategory category) {
 	}
 }
 
-void FileClassifier::initializeExtensionMap() {
-	// Image files
-	std::vector<std::string> imageExts = {
-		"jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "ico", "svg",
-		"webp", "raw", "cr2", "nef", "arw", "dng", "psd", "ai", "eps",
-		"heic", "heif", "jfif", "exif",
-		// Modern formats
-		"avif", "jxl", "webp2", "apng",
-		// RAW formats
-		        "orf", "rw2", "raf", "3fr", "dcr", "k25", "kdc", "mrw", "nrw", "pef", "sr2", "srf", "x3f"
-		};
-		auto extraImageExts = forensics::ConfigManager::instance().getExtraExtensions("IMAGE");
-		imageExts.insert(imageExts.end(), extraImageExts.begin(), extraImageExts.end());
-
-		for (const auto& ext : imageExts) {
-
-		extensionMap_[ext] = FileCategory::IMAGE;
-	}
-
-	// Video files
-	std::vector<std::string> videoExts = {
-		"mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg",
-		"mpeg", "3gp", "f4v", "swf", "vob", "ogv", "m2ts", "mts", "ts",
-		"divx", "xvid", "rm", "rmvb", "asf",
-		// Professional formats
-		"mxf", "prores", "dnxhd", "dnxhr",
-		// Additional formats
-		"mpe", "m2v", "m4p", "qt", "yuv"
-	};
-        auto extraVideoExts = forensics::ConfigManager::instance().getExtraExtensions("VIDEO");
-        videoExts.insert(videoExts.end(), extraVideoExts.begin(), extraVideoExts.end());
-	for (const auto& ext : videoExts) {
-		extensionMap_[ext] = FileCategory::VIDEO;
-	}
-
-	// Audio files
-	std::vector<std::string> audioExts = {
-		"mp3", "wav", "flac", "aac", "ogg", "wma", "m4a", "opus", "ape",
-		"alac", "aiff", "au", "mid", "midi", "ra", "rm", "amr", "ac3",
-		// High-fidelity formats
-		"dsd", "dsf", "dff",
-		// Additional formats
-		"mka", "oga", "mogg", "pcm", "aif", "aifc", "caf", "sd2"
-	};
-        auto extraAudioExts = forensics::ConfigManager::instance().getExtraExtensions("AUDIO");
-        audioExts.insert(audioExts.end(), extraAudioExts.begin(), extraAudioExts.end());
-	for (const auto& ext : audioExts) {
-		extensionMap_[ext] = FileCategory::AUDIO;
-	}
-
-	// Document files
-	std::vector<std::string> documentExts = {
-		"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods",
-		"odp", "rtf", "txt", "csv", "log", "tex", "wpd", "wps", "pages",
-		"numbers", "key", "epub", "mobi", "azw", "djvu", "fb2",
-		// Markup languages
-		"md", "markdown", "rst", "adoc", "asciidoc",
-		// Office macro-enabled
-		"docm", "xlsm", "pptm",
-		// LaTeX
-		"bib", "aux", "bbl", "blg",
-		// Other
-		"msg", "oft"
-	};
-        auto extraDocExts = forensics::ConfigManager::instance().getExtraExtensions("DOCUMENT");
-        documentExts.insert(documentExts.end(), extraDocExts.begin(), extraDocExts.end());
-	for (const auto& ext : documentExts) {
-		extensionMap_[ext] = FileCategory::DOCUMENT;
-	}
-
-	// Archive files
-	std::vector<std::string> archiveExts = {
-		"zip", "rar", "7z", "tar", "gz", "bz2", "xz", "iso", "dmg",
-		"pkg", "deb", "rpm", "cab", "msi", "jar", "war", "ear", "apk",
-		"tgz", "tbz2", "lz", "lzma", "z", "arj", "ace",
-		// Modern compression
-		"zst", "zstd", "lz4", "br", "sz", "xar",
-		// Additional formats
-		"cpio", "shar", "lha", "lzh", "zoo", "arc"
-	};
-        auto extraArchiveExts = forensics::ConfigManager::instance().getExtraExtensions("ARCHIVE");
-        archiveExts.insert(archiveExts.end(), extraArchiveExts.begin(), extraArchiveExts.end());
-	for (const auto& ext : archiveExts) {
-		extensionMap_[ext] = FileCategory::ARCHIVE;
-	}
-
-	// Executable files
-	std::vector<std::string> executableExts = {
-		"exe", "dll", "so", "dylib", "app", "bin", "com", "bat", "cmd",
-		"sh", "bash", "ps1", "vbs", "wsf", "msi", "scr", "cpl", "sys",
-		"drv", "ocx", "elf", "out", "run",
-		// Linux packages
-		"appimage", "flatpak", "snap",
-		// Windows modern
-		"msix", "appx", "appxbundle",
-		// macOS
-		"dmg", "pkg"
-	};
-        auto extraExecExts = forensics::ConfigManager::instance().getExtraExtensions("EXECUTABLE");
-        executableExts.insert(executableExts.end(), extraExecExts.begin(), extraExecExts.end());
-	for (const auto& ext : executableExts) {
-		extensionMap_[ext] = FileCategory::EXECUTABLE;
-	}
-
-	// Database files
-	std::vector<std::string> databaseExts = {
-		"db", "sqlite", "sqlite3", "mdb", "accdb", "dbf", "sql", "bak",
-		"mdf", "ldf", "frm", "ibd", "pdb", "fdb", "gdb", "nsf",
-		// NoSQL and modern databases
-		"realm", "leveldb", "rocksdb", "bdb"
-	};
-        auto extraDbExts = forensics::ConfigManager::instance().getExtraExtensions("DATABASE");
-        databaseExts.insert(databaseExts.end(), extraDbExts.begin(), extraDbExts.end());
-	for (const auto& ext : databaseExts) {
-		extensionMap_[ext] = FileCategory::DATABASE;
-	}
-
-	// Source code files
-	std::vector<std::string> sourceCodeExts = {
-		"c", "cpp", "cc", "cxx", "h", "hpp", "java", "py", "js", "ts",
-		"php", "rb", "go", "rs", "swift", "kt", "scala", "pl", "lua",
-		"r", "m", "mm", "cs", "vb", "asm", "s", "pas", "f", "f90",
-		"sql", "sh", "bash", "ps1", "bat", "cmd", "makefile", "cmake",
-		// Modern languages
-		"vue", "jsx", "tsx", "dart", "zig", "v", "nim", "crystal",
-		// Additional
-		"coffee", "elm", "erl", "ex", "exs", "fs", "fsx", "groovy", "hx"
-	};
-        auto extraSourceExts = forensics::ConfigManager::instance().getExtraExtensions("SOURCE_CODE");
-        sourceCodeExts.insert(sourceCodeExts.end(), extraSourceExts.begin(), extraSourceExts.end());
-	for (const auto& ext : sourceCodeExts) {
-		extensionMap_[ext] = FileCategory::SOURCE_CODE;
-	}
-
-	// Web files
-	std::vector<std::string> webExts = {
-		"html", "htm", "xhtml", "css", "scss", "sass", "less", "xml",
-		"json", "yaml", "yml", "jsp", "asp", "aspx", "php", "cgi",
-		"rss", "atom", "wsdl", "xsl", "xslt", "dtd"
-	};
-        auto extraWebExts = forensics::ConfigManager::instance().getExtraExtensions("WEB");
-        webExts.insert(webExts.end(), extraWebExts.begin(), extraWebExts.end());
-	for (const auto& ext : webExts) {
-		extensionMap_[ext] = FileCategory::WEB;
-	}
-
-	// Email files
-	std::vector<std::string> emailExts = {
-		"eml", "msg", "pst", "ost", "mbox", "emlx", "mbx", "dbx"
-	};
-        auto extraEmailExts = forensics::ConfigManager::instance().getExtraExtensions("EMAIL");
-        emailExts.insert(emailExts.end(), extraEmailExts.begin(), extraEmailExts.end());
-	for (const auto& ext : emailExts) {
-		extensionMap_[ext] = FileCategory::EMAIL;
-	}
-
-	// System files
-	std::vector<std::string> systemExts = {
-		"ini", "cfg", "conf", "config", "reg", "dat", "tmp", "temp",
-		"cache", "bak", "old", "swp", "swo", "lock", "pid", "core"
-	};
-        auto extraSystemExts = forensics::ConfigManager::instance().getExtraExtensions("SYSTEM");
-        systemExts.insert(systemExts.end(), extraSystemExts.begin(), extraSystemExts.end());
-	for (const auto& ext : systemExts) {
-		extensionMap_[ext] = FileCategory::SYSTEM;
-	}
-
-	// Encrypted files
-	std::vector<std::string> encryptedExts = {
-		"gpg", "pgp", "asc", "enc", "encrypted", "aes", "crypt", "locked",
-		"secure", "p12", "pfx", "pem", "key", "crt", "cer", "der",
-		// Modern encryption
-		"age", "luks"
-	};
-        auto extraEncryptedExts = forensics::ConfigManager::instance().getExtraExtensions("ENCRYPTED");
-        encryptedExts.insert(encryptedExts.end(), extraEncryptedExts.begin(), extraEncryptedExts.end());
-	for (const auto& ext : encryptedExts) {
-		extensionMap_[ext] = FileCategory::ENCRYPTED;
-	}
-}
-
 void FileClassifier::closeDatabases() {
 	if (sourceDb_) {
 		sqlite3_close(sourceDb_);
 		sourceDb_ = nullptr;
 	}
-
 	if (fileDb_) {
 		sqlite3_close(fileDb_);
 		fileDb_ = nullptr;
 	}
 }
-// Advanced classification method implementations
 
 // Helper methods for classification
 
@@ -662,306 +483,50 @@ bool FileClassifier::isBootFile(const std::string& filename) {
 bool FileClassifier::isLogFile(const std::string& filename) {
     std::string lower = filename;
     std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-    
+
     // Check if ends with .log
     if (lower.size() > 4 && lower.substr(lower.size() - 4) == ".log") {
         return true;
     }
-    
+
     // Check common log file names
     std::vector<std::string> logPatterns = {
         "syslog", "messages", "dmesg", "kern.log", "auth.log",
         "debug", "error", "access", "audit"
     };
-    
+
     for (const auto& pattern : logPatterns) {
         if (lower.find(pattern) != std::string::npos) {
             return true;
         }
     }
-    
+
     return false;
 }
 
 bool FileClassifier::isBackupFile(const std::string& filename) {
     std::string lower = filename;
     std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-    
+
     // Check backup patterns
     if (lower.find("backup") != std::string::npos) return true;
     if (lower.find(".bak") != std::string::npos) return true;
     if (lower.find(".old") != std::string::npos) return true;
     if (lower.find(".orig") != std::string::npos) return true;
     if (!filename.empty() && filename.back() == '~') return true;
-    
+
     return false;
 }
 
-void FileClassifier::initializePathPatterns() {
-    // OS configuration paths
-    osConfigPaths_ = {
-        "/etc/",
-        "/etc/default/",
-        "/etc/sysconfig/",
-        "/etc/conf.d/",
-        "/etc/systemd/",
-        "/etc/systemd/system/",
-        "/etc/systemd/user/",
-        "/etc/init.d/",
-        "/etc/rc.d/",
-        "/etc/security/",
-        "/etc/pam.d/",
-        "/etc/ssh/",
-        "/etc/ssl/",
-        "/etc/X11/",
-        "/etc/network/",
-        "/etc/NetworkManager/",
-        "/etc/modprobe.d/",
-        "/etc/modules-load.d/",
-        "/etc/udev/",
-        "/etc/profile.d/",
-        "/etc/bash_completion.d/",
-        "/etc/apt/",
-        "/etc/yum.repos.d/",
-        "/etc/zypp/",
-        "/etc/cron.d/",
-        "/etc/cron.daily/",
-        "/etc/cron.hourly/",
-        "/etc/cron.weekly/",
-        "/etc/cron.monthly/",
-        "/etc/sudoers.d/",
-        "/etc/nginx/",
-        "/etc/apache2/",
-        "/etc/httpd/",
-        "/etc/mysql/",
-        "/etc/postgresql/",
-        "/etc/redis/",
-        "/etc/docker/",
-        "/etc/kubernetes/",
-        "/Library/Preferences/",
-        "/Library/Application Support/",
-        "/private/etc/",
-        "C:/Windows/System32/config/",
-        "C:/Windows/System32/drivers/etc/",
-        "C:/ProgramData/",
-        "Windows/System32/config/",
-        "Windows/System32/drivers/etc/",
-        "ProgramData/"
-    };
-    
-    // Boot paths
-    bootPaths_ = {
-        "/boot/",
-        "/boot/grub/",
-        "/boot/grub2/",
-        "/boot/efi/",
-        "/boot/loader/",
-        "/sys/firmware/efi/",
-        "/System/Library/CoreServices/",
-        "C:/Boot/",
-        "C:/Windows/Boot/",
-        "Boot/",
-        "Windows/Boot/"
-    };
-    
-    // Library paths
-    libraryPaths_ = {
-        "/lib/",
-        "/lib32/",
-        "/lib64/",
-        "/libx32/",
-        "/usr/lib/",
-        "/usr/lib32/",
-        "/usr/lib64/",
-        "/usr/local/lib/",
-        "/opt/lib/",
-        "/System/Library/",
-        "/Library/",
-        "C:/Windows/System32/",
-        "C:/Windows/SysWOW64/",
-        "Windows/System32/",
-        "Windows/SysWOW64/"
-    };
-    
-    // Log paths
-    logPaths_ = {
-        "/var/log/",
-        "/var/log/journal/",
-        "/var/log/audit/",
-        "/var/log/sa/",
-        "/var/log/sysstat/",
-        "/var/log/cups/",
-        "/var/log/apache2/",
-        "/var/log/nginx/",
-        "/var/log/mysql/",
-        "/Library/Logs/",
-        "C:/Windows/Logs/",
-        "C:/ProgramData/Logs/",
-        "Windows/Logs/",
-        "ProgramData/Logs/"
-    };
-    
-    // Cache paths
-    cachePaths_ = {
-        "/var/cache/",
-        "/var/tmp/",
-        "/.cache/",
-        "/tmp/.cache/",
-        "/Library/Caches/",
-        "C:/Windows/Temp/",
-        "C:/Temp/",
-        "Windows/Temp/",
-        "Temp/"
-    };
-    
-    // Temp paths
-    tempPaths_ = {
-        "/tmp/",
-        "/var/tmp/",
-        "/run/",
-        "/dev/shm/",
-        "/.tmp/",
-        "/private/tmp/",
-        "/private/var/tmp/",
-        "C:/Temp/",
-        "C:/Windows/Temp/",
-        "Windows/Temp/",
-        "Temp/"
-    };
-}
-
-void FileClassifier::initializeFilenamePatterns() {
-    // System configuration files
-    systemConfigFiles_ = {
-        // User/Group management
-        "passwd", "shadow", "group", "gshadow",
-        // Filesystem
-        "fstab", "mtab", "crypttab",
-        // Network
-        "hosts", "hostname", "resolv.conf", "network", "interfaces", "netplan", "nsswitch.conf",
-        // Shell configuration
-        "profile", "bashrc", "bash_profile", "zshrc", "zprofile", ".env",
-        // Security
-        "sudoers", "sudoers.d", "security", "login.defs", "pam.conf",
-        // System control
-        "sysctl.conf", "sysctl.d", "modules", "modprobe.conf", "modules.conf",
-        // Scheduling
-        "crontab", "anacrontab", "at.allow", "at.deny",
-        // Init systems
-        "rc.local", "inittab", "systemd",
-        // Package managers
-        "sources.list", "apt.conf", "yum.conf", "dnf.conf", "pacman.conf", "zypper.conf",
-        // Services
-        "sshd_config", "ssh_config", "httpd.conf", "nginx.conf", "apache2.conf",
-        "mysql", "my.cnf", "postgresql.conf", "redis.conf", "mongod.conf",
-        // macOS
-        "launchd.conf", "plist",
-        // Windows
-        "boot.ini", "ntldr", "bootmgr", "bcd", "SYSTEM", "SOFTWARE", "SAM", "SECURITY",
-        // Docker/Container
-        "Dockerfile", "docker-compose", "containerd",
-        // Configuration file extensions (will match as substrings)
-        ".conf", ".cfg", ".ini", ".yaml", ".yml", ".toml", ".json", ".xml",
-        ".service", ".socket", ".timer", ".target", ".mount", ".automount"
-    };
-    
-    // Boot and kernel files
-    bootFiles_ = {
-        // Linux kernels
-        "vmlinuz", "vmlinux", "bzImage", "kernel", "zImage",
-        // Initrd/Initramfs
-        "initrd", "initramfs", "initrd.img", "initramfs.img",
-        // GRUB
-        "grub.cfg", "grub.conf", "menu.lst", "grubenv", "device.map",
-        // Kernel config/symbols
-        "System.map", "config-",
-        // UEFI
-        "efi", "bootx64.efi", "bootia32.efi", "bootmgfw.efi", "shimx64.efi", "grubx64.efi",
-        // GRUB images
-        "boot.img", "core.img",
-        // macOS
-        "boot.efi", "mach_kernel", "kernelcache",
-        // Windows
-        "ntldr", "bootmgr", "winload.exe", "winresume.exe", "bootstat.dat",
-        "BOOTSECT.BAK", "BCD-Template", "BOOTSTAT.DAT"
-    };
-}
-
-void FileClassifier::initializeExtendedExtensionMap() {
-    // Font files
-    std::vector<std::string> fontExts = {
-        "ttf", "otf", "woff", "woff2", "eot", "fon", "fnt",
-        "ttc", "dfont", "suit", "sfnt", "pfa", "pfb"
-    };
-    for (const auto& ext : fontExts) {
-        extendedExtensionMap_[ext] = FileCategory::FONT;
-    }
-    
-    // Certificate and key files
-    std::vector<std::string> certExts = {
-        "pem", "crt", "cer", "der", "key", "pub",
-        "p12", "pfx", "p7b", "p7c", "p7s",
-        "csr", "crl", "spc", "keystore", "jks"
-    };
-    for (const auto& ext : certExts) {
-        extendedExtensionMap_[ext] = FileCategory::CERTIFICATE;
-    }
-    
-    // System library files
-    std::vector<std::string> libExts = {
-        "so", "a", "dylib", "framework",
-        "ko", "o",
-        // Windows drivers and system files
-        "sys", "drv",
-        // macOS bundles and kernel extensions
-        "bundle", "kext"
-    };
-    for (const auto& ext : libExts) {
-        extendedExtensionMap_[ext] = FileCategory::OS_LIBRARY;
-    }
-    
-    // Log files
-    std::vector<std::string> logExts = {
-        "log", "journal"
-    };
-    for (const auto& ext : logExts) {
-        extendedExtensionMap_[ext] = FileCategory::LOG_FILE;
-    }
-    
-    // Backup files
-    std::vector<std::string> backupExts = {
-        "bak", "backup", "old", "orig", "save", "~"
-    };
-    for (const auto& ext : backupExts) {
-        extendedExtensionMap_[ext] = FileCategory::BACKUP;
-    }
-    
-    // Cache files
-    std::vector<std::string> cacheExts = {
-        "cache", "cached"
-    };
-    for (const auto& ext : cacheExts) {
-        extendedExtensionMap_[ext] = FileCategory::CACHE;
-    }
-    
-    // Temp files
-    std::vector<std::string> tempExts = {
-        "tmp", "temp", "swp", "swo", "~", "bak"
-    };
-    for (const auto& ext : tempExts) {
-        extendedExtensionMap_[ext] = FileCategory::TEMP;
-    }
-}
-
-bool FileClassifier::pathContains(const std::string& path, 
+bool FileClassifier::pathContains(const std::string& path,
                                   const std::vector<std::string>& patterns) {
     std::string lowerPath = path;
     std::transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(), ::tolower);
-    
+
     for (const auto& pattern : patterns) {
         std::string lowerPattern = pattern;
         std::transform(lowerPattern.begin(), lowerPattern.end(), lowerPattern.begin(), ::tolower);
-        
+
         if (lowerPath.find(lowerPattern) != std::string::npos) {
             return true;
         }
@@ -973,21 +538,21 @@ bool FileClassifier::filenameMatches(const std::string& filename,
                                      const std::vector<std::string>& patterns) {
     std::string lowerFilename = filename;
     std::transform(lowerFilename.begin(), lowerFilename.end(), lowerFilename.begin(), ::tolower);
-    
+
     for (const auto& pattern : patterns) {
         std::string lowerPattern = pattern;
         std::transform(lowerPattern.begin(), lowerPattern.end(), lowerPattern.begin(), ::tolower);
-        
+
         // Check exact match
         if (lowerFilename == lowerPattern) {
             return true;
         }
-        
+
         // Check if filename starts with pattern
         if (lowerFilename.find(lowerPattern) == 0) {
             return true;
         }
-        
+
         // Check if filename contains pattern
         if (lowerFilename.find(lowerPattern) != std::string::npos) {
             return true;

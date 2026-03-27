@@ -166,6 +166,8 @@ set(LIB_SOURCES
     src/core/DatabaseManager/EventExtractor/Detail/SystemEventExtractor.cpp
     src/core/DatabaseManager/EventExtractor/Detail/EventCorrelationExtractor.cpp
     src/core/DatabaseManager/FileClassifier/FileClassifier.cpp
+    src/core/DatabaseManager/FileClassifier/FileClassifierMappings.cpp
+    src/core/DatabaseManager/FileClassifier/FileClassifierPatterns.cpp
     src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
     src/core/DatabaseManager/FileExtractor/FileExtractor.cpp
     src/core/Logger/Logger.cpp
@@ -181,10 +183,32 @@ set(LIB_SOURCES
     src/network/HTTPServer/LLMPythonProxy.cpp
     src/network/HTTPServer/EventClusterAnalyzer.cpp
     src/network/HTTPServer/routes/TaskRoutes.cpp
+    src/network/HTTPServer/routes/TaskHelpers.cpp
+    src/network/HTTPServer/routes/TaskCRUDRoutes.cpp
+    src/network/HTTPServer/routes/TaskBatchRoutes.cpp
+    src/network/HTTPServer/routes/TaskMonitoringRoutes.cpp
+    src/network/HTTPServer/TaskSerialization.cpp
+    src/network/HTTPServer/TaskPersistence.cpp
+    src/network/HTTPServer/TaskWatchdog.cpp
     src/network/HTTPServer/routes/ForensicsRoutes.cpp
+    src/network/HTTPServer/routes/RouteHelpers.cpp
+    src/network/HTTPServer/routes/TimelineRoutes.cpp
+    src/network/HTTPServer/routes/EventClusterRoutes.cpp
+    src/network/HTTPServer/routes/ExportRoutes.cpp
+    src/network/HTTPServer/routes/FileAnalysisRoutes.cpp
+    src/network/HTTPServer/routes/FileExtractionRoutes.cpp
+    src/network/HTTPServer/routes/StatisticsRoutes.cpp
+    src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp
+    src/network/HTTPServer/routes/SystemEventRoutes.cpp
     src/network/HTTPServer/routes/SystemRoutes.cpp
+    src/network/HTTPServer/routes/SystemHealthRoutes.cpp
+    src/network/HTTPServer/routes/SystemInfoRoutes.cpp
+    src/network/HTTPServer/routes/SystemDocsRoutes.cpp
     src/network/HTTPServer/routes/SearchRoutes.cpp
     src/network/HTTPServer/routes/OSSRoutes.cpp
+    src/network/HTTPServer/routes/OSSAnalysisRoutes.cpp
+    src/network/HTTPServer/routes/OSSQueryRoutes.cpp
+    src/network/HTTPServer/routes/OSSStatsRoutes.cpp
     src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp
     src/analyzers/AndroidAnalyzer/AndroidAnalyzerCore.cpp
     src/analyzers/AndroidAnalyzer/AndroidDataParsers.cpp
@@ -194,6 +218,7 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/AndroidLogParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Core/WindowsFilesAnalyzerCore.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsRegistryParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsEventLogParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers.cpp
@@ -227,7 +252,11 @@ set(LIB_SOURCES
     src/integration/LLMIntegration/ModelRouter.cpp
     src/integration/LLMIntegration/MCPIntegration.cpp
     src/integration/LLMIntegration/FileAnalyzer.cpp
+    src/integration/LLMIntegration/FileContentExtractor.cpp
+    src/integration/LLMIntegration/FileTextProcessor.cpp
     src/core/ConfigManager/ConfigManager.cpp
+    src/CommandLineParser.cpp
+    src/AnalysisOrchestrator.cpp
     src/analyzers/VisionAnalysis/VisionAnalyzer.cpp
     # OSSAnalyzer module
     src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp

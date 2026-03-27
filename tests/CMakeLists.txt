@@ -60,6 +60,8 @@ add_executable(
   test_file_classifier
   UnitTest/test_file_classifier.cpp
   ../src/core/DatabaseManager/FileClassifier/FileClassifier.cpp
+  ../src/core/DatabaseManager/FileClassifier/FileClassifierMappings.cpp
+  ../src/core/DatabaseManager/FileClassifier/FileClassifierPatterns.cpp
   ../src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
   ../src/core/AuditLog/AuditLog.cpp
   ../src/core/ConfigManager/ConfigManager.cpp
@@ -150,6 +152,8 @@ add_executable(
   ../src/integration/LLMIntegration/LLMClient.cpp
   ../src/integration/LLMIntegration/ModelRouter.cpp
   ../src/integration/LLMIntegration/FileAnalyzer.cpp
+  ../src/integration/LLMIntegration/FileContentExtractor.cpp
+  ../src/integration/LLMIntegration/FileTextProcessor.cpp
   ../src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp
   ../src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp
   ../libs/cpp-mcp/src/mcp_message.cpp
@@ -232,6 +236,8 @@ add_executable(
   ../src/integration/LLMIntegration/LLMClient.cpp
   ../src/integration/LLMIntegration/ModelRouter.cpp
   ../src/integration/LLMIntegration/FileAnalyzer.cpp
+  ../src/integration/LLMIntegration/FileContentExtractor.cpp
+  ../src/integration/LLMIntegration/FileTextProcessor.cpp
   ../src/analyzers/VisionAnalysis/VisionAnalyzer.cpp
   ../src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp
   ../src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp

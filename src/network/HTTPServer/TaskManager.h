@@ -28,6 +28,8 @@
 
 
 #include "../../core/ThreadPool/ThreadPool.h"
+#include "TaskPersistence.h"
+#include "TaskWatchdog.h"
 
 class TaskManager {
 public:
