@@ -10,8 +10,16 @@
 #include <vector>
 #include <cstdint>
 #include <memory>
+#include <filesystem>
+#include <fstream>
 #include <sqlite3.h>
+#include <nlohmann/json.hpp>
 #include "WindowsDataTypes.h"  // Use unified data structures
+
+// JSON type alias
+using Json = nlohmann::json;
+
+namespace fs = std::filesystem;
 
 // ============================================================================
 // Browser Data Structures
@@ -74,6 +82,8 @@ private:
     bool parseChromiumBookmarks(const std::string& bookmarksJsonPath,
                                 const std::string& browserName,
                                 const std::string& profileName);
+    void parseBookmarkFolder(const Json& folder, const std::string& browserName,
+                             const std::string& profileName, const std::string& parentPath);
 
     // Firefox parsing
     bool parseFirefoxHistory(sqlite3* db, const std::string& profileName);

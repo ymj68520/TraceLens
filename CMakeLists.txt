@@ -218,7 +218,13 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/AndroidLogParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Core/WindowsFilesAnalyzerCore.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
-    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Registry.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_EventLog.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Prefetch.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Lnk.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Browser.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_User.cpp
+    src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_System.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsRegistryParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsEventLogParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers.cpp
@@ -226,7 +232,10 @@ set(LIB_SOURCES
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsLnkParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsAmcacheParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsSrumParser.cpp
-    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserParser.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserParser_Init.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserParser_Helpers.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserParser_Chromium.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserParser_Firefox.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserAnalyzer.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsJumpListParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Core/LinuxFilesAnalyzerCore.cpp
