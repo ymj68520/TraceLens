@@ -54,6 +54,9 @@ class ReportGenerator:
             try:
                 with sqlite3.connect(files_db_path) as conn:
                     conn.row_factory = sqlite3.Row
+                    # Ensure file_descriptions table exists before querying
+                    from .db_utils import ensure_file_descriptions_schema
+                    ensure_file_descriptions_schema(conn)
                     # CRITICAL: Include files NOT explicitly marked as irrelevant (is_relevant IS NOT 0)
                     # This handles NULL (legacy/default) and 1 (explicitly marked)
                     cur = conn.execute("SELECT file_path, description, model_used FROM file_descriptions WHERE is_relevant IS NOT 0")

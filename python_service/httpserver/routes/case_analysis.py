@@ -162,7 +162,7 @@ async def save_case_description(
 
 @router.post("/case-analysis", response_model=CaseAnalysisResponse, responses={
     200: {"description": "Case analysis started successfully"},
-    400: {"description": "Invalid request"},
+    422: {"description": "Validation error"},
     500: {"description": "Internal server error"},
 })
 async def start_case_analysis(
@@ -184,6 +184,21 @@ async def start_case_analysis(
     try:
         from ..services import get_service_manager
         service_manager = get_service_manager()
+
+        # Validate inputs
+        logger.info(f"Starting case analysis for task {request.task_id}")
+        logger.info(f"files_db_path: '{request.files_db_path}'")
+        logger.info(f"case_description length: {len(request.case_description)}")
+        logger.info(f"max_filter_files: {request.max_filter_files}")
+        logger.info(f"run_filtering: {request.run_filtering}")
+
+        # Validate files_db_path is not empty
+        if not request.files_db_path or not request.files_db_path.strip():
+            logger.error("files_db_path is empty")
+            raise HTTPException(
+                status_code=422,
+                detail="files_db_path cannot be empty. Please ensure the task has completed analysis."
+            )
 
         # Get or create case analysis service
         case_service = _get_case_analysis_service(service_manager)
@@ -426,7 +441,7 @@ async def get_filtered_files(
 def _get_case_analysis_service(service_manager):
     """Get or create a CaseAnalysisService instance."""
     if not hasattr(service_manager, "_case_analysis_service"):
-        from ..services.case_analysis_service import CaseAnalysisService
+        from ..services.case_analysis import CaseAnalysisService
         svc = CaseAnalysisService(service_manager.settings)
         svc.set_llm_service(service_manager.llm_service)
         svc.set_cpp_backend(service_manager.cpp_backend)  # Inject C++ backend service

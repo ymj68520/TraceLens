@@ -517,7 +517,7 @@ class FileAnalyzer:
             with sqlite3.connect(events_db, timeout=10) as conn:
                 conn.row_factory = sqlite3.Row
                 # Use same grouping logic as C++ Timeline
-                sql = R"(
+                sql = """
                     SELECT
                         (timestamp / 60) as time_window,
                         event_type,
@@ -531,7 +531,7 @@ class FileAnalyzer:
                     GROUP BY time_window, event_type, parent_directory
                     ORDER BY cluster_count DESC
                     LIMIT ?
-                )"
+                """
                 cur = conn.execute(sql, (limit,))
                 rows = cur.fetchall()
                 clusters = [dict(row) for row in rows]

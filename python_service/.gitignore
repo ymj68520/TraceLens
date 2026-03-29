@@ -14,4 +14,5 @@ htmlcov/
 .idea/
 *.log
 *.md
+*.backup
 !README.md

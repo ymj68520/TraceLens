@@ -61,7 +61,7 @@ std::string categoryToString(EventCategory category) {
 
 bool EventExtractor::extractFileSystemEvents() {
 	const char* query = R"(
-        SELECT inode, path, atime, mtime, ctime, crtime, type, file_size, is_deleted
+        SELECT inode, path, atime, mtime, ctime, crtime, type, size, is_deleted
         FROM files
         WHERE type = 'REG';
     )";

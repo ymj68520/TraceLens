@@ -14,6 +14,24 @@ from typing import List, Optional
 logger = logging.getLogger(__name__)
 
 
+def ensure_file_descriptions_schema(conn: sqlite3.Connection):
+    """Ensure file_descriptions table and its columns exist."""
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS file_descriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_path TEXT UNIQUE,
+            description TEXT,
+            summary TEXT,
+            keywords TEXT,
+            model_used TEXT,
+            is_relevant INTEGER DEFAULT 1,
+            created_at INTEGER
+        )
+    """)
+    conn.commit()
+
+
 def ensure_case_analysis_table(db_path: str):
     """Create case_analysis table if it doesn't exist."""
     try:
@@ -114,6 +132,9 @@ def get_filtered_files_from_db(db_path: str, task_id: str = "") -> List[str]:
 
         with sqlite3.connect(db_path, timeout=10) as conn:
             cur = conn.cursor()
+
+            # Ensure file_descriptions table exists before querying
+            ensure_file_descriptions_schema(conn)
 
             # 1. First, get files that have been analyzed (dynamic evidence)
             # Exclude explicitly marked irrelevant files
