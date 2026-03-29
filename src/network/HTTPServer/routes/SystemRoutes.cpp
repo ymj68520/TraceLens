@@ -5,11 +5,11 @@
 
 namespace forensics {
 
-SystemRoutes::SystemRoutes(crow::App<>& app) {
-    // Delegate to modular route handlers
-    SystemHealthRoutes health_routes(app);
-    SystemInfoRoutes info_routes(app);
-    SystemDocsRoutes docs_routes(app);
+SystemRoutes::SystemRoutes(crow::App<>& app)
+    : health_routes_(app),
+      info_routes_(app),
+      docs_routes_(app) {
+    // Route handlers are registered by the sub-route constructors
 }
 
 } // namespace forensics

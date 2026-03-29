@@ -28,16 +28,17 @@ static std::string generate_job_id() {
     return ss.str();
 }
 
-ForensicsRoutes::ForensicsRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()) {
-    // Register all specialized route handlers
-    TimelineRoutes timeline_routes(app);
-    EventClusterRoutes event_cluster_routes(app);
-    ExportRoutes export_routes(app);
-    FileAnalysisRoutes file_analysis_routes(app);
-    FileExtractionRoutes file_extraction_routes(app);
-    StatisticsRoutes statistics_routes(app);
-    AndroidForensicsRoutes android_forensics_routes(app);
-    SystemEventRoutes system_event_routes(app);
+ForensicsRoutes::ForensicsRoutes(crow::App<>& app)
+    : task_manager_(TaskManager::instance()),
+      timeline_routes_(app),
+      event_cluster_routes_(app),
+      export_routes_(app),
+      file_analysis_routes_(app),
+      file_extraction_routes_(app),
+      statistics_routes_(app),
+      android_forensics_routes_(app),
+      system_event_routes_(app) {
+    // Route handlers are registered by the sub-route constructors
 }
 
 // Extraction job tracking methods

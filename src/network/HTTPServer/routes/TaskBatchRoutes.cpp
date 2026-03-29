@@ -1,5 +1,6 @@
 #include "TaskBatchRoutes.h"
 #include "TaskHelpers.h"
+#include "RouteHelpers.h"
 #include "../../Swagger/Swagger.h"
 #include <ctime>
 
@@ -48,7 +49,7 @@ TaskBatchRoutes::TaskBatchRoutes(crow::App<>& app) : task_manager_(TaskManager::
 
 crow::response TaskBatchRoutes::handle_batch_create_tasks(const crow::request& req) {
     crow::response res;
-    add_cors_headers(res);
+    RouteHelpers::add_cors_headers(res);
     try {
         auto body = json::parse(req.body);
         std::vector<std::string> image_paths;
@@ -91,7 +92,7 @@ crow::response TaskBatchRoutes::handle_batch_create_tasks(const crow::request& r
 
 crow::response TaskBatchRoutes::handle_batch_status(const crow::request& req) {
     crow::response res;
-    add_cors_headers(res);
+    RouteHelpers::add_cors_headers(res);
     try {
         auto body = json::parse(req.body);
         std::vector<json> statuses;
@@ -132,7 +133,7 @@ crow::response TaskBatchRoutes::handle_batch_status(const crow::request& req) {
 
 crow::response TaskBatchRoutes::handle_batch_cancel(const crow::request& req) {
     crow::response res;
-    add_cors_headers(res);
+    RouteHelpers::add_cors_headers(res);
     try {
         auto body = json::parse(req.body);
         std::vector<std::string> task_ids;
@@ -159,12 +160,6 @@ crow::response TaskBatchRoutes::handle_batch_cancel(const crow::request& req) {
         res.write(error.dump());
     }
     return res;
-}
-
-void TaskBatchRoutes::add_cors_headers(crow::response& res) {
-    res.set_header("Access-Control-Allow-Origin", "*");
-    res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
 }
 
 } // namespace forensics

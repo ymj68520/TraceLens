@@ -8,6 +8,14 @@
 #include <unordered_map>
 #include <chrono>
 #include <string>
+#include "TimelineRoutes.h"
+#include "EventClusterRoutes.h"
+#include "ExportRoutes.h"
+#include "FileAnalysisRoutes.h"
+#include "FileExtractionRoutes.h"
+#include "StatisticsRoutes.h"
+#include "AndroidForensicsRoutes.h"
+#include "SystemEventRoutes.h"
 
 namespace forensics {
 
@@ -63,6 +71,16 @@ public:
 
 private:
     TaskManager& task_manager_;
+
+    // Sub-route handlers - must be members to avoid dangling pointers
+    TimelineRoutes timeline_routes_;
+    EventClusterRoutes event_cluster_routes_;
+    ExportRoutes export_routes_;
+    FileAnalysisRoutes file_analysis_routes_;
+    FileExtractionRoutes file_extraction_routes_;
+    StatisticsRoutes statistics_routes_;
+    AndroidForensicsRoutes android_forensics_routes_;
+    SystemEventRoutes system_event_routes_;
 
     // Extraction job tracking
     std::unordered_map<std::string, ExtractionJob> extraction_jobs_;

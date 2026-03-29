@@ -57,52 +57,6 @@ namespace forensics {
         return response;
     }
 
-    // ConnectionPool implementation
-    ConnectionPool::ConnectionPool(const std::string& db_path, size_t max_connections)
-        : db_path_(db_path), max_connections_(max_connections) {
-        connections_.reserve(max_connections_);
-        mutexes_.reserve(max_connections_);
-        
-        // Initialize mutexes and connections
-        for (size_t i = 0; i < max_connections_; ++i) {
-            mutexes_.push_back(std::make_unique<std::mutex>());
-            auto conn = std::make_unique<sqlite3*>();
-            if (sqlite3_open(db_path.c_str(), conn.get()) == SQLITE_OK) {
-                connections_.push_back(std::move(conn));
-            }
-        }
-    }
-
-    ConnectionPool::~ConnectionPool() {
-        for (auto& conn : connections_) {
-            if (conn && *conn) {
-                sqlite3_close(*conn);
-            }
-        }
-    }
-
-    ConnectionPool::ConnectionGuard ConnectionPool::get_connection() {
-        static size_t next_idx = 0;
-        for (size_t i = 0; i < connections_.size(); ++i) {
-            size_t idx = (next_idx + i) % connections_.size();
-            if (connections_[idx] && mutexes_[idx]->try_lock()) {
-                next_idx = (idx + 1) % connections_.size();
-                return ConnectionGuard(*connections_[idx], mutexes_[idx].get());
-            }
-        }
-        // Fallback: wait for the first connection
-        mutexes_[0]->lock();
-        return ConnectionGuard(*connections_[0], mutexes_[0].get());
-    }
-
-    // Static member definitions for SQLiteHelperEnhanced
-    std::unordered_map<std::string, std::shared_ptr<ConnectionPool>> SQLiteHelperEnhanced::connection_pools_;
-    std::mutex SQLiteHelperEnhanced::pool_mutex_;
-    std::unordered_map<std::string, SQLiteHelperEnhanced::CacheEntry> SQLiteHelperEnhanced::query_cache_;
-    std::mutex SQLiteHelperEnhanced::cache_mutex_;
-
-    // SQLiteHelperEnhanced implementation - will be added from HTTPServerEnhanced.cpp (merged)
-
     HTTPServer::HTTPServer(asio::io_context& ioc)
         : app_(),
           task_manager_(TaskManager::instance()),

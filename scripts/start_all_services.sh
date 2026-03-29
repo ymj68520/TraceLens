@@ -108,6 +108,30 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # ========================================================================
+# Pre-startup: Kill any existing services
+# ========================================================================
+echo -e "\n${YELLOW}➤ Checking for existing services...${NC}"
+echo -e "${YELLOW}────────────────────────────────────────────────────────────${NC}"
+
+# Kill any existing forensic_analyzer processes on our ports
+EXISTING_CPP=$(lsof -ti :$CPP_PORT 2>/dev/null || true)
+EXISTING_PY=$(lsof -ti :$PYTHON_PORT 2>/dev/null || true)
+
+if [ ! -z "$EXISTING_CPP" ]; then
+    echo -e "${YELLOW}⚠ Found existing C++ service on port $CPP_PORT (PID: $EXISTING_CPP)${NC}"
+    kill -9 $EXISTING_CPP 2>/dev/null || true
+    sleep 1
+    echo -e "${GREEN}✓ Killed existing C++ service${NC}"
+fi
+
+if [ ! -z "$EXISTING_PY" ]; then
+    echo -e "${YELLOW}⚠ Found existing Python service on port $PYTHON_PORT (PID: $EXISTING_PY)${NC}"
+    kill -9 $EXISTING_PY 2>/dev/null || true
+    sleep 1
+    echo -e "${GREEN}✓ Killed existing Python service${NC}"
+fi
+
+# ========================================================================
 # Start C++ HTTP Server
 # ========================================================================
 echo -e "\n${BLUE}➤ Step 1/3: Starting C++ HTTP Server${NC}"

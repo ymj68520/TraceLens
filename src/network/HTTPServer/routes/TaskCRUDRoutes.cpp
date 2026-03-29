@@ -97,6 +97,18 @@ TaskCRUDRoutes::TaskCRUDRoutes(crow::App<>& app) : task_manager_(TaskManager::in
         {},
         {{200, "Cleanup result"}}
     );
+
+    CROW_ROUTE(app, "/api/tasks/<string>/databases").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
+        return handle_get_task_databases(req, task_id);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/{id}/databases", "GET",
+        "Get task databases",
+        "Retrieve database paths for a specific task.",
+        {"Tasks"},
+        {{"id", "path", "Task ID", true}},
+        {{200, "Database list"}, {404, "Task not found"}}
+    );
 }
 
 crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
@@ -413,6 +425,66 @@ crow::response TaskCRUDRoutes::handle_cleanup_tasks(const crow::request& req) {
         res.set_header("Content-Type", "application/json");
         res.write(error.dump());
     }
+    return res;
+}
+
+crow::response TaskCRUDRoutes::handle_get_task_databases(const crow::request& req, const std::string& task_id) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+
+    // Prevent route collision with other special endpoints
+    if (task_id == "list" || task_id == "statistics" || task_id == "cleanup" ||
+        task_id == "batch-create" || task_id == "batch-status" || task_id == "batch-cancel") {
+        json error = {{"error", "Task not found"}, {"task_id", task_id}};
+        res.code = 404;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    AnalysisTask task = task_manager_.get_task(task_id);
+
+    if (task.id.empty()) {
+        json error = {{"error", "Task not found"}, {"task_id", task_id}};
+        res.code = 404;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    json databases = json::array();
+
+    // Add databases with their types and paths (only existing fields in AnalysisTask)
+    if (!task.output_raw_db.empty()) {
+        json db;
+        db["type"] = "raw";
+        db["path"] = task.output_raw_db;
+        db["name"] = task_id + "_raw.db";
+        databases.push_back(db);
+    }
+    if (!task.output_events_db.empty()) {
+        json db;
+        db["type"] = "events";
+        db["path"] = task.output_events_db;
+        db["name"] = task_id + "_events.db";
+        databases.push_back(db);
+    }
+    if (!task.output_files_db.empty()) {
+        json db;
+        db["type"] = "files";
+        db["path"] = task.output_files_db;
+        db["name"] = task_id + "_files.db";
+        databases.push_back(db);
+    }
+
+    json response = {
+        {"task_id", task_id},
+        {"databases", databases},
+        {"count", databases.size()}
+    };
+
+    res.set_header("Content-Type", "application/json");
+    res.write(response.dump());
     return res;
 }
 

@@ -177,13 +177,16 @@ class CppBackendService:
         file_types: Optional[List[str]] = None,
         limit: int = 100,
     ) -> List[Dict[str, Any]]:
-        """Get files from a task."""
-        params = {"limit": limit}
-        if file_types:
-            params["file_type"] = ",".join(file_types)
-        
-        result = await self._request("GET", f"/api/forensics/files/{task_id}", params=params)
-        return result.get("data", {}).get("files", [])
+        """Get files from a task using largest files endpoint as default."""
+        params = {"task_id": task_id, "limit": limit}
+        # Note: file_type filter not supported by largest endpoint, use client-side filtering
+        result = await self._request("GET", "/api/forensics/files/largest", params=params)
+        files = result if isinstance(result, list) else []
+
+        # Client-side filtering by file types if specified
+        if file_types and files:
+            files = [f for f in files if f.get("category") in file_types]
+        return files
     
     async def get_task_files_paginated(
         self,
@@ -195,23 +198,35 @@ class CppBackendService:
         page: int = 1,
         page_size: int = 50,
     ) -> Dict[str, Any]:
-        """Get paginated files from a task."""
-        params = {
-            "page": page,
-            "page_size": page_size,
-            "include_llm": include_llm,
-        }
+        """Get paginated files from a task.
+
+        Note: C++ backend uses largest files endpoint. Pagination is client-side.
+        For proper pagination, a new C++ endpoint is needed.
+        """
+        # Calculate offset for client-side pagination
+        offset = (page - 1) * page_size
+        params = {"task_id": task_id, "limit": page_size + offset}
+
+        # Use largest files endpoint (other endpoints could be added based on file_type)
+        result = await self._request("GET", "/api/forensics/files/largest", params=params)
+        all_files = result if isinstance(result, list) else []
+
+        # Apply client-side filtering and pagination
+        filtered_files = all_files
         if file_type:
-            params["file_type"] = file_type
+            filtered_files = [f for f in filtered_files if f.get("category") == file_type]
         if extension:
-            params["extension"] = extension
+            filtered_files = [f for f in filtered_files if f.get("extension") == extension]
         if deleted_only:
-            params["deleted_only"] = True
-        
-        result = await self._request("GET", f"/api/forensics/files/{task_id}", params=params)
+            filtered_files = [f for f in filtered_files if f.get("is_deleted", False)]
+
+        # Apply pagination
+        total_count = len(filtered_files)
+        paginated_files = filtered_files[offset:offset + page_size]
+
         return {
-            "files": result.get("data", {}).get("files", []),
-            "total_count": result.get("data", {}).get("total_count", 0),
+            "files": paginated_files,
+            "total_count": total_count,
         }
     
     # Event Operations
@@ -225,19 +240,32 @@ class CppBackendService:
         page: int = 1,
         page_size: int = 50,
     ) -> Dict[str, Any]:
-        """Get events from a task."""
-        params = {"page": page, "page_size": page_size}
+        """Get events from a task using comprehensive timeline endpoint."""
+        params = {
+            "task_id": task_id,
+            "limit": page_size,
+            "offset": (page - 1) * page_size,
+        }
         if event_type:
             params["event_type"] = event_type
         if start_time:
             params["start_time"] = start_time
         if end_time:
             params["end_time"] = end_time
-        
-        result = await self._request("GET", f"/api/forensics/timeline/{task_id}", params=params)
+
+        result = await self._request("GET", "/api/forensics/timeline/comprehensive", params=params)
+
+        # Handle different response formats
+        if isinstance(result, dict):
+            timeline = result.get("timeline", [])
+            metadata = result.get("metadata", {})
+            return {
+                "events": timeline,
+                "total_count": metadata.get("total_events", len(timeline)),
+            }
         return {
-            "events": result.get("data", {}).get("events", []),
-            "total_count": result.get("data", {}).get("total_count", 0),
+            "events": result if isinstance(result, list) else [],
+            "total_count": 0,
         }
     
     # Query Operations
@@ -381,11 +409,11 @@ class CppBackendService:
         database_type: str,
         include_llm: bool = True,
     ) -> Dict[str, Any]:
-        """Export task data in JSON format."""
-        params = {
-            "task_id": task_id,
-            "database_type": database_type,
-            "include_llm": include_llm,
-        }
-        result = await self._request("GET", "/api/forensics/export/json", params=params)
-        return result.get("data", {})
+        """Export task data in JSON format.
+
+        Uses events export endpoint. For other database types,
+        additional endpoints may be needed.
+        """
+        params = {"task_id": task_id}
+        result = await self._request("GET", "/api/forensics/export/events/json", params=params)
+        return result if isinstance(result, dict) else {"data": result}

@@ -13,7 +13,7 @@ namespace forensics {
 class SearchRoutes {
 public:
     explicit SearchRoutes(crow::App<>& app);
-    
+
 private:
     // Search operations
     // Search operations
@@ -30,9 +30,6 @@ private:
      * @return JSON response with indexing status
      */
     crow::response handle_fulltext_index(const crow::request& req);
-
-    // CORS helper
-    static void add_cors_headers(crow::response& res);
 };
 
 } // namespace forensics

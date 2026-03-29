@@ -1,5 +1,6 @@
 #include "TaskMonitoringRoutes.h"
 #include "TaskHelpers.h"
+#include "RouteHelpers.h"
 #include "../../Swagger/Swagger.h"
 #include <ctime>
 
@@ -44,7 +45,7 @@ TaskMonitoringRoutes::TaskMonitoringRoutes(crow::App<>& app) : task_manager_(Tas
 
 crow::response TaskMonitoringRoutes::handle_get_task_progress(const crow::request& req, const std::string& task_id) {
     crow::response res;
-    add_cors_headers(res);
+    RouteHelpers::add_cors_headers(res);
     try {
         AnalysisTask task = task_manager_.get_task(task_id);
 
@@ -80,7 +81,7 @@ crow::response TaskMonitoringRoutes::handle_get_task_progress(const crow::reques
 
 crow::response TaskMonitoringRoutes::handle_get_task_statistics(const crow::request& req) {
     crow::response res;
-    add_cors_headers(res);
+    RouteHelpers::add_cors_headers(res);
     try {
         json stats = task_manager_.get_task_statistics();
         res.set_header("Content-Type", "application/json");
@@ -96,7 +97,7 @@ crow::response TaskMonitoringRoutes::handle_get_task_statistics(const crow::requ
 
 crow::response TaskMonitoringRoutes::handle_get_task_audit_log(const crow::request& req, const std::string& task_id) {
     crow::response res;
-    add_cors_headers(res);
+    RouteHelpers::add_cors_headers(res);
     try {
         int limit = 50;
         int offset = 0;
@@ -139,7 +140,7 @@ crow::response TaskMonitoringRoutes::handle_get_task_audit_log(const crow::reque
 
 crow::response TaskMonitoringRoutes::handle_update_task_priority(const crow::request& req, const std::string& task_id) {
     crow::response res;
-    add_cors_headers(res);
+    RouteHelpers::add_cors_headers(res);
     try {
         auto body = json::parse(req.body);
         TaskPriority new_priority = TaskHelpers::priority_from_string(body["priority"]);
@@ -161,12 +162,6 @@ crow::response TaskMonitoringRoutes::handle_update_task_priority(const crow::req
         res.write(error.dump());
     }
     return res;
-}
-
-void TaskMonitoringRoutes::add_cors_headers(crow::response& res) {
-    res.set_header("Access-Control-Allow-Origin", "*");
-    res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
 }
 
 } // namespace forensics
