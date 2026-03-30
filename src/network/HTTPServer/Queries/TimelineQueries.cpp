@@ -187,7 +187,7 @@ json SQLiteHelper::get_timeline_distribution(const std::string& events_db) {
     // Use SQLite date function to group by exact date string YYYY-MM-DD
     std::string sql = R"(
         SELECT
-            date(timestamp, 'unixepoch') as event_date,
+            date(timestamp, 'unixepoch', 'localtime') as event_date,
             event_type,
             COUNT(*) as count
         FROM events
@@ -355,7 +355,7 @@ json SQLiteHelper::get_event_statistics_by_period(const std::string& events_db, 
 
     std::string sql = R"(
         SELECT
-            strftime(')" + date_format + R"(', datetime(timestamp, 'unixepoch')) as time_period,
+            strftime(')" + date_format + R"(', datetime(timestamp, 'unixepoch', 'localtime')) as time_period,
             event_type,
             COUNT(*) as event_count,
             COUNT(DISTINCT file_path) as unique_files

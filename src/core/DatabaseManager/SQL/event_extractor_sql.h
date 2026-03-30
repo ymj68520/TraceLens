@@ -148,7 +148,7 @@ inline constexpr const char* CREATE_EVENT_INDICES = R"(
 inline constexpr const char* CREATE_TIMELINE_VIEW = R"(
     CREATE VIEW IF NOT EXISTS timeline AS
     SELECT
-        datetime(timestamp, 'unixepoch') as event_time,
+        datetime(timestamp, 'unixepoch', 'localtime') as event_time,
         event_type,
         file_path,
         inode,
@@ -166,8 +166,8 @@ inline constexpr const char* CREATE_STATISTICS_VIEW = R"(
         COUNT(*) as event_count,
         MIN(timestamp) as first_event,
         MAX(timestamp) as last_event,
-        datetime(MIN(timestamp), 'unixepoch') as first_event_time,
-        datetime(MAX(timestamp), 'unixepoch') as last_event_time
+        datetime(MIN(timestamp), 'unixepoch', 'localtime') as first_event_time,
+        datetime(MAX(timestamp), 'unixepoch', 'localtime') as last_event_time
     FROM events
     GROUP BY event_type;
 )";
@@ -175,7 +175,7 @@ inline constexpr const char* CREATE_STATISTICS_VIEW = R"(
 inline constexpr const char* CREATE_HOURLY_ACTIVITY_VIEW = R"(
     CREATE VIEW IF NOT EXISTS hourly_activity AS
     SELECT
-        strftime('%Y-%m-%d %H:00:00', datetime(timestamp, 'unixepoch')) as hour,
+        strftime('%Y-%m-%d %H:00:00', datetime(timestamp, 'unixepoch', 'localtime')) as hour,
         event_type,
         COUNT(*) as event_count
     FROM events
@@ -187,7 +187,7 @@ inline constexpr const char* CREATE_SYSTEM_EVENT_VIEW = R"(
     CREATE VIEW IF NOT EXISTS system_event_view AS
     SELECT
         id,
-        datetime(timestamp, 'unixepoch') as event_time,
+        datetime(timestamp, 'unixepoch', 'localtime') as event_time,
         event_type,
         source,
         user,
@@ -227,7 +227,7 @@ inline constexpr const char* CREATE_ENHANCED_TIMELINE_VIEW = R"(
     CREATE VIEW IF NOT EXISTS enhanced_timeline AS
     SELECT
         id,
-        datetime(timestamp, 'unixepoch') as event_time,
+        datetime(timestamp, 'unixepoch', 'localtime') as event_time,
         event_type,
         file_path,
         inode,
@@ -238,7 +238,7 @@ inline constexpr const char* CREATE_ENHANCED_TIMELINE_VIEW = R"(
     UNION ALL
     SELECT
         id,
-        datetime(timestamp, 'unixepoch') as event_time,
+        datetime(timestamp, 'unixepoch', 'localtime') as event_time,
         event_type,
         NULL as file_path,
         NULL as inode,
@@ -256,8 +256,8 @@ inline constexpr const char* CREATE_ENHANCED_STATISTICS_VIEW = R"(
         COUNT(*) as event_count,
         MIN(timestamp) as first_event,
         MAX(timestamp) as last_event,
-        datetime(MIN(timestamp), 'unixepoch') as first_event_time,
-        datetime(MAX(timestamp), 'unixepoch') as last_event_time,
+        datetime(MIN(timestamp), 'unixepoch', 'localtime') as first_event_time,
+        datetime(MAX(timestamp), 'unixepoch', 'localtime') as last_event_time,
         'file' as event_source
     FROM events
     GROUP BY event_type
@@ -267,8 +267,8 @@ inline constexpr const char* CREATE_ENHANCED_STATISTICS_VIEW = R"(
         COUNT(*) as event_count,
         MIN(timestamp) as first_event,
         MAX(timestamp) as last_event,
-        datetime(MIN(timestamp), 'unixepoch') as first_event_time,
-        datetime(MAX(timestamp), 'unixepoch') as last_event_time,
+        datetime(MIN(timestamp), 'unixepoch', 'localtime') as first_event_time,
+        datetime(MAX(timestamp), 'unixepoch', 'localtime') as last_event_time,
         'system' as event_source
     FROM system_events
     GROUP BY event_type;

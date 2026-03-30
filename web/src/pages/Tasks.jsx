@@ -165,8 +165,9 @@ const Tasks = () => {
 
   const formatDate = (timestamp) => {
     if (!timestamp || timestamp === 0) return '-';
-    // If it's a Unix timestamp in seconds, convert to ms
-    const date = new Date(timestamp * 1000);
+    // API (TaskHelpers.cpp) returns milliseconds via duration_cast<milliseconds>
+    // Use new Date(ms) directly. Guard: if value > 1e12 it's ms; else treat as seconds.
+    const date = timestamp > 1e12 ? new Date(timestamp) : new Date(timestamp * 1000);
     return date.toLocaleString();
   };
 

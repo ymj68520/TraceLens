@@ -43,7 +43,8 @@ bool WindowsBrowserParser::parseFirefoxHistory(sqlite3* db, const std::string& p
         entry.profileName = profileName;
         entry.url = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
         entry.title = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
-        entry.visitTime = sqlite3_column_int64(stmt, 2);
+        // Firefox visit_date 是 PRTime（微秒自 1970-01-01），需转换为 Unix 秒
+        entry.visitTime = firefoxTimeToUnix(sqlite3_column_int64(stmt, 2));
         entry.visitCount = sqlite3_column_int(stmt, 4);
         entry.visitType = "LINK";
 
@@ -71,8 +72,9 @@ bool WindowsBrowserParser::parseFirefoxDownloads(sqlite3* db, const std::string&
         entry.fileName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
         entry.url = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
         entry.targetPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
-        entry.startTime = sqlite3_column_int64(stmt, 3);
-        entry.endTime = sqlite3_column_int64(stmt, 4);
+        // Firefox moz_downloads 时间是 PRTime（微秒）
+        entry.startTime = firefoxTimeToUnix(sqlite3_column_int64(stmt, 3));
+        entry.endTime   = firefoxTimeToUnix(sqlite3_column_int64(stmt, 4));
         entry.state = std::to_string(sqlite3_column_int(stmt, 5));
         entry.fileSize = sqlite3_column_int64(stmt, 6);
 
@@ -101,9 +103,10 @@ bool WindowsBrowserParser::parseFirefoxCookies(sqlite3* db, const std::string& p
         entry.domain = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
         entry.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
         entry.path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
-        entry.creationTime = sqlite3_column_int64(stmt, 4);
-        entry.expirationTime = sqlite3_column_int64(stmt, 5);
-        entry.lastAccessTime = sqlite3_column_int64(stmt, 6);
+        // Firefox creationTime/lastAccessed 是 PRTime（微秒），expiry 是 Unix 秒
+        entry.creationTime   = firefoxTimeToUnix(sqlite3_column_int64(stmt, 4));
+        entry.expirationTime = sqlite3_column_int64(stmt, 5);  // expiry 已是 Unix 秒
+        entry.lastAccessTime = firefoxTimeToUnix(sqlite3_column_int64(stmt, 6));
         entry.isSecure = sqlite3_column_int(stmt, 7) != 0;
         entry.isHttpOnly = sqlite3_column_int(stmt, 8) != 0;
         entry.isPersistent = true;
@@ -136,8 +139,9 @@ bool WindowsBrowserParser::parseFirefoxLogins(const std::string& loginsJsonPath,
                 entry.actionUrl = login.value("hostname", "");
                 entry.username = login.value("username", "");
                 entry.encryptedPassword = "***";
-                entry.dateCreated = login.value("timeCreated", 0);
-                entry.dateLastUsed = login.value("timeLastUsed", 0);
+                // Firefox logins.json 时间是 Unix 毫秒，除以 1000 转为 Unix 秒
+                entry.dateCreated  = login.value("timeCreated", int64_t(0)) / 1000;
+                entry.dateLastUsed = login.value("timeLastUsed", int64_t(0)) / 1000;
                 entry.timesUsed = login.value("timesUsed", 0);
 
                 logins_.push_back(entry);
@@ -171,7 +175,8 @@ bool WindowsBrowserParser::parseFirefoxBookmarks(sqlite3* db, const std::string&
             entry.profileName = profileName;
             entry.url = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
             entry.title = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
-            entry.dateAdded = sqlite3_column_int64(stmt, 2);
+            // Firefox moz_bookmarks.dateAdded 是 PRTime（微秒）
+            entry.dateAdded = firefoxTimeToUnix(sqlite3_column_int64(stmt, 2));
             entry.folderPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)) ?: "";
 
             bookmarks_.push_back(entry);

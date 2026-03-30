@@ -90,12 +90,37 @@ std::string SQLiteHelper::format_timestamp(int64_t timestamp) {
 int64_t SQLiteHelper::parse_timestamp(const std::string& time_str) {
     if (time_str.empty()) return 0;
 
-    // Simple Unix timestamp parsing
-    try {
-        return std::stoll(time_str);
-    } catch (...) {
-        return 0;
+    // 1. 首先尝试纯 Unix 秒数字（最常见路径，保持性能）
+    try { return std::stoll(time_str); } catch (...) {}
+
+    // 2. 尝试 ISO 8601 日期格式 "YYYY-MM-DD"
+    if (time_str.size() == 10) {
+        std::tm tm = {};
+        std::istringstream ss(time_str);
+        ss >> std::get_time(&tm, "%Y-%m-%d");
+        if (!ss.fail()) {
+            tm.tm_isdst = -1;
+            time_t t = std::mktime(&tm);
+            if (t != -1) return static_cast<int64_t>(t);
+        }
     }
+
+    // 3. 尝试 ISO 8601 带时间 "YYYY-MM-DDTHH:MM:SS" 或 "YYYY-MM-DD HH:MM:SS"
+    if (time_str.size() >= 19) {
+        std::tm tm = {};
+        std::string normalized = time_str.substr(0, 19);
+        if (normalized[10] == 'T') normalized[10] = ' ';
+        std::istringstream ss(normalized);
+        ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+        if (!ss.fail()) {
+            tm.tm_isdst = -1;
+            time_t t = std::mktime(&tm);
+            if (t != -1) return static_cast<int64_t>(t);
+        }
+    }
+
+    std::cerr << "[parse_timestamp] Unrecognized format: " << time_str << std::endl;
+    return 0;
 }
 
 bool SQLiteHelper::is_suspicious_extension(const std::string& ext) {

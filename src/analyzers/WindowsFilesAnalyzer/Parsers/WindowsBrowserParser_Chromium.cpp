@@ -115,7 +115,7 @@ bool WindowsBrowserParser::parseChromiumHistory(sqlite3* db, const std::string& 
         entry.url = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
         entry.title = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
         entry.visitCount = sqlite3_column_int(stmt, 2);
-        entry.visitTime = sqlite3_column_int64(stmt, 3);
+        entry.visitTime = chromiumTimeToUnix(sqlite3_column_int64(stmt, 3));
         entry.visitDuration = sqlite3_column_int64(stmt, 4);
         entry.visitType = visitTypeToString(sqlite3_column_int(stmt, 5));
         entry.isRedirect = (sqlite3_column_int(stmt, 5) == 3); // AUTO_SUBFRAME
@@ -146,8 +146,8 @@ bool WindowsBrowserParser::parseChromiumDownloads(sqlite3* db, const std::string
         entry.profileName = profileName;
         entry.targetPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
         entry.fileName = fs::path(entry.targetPath).filename().string();
-        entry.startTime = sqlite3_column_int64(stmt, 2);
-        entry.endTime = sqlite3_column_int64(stmt, 3);
+        entry.startTime = chromiumTimeToUnix(sqlite3_column_int64(stmt, 2));
+        entry.endTime   = chromiumTimeToUnix(sqlite3_column_int64(stmt, 3));
         entry.state = std::to_string(sqlite3_column_int(stmt, 4));
         entry.receivedBytes = sqlite3_column_int64(stmt, 5);
         entry.fileSize = sqlite3_column_int64(stmt, 6);
@@ -180,9 +180,9 @@ bool WindowsBrowserParser::parseChromiumCookies(sqlite3* db, const std::string& 
         entry.domain = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
         entry.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
         entry.path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
-        entry.creationTime = sqlite3_column_int64(stmt, 4);
-        entry.expirationTime = sqlite3_column_int64(stmt, 5);
-        entry.lastAccessTime = sqlite3_column_int64(stmt, 6);
+        entry.creationTime   = chromiumTimeToUnix(sqlite3_column_int64(stmt, 4));
+        entry.expirationTime = chromiumTimeToUnix(sqlite3_column_int64(stmt, 5));
+        entry.lastAccessTime = chromiumTimeToUnix(sqlite3_column_int64(stmt, 6));
         entry.isSecure = sqlite3_column_int(stmt, 7) != 0;
         entry.isHttpOnly = sqlite3_column_int(stmt, 8) != 0;
         entry.isPersistent = true;
@@ -219,8 +219,9 @@ bool WindowsBrowserParser::parseChromiumLogins(sqlite3* db, const std::string& b
         entry.actionUrl = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
         entry.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
         entry.encryptedPassword = "***"; // Never store actual passwords
-        entry.dateCreated = sqlite3_column_int64(stmt, 4);
-        entry.dateLastUsed = sqlite3_column_int64(stmt, 5);
+        // Chrome Login DB 使用 Chromium Epoch（微秒自 1601-01-01），需转换
+        entry.dateCreated  = chromiumTimeToUnix(sqlite3_column_int64(stmt, 4));
+        entry.dateLastUsed = chromiumTimeToUnix(sqlite3_column_int64(stmt, 5));
         entry.timesUsed = sqlite3_column_int(stmt, 6);
 
         logins_.push_back(entry);
