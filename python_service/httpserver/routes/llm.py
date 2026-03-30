@@ -187,17 +187,19 @@ async def analyze_event_cluster(
         # 4. Persist result back to _events.db using the cluster identifier
         # Note: We update ALL events in this cluster
         sql_update = """
-            UPDATE events SET 
-                llm_summary = ?, 
-                llm_description = ?, 
-                llm_keywords = ?, 
-                llm_analyzed_at = ?, 
-                llm_model_used = ?, 
-                llm_is_relevant = ? 
+            UPDATE events SET
+                llm_summary = ?,
+                llm_description = ?,
+                llm_keywords = ?,
+                llm_analyzed_at = ?,
+                llm_model_used = ?,
+                llm_is_relevant = ?
             WHERE (timestamp / 60) = ? AND event_type = ?
         """
+        # Use full summary/description without truncation for database storage
+        summary_value = analysis.get("summary") or analysis.get("description", "")
         update_params = [
-            analysis.get("summary") or analysis.get("description", "")[:200],
+            summary_value,  # Store full summary, no truncation
             analysis.get("description", ""),
             ", ".join(analysis.get("keywords", [])) if isinstance(analysis.get("keywords"), list) else "",
             int(datetime.now().timestamp()),

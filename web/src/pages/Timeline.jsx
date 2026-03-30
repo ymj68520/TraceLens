@@ -472,9 +472,15 @@ const Timeline = () => {
                     <div className="flex-shrink-0 mt-1">
                       <CheckCircle size={16} className="text-green-500" />
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <h4 className="text-xs font-bold text-slate-700 mb-1">AI Analysis</h4>
-                      <p className="text-[11px] text-slate-600 mb-1.5">{selectedCluster.llm_summary}</p>
+                      <p className="text-[11px] text-slate-600 mb-1.5 whitespace-pre-wrap break-words">{selectedCluster.llm_summary}</p>
+                      {selectedCluster.llm_description && selectedCluster.llm_description !== selectedCluster.llm_summary && (
+                        <details className="mt-2">
+                          <summary className="text-[10px] text-primary-600 cursor-pointer hover:text-primary-700 font-medium">查看详细描述 ▼</summary>
+                          <p className="text-[10px] text-slate-500 mt-1.5 whitespace-pre-wrap break-words pl-2 border-l-2 border-primary-200">{selectedCluster.llm_description}</p>
+                        </details>
+                      )}
                       {selectedCluster.llm_keywords && (
                         <div className="flex flex-wrap gap-1">
                           {selectedCluster.llm_keywords.split(',').map((keyword, idx) => (
@@ -758,7 +764,7 @@ const Timeline = () => {
                                 </p>
                                 {event.llm_summary && (
                                   <div className="bg-green-50 border border-green-100 rounded-lg p-2">
-                                    <p className="text-[11px] text-green-800 font-medium">{event.llm_summary}</p>
+                                    <p className="text-[11px] text-green-800 font-medium whitespace-pre-wrap break-words">{event.llm_summary}</p>
                                     {event.llm_keywords && (
                                       <div className="flex flex-wrap gap-1 mt-1">
                                         {event.llm_keywords.split(',').map((keyword, idx) => (

@@ -2,30 +2,36 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
+import { Virtuoso } from 'react-virtuoso';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
 import Button from '../components/common/Button';
 import { fetchTasks } from '../store/taskSlice';
-import { 
-    setAnalysisJob, 
-    updateAnalysisProgress, 
+import {
+    setAnalysisJob,
+    updateAnalysisProgress,
     clearAnalysisJob,
-    setRefreshFlag, 
     clearRefreshFlag
 } from '../store/intelligenceSlice';
 import { useToast } from '../components/common/ToastContext';
-import { getTaskResults } from '../services/taskService';
 import { toggleFileRelevance } from '../services/llmService';
 import {
     getCaseReport,
-    getFilteredFiles,
     startCaseAnalysis,
     pollCaseAnalysis,
     saveCaseDescription,
     reanalyzeFiles,
     getCaseAnalysisStatus
 } from '../services/caseAnalysisService';
+import {
+    getClusterRelatedFiles,
+    getFileRelatedClusters,
+    formatAnomalyType,
+    getAnomalySeverity,
+    getAnomalyColorClass
+} from '../services/associationService';
+import { X, AlertTriangle, Clock, FileText } from 'lucide-react';
 
 const CaseIntelligence = () => {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -42,13 +48,11 @@ const CaseIntelligence = () => {
     // --- State: Case Context ---
     const [report, setReport] = useState(null);
     const [caseDescription, setCaseDescription] = useState('');
-    const [showReport, setShowReport] = useState(true);
     const [runFiltering, setRunFiltering] = useState(false);
 
     // --- State: Evidence (LLM Descriptions & Event Clusters) ---
     const [llmResults, setLlmResults] = useState(null);
     const [eventClusters, setEventClusters] = useState([]);
-    const [loadingEvidence, setLoadingEvidence] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [expandedItems, setExpandedItems] = useState({});
     const [selectedItems, setSelectedItems] = useState(new Set());
@@ -61,6 +65,14 @@ const CaseIntelligence = () => {
     const [reanalyzing, setReanalyzing] = useState(false);
     const [reanalyzeMessage, setReanalyzeMessage] = useState('');
 
+    // --- State: Association Drawers (Cluster ↔ File) ---
+    const [selectedClusterForFiles, setSelectedClusterForFiles] = useState(null);
+    const [clusterRelatedFiles, setClusterRelatedFiles] = useState([]);
+    const [loadingClusterFiles, setLoadingClusterFiles] = useState(false);
+    const [selectedFileForClusters, setSelectedFileForClusters] = useState(null);
+    const [fileRelatedClusters, setFileRelatedClusters] = useState([]);
+    const [loadingFileClusters, setLoadingFileClusters] = useState(false);
+
     const currentTask = tasks.find((t) => t.id === taskId);
 
     // Initial load
@@ -71,15 +83,15 @@ const CaseIntelligence = () => {
     // Fetch basic case data
     const fetchData = useCallback(async () => {
         if (!taskId) return;
-        setLoadingEvidence(true);
         try {
             console.log('Fetching task results for taskId:', taskId);
-            
+
             // 尝试从多个来源获取LLM结果
             let llmResultsData = null;
-            
+
             // 1. 首先尝试从任务结果获取
             try {
+                const { getTaskResults } = await import('../services/taskService');
                 const results = await getTaskResults(taskId);
                 console.log('Task results:', results);
                 if (results.llm_results) {
@@ -89,7 +101,7 @@ const CaseIntelligence = () => {
             } catch (err) {
                 console.error('Failed to fetch task results:', err);
             }
-            
+
             // 2. 如果没有，尝试直接从LLM API获取
             if (!llmResultsData) {
                 try {
@@ -103,7 +115,7 @@ const CaseIntelligence = () => {
                     console.error('Failed to fetch direct LLM results:', err);
                 }
             }
-            
+
             // 3. 如果仍然没有，尝试从Python API获取分析文件列表
             if (!llmResultsData) {
                 try {
@@ -130,7 +142,7 @@ const CaseIntelligence = () => {
                     console.error('Failed to fetch analyzed files:', err);
                 }
             }
-            
+
             if (llmResultsData) {
                 setLlmResults(llmResultsData);
             } else {
@@ -138,7 +150,7 @@ const CaseIntelligence = () => {
                 // 设置空的结果，确保UI正常显示
                 setLlmResults({ descriptions: [] });
             }
-            
+
             // 获取案例报告
             try {
                 const reportData = await getCaseReport(taskId);
@@ -152,7 +164,7 @@ const CaseIntelligence = () => {
             } catch (err) {
                 console.error('Failed to fetch case report:', err);
             }
-            
+
             // 获取事件簇分析结果
             try {
                 const { getAnalyzedEventClusters } = await import('../services/forensicsService');
@@ -171,8 +183,6 @@ const CaseIntelligence = () => {
             console.error('Failed to fetch intelligence data:', err);
             // 确保即使出错也设置空的结果
             setLlmResults({ descriptions: [] });
-        } finally {
-            setLoadingEvidence(false);
         }
     }, [taskId]);
 
@@ -353,6 +363,49 @@ const CaseIntelligence = () => {
                 poll();
             }
         } catch (err) { setReanalyzeMessage(`❌ 启动失败: ${err.message}`); setReanalyzing(false); }
+    };
+
+    // --- Actions: Association Drawers ---
+    const handleOpenClusterFiles = async (cluster) => {
+        console.log('[Association] cluster object keys:', Object.keys(cluster));
+        console.log('[Association] cluster.time_window:', cluster.time_window);
+        console.log('[Association] cluster.event_type:', cluster.event_type);
+
+        setSelectedClusterForFiles(cluster);
+        setClusterRelatedFiles([]);
+        setLoadingClusterFiles(true);
+        try {
+            const result = await getClusterRelatedFiles(taskId, cluster, 500);
+            console.log('[Association] Cluster files result:', result);
+            setClusterRelatedFiles(result?.files || []);
+        } catch (err) {
+            console.error('[Association] Failed to load cluster files:', err);
+            console.error('[Association] Error response:', err.response);
+            const errorMsg = err?.response?.data?.detail || err?.response?.data?.error || err?.message || '未知错误';
+            toast.error('加载关联文件失败: ' + errorMsg);
+        } finally {
+            setLoadingClusterFiles(false);
+        }
+    };
+
+    const handleOpenFileClusters = async (file) => {
+        console.log('[Association] file object:', file);
+
+        setSelectedFileForClusters(file);
+        setFileRelatedClusters([]);
+        setLoadingFileClusters(true);
+        try {
+            const result = await getFileRelatedClusters(taskId, file, 100);
+            console.log('[Association] File clusters result:', result);
+            setFileRelatedClusters(result?.clusters || []);
+        } catch (err) {
+            console.error('[Association] Failed to load file clusters:', err);
+            console.error('[Association] Error response:', err.response);
+            const errorMsg = err?.response?.data?.detail || err?.response?.data?.error || err?.message || '未知错误';
+            toast.error('加载关联事件簇失败: ' + errorMsg);
+        } finally {
+            setLoadingFileClusters(false);
+        }
     };
 
     // --- Actions: Scrolling & Highlighting ---
@@ -550,6 +603,14 @@ const CaseIntelligence = () => {
                                                         >
                                                             {isRelevant ? '✅ 设为证据' : '🚫 标记无关'}
                                                         </button>
+                                                        <button
+                                                            onClick={() => handleOpenFileClusters(item)}
+                                                            className="text-[10px] font-bold text-blue-600 hover:text-blue-700 px-2 py-1 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                                                            title="查看相关事件簇"
+                                                        >
+                                                            <span>🔗</span>
+                                                            <span className="hidden sm:inline">事件簇</span>
+                                                        </button>
                                                     </div>
                                                 </div>
                                                 <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{item.summary}</p>
@@ -562,7 +623,7 @@ const CaseIntelligence = () => {
                             })}
 
                             {/* 事件簇卡片 */}
-                            {displayClusters.map((cluster, clusterIndex) => {
+                            {displayClusters.map((cluster) => {
                                 const isRelevant = cluster.llm_is_relevant !== 0;
                                 const timestamp = new Date(cluster.timestamp * 1000).toLocaleString();
                                 return (
@@ -640,13 +701,17 @@ const CaseIntelligence = () => {
                                                 </div>
                                             )}
 
-                                            <div className="flex items-center justify-between text-[10px] text-slate-500">
-                                                <span>样本文件: {cluster.file_path?.split('/').pop() || 'N/A'}</span>
-                                                {cluster.cluster_count > 1 && (
-                                                    <button className="text-blue-500 hover:underline">
-                                                        查看全部 {cluster.cluster_count} 个事件 →
+                                            {/* Related Files Preview */}
+                                            <div className="border-t border-blue-100 dark:border-blue-800/30 pt-2">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <span className="text-[10px] text-slate-500 font-medium">📎 相关文件</span>
+                                                    <button
+                                                        onClick={() => handleOpenClusterFiles(cluster)}
+                                                        className="text-[9px] text-blue-500 hover:text-blue-700 font-medium"
+                                                    >
+                                                        查看 →
                                                     </button>
-                                                )}
+                                                </div>
                                             </div>
                                         </div>
                                     </motion.div>
@@ -683,6 +748,237 @@ const CaseIntelligence = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Cluster-Files Association Drawer */}
+            <AnimatePresence>
+                {selectedClusterForFiles && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40"
+                            onClick={() => setSelectedClusterForFiles(null)}
+                        />
+                        <motion.div
+                            initial={{ x: '100%' }}
+                            animate={{ x: 0 }}
+                            exit={{ x: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                            className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white shadow-2xl z-50 border-l border-slate-200 flex flex-col"
+                        >
+                            {/* Header */}
+                            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-900">📎 关联文件</h3>
+                                    <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                        {selectedClusterForFiles.event_type} @ {new Date(selectedClusterForFiles.timestamp * 1000).toLocaleTimeString()}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setSelectedClusterForFiles(null)}
+                                    className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            {/* Content */}
+                            <div className="flex-1 overflow-hidden">
+                                {loadingClusterFiles ? (
+                                    <div className="h-full flex flex-col items-center justify-center">
+                                        <Spinner size="lg" />
+                                        <span className="text-[10px] mt-4 text-slate-400">加载关联文件...</span>
+                                    </div>
+                                ) : clusterRelatedFiles.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                                        <FileText size={32} strokeWidth={1} />
+                                        <p className="text-sm mt-2">暂无关联文件</p>
+                                    </div>
+                                ) : (
+                                    <Virtuoso
+                                        data={clusterRelatedFiles}
+                                        style={{ height: '100%' }}
+                                        itemContent={(index, file) => {
+                                            const fileAnomalies = file.anomalies || [];
+                                            return (
+                                                <div className={`px-4 py-3 border-b border-slate-50 ${fileAnomalies.length > 0 ? 'bg-red-50/30' : ''}`}>
+                                                    {/* File Path */}
+                                                    <div className="flex items-start gap-2 mb-2">
+                                                        <span className="text-lg">📄</span>
+                                                        <p className="text-[11px] text-slate-700 font-medium break-all flex-1">{file.file_path}</p>
+                                                    </div>
+
+                                                    {/* Time Differences */}
+                                                    <div className="grid grid-cols-2 gap-2 mb-2">
+                                                        {file.time_diffs && (
+                                                            <>
+                                                                {file.time_diffs.mtime_diff !== null && (
+                                                                    <div className="text-[9px] bg-slate-50 px-2 py-1 rounded">
+                                                                        <span className="text-slate-500">mtime: </span>
+                                                                        <span className="font-mono text-slate-700">{file.time_diffs_formatted?.mtime_diff}</span>
+                                                                    </div>
+                                                                )}
+                                                                {file.time_diffs.ctime_diff !== null && (
+                                                                    <div className="text-[9px] bg-slate-50 px-2 py-1 rounded">
+                                                                        <span className="text-slate-500">ctime: </span>
+                                                                        <span className="font-mono text-slate-700">{file.time_diffs_formatted?.ctime_diff}</span>
+                                                                    </div>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Anomalies */}
+                                                    {fileAnomalies.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1 mt-2">
+                                                            {fileAnomalies.map((anomaly, idx) => (
+                                                                <span
+                                                                    key={idx}
+                                                                    className={`text-[9px] px-2 py-0.5 rounded-full border font-medium ${getAnomalyColorClass(getAnomalySeverity(anomaly))}`}
+                                                                >
+                                                                    <AlertTriangle size={10} className="inline mr-1" />
+                                                                    {formatAnomalyType(anomaly)}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* File Summary if available */}
+                                                    {file.llm_summary && (
+                                                        <p className="text-[10px] text-slate-500 mt-2 line-clamp-2">{file.llm_summary}</p>
+                                                    )}
+                                                </div>
+                                            );
+                                        }}
+                                    />
+                                )}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="p-3 border-t border-slate-100 bg-slate-50/80 text-[10px] text-slate-500 flex justify-between">
+                                <span>共 {clusterRelatedFiles.length} 个关联文件</span>
+                                <span className="text-purple-500 font-medium">时间关联分析</span>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+
+            {/* File-Clusters Association Drawer */}
+            <AnimatePresence>
+                {selectedFileForClusters && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40"
+                            onClick={() => setSelectedFileForClusters(null)}
+                        />
+                        <motion.div
+                            initial={{ x: '100%' }}
+                            animate={{ x: 0 }}
+                            exit={{ x: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                            className="fixed top-0 right-0 bottom-0 w-full lg:w-[500px] bg-white shadow-2xl z-50 border-l border-slate-200 flex flex-col"
+                        >
+                            {/* Header */}
+                            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-900">🔗 关联事件簇</h3>
+                                    <p className="text-[10px] text-slate-500 font-mono mt-0.5 max-w-[300px] truncate">
+                                        {selectedFileForClusters.file_path}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setSelectedFileForClusters(null)}
+                                    className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            {/* Content */}
+                            <div className="flex-1 overflow-hidden">
+                                {loadingFileClusters ? (
+                                    <div className="h-full flex flex-col items-center justify-center">
+                                        <Spinner size="lg" />
+                                        <span className="text-[10px] mt-4 text-slate-400">加载关联事件簇...</span>
+                                    </div>
+                                ) : fileRelatedClusters.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                                        <Clock size={32} strokeWidth={1} />
+                                        <p className="text-sm mt-2">暂无关联事件簇</p>
+                                    </div>
+                                ) : (
+                                    <Virtuoso
+                                        data={fileRelatedClusters}
+                                        style={{ height: '100%' }}
+                                        itemContent={(index, cluster) => (
+                                            <div className="px-4 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                                                {/* Event Type Badge */}
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <Badge variant={
+                                                        cluster.event_type === 'CREATED' ? 'green' :
+                                                        cluster.event_type === 'MODIFIED' ? 'blue' :
+                                                        cluster.event_type === 'DELETED' ? 'red' : 'gray'
+                                                    } className="text-[9px] px-2 py-0.5 font-bold">
+                                                        {cluster.event_type}
+                                                    </Badge>
+                                                    <span className="text-[10px] text-slate-500">
+                                                        {new Date(cluster.representative_timestamp * 1000).toLocaleString()}
+                                                    </span>
+                                                </div>
+
+                                                {/* Directory */}
+                                                <p className="text-[10px] text-slate-600 font-mono mb-1 truncate">
+                                                    📁 {cluster.parent_directory || '/'}
+                                                </p>
+
+                                                {/* Match Info */}
+                                                {cluster.matched_time && (
+                                                    <div className="text-[9px] bg-purple-50 px-2 py-1 rounded mb-1">
+                                                        <span className="text-purple-700">匹配时间: {cluster.matched_time} </span>
+                                                        <span className="text-purple-500 font-mono">({cluster.time_diff_formatted})</span>
+                                                    </div>
+                                                )}
+
+                                                {/* Event Count */}
+                                                <div className="text-[9px] text-slate-500">
+                                                    包含 {cluster.cluster_count || cluster.event_count} 个事件
+                                                </div>
+
+                                                {/* AI Summary */}
+                                                {cluster.llm_summary && (
+                                                    <p className="text-[10px] text-slate-600 mt-2 line-clamp-2">{cluster.llm_summary}</p>
+                                                )}
+
+                                                {/* Action Button */}
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedFileForClusters(null);
+                                                        navigate(`/timeline?task_id=${taskId}&type=${cluster.event_type}&cluster=true`);
+                                                    }}
+                                                    className="mt-2 text-[9px] text-blue-500 hover:text-blue-700 font-medium"
+                                                >
+                                                    在时间线中查看 →
+                                                </button>
+                                            </div>
+                                        )}
+                                    />
+                                )}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="p-3 border-t border-slate-100 bg-slate-50/80 text-[10px] text-slate-500 flex justify-between">
+                                <span>共 {fileRelatedClusters.length} 个关联事件簇</span>
+                                <span className="text-blue-500 font-medium">时间关联分析</span>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
 
             {/* Modal */}
             {showReanalyzeModal && (
