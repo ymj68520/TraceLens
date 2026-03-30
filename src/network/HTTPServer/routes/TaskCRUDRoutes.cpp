@@ -86,6 +86,19 @@ TaskCRUDRoutes::TaskCRUDRoutes(crow::App<>& app) : task_manager_(TaskManager::in
         return handle_get_task(req, task_id);
     });
 
+    // Delete task
+    CROW_ROUTE(app, "/api/tasks/<string>").methods("DELETE"_method)([this](const crow::request& req, const std::string& task_id) {
+        return handle_cancel_task(req, task_id);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/{id}", "DELETE",
+        "Delete a task",
+        "Cancel and delete a task and its associated data.",
+        {"Tasks"},
+        {{"id", "path", "Task ID", true}},
+        {{200, "Task deleted"}, {404, "Task not found"}}
+    );
+
     CROW_ROUTE(app, "/api/tasks/cleanup").methods("POST"_method)([this](const crow::request& req) {
         return handle_cleanup_tasks(req);
     });
