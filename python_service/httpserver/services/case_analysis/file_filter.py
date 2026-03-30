@@ -10,8 +10,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..config import Settings
-from ..prompts import FILE_FILTER_SYSTEM, FILE_FILTER_USER_TEMPLATE
+from ...config import Settings
+from ...prompts import FILE_FILTER_SYSTEM, FILE_FILTER_USER_TEMPLATE
 
 logger = logging.getLogger(__name__)
 

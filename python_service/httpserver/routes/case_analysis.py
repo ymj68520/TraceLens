@@ -29,7 +29,7 @@ router = APIRouter()
 class CaseDescriptionRequest(BaseModel):
     """Request to save a case description."""
     task_id: str = Field(..., description="Task ID")
-    case_description: str = Field(..., min_length=1, description="案情描述")
+    case_description: str = Field(default="", description="案情描述")
 
 
 class CaseDescriptionResponse(BaseModel):
@@ -44,7 +44,7 @@ class CaseAnalysisRequest(BaseModel):
     """Request to start full case analysis."""
     task_id: str = Field(..., description="Task ID")
     files_db_path: str = Field(..., description="Path to _files.db")
-    case_description: str = Field(..., min_length=1, description="案情描述")
+    case_description: str = Field(default="", description="案情描述")
     max_filter_files: int = Field(default=200, ge=1, le=2000, description="Max files to filter")
     run_filtering: bool = Field(default=False, description="是否重新运行 LLM 文件筛选")
 

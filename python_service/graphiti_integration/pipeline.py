@@ -86,12 +86,14 @@ class GraphitiPipeline:
     def __init__(self, config: GraphitiConfig):
         """
         Initialize pipeline.
-        
+
         Args:
             config: Pipeline configuration.
         """
         self.config = config
-        self.transformer = TOONTransformer()
+        self.transformer = TOONTransformer(
+            include_full_description=config.include_full_description
+        )
         self.ingestor: Optional[GraphitiIngestor] = None
     
     async def run(
@@ -472,7 +474,9 @@ class MultiSourcePipeline:
             await self.ingestor.initialize()
 
         readers = ForensicsDatabaseFactory.create_readers(discovered)
-        file_transformer = TOONTransformer()
+        file_transformer = TOONTransformer(
+            include_full_description=config.include_full_description
+        )
         forensic_transformer = ForensicEpisodeTransformer()
 
         try:
@@ -525,11 +529,20 @@ class MultiSourcePipeline:
         """Process files database using existing TOONTransformer."""
         res = PipelineResult(started_at=datetime.now())
         res.total_files = reader.count_files()
+        max_eps = self.config.max_episodes
 
+        logger.info(f"Starting files processing: {res.total_files} files (max_episodes={max_eps or 'unlimited'})")
+
+        processed_count = 0
         for batch in reader.iter_files_batched(
             batch_size=self.config.batch_size,
             analyzed_only=self.config.filter_analyzed_only,
         ):
+            # Check max_episodes limit
+            if max_eps > 0 and processed_count >= max_eps:
+                logger.info(f"Reached max_episodes limit ({max_eps}), stopping files processing")
+                break
+
             episodes, errors = transformer.transform_batch(batch)
             res.transformed += len(episodes)
             res.failed += len(errors)
@@ -537,12 +550,16 @@ class MultiSourcePipeline:
                 res.transformation_errors.append({"file_path": record.path, "error": str(error)})
 
             if not dry_run and episodes and self.ingestor:
+                logger.info(f"Ingesting batch of {len(episodes)} episodes (total processed: {processed_count + len(episodes)})")
                 ingestion_result = await self.ingestor.batch_ingest(episodes, group_id=group_id)
                 res.ingested += ingestion_result.successful
                 res.failed += ingestion_result.failed
+                processed_count += len(episodes)
             elif dry_run:
                 res.ingested += len(episodes)
+                processed_count += len(episodes)
 
+        logger.info(f"Files processing complete: {res.ingested} ingested, {res.failed} failed")
         res.completed_at = datetime.now()
         return res
 
@@ -551,46 +568,65 @@ class MultiSourcePipeline:
     ) -> PipelineResult:
         """Process events database, including event clusters with AI analysis."""
         res = PipelineResult(started_at=datetime.now())
-        
+        max_eps = self.config.max_episodes
+
         # Process regular events
         logger.info("Processing regular events...")
         event_count = reader.count_events()
         res.total_files += event_count
-        
+
+        processed_count = 0
         for batch in reader.iter_events_batched(batch_size=self.config.batch_size):
+            # Check max_episodes limit
+            if max_eps > 0 and processed_count >= max_eps:
+                logger.info(f"Reached max_episodes limit ({max_eps}), stopping events processing")
+                break
+
             episodes, errors = transformer.transform_events_batch(batch)
             res.transformed += len(episodes)
             res.failed += len(errors)
 
             if not dry_run and episodes and self.ingestor:
+                logger.info(f"Ingesting event batch of {len(episodes)} episodes")
                 ingestion_result = await self.ingestor.batch_ingest(episodes, group_id=group_id)
                 res.ingested += ingestion_result.successful
                 res.failed += ingestion_result.failed
+                processed_count += len(episodes)
             elif dry_run:
                 res.ingested += len(episodes)
-        
+                processed_count += len(episodes)
+
         # Process event clusters with AI analysis
         logger.info("Processing event clusters with AI analysis...")
         cluster_stats = reader.get_event_cluster_stats()
         cluster_count = cluster_stats.get("analyzed_clusters", 0)
         res.total_files += cluster_count
-        
+
         if cluster_count > 0:
             for batch in reader.iter_event_clusters_batched(
                 batch_size=self.config.batch_size,
                 analyzed_only=True
             ):
+                # Check max_episodes limit for clusters too
+                if max_eps > 0 and processed_count >= max_eps:
+                    logger.info(f"Reached max_episodes limit ({max_eps}), stopping cluster processing")
+                    break
+
                 episodes, errors = transformer.transform_event_clusters_batch(batch)
                 res.transformed += len(episodes)
                 res.failed += len(errors)
 
                 if not dry_run and episodes and self.ingestor:
+                    logger.info(f"Ingesting cluster batch of {len(episodes)} episodes")
                     ingestion_result = await self.ingestor.batch_ingest(episodes, group_id=group_id)
                     res.ingested += ingestion_result.successful
                     res.failed += ingestion_result.failed
+                    processed_count += len(episodes)
                 elif dry_run:
                     res.ingested += len(episodes)
+                    processed_count += len(episodes)
 
+        logger.info(f"Events processing complete: {res.ingested} ingested, {res.failed} failed")
         res.completed_at = datetime.now()
         return res
 

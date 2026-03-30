@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 from ..exceptions import DatabaseError
-from .files_reader import _BaseForensicsReader
+from .base_reader import _BaseForensicsReader
 
 
 # =============================================================================

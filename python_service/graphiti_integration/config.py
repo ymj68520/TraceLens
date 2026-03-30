@@ -7,7 +7,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+    _HAS_DOTENV = True
+except ImportError:
+    _HAS_DOTENV = False
 
 
 @dataclass
@@ -26,18 +30,23 @@ class GraphitiConfig:
     
     # Embedder settings (can use local or OpenAI)
     embedder_base_url: Optional[str] = None  # None = use OpenAI
-    embedder_model: str = "text-embedding-3-small"
+    embedder_model: str = "text-embedding-nomic-embed-text-v1.5"
     embedder_api_key: Optional[str] = None
-    embedder_dim: int = 1536
+    embedder_dim: int = 768
     
     # Database settings
     db_path: Optional[str] = None
     
     # Batch processing
-    batch_size: int = 50
+    batch_size: int = 10  # Reduced from 50 to prevent token overflow
     max_retries: int = 3
     retry_delay: float = 1.0  # seconds
-    
+    max_episodes: int = 0  # Maximum episodes to process (0 = unlimited)
+
+    # Token management (prevents 8096 context overflow)
+    max_episode_tokens: int = 3000  # Per-episode safety limit (~7500 chars)
+    include_full_description: bool = False  # Exclude large llm_description by default
+
     # Filtering options
     filter_analyzed_only: bool = False  # Process all files, not just LLM-analyzed ones
     filter_categories: list[str] = field(default_factory=list)  # Empty = all
@@ -52,22 +61,23 @@ class GraphitiConfig:
     def from_env(cls, env_path: Optional[str] = None) -> "GraphitiConfig":
         """
         Load configuration from environment variables.
-        
+
         Args:
             env_path: Optional path to .env file. If not provided,
                       searches in current and parent directories.
         """
-        if env_path:
-            load_dotenv(env_path)
-        else:
-            # Try to find .env in current or parent directories
-            current = Path.cwd()
-            for _ in range(5):  # Search up to 5 levels
-                env_file = current / ".env"
-                if env_file.exists():
-                    load_dotenv(env_file)
-                    break
-                current = current.parent
+        if _HAS_DOTENV:
+            if env_path:
+                load_dotenv(env_path)
+            else:
+                # Try to find .env in current or parent directories
+                current = Path.cwd()
+                for _ in range(5):  # Search up to 5 levels
+                    env_file = current / ".env"
+                    if env_file.exists():
+                        load_dotenv(env_file)
+                        break
+                    current = current.parent
         
         # Get LLM base URL - use the text model URL from .env
         llm_base_url = os.getenv("LLM_TEXT_BASE_URL", "http://192.168.31.199:1234")
@@ -83,10 +93,12 @@ class GraphitiConfig:
             llm_api_key=os.getenv("LLM_API_KEY", "local"),
             embedder_api_key=os.getenv("OPENAI_API_KEY"),
             db_path=os.getenv("GRAPHITI_DB_PATH"),
-            batch_size=int(os.getenv("GRAPHITI_BATCH_SIZE", "50")),
+            batch_size=int(os.getenv("GRAPHITI_BATCH_SIZE", "10")),  # Reduced from 50
             max_retries=int(os.getenv("GRAPHITI_MAX_RETRIES", "3")),
             group_id=os.getenv("GRAPHITI_GROUP_ID", "forensics_files"),
             use_local_llm=os.getenv("GRAPHITI_USE_LOCAL_LLM", "true").lower() == "true",
+            max_episode_tokens=int(os.getenv("GRAPHITI_MAX_EPISODE_TOKENS", "3000")),
+            include_full_description=os.getenv("GRAPHITI_INCLUDE_FULL_DESC", "false").lower() == "true",
         )
     
     def validate(self) -> list[str]:

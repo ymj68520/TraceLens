@@ -76,9 +76,6 @@ std::string FileTextProcessor::truncateContent(const std::string& content, size_
         result += content.substr(tailStart);
     }
 
-    std::cout << "[DEBUG] Content truncated: original=" << content.size()
-              << " chars, truncated=" << result.size() << " chars" << std::endl;
-
     return result;
 }
 
@@ -173,8 +170,6 @@ std::vector<std::string> FileTextProcessor::splitIntoChunks(const std::string& c
         }
         pos = (endPos > overlap) ? endPos - overlap : endPos;
     }
-
-    std::cout << "[DEBUG] Split content into " << chunks.size() << " chunks" << std::endl;
 
     return chunks;
 }

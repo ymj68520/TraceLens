@@ -139,6 +139,7 @@ class GraphitiService:
         task_id: str,
         include_llm_descriptions: bool = True,
         batch_size: int = 50,
+        max_episodes: int = 100,
     ) -> str:
         """
         Start background ingestion of forensic data for a specific task.
@@ -156,7 +157,7 @@ class GraphitiService:
         }
         
         asyncio.create_task(self._run_ingestion(
-            job_id, task_id, include_llm_descriptions, batch_size
+            job_id, task_id, include_llm_descriptions, batch_size, max_episodes
         ))
         
         return job_id
@@ -167,6 +168,7 @@ class GraphitiService:
         task_id: str,
         include_llm_descriptions: bool,
         batch_size: int,
+        max_episodes: int,
     ):
         """Run the actual ingestion using MultiSourcePipeline."""
         try:
@@ -197,6 +199,7 @@ class GraphitiService:
                 llm_model=self.settings.llm_text_model,
                 llm_api_key=self.settings.llm_api_key or "local",
                 batch_size=batch_size,
+                max_episodes=max_episodes,
                 group_id=task_id,
                 use_local_llm=self.settings.graphiti_use_local_llm,
                 filter_analyzed_only=not include_llm_descriptions,
@@ -277,6 +280,22 @@ class GraphitiService:
     async def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Get the status of an ingestion job."""
         return self._jobs.get(job_id)
+
+    async def cancel_job(self, job_id: str) -> bool:
+        """
+        Cancel a running ingestion job.
+
+        Note: This marks the job as cancelled but doesn't actually stop
+        the background task. The task will check the job status on completion.
+        """
+        if job_id in self._jobs:
+            job = self._jobs[job_id]
+            if job.get("status") == "running":
+                job["status"] = "cancelled"
+                job["message"] = "Job cancelled by user"
+                logger.info(f"Ingestion job {job_id} marked as cancelled")
+                return True
+        return False
     
     async def search(
         self,

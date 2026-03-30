@@ -50,27 +50,30 @@ class EpisodeData:
 class TOONTransformer:
     """
     Transforms database FileRecords into Graphiti EpisodeData.
-    
+
     The transformation creates structured episodes that Graphiti can
     process to extract entities and relationships for the knowledge graph.
     """
-    
+
     def __init__(
         self,
         include_metadata: bool = True,
         include_analysis: bool = True,
+        include_full_description: bool = False,  # New: exclude large descriptions by default
         source_description: str = "forensics_file_analysis",
     ):
         """
         Initialize transformer.
-        
+
         Args:
             include_metadata: Include file metadata (size, timestamps, etc.)
             include_analysis: Include LLM analysis fields
+            include_full_description: Include full llm_description (can be 3000+ chars)
             source_description: Description for the episode source
         """
         self.include_metadata = include_metadata
         self.include_analysis = include_analysis
+        self.include_full_description = include_full_description
         self.source_description = source_description
     
     def transform(self, record: FileRecord) -> EpisodeData:
@@ -176,16 +179,17 @@ class TOONTransformer:
         
         if self.include_analysis and record.has_llm_analysis:
             body["analysis"] = {}
-            
+
             if record.llm_summary:
                 body["analysis"]["summary"] = record.llm_summary
-            
-            if record.llm_description:
+
+            # Only include full description if explicitly enabled (can be 3000+ chars)
+            if self.include_full_description and record.llm_description:
                 body["analysis"]["description"] = record.llm_description
-            
+
             if record.llm_keywords:
                 body["analysis"]["keywords"] = record.keywords_list
-            
+
             if record.llm_model_used:
                 body["analysis"]["model"] = record.llm_model_used
         
@@ -248,6 +252,69 @@ class TOONTransformer:
         
         escaped = value.replace('"', '""').replace('\n', '\\n').replace('\r', '\\r')
         return f'"{escaped}"'
+
+    @staticmethod
+    def estimate_episode_tokens(episode_body: str) -> int:
+        """
+        Estimate token count for an episode body.
+
+        Uses a simple heuristic: ~4 characters per token for English text.
+        This is a rough estimate - actual tokenization depends on the LLM's tokenizer.
+
+        Args:
+            episode_body: JSON string episode body
+
+        Returns:
+            Estimated token count
+        """
+        # Rough estimate: 1 token ≈ 4 characters for English text
+        # Add 20% buffer for JSON structure and metadata
+        return int(len(episode_body) / 4) + (len(episode_body) // 20)
+
+    @staticmethod
+    def truncate_if_needed(episode_body: str, max_tokens: int = 3000) -> str:
+        """
+        Truncate episode body if it exceeds max_tokens estimate.
+
+        Preserves JSON structure by truncating string values only.
+
+        Args:
+            episode_body: JSON string episode body
+            max_tokens: Maximum allowed tokens
+
+        Returns:
+            Truncated or original episode body
+        """
+        estimated = TOONTransformer.estimate_episode_tokens(episode_body)
+        if estimated <= max_tokens:
+            return episode_body
+
+        # Need to truncate - parse JSON and truncate large string values
+        try:
+            import json
+            data = json.loads(episode_body)
+
+            def truncate_strings(obj, max_chars: int = 500):
+                """Recursively truncate string values in dict/list."""
+                if isinstance(obj, dict):
+                    return {k: truncate_strings(v, max_chars) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [truncate_strings(item, max_chars) for item in obj]
+                elif isinstance(obj, str) and len(obj) > max_chars:
+                    return obj[:max_chars] + "... [truncated]"
+                return obj
+
+            # Target: ~4 chars per token, so max_chars = max_tokens * 4
+            max_chars = max_tokens * 3  # Conservative: 3 chars per token
+            truncated = truncate_strings(data, max_chars)
+            return json.dumps(truncated, ensure_ascii=False)
+
+        except (json.JSONDecodeError, TypeError):
+            # Fallback: simple string truncation
+            target_chars = max_tokens * 3
+            if len(episode_body) > target_chars:
+                return episode_body[:target_chars] + "... [truncated]"
+            return episode_body
 
 
 class ForensicEpisodeTransformer:

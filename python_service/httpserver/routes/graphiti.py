@@ -27,6 +27,7 @@ class IngestRequest(BaseModel):
     task_id: str = Field(..., description="Task ID to ingest data from (also used as graph namespace)")
     include_llm_descriptions: bool = Field(default=True, description="Include LLM-generated descriptions")
     batch_size: int = Field(default=50, ge=1, le=500, description="Batch size for processing")
+    max_episodes: int = Field(default=100, ge=0, le=10000, description="Maximum episodes to process (0 = unlimited)")
 
 
 class IngestResponse(BaseModel):
@@ -140,6 +141,7 @@ async def ingest_data(
             task_id=request.task_id,
             include_llm_descriptions=request.include_llm_descriptions,
             batch_size=request.batch_size,
+            max_episodes=request.max_episodes,
         )
         
         return IngestResponse(
@@ -402,4 +404,36 @@ async def get_graph_data(
         }
     except Exception as e:
         logger.error(f"Get graph data failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/jobs/{job_id}/cancel", responses={
+    200: {"description": "Job cancelled successfully"},
+    404: {"description": "Job not found"},
+    500: {"description": "Internal server error"}
+})
+async def cancel_ingestion_job(
+    job_id: str,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Cancel a running ingestion job.
+
+    Note: This marks the job as cancelled. The background task will
+    complete its current batch and then stop.
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+
+        cancelled = await service_manager.graphiti_service.cancel_job(job_id)
+
+        return {
+            "success": cancelled,
+            "job_id": job_id,
+            "message": "Job cancelled" if cancelled else "Job not found or not running",
+            "timestamp": datetime.now().isoformat(),
+        }
+    except Exception as e:
+        logger.error(f"Cancel job failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

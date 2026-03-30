@@ -365,12 +365,6 @@ size_t FileAnalyzer::calculateMaxContentLength() const {
     // Convert to characters
     size_t maxChars = static_cast<size_t>(availableTokens * config.charsPerToken);
 
-    std::cout << "[DEBUG] Context optimization: contextLength=" << config.contextLength
-              << ", reserved=" << config.reservedTokens
-              << ", maxTokens=" << config.maxTokens
-              << ", availableTokens=" << availableTokens
-              << ", maxChars=" << maxChars << std::endl;
-
     return maxChars;
 }
 

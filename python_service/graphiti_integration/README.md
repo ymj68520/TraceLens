@@ -112,6 +112,39 @@ graphiti_client = Graphiti(
 )
 ```
 
+### 4.3 环境变量配置
+
+在项目根目录的 `.env` 文件中配置:
+
+```bash
+# Neo4j 连接配置
+NEO4J_URI=neo4j://127.0.0.1:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=your_password
+
+# LLM 配置 (用于实体提取)
+LLM_TEXT_BASE_URL=http://192.168.31.199:1234
+LLM_TEXT_MODEL=openai/gpt-oss-20b
+LLM_API_KEY=local
+
+# Graphiti 批处理配置
+GRAPHITI_BATCH_SIZE=10              # 每批处理 10 条记录 (降低以避免 token 溢出)
+GRAPHITI_MAX_RETRIES=3              # 失败重试次数
+GRAPHITI_GROUP_ID=forensics_files   # 数据组 ID
+
+# Token 管理配置 (防止 8096 上下文溢出)
+GRAPHITI_MAX_EPISODE_TOKENS=3000    # 单条 episode 最大 token 数
+GRAPHITI_INCLUDE_FULL_DESC=false    # 是否包含完整描述 (true/false)
+
+# 数据过滤配置
+GRAPHITI_USE_LOCAL_LLM=true         # 使用本地 LLM
+```
+
+**重要说明**:
+- `GRAPHITI_BATCH_SIZE`: 默认值从 50 降低到 10,以避免单批 token 累积超过 8096
+- `GRAPHITI_MAX_EPISODE_TOKENS`: 单条 episode 的安全 token 限制
+- `GRAPHITI_INCLUDE_FULL_DESC`: 设为 `true` 可包含完整的 LLM 描述 (可能较大)
+
 ### 4.3 使用示例
 
 ```python

@@ -17,7 +17,7 @@ from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerCli
 
 from .config import GraphitiConfig
 from .exceptions import IngestionError
-from .toon_transformer import EpisodeData
+from .toon_transformer import EpisodeData, TOONTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +96,48 @@ class GraphitiIngestor:
             )
         return OpenAIEmbedder(config=embedder_config)
     
+    def _validate_and_prepare_episode(
+        self,
+        episode: EpisodeData,
+    ) -> tuple[str, bool]:
+        """
+        Validate episode token count and prepare episode body.
+
+        Args:
+            episode: The episode data to validate.
+
+        Returns:
+            Tuple of (prepared_episode_body, was_truncated)
+        """
+        max_tokens = self.config.max_episode_tokens
+
+        # Estimate token count
+        estimated = TOONTransformer.estimate_episode_tokens(episode.episode_body)
+
+        if estimated > max_tokens:
+            logger.warning(
+                f"Episode '{episode.name}' exceeds token limit: "
+                f"~{estimated} tokens > {max_tokens} max"
+            )
+
+            # Try to truncate
+            prepared = TOONTransformer.truncate_if_needed(
+                episode.episode_body, max_tokens
+            )
+            new_estimate = TOONTransformer.estimate_episode_tokens(prepared)
+
+            logger.info(
+                f"Truncated episode '{episode.name}': "
+                f"{estimated} -> {new_estimate} tokens"
+            )
+            return prepared, True
+
+        return episode.episode_body, False
+
     async def initialize(self) -> None:
         """
         Initialize Graphiti client and database indices.
-        
+
         This should be called before ingestion to ensure the graph
         database is ready.
         """
@@ -173,15 +211,18 @@ class GraphitiIngestor:
         """
         if not self._initialized:
             await self.initialize()
-        
+
         group_id = group_id or self.config.group_id
-        
+
+        # Validate and prepare episode body (may truncate if too large)
+        prepared_body, was_truncated = self._validate_and_prepare_episode(episode)
+
         last_error = None
         for attempt in range(self.config.max_retries):
             try:
                 await self._client.add_episode(
                     name=episode.name,
-                    episode_body=episode.episode_body,
+                    episode_body=prepared_body,
                     source_description=episode.source_description,
                     reference_time=episode.reference_time,
                     source=EpisodeType.json,  # We're sending structured JSON

@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..config import Settings
+from ...config import Settings
 
 from .file_filter import FileFilter
 from .file_analyzer import FileAnalyzer
@@ -299,6 +299,7 @@ class CaseAnalysisService:
         filtered_files = []
         descriptions = []
         extraction_dir = ""
+        extract_result = {"extracted_count": 0, "extraction_dir": ""}
 
         if run_filtering:
             # --- FULL PIPELINE MODE (Initial Task or Explicit Re-scan) ---

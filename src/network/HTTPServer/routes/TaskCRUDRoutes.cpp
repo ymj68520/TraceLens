@@ -316,7 +316,6 @@ crow::response TaskCRUDRoutes::handle_list_tasks(const crow::request& req) {
         }
 
         auto all_tasks = task_manager_.get_all_tasks();
-        std::cout << "[DEBUG] handle_list_tasks: Total tasks in manager: " << all_tasks.size() << std::endl;
         std::vector<json> filtered_tasks;
 
         for (const auto& task : all_tasks) {
@@ -332,7 +331,6 @@ crow::response TaskCRUDRoutes::handle_list_tasks(const crow::request& req) {
                 filtered_tasks.push_back(TaskHelpers::task_to_json(task));
             }
         }
-        std::cout << "[DEBUG] handle_list_tasks: Tasks after filtering (status=" << status_filter << "): " << filtered_tasks.size() << std::endl;
 
         int total = filtered_tasks.size();
         auto start_it = filtered_tasks.begin() + std::min(offset, total);

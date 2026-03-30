@@ -11,8 +11,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..config import Settings
-from ..prompts import REPORT_CHAPTERS, REPORT_CHAPTER_TEMPLATE, REPORT_FALLBACK_TEMPLATE
+from ...config import Settings
+from ...prompts import REPORT_CHAPTERS, REPORT_CHAPTER_TEMPLATE, REPORT_FALLBACK_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
