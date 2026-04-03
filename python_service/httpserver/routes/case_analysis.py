@@ -446,12 +446,15 @@ def _get_case_analysis_service(service_manager):
         svc.set_llm_service(service_manager.llm_service)
         svc.set_cpp_backend(service_manager.cpp_backend)  # Inject C++ backend service
         # Inject Graphiti service if available (optional dependency)
+        # Always inject it if it exists - let modules handle availability at runtime
         try:
             graphiti_svc = service_manager.graphiti_service
-            if graphiti_svc and graphiti_svc._initialized:
+            if graphiti_svc:
                 svc.set_graphiti_service(graphiti_svc)
-        except Exception:
-            pass  # Graphiti is optional; proceed without it
+                logger.info("Graphiti service injected into case analysis service")
+        except Exception as e:
+            logger.warning(f"Could not inject Graphiti service: {e}")
+            # Graphiti is optional; proceed without it
         service_manager._case_analysis_service = svc
     return service_manager._case_analysis_service
 

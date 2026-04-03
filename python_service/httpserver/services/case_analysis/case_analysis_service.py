@@ -15,6 +15,7 @@ from ...config import Settings
 from .file_filter import FileFilter
 from .file_analyzer import FileAnalyzer
 from .report_generator import ReportGenerator
+from .cluster_analyzer import ClusterAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class CaseAnalysisService:
         self._file_filter = None
         self._file_analyzer = None
         self._report_generator = None
+        self._cluster_analyzer = None
 
     def set_llm_service(self, llm_service):
         """Inject the LLM service dependency."""
@@ -42,6 +44,7 @@ class CaseAnalysisService:
     def set_graphiti_service(self, graphiti_service):
         """Inject the Graphiti knowledge graph service (optional)."""
         self._graphiti_service = graphiti_service
+        # Re-initialize modules with updated graphiti service
         self._initialize_modules()
 
     def set_cpp_backend(self, cpp_backend):
@@ -51,11 +54,18 @@ class CaseAnalysisService:
 
     def _initialize_modules(self):
         """Initialize sub-modules after all dependencies are injected."""
-        if self._llm_service and self._cpp_backend and not self._file_filter:
+        if self._llm_service and self._cpp_backend:
+            # Always re-initialize when graphiti_service changes
+            # This allows injecting graphiti_service after initial setup
             self._file_filter = FileFilter(self.settings, self._llm_service, self._cpp_backend)
             self._file_analyzer = FileAnalyzer(self.settings, self._llm_service, self._graphiti_service)
             self._report_generator = ReportGenerator(self.settings, self._llm_service, self._graphiti_service)
+            self._cluster_analyzer = ClusterAnalyzer(self.settings, self._llm_service, self._graphiti_service)
             logger.info("Case analysis sub-modules initialized")
+            if self._graphiti_service:
+                logger.info("Graphiti service is available for knowledge graph features")
+            else:
+                logger.info("Graphiti service not available - knowledge graph features will be disabled")
 
     # ------------------------------------------------------------------
     # Public API - delegated to sub-modules
@@ -112,12 +122,13 @@ class CaseAnalysisService:
         task_id: str,
         case_description: str,
         file_descriptions: List[Dict[str, Any]],
+        cluster_descriptions: Optional[List[Dict[str, Any]]] = None,
     ) -> bool:
-        """Ingest case description and file descriptions into Graphiti."""
+        """Ingest case description, file descriptions, and event clusters into Graphiti."""
         if not self._file_analyzer:
             raise RuntimeError("FileAnalyzer module not initialized. Ensure all dependencies are injected.")
         return await self._file_analyzer.ingest_to_knowledge_graph(
-            task_id, case_description, file_descriptions
+            task_id, case_description, file_descriptions, cluster_descriptions
         )
 
     async def generate_case_report(
@@ -301,27 +312,159 @@ class CaseAnalysisService:
         extraction_dir = ""
         extract_result = {"extracted_count": 0, "extraction_dir": ""}
 
+        # ------------------------------------------------------------------
+        # Smart detection: Auto-enable filtering if no filtered files exist
+        # ------------------------------------------------------------------
+        has_existing_filtered = False
+        if not run_filtering:
+            from .db_utils import get_filtered_files_from_db
+            existing_filtered = get_filtered_files_from_db(files_db_path, task_id)
+            if not existing_filtered:
+                logger.info(f"[CASE_ANALYSIS] Task {task_id}: No filtered files found in database, auto-enabling filtering")
+                run_filtering = True
+            else:
+                logger.info(f"[CASE_ANALYSIS] Task {task_id}: Found {len(existing_filtered)} existing filtered files, skipping filter step")
+                filtered_files = existing_filtered
+                has_existing_filtered = True
+
         if run_filtering:
             # --- FULL PIPELINE MODE (Initial Task or Explicit Re-scan) ---
 
             # Step 1: Filter files via LLM
             if progress_callback:
                 await progress_callback("filtering", "正在使用 LLM 自动筛选关键文件...")
+            logger.info(f"[CASE_ANALYSIS] Task {task_id}: Starting LLM file filtering...")
+            logger.info(f"[CASE_ANALYSIS] files_db_path: {files_db_path}")
+            logger.info(f"[CASE_ANALYSIS] case_description length: {len(case_description)}")
+            logger.info(f"[CASE_ANALYSIS] max_filter_files: {max_filter_files}")
+
             filter_result = await self.filter_files_by_case(
                 files_db_path, case_description, max_filter_files, task_id=task_id
             )
             result["steps"]["filter"] = filter_result
             filtered_files = filter_result.get("filtered_files", [])
 
+            logger.info(f"[CASE_ANALYSIS] Task {task_id}: LLM filtering complete.")
+            logger.info(f"[CASE_ANALYSIS]   - filtered_files count: {len(filtered_files)}")
+            logger.info(f"[CASE_ANALYSIS]   - total_files: {filter_result.get('total_files', 0)}")
+            logger.info(f"[CASE_ANALYSIS]   - reasoning: {filter_result.get('reasoning', '')[:200]}")
+
             # Persist the list so we can recover if subsequent steps fail
             self._file_filter._persist_filtered_files(files_db_path, task_id, filtered_files)
 
             if not filtered_files:
                 msg = "LLM 未能在样本中筛选出与案情高度相关的文件。跳过文件提取和描述阶段。"
-                logger.info(f"Task {task_id}: {msg}")
+                logger.warning(f"[CASE_ANALYSIS] Task {task_id}: {msg}")
+                logger.warning(f"[CASE_ANALYSIS] Task {task_id}: This will skip file extraction, AI analysis, and Graphiti ingestion!")
                 result["steps"]["extraction"] = {"extraction_dir": "", "extracted_count": 0}
                 result["steps"]["descriptions"] = []
             else:
+                logger.info(f"[CASE_ANALYSIS] Task {task_id}: Proceeding with {len(filtered_files)} filtered files for extraction")
+                logger.info(f"[CASE_ANALYSIS] Task {task_id}: Sample files to extract: {filtered_files[:5]}")
+
+                # Step 2: Extract filtered files to local disk
+                if progress_callback:
+                    await progress_callback("extracting", f"正在提取 {len(filtered_files)} 个文件到本地...")
+
+                try:
+                    logger.info(f"[CASE_ANALYSIS] Task {task_id}: Starting file extraction...")
+                    extract_result = await self.extract_filtered_files(
+                        task_id, filtered_files, progress_callback=progress_callback
+                    )
+                    result["steps"]["extraction"] = extract_result
+                    extraction_dir = extract_result.get("extraction_dir", "")
+                    logger.info(f"[CASE_ANALYSIS] Task {task_id}: Extraction completed - dir: {extraction_dir}, count: {extract_result.get('extracted_count', 0)}")
+                except Exception as e:
+                    logger.error(f"[CASE_ANALYSIS] Task {task_id}: Extraction step critical failure: {e}", exc_info=True)
+                    result["steps"]["extraction"] = {"success": False, "error": str(e), "extracted_count": 0}
+                    extraction_dir = ""
+
+                # Step 3: Parallel execution of file analysis and event cluster analysis
+                if progress_callback:
+                    await progress_callback("analyzing", "正在并行分析文件和事件簇...")
+
+                logger.info(f"[CASE_ANALYSIS] Task {task_id}: Starting file description generation...")
+                # Prepare parallel tasks
+                file_task = asyncio.create_task(self.generate_file_descriptions(
+                    files_db_path, filtered_files, case_description, extraction_dir=extraction_dir,
+                    progress_callback=progress_callback
+                ))
+
+                # Get events_db path for cluster analysis
+                task_info = await self._cpp_backend.get_task(task_id)
+                events_db = task_info.get("output_events_db") or ""
+
+                cluster_task = None
+                if events_db and os.path.exists(events_db):
+                    logger.info(f"[CASE_ANALYSIS] Task {task_id}: Starting event cluster analysis...")
+                    cluster_task = asyncio.create_task(self._cluster_analyzer.analyze_and_ingest_clusters(
+                        events_db, case_description, task_id, progress_callback
+                    ))
+
+                # Wait for file analysis
+                try:
+                    descriptions = await file_task
+                    result["steps"]["descriptions"] = descriptions
+                    logger.info(f"[CASE_ANALYSIS] Task {task_id}: File descriptions completed - {len(descriptions)} files analyzed")
+                except Exception as e:
+                    logger.error(f"[CASE_ANALYSIS] Task {task_id}: Description step failure: {e}", exc_info=True)
+                    descriptions = []
+
+                # Wait for cluster analysis (if started)
+                cluster_results = []
+                if cluster_task:
+                    try:
+                        cluster_results = await cluster_task
+                        result["steps"]["event_clusters"] = {
+                            "analyzed_count": len(cluster_results),
+                            "success": True
+                        }
+                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: Event cluster analysis completed - {len(cluster_results)} clusters")
+                    except Exception as e:
+                        logger.error(f"[CASE_ANALYSIS] Task {task_id}: Event cluster analysis failed: {e}", exc_info=True)
+
+                # Step 4: Ingest to knowledge graph (files + clusters)
+                logger.info(f"[CASE_ANALYSIS] Task {task_id}: Checking graphiti_service for ingestion...")
+                logger.info(f"[CASE_ANALYSIS] Task {task_id}: _graphiti_service is None: {self._graphiti_service is None}")
+                if self._graphiti_service:
+                    if progress_callback:
+                        await progress_callback("ingesting", "正在将分析结果摄入知识图谱...")
+                    try:
+                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: Starting KG ingestion with {len(descriptions)} file descriptions and {len(cluster_results)} cluster descriptions")
+                        kg_ok = await self.ingest_to_knowledge_graph(
+                            task_id, case_description, descriptions, cluster_descriptions=cluster_results
+                        )
+                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: KG ingestion completed, result: {kg_ok}")
+                        result["steps"]["knowledge_graph"] = {
+                            "ingested": kg_ok,
+                            "file_episodes": len(descriptions),
+                            "cluster_episodes": len(cluster_results)
+                        }
+                    except Exception as e:
+                        logger.error(f"[CASE_ANALYSIS] Task {task_id}: KG ingestion failed (non-fatal): {e}", exc_info=True)
+                        result["steps"]["knowledge_graph"] = {
+                            "ingested": False,
+                            "error": str(e),
+                            "file_episodes": len(descriptions),
+                            "cluster_episodes": len(cluster_results)
+                        }
+                else:
+                    logger.info(f"[CASE_ANALYSIS] Task {task_id}: graphiti_service not available, skipping KG ingestion")
+                    result["steps"]["knowledge_graph"] = {
+                        "skipped": True,
+                        "reason": "graphiti_service not available"
+                    }
+
+        else:
+            # --- REUSE EXISTING FILTERED FILES MODE ---
+            if has_existing_filtered:
+                # We have filtered files but didn't just run filtering
+                # Still need to extract and describe if not done yet
+                if progress_callback:
+                    await progress_callback("reusing", f"使用已筛选的 {len(filtered_files)} 个文件，继续执行提取和分析...")
+
+                logger.info(f"Task {task_id}: Reusing {len(filtered_files)} existing filtered files")
+
                 # Step 2: Extract filtered files to local disk
                 if progress_callback:
                     await progress_callback("extracting", f"正在提取 {len(filtered_files)} 个文件到本地...")
@@ -336,63 +479,86 @@ class CaseAnalysisService:
                     logger.error(f"Extraction step critical failure: {e}", exc_info=True)
                     result["steps"]["extraction"] = {"success": False, "error": str(e), "extracted_count": 0}
 
-                # Step 3: Generate per-file descriptions
+                # Step 3: File analysis and event cluster analysis
                 if progress_callback:
-                    await progress_callback("describing", f"正在分析 {len(filtered_files)} 个相关文件...")
+                    await progress_callback("analyzing", "正在并行分析文件和事件簇...")
 
+                # Prepare parallel tasks
+                file_task = asyncio.create_task(self.generate_file_descriptions(
+                    files_db_path, filtered_files, case_description, extraction_dir=extraction_dir,
+                    progress_callback=progress_callback
+                ))
+
+                # Get events_db path for cluster analysis
+                task_info = await self._cpp_backend.get_task(task_id)
+                events_db = task_info.get("output_events_db") or ""
+
+                cluster_task = None
+                if events_db and os.path.exists(events_db):
+                    cluster_task = asyncio.create_task(self._cluster_analyzer.analyze_and_ingest_clusters(
+                        events_db, case_description, task_id, progress_callback
+                    ))
+
+                # Wait for file analysis
                 try:
-                    descriptions = await self.generate_file_descriptions(
-                        files_db_path, filtered_files, case_description, extraction_dir=extraction_dir,
-                        progress_callback=progress_callback
-                    )
+                    descriptions = await file_task
                     result["steps"]["descriptions"] = descriptions
                 except Exception as e:
                     logger.error(f"Description step failure: {e}", exc_info=True)
+                    descriptions = []
 
-                # Step 3.6: Auto-analyze top event clusters for Timeline
-                try:
-                    if progress_callback:
-                        await progress_callback("analyzing_clusters", "正在自动研判关键时间线事件簇...")
-
-                    task_info = await self._cpp_backend.get_task(task_id)
-                    events_db = task_info.get("output_events_db") or ""
-
-                    if events_db and os.path.exists(events_db):
-                        cluster_results = await self._file_analyzer.analyze_event_clusters(
-                            events_db, case_description, limit=5
-                        )
+                # Wait for cluster analysis (if started)
+                cluster_results = []
+                if cluster_task:
+                    try:
+                        cluster_results = await cluster_task
                         result["steps"]["event_clusters"] = {
                             "analyzed_count": len(cluster_results),
                             "success": True
                         }
-                    else:
-                        logger.warning(f"Task {task_id}: No events database found for cluster analysis")
-                except Exception as e:
-                    logger.error(f"Event cluster auto-analysis failed: {e}", exc_info=True)
+                    except Exception as e:
+                        logger.error(f"Event cluster analysis failed: {e}", exc_info=True)
 
-                # Step 3.5: Ingest into knowledge graph
+                # Step 4: Ingest to knowledge graph (files + clusters)
+                logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] Checking graphiti_service for ingestion...")
                 if self._graphiti_service:
                     if progress_callback:
                         await progress_callback("ingesting", "正在将分析结果摄入知识图谱...")
                     try:
+                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] Starting KG ingestion with {len(descriptions)} file descriptions and {len(cluster_results)} cluster descriptions")
                         kg_ok = await self.ingest_to_knowledge_graph(
-                            task_id, case_description, descriptions
+                            task_id, case_description, descriptions, cluster_descriptions=cluster_results
                         )
-                        result["steps"]["knowledge_graph"] = {"ingested": kg_ok, "episodes": len(descriptions) + 1}
+                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] KG ingestion completed, result: {kg_ok}")
+                        result["steps"]["knowledge_graph"] = {
+                            "ingested": kg_ok,
+                            "file_episodes": len(descriptions),
+                            "cluster_episodes": len(cluster_results)
+                        }
                     except Exception as e:
-                        logger.warning(f"KG ingestion failed (non-fatal): {e}")
+                        logger.error(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] KG ingestion failed (non-fatal): {e}", exc_info=True)
+                        result["steps"]["knowledge_graph"] = {
+                            "ingested": False,
+                            "error": str(e),
+                            "file_episodes": len(descriptions),
+                            "cluster_episodes": len(cluster_results)
+                        }
+                else:
+                    logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] graphiti_service not available, skipping KG ingestion")
+                    result["steps"]["knowledge_graph"] = {
+                        "skipped": True,
+                        "reason": "graphiti_service not available"
+                    }
+            else:
+                # --- FAST REPORTING MODE (Manual Review / Refinement) ---
+                if progress_callback:
+                    await progress_callback("reporting_init", "跳过前置分析，正在根据当前研判结论生成报告...")
 
-        else:
-            # --- FAST REPORTING MODE (Manual Review / Refinement) ---
-            if progress_callback:
-                await progress_callback("reporting_init", "跳过前置分析，正在根据当前研判结论生成报告...")
+                # When run_filtering is False and no existing filtered files,
+                # generate_case_report will pull ALL 'relevant' descriptions from database.
+                logger.info(f"Task {task_id}: Fast reporting mode. Skipping filter/extract/describe.")
 
-            # When run_filtering is False, we pass an empty descriptions list
-            # generate_case_report will then automatically pull ALL 'relevant'
-            # descriptions directly from the database.
-            logger.info(f"Task {task_id}: Fast reporting mode. Skipping filter/extract/describe.")
-
-        # Step 4: Final Case Report Generation (Common Path)
+        # Step 5: Final Case Report Generation (Common Path)
         if progress_callback:
             await progress_callback("reporting", "正在合成综合案情分析报告...")
 

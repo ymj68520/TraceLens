@@ -383,9 +383,10 @@ class FileAnalyzer:
         task_id: str,
         case_description: str,
         file_descriptions: List[Dict[str, Any]],
+        cluster_descriptions: Optional[List[Dict[str, Any]]] = None,
     ) -> bool:
         """
-        Ingest case description and file descriptions into Graphiti.
+        Ingest case description, file descriptions, and event clusters into Graphiti.
 
         This enables semantic retrieval during report generation,
         overcoming LLM context length limitations.
@@ -394,12 +395,16 @@ class FileAnalyzer:
             task_id: Task identifier (used as graph group_id).
             case_description: Full case description text.
             file_descriptions: List of per-file analysis results.
+            cluster_descriptions: Optional list of event cluster analysis results.
 
         Returns:
             True if ingestion succeeded, False otherwise.
         """
+        logger.info(f"[KG_INGEST] Task {task_id}: Starting knowledge graph ingestion")
+        logger.info(f"[KG_INGEST] Task {task_id}: graphiti_service available: {self._graphiti_service is not None}")
+
         if not self._graphiti_service:
-            logger.info("Graphiti service not available, skipping KG ingestion")
+            logger.warning("[KG_INGEST] Graphiti service not available, skipping KG ingestion")
             return False
 
         try:
@@ -407,18 +412,25 @@ class FileAnalyzer:
             from datetime import datetime
 
             # Ensure graphiti is initialized
+            logger.info(f"[KG_INGEST] Task {task_id}: Initializing graphiti service...")
             await self._graphiti_service.initialize()
+            logger.info(f"[KG_INGEST] Task {task_id}: Graphiti service initialized successfully")
 
             # Get or create task graph
+            logger.info(f"[KG_INGEST] Task {task_id}: Getting task graph...")
             graph_entry = await self._graphiti_service._get_task_graph(task_id)
             if not graph_entry or not isinstance(graph_entry, dict):
-                logger.warning(f"Could not get task graph for {task_id}")
+                logger.error(f"[KG_INGEST] Task {task_id}: Could not get task graph - graph_entry type: {type(graph_entry)}")
                 return False
+
+            logger.info(f"[KG_INGEST] Task {task_id}: Task graph obtained successfully")
 
             ingestor = graph_entry.get("ingestor")
             if not ingestor:
-                logger.warning(f"No ingestor available for task {task_id}")
+                logger.error(f"[KG_INGEST] Task {task_id}: No ingestor in graph_entry - keys: {list(graph_entry.keys()) if isinstance(graph_entry, dict) else 'N/A'}")
                 return False
+
+            logger.info(f"[KG_INGEST] Task {task_id}: Ingestor obtained successfully")
 
             episodes = []
 
@@ -456,6 +468,36 @@ class FileAnalyzer:
                             file_id=0,
                             category="file_description"
                         ))
+
+            # 3. Ingest event cluster descriptions (if provided)
+            if cluster_descriptions:
+                successful_clusters = [c for c in cluster_descriptions if c.get("success") or c.get("analysis")]
+                for cluster in successful_clusters:
+                    analysis = cluster.get("analysis", {})
+                    description = analysis.get("description", "")
+                    event_type = cluster.get("event_type", "UNKNOWN")
+                    time_window = cluster.get("time_window", 0)
+
+                    if description:
+                        # Chunk long descriptions
+                        chunks = self._chunk_text(description, max_chars=3000)
+                        for j, chunk in enumerate(chunks):
+                            ep_name = f"事件簇分析: {event_type} @ {time_window}"
+                            if len(chunks) > 1:
+                                ep_name += f" (第{j+1}部分)"
+                            episodes.append(EpisodeData(
+                                name=ep_name,
+                                episode_body=json.dumps({
+                                    "event_type": event_type,
+                                    "time_window": time_window,
+                                    "analysis": chunk
+                                }, ensure_ascii=False),
+                                source_description=f"事件簇LLM分析 - {event_type} @ time_window={time_window}",
+                                reference_time=datetime.now(),
+                                file_path="",
+                                file_id=0,
+                                category="event_cluster_description"
+                            ))
 
             if not episodes:
                 logger.info("No episodes to ingest")

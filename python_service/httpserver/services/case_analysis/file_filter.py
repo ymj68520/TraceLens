@@ -82,7 +82,7 @@ class FileFilter:
                     raise RuntimeError(f"Cannot extract task_id from {files_db_path}")
                 task_id = task_match.group(1)
 
-            logger.info(f"Fetching TOON data for task {task_id}...")
+            logger.info(f"[FILE_FILTER] Task {task_id}: Fetching TOON data from {files_db_path}...")
             toon_data = await self._cpp_backend.get_files_toon_stream(
                 task_id=task_id,
                 batch_size=batch_size,
@@ -93,7 +93,10 @@ class FileFilter:
             data_lines = toon_data.get("data_lines", [])
             total_files = toon_data.get("total_files", 0)
 
+            logger.info(f"[FILE_FILTER] Task {task_id}: TOON data received - schema={len(schema)} chars, lines={len(data_lines)}, total_files={total_files}")
+
             if total_files == 0:
+                logger.warning(f"[FILE_FILTER] Task {task_id}: No files found in database!")
                 return {
                     "filtered_files": [],
                     "reasoning": "No files found in database.",
@@ -115,9 +118,12 @@ class FileFilter:
             # Process each batch
             for batch_idx, batch_lines in enumerate(batches):
                 logger.info(f"Processing batch {batch_idx + 1}/{len(batches)} ({len(batch_lines)} files)")
+                logger.info(f"[FILE_FILTER] TOON schema: {schema[:200]}")
+                logger.info(f"[FILE_FILTER] TOON sample data (first 3 lines): {batch_lines[:3]}")
 
                 # Build TOON prompt for this batch
                 batch_toon = f"{schema}\n" + "\n".join(batch_lines)
+                logger.info(f"[FILE_FILTER] Batch TOON data length: {len(batch_toon)} chars")
 
                 batch_prompt = self._build_batch_filter_prompt(
                     case_description=case_description,
@@ -137,14 +143,19 @@ class FileFilter:
                     )
 
                     response_text = result.get("analysis", {}).get("description", "")
+                    logger.info(f"[FILE_FILTER] Batch {batch_idx + 1}: LLM response received, length={len(response_text)} chars")
+                    logger.info(f"[FILE_FILTER] Batch {batch_idx + 1}: Full LLM response: {response_text}")
+                    logger.debug(f"[FILE_FILTER] Batch {batch_idx + 1}: LLM response preview: {response_text[:500]}...")
+
                     parsed = self._parse_toon_filter_response(response_text, batch_lines)
+                    logger.info(f"[FILE_FILTER] Batch {batch_idx + 1}: Parsed result - selected_files: {len(parsed['selected_files'])}, reasoning: {parsed.get('reasoning', '')[:200]}")
 
                     # Accumulate selected files
                     all_selected_files.extend(parsed["selected_files"])
                     if parsed.get("reasoning"):
                         batch_reasonings.append(parsed["reasoning"])
 
-                    logger.info(f"Batch {batch_idx + 1}: selected {len(parsed['selected_files'])} files (total: {len(all_selected_files)})")
+                    logger.info(f"[FILE_FILTER] Batch {batch_idx + 1}: parsed {len(parsed['selected_files'])} files, total so far: {len(all_selected_files)}")
 
                     # Stop if we've reached max_files
                     if len(all_selected_files) >= max_files:
@@ -154,6 +165,12 @@ class FileFilter:
                 except Exception as e:
                     logger.warning(f"Batch {batch_idx + 1} failed: {e}")
                     continue
+
+            # Extract task_id from files_db_path (moved before logging)
+            task_id_extracted = "_latest"
+            task_match = re.search(r'tasks/([a-f0-9-]+)/', files_db_path)
+            if task_match:
+                task_id_extracted = task_match.group(1)
 
             # Deduplicate while preserving order
             seen = set()
@@ -166,11 +183,11 @@ class FileFilter:
             # Trim to max_files if needed
             final_selected = unique_selected[:max_files]
 
-            # Extract task_id from files_db_path
-            task_id_extracted = "_latest"
-            task_match = re.search(r'tasks/([a-f0-9-]+)/', files_db_path)
-            if task_match:
-                task_id_extracted = task_match.group(1)
+            logger.info(f"[FILE_FILTER] Task {task_id_extracted}: Before trimming - unique_selected: {len(unique_selected)}, final_selected: {len(final_selected)}")
+            if final_selected:
+                logger.info(f"[FILE_FILTER] Task {task_id_extracted}: Selected files (first 5): {final_selected[:5]}")
+            else:
+                logger.warning(f"[FILE_FILTER] Task {task_id_extracted}: final_selected is EMPTY after parsing!")
 
             # Persist filtered file list to database
             self._persist_filtered_files(files_db_path, task_id_extracted, final_selected)
@@ -221,7 +238,16 @@ class FileFilter:
 从上述文件列表中选择与案情相关的文件。注意：
 1. 这是第{batch_number}/{total_batches}批数据
 2. 全局最多选择{max_files}个文件，已选择{already_selected}个
-3. 返回JSON格式：{{"selected_files": ["path1", "path2", ...], "reasoning": "选择原因"}}"""
+3. 必须严格按照以下JSON格式返回，不要有任何其他文字：
+
+```json
+{{"selected_files": ["文件名1", "文件名2", ...], "reasoning": "选择原因说明"}}
+```
+
+重要提示：
+- selected_files中只填写文件名（不含路径），例如：["document.pdf", "image.jpg"]
+- 文件名必须与TOON格式第一列的名称完全匹配
+- reasoning字段简要说明选择这些文件的原因"""
 
     def _parse_toon_filter_response(
         self,
@@ -232,14 +258,36 @@ class FileFilter:
         selected_files = []
         reasoning = ""
 
+        logger.info(f"[PARSE_FILTER] ===== STARTING PARSE =====")
+        logger.info(f"[PARSE_FILTER] Raw response text (first 500 chars): {response_text[:500]}")
+        logger.debug(f"[PARSE_FILTER] Batch lines count: {len(batch_lines)}")
+
         try:
             # 1. Pre-process text to find JSON
             text = response_text.strip()
+            logger.info(f"[PARSE_FILTER] After strip, text starts with: {text[:100]}")
+
+            # Extract reasoning from text BEFORE the JSON (for list format responses)
+            # The reasoning is usually in the text before the JSON array
+            reasoning_prefix = ""
+            array_start = text.find('[')
+            dict_start = text.find('{')
+
+            if array_start != -1 and (dict_start == -1 or array_start < dict_start):
+                # JSON array format - extract text before it as reasoning
+                reasoning_prefix = text[:array_start].strip()
+                logger.info(f"[PARSE_FILTER] Found array format, reasoning prefix: {reasoning_prefix[:100]}")
+            elif dict_start != -1 and (array_start == -1 or dict_start < array_start):
+                # Dict format - extract text before it as reasoning (in case reasoning field is missing)
+                reasoning_prefix = text[:dict_start].strip()
+                logger.info(f"[PARSE_FILTER] Found dict format, reasoning prefix: {reasoning_prefix[:100]}")
+
             # Remove markdown code blocks if present
             if "```" in text:
                 json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
                 if json_match:
                     text = json_match.group(1)
+                    logger.info(f"[PARSE_FILTER] Extracted from markdown: {text[:100]}")
 
             # Find the first '[' or '{' and last ']' or '}'
             start_idx = text.find('[')
@@ -252,56 +300,113 @@ class FileFilter:
             if end_brace != -1 and (end_idx == -1 or end_brace > end_idx):
                 end_idx = end_brace
 
+            logger.info(f"[PARSE_FILTER] Found JSON boundaries: start_idx={start_idx}, end_idx={end_idx}")
+
             if start_idx != -1 and end_idx != -1:
                 text = text[start_idx:end_idx+1]
+                logger.info(f"[PARSE_FILTER] Extracted JSON: {text[:200]}")
+            else:
+                logger.warning(f"[PARSE_FILTER] Could not find JSON boundaries!")
 
             # 2. Parse JSON
             parsed = json.loads(text)
+            logger.info(f"[PARSE_FILTER] JSON parsed successfully, type={type(parsed).__name__}")
 
             selected_paths = []
             if isinstance(parsed, list):
                 # Format: ["path1", "path2"]
                 selected_paths = parsed
+                # Use the extracted reasoning prefix for list format
+                reasoning = reasoning_prefix
+                logger.info(f"[PARSE_FILTER] Parsed as list with {len(selected_paths)} items: {selected_paths[:5]}")
+                logger.info(f"[PARSE_FILTER] Reasoning from prefix: {reasoning[:100]}")
             elif isinstance(parsed, dict):
                 # Format: {"selected_files": [...], "reasoning": "..."}
                 selected_paths = parsed.get("selected_files", []) or parsed.get("filtered_files", [])
-                reasoning = parsed.get("reasoning", "")
+                reasoning = parsed.get("reasoning", "") or reasoning_prefix
+                logger.info(f"[PARSE_FILTER] Parsed as dict, selected_files={len(selected_paths)} items: {selected_paths[:5]}")
+                logger.info(f"[PARSE_FILTER] Reasoning: {reasoning[:100]}")
+            else:
+                logger.warning(f"[PARSE_FILTER] Unexpected parsed type: {type(parsed)}")
 
             # 3. Match against batch lines
+            # TOON format: name | path | size | category | ...
+            # We need the full path (parts[1]) for extraction, not just the name (parts[0])
             all_paths_in_batch = []
+            name_to_path_map = {}
             for line in batch_lines:
                 parts = line.split(" | ")
-                if parts:
-                    all_paths_in_batch.append(parts[0].strip())
+                if len(parts) >= 2:
+                    name = parts[0].strip()
+                    path = parts[1].strip()
+                    all_paths_in_batch.append(path)
+                    name_to_path_map[name] = path
+
+            logger.info(f"[PARSE_FILTER] Batch has {len(all_paths_in_batch)} files, {len(name_to_path_map)} names")
+            logger.info(f"[PARSE_FILTER] Sample names in batch: {list(name_to_path_map.keys())[:5]}")
+            logger.info(f"[PARSE_FILTER] LLM returned {len(selected_paths)} paths to match")
 
             for path in selected_paths:
                 if not isinstance(path, str): continue
                 path_clean = path.strip().strip('"').strip("'")
-                # 1. Exact match in batch
+                logger.info(f"[PARSE_FILTER] Trying to match: '{path_clean}'")
+
+                # 1. Direct name-to-path lookup (most efficient)
+                if path_clean in name_to_path_map:
+                    matched_path = name_to_path_map[path_clean]
+                    selected_files.append(matched_path)
+                    logger.info(f"[PARSE_FILTER]   ✓ Strategy 1 (direct name): '{path_clean}' -> '{matched_path}'")
+                    continue
+
+                # 2. Exact match in batch (full path)
                 matching_paths = [p for p in all_paths_in_batch if p == path_clean]
+                if matching_paths:
+                    selected_files.extend(matching_paths)
+                    logger.info(f"[PARSE_FILTER]   ✓ Strategy 2 (exact path): '{path_clean}' matched {len(matching_paths)} paths")
+                    continue
 
-                # 2. Filename match (if only filename provided)
-                if not matching_paths:
-                    matching_paths = [p for p in all_paths_in_batch if Path(p).name == path_clean]
+                # 3. Filename match (LLM returned just filename)
+                matching_paths = [p for p in all_paths_in_batch if Path(p).name == path_clean]
+                if matching_paths:
+                    selected_files.extend(matching_paths)
+                    logger.info(f"[PARSE_FILTER]   ✓ Strategy 3 (filename): '{path_clean}' matched {len(matching_paths)} paths")
+                    continue
 
-                # 3. Partial path match (case insensitive)
-                if not matching_paths:
-                    matching_paths = [p for p in all_paths_in_batch if path_clean.lower() in p.lower()]
+                # 4. Partial path match (case insensitive)
+                matching_paths = [p for p in all_paths_in_batch if path_clean.lower() in p.lower()]
+                if matching_paths:
+                    selected_files.extend(matching_paths)
+                    logger.info(f"[PARSE_FILTER]   ✓ Strategy 4 (partial): '{path_clean}' matched {len(matching_paths)} paths")
+                    continue
 
-                selected_files.extend(matching_paths)
+                # 5. Check if LLM returned filename that matches any name in our map
+                for name, full_path in name_to_path_map.items():
+                    if path_clean.lower() == name.lower() or path_clean.lower() in name.lower():
+                        if full_path not in selected_files:
+                            selected_files.append(full_path)
+                        logger.info(f"[PARSE_FILTER]   ✓ Strategy 5 (reverse lookup): '{path_clean}' -> '{full_path}' (matched name: '{name}')")
+                        break
+                else:
+                    logger.warning(f"[PARSE_FILTER]   ✗ No match found for: '{path_clean}'")
+
+            logger.info(f"[PARSE_FILTER] ===== MATCHING COMPLETE =====")
+            logger.info(f"[PARSE_FILTER] Successfully matched {len(selected_files)} files from LLM response")
 
         except Exception as e:
-            logger.warning(f"JSON parse failed for filter response: {e}. Falling back to text pattern matching.")
+            logger.warning(f"[PARSE_FILTER] JSON parse failed: {e}")
+            logger.warning(f"[PARSE_FILTER] Response that failed (first 500 chars): {response_text[:500]}")
+            logger.info(f"[PARSE_FILTER] ===== FALLBACK: TEXT PATTERN MATCHING =====")
             # Aggressive fallback: search every filename in the response text
             for line in batch_lines:
                 parts = line.split(" | ")
-                if parts:
-                    full_path = parts[0].strip()
+                if len(parts) >= 2:
+                    full_path = parts[1].strip()  # Use full path, not name
                     filename = Path(full_path).name
                     # Look for filename as a separate word in the response
                     if re.search(rf'\b{re.escape(filename)}\b', response_text) or \
                        re.search(rf'"{re.escape(filename)}"', response_text):
                         selected_files.append(full_path)
+                        logger.info(f"[PARSE_FILTER] Fallback matched: '{filename}' -> '{full_path}'")
 
         # Deduplicate while preserving order
         seen = set()
@@ -310,6 +415,11 @@ class FileFilter:
             if f not in seen:
                 unique_files.append(f)
                 seen.add(f)
+
+        logger.info(f"[PARSE_FILTER] ===== FINAL RESULT =====")
+        logger.info(f"[PARSE_FILTER] Returning {len(unique_files)} unique files: {unique_files[:5]}")
+        logger.info(f"[PARSE_FILTER] Reasoning: {reasoning[:100] if reasoning else 'None'}")
+        logger.info(f"[PARSE_FILTER] ===== PARSE COMPLETE =====")
 
         return {
             "selected_files": unique_files,
@@ -447,14 +557,45 @@ class FileFilter:
             if text.startswith("```"):
                 text = text.split("\n", 1)[-1]
                 text = text.rsplit("```", 1)[0]
+
+            # Extract JSON boundaries
+            start_idx = text.find('[')
+            start_brace = text.find('{')
+            if start_brace != -1 and (start_idx == -1 or start_brace < start_idx):
+                start_idx = start_brace
+
+            end_idx = text.rfind(']')
+            end_brace = text.rfind('}')
+            if end_brace != -1 and (end_idx == -1 or end_brace > end_idx):
+                end_idx = end_brace
+
+            # Extract reasoning prefix before JSON
+            reasoning_prefix = ""
+            if start_idx != -1:
+                reasoning_prefix = text[:start_idx].strip()
+
+            if start_idx != -1 and end_idx != -1:
+                text = text[start_idx:end_idx+1]
+
             parsed = json.loads(text)
-            selected = parsed.get("selected_files", [])
-            reasoning = parsed.get("reasoning", "")
+
+            # Handle both dict and list formats
+            if isinstance(parsed, dict):
+                selected = parsed.get("selected_files", []) or parsed.get("filtered_files", [])
+                reasoning = parsed.get("reasoning", "") or reasoning_prefix
+            elif isinstance(parsed, list):
+                selected = parsed
+                reasoning = reasoning_prefix
+            else:
+                selected = []
+                reasoning = reasoning_prefix
+
             # Validate paths against actual file list
             valid_paths = [p for p in selected if p in all_paths]
+            logger.info(f"[PARSE_FILTER_LEGACY] Parsed {len(selected)} files, {len(valid_paths)} valid")
             return {"selected_files": valid_paths, "reasoning": reasoning}
-        except (json.JSONDecodeError, KeyError):
-            logger.warning("Could not parse LLM filter response as JSON, falling back to line parsing")
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning(f"Could not parse LLM filter response as JSON: {e}, falling back to line parsing")
             # Fallback: extract file paths from text
             selected = []
             for line in response_text.split("\n"):

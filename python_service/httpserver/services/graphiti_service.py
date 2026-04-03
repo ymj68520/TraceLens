@@ -40,22 +40,31 @@ class GraphitiService:
         self._task_graphs: Dict[str, Any] = {}
     
     async def initialize(self):
-        """Initialize the Graphiti connection."""
+        """Initialize the Graphiti service with graceful fallback."""
         if self._initialized:
             return
-        
+
+        # First check if Neo4j is available
+        neo4j_available = await self._check_neo4j_connection()
+        if not neo4j_available:
+            logger.warning("Neo4j is not available. Graphiti service will be disabled.")
+            logger.warning("To enable Graphiti: 1) Ensure Neo4j is running, 2) Check NEO4J_URI/USER/PASSWORD in .env")
+            self._initialized = True  # Mark as initialized but disabled
+            return
+
         try:
             from graphiti_integration import GraphitiIngestor
-            
+
             self._graphiti_class = GraphitiIngestor
             self._initialized = True
-            logger.info("Graphiti service initialized")
+            logger.info("Graphiti service initialized successfully")
         except ImportError as e:
             logger.warning(f"Graphiti integration not available: {e}")
-            raise
+            logger.warning("To enable Graphiti: pip install graphiti-core>=0.3.0")
+            self._initialized = True  # Mark as initialized but disabled
         except Exception as e:
             logger.error(f"Graphiti service initialization failed: {e}")
-            raise
+            self._initialized = True  # Mark as initialized but disabled
     
     async def _get_task_graph(self, task_id: str):
         """
@@ -121,18 +130,25 @@ class GraphitiService:
         """Check if Graphiti/Neo4j is healthy."""
         if not self._initialized:
             return False
-        
+
+        # Check basic Neo4j connectivity
         try:
-            if task_id:
-                graph = await self._get_task_graph(task_id)
-                if isinstance(graph, dict) and "ingestor" in graph:
-                    return True
-                if hasattr(graph, 'check_connection'):
-                    return await graph.check_connection()
-            return True
-        except Exception as e:
-            logger.warning(f"Graphiti health check failed: {e}")
+            if not await self._check_neo4j_connection():
+                return False
+        except Exception:
             return False
+
+        # If task_id specified, check if task graph exists
+        if task_id:
+            try:
+                entity_count, rel_count = await self._query_neo4j_counts(task_id)
+                # Consider healthy if we can query (even if empty)
+                return True
+            except Exception as e:
+                logger.debug(f"Task graph health check for {task_id}: {e}")
+                return False
+
+        return True
     
     async def start_ingestion(
         self,
@@ -440,7 +456,7 @@ class GraphitiService:
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
         List relationships in the knowledge graph for a specific task.
-        Queries Neo4j directly.
+        In Graphiti, relationships are between entities mentioned in episodes of the task.
         """
         try:
             from neo4j import AsyncGraphDatabase
@@ -451,19 +467,43 @@ class GraphitiService:
             try:
                 async with driver.session() as session:
                     skip = (page - 1) * page_size
+
+                    # Build match clause - relationships between entities mentioned in task's episodes
+                    match_clause = "MATCH (e:Episodic {group_id: $gid})-[m1:MENTIONS]->(s:Entity)-[r:RELATES_TO]->(t:Entity)"
+
+                    # Build where conditions - ensure target entity is also mentioned in task's episodes
+                    where_clauses = ["(e)-[:MENTIONS]->(t)"]
+
+                    params = {"gid": task_id, "skip": skip, "lim": page_size}
+
+                    if relationship_type:
+                        where_clauses.append("r.name = $rt")
+                        params["rt"] = relationship_type
+                    if source_id:
+                        where_clauses.append("s.uuid = $sid")
+                        params["sid"] = source_id
+                    if target_id:
+                        where_clauses.append("t.uuid = $tid")
+                        params["tid"] = target_id
+
+                    where_str = " WHERE " + " AND ".join(where_clauses)
+
+                    # Count query
                     count_res = await session.run(
-                        "MATCH (s:Entity {group_id: $gid})-[r:RELATES_TO]->(t:Entity {group_id: $gid}) "
-                        "RETURN count(r) AS cnt",
-                        gid=task_id,
+                        f"{match_clause} {where_str} RETURN count(DISTINCT r) AS cnt",
+                        **params
                     )
+
+                    # Data query
                     data_res = await session.run(
-                        "MATCH (s:Entity {group_id: $gid})-[r:RELATES_TO]->(t:Entity {group_id: $gid}) "
-                        "RETURN s.uuid AS source_id, s.name AS source_name, "
-                        "       r.uuid AS id, r.name AS type, "
-                        "       t.uuid AS target_id, t.name AS target_name "
+                        f"{match_clause} {where_str} "
+                        "RETURN DISTINCT s.uuid AS source_id, s.name AS source_name, "
+                        "       t.uuid AS target_id, t.name AS target_name, r.name AS type, "
+                        "       r.uuid AS id "
                         "SKIP $skip LIMIT $lim",
-                        gid=task_id, skip=skip, lim=page_size,
+                        **params
                     )
+
                     count_row = await count_res.single()
                     total = count_row["cnt"] if count_row else 0
                     rels = [dict(record) async for record in data_res]
@@ -489,30 +529,62 @@ class GraphitiService:
             return {
                 "status": "disconnected",
                 "neo4j_connected": False,
+                "message": "Neo4j is not available. Please check Neo4j is running and credentials are correct.",
                 "total_entities": 0,
                 "total_relationships": 0,
                 "task_id": task_id,
             }
 
-        # Query Neo4j directly for counts (no LLM involved)
-        try:
-            entity_count, rel_count = await self._query_neo4j_counts(task_id)
-            return {
-                "status": "connected",
-                "neo4j_connected": True,
-                "total_entities": entity_count,
-                "total_relationships": rel_count,
-                "task_id": task_id,
-            }
-        except Exception as e:
-            logger.error(f"Get status query failed: {e}")
-            return {
-                "status": "connected",
-                "neo4j_connected": True,
-                "total_entities": 0,
-                "total_relationships": 0,
-                "task_id": task_id,
-            }
+        # For new tasks with no data, return a helpful message
+        if task_id:
+            try:
+                entity_count, rel_count = await self._query_neo4j_counts(task_id)
+                if entity_count == 0 and rel_count == 0:
+                    return {
+                        "status": "empty",
+                        "neo4j_connected": True,
+                        "message": f"Task '{task_id}' has no graph data yet. Run file analysis and ingestion first.",
+                        "total_entities": 0,
+                        "total_relationships": 0,
+                        "task_id": task_id,
+                    }
+                return {
+                    "status": "active",
+                    "neo4j_connected": True,
+                    "total_entities": entity_count,
+                    "total_relationships": rel_count,
+                    "task_id": task_id,
+                }
+            except Exception as e:
+                logger.error(f"Get status query failed: {e}")
+                return {
+                    "status": "error",
+                    "neo4j_connected": True,
+                    "message": f"Error querying task data: {str(e)}",
+                    "total_entities": 0,
+                    "total_relationships": 0,
+                    "task_id": task_id,
+                }
+        else:
+            # Overall status (no specific task)
+            try:
+                entity_count, rel_count = await self._query_neo4j_counts(None)
+                return {
+                    "status": "connected",
+                    "neo4j_connected": True,
+                    "total_entities": entity_count,
+                    "total_relationships": rel_count,
+                    "task_id": task_id,
+                }
+            except Exception as e:
+                logger.error(f"Get status query failed: {e}")
+                return {
+                    "status": "connected",
+                    "neo4j_connected": True,
+                    "total_entities": 0,
+                    "total_relationships": 0,
+                    "task_id": task_id,
+                }
 
     async def _check_neo4j_connection(self) -> bool:
         """Check Neo4j connectivity without initializing graphiti."""
@@ -572,66 +644,10 @@ class GraphitiService:
         finally:
             await driver.close()
 
-    async def list_relationships(
-        self,
-        task_id: str,
-        relationship_type: Optional[str] = None,
-        source_id: Optional[str] = None,
-        target_id: Optional[str] = None,
-        page: int = 1,
-        page_size: int = 50,
-    ) -> Tuple[List[Dict[str, Any]], int]:
-        """
-        List relationships in the knowledge graph for a specific task.
-        """
-        try:
-            from neo4j import AsyncGraphDatabase
-            driver = AsyncGraphDatabase.driver(
-                self.settings.neo4j_uri,
-                auth=(self.settings.neo4j_user, self.settings.neo4j_password),
-            )
-            try:
-                async with driver.session() as session:
-                    skip = (page - 1) * page_size
-                    # Relationships between entities mentioned in episodes of this task
-                    match_clause = "MATCH (e:Episodic {group_id: $gid})-[m1:MENTIONS]->(s:Entity)-[r:RELATES_TO]->(t:Entity)"
-                    where_clauses = ["(e)-[:MENTIONS]->(t)"]
-                    
-                    if relationship_type:
-                        where_clauses.append("r.name = $rt")
-                    if source_id:
-                        where_clauses.append("s.uuid = $sid")
-                    if target_id:
-                        where_clauses.append("t.uuid = $tid")
-                    
-                    where_str = " WHERE " + " AND ".join(where_clauses)
-                    
-                    count_res = await session.run(
-                        f"{match_clause} {where_str} RETURN count(DISTINCT r) AS cnt",
-                        gid=task_id, rt=relationship_type, sid=source_id, tid=target_id
-                    )
-                    data_res = await session.run(
-                        f"{match_clause} {where_str} "
-                        "RETURN DISTINCT r.uuid AS id, s.uuid AS source_id, s.name AS source_name, "
-                        "t.uuid AS target_id, t.name AS target_name, r.name AS type "
-                        "SKIP $skip LIMIT $lim",
-                        gid=task_id, rt=relationship_type, sid=source_id, tid=target_id, skip=skip, lim=page_size
-                    )
-                    
-                    count_row = await count_res.single()
-                    total = count_row["cnt"] if count_row else 0
-                    rels = [dict(record) async for record in data_res]
-                return rels, total
-            finally:
-                await driver.close()
-        except Exception as e:
-            logger.error(f"List relationships failed for task {task_id}: {e}")
-            return [], 0
-
     async def list_task_graphs(self) -> List[str]:
         """
         List all task IDs that have knowledge graph data.
-        Queries Neo4j directly to find distinct group_ids.
+        Queries Neo4j Episodic nodes to find distinct group_ids.
         """
         try:
             from neo4j import AsyncGraphDatabase
@@ -641,9 +657,10 @@ class GraphitiService:
             )
             try:
                 async with driver.session() as session:
+                    # Query Episodic nodes which contain the group_id
                     result = await session.run(
-                        "MATCH (n:Entity) WHERE n.group_id IS NOT NULL "
-                        "RETURN DISTINCT n.group_id AS gid"
+                        "MATCH (e:Episodic) WHERE e.group_id IS NOT NULL "
+                        "RETURN DISTINCT e.group_id AS gid"
                     )
                     task_ids = [record["gid"] async for record in result]
                 return task_ids

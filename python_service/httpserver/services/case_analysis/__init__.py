@@ -5,6 +5,7 @@ This package provides modular case analysis capabilities:
 - File filtering (streaming and legacy methods)
 - File analysis (text and vision)
 - Report generation (graph-enhanced and fallback)
+- Event cluster analysis with Graphiti integration
 - Main service orchestration
 
 Backward compatibility: The main CaseAnalysisService class is exported
@@ -15,6 +16,7 @@ from .case_analysis_service import CaseAnalysisService
 from .file_filter import FileFilter
 from .file_analyzer import FileAnalyzer
 from .report_generator import ReportGenerator
+from .cluster_analyzer import ClusterAnalyzer
 from . import db_utils
 
 __all__ = [
@@ -22,5 +24,6 @@ __all__ = [
     "FileFilter",
     "FileAnalyzer",
     "ReportGenerator",
+    "ClusterAnalyzer",
     "db_utils",
 ]

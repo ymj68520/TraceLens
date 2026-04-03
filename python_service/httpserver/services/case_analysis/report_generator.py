@@ -168,13 +168,24 @@ class ReportGenerator:
         content_limit = getattr(self.settings, 'graphiti_context_item_limit', 250)
 
         for chapter in chapters:
-            # Search the knowledge graph for relevant context
-            search_results = await self._graphiti_service.search(
-                query=chapter["query"],
-                task_id=task_id,
-                limit=search_limit,
-                include_relationships=True,
-            )
+            # Special handling for timeline chapter: prioritize event clusters
+            if chapter["title"] == "时间线梳理":
+                # Use expanded query specifically for event clusters
+                enhanced_query = chapter["query"] + " 事件簇 时间窗口 cluster event_type"
+                search_results = await self._graphiti_service.search(
+                    query=enhanced_query,
+                    task_id=task_id,
+                    limit=search_limit * 2,  # Get more results for timeline
+                    include_relationships=True,
+                )
+            else:
+                # Standard search for other chapters
+                search_results = await self._graphiti_service.search(
+                    query=chapter["query"],
+                    task_id=task_id,
+                    limit=search_limit,
+                    include_relationships=True,
+                )
 
             # Build context from search results with dynamic truncation
             context_lines = []
