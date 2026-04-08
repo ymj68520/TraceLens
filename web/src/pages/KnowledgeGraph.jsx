@@ -129,26 +129,34 @@ export default function KnowledgeGraph() {
     useEffect(() => {
         if (!reingestJobId) return;
 
+        let isMounted = true;
+
         const pollStatus = async () => {
             try {
                 const status = await getJobStatus(reingestJobId);
+                if (!isMounted) return;
+
                 setReingestProgress(status.progress || 0);
                 setReingestMessage(status.current_phase || 'Processing...');
 
                 if (status.status === 'COMPLETED') {
+                    if (!isMounted) return;
                     setReingesting(false);
                     setReingestMessage('重新摄入完成！');
                     await fetchStatus();
                     await fetchTaskGraphs();
                     setGraphData({ nodes: [], links: [] }); // trigger reload
                 } else if (status.status === 'FAILED') {
+                    if (!isMounted) return;
                     setReingesting(false);
                     setError(`重新摄入失败: ${status.error || '未知错误'}`);
                 } else if (status.status === 'CANCELLED') {
+                    if (!isMounted) return;
                     setReingesting(false);
                     setReingestMessage('操作已取消');
                 }
             } catch (err) {
+                if (!isMounted) return;
                 setError('获取任务状态失败: ' + (err.message || '未知错误'));
             }
         };
@@ -157,8 +165,11 @@ export default function KnowledgeGraph() {
         const interval = setInterval(pollStatus, 2000);
         pollStatus(); // Initial call
 
-        return () => clearInterval(interval);
-    }, [reingestJobId]);
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
+    }, [reingestJobId, fetchStatus, fetchTaskGraphs]);
 
     // ── Graph visualization ──────────────────────────────────────────────────────
     const fetchGraphData = useCallback(async () => {
