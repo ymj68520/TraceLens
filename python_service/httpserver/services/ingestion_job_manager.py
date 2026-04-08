@@ -30,6 +30,7 @@ class IngestionMode(str, Enum):
     FILES_ONLY = "files_only"
     EVENTS_ONLY = "events_only"
     SINGLE_FILE = "single_file"
+    ANALYZED_ONLY = "analyzed_only"  # Only AI-analyzed files
 
 
 class JobStatus(str, Enum):
@@ -521,6 +522,8 @@ class IngestionJobManager:
             elif mode == IngestionMode.SINGLE_FILE:
                 file_id = queue_data.get("file_id")
                 await self._process_single_file(job_id, task_id, file_id)
+            elif mode == IngestionMode.ANALYZED_ONLY:
+                await self._process_analyzed_only(job_id, task_id)
 
             await self._update_job_status(job_id, JobStatus.COMPLETED, progress=100)
 
@@ -681,6 +684,108 @@ class IngestionJobManager:
             "completed",
             progress=100,
             result={"events_attached": attached}
+        )
+
+    async def _process_analyzed_only(self, job_id: str, task_id: str):
+        """Process only AI-analyzed files and event clusters."""
+        await self._update_job_status(job_id, JobStatus.RUNNING, "reading_databases", progress=5)
+
+        # 1. Get database paths
+        files_db = self._find_database(task_id, "files")
+        events_db = self._find_database(task_id, "events")
+
+        if not files_db:
+            raise FileNotFoundError(f"Files database not found for task {task_id}")
+
+        # 2. Check for AI-analyzed files
+        db = self._ForensicsDatabase(files_db)
+        stats = db.get_analysis_stats()
+        analyzed_count = stats.get("analyzed_files", 0)
+        total_files = stats.get("total_files", 0)
+
+        await self._update_job_status(
+            job_id, JobStatus.RUNNING, "checking_analyzed_files",
+            progress=10, result={"analyzed_files": analyzed_count, "total_files": total_files}
+        )
+
+        if analyzed_count == 0:
+            await self._update_job_status(
+                job_id, JobStatus.COMPLETED, "completed", progress=100,
+                result={"message": "No AI-analyzed files found", "files_processed": 0}
+            )
+            return
+
+        # 3. Process only files with existing LLM analysis
+        await self._update_job_status(job_id, JobStatus.RUNNING, "processing_files", progress=15)
+
+        # Use iter_files_batched with analyzed_only=True
+        all_files = []
+        for batch in db.iter_files_batched(batch_size=100, analyzed_only=True):
+            all_files.extend(batch)
+
+        file_result = await self._file_ingestor.batch_ensure_files(
+            all_files,
+            task_id,
+            progress_callback=lambda cur, total: asyncio.create_task(
+                self._update_job_status(
+                    job_id, JobStatus.RUNNING, "processing_files",
+                    progress=15 + int(55 * cur / total)
+                )
+            )
+        )
+
+        # 4. Process events for analyzed files
+        events_attached = 0
+        if events_db:
+            await self._update_job_status(job_id, JobStatus.RUNNING, "attaching_events", progress=70)
+
+            events_db_reader = self._EventsDatabase(events_db)
+            # Get events for analyzed files only
+            analyzed_paths = {f.path for f in all_files}
+            all_events = events_db_reader.get_events()
+            events = [e for e in all_events if e.file_path in analyzed_paths]
+
+            event_list = []
+            for e in events:
+                event_list.append((
+                    e.file_path,
+                    EventRecord(
+                        file_inode=e.inode,
+                        file_path=e.file_path,
+                        event_type=e.event_type,
+                        timestamp=e.timestamp,
+                        task_id=task_id
+                    )
+                ))
+
+            events_attached = await self._file_ingestor.attach_events_batch(event_list)
+            file_result.events_attached = events_attached
+
+        # 5. Create MENTIONED_IN edges from existing episodes
+        await self._update_job_status(job_id, JobStatus.RUNNING, "linking_entities", progress=85)
+
+        relation_result = await self._create_mentioned_in_edges(task_id, all_files)
+
+        # 6. Merge duplicate files
+        await self._update_job_status(job_id, JobStatus.RUNNING, "deduplicating_files", progress=90)
+
+        duplicates = await self._file_ingestor.merge_duplicate_files(task_id)
+        file_result.duplicates_merged = duplicates
+
+        # 7. Store final result
+        await self._update_job_status(
+            job_id,
+            JobStatus.RUNNING,
+            "finalizing",
+            progress=95,
+            result={
+                "files_created": file_result.files_created,
+                "files_updated": file_result.files_updated,
+                "events_attached": events_attached,
+                "entities_linked": relation_result.mentioned_in_edges_created,
+                "duplicates_merged": duplicates,
+                "analyzed_files_processed": len(all_files),
+            }
         )
 
     async def _process_single_file(self, job_id: str, task_id: str, file_id: int):
