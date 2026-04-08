@@ -35,7 +35,7 @@ All changes are extensions to existing files. The `ForensicsDatabase` class alre
 ## Task 1: Backend - Add ANALYZED_ONLY to IngestionMode Enum
 
 **Files:**
-- Modify: `python_service/httpserver/routes/graphiti.py:28-33`
+- Modify: `python_service/httpserver/routes/graphiti.py` (IngestionMode enum, ~line 28)
 
 - [ ] **Step 1: Add ANALYZED_ONLY to enum**
 
@@ -53,7 +53,7 @@ class IngestionMode(str, Enum):
 
 - [ ] **Step 2: Update endpoint docstring**
 
-Find the `ingest_data` function docstring (around line 174) and update it:
+Find the `ingest_data` function (search for `@router.post("/ingest"`) and update its docstring:
 
 ```python
 """
@@ -90,9 +90,17 @@ git commit -m "feat(graphiti): add ANALYZED_ONLY ingestion mode enum"
 **Files:**
 - Modify: `python_service/httpserver/services/ingestion_job_manager.py`
 
-- [ ] **Step 1: Add ANALYZED_ONLY to IngestionMode enum in service**
+- [ ] **Step 1: Verify imports**
 
-The service has its own enum. Add the new mode after line 32:
+First, verify that `EventRecord` is imported. Check line 20 - it should already be imported:
+```python
+from graphiti_integration.file_entity_ingestor import FileEntityIngestor, EventRecord, FileIngestionResult
+```
+If `EventRecord` is missing, add it to the import.
+
+- [ ] **Step 2: Add ANALYZED_ONLY to IngestionMode enum in service**
+
+Find the `IngestionMode` enum (around line 27) and add the new mode:
 
 ```python
 class IngestionMode(str, Enum):
@@ -104,9 +112,9 @@ class IngestionMode(str, Enum):
     ANALYZED_ONLY = "analyzed_only"  # NEW
 ```
 
-- [ ] **Step 2: Add _process_analyzed_only method**
+- [ ] **Step 3: Add _process_analyzed_only method**
 
-Add this method after `_process_events_only` (after line 684):
+Find the `_process_events_only` method (search for `async def _process_events_only`) and add the new method after it:
 
 ```python
 async def _process_analyzed_only(self, job_id: str, task_id: str):
@@ -212,9 +220,9 @@ async def _process_analyzed_only(self, job_id: str, task_id: str):
     )
 ```
 
-- [ ] **Step 3: Update _process_job to handle new mode**
+- [ ] **Step 4: Update _process_job to handle new mode**
 
-Find the `_process_job` method (around line 506) and add the case:
+Find the `_process_job` method (search for `async def _process_job`) and add the case for `ANALYZED_ONLY` in the mode handling:
 
 ```python
 async def _process_job(self, queue_data: dict):
@@ -265,7 +273,7 @@ git commit -m "feat(ingestion): implement _process_analyzed_only method"
 
 - [ ] **Step 1: Add getJobStatus function**
 
-Add after `deleteTaskGraph` function (around line 95):
+Find the `deleteTaskGraph` export function and add after it:
 
 ```javascript
 /**
@@ -297,7 +305,7 @@ export const reingestAnalyzedData = async (taskId) => {
 
 - [ ] **Step 3: Update default export**
 
-Update the default export to include new functions (around line 108):
+Find the `export default` object and add the new functions:
 
 ```javascript
 export default {
@@ -354,7 +362,7 @@ git commit -m "feat(frontend): add getJobStatus and reingestAnalyzedData service
 
 - [ ] **Step 1: Add state variables**
 
-Add after the existing ingest state (after line 68):
+Find the existing ingest state (`const [ingesting, setIngesting]`) and add the new state variables after it:
 
 ```javascript
 // Re-ingestion state (separate from regular ingestion)
@@ -366,7 +374,7 @@ const [reingestMessage, setReingestMessage] = useState('');
 
 - [ ] **Step 2: Add job polling effect**
 
-Add after the task reset effect (after line 118):
+Find the task reset effect (search for `// Reset when task changes`) and add the new effect after it:
 
 ```javascript
 // Poll re-ingestion job status
@@ -426,7 +434,7 @@ git commit -m "feat(frontend): add re-ingestion state and polling effect"
 
 - [ ] **Step 1: Add handleReingestAnalyzed function**
 
-Add after `handleDeleteGraph` function (after line 271):
+Find the `handleDeleteGraph` function (search for `const handleDeleteGraph`) and add the new handler after it:
 
 ```javascript
 const handleReingestAnalyzed = async () => {
@@ -458,7 +466,7 @@ const handleReingestAnalyzed = async () => {
 
 - [ ] **Step 2: Update handleIngest to disable when reingesting**
 
-Find the button in `renderStatus` that calls `handleIngest` (around line 328) and update:
+Find the `renderStatus` function (search for `const renderStatus`) and locate the button that calls `handleIngest`. Update its disabled prop:
 
 ```javascript
 <Button size="sm" onClick={handleIngest} disabled={!taskId || ingesting || reingesting}>
@@ -487,7 +495,7 @@ git commit -m "feat(frontend): add handleReingestAnalyzed handler"
 
 - [ ] **Step 1: Add renderManagementToolbar function**
 
-Add after `renderTaskSelector` function (after line 302):
+Find the `renderTaskSelector` function (search for `const renderTaskSelector`) and add the new function after it:
 
 ```javascript
 const renderManagementToolbar = () => (
@@ -529,7 +537,7 @@ const renderManagementToolbar = () => (
 
 - [ ] **Step 2: Add toolbar to render**
 
-Find the return statement (around line 704) and add the toolbar after `renderTaskSelector()`:
+Find the main return statement of the component (search for `return (` with `<div className="p-6">`) and add the toolbar call after `renderTaskSelector()`:
 
 ```javascript
 return (
@@ -760,7 +768,7 @@ async def test_analyzed_only_ingestion_end_to_end(test_database_with_analyzed_fi
 
 - [ ] **Step 2: Create test database fixture**
 
-Add to `python_service/tests/conftest.py`:
+Add to `python_service/tests/conftest.py` (or create if it doesn't exist):
 
 ```python
 @pytest.fixture
@@ -772,7 +780,7 @@ def test_database_with_analyzed_files(tmp_path):
     conn = sqlite3.connect(str(db_path))
     cursor = conn.cursor()
     
-    # Create files table
+    # Create files table with exact schema from production
     cursor.execute("""
         CREATE TABLE files (
             id INTEGER PRIMARY KEY,
@@ -795,30 +803,39 @@ def test_database_with_analyzed_files(tmp_path):
         )
     """)
     
-    # Insert analyzed files
-    for i in range(5):
-        cursor.execute("""
-            INSERT INTO files VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
-        """, (
-            i + 1, 12345 + i, f"analyzed_{i}.txt", f"/path/to/analyzed_{i}.txt",
-            1024, ".txt", "documents", "text", 1234567890, 1234567890,
-            0, "abc123", "Summary", "Description", "keywords",
-            1234567890, "gpt-4"
-        ))
+    # Insert analyzed files using named columns for clarity
+    analyzed_files_data = [
+        (i + 1, 12345 + i, f"analyzed_{i}.txt", f"/path/to/analyzed_{i}.txt",
+         1024, ".txt", "documents", "text", 1234567890, 1234567890,
+         0, "abc123", "Summary", "Description", "keywords", 1234567890, "gpt-4")
+        for i in range(5)
+    ]
+    
+    cursor.executemany("""
+        INSERT INTO files (
+            id, inode, name, path, size, extension, category, type,
+            mtime, ctime, is_deleted, md5,
+            llm_summary, llm_description, llm_keywords,
+            llm_analyzed_at, llm_model_used
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, analyzed_files_data)
     
     # Insert unanalyzed files
-    for i in range(10, 20):
-        cursor.execute("""
-            INSERT INTO files VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL
-            )
-        """, (
-            i, 12345 + i, f"unanalyzed_{i}.txt", f"/path/to/unanalyzed_{i}.txt",
-            1024, ".txt", "documents", "text", 1234567890, 1234567890,
-            0, "def456", NULL, NULL, NULL, NULL, NULL
-        ))
+    unanalyzed_files_data = [
+        (i, 12345 + i, f"unanalyzed_{i}.txt", f"/path/to/unanalyzed_{i}.txt",
+         1024, ".txt", "documents", "text", 1234567890, 1234567890,
+         0, "def456", None, None, None, None, None)
+        for i in range(10, 20)
+    ]
+    
+    cursor.executemany("""
+        INSERT INTO files (
+            id, inode, name, path, size, extension, category, type,
+            mtime, ctime, is_deleted, md5,
+            llm_summary, llm_description, llm_keywords,
+            llm_analyzed_at, llm_model_used
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, unanalyzed_files_data)
     
     conn.commit()
     conn.close()
