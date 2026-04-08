@@ -324,6 +324,32 @@ export default function KnowledgeGraph() {
         }
     };
 
+    const handleReingestAnalyzed = async () => {
+        if (!taskId) {
+            setError('请先选择一个任务');
+            return;
+        }
+
+        setReingesting(true);
+        setReingestJobId(null);
+        setReingestProgress(0);
+        setReingestMessage('正在准备重新摄入...');
+
+        try {
+            const result = await reingestAnalyzedData(taskId);
+            if (result.job_id) {
+                setReingestJobId(result.job_id);
+                setReingestMessage('已提交重新摄入任务');
+            } else {
+                setReingesting(false);
+                setError('未能提交重新摄入任务');
+            }
+        } catch (err) {
+            setError('提交重新摄入任务失败: ' + (err.message || '未知错误'));
+            setReingesting(false);
+        }
+    };
+
     const handleTaskChange = (newId) => setSearchParams({ task_id: newId });
 
     useEffect(() => {
@@ -379,7 +405,7 @@ export default function KnowledgeGraph() {
                         <div className="text-sm text-slate-500">关系</div>
                     </div>
                     <div className="flex gap-2">
-                        <Button size="sm" onClick={handleIngest} disabled={!taskId || ingesting}>
+                        <Button size="sm" onClick={handleIngest} disabled={!taskId || ingesting || reingesting}>
                             {ingesting ? <Spinner size="sm" /> : '导入数据'}
                         </Button>
                         {taskGraphs.includes(taskId) && (
