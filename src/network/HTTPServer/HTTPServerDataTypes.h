@@ -86,6 +86,7 @@ struct AnalysisTask {
     std::string llm_mode = "smart";     // "full" or "smart"
     std::string output_descriptions_db; // Database for LLM-generated descriptions
     std::string case_description;       // Case description for LLM analysis
+    std::string graphiti_job_id;        // Job ID for Graphiti knowledge graph ingestion
 
     // Make it copyable and movable by handling the atomic properly
     AnalysisTask() = default;
@@ -103,7 +104,8 @@ struct AnalysisTask {
           error_details(other.error_details), metadata(other.metadata),
           llm_analyze(other.llm_analyze), llm_mode(other.llm_mode),
           output_descriptions_db(other.output_descriptions_db),
-          case_description(other.case_description) {}
+          case_description(other.case_description),
+          graphiti_job_id(other.graphiti_job_id) {}
 
     AnalysisTask& operator=(const AnalysisTask& other) {
         if (this != &other) {
@@ -133,6 +135,7 @@ struct AnalysisTask {
             llm_mode = other.llm_mode;
             output_descriptions_db = other.output_descriptions_db;
             case_description = other.case_description;
+            graphiti_job_id = other.graphiti_job_id;
         }
         return *this;
     }
@@ -153,7 +156,8 @@ struct AnalysisTask {
           error_details(std::move(other.error_details)), metadata(std::move(other.metadata)),
           llm_analyze(other.llm_analyze), llm_mode(std::move(other.llm_mode)),
           output_descriptions_db(std::move(other.output_descriptions_db)),
-          case_description(std::move(other.case_description)) {}
+          case_description(std::move(other.case_description)),
+          graphiti_job_id(std::move(other.graphiti_job_id)) {}
 
     AnalysisTask& operator=(AnalysisTask&& other) noexcept {
         if (this != &other) {
@@ -183,6 +187,7 @@ struct AnalysisTask {
             llm_mode = std::move(other.llm_mode);
             output_descriptions_db = std::move(other.output_descriptions_db);
             case_description = std::move(other.case_description);
+            graphiti_job_id = std::move(other.graphiti_job_id);
         }
         return *this;
     }

@@ -475,7 +475,7 @@ class MultiSourcePipeline:
 
         readers = ForensicsDatabaseFactory.create_readers(discovered)
         file_transformer = TOONTransformer(
-            include_full_description=config.include_full_description
+            include_full_description=self.config.include_full_description
         )
         forensic_transformer = ForensicEpisodeTransformer()
 

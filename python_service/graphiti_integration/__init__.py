@@ -58,6 +58,11 @@ __all__ = [
     "run_pipeline",
     "MultiSourcePipeline",
     "run_multi_source_pipeline",
+    # File Entity Management
+    "FileEntityIngestor",
+    "EntityRelationBuilder",
+    # Migration
+    "MigrationManager",
     # Exceptions
     "GraphitiIntegrationError",
     "DatabaseError",
@@ -85,6 +90,15 @@ def __getattr__(name):
     elif name == "run_multi_source_pipeline":
         pipeline_mod = _get_graphiti_pipeline()
         return pipeline_mod[3]
+    elif name == "FileEntityIngestor":
+        from .file_entity_ingestor import FileEntityIngestor
+        return FileEntityIngestor
+    elif name == "EntityRelationBuilder":
+        from .entity_relation_builder import EntityRelationBuilder
+        return EntityRelationBuilder
+    elif name == "MigrationManager":
+        from .migration import MigrationManager
+        return MigrationManager
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

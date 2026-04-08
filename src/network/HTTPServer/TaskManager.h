@@ -24,6 +24,7 @@
 #include "AndroidAnalyzer/AndroidAnalyzer.h"
 #include "AuditLog/AuditLog.h"
 #include "LLMAnalysisService.h"
+#include "LLMPythonProxy.h"
 
 
 

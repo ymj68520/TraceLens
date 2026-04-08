@@ -9,6 +9,7 @@ Provides endpoints for task-specific knowledge graphs:
 
 import logging
 from datetime import datetime
+from enum import Enum
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
@@ -20,14 +21,62 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# ==============================================================================
+# Enums
+# ==============================================================================
+
+class IngestionMode(str, Enum):
+    """Ingestion operation modes."""
+    FULL = "full"
+    FILES_ONLY = "files_only"
+    EVENTS_ONLY = "events_only"
+    SINGLE_FILE = "single_file"
+
+
+# ==============================================================================
 # Request/Response Models
+# ==============================================================================
 
 class IngestRequest(BaseModel):
     """Request model for data ingestion."""
     task_id: str = Field(..., description="Task ID to ingest data from (also used as graph namespace)")
+    mode: IngestionMode = Field(default=IngestionMode.FULL, description="Ingestion mode")
     include_llm_descriptions: bool = Field(default=True, description="Include LLM-generated descriptions")
     batch_size: int = Field(default=50, ge=1, le=500, description="Batch size for processing")
     max_episodes: int = Field(default=100, ge=0, le=10000, description="Maximum episodes to process (0 = unlimited)")
+
+
+class FileIngestRequest(BaseModel):
+    """Request model for single file ingestion."""
+    file_id: int = Field(..., description="Database ID of the file")
+    task_id: str = Field(..., description="Task ID")
+    update_analysis: bool = Field(default=False, description="Force LLM re-analysis before ingest")
+
+
+class EventSyncRequest(BaseModel):
+    """Request model for event synchronization."""
+    task_id: str = Field(..., description="Task ID")
+    events: List[Dict[str, Any]] = Field(..., description="List of event dictionaries")
+
+
+class IngestionResponse(BaseModel):
+    """Response model for ingestion operation."""
+    job_id: str
+    status: str
+    message: str
+
+
+class JobStatusResponse(BaseModel):
+    """Response model for job status query."""
+    job_id: str
+    status: str
+    progress: int
+    current_phase: str
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    error: Optional[str] = None
+    result: Optional[Dict[str, Any]] = None
 
 
 class IngestResponse(BaseModel):
@@ -112,7 +161,7 @@ class TaskGraphsResponse(BaseModel):
 
 # Routes
 
-@router.post("/ingest", response_model=IngestResponse, responses={
+@router.post("/ingest", response_model=IngestionResponse, responses={
     200: {"description": "Ingestion started successfully"},
     404: {"description": "Task not found"},
     500: {"description": "Internal server error during ingestion"}
@@ -123,38 +172,479 @@ async def ingest_data(
     settings: Settings = Depends(get_settings),
 ):
     """
-    Ingest forensic data from a task into the task-specific knowledge graph.
-    
-    Each task gets its own isolated graph namespace using task_id as group_id.
+    Start Graphiti ingestion for a task.
+
+    Modes:
+    - full: Ingest files, events, and all platform data with File entities
+    - files_only: Update file entities only (skip events)
+    - events_only: Sync events to existing files
     """
     try:
         from ..services import get_service_manager
         service_manager = get_service_manager()
-        
+
         # Check if task exists via C++ backend
         task_exists = await service_manager.cpp_backend.check_task_exists(request.task_id)
         if not task_exists:
             raise HTTPException(status_code=404, detail=f"Task {request.task_id} not found")
-        
-        # Start background ingestion
-        job_id = await service_manager.graphiti_service.start_ingestion(
-            task_id=request.task_id,
-            include_llm_descriptions=request.include_llm_descriptions,
-            batch_size=request.batch_size,
-            max_episodes=request.max_episodes,
-        )
-        
-        return IngestResponse(
-            success=True,
-            task_id=request.task_id,
-            job_id=job_id,
-            message=f"Ingestion started for task {request.task_id}",
-            timestamp=datetime.now().isoformat(),
-        )
+
+        # Use new IngestionJobManager if available
+        if hasattr(service_manager, 'ingestion_job_manager') and service_manager.ingestion_job_manager:
+            job_id = await service_manager.ingestion_job_manager.queue_ingestion(
+                task_id=request.task_id,
+                mode=request.mode,
+            )
+            return IngestionResponse(
+                job_id=job_id,
+                status="PENDING",
+                message=f"Ingestion queued for task {request.task_id} (mode: {request.mode.value})"
+            )
+        else:
+            # Fallback to old GraphitiService
+            job_id = await service_manager.graphiti_service.start_ingestion(
+                task_id=request.task_id,
+                include_llm_descriptions=request.include_llm_descriptions,
+                batch_size=request.batch_size,
+                max_episodes=request.max_episodes,
+            )
+            return IngestionResponse(
+                job_id=job_id,
+                status="PENDING",
+                message=f"Ingestion started for task {request.task_id}"
+            )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Ingestion failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/ingest/file", response_model=IngestionResponse, responses={
+    200: {"description": "File ingestion queued successfully"},
+    404: {"description": "Task or file not found"},
+    500: {"description": "Internal server error"}
+})
+async def ingest_file(
+    request: FileIngestRequest,
+    background_tasks: BackgroundTasks,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Ingest or update a single file in the knowledge graph.
+
+    Use cases:
+    - New file analyzed: Create File entity + episode
+    - File re-analyzed: Update in-place with new LLM analysis
+    - Force re-analysis: Trigger LLM re-analysis before ingest
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+
+        # Check if task exists
+        task_exists = await service_manager.cpp_backend.check_task_exists(request.task_id)
+        if not task_exists:
+            raise HTTPException(status_code=404, detail=f"Task {request.task_id} not found")
+
+        # Optionally trigger LLM re-analysis
+        if request.update_analysis:
+            # This would call the LLM service to re-analyze the file
+            # For now, just log a warning
+            logger.info(f"LLM re-analysis requested for file {request.file_id}")
+
+        # Queue file ingestion
+        if hasattr(service_manager, 'ingestion_job_manager') and service_manager.ingestion_job_manager:
+            job_id = await service_manager.ingestion_job_manager.queue_file_update(
+                file_id=request.file_id,
+                task_id=request.task_id,
+            )
+            return IngestionResponse(
+                job_id=job_id,
+                status="PENDING",
+                message=f"File {request.file_id} ingest queued"
+            )
+        else:
+            raise HTTPException(
+                status_code=501,
+                detail="File ingestion not available (IngestionJobManager not initialized)"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"File ingestion failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/ingest/events", response_model=IngestionResponse, responses={
+    200: {"description": "Event sync queued successfully"},
+    404: {"description": "Task not found"},
+    500: {"description": "Internal server error"}
+})
+async def ingest_events(
+    request: EventSyncRequest,
+    background_tasks: BackgroundTasks,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Sync timeline events to File entities.
+
+    Events are attached to the events array property of File entities.
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+
+        # Check if task exists
+        task_exists = await service_manager.cpp_backend.check_task_exists(request.task_id)
+        if not task_exists:
+            raise HTTPException(status_code=404, detail=f"Task {request.task_id} not found")
+
+        # Queue event sync
+        if hasattr(service_manager, 'ingestion_job_manager') and service_manager.ingestion_job_manager:
+            job_id = await service_manager.ingestion_job_manager.queue_event_sync(
+                task_id=request.task_id,
+                events=request.events,
+            )
+            return IngestionResponse(
+                job_id=job_id,
+                status="PENDING",
+                message=f"{len(request.events)} events queued for sync"
+            )
+        else:
+            raise HTTPException(
+                status_code=501,
+                detail="Event sync not available (IngestionJobManager not initialized)"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Event sync failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/jobs/{job_id}", response_model=JobStatusResponse, responses={
+    200: {"description": "Job status retrieved successfully"},
+    404: {"description": "Job not found"},
+    500: {"description": "Internal server error"}
+})
+async def get_job_status(
+    job_id: str,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Query ingestion job status.
+
+    Poll this endpoint to track progress.
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+
+        # Try IngestionJobManager first
+        if hasattr(service_manager, 'ingestion_job_manager') and service_manager.ingestion_job_manager:
+            status = await service_manager.ingestion_job_manager.get_job_status(job_id)
+            if status:
+                return JobStatusResponse(**status)
+
+        # Fallback to old GraphitiService
+        status = await service_manager.graphiti_service.get_job_status(job_id)
+        if status:
+            return JobStatusResponse(
+                job_id=job_id,
+                status=status.get("status", "unknown"),
+                progress=int(status.get("progress", 0) * 100),
+                current_phase=status.get("current_phase", "unknown"),
+                created_at=status.get("created_at", ""),
+                started_at=status.get("started_at"),
+                completed_at=status.get("completed_at"),
+                error=status.get("error"),
+                result=status.get("result"),
+            )
+
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get job status failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/jobs/{job_id}", responses={
+    200: {"description": "Job cancelled successfully"},
+    404: {"description": "Job not found"},
+    400: {"description": "Job cannot be cancelled"},
+    500: {"description": "Internal server error"}
+})
+async def cancel_job(
+    job_id: str,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Cancel a running or pending ingestion job.
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+
+        # Try IngestionJobManager first
+        if hasattr(service_manager, 'ingestion_job_manager') and service_manager.ingestion_job_manager:
+            success = await service_manager.ingestion_job_manager.cancel_job(job_id)
+            if not success and job_id not in [j.get("job_id") for j in await service_manager.ingestion_job_manager.list_jobs()]:
+                raise HTTPException(status_code=404, detail="Job not found")
+            return {
+                "success": success,
+                "job_id": job_id,
+                "message": "Job cancelled" if success else "Job cannot be cancelled (already completed/failed)",
+                "timestamp": datetime.now().isoformat(),
+            }
+
+        # Fallback to old GraphitiService
+        cancelled = await service_manager.graphiti_service.cancel_job(job_id)
+        if not cancelled:
+            raise HTTPException(status_code=404, detail="Job not found or not running")
+
+        return {
+            "success": True,
+            "job_id": job_id,
+            "message": "Job cancelled",
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Cancel job failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/jobs", responses={
+    200: {"description": "Jobs listed successfully"},
+    500: {"description": "Internal server error"}
+})
+async def list_jobs(
+    task_id: Optional[str] = Query(None, description="Filter by task ID"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    limit: int = Query(50, ge=1, le=500, description="Maximum number of jobs to return"),
+    settings: Settings = Depends(get_settings),
+):
+    """
+    List ingestion jobs with optional filtering.
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+
+        # Try IngestionJobManager first
+        if hasattr(service_manager, 'ingestion_job_manager') and service_manager.ingestion_job_manager:
+            jobs = await service_manager.ingestion_job_manager.list_jobs(
+                task_id=task_id,
+                status=status,
+                limit=limit,
+            )
+            return {
+                "success": True,
+                "jobs": jobs,
+                "count": len(jobs),
+                "timestamp": datetime.now().isoformat(),
+            }
+
+        # Fallback: return empty list
+        return {
+            "success": True,
+            "jobs": [],
+            "count": 0,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"List jobs failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==============================================================================
+# Migration Endpoints
+# ==============================================================================
+
+@router.post("/migrate/task/{task_id}", responses={
+    200: {"description": "Migration started/completed successfully"},
+    404: {"description": "Task not found"},
+    500: {"description": "Internal server error"}
+})
+async def migrate_task(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Migrate a task from old to new Graphiti structure.
+
+    Extracts file metadata from existing Episodic nodes and creates
+    corresponding File entities with relationships.
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+
+        # Check if task exists
+        task_exists = await service_manager.cpp_backend.check_task_exists(task_id)
+        if not task_exists:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+        # Check if migration manager is available
+        if not hasattr(service_manager, 'migration_manager') or not service_manager.migration_manager:
+            raise HTTPException(
+                status_code=501,
+                detail="Migration not available (MigrationManager not initialized)"
+            )
+
+        # Run migration
+        result = await service_manager.migration_manager.migrate_task(task_id)
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "files_migrated": result.files_migrated,
+            "episodes_linked": result.episodes_linked,
+            "entities_linked": result.entities_linked,
+            "events_attached": result.events_attached,
+            "errors": result.errors,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Migration failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/migrate/deduplicate", responses={
+    200: {"description": "Deduplication completed successfully"},
+    500: {"description": "Internal server error"}
+})
+async def deduplicate_all(
+    background_tasks: BackgroundTasks,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Deduplicate files by MD5 across all tasks.
+
+    Finds files with identical MD5 and creates SAME_CONTENT_AS edges.
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+
+        if not hasattr(service_manager, 'migration_manager') or not service_manager.migration_manager:
+            raise HTTPException(
+                status_code=501,
+                detail="Deduplication not available (MigrationManager not initialized)"
+            )
+
+        result = await service_manager.migration_manager.deduplicate_by_md5()
+
+        return {
+            "success": True,
+            "md5_groups_found": result.md5_groups_found,
+            "edges_created": result.edges_created,
+            "files_processed": result.files_processed,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Deduplication failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/migrate/status/{task_id}", responses={
+    200: {"description": "Migration status retrieved successfully"},
+    404: {"description": "Task not found"},
+    500: {"description": "Internal server error"}
+})
+async def get_migration_status(
+    task_id: str,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Check migration status for a task.
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+
+        if not hasattr(service_manager, 'migration_manager') or not service_manager.migration_manager:
+            raise HTTPException(
+                status_code=501,
+                detail="Migration status not available (MigrationManager not initialized)"
+            )
+
+        is_migrated = await service_manager.migration_manager.is_migrated(task_id)
+        detailed_status = await service_manager.migration_manager.get_migration_status(task_id)
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "is_migrated": is_migrated,
+            "status": detailed_status,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get migration status failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/migrate/cleanup/{task_id}", responses={
+    200: {"description": "Cleanup completed successfully"},
+    400: {"description": "Confirmation required"},
+    404: {"description": "Task not found"},
+    500: {"description": "Internal server error"}
+})
+async def cleanup_task(
+    task_id: str,
+    confirm: bool = Query(False, description="Must be true to proceed with cleanup"),
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Cleanup old structure after migration.
+
+    WARNING: This is irreversible! Only run after confirming migration success.
+    """
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+
+        if not confirm:
+            raise HTTPException(
+                status_code=400,
+                detail="Must set confirm=true to proceed with cleanup. This operation is irreversible!"
+            )
+
+        if not hasattr(service_manager, 'migration_manager') or not service_manager.migration_manager:
+            raise HTTPException(
+                status_code=501,
+                detail="Cleanup not available (MigrationManager not initialized)"
+            )
+
+        result = await service_manager.migration_manager.cleanup_old_structure(task_id)
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "episodes_cleaned": result.episodes_cleaned,
+            "properties_removed": result.properties_removed,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Cleanup failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -404,36 +894,4 @@ async def get_graph_data(
         }
     except Exception as e:
         logger.error(f"Get graph data failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/jobs/{job_id}/cancel", responses={
-    200: {"description": "Job cancelled successfully"},
-    404: {"description": "Job not found"},
-    500: {"description": "Internal server error"}
-})
-async def cancel_ingestion_job(
-    job_id: str,
-    settings: Settings = Depends(get_settings),
-):
-    """
-    Cancel a running ingestion job.
-
-    Note: This marks the job as cancelled. The background task will
-    complete its current batch and then stop.
-    """
-    try:
-        from ..services import get_service_manager
-        service_manager = get_service_manager()
-
-        cancelled = await service_manager.graphiti_service.cancel_job(job_id)
-
-        return {
-            "success": cancelled,
-            "job_id": job_id,
-            "message": "Job cancelled" if cancelled else "Job not found or not running",
-            "timestamp": datetime.now().isoformat(),
-        }
-    except Exception as e:
-        logger.error(f"Cancel job failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

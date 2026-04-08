@@ -297,7 +297,7 @@ bool TaskManager::delete_task(const std::string& id) {
     }
 
     // Attempt to delete Graphiti data in Neo4j via Python API
-    forensics::LLMPythonProxy proxy("http://localhost:8090");
+    auto& proxy = forensics::LLMPythonProxy::instance();
     proxy.deleteGraphitiData(id);
 
     // If task was not running, we can safely delete its files now.
@@ -726,6 +726,33 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 } else {
                     std::cerr << "Warning: Failed to initialize Android analyzer" << std::endl;
                 }
+            }
+
+            // 7. Graphiti Knowledge Graph Ingestion (Async, Fire-and-Forget)
+            if (is_task_cancelled(task_id)) { return; }
+            update_progress(task_id, TaskPhase::FINALIZING, 10, "Triggering knowledge graph ingestion...");
+
+            // Trigger Graphiti ingestion in the background (non-blocking)
+            // This will create File entities, link episodes, and build entity relationships
+            try {
+                auto& proxy = forensics::LLMPythonProxy::instance();
+                std::string graphiti_job_id = proxy.async_ingest(task_id, forensics::IngestionMode::FULL);
+
+                if (!graphiti_job_id.empty()) {
+                    add_audit_log(task_id, "GRAPHITI_INGESTION",
+                        "Triggered Graphiti knowledge graph ingestion (job_id: " + graphiti_job_id + ")");
+
+                    // Store the Graphiti job ID for potential status tracking
+                    task.graphiti_job_id = graphiti_job_id;
+                    save_tasks_internal();
+                } else {
+                    std::cerr << "Warning: Failed to trigger Graphiti ingestion for task " << task_id << std::endl;
+                    add_audit_log(task_id, "WARNING", "Failed to trigger Graphiti ingestion");
+                }
+            } catch (const std::exception& e) {
+                // Don't fail the entire task if Graphiti ingestion fails
+                std::cerr << "Warning: Exception triggering Graphiti ingestion: " << e.what() << std::endl;
+                add_audit_log(task_id, "WARNING", "Graphiti ingestion failed: " + std::string(e.what()));
             }
 
             // Finalization
