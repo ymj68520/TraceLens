@@ -69,6 +69,12 @@ export default function KnowledgeGraph() {
     const [ingestProgress, setIngestProgress] = useState(0);
     const [ingestMessage, setIngestMessage] = useState('');
 
+    // Re-ingestion state (separate from regular ingestion)
+    const [reingesting, setReingesting] = useState(false);
+    const [reingestJobId, setReingestJobId] = useState(null);
+    const [reingestProgress, setReingestProgress] = useState(0);
+    const [reingestMessage, setReingestMessage] = useState('');
+
     // Graph visualization
     const [graphData, setGraphData] = useState({ nodes: [], links: [] });
     const [graphLoading, setGraphLoading] = useState(false);
@@ -118,6 +124,41 @@ export default function KnowledgeGraph() {
         setSelectedNode(null);
         if (taskId) fetchStatus();
     }, [taskId, fetchStatus]);
+
+    // Poll re-ingestion job status
+    useEffect(() => {
+        if (!reingestJobId) return;
+
+        const pollStatus = async () => {
+            try {
+                const status = await getJobStatus(reingestJobId);
+                setReingestProgress(status.progress || 0);
+                setReingestMessage(status.current_phase || 'Processing...');
+
+                if (status.status === 'COMPLETED') {
+                    setReingesting(false);
+                    setReingestMessage('重新摄入完成！');
+                    await fetchStatus();
+                    await fetchTaskGraphs();
+                    setGraphData({ nodes: [], links: [] }); // trigger reload
+                } else if (status.status === 'FAILED') {
+                    setReingesting(false);
+                    setError(`重新摄入失败: ${status.error || '未知错误'}`);
+                } else if (status.status === 'CANCELLED') {
+                    setReingesting(false);
+                    setReingestMessage('操作已取消');
+                }
+            } catch (err) {
+                setError('获取任务状态失败: ' + (err.message || '未知错误'));
+            }
+        };
+
+        // Poll every 2 seconds
+        const interval = setInterval(pollStatus, 2000);
+        pollStatus(); // Initial call
+
+        return () => clearInterval(interval);
+    }, [reingestJobId]);
 
     // ── Graph visualization ──────────────────────────────────────────────────────
     const fetchGraphData = useCallback(async () => {
