@@ -31,6 +31,7 @@ class IngestionMode(str, Enum):
     FILES_ONLY = "files_only"
     EVENTS_ONLY = "events_only"
     SINGLE_FILE = "single_file"
+    ANALYZED_ONLY = "analyzed_only"
 
 
 # ==============================================================================
@@ -178,6 +179,11 @@ async def ingest_data(
     - full: Ingest files, events, and all platform data with File entities
     - files_only: Update file entities only (skip events)
     - events_only: Sync events to existing files
+    - analyzed_only: Re-ingest only AI-analyzed files and event clusters (NEW)
+        - Only processes files with llm_analyzed_at IS NOT NULL
+        - Attaches events only for analyzed files
+        - Creates MENTIONED_IN edges from existing episodes
+        - Does NOT re-run LLM analysis
     """
     try:
         from ..services import get_service_manager
