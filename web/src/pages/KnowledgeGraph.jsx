@@ -381,6 +381,42 @@ export default function KnowledgeGraph() {
         </Card>
     );
 
+    const renderManagementToolbar = () => (
+        <Card className="mb-4">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h3 className="font-medium text-slate-900 dark:text-white">
+                        🔧 图谱管理工具栏
+                    </h3>
+                    <p className="text-sm text-slate-500">
+                        仅重新摄入包含AI分析结果的文件和事件簇
+                    </p>
+                </div>
+                <Button onClick={handleReingestAnalyzed} disabled={!taskId || reingesting || ingesting}>
+                    {reingesting ? <Spinner size="sm" /> : '📥 重新摄入已分析数据'}
+                </Button>
+            </div>
+            {/* Progress indicator for re-ingestion */}
+            {reingesting && reingestProgress > 0 && reingestProgress < 100 && (
+                <div className="mt-4">
+                    <div className="flex justify-between text-sm mb-1">
+                        <span className="text-slate-600 dark:text-slate-300">{reingestMessage}</span>
+                        <span className="text-purple-600">{reingestProgress}%</span>
+                    </div>
+                    <div className="w-full bg-slate-200 dark:bg-gray-600 rounded-full h-2">
+                        <div className="bg-purple-600 h-2 rounded-full transition-all"
+                             style={{ width: `${reingestProgress}%` }} />
+                    </div>
+                </div>
+            )}
+            {reingesting && reingestProgress === 100 && reingestMessage && (
+                <div className="mt-4 p-3 bg-purple-50 dark:bg-purple-900/20 text-purple-800 dark:text-purple-200 rounded">
+                    ✅ {reingestMessage}
+                </div>
+            )}
+        </Card>
+    );
+
     const renderStatus = () => (
         <Card className="mb-6">
             <div className="flex items-center justify-between">
@@ -805,6 +841,7 @@ export default function KnowledgeGraph() {
             )}
 
             {renderTaskSelector()}
+            {taskId && renderManagementToolbar()}
             {taskId && renderStatus()}
             {taskId && renderTabs()}
 
