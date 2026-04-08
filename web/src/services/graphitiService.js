@@ -95,6 +95,26 @@ export const deleteTaskGraph = async (taskId) => {
 };
 
 /**
+ * 获取导入任务状态
+ * @param {string} jobId - 任务 ID
+ */
+export const getJobStatus = async (jobId) => {
+    return await pythonApi.get(`/api/graphiti/jobs/${jobId}`);
+};
+
+/**
+ * 重新摄入已分析的文件和事件簇
+ * @param {string} taskId - 任务 ID
+ */
+export const reingestAnalyzedData = async (taskId) => {
+    const payload = {
+        task_id: taskId,
+        mode: 'analyzed_only',
+    };
+    return await pythonApi.post('/api/graphiti/ingest', payload);
+};
+
+/**
  * 获取图谱可视化数据 (节点 + 关系)
  * @param {string} taskId - 任务 ID
  * @param {number} maxNodes - 最多返回节点数量
@@ -113,5 +133,7 @@ export default {
     getGraphitiStatus,
     listTaskGraphs,
     deleteTaskGraph,
+    getJobStatus,
+    reingestAnalyzedData,
     getGraphData,
 };
