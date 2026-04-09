@@ -36,6 +36,14 @@ struct OSSObjectInfo {
     std::string md5Hash;            ///< 本地计算的MD5（如果下载了文件）
     bool isDeleted = false;         ///< 是否在版本控制中被标记删除
     std::string versionId;          ///< 版本ID（如果启用了版本控制）
+
+    // LLM分析相关字段
+    std::string llmSummary;         ///< LLM生成的简要摘要
+    std::string llmDescription;     ///< LLM生成的详细描述
+    std::string llmKeywords;        ///< LLM提取的关键字（逗号分隔）
+    int64_t llmAnalyzedAt = 0;      ///< LLM分析时间（Unix时间戳）
+    std::string llmModelUsed;       ///< 使用的LLM模型名称
+    int llmIsRelevant = 1;          ///< LLM相关性标记（1=相关，0=不相关）
 };
 
 /**

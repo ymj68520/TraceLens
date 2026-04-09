@@ -121,31 +121,46 @@ OSSObjectInfo OSSAnalysisDatabase::parseObjectRow(sqlite3_stmt* stmt) {
     obj.bucket = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
     obj.key = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
     obj.size = sqlite3_column_int64(stmt, 3);
-    
+
     const char* etag = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
     if (etag) obj.etag = etag;
-    
+
     obj.lastModified = sqlite3_column_int64(stmt, 5);
-    
+
     const char* storageClass = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
     if (storageClass) obj.storageClass = storageClass;
-    
+
     const char* contentType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7));
     if (contentType) obj.contentType = contentType;
-    
+
     const char* owner = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8));
     if (owner) obj.owner = owner;
-    
+
     const char* versionId = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10));
     if (versionId) obj.versionId = versionId;
-    
+
     obj.isDeleted = sqlite3_column_int(stmt, 11) != 0;
-    
+
     const char* md5 = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
     if (md5) obj.md5Hash = md5;
-    
+
     obj.analyzedAt = sqlite3_column_int64(stmt, 13);
-    
+
+    // Parse LLM analysis fields (columns 14-18)
+    const char* llmSummary = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 14));
+    if (llmSummary) obj.llmSummary = llmSummary;
+
+    const char* llmDescription = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 15));
+    if (llmDescription) obj.llmDescription = llmDescription;
+
+    const char* llmKeywords = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 16));
+    if (llmKeywords) obj.llmKeywords = llmKeywords;
+
+    obj.llmAnalyzedAt = sqlite3_column_int64(stmt, 17);
+
+    const char* llmModelUsed = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 18));
+    if (llmModelUsed) obj.llmModelUsed = llmModelUsed;
+
     return obj;
 }
 
@@ -209,6 +224,115 @@ std::vector<OSSObjectInfo> OSSAnalysisDatabase::getObjectsByExtension(const std:
     }
     
     return results;
+}
+
+// ========== LLM分析操作 ==========
+
+bool OSSAnalysisDatabase::updateLLMAnalysis(
+    int64_t objectId,
+    const std::string& summary,
+    const std::string& description,
+    const std::string& keywords,
+    int64_t analyzedAt,
+    const std::string& modelUsed,
+    int isRelevant
+) {
+    sqlite3_stmt* stmt = nullptr;
+
+    if (sqlite3_prepare_v2(db_, SQL::OSS::UPDATE_OSS_OBJECT_LLM_ANALYSIS, -1, &stmt, nullptr) != SQLITE_OK) {
+        LOG_ERROR("Failed to prepare update LLM analysis statement");
+        return false;
+    }
+
+    sqlite3_bind_text(stmt, 1, summary.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, description.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, keywords.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 4, analyzedAt);
+    sqlite3_bind_text(stmt, 5, modelUsed.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 6, isRelevant);
+    sqlite3_bind_int64(stmt, 7, objectId);
+
+    bool result = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::vector<OSSObjectInfo> OSSAnalysisDatabase::getObjectsForFiltering(
+    int limit,
+    const std::string& bucket
+) {
+    std::vector<OSSObjectInfo> objects;
+    sqlite3_stmt* stmt = nullptr;
+
+    std::string sql = SQL::OSS::SELECT_OSS_OBJECTS_FOR_FILTERING;
+    if (!bucket.empty()) {
+        sql = "SELECT id, bucket, key, size, last_modified, content_type, storage_class "
+              "FROM oss_objects WHERE bucket = ? AND llm_analyzed_at IS NULL "
+              "ORDER BY last_modified DESC LIMIT ?";
+    }
+
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        if (!bucket.empty()) {
+            sqlite3_bind_text(stmt, 1, bucket.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int(stmt, 2, limit);
+        } else {
+            sqlite3_bind_int(stmt, 1, limit);
+        }
+
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            objects.push_back(parseObjectRow(stmt));
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    return objects;
+}
+
+std::vector<OSSObjectInfo> OSSAnalysisDatabase::getObjectsByIds(
+    const std::vector<int64_t>& objectIds
+) {
+    std::vector<OSSObjectInfo> objects;
+    if (objectIds.empty()) return objects;
+
+    // Build IN clause
+    std::string inClause;
+    for (size_t i = 0; i < objectIds.size(); ++i) {
+        inClause += "?";
+        if (i < objectIds.size() - 1) inClause += ",";
+    }
+
+    std::string sql = "SELECT id, bucket, key, size, last_modified, storage_class, content_type, "
+                      "etag, owner, version_id, is_deleted, md5_hash, analyzed_at, "
+                      "llm_summary, llm_description, llm_keywords, llm_analyzed_at, llm_model_used "
+                      "FROM oss_objects WHERE id IN (" + inClause + ") ORDER BY last_modified DESC";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        for (size_t i = 0; i < objectIds.size(); ++i) {
+            sqlite3_bind_int64(stmt, static_cast<int>(i + 1), objectIds[i]);
+        }
+
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            objects.push_back(parseObjectRow(stmt));
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    return objects;
+}
+
+std::vector<OSSObjectInfo> OSSAnalysisDatabase::getAnalyzedObjects() {
+    std::vector<OSSObjectInfo> objects;
+    sqlite3_stmt* stmt = nullptr;
+
+    if (sqlite3_prepare_v2(db_, SQL::OSS::SELECT_OSS_ANALYZED_OBJECTS, -1, &stmt, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            objects.push_back(parseObjectRow(stmt));
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    return objects;
 }
 
 // ========== 访问日志操作 ==========
