@@ -74,6 +74,7 @@ export default function KnowledgeGraph() {
     const [reingestJobId, setReingestJobId] = useState(null);
     const [reingestProgress, setReingestProgress] = useState(0);
     const [reingestMessage, setReingestMessage] = useState('');
+    const [reingestError, setReingestError] = useState(null);
 
     // Graph visualization
     const [graphData, setGraphData] = useState({ nodes: [], links: [] });
@@ -122,6 +123,7 @@ export default function KnowledgeGraph() {
         setRelationshipsPage(1);
         setGraphData({ nodes: [], links: [] });
         setSelectedNode(null);
+        setReingestError(null);
         if (taskId) fetchStatus();
     }, [taskId, fetchStatus]);
 
@@ -149,7 +151,9 @@ export default function KnowledgeGraph() {
                 } else if (status.status === 'FAILED') {
                     if (!isMounted) return;
                     setReingesting(false);
-                    setError(`重新摄入失败: ${status.error || '未知错误'}`);
+                    setReingestProgress(0);
+                    setReingestMessage('');
+                    setReingestError(`重新摄入失败: ${status.error || '未知错误'}`);
                 } else if (status.status === 'CANCELLED') {
                     if (!isMounted) return;
                     setReingesting(false);
@@ -157,7 +161,10 @@ export default function KnowledgeGraph() {
                 }
             } catch (err) {
                 if (!isMounted) return;
-                setError('获取任务状态失败: ' + (err.message || '未知错误'));
+                setReingesting(false);
+                setReingestProgress(0);
+                setReingestMessage('');
+                setReingestError('获取任务状态失败: ' + (err.message || '未知错误'));
             }
         };
 
@@ -345,8 +352,10 @@ export default function KnowledgeGraph() {
                 setError('未能提交重新摄入任务');
             }
         } catch (err) {
-            setError('提交重新摄入任务失败: ' + (err.message || '未知错误'));
+            setReingestError('提交重新摄入任务失败: ' + (err.message || '未知错误'));
             setReingesting(false);
+            setReingestProgress(0);
+            setReingestMessage('');
         }
     };
 
@@ -396,6 +405,21 @@ export default function KnowledgeGraph() {
                     {reingesting ? <Spinner size="sm" /> : '📥 重新摄入已分析数据'}
                 </Button>
             </div>
+            {/* Error display for re-ingestion */}
+            {reingestError && (
+                <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 rounded flex items-start justify-between">
+                    <div className="flex items-start gap-2">
+                        <span className="text-lg">❌</span>
+                        <span className="text-sm">{reingestError}</span>
+                    </div>
+                    <button
+                        onClick={() => setReingestError(null)}
+                        className="text-red-600 dark:text-red-400 hover:underline text-sm"
+                    >
+                        关闭
+                    </button>
+                </div>
+            )}
             {/* Progress indicator for re-ingestion */}
             {reingesting && reingestProgress > 0 && reingestProgress < 100 && (
                 <div className="mt-4">
