@@ -52,6 +52,67 @@ OSSAnalysisRoutes::OSSAnalysisRoutes(crow::App<>& app) : task_manager_(TaskManag
         {{"job_id", "query", "Analysis job ID", true}},
         {{200, "Job status"}, {404, "Job not found"}}
     );
+
+    // AI Analysis Routes
+    CROW_ROUTE(app, "/api/forensics/oss/ai/filter").methods("POST"_method, "OPTIONS"_method)([this](const crow::request& req) {
+        if (req.method == "OPTIONS"_method) {
+            crow::response res;
+            RouteHelpers::add_cors_headers(res);
+            res.code = 204;
+            return res;
+        }
+        return handle_ai_filter_start(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/oss/ai/filter", "POST",
+        "Start AI filtering of OSS objects",
+        "Filter OSS objects using AI to identify relevant files.",
+        {"Forensics", "OSS", "AI"},
+        {},
+        {{202, "Filter job started"}, {400, "Invalid request"}, {501, "Not implemented"}}
+    );
+
+    CROW_ROUTE(app, "/api/forensics/oss/ai/analyze").methods("POST"_method, "OPTIONS"_method)([this](const crow::request& req) {
+        if (req.method == "OPTIONS"_method) {
+            crow::response res;
+            RouteHelpers::add_cors_headers(res);
+            res.code = 204;
+            return res;
+        }
+        return handle_ai_analyze_start(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/oss/ai/analyze", "POST",
+        "Start AI analysis of OSS objects",
+        "Analyze OSS objects using AI to extract insights.",
+        {"Forensics", "OSS", "AI"},
+        {},
+        {{202, "Analysis job started"}, {400, "Invalid request"}, {501, "Not implemented"}}
+    );
+
+    CROW_ROUTE(app, "/api/forensics/oss/download").methods("POST"_method)([this](const crow::request& req) {
+        return handle_download_object(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/oss/download", "POST",
+        "Download OSS object",
+        "Download an object from OSS storage for analysis.",
+        {"Forensics", "OSS"},
+        {},
+        {{200, "Download started"}, {400, "Invalid request"}, {501, "Not implemented"}}
+    );
+
+    CROW_ROUTE(app, "/api/forensics/oss/ai/status").methods("GET"_method)([this](const crow::request& req) {
+        return handle_ai_analysis_status(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/oss/ai/status", "GET",
+        "Get AI analysis status",
+        "Check the status of an AI analysis job.",
+        {"Forensics", "OSS", "AI"},
+        {{"job_id", "query", "Analysis job ID", true}},
+        {{200, "Job status"}, {404, "Job not found"}, {501, "Not implemented"}}
+    );
 }
 
 crow::response OSSAnalysisRoutes::handle_analyze_start(const crow::request& req) {
@@ -165,6 +226,66 @@ void OSSAnalysisRoutes::run_analysis_job(const std::string& job_id, const std::s
 
     std::lock_guard<std::mutex> lock(jobs_mutex_);
     // Job completed - in a real implementation, this would update status
+}
+
+crow::response OSSAnalysisRoutes::handle_ai_filter_start(const crow::request& req) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+    res.set_header("Content-Type", "application/json");
+
+    json response;
+    response["success"] = false;
+    response["error"] = "AI filter endpoint requires Python service integration";
+    response["message"] = "This endpoint will be implemented when connecting to Python LLM service";
+    res.code = 501;
+    res.write(response.dump());
+
+    return res;
+}
+
+crow::response OSSAnalysisRoutes::handle_ai_analyze_start(const crow::request& req) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+    res.set_header("Content-Type", "application/json");
+
+    json response;
+    response["success"] = false;
+    response["error"] = "AI analysis endpoint requires Python service integration";
+    response["message"] = "This endpoint will be implemented when connecting to Python LLM service";
+    res.code = 501;
+    res.write(response.dump());
+
+    return res;
+}
+
+crow::response OSSAnalysisRoutes::handle_download_object(const crow::request& req) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+    res.set_header("Content-Type", "application/json");
+
+    json response;
+    response["success"] = false;
+    response["error"] = "OSS download endpoint not yet implemented";
+    response["message"] = "This will be implemented with OSSClient downloadObject() method";
+    res.code = 501;
+    res.write(response.dump());
+
+    return res;
+}
+
+crow::response OSSAnalysisRoutes::handle_ai_analysis_status(const crow::request& req) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+    res.set_header("Content-Type", "application/json");
+
+    json response;
+    response["success"] = false;
+    response["error"] = "AI status endpoint not yet implemented";
+    response["message"] = "Job tracking will be implemented with Python service integration";
+    res.code = 501;
+    res.write(response.dump());
+
+    return res;
 }
 
 } // namespace forensics
