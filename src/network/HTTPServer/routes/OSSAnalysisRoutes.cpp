@@ -66,10 +66,10 @@ OSSAnalysisRoutes::OSSAnalysisRoutes(crow::App<>& app) : task_manager_(TaskManag
     Swagger::instance().RegisterEndpoint(
         "/api/forensics/oss/ai/filter", "POST",
         "Start AI filtering of OSS objects",
-        "Filter OSS objects using AI to identify relevant files.",
+        "Filter OSS objects using AI to identify relevant files. Requires Python service.",
         {"Forensics", "OSS", "AI"},
         {},
-        {{202, "Filter job started"}, {400, "Invalid request"}, {501, "Not implemented"}}
+        {{202, "Filter job started"}, {400, "Invalid request"}, {503, "Python service unavailable"}}
     );
 
     CROW_ROUTE(app, "/api/forensics/oss/ai/analyze").methods("POST"_method, "OPTIONS"_method)([this](const crow::request& req) {
@@ -84,10 +84,10 @@ OSSAnalysisRoutes::OSSAnalysisRoutes(crow::App<>& app) : task_manager_(TaskManag
     Swagger::instance().RegisterEndpoint(
         "/api/forensics/oss/ai/analyze", "POST",
         "Start AI analysis of OSS objects",
-        "Analyze OSS objects using AI to extract insights.",
+        "Analyze OSS objects using AI to extract insights. Requires Python service.",
         {"Forensics", "OSS", "AI"},
         {},
-        {{202, "Analysis job started"}, {400, "Invalid request"}, {501, "Not implemented"}}
+        {{202, "Analysis job started"}, {400, "Invalid request"}, {503, "Python service unavailable"}}
     );
 
     CROW_ROUTE(app, "/api/forensics/oss/download").methods("POST"_method)([this](const crow::request& req) {
@@ -96,7 +96,7 @@ OSSAnalysisRoutes::OSSAnalysisRoutes(crow::App<>& app) : task_manager_(TaskManag
     Swagger::instance().RegisterEndpoint(
         "/api/forensics/oss/download", "POST",
         "Download OSS object",
-        "Download an object from OSS storage for analysis.",
+        "Download an object from OSS storage for analysis. Requires OSSClient integration.",
         {"Forensics", "OSS"},
         {},
         {{200, "Download started"}, {400, "Invalid request"}, {501, "Not implemented"}}
@@ -108,10 +108,10 @@ OSSAnalysisRoutes::OSSAnalysisRoutes(crow::App<>& app) : task_manager_(TaskManag
     Swagger::instance().RegisterEndpoint(
         "/api/forensics/oss/ai/status", "GET",
         "Get AI analysis status",
-        "Check the status of an AI analysis job.",
+        "Check the status of an AI analysis job. Requires Python service.",
         {"Forensics", "OSS", "AI"},
         {{"job_id", "query", "Analysis job ID", true}},
-        {{200, "Job status"}, {404, "Job not found"}, {501, "Not implemented"}}
+        {{200, "Job status"}, {404, "Job not found"}, {503, "Python service unavailable"}}
     );
 }
 
@@ -229,60 +229,90 @@ void OSSAnalysisRoutes::run_analysis_job(const std::string& job_id, const std::s
 }
 
 crow::response OSSAnalysisRoutes::handle_ai_filter_start(const crow::request& req) {
+    // TODO: Integrate with Python service /api/forensics/oss/ai/filter
+    // This will forward to OSSFilterService.filter_oss_objects()
+    // See: python_service/httpserver/routes/oss_analysis.py
+    // Implementation Plan: Tasks 8-11 (Python Service Implementation)
+
     crow::response res;
     RouteHelpers::add_cors_headers(res);
     res.set_header("Content-Type", "application/json");
 
     json response;
     response["success"] = false;
-    response["error"] = "AI filter endpoint requires Python service integration";
-    response["message"] = "This endpoint will be implemented when connecting to Python LLM service";
-    res.code = 501;
+    response["error"] = "Python LLM service not available";
+    response["message"] = "AI filtering requires Python service integration (see Tasks 8-11 in implementation plan)";
+    res.code = 503;  // Service Unavailable - Python service not yet integrated
     res.write(response.dump());
 
     return res;
 }
 
 crow::response OSSAnalysisRoutes::handle_ai_analyze_start(const crow::request& req) {
+    // TODO: Integrate with Python service /api/forensics/oss/ai/analyze
+    // This will forward to OSSAnalysisService.analyze_oss_objects()
+    // See: python_service/httpserver/routes/oss_analysis.py
+    // Implementation Plan: Tasks 8-11 (Python Service Implementation)
+
     crow::response res;
     RouteHelpers::add_cors_headers(res);
     res.set_header("Content-Type", "application/json");
 
     json response;
     response["success"] = false;
-    response["error"] = "AI analysis endpoint requires Python service integration";
-    response["message"] = "This endpoint will be implemented when connecting to Python LLM service";
-    res.code = 501;
+    response["error"] = "Python LLM service not available";
+    response["message"] = "AI analysis requires Python service integration (see Tasks 8-11 in implementation plan)";
+    res.code = 503;  // Service Unavailable - Python service not yet integrated
     res.write(response.dump());
 
     return res;
 }
 
 crow::response OSSAnalysisRoutes::handle_download_object(const crow::request& req) {
+    // TODO: Implement OSS object download functionality
+    // This will use OSSClient.downloadObject() method
+    // Implementation Plan: Task 6 (C++ Backend - Download Endpoint)
+    //
+    // Expected flow:
+    // 1. Validate request contains bucket_name and object_key
+    // 2. Call oss_client_->downloadObject()
+    // 3. Store downloaded file in analysis workspace
+    // 4. Return file path and metadata to client
+
     crow::response res;
     RouteHelpers::add_cors_headers(res);
     res.set_header("Content-Type", "application/json");
 
     json response;
     response["success"] = false;
-    response["error"] = "OSS download endpoint not yet implemented";
-    response["message"] = "This will be implemented with OSSClient downloadObject() method";
-    res.code = 501;
+    response["error"] = "OSS download not yet implemented";
+    response["message"] = "Download functionality requires OSSClient integration (see Task 6 in implementation plan)";
+    res.code = 501;  // Not Implemented - C++ feature pending
     res.write(response.dump());
 
     return res;
 }
 
 crow::response OSSAnalysisRoutes::handle_ai_analysis_status(const crow::request& req) {
+    // TODO: Integrate with Python service /api/forensics/oss/ai/status
+    // This will query Python service job status and return aggregated results
+    // See: python_service/httpserver/routes/oss_analysis.py
+    // Implementation Plan: Tasks 8-11 (Python Service Implementation)
+    //
+    // Expected flow:
+    // 1. Validate job_id parameter
+    // 2. Query Python service for job status
+    // 3. Return job progress, results, and status
+
     crow::response res;
     RouteHelpers::add_cors_headers(res);
     res.set_header("Content-Type", "application/json");
 
     json response;
     response["success"] = false;
-    response["error"] = "AI status endpoint not yet implemented";
-    response["message"] = "Job tracking will be implemented with Python service integration";
-    res.code = 501;
+    response["error"] = "Python LLM service not available";
+    response["message"] = "AI status tracking requires Python service integration (see Tasks 8-11 in implementation plan)";
+    res.code = 503;  // Service Unavailable - Python service not yet integrated
     res.write(response.dump());
 
     return res;
