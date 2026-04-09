@@ -122,7 +122,56 @@ public:
      * @return 日志条目列表
      */
     std::vector<OSSAccessLogEntry> getAccessLogsByObject(const std::string& objectKey);
-    
+
+    // ========== LLM Analysis ==========
+
+    /**
+     * @brief Update LLM analysis results for an object
+     * @param objectId Object ID
+     * @param summary Brief summary
+     * @param description Full description
+     * @param keywords Comma-separated keywords
+     * @param analyzedAt Analysis timestamp
+     * @param modelUsed Model name
+     * @param isRelevant Relevance flag
+     * @return Success
+     */
+    bool updateLLMAnalysis(
+        int64_t objectId,
+        const std::string& summary,
+        const std::string& description,
+        const std::string& keywords,
+        int64_t analyzedAt,
+        const std::string& modelUsed,
+        int isRelevant = 1
+    );
+
+    /**
+     * @brief Get objects pending filtering (no LLM analysis yet)
+     * @param limit Maximum objects to return
+     * @param bucket Optional bucket filter
+     * @return List of objects
+     */
+    std::vector<OSSObjectInfo> getObjectsForFiltering(
+        int limit = 1000,
+        const std::string& bucket = ""
+    );
+
+    /**
+     * @brief Get objects by IDs for analysis
+     * @param objectIds Vector of object IDs
+     * @return List of objects
+     */
+    std::vector<OSSObjectInfo> getObjectsByIds(
+        const std::vector<int64_t>& objectIds
+    );
+
+    /**
+     * @brief Get analyzed objects for Graphiti ingestion
+     * @return List of analyzed objects
+     */
+    std::vector<OSSObjectInfo> getAnalyzedObjects();
+
     // ========== Bucket操作 ==========
     
     /**
