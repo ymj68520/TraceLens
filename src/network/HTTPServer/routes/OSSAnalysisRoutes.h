@@ -26,6 +26,31 @@ private:
 
     crow::response handle_analyze_start(const crow::request& req);
     crow::response handle_analyze_status(const crow::request& req);
+
+    /**
+     * @brief Start AI filtering of OSS objects
+     * POST /api/forensics/oss/ai/filter
+     */
+    crow::response handle_ai_filter_start(const crow::request& req);
+
+    /**
+     * @brief Start AI analysis of OSS objects
+     * POST /api/forensics/oss/ai/analyze
+     */
+    crow::response handle_ai_analyze_start(const crow::request& req);
+
+    /**
+     * @brief Download OSS object for analysis
+     * POST /api/forensics/oss/download
+     */
+    crow::response handle_download_object(const crow::request& req);
+
+    /**
+     * @brief Get AI analysis status
+     * GET /api/forensics/oss/ai/status
+     */
+    crow::response handle_ai_analysis_status(const crow::request& req);
+
     void run_analysis_job(const std::string& job_id, const std::string& task_id);
 };
 
