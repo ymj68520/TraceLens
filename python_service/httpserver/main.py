@@ -180,7 +180,7 @@ def _register_routes(app: FastAPI):
     app.include_router(associations.router, prefix="/api/associations", tags=["Associations"])
     app.include_router(database.router, prefix="/api/db", tags=["Database"])
     app.include_router(office.router, prefix="/api/office", tags=["Office"])
-    app.include_router(oss_analysis.router, prefix="/api/oss", tags=["OSS Analysis"])
+    app.include_router(oss_analysis.router, tags=["OSS Analysis"])
     app.include_router(system.router, prefix="/api/system", tags=["System"])
 
 
