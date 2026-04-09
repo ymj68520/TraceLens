@@ -165,6 +165,42 @@ constexpr const char* SELECT_ALL_BUCKETS = R"(
 )";
 
 // ============================================================================
+// LLM分析查询语句
+// ============================================================================
+
+constexpr const char* UPDATE_OSS_OBJECT_LLM_ANALYSIS = R"(
+    UPDATE oss_objects SET
+        llm_summary = ?,
+        llm_description = ?,
+        llm_keywords = ?,
+        llm_analyzed_at = ?,
+        llm_model_used = ?,
+        llm_is_relevant = ?
+    WHERE id = ?
+)";
+
+constexpr const char* SELECT_OSS_OBJECTS_FOR_FILTERING = R"(
+    SELECT id, bucket, key, size, last_modified, content_type, storage_class
+    FROM oss_objects
+    WHERE llm_analyzed_at IS NULL
+    ORDER BY last_modified DESC
+    LIMIT ?
+)";
+
+constexpr const char* SELECT_OSS_OBJECTS_BY_IDS = R"(
+    SELECT id, bucket, key, size, content_type, storage_class
+    FROM oss_objects
+    WHERE id IN ({})
+    ORDER BY last_modified DESC
+)";
+
+constexpr const char* SELECT_OSS_ANALYZED_OBJECTS = R"(
+    SELECT * FROM oss_objects
+    WHERE llm_analyzed_at IS NOT NULL AND llm_analyzed_at > 0
+    ORDER BY llm_analyzed_at DESC
+)";
+
+// ============================================================================
 // 统计语句
 // ============================================================================
 
