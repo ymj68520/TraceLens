@@ -48,9 +48,20 @@ static int64_t parseOssDateTime(const std::string& dt) {
 class OSSClient::Impl {
 public:
     std::unique_ptr<AlibabaCloud::OSS::OssClient> client;
-    
+
     Impl() = default;
     ~Impl() = default;
+
+    /**
+     * @brief 下载对象到本地文件
+     */
+    bool downloadObject(
+        AlibabaCloud::OSS::OssClient* client,
+        const std::string& bucketName,
+        const std::string& objectKey,
+        const std::string& localPath,
+        ProgressCallback progressCallback
+    );
 };
 
 OSSClient::OSSClient() : impl_(std::make_unique<Impl>()) {
@@ -374,35 +385,20 @@ bool OSSClient::downloadObject(
         setError("Client not initialized");
         return false;
     }
-    
-    try {
-        GetObjectRequest request(bucketName, objectKey);
-        request.setResponseStreamFactory([&localPath]() {
-            return std::make_shared<std::fstream>(localPath, 
-                std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
-        });
-        
-        if (progressCallback) {
-            AlibabaCloud::OSS::TransferProgress tp;
-            tp.Handler = [&progressCallback](size_t /*increment*/, int64_t transferred, int64_t total, void* /*userData*/) {
-                progressCallback(transferred, total);
-            };
-            request.setTransferProgress(tp);
-        }
-        
-        auto outcome = impl_->client->GetObject(request);
-        
-        if (!outcome.isSuccess()) {
-            setError("Failed to download object: " + outcome.error().Message());
-            return false;
-        }
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        setError("Failed to download object: " + std::string(e.what()));
-        return false;
+
+    bool result = impl_->downloadObject(
+        impl_->client.get(),
+        bucketName,
+        objectKey,
+        localPath,
+        progressCallback
+    );
+
+    if (!result) {
+        setError("Failed to download object: " + bucketName + "/" + objectKey);
     }
+
+    return result;
 }
 
 bool OSSClient::getObjectContent(
@@ -475,6 +471,56 @@ std::vector<OSSObjectInfo> OSSClient::listAccessLogFiles(
     // 简单实现：仅按前缀列出文件
     // 实际可以根据时间戳筛选
     return listObjects(loggingBucket, loggingPrefix, "", 1000);
+}
+
+bool OSSClient::Impl::downloadObject(
+    AlibabaCloud::OSS::OssClient* client,
+    const std::string& bucketName,
+    const std::string& objectKey,
+    const std::string& localPath,
+    ProgressCallback progressCallback
+) {
+    try {
+        // 创建父目录（如果不存在）
+        size_t lastSlash = localPath.find_last_of('/');
+        if (lastSlash != std::string::npos) {
+            std::string dirPath = localPath.substr(0, lastSlash);
+            std::string mkdirCmd = "mkdir -p \"" + dirPath + "\"";
+            int result = system(mkdirCmd.c_str());
+            if (result != 0) {
+                // 目录创建失败，但文件操作可能仍然成功（例如目录已存在）
+                // 继续执行下载操作
+            }
+        }
+
+        // 创建GetObjectRequest
+        AlibabaCloud::OSS::GetObjectRequest request(bucketName, objectKey);
+        request.setResponseStreamFactory([localPath]() {
+            return std::make_shared<std::fstream>(localPath,
+                std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
+        });
+
+        // 设置进度回调
+        if (progressCallback) {
+            AlibabaCloud::OSS::TransferProgress tp;
+            tp.Handler = [progressCallback](size_t /*increment*/, int64_t transferred, int64_t total, void* /*userData*/) {
+                progressCallback(transferred, total);
+            };
+            request.setTransferProgress(tp);
+        }
+
+        // 执行下载
+        auto outcome = client->GetObject(request);
+
+        if (!outcome.isSuccess()) {
+            return false;
+        }
+
+        return true;
+
+    } catch (const std::exception& e) {
+        return false;
+    }
 }
 
 void OSSClient::setError(const std::string& error) {
