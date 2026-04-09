@@ -87,9 +87,9 @@ Python HTTP 服务运行在端口 **8090**，提供知识图谱、LLM 分析和�
 ```json
 {
   "task_id": "task_abc123",
+  "mode": "full",
   "include_llm_descriptions": true,
-  "batch_size": 50,
-  "dry_run": false
+  "batch_size": 50
 }
 ```
 
@@ -98,9 +98,32 @@ Python HTTP 服务运行在端口 **8090**，提供知识图谱、LLM 分析和�
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `task_id` | string | ✅ | - | 任务 ID |
-| `include_llm_descriptions` | boolean | ❌ | false | 是否包含 LLM 描述 |
-| `batch_size` | integer | ❌ | 50 | 批处理大小 |
-| `dry_run` | boolean | ❌ | false | 试运行模式（不实际摄取） |
+| `mode` | string | ❌ | full | 摄取模式：`full`, `files_only`, `events_only`, `analyzed_only` |
+| `include_llm_descriptions` | boolean | ❌ | true | 是否包含 LLM 描述 |
+| `batch_size` | integer | ❌ | 50 | 批处理大小（1-500） |
+
+**摄取模式说明**：
+
+- **`full`**: 完整摄取模式
+  - 摄取所有文件、事件和平台数据
+  - 包含 Android、Windows、Linux 专项分析结果
+  - 适用于首次摄取或全面更新
+
+- **`files_only`**: 仅更新文件实体
+  - 仅更新文件实体信息
+  - 不处理事件和关系
+  - 适用于文件元数据变更后的快速同步
+
+- **`events_only`**: 同步事件到现有文件
+  - 将事件附加到已存在的文件实体
+  - 不创建新文件实体
+  - 适用于事件数据的增量更新
+
+- **`analyzed_only`**: **新增** - 仅重新摄取 AI 分析文件和事件集群
+  - 仅处理 `llm_analyzed_at IS NOT NULL` 的文件
+  - 仅为已分析文件附加事件
+  - 不会重新运行 LLM 分析
+  - 适用于 AI 分析完成后更新知识图谱
 
 **响应**：
 ```json
@@ -785,5 +808,5 @@ database.db | /evidence/database.db | databases | 5242880 | SQLite 数据库 | �
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-04-09
 **维护者**: ymj68520
