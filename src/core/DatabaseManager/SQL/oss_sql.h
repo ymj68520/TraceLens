@@ -29,6 +29,12 @@ constexpr const char* CREATE_OBJECTS_TABLE = R"(
         is_deleted INTEGER DEFAULT 0,
         md5_hash TEXT,
         analyzed_at INTEGER,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT,
+        llm_is_relevant INTEGER DEFAULT 1,
         UNIQUE(bucket, key, version_id)
     );
 )";
