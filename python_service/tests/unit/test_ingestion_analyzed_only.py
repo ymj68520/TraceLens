@@ -257,12 +257,12 @@ async def test_process_analyzed_only_with_analyzed_files(
         job_manager._file_ingestor.attach_events_batch.return_value = 2
         job_manager._file_ingestor.merge_duplicate_files.return_value = 1
 
-        # Mock entity builder
+        # Mock _create_mentioned_in_edges
         relation_result = RelationBuildResult(
             mentioned_in_edges_created=2,
             relationships_built=0,
         )
-        job_manager._entity_builder.batch_create_mentioned_in_edges.return_value = relation_result
+        job_manager._create_mentioned_in_edges = AsyncMock(return_value=relation_result)
 
         # Mock _update_job_status to track calls
         job_manager._update_job_status = AsyncMock()
@@ -300,6 +300,9 @@ async def test_process_analyzed_only_with_analyzed_files(
 
     # Verify merge_duplicate_files was called
     job_manager._file_ingestor.merge_duplicate_files.assert_called_once_with(task_id)
+
+    # Verify _create_mentioned_in_edges was called
+    job_manager._create_mentioned_in_edges.assert_called_once_with(task_id, sample_file_records)
 
     # Verify progress updates at expected milestones
     status_calls = job_manager._update_job_status.call_args_list
@@ -388,7 +391,7 @@ async def test_process_analyzed_only_database_not_found(job_manager):
     Verifies:
     - _find_database() returns None
     - FileNotFoundError is raised with correct message
-    - Job is marked as FAILED
+    - Initial status update was called before the error
     """
     job_id = "test_job_123"
     task_id = "test_task_456"
@@ -414,7 +417,10 @@ async def test_process_analyzed_only_database_not_found(job_manager):
     job_manager._ForensicsDatabase.assert_not_called()
 
     # Verify initial status update was called before the error
-    job_manager._update_job_status.assert_called()
+    job_manager._update_job_status.assert_called_once()
+    # Verify the status was RUNNING (not FAILED - FAILED is set by caller)
+    status_call = job_manager._update_job_status.call_args_list[0]
+    assert status_call[0][1] == JobStatus.RUNNING
 
 
 # =============================================================================
