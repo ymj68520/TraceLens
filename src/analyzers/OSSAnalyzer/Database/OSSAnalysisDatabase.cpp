@@ -146,7 +146,7 @@ OSSObjectInfo OSSAnalysisDatabase::parseObjectRow(sqlite3_stmt* stmt) {
 
     obj.analyzedAt = sqlite3_column_int64(stmt, 13);
 
-    // Parse LLM analysis fields (columns 14-18)
+    // Parse LLM analysis fields (columns 14-19)
     const char* llmSummary = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 14));
     if (llmSummary) obj.llmSummary = llmSummary;
 
@@ -160,6 +160,8 @@ OSSObjectInfo OSSAnalysisDatabase::parseObjectRow(sqlite3_stmt* stmt) {
 
     const char* llmModelUsed = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 18));
     if (llmModelUsed) obj.llmModelUsed = llmModelUsed;
+
+    obj.llmIsRelevant = sqlite3_column_int(stmt, 19);
 
     return obj;
 }
