@@ -14,6 +14,7 @@
 
 #include <chrono>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -480,16 +481,24 @@ bool OSSClient::Impl::downloadObject(
     const std::string& localPath,
     ProgressCallback progressCallback
 ) {
+    // Null pointer check
+    if (client == nullptr) {
+        LOG_ERROR("OSS client is null in downloadObject");
+        return false;
+    }
+
     try {
-        // 创建父目录（如果不存在）
+        // 创建父目录（如果不存在）- 使用安全的 std::filesystem 方法
         size_t lastSlash = localPath.find_last_of('/');
         if (lastSlash != std::string::npos) {
             std::string dirPath = localPath.substr(0, lastSlash);
-            std::string mkdirCmd = "mkdir -p \"" + dirPath + "\"";
-            int result = system(mkdirCmd.c_str());
-            if (result != 0) {
+            try {
+                std::filesystem::create_directories(dirPath);
+            } catch (const std::filesystem::filesystem_error& e) {
                 // 目录创建失败，但文件操作可能仍然成功（例如目录已存在）
-                // 继续执行下载操作
+                // 记录警告但继续执行
+                LOG_WARNING("Failed to create directory " + dirPath + ": " + e.what() +
+                           ", continuing with download attempt");
             }
         }
 
@@ -513,12 +522,16 @@ bool OSSClient::Impl::downloadObject(
         auto outcome = client->GetObject(request);
 
         if (!outcome.isSuccess()) {
+            LOG_ERROR("Failed to download object " + bucketName + "/" + objectKey +
+                     ": " + outcome.error().Message());
             return false;
         }
 
         return true;
 
     } catch (const std::exception& e) {
+        LOG_ERROR("Exception in downloadObject for " + bucketName + "/" + objectKey +
+                 ": " + std::string(e.what()));
         return false;
     }
 }
