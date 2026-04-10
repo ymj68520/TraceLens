@@ -268,6 +268,207 @@ LinuxFilesAnalyzer是取证分析流程中的第三阶段模块(在ImageAnalyzer
   - 钓鱼网站访问历史
   - 恶意扩展检测(浏览器劫持、注入脚本)
 
+### 8. 容器取证分析
+
+#### 8.1 Docker容器分析(`analyzeDockerContainers`)
+- **数据源**: `/var/lib/docker/containers/*/config.json`
+- **解析内容**:
+  - 容器ID、镜像名称和标签
+  - 容器状态(running/exited/paused/dead)
+  - 创建时间和启动命令
+  - 挂载点、端口映射、网络模式
+  - 主机配置(HostConfig)
+- **数据库表**: `linux_docker_containers`
+- **应用场景**:
+  - 容器逃逸检测(特权容器、挂载敏感目录)
+  - 恶意容器识别(异常镜像、可疑命令)
+  - 容器网络分析(桥接网络、端口暴露)
+
+#### 8.2 Docker镜像分析(`analyzeDockerImages`)
+- **数据源**: `/var/lib/docker/image/overlay2/layerdb/`
+- **解析内容**:
+  - 镜像ID、标签列表
+  - 镜像大小、创建时间
+  - 存储驱动层信息
+- **数据库表**: `linux_docker_images`
+- **应用场景**:
+  - 镜像供应链攻击分析
+  - 未授权镜像检测
+
+#### 8.3 Docker卷分析(`analyzeDockerVolumes`)
+- **数据源**: `/var/lib/docker/volumes/*/metadata.json`
+- **解析内容**:
+  - 卷名称、挂载点路径
+  - 存储驱动类型
+  - 创建时间、关联容器
+- **数据库表**: `linux_docker_volumes`
+- **应用场景**:
+  - 数据持久化分析
+  - 敏感数据泄露检测(容器卷挂载)
+
+#### 8.4 Podman容器分析(`analyzePodmanContainers`)
+- **数据源**:
+  - 系统容器: `/var/lib/containers/storage/overlay-containers/`
+  - 用户(rootless)容器: `~/.local/share/containers/storage/overlay-containers/`
+- **解析内容**:
+  - 容器ID、镜像名称
+  - Pod名称(如果属于Pod)
+  - Rootless标识、容器状态
+- **数据库表**: `linux_podman_containers`
+- **应用场景**:
+  - 无根容器逃逸检测
+  - Pod管理分析
+
+#### 8.5 Podman Pod分析(`analyzePodmanContainers`)
+- **数据源**: `/var/lib/containers/storage/overlay-pods/`
+- **解析内容**:
+  - Pod名称、Pod ID
+  - 包含的容器列表
+  - Pod状态、创建时间
+- **数据库表**: `linux_podman_pods`
+- **应用场景**:
+  - Pod间通信分析
+  - 共享资源命名空间分析
+
+### 9. Web服务器取证分析
+
+#### 9.1 Apache访问日志分析(`analyzeApacheServers`)
+- **数据源**:
+  - `/var/log/apache2/access.log*` (Debian系)
+  - `/var/log/httpd/access_log*` (RedHat系)
+- **支持的格式**:
+  - Apache Combined Log Format
+  - Apache Common Log Format
+- **解析内容**:
+  - 时间戳、客户端IP
+  - HTTP方法、请求URL、HTTP版本
+  - 状态码、响应大小
+  - Referer、User-Agent
+  - 虚拟主机名(VHost)
+- **数据库表**: `linux_apache_access_logs`, `linux_apache_vhosts`
+- **应用场景**:
+  - Web攻击检测(SQL注入、XSS、路径遍历)
+  - 暴力破解识别(密集的401/403状态)
+  - 扫描活动识别(漏洞扫描器特征)
+  - 数据外泄检测(异常大响应)
+
+#### 9.2 Nginx访问日志分析(`analyzeNginxServers`)
+- **数据源**: `/var/log/nginx/access.log*`
+- **支持的格式**:
+  - Nginx默认格式
+  - 自定义格式(需配置)
+- **解析内容**:
+  - 时间戳、客户端IP
+  - HTTP方法、请求URL
+  - 状态码、响应大小、请求耗时
+  - Referer、User-Agent
+  - Upstream服务器地址
+- **数据库表**: `linux_nginx_access_logs`, `linux_nginx_server_blocks`
+- **应用场景**:
+  - 反向代理攻击分析
+  - Upstream异常检测
+  - 性能异常识别(请求耗时分析)
+
+### 10. 安全态势评估
+
+#### 10.1 Setuid/Setgid文件分析(`analyzeSetuidFiles`)
+- **数据源**: `find / -perm -4000 -o -perm -2000`
+- **解析内容**:
+  - 文件路径、所有者、组
+  - 权限位(setuid/setgid)
+  - 文件大小、哈希值(MD5/SHA256)
+  - 可疑性标识(临时目录、非root所有者)
+- **数据库表**: `linux_setuid_files`
+- **应用场景**:
+  - 权限提升后门检测(隐藏的setuid二进制)
+  - 已知Good对比(官方包哈希验证)
+  - 可疑文件识别(/tmp、/dev/shm中的setuid)
+
+#### 10.2 Linux文件能力分析(`analyzeCapabilities`)
+- **数据源**: `getcap -r /`
+- **解析内容**:
+  - 文件路径、能力列表
+  - 能力集(permitted/inheritable/effective)
+  - 危险能力标识(CAP_SETUID、CAP_SYS_ADMIN等)
+- **数据库表**: `linux_capabilities`
+- **应用场景**:
+  - 细粒度权限提升检测
+  - 容器逃逸能力识别
+  - 最小权限违规检测
+
+#### 10.3 SELinux状态分析(`analyzeSELinux`)
+- **数据源**:
+  - `/etc/selinux/config` (配置)
+  - `/var/log/audit/audit.log` (AVC拒绝)
+- **解析内容**:
+  - SELinux启用状态、模式(Enforcing/Permissive/Disabled)
+  - 策略名称、当前模式
+  - AVC拒绝记录(源上下文、目标上下文、对象类、权限)
+- **数据库表**: `linux_selinux_status`, `linux_selinux_avc_denials`
+- **应用场景**:
+  - SELinux绕过检测
+  - 策略违规分析
+  - 强制访问控制取证
+
+#### 10.4 AppArmor分析(`analyzeAppArmor`)
+- **数据源**:
+  - `/etc/apparmor.d/*` (配置文件)
+  - `/var/log/syslog`或`/var/log/audit/audit.log` (违规记录)
+- **解析内容**:
+  - 配置文件名称、模式(enforce/complain)
+  - 允许路径、拒绝路径
+  - 违规记录(配置、操作、目标路径、可执行文件)
+- **数据库表**: `linux_apparmor_profiles`, `linux_apparmor_violations`
+- **应用场景**:
+  - AppArmor绕过检测
+  - 配置文件滥用识别
+  - 违规模式分析
+
+### 11. 高级分析能力
+
+#### 11.1 日志关联分析(`correlateEvents`)
+- **功能**: 跨多个日志源关联事件
+- **关联规则**:
+  - 登录后命令执行(登录→Shell命令)
+  - 网络连接与进程(网络→Shell)
+  - 认证失败与登录(多次失败→成功)
+- **输出**: `linux_correlated_events`
+- **应用场景**:
+  - 攻击链重建
+  - 多阶段攻击识别
+
+#### 11.2 时间线重建(`reconstructTimeline`)
+- **功能**: 合并所有事件到统一时间线
+- **数据源**: 系统日志、认证记录、Shell历史、网络连接
+- **分析能力**:
+  - 事件按时间排序合并
+  - 去重(相同时间戳和描述)
+  - 时间间隔分析(可疑空窗期检测)
+- **输出**: `linux_timeline_events`, `linux_timeline_gaps`
+- **应用场景**:
+  - 完整攻击时间线
+  - 日志篡改检测(可疑空窗期)
+  - 证据序列重建
+
+#### 11.3 异常检测(`detectAnomalies`)
+- **检测类型**:
+  - **暴力破解**: 5+失败/用户、10+失败/IP
+  - **权限提升**: sudo/su后访问敏感文件
+  - **数据外泄**: tar/zip/ssh到异常路径
+  - **持久化机制**: 新增cron、systemd服务
+  - **异常登录时间**: 2-5AM登录
+  - **可疑进程**: base64、eval、wget、隐藏文件操作
+- **严重级别**:
+  - 4: Severe (权限提升、数据外泄)
+  - 3: High (暴力破解、可疑进程)
+  - 2: Medium (异常登录时间)
+  - 1: Low (信息性)
+- **输出**: `linux_anomalies`
+- **应用场景**:
+  - 自动化威胁检测
+  - 优先级排序(高严重性优先)
+  - 证据归纳总结
+
 ## 业务流程/使用场景
 
 ### 场景1: Linux服务器入侵溯源调查
@@ -933,6 +1134,13 @@ with open('timeline.json', 'w') as f:
 
 ## 版本历史
 
+- **v2.0.0** (2025-04-10): 容器与云取证能力增强
+  - 新增: Docker容器/镜像/卷分析
+  - 新增: Podman容器和Pod分析
+  - 新增: Apache/Nginx Web服务器日志解析
+  - 新增: 安全态势评估(setuid/capabilities/SELinux/AppArmor)
+  - 新增: 高级分析能力(日志关联、时间线重建、异常检测)
+  - 优化: 11阶段分析流程,支持完整攻击链重建
 - **v1.2.0** (2025-01-15): 新增浏览器数据提取、Systemd服务分析
 - **v1.1.0** (2024-12-01): 添加Auditd日志解析、内核模块检测
 - **v1.0.0** (2024-10-01): 初始版本,支持基础日志和用户分析
