@@ -52,7 +52,32 @@ enum class ErrorCode {
     SYSTEM_MEMORY_ERROR = 500,
     SYSTEM_THREAD_ERROR = 501,
     SYSTEM_INITIALIZATION_FAILED = 502,
-    
+
+    // Container-specific errors (1000-1999)
+    DOCKER_DIR_NOT_FOUND = 1001,
+    DOCKER_CONFIG_PARSE_FAILED = 1002,
+    PODMAN_DIR_NOT_FOUND = 1003,
+    DOCKER_INVALID_JSON = 1004,
+
+    // Web server-specific errors (2000-2999)
+    APACHE_LOG_PARSE_FAILED = 2001,
+    NGINX_LOG_PARSE_FAILED = 2002,
+    VHOST_CONFIG_INVALID = 2003,
+    LOG_FILE_NOT_FOUND = 2004,
+
+    // Security analysis errors (3000-3999)
+    SETUID_SCAN_FAILED = 3001,
+    CAPABILITY_PARSE_FAILED = 3002,
+    SELINUX_NOT_ENABLED = 3003,
+    APPARMOR_NOT_ENABLED = 3004,
+    PERMISSION_DENIED = 3005,
+
+    // Enhanced analysis errors (4000-4999)
+    CORRELATION_ENGINE_FAILED = 4001,
+    TIMELINE_RECONSTRUCTION_FAILED = 4002,
+    ANOMALY_DETECTION_FAILED = 4003,
+    INSUFFICIENT_DATA = 4004,
+
     // Unknown/other errors
     UNKNOWN_ERROR = 999
 };
@@ -124,7 +149,49 @@ inline std::string getErrorMessage(ErrorCode code) {
             return "Thread error";
         case ErrorCode::SYSTEM_INITIALIZATION_FAILED:
             return "System initialization failed";
-        
+
+        // Container-specific errors
+        case ErrorCode::DOCKER_DIR_NOT_FOUND:
+            return "Docker directory not found";
+        case ErrorCode::DOCKER_CONFIG_PARSE_FAILED:
+            return "Failed to parse Docker configuration";
+        case ErrorCode::PODMAN_DIR_NOT_FOUND:
+            return "Podman directory not found";
+        case ErrorCode::DOCKER_INVALID_JSON:
+            return "Invalid JSON in Docker configuration";
+
+        // Web server-specific errors
+        case ErrorCode::APACHE_LOG_PARSE_FAILED:
+            return "Failed to parse Apache log file";
+        case ErrorCode::NGINX_LOG_PARSE_FAILED:
+            return "Failed to parse Nginx log file";
+        case ErrorCode::VHOST_CONFIG_INVALID:
+            return "Invalid virtual host configuration";
+        case ErrorCode::LOG_FILE_NOT_FOUND:
+            return "Log file not found";
+
+        // Security analysis errors
+        case ErrorCode::SETUID_SCAN_FAILED:
+            return "Failed to scan for setuid files";
+        case ErrorCode::CAPABILITY_PARSE_FAILED:
+            return "Failed to parse file capabilities";
+        case ErrorCode::SELINUX_NOT_ENABLED:
+            return "SELinux is not enabled";
+        case ErrorCode::APPARMOR_NOT_ENABLED:
+            return "AppArmor is not enabled";
+        case ErrorCode::PERMISSION_DENIED:
+            return "Permission denied";
+
+        // Enhanced analysis errors
+        case ErrorCode::CORRELATION_ENGINE_FAILED:
+            return "Correlation engine failed";
+        case ErrorCode::TIMELINE_RECONSTRUCTION_FAILED:
+            return "Timeline reconstruction failed";
+        case ErrorCode::ANOMALY_DETECTION_FAILED:
+            return "Anomaly detection failed";
+        case ErrorCode::INSUFFICIENT_DATA:
+            return "Insufficient data for analysis";
+
         default:
             return "Unknown error";
     }
@@ -135,41 +202,79 @@ inline std::string getErrorMessage(ErrorCode code) {
  */
 class LinuxAnalyzerError {
 public:
-    LinuxAnalyzerError() : code_(ErrorCode::SUCCESS) {}
-    
+    LinuxAnalyzerError() : code_(ErrorCode::SUCCESS), isRecoverable_(true) {}
+
     LinuxAnalyzerError(ErrorCode code)
-        : code_(code), message_(getErrorMessage(code)) {}
-    
+        : code_(code), message_(getErrorMessage(code)), isRecoverable_(true) {}
+
     LinuxAnalyzerError(ErrorCode code, const std::string& details)
-        : code_(code), message_(getErrorMessage(code)), details_(details) {}
-    
+        : code_(code), message_(getErrorMessage(code)), details_(details), isRecoverable_(true) {}
+
     LinuxAnalyzerError(ErrorCode code, const std::string& message, const std::string& details)
-        : code_(code), message_(message), details_(details) {}
-    
+        : code_(code), message_(message), details_(details), isRecoverable_(true) {}
+
     // Check if this is an error (not success)
     bool isError() const { return code_ != ErrorCode::SUCCESS; }
-    
+
     // Check if this is success
     bool isSuccess() const { return code_ == ErrorCode::SUCCESS; }
-    
+
     // Get error code
     ErrorCode code() const { return code_; }
-    
+
     // Get error message
     const std::string& message() const { return message_; }
-    
+
     // Get additional details
     const std::string& details() const { return details_; }
-    
+
+    // Get component that generated the error
+    const std::string& component() const { return component_; }
+
+    // Get file path where error occurred
+    const std::string& filePath() const { return filePath_; }
+
+    // Get line number where error occurred
+    int lineNumber() const { return lineNumber_; }
+
+    // Get suggestion for recovery
+    const std::string& suggestion() const { return suggestion_; }
+
+    // Check if error is recoverable
+    bool isRecoverable() const { return isRecoverable_; }
+
+    // Setters for extended fields
+    void setComponent(const std::string& component) { component_ = component; }
+    void setFilePath(const std::string& filePath) { filePath_ = filePath; }
+    void setLineNumber(int lineNumber) { lineNumber_ = lineNumber; }
+    void setSuggestion(const std::string& suggestion) { suggestion_ = suggestion; }
+    void setRecoverable(bool recoverable) { isRecoverable_ = recoverable; }
+
     // Get full error string
     std::string toString() const {
         std::string result = "[" + std::to_string(static_cast<int>(code_)) + "] " + message_;
+        if (!component_.empty()) {
+            result += " [Component: " + component_ + "]";
+        }
         if (!details_.empty()) {
             result += ": " + details_;
         }
+        if (!filePath_.empty()) {
+            result += " (File: " + filePath_;
+            if (lineNumber_ > 0) {
+                result += ":" + std::to_string(lineNumber_);
+            }
+            result += ")";
+        }
+        if (!suggestion_.empty()) {
+            result += " [Suggestion: " + suggestion_ + "]";
+        }
+        if (!isRecoverable_) {
+            result += " [FATAL]";
+        }
         return result;
     }
-    
+
     // Implicit bool conversion (true = error exists)
     explicit operator bool() const { return isError(); }
 
@@ -177,6 +282,11 @@ private:
     ErrorCode code_;
     std::string message_;
     std::string details_;
+    std::string component_;
+    std::string filePath_;
+    int lineNumber_ = 0;
+    std::string suggestion_;
+    bool isRecoverable_ = true;
 };
 
 /**
