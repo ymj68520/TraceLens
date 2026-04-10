@@ -145,6 +145,181 @@ inline constexpr const char* SELECT_AUDIT_LOGS_BASE =
 inline constexpr const char* SELECT_BROWSER_PROFILES_BASE =
     "SELECT browser_type, browser_name, profile_name, profile_path, username FROM linux_browser_profiles";
 
+// ============================================================================
+// INSERT Statements - New Tables (Containers, Web Servers, Security, Enhanced)
+// ============================================================================
+
+inline constexpr const char* INSERT_DOCKER_CONTAINER =
+    "INSERT INTO linux_docker_containers "
+    "(container_id, image_name, image_tag, command, created_at, state, mounts, ports, network_mode, host_config) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_DOCKER_IMAGE =
+    "INSERT INTO linux_docker_images "
+    "(image_id, tags, size, created_at, layer_ids) "
+    "VALUES (?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_DOCKER_VOLUME =
+    "INSERT INTO linux_docker_volumes "
+    "(volume_name, mountpoint, driver, created_at, container_ids) "
+    "VALUES (?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_PODMAN_CONTAINER =
+    "INSERT INTO linux_podman_containers "
+    "(container_id, image_name, pod_name, is_rootless, state, created_at) "
+    "VALUES (?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_PODMAN_POD =
+    "INSERT INTO linux_podman_pods "
+    "(pod_name, pod_id, container_ids, state, created_at) "
+    "VALUES (?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_APACHE_ACCESS_LOG =
+    "INSERT INTO linux_apache_access_logs "
+    "(timestamp, remote_ip, method, url, http_version, status_code, response_size, referer, user_agent, vhost) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_APACHE_VHOST =
+    "INSERT INTO linux_apache_vhosts "
+    "(server_name, document_root, server_aliases, ssl_certificates, config_file_path) "
+    "VALUES (?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_NGINX_ACCESS_LOG =
+    "INSERT INTO linux_nginx_access_logs "
+    "(timestamp, remote_ip, method, url, status_code, response_size, referer, user_agent, request_time, upstream_addr) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_NGINX_SERVER_BLOCK =
+    "INSERT INTO linux_nginx_server_blocks "
+    "(server_name, root, locations, ssl_certificate, ssl_certificate_key, upstreams, config_file_path) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_SETUID_FILE =
+    "INSERT INTO linux_setuid_files "
+    "(file_path, owner, group_name, permissions, is_setuid, is_setgid, size, md5_hash, sha256_hash, is_suspicious, suspicious_reason) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_FILE_CAPABILITY =
+    "INSERT INTO linux_capabilities "
+    "(file_path, capabilities, capability_set, is_inherited, is_suspicious) "
+    "VALUES (?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_SELINUX_STATUS =
+    "INSERT INTO linux_selinux_status "
+    "(is_enabled, mode, policy_name, current_mode) "
+    "VALUES (?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_SELINUX_AVC_DENIAL =
+    "INSERT INTO linux_selinux_avc_denials "
+    "(timestamp, source_context, target_context, object_class, permission, executable_path) "
+    "VALUES (?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_APPARMOR_PROFILE =
+    "INSERT INTO linux_apparmor_profiles "
+    "(profile_name, mode, file_path, allowed_paths, denied_paths, is_enabled) "
+    "VALUES (?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_APPARMOR_VIOLATION =
+    "INSERT INTO linux_apparmor_violations "
+    "(timestamp, profile, operation, target_path, executable, status) "
+    "VALUES (?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_CORRELATED_EVENT =
+    "INSERT INTO linux_correlated_events "
+    "(start_timestamp, end_timestamp, event_type, initiating_user, initiating_process, related_event_ids, description, severity) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_ATTACK_CHAIN =
+    "INSERT INTO linux_attack_chains "
+    "(chain_id, attack_type, events, timeline, summary, confidence) "
+    "VALUES (?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_TIMELINE_EVENT =
+    "INSERT INTO linux_timeline_events "
+    "(timestamp, source_type, event_type, description, username, ip_address, details, confidence) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_TIMELINE_GAP =
+    "INSERT INTO linux_timeline_gaps "
+    "(start_time, end_time, duration, description, is_suspicious) "
+    "VALUES (?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_ANOMALY =
+    "INSERT INTO linux_anomalies "
+    "(anomaly_type, description, severity, confidence, evidence_ids, mitigation, detected_at, anomaly_subtype, additional_data) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
+// ============================================================================
+// SELECT Statements - New Tables (Containers, Web Servers, Security, Enhanced)
+// ============================================================================
+
+inline constexpr const char* SELECT_DOCKER_CONTAINERS_BASE =
+    "SELECT container_id, image_name, image_tag, command, created_at, state, mounts, ports, network_mode, host_config "
+    "FROM linux_docker_containers";
+
+inline constexpr const char* SELECT_DOCKER_IMAGES_BASE =
+    "SELECT image_id, tags, size, created_at, layer_ids FROM linux_docker_images";
+
+inline constexpr const char* SELECT_DOCKER_VOLUMES_BASE =
+    "SELECT volume_name, mountpoint, driver, created_at, container_ids FROM linux_docker_volumes";
+
+inline constexpr const char* SELECT_PODMAN_CONTAINERS_BASE =
+    "SELECT container_id, image_name, pod_name, is_rootless, state, created_at FROM linux_podman_containers";
+
+inline constexpr const char* SELECT_PODMAN_PODS_BASE =
+    "SELECT pod_name, pod_id, container_ids, state, created_at FROM linux_podman_pods";
+
+inline constexpr const char* SELECT_APACHE_ACCESS_LOGS_BASE =
+    "SELECT timestamp, remote_ip, method, url, http_version, status_code, response_size, referer, user_agent, vhost "
+    "FROM linux_apache_access_logs";
+
+inline constexpr const char* SELECT_APACHE_VHOSTS_BASE =
+    "SELECT server_name, document_root, server_aliases, ssl_certificates, config_file_path FROM linux_apache_vhosts";
+
+inline constexpr const char* SELECT_NGINX_ACCESS_LOGS_BASE =
+    "SELECT timestamp, remote_ip, method, url, status_code, response_size, referer, user_agent, request_time, upstream_addr "
+    "FROM linux_nginx_access_logs";
+
+inline constexpr const char* SELECT_NGINX_SERVER_BLOCKS_BASE =
+    "SELECT server_name, root, locations, ssl_certificate, ssl_certificate_key, upstreams, config_file_path "
+    "FROM linux_nginx_server_blocks";
+
+inline constexpr const char* SELECT_SETUID_FILES_BASE =
+    "SELECT file_path, owner, group_name, permissions, is_setuid, is_setgid, size, md5_hash, sha256_hash, is_suspicious, suspicious_reason "
+    "FROM linux_setuid_files";
+
+inline constexpr const char* SELECT_CAPABILITIES_BASE =
+    "SELECT file_path, capabilities, capability_set, is_inherited, is_suspicious FROM linux_capabilities";
+
+inline constexpr const char* SELECT_SELINUX_STATUS_BASE =
+    "SELECT is_enabled, mode, policy_name, current_mode FROM linux_selinux_status";
+
+inline constexpr const char* SELECT_SELINUX_AVC_DENIALS_BASE =
+    "SELECT timestamp, source_context, target_context, object_class, permission, executable_path FROM linux_selinux_avc_denials";
+
+inline constexpr const char* SELECT_APPARMOR_PROFILES_BASE =
+    "SELECT profile_name, mode, file_path, allowed_paths, denied_paths, is_enabled FROM linux_apparmor_profiles";
+
+inline constexpr const char* SELECT_APPARMOR_VIOLATIONS_BASE =
+    "SELECT timestamp, profile, operation, target_path, executable, status FROM linux_apparmor_violations";
+
+inline constexpr const char* SELECT_CORRELATED_EVENTS_BASE =
+    "SELECT start_timestamp, end_timestamp, event_type, initiating_user, initiating_process, related_event_ids, description, severity "
+    "FROM linux_correlated_events";
+
+inline constexpr const char* SELECT_ATTACK_CHAINS_BASE =
+    "SELECT chain_id, attack_type, events, timeline, summary, confidence FROM linux_attack_chains";
+
+inline constexpr const char* SELECT_TIMELINE_EVENTS_BASE =
+    "SELECT timestamp, source_type, event_type, description, username, ip_address, details, confidence FROM linux_timeline_events";
+
+inline constexpr const char* SELECT_TIMELINE_GAPS_BASE =
+    "SELECT start_time, end_time, duration, description, is_suspicious FROM linux_timeline_gaps";
+
+inline constexpr const char* SELECT_ANOMALIES_BASE =
+    "SELECT anomaly_type, description, severity, confidence, evidence_ids, mitigation, detected_at, anomaly_subtype, additional_data "
+    "FROM linux_anomalies";
+
 } // namespace linux_analysis_sql_crud
 
 #endif // LINUX_ANALYSIS_SQL_CRUD_H

@@ -292,6 +292,280 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
         llm_model_used TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_browser_profiles_llm_analyzed ON linux_browser_profiles(llm_analyzed_at);
+
+    -- Docker Containers
+    CREATE TABLE IF NOT EXISTS linux_docker_containers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        container_id TEXT,
+        image_name TEXT,
+        image_tag TEXT,
+        command TEXT,
+        created_at INTEGER,
+        state TEXT,
+        mounts TEXT,
+        ports TEXT,
+        network_mode TEXT,
+        host_config TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_docker_container_id ON linux_docker_containers(container_id);
+    CREATE INDEX IF NOT EXISTS idx_docker_container_state ON linux_docker_containers(state);
+
+    -- Docker Images
+    CREATE TABLE IF NOT EXISTS linux_docker_images (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_id TEXT,
+        tags TEXT,
+        size INTEGER,
+        created_at INTEGER,
+        layer_ids TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_docker_image_id ON linux_docker_images(image_id);
+
+    -- Docker Volumes
+    CREATE TABLE IF NOT EXISTS linux_docker_volumes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        volume_name TEXT,
+        mountpoint TEXT,
+        driver TEXT,
+        created_at INTEGER,
+        container_ids TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_docker_volume_name ON linux_docker_volumes(volume_name);
+
+    -- Podman Containers
+    CREATE TABLE IF NOT EXISTS linux_podman_containers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        container_id TEXT,
+        image_name TEXT,
+        pod_name TEXT,
+        is_rootless INTEGER,
+        state TEXT,
+        created_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_podman_container_id ON linux_podman_containers(container_id);
+    CREATE INDEX IF NOT EXISTS idx_podman_container_state ON linux_podman_containers(state);
+
+    -- Podman Pods
+    CREATE TABLE IF NOT EXISTS linux_podman_pods (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pod_name TEXT,
+        pod_id TEXT,
+        container_ids TEXT,
+        state TEXT,
+        created_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_podman_pod_id ON linux_podman_pods(pod_id);
+    CREATE INDEX IF NOT EXISTS idx_podman_pod_state ON linux_podman_pods(state);
+
+    -- Apache Access Logs
+    CREATE TABLE IF NOT EXISTS linux_apache_access_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER,
+        remote_ip TEXT,
+        method TEXT,
+        url TEXT,
+        http_version TEXT,
+        status_code INTEGER,
+        response_size INTEGER,
+        referer TEXT,
+        user_agent TEXT,
+        vhost TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_apache_access_timestamp ON linux_apache_access_logs(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_apache_access_ip ON linux_apache_access_logs(remote_ip);
+    CREATE INDEX IF NOT EXISTS idx_apache_access_status ON linux_apache_access_logs(status_code);
+
+    -- Apache Virtual Hosts
+    CREATE TABLE IF NOT EXISTS linux_apache_vhosts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        server_name TEXT,
+        document_root TEXT,
+        server_aliases TEXT,
+        ssl_certificates TEXT,
+        config_file_path TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_apache_vhost_name ON linux_apache_vhosts(server_name);
+
+    -- Nginx Access Logs
+    CREATE TABLE IF NOT EXISTS linux_nginx_access_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER,
+        remote_ip TEXT,
+        method TEXT,
+        url TEXT,
+        status_code INTEGER,
+        response_size INTEGER,
+        referer TEXT,
+        user_agent TEXT,
+        request_time REAL,
+        upstream_addr TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_nginx_access_timestamp ON linux_nginx_access_logs(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_nginx_access_ip ON linux_nginx_access_logs(remote_ip);
+    CREATE INDEX IF NOT EXISTS idx_nginx_access_status ON linux_nginx_access_logs(status_code);
+
+    -- Nginx Server Blocks
+    CREATE TABLE IF NOT EXISTS linux_nginx_server_blocks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        server_name TEXT,
+        root TEXT,
+        locations TEXT,
+        ssl_certificate TEXT,
+        ssl_certificate_key TEXT,
+        upstreams TEXT,
+        config_file_path TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_nginx_server_name ON linux_nginx_server_blocks(server_name);
+
+    -- Setuid Files
+    CREATE TABLE IF NOT EXISTS linux_setuid_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT,
+        owner TEXT,
+        group_name TEXT,
+        permissions INTEGER,
+        is_setuid INTEGER,
+        is_setgid INTEGER,
+        size INTEGER,
+        md5_hash TEXT,
+        sha256_hash TEXT,
+        is_suspicious INTEGER,
+        suspicious_reason TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_setuid_file_path ON linux_setuid_files(file_path);
+    CREATE INDEX IF NOT EXISTS idx_setuid_suspicious ON linux_setuid_files(is_suspicious);
+
+    -- File Capabilities
+    CREATE TABLE IF NOT EXISTS linux_capabilities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT,
+        capabilities TEXT,
+        capability_set TEXT,
+        is_inherited INTEGER,
+        is_suspicious INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_capabilities_file_path ON linux_capabilities(file_path);
+    CREATE INDEX IF NOT EXISTS idx_capabilities_suspicious ON linux_capabilities(is_suspicious);
+
+    -- SELinux Status
+    CREATE TABLE IF NOT EXISTS linux_selinux_status (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        is_enabled INTEGER,
+        mode TEXT,
+        policy_name TEXT,
+        current_mode TEXT
+    );
+
+    -- SELinux AVC Denials
+    CREATE TABLE IF NOT EXISTS linux_selinux_avc_denials (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER,
+        source_context TEXT,
+        target_context TEXT,
+        object_class TEXT,
+        permission TEXT,
+        executable_path TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_selinux_avc_timestamp ON linux_selinux_avc_denials(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_selinux_avc_executable ON linux_selinux_avc_denials(executable_path);
+
+    -- AppArmor Profiles
+    CREATE TABLE IF NOT EXISTS linux_apparmor_profiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_name TEXT,
+        mode TEXT,
+        file_path TEXT,
+        allowed_paths TEXT,
+        denied_paths TEXT,
+        is_enabled INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_apparmor_profile_name ON linux_apparmor_profiles(profile_name);
+    CREATE INDEX IF NOT EXISTS idx_apparmor_profile_enabled ON linux_apparmor_profiles(is_enabled);
+
+    -- AppArmor Violations
+    CREATE TABLE IF NOT EXISTS linux_apparmor_violations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER,
+        profile TEXT,
+        operation TEXT,
+        target_path TEXT,
+        executable TEXT,
+        status TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_apparmor_violation_timestamp ON linux_apparmor_violations(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_apparmor_violation_profile ON linux_apparmor_violations(profile);
+
+    -- Correlated Events
+    CREATE TABLE IF NOT EXISTS linux_correlated_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        start_timestamp INTEGER,
+        end_timestamp INTEGER,
+        event_type TEXT,
+        initiating_user TEXT,
+        initiating_process TEXT,
+        related_event_ids TEXT,
+        description TEXT,
+        severity INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_correlated_events_timestamp ON linux_correlated_events(start_timestamp);
+    CREATE INDEX IF NOT EXISTS idx_correlated_events_severity ON linux_correlated_events(severity);
+
+    -- Attack Chains
+    CREATE TABLE IF NOT EXISTS linux_attack_chains (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chain_id TEXT,
+        attack_type TEXT,
+        events TEXT,
+        timeline TEXT,
+        summary TEXT,
+        confidence REAL
+    );
+    CREATE INDEX IF NOT EXISTS idx_attack_chains_chain_id ON linux_attack_chains(chain_id);
+    CREATE INDEX IF NOT EXISTS idx_attack_chains_type ON linux_attack_chains(attack_type);
+
+    -- Timeline Events
+    CREATE TABLE IF NOT EXISTS linux_timeline_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER,
+        source_type TEXT,
+        event_type TEXT,
+        description TEXT,
+        username TEXT,
+        ip_address TEXT,
+        details TEXT,
+        confidence INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_timeline_events_timestamp ON linux_timeline_events(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_timeline_events_type ON linux_timeline_events(event_type);
+
+    -- Timeline Gaps
+    CREATE TABLE IF NOT EXISTS linux_timeline_gaps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        start_time INTEGER,
+        end_time INTEGER,
+        duration INTEGER,
+        description TEXT,
+        is_suspicious INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_timeline_gaps_time ON linux_timeline_gaps(start_time);
+    CREATE INDEX IF NOT EXISTS idx_timeline_gaps_suspicious ON linux_timeline_gaps(is_suspicious);
+
+    -- Anomalies
+    CREATE TABLE IF NOT EXISTS linux_anomalies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        anomaly_type TEXT,
+        description TEXT,
+        severity INTEGER,
+        confidence REAL,
+        evidence_ids TEXT,
+        mitigation TEXT,
+        detected_at INTEGER,
+        anomaly_subtype TEXT,
+        additional_data TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_anomalies_type ON linux_anomalies(anomaly_type);
+    CREATE INDEX IF NOT EXISTS idx_anomalies_severity ON linux_anomalies(severity);
+    CREATE INDEX IF NOT EXISTS idx_anomalies_detected_at ON linux_anomalies(detected_at);
 )";
 
 inline constexpr const char* CREATE_LINUX_ANALYSIS_PROGRESS_TABLE = R"(

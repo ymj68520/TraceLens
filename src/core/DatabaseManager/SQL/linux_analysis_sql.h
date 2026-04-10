@@ -32,6 +32,35 @@ using linux_analysis_sql_crud::INSERT_FIREWALL_RULE;
 using linux_analysis_sql_crud::INSERT_AUDIT_LOG;
 using linux_analysis_sql_crud::INSERT_BROWSER_PROFILE;
 
+// Container INSERT statements
+using linux_analysis_sql_crud::INSERT_DOCKER_CONTAINER;
+using linux_analysis_sql_crud::INSERT_DOCKER_IMAGE;
+using linux_analysis_sql_crud::INSERT_DOCKER_VOLUME;
+using linux_analysis_sql_crud::INSERT_PODMAN_CONTAINER;
+using linux_analysis_sql_crud::INSERT_PODMAN_POD;
+
+// Web server INSERT statements
+using linux_analysis_sql_crud::INSERT_APACHE_ACCESS_LOG;
+using linux_analysis_sql_crud::INSERT_APACHE_VHOST;
+using linux_analysis_sql_crud::INSERT_NGINX_ACCESS_LOG;
+using linux_analysis_sql_crud::INSERT_NGINX_SERVER_BLOCK;
+
+// Security INSERT statements
+using linux_analysis_sql_crud::INSERT_SETUID_FILE;
+using linux_analysis_sql_crud::INSERT_FILE_CAPABILITY;
+using linux_analysis_sql_crud::INSERT_SELINUX_STATUS;
+using linux_analysis_sql_crud::INSERT_SELINUX_AVC_DENIAL;
+using linux_analysis_sql_crud::INSERT_APPARMOR_PROFILE;
+using linux_analysis_sql_crud::INSERT_APPARMOR_VIOLATION;
+
+// Enhanced analysis INSERT statements
+using linux_analysis_sql_crud::INSERT_CORRELATED_EVENT;
+using linux_analysis_sql_crud::INSERT_ATTACK_CHAIN;
+using linux_analysis_sql_crud::INSERT_TIMELINE_EVENT;
+using linux_analysis_sql_crud::INSERT_TIMELINE_GAP;
+using linux_analysis_sql_crud::INSERT_ANOMALY;
+
+// Base SELECT statements
 using linux_analysis_sql_crud::SELECT_LOG_ENTRIES_BASE;
 using linux_analysis_sql_crud::SELECT_USERS_BASE;
 using linux_analysis_sql_crud::SELECT_GROUPS_BASE;
@@ -47,6 +76,34 @@ using linux_analysis_sql_crud::SELECT_KERNEL_MODULES_BASE;
 using linux_analysis_sql_crud::SELECT_FIREWALL_RULES_BASE;
 using linux_analysis_sql_crud::SELECT_AUDIT_LOGS_BASE;
 using linux_analysis_sql_crud::SELECT_BROWSER_PROFILES_BASE;
+
+// Container SELECT statements
+using linux_analysis_sql_crud::SELECT_DOCKER_CONTAINERS_BASE;
+using linux_analysis_sql_crud::SELECT_DOCKER_IMAGES_BASE;
+using linux_analysis_sql_crud::SELECT_DOCKER_VOLUMES_BASE;
+using linux_analysis_sql_crud::SELECT_PODMAN_CONTAINERS_BASE;
+using linux_analysis_sql_crud::SELECT_PODMAN_PODS_BASE;
+
+// Web server SELECT statements
+using linux_analysis_sql_crud::SELECT_APACHE_ACCESS_LOGS_BASE;
+using linux_analysis_sql_crud::SELECT_APACHE_VHOSTS_BASE;
+using linux_analysis_sql_crud::SELECT_NGINX_ACCESS_LOGS_BASE;
+using linux_analysis_sql_crud::SELECT_NGINX_SERVER_BLOCKS_BASE;
+
+// Security SELECT statements
+using linux_analysis_sql_crud::SELECT_SETUID_FILES_BASE;
+using linux_analysis_sql_crud::SELECT_CAPABILITIES_BASE;
+using linux_analysis_sql_crud::SELECT_SELINUX_STATUS_BASE;
+using linux_analysis_sql_crud::SELECT_SELINUX_AVC_DENIALS_BASE;
+using linux_analysis_sql_crud::SELECT_APPARMOR_PROFILES_BASE;
+using linux_analysis_sql_crud::SELECT_APPARMOR_VIOLATIONS_BASE;
+
+// Enhanced analysis SELECT statements
+using linux_analysis_sql_crud::SELECT_CORRELATED_EVENTS_BASE;
+using linux_analysis_sql_crud::SELECT_ATTACK_CHAINS_BASE;
+using linux_analysis_sql_crud::SELECT_TIMELINE_EVENTS_BASE;
+using linux_analysis_sql_crud::SELECT_TIMELINE_GAPS_BASE;
+using linux_analysis_sql_crud::SELECT_ANOMALIES_BASE;
 
 using linux_analysis_sql_llm::UPDATE_LOG_ENTRY_LLM_ANALYSIS;
 using linux_analysis_sql_llm::UPDATE_USER_LLM_ANALYSIS;

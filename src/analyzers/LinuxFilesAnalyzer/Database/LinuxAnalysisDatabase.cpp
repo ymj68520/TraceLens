@@ -14,6 +14,7 @@
 #include "Detail/LinuxUserOperations.cpp"
 #include "Detail/LinuxSystemOperations_Part1.cpp"
 #include "Detail/LinuxSystemOperations_Part2.cpp"
+#include "Detail/LinuxEnhancedOperations.cpp"
 
 using namespace LinuxAnalysis;
 
