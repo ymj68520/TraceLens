@@ -55,6 +55,27 @@ target_link_libraries(test_linux_analyzer_gtest ${GTEST_LIBRARIES}
 
 add_test(NAME LinuxAnalyzerGTests COMMAND test_linux_analyzer_gtest)
 
+# Web Server Parsers Tests
+add_executable(
+  test_webserver_parsers_gtest
+  UnitTest/test_webserver_parsers_gtest.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/ApacheParser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/NginxParser.cpp
+  ../src/core/AuditLog/AuditLog.cpp)
+
+target_include_directories(
+  test_webserver_parsers_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common
+          ${CMAKE_SOURCE_DIR}/src/core/AuditLog)
+
+target_link_libraries(test_webserver_parsers_gtest ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} sqlite3 pthread)
+
+add_test(NAME WebServerParsersGTests COMMAND test_webserver_parsers_gtest)
+
 # File Classifier Tests
 add_executable(
   test_file_classifier
