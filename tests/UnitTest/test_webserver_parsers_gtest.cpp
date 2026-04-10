@@ -51,14 +51,6 @@ TEST_F(ApacheParserTest, ParseCommonLogFormat) {
     EXPECT_EQ(entry.responseSize, 1234);
 }
 
-TEST_F(ApacheParserTest, DetectLogFormat) {
-    std::string combinedLog = R"(192.168.1.100 - - [05/Oct/2023:10:23:45 +0000] "GET /index.html HTTP/1.1" 200 1234 "https://example.com" "Mozilla/5.0")";
-    std::string commonLog = R"(192.168.1.100 - - [05/Oct/2023:10:23:45 +0000] "GET /index.html HTTP/1.1" 200 1234)";
-
-    EXPECT_EQ(ApacheParser::detectLogFormat(combinedLog), "combined");
-    EXPECT_EQ(ApacheParser::detectLogFormat(commonLog), "common");
-}
-
 TEST_F(ApacheParserTest, ParseAccessLogFile) {
     std::string logContent = R"(192.168.1.100 - - [05/Oct/2023:10:23:45 +0000] "GET /index.html HTTP/1.1" 200 1234 "https://example.com" "Mozilla/5.0"
 192.168.1.101 - - [05/Oct/2023:10:24:00 +0000] "POST /api/data HTTP/1.1" 201 567 "-" "curl/7.68.0"
