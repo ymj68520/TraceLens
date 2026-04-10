@@ -112,6 +112,10 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Core
   ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Database
   ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+  ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers/Security
+  ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers/Container
+  ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Analysis
   ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
   ${CMAKE_SOURCE_DIR}/src/analyzers/ImageAnalyzer
   ${CMAKE_SOURCE_DIR}/src/analyzers/VisionAnalysis
@@ -251,6 +255,17 @@ set(LIB_SOURCES
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxLogParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxHistoryParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/ApacheParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/NginxParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SetuidAnalyzer.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Security/CapabilityAnalyzer.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SELinuxAnalyzer.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Security/AppArmorParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Container/DockerContainerParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Container/PodmanParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/LogCorrelationEngine.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/TimelineReconstructor.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/AnomalyDetector.cpp
     src/core/AuditLog/AuditLog.cpp
     src/core/PathManager/PathManager.cpp
     src/core/FullTextSearch/FullTextSearch.cpp

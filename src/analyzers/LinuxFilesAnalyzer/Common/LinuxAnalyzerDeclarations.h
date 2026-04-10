@@ -86,6 +86,27 @@ public:
     // Browser data analysis
     void analyzeBrowserData();
 
+    // Container analysis
+    void analyzeDockerContainers();
+    void analyzeDockerImages();
+    void analyzeDockerVolumes();
+    void analyzePodmanContainers();
+
+    // Web server analysis
+    void analyzeApacheServers();
+    void analyzeNginxServers();
+
+    // Security posture analysis
+    void analyzeSetuidFiles();
+    void analyzeCapabilities();
+    void analyzeSELinux();
+    void analyzeAppArmor();
+
+    // Enhanced analysis
+    void correlateEvents();
+    void reconstructTimeline();
+    void detectAnomalies();
+
     // Individual parsers (public for testing)
     std::vector<LinuxLogEntry> parseLogFile(const std::string& logPath, 
                                              const std::string& logType);

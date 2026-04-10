@@ -9,6 +9,7 @@
 #include <string>
 #include <optional>
 #include <variant>
+#include <stdexcept>
 
 namespace LinuxAnalysis {
 
