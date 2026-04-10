@@ -39,10 +39,12 @@ class ReportGenerator:
         file_descriptions: List[Dict[str, Any]],
         files_db_path: Optional[str] = None,
         task_id: Optional[str] = None,
+        windows_db_path: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Generate a comprehensive case analysis report.
         Aggregates ALL available file descriptions from the database.
+        Optionally includes Windows artifacts section.
         """
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
@@ -79,6 +81,23 @@ class ReportGenerator:
             except Exception as e:
                 logger.warning(f"Failed to aggregate evidence from database: {e}")
 
+        # Gather Windows artifacts if available
+        windows_section = ""
+        windows_analyzed = 0
+        if windows_db_path and task_id:
+            try:
+                windows_section = await self._include_windows_section(
+                    task_id=task_id,
+                    windows_db_path=windows_db_path,
+                    case_description=case_description,
+                )
+                # Count Windows artifacts
+                with sqlite3.connect(windows_db_path) as conn:
+                    cur = conn.execute("SELECT COUNT(*) as count FROM windows_artifact_descriptions")
+                    windows_analyzed = cur.fetchone()["count"]
+            except Exception as e:
+                logger.warning(f"Failed to include Windows artifacts: {e}")
+
         use_graph = (
             self._graphiti_service is not None
             and task_id is not None
@@ -91,7 +110,7 @@ class ReportGenerator:
             try:
                 logger.info(f"Task {task_id}: Attempting graph-enhanced report generation...")
                 report_text = await self._generate_report_with_graph(
-                    case_description, task_id, file_descriptions
+                    case_description, task_id, file_descriptions, windows_section
                 )
                 if report_text:
                     model_used = "graph-enhanced"
@@ -105,7 +124,7 @@ class ReportGenerator:
             try:
                 logger.info(f"Task {task_id}: Using fallback (concatenation) report generation...")
                 report_text = await self._generate_report_fallback(
-                    case_description, file_descriptions
+                    case_description, file_descriptions, windows_section
                 )
                 model_used = "direct"
             except Exception as e:
@@ -126,12 +145,13 @@ class ReportGenerator:
             "case_description": case_description,
             "files_analyzed": len(file_descriptions),
             "files_successful": sum(1 for f in file_descriptions if f.get("success")),
+            "windows_analyzed": windows_analyzed,
             "model_used": model_used,
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
 
     async def _generate_report_with_graph(
-        self, case_description: str, task_id: str, file_descriptions: List[Dict[str, Any]] = None
+        self, case_description: str, task_id: str, file_descriptions: List[Dict[str, Any]] = None, windows_section: str = ""
     ) -> str:
         """
         Generate report using Graphiti RAG with optimized context management.
@@ -150,6 +170,10 @@ class ReportGenerator:
                 evidence_list_str += f"- [[file:{d.file_path}]]\n"
         else:
             evidence_list_str += "（无显式证据文件，基于全局图谱分析）"
+
+        # Include Windows artifacts summary if available
+        if windows_section:
+            evidence_list_str += f"\n\n{windows_section}"
 
         chapters = [
             {
@@ -231,13 +255,17 @@ class ReportGenerator:
         return "\n\n---\n\n".join(report_parts)
 
     async def _generate_report_fallback(
-        self, case_description: str, file_descriptions: List[Dict[str, Any]]
+        self, case_description: str, file_descriptions: List[Dict[str, Any]], windows_section: str = ""
     ) -> str:
         """
         Fallback: concatenate all evidence and generate in one shot.
         Used when Graphiti is unavailable.
         """
         evidence_section = self._build_evidence_summary(file_descriptions)
+
+        # Include Windows artifacts section if available
+        if windows_section:
+            evidence_section += f"\n\n{windows_section}"
 
         user_prompt = REPORT_FALLBACK_TEMPLATE.format(
             case_description=case_description,
@@ -262,6 +290,83 @@ class ReportGenerator:
             if description:
                 lines.append(f"### 文件: {file_path}\n{description}\n")
         return "\n".join(lines) if lines else "无有效的文件分析结果。"
+
+    async def _include_windows_section(
+        self,
+        task_id: str,
+        windows_db_path: str,
+        case_description: str,
+    ) -> str:
+        """Generate Windows artifacts section for the report."""
+        try:
+            with sqlite3.connect(windows_db_path) as conn:
+                conn.row_factory = sqlite3.Row
+
+                # Get artifact counts by type
+                cur = conn.execute("""
+                    SELECT artifact_type, COUNT(*) as count,
+                           SUM(CASE WHEN severity IN ('high', 'critical') THEN 1 ELSE 0 END) as high_priority
+                    FROM windows_artifact_descriptions
+                    GROUP BY artifact_type
+                    ORDER BY count DESC
+                """)
+                type_stats = cur.fetchall()
+
+                if not type_stats:
+                    return ""
+
+                # Build summary section
+                lines = ["## Windows系统痕迹分析\n"]
+
+                # Add statistics
+                lines.append("### 痕迹统计\n")
+                for stat in type_stats:
+                    type_name = self._get_artifact_type_display_name(stat["artifact_type"])
+                    lines.append(f"- **{type_name}**: {stat['count']}条 ({stat['high_priority']}条高优先级)")
+                lines.append("")
+
+                # Add high-priority findings
+                cur = conn.execute("""
+                    SELECT artifact_type, summary, severity
+                    FROM windows_artifact_descriptions
+                    WHERE severity IN ('high', 'critical')
+                    ORDER BY severity DESC, relevance DESC
+                    LIMIT 20
+                """)
+                findings = cur.fetchall()
+
+                if findings:
+                    lines.append("### 关键发现\n")
+                    for finding in findings:
+                        type_name = self._get_artifact_type_display_name(finding["artifact_type"])
+                        severity_mark = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}.get(finding["severity"], "⚪")
+                        lines.append(f"- {severity_mark} **{type_name}**: {finding['summary']}")
+                    lines.append("")
+
+                return "\n".join(lines)
+
+        except Exception as e:
+            logger.warning(f"Error generating Windows section: {e}")
+            return ""
+
+    def _get_artifact_type_display_name(self, artifact_type: str) -> str:
+        """Get display name for artifact type."""
+        display_names = {
+            "registry_values": "注册表记录",
+            "event_log_entries": "事件日志",
+            "prefetch_files": "Prefetch文件",
+            "browser_history": "浏览器历史",
+            "windows_services": "Windows服务",
+            "scheduled_tasks": "计划任务",
+            "amcache_entries": "Amcache记录",
+            "srum_entries": "SRUM记录",
+            "usb_devices": "USB设备",
+            "user_accounts": "用户账户",
+            "lnk_files": "LNK快捷方式",
+            "jump_list_entries": "跳转列表",
+            "recycle_bin_entries": "回收站记录",
+        }
+        return display_names.get(artifact_type, artifact_type)
 
     def _persist_case_report(
         self, db_path: str, task_id: str,

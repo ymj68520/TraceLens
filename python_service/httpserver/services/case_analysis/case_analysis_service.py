@@ -16,6 +16,9 @@ from .file_filter import FileFilter
 from .file_analyzer import FileAnalyzer
 from .report_generator import ReportGenerator
 from .cluster_analyzer import ClusterAnalyzer
+from ..windows_artifacts import WindowsArtifactsService
+
+logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,7 @@ class CaseAnalysisService:
         self._file_analyzer = None
         self._report_generator = None
         self._cluster_analyzer = None
+        self._windows_service = None  # Windows artifacts service
 
     def set_llm_service(self, llm_service):
         """Inject the LLM service dependency."""
@@ -51,6 +55,15 @@ class CaseAnalysisService:
         """Inject the C++ backend service dependency."""
         self._cpp_backend = cpp_backend
         self._initialize_modules()
+
+    def set_windows_service(self, windows_service: WindowsArtifactsService):
+        """Inject the Windows artifacts service dependency."""
+        self._windows_service = windows_service
+        if windows_service and self._llm_service:
+            windows_service.set_llm_service(self._llm_service)
+        if windows_service and self._graphiti_service:
+            windows_service.set_graphiti_service(self._graphiti_service)
+        logger.info("Windows artifacts service injected")
 
     def _initialize_modules(self):
         """Initialize sub-modules after all dependencies are injected."""
@@ -156,6 +169,117 @@ class CaseAnalysisService:
         if not self._report_generator:
             raise RuntimeError("ReportGenerator module not initialized. Ensure all dependencies are injected.")
         return self._report_generator.get_filtered_files(files_db_path, task_id)
+
+    # ------------------------------------------------------------------
+    # Windows Artifacts Analysis
+    # ------------------------------------------------------------------
+    async def analyze_windows_artifacts(
+        self,
+        task_id: str,
+        windows_db_path: str,
+        case_description: str,
+        max_artifacts: int = 200,
+        artifact_types: Optional[List[str]] = None,
+        progress_callback=None,
+    ) -> Dict[str, Any]:
+        """
+        Run full Windows artifacts analysis pipeline.
+
+        Args:
+            task_id: Task identifier
+            windows_db_path: Path to _windows.db
+            case_description: Case description for filtering/analysis
+            max_artifacts: Maximum artifacts to analyze per type
+            artifact_types: Artifact types to process (None = all)
+            progress_callback: Optional progress callback
+
+        Returns:
+            Analysis results with statistics
+        """
+        if not self._windows_service:
+            raise RuntimeError("Windows artifacts service not initialized")
+
+        return await self._windows_service.run_full_analysis(
+            task_id=task_id,
+            windows_db_path=windows_db_path,
+            case_description=case_description,
+            max_artifacts=max_artifacts,
+            artifact_types=artifact_types,
+            progress_callback=progress_callback,
+        )
+
+    async def reanalyze_windows_artifacts(
+        self,
+        task_id: str,
+        artifact_ids: List[tuple],  # List of (artifact_type, artifact_id)
+        user_hint: str,
+        windows_db_path: str,
+        case_description: str = "",
+    ) -> List[Dict[str, Any]]:
+        """
+        Re-analyze specific Windows artifacts with additional user context.
+
+        Args:
+            task_id: Task identifier
+            artifact_ids: List of (artifact_type, artifact_id) tuples
+            user_hint: Additional user context
+            windows_db_path: Path to _windows.db
+            case_description: Original case description
+
+        Returns:
+            Analysis results for re-analyzed artifacts
+        """
+        if not self._windows_service:
+            raise RuntimeError("Windows artifacts service not initialized")
+
+        return await self._windows_service.reanalyze_artifacts(
+            task_id=task_id,
+            artifact_ids=artifact_ids,
+            user_hint=user_hint,
+            windows_db_path=windows_db_path,
+            case_description=case_description,
+        )
+
+    def get_windows_report(
+        self,
+        windows_db_path: str,
+        task_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve the persisted Windows artifact analysis report.
+
+        Args:
+            windows_db_path: Path to _windows.db
+            task_id: Task identifier
+
+        Returns:
+            Report data or None if not found
+        """
+        if not self._windows_service:
+            raise RuntimeError("Windows artifacts service not initialized")
+
+        return self._windows_service.get_artifact_report(
+            windows_db_path=windows_db_path,
+            task_id=task_id
+        )
+
+    def get_filtered_windows_artifacts(
+        self,
+        windows_db_path: str,
+        artifact_type: Optional[str] = None,
+        severity: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Get filtered Windows artifact descriptions from database."""
+        if not self._windows_service:
+            raise RuntimeError("Windows artifacts service not initialized")
+
+        return self._windows_service.get_filtered_artifacts(
+            windows_db_path=windows_db_path,
+            artifact_type=artifact_type,
+            severity=severity,
+            limit=limit,
+        )
 
     # ------------------------------------------------------------------
     # File Extraction (handled by main service)
