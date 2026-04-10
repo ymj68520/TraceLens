@@ -46,22 +46,8 @@ bool LinuxAnalysisDatabase::initialize() {
 bool LinuxAnalysisDatabase::createTables() {
     using namespace LinuxAnalysisSQL;
 
-    // Execute all create statements
-    if (!executeSQL(CREATE_LOG_ENTRIES_TABLE) ||
-        !executeSQL(CREATE_USERS_TABLE) ||
-        !executeSQL(CREATE_GROUPS_TABLE) ||
-        !executeSQL(CREATE_LOGIN_RECORDS_TABLE) ||
-        !executeSQL(CREATE_SHELL_HISTORY_TABLE) ||
-        !executeSQL(CREATE_CRON_JOBS_TABLE) ||
-        !executeSQL(CREATE_SSH_KEYS_TABLE) ||
-        !executeSQL(CREATE_SSH_KNOWN_HOSTS_TABLE) ||
-        !executeSQL(CREATE_PACKAGES_TABLE) ||
-        !executeSQL(CREATE_NETWORK_CONNECTIONS_TABLE) ||
-        !executeSQL(CREATE_SYSTEMD_SERVICES_TABLE) ||
-        !executeSQL(CREATE_KERNEL_MODULES_TABLE) ||
-        !executeSQL(CREATE_FIREWALL_RULES_TABLE) ||
-        !executeSQL(CREATE_AUDIT_LOGS_TABLE) ||
-        !executeSQL(CREATE_BROWSER_PROFILES_TABLE)) {
+    // Execute the consolidated CREATE_ALL_TABLES statement
+    if (!executeSQL(CREATE_ALL_TABLES)) {
         setError(ErrorCode::DATABASE_CREATE_TABLE_FAILED);
         return false;
     }

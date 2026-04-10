@@ -66,7 +66,13 @@ class Settings(BaseSettings):
     llm_timeout_seconds: int = Field(default=120, alias="LLM_TIMEOUT_SECONDS")
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
     llm_context_length: int = Field(default=4096, alias="LLM_CONTEXT_LENGTH")
-    
+
+    # OSS Settings
+    oss_access_key_id: str = Field(default="", alias="OSS_ACCESS_KEY_ID")
+    oss_access_key_secret: str = Field(default="", alias="OSS_ACCESS_KEY_SECRET")
+    oss_endpoint: str = Field(default="", alias="OSS_ENDPOINT")
+    oss_region: str = Field(default="cn-hangzhou", alias="OSS_REGION")
+
     # Neo4j / Graphiti Settings
     neo4j_uri: str = Field(default="neo4j://127.0.0.1:7687", alias="NEO4J_URI")
     neo4j_user: str = Field(default="neo4j", alias="NEO4J_USER")

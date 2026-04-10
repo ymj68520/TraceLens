@@ -180,6 +180,13 @@ set(LIB_SOURCES
     src/network/HTTPServer/TaskManager.cpp
     src/network/HTTPServer/SQLiteHelper.cpp
     src/network/HTTPServer/LLMAnalysisService.cpp
+    src/network/HTTPServer/WindowsLLMAnalysisService.cpp
+    src/network/HTTPServer/WindowsLLMAnalysisService_ArtifactAnalyzers.cpp
+    src/network/HTTPServer/WindowsLLMAnalysisService_Database.cpp
+    src/network/HTTPServer/LinuxLLMAnalysisService.cpp
+    src/network/HTTPServer/LinuxLLMAnalysisService_ArtifactAnalyzers.cpp
+    src/network/HTTPServer/LinuxLLMAnalysisService_SystemAnalyzers.cpp
+    src/network/HTTPServer/LinuxLLMAnalysisService_Database.cpp
     src/network/HTTPServer/LLMPythonProxy.cpp
     src/network/HTTPServer/EventClusterAnalyzer.cpp
     src/network/HTTPServer/routes/TaskRoutes.cpp

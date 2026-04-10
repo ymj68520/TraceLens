@@ -2,6 +2,7 @@
 // Core implementation of LinuxFilesAnalyzer
 
 #include "LinuxFilesAnalyzer.h"
+#include "HTTPServer/LinuxLLMAnalysisService.h"
 #include "AuditLog/AuditLog.h"
 #include <filesystem>
 
@@ -80,8 +81,57 @@ void LinuxFilesAnalyzer::analyzeLinuxData() {
     // 7. Analyze browser data
     analyzeBrowserData();
 
+    // 8. MANDATORY: AI-powered LLM analysis of all Linux artifacts
+    // This is NOT optional - all Linux system files MUST be analyzed by AI
+    std::cout << "Running AI analysis on Linux artifacts..." << std::endl;
+    AuditLog::instance().log("SYSTEM", "LINUX_LLM_ANALYSIS_START", "Starting LLM analysis for Linux artifacts: " + imagePath_);
+    analyzeWithLLM();
+
     std::cout << "Linux forensic analysis completed." << std::endl;
     AuditLog::instance().log("SYSTEM", "LINUX_ANALYSIS_COMPLETE", "Linux analysis completed for: " + imagePath_);
+}
+
+void LinuxFilesAnalyzer::analyzeWithLLM() {
+    try {
+        forensics::LinuxLLMAnalysisService llmService;
+        if (!llmService.initialize()) {
+            std::cerr << "Warning: Failed to initialize Linux LLM analysis service" << std::endl;
+            AuditLog::instance().log("SYSTEM", "LINUX_LLM_INIT_FAILED", "Failed to initialize LLM service for: " + imagePath_);
+            return;
+        }
+
+        // Configure analysis options for comprehensive coverage
+        forensics::LinuxLLMAnalysisService::AnalysisOptions options;
+        options.maxArtifacts = 10000;  // Analyze all artifacts
+        options.includeLogs = true;
+        options.includeUsers = true;
+        options.includeLogins = true;
+        options.includeShellHistory = true;
+        options.includeCron = true;
+        options.includeSSH = true;
+        options.includePackages = true;
+        options.includeNetwork = true;
+        options.includeSystemd = true;
+        options.includeKernel = true;
+        options.includeFirewall = true;
+        options.includeAudit = true;
+        options.includeBrowser = true;
+
+        // Progress callback for monitoring
+        auto progressCallback = [](const std::string& artifactType, int current, int total, const std::string& details) {
+            std::cout << "  [" << artifactType << "] " << current << "/" << total << " - " << details << std::endl;
+        };
+
+        int analyzed = llmService.analyzeLinuxArtifacts(outputDbPath_, options, progressCallback);
+        std::cout << "AI analysis completed for " << analyzed << " Linux artifacts." << std::endl;
+        AuditLog::instance().log("SYSTEM", "LINUX_LLM_ANALYSIS_COMPLETE",
+            "LLM analysis completed for " + std::to_string(analyzed) + " artifacts from: " + imagePath_);
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error during Linux LLM analysis: " << e.what() << std::endl;
+        AuditLog::instance().log("SYSTEM", "LINUX_LLM_ANALYSIS_ERROR",
+            "LLM analysis error for " + imagePath_ + ": " + e.what());
+    }
 }
 
 bool LinuxFilesAnalyzer::extractLinuxSystemFiles(const std::string& outputDir) {

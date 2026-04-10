@@ -2,6 +2,7 @@
 // Core implementation of WindowsFilesAnalyzer
 
 #include "WindowsFilesAnalyzer.h"
+#include "HTTPServer/WindowsLLMAnalysisService.h"
 #include "AuditLog/AuditLog.h"
 #include <filesystem>
 
@@ -69,24 +70,68 @@ void WindowsFilesAnalyzer::analyzeWindowsData() {
 
     // 6. Extract and analyze Recycle Bin
     analyzeRecycleBin();
-    
+
     // 7. Extract and analyze NTFS Metadata (MFT)
     analyzeNTFSMetadata();
-    
+
     // 8. Analyze User Profiles
     analyzeUserProfiles();
 
     // 9. Analyze Browser Artifacts
     analyzeBrowserData();
-    
+
     // 10. Analyze System Configuration
     analyzeWindowsServices();
     analyzeScheduledTasks();
     analyzeAmcache();
     analyzeSRUM();
 
+    // 11. MANDATORY: AI-powered LLM analysis of all Windows artifacts
+    // This is NOT optional - all Windows system files MUST be analyzed by AI
+    std::cout << "Running AI analysis on Windows artifacts..." << std::endl;
+    AuditLog::instance().log("SYSTEM", "WINDOWS_LLM_ANALYSIS_START", "Starting LLM analysis for Windows artifacts: " + imagePath_);
+    analyzeWithLLM();
+
     std::cout << "Windows forensic analysis completed." << std::endl;
     AuditLog::instance().log("SYSTEM", "WINDOWS_ANALYSIS_COMPLETE", "Windows analysis completed for: " + imagePath_);
+}
+
+void WindowsFilesAnalyzer::analyzeWithLLM() {
+    try {
+        forensics::WindowsLLMAnalysisService llmService;
+        if (!llmService.initialize()) {
+            std::cerr << "Warning: Failed to initialize Windows LLM analysis service" << std::endl;
+            AuditLog::instance().log("SYSTEM", "WINDOWS_LLM_INIT_FAILED", "Failed to initialize LLM service for: " + imagePath_);
+            return;
+        }
+
+        // Configure analysis options for comprehensive coverage
+        forensics::WindowsLLMAnalysisService::AnalysisOptions options;
+        options.maxArtifacts = 10000;  // Analyze all artifacts
+        options.includeRegistry = true;
+        options.includeEventLogs = true;
+        options.includePrefetch = true;
+        options.includeLnk = true;
+        options.includeJumpLists = true;
+        options.includeBrowser = true;
+        options.includeSystem = true;
+        options.includeMFT = false;  // MFT can be very large, analyze selectively if needed
+
+        // Progress callback for monitoring
+        auto progressCallback = [](const std::string& artifactType, int current, int total, const std::string& details) {
+            std::cout << "  [" << artifactType << "] " << current << "/" << total << " - " << details << std::endl;
+        };
+
+        int analyzed = llmService.analyzeWindowsArtifacts(outputDbPath_, options, progressCallback);
+        std::cout << "AI analysis completed for " << analyzed << " Windows artifacts." << std::endl;
+        AuditLog::instance().log("SYSTEM", "WINDOWS_LLM_ANALYSIS_COMPLETE",
+            "LLM analysis completed for " + std::to_string(analyzed) + " artifacts from: " + imagePath_);
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error during Windows LLM analysis: " << e.what() << std::endl;
+        AuditLog::instance().log("SYSTEM", "WINDOWS_LLM_ANALYSIS_ERROR",
+            "LLM analysis error for " + imagePath_ + ": " + e.what());
+    }
 }
 
 bool WindowsFilesAnalyzer::extractWindowsSystemFiles(const std::string& outputDir) {

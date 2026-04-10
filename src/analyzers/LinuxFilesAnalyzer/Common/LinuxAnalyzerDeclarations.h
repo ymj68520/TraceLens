@@ -39,8 +39,16 @@ public:
     /**
      * @brief Main analysis entry point
      * Orchestrates the analysis of all Linux artifacts.
+     * This is a MANDATORY step that includes LLM analysis for AI insights.
      */
     void analyzeLinuxData();
+
+    /**
+     * @brief Analyze Linux artifacts with LLM for AI-powered insights
+     * This is a MANDATORY step for Linux forensics.
+     * All parsed system artifacts are analyzed by AI to provide contextual understanding.
+     */
+    void analyzeWithLLM();
 
     // System log analysis
     // System log analysis

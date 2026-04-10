@@ -41,8 +41,16 @@ public:
     /**
      * @brief Main analysis entry point
      * Orchestrates the analysis of all Windows artifacts.
+     * This is a MANDATORY step that includes LLM analysis for AI insights.
      */
     void analyzeWindowsData();
+
+    /**
+     * @brief Analyze Windows artifacts with LLM for AI-powered insights
+     * This is a MANDATORY step for Windows forensics.
+     * All parsed system artifacts are analyzed by AI to provide contextual understanding.
+     */
+    void analyzeWithLLM();
 
     // Windows system file analysis
     // Windows system file analysis
