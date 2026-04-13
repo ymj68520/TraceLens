@@ -1020,3 +1020,228 @@ class GraphitiService:
         if current.strip():
             chunks.append(current.strip())
         return chunks if chunks else [text]
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # Incremental Case Graph Ingestion
+    # ─────────────────────────────────────────────────────────────────────────────
+
+    async def ingest_case_data_incremental(
+        self,
+        case_id: str,
+        new_task_ids: List[str],
+        existing_task_ids: List[str],
+        files_db_paths: List[str],
+        events_db_paths: Optional[List[str]] = None,
+        progress_callback=None,
+    ) -> Dict[str, Any]:
+        """
+        增量摄入案件数据到知识图谱
+
+        Unlike ingest_case_data which processes ALL tasks, this method
+        only ingests data from new tasks while establishing relationships
+        with existing tasks' data in the graph.
+
+        Args:
+            case_id: Case identifier (used as group_id)
+            new_task_ids: List of new task IDs to ingest
+            existing_task_ids: List of existing task IDs (for relationship linking)
+            files_db_paths: List of _files.db paths (for all tasks)
+            events_db_paths: Optional list of _events.db paths
+            progress_callback: Optional progress callback (stage, message)
+
+        Returns:
+            Dict with ingestion statistics
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        if not self._graphiti_class:
+            logger.warning(f"[{case_id}] Graphiti not available, skipping incremental ingestion")
+            return {"skipped": True, "reason": "Graphiti not available"}
+
+        if events_db_paths is None:
+            events_db_paths = []
+
+        episodes = []
+        total_files = 0
+        total_clusters = 0
+
+        logger.info(f"[{case_id}] Starting incremental graph ingestion: "
+                    f"{len(new_task_ids)} new tasks, {len(existing_task_ids)} existing tasks")
+
+        try:
+            from graphiti_integration import GraphitiIngestor
+
+            ingestor = GraphitiIngestor(
+                neo4j_uri=self.settings.neo4j_uri,
+                neo4j_user=self.settings.neo4j_user,
+                neo4j_password=self.settings.neo4j_password,
+                llm_base_url=self.settings.llm_text_base_url.rstrip("/") + "/v1",
+                llm_model=self.settings.llm_text_model,
+                llm_api_key=self.settings.llm_api_key or "local",
+                group_id=case_id,  # Case-level graph
+            )
+
+            # Only process NEW tasks (not existing ones)
+            for idx, task_id in enumerate(new_task_ids):
+                if idx >= len(files_db_paths):
+                    break
+
+                files_db = files_db_paths[idx]
+
+                # Aggregate file descriptions from new tasks only
+                try:
+                    if not files_db or not Path(files_db).exists():
+                        continue
+
+                    with sqlite3.connect(files_db, timeout=10) as conn:
+                        conn.row_factory = sqlite3.Row
+
+                        # Get analyzed files from this task
+                        cur = conn.execute("""
+                            SELECT DISTINCT file_path, description, summary
+                            FROM file_descriptions
+                            WHERE description IS NOT NULL AND description != ''
+                            LIMIT 500
+                        """)
+                        rows = cur.fetchall()
+
+                        for row in rows:
+                            file_path = row["file_path"]
+                            description = row["description"] or row["summary"] or ""
+
+                            if description:
+                                # Chunk long descriptions
+                                chunks = self._chunk_text_for_graph(description, max_chars=3000)
+                                for j, chunk in enumerate(chunks):
+                                    ep_name = f"文件分析: {Path(file_path).name}"
+                                    if len(chunks) > 1:
+                                        ep_name += f" (第{j+1}部分)"
+
+                                    episodes.append(EpisodeData(
+                                        name=ep_name,
+                                        episode_body=json.dumps({
+                                            "file_path": file_path,
+                                            "task_id": task_id,
+                                            "source_image": f"NEW",
+                                            "related_tasks": existing_task_ids,  # Link to existing
+                                            "analysis": chunk
+                                        }, ensure_ascii=False),
+                                        source_description=f"LLM分析结果 - 新任务 {task_id[:8]} - {file_path}",
+                                        reference_time=datetime.now(),
+                                        file_path=file_path,
+                                        file_id=0,
+                                        category="file_description"
+                                    ))
+                                    total_files += 1
+
+                        if progress_callback:
+                            await progress_callback("aggregating_new", f"已聚合新任务{idx+1}的文件分析结果")
+
+                except Exception as e:
+                    logger.warning(f"[{case_id}] Failed to aggregate files from new task {task_id[:8]}: {e}")
+
+            # Aggregate event clusters from new tasks only
+            for idx, task_id in enumerate(new_task_ids):
+                if idx >= len(events_db_paths):
+                    break
+
+                events_db = events_db_paths[idx]
+
+                try:
+                    if not events_db or not Path(events_db).exists():
+                        continue
+
+                    with sqlite3.connect(events_db, timeout=10) as conn:
+                        conn.row_factory = sqlite3.Row
+
+                        # Get event clusters with LLM analysis
+                        cur = conn.execute("""
+                            SELECT DISTINCT event_type, llm_description, llm_summary,
+                                   (timestamp / 60) as time_window
+                            FROM events
+                            WHERE llm_description IS NOT NULL
+                            GROUP BY event_type, time_window
+                        """)
+                        rows = cur.fetchall()
+
+                        for row in rows:
+                            description = row["llm_description"] or row["llm_summary"] or ""
+                            event_type = row["event_type"]
+                            time_window = row["time_window"]
+
+                            if description:
+                                # Chunk long descriptions
+                                chunks = self._chunk_text_for_graph(description, max_chars=3000)
+                                for j, chunk in enumerate(chunks):
+                                    ep_name = f"事件簇分析: 新任务 {task_id[:8]} - {event_type} @ {time_window}"
+                                    if len(chunks) > 1:
+                                        ep_name += f" (第{j+1}部分)"
+
+                                    episodes.append(EpisodeData(
+                                        name=ep_name,
+                                        episode_body=json.dumps({
+                                            "event_type": event_type,
+                                            "time_window": time_window,
+                                            "task_id": task_id,
+                                            "source_image": "NEW",
+                                            "related_tasks": existing_task_ids,
+                                            "analysis": chunk
+                                        }, ensure_ascii=False),
+                                        source_description=f"事件簇LLM分析 - 新任务 {task_id[:8]} - {event_type}",
+                                        reference_time=datetime.now(),
+                                        file_path="",
+                                        file_id=0,
+                                        category="event_cluster_description"
+                                    ))
+                                    total_clusters += 1
+
+                    if progress_callback:
+                        await progress_callback("aggregating_clusters_new", f"已聚合新任务{idx+1}的事件簇分析结果")
+
+                except Exception as e:
+                    logger.warning(f"[{case_id}] Failed to aggregate clusters from new task {task_id[:8]}: {e}")
+
+            if not episodes:
+                logger.info(f"[{case_id}] No new episodes to ingest into case graph")
+                return {
+                    "success": True,
+                    "episodes_ingested": 0,
+                    "files": 0,
+                    "clusters": 0,
+                }
+
+            # Batch ingest all new episodes
+            logger.info(f"[{case_id}] Incrementally ingesting {len(episodes)} new episodes "
+                        f"({total_files} files + {total_clusters} clusters) into case-level graph")
+            if progress_callback:
+                await progress_callback("ingesting", f"正在摄入 {len(episodes)} 个新分析结果到知识图谱...")
+
+            result = await ingestor.batch_ingest(
+                episodes=episodes,
+                group_id=case_id,
+            )
+
+            success_count = getattr(result, 'successful', 0)
+            total_count = getattr(result, 'total_episodes', len(episodes))
+
+            logger.info(f"[{case_id}] Incremental case-level graph ingestion complete: "
+                        f"{success_count}/{total_count} successful")
+
+            if progress_callback:
+                await progress_callback("completed", f"增量知识图谱摄入完成：{success_count}/{total_count} 成功")
+
+            return {
+                "success": success_count > 0,
+                "episodes_ingested": success_count,
+                "total_episodes": total_count,
+                "files": total_files,
+                "clusters": total_clusters,
+            }
+
+        except Exception as e:
+            logger.error(f"[{case_id}] Incremental case-level graph ingestion failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+            }

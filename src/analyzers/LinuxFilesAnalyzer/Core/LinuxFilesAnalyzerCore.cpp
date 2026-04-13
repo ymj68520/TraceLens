@@ -412,7 +412,7 @@ void LinuxFilesAnalyzer::analyzeDockerContainers() {
     }
 
     // Parse containers
-    auto result = DockerContainerParser::parseContainers(extractPath);
+    auto result = LinuxAnalysis::DockerContainerParser::parseContainers(extractPath);
     if (result.success()) {
         linuxDb_->insertDockerContainers(result.containers);
         std::cout << "  Found " << result.containers.size() << " Docker containers" << std::endl;
@@ -420,7 +420,7 @@ void LinuxFilesAnalyzer::analyzeDockerContainers() {
             "Parsed " + std::to_string(result.containers.size()) + " Docker containers");
     } else {
         AuditLog::instance().log("ERROR", "DOCKER_PARSE_FAILED",
-            "Failed to parse Docker containers: " + result.error.details);
+            "Failed to parse Docker containers: " + result.error.details());
     }
 }
 
@@ -443,7 +443,7 @@ void LinuxFilesAnalyzer::analyzeDockerImages() {
         extractFileToPath(file.inode, outputPath);
     }
 
-    auto images = DockerContainerParser::parseImages(extractPath);
+    auto images = LinuxAnalysis::DockerContainerParser::parseImages(extractPath);
     if (!images.empty()) {
         linuxDb_->insertDockerImages(images);
         std::cout << "  Found " << images.size() << " Docker images" << std::endl;
@@ -462,7 +462,7 @@ void LinuxFilesAnalyzer::analyzeDockerVolumes() {
     std::string extractPath = getExtractPath("docker/volumes");
     fs::create_directories(extractPath);
 
-    auto volumes = DockerContainerParser::parseVolumes(extractPath);
+    auto volumes = LinuxAnalysis::DockerContainerParser::parseVolumes(extractPath);
     if (!volumes.empty()) {
         linuxDb_->insertDockerVolumes(volumes);
         std::cout << "  Found " << volumes.size() << " Docker volumes" << std::endl;
@@ -496,7 +496,7 @@ void LinuxFilesAnalyzer::analyzePodmanContainers() {
     std::string extractPath = getExtractPath("podman");
     fs::create_directories(extractPath);
 
-    auto result = PodmanParser::parseContainers(extractPath);
+    auto result = LinuxAnalysis::PodmanParser::parseContainers(extractPath);
     if (result.success()) {
         linuxDb_->insertPodmanContainers(result.containers);
         linuxDb_->insertPodmanPods(result.pods);
@@ -531,10 +531,10 @@ void LinuxFilesAnalyzer::analyzeApacheServers() {
         for (const auto& file : logFiles) {
             std::string outputPath = extractPath + "/" + std::to_string(file.inode) + ".log";
             if (extractFileToPath(file.inode, outputPath)) {
-                auto entries = ApacheParser::parseAccessLog(outputPath);
-                if (!entries.empty()) {
-                    linuxDb_->insertApacheAccessLogs(entries);
-                    totalLogs += entries.size();
+                auto parseResult = ApacheParser::parseAccessLog(outputPath);
+                if (!parseResult.accessLogs.empty()) {
+                    linuxDb_->insertApacheAccessLogs(parseResult.accessLogs);
+                    totalLogs += parseResult.accessLogs.size();
                 }
             }
         }
@@ -566,10 +566,10 @@ void LinuxFilesAnalyzer::analyzeNginxServers() {
         for (const auto& file : logFiles) {
             std::string outputPath = extractPath + "/" + std::to_string(file.inode) + ".log";
             if (extractFileToPath(file.inode, outputPath)) {
-                auto entries = NginxParser::parseAccessLog(outputPath);
-                if (!entries.empty()) {
-                    linuxDb_->insertNginxAccessLogs(entries);
-                    totalLogs += entries.size();
+                auto parseResult = NginxParser::parseAccessLog(outputPath);
+                if (!parseResult.accessLogs.empty()) {
+                    linuxDb_->insertNginxAccessLogs(parseResult.accessLogs);
+                    totalLogs += parseResult.accessLogs.size();
                 }
             }
         }
@@ -625,7 +625,7 @@ void LinuxFilesAnalyzer::analyzeSetuidFiles() {
     }
 
     if (!setuidFiles.empty()) {
-        SetuidAnalyzer::flagSuspiciousFiles(setuidFiles);
+        LinuxAnalysis::SetuidAnalyzer::flagSuspiciousFiles(setuidFiles);
         linuxDb_->insertSetuidFiles(setuidFiles);
         std::cout << "  Found " << setuidFiles.size() << " setuid/setgid files" << std::endl;
     } else {
@@ -663,15 +663,15 @@ void LinuxFilesAnalyzer::analyzeSELinux() {
     fs::create_directories(extractPath);
 
     // Extract SELinux config
-    for (const auto& config : selinuxConfigs) {
+    for (const auto& configItem : selinuxConfigs) {
         std::string outputPath = extractPath + "/config";
-        extractFileToPath(config.inode, outputPath);
+        extractFileToPath(configItem.inode, outputPath);
 
-        auto status = SELinuxAnalyzer::parseStatus(outputPath);
-        linuxDb_->insertSELinuxStatus(status);
+        auto statusResult = LinuxAnalysis::SELinuxAnalyzer::parseStatus(outputPath);
+        linuxDb_->insertSELinuxStatus(statusResult.status);
 
-        std::string enabled = status.isEnabled ? "enabled" : "disabled";
-        std::cout << "  SELinux is " << enabled << " (mode: " << status.currentMode << ")" << std::endl;
+        std::string enabled = LinuxAnalysis::SELinuxAnalyzer::isEnabled(statusResult.status) ? "enabled" : "disabled";
+        std::cout << "  SELinux is " << enabled << " (mode: " << statusResult.status.currentMode << ")" << std::endl;
     }
 
     // Extract and parse AVC denials
@@ -679,10 +679,10 @@ void LinuxFilesAnalyzer::analyzeSELinux() {
         std::string outputPath = extractPath + "/audit_" + std::to_string(log.inode) + ".log";
         extractFileToPath(log.inode, outputPath);
 
-        auto denials = SELinuxAnalyzer::extractAVCDenials(outputPath);
-        if (!denials.empty()) {
-            linuxDb_->insertSELinuxAVCDenials(denials);
-            std::cout << "  Found " << denials.size() << " SELinux AVC denials" << std::endl;
+        auto denialsResult = LinuxAnalysis::SELinuxAnalyzer::extractAVCDenials(outputPath);
+        if (!denialsResult.avcDenials.empty()) {
+            linuxDb_->insertSELinuxAVCDenials(denialsResult.avcDenials);
+            std::cout << "  Found " << denialsResult.avcDenials.size() << " SELinux AVC denials" << std::endl;
         }
     }
 }
@@ -710,10 +710,10 @@ void LinuxFilesAnalyzer::analyzeAppArmor() {
         profileCount++;
     }
 
-    auto profiles = AppArmorParser::parseProfiles(extractPath);
-    if (!profiles.empty()) {
-        linuxDb_->insertAppArmorProfiles(profiles);
-        std::cout << "  Found " << profiles.size() << " AppArmor profiles" << std::endl;
+    auto profilesResult = LinuxAnalysis::AppArmorParser::parseProfiles(extractPath);
+    if (!profilesResult.profiles.empty()) {
+        linuxDb_->insertAppArmorProfiles(profilesResult.profiles);
+        std::cout << "  Found " << profilesResult.profiles.size() << " AppArmor profiles" << std::endl;
     }
 
     // Look for violations in syslog
@@ -721,10 +721,10 @@ void LinuxFilesAnalyzer::analyzeAppArmor() {
         std::string outputPath = extractPath + "/syslog_" + std::to_string(log.inode);
         extractFileToPath(log.inode, outputPath);
 
-        auto violations = AppArmorParser::extractViolations(outputPath);
-        if (!violations.empty()) {
-            linuxDb_->insertAppArmorViolations(violations);
-            std::cout << "  Found " << violations.size() << " AppArmor violations" << std::endl;
+        auto violationsResult = LinuxAnalysis::AppArmorParser::extractViolations(outputPath);
+        if (!violationsResult.violations.empty()) {
+            linuxDb_->insertAppArmorViolations(violationsResult.violations);
+            std::cout << "  Found " << violationsResult.violations.size() << " AppArmor violations" << std::endl;
         }
     }
 }
@@ -736,7 +736,7 @@ void LinuxFilesAnalyzer::analyzeAppArmor() {
 void LinuxFilesAnalyzer::correlateEvents() {
     std::cout << "Correlating events across log sources..." << std::endl;
 
-    LogCorrelationEngine correlator(outputDbPath_);
+    LinuxAnalysis::LogCorrelationEngine correlator(outputDbPath_);
     auto correlatedEvents = correlator.correlateEvents();
 
     if (!correlatedEvents.empty()) {
@@ -752,8 +752,8 @@ void LinuxFilesAnalyzer::correlateEvents() {
 void LinuxFilesAnalyzer::reconstructTimeline() {
     std::cout << "Reconstructing unified timeline..." << std::endl;
 
-    TimelineReconstructor reconstructor(outputDbPath_);
-    Timeline timeline = reconstructor.buildTimeline();
+    LinuxAnalysis::TimelineReconstructor reconstructor(outputDbPath_);
+    LinuxAnalysis::Timeline timeline = reconstructor.buildTimeline();
 
     if (!timeline.events.empty()) {
         linuxDb_->insertTimelineEvents(timeline.events);
@@ -777,7 +777,7 @@ void LinuxFilesAnalyzer::reconstructTimeline() {
 void LinuxFilesAnalyzer::detectAnomalies() {
     std::cout << "Detecting security anomalies..." << std::endl;
 
-    AnomalyDetector detector(outputDbPath_);
+    LinuxAnalysis::AnomalyDetector detector(outputDbPath_);
     auto anomalies = detector.detectAnomalies();
 
     if (!anomalies.empty()) {

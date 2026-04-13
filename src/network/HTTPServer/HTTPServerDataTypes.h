@@ -286,10 +286,25 @@ enum class CaseStatus {
 };
 
 /**
+ * @brief Task analysis state for incremental case analysis
+ */
+enum class TaskAnalysisState {
+    PENDING,        ///< Task not yet analyzed
+    ANALYZED,       ///< Task has been analyzed (file_descriptions exist)
+    NEEDS_UPDATE,   ///< Task data changed, needs re-analysis
+    FAILED          ///< Task analysis failed
+};
+
+/**
  * @brief A ForensicCase bundles N disk-image tasks under one investigation.
  *
  * The cross-image analysis (multi-image LLM aggregation) is triggered by the
  * Python service after all contained tasks reach COMPLETED status.
+ *
+ * Extended with incremental analysis support:
+ * - Tracks analysis state of each task
+ * - Maintains case-level database for status persistence
+ * - Enables incremental addition of new tasks without re-analyzing all
  */
 struct ForensicCase {
     std::string id;                           ///< UUID
@@ -301,6 +316,11 @@ struct ForensicCase {
 
     std::chrono::system_clock::time_point created_at;
     std::chrono::system_clock::time_point updated_at;
+
+    // Incremental analysis fields
+    std::string case_db_path;                 ///< Path to case-level status database
+    int total_files_analyzed = 0;             ///< Total files analyzed across all tasks
+    std::map<std::string, TaskAnalysisState> task_analysis_states;  ///< Per-task analysis state
 
     // Copy / move — trivially default-constructible
     ForensicCase() = default;

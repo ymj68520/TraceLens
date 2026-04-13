@@ -20,14 +20,14 @@ DockerContainerParser::ParseResult DockerContainerParser::parseContainers(
     // Validate Docker directory
     std::string containersDir = dockerDir;
     if (!fs::exists(containersDir)) {
-        result.error = {
-            .code = ErrorCode::DOCKER_DIR_NOT_FOUND,
-            .component = "DockerContainerParser",
-            .details = "Docker containers directory not found: " + containersDir,
-            .filePath = containersDir,
-            .suggestion = "Ensure Docker is installed and has run on the analyzed system",
-            .isRecoverable = true
-        };
+        result.error = LinuxAnalyzerError(
+            ErrorCode::DOCKER_DIR_NOT_FOUND,
+            "Docker containers directory not found",
+            "Docker containers directory not found: " + containersDir);
+        result.error.setComponent("DockerContainerParser");
+        result.error.setFilePath(containersDir);
+        result.error.setSuggestion("Ensure Docker is installed and has run on the analyzed system");
+        result.error.setRecoverable(true);
         return result;
     }
 
@@ -55,13 +55,12 @@ DockerContainerParser::ParseResult DockerContainerParser::parseContainers(
         }
 
     } catch (const std::exception& e) {
-        result.error = {
-            .code = ErrorCode::DOCKER_CONFIG_PARSE_FAILED,
-            .component = "DockerContainerParser",
-            .details = std::string("Exception during parsing: ") + e.what(),
-            .suggestion = "Check Docker directory structure and permissions",
-            .isRecoverable = true
-        };
+        result.error = LinuxAnalyzerError(
+            ErrorCode::DOCKER_CONFIG_PARSE_FAILED,
+            "Exception during parsing: " + std::string(e.what()));
+        result.error.setComponent("DockerContainerParser");
+        result.error.setSuggestion("Check Docker directory structure and permissions");
+        result.error.setRecoverable(true);
     }
 
     AuditLog::instance().log("SUCCESS", "DOCKER_CONTAINERS_PARSED",

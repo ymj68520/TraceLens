@@ -106,6 +106,20 @@ void CaseManager::save_cases_internal() {
                 return std::chrono::duration_cast<std::chrono::milliseconds>(
                     tp.time_since_epoch()).count();
             };
+
+            // Convert task_analysis_states map to JSON object
+            json task_states_json;
+            for (const auto& [task_id, state] : fc.task_analysis_states) {
+                std::string state_str;
+                switch (state) {
+                    case TaskAnalysisState::PENDING:    state_str = "pending"; break;
+                    case TaskAnalysisState::ANALYZED:   state_str = "analyzed"; break;
+                    case TaskAnalysisState::NEEDS_UPDATE: state_str = "needs_update"; break;
+                    case TaskAnalysisState::FAILED:     state_str = "failed"; break;
+                }
+                task_states_json[task_id] = state_str;
+            }
+
             json j;
             j["id"]                    = fc.id;
             j["name"]                  = fc.name;
@@ -115,6 +129,10 @@ void CaseManager::save_cases_internal() {
             j["cross_analysis_job_id"] = fc.cross_analysis_job_id;
             j["created_at"]            = epoch_ms(fc.created_at);
             j["updated_at"]            = epoch_ms(fc.updated_at);
+            // Incremental analysis fields
+            j["case_db_path"]          = fc.case_db_path;
+            j["total_files_analyzed"]  = fc.total_files_analyzed;
+            j["task_analysis_states"]  = task_states_json;
             arr.push_back(j);
         }
         auto path = cases_json_path();
@@ -141,6 +159,23 @@ void CaseManager::load_cases() {
             fc.task_ids              = j.value("task_ids", std::vector<std::string>{});
             fc.status                = status_from_string(j.value("status", "open"));
             fc.cross_analysis_job_id = j.value("cross_analysis_job_id", "");
+
+            // Load incremental analysis fields
+            fc.case_db_path          = j.value("case_db_path", "");
+            fc.total_files_analyzed  = j.value("total_files_analyzed", 0);
+
+            // Load task_analysis_states map
+            if (j.contains("task_analysis_states") && j["task_analysis_states"].is_object()) {
+                for (auto& [task_id, state_str] : j["task_analysis_states"].items()) {
+                    TaskAnalysisState state = TaskAnalysisState::PENDING;
+                    std::string s = state_str.get<std::string>();
+                    if (s == "analyzed")       state = TaskAnalysisState::ANALYZED;
+                    else if (s == "needs_update") state = TaskAnalysisState::NEEDS_UPDATE;
+                    else if (s == "failed")     state = TaskAnalysisState::FAILED;
+                    fc.task_analysis_states[task_id] = state;
+                }
+            }
+
             auto ms_to_tp = [](long long ms) {
                 return std::chrono::system_clock::time_point{std::chrono::milliseconds{ms}};
             };

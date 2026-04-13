@@ -7,6 +7,7 @@ This is the main entry point that coordinates file filtering, analysis, and repo
 import asyncio
 import logging
 import os
+import httpx
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -18,6 +19,8 @@ from .file_analyzer import FileAnalyzer
 from .report_generator import ReportGenerator
 from .cluster_analyzer import ClusterAnalyzer
 from ..windows_artifacts import WindowsArtifactsService
+from .case_aggregation_manager import CaseAggregationManager
+from .db_utils import get_case_db_path, get_file_description_stats
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,7 @@ class CaseAnalysisService:
         self._report_generator = None
         self._cluster_analyzer = None
         self._windows_service = None  # Windows artifacts service
+        self._case_aggregation = None  # Case aggregation manager
 
     def set_llm_service(self, llm_service):
         """Inject the LLM service dependency."""
@@ -73,6 +77,9 @@ class CaseAnalysisService:
             self._file_analyzer = FileAnalyzer(self.settings, self._llm_service, self._graphiti_service)
             self._report_generator = ReportGenerator(self.settings, self._llm_service, self._graphiti_service)
             self._cluster_analyzer = ClusterAnalyzer(self.settings, self._llm_service, self._graphiti_service)
+            self._case_aggregation = CaseAggregationManager(
+                self.settings, self._cpp_backend, self._graphiti_service
+            )
             logger.info("Case analysis sub-modules initialized")
             if self._graphiti_service:
                 logger.info("Graphiti service is available for knowledge graph features")
@@ -863,4 +870,305 @@ class CaseAnalysisService:
 
         logger.info(f"[MULTI_ANALYSIS] Case {case_id}: complete — "
                     f"{len(all_descriptions)} total files described across {len(task_ids)} images")
+        return result
+
+    # ------------------------------------------------------------------
+    # Incremental Analysis - Smart case creation and incremental updates
+    # ------------------------------------------------------------------
+
+    async def run_smart_case_analysis(
+        self,
+        case_name: str,
+        case_description: str,
+        auto_associate: bool = True,
+        auto_analyze: bool = True,
+        progress_callback=None,
+    ) -> Dict[str, Any]:
+        """
+        智能案件分析 - 自动发现并关联已完成任务
+
+        Flow:
+        1. Create case via C++ backend
+        2. Scan and auto-associate completed tasks
+        3. Execute incremental analysis (skip already-analyzed tasks)
+        4. Generate case-level report
+
+        Args:
+            case_name: Case name
+            case_description: Case description for LLM analysis
+            auto_associate: Auto-associate completed tasks to case
+            auto_analyze: Automatically execute analysis after association
+            progress_callback: Optional progress callback (stage, message)
+
+        Returns:
+            Dict with analysis results including case_id, tasks analyzed, etc.
+        """
+        result = {
+            "case_name": case_name,
+            "case_description": case_description,
+            "steps": {},
+        }
+
+        # Step 1: Create case via C++ backend API
+        if progress_callback:
+            await progress_callback("creating_case", "正在创建案件...")
+
+        logger.info(f"[SMART_CASE] Creating case: {case_name}")
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.post(
+                    f"{self.settings.cpp_backend_url}/api/cases",
+                    json={
+                        "name": case_name,
+                        "description": case_description,
+                        "task_ids": [],  # Start empty, will auto-associate
+                    },
+                )
+                if response.status_code not in (200, 201):
+                    raise RuntimeError(f"C++ backend returned {response.status_code}: {response.text}")
+
+                case_response = response.json()
+                case_id = case_response.get("id")
+                if not case_id:
+                    raise RuntimeError("Failed to create case - no ID returned")
+
+                result["case_id"] = case_id
+                result["steps"]["create_case"] = {"success": True, "case_id": case_id}
+
+        except Exception as e:
+            logger.error(f"[SMART_CASE] Failed to create case: {e}", exc_info=True)
+            result["steps"]["create_case"] = {"success": False, "error": str(e)}
+            return result
+
+        # Step 2: Scan and associate completed tasks
+        if progress_callback:
+            await progress_callback("scanning_tasks", "正在扫描已完成任务...")
+
+        try:
+            association_result = await self._case_aggregation.scan_and_associate_completed_tasks(
+                case_id=case_id,
+                auto_associate=auto_associate,
+                progress_callback=progress_callback,
+            )
+            result["steps"]["scan_tasks"] = association_result
+
+            # Check if we have tasks to analyze
+            total_tasks = (
+                len(association_result.get("already_analyzed", [])) +
+                len(association_result.get("pending_analysis", []))
+            )
+
+            if total_tasks == 0:
+                result["steps"]["analysis"] = {
+                    "skipped": True,
+                    "reason": "No completed tasks found to analyze"
+                }
+                return result
+
+        except Exception as e:
+            logger.error(f"[SMART_CASE] Failed to scan tasks: {e}", exc_info=True)
+            result["steps"]["scan_tasks"] = {"error": str(e)}
+            return result
+
+        # Step 3: Execute incremental analysis
+        if auto_analyze:
+            analysis_result = await self.run_incremental_analysis(
+                case_id=case_id,
+                progress_callback=progress_callback,
+            )
+            result["steps"]["analysis"] = analysis_result
+        else:
+            result["steps"]["analysis"] = {"skipped": True, "reason": "auto_analyze=False"}
+
+        return result
+
+    async def run_incremental_analysis(
+        self,
+        case_id: str,
+        new_task_ids: List[str] = None,
+        force_reanalyze: bool = False,
+        progress_callback=None,
+    ) -> Dict[str, Any]:
+        """
+        增量分析 - 仅分析新增或变更的任务
+
+        Flow:
+        1. Plan incremental analysis (determine which tasks need analysis)
+        2. Skip already-analyzed tasks, reuse their file_descriptions
+        3. Execute full analysis only on new/pending tasks
+        4. Incrementally update case-level knowledge graph
+        5. Generate updated case report
+
+        Args:
+            case_id: Case identifier
+            new_task_ids: Optional list of new task IDs to add
+            force_reanalyze: If True, reanalyze all tasks
+            progress_callback: Optional progress callback (stage, message)
+
+        Returns:
+            Dict with analysis results
+        """
+        result = {
+            "case_id": case_id,
+            "new_task_ids": new_task_ids or [],
+            "force_reanalyze": force_reanalyze,
+            "steps": {},
+        }
+
+        if not self._case_aggregation:
+            raise RuntimeError("CaseAggregationManager not initialized")
+
+        # Step 1: Plan incremental analysis
+        if progress_callback:
+            await progress_callback("planning", "正在规划增量分析...")
+
+        try:
+            plan = await self._case_aggregation.plan_incremental_analysis(
+                case_id=case_id,
+                new_task_ids=new_task_ids,
+            )
+            result["steps"]["plan"] = plan
+
+            if force_reanalyze:
+                # Re-analyze all tasks
+                case_status = await self._case_aggregation.get_case_analysis_status(case_id)
+                all_task_ids = [t["task_id"] for t in case_status["tasks"]]
+                plan["analyze_tasks"] = all_task_ids
+                plan["skip_tasks"] = []
+
+            if not plan["analyze_tasks"]:
+                result["steps"]["analysis"] = {
+                    "skipped": True,
+                    "reason": "All tasks already analyzed",
+                    "reuse_descriptions": plan["reuse_descriptions"],
+                }
+                return result
+
+        except Exception as e:
+            logger.error(f"[INCREMENTAL] Failed to plan analysis: {e}", exc_info=True)
+            result["steps"]["plan"] = {"error": str(e)}
+            return result
+
+        # Step 2: Execute analysis on pending tasks
+        if progress_callback:
+            await progress_callback("analyzing", f"正在分析 {len(plan['analyze_tasks'])} 个任务...")
+
+        try:
+            # Define analysis function for each task
+            async def analyze_single_task(task_id: str, case_id: str, progress_cb):
+                """Analyze a single task using the full analysis pipeline"""
+                # Get task info from C++ backend
+                task_info = await self._cpp_backend.get_task(task_id)
+                files_db = task_info.get("output_files_db", "")
+                events_db = task_info.get("output_events_db", "")
+
+                if not files_db:
+                    raise RuntimeError(f"Task {task_id} has no files_db")
+
+                # Run full analysis (filtering will be skipped if already done)
+                return await self.run_full_analysis(
+                    task_id=task_id,
+                    files_db_path=files_db,
+                    case_description=task_info.get("case_description", ""),
+                    max_filter_files=200,
+                    run_filtering=True,  # Will auto-skip if filtered files exist
+                    progress_callback=progress_cb,
+                )
+
+            # Execute incremental analysis
+            execution_result = await self._case_aggregation.execute_incremental_analysis(
+                case_id=case_id,
+                plan=plan,
+                analyze_func=analyze_single_task,
+                progress_callback=progress_callback,
+            )
+            result["steps"]["execution"] = execution_result
+
+        except Exception as e:
+            logger.error(f"[INCREMENTAL] Failed to execute analysis: {e}", exc_info=True)
+            result["steps"]["execution"] = {"error": str(e)}
+            return result
+
+        # Step 3: Incremental knowledge graph update
+        if self._graphiti_service:
+            if progress_callback:
+                await progress_callback("graph_ingestion", "正在更新知识图谱...")
+
+            try:
+                # Get all task IDs in case
+                case_status = await self._case_aggregation.get_case_analysis_status(case_id)
+                all_task_ids = [t["task_id"] for t in case_status["tasks"]]
+
+                # Get database paths for all tasks
+                files_db_paths = []
+                events_db_paths = []
+
+                for task_id in all_task_ids:
+                    try:
+                        task_info = await self._cpp_backend.get_task(task_id)
+                        files_db = task_info.get("output_files_db", "")
+                        events_db = task_info.get("output_events_db", "")
+                        if files_db:
+                            files_db_paths.append(files_db)
+                        if events_db:
+                            events_db_paths.append(events_db)
+                    except Exception:
+                        pass
+
+                # Ingest only new/updated tasks' data
+                kg_result = await self._graphiti_service.ingest_case_data(
+                    case_id=case_id,
+                    task_ids=all_task_ids,
+                    files_db_paths=files_db_paths,
+                    events_db_paths=events_db_paths,
+                    progress_callback=progress_callback,
+                )
+                result["steps"]["knowledge_graph"] = {"ingested": kg_result}
+
+            except Exception as e:
+                logger.error(f"[INCREMENTAL] Graph ingestion failed: {e}", exc_info=True)
+                result["steps"]["knowledge_graph"] = {"error": str(e)}
+
+        # Step 4: Generate updated case report
+        if progress_callback:
+            await progress_callback("reporting", "正在生成案件报告...")
+
+        try:
+            # Aggregate all descriptions from all tasks
+            all_descriptions = []
+            case_status = await self._case_aggregation.get_case_analysis_status(case_id)
+
+            for task_status in case_status["tasks"]:
+                task_id = task_status["task_id"]
+                try:
+                    task_info = await self._cpp_backend.get_task(task_id)
+                    files_db = task_info.get("output_files_db", "")
+                    if files_db:
+                        stats = get_file_description_stats(files_db)
+                        if stats["analyzed_files"] > 0:
+                            # Load descriptions from database
+                            all_descriptions.extend(
+                                [{"task_id": task_id, "has_analysis": True}] * stats["analyzed_files"]
+                            )
+                except Exception:
+                    pass
+
+            # Generate report
+            report = await self.generate_case_report(
+                case_description="",  # Will load from case
+                file_descriptions=all_descriptions,
+                task_id=case_id,
+                is_cross_image_report=True,
+            )
+            result["steps"]["report"] = report
+
+        except Exception as e:
+            logger.error(f"[INCREMENTAL] Report generation failed: {e}", exc_info=True)
+            result["steps"]["report"] = {"error": str(e)}
+
+        logger.info(f"[INCREMENTAL] Case {case_id}: Complete - "
+                    f"{len(execution_result.get('analyzed_tasks', []))} analyzed, "
+                    f"{len(execution_result.get('skipped_tasks', []))} skipped")
+
         return result

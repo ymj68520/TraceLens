@@ -53,12 +53,11 @@ PodmanParser::ParseResult PodmanParser::parseContainers(
     }
 
     if (!foundAny) {
-        result.error = {
-            .code = ErrorCode::PODMAN_DIR_NOT_FOUND,
-            .component = "PodmanParser",
-            .details = "No Podman containers found",
-            .isRecoverable = true
-        };
+        result.error = LinuxAnalyzerError(
+            ErrorCode::PODMAN_DIR_NOT_FOUND,
+            "No Podman containers found");
+        result.error.setComponent("PodmanParser");
+        result.error.setRecoverable(true);
     }
 
     AuditLog::instance().log("SUCCESS", "PODMAN_CONTAINERS_PARSED",

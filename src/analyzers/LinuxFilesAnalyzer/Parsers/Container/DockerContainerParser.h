@@ -15,10 +15,10 @@ namespace LinuxAnalysis {
 /**
  * @brief Parses Docker container configurations and metadata
  *
- * Extracts information from:
- * - /var/lib/docker/containers/*/config.json - Container configurations
- * - /var/lib/docker/image/overlay2/layerdb - Image metadata
- * - /var/lib/docker/volumes/*/metadata.json - Volume metadata
+ * Extracts information from Docker installation directories:
+ * 1. Container configuration files from /var/lib/docker/containers/
+ * 2. Image metadata from /var/lib/docker/image/overlay2/layerdb
+ * 3. Volume metadata from /var/lib/docker/volumes/
  */
 class DockerContainerParser {
 public:
