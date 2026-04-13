@@ -76,6 +76,30 @@ target_link_libraries(test_webserver_parsers_gtest ${GTEST_LIBRARIES}
 
 add_test(NAME WebServerParsersGTests COMMAND test_webserver_parsers_gtest)
 
+# Security Parsers Tests
+add_executable(
+  test_linux_security_parsers_gtest
+  UnitTest/test_linux_security_parsers_gtest.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SetuidAnalyzer.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/Security/CapabilityAnalyzer.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SELinuxAnalyzer.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/Security/AppArmorParser.cpp
+  ../src/core/AuditLog/AuditLog.cpp)
+
+target_include_directories(
+  test_linux_security_parsers_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers/Security
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common
+          ${CMAKE_SOURCE_DIR}/src/core/AuditLog)
+
+target_link_libraries(test_linux_security_parsers_gtest ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} sqlite3 pthread)
+
+add_test(NAME LinuxSecurityParsersGTests COMMAND test_linux_security_parsers_gtest)
+
 # File Classifier Tests
 add_executable(
   test_file_classifier
