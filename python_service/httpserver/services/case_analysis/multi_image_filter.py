@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .file_filter import FileFilter
+from .llm_response_parser import LLMResponseParser
+from .file_matcher import FileMatcher
+from .filter_validator import FilterResultValidator
 from ...config import Settings
 
 logger = logging.getLogger(__name__)
@@ -19,6 +22,13 @@ logger = logging.getLogger(__name__)
 
 class MultiImageFilter(FileFilter):
     """Aggregates file lists from multiple images before LLM filtering."""
+
+    def __init__(self, settings: Settings):
+        """Initialize multi-image filter with enhanced components."""
+        super().__init__(settings)
+        self._parser = LLMResponseParser(settings)
+        self._matcher = FileMatcher(settings)
+        self._validator = FilterResultValidator(settings)
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -120,7 +130,7 @@ class MultiImageFilter(FileFilter):
         max_files: int,
         batch_size: int,
     ) -> Dict[str, Any]:
-        """Run the inherited streaming batch LLM filter on pre-built TOON data."""
+        """Run the streaming batch LLM filter on pre-built TOON data using enhanced pipeline."""
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
 
@@ -146,19 +156,21 @@ class MultiImageFilter(FileFilter):
                     max_tokens=self.settings.llm_text_max_tokens,
                 )
                 text = result.get("analysis", {}).get("description", "")
-                parsed = self._parse_toon_filter_response(text, batch)
-                all_selected.extend(parsed["selected_files"])
-                if parsed.get("reasoning"):
-                    reasonings.append(parsed["reasoning"])
+
+                # Use enhanced parsing pipeline
+                parsed = self._parser.parse_filter_response(text, batch)
+                validated = self._validator.validate_and_repair(parsed, batch)
+
+                all_selected.extend(validated["selected_files"])
+                if validated.get("reasoning"):
+                    reasonings.append(validated["reasoning"])
                 if len(all_selected) >= max_files:
                     break
             except Exception as e:
                 logger.warning(f"[MULTI_FILTER] Batch {idx+1} failed: {e}")
 
-        # Deduplicate results
-        seen: set = set()
-        unique = [f for f in all_selected if not (f in seen or seen.add(f))]
-        final = unique[:max_files]
+        # Use enhanced duplicate resolution
+        final = self._matcher.match_files(all_selected)
 
         return {
             "filtered_files": final,
