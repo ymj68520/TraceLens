@@ -12,6 +12,10 @@ from typing import Any, Dict, List, Optional
 
 from ...config import Settings
 from ...prompts import FILE_FILTER_SYSTEM, FILE_FILTER_USER_TEMPLATE, FILE_FILTER_BATCH_ENHANCED_TEMPLATE
+from .llm_response_parser import LLMResponseParser
+from .file_matcher import FileMatcher
+from .filter_validator import FilterResultValidator
+from .concurrent_filter import FilterLockManager
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +35,12 @@ class FileFilter:
         self.settings = settings
         self._llm_service = llm_service
         self._cpp_backend = cpp_backend
+
+        # Initialize enhanced components
+        self._parser = LLMResponseParser(settings)
+        self._matcher = FileMatcher(settings)
+        self._validator = FilterResultValidator(settings)
+        self._lock_manager = FilterLockManager.instance() if settings else None
 
     async def filter_files_by_case(
         self,
@@ -53,8 +63,47 @@ class FileFilter:
                 files_db_path, case_description, max_files, task_id
             )
 
+        # Extract task_id if not provided
+        if not task_id:
+            task_match = re.search(r'tasks/([a-f0-9-]+)/', files_db_path)
+            task_id = task_match.group(1) if task_match else "_latest"
+
+        # Use concurrent lock if enabled
+        if self._lock_manager and hasattr(self.settings, 'llm_filter_config') and self.settings.llm_filter_config.enable_concurrent_lock:
+            return await self._lock_manager.filter_with_lock(
+                task_id,
+                self._do_filter_files_by_case,
+                files_db_path,
+                case_description,
+                max_files,
+                batch_size,
+                use_streaming,
+            )
+        else:
+            return await self._do_filter_files_by_case(
+                files_db_path,
+                case_description,
+                max_files,
+                batch_size,
+                use_streaming,
+            )
+
+    async def _do_filter_files_by_case(
+        self,
+        files_db_path: str,
+        case_description: str,
+        max_files: int,
+        batch_size: int,
+        use_streaming: bool,
+    ) -> Dict[str, Any]:
+        """Internal filtering method."""
+        if not use_streaming:
+            return await self._filter_files_by_case_legacy(
+                files_db_path, case_description, max_files
+            )
+
         return await self._filter_files_by_case_streaming(
-            files_db_path, case_description, max_files, batch_size, task_id
+            files_db_path, case_description, max_files, batch_size
         )
 
     async def _filter_files_by_case_streaming(
@@ -242,7 +291,62 @@ class FileFilter:
         response_text: str,
         batch_lines: List[str],
     ) -> Dict[str, Any]:
-        """Parse LLM response from TOON batch filtering with robustness."""
+        """Parse LLM response using enhanced pipeline with fallback."""
+
+        # Build batch_files dict for matching
+        batch_files = []
+        for line in batch_lines:
+            parts = line.split(" | ")
+            if len(parts) >= 2:
+                batch_files.append({
+                    "name": parts[0].strip(),
+                    "path": parts[1].strip(),
+                    "size": int(parts[2]) if len(parts) > 2 and parts[2].strip().isdigit() else 0,
+                    "category": parts[3] if len(parts) > 3 else "",
+                })
+
+        # Try enhanced pipeline
+        try:
+            logger.info("[ENHANCED_PARSE] Using new parser pipeline")
+
+            # Step 1: Parse response
+            parse_result = self._parser.parse_filter_response(
+                response_text, batch_files
+            )
+
+            # Step 2: Validate and repair
+            validated = self._validator.validate_and_repair(
+                parse_result, batch_files, max_files=1000
+            )
+
+            # Step 3: Match files (handles duplicates)
+            matched = self._matcher.match_files(
+                validated.items, batch_files, ""
+            )
+
+            logger.info(f"[ENHANCED_PARSE] Pipeline completed: {len(matched.files)} files, {matched.duplicates_resolved} duplicates resolved")
+
+            return {
+                "selected_files": matched.files,
+                "reasoning": parse_result.reasoning,
+                "confidence": parse_result.confidence,
+                "duplicates_resolved": matched.duplicates_resolved,
+            }
+
+        except Exception as e:
+            logger.warning(f"[ENHANCED_PARSE] Failed: {e}, using legacy parser")
+            # Fall back to legacy implementation
+            return self._parse_toon_filter_response_legacy(
+                response_text, batch_lines, batch_files
+            )
+
+    def _parse_toon_filter_response_legacy(
+        self,
+        response_text: str,
+        batch_lines: List[str],
+        batch_files: List[Dict],
+    ) -> Dict[str, Any]:
+        """Legacy parsing implementation (preserved from original)."""
         selected_files = []
         reasoning = ""
 
