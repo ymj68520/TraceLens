@@ -13,12 +13,11 @@ from typing import Any, Dict, List, Optional
 from ...config import Settings
 
 from .file_filter import FileFilter
+from .multi_image_filter import MultiImageFilter
 from .file_analyzer import FileAnalyzer
 from .report_generator import ReportGenerator
 from .cluster_analyzer import ClusterAnalyzer
 from ..windows_artifacts import WindowsArtifactsService
-
-logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +34,7 @@ class CaseAnalysisService:
 
         # Sub-modules (initialized after dependency injection)
         self._file_filter = None
+        self._multi_filter = None
         self._file_analyzer = None
         self._report_generator = None
         self._cluster_analyzer = None
@@ -68,9 +68,8 @@ class CaseAnalysisService:
     def _initialize_modules(self):
         """Initialize sub-modules after all dependencies are injected."""
         if self._llm_service and self._cpp_backend:
-            # Always re-initialize when graphiti_service changes
-            # This allows injecting graphiti_service after initial setup
             self._file_filter = FileFilter(self.settings, self._llm_service, self._cpp_backend)
+            self._multi_filter = MultiImageFilter(self.settings, self._llm_service, self._cpp_backend)
             self._file_analyzer = FileAnalyzer(self.settings, self._llm_service, self._graphiti_service)
             self._report_generator = ReportGenerator(self.settings, self._llm_service, self._graphiti_service)
             self._cluster_analyzer = ClusterAnalyzer(self.settings, self._llm_service, self._graphiti_service)
@@ -698,4 +697,103 @@ class CaseAnalysisService:
         if self._graphiti_service:
             logger.info(f"  - KG ingestion: {result['steps'].get('knowledge_graph', {}).get('ingested', False)}")
 
+        return result
+
+    # ------------------------------------------------------------------
+    # Multi-Image Pipeline (Case-level analysis)
+    # ------------------------------------------------------------------
+
+    async def run_multi_image_analysis(
+        self,
+        case_id: str,
+        task_ids: List[str],
+        files_db_paths: List[str],
+        case_description: str,
+        max_filter_files: int = 400,
+        progress_callback=None,
+    ) -> Dict[str, Any]:
+        """
+        Run cross-image analysis for a ForensicCase.
+
+        Steps:
+          1. Aggregate + deduplicate files across all _files.db databases
+          2. LLM-filter relevant files (cross-image aware)
+          3. Extract + describe files per image (reuses run_full_analysis pipeline)
+          4. Generate combined case report merging all descriptions
+        """
+        if not self._multi_filter:
+            raise RuntimeError("MultiImageFilter not initialized. Ensure all dependencies are injected.")
+
+        result: Dict[str, Any] = {
+            "case_id": case_id,
+            "task_ids": task_ids,
+            "case_description": case_description,
+            "steps": {},
+        }
+
+        if progress_callback:
+            await progress_callback("filtering", f"正在跨 {len(files_db_paths)} 个镜像筛选关键文件...")
+
+        # Step 1 — Cross-image LLM filter
+        logger.info(f"[MULTI_ANALYSIS] Case {case_id}: starting multi-image filter "
+                    f"({len(files_db_paths)} images)")
+        filter_result = await self._multi_filter.filter_files_multi(
+            files_db_paths=files_db_paths,
+            case_description=case_description,
+            max_files=max_filter_files,
+            task_ids=task_ids,
+        )
+        result["steps"]["filter"] = {
+            "total_files":     filter_result.get("total_files", 0),
+            "selected_count":  filter_result.get("selected_count", 0),
+            "dedup_removed":   filter_result.get("dedup_removed", 0),
+            "source_counts":   filter_result.get("source_counts", {}),
+        }
+        logger.info(f"[MULTI_ANALYSIS] Case {case_id}: filter done — "
+                    f"{filter_result.get('selected_count', 0)} files selected")
+
+        # Step 2 — Per-image extraction + description (run single-image pipelines)
+        all_descriptions: List[Dict[str, Any]] = []
+
+        for idx, (task_id, db_path) in enumerate(zip(task_ids, files_db_paths)):
+            if progress_callback:
+                await progress_callback(
+                    "analyzing",
+                    f"正在分析镜像 {idx+1}/{len(task_ids)}（task {task_id[:8]}）..."
+                )
+            logger.info(f"[MULTI_ANALYSIS] Case {case_id}: running per-image pipeline "
+                        f"for task {task_id} (db: {db_path})")
+            try:
+                img_result = await self.run_full_analysis(
+                    task_id=task_id,
+                    files_db_path=db_path,
+                    case_description=case_description,
+                    max_filter_files=max_filter_files,
+                    run_filtering=False,   # filtered files already persisted in Step 1
+                    progress_callback=None,
+                )
+                descs = img_result.get("steps", {}).get("descriptions", [])
+                all_descriptions.extend(descs)
+                result["steps"][f"image_{idx+1}"] = {
+                    "task_id": task_id,
+                    "described": len(descs),
+                }
+            except Exception as e:
+                logger.error(f"[MULTI_ANALYSIS] Image {idx+1} pipeline failed: {e}", exc_info=True)
+                result["steps"][f"image_{idx+1}"] = {"task_id": task_id, "error": str(e)}
+
+        # Step 3 — Combined report
+        if progress_callback:
+            await progress_callback("reporting", "正在生成跨镜像综合报告...")
+
+        combined_report = await self.generate_case_report(
+            case_description=case_description,
+            file_descriptions=all_descriptions,
+            files_db_path=files_db_paths[0] if files_db_paths else None,
+            task_id=case_id,
+        )
+        result["steps"]["report"] = combined_report
+
+        logger.info(f"[MULTI_ANALYSIS] Case {case_id}: complete — "
+                    f"{len(all_descriptions)} total files described across {len(task_ids)} images")
         return result

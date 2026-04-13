@@ -1,12 +1,13 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import * as taskService from '../services/taskService';
 
+// ── Thunks ──────────────────────────────────────────────────────────────────
+
 export const createTask = createAsyncThunk(
   'tasks/create',
   async (taskData, { rejectWithValue }) => {
     try {
-      const response = await taskService.createTask(taskData);
-      return response;
+      return await taskService.createTask(taskData);
     } catch (error) {
       return rejectWithValue(error.response?.data || error.message);
     }
@@ -17,8 +18,22 @@ export const fetchTasks = createAsyncThunk(
   'tasks/fetchAll',
   async (params = {}, { rejectWithValue }) => {
     try {
-      const response = await taskService.listTasks(params);
-      return response;
+      return await taskService.listTasks(params);
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message);
+    }
+  }
+);
+
+/**
+ * Silent background refresh — does NOT set status='loading'.
+ * Use this for polling so the UI doesn't flash/re-render.
+ */
+export const fetchTasksSilent = createAsyncThunk(
+  'tasks/fetchSilent',
+  async (params = {}, { rejectWithValue }) => {
+    try {
+      return await taskService.listTasks(params);
     } catch (error) {
       return rejectWithValue(error.response?.data || error.message);
     }
@@ -53,7 +68,6 @@ export const deleteTask = createAsyncThunk(
   'tasks/delete',
   async (taskId, { rejectWithValue }) => {
     try {
-      // Use cancel endpoint with delete reason - backend will handle it
       const response = await taskService.cancelTask(taskId, 'Deleted by user');
       return { taskId, ...response };
     } catch (error) {
@@ -66,13 +80,14 @@ export const fetchTaskStatistics = createAsyncThunk(
   'tasks/fetchStatistics',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await taskService.getTaskStatistics();
-      return response;
+      return await taskService.getTaskStatistics();
     } catch (error) {
       return rejectWithValue(error.response?.data || error.message);
     }
   }
 );
+
+// ── Slice ────────────────────────────────────────────────────────────────────
 
 const taskSlice = createSlice({
   name: 'tasks',
@@ -80,105 +95,69 @@ const taskSlice = createSlice({
     tasks: [],
     currentTask: null,
     statistics: null,
-    status: 'idle',
+    status: 'idle',   // 'idle' | 'loading' | 'succeeded' | 'failed'
     error: null,
-    filters: {
-      status: 'all',
-      priority: 'all',
-    },
-    pagination: {
-      total: 0,
-      limit: 20,
-      offset: 0,
-    },
+    filters: { status: 'all', priority: 'all' },
+    pagination: { total: 0, limit: 20, offset: 0 },
   },
   reducers: {
     setFilters: (state, action) => {
       state.filters = { ...state.filters, ...action.payload };
     },
-    clearError: (state) => {
-      state.error = null;
-    },
+    clearError: (state) => { state.error = null; },
     updateTaskProgress: (state, action) => {
-      const index = state.tasks.findIndex((t) => t.id === action.payload.taskId);
-      if (index !== -1) {
-        state.tasks[index] = {
-          ...state.tasks[index],
-          ...action.payload,
-        };
-      }
+      const idx = state.tasks.findIndex((t) => t.id === action.payload.taskId);
+      if (idx !== -1) state.tasks[idx] = { ...state.tasks[idx], ...action.payload };
     },
-    setCurrentTask: (state, action) => {
-      state.currentTask = action.payload;
-    },
+    setCurrentTask: (state, action) => { state.currentTask = action.payload; },
   },
   extraReducers: (builder) => {
     builder
-      // Create task
-      .addCase(createTask.pending, (state) => {
-        state.status = 'loading';
-      })
-      .addCase(createTask.fulfilled, (state, action) => {
+      // createTask
+      .addCase(createTask.pending,    (state)          => { state.status = 'loading'; })
+      .addCase(createTask.fulfilled,  (state, action)  => { state.status = 'succeeded'; state.tasks.push(action.payload); })
+      .addCase(createTask.rejected,   (state, action)  => { state.status = 'failed'; state.error = action.payload; })
+
+      // fetchTasks — shows loading spinner (initial / filter change)
+      .addCase(fetchTasks.pending,    (state)          => { state.status = 'loading'; })
+      .addCase(fetchTasks.fulfilled,  (state, action)  => {
         state.status = 'succeeded';
-        state.tasks.push(action.payload);
-      })
-      .addCase(createTask.rejected, (state, action) => {
-        state.status = 'failed';
-        state.error = action.payload;
-      })
-      // Fetch tasks
-      .addCase(fetchTasks.pending, (state) => {
-        state.status = 'loading';
-      })
-      .addCase(fetchTasks.fulfilled, (state, action) => {
-        state.status = 'succeeded';
-        console.log('fetchTasks fulfilled - action.payload:', JSON.stringify(action.payload, null, 2));
-        console.log('fetchTasks fulfilled - tasks array:', action.payload.tasks);
-        console.log('fetchTasks fulfilled - tasks length:', action.payload.tasks?.length);
         state.tasks = action.payload.tasks || [];
-        if (action.payload.pagination) {
-          state.pagination = action.payload.pagination;
-        }
+        if (action.payload.pagination) state.pagination = action.payload.pagination;
       })
-      .addCase(fetchTasks.rejected, (state, action) => {
-        state.status = 'failed';
-        state.error = action.payload;
+      .addCase(fetchTasks.rejected,   (state, action)  => { state.status = 'failed'; state.error = action.payload; })
+
+      // fetchTasksSilent — background poll; does NOT touch status
+      .addCase(fetchTasksSilent.fulfilled, (state, action) => {
+        state.tasks = action.payload.tasks || [];
+        if (action.payload.pagination) state.pagination = action.payload.pagination;
       })
-      // Fetch task progress
+
+      // fetchTaskProgress
       .addCase(fetchTaskProgress.fulfilled, (state, action) => {
-        const index = state.tasks.findIndex((t) => t.id === action.payload.taskId);
-        if (index !== -1) {
-          state.tasks[index] = {
-            ...state.tasks[index],
-            ...action.payload,
-          };
-        }
-        if (state.currentTask?.id === action.payload.taskId) {
-          state.currentTask = {
-            ...state.currentTask,
-            ...action.payload,
-          };
-        }
+        const idx = state.tasks.findIndex((t) => t.id === action.payload.taskId);
+        if (idx !== -1) state.tasks[idx] = { ...state.tasks[idx], ...action.payload };
+        if (state.currentTask?.id === action.payload.taskId)
+          state.currentTask = { ...state.currentTask, ...action.payload };
       })
-      // Cancel task
+
+      // cancelTask
       .addCase(cancelTask.fulfilled, (state, action) => {
-        const index = state.tasks.findIndex((t) => t.id === action.payload.taskId);
-        if (index !== -1) {
-          state.tasks[index].status = 'cancelled';
-        }
+        const idx = state.tasks.findIndex((t) => t.id === action.payload.taskId);
+        if (idx !== -1) state.tasks[idx].status = 'cancelled';
       })
-      // Delete task
+
+      // deleteTask
       .addCase(deleteTask.fulfilled, (state, action) => {
         state.tasks = state.tasks.filter((t) => t.id !== action.payload.taskId);
       })
-      // Fetch statistics
+
+      // fetchTaskStatistics
       .addCase(fetchTaskStatistics.fulfilled, (state, action) => {
         state.statistics = action.payload;
       });
   },
 });
 
-export const { setFilters, clearError, updateTaskProgress, setCurrentTask } =
-  taskSlice.actions;
-
+export const { setFilters, clearError, updateTaskProgress, setCurrentTask } = taskSlice.actions;
 export default taskSlice.reducer;

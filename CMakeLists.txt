@@ -198,6 +198,8 @@ set(LIB_SOURCES
     src/network/HTTPServer/routes/TaskCRUDRoutes.cpp
     src/network/HTTPServer/routes/TaskBatchRoutes.cpp
     src/network/HTTPServer/routes/TaskMonitoringRoutes.cpp
+    src/network/HTTPServer/routes/CaseCRUDRoutes.cpp
+    src/network/HTTPServer/CaseManager.cpp
     src/network/HTTPServer/TaskSerialization.cpp
     src/network/HTTPServer/TaskPersistence.cpp
     src/network/HTTPServer/TaskWatchdog.cpp

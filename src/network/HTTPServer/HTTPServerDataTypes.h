@@ -271,4 +271,39 @@ struct ExtractionJob {
     std::string output_path;          // Final output directory path
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ForensicCase — groups multiple AnalysisTasks under one investigation
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @brief Case status (derived from contained tasks + cross-image analysis state)
+ */
+enum class CaseStatus {
+    OPEN,           ///< Tasks still running or not yet analysed
+    ANALYSING,      ///< Cross-image LLM analysis in progress (Python job)
+    COMPLETED,      ///< Cross-image report generated
+    FAILED          ///< Cross-image analysis failed
+};
+
+/**
+ * @brief A ForensicCase bundles N disk-image tasks under one investigation.
+ *
+ * The cross-image analysis (multi-image LLM aggregation) is triggered by the
+ * Python service after all contained tasks reach COMPLETED status.
+ */
+struct ForensicCase {
+    std::string id;                           ///< UUID
+    std::string name;                         ///< Human-readable case title
+    std::string description;                  ///< Case description (shared with LLM)
+    std::vector<std::string> task_ids;        ///< Ordered list of contained task IDs
+    CaseStatus status = CaseStatus::OPEN;
+    std::string cross_analysis_job_id;        ///< Python background job ID
+
+    std::chrono::system_clock::time_point created_at;
+    std::chrono::system_clock::time_point updated_at;
+
+    // Copy / move — trivially default-constructible
+    ForensicCase() = default;
+};
+
 #endif // HTTP_SERVER_DATA_TYPES_H

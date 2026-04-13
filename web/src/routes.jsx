@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import App from './App';
 import Dashboard from './pages/Dashboard';
 import Tasks from './pages/Tasks';
+import Cases from './pages/Cases';
 import Timeline from './pages/Timeline';
 import Files from './pages/Files';
 import Android from './pages/Android';
@@ -34,6 +35,10 @@ const router = createBrowserRouter([
       {
         path: 'tasks',
         element: <Tasks />,
+      },
+      {
+        path: 'cases',
+        element: <Cases />,
       },
       {
         path: 'timeline',

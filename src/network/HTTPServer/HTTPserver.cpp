@@ -64,7 +64,8 @@ namespace forensics {
           task_routes_(app_),
           forensics_routes_(app_),
           system_routes_(app_),
-          search_routes_(app_)
+          search_routes_(app_),
+          case_routes_(app_)
     {
         // Route handlers are initialized in their respective classes
     }
