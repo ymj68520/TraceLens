@@ -18,6 +18,7 @@ from .file_analyzer import FileAnalyzer
 from .report_generator import ReportGenerator
 from .cluster_analyzer import ClusterAnalyzer
 from . import db_utils
+from .llm_response_parser import LLMResponseParser, ParseResult
 
 __all__ = [
     "CaseAnalysisService",
@@ -26,4 +27,6 @@ __all__ = [
     "ReportGenerator",
     "ClusterAnalyzer",
     "db_utils",
+    "LLMResponseParser",
+    "ParseResult",
 ]
