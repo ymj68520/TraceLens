@@ -13,8 +13,8 @@ from typing import Any, Dict, List, Optional
 
 import sqlite3
 
-from ...config import Settings
-from ...prompts import OSS_FILTER_SYSTEM, OSS_FILTER_USER_TEMPLATE
+from ..config import Settings
+from ..prompts import OSS_FILTER_SYSTEM, OSS_FILTER_USER_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
