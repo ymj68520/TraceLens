@@ -22,6 +22,7 @@ Python HTTP 服务运行在端口 **8090**，提供知识图谱、LLM 分析和�
 5. [Office 文档 API](#5-office-文档-api)
 6. [案例分析 API](#6-案例分析-api)
 7. [系统信息 API](#7-系统信息-api)
+8. [AI 文件过滤增强配置](#8-ai-文件过滤增强配置)
 
 ---
 
@@ -769,6 +770,130 @@ database.db | /evidence/database.db | databases | 5242880 | SQLite 数据库 | �
 
 ---
 
+## 8. AI 文件过滤增强配置
+
+### 概述
+
+AI 文件过滤系统已增强，提供更强大的响应解析、智能重复处理和边缘情况恢复能力。
+
+### 新增组件
+
+#### LLMResponseParser
+
+**位置**: `services/case_analysis/llm_response_parser.py`
+
+处理各种 LLM 响应格式：
+- 带/不带 markdown 代码块的 JSON
+- 不同的字段名称（selected_files、filtered_files、files）
+- 数组或字典格式
+- 嵌入 JSON 的文本
+
+#### FileMatcher
+
+**位置**: `services/case_analysis/file_matcher.py`
+
+智能文件匹配与重复解析：
+- 复合评分（路径语义 + 新鲜度 + 大小 + 深度）
+- 可配置权重
+- 置信度评分
+
+**默认评分权重**:
+- 路径语义: 0.4
+- 新鲜度: 0.3
+- 大小: 0.2
+- 深度: 0.1
+
+#### FilterResultValidator
+
+**位置**: `services/case_analysis/filter_validator.py`
+
+验证和修复结果：
+- 处理无效响应
+- 修剪多余文件
+- 移除无效项
+- 低置信度检测
+
+#### FilterLockManager
+
+**位置**: `services/case_analysis/concurrent_filter.py`
+
+防止并发过滤冲突：
+- 任务级异步锁
+- 超时支持
+- 单例模式
+
+### 环境配置
+
+在 `.env` 文件中添加以下配置：
+
+```env
+# 启用增强解析器
+ENABLE_ENHANCED_PARSER=true
+
+# 配置评分权重
+SCORE_WEIGHT_PATH_SEMANTIC=0.4
+SCORE_WEIGHT_FRESHNESS=0.3
+SCORE_WEIGHT_SIZE=0.2
+SCORE_WEIGHT_DEPTH=0.1
+
+# 并发控制
+ENABLE_CONCURRENT_LOCK=true
+LOCK_TIMEOUT=300
+```
+
+### 使用说明
+
+增强组件自动启用，无需更改 API 调用。
+
+如需手动控制，可使用特性标志：
+```python
+from httpserver.config import LLMFilterConfig
+
+filter_config = LLMFilterConfig(
+    enable_enhanced_parser=True,
+    enable_smart_dedup=True,
+    score_weight_path_semantic=0.5,  # 自定义权重
+)
+```
+
+### 测试
+
+运行相关测试：
+```bash
+cd python_service
+.venv/bin/pytest tests/unit/test_concurrent_filter.py -v
+.venv/bin/pytest tests/unit/test_llm_response_parser.py -v
+.venv/bin/pytest tests/unit/test_file_matcher.py -v
+.venv/bin/pytest tests/unit/test_filter_validator.py -v
+.venv/bin/pytest tests/integration/test_file_filter_integration.py -v
+```
+
+### 迁移指南
+
+增强功能向后兼容。现有代码继续工作，并在需要时自动回退到传统解析。
+
+在自定义代码中启用新功能：
+```python
+from services.case_analysis.llm_response_parser import LLMResponseParser
+from services.case_analysis.file_matcher import FileMatcher
+from services.case_analysis.filter_validator import FilterResultValidator
+
+parser = LLMResponseParser(settings)
+matcher = FileMatcher(settings)
+validator = FilterResultValidator(settings)
+
+# 在过滤管道中使用
+parse_result = parser.parse_filter_response(llm_response, batch_files)
+validated = validator.validate_and_repair(parse_result, batch_files, max_files)
+matched = matcher.match_files(validated.items, batch_files, case_context)
+```
+
+### 相关文档
+
+- **[AI 过滤增强详细文档](../AI_FILTER_ENHANCEMENTS.md)** - 完整的组件文档
+
+---
+
 ## 错误响应
 
 所有 API 在出错时返回以下格式：
@@ -808,5 +933,5 @@ database.db | /evidence/database.db | databases | 5242880 | SQLite 数据库 | �
 
 ---
 
-**最后更新**: 2026-04-09
+**最后更新**: 2026-04-13
 **维护者**: ymj68520
