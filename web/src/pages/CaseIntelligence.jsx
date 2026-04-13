@@ -8,6 +8,7 @@ import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
 import Button from '../components/common/Button';
 import { fetchTasks } from '../store/taskSlice';
+import { fetchCases } from '../store/caseSlice';
 import {
     setAnalysisJob,
     updateAnalysisProgress,
@@ -31,19 +32,24 @@ import {
     getAnomalySeverity,
     getAnomalyColorClass
 } from '../services/associationService';
-import { X, AlertTriangle, Clock, FileText } from 'lucide-react';
+import { X, AlertTriangle, Clock, FileText, Layers } from 'lucide-react';
 
 const CaseIntelligence = () => {
     const [searchParams, setSearchParams] = useSearchParams();
-    const taskId = searchParams.get('taskId') || searchParams.get('task_id');
+    const caseId = searchParams.get('case_id');
+    const urlTaskId = searchParams.get('taskId') || searchParams.get('task_id');
+    const [activeContextId, setActiveContextId] = useState(caseId || urlTaskId);
+
     const navigate = useNavigate();
     const dispatch = useDispatch();
     const toast = useToast();
     const { tasks } = useSelector((state) => state.tasks);
+    const { cases } = useSelector((state) => state.cases);
     const { activeAnalysisJobs, refreshFlags } = useSelector((state) => state.intelligence);
 
+    const activeCase = caseId ? cases.find(c => c.id === caseId) : null;
     // Get current job state from Redux
-    const activeJob = activeAnalysisJobs[taskId];
+    const activeJob = activeAnalysisJobs[activeContextId];
 
     // --- State: Case Context ---
     const [report, setReport] = useState(null);
@@ -73,18 +79,26 @@ const CaseIntelligence = () => {
     const [fileRelatedClusters, setFileRelatedClusters] = useState([]);
     const [loadingFileClusters, setLoadingFileClusters] = useState(false);
 
-    const currentTask = tasks.find((t) => t.id === taskId);
+    const currentTask = tasks.find((t) => t.id === activeContextId);
 
     // Initial load
     useEffect(() => {
         dispatch(fetchTasks({ status: 'all', priority: 'all' }));
-    }, [dispatch]);
+        if (caseId) dispatch(fetchCases());
+    }, [dispatch, caseId]);
+    
+    useEffect(() => {
+        if (!activeContextId && (caseId || urlTaskId)) {
+            setActiveContextId(caseId || urlTaskId);
+        }
+    }, [caseId, urlTaskId, activeContextId]);
 
     // Fetch basic case data
     const fetchData = useCallback(async () => {
-        if (!taskId) return;
+        const activeContextId = activeContextId;
+        if (!activeContextId) return;
         try {
-            console.log('Fetching task results for taskId:', taskId);
+            console.log('Fetching task results for taskId:', activeContextId);
 
             // 尝试从多个来源获取LLM结果
             let llmResultsData = null;
@@ -92,7 +106,7 @@ const CaseIntelligence = () => {
             // 1. 首先尝试从任务结果获取
             try {
                 const { getTaskResults } = await import('../services/taskService');
-                const results = await getTaskResults(taskId);
+                const results = await getTaskResults(activeContextId);
                 console.log('Task results:', results);
                 if (results.llm_results) {
                     console.log('LLM results found in task results:', results.llm_results);
@@ -106,7 +120,7 @@ const CaseIntelligence = () => {
             if (!llmResultsData) {
                 try {
                     const { pythonApi } = await import('../services/api');
-                    const llmData = await pythonApi.get(`/api/llm/results/${taskId}`);
+                    const llmData = await pythonApi.get(`/api/llm/results/${activeContextId}`);
                     if (llmData.descriptions) {
                         console.log('Direct LLM results from Python API:', llmData);
                         llmResultsData = llmData;
@@ -122,7 +136,7 @@ const CaseIntelligence = () => {
                     const { pythonApi } = await import('../services/api');
                     const analyzedFiles = await pythonApi.get(`/api/db/query`, {
                         params: {
-                            task_id: taskId,
+                            task_id: activeContextId,
                             query_type: 'analyzed_files'
                         }
                     });
@@ -153,7 +167,7 @@ const CaseIntelligence = () => {
 
             // 获取案例报告
             try {
-                const reportData = await getCaseReport(taskId);
+                const reportData = await getCaseReport(activeContextId);
                 if (reportData && (reportData.report || reportData.case_report)) {
                     setReport({
                         ...reportData,
@@ -168,7 +182,7 @@ const CaseIntelligence = () => {
             // 获取事件簇分析结果
             try {
                 const { getAnalyzedEventClusters } = await import('../services/forensicsService');
-                const clusterData = await getAnalyzedEventClusters(taskId);
+                const clusterData = await getAnalyzedEventClusters(activeContextId);
                 if (clusterData && clusterData.clusters && clusterData.clusters.length > 0) {
                     console.log('Event cluster analysis results:', clusterData.clusters);
                     setEventClusters(clusterData.clusters);
@@ -184,7 +198,7 @@ const CaseIntelligence = () => {
             // 确保即使出错也设置空的结果
             setLlmResults({ descriptions: [] });
         }
-    }, [taskId]);
+    }, [activeContextId]);
 
     // 初始加载数据
     useEffect(() => {
@@ -211,7 +225,7 @@ const CaseIntelligence = () => {
         try {
             await pollCaseAnalysis(jobId, (status) => {
                 dispatch(updateAnalysisProgress({
-                    taskId,
+                    activeContextId,
                     currentStep: status.current_step || '分析中',
                     detail: status.detail || '正在处理...',
                     progress: status.progress || 0
@@ -219,8 +233,8 @@ const CaseIntelligence = () => {
             }, 3000);
 
             // Success
-            dispatch(updateAnalysisProgress({ taskId, status: 'completed', progress: 100 }));
-            const reportData = await getCaseReport(taskId);
+            dispatch(updateAnalysisProgress({ activeContextId, status: 'completed', progress: 100 }));
+            const reportData = await getCaseReport(activeContextId);
             if (reportData && (reportData.report || reportData.case_report)) {
                 setReport({
                     ...reportData,
@@ -228,13 +242,13 @@ const CaseIntelligence = () => {
                 });
             }
             toast.success('报告生成成功！');
-            setTimeout(() => dispatch(clearAnalysisJob({ taskId })), 10000);
+            setTimeout(() => dispatch(clearAnalysisJob({ activeContextId })), 10000);
         } catch (err) {
             console.error('Polling failed:', err);
-            dispatch(updateAnalysisProgress({ taskId, status: 'failed', detail: err.message }));
+            dispatch(updateAnalysisProgress({ activeContextId, status: 'failed', detail: err.message }));
             toast.error('生成失败: ' + err.message);
         }
-    }, [taskId, dispatch, toast]);
+    }, [activeContextId, dispatch, toast]);
 
     // AUTO-RESUME: Detect active job on mount and start polling
     useEffect(() => {
@@ -242,14 +256,14 @@ const CaseIntelligence = () => {
             console.log(`[Intelligence] Auto-resuming polling for job: ${activeJob.jobId}`);
             startPolling(activeJob.jobId);
         }
-    }, [taskId, activeJob?.status, activeJob?.jobId, startPolling]);
+    }, [activeContextId, activeJob?.status, activeJob?.jobId, startPolling]);
 
     const handleStartAnalysis = async () => {
-        if (!taskId || !caseDescription.trim()) return;
+        if (!activeContextId || !caseDescription.trim()) return;
         try {
-            await saveCaseDescription(taskId, caseDescription);
+            await saveCaseDescription(activeContextId, caseDescription);
             const result = await startCaseAnalysis({
-                taskId,
+                activeContextId,
                 filesDbPath: currentTask?.output_files_db || '',
                 case_description: caseDescription.trim(),
                 max_filter_files: 200,
@@ -257,7 +271,7 @@ const CaseIntelligence = () => {
             });
 
             if (result.job_id) {
-                dispatch(setAnalysisJob({ taskId, jobId: result.job_id }));
+                dispatch(setAnalysisJob({ activeContextId, jobId: result.job_id }));
                 startPolling(result.job_id);
             }
         } catch (err) {
@@ -296,7 +310,7 @@ const CaseIntelligence = () => {
             const newStatus = !currentStatus;
 
             if (itemType === 'file') {
-                await toggleFileRelevance(taskId, item.file_path, newStatus);
+                await toggleFileRelevance(activeContextId, item.file_path, newStatus);
                 setLlmResults(prev => ({
                     ...prev,
                     descriptions: prev.descriptions.map(d => d.file_path === item.file_path ? { ...d, is_relevant: newStatus ? 1 : 0 } : d)
@@ -306,7 +320,7 @@ const CaseIntelligence = () => {
                 // 切换事件簇的相关性
                 const { pythonApi } = await import('../services/api');
                 await pythonApi.post('/api/llm/toggle-cluster-relevance', {
-                    task_id: taskId,
+                    task_id: activeContextId,
                     time_window: Math.floor(item.timestamp / 60),
                     event_type: item.event_type,
                     is_relevant: newStatus
@@ -330,7 +344,7 @@ const CaseIntelligence = () => {
         if (!filePath) return filePath;
         if (filePath.startsWith('/') || filePath.includes(':')) return filePath;
         if (currentTask?.extraction_directory) return `${currentTask.extraction_directory}/${filePath}`;
-        return `../build/data/tasks/${taskId}/extracted_files/${filePath}`;
+        return `../build/data/tasks/${activeContextId}/extracted_files/${filePath}`;
     };
 
     const openReanalyzeModal = (filePaths) => {
@@ -346,7 +360,7 @@ const CaseIntelligence = () => {
         setReanalyzing(true);
         try {
             const filesDbPath = currentTask?.output_files_db || '';
-            const result = await reanalyzeFiles(taskId, reanalyzeTargetFiles, reanalyzeHint.trim(), filesDbPath, caseDescription);
+            const result = await reanalyzeFiles(activeContextId, reanalyzeTargetFiles, reanalyzeHint.trim(), filesDbPath, caseDescription);
             if (result.job_id) {
                 const poll = async () => {
                     const status = await getCaseAnalysisStatus(result.job_id);
@@ -375,7 +389,7 @@ const CaseIntelligence = () => {
         setClusterRelatedFiles([]);
         setLoadingClusterFiles(true);
         try {
-            const result = await getClusterRelatedFiles(taskId, cluster, 500);
+            const result = await getClusterRelatedFiles(activeContextId, cluster, 500);
             console.log('[Association] Cluster files result:', result);
             setClusterRelatedFiles(result?.files || []);
         } catch (err) {
@@ -395,7 +409,7 @@ const CaseIntelligence = () => {
         setFileRelatedClusters([]);
         setLoadingFileClusters(true);
         try {
-            const result = await getFileRelatedClusters(taskId, file, 100);
+            const result = await getFileRelatedClusters(activeContextId, file, 100);
             console.log('[Association] File clusters result:', result);
             setFileRelatedClusters(result?.clusters || []);
         } catch (err) {
@@ -506,7 +520,7 @@ const CaseIntelligence = () => {
         </div>;
     };
 
-    if (!taskId) {
+    if (!activeContextId) {
         return (
             <div className="max-w-4xl mx-auto py-12 px-4">
                 <Card title="🔍 选择一个任务进入指挥中心">
@@ -525,6 +539,39 @@ const CaseIntelligence = () => {
 
     return (
         <div className="max-w-[1600px] mx-auto space-y-6">
+            {/* If it's a Case, show hierarchical tabs */}
+            {activeCase && (
+                <div className="flex gap-2 p-1.5 bg-slate-100 dark:bg-slate-800/50 rounded-xl overflow-x-auto custom-scrollbar">
+                    <button 
+                        onClick={() => setActiveContextId(caseId)}
+                        className={`px-4 py-2 text-sm font-bold rounded-lg transition-all flex items-center gap-2 whitespace-nowrap ${
+                            activeContextId === caseId 
+                            ? 'bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-400 shadow-sm' 
+                            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                    >
+                        <Layers size={16} /> 综合分析报告
+                    </button>
+                    <div className="w-px h-6 bg-slate-300 dark:bg-slate-600 my-auto mx-2" />
+                    {activeCase.task_ids?.map((tid, idx) => {
+                        const t = tasks.find(t => t.id === tid);
+                        const label = t ? t.image_path.split('/').pop() : `子任务 ${idx + 1}`;
+                        return (
+                            <button 
+                                key={tid}
+                                onClick={() => setActiveContextId(tid)}
+                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2 whitespace-nowrap ${
+                                    activeContextId === tid 
+                                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' 
+                                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                                }`}
+                            >
+                                📄 {label}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
             {/* Top Bar */}
             <div className="flex flex-col lg:flex-row gap-6">
                 <Card className="flex-1 border-l-4 border-purple-500">
@@ -660,7 +707,7 @@ const CaseIntelligence = () => {
                                                     <button
                                                         onClick={() => {
                                                             // 导航到 Timeline 页面并定位到此事件簇
-                                                            navigate(`/timeline?task_id=${taskId}&type=${cluster.event_type}&cluster=true`);
+                                                            navigate(`/timeline?task_id=${activeContextId}&type=${cluster.event_type}&cluster=true`);
                                                         }}
                                                         className="text-[10px] font-bold text-blue-600 hover:text-blue-700 px-2 py-1 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors flex items-center gap-1"
                                                         title="在 Timeline 中查看"
@@ -738,7 +785,7 @@ const CaseIntelligence = () => {
                                     <div className="text-center"><p className="font-bold text-slate-700">{activeJob.currentStep}</p><p className="text-xs text-slate-500">{activeJob.detail}</p>{activeJob.progress !== undefined && <div className="mt-4 w-48 bg-slate-200 rounded-full h-1.5 overflow-hidden"><div className="bg-purple-500 h-full" style={{ width: `${activeJob.progress}%` }} /></div>}</div>
                                 </div>
                             ) : activeJob?.status === 'failed' ? (
-                                <div className="h-full flex flex-col items-center justify-center text-center p-4"><span className="text-red-500 text-4xl mb-2">⚠️</span><p className="text-sm font-bold text-red-600">生成失败</p><p className="text-xs text-slate-500">{activeJob.detail}</p><Button variant="outline" size="sm" className="mt-4" onClick={() => dispatch(clearAnalysisJob({ taskId }))}>清除状态</Button></div>
+                                <div className="h-full flex flex-col items-center justify-center text-center p-4"><span className="text-red-500 text-4xl mb-2">⚠️</span><p className="text-sm font-bold text-red-600">生成失败</p><p className="text-xs text-slate-500">{activeJob.detail}</p><Button variant="outline" size="sm" className="mt-4" onClick={() => dispatch(clearAnalysisJob({ activeContextId }))}>清除状态</Button></div>
                             ) : report?.report ? (
                                 <div className="p-1 animate-in fade-in duration-500">{renderMarkdown(report.report)}</div>
                             ) : (
@@ -958,7 +1005,7 @@ const CaseIntelligence = () => {
                                                 <button
                                                     onClick={() => {
                                                         setSelectedFileForClusters(null);
-                                                        navigate(`/timeline?task_id=${taskId}&type=${cluster.event_type}&cluster=true`);
+                                                        navigate(`/timeline?task_id=${activeContextId}&type=${cluster.event_type}&cluster=true`);
                                                     }}
                                                     className="mt-2 text-[9px] text-blue-500 hover:text-blue-700 font-medium"
                                                 >

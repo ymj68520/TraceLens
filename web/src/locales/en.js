@@ -2,6 +2,7 @@ export default {
     // Navigation
     'nav.dashboard': 'Dashboard',
     'nav.tasks': 'Tasks',
+    'nav.cases': 'Cases',
     'nav.timeline': 'Timeline',
     'nav.files': 'Files',
     'nav.ai_descriptions': 'AI Descriptions',

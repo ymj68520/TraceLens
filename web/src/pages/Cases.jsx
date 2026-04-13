@@ -9,9 +9,11 @@
  *  - Show cross-image analysis job status
  */
 import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
 import { fetchCases, createCaseWithTasks, startCrossAnalysis, updateCaseStatus } from '../store/caseSlice';
+import { fetchTasks } from '../store/taskSlice';
 import { pollMultiAnalysis } from '../services/caseGroupService';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -29,13 +31,18 @@ const STATUS_COLOR = {
 
 export default function Cases() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { cases, status, error } = useSelector((state) => state.cases);
+  const { tasks } = useSelector((state) => state.tasks);
   const toast = useToast();
 
   const [showCreate, setShowCreate] = useState(false);
   const [pollingJobId, setPollingJobId] = useState(null);
 
-  useEffect(() => { dispatch(fetchCases()); }, [dispatch]);
+  useEffect(() => { 
+    dispatch(fetchCases());
+    dispatch(fetchTasks({ status: 'all', priority: 'all' }));
+  }, [dispatch]);
 
   const handleCreate = useCallback(async (formData) => {
     try {
@@ -123,8 +130,10 @@ export default function Cases() {
             <CaseCard
               key={fc.id}
               forensicCase={fc}
+              tasks={tasks}
               onStartAnalysis={handleStartAnalysis}
               isPolling={pollingJobId != null}
+              navigate={navigate}
             />
           ))}
         </div>
@@ -142,9 +151,12 @@ export default function Cases() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function CaseCard({ forensicCase: fc, onStartAnalysis, isPolling }) {
+function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, isPolling, navigate }) {
   const statusColor = STATUS_COLOR[fc.status] || 'gray';
   const allTasksCount = fc.task_ids?.length || 0;
+  
+  const caseTasks = fc.task_ids?.map(id => tasks.find(t => t.id === id)).filter(Boolean) || [];
+  const allTasksCompleted = caseTasks.length === allTasksCount && caseTasks.every(t => t.status === 'completed');
 
   return (
     <Card>
@@ -163,27 +175,64 @@ function CaseCard({ forensicCase: fc, onStartAnalysis, isPolling }) {
             )}
           </div>
         </div>
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 flex flex-col gap-2 items-end">
           {fc.status === 'open' && allTasksCount > 0 && (
             <Button
               size="sm"
               onClick={() => onStartAnalysis(fc)}
-              disabled={isPolling}
+              disabled={isPolling || !allTasksCompleted}
             >
-              {isPolling ? '分析中...' : '🔍 启动跨镜像分析'}
+              {isPolling ? '分析中...' : (!allTasksCompleted ? '等待子任务完成' : '🔍 启动案情研判')}
             </Button>
           )}
           {fc.status === 'analysing' && (
-            <div className="flex items-center gap-2 text-yellow-600">
+            <div className="flex items-center gap-2 text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded-lg border border-yellow-200">
               <Spinner size="sm" />
-              <span className="text-sm">分析中...</span>
+              <span className="text-sm font-medium">✨ 正在聚合案件线索...</span>
             </div>
           )}
           {fc.status === 'completed' && (
-            <Badge variant="green">✅ 分析完成</Badge>
+            <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate(`/case-report?case_id=${fc.id}`)}
+                className="shadow-sm"
+            >
+                👀 查看完整研判报告
+            </Button>
           )}
         </div>
       </div>
+
+      {/* Sub-tasks section */}
+      {caseTasks.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <h4 className="text-xs font-bold text-slate-500 mb-3 ml-1 uppercase tracking-wider">关联镜像任务进度 ({caseTasks.length})</h4>
+          <div className="space-y-2">
+            {caseTasks.map(t => (
+              <div key={t.id} className="flex justify-between items-center text-xs p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-slate-400">ID:{t.id.substring(0, 6)}</span>
+                  <span className="font-medium text-slate-700 dark:text-slate-300 max-w-[200px] truncate" title={t.image_path}>
+                    {t.image_path.split('/').pop()}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 w-48">
+                  <div className="flex-1 w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                    <div 
+                      className={`h-full ${t.status === 'completed' ? 'bg-green-500' : 'bg-purple-500'}`} 
+                      style={{ width: `${t.progress_percentage || 0}%` }} 
+                    />
+                  </div>
+                  <span className={`w-16 text-right font-medium ${t.status === 'completed' ? 'text-green-600' : 'text-purple-600'}`}>
+                    {t.status === 'completed' ? '已完成' : `${t.progress_percentage || 0}%`}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

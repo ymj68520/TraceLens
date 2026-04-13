@@ -2,6 +2,7 @@ export default {
     // Navigation
     'nav.dashboard': '仪表盘',
     'nav.tasks': '任务列表',
+    'nav.cases': '案件管理',
     'nav.timeline': '时间线',
     'nav.files': '文件管理',
     'nav.ai_descriptions': 'AI 描述',
