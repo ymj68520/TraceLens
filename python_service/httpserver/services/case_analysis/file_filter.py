@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ...config import Settings
-from ...prompts import FILE_FILTER_SYSTEM, FILE_FILTER_USER_TEMPLATE
+from ...prompts import FILE_FILTER_SYSTEM, FILE_FILTER_USER_TEMPLATE, FILE_FILTER_BATCH_ENHANCED_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
@@ -225,29 +225,17 @@ class FileFilter:
         max_files: int,
         already_selected: int,
     ) -> str:
-        """Build prompt for batch filtering with TOON format."""
-        return f"""你是数字取证专家，正在分析一个案件。
+        """Build prompt for batch filtering with enhanced format."""
+        from ...prompts import FILE_FILTER_BATCH_ENHANCED_TEMPLATE
 
-## 案情描述
-{case_description}
-
-## 文件列表（TOON格式 - 第{batch_number}/{total_batches}批）
-{batch_toon}
-
-## 任务
-从上述文件列表中选择与案情相关的文件。注意：
-1. 这是第{batch_number}/{total_batches}批数据
-2. 全局最多选择{max_files}个文件，已选择{already_selected}个
-3. 必须严格按照以下JSON格式返回，不要有任何其他文字：
-
-```json
-{{"selected_files": ["文件名1", "文件名2", ...], "reasoning": "选择原因说明"}}
-```
-
-重要提示：
-- selected_files中只填写文件名（不含路径），例如：["document.pdf", "image.jpg"]
-- 文件名必须与TOON格式第一列的名称完全匹配
-- reasoning字段简要说明选择这些文件的原因"""
+        return FILE_FILTER_BATCH_ENHANCED_TEMPLATE.format(
+            case_description=case_description,
+            batch_toon=batch_toon,
+            batch_number=batch_number,
+            total_batches=total_batches,
+            max_files=max_files,
+            already_selected=already_selected,
+        )
 
     def _parse_toon_filter_response(
         self,

@@ -472,3 +472,74 @@ WINDOWS_ARTIFACT_ANALYSIS_TEMPLATE = """你是一名资深数字取证分析师�
 - 所有内容使用中文
 - 保持客观专业的取证分析语气
 - 对不确定的内容标注"待进一步确认"而非臆断"""
+
+
+# ============================================================================
+# 区块十三：增强型文件筛选提示词
+# 用途：case_analysis/file_filter.py 中 _build_batch_filter_prompt() 方法
+#       使用增强的提示词模板来减少LLM解析错误
+#       输出必须是严格 JSON 格式
+# ============================================================================
+
+FILE_FILTER_SYSTEM_ENHANCED = """你是数字取证专家，需要从文件列表中筛选与案情相关的文件。
+
+## 输出格式要求（必须严格遵守）
+
+你必须只返回JSON格式，不要包含任何其他文字说明。JSON格式如下：
+
+{
+  "selected_files": ["文件名1", "文件名2"],
+  "reasoning": "简要说明选择原因"
+}
+
+## 重要约束
+
+1. selected_files数组中只填写文件名（不含路径）
+2. 文件名必须与输入数据第一列完全匹配
+3. 如果没有任何相关文件，返回空数组：{"selected_files": [], "reasoning": "无相关文件"}
+4. 不要使用markdown代码块包裹JSON（不要用```json或```）
+5. 不要添加任何解释性文字，只返回纯JSON
+6. 确保JSON格式正确，括号和引号必须配对
+
+## 错误示例（不要这样做）：
+- 好的，我找到了这些文件：{"selected_files": ["doc.pdf"]}  ✗ 有额外文字
+- ```json {"selected_files": ["doc.pdf"]} ```  ✗ 使用了markdown
+- {"files": ["doc.pdf"]}  ✗ 字段名错误
+
+## 正确示例（这样做）：
+{"selected_files": ["doc.pdf"], "reasoning": "找到相关文档"}
+"""
+
+
+FILE_FILTER_BATCH_ENHANCED_TEMPLATE = """## 案情描述
+{case_description}
+
+## 文件列表（TOON格式 - 第{batch_number}/{total_batches}批）
+{batch_toon}
+
+## 任务要求
+1. 全局最多选择{max_files}个文件，已选择{already_selected}个
+2. 只返回JSON格式，不要有其他内容
+3. selected_files中只填文件名（不含路径），必须与第一列完全匹配
+4. reasoning字段简要说明选择原因（不超过100字）
+
+请直接返回JSON："""
+
+
+# Few-shot examples for prompting
+FEW_SHOT_EXAMPLES = [
+    {
+        "case_description": "查找恶意软件感染证据",
+        "file_list": """malware.exe | /Downloads/malware.exe | 1048576 | executables
+document.pdf | /docs/contract.pdf | 512000 | documents
+image.jpg | /tmp/image.jpg | 204800 | images""",
+        "expected_response": '{"selected_files": ["malware.exe"], "reasoning": "发现可疑可执行文件，可能是恶意软件"}',
+    },
+    {
+        "case_description": "查找财务相关文档",
+        "file_list": """invoice.pdf | /docs/invoice.pdf | 256000 | documents
+photo.jpg | /photos/vacation.jpg | 1024000 | images
+budget.xlsx | /finance/budget.xlsx | 128000 | documents""",
+        "expected_response": '{"selected_files": ["invoice.pdf", "budget.xlsx"], "reasoning": "找到发票和预算表，都是财务文档"}',
+    },
+]
