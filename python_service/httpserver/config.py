@@ -10,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +23,87 @@ def find_env_file() -> Optional[Path]:
             return env_path
         current = current.parent
     return None
+
+
+class LLMFilterConfig(BaseModel):
+    """Configuration for LLM file filtering enhancements."""
+
+    # Parser settings
+    enable_enhanced_parser: bool = Field(
+        default=True,
+        description="Enable enhanced LLM response parser"
+    )
+    parser_fallback_enabled: bool = Field(
+        default=True,
+        description="Enable fallback to legacy parser on failure"
+    )
+
+    # Matcher settings
+    match_confidence_threshold: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence threshold for matches"
+    )
+    enable_smart_dedup: bool = Field(
+        default=True,
+        description="Enable smart duplicate file resolution"
+    )
+
+    # Scoring weights (must sum to 1.0)
+    score_weight_path_semantic: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="Weight for path semantic relevance scoring"
+    )
+    score_weight_freshness: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Weight for file freshness scoring"
+    )
+    score_weight_size: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Weight for file size scoring"
+    )
+    score_weight_depth: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Weight for path depth scoring"
+    )
+
+    # Concurrent control
+    enable_concurrent_lock: bool = Field(
+        default=True,
+        description="Enable task-level concurrent filtering lock"
+    )
+    lock_timeout: int = Field(
+        default=300,
+        ge=1,
+        le=3600,
+        description="Lock acquisition timeout in seconds"
+    )
+
+    # Retry settings
+    max_parse_retries: int = Field(
+        default=2,
+        ge=0,
+        le=5,
+        description="Maximum parsing retry attempts"
+    )
+    retry_delay: int = Field(
+        default=1,
+        ge=0,
+        le=10,
+        description="Base delay between retries in seconds"
+    )
+
+    class Config:
+        validate_assignment = True
 
 
 class Settings(BaseSettings):
@@ -100,6 +181,12 @@ class Settings(BaseSettings):
     # Performance Settings
     thread_pool_size: int = Field(default=4, alias="THREAD_POOL_SIZE")
     max_batch_size: int = Field(default=100, alias="MAX_BATCH_SIZE")
+
+    # LLM Filter Configuration
+    llm_filter_config: LLMFilterConfig = Field(
+        default_factory=LLMFilterConfig,
+        description="LLM file filtering configuration"
+    )
     
     @property
     def cpp_backend_base_url(self) -> str:
