@@ -40,18 +40,45 @@ class ReportGenerator:
         files_db_path: Optional[str] = None,
         task_id: Optional[str] = None,
         windows_db_path: Optional[str] = None,
+        files_db_paths: Optional[List[str]] = None,
+        is_cross_image_report: bool = False,
     ) -> Dict[str, Any]:
         """
         Generate a comprehensive case analysis report.
-        Aggregates ALL available file descriptions from the database.
-        Optionally includes Windows artifacts section.
+
+        For single-image reports: aggregates from single database.
+        For cross-image reports: aggregates from multiple databases.
+
+        Args:
+            case_description: Case description for report context
+            file_descriptions: Initial file descriptions (will be overridden by DB aggregation)
+            files_db_path: Single database path (for single-image reports)
+            task_id: Task identifier or case identifier
+            windows_db_path: Optional Windows artifacts database path
+            files_db_paths: Multiple database paths (for cross-image reports)
+            is_cross_image_report: Whether this is a cross-image report
+
+        Returns:
+            Dictionary with report text and metadata
         """
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
 
         # DYNAMIC AGGREGATION: Always pull the latest descriptions from database
         # This ensures manually re-analyzed or analyzed files are included in the report
-        if files_db_path and task_id:
+        if is_cross_image_report and files_db_paths and task_id:
+            # Cross-image report: aggregate from multiple databases
+            logger.info(f"Case {task_id}: Aggregating evidence from {len(files_db_paths)} databases for cross-image report...")
+            try:
+                file_descriptions = self._aggregate_descriptions_from_multiple_dbs(
+                    files_db_paths, task_id
+                )
+                logger.info(f"Case {task_id}: Integrated {len(file_descriptions)} relevant evidence files from all images.")
+            except Exception as e:
+                logger.warning(f"Failed to aggregate evidence from multiple databases: {e}")
+                file_descriptions = []
+        elif files_db_path and task_id:
+            # Single-image report: aggregate from single database
             logger.info(f"Task {task_id}: Aggregating all relevant evidence descriptions from database...")
             try:
                 with sqlite3.connect(files_db_path) as conn:
@@ -108,9 +135,17 @@ class ReportGenerator:
 
         if use_graph:
             try:
-                logger.info(f"Task {task_id}: Attempting graph-enhanced report generation...")
+                if is_cross_image_report:
+                    logger.info(f"Case {task_id}: Attempting cross-image graph-enhanced report generation...")
+                else:
+                    logger.info(f"Task {task_id}: Attempting graph-enhanced report generation...")
                 report_text = await self._generate_report_with_graph(
-                    case_description, task_id, file_descriptions, windows_section
+                    case_description=case_description,
+                    task_id=task_id,
+                    file_descriptions=file_descriptions,
+                    windows_section=windows_section,
+                    task_ids=task_ids,
+                    is_cross_image_report=is_cross_image_report,
                 )
                 if report_text:
                     model_used = "graph-enhanced"
@@ -151,10 +186,19 @@ class ReportGenerator:
         }
 
     async def _generate_report_with_graph(
-        self, case_description: str, task_id: str, file_descriptions: List[Dict[str, Any]] = None, windows_section: str = ""
+        self,
+        case_description: str,
+        task_id: str,
+        file_descriptions: List[Dict[str, Any]] = None,
+        windows_section: str = "",
+        task_ids: Optional[List[str]] = None,
+        is_cross_image_report: bool = False,
     ) -> str:
         """
         Generate report using Graphiti RAG with optimized context management.
+
+        For cross-image reports, searches across all relevant task graphs.
+        For single-image reports, searches only the specific task graph.
 
         Implementation:
         - Option A: Lightweight evidence list (paths only) to save space.
@@ -167,7 +211,7 @@ class ReportGenerator:
         if file_descriptions:
             # Only list the file paths to save thousands of tokens
             for d in file_descriptions:
-                evidence_list_str += f"- [[file:{d.file_path}]]\n"
+                evidence_list_str += f"- [[file:{d['file_path']}]]\n"
         else:
             evidence_list_str += "（无显式证据文件，基于全局图谱分析）"
 
@@ -191,25 +235,49 @@ class ReportGenerator:
         search_limit = getattr(self.settings, 'graphiti_search_limit', 10)
         content_limit = getattr(self.settings, 'graphiti_context_item_limit', 250)
 
+        # Determine which task IDs to search
+        search_task_ids = task_ids if is_cross_image_report and task_ids else [task_id]
+        logger.info(f"Graphiti search will query {len(search_task_ids)} task graphs: {search_task_ids}")
+
         for chapter in chapters:
             # Special handling for timeline chapter: prioritize event clusters
             if chapter["title"] == "时间线梳理":
                 # Use expanded query specifically for event clusters
                 enhanced_query = chapter["query"] + " 事件簇 时间窗口 cluster event_type"
-                search_results = await self._graphiti_service.search(
-                    query=enhanced_query,
-                    task_id=task_id,
-                    limit=search_limit * 2,  # Get more results for timeline
-                    include_relationships=True,
-                )
+
+                # Search across all task graphs for cross-image reports
+                all_search_results = []
+                for tid in search_task_ids:
+                    try:
+                        results = await self._graphiti_service.search(
+                            query=enhanced_query,
+                            task_id=tid,
+                            limit=search_limit * 2,  # Get more results for timeline
+                            include_relationships=True,
+                        )
+                        all_search_results.extend(results)
+                    except Exception as e:
+                        logger.warning(f"Graphiti search failed for task {tid}: {e}")
+
+                # Deduplicate and limit results
+                search_results = self._deduplicate_search_results(all_search_results)[:search_limit * 2]
             else:
-                # Standard search for other chapters
-                search_results = await self._graphiti_service.search(
-                    query=chapter["query"],
-                    task_id=task_id,
-                    limit=search_limit,
-                    include_relationships=True,
-                )
+                # Standard search for other chapters - across all task graphs
+                all_search_results = []
+                for tid in search_task_ids:
+                    try:
+                        results = await self._graphiti_service.search(
+                            query=chapter["query"],
+                            task_id=tid,
+                            limit=search_limit,
+                            include_relationships=True,
+                        )
+                        all_search_results.extend(results)
+                    except Exception as e:
+                        logger.warning(f"Graphiti search failed for task {tid}: {e}")
+
+                # Deduplicate and limit results
+                search_results = self._deduplicate_search_results(all_search_results)[:search_limit]
 
             # Build context from search results with dynamic truncation
             context_lines = []
@@ -291,6 +359,68 @@ class ReportGenerator:
                 lines.append(f"### 文件: {file_path}\n{description}\n")
         return "\n".join(lines) if lines else "无有效的文件分析结果。"
 
+    def _aggregate_descriptions_from_multiple_dbs(
+        self,
+        files_db_paths: List[str],
+        case_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Aggregate file descriptions from multiple databases for cross-image reporting.
+
+        For cross-image reports, we need to collect evidence from all image databases.
+        Each database contains file_descriptions table with analyzed files.
+
+        Args:
+            files_db_paths: List of _files.db paths
+            case_id: Case identifier (used for logging)
+
+        Returns:
+            Aggregated list of file descriptions from all databases
+        """
+        from .db_utils import ensure_file_descriptions_schema
+
+        all_descriptions = []
+        seen_paths = set()  # Deduplicate by file path
+
+        for idx, db_path in enumerate(files_db_paths):
+            try:
+                if not Path(db_path).exists():
+                    logger.warning(f"[{case_id}] Database {idx+1} not found: {db_path}")
+                    continue
+
+                with sqlite3.connect(db_path, timeout=10) as conn:
+                    conn.row_factory = sqlite3.Row
+                    ensure_file_descriptions_schema(conn)
+
+                    # Get relevant file descriptions
+                    cur = conn.execute(
+                        "SELECT file_path, description, model_used FROM file_descriptions WHERE is_relevant IS NOT 0"
+                    )
+                    rows = cur.fetchall()
+
+                    db_count = 0
+                    for row in rows:
+                        file_path = row["file_path"]
+                        # Deduplicate across images
+                        if file_path not in seen_paths:
+                            seen_paths.add(file_path)
+                            all_descriptions.append({
+                                "file_path": file_path,
+                                "description": row["description"],
+                                "success": True,
+                                "model_used": row["model_used"],
+                                "source_db": db_path  # Track source for debugging
+                            })
+                            db_count += 1
+
+                    logger.info(f"[{case_id}] Database {idx+1}: contributed {db_count} unique files")
+
+            except Exception as e:
+                logger.warning(f"[{case_id}] Failed to read database {idx+1} ({db_path}): {e}")
+
+        logger.info(f"[{case_id}] Total unique files across all databases: {len(all_descriptions)}")
+        return all_descriptions
+
     async def _include_windows_section(
         self,
         task_id: str,
@@ -367,6 +497,28 @@ class ReportGenerator:
             "recycle_bin_entries": "回收站记录",
         }
         return display_names.get(artifact_type, artifact_type)
+
+    def _deduplicate_search_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Deduplicate Graphiti search results by entity name.
+
+        When searching across multiple task graphs, we may get duplicate entities.
+        This method deduplicates by keeping the first occurrence of each unique name.
+
+        Args:
+            results: List of search result dictionaries
+
+        Returns:
+            Deduplicated list of search results
+        """
+        seen = set()
+        deduped = []
+        for r in results:
+            name = r.get("name", "")
+            if name and name not in seen:
+                seen.add(name)
+                deduped.append(r)
+        return deduped
 
     def _persist_case_report(
         self, db_path: str, task_id: str,

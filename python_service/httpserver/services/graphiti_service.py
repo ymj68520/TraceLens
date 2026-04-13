@@ -73,10 +73,10 @@ class GraphitiService:
         """
         if task_id in self._task_graphs:
             return self._task_graphs[task_id]
-        
+
         if not self._initialized:
             await self.initialize()
-        
+
         try:
             from graphiti_integration.config import GraphitiConfig
 
@@ -111,6 +111,53 @@ class GraphitiService:
             return self._task_graphs[task_id]
         except Exception as e:
             logger.error(f"Failed to create task graph for {task_id}: {e}")
+            raise
+
+    async def _get_case_graph(self, case_id: str):
+        """
+        Get or create a Graphiti instance for a case (cross-image analysis).
+        Uses case_id as the group_id for case-level graph isolation.
+        """
+        if case_id in self._task_graphs:
+            return self._task_graphs[case_id]
+
+        if not self._initialized:
+            await self.initialize()
+
+        try:
+            from graphiti_integration.config import GraphitiConfig
+
+            # Build GraphitiConfig from server Settings
+            config = GraphitiConfig(
+                neo4j_uri=self.settings.neo4j_uri,
+                neo4j_user=self.settings.neo4j_user,
+                neo4j_password=self.settings.neo4j_password,
+                llm_base_url=(
+                    self.settings.llm_text_base_url.rstrip("/") + "/v1"
+                    if not self.settings.llm_text_base_url.endswith("/v1")
+                    else self.settings.llm_text_base_url
+                ),
+                llm_model=self.settings.llm_text_model,
+                llm_api_key=self.settings.llm_api_key or "local",
+                batch_size=self.settings.graphiti_batch_size,
+                max_retries=self.settings.graphiti_max_retries,
+                group_id=case_id,  # Case-level isolation for cross-image analysis
+                use_local_llm=self.settings.graphiti_use_local_llm,
+            )
+
+            # Create ingestor with proper config
+            from graphiti_integration import GraphitiIngestor
+            ingestor = GraphitiIngestor(config)
+            await ingestor.initialize()
+
+            self._task_graphs[case_id] = {
+                "config": config,
+                "ingestor": ingestor,
+            }
+            logger.info(f"Created Graphiti graph for case: {case_id}")
+            return self._task_graphs[case_id]
+        except Exception as e:
+            logger.error(f"Failed to create case graph for {case_id}: {e}")
             raise
     
     async def shutdown(self):
@@ -765,3 +812,211 @@ class GraphitiService:
             return nodes, links
         finally:
             await driver.close()
+
+    async def ingest_case_data(
+        self,
+        case_id: str,
+        task_ids: List[str],
+        files_db_paths: List[str],
+        events_db_paths: Optional[List[str]] = None,
+        progress_callback=None,
+    ) -> bool:
+        """
+        Ingest data from multiple tasks into a case-level knowledge graph.
+
+        This method aggregates file descriptions and event clusters from all images
+        in a case and ingests them into a unified case-level graph for cross-image analysis.
+
+        Args:
+            case_id: Case identifier (used as group_id for case-level graph)
+            task_ids: List of task IDs for the images in this case
+            files_db_paths: List of _files.db paths
+            events_db_paths: Optional list of _events.db paths
+            progress_callback: Optional progress callback
+
+        Returns:
+            True if ingestion succeeded, False otherwise
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        if not events_db_paths:
+            events_db_paths = []
+
+        try:
+            from graphiti_integration.toon_transformer import EpisodeData
+            from datetime import datetime
+            import sqlite3
+            import json
+
+            # Get or create case-level graph
+            graph_entry = await self._get_case_graph(case_id)
+            if not graph_entry or not isinstance(graph_entry, dict):
+                logger.error(f"Could not get case graph for {case_id}")
+                return False
+
+            ingestor = graph_entry.get("ingestor")
+            if not ingestor:
+                logger.error(f"No ingestor available for case {case_id}")
+                return False
+
+            episodes = []
+            total_files = 0
+            total_clusters = 0
+
+            # Aggregate file descriptions from all images
+            for idx, (task_id, files_db) in enumerate(zip(task_ids, files_db_paths)):
+                try:
+                    if not Path(files_db).exists():
+                        logger.warning(f"[{case_id}] Files database {idx+1} not found: {files_db}")
+                        continue
+
+                    with sqlite3.connect(files_db, timeout=10) as conn:
+                        conn.row_factory = sqlite3.Row
+
+                        # Get file descriptions
+                        from ..services.case_analysis.db_utils import ensure_file_descriptions_schema
+                        ensure_file_descriptions_schema(conn)
+
+                        cur = conn.execute(
+                            "SELECT file_path, description FROM file_descriptions WHERE is_relevant IS NOT 0 AND description IS NOT NULL"
+                        )
+                        rows = cur.fetchall()
+
+                        for row in rows:
+                            file_path = row["file_path"]
+                            description = row["description"]
+
+                            # Tag with source image
+                            tagged_path = f"[IMG{idx+1}] {file_path}"
+
+                            # Chunk long descriptions
+                            chunks = self._chunk_text_for_graph(description, max_chars=3000)
+                            for j, chunk in enumerate(chunks):
+                                ep_name = f"文件分析: {tagged_path}"
+                                if len(chunks) > 1:
+                                    ep_name += f" (第{j+1}部分)"
+
+                                episodes.append(EpisodeData(
+                                    name=ep_name,
+                                    episode_body=json.dumps({
+                                        "file_path": file_path,
+                                        "source_image": f"IMG{idx+1}",
+                                        "task_id": task_id,
+                                        "analysis": chunk
+                                    }, ensure_ascii=False),
+                                    source_description=f"LLM分析结果 - 镜像{idx+1} - {file_path}",
+                                    reference_time=datetime.now(),
+                                    file_path=file_path,
+                                    file_id=0,
+                                    category="file_description"
+                                ))
+                                total_files += 1
+
+                    if progress_callback:
+                        await progress_callback("aggregating_files", f"已聚合镜像{idx+1}的文件分析结果")
+
+                except Exception as e:
+                    logger.warning(f"[{case_id}] Failed to aggregate files from image {idx+1}: {e}")
+
+            # Aggregate event clusters from all images
+            for idx, (task_id, events_db) in enumerate(zip(task_ids, events_db_paths)):
+                try:
+                    if not events_db or not Path(events_db).exists():
+                        continue
+
+                    with sqlite3.connect(events_db, timeout=10) as conn:
+                        conn.row_factory = sqlite3.Row
+
+                        # Get event clusters with LLM analysis
+                        cur = conn.execute("""
+                            SELECT DISTINCT event_type, llm_description, llm_summary,
+                                   (timestamp / 60) as time_window
+                            FROM events
+                            WHERE llm_description IS NOT NULL
+                            GROUP BY event_type, time_window
+                        """)
+                        rows = cur.fetchall()
+
+                        for row in rows:
+                            description = row["llm_description"] or row["llm_summary"] or ""
+                            event_type = row["event_type"]
+                            time_window = row["time_window"]
+
+                            if description:
+                                # Chunk long descriptions
+                                chunks = self._chunk_text_for_graph(description, max_chars=3000)
+                                for j, chunk in enumerate(chunks):
+                                    ep_name = f"事件簇分析: 镜像{idx+1} - {event_type} @ {time_window}"
+                                    if len(chunks) > 1:
+                                        ep_name += f" (第{j+1}部分)"
+
+                                    episodes.append(EpisodeData(
+                                        name=ep_name,
+                                        episode_body=json.dumps({
+                                            "event_type": event_type,
+                                            "time_window": time_window,
+                                            "source_image": f"IMG{idx+1}",
+                                            "task_id": task_id,
+                                            "analysis": chunk
+                                        }, ensure_ascii=False),
+                                        source_description=f"事件簇LLM分析 - 镜像{idx+1} - {event_type}",
+                                        reference_time=datetime.now(),
+                                        file_path="",
+                                        file_id=0,
+                                        category="event_cluster_description"
+                                    ))
+                                    total_clusters += 1
+
+                    if progress_callback:
+                        await progress_callback("aggregating_clusters", f"已聚合镜像{idx+1}的事件簇分析结果")
+
+                except Exception as e:
+                    logger.warning(f"[{case_id}] Failed to aggregate clusters from image {idx+1}: {e}")
+
+            if not episodes:
+                logger.info(f"[{case_id}] No episodes to ingest into case graph")
+                return True
+
+            # Batch ingest all episodes
+            logger.info(f"[{case_id}] Ingesting {len(episodes)} episodes ({total_files} files + {total_clusters} clusters) into case-level graph")
+            if progress_callback:
+                await progress_callback("ingesting", f"正在摄入 {len(episodes)} 个分析结果到知识图谱...")
+
+            result = await ingestor.batch_ingest(
+                episodes=episodes,
+                group_id=case_id,
+            )
+
+            success_count = getattr(result, 'successful', 0)
+            total_count = getattr(result, 'total_episodes', len(episodes))
+
+            logger.info(f"[{case_id}] Case-level graph ingestion complete: {success_count}/{total_count} successful")
+
+            if progress_callback:
+                await progress_callback("completed", f"知识图谱摄入完成：{success_count}/{total_count} 成功")
+
+            return success_count > 0
+
+        except Exception as e:
+            logger.error(f"[{case_id}] Case-level graph ingestion failed: {e}", exc_info=True)
+            return False
+
+    @staticmethod
+    def _chunk_text_for_graph(text: str, max_chars: int = 3000) -> List[str]:
+        """Split text into chunks for graph ingestion."""
+        if len(text) <= max_chars:
+            return [text]
+
+        chunks = []
+        paragraphs = text.split("\n\n")
+        current = ""
+        for para in paragraphs:
+            if len(current) + len(para) + 2 > max_chars and current:
+                chunks.append(current.strip())
+                current = para
+            else:
+                current = current + "\n\n" + para if current else para
+        if current.strip():
+            chunks.append(current.strip())
+        return chunks if chunks else [text]

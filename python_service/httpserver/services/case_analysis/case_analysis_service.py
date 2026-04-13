@@ -149,12 +149,26 @@ class CaseAnalysisService:
         file_descriptions: List[Dict[str, Any]],
         files_db_path: Optional[str] = None,
         task_id: Optional[str] = None,
+        files_db_paths: Optional[List[str]] = None,
+        task_ids: Optional[List[str]] = None,
+        is_cross_image_report: bool = False,
     ) -> Dict[str, Any]:
-        """Generate a comprehensive case analysis report."""
+        """
+        Generate a comprehensive case analysis report.
+
+        For single-image reports: uses single database and task graph.
+        For cross-image reports: aggregates from all databases and uses case-level graph.
+        """
         if not self._report_generator:
             raise RuntimeError("ReportGenerator module not initialized. Ensure all dependencies are injected.")
         return await self._report_generator.generate_final_report(
-            case_description, file_descriptions, files_db_path, task_id
+            case_description=case_description,
+            file_descriptions=file_descriptions,
+            files_db_path=files_db_path,
+            task_id=task_id,
+            files_db_paths=files_db_paths,
+            task_ids=task_ids,
+            is_cross_image_report=is_cross_image_report,
         )
 
     def get_case_report(self, files_db_path: str, task_id: str) -> Optional[Dict[str, Any]]:
@@ -710,6 +724,7 @@ class CaseAnalysisService:
         files_db_paths: List[str],
         case_description: str,
         max_filter_files: int = 400,
+        events_db_paths: Optional[List[str]] = None,
         progress_callback=None,
     ) -> Dict[str, Any]:
         """
@@ -719,10 +734,19 @@ class CaseAnalysisService:
           1. Aggregate + deduplicate files across all _files.db databases
           2. LLM-filter relevant files (cross-image aware)
           3. Extract + describe files per image (reuses run_full_analysis pipeline)
-          4. Generate combined case report merging all descriptions
+          4. Ingest all data into case-level knowledge graph
+          5. Generate combined case report using case-level graph
+
+        Key changes:
+          - Case-level Graphiti graph for cross-image semantic search
+          - Report generation uses case_id instead of task_id
+          - Report aggregates data from all images
         """
         if not self._multi_filter:
             raise RuntimeError("MultiImageFilter not initialized. Ensure all dependencies are injected.")
+
+        if not events_db_paths:
+            events_db_paths = []
 
         result: Dict[str, Any] = {
             "case_id": case_id,
@@ -782,17 +806,60 @@ class CaseAnalysisService:
                 logger.error(f"[MULTI_ANALYSIS] Image {idx+1} pipeline failed: {e}", exc_info=True)
                 result["steps"][f"image_{idx+1}"] = {"task_id": task_id, "error": str(e)}
 
-        # Step 3 — Combined report
-        if progress_callback:
-            await progress_callback("reporting", "正在生成跨镜像综合报告...")
+        # Step 3 — Ingest all data into case-level knowledge graph
+        if self._graphiti_service:
+            if progress_callback:
+                await progress_callback("ingesting_case", "正在将所有镜像的分析结果摄入案例级知识图谱...")
 
-        combined_report = await self.generate_case_report(
-            case_description=case_description,
-            file_descriptions=all_descriptions,
-            files_db_path=files_db_paths[0] if files_db_paths else None,
-            task_id=case_id,
-        )
-        result["steps"]["report"] = combined_report
+            logger.info(f"[MULTI_ANALYSIS] Case {case_id}: starting case-level graph ingestion")
+            try:
+                kg_success = await self._graphiti_service.ingest_case_data(
+                    case_id=case_id,
+                    task_ids=task_ids,
+                    files_db_paths=files_db_paths,
+                    events_db_paths=events_db_paths,
+                    progress_callback=progress_callback,
+                )
+                result["steps"]["knowledge_graph"] = {
+                    "ingested": kg_success,
+                    "case_id": case_id,
+                    "task_count": len(task_ids),
+                }
+                logger.info(f"[MULTI_ANALYSIS] Case {case_id}: case-level graph ingestion completed: {kg_success}")
+            except Exception as e:
+                logger.error(f"[MULTI_ANALYSIS] Case {case_id}: case-level graph ingestion failed: {e}", exc_info=True)
+                result["steps"]["knowledge_graph"] = {
+                    "ingested": False,
+                    "error": str(e),
+                }
+        else:
+            logger.info(f"[MULTI_ANALYSIS] Case {case_id}: graphiti_service not available, skipping case-level graph ingestion")
+            result["steps"]["knowledge_graph"] = {
+                "skipped": True,
+                "reason": "graphiti_service not available"
+            }
+
+        # Step 4 — Combined report using case-level graph
+        if progress_callback:
+            await progress_callback("reporting", "正在生成跨镜像综合报告（使用案例级知识图谱）...")
+
+        logger.info(f"[MULTI_ANALYSIS] Case {case_id}: generating cross-image report using case-level graph")
+        try:
+            combined_report = await self.generate_case_report(
+                case_description=case_description,
+                file_descriptions=all_descriptions,
+                files_db_paths=files_db_paths,  # Pass all databases for aggregation
+                task_id=case_id,
+                task_ids=task_ids,  # Pass all task IDs for graph search
+                is_cross_image_report=True,
+            )
+            result["steps"]["report"] = combined_report
+        except Exception as e:
+            logger.error(f"[MULTI_ANALYSIS] Case {case_id}: report generation failed: {e}", exc_info=True)
+            result["steps"]["report"] = {
+                "error": str(e),
+                "report": "报告生成失败：" + str(e)
+            }
 
         logger.info(f"[MULTI_ANALYSIS] Case {case_id}: complete — "
                     f"{len(all_descriptions)} total files described across {len(task_ids)} images")
