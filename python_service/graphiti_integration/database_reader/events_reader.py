@@ -5,7 +5,7 @@ Events database reader module for fetching timeline events from SQLite database.
 from pathlib import Path
 from typing import Iterator, Optional
 
-from ..exceptions import DatabaseError
+from graphiti_integration.exceptions import DatabaseError
 from .base_reader import _BaseForensicsReader
 
 
@@ -23,7 +23,7 @@ class EventsDatabase(_BaseForensicsReader):
         offset: int = 0,
     ) -> list:
         """Fetch timeline events."""
-        from ..forensic_data_types import TimelineEvent
+        from graphiti_integration.forensic_data_types import TimelineEvent
 
         where = f"WHERE event_type = '{event_type}'" if event_type else ""
         query = f"""
@@ -58,7 +58,7 @@ class EventsDatabase(_BaseForensicsReader):
         offset: int = 0,
     ) -> list:
         """Fetch event clusters with AI analysis."""
-        from ..forensic_data_types import EventCluster
+        from graphiti_integration.forensic_data_types import EventCluster
 
         where_clause = ""
         if analyzed_only:

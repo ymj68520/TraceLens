@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any, Callable, Optional
 
 from neo4j import AsyncGraphDatabase
-from ..database_reader.raw_reader import FileRecord
+from graphiti_integration.database_reader.raw_reader import FileRecord
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,9 @@ class FileEntityIngestor:
             auth=(self.neo4j_user, self.neo4j_password)
         )
 
+        # Mark as initialized before running queries to prevent recursion
+        self._initialized = True
+
         # Create unique constraint on File.id
         await self._run_query(
             "CREATE CONSTRAINT file_id_unique IF NOT EXISTS FOR (f:File) REQUIRE f.id IS UNIQUE"
@@ -93,7 +96,6 @@ class FileEntityIngestor:
         for index_query in indexes:
             await self._run_query(index_query)
 
-        self._initialized = True
         logger.info("FileEntityIngestor initialized with constraints and indexes")
 
     async def close(self) -> None:

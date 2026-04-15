@@ -4,7 +4,7 @@ Windows database reader module for Windows artifacts.
 
 from typing import Iterator, Optional
 
-from ..forensic_data_types import (
+from graphiti_integration.forensic_data_types import (
     WindowsRegistryValue,
     WindowsEventLog,
     WindowsPrefetchInfo,

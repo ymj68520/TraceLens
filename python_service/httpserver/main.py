@@ -21,6 +21,7 @@ import uvicorn
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 
 from .config import Settings, get_settings
 
@@ -52,6 +53,9 @@ async def lifespan(app: FastAPI):
         from .services import get_service_manager
         service_manager = get_service_manager()
         await service_manager.initialize()
+        # Initialize dependency injection system
+        from .dependencies import init_dependencies
+        init_dependencies(service_manager)
     except Exception as e:
         logger.warning(f"Some services failed to initialize: {e}")
     
@@ -155,6 +159,23 @@ with the C++ backend for task management and file system operations.
                 "success": False,
                 "message": "Internal server error",
                 "error": str(exc) if settings.log_level == "DEBUG" else "An unexpected error occurred",
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
+
+    # Add validation error handler for detailed logging
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        """Handle Pydantic validation errors with detailed logging."""
+        logger.error(f"[VALIDATION_ERROR] Path: {request.url.path}")
+        logger.error(f"[VALIDATION_ERROR] Body: {await request.body()}")
+        logger.error(f"[VALIDATION_ERROR] Errors: {exc.errors()}")
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "message": "Validation error",
+                "errors": exc.errors(),
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             }
         )

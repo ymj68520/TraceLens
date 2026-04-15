@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Generator, Iterator, Optional
 
-from ..exceptions import DatabaseError
+from graphiti_integration.exceptions import DatabaseError
 
 
 @dataclass

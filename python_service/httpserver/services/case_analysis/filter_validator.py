@@ -35,9 +35,11 @@ class FilterResultValidator:
 
     def __init__(self, settings=None):
         self.settings = settings
-        self.confidence_threshold = (
-            settings.match_confidence_threshold if settings else 0.3
-        )
+        # Access confidence threshold from nested LLMFilterConfig
+        if settings and hasattr(settings, 'llm_filter_config'):
+            self.confidence_threshold = settings.llm_filter_config.match_confidence_threshold
+        else:
+            self.confidence_threshold = 0.3
 
     def validate_and_repair(
         self,
@@ -57,13 +59,15 @@ class FilterResultValidator:
             result.warnings.append("No files selected from LLM response")
             return result
 
-        # Check confidence threshold (fail early if too low)
+        # Check confidence threshold (but still return items for fallback)
+        # IMPORTANT: Don't return early - let the matching logic try its best
         if parse_result.confidence < self.confidence_threshold:
             result.is_valid = False
             result.warnings.append(
                 f"Low confidence: {parse_result.confidence:.2f} < {self.confidence_threshold}"
             )
-            return result
+            # DO NOT RETURN HERE - continue to try matching the items we have
+            logger.warning(f"[VALIDATOR] Low confidence {parse_result.confidence:.2f}, but will try matching {len(result.items)} items")
 
         # Trim to max_files
         if len(result.items) > max_files:

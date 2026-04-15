@@ -61,12 +61,14 @@ class EntityRelationBuilder:
             auth=(self.neo4j_user, self.neo4j_password)
         )
 
+        # Mark as initialized before running queries to prevent recursion
+        self._initialized = True
+
         # Create index for MENTIONED_IN relationship queries
         await self._run_query("""
             CREATE INDEX entity_name_index IF NOT EXISTS FOR (e:Entity) ON (e.name)
         """)
 
-        self._initialized = True
         logger.info("EntityRelationBuilder initialized")
 
     async def close(self) -> None:

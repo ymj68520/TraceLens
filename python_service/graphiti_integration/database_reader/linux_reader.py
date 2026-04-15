@@ -4,7 +4,7 @@ Linux database reader module for Linux artifacts.
 
 from typing import Iterator, Optional
 
-from ..forensic_data_types import (
+from graphiti_integration.forensic_data_types import (
     LinuxLogEntry,
     LinuxUserInfo,
     LinuxShellHistory,

@@ -192,7 +192,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         }
 
         json response = {
-            {"task_id", task_id},
+            {"id", task_id},
             {"status", "created"},
             {"priority", TaskHelpers::priority_to_string(priority)},
             {"llm_analyze", llm_analyze},

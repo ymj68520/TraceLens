@@ -65,7 +65,10 @@ export const pollMultiAnalysis = (jobId, onProgress, interval = 5000) =>
     tick();
   });
 
+export const deleteCase = (caseId) =>
+  pythonApi.delete(`/api/llm/cases/${caseId}`);
+
 export default {
-  createCase, listCases, getCase, addTasksToCase,
+  createCase, listCases, getCase, addTasksToCase, deleteCase,
   startMultiImageAnalysis, getMultiAnalysisStatus, pollMultiAnalysis,
 };

@@ -4,7 +4,7 @@ Android database reader module for Android artifacts.
 
 from typing import Iterator, Optional
 
-from ..forensic_data_types import (
+from graphiti_integration.forensic_data_types import (
     AndroidContact,
     AndroidSMS,
     AndroidCallLog,

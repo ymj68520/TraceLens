@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 class MultiImageFilter(FileFilter):
     """Aggregates file lists from multiple images before LLM filtering."""
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, llm_service, cpp_backend):
         """Initialize multi-image filter with enhanced components."""
-        super().__init__(settings)
+        super().__init__(settings, llm_service, cpp_backend)
         self._parser = LLMResponseParser(settings)
         self._matcher = FileMatcher(settings)
         self._validator = FilterResultValidator(settings)
@@ -82,6 +82,7 @@ class MultiImageFilter(FileFilter):
             case_description=case_description,
             max_files=max_files,
             batch_size=batch_size,
+            original_records=deduped,
         )
 
         # Step 4: persist per-db filtered lists for downstream pipeline
@@ -129,10 +130,21 @@ class MultiImageFilter(FileFilter):
         case_description: str,
         max_files: int,
         batch_size: int,
+        original_records: List[Dict],
     ) -> Dict[str, Any]:
         """Run the streaming batch LLM filter on pre-built TOON data using enhanced pipeline."""
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
+
+        # Build batch_files structure for FileMatcher
+        batch_files = []
+        for r in original_records:
+            batch_files.append({
+                "name": Path(r["path"]).name,
+                "path": r["path"],
+                "size": r.get("size", 0),
+                "category": r.get("file_type", ""),
+            })
 
         batches = [data_lines[i:i + batch_size] for i in range(0, len(data_lines), batch_size)]
         all_selected: List[str] = []
@@ -158,19 +170,26 @@ class MultiImageFilter(FileFilter):
                 text = result.get("analysis", {}).get("description", "")
 
                 # Use enhanced parsing pipeline
-                parsed = self._parser.parse_filter_response(text, batch)
-                validated = self._validator.validate_and_repair(parsed, batch)
+                parsed = self._parser.parse_filter_response(text, batch_files)
+                validated = self._validator.validate_and_repair(parsed, batch_files, max_files=1000)
 
-                all_selected.extend(validated["selected_files"])
-                if validated.get("reasoning"):
-                    reasonings.append(validated["reasoning"])
+                all_selected.extend(validated.items)
+                if validated.is_valid and validated.warnings:
+                    logger.warning(f"[MULTI_FILTER] Batch {idx+1} warnings: {validated.warnings}")
                 if len(all_selected) >= max_files:
                     break
             except Exception as e:
                 logger.warning(f"[MULTI_FILTER] Batch {idx+1} failed: {e}")
 
-        # Use enhanced duplicate resolution
-        final = self._matcher.match_files(all_selected)
+        # Use enhanced duplicate resolution with batch_files
+        matched = self._matcher.match_files(all_selected, batch_files, case_description)
+
+        return {
+            "filtered_files": matched.files,
+            "reasoning": " | ".join(reasonings) if reasonings else "Multi-image filtering completed",
+            "selected_count": len(matched.files),
+            "streaming_used": True,
+        }
 
         return {
             "filtered_files": final,

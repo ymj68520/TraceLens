@@ -63,6 +63,47 @@ export const startCrossAnalysis = createAsyncThunk(
   }
 );
 
+/**
+ * deleteCase — delete only the case record (tasks remain).
+ */
+export const deleteCase = createAsyncThunk(
+  'cases/delete',
+  async (caseId, { rejectWithValue }) => {
+    try {
+      await caseGroupSvc.deleteCase(caseId);
+      return { caseId };
+    } catch (err) {
+      return rejectWithValue(err.response?.data || err.message);
+    }
+  }
+);
+
+/**
+ * deleteCaseWithTasks — delete associated tasks first, then the case.
+ * @param {{ caseId: string, taskIds: string[] }}
+ */
+export const deleteCaseWithTasks = createAsyncThunk(
+  'cases/deleteWithTasks',
+  async ({ caseId, taskIds }, { rejectWithValue }) => {
+    try {
+      // Step 1 — delete all associated tasks (best-effort, don't fail the whole op)
+      const deleteResults = await Promise.allSettled(
+        taskIds.map((taskId) => taskService.deleteTask(taskId))
+      );
+      const deletedTaskIds = taskIds.filter(
+        (_, i) => deleteResults[i].status === 'fulfilled'
+      );
+
+      // Step 2 — delete the case record itself
+      await caseGroupSvc.deleteCase(caseId);
+
+      return { caseId, deletedTaskIds };
+    } catch (err) {
+      return rejectWithValue(err.response?.data || err.message);
+    }
+  }
+);
+
 // ── Slice ─────────────────────────────────────────────────────────────────────
 
 const caseSlice = createSlice({
@@ -108,6 +149,16 @@ const caseSlice = createSlice({
         state.activeJobId = action.payload.job_id;
         const idx = state.cases.findIndex((c) => c.id === action.payload.case_id);
         if (idx !== -1) state.cases[idx].status = 'analysing';
+      })
+
+      // deleteCase (case only)
+      .addCase(deleteCase.fulfilled, (state, action) => {
+        state.cases = state.cases.filter((c) => c.id !== action.payload.caseId);
+      })
+
+      // deleteCaseWithTasks
+      .addCase(deleteCaseWithTasks.fulfilled, (state, action) => {
+        state.cases = state.cases.filter((c) => c.id !== action.payload.caseId);
       });
   },
 });

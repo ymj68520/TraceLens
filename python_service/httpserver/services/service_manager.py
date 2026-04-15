@@ -86,8 +86,15 @@ class ServiceManager:
         except Exception as e:
             logger.warning(f"IngestionJobManager initialization failed: {e}")
 
-        # Initialize MigrationManager
+        # Initialize MigrationManager (optional, requires Neo4j)
         try:
+            # Import with absolute import path since graphiti_integration is sibling to httpserver
+            import sys
+            from pathlib import Path
+            # Add python_service to path if not already there
+            python_service_path = str(Path(__file__).parent.parent.parent)
+            if python_service_path not in sys.path:
+                sys.path.insert(0, python_service_path)
             from graphiti_integration.migration import MigrationManager
             self._migration_manager = MigrationManager(
                 neo4j_uri=self.settings.neo4j_uri,
@@ -95,6 +102,8 @@ class ServiceManager:
                 neo4j_password=self.settings.neo4j_password
             )
             await self._migration_manager.initialize()
+        except ImportError as e:
+            logger.warning(f"MigrationManager import failed: {e}")
         except Exception as e:
             logger.warning(f"MigrationManager initialization failed: {e}")
 

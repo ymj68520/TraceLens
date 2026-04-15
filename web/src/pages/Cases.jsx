@@ -7,18 +7,20 @@
  *  - Show per-case task progress
  *  - "Start Cross-Image Analysis" button when all tasks completed
  *  - Show cross-image analysis job status
+ *  - Delete a case (optionally with associated tasks)
  */
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
-import { fetchCases, createCaseWithTasks, startCrossAnalysis, updateCaseStatus } from '../store/caseSlice';
+import { fetchCases, createCaseWithTasks, startCrossAnalysis, updateCaseStatus, deleteCase, deleteCaseWithTasks } from '../store/caseSlice';
 import { fetchTasks } from '../store/taskSlice';
 import { pollMultiAnalysis } from '../services/caseGroupService';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import { useToast } from '../components/common/ToastContext';
 import CreateCaseModal from '../components/tasks/CreateCaseModal';
 
@@ -38,6 +40,15 @@ export default function Cases() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [pollingJobId, setPollingJobId] = useState(null);
+
+  // Delete dialog state
+  const [deleteState, setDeleteState] = useState({
+    open: false,
+    caseId: null,
+    caseName: '',
+    taskIds: [],
+    loading: false,
+  });
 
   useEffect(() => { 
     dispatch(fetchCases());
@@ -89,6 +100,39 @@ export default function Cases() {
     }
   }, [dispatch, toast]);
 
+  // --- Delete case flow ---
+  const handleDeleteCase = useCallback((fc) => {
+    setDeleteState({
+      open: true,
+      caseId: fc.id,
+      caseName: fc.name,
+      taskIds: fc.task_ids || [],
+      loading: false,
+    });
+  }, []);
+
+  const doDeleteCase = useCallback(async (alsoDeleteTasks) => {
+    const { caseId, taskIds } = deleteState;
+    setDeleteState((s) => ({ ...s, loading: true }));
+    try {
+      if (alsoDeleteTasks && taskIds.length > 0) {
+        const result = await dispatch(deleteCaseWithTasks({ caseId, taskIds })).unwrap();
+        const deletedCount = result.deletedTaskIds?.length || 0;
+        toast.success(`案件及 ${deletedCount} 个关联任务已删除`);
+      } else {
+        await dispatch(deleteCase(caseId)).unwrap();
+        toast.success('案件已删除（关联任务已保留）');
+      }
+      // Refresh both lists
+      dispatch(fetchCases());
+      dispatch(fetchTasks({ status: 'all', priority: 'all' }));
+    } catch (err) {
+      toast.error('删除失败：' + (err?.message || err));
+    } finally {
+      setDeleteState({ open: false, caseId: null, caseName: '', taskIds: [], loading: false });
+    }
+  }, [deleteState, dispatch, toast]);
+
   if (status === 'loading' && cases.length === 0) {
     return <div className="flex items-center justify-center h-64"><Spinner size="lg" /></div>;
   }
@@ -132,6 +176,7 @@ export default function Cases() {
               forensicCase={fc}
               tasks={tasks}
               onStartAnalysis={handleStartAnalysis}
+              onDelete={handleDeleteCase}
               isPolling={pollingJobId != null}
               navigate={navigate}
             />
@@ -145,13 +190,32 @@ export default function Cases() {
           onClose={() => setShowCreate(false)}
         />
       )}
+
+      {/* Delete case confirmation dialog */}
+      <ConfirmDialog
+        open={deleteState.open}
+        onConfirm={doDeleteCase}
+        onCancel={() => setDeleteState({ open: false, caseId: null, caseName: '', taskIds: [], loading: false })}
+        title="删除案件"
+        message={`确定要删除案件「${deleteState.caseName}」吗？此操作不可撤销。`}
+        confirmText="确认删除"
+        cancelText="取消"
+        variant="danger"
+        loading={deleteState.loading}
+        checkboxLabel={
+          deleteState.taskIds.length > 0
+            ? `同时删除关联的 ${deleteState.taskIds.length} 个分析任务及其数据`
+            : ''
+        }
+        checkboxDefaultChecked={false}
+      />
     </div>
   );
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, isPolling, navigate }) {
+function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, isPolling, navigate }) {
   const statusColor = STATUS_COLOR[fc.status] || 'gray';
   const allTasksCount = fc.task_ids?.length || 0;
   
@@ -201,6 +265,17 @@ function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, isPolling, navigat
                 👀 查看完整研判报告
             </Button>
           )}
+
+          {/* Delete button */}
+          <motion.button
+            onClick={() => onDelete(fc)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            title="删除案件"
+          >
+            🗑️ 删除案件
+          </motion.button>
         </div>
       </div>
 

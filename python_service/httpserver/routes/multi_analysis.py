@@ -17,8 +17,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field, ValidationError
 
 from ..config import Settings, get_settings
 from ..dependencies import get_case_analysis_service
@@ -95,16 +95,25 @@ class CaseAnalysisStatusResponse(BaseModel):
 async def create_case(
     req: CreateCaseRequest,
     settings: Settings = Depends(get_settings),
+    raw_request: Request = None,
 ):
     """Create a ForensicCase via C++ backend and return the new case object."""
-    async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.post(
-            f"{settings.cpp_backend_url}/api/cases",
-            json=req.model_dump(),
-        )
-    if r.status_code not in (200, 201):
-        raise HTTPException(status_code=r.status_code, detail=r.text)
-    return r.json()
+    try:
+        logger.info(f"[CREATE_CASE] Received request: name={req.name}, description={req.description}, task_ids={req.task_ids}")
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(
+                f"{settings.cpp_backend_url}/api/cases",
+                json=req.model_dump(),
+            )
+        logger.info(f"[CREATE_CASE] C++ backend response: status={r.status_code}, body={r.text[:200]}")
+        if r.status_code not in (200, 201):
+            raise HTTPException(status_code=r.status_code, detail=r.text)
+        return r.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[CREATE_CASE] Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/api/llm/cases")
@@ -127,6 +136,24 @@ async def get_case(case_id: str, settings: Settings = Depends(get_settings)):
     if r.status_code != 200:
         raise HTTPException(status_code=r.status_code, detail=r.text)
     return r.json()
+
+
+@router.delete("/api/llm/cases/{case_id}")
+async def delete_case(case_id: str, settings: Settings = Depends(get_settings)):
+    """Delete a ForensicCase via C++ backend. Does NOT delete associated tasks."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.delete(f"{settings.cpp_backend_url}/api/cases/{case_id}")
+        if r.status_code == 404:
+            raise HTTPException(status_code=404, detail="Case not found")
+        if r.status_code not in (200, 204):
+            raise HTTPException(status_code=r.status_code, detail=r.text)
+        return r.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[DELETE_CASE] Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/api/llm/cases/{case_id}/tasks")

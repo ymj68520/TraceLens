@@ -14,7 +14,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 
-from ..config import Settings
+from ...config import Settings
 from .db_utils import (
     TaskAnalysisState,
     get_case_db_path,

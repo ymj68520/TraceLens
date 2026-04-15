@@ -1,11 +1,12 @@
 import { motion } from 'framer-motion';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { fetchTasks, cancelTask, deleteTask, setFilters } from '../store/taskSlice';
 import { openModal } from '../store/uiSlice';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Spinner from '../components/common/Spinner';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import { useToast } from '../components/common/ToastContext';
 import { TASK_STATUS, TASK_PRIORITY } from '../utils/constants';
 import TaskTable from '../components/tasks/TaskTable';
@@ -17,6 +18,9 @@ const Tasks = () => {
   const { tasks, status, error, filters } = useSelector((state) => state.tasks);
   const { modal } = useSelector((state) => state.ui);
   const toast = useToast();
+
+  // Confirmation dialog state
+  const [confirmState, setConfirmState] = useState({ open: false, type: null, taskId: null, loading: false });
 
   // Initial load
   useEffect(() => {
@@ -31,24 +35,41 @@ const Tasks = () => {
 
   const handleFilterChange = (key, value) => dispatch(setFilters({ [key]: value }));
 
-  const handleCancel = async (taskId) => {
-    if (!window.confirm('Cancel this task?')) return;
+  // --- Cancel flow ---
+  const handleCancel = (taskId) => {
+    setConfirmState({ open: true, type: 'cancel', taskId, loading: false });
+  };
+
+  const doCancel = async () => {
+    const { taskId } = confirmState;
+    setConfirmState((s) => ({ ...s, loading: true }));
     try {
       await dispatch(cancelTask({ taskId, reason: 'Cancelled by user' })).unwrap();
-      toast.success('Task cancelled.');
+      toast.success('任务已取消');
       dispatch(fetchTasks(filters));
     } catch (err) {
-      toast.error('Cancel failed: ' + (err?.message || err));
+      toast.error('取消失败: ' + (err?.message || err));
+    } finally {
+      setConfirmState({ open: false, type: null, taskId: null, loading: false });
     }
   };
 
-  const handleDelete = async (taskId) => {
-    if (!window.confirm('Delete this task? This cannot be undone.')) return;
+  // --- Delete flow ---
+  const handleDelete = (taskId) => {
+    setConfirmState({ open: true, type: 'delete', taskId, loading: false });
+  };
+
+  const doDelete = async () => {
+    const { taskId } = confirmState;
+    setConfirmState((s) => ({ ...s, loading: true }));
     try {
       await dispatch(deleteTask(taskId)).unwrap();
-      toast.success('Task deleted.');
+      toast.success('任务已删除');
+      dispatch(fetchTasks(filters));
     } catch (err) {
-      toast.error('Delete failed: ' + (err?.message || err));
+      toast.error('删除失败: ' + (err?.message || err));
+    } finally {
+      setConfirmState({ open: false, type: null, taskId: null, loading: false });
     }
   };
 
@@ -106,6 +127,32 @@ const Tasks = () => {
 
       {/* Modal */}
       {modal.open && modal.type === 'createTask' && <CreateTaskModal />}
+
+      {/* Cancel confirmation dialog */}
+      <ConfirmDialog
+        open={confirmState.open && confirmState.type === 'cancel'}
+        onConfirm={doCancel}
+        onCancel={() => setConfirmState({ open: false, type: null, taskId: null, loading: false })}
+        title="取消任务"
+        message="确定要取消此任务吗？正在运行的分析将被中止。"
+        confirmText="取消任务"
+        cancelText="返回"
+        variant="warning"
+        loading={confirmState.loading}
+      />
+
+      {/* Delete confirmation dialog */}
+      <ConfirmDialog
+        open={confirmState.open && confirmState.type === 'delete'}
+        onConfirm={doDelete}
+        onCancel={() => setConfirmState({ open: false, type: null, taskId: null, loading: false })}
+        title="删除任务"
+        message="此操作将永久删除该任务及其所有分析数据（数据库文件、知识图谱等），且不可撤销。确定要继续吗？"
+        confirmText="永久删除"
+        cancelText="取消"
+        variant="danger"
+        loading={confirmState.loading}
+      />
     </div>
   );
 };

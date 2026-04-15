@@ -68,7 +68,7 @@ export const deleteTask = createAsyncThunk(
   'tasks/delete',
   async (taskId, { rejectWithValue }) => {
     try {
-      const response = await taskService.cancelTask(taskId, 'Deleted by user');
+      const response = await taskService.deleteTask(taskId);
       return { taskId, ...response };
     } catch (error) {
       return rejectWithValue(error.response?.data || error.message);

@@ -237,9 +237,11 @@ class FileFilter:
                 logger.info(f"[FILE_FILTER] Task {task_id_extracted}: Selected files (first 5): {final_selected[:5]}")
             else:
                 logger.warning(f"[FILE_FILTER] Task {task_id_extracted}: final_selected is EMPTY after parsing!")
+                logger.warning(f"[FILE_FILTER] Task {task_id_extracted}: This will cause extraction and analysis steps to be SKIPPED!")
 
             # Persist filtered file list to database
             self._persist_filtered_files(files_db_path, task_id_extracted, final_selected)
+            logger.info(f"[FILE_FILTER] Task {task_id_extracted}: Persisted {len(final_selected)} filtered files to database")
 
             logger.info(f"Task {task_id_extracted}: Filtering complete. Selected {len(final_selected)} files.")
             if not final_selected:
@@ -314,10 +316,21 @@ class FileFilter:
                 response_text, batch_files
             )
 
+            logger.info(f"[ENHANCED_PARSE] Parse result: {len(parse_result.selected_files)} files selected, confidence={parse_result.confidence:.2f}")
+
             # Step 2: Validate and repair
             validated = self._validator.validate_and_repair(
                 parse_result, batch_files, max_files=1000
             )
+
+            logger.info(f"[ENHANCED_PARSE] Validation result: is_valid={validated.is_valid}, items={len(validated.items)}")
+
+            # CRITICAL FIX: If validation failed and we have no items, fall back to legacy
+            if not validated.is_valid and len(validated.items) == 0:
+                logger.warning("[ENHANCED_PARSE] Validation failed with no items, falling back to legacy parser")
+                return self._parse_toon_filter_response_legacy(
+                    response_text, batch_lines, batch_files
+                )
 
             # Step 3: Match files (handles duplicates)
             matched = self._matcher.match_files(
@@ -325,6 +338,13 @@ class FileFilter:
             )
 
             logger.info(f"[ENHANCED_PARSE] Pipeline completed: {len(matched.files)} files, {matched.duplicates_resolved} duplicates resolved")
+
+            # Additional fallback: if no files matched, try legacy
+            if len(matched.files) == 0:
+                logger.warning("[ENHANCED_PARSE] No files matched after validation, falling back to legacy parser")
+                return self._parse_toon_filter_response_legacy(
+                    response_text, batch_lines, batch_files
+                )
 
             return {
                 "selected_files": matched.files,

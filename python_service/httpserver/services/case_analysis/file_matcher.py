@@ -46,12 +46,13 @@ class FileMatcher:
 
     def _load_weights(self) -> Dict[str, float]:
         """Load scoring weights from settings or defaults."""
-        if self.settings and hasattr(self.settings, 'score_weight_path_semantic'):
+        if self.settings and hasattr(self.settings, 'llm_filter_config'):
+            config = self.settings.llm_filter_config
             return {
-                "path_semantic": self.settings.score_weight_path_semantic,
-                "freshness": self.settings.score_weight_freshness,
-                "size": self.settings.score_weight_size,
-                "depth": self.settings.score_weight_depth,
+                "path_semantic": config.score_weight_path_semantic,
+                "freshness": config.score_weight_freshness,
+                "size": config.score_weight_size,
+                "depth": config.score_weight_depth,
             }
         return self.DEFAULT_WEIGHTS.copy()
 
