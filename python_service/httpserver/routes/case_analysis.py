@@ -42,7 +42,7 @@ class CaseDescriptionResponse(BaseModel):
 
 class CaseAnalysisRequest(BaseModel):
     """Request to start full case analysis."""
-    task_id: str = Field(..., description="Task ID")
+    task_id: Optional[str] = Field(None, description="Task ID (auto-extracted from files_db_path if not provided)")
     files_db_path: str = Field(..., description="Path to _files.db")
     case_description: str = Field(default="", description="案情描述")
     max_filter_files: int = Field(default=200, ge=1, le=2000, description="Max files to filter")
@@ -180,13 +180,29 @@ async def start_case_analysis(
     Returns a job_id for tracking progress.
     """
     import uuid
+    import re
 
     try:
         from ..services import get_service_manager
         service_manager = get_service_manager()
 
+        # Extract task_id from files_db_path if not provided
+        task_id = request.task_id
+        if not task_id:
+            # Extract task_id from path like: /path/to/tasks/{task_id}/files.db
+            match = re.search(r'/tasks/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/files\.db', request.files_db_path)
+            if match:
+                task_id = match.group(1)
+                logger.info(f"Extracted task_id from files_db_path: {task_id}")
+            else:
+                logger.error("Cannot extract task_id from files_db_path and task_id not provided")
+                raise HTTPException(
+                    status_code=422,
+                    detail="Cannot extract task_id from files_db_path. Please provide task_id explicitly."
+                )
+
         # Validate inputs
-        logger.info(f"Starting case analysis for task {request.task_id}")
+        logger.info(f"Starting case analysis for task {task_id}")
         logger.info(f"files_db_path: '{request.files_db_path}'")
         logger.info(f"case_description length: {len(request.case_description)}")
         logger.info(f"max_filter_files: {request.max_filter_files}")
@@ -208,7 +224,7 @@ async def start_case_analysis(
             "status": "running",
             "current_step": "初始化",
             "detail": "正在启动案情分析...",
-            "task_id": request.task_id,
+            "task_id": task_id,
             "result": None,
         }
 
@@ -217,7 +233,7 @@ async def start_case_analysis(
             _run_case_analysis_background(
                 job_id=job_id,
                 case_service=case_service,
-                task_id=request.task_id,
+                task_id=task_id,
                 files_db_path=request.files_db_path,
                 case_description=request.case_description,
                 max_filter_files=request.max_filter_files,
@@ -227,7 +243,7 @@ async def start_case_analysis(
 
         return CaseAnalysisResponse(
             success=True,
-            task_id=request.task_id,
+            task_id=task_id,
             job_id=job_id,
             message="案情分析已启动",
             timestamp=datetime.now().isoformat(),

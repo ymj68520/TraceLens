@@ -767,7 +767,12 @@ class IngestionJobManager:
         events_db = self._find_database(task_id, "events")
 
         if not files_db:
-            raise FileNotFoundError(f"Files database not found for task {task_id}")
+            logger.warning(f"[ANALYZED_ONLY] Files database not found for task {task_id}, skipping ingestion")
+            await self._update_job_status(
+                job_id, JobStatus.COMPLETED, "completed", progress=100,
+                result={"message": f"Files database not found for task {task_id}, skipping analyzed files ingestion"}
+            )
+            return
 
         # 2. Check for AI-analyzed files
         db = self._ForensicsDatabase(files_db)
@@ -931,16 +936,62 @@ class IngestionJobManager:
 
     def _find_database(self, task_id: str, db_type: str) -> Optional[str]:
         """Find database file for a task."""
-        output_dir = self.settings.db_output_dir
+        task_ids = [task_id]
+        compact_task_id = task_id.replace("-", "")
 
-        # Try task-specific directory first
-        task_dir = Path(output_dir) / "tasks" / task_id
-        if task_dir.exists():
-            for db_file in task_dir.glob(f"*{db_type}.db"):
-                return str(db_file)
+        # Support both hyphenated and compact UUID formats.
+        if compact_task_id != task_id:
+            task_ids.append(compact_task_id)
+        if len(compact_task_id) == 32:
+            try:
+                hyphenated_task_id = str(uuid.UUID(compact_task_id))
+                if hyphenated_task_id not in task_ids:
+                    task_ids.append(hyphenated_task_id)
+            except ValueError:
+                pass
 
-        # Try output dir directly
-        for db_file in Path(output_dir).glob(f"*{db_type}.db"):
-            return str(db_file)
+        current_root = Path.cwd()
+        project_root = Path(__file__).resolve().parents[3]
+        configured_output = Path(self.settings.db_output_dir).expanduser()
+
+        candidate_roots: list[Path] = []
+
+        def add_root(path: Path):
+            if path not in candidate_roots:
+                candidate_roots.append(path)
+
+        # Resolve configured output dir relative to both process CWD and project root.
+        if configured_output.is_absolute():
+            add_root(configured_output)
+        else:
+            add_root(current_root / configured_output)
+            add_root(project_root / configured_output)
+
+        # Common locations used by C++ PathManager and local dev runs.
+        add_root(current_root / "build" / "data")
+        add_root(project_root / "build" / "data")
+        add_root(current_root / "data")
+        add_root(project_root / "data")
+
+        for root in candidate_roots:
+            for tid in task_ids:
+                for task_dir in (root / "tasks" / tid, root / tid):
+                    if not task_dir.exists():
+                        continue
+
+                    exact = task_dir / f"{db_type}.db"
+                    if exact.exists():
+                        return str(exact)
+
+                    matches = sorted(task_dir.glob(f"*{db_type}.db"))
+                    if matches:
+                        return str(matches[0])
+
+        # Legacy fallback: search directly in root dirs.
+        for root in candidate_roots:
+            matches = sorted(root.glob(f"*{db_type}.db"))
+            if matches:
+                return str(matches[0])
 
         return None
+

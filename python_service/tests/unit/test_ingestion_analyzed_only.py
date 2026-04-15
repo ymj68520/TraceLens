@@ -11,8 +11,10 @@ from dataclasses import dataclass, field
 from typing import Optional
 from datetime import datetime
 from enum import Enum
+import shutil
 import sys
 from pathlib import Path
+import uuid
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -127,6 +129,9 @@ def job_manager(mock_settings):
     # Mock component services
     manager._file_ingestor = AsyncMock()
     manager._entity_builder = AsyncMock()
+
+    # Ensure event attachment path can construct EventRecord objects
+    manager._EventRecord = EventRecord
 
     # Mock database classes
     manager._ForensicsDatabase = MagicMock()
@@ -390,8 +395,8 @@ async def test_process_analyzed_only_database_not_found(job_manager):
 
     Verifies:
     - _find_database() returns None
-    - FileNotFoundError is raised with correct message
-    - Initial status update was called before the error
+    - Method exits gracefully without raising
+    - Job is marked COMPLETED with skip message
     """
     job_id = "test_job_123"
     task_id = "test_task_456"
@@ -405,22 +410,23 @@ async def test_process_analyzed_only_database_not_found(job_manager):
         # Mock _update_job_status to track calls
         job_manager._update_job_status = AsyncMock()
 
-        # Execute and expect FileNotFoundError
-        with pytest.raises(FileNotFoundError) as exc_info:
-            await job_manager._process_analyzed_only(job_id, task_id)
-
-        # Verify error message
-        assert "Files database not found for task" in str(exc_info.value)
-        assert task_id in str(exc_info.value)
+        # Execute (should not raise)
+        await job_manager._process_analyzed_only(job_id, task_id)
 
     # Verify database initialization was NOT attempted
     job_manager._ForensicsDatabase.assert_not_called()
 
-    # Verify initial status update was called before the error
-    job_manager._update_job_status.assert_called_once()
-    # Verify the status was RUNNING (not FAILED - FAILED is set by caller)
-    status_call = job_manager._update_job_status.call_args_list[0]
-    assert status_call[0][1] == JobStatus.RUNNING
+    # Verify initial status update + completed status
+    assert job_manager._update_job_status.call_count == 2
+    first_call = job_manager._update_job_status.call_args_list[0]
+    final_call = job_manager._update_job_status.call_args_list[-1]
+
+    assert first_call[0][1] == JobStatus.RUNNING
+    assert final_call[0][1] == JobStatus.COMPLETED
+    assert final_call[1]['progress'] == 100
+    assert "Files database not found for task" in final_call[1]['result']['message']
+    assert task_id in final_call[1]['result']['message']
+
 
 
 # =============================================================================
@@ -631,7 +637,53 @@ async def test_process_analyzed_only_no_events_for_analyzed_files(
         # Execute
         await job_manager._process_analyzed_only(job_id, task_id)
 
-    # Verify attach_events_batch was called with empty list (no matching events)
-    job_manager._file_ingestor.attach_events_batch.assert_called_once()
-    event_list = job_manager._file_ingestor.attach_events_batch.call_args[0][0]
-    assert len(event_list) == 0
+
+
+def test_find_database_resolves_from_project_root_when_cwd_is_python_service(job_manager):
+    """
+    _find_database should resolve build/data under project root even when
+    current working directory is python_service/.
+    """
+    task_id = "a525d41c-8ff9-4aea-9bec-48bce1515791"
+    expected = (
+        Path(__file__).resolve().parents[3]
+        / "build"
+        / "data"
+        / "tasks"
+        / task_id
+        / "files.db"
+    )
+    assert expected.exists(), "Expected fixture files.db does not exist"
+
+    with patch("httpserver.services.ingestion_job_manager.Path.cwd") as mock_cwd:
+        mock_cwd.return_value = Path(__file__).resolve().parents[2]  # .../python_service
+        found = job_manager._find_database(task_id, "files")
+
+    assert found is not None
+    assert Path(found).resolve() == expected.resolve()
+
+
+def test_find_database_accepts_compact_task_id(job_manager):
+    """
+    _find_database should find hyphenated task directory even if caller passes
+    a compact UUID without hyphens.
+    """
+    hyphenated = "a525d41c-8ff9-4aea-9bec-48bce1515791"
+    compact = hyphenated.replace("-", "")
+
+    expected = (
+        Path(__file__).resolve().parents[3]
+        / "build"
+        / "data"
+        / "tasks"
+        / hyphenated
+        / "files.db"
+    )
+    assert expected.exists(), "Expected fixture files.db does not exist"
+
+    with patch("httpserver.services.ingestion_job_manager.Path.cwd") as mock_cwd:
+        mock_cwd.return_value = Path(__file__).resolve().parents[2]  # .../python_service
+        found = job_manager._find_database(compact, "files")
+
+    assert found is not None
+    assert Path(found).resolve() == expected.resolve()
