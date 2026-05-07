@@ -3,6 +3,7 @@
 
 #include "AndroidAnalyzer.h"
 #include "AndroidDataTypes.h"
+#include "PathManager/PathManager.h"
 #include "AuditLog/AuditLog.h"
 #include <sstream>
 #include <iomanip>
@@ -315,8 +316,9 @@ void AndroidAnalyzer::analyzeSystemLogs() {
     int totalRecords = 0;
 
     for (const auto& logPath : logPaths) {
-        std::string tempPath = "/tmp/android_log_" + std::to_string(std::time(nullptr)) + "_" + 
-            logPath.substr(logPath.find_last_of('/') + 1);
+        std::string tempPath = forensics::PathManager::instance().makeTempPath(
+            "android_log_" + std::to_string(std::time(nullptr)) + "_" +
+            logPath.substr(logPath.find_last_of('/') + 1));
 
         if (fileExtractor_->extractFileByPath(logPath, tempPath)) {
             std::vector<SystemLogEntry> entries = parseSystemLogFile(tempPath, logPath);

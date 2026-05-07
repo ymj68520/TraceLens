@@ -18,6 +18,8 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from ...config import get_project_root
+
 from ...config import Settings
 from .file_analyzer import FileAnalyzer
 from .model_manager import ModelManager
@@ -138,7 +140,7 @@ class LLMService:
             True if a row was updated, False otherwise.
         """
         if not db_path or not Path(db_path).exists():
-            test_db = "/home/ymj68520/projects/Forensics/ForensicsProject/build/test_image_files.db"
+            test_db = str(get_project_root() / "build" / "test_image_files.db")
             if Path(test_db).exists():
                 logger.debug(f"persist_to_files_db: db not found at {db_path!r}, falling back to {test_db!r}")
                 db_path = test_db

@@ -4,6 +4,9 @@
 
 #include <string>
 #include <filesystem>
+#include <atomic>
+#include <thread>
+#include <functional>
 
 namespace forensics {
 
@@ -130,6 +133,20 @@ public:
      * @brief Set project root explicitly (from .env PROJECT_ROOT).
      */
     void setProjectRoot(const std::string& root);
+
+    // ---- temporary directory --------------------------------------------
+
+    /** System temp directory (from std::filesystem::temp_directory_path()). */
+    std::filesystem::path getTempDir() const;
+
+    /**
+     * @brief Generate a unique temp file/directory path.
+     * @param prefix  Filename prefix (e.g. "forensic_mount_")
+     * @param suffix  Filename suffix (e.g. ".xml")
+     * @return Absolute path under the system temp directory.
+     */
+    std::string makeTempPath(const std::string& prefix,
+                             const std::string& suffix = "") const;
 
     // Disable copy / move
     PathManager(const PathManager&) = delete;

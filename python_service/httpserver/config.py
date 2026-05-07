@@ -25,6 +25,18 @@ def find_env_file() -> Optional[Path]:
     return None
 
 
+@lru_cache()
+def get_project_root() -> Path:
+    """Resolve project root: .env PROJECT_ROOT first, auto-detect fallback."""
+    settings = get_settings()
+    if settings.project_root:
+        root = Path(settings.project_root)
+        if root.is_dir():
+            return root
+    # Auto-detect: config.py -> httpserver -> python_service -> project_root
+    return Path(__file__).resolve().parents[2]
+
+
 class LLMFilterConfig(BaseModel):
     """Configuration for LLM file filtering enhancements."""
 

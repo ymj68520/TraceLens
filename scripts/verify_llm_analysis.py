@@ -2,9 +2,12 @@ import requests
 import time
 import sys
 import json
+from pathlib import Path
 
 BASE_URL = "http://localhost:8080"
-IMAGE_PATH = "/home/ymj68520/projects/Forensics/ForensicsProject/test_image.img"
+# Auto-detect project root from this script's location (scripts/ -> project_root)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+IMAGE_PATH = str(_PROJECT_ROOT / "test_image.img")
 
 def wait_for_server():
     print("Waiting for server...")

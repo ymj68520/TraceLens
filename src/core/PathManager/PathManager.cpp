@@ -1,5 +1,6 @@
 #include "PathManager.h"
 #include <iostream>
+#include <unistd.h>
 
 namespace forensics {
 
@@ -121,6 +122,22 @@ void PathManager::setProjectRoot(const std::string& root) {
     if (!root.empty()) {
         projectRoot_ = root;
     }
+}
+
+// --- temporary directory ---
+
+std::filesystem::path PathManager::getTempDir() const {
+    return std::filesystem::temp_directory_path();
+}
+
+std::string PathManager::makeTempPath(const std::string& prefix,
+                                       const std::string& suffix) const {
+    static std::atomic<uint64_t> counter{0};
+    auto tid = std::hash<std::thread::id>{}(std::this_thread::get_id());
+    auto name = prefix + std::to_string(getpid()) + "_" +
+                std::to_string(tid) + "_" +
+                std::to_string(counter.fetch_add(1)) + suffix;
+    return (getTempDir() / name).string();
 }
 
 } // namespace forensics

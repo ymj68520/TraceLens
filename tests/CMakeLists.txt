@@ -409,7 +409,8 @@ add_executable(
   ../src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLDaemon.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp
-  ../src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp)
+  ../src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp
+  ../src/core/PathManager/PathManager.cpp)
 
 target_include_directories(
   test_database_analyzer_gtest

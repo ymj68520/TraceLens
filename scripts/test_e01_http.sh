@@ -1,7 +1,7 @@
 #!/bin/bash
 SERVER_CMD="./build/forensic_analyzer --http-server 8081"
-# 使用 E01 文件的绝对路径
-IMAGE_PATH="/home/ymj68520/David_USB_8GB.e01"
+# 使用 E01 文件路径（可通过环境变量 TEST_IMAGE_PATH 覆盖）
+IMAGE_PATH="${TEST_IMAGE_PATH:-$(cd "$(dirname "$0")/.." && pwd)/test_data/David_USB_8GB.e01}"
 
 # Start server in background on port 8081 to avoid conflicts
 $SERVER_CMD > server_e01.log 2>&1 &

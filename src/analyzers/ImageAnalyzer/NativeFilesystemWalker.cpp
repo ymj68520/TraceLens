@@ -1,4 +1,5 @@
 #include "NativeFilesystemWalker.h"
+#include "PathManager/PathManager.h"
 #include <iostream>
 #include <cstring>
 #include <vector>
@@ -21,8 +22,8 @@ NativeFilesystemWalker::NativeFilesystemWalker(const std::string& imagePath, uin
     , mounted_(false)
     , loopSetup_(false) {
 
-    // Generate unique mount point
-    mountPoint_ = "/tmp/forensic_mount_" + std::to_string(getpid());
+    // Generate unique mount point using system temp directory
+    mountPoint_ = forensics::PathManager::instance().makeTempPath("forensic_mount_");
 }
 
 NativeFilesystemWalker::~NativeFilesystemWalker() {

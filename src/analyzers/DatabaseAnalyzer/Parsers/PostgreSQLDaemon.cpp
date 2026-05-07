@@ -1,4 +1,5 @@
 #include "PostgreSQLDaemon.h"
+#include "PathManager/PathManager.h"
 #include <iostream>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -12,7 +13,7 @@ namespace ForensicAnalyzer {
 namespace Database {
 
 PostgreSQLDaemon::PostgreSQLDaemon(const std::string& dataDir) : dataDir_(dataDir) {
-    socketDir_ = "/tmp/pg_sockets_" + std::to_string(getpid());
+    socketDir_ = forensics::PathManager::instance().makeTempPath("pg_sockets_");
     logPath_ = dataDir + "/postgres.log";
 }
 

@@ -1,11 +1,14 @@
 #include "AndroidAnalyzer.h"
+#include "PathManager/PathManager.h"
 #include <iostream>
 #include <sqlite3.h>
 
 // Android Data Parsers Implementation
 
 bool AndroidAnalyzer::extractAndParseDB(const std::string& dbPathInImage, const std::string& parseFunction) {
-    std::string tempPath = "/tmp/" + std::to_string(std::time(nullptr)) + "_" + std::filesystem::path(dbPathInImage).filename().string();
+    std::string tempPath = forensics::PathManager::instance().makeTempPath(
+        std::to_string(std::time(nullptr)) + "_" +
+        std::filesystem::path(dbPathInImage).filename().string());
     if (!fileExtractor_->extractFileByPath(dbPathInImage, tempPath)) {
         std::cout << "Failed to extract database: " << dbPathInImage << std::endl;
         return false;

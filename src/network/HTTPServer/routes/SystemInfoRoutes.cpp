@@ -1,5 +1,6 @@
 #include "SystemInfoRoutes.h"
 #include "RouteHelpers.h"
+#include "PathManager/PathManager.h"
 #include <filesystem>
 
 namespace forensics {
@@ -236,10 +237,11 @@ crow::response SystemInfoRoutes::handle_system_logs(const crow::request& req) {
 
         json logs = json::array();
 
+        auto& pm = PathManager::instance();
         std::vector<std::string> log_paths = {
+            pm.getLogFilePath().string(),
             "logs/forensic_analyzer.log",
-            "forensic_analyzer.log",
-            "/tmp/forensic_analyzer.log"
+            "forensic_analyzer.log"
         };
 
         std::string log_file;
