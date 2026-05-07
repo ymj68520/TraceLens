@@ -18,7 +18,7 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::stri
     return size * nmemb;
 }
 
-OfficeAnalyzer::OfficeAnalyzer() : pythonServiceUrl_("http://localhost:8090") {}
+OfficeAnalyzer::OfficeAnalyzer() : pythonServiceUrl_(getenv("PYTHON_SERVICE_URL") ? getenv("PYTHON_SERVICE_URL") : "http://localhost:8090") {}
 
 OfficeAnalyzer::~OfficeAnalyzer() {}
 

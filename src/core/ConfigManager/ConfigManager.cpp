@@ -135,6 +135,8 @@ int ConfigManager::getThreadPoolSize() const { return getInt("THREAD_POOL_SIZE",
 int ConfigManager::getMaxBatchSize() const { return getInt("MAX_BATCH_SIZE", 100); }
 int ConfigManager::getHTTPServerPort() const { return getInt("HTTP_SERVER_PORT", 8080); }
 std::string ConfigManager::getHTTPServerHost() const { return get("HTTP_SERVER_HOST", "0.0.0.0"); }
+std::string ConfigManager::getPythonServiceUrl() const { return get("PYTHON_SERVICE_URL", "http://localhost:" + std::to_string(getInt("PYTHON_HTTP_PORT", 8090))); }
+std::string ConfigManager::getMCPHost() const { return get("MCP_HOST", "0.0.0.0"); }
 
 // --- Database Performance Settings ---
 int ConfigManager::getDBBusyTimeoutMs() const { return getInt("DB_BUSY_TIMEOUT_MS", 5000); }

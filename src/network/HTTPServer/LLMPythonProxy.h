@@ -5,6 +5,7 @@
 #include <string>
 #include <functional>
 #include <nlohmann/json.hpp>
+#include "ConfigManager/ConfigManager.h"
 
 namespace forensics {
 
@@ -65,12 +66,12 @@ public:
      * @brief Get the singleton instance of LLMPythonProxy.
      */
     static LLMPythonProxy& instance() {
-        static LLMPythonProxy instance;
+        static LLMPythonProxy instance(ConfigManager::instance().getPythonServiceUrl());
         return instance;
     }
 
 private:
-    LLMPythonProxy(const std::string& python_service_url = "http://localhost:8090");
+    LLMPythonProxy(const std::string& python_service_url);
 
 public:
 

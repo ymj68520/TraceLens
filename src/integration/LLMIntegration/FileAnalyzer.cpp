@@ -90,6 +90,7 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
     } else if (ext == ".docx" || ext == ".doc") {
         LOG_DEBUG("Using OfficeAnalyzer");
         OfficeAnalyzer officeAnalyzer;
+        officeAnalyzer.setPythonServiceUrl(ConfigManager::instance().getPythonServiceUrl());
         content = officeAnalyzer.analyze(filePath);
     } else if (result.fileType == "Archive" || result.fileType == "Binary" || result.fileType == "Database") {
         LOG_DEBUG("Binary/Archive detected. Skipping content read.");

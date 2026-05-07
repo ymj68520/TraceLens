@@ -1,6 +1,7 @@
 #include "SystemHealthRoutes.h"
 #include "RouteHelpers.h"
 #include "TaskManager.h"
+#include "ConfigManager/ConfigManager.h"
 #include "../../Swagger/Swagger.h"
 #include <chrono>
 
@@ -119,12 +120,13 @@ crow::response SystemHealthRoutes::handle_health_dependencies(const crow::reques
     RouteHelpers::add_cors_headers(res);
 
     try {
+        auto& cfg = ConfigManager::instance();
         json dependencies = {
-            {"http_server", {{"status", "running"}, {"port", 8080}}},
+            {"http_server", {{"status", "running"}, {"port", cfg.getHTTPServerPort()}}},
             {"task_manager", {{"status", "running"}}},
             {"sqlite", {{"status", "available"}}},
-            {"llm_service", {{"status", "configured"}, {"base_url", "http://localhost:1234"}}},
-            {"python_service", {{"status", "optional"}, {"port", 8090}}}
+            {"llm_service", {{"status", "configured"}, {"base_url", cfg.getLLMBaseUrl()}}},
+            {"python_service", {{"status", "optional"}, {"url", cfg.getPythonServiceUrl()}}}
         };
 
         json response = {

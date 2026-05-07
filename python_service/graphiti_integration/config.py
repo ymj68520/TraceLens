@@ -24,7 +24,7 @@ class GraphitiConfig:
     neo4j_password: str = ""
     
     # LLM settings (supports local OpenAI-compatible servers like LM Studio)
-    llm_base_url: str = "http://192.168.31.199:1234/v1"
+    llm_base_url: str = "http://localhost:1234/v1"
     llm_model: str = "openai/gpt-oss-20b"
     llm_api_key: str = "local"  # Placeholder for local servers
     
@@ -80,7 +80,7 @@ class GraphitiConfig:
                     current = current.parent
         
         # Get LLM base URL - use the text model URL from .env
-        llm_base_url = os.getenv("LLM_TEXT_BASE_URL", "http://192.168.31.199:1234")
+        llm_base_url = os.getenv("LLM_TEXT_BASE_URL", "http://localhost:1234")
         if not llm_base_url.endswith("/v1"):
             llm_base_url = llm_base_url.rstrip("/") + "/v1"
         

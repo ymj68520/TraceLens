@@ -60,6 +60,8 @@ public:
     int getMaxBatchSize() const;
     int getHTTPServerPort() const;
     std::string getHTTPServerHost() const;
+    std::string getPythonServiceUrl() const;
+    std::string getMCPHost() const;
     
     // --- Database Settings ---
     int getDBBusyTimeoutMs() const;

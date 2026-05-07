@@ -4,6 +4,7 @@
 #include "mcp_server.h"
 #include "mcp_tool.h"
 #include "json.hpp"
+#include "ConfigManager/ConfigManager.h"
 
 #include <filesystem>
 #include <fstream>
@@ -31,7 +32,7 @@ void MCPIntegration::start(bool blocking) {
     
     // Create MCP server configuration
     mcp::server::configuration config;
-    config.host = "localhost";
+    config.host = ConfigManager::instance().getMCPHost();
     config.port = port_;
     
     server_ = std::make_unique<mcp::server>(config);
