@@ -2342,3 +2342,604 @@ TEST_F(DLLAnalysisDatabaseTest, EmptyExportsReturnsEmptyVector) {
     EXPECT_TRUE(exports.empty());
 }
 
+
+// ============================================================================
+// AnomalyDetector Tests
+// ============================================================================
+
+#include "analyzers/DLLAnalyzer/Core/AnomalyDetector.h"
+
+class AnomalyDetectorTest : public ::testing::Test {
+protected:
+    AnomalyDetector detector_;
+
+    // Helper: create a result with custom sections
+    DLLAnalysisResult makeResultWithSections(const std::vector<PESectionInfo>& sections) {
+        DLLAnalysisResult result{};
+        result.peHeader.isValid = true;
+        result.peHeader.entryPointRVA = 0x1000;
+        result.peHeader.sections = sections;
+        return result;
+    }
+
+    // Helper: create a result with custom imports
+    DLLAnalysisResult makeResultWithImports(const std::vector<ImportedDLL>& imports) {
+        DLLAnalysisResult result{};
+        result.imports = imports;
+        return result;
+    }
+
+    // Helper: add a .text section to sections list
+    void addTextSection(std::vector<PESectionInfo>& sections, double entropy,
+                        bool writeable = false, bool executable = true) {
+        sections.push_back(PESectionInfo{
+            ".text", 0x1000, 0x2000, 0x1800, 0x280,
+            SECTION_READ | (writeable ? SECTION_WRITE : 0) | (executable ? SECTION_EXECUTE : 0),
+            entropy, writeable, executable, true
+        });
+    }
+
+    // Helper: add a .data section to sections list
+    void addDataSection(std::vector<PESectionInfo>& sections, uint32_t virtualAddr = 0x3000,
+                        uint32_t virtualSize = 0x1000) {
+        sections.push_back(PESectionInfo{
+            ".data", virtualAddr, virtualSize, 0x800, 0x3800,
+            SECTION_READ | SECTION_WRITE, 2.1,
+            true, false, true
+        });
+    }
+};
+
+// --- checkHighEntropySections 测试 ---
+
+TEST_F(AnomalyDetectorTest, HighEntropyTextSectionDetected) {
+    std::vector<PESectionInfo> sections;
+    addTextSection(sections, 8.0); // 高熵
+
+    auto result = makeResultWithSections(sections);
+    Anomaly anomaly = detector_.checkHighEntropySections(result.peHeader.sections);
+
+    EXPECT_EQ(anomaly.type, "HIGH_ENTROPY_CODE");
+    EXPECT_EQ(anomaly.risk, RiskLevel::HIGH);
+    EXPECT_EQ(anomaly.riskScore, 15);
+    EXPECT_NE(anomaly.description.find("8.0"), std::string::npos);
+}
+
+TEST_F(AnomalyDetectorTest, HighEntropyThresholdBoundary) {
+    std::vector<PESectionInfo> sections;
+    addTextSection(sections, 7.6); // 刚好超过阈值
+
+    auto result = makeResultWithSections(sections);
+    Anomaly anomaly = detector_.checkHighEntropySections(result.peHeader.sections);
+
+    EXPECT_EQ(anomaly.type, "HIGH_ENTROPY_CODE");
+    EXPECT_EQ(anomaly.riskScore, 15);
+}
+
+TEST_F(AnomalyDetectorTest, NormalEntropyNoAnomaly) {
+    std::vector<PESectionInfo> sections;
+    addTextSection(sections, 5.2); // 正常熵
+
+    auto result = makeResultWithSections(sections);
+    Anomaly anomaly = detector_.checkHighEntropySections(result.peHeader.sections);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+TEST_F(AnomalyDetectorTest, NoTextSectionNoAnomaly) {
+    std::vector<PESectionInfo> sections;
+    addDataSection(sections);
+
+    auto result = makeResultWithSections(sections);
+    Anomaly anomaly = detector_.checkHighEntropySections(result.peHeader.sections);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+TEST_F(AnomalyDetectorTest, EmptySectionsReturnsNone) {
+    std::vector<PESectionInfo> sections;
+    Anomaly anomaly = detector_.checkHighEntropySections(sections);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+// --- checkSuspiciousImports 测试 ---
+
+TEST_F(AnomalyDetectorTest, ThreeSuspiciousFunctionsDetected) {
+    std::vector<ImportedDLL> imports = {
+        {"kernel32.dll", {"CreateRemoteThread", "WriteProcessMemory", "VirtualAllocEx"}, false},
+        {"user32.dll", {"MessageBoxW"}, false}
+    };
+
+    auto result = makeResultWithImports(imports);
+    Anomaly anomaly = detector_.checkSuspiciousImports(result.imports);
+
+    EXPECT_EQ(anomaly.type, "SUSPICIOUS_IMPORTS");
+    EXPECT_EQ(anomaly.risk, RiskLevel::HIGH);
+    EXPECT_EQ(anomaly.riskScore, 20);
+    EXPECT_NE(anomaly.description.find("3"), std::string::npos);
+}
+
+TEST_F(AnomalyDetectorTest, FourSuspiciousFunctionsDetected) {
+    std::vector<ImportedDLL> imports = {
+        {"advapi32.dll", {"AdjustTokenPrivileges", "SeDebugPrivilege",
+                          "IsDebuggerPresent", "RegCreateKeyEx"}, false}
+    };
+
+    auto result = makeResultWithImports(imports);
+    Anomaly anomaly = detector_.checkSuspiciousImports(result.imports);
+
+    EXPECT_EQ(anomaly.type, "SUSPICIOUS_IMPORTS");
+    EXPECT_EQ(anomaly.riskScore, 20);
+    EXPECT_NE(anomaly.description.find("4"), std::string::npos);
+}
+
+TEST_F(AnomalyDetectorTest, TwoSuspiciousFunctionsNotAnomalous) {
+    std::vector<ImportedDLL> imports = {
+        {"kernel32.dll", {"CreateRemoteThread", "WriteProcessMemory"}, false}
+    };
+
+    auto result = makeResultWithImports(imports);
+    Anomaly anomaly = detector_.checkSuspiciousImports(result.imports);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+TEST_F(AnomalyDetectorTest, ZeroSuspiciousFunctionsNotAnomalous) {
+    std::vector<ImportedDLL> imports = {
+        {"kernel32.dll", {"CreateFileW", "ReadFile", "WriteFile"}, false}
+    };
+
+    auto result = makeResultWithImports(imports);
+    Anomaly anomaly = detector_.checkSuspiciousImports(result.imports);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+TEST_F(AnomalyDetectorTest, AntiDebugAndPersistenceFunctionsDetected) {
+    std::vector<ImportedDLL> imports = {
+        {"kernel32.dll", {"IsDebuggerPresent", "CheckRemoteDebuggerPresent",
+                          "RegCreateKeyEx", "CreateService"}, false}
+    };
+
+    auto result = makeResultWithImports(imports);
+    Anomaly anomaly = detector_.checkSuspiciousImports(result.imports);
+
+    EXPECT_EQ(anomaly.type, "SUSPICIOUS_IMPORTS");
+    EXPECT_EQ(anomaly.riskScore, 20);
+}
+
+TEST_F(AnomalyDetectorTest, EmptyImportsReturnsNone) {
+    std::vector<ImportedDLL> imports;
+    Anomaly anomaly = detector_.checkSuspiciousImports(imports);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+// --- checkWriteExecuteInText 测试 ---
+
+TEST_F(AnomalyDetectorTest, WriteExecuteInTextDetected) {
+    std::vector<PESectionInfo> sections;
+    addTextSection(sections, 5.0, true, true); // WRITE + EXECUTE
+
+    auto result = makeResultWithSections(sections);
+    Anomaly anomaly = detector_.checkWriteExecuteInText(result.peHeader.sections);
+
+    EXPECT_EQ(anomaly.type, "RWX_CODE");
+    EXPECT_EQ(anomaly.risk, RiskLevel::HIGH);
+    EXPECT_EQ(anomaly.riskScore, 15);
+    EXPECT_NE(anomaly.description.find("WRITE"), std::string::npos);
+    EXPECT_NE(anomaly.description.find("EXECUTE"), std::string::npos);
+}
+
+TEST_F(AnomalyDetectorTest, ReadExecuteOnlyNoAnomaly) {
+    std::vector<PESectionInfo> sections;
+    addTextSection(sections, 5.0, false, true); // 只有 EXECUTE
+
+    auto result = makeResultWithSections(sections);
+    Anomaly anomaly = detector_.checkWriteExecuteInText(result.peHeader.sections);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+TEST_F(AnomalyDetectorTest, ReadWriteOnlyNoAnomaly) {
+    std::vector<PESectionInfo> sections;
+    addTextSection(sections, 5.0, true, false); // 只有 WRITE
+
+    auto result = makeResultWithSections(sections);
+    Anomaly anomaly = detector_.checkWriteExecuteInText(result.peHeader.sections);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+TEST_F(AnomalyDetectorTest, WriteExecuteInNonTextSectionNotDetected) {
+    std::vector<PESectionInfo> sections;
+    addDataSection(sections);
+    // 修改.data节为WRITE+EXECUTE
+    sections.back().isWriteable = true;
+    sections.back().isExecutable = true;
+
+    auto result = makeResultWithSections(sections);
+    Anomaly anomaly = detector_.checkWriteExecuteInText(result.peHeader.sections);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+// --- checkUnusualSectionNames 测试 ---
+
+TEST_F(AnomalyDetectorTest, UnusualSectionNameDetected) {
+    std::vector<PESectionInfo> sections;
+    addTextSection(sections, 5.0);
+    sections.push_back(PESectionInfo{"evil_section", 0x5000, 0x1000, 0x800, 0x5000,
+                                     SECTION_READ, 3.0, false, false, true});
+
+    auto result = makeResultWithSections(sections);
+    Anomaly anomaly = detector_.checkUnusualSectionNames(result.peHeader.sections);
+
+    EXPECT_EQ(anomaly.type, "UNUSUAL_SECTION_NAMES");
+    EXPECT_EQ(anomaly.risk, RiskLevel::MEDIUM);
+    EXPECT_EQ(anomaly.riskScore, 5);
+    EXPECT_NE(anomaly.description.find("1"), std::string::npos);
+}
+
+TEST_F(AnomalyDetectorTest, MultipleUnusualSectionNamesDetected) {
+    std::vector<PESectionInfo> sections;
+    sections.push_back(PESectionInfo{".text", 0x1000, 0x2000, 0x1800, 0x280,
+                                     SECTION_READ | SECTION_EXECUTE, 5.2,
+                                     false, true, true});
+    sections.push_back(PESectionInfo{"malware_sec", 0x3000, 0x1000, 0x800, 0x3800,
+                                     SECTION_READ | SECTION_WRITE, 2.1,
+                                     true, false, true});
+    sections.push_back(PESectionInfo{"backdoor_data", 0x4000, 0x500, 0x400, 0x4800,
+                                     SECTION_READ | SECTION_WRITE, 1.5,
+                                     true, false, true});
+
+    auto result = makeResultWithSections(sections);
+    Anomaly anomaly = detector_.checkUnusualSectionNames(result.peHeader.sections);
+
+    EXPECT_EQ(anomaly.type, "UNUSUAL_SECTION_NAMES");
+    EXPECT_EQ(anomaly.risk, RiskLevel::MEDIUM);
+    EXPECT_EQ(anomaly.riskScore, 5);
+    EXPECT_NE(anomaly.description.find("2"), std::string::npos);
+}
+
+TEST_F(AnomalyDetectorTest, StandardSectionNamesNoAnomaly) {
+    std::vector<PESectionInfo> sections;
+    addTextSection(sections, 5.0);
+    addDataSection(sections);
+
+    auto result = makeResultWithSections(sections);
+    Anomaly anomaly = detector_.checkUnusualSectionNames(result.peHeader.sections);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+TEST_F(AnomalyDetectorTest, RdataIsStandardSection) {
+    std::vector<PESectionInfo> sections;
+    sections.push_back(PESectionInfo{".rdata", 0x2000, 0x1000, 0x800, 0x2000,
+                                     SECTION_READ, 3.0, false, false, true});
+
+    auto result = makeResultWithSections(sections);
+    Anomaly anomaly = detector_.checkUnusualSectionNames(result.peHeader.sections);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+TEST_F(AnomalyDetectorTest, EmptySectionsNoAnomaly) {
+    std::vector<PESectionInfo> sections;
+    Anomaly anomaly = detector_.checkUnusualSectionNames(sections);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+// --- checkEntryPointAnomaly 测试 ---
+
+TEST_F(AnomalyDetectorTest, EntryPointInTextSectionNormal) {
+    PEHeaderInfo header{};
+    header.isValid = true;
+    header.entryPointRVA = 0x1050; // 在 .text 节内 (0x1000 - 0x3000)
+
+    header.sections.push_back(PESectionInfo{".text", 0x1000, 0x2000, 0x1800, 0x280,
+                                             SECTION_READ | SECTION_EXECUTE, 5.2,
+                                             false, true, true});
+
+    Anomaly anomaly = detector_.checkEntryPointAnomaly(header);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+TEST_F(AnomalyDetectorTest, EntryPointInDataSectionAnomalous) {
+    PEHeaderInfo header{};
+    header.isValid = true;
+    header.entryPointRVA = 0x3500; // 在 .data 节内 (0x3000 - 0x4000)
+
+    header.sections.push_back(PESectionInfo{".text", 0x1000, 0x2000, 0x1800, 0x280,
+                                             SECTION_READ | SECTION_EXECUTE, 5.2,
+                                             false, true, true});
+    header.sections.push_back(PESectionInfo{".data", 0x3000, 0x1000, 0x800, 0x3800,
+                                             SECTION_READ | SECTION_WRITE, 2.1,
+                                             true, false, true});
+
+    Anomaly anomaly = detector_.checkEntryPointAnomaly(header);
+
+    EXPECT_EQ(anomaly.type, "ENTRY_POINT_IN_DATA");
+    EXPECT_EQ(anomaly.risk, RiskLevel::HIGH);
+    EXPECT_EQ(anomaly.riskScore, 10);
+    EXPECT_NE(anomaly.description.find("0x3500"), std::string::npos);
+}
+
+TEST_F(AnomalyDetectorTest, EntryPointInRdataAnomalous) {
+    PEHeaderInfo header{};
+    header.isValid = true;
+    header.entryPointRVA = 0x3500; // 在 .rdata 节内
+
+    header.sections.push_back(PESectionInfo{".text", 0x1000, 0x2000, 0x1800, 0x280,
+                                             SECTION_READ | SECTION_EXECUTE, 5.2,
+                                             false, true, true});
+    header.sections.push_back(PESectionInfo{".rdata", 0x3000, 0x1000, 0x800, 0x4800,
+                                             SECTION_READ, 2.1, false, false, true});
+
+    Anomaly anomaly = detector_.checkEntryPointAnomaly(header);
+
+    EXPECT_EQ(anomaly.type, "ENTRY_POINT_IN_DATA");
+    EXPECT_EQ(anomaly.riskScore, 10);
+}
+
+TEST_F(AnomalyDetectorTest, EntryPointNotFoundInAnySection) {
+    PEHeaderInfo header{};
+    header.isValid = true;
+    header.entryPointRVA = 0x9999; // 不在任何节范围内
+
+    header.sections.push_back(PESectionInfo{".text", 0x1000, 0x2000, 0x1800, 0x280,
+                                             SECTION_READ | SECTION_EXECUTE, 5.2,
+                                             false, true, true});
+
+    Anomaly anomaly = detector_.checkEntryPointAnomaly(header);
+
+    EXPECT_EQ(anomaly.type, "ENTRY_POINT_NOT_FOUND");
+    EXPECT_EQ(anomaly.risk, RiskLevel::MEDIUM);
+    EXPECT_EQ(anomaly.riskScore, 5);
+}
+
+TEST_F(AnomalyDetectorTest, InvalidHeaderReturnsNone) {
+    PEHeaderInfo header{};
+    header.isValid = false;
+    header.entryPointRVA = 0x1000;
+
+    Anomaly anomaly = detector_.checkEntryPointAnomaly(header);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+// --- detect() 综合测试 ---
+
+TEST_F(AnomalyDetectorTest, DetectMultipleAnomaliesAccumulatesScore) {
+    DLLAnalysisResult result{};
+    result.peHeader.isValid = true;
+    result.peHeader.entryPointRVA = 0x3500; // .data节中的入口点
+
+    // 高熵 .text 节
+    result.peHeader.sections.push_back(PESectionInfo{
+        ".text", 0x1000, 0x2000, 0x1800, 0x280,
+        SECTION_READ | SECTION_EXECUTE, 8.0, // 高熵
+        false, true, true
+    });
+    // .data 节（入口点在此）
+    result.peHeader.sections.push_back(PESectionInfo{
+        ".data", 0x3000, 0x1000, 0x800, 0x3800,
+        SECTION_READ | SECTION_WRITE, 2.1,
+        true, false, true
+    });
+
+    // 4个可疑导入
+    result.imports.push_back({"kernel32.dll", {"CreateRemoteThread", "WriteProcessMemory",
+                                                "VirtualAllocEx", "IsDebuggerPresent"}, false});
+
+    auto anomalies = detector_.detect(result);
+
+    // 应检测到：高熵(15) + 可疑导入(20) + 入口点异常(10) = 45分，3个异常
+    EXPECT_GE(anomalies.size(), 3u);
+
+    int totalScore = 0;
+    bool foundHighEntropy = false;
+    bool foundSuspiciousImports = false;
+    bool foundEntryPoint = false;
+
+    for (const auto& a : anomalies) {
+        totalScore += a.riskScore;
+        if (a.type == "HIGH_ENTROPY_CODE") foundHighEntropy = true;
+        if (a.type == "SUSPICIOUS_IMPORTS") foundSuspiciousImports = true;
+        if (a.type == "ENTRY_POINT_IN_DATA") foundEntryPoint = true;
+    }
+
+    EXPECT_TRUE(foundHighEntropy);
+    EXPECT_TRUE(foundSuspiciousImports);
+    EXPECT_TRUE(foundEntryPoint);
+    EXPECT_EQ(totalScore, 45); // 15 + 20 + 10
+}
+
+TEST_F(AnomalyDetectorTest, DetectBenignDLLReturnsNoAnomalies) {
+    DLLAnalysisResult result{};
+    result.peHeader.isValid = true;
+    result.peHeader.entryPointRVA = 0x1000; // 在 .text 节内
+
+    result.peHeader.sections.push_back(PESectionInfo{
+        ".text", 0x1000, 0x2000, 0x1800, 0x280,
+        SECTION_READ | SECTION_EXECUTE, 5.2, // 正常熵
+        false, true, true
+    });
+    result.peHeader.sections.push_back(PESectionInfo{
+        ".data", 0x3000, 0x1000, 0x800, 0x3800,
+        SECTION_READ | SECTION_WRITE, 2.1,
+        true, false, true
+    });
+
+    // 只有标准导入
+    result.imports.push_back({"kernel32.dll", {"CreateFileW", "ReadFile", "WriteFile"}, false});
+    result.imports.push_back({"user32.dll", {"MessageBoxW"}, false});
+
+    auto anomalies = detector_.detect(result);
+
+    EXPECT_TRUE(anomalies.empty());
+}
+
+TEST_F(AnomalyDetectorTest, DetectMinimalResultReturnsNone) {
+    DLLAnalysisResult result{};
+    // 所有字段都是默认值（0、空字符串等）
+
+    auto anomalies = detector_.detect(result);
+
+    EXPECT_TRUE(anomalies.empty());
+}
+
+TEST_F(AnomalyDetectorTest, DetectWithOnlyHighEntropy) {
+    DLLAnalysisResult result{};
+    result.peHeader.isValid = true;
+    result.peHeader.entryPointRVA = 0x1000;
+
+    result.peHeader.sections.push_back(PESectionInfo{
+        ".text", 0x1000, 0x2000, 0x1800, 0x280,
+        SECTION_READ | SECTION_EXECUTE, 7.8, // 高熵
+        false, true, true
+    });
+
+    auto anomalies = detector_.detect(result);
+
+    ASSERT_EQ(anomalies.size(), 1u);
+    EXPECT_EQ(anomalies[0].type, "HIGH_ENTROPY_CODE");
+    EXPECT_EQ(anomalies[0].riskScore, 15);
+}
+
+TEST_F(AnomalyDetectorTest, RWXInTextSectionDetected) {
+    DLLAnalysisResult result{};
+    result.peHeader.isValid = true;
+    result.peHeader.entryPointRVA = 0x1000;
+
+    result.peHeader.sections.push_back(PESectionInfo{
+        ".text", 0x1000, 0x2000, 0x1800, 0x280,
+        SECTION_READ | SECTION_WRITE | SECTION_EXECUTE, // RWX!
+        5.0, true, true, true
+    });
+
+    auto anomalies = detector_.detect(result);
+
+    bool foundRWX = false;
+    for (const auto& a : anomalies) {
+        if (a.type == "RWX_CODE") {
+            foundRWX = true;
+            EXPECT_EQ(a.riskScore, 15);
+            break;
+        }
+    }
+    EXPECT_TRUE(foundRWX);
+}
+
+TEST_F(AnomalyDetectorTest, SystemDllsNotCountedAsSuspicious) {
+    // 只导入系统DLL，不应该触发检测
+    std::vector<ImportedDLL> imports = {
+        {"kernel32.dll", {"CreateFileW", "ReadFile"}, false},
+        {"user32.dll", {"MessageBoxW"}, false},
+        {"ntdll.dll", {"NtCreateFile"}, false},
+        {"advapi32.dll", {"RegOpenKeyEx"}, false}
+    };
+
+    DLLAnalysisResult result{};
+    result.imports = imports;
+
+    Anomaly anomaly = detector_.checkSuspiciousImports(result.imports);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+// --- 边界情况测试 ---
+
+TEST_F(AnomalyDetectorTest, HighEntropyExactlyAtThreshold) {
+    std::vector<PESectionInfo> sections;
+    addTextSection(sections, 7.5); // 等于阈值，应该不触发（阈值是>7.5）
+
+    auto result = makeResultWithSections(sections);
+    Anomaly anomaly = detector_.checkHighEntropySections(result.peHeader.sections);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+TEST_F(AnomalyDetectorTest, ExactlyThreeSuspiciousFunctions) {
+    std::vector<ImportedDLL> imports = {
+        {"kernel32.dll", {"CreateRemoteThread", "WriteProcessMemory", "VirtualAllocEx"}, false}
+    };
+
+    auto result = makeResultWithImports(imports);
+    Anomaly anomaly = detector_.checkSuspiciousImports(result.imports);
+
+    EXPECT_EQ(anomaly.type, "SUSPICIOUS_IMPORTS");
+    EXPECT_EQ(anomaly.riskScore, 20);
+}
+
+TEST_F(AnomalyDetectorTest, SectionNameCaseInsensitive) {
+    // 标准节名但大小写不同，不应触发异常
+    std::vector<PESectionInfo> sections;
+    sections.push_back(PESectionInfo{".TEXT", 0x1000, 0x2000, 0x1800, 0x280,
+                                     SECTION_READ | SECTION_EXECUTE, 5.2,
+                                     false, true, true});
+    sections.push_back(PESectionInfo{".DATA", 0x3000, 0x1000, 0x800, 0x3800,
+                                     SECTION_READ | SECTION_WRITE, 2.1,
+                                     true, false, true});
+
+    auto result = makeResultWithSections(sections);
+    Anomaly anomaly = detector_.checkUnusualSectionNames(result.peHeader.sections);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+TEST_F(AnomalyDetectorTest, EntryPointAtSectionBoundary) {
+    // 入口点正好在节的开头
+    PEHeaderInfo header{};
+    header.isValid = true;
+    header.entryPointRVA = 0x1000; // 正好是 .text 节的起始
+
+    header.sections.push_back(PESectionInfo{".text", 0x1000, 0x2000, 0x1800, 0x280,
+                                             SECTION_READ | SECTION_EXECUTE, 5.2,
+                                             false, true, true});
+
+    Anomaly anomaly = detector_.checkEntryPointAnomaly(header);
+
+    EXPECT_EQ(anomaly.type, "NONE");
+    EXPECT_EQ(anomaly.riskScore, 0);
+}
+
+TEST_F(AnomalyDetectorTest, EntryPointAtSectionEndExclusive) {
+    // 入口点正好在节的末尾（应该属于下一个节或者不匹配）
+    PEHeaderInfo header{};
+    header.isValid = true;
+    header.entryPointRVA = 0x3000; // 正好是 .data 节的起始
+
+    header.sections.push_back(PESectionInfo{".text", 0x1000, 0x2000, 0x1800, 0x280,
+                                             SECTION_READ | SECTION_EXECUTE, 5.2,
+                                             false, true, true});
+    header.sections.push_back(PESectionInfo{".data", 0x3000, 0x1000, 0x800, 0x3800,
+                                             SECTION_READ | SECTION_WRITE, 2.1,
+                                             true, false, true});
+
+    // 入口点在.data节起始，应标记为异常
+    Anomaly anomaly = detector_.checkEntryPointAnomaly(header);
+
+    EXPECT_EQ(anomaly.type, "ENTRY_POINT_IN_DATA");
+    EXPECT_EQ(anomaly.riskScore, 10);
+}
