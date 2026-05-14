@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <unordered_set>
+#include <mutex>
 #include "analyzers/DLLAnalyzer/Common/DLLAnalyzerDeclarations.h"
 #include "analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.h"
 #include "analyzers/DLLAnalyzer/Common/DLLDataTypes.h"
@@ -86,6 +88,14 @@ public:
     void enableSignatureVerification(bool enable);
 
     /**
+     * @brief 检查是否为已分析的DLL（用于增量分析）
+     * @param dllPath DLL路径
+     * @param inode 文件inode
+     * @return true如果已分析过
+     */
+    bool isAlreadyAnalyzed(const std::string& dllPath, int64_t inode) const;
+
+    /**
      * @brief 获取分析统计信息
      * @return 统计信息结构体
      */
@@ -104,6 +114,20 @@ private:
      * @return 扫描到的DLL文件路径列表
      */
     std::vector<std::string> scanDLLFiles();
+
+    /**
+     * @brief 扫描单个目录中的DLL文件（辅助方法）
+     * @param dirPath 目录路径
+     * @return DLL文件列表
+     */
+    std::vector<std::string> scanDirectoryParallel(const std::string& dirPath);
+
+    /**
+     * @brief 检查DLL是否在白名单中
+     * @param dllPath DLL路径
+     * @return true如果在白名单中
+     */
+    bool isWhitelistedDLL(const std::string& dllPath) const;
 
     /**
      * @brief 分析单个DLL文件
@@ -141,8 +165,13 @@ private:
     size_t maxFileSize_;
     std::string extractDirectory_;
 
+    // 性能优化：系统DLL白名单
+    static const std::unordered_set<std::string> SYSTEM_DLL_NAMES_;
+    static const std::unordered_set<std::string> SYSTEM_DIRECTORIES_;
+
     // 统计信息
     AnalysisStats stats_;
+    mutable std::mutex statsMutex_;  // 保护stats_的互斥锁
 };
 
 } // namespace dll

@@ -439,7 +439,8 @@ add_executable(test_dll_analyzer_gtest
                ../src/analyzers/DLLAnalyzer/Core/DLLAnalyzerCore.cpp
                ../src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.cpp
                ../src/core/AuditLog/AuditLog.cpp
-               ../src/core/Logger/Logger.cpp)
+               ../src/core/Logger/Logger.cpp
+               ../src/core/ThreadPool/ThreadPool.cpp)
 
 target_link_libraries(test_dll_analyzer_gtest ${GTEST_LIBRARIES}
                       ${GMOCK_LIBRARIES} sqlite3 pthread OpenSSL::SSL)
@@ -453,7 +454,8 @@ target_include_directories(test_dll_analyzer_gtest
                                    ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Database
                                    ${CMAKE_SOURCE_DIR}/src/core
                                    ${CMAKE_SOURCE_DIR}/src/core/AuditLog
-                                   ${CMAKE_SOURCE_DIR}/src/core/Logger)
+                                   ${CMAKE_SOURCE_DIR}/src/core/Logger
+                                   ${CMAKE_SOURCE_DIR}/src/core/ThreadPool)
 
 add_test(NAME DLLAnalyzerGTests COMMAND test_dll_analyzer_gtest)
 
