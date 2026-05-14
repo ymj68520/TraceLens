@@ -498,6 +498,52 @@ target_compile_definitions(test_dll_analyzer_integration PRIVATE
 
 add_test(NAME DLLAnalyzerIntegrationTests COMMAND test_dll_analyzer_integration)
 
+# DLL Analyzer LLM Service Tests
+add_executable(test_dll_analyzer_llm
+               UnitTest/test_dll_analyzer_llm.cpp
+               ../src/analyzers/DLLAnalyzer/Core/DLLAnalyzerLLMService.cpp
+               ../src/core/ConfigManager/ConfigManager.cpp
+               ../src/core/PathManager/PathManager.cpp
+               ../src/core/Logger/Logger.cpp
+               ../src/core/ThreadPool/ThreadPool.cpp
+               ../src/integration/LLMIntegration/LLMClient.cpp
+               ../src/integration/LLMIntegration/ModelRouter.cpp
+               ../src/integration/LLMIntegration/FileAnalyzer.cpp
+               ../src/integration/LLMIntegration/FileContentExtractor.cpp
+               ../src/integration/LLMIntegration/FileTextProcessor.cpp
+               ../src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp
+               ../src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp
+               ../libs/cpp-mcp/src/mcp_message.cpp
+               ../libs/cpp-mcp/src/mcp_resource.cpp
+               ../libs/cpp-mcp/src/mcp_server.cpp
+               ../libs/cpp-mcp/src/mcp_sse_client.cpp
+               ../libs/cpp-mcp/src/mcp_tool.cpp)
+
+target_include_directories(
+  test_dll_analyzer_llm
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Common
+          ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Core
+          ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/core
+          ${CMAKE_SOURCE_DIR}/src/core/ConfigManager
+          ${CMAKE_SOURCE_DIR}/src/core/PathManager
+          ${CMAKE_SOURCE_DIR}/src/core/Logger
+          ${CMAKE_SOURCE_DIR}/src/core/ThreadPool
+          ${CMAKE_SOURCE_DIR}/src/integration/LLMIntegration
+          ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/include
+          ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/common
+          ${CMAKE_SOURCE_DIR}/src/analyzers/PDFAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/OfficeAnalyzer)
+
+target_link_libraries(test_dll_analyzer_llm ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} ${CURL_LIBRARIES} sqlite3 pthread
+                      nlohmann_json::nlohmann_json cpp_dotenv duckx
+                      ${POPPLER_LIBRARIES})
+
+add_test(NAME DLLAnalyzerLLMTests COMMAND test_dll_analyzer_llm)
+
 # Integration Test for MySQL Daemon
 add_executable(
   test_mysql_daemon
