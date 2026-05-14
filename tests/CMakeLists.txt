@@ -433,6 +433,7 @@ add_executable(test_dll_analyzer_gtest
                UnitTest/test_dll_analyzer_gtest.cpp
                ../src/analyzers/DLLAnalyzer/Parsers/PEHeaderParser.cpp
                ../src/analyzers/DLLAnalyzer/Parsers/PEImportExportParser.cpp
+               ../src/analyzers/DLLAnalyzer/Parsers/ELFParser.cpp
                ../src/analyzers/DLLAnalyzer/Core/PEAnalyzer.cpp
                ../src/analyzers/DLLAnalyzer/Core/AnomalyDetector.cpp
                ../src/analyzers/DLLAnalyzer/Core/DependencyAnalyzer.cpp
