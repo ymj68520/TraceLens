@@ -369,6 +369,356 @@ TEST_F(DataTypesIntegrationTest, CompleteDLLAnalysisResultStructure) {
     EXPECT_FALSE(result.peHeader.sections[1].isExecutable);
 }
 
+// ============================================================================
+// PEHeaderParser Tests
+// ============================================================================
+
+#include "analyzers/DLLAnalyzer/Parsers/PEHeaderParser.h"
+
+class PEHeaderParserTest : public ::testing::Test {
+protected:
+    std::string testFile_;
+
+    void TearDown() override {
+        if (!testFile_.empty()) {
+            std::remove(testFile_.c_str());
+        }
+    }
+};
+
+// Helper: write a minimal valid PE32+ file using cross-platform types
+static std::string writeMinimalPE32Plus() {
+    std::string path = "/tmp/test_pe32plus.dll";
+    std::ofstream out(path, std::ios::binary);
+
+    DOSHeader dosHeader = {};
+    dosHeader.e_magic = 0x5A4D;  // "MZ"
+    dosHeader.e_lfanew = 0x80;   // PE header offset
+    out.write(reinterpret_cast<const char*>(&dosHeader), sizeof(dosHeader));
+
+    // Pad to PE header offset
+    out.seekp(0x80);
+
+    // PE signature "PE\0\0"
+    uint32_t peSig = 0x00004550;
+    out.write(reinterpret_cast<const char*>(&peSig), sizeof(peSig));
+
+    // COFF header
+    COFFHeader coffHeader = {};
+    coffHeader.machine = 0x8664;   // x64
+    coffHeader.numberOfSections = 1;
+    coffHeader.characteristics = 0x2002; // DLL | Executable
+    out.write(reinterpret_cast<const char*>(&coffHeader), sizeof(coffHeader));
+
+    // PE32+ optional header: magic (2) + linker version (2) + base fields (24) = 28
+    // Then: imageBase(8) + sectionAlignment(4) + fileAlignment(4) +
+    //       OS version(4) + image version(4) + subsystem version(4) + win32VersionValue(4) +
+    //       sizeOfImage(4) + sizeOfHeaders(4) + checkSum(4) + subsystem(2) + dllCharacteristics(2) +
+    //       stack(16) + heap(16) + loaderFlags(4) + numberOfRvaAndSizes(4) + dataDirs(128) = 216
+    struct alignas(1) PE32PlusOptional {
+        uint16_t magic;              // 0x20B
+        uint8_t  majorLinkerVersion;
+        uint8_t  minorLinkerVersion;
+        uint32_t sizeOfCode;
+        uint32_t sizeOfInitializedData;
+        uint32_t sizeOfUninitializedData;
+        uint32_t addressOfEntryPoint;
+        uint32_t baseOfCode;
+        uint64_t imageBase;
+        uint32_t sectionAlignment;
+        uint32_t fileAlignment;
+        uint16_t majorOSVersion;
+        uint16_t minorOSVersion;
+        uint16_t majorImageVersion;
+        uint16_t minorImageVersion;
+        uint16_t majorSubsystemVersion;
+        uint16_t minorSubsystemVersion;
+        uint32_t win32VersionValue;
+        uint32_t sizeOfImage;
+        uint32_t sizeOfHeaders;
+        uint32_t checkSum;
+        uint16_t subsystem;
+        uint16_t dllCharacteristics;
+        uint64_t sizeOfStackReserve;
+        uint64_t sizeOfStackCommit;
+        uint64_t sizeOfHeapReserve;
+        uint64_t sizeOfHeapCommit;
+        uint32_t loaderFlags;
+        uint32_t numberOfRvaAndSizes;
+        DataDirectory dataDirectories[16];
+    };
+    PE32PlusOptional optHeader = {};
+    optHeader.magic = 0x20B;           // PE32+
+    optHeader.subsystem = 3;           // Windows Console
+    optHeader.sectionAlignment = 0x1000;
+    optHeader.fileAlignment = 0x200;
+    optHeader.sizeOfImage = 0x4000;
+    optHeader.sizeOfHeaders = 0x400;
+    optHeader.addressOfEntryPoint = 0x1000;
+    optHeader.imageBase = 0x140000000;
+    out.write(reinterpret_cast<const char*>(&optHeader), sizeof(optHeader));
+
+    // Section header
+    SectionHeader section = {};
+    strncpy(section.name, ".text", 8);
+    section.sizeOfRawData = 0x1000;
+    section.characteristics = 0x60000020; // READ | EXECUTE | ContainsCode
+    out.write(reinterpret_cast<const char*>(&section), sizeof(section));
+
+    out.close();
+    return path;
+}
+
+// Helper: write a minimal valid PE32 file using cross-platform types
+static std::string writeMinimalPE32() {
+    std::string path = "/tmp/test_pe32.dll";
+    std::ofstream out(path, std::ios::binary);
+
+    DOSHeader dosHeader = {};
+    dosHeader.e_magic = 0x5A4D;  // "MZ"
+    dosHeader.e_lfanew = 0x80;
+    out.write(reinterpret_cast<const char*>(&dosHeader), sizeof(dosHeader));
+
+    out.seekp(0x80);
+
+    uint32_t peSig = 0x00004550;
+    out.write(reinterpret_cast<const char*>(&peSig), sizeof(peSig));
+
+    COFFHeader coffHeader = {};
+    coffHeader.machine = 0x14C;   // x86
+    coffHeader.numberOfSections = 1;
+    coffHeader.characteristics = 0x2002;
+    out.write(reinterpret_cast<const char*>(&coffHeader), sizeof(coffHeader));
+
+    // PE32 optional header: base (24) + baseOfData(4) + imageBase(4) + sectionAlignment(4) +
+    // fileAlignment(4) + OS version(4) + image version(4) + subsystem version(4) +
+    // win32VersionValue(4) + sizeOfImage(4) + sizeOfHeaders(4) + checkSum(4) +
+    // subsystem(2) + dllCharacteristics(2) + stack(12) + heap(12) + loaderFlags(4) +
+    // numberOfRvaAndSizes(4) + dataDirs(128) = 224
+    struct alignas(1) PE32Optional {
+        uint16_t magic;              // 0x10B
+        uint8_t  majorLinkerVersion;
+        uint8_t  minorLinkerVersion;
+        uint32_t sizeOfCode;
+        uint32_t sizeOfInitializedData;
+        uint32_t sizeOfUninitializedData;
+        uint32_t addressOfEntryPoint;
+        uint32_t baseOfCode;
+        uint32_t baseOfData;
+        uint32_t imageBase;
+        uint32_t sectionAlignment;
+        uint32_t fileAlignment;
+        uint16_t majorOSVersion;
+        uint16_t minorOSVersion;
+        uint16_t majorImageVersion;
+        uint16_t minorImageVersion;
+        uint16_t majorSubsystemVersion;
+        uint16_t minorSubsystemVersion;
+        uint32_t win32VersionValue;
+        uint32_t sizeOfImage;
+        uint32_t sizeOfHeaders;
+        uint32_t checkSum;
+        uint16_t subsystem;
+        uint16_t dllCharacteristics;
+        uint32_t sizeOfStackReserve;
+        uint32_t sizeOfStackCommit;
+        uint32_t sizeOfHeapReserve;
+        uint32_t sizeOfHeapCommit;
+        uint32_t loaderFlags;
+        uint32_t numberOfRvaAndSizes;
+        DataDirectory dataDirectories[16];
+    };
+    PE32Optional optHeader = {};
+    optHeader.magic = 0x10B;             // PE32
+    optHeader.subsystem = 2;             // Windows GUI
+    optHeader.sectionAlignment = 0x1000;
+    optHeader.fileAlignment = 0x200;
+    optHeader.sizeOfImage = 0x4000;
+    optHeader.sizeOfHeaders = 0x400;
+    optHeader.addressOfEntryPoint = 0x1000;
+    optHeader.imageBase = 0x400000;
+    out.write(reinterpret_cast<const char*>(&optHeader), sizeof(optHeader));
+
+    SectionHeader section = {};
+    strncpy(section.name, ".text", 8);
+    section.sizeOfRawData = 0x1000;
+    section.characteristics = 0x60000020;
+    out.write(reinterpret_cast<const char*>(&section), sizeof(section));
+
+    out.close();
+    return path;
+}
+
+TEST_F(PEHeaderParserTest, ParseValidPE32Plus) {
+    testFile_ = writeMinimalPE32Plus();
+
+    PEHeaderParser parser(testFile_);
+    EXPECT_TRUE(parser.parse());
+    EXPECT_TRUE(parser.isValid());
+
+    const auto& header = parser.getHeaderInfo();
+    EXPECT_EQ(header.format, "PE32+");
+    EXPECT_EQ(header.machine, MachineType::x64);
+    EXPECT_TRUE(header.isDLL);
+    EXPECT_EQ(header.numberOfSections, 1u);
+    EXPECT_EQ(header.subsystem, 3u); // WINDOWS_CUI
+    EXPECT_EQ(header.entryPointRVA, 0x1000u);
+    EXPECT_EQ(header.imageBase, 0x140000000u);
+    EXPECT_EQ(header.sectionAlignment, 0x1000u);
+    EXPECT_EQ(header.fileAlignment, 0x200u);
+    EXPECT_EQ(header.exportTableRVA, 0u);
+    EXPECT_EQ(header.importTableRVA, 0u);
+}
+
+TEST_F(PEHeaderParserTest, ParseValidPE32) {
+    testFile_ = writeMinimalPE32();
+
+    PEHeaderParser parser(testFile_);
+    EXPECT_TRUE(parser.parse());
+    EXPECT_TRUE(parser.isValid());
+
+    const auto& header = parser.getHeaderInfo();
+    EXPECT_EQ(header.format, "PE32");
+    EXPECT_EQ(header.machine, MachineType::X86);
+    EXPECT_TRUE(header.isDLL);
+    EXPECT_EQ(header.numberOfSections, 1u);
+    EXPECT_EQ(header.subsystem, 2u); // WINDOWS_GUI
+    EXPECT_EQ(header.entryPointRVA, 0x1000u);
+    EXPECT_EQ(header.imageBase, 0x400000u);
+}
+
+TEST_F(PEHeaderParserTest, RejectInvalidSignature) {
+    testFile_ = "/tmp/test_invalid.bin";
+    std::ofstream out(testFile_, std::ios::binary);
+    out.write("NOT_A_PE_FILE", 12);
+    out.close();
+
+    PEHeaderParser parser(testFile_);
+    EXPECT_FALSE(parser.parse());
+    EXPECT_FALSE(parser.isValid());
+    EXPECT_FALSE(parser.getErrorMessage().empty());
+}
+
+TEST_F(PEHeaderParserTest, RejectEmptyFile) {
+    testFile_ = "/tmp/test_empty.bin";
+    // Create empty file
+    std::ofstream out(testFile_, std::ios::binary);
+    out.close();
+
+    PEHeaderParser parser(testFile_);
+    EXPECT_FALSE(parser.parse());
+    EXPECT_FALSE(parser.isValid());
+}
+
+TEST_F(PEHeaderParserTest, RejectNonExistentFile) {
+    PEHeaderParser parser("/tmp/nonexistent_pe_file_12345.dll");
+    EXPECT_FALSE(parser.parse());
+    EXPECT_FALSE(parser.isValid());
+    EXPECT_FALSE(parser.getErrorMessage().empty());
+}
+
+TEST_F(PEHeaderParserTest, SectionTableParsedCorrectly) {
+    testFile_ = writeMinimalPE32Plus();
+
+    PEHeaderParser parser(testFile_);
+    EXPECT_TRUE(parser.parse());
+
+    const auto& header = parser.getHeaderInfo();
+    ASSERT_EQ(header.sections.size(), 1u);
+
+    const auto& section = header.sections[0];
+    EXPECT_EQ(section.name, ".text");
+    EXPECT_EQ(section.virtualAddress, 0u);
+    EXPECT_EQ(section.virtualSize, 0u);
+    EXPECT_EQ(section.rawDataSize, 0x1000u);
+    EXPECT_TRUE(section.isReadable);
+    EXPECT_TRUE(section.isExecutable);
+    EXPECT_FALSE(section.isWriteable);
+}
+
+TEST_F(PEHeaderParserTest, MachineTypeToString) {
+    EXPECT_EQ(PEHeaderParser::machineTypeToString(MachineType::X86), "x86");
+    EXPECT_EQ(PEHeaderParser::machineTypeToString(MachineType::x64), "x64");
+    EXPECT_EQ(PEHeaderParser::machineTypeToString(MachineType::ARM), "ARM");
+    EXPECT_EQ(PEHeaderParser::machineTypeToString(MachineType::ARM64), "ARM64");
+    EXPECT_EQ(PEHeaderParser::machineTypeToString(MachineType::IA64), "IA64");
+    EXPECT_EQ(PEHeaderParser::machineTypeToString(static_cast<MachineType>(0xFFFF)), "Unknown");
+}
+
+TEST_F(PEHeaderParserTest, SubsystemTypeToString) {
+    EXPECT_EQ(PEHeaderParser::subsystemToString(SubsystemType::NATIVE), "Native");
+    EXPECT_EQ(PEHeaderParser::subsystemToString(SubsystemType::WINDOWS_GUI), "Windows GUI");
+    EXPECT_EQ(PEHeaderParser::subsystemToString(SubsystemType::WINDOWS_CUI), "Windows Console");
+    EXPECT_EQ(PEHeaderParser::subsystemToString(SubsystemType::EFI_APPLICATION), "EFI Application");
+    EXPECT_EQ(PEHeaderParser::subsystemToString(static_cast<SubsystemType>(0)), "Unknown");
+}
+
+TEST_F(PEHeaderParserTest, IsDLLDetectsDLL) {
+    EXPECT_TRUE(PEHeaderParser::isDLL(0x2002)); // DLL + Executable
+    EXPECT_TRUE(PEHeaderParser::isDLL(0x2000)); // DLL only
+    EXPECT_TRUE(PEHeaderParser::isDLL(0x2100)); // DLL + LargeAddressAware
+}
+
+TEST_F(PEHeaderParserTest, IsDLLRejectsNonDLL) {
+    EXPECT_FALSE(PEHeaderParser::isDLL(0x0002)); // Executable only, no DLL flag
+    EXPECT_FALSE(PEHeaderParser::isDLL(0x0000)); // No flags
+}
+
+TEST_F(PEHeaderParserTest, PE32PlusLargerOptionalHeader) {
+    // Verify PE32+ has different optional header size than PE32
+    testFile_ = writeMinimalPE32Plus();
+    PEHeaderParser pe32plus(testFile_);
+    ASSERT_TRUE(pe32plus.parse());
+
+    testFile_ = writeMinimalPE32();
+    PEHeaderParser pe32(testFile_);
+    ASSERT_TRUE(pe32.parse());
+
+    // Both should parse successfully with correct format strings
+    EXPECT_EQ(pe32plus.getHeaderInfo().format, "PE32+");
+    EXPECT_EQ(pe32.getHeaderInfo().format, "PE32");
+}
+
+TEST_F(PEHeaderParserTest, ZeroSectionsHandled) {
+    // Build a PE with 0 sections — parser should handle gracefully
+    testFile_ = "/tmp/test_zero_sections.dll";
+    std::ofstream out(testFile_, std::ios::binary);
+
+    DOSHeader dosHeader = {};
+    dosHeader.e_magic = 0x5A4D;
+    dosHeader.e_lfanew = 0x80;
+    out.write(reinterpret_cast<const char*>(&dosHeader), sizeof(dosHeader));
+
+    out.seekp(0x80);
+
+    uint32_t peSig = 0x00004550;
+    out.write(reinterpret_cast<const char*>(&peSig), sizeof(peSig));
+
+    COFFHeader coffHeader = {};
+    coffHeader.machine = 0x14C;
+    coffHeader.numberOfSections = 0;  // Zero sections
+    coffHeader.sizeOfOptionalHeader = 0xE0; // PE32 optional header size (224)
+    out.write(reinterpret_cast<const char*>(&coffHeader), sizeof(coffHeader));
+
+    OptionalHeaderPE32 optHeader = {};
+    optHeader.base.magic = 0x10B;
+    out.write(reinterpret_cast<const char*>(&optHeader), sizeof(optHeader));
+
+    out.close();
+
+    PEHeaderParser parser(testFile_);
+    EXPECT_TRUE(parser.parse());
+    EXPECT_TRUE(parser.isValid());
+
+    const auto& header = parser.getHeaderInfo();
+    EXPECT_EQ(header.numberOfSections, 0u);
+    EXPECT_TRUE(header.sections.empty());
+}
+
+// ============================================================================
+// End PEHeaderParser Tests
+// ============================================================================
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

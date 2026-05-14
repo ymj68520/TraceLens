@@ -428,9 +428,10 @@ target_link_libraries(test_database_analyzer_gtest ${GTEST_LIBRARIES}
 
 add_test(NAME DatabaseAnalyzerGTests COMMAND test_database_analyzer_gtest)
 
-# DLL Analyzer Tests (SQL schema + data structures + database operations)
+# DLL Analyzer Tests (SQL schema + data structures + database operations + PEHeaderParser)
 add_executable(test_dll_analyzer_gtest
                UnitTest/test_dll_analyzer_gtest.cpp
+               ../src/analyzers/DLLAnalyzer/Parsers/PEHeaderParser.cpp
                ../src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.cpp
                ../src/core/AuditLog/AuditLog.cpp
                ../src/core/Logger/Logger.cpp)
@@ -442,6 +443,7 @@ target_include_directories(test_dll_analyzer_gtest
                            PRIVATE ${CMAKE_SOURCE_DIR}/src
                                    ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer
                                    ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Common
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Parsers
                                    ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Database
                                    ${CMAKE_SOURCE_DIR}/src/core
                                    ${CMAKE_SOURCE_DIR}/src/core/AuditLog
