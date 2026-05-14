@@ -7,6 +7,7 @@
 #include "AndroidAnalyzer/AndroidAnalyzer.h"
 #include "WindowsFilesAnalyzer/WindowsFilesAnalyzer.h"
 #include "LinuxFilesAnalyzer/LinuxFilesAnalyzer.h"
+#include "DLLAnalyzer/Core/DLLAnalyzer.h"
 #include "FullTextSearch/FullTextSearch.h"
 #include "FullTextSearch/TextExtractor.h"
 #include "FileCarving/FileCarver.h"
@@ -115,6 +116,21 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             if (args.linux_analyze && fs::exists(prefix + baseName + "_linux.db"))
                 eventExtractor->importLinuxArtifacts(prefix + baseName + "_linux.db");
             std::cout << "✓ Timeline: " << eventDbPath << "\n" << std::endl;
+        }
+
+        // Step 4: DLL analysis
+        if (args.analyze_dlls) {
+            std::cout << "[DLL] Analyzing..." << std::endl;
+            std::string dllDbPath = args.dll_db.empty() ? prefix + baseName + "_dll.db" : args.dll_db;
+            auto dllAnalyzer = std::make_unique<DLLAnalyzer>(dllDbPath);
+            dllAnalyzer->enableAnomalyDetection(true);
+            dllAnalyzer->enableSignatureVerification(args.verify_signatures);
+            if (dllAnalyzer->initialize()) {
+                dllAnalyzer->analyze();
+                auto stats = dllAnalyzer->getStats();
+                std::cout << "✓ DLL analysis complete (" << stats.totalDLLsAnalyzed
+                          << " analyzed, " << stats.suspiciousDLLs << " suspicious)\n" << std::endl;
+            }
         }
 
         std::cout << "=== Analysis Complete ===" << std::endl;
@@ -268,6 +284,50 @@ int AnalysisOrchestrator::runHTTPServer(int port) {
     asio::io_context ioc;
     forensics::HTTPServer server(ioc);
     server.run(port);
+    return 0;
+}
+
+int AnalysisOrchestrator::runDLLAnalysis(const CommandLineArgs& args) {
+    if (args.image_path.empty() && args.dll_db.empty()) {
+        std::cerr << "Error: Image path or --dll-db required for DLL analysis" << std::endl;
+        return 1;
+    }
+
+    std::string dllDbPath = args.dll_db;
+    if (dllDbPath.empty()) {
+        // Use default based on image path
+        std::string baseName = getBaseName(args.image_path);
+        std::string prefix = getDatabaseDir(args);
+        dllDbPath = prefix + baseName + "_dll.db";
+    }
+
+    std::cout << "=== DLL Analysis Mode ===" << std::endl;
+    std::cout << "DLL Database: " << dllDbPath << std::endl;
+
+    try {
+        auto dllAnalyzer = std::make_unique<DLLAnalyzer>(dllDbPath);
+        dllAnalyzer->enableAnomalyDetection(true);
+        dllAnalyzer->enableSignatureVerification(args.verify_signatures);
+
+        if (!dllAnalyzer->initialize()) {
+            std::cerr << "Error: Failed to initialize DLL analyzer" << std::endl;
+            return 1;
+        }
+
+        dllAnalyzer->analyze();
+
+        auto stats = dllAnalyzer->getStats();
+        std::cout << "\nDLL Analysis Complete" << std::endl;
+        std::cout << "Total analyzed: " << stats.totalDLLsAnalyzed << std::endl;
+        std::cout << "Suspicious DLLs: " << stats.suspiciousDLLs << std::endl;
+        std::cout << "Signed DLLs: " << stats.signedDLLs << std::endl;
+        std::cout << "Unsigned DLLs: " << stats.unsignedDLLs << std::endl;
+
+    } catch (const std::exception& e) {
+        std::cerr << "Fatal error: " << e.what() << std::endl;
+        return 1;
+    }
+
     return 0;
 }
 

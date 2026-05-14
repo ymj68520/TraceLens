@@ -16,8 +16,10 @@ struct CommandLineArgs {
     std::string search_keyword;
     std::string index_path;
     std::string carve_output_dir = "carved_files";
+    std::string dll_db; // DLL分析数据库路径
     XFSMode xfs_mode = XFSMode::Auto;
     int http_port = 0;
+    int dll_threshold = 30; // DLL威胁评分阈值
     bool extract_all = false;
     bool extract_by_extension = false;
     bool extract_by_name = false;
@@ -26,6 +28,9 @@ struct CommandLineArgs {
     bool android_analyze = false;
     bool windows_analyze = false;
     bool linux_analyze = false;
+    bool analyze_dlls = false; // 启用DLL分析
+    bool analyze_dlls_only = false; // 仅DLL分析
+    bool verify_signatures = true; // 验证数字签名
     bool carve = false;
     bool show_help = false;
     bool show_version = false;

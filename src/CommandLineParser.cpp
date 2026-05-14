@@ -16,6 +16,12 @@ void CommandLineParser::printUsage(const char* programName) {
     std::cout << "Analysis options:\n";
     std::cout << "  --xfs-mode <mode>           XFS parsing mode (auto/native/pure)\n";
     std::cout << "  --db-dir <path>             Directory to store databases\n\n";
+    std::cout << "DLL Analysis:\n";
+    std::cout << "  --analyze-dlls              Enable DLL analysis\n";
+    std::cout << "  --analyze-dlls-only         DLL analysis only (skip other steps)\n";
+    std::cout << "  --dll-db <path>             DLL database path (default: <image>_dll.db)\n";
+    std::cout << "  --dll-threshold <score>     Threat score threshold (default: 30)\n";
+    std::cout << "  --no-verify-signatures      Disable signature verification (faster)\n\n";
     std::cout << "Extraction options:\n";
     std::cout << "  --extract-file <pattern>    Extract files by name (wildcards: *, ?)\n";
     std::cout << "  --extract-ext <extensions>  Extract by extension (comma-separated)\n";
@@ -80,6 +86,17 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
             args.windows_analyze = true;
         } else if (arg == "--linux-analyze") {
             args.linux_analyze = true;
+        } else if (arg == "--analyze-dlls") {
+            args.analyze_dlls = true;
+        } else if (arg == "--analyze-dlls-only") {
+            args.analyze_dlls_only = true;
+            args.analyze_dlls = true;
+        } else if (arg == "--dll-db" && i + 1 < argc) {
+            args.dll_db = argv[++i];
+        } else if (arg == "--dll-threshold" && i + 1 < argc) {
+            args.dll_threshold = std::stoi(argv[++i]);
+        } else if (arg == "--no-verify-signatures") {
+            args.verify_signatures = false;
         } else if (arg == "--index" && i + 1 < argc) {
             args.index_path = argv[++i];
             args.index_mode = true;

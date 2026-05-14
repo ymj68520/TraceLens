@@ -15,6 +15,7 @@ public:
     static int runFullTextSearch(const CommandLineArgs& args);
     static int runFileCarving(const CommandLineArgs& args);
     static int runHTTPServer(int port);
+    static int runDLLAnalysis(const CommandLineArgs& args);
     
 private:
     static std::string getBaseName(const std::string& path);
