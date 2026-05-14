@@ -148,6 +148,123 @@ inline constexpr const char* SELECT_BROWSER_COOKIES_BASE =
 inline constexpr const char* SELECT_BROWSER_LOGINS_BASE =
     "SELECT browser_name, profile_name, url, action_url, username, encrypted_password, date_created, date_last_used, date_modified, times_used FROM browser_logins";
 
+// ============================================================================
+// DLL Analysis CRUD Operations
+// ============================================================================
+
+// DLL Base Info Operations
+inline constexpr const char* INSERT_DLL_BASE_INFO = R"(
+    INSERT INTO dll_base_info (
+        inode, name, path, size, md5, sha1, sha256, imp_hash, rich_hash,
+        file_format, machine_type, compile_timestamp, subsystem,
+        entry_point, image_base, is_dll, characteristics,
+        file_version, product_version, company_name, file_description,
+        signature_status, signer_name, cert_issuer, cert_valid_from, cert_valid_to,
+        mtime, ctime, atime, crtime, is_deleted, threat_score
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+)";
+
+inline constexpr const char* SELECT_DLL_BY_INODE = R"(
+    SELECT * FROM dll_base_info WHERE inode = ?;
+)";
+
+inline constexpr const char* SELECT_DLL_BY_PATH = R"(
+    SELECT * FROM dll_base_info WHERE path = ?;
+)";
+
+inline constexpr const char* SELECT_DLL_BY_MD5 = R"(
+    SELECT * FROM dll_base_info WHERE md5 = ?;
+)";
+
+inline constexpr const char* SELECT_DLL_BY_IMP_HASH = R"(
+    SELECT * FROM dll_base_info WHERE imp_hash = ?;
+)";
+
+inline constexpr const char* SELECT_SUSPICIOUS_DLLS = R"(
+    SELECT * FROM dll_base_info WHERE threat_score >= ? ORDER BY threat_score DESC;
+)";
+
+inline constexpr const char* SELECT_ALL_DLLS = R"(
+    SELECT * FROM dll_base_info ORDER BY compile_timestamp DESC;
+)";
+
+inline constexpr const char* UPDATE_DLL_THREAT_SCORE = R"(
+    UPDATE dll_base_info SET threat_score = ? WHERE id = ?;
+)";
+
+inline constexpr const char* UPDATE_DLL_ANALYSIS = R"(
+    UPDATE dll_base_info SET
+        file_format = ?, machine_type = ?, compile_timestamp = ?,
+        subsystem = ?, entry_point = ?, image_base = ?, characteristics = ?,
+        file_version = ?, product_version = ?, company_name = ?, file_description = ?,
+        signature_status = ?, signer_name = ?,
+        md5 = ?, sha1 = ?, sha256 = ?, imp_hash = ?,
+        threat_score = ?
+    WHERE id = ?;
+)";
+
+// DLL Section Operations
+inline constexpr const char* INSERT_DLL_SECTION = R"(
+    INSERT INTO dll_sections (
+        dll_id, section_name, virtual_address, virtual_size,
+        raw_data_size, characteristics, entropy,
+        is_writeable, is_executable, is_readable
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+)";
+
+inline constexpr const char* SELECT_DLL_SECTIONS = R"(
+    SELECT * FROM dll_sections WHERE dll_id = ?;
+)";
+
+// DLL Import/Export Operations
+inline constexpr const char* INSERT_DLL_IMPORT = R"(
+    INSERT INTO dll_imports (dll_id, imported_dll_name, imported_function, import_ordinal, is_delayed)
+    VALUES (?, ?, ?, ?, ?);
+)";
+
+inline constexpr const char* INSERT_DLL_EXPORT = R"(
+    INSERT INTO dll_exports (dll_id, function_name, export_ordinal, export_rva)
+    VALUES (?, ?, ?, ?);
+)";
+
+inline constexpr const char* SELECT_DLL_IMPORTS = R"(
+    SELECT * FROM dll_imports WHERE dll_id = ?;
+)";
+
+inline constexpr const char* SELECT_DLL_EXPORTS = R"(
+    SELECT * FROM dll_exports WHERE dll_id = ?;
+)";
+
+// DLL Anomaly Operations
+inline constexpr const char* INSERT_DLL_ANOMALY = R"(
+    INSERT INTO dll_anomalies (dll_id, anomaly_type, description, risk_level, risk_score, details)
+    VALUES (?, ?, ?, ?, ?, ?);
+)";
+
+inline constexpr const char* SELECT_DLL_ANOMALIES = R"(
+    SELECT * FROM dll_anomalies WHERE dll_id = ?;
+)";
+
+// DLL Dependency Operations
+inline constexpr const char* INSERT_DLL_DEPENDENCY = R"(
+    INSERT INTO dll_dependencies (parent_dll_id, child_dll_id, depth, is_resolved)
+    VALUES (?, ?, ?, ?);
+)";
+
+inline constexpr const char* SELECT_DLL_DEPENDENCIES = R"(
+    SELECT * FROM dll_dependencies WHERE parent_dll_id = ?;
+)";
+
+// DLL Forensic Link Operations
+inline constexpr const char* INSERT_DLL_FORENSIC_LINK = R"(
+    INSERT INTO dll_forensic_links (dll_id, link_type, source_id, source_data, detected_at)
+    VALUES (?, ?, ?, ?, ?);
+)";
+
+inline constexpr const char* SELECT_DLL_FORENSIC_LINKS = R"(
+    SELECT * FROM dll_forensic_links WHERE dll_id = ?;
+)";
+
 } // namespace windows_analysis_sql_crud
 
 #endif // WINDOWS_ANALYSIS_SQL_CRUD_H

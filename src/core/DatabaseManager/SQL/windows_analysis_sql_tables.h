@@ -367,6 +367,158 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
         llm_analyzed_at INTEGER,
         llm_model_used TEXT
     );
+
+    -- ============================================================================
+    -- DLL Analysis Tables
+    -- ============================================================================
+
+    -- DLL Base Information
+    CREATE TABLE IF NOT EXISTS dll_base_info (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        inode INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        path TEXT UNIQUE NOT NULL,
+        size INTEGER,
+        md5 TEXT,
+        sha1 TEXT,
+        sha256 TEXT,
+        imp_hash TEXT,
+        rich_hash REAL,
+
+        -- PE/ELF metadata
+        file_format TEXT,
+        machine_type TEXT,
+        compile_timestamp INTEGER,
+        subsystem INTEGER,
+        entry_point INTEGER,
+        image_base INTEGER,
+        is_dll INTEGER DEFAULT 1,
+        characteristics INTEGER,
+
+        -- Version information
+        file_version TEXT,
+        product_version TEXT,
+        company_name TEXT,
+        file_description TEXT,
+
+        -- Digital signature
+        signature_status TEXT,
+        signer_name TEXT,
+        cert_issuer TEXT,
+        cert_valid_from INTEGER,
+        cert_valid_to INTEGER,
+
+        -- File timestamps
+        mtime INTEGER,
+        ctime INTEGER,
+        atime INTEGER,
+        crtime INTEGER,
+
+        -- Forensic correlation
+        is_deleted INTEGER DEFAULT 0,
+        threat_score INTEGER DEFAULT 0,
+
+        -- LLM analysis fields
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT,
+
+        created_at INTEGER DEFAULT (strftime('%s', 'now'))
+    );
+
+    -- DLL Sections
+    CREATE TABLE IF NOT EXISTS dll_sections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dll_id INTEGER NOT NULL,
+        section_name TEXT NOT NULL,
+        virtual_address INTEGER,
+        virtual_size INTEGER,
+        raw_data_size INTEGER,
+        characteristics INTEGER,
+        entropy REAL,
+        is_writeable INTEGER DEFAULT 0,
+        is_executable INTEGER DEFAULT 0,
+        is_readable INTEGER DEFAULT 0,
+        FOREIGN KEY (dll_id) REFERENCES dll_base_info(id) ON DELETE CASCADE
+    );
+
+    -- DLL Imports
+    CREATE TABLE IF NOT EXISTS dll_imports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dll_id INTEGER NOT NULL,
+        imported_dll_name TEXT NOT NULL,
+        imported_function TEXT,
+        import_ordinal INTEGER,
+        is_delayed INTEGER DEFAULT 0,
+        FOREIGN KEY (dll_id) REFERENCES dll_base_info(id) ON DELETE CASCADE
+    );
+
+    -- DLL Exports
+    CREATE TABLE IF NOT EXISTS dll_exports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dll_id INTEGER NOT NULL,
+        function_name TEXT NOT NULL,
+        export_ordinal INTEGER,
+        export_rva INTEGER,
+        FOREIGN KEY (dll_id) REFERENCES dll_base_info(id) ON DELETE CASCADE
+    );
+
+    -- DLL Anomalies
+    CREATE TABLE IF NOT EXISTS dll_anomalies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dll_id INTEGER NOT NULL,
+        anomaly_type TEXT NOT NULL,
+        description TEXT,
+        risk_level TEXT,
+        risk_score INTEGER,
+        details TEXT,
+        detected_at INTEGER DEFAULT (strftime('%s', 'now')),
+        FOREIGN KEY (dll_id) REFERENCES dll_base_info(id) ON DELETE CASCADE
+    );
+
+    -- DLL Dependencies
+    CREATE TABLE IF NOT EXISTS dll_dependencies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        parent_dll_id INTEGER NOT NULL,
+        child_dll_id INTEGER NOT NULL,
+        depth INTEGER,
+        is_resolved INTEGER DEFAULT 1,
+        FOREIGN KEY (parent_dll_id) REFERENCES dll_base_info(id) ON DELETE CASCADE,
+        FOREIGN KEY (child_dll_id) REFERENCES dll_base_info(id) ON DELETE CASCADE
+    );
+
+    -- DLL Forensic Links
+    CREATE TABLE IF NOT EXISTS dll_forensic_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dll_id INTEGER NOT NULL,
+        link_type TEXT NOT NULL,
+        source_id TEXT,
+        source_data TEXT,
+        detected_at INTEGER,
+        FOREIGN KEY (dll_id) REFERENCES dll_base_info(id) ON DELETE CASCADE
+    );
+)";
+
+// DLL Indices
+inline constexpr const char* CREATE_DLL_INDICES = R"(
+    CREATE INDEX IF NOT EXISTS idx_dll_base_inode ON dll_base_info(inode);
+    CREATE INDEX IF NOT EXISTS idx_dll_base_md5 ON dll_base_info(md5);
+    CREATE INDEX IF NOT EXISTS idx_dll_base_imp_hash ON dll_base_info(imp_hash);
+    CREATE INDEX IF NOT EXISTS idx_dll_base_compile_ts ON dll_base_info(compile_timestamp);
+    CREATE INDEX IF NOT EXISTS idx_dll_base_signature ON dll_base_info(signature_status);
+    CREATE INDEX IF NOT EXISTS idx_dll_base_threat ON dll_base_info(threat_score);
+    CREATE INDEX IF NOT EXISTS idx_dll_sections_dll_id ON dll_sections(dll_id);
+    CREATE INDEX IF NOT EXISTS idx_dll_imports_dll_id ON dll_imports(dll_id);
+    CREATE INDEX IF NOT EXISTS idx_dll_imports_function ON dll_imports(imported_function);
+    CREATE INDEX IF NOT EXISTS idx_dll_exports_dll_id ON dll_exports(dll_id);
+    CREATE INDEX IF NOT EXISTS idx_dll_anomalies_dll_id ON dll_anomalies(dll_id);
+    CREATE INDEX IF NOT EXISTS idx_dll_anomalies_risk ON dll_anomalies(risk_level);
+    CREATE INDEX IF NOT EXISTS idx_dll_deps_parent ON dll_dependencies(parent_dll_id);
+    CREATE INDEX IF NOT EXISTS idx_dll_deps_child ON dll_dependencies(child_dll_id);
+    CREATE INDEX IF NOT EXISTS idx_dll_links_dll_id ON dll_forensic_links(dll_id);
+    CREATE INDEX IF NOT EXISTS idx_dll_links_type ON dll_forensic_links(link_type);
 )";
 
 // Analysis progress tracking table

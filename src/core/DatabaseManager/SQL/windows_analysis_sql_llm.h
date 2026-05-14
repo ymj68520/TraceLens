@@ -100,6 +100,26 @@ inline constexpr const char* SELECT_SRUM_PENDING_ANALYSIS =
     "SELECT id, app_name, user_name, timestamp, bytes_received FROM srum_entries WHERE llm_analyzed_at IS NULL ORDER BY id LIMIT ?;";
 
 // ============================================================================
+// DLL LLM Analysis
+// ============================================================================
+
+inline constexpr const char* UPDATE_DLL_LLM_ANALYSIS = R"(
+    UPDATE dll_base_info SET
+        llm_summary = ?,
+        llm_description = ?,
+        llm_keywords = ?,
+        llm_analyzed_at = ?,
+        llm_model_used = ?
+    WHERE id = ?;
+)";
+
+inline constexpr const char* SELECT_DLL_PENDING_ANALYSIS = R"(
+    SELECT id, path FROM dll_base_info
+    WHERE llm_analyzed_at IS NULL AND threat_score >= ?
+    ORDER BY threat_score DESC;
+)";
+
+// ============================================================================
 // LLM Analysis Progress Tracking
 // ============================================================================
 

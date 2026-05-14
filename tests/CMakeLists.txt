@@ -428,11 +428,12 @@ target_link_libraries(test_database_analyzer_gtest ${GTEST_LIBRARIES}
 
 add_test(NAME DatabaseAnalyzerGTests COMMAND test_database_analyzer_gtest)
 
-# DLL Analyzer Tests (header-only - tests data structures and constants)
-add_executable(test_dll_analyzer_gtest UnitTest/test_dll_analyzer_gtest.cpp)
+# DLL Analyzer Tests (SQL schema + data structures)
+add_executable(test_dll_analyzer_gtest
+               UnitTest/test_dll_analyzer_gtest.cpp)
 
 target_link_libraries(test_dll_analyzer_gtest ${GTEST_LIBRARIES}
-                      ${GMOCK_LIBRARIES} pthread)
+                      ${GMOCK_LIBRARIES} sqlite3 pthread)
 
 target_include_directories(test_dll_analyzer_gtest
                            PRIVATE ${CMAKE_SOURCE_DIR}/src)
