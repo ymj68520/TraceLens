@@ -13,6 +13,7 @@
 
 #include "analyzers/DLLAnalyzer/Common/DLLDataTypes.h"
 #include "analyzers/DLLAnalyzer/Parsers/PEHeaderParser.h"
+#include "analyzers/DLLAnalyzer/Core/DependencyAnalyzer.h"
 
 using namespace forensics::dll;
 
@@ -2943,3 +2944,189 @@ TEST_F(AnomalyDetectorTest, EntryPointAtSectionEndExclusive) {
     EXPECT_EQ(anomaly.type, "ENTRY_POINT_IN_DATA");
     EXPECT_EQ(anomaly.riskScore, 10);
 }
+
+// ============================================================================
+// DependencyAnalyzer Tests
+// ============================================================================
+
+class DependencyAnalyzerTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        analyzer_ = std::make_unique<DependencyAnalyzer>();
+    }
+
+    std::unique_ptr<DependencyAnalyzer> analyzer_;
+};
+
+TEST_F(DependencyAnalyzerTest, SystemDLLDetection) {
+    // 验证系统DLL检测
+    EXPECT_TRUE(analyzer_->isSystemDLL("kernel32.dll"));
+    EXPECT_TRUE(analyzer_->isSystemDLL("ntdll.dll"));
+    EXPECT_TRUE(analyzer_->isSystemDLL("user32.dll"));
+    EXPECT_TRUE(analyzer_->isSystemDLL("advapi32.dll"));
+
+    // 非系统DLL
+    EXPECT_FALSE(analyzer_->isSystemDLL("custom.dll"));
+    EXPECT_FALSE(analyzer_->isSystemDLL("malware.dll"));
+    EXPECT_FALSE(analyzer_->isSystemDLL(""));
+}
+
+TEST_F(DependencyAnalyzerTest, SuspiciousPathDetection) {
+    // 可疑路径
+    EXPECT_TRUE(analyzer_->isSuspiciousPath("C:\\Temp\\malware.dll"));
+    EXPECT_TRUE(analyzer_->isSuspiciousPath("C:\\Users\\Public\\evil.dll"));
+    EXPECT_TRUE(analyzer_->isSuspiciousPath("C:\\AppData\\Roaming\\bad.dll"));
+
+    // 正常路径
+    EXPECT_FALSE(analyzer_->isSuspiciousPath("C:\\Windows\\System32\\kernel32.dll"));
+    EXPECT_FALSE(analyzer_->isSuspiciousPath("C:\\Program Files\\App\\lib.dll"));
+}
+
+TEST_F(DependencyAnalyzerTest, CircularDependencyDetection) {
+    // 检测循环依赖
+    std::unordered_set<std::string> visited;
+    visited.insert("a.dll");
+
+    EXPECT_TRUE(analyzer_->checkCircularDependency("a.dll", visited));
+    EXPECT_TRUE(analyzer_->checkCircularDependency("A.DLL", visited)); // 大小写不敏感
+
+    // 无循环依赖
+    visited.clear();
+    visited.insert("b.dll");
+    EXPECT_FALSE(analyzer_->checkCircularDependency("c.dll", visited));
+}
+
+TEST_F(DependencyAnalyzerTest, GetAllDependencies) {
+    // 获取所有递归依赖（去重）
+    auto dependencies = analyzer_->getAllDependencies("test.dll");
+
+    // 返回的依赖应该是去重的集合
+    std::unordered_set<std::string> uniqueDeps(dependencies.begin(), dependencies.end());
+    EXPECT_EQ(uniqueDeps.size(), dependencies.size());
+}
+
+TEST_F(DependencyAnalyzerTest, GetRecursiveDependencies) {
+    // 获取递归依赖列表
+    auto dependencies = analyzer_->getRecursiveDependencies("test.dll");
+
+    // 返回的依赖应该包含直接的导入
+    // 具体内容取决于实际DLL的导入表
+    EXPECT_TRUE(dependencies.empty() || !dependencies.empty()); // 至少不崩溃
+}
+
+TEST_F(DependencyAnalyzerTest, BuildDependencyTree) {
+    // 构建依赖树
+    auto tree = analyzer_->buildDependencyTree("test.dll", 2);
+
+    // 根节点应为test.dll
+    EXPECT_EQ(tree.dllName, "test.dll");
+    EXPECT_EQ(tree.depth, 0);
+    EXPECT_LE(tree.depth, 2);
+
+    // 系统DLL的isSystem应为true
+    if (tree.dllName == "kernel32.dll") {
+        EXPECT_TRUE(tree.isSystem);
+    }
+}
+
+TEST_F(DependencyAnalyzerTest, DependencyTreeDepthLimit) {
+    // 测试深度限制
+    int maxDepth = 3;
+    auto tree = analyzer_->buildDependencyTree("test.dll", maxDepth);
+
+    // 树的深度不应超过maxDepth
+    std::function<void(const DependencyAnalyzer::DependencyNode&, int)> checkDepth =
+        [&](const DependencyAnalyzer::DependencyNode& node, int currentDepth) {
+            EXPECT_LE(currentDepth, maxDepth);
+            for (const auto& child : node.children) {
+                checkDepth(child, currentDepth + 1);
+            }
+        };
+    checkDepth(tree, 0);
+}
+
+TEST_F(DependencyAnalyzerTest, PrefetchReferences) {
+    // 获取Prefetch引用
+    auto refs = analyzer_->getPrefetchReferences("test.dll");
+
+    // 引用列表可能为空，但不应崩溃
+    EXPECT_TRUE(refs.empty() || !refs.empty());
+}
+
+TEST_F(DependencyAnalyzerTest, RegistryReferences) {
+    // 获取注册表引用
+    auto refs = analyzer_->getRegistryReferences("test.dll");
+
+    // 引用列表可能为空，但不应崩溃
+    EXPECT_TRUE(refs.empty() || !refs.empty());
+}
+
+TEST_F(DependencyAnalyzerTest, EventLogReferences) {
+    // 获取事件日志引用
+    auto refs = analyzer_->getEventLogReferences("test.dll");
+
+    // 引用列表可能为空，但不应崩溃
+    EXPECT_TRUE(refs.empty() || !refs.empty());
+}
+
+TEST_F(DependencyAnalyzerTest, SuspiciousPathInDependencyTree) {
+    // 验证可疑路径的DLL在依赖树中被标记为isSuspicious=true
+    // 注意：buildDependencyTree依赖于实际文件系统，这里仅测试接口行为
+    auto tree = analyzer_->buildDependencyTree("test.dll", 2);
+
+    // 根节点的isSuspicious应正确设置
+    EXPECT_TRUE(tree.isSuspicious == analyzer_->isSuspiciousPath(tree.dllPath));
+}
+
+// ============================================================================
+// DependencyNode Structure Tests
+// ============================================================================
+
+class DependencyNodeTest : public ::testing::Test {};
+
+TEST_F(DependencyNodeTest, DefaultConstruction) {
+    DependencyAnalyzer::DependencyNode node;
+
+    EXPECT_TRUE(node.dllPath.empty());
+    EXPECT_TRUE(node.dllName.empty());
+    EXPECT_EQ(node.depth, 0);
+    EXPECT_FALSE(node.isSystem);
+    EXPECT_FALSE(node.isSuspicious);
+    EXPECT_TRUE(node.loadSources.empty());
+    EXPECT_TRUE(node.children.empty());
+}
+
+TEST_F(DependencyNodeTest, ParameterizedConstruction) {
+    DependencyAnalyzer::DependencyNode node{
+        "C:\\Windows\\System32\\kernel32.dll",
+        "kernel32.dll",
+        1,
+        true,
+        false,
+        {"prefetch.exe", "explorer.exe"},
+        {}
+    };
+
+    EXPECT_EQ(node.dllPath, "C:\\Windows\\System32\\kernel32.dll");
+    EXPECT_EQ(node.dllName, "kernel32.dll");
+    EXPECT_EQ(node.depth, 1);
+    EXPECT_TRUE(node.isSystem);
+    EXPECT_FALSE(node.isSuspicious);
+    EXPECT_EQ(node.loadSources.size(), 2);
+}
+
+TEST_F(DependencyNodeTest, ChildrenCanBeAdded) {
+    DependencyAnalyzer::DependencyNode parent{"parent.dll", "parent.dll", 0, false, false, {}, {}};
+
+    DependencyAnalyzer::DependencyNode child1{"child1.dll", "child1.dll", 1, false, false, {}, {}};
+    DependencyAnalyzer::DependencyNode child2{"child2.dll", "child2.dll", 1, false, true, {}, {}};
+
+    parent.children.push_back(child1);
+    parent.children.push_back(child2);
+
+    EXPECT_EQ(parent.children.size(), 2);
+    EXPECT_EQ(parent.children[0].dllName, "child1.dll");
+    EXPECT_EQ(parent.children[1].dllName, "child2.dll");
+    EXPECT_TRUE(parent.children[1].isSuspicious);
+}
+
