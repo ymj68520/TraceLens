@@ -145,6 +145,12 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Common
   ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Database
   ${CMAKE_SOURCE_DIR}/src/analyzers/DatabaseAnalyzer/Parsers
+  # DLLAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Common
+  ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Core
+  ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Database
+  ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Parsers
   # Aliyun OSS SDK
   ${CMAKE_SOURCE_DIR}/libs/aliyun-oss-cpp-sdk/sdk/include
   # Libs
@@ -212,6 +218,7 @@ set(LIB_SOURCES
     src/network/HTTPServer/routes/FileExtractionRoutes.cpp
     src/network/HTTPServer/routes/StatisticsRoutes.cpp
     src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp
+    src/network/HTTPServer/routes/DLLAnalysisRoutes.cpp
     src/network/HTTPServer/routes/SystemEventRoutes.cpp
     src/network/HTTPServer/routes/SystemRoutes.cpp
     src/network/HTTPServer/routes/SystemHealthRoutes.cpp
@@ -307,6 +314,14 @@ set(LIB_SOURCES
     src/analyzers/DatabaseAnalyzer/Parsers/MySQLBinlogParser.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/InnoDBParser.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLHeapParser.cpp
+    # DLLAnalyzer module
+    src/analyzers/DLLAnalyzer/Core/DLLAnalyzerCore.cpp
+    src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.cpp
+    src/analyzers/DLLAnalyzer/Parsers/PEHeaderParser.cpp
+    src/analyzers/DLLAnalyzer/Parsers/PEImportExportParser.cpp
+    src/analyzers/DLLAnalyzer/Core/PEAnalyzer.cpp
+    src/analyzers/DLLAnalyzer/Core/AnomalyDetector.cpp
+    src/analyzers/DLLAnalyzer/Core/DependencyAnalyzer.cpp
     # cpp-mcp library sources
     libs/cpp-mcp/src/mcp_message.cpp
     libs/cpp-mcp/src/mcp_resource.cpp

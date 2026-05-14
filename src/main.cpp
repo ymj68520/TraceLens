@@ -100,6 +100,10 @@ int main(int argc, char* argv[]) {
         return AnalysisOrchestrator::runExtraction(cmdArgs);
     }
 
+    if (cmdArgs.analyze_dlls_only) {
+        return AnalysisOrchestrator::runDLLAnalysis(cmdArgs);
+    }
+
     // Default: analysis mode
     return AnalysisOrchestrator::runAnalysis(cmdArgs);
 }

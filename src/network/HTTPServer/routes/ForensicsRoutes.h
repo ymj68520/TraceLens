@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 #include "../TaskManager.h"
 #include "../HTTPServerDataTypes.h"
+#include "DLLAnalysisRoutes.h"
 #include <mutex>
 #include <unordered_map>
 #include <chrono>
@@ -81,6 +82,7 @@ private:
     StatisticsRoutes statistics_routes_;
     AndroidForensicsRoutes android_forensics_routes_;
     SystemEventRoutes system_event_routes_;
+    DLLAnalysisRoutes dll_analysis_routes_;
 
     // Extraction job tracking
     std::unordered_map<std::string, ExtractionJob> extraction_jobs_;

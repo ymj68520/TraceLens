@@ -44,6 +44,11 @@ std::string RouteHelpers::get_database_path(const std::string& task_id, const st
             return task.metadata.at("android_db");
         }
         return task.output_raw_db.substr(0, task.output_raw_db.find_last_of('.')) + "_android.db";
+    } else if (db_type == "dll") {
+        if (task.metadata.find("dll_db") != task.metadata.end()) {
+            return task.metadata.at("dll_db");
+        }
+        return task.output_raw_db.substr(0, task.output_raw_db.find_last_of('.')) + "_dll.db";
     } else {
         throw std::runtime_error("Unknown database type: " + db_type);
     }

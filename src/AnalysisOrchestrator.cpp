@@ -122,7 +122,7 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         if (args.analyze_dlls) {
             std::cout << "[DLL] Analyzing..." << std::endl;
             std::string dllDbPath = args.dll_db.empty() ? prefix + baseName + "_dll.db" : args.dll_db;
-            auto dllAnalyzer = std::make_unique<DLLAnalyzer>(dllDbPath);
+            auto dllAnalyzer = std::make_unique<dll::DLLAnalyzer>(dllDbPath);
             dllAnalyzer->enableAnomalyDetection(true);
             dllAnalyzer->enableSignatureVerification(args.verify_signatures);
             if (dllAnalyzer->initialize()) {
@@ -305,7 +305,7 @@ int AnalysisOrchestrator::runDLLAnalysis(const CommandLineArgs& args) {
     std::cout << "DLL Database: " << dllDbPath << std::endl;
 
     try {
-        auto dllAnalyzer = std::make_unique<DLLAnalyzer>(dllDbPath);
+        auto dllAnalyzer = std::make_unique<dll::DLLAnalyzer>(dllDbPath);
         dllAnalyzer->enableAnomalyDetection(true);
         dllAnalyzer->enableSignatureVerification(args.verify_signatures);
 
