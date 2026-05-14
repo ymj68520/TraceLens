@@ -436,6 +436,7 @@ add_executable(test_dll_analyzer_gtest
                ../src/analyzers/DLLAnalyzer/Core/PEAnalyzer.cpp
                ../src/analyzers/DLLAnalyzer/Core/AnomalyDetector.cpp
                ../src/analyzers/DLLAnalyzer/Core/DependencyAnalyzer.cpp
+               ../src/analyzers/DLLAnalyzer/Core/DLLAnalyzerCore.cpp
                ../src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.cpp
                ../src/core/AuditLog/AuditLog.cpp
                ../src/core/Logger/Logger.cpp)
