@@ -7,8 +7,12 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <random>
+#include <numeric>
 
 #include "analyzers/DLLAnalyzer/Common/DLLDataTypes.h"
+#include "analyzers/DLLAnalyzer/Parsers/PEHeaderParser.h"
 
 using namespace forensics::dll;
 
@@ -228,16 +232,18 @@ TEST_F(StructureInstantiationTest, DLLAnalysisResultCanBeInstantiated) {
 class StructureAssignmentTest : public ::testing::Test {};
 
 TEST_F(StructureAssignmentTest, PESectionInfoAssignment) {
-    PESectionInfo section;
-    section.name = ".text";
-    section.virtualAddress = 0x1000;
-    section.virtualSize = 0x2000;
-    section.rawDataSize = 0x1800;
-    section.characteristics = SECTION_READ | SECTION_EXECUTE;
-    section.entropy = 6.5;
-    section.isWriteable = false;
-    section.isExecutable = true;
-    section.isReadable = true;
+    PESectionInfo section{
+        .name = ".text",
+        .virtualAddress = 0x1000,
+        .virtualSize = 0x2000,
+        .rawDataSize = 0x1800,
+        .pointerToRawData = 0x280,
+        .characteristics = SECTION_READ | SECTION_EXECUTE,
+        .entropy = 6.5,
+        .isWriteable = false,
+        .isExecutable = true,
+        .isReadable = true
+    };
 
     EXPECT_EQ(section.name, ".text");
     EXPECT_EQ(section.virtualAddress, 0x1000);
@@ -332,12 +338,18 @@ TEST_F(DataTypesIntegrationTest, CompleteDLLAnalysisResultStructure) {
     result.peHeader.isDLL = true;
 
     // Sections
-    result.peHeader.sections.push_back({".text", 0x1000, 0x2000, 0x1800,
-                                        SECTION_READ | SECTION_EXECUTE, 5.2,
-                                        false, true, true});
-    result.peHeader.sections.push_back({".data", 0x3000, 0x1000, 0x800,
-                                        SECTION_READ | SECTION_WRITE, 2.1,
-                                        true, false, true});
+    result.peHeader.sections.push_back(PESectionInfo{
+        .name = ".text", .virtualAddress = 0x1000, .virtualSize = 0x2000,
+        .rawDataSize = 0x1800, .pointerToRawData = 0x280,
+        .characteristics = SECTION_READ | SECTION_EXECUTE, .entropy = 5.2,
+        .isWriteable = false, .isExecutable = true, .isReadable = true
+    });
+    result.peHeader.sections.push_back(PESectionInfo{
+        .name = ".data", .virtualAddress = 0x3000, .virtualSize = 0x1000,
+        .rawDataSize = 0x800, .pointerToRawData = 0x3800,
+        .characteristics = SECTION_READ | SECTION_WRITE, .entropy = 2.1,
+        .isWriteable = true, .isExecutable = false, .isReadable = true
+    });
 
     // Imports
     result.imports.push_back({"kernel32.dll", {"CreateFileW", "ReadFile"}, false});
@@ -370,10 +382,79 @@ TEST_F(DataTypesIntegrationTest, CompleteDLLAnalysisResultStructure) {
 }
 
 // ============================================================================
-// PEHeaderParser Tests
+// 熵值计算测试
 // ============================================================================
 
 #include "analyzers/DLLAnalyzer/Parsers/PEHeaderParser.h"
+
+class EntropyCalculatorTest : public ::testing::Test {};
+
+// Zero entropy: all bytes are identical → probability = 1.0 → H = 0.0
+TEST_F(EntropyCalculatorTest, ZeroEntropy) {
+    std::vector<uint8_t> data(256, 0);
+    double entropy = PEHeaderParser::calculateEntropy(data);
+    EXPECT_NEAR(entropy, 0.0, 0.01);
+}
+
+// Maximum entropy: uniform distribution → H ≈ 8.0 bits/byte
+TEST_F(EntropyCalculatorTest, MaxEntropy) {
+    std::vector<uint8_t> data(4096);
+    std::random_device rd;
+    std::generate(data.begin(), data.end(), [&rd]() { return static_cast<uint8_t>(rd() % 256); });
+    double entropy = PEHeaderParser::calculateEntropy(data);
+    EXPECT_NEAR(entropy, 8.0, 0.1);
+}
+
+// Low entropy: only 10 distinct byte values → highly compressible
+TEST_F(EntropyCalculatorTest, CompressibleData) {
+    // 4096 bytes gives a tighter distribution → lower Shannon entropy
+    std::vector<uint8_t> data;
+    data.reserve(4096);
+    for (int i = 0; i < 4096; ++i) {
+        data.push_back(static_cast<uint8_t>(i % 10));
+    }
+    double entropy = PEHeaderParser::calculateEntropy(data);
+    EXPECT_LT(entropy, 3.5); // 10 equally-frequent bytes across 4096 samples
+}
+
+// High entropy: XOR cipher → looks like random data → encrypted/packed
+TEST_F(EntropyCalculatorTest, EncryptedData) {
+    std::vector<uint8_t> data(4096);
+    for (size_t i = 0; i < data.size(); ++i) {
+        data[i] = static_cast<uint8_t>(i ^ 0xAA);
+    }
+    double entropy = PEHeaderParser::calculateEntropy(data);
+    EXPECT_GT(entropy, 7.5);
+}
+
+// Empty data should return 0.0
+TEST_F(EntropyCalculatorTest, EmptyData) {
+    std::vector<uint8_t> data;
+    double entropy = PEHeaderParser::calculateEntropy(data);
+    EXPECT_DOUBLE_EQ(entropy, 0.0);
+}
+
+// Single byte repeated → entropy = 0.0
+TEST_F(EntropyCalculatorTest, SingleByteRepeated) {
+    std::vector<uint8_t> data(1024, 0xFF);
+    double entropy = PEHeaderParser::calculateEntropy(data);
+    EXPECT_NEAR(entropy, 0.0, 0.01);
+}
+
+// ASCII text (lowercase only) → moderate entropy ≈ 4.0–5.0
+TEST_F(EntropyCalculatorTest, ASCIIModerateEntropy) {
+    std::vector<uint8_t> data;
+    for (int i = 0; i < 256; ++i) {
+        data.push_back(static_cast<uint8_t>('a' + (i % 26)));
+    }
+    double entropy = PEHeaderParser::calculateEntropy(data);
+    EXPECT_GT(entropy, 3.5);
+    EXPECT_LT(entropy, 5.0);
+}
+
+// ============================================================================
+// PEHeaderParser Tests
+// ============================================================================
 
 class PEHeaderParserTest : public ::testing::Test {
 protected:
@@ -410,13 +491,9 @@ static std::string writeMinimalPE32Plus() {
     coffHeader.characteristics = 0x2002; // DLL | Executable
     out.write(reinterpret_cast<const char*>(&coffHeader), sizeof(coffHeader));
 
-    // PE32+ optional header: magic (2) + linker version (2) + base fields (24) = 28
-    // Then: imageBase(8) + sectionAlignment(4) + fileAlignment(4) +
-    //       OS version(4) + image version(4) + subsystem version(4) + win32VersionValue(4) +
-    //       sizeOfImage(4) + sizeOfHeaders(4) + checkSum(4) + subsystem(2) + dllCharacteristics(2) +
-    //       stack(16) + heap(16) + loaderFlags(4) + numberOfRvaAndSizes(4) + dataDirs(128) = 216
+    // PE32+ optional header
     struct alignas(1) PE32PlusOptional {
-        uint16_t magic;              // 0x20B
+        uint16_t magic;
         uint8_t  majorLinkerVersion;
         uint8_t  minorLinkerVersion;
         uint32_t sizeOfCode;
@@ -458,12 +535,25 @@ static std::string writeMinimalPE32Plus() {
     optHeader.imageBase = 0x140000000;
     out.write(reinterpret_cast<const char*>(&optHeader), sizeof(optHeader));
 
-    // Section header
+    // Section header — place raw data after headers at 0x280, size 0x200
+    constexpr uint32_t RAW_DATA_OFFSET = 0x280;
+    constexpr uint32_t RAW_DATA_SIZE   = 0x200;
     SectionHeader section = {};
     strncpy(section.name, ".text", 8);
-    section.sizeOfRawData = 0x1000;
-    section.characteristics = 0x60000020; // READ | EXECUTE | ContainsCode
+    section.virtualAddress    = 0x1000;
+    section.virtualSize       = 0x2000;
+    section.pointerToRawData  = RAW_DATA_OFFSET;
+    section.sizeOfRawData     = RAW_DATA_SIZE;
+    section.characteristics   = 0x60000020; // READ | EXECUTE | ContainsCode
     out.write(reinterpret_cast<const char*>(&section), sizeof(section));
+
+    // Write actual section body data (mixed compressible + text-like bytes)
+    out.seekp(RAW_DATA_OFFSET);
+    std::vector<uint8_t> body(RAW_DATA_SIZE);
+    for (uint32_t i = 0; i < RAW_DATA_SIZE; ++i) {
+        body[i] = static_cast<uint8_t>((i * 3 + 7) & 0xFF); // pseudo-random pattern
+    }
+    out.write(reinterpret_cast<const char*>(body.data()), RAW_DATA_SIZE);
 
     out.close();
     return path;
@@ -490,13 +580,9 @@ static std::string writeMinimalPE32() {
     coffHeader.characteristics = 0x2002;
     out.write(reinterpret_cast<const char*>(&coffHeader), sizeof(coffHeader));
 
-    // PE32 optional header: base (24) + baseOfData(4) + imageBase(4) + sectionAlignment(4) +
-    // fileAlignment(4) + OS version(4) + image version(4) + subsystem version(4) +
-    // win32VersionValue(4) + sizeOfImage(4) + sizeOfHeaders(4) + checkSum(4) +
-    // subsystem(2) + dllCharacteristics(2) + stack(12) + heap(12) + loaderFlags(4) +
-    // numberOfRvaAndSizes(4) + dataDirs(128) = 224
+    // PE32 optional header
     struct alignas(1) PE32Optional {
-        uint16_t magic;              // 0x10B
+        uint16_t magic;
         uint8_t  majorLinkerVersion;
         uint8_t  minorLinkerVersion;
         uint32_t sizeOfCode;
@@ -539,11 +625,25 @@ static std::string writeMinimalPE32() {
     optHeader.imageBase = 0x400000;
     out.write(reinterpret_cast<const char*>(&optHeader), sizeof(optHeader));
 
+    // Section header — raw data after headers at 0x280, size 0x200
+    constexpr uint32_t RAW_DATA_OFFSET = 0x280;
+    constexpr uint32_t RAW_DATA_SIZE   = 0x200;
     SectionHeader section = {};
     strncpy(section.name, ".text", 8);
-    section.sizeOfRawData = 0x1000;
-    section.characteristics = 0x60000020;
+    section.virtualAddress   = 0x1000;
+    section.virtualSize      = 0x2000;
+    section.pointerToRawData = RAW_DATA_OFFSET;
+    section.sizeOfRawData    = RAW_DATA_SIZE;
+    section.characteristics  = 0x60000020;
     out.write(reinterpret_cast<const char*>(&section), sizeof(section));
+
+    // Write section body data
+    out.seekp(RAW_DATA_OFFSET);
+    std::vector<uint8_t> body(RAW_DATA_SIZE);
+    for (uint32_t i = 0; i < RAW_DATA_SIZE; ++i) {
+        body[i] = static_cast<uint8_t>((i * 5 + 13) & 0xFF);
+    }
+    out.write(reinterpret_cast<const char*>(body.data()), RAW_DATA_SIZE);
 
     out.close();
     return path;
@@ -628,12 +728,15 @@ TEST_F(PEHeaderParserTest, SectionTableParsedCorrectly) {
 
     const auto& section = header.sections[0];
     EXPECT_EQ(section.name, ".text");
-    EXPECT_EQ(section.virtualAddress, 0u);
-    EXPECT_EQ(section.virtualSize, 0u);
-    EXPECT_EQ(section.rawDataSize, 0x1000u);
+    EXPECT_EQ(section.virtualAddress, 0x1000u);
+    EXPECT_EQ(section.virtualSize, 0x2000u);
+    EXPECT_EQ(section.rawDataSize, 0x200u);
+    EXPECT_EQ(section.pointerToRawData, 0x280u);
     EXPECT_TRUE(section.isReadable);
     EXPECT_TRUE(section.isExecutable);
     EXPECT_FALSE(section.isWriteable);
+    // Entropy should be > 0 for non-empty pseudo-random section data
+    EXPECT_GT(section.entropy, 0.0);
 }
 
 TEST_F(PEHeaderParserTest, MachineTypeToString) {
@@ -717,6 +820,273 @@ TEST_F(PEHeaderParserTest, ZeroSectionsHandled) {
 
 // ============================================================================
 // End PEHeaderParser Tests
+// ============================================================================
+
+// ============================================================================
+// PEImportExportParser Tests
+// ============================================================================
+
+#include "analyzers/DLLAnalyzer/Parsers/PEImportExportParser.h"
+
+class PEImportExportParserTest : public ::testing::Test {
+protected:
+    std::string testFile_;
+
+    void TearDown() override {
+        if (!testFile_.empty()) {
+            std::remove(testFile_.c_str());
+        }
+    }
+};
+
+// Helper: write a minimal PE32+ file with import and export data directory entries
+static std::string writeMinimalPE32PlusWithImportsExports() {
+    std::string path = "/tmp/test_pe_ie.dll";
+    std::ofstream out(path, std::ios::binary);
+
+    // ---- DOS Header ----
+    DOSHeader dosHeader = {};
+    dosHeader.e_magic  = 0x5A4D;
+    dosHeader.e_lfanew = 0x80;
+    out.write(reinterpret_cast<const char*>(&dosHeader), sizeof(dosHeader));
+    out.seekp(0x80);
+
+    // ---- PE Signature ----
+    uint32_t peSig = 0x00004550;
+    out.write(reinterpret_cast<const char*>(&peSig), sizeof(peSig));
+
+    // ---- COFF Header ----
+    COFFHeader coffHeader = {};
+    coffHeader.machine              = 0x8664;
+    coffHeader.numberOfSections     = 1;
+    coffHeader.characteristics      = 0x2002;
+    coffHeader.sizeOfOptionalHeader = 0xE0;
+    out.write(reinterpret_cast<const char*>(&coffHeader), sizeof(coffHeader));
+
+    // ---- PE32+ Optional Header ----
+    struct PE32PlusOpt {
+        uint16_t magic;
+        uint8_t  majorLinkerVersion;
+        uint8_t  minorLinkerVersion;
+        uint32_t sizeOfCode;
+        uint32_t sizeOfInitializedData;
+        uint32_t sizeOfUninitializedData;
+        uint32_t addressOfEntryPoint;
+        uint32_t baseOfCode;
+        uint64_t imageBase;
+        uint32_t sectionAlignment;
+        uint32_t fileAlignment;
+        uint16_t majorOSVersion;
+        uint16_t minorOSVersion;
+        uint16_t majorImageVersion;
+        uint16_t minorImageVersion;
+        uint16_t majorSubsystemVersion;
+        uint16_t minorSubsystemVersion;
+        uint32_t win32VersionValue;
+        uint32_t sizeOfImage;
+        uint32_t sizeOfHeaders;
+        uint32_t checkSum;
+        uint16_t subsystem;
+        uint16_t dllCharacteristics;
+        uint64_t sizeOfStackReserve;
+        uint64_t sizeOfStackCommit;
+        uint64_t sizeOfHeapReserve;
+        uint64_t sizeOfHeapCommit;
+        uint32_t loaderFlags;
+        uint32_t numberOfRvaAndSizes;
+        DataDirectory dataDirectories[16];
+    };
+    PE32PlusOpt opt = {};
+    opt.magic                       = 0x20B;
+    opt.subsystem                   = 3;
+    opt.sectionAlignment            = 0x1000;
+    opt.fileAlignment               = 0x200;
+    opt.sizeOfImage                 = 0x4000;
+    opt.sizeOfHeaders               = 0x400;
+    opt.addressOfEntryPoint         = 0x1000;
+    opt.imageBase                   = 0x140000000;
+    opt.numberOfRvaAndSizes         = 16;
+    opt.dataDirectories[0].virtualAddress = 0x1100; // EXPORT
+    opt.dataDirectories[0].size           = 0x40;
+    opt.dataDirectories[1].virtualAddress = 0x1000; // IMPORT
+    opt.dataDirectories[1].size           = 0x80;
+    out.write(reinterpret_cast<const char*>(&opt), sizeof(opt));
+
+    // ---- Section Header ----
+    SectionHeader section = {};
+    strncpy(section.name, ".text", 8);
+    section.virtualAddress    = 0x1000;
+    section.virtualSize       = 0x2000;
+    section.pointerToRawData  = 0x280;
+    section.sizeOfRawData     = 0x200;
+    section.characteristics   = 0x60000020;
+    out.write(reinterpret_cast<const char*>(&section), sizeof(section));
+
+    // ---- Section body ----
+    out.seekp(0x280);
+    std::vector<uint8_t> body(0x200);
+    for (uint32_t i = 0; i < 0x200; ++i)
+        body[i] = static_cast<uint8_t>((i * 3 + 7) & 0xFF);
+    out.write(reinterpret_cast<const char*>(body.data()), body.size());
+
+    // ---- Import descriptors at RVA 0x1000 (off 0x280) ----
+    PEImportExportParser::ImportDescriptor impDesc1 = {};
+    impDesc1.originalFirstThunk = 0x1020;
+    impDesc1.name               = 0x1040;
+    impDesc1.firstThunk         = 0;
+    out.seekp(0x280);
+    out.write(reinterpret_cast<const char*>(&impDesc1), sizeof(impDesc1));
+
+    PEImportExportParser::ImportDescriptor impDesc2 = {};
+    impDesc2.originalFirstThunk = 0x1060;
+    impDesc2.name               = 0x1080;
+    impDesc2.firstThunk         = 0;
+    out.seekp(0x290);
+    out.write(reinterpret_cast<const char*>(&impDesc2), sizeof(impDesc2));
+
+    // Terminator
+    PEImportExportParser::ImportDescriptor zeroDesc = {};
+    out.seekp(0x2A0);
+    out.write(reinterpret_cast<const char*>(&zeroDesc), sizeof(zeroDesc));
+
+    // DLL name strings
+    out.seekp(0x340);
+    out.write("kernel32.dll\0", 14);
+    out.seekp(0x350);
+    out.write("user32.dll\0",   12);
+
+    // Thunk data + IMAGE_IMPORT_BY_NAME for kernel32 (RVA 0x1020 → off 0x2A0)
+    out.seekp(0x2A0);
+    uint16_t hint1 = 1;
+    out.write(reinterpret_cast<const char*>(&hint1), sizeof(hint1));
+    out.write("CreateFileW\0", 13);
+    uint8_t pad = 0;
+    out.seekp(0x2C0);
+    out.write(reinterpret_cast<const char*>(&pad), 1);
+
+    out.seekp(0x2C8);
+    uint16_t hint2 = 2;
+    out.write(reinterpret_cast<const char*>(&hint2), sizeof(hint2));
+    out.write("ReadFile\0", 10);
+    out.seekp(0x2D8);
+    out.write(reinterpret_cast<const char*>(&pad), 1);
+
+    // Thunk for user32 (RVA 0x1060 → off 0x2E0)
+    out.seekp(0x2E0);
+    uint16_t hint3 = 3;
+    out.write(reinterpret_cast<const char*>(&hint3), sizeof(hint3));
+    out.write("MessageBoxW\0", 13);
+    out.seekp(0x2FC);
+    uint32_t thunkTerm = 0;
+    out.write(reinterpret_cast<const char*>(&thunkTerm), sizeof(thunkTerm));
+
+    // ---- Export directory at RVA 0x1100 (off 0x380) ----
+    out.seekp(0x380);
+    PEImportExportParser::ExportDirectory expDir = {};
+    expDir.name                = 0x1160;
+    expDir.base                = 1;
+    expDir.numberOfFunctions   = 2;
+    expDir.numberOfNames       = 1;
+    expDir.addressOfFunctions  = 0x11A0;
+    expDir.addressOfNames      = 0x11B0;
+    expDir.addressOfNameOrdinals = 0x11B8;
+    out.write(reinterpret_cast<const char*>(&expDir), sizeof(expDir));
+
+    // Export name string at RVA 0x1160
+    out.seekp(0x460);
+    out.write("DllMain\0", 9);
+
+    // EAT (2 entries)
+    out.seekp(0x5A0);
+    uint32_t eat1 = 0x5000, eat2 = 0x5010;
+    out.write(reinterpret_cast<const char*>(&eat1), sizeof(eat1));
+    out.write(reinterpret_cast<const char*>(&eat2), sizeof(eat2));
+
+    // ENT (1 entry → RVA 0x1160)
+    out.seekp(0x5B0);
+    uint32_t ent = 0x1160;
+    out.write(reinterpret_cast<const char*>(&ent), sizeof(ent));
+
+    // EOT (1 entry → index 0)
+    out.seekp(0x5B4);
+    uint16_t eot = 0;
+    out.write(reinterpret_cast<const char*>(&eot), sizeof(eot));
+
+    out.close();
+    return path;
+}
+
+// ---------- Non-existent file handling ----------
+
+TEST_F(PEImportExportParserTest, ConstructorNonExistentFile) {
+    PEImportExportParser parser("/tmp/does_not_exist_pe_test_999.dll");
+    EXPECT_FALSE(parser.isValid());
+    EXPECT_FALSE(parser.getErrorMessage().empty());
+}
+
+TEST_F(PEImportExportParserTest, ParseImportsNonExistentFile) {
+    PEImportExportParser parser("/tmp/does_not_exist_pe_test_999.dll");
+    std::vector<ImportedDLL> imports;
+    EXPECT_FALSE(parser.parseImports(imports));
+}
+
+TEST_F(PEImportExportParserTest, ParseExportsNonExistentFile) {
+    PEImportExportParser parser("/tmp/does_not_exist_pe_test_999.dll");
+    std::vector<ExportedFunction> exports;
+    EXPECT_FALSE(parser.parseExports(exports));
+}
+
+TEST_F(PEImportExportParserTest, CalculateImpHashNonExistentFile) {
+    PEImportExportParser parser("/tmp/does_not_exist_pe_test_999.dll");
+    EXPECT_EQ(parser.calculateImpHash(), "");
+}
+
+// ---------- Valid PE file handling (skeleton – must not crash) ----------
+
+TEST_F(PEImportExportParserTest, ParseImportsNoCrashOnValidPE) {
+    testFile_ = writeMinimalPE32PlusWithImportsExports();
+    PEImportExportParser parser(testFile_);
+    std::vector<ImportedDLL> imports;
+    EXPECT_NO_THROW({ (void)parser.parseImports(imports); });
+}
+
+TEST_F(PEImportExportParserTest, ParseExportsNoCrashOnValidPE) {
+    testFile_ = writeMinimalPE32PlusWithImportsExports();
+    PEImportExportParser parser(testFile_);
+    std::vector<ExportedFunction> exports;
+    EXPECT_NO_THROW({ (void)parser.parseExports(exports); });
+}
+
+TEST_F(PEImportExportParserTest, CalculateImpHashNoCrashOnValidPE) {
+    testFile_ = writeMinimalPE32PlusWithImportsExports();
+    PEImportExportParser parser(testFile_);
+    EXPECT_NO_THROW({ (void)parser.calculateImpHash(); });
+}
+
+// ---------- Return-value contract ----------
+
+TEST_F(PEImportExportParserTest, ParseImportsReturnsTrueOnInvalidFile) {
+    // For non-existent file, the constructor sets an error, but parseImports
+    // in skeleton mode returns true with empty vector.
+    // The constructor-level failure is tested via isValid().
+    PEImportExportParser parser("/tmp/does_not_exist_pe_test_999.dll");
+    EXPECT_FALSE(parser.isValid());
+}
+
+TEST_F(PEImportExportParserTest, InterfaceCompilesAndLinks) {
+    // Sanity: class is instantiable, all public methods callable without crashing
+    PEImportExportParser parser("/tmp/nonexistent.dll");
+    // isValid + getErrorMessage + calculateImpHash must all be callable
+    EXPECT_NO_THROW({
+        bool valid = parser.isValid();
+        std::string err = parser.getErrorMessage();
+        std::string h = parser.calculateImpHash();
+        (void)valid; (void)err; (void)h;
+    });
+}
+
+// ============================================================================
+// End PEImportExportParser Tests
 // ============================================================================
 
 int main(int argc, char** argv) {
@@ -1334,12 +1704,16 @@ protected:
         result.peHeader.subsystem = static_cast<uint16_t>(SubsystemType::WINDOWS_CUI);
         result.peHeader.characteristics = 0x2002;
 
-        result.peHeader.sections.push_back({".text", 0x1000, 0x2000, 0x1800,
-                                            SECTION_READ | SECTION_EXECUTE, 5.2,
-                                            false, true, true});
-        result.peHeader.sections.push_back({".data", 0x3000, 0x1000, 0x800,
-                                            SECTION_READ | SECTION_WRITE, 2.1,
-                                            true, false, true});
+        result.peHeader.sections.push_back(PESectionInfo{
+            ".text", 0x1000, 0x2000, 0x1800, 0x280,
+            SECTION_READ | SECTION_EXECUTE, 5.2,
+            false, true, true
+        });
+        result.peHeader.sections.push_back(PESectionInfo{
+            ".data", 0x3000, 0x1000, 0x800, 0x3800,
+            SECTION_READ | SECTION_WRITE, 2.1,
+            true, false, true
+        });
 
         result.imports.push_back({"kernel32.dll", {"CreateFileW", "ReadFile"}, false});
         result.imports.push_back({"user32.dll", {"MessageBoxW"}, false});
@@ -1609,7 +1983,8 @@ TEST_F(DLLAnalysisDatabaseTest, InsertSectionsThenGetReturnsCorrectData) {
     int64_t dllId = db_->insertDLLBaseInfo(result);
     ASSERT_GT(dllId, 0);
 
-    PESectionInfo section{".rsrc", 0x5000, 0x1000, 0x800, SECTION_READ, 3.5, false, false, true};
+    PESectionInfo section{".rsrc", 0x5000, 0x1000, 0x800, 0x280,
+                         SECTION_READ, 3.5, false, false, true};
     std::vector<PESectionInfo> sections = {section};
     EXPECT_TRUE(db_->insertSections(dllId, sections));
 

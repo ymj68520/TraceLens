@@ -196,6 +196,7 @@ struct PESectionInfo {
     uint32_t virtualAddress;
     uint32_t virtualSize;
     uint32_t rawDataSize;
+    uint32_t pointerToRawData;
     uint32_t characteristics;
     double entropy;
     bool isWriteable;

@@ -273,12 +273,21 @@ bool PEHeaderParser::parseSectionTable() {
         sectionInfo.virtualAddress = section.virtualAddress;
         sectionInfo.virtualSize = section.virtualSize;
         sectionInfo.rawDataSize = section.sizeOfRawData;
+        sectionInfo.pointerToRawData = section.pointerToRawData;
         sectionInfo.characteristics = section.characteristics;
 
         // 解析节属性
         sectionInfo.isReadable = (section.characteristics & SECTION_READ) != 0;
         sectionInfo.isWriteable = (section.characteristics & SECTION_WRITE) != 0;
         sectionInfo.isExecutable = (section.characteristics & SECTION_EXECUTE) != 0;
+
+        // 计算节熵值（跳过>100MB的节以避免内存问题）
+        if (sectionInfo.rawDataSize > 0 && sectionInfo.rawDataSize < 100 * 1024 * 1024) {
+            std::vector<uint8_t> sectionData = readSectionData(sectionInfo);
+            if (!sectionData.empty()) {
+                sectionInfo.entropy = calculateEntropy(sectionData);
+            }
+        }
 
         headerInfo_.sections.push_back(sectionInfo);
     }
@@ -296,6 +305,55 @@ bool PEHeaderParser::isValid() const {
 
 std::string PEHeaderParser::getErrorMessage() const {
     return errorMessage_;
+}
+
+// ============================================================================
+// 节熵值计算
+// ============================================================================
+
+std::vector<uint8_t> PEHeaderParser::readSectionData(const PESectionInfo& section) {
+    if (!file_.is_open() || section.rawDataSize == 0 || section.pointerToRawData == 0) {
+        return {};
+    }
+
+    file_.seekg(section.pointerToRawData);
+    std::vector<uint8_t> data(section.rawDataSize);
+    file_.read(reinterpret_cast<char*>(data.data()), section.rawDataSize);
+
+    if (!file_) {
+        return {};
+    }
+
+    return data;
+}
+
+double PEHeaderParser::calculateEntropy(const std::vector<uint8_t>& data) {
+    if (data.empty()) {
+        return 0.0;
+    }
+
+    // 统计字节频率
+    std::array<int, 256> freq = {0};
+    for (uint8_t byte : data) {
+        freq[byte]++;
+    }
+
+    // Shannon熵: H = -Σ p(x) * log2(p(x))
+    // Range: 0-8 bits/byte
+    // 0.0-6.0: Normal/Compressed
+    // 6.0-7.0: Compressed/Packed
+    // 7.0-8.0: Encrypted/Packed (highly suspicious)
+    double entropy = 0.0;
+    size_t total = data.size();
+
+    for (int count : freq) {
+        if (count > 0) {
+            double probability = static_cast<double>(count) / total;
+            entropy -= probability * std::log2(probability);
+        }
+    }
+
+    return entropy;
 }
 
 // ============================================================================

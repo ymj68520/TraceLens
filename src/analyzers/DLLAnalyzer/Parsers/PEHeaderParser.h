@@ -7,6 +7,9 @@
 
 #include <string>
 #include <vector>
+#include <array>
+#include <cmath>
+#include <cstdint>
 #include <fstream>
 #include "../Common/DLLDataTypes.h"
 
@@ -35,6 +38,9 @@ public:
     static std::string subsystemToString(SubsystemType type);
     static bool isDLL(uint16_t characteristics);
 
+    // 节熵值计算（公开工具方法，供测试和外部使用）
+    static double calculateEntropy(const std::vector<uint8_t>& data);
+
 private:
     // 解析步骤
     bool parseDOSHeader();
@@ -45,6 +51,9 @@ private:
     // 验证方法
     bool validateDOSHeader();
     bool validatePESignature();
+
+    // 节数据读取（仅parseSectionTable内部使用）
+    std::vector<uint8_t> readSectionData(const PESectionInfo& section);
 
     std::string filePath_;
     std::ifstream file_;
