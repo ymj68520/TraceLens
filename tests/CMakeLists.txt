@@ -433,17 +433,19 @@ add_executable(test_dll_analyzer_gtest
                UnitTest/test_dll_analyzer_gtest.cpp
                ../src/analyzers/DLLAnalyzer/Parsers/PEHeaderParser.cpp
                ../src/analyzers/DLLAnalyzer/Parsers/PEImportExportParser.cpp
+               ../src/analyzers/DLLAnalyzer/Core/PEAnalyzer.cpp
                ../src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.cpp
                ../src/core/AuditLog/AuditLog.cpp
                ../src/core/Logger/Logger.cpp)
 
 target_link_libraries(test_dll_analyzer_gtest ${GTEST_LIBRARIES}
-                      ${GMOCK_LIBRARIES} sqlite3 pthread)
+                      ${GMOCK_LIBRARIES} sqlite3 pthread OpenSSL::SSL)
 
 target_include_directories(test_dll_analyzer_gtest
                            PRIVATE ${CMAKE_SOURCE_DIR}/src
                                    ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer
                                    ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Common
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Core
                                    ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Parsers
                                    ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Database
                                    ${CMAKE_SOURCE_DIR}/src/core

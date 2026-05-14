@@ -1089,6 +1089,267 @@ TEST_F(PEImportExportParserTest, InterfaceCompilesAndLinks) {
 // End PEImportExportParser Tests
 // ============================================================================
 
+// ============================================================================
+// PEAnalyzer Tests
+// ============================================================================
+
+#include "analyzers/DLLAnalyzer/Core/PEAnalyzer.h"
+
+class PEAnalyzerTest : public ::testing::Test {
+protected:
+    std::string testFile_;
+
+    void TearDown() override {
+        if (!testFile_.empty()) {
+            std::remove(testFile_.c_str());
+        }
+    }
+};
+
+// ---------- 哈希计算测试 ----------
+
+TEST_F(PEAnalyzerTest, CalculateMD5ReturnsCorrectLength) {
+    testFile_ = writeMinimalPE32Plus();
+    std::string md5 = PEAnalyzer::calculateMD5(testFile_);
+    EXPECT_EQ(md5.length(), 32u) << "MD5 should be 32 hex characters";
+    // Verify all characters are valid hex
+    for (char c : md5) {
+        EXPECT_TRUE(std::isxdigit(c)) << "MD5 contains non-hex character: " << c;
+    }
+}
+
+TEST_F(PEAnalyzerTest, CalculateSHA1ReturnsCorrectLength) {
+    testFile_ = writeMinimalPE32Plus();
+    std::string sha1 = PEAnalyzer::calculateSHA1(testFile_);
+    EXPECT_EQ(sha1.length(), 40u) << "SHA1 should be 40 hex characters";
+    for (char c : sha1) {
+        EXPECT_TRUE(std::isxdigit(c)) << "SHA1 contains non-hex character: " << c;
+    }
+}
+
+TEST_F(PEAnalyzerTest, CalculateSHA256ReturnsCorrectLength) {
+    testFile_ = writeMinimalPE32Plus();
+    std::string sha256 = PEAnalyzer::calculateSHA256(testFile_);
+    EXPECT_EQ(sha256.length(), 64u) << "SHA256 should be 64 hex characters";
+    for (char c : sha256) {
+        EXPECT_TRUE(std::isxdigit(c)) << "SHA256 contains non-hex character: " << c;
+    }
+}
+
+TEST_F(PEAnalyzerTest, CalculateMD5ForEmptyFile) {
+    testFile_ = "/tmp/test_empty_hash.bin";
+    std::ofstream out(testFile_, std::ios::binary);
+    out.close();
+
+    std::string md5 = PEAnalyzer::calculateMD5(testFile_);
+    // MD5 of empty file = d41d8cd98f00b204e9800998ecf8427e
+    EXPECT_EQ(md5, "d41d8cd98f00b204e9800998ecf8427e");
+}
+
+TEST_F(PEAnalyzerTest, CalculateSHA256ForEmptyFile) {
+    testFile_ = "/tmp/test_empty_hash256.bin";
+    std::ofstream out(testFile_, std::ios::binary);
+    out.close();
+
+    std::string sha256 = PEAnalyzer::calculateSHA256(testFile_);
+    // SHA256 of empty file = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    EXPECT_EQ(sha256, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+}
+
+TEST_F(PEAnalyzerTest, CalculateHashForNonExistentFileReturnsEmpty) {
+    EXPECT_TRUE(PEAnalyzer::calculateMD5("/tmp/nonexistent_hash_test_999.dll").empty());
+    EXPECT_TRUE(PEAnalyzer::calculateSHA1("/tmp/nonexistent_hash_test_999.dll").empty());
+    EXPECT_TRUE(PEAnalyzer::calculateSHA256("/tmp/nonexistent_hash_test_999.dll").empty());
+}
+
+TEST_F(PEAnalyzerTest, MD5AndSHA256DifferForSameFile) {
+    testFile_ = writeMinimalPE32Plus();
+    std::string md5 = PEAnalyzer::calculateMD5(testFile_);
+    std::string sha256 = PEAnalyzer::calculateSHA256(testFile_);
+    EXPECT_NE(md5, sha256) << "MD5 and SHA256 should be different for same file";
+}
+
+// ---------- 端到端分析测试 ----------
+
+TEST_F(PEAnalyzerTest, AnalyzeProducesValidResult) {
+    testFile_ = writeMinimalPE32Plus();
+    PEAnalyzer analyzer;
+    DLLAnalysisResult result = analyzer.analyze(testFile_);
+
+    // 文件信息
+    EXPECT_TRUE(result.fileName.find("test_pe32plus.dll") != std::string::npos);
+    EXPECT_FALSE(result.filePath.empty());
+    EXPECT_GT(result.fileSize, 0u);
+
+    // 哈希（非空且长度正确）
+    EXPECT_EQ(result.md5Hash.length(), 32u);
+    EXPECT_EQ(result.sha1Hash.length(), 40u);
+    EXPECT_EQ(result.sha256Hash.length(), 64u);
+
+    // PE头有效
+    EXPECT_TRUE(result.peHeader.isValid);
+    EXPECT_EQ(result.peHeader.format, "PE32+");
+    EXPECT_EQ(result.peHeader.machine, MachineType::x64);
+    EXPECT_TRUE(result.peHeader.isDLL);
+
+    // 节表
+    EXPECT_GT(result.peHeader.sections.size(), 0u);
+    EXPECT_FALSE(result.peHeader.sections[0].name.empty());
+    EXPECT_GT(result.peHeader.sections[0].entropy, 0.0);
+
+    // 威胁评分初始化为0
+    EXPECT_EQ(result.threatScore, 0);
+
+    // ImpHash占位返回空（当前骨架实现）
+    EXPECT_TRUE(result.impHash.empty() || result.impHash.length() == 4);
+
+    // 签名状态占位返回"Unsigned"
+    EXPECT_EQ(result.signatureStatus, "Unsigned");
+
+    // 版本信息占位返回"Unknown"
+    EXPECT_EQ(result.fileVersion, "Unknown");
+}
+
+TEST_F(PEAnalyzerTest, AnalyzePE32File) {
+    testFile_ = writeMinimalPE32();
+    PEAnalyzer analyzer;
+    DLLAnalysisResult result = analyzer.analyze(testFile_);
+
+    EXPECT_TRUE(result.peHeader.isValid);
+    EXPECT_EQ(result.peHeader.format, "PE32");
+    EXPECT_EQ(result.peHeader.machine, MachineType::X86);
+    EXPECT_TRUE(result.peHeader.isDLL);
+    EXPECT_EQ(result.threatScore, 0);
+    EXPECT_TRUE(result.fileName.find("test_pe32.dll") != std::string::npos);
+}
+
+TEST_F(PEAnalyzerTest, AnalyzeInvalidFileReturnsEmptyResult) {
+    testFile_ = "/tmp/test_not_a_pe.bin";
+    std::ofstream out(testFile_, std::ios::binary);
+    out.write("JUST SOME RANDOM DATA", 22);
+    out.close();
+
+    PEAnalyzer analyzer;
+    DLLAnalysisResult result = analyzer.analyze(testFile_);
+
+    // PE头应标记为无效
+    EXPECT_FALSE(result.peHeader.isValid);
+    // 哈希仍会被计算（对任何存在的文件都执行）
+    EXPECT_FALSE(result.md5Hash.empty());
+    EXPECT_FALSE(result.sha1Hash.empty());
+    EXPECT_FALSE(result.sha256Hash.empty());
+    // 占位字段设默认值
+    EXPECT_EQ(result.fileVersion, "Unknown");
+    EXPECT_EQ(result.signatureStatus, "Unsigned");
+    EXPECT_EQ(result.threatScore, 0);
+}
+
+TEST_F(PEAnalyzerTest, AnalyzeEmptyFileReturnsEmptyResult) {
+    testFile_ = "/tmp/test_empty_pe.bin";
+    std::ofstream out(testFile_, std::ios::binary);
+    out.close();
+
+    PEAnalyzer analyzer;
+    DLLAnalysisResult result = analyzer.analyze(testFile_);
+
+    EXPECT_FALSE(result.peHeader.isValid);
+    EXPECT_EQ(result.threatScore, 0);
+}
+
+TEST_F(PEAnalyzerTest, AnalyzeNonExistentFileReturnsEmptyResult) {
+    PEAnalyzer analyzer;
+    DLLAnalysisResult result = analyzer.analyze("/tmp/does_not_exist_pe_999.dll");
+
+    EXPECT_FALSE(result.peHeader.isValid);
+    EXPECT_TRUE(result.md5Hash.empty());
+    EXPECT_TRUE(result.sha1Hash.empty());
+    EXPECT_TRUE(result.sha256Hash.empty());
+    EXPECT_TRUE(result.imports.empty());
+    EXPECT_TRUE(result.exports.empty());
+    EXPECT_EQ(result.threatScore, 0);
+}
+
+TEST_F(PEAnalyzerTest, FileNameExtractedCorrectly) {
+    testFile_ = "/tmp/test_file_name_extraction.dll";
+    std::ofstream out(testFile_, std::ios::binary);
+    // Write minimal DOS header so it is a valid file path target
+    DOSHeader dos = {};
+    dos.e_magic = 0x5A4D;
+    dos.e_lfanew = 0x80;
+    out.write(reinterpret_cast<const char*>(&dos), sizeof(dos));
+    out.close();
+
+    PEAnalyzer analyzer;
+    DLLAnalysisResult result = analyzer.analyze(testFile_);
+
+    EXPECT_EQ(result.fileName, "test_file_name_extraction.dll");
+}
+
+TEST_F(PEAnalyzerTest, ThreatScoreInitializedToZero) {
+    testFile_ = writeMinimalPE32Plus();
+    PEAnalyzer analyzer;
+    DLLAnalysisResult result = analyzer.analyze(testFile_);
+
+    EXPECT_EQ(result.threatScore, 0);
+}
+
+TEST_F(PEAnalyzerTest, AllHashesNonEmptyForValidPE) {
+    testFile_ = writeMinimalPE32();
+    PEAnalyzer analyzer;
+    DLLAnalysisResult result = analyzer.analyze(testFile_);
+
+    EXPECT_FALSE(result.md5Hash.empty()) << "MD5 should not be empty for valid file";
+    EXPECT_FALSE(result.sha1Hash.empty()) << "SHA1 should not be empty for valid file";
+    EXPECT_FALSE(result.sha256Hash.empty()) << "SHA256 should not be empty for valid file";
+}
+
+TEST_F(PEAnalyzerTest, PEHeaderInfoExtractedCorrectly) {
+    testFile_ = writeMinimalPE32Plus();
+    PEAnalyzer analyzer;
+    DLLAnalysisResult result = analyzer.analyze(testFile_);
+
+    EXPECT_TRUE(result.peHeader.isValid);
+    EXPECT_EQ(result.peHeader.format, "PE32+");
+    EXPECT_EQ(result.peHeader.machine, MachineType::x64);
+    EXPECT_TRUE(result.peHeader.isDLL);
+    EXPECT_GT(result.peHeader.numberOfSections, 0u);
+    EXPECT_EQ(result.peHeader.subsystem, 3u);  // WINDOWS_CUI
+    EXPECT_EQ(result.peHeader.entryPointRVA, 0x1000u);
+    EXPECT_EQ(result.peHeader.imageBase, 0x140000000u);
+    EXPECT_EQ(result.peHeader.sectionAlignment, 0x1000u);
+    EXPECT_EQ(result.peHeader.fileAlignment, 0x200u);
+}
+
+TEST_F(PEAnalyzerTest, SectionsContainEntropy) {
+    testFile_ = writeMinimalPE32();
+    PEAnalyzer analyzer;
+    DLLAnalysisResult result = analyzer.analyze(testFile_);
+
+    ASSERT_FALSE(result.peHeader.sections.empty());
+    const auto& section = result.peHeader.sections[0];
+    EXPECT_FALSE(section.name.empty());
+    EXPECT_GT(section.entropy, 0.0);
+    EXPECT_TRUE(section.isReadable);
+    EXPECT_TRUE(section.isExecutable);
+    EXPECT_FALSE(section.isWriteable);
+}
+
+TEST_F(PEAnalyzerTest, InterfaceCompilesAndLinks) {
+    // Sanity: class is instantiable, all public methods callable without crashing
+    PEAnalyzer analyzer;
+    EXPECT_NO_THROW({
+        std::string md5 = PEAnalyzer::calculateMD5("/tmp/nonexistent.dll");
+        std::string sha1 = PEAnalyzer::calculateSHA1("/tmp/nonexistent.dll");
+        std::string sha256 = PEAnalyzer::calculateSHA256("/tmp/nonexistent.dll");
+        DLLAnalysisResult result = analyzer.analyze("/tmp/nonexistent.dll");
+        (void)md5; (void)sha1; (void)sha256; (void)result;
+    });
+}
+
+// ============================================================================
+// End PEAnalyzer Tests
+// ============================================================================
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
