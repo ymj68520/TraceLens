@@ -461,6 +461,43 @@ target_include_directories(test_dll_analyzer_gtest
 
 add_test(NAME DLLAnalyzerGTests COMMAND test_dll_analyzer_gtest)
 
+# DLL Analyzer Integration Tests
+add_executable(test_dll_analyzer_integration
+               integration_dll_analyzer.cpp
+               ../src/analyzers/DLLAnalyzer/Parsers/PEHeaderParser.cpp
+               ../src/analyzers/DLLAnalyzer/Parsers/PEImportExportParser.cpp
+               ../src/analyzers/DLLAnalyzer/Parsers/ELFParser.cpp
+               ../src/analyzers/DLLAnalyzer/Parsers/SignatureVerifier.cpp
+               ../src/analyzers/DLLAnalyzer/Core/PEAnalyzer.cpp
+               ../src/analyzers/DLLAnalyzer/Core/AnomalyDetector.cpp
+               ../src/analyzers/DLLAnalyzer/Core/DependencyAnalyzer.cpp
+               ../src/analyzers/DLLAnalyzer/Core/DLLAnalyzerCore.cpp
+               ../src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.cpp
+               ../src/core/AuditLog/AuditLog.cpp
+               ../src/core/Logger/Logger.cpp
+               ../src/core/ThreadPool/ThreadPool.cpp)
+
+target_link_libraries(test_dll_analyzer_integration ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} sqlite3 pthread OpenSSL::SSL)
+
+target_include_directories(test_dll_analyzer_integration
+                           PRIVATE ${CMAKE_SOURCE_DIR}/src
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Common
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Core
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Parsers
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Database
+                                   ${CMAKE_SOURCE_DIR}/src/core
+                                   ${CMAKE_SOURCE_DIR}/src/core/AuditLog
+                                   ${CMAKE_SOURCE_DIR}/src/core/Logger
+                                   ${CMAKE_SOURCE_DIR}/src/core/ThreadPool
+                                   ${CMAKE_CURRENT_SOURCE_DIR})
+
+target_compile_definitions(test_dll_analyzer_integration PRIVATE
+    TEST_SAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/samples")
+
+add_test(NAME DLLAnalyzerIntegrationTests COMMAND test_dll_analyzer_integration)
+
 # Integration Test for MySQL Daemon
 add_executable(
   test_mysql_daemon

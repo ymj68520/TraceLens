@@ -148,6 +148,9 @@ void ELFParser::parseProgramHeaders(const std::string& filePath, ELFHeaderInfo& 
     ELFIdent ident;
     file.read(reinterpret_cast<char*>(&ident), sizeof(ELFIdent));
 
+    // 重新定位到文件开头读取完整头
+    file.seekg(0, std::ios::beg);
+
     if (ident.fileClass == ELFCLASS32) {
         ELFHeader32 header;
         file.read(reinterpret_cast<char*>(&header), sizeof(ELFHeader32));
@@ -167,13 +170,18 @@ void ELFParser::parseProgramHeaders32(std::ifstream& file, uint64_t offset, uint
                                        std::vector<ELFProgramHeader>& entries) {
     file.seekg(offset, std::ios::beg);
 
+    if (!file) {
+        LOG_WARNING("Failed to seek to program headers at offset " + std::to_string(offset));
+        return;
+    }
+
     entries.reserve(count);
     for (uint16_t i = 0; i < count; i++) {
         ProgramHeader32 ph32;
         file.read(reinterpret_cast<char*>(&ph32), sizeof(ProgramHeader32));
 
         if (!file) {
-            LOG_WARNING("Failed to read program header " + std::to_string(i));
+            LOG_WARNING("Failed to read program header " + std::to_string(i) + " at offset " + std::to_string(file.tellg()));
             break;
         }
 
@@ -228,6 +236,9 @@ void ELFParser::parseSectionHeaders(const std::string& filePath, ELFHeaderInfo& 
     // 读取标识确定class
     ELFIdent ident;
     file.read(reinterpret_cast<char*>(&ident), sizeof(ELFIdent));
+
+    // 重新定位到文件开头读取完整头
+    file.seekg(0, std::ios::beg);
 
     if (ident.fileClass == ELFCLASS32) {
         ELFHeader32 header;
