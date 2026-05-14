@@ -428,15 +428,24 @@ target_link_libraries(test_database_analyzer_gtest ${GTEST_LIBRARIES}
 
 add_test(NAME DatabaseAnalyzerGTests COMMAND test_database_analyzer_gtest)
 
-# DLL Analyzer Tests (SQL schema + data structures)
+# DLL Analyzer Tests (SQL schema + data structures + database operations)
 add_executable(test_dll_analyzer_gtest
-               UnitTest/test_dll_analyzer_gtest.cpp)
+               UnitTest/test_dll_analyzer_gtest.cpp
+               ../src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.cpp
+               ../src/core/AuditLog/AuditLog.cpp
+               ../src/core/Logger/Logger.cpp)
 
 target_link_libraries(test_dll_analyzer_gtest ${GTEST_LIBRARIES}
                       ${GMOCK_LIBRARIES} sqlite3 pthread)
 
 target_include_directories(test_dll_analyzer_gtest
-                           PRIVATE ${CMAKE_SOURCE_DIR}/src)
+                           PRIVATE ${CMAKE_SOURCE_DIR}/src
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Common
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Database
+                                   ${CMAKE_SOURCE_DIR}/src/core
+                                   ${CMAKE_SOURCE_DIR}/src/core/AuditLog
+                                   ${CMAKE_SOURCE_DIR}/src/core/Logger)
 
 add_test(NAME DLLAnalyzerGTests COMMAND test_dll_analyzer_gtest)
 

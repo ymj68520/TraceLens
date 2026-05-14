@@ -942,3 +942,417 @@ TEST_F(DLLSQLSchemaTest, DLLPendingAnalysisQueryCompiles) {
     EXPECT_NE(stmt, nullptr);
     sqlite3_finalize(stmt);
 }
+
+// ============================================================================
+// DLLAnalysisDatabase Tests
+// ============================================================================
+
+#include "analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.h"
+#include "analyzers/DLLAnalyzer/Common/DLLDataTypes.h"
+
+class DLLAnalysisDatabaseTest : public ::testing::Test {
+protected:
+    std::string dbPath_ = ":memory:";
+    std::unique_ptr<DLLAnalysisDatabase> db_;
+
+    void SetUp() override {
+        db_ = std::make_unique<DLLAnalysisDatabase>(dbPath_);
+        ASSERT_TRUE(db_->initialize());
+    }
+
+    // Helper: build a minimal DLLAnalysisResult
+    DLLAnalysisResult makeTestResult(int64_t inode, const std::string& name,
+                                      const std::string& path, int threatScore = 0) {
+        DLLAnalysisResult result;
+        result.inode = inode;
+        result.fileName = name;
+        result.filePath = path;
+        result.fileSize = 102400;
+        result.md5Hash = "d41d8cd98f00b204e9800998ecf8427e";
+        result.sha256Hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+        result.impHash = "imp_hash_" + std::to_string(inode);
+        result.threatScore = threatScore;
+
+        result.peHeader.isValid = true;
+        result.peHeader.format = "PE32+";
+        result.peHeader.machine = MachineType::x64;
+        result.peHeader.numberOfSections = 2;
+        result.peHeader.timestamp = 1234567890;
+        result.peHeader.isDLL = true;
+        result.peHeader.imageBase = 0x140000000;
+        result.peHeader.entryPointRVA = 0x1000;
+        result.peHeader.subsystem = static_cast<uint16_t>(SubsystemType::WINDOWS_CUI);
+        result.peHeader.characteristics = 0x2002;
+
+        result.peHeader.sections.push_back({".text", 0x1000, 0x2000, 0x1800,
+                                            SECTION_READ | SECTION_EXECUTE, 5.2,
+                                            false, true, true});
+        result.peHeader.sections.push_back({".data", 0x3000, 0x1000, 0x800,
+                                            SECTION_READ | SECTION_WRITE, 2.1,
+                                            true, false, true});
+
+        result.imports.push_back({"kernel32.dll", {"CreateFileW", "ReadFile"}, false});
+        result.imports.push_back({"user32.dll", {"MessageBoxW"}, false});
+
+        result.exports.push_back({"DllMain", 1, 0x5000});
+        result.exports.push_back({"DllRegisterServer", 2, 0x5010});
+
+        result.fileDescription = "Test DLL";
+        result.companyName = "TestCorp";
+        result.signatureStatus = "Unsigned";
+
+        return result;
+    }
+};
+
+TEST_F(DLLAnalysisDatabaseTest, InitializeCreatesTables) {
+    // Tables should already be created by initialize()
+    // Verify by inserting a record — should succeed without error
+    DLLAnalysisResult result = makeTestResult(100, "init_test.dll", "/tmp/init_test.dll");
+    int64_t id = db_->insertDLLBaseInfo(result);
+    EXPECT_GT(id, 0) << "Insert should succeed after initialize()";
+}
+
+TEST_F(DLLAnalysisDatabaseTest, InsertDLLBaseInfoReturnsPositiveId) {
+    DLLAnalysisResult result = makeTestResult(1, "test.dll", "/usr/bin/test.dll");
+    int64_t id = db_->insertDLLBaseInfo(result);
+    EXPECT_GT(id, 0) << "insertDLLBaseInfo should return positive ID";
+}
+
+TEST_F(DLLAnalysisDatabaseTest, GetDLLByInode) {
+    DLLAnalysisResult result = makeTestResult(12345, "by_inode.dll", "/tmp/by_inode.dll", 25);
+    int64_t id = db_->insertDLLBaseInfo(result);
+    ASSERT_GT(id, 0);
+
+    auto found = db_->getDLLByInode(12345);
+    ASSERT_TRUE(found.has_value());
+    EXPECT_EQ(found->inode, 12345);
+    EXPECT_EQ(found->fileName, "by_inode.dll");
+    EXPECT_EQ(found->filePath, "/tmp/by_inode.dll");
+    EXPECT_EQ(found->threatScore, 25);
+    EXPECT_EQ(found->peHeader.format, "PE32+");
+    EXPECT_EQ(found->md5Hash, "d41d8cd98f00b204e9800998ecf8427e");
+}
+
+TEST_F(DLLAnalysisDatabaseTest, GetDLLByPath) {
+    DLLAnalysisResult result = makeTestResult(54321, "by_path.dll", "/opt/by_path.dll", 50);
+    int64_t id = db_->insertDLLBaseInfo(result);
+    ASSERT_GT(id, 0);
+
+    auto found = db_->getDLLByPath("/opt/by_path.dll");
+    ASSERT_TRUE(found.has_value());
+    EXPECT_EQ(found->inode, 54321);
+    EXPECT_EQ(found->fileName, "by_path.dll");
+    EXPECT_EQ(found->threatScore, 50);
+}
+
+TEST_F(DLLAnalysisDatabaseTest, GetDLLById) {
+    DLLAnalysisResult result = makeTestResult(99999, "by_id.dll", "/tmp/by_id.dll");
+    int64_t id = db_->insertDLLBaseInfo(result);
+    ASSERT_GT(id, 0);
+
+    auto found = db_->getDLLById(id);
+    ASSERT_TRUE(found.has_value());
+    EXPECT_EQ(found->fileName, "by_id.dll");
+    EXPECT_EQ(found->peHeader.machine, MachineType::x64);
+}
+
+TEST_F(DLLAnalysisDatabaseTest, GetDLLByInodeNotFound) {
+    auto found = db_->getDLLByInode(9999999);
+    EXPECT_FALSE(found.has_value());
+}
+
+TEST_F(DLLAnalysisDatabaseTest, GetDLLByPathNotFound) {
+    auto found = db_->getDLLByPath("/nonexistent/path.dll");
+    EXPECT_FALSE(found.has_value());
+}
+
+TEST_F(DLLAnalysisDatabaseTest, UpdateThreatScore) {
+    DLLAnalysisResult result = makeTestResult(111, "score_update.dll", "/tmp/score_update.dll", 10);
+    int64_t id = db_->insertDLLBaseInfo(result);
+    ASSERT_GT(id, 0);
+
+    EXPECT_TRUE(db_->updateThreatScore(id, 80));
+
+    auto found = db_->getDLLById(id);
+    ASSERT_TRUE(found.has_value());
+    EXPECT_EQ(found->threatScore, 80);
+}
+
+TEST_F(DLLAnalysisDatabaseTest, UpdateDLLAnalysis) {
+    DLLAnalysisResult result = makeTestResult(222, "update_test.dll", "/tmp/update_test.dll");
+    int64_t id = db_->insertDLLBaseInfo(result);
+    ASSERT_GT(id, 0);
+
+    DLLAnalysisResult updateData = makeTestResult(222, "update_test.dll", "/tmp/update_test.dll");
+    updateData.threatScore = 60;
+    EXPECT_TRUE(db_->updateDLLAnalysis(id, updateData));
+
+    auto found = db_->getDLLById(id);
+    ASSERT_TRUE(found.has_value());
+    EXPECT_EQ(found->threatScore, 60);
+    EXPECT_EQ(found->peHeader.format, "PE32+");
+}
+
+TEST_F(DLLAnalysisDatabaseTest, InsertAndGetSections) {
+    DLLAnalysisResult result = makeTestResult(333, "sections_test.dll", "/tmp/sections_test.dll");
+    int64_t dllId = db_->insertDLLBaseInfo(result);
+    ASSERT_GT(dllId, 0);
+
+    std::vector<PESectionInfo> sections = result.peHeader.sections;
+    EXPECT_TRUE(db_->insertSections(dllId, sections));
+
+    auto retrieved = db_->getSections(dllId);
+    ASSERT_EQ(retrieved.size(), 2u);
+    EXPECT_EQ(retrieved[0].name, ".text");
+    EXPECT_EQ(retrieved[1].name, ".data");
+    EXPECT_NEAR(retrieved[0].entropy, 5.2, 0.01);
+    EXPECT_TRUE(retrieved[0].isExecutable);
+    EXPECT_TRUE(retrieved[1].isWriteable);
+}
+
+TEST_F(DLLAnalysisDatabaseTest, InsertAndGetImports) {
+    DLLAnalysisResult result = makeTestResult(444, "imports_test.dll", "/tmp/imports_test.dll");
+    int64_t dllId = db_->insertDLLBaseInfo(result);
+    ASSERT_GT(dllId, 0);
+
+    EXPECT_TRUE(db_->insertImports(dllId, result.imports));
+
+    auto retrieved = db_->getImports(dllId);
+    ASSERT_EQ(retrieved.size(), 2u);
+    EXPECT_EQ(retrieved[0].name, "kernel32.dll");
+    ASSERT_EQ(retrieved[0].functions.size(), 2u);
+    EXPECT_EQ(retrieved[0].functions[0], "CreateFileW");
+    EXPECT_EQ(retrieved[1].name, "user32.dll");
+}
+
+TEST_F(DLLAnalysisDatabaseTest, InsertAndGetExports) {
+    DLLAnalysisResult result = makeTestResult(555, "exports_test.dll", "/tmp/exports_test.dll");
+    int64_t dllId = db_->insertDLLBaseInfo(result);
+    ASSERT_GT(dllId, 0);
+
+    EXPECT_TRUE(db_->insertExports(dllId, result.exports));
+
+    auto retrieved = db_->getExports(dllId);
+    ASSERT_EQ(retrieved.size(), 2u);
+    EXPECT_EQ(retrieved[0].name, "DllMain");
+    EXPECT_EQ(retrieved[0].ordinal, 1);
+    EXPECT_EQ(retrieved[0].rva, 0x5000);
+}
+
+TEST_F(DLLAnalysisDatabaseTest, InsertAndGetAnomalies) {
+    DLLAnalysisResult result = makeTestResult(666, "anomalies_test.dll", "/tmp/anomalies_test.dll");
+    int64_t dllId = db_->insertDLLBaseInfo(result);
+    ASSERT_GT(dllId, 0);
+
+    Anomaly anomaly1{"HIGH_ENTROPY", "Code section high entropy", RiskLevel::HIGH, 15};
+    Anomaly anomaly2{"SUSPICIOUS_IMPORTS", "Found suspicious functions", RiskLevel::MEDIUM, 20};
+
+    EXPECT_TRUE(db_->insertAnomaly(dllId, anomaly1));
+    EXPECT_TRUE(db_->insertAnomaly(dllId, anomaly2));
+
+    auto retrieved = db_->getAnomalies(dllId);
+    ASSERT_EQ(retrieved.size(), 2u);
+    EXPECT_EQ(retrieved[0].type, "HIGH_ENTROPY");
+    EXPECT_EQ(retrieved[0].risk, RiskLevel::HIGH);
+    EXPECT_EQ(retrieved[1].type, "SUSPICIOUS_IMPORTS");
+    EXPECT_EQ(retrieved[1].riskScore, 20);
+}
+
+TEST_F(DLLAnalysisDatabaseTest, InsertAndGetDependencies) {
+    DLLAnalysisResult parent = makeTestResult(7001, "parent.dll", "/tmp/parent.dll");
+    DLLAnalysisResult child = makeTestResult(7002, "child.dll", "/tmp/child.dll");
+
+    int64_t parentId = db_->insertDLLBaseInfo(parent);
+    int64_t childId = db_->insertDLLBaseInfo(child);
+    ASSERT_GT(parentId, 0);
+    ASSERT_GT(childId, 0);
+
+    EXPECT_TRUE(db_->insertDependency(parentId, childId, 1));
+
+    auto deps = db_->getDependencies(parentId);
+    ASSERT_EQ(deps.size(), 1u);
+    EXPECT_EQ(deps[0].first, parentId);
+    EXPECT_EQ(deps[0].second, childId);
+}
+
+TEST_F(DLLAnalysisDatabaseTest, InsertAndGetForensicLinks) {
+    DLLAnalysisResult result = makeTestResult(888, "links_test.dll", "/tmp/links_test.dll");
+    int64_t dllId = db_->insertDLLBaseInfo(result);
+    ASSERT_GT(dllId, 0);
+
+    EXPECT_TRUE(db_->insertForensicLink(dllId, "registry_reference", "reg_001",
+                                        "HKLM\\Software\\Test\\Value"));
+    EXPECT_TRUE(db_->insertForensicLink(dllId, "file_association", "file_001",
+                                        "C:\\Windows\\System32\\test.dll"));
+
+    auto links = db_->getForensicLinks(dllId);
+    ASSERT_EQ(links.size(), 2u);
+    EXPECT_EQ(std::get<0>(links[0]), "registry_reference");
+    EXPECT_EQ(std::get<1>(links[0]), "reg_001");
+    EXPECT_EQ(std::get<0>(links[1]), "file_association");
+}
+
+TEST_F(DLLAnalysisDatabaseTest, GetDLLsByThreatScore) {
+    for (int i = 0; i < 5; ++i) {
+        DLLAnalysisResult result = makeTestResult(10000 + i,
+            "threat_" + std::to_string(i) + ".dll",
+            "/tmp/threat_" + std::to_string(i) + ".dll",
+            10 + i * 20);
+        db_->insertDLLBaseInfo(result);
+    }
+
+    auto suspicious = db_->getDLLsByThreatScore(50);
+    // Should return threat scores >= 50: i=2 (50), i=3 (70), i=4 (90)
+    ASSERT_EQ(suspicious.size(), 3u);
+    EXPECT_GE(suspicious[0].threatScore, 30);
+}
+
+TEST_F(DLLAnalysisDatabaseTest, GetAllDLLs) {
+    for (int i = 0; i < 3; ++i) {
+        DLLAnalysisResult result = makeTestResult(20000 + i,
+            "all_" + std::to_string(i) + ".dll",
+            "/tmp/all_" + std::to_string(i) + ".dll");
+        db_->insertDLLBaseInfo(result);
+    }
+
+    auto all = db_->getAllDLLs(10);
+    ASSERT_EQ(all.size(), 3u);
+}
+
+TEST_F(DLLAnalysisDatabaseTest, GetDLLCount) {
+    EXPECT_EQ(db_->getDLLCount(), 0u);
+
+    db_->insertDLLBaseInfo(makeTestResult(301, "count1.dll", "/tmp/count1.dll"));
+    db_->insertDLLBaseInfo(makeTestResult(302, "count2.dll", "/tmp/count2.dll"));
+
+    EXPECT_EQ(db_->getDLLCount(), 2u);
+}
+
+TEST_F(DLLAnalysisDatabaseTest, GetSuspiciousCount) {
+    // threat_score >= 30 is suspicious
+    for (int i = 0; i < 4; ++i) {
+        DLLAnalysisResult result = makeTestResult(4000 + i,
+            "susp_" + std::to_string(i) + ".dll",
+            "/tmp/susp_" + std::to_string(i) + ".dll",
+            i * 25); // 0, 25, 50, 75
+        db_->insertDLLBaseInfo(result);
+    }
+
+    EXPECT_EQ(db_->getSuspiciousCount(), 2u); // scores 50 and 75
+}
+
+TEST_F(DLLAnalysisDatabaseTest, GetAverageThreatScore) {
+    // Empty DB: average of empty set = 0
+    EXPECT_EQ(db_->getAverageThreatScore(), 0);
+
+    DLLAnalysisResult result = makeTestResult(5001, "avg1.dll", "/tmp/avg1.dll", 40);
+    db_->insertDLLBaseInfo(result);
+    result = makeTestResult(5002, "avg2.dll", "/tmp/avg2.dll", 60);
+    db_->insertDLLBaseInfo(result);
+
+    EXPECT_EQ(db_->getAverageThreatScore(), 50);
+}
+
+TEST_F(DLLAnalysisDatabaseTest, InsertSectionsThenGetReturnsCorrectData) {
+    DLLAnalysisResult result = makeTestResult(601, "sec_test.dll", "/tmp/sec_test.dll");
+    int64_t dllId = db_->insertDLLBaseInfo(result);
+    ASSERT_GT(dllId, 0);
+
+    PESectionInfo section{".rsrc", 0x5000, 0x1000, 0x800, SECTION_READ, 3.5, false, false, true};
+    std::vector<PESectionInfo> sections = {section};
+    EXPECT_TRUE(db_->insertSections(dllId, sections));
+
+    auto retrieved = db_->getSections(dllId);
+    ASSERT_EQ(retrieved.size(), 1u);
+    EXPECT_EQ(retrieved[0].name, ".rsrc");
+    EXPECT_EQ(retrieved[0].virtualAddress, 0x5000);
+    EXPECT_NEAR(retrieved[0].entropy, 3.5, 0.001);
+}
+
+TEST_F(DLLAnalysisDatabaseTest, InsertExportsThenGetReturnsCorrectData) {
+    DLLAnalysisResult result = makeTestResult(701, "exp_test.dll", "/tmp/exp_test.dll");
+    int64_t dllId = db_->insertDLLBaseInfo(result);
+    ASSERT_GT(dllId, 0);
+
+    std::vector<ExportedFunction> exports = {
+        {"DllRegisterServer", 1, 0x5000},
+        {"DllUnregisterServer", 2, 0x5010}
+    };
+    EXPECT_TRUE(db_->insertExports(dllId, exports));
+
+    auto retrieved = db_->getExports(dllId);
+    ASSERT_EQ(retrieved.size(), 2u);
+    EXPECT_EQ(retrieved[0].name, "DllRegisterServer");
+    EXPECT_EQ(retrieved[0].ordinal, 1);
+    EXPECT_EQ(retrieved[1].name, "DllUnregisterServer");
+}
+
+TEST_F(DLLAnalysisDatabaseTest, InsertAnomalyThenGetReturnsCorrectData) {
+    DLLAnalysisResult result = makeTestResult(801, "anom_test.dll", "/tmp/anom_test.dll");
+    int64_t dllId = db_->insertDLLBaseInfo(result);
+    ASSERT_GT(dllId, 0);
+
+    Anomaly anomaly{"RWX_SECTION", "Writable and executable section", RiskLevel::CRITICAL, 35};
+    EXPECT_TRUE(db_->insertAnomaly(dllId, anomaly));
+
+    auto retrieved = db_->getAnomalies(dllId);
+    ASSERT_EQ(retrieved.size(), 1u);
+    EXPECT_EQ(retrieved[0].type, "RWX_SECTION");
+    EXPECT_EQ(retrieved[0].risk, RiskLevel::CRITICAL);
+    EXPECT_EQ(retrieved[0].riskScore, 35);
+}
+
+TEST_F(DLLAnalysisDatabaseTest, InsertMultipleForensicLinks) {
+    DLLAnalysisResult result = makeTestResult(901, "links2.dll", "/tmp/links2.dll");
+    int64_t dllId = db_->insertDLLBaseInfo(result);
+    ASSERT_GT(dllId, 0);
+
+    EXPECT_TRUE(db_->insertForensicLink(dllId, "type_a", "src_a", "data_a"));
+    EXPECT_TRUE(db_->insertForensicLink(dllId, "type_b", "src_b", "data_b"));
+
+    auto links = db_->getForensicLinks(dllId);
+    ASSERT_EQ(links.size(), 2u);
+}
+
+TEST_F(DLLAnalysisDatabaseTest, GetSuspiciousDLLsWithLimit) {
+    for (int i = 0; i < 5; ++i) {
+        DLLAnalysisResult result = makeTestResult(3000 + i,
+            "dll" + std::to_string(i) + ".dll",
+            "/tmp/dll" + std::to_string(i) + ".dll",
+            10 + i * 30);
+        db_->insertDLLBaseInfo(result);
+    }
+
+    auto suspicious = db_->getSuspiciousDLLs(2);
+    EXPECT_LE(suspicious.size(), 2u);
+    // Default threshold is 30, so should have scores 40, 70, 100 (3 total, limited to 2)
+    if (suspicious.size() > 1) {
+        EXPECT_GE(suspicious[0].threatScore, suspicious[1].threatScore);
+    }
+}
+
+TEST_F(DLLAnalysisDatabaseTest, EmptySectionListReturnsEmptyVector) {
+    DLLAnalysisResult result = makeTestResult(401, "empty_sec.dll", "/tmp/empty_sec.dll");
+    int64_t dllId = db_->insertDLLBaseInfo(result);
+
+    auto sections = db_->getSections(dllId);
+    EXPECT_TRUE(sections.empty());
+}
+
+TEST_F(DLLAnalysisDatabaseTest, EmptyImportsReturnsEmptyVector) {
+    DLLAnalysisResult result = makeTestResult(501, "empty_imp.dll", "/tmp/empty_imp.dll");
+    int64_t dllId = db_->insertDLLBaseInfo(result);
+
+    auto imports = db_->getImports(dllId);
+    EXPECT_TRUE(imports.empty());
+}
+
+TEST_F(DLLAnalysisDatabaseTest, EmptyExportsReturnsEmptyVector) {
+    DLLAnalysisResult result = makeTestResult(601, "empty_exp.dll", "/tmp/empty_exp.dll");
+    int64_t dllId = db_->insertDLLBaseInfo(result);
+
+    auto exports = db_->getExports(dllId);
+    EXPECT_TRUE(exports.empty());
+}
+
