@@ -10,9 +10,11 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <memory>
 #include "../Common/DLLDataTypes.h"
 #include "Parsers/PEHeaderParser.h"
 #include "Parsers/PEImportExportParser.h"
+#include "Parsers/SignatureVerifier.h"
 
 namespace forensics {
 namespace dll {
@@ -110,7 +112,7 @@ private:
     /**
      * @brief 验证PE文件数字签名
      * @param filePath 文件路径
-     * @return 签名状态（占位实现，当前返回"Unsigned"）
+     * @return 签名状态（Signed/Unsigned/Invalid）
      */
     std::string verifySignature(const std::string& filePath);
 
@@ -127,6 +129,9 @@ private:
      * @param result 分析结果（将修改此结构体）
      */
     void extractTimestamps(const PEHeaderInfo& header, DLLAnalysisResult& result);
+
+    // 签名验证器
+    std::unique_ptr<SignatureVerifier> signatureVerifier_;
 };
 
 } // namespace dll

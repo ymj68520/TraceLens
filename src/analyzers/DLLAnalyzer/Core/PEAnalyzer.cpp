@@ -17,7 +17,9 @@ using namespace forensics::dll;
 // 构造 / 析构
 // ============================================================================
 
-PEAnalyzer::PEAnalyzer() = default;
+PEAnalyzer::PEAnalyzer()
+    : signatureVerifier_(std::make_unique<SignatureVerifier>()) {
+}
 
 PEAnalyzer::~PEAnalyzer() = default;
 
@@ -213,9 +215,12 @@ std::string PEAnalyzer::extractVersionInfo(const std::string& filePath) {
 }
 
 std::string PEAnalyzer::verifySignature(const std::string& filePath) {
-    // TODO：验证PE数字签名（Authenticode）
-    // 当前返回占位符，后续任务将实现证书链验证
-    (void)filePath;
+    if (signatureVerifier_) {
+        SignatureInfo sigInfo = signatureVerifier_->verify(filePath);
+        if (sigInfo.isSigned) {
+            return sigInfo.isValid ? "Signed" : "Invalid";
+        }
+    }
     return "Unsigned";
 }
 

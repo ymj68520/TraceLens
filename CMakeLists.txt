@@ -319,6 +319,8 @@ set(LIB_SOURCES
     src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.cpp
     src/analyzers/DLLAnalyzer/Parsers/PEHeaderParser.cpp
     src/analyzers/DLLAnalyzer/Parsers/PEImportExportParser.cpp
+    src/analyzers/DLLAnalyzer/Parsers/ELFParser.cpp
+    src/analyzers/DLLAnalyzer/Parsers/SignatureVerifier.cpp
     src/analyzers/DLLAnalyzer/Core/PEAnalyzer.cpp
     src/analyzers/DLLAnalyzer/Core/AnomalyDetector.cpp
     src/analyzers/DLLAnalyzer/Core/DependencyAnalyzer.cpp
