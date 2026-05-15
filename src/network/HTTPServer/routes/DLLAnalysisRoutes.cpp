@@ -8,6 +8,9 @@
 #include "analyzers/DLLAnalyzer/Common/DLLDataTypes.h"
 #include "core/Logger/Logger.h"
 #include <filesystem>
+#include <future>
+#include <chrono>
+#include <system_error>
 #include <sstream>
 
 namespace forensics {
@@ -403,10 +406,18 @@ crow::response DLLAnalysisRoutes::handle_analyze_single_dll(const crow::request&
 
         std::string filePath = body["file_path"];
 
-        // Validate file exists
-        if (!std::filesystem::exists(filePath)) {
-            json error = {{"error", "File not found"}, {"path", filePath}};
-            res.code = 404;
+        // Validate file exists (distinguish not-found vs permission denied)
+        std::error_code ec;
+        bool exists = std::filesystem::exists(filePath, ec);
+        if (!exists) {
+            json error;
+            if (ec == std::errc::permission_denied) {
+                error = {{"error", "Permission denied"}, {"path", filePath}};
+                res.code = 403;
+            } else {
+                error = {{"error", "File not found"}, {"path", filePath}};
+                res.code = 404;
+            }
             res.set_header("Content-Type", "application/json");
             res.write(error.dump());
             return res;
@@ -426,14 +437,28 @@ crow::response DLLAnalysisRoutes::handle_analyze_single_dll(const crow::request&
             return res;
         }
 
-        // Analyze single DLL
-        bool success = analyzer.analyzeSingleFile(filePath, 0); // inode=0 for temp file
-        if (!success) {
-            json error = {{"error", "Failed to analyze DLL: " + filePath}};
-            res.code = 500;
-            res.set_header("Content-Type", "application/json");
-            res.write(error.dump());
-            return res;
+        // Analyze single DLL (with 30-second timeout)
+        {
+            auto future = std::async(std::launch::async, [&]() {
+                return analyzer.analyzeSingleFile(filePath, 0);
+            });
+
+            if (future.wait_for(std::chrono::seconds(30)) != std::future_status::ready) {
+                json error = {{"error", "Analysis timeout after 30 seconds"}, {"path", filePath}};
+                res.code = 408; // Request Timeout
+                res.set_header("Content-Type", "application/json");
+                res.write(error.dump());
+                return res;
+            }
+
+            bool success = future.get();
+            if (!success) {
+                json error = {{"error", "Failed to analyze DLL: " + filePath}};
+                res.code = 500;
+                res.set_header("Content-Type", "application/json");
+                res.write(error.dump());
+                return res;
+            }
         }
 
         // Get the analysis result from the database
