@@ -3,8 +3,11 @@
 
 #include "DLLAnalysisRoutes.h"
 #include "RouteHelpers.h"
+#include "analyzers/DLLAnalyzer/Core/DLLAnalyzer.h"
 #include "analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.h"
 #include "analyzers/DLLAnalyzer/Common/DLLDataTypes.h"
+#include "core/Logger/Logger.h"
+#include <filesystem>
 #include <sstream>
 
 namespace forensics {
@@ -35,6 +38,11 @@ DLLAnalysisRoutes::DLLAnalysisRoutes(crow::App<>& app) {
     // Get DLL anomalies
     CROW_ROUTE(app, "/api/forensics/dlls/<int>/anomalies").methods("GET"_method)([this](const crow::request& req, int dll_id) {
         return handle_get_dll_anomalies(req, dll_id);
+    });
+
+    // Analyze single DLL on-demand
+    CROW_ROUTE(app, "/api/forensics/dlls/analyze").methods("POST"_method)([this](const crow::request& req) {
+        return handle_analyze_single_dll(req);
     });
 }
 
@@ -374,6 +382,159 @@ crow::response DLLAnalysisRoutes::handle_get_dll_anomalies(const crow::request& 
         res.set_header("Content-Type", "application/json");
         res.write(error.dump());
     }
+    return res;
+}
+
+crow::response DLLAnalysisRoutes::handle_analyze_single_dll(const crow::request& req) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+
+    try {
+        // Parse request body
+        auto body = json::parse(req.body);
+
+        if (!body.contains("file_path") || !body["file_path"].is_string()) {
+            json error = {{"error", "file_path is required"}};
+            res.code = 400;
+            res.set_header("Content-Type", "application/json");
+            res.write(error.dump());
+            return res;
+        }
+
+        std::string filePath = body["file_path"];
+
+        // Validate file exists
+        if (!std::filesystem::exists(filePath)) {
+            json error = {{"error", "File not found"}, {"path", filePath}};
+            res.code = 404;
+            res.set_header("Content-Type", "application/json");
+            res.write(error.dump());
+            return res;
+        }
+
+        // Create DLLAnalyzer instance for single-file analysis
+        // Use in-memory database for temporary analysis
+        dll::DLLAnalyzer analyzer(":memory:");
+        analyzer.enableAnomalyDetection(true);
+        analyzer.enableSignatureVerification(false);
+
+        if (!analyzer.initialize()) {
+            json error = {{"error", "Failed to initialize DLL analyzer"}};
+            res.code = 500;
+            res.set_header("Content-Type", "application/json");
+            res.write(error.dump());
+            return res;
+        }
+
+        // Analyze single DLL
+        bool success = analyzer.analyzeSingleFile(filePath, 0); // inode=0 for temp file
+        if (!success) {
+            json error = {{"error", "Failed to analyze DLL: " + filePath}};
+            res.code = 500;
+            res.set_header("Content-Type", "application/json");
+            res.write(error.dump());
+            return res;
+        }
+
+        // Get the analysis result from the database
+        auto db = analyzer.getDatabase();
+        auto dllResult = db->getDLLByPath(filePath);
+
+        if (!dllResult) {
+            json error = {{"error", "Analysis completed but no result found"}};
+            res.code = 500;
+            res.set_header("Content-Type", "application/json");
+            res.write(error.dump());
+            return res;
+        }
+
+        // Convert to JSON response
+        json dllJson;
+        dllJson["success"] = true;
+        dllJson["file_path"] = dllResult->filePath;
+        dllJson["file_name"] = dllResult->fileName;
+        dllJson["file_size"] = dllResult->fileSize;
+        dllJson["format"] = dllResult->peHeader.format;
+        dllJson["machine_type"] = static_cast<int>(dllResult->peHeader.machine);
+        dllJson["threat_score"] = dllResult->threatScore;
+        dllJson["signature_status"] = dllResult->signatureStatus;
+        dllJson["md5"] = dllResult->md5Hash;
+        dllJson["sha1"] = dllResult->sha1Hash;
+        dllJson["sha256"] = dllResult->sha256Hash;
+        dllJson["imp_hash"] = dllResult->impHash;
+        dllJson["compile_timestamp"] = dllResult->peHeader.timestamp;
+        dllJson["entry_point"] = dllResult->peHeader.entryPointRVA;
+        dllJson["image_base"] = dllResult->peHeader.imageBase;
+        dllJson["subsystem"] = dllResult->peHeader.subsystem;
+        dllJson["signer_name"] = dllResult->signerName;
+        dllJson["file_version"] = dllResult->fileVersion;
+        dllJson["company_name"] = dllResult->companyName;
+
+        // Sections
+        json sections = json::array();
+        for (const auto& section : dllResult->peHeader.sections) {
+            json secJson;
+            secJson["name"] = section.name;
+            secJson["virtual_address"] = section.virtualAddress;
+            secJson["virtual_size"] = section.virtualSize;
+            secJson["entropy"] = section.entropy;
+            secJson["is_writeable"] = section.isWriteable;
+            secJson["is_executable"] = section.isExecutable;
+            secJson["is_readable"] = section.isReadable;
+            sections.push_back(secJson);
+        }
+        dllJson["sections"] = sections;
+
+        // Imports
+        json imports = json::array();
+        for (const auto& import : dllResult->imports) {
+            json impJson;
+            impJson["dll_name"] = import.name;
+            impJson["is_delayed"] = import.isDelayed;
+            impJson["functions"] = import.functions;
+            imports.push_back(impJson);
+        }
+        dllJson["imports"] = imports;
+
+        // Exports
+        json exports = json::array();
+        for (const auto& exp : dllResult->exports) {
+            json expJson;
+            expJson["name"] = exp.name;
+            expJson["ordinal"] = exp.ordinal;
+            expJson["rva"] = exp.rva;
+            exports.push_back(expJson);
+        }
+        dllJson["exports"] = exports;
+
+        // Anomalies
+        json anomalies = json::array();
+        for (const auto& anomaly : dllResult->anomalies) {
+            json anomJson;
+            anomJson["type"] = anomaly.type;
+            anomJson["description"] = anomaly.description;
+            anomJson["risk"] = static_cast<int>(anomaly.risk);
+            anomJson["risk_score"] = anomaly.riskScore;
+            anomalies.push_back(anomJson);
+        }
+        dllJson["anomalies"] = anomalies;
+
+        res.set_header("Content-Type", "application/json");
+        res.write(dllJson.dump());
+
+        LOG_INFO("Successfully analyzed DLL: " + filePath);
+    } catch (const nlohmann::json::parse_error& e) {
+        json error = {{"error", "Invalid JSON: " + std::string(e.what())}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+    }
+
     return res;
 }
 

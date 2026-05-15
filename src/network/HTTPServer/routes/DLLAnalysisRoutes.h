@@ -18,6 +18,7 @@ private:
     crow::response handle_get_suspicious_dlls(const crow::request& req);
     crow::response handle_get_dll_statistics(const crow::request& req);
     crow::response handle_get_dll_anomalies(const crow::request& req, int64_t dll_id);
+    crow::response handle_analyze_single_dll(const crow::request& req);
 };
 
 } // namespace forensics

@@ -173,6 +173,11 @@ void DLLAnalyzer::analyze() {
     }
 }
 
+bool DLLAnalyzer::analyzeSingleFile(const std::string& dllPath, int64_t inode) {
+    LOG_INFO("Analyzing single DLL file: " + dllPath);
+    return analyzeDLL(dllPath, inode);
+}
+
 // =========================================================================
 // 分析选项
 // =========================================================================

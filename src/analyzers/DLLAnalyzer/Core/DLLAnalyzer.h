@@ -59,6 +59,14 @@ public:
      */
     void analyze();
 
+    /**
+     * @brief 分析单个DLL文件（公开接口，用于按需分析）
+     * @param dllPath DLL文件路径
+     * @param inode 文件inode号
+     * @return true如果分析成功
+     */
+    bool analyzeSingleFile(const std::string& dllPath, int64_t inode = 0);
+
     // =========================================================================
     // 分析选项
     // =========================================================================
@@ -107,6 +115,12 @@ public:
         int averageThreatScore;
     };
     AnalysisStats getStats() const;
+
+    /**
+     * @brief Get pointer to the analysis database
+     * @return Raw pointer to DLLAnalysisDatabase
+     */
+    DLLAnalysisDatabase* getDatabase() const { return dllDatabase_.get(); }
 
 private:
     /**
