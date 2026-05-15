@@ -243,6 +243,25 @@ const Files = () => {
     setSelectAll(newSelected.size === filteredFiles.length);
   };
 
+  // DLL file analysis via Python service
+  const analyzeDLLFile = async ({ filePath, filesDbPath }) => {
+    const response = await fetch('/api/llm/analyze/dll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        file_path: filePath,
+        files_db_path: filesDbPath
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'DLL分析失败');
+    }
+
+    return await response.json();
+  };
+
   // Analyze single file
   const handleAnalyzeSingleFile = async (file, index) => {
     let filePath = file.path || file.file_path || file.name;
@@ -265,76 +284,135 @@ const Files = () => {
     const extension = (file.extension || filePath.split('.').pop()).toLowerCase();
     const fileSize = file.size || file.file_size || 0;
 
+    // Detect DLL/EXE/SYS files (binary executables)
+    const dllExtensions = ['dll', 'exe', 'sys', 'ocx', 'cpl', 'so', 'dylib'];
+    const isDLL = dllExtensions.includes(extension);
+
     // Determine model type based on file extension
-    // Images use vision model, text files use text model
     const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif'];
     const isImage = imageExtensions.includes(extension);
     const modelType = isImage ? 'vision' : 'text';
 
-    // Skip binary files and large files (except images which use vision model)
-    const binaryExtensions = ['exe', 'dll', 'so', 'bin', 'img', 'iso'];
+    // Check file extension only (no size limits)
     const archiveExtensions = ['zip', 'tar', 'gz', 'tgz', 'rar', '7z'];
-    const documentExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'db', 'sqlite', 'sqlite3', 'sql', 'leveldb', 'rdb', 'bson', 'json', ...archiveExtensions];
-    const isDocument = documentExtensions.includes(extension);
     const isArchive = archiveExtensions.includes(extension);
-
-    const maxFileSize = isImage ? 10 * 1024 * 1024 : 
-                        (isArchive ? 10 * 1024 * 1024 * 1024 : 
-                        (isDocument ? 20 * 1024 * 1024 : 1024 * 1024)); // 10MB for images, 10GB for archives, 20MB for docs/dbs, 1MB for text
-
-    if (binaryExtensions.includes(extension)) {
-      alert(`⚠️ ${extension.toUpperCase()} 文件不支持分析\n\n建议：\n- 对于压缩文件：请先解压后分析`);
-      return;
-    }
-
-    if (fileSize > maxFileSize) {
-      const maxSizeMB = (maxFileSize / (1024 * 1024)).toFixed(0);
-      alert(`⚠️ 文件过大 (${(fileSize / 1024).toFixed(1)} KB)\n\n${isImage ? '图像分析' : '文本分析'}限制：最大 ${maxSizeMB} MB\n\n建议：\n- 分段分析文件内容\n- 或使用更小的文本样本`);
-      return;
-    }
 
     setLlmAnalyzingFiles(prev => new Set(prev).add(index));
 
     try {
-      console.log('Analyzing file:', filePath, `(${extension}, ${(fileSize / 1024).toFixed(1)} KB, model: ${modelType})`);
+      let result;
 
-      const result = await analyzeContent({
-        filePath: filePath,
-        dbFilePath: file.path || file.file_path,
-        modelType: modelType,
-        filesDbPath: currentTask?.output_files_db || null,
-      });
+      // DLL/EXE/SYS file analysis
+      if (isDLL) {
+        console.log('Analyzing DLL file:', filePath, `(${extension}, ${(fileSize / 1024).toFixed(1)} KB)`);
 
-      console.log('Analysis result:', result);
+        try {
+          result = await analyzeDLLFile({
+            filePath: filePath,
+            filesDbPath: currentTask?.output_files_db || null
+          });
 
-      if (result.success && result.analysis) {
-        // Map Python API response to our format
-        const analysis = result.analysis;
-        const descData = {
-          summary: analysis.summary || analysis.description?.substring(0, 200),
-          description: analysis.description,
-          keywords: analysis.keywords || [],
-          model: result.model_used,
-          timestamp: result.timestamp || new Date().toISOString()
-        };
+          console.log('DLL analysis result:', result);
 
-        console.log('Setting LLM result for', filePath, ':', descData);
+          if (result.success && result.analysis) {
+            const analysis = result.analysis;
+            const descData = {
+              summary: analysis.function_assessment || analysis.description?.substring(0, 200),
+              description: analysis.description || analysis.function_assessment,
+              keywords: analysis.iocs || [],
+              model: result.model_used,
+              timestamp: result.timestamp,
+              isDLLAnalysis: true,
+              threatLevel: analysis.threat_level,
+              confidence: analysis.confidence,
+              suspiciousBehaviors: analysis.suspicious_behaviors || [],
+              mitreTechniques: analysis.mitre_attack_techniques || [],
+              recommendations: analysis.recommendations
+            };
 
-        setLlmResults(prev => ({
-          ...prev,
-          [filePath]: descData
-        }));
+            console.log('Setting DLL analysis result for', filePath, ':', descData);
 
-        // Also update the file in largestFiles to reflect the change
-        setLargestFiles(prev => prev.map((f, i) =>
-          i === index ? { ...f, llm_summary: descData.summary, llm_description: descData.description, llm_keywords: descData.keywords } : f
-        ));
+            setLlmResults(prev => ({
+              ...prev,
+              [filePath]: descData
+            }));
 
-        // Set refresh flag to notify CaseIntelligence to refresh
-        dispatch(setRefreshFlag({ type: 'files' }));
+            // Also update the file in largestFiles to reflect the change
+            setLargestFiles(prev => prev.map((f, i) =>
+              i === index ? {
+                ...f,
+                llm_summary: descData.summary,
+                llm_description: descData.description,
+                llm_keywords: descData.keywords,
+                threat_level: descData.threatLevel,
+                is_dll_analysis: true
+              } : f
+            ));
+
+            // Set refresh flag to notify CaseIntelligence to refresh
+            dispatch(setRefreshFlag({ type: 'files' }));
+          } else {
+            console.error('DLL analysis failed: no success in response');
+            alert('DLL分析失败：未收到有效响应');
+          }
+        } catch (dllErr) {
+          console.error('DLL analysis failed:', dllErr);
+
+          // Provide specific error messages for DLL analysis
+          let errorMsg = dllErr.response?.data?.detail || dllErr.message || '未知错误';
+
+          if (!dllErr.response && dllErr.code === 'ERR_NETWORK') {
+            errorMsg = `DLL分析服务未运行\n\n提示：\n1. 请确保 C++ 服务已启动: ./build/forensic_analyzer --http-server 8080\n2. 请确保 Python 服务已启动: python -m python_service.httpserver.main\n3. 或使用启动脚本: ./scripts/start_services.sh`;
+          } else if (dllErr.response?.status === 400 || dllErr.response?.status === 404) {
+            const detail = dllErr.response?.data?.detail || '';
+            if (detail.includes('File not found') || detail.includes('not found')) {
+              errorMsg = `❌ DLL文件未找到\n\n${detail}\n\n建议：使用"批量提取"功能先提取文件`;
+            }
+          }
+
+          alert(`DLL分析失败: ${errorMsg}\n\n文件: ${file.name || filePath}\n类型: ${extension.toUpperCase()}\n大小: ${(fileSize / 1024).toFixed(1)} KB`);
+        }
       } else {
-        console.error('Analysis failed: no success in response');
-        alert('分析失败：未收到有效响应');
+        // Existing non-DLL file analysis logic
+        console.log('Analyzing file:', filePath, `(${extension}, ${(fileSize / 1024).toFixed(1)} KB, model: ${modelType})`);
+
+        const result = await analyzeContent({
+          filePath: filePath,
+          dbFilePath: file.path || file.file_path,
+          modelType: modelType,
+          filesDbPath: currentTask?.output_files_db || null,
+        });
+
+        console.log('Analysis result:', result);
+
+        if (result.success && result.analysis) {
+          const analysis = result.analysis;
+          const descData = {
+            summary: analysis.summary || analysis.description?.substring(0, 200),
+            description: analysis.description,
+            keywords: analysis.keywords || [],
+            model: result.model_used,
+            timestamp: result.timestamp || new Date().toISOString()
+          };
+
+          console.log('Setting LLM result for', filePath, ':', descData);
+
+          setLlmResults(prev => ({
+            ...prev,
+            [filePath]: descData
+          }));
+
+          // Also update the file in largestFiles to reflect the change
+          setLargestFiles(prev => prev.map((f, i) =>
+            i === index ? { ...f, llm_summary: descData.summary, llm_description: descData.description, llm_keywords: descData.keywords } : f
+          ));
+
+          // Set refresh flag to notify CaseIntelligence to refresh
+          dispatch(setRefreshFlag({ type: 'files' }));
+        } else {
+          console.error('Analysis failed: no success in response');
+          alert('分析失败：未收到有效响应');
+        }
       }
     } catch (err) {
       console.error('Failed to analyze file:', err);
@@ -378,27 +456,39 @@ ${detail}
     }
   };
 
-  // Batch analyze selected files
+  // Batch analyze selected files or all files if none selected
   const handleBatchAnalyze = async () => {
+    let filesToAnalyze = [];
+
     if (selectedFiles.size === 0) {
-      alert('请先勾选需要分析的文件');
-      return;
-    }
+      // No files selected - analyze all filtered files
+      filesToAnalyze = filteredFiles.map(f => f.path || f.file_path).filter(Boolean);
 
-    const selectedPaths = [...selectedFiles]
-      .map(idx => filteredFiles[idx])
-      .filter(Boolean)
-      .map(f => f.path || f.file_path)
-      .filter(Boolean);
+      if (filesToAnalyze.length === 0) {
+        alert('当前筛选结果中没有可分析的文件');
+        return;
+      }
 
-    if (selectedPaths.length === 0) {
-      alert('选中的文件无效或路径缺失');
-      return;
+      if (!confirm(`将分析当前筛选结果中的所有 ${filesToAnalyze.length} 个文件，是否继续？`)) {
+        return;
+      }
+    } else {
+      // Files selected - analyze only selected files
+      filesToAnalyze = [...selectedFiles]
+        .map(idx => filteredFiles[idx])
+        .filter(Boolean)
+        .map(f => f.path || f.file_path)
+        .filter(Boolean);
+
+      if (filesToAnalyze.length === 0) {
+        alert('选中的文件无效或路径缺失');
+        return;
+      }
     }
 
     try {
       const result = await startBatchAnalysis(taskId, {
-        filePaths: selectedPaths,
+        filePaths: filesToAnalyze,
         modelType: 'text',
       });
 
@@ -586,7 +676,9 @@ ${detail}
         description: file.llm_description,
         keywords: file.llm_keywords,
         model: file.llm_model_used,
-        timestamp: file.llm_analyzed_at
+        timestamp: file.llm_analyzed_at,
+        threatLevel: file.threat_level,
+        isDLLAnalysis: file.is_dll_analysis
       };
     }
 
@@ -908,10 +1000,16 @@ ${detail}
                     variant="primary"
                     size="sm"
                     onClick={handleBatchAnalyze}
-                    disabled={selectedFiles.size === 0 || isBatchRunning || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
+                    disabled={isBatchRunning || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
                     className="bg-purple-600 hover:bg-purple-700 text-white"
+                    title={selectedFiles.size > 0 ? `将分析选中的 ${selectedFiles.size} 个文件` : `将分析当前筛选结果中的所有文件`}
                   >
                     {isBatchRunning ? <Spinner size="sm" /> : '🧠 批量分析'}
+                    {selectedFiles.size > 0 && (
+                      <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-white/20 rounded">
+                        {selectedFiles.size}
+                      </span>
+                    )}
                   </Button>
                   <Button
                     variant="outline"
@@ -1049,6 +1147,26 @@ ${detail}
                                   <div className="flex items-start gap-2">
                                     <span className="text-green-500 mt-0.5">✨</span>
                                     <div className="flex-1 min-w-0">
+                                      {/* DLL Threat Level Badge */}
+                                      {llmDesc.isDLLAnalysis && llmDesc.threatLevel && (
+                                        <div className="mb-1">
+                                          {(() => {
+                                            const levelConfig = {
+                                              'low': { label: '低风险', variant: 'green', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
+                                              'medium': { label: '中风险', variant: 'yellow', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' },
+                                              'high': { label: '高风险', variant: 'orange', className: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
+                                              'critical': { label: '严重', variant: 'red', className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
+                                              '严重': { label: '严重', variant: 'red', className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
+                                              '高': { label: '高风险', variant: 'orange', className: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
+                                              '中': { label: '中风险', variant: 'yellow', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' },
+                                              '低': { label: '低风险', variant: 'green', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
+                                            };
+                                            const config = levelConfig[llmDesc.threatLevel] || { label: llmDesc.threatLevel, variant: 'blue', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' };
+                                            return <span className={`inline-block px-2 py-0.5 text-xs font-semibold rounded-full ${config.className}`}>{config.label}</span>;
+                                          })()}
+                                          {llmDesc.confidence && <span className="ml-1.5 text-xs text-slate-500">置信度: {llmDesc.confidence}%</span>}
+                                        </div>
+                                      )}
                                       {/* Summary - always visible */}
                                       {llmDesc.summary && (
                                         <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2 mb-1">
@@ -1112,6 +1230,11 @@ ${detail}
                                   )}
                                 </Button>
                               )}
+                              {dllAnalyzingFiles.has(index) && !isAnalyzing && (
+                                <div className="analyzing-indicator text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                  🔍 DLL分析中...
+                                </div>
+                              )}
                               {/* Re-analyze button - shown when description exists */}
                               {hasDescription && (
                                 <button
@@ -1158,6 +1281,79 @@ ${detail}
                                     <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">摘要</span>
                                     <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
                                       {llmDesc.summary}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* Threat Level & Confidence (DLL analysis) */}
+                                {llmDesc.isDLLAnalysis && llmDesc.threatLevel && (
+                                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
+                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">威胁评估</span>
+                                    <div className="mt-2 flex items-center gap-3">
+                                      {(() => {
+                                        const levelConfig = {
+                                          'low': { label: '低风险', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
+                                          'medium': { label: '中风险', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' },
+                                          'high': { label: '高风险', className: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
+                                          'critical': { label: '严重', className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
+                                          '严重': { label: '严重', className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
+                                          '高': { label: '高风险', className: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
+                                          '中': { label: '中风险', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' },
+                                          '低': { label: '低风险', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
+                                        };
+                                        const config = levelConfig[llmDesc.threatLevel] || { label: llmDesc.threatLevel, className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' };
+                                        return (
+                                          <>
+                                            <span className={`inline-block px-3 py-1 text-sm font-bold rounded-full ${config.className}`}>
+                                              {config.label}
+                                            </span>
+                                            {llmDesc.confidence !== undefined && (
+                                              <span className="text-sm text-slate-600 dark:text-slate-300">
+                                                置信度: <span className="font-semibold">{llmDesc.confidence}%</span>
+                                              </span>
+                                            )}
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Suspicious Behaviors (DLL analysis) */}
+                                {llmDesc.isDLLAnalysis && llmDesc.suspiciousBehaviors && llmDesc.suspiciousBehaviors.length > 0 && (
+                                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
+                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">可疑行为</span>
+                                    <ul className="mt-2 space-y-1">
+                                      {llmDesc.suspiciousBehaviors.map((behavior, i) => (
+                                        <li key={i} className="text-sm text-slate-700 dark:text-slate-300 flex items-start gap-2">
+                                          <span className="text-orange-500 mt-1">&#9679;</span>
+                                          <span>{behavior}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+
+                                {/* MITRE ATT&CK Techniques (DLL analysis) */}
+                                {llmDesc.isDLLAnalysis && llmDesc.mitreTechniques && llmDesc.mitreTechniques.length > 0 && (
+                                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
+                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">MITRE ATT&amp;CK 技术</span>
+                                    <div className="mt-2 flex flex-wrap gap-1">
+                                      {llmDesc.mitreTechniques.map((tech, i) => (
+                                        <span key={i} className="px-2 py-1 text-xs bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-full font-mono" title={tech.name || tech}>
+                                          {typeof tech === 'string' ? tech : (tech.id || tech)}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Recommendations (DLL analysis) */}
+                                {llmDesc.isDLLAnalysis && llmDesc.recommendations && (
+                                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
+                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">处置建议</span>
+                                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                                      {llmDesc.recommendations}
                                     </p>
                                   </div>
                                 )}
