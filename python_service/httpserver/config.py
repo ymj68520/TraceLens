@@ -140,7 +140,12 @@ class Settings(BaseSettings):
     cpp_backend_url: str = Field(default="http://localhost:8080", alias="CPP_BACKEND_URL")
     http_server_port: int = Field(default=8080, alias="HTTP_SERVER_PORT")
     http_server_host: str = Field(default="0.0.0.0", alias="HTTP_SERVER_HOST")
-    
+
+    # DLL Analysis Settings
+    dll_analysis_enabled: bool = Field(default=True, env="DLL_ANALYSIS_ENABLED")
+    dll_cpp_backend_url: str = Field(default="http://localhost:8080", env="DLL_CPP_BACKEND_URL")
+    dll_analysis_timeout: float = Field(default=30.0, env="DLL_ANALYSIS_TIMEOUT")
+
     # LLM Settings
     llm_base_url: str = Field(default="http://localhost:1234", alias="LLM_BASE_URL")
     llm_endpoint: str = Field(default="/v1/chat/completions", alias="LLM_ENDPOINT")
