@@ -54,6 +54,21 @@ DLLAnalysisRoutes::DLLAnalysisRoutes(crow::App<>& app) {
     CROW_ROUTE(app, "/api/forensics/dlls/analyze").methods("POST"_method)([this](const crow::request& req) {
         return handle_analyze_single_dll(req);
     });
+
+    // Health check endpoint
+    CROW_ROUTE(app, "/api/forensics/dlls/health").methods("GET"_method)([](const crow::request& req) {
+        crow::response res;
+        RouteHelpers::add_cors_headers(res);
+        json result = {
+            {"status", "ok"},
+            {"service", "dll-analyzer"},
+            {"version", "1.0"},
+            {"timestamp", std::time(nullptr)}
+        };
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+        return res;
+    });
 }
 
 crow::response DLLAnalysisRoutes::handle_get_dll_list(const crow::request& req) {
@@ -419,10 +434,10 @@ crow::response DLLAnalysisRoutes::handle_analyze_single_dll(const crow::request&
         if (!exists) {
             json error;
             if (ec == std::errc::permission_denied) {
-                error = {{"error", "Permission denied"}, {"path", filePath}};
+                error = {{"error", "Permission denied"}, {"path", filePath}, {"code", "PERMISSION_DENIED"}};
                 res.code = 403;
             } else {
-                error = {{"error", "File not found"}, {"path", filePath}};
+                error = {{"error", "File not found"}, {"path", filePath}, {"code", "FILE_NOT_FOUND"}};
                 res.code = 404;
             }
             res.set_header("Content-Type", "application/json");
