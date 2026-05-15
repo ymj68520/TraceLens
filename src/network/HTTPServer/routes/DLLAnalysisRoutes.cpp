@@ -17,6 +17,13 @@ namespace forensics {
 
 using json = nlohmann::json;
 
+// Result wrapper for safe cross-thread DLL analysis results
+struct AnalysisResult {
+    bool success = false;
+    dll::DLLAnalysisResult dllResult;
+    std::string error;
+};
+
 DLLAnalysisRoutes::DLLAnalysisRoutes(crow::App<>& app) {
     // List all DLLs
     CROW_ROUTE(app, "/api/forensics/dlls").methods("GET"_method)([this](const crow::request& req) {
@@ -423,81 +430,85 @@ crow::response DLLAnalysisRoutes::handle_analyze_single_dll(const crow::request&
             return res;
         }
 
-        // Create DLLAnalyzer instance for single-file analysis
-        // Use in-memory database for temporary analysis
-        dll::DLLAnalyzer analyzer(":memory:");
-        analyzer.enableAnomalyDetection(true);
-        analyzer.enableSignatureVerification(false);
+        // Run analysis in async thread with 30-second timeout.
+        // DLLAnalyzer is created inside the lambda so its lifecycle is
+        // entirely contained within the worker thread -- no dangling
+        // references possible if the timeout fires and the caller returns.
+        auto future = std::async(std::launch::async, [filePath]() -> AnalysisResult {
+            try {
+                dll::DLLAnalyzer analyzer(":memory:");
+                analyzer.enableAnomalyDetection(true);
+                analyzer.enableSignatureVerification(false);
 
-        if (!analyzer.initialize()) {
-            json error = {{"error", "Failed to initialize DLL analyzer"}};
+                if (!analyzer.initialize()) {
+                    return {false, {}, "Failed to initialize DLL analyzer"};
+                }
+
+                if (!analyzer.analyzeSingleFile(filePath, 0)) {
+                    return {false, {}, "Failed to analyze DLL: " + filePath};
+                }
+
+                auto db = analyzer.getDatabase();
+                auto result = db->getDLLByPath(filePath);
+                if (!result) {
+                    return {false, {}, "Analysis completed but no result found"};
+                }
+
+                return {true, *result, ""};
+            } catch (const std::exception& e) {
+                return {false, {}, e.what()};
+            }
+        });
+
+        if (future.wait_for(std::chrono::seconds(30)) != std::future_status::ready) {
+            LOG_ERROR("Analysis timeout for: " + filePath);
+            json error = {{"error", "Analysis timeout after 30 seconds"}, {"path", filePath}};
+            res.code = 408; // Request Timeout
+            res.set_header("Content-Type", "application/json");
+            res.write(error.dump());
+            return res;
+        }
+
+        AnalysisResult analysisResult = future.get();
+        if (!analysisResult.success) {
+            LOG_ERROR("Failed to analyze DLL: " + filePath + " - " + analysisResult.error);
+            json error = {{"error", analysisResult.error}, {"path", filePath}};
             res.code = 500;
             res.set_header("Content-Type", "application/json");
             res.write(error.dump());
             return res;
         }
 
-        // Analyze single DLL (with 30-second timeout)
-        {
-            auto future = std::async(std::launch::async, [&]() {
-                return analyzer.analyzeSingleFile(filePath, 0);
-            });
-
-            if (future.wait_for(std::chrono::seconds(30)) != std::future_status::ready) {
-                json error = {{"error", "Analysis timeout after 30 seconds"}, {"path", filePath}};
-                res.code = 408; // Request Timeout
-                res.set_header("Content-Type", "application/json");
-                res.write(error.dump());
-                return res;
-            }
-
-            bool success = future.get();
-            if (!success) {
-                json error = {{"error", "Failed to analyze DLL: " + filePath}};
-                res.code = 500;
-                res.set_header("Content-Type", "application/json");
-                res.write(error.dump());
-                return res;
-            }
-        }
-
-        // Get the analysis result from the database
-        auto db = analyzer.getDatabase();
-        auto dllResult = db->getDLLByPath(filePath);
-
-        if (!dllResult) {
-            json error = {{"error", "Analysis completed but no result found"}};
-            res.code = 500;
-            res.set_header("Content-Type", "application/json");
-            res.write(error.dump());
-            return res;
-        }
+        const auto& dllResult = analysisResult.dllResult;
 
         // Convert to JSON response
         json dllJson;
         dllJson["success"] = true;
-        dllJson["file_path"] = dllResult->filePath;
-        dllJson["file_name"] = dllResult->fileName;
-        dllJson["file_size"] = dllResult->fileSize;
-        dllJson["format"] = dllResult->peHeader.format;
-        dllJson["machine_type"] = static_cast<int>(dllResult->peHeader.machine);
-        dllJson["threat_score"] = dllResult->threatScore;
-        dllJson["signature_status"] = dllResult->signatureStatus;
-        dllJson["md5"] = dllResult->md5Hash;
-        dllJson["sha1"] = dllResult->sha1Hash;
-        dllJson["sha256"] = dllResult->sha256Hash;
-        dllJson["imp_hash"] = dllResult->impHash;
-        dllJson["compile_timestamp"] = dllResult->peHeader.timestamp;
-        dllJson["entry_point"] = dllResult->peHeader.entryPointRVA;
-        dllJson["image_base"] = dllResult->peHeader.imageBase;
-        dllJson["subsystem"] = dllResult->peHeader.subsystem;
-        dllJson["signer_name"] = dllResult->signerName;
-        dllJson["file_version"] = dllResult->fileVersion;
-        dllJson["company_name"] = dllResult->companyName;
+        dllJson["file_path"] = dllResult.filePath;
+        dllJson["file_name"] = dllResult.fileName;
+        dllJson["file_size"] = dllResult.fileSize;
+        dllJson["format"] = dllResult.peHeader.format;
+        dllJson["machine_type"] = static_cast<int>(dllResult.peHeader.machine);
+        dllJson["threat_score"] = dllResult.threatScore;
+        dllJson["signature_status"] = dllResult.signatureStatus;
+        dllJson["md5"] = dllResult.md5Hash;
+        dllJson["sha1"] = dllResult.sha1Hash;
+        dllJson["sha256"] = dllResult.sha256Hash;
+        dllJson["imp_hash"] = dllResult.impHash;
+        dllJson["compile_timestamp"] = dllResult.peHeader.timestamp;
+        dllJson["entry_point"] = dllResult.peHeader.entryPointRVA;
+        dllJson["image_base"] = dllResult.peHeader.imageBase;
+        dllJson["subsystem"] = dllResult.peHeader.subsystem;
+        dllJson["signer_name"] = dllResult.signerName;
+        dllJson["file_version"] = dllResult.fileVersion;
+        dllJson["company_name"] = dllResult.companyName;
+        dllJson["llm_summary"] = dllResult.llmSummary;
+        dllJson["llm_description"] = dllResult.llmDescription;
+        dllJson["llm_keywords"] = dllResult.llmKeywords;
 
         // Sections
         json sections = json::array();
-        for (const auto& section : dllResult->peHeader.sections) {
+        for (const auto& section : dllResult.peHeader.sections) {
             json secJson;
             secJson["name"] = section.name;
             secJson["virtual_address"] = section.virtualAddress;
@@ -512,7 +523,7 @@ crow::response DLLAnalysisRoutes::handle_analyze_single_dll(const crow::request&
 
         // Imports
         json imports = json::array();
-        for (const auto& import : dllResult->imports) {
+        for (const auto& import : dllResult.imports) {
             json impJson;
             impJson["dll_name"] = import.name;
             impJson["is_delayed"] = import.isDelayed;
@@ -523,7 +534,7 @@ crow::response DLLAnalysisRoutes::handle_analyze_single_dll(const crow::request&
 
         // Exports
         json exports = json::array();
-        for (const auto& exp : dllResult->exports) {
+        for (const auto& exp : dllResult.exports) {
             json expJson;
             expJson["name"] = exp.name;
             expJson["ordinal"] = exp.ordinal;
@@ -534,7 +545,7 @@ crow::response DLLAnalysisRoutes::handle_analyze_single_dll(const crow::request&
 
         // Anomalies
         json anomalies = json::array();
-        for (const auto& anomaly : dllResult->anomalies) {
+        for (const auto& anomaly : dllResult.anomalies) {
             json anomJson;
             anomJson["type"] = anomaly.type;
             anomJson["description"] = anomaly.description;
@@ -549,11 +560,13 @@ crow::response DLLAnalysisRoutes::handle_analyze_single_dll(const crow::request&
 
         LOG_INFO("Successfully analyzed DLL: " + filePath);
     } catch (const nlohmann::json::parse_error& e) {
+        LOG_ERROR("JSON parse error in DLL analysis: " + std::string(e.what()));
         json error = {{"error", "Invalid JSON: " + std::string(e.what())}};
         res.code = 400;
         res.set_header("Content-Type", "application/json");
         res.write(error.dump());
     } catch (const std::exception& e) {
+        LOG_ERROR("Exception in DLL analysis: " + std::string(e.what()));
         json error = {{"error", e.what()}};
         res.code = 500;
         res.set_header("Content-Type", "application/json");
@@ -564,3 +577,4 @@ crow::response DLLAnalysisRoutes::handle_analyze_single_dll(const crow::request&
 }
 
 } // namespace forensics
+
