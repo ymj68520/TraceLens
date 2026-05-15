@@ -8,16 +8,24 @@ import os
 class DLLAnalyzerClient:
     """Client for calling C++ DLL analysis endpoint via HTTP."""
 
-    def __init__(self, cpp_backend_url: str, timeout: float | None = None):
+    def __init__(self, cpp_backend_url: str, timeout: float | None = None, settings = None):
         """
         Initialize DLL analyzer client.
 
         Args:
             cpp_backend_url: Base URL of C++ backend (e.g., "http://localhost:8080")
-            timeout: Request timeout in seconds (default: from env DLL_ANALYSIS_TIMEOUT or 30.0)
+            timeout: Request timeout in seconds (default: from settings or env)
+            settings: Optional Settings instance for configuration
         """
         self.cpp_backend_url = cpp_backend_url.rstrip('/')
-        self.timeout = timeout or float(os.getenv("DLL_ANALYSIS_TIMEOUT", "30.0"))
+
+        # Get timeout from settings, parameter, or environment
+        if timeout is not None:
+            self.timeout = timeout
+        elif settings:
+            self.timeout = float(settings.dll_analysis_timeout)
+        else:
+            self.timeout = float(os.getenv("DLL_ANALYSIS_TIMEOUT", "30.0"))
         self._client: Optional[httpx.AsyncClient] = None
 
     async def _get_client(self) -> httpx.AsyncClient:
