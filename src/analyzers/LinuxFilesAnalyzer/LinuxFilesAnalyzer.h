@@ -48,3 +48,4 @@
 // - Parsers/LinuxUserParser.cpp: User and authentication parsing
 // - Parsers/LinuxHistoryParser.cpp: Shell history parsing
 // - Parsers/LinuxArtifactsParsers.cpp: Various artifact parsers
+// - Parsers/CompressedLogParser.cpp: Compressed and rotated log parsing (Phase 1)

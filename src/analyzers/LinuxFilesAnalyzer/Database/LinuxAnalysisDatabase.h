@@ -18,6 +18,44 @@ namespace LinuxAnalysis {
     class QueryBuilder;
 }
 
+// Include headers for types used in function signatures
+#include "Parsers/JournalParser.h"
+#include "Parsers/AuditdAggregator.h"
+#include "Analysis/LogTamperingDetector.h"
+#include "Parsers/WebServer/MiddlewareLogParser.h"
+#include "Parsers/Container/ContainerRuntimeLogParser.h"
+#include "Parsers/PackageManager/PackageManagerLogParser.h"
+#include "Analysis/AccountSSH/AccountSSHAnalyzer.h"
+#include "Parsers/Database/DatabaseLogParser.h"
+#include "Parsers/EmailVPN/EmailVPNLogParser.h"
+#include "Parsers/FirewallSecurity/FirewallSecurityLogParser.h"
+
+using forensics::linux::JournalEntry;
+using forensics::linux::BootSession;
+using forensics::linux::JournalAnomaly;
+using forensics::linux::AggregatedAuditEvent;
+using forensics::linux::TamperingFinding;
+using forensics::linux::WebErrorLogEntry;
+using forensics::linux::MiddlewareLogEntry;
+using forensics::linux::ModSecurityAuditEntry;
+using forensics::linux::DockerLogEntry;
+using forensics::linux::CRILogEntry;
+using forensics::linux::KubernetesPodLogEntry;
+using forensics::linux::ContainerSecurityFinding;
+using forensics::linux::PackageLogEntry;
+using forensics::linux::SuspiciousPackageFinding;
+using forensics::linux::AccountSecurityFinding;
+using forensics::linux::SSHSecurityFinding;
+using forensics::linux::DatabaseLogEntry;
+using forensics::linux::DatabaseSecurityFinding;
+using forensics::linux::EmailLogEntry;
+using forensics::linux::VPNLogEntry;
+using forensics::linux::EmailSecurityFinding;
+using forensics::linux::VPNSecurityFinding;
+using forensics::linux::FirewallLogEntry;
+using forensics::linux::SecurityProductLogEntry;
+using forensics::linux::SecurityProductFinding;
+
 class LinuxAnalysisDatabase {
 public:
     explicit LinuxAnalysisDatabase(const std::string& dbPath);
@@ -183,11 +221,19 @@ public:
     // ========================================================================
     bool insertAuditLog(const LinuxAuditLogEntry& entry);
     bool insertAuditLogs(const std::vector<LinuxAuditLogEntry>& entries);
-    
+
     std::vector<LinuxAuditLogEntry> queryAuditLogsSafe(const LinuxAnalysis::QueryBuilder& qb);
-    
+
     [[deprecated("Use queryAuditLogsSafe with QueryBuilder for SQL injection protection")]]
     std::vector<LinuxAuditLogEntry> queryAuditLogs(const std::string& whereClause = "");
+
+    // Aggregated audit events (multi-line events grouped by serial)
+    bool insertAuditEvent(const AggregatedAuditEvent& event);
+    bool insertAuditEvents(const std::vector<AggregatedAuditEvent>& events);
+
+    // Tampering findings
+    bool insertTamperingFinding(const TamperingFinding& finding);
+    bool insertTamperingFindings(const std::vector<TamperingFinding>& findings);
 
     // ========================================================================
     // Browser profile operations
@@ -417,6 +463,149 @@ public:
 
     [[deprecated("Use queryAnomaliesSafe with QueryBuilder for SQL injection protection")]]
     std::vector<Anomaly> queryAnomalies(const std::string& whereClause = "");
+
+    // ========================================================================
+    // Journal entry operations (Phase 2)
+    // ========================================================================
+    bool insertJournalEntry(const JournalEntry& entry);
+    bool insertJournalEntries(const std::vector<JournalEntry>& entries);
+
+    std::vector<JournalEntry> queryJournalEntriesSafe(const LinuxAnalysis::QueryBuilder& qb);
+
+    [[deprecated("Use queryJournalEntriesSafe with QueryBuilder for SQL injection protection")]]
+    std::vector<JournalEntry> queryJournalEntries(const std::string& whereClause = "");
+
+    // ========================================================================
+    // Boot session operations (Phase 2)
+    // ========================================================================
+    bool insertBootSession(const BootSession& session);
+    bool insertBootSessions(const std::vector<BootSession>& sessions);
+
+    std::vector<BootSession> queryBootSessionsSafe(const LinuxAnalysis::QueryBuilder& qb);
+
+    [[deprecated("Use queryBootSessionsSafe with QueryBuilder for SQL injection protection")]]
+    std::vector<BootSession> queryBootSessions(const std::string& whereClause = "");
+
+    // ========================================================================
+    // Journal anomaly operations (Phase 2)
+    // ========================================================================
+    bool insertJournalAnomaly(const JournalAnomaly& anomaly);
+    bool insertJournalAnomalies(const std::vector<JournalAnomaly>& anomalies);
+
+    std::vector<JournalAnomaly> queryJournalAnomaliesSafe(const LinuxAnalysis::QueryBuilder& qb);
+
+    // ========================================================================
+    // Persistence entry operations (Phase 6)
+    // ========================================================================
+    bool insertPersistenceEntry(const PersistenceEntry& entry);
+    bool insertPersistenceEntries(const std::vector<PersistenceEntry>& entries);
+
+    std::vector<PersistenceEntry> queryPersistenceEntriesSafe(const LinuxAnalysis::QueryBuilder& qb);
+
+    // ========================================================================
+    // Web error log operations (Phase 7)
+    // ========================================================================
+    bool insertWebErrorLog(const WebErrorLogEntry& entry);
+    bool insertWebErrorLogs(const std::vector<WebErrorLogEntry>& entries);
+
+    std::vector<WebErrorLogEntry> queryWebErrorLogsSafe(const LinuxAnalysis::QueryBuilder& qb);
+
+    // ========================================================================
+    // Middleware log operations (Phase 7)
+    // ========================================================================
+    bool insertMiddlewareLog(const MiddlewareLogEntry& entry);
+    bool insertMiddlewareLogs(const std::vector<MiddlewareLogEntry>& entries);
+
+    std::vector<MiddlewareLogEntry> queryMiddlewareLogsSafe(const LinuxAnalysis::QueryBuilder& qb);
+
+    // ========================================================================
+    // ModSecurity audit log operations (Phase 7)
+    // ========================================================================
+    bool insertModSecurityLog(const ModSecurityAuditEntry& entry);
+    bool insertModSecurityLogs(const std::vector<ModSecurityAuditEntry>& entries);
+
+    std::vector<ModSecurityAuditEntry> queryModSecurityLogsSafe(const LinuxAnalysis::QueryBuilder& qb);
+
+    // ========================================================================
+    // Container runtime log operations (Phase 8)
+    // ========================================================================
+    bool insertContainerLog(const DockerLogEntry& entry);
+    bool insertContainerLogs(const std::vector<DockerLogEntry>& entries);
+    bool insertCRILog(const CRILogEntry& entry);
+    bool insertCRILogs(const std::vector<CRILogEntry>& entries);
+
+    // ========================================================================
+    // Container security finding operations (Phase 8)
+    // ========================================================================
+    bool insertContainerSecurityFinding(const ContainerSecurityFinding& finding);
+    bool insertContainerSecurityFindings(const std::vector<ContainerSecurityFinding>& findings);
+
+    // ========================================================================
+    // Package manager log operations (Phase 9)
+    // ========================================================================
+    bool insertPackageLog(const PackageLogEntry& entry);
+    bool insertPackageLogs(const std::vector<PackageLogEntry>& entries);
+
+    // Suspicious package finding operations (Phase 9)
+    bool insertSuspiciousPackageFinding(const SuspiciousPackageFinding& finding);
+    bool insertSuspiciousPackageFindings(const std::vector<SuspiciousPackageFinding>& findings);
+    std::vector<PackageLogEntry> queryPackageLogsSafe(const LinuxAnalysis::QueryBuilder& qb);
+
+    // ========================================================================
+    // Account security finding operations (Phase 10)
+    // ========================================================================
+    bool insertAccountSecurityFinding(const AccountSecurityFinding& finding);
+    bool insertAccountSecurityFindings(const std::vector<AccountSecurityFinding>& findings);
+
+    // SSH security finding operations (Phase 10)
+    bool insertSSHSecurityFinding(const SSHSecurityFinding& finding);
+    bool insertSSHSecurityFindings(const std::vector<SSHSecurityFinding>& findings);
+
+    // ========================================================================
+    // Database service log operations (Phase 11)
+    // ========================================================================
+    bool insertDatabaseLog(const DatabaseLogEntry& entry);
+    bool insertDatabaseLogs(const std::vector<DatabaseLogEntry>& entries);
+
+    // Database security finding operations
+    bool insertDatabaseSecurityFinding(const DatabaseSecurityFinding& finding);
+    bool insertDatabaseSecurityFindings(const std::vector<DatabaseSecurityFinding>& findings);
+
+    // ========================================================================
+    // Email service log operations (Phase 11)
+    // ========================================================================
+    bool insertEmailLog(const EmailLogEntry& entry);
+    bool insertEmailLogs(const std::vector<EmailLogEntry>& entries);
+
+    // Email security finding operations
+    bool insertEmailSecurityFinding(const EmailSecurityFinding& finding);
+    bool insertEmailSecurityFindings(const std::vector<EmailSecurityFinding>& findings);
+
+    // ========================================================================
+    // VPN service log operations (Phase 11)
+    // ========================================================================
+    bool insertVPNLog(const VPNLogEntry& entry);
+    bool insertVPNLogs(const std::vector<VPNLogEntry>& entries);
+
+    // VPN security finding operations
+    bool insertVPNSecurityFinding(const VPNSecurityFinding& finding);
+    bool insertVPNSecurityFindings(const std::vector<VPNSecurityFinding>& findings);
+
+    // ========================================================================
+    // Firewall log operations (Phase 11)
+    // ========================================================================
+    bool insertFirewallLogEntry(const FirewallLogEntry& entry);
+    bool insertFirewallLogEntries(const std::vector<FirewallLogEntry>& entries);
+
+    // ========================================================================
+    // Security product log operations (Phase 11)
+    // ========================================================================
+    bool insertSecurityProductLog(const SecurityProductLogEntry& entry);
+    bool insertSecurityProductLogs(const std::vector<SecurityProductLogEntry>& entries);
+
+    // Security product finding operations
+    bool insertSecurityProductFinding(const SecurityProductFinding& finding);
+    bool insertSecurityProductFindings(const std::vector<SecurityProductFinding>& findings);
 
     // ========================================================================
     // Transaction management

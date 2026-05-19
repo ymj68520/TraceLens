@@ -4,6 +4,7 @@
 #include "LinuxAnalysisDatabase.h"
 #include "LinuxQueryBuilder.h"
 #include "DatabaseManager/SQL/linux_analysis_sql.h"
+#include "Parsers/AuditdAggregator.h"
 #include <iostream>
 #include <sstream>
 #include <mutex>
@@ -229,4 +230,125 @@ std::vector<LinuxAuditLogEntry> LinuxAnalysisDatabase::queryAuditLogsSafe(const 
 
     sqlite3_finalize(stmt);
     return entries;
+}
+
+// ============================================================================
+// Aggregated Audit Event Operations
+// ============================================================================
+
+bool LinuxAnalysisDatabase::insertAuditEvent(const forensics::linux::AggregatedAuditEvent& event) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    const char* sql = R"(
+        INSERT OR IGNORE INTO linux_audit_events (
+            event_id, timestamp, serial_number,
+            syscall, syscall_name, success, exit_code,
+            pid, ppid, uid, gid, euid, egid, auid, session_id,
+            exe, comm, terminal, audit_key,
+            argv, argc, cwd, proctitle,
+            auth_user, auth_op, auth_addr,
+            avc_action, avc_class, avc_permission,
+            event_type, severity, path_list, raw_lines,
+            parser_name, parser_version, source_file
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    )";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        setError(LinuxAnalysis::ErrorCode::DATABASE_PREPARE_FAILED, "Failed to prepare audit event insert");
+        return false;
+    }
+
+    int idx = 1;
+    sqlite3_bind_text(stmt, idx++, event.eventId.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, idx++, event.timestamp);
+    sqlite3_bind_int(stmt, idx++, event.serialNumber);
+    sqlite3_bind_int(stmt, idx++, event.syscall);
+    BIND_TEXT(stmt, idx++, event.syscallName);
+    sqlite3_bind_int(stmt, idx++, event.success);
+    sqlite3_bind_int(stmt, idx++, event.exitCode);
+    sqlite3_bind_int(stmt, idx++, event.pid);
+    sqlite3_bind_int(stmt, idx++, event.ppid);
+    sqlite3_bind_int(stmt, idx++, event.uid);
+    sqlite3_bind_int(stmt, idx++, event.gid);
+    sqlite3_bind_int(stmt, idx++, event.euid);
+    sqlite3_bind_int(stmt, idx++, event.egid);
+    sqlite3_bind_int(stmt, idx++, event.auid);
+    sqlite3_bind_int(stmt, idx++, event.ses);
+    BIND_TEXT(stmt, idx++, event.exe);
+    BIND_TEXT(stmt, idx++, event.comm);
+    BIND_TEXT(stmt, idx++, event.terminal);
+    BIND_TEXT(stmt, idx++, event.key);
+
+    // Serialize argv to JSON array
+    std::string argvJson = "[";
+    for (size_t i = 0; i < event.argv.size(); i++) {
+        if (i > 0) argvJson += ",";
+        argvJson += "\"" + event.argv[i] + "\"";
+    }
+    argvJson += "]";
+    BIND_TEXT(stmt, idx++, argvJson);
+    sqlite3_bind_int(stmt, idx++, event.argc);
+    BIND_TEXT(stmt, idx++, event.cwd);
+    BIND_TEXT(stmt, idx++, event.proctitle);
+    BIND_TEXT(stmt, idx++, event.authUser);
+    BIND_TEXT(stmt, idx++, event.authOp);
+    BIND_TEXT(stmt, idx++, event.authAddr);
+    BIND_TEXT(stmt, idx++, event.avcAction);
+    BIND_TEXT(stmt, idx++, event.avcClass);
+    BIND_TEXT(stmt, idx++, event.avcPermission);
+    BIND_TEXT(stmt, idx++, event.eventType);
+    sqlite3_bind_int(stmt, idx++, event.severity);
+
+    // Serialize paths to JSON
+    std::string pathsJson = "[";
+    for (size_t i = 0; i < event.paths.size(); i++) {
+        if (i > 0) pathsJson += ",";
+        pathsJson += "{\"name\":\"" + event.paths[i].name + "\""
+                   + ",\"inode\":\"" + event.paths[i].inode + "\"}";
+    }
+    pathsJson += "]";
+    BIND_TEXT(stmt, idx++, pathsJson);
+
+    // Serialize raw lines
+    std::string rawLinesStr;
+    for (size_t i = 0; i < event.rawLines.size(); i++) {
+        if (i > 0) rawLinesStr += "\n";
+        rawLinesStr += event.rawLines[i];
+    }
+    BIND_TEXT(stmt, idx++, rawLinesStr);
+
+    BIND_TEXT(stmt, idx++, event.provenance.parserName);
+    BIND_TEXT(stmt, idx++, event.provenance.parserVersion);
+    BIND_TEXT(stmt, idx++, event.provenance.sourceFile);
+
+    bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+
+    if (!success) {
+        setError(LinuxAnalysis::ErrorCode::DATABASE_INSERT_FAILED, "Failed to insert audit event");
+    }
+    return success;
+}
+
+bool LinuxAnalysisDatabase::insertAuditEvents(const std::vector<forensics::linux::AggregatedAuditEvent>& events) {
+    if (events.empty()) return true;
+
+    if (!beginTransaction()) return false;
+
+    bool allSuccess = true;
+    for (const auto& event : events) {
+        if (!insertAuditEvent(event)) {
+            allSuccess = false;
+            break;
+        }
+    }
+
+    if (allSuccess) {
+        commitTransaction();
+    } else {
+        rollbackTransaction();
+    }
+
+    return allSuccess;
 }

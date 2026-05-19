@@ -18,6 +18,16 @@
 #include "Detail/LinuxWebServerOperations.cpp"
 #include "Detail/LinuxSecurityOperations.cpp"
 #include "Detail/LinuxEnhancedAnalysisOps.cpp"
+#include "Detail/LinuxJournalOperations.cpp"
+#include "Detail/LinuxTamperingOperations.cpp"
+#include "Detail/LinuxPersistenceOperations.cpp"
+#include "Detail/LinuxWebErrorLogOperations.cpp"
+#include "Detail/LinuxContainerLogOperations.cpp"
+#include "Detail/LinuxPackageManagerOperations.cpp"
+#include "Detail/LinuxAccountSSHOperations.cpp"
+#include "Detail/LinuxDatabaseLogOperations.cpp"
+#include "Detail/LinuxEmailVPNOperations.cpp"
+#include "Detail/LinuxFirewallSecurityOperations.cpp"
 
 using namespace LinuxAnalysis;
 

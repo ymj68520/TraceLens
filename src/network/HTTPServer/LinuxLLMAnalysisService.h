@@ -29,6 +29,7 @@ public:
      * @brief Artifact types that can be analyzed
      */
     enum class ArtifactType {
+        // Original types
         LOG_ENTRY,
         USER_ACCOUNT,
         LOGIN_RECORD,
@@ -43,6 +44,22 @@ public:
         FIREWALL_RULE,
         AUDIT_LOG,
         BROWSER_PROFILE,
+        // New types from enhanced Linux analysis
+        JOURNAL_ENTRY,
+        BOOT_SESSION,
+        AGGREGATED_AUDIT_EVENT,
+        TAMPERING_INDICATOR,
+        PERSISTENCE_ENTRY,
+        ERROR_LOG,
+        MIDDLEWARE_LOG,
+        CONTAINER_LOG,
+        PACKAGE_OPERATION,
+        ACCOUNT_ANOMALY,
+        DATABASE_LOG,
+        EMAIL_LOG,
+        VPN_LOG,
+        FIREWALL_LOG,
+        SECURITY_PRODUCT_LOG,
         ALL
     };
 

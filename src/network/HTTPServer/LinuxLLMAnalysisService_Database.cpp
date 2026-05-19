@@ -117,6 +117,21 @@ std::string LinuxLLMAnalysisService::getTableNameForType(ArtifactType type) {
         case ArtifactType::FIREWALL_RULE: return "linux_firewall_rules";
         case ArtifactType::AUDIT_LOG: return "linux_audit_logs";
         case ArtifactType::BROWSER_PROFILE: return "linux_browser_profiles";
+        case ArtifactType::JOURNAL_ENTRY: return "linux_journal_entries";
+        case ArtifactType::BOOT_SESSION: return "linux_boot_sessions";
+        case ArtifactType::AGGREGATED_AUDIT_EVENT: return "linux_audit_events";
+        case ArtifactType::TAMPERING_INDICATOR: return "linux_tampering_findings";
+        case ArtifactType::PERSISTENCE_ENTRY: return "linux_persistence_entries";
+        case ArtifactType::ERROR_LOG: return "linux_web_error_logs";
+        case ArtifactType::MIDDLEWARE_LOG: return "linux_middleware_logs";
+        case ArtifactType::CONTAINER_LOG: return "linux_container_logs";
+        case ArtifactType::PACKAGE_OPERATION: return "linux_package_logs";
+        case ArtifactType::ACCOUNT_ANOMALY: return "linux_account_security_findings";
+        case ArtifactType::DATABASE_LOG: return "linux_database_logs";
+        case ArtifactType::EMAIL_LOG: return "linux_email_logs";
+        case ArtifactType::VPN_LOG: return "linux_vpn_logs";
+        case ArtifactType::FIREWALL_LOG: return "linux_firewall_logs";
+        case ArtifactType::SECURITY_PRODUCT_LOG: return "linux_security_product_logs";
         default: return "";
     }
 }
@@ -137,6 +152,20 @@ std::string LinuxLLMAnalysisService::getSelectSQLForType(ArtifactType type) {
         case ArtifactType::FIREWALL_RULE: return LinuxAnalysisSQL::SELECT_FIREWALL_RULES_PENDING_ANALYSIS;
         case ArtifactType::AUDIT_LOG: return LinuxAnalysisSQL::SELECT_AUDIT_LOGS_PENDING_ANALYSIS;
         case ArtifactType::BROWSER_PROFILE: return LinuxAnalysisSQL::SELECT_BROWSER_PROFILES_PENDING_ANALYSIS;
+        case ArtifactType::JOURNAL_ENTRY: return LinuxAnalysisSQL::SELECT_JOURNAL_ENTRIES_PENDING_ANALYSIS;
+        case ArtifactType::AGGREGATED_AUDIT_EVENT: return LinuxAnalysisSQL::SELECT_AUDIT_EVENTS_PENDING_ANALYSIS;
+        case ArtifactType::TAMPERING_INDICATOR: return LinuxAnalysisSQL::SELECT_TAMPERING_FINDINGS_PENDING_ANALYSIS;
+        case ArtifactType::PERSISTENCE_ENTRY: return LinuxAnalysisSQL::SELECT_PERSISTENCE_ENTRIES_PENDING_ANALYSIS;
+        case ArtifactType::ERROR_LOG: return LinuxAnalysisSQL::SELECT_WEB_ERROR_LOGS_PENDING_ANALYSIS;
+        case ArtifactType::MIDDLEWARE_LOG: return LinuxAnalysisSQL::SELECT_MIDDLEWARE_LOGS_PENDING_ANALYSIS;
+        case ArtifactType::CONTAINER_LOG: return LinuxAnalysisSQL::SELECT_CONTAINER_LOGS_PENDING_ANALYSIS;
+        case ArtifactType::PACKAGE_OPERATION: return LinuxAnalysisSQL::SELECT_PACKAGE_LOGS_PENDING_ANALYSIS;
+        case ArtifactType::ACCOUNT_ANOMALY: return LinuxAnalysisSQL::SELECT_ACCOUNT_SECURITY_FINDINGS_PENDING_ANALYSIS;
+        case ArtifactType::DATABASE_LOG: return LinuxAnalysisSQL::SELECT_DATABASE_LOGS_PENDING_ANALYSIS;
+        case ArtifactType::EMAIL_LOG: return LinuxAnalysisSQL::SELECT_EMAIL_LOGS_PENDING_ANALYSIS;
+        case ArtifactType::VPN_LOG: return LinuxAnalysisSQL::SELECT_VPN_LOGS_PENDING_ANALYSIS;
+        case ArtifactType::FIREWALL_LOG: return LinuxAnalysisSQL::SELECT_FIREWALL_LOGS_PENDING_ANALYSIS;
+        case ArtifactType::SECURITY_PRODUCT_LOG: return LinuxAnalysisSQL::SELECT_SECURITY_PRODUCT_LOGS_PENDING_ANALYSIS;
         default: return "";
     }
 }

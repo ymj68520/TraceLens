@@ -5,6 +5,8 @@
 #include "HTTPServer/LinuxLLMAnalysisService.h"
 #include "AuditLog/AuditLog.h"
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 
 // Container parsers
 #include "Parsers/Container/DockerContainerParser.h"
@@ -20,10 +22,76 @@
 #include "Parsers/Security/SELinuxAnalyzer.h"
 #include "Parsers/Security/AppArmorParser.h"
 
+// Compressed log parser (Phase 1)
+#include "Parsers/CompressedLogParser.h"
+
+// Journal parser (Phase 2)
+#include "Parsers/JournalParser.h"
+
 // Enhanced analysis
 #include "Analysis/LogCorrelationEngine.h"
 #include "Analysis/TimelineReconstructor.h"
 #include "Analysis/AnomalyDetector.h"
+#include "Analysis/LogTamperingDetector.h"
+#include "Analysis/PersistenceDetector.h"
+
+// Middleware log parser (Phase 7)
+#include "Parsers/WebServer/MiddlewareLogParser.h"
+
+// Container runtime log parser (Phase 8)
+#include "Parsers/Container/ContainerRuntimeLogParser.h"
+
+// Package manager log parser (Phase 9)
+#include "Parsers/PackageManager/PackageManagerLogParser.h"
+
+// Account/SSH security analyzer (Phase 10)
+#include "Analysis/AccountSSH/AccountSSHAnalyzer.h"
+
+// Phase 11: Database, Email, VPN, Firewall, Security Product logs
+#include "Parsers/Database/DatabaseLogParser.h"
+#include "Parsers/EmailVPN/EmailVPNLogParser.h"
+#include "Parsers/FirewallSecurity/FirewallSecurityLogParser.h"
+
+// Phase 12: USB, Mount, Cloud
+#include "Parsers/USBMountParser.h"
+#include "Parsers/CloudParser.h"
+
+// Phase 13: Extended history
+#include "Parsers/ExtendedHistoryParser.h"
+
+// Phase 14: Security bypass
+#include "Parsers/Security/SecurityBypassAnalyzer.h"
+
+// Phase 16: Rule engine
+#include "Analysis/RuleEngine.h"
+
+using forensics::linux::PackageManagerLogParser;
+using forensics::linux::AccountSSHAnalyzer;
+using forensics::linux::AccountSecurityFinding;
+using forensics::linux::SSHSecurityFinding;
+using forensics::linux::DatabaseLogParser;
+using forensics::linux::DatabaseLogEntry;
+using forensics::linux::DatabaseSecurityFinding;
+using forensics::linux::EmailVPNLogParser;
+using forensics::linux::EmailLogEntry;
+using forensics::linux::VPNLogEntry;
+using forensics::linux::EmailSecurityFinding;
+using forensics::linux::VPNSecurityFinding;
+using forensics::linux::FirewallSecurityLogParser;
+using forensics::linux::FirewallLogEntry;
+using forensics::linux::SecurityProductLogEntry;
+using forensics::linux::USBMountParser;
+using forensics::linux::USBEvent;
+using forensics::linux::MountEntry;
+using forensics::linux::CloudParser;
+using forensics::linux::CloudEvent;
+using forensics::linux::ExtendedHistoryParser;
+using forensics::linux::ExtendedHistoryEntry;
+using forensics::linux::CredentialConfig;
+using forensics::linux::SecurityBypassAnalyzer;
+using forensics::linux::SecurityBypassFinding;
+using forensics::linux::RuleEngine;
+using forensics::linux::SecurityProductFinding;
 
 namespace fs = std::filesystem;
 
@@ -72,10 +140,17 @@ void LinuxFilesAnalyzer::analyzeLinuxData() {
     std::cout << "Starting Linux forensic analysis..." << std::endl;
     AuditLog::instance().log("SYSTEM", "LINUX_ANALYSIS_START", "Starting Linux analysis: " + imagePath_);
 
-    // Phase 1: System logs
+    // Phase 1: Compressed and rotated log preprocessing
+    // This must run before other log analysis to include historical logs
+    analyzeCompressedLogs();
+
+    // Phase 2: System logs
     analyzeSystemLogs();
     analyzeAuthLogs();
     analyzeKernelLogs();
+
+    // Phase 2.5: systemd-journald analysis
+    analyzeJournalLogs();
 
     // Phase 2: User accounts and authentication
     analyzeUserAccounts();
@@ -95,6 +170,12 @@ void LinuxFilesAnalyzer::analyzeLinuxData() {
     analyzeFirewallRules();
     analyzeAuditLogs();
 
+    // Phase 5.5: Log tampering detection
+    analyzeLogTampering();
+
+    // Phase 5.6: Persistence mechanism detection
+    analyzePersistenceMechanisms();
+
     // Phase 6: Browser data
     analyzeBrowserData();
 
@@ -104,20 +185,51 @@ void LinuxFilesAnalyzer::analyzeLinuxData() {
     analyzeDockerVolumes();
     analyzePodmanContainers();
 
-    // Phase 8: Web Server Analysis
+    // Phase 8: Container Runtime Log Analysis
+    analyzeContainerRuntimeLogs();
+
+    // Phase 8.5: Web Server Analysis
     analyzeApacheServers();
     analyzeNginxServers();
 
-    // Phase 9: Security Posture Analysis
+    // Phase 8.5: Middleware and Error Log Analysis (Phase 7)
+    analyzeMiddlewareLogs();
+
+    // Phase 9: Package Manager Log Analysis
+    analyzePackageManagerLogs();
+
+    // Phase 10: Account and SSH Security Analysis
+    analyzeAccountSSHSecurity();
+
+    // Phase 11: Database, Email, VPN, Firewall, Security Product Logs
+    analyzeDatabaseLogs();
+    analyzeEmailVPNLogs();
+    analyzeFirewallSecurityLogs();
+
+    // Phase 12: USB, Mount, Desktop, Cloud
+    analyzeUSBEvents();
+    analyzeMountEntries();
+    analyzeCloudLogs();
+
+    // Phase 13: Extended history (Python, MySQL, Git, Docker, Kube, Cloud credentials)
+    analyzeExtendedHistory();
+
+    // Phase 14: Security bypass (LD_PRELOAD, PATH manipulation, dynamic linker hijack)
+    analyzeSecurityBypass();
+
+    // Security Posture Analysis
     analyzeSetuidFiles();
     analyzeCapabilities();
     analyzeSELinux();
     analyzeAppArmor();
 
-    // Phase 10: Enhanced Analysis
+    // Enhanced Analysis
     correlateEvents();
     reconstructTimeline();
     detectAnomalies();
+
+    // Phase 16: Rule engine and attack chain analysis
+    analyzeWithRuleEngine();
 
     // Phase 11: MANDATORY: AI-powered LLM analysis of all Linux artifacts
     // This is NOT optional - all Linux system files MUST be analyzed by AI
@@ -383,6 +495,553 @@ std::string LinuxFilesAnalyzer::readFixedString(const char* data, size_t len) {
 }
 
 // ============================================================================
+// Compressed and Rotated Log Analysis (Phase 1)
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzeCompressedLogs() {
+    std::cout << "Analyzing compressed and rotated logs..." << std::endl;
+    AuditLog::instance().log("SYSTEM", "COMPRESSED_LOGS_START", "Starting compressed log analysis: " + imagePath_);
+
+    using namespace forensics::linux;
+
+    // Common log directories to scan
+    std::vector<std::string> logDirs = {
+        "/var/log",
+        "/var/log/auth",
+        "/var/log/syslog",
+        "/var/log/audit",
+        "/var/log/journal"
+    };
+
+    int totalRotated = 0;
+    int totalDecompressed = 0;
+    int totalErrors = 0;
+
+    for (const auto& logDir : logDirs) {
+        // Query for files in the log directory
+        std::string pattern = logDir + "/%";
+        auto logFiles = queryFilesByPattern(pattern);
+
+        if (logFiles.empty()) {
+            continue;
+        }
+
+        std::cout << "  Scanning " << logDir << " for rotated logs..." << std::endl;
+
+        // Extract the directory first
+        std::string extractPath = getExtractPath("logs/compressed");
+        fs::create_directories(extractPath);
+
+        for (const auto& file : logFiles) {
+            std::string filename = file.name;
+
+            // Check if this is a rotated log
+            if (!CompressedLogParser::isRotatedLog(filename)) {
+                continue;
+            }
+
+            totalRotated++;
+
+            // Get compression type
+            CompressionType compType = CompressedLogParser::identifyCompression(filename);
+
+            // Create metadata
+            RotatedLogFile logInfo;
+            logInfo.originalPath = file.path;
+            logInfo.baseName = CompressedLogParser::getBaseName(filename);
+            logInfo.logDirectory = logDir;
+            logInfo.rotationIndex = CompressedLogParser::parseRotationIndex(filename);
+            logInfo.compression = compType;
+            logInfo.isCompressed = (compType != CompressionType::NONE);
+            logInfo.fileSize = file.size;
+            logInfo.mtime = file.mtime;
+            logInfo.inode = file.inode;
+            logInfo.dateSuffix = CompressedLogParser::parseDateSuffix(filename);
+            logInfo.isDateRotated = !logInfo.dateSuffix.empty();
+
+            std::cout << "    Found rotated log: " << filename
+                      << " (base=" << logInfo.baseName
+                      << ", idx=" << logInfo.rotationIndex
+                      << ", comp=" << CompressedLogParser::compressionTypeToString(compType)
+                      << ")" << std::endl;
+
+            // Extract the file
+            std::string outputPath = extractPath + "/" + std::to_string(file.inode) + "_" + filename;
+            if (!extractFileToPath(file.inode, outputPath)) {
+                std::cerr << "    Failed to extract: " << filename << std::endl;
+                totalErrors++;
+                continue;
+            }
+
+            // Decompress if needed
+            std::string content;
+            if (logInfo.isCompressed) {
+                content = CompressedLogParser::decompressFile(outputPath, compType);
+                if (content.empty()) {
+                    std::cerr << "    Failed to decompress: " << filename << std::endl;
+                    totalErrors++;
+                    continue;
+                }
+                totalDecompressed++;
+
+                // Save decompressed content
+                std::string decompressedPath = extractPath + "/" + std::to_string(file.inode) + "_" + logInfo.baseName;
+                std::ofstream out(decompressedPath);
+                if (out.is_open()) {
+                    out << content;
+                    out.close();
+                }
+            } else {
+                // Read plain text
+                std::ifstream inFile(outputPath);
+                if (inFile.is_open()) {
+                    std::ostringstream ss;
+                    ss << inFile.rdbuf();
+                    content = ss.str();
+                }
+            }
+
+            // Parse the log content based on base name
+            if (!content.empty()) {
+                // Determine log type from base name
+                std::string baseNameLower = logInfo.baseName;
+                std::transform(baseNameLower.begin(), baseNameLower.end(), baseNameLower.begin(), ::tolower);
+
+                // Create provenance for this file
+                EvidenceProvenance provenance;
+                provenance.parserName = "CompressedLogParser";
+                provenance.parserVersion = "1.0.0";
+                provenance.sourceFile = file.path;
+                provenance.sourceInode = file.inode;
+                provenance.rawRecord = content.substr(0, 1000); // First 1000 chars as sample
+
+                // Store as log entry with provenance
+                LinuxLogEntry entry;
+                entry.logFile = file.path;
+                entry.message = "Compressed/rotated log file: " + filename + " (" +
+                    std::to_string(content.size()) + " bytes, " +
+                    std::to_string(logInfo.rotationIndex) + " rotations)";
+                entry.provenance = provenance;
+
+                // Note: The actual parsing of log content will be done by the
+                // specific log parsers (analyzeSystemLogs, analyzeAuthLogs, etc.)
+                // after we extract the decompressed files
+            }
+
+            AuditLog::instance().log("LINUX", "ROTATED_LOG_FOUND",
+                "Found rotated log: " + filename + " (base=" + logInfo.baseName + ")");
+        }
+    }
+
+    std::cout << "  Compressed log analysis complete: "
+              << totalRotated << " rotated logs found, "
+              << totalDecompressed << " decompressed, "
+              << totalErrors << " errors" << std::endl;
+
+    AuditLog::instance().log("SYSTEM", "COMPRESSED_LOGS_COMPLETE",
+        "Compressed log analysis: " + std::to_string(totalRotated) + " rotated, " +
+        std::to_string(totalDecompressed) + " decompressed, " +
+        std::to_string(totalErrors) + " errors");
+}
+
+// ============================================================================
+// systemd-journald Analysis (Phase 2)
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzeJournalLogs() {
+    std::cout << "Analyzing systemd-journald journal files..." << std::endl;
+    AuditLog::instance().log("SYSTEM", "JOURNAL_ANALYSIS_START", "Starting journal analysis: " + imagePath_);
+
+    using namespace forensics::linux;
+
+    // Common journal directories
+    std::vector<std::string> journalDirs = {
+        "/var/log/journal",
+        "/run/log/journal"
+    };
+
+    int totalEntries = 0;
+    int totalFiles = 0;
+    int totalAnomalies = 0;
+    std::vector<JournalEntry> allEntries;
+
+    for (const auto& journalDir : journalDirs) {
+        // Query for journal files
+        std::string pattern = journalDir + "/%";
+        auto journalFiles = queryFilesByPattern(pattern);
+
+        if (journalFiles.empty()) {
+            std::cout << "  No journal files found in " << journalDir << std::endl;
+            continue;
+        }
+
+        std::cout << "  Scanning " << journalDir << " for journal files..." << std::endl;
+
+        // Extract directory
+        std::string extractPath = getExtractPath("journal");
+        fs::create_directories(extractPath);
+
+        for (const auto& file : journalFiles) {
+            std::string filename = file.name;
+
+            // Check if this is a journal file
+            bool isJournal = (filename.find(".journal") != std::string::npos);
+            bool isExport = (filename.find(".export") != std::string::npos) ||
+                            (filename.find("journal.txt") != std::string::npos);
+
+            if (!isJournal && !isExport) {
+                continue;
+            }
+
+            totalFiles++;
+
+            // Extract the file
+            std::string outputPath = extractPath + "/" + std::to_string(file.inode) + "_" + filename;
+            if (!extractFileToPath(file.inode, outputPath)) {
+                std::cerr << "    Failed to extract: " << filename << std::endl;
+                continue;
+            }
+
+            std::vector<JournalEntry> entries;
+
+            // Parse based on file type
+            if (isExport || JournalParser::isJournalExportFile(outputPath)) {
+                entries = JournalParser::parseJournalExportFile(outputPath);
+            } else if (JournalParser::isJournalFile(outputPath)) {
+                entries = JournalParser::parseJournalFile(outputPath);
+            }
+
+            if (!entries.empty()) {
+                totalEntries += entries.size();
+
+                // Set provenance for all entries
+                for (auto& entry : entries) {
+                    entry.provenance.sourceFile = file.path;
+                    entry.provenance.sourceInode = file.inode;
+                }
+
+                // Detect anomalies
+                auto anomalies = JournalParser::detectJournalAnomalies(entries);
+                totalAnomalies += anomalies.size();
+
+                for (const auto& anomaly : anomalies) {
+                    std::cout << "    Journal anomaly: " << anomaly.description << std::endl;
+                    AuditLog::instance().log("WARNING", "JOURNAL_ANOMALY",
+                        "Journal anomaly in " + filename + ": " + anomaly.description);
+                }
+
+                // Collect entries for boot session analysis
+                allEntries.insert(allEntries.end(), entries.begin(), entries.end());
+
+                std::cout << "    Parsed " << entries.size() << " entries from " << filename << std::endl;
+            }
+
+            AuditLog::instance().log("LINUX", "JOURNAL_FILE_PARSED",
+                "Parsed journal file: " + filename + " (" + std::to_string(entries.size()) + " entries)");
+        }
+    }
+
+    // Analyze boot sessions
+    std::vector<BootSession> bootSessions;
+    if (!allEntries.empty()) {
+        bootSessions = JournalParser::groupByBootId(allEntries);
+        std::cout << "  Found " << bootSessions.size() << " boot sessions" << std::endl;
+
+        for (const auto& session : bootSessions) {
+            std::cout << "    Boot " << session.bootId.substr(0, 8) << "..."
+                      << ": " << session.entryCount << " entries, "
+                      << "start=" << session.startTime
+                      << ", end=" << session.endTime << std::endl;
+        }
+    }
+
+    // Detect global anomalies across all entries
+    std::vector<JournalAnomaly> globalAnomalies;
+    if (!allEntries.empty()) {
+        globalAnomalies = JournalParser::detectJournalAnomalies(allEntries);
+        totalAnomalies += globalAnomalies.size();
+    }
+
+    // Store journal data in database
+    if (!allEntries.empty()) {
+        if (!linuxDb_->insertJournalEntries(allEntries)) {
+            std::cerr << "  Failed to insert journal entries into database" << std::endl;
+        } else {
+            std::cout << "  Stored " << allEntries.size() << " journal entries in database" << std::endl;
+        }
+    }
+    if (!bootSessions.empty()) {
+        if (!linuxDb_->insertBootSessions(bootSessions)) {
+            std::cerr << "  Failed to insert boot sessions into database" << std::endl;
+        } else {
+            std::cout << "  Stored " << bootSessions.size() << " boot sessions in database" << std::endl;
+        }
+    }
+    if (!globalAnomalies.empty()) {
+        if (!linuxDb_->insertJournalAnomalies(globalAnomalies)) {
+            std::cerr << "  Failed to insert journal anomalies into database" << std::endl;
+        } else {
+            std::cout << "  Stored " << globalAnomalies.size() << " journal anomalies in database" << std::endl;
+        }
+    }
+
+    std::cout << "  Journal analysis complete: "
+              << totalFiles << " files, "
+              << totalEntries << " entries, "
+              << totalAnomalies << " anomalies" << std::endl;
+
+    AuditLog::instance().log("SYSTEM", "JOURNAL_ANALYSIS_COMPLETE",
+        "Journal analysis: " + std::to_string(totalFiles) + " files, " +
+        std::to_string(totalEntries) + " entries, " +
+        std::to_string(totalAnomalies) + " anomalies");
+}
+
+// ============================================================================
+// Log Tampering Detection (Phase 5)
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzeLogTampering() {
+    using namespace forensics::linux;
+
+    std::cout << "Analyzing log tampering indicators..." << std::endl;
+    AuditLog::instance().log("SYSTEM", "LOG_TAMPERING_START", "Starting log tampering detection: " + imagePath_);
+
+    // Run all tampering detection algorithms
+    auto findings = LogTamperingDetector::detectAll(linuxDb_->getDbPath());
+
+    if (findings.empty()) {
+        std::cout << "  No log tampering indicators detected" << std::endl;
+    } else {
+        std::cout << "  Found " << findings.size() << " log tampering indicators:" << std::endl;
+
+        int criticalCount = 0;
+        int highCount = 0;
+        int mediumCount = 0;
+
+        for (const auto& finding : findings) {
+            // Set provenance
+            TamperingFinding f = finding;
+            f.provenance.parserName = "LogTamperingDetector";
+            f.provenance.parserVersion = "1.0.0";
+
+            switch (finding.severity) {
+                case TamperingSeverity::CRITICAL:
+                    criticalCount++;
+                    std::cout << "    [CRITICAL] " << finding.description << std::endl;
+                    break;
+                case TamperingSeverity::HIGH:
+                    highCount++;
+                    std::cout << "    [HIGH] " << finding.description << std::endl;
+                    break;
+                case TamperingSeverity::MEDIUM:
+                    mediumCount++;
+                    std::cout << "    [MEDIUM] " << finding.description << std::endl;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // Store findings in database
+        if (!linuxDb_->insertTamperingFindings(findings)) {
+            std::cerr << "  Failed to insert tampering findings into database" << std::endl;
+        } else {
+            std::cout << "  Stored " << findings.size() << " tampering findings in database" << std::endl;
+        }
+
+        std::cout << "  Summary: " << criticalCount << " critical, "
+                  << highCount << " high, " << mediumCount << " medium severity" << std::endl;
+    }
+
+    AuditLog::instance().log("SYSTEM", "LOG_TAMPERING_COMPLETE",
+        "Log tampering detection: " + std::to_string(findings.size()) + " findings");
+}
+
+// ============================================================================
+// Persistence Mechanism Detection Implementation (Phase 6)
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzePersistenceMechanisms() {
+    using namespace forensics::linux;
+
+    std::cout << "Analyzing persistence mechanisms..." << std::endl;
+    AuditLog::instance().log("SYSTEM", "PERSISTENCE_DETECTION_START", "Starting persistence mechanism detection: " + imagePath_);
+
+    // Run all persistence detection algorithms
+    auto entries = PersistenceDetector::detectAll(extractDir_);
+
+    if (entries.empty()) {
+        std::cout << "  No persistence mechanisms detected" << std::endl;
+    } else {
+        std::cout << "  Found " << entries.size() << " persistence mechanisms:" << std::endl;
+
+        int criticalCount = 0;
+        int highCount = 0;
+        int mediumCount = 0;
+        int suspiciousCount = 0;
+
+        for (const auto& entry : entries) {
+            if (entry.isSuspicious) suspiciousCount++;
+
+            switch (entry.risk) {
+                case PersistenceRisk::CRITICAL:
+                    criticalCount++;
+                    std::cout << "    [CRITICAL] " << PersistenceDetector::typeToString(entry.type)
+                              << ": " << entry.command << std::endl;
+                    break;
+                case PersistenceRisk::HIGH:
+                    highCount++;
+                    std::cout << "    [HIGH] " << PersistenceDetector::typeToString(entry.type)
+                              << ": " << entry.command << std::endl;
+                    break;
+                case PersistenceRisk::MEDIUM:
+                    mediumCount++;
+                    std::cout << "    [MEDIUM] " << PersistenceDetector::typeToString(entry.type)
+                              << ": " << entry.command << std::endl;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // Store entries in database
+        if (!linuxDb_->insertPersistenceEntries(entries)) {
+            std::cerr << "  Failed to insert persistence entries into database" << std::endl;
+        } else {
+            std::cout << "  Stored " << entries.size() << " persistence entries in database" << std::endl;
+        }
+
+        std::cout << "  Summary: " << criticalCount << " critical, " << highCount << " high, "
+                  << mediumCount << " medium risk, " << suspiciousCount << " suspicious" << std::endl;
+    }
+
+    AuditLog::instance().log("SYSTEM", "PERSISTENCE_DETECTION_COMPLETE",
+        "Persistence detection: " + std::to_string(entries.size()) + " entries found");
+}
+
+// ============================================================================
+// Middleware Log Analysis Implementation (Phase 7)
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzeMiddlewareLogs() {
+    using namespace forensics::linux;
+
+    std::cout << "Analyzing web server error logs and middleware logs..." << std::endl;
+    AuditLog::instance().log("SYSTEM", "MIDDLEWARE_LOG_START", "Starting middleware log analysis: " + imagePath_);
+
+    int totalErrorLogs = 0;
+    int totalMiddlewareLogs = 0;
+    int totalModsecLogs = 0;
+
+    // Web server error log paths to search
+    std::vector<std::string> errorLogPaths = {
+        "/var/log/apache2/error.log",
+        "/var/log/httpd/error_log",
+        "/var/log/nginx/error.log",
+        "/var/log/apache2/error.log.1",
+        "/var/log/httpd/error_log.1",
+        "/var/log/nginx/error.log.1"
+    };
+
+    // Middleware log paths
+    std::vector<std::pair<std::string, std::string>> middlewareLogPaths = {
+        {"/var/log/php-fpm/error.log", "php-fpm"},
+        {"/var/log/php-fpm/www-error.log", "php-fpm"},
+        {"/var/log/php8.1-fpm.log", "php-fpm"},
+        {"/var/log/tomcat*/catalina.out", "tomcat"},
+        {"/var/log/jetty*/jetty.log", "jetty"},
+        {"/var/log/pm2/*.log", "pm2"},
+        {"/var/log/gunicorn/*.log", "gunicorn"},
+        {"/var/log/uwsgi/*.log", "uwsgi"}
+    };
+
+    // ModSecurity audit log paths
+    std::vector<std::string> modsecLogPaths = {
+        "/var/log/modsec_audit.log",
+        "/var/log/apache2/modsec_audit.log",
+        "/var/log/httpd/modsec_audit.log",
+        "/var/log/nginx/modsec_audit.log"
+    };
+
+    // Helper to read file content
+    auto readFile = [](const std::string& path) -> std::string {
+        std::ifstream f(path, std::ios::binary);
+        if (!f.is_open()) return "";
+        std::ostringstream ss;
+        ss << f.rdbuf();
+        return ss.str();
+    };
+
+    // Process web server error logs
+    for (const auto& logPath : errorLogPaths) {
+        std::string fullPath = extractDir_ + logPath;
+        std::string content = readFile(fullPath);
+        if (content.empty()) continue;
+
+        auto entries = MiddlewareLogParser::parseErrorLogAuto(content, logPath);
+        if (!entries.empty()) {
+            if (linuxDb_->insertWebErrorLogs(entries)) {
+                totalErrorLogs += entries.size();
+                std::cout << "  Parsed " << entries.size() << " entries from " << logPath << std::endl;
+            }
+        }
+    }
+
+    // Process middleware logs
+    for (const auto& [logPath, logType] : middlewareLogPaths) {
+        std::string fullPath = extractDir_ + logPath;
+        std::string content = readFile(fullPath);
+        if (content.empty()) continue;
+
+        std::vector<MiddlewareLogEntry> entries;
+        if (logType == "php-fpm") {
+            entries = MiddlewareLogParser::parsePhpFpmLog(content, logPath);
+        } else if (logType == "tomcat") {
+            entries = MiddlewareLogParser::parseTomcatLog(content, logPath);
+        } else if (logType == "jetty") {
+            entries = MiddlewareLogParser::parseJettyLog(content, logPath);
+        } else if (logType == "pm2") {
+            entries = MiddlewareLogParser::parsePm2Log(content, logPath);
+        } else if (logType == "gunicorn") {
+            entries = MiddlewareLogParser::parseGunicornLog(content, logPath);
+        } else if (logType == "uwsgi") {
+            entries = MiddlewareLogParser::parseUwsgiLog(content, logPath);
+        }
+
+        if (!entries.empty()) {
+            if (linuxDb_->insertMiddlewareLogs(entries)) {
+                totalMiddlewareLogs += entries.size();
+                std::cout << "  Parsed " << entries.size() << " " << logType << " entries from " << logPath << std::endl;
+            }
+        }
+    }
+
+    // Process ModSecurity audit logs
+    for (const auto& logPath : modsecLogPaths) {
+        std::string fullPath = extractDir_ + logPath;
+        std::string content = readFile(fullPath);
+        if (content.empty()) continue;
+
+        auto entries = MiddlewareLogParser::parseModSecurityLog(content, logPath);
+        if (!entries.empty()) {
+            if (linuxDb_->insertModSecurityLogs(entries)) {
+                totalModsecLogs += entries.size();
+                std::cout << "  Parsed " << entries.size() << " ModSecurity entries from " << logPath << std::endl;
+            }
+        }
+    }
+
+    std::cout << "  Web error logs: " << totalErrorLogs
+              << ", Middleware logs: " << totalMiddlewareLogs
+              << ", ModSecurity logs: " << totalModsecLogs << std::endl;
+
+    AuditLog::instance().log("SYSTEM", "MIDDLEWARE_LOG_COMPLETE",
+        "Middleware log analysis: " + std::to_string(totalErrorLogs) + " error logs, " +
+        std::to_string(totalMiddlewareLogs) + " middleware logs, " +
+        std::to_string(totalModsecLogs) + " ModSecurity logs");
+}
+
+// ============================================================================
 // Container Analysis Implementation
 // ============================================================================
 
@@ -503,6 +1162,708 @@ void LinuxFilesAnalyzer::analyzePodmanContainers() {
         std::cout << "  Found " << result.containers.size() << " Podman containers, "
                   << result.pods.size() << " pods" << std::endl;
     }
+}
+
+// ============================================================================
+// Container Runtime Log Analysis Implementation (Phase 8)
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzeContainerRuntimeLogs() {
+    using namespace forensics::linux;
+
+    std::cout << "Analyzing container runtime logs..." << std::endl;
+    AuditLog::instance().log("SYSTEM", "CONTAINER_LOG_START", "Starting container runtime log analysis: " + imagePath_);
+
+    int totalDockerLogs = 0;
+    int totalCRILogs = 0;
+    int totalSecurityFindings = 0;
+
+    // Helper to read file content
+    auto readFile = [](const std::string& path) -> std::string {
+        std::ifstream f(path, std::ios::binary);
+        if (!f.is_open()) return "";
+        std::ostringstream ss;
+        ss << f.rdbuf();
+        return ss.str();
+    };
+
+    // Docker json-file log paths
+    std::vector<std::string> dockerLogPatterns = {
+        "/var/lib/docker/containers/*/*-json.log",
+        "/var/lib/docker/containers/*/*.log"
+    };
+
+    // CRI / Kubernetes log paths
+    std::vector<std::string> criLogPatterns = {
+        "/var/log/containers/*.log",
+        "/var/log/pods/*/*.log",
+        "/var/log/kubelet.log",
+        "/var/log/crio/pods/*.log"
+    };
+
+    // Process Docker json-file logs
+    for (const auto& pattern : dockerLogPatterns) {
+        // Use glob to find matching files
+        std::string cmd = "ls " + extractDir_ + pattern + " 2>/dev/null";
+        FILE* pipe = popen(cmd.c_str(), "r");
+        if (!pipe) continue;
+
+        char buffer[4096];
+        while (fgets(buffer, sizeof(buffer), pipe)) {
+            std::string filePath(buffer);
+            // Trim newline
+            while (!filePath.empty() && (filePath.back() == '\n' || filePath.back() == '\r')) {
+                filePath.pop_back();
+            }
+            if (filePath.empty()) continue;
+
+            std::string content = readFile(filePath);
+            if (content.empty()) continue;
+
+            auto entries = ContainerRuntimeLogParser::parseDockerJsonLog(content, filePath);
+            if (!entries.empty()) {
+                if (linuxDb_->insertContainerLogs(entries)) {
+                    totalDockerLogs += entries.size();
+                    std::cout << "  Parsed " << entries.size() << " Docker log entries from " << filePath << std::endl;
+                }
+            }
+        }
+        pclose(pipe);
+    }
+
+    // Process CRI / Kubernetes logs
+    for (const auto& pattern : criLogPatterns) {
+        std::string cmd = "ls " + extractDir_ + pattern + " 2>/dev/null";
+        FILE* pipe = popen(cmd.c_str(), "r");
+        if (!pipe) continue;
+
+        char buffer[4096];
+        while (fgets(buffer, sizeof(buffer), pipe)) {
+            std::string filePath(buffer);
+            while (!filePath.empty() && (filePath.back() == '\n' || filePath.back() == '\r')) {
+                filePath.pop_back();
+            }
+            if (filePath.empty()) continue;
+
+            std::string content = readFile(filePath);
+            if (content.empty()) continue;
+
+            // Auto-detect runtime type
+            std::string runtimeType = ContainerRuntimeLogParser::detectRuntimeType(content);
+
+            if (runtimeType == "cri" || runtimeType == "unknown") {
+                // Try parsing as Kubernetes pod log first (extracts pod metadata from filename)
+                auto podEntries = ContainerRuntimeLogParser::parseKubernetesPodLog(content, filePath);
+                if (!podEntries.empty()) {
+                    // Convert to CRI entries for storage
+                    std::vector<CRILogEntry> criEntries;
+                    for (const auto& pod : podEntries) {
+                        CRILogEntry cri;
+                        cri.timestamp = pod.timestamp;
+                        cri.stream = pod.stream;
+                        cri.message = pod.message;
+                        cri.containerId = pod.containerId;
+                        cri.podName = pod.podName;
+                        cri.namespace_ = pod.namespace_;
+                        cri.containerName = pod.containerName;
+                        cri.filePath = pod.filePath;
+                        cri.provenance = pod.provenance;
+                        criEntries.push_back(cri);
+                    }
+                    if (linuxDb_->insertCRILogs(criEntries)) {
+                        totalCRILogs += criEntries.size();
+                        std::cout << "  Parsed " << criEntries.size() << " K8s pod log entries from " << filePath << std::endl;
+                    }
+                }
+            }
+        }
+        pclose(pipe);
+    }
+
+    // Analyze container security configurations
+    // Look for Docker container config files
+    std::string configCmd = "ls " + extractDir_ + "/var/lib/docker/containers/*/config.v2.json 2>/dev/null";
+    FILE* configPipe = popen(configCmd.c_str(), "r");
+    if (configPipe) {
+        std::vector<ContainerConfig> configs;
+        char buffer[4096];
+        while (fgets(buffer, sizeof(buffer), configPipe)) {
+            std::string configPath(buffer);
+            while (!configPath.empty() && (configPath.back() == '\n' || configPath.back() == '\r')) {
+                configPath.pop_back();
+            }
+            if (configPath.empty()) continue;
+
+            std::string content = readFile(configPath);
+            if (content.empty()) continue;
+
+            auto config = ContainerRuntimeLogParser::parseContainerSecurityConfig(content, configPath);
+
+            // Extract container ID from path
+            size_t lastSlash = configPath.rfind('/');
+            if (lastSlash != std::string::npos) {
+                size_t secondLast = configPath.rfind('/', lastSlash - 1);
+                if (secondLast != std::string::npos) {
+                    config.containerId = configPath.substr(secondLast + 1, lastSlash - secondLast - 1);
+                }
+            }
+
+            configs.push_back(config);
+        }
+        pclose(configPipe);
+
+        if (!configs.empty()) {
+            auto findings = ContainerRuntimeLogParser::analyzeContainerSecurity(configs);
+            if (!findings.empty()) {
+                if (linuxDb_->insertContainerSecurityFindings(findings)) {
+                    totalSecurityFindings += findings.size();
+                    std::cout << "  Found " << findings.size() << " container security findings" << std::endl;
+
+                    for (const auto& finding : findings) {
+                        if (finding.severity == "critical") {
+                            std::cout << "    [CRITICAL] " << finding.findingType
+                                      << ": " << finding.description << std::endl;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    std::cout << "  Docker logs: " << totalDockerLogs
+              << ", CRI/K8s logs: " << totalCRILogs
+              << ", Security findings: " << totalSecurityFindings << std::endl;
+
+    AuditLog::instance().log("SYSTEM", "CONTAINER_LOG_COMPLETE",
+        "Container log analysis: " + std::to_string(totalDockerLogs) + " Docker logs, " +
+        std::to_string(totalCRILogs) + " CRI logs, " +
+        std::to_string(totalSecurityFindings) + " security findings");
+}
+
+// ============================================================================
+// Package Manager Log Analysis Implementation (Phase 9)
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzePackageManagerLogs() {
+    std::cout << "Analyzing package manager logs..." << std::endl;
+
+    if (!linuxDb_) {
+        std::cerr << "  Error: Linux analysis database not initialized" << std::endl;
+        return;
+    }
+
+    size_t totalPkgLogs = 0;
+    size_t totalSuspicious = 0;
+
+    // Helper to read file content
+    auto readFile = [](const std::string& path) -> std::string {
+        std::ifstream f(path);
+        if (!f.is_open()) return "";
+        return std::string((std::istreambuf_iterator<char>(f)),
+                           std::istreambuf_iterator<char>());
+    };
+
+    // List of package manager log files to analyze
+    std::vector<std::pair<std::string, std::string>> pkgLogPaths = {
+        // APT logs
+        {"/var/log/apt/history.log", "apt-history"},
+        {"/var/log/apt/term.log", "apt-term"},
+        {"/var/log/dpkg.log", "dpkg"},
+        // YUM/DNF logs
+        {"/var/log/yum.log", "yum"},
+        {"/var/log/dnf.log", "dnf"},
+        {"/var/log/dnf.rpm.log", "dnf"},
+        // Zypper
+        {"/var/log/zypper.log", "zypper"},
+        // Pacman
+        {"/var/log/pacman.log", "pacman"},
+    };
+
+    for (const auto& [logPath, expectedType] : pkgLogPaths) {
+        std::string fullPath = extractDir_ + logPath;
+        std::ifstream file(fullPath);
+        if (!file.is_open()) continue;
+
+        std::string content((std::istreambuf_iterator<char>(file)),
+                            std::istreambuf_iterator<char>());
+        file.close();
+
+        if (content.empty()) continue;
+
+        auto entries = PackageManagerLogParser::parsePackageManagerLog(content, logPath);
+        if (!entries.empty()) {
+            if (linuxDb_->insertPackageLogs(entries)) {
+                totalPkgLogs += entries.size();
+                std::cout << "  Parsed " << entries.size() << " entries from " << logPath << std::endl;
+            }
+        }
+    }
+
+    // Look for rotated logs
+    std::string rotatedCmd = "ls " + extractDir_ + "/var/log/apt/history.log.* "
+                             + extractDir_ + "/var/log/dpkg.log.* "
+                             + extractDir_ + "/var/log/yum.log.* "
+                             + extractDir_ + "/var/log/dnf.log.* "
+                             + extractDir_ + "/var/log/pacman.log.* "
+                             + "2>/dev/null";
+    FILE* rotatedPipe = popen(rotatedCmd.c_str(), "r");
+    if (rotatedPipe) {
+        char buffer[4096];
+        while (fgets(buffer, sizeof(buffer), rotatedPipe)) {
+            std::string filePath(buffer);
+            while (!filePath.empty() && (filePath.back() == '\n' || filePath.back() == '\r')) {
+                filePath.pop_back();
+            }
+            if (filePath.empty()) continue;
+
+            // Skip compressed files (handled separately)
+            if (filePath.find(".gz") != std::string::npos ||
+                filePath.find(".xz") != std::string::npos ||
+                filePath.find(".bz2") != std::string::npos ||
+                filePath.find(".zst") != std::string::npos) {
+                continue;
+            }
+
+            std::string content = readFile(filePath);
+            if (content.empty()) continue;
+
+            // Convert absolute path to relative
+            std::string relativePath = filePath;
+            if (relativePath.find(extractDir_) == 0) {
+                relativePath = relativePath.substr(extractDir_.length());
+            }
+
+            auto entries = PackageManagerLogParser::parsePackageManagerLog(content, relativePath);
+            if (!entries.empty()) {
+                if (linuxDb_->insertPackageLogs(entries)) {
+                    totalPkgLogs += entries.size();
+                    std::cout << "  Parsed " << entries.size() << " entries from " << relativePath << std::endl;
+                }
+            }
+        }
+        pclose(rotatedPipe);
+    }
+
+    // Now analyze all parsed entries for suspicious packages
+    // Query all package logs from database
+    LinuxAnalysis::QueryBuilder qb;
+    auto allEntries = linuxDb_->queryPackageLogsSafe(qb);
+    if (!allEntries.empty()) {
+        auto suspiciousFindings = PackageManagerLogParser::analyzeSuspiciousPackages(allEntries);
+        if (!suspiciousFindings.empty()) {
+            if (linuxDb_->insertSuspiciousPackageFindings(suspiciousFindings)) {
+                totalSuspicious = suspiciousFindings.size();
+                std::cout << "  Found " << totalSuspicious << " suspicious package findings" << std::endl;
+
+                for (const auto& finding : suspiciousFindings) {
+                    if (finding.severity == "critical") {
+                        std::cout << "    [CRITICAL] " << finding.findingType
+                                  << ": " << finding.description << std::endl;
+                    }
+                }
+            }
+        }
+    }
+
+    std::cout << "  Package logs: " << totalPkgLogs
+              << ", Suspicious findings: " << totalSuspicious << std::endl;
+
+    AuditLog::instance().log("SYSTEM", "PACKAGE_LOG_COMPLETE",
+        "Package manager log analysis: " + std::to_string(totalPkgLogs) + " entries, " +
+        std::to_string(totalSuspicious) + " suspicious findings");
+}
+
+// ============================================================================
+// Account and SSH Security Analysis Implementation (Phase 10)
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzeAccountSSHSecurity() {
+    std::cout << "Analyzing account and SSH security..." << std::endl;
+
+    if (!linuxDb_) {
+        std::cerr << "  Error: Linux analysis database not initialized" << std::endl;
+        return;
+    }
+
+    size_t totalAccountFindings = 0;
+    size_t totalSSHFindings = 0;
+
+    // Helper to read file content
+    auto readFile = [](const std::string& path) -> std::string {
+        std::ifstream f(path);
+        if (!f.is_open()) return "";
+        return std::string((std::istreambuf_iterator<char>(f)),
+                           std::istreambuf_iterator<char>());
+    };
+
+    // Read account files
+    std::string passwdContent = readFile(extractDir_ + "/etc/passwd");
+    std::string shadowContent = readFile(extractDir_ + "/etc/shadow");
+    std::string groupContent = readFile(extractDir_ + "/etc/group");
+    std::string sudoersContent = readFile(extractDir_ + "/etc/sudoers");
+
+    // Also read sudoers.d files
+    std::string sudoersDCmd = "cat " + extractDir_ + "/etc/sudoers.d/* 2>/dev/null";
+    FILE* sudoersPipe = popen(sudoersDCmd.c_str(), "r");
+    if (sudoersPipe) {
+        char buffer[4096];
+        while (fgets(buffer, sizeof(buffer), sudoersPipe)) {
+            sudoersContent += buffer;
+        }
+        pclose(sudoersPipe);
+    }
+
+    // Analyze account security
+    auto accountFindings = AccountSSHAnalyzer::analyzeAllAccounts(
+        passwdContent, shadowContent, groupContent, sudoersContent);
+
+    if (!accountFindings.empty()) {
+        if (linuxDb_->insertAccountSecurityFindings(accountFindings)) {
+            totalAccountFindings = accountFindings.size();
+            std::cout << "  Found " << totalAccountFindings << " account security findings" << std::endl;
+            for (const auto& f : accountFindings) {
+                if (f.severity == "critical") {
+                    std::cout << "    [CRITICAL] " << f.findingType
+                              << ": " << f.description << std::endl;
+                }
+            }
+        }
+    }
+
+    // Read SSH config files
+    std::string sshdConfig = readFile(extractDir_ + "/etc/ssh/sshd_config");
+    std::string sshConfig = readFile(extractDir_ + "/etc/ssh/ssh_config");
+
+    // Collect authorized_keys and known_hosts files
+    std::vector<std::pair<std::string, std::string>> authorizedKeysFiles;
+    std::vector<std::pair<std::string, std::string>> knownHostsFiles;
+
+    // Find user home directories
+    std::string homeCmd = "ls -d " + extractDir_ + "/home/*/.ssh/authorized_keys "
+                          + extractDir_ + "/home/*/.ssh/authorized_keys2 "
+                          + extractDir_ + "/root/.ssh/authorized_keys "
+                          + extractDir_ + "/root/.ssh/authorized_keys2 "
+                          + "2>/dev/null";
+    FILE* homePipe = popen(homeCmd.c_str(), "r");
+    if (homePipe) {
+        char buffer[4096];
+        while (fgets(buffer, sizeof(buffer), homePipe)) {
+            std::string keyPath(buffer);
+            while (!keyPath.empty() && (keyPath.back() == '\n' || keyPath.back() == '\r')) {
+                keyPath.pop_back();
+            }
+            if (keyPath.empty()) continue;
+
+            std::string content = readFile(keyPath);
+            if (!content.empty()) {
+                // Convert absolute path to relative
+                std::string relativePath = keyPath;
+                if (relativePath.find(extractDir_) == 0) {
+                    relativePath = relativePath.substr(extractDir_.length());
+                }
+                authorizedKeysFiles.push_back({content, relativePath});
+            }
+        }
+        pclose(homePipe);
+    }
+
+    // Find known_hosts files
+    std::string knownCmd = "ls " + extractDir_ + "/home/*/.ssh/known_hosts "
+                           + extractDir_ + "/root/.ssh/known_hosts "
+                           + "2>/dev/null";
+    FILE* knownPipe = popen(knownCmd.c_str(), "r");
+    if (knownPipe) {
+        char buffer[4096];
+        while (fgets(buffer, sizeof(buffer), knownPipe)) {
+            std::string hostsPath(buffer);
+            while (!hostsPath.empty() && (hostsPath.back() == '\n' || hostsPath.back() == '\r')) {
+                hostsPath.pop_back();
+            }
+            if (hostsPath.empty()) continue;
+
+            std::string content = readFile(hostsPath);
+            if (!content.empty()) {
+                std::string relativePath = hostsPath;
+                if (relativePath.find(extractDir_) == 0) {
+                    relativePath = relativePath.substr(extractDir_.length());
+                }
+                knownHostsFiles.push_back({content, relativePath});
+            }
+        }
+        pclose(knownPipe);
+    }
+
+    // Analyze SSH security
+    auto sshFindings = AccountSSHAnalyzer::analyzeAllSSH(
+        sshdConfig, sshConfig, authorizedKeysFiles, knownHostsFiles);
+
+    if (!sshFindings.empty()) {
+        if (linuxDb_->insertSSHSecurityFindings(sshFindings)) {
+            totalSSHFindings = sshFindings.size();
+            std::cout << "  Found " << totalSSHFindings << " SSH security findings" << std::endl;
+            for (const auto& f : sshFindings) {
+                if (f.severity == "critical") {
+                    std::cout << "    [CRITICAL] " << f.findingType
+                              << ": " << f.description << std::endl;
+                }
+            }
+        }
+    }
+
+    std::cout << "  Account findings: " << totalAccountFindings
+              << ", SSH findings: " << totalSSHFindings << std::endl;
+
+    AuditLog::instance().log("SYSTEM", "ACCOUNT_SSH_COMPLETE",
+        "Account/SSH security analysis: " + std::to_string(totalAccountFindings) +
+        " account findings, " + std::to_string(totalSSHFindings) + " SSH findings");
+}
+
+// ============================================================================
+// Database Log Analysis Implementation (Phase 11)
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzeDatabaseLogs() {
+    std::cout << "Analyzing database service logs..." << std::endl;
+
+    if (!linuxDb_) {
+        std::cerr << "  Error: Linux analysis database not initialized" << std::endl;
+        return;
+    }
+
+    // Database log locations
+    std::vector<std::string> logPatterns = {
+        "var/log/mysql/%",
+        "var/log/mariadb/%",
+        "var/log/postgresql/%",
+        "var/log/mongodb/%",
+        "var/log/redis/%",
+        "var/log/mysql.log%",
+        "var/log/mysql/error.log%",
+        "var/log/postgresql/postgresql%.log"
+    };
+
+    size_t totalEntries = 0;
+    size_t totalFindings = 0;
+
+    for (const auto& pattern : logPatterns) {
+        auto logFiles = queryFilesByPattern(pattern);
+        for (const auto& file : logFiles) {
+            std::string content;
+            std::ifstream f(extractDir_ + "/" + file.path);
+            if (f.is_open()) {
+                content = std::string((std::istreambuf_iterator<char>(f)),
+                                      std::istreambuf_iterator<char>());
+            }
+            if (content.empty()) continue;
+
+            auto entries = DatabaseLogParser::parseAuto(content, file.path);
+            if (!entries.empty()) {
+                linuxDb_->insertDatabaseLogs(entries);
+                totalEntries += entries.size();
+
+                auto findings = DatabaseLogParser::analyzeSecurity(entries);
+                if (!findings.empty()) {
+                    linuxDb_->insertDatabaseSecurityFindings(findings);
+                    totalFindings += findings.size();
+                }
+            }
+        }
+    }
+
+    std::cout << "  Database logs: " << totalEntries
+              << ", Security findings: " << totalFindings << std::endl;
+
+    AuditLog::instance().log("SYSTEM", "DATABASE_LOG_COMPLETE",
+        "Database log analysis: " + std::to_string(totalEntries) + " entries, " +
+        std::to_string(totalFindings) + " security findings");
+}
+
+// ============================================================================
+// Email and VPN Log Analysis Implementation (Phase 11)
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzeEmailVPNLogs() {
+    std::cout << "Analyzing email and VPN logs..." << std::endl;
+
+    if (!linuxDb_) {
+        std::cerr << "  Error: Linux analysis database not initialized" << std::endl;
+        return;
+    }
+
+    // Email log locations
+    std::vector<std::string> emailPatterns = {
+        "var/log/mail.log%",
+        "var/log/maillog%",
+        "var/log/exim4/%",
+        "var/log/exim/%",
+        "var/log/dovecot/%",
+        "var/log/mail%"
+    };
+
+    // VPN log locations
+    std::vector<std::string> vpnPatterns = {
+        "var/log/openvpn/%",
+        "var/log/openvpn.log%",
+        "var/log/wireguard/%"
+    };
+
+    size_t totalEmailEntries = 0;
+    size_t totalEmailFindings = 0;
+    size_t totalVPNEntries = 0;
+    size_t totalVPNFindings = 0;
+
+    auto readFile = [this](const FileRecord& file) -> std::string {
+        std::ifstream f(extractDir_ + "/" + file.path);
+        if (!f.is_open()) return "";
+        return std::string((std::istreambuf_iterator<char>(f)),
+                           std::istreambuf_iterator<char>());
+    };
+
+    // Parse email logs
+    for (const auto& pattern : emailPatterns) {
+        auto logFiles = queryFilesByPattern(pattern);
+        for (const auto& file : logFiles) {
+            std::string content = readFile(file);
+            if (content.empty()) continue;
+
+            auto entries = EmailVPNLogParser::parseEmailAuto(content, file.path);
+            if (!entries.empty()) {
+                linuxDb_->insertEmailLogs(entries);
+                totalEmailEntries += entries.size();
+
+                auto findings = EmailVPNLogParser::analyzeEmailSecurity(entries);
+                if (!findings.empty()) {
+                    linuxDb_->insertEmailSecurityFindings(findings);
+                    totalEmailFindings += findings.size();
+                }
+            }
+        }
+    }
+
+    // Parse VPN logs
+    for (const auto& pattern : vpnPatterns) {
+        auto logFiles = queryFilesByPattern(pattern);
+        for (const auto& file : logFiles) {
+            std::string content = readFile(file);
+            if (content.empty()) continue;
+
+            auto entries = EmailVPNLogParser::parseVPNAuto(content, file.path);
+            if (!entries.empty()) {
+                linuxDb_->insertVPNLogs(entries);
+                totalVPNEntries += entries.size();
+
+                auto findings = EmailVPNLogParser::analyzeVPNSecurity(entries);
+                if (!findings.empty()) {
+                    linuxDb_->insertVPNSecurityFindings(findings);
+                    totalVPNFindings += findings.size();
+                }
+            }
+        }
+    }
+
+    std::cout << "  Email logs: " << totalEmailEntries
+              << ", Email findings: " << totalEmailFindings << std::endl;
+    std::cout << "  VPN logs: " << totalVPNEntries
+              << ", VPN findings: " << totalVPNFindings << std::endl;
+
+    AuditLog::instance().log("SYSTEM", "EMAIL_VPN_COMPLETE",
+        "Email/VPN log analysis: " + std::to_string(totalEmailEntries) + " email entries, " +
+        std::to_string(totalVPNEntries) + " VPN entries");
+}
+
+// ============================================================================
+// Firewall and Security Product Log Analysis Implementation (Phase 11)
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzeFirewallSecurityLogs() {
+    std::cout << "Analyzing firewall and security product logs..." << std::endl;
+
+    if (!linuxDb_) {
+        std::cerr << "  Error: Linux analysis database not initialized" << std::endl;
+        return;
+    }
+
+    // Firewall log locations
+    std::vector<std::string> firewallPatterns = {
+        "var/log/ufw.log%",
+        "var/log/ufw%",
+        "var/log/firewalld%"
+    };
+
+    // Security product log locations
+    std::vector<std::string> securityPatterns = {
+        "var/log/fail2ban.log%",
+        "var/log/fail2ban%",
+        "var/log/clamav/%",
+        "var/log/freshclam.log%",
+        "var/log/rkhunter.log%",
+        "var/log/ossec/%",
+        "var/log/aide/%",
+        "var/log/aide.log%"
+    };
+
+    size_t totalFirewallEntries = 0;
+    size_t totalFirewallFindings = 0;
+    size_t totalSecurityEntries = 0;
+    size_t totalSecurityFindings = 0;
+
+    auto readFile = [this](const FileRecord& file) -> std::string {
+        std::ifstream f(extractDir_ + "/" + file.path);
+        if (!f.is_open()) return "";
+        return std::string((std::istreambuf_iterator<char>(f)),
+                           std::istreambuf_iterator<char>());
+    };
+
+    // Parse firewall logs
+    for (const auto& pattern : firewallPatterns) {
+        auto logFiles = queryFilesByPattern(pattern);
+        for (const auto& file : logFiles) {
+            std::string content = readFile(file);
+            if (content.empty()) continue;
+
+            auto entries = FirewallSecurityLogParser::parseFirewallAuto(content, file.path);
+            if (!entries.empty()) {
+                linuxDb_->insertFirewallLogEntries(entries);
+                totalFirewallEntries += entries.size();
+
+                auto findings = FirewallSecurityLogParser::analyzeFirewallSecurity(entries);
+                if (!findings.empty()) {
+                    linuxDb_->insertSecurityProductFindings(findings);
+                    totalFirewallFindings += findings.size();
+                }
+            }
+        }
+    }
+
+    // Parse security product logs
+    for (const auto& pattern : securityPatterns) {
+        auto logFiles = queryFilesByPattern(pattern);
+        for (const auto& file : logFiles) {
+            std::string content = readFile(file);
+            if (content.empty()) continue;
+
+            auto entries = FirewallSecurityLogParser::parseSecurityAuto(content, file.path);
+            if (!entries.empty()) {
+                linuxDb_->insertSecurityProductLogs(entries);
+                totalSecurityEntries += entries.size();
+
+                auto findings = FirewallSecurityLogParser::analyzeSecurityProduct(entries);
+                if (!findings.empty()) {
+                    linuxDb_->insertSecurityProductFindings(findings);
+                    totalSecurityFindings += findings.size();
+                }
+            }
+        }
+    }
+
+    std::cout << "  Firewall logs: " << totalFirewallEntries
+              << ", Firewall findings: " << totalFirewallFindings << std::endl;
+    std::cout << "  Security product logs: " << totalSecurityEntries
+              << ", Security findings: " << totalSecurityFindings << std::endl;
+
+    AuditLog::instance().log("SYSTEM", "FIREWALL_SECURITY_COMPLETE",
+        "Firewall/Security log analysis: " + std::to_string(totalFirewallEntries) +
+        " firewall entries, " + std::to_string(totalSecurityEntries) + " security entries");
 }
 
 // ============================================================================
@@ -801,5 +2162,298 @@ void LinuxFilesAnalyzer::detectAnomalies() {
             std::to_string(critical) + " critical, " + std::to_string(high) + " high)");
     } else {
         std::cout << "  No anomalies detected" << std::endl;
+    }
+}
+
+// ============================================================================
+// Phase 12: USB, Mount, Desktop, Cloud
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzeUSBEvents() {
+    std::cout << "Analyzing USB events..." << std::endl;
+
+    auto kernLogFiles = queryFilesByPattern("%/var/log/kern%");
+    auto syslogFiles = queryFilesByPattern("%/var/log/syslog%");
+
+    std::vector<USBEvent> allEvents;
+    for (const auto& file : kernLogFiles) {
+        std::string extractPath = getExtractPath("var/log/" + file.name);
+        if (extractFileToPath(file.inode, extractPath)) {
+            std::ifstream fs(extractPath);
+            std::vector<std::string> lines;
+            std::string line;
+            while (std::getline(fs, line)) lines.push_back(line);
+            auto events = USBMountParser::parseUSBEvents(lines, extractPath);
+            allEvents.insert(allEvents.end(), events.begin(), events.end());
+        }
+    }
+    for (const auto& file : syslogFiles) {
+        std::string extractPath = getExtractPath("var/log/" + file.name);
+        if (extractFileToPath(file.inode, extractPath)) {
+            std::ifstream fs(extractPath);
+            std::vector<std::string> lines;
+            std::string line;
+            while (std::getline(fs, line)) lines.push_back(line);
+            auto events = USBMountParser::parseUSBEvents(lines, extractPath);
+            allEvents.insert(allEvents.end(), events.begin(), events.end());
+        }
+    }
+
+    if (!allEvents.empty()) {
+        // Store to database (uses existing insert methods or new table)
+        std::cout << "  Found " << allEvents.size() << " USB events" << std::endl;
+        AuditLog::instance().log("SUCCESS", "USB_EVENTS_PARSED",
+            "Parsed " + std::to_string(allEvents.size()) + " USB events");
+    }
+}
+
+void LinuxFilesAnalyzer::analyzeMountEntries() {
+    std::cout << "Analyzing mount entries..." << std::endl;
+
+    auto fstabFiles = queryFilesByPattern("%/etc/fstab%");
+    for (const auto& file : fstabFiles) {
+        std::string extractPath = getExtractPath("etc/fstab");
+        if (extractFileToPath(file.inode, extractPath)) {
+            std::ifstream fs(extractPath);
+            std::string content((std::istreambuf_iterator<char>(fs)),
+                                 std::istreambuf_iterator<char>());
+            auto entries = USBMountParser::parseFstab(content, extractPath);
+            std::cout << "  Found " << entries.size() << " fstab entries" << std::endl;
+        }
+    }
+
+    AuditLog::instance().log("SUCCESS", "MOUNT_ENTRIES_PARSED", "Analyzed mount entries");
+}
+
+void LinuxFilesAnalyzer::analyzeCloudLogs() {
+    std::cout << "Analyzing cloud provider logs..." << std::endl;
+
+    // Check for cloud-init logs
+    auto cloudInitFiles = queryFilesByPattern("%/var/log/cloud-init%");
+    for (const auto& file : cloudInitFiles) {
+        std::string extractPath = getExtractPath("var/log/" + file.name);
+        if (extractFileToPath(file.inode, extractPath)) {
+            std::ifstream fs(extractPath);
+            std::string content((std::istreambuf_iterator<char>(fs)),
+                                 std::istreambuf_iterator<char>());
+            auto events = CloudParser::parseCloudInitLog(content, extractPath);
+            if (!events.empty()) {
+                std::cout << "  Parsed " << events.size() << " cloud-init events from " << file.name << std::endl;
+            }
+        }
+    }
+
+    // Check for waagent logs (Azure)
+    auto waagentFiles = queryFilesByPattern("%/var/log/waagent%");
+    for (const auto& file : waagentFiles) {
+        std::string extractPath = getExtractPath("var/log/" + file.name);
+        if (extractFileToPath(file.inode, extractPath)) {
+            std::ifstream fs(extractPath);
+            std::string content((std::istreambuf_iterator<char>(fs)),
+                                 std::istreambuf_iterator<char>());
+            auto events = CloudParser::parseWaagentLog(content, extractPath);
+            if (!events.empty()) {
+                std::cout << "  Parsed " << events.size() << " waagent events from " << file.name << std::endl;
+            }
+        }
+    }
+
+    AuditLog::instance().log("SUCCESS", "CLOUD_LOGS_PARSED", "Analyzed cloud provider logs");
+}
+
+// ============================================================================
+// Phase 13: Extended history
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzeExtendedHistory() {
+    std::cout << "Analyzing extended shell/development tool history..." << std::endl;
+
+    auto userDirs = findUserHomeDirectories();
+    int totalEntries = 0;
+
+    for (const auto& userDir : userDirs) {
+        std::string username = userDir.substr(userDir.find_last_of('/') + 1);
+
+        // Python history
+        auto pythonFiles = queryFilesByPattern(userDir + "%/.python_history%");
+        for (const auto& file : pythonFiles) {
+            std::string extractPath = getExtractPath(username + "/.python_history");
+            if (extractFileToPath(file.inode, extractPath)) {
+                std::ifstream fs(extractPath);
+                std::string content((std::istreambuf_iterator<char>(fs)),
+                                     std::istreambuf_iterator<char>());
+                auto entries = ExtendedHistoryParser::parsePythonHistory(content, extractPath, username);
+                totalEntries += entries.size();
+            }
+        }
+
+        // MySQL history
+        auto mysqlFiles = queryFilesByPattern(userDir + "%/.mysql_history%");
+        for (const auto& file : mysqlFiles) {
+            std::string extractPath = getExtractPath(username + "/.mysql_history");
+            if (extractFileToPath(file.inode, extractPath)) {
+                std::ifstream fs(extractPath);
+                std::string content((std::istreambuf_iterator<char>(fs)),
+                                     std::istreambuf_iterator<char>());
+                auto entries = ExtendedHistoryParser::parseMysqlHistory(content, extractPath, username);
+                totalEntries += entries.size();
+            }
+        }
+
+        // Git config
+        auto gitconfigFiles = queryFilesByPattern(userDir + "%/.gitconfig%");
+        for (const auto& file : gitconfigFiles) {
+            std::string extractPath = getExtractPath(username + "/.gitconfig");
+            if (extractFileToPath(file.inode, extractPath)) {
+                std::ifstream fs(extractPath);
+                std::string content((std::istreambuf_iterator<char>(fs)),
+                                     std::istreambuf_iterator<char>());
+                auto configs = ExtendedHistoryParser::parseGitConfig(content, extractPath, username);
+                for (const auto& config : configs) {
+                    if (config.hasCredentials || config.hasTokens) {
+                        std::cout << "  WARNING: Credentials found in " << config.filePath << std::endl;
+                    }
+                }
+            }
+        }
+
+        // Docker config
+        auto dockerConfigFiles = queryFilesByPattern(userDir + "%/.docker/config.json%");
+        for (const auto& file : dockerConfigFiles) {
+            std::string extractPath = getExtractPath(username + "/.docker/config.json");
+            if (extractFileToPath(file.inode, extractPath)) {
+                std::ifstream fs(extractPath);
+                std::string content((std::istreambuf_iterator<char>(fs)),
+                                     std::istreambuf_iterator<char>());
+                auto configs = ExtendedHistoryParser::parseDockerConfig(content, extractPath, username);
+                for (const auto& config : configs) {
+                    if (config.hasCredentials) {
+                        std::cout << "  WARNING: Docker credentials found in " << config.filePath << std::endl;
+                    }
+                }
+            }
+        }
+
+        // Kube config
+        auto kubeConfigFiles = queryFilesByPattern(userDir + "%/.kube/config%");
+        for (const auto& file : kubeConfigFiles) {
+            std::string extractPath = getExtractPath(username + "/.kube/config");
+            if (extractFileToPath(file.inode, extractPath)) {
+                std::ifstream fs(extractPath);
+                std::string content((std::istreambuf_iterator<char>(fs)),
+                                     std::istreambuf_iterator<char>());
+                auto configs = ExtendedHistoryParser::parseKubeConfig(content, extractPath, username);
+                for (const auto& config : configs) {
+                    if (config.hasCredentials || config.hasTokens) {
+                        std::cout << "  WARNING: Kubernetes credentials found in " << config.filePath << std::endl;
+                    }
+                }
+            }
+        }
+    }
+
+    std::cout << "  Found " << totalEntries << " extended history entries" << std::endl;
+    AuditLog::instance().log("SUCCESS", "EXTENDED_HISTORY_PARSED",
+        "Parsed " + std::to_string(totalEntries) + " extended history entries");
+}
+
+// ============================================================================
+// Phase 14: Security bypass
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzeSecurityBypass() {
+    std::cout << "Analyzing security bypass mechanisms..." << std::endl;
+
+    int totalFindings = 0;
+
+    // Check ld.so.preload
+    auto preloadFiles = queryFilesByPattern("%/etc/ld.so.preload%");
+    for (const auto& file : preloadFiles) {
+        std::string extractPath = getExtractPath("etc/ld.so.preload");
+        if (extractFileToPath(file.inode, extractPath)) {
+            std::ifstream fs(extractPath);
+            std::string content((std::istreambuf_iterator<char>(fs)),
+                                 std::istreambuf_iterator<char>());
+            auto findings = SecurityBypassAnalyzer::analyzeLdSoPreload(content, extractPath);
+            totalFindings += findings.size();
+            for (const auto& finding : findings) {
+                std::cout << "  WARNING: " << finding.description << std::endl;
+            }
+        }
+    }
+
+    // Check shell startup files for each user
+    auto userDirs = findUserHomeDirectories();
+    for (const auto& userDir : userDirs) {
+        std::string username = userDir.substr(userDir.find_last_of('/') + 1);
+
+        // .bashrc
+        auto bashrcFiles = queryFilesByPattern(userDir + "%/.bashrc%");
+        for (const auto& file : bashrcFiles) {
+            std::string extractPath = getExtractPath(username + "/.bashrc");
+            if (extractFileToPath(file.inode, extractPath)) {
+                std::ifstream fs(extractPath);
+                std::string content((std::istreambuf_iterator<char>(fs)),
+                                     std::istreambuf_iterator<char>());
+                auto findings = SecurityBypassAnalyzer::analyzeShellStartup(content, extractPath, username);
+                totalFindings += findings.size();
+            }
+        }
+
+        // .profile
+        auto profileFiles = queryFilesByPattern(userDir + "%/.profile%");
+        for (const auto& file : profileFiles) {
+            std::string extractPath = getExtractPath(username + "/.profile");
+            if (extractFileToPath(file.inode, extractPath)) {
+                std::ifstream fs(extractPath);
+                std::string content((std::istreambuf_iterator<char>(fs)),
+                                     std::istreambuf_iterator<char>());
+                auto findings = SecurityBypassAnalyzer::analyzeEnvironmentFiles(content, extractPath, username);
+                totalFindings += findings.size();
+            }
+        }
+    }
+
+    std::cout << "  Found " << totalFindings << " security bypass indicators" << std::endl;
+    AuditLog::instance().log("SUCCESS", "SECURITY_BYPASS_ANALYZED",
+        "Found " + std::to_string(totalFindings) + " security bypass indicators");
+}
+
+// ============================================================================
+// Phase 16: Rule engine and attack chain analysis
+// ============================================================================
+
+void LinuxFilesAnalyzer::analyzeWithRuleEngine() {
+    std::cout << "Running rule engine and attack chain analysis..." << std::endl;
+
+    try {
+        RuleEngine engine(outputDbPath_);
+
+        // Evaluate all rules
+        auto matches = engine.evaluateAllRules();
+        std::cout << "  Rule engine found " << matches.size() << " matches" << std::endl;
+
+        // Build attack chains
+        auto chains = engine.buildAttackChains(matches);
+        std::cout << "  Built " << chains.size() << " attack chains" << std::endl;
+
+        // Store results
+        if (!matches.empty()) {
+            engine.storeRuleMatches(matches);
+        }
+        if (!chains.empty()) {
+            engine.storeAttackChains(chains);
+            for (const auto& chain : chains) {
+                std::cout << "  ATTACK CHAIN: " << chain.summary << std::endl;
+                std::cout << "    Severity: " << chain.overallSeverity << std::endl;
+            }
+        }
+
+        AuditLog::instance().log("SUCCESS", "RULE_ENGINE_COMPLETE",
+            "Rule engine found " + std::to_string(matches.size()) + " matches, " +
+            std::to_string(chains.size()) + " attack chains");
+    } catch (const std::exception& e) {
+        std::cerr << "  Rule engine error: " << e.what() << std::endl;
+        AuditLog::instance().log("ERROR", "RULE_ENGINE_FAILED", e.what());
     }
 }

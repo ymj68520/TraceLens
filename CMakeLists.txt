@@ -26,6 +26,41 @@ pkg_check_modules(POPPLER REQUIRED poppler-cpp)
 pkg_check_modules(MYSQLCLIENT mysqlclient)
 pkg_check_modules(LIBPQ libpq)
 
+# Optional compression libraries for compressed log parsing
+find_package(ZLIB QUIET)
+find_package(LibLZMA QUIET)
+find_package(BZip2 QUIET)
+pkg_check_modules(ZSTD QUIET libzstd)
+
+# Set compression library flags
+if(ZLIB_FOUND)
+  message(STATUS "zlib found - gzip support enabled")
+  add_definitions(-DHAVE_ZLIB)
+else()
+  message(STATUS "zlib not found - gzip support disabled")
+endif()
+
+if(LIBLZMA_FOUND)
+  message(STATUS "liblzma found - xz support enabled")
+  add_definitions(-DHAVE_LIBLZMA)
+else()
+  message(STATUS "liblzma not found - xz support disabled")
+endif()
+
+if(BZIP2_FOUND)
+  message(STATUS "bzip2 found - bz2 support enabled")
+  add_definitions(-DHAVE_BZIP2)
+else()
+  message(STATUS "bzip2 not found - bz2 support disabled")
+endif()
+
+if(ZSTD_FOUND)
+  message(STATUS "zstd found - zst support enabled")
+  add_definitions(-DHAVE_ZSTD)
+else()
+  message(STATUS "zstd not found - zst support disabled")
+endif()
+
 # Find nlohmann/json (try multiple methods)
 find_package(nlohmann_json QUIET)
 if(NOT nlohmann_json_FOUND)
@@ -86,6 +121,10 @@ include_directories(
   ${LIBOLECF_INCLUDE_DIRS}
   ${XAPIAN_INCLUDE_DIRS}
   ${POPPLER_INCLUDE_DIRS}
+  ${ZLIB_INCLUDE_DIRS}
+  ${LIBLZMA_INCLUDE_DIRS}
+  ${BZIP2_INCLUDE_DIRS}
+  ${ZSTD_INCLUDE_DIRS}
   ${CMAKE_SOURCE_DIR}/libs/sqlite3
   /usr/include/postgresql
   /usr/include/postgresql/16/server
@@ -264,17 +303,35 @@ set(LIB_SOURCES
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxLogParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxHistoryParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/CompressedLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/JournalParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/TimestampNormalizer.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/AuditdAggregator.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/ApacheParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/NginxParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/MiddlewareLogParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SetuidAnalyzer.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Security/CapabilityAnalyzer.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SELinuxAnalyzer.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Security/AppArmorParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Container/DockerContainerParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Container/PodmanParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Container/ContainerRuntimeLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/PackageManager/PackageManagerLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/AccountSSH/AccountSSHAnalyzer.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Database/DatabaseLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/EmailVPN/EmailVPNLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/FirewallSecurity/FirewallSecurityLogParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Analysis/LogCorrelationEngine.cpp
     src/analyzers/LinuxFilesAnalyzer/Analysis/TimelineReconstructor.cpp
     src/analyzers/LinuxFilesAnalyzer/Analysis/AnomalyDetector.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/LogTamperingDetector.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/PersistenceDetector.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/RuleEngine.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/USBMountParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/CloudParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/ExtendedHistoryParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SecurityBypassAnalyzer.cpp
     src/core/AuditLog/AuditLog.cpp
     src/core/PathManager/PathManager.cpp
     src/core/FullTextSearch/FullTextSearch.cpp
@@ -360,6 +417,10 @@ else()
     curl
     OpenSSL::SSL
     OpenSSL::Crypto
+    ${ZLIB_LIBRARIES}
+    ${LIBLZMA_LIBRARIES}
+    ${BZIP2_LIBRARIES}
+    ${ZSTD_LIBRARIES}
     ${PLATFORM_LIBRARIES})
 endif()
 

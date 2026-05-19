@@ -50,7 +50,10 @@ public:
      */
     void analyzeWithLLM();
 
-    // System log analysis
+    // Compressed and rotated log analysis (Phase 1)
+    /** @brief Analyze compressed and rotated log files (.gz, .xz, .bz2, .zst) */
+    void analyzeCompressedLogs();
+
     // System log analysis
     /** @brief Analyze system logs (syslog, messages) */
     void analyzeSystemLogs();
@@ -60,6 +63,10 @@ public:
     void analyzeKernelLogs();
     /** @brief Analyze application specific logs */
     void analyzeApplicationLogs();
+
+    // Journal analysis (Phase 2)
+    /** @brief Analyze systemd-journald journal files */
+    void analyzeJournalLogs();
 
     // User and authentication analysis
     // User and authentication analysis
@@ -103,6 +110,30 @@ public:
     void analyzeAppArmor();
 
     // Enhanced analysis
+    void analyzeLogTampering();
+    void analyzePersistenceMechanisms();
+    void analyzeMiddlewareLogs();
+    void analyzeContainerRuntimeLogs();
+    void analyzePackageManagerLogs();
+    void analyzeAccountSSHSecurity();
+    void analyzeDatabaseLogs();
+    void analyzeEmailVPNLogs();
+    void analyzeFirewallSecurityLogs();
+
+    // Phase 12: USB/Mount/Desktop/Cloud
+    void analyzeUSBEvents();
+    void analyzeMountEntries();
+    void analyzeCloudLogs();
+
+    // Phase 13: Extended history
+    void analyzeExtendedHistory();
+
+    // Phase 14: Security bypass
+    void analyzeSecurityBypass();
+
+    // Phase 16: Rule engine
+    void analyzeWithRuleEngine();
+
     void correlateEvents();
     void reconstructTimeline();
     void detectAnomalies();

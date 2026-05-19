@@ -2,13 +2,16 @@
 // Implementation of Linux log file parsing
 
 #include "LinuxLogParser.h"
+#include "TimestampNormalizer.h"
 #include <sstream>
 #include <iomanip>
 #include <ctime>
 #include <algorithm>
 
-LinuxLogEntry LinuxLogParser::parseSyslogLine(const std::string& line, 
+LinuxLogEntry LinuxLogParser::parseSyslogLine(const std::string& line,
                                                const std::string& logFile) {
+    using namespace forensics::linux;
+
     LinuxLogEntry entry;
     entry.logFile = logFile;
     entry.pid = -1;
@@ -25,6 +28,9 @@ LinuxLogEntry LinuxLogParser::parseSyslogLine(const std::string& line,
     // Extract timestamp (first 15 characters)
     entry.timestamp = line.substr(0, 15);
     entry.unixTimestamp = parseSyslogTimestamp(entry.timestamp);
+
+    // Normalize timestamp
+    entry.normalizedTime = TimestampNormalizer::normalizeSyslog(entry.timestamp);
 
     // Find hostname (after timestamp, before process)
     size_t pos = 16;
@@ -137,6 +143,8 @@ int64_t LinuxLogParser::parseSyslogTimestamp(const std::string& timestamp,
 
 LinuxLogEntry LinuxLogParser::parseKernelLogLine(const std::string& line,
                                                   const std::string& logFile) {
+    using namespace forensics::linux;
+
     LinuxLogEntry entry;
     entry.logFile = logFile;
     entry.pid = -1;
@@ -151,15 +159,10 @@ LinuxLogEntry LinuxLogParser::parseKernelLogLine(const std::string& line,
     if (bracketOpen != std::string::npos && bracketClose != std::string::npos &&
         bracketClose > bracketOpen) {
         entry.timestamp = line.substr(bracketOpen + 1, bracketClose - bracketOpen - 1);
-        
-        // Try to parse as seconds since boot
-        try {
-            double bootSeconds = std::stod(entry.timestamp);
-            // Convert to approximate timestamp (would need boot time for accurate conversion)
-            entry.unixTimestamp = static_cast<int64_t>(bootSeconds);
-        } catch (...) {
-            entry.unixTimestamp = 0;
-        }
+
+        // Normalize dmesg timestamp
+        entry.normalizedTime = TimestampNormalizer::normalizeDmesg(entry.timestamp);
+        entry.unixTimestamp = entry.normalizedTime.monotonicTimestamp / 1000000LL;
 
         if (bracketClose + 2 < line.length()) {
             entry.message = line.substr(bracketClose + 2);
@@ -196,6 +199,9 @@ LinuxLogEntry LinuxLogParser::parseDpkgLogLine(const std::string& line,
         entry.unixTimestamp = mktime(&tm);
     }
 
+    // Normalize timestamp (dpkg uses ISO8601 format)
+    entry.normalizedTime = forensics::linux::TimestampNormalizer::normalizeISO8601(entry.timestamp);
+
     // Rest is the action and package info
     if (line.length() > 20) {
         entry.message = line.substr(20);
@@ -207,6 +213,8 @@ LinuxLogEntry LinuxLogParser::parseDpkgLogLine(const std::string& line,
 
 LinuxLogEntry LinuxLogParser::parseAptHistoryLine(const std::string& line,
                                                    const std::string& logFile) {
+    using namespace forensics::linux;
+
     LinuxLogEntry entry;
     entry.logFile = logFile;
     entry.pid = -1;
@@ -219,11 +227,14 @@ LinuxLogEntry LinuxLogParser::parseAptHistoryLine(const std::string& line,
     if (line.find("Start-Date:") == 0) {
         std::string dateStr = line.substr(12);
         entry.timestamp = dateStr;
-        
+
         struct tm tm = {};
         if (strptime(dateStr.c_str(), "%Y-%m-%d  %H:%M:%S", &tm) != nullptr) {
             entry.unixTimestamp = mktime(&tm);
         }
+
+        // Normalize timestamp
+        entry.normalizedTime = TimestampNormalizer::normalizeISO8601(dateStr);
     }
 
     return entry;

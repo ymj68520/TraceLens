@@ -7,8 +7,39 @@
 
 #include <string>
 #include <vector>
+#include <map>
 #include <cstdint>
 #include <sys/types.h>
+
+// ============================================================================
+// Evidence Provenance - All parsed results must include this
+// ============================================================================
+
+// Evidence provenance for forensic traceability
+struct EvidenceProvenance {
+    std::string parserName;        // Parser name (e.g., "JournalParser", "SyslogParser")
+    std::string parserVersion;     // Parser version (e.g., "1.0.0")
+    std::string sourceFile;        // Source file path
+    int64_t sourceOffset = -1;     // Byte offset in source file
+    int64_t sourceLine = -1;       // Line number in source file
+    int64_t sourceInode = -1;      // inode number of source file
+    std::string sourceHash;        // Source file hash (MD5/SHA256)
+    std::string parseError;        // Parse error message (empty if success)
+    std::string rawRecord;         // Original raw record preserved
+    int confidence = 100;          // Confidence score 0-100
+};
+
+// Normalized timestamp for unified timeline
+struct NormalizedTimestamp {
+    std::string originalTimestamp;      // Original timestamp string
+    int64_t normalizedUtcTimestamp = 0; // Normalized UTC Unix timestamp
+    std::string timezoneSource;         // "file", "system", "inferred", "utc"
+    int timestampConfidence = 100;      // Confidence 0-100
+    std::string bootId;                 // Boot ID (for monotonic timestamps)
+    int64_t monotonicTimestamp = 0;     // Raw monotonic timestamp value
+    int inferredYear = 0;               // Inferred year (syslog has no year)
+    bool clockSkewFlag = false;         // Detected clock skew
+};
 
 // System log entry (auth.log, syslog, messages, kern.log)
 struct LinuxLogEntry {
@@ -21,6 +52,8 @@ struct LinuxLogEntry {
     std::string message;             // Log message content
     std::string level;               // Log level (INFO, WARNING, ERROR, etc.)
     std::string facility;            // Syslog facility (auth, daemon, kern, etc.)
+    NormalizedTimestamp normalizedTime;  // Normalized timestamp
+    EvidenceProvenance provenance;       // Evidence provenance
 };
 
 // Linux user account information (/etc/passwd + /etc/shadow)
@@ -40,6 +73,7 @@ struct LinuxUserInfo {
     int64_t accountExpires = 0;      // Account expiration date
     bool isLocked = false;           // Is account locked
     bool isSystemAccount = false;    // Is system account (uid < 1000 typically)
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 // Linux group information (/etc/group)
@@ -47,6 +81,7 @@ struct LinuxGroupInfo {
     std::string groupName;           // Group name
     int gid = -1;                    // Group ID
     std::vector<std::string> members; // Group members
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 // Login record (wtmp/btmp/lastlog)
@@ -59,6 +94,8 @@ struct LinuxLoginRecord {
     std::string loginType;           // Login type: login, ssh, console, reboot, shutdown
     bool isSuccess = true;           // Success (wtmp) or failure (btmp)
     int pid = 0;                     // Process ID
+    NormalizedTimestamp normalizedTime;  // Normalized timestamp
+    EvidenceProvenance provenance;       // Evidence provenance
 };
 
 // Shell history entry (bash_history, zsh_history)
@@ -69,6 +106,8 @@ struct ShellHistoryEntry {
     int64_t timestamp = 0;           // Timestamp (if available, e.g., HISTTIMEFORMAT)
     int lineNumber = 0;              // Line number in history file
     std::string historyFile;         // Source history file path
+    NormalizedTimestamp normalizedTime;  // Normalized timestamp
+    EvidenceProvenance provenance;       // Evidence provenance
 };
 
 // Cron job entry
@@ -82,6 +121,7 @@ struct CronJobEntry {
     std::string command;             // Command to execute
     std::string cronFile;            // Source cron file path
     std::string cronType;            // Type: user, system, cron.d, cron.daily, etc.
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 // SSH authorized key entry
@@ -92,6 +132,7 @@ struct SSHKeyInfo {
     std::string keyPath;             // Path to authorized_keys file
     std::string comment;             // Key comment (usually email or host)
     std::string options;             // Key options (if any)
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 // SSH known host entry
@@ -101,6 +142,7 @@ struct SSHKnownHost {
     std::string keyType;             // Key type
     std::string publicKey;           // Host public key
     bool isHashed = false;           // Is hostname hashed
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 // Installed package information
@@ -113,6 +155,8 @@ struct PackageInfo {
     std::string status;              // Status: installed, config-files, etc.
     std::string description;         // Package description
     std::string maintainer;          // Package maintainer
+    NormalizedTimestamp normalizedTime;  // Normalized timestamp
+    EvidenceProvenance provenance;       // Evidence provenance
 };
 
 // Network connection information
@@ -127,6 +171,7 @@ struct NetworkConnection {
     int inode = 0;                   // Socket inode
     std::string process;             // Process name (if available)
     int pid = -1;                    // Process ID (if available)
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 // Systemd service information
@@ -140,6 +185,7 @@ struct SystemdServiceInfo {
     std::string execStart;           // ExecStart command
     std::string user;                // User the service runs as
     bool isEnabled = false;          // Is enabled at boot
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 // Kernel module information
@@ -150,6 +196,7 @@ struct KernelModuleInfo {
     std::vector<std::string> usedBy; // Modules that depend on this
     std::string state;               // Live, Loading, Unloading
     std::string filename;            // Module file path
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 // Firewall rule (iptables/nftables)
@@ -163,6 +210,7 @@ struct FirewallRule {
     int destinationPort = -1;        // Destination port (-1 for any)
     std::string action;              // Action: ACCEPT, DROP, REJECT
     std::string ruleSpec;            // Full rule specification
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 // Audit log entry (auditd) - Named LinuxAuditLogEntry to avoid collision with project's AuditLog
@@ -175,6 +223,8 @@ struct LinuxAuditLogEntry {
     std::string object;              // Object affected
     std::string action;              // Action performed
     std::string result;              // Result: success, fail
+    NormalizedTimestamp normalizedTime;  // Normalized timestamp
+    EvidenceProvenance provenance;       // Evidence provenance
 };
 
 // Browser data structures - reuse from Windows (same SQLite format)
@@ -195,6 +245,7 @@ struct LinuxBrowserProfile {
     std::string profileName;         // Profile folder/identifier
     std::string profilePath;         // Full path to profile
     std::string username;            // Linux user who owns the profile
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 // ============================================================================
@@ -212,6 +263,7 @@ struct DockerContainerInfo {
     std::vector<std::string> ports;
     std::string networkMode;
     std::string hostConfig;
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 struct DockerImageInfo {
@@ -220,6 +272,7 @@ struct DockerImageInfo {
     int64_t size = 0;
     int64_t createdAt = 0;
     std::vector<std::string> layerIds;
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 struct DockerVolumeInfo {
@@ -228,6 +281,7 @@ struct DockerVolumeInfo {
     std::string driver;
     int64_t createdAt = 0;
     std::vector<std::string> containerIds;
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 struct PodmanContainerInfo {
@@ -237,6 +291,7 @@ struct PodmanContainerInfo {
     bool isRootless = false;
     std::string state;
     int64_t createdAt = 0;
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 struct PodmanPodInfo {
@@ -245,6 +300,7 @@ struct PodmanPodInfo {
     std::vector<std::string> containerIds;
     std::string state;
     int64_t createdAt = 0;
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 // ============================================================================
@@ -262,6 +318,8 @@ struct ApacheAccessLogEntry {
     std::string referer;
     std::string userAgent;
     std::string vhost;
+    NormalizedTimestamp normalizedTime;  // Normalized timestamp
+    EvidenceProvenance provenance;       // Evidence provenance
 };
 
 struct ApacheVHostConfig {
@@ -270,6 +328,7 @@ struct ApacheVHostConfig {
     std::vector<std::string> serverAliases;
     std::vector<std::string> sslCertificates;
     std::string configFilePath;
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 struct NginxAccessLogEntry {
@@ -283,6 +342,8 @@ struct NginxAccessLogEntry {
     std::string userAgent;
     float requestTime = 0.0f;
     std::string upstreamAddr;
+    NormalizedTimestamp normalizedTime;  // Normalized timestamp
+    EvidenceProvenance provenance;       // Evidence provenance
 };
 
 struct NginxServerBlock {
@@ -293,6 +354,7 @@ struct NginxServerBlock {
     std::string sslCertificateKey;
     std::vector<std::string> upstreams;
     std::string configFilePath;
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 // ============================================================================
@@ -311,6 +373,7 @@ struct SetuidFileInfo {
     std::string sha256Hash;
     bool isSuspicious = false;
     std::string suspiciousReason;
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 struct FileCapability {
@@ -319,6 +382,7 @@ struct FileCapability {
     std::string capabilitySet;
     bool isInherited = false;
     bool isSuspicious = false;
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 struct SELinuxStatus {
@@ -326,6 +390,7 @@ struct SELinuxStatus {
     std::string mode;
     std::string policyName;
     std::string currentMode;
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 struct SELinuxAVCDenial {
@@ -335,6 +400,8 @@ struct SELinuxAVCDenial {
     std::string objectClass;
     std::string permission;
     std::string executablePath;
+    NormalizedTimestamp normalizedTime;  // Normalized timestamp
+    EvidenceProvenance provenance;       // Evidence provenance
 };
 
 struct AppArmorProfile {
@@ -344,6 +411,7 @@ struct AppArmorProfile {
     std::vector<std::string> allowedPaths;
     std::vector<std::string> deniedPaths;
     bool isEnabled = false;
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 struct AppArmorViolation {
@@ -353,6 +421,8 @@ struct AppArmorViolation {
     std::string targetPath;
     std::string executable;
     std::string status;
+    NormalizedTimestamp normalizedTime;  // Normalized timestamp
+    EvidenceProvenance provenance;       // Evidence provenance
 };
 
 // ============================================================================
@@ -368,6 +438,7 @@ struct CorrelatedEvent {
     std::vector<std::string> relatedEventIds;
     std::string description;
     int severity = 0;
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 struct AttackChain {
@@ -377,6 +448,7 @@ struct AttackChain {
     std::string timeline;
     std::string summary;
     float confidence = 0.0f;
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 struct LinuxTimelineEvent {
@@ -388,6 +460,8 @@ struct LinuxTimelineEvent {
     std::string ipAddress;
     std::string details;
     int confidence = 0;
+    NormalizedTimestamp normalizedTime;  // Normalized timestamp
+    EvidenceProvenance provenance;       // Evidence provenance
 };
 
 struct TimelineGap {
@@ -396,6 +470,7 @@ struct TimelineGap {
     int64_t duration = 0;
     std::string description;
     bool isSuspicious = false;
+    EvidenceProvenance provenance;   // Evidence provenance
 };
 
 struct Anomaly {
@@ -408,6 +483,51 @@ struct Anomaly {
     int64_t detectedAt = 0;
     std::string anomalySubtype;
     std::string additionalData;
+    EvidenceProvenance provenance;   // Evidence provenance
+};
+
+// ============================================================================
+// Persistence Mechanism Data Structures (Phase 6)
+// ============================================================================
+
+enum class PersistenceType {
+    RC_LOCAL,           // /etc/rc.local
+    INIT_D_SCRIPT,      // /etc/init.d/*
+    SHELL_PROFILE,      // /etc/profile, ~/.bashrc, ~/.profile, /etc/bash.bashrc
+    AUTHORIZED_KEYS,    // ~/.ssh/authorized_keys
+    LD_SO_PRELOAD,      // /etc/ld.so.preload
+    SUDOERS,            // /etc/sudoers, /etc/sudoers.d/*
+    UDEV_RULE,          // /etc/udev/rules.d/*.rules
+    POLKIT_RULE,        // /etc/polkit-1/rules.d/*.rules
+    XINETD_SERVICE,     // /etc/xinetd.d/*
+    SYSTEMD_TIMER,      // *.timer units
+    AT_JOB,             // /var/spool/at/*
+    CRON_JOB,           // Already parsed, but included for completeness
+    SYSTEMD_SERVICE,    // Already parsed, but included for completeness
+    UNKNOWN_PERSISTENCE
+};
+
+enum class PersistenceRisk {
+    LOW,        // Standard system persistence
+    MEDIUM,    // Unusual but possibly legitimate
+    HIGH,       // Suspicious pattern
+    CRITICAL    // Known malicious pattern
+};
+
+struct PersistenceEntry {
+    PersistenceType type = PersistenceType::UNKNOWN_PERSISTENCE;
+    PersistenceRisk risk = PersistenceRisk::LOW;
+    std::string filePath;              // Source file path
+    std::string entryName;             // Entry name (service name, timer name, etc.)
+    std::string command;               // Command or executable being persisted
+    std::string arguments;             // Command arguments
+    std::string username;              // Owner user
+    std::string schedule;              // Schedule expression (cron, OnCalendar, etc.)
+    bool isEnabled = true;             // Is the persistence active
+    bool isSuspicious = false;         // Flagged as suspicious
+    std::string suspiciousReason;      // Why it's suspicious
+    std::string rawContent;            // Original raw content
+    EvidenceProvenance provenance;     // Evidence provenance
 };
 
 #endif // LINUX_DATA_TYPES_H

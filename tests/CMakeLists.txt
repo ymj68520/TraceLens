@@ -48,12 +48,291 @@ add_executable(
   UnitTest/test_linux_analyzer_gtest.cpp
   ../src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxLogParser.cpp
   ../src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxUserParser.cpp
-  ../src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxHistoryParser.cpp)
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxHistoryParser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/TimestampNormalizer.cpp)
+
+target_include_directories(
+  test_linux_analyzer_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
 
 target_link_libraries(test_linux_analyzer_gtest ${GTEST_LIBRARIES}
                       ${GMOCK_LIBRARIES} sqlite3 pthread)
 
 add_test(NAME LinuxAnalyzerGTests COMMAND test_linux_analyzer_gtest)
+
+# Compressed Log Parser Tests
+add_executable(
+  test_compressed_log_parser
+  UnitTest/test_compressed_log_parser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/CompressedLogParser.cpp)
+
+target_include_directories(
+  test_compressed_log_parser
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
+
+target_link_libraries(test_compressed_log_parser ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread
+                      ${ZLIB_LIBRARIES}
+                      ${LIBLZMA_LIBRARIES}
+                      ${BZIP2_LIBRARIES}
+                      ${ZSTD_LIBRARIES})
+
+add_test(NAME CompressedLogParserTests COMMAND test_compressed_log_parser)
+
+# Journal Parser Tests
+add_executable(
+  test_journal_parser
+  UnitTest/test_journal_parser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/JournalParser.cpp)
+
+target_include_directories(
+  test_journal_parser
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
+
+target_link_libraries(test_journal_parser ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME JournalParserTests COMMAND test_journal_parser)
+
+# Timestamp Normalizer Tests
+add_executable(
+  test_timestamp_normalizer
+  UnitTest/test_timestamp_normalizer.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/TimestampNormalizer.cpp)
+
+target_include_directories(
+  test_timestamp_normalizer
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
+
+target_link_libraries(test_timestamp_normalizer ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME TimestampNormalizerTests COMMAND test_timestamp_normalizer)
+
+# Auditd Aggregator Tests
+add_executable(
+  test_auditd_aggregator
+  UnitTest/test_auditd_aggregator.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/AuditdAggregator.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/TimestampNormalizer.cpp)
+
+target_include_directories(
+  test_auditd_aggregator
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
+
+target_link_libraries(test_auditd_aggregator ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME AuditdAggregatorTests COMMAND test_auditd_aggregator)
+
+# Log Tampering Detector Tests
+add_executable(
+  test_log_tampering_detector
+  UnitTest/test_log_tampering_detector.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Analysis/LogTamperingDetector.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/TimestampNormalizer.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/JournalParser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/AuditdAggregator.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/CompressedLogParser.cpp)
+
+target_include_directories(
+  test_log_tampering_detector
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Analysis
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
+
+target_link_libraries(test_log_tampering_detector ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} sqlite3 pthread
+                      ${ZLIB_LIBRARIES}
+                      ${LIBLZMA_LIBRARIES}
+                      ${BZIP2_LIBRARIES}
+                      ${ZSTD_LIBRARIES})
+
+add_test(NAME LogTamperingDetectorTests COMMAND test_log_tampering_detector)
+
+# Persistence Detector Tests
+add_executable(
+  test_persistence_detector
+  UnitTest/test_persistence_detector.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Analysis/PersistenceDetector.cpp)
+
+target_include_directories(
+  test_persistence_detector
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Analysis
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
+
+target_link_libraries(test_persistence_detector ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME PersistenceDetectorTests COMMAND test_persistence_detector)
+
+# Middleware Log Parser Tests (Phase 7)
+add_executable(
+  test_middleware_log_parser
+  UnitTest/test_middleware_log_parser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/MiddlewareLogParser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/TimestampNormalizer.cpp)
+
+target_include_directories(
+  test_middleware_log_parser
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
+
+target_link_libraries(test_middleware_log_parser ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME MiddlewareLogParserTests COMMAND test_middleware_log_parser)
+
+# Container Runtime Log Parser Tests (Phase 8)
+add_executable(
+  test_container_runtime_log_parser
+  UnitTest/test_container_runtime_log_parser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/Container/ContainerRuntimeLogParser.cpp)
+
+target_include_directories(
+  test_container_runtime_log_parser
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
+
+target_link_libraries(test_container_runtime_log_parser ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME ContainerRuntimeLogParserTests COMMAND test_container_runtime_log_parser)
+
+# Package Manager Log Parser Tests (Phase 9)
+add_executable(
+  test_package_manager_log_parser
+  UnitTest/test_package_manager_log_parser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/PackageManager/PackageManagerLogParser.cpp)
+
+target_include_directories(
+  test_package_manager_log_parser
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
+
+target_link_libraries(test_package_manager_log_parser ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME PackageManagerLogParserTests COMMAND test_package_manager_log_parser)
+
+# Account/SSH Security Analyzer Tests (Phase 10)
+add_executable(
+  test_account_ssh_analyzer
+  UnitTest/test_account_ssh_analyzer.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Analysis/AccountSSH/AccountSSHAnalyzer.cpp)
+
+target_include_directories(
+  test_account_ssh_analyzer
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Analysis
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
+
+target_link_libraries(test_account_ssh_analyzer ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME AccountSSHAnalyzerTests COMMAND test_account_ssh_analyzer)
+
+# Database Log Parser Tests
+add_executable(
+  test_database_log_parser
+  UnitTest/test_database_log_parser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/Database/DatabaseLogParser.cpp)
+
+target_include_directories(
+  test_database_log_parser
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
+
+target_link_libraries(test_database_log_parser ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME DatabaseLogParserTests COMMAND test_database_log_parser)
+
+# Email/VPN Log Parser Tests
+add_executable(
+  test_email_vpn_log_parser
+  UnitTest/test_email_vpn_log_parser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/EmailVPN/EmailVPNLogParser.cpp)
+
+target_include_directories(
+  test_email_vpn_log_parser
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
+
+target_link_libraries(test_email_vpn_log_parser ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME EmailVPNLogParserTests COMMAND test_email_vpn_log_parser)
+
+# Firewall/Security Log Parser Tests
+add_executable(
+  test_firewall_security_log_parser
+  UnitTest/test_firewall_security_log_parser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/FirewallSecurity/FirewallSecurityLogParser.cpp)
+
+target_include_directories(
+  test_firewall_security_log_parser
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
+
+target_link_libraries(test_firewall_security_log_parser ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} pthread)
+
+add_test(NAME FirewallSecurityLogParserTests COMMAND test_firewall_security_log_parser)
+
+# Enhanced Parsers Tests (Phase 12-15: USB/Mount, Cloud, Extended History, Security Bypass)
+add_executable(
+  test_linux_enhanced_parsers_gtest
+  UnitTest/test_linux_enhanced_parsers_gtest.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/USBMountParser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/CloudParser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/ExtendedHistoryParser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SecurityBypassAnalyzer.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/TimestampNormalizer.cpp)
+
+target_include_directories(
+  test_linux_enhanced_parsers_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers/Security
+          ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Common)
+
+target_link_libraries(test_linux_enhanced_parsers_gtest ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} sqlite3 pthread)
+
+add_test(NAME EnhancedParsersGTests COMMAND test_linux_enhanced_parsers_gtest)
 
 # Web Server Parsers Tests
 add_executable(
@@ -268,6 +547,20 @@ install(
           test_android_analyzer_gtest
           test_fulltext_search_gtest
           test_image_analyzer_gtest
+          test_compressed_log_parser
+          test_journal_parser
+          test_timestamp_normalizer
+          test_auditd_aggregator
+          test_log_tampering_detector
+          test_persistence_detector
+          test_middleware_log_parser
+          test_container_runtime_log_parser
+          test_package_manager_log_parser
+          test_account_ssh_analyzer
+          test_database_log_parser
+          test_email_vpn_log_parser
+          test_firewall_security_log_parser
+          test_linux_enhanced_parsers_gtest
   RUNTIME DESTINATION bin/tests)
 
 # Test for 13 Files Multi-Model Analysis

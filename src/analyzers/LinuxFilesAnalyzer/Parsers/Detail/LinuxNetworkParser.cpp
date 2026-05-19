@@ -3,6 +3,7 @@
 
 #include "../LinuxFilesAnalyzer.h"
 #include "AuditLog/AuditLog.h"
+#include "Parsers/AuditdAggregator.h"
 #include <fstream>
 #include <sstream>
 #include <filesystem>
@@ -216,23 +217,49 @@ void LinuxFilesAnalyzer::analyzeFirewallRules() {
 }
 
 void LinuxFilesAnalyzer::analyzeAuditLogs() {
+    using namespace forensics::linux;
+
     std::cout << "Analyzing audit logs..." << std::endl;
 
     auto auditFiles = queryFilesByPattern("%/var/log/audit/audit.log%");
     std::vector<LinuxAuditLogEntry> allEntries;
+    std::vector<AggregatedAuditEvent> allAggregatedEvents;
+    int totalFiles = 0;
+    int totalEvents = 0;
 
     for (const auto& file : auditFiles) {
         std::string extractPath = getExtractPath("audit/" + file.name);
         if (extractFileToPath(file.inode, extractPath)) {
             std::ifstream f(extractPath);
             if (f.is_open()) {
+                totalFiles++;
+
+                // Read entire file content for aggregation
+                std::ostringstream content;
+                content << f.rdbuf();
+                f.close();
+
+                std::string contentStr = content.str();
+
+                // Aggregate multi-line events
+                auto aggregatedEvents = AuditdAggregator::aggregate(contentStr);
+                totalEvents += aggregatedEvents.size();
+
+                // Set provenance for all aggregated events
+                for (auto& event : aggregatedEvents) {
+                    event.provenance.sourceFile = file.path;
+                    event.provenance.sourceInode = file.inode;
+                }
+
+                allAggregatedEvents.insert(allAggregatedEvents.end(),
+                    aggregatedEvents.begin(), aggregatedEvents.end());
+
+                // Also create legacy line-by-line entries for backward compatibility
+                std::istringstream stream(contentStr);
                 std::string line;
+                std::regex auditPattern(R"(type=(\w+)\s+msg=audit\((\d+)\.(\d+):(\d+)\):(.*))");
 
-                // auditd format: type=TYPE msg=audit(TIMESTAMP:SERIAL): key=value ...
-                std::regex auditPattern(R"(type=(\w+)\s+msg=audit\((\d+)\.(\d+):(\d+)\):(.*)");
-;
-
-                while (std::getline(f, line)) {
+                while (std::getline(stream, line)) {
                     if (line.empty()) continue;
 
                     std::smatch match;
@@ -240,14 +267,12 @@ void LinuxFilesAnalyzer::analyzeAuditLogs() {
                         LinuxAuditLogEntry entry;
                         entry.type = match[1].str();
 
-                        // Parse timestamp (seconds.milliseconds)
                         try {
                             entry.timestamp = std::stoll(match[2].str());
                         } catch (...) {
                             entry.timestamp = 0;
                         }
 
-                        // Parse serial number
                         try {
                             entry.serialNumber = std::stoi(match[4].str());
                         } catch (...) {
@@ -256,10 +281,9 @@ void LinuxFilesAnalyzer::analyzeAuditLogs() {
 
                         entry.message = line;
 
-                        // Extract additional fields from the message part
+                        // Extract additional fields
                         std::string msgPart = match[5].str();
 
-                        // Look for common fields
                         size_t resultPos = msgPart.find("res=");
                         if (resultPos != std::string::npos) {
                             size_t start = resultPos + 4;
@@ -283,7 +307,6 @@ void LinuxFilesAnalyzer::analyzeAuditLogs() {
                             }
                         }
 
-                        // Determine action from type
                         if (entry.type.find("SYSCALL") != std::string::npos) {
                             entry.action = "syscall";
                         } else if (entry.type.find("USER_") != std::string::npos) {
@@ -297,15 +320,37 @@ void LinuxFilesAnalyzer::analyzeAuditLogs() {
                         allEntries.push_back(entry);
                     }
                 }
+
+                std::cout << "  Parsed " << aggregatedEvents.size()
+                          << " aggregated events from " << file.name << std::endl;
             }
         }
     }
 
-    // Insert all entries to database
-    linuxDb_->insertAuditLogs(allEntries);
+    // Insert legacy entries
+    if (!allEntries.empty()) {
+        linuxDb_->insertAuditLogs(allEntries);
+    }
+
+    // Insert aggregated events
+    if (!allAggregatedEvents.empty()) {
+        if (!linuxDb_->insertAuditEvents(allAggregatedEvents)) {
+            std::cerr << "  Failed to insert aggregated audit events" << std::endl;
+        } else {
+            std::cout << "  Stored " << allAggregatedEvents.size()
+                      << " aggregated audit events in database" << std::endl;
+        }
+    }
+
+    std::cout << "  Audit log analysis complete: "
+              << totalFiles << " files, "
+              << allEntries.size() << " raw entries, "
+              << totalEvents << " aggregated events" << std::endl;
 
     AuditLog::instance().log("SYSTEM", "LINUX_AUDIT_LOGS_PARSED",
-                              "Parsed " + std::to_string(allEntries.size()) + " audit log entries");
+                              "Parsed " + std::to_string(allEntries.size()) + " raw entries, " +
+                              std::to_string(totalEvents) + " aggregated events from " +
+                              std::to_string(totalFiles) + " files");
 }
 
 // ============================================================================
