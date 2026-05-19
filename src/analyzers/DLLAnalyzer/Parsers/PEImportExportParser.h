@@ -149,12 +149,18 @@ private:
     bool isValid_;
     std::string errorMessage_;
 
-    // 缓存（TODO：未来应从PEHeaderParser注入，而非自行解析）
+    // PE头缓存
     uint32_t imageBase_ = 0;
     uint32_t fileAlignment_ = 0x200;
     uint32_t peHeaderOffset_ = 0;
     bool isPE32Plus_ = false;
-    std::vector<SectionHeader> sections_; // 节表（简化：节名截断为8字节）
+
+    // 数据目录RVA
+    uint32_t importTableRVA_ = 0;
+    uint32_t exportTableRVA_ = 0;
+
+    // 节表（使用DLLDataTypes.h中定义的PESectionInfo）
+    std::vector<PESectionInfo> sections_;
 };
 
 } // namespace dll

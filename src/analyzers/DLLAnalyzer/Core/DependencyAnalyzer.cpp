@@ -2,6 +2,9 @@
 // DLL依赖关系分析器实现
 
 #include "analyzers/DLLAnalyzer/Core/DependencyAnalyzer.h"
+#include "analyzers/DLLAnalyzer/Parsers/PEImportExportParser.h"
+#include "analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.h"
+#include "analyzers/WindowsFilesAnalyzer/Common/WindowsDataTypes.h"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -121,28 +124,102 @@ std::unordered_set<std::string> DependencyAnalyzer::getAllDependencies(
 std::vector<std::string> DependencyAnalyzer::getPrefetchReferences(
     const std::string& dllPath) {
 
-    // TODO: 与Prefetch分析器集成
-    // 当前返回空列表（占位实现）
-    (void)dllPath;
-    return {};
+    // 如果没有关联的 Windows DB，返回空列表
+    if (!windowsDb_) {
+        return {};
+    }
+
+    std::vector<std::string> references;
+    std::string targetDll = extractFileName(dllPath);
+
+    // 查询所有 Prefetch 文件
+    auto prefetchFiles = windowsDb_->queryPrefetchFiles("");
+
+    for (const auto& prefetch : prefetchFiles) {
+        // 检查 referencedFiles 中是否包含目标 DLL
+        for (const auto& refFile : prefetch.referencedFiles) {
+            if (extractFileName(refFile) == targetDll) {
+                references.push_back("Prefetch:" + prefetch.executableName +
+                                    " (Hash:" + prefetch.prefetchHash +
+                                    ", Runs:" + std::to_string(prefetch.runCount) + ")");
+                break; // 每个 Prefetch 只记录一次
+            }
+        }
+    }
+
+    return references;
 }
 
 std::vector<std::string> DependencyAnalyzer::getRegistryReferences(
     const std::string& dllPath) {
 
-    // TODO: 与注册表分析器集成
-    // 当前返回空列表（占位实现）
-    (void)dllPath;
-    return {};
+    // 如果没有关联的 Windows DB，返回空列表
+    if (!windowsDb_) {
+        return {};
+    }
+
+    std::vector<std::string> references;
+    std::string targetDll = extractFileName(dllPath);
+    std::string targetDllLower = targetDll;
+    std::transform(targetDllLower.begin(), targetDllLower.end(),
+                   targetDllLower.begin(), ::tolower);
+
+    // 查询所有注册表值
+    auto registryValues = windowsDb_->queryRegistryValues("");
+
+    for (const auto& regValue : registryValues) {
+        // 检查注册表值数据中是否包含目标 DLL 名称
+        // 重点关注以下注册表位置：
+        // - AppInit_DLLs
+        // - KnownDLLs
+        // - Shell Extensions
+        // - Services ImagePath
+        std::string valueDataLower = regValue.valueData;
+        std::transform(valueDataLower.begin(), valueDataLower.end(),
+                       valueDataLower.begin(), ::tolower);
+
+        if (valueDataLower.find(targetDllLower) != std::string::npos) {
+            references.push_back("Registry:" + regValue.keyPath + "\\" + regValue.valueName +
+                                " (Type:" + regValue.valueType + ")");
+        }
+    }
+
+    return references;
 }
 
 std::vector<std::string> DependencyAnalyzer::getEventLogReferences(
     const std::string& dllPath) {
 
-    // TODO: 与事件日志分析器集成
-    // 当前返回空列表（占位实现）
-    (void)dllPath;
-    return {};
+    // 如果没有关联的 Windows DB，返回空列表
+    if (!windowsDb_) {
+        return {};
+    }
+
+    std::vector<std::string> references;
+    std::string targetDll = extractFileName(dllPath);
+    std::string targetDllLower = targetDll;
+    std::transform(targetDllLower.begin(), targetDllLower.end(),
+                   targetDllLower.begin(), ::tolower);
+
+    // 查询事件日志中与 DLL 加载相关的事件
+    // Event ID 7 (Image loaded) 是最相关的
+    // 也查询其他可能包含 DLL 路径的事件
+    auto eventLogs = windowsDb_->queryEventLogs("");
+
+    for (const auto& event : eventLogs) {
+        // 在事件消息中搜索 DLL 文件名
+        std::string messageLower = event.message;
+        std::transform(messageLower.begin(), messageLower.end(),
+                       messageLower.begin(), ::tolower);
+
+        if (messageLower.find(targetDllLower) != std::string::npos) {
+            references.push_back("EventLog:" + event.logSource +
+                                " (ID:" + std::to_string(event.eventId) +
+                                ", Time:" + std::to_string(event.timestamp) + ")");
+        }
+    }
+
+    return references;
 }
 
 // ============================================================================
@@ -246,15 +323,46 @@ DependencyAnalyzer::DependencyNode DependencyAnalyzer::buildDependencyTreeRecurs
 std::vector<std::string> DependencyAnalyzer::getDirectDependencies(
     const std::string& dllPath) const {
 
-    // TODO: 实际解析DLL的导入表
-    // 当前返回空列表（占位实现）
-    // 实际实现应该：
-    // 1. 使用PEHeaderParser或PEImportExportParser解析DLL
-    // 2. 提取导入表
-    // 3. 返回导入的DLL名称列表
+    // 使用PEImportExportParser解析DLL的导入表
+    PEImportExportParser parser(dllPath);
+    if (!parser.isValid()) {
+        return {};
+    }
 
-    (void)dllPath;
-    return {};
+    std::vector<ImportedDLL> imports;
+    if (!parser.parseImports(imports)) {
+        return {};
+    }
+
+    // 提取导入的DLL名称
+    std::vector<std::string> dependencies;
+    dependencies.reserve(imports.size());
+
+    for (const auto& importedDLL : imports) {
+        dependencies.push_back(importedDLL.name);
+    }
+
+    return dependencies;
+}
+
+// ============================================================================
+// Windows 取证数据库集成
+// ============================================================================
+
+void DependencyAnalyzer::setWindowsDatabase(const WindowsAnalysisDatabase* windowsDb) {
+    windowsDb_ = windowsDb;
+}
+
+std::string DependencyAnalyzer::normalizePath(const std::string& path) {
+    std::string normalized = path;
+    std::transform(normalized.begin(), normalized.end(),
+                   normalized.begin(), ::tolower);
+    std::replace(normalized.begin(), normalized.end(), '\\', '/');
+    return normalized;
+}
+
+std::string DependencyAnalyzer::extractFileName(const std::string& fullPath) {
+    return std::filesystem::path(fullPath).filename().string();
 }
 
 } // namespace dll

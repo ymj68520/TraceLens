@@ -33,6 +33,14 @@ public:
     bool isValid() const;
     std::string getErrorMessage() const;
 
+    // 获取PE头信息（供其他解析器使用）
+    uint32_t getPEOffset() const { return peHeaderOffset_; }
+    bool isPE32Plus() const { return isPE32Plus_; }
+
+    // Rich Signature访问
+    const std::string& getRichHash() const { return richHash_; }
+    const std::vector<std::pair<uint32_t, uint32_t>>& getRichEntries() const { return richEntries_; }
+
     // 工具方法
     static std::string machineTypeToString(MachineType type);
     static std::string subsystemToString(SubsystemType type);
@@ -55,6 +63,9 @@ private:
     // 节数据读取（仅parseSectionTable内部使用）
     std::vector<uint8_t> readSectionData(const PESectionInfo& section);
 
+    // Rich Signature解析
+    bool parseRichSignature();
+
     std::string filePath_;
     std::ifstream file_;
     PEHeaderInfo headerInfo_;
@@ -64,6 +75,10 @@ private:
     // 缓存
     uint32_t peHeaderOffset_;
     bool isPE32Plus_;
+
+    // Rich Signature缓存
+    std::string richHash_;
+    std::vector<std::pair<uint32_t, uint32_t>> richEntries_; // (toolID, version)
 };
 
 } // namespace dll

@@ -440,6 +440,11 @@ add_executable(test_dll_analyzer_gtest
                ../src/analyzers/DLLAnalyzer/Core/DependencyAnalyzer.cpp
                ../src/analyzers/DLLAnalyzer/Core/DLLAnalyzerCore.cpp
                ../src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.cpp
+               # Windows Files Analyzer (for forensic correlation)
+               ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
+               ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Prefetch.cpp
+               ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Registry.cpp
+               ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_EventLog.cpp
                ../src/core/AuditLog/AuditLog.cpp
                ../src/core/Logger/Logger.cpp
                ../src/core/ThreadPool/ThreadPool.cpp)
@@ -454,6 +459,9 @@ target_include_directories(test_dll_analyzer_gtest
                                    ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Core
                                    ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Parsers
                                    ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Database
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/WindowsFilesAnalyzer
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/WindowsFilesAnalyzer/Database
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/WindowsFilesAnalyzer/Common
                                    ${CMAKE_SOURCE_DIR}/src/core
                                    ${CMAKE_SOURCE_DIR}/src/core/AuditLog
                                    ${CMAKE_SOURCE_DIR}/src/core/Logger
@@ -473,6 +481,11 @@ add_executable(test_dll_analyzer_integration
                ../src/analyzers/DLLAnalyzer/Core/DependencyAnalyzer.cpp
                ../src/analyzers/DLLAnalyzer/Core/DLLAnalyzerCore.cpp
                ../src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.cpp
+               # Windows Files Analyzer (for forensic correlation)
+               ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
+               ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Prefetch.cpp
+               ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Registry.cpp
+               ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_EventLog.cpp
                ../src/core/AuditLog/AuditLog.cpp
                ../src/core/Logger/Logger.cpp
                ../src/core/ThreadPool/ThreadPool.cpp)
@@ -487,6 +500,9 @@ target_include_directories(test_dll_analyzer_integration
                                    ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Core
                                    ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Parsers
                                    ${CMAKE_SOURCE_DIR}/src/analyzers/DLLAnalyzer/Database
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/WindowsFilesAnalyzer
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/WindowsFilesAnalyzer/Database
+                                   ${CMAKE_SOURCE_DIR}/src/analyzers/WindowsFilesAnalyzer/Common
                                    ${CMAKE_SOURCE_DIR}/src/core
                                    ${CMAKE_SOURCE_DIR}/src/core/AuditLog
                                    ${CMAKE_SOURCE_DIR}/src/core/Logger

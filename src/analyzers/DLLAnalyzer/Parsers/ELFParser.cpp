@@ -2,6 +2,7 @@
 // ELF文件格式解析器实现
 
 #include "analyzers/DLLAnalyzer/Parsers/ELFParser.h"
+#include "analyzers/DLLAnalyzer/Parsers/PEHeaderParser.h"
 #include "core/Logger/Logger.h"
 #include <algorithm>
 #include <cctype>
@@ -390,37 +391,407 @@ void ELFParser::parseDynamicSection(const std::string& filePath, ELFHeaderInfo& 
 }
 
 void ELFParser::parseDynamicSection32(std::ifstream& file, uint64_t offset, ELFHeaderInfo& info) {
-    // TODO: 实现32位动态段解析
+    if (!file.is_open() || file.fail()) {
+        return;
+    }
+
+    file.seekg(offset, std::ios::beg);
+    if (file.fail()) {
+        return;
+    }
+
+    // 读取程序头以找到PT_DYNAMIC段
+    // 动态段的偏移和大小在程序头中
+    uint64_t dynamicOffset = 0;
+    uint64_t dynamicSize = 0;
+    uint64_t strTabOffset = 0;
+    uint64_t strTabSize = 0;
+
+    for (const auto& phdr : info.programHeaders) {
+        if (phdr.type == PT_DYNAMIC) {
+            dynamicOffset = phdr.fileOffset;
+            dynamicSize = phdr.fileSize;
+            break;
+        }
+    }
+
+    if (dynamicOffset == 0 || dynamicSize == 0) {
+        return; // 没有动态段
+    }
+
+    // 解析动态表项 (Elf32_Dyn)
+    struct Elf32_Dyn {
+        int32_t tag;
+        uint32_t val;
+    };
+
+    file.seekg(dynamicOffset, std::ios::beg);
+    size_t numEntries = static_cast<size_t>(dynamicSize / sizeof(Elf32_Dyn));
+
+    for (size_t i = 0; i < numEntries; ++i) {
+        Elf32_Dyn dyn;
+        file.read(reinterpret_cast<char*>(&dyn), sizeof(dyn));
+        if (!file) break;
+
+        // DT_NULL标记动态段结束
+        if (dyn.tag == DT_NULL) {
+            break;
+        }
+
+        // DT_NEEDED: 需要的共享库
+        if (dyn.tag == DT_NEEDED) {
+            // val是字符串表偏移
+            std::string libName = readDynamicString(file, strTabOffset, strTabSize, dyn.val);
+            if (!libName.empty()) {
+                ELFDependency dep;
+                dep.name = libName;
+                dep.type = DT_NEEDED;
+                info.dependencies.push_back(dep);
+            }
+        }
+        // DT_SONAME: 共享对象名
+        else if (dyn.tag == DT_SONAME) {
+            std::string soname = readDynamicString(file, strTabOffset, strTabSize, dyn.val);
+            if (!soname.empty()) {
+                info.abi = soname;
+            }
+        }
+        // DT_STRTAB: 字符串表地址
+        else if (dyn.tag == DT_STRTAB) {
+            strTabOffset = dyn.val;
+        }
+        // DT_STRSZ: 字符串表大小
+        else if (dyn.tag == DT_STRSZ) {
+            strTabSize = dyn.val;
+        }
+    }
 }
 
 void ELFParser::parseDynamicSection64(std::ifstream& file, uint64_t offset, ELFHeaderInfo& info) {
-    // TODO: 实现64位动态段解析
+    if (!file.is_open() || file.fail()) {
+        return;
+    }
+
+    file.seekg(offset, std::ios::beg);
+    if (file.fail()) {
+        return;
+    }
+
+    // 64位动态表项 (Elf64_Dyn)
+    struct Elf64_Dyn {
+        int64_t tag;
+        uint64_t val;
+    };
+
+    uint64_t dynamicOffset = 0;
+    uint64_t dynamicSize = 0;
+    uint64_t strTabOffset = 0;
+    uint64_t strTabSize = 0;
+
+    for (const auto& phdr : info.programHeaders) {
+        if (phdr.type == PT_DYNAMIC) {
+            dynamicOffset = phdr.fileOffset;
+            dynamicSize = phdr.fileSize;
+            break;
+        }
+    }
+
+    if (dynamicOffset == 0 || dynamicSize == 0) {
+        return;
+    }
+
+    file.seekg(dynamicOffset, std::ios::beg);
+    size_t numEntries = static_cast<size_t>(dynamicSize / sizeof(Elf64_Dyn));
+
+    for (size_t i = 0; i < numEntries; ++i) {
+        Elf64_Dyn dyn;
+        file.read(reinterpret_cast<char*>(&dyn), sizeof(dyn));
+        if (!file) break;
+
+        if (dyn.tag == DT_NULL) {
+            break;
+        }
+
+        if (dyn.tag == DT_NEEDED) {
+            std::string libName = readDynamicString(file, strTabOffset, strTabSize, dyn.val);
+            if (!libName.empty()) {
+                ELFDependency dep;
+                dep.name = libName;
+                dep.type = DT_NEEDED;
+                info.dependencies.push_back(dep);
+            }
+        }
+        else if (dyn.tag == DT_SONAME) {
+            std::string soname = readDynamicString(file, strTabOffset, strTabSize, dyn.val);
+            if (!soname.empty()) {
+                info.abi = soname;
+            }
+        }
+        else if (dyn.tag == DT_STRTAB) {
+            strTabOffset = dyn.val;
+        }
+        else if (dyn.tag == DT_STRSZ) {
+            strTabSize = dyn.val;
+        }
+    }
 }
 
 void ELFParser::parseSymbolTable(const std::string& filePath, ELFHeaderInfo& info) {
-    // TODO: 实现符号表解析
+    if (filePath.empty() || !info.isValid) {
+        return;
+    }
+
+    std::ifstream file(filePath, std::ios::binary);
+    if (!file.is_open()) {
+        return;
+    }
+
+    // 遍历节头表，找到符号表和字符串表
+    uint64_t symTabOffset = 0;
+    uint64_t symTabSize = 0;
+    uint64_t strTabOffset = 0;
+    uint64_t strTabSize = 0;
+    uint32_t symCount = 0;
+    bool isDynamic = false;
+
+    // 查找.dynsym和.dynstr（动态符号表）或.symtab和.strtab（静态符号表）
+    for (size_t i = 0; i < info.sections.size(); ++i) {
+        const auto& section = info.sections[i];
+        std::string secName = section.name;
+
+        if (secName == ".dynsym") {
+            symTabOffset = section.fileOffset;
+            symTabSize = section.fileSize;
+            symCount = static_cast<uint32_t>(section.fileSize / (info.is64Bit ? sizeof(SymEntry64) : sizeof(SymEntry32)));
+            isDynamic = true;
+
+            // 查找对应的字符串表（通常在.dynstr后面）
+            for (size_t j = i + 1; j < info.sections.size() && j < i + 3; ++j) {
+                if (info.sections[j].name == ".dynstr") {
+                    strTabOffset = info.sections[j].fileOffset;
+                    strTabSize = info.sections[j].fileSize;
+                    break;
+                }
+            }
+            break;
+        }
+        else if (secName == ".symtab") {
+            symTabOffset = section.fileOffset;
+            symTabSize = section.fileSize;
+            symCount = static_cast<uint32_t>(section.fileSize / (info.is64Bit ? sizeof(SymEntry64) : sizeof(SymEntry32)));
+            isDynamic = false;
+
+            // 查找对应的字符串表（通常在.strtab后面）
+            for (size_t j = i + 1; j < info.sections.size() && j < i + 3; ++j) {
+                if (info.sections[j].name == ".strtab") {
+                    strTabOffset = info.sections[j].fileOffset;
+                    strTabSize = info.sections[j].fileSize;
+                    break;
+                }
+            }
+            break;
+        }
+    }
+
+    if (symTabOffset == 0 || strTabOffset == 0 || symCount == 0) {
+        return;
+    }
+
+    // 读取字符串表
+    std::string strTab = getStringTable(filePath, strTabOffset, 0);
+    if (strTab.empty()) {
+        return;
+    }
+
+    // 解析符号表
+    if (info.is64Bit) {
+        parseSymbolTable64(file, strTabOffset, symTabOffset, symCount, strTab, isDynamic, info);
+    } else {
+        parseSymbolTable32(file, strTabOffset, symTabOffset, symCount, strTab, isDynamic, info);
+    }
 }
 
 void ELFParser::parseSymbolTable32(std::ifstream& file, uint64_t strOffset, uint64_t symOffset,
                                      uint32_t count, const std::string& strTab, bool isDynamic,
                                      ELFHeaderInfo& info) {
-    // TODO: 实现32位符号表解析
+    if (!file.is_open() || file.fail()) {
+        return;
+    }
+
+    file.seekg(symOffset, std::ios::beg);
+    if (file.fail()) {
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; ++i) {
+        SymEntry32 sym;
+        file.read(reinterpret_cast<char*>(&sym), sizeof(sym));
+        if (!file) break;
+
+        // 提取符号名
+        std::string name;
+        if (sym.name < strTab.size()) {
+            name = strTab.substr(sym.name);
+        }
+
+        if (name.empty()) {
+            continue;
+        }
+
+        ELFSymbol symbol;
+        symbol.name = name;
+        symbol.value = sym.value;
+        symbol.size = sym.size;
+        symbol.type = sym.info & 0x0F;
+        symbol.binding = sym.info >> 4;
+        symbol.sectionIndex = sym.shndx;
+
+        if (isDynamic) {
+            info.importedSymbols.push_back(name);
+        } else {
+            info.symbols.push_back(symbol);
+        }
+    }
 }
 
 void ELFParser::parseSymbolTable64(std::ifstream& file, uint64_t strOffset, uint64_t symOffset,
                                      uint32_t count, const std::string& strTab, bool isDynamic,
                                      ELFHeaderInfo& info) {
-    // TODO: 实现64位符号表解析
+    if (!file.is_open() || file.fail()) {
+        return;
+    }
+
+    file.seekg(symOffset, std::ios::beg);
+    if (file.fail()) {
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; ++i) {
+        SymEntry64 sym;
+        file.read(reinterpret_cast<char*>(&sym), sizeof(sym));
+        if (!file) break;
+
+        std::string name;
+        if (sym.name < strTab.size()) {
+            name = strTab.substr(sym.name);
+        }
+
+        if (name.empty()) {
+            continue;
+        }
+
+        ELFSymbol symbol;
+        symbol.name = name;
+        symbol.value = sym.value;
+        symbol.size = sym.size;
+        symbol.type = sym.info & 0x0F;
+        symbol.binding = sym.info >> 4;
+        symbol.sectionIndex = sym.shndx;
+
+        if (isDynamic) {
+            info.importedSymbols.push_back(name);
+        } else {
+            info.symbols.push_back(symbol);
+        }
+    }
 }
 
 std::string ELFParser::getStringTable(const std::string& filePath, uint64_t sectionOffset, uint32_t sectionIndex) {
-    // TODO: 实现字符串表读取
-    return "";
+    std::string result;
+
+    if (filePath.empty() || sectionOffset == 0) {
+        return result;
+    }
+
+    std::ifstream file(filePath, std::ios::binary);
+    if (!file.is_open()) {
+        return result;
+    }
+
+    file.seekg(sectionOffset, std::ios::beg);
+    if (file.fail()) {
+        return result;
+    }
+
+    // 读取整个字符串表
+    const size_t MAX_STRING_TABLE_SIZE = 65536; // 64KB最大
+    std::vector<char> buffer(MAX_STRING_TABLE_SIZE);
+
+    file.read(buffer.data(), buffer.size());
+    if (!file) {
+        std::streamsize actualSize = file.gcount();
+        if (actualSize > 0) {
+            buffer.resize(static_cast<size_t>(actualSize));
+        } else {
+            return result;
+        }
+    }
+
+    // 手动查找null-terminator
+    size_t len = 0;
+    while (len < buffer.size() && buffer[len] != '\0') {
+        len++;
+    }
+
+    result.assign(buffer.data(), len);
+    return result;
+}
+
+std::string ELFParser::readDynamicString(std::ifstream& file, uint64_t strTabOffset, uint64_t strTabSize, uint64_t val) {
+    std::string result;
+
+    if (!file.is_open() || file.fail() || strTabOffset == 0 || strTabSize == 0) {
+        return result;
+    }
+
+    // val是字符串在字符串表中的偏移
+    if (val >= strTabSize) {
+        return result;
+    }
+
+    // 保存当前位置
+    std::streampos currentPos = file.tellg();
+
+    // 定位到字符串
+    file.seekg(strTabOffset + val, std::ios::beg);
+    if (file.fail()) {
+        file.seekg(currentPos); // 恢复位置
+        return result;
+    }
+
+    // 读取字符串直到'\0'或达到合理限制
+    const size_t MAX_STRING_LEN = 4096;
+    std::vector<char> buffer(MAX_STRING_LEN);
+
+    for (size_t i = 0; i < MAX_STRING_LEN; ++i) {
+        char c;
+        file.get(c);
+        if (!file || c == '\0') {
+            buffer[i] = '\0';
+            result = buffer.data();
+            break;
+        }
+        buffer[i] = c;
+    }
+
+    // 恢复文件位置
+    file.seekg(currentPos);
+
+    return result;
 }
 
 double ELFParser::calculateSectionEntropy(const std::string& filePath, uint64_t offset, uint64_t size) {
-    // TODO: 复用EntropyCalculator
-    return 0.0;
+    if (filePath.empty() || size == 0 || size > 100 * 1024 * 1024) {
+        return 0.0; // 跳过超过100MB的节
+    }
+
+    std::vector<uint8_t> buffer = readFileBuffer(filePath, offset, size);
+    if (buffer.empty()) {
+        return 0.0;
+    }
+
+    // 复用PEHeaderParser的熵值计算方法
+    return PEHeaderParser::calculateEntropy(buffer);
 }
 
 std::vector<uint8_t> ELFParser::readFileBuffer(const std::string& filePath, uint64_t offset, uint64_t size) {

@@ -17,6 +17,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def normalize_threat_level(raw: str, numeric_score: int) -> str:
+    """Normalize threat level string to consistent English values."""
+    mapping = {
+        "低": "low", "低风险": "low", "low": "low", "safe": "low",
+        "中": "medium", "中风险": "medium", "medium": "medium",
+        "高": "high", "高风险": "high", "high": "high",
+        "严重": "critical", "critical": "critical",
+    }
+    key = raw.strip().lower()
+    return mapping.get(key, "low" if numeric_score < 30
+                       else "medium" if numeric_score < 60
+                       else "high" if numeric_score < 80
+                       else "critical")
+
+
 class DLLAnalysisRequest(BaseModel):
     """Request model for DLL analysis."""
     file_path: str = Field(..., description="Absolute path to DLL file")
@@ -38,6 +53,8 @@ class DLLAnalysisResponse(BaseModel):
 DLL_SECURITY_ANALYSIS_PROMPT = """你是一位专业的恶意软件分析专家。请基于以下DLL文件的技术分析报告,提供安全评估。
 
 {markdown_report}
+
+参考威胁评分: {threat_score}/100
 
 请提供以下分析:
 1. **功能评估**: 该DLL的主要功能和可能用途
@@ -82,7 +99,7 @@ async def analyze_dll(
     try:
         # Get LLM service and C++ backend URL from settings
         service_manager = get_service_manager()
-        cpp_backend_url = getattr(settings, 'cpp_backend_base_url', 'http://localhost:8080')
+        cpp_backend_url = getattr(settings, 'cpp_backend_url', 'http://localhost:8080')
 
         # Step 1: Analyze DLL via C++ backend
         logger.info(f"Analyzing DLL file: {request.file_path}")
@@ -93,9 +110,15 @@ async def analyze_dll(
         markdown_report = DLLMarkdownGenerator.generate(dll_data)
         logger.debug(f"Generated Markdown report ({len(markdown_report)} chars)")
 
+        # Extract C++ threat score for LLM context
+        threat_score_from_cpp = dll_data.get("threat_score", 0)
+
         # Step 3: Call LLM for security analysis
         prompt = request.prompt or DLL_SECURITY_ANALYSIS_PROMPT
-        formatted_prompt = prompt.format(markdown_report=markdown_report)
+        formatted_prompt = prompt.format(
+            markdown_report=markdown_report,
+            threat_score=threat_score_from_cpp,
+        )
 
         llm_result = await service_manager.llm_service.analyze(
             content=markdown_report,
@@ -107,6 +130,10 @@ async def analyze_dll(
 
         processing_time = (time.time() - start_time) * 1000
         analysis = llm_result.get("analysis", {})
+
+        # Normalize threat_level to consistent English values
+        threat_level_raw = analysis.get("threat_level", "")
+        analysis["threat_level"] = normalize_threat_level(threat_level_raw, threat_score_from_cpp)
 
         # Step 4: Persist to database if path provided
         if request.files_db_path:

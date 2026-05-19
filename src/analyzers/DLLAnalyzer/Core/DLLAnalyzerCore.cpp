@@ -137,7 +137,7 @@ void DLLAnalyzer::analyze() {
 
         LOG_INFO("Parallel analysis completed. Successfully analyzed " +
                  std::to_string(successCount) + " / " + std::to_string(dllFiles.size()) + " DLLs");
-
+    } else {
         LOG_INFO("Using sequential analysis (small file set or single thread)");
 
         for (const auto& dllPath : dllFiles) {
@@ -446,6 +446,29 @@ bool DLLAnalyzer::analyzeDLL(const std::string& dllPath, int64_t inode) {
 
         dllDatabase_->updateThreatScore(dllId, result.threatScore);
 
+        // Step 6: 取证关联（Prefetch/Registry/EventLog）
+        if (windowsDb_ && dependencyAnalyzer_) {
+            LOG_DEBUG("Running forensic correlation for DLL ID " + std::to_string(dllId));
+
+            // 查询 Prefetch 关联
+            auto prefetchRefs = dependencyAnalyzer_->getPrefetchReferences(dllPath);
+            for (const auto& ref : prefetchRefs) {
+                dllDatabase_->insertForensicLink(dllId, "prefetch", "prefetch_files", ref);
+            }
+
+            // 查询注册表关联
+            auto registryRefs = dependencyAnalyzer_->getRegistryReferences(dllPath);
+            for (const auto& ref : registryRefs) {
+                dllDatabase_->insertForensicLink(dllId, "registry", "registry_values", ref);
+            }
+
+            // 查询事件日志关联
+            auto eventLogRefs = dependencyAnalyzer_->getEventLogReferences(dllPath);
+            for (const auto& ref : eventLogRefs) {
+                dllDatabase_->insertForensicLink(dllId, "eventlog", "event_logs", ref);
+            }
+        }
+
         // 更新统计
         if (result.threatScore >= 30) {
             stats_.suspiciousDLLs++;
@@ -471,14 +494,17 @@ bool DLLAnalyzer::analyzeDLL(const std::string& dllPath, int64_t inode) {
 int DLLAnalyzer::calculateThreatScore(const DLLAnalysisResult& result) const {
     int score = 0;
 
+    // Sum all anomaly risk scores
     for (const auto& anomaly : result.anomalies) {
         score += anomaly.riskScore;
     }
 
-    if (result.threatScore > 0) {
-        score = std::max(score, result.threatScore);
+    // Apply existing threat score if higher (don't reduce score)
+    if (result.threatScore > score) {
+        score = result.threatScore;
     }
 
+    // Add penalty for suspicious DLL names/paths
     if (isSuspiciousDLL(result.filePath)) {
         score += 10;
     }
@@ -505,6 +531,19 @@ bool DLLAnalyzer::isSuspiciousDLL(const std::string& dllPath) const {
     }
 
     return false;
+}
+
+void DLLAnalyzer::setWindowsDatabase(const WindowsAnalysisDatabase* windowsDb) {
+    windowsDb_ = windowsDb;
+
+    // 传递给 DependencyAnalyzer
+    if (dependencyAnalyzer_) {
+        dependencyAnalyzer_->setWindowsDatabase(windowsDb);
+    }
+
+    if (windowsDb) {
+        LOG_INFO("Windows forensic database linked for DLL correlation");
+    }
 }
 
 } // namespace dll

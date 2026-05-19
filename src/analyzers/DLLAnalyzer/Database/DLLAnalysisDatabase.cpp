@@ -112,11 +112,11 @@ int64_t DLLAnalysisDatabase::insertDLLBaseInfo(const DLLAnalysisResult& result) 
     sqlite3_bind_null(stmt, idx++); // cert_valid_from
     sqlite3_bind_null(stmt, idx++); // cert_valid_to
 
-    // 时间戳 (params 27-30)
-    sqlite3_bind_int64(stmt, idx++, static_cast<int64_t>(result.peHeader.timestamp)); // mtime
-    sqlite3_bind_int64(stmt, idx++, static_cast<int64_t>(result.peHeader.timestamp)); // ctime
-    sqlite3_bind_int64(stmt, idx++, static_cast<int64_t>(result.peHeader.timestamp)); // atime
-    sqlite3_bind_int64(stmt, idx++, static_cast<int64_t>(result.peHeader.timestamp)); // crtime
+    // 文件系统时间戳 (params 27-30) - 使用实际文件时间戳而非PE编译时间戳
+    sqlite3_bind_int64(stmt, idx++, result.mtime);  // 修改时间
+    sqlite3_bind_int64(stmt, idx++, result.ctime);  // 元数据变更时间
+    sqlite3_bind_int64(stmt, idx++, result.atime);  // 访问时间
+    sqlite3_bind_int64(stmt, idx++, result.crtime); // 创建时间
 
     // 取证关联 (params 31-32)
     sqlite3_bind_int(stmt, idx++, 0); // is_deleted

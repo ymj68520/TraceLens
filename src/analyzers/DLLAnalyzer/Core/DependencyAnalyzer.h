@@ -10,6 +10,7 @@
 #include <vector>
 #include <unordered_set>
 #include "analyzers/DLLAnalyzer/Common/DLLDataTypes.h"
+#include "analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.h"
 
 namespace forensics {
 namespace dll {
@@ -69,7 +70,7 @@ public:
     std::unordered_set<std::string> getAllDependencies(const std::string& dllPath);
 
     // =========================================================================
-    // 取证关联方法（占位实现，与具体取证数据源集成）
+    // 取证关联方法
     // =========================================================================
 
     /**
@@ -92,6 +93,16 @@ public:
      * @return 事件日志引用列表
      */
     std::vector<std::string> getEventLogReferences(const std::string& dllPath);
+
+    // =========================================================================
+    // Windows 取证数据库集成
+    // =========================================================================
+
+    /**
+     * @brief 设置 Windows 取证数据库（只读）
+     * @param windowsDb Windows 取证数据库指针
+     */
+    void setWindowsDatabase(const WindowsAnalysisDatabase* windowsDb);
 
     // =========================================================================
     // 测试辅助方法（公开以便单元测试）
@@ -119,6 +130,20 @@ public:
      */
     bool checkCircularDependency(const std::string& dllPath,
                                   const std::unordered_set<std::string>& visited) const;
+
+    /**
+     * @brief 规范化路径用于匹配（小写化 + 统一分隔符）
+     * @param path 原始路径
+     * @return 规范化后的路径
+     */
+    static std::string normalizePath(const std::string& path);
+
+    /**
+     * @brief 从路径提取文件名
+     * @param fullPath 完整路径
+     * @return 文件名（小写）
+     */
+    static std::string extractFileName(const std::string& fullPath);
 
 private:
 
@@ -150,6 +175,9 @@ private:
 
     // 可疑目录路径
     static const std::vector<std::string> SUSPICIOUS_PATHS;
+
+    // Windows 取证数据库（只读，用于取证关联）
+    const WindowsAnalysisDatabase* windowsDb_{nullptr};
 };
 
 } // namespace dll

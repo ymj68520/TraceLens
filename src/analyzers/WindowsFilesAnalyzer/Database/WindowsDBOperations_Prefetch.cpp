@@ -47,7 +47,7 @@ bool WindowsAnalysisDatabase::insertPrefetchInfo(const PrefetchInfo& info) {
     return result;
 }
 
-std::vector<PrefetchInfo> WindowsAnalysisDatabase::queryPrefetchFiles(const std::string& whereClause) {
+std::vector<PrefetchInfo> WindowsAnalysisDatabase::queryPrefetchFiles(const std::string& whereClause) const {
     std::vector<PrefetchInfo> results;
     std::string sql = "SELECT file_path, executable_name, executable_path, prefetch_hash, run_count, last_run_time, creation_time, referenced_files, referenced_directories FROM prefetch_files";
     if (!whereClause.empty()) sql += " WHERE " + whereClause;

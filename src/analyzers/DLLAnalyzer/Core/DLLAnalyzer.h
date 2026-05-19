@@ -12,7 +12,8 @@
 #include <mutex>
 #include "analyzers/DLLAnalyzer/Common/DLLAnalyzerDeclarations.h"
 #include "analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.h"
-#include "analyzers/DLLAnalyzer/Common/DLLDataTypes.h"
+#include "analyzers/DLLAnalyzer/Core/DependencyAnalyzer.h"
+#include "analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.h"
 
 namespace forensics {
 namespace dll {
@@ -122,6 +123,12 @@ public:
      */
     DLLAnalysisDatabase* getDatabase() const { return dllDatabase_.get(); }
 
+    /**
+     * @brief 设置 Windows 取证数据库（用于取证关联）
+     * @param windowsDb Windows 取证数据库指针（只读）
+     */
+    void setWindowsDatabase(const WindowsAnalysisDatabase* windowsDb);
+
 private:
     /**
      * @brief 扫描DLL文件
@@ -172,6 +179,9 @@ private:
     std::unique_ptr<PEAnalyzer> peAnalyzer_;
     std::unique_ptr<AnomalyDetector> anomalyDetector_;
     std::unique_ptr<DependencyAnalyzer> dependencyAnalyzer_;
+
+    // Windows 取证数据库（只读，用于取证关联）
+    const WindowsAnalysisDatabase* windowsDb_{nullptr};
 
     // 分析选项
     bool enableAnomalyDetection_;

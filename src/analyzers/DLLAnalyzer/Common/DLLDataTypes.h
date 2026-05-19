@@ -187,6 +187,31 @@ struct SectionHeader {
 #pragma pack(pop)
 
 // ============================================================================
+// 版本信息资源结构
+// ============================================================================
+
+#pragma pack(push, 1)
+
+// VS_FIXEDFILEINFO - 固定版本信息
+struct VS_FIXEDFILEINFO {
+    uint32_t dwSignature;        // 0xFEEF04BD
+    uint32_t dwStrucVersion;     // 结构版本，0x00010000
+    uint32_t dwFileVersionMS;    // 主版本号和次版本号（高16位=主，低16位=次）
+    uint32_t dwFileVersionLS;    // 构建号和修订号（高16位=构建，低16位=修订）
+    uint32_t dwProductVersionMS; // 产品版本号
+    uint32_t dwProductVersionLS; // 产品版本号
+    uint32_t dwFileFlagsMask;    // 文件标志掩码
+    uint32_t dwFileFlags;        // 文件标志
+    uint32_t dwFileOS;           // 操作系统
+    uint32_t dwFileType;         // 文件类型
+    uint32_t dwFileSubtype;      // 文件子类型
+    uint32_t dwFileDateMS;       // 文件日期高位
+    uint32_t dwFileDateLS;       // 文件日期低位
+};
+
+#pragma pack(pop)
+
+// ============================================================================
 // 分析数据结构
 // ============================================================================
 
@@ -272,6 +297,12 @@ struct DLLAnalysisResult {
     std::string filePath;
     std::string fileName;
     uint64_t fileSize;
+
+    // 文件系统时间戳（Unix时间戳）
+    int64_t mtime;  // 修改时间
+    int64_t ctime;  // 元数据变更时间
+    int64_t atime;  // 访问时间
+    int64_t crtime; // 创建时间
 
     // PE信息
     PEHeaderInfo peHeader;

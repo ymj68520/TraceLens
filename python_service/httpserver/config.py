@@ -6,9 +6,10 @@ Uses pydantic-settings for validation and type safety.
 """
 
 import os
+import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -198,6 +199,44 @@ class Settings(BaseSettings):
     # Performance Settings
     thread_pool_size: int = Field(default=4, alias="THREAD_POOL_SIZE")
     max_batch_size: int = Field(default=100, alias="MAX_BATCH_SIZE")
+
+    # CORS Settings (stored as string, parsed via property)
+    cors_origins_raw: str = Field(
+        default='["*"]',
+        alias="PYTHON_CORS_ORIGINS",
+        description="List of allowed CORS origins in JSON array format. "
+                    "Example: '[\"https://example.com\", \"https://app.example.com\"]'"
+    )
+
+    @property
+    def cors_origins(self) -> List[str]:
+        """Parse and return CORS origins list."""
+        return self._parse_cors_origins(self.cors_origins_raw)
+
+    @staticmethod
+    def _parse_cors_origins(value: str) -> List[str]:
+        """Parse CORS origins from string format.
+
+        Supports JSON array format: '["https://example.com", "https://app.example.com"]'
+        Falls back to comma-separated format for convenience.
+        """
+        if not value or value.strip() == "*":
+            return ["*"]
+
+        value = value.strip()
+
+        # Try to parse as JSON first
+        if value.startswith("["):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return [str(item) for item in parsed]
+            except json.JSONDecodeError:
+                pass
+
+        # Fallback to comma-separated format
+        origins = [item.strip() for item in value.split(",") if item.strip()]
+        return origins if origins else ["*"]
 
     # LLM Filter Configuration
     llm_filter_config: LLMFilterConfig = Field(

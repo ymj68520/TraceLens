@@ -125,12 +125,33 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             auto dllAnalyzer = std::make_unique<dll::DLLAnalyzer>(dllDbPath);
             dllAnalyzer->enableAnomalyDetection(true);
             dllAnalyzer->enableSignatureVerification(args.verify_signatures);
+
+            // 关联 Windows 取证数据库（如果 Windows 分析已执行）
+            // 注意：Windows DB 只读访问，不会导致写锁竞争
+            std::unique_ptr<WindowsAnalysisDatabase> windowsDb;
+            if (args.windows_analyze) {
+                std::string windowsDbPath = prefix + baseName + "_windows.db";
+                if (fs::exists(windowsDbPath)) {
+                    std::cout << "Linking Windows forensic database for DLL correlation: " << windowsDbPath << std::endl;
+                    // 创建 Windows DB 实例用于只读查询
+                    windowsDb = std::make_unique<WindowsAnalysisDatabase>(windowsDbPath);
+                    if (windowsDb->initialize()) {
+                        dllAnalyzer->setWindowsDatabase(windowsDb.get());
+                    } else {
+                        std::cerr << "Warning: Failed to initialize Windows DB, skipping forensic correlation" << std::endl;
+                        windowsDb.reset();
+                    }
+                }
+            }
+
             if (dllAnalyzer->initialize()) {
                 dllAnalyzer->analyze();
                 auto stats = dllAnalyzer->getStats();
                 std::cout << "✓ DLL analysis complete (" << stats.totalDLLsAnalyzed
                           << " analyzed, " << stats.suspiciousDLLs << " suspicious)\n" << std::endl;
             }
+
+            // Windows DB 在作用域结束时自动释放（先于 DLL DB）
         }
 
         std::cout << "=== Analysis Complete ===" << std::endl;

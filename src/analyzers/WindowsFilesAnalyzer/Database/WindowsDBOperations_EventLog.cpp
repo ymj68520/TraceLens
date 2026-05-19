@@ -48,7 +48,7 @@ bool WindowsAnalysisDatabase::insertEventLogEntries(const std::vector<EventLogEn
     return commitTransaction();
 }
 
-std::vector<EventLogEntry> WindowsAnalysisDatabase::queryEventLogs(const std::string& whereClause) {
+std::vector<EventLogEntry> WindowsAnalysisDatabase::queryEventLogs(const std::string& whereClause) const {
     std::vector<EventLogEntry> results;
     std::string sql = "SELECT record_id, log_source, event_id, level, timestamp, source, message, computer_name, user_sid, channel FROM event_logs";
     if (!whereClause.empty()) sql += " WHERE " + whereClause;

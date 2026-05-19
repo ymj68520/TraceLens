@@ -5,6 +5,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <cstring>
+#include <iomanip>
+#include <sstream>
 
 using namespace forensics::dll;
 
@@ -291,6 +293,113 @@ bool PEHeaderParser::parseSectionTable() {
 
         headerInfo_.sections.push_back(sectionInfo);
     }
+
+    return true;
+}
+
+bool PEHeaderParser::parseRichSignature() {
+    richEntries_.clear();
+    richHash_.clear();
+
+    if (!file_.is_open() || !isValid_) {
+        return false;
+    }
+
+    // 获取文件大小
+    file_.seekg(0, std::ios::end);
+    std::streamoff fileSize = file_.tellg();
+    if (fileSize <= 0) {
+        return false;
+    }
+
+    // Rich Signature通常位于PE文件末尾的overlay区域
+    // 搜索"Rich"标记 (0x68636952 in little-endian)
+    const uint32_t RICH_SIGNATURE = 0x68636952; // "Rich" in little-endian
+    const size_t SEARCH_RANGE = 4096; // 在最后4KB中搜索
+
+    // 读取文件末尾
+    size_t searchStart = static_cast<size_t>(std::max<std::streamoff>(0, fileSize - SEARCH_RANGE));
+    std::vector<uint8_t> tailData(static_cast<size_t>(fileSize - searchStart));
+
+    file_.seekg(searchStart, std::ios::beg);
+    file_.read(reinterpret_cast<char*>(tailData.data()), tailData.size());
+    if (!file_) {
+        return false;
+    }
+
+    // 搜索"Rich"签名
+    size_t richOffset = std::string::npos;
+    for (size_t i = 0; i < tailData.size() - 4; ++i) {
+        uint32_t signature = *reinterpret_cast<const uint32_t*>(&tailData[i]);
+        if (signature == RICH_SIGNATURE) {
+            richOffset = i;
+            break;
+        }
+    }
+
+    if (richOffset == std::string::npos) {
+        return false; // 没有找到Rich Signature
+    }
+
+    // Rich Signature结构：
+    // 4字节: "Rich" (0x68636952)
+    // 4字节: 校验和（异或值，用于验证签名未被篡改）
+    // N * 4字节: (toolID << 16) | version 的累加和
+
+    // 读取校验和
+    if (richOffset + 8 > tailData.size()) {
+        return false;
+    }
+
+    uint32_t checksum = *reinterpret_cast<const uint32_t*>(&tailData[richOffset + 4]);
+
+    // 验证Rich Signature（向后搜索到DOS头找到真正的开始位置）
+    // Rich entries是从DOS stub开始到"Rich"标记之前的所有DWORD
+    // 简化实现：直接提取entries
+
+    // 解析Rich entries（从Rich签名之前开始，向前扫描）
+    size_t entriesStart = richOffset;
+    size_t numEntries = 0;
+
+    // 计算哈希
+    uint32_t hash = 0;
+    std::vector<std::pair<uint32_t, uint32_t>> entries;
+
+    // 向前扫描直到遇到0x00000000或0xFFFFFFFF
+    for (size_t i = 0; i < entriesStart; i += 4) {
+        if (i + 4 > tailData.size()) break;
+
+        uint32_t entry = *reinterpret_cast<const uint32_t*>(&tailData[i]);
+
+        // 跳过空值
+        if (entry == 0 || entry == 0xFFFFFFFF) {
+            continue;
+        }
+
+        // 提取toolID和version
+        uint32_t toolID = (entry >> 16) & 0xFFFF;
+        uint32_t version = entry & 0xFFFF;
+
+        // 跳过"Rich"标记本身
+        if (entry == RICH_SIGNATURE) {
+            continue;
+        }
+
+        entries.emplace_back(toolID, version);
+        hash ^= entry;
+        numEntries++;
+    }
+
+    if (entries.empty()) {
+        return false;
+    }
+
+    richEntries_ = entries;
+
+    // 生成Rich Hash（简化为校验和的十六进制）
+    std::ostringstream oss;
+    oss << std::hex << std::setw(8) << std::setfill('0') << hash;
+    richHash_ = oss.str();
 
     return true;
 }

@@ -21,16 +21,16 @@ public:
     // Registry value operations
     bool insertRegistryValue(const RegistryValue& value);
     bool insertRegistryValues(const std::vector<RegistryValue>& values);
-    std::vector<RegistryValue> queryRegistryValues(const std::string& whereClause = "");
+    std::vector<RegistryValue> queryRegistryValues(const std::string& whereClause = "") const;
 
     // Event log operations
     bool insertEventLogEntry(const EventLogEntry& entry);
     bool insertEventLogEntries(const std::vector<EventLogEntry>& entries);
-    std::vector<EventLogEntry> queryEventLogs(const std::string& whereClause = "");
+    std::vector<EventLogEntry> queryEventLogs(const std::string& whereClause = "") const;
 
     // Prefetch file operations
     bool insertPrefetchInfo(const PrefetchInfo& info);
-    std::vector<PrefetchInfo> queryPrefetchFiles(const std::string& whereClause = "");
+    std::vector<PrefetchInfo> queryPrefetchFiles(const std::string& whereClause = "") const;
 
     // LNK file operations
     bool insertLnkFileInfo(const LnkFileInfo& info);

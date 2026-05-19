@@ -53,7 +53,7 @@ const Files = () => {
 
   // LLM Analysis state
   const [llmStatus, setLlmStatus] = useState(null);
-  const [llmAnalyzingFiles, setLlmAnalyzingFiles] = useState(new Set());
+  const [llmAnalyzingFiles, setLlmAnalyzingFiles] = useState(() => new Set());
   const [llmResults, setLlmResults] = useState({});
   const [existingLlmDescriptions, setExistingLlmDescriptions] = useState({});
   const [expandedDescriptions, setExpandedDescriptions] = useState(new Set());

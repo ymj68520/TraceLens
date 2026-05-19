@@ -10,7 +10,7 @@ class DLLMarkdownGenerator:
         """Initialize the markdown generator."""
         pass
 
-    def generate_report(self, analysis_result: Dict[str, Any]) -> str:
+    def generate(self, analysis_result: Dict[str, Any]) -> str:
         """
         Generate a Markdown report from analysis results.
 
@@ -48,26 +48,32 @@ class DLLMarkdownGenerator:
         sections = analysis_result.get("sections", [])
         if sections:
             lines.append("## Sections")
-            lines.append("| Name | Virtual Address | Virtual Size | Raw Size |")
-            lines.append("|------|----------------|--------------|----------|")
+            lines.append("| Name | Virtual Address | Virtual Size | Entry Point | Permissions |")
+            lines.append("|------|----------------|--------------|-------------|-------------|")
             for section in sections:
                 name = section.get("name", "Unknown")
                 va = section.get("virtual_address", 0)
                 vs = section.get("virtual_size", 0)
-                rs = section.get("raw_size", 0)
-                lines.append(f"| {name} | {va:#x} | {vs:#x} | {rs:#x} |")
+                ent = section.get("entry_point", 0)
+                perm = section.get("permissions", "Unknown")
+                lines.append(f"| {name} | {va:#x} | {vs:#x} | {ent:.2f} | {perm} |")
             lines.append("")
 
         # Imports
         imports = analysis_result.get("imports", [])
         if imports:
             lines.append("## Imported Functions")
-            lines.append("| DLL | Function |")
-            lines.append("|-----|----------|")
+
             for imp in imports:
-                dll = imp.get("dll", "Unknown")
-                func = imp.get("function", "Unknown")
-                lines.append(f"| {dll} | {func} |")
+                dll = imp.get("dll_name", imp.get("dll", "Unknown"))  # Support both field names
+                functions = imp.get("functions", imp.get("function", []))
+                if isinstance(functions, str):
+                    functions = [functions]
+
+                if functions:
+                    lines.append(f"\n### {dll}")
+                    for func in functions:
+                        lines.append(f"- {func}")
             lines.append("")
 
         # Exports
@@ -78,7 +84,7 @@ class DLLMarkdownGenerator:
             lines.append("|----------|---------|")
             for exp in exports:
                 name = exp.get("name", "Unknown")
-                addr = exp.get("address", 0)
+                addr = exp.get("rva", exp.get("address", 0))  # Support both rva and address
                 lines.append(f"| {name} | {addr:#x} |")
             lines.append("")
 

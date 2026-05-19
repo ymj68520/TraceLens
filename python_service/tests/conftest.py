@@ -253,6 +253,7 @@ def test_settings():
         neo4j_password="password",
         redis_url="redis://localhost:6379",
         db_output_dir="/tmp/test_db",
+        cors_origins=["*"],  # Default for tests
     )
 
 

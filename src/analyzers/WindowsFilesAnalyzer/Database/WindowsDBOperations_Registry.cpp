@@ -48,7 +48,7 @@ bool WindowsAnalysisDatabase::insertRegistryValues(const std::vector<RegistryVal
     return commitTransaction();
 }
 
-std::vector<RegistryValue> WindowsAnalysisDatabase::queryRegistryValues(const std::string& whereClause) {
+std::vector<RegistryValue> WindowsAnalysisDatabase::queryRegistryValues(const std::string& whereClause) const {
     std::vector<RegistryValue> results;
     std::string sql = "SELECT hive_path, hive_type, key_path, value_name, value_type, value_data, last_modified, forensic_importance FROM registry_values";
     if (!whereClause.empty()) sql += " WHERE " + whereClause;
