@@ -24,6 +24,7 @@ export const saveCaseDescription = async (taskId, caseDescription) => {
  * @param {string} options.caseDescription - 案情描述
  * @param {number} options.maxFilterFiles - 最大筛选文件数
  * @param {boolean} options.run_filtering - 是否执行 AI 筛选
+ * @param {boolean} options.report_only - 仅重新生成报告，跳过文件提取/分析
  */
 export const startCaseAnalysis = async (options) => {
     return await pythonApi.post('/api/llm/case-analysis', {
@@ -32,6 +33,7 @@ export const startCaseAnalysis = async (options) => {
         case_description: options.caseDescription,
         max_filter_files: options.maxFilterFiles || 200,
         run_filtering: options.run_filtering || false,
+        report_only: options.report_only || false,
     });
 };
 

@@ -41,6 +41,7 @@ class ReportGenerator:
         task_id: Optional[str] = None,
         windows_db_path: Optional[str] = None,
         files_db_paths: Optional[List[str]] = None,
+        task_ids: Optional[List[str]] = None,
         is_cross_image_report: bool = False,
     ) -> Dict[str, Any]:
         """
@@ -86,9 +87,8 @@ class ReportGenerator:
                     # Ensure file_descriptions table exists before querying
                     from .db_utils import ensure_file_descriptions_schema
                     ensure_file_descriptions_schema(conn)
-                    # CRITICAL: Include files NOT explicitly marked as irrelevant (is_relevant IS NOT 0)
-                    # This handles NULL (legacy/default) and 1 (explicitly marked)
-                    cur = conn.execute("SELECT file_path, description, model_used FROM file_descriptions WHERE is_relevant IS NOT 0")
+                    # Only include files explicitly marked as evidence by the user (is_relevant = 1)
+                    cur = conn.execute("SELECT file_path, description, model_used FROM file_descriptions WHERE is_relevant = 1")
                     rows = cur.fetchall()
                     if rows:
                         # Convert DB rows to the format expected by build_evidence_summary
@@ -392,9 +392,9 @@ class ReportGenerator:
                     conn.row_factory = sqlite3.Row
                     ensure_file_descriptions_schema(conn)
 
-                    # Get relevant file descriptions
+                    # Get user-selected evidence files
                     cur = conn.execute(
-                        "SELECT file_path, description, model_used FROM file_descriptions WHERE is_relevant IS NOT 0"
+                        "SELECT file_path, description, model_used FROM file_descriptions WHERE is_relevant = 1"
                     )
                     rows = cur.fetchall()
 

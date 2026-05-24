@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
+from .llm_patch import apply_patch  # noqa: F401 — must run before graphiti_core
+apply_patch()
+
 from graphiti_core import Graphiti
 from graphiti_core.nodes import EpisodeType
 from graphiti_core.llm_client.config import LLMConfig

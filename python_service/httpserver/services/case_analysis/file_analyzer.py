@@ -43,11 +43,44 @@ class FileAnalyzer:
     ) -> List[Dict[str, Any]]:
         """
         Generate LLM description for each file in the list using concurrency.
+        Skips files that already have descriptions in the database.
         """
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
 
-        total = len(file_paths)
+        # Pre-check: find files that already have descriptions
+        already_described = set()
+        existing_descriptions = {}
+        if files_db_path:
+            try:
+                import sqlite3
+                with sqlite3.connect(files_db_path, timeout=10) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cur = conn.execute(
+                        "SELECT file_path, description, summary, keywords, model_used FROM file_descriptions WHERE description IS NOT NULL AND description != ''"
+                    )
+                    for row in cur.fetchall():
+                        already_described.add(row["file_path"])
+                        existing_descriptions[row["file_path"]] = {
+                            "file_path": row["file_path"],
+                            "description": row["description"],
+                            "model_used": row["model_used"] or "",
+                            "success": True,
+                        }
+            except Exception as e:
+                logger.warning(f"Failed to check existing descriptions: {e}")
+
+        files_to_analyze = [fp for fp in file_paths if fp not in already_described]
+        skipped_count = len(file_paths) - len(files_to_analyze)
+
+        if skipped_count > 0:
+            logger.info(f"[FILE_ANALYZER] Skipping {skipped_count} files with existing descriptions, analyzing {len(files_to_analyze)}")
+
+        if not files_to_analyze:
+            logger.info(f"[FILE_ANALYZER] All {len(file_paths)} files already have descriptions, returning existing results")
+            return [existing_descriptions.get(fp, {"file_path": fp, "description": "", "success": False}) for fp in file_paths]
+
+        total = len(files_to_analyze)
         IMAGE_EXTENSIONS = {
             '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif',
             '.svg', '.ico', '.heic', '.heif', '.raw', '.cr2', '.nef', '.arw'
@@ -164,9 +197,23 @@ class FileAnalyzer:
                         await progress_callback(processed_count, total, file_path)
                     return {"file_path": file_path, "description": "", "error": str(e), "success": False}
 
-        # Run all tasks concurrently
-        tasks = [analyze_file(fp) for fp in file_paths]
-        return await asyncio.gather(*tasks)
+        # Run analysis tasks concurrently (only for files without existing descriptions)
+        tasks = [analyze_file(fp) for fp in files_to_analyze]
+        new_results = await asyncio.gather(*tasks)
+
+        # Build result map from new analysis
+        result_map = {r["file_path"]: r for r in new_results}
+
+        # Merge: return results in original order, using existing descriptions for skipped files
+        final_results = []
+        for fp in file_paths:
+            if fp in result_map:
+                final_results.append(result_map[fp])
+            elif fp in existing_descriptions:
+                final_results.append(existing_descriptions[fp])
+            else:
+                final_results.append({"file_path": fp, "description": "", "success": False})
+        return final_results
 
     async def reanalyze_files(
         self,

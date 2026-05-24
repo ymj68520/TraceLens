@@ -435,6 +435,7 @@ class CaseAnalysisService:
         case_description: str,
         max_filter_files: int = 200,
         run_filtering: bool = True,
+        report_only: bool = False,
         progress_callback=None,
     ) -> Dict[str, Any]:
         """
@@ -444,6 +445,10 @@ class CaseAnalysisService:
             1. Filter files by case relevance (Optional)
             2. Generate per-file descriptions
             3. Generate final case report
+
+        Args:
+            report_only: If True, skip all pipeline steps (filter/extract/describe/ingest)
+                and only regenerate the report from existing evidence in the database.
         """
         result = {
             "task_id": task_id,
@@ -457,21 +462,30 @@ class CaseAnalysisService:
         extract_result = {"extracted_count": 0, "extraction_dir": ""}
 
         # ------------------------------------------------------------------
-        # Smart detection: Auto-enable filtering if no filtered files exist
+        # Report-only mode: skip entire pipeline, go straight to report
         # ------------------------------------------------------------------
-        has_existing_filtered = False
-        if not run_filtering:
-            from .db_utils import get_filtered_files_from_db
-            existing_filtered = get_filtered_files_from_db(files_db_path, task_id)
-            if not existing_filtered:
-                logger.info(f"[CASE_ANALYSIS] Task {task_id}: No filtered files found in database, auto-enabling filtering")
-                run_filtering = True
-            else:
-                logger.info(f"[CASE_ANALYSIS] Task {task_id}: Found {len(existing_filtered)} existing filtered files, skipping filter step")
-                filtered_files = existing_filtered
-                has_existing_filtered = True
+        if report_only:
+            logger.info(f"[CASE_ANALYSIS] Task {task_id}: Report-only mode. Skipping filter/extract/describe/ingest.")
+            if progress_callback:
+                await progress_callback("reporting_init", "仅重新生成报告，使用已有证据数据...")
 
-        if run_filtering:
+        else:
+            # ------------------------------------------------------------------
+            # Smart detection: Auto-enable filtering if no filtered files exist
+            # ------------------------------------------------------------------
+            has_existing_filtered = False
+            if not run_filtering:
+                from .db_utils import get_filtered_files_from_db
+                existing_filtered = get_filtered_files_from_db(files_db_path, task_id)
+                if not existing_filtered:
+                    logger.info(f"[CASE_ANALYSIS] Task {task_id}: No filtered files found in database, auto-enabling filtering")
+                    run_filtering = True
+                else:
+                    logger.info(f"[CASE_ANALYSIS] Task {task_id}: Found {len(existing_filtered)} existing filtered files, skipping filter step")
+                    filtered_files = existing_filtered
+                    has_existing_filtered = True
+
+        if not report_only and run_filtering:
             # --- FULL PIPELINE MODE (Initial Task or Explicit Re-scan) ---
 
             # Step 1: Filter files via LLM
@@ -601,7 +615,7 @@ class CaseAnalysisService:
 
         else:
             # --- REUSE EXISTING FILTERED FILES MODE ---
-            if has_existing_filtered:
+            if not report_only and has_existing_filtered:
                 # We have filtered files but didn't just run filtering
                 # Still need to extract and describe if not done yet
                 if progress_callback:
@@ -701,10 +715,22 @@ class CaseAnalysisService:
                 # When run_filtering is False and no existing filtered files,
                 # generate_case_report will pull ALL 'relevant' descriptions from database.
                 logger.info(f"Task {task_id}: Fast reporting mode. Skipping filter/extract/describe.")
+                # NOTE: files_db_path is still needed for report persistence and DB aggregation
 
         # Step 5: Final Case Report Generation (Common Path)
         if progress_callback:
             await progress_callback("reporting", "正在合成综合案情分析报告...")
+
+        # Ensure files_db_path is resolved for report persistence
+        if not files_db_path and task_id and self._cpp_backend:
+            try:
+                task_info = await self._cpp_backend.get_task(task_id)
+                if task_info:
+                    files_db_path = task_info.get("output_files_db") or task_info.get("output_files_db_path", "")
+                    if files_db_path:
+                        logger.info(f"Task {task_id}: Resolved files_db_path from task info: {files_db_path}")
+            except Exception as e:
+                logger.warning(f"Task {task_id}: Could not resolve files_db_path: {e}")
 
         report = await self.generate_case_report(
             case_description, descriptions, files_db_path, task_id

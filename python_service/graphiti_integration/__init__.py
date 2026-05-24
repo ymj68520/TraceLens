@@ -3,6 +3,10 @@
 # This module bridges the forensics SQLite database (containing LLM-generated
 # file descriptions) with Graphiti to build a RAG knowledge graph.
 
+# Apply LLM response patch BEFORE any graphiti_core import.
+# Fixes qwen3/deepseek-r1 <think> tags breaking JSON parsing.
+from . import llm_patch  # noqa: F401
+
 from .database_reader import (
     ForensicsDatabase,
     FileRecord,

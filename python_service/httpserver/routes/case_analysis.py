@@ -47,6 +47,7 @@ class CaseAnalysisRequest(BaseModel):
     case_description: str = Field(default="", description="案情描述")
     max_filter_files: int = Field(default=200, ge=1, le=2000, description="Max files to filter")
     run_filtering: bool = Field(default=False, description="是否重新运行 LLM 文件筛选")
+    report_only: bool = Field(default=False, description="仅基于已有证据重新生成报告，跳过文件提取/分析/图谱摄入")
 
 
 class CaseAnalysisResponse(BaseModel):
@@ -238,6 +239,7 @@ async def start_case_analysis(
                 case_description=request.case_description,
                 max_filter_files=request.max_filter_files,
                 run_filtering=request.run_filtering,
+                report_only=request.report_only,
             )
         )
 
@@ -692,6 +694,7 @@ async def _run_case_analysis_background(
     case_description: str,
     max_filter_files: int,
     run_filtering: bool = True,
+    report_only: bool = False,
 ):
     """Run the full case analysis pipeline in the background."""
     try:
@@ -719,6 +722,7 @@ async def _run_case_analysis_background(
             case_description=case_description,
             max_filter_files=max_filter_files,
             run_filtering=run_filtering,
+            report_only=report_only,
             progress_callback=progress_cb,
         )
 

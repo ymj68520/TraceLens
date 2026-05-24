@@ -879,7 +879,7 @@ class GraphitiService:
                         ensure_file_descriptions_schema(conn)
 
                         cur = conn.execute(
-                            "SELECT file_path, description FROM file_descriptions WHERE is_relevant IS NOT 0 AND description IS NOT NULL"
+                            "SELECT file_path, description FROM file_descriptions WHERE is_relevant = 1 AND description IS NOT NULL"
                         )
                         rows = cur.fetchall()
 

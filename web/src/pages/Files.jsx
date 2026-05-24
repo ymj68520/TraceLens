@@ -54,6 +54,7 @@ const Files = () => {
   // LLM Analysis state
   const [llmStatus, setLlmStatus] = useState(null);
   const [llmAnalyzingFiles, setLlmAnalyzingFiles] = useState(() => new Set());
+  const [dllAnalyzingFiles, setDllAnalyzingFiles] = useState(() => new Set());
   const [llmResults, setLlmResults] = useState({});
   const [existingLlmDescriptions, setExistingLlmDescriptions] = useState({});
   const [expandedDescriptions, setExpandedDescriptions] = useState(new Set());
@@ -304,6 +305,7 @@ const Files = () => {
 
       // DLL/EXE/SYS file analysis
       if (isDLL) {
+        setDllAnalyzingFiles(prev => new Set(prev).add(index));
         console.log('Analyzing DLL file:', filePath, `(${extension}, ${(fileSize / 1024).toFixed(1)} KB)`);
 
         try {
@@ -371,6 +373,12 @@ const Files = () => {
           }
 
           alert(`DLL分析失败: ${errorMsg}\n\n文件: ${file.name || filePath}\n类型: ${extension.toUpperCase()}\n大小: ${(fileSize / 1024).toFixed(1)} KB`);
+        } finally {
+          setDllAnalyzingFiles(prev => {
+            const next = new Set(prev);
+            next.delete(index);
+            return next;
+          });
         }
       } else {
         // Existing non-DLL file analysis logic

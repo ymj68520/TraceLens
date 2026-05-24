@@ -35,7 +35,7 @@ def ensure_file_descriptions_schema(conn: sqlite3.Connection):
             summary TEXT,
             keywords TEXT,
             model_used TEXT,
-            is_relevant INTEGER DEFAULT 1,
+            is_relevant INTEGER DEFAULT 0,
             created_at INTEGER
         )
     """)
@@ -146,9 +146,8 @@ def get_filtered_files_from_db(db_path: str, task_id: str = "") -> List[str]:
             # Ensure file_descriptions table exists before querying
             ensure_file_descriptions_schema(conn)
 
-            # 1. First, get files that have been analyzed (dynamic evidence)
-            # Exclude explicitly marked irrelevant files
-            cur.execute("SELECT DISTINCT file_path FROM file_descriptions WHERE is_relevant IS NOT 0")
+            # 1. First, get files that have been analyzed (have descriptions)
+            cur.execute("SELECT DISTINCT file_path FROM file_descriptions WHERE description IS NOT NULL AND description != ''")
             analyzed_files = [row[0] for row in cur.fetchall()]
 
             # 2. Also get files from the initial filter list
@@ -360,10 +359,10 @@ def get_file_description_stats(db_path: str) -> Dict[str, int]:
             """)
             stats["analyzed_files"] = cur.fetchone()[0]
 
-            # Count relevant files
+            # Count relevant files (user-selected evidence)
             cur.execute("""
                 SELECT COUNT(*) FROM file_descriptions
-                WHERE is_relevant IS NOT 0
+                WHERE is_relevant = 1
             """)
             stats["relevant_files"] = cur.fetchone()[0]
 

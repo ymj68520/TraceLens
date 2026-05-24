@@ -182,8 +182,13 @@ echo -e "${GREEN}✓ Virtual environment found${NC}    ${CYAN}$VENV_DIR${NC}"
 # Install/update dependencies if needed
 if [ "$FORCE_INSTALL" = "true" ] || [ ! -f "$VENV_DIR/.deps_installed" ]; then
     echo -ne "${YELLOW}Installing dependencies...${NC}"
-    $PYTHON_EXEC -m pip install -q -r httpserver/requirements.txt && \
-        touch "$VENV_DIR/.deps_installed"
+    if ! $PYTHON_EXEC -m pip install -q -r httpserver/requirements.txt; then
+        echo -e " ${RED}✗ Failed${NC}"
+        echo -e "${RED}✗ Failed to install Python dependencies. Try recreating the venv:${NC}"
+        echo -e "  ${CYAN}rm -rf $VENV_DIR && python3 -m venv $VENV_DIR${NC}"
+        exit 1
+    fi
+    touch "$VENV_DIR/.deps_installed"
     echo -e " ${GREEN}✓ Done${NC}"
 fi
 

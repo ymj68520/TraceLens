@@ -95,7 +95,6 @@ const CaseIntelligence = () => {
 
     // Fetch basic case data
     const fetchData = useCallback(async () => {
-        const activeContextId = activeContextId;
         if (!activeContextId) return;
         try {
             console.log('Fetching task results for taskId:', activeContextId);
@@ -232,14 +231,19 @@ const CaseIntelligence = () => {
                 }));
             }, 3000);
 
-            // Success
+            // Job completed successfully — now fetch the report
             dispatch(updateAnalysisProgress({ activeContextId, status: 'completed', progress: 100 }));
-            const reportData = await getCaseReport(activeContextId);
-            if (reportData && (reportData.report || reportData.case_report)) {
-                setReport({
-                    ...reportData,
-                    report: reportData.report || reportData.case_report
-                });
+            try {
+                const reportData = await getCaseReport(activeContextId);
+                if (reportData && (reportData.report || reportData.case_report)) {
+                    setReport({
+                        ...reportData,
+                        report: reportData.report || reportData.case_report
+                    });
+                }
+            } catch (reportErr) {
+                console.error('Report fetch after job completion failed:', reportErr);
+                // Report will be loaded on next fetchData via page refresh
             }
             toast.success('报告生成成功！');
             setTimeout(() => dispatch(clearAnalysisJob({ activeContextId })), 10000);
@@ -263,11 +267,12 @@ const CaseIntelligence = () => {
         try {
             await saveCaseDescription(activeContextId, caseDescription);
             const result = await startCaseAnalysis({
-                activeContextId,
+                taskId: activeContextId,
                 filesDbPath: currentTask?.output_files_db || '',
-                case_description: caseDescription.trim(),
-                max_filter_files: 200,
+                caseDescription: caseDescription.trim(),
+                maxFilterFiles: 200,
                 run_filtering: runFiltering,
+                report_only: !runFiltering,
             });
 
             if (result.job_id) {
