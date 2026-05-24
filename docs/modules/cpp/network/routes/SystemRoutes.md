@@ -1,5 +1,13 @@
 # SystemRoutes 模块文档（C++）
 
+> **注意**: SystemRoutes 已拆分为多个独立的路由文件：
+> - `SystemHealthRoutes.cpp` - 健康检查端点
+> - `SystemInfoRoutes.cpp` - 系统信息端点
+> - `SystemDocsRoutes.cpp` - API 文档端点
+> - `SystemEventRoutes.cpp` - 系统事件端点
+>
+> 完整端点列表请参考 [RouteReference.md](./RouteReference.md)
+
 ## 1. 模块背景
 
 ### 业务背景

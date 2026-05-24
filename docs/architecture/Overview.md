@@ -131,6 +131,9 @@ flowchart LR
     M --> O
     N --> O
 
+    H --> R[DLLAnalyzer<br/>DLL 分析]
+    R --> S[_dll.db<br/>DLL 工件]
+
     O --> P[Graphiti 集成<br/>知识图谱]
     P --> Q[(Neo4j)]
 
@@ -139,6 +142,8 @@ flowchart LR
     style F fill:#e8f5e9
     style H fill:#e8f5e9
     style Q fill:#ffccbc
+    style R fill:#fff3e0
+    style S fill:#fff3e0
 ```
 
 ---
@@ -149,13 +154,14 @@ flowchart LR
 
 ```mermaid
 graph TD
-    A[main.cpp<br/>主程序] --> B[ImageAnalyzer<br/>镜像分析]
-
-    A --> C[EventExtractor<br/>事件提取]
-    A --> D[FileClassifier<br/>文件分类]
-    A --> E[AndroidAnalyzer<br/>Android 分析]
-    A --> F[WindowsFilesAnalyzer<br/>Windows 分析]
-    A --> G[LinuxFilesAnalyzer<br/>Linux 分析]
+    A[main.cpp<br/>主程序] --> AO[AnalysisOrchestrator<br/>编排器]
+    AO --> B[ImageAnalyzer<br/>镜像分析]
+    AO --> C[EventExtractor<br/>事件提取]
+    AO --> D[FileClassifier<br/>文件分类]
+    AO --> E[AndroidAnalyzer<br/>Android 分析]
+    AO --> F[WindowsFilesAnalyzer<br/>Windows 分析]
+    AO --> G[LinuxFilesAnalyzer<br/>Linux 分析]
+    AO --> DLL[DLLAnalyzer<br/>DLL 分析]
 
     B --> H[DatabaseManager<br/>数据库管理]
     C --> H
@@ -163,23 +169,35 @@ graph TD
     E --> H
     F --> H
     G --> H
+    DLL --> H
 
     H --> I[SQLiteHelper<br/>SQLite 助手]
 
-    A --> J[HTTPServer<br/>HTTP 服务器]
+    AO --> J[HTTPServer<br/>HTTP 服务器]
     J --> K[TaskManager<br/>任务管理]
+    J --> CM[CaseManager<br/>案例管理]
+    J --> SH[SQLiteHelper<br/>数据查询]
+    J --> LP[LLMPythonProxy<br/>Python 代理]
+    J --> EC[EventClusterAnalyzer<br/>事件簇分析]
+
     J --> L[TaskRoutes<br/>任务路由]
     J --> M[ForensicsRoutes<br/>取证路由]
     J --> N[SearchRoutes<br/>搜索路由]
     J --> O[SystemRoutes<br/>系统路由]
+    J --> DR[DLLAnalysisRoutes<br/>DLL 路由]
+    J --> CR[CaseCRUDRoutes<br/>案例路由]
 
-    A --> P[FullTextSearch<br/>全文搜索]
-    A --> Q[FileCarving<br/>文件雕刻]
-    A --> R[LLMIntegration<br/>LLM 集成]
+    AO --> P[FullTextSearch<br/>全文搜索]
+    AO --> Q[FileCarving<br/>文件雕刻]
+    AO --> R[LLMIntegration<br/>LLM 集成]
+    AO --> ECE[EventCorrelationEngine<br/>事件关联]
 
     style A fill:#37474f
+    style AO fill:#37474f
     style H fill:#1976d2
     style J fill:#388e3c
+    style DLL fill:#ff9800
+    style ECE fill:#9c27b0
 ```
 
 ### 模块职责划分
@@ -192,8 +210,12 @@ graph TD
 | **分析器** | AndroidAnalyzer | Android 数据库解析 | DatabaseManager |
 | **分析器** | WindowsFilesAnalyzer | Windows 注册表、事件日志、工件解析 | DatabaseManager |
 | **分析器** | LinuxFilesAnalyzer | Linux 日志、用户数据解析 | DatabaseManager |
+| **分析器** | DLLAnalyzer | PE/ELF 文件分析、异常检测、威胁评分 | DatabaseManager |
 | **分析器** | FileCarving | 从未分配空间恢复删除文件 | DatabaseManager |
+| **基础设施** | AnalysisOrchestrator | 顶层工作流编排器 | 所有分析器 |
 | **基础设施** | DatabaseManager | SQLite 数据库操作和模式管理 | SQLite3 |
+| **基础设施** | ErrorHandling | 统一错误处理（Result\<T\>） | - |
+| **基础设施** | EventCorrelationEngine | 事件关联分析和因果发现 | DatabaseManager |
 | **基础设施** | FullTextSearch | Xapian 全文索引和搜索 | Xapian |
 | **基础设施** | TOONExporter | TOON 格式导出（LLM 优化） | DatabaseManager |
 | **基础设施** | Logger | 日志系统 | - |
@@ -201,10 +223,20 @@ graph TD
 | **基础设施** | AuditLog | 审计日志 | DatabaseManager |
 | **网络** | HTTPServer | Crow HTTP 服务器核心 | Crow, TaskManager |
 | **网络** | TaskManager | 异步任务生命周期管理 | HTTPServer, ThreadPool |
-| **网络** | TaskRoutes | 任务管理 REST API | TaskManager |
+| **网络** | CaseManager | 案例管理（多任务组织） | TaskManager |
+| **网络** | SQLiteHelper | 数据库查询助手（30+ 方法） | DatabaseManager |
+| **网络** | LLMPythonProxy | Python LLM 服务代理 | Python FastAPI |
+| **网络** | EventClusterAnalyzer | LLM 事件簇分析 | ModelRouter |
+| **网络** | LLMAnalysisService | C++ LLM 文件分析（已弃用） | ModelRouter |
+| **网络** | LinuxLLMAnalysisService | Linux 工件 LLM 分析 | ModelRouter |
+| **网络** | WindowsLLMAnalysisService | Windows 工件 LLM 分析 | ModelRouter |
+| **网络** | TaskRoutes（22 个路由文件） | 任务管理 REST API | TaskManager |
 | **网络** | ForensicsRoutes | 取证分析 REST API | DatabaseManager |
 | **网络** | SearchRoutes | 全文搜索 REST API | FullTextSearch |
 | **网络** | SystemRoutes | 系统监控 REST API | TaskManager |
+| **网络** | DLLAnalysisRoutes | DLL 分析 REST API | DLLAnalyzer |
+| **网络** | CaseCRUDRoutes | 案例管理 REST API | CaseManager |
+| **网络** | EventClusterRoutes | 事件簇分析 REST API | EventClusterAnalyzer |
 | **集成** | LLMIntegration | OpenAI 兼容 API 客户端 | httpx (via MCP) |
 | **集成** | ModelRouter | 多模型路由和负载均衡 | LLMIntegration |
 
@@ -382,6 +414,12 @@ graph TB
         F2[user_accounts<br/>用户账户]
         F3[shell_history<br/>Shell 历史]
         F4[auth_data<br/>认证数据]
+
+        G[_dll.db<br/>DLL/共享库工件]
+        G1[dll_analysis<br/>DLL 分析结果]
+        G2[dll_sections<br/>PE 节表]
+        G3[dll_imports<br/>导入表]
+        G4[dll_anomalies<br/>异常检测]
     end
 
     A1 --> B1
@@ -466,6 +504,26 @@ erDiagram
         integer id PK
         string artifact_type
         json data
+    }
+
+    DLL_ANALYSIS }o--|| RAW_FILES : references
+    DLL_ANALYSIS {
+        integer id PK
+        string file_path
+        string md5_hash
+        string sha256_hash
+        string imp_hash
+        integer threat_score
+        string signature_status
+    }
+
+    DLL_ANOMALIES }o--|| DLL_ANALYSIS : has
+    DLL_ANOMALIES {
+        integer id PK
+        integer dll_id FK
+        string anomaly_type
+        string risk_level
+        integer risk_score
     }
 ```
 
@@ -775,34 +833,17 @@ size_t max_connections = 16;     // 最大连接数
 int server_threads = 8;          // Crow 服务器线程数
 ```
 
-### 插件化架构
+### 分析器扩展
 
-**分析器扩展**：
-```cpp
-// 新分析器接口
-class IAnalyzer {
-public:
-    virtual void analyze(const std::string& image_path,
-                       const std::string& output_db) = 0;
-    virtual std::string getName() const = 0;
-};
+当前分析器通过 `AnalysisOrchestrator` 在 `main.cpp` 中直接调用，没有统一的插件接口。添加新分析器的步骤：
 
-// 注册新分析器
-class CustomAnalyzer : public IAnalyzer {
-public:
-    void analyze(const std::string& image_path,
-                const std::string& output_db) override {
-        // 自定义分析逻辑
-    }
+1. 在 `src/analyzers/` 下创建模块目录
+2. 实现核心分析逻辑
+3. 在 `AnalysisOrchestrator` 中添加调度方法
+4. 在 `CommandLineParser` 中添加命令行参数
+5. 在 `main.cpp` 中添加调用分支
 
-    std::string getName() const override {
-        return "CustomAnalyzer";
-    }
-};
-
-// 在 main.cpp 中注册
-// analyzer_registry.register<CustomAnalyzer>();
-```
+参见 [Development Guide](../getting-started/Development.md) 了解详细步骤。
 
 **Python 服务扩展**：
 ```python
@@ -1068,5 +1109,5 @@ auto& task_counter = prometheus::BuildCounter()
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-05-19
 **维护者**: ymj68520

@@ -211,7 +211,7 @@ public:
     ConfigManager& operator=(const ConfigManager&) = delete;
 
     // 加载配置
-    bool load(const std::string& envPath = "");
+    bool load(const std::string& envPath = ".env");
     bool isLoaded() const;
 
     // 基础访问
@@ -224,24 +224,60 @@ public:
     std::string getLLMBaseUrl() const;
     std::string getLLMEndpoint() const;
     std::string getLLMApiKey() const;
+    int getLLMTimeoutSeconds() const;
+    int getLLMMaxRetries() const;
+    int getLLMMaxFiles() const;
+    int getLLMMaxContentLength() const;
+    bool getLLMSkipBinary() const;
+
+    // Text Model 配置
     llm::LLMConfig getTextModelConfig() const;
+    std::string getTextBaseUrl() const;
+    std::string getTextModel() const;
+    int getTextMaxTokens() const;
+    double getTextTemperature() const;
+
+    // Vision Model 配置
     llm::LLMConfig getVisionModelConfig() const;
+    std::string getVisionBaseUrl() const;
+    std::string getVisionModel() const;
+    int getVisionMaxTokens() const;
+    double getVisionTemperature() const;
 
     // 系统配置
     int getThreadPoolSize() const;
+    int getMaxBatchSize() const;
     int getHTTPServerPort() const;
     std::string getHTTPServerHost() const;
-    std::string getDBJournalMode() const;
+    std::string getPythonServiceUrl() const;
+    std::string getMCPHost() const;
+
+    // 数据库配置
     int getDBBusyTimeoutMs() const;
-    int getMaxLogDisplayFiles() const;
-    int getFileAnalysisMaxContent() const;
+    std::string getDBJournalMode() const;
+    bool getDBSyncOff() const;
 
     // 搜索配置
     int getSearchMaxCacheSize() const;
     int getSearchMaxContentLength() const;
+    int getSearchSnippetLength() const;
+    int getSearchDefaultLimit() const;
+
+    // 分析阈值
+    int getMaxLogDisplayFiles() const;
+    int getFileAnalysisMaxContent() const;
+    int getFileAnalysisMaxKeywords() const;
+    int getContextLength() const;
 
     // 扩展配置
     std::vector<std::string> getExtraExtensions(const std::string& categoryName) const;
+
+    // 存储与日志
+    std::string getDBOutputDir() const;
+    std::string getDBName() const;
+    std::string getLogLevel() const;
+    std::string getLogFile() const;
+    std::string getDebugOutputMode() const;
 
 private:
     ConfigManager() = default;
@@ -691,5 +727,5 @@ cd build
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-05-19
 **维护者**: ymj68520

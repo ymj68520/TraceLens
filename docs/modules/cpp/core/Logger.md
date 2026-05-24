@@ -158,7 +158,7 @@ classDiagram
         -static Logger instance_
         -LogLevel level_
         -LogOutput output_
-        -std::ofstream fileStream_
+        -std::ofstream file_
         -mutable std::mutex mutex_
         +static instance() Logger&
         +setLevel(level)
@@ -205,7 +205,7 @@ public:
     // 配置
     void setLevel(LogLevel level);
     LogLevel getLevel() const;
-    void setOutput(LogOutput output, const std::string& filePath = "");
+    void setOutput(LogOutput output, const std::string& filePath = "debug.log");
     LogOutput getOutput() const;
 
     // 日志方法
@@ -225,12 +225,12 @@ private:
     // 内部方法
     void write(const std::string& formattedMsg);
     std::string formatMessage(LogLevel level, const std::string& msg);
-    std::string levelToString(LogLevel level) const;
+    const char* levelToString(LogLevel level);
 
     // 成员变量
     LogLevel level_ = LogLevel::INFO;
     LogOutput output_ = LogOutput::STDOUT;
-    std::ofstream fileStream_;
+    std::ofstream file_;
     mutable std::mutex mutex_;
 };
 ```
@@ -292,8 +292,8 @@ void Logger::write(const std::string& formattedMsg) {
             std::cout << formattedMsg << std::endl;
             break;
         case LogOutput::FILE:
-            if (fileStream_.is_open()) {
-                fileStream_ << formattedMsg << std::endl;
+            if (file_.is_open()) {
+                file_ << formattedMsg << std::endl;
             } else {
                 // 文件打开失败，回退到 stdout
                 std::cout << formattedMsg << std::endl;
@@ -313,17 +313,17 @@ void Logger::setOutput(LogOutput output, const std::string& filePath) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     // 关闭旧文件流
-    if (fileStream_.is_open()) {
-        fileStream_.close();
+    if (file_.is_open()) {
+        file_.close();
     }
 
     output_ = output;
 
     if (output == LogOutput::FILE && !filePath.empty()) {
         // 打开文件（追加模式）
-        fileStream_.open(filePath, std::ios::app);
+        file_.open(filePath, std::ios::app);
 
-        if (!fileStream_.is_open()) {
+        if (!file_.is_open()) {
             // 文件打开失败，回退到 stdout
             std::cerr << "[Logger] Failed to open log file: " << filePath
                       << ", falling back to stdout" << std::endl;
@@ -443,13 +443,15 @@ LOG_INFO("Production instance started");
 
 ## 6. 二次开发
 
-### 自定义日志格式
+> **注意**：Logger 的 `formatMessage()`、`write()`、`setOutput()` 等方法均为非虚函数，不支持继承扩展。如需自定义行为，建议使用组合模式（wrapper）而非继承。
+
+### 包装器模式扩展
 
 ```cpp
-class CustomLogger : public Logger {
+// JSON 格式日志包装器
+class JsonLogger {
 public:
-    std::string formatMessage(LogLevel level, const std::string& msg) override {
-        // 自定义格式：JSON
+    void log(LogLevel level, const std::string& msg) {
         auto now = std::chrono::system_clock::now();
         auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
             now.time_since_epoch()).count();
@@ -458,73 +460,36 @@ public:
         oss << "{\"timestamp\":" << timestamp
             << ",\"level\":\"" << levelToString(level) << "\""
             << ",\"message\":\"" << msg << "\"}";
-        return oss.str();
-    }
-};
-```
 
-### 添加日志轮转
-
-```cpp
-class RotatingLogger : public Logger {
-public:
-    void setOutput(LogOutput output, const std::string& filePath) override {
-        // 检查文件大小
-        if (std::filesystem::exists(filePath)) {
-            auto fileSize = std::filesystem::file_size(filePath);
-            if (fileSize > maxFileSize_) {
-                // 轮转文件
-                rotateLogFile(filePath);
-            }
-        }
-
-        Logger::setOutput(output, filePath);
+        Logger::instance().log(level, oss.str());
     }
 
 private:
-    void rotateLogFile(const std::string& filePath) {
-        auto timestamp = getCurrentTimestamp();
-        auto rotatedPath = filePath + "." + timestamp;
-        std::filesystem::rename(filePath, rotatedPath);
-    }
-
-    size_t maxFileSize_ = 100 * 1024 * 1024;  // 100MB
-};
-```
-
-### 添加彩色输出
-
-```cpp
-class ColoredLogger : public Logger {
-protected:
-    void write(const std::string& formattedMsg, LogLevel level) override {
-        std::string coloredMsg = addColor(formattedMsg, level);
-
-        switch (output_) {
-            case LogOutput::STDOUT:
-                std::cout << coloredMsg << std::endl;
-                break;
-            // ...
-        }
-    }
-
-private:
-    std::string addColor(const std::string& msg, LogLevel level) {
-        const char* RESET = "\033[0m";
-        const char* RED = "\033[31m";
-        const char* YELLOW = "\033[33m";
-        const char* GREEN = "\033[32m";
-        const char* BLUE = "\033[34m";
-
+    const char* levelToString(LogLevel level) {
         switch (level) {
-            case LogLevel::ERROR:   return std::string(RED) + msg + RESET;
-            case LogLevel::WARNING: return std::string(YELLOW) + msg + RESET;
-            case LogLevel::INFO:    return std::string(GREEN) + msg + RESET;
-            case LogLevel::DEBUG:   return std::string(BLUE) + msg + RESET;
-            default:                return msg;
+            case LogLevel::DEBUG:   return "DEBUG";
+            case LogLevel::INFO:    return "INFO";
+            case LogLevel::WARNING: return "WARNING";
+            case LogLevel::ERROR:   return "ERROR";
+            default:                return "UNKNOWN";
         }
     }
 };
+```
+
+### 日志轮转（外部脚本）
+
+由于 Logger 不支持内置轮转，推荐使用系统级 `logrotate`：
+
+```
+# /etc/logrotate.d/forensics
+/var/log/forensics/*.log {
+    daily
+    rotate 30
+    compress
+    missingok
+    notifempty
+}
 ```
 
 ## 7. 其他
@@ -583,5 +548,5 @@ cd build
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-05-19
 **维护者**: ymj68520

@@ -1,5 +1,16 @@
 # ForensicsRoutes 模块文档（C++）
 
+> **注意**: ForensicsRoutes 已拆分为多个独立的路由文件：
+> - `TimelineRoutes.cpp` - 时间线分析端点
+> - `FileAnalysisRoutes.cpp` - 文件分析端点
+> - `FileExtractionRoutes.cpp` - 文件提取端点
+> - `StatisticsRoutes.cpp` - 统计分析端点
+> - `AndroidForensicsRoutes.cpp` - Android 取证端点
+> - `ExportRoutes.cpp` - 数据导出端点
+> - `EventClusterRoutes.cpp` - 事件簇分析端点
+>
+> 完整端点列表请参考 [RouteReference.md](./RouteReference.md)
+
 ## 1. 模块背景
 
 ### 业务背景

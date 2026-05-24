@@ -58,7 +58,8 @@ carver.setProgressCallback(callback);
 carver.setDatabasePath("carving_log.db");
 carver.setValidationEnabled(true);
 
-int recovered = carver.carve("disk_image.dd", "./recovered/");
+// partitionOffset 默认为 0（全盘或分区镜像）
+int recovered = carver.carve("disk_image.dd", "./recovered/", 0);
 ```
 
 ## 3. 模块使用的库
@@ -78,7 +79,7 @@ int recovered = carver.carve("disk_image.dd", "./recovered/");
 class FileCarver {
 public:
     // 主雕刻方法
-    int carve(const std::string& imagePath, const std::string& outputDir);
+    int carve(const std::string& imagePath, const std::string& outputDir, uint64_t partitionOffset = 0);
 
     // 配置方法
     void setProgressCallback(ProgressCallback callback);
@@ -160,9 +161,9 @@ zipSig.maxSize = 500 * 1024 * 1024;    // 500MB
 FileCarver carver;
 
 // 设置进度回调
-carver.setProgressCallback([](int current, int total, const std::string& phase) {
+carver.setProgressCallback([](uint64_t current, uint64_t total, const std::string& currentFile) {
     std::cout << "进度: " << current << "/" << total
-              << " (" << phase << ")" << std::endl;
+              << " (" << currentFile << ")" << std::endl;
 });
 
 // 启用数据库日志
@@ -172,7 +173,7 @@ carver.setDatabasePath("carving_log.db");
 carver.setValidationEnabled(true);
 
 // 执行雕刻
-int recoveredCount = carver.carve("disk_image.dd", "./recovered/");
+int recoveredCount = carver.carve("disk_image.dd", "./recovered/", 0);
 
 std::cout << "恢复文件数: " << recoveredCount << std::endl;
 
@@ -253,5 +254,5 @@ public:
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-05-19
 **维护者**: ymj68520

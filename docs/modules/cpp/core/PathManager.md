@@ -113,9 +113,9 @@ struct TaskDbPaths {
     std::filesystem::path eventsDb;     // events.db
     std::filesystem::path filesDb;      // files.db
     std::filesystem::path androidDb;    // android.db
+    std::filesystem::path ossDb;        // oss.db
     std::filesystem::path windowsDb;    // windows.db
     std::filesystem::path linuxDb;      // linux.db
-    std::filesystem::path ossDb;        // oss.db
 };
 ```
 
@@ -123,7 +123,7 @@ struct TaskDbPaths {
 ```cpp
 auto dbPaths = PathManager::instance().getTaskDbPaths(
     "task_abc123",
-    "evidence.dd"
+    "evidence.dd"  // 可选参数，默认为空
 );
 
 // 访问各个数据库路径
@@ -256,11 +256,16 @@ public:
 
     // 任务数据库
     TaskDbPaths getTaskDbPaths(const std::string& taskId,
-                              const std::string& imageName) const;
+                              const std::string& imageName = "") const;
 
     // 目录管理
     void ensureDirectories() const;
     void ensureTaskDir(const std::string& taskId) const;
+
+    // 临时目录
+    std::filesystem::path getTempDir() const;
+    std::string makeTempPath(const std::string& prefix,
+                             const std::string& suffix = "") const;
 
 private:
     PathManager() = default;
@@ -658,5 +663,5 @@ cd build
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-05-19
 **维护者**: ymj68520

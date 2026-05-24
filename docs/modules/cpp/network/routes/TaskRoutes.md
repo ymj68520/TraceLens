@@ -1,5 +1,12 @@
 # TaskRoutes 模块文档（C++）
 
+> **注意**: TaskRoutes 已拆分为多个独立的路由文件：
+> - `TaskCRUDRoutes.cpp` - 任务 CRUD 端点
+> - `TaskBatchRoutes.cpp` - 批量操作端点
+> - `TaskMonitoringRoutes.cpp` - 任务监控端点
+>
+> 完整端点列表请参考 [RouteReference.md](./RouteReference.md)
+
 ## 1. 模块背景
 
 ### 业务背景

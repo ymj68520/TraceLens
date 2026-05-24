@@ -1586,6 +1586,6 @@ sqlite3 evidence_files.db "SELECT path FROM encrypted_files LIMIT 10;"
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-05-19
 **维护者**: ymj68520
 **联系方式**: 见项目 GitHub 仓库

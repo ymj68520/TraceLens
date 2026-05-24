@@ -1,6 +1,8 @@
 # LLMAnalysisService - LLM 文件分析服务模块
 
 > **模块定位**: 提供基于 LLM 的智能文件分析服务，为取证文件生成描述、摘要和关键词，支持 FULL 和 SMART 两种分析模式
+>
+> **注意**: 此模块的直接 LLM 调用功能已弃用。新功能应使用 [LLMPythonProxy](./LLMPythonProxy.md) 通过 Python 服务调用 LLM。本模块保留以兼容现有代码。
 
 ---
 
@@ -1493,8 +1495,52 @@ LLM_MAX_TOKENS=4096
 |------|------|----------|
 | **ModelRouter** | 多模型路由器 | [../../integration/ModelRouter.md](../../integration/ModelRouter.md) |
 | **FileAnalyzer** | 文件分析器 | [../../integration/FileAnalyzer.md](../../integration/FileAnalyzer.md) |
-| **TaskManager** | 任务管理器 | [../TaskManager.md](../TaskManager.md) |
+| **TaskManager** | 任务管理器 | [./TaskManager.md](./TaskManager.md) |
 | **ConfigManager** | 配置管理器 | [../../core/ConfigManager.md](../../core/ConfigManager.md) |
+| **LLMPythonProxy** | Python 服务代理（推荐替代方案） | [./LLMPythonProxy.md](./LLMPythonProxy.md) |
+| **LinuxLLMAnalysisService** | Linux 工件 LLM 分析 | [./LinuxLLMAnalysisService.md](./LinuxLLMAnalysisService.md) |
+| **WindowsLLMAnalysisService** | Windows 工件 LLM 分析 | [./WindowsLLMAnalysisService.md](./WindowsLLMAnalysisService.md) |
+
+---
+
+## 附录
+
+### C. 平台特定 LLM 分析服务
+
+除了本模块（文件级 LLM 分析）外，项目还提供两个平台特定的工件级 LLM 分析服务：
+
+#### LinuxLLMAnalysisService
+
+分析 Linux 系统工件（30+ 种类型），包括系统日志、用户账户、Shell 历史、定时任务、SSH 密钥、包管理、网络连接、系统服务、内核模块、防火墙规则、审计日志等。
+
+**关键特性**：
+- 30+ 种 Linux 工件类型
+- 每种类型有专门的分析方法
+- 支持增量分析
+- 进度回调机制
+
+**详细文档**: [LinuxLLMAnalysisService.md](./LinuxLLMAnalysisService.md)
+
+#### WindowsLLMAnalysisService
+
+分析 Windows 系统工件（15 种类型），包括注册表、事件日志、预读取文件、快捷方式、跳转列表、浏览器历史、Windows 服务、计划任务、Amcache、SRUM 等。
+
+**关键特性**：
+- 15 种 Windows 工件类型
+- 注册表和事件日志深度分析
+- 浏览器取证分析
+- MFT 条目分析（可选）
+
+**详细文档**: [WindowsLLMAnalysisService.md](./WindowsLLMAnalysisService.md)
+
+#### 与文件级分析的区别
+
+| 分析级别 | 模块 | 分析对象 | 输出 |
+|---------|------|---------|------|
+| 文件级 | LLMAnalysisService | 单个文件内容 | 文件摘要、描述、关键词 |
+| 工件级（Linux） | LinuxLLMAnalysisService | Linux 系统工件 | 工件摘要、描述、关键词 |
+| 工件级（Windows） | WindowsLLMAnalysisService | Windows 系统工件 | 工件摘要、描述、关键词 |
+| 案例级 | LLMPythonProxy | 跨镜像分析 | 综合案例报告 |
 
 ### 参考资源
 

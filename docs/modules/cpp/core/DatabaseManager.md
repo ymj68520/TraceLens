@@ -281,9 +281,9 @@ classDiagram
         -readFileData() vector~uint8_t~
     }
 
-    DatabaseManager <|-- EventExtractor
-    DatabaseManager <|-- FileClassifier
-    DatabaseManager <|-- FileExtractor
+    EventExtractor ..> DatabaseManager : reads _raw.db
+    FileClassifier ..> DatabaseManager : reads _raw.db
+    FileExtractor ..> DatabaseManager : reads _raw.db
 
     class FileRecord {
         +int64_t inode
@@ -318,7 +318,6 @@ classDiagram
 - 数据库连接管理
 - 表结构创建和维护
 - 基础 CRUD 操作
-- 事务管理
 
 **关键方法**：
 ```cpp
@@ -327,10 +326,8 @@ public:
     explicit DatabaseManager(const std::string& dbPath);
     ~DatabaseManager();
 
-    // 初始化
+    // 初始化（打开连接并创建表）
     bool initialize();
-    bool openDatabase();
-    bool createTables();
 
     // 数据操作
     bool insertFileRecord(const FileRecord& record);
@@ -342,20 +339,17 @@ public:
     sqlite3* getDb() const;
     const std::string& getDbPath() const;
 
-    // 事务管理
-    bool beginTransaction();
-    bool commit();
-    bool rollback();
-
 private:
-    sqlite3* db_;
     std::string dbPath_;
+    sqlite3* db_;
 
-    // SQL 执行辅助
-    bool executeSQL(const std::string& sql, sqlite3_callback callback = nullptr);
-    bool executeSQLWithParams(const std::string& sql, ...);
+    bool createTables();
+    bool executeSQL(const std::string& sql);
+    void checkAndMigrate();
 };
 ```
+
+> **注意**：事务管理需直接使用 `sqlite3_exec(db, "BEGIN TRANSACTION;", ...)` 等原生 SQLite API。`createTables()` 和 `executeSQL()` 为私有方法。
 
 #### EventExtractor（事件提取器）
 **职责**：
@@ -1539,6 +1533,6 @@ sqlite3 evidence_raw.db "PRAGMA table_info(files);"
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-05-19
 **维护者**: ymj68520
 **联系方式**: 见项目 GitHub 仓库

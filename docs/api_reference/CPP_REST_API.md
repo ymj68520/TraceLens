@@ -11,14 +11,42 @@ C++ HTTP 服务运行在端口 **8080**，提供高性能的取证分析、任�
 - OpenAPI JSON: http://localhost:8080/api/docs/openapi
 - Endpoint 列表: http://localhost:8080/api/docs/endpoints
 
+**路由文件结构**：
+
+API 端点分布在 `src/network/HTTPServer/routes/` 下的 27+ 个独立路由文件中：
+
+| 路由文件 | 功能域 | 端点数 |
+|----------|--------|--------|
+| `TaskCRUDRoutes.cpp` | 任务 CRUD | 12 |
+| `TaskBatchRoutes.cpp` | 批量操作 | 3 |
+| `TaskMonitoringRoutes.cpp` | 任务监控 | 4 |
+| `CaseCRUDRoutes.cpp` | 案例管理 | 6 |
+| `TimelineRoutes.cpp` | 时间线分析 | 11 |
+| `EventClusterRoutes.cpp` | 事件簇分析 | 4 |
+| `FileAnalysisRoutes.cpp` | 文件分析 | 5 |
+| `FileExtractionRoutes.cpp` | 文件提取 | 3 |
+| `DLLAnalysisRoutes.cpp` | DLL 分析 | 7 |
+| `StatisticsRoutes.cpp` | 统计分析 | 4 |
+| `AndroidForensicsRoutes.cpp` | Android 取证 | 4 |
+| `ExportRoutes.cpp` | 数据导出 | 4 |
+| `SearchRoutes.cpp` | 全文搜索 | 3 |
+| `SystemHealthRoutes.cpp` | 健康检查 | 5 |
+| `SystemInfoRoutes.cpp` | 系统信息 | 5 |
+| `SystemDocsRoutes.cpp` | API 文档 | 1 |
+| `SystemEventRoutes.cpp` | 系统事件 | 2 |
+
+完整路由参考见 [RouteReference.md](../modules/cpp/network/routes/RouteReference.md)。
+
 ---
 
 ## 目录
 
 1. [任务管理 API](#1-任务管理-api)
-2. [取证分析 API](#2-取证分析-api)
-3. [全文搜索 API](#3-全文搜索-api)
-4. [系统信息 API](#4-系统信息-api)
+2. [案例管理 API](#2-案例管理-api)
+3. [取证分析 API](#3-取证分析-api)
+4. [DLL 分析 API](#4-dll-分析-api)
+5. [全文搜索 API](#5-全文搜索-api)
+6. [系统信息 API](#6-系统信息-api)
 
 ---
 
@@ -538,7 +566,151 @@ C++ HTTP 服务运行在端口 **8080**，提供高性能的取证分析、任�
 
 ---
 
-## 2. 取证分析 API
+## 2. 案例管理 API
+
+> 路由代码：`src/network/HTTPServer/routes/CaseCRUDRoutes.cpp`
+> 案例管理器：`src/network/HTTPServer/CaseManager.h`
+
+### GET /api/cases
+
+**描述**：列出所有案例。
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "cases": [
+      {
+        "case_id": "case_001",
+        "name": "Smith Investigation",
+        "description": "Corporate fraud investigation",
+        "status": "ACTIVE",
+        "created_at": "2024-01-15T10:00:00Z",
+        "task_count": 3
+      }
+    ],
+    "total_count": 5
+  }
+}
+```
+
+---
+
+### POST /api/cases
+
+**描述**：创建新案例。
+
+**请求体**：
+```json
+{
+  "name": "Smith Investigation",
+  "description": "Corporate fraud investigation",
+  "tags": ["fraud", "corporate"]
+}
+```
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "case_id": "case_001",
+    "name": "Smith Investigation",
+    "status": "ACTIVE",
+    "created_at": "2024-01-16T10:00:00Z"
+  }
+}
+```
+
+---
+
+### GET /api/cases/{case_id}
+
+**描述**：获取案例详情，包括关联的任务列表。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `case_id` | string | ✅ | 案例 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "case_id": "case_001",
+    "name": "Smith Investigation",
+    "description": "Corporate fraud investigation",
+    "status": "ACTIVE",
+    "created_at": "2024-01-15T10:00:00Z",
+    "tasks": [
+      {"task_id": "task_abc123", "image_path": "/evidence/disk1.E01", "status": "COMPLETED"},
+      {"task_id": "task_def456", "image_path": "/evidence/disk2.E01", "status": "RUNNING"}
+    ]
+  }
+}
+```
+
+---
+
+### PUT /api/cases/{case_id}/tasks
+
+**描述**：将任务添加到案例。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `case_id` | string | ✅ | 案例 ID |
+
+**请求体**：
+```json
+{
+  "task_id": "task_abc123"
+}
+```
+
+---
+
+### DELETE /api/cases/{case_id}
+
+**描述**：删除案例（不删除关联的任务）。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `case_id` | string | ✅ | 案例 ID |
+
+---
+
+### PUT /api/cases/{case_id}/status
+
+**描述**：更新案例状态。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `case_id` | string | ✅ | 案例 ID |
+
+**请求体**：
+```json
+{
+  "status": "CLOSED"
+}
+```
+
+**案例状态**：
+- `ACTIVE` - 活跃
+- `CLOSED` - 已关闭
+- `ARCHIVED` - 已归档
+
+---
+
+## 3. 取证分析 API
 
 ### Timeline Analysis
 
@@ -773,6 +945,86 @@ C++ HTTP 服务运行在端口 **8080**，提供高性能的取证分析、任�
   }
 }
 ```
+
+---
+
+### Event Cluster Analysis
+
+> 路由代码：`src/network/HTTPServer/routes/EventClusterRoutes.cpp`
+> 分析器：`src/network/HTTPServer/EventClusterAnalyzer.h`
+
+#### POST /api/forensics/timeline/clusters/analyze
+
+**描述**：使用 LLM 分析事件簇，识别事件之间的关联和模式。
+
+**请求体**：
+```json
+{
+  "task_id": "task_abc123",
+  "events": [
+    {"timestamp": "2024-01-15T10:00:00Z", "event_type": "FILE_CREATED", "file_path": "/tmp/malware.exe"},
+    {"timestamp": "2024-01-15T10:00:05Z", "event_type": "FILE_ACCESSED", "file_path": "/tmp/malware.exe"},
+    {"timestamp": "2024-01-15T10:00:10Z", "event_type": "FILE_MODIFIED", "file_path": "/etc/hosts"}
+  ]
+}
+```
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "cluster_id": "cluster_001",
+    "analysis": {
+      "summary": "Malware execution sequence detected",
+      "risk_level": "HIGH",
+      "patterns": ["file_creation_then_execution", "system_file_modification"],
+      "recommendation": "Investigate malware.exe and hosts file changes"
+    }
+  }
+}
+```
+
+---
+
+#### POST /api/forensics/timeline/clusters/batch-analyze
+
+**描述**：批量分析多个事件簇。
+
+**请求体**：
+```json
+{
+  "task_id": "task_abc123",
+  "cluster_ids": ["cluster_001", "cluster_002", "cluster_003"]
+}
+```
+
+---
+
+#### POST /api/forensics/timeline/clusters/reanalyze
+
+**描述**：重新分析已有的事件簇（使用更新的模型或参数）。
+
+**请求体**：
+```json
+{
+  "task_id": "task_abc123",
+  "cluster_id": "cluster_001"
+}
+```
+
+---
+
+#### GET /api/forensics/timeline/clusters/analyzed
+
+**描述**：获取已分析的事件簇列表。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `risk_level` | string | ❌ | - | 按风险级别过滤 |
 
 ---
 
@@ -1411,7 +1663,194 @@ database.db | /evidence/database.db | databases | 5242880 | SQLite 数据库 | �
 
 ---
 
-## 3. 全文搜索 API
+## 4. DLL 分析 API
+
+> 路由代码：`src/network/HTTPServer/routes/DLLAnalysisRoutes.cpp`
+> 分析器：`src/analyzers/DLLAnalyzer/Core/DLLAnalyzer.h`
+
+### GET /api/forensics/dlls
+
+**描述**：列出所有已分析的 DLL/共享库。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `limit` | integer | ❌ | 100 | 返回数量 |
+| `offset` | integer | ❌ | 0 | 分页偏移 |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "dlls": [
+      {
+        "id": 1,
+        "name": "kernel32.dll",
+        "path": "/Windows/System32/kernel32.dll",
+        "size": 1048576,
+        "format": "PE",
+        "threat_score": 0.1,
+        "is_signed": true,
+        "anomaly_count": 0
+      },
+      {
+        "id": 2,
+        "name": "suspicious.dll",
+        "path": "/tmp/suspicious.dll",
+        "size": 512000,
+        "format": "PE",
+        "threat_score": 8.5,
+        "is_signed": false,
+        "anomaly_count": 3
+      }
+    ],
+    "total_count": 150
+  }
+}
+```
+
+---
+
+### GET /api/forensics/dlls/{dll_id}
+
+**描述**：获取 DLL 详细信息，包括 PE/ELF 头、导入导出表、异常列表。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `dll_id` | integer | ✅ | DLL 记录 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "id": 2,
+    "name": "suspicious.dll",
+    "path": "/tmp/suspicious.dll",
+    "format": "PE",
+    "pe_header": {
+      "machine": "AMD64",
+      "subsystem": "WINDOWS_GUI",
+      "timestamp": "2024-01-10T08:00:00Z",
+      "image_base": 0x10000000
+    },
+    "imports": ["kernel32.dll", "ntdll.dll", "ws2_32.dll"],
+    "exports": ["DllMain", "InitConnection"],
+    "sections": [
+      {".text": {"size": 204800, "entropy": 6.5}},
+      {".rdata": {"size": 102400, "entropy": 5.2}},
+      {".data": {"size": 51200, "entropy": 3.1}}
+    ],
+    "threat_score": 8.5,
+    "anomalies": [
+      {"type": "HIGH_ENTROPY", "section": ".text", "severity": "HIGH"},
+      {"type": "SUSPICIOUS_IMPORTS", "detail": "ws2_32.dll (network)", "severity": "MEDIUM"},
+      {"type": "NO_SIGNATURE", "severity": "MEDIUM"}
+    ]
+  }
+}
+```
+
+---
+
+### GET /api/forensics/dlls/suspicious
+
+**描述**：获取可疑 DLL 列表（威胁评分高于阈值）。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+| `threshold` | float | ❌ | 5.0 | 威胁评分阈值 |
+| `limit` | integer | ❌ | 50 | 返回数量 |
+
+---
+
+### GET /api/forensics/dlls/statistics
+
+**描述**：获取 DLL 分析统计信息。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `task_id` | string | ✅ | - | 任务 ID |
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "total_dlls": 150,
+    "by_format": {"PE": 120, "ELF": 30},
+    "by_risk": {"LOW": 100, "MEDIUM": 35, "HIGH": 12, "CRITICAL": 3},
+    "signed_count": 85,
+    "unsigned_count": 65,
+    "average_threat_score": 2.3,
+    "top_anomaly_types": [
+      {"type": "HIGH_ENTROPY", "count": 15},
+      {"type": "NO_SIGNATURE", "count": 65},
+      {"type": "SUSPICIOUS_IMPORTS", "count": 8}
+    ]
+  }
+}
+```
+
+---
+
+### GET /api/forensics/dlls/{dll_id}/anomalies
+
+**描述**：获取特定 DLL 的异常详情。
+
+**路径参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `dll_id` | integer | ✅ | DLL 记录 ID |
+
+---
+
+### POST /api/forensics/dlls/analyze
+
+**描述**：触发 DLL 分析任务。
+
+**请求体**：
+```json
+{
+  "task_id": "task_abc123",
+  "verify_signatures": true,
+  "threshold": 5.0
+}
+```
+
+---
+
+### GET /api/forensics/dlls/health
+
+**描述**：DLL 分析服务健康检查。
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "pe_parser": "available",
+    "elf_parser": "available",
+    "database": "connected"
+  }
+}
+```
+
+---
+
+## 5. 全文搜索 API
 
 ### POST /api/search/index
 
@@ -1507,7 +1946,7 @@ database.db | /evidence/database.db | databases | 5242880 | SQLite 数据库 | �
 
 ---
 
-## 4. 系统信息 API
+## 6. 系统信息 API
 
 ### Health Checks
 
@@ -1764,7 +2203,7 @@ OK
         "tags": ["Forensics", "Timeline"]
       }
     ],
-    "total_endpoints": 85
+    "total_endpoints": 83
   }
 }
 ```
@@ -1924,5 +2363,5 @@ Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-05-19
 **维护者**: ymj68520

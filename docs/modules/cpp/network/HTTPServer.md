@@ -97,11 +97,14 @@ mindmap
 
 | 类别 | 路由模块 | 端点数量 | 主要功能 |
 |------|---------|---------|----------|
-| **任务管理** | TaskRoutes | 12+ | 任务 CRUD、进度跟踪、批量操作 |
-| **取证分析** | ForensicsRoutes | 30+ | 时间线、文件、统计、平台分析 |
+| **任务管理** | TaskRoutes (TaskCRUDRoutes, TaskBatchRoutes, TaskMonitoringRoutes) | 15+ | 任务 CRUD、进度跟踪、批量操作 |
+| **案例管理** | CaseCRUDRoutes | 6+ | 案例 CRUD、跨镜像分析触发 |
+| **取证分析** | ForensicsRoutes (TimelineRoutes, FileAnalysisRoutes, StatisticsRoutes, AndroidForensicsRoutes, ExportRoutes) | 35+ | 时间线、文件、统计、平台分析、导出 |
+| **DLL 分析** | DLLAnalysisRoutes | 6+ | DLL 列表、可疑 DLL、详情、依赖 |
+| **事件簇** | EventClusterRoutes | 3+ | 事件簇分析、列表、详情 |
 | **搜索** | SearchRoutes | 3+ | 全文搜索、索引管理 |
-| **系统** | SystemRoutes | 10+ | 健康检查、数据库、文档 |
-| **OSS** | OSSRoutes | 5+ | OSS 存储分析 |
+| **OSS** | OSSRoutes (OSSAnalysisRoutes, OSSQueryRoutes, OSSStatsRoutes) | 10+ | OSS 存储分析 |
+| **系统** | SystemRoutes (SystemHealthRoutes, SystemInfoRoutes, SystemDocsRoutes, SystemEventRoutes) | 15+ | 健康检查、数据库、文档、系统事件 |
 
 #### 2. 异步任务管理系统
 
@@ -249,20 +252,31 @@ graph TD
     A --> F[TaskManager]
     A --> G[LLMAnalysisService]
     A --> H[SQLiteHelper]
+    A --> CM[CaseManager]
+    A --> LP[LLMPythonProxy]
+    A --> EC[EventClusterAnalyzer]
+    A --> LS[LinuxLLMAnalysisService]
+    A --> WS[WindowsLLMAnalysisService]
 
     F --> I[ImageAnalyzer]
     F --> J[FileClassifier]
     F --> K[EventExtractor]
 
     G --> L[LLM Integration]
+    LP --> PY[Python FastAPI :8090]
 
     M[TaskRoutes] --> A
     N[ForensicsRoutes] --> A
     O[SearchRoutes] --> A
     P[SystemRoutes] --> A
+    Q[DLLAnalysisRoutes] --> A
+    R[CaseCRUDRoutes] --> A
+    S[EventClusterRoutes] --> A
 
     style A fill:#e1f5e1
     style B fill:#ffe1e1
+    style CM fill:#e3f2fd
+    style LP fill:#fff3e0
 ```
 
 ## 4. 模块实现方式
@@ -276,38 +290,44 @@ classDiagram
         -int port_
         +run() void
         -setup_routes() void
-        -setup_static_routes() void
     }
 
     class TaskManager {
-        -std::map~string,AnalysisTask~ tasks_
-        -std::mutex tasks_mutex_
+        -map~string,AnalysisTask~ tasks_
         +create_task() string
         +cancel_task() bool
         +get_task() AnalysisTask
-        +start_analysis() void
     }
 
-    class LLMAnalysisService {
-        +analyzeAllFiles() int
-        +analyzeSmartFiles() int
-        +selectImportantFiles() vector~string~
+    class CaseManager {
+        -map~string,ForensicCase~ cases_
+        +create_case() string
+        +add_task() bool
+        +get_case() ForensicCase
+    }
+
+    class LLMPythonProxy {
+        +startCaseAnalysis() string
+        +async_ingest() string
+        +get_job_status() JobStatus
     }
 
     class SQLiteHelper {
-        +execute_query() json
-        +get_task_files() json
-        +get_task_events() json
+        +get_comprehensive_timeline() json
+        +get_largest_files() json
+        +get_overview_statistics() json
+    }
+
+    class EventClusterAnalyzer {
+        +analyzeSmartEventClusters() int
+        +selectImportantEventClusters() vector
     }
 
     HTTPServer --> TaskManager : uses
-    HTTPServer --> LLMAnalysisService : uses
+    HTTPServer --> CaseManager : uses
+    HTTPServer --> LLMPythonProxy : uses
     HTTPServer --> SQLiteHelper : uses
-
-    TaskRoutes --> HTTPServer : extends
-    ForensicsRoutes --> HTTPServer : extends
-    SearchRoutes --> HTTPServer : extends
-    SystemRoutes --> HTTPServer : extends
+    HTTPServer --> EventClusterAnalyzer : uses
 ```
 
 ### 核心类说明
@@ -371,38 +391,56 @@ private:
 - 重要文件选择
 - 结果持久化
 
-**分析模式**：
-```cpp
-class LLMAnalysisService {
-public:
-    struct AnalysisOptions {
-        size_t maxFiles = 1000;
-        size_t maxContentLength = 10000;
-        std::vector<std::string> fileTypes;
-        bool skipBinaryFiles = true;
-    };
+**注意**: 此类已弃用，新功能应使用 `LLMPythonProxy` 通过 Python 服务调用 LLM。
 
-    // FULL 模式：分析所有文件
-    int analyzeAllFiles(const std::string& filesDbPath,
-                       const AnalysisOptions& options,
-                       ProgressCallback callback = nullptr);
+#### CaseManager（案例管理器）
+**职责**：
+- 将多个分析任务组织到一个取证案例中
+- 支持跨镜像关联分析
+- 案例级别的状态管理和持久化
 
-    // SMART 模式：选择重要文件
-    int analyzeSmartFiles(const std::string& filesDbPath,
-                         const AnalysisOptions& options,
-                         ProgressCallback callback = nullptr);
+**详细文档**: [CaseManager.md](./CaseManager.md)
 
-    // 文件选择
-    std::vector<std::string> selectImportantFiles(
-        const std::string& filesDbPath,
-        size_t maxFiles = 100);
+#### LLMPythonProxy（Python 服务代理）
+**职责**：
+- C++ 与 Python FastAPI 服务之间的 HTTP 代理
+- Graphiti 知识图谱摄取
+- 案例分析任务管理
+- 异步任务轮询
 
-private:
-    bool initialize();
-    std::string analyzeFile(const std::string& filePath,
-                           const std::vector<uint8_t>& content);
-};
-```
+**详细文档**: [LLMPythonProxy.md](./LLMPythonProxy.md)
+
+#### EventClusterAnalyzer（事件簇分析器）
+**职责**：
+- 使用 LLM 对时间线事件簇进行智能分析
+- 识别重要事件模式
+- 生成事件簇描述
+
+**详细文档**: [EventClusterAnalyzer.md](./EventClusterAnalyzer.md)
+
+#### SQLiteHelper（数据库查询助手）
+**职责**：
+- 提供 30+ 个静态方法用于数据库查询
+- 时间线分析、文件分析、Android 取证、统计分析
+- 事件导出（JSON/CSV/可视化）
+
+**详细文档**: [SQLiteHelper.md](./SQLiteHelper.md)
+
+#### LinuxLLMAnalysisService / WindowsLLMAnalysisService
+**职责**：
+- 平台特定工件的 LLM 分析
+- 30+ 种 Linux 工件类型 / 15 种 Windows 工件类型
+- 生成工件的摘要、描述和关键词
+
+**详细文档**: [LinuxLLMAnalysisService.md](./LinuxLLMAnalysisService.md), [WindowsLLMAnalysisService.md](./WindowsLLMAnalysisService.md)
+
+#### 任务基础设施组件
+- **TaskAnalysisRunner**: 执行分析任务，跟踪进度
+- **TaskPersistence**: JSON 文件持久化
+- **TaskSerialization**: JSON 序列化/反序列化
+- **TaskWatchdog**: 检测停滞任务
+
+**详细文档**: [TaskInfrastructure.md](./TaskInfrastructure.md)
 
 ### 关键流程
 
@@ -1238,5 +1276,5 @@ LOG_REQUESTS=true
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-05-19
 **维护者**: ymj68520

@@ -4,207 +4,167 @@
 
 ### 业务背景
 
-在大语言模型（LLM）集成中，单一模型往往无法满足所有需求：
+在数字取证分析系统中，LLM 模型的多样性和可用性是关键挑战：
 
 **核心需求**：
-- **多模型支持**：根据任务类型选择最优模型
-- **高可用性**：主模型失败时自动切换到备用模型
-- **负载均衡**：分散请求到多个模型实例
-- **成本优化**：优先使用本地模型，减少云 API 调用
+- **多模型支持**：同时管理多个 LLM 端点（本地 LM Studio、云端 API）
+- **智能路由**：根据任务类型选择最合适的模型
+- **容错机制**：模型不可用时自动切换到备选模型
+- **负载均衡**：在多个模型间分配请求负载
 
 **解决挑战**：
-- **模型故障**：单个模型不可用时的降级策略
-- **性能差异**：不同模型的响应速度差异
-- **成本控制**：云 API 调用的费用管理
-- **能力匹配**：根据任务需求选择合适模型
+- **模型异构性**：不同模型擅长不同任务（文本生成、代码分析、图像识别）
+- **可用性管理**：本地模型可能离线，云端 API 可能限流
+- **性能优化**：避免单个模型过载
 
 ### 技术背景
 
-**路由策略**：
-- **Priority（优先级）**：按模型优先级排序
-- **Fallback（降级）**：主模型失败时切换
-- **RoundRobin（轮询）**：均匀分配请求
-- **LoadBalance（负载均衡）**：选择负载最少的模型
-- **Capability（能力匹配）**：根据任务需求选择
+**设计模式**：
+- **Strategy Pattern**：可切换的路由策略
+- **Router Pattern**：请求分发和负载均衡
 
-**模型类型**：
-- **文本模型**：GPT-4, Claude, DeepSeek
-- **视觉模型**：GPT-4V, Qwen VL
-- **本地模型**：LM Studio, Ollama
-- **云 API**：OpenAI, Anthropic, DeepSeek
+**路由策略**：
+- RoundRobin（轮询）
+- Priority（优先级）
+- Capability（能力匹配）
+- LoadBalance（负载均衡）
+- Fallback（容错回退）
 
 ## 2. 模块功能
 
 ### 核心功能
 
-#### 1. 多模型管理
+#### 1. 模型注册与管理
 
-**模型注册**：
 ```cpp
-auto router = std::make_shared<ModelRouter>();
+// 注册模型
+ModelRouter router;
+LLMConfig config;
+config.baseUrl = "http://localhost:1234";
+config.model = "openai/gpt-oss-20b";
 
-// 添加模型
-llm::LLMConfig config;
-config.baseUrl = "https://api.openai.com/v1";
-config.apiKey = "sk-...";
-config.model = "gpt-4-turbo";
-config.priority = 10;  // 高优先级
+ModelInfo info;
+info.name = "GPT-OSS-20B";
+info.capabilities = {ModelCapability::TextGeneration, ModelCapability::Analysis};
+info.priority = 10;
+info.contextLength = 8192;
 
-llm::ModelInfo info;
-info.name = "GPT-4 Turbo";
-info.capabilities = {
-    llm::ModelCapability::Analysis,
-    llm::ModelCapability::Chat
-};
+router.addModel("gpt-oss", config, info);
 
-router->addModel("gpt4", config, info);
+// 移除模型
+router.removeModel("gpt-oss");
 
-// 本地模型
-config.baseUrl = "http://localhost:1234/v1";
-config.model = "qwen2.5:7b";
-config.priority = 5;
+// 获取注册的模型列表
+std::vector<std::string> names = router.getModelNames();
 
-info.name = "Qwen 2.5 7B";
-info.capabilities = {llm::ModelCapability::Analysis};
-
-router->addModel("qwen", config, info);
+// 获取模型信息
+ModelInfo info = router.getModelInfo("gpt-oss");
 ```
 
 #### 2. 路由策略
 
-**优先级策略**（默认）：
+**设置策略**：
 ```cpp
-router->setStrategy(llm::RoutingStrategy::Priority);
+// 设置路由策略
+router.setStrategy(RoutingStrategy::Priority);
 
-// 始终使用最高优先级的可用模型
-// 如果最高优先级模型失败，尝试下一个
+// 获取当前策略
+RoutingStrategy current = router.getStrategy();
 ```
 
-**降级策略**：
-```cpp
-router->setStrategy(llm::RoutingStrategy::Fallback);
+**策略说明**：
 
-// 按配置顺序尝试模型，直到成功
-// 适合需要确保请求成功的场景
+| 策略 | 说明 |
+|------|------|
+| `RoundRobin` | 轮询分发请求到所有可用模型 |
+| `Priority` | 优先使用高优先级模型 |
+| `Capability` | 根据任务能力匹配模型 |
+| `LoadBalance` | 根据当前负载分配请求 |
+| `Fallback` | 按顺序尝试直到成功 |
+
+#### 3. 请求路由
+
+**结构化对话**：
+```cpp
+std::vector<ChatMessage> messages;
+messages.emplace_back("system", "You are a forensic analyst.");
+messages.emplace_back("user", "Analyze this file content...");
+
+// 使用默认能力（TextGeneration）
+LLMResponse response = router.chat(messages);
+
+// 指定所需能力
+LLMResponse response = router.chat(messages, ModelCapability::Vision);
 ```
 
-**轮询策略**：
+**简单对话**：
 ```cpp
-router->setStrategy(llm::RoutingStrategy::RoundRobin);
-
-// 循环使用所有模型，分散负载
-// 适合无状态请求
+// 简单对话（自动路由）
+LLMResponse response = router.chat("Summarize this file", "You are an analyst.");
 ```
 
-**负载均衡策略**：
+#### 4. 模型可用性管理
+
 ```cpp
-router->setStrategy(llm::RoutingStrategy::LoadBalance);
-
-// 选择当前请求最少的模型
-// 优化资源利用
-```
-
-**能力匹配策略**：
-```cpp
-router->setStrategy(llm::RoutingStrategy::Capability);
-
-// 根据任务需求选择模型
-// 例如：视觉分析必须使用支持 Vision 的模型
-```
-
-#### 3. 聊点执行
-
-**文本对话**：
-```cpp
-std::vector<llm::ChatMessage> messages = {
-    {"user", "分析这个文件"}
-};
-
-auto response = router->chat(messages, llm::ModelCapability::Analysis);
-std::cout << response.content << std::endl;
-std::cout << "使用的模型: " << response.modelUsed << std::endl;
-```
-
-**视觉分析**：
-```cpp
-llm::ImageContent image;
-image.type = "image_url";
-image.image_url.url = "data:image/jpeg;base64,...";
-
-messages.push_back({"user", "描述这张图片", image});
-
-auto response = router->chat(messages, llm::ModelCapability::Vision);
-```
-
-#### 4. 健康检查
-
-**模型状态监控**：
-```cpp
-// 测试所有模型
-auto health = router->healthCheck();
-
-for (const auto& [name, status] : health) {
-    std::cout << name << ": " << (status ? "健康" : "故障") << std::endl;
+// 检查是否有可用模型
+if (!router.hasAvailableModels()) {
+    LOG_WARNING("No LLM models available");
 }
 
-// 获取模型列表
-auto models = router->listModels();
-for (const auto& model : models) {
-    std::cout << model.name << " (" << model.model << ")" << std::endl;
-}
+// 刷新模型可用性（测试连接）
+router.refreshAvailability();
+
+// 设置首选模型（用于 Priority 策略）
+router.setPreferredModel("gpt-oss");
+
+// 获取最后使用的模型
+std::string lastModel = router.getLastUsedModel();
+```
+
+#### 5. 配置获取
+
+```cpp
+// 获取主模型配置
+const LLMConfig& config = router.getConfig();
+std::cout << "Base URL: " << config.baseUrl << std::endl;
+std::cout << "Model: " << config.model << std::endl;
 ```
 
 ### 边界与限制
 
 **功能边界**：
-- ❌ 不支持模型热更新（需重启服务）
-- ❌ 不支持动态模型发现（需手动注册）
-- ❌ 不支持模型版本回滚（固定配置）
+- ❌ 不支持模型自动发现
+- ❌ 不支持动态配置更新
+- ❌ 不支持请求队列管理
 
 **已知限制**：
 | 限制 | 影响 | 缓解方法 |
 |------|------|----------|
-| 静态配置 | 需重启更新模型 | 实现配置热重载 |
-| 无缓存 | 重复健康检查 | 添加健康状态缓存 |
-| 单点故障 | 路由器故障 | 使用多实例 |
-
-**性能指标**：
-- **路由延迟**：<1ms（内存查找）
-- **健康检查**：~1-5 秒/模型
-- **故障切换**：<10 秒（取决于超时设置）
+| 静态注册 | 新增模型需重启 | 设计为启动时配置 |
+| 无请求缓存 | 相同请求重复调用 | 上层实现缓存 |
+| 无限流控制 | 可能触发 API 限流 | 合理设置重试策略 |
 
 ## 3. 模块使用的库
 
 ### 依赖库清单
 
-| 库名称 | 版本 | 用途 |
-|--------|------|------|
-| **nlohmann/json** | 3.11.2 | JSON 处理 |
-| **libcurl** | latest | HTTP 客户端 |
-| **LLMIntegration** | latest | LLM 客户端 |
+| 库名称 | 用途 |
+|--------|------|
+| **LLMClient** | 底层 HTTP 通信 |
+| **LLMDataTypes** | 数据类型定义 |
 
-### 架构图
+### 依赖关系图
 
 ```mermaid
 graph TD
-    A[ModelRouter] --> B[ModelRegistry]
-    A --> C[Strategy]
-
-    B --> D[GPT-4]
-    B --> E[Claude]
-    B --> F[Qwen]
-    B --> G[DeepSeek]
-
-    C --> H[Priority]
-    C --> I[Fallback]
-    C --> J[RoundRobin]
-
-    K[LLMIntegration] --> A
-    L[FileAnalyzer] --> A
+    A[ModelRouter] --> B[LLMClient]
+    A --> C[LLMDataTypes]
+    D[FileAnalyzer] --> A
+    E[VisionAnalyzer] --> A
+    F[LLMAnalysisService] --> A
 
     style A fill:#e1f5fe
     style B fill:#ffe1e1
-    style C fill:#fff4e1
 ```
 
 ## 4. 模块实现方式
@@ -215,154 +175,133 @@ graph TD
 class ModelRouter {
 public:
     ModelRouter();
+    ~ModelRouter();
+
+    // Non-copyable
+    ModelRouter(const ModelRouter&) = delete;
+    ModelRouter& operator=(const ModelRouter&) = delete;
 
     // 模型管理
-    void addModel(const std::string& id,
-                 const llm::LLMConfig& config,
-                 const llm::ModelInfo& info);
-    void removeModel(const std::string& id);
-    void clearModels();
+    void addModel(const std::string& name,
+                  const LLMConfig& config,
+                  const ModelInfo& info);
+    void removeModel(const std::string& name);
 
-    // 策略设置
-    void setStrategy(llm::RoutingStrategy strategy);
-    llm::RoutingStrategy getStrategy() const;
+    // 策略配置
+    void setStrategy(RoutingStrategy strategy);
+    RoutingStrategy getStrategy() const;
 
-    // 执行接口
-    llm::ChatResponse chat(const std::vector<llm::ChatMessage>& messages,
-                          llm::ModelCapability capability = llm::ModelCapability::Analysis);
+    // 请求路由
+    LLMResponse chat(const std::vector<ChatMessage>& messages,
+                     ModelCapability requiredCapability = ModelCapability::TextGeneration);
+    LLMResponse chat(const std::string& prompt,
+                     const std::string& systemPrompt = "");
 
-    // 健康检查
-    std::map<std::string, bool> healthCheck();
-    std::vector<llm::ModelInfo> listModels();
+    // 模型查询
+    std::vector<std::string> getModelNames() const;
+    ModelInfo getModelInfo(const std::string& name) const;
+
+    // 可用性管理
+    bool hasAvailableModels() const;
+    void refreshAvailability();
+
+    // 首选模型
+    void setPreferredModel(const std::string& name);
+    std::string getLastUsedModel() const;
+
+    // 配置获取
+    const LLMConfig& getConfig() const;
 
 private:
-    struct ModelInstance {
-        std::string id;
-        llm::LLMConfig config;
-        llm::ModelInfo info;
-        std::unique_ptr<llm::LLMClient> client;
-        bool isHealthy = true;
-        size_t requestCount = 0;
+    struct ModelEntry {
+        std::string name;
+        LLMConfig config;
+        ModelInfo info;
+        std::unique_ptr<LLMClient> client;
+        std::atomic<int> currentLoad{0};
+        std::atomic<int> failureCount{0};
     };
 
-    std::map<std::string, ModelInstance> models_;
-    llm::RoutingStrategy strategy_;
-    size_t currentIndex_ = 0;
+    std::map<std::string, std::unique_ptr<ModelEntry>> models_;
+    RoutingStrategy strategy_ = RoutingStrategy::Fallback;
+    std::string preferredModel_;
+    std::string lastUsedModel_;
+    size_t roundRobinIndex_ = 0;
+    mutable std::mutex mutex_;
 
-    // 路由逻辑
-    std::string selectModel(const std::vector<llm::ModelInstance*>& available);
-    void updateHealthStatus();
+    // 路由实现
+    LLMClient* selectByPriority(ModelCapability cap);
+    LLMClient* selectByCapability(ModelCapability cap);
+    LLMClient* selectByRoundRobin(ModelCapability cap);
+    LLMClient* selectByLoadBalance(ModelCapability cap);
+    LLMClient* selectByFallback(ModelCapability cap, LLMResponse& response);
+
+    LLMClient* getClient(const std::string& name);
+    std::vector<ModelEntry*> getAvailableModels(ModelCapability cap);
 };
 ```
 
-### 数据结构
+### 内部数据结构
 
+**ModelEntry**：
 ```cpp
-enum class RoutingStrategy {
-    Priority,   // 优先级排序
-    Fallback,   // 顺序降级
-    RoundRobin, // 轮询
-    LoadBalance, // 负载均衡
-    Capability // 能力匹配
-};
-
-enum class ModelCapability {
-    Analysis,   // 文本分析
-    Chat,       // 对话
-    Vision      // 视觉理解
-};
-
-struct ModelInfo {
-    std::string name;
-    std::string description;
-    std::vector<ModelCapability> capabilities;
-    int maxTokens;
-    double costPerMillionTokens;
+struct ModelEntry {
+    std::string name;                    // 模型标识
+    LLMConfig config;                    // 连接配置
+    ModelInfo info;                      // 模型元数据
+    std::unique_ptr<LLMClient> client;   // HTTP 客户端
+    std::atomic<int> currentLoad{0};     // 当前负载
+    std::atomic<int> failureCount{0};    // 失败计数
 };
 ```
 
 ### 路由实现
 
+**Fallback 策略**（默认）：
 ```cpp
-llm::ChatResponse ModelRouter::chat(
-    const std::vector<llm::ChatMessage>& messages,
-    llm::ModelCapability capability) {
+LLMClient* ModelRouter::selectByFallback(ModelCapability cap, LLMResponse& response) {
+    auto available = getAvailableModels(cap);
 
-    // 1. 筛选可用模型
-    std::vector<ModelInstance*> available;
-    for (auto& [id, model] : models_) {
-        if (model.isHealthy &&
-            std::find(model.info.capabilities.begin(),
-                     model.info.capabilities.end(), capability) !=
-            model.info.capabilities.end()) {
-            available.push_back(&model);
-        }
-    }
-
-    if (available.empty()) {
-        throw std::runtime_error("No available model for requested capability");
-    }
-
-    // 2. 根据策略选择模型
-    std::string selectedId = selectModel(available);
-
-    // 3. 尝试执行
-    auto& model = models_[selectedId];
-    try {
-        llm::ChatResponse response = model.client->chat(messages);
-
-        // 更新统计
-        model.requestCount++;
-
-        return response;
-
-    } catch (const std::exception& e) {
-        // 标记为不健康
-        model.isHealthy = false;
-
-        // 如果有其他可用模型，尝试切换
-        if (available.size() > 1) {
-            // 递归尝试其他模型
-            return chat(messages, capability);
+    for (auto* entry : available) {
+        // 尝试调用
+        response = entry->client->chat(/* messages */);
+        if (response.success) {
+            lastUsedModel_ = entry->name;
+            return entry->client.get();
         }
 
-        throw;  // 所有模型都失败
+        // 标记失败
+        entry->failureCount++;
     }
+
+    return nullptr;
 }
 ```
 
-### 优先级路由
-
+**LoadBalance 策略**：
 ```cpp
-std::string ModelRouter::selectModel(
-    const std::vector<ModelInstance*>& available) {
+LLMClient* ModelRouter::selectByLoadBalance(ModelCapability cap) {
+    auto available = getAvailableModels(cap);
 
-    if (strategy_ == RoutingStrategy::Priority) {
-        // 按优先级排序
-        std::vector<ModelInstance*> sorted = available;
-        std::sort(sorted.begin(), sorted.end(),
-            [](const ModelInstance* a, const ModelInstance* b) {
-                return a->config.priority > b->config.priority;
-            });
+    // 选择负载最低的模型
+    ModelEntry* selected = nullptr;
+    int minLoad = INT_MAX;
 
-        return sorted[0]->id;
+    for (auto* entry : available) {
+        int load = entry->currentLoad.load();
+        if (load < minLoad) {
+            minLoad = load;
+            selected = entry;
+        }
     }
 
-    // ... 其他策略
-}
-```
+    if (selected) {
+        selected->currentLoad++;
+        lastUsedModel_ = selected->name;
+        return selected->client.get();
+    }
 
-### 负载均衡路由
-
-```cpp
-if (strategy_ == RoutingStrategy::LoadBalance) {
-    // 选择请求最少的模型
-    auto min_it = std::min_element(available.begin(), available.end(),
-        [](const ModelInstance* a, const ModelInstance* b) {
-            return a->requestCount < b->requestCount;
-        });
-
-    return (*min_it)->id;
+    return nullptr;
 }
 ```
 
@@ -371,227 +310,222 @@ if (strategy_ == RoutingStrategy::LoadBalance) {
 ### C++ API
 
 ```cpp
-#include "integration/LLMIntegration/ModelRouter.h"
+#include "LLMIntegration/ModelRouter.h"
+#include "LLMIntegration/LLMDataTypes.h"
+
+using namespace forensics::llm;
 
 // 1. 创建路由器
-auto router = std::make_shared<ModelRouter>();
+ModelRouter router;
 
-// 2. 添加主模型（云 API）
-llm::LLMConfig primaryConfig;
-primaryConfig.baseUrl = "https://api.openai.com/v1";
-primaryConfig.apiKey = "sk-...";
-primaryConfig.model = "gpt-4-turbo";
-primaryConfig.timeout = 60;
-primaryConfig.priority = 10;
+// 2. 注册模型
+LLMConfig config1;
+config1.baseUrl = "http://localhost:1234";
+config1.model = "openai/gpt-oss-20b";
 
-llm::ModelInfo primaryInfo;
-primaryInfo.name = "GPT-4 Turbo";
-primaryInfo.capabilities = {llm::ModelCapability::Analysis};
+ModelInfo info1;
+info1.name = "GPT-OSS-20B";
+info1.capabilities = {ModelCapability::TextGeneration, ModelCapability::Analysis};
+info1.priority = 10;
+router.addModel("gpt-oss", config1, info1);
 
-router->addModel("gpt4", primaryConfig, primaryInfo);
+LLMConfig config2;
+config2.baseUrl = "http://localhost:1235";
+config2.model = "qwen/qwen3-vl-4b";
 
-// 3. 添加备用模型（本地）
-llm::LLMConfig fallbackConfig;
-fallbackConfig.baseUrl = "http://localhost:1234/v1";
-fallbackConfig.model = "qwen2.5:7b";
-fallbackConfig.priority = 5;
+ModelInfo info2;
+info2.name = "Qwen3-VL";
+info2.capabilities = {ModelCapability::Vision, ModelCapability::ImageAnalysis};
+info2.priority = 5;
+info2.supportsVision = true;
+router.addModel("qwen-vl", config2, info2);
 
-llm::ModelInfo fallbackInfo;
-fallbackInfo.name = "Qwen 2.5 7B (Local)";
-fallbackInfo.capabilities = {llm::ModelCapability::Analysis};
+// 3. 设置路由策略
+router.setStrategy(RoutingStrategy::Fallback);
 
-router->addModel("qwen", fallbackConfig, fallbackInfo);
+// 4. 发送请求
+std::vector<ChatMessage> messages;
+messages.emplace_back("system", "You are a forensic analyst.");
+messages.emplace_back("user", "Analyze this file content...");
 
-// 4. 设置策略
-router->setStrategy(llm::RoutingStrategy::Fallback);
+LLMResponse response = router.chat(messages);
 
-// 5. 执行分析
-std::vector<llm::ChatMessage> messages = {
-    {"user", "分析文件内容并生成摘要"}
-};
-
-try {
-    auto response = router->chat(messages, llm::ModelCapability::Analysis);
-    std::cout << "摘要: " << response.content << std::endl;
-    std::cout << "模型: " << response.modelUsed << std::endl;
-    std::cout << "Token: " << response.tokensUsed << std::endl;
-} catch (const std::exception& e) {
-    std::cerr << "所有模型均失败: " << e.what() << std::endl;
+if (response.success) {
+    std::cout << "Response: " << response.content << std::endl;
+    std::cout << "Model used: " << router.getLastUsedModel() << std::endl;
+} else {
+    std::cerr << "Error: " << response.errorMessage << std::endl;
 }
 ```
 
-### 视觉模型配置
+### 视觉分析示例
 
 ```cpp
-// 添加视觉模型
-llm::LLMConfig visionConfig;
-visionConfig.baseUrl = "http://localhost:1234/v1";
-visionConfig.model = "qwen-vl-plus";
-visionConfig.priority = 10;
+// 使用视觉模型分析图像
+ImageContent image;
+image.base64Data = base64EncodedImageData;
+image.mimeType = "image/jpeg";
+image.detail = "high";
 
-llm::ModelInfo visionInfo;
-visionInfo.name = "Qwen VL Plus";
-visionInfo.capabilities = {
-    llm::ModelCapability::Analysis,
-    llm::ModelCapability::Vision
-};
+ChatMessage msg("user", "Describe this image", image);
 
-router->addModel("qwen-vl", visionConfig, visionInfo);
-
-// 视觉分析
-llm::ChatMessage msg;
-msg.role = "user";
-msg.content = "描述这张图片";
-
-llm::ImageContent img;
-img.type = "image_url";
-img.image_url.url = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA...";
-
-msg.content.push_back(img);
-
-messages.push_back(msg);
-
-auto response = router->chat(messages, llm::ModelCapability::Vision);
+LLMResponse response = router.chat({msg}, ModelCapability::Vision);
 ```
 
-### 健康监控
+### 集成到应用
 
 ```cpp
-// 定期健康检查
-class ModelMonitor {
-public:
-    void monitor(std::shared_ptr<ModelRouter> router) {
-        while (running_) {
-            auto health = router->healthCheck();
+// main.cpp - 从配置初始化路由器
+ModelRouter initModelRouter() {
+    auto& config = ConfigManager::instance();
+    ModelRouter router;
 
-            for (const auto& [name, isHealthy] : health) {
-                if (!isHealthy) {
-                    LOG_WARNING("Model " + name + " is unhealthy");
-                    // 发送告警
-                }
-            }
+    // 文本模型
+    LLMConfig textConfig;
+    textConfig.baseUrl = config.get("LLM_BASE_URL", "http://localhost:1234");
+    textConfig.model = config.get("LLM_TEXT_MODEL", "openai/gpt-oss-20b");
+    textConfig.maxTokens = config.getInt("LLM_MAX_TOKENS", 4096);
+    textConfig.timeoutSeconds = config.getInt("LLM_TIMEOUT", 120);
 
-            std::this_thread::sleep_for(std::chrono::minutes(5));
-        }
-    }
-};
+    ModelInfo textInfo;
+    textInfo.name = "Text Model";
+    textInfo.capabilities = {ModelCapability::TextGeneration, ModelCapability::Analysis};
+    textInfo.priority = 10;
+    router.addModel("text", textConfig, textInfo);
+
+    // 视觉模型
+    LLMConfig visionConfig;
+    visionConfig.baseUrl = config.get("LLM_BASE_URL", "http://localhost:1234");
+    visionConfig.model = config.get("LLM_VISION_MODEL", "qwen/qwen3-vl-4b");
+
+    ModelInfo visionInfo;
+    visionInfo.name = "Vision Model";
+    visionInfo.capabilities = {ModelCapability::Vision, ModelCapability::ImageAnalysis};
+    visionInfo.priority = 5;
+    visionInfo.supportsVision = true;
+    router.addModel("vision", visionConfig, visionInfo);
+
+    // 设置策略
+    router.setStrategy(RoutingStrategy::Fallback);
+
+    return router;
+}
 ```
 
 ## 6. 二次开发
 
-### 自定义路由策略
+### 添加新的路由策略
 
 ```cpp
-// 添加自定义策略：地域优先
-class GeoAwareRouter : public ModelRouter {
+// 1. 在 RoutingStrategy 枚举中添加新值
+enum class RoutingStrategy {
+    RoundRobin,
+    Priority,
+    Capability,
+    LoadBalance,
+    Fallback,
+    CustomStrategy  // 新增
+};
+
+// 2. 实现选择逻辑
+LLMClient* ModelRouter::selectByCustom(ModelCapability cap) {
+    // 自定义路由逻辑
+    // ...
+}
+
+// 3. 在 chat() 方法中添加分支
+LLMResponse ModelRouter::chat(const std::vector<ChatMessage>& messages,
+                              ModelCapability cap) {
+    LLMClient* client = nullptr;
+
+    switch (strategy_) {
+        case RoutingStrategy::CustomStrategy:
+            client = selectByCustom(cap);
+            break;
+        // ... 其他策略
+    }
+
+    if (!client) {
+        LLMResponse resp;
+        resp.success = false;
+        resp.errorMessage = "No suitable model available";
+        return resp;
+    }
+
+    return client->chat(messages);
+}
+```
+
+### 添加模型健康检查
+
+```cpp
+class ModelRouter {
 public:
-    std::string selectModelByRegion(const std::string& region) {
-        // 根据请求来源选择地域最近的健康模型
-        if (region == "cn") {
-            return selectBestModel(modelsCN_);
-        } else if (region == "us") {
-            return selectBestModel(modelsUS_);
+    struct ModelHealth {
+        std::string name;
+        bool available;
+        int failureCount;
+        int currentLoad;
+        double avgResponseMs;
+    };
+
+    std::vector<ModelHealth> getHealthStatus() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::vector<ModelHealth> status;
+
+        for (const auto& [name, entry] : models_) {
+            ModelHealth health;
+            health.name = name;
+            health.available = entry->info.available;
+            health.failureCount = entry->failureCount.load();
+            health.currentLoad = entry->currentLoad.load();
+            status.push_back(health);
         }
-        return selectBestModel(modelsGlobal_);
+
+        return status;
     }
 };
 ```
 
-### 添加模型预热
-
-```cpp
-void ModelRouter::warmupModels() {
-    // 预热所有模型以初始化连接
-    for (auto& [id, model] : models_) {
-        try {
-            std::vector<llm::ChatMessage> testMsg = {
-                {"user", "test"}
-            };
-            model.client->chat(testMsg);
-            model.isHealthy = true;
-        } catch (...) {
-            model.isHealthy = false;
-        }
-    }
-}
-```
-
-### 请求重试
-
-```cpp
-llm::ChatResponse ModelRouter::chatWithRetry(
-    const std::vector<llm::ChatMessage>& messages,
-    llm::ModelCapability capability,
-    int maxRetries) {
-
-    llm::ChatResponse lastResponse;
-    int attempt = 0;
-
-    for (attempt = 0; attempt <= maxRetries; ++attempt) {
-        try {
-            return chat(messages, capability);
-        } catch (const std::runtime_error& e) {
-            lastResponse.error = e.what();
-
-            if (attempt == maxRetries) {
-                throw;  // 重试次数用尽
-            }
-
-            LOG_WARNING("Attempt " + std::to_string(attempt + 1) +
-                      " failed, retrying...");
-        }
-    }
-
-    return lastResponse;
-}
-```
-
 ## 7. 其他
 
-### 配置
+### 测试
 
-**环境变量**：
-```env
-# 主模型配置
-LLM_PRIMARY_BASE_URL=https://api.openai.com/v1
-LLM_PRIMARY_MODEL=gpt-4-turbo
-LLM_PRIMARY_KEY=sk-...
+```bash
+cd build
+./test_model_router
 
-# 备用模型
-LLM_FALLBACK_BASE_URL=http://localhost:1234/v1
-LLM_FALLBACK_MODEL=qwen2.5:7b
+# 测试路由策略
+./test_model_router --test-strategy priority
 
-# 路由策略
-ROUTING_STRATEGY=fallback  # priority, fallback, roundrobin, loadbalance
-
-# 超时配置
-LLM_TIMEOUT=60
-LLM_MAX_RETRIES=3
+# 测试负载均衡
+./test_model_router --test-load-balance
 ```
 
 ### 故障排查
 
 | 问题 | 可能原因 | 解决方法 |
 |------|----------|----------|
-| 所有模型失败 | 网络连接问题 | 检查 baseUrl 和网络 |
-| 路由不工作 | 策略配置错误 | 验证策略设置 |
-| 性能差 | 模型响应慢 | 使用更快的本地模型 |
+| 所有请求失败 | 无可用模型 | 检查模型注册和网络 |
+| 路由不均衡 | 策略配置错误 | 检查 setStrategy() |
+| 模型未被选中 | 能力不匹配 | 检查 ModelInfo.capabilities |
+| 超时错误 | 模型响应慢 | 增加 timeoutSeconds |
 
 ### 最佳实践
 
-1. **配置多个模型**：至少 1 个云 API + 1 个本地模型
-2. **合理设置优先级**：关键任务使用高质量模型
-3. **监控模型健康**：定期检查模型可用性
-4. **实施请求重试**：处理临时网络故障
-5. **记录使用统计**：用于成本分析和优化
+1. **注册多个模型**以实现容错
+2. **合理设置优先级**，本地模型优先
+3. **使用 Fallback 策略**作为默认选择
+4. **定期调用 refreshAvailability()** 更新状态
+5. **监控 getLastUsedModel()** 了解路由行为
 
 ### 相关模块
 
-- **[LLMIntegration](./LLMIntegration.md)** - LLM 集成核心
-- **[LLMAnalysisService](../network/LLMAnalysisService.md)** - LLM 分析服务
-- **[FileAnalyzer](../../integration/LLMIntegration/FileAnalyzer.md)** - 文件分析器
+- **[LLMClient](./LLMClient.md)** - 底层 HTTP 通信
+- **[FileAnalyzer](./FileAnalyzer.md)** - 文件分析
+- **[VisionAnalyzer](../analyzers/VisionAnalysis/VisionAnalyzer.md)** - 视觉分析
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-05-19
 **维护者**: ymj68520
