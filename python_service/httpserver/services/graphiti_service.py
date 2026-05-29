@@ -370,32 +370,103 @@ class GraphitiService:
     ) -> List[Dict[str, Any]]:
         """
         Search the knowledge graph for a specific task.
-        Uses graphiti ingestor's search if initialized, else falls back to Neo4j text search.
+
+        Uses COMBINED_HYBRID_SEARCH_RRF to retrieve edges (facts), nodes (entity summaries),
+        and episodes (raw content), then formats them with meaningful text for report generation.
+
+        Each result's ``properties`` dict contains a ``body`` key with the primary text:
+          - Edges   → ``fact`` (LLM-extracted relationship text)
+          - Nodes   → ``summary`` (entity region summary) or ``name``
+          - Episodes → ``content`` (raw episode data)
         """
         if not self._initialized:
             # Fallback: Neo4j full-text search
             return await self._neo4j_text_search(query, task_id, limit)
-        
+
         try:
             graph_entry = self._task_graphs.get(task_id)
             if graph_entry and isinstance(graph_entry, dict):
                 ingestor = graph_entry.get("ingestor")
                 if ingestor and ingestor._client:
-                    results = await ingestor._client.search(
+                    # Use combined hybrid search to get edges + nodes + episodes
+                    # (search() only returns edges; search_() returns all layers)
+                    from graphiti_core.search.search_config_recipes import COMBINED_HYBRID_SEARCH_RRF
+                    from graphiti_core.search.search_filters import SearchFilters
+
+                    config = COMBINED_HYBRID_SEARCH_RRF.model_copy(update={'limit': limit})
+                    search_results = await ingestor._client.search_(
                         query=query,
+                        config=config,
                         group_ids=[task_id],
-                        num_results=limit,
+                        search_filter=SearchFilters(),
                     )
-                    return [
-                        {
-                            "id": str(getattr(r, "uuid", "") or ""),
-                            "name": getattr(r, "name", "") or "",
-                            "type": getattr(r, "entity_type", "unknown") or "unknown",
-                            "properties": {},
-                            "score": getattr(r, "score", 0.5) or 0.5,
-                        }
-                        for r in (results or [])
-                    ]
+
+                    formatted: List[Dict[str, Any]] = []
+
+                    # --- Edges: LLM-extracted facts (relationships) ---
+                    edge_scores = getattr(search_results, 'edge_reranker_scores', []) or []
+                    for i, edge in enumerate(search_results.edges or []):
+                        fact = getattr(edge, 'fact', '') or ''
+                        if not fact:
+                            continue
+                        score = edge_scores[i] if i < len(edge_scores) else 0.5
+                        formatted.append({
+                            "id": str(getattr(edge, 'uuid', '') or ''),
+                            "name": getattr(edge, 'name', '') or '',
+                            "type": "relationship",
+                            "properties": {
+                                "body": fact,
+                                "fact": fact,
+                                "source": getattr(edge, 'source_node_uuid', ''),
+                                "target": getattr(edge, 'target_node_uuid', ''),
+                            },
+                            "score": score,
+                        })
+
+                    # --- Nodes: entity summaries ---
+                    node_scores = getattr(search_results, 'node_reranker_scores', []) or []
+                    for i, node in enumerate(search_results.nodes or []):
+                        summary = getattr(node, 'summary', '') or ''
+                        name = getattr(node, 'name', '') or ''
+                        text = summary or name
+                        if not text:
+                            continue
+                        score = node_scores[i] if i < len(node_scores) else 0.5
+                        formatted.append({
+                            "id": str(getattr(node, 'uuid', '') or ''),
+                            "name": name,
+                            "type": "entity",
+                            "properties": {
+                                "body": text,
+                                "summary": summary,
+                                "labels": getattr(node, 'labels', []) or [],
+                            },
+                            "score": score,
+                        })
+
+                    # --- Episodes: raw content ---
+                    ep_scores = getattr(search_results, 'episode_reranker_scores', []) or []
+                    for i, episode in enumerate(search_results.episodes or []):
+                        content = getattr(episode, 'content', '') or ''
+                        if not content:
+                            continue
+                        score = ep_scores[i] if i < len(ep_scores) else 0.5
+                        formatted.append({
+                            "id": str(getattr(episode, 'uuid', '') or ''),
+                            "name": getattr(episode, 'name', '') or '',
+                            "type": "episode",
+                            "properties": {
+                                "body": content,
+                                "content": content,
+                                "source_description": getattr(episode, 'source_description', ''),
+                            },
+                            "score": score,
+                        })
+
+                    # Sort by score descending, then limit
+                    formatted.sort(key=lambda x: x.get('score', 0), reverse=True)
+                    return formatted[:limit]
+
             # Fallback to Neo4j text search
             return await self._neo4j_text_search(query, task_id, limit)
         except Exception as e:

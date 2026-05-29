@@ -514,7 +514,15 @@ const CaseIntelligence = () => {
                             const fPath = fileMatch[1];
                             return <button key={j} onClick={() => scrollToFile(fPath)} className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-md text-[13px] font-mono hover:bg-purple-100 border border-purple-200 font-bold">📄 {fPath.split('/').pop()}</button>;
                         }
-                        return part;
+                        // Handle **bold** syntax
+                        const boldParts = part.split(/(\*\*[^*]+\*\*)/g);
+                        return boldParts.map((bp, k) => {
+                            const boldMatch = bp.match(/^\*\*(.+)\*\*$/);
+                            if (boldMatch) {
+                                return <strong key={`${j}-${k}`} className="font-bold text-slate-900 dark:text-slate-100">{boldMatch[1]}</strong>;
+                            }
+                            return bp;
+                        });
                     });
                 };
                 if (line.startsWith('# ')) return <h1 key={i} className="text-2xl font-bold mt-6 mb-3">{renderInline(line.slice(2))}</h1>;
