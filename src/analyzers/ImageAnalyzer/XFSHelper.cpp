@@ -142,14 +142,20 @@ bool XFSHelper::readSuperblock() {
 }
 
 uint64_t XFSHelper::getInodeOffset(uint64_t inodeNum) {
-    // XFS inode number format: [AG number][AG block offset][inode offset in block]
+    // XFS inode number encoding:
+    //   Upper bits: AG number
+    //   Lower bits: inode number within AG (sequential from 0)
+    //
+    // Physical layout within each AG:
+    //   Blocks 0-3: AG headers (superblock/AGF/AGI/AGFL)
+    //   Blocks 4-7: Reserved (alignment padding)
+    //   Block 8+:   Inode chunks (contiguous, inode 0 starts at block 8)
+    //
+    // Inodes are numbered sequentially: inode 0 at block 8, inode 8 at block 9, etc.
+    // So: inode N is at AG block (N / inodesPerBlock)
+    //     which equals block 8 + (N / inodesPerBlock - 8) ... but simpler:
+    //     the block number IS N / inodesPerBlock (since inode numbering starts at block 8)
 
-    // Calculate AG number
-    uint64_t agNo = inodeNum >> (agBlocks_ == 0 ? 0 : count_trailing_zeros_64(agBlocks_) +
-                                 count_trailing_zeros_64(blockSize_ / inodeSize_));
-
-    // Simpler approach: use inode number directly with AG structure
-    // Each AG starts at: ag_number * ag_blocks * block_size
     uint64_t inodesPerBlock = blockSize_ / inodeSize_;
     uint64_t inodesPerAG = agBlocks_ * inodesPerBlock;
 
@@ -158,11 +164,11 @@ uint64_t XFSHelper::getInodeOffset(uint64_t inodeNum) {
 
     uint64_t agOffset = ag * agBlocks_ * blockSize_;
     uint64_t blockInAG = inodeInAG / inodesPerBlock;
-    uint64_t inodeInBlock = inodeNum % inodesPerBlock;
+    uint64_t inodeInBlock = inodeInAG % inodesPerBlock;
 
-    // Skip AG header (first few blocks)
-    uint64_t inodeBlockOffset = (blockInAG + 4) * blockSize_;  // +4 to skip AG headers
-    uint64_t inodeOffset = inodeBlockOffset + (inodeInBlock * inodeSize_);
+    // Inode N is at AG block (blockInAG), which maps to physical block 8+blockInAG
+    // Since inode numbering starts at block 8, blockInAG=0 means AG block 8
+    uint64_t inodeOffset = blockInAG * blockSize_ + (inodeInBlock * inodeSize_);
 
     return agOffset + inodeOffset;
 }
@@ -175,7 +181,7 @@ bool XFSHelper::readInode(uint64_t inodeNum, XFSDinodeCore& inode, std::vector<u
         return false;
     }
 
-    // Copy inode core
+    // Copy inode core (96 bytes)
     memcpy(&inode, inodeBuffer.data(), sizeof(XFSDinodeCore));
 
     // Convert from big-endian
@@ -187,20 +193,57 @@ bool XFSHelper::readInode(uint64_t inodeNum, XFSDinodeCore& inode, std::vector<u
     inode.di_size = swapBytes64(inode.di_size);
     inode.di_nblocks = swapBytes64(inode.di_nblocks);
     inode.di_nextents = swapBytes32(inode.di_nextents);
-    inode.di_atime_sec = (int64_t)swapBytes64((uint64_t)inode.di_atime_sec);
-    inode.di_mtime_sec = (int64_t)swapBytes64((uint64_t)inode.di_mtime_sec);
-    inode.di_ctime_sec = (int64_t)swapBytes64((uint64_t)inode.di_ctime_sec);
-    inode.di_atime_nsec = (int32_t)swapBytes32((uint32_t)inode.di_atime_nsec);
-    inode.di_mtime_nsec = (int32_t)swapBytes32((uint32_t)inode.di_mtime_nsec);
-    inode.di_ctime_nsec = (int32_t)swapBytes32((uint32_t)inode.di_ctime_nsec);
+    inode.di_atime_sec = swapBytes32(inode.di_atime_sec);
+    inode.di_mtime_sec = swapBytes32(inode.di_mtime_sec);
+    inode.di_ctime_sec = swapBytes32(inode.di_ctime_sec);
+    inode.di_atime_nsec = swapBytes32(inode.di_atime_nsec);
+    inode.di_mtime_nsec = swapBytes32(inode.di_mtime_nsec);
+    inode.di_ctime_nsec = swapBytes32(inode.di_ctime_nsec);
 
     // Validate magic
     if (inode.di_magic != XFS_DINODE_MAGIC) {
+        std::cerr << "XFS: Invalid inode magic for inode " << inodeNum
+                  << " at offset " << offset
+                  << " (got 0x" << std::hex << inode.di_magic
+                  << ", expected 0x" << XFS_DINODE_MAGIC << std::dec << ")" << std::endl;
         return false;
     }
 
-    // Get data fork (after inode core)
-    size_t dataOffset = sizeof(XFSDinodeCore);
+    // XFS v5 inodes have an 88-byte metadata block between the core and the data fork:
+    //   offset 96:  di_crc (4 bytes) + di_next_unlinked (4 bytes)
+    //   offset 104: di_changecount (8 bytes)
+    //   offset 112: di_lsn (8 bytes)
+    //   offset 120: di_flags2 (8 bytes)
+    //   offset 128: di_cowextsize (8 bytes)
+    //   offset 136: di_crtime (8 bytes)
+    //   offset 144: di_ino (8 bytes)
+    //   offset 152: di_uuid (16 bytes)
+    //   offset 168: padding (16 bytes)
+    //   offset 184: data fork starts
+    //
+    // We detect v5 by checking bytes 96-99 (di_crc field):
+    // v3: data fork starts at offset 96, first bytes are extent data
+    // v5: offset 96 contains CRC (0x00000000 or valid CRC, never 0xffffffff for valid extents)
+    const size_t coreSize = sizeof(XFSDinodeCore);  // 96 bytes
+    const size_t v5MetadataSize = 88;
+    const size_t v5DataForkOffset = coreSize + v5MetadataSize;  // 184
+
+    bool isV5 = false;
+    if (inodeSize_ > v5DataForkOffset) {
+        // v5 detection: the 4 bytes at offset 96 are di_crc + di_next_unlinked
+        // For v5, these are metadata fields (CRC/hash values)
+        // For v3, offset 96 starts the data fork directly with extent records
+        // The bytes at 96-103 in v5 are: 0xffffffff + CRC (or 0x00000000 + next_unlinked)
+        // A valid extent at offset 96 would have blockcount in bits 0-20 (non-zero)
+        // and startblock in bits 21-63. The 0xffffffff pattern at 96 indicates v5 metadata.
+        uint32_t possibleCrc = *(uint32_t*)(inodeBuffer.data() + coreSize);
+        // v5 inodes have CRC or 0x00000000 at offset 96
+        // v3 inodes have extent data starting at offset 96
+        // The value 0xffffffff at offset 96 is characteristic of v5 metadata
+        isV5 = (possibleCrc == 0xffffffff || possibleCrc == 0x00000000);
+    }
+
+    size_t dataOffset = isV5 ? v5DataForkOffset : coreSize;
     size_t dataSize = inodeSize_ - dataOffset;
 
     data.resize(dataSize);
@@ -209,8 +252,8 @@ bool XFSHelper::readInode(uint64_t inodeNum, XFSDinodeCore& inode, std::vector<u
     return true;
 }
 
-int64_t XFSHelper::xfsTimeToUnix(int64_t sec, int32_t nsec) {
-    return sec;  // Already Unix time
+int64_t XFSHelper::xfsTimeToUnix(uint32_t sec, uint32_t nsec) {
+    return static_cast<int64_t>(sec);  // Already Unix time
 }
 
 bool XFSHelper::walkFilesystem(FileCallback callback) {
@@ -230,6 +273,7 @@ bool XFSHelper::parseDirectory(uint64_t inodeNum, const std::string& path, FileC
     std::vector<uint8_t> data;
 
     if (!readInode(inodeNum, inode, data)) {
+        std::cerr << "XFS: Failed to read inode " << inodeNum << " for path: " << path << std::endl;
         return false;
     }
 
@@ -351,28 +395,34 @@ bool XFSHelper::parseShortFormDirectory(const uint8_t* data, size_t dataSize,
 bool XFSHelper::parseExtents(const uint8_t* data, size_t dataSize, std::vector<XFSExtent>& extents) {
     extents.clear();
 
-    // Each extent is 16 bytes in packed format
-    size_t numExtents = dataSize / 16;
+    // XFS extent records are 8 bytes each (xfs_bmbt_rec_64_t format)
+    // The 64-bit value is packed as:
+    //   Bits 63-54: extent flag (10 bits)
+    //   Bits 53-21: startblock (43 bits) - physical block number
+    //   Bits 20-0:  blockcount (21 bits) - number of blocks
+    //
+    // Note: startoff (logical file offset) is NOT stored in inline extents;
+    // it's implied by the extent's position in the extent list.
+    // For block-based extent lists (B+tree), the format uses 16-byte records
+    // with startoff in the high word.
 
-    for (size_t i = 0; i < numExtents && i * 16 + 16 <= dataSize; i++) {
-        const uint8_t* extData = data + (i * 16);
+    const size_t recordSize = 8;  // 8 bytes per inline extent record
+    size_t numExtents = dataSize / recordSize;
 
-        // XFS extent format (packed 128-bit value):
-        // [63:54] extent flag + logical offset high
-        // [53:0]  logical offset low
-        // [127:73] start block
-        // [72:64]  block count
+    for (size_t i = 0; i < numExtents && i * recordSize + recordSize <= dataSize; i++) {
+        const uint8_t* extData = data + (i * recordSize);
 
-        uint64_t low = swapBytes64(*(uint64_t*)(extData));
-        uint64_t high = swapBytes64(*(uint64_t*)(extData + 8));
+        uint64_t ext = swapBytes64(*(uint64_t*)(extData));
 
-        XFSExtent ext;
-        ext.startoff = (low & 0x1FFFFFFFFFFFFFULL);  // Bits 0-53
-        ext.startblock = (high >> 21);                 // Bits 73-127
-        ext.blockcount = (high & 0x1FFFFFULL);        // Bits 64-72
+        uint32_t blockcount = ext & 0x1FFFFF;           // Bits 0-20
+        uint64_t startblock = (ext >> 21) & 0x7FFFFFFFFFFFULL;  // Bits 21-63
 
-        if (ext.blockcount > 0) {
-            extents.push_back(ext);
+        if (blockcount > 0) {
+            XFSExtent extent;
+            extent.startoff = i;  // Sequential position in the extent list
+            extent.startblock = startblock;
+            extent.blockcount = blockcount;
+            extents.push_back(extent);
         }
     }
 
@@ -406,37 +456,76 @@ bool XFSHelper::readFileData(const std::vector<XFSExtent>& extents,
 
 bool XFSHelper::parseBlockDirectory(const XFSDinodeCore& inode, const std::vector<uint8_t>& data,
                                     const std::string& path, FileCallback callback) {
-    // Parse extent list
+    // Parse extent list (8 bytes per inline extent record)
     std::vector<XFSExtent> extents;
-    size_t extentsDataSize = (size_t)(inode.di_nextents * 16);
+    size_t extentsDataSize = (size_t)(inode.di_nextents * 8);
     size_t dataSize = (data.size() < extentsDataSize) ? data.size() : extentsDataSize;
     if (!parseExtents(data.data(), dataSize, extents)) {
+        std::cerr << "XFS: Failed to parse extents for directory " << path << std::endl;
         return false;
     }
 
     // Read directory blocks via extents
     std::vector<uint8_t> dirData;
     if (!readFileData(extents, dirData, inode.di_size)) {
+        std::cerr << "XFS: Failed to read directory data for " << path << std::endl;
         return false;
     }
 
     // Parse directory block entries
-    // XFS directory block format: [header][entries...]
-    if (dirData.size() < 16) return false;
+    // XFS v5 directory block format:
+    //   [48-byte block header: magic(4)+crc(4)+blkno(8)+lsn(8)+uuid(16)+owner(8)]
+    //   [16-byte leaf/tail area]
+    //   [data area: directory entries]
+    // Total header = 64 bytes for XFS v5
+    if (dirData.size() < 64) return false;
 
-    size_t offset = 16;  // Skip block header
+    uint32_t dirMagic = swapBytes32(*(uint32_t*)(dirData.data()));
+    size_t dirHeaderSize = 64;  // XFS v5 directory block header + leaf area
+    if (dirMagic != 0x58444233 && dirMagic != 0x58443233) {
+        // Not a v5/v3 directory block, try smaller header
+        dirHeaderSize = 16;
+    }
 
-    while (offset + 11 < dirData.size()) {  // Minimum entry size
-        // XFS dir entry: [inode:8][namelen:1][name:N][ftype:1][tag:2]
+    size_t offset = dirHeaderSize;  // Skip block header + leaf area
+
+    // XFS directory entries are packed but not contiguous - there may be free space
+    // between entries. We scan forward, skipping gaps of null bytes.
+    while (offset + 12 < dirData.size()) {  // Minimum entry: inum(8)+namelen(1)+ftype(1)+tag(2)=12
+        // Skip free space (null bytes or non-entry data)
+        // Look for a valid entry: non-zero inode + reasonable namelen
         uint64_t inum = swapBytes64(*(uint64_t*)(dirData.data() + offset));
-        offset += 8;
+        uint8_t namelen = dirData[offset + 8];
 
-        uint8_t namelen = dirData[offset++];
-        if (namelen == 0 || namelen == 0xFF) break;
-        if (offset + namelen + 3 > dirData.size()) break;
+        // Validate: inode must be non-zero and reasonable, namelen must be 1-254
+        if (inum == 0 || inum > 100000 || namelen == 0 || namelen == 0xFF || namelen > 254) {
+            offset += 8;  // Skip forward by 8 bytes and try again
+            continue;
+        }
 
-        std::string name((char*)(dirData.data() + offset), namelen);
-        offset += namelen;
+        // Check if the full entry fits in the remaining data
+        if (offset + 9 + namelen + 3 > dirData.size()) {
+            break;
+        }
+
+        // Validate name is printable ASCII
+        std::string name((char*)(dirData.data() + offset + 9), namelen);
+        bool validName = true;
+        for (char c : name) {
+            if (c < 0x20 || c > 0x7E) {
+                validName = false;
+                break;
+            }
+        }
+        if (!validName) {
+            offset += 8;
+            continue;
+        }
+
+        // Parse the full entry
+        offset += 8;  // Skip inode
+        offset++;      // Skip namelen
+        offset += namelen;  // Skip name
 
         uint8_t ftype = dirData[offset++];
         offset += 2;  // Skip tag
@@ -446,7 +535,6 @@ bool XFSHelper::parseBlockDirectory(const XFSDinodeCore& inode, const std::vecto
 
         // Skip . and ..
         if (name == "." || name == "..") continue;
-        if (inum == 0) continue;
 
         // Read child inode
         XFSDinodeCore childInode;

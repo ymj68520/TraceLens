@@ -85,12 +85,12 @@ struct XFSDinodeCore {
     uint16_t di_projid;         // Project ID
     uint8_t  di_pad[8];         // Padding
     uint16_t di_flushiter;      // Flush iteration
-    int64_t  di_atime_sec;      // Access time seconds
-    int32_t  di_atime_nsec;     // Access time nanoseconds
-    int64_t  di_mtime_sec;      // Modification time seconds
-    int32_t  di_mtime_nsec;     // Modification time nanoseconds
-    int64_t  di_ctime_sec;      // Change time seconds
-    int32_t  di_ctime_nsec;     // Change time nanoseconds
+    uint32_t di_atime_sec;      // Access time seconds (uint32, not int64)
+    uint32_t di_atime_nsec;     // Access time nanoseconds
+    uint32_t di_mtime_sec;      // Modification time seconds
+    uint32_t di_mtime_nsec;     // Modification time nanoseconds
+    uint32_t di_ctime_sec;      // Change time seconds
+    uint32_t di_ctime_nsec;     // Change time nanoseconds
     uint64_t di_size;           // File size in bytes
     uint64_t di_nblocks;        // Number of blocks
     uint32_t di_extsize;        // Extent size

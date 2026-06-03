@@ -42,6 +42,9 @@ class EventAnalyzer:
         """
         self.settings = settings
 
+    # Max characters for event description before sending to LLM
+    MAX_DESCRIPTION_CHARS = 8000
+
     async def analyze_event_cluster(
         self,
         event_data: Dict[str, Any],
@@ -69,6 +72,13 @@ class EventAnalyzer:
         description = event_data.get("description", "")
         timestamp = event_data.get("timestamp", 0)
         time_window = event_data.get("time_window", 0)
+
+        # Truncate description to avoid exceeding model context window
+        if len(description) > self.MAX_DESCRIPTION_CHARS:
+            logger.info(
+                f"Truncating event description from {len(description)} to {self.MAX_DESCRIPTION_CHARS} chars"
+            )
+            description = description[:self.MAX_DESCRIPTION_CHARS] + "\n... [truncated]"
 
         # Count events in description for context
         event_count = description.count('\n') + 1 if description else 0
@@ -142,6 +152,12 @@ class EventAnalyzer:
                 "model": model,
                 "tokens_used": tokens_used,
             }
+        except httpx.ReadTimeout as e:
+            logger.error(f"LLM request timed out after {self.settings.llm_timeout_seconds}s for event cluster analysis")
+            raise RuntimeError(
+                f"LLM request timed out after {self.settings.llm_timeout_seconds}s. "
+                "Consider increasing LLM_TIMEOUT_SECONDS or reducing input size."
+            ) from e
         except httpx.HTTPStatusError as e:
             logger.error(f"LLM HTTP error: {e.response.status_code} - {e.response.text}")
             raise RuntimeError(f"LLM request failed with status {e.response.status_code}: {e.response.text}") from e

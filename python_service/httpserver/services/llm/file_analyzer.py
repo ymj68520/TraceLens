@@ -53,6 +53,18 @@ class FileAnalyzer:
         self.settings = settings
         self._jobs: Dict[str, Dict[str, Any]] = {}
 
+    # Extensions that are known binary / non-text — skip LLM analysis
+    BINARY_EXTENSIONS = {
+        '.exe', '.dll', '.sys', '.mui', '.drv', '.ocx', '.scr', '.com',
+        '.bin', '.dat', '.db', '.sqlite', '.mdb', '.msi', '.cab',
+        '.so', '.dylib', '.ko', '.o', '.a', '.lib',
+        '.ttf', '.otf', '.woff', '.woff2', '.eot',
+        '.mp3', '.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.wav', '.flac',
+        '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.lz4',
+        '.iso', '.img', '.vmdk', '.vhd', '.vhdx',
+        '.pyc', '.pyo', '.class', '.o', '.obj',
+    }
+
     async def read_file_content(self, file_path: str) -> str:
         """
         Read content from a file.
@@ -65,19 +77,34 @@ class FileAnalyzer:
 
         Raises:
             FileNotFoundError: If file doesn't exist.
+            ValueError: If file is binary and should not be analyzed as text.
         """
         path = Path(file_path)
         if not path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
+        # Skip known binary file types
+        file_ext = path.suffix.lower()
+        if file_ext in self.BINARY_EXTENSIONS:
+            raise ValueError(f"Skipping binary file (extension {file_ext}): {file_path}")
+
         # Try to read as text
         try:
             content = path.read_text(encoding="utf-8", errors="replace")
+
+            # Detect binary content: if >30% of chars are replacement or control chars, skip
+            non_text_chars = sum(1 for c in content[:2000] if ord(c) < 32 and c not in '\n\r\t')
+            sample_len = min(len(content), 2000)
+            if sample_len > 0 and (non_text_chars / sample_len) > 0.30:
+                raise ValueError(f"Skipping binary file (high non-text ratio): {file_path}")
+
             # Truncate if too long
             max_len = self.settings.file_analysis_max_content_limit
             if len(content) > max_len:
                 content = content[:max_len] + "\n... [truncated]"
             return content
+        except ValueError:
+            raise
         except Exception as e:
             logger.warning(f"Failed to read file as text: {e}")
             raise
@@ -160,6 +187,12 @@ class FileAnalyzer:
                 "model": model,
                 "tokens_used": tokens_used,
             }
+        except httpx.ReadTimeout as e:
+            logger.error(f"LLM request timed out after {self.settings.llm_timeout_seconds}s for file analysis")
+            raise RuntimeError(
+                f"LLM request timed out after {self.settings.llm_timeout_seconds}s. "
+                "Consider increasing LLM_TIMEOUT_SECONDS or reducing input size."
+            ) from e
         except httpx.HTTPStatusError as e:
             logger.error(f"LLM HTTP error: {e.response.status_code} - {e.response.text}")
             raise RuntimeError(f"LLM request failed with status {e.response.status_code}: {e.response.text}") from e
@@ -406,7 +439,12 @@ class FileAnalyzer:
                             content = await self.read_file_content(actual_path)
                             result = await self.analyze_file(content, text_client, vision_client, model_type)
                     else:
-                        content = await self.read_file_content(actual_path)
+                        try:
+                            content = await self.read_file_content(actual_path)
+                        except ValueError as ve:
+                            # Binary file skip — not an error, just skip
+                            logger.info(f"Skipping non-text file: {ve}")
+                            continue
                         result = await self.analyze_file(content, text_client, vision_client, model_type)
 
                     analysis = result.get("analysis", {})

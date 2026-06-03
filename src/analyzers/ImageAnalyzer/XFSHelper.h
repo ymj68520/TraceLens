@@ -64,7 +64,7 @@ private:
     bool readFileData(const std::vector<XFSExtent>& extents, std::vector<uint8_t>& buffer, uint64_t fileSize);
 
     // Convert XFS timestamps to Unix time
-    int64_t xfsTimeToUnix(int64_t sec, int32_t nsec);
+    int64_t xfsTimeToUnix(uint32_t sec, uint32_t nsec);
 
     // Byte swapping for big-endian XFS
     uint16_t swapBytes16(uint16_t val);

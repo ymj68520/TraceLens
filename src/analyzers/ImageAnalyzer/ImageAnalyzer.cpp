@@ -282,7 +282,13 @@ bool ImageAnalyzer::extractToDatabase(const std::string& dbPath) {
 	if (isXFS_) {
 #ifdef __linux__
 		std::cout << "Switching to native mount method for XFS..." << std::endl;
-		return extractWithNativeMount(dbPath);
+		bool nativeResult = extractWithNativeMount(dbPath);
+		if (nativeResult) {
+			return true;
+		}
+		// Native mount failed (likely no root privileges), fall back to pure XFS parser
+		std::cout << "Native mount failed, falling back to pure XFS parser..." << std::endl;
+		return extractWithXFS(dbPath);
 #else
 		std::cout << "Switching to XFS helper for direct XFS parsing..." << std::endl;
 		return extractWithXFS(dbPath);

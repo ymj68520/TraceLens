@@ -189,7 +189,7 @@ class Settings(BaseSettings):
     # File Analysis Settings
     file_analysis_max_content: int = Field(default=10000, alias="FILE_ANALYSIS_MAX_CONTENT")
     file_analysis_max_keywords: int = Field(default=10, alias="FILE_ANALYSIS_MAX_KEYWORDS")
-    file_analysis_max_content_limit: int = Field(default=50000, alias="FILE_ANALYSIS_MAX_CONTENT_LIMIT")
+    file_analysis_max_content_limit: int = Field(default=12000, alias="FILE_ANALYSIS_MAX_CONTENT_LIMIT")
     
     # Logging Settings
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
