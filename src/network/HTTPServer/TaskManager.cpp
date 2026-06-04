@@ -7,6 +7,8 @@
 #include "ConfigManager/ConfigManager.h"
 #include "PathManager/PathManager.h"
 #include "FileFilter/FileFilter.h"
+#include "../../analyzers/WindowsFilesAnalyzer/Common/WindowsAnalyzerDeclarations.h"
+#include "../../analyzers/LinuxFilesAnalyzer/Common/LinuxAnalyzerDeclarations.h"
 #include <fstream>
 
 using forensics::TaskPersistence;
@@ -745,26 +747,82 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 }
             }
 
-            // 6. Android Analysis (Optional)
-            if (task.get_android_analyze()) {
+            // 6. Platform-Specific Analysis (Unified)
+            if (!task.scenarios.empty()) {
                 if (is_task_cancelled(task_id)) { return; }
-                update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 10, "Analyzing Android artifacts...");
-                auto dbManager = std::make_unique<DatabaseManager>(effectiveRawDb);
-                auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(imagePath, dbManager.get());
+                int total_scenarios = static_cast<int>(task.scenarios.size());
+                update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 0,
+                    "Starting platform analysis for " + std::to_string(total_scenarios) + " scenario(s)...");
 
-                std::string androidDbPath;
-                if (!task.db_output_dir.empty()) {
-                    androidDbPath = task.db_output_dir + "/" + baseName + "_android.db";
-                } else {
-                    androidDbPath = pm.getTaskDbPaths(task_id, baseName).androidDb.string();
-                }
-                androidAnalyzer->setOutputDatabasePath(androidDbPath);
+                int scenario_index = 0;
+                for (auto scenario : task.scenarios) {
+                    if (is_task_cancelled(task_id)) { return; }
 
-                if (androidAnalyzer->initialize()) {
-                    androidAnalyzer->analyzeAndroidData();
-                    update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 100, "Android analysis completed");
-                } else {
-                    std::cerr << "Warning: Failed to initialize Android analyzer" << std::endl;
+                    int base_progress = (scenario_index * 100) / total_scenarios;
+                    std::string scenario_name = scenario_to_string(scenario);
+                    update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, base_progress,
+                        "Analyzing " + scenario_name + " artifacts...");
+
+                    try {
+                        switch (scenario) {
+                            case ForensicScenario::ANDROID: {
+                                auto dbManager = std::make_unique<DatabaseManager>(effectiveRawDb);
+                                auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(imagePath, dbManager.get());
+                                std::string androidDbPath = pm.getTaskDbPaths(task_id, baseName).androidDb.string();
+                                androidAnalyzer->setOutputDatabasePath(androidDbPath);
+                                if (androidAnalyzer->initialize()) {
+                                    androidAnalyzer->analyzeAndroidData();
+                                } else {
+                                    std::cerr << "Warning: Failed to initialize Android analyzer" << std::endl;
+                                }
+                                break;
+                            }
+                            case ForensicScenario::WINDOWS: {
+                                auto dbManager = std::make_unique<DatabaseManager>(effectiveRawDb);
+                                auto windowsAnalyzer = std::make_unique<WindowsFilesAnalyzer>(imagePath, dbManager.get());
+                                std::string windowsDbPath = pm.getTaskDbPaths(task_id, baseName).windowsDb.string();
+                                windowsAnalyzer->setOutputDatabasePath(windowsDbPath);
+                                if (windowsAnalyzer->initialize()) {
+                                    windowsAnalyzer->analyzeWindowsData();
+                                } else {
+                                    std::cerr << "Warning: Failed to initialize Windows analyzer" << std::endl;
+                                }
+                                break;
+                            }
+                            case ForensicScenario::LINUX: {
+                                auto dbManager = std::make_unique<DatabaseManager>(effectiveRawDb);
+                                auto linuxAnalyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
+                                std::string linuxDbPath = pm.getTaskDbPaths(task_id, baseName).linuxDb.string();
+                                linuxAnalyzer->setOutputDatabasePath(linuxDbPath);
+                                if (linuxAnalyzer->initialize()) {
+                                    linuxAnalyzer->analyzeLinuxData();
+                                } else {
+                                    std::cerr << "Warning: Failed to initialize Linux analyzer" << std::endl;
+                                }
+                                break;
+                            }
+                            case ForensicScenario::SERVER_CLOUD: {
+                                auto dbManager = std::make_unique<DatabaseManager>(effectiveRawDb);
+                                auto serverAnalyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
+                                std::string serverDbPath = pm.getTaskDbPaths(task_id, baseName).ossDb.string();
+                                serverAnalyzer->setOutputDatabasePath(serverDbPath);
+                                if (serverAnalyzer->initialize()) {
+                                    serverAnalyzer->analyzeServerCloudArtifacts();
+                                } else {
+                                    std::cerr << "Warning: Failed to initialize Server/Cloud analyzer" << std::endl;
+                                }
+                                break;
+                            }
+                        }
+                    } catch (const std::exception& e) {
+                        std::cerr << "Warning: " << scenario_name << " analysis failed: " << e.what() << std::endl;
+                        add_audit_log(task_id, "WARNING", scenario_name + " analysis failed: " + std::string(e.what()));
+                    }
+
+                    scenario_index++;
+                    int done_progress = (scenario_index * 100) / total_scenarios;
+                    update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, done_progress,
+                        scenario_name + " analysis completed");
                 }
             }
 
@@ -822,11 +880,11 @@ void TaskManager::run_watchdog() {
 int TaskManager::calculate_overall_percentage(TaskPhase phase, int phase_percentage) {
     std::map<TaskPhase, int> phase_weights = {
         {TaskPhase::INITIALIZING, 5},
-        {TaskPhase::IMAGE_ANALYSIS, 30},
-        {TaskPhase::EVENT_EXTRACTION, 15},
-        {TaskPhase::FILE_CLASSIFICATION, 20},
+        {TaskPhase::IMAGE_ANALYSIS, 25},
+        {TaskPhase::EVENT_EXTRACTION, 10},
+        {TaskPhase::FILE_CLASSIFICATION, 15},
         {TaskPhase::LLM_ANALYSIS, 20},
-        {TaskPhase::PLATFORM_ANALYSIS, 8},
+        {TaskPhase::PLATFORM_ANALYSIS, 23},
         {TaskPhase::FINALIZING, 2}
     };
 
