@@ -395,7 +395,7 @@ nlohmann::json TaskManager::get_task_statistics() {
             {"image_analysis", phase_counts[TaskPhase::IMAGE_ANALYSIS]},
             {"event_extraction", phase_counts[TaskPhase::EVENT_EXTRACTION]},
             {"file_classification", phase_counts[TaskPhase::FILE_CLASSIFICATION]},
-            {"android_analysis", phase_counts[TaskPhase::PLATFORM_ANALYSIS]},
+            {"platform_analysis", phase_counts[TaskPhase::PLATFORM_ANALYSIS]},
             {"finalizing", phase_counts[TaskPhase::FINALIZING]}
         }},
         {"average_execution_time_seconds", completed_tasks > 0 ? total_execution_time / completed_tasks : 0}
