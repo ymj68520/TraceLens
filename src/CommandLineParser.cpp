@@ -34,6 +34,9 @@ void CommandLineParser::printUsage(const char* programName) {
     std::cout << "  --android-analyze           Analyze Android data\n";
     std::cout << "  --windows-analyze           Analyze Windows artifacts\n";
     std::cout << "  --linux-analyze             Analyze Linux artifacts\n\n";
+    std::cout << "File Filter:\n";
+    std::cout << "  --filter-profile <name>     Apply filter profile (e.g., telecom_fraud, virus_intrusion)\n";
+    std::cout << "                              Profiles are loaded from config/filter_profiles/\n\n";
     std::cout << "Full-Text Search:\n";
     std::cout << "  --index <dir>               Index text files\n";
     std::cout << "  --search <query>            Search indexed database\n\n";
@@ -103,6 +106,8 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
         } else if (arg == "--search" && i + 1 < argc) {
             args.search_keyword = argv[++i];
             args.search_mode = true;
+        } else if (arg == "--filter-profile" && i + 1 < argc) {
+            args.filter_profile = argv[++i];
         } else if (arg == "--carve") {
             args.carve = true;
         } else if (arg == "--carve-out" && i + 1 < argc) {

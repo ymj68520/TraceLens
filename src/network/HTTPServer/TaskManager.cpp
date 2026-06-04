@@ -6,10 +6,12 @@
 #include "EventClusterAnalyzer.h"
 #include "ConfigManager/ConfigManager.h"
 #include "PathManager/PathManager.h"
+#include "FileFilter/FileFilter.h"
 #include <fstream>
 
 using forensics::TaskPersistence;
 using forensics::TaskWatchdog;
+using forensics::FileFilter;
 
 // JSON serialization is now in TaskSerialization.cpp
 
@@ -69,7 +71,7 @@ void TaskManager::load_tasks() {
 }
 
 // Enhanced task creation with priority and metadata - Atomic version
-std::string TaskManager::create_task(const std::string& path, 
+std::string TaskManager::create_task(const std::string& path,
                                    TaskPriority priority,
                                    const std::map<std::string, std::string>& metadata,
                                    const std::vector<TaskDependency>& dependencies,
@@ -78,7 +80,8 @@ std::string TaskManager::create_task(const std::string& path,
                                    const std::string& db_output_dir,
                                    bool llm_analyze,
                                    const std::string& llm_mode,
-                                   const std::string& case_description) {
+                                   const std::string& case_description,
+                                   const std::string& filter_profile) {
     std::lock_guard<std::mutex> lock(mtx_);
     boost::uuids::uuid uuid = boost::uuids::random_generator()();
     std::string id = boost::uuids::to_string(uuid);
@@ -108,6 +111,7 @@ std::string TaskManager::create_task(const std::string& path,
     new_task.llm_analyze = llm_analyze;
     new_task.llm_mode = llm_mode;
     new_task.case_description = case_description;
+    new_task.filter_profile = filter_profile;
     new_task.cancellation_requested = false;
     new_task.error_details = "";
     new_task.metadata = metadata;
@@ -604,12 +608,51 @@ void TaskManager::start_analysis(const std::string& task_id) {
             }
             update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 100, "Image analysis and metadata extraction completed");
 
+            // 1.5. Apply file filter (if profile specified)
+            std::string effectiveRawDb = rawDbPath;
+            if (!task.filter_profile.empty()) {
+                if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+                update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 5, "Applying file filter: " + task.filter_profile + "...");
+
+                try {
+                    FileFilter filter;
+                    std::string filteredDbPath = rawDbPath;
+                    size_t pos = filteredDbPath.rfind("_raw.db");
+                    if (pos != std::string::npos) {
+                        filteredDbPath.replace(pos, 7, "_filtered.db");
+                    } else {
+                        filteredDbPath += ".filtered";
+                    }
+
+                    auto filterStats = filter.applyFilterByName(rawDbPath, filteredDbPath, task.filter_profile);
+                    if (filterStats.included_files > 0) {
+                        effectiveRawDb = filteredDbPath;
+                        update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 10,
+                            "Filter applied: " + std::to_string(filterStats.included_files) + "/" +
+                            std::to_string(filterStats.total_files) + " files selected");
+                    } else {
+                        std::cerr << "Warning: Filter excluded all files for task " << task_id << std::endl;
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "Warning: Filter failed for task " << task_id << ": " << e.what() << std::endl;
+                    // Continue with unfiltered data
+                }
+            }
+
+            // Update output_raw_db if filter changed the effective database
+            if (effectiveRawDb != rawDbPath) {
+                std::lock_guard<std::mutex> lock(mtx_);
+                if (tasks_.count(task_id)) {
+                    tasks_[task_id].output_raw_db = effectiveRawDb;
+                }
+            }
+
             // 2. Event Extraction
             if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
             update_progress(task_id, TaskPhase::EVENT_EXTRACTION, 10, "Extracting timeline events...");
-            auto eventExtractor = std::make_unique<EventExtractor>(rawDbPath, eventDbPath);
+            auto eventExtractor = std::make_unique<EventExtractor>(effectiveRawDb, eventDbPath);
             if (!eventExtractor->extractEvents()) {
-                std::cerr << "Error: Failed to extract events from " << rawDbPath << std::endl;
+                std::cerr << "Error: Failed to extract events from " << effectiveRawDb << std::endl;
                 update_status(task_id, TaskStatus::FAILED, "Failed to extract timeline events");
                 return;
             }
@@ -618,7 +661,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
             // 3. File Classification
             if (is_task_cancelled(task_id)) { return; }
             update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 10, "Classifying files by type...");
-            auto fileClassifier = std::make_unique<FileClassifier>(rawDbPath, fileDbPath);
+            auto fileClassifier = std::make_unique<FileClassifier>(effectiveRawDb, fileDbPath);
             if (!fileClassifier->classifyAndExtract()) {
                 update_status(task_id, TaskStatus::FAILED, "Failed to classify files");
                 return;
@@ -709,7 +752,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
             if (task.android_analyze) {
                 if (is_task_cancelled(task_id)) { return; }
                 update_progress(task_id, TaskPhase::ANDROID_ANALYSIS, 10, "Analyzing Android artifacts...");
-                auto dbManager = std::make_unique<DatabaseManager>(rawDbPath);
+                auto dbManager = std::make_unique<DatabaseManager>(effectiveRawDb);
                 auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(imagePath, dbManager.get());
 
                 std::string androidDbPath;

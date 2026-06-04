@@ -3,6 +3,7 @@
 #include "DatabaseManager/EventExtractor/EventExtractor.h"
 #include "DatabaseManager/FileClassifier/FileClassifier.h"
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
+#include "FileFilter/FileFilter.h"
 #include "HTTPServer/HTTPserver.h"
 #include "AndroidAnalyzer/AndroidAnalyzer.h"
 #include "WindowsFilesAnalyzer/WindowsFilesAnalyzer.h"
@@ -52,7 +53,7 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
 
     try {
         // Step 1: Analyze image
-        std::cout << "[1/3] Analyzing image..." << std::endl;
+        std::cout << "[1/4] Analyzing image..." << std::endl;
         auto analyzer = std::make_unique<ImageAnalyzer>(args.image_path);
         analyzer->setXFSMode(args.xfs_mode);
 
@@ -62,19 +63,47 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         }
         std::cout << "✓ Raw database: " << rawDbPath << "\n" << std::endl;
 
-        // Step 2: Classify files
-        std::cout << "[2/3] Classifying files..." << std::endl;
-        auto classifier = std::make_unique<FileClassifier>(rawDbPath, fileDbPath);
+        // Step 2: Apply file filter (if profile specified)
+        // The filtered database is used by all downstream processors
+        std::string effectiveRawDb = rawDbPath;
+
+        if (!args.filter_profile.empty()) {
+            std::cout << "[2/4] Applying file filter: " << args.filter_profile << "..." << std::endl;
+            std::string filteredDbPath = prefix + baseName + "_filtered.db";
+
+            try {
+                FileFilter filter;
+                auto stats = filter.applyFilterByName(rawDbPath, filteredDbPath, args.filter_profile);
+
+                if (stats.included_files > 0) {
+                    effectiveRawDb = filteredDbPath;
+                    std::cout << "✓ Filtered database: " << filteredDbPath
+                              << " (" << stats.included_files << "/" << stats.total_files
+                              << " files)\n" << std::endl;
+                } else {
+                    std::cerr << "Warning: Filter excluded all files. Using unfiltered data." << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Warning: Filter failed: " << e.what() << std::endl;
+                std::cerr << "Continuing with unfiltered data." << std::endl;
+            }
+        } else {
+            std::cout << "[2/4] File filter: skipped (no profile specified)\n" << std::endl;
+        }
+
+        // Step 3: Classify files (using effective raw db - filtered or unfiltered)
+        std::cout << "[3/4] Classifying files..." << std::endl;
+        auto classifier = std::make_unique<FileClassifier>(effectiveRawDb, fileDbPath);
         if (!classifier->classifyAndExtract()) {
             std::cerr << "Error: Failed to classify files" << std::endl;
             return 1;
         }
         std::cout << "✓ File database: " << fileDbPath << "\n" << std::endl;
 
-        // Step 3: Platform-specific analysis
+        // Step 4: Platform-specific analysis (uses effective raw db)
         if (args.android_analyze) {
             std::cout << "[Android] Analyzing..." << std::endl;
-            auto dbMgr = std::make_unique<DatabaseManager>(rawDbPath);
+            auto dbMgr = std::make_unique<DatabaseManager>(effectiveRawDb);
             auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(args.image_path, dbMgr.get());
             androidAnalyzer->setOutputDatabasePath(prefix + baseName + "_android.db");
             if (androidAnalyzer->initialize()) {
@@ -85,7 +114,7 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
 
         if (args.windows_analyze) {
             std::cout << "[Windows] Analyzing..." << std::endl;
-            auto dbMgr = std::make_unique<DatabaseManager>(rawDbPath);
+            auto dbMgr = std::make_unique<DatabaseManager>(effectiveRawDb);
             auto winAnalyzer = std::make_unique<WindowsFilesAnalyzer>(args.image_path, dbMgr.get());
             winAnalyzer->setOutputDatabasePath(prefix + baseName + "_windows.db");
             if (winAnalyzer->initialize()) {
@@ -96,7 +125,7 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
 
         if (args.linux_analyze) {
             std::cout << "[Linux] Analyzing..." << std::endl;
-            auto dbMgr = std::make_unique<DatabaseManager>(rawDbPath);
+            auto dbMgr = std::make_unique<DatabaseManager>(effectiveRawDb);
             auto linuxAnalyzer = std::make_unique<LinuxFilesAnalyzer>(args.image_path, dbMgr.get());
             linuxAnalyzer->setOutputDatabasePath(prefix + baseName + "_linux.db");
             if (linuxAnalyzer->initialize()) {
@@ -105,9 +134,9 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             }
         }
 
-        // Step 4: Generate timeline
-        std::cout << "[Timeline] Generating..." << std::endl;
-        auto eventExtractor = std::make_unique<EventExtractor>(rawDbPath, eventDbPath);
+        // Step 5: Generate timeline (uses effective raw db)
+        std::cout << "[4/4] Generating timeline..." << std::endl;
+        auto eventExtractor = std::make_unique<EventExtractor>(effectiveRawDb, eventDbPath);
         if (eventExtractor->extractEvents()) {
             if (args.android_analyze && fs::exists(prefix + baseName + "_android.db"))
                 eventExtractor->importAndroidArtifacts(prefix + baseName + "_android.db");

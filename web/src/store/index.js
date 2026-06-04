@@ -5,6 +5,7 @@ import dataReducer from './dataSlice';
 import settingsReducer from './settingsSlice';
 import intelligenceReducer from './intelligenceSlice';
 import caseReducer from './caseSlice';
+import filterReducer from './filterSlice';
 
 export const store = configureStore({
   reducer: {
@@ -14,6 +15,7 @@ export const store = configureStore({
     settings:     settingsReducer,
     intelligence: intelligenceReducer,
     cases:        caseReducer,
+    filter:       filterReducer,
   },
 });
 

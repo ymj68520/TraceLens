@@ -7,6 +7,7 @@
  *  - Windows / Linux type checkboxes removed (backend never had this param)
  *  - Android deep analysis kept as optional (backend has dedicated analyzer)
  *  - XFS mode hidden inside collapsible "Advanced" section
+ *  - Filter profile selection for scenario-based file filtering
  */
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
@@ -14,6 +15,8 @@ import { createTask, fetchTasks } from '../../store/taskSlice';
 import { closeModal } from '../../store/uiSlice';
 import Button from '../common/Button';
 import { useToast } from '../common/ToastContext';
+import FilterProfileSelector from '../filters/FilterProfileSelector';
+import FilterProfileEditor from '../filters/FilterProfileEditor';
 
 const INITIAL_FORM = {
   image_path: '',
@@ -21,6 +24,7 @@ const INITIAL_FORM = {
   case_description: '',
   android_analyze: false,
   xfs_mode: 'auto',
+  filter_profile: '',
   // llm_analyze is always true — NOT a user setting
 };
 
@@ -32,6 +36,7 @@ export default function CreateTaskModal() {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showProfileEditor, setShowProfileEditor] = useState(false);
 
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -54,7 +59,7 @@ export default function CreateTaskModal() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-lg">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Create New Task</h2>
@@ -98,6 +103,24 @@ export default function CreateTaskModal() {
                 <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
               ))}
             </select>
+          </Field>
+
+          {/* Filter Profile */}
+          <Field label="过滤场景" hint="选择预定义场景可过滤无关文件，加速分析">
+            <FilterProfileSelector
+              value={form.filter_profile}
+              onChange={(val) => set('filter_profile', val)}
+              disabled={isCreating}
+            />
+            <div className="mt-1.5">
+              <button
+                type="button"
+                onClick={() => setShowProfileEditor(true)}
+                className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                + 创建自定义配置
+              </button>
+            </div>
           </Field>
 
           {/* Android deep analysis */}
@@ -150,6 +173,14 @@ export default function CreateTaskModal() {
           </div>
         </form>
       </div>
+
+      {/* Profile Editor Modal */}
+      {showProfileEditor && (
+        <FilterProfileEditor
+          profile={null}
+          onClose={() => setShowProfileEditor(false)}
+        />
+      )}
     </div>
   );
 }

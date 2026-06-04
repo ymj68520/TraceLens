@@ -22,6 +22,7 @@
 #include "routes/SystemRoutes.h"
 #include "routes/SearchRoutes.h"
 #include "routes/CaseCRUDRoutes.h"
+#include "routes/FilterRoutes.h"
 
 namespace forensics {
     using json = nlohmann::json;
@@ -92,6 +93,7 @@ namespace forensics {
         SystemRoutes system_routes_;
         SearchRoutes search_routes_;
         CaseCRUDRoutes case_routes_;
+        FilterRoutes filter_routes_;
 
         // Static file serving
         void setup_static_routes();

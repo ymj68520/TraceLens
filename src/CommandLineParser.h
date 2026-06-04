@@ -17,6 +17,7 @@ struct CommandLineArgs {
     std::string index_path;
     std::string carve_output_dir = "carved_files";
     std::string dll_db; // DLL分析数据库路径
+    std::string filter_profile; // File filter profile name (e.g., "telecom_fraud", "virus_intrusion")
     XFSMode xfs_mode = XFSMode::Auto;
     int http_port = 0;
     int dll_threshold = 30; // DLL威胁评分阈值

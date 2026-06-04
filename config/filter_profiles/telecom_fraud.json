@@ -1,0 +1,75 @@
+{
+    "profile_name": "telecom_fraud",
+    "description": "Telecom fraud investigation - focuses on communication records, financial docs, messaging apps, browser artifacts",
+    "version": "1.0.0",
+
+    "include": {
+        "extensions": [
+            ".db", ".db3", ".sqlite", ".sqlite3",
+            ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",
+            ".mp3", ".wav", ".aac", ".amr", ".ogg", ".m4a",
+            ".mp4", ".avi", ".mkv", ".mov", ".3gp", ".flv",
+            ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+            ".txt", ".csv", ".json", ".xml", ".html", ".htm",
+            ".vcf", ".vcard",
+            ".eml", ".msg",
+            ".log",
+            ".apk", ".ipa",
+            ".db-wal", ".db-shm", ".db-journal"
+        ],
+        "path_patterns": [
+            "*/com.tencent.mm/*",
+            "*/com.tencent.mobileqq/*",
+            "*/com.whatsapp/*",
+            "*/com.telegram.*/*",
+            "*/com.ss.android.ugc.aweme/*",
+            "*/com.eg.android.AlipayGphone/*",
+            "*/com.tencent.tmgp.*/*",
+            "*/sms/*", "*/mms/*",
+            "*/contacts/*", "*/calllog/*",
+            "*/downloads/*",
+            "*/dcim/*", "*/camera/*",
+            "*/pictures/*", "*/videos/*", "*/music/*",
+            "*/documents/*",
+            "*/browser/*", "*/chrome/*", "*/firefox/*",
+            "*/wechat/*", "*/qq/*",
+            "*/alipay/*", "*/unionpay/*",
+            "*/banks/*", "*/payment*/*",
+            "/var/log/*",
+            "/home/*/.bash_history",
+            "/home/*/.ssh/*",
+            "*/recent*/*"
+        ],
+        "filename_patterns": [
+            "*.db", "*.sqlite*", "*.vcf",
+            "contacts*", "calllog*", "sms*", "mms*",
+            "*.bak", "*.backup"
+        ],
+        "min_size": 0,
+        "max_size": 104857600,
+        "include_deleted": true,
+        "include_allocated": true
+    },
+
+    "exclude": {
+        "extensions": [
+            ".o", ".obj", ".so", ".dll", ".dylib",
+            ".class", ".pyc", ".pyo",
+            ".tmp", ".temp", ".swp", ".swo",
+            ".cache"
+        ],
+        "path_patterns": [
+            "/proc/*", "/sys/*", "/dev/*", "/run/*",
+            "*/node_modules/*", "*/__pycache__/*",
+            "*/.git/*", "*/.svn/*",
+            "*/cache/*", "*/Cache/*",
+            "*/tmp/*", "*/temp/*"
+        ],
+        "filename_patterns": [
+            "*.tmp", "*.temp", "*.swap",
+            ".DS_Store", "Thumbs.db", "desktop.ini"
+        ]
+    },
+
+    "combine_mode": "exclude_wins"
+}

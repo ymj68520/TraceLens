@@ -172,6 +172,9 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         std::string llm_mode = body.value("llm_mode", "smart"); // "full" or "smart"
         std::string case_description = body.value("case_description", "");
 
+        // Filter profile option
+        std::string filter_profile = body.value("filter_profile", "");
+
         // ATOMIC TASK CREATION: All options in one go to prevent lock contention and redundant disk I/O
         std::string task_id = task_manager_.create_task(
             image_path,
@@ -183,7 +186,8 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             db_output_dir,
             llm_analyze,
             llm_mode,
-            case_description
+            case_description,
+            filter_profile
         );
 
         // Check if task can start immediately
@@ -197,6 +201,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             {"priority", TaskHelpers::priority_to_string(priority)},
             {"llm_analyze", llm_analyze},
             {"llm_mode", llm_mode},
+            {"filter_profile", filter_profile},
             {"dependencies_count", dependencies.size()}
         };
 

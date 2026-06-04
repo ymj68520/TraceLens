@@ -246,6 +246,7 @@ set(LIB_SOURCES
     src/network/HTTPServer/routes/TaskBatchRoutes.cpp
     src/network/HTTPServer/routes/TaskMonitoringRoutes.cpp
     src/network/HTTPServer/routes/CaseCRUDRoutes.cpp
+    src/network/HTTPServer/routes/FilterRoutes.cpp
     src/network/HTTPServer/CaseManager.cpp
     src/network/HTTPServer/TaskSerialization.cpp
     src/network/HTTPServer/TaskPersistence.cpp
@@ -339,6 +340,7 @@ set(LIB_SOURCES
     src/core/FullTextSearch/FullTextSearch.cpp
     src/core/FullTextSearch/TextExtractor.cpp
     src/core/TOONExporter/TOONExporter.cpp
+    src/core/FileFilter/FileFilter.cpp
     src/analyzers/FileCarving/FileCarver.cpp
     # EventCorrelationEngine module
     src/core/EventCorrelationEngine/Detail/EventCorrelationEngineCore.cpp

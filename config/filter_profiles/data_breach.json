@@ -1,0 +1,64 @@
+{
+    "profile_name": "data_breach",
+    "description": "Data breach investigation - focuses on documents, databases, archives, network configs, transfer artifacts",
+    "version": "1.0.0",
+
+    "include": {
+        "extensions": [
+            ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+            ".pdf", ".rtf", ".odt", ".ods", ".odp",
+            ".csv", ".tsv",
+            ".db", ".db3", ".sqlite", ".sqlite3", ".mdb", ".accdb",
+            ".sql", ".bak",
+            ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz",
+            ".txt", ".log", ".json", ".xml", ".yaml", ".yml",
+            ".eml", ".msg", ".pst", ".ost",
+            ".key", ".pem", ".crt", ".p12", ".pfx",
+            ".vmdk", ".vhd", ".vhdx", ".qcow2",
+            ".iso", ".img"
+        ],
+        "path_patterns": [
+            "*/documents/*", "*/Documents/*",
+            "*/downloads/*", "*/Downloads/*",
+            "*/desktop/*", "*/Desktop/*",
+            "*/email/*", "*/mail/*", "*/thunderbird/*", "*/outlook/*",
+            "*/database/*", "*/backup/*", "*/Backup/*",
+            "*/share/*", "*/shared/*", "*/ftp/*", "*/sftp/*",
+            "*/network/*", "*/vpn/*",
+            "/var/log/*", "/etc/ssh/*", "/etc/samba/*",
+            "/var/lib/mysql/*", "/var/lib/postgresql/*",
+            "*/.ssh/*", "*/.gnupg/*",
+            "*/onedrive/*", "*/dropbox/*", "*/google.drive/*"
+        ],
+        "filename_patterns": [
+            "*.sql", "*.dump", "*.bak",
+            "database*", "backup*",
+            "*.pst", "*.ost", "*.mbox",
+            "password*", "credential*", "secret*"
+        ],
+        "min_size": 0,
+        "max_size": 0,
+        "include_deleted": true,
+        "include_allocated": true
+    },
+
+    "exclude": {
+        "extensions": [
+            ".o", ".obj", ".so", ".dll", ".dylib",
+            ".class", ".pyc",
+            ".tmp", ".temp", ".swp",
+            ".cache"
+        ],
+        "path_patterns": [
+            "/proc/*", "/sys/*", "/dev/*", "/run/*",
+            "*/node_modules/*", "*/__pycache__/*",
+            "*/.git/objects/*", "*/cache/*"
+        ],
+        "filename_patterns": [
+            "*.tmp", "*.temp",
+            ".DS_Store", "Thumbs.db"
+        ]
+    },
+
+    "combine_mode": "exclude_wins"
+}

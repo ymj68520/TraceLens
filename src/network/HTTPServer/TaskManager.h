@@ -56,7 +56,7 @@ public:
      * @param case_description Case description for LLM
      * @return The unique ID of the created task
      */
-    std::string create_task(const std::string& path, 
+    std::string create_task(const std::string& path,
                            TaskPriority priority = TaskPriority::NORMAL,
                            const std::map<std::string, std::string>& metadata = {},
                            const std::vector<TaskDependency>& dependencies = {},
@@ -65,7 +65,8 @@ public:
                            const std::string& db_output_dir = "",
                            bool llm_analyze = false,
                            const std::string& llm_mode = "smart",
-                           const std::string& case_description = "");
+                           const std::string& case_description = "",
+                           const std::string& filter_profile = "");
 
     // Task status management
     /**

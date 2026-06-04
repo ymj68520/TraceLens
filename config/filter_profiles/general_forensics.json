@@ -1,0 +1,25 @@
+{
+    "profile_name": "general_forensics",
+    "description": "General-purpose forensic analysis - captures most file types, excludes noise",
+    "version": "1.0.0",
+
+    "include": {
+        "extensions": [],
+        "path_patterns": [],
+        "filename_patterns": [],
+        "min_size": 0,
+        "max_size": 0,
+        "include_deleted": true,
+        "include_allocated": true
+    },
+
+    "exclude": {
+        "extensions": [],
+        "path_patterns": [
+            "/proc/*", "/sys/*", "/dev/*", "/run/*"
+        ],
+        "filename_patterns": []
+    },
+
+    "combine_mode": "exclude_wins"
+}

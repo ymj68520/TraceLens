@@ -88,6 +88,9 @@ struct AnalysisTask {
     std::string case_description;       // Case description for LLM analysis
     std::string graphiti_job_id;        // Job ID for Graphiti knowledge graph ingestion
 
+    // File filter options
+    std::string filter_profile;         // Filter profile name (e.g., "telecom_fraud")
+
     // Make it copyable and movable by handling the atomic properly
     AnalysisTask() = default;
     AnalysisTask(const AnalysisTask& other)
@@ -105,7 +108,8 @@ struct AnalysisTask {
           llm_analyze(other.llm_analyze), llm_mode(other.llm_mode),
           output_descriptions_db(other.output_descriptions_db),
           case_description(other.case_description),
-          graphiti_job_id(other.graphiti_job_id) {}
+          graphiti_job_id(other.graphiti_job_id),
+          filter_profile(other.filter_profile) {}
 
     AnalysisTask& operator=(const AnalysisTask& other) {
         if (this != &other) {
@@ -136,6 +140,7 @@ struct AnalysisTask {
             output_descriptions_db = other.output_descriptions_db;
             case_description = other.case_description;
             graphiti_job_id = other.graphiti_job_id;
+            filter_profile = other.filter_profile;
         }
         return *this;
     }
@@ -157,7 +162,8 @@ struct AnalysisTask {
           llm_analyze(other.llm_analyze), llm_mode(std::move(other.llm_mode)),
           output_descriptions_db(std::move(other.output_descriptions_db)),
           case_description(std::move(other.case_description)),
-          graphiti_job_id(std::move(other.graphiti_job_id)) {}
+          graphiti_job_id(std::move(other.graphiti_job_id)),
+          filter_profile(std::move(other.filter_profile)) {}
 
     AnalysisTask& operator=(AnalysisTask&& other) noexcept {
         if (this != &other) {
@@ -188,6 +194,7 @@ struct AnalysisTask {
             output_descriptions_db = std::move(other.output_descriptions_db);
             case_description = std::move(other.case_description);
             graphiti_job_id = std::move(other.graphiti_job_id);
+            filter_profile = std::move(other.filter_profile);
         }
         return *this;
     }

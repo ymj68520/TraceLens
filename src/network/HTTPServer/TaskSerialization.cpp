@@ -73,6 +73,7 @@ void to_json(nlohmann::json& j, const AnalysisTask& t) {
     j["llm_mode"] = t.llm_mode;
     j["output_descriptions_db"] = t.output_descriptions_db;
     j["case_description"] = t.case_description;
+    j["filter_profile"] = t.filter_profile;
 
     j["extraction_directory"] = forensics::PathManager::instance().getTaskExtractDir(t.id).string();
 
@@ -101,6 +102,7 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     if(j.contains("llm_mode")) j.at("llm_mode").get_to(t.llm_mode);
     if(j.contains("output_descriptions_db")) j.at("output_descriptions_db").get_to(t.output_descriptions_db);
     if(j.contains("case_description")) j.at("case_description").get_to(t.case_description);
+    if(j.contains("filter_profile")) j.at("filter_profile").get_to(t.filter_profile);
 
     if (j.contains("created_time")) {
         auto secs = j["created_time"].get<long long>();
