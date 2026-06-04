@@ -116,7 +116,7 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
     );
     CREATE TABLE IF NOT EXISTS wechat_owner_info (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT,
+        username TEXT UNIQUE,
         nickname TEXT,
         uin INTEGER,
         imei TEXT
