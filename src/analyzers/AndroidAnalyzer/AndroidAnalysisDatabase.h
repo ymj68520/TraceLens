@@ -28,7 +28,13 @@ public:
     bool insertWhatsAppMessage(const ChatMessage& msg);
     bool insertTelegramMessage(const ChatMessage& msg);
     bool insertWeChatMessage(const ChatMessage& msg);
-    
+    bool insertWeChatEnhancedMessage(const ChatMessage& msg, int msgType, int isSend,
+                                      const std::string& chatroomName, const std::string& senderNickname,
+                                      const std::string& talker);
+    bool insertWeChatContact(const WeChatContact& contact);
+    bool insertWeChatChatroom(const WeChatChatroom& chatroom);
+    bool insertWeChatOwnerInfo(const WeChatOwnerInfo& owner);
+
     // New Artifacts
     bool insertWifiNetwork(const WifiNetwork& net);
     bool insertChromeHistory(const ChromeHistoryItem& item);

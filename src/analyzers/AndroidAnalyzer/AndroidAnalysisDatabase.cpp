@@ -160,6 +160,77 @@ bool AndroidAnalysisDatabase::insertWeChatMessage(const ChatMessage& msg) {
     return success;
 }
 
+bool AndroidAnalysisDatabase::insertWeChatEnhancedMessage(
+    const ChatMessage& msg, int msgType, int isSend,
+    const std::string& chatroomName, const std::string& senderNickname,
+    const std::string& talker) {
+    const char* sql = "INSERT INTO wechat_messages (sender, receiver, content, timestamp, msg_type, is_send, chatroom_name, sender_nickname, talker) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, msg.sender.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, msg.receiver.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, msg.content.c_str(), -1, SQLITE_TRANSIENT);
+    try { sqlite3_bind_int64(stmt, 4, std::stoll(msg.timestamp)); } catch (...) { sqlite3_bind_int64(stmt, 4, 0); }
+    sqlite3_bind_int(stmt, 5, msgType);
+    sqlite3_bind_int(stmt, 6, isSend);
+    sqlite3_bind_text(stmt, 7, chatroomName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 8, senderNickname.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 9, talker.c_str(), -1, SQLITE_TRANSIENT);
+
+    bool success = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertWeChatContact(const WeChatContact& contact) {
+    const char* sql = "INSERT OR IGNORE INTO wechat_contacts (username, nickname, remark, avatar_path, type, chatroom_flag) VALUES (?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, contact.username.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, contact.nickname.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, contact.remark.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, contact.avatarPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 5, contact.type);
+    sqlite3_bind_int(stmt, 6, contact.isChatroom ? 1 : 0);
+
+    bool success = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertWeChatChatroom(const WeChatChatroom& chatroom) {
+    const char* sql = "INSERT OR IGNORE INTO wechat_chatrooms (chatroom_name, owner, member_list, member_count, create_time) VALUES (?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, chatroom.chatroomName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, chatroom.owner.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, chatroom.memberList.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 4, chatroom.memberCount);
+    sqlite3_bind_int64(stmt, 5, chatroom.createTime);
+
+    bool success = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertWeChatOwnerInfo(const WeChatOwnerInfo& owner) {
+    const char* sql = "INSERT OR REPLACE INTO wechat_owner_info (username, nickname, uin, imei) VALUES (?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, owner.username.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, owner.nickname.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 3, owner.uin);
+    sqlite3_bind_text(stmt, 4, owner.imei.c_str(), -1, SQLITE_TRANSIENT);
+
+    bool success = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return success;
+}
+
 bool AndroidAnalysisDatabase::insertWifiNetwork(const WifiNetwork& net) {
     const char* sql = "INSERT INTO wifi_networks (ssid, pre_shared_key, key_mgmt) VALUES (?, ?, ?);";
     sqlite3_stmt* stmt;
