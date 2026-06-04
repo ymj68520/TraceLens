@@ -24,6 +24,30 @@ struct ChatMessage {
     std::string appName;
 };
 
+struct WeChatContact {
+    std::string username;
+    std::string nickname;
+    std::string remark;
+    std::string avatarPath;
+    int type = 0;
+    bool isChatroom = false;
+};
+
+struct WeChatChatroom {
+    std::string chatroomName;
+    std::string owner;
+    std::string memberList;  // comma-separated usernames
+    int memberCount = 0;
+    int64_t createTime = 0;
+};
+
+struct WeChatOwnerInfo {
+    std::string username;
+    std::string nickname;
+    int uin = 0;
+    std::string imei;
+};
+
 struct ApkSignatureInfo {
     std::string apkPath;
     bool hasSignature;

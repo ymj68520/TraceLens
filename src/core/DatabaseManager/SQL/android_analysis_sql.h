@@ -90,7 +90,36 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
         content TEXT,
         timestamp INTEGER,
         media_url TEXT,
-        media_type TEXT
+        media_type TEXT,
+        msg_type INTEGER DEFAULT 1,
+        is_send INTEGER DEFAULT 0,
+        chatroom_name TEXT,
+        sender_nickname TEXT,
+        talker TEXT
+    );
+    CREATE TABLE IF NOT EXISTS wechat_contacts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE,
+        nickname TEXT,
+        remark TEXT,
+        avatar_path TEXT,
+        type INTEGER,
+        chatroom_flag INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS wechat_chatrooms (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chatroom_name TEXT UNIQUE,
+        owner TEXT,
+        member_list TEXT,
+        member_count INTEGER,
+        create_time INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS wechat_owner_info (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        nickname TEXT,
+        uin INTEGER,
+        imei TEXT
     );
     CREATE TABLE IF NOT EXISTS wifi_networks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,8 +203,20 @@ inline constexpr const char* INSERT_WHATSAPP =
 inline constexpr const char* INSERT_TELEGRAM = 
     "INSERT INTO telegram_messages (sender, receiver, content, timestamp) VALUES (?, ?, ?, ?);";
 
-inline constexpr const char* INSERT_WECHAT = 
+inline constexpr const char* INSERT_WECHAT =
     "INSERT INTO wechat_messages (sender, receiver, content, timestamp) VALUES (?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_WECHAT_ENHANCED =
+    "INSERT INTO wechat_messages (sender, receiver, content, timestamp, msg_type, is_send, chatroom_name, sender_nickname, talker) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_WECHAT_CONTACT =
+    "INSERT OR IGNORE INTO wechat_contacts (username, nickname, remark, avatar_path, type, chatroom_flag) VALUES (?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_WECHAT_CHATROOM =
+    "INSERT OR IGNORE INTO wechat_chatrooms (chatroom_name, owner, member_list, member_count, create_time) VALUES (?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_WECHAT_OWNER =
+    "INSERT OR REPLACE INTO wechat_owner_info (username, nickname, uin, imei) VALUES (?, ?, ?, ?);";
 
 inline constexpr const char* INSERT_WIFI = 
     "INSERT INTO wifi_networks (ssid, pre_shared_key, key_mgmt) VALUES (?, ?, ?);";
