@@ -248,6 +248,105 @@ struct LinuxBrowserProfile {
     EvidenceProvenance provenance;   // Evidence provenance
 };
 
+// Browser history entry
+struct LinuxBrowserHistoryEntry {
+    std::string browserType;         // chrome, firefox, brave, opera
+    std::string profilePath;
+    std::string url;
+    std::string title;
+    int64_t visitTime = 0;
+    int visitCount = 0;
+    int visitDuration = 0;
+    std::string transitionType;      // LINK, TYPED, BOOKMARK, RELOAD
+    int isRedirect = 0;
+    std::string referrer;
+    std::string sourceFile;
+    EvidenceProvenance provenance;
+};
+
+// Browser cookie entry
+struct LinuxBrowserCookieEntry {
+    std::string browserType;
+    std::string profilePath;
+    std::string hostKey;
+    std::string name;
+    std::string value;
+    std::string path;
+    int64_t expiresUtc = 0;
+    int isSecure = 0;
+    int isHttponly = 0;
+    int isPersistent = 0;
+    std::string sourceFile;
+    EvidenceProvenance provenance;
+};
+
+// Browser download entry
+struct LinuxBrowserDownloadEntry {
+    std::string browserType;
+    std::string profilePath;
+    std::string url;
+    std::string targetPath;
+    int64_t startTime = 0;
+    int64_t endTime = 0;
+    int64_t receivedBytes = 0;
+    int64_t totalBytes = 0;
+    int state = 0;                   // 0=in_progress, 1=complete, 2=cancelled, 3=interrupted
+    std::string dangerType;
+    std::string mimeType;
+    std::string sourceFile;
+    EvidenceProvenance provenance;
+};
+
+// Browser bookmark entry
+struct LinuxBrowserBookmarkEntry {
+    std::string browserType;
+    std::string profilePath;
+    std::string url;
+    std::string title;
+    std::string folderPath;
+    int64_t dateAdded = 0;
+    int64_t dateLastUsed = 0;
+    std::string sourceFile;
+    EvidenceProvenance provenance;
+};
+
+// XDG Recent Document entry
+struct XDGRecentDocumentEntry {
+    std::string username;
+    std::string filePath;
+    std::string uri;
+    std::string mimeType;
+    int64_t modifiedTime = 0;
+    int isBookmarked = 0;
+    std::string sourceFile;
+    EvidenceProvenance provenance;
+};
+
+// XDG Trash entry
+struct XDGTrashEntry {
+    std::string username;
+    std::string originalPath;
+    int64_t deletionTime = 0;
+    std::string trashFilePath;
+    int64_t fileSize = 0;
+    std::string sourceFile;
+    EvidenceProvenance provenance;
+};
+
+// XDG Desktop file entry
+struct XDGDesktopFileEntry {
+    std::string filePath;
+    std::string name;
+    std::string execCommand;
+    std::string icon;
+    std::string categories;
+    std::string mimeType;
+    int isHidden = 0;
+    int isAutostart = 0;
+    std::string sourceFile;
+    EvidenceProvenance provenance;
+};
+
 // ============================================================================
 // Container Data Structures
 // ============================================================================

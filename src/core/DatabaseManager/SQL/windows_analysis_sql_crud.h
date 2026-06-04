@@ -67,6 +67,26 @@ inline constexpr const char* INSERT_SRUM_ENTRY =
     "INSERT INTO srum_entries (app_name, user_name, timestamp, bytes_received, bytes_sent, foreground_duration, background_duration, cpu_time_ms) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
 
+inline constexpr const char* INSERT_WIFI_PROFILE =
+    "INSERT INTO wifi_profiles (profile_name, ssid, connection_type, connection_mode, mac_address, first_connected, last_connected, dns_suffix, source_hive) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_RDP_CONNECTION =
+    "INSERT INTO rdp_connections (server_address, username_hint, last_connection_time, entry_type, source_hive) "
+    "VALUES (?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_SHIMCACHE_ENTRY =
+    "INSERT INTO shimcache_entries (entry_path, last_modified_time, entry_size, execution_flag, data_source, source_hive) "
+    "VALUES (?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_USERASSIST_ENTRY =
+    "INSERT INTO user_assist_entries (user_sid, entry_guid, rot13_path, decoded_path, run_count, focus_time, last_run_time, source_hive) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
+
+inline constexpr const char* INSERT_SHELLBAG_ENTRY =
+    "INSERT INTO shell_bag_entries (user_sid, bag_type, slot_index, shell_item_type, path, short_name, created_time, modified_time, accessed_time, source_hive) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
 inline constexpr const char* INSERT_BROWSER_HISTORY =
     "INSERT INTO browser_history (browser_name, profile_name, url, title, visit_time, visit_duration, visit_count, visit_type, is_redirect, referrer) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";

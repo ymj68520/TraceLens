@@ -432,13 +432,52 @@ bool FileExtractor::extractFileByInode(int64_t inode, const std::string& outputP
 }
 
 bool FileExtractor::extractFileByPath(const std::string& filePath, const std::string& outputPath) {
-    auto files = searchFiles("path='" + filePath + "'");
-    if (files.empty()) {
+    // Use parameterized query to prevent SQL injection
+    std::vector<FileRecord> results;
+
+    std::string sql = "SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5 "
+                      "FROM files WHERE path = ?";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(dbManager_->getDb(), sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        std::cerr << "Error preparing query: " << sqlite3_errmsg(dbManager_->getDb()) << std::endl;
+        return false;
+    }
+
+    sqlite3_bind_text(stmt, 1, filePath.c_str(), -1, SQLITE_STATIC);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        FileRecord record;
+        record.inode = sqlite3_column_int64(stmt, 0);
+        record.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        record.path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        record.size = sqlite3_column_int64(stmt, 3);
+        record.mtime = sqlite3_column_int64(stmt, 4);
+        record.ctime = sqlite3_column_int64(stmt, 5);
+        record.type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+        record.isDeleted = sqlite3_column_int(stmt, 7);
+        const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8));
+        record.md5 = md5Ptr ? md5Ptr : "";
+
+        // Set defaults for missing fields
+        record.atime = record.mtime;
+        record.crtime = record.ctime;
+        record.isAllocated = 1;
+        record.permissions = "0644";
+        record.uid = 0;
+        record.gid = 0;
+
+        results.push_back(record);
+    }
+
+    sqlite3_finalize(stmt);
+
+    if (results.empty()) {
         std::cerr << "Error: File with path " << filePath << " not found" << std::endl;
         return false;
     }
 
-    return extractFile(files[0], outputPath, true, nullptr);
+    return extractFile(results[0], outputPath, true, nullptr);
 }
 
 bool FileExtractor::extractFile(const FileRecord& record, const std::string& outputPath, bool overwrite, int* skippedCount) {

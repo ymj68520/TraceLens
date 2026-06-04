@@ -101,6 +101,22 @@ public:
     bool insertSrumEntry(const SrumEntry& entry);
     std::vector<SrumEntry> querySrumEntries(const std::string& whereClause = "");
 
+    // WiFi profile operations
+    bool insertWiFiProfile(const WiFiProfileInfo& profile);
+    std::vector<WiFiProfileInfo> queryWiFiProfiles(const std::string& whereClause = "");
+
+    // RDP connection operations
+    bool insertRDPConnection(const RDPConnectionInfo& conn);
+    std::vector<RDPConnectionInfo> queryRDPConnections(const std::string& whereClause = "");
+
+    // Shimcache entry operations
+    bool insertShimcacheEntry(const ShimcacheEntryInfo& entry);
+    std::vector<ShimcacheEntryInfo> queryShimcacheEntries(const std::string& whereClause = "");
+
+    // UserAssist entry operations
+    bool insertUserAssistEntry(const UserAssistEntryInfo& entry);
+    std::vector<UserAssistEntryInfo> queryUserAssistEntries(const std::string& whereClause = "");
+
     // Transaction management
     bool beginTransaction();
     bool commitTransaction();

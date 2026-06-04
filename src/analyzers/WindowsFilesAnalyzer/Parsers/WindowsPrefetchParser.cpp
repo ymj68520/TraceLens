@@ -249,11 +249,26 @@ bool PrefetchParser::parseHeader() {
 
     if (version_ >= PrefetchVersion::VERSION_30) {
         // Version 30/31 header structure
-        // Signature at offset 0, version at offset 4
-        uint32_t* versionPtr = reinterpret_cast<uint32_t*>(headerData_ + 4);
-        runCount_ = PrefetchHelpers::readUInt32LE(headerData_ + 8);
-        uint64_t lastRunTimeRaw = PrefetchHelpers::readUInt64LE(headerData_ + 12);
+        // Based on Windows Prefetch file format specification
+
+        // Run count at offset 0x98 (v30) or 0x98 (v31)
+        runCount_ = PrefetchHelpers::readUInt32LE(headerData_ + 0x98);
+
+        // Last run time at offset 0x80 (v30) or 0x80 (v31)
+        // There are up to 8 run times, each 8 bytes
+        uint64_t lastRunTimeRaw = PrefetchHelpers::readUInt64LE(headerData_ + 0x80);
         lastRunTime_ = PrefetchHelpers::filetimeToUnixTime(lastRunTimeRaw);
+
+        // Read additional run times (up to 8)
+        for (int i = 0; i < 8; ++i) {
+            uint64_t runTimeRaw = PrefetchHelpers::readUInt64LE(headerData_ + 0x80 + (i * 8));
+            if (runTimeRaw > 0) {
+                int64_t runTime = PrefetchHelpers::filetimeToUnixTime(runTimeRaw);
+                if (runTime > 0) {
+                    allRunTimes_.push_back(runTime);
+                }
+            }
+        }
 
         // Read file size
         file_.seekg(0, std::ios::end);
@@ -262,27 +277,24 @@ bool PrefetchParser::parseHeader() {
 
     } else if (version_ >= PrefetchVersion::VERSION_23) {
         // Version 23/26 header structure
-        // Read run count and last run time from known offsets
-        // Offsets vary; this is a simplified implementation
+        // Based on Windows Prefetch file format specification
 
-        // Try to find run count (usually around offset 8-16)
-        for (int offset = 8; offset < 32; offset += 4) {
-            uint32_t value = PrefetchHelpers::readUInt32LE(headerData_ + offset);
-            // Run count is typically a small number (< 10000)
-            if (value > 0 && value < 100000) {
-                runCount_ = value;
-                break;
-            }
-        }
+        // Run count at offset 0x90 (v23) or 0x90 (v26)
+        runCount_ = PrefetchHelpers::readUInt32LE(headerData_ + 0x90);
 
-        // Try to find last run time (usually around offset 16-24)
-        for (int offset = 16; offset < 64; offset += 8) {
-            uint64_t value = PrefetchHelpers::readUInt64LE(headerData_ + offset);
-            int64_t unixTime = PrefetchHelpers::filetimeToUnixTime(value);
-            // Check if it's a reasonable timestamp (between 2000 and 2030)
-            if (unixTime > 946684800 && unixTime < 1893456000) {
-                lastRunTime_ = unixTime;
-                break;
+        // Last run time at offset 0x78 (v23) or 0x80 (v26)
+        // There are up to 8 run times, each 8 bytes
+        uint64_t lastRunTimeRaw = PrefetchHelpers::readUInt64LE(headerData_ + 0x78);
+        lastRunTime_ = PrefetchHelpers::filetimeToUnixTime(lastRunTimeRaw);
+
+        // Read additional run times (up to 8)
+        for (int i = 0; i < 8; ++i) {
+            uint64_t runTimeRaw = PrefetchHelpers::readUInt64LE(headerData_ + 0x78 + (i * 8));
+            if (runTimeRaw > 0) {
+                int64_t runTime = PrefetchHelpers::filetimeToUnixTime(runTimeRaw);
+                if (runTime > 0) {
+                    allRunTimes_.push_back(runTime);
+                }
             }
         }
 
@@ -374,58 +386,200 @@ bool PrefetchParser::parseExecutablePath() {
 
 bool PrefetchParser::parseReferencedFiles() {
     // Parse list of files loaded by the executable
-    // This is version-specific and complex
-    // For now, provide a placeholder implementation
+    // Prefetch file structure (v23+):
+    // - Header: 84 bytes (v30/31) or 80 bytes (v23/26)
+    // - Filename section: UTF-16LE executable filename
+    // - File information section: metrics for each referenced file
+    // - File paths section: actual file paths as UTF-16LE strings
 
     if (version_ < PrefetchVersion::VERSION_23) {
         return true; // Old versions don't have this
     }
-
-    // Try to find file references in the file
-    // This is simplified; real implementation needs proper section parsing
 
     // Add the executable itself as a referenced file
     if (!executablePath_.empty()) {
         referencedFiles_.push_back(executablePath_);
     }
 
-    // Common DLLs that many executables load
-    const char* commonDLLs[] = {
-        "C:\\Windows\\System32\\kernel32.dll",
-        "C:\\Windows\\System32\\ntdll.dll",
-        "C:\\Windows\\System32\\user32.dll",
-        "C:\\Windows\\System32\\gdi32.dll"
-    };
+    // Parse the file information section
+    // For v30/31: File info starts at offset 0xD0 (208)
+    // For v23/26: File info starts at offset 0x64 (100)
+    uint32_t fileInfoOffset = 0;
+    uint32_t fileInfoSize = 0;
+    uint32_t fileInfoEntrySize = 0;
+    uint32_t numberOfFileEntries = 0;
+    uint32_t filenameStringsOffset = 0;
+    uint32_t filenameStringsSize = 0;
 
-    for (const char* dll : commonDLLs) {
-        referencedFiles_.push_back(dll);
+    if (version_ >= PrefetchVersion::VERSION_30) {
+        // v30/31 offsets
+        fileInfoOffset = PrefetchHelpers::readUInt32LE(headerData_ + 0x64);
+        fileInfoSize = PrefetchHelpers::readUInt32LE(headerData_ + 0x68);
+        filenameStringsOffset = PrefetchHelpers::readUInt32LE(headerData_ + 0x6C);
+        filenameStringsSize = PrefetchHelpers::readUInt32LE(headerData_ + 0x70);
+    } else {
+        // v23/26 offsets
+        fileInfoOffset = PrefetchHelpers::readUInt32LE(headerData_ + 0x50);
+        fileInfoSize = PrefetchHelpers::readUInt32LE(headerData_ + 0x54);
+        filenameStringsOffset = PrefetchHelpers::readUInt32LE(headerData_ + 0x58);
+        filenameStringsSize = PrefetchHelpers::readUInt32LE(headerData_ + 0x5C);
     }
 
-    return true;
+    if (fileInfoOffset == 0 || fileInfoSize == 0) {
+        return true; // No file info section
+    }
+
+    // Read the file info section header
+    if (!seekToOffset(fileInfoOffset)) {
+        return true;
+    }
+
+    // First 4 bytes: number of file entries
+    char entryCountBuf[4];
+    if (!readData(entryCountBuf, 4)) {
+        return true;
+    }
+    numberOfFileEntries = PrefetchHelpers::readUInt32LE(entryCountBuf);
+
+    // Skip 4 bytes of padding/unknown
+    char skipBuf[4];
+    readData(skipBuf, 4);
+
+    // Each entry is 32 bytes for v30/31, 28 bytes for v23/26
+    fileInfoEntrySize = (version_ >= PrefetchVersion::VERSION_30) ? 32 : 28;
+
+    // Read file entries
+    for (uint32_t i = 0; i < numberOfFileEntries && i < 1000; ++i) {
+        char entryBuf[32];
+        if (!readData(entryBuf, fileInfoEntrySize)) {
+            break;
+        }
+
+        // First 4 bytes: filename offset (relative to filenameStringsOffset)
+        uint32_t filenameOffset = PrefetchHelpers::readUInt32LE(entryBuf);
+        // Next 4 bytes: filename length in bytes
+        uint16_t filenameLength = PrefetchHelpers::readUInt16LE(entryBuf + 4);
+
+        if (filenameOffset > 0 && filenameLength > 0 && filenameLength < 1024) {
+            // Read the filename from the filename strings section
+            uint32_t absoluteOffset = filenameStringsOffset + filenameOffset;
+            std::string filename = readStringAtOffset(absoluteOffset, filenameLength);
+
+            if (!filename.empty()) {
+                referencedFiles_.push_back(filename);
+            }
+        }
+    }
+
+    return !referencedFiles_.empty();
 }
 
 bool PrefetchParser::parseReferencedDirectories() {
     // Parse list of directories accessed by the executable
-    // This is version-specific and complex
+    // For v30/31: Directory strings section offset is at header offset 0x78
+    // For v23/26: Directory strings section offset is at header offset 0x60
 
-    if (version_ < PrefetchVersion::VERSION_26) {
+    if (version_ < PrefetchVersion::VERSION_23) {
         return true; // Older versions don't have this
     }
 
-    // Add common directories
-    referencedDirectories_.push_back("C:\\Windows\\System32");
-    referencedDirectories_.push_back("C:\\Windows");
-
-    if (!executablePath_.empty()) {
-        // Extract directory from executable path
-        size_t lastBackslash = executablePath_.find_last_of('\\');
+    // Extract directories from referenced files
+    for (const auto& file : referencedFiles_) {
+        size_t lastBackslash = file.find_last_of('\\');
         if (lastBackslash != std::string::npos) {
-            std::string dir = executablePath_.substr(0, lastBackslash);
-            referencedDirectories_.push_back(dir);
+            std::string dir = file.substr(0, lastBackslash);
+            // Avoid duplicates
+            bool found = false;
+            for (const auto& existing : referencedDirectories_) {
+                if (existing == dir) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                referencedDirectories_.push_back(dir);
+            }
         }
     }
 
-    return true;
+    // Add the executable's directory
+    if (!executablePath_.empty()) {
+        size_t lastBackslash = executablePath_.find_last_of('\\');
+        if (lastBackslash != std::string::npos) {
+            std::string dir = executablePath_.substr(0, lastBackslash);
+            bool found = false;
+            for (const auto& existing : referencedDirectories_) {
+                if (existing == dir) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                referencedDirectories_.push_back(dir);
+            }
+        }
+    }
+
+    // Also try to parse the directory strings section if available
+    uint32_t dirStringsOffset = 0;
+    uint32_t dirStringsSize = 0;
+
+    if (version_ >= PrefetchVersion::VERSION_30) {
+        dirStringsOffset = PrefetchHelpers::readUInt32LE(headerData_ + 0x78);
+        dirStringsSize = PrefetchHelpers::readUInt32LE(headerData_ + 0x7C);
+    } else {
+        dirStringsOffset = PrefetchHelpers::readUInt32LE(headerData_ + 0x60);
+        dirStringsSize = PrefetchHelpers::readUInt32LE(headerData_ + 0x64);
+    }
+
+    if (dirStringsOffset > 0 && dirStringsSize > 0 && dirStringsSize < 65536) {
+        // Parse directory strings (UTF-16LE, null-terminated)
+        if (seekToOffset(dirStringsOffset)) {
+            std::vector<char> dirBuffer(dirStringsSize);
+            if (readData(dirBuffer.data(), dirStringsSize)) {
+                // Parse UTF-16LE strings
+                size_t pos = 0;
+                while (pos < dirStringsSize - 1) {
+                    // Find the end of this string (two null bytes)
+                    size_t strEnd = pos;
+                    while (strEnd < dirStringsSize - 1) {
+                        if (dirBuffer[strEnd] == 0 && dirBuffer[strEnd + 1] == 0) {
+                            break;
+                        }
+                        strEnd += 2;
+                    }
+
+                    if (strEnd > pos) {
+                        // Convert UTF-16LE to ASCII (simplified)
+                        std::string dirName;
+                        for (size_t j = pos; j < strEnd; j += 2) {
+                            char c = dirBuffer[j];
+                            if (c >= 32 && c < 127) {
+                                dirName += c;
+                            }
+                        }
+
+                        if (!dirName.empty()) {
+                            bool found = false;
+                            for (const auto& existing : referencedDirectories_) {
+                                if (existing == dirName) {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (!found) {
+                                referencedDirectories_.push_back(dirName);
+                            }
+                        }
+                    }
+
+                    pos = strEnd + 2; // Skip past the null terminator
+                }
+            }
+        }
+    }
+
+    return !referencedDirectories_.empty();
 }
 
 bool PrefetchParser::seekToOffset(uint32_t offset) {

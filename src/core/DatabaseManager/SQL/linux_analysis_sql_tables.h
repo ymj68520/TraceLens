@@ -369,6 +369,144 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
     );
     CREATE INDEX IF NOT EXISTS idx_browser_profiles_llm_analyzed ON linux_browser_profiles(llm_analyzed_at);
 
+    -- Browser History
+    CREATE TABLE IF NOT EXISTS linux_browser_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        browser_type TEXT,
+        profile_path TEXT,
+        url TEXT,
+        title TEXT,
+        visit_time INTEGER,
+        visit_count INTEGER,
+        visit_duration INTEGER,
+        transition_type TEXT,
+        is_redirect INTEGER,
+        referrer TEXT,
+        source_file TEXT,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_browser_history_time ON linux_browser_history(visit_time);
+    CREATE INDEX IF NOT EXISTS idx_browser_history_url ON linux_browser_history(url);
+
+    -- Browser Cookies
+    CREATE TABLE IF NOT EXISTS linux_browser_cookies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        browser_type TEXT,
+        profile_path TEXT,
+        host_key TEXT,
+        name TEXT,
+        value TEXT,
+        path TEXT,
+        expires_utc INTEGER,
+        is_secure INTEGER,
+        is_httponly INTEGER,
+        is_persistent INTEGER,
+        source_file TEXT,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_browser_cookies_host ON linux_browser_cookies(host_key);
+
+    -- Browser Downloads
+    CREATE TABLE IF NOT EXISTS linux_browser_downloads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        browser_type TEXT,
+        profile_path TEXT,
+        url TEXT,
+        target_path TEXT,
+        start_time INTEGER,
+        end_time INTEGER,
+        received_bytes INTEGER,
+        total_bytes INTEGER,
+        state INTEGER,
+        danger_type TEXT,
+        mime_type TEXT,
+        source_file TEXT,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_browser_downloads_time ON linux_browser_downloads(start_time);
+
+    -- Browser Bookmarks
+    CREATE TABLE IF NOT EXISTS linux_browser_bookmarks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        browser_type TEXT,
+        profile_path TEXT,
+        url TEXT,
+        title TEXT,
+        folder_path TEXT,
+        date_added INTEGER,
+        date_last_used INTEGER,
+        source_file TEXT,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT
+    );
+
+    -- XDG Recent Documents
+    CREATE TABLE IF NOT EXISTS linux_recent_documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        file_path TEXT,
+        uri TEXT,
+        mime_type TEXT,
+        modified_time INTEGER,
+        is_bookmarked INTEGER,
+        source_file TEXT,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT
+    );
+
+    -- XDG Trash Entries
+    CREATE TABLE IF NOT EXISTS linux_trash_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        original_path TEXT,
+        deletion_time INTEGER,
+        trash_file_path TEXT,
+        file_size INTEGER,
+        source_file TEXT,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT
+    );
+
+    -- XDG Desktop Files
+    CREATE TABLE IF NOT EXISTS linux_desktop_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT,
+        name TEXT,
+        exec_command TEXT,
+        icon TEXT,
+        categories TEXT,
+        mime_type TEXT,
+        is_hidden INTEGER,
+        is_autostart INTEGER,
+        source_file TEXT,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT
+    );
+
     -- Docker Containers
     CREATE TABLE IF NOT EXISTS linux_docker_containers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

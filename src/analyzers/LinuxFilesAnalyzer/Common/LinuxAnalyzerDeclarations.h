@@ -131,6 +131,27 @@ public:
     // Phase 14: Security bypass
     void analyzeSecurityBypass();
 
+    // Phase 15: Pseudo-filesystem markers
+    void analyzePseudoFilesystems();
+
+    // Phase 16: DNS configuration
+    void analyzeDNSConfiguration();
+
+    // Phase 17: CUPS logs
+    void analyzeCUPSLogs();
+
+    // Phase 18: systemd-coredump
+    void analyzeCoredumps();
+
+    // Phase 19: Snap/Flatpak packages
+    void analyzeSnapFlatpak();
+
+    // Phase 20: Browser detailed data
+    void analyzeBrowserDetailedData();
+
+    // Phase 21: XDG desktop artifacts
+    void analyzeXDGArtifacts();
+
     // Phase 16: Rule engine
     void analyzeWithRuleEngine();
 

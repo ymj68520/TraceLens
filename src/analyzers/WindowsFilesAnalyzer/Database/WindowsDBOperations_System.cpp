@@ -269,3 +269,174 @@ std::vector<SrumEntry> WindowsAnalysisDatabase::querySrumEntries(const std::stri
     return results;
 }
 
+// WiFi profile operations
+bool WindowsAnalysisDatabase::insertWiFiProfile(const WiFiProfileInfo& profile) {
+    const char* sql = "INSERT INTO wifi_profiles (profile_name, ssid, connection_type, connection_mode, mac_address, first_connected, last_connected, dns_suffix, source_hive) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    BIND_TEXT(stmt, 1, profile.profileName);
+    BIND_TEXT(stmt, 2, profile.ssid);
+    BIND_TEXT(stmt, 3, profile.connectionType);
+    BIND_TEXT(stmt, 4, profile.connectionMode);
+    BIND_TEXT(stmt, 5, profile.macAddress);
+    BIND_INT64(stmt, 6, profile.firstConnected);
+    BIND_INT64(stmt, 7, profile.lastConnected);
+    BIND_TEXT(stmt, 8, profile.dnsSuffix);
+    BIND_TEXT(stmt, 9, profile.sourceHive);
+
+    bool result = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::vector<WiFiProfileInfo> WindowsAnalysisDatabase::queryWiFiProfiles(const std::string& whereClause) {
+    std::vector<WiFiProfileInfo> results;
+    std::string sql = "SELECT profile_name, ssid, connection_type, connection_mode, mac_address, first_connected, last_connected, dns_suffix, source_hive FROM wifi_profiles";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        WiFiProfileInfo profile;
+        profile.profileName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        profile.ssid = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        profile.connectionType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
+        profile.connectionMode = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
+        profile.macAddress = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)) ?: "";
+        profile.firstConnected = sqlite3_column_int64(stmt, 5);
+        profile.lastConnected = sqlite3_column_int64(stmt, 6);
+        profile.dnsSuffix = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)) ?: "";
+        profile.sourceHive = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8)) ?: "";
+        results.push_back(profile);
+    }
+    sqlite3_finalize(stmt);
+    return results;
+}
+
+// RDP connection operations
+bool WindowsAnalysisDatabase::insertRDPConnection(const RDPConnectionInfo& conn) {
+    const char* sql = "INSERT INTO rdp_connections (server_address, username_hint, last_connection_time, entry_type, source_hive) VALUES (?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    BIND_TEXT(stmt, 1, conn.serverAddress);
+    BIND_TEXT(stmt, 2, conn.usernameHint);
+    BIND_INT64(stmt, 3, conn.lastConnectionTime);
+    BIND_TEXT(stmt, 4, conn.entryType);
+    BIND_TEXT(stmt, 5, conn.sourceHive);
+
+    bool result = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::vector<RDPConnectionInfo> WindowsAnalysisDatabase::queryRDPConnections(const std::string& whereClause) {
+    std::vector<RDPConnectionInfo> results;
+    std::string sql = "SELECT server_address, username_hint, last_connection_time, entry_type, source_hive FROM rdp_connections";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        RDPConnectionInfo conn;
+        conn.serverAddress = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        conn.usernameHint = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        conn.lastConnectionTime = sqlite3_column_int64(stmt, 2);
+        conn.entryType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
+        conn.sourceHive = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)) ?: "";
+        results.push_back(conn);
+    }
+    sqlite3_finalize(stmt);
+    return results;
+}
+
+// Shimcache entry operations
+bool WindowsAnalysisDatabase::insertShimcacheEntry(const ShimcacheEntryInfo& entry) {
+    const char* sql = "INSERT INTO shimcache_entries (entry_path, last_modified_time, entry_size, execution_flag, data_source, source_hive) VALUES (?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    BIND_TEXT(stmt, 1, entry.entryPath);
+    BIND_INT64(stmt, 2, entry.lastModifiedTime);
+    BIND_INT64(stmt, 3, entry.entrySize);
+    BIND_INT(stmt, 4, entry.executionFlag);
+    BIND_TEXT(stmt, 5, entry.dataSource);
+    BIND_TEXT(stmt, 6, entry.sourceHive);
+
+    bool result = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::vector<ShimcacheEntryInfo> WindowsAnalysisDatabase::queryShimcacheEntries(const std::string& whereClause) {
+    std::vector<ShimcacheEntryInfo> results;
+    std::string sql = "SELECT entry_path, last_modified_time, entry_size, execution_flag, data_source, source_hive FROM shimcache_entries";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        ShimcacheEntryInfo entry;
+        entry.entryPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        entry.lastModifiedTime = sqlite3_column_int64(stmt, 1);
+        entry.entrySize = sqlite3_column_int64(stmt, 2);
+        entry.executionFlag = sqlite3_column_int(stmt, 3);
+        entry.dataSource = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)) ?: "";
+        entry.sourceHive = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)) ?: "";
+        results.push_back(entry);
+    }
+    sqlite3_finalize(stmt);
+    return results;
+}
+
+// UserAssist entry operations
+bool WindowsAnalysisDatabase::insertUserAssistEntry(const UserAssistEntryInfo& entry) {
+    const char* sql = "INSERT INTO user_assist_entries (user_sid, entry_guid, rot13_path, decoded_path, run_count, focus_time, last_run_time, source_hive) VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    BIND_TEXT(stmt, 1, entry.userSid);
+    BIND_TEXT(stmt, 2, entry.entryGuid);
+    BIND_TEXT(stmt, 3, entry.rot13Path);
+    BIND_TEXT(stmt, 4, entry.decodedPath);
+    BIND_INT(stmt, 5, entry.runCount);
+    BIND_INT(stmt, 6, entry.focusTime);
+    BIND_INT64(stmt, 7, entry.lastRunTime);
+    BIND_TEXT(stmt, 8, entry.sourceHive);
+
+    bool result = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::vector<UserAssistEntryInfo> WindowsAnalysisDatabase::queryUserAssistEntries(const std::string& whereClause) {
+    std::vector<UserAssistEntryInfo> results;
+    std::string sql = "SELECT user_sid, entry_guid, rot13_path, decoded_path, run_count, focus_time, last_run_time, source_hive FROM user_assist_entries";
+    if (!whereClause.empty()) sql += " WHERE " + whereClause;
+    sql += ";";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return results;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        UserAssistEntryInfo entry;
+        entry.userSid = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ?: "";
+        entry.entryGuid = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) ?: "";
+        entry.rot13Path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)) ?: "";
+        entry.decodedPath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)) ?: "";
+        entry.runCount = sqlite3_column_int(stmt, 4);
+        entry.focusTime = sqlite3_column_int(stmt, 5);
+        entry.lastRunTime = sqlite3_column_int64(stmt, 6);
+        entry.sourceHive = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)) ?: "";
+        results.push_back(entry);
+    }
+    sqlite3_finalize(stmt);
+    return results;
+}

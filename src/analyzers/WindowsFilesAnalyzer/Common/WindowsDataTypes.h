@@ -303,4 +303,62 @@ struct SrumEntry {
     int64_t cpuTimeMs;              // CPU time in milliseconds
 };
 
+// WiFi connection profile information
+struct WiFiProfileInfo {
+    std::string profileName;        // WiFi network name (SSID)
+    std::string ssid;               // SSID (hex encoded)
+    std::string connectionType;     // Infrastructure / Ad-hoc
+    std::string connectionMode;     // Auto / Manual
+    std::string macAddress;         // Gateway MAC address
+    int64_t firstConnected;         // First connection time (FILETIME)
+    int64_t lastConnected;          // Last connection time (FILETIME)
+    std::string dnsSuffix;          // DNS suffix
+    std::string sourceHive;         // Source registry hive
+};
+
+// RDP connection information
+struct RDPConnectionInfo {
+    std::string serverAddress;      // RDP server address
+    std::string usernameHint;       // Login username hint
+    int64_t lastConnectionTime;     // Last connection time (FILETIME)
+    std::string entryType;          // Default / MRU
+    std::string sourceHive;         // Source registry hive
+};
+
+// Shimcache (AppCompatCache) entry
+struct ShimcacheEntryInfo {
+    std::string entryPath;          // File path
+    int64_t lastModifiedTime;       // Last modified time (FILETIME)
+    int64_t entrySize;              // File size
+    int executionFlag;              // Whether executed
+    std::string dataSource;         // Data source
+    std::string sourceHive;         // Source hive
+};
+
+// UserAssist entry
+struct UserAssistEntryInfo {
+    std::string userSid;            // User SID
+    std::string entryGuid;          // UserAssist GUID
+    std::string rot13Path;          // Original ROT13 encoded path
+    std::string decodedPath;        // Decoded path
+    int runCount;                   // Run count
+    int focusTime;                  // Focus time (ms)
+    int64_t lastRunTime;            // Last run time (FILETIME)
+    std::string sourceHive;         // Source hive
+};
+
+// ShellBag entry
+struct ShellBagEntryInfo {
+    std::string userSid;            // User SID
+    std::string bagType;            // Bags / BagMRU
+    int slotIndex;                  // Slot index
+    int shellItemType;              // Shell item type
+    std::string path;               // Parsed path
+    std::string shortName;          // 8.3 short filename
+    int64_t createdTime;            // Created time
+    int64_t modifiedTime;           // Modified time
+    int64_t accessedTime;           // Accessed time
+    std::string sourceHive;         // Source hive
+};
+
 #endif // WINDOWS_DATA_TYPES_H

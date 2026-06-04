@@ -19,6 +19,7 @@ pkg_check_modules(LIBEVTX REQUIRED libevtx)
 pkg_check_modules(LIBBFIO REQUIRED libbfio)
 pkg_check_modules(LIBESEDB REQUIRED libesedb)
 pkg_check_modules(LIBOLECF REQUIRED libolecf)
+pkg_check_modules(LIBFSNTFS REQUIRED libfsntfs)
 pkg_check_modules(XAPIAN REQUIRED xapian-core)
 pkg_check_modules(POPPLER REQUIRED poppler-cpp)
 
@@ -119,6 +120,7 @@ include_directories(
   ${LIBBFIO_INCLUDE_DIRS}
   ${LIBESEDB_INCLUDE_DIRS}
   ${LIBOLECF_INCLUDE_DIRS}
+  ${LIBFSNTFS_INCLUDE_DIRS}
   ${XAPIAN_INCLUDE_DIRS}
   ${POPPLER_INCLUDE_DIRS}
   ${ZLIB_INCLUDE_DIRS}
@@ -407,6 +409,7 @@ else()
     ${LIBBFIO_LIBRARIES}
     ${LIBESEDB_LIBRARIES}
     ${LIBOLECF_LIBRARIES}
+    ${LIBFSNTFS_LIBRARIES}
     ${XAPIAN_LIBRARIES}
     ${POPPLER_LIBRARIES}
     mysqlclient

@@ -368,6 +368,94 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
         llm_model_used TEXT
     );
 
+    -- WiFi Connection Profiles
+    CREATE TABLE IF NOT EXISTS wifi_profiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_name TEXT,
+        ssid TEXT,
+        connection_type TEXT,
+        connection_mode TEXT,
+        mac_address TEXT,
+        first_connected INTEGER,
+        last_connected INTEGER,
+        dns_suffix TEXT,
+        source_hive TEXT,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT
+    );
+
+    -- RDP Connection History
+    CREATE TABLE IF NOT EXISTS rdp_connections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        server_address TEXT,
+        username_hint TEXT,
+        last_connection_time INTEGER,
+        entry_type TEXT,
+        source_hive TEXT,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT
+    );
+
+    -- Shimcache (AppCompatCache) Entries
+    CREATE TABLE IF NOT EXISTS shimcache_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entry_path TEXT,
+        last_modified_time INTEGER,
+        entry_size INTEGER,
+        execution_flag INTEGER,
+        data_source TEXT,
+        source_hive TEXT,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT
+    );
+
+    -- UserAssist Entries
+    CREATE TABLE IF NOT EXISTS user_assist_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_sid TEXT,
+        entry_guid TEXT,
+        rot13_path TEXT,
+        decoded_path TEXT,
+        run_count INTEGER,
+        focus_time INTEGER,
+        last_run_time INTEGER,
+        source_hive TEXT,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT
+    );
+
+    -- ShellBag Entries
+    CREATE TABLE IF NOT EXISTS shell_bag_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_sid TEXT,
+        bag_type TEXT,
+        slot_index INTEGER,
+        shell_item_type INTEGER,
+        path TEXT,
+        short_name TEXT,
+        created_time INTEGER,
+        modified_time INTEGER,
+        accessed_time INTEGER,
+        source_hive TEXT,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT
+    );
+
     -- ============================================================================
     -- DLL Analysis Tables
     -- ============================================================================

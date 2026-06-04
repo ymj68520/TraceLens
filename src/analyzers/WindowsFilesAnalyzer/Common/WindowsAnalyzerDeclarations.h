@@ -101,6 +101,10 @@ private:
     std::vector<WindowsUserInfo> parseUserAccountsFromSAM(const std::string& samPath);
     std::vector<USBDeviceInfo> parseUSBDevicesFromRegistry(const std::string& systemPath);
     std::vector<WindowsServiceInfo> parseServicesFromRegistry(const std::string& systemPath);
+    std::vector<WiFiProfileInfo> parseWiFiProfilesFromRegistry(const std::string& softwarePath);
+    std::vector<RDPConnectionInfo> parseRDPConnectionsFromRegistry(const std::string& ntuserPath);
+    std::vector<ShimcacheEntryInfo> parseShimcacheFromRegistry(const std::string& systemPath);
+    std::vector<UserAssistEntryInfo> parseUserAssistFromRegistry(const std::string& ntuserPath);
 
     // Event Log parsing helpers
     std::pair<std::vector<EventLogEntry>, int> parseEventLogWithRecovery(const std::string& logPath);
