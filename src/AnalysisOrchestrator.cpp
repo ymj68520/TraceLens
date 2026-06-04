@@ -105,6 +105,9 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             std::cout << "[Android] Analyzing..." << std::endl;
             auto dbMgr = std::make_unique<DatabaseManager>(effectiveRawDb);
             auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(args.image_path, dbMgr.get());
+            if (!args.wechat_password.empty()) {
+                androidAnalyzer->setWeChatPassword(args.wechat_password);
+            }
             androidAnalyzer->setOutputDatabasePath(prefix + baseName + "_android.db");
             if (androidAnalyzer->initialize()) {
                 androidAnalyzer->analyzeAndroidData();

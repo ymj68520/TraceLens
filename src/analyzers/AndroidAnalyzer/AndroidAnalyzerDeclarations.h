@@ -43,6 +43,9 @@ public:
     bool initialize();
     
     void setOutputDatabasePath(const std::string& path) { outputDbPath_ = path; }
+
+    void setWeChatPassword(const std::string& password) { wechatPassword_ = password; }
+    const std::string& getWeChatPassword() const { return wechatPassword_; }
     
     /**
      * @brief Analyze all Android data
@@ -115,4 +118,5 @@ private:
     DatabaseManager* dbManager_;
     std::unique_ptr<FileExtractor> fileExtractor_;
     std::unique_ptr<AndroidAnalysisDatabase> androidDb_;
+    std::string wechatPassword_;
 };

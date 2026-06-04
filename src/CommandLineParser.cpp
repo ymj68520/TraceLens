@@ -32,6 +32,7 @@ void CommandLineParser::printUsage(const char* programName) {
     std::cout << "  --http-server [port]        Start HTTP server (default 8080)\n\n";
     std::cout << "Platform Analysis:\n";
     std::cout << "  --android-analyze           Analyze Android data\n";
+    std::cout << "  --wechat-password <pass>    WeChat SQLCipher decryption password\n";
     std::cout << "  --windows-analyze           Analyze Windows artifacts\n";
     std::cout << "  --linux-analyze             Analyze Linux artifacts\n\n";
     std::cout << "File Filter:\n";
@@ -85,6 +86,8 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
             }
         } else if (arg == "--android-analyze") {
             args.android_analyze = true;
+        } else if (arg == "--wechat-password" && i + 1 < argc) {
+            args.wechat_password = argv[++i];
         } else if (arg == "--windows-analyze") {
             args.windows_analyze = true;
         } else if (arg == "--linux-analyze") {

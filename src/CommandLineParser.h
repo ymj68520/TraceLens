@@ -27,6 +27,7 @@ struct CommandLineArgs {
     bool extract_deleted = false;
     bool overwrite = false;
     bool android_analyze = false;
+    std::string wechat_password;
     bool windows_analyze = false;
     bool linux_analyze = false;
     bool analyze_dlls = false; // 启用DLL分析
