@@ -36,6 +36,13 @@ NLOHMANN_JSON_SERIALIZE_ENUM(XFSMode, {
     {XFSMode::Pure, "Pure"}
 })
 
+NLOHMANN_JSON_SERIALIZE_ENUM(ForensicScenario, {
+    {ForensicScenario::ANDROID, "ANDROID"},
+    {ForensicScenario::WINDOWS, "WINDOWS"},
+    {ForensicScenario::LINUX, "LINUX"},
+    {ForensicScenario::SERVER_CLOUD, "SERVER_CLOUD"}
+})
+
 void to_json(nlohmann::json& j, const TaskProgress& p) {
     j = nlohmann::json{
         {"current_phase", p.current_phase},
@@ -64,7 +71,8 @@ void to_json(nlohmann::json& j, const AnalysisTask& t) {
     j["priority"] = t.priority;
     to_json(j["progress"], t.progress);
     j["result_cache"] = t.result_cache;
-    j["android_analyze"] = t.android_analyze;
+    j["scenarios"] = t.scenarios;
+    j["android_analyze"] = t.get_android_analyze();  // Backward compat
     j["xfs_mode"] = t.xfs_mode;
     j["db_output_dir"] = t.db_output_dir;
     j["error_details"] = t.error_details;
@@ -93,7 +101,13 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     j.at("priority").get_to(t.priority);
     from_json(j.at("progress"), t.progress);
     if(j.contains("result_cache")) j.at("result_cache").get_to(t.result_cache);
-    if(j.contains("android_analyze")) j.at("android_analyze").get_to(t.android_analyze);
+    // Backward compat: handle scenarios field
+    if (j.contains("scenarios")) {
+        j.at("scenarios").get_to(t.scenarios);
+    } else if (j.contains("android_analyze") && j["android_analyze"].get<bool>()) {
+        // Old format: convert android_analyze: true → scenarios: [ANDROID]
+        t.scenarios = {ForensicScenario::ANDROID};
+    }
     if(j.contains("xfs_mode")) j.at("xfs_mode").get_to(t.xfs_mode);
     if(j.contains("db_output_dir")) j.at("db_output_dir").get_to(t.db_output_dir);
     if(j.contains("error_details")) j.at("error_details").get_to(t.error_details);
