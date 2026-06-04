@@ -2,9 +2,10 @@
 #include "../../analyzers/ImageAnalyzer/ImageAnalyzerDataTypes.h"
 #include "PathManager/PathManager.h"
 
-namespace forensics {
-
-// Enum serialization
+// Enum serialization macros must be at global scope (same namespace as the enum
+// types) so that nlohmann::json can find them via ADL (Argument Dependent
+// Lookup).  The enum types (TaskStatus, TaskPriority, etc.) are declared at
+// global scope in HTTPServerDataTypes.h and ImageAnalyzerDataTypes.h.
 NLOHMANN_JSON_SERIALIZE_ENUM(TaskStatus, {
     {TaskStatus::PENDING, "PENDING"},
     {TaskStatus::RUNNING, "RUNNING"},
@@ -42,6 +43,8 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ForensicScenario, {
     {ForensicScenario::LINUX, "linux"},
     {ForensicScenario::SERVER_CLOUD, "server_cloud"}
 })
+
+namespace forensics {
 
 void to_json(nlohmann::json& j, const TaskProgress& p) {
     j = nlohmann::json{
@@ -101,7 +104,15 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     j.at("priority").get_to(t.priority);
     from_json(j.at("progress"), t.progress);
     if(j.contains("result_cache")) j.at("result_cache").get_to(t.result_cache);
-    if(j.contains("scenarios")) j.at("scenarios").get_to(t.scenarios);
+    if(j.contains("scenarios")) {
+        t.scenarios.clear();
+        for (const auto& s : j.at("scenarios")) {
+            auto scenario = string_to_scenario(s.get<std::string>());
+            if (scenario.has_value()) {
+                t.scenarios.push_back(scenario.value());
+            }
+        }
+    }
     else if(j.contains("android_analyze") && j["android_analyze"].get<bool>()) t.scenarios = {ForensicScenario::ANDROID};
     if(j.contains("xfs_mode")) j.at("xfs_mode").get_to(t.xfs_mode);
     if(j.contains("db_output_dir")) j.at("db_output_dir").get_to(t.db_output_dir);
