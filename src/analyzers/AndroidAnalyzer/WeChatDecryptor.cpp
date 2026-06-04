@@ -33,6 +33,11 @@ bool WeChatDecryptor::openDatabase(const std::string& dbPath, const std::string&
         return false;
     }
 
+#ifndef HAVE_SQLCIPHER
+    lastError_ = "SQLCipher support not compiled in. Install libsqlcipher-dev and rebuild.";
+    return false;
+#endif
+
     // Try SQLCipher 4.x defaults first (newer WeChat versions)
     if (tryOpenWithCipher(dbPath, password, 64000, "sha512")) {
         return true;
@@ -57,6 +62,7 @@ bool WeChatDecryptor::tryOpenWithCipher(const std::string& dbPath, const std::st
         return false;
     }
 
+#ifdef HAVE_SQLCIPHER
     // Set SQLCipher key using C API to avoid SQL injection
     if (sqlite3_key(db_, password.c_str(), (int)password.size()) != SQLITE_OK) {
         lastError_ = "Failed to set cipher key: " + std::string(sqlite3_errmsg(db_));
@@ -81,6 +87,12 @@ bool WeChatDecryptor::tryOpenWithCipher(const std::string& dbPath, const std::st
     } else {
         sqlite3_exec(db_, "PRAGMA cipher_page_size = 1024;", nullptr, nullptr, nullptr);
     }
+#else
+    // SQLCipher not available - cannot decrypt
+    lastError_ = "SQLCipher support not compiled in. Install libsqlcipher-dev and rebuild.";
+    close();
+    return false;
+#endif
 
     // Verify by querying sqlite_master
     sqlite3_stmt* stmt = nullptr;
