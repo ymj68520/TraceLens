@@ -75,7 +75,7 @@ std::string TaskManager::create_task(const std::string& path,
                                    TaskPriority priority,
                                    const std::map<std::string, std::string>& metadata,
                                    const std::vector<TaskDependency>& dependencies,
-                                   bool android_analyze,
+                                   const std::vector<ForensicScenario>& scenarios,
                                    XFSMode xfs_mode,
                                    const std::string& db_output_dir,
                                    bool llm_analyze,
@@ -105,7 +105,7 @@ std::string TaskManager::create_task(const std::string& path,
     new_task.dependencies = dependencies;
     new_task.dependents = {};
     new_task.result_cache = "";
-    new_task.android_analyze = android_analyze;
+    new_task.scenarios = scenarios;
     new_task.xfs_mode = xfs_mode;
     new_task.db_output_dir = db_output_dir;
     new_task.llm_analyze = llm_analyze;
@@ -186,14 +186,11 @@ void TaskManager::set_result_db(const std::string& id, const std::string& db_pat
     }
 }
 
-void TaskManager::set_android_analyze_options(const std::string& id, bool android_analyze, XFSMode xfs_mode, const std::string& db_output_dir) {
+void TaskManager::set_scenarios(const std::string& id, const std::vector<ForensicScenario>& scenarios) {
     std::lock_guard<std::mutex> lock(mtx_);
     if (tasks_.count(id)) {
-        tasks_[id].android_analyze = android_analyze;
-        tasks_[id].xfs_mode = xfs_mode;
-        tasks_[id].db_output_dir = db_output_dir;
-        
-        save_tasks_internal(); // Persist changes
+        tasks_[id].scenarios = scenarios;
+        save_tasks_internal();
     }
 }
 
@@ -396,7 +393,7 @@ nlohmann::json TaskManager::get_task_statistics() {
             {"image_analysis", phase_counts[TaskPhase::IMAGE_ANALYSIS]},
             {"event_extraction", phase_counts[TaskPhase::EVENT_EXTRACTION]},
             {"file_classification", phase_counts[TaskPhase::FILE_CLASSIFICATION]},
-            {"android_analysis", phase_counts[TaskPhase::ANDROID_ANALYSIS]},
+            {"android_analysis", phase_counts[TaskPhase::PLATFORM_ANALYSIS]},
             {"finalizing", phase_counts[TaskPhase::FINALIZING]}
         }},
         {"average_execution_time_seconds", completed_tasks > 0 ? total_execution_time / completed_tasks : 0}
@@ -749,9 +746,9 @@ void TaskManager::start_analysis(const std::string& task_id) {
             }
 
             // 6. Android Analysis (Optional)
-            if (task.android_analyze) {
+            if (task.get_android_analyze()) {
                 if (is_task_cancelled(task_id)) { return; }
-                update_progress(task_id, TaskPhase::ANDROID_ANALYSIS, 10, "Analyzing Android artifacts...");
+                update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 10, "Analyzing Android artifacts...");
                 auto dbManager = std::make_unique<DatabaseManager>(effectiveRawDb);
                 auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(imagePath, dbManager.get());
 
@@ -765,7 +762,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
                 if (androidAnalyzer->initialize()) {
                     androidAnalyzer->analyzeAndroidData();
-                    update_progress(task_id, TaskPhase::ANDROID_ANALYSIS, 100, "Android analysis completed");
+                    update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 100, "Android analysis completed");
                 } else {
                     std::cerr << "Warning: Failed to initialize Android analyzer" << std::endl;
                 }
@@ -829,7 +826,7 @@ int TaskManager::calculate_overall_percentage(TaskPhase phase, int phase_percent
         {TaskPhase::EVENT_EXTRACTION, 15},
         {TaskPhase::FILE_CLASSIFICATION, 20},
         {TaskPhase::LLM_ANALYSIS, 20},
-        {TaskPhase::ANDROID_ANALYSIS, 8},
+        {TaskPhase::PLATFORM_ANALYSIS, 8},
         {TaskPhase::FINALIZING, 2}
     };
 

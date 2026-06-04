@@ -129,7 +129,7 @@ std::string TaskHelpers::phase_to_string(TaskPhase phase) {
         case TaskPhase::EVENT_EXTRACTION: return "event_extraction";
         case TaskPhase::FILE_CLASSIFICATION: return "file_classification";
         case TaskPhase::LLM_ANALYSIS: return "llm_analysis";
-        case TaskPhase::ANDROID_ANALYSIS: return "android_analysis";
+        case TaskPhase::PLATFORM_ANALYSIS: return "platform_analysis";
         case TaskPhase::FINALIZING: return "finalizing";
         default: return "unknown";
     }
