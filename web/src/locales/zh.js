@@ -9,6 +9,7 @@ export default {
     'nav.case_center': '研判中心',
     'nav.knowledge_graph': '知识图谱',
     'nav.android': '安卓取证',
+    'nav.wechat_graph': '微信关系分析',
     'nav.oss_analysis': 'OSS 分析',
     'nav.search': '搜索',
     'nav.statistics': '统计',

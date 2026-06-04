@@ -7,7 +7,7 @@ import { useTranslation } from '../../hooks/useTranslation';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, ListTodo, Clock, FolderOpen, Brain, Network,
-  Smartphone, Cloud, Search, BarChart3, Settings, Menu, X, ChevronLeft, ChevronRight, FileText, Briefcase
+  Smartphone, Cloud, Search, BarChart3, Settings, Menu, X, ChevronLeft, ChevronRight, FileText, Briefcase, MessageCircle
 } from 'lucide-react';
 
 const Layout = ({ children }) => {
@@ -29,6 +29,7 @@ const Layout = ({ children }) => {
     { name: t('nav.case_center'), href: '/case-report', icon: Brain },
     { name: t('nav.knowledge_graph'), href: '/knowledge-graph', icon: Network },
     { name: t('nav.android'), href: '/android', icon: Smartphone },
+    { name: t('nav.wechat_graph'), href: '/wechat-graph', icon: MessageCircle },
     { name: t('nav.oss_analysis'), href: '/oss', icon: Cloud },
     { name: t('nav.search'), href: '/search', icon: Search },
     { name: t('nav.statistics'), href: '/statistics', icon: BarChart3 },
@@ -43,7 +44,7 @@ const Layout = ({ children }) => {
   const isActive = (path) => location.pathname === path;
 
   const getLinkUrl = (href) => {
-    const taskContextPages = ['/timeline', '/files', '/case-report', '/knowledge-graph', '/android', '/oss', '/search', '/statistics'];
+    const taskContextPages = ['/timeline', '/files', '/case-report', '/knowledge-graph', '/android', '/wechat-graph', '/oss', '/search', '/statistics'];
     if (currentTaskId && taskContextPages.includes(href)) {
       return `${href}?task_id=${currentTaskId}`;
     }

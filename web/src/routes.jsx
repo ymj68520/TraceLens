@@ -1,3 +1,4 @@
+import React from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import App from './App';
 import Dashboard from './pages/Dashboard';
@@ -14,6 +15,8 @@ import CaseIntelligence from './pages/CaseIntelligence';
 import OSS from './pages/OSS';
 import Login from './pages/Login';
 import Terminal from './pages/Terminal';
+
+const WeChatGraph = React.lazy(() => import('./pages/WeChatGraph/WeChatGraph'));
 
 const router = createBrowserRouter([
   {
@@ -51,6 +54,14 @@ const router = createBrowserRouter([
       {
         path: 'android',
         element: <Android />,
+      },
+      {
+        path: 'wechat-graph',
+        element: (
+          <React.Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-slate-400">Loading...</div></div>}>
+            <WeChatGraph />
+          </React.Suspense>
+        ),
       },
       {
         path: 'oss',

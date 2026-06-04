@@ -9,6 +9,7 @@ export default {
     'nav.case_center': 'Case Center',
     'nav.knowledge_graph': 'Knowledge Graph',
     'nav.android': 'Android',
+    'nav.wechat_graph': 'WeChat Graph',
     'nav.oss_analysis': 'OSS Analysis',
     'nav.search': 'Search',
     'nav.statistics': 'Statistics',
