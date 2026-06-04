@@ -100,6 +100,12 @@ private:
     void extractAndScanSystemApps(const std::string& imageAppDir, const std::string& tempAppDir);
     void extractAndScanFramework(const std::string& imageFrameworkDir, const std::string& tempFrameworkDir);
 
+    // Enhanced WeChat parsing methods
+    std::vector<WeChatContact> parseWeChatContacts(sqlite3* db);
+    std::vector<WeChatChatroom> parseWeChatChatrooms(sqlite3* db);
+    WeChatOwnerInfo identifyWeChatOwner(sqlite3* db);
+    void parseWeChatEnhanced(const std::string& dbPath, const std::string& password);
+
     // Build.prop analysis methods
     BuildPropAnalysisResult analyzeBuildPropFile(const std::string& buildPropPath);
     void generateBuildPropReport(const BuildPropAnalysisResult& result, const std::string& outputPath);

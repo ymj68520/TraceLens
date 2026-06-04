@@ -944,3 +944,45 @@ target_link_libraries(test_task_scenarios ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
 
 add_test(NAME TaskScenarioTests COMMAND test_task_scenarios)
 
+# WeChat Decryptor Tests (conditional on SQLCipher availability)
+if(SQLCIPHER_FOUND)
+  add_executable(
+    test_wechat_decryptor_gtest
+    UnitTest/test_wechat_decryptor_gtest.cpp
+    ../src/analyzers/AndroidAnalyzer/WeChatDecryptor.cpp)
+
+  target_include_directories(
+    test_wechat_decryptor_gtest
+    PRIVATE ${CMAKE_SOURCE_DIR}/src
+            ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
+            ${SQLCIPHER_INCLUDE_DIRS})
+
+  target_link_libraries(
+    test_wechat_decryptor_gtest
+    ${GTEST_LIBRARIES}
+    ${GMOCK_LIBRARIES}
+    ${SQLCIPHER_LIBRARIES}
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    pthread)
+
+  add_test(NAME WeChatDecryptorGTests COMMAND test_wechat_decryptor_gtest)
+else()
+  message(STATUS "Skipping WeChat decryptor tests - SQLCipher not found")
+endif()
+
+# WeChat Parser Tests (standalone - uses raw sqlite3 only, no SQLCipher needed)
+add_executable(test_wechat_parser_gtest UnitTest/test_wechat_parser_gtest.cpp)
+
+target_link_libraries(test_wechat_parser_gtest ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} sqlite3 pthread)
+
+add_test(NAME WeChatParserGTests COMMAND test_wechat_parser_gtest)
+
+# Install WeChat test targets
+install(TARGETS test_wechat_parser_gtest RUNTIME DESTINATION bin/tests)
+
+if(SQLCIPHER_FOUND)
+  install(TARGETS test_wechat_decryptor_gtest RUNTIME DESTINATION bin/tests)
+endif()
+

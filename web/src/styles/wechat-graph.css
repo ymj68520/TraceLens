@@ -1,0 +1,36 @@
+/* ── Chat scroll styling ───────────────────────────── */
+.wechat-chat-scroll::-webkit-scrollbar {
+    width: 4px;
+}
+.wechat-chat-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+.wechat-chat-scroll::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 2px;
+}
+
+/* ── Chat bubble arrows ───────────────────────────── */
+.chat-bubble-left {
+    position: relative;
+}
+.chat-bubble-left::before {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 10px;
+    border: 6px solid transparent;
+    border-right-color: #475569;
+}
+
+.chat-bubble-right {
+    position: relative;
+}
+.chat-bubble-right::before {
+    content: '';
+    position: absolute;
+    right: -6px;
+    top: 10px;
+    border: 6px solid transparent;
+    border-left-color: #16a34a;
+}

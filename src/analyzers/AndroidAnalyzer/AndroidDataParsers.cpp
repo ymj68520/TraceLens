@@ -1,5 +1,7 @@
 #include "AndroidAnalyzer.h"
 #include "PathManager/PathManager.h"
+#include "WeChatDecryptor.h"
+#include "Logger/Logger.h"
 #include <iostream>
 #include <sqlite3.h>
 
@@ -217,6 +219,171 @@ std::vector<ChatMessage> AndroidAnalyzer::parseWeChat(const std::string& dbPath)
     }
     sqlite3_close(db);
     return messages;
+}
+
+std::vector<WeChatContact> AndroidAnalyzer::parseWeChatContacts(sqlite3* db) {
+    std::vector<WeChatContact> contacts;
+    const char* sql = "SELECT username, nickname, conRemark, type, chatroomFlag FROM rcontact WHERE username NOT LIKE '%@chatroom%' AND username != 'weixin' AND username != 'filehelper';";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            WeChatContact contact;
+            const char* username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+            const char* nickname = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+            const char* remark = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+
+            contact.username = username ? username : "";
+            contact.nickname = nickname ? nickname : "";
+            contact.remark = remark ? remark : "";
+            contact.type = sqlite3_column_int(stmt, 3);
+            contact.isChatroom = false;
+
+            if (!contact.username.empty()) {
+                contacts.push_back(contact);
+            }
+        }
+        sqlite3_finalize(stmt);
+    }
+    return contacts;
+}
+
+std::vector<WeChatChatroom> AndroidAnalyzer::parseWeChatChatrooms(sqlite3* db) {
+    std::vector<WeChatChatroom> chatrooms;
+    const char* sql = "SELECT chatroomname, roomowner, memberlist, membercount, addtime FROM chatroom;";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            WeChatChatroom room;
+            const char* name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+            const char* owner = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+            const char* members = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+
+            room.chatroomName = name ? name : "";
+            room.owner = owner ? owner : "";
+            room.memberList = members ? members : "";
+            room.memberCount = sqlite3_column_int(stmt, 3);
+            room.createTime = sqlite3_column_int64(stmt, 4);
+
+            if (!room.chatroomName.empty()) {
+                chatrooms.push_back(room);
+            }
+        }
+        sqlite3_finalize(stmt);
+    }
+    return chatrooms;
+}
+
+WeChatOwnerInfo AndroidAnalyzer::identifyWeChatOwner(sqlite3* db) {
+    WeChatOwnerInfo owner;
+    // Try userinfo table first
+    const char* sql = "SELECT value FROM userinfo WHERE id = 2;";  // id=2 is typically username
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            const char* username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+            if (username) owner.username = username;
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    // Get nickname
+    sql = "SELECT value FROM userinfo WHERE id = 4;";  // id=4 is typically nickname
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            const char* nickname = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+            if (nickname) owner.nickname = nickname;
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    return owner;
+}
+
+void AndroidAnalyzer::parseWeChatEnhanced(const std::string& dbPath, const std::string& password) {
+    WeChatDecryptor decryptor;
+    if (!decryptor.openDatabase(dbPath, password)) {
+        LOG_WARNING("Failed to decrypt WeChat database: " + decryptor.getLastError());
+        return;
+    }
+
+    sqlite3* db = decryptor.getDb();
+
+    // 1. Identify device owner
+    WeChatOwnerInfo owner = identifyWeChatOwner(db);
+    androidDb_->insertWeChatOwnerInfo(owner);
+
+    // 2. Parse contacts
+    auto contacts = parseWeChatContacts(db);
+    for (const auto& contact : contacts) {
+        androidDb_->insertWeChatContact(contact);
+    }
+
+    // 3. Parse chatrooms
+    auto chatrooms = parseWeChatChatrooms(db);
+    for (const auto& room : chatrooms) {
+        androidDb_->insertWeChatChatroom(room);
+    }
+
+    // 4. Parse messages with enhanced fields
+    const char* msgSql = "SELECT talker, content, createTime, type, isSend FROM message WHERE type IN (1, 3, 34, 43, 47, 49) ORDER BY createTime;";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db, msgSql, -1, &stmt, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            ChatMessage msg;
+            const char* talker = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+            const char* content = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+
+            msg.content = content ? content : "";
+            msg.timestamp = std::to_string(sqlite3_column_int64(stmt, 2));
+            int msgType = sqlite3_column_int(stmt, 3);
+            int isSend = sqlite3_column_int(stmt, 4);
+
+            std::string talkerStr = talker ? talker : "";
+            std::string chatroomName;
+            std::string sender;
+            std::string receiver;
+            std::string senderNickname;
+
+            if (talkerStr.find("@chatroom") != std::string::npos) {
+                // Group chat
+                chatroomName = talkerStr;
+                // Extract sender from content XML header (format: "wxid_xxx:\n<message>")
+                size_t colonPos = msg.content.find(":\n");
+                if (colonPos != std::string::npos) {
+                    sender = msg.content.substr(0, colonPos);
+                    msg.content = msg.content.substr(colonPos + 2);
+                }
+                receiver = chatroomName;
+            } else {
+                // Private chat
+                if (isSend == 1) {
+                    sender = owner.username;
+                    receiver = talkerStr;
+                } else {
+                    sender = talkerStr;
+                    receiver = owner.username;
+                }
+            }
+
+            // Look up nickname for sender
+            for (const auto& c : contacts) {
+                if (c.username == sender) {
+                    senderNickname = c.remark.empty() ? c.nickname : c.remark;
+                    break;
+                }
+            }
+
+            msg.sender = sender;
+            msg.receiver = receiver;
+
+            androidDb_->insertWeChatEnhancedMessage(msg, msgType, isSend, chatroomName, senderNickname, talkerStr);
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    decryptor.close();
+    LOG_INFO("WeChat enhanced parsing completed: " + std::to_string(contacts.size()) + " contacts, " +
+             std::to_string(chatrooms.size()) + " chatrooms");
 }
 
 void AndroidAnalyzer::parseChromeHistory(const std::string& dbPath) {

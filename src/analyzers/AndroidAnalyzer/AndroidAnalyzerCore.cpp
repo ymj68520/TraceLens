@@ -1,5 +1,6 @@
 #include "AndroidAnalyzer.h"
 #include "AuditLog/AuditLog.h"
+#include "PathManager/PathManager.h"
 
 // AndroidAnalyzer Core Implementation
 
@@ -67,8 +68,19 @@ void AndroidAnalyzer::analyzeAndroidData() {
     // Analyze Telegram
     extractAndParseDB("data/data/org.telegram.messenger/files/cache4.db", "parseTelegram");
 
-    // Analyze WeChat
-    extractAndParseDB("data/data/com.tencent.mm/MicroMsg/testuser/EnMicroMsg.db", "parseWeChat");
+    // Analyze WeChat (enhanced parsing with decryption support)
+    {
+        std::string wechatDbPath = "data/data/com.tencent.mm/MicroMsg/testuser/EnMicroMsg.db";
+        std::string tempPath = forensics::PathManager::instance().makeTempPath(
+            std::to_string(std::time(nullptr)) + "_" +
+            std::filesystem::path(wechatDbPath).filename().string());
+        if (fileExtractor_->extractFileByPath(wechatDbPath, tempPath)) {
+            parseWeChatEnhanced(tempPath, wechatPassword_);
+            std::filesystem::remove(tempPath);
+        } else {
+            std::cout << "Failed to extract WeChat database: " << wechatDbPath << std::endl;
+        }
+    }
 
     // Analyze Chrome History
     extractAndParseDB("data/data/com.android.chrome/app_chrome/Default/History", "parseChromeHistory");
