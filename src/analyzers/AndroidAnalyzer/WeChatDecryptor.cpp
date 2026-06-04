@@ -5,9 +5,11 @@
 #include <openssl/md5.h>
 
 #include <fstream>
-#include <sstream>
 #include <algorithm>
 #include <cstring>
+#include <cstdio>
+
+#include <openssl/crypto.h>
 
 WeChatDecryptor::WeChatDecryptor() = default;
 
@@ -55,9 +57,8 @@ bool WeChatDecryptor::tryOpenWithCipher(const std::string& dbPath, const std::st
         return false;
     }
 
-    // Set SQLCipher key
-    std::string pragmaKey = "PRAGMA key = '" + password + "';";
-    if (sqlite3_exec(db_, pragmaKey.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK) {
+    // Set SQLCipher key using C API to avoid SQL injection
+    if (sqlite3_key(db_, password.c_str(), (int)password.size()) != SQLITE_OK) {
         lastError_ = "Failed to set cipher key: " + std::string(sqlite3_errmsg(db_));
         close();
         return false;
@@ -65,7 +66,11 @@ bool WeChatDecryptor::tryOpenWithCipher(const std::string& dbPath, const std::st
 
     // Configure SQLCipher parameters
     std::string pragmaKdf = "PRAGMA kdf_iter = " + std::to_string(kdfIterations) + ";";
-    sqlite3_exec(db_, pragmaKdf.c_str(), nullptr, nullptr, nullptr);
+    if (sqlite3_exec(db_, pragmaKdf.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK) {
+        // Non-fatal: some SQLCipher builds may not support kdf_iter
+        lastError_ = "Warning: kdf_iter PRAGMA failed (continuing): "
+                     + std::string(sqlite3_errmsg(db_));
+    }
 
     std::string pragmaHmac = "PRAGMA cipher_use_hmac = ON;";
     sqlite3_exec(db_, pragmaHmac.c_str(), nullptr, nullptr, nullptr);
@@ -108,16 +113,20 @@ std::string WeChatDecryptor::derivePassword(const std::string& imageMountPath) {
             std::string content((std::istreambuf_iterator<char>(file)),
                                  std::istreambuf_iterator<char>());
             // Look for _auth_uin or default_uin
+            // Android SharedPreferences XML: <int name="_auth_uin" value="123456"/>
             size_t pos = content.find("_auth_uin");
             if (pos == std::string::npos) pos = content.find("default_uin");
             if (pos != std::string::npos) {
-                size_t valStart = content.find(">", pos);
-                size_t valEnd = content.find("<", valStart);
-                if (valStart != std::string::npos && valEnd != std::string::npos) {
-                    uin = content.substr(valStart + 1, valEnd - valStart - 1);
-                    // Trim whitespace
-                    uin.erase(std::remove_if(uin.begin(), uin.end(), ::isspace), uin.end());
-                    if (!uin.empty()) break;
+                size_t valueAttr = content.find("value=\"", pos);
+                if (valueAttr != std::string::npos && valueAttr - pos < 200) {
+                    valueAttr += 7; // skip 'value="'
+                    size_t valueEnd = content.find("\"", valueAttr);
+                    if (valueEnd != std::string::npos) {
+                        uin = content.substr(valueAttr, valueEnd - valueAttr);
+                        // Trim whitespace
+                        uin.erase(std::remove_if(uin.begin(), uin.end(), ::isspace), uin.end());
+                        if (!uin.empty()) break;
+                    }
                 }
             }
         }
@@ -132,6 +141,8 @@ std::string WeChatDecryptor::derivePassword(const std::string& imageMountPath) {
     // Derive password: MD5(IMEI + UIN).substring(0, 7)
     std::string combined = imei + uin;
     std::string hash = md5(combined);
+    // Zero intermediate material that contains IMEI + UIN
+    OPENSSL_cleanse(&combined[0], combined.size());
     if (hash.length() >= 7) {
         return hash.substr(0, 7);
     }
@@ -144,7 +155,7 @@ std::string WeChatDecryptor::md5(const std::string& input) {
 
     char mdString[33];
     for (int i = 0; i < 16; i++) {
-        sprintf(&mdString[i * 2], "%02x", (unsigned int)digest[i]);
+        snprintf(&mdString[i * 2], 3, "%02x", (unsigned int)digest[i]);
     }
     mdString[32] = '\0';
     return std::string(mdString);

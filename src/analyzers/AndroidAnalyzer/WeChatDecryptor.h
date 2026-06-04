@@ -9,6 +9,12 @@ public:
     WeChatDecryptor();
     ~WeChatDecryptor();
 
+    // Non-copyable, non-movable (owns sqlite3 handle)
+    WeChatDecryptor(const WeChatDecryptor&) = delete;
+    WeChatDecryptor& operator=(const WeChatDecryptor&) = delete;
+    WeChatDecryptor(WeChatDecryptor&&) = delete;
+    WeChatDecryptor& operator=(WeChatDecryptor&&) = delete;
+
     // Attempt to open an encrypted WeChat database
     // Returns true on success, false on failure
     bool openDatabase(const std::string& dbPath, const std::string& password);
