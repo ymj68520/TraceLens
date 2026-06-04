@@ -33,11 +33,6 @@ bool WeChatDecryptor::openDatabase(const std::string& dbPath, const std::string&
         return false;
     }
 
-#ifndef HAVE_SQLCIPHER
-    lastError_ = "SQLCipher support not compiled in. Install libsqlcipher-dev and rebuild.";
-    return false;
-#endif
-
     // Try SQLCipher 4.x defaults first (newer WeChat versions)
     if (tryOpenWithCipher(dbPath, password, 64000, "sha512")) {
         return true;
@@ -62,9 +57,16 @@ bool WeChatDecryptor::tryOpenWithCipher(const std::string& dbPath, const std::st
         return false;
     }
 
-#ifdef HAVE_SQLCIPHER
-    // Set SQLCipher key using C API to avoid SQL injection
-    if (sqlite3_key(db_, password.c_str(), (int)password.size()) != SQLITE_OK) {
+    // Set SQLCipher key
+    // We use PRAGMA key with a hex-escaped string to avoid SQL injection.
+    // The password is 7 hex chars, but we escape it for safety.
+    std::string escapedPassword;
+    for (char c : password) {
+        if (c == '\'') escapedPassword += "''";
+        else escapedPassword += c;
+    }
+    std::string pragmaKey = "PRAGMA key = '" + escapedPassword + "';";
+    if (sqlite3_exec(db_, pragmaKey.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK) {
         lastError_ = "Failed to set cipher key: " + std::string(sqlite3_errmsg(db_));
         close();
         return false;
@@ -78,8 +80,7 @@ bool WeChatDecryptor::tryOpenWithCipher(const std::string& dbPath, const std::st
                      + std::string(sqlite3_errmsg(db_));
     }
 
-    std::string pragmaHmac = "PRAGMA cipher_use_hmac = ON;";
-    sqlite3_exec(db_, pragmaHmac.c_str(), nullptr, nullptr, nullptr);
+    sqlite3_exec(db_, "PRAGMA cipher_use_hmac = ON;", nullptr, nullptr, nullptr);
 
     if (hmacAlgo == "sha512") {
         sqlite3_exec(db_, "PRAGMA cipher_page_size = 4096;", nullptr, nullptr, nullptr);
@@ -87,12 +88,6 @@ bool WeChatDecryptor::tryOpenWithCipher(const std::string& dbPath, const std::st
     } else {
         sqlite3_exec(db_, "PRAGMA cipher_page_size = 1024;", nullptr, nullptr, nullptr);
     }
-#else
-    // SQLCipher not available - cannot decrypt
-    lastError_ = "SQLCipher support not compiled in. Install libsqlcipher-dev and rebuild.";
-    close();
-    return false;
-#endif
 
     // Verify by querying sqlite_master
     sqlite3_stmt* stmt = nullptr;
