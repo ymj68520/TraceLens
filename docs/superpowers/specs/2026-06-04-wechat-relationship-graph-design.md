@@ -210,9 +210,10 @@ Read from `_android.db`, build a NetworkX `DiGraph`:
 - `sent_count` / `received_count`: directional message counts
 
 **Edge attributes** (group chat):
-- Group members get pairwise edges, weighted by co-activity
-- `group_name`: source chatroom
+- Group members get pairwise edges. Edge weight = number of messages where both users are active in the same group within a 1-hour window (co-activity metric)
+- `group_name`: source chatroom name
 - `is_group_edge`: true
+- `chatroom_name`: the chatroom identifier
 
 ### 4.3 Graph Algorithms
 
@@ -221,7 +222,7 @@ Read from `_android.db`, build a NetworkX `DiGraph`:
 | **Community Detection** | Louvain (`community.louvain_communities`) | `cluster_id` per node |
 | **Key Person Identification** | PageRank + Betweenness Centrality | Ranking scores per node |
 | **Temporal Analysis** | Time-sliced subgraphs (monthly/weekly) | Edge weight changes over time |
-| **Sentiment Analysis** | LLM-based or TextBlob (optional) | `sentiment_score` per edge |
+| **Sentiment Analysis** | LLM via existing OpenAI-compatible API (project's LLMIntegration module) | `sentiment_score` per edge (-1.0 to 1.0), computed per batch of messages |
 
 ### 4.4 Caching Strategy
 
@@ -283,6 +284,28 @@ _cache = {}  # task_id → { graph_data, metrics, timestamp, db_mtime }
     {"cluster": 0, "members": ["wxid_abc", "wxid_def"], "label": "社区1"}
   ],
   "owner": {"username": "wxid_owner", "nickname": "我"}
+}
+```
+
+**GET /api/wechat/graph/timeline?task_id=xxx&interval=month**:
+```json
+{
+  "intervals": [
+    {
+      "period": "2024-01",
+      "total_messages": 523,
+      "active_edges": 12,
+      "top_contacts": [
+        {"username": "wxid_abc", "label": "张三", "message_count": 150}
+      ]
+    },
+    {
+      "period": "2024-02",
+      "total_messages": 680,
+      "active_edges": 15,
+      "top_contacts": []
+    }
+  ]
 }
 ```
 
@@ -418,7 +441,7 @@ Sidebar navigation gets a new "微信关系分析" entry with `Network` or `Mess
 | C++ | `libsqlcipher-dev` | SQLCipher encrypted database support |
 | Python | `networkx` | Graph algorithms (may already be installed) |
 | Python | `python-louvain` | Louvain community detection |
-| Python | `textblob` or LLM API | Sentiment analysis (optional) |
+| Python | (existing LLMIntegration) | Sentiment analysis via OpenAI-compatible API |
 | Frontend | None (reuse existing) | `react-force-graph-2d` + `recharts` |
 
 ---
