@@ -52,3 +52,8 @@ plyvel>=1.5.0
 pymongo>=4.6.0
 rdbtools>=0.1.15
 redis-dump-load>=1.1
+
+# Markdown Conversion (primary file-to-markdown engine)
+# Includes: PDF, DOCX, XLSX, XLS, PPTX, HTML, CSV, JSON, XML, EPUB,
+#           images (EXIF+OCR), audio (transcription), and more
+markitdown[all]>=0.1.6

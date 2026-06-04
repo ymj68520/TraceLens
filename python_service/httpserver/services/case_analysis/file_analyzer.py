@@ -109,11 +109,37 @@ class FileAnalyzer:
                         return {"file_path": file_path, "description": "", "error": f"File not found: {full_path}", "success": False}
 
                     result = None
-                    if is_image:
+
+                    # Try document extractor first (markitdown handles images, docs, etc.)
+                    from ..document_extractor import get_document_extractor_locator
+                    from ...prompts import CASE_FILE_ANALYSIS_TEMPLATE, CASE_VISION_ANALYSIS_TEMPLATE
+                    doc_locator = get_document_extractor_locator()
+                    extractor = doc_locator.get_extractor(full_path)
+
+                    if extractor:
+                        try:
+                            content = await extractor.extract_to_markdown(full_path)
+                            custom_prompt = CASE_FILE_ANALYSIS_TEMPLATE.format(
+                                case_description=case_description,
+                                file_path=file_path,
+                                content=content,
+                            )
+
+                            result = await self._llm_service.analyze(
+                                content=content,
+                                model_type="text",
+                                prompt=custom_prompt
+                            )
+                        except Exception as e:
+                            logger.warning(f"Extractor failed for {full_path}: {e}, falling back to vision/raw")
+
+                    if not result and is_image:
                         with open(full_path, 'rb') as f:
                             image_data = f.read()
 
-                        vision_prompt = f"请结合案情背景对这张图像进行深度取证分析。\n案情背景：{case_description}\n\n要求：提取文字信息、识别人物/账号、发现时间线索，并评估取证价值。"
+                        vision_prompt = CASE_VISION_ANALYSIS_TEMPLATE.format(
+                            case_description=case_description,
+                        )
 
                         try:
                             result = await self._llm_service.analyze_image(
@@ -132,25 +158,12 @@ class FileAnalyzer:
                         # Fallback or normal text analysis
                         content = await self._llm_service.read_file_content(full_path)
 
-                        custom_prompt = f"""作为资深取证专家，请对以下文件进行深度分析。
-
-## 案情背景
-{case_description}
-
-## 待分析文件路径
-{file_path}
-
-## 文件内容
-{content}
-
-## 分析要求
-请针对上述案情背景，详细分析该文件的取证价值。重点关注：
-1. 文件内容与案件的关联性
-2. 关键人物、账号、时间、金额等信息的提取
-3. 任何可疑的活动痕迹或异常点
-4. 综合评估该证据的效力
-
-请输出纯文本，不要使用 Markdown。"""
+                        from ...prompts import CASE_FILE_ANALYSIS_TEMPLATE
+                        custom_prompt = CASE_FILE_ANALYSIS_TEMPLATE.format(
+                            case_description=case_description,
+                            file_path=file_path,
+                            content=content,
+                        )
 
                         result = await self._llm_service.analyze(
                             content=content,
@@ -297,42 +310,64 @@ class FileAnalyzer:
                 file_ext = Path(file_path).suffix.lower()
                 is_image = file_ext in IMAGE_EXTENSIONS
 
-                if is_image:
-                    # Use vision model for images with custom prompt
-                    logger.info(f"Using vision model for image re-analysis: {file_path}")
+                # Try document extractor first (markitdown handles images, docs, etc.)
+                from ..document_extractor import get_document_extractor_locator
+                doc_locator = get_document_extractor_locator()
+                extractor = doc_locator.get_extractor(file_path)
 
-                    # Build vision prompt with case context
-                    vision_prompt_parts = []
-                    if case_description:
-                        vision_prompt_parts.append(f"案情背景：{case_description}")
-                    if user_hint:
-                        vision_prompt_parts.append(f"调查人员补充说明：{user_hint}")
-                    if kg_context:
-                        vision_prompt_parts.append(f"相关上下文：{kg_context}")
-
-                    vision_prompt = "请根据以上信息重新分析这张图像的取证价值。\n\n" + "\n".join(vision_prompt_parts)
-
+                if extractor:
                     try:
-                        with open(file_path, 'rb') as f:
-                            image_data = f.read()
-
-                        logger.info(f"Read {len(image_data)} bytes from {file_path}, sending to vision model")
-                        result = await self._llm_service.analyze_image(
-                            image_data=image_data,
-                            prompt=vision_prompt,
-                        )
+                        content = await extractor.extract_to_markdown(file_path)
+                        logger.info(f"Extractor converted {file_path}: {len(content)} chars")
                     except Exception as e:
-                        logger.error(f"Failed to analyze {file_path} as image: {e}", exc_info=True)
-                        results.append({
-                            "file_path": file_path,
-                            "description": "",
-                            "error": f"Vision analysis failed: {str(e)}",
-                            "success": False,
-                            "reanalysis": True,
-                        })
-                        continue
-                else:
-                    # Use text model for text files
+                        logger.warning(f"Extractor failed for {file_path}: {e}, falling back")
+                        extractor = None  # Trigger fallback below
+
+                if not extractor:
+                    if is_image:
+                        # Use vision model for images with custom prompt
+                        logger.info(f"Using vision model for image re-analysis: {file_path}")
+
+                        # Build vision prompt with case context
+                        from ...prompts import CASE_VISION_REANALYSIS_TEMPLATE
+                        vision_prompt_parts = []
+                        if case_description:
+                            vision_prompt_parts.append(f"案情背景：{case_description}")
+                        if user_hint:
+                            vision_prompt_parts.append(f"调查人员补充说明：{user_hint}")
+                        if kg_context:
+                            vision_prompt_parts.append(f"相关上下文：{kg_context}")
+
+                        vision_prompt = CASE_VISION_REANALYSIS_TEMPLATE.format(
+                            context_parts="\n".join(vision_prompt_parts)
+                        )
+
+                        try:
+                            with open(file_path, 'rb') as f:
+                                image_data = f.read()
+
+                            logger.info(f"Read {len(image_data)} bytes from {file_path}, sending to vision model")
+                            result = await self._llm_service.analyze_image(
+                                image_data=image_data,
+                                prompt=vision_prompt,
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to analyze {file_path} as image: {e}", exc_info=True)
+                            results.append({
+                                "file_path": file_path,
+                                "description": "",
+                                "error": f"Vision analysis failed: {str(e)}",
+                                "success": False,
+                                "reanalysis": True,
+                            })
+                            continue
+                    else:
+                        # Use text model for text files
+                        content = await self._llm_service.read_file_content(file_path)
+                        logger.info(f"Read {len(content)} characters from {file_path}")
+
+                if extractor or not is_image:
+                    # Text analysis path (extractor content or raw text)
                     from ..prompts import (
                         FILE_REANALYSIS_HEADER,
                         FILE_REANALYSIS_CONTEXT_CASE,
@@ -341,9 +376,6 @@ class FileAnalyzer:
                         FILE_REANALYSIS_CONTEXT_FILE,
                         FILE_REANALYSIS_INSTRUCTION,
                     )
-
-                    content = await self._llm_service.read_file_content(file_path)
-                    logger.info(f"Read {len(content)} characters from {file_path}")
 
                     prompt_parts = [FILE_REANALYSIS_HEADER]
 
@@ -648,7 +680,10 @@ class FileAnalyzer:
                     content += f"- {p}: {d}\n"
 
                 # Analyze via LLM
-                prompt = f"案情背景：{case_description}\n\n请针对以上案情背景，分析这个事件簇在取证上的意义，并给出研判结论。"
+                from ...prompts import EVENT_CLUSTER_CASE_ANALYSIS_TEMPLATE
+                prompt = EVENT_CLUSTER_CASE_ANALYSIS_TEMPLATE.format(
+                    case_description=case_description
+                )
 
                 analysis_result = await self._llm_service.analyze_event_cluster(
                     event_data={

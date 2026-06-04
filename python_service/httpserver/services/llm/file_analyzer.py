@@ -411,6 +411,10 @@ class FileAnalyzer:
         persist_callback: Optional[callable] = None,
     ):
         """Run batch analysis in background."""
+        # Lazy import to avoid circular dependency
+        from ..document_extractor import get_document_extractor_locator
+        doc_locator = get_document_extractor_locator()
+
         try:
             total = len(files)
             for i, file_info in enumerate(files):
@@ -428,8 +432,33 @@ class FileAnalyzer:
                     file_ext = Path(actual_path).suffix.lower()
                     is_image = file_ext in self.IMAGE_EXTENSIONS
 
-                    if is_image:
-                        logger.info(f"Detected image file: {actual_path}, using vision model")
+                    # Try document extractor first (markitdown handles images, docs, etc.)
+                    extractor = doc_locator.get_extractor(actual_path)
+                    if extractor:
+                        try:
+                            content = await extractor.extract_to_markdown(actual_path)
+                            result = await self.analyze_file(content, text_client, vision_client, "text")
+                        except Exception as e:
+                            logger.warning(f"Extractor failed for {actual_path}: {e}, falling back")
+                            # Fallback: images -> vision model, others -> raw read
+                            if is_image:
+                                try:
+                                    with open(actual_path, 'rb') as f:
+                                        image_data = f.read()
+                                    result = await self.analyze_image(image_data, vision_client)
+                                except Exception as e2:
+                                    logger.warning(f"Vision fallback also failed for {actual_path}: {e2}")
+                                    continue
+                            else:
+                                try:
+                                    content = await self.read_file_content(actual_path)
+                                except ValueError as ve:
+                                    logger.info(f"Skipping non-text file: {ve}")
+                                    continue
+                                result = await self.analyze_file(content, text_client, vision_client, model_type)
+                    elif is_image:
+                        # No extractor but is an image -> vision model
+                        logger.info(f"No extractor for image: {actual_path}, using vision model")
                         try:
                             with open(actual_path, 'rb') as f:
                                 image_data = f.read()
@@ -439,6 +468,7 @@ class FileAnalyzer:
                             content = await self.read_file_content(actual_path)
                             result = await self.analyze_file(content, text_client, vision_client, model_type)
                     else:
+                        # No extractor, not an image -> raw text read
                         try:
                             content = await self.read_file_content(actual_path)
                         except ValueError as ve:

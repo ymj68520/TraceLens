@@ -1,6 +1,7 @@
 #include "FileAnalyzer.h"
 #include "FileContentExtractor.h"
 #include "FileTextProcessor.h"
+#include "MarkitdownProxy.h"
 #include "json.hpp"
 #include "ConfigManager/ConfigManager.h"
 #include "../../core/Logger/Logger.h"
@@ -77,27 +78,42 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
     result.fileSize = fs::file_size(filePath);
     result.fileType = FileContentExtractor::detectFileType(filePath);
 
-    // Read content
+    // Read content — try markitdown first, fall back to local parsers
     std::string content;
     std::string ext = fs::path(filePath).extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
     LOG_DEBUG("File: " + filePath + ", Ext: " + ext);
 
-    if (ext == ".pdf") {
-        LOG_DEBUG("Using PDFAnalyzer");
-        content = forensics::analyzers::PDFAnalyzer::extractText(filePath);
-    } else if (ext == ".docx" || ext == ".doc") {
-        LOG_DEBUG("Using OfficeAnalyzer");
-        OfficeAnalyzer officeAnalyzer;
-        officeAnalyzer.setPythonServiceUrl(ConfigManager::instance().getPythonServiceUrl());
-        content = officeAnalyzer.analyze(filePath);
-    } else if (result.fileType == "Archive" || result.fileType == "Binary" || result.fileType == "Database") {
-        LOG_DEBUG("Binary/Archive detected. Skipping content read.");
-        content = "[Binary/Archive File Content Omitted. Analysis based on metadata only.]";
-    } else {
-        LOG_DEBUG("Using Raw Read");
-        content = FileContentExtractor::readFileContent(filePath, maxContentLength);
+    // Try markitdown proxy first (converts via Python service)
+    auto& markitdown = MarkitdownProxy::instance();
+    if (markitdown.isServiceAvailable()) {
+        content = markitdown.convertToMarkdown(filePath);
+        if (!content.empty() && content.find("Error:") != 0) {
+            LOG_DEBUG("Successfully converted via markitdown: " + filePath);
+        } else {
+            LOG_WARNING("markitdown failed for " + filePath + ", falling back to local parsers");
+            content.clear();
+        }
+    }
+
+    // Fallback to local parsers if markitdown unavailable or failed
+    if (content.empty()) {
+        if (ext == ".pdf") {
+            LOG_DEBUG("Using PDFAnalyzer (fallback)");
+            content = forensics::analyzers::PDFAnalyzer::extractText(filePath);
+        } else if (ext == ".docx" || ext == ".doc") {
+            LOG_DEBUG("Using OfficeAnalyzer (fallback)");
+            OfficeAnalyzer officeAnalyzer;
+            officeAnalyzer.setPythonServiceUrl(ConfigManager::instance().getPythonServiceUrl());
+            content = officeAnalyzer.analyze(filePath);
+        } else if (result.fileType == "Archive" || result.fileType == "Binary" || result.fileType == "Database") {
+            LOG_DEBUG("Binary/Archive detected. Skipping content read.");
+            content = "[Binary/Archive File Content Omitted. Analysis based on metadata only.]";
+        } else {
+            LOG_DEBUG("Using Raw Read (fallback)");
+            content = FileContentExtractor::readFileContent(filePath, maxContentLength);
+        }
     }
 
     if (content.empty()) {

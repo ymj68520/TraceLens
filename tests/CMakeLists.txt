@@ -476,6 +476,7 @@ add_executable(
   ../src/integration/LLMIntegration/LLMClient.cpp
   ../src/integration/LLMIntegration/ModelRouter.cpp
   ../src/integration/LLMIntegration/FileAnalyzer.cpp
+  ../src/integration/LLMIntegration/MarkitdownProxy.cpp
   ../src/integration/LLMIntegration/FileContentExtractor.cpp
   ../src/integration/LLMIntegration/FileTextProcessor.cpp
   ../src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp
@@ -574,6 +575,7 @@ add_executable(
   ../src/integration/LLMIntegration/LLMClient.cpp
   ../src/integration/LLMIntegration/ModelRouter.cpp
   ../src/integration/LLMIntegration/FileAnalyzer.cpp
+  ../src/integration/LLMIntegration/MarkitdownProxy.cpp
   ../src/integration/LLMIntegration/FileContentExtractor.cpp
   ../src/integration/LLMIntegration/FileTextProcessor.cpp
   ../src/analyzers/VisionAnalysis/VisionAnalyzer.cpp
@@ -818,6 +820,7 @@ add_executable(test_dll_analyzer_llm
                ../src/integration/LLMIntegration/LLMClient.cpp
                ../src/integration/LLMIntegration/ModelRouter.cpp
                ../src/integration/LLMIntegration/FileAnalyzer.cpp
+               ../src/integration/LLMIntegration/MarkitdownProxy.cpp
                ../src/integration/LLMIntegration/FileContentExtractor.cpp
                ../src/integration/LLMIntegration/FileTextProcessor.cpp
                ../src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp

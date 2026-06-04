@@ -351,6 +351,7 @@ set(LIB_SOURCES
     src/integration/LLMIntegration/ModelRouter.cpp
     src/integration/LLMIntegration/MCPIntegration.cpp
     src/integration/LLMIntegration/FileAnalyzer.cpp
+    src/integration/LLMIntegration/MarkitdownProxy.cpp
     src/integration/LLMIntegration/FileContentExtractor.cpp
     src/integration/LLMIntegration/FileTextProcessor.cpp
     src/core/ConfigManager/ConfigManager.cpp
