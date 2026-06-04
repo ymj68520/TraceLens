@@ -23,6 +23,18 @@ pkg_check_modules(LIBFSNTFS REQUIRED libfsntfs)
 pkg_check_modules(XAPIAN REQUIRED xapian-core)
 pkg_check_modules(POPPLER REQUIRED poppler-cpp)
 
+# Optional SQLCipher for encrypted database support (WeChat, etc.)
+pkg_check_modules(SQLCIPHER QUIET sqlcipher)
+if(SQLCIPHER_FOUND)
+  message(STATUS "SQLCipher found - encrypted database support enabled")
+  add_definitions(-DHAVE_SQLCIPHER)
+  # Use sqlcipher as drop-in replacement for sqlite3 (superset with encryption)
+  set(SQLITE_LINK_LIBRARIES ${SQLCIPHER_LIBRARIES})
+else()
+  message(STATUS "SQLCipher not found - encrypted database support disabled")
+  set(SQLITE_LINK_LIBRARIES ${SQLite3_LIBRARIES})
+endif()
+
 # Optional database connectors
 pkg_check_modules(MYSQLCLIENT mysqlclient)
 pkg_check_modules(LIBPQ libpq)
@@ -127,6 +139,7 @@ include_directories(
   ${LIBLZMA_INCLUDE_DIRS}
   ${BZIP2_INCLUDE_DIRS}
   ${ZSTD_INCLUDE_DIRS}
+  ${SQLCIPHER_INCLUDE_DIRS}
   ${CMAKE_SOURCE_DIR}/libs/sqlite3
   /usr/include/postgresql
   /usr/include/postgresql/16/server
@@ -278,6 +291,7 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp
     src/analyzers/AndroidAnalyzer/BuildPropAnalyzer.cpp
     src/analyzers/AndroidAnalyzer/AndroidLogParser.cpp
+    $<$<BOOL:${SQLCIPHER_FOUND}>:src/analyzers/AndroidAnalyzer/WeChatDecryptor.cpp>
     src/analyzers/WindowsFilesAnalyzer/Core/WindowsFilesAnalyzerCore.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Registry.cpp
@@ -405,7 +419,7 @@ else()
     forensic_analyzer
     ${TSK_LIBRARIES}
     ewf
-    ${SQLite3_LIBRARIES}
+    ${SQLITE_LINK_LIBRARIES}
     ${Boost_LIBRARIES}
     ${HIVEX_LIBRARIES}
     ${LIBEVTX_LIBRARIES}
