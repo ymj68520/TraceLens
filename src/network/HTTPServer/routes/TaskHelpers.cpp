@@ -2,6 +2,7 @@
 #include "../TaskManager.h"
 #include "../../core/PathManager/PathManager.h"
 #include <chrono>
+#include <filesystem>
 
 namespace forensics {
 
@@ -29,6 +30,30 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
             task.completed_time - task.started_time).count();
     }
 
+    // Build scenario_databases map
+    json scenario_databases = json::object();
+    auto& pm = forensics::PathManager::instance();
+    auto dbPaths = pm.getTaskDbPaths(task.id);
+    for (auto scenario : task.scenarios) {
+        std::string key = scenario_to_string(scenario);
+        std::string db_path;
+        switch (scenario) {
+            case ForensicScenario::ANDROID: db_path = dbPaths.androidDb.string(); break;
+            case ForensicScenario::WINDOWS: db_path = dbPaths.windowsDb.string(); break;
+            case ForensicScenario::LINUX: db_path = dbPaths.linuxDb.string(); break;
+            case ForensicScenario::SERVER_CLOUD: db_path = dbPaths.ossDb.string(); break;
+        }
+        if (std::filesystem::exists(db_path)) {
+            scenario_databases[key] = db_path;
+        }
+    }
+
+    // Scenarios as string array for API
+    json scenarios_json = json::array();
+    for (auto s : task.scenarios) {
+        scenarios_json.push_back(scenario_to_string(s));
+    }
+
     return json{
         {"id", task.id},
         {"image_path", task.image_path},
@@ -50,7 +75,9 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
             {"completed", completed_time},
             {"execution_time_seconds", execution_time_seconds}
         }},
-        {"android_analyze", task.android_analyze},
+        {"scenarios", scenarios_json},
+        {"scenario_databases", scenario_databases},
+        {"android_analyze", task.get_android_analyze()},  // Backward compat
         {"llm_analyze", task.llm_analyze},
         {"llm_mode", task.llm_mode},
         {"case_description", task.case_description},
@@ -102,7 +129,7 @@ std::string TaskHelpers::phase_to_string(TaskPhase phase) {
         case TaskPhase::EVENT_EXTRACTION: return "event_extraction";
         case TaskPhase::FILE_CLASSIFICATION: return "file_classification";
         case TaskPhase::LLM_ANALYSIS: return "llm_analysis";
-        case TaskPhase::ANDROID_ANALYSIS: return "android_analysis";
+        case TaskPhase::PLATFORM_ANALYSIS: return "platform_analysis";
         case TaskPhase::FINALIZING: return "finalizing";
         default: return "unknown";
     }

@@ -153,8 +153,20 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             }
         }
 
-        // Android analyze option
-        bool android_analyze = body.value("android_analyze", false);
+        // Forensic scenarios (multi-select)
+        std::vector<ForensicScenario> scenarios;
+        if (body.contains("scenarios")) {
+            for (const auto& s : body["scenarios"]) {
+                std::string val = s.get<std::string>();
+                auto scenario = string_to_scenario(val);
+                if (scenario.has_value()) {
+                    scenarios.push_back(scenario.value());
+                }
+            }
+        } else if (body.value("android_analyze", false)) {
+            // Backward compat: old android_analyze flag
+            scenarios = {ForensicScenario::ANDROID};
+        }
 
         // XFS mode
         XFSMode xfs_mode = XFSMode::Auto;
@@ -181,7 +193,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             priority,
             metadata,
             dependencies,
-            android_analyze,
+            scenarios,
             xfs_mode,
             db_output_dir,
             llm_analyze,
@@ -199,6 +211,11 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             {"id", task_id},
             {"status", "created"},
             {"priority", TaskHelpers::priority_to_string(priority)},
+            {"scenarios", [&scenarios]() {
+                json arr = json::array();
+                for (auto s : scenarios) arr.push_back(scenario_to_string(s));
+                return arr;
+            }()},
             {"llm_analyze", llm_analyze},
             {"llm_mode", llm_mode},
             {"filter_profile", filter_profile},

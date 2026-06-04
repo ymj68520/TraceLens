@@ -264,6 +264,21 @@ void LinuxFilesAnalyzer::analyzeLinuxData() {
     AuditLog::instance().log("SYSTEM", "LINUX_ANALYSIS_COMPLETE", "Linux analysis completed for: " + imagePath_);
 }
 
+void LinuxFilesAnalyzer::analyzeServerCloudArtifacts() {
+    std::cout << "Starting Server/Cloud forensic analysis..." << std::endl;
+    AuditLog::instance().log("SYSTEM", "SERVER_CLOUD_ANALYSIS_START",
+        "Starting Server/Cloud analysis: " + imagePath_);
+
+    // The server/cloud scenario reuses the full Linux analysis pipeline,
+    // which already covers containers, web servers, cloud logs, network
+    // configuration, security posture, and all other server-relevant artifacts.
+    analyzeLinuxData();
+
+    std::cout << "Server/Cloud forensic analysis completed." << std::endl;
+    AuditLog::instance().log("SYSTEM", "SERVER_CLOUD_ANALYSIS_COMPLETE",
+        "Server/Cloud analysis completed for: " + imagePath_);
+}
+
 void LinuxFilesAnalyzer::analyzeWithLLM() {
     try {
         forensics::LinuxLLMAnalysisService llmService;

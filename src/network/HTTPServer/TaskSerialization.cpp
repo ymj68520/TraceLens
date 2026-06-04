@@ -2,9 +2,10 @@
 #include "../../analyzers/ImageAnalyzer/ImageAnalyzerDataTypes.h"
 #include "PathManager/PathManager.h"
 
-namespace forensics {
-
-// Enum serialization
+// Enum serialization macros must be at global scope (same namespace as the enum
+// types) so that nlohmann::json can find them via ADL (Argument Dependent
+// Lookup).  The enum types (TaskStatus, TaskPriority, etc.) are declared at
+// global scope in HTTPServerDataTypes.h and ImageAnalyzerDataTypes.h.
 NLOHMANN_JSON_SERIALIZE_ENUM(TaskStatus, {
     {TaskStatus::PENDING, "PENDING"},
     {TaskStatus::RUNNING, "RUNNING"},
@@ -26,7 +27,7 @@ NLOHMANN_JSON_SERIALIZE_ENUM(TaskPhase, {
     {TaskPhase::EVENT_EXTRACTION, "EVENT_EXTRACTION"},
     {TaskPhase::FILE_CLASSIFICATION, "FILE_CLASSIFICATION"},
     {TaskPhase::LLM_ANALYSIS, "LLM_ANALYSIS"},
-    {TaskPhase::ANDROID_ANALYSIS, "ANDROID_ANALYSIS"},
+    {TaskPhase::PLATFORM_ANALYSIS, "PLATFORM_ANALYSIS"},
     {TaskPhase::FINALIZING, "FINALIZING"}
 })
 
@@ -35,6 +36,15 @@ NLOHMANN_JSON_SERIALIZE_ENUM(XFSMode, {
     {XFSMode::Native, "Native"},
     {XFSMode::Pure, "Pure"}
 })
+
+NLOHMANN_JSON_SERIALIZE_ENUM(ForensicScenario, {
+    {ForensicScenario::ANDROID, "android"},
+    {ForensicScenario::WINDOWS, "windows"},
+    {ForensicScenario::LINUX, "linux"},
+    {ForensicScenario::SERVER_CLOUD, "server_cloud"}
+})
+
+namespace forensics {
 
 void to_json(nlohmann::json& j, const TaskProgress& p) {
     j = nlohmann::json{
@@ -64,7 +74,8 @@ void to_json(nlohmann::json& j, const AnalysisTask& t) {
     j["priority"] = t.priority;
     to_json(j["progress"], t.progress);
     j["result_cache"] = t.result_cache;
-    j["android_analyze"] = t.android_analyze;
+    j["scenarios"] = t.scenarios;
+    j["android_analyze"] = t.get_android_analyze();  // Backward compat
     j["xfs_mode"] = t.xfs_mode;
     j["db_output_dir"] = t.db_output_dir;
     j["error_details"] = t.error_details;
@@ -93,7 +104,16 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     j.at("priority").get_to(t.priority);
     from_json(j.at("progress"), t.progress);
     if(j.contains("result_cache")) j.at("result_cache").get_to(t.result_cache);
-    if(j.contains("android_analyze")) j.at("android_analyze").get_to(t.android_analyze);
+    if(j.contains("scenarios")) {
+        t.scenarios.clear();
+        for (const auto& s : j.at("scenarios")) {
+            auto scenario = string_to_scenario(s.get<std::string>());
+            if (scenario.has_value()) {
+                t.scenarios.push_back(scenario.value());
+            }
+        }
+    }
+    else if(j.contains("android_analyze") && j["android_analyze"].get<bool>()) t.scenarios = {ForensicScenario::ANDROID};
     if(j.contains("xfs_mode")) j.at("xfs_mode").get_to(t.xfs_mode);
     if(j.contains("db_output_dir")) j.at("db_output_dir").get_to(t.db_output_dir);
     if(j.contains("error_details")) j.at("error_details").get_to(t.error_details);

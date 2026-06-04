@@ -48,19 +48,20 @@ public:
      * @param priority Task execution priority
      * @param metadata Optional key-value metadata map
      * @param dependencies Optional list of task dependencies
-     * @param android_analyze Enable Android analysis
+     * @param scenarios Selected forensic scenarios (multi-select)
      * @param xfs_mode XFS handling mode
      * @param db_output_dir Directory for database output
      * @param llm_analyze Enable LLM analysis
      * @param llm_mode LLM analysis mode ("smart" or "full")
      * @param case_description Case description for LLM
+     * @param filter_profile File filter profile name
      * @return The unique ID of the created task
      */
     std::string create_task(const std::string& path,
                            TaskPriority priority = TaskPriority::NORMAL,
                            const std::map<std::string, std::string>& metadata = {},
                            const std::vector<TaskDependency>& dependencies = {},
-                           bool android_analyze = false,
+                           const std::vector<ForensicScenario>& scenarios = {},
                            XFSMode xfs_mode = XFSMode::Auto,
                            const std::string& db_output_dir = "",
                            bool llm_analyze = false,
@@ -95,13 +96,11 @@ public:
     void set_result_db(const std::string& id, const std::string& db_path);
 
     /**
-     * @brief Configure Android analysis options
+     * @brief Set forensic scenarios for a task
      * @param id Task ID
-     * @param android_analyze Enable Android analysis
-     * @param xfs_mode XFS handling mode
-     * @param db_output_dir Directory for database output
+     * @param scenarios List of forensic scenarios to apply
      */
-    void set_android_analyze_options(const std::string& id, bool android_analyze, XFSMode xfs_mode, const std::string& db_output_dir);
+    void set_scenarios(const std::string& id, const std::vector<ForensicScenario>& scenarios);
 
     /**
      * @brief Configure LLM analysis options

@@ -5,7 +5,7 @@
  *  - LLM analysis is ALWAYS enabled (no toggle)
  *  - Case description is a required top-level field
  *  - Windows / Linux type checkboxes removed (backend never had this param)
- *  - Android deep analysis kept as optional (backend has dedicated analyzer)
+ *  - Multi-scenario selection (Android, Windows, Linux, Server/Cloud) replaces single Android toggle
  *  - XFS mode hidden inside collapsible "Advanced" section
  *  - Filter profile selection for scenario-based file filtering
  */
@@ -22,7 +22,7 @@ const INITIAL_FORM = {
   image_path: '',
   priority: 'normal',
   case_description: '',
-  android_analyze: false,
+  scenarios: [],
   xfs_mode: 'auto',
   filter_profile: '',
   // llm_analyze is always true — NOT a user setting
@@ -123,18 +123,38 @@ export default function CreateTaskModal() {
             </div>
           </Field>
 
-          {/* Android deep analysis */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.android_analyze}
-              disabled={isCreating}
-              onChange={(e) => set('android_analyze', e.target.checked)}
-              className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
-            />
-            <span className="text-sm text-slate-700 dark:text-slate-300">启用深度 Android 分析</span>
-            <span className="text-xs text-slate-400">（仅 Android 镜像需要）</span>
-          </label>
+          {/* Forensic Scenarios */}
+          <Field label="取证场景 *" hint="选择需要分析的平台场景（可多选）">
+            <div className="space-y-2">
+              {[
+                { value: 'android', label: '📱 Android', desc: 'SMS、联系人、通话记录、应用数据' },
+                { value: 'windows', label: '🪟 Windows', desc: '注册表、事件日志、Prefetch、浏览器历史' },
+                { value: 'linux', label: '🐧 Linux', desc: '系统日志、用户账户、Shell 历史、SSH' },
+                { value: 'server_cloud', label: '☁️ 服务器/云', desc: 'Docker、Nginx/Apache、K8s、云配置' },
+              ].map((s) => (
+                <label key={s.value} className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.scenarios.includes(s.value)}
+                    disabled={isCreating}
+                    onChange={(e) => {
+                      set(
+                        'scenarios',
+                        e.target.checked
+                          ? [...form.scenarios, s.value]
+                          : form.scenarios.filter((v) => v !== s.value)
+                      );
+                    }}
+                    className="mt-1 rounded border-slate-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
+                  />
+                  <div>
+                    <span className="text-sm text-slate-700 dark:text-slate-300">{s.label}</span>
+                    <p className="text-xs text-slate-400">{s.desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </Field>
 
           {/* Advanced options */}
           <div>

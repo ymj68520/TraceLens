@@ -930,3 +930,17 @@ target_link_libraries(test_event_timeline ${GTEST_LIBRARIES}
 
 add_test(NAME EventTimelineTests COMMAND test_event_timeline)
 
+# Task Scenarios Tests (ForensicScenario enum, serialization, backward compat)
+add_executable(
+  test_task_scenarios
+  UnitTest/test_task_scenarios_gtest.cpp
+  ../src/network/HTTPServer/TaskSerialization.cpp
+  ../src/core/PathManager/PathManager.cpp)
+
+target_include_directories(test_task_scenarios PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(test_task_scenarios ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
+                      nlohmann_json::nlohmann_json pthread)
+
+add_test(NAME TaskScenarioTests COMMAND test_task_scenarios)
+

@@ -44,6 +44,13 @@ public:
     void analyzeLinuxData();
 
     /**
+     * @brief Server/Cloud analysis entry point
+     * Focuses on server and cloud-specific artifacts: containers, web servers,
+     * cloud logs, network configuration, security posture, and extended history.
+     */
+    void analyzeServerCloudArtifacts();
+
+    /**
      * @brief Analyze Linux artifacts with LLM for AI-powered insights
      * This is a MANDATORY step for Linux forensics.
      * All parsed system artifacts are analyzed by AI to provide contextual understanding.
