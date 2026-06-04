@@ -57,3 +57,7 @@ redis-dump-load>=1.1
 # Includes: PDF, DOCX, XLSX, XLS, PPTX, HTML, CSV, JSON, XML, EPUB,
 #           images (EXIF+OCR), audio (transcription), and more
 markitdown[all]>=0.1.6
+
+# WeChat Graph Analysis
+networkx>=3.0
+python-louvain>=0.16
