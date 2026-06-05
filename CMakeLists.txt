@@ -275,6 +275,7 @@ set(LIB_SOURCES
     src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp
     src/network/HTTPServer/routes/DLLAnalysisRoutes.cpp
     src/network/HTTPServer/routes/SystemEventRoutes.cpp
+    src/network/HTTPServer/routes/SceneQueryRoutes.cpp
     src/network/HTTPServer/routes/SystemRoutes.cpp
     src/network/HTTPServer/routes/SystemHealthRoutes.cpp
     src/network/HTTPServer/routes/SystemInfoRoutes.cpp

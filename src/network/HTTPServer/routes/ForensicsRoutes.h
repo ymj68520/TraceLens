@@ -17,6 +17,7 @@
 #include "StatisticsRoutes.h"
 #include "AndroidForensicsRoutes.h"
 #include "SystemEventRoutes.h"
+#include "SceneQueryRoutes.h"
 
 namespace forensics {
 
@@ -31,6 +32,7 @@ namespace forensics {
  * - StatisticsRoutes
  * - AndroidForensicsRoutes
  * - SystemEventRoutes
+ * - SceneQueryRoutes
  *
  * Also manages extraction job tracking for file extraction operations
  */
@@ -83,6 +85,7 @@ private:
     AndroidForensicsRoutes android_forensics_routes_;
     SystemEventRoutes system_event_routes_;
     DLLAnalysisRoutes dll_analysis_routes_;
+    SceneQueryRoutes scene_query_routes_;
 
     // Extraction job tracking
     std::unordered_map<std::string, ExtractionJob> extraction_jobs_;
