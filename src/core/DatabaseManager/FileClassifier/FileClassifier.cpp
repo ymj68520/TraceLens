@@ -230,11 +230,16 @@ bool FileClassifier::classifyFiles() {
 		sqlite3_step(insertStmt);
 		sqlite3_finalize(insertStmt);
 
+		// Compute scene information
+		std::string sceneTypeStr = (sceneType_ != SceneType::NONE) ? getSceneTypeName(sceneType_) : "";
+		int priority = (sceneType_ != SceneType::NONE) ? calculateScenePriority(path, name, category) : 0;
+		bool relevant = (sceneType_ != SceneType::NONE) ? isSceneRelevant(path, name) : false;
+
 		// Also insert into main files table
 		std::string categoryName = getCategoryName(category);
 		std::string filesInsertSql = "INSERT INTO files "
-			"(inode, name, path, size, extension, category, type, mtime, ctime, is_deleted, md5) "
-			"VALUES (?, ?, ?, ?, ?, ?, 'REG', ?, ?, ?, ?);";
+			"(inode, name, path, size, extension, category, type, mtime, ctime, is_deleted, md5, scene_type, scene_priority, scene_relevant) "
+			"VALUES (?, ?, ?, ?, ?, ?, 'REG', ?, ?, ?, ?, ?, ?, ?);";
 
 		sqlite3_prepare_v2(fileDb_, filesInsertSql.c_str(), -1, &insertStmt, nullptr);
 
@@ -248,6 +253,9 @@ bool FileClassifier::classifyFiles() {
 		sqlite3_bind_int64(insertStmt, 8, ctime);
 		sqlite3_bind_int(insertStmt, 9, isDeleted);
 		sqlite3_bind_text(insertStmt, 10, md5.c_str(), -1, SQLITE_TRANSIENT);
+		sqlite3_bind_text(insertStmt, 11, sceneTypeStr.c_str(), -1, SQLITE_TRANSIENT);
+		sqlite3_bind_int(insertStmt, 12, priority);
+		sqlite3_bind_int(insertStmt, 13, relevant ? 1 : 0);
 
 		sqlite3_step(insertStmt);
 		sqlite3_finalize(insertStmt);
@@ -565,6 +573,11 @@ bool FileClassifier::filenameMatches(const std::string& filename,
 // Scene-Aware Classification Methods
 // ============================================================================
 
+void FileClassifier::markSceneFiles() {
+    // TODO: Implement in Task 3 - integrate scene marking into classifyFiles
+    // This method will be called from classifyAndExtract() after classifyFiles()
+}
+
 void FileClassifier::setSceneType(SceneType scene) {
     sceneType_ = scene;
 }
@@ -667,7 +680,6 @@ void FileClassifier::applyWindowsSceneRules(const std::string& path, const std::
         {"Windows/System32/config/", ScenePriority::CRITICAL},
         {"Windows/System32/winevt/", ScenePriority::CRITICAL},
         {"Windows/Prefetch/", ScenePriority::HIGH},
-        {"Users/*/AppData/", ScenePriority::HIGH},
         {"$Recycle.Bin/", ScenePriority::HIGH}
     };
 
@@ -677,6 +689,16 @@ void FileClassifier::applyWindowsSceneRules(const std::string& path, const std::
             relevant = (p >= ScenePriority::MEDIUM);
             return;
         }
+    }
+
+    // Check for user AppData paths (wildcard glob "Users/*/AppData/" cannot be
+    // used with std::string::find() since '*' is treated as a literal character).
+    // Instead, check that both "Users/" and "/AppData/" appear in the path.
+    if (path.find("Users/") != std::string::npos &&
+        path.find("/AppData/") != std::string::npos) {
+        priority = ScenePriority::HIGH;
+        relevant = true;
+        return;
     }
 
     // Windows critical files

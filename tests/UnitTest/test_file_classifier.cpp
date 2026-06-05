@@ -355,6 +355,61 @@ TEST_F(FileClassifierTest, MultipleExtensions) {
 }
 
 // ============================================================================
+// Scene Classification Tests
+// ============================================================================
+
+class SceneClassifierTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        testSourceDb = fs::temp_directory_path() / "test_scene_source.db";
+        testFileDb = fs::temp_directory_path() / "test_scene_files.db";
+        createMinimalSourceDb();
+    }
+
+    void TearDown() override {
+        fs::remove(testSourceDb);
+        fs::remove(testFileDb);
+    }
+
+    void createMinimalSourceDb() {
+        sqlite3* db;
+        sqlite3_open(testSourceDb.c_str(), &db);
+        const char* sql = "CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, name TEXT, path TEXT, size INTEGER);";
+        sqlite3_exec(db, sql, nullptr, nullptr, nullptr);
+        sqlite3_close(db);
+    }
+
+    fs::path testSourceDb;
+    fs::path testFileDb;
+};
+
+TEST_F(SceneClassifierTest, SceneTypeNoneReturnsIrrelevant) {
+    FileClassifier classifier(testSourceDb.string(), testFileDb.string());
+    // Default scene type is NONE
+    EXPECT_EQ(classifier.getSceneType(), SceneType::NONE);
+    EXPECT_EQ(classifier.calculateScenePriority("/data/data/com.android.providers.contacts/", "contacts.db", FileCategory::DATABASE), ScenePriority::IRRELEVANT);
+}
+
+TEST_F(SceneClassifierTest, WindowsAppDataWildcardMatch) {
+    FileClassifier classifier(testSourceDb.string(), testFileDb.string());
+    classifier.setSceneType(SceneType::WINDOWS);
+
+    // Should match "Users/*/AppData/" pattern via compound check
+    EXPECT_EQ(classifier.calculateScenePriority("Users/John/AppData/Local/Temp/", "data.tmp", FileCategory::TEMP), ScenePriority::HIGH);
+    EXPECT_EQ(classifier.calculateScenePriority("Users/Administrator/AppData/Roaming/", "settings.json", FileCategory::UNKNOWN), ScenePriority::HIGH);
+}
+
+TEST_F(SceneClassifierTest, WindowsAppDataNoMatchOnPartialPath) {
+    FileClassifier classifier(testSourceDb.string(), testFileDb.string());
+    classifier.setSceneType(SceneType::WINDOWS);
+
+    // "Users/" without "/AppData/" should not match HIGH
+    EXPECT_NE(classifier.calculateScenePriority("Users/John/Documents/", "report.pdf", FileCategory::DOCUMENT), ScenePriority::HIGH);
+    // "/AppData/" without "Users/" should not match HIGH
+    EXPECT_NE(classifier.calculateScenePriority("C:/Program Files/AppData/", "file.dat", FileCategory::DATABASE), ScenePriority::HIGH);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 

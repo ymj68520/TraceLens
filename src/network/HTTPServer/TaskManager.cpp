@@ -657,10 +657,23 @@ void TaskManager::start_analysis(const std::string& task_id) {
             }
             update_progress(task_id, TaskPhase::EVENT_EXTRACTION, 100, "Timeline events extraction completed");
 
-            // 3. File Classification
+            // 3. File Classification (scene-aware)
             if (is_task_cancelled(task_id)) { return; }
             update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 10, "Classifying files by type...");
             auto fileClassifier = std::make_unique<FileClassifier>(effectiveRawDb, fileDbPath);
+
+            // Map ForensicScenario to SceneType for scene-aware classification
+            SceneType sceneType = SceneType::NONE;
+            if (!task.scenarios.empty()) {
+                switch (task.scenarios[0]) {
+                    case ForensicScenario::ANDROID: sceneType = SceneType::ANDROID; break;
+                    case ForensicScenario::WINDOWS: sceneType = SceneType::WINDOWS; break;
+                    case ForensicScenario::LINUX: sceneType = SceneType::LINUX; break;
+                    case ForensicScenario::SERVER_CLOUD: sceneType = SceneType::SERVER_CLOUD; break;
+                }
+            }
+            fileClassifier->setSceneType(sceneType);
+
             if (!fileClassifier->classifyAndExtract()) {
                 update_status(task_id, TaskStatus::FAILED, "Failed to classify files");
                 return;
@@ -674,6 +687,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 
                 forensics::LLMAnalysisService llmService;
                 if (llmService.initialize()) {
+                    llmService.setSceneType(sceneType);
                     auto& config = forensics::ConfigManager::instance();
                     forensics::LLMAnalysisService::AnalysisOptions llmOpts;
                     llmOpts.maxFiles = config.getLLMMaxFiles();

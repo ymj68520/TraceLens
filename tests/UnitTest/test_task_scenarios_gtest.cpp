@@ -147,6 +147,74 @@ TEST(AnalysisTaskTest, CopyPreservesScenarios) {
     EXPECT_EQ(copy.scenarios[1], ForensicScenario::SERVER_CLOUD);
 }
 
+TEST(SceneConfigTest, DefaultValues) {
+    AnalysisTask::SceneConfig config;
+    EXPECT_FALSE(config.enabled);
+    EXPECT_EQ(config.priorityThreshold, 50);
+    EXPECT_FALSE(config.autoDetect);
+    EXPECT_TRUE(config.customRules.empty());
+}
+
+TEST(SceneConfigTest, MapStorage) {
+    AnalysisTask task;
+    task.id = "scene-config-test";
+
+    AnalysisTask::SceneConfig androidConfig;
+    androidConfig.enabled = true;
+    androidConfig.priorityThreshold = 75;
+    androidConfig.autoDetect = true;
+    androidConfig.customRules.push_back("rule1");
+
+    task.sceneConfigs[ForensicScenario::ANDROID] = androidConfig;
+
+    EXPECT_EQ(task.sceneConfigs.size(), 1);
+    EXPECT_TRUE(task.sceneConfigs[ForensicScenario::ANDROID].enabled);
+    EXPECT_EQ(task.sceneConfigs[ForensicScenario::ANDROID].priorityThreshold, 75);
+    EXPECT_TRUE(task.sceneConfigs[ForensicScenario::ANDROID].autoDetect);
+    EXPECT_EQ(task.sceneConfigs[ForensicScenario::ANDROID].customRules.size(), 1);
+    EXPECT_EQ(task.sceneConfigs[ForensicScenario::ANDROID].customRules[0], "rule1");
+}
+
+TEST(SceneConfigTest, CopyPreservesSceneConfigs) {
+    AnalysisTask original;
+    original.id = "copy-scene-test";
+    original.scenarios = {ForensicScenario::ANDROID, ForensicScenario::WINDOWS};
+
+    AnalysisTask::SceneConfig androidConfig;
+    androidConfig.enabled = true;
+    androidConfig.priorityThreshold = 80;
+    original.sceneConfigs[ForensicScenario::ANDROID] = androidConfig;
+
+    AnalysisTask::SceneConfig windowsConfig;
+    windowsConfig.enabled = true;
+    windowsConfig.autoDetect = true;
+    original.sceneConfigs[ForensicScenario::WINDOWS] = windowsConfig;
+
+    AnalysisTask copy = original;
+    EXPECT_EQ(copy.sceneConfigs.size(), 2);
+    EXPECT_TRUE(copy.sceneConfigs[ForensicScenario::ANDROID].enabled);
+    EXPECT_EQ(copy.sceneConfigs[ForensicScenario::ANDROID].priorityThreshold, 80);
+    EXPECT_TRUE(copy.sceneConfigs[ForensicScenario::WINDOWS].autoDetect);
+}
+
+TEST(SceneConfigTest, MovePreservesSceneConfigs) {
+    AnalysisTask original;
+    original.id = "move-scene-test";
+    original.scenarios = {ForensicScenario::LINUX};
+
+    AnalysisTask::SceneConfig linuxConfig;
+    linuxConfig.enabled = true;
+    linuxConfig.priorityThreshold = 60;
+    linuxConfig.customRules.push_back("ssh_rule");
+    original.sceneConfigs[ForensicScenario::LINUX] = linuxConfig;
+
+    AnalysisTask moved = std::move(original);
+    EXPECT_EQ(moved.sceneConfigs.size(), 1);
+    EXPECT_TRUE(moved.sceneConfigs[ForensicScenario::LINUX].enabled);
+    EXPECT_EQ(moved.sceneConfigs[ForensicScenario::LINUX].priorityThreshold, 60);
+    EXPECT_EQ(moved.sceneConfigs[ForensicScenario::LINUX].customRules[0], "ssh_rule");
+}
+
 TEST(AnalysisTaskTest, NoScenariosNoAndroidAnalyze) {
     AnalysisTask task;
     task.id = "no-scenarios";

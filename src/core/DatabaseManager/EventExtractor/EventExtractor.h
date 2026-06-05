@@ -103,6 +103,9 @@ public:
     bool importWindowsArtifacts(const std::string& windowsDbPath);
     bool importLinuxArtifacts(const std::string& linuxDbPath);
     bool importAndroidArtifacts(const std::string& androidDbPath);
+
+    // Scene-aware: import artifacts from unified files.db
+    bool importSceneArtifacts(const std::string& fileDbPath, const std::string& sceneType);
     
     // System event methods
     bool insertSystemEvent(const SystemEvent& event);
@@ -143,6 +146,11 @@ private:
 	std::string getSourceId(const TimelineEvent& event);
 	bool isSecurityEvent(const TimelineEvent& event);
 	bool isSuspiciousActivity(const TimelineEvent& event);
+
+	// Scene-aware: import helpers for unified files.db
+	bool importAndroidArtifactsFromFilesDb(const std::string& fileDbPath);
+	bool importWindowsArtifactsFromFilesDb(const std::string& fileDbPath);
+	bool importLinuxArtifactsFromFilesDb(const std::string& fileDbPath);
 };
 
 #endif // EVENT_EXTRACTOR_H

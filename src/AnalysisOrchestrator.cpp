@@ -91,16 +91,35 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             std::cout << "[2/4] File filter: skipped (no profile specified)\n" << std::endl;
         }
 
-        // Step 3: Classify files (using effective raw db - filtered or unfiltered)
+        // Step 3: Classify files with scene-aware context
         std::cout << "[3/4] Classifying files..." << std::endl;
         auto classifier = std::make_unique<FileClassifier>(effectiveRawDb, fileDbPath);
+
+        // Determine scene type from analysis flags
+        SceneType sceneType = SceneType::NONE;
+        if (args.android_analyze) sceneType = SceneType::ANDROID;
+        else if (args.windows_analyze) sceneType = SceneType::WINDOWS;
+        else if (args.linux_analyze) sceneType = SceneType::LINUX;
+
+        if (sceneType != SceneType::NONE) {
+            classifier->setSceneType(sceneType);
+            std::cout << "  Scene type: "
+                      << (sceneType == SceneType::ANDROID ? "Android" :
+                          sceneType == SceneType::WINDOWS ? "Windows" :
+                          sceneType == SceneType::LINUX ? "Linux" : "None")
+                      << std::endl;
+        }
+
         if (!classifier->classifyAndExtract()) {
             std::cerr << "Error: Failed to classify files" << std::endl;
             return 1;
         }
         std::cout << "✓ File database: " << fileDbPath << "\n" << std::endl;
 
-        // Step 4: Platform-specific analysis (uses effective raw db)
+        // Release classifier's database lock before platform analyzers write to files.db
+        classifier.reset();
+
+        // Step 4: Scene-specific analysis (writes artifacts into files.db)
         if (args.android_analyze) {
             std::cout << "[Android] Analyzing..." << std::endl;
             auto dbMgr = std::make_unique<DatabaseManager>(effectiveRawDb);
@@ -108,7 +127,8 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             if (!args.wechat_password.empty()) {
                 androidAnalyzer->setWeChatPassword(args.wechat_password);
             }
-            androidAnalyzer->setOutputDatabasePath(prefix + baseName + "_android.db");
+            // Write Android artifacts into files.db for unified scene database
+            androidAnalyzer->setOutputDatabasePath(fileDbPath);
             if (androidAnalyzer->initialize()) {
                 androidAnalyzer->analyzeAndroidData();
                 std::cout << "✓ Android analysis complete\n" << std::endl;
@@ -119,7 +139,8 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             std::cout << "[Windows] Analyzing..." << std::endl;
             auto dbMgr = std::make_unique<DatabaseManager>(effectiveRawDb);
             auto winAnalyzer = std::make_unique<WindowsFilesAnalyzer>(args.image_path, dbMgr.get());
-            winAnalyzer->setOutputDatabasePath(prefix + baseName + "_windows.db");
+            // Write Windows artifacts into files.db for unified scene database
+            winAnalyzer->setOutputDatabasePath(fileDbPath);
             if (winAnalyzer->initialize()) {
                 winAnalyzer->analyzeWindowsData();
                 std::cout << "✓ Windows analysis complete\n" << std::endl;
@@ -130,7 +151,8 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             std::cout << "[Linux] Analyzing..." << std::endl;
             auto dbMgr = std::make_unique<DatabaseManager>(effectiveRawDb);
             auto linuxAnalyzer = std::make_unique<LinuxFilesAnalyzer>(args.image_path, dbMgr.get());
-            linuxAnalyzer->setOutputDatabasePath(prefix + baseName + "_linux.db");
+            // Write Linux artifacts into files.db for unified scene database
+            linuxAnalyzer->setOutputDatabasePath(fileDbPath);
             if (linuxAnalyzer->initialize()) {
                 linuxAnalyzer->analyzeLinuxData();
                 std::cout << "✓ Linux analysis complete\n" << std::endl;
@@ -141,12 +163,13 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         std::cout << "[4/4] Generating timeline..." << std::endl;
         auto eventExtractor = std::make_unique<EventExtractor>(effectiveRawDb, eventDbPath);
         if (eventExtractor->extractEvents()) {
-            if (args.android_analyze && fs::exists(prefix + baseName + "_android.db"))
-                eventExtractor->importAndroidArtifacts(prefix + baseName + "_android.db");
-            if (args.windows_analyze && fs::exists(prefix + baseName + "_windows.db"))
-                eventExtractor->importWindowsArtifacts(prefix + baseName + "_windows.db");
-            if (args.linux_analyze && fs::exists(prefix + baseName + "_linux.db"))
-                eventExtractor->importLinuxArtifacts(prefix + baseName + "_linux.db");
+            // Import scene artifacts from files.db (where platform analyzers wrote)
+            if (args.android_analyze && fs::exists(fileDbPath))
+                eventExtractor->importAndroidArtifacts(fileDbPath);
+            if (args.windows_analyze && fs::exists(fileDbPath))
+                eventExtractor->importWindowsArtifacts(fileDbPath);
+            if (args.linux_analyze && fs::exists(fileDbPath))
+                eventExtractor->importLinuxArtifacts(fileDbPath);
             std::cout << "✓ Timeline: " << eventDbPath << "\n" << std::endl;
         }
 
@@ -159,14 +182,14 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             dllAnalyzer->enableSignatureVerification(args.verify_signatures);
 
             // 关联 Windows 取证数据库（如果 Windows 分析已执行）
+            // Windows artifacts are now in files.db (unified scene database)
             // 注意：Windows DB 只读访问，不会导致写锁竞争
             std::unique_ptr<WindowsAnalysisDatabase> windowsDb;
             if (args.windows_analyze) {
-                std::string windowsDbPath = prefix + baseName + "_windows.db";
-                if (fs::exists(windowsDbPath)) {
-                    std::cout << "Linking Windows forensic database for DLL correlation: " << windowsDbPath << std::endl;
+                if (fs::exists(fileDbPath)) {
+                    std::cout << "Linking Windows forensic database for DLL correlation: " << fileDbPath << std::endl;
                     // 创建 Windows DB 实例用于只读查询
-                    windowsDb = std::make_unique<WindowsAnalysisDatabase>(windowsDbPath);
+                    windowsDb = std::make_unique<WindowsAnalysisDatabase>(fileDbPath);
                     if (windowsDb->initialize()) {
                         dllAnalyzer->setWindowsDatabase(windowsDb.get());
                     } else {

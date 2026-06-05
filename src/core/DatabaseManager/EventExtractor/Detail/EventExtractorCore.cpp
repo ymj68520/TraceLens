@@ -265,3 +265,283 @@ void EventExtractor::closeDatabases() {
 	if (sourceDb_) sqlite3_close(sourceDb_);
 	if (eventDb_) sqlite3_close(eventDb_);
 }
+
+// ============================================================================
+// Scene-aware: Import artifacts from unified files.db
+// ============================================================================
+
+bool EventExtractor::importSceneArtifacts(const std::string& fileDbPath, const std::string& sceneType) {
+    AuditLog::instance().log("SYSTEM", "SCENE_ARTIFACT_IMPORT", "Importing scene artifacts from: " + fileDbPath + " type: " + sceneType);
+
+    if (sceneType == "android") {
+        return importAndroidArtifactsFromFilesDb(fileDbPath);
+    } else if (sceneType == "windows") {
+        return importWindowsArtifactsFromFilesDb(fileDbPath);
+    } else if (sceneType == "linux") {
+        return importLinuxArtifactsFromFilesDb(fileDbPath);
+    }
+
+    std::cerr << "Unknown scene type: " << sceneType << std::endl;
+    return false;
+}
+
+bool EventExtractor::importAndroidArtifactsFromFilesDb(const std::string& fileDbPath) {
+    std::cout << "Importing Android artifacts from files.db..." << std::endl;
+
+    sqlite3* fileDb = nullptr;
+    if (sqlite3_open(fileDbPath.c_str(), &fileDb) != SQLITE_OK) {
+        std::cerr << "Failed to open files.db: " << sqlite3_errmsg(fileDb) << std::endl;
+        if (fileDb) sqlite3_close(fileDb);
+        return false;
+    }
+
+    // Check if android_artifacts table exists
+    const char* checkTableSql = "SELECT name FROM sqlite_master WHERE type='table' AND name='android_artifacts';";
+    sqlite3_stmt* checkStmt;
+    if (sqlite3_prepare_v2(fileDb, checkTableSql, -1, &checkStmt, nullptr) != SQLITE_OK) {
+        sqlite3_close(fileDb);
+        return false;
+    }
+    bool tableExists = (sqlite3_step(checkStmt) == SQLITE_ROW);
+    sqlite3_finalize(checkStmt);
+    if (!tableExists) {
+        std::cerr << "android_artifacts table not found in files.db" << std::endl;
+        sqlite3_close(fileDb);
+        return false;
+    }
+
+    const char* query = R"(
+        SELECT aa.artifact_type, aa.artifact_data, aa.extracted_at,
+               f.path, f.name, f.size, f.extension
+        FROM android_artifacts aa
+        JOIN files f ON aa.file_id = f.id
+        ORDER BY aa.extracted_at
+    )";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(fileDb, query, -1, &stmt, nullptr) != SQLITE_OK) {
+        std::cerr << "Failed to prepare android artifacts query" << std::endl;
+        sqlite3_close(fileDb);
+        return false;
+    }
+
+    sqlite3_exec(eventDb_, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+
+    int importedCount = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* artifactTypeRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        const char* artifactDataRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        int64_t extractedAt = sqlite3_column_int64(stmt, 2);
+        const char* filePathRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        const char* fileNameRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        int64_t fileSize = sqlite3_column_int64(stmt, 5);
+        const char* extensionRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+
+        std::string artifactType = artifactTypeRaw ? artifactTypeRaw : "";
+        std::string artifactData = artifactDataRaw ? artifactDataRaw : "";
+        std::string filePath = filePathRaw ? filePathRaw : "";
+        std::string fileName = fileNameRaw ? fileNameRaw : "";
+        std::string extension = extensionRaw ? extensionRaw : "";
+
+        TimelineEvent event;
+        event.timestamp = extractedAt;
+        event.eventType = "ANDROID_ARTIFACT";
+        event.filePath = filePath;
+        event.inode = 0;
+        event.description = "Android " + artifactType + ": " + fileName;
+        event.fileSize = fileSize;
+        event.fileType = extension;
+        event.systemContext = "";
+        event.priority = EventPriority::MEDIUM;
+        event.severity = EventSeverity::INFO;
+        event.source = EventSource::ANDROID_LOG;
+        event.category = EventCategory::APPLICATION_EVENT;
+        event.normalizedType = normalizeEventType("ANDROID_ARTIFACT");
+        event.sourceId = getSourceId(event);
+
+        if (insertEvent(event)) {
+            importedCount++;
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_exec(eventDb_, "COMMIT;", nullptr, nullptr, nullptr);
+    sqlite3_close(fileDb);
+
+    std::cout << "Imported " << importedCount << " Android artifacts" << std::endl;
+    return true;
+}
+
+bool EventExtractor::importWindowsArtifactsFromFilesDb(const std::string& fileDbPath) {
+    std::cout << "Importing Windows artifacts from files.db..." << std::endl;
+
+    sqlite3* fileDb = nullptr;
+    if (sqlite3_open(fileDbPath.c_str(), &fileDb) != SQLITE_OK) {
+        std::cerr << "Failed to open files.db: " << sqlite3_errmsg(fileDb) << std::endl;
+        if (fileDb) sqlite3_close(fileDb);
+        return false;
+    }
+
+    // Check if windows_artifacts table exists
+    const char* checkTableSql = "SELECT name FROM sqlite_master WHERE type='table' AND name='windows_artifacts';";
+    sqlite3_stmt* checkStmt;
+    if (sqlite3_prepare_v2(fileDb, checkTableSql, -1, &checkStmt, nullptr) != SQLITE_OK) {
+        sqlite3_close(fileDb);
+        return false;
+    }
+    bool tableExists = (sqlite3_step(checkStmt) == SQLITE_ROW);
+    sqlite3_finalize(checkStmt);
+    if (!tableExists) {
+        std::cerr << "windows_artifacts table not found in files.db" << std::endl;
+        sqlite3_close(fileDb);
+        return false;
+    }
+
+    const char* query = R"(
+        SELECT wa.artifact_type, wa.artifact_data, wa.extracted_at,
+               f.path, f.name, f.size, f.extension
+        FROM windows_artifacts wa
+        JOIN files f ON wa.file_id = f.id
+        ORDER BY wa.extracted_at
+    )";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(fileDb, query, -1, &stmt, nullptr) != SQLITE_OK) {
+        std::cerr << "Failed to prepare windows artifacts query" << std::endl;
+        sqlite3_close(fileDb);
+        return false;
+    }
+
+    sqlite3_exec(eventDb_, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+
+    int importedCount = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* artifactTypeRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        const char* artifactDataRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        int64_t extractedAt = sqlite3_column_int64(stmt, 2);
+        const char* filePathRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        const char* fileNameRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        int64_t fileSize = sqlite3_column_int64(stmt, 5);
+        const char* extensionRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+
+        std::string artifactType = artifactTypeRaw ? artifactTypeRaw : "";
+        std::string artifactData = artifactDataRaw ? artifactDataRaw : "";
+        std::string filePath = filePathRaw ? filePathRaw : "";
+        std::string fileName = fileNameRaw ? fileNameRaw : "";
+        std::string extension = extensionRaw ? extensionRaw : "";
+
+        TimelineEvent event;
+        event.timestamp = extractedAt;
+        event.eventType = "WINDOWS_ARTIFACT";
+        event.filePath = filePath;
+        event.inode = 0;
+        event.description = "Windows " + artifactType + ": " + fileName;
+        event.fileSize = fileSize;
+        event.fileType = extension;
+        event.systemContext = "";
+        event.priority = EventPriority::MEDIUM;
+        event.severity = EventSeverity::INFO;
+        event.source = EventSource::WINDOWS_EVENT_LOG;
+        event.category = EventCategory::APPLICATION_EVENT;
+        event.normalizedType = normalizeEventType("WINDOWS_ARTIFACT");
+        event.sourceId = getSourceId(event);
+
+        if (insertEvent(event)) {
+            importedCount++;
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_exec(eventDb_, "COMMIT;", nullptr, nullptr, nullptr);
+    sqlite3_close(fileDb);
+
+    std::cout << "Imported " << importedCount << " Windows artifacts" << std::endl;
+    return true;
+}
+
+bool EventExtractor::importLinuxArtifactsFromFilesDb(const std::string& fileDbPath) {
+    std::cout << "Importing Linux artifacts from files.db..." << std::endl;
+
+    sqlite3* fileDb = nullptr;
+    if (sqlite3_open(fileDbPath.c_str(), &fileDb) != SQLITE_OK) {
+        std::cerr << "Failed to open files.db: " << sqlite3_errmsg(fileDb) << std::endl;
+        if (fileDb) sqlite3_close(fileDb);
+        return false;
+    }
+
+    // Check if linux_artifacts table exists
+    const char* checkTableSql = "SELECT name FROM sqlite_master WHERE type='table' AND name='linux_artifacts';";
+    sqlite3_stmt* checkStmt;
+    if (sqlite3_prepare_v2(fileDb, checkTableSql, -1, &checkStmt, nullptr) != SQLITE_OK) {
+        sqlite3_close(fileDb);
+        return false;
+    }
+    bool tableExists = (sqlite3_step(checkStmt) == SQLITE_ROW);
+    sqlite3_finalize(checkStmt);
+    if (!tableExists) {
+        std::cerr << "linux_artifacts table not found in files.db" << std::endl;
+        sqlite3_close(fileDb);
+        return false;
+    }
+
+    const char* query = R"(
+        SELECT la.artifact_type, la.artifact_data, la.extracted_at,
+               f.path, f.name, f.size, f.extension
+        FROM linux_artifacts la
+        JOIN files f ON la.file_id = f.id
+        ORDER BY la.extracted_at
+    )";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(fileDb, query, -1, &stmt, nullptr) != SQLITE_OK) {
+        std::cerr << "Failed to prepare linux artifacts query" << std::endl;
+        sqlite3_close(fileDb);
+        return false;
+    }
+
+    sqlite3_exec(eventDb_, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+
+    int importedCount = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* artifactTypeRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        const char* artifactDataRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        int64_t extractedAt = sqlite3_column_int64(stmt, 2);
+        const char* filePathRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        const char* fileNameRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        int64_t fileSize = sqlite3_column_int64(stmt, 5);
+        const char* extensionRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+
+        std::string artifactType = artifactTypeRaw ? artifactTypeRaw : "";
+        std::string artifactData = artifactDataRaw ? artifactDataRaw : "";
+        std::string filePath = filePathRaw ? filePathRaw : "";
+        std::string fileName = fileNameRaw ? fileNameRaw : "";
+        std::string extension = extensionRaw ? extensionRaw : "";
+
+        TimelineEvent event;
+        event.timestamp = extractedAt;
+        event.eventType = "LINUX_ARTIFACT";
+        event.filePath = filePath;
+        event.inode = 0;
+        event.description = "Linux " + artifactType + ": " + fileName;
+        event.fileSize = fileSize;
+        event.fileType = extension;
+        event.systemContext = "";
+        event.priority = EventPriority::MEDIUM;
+        event.severity = EventSeverity::INFO;
+        event.source = EventSource::LINUX_SYSLOG;
+        event.category = EventCategory::APPLICATION_EVENT;
+        event.normalizedType = normalizeEventType("LINUX_ARTIFACT");
+        event.sourceId = getSourceId(event);
+
+        if (insertEvent(event)) {
+            importedCount++;
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_exec(eventDb_, "COMMIT;", nullptr, nullptr, nullptr);
+    sqlite3_close(fileDb);
+
+    std::cout << "Imported " << importedCount << " Linux artifacts" << std::endl;
+    return true;
+}

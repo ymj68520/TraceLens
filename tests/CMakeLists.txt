@@ -1038,3 +1038,11 @@ target_link_libraries(test_scene_database_gtest ${GTEST_LIBRARIES}
                       nlohmann_json::nlohmann_json)
 
 add_test(NAME SceneDatabaseGTests COMMAND test_scene_database_gtest)
+
+# Scene Performance Tests (LLM analysis optimization with scene specialization)
+add_executable(test_scene_performance_gtest UnitTest/test_scene_performance_gtest.cpp)
+
+target_link_libraries(test_scene_performance_gtest ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} sqlite3 pthread)
+
+add_test(NAME ScenePerformanceGTests COMMAND test_scene_performance_gtest)

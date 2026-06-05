@@ -29,7 +29,10 @@ inline constexpr const char* CREATE_MAIN_FILES_TABLE = R"(
         llm_description TEXT,
         llm_keywords TEXT,
         llm_analyzed_at INTEGER,
-        llm_model_used TEXT
+        llm_model_used TEXT,
+        scene_type TEXT,
+        scene_priority INTEGER DEFAULT 0,
+        scene_relevant INTEGER DEFAULT 0
     );
 )";
 
@@ -297,9 +300,9 @@ inline constexpr const char* INSERT_INTO_CATEGORY_TABLE_TEMPLATE =
     "INSERT INTO %TABLE_NAME% (inode, name, path, size, extension, mtime, ctime, is_deleted, md5) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
-inline constexpr const char* INSERT_INTO_FILES_TABLE = 
-    "INSERT INTO files (inode, name, path, size, extension, category, type, mtime, ctime, is_deleted, md5) "
-    "VALUES (?, ?, ?, ?, ?, ?, 'REG', ?, ?, ?, ?);";
+inline constexpr const char* INSERT_INTO_FILES_TABLE =
+    "INSERT INTO files (inode, name, path, size, extension, category, type, mtime, ctime, is_deleted, md5, scene_type, scene_priority, scene_relevant) "
+    "VALUES (?, ?, ?, ?, ?, ?, 'REG', ?, ?, ?, ?, ?, ?, ?);";
 
 // ============================================================================
 // SELECT Statements
@@ -318,6 +321,114 @@ inline constexpr const char* SELECT_FILES_FOR_CLASSIFICATION = R"(
 inline constexpr const char* BEGIN_TRANSACTION = "BEGIN TRANSACTION;";
 inline constexpr const char* COMMIT_TRANSACTION = "COMMIT;";
 inline constexpr const char* ROLLBACK_TRANSACTION = "ROLLBACK;";
+
+// ============================================================================
+// Scene Specialization Tables
+// ============================================================================
+
+// Template for artifact tables - use with table name substitution (%TABLE_NAME%)
+inline constexpr const char* CREATE_ARTIFACT_TABLE_TEMPLATE = R"(
+    CREATE TABLE IF NOT EXISTS %TABLE_NAME% (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_id INTEGER REFERENCES files(id),
+        artifact_type TEXT NOT NULL,
+        artifact_data TEXT,
+        extracted_at INTEGER,
+        llm_summary TEXT,
+        llm_description TEXT,
+        llm_keywords TEXT,
+        llm_analyzed_at INTEGER,
+        llm_model_used TEXT
+    );
+)";
+
+// Scene artifacts indices
+inline constexpr const char* CREATE_SCENE_ARTIFACTS_INDICES = R"(
+    CREATE INDEX IF NOT EXISTS idx_android_artifacts_file_id ON android_artifacts(file_id);
+    CREATE INDEX IF NOT EXISTS idx_android_artifacts_type ON android_artifacts(artifact_type);
+    CREATE INDEX IF NOT EXISTS idx_windows_artifacts_file_id ON windows_artifacts(file_id);
+    CREATE INDEX IF NOT EXISTS idx_windows_artifacts_type ON windows_artifacts(artifact_type);
+    CREATE INDEX IF NOT EXISTS idx_linux_artifacts_file_id ON linux_artifacts(file_id);
+    CREATE INDEX IF NOT EXISTS idx_linux_artifacts_type ON linux_artifacts(artifact_type);
+)";
+
+// Scene file summary view
+inline constexpr const char* CREATE_SCENE_FILE_SUMMARY_VIEW = R"(
+    CREATE VIEW IF NOT EXISTS scene_file_summary AS
+    SELECT
+        scene_type,
+        COUNT(*) as total_files,
+        SUM(CASE WHEN scene_relevant = 1 THEN 1 ELSE 0 END) as relevant_files,
+        SUM(size) as total_size,
+        SUM(CASE WHEN llm_analyzed_at IS NOT NULL AND llm_analyzed_at > 0 THEN 1 ELSE 0 END) as llm_analyzed_files
+    FROM files
+    WHERE scene_type IS NOT NULL
+    GROUP BY scene_type;
+)";
+
+// Scene artifact summary view
+inline constexpr const char* CREATE_SCENE_ARTIFACT_SUMMARY_VIEW = R"(
+    CREATE VIEW IF NOT EXISTS scene_artifact_summary AS
+    SELECT
+        'android' as scene_type,
+        artifact_type,
+        COUNT(*) as artifact_count,
+        SUM(CASE WHEN llm_analyzed_at IS NOT NULL AND llm_analyzed_at > 0 THEN 1 ELSE 0 END) as analyzed_count
+    FROM android_artifacts
+    GROUP BY artifact_type
+    UNION ALL
+    SELECT
+        'windows' as scene_type,
+        artifact_type,
+        COUNT(*) as artifact_count,
+        SUM(CASE WHEN llm_analyzed_at IS NOT NULL AND llm_analyzed_at > 0 THEN 1 ELSE 0 END) as analyzed_count
+    FROM windows_artifacts
+    GROUP BY artifact_type
+    UNION ALL
+    SELECT
+        'linux' as scene_type,
+        artifact_type,
+        COUNT(*) as artifact_count,
+        SUM(CASE WHEN llm_analyzed_at IS NOT NULL AND llm_analyzed_at > 0 THEN 1 ELSE 0 END) as analyzed_count
+    FROM linux_artifacts
+    GROUP BY artifact_type;
+)";
+
+// Migration: Add scene columns to existing files table
+inline constexpr const char* ALTER_FILES_ADD_SCENE_COLUMNS[] = {
+    "ALTER TABLE files ADD COLUMN scene_type TEXT;",
+    "ALTER TABLE files ADD COLUMN scene_priority INTEGER DEFAULT 0;",
+    "ALTER TABLE files ADD COLUMN scene_relevant INTEGER DEFAULT 0;"
+};
+inline const int ALTER_FILES_ADD_SCENE_COLUMNS_COUNT = 3;
+
+// Template for inserting into artifact tables - use with table name substitution (%TABLE_NAME%)
+inline constexpr const char* INSERT_ARTIFACT_TEMPLATE =
+    "INSERT INTO %TABLE_NAME% (file_id, artifact_type, artifact_data, extracted_at) VALUES (?, ?, ?, ?);";
+
+// Template for updating artifact LLM analysis - use with table name substitution (%TABLE_NAME%)
+inline constexpr const char* UPDATE_ARTIFACT_LLM_TEMPLATE = R"(
+    UPDATE %TABLE_NAME% SET
+        llm_summary = ?,
+        llm_description = ?,
+        llm_keywords = ?,
+        llm_analyzed_at = ?,
+        llm_model_used = ?
+    WHERE id = ?;
+)";
+
+// Select scene files for LLM analysis
+inline constexpr const char* SELECT_SCENE_FILES_FOR_LLM = R"(
+    SELECT id, inode, name, path, size, extension, category, type,
+           mtime, ctime, is_deleted, md5,
+           scene_type, scene_priority, scene_relevant
+    FROM files
+    WHERE type = 'REG'
+      AND (llm_analyzed_at IS NULL OR llm_analyzed_at = 0)
+      AND scene_priority > 0
+    ORDER BY scene_priority DESC, size ASC
+    LIMIT ?;
+)";
 
 } // namespace FileClassifierSQL
 

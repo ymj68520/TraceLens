@@ -96,6 +96,14 @@ struct TaskDependency {
  * @brief Analysis task structure
  */
 struct AnalysisTask {
+    // Scene configuration per scenario
+    struct SceneConfig {
+        bool enabled = false;
+        int priorityThreshold = 50;
+        bool autoDetect = false;
+        std::vector<std::string> customRules;
+    };
+
     std::string id;
     std::string image_path;
     TaskStatus status;
@@ -113,6 +121,7 @@ struct AnalysisTask {
     std::vector<std::string> dependents;
     std::string result_cache;
     std::vector<ForensicScenario> scenarios;  // Selected forensic scenarios
+    std::map<ForensicScenario, SceneConfig> sceneConfigs;  // Per-scenario configuration
 
     // Backward compatibility: computed property
     bool get_android_analyze() const {
@@ -124,7 +133,7 @@ struct AnalysisTask {
     std::atomic<bool> cancellation_requested{false};
     std::string error_details;
     std::map<std::string, std::string> metadata;
-    
+
     // LLM analysis options
     bool llm_analyze = false;           // Enable LLM file description generation
     std::string llm_mode = "smart";     // "full" or "smart"
@@ -145,7 +154,8 @@ struct AnalysisTask {
           created_time(other.created_time), started_time(other.started_time),
           completed_time(other.completed_time), execution_start_time(other.execution_start_time), dependencies(other.dependencies),
           dependents(other.dependents), result_cache(other.result_cache),
-          scenarios(other.scenarios), xfs_mode(other.xfs_mode),
+          scenarios(other.scenarios), sceneConfigs(other.sceneConfigs),
+          xfs_mode(other.xfs_mode),
           db_output_dir(other.db_output_dir),
           cancellation_requested(other.cancellation_requested.load()),
           error_details(other.error_details), metadata(other.metadata),
@@ -174,6 +184,7 @@ struct AnalysisTask {
             dependents = other.dependents;
             result_cache = other.result_cache;
             scenarios = other.scenarios;
+            sceneConfigs = other.sceneConfigs;
             xfs_mode = other.xfs_mode;
             db_output_dir = other.db_output_dir;
             cancellation_requested.store(other.cancellation_requested.load());
@@ -199,7 +210,8 @@ struct AnalysisTask {
           created_time(other.created_time), started_time(other.started_time),
           completed_time(other.completed_time), execution_start_time(other.execution_start_time), dependencies(std::move(other.dependencies)),
           dependents(std::move(other.dependents)), result_cache(std::move(other.result_cache)),
-          scenarios(std::move(other.scenarios)), xfs_mode(other.xfs_mode),
+          scenarios(std::move(other.scenarios)), sceneConfigs(std::move(other.sceneConfigs)),
+          xfs_mode(other.xfs_mode),
           db_output_dir(std::move(other.db_output_dir)),
           cancellation_requested(other.cancellation_requested.load()),
           error_details(std::move(other.error_details)), metadata(std::move(other.metadata)),
@@ -228,6 +240,7 @@ struct AnalysisTask {
             dependents = std::move(other.dependents);
             result_cache = std::move(other.result_cache);
             scenarios = std::move(other.scenarios);
+            sceneConfigs = std::move(other.sceneConfigs);
             xfs_mode = other.xfs_mode;
             db_output_dir = std::move(other.db_output_dir);
             cancellation_requested.store(other.cancellation_requested.load());
