@@ -58,7 +58,7 @@ using forensics::linux::SecurityProductFinding;
 
 class LinuxAnalysisDatabase {
 public:
-    explicit LinuxAnalysisDatabase(const std::string& dbPath);
+    explicit LinuxAnalysisDatabase(const std::string& dbPath, bool integratedMode = false);
     ~LinuxAnalysisDatabase();
 
     // Initialize database and create tables
@@ -621,10 +621,12 @@ public:
 private:
     std::string dbPath_;
     sqlite3* db_;
+    bool integratedMode_;
     mutable std::mutex mutex_;  // For thread safety
     LinuxAnalysis::LinuxAnalyzerError lastError_;
 
     bool createTables();
+    bool createArtifactsTable();
     bool executeSQL(const std::string& sql);
     
     // Set error state

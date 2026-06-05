@@ -11,7 +11,7 @@
 
 class AndroidAnalysisDatabase {
 public:
-    explicit AndroidAnalysisDatabase(const std::string& dbPath);
+    explicit AndroidAnalysisDatabase(const std::string& dbPath, bool integratedMode = false);
     ~AndroidAnalysisDatabase();
 
     bool initialize();
@@ -45,7 +45,9 @@ public:
 private:
     std::string dbPath_;
     sqlite3* db_;
+    bool integratedMode_;
 
     bool createTables();
+    bool createArtifactsTable();
     bool executeSQL(const std::string& sql);
 };

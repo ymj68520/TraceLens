@@ -1,12 +1,13 @@
 #include "AndroidAnalysisDatabase.h"
 #include "DatabaseManager/SQL/android_analysis_sql.h"
+#include "DatabaseManager/SQL/file_classifier_sql.h"
 #include <iostream>
 #include <sqlite3.h>
 #include "fileSystem.h"
 
 // AndroidAnalysisDatabase Implementation
-AndroidAnalysisDatabase::AndroidAnalysisDatabase(const std::string& dbPath)
-    : dbPath_(dbPath), db_(nullptr) {
+AndroidAnalysisDatabase::AndroidAnalysisDatabase(const std::string& dbPath, bool integratedMode)
+    : dbPath_(dbPath), db_(nullptr), integratedMode_(integratedMode) {
 }
 
 AndroidAnalysisDatabase::~AndroidAnalysisDatabase() {
@@ -22,11 +23,25 @@ bool AndroidAnalysisDatabase::initialize() {
         return false;
     }
 
+    if (integratedMode_) {
+        return createArtifactsTable();
+    }
     return createTables();
 }
 
 bool AndroidAnalysisDatabase::createTables() {
     return executeSQL(AndroidAnalysisSQL::CREATE_ALL_TABLES);
+}
+
+bool AndroidAnalysisDatabase::createArtifactsTable() {
+    std::string sql = FileClassifierSQL::CREATE_ARTIFACT_TABLE_TEMPLATE;
+    std::string tableName = "android_artifacts";
+    size_t pos = 0;
+    while ((pos = sql.find("%TABLE_NAME%", pos)) != std::string::npos) {
+        sql.replace(pos, 12, tableName);  // 12 = length of "%TABLE_NAME%"
+        pos += tableName.length();
+    }
+    return executeSQL(sql);
 }
 
 bool AndroidAnalysisDatabase::insertBuildProperty(const SystemBuildProperty& prop) {

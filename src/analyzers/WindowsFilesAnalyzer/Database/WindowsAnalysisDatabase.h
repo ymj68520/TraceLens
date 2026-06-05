@@ -12,7 +12,7 @@
 
 class WindowsAnalysisDatabase {
 public:
-    explicit WindowsAnalysisDatabase(const std::string& dbPath);
+    explicit WindowsAnalysisDatabase(const std::string& dbPath, bool integratedMode = false);
     ~WindowsAnalysisDatabase();
 
     // Initialize database and create tables
@@ -129,8 +129,10 @@ public:
 private:
     std::string dbPath_;
     sqlite3* db_;
+    bool integratedMode_;
 
     bool createTables();
+    bool createArtifactsTable();
     bool executeSQL(const std::string& sql);
 };
 

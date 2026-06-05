@@ -3,14 +3,15 @@
 
 #include "WindowsAnalysisDatabase.h"
 #include "DatabaseManager/SQL/windows_analysis_sql.h"
+#include "DatabaseManager/SQL/file_classifier_sql.h"
 #include <iostream>
 #include <sstream>
 
 // Data access operations are now in WindowsDBOperations.cpp
 // This file contains only core database management
 
-WindowsAnalysisDatabase::WindowsAnalysisDatabase(const std::string& dbPath)
-    : dbPath_(dbPath), db_(nullptr) {
+WindowsAnalysisDatabase::WindowsAnalysisDatabase(const std::string& dbPath, bool integratedMode)
+    : dbPath_(dbPath), db_(nullptr), integratedMode_(integratedMode) {
 }
 
 WindowsAnalysisDatabase::~WindowsAnalysisDatabase() {
@@ -27,11 +28,25 @@ bool WindowsAnalysisDatabase::initialize() {
         return false;
     }
 
+    if (integratedMode_) {
+        return createArtifactsTable();
+    }
     return createTables();
 }
 
 bool WindowsAnalysisDatabase::createTables() {
     return executeSQL(WindowsAnalysisSQL::CREATE_ALL_TABLES);
+}
+
+bool WindowsAnalysisDatabase::createArtifactsTable() {
+    std::string sql = FileClassifierSQL::CREATE_ARTIFACT_TABLE_TEMPLATE;
+    std::string tableName = "windows_artifacts";
+    size_t pos = 0;
+    while ((pos = sql.find("%TABLE_NAME%", pos)) != std::string::npos) {
+        sql.replace(pos, 12, tableName);
+        pos += tableName.length();
+    }
+    return executeSQL(sql);
 }
 
 bool WindowsAnalysisDatabase::executeSQL(const std::string& sql) {

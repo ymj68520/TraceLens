@@ -5,6 +5,7 @@
 #include "LinuxQueryBuilder.h"
 #include <iostream>
 #include "DatabaseManager/SQL/linux_analysis_sql.h"
+#include "DatabaseManager/SQL/file_classifier_sql.h"
 #include <sstream>
 #include <mutex>
 
@@ -14,8 +15,8 @@ using namespace LinuxAnalysis;
 // Constructor and Destructor
 // ============================================================================
 
-LinuxAnalysisDatabase::LinuxAnalysisDatabase(const std::string& dbPath)
-    : dbPath_(dbPath), db_(nullptr), lastError_() {
+LinuxAnalysisDatabase::LinuxAnalysisDatabase(const std::string& dbPath, bool integratedMode)
+    : dbPath_(dbPath), db_(nullptr), integratedMode_(integratedMode), lastError_() {
 }
 
 LinuxAnalysisDatabase::~LinuxAnalysisDatabase() {
@@ -40,6 +41,10 @@ bool LinuxAnalysisDatabase::initialize() {
         std::cerr << "Cannot open database: " << sqlite3_errmsg(db_) << std::endl;
         return false;
     }
+
+    if (integratedMode_) {
+        return createArtifactsTable();
+    }
     return createTables();
 }
 
@@ -48,6 +53,21 @@ bool LinuxAnalysisDatabase::createTables() {
 
     // Execute the consolidated CREATE_ALL_TABLES statement
     if (!executeSQL(CREATE_ALL_TABLES)) {
+        setError(ErrorCode::DATABASE_CREATE_TABLE_FAILED);
+        return false;
+    }
+    return true;
+}
+
+bool LinuxAnalysisDatabase::createArtifactsTable() {
+    std::string sql = FileClassifierSQL::CREATE_ARTIFACT_TABLE_TEMPLATE;
+    std::string tableName = "linux_artifacts";
+    size_t pos = 0;
+    while ((pos = sql.find("%TABLE_NAME%", pos)) != std::string::npos) {
+        sql.replace(pos, 12, tableName);
+        pos += tableName.length();
+    }
+    if (!executeSQL(sql)) {
         setError(ErrorCode::DATABASE_CREATE_TABLE_FAILED);
         return false;
     }
