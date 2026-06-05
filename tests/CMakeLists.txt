@@ -398,6 +398,25 @@ target_link_libraries(
 
 add_test(NAME FileClassifierTests COMMAND test_file_classifier)
 
+# Scene Classifier Tests
+add_executable(
+  test_scene_classifier_gtest
+  UnitTest/test_scene_classifier_gtest.cpp
+  ../src/core/DatabaseManager/FileClassifier/FileClassifier.cpp
+  ../src/core/DatabaseManager/FileClassifier/FileClassifierMappings.cpp
+  ../src/core/DatabaseManager/FileClassifier/FileClassifierPatterns.cpp
+  ../src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
+  ../src/core/AuditLog/AuditLog.cpp
+  ../src/core/ConfigManager/ConfigManager.cpp
+  ../src/core/PathManager/PathManager.cpp
+  ../src/core/Logger/Logger.cpp)
+
+target_link_libraries(
+  test_scene_classifier_gtest ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} sqlite3 pthread
+  nlohmann_json::nlohmann_json cpp_dotenv)
+
+add_test(NAME SceneClassifierGTests COMMAND test_scene_classifier_gtest)
+
 # Audit Log GTest Tests
 add_executable(test_audit_log_gtest UnitTest/test_audit_log_gtest.cpp
                                     ../src/core/AuditLog/AuditLog.cpp)
@@ -562,6 +581,7 @@ install(
           test_email_vpn_log_parser
           test_firewall_security_log_parser
           test_linux_enhanced_parsers_gtest
+          test_scene_classifier_gtest
   RUNTIME DESTINATION bin/tests)
 
 # Test for 13 Files Multi-Model Analysis
@@ -986,3 +1006,10 @@ if(SQLCIPHER_FOUND)
   install(TARGETS test_wechat_decryptor_gtest RUNTIME DESTINATION bin/tests)
 endif()
 
+# Scene Database Tests (SQL schema definitions for scene specialization)
+add_executable(test_scene_database_gtest UnitTest/test_scene_database_gtest.cpp)
+
+target_link_libraries(test_scene_database_gtest ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} sqlite3 pthread)
+
+add_test(NAME SceneDatabaseGTests COMMAND test_scene_database_gtest)
