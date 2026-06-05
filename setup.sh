@@ -47,8 +47,8 @@ APT_PACKAGES=(
     build-essential cmake pkg-config git
     # Core libraries
     libsqlite3-dev libssl-dev
-    # Boost
-    libboost-system-dev libboost-thread-dev
+    # Boost (system/thread for runtime, uuid headers for CaseManager/TaskManager)
+    libboost-dev libboost-system-dev libboost-thread-dev
     # JSON / async (header-only but need the -dev for cmake find)
     nlohmann-json3-dev libasio-dev
     # Forensic libraries
@@ -58,6 +58,7 @@ APT_PACKAGES=(
     libolecf-dev          # OLE compound file parsing
     libbfio-dev           # Basic File I/O (used by evtx/esedb/olecf)
     libewf-dev            # E01/EnCase image format
+    libfsntfs-dev         # NTFS MFT metadata parsing (Windows forensics)
     # Full-text search
     libxapian-dev
     # PDF analysis

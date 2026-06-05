@@ -51,6 +51,7 @@ plyvel>=1.5.0
 
 pymongo>=4.6.0
 rdbtools>=0.1.15
+redis>=5.0.0
 redis-dump-load>=1.1
 
 # Markdown Conversion (primary file-to-markdown engine)
