@@ -409,11 +409,21 @@ add_executable(
   ../src/core/AuditLog/AuditLog.cpp
   ../src/core/ConfigManager/ConfigManager.cpp
   ../src/core/PathManager/PathManager.cpp
-  ../src/core/Logger/Logger.cpp)
+  ../src/core/Logger/Logger.cpp
+  ../src/network/HTTPServer/LLMAnalysisService.cpp
+  ../src/integration/LLMIntegration/ModelRouter.cpp
+  ../src/integration/LLMIntegration/FileAnalyzer.cpp
+  ../src/integration/LLMIntegration/LLMClient.cpp
+  ../src/integration/LLMIntegration/FileContentExtractor.cpp
+  ../src/integration/LLMIntegration/FileTextProcessor.cpp
+  ../src/integration/LLMIntegration/MarkitdownProxy.cpp
+  ../src/core/ThreadPool/ThreadPool.cpp
+  ../src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp
+  ../src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp)
 
 target_link_libraries(
   test_scene_classifier_gtest ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} sqlite3 pthread
-  nlohmann_json::nlohmann_json cpp_dotenv)
+  nlohmann_json::nlohmann_json cpp_dotenv ${CURL_LIBRARIES} ${POPPLER_LIBRARIES} duckx)
 
 add_test(NAME SceneClassifierGTests COMMAND test_scene_classifier_gtest)
 
@@ -1007,9 +1017,24 @@ if(SQLCIPHER_FOUND)
 endif()
 
 # Scene Database Tests (SQL schema definitions for scene specialization)
-add_executable(test_scene_database_gtest UnitTest/test_scene_database_gtest.cpp)
+add_executable(test_scene_database_gtest UnitTest/test_scene_database_gtest.cpp
+    ../src/core/DatabaseManager/EventExtractor/Detail/EventExtractorCore.cpp
+    ../src/core/DatabaseManager/EventExtractor/Detail/FileSystemEventExtractor.cpp
+    ../src/core/DatabaseManager/EventExtractor/Detail/SystemEventExtractor.cpp
+    ../src/core/DatabaseManager/EventExtractor/Detail/EventCorrelationExtractor.cpp
+    ../src/core/EventCorrelationEngine/Detail/EventCorrelationEngineCore.cpp
+    ../src/core/EventCorrelationEngine/Detail/EventCorrelationAnalyzer.cpp
+    ../src/core/EventCorrelationEngine/Detail/EventChainBuilder.cpp
+    ../src/core/EventCorrelationEngine/Detail/EventCorrelationExporter.cpp
+    ../src/core/EventCorrelationEngine/Detail/EventCorrelationUtils.cpp
+    ../src/core/AuditLog/AuditLog.cpp)
+
+target_include_directories(test_scene_database_gtest PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/core
+    ${CMAKE_SOURCE_DIR}/src)
 
 target_link_libraries(test_scene_database_gtest ${GTEST_LIBRARIES}
-                      ${GMOCK_LIBRARIES} sqlite3 pthread)
+                      ${GMOCK_LIBRARIES} sqlite3 pthread
+                      nlohmann_json::nlohmann_json)
 
 add_test(NAME SceneDatabaseGTests COMMAND test_scene_database_gtest)

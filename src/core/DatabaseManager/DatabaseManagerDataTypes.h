@@ -11,10 +11,13 @@
  * Represents a single file record extracted from filesystem.
  */
 struct FileRecord {
+	int id = 0;
 	int64_t inode;
 	std::string name;
 	std::string path;
 	int64_t size;
+	std::string extension;
+	std::string category;
 	int64_t atime;
 	int64_t mtime;
 	int64_t ctime;
@@ -26,6 +29,11 @@ struct FileRecord {
 	std::string permissions;
 	int uid;
 	int gid;
+
+	// Scene-aware classification fields
+	std::string sceneType;
+	int scenePriority = 0;
+	int sceneRelevant = 0;
 };
 
 /**

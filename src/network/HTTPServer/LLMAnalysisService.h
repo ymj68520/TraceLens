@@ -8,6 +8,8 @@
 #include "LLMIntegration/FileAnalyzer.h"
 #include "LLMIntegration/ModelRouter.h"
 #include "ConfigManager/ConfigManager.h"
+#include "DatabaseManager/FileClassifier/FileClassifier.h"
+#include "DatabaseManager/DatabaseManagerDataTypes.h"
 
 namespace forensics {
 
@@ -89,10 +91,47 @@ public:
     std::vector<std::string> selectImportantFiles(const std::string& filesDbPath,
                                                    size_t maxFiles = 100);
 
+    /**
+     * @brief Set the scene type for scene-aware prioritization
+     * @param scene The scene type to use for prioritization
+     */
+    void setSceneType(SceneType scene);
+
+    /**
+     * @brief Get the current scene type
+     * @return Current scene type
+     */
+    SceneType getSceneType() const;
+
+    /**
+     * @brief Check if a file should be skipped based on scene priority
+     * @param file The file record to check
+     * @return true if the file should be skipped (irrelevant to current scene)
+     */
+    bool shouldSkipFile(const FileRecord& file);
+
+    /**
+     * @brief Get scene-specific analysis prompt for a file
+     * @param file The file record to generate prompt for
+     * @return Scene-specific analysis prompt string
+     */
+    std::string getSceneSpecificPrompt(const FileRecord& file);
+
+    /**
+     * @brief Get files prioritized by scene relevance
+     * @param db SQLite database handle
+     * @param limit Maximum number of files to return
+     * @return Vector of FileRecord ordered by scene priority
+     */
+    std::vector<FileRecord> getScenePrioritizedFiles(sqlite3* db, int limit);
+
 private:
     std::shared_ptr<llm::ModelRouter> router_;
     std::unique_ptr<llm::FileAnalyzer> fileAnalyzer_;
     bool initialized_ = false;
+
+    // Scene type for prioritization
+    SceneType sceneType_ = SceneType::NONE;
 
     // Internal helpers
     bool storeDescription(const std::string& dbPath, 

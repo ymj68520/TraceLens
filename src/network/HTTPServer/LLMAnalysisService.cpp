@@ -6,6 +6,7 @@
 #include <sstream>
 #include <algorithm>
 #include <ctime>
+#include <cstring>
 
 namespace forensics {
 
@@ -378,6 +379,108 @@ std::vector<std::string> LLMAnalysisService::parseImportantFiles(const std::stri
     }
 
     return importantFiles;
+}
+
+void LLMAnalysisService::setSceneType(SceneType scene) {
+    sceneType_ = scene;
+}
+
+SceneType LLMAnalysisService::getSceneType() const {
+    return sceneType_;
+}
+
+std::vector<FileRecord> LLMAnalysisService::getScenePrioritizedFiles(sqlite3* db, int limit) {
+    std::vector<FileRecord> files;
+
+    std::string query;
+    if (sceneType_ != SceneType::NONE) {
+        query = "SELECT id, inode, name, path, size, extension, category, type, "
+                "mtime, ctime, is_deleted, md5, scene_type, scene_priority, scene_relevant "
+                "FROM files WHERE type = 'REG' "
+                "AND (llm_analyzed_at IS NULL OR llm_analyzed_at = 0) "
+                "AND scene_priority > 0 "
+                "ORDER BY scene_priority DESC, size ASC LIMIT ?";
+    } else {
+        query = "SELECT id, inode, name, path, size, extension, category, type, "
+                "mtime, ctime, is_deleted, md5, NULL, 0, 0 "
+                "FROM files WHERE type = 'REG' "
+                "AND (llm_analyzed_at IS NULL OR llm_analyzed_at = 0) "
+                "ORDER BY size ASC LIMIT ?";
+    }
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return files;
+    }
+
+    sqlite3_bind_int(stmt, 1, limit);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        FileRecord file;
+        file.id = sqlite3_column_int(stmt, 0);
+        file.inode = sqlite3_column_int64(stmt, 1);
+
+        const char* name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        file.name = name ? name : "";
+
+        const char* path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        file.path = path ? path : "";
+
+        file.size = sqlite3_column_int64(stmt, 4);
+
+        const char* ext = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+        file.extension = ext ? ext : "";
+
+        const char* cat = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+        file.category = cat ? cat : "";
+
+        const char* type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7));
+        file.type = type ? type : "";
+
+        file.mtime = sqlite3_column_int64(stmt, 8);
+        file.ctime = sqlite3_column_int64(stmt, 9);
+        file.isDeleted = sqlite3_column_int(stmt, 10);
+
+        const char* md5 = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 11));
+        file.md5 = md5 ? md5 : "";
+
+        const char* sceneType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
+        file.sceneType = sceneType ? sceneType : "";
+
+        file.scenePriority = sqlite3_column_int(stmt, 13);
+        file.sceneRelevant = sqlite3_column_int(stmt, 14);
+
+        files.push_back(file);
+    }
+
+    sqlite3_finalize(stmt);
+    return files;
+}
+
+bool LLMAnalysisService::shouldSkipFile(const FileRecord& file) {
+    if (sceneType_ == SceneType::NONE) return false;
+    return file.scenePriority == 0;
+}
+
+std::string LLMAnalysisService::getSceneSpecificPrompt(const FileRecord& file) {
+    std::string basePrompt = "Analyze this forensic file and provide:\n"
+        "1. A brief summary of the file's purpose\n"
+        "2. A detailed description of its contents\n"
+        "3. Relevant keywords for searching\n\n"
+        "File path: " + file.path + "\n"
+        "File name: " + file.name + "\n";
+
+    if (sceneType_ == SceneType::ANDROID) {
+        basePrompt += "\nAndroid forensic analysis. Focus on mobile app data, communications, and device configuration.\n";
+    } else if (sceneType_ == SceneType::WINDOWS) {
+        basePrompt += "\nWindows forensic analysis. Focus on registry artifacts, event logs, and user activity.\n";
+    } else if (sceneType_ == SceneType::LINUX) {
+        basePrompt += "\nLinux forensic analysis. Focus on system logs, user accounts, and network configuration.\n";
+    } else if (sceneType_ == SceneType::SERVER_CLOUD) {
+        basePrompt += "\nServer/Cloud forensic analysis. Focus on system logs, network configuration, and service artifacts.\n";
+    }
+
+    return basePrompt;
 }
 
 } // namespace forensics
