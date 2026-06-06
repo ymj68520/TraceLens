@@ -60,20 +60,6 @@ def _format_size(size_bytes: int) -> str:
         return f"{size_bytes / 1024 / 1024:.2f} MB"
 
 
-def _read_psd_string(data: bytes, offset: int) -> tuple:
-    """Read a Pascal string (4-byte length-prefixed) from PSD binary data."""
-    length = struct.unpack_from(">I", data, offset)[0]
-    offset += 4
-    if length == 0:
-        length = 4  # PSD pads to multiples of 4
-    s = data[offset:offset + length].decode("latin-1", errors="replace").rstrip("\x00")
-    # Align to multiple of 2 (not 4) for layer records
-    offset += length
-    if length % 2 != 0:
-        offset += 1
-    return s, offset
-
-
 @register_extractor
 class PsdExtractor(BaseExtractor):
     """Extracts metadata from Adobe Photoshop (.psd) files.
@@ -110,14 +96,15 @@ class PsdExtractor(BaseExtractor):
         result.append("## Layers")
         result.append("| # | Name | Visible | Opacity | Blend Mode |")
         result.append("| --- | --- | --- | --- | --- |")
-        for i, layer in enumerate(psd):
+        layers = list(psd)
+        for i, layer in enumerate(layers):
             name = layer.name or f"Layer {i}"
             visible = "Yes" if layer.visible else "No"
             opacity = f"{layer.opacity}%" if layer.opacity is not None else "N/A"
             blend = layer.blend_mode.name if layer.blend_mode else "Normal"
             result.append(f"| {i + 1} | {name} | {visible} | {opacity} | {blend} |")
 
-        if not list(psd):
+        if not layers:
             result.append("| - | *(No layers or flat image)* | - | - | - |")
 
         psd.close()
@@ -258,10 +245,7 @@ class PsdExtractor(BaseExtractor):
                         # Ensure we're at the end of extra data
                         offset = extra_end
 
-                        # Check visibility via flags (bit 1 = invisible)
-                        # We don't have the flags byte easily accessible, report opacity
-                        width_l = right - left
-                        height_l = bottom - top
+                        # Report layer info (visibility not easily extractable from binary)
                         result.append(
                             f"| {i + 1} | {layer_name} | N/A | {opacity}% | {blend_name} |"
                         )
