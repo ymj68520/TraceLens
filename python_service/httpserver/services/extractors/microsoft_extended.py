@@ -9,7 +9,7 @@ import zipfile
 try:
     from defusedxml import ElementTree as ET
 except ImportError:
-    from xml.etree import ElementTree as ET
+    raise ImportError("defusedxml is required for XML parsing in microsoft_extended extractors. Install with: pip install defusedxml")
 
 from .base import BaseExtractor, register_extractor
 
