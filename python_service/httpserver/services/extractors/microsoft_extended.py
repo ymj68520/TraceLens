@@ -279,48 +279,47 @@ class OneNoteExtractor(BaseExtractor):
             return self._fallback_parse(file_path, type_name)
 
         try:
-            ole = olefile.OleFileIO(file_path)
-            result = [f"# {type_name}: `{os.path.basename(file_path)}`"]
-            result.append(f"**File Size:** {_format_size(os.path.getsize(file_path))}")
-            result.append(f"**Format:** OLE2 Compound Document")
-            result.append("")
+            with olefile.OleFileIO(file_path) as ole:
+                result = [f"# {type_name}: `{os.path.basename(file_path)}`"]
+                result.append(f"**File Size:** {_format_size(os.path.getsize(file_path))}")
+                result.append(f"**Format:** OLE2 Compound Document")
+                result.append("")
 
-            # Metadata
-            meta = ole.get_metadata()
-            result.append("## Metadata")
-            result.append("| Property | Value |")
-            result.append("| --- | --- |")
-            if meta.title:
-                result.append(f"| Title | {meta.title} |")
-            if meta.subject:
-                result.append(f"| Subject | {meta.subject} |")
-            if meta.author:
-                result.append(f"| Author | {meta.author} |")
-            if meta.last_saved_by:
-                result.append(f"| Last Saved By | {meta.last_saved_by} |")
-            if meta.create_time:
-                result.append(f"| Created | {meta.create_time} |")
-            if meta.last_saved_time:
-                result.append(f"| Last Modified | {meta.last_saved_time} |")
-            if meta.num_pages:
-                result.append(f"| Pages | {meta.num_pages} |")
-            if meta.company:
-                result.append(f"| Company | {meta.company} |")
+                # Metadata
+                meta = ole.get_metadata()
+                result.append("## Metadata")
+                result.append("| Property | Value |")
+                result.append("| --- | --- |")
+                if meta.title:
+                    result.append(f"| Title | {meta.title} |")
+                if meta.subject:
+                    result.append(f"| Subject | {meta.subject} |")
+                if meta.author:
+                    result.append(f"| Author | {meta.author} |")
+                if meta.last_saved_by:
+                    result.append(f"| Last Saved By | {meta.last_saved_by} |")
+                if meta.create_time:
+                    result.append(f"| Created | {meta.create_time} |")
+                if meta.last_saved_time:
+                    result.append(f"| Last Modified | {meta.last_saved_time} |")
+                if meta.num_pages:
+                    result.append(f"| Pages | {meta.num_pages} |")
+                if meta.company:
+                    result.append(f"| Company | {meta.company} |")
 
-            # Stream listing
-            streams = _ole_stream_list(ole)
-            result.append("")
-            result.append(f"## Streams ({len(streams)})")
-            result.append("| Stream Path | Size |")
-            result.append("| --- | --- |")
-            for path, size in streams[:100]:
-                size_str = _format_size(size) if size >= 0 else "N/A"
-                result.append(f"| {path} | {size_str} |")
-            if len(streams) > 100:
-                result.append(f"\n*(Showing first 100 of {len(streams)} streams)*")
+                # Stream listing
+                streams = _ole_stream_list(ole)
+                result.append("")
+                result.append(f"## Streams ({len(streams)})")
+                result.append("| Stream Path | Size |")
+                result.append("| --- | --- |")
+                for path, size in streams[:100]:
+                    size_str = _format_size(size) if size >= 0 else "N/A"
+                    result.append(f"| {path} | {size_str} |")
+                if len(streams) > 100:
+                    result.append(f"\n*(Showing first 100 of {len(streams)} streams)*")
 
-            ole.close()
-            return "\n".join(result)
+                return "\n".join(result)
         except Exception as e:
             return f"Error: Failed to parse OneNote file with olefile: {e}"
 
@@ -370,50 +369,49 @@ class PublisherExtractor(BaseExtractor):
             return "Error: olefile library is not installed."
 
         try:
-            ole = olefile.OleFileIO(file_path)
-            result = [f"# Microsoft Publisher: `{os.path.basename(file_path)}`"]
-            result.append(f"**File Size:** {_format_size(os.path.getsize(file_path))}")
-            result.append(f"**Format:** OLE2 Compound Document")
-            result.append("")
+            with olefile.OleFileIO(file_path) as ole:
+                result = [f"# Microsoft Publisher: `{os.path.basename(file_path)}`"]
+                result.append(f"**File Size:** {_format_size(os.path.getsize(file_path))}")
+                result.append(f"**Format:** OLE2 Compound Document")
+                result.append("")
 
-            # Metadata
-            meta = ole.get_metadata()
-            result.append("## Metadata")
-            result.append("| Property | Value |")
-            result.append("| --- | --- |")
-            for attr, label in [
-                ("title", "Title"),
-                ("subject", "Subject"),
-                ("author", "Author"),
-                ("last_saved_by", "Last Saved By"),
-                ("create_time", "Created"),
-                ("last_saved_time", "Last Modified"),
-                ("num_pages", "Pages"),
-                ("company", "Company"),
-                ("manager", "Manager"),
-                ("category", "Category"),
-                ("keywords", "Keywords"),
-                ("comments", "Comments"),
-                ("creating_application", "Application"),
-            ]:
-                val = getattr(meta, attr, None)
-                if val:
-                    result.append(f"| {label} | {val} |")
+                # Metadata
+                meta = ole.get_metadata()
+                result.append("## Metadata")
+                result.append("| Property | Value |")
+                result.append("| --- | --- |")
+                for attr, label in [
+                    ("title", "Title"),
+                    ("subject", "Subject"),
+                    ("author", "Author"),
+                    ("last_saved_by", "Last Saved By"),
+                    ("create_time", "Created"),
+                    ("last_saved_time", "Last Modified"),
+                    ("num_pages", "Pages"),
+                    ("company", "Company"),
+                    ("manager", "Manager"),
+                    ("category", "Category"),
+                    ("keywords", "Keywords"),
+                    ("comments", "Comments"),
+                    ("creating_application", "Application"),
+                ]:
+                    val = getattr(meta, attr, None)
+                    if val:
+                        result.append(f"| {label} | {val} |")
 
-            # Stream listing
-            streams = _ole_stream_list(ole)
-            result.append("")
-            result.append(f"## Streams ({len(streams)})")
-            result.append("| Stream Path | Size |")
-            result.append("| --- | --- |")
-            for path, size in streams[:100]:
-                size_str = _format_size(size) if size >= 0 else "N/A"
-                result.append(f"| {path} | {size_str} |")
-            if len(streams) > 100:
-                result.append(f"\n*(Showing first 100 of {len(streams)} streams)*")
+                # Stream listing
+                streams = _ole_stream_list(ole)
+                result.append("")
+                result.append(f"## Streams ({len(streams)})")
+                result.append("| Stream Path | Size |")
+                result.append("| --- | --- |")
+                for path, size in streams[:100]:
+                    size_str = _format_size(size) if size >= 0 else "N/A"
+                    result.append(f"| {path} | {size_str} |")
+                if len(streams) > 100:
+                    result.append(f"\n*(Showing first 100 of {len(streams)} streams)*")
 
-            ole.close()
-            return "\n".join(result)
+                return "\n".join(result)
         except Exception as e:
             return f"Error: Failed to parse Publisher file: {e}"
 
@@ -549,50 +547,49 @@ class ProjectExtractor(BaseExtractor):
             return "Error: olefile library is not installed."
 
         try:
-            ole = olefile.OleFileIO(file_path)
-            result = [f"# Microsoft Project: `{os.path.basename(file_path)}`"]
-            result.append(f"**File Size:** {_format_size(os.path.getsize(file_path))}")
-            result.append(f"**Format:** OLE2 Compound Document")
-            result.append("")
+            with olefile.OleFileIO(file_path) as ole:
+                result = [f"# Microsoft Project: `{os.path.basename(file_path)}`"]
+                result.append(f"**File Size:** {_format_size(os.path.getsize(file_path))}")
+                result.append(f"**Format:** OLE2 Compound Document")
+                result.append("")
 
-            # Metadata
-            meta = ole.get_metadata()
-            result.append("## Metadata")
-            result.append("| Property | Value |")
-            result.append("| --- | --- |")
-            for attr, label in [
-                ("title", "Title"),
-                ("subject", "Subject"),
-                ("author", "Author"),
-                ("last_saved_by", "Last Saved By"),
-                ("create_time", "Created"),
-                ("last_saved_time", "Last Modified"),
-                ("num_pages", "Pages"),
-                ("company", "Company"),
-                ("manager", "Manager"),
-                ("category", "Category"),
-                ("keywords", "Keywords"),
-                ("comments", "Comments"),
-                ("creating_application", "Application"),
-            ]:
-                val = getattr(meta, attr, None)
-                if val:
-                    result.append(f"| {label} | {val} |")
+                # Metadata
+                meta = ole.get_metadata()
+                result.append("## Metadata")
+                result.append("| Property | Value |")
+                result.append("| --- | --- |")
+                for attr, label in [
+                    ("title", "Title"),
+                    ("subject", "Subject"),
+                    ("author", "Author"),
+                    ("last_saved_by", "Last Saved By"),
+                    ("create_time", "Created"),
+                    ("last_saved_time", "Last Modified"),
+                    ("num_pages", "Pages"),
+                    ("company", "Company"),
+                    ("manager", "Manager"),
+                    ("category", "Category"),
+                    ("keywords", "Keywords"),
+                    ("comments", "Comments"),
+                    ("creating_application", "Application"),
+                ]:
+                    val = getattr(meta, attr, None)
+                    if val:
+                        result.append(f"| {label} | {val} |")
 
-            # Stream listing
-            streams = _ole_stream_list(ole)
-            result.append("")
-            result.append(f"## Streams ({len(streams)})")
-            result.append("| Stream Path | Size |")
-            result.append("| --- | --- |")
-            for path, size in streams[:100]:
-                size_str = _format_size(size) if size >= 0 else "N/A"
-                result.append(f"| {path} | {size_str} |")
-            if len(streams) > 100:
-                result.append(f"\n*(Showing first 100 of {len(streams)} streams)*")
+                # Stream listing
+                streams = _ole_stream_list(ole)
+                result.append("")
+                result.append(f"## Streams ({len(streams)})")
+                result.append("| Stream Path | Size |")
+                result.append("| --- | --- |")
+                for path, size in streams[:100]:
+                    size_str = _format_size(size) if size >= 0 else "N/A"
+                    result.append(f"| {path} | {size_str} |")
+                if len(streams) > 100:
+                    result.append(f"\n*(Showing first 100 of {len(streams)} streams)*")
 
-            ole.close()
-            return "\n".join(result)
+                return "\n".join(result)
         except Exception as e:
             return f"Error: Failed to parse Project file: {e}"
 
