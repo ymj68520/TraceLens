@@ -2,7 +2,7 @@
     "MarkitdownExtractor": {
         "extensions": [
             ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt",
-            ".html", ".htm", ".csv", ".json", ".xml", ".epub", ".ipynb",
+            ".html", ".htm", ".ipynb",
             ".rss", ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",
             ".tiff", ".tif", ".mp3", ".wav"
         ],
@@ -91,6 +91,19 @@
     "MobiExtractor": [".mobi", ".azw", ".azw3"],
     "Hdf5Extractor": [".hdf5", ".h5", ".hdf"],
     "DicomExtractor": [".dcm", ".dicom"],
+    "CsvExtractor": [".csv", ".tsv", ".tab"],
+    "JsonDataExtractor": [".json", ".jsonl", ".ndjson"],
+    "XmlDataExtractor": [".xml", ".xsl", ".xslt", ".xaml"],
+    "OneNoteExtractor": [".one", ".onetoc2"],
+    "XpsExtractor": [".xps", ".oxps"],
+    "VisioExtractor": [".vsdx", ".vsdm"],
+    "ProjectExtractor": [".mpp", ".mpt"],
+    "EtlExtractor": [".etl"],
+    "MscExtractor": [".msc"],
+    "UrlExtractor": [".url"],
+    "PsdExtractor": [".psd"],
+    "AiExtractor": [".ai"],
+    "InddExtractor": [".indd"],
     "_filename_routes": {
         "auth.log": "AuthLogExtractor",
         "auth.log.1": "AuthLogExtractor",

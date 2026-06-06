@@ -100,3 +100,7 @@ zstandard>=0.22.0          # Zstandard compression
 
 # TOML parsing (for Python < 3.11)
 tomli>=2.0.0; python_version < "3.11"
+
+# Scientific data formats
+h5py>=3.10.0               # HDF5 files
+pydicom>=2.4.0             # DICOM medical imaging
