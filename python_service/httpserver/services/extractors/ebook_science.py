@@ -393,7 +393,7 @@ class EpubExtractor(BaseExtractor):
         try:
             from defusedxml import ElementTree as ET
         except ImportError:
-            import xml.etree.ElementTree as ET
+            return "Error: defusedxml library is not installed. Install with: pip install defusedxml"
 
         try:
             if not zipfile.is_zipfile(file_path):
