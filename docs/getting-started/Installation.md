@@ -18,7 +18,7 @@
 
 ### 1.2 支持的平台
 
-- ✅ **Linux**: Ubuntu 20.04+, Debian 11+, CentOS 8+, Rocky Linux 8+
+- ✅ **Linux**: Ubuntu 20.04+, Debian 11+, Rocky Linux 8+
 - ⚠️ **Windows**: 支持（需要 WSL2 或 MinGW，见 [Windows 安装](#12-windows-安装)）
 - ⚠️ **macOS**: 支持（需要 Homebrew，见 [macOS 安装](#13-macos-安装)）
 
@@ -65,11 +65,14 @@ sudo apt-get install -y build-essential cmake git pkg-config
 # 安装核心库
 sudo apt-get install -y \
     libsqlite3-dev \
+    libssl-dev \
     libewf-dev \
+    libbfio-dev \
     libhivex-dev \
     libevtx-dev \
     libesedb-dev \
     libolecf-dev \
+    libfsntfs-dev \
     libasio-dev \
     nlohmann-json3-dev
 
@@ -91,6 +94,22 @@ sudo apt-get install -y \
 sudo apt-get install -y \
     libgtest-dev \
     libgmock-dev
+
+# 安装压缩库（可选，用于多种压缩格式支持）
+sudo apt-get install -y \
+    zlib1g-dev \
+    liblzma-dev \
+    libbz2-dev \
+    libzstd-dev
+
+# 安装数据库连接器（可选，用于 MySQL/PostgreSQL 支持）
+sudo apt-get install -y \
+    libmysqlclient-dev \
+    libpq-dev
+
+# 安装加密数据库支持（可选，用于 SQLCipher 加密数据库）
+sudo apt-get install -y \
+    libsqlcipher-dev
 
 # 安装其他工具
 sudo apt-get install -y \
@@ -118,13 +137,13 @@ sudo apt-get update && sudo apt-get upgrade -y
 # 2. 安装编译工具链
 sudo apt-get install -y build-essential cmake git pkg-config ccache
 
-# 3. 安装 SQLite3
-sudo apt-get install -y libsqlite3-dev sqlite3
+# 3. 安装 SQLite3 和 OpenSSL
+sudo apt-get install -y libsqlite3-dev sqlite3 libssl-dev
 
 # 4. 安装 The Sleuth Kit (从源码编译，见下节)
 
-# 5. 安装 EWF (E01 格式支持)
-sudo apt-get install -y libewf-dev
+# 5. 安装 EWF (E01 格式支持) 和 libbfio
+sudo apt-get install -y libewf-dev libbfio-dev
 
 # 6. 安装 Windows 解析库
 sudo apt-get install -y libhivex-dev libevtx-dev
@@ -141,10 +160,16 @@ sudo apt-get install -y \
 sudo apt-get install -y libxapian-dev libpoppler-cpp-dev antiword
 
 # 9. 安装其他依赖
-sudo apt-get install -y libesedb-dev libolecf-dev libzip-dev libpugixml-dev
+sudo apt-get install -y libesedb-dev libolecf-dev libfsntfs-dev libzip-dev libpugixml-dev
 
 # 10. 安装测试框架
 sudo apt-get install -y libgtest-dev libgmock-dev
+
+# 11. 安装压缩库（可选）
+sudo apt-get install -y zlib1g-dev liblzma-dev libbz2-dev libzstd-dev
+
+# 12. 安装数据库连接器（可选）
+sudo apt-get install -y libsqlcipher-dev libmysqlclient-dev libpq-dev
 ```
 
 ### 2.3 The Sleuth Kit 编译安装
@@ -794,10 +819,10 @@ docker volume rm neo4j_data
 ## 相关文档
 
 - **[架构总览](../architecture/Overview.md)** - 系统架构
-- **[依赖说明](../architecture/Dependencies.md)** - 详细依赖说明
+- **[数据库架构](../architecture/DatabaseSchema.md)** - 数据库架构和依赖说明
 - **[故障排查](Troubleshooting.md)** - 常见问题解决
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-06-06
 **维护者**: ymj68520

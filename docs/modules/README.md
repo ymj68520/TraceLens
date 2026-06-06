@@ -47,6 +47,7 @@
 | **OfficeAnalyzer** | [📖](cpp/analyzers/OfficeAnalyzer.md) | ✅ 完成 | Office 文档解析 |
 | **VisionAnalysis** | [📖](cpp/analyzers/VisionAnalysis.md) | ✅ 完成 | 图像/视频视觉分析 |
 | **OSSAnalyzer** | [📖](cpp/analyzers/OSSAnalyzer.md) | ✅ 完成 | 阿里云 OSS 集成 |
+| **DLLAnalyzer** | [📖](cpp/analyzers/DLLAnalyzer.md) | ✅ 完成 | PE/ELF 文件分析、异常检测、威胁评分 |
 
 ### 网络通信模块
 
@@ -60,8 +61,11 @@
 | **SearchRoutes** | [📖](cpp/network/routes/SearchRoutes.md) | ✅ 完成 | 搜索路由，Xapian 全文搜索集成 |
 | **SystemRoutes** | [📖](cpp/network/routes/SystemRoutes.md) | ✅ 完成 | 系统路由，健康检查、系统监控、Kubernetes 集成 |
 | **OSSRoutes** | [📖](cpp/network/routes/OSSRoutes.md) | ✅ 完成 | 阿里云 OSS 分析路由，四种数据获取模式 |
-| **SystemRoutes** | [📖](cpp/network/routes/SystemRoutes.md) | ✅ 完成 | 系统路由，健康检查、系统监控、Kubernetes 集成 |
-| **OSSRoutes** | [📖](cpp/network/routes/OSSRoutes.md) | ✅ 完成 | 阿里云 OSS 分析路由，四种数据获取模式 |
+| **CaseCRUDRoutes** | [📖](cpp/network/routes/CaseCRUDRoutes.md) | ✅ 完成 | 案例管理路由 |
+| **DLLAnalysisRoutes** | - | ✅ 完成 | DLL 分析路由 |
+| **FilterRoutes** | - | ✅ 完成 | 文件过滤配置路由 |
+| **ExportRoutes** | - | ✅ 完成 | 数据导出路由（TOON/JSON/CSV） |
+| **SceneQueryRoutes** | - | ✅ 完成 | 场景查询路由 |
 
 ### 集成模块
 
@@ -401,20 +405,19 @@ git push origin docs/module-name
 
 ## 更新日志
 
+### 2026-06-06
+
+- ✅ 添加 DLLAnalyzer 到分析器模块表
+- ✅ 添加 OSS 路由、Filter 路由、Export 路由、SceneQuery 路由到网络模块表
+- ✅ 修复重复的 SystemRoutes/OSSRoutes 条目
+- ✅ 更新模块总数和最后更新日期
+
 ### 2026-03-11
 
 - ✅ 完成 ImageAnalyzer 模块文档
 - ✅ 完成 DatabaseManager 模块文档
 - ✅ 完成 FileClassifier 模块文档
 - ✅ 创建文档索引
-
-### 待完成
-
-- 🚧 EventExtractor 模块文档
-- 🚧 FileExtractor 模块文档
-- 🚧 所有分析器模块文档
-- 🚧 所有网络模块文档
-- 🚧 所有 Python 模块文档
 
 ---
 
@@ -428,6 +431,6 @@ git push origin docs/module-name
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-06-06
 **文档版本**: 1.0.0
 **维护者**: ymj68520

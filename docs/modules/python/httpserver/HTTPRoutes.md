@@ -100,6 +100,76 @@ Python FastAPI 服务作为 C++ 后端的重要补充，提供以下核心能力
 - 支持分页和过滤
 - 只读查询（禁止修改操作）
 
+#### 5. Case Analysis Routes（案例分析路由）
+
+**功能**：
+- 案例分析（`POST /api/llm/case-analysis`）
+- 保存分析描述（`POST /api/llm/case-analysis/description`）
+- 获取分析报告（`GET /api/llm/case-analysis/{task_id}/report`）
+- 获取过滤文件（`GET /api/llm/case-analysis/{task_id}/filtered-files`）
+
+#### 6. Multi-Image Analysis Routes（多镜像分析路由）
+
+**功能**：
+- 案例 CRUD（`POST/GET/DELETE /api/llm/cases`）
+- 多镜像分析（`POST /api/llm/multi-image-analysis`）
+- 分析状态查询（`GET /api/llm/multi-image-analysis/{job_id}`）
+- 智能创建案例（`POST /api/llm/cases/smart-create`）
+- 增量分析（`POST /api/llm/cases/{case_id}/incremental-analysis`）
+
+#### 7. WeChat Graph Routes（微信关系图谱路由）
+
+**功能**：
+- 关系图谱（`GET /api/wechat/graph`）
+- 通信时间线（`GET /api/wechat/graph/timeline`）
+- 社区发现（`GET /api/wechat/graph/community`）
+- 个人社交网络（`GET /api/wechat/graph/person/{username}`）
+- 聊天记录（`GET /api/wechat/chat`）
+- 群聊记录（`GET /api/wechat/chat/group`）
+- 账号信息（`GET /api/wechat/owner`）
+- 联系人列表（`GET /api/wechat/contacts`）
+- 缓存管理（`POST /api/wechat/graph/invalidate`）
+
+**图分析算法**：
+- PageRank 社交影响力分析
+- Louvain 社区发现
+- 边权重基于消息频率
+
+#### 8. Associations Routes（事件关联路由）
+
+**功能**：
+- 事件簇关联文件（`POST /api/associations/cluster-files`）
+- 文件关联事件簇（`POST /api/associations/file-clusters`）
+
+#### 9. OSS Analysis Routes（OSS 分析路由）
+
+**功能**：
+- AI 对象过滤（`POST /api/forensics/oss/ai/filter`）
+- AI 对象分析（`POST /api/forensics/oss/ai/analyze`）
+
+#### 10. DLL Routes（DLL 分析路由）
+
+**功能**：
+- DLL 安全分析（`POST /api/llm/analyze/dll`）
+
+#### 11. Markitdown Routes（文档转换路由）
+
+**功能**：
+- 文件转 Markdown（`POST /api/markitdown/convert`）
+- 服务状态（`GET /api/markitdown/status`）
+
+#### 12. Office Routes（Office 文档路由）
+
+**功能**：
+- 单文件解析（`POST /api/office/extract`）
+- 批量解析（`POST /api/office/batch-extract`）
+
+#### 13. System Routes（系统路由）
+
+**功能**：
+- 系统信息（`GET /api/system/info`）
+- 系统日志（`GET /api/system/logs`）
+
 ### 边界与限制
 
 | 限制项 | 说明 | 解决方案 |
@@ -131,6 +201,15 @@ graph TD
     A --> C[Graphiti Router]
     A --> D[LLM Router]
     A --> E[Database Router]
+    A --> N[Case Analysis Router]
+    A --> O[Multi-Image Router]
+    A --> P[WeChat Router]
+    A --> Q[Associations Router]
+    A --> R[OSS Analysis Router]
+    A --> S[DLL Router]
+    A --> T[Markitdown Router]
+    A --> U[Office Router]
+    A --> V[System Router]
 
     B --> F[Settings]
     C --> F
@@ -141,6 +220,11 @@ graph TD
     C --> G
     D --> G
     E --> G
+    N --> G
+    O --> G
+    P --> G
+    Q --> G
+    R --> G
 
     G --> H[CppBackendService]
     G --> I[GraphitiService]
@@ -1672,5 +1756,5 @@ curl http://localhost:1234/v1/models  # LLM API
 ---
 
 **文档版本**: 1.0.0
-**最后更新**: 2026-03-16
+**最后更新**: 2026-06-06
 **维护者**: ymj68520

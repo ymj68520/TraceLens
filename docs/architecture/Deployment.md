@@ -48,7 +48,7 @@ graph TB
 - **CPU**：4 核心以上推荐
 - **内存**：8GB 最低，16GB 推荐
 - **磁盘**：SSD 推荐，至少 100GB 可用空间
-- **操作系统**：Ubuntu 20.04+、Debian 11+、CentOS 7+
+- **操作系统**：Ubuntu 20.04+、Debian 11+、Rocky Linux 9+
 
 **部署步骤**：
 ```bash
@@ -625,7 +625,7 @@ PYTHON_API_KEY=your-api-key-here
 # Python 服务缓存
 import redis
 
-cache = redis.Redis(host='localhost', port=63799, decode_responses=True)
+cache = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 def get_task_results(task_id: str):
     # 先查缓存
@@ -772,5 +772,5 @@ EOF
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-06-06
 **维护者**: ymj68520

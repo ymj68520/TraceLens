@@ -21,8 +21,13 @@ Python HTTP 服务运行在端口 **8090**，提供知识图谱、LLM 分析和�
 4. [数据库访问 API](#4-数据库访问-api)
 5. [Office 文档 API](#5-office-文档-api)
 6. [案例分析 API](#6-案例分析-api)
-7. [系统信息 API](#7-系统信息-api)
-8. [AI 文件过滤增强配置](#8-ai-文件过滤增强配置)
+7. [多镜像分析 API](#7-多镜像分析-api)
+8. [WeChat 关系图谱 API](#8-wechat-关系图谱-api)
+9. [事件关联 API](#9-事件关联-api)
+10. [OSS 分析 API](#10-oss-分析-api)
+11. [DLL 分析 API](#11-dll-分析-api)
+12. [Markitdown 文档转换 API](#12-markitdown-文档转换-api)
+13. [系统信息 API](#13-系统信息-api)
 
 ---
 
@@ -720,57 +725,7 @@ database.db | /evidence/database.db | databases | 5242880 | SQLite 数据库 | �
 
 ---
 
-## 7. 系统信息 API
-
-### GET /api/system/info
-
-**描述**：获取系统信息。
-
-**响应**：
-```json
-{
-  "success": true,
-  "version": "1.0.0",
-  "python_version": "3.11.0",
-  "dependencies": {
-    "fastapi": "0.104.1",
-    "httpx": "0.25.2",
-    "graphiti-core": "0.1.0"
-  },
-  "startup_time": "2024-01-16T10:00:00Z",
-  "uptime_seconds": 3600
-}
-```
-
-### GET /api/system/logs
-
-**描述**：获取系统日志。
-
-**查询参数**：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `level` | string | ❌ | INFO | 日志级别 |
-| `lines` | integer | ❌ | 100 | 返回行数 |
-
-**响应**：
-```json
-{
-  "success": true,
-  "logs": [
-    {
-      "timestamp": "2024-01-16T10:00:00Z",
-      "level": "INFO",
-      "logger": "httpserver.routes.llm",
-      "message": "LLM analysis started for task_abc123"
-    }
-  ]
-}
-```
-
----
-
-## 8. AI 文件过滤增强配置
+## 14. AI 文件过滤增强配置
 
 ### 概述
 
@@ -894,7 +849,269 @@ matched = matcher.match_files(validated.items, batch_files, case_context)
 
 ---
 
-## 错误响应
+## 7. 多镜像分析 API
+
+多镜像分析 API 支持跨多个磁盘镜像的关联分析，通过案例（Case）组织多个任务。
+
+### POST /api/llm/cases
+
+**描述**：创建新案例。
+
+**请求体**：
+```json
+{
+  "name": "案件名称",
+  "description": "案件描述",
+  "task_ids": ["task_1", "task_2"]
+}
+```
+
+### GET /api/llm/cases
+
+**描述**：列出所有案例。
+
+### GET /api/llm/cases/{case_id}
+
+**描述**：获取案例详情。
+
+### DELETE /api/llm/cases/{case_id}
+
+**描述**：删除案例。
+
+### POST /api/llm/cases/{case_id}/tasks
+
+**描述**：向案例添加任务。
+
+**请求体**：
+```json
+{
+  "task_ids": ["task_3", "task_4"]
+}
+```
+
+### POST /api/llm/multi-image-analysis
+
+**描述**：启动多镜像分析任务。
+
+**请求体**：
+```json
+{
+  "case_id": "case_123",
+  "analysis_type": "full|quick",
+  "description": "分析目标描述"
+}
+```
+
+### GET /api/llm/multi-image-analysis/{job_id}
+
+**描述**：获取多镜像分析任务状态。
+
+### POST /api/llm/cases/smart-create
+
+**描述**：智能创建案例（自动关联相关任务）。
+
+### POST /api/llm/cases/{case_id}/tasks/incremental
+
+**描述**：增量添加任务到案例。
+
+### GET /api/llm/cases/{case_id}/analysis-status
+
+**描述**：获取案例分析状态。
+
+### POST /api/llm/cases/{case_id}/incremental-analysis
+
+**描述**：触发增量分析。
+
+---
+
+## 8. WeChat 关系图谱 API
+
+WeChat 关系图谱 API 提供微信聊天记录的图分析能力，包括 PageRank 社交影响力分析、社区发现、聊天记录查询等。
+
+### GET /api/wechat/graph
+
+**描述**：获取 WeChat 关系图谱数据。
+
+**查询参数**：
+- `task_id` (string, required)
+- `min_weight` (int, optional, default 1) - 最小边权重
+
+### GET /api/wechat/graph/timeline
+
+**描述**：获取 WeChat 通信时间线。
+
+**查询参数**：
+- `task_id` (string, required)
+- `start_time` (int, optional)
+- `end_time` (int, optional)
+
+### GET /api/wechat/graph/community
+
+**描述**：获取 WeChat 社区发现结果（Louvain 算法）。
+
+**查询参数**：`task_id` (string, required)
+
+### GET /api/wechat/graph/person/{username}
+
+**描述**：获取特定用户的社交网络详情。
+
+**路径参数**：`username` (string) - 微信用户名
+
+**查询参数**：`task_id` (string, required)
+
+### GET /api/wechat/chat
+
+**描述**：获取聊天记录。
+
+**查询参数**：
+- `task_id` (string, required)
+- `talker` (string, optional) - 对话者
+- `limit` (int, default 100)
+
+### GET /api/wechat/chat/group
+
+**描述**：获取群聊记录。
+
+**查询参数**：
+- `task_id` (string, required)
+- `chatroom_name` (string, required)
+
+### GET /api/wechat/owner
+
+**描述**：获取微信账号所有者信息。
+
+**查询参数**：`task_id` (string, required)
+
+### GET /api/wechat/contacts
+
+**描述**：获取微信联系人列表。
+
+**查询参数**：`task_id` (string, required)
+
+### POST /api/wechat/graph/invalidate
+
+**描述**：清除图谱缓存。
+
+**请求体**：
+```json
+{
+  "task_id": "string"
+}
+```
+
+---
+
+## 9. 事件关联 API
+
+事件关联 API 提供事件簇与文件之间的关联查询能力。
+
+### POST /api/associations/cluster-files
+
+**描述**：获取事件簇关联的文件。
+
+**请求体**：
+```json
+{
+  "task_id": "string",
+  "cluster_id": "string",
+  "time_window_seconds": 300
+}
+```
+
+### POST /api/associations/file-clusters
+
+**描述**：获取文件关联的事件簇。
+
+**请求体**：
+```json
+{
+  "task_id": "string",
+  "file_path": "/path/to/file",
+  "time_window_seconds": 300
+}
+```
+
+---
+
+## 10. OSS 分析 API
+
+Python 侧 OSS 分析 API 提供 AI 驱动的 OSS 对象过滤和分析能力。
+
+### POST /api/forensics/oss/ai/filter
+
+**描述**：使用 LLM 过滤 OSS 对象。
+
+**请求体**：
+```json
+{
+  "task_id": "string",
+  "description": "查找与案件相关的文档",
+  "model": "qwen2.5:7b"
+}
+```
+
+### POST /api/forensics/oss/ai/analyze
+
+**描述**：使用 LLM 分析 OSS 对象内容。
+
+**请求体**：
+```json
+{
+  "task_id": "string",
+  "object_ids": [1, 2, 3],
+  "model": "qwen2.5:7b"
+}
+```
+
+---
+
+## 11. DLL 分析 API
+
+### POST /api/llm/analyze/dll
+
+**描述**：使用 LLM 分析 DLL/共享库文件的安全性。
+
+**请求体**：
+```json
+{
+  "task_id": "string",
+  "dll_path": "/path/to/file.dll",
+  "model": "qwen2.5:7b"
+}
+```
+
+---
+
+## 12. Markitdown 文档转换 API
+
+Markitdown API 提供将各种文档格式转换为 Markdown 的能力。
+
+### POST /api/markitdown/convert
+
+**描述**：将文件转换为 Markdown 格式。
+
+**请求体**（multipart/form-data）：
+- `file` (file) - 要转换的文件
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "markdown": "# Document Title\n\nContent...",
+    "content_type": "application/pdf",
+    "filename": "document.pdf"
+  }
+}
+```
+
+### GET /api/markitdown/status
+
+**描述**：检查 Markitdown 服务状态。
+
+---
+
+## 13. 系统信息 API
 
 所有 API 在出错时返回以下格式：
 
@@ -933,5 +1150,5 @@ matched = matcher.match_files(validated.items, batch_files, case_context)
 
 ---
 
-**最后更新**: 2026-04-13
+**最后更新**: 2026-06-06
 **维护者**: ymj68520

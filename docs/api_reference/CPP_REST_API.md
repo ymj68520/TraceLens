@@ -13,7 +13,7 @@ C++ HTTP 服务运行在端口 **8080**，提供高性能的取证分析、任�
 
 **路由文件结构**：
 
-API 端点分布在 `src/network/HTTPServer/routes/` 下的 27+ 个独立路由文件中：
+API 端点分布在 `src/network/HTTPServer/routes/` 下的 29 个独立路由文件中：
 
 | 路由文件 | 功能域 | 端点数 |
 |----------|--------|--------|
@@ -28,13 +28,17 @@ API 端点分布在 `src/network/HTTPServer/routes/` 下的 27+ 个独立路由�
 | `DLLAnalysisRoutes.cpp` | DLL 分析 | 7 |
 | `StatisticsRoutes.cpp` | 统计分析 | 4 |
 | `AndroidForensicsRoutes.cpp` | Android 取证 | 4 |
-| `ExportRoutes.cpp` | 数据导出 | 4 |
+| `ExportRoutes.cpp` | 数据导出（TOON/JSON/CSV） | 4 |
 | `SearchRoutes.cpp` | 全文搜索 | 3 |
 | `SystemHealthRoutes.cpp` | 健康检查 | 5 |
 | `SystemInfoRoutes.cpp` | 系统信息 | 5 |
 | `SystemDocsRoutes.cpp` | API 文档 | 1 |
 | `SystemEventRoutes.cpp` | 系统事件 | 2 |
 | `SceneQueryRoutes.cpp` | 场景查询 | 2 |
+| `OSSAnalysisRoutes.cpp` | OSS 分析启动和 AI 分析 | 6 |
+| `OSSQueryRoutes.cpp` | OSS 对象和日志查询 | 2 |
+| `OSSStatsRoutes.cpp` | OSS 统计信息 | 4 |
+| `FilterRoutes.cpp` | 文件过滤配置管理 | 5 |
 
 完整路由参考见 [RouteReference.md](../modules/cpp/network/routes/RouteReference.md)。
 
@@ -47,9 +51,11 @@ API 端点分布在 `src/network/HTTPServer/routes/` 下的 27+ 个独立路由�
 3. [取证分析 API](#3-取证分析-api)
 4. [场景查询 API](#4-场景查询-api)
 5. [DLL 分析 API](#5-dll-分析-api)
-6. [全文搜索 API](#6-全文搜索-api)
-7. [系统信息 API](#7-系统信息-api)
-8. [场景感知分析优化](#8-场景感知分析优化)
+6. [OSS 对象存储分析 API](#6-oss-对象存储分析-api)
+7. [文件过滤配置 API](#7-文件过滤配置-api)
+8. [全文搜索 API](#8-全文搜索-api)
+9. [系统信息 API](#9-系统信息-api)
+10. [场景感知分析优化](#10-场景感知分析优化)
 
 ---
 
@@ -2063,7 +2069,218 @@ curl "http://localhost:8080/api/tasks/task_abc123/scene-artifacts?scene_type=win
 
 ---
 
-## 6. 全文搜索 API
+## 6. OSS 对象存储分析 API
+
+OSS（Object Storage Service）分析 API 提供阿里云 OSS 对象存储的取证分析能力，包括对象枚举、访问日志分析、AI 智能过滤和统计查询。
+
+### POST /api/forensics/oss/analyze
+
+**描述**：启动 OSS 分析任务。
+
+**请求体**：
+```json
+{
+  "access_key_id": "string",
+  "access_key_secret": "string",
+  "endpoint": "oss-cn-hangzhou.aliyuncs.com",
+  "bucket": "my-bucket",
+  "mode": "api|local|inventory|access_log",
+  "local_path": "/path/to/local/data"
+}
+```
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "task_id": "uuid",
+    "status": "running"
+  }
+}
+```
+
+### GET /api/forensics/oss/analyze/status
+
+**描述**：获取 OSS 分析任务状态。
+
+**查询参数**：`task_id` (string, required)
+
+### POST /api/forensics/oss/ai/filter
+
+**描述**：启动 AI 智能过滤 OSS 对象。
+
+**请求体**：
+```json
+{
+  "task_id": "string",
+  "description": "查找与案件相关的文档",
+  "model": "qwen2.5:7b"
+}
+```
+
+### POST /api/forensics/oss/ai/analyze
+
+**描述**：启动 AI 分析已过滤的 OSS 对象。
+
+**请求体**：
+```json
+{
+  "task_id": "string",
+  "object_ids": [1, 2, 3],
+  "model": "qwen2.5:7b"
+}
+```
+
+### POST /api/forensics/oss/download
+
+**描述**：下载 OSS 对象到本地进行分析。
+
+**请求体**：
+```json
+{
+  "task_id": "string",
+  "object_key": "path/to/file.pdf"
+}
+```
+
+### GET /api/forensics/oss/ai/status
+
+**描述**：获取 AI 分析状态。
+
+**查询参数**：`task_id` (string, required)
+
+### GET /api/forensics/oss/objects
+
+**描述**：查询 OSS 对象列表。
+
+**查询参数**：
+- `task_id` (string, required)
+- `bucket` (string, optional)
+- `prefix` (string, optional)
+- `extension` (string, optional)
+- `limit` (int, default 100)
+- `offset` (int, default 0)
+
+### GET /api/forensics/oss/logs
+
+**描述**：获取 OSS 访问日志。
+
+**查询参数**：
+- `task_id` (string, required)
+- `start_time` (int, optional)
+- `end_time` (int, optional)
+- `operation` (string, optional)
+
+### GET /api/forensics/oss/summary
+
+**描述**：获取 OSS 分析摘要统计。
+
+**查询参数**：`task_id` (string, required)
+
+### GET /api/forensics/oss/stats/storage-class
+
+**描述**：获取存储类型统计。
+
+**查询参数**：`task_id` (string, required)
+
+### GET /api/forensics/oss/stats/extensions
+
+**描述**：获取文件扩展名统计。
+
+**查询参数**：`task_id` (string, required)
+
+### GET /api/forensics/oss/buckets
+
+**描述**：获取 Bucket 列表。
+
+**查询参数**：`task_id` (string, required)
+
+---
+
+## 7. 文件过滤配置 API
+
+文件过滤 API 提供过滤配置文件的管理和应用能力，支持按扩展名、路径模式、文件大小等条件过滤文件。
+
+### GET /api/filter/profiles
+
+**描述**：列出所有可用的过滤配置文件。
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "profiles": ["default", "documents_only", "images_only", "custom_profile"]
+  }
+}
+```
+
+### GET /api/filter/profiles/{name}
+
+**描述**：获取指定过滤配置文件的详细信息。
+
+**路径参数**：`name` (string) - 配置文件名称
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "name": "documents_only",
+    "conditions": {
+      "extensions": [".pdf", ".doc", ".docx"],
+      "path_patterns": ["*/Documents/*"],
+      "min_size": 0,
+      "max_size": 104857600,
+      "include_deleted": false
+    },
+    "combine_mode": "ExcludeWins"
+  }
+}
+```
+
+### POST /api/filter/profiles
+
+**描述**：创建或更新过滤配置文件。
+
+**请求体**：
+```json
+{
+  "name": "custom_profile",
+  "conditions": {
+    "extensions": [".jpg", ".png", ".gif"],
+    "path_patterns": ["*/Pictures/*", "*/Photos/*"],
+    "min_size": 1024,
+    "max_size": 52428800,
+    "include_deleted": true,
+    "include_allocated": true
+  },
+  "combine_mode": "ExcludeWins"
+}
+```
+
+### DELETE /api/filter/profiles/{name}
+
+**描述**：删除自定义过滤配置文件。
+
+**路径参数**：`name` (string) - 配置文件名称
+
+### POST /api/filter/apply
+
+**描述**：将过滤配置应用到指定任务。
+
+**请求体**：
+```json
+{
+  "task_id": "string",
+  "profile_name": "documents_only"
+}
+```
+
+---
+
+## 8. 全文搜索 API
 
 ### POST /api/search/index
 
@@ -2159,7 +2376,7 @@ curl "http://localhost:8080/api/tasks/task_abc123/scene-artifacts?scene_type=win
 
 ---
 
-## 7. 系统信息 API
+## 9. 系统信息 API
 
 ### Health Checks
 
@@ -2567,7 +2784,7 @@ Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With
 
 ---
 
-## 8. 场景感知分析优化
+## 10. 场景感知分析优化
 
 场景感知分析是本工具的核心优化特性，通过在任务创建时指定取证场景（`scenarios` 参数），系统会在分析管线的多个阶段自动优化处理策略。
 
@@ -2647,5 +2864,5 @@ LLM 分析服务根据场景优先级对文件进行排序，优先分析高优�
 
 ---
 
-**最后更新**: 2026-06-05
+**最后更新**: 2026-06-06
 **维护者**: ymj68520

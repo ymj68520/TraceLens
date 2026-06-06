@@ -61,7 +61,7 @@ sudo apt-get install -y \
 ```bash
 # 下载
 wget https://github.com/sleuthkit/sleuthkit/releases/download/sleuthkit-4.14.0.tar.gz
-tar -xzf sleuthkit-14.0.tar.gz && cd sleuthkit-4.14.0
+tar -xzf sleuthkit-4.14.0.tar.gz && cd sleuthkit-4.14.0
 
 # 编译安装
 ./configure
@@ -70,7 +70,7 @@ sudo make install
 sudo ldconfig
 
 # 验证
-tsk_version  # 应显示 4.14.0
+tsk_loaddb -V  # 应显示 4.14.0
 ```
 
 ### 1.3 Crow 框架
@@ -322,7 +322,7 @@ pkg-config --modversion tsk
 **解决**：
 ```bash
 # 检查 Crow 是否安装
-pkg-config --modlevel --cflags --libs crow
+pkg-config --modversion --cflags --libs crow
 
 # 如果未安装，重新安装 Crow
 ```
@@ -425,5 +425,5 @@ neo4j-console
 
 ---
 
-**最后更新**: 2026-03-11
+**最后更新**: 2026-06-06
 **维护者**: ymj68520

@@ -208,9 +208,14 @@ graph TD
 | **分析器** | EventExtractor | 从元数据生成时间线事件 | DatabaseManager |
 | **分析器** | FileClassifier | 按类型分类文件（13 类） | DatabaseManager |
 | **分析器** | AndroidAnalyzer | Android 数据库解析 | DatabaseManager |
-| **分析器** | WindowsFilesAnalyzer | Windows 注册表、事件日志、工件解析 | DatabaseManager |
-| **分析器** | LinuxFilesAnalyzer | Linux 日志、用户数据解析 | DatabaseManager |
-| **分析器** | DLLAnalyzer | PE/ELF 文件分析、异常检测、威胁评分 | DatabaseManager |
+| **分析器** | WindowsFilesAnalyzer | Windows 全面取证：注册表、事件日志、Prefetch、Amcache、LNK、Jump Lists、SRUM、浏览器（Chromium/Firefox）、MFT、服务、计划任务、WiFi、RDP、Shimcache、UserAssist、ShellBag | DatabaseManager |
+| **分析器** | LinuxFilesAnalyzer | Linux 全面取证：系统日志、用户账户、Shell 历史、审计日志、容器安全（Docker/Podman）、Web 服务器（Nginx/Apache）、防火墙、SELinux/AppArmor、持久化检测、攻击链分析（40+ 表） | DatabaseManager |
+| **分析器** | DLLAnalyzer | PE/ELF 文件分析、异常检测、威胁评分、依赖分析、数字签名验证 | DatabaseManager |
+| **分析器** | DatabaseAnalyzer | 数据库取证：SQLite/MySQL/PostgreSQL 数据目录分析、删除记录恢复、WAL/Binlog 解析 | DatabaseManager |
+| **分析器** | OSSAnalyzer | 阿里云 OSS 对象存储取证：API 实时分析、本地目录分析、Inventory CSV、访问日志分析 | DatabaseManager, OSSClient |
+| **分析器** | PDFAnalyzer | PDF 元数据和内容提取（Poppler） | - |
+| **分析器** | OfficeAnalyzer | Office 文档解析（DOCX/XLSX/PPTX → Markdown） | DuckX |
+| **分析器** | VisionAnalyzer | 图像/视频帧视觉分析（OCR、对比） | ModelRouter |
 | **分析器** | FileCarving | 从未分配空间恢复删除文件 | DatabaseManager |
 | **基础设施** | AnalysisOrchestrator | 顶层工作流编排器 | 所有分析器 |
 | **基础设施** | DatabaseManager | SQLite 数据库操作和模式管理 | SQLite3 |
@@ -221,8 +226,14 @@ graph TD
 | **基础设施** | Logger | 日志系统 | - |
 | **基础设施** | ThreadPool | 线程池并行执行 | - |
 | **基础设施** | AuditLog | 审计日志 | DatabaseManager |
+| **基础设施** | FileFilter | 文件过滤配置管理 | DatabaseManager |
+| **基础设施** | ConfigManager | 环境变量和配置管理 | - |
+| **基础设施** | PathManager | 路径管理和解析 | - |
 | **网络** | HTTPServer | Crow HTTP 服务器核心 | Crow, TaskManager |
 | **网络** | TaskManager | 异步任务生命周期管理 | HTTPServer, ThreadPool |
+| **网络** | TaskWatchdog | 任务超时监控（60s 检查间隔） | TaskManager |
+| **网络** | TaskPersistence | 任务状态持久化（tasks.json） | TaskManager |
+| **网络** | TaskSerialization | 任务序列化/反序列化 | TaskManager |
 | **网络** | CaseManager | 案例管理（多任务组织） | TaskManager |
 | **网络** | SQLiteHelper | 数据库查询助手（30+ 方法） | DatabaseManager |
 | **网络** | LLMPythonProxy | Python LLM 服务代理 | Python FastAPI |
@@ -230,15 +241,21 @@ graph TD
 | **网络** | LLMAnalysisService | C++ LLM 文件分析（已弃用） | ModelRouter |
 | **网络** | LinuxLLMAnalysisService | Linux 工件 LLM 分析 | ModelRouter |
 | **网络** | WindowsLLMAnalysisService | Windows 工件 LLM 分析 | ModelRouter |
-| **网络** | TaskRoutes（22 个路由文件） | 任务管理 REST API | TaskManager |
+| **网络** | TaskRoutes（29 个路由文件） | 任务管理 REST API | TaskManager |
 | **网络** | ForensicsRoutes | 取证分析 REST API | DatabaseManager |
 | **网络** | SearchRoutes | 全文搜索 REST API | FullTextSearch |
 | **网络** | SystemRoutes | 系统监控 REST API | TaskManager |
 | **网络** | DLLAnalysisRoutes | DLL 分析 REST API | DLLAnalyzer |
 | **网络** | CaseCRUDRoutes | 案例管理 REST API | CaseManager |
 | **网络** | EventClusterRoutes | 事件簇分析 REST API | EventClusterAnalyzer |
+| **网络** | OSSRoutes/OSSAnalysisRoutes/OSSQueryRoutes/OSSStatsRoutes | OSS 对象存储分析 REST API | OSSAnalyzer |
+| **网络** | FilterRoutes | 文件过滤配置 REST API | FileFilter |
+| **网络** | ExportRoutes | 数据导出 REST API（TOON/JSON/CSV） | TOONExporter |
+| **网络** | SceneQueryRoutes | 场景查询 REST API | DatabaseManager |
 | **集成** | LLMIntegration | OpenAI 兼容 API 客户端 | httpx (via MCP) |
 | **集成** | ModelRouter | 多模型路由和负载均衡 | LLMIntegration |
+| **集成** | MCPIntegration | Model Context Protocol 服务器 | LLMIntegration |
+| **集成** | AndroidAdbExtractor | ADB 设备数据提取 | - |
 
 ---
 
@@ -402,24 +419,27 @@ graph TB
         D4[app_usage<br/>应用使用]
         D5[device_info<br/>设备信息]
 
-        E[_windows.db<br/>Windows 工件]
-        E1[registry_keys<br/>注册表键]
+        E[_windows.db<br/>Windows 工件 + DLL 分析]
+        E1[registry_values<br/>注册表]
         E2[event_logs<br/>事件日志]
         E3[browser_history<br/>浏览器历史]
-        E4[prefetch<br/>预读取]
-        E5[srum_data<br/>SRUM 数据]
+        E4[prefetch_files<br/>预读取]
+        E5[srum_entries<br/>SRUM 数据]
+        E6[amcache_entries<br/>Amcache]
+        E7[lnk_files<br/>LNK 快捷方式]
+        E8[jump_list_entries<br/>Jump Lists]
+        E9[dll_base_info<br/>DLL 分析]
+        E10[dll_anomalies<br/>DLL 异常]
 
         F[_linux.db<br/>Linux 工件]
-        F1[system_logs<br/>系统日志]
-        F2[user_accounts<br/>用户账户]
-        F3[shell_history<br/>Shell 历史]
-        F4[auth_data<br/>认证数据]
-
-        G[_dll.db<br/>DLL/共享库工件]
-        G1[dll_analysis<br/>DLL 分析结果]
-        G2[dll_sections<br/>PE 节表]
-        G3[dll_imports<br/>导入表]
-        G4[dll_anomalies<br/>异常检测]
+        F1[linux_log_entries<br/>系统日志]
+        F2[linux_users<br/>用户账户]
+        F3[linux_shell_history<br/>Shell 历史]
+        F4[linux_audit_events<br/>审计事件]
+        F5[linux_docker_containers<br/>Docker 容器]
+        F6[linux_nginx_access_logs<br/>Nginx 日志]
+        F7[linux_persistence_entries<br/>持久化机制]
+        F8[linux_anomalies<br/>异常检测]
     end
 
     A1 --> B1
@@ -1109,5 +1129,5 @@ auto& task_counter = prometheus::BuildCounter()
 
 ---
 
-**最后更新**: 2026-05-19
+**最后更新**: 2026-06-06
 **维护者**: ymj68520
