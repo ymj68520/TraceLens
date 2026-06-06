@@ -25,5 +25,32 @@
     "LevelDBExtractor": ["leveldb"],
     "RedisExtractor": [".rdb"],
     "MongoBsonExtractor": [".bson"],
-    "ArchiveExtractor": [".zip", ".tar", ".gz", ".tgz", ".rar", ".7z"]
+    "ArchiveExtractor": [".zip", ".tar", ".gz", ".tgz", ".rar", ".7z"],
+    "EmlExtractor": [".eml"],
+    "MsgExtractor": [".msg"],
+    "MboxExtractor": [".mbox"],
+    "PstExtractor": [".pst", ".ost"],
+    "EvtxExtractor": [".evtx"],
+    "RegistryExtractor": [".reg", ".hiv"],
+    "LnkExtractor": [".lnk"],
+    "JumplistExtractor": [".automaticDestinations-ms", ".customDestinations-ms"],
+    "JournalExtractor": [".journal"],
+    "AndroidBackupExtractor": [".ab"],
+    "E01MetadataExtractor": [".e01"],
+    "_filename_routes": {
+        "auth.log": "AuthLogExtractor",
+        "auth.log.1": "AuthLogExtractor",
+        "wtmp": "WtmpExtractor",
+        "utmp": "WtmpExtractor",
+        "btmp": "WtmpExtractor",
+        "History": "ChromeHistoryExtractor",
+        "places.sqlite": "FirefoxHistoryExtractor",
+        "SAM": "RegistryExtractor",
+        "SYSTEM": "RegistryExtractor",
+        "SOFTWARE": "RegistryExtractor",
+        "SECURITY": "RegistryExtractor",
+        "DEFAULT": "RegistryExtractor",
+        "NTUSER.DAT": "RegistryExtractor",
+        "UsrClass.dat": "RegistryExtractor"
+    }
 }

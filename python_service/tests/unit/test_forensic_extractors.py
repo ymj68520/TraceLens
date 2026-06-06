@@ -122,3 +122,65 @@ async def test_pst_extractor_nonexistent_file():
     result = await extractor.extract_to_markdown('/nonexistent/file.pst')
 
     assert 'Error' in result
+
+
+@pytest.mark.asyncio
+async def test_all_extractors_import():
+    """Test that all forensic extractors can be imported."""
+    from httpserver.services.extractors.email import EmlExtractor, MsgExtractor, MboxExtractor, PstExtractor
+    from httpserver.services.extractors.windows_evtx import EvtxExtractor
+    from httpserver.services.extractors.windows_registry import RegistryExtractor
+    from httpserver.services.extractors.windows_lnk import LnkExtractor, JumplistExtractor
+    from httpserver.services.extractors.browser_history import ChromeHistoryExtractor, FirefoxHistoryExtractor
+    from httpserver.services.extractors.linux_journal import AuthLogExtractor, WtmpExtractor, JournalExtractor
+    from httpserver.services.extractors.android_backup import AndroidBackupExtractor
+    from httpserver.services.extractors.disk_image import E01MetadataExtractor
+    from httpserver.services.extractors.base import BaseExtractor
+
+    for cls in [EmlExtractor, MsgExtractor, MboxExtractor, PstExtractor,
+                EvtxExtractor, RegistryExtractor, LnkExtractor, JumplistExtractor,
+                ChromeHistoryExtractor, FirefoxHistoryExtractor,
+                AuthLogExtractor, WtmpExtractor, JournalExtractor,
+                AndroidBackupExtractor, E01MetadataExtractor]:
+        assert issubclass(cls, BaseExtractor), f"{cls.__name__} is not a BaseExtractor subclass"
+
+
+@pytest.mark.asyncio
+async def test_extractor_registry():
+    """Test that extractors are properly registered."""
+    from httpserver.services.extractors import get_extractor, get_extractor_by_filename
+
+    assert get_extractor('.eml') is not None
+    assert get_extractor('.msg') is not None
+    assert get_extractor('.evtx') is not None
+    assert get_extractor('.lnk') is not None
+
+    assert get_extractor_by_filename('auth.log') is not None
+    assert get_extractor_by_filename('wtmp') is not None
+    assert get_extractor_by_filename('SAM') is not None
+
+
+@pytest.mark.asyncio
+async def test_auth_log_extractor():
+    """Test AuthLogExtractor with sample log data."""
+    import tempfile
+
+    log_content = """Jan 15 10:30:00 server sshd[1234]: Accepted publickey for john from 192.168.1.100 port 22 ssh2
+Jan 15 10:31:00 server sshd[1235]: Failed password for admin from 10.0.0.50 port 22 ssh2
+Jan 15 10:32:00 server sudo: john : TTY=pts/0 ; PWD=/home/john ; USER=root ; COMMAND=/bin/ls
+"""
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
+        f.write(log_content)
+        tmp_path = f.name
+
+    try:
+        from httpserver.services.extractors.linux_journal import AuthLogExtractor
+        extractor = AuthLogExtractor()
+        result = await extractor.extract_to_markdown(tmp_path)
+
+        assert '# Authentication Log Summary' in result
+        assert 'john' in result
+        assert 'SSH Login Success' in result or 'SUCCESS' in result
+    finally:
+        os.unlink(tmp_path)
