@@ -97,3 +97,6 @@ pycdlib>=1.14.0            # ISO disc image parsing
 # Compression
 lz4>=4.3.0                 # LZ4 compression
 zstandard>=0.22.0          # Zstandard compression
+
+# TOML parsing (for Python < 3.11)
+tomli>=2.0.0; python_version < "3.11"

@@ -64,6 +64,25 @@
     "VmdkExtractor": [".vmdk"],
     "VhdExtractor": [".vhd", ".vhdx"],
     "DmgExtractor": [".dmg"],
+    "PrefetchExtractor": [".pf"],
+    "SrumExtractor": [".srum"],
+    "AmcacheExtractor": [".amcache"],
+    "ThumbcacheExtractor": [".db"],
+    "WindowsTimelineExtractor": ["ActivitiesCache.db"],
+    "PcapExtractor": [".pcap", ".pcapng"],
+    "WindowsDmpExtractor": [".dmp"],
+    "LimeExtractor": [".lime"],
+    "RawMemoryExtractor": [".raw", ".mem", ".bin"],
+    "IosBackupExtractor": ["Manifest.db", "Info.plist", "Manifest.plist"],
+    "AndroidManifestExtractor": ["AndroidManifest.xml"],
+    "SqliteWalExtractor": [".wal", ".shm"],
+    "KeePassExtractor": [".kdbx"],
+    "GpgKeyExtractor": [".gpg", ".asc", ".pgp"],
+    "CertificateExtractor": [".pem", ".crt", ".cer", ".der", ".p12", ".pfx", ".p7b", ".p7c"],
+    "IniExtractor": [".ini", ".conf", ".cfg", ".config", ".properties", ".env"],
+    "TomlExtractor": [".toml"],
+    "YamlExtractor": [".yaml", ".yml"],
+    "MarkdownExtractor": [".md", ".markdown"],
     "_filename_routes": {
         "auth.log": "AuthLogExtractor",
         "auth.log.1": "AuthLogExtractor",
@@ -78,6 +97,11 @@
         "SECURITY": "RegistryExtractor",
         "DEFAULT": "RegistryExtractor",
         "NTUSER.DAT": "RegistryExtractor",
-        "UsrClass.dat": "RegistryExtractor"
+        "UsrClass.dat": "RegistryExtractor",
+        "Manifest.db": "IosBackupExtractor",
+        "Info.plist": "IosBackupExtractor",
+        "Manifest.plist": "IosBackupExtractor",
+        "AndroidManifest.xml": "AndroidManifestExtractor",
+        "ActivitiesCache.db": "WindowsTimelineExtractor"
     }
 }
