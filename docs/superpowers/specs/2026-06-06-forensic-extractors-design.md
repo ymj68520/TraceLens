@@ -538,6 +538,7 @@ python_service/httpserver/services/extractors/
 python-evtx>=0.8.0        # Windows Event Log (.evtx)
 python-registry>=1.3.0    # Windows Registry hives
 olefile>=0.47             # OLE2 format (.msg, .jump lists)
+defusedxml>=0.7.1         # Safe XML parsing (XXE protection)
 # pyewf-python is optional, only needed for E01 metadata
 ```
 
