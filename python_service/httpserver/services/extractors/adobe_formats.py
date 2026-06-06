@@ -405,6 +405,9 @@ class InddExtractor(BaseExtractor):
     """
 
     async def extract_to_markdown(self, file_path: str) -> str:
+        if not os.path.exists(file_path):
+            return f"Error: File not found: {file_path}"
+
         result = [f"# Adobe InDesign File: `{os.path.basename(file_path)}`"]
         result.append(f"**File Size:** {_format_size(os.path.getsize(file_path))}")
 

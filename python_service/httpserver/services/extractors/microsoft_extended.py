@@ -267,6 +267,9 @@ class OneNoteExtractor(BaseExtractor):
     """Extracts metadata from OneNote files (.one, .onetoc2)."""
 
     async def extract_to_markdown(self, file_path: str) -> str:
+        if not os.path.exists(file_path):
+            return f"Error: File not found: {file_path}"
+
         ext = os.path.splitext(file_path)[1].lower()
         type_name = "OneNote Notebook" if ext == ".one" else "OneNote TOC"
 
@@ -360,6 +363,9 @@ class PublisherExtractor(BaseExtractor):
     """
 
     async def extract_to_markdown(self, file_path: str) -> str:
+        if not os.path.exists(file_path):
+            return f"Error: File not found: {file_path}"
+
         try:
             import olefile
 
@@ -538,6 +544,9 @@ class ProjectExtractor(BaseExtractor):
     """Extracts metadata from Microsoft Project files (.mpp, .mpt, OLE2)."""
 
     async def extract_to_markdown(self, file_path: str) -> str:
+        if not os.path.exists(file_path):
+            return f"Error: File not found: {file_path}"
+
         try:
             import olefile
 
