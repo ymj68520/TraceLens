@@ -12,7 +12,7 @@ from typing import Optional
 
 # Import the base and the registry loader
 from .extractors.base import BaseExtractor
-from .extractors import get_extractor
+from .extractors import get_extractor, get_extractor_by_filename
 
 logger = logging.getLogger(__name__)
 
@@ -27,20 +27,26 @@ class ExtractorLocator:
     def get_extractor(self, file_path: str) -> Optional[BaseExtractor]:
         """Locates the appropriate extractor for the given file path."""
         path = Path(file_path)
-        
+
         # Special fallback for LevelDB directories
         if path.is_dir() and (path / "CURRENT").exists():
             ext = "leveldb"
         else:
             ext = path.suffix.lower()
 
-        # Retrieve extractor from dynamic registry
+        # Try filename-based routing first (for auth.log, wtmp, SAM, etc.)
+        extractor = get_extractor_by_filename(path.name)
+        if extractor:
+            logger.info(f"Routed '{path.name}' to {extractor.__class__.__name__} (by filename)")
+            return extractor
+
+        # Fall back to extension-based routing
         extractor = get_extractor(ext)
         if extractor:
             logger.info(f"Routed {ext} to {extractor.__class__.__name__}")
         else:
             logger.warning(f"No extractor available for {ext}")
-            
+
         return extractor
 
 # Singleton pattern for the locator

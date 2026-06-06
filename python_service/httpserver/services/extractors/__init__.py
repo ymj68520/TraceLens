@@ -17,9 +17,16 @@ extractor_registry = {}
 # Staging ground for subclasses that use @register_extractor
 registered_extractor_classes = {}
 
+# Filename-based routing for files without unique extensions (e.g. auth.log, wtmp, SAM)
+filename_extractor_registry = {}
+
 def get_extractor(extension: str):
     """Retrieves an extractor for the given extension, returning None if unsupported."""
     return extractor_registry.get(extension.lower())
+
+def get_extractor_by_filename(filename: str):
+    """Retrieves an extractor by exact filename match, returning None if unsupported."""
+    return filename_extractor_registry.get(filename)
 
 def load_plugins():
     """Dynamically loads all modules, then reads JSON mapping to build instances."""
@@ -107,6 +114,22 @@ def load_plugins():
                     logger.info(f"Wired fallback: {class_name}({ext}) -> {fallback_class_name}")
                 else:
                     logger.warning(f"Fallback class '{fallback_class_name}' not found in plugins.")
+
+    # 4. Build filename-based registry
+    filename_routes = mapping.get("_filename_routes", {})
+    for filename, class_name in filename_routes.items():
+        if class_name in registered_extractor_classes:
+            cls = registered_extractor_classes[class_name]
+            if class_name not in instances:
+                try:
+                    instances[class_name] = cls()
+                except Exception as e:
+                    logger.error(f"Failed to instantiate {class_name}: {e}")
+                    continue
+            filename_extractor_registry[filename] = instances[class_name]
+            logger.info(f"Filename route: '{filename}' -> {class_name}")
+        else:
+            logger.warning(f"Filename route class '{class_name}' not found in plugins.")
 
 # This ensures plugins are loaded as soon as `extractors` is imported
 load_plugins()
