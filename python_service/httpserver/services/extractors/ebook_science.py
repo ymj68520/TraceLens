@@ -531,7 +531,7 @@ class EpubExtractor(BaseExtractor):
                 for item in items:
                     props = item.get("properties", "")
                     href = item.get("href", "")
-                    if "nav" in props or href.endswith("toc.ncx") or href.endswith("toc.ncx"):
+                    if "nav" in props or href.endswith("toc.ncx") or href.endswith("nav.xhtml"):
                         toc_ncx_path = href
                         break
                 if not toc_ncx_path:
