@@ -454,19 +454,18 @@ class TestOneNoteExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.microsoft_extended import OneNoteExtractor
         extractor = OneNoteExtractor()
-        # OneNoteExtractor calls olefile.isOleFile() which raises FileNotFoundError
-        with pytest.raises(FileNotFoundError):
-            asyncio.get_event_loop().run_until_complete(
-                extractor.extract_to_markdown('/nonexistent/file.one')
-            )
+        result = asyncio.get_event_loop().run_until_complete(
+            extractor.extract_to_markdown('/nonexistent/file.one')
+        )
+        assert 'Error' in result
 
     def test_nonexistent_onetoc2(self):
         from httpserver.services.extractors.microsoft_extended import OneNoteExtractor
         extractor = OneNoteExtractor()
-        with pytest.raises(FileNotFoundError):
-            asyncio.get_event_loop().run_until_complete(
-                extractor.extract_to_markdown('/nonexistent/file.onetoc2')
-            )
+        result = asyncio.get_event_loop().run_until_complete(
+            extractor.extract_to_markdown('/nonexistent/file.onetoc2')
+        )
+        assert 'Error' in result
 
 
 # ---------------------------------------------------------------------------
@@ -491,11 +490,10 @@ class TestProjectExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.microsoft_extended import ProjectExtractor
         extractor = ProjectExtractor()
-        # ProjectExtractor calls olefile.isOleFile() which raises FileNotFoundError
-        with pytest.raises(FileNotFoundError):
-            asyncio.get_event_loop().run_until_complete(
-                extractor.extract_to_markdown('/nonexistent/file.mpp')
-            )
+        result = asyncio.get_event_loop().run_until_complete(
+            extractor.extract_to_markdown('/nonexistent/file.mpp')
+        )
+        assert 'Error' in result
 
 
 # ---------------------------------------------------------------------------
@@ -618,11 +616,10 @@ class TestInddExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.adobe_formats import InddExtractor
         extractor = InddExtractor()
-        # InddExtractor calls os.path.getsize() before any error handling
-        with pytest.raises(FileNotFoundError):
-            asyncio.get_event_loop().run_until_complete(
-                extractor.extract_to_markdown('/nonexistent/file.indd')
-            )
+        result = asyncio.get_event_loop().run_until_complete(
+            extractor.extract_to_markdown('/nonexistent/file.indd')
+        )
+        assert 'Error' in result
 
     def test_raw_binary_fallback(self, tmp_path):
         from httpserver.services.extractors.adobe_formats import InddExtractor
