@@ -68,3 +68,32 @@ python-evtx>=0.8.0        # Windows Event Log (.evtx)
 python-registry>=1.3.0    # Windows Registry hives
 olefile>=0.47             # OLE2 format (.msg, jump lists)
 defusedxml>=0.7.1         # Safe XML parsing (XXE protection)
+
+# Image Format Support
+pillow-heif>=0.13.0       # HEIC/HEIF image metadata
+rawpy>=0.19.0              # RAW camera images (CR2/NEF/ARW/DNG)
+
+# Audio/Video Metadata
+mutagen>=1.47.0            # Audio file metadata (MP3, FLAC, OGG, etc.)
+
+# Binary Analysis
+pefile>=2023.2.7           # PE file analysis (EXE/DLL)
+pyelftools>=0.30           # ELF file analysis (SO/LD)
+
+# Document Formats
+striprtf>=0.0.26           # RTF document parsing
+odfpy>=1.4.1               # ODF documents (ODT/ODS/ODP)
+
+# Calendar and Contacts
+icalendar>=5.0.0           # ICS calendar files
+vobject>=0.9.6             # VCF contact files
+
+# Font Analysis
+fonttools>=4.40.0          # Font metadata (TTF/OTF/WOFF)
+
+# Disk Images
+pycdlib>=1.14.0            # ISO disc image parsing
+
+# Compression
+lz4>=4.3.0                 # LZ4 compression
+zstandard>=0.22.0          # Zstandard compression
