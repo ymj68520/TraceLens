@@ -6,7 +6,7 @@ import zipfile
 try:
     from defusedxml import ElementTree as ET
 except ImportError:
-    raise ImportError("defusedxml is required for XML parsing. Install with: pip install defusedxml")
+    ET = None
 
 from .base import BaseExtractor, register_extractor
 
@@ -45,6 +45,8 @@ class RtfExtractor(BaseExtractor):
 
 def _extract_odf_text(file_path: str) -> str:
     """Extract text from ODF files (ODT/ODS/ODP) which are ZIP+XML."""
+    if ET is None:
+        return ""
     texts = []
     try:
         with zipfile.ZipFile(file_path, 'r') as z:
@@ -62,6 +64,8 @@ def _extract_odf_text(file_path: str) -> str:
 
 def _extract_odf_sheets(file_path: str) -> list:
     """Extract sheet data from ODS files."""
+    if ET is None:
+        return []
     sheets = []
     try:
         with zipfile.ZipFile(file_path, 'r') as z:
@@ -97,6 +101,8 @@ class OdtExtractor(BaseExtractor):
     """Extracts text from ODT (OpenDocument Text) files."""
 
     async def extract_to_markdown(self, file_path: str) -> str:
+        if ET is None:
+            return "Error: defusedxml library is not installed. Install with: pip install defusedxml"
         try:
             text = _extract_odf_text(file_path)
             result = [f"# ODT Document: `{os.path.basename(file_path)}`"]
@@ -119,6 +125,8 @@ class OdsExtractor(BaseExtractor):
     """Extracts data from ODS (OpenDocument Spreadsheet) files."""
 
     async def extract_to_markdown(self, file_path: str) -> str:
+        if ET is None:
+            return "Error: defusedxml library is not installed. Install with: pip install defusedxml"
         try:
             sheets = _extract_odf_sheets(file_path)
             result = [f"# ODS Spreadsheet: `{os.path.basename(file_path)}`"]
@@ -153,6 +161,8 @@ class OdpExtractor(BaseExtractor):
     """Extracts text from ODP (OpenDocument Presentation) files."""
 
     async def extract_to_markdown(self, file_path: str) -> str:
+        if ET is None:
+            return "Error: defusedxml library is not installed. Install with: pip install defusedxml"
         try:
             text = _extract_odf_text(file_path)
             result = [f"# ODP Presentation: `{os.path.basename(file_path)}`"]

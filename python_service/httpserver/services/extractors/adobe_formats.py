@@ -69,6 +69,8 @@ class PsdExtractor(BaseExtractor):
     """
 
     async def extract_to_markdown(self, file_path: str) -> str:
+        if not os.path.exists(file_path):
+            return f"Error: File not found: {file_path}"
         # Try psd-tools first
         try:
             return self._extract_with_psd_tools(file_path)
@@ -273,6 +275,8 @@ class AiExtractor(BaseExtractor):
     """
 
     async def extract_to_markdown(self, file_path: str) -> str:
+        if not os.path.exists(file_path):
+            return f"Error: File not found: {file_path}"
         try:
             with open(file_path, "rb") as f:
                 header = f.read(256)

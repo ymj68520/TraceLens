@@ -413,7 +413,7 @@ class EpubExtractor(BaseExtractor):
                 except Exception as e:
                     return f"Error: Failed to parse container.xml: {e}"
 
-                ns_c = {"c": "urn:oasis:names:tc:opendml:xmlns:container"}
+                ns_c = {"c": "urn:oasis:names:tc:opendocument:xmlns:container"}
                 rootfiles = container_tree.findall(".//c:rootfile", ns_c)
                 if not rootfiles:
                     rootfiles = container_tree.findall(".//rootfile")
@@ -621,7 +621,10 @@ class MobiExtractor(BaseExtractor):
         result.append(f"**File Size:** {_format_size(os.path.getsize(file_path))}")
         result.append("")
 
-        # Parse MOBI header
+        # Parse MOBI header — all variables must survive into EXTH section
+        header_len = 0
+        encoding_name = "cp1252"  # safe default for MOBI files
+
         try:
             if mobi_offset + 24 > len(data):
                 return "Error: MOBI header truncated."
@@ -634,14 +637,15 @@ class MobiExtractor(BaseExtractor):
             mobi_version = struct.unpack(">I", mobi_data[20:24])[0]
 
             type_names = {2: "MOBI Book", 3: "PalmDoc", 4: "Audio", 257: "News", 258: "News Feed", 259: "News Magazine"}
-            encoding_name = self._ENCODINGS.get(text_encoding, f"Unknown ({text_encoding})")
+            # Fallback to cp1252 (most common MOBI encoding) for unknown values
+            encoding_name = self._ENCODINGS.get(text_encoding, "cp1252")
 
             result.append("## MOBI Header")
             result.append("| Field | Value |")
             result.append("| --- | --- |")
             result.append(f"| Header Length | {header_len} bytes |")
             result.append(f"| Type | {type_names.get(mobi_type, mobi_type)} |")
-            result.append(f"| Text Encoding | {encoding_name} |")
+            result.append(f"| Text Encoding | {encoding_name} ({text_encoding}) |")
             result.append(f"| MOBI Version | {mobi_version} |")
         except Exception as e:
             result.append(f"*Failed to parse MOBI header: {e}*")
@@ -680,8 +684,6 @@ class MobiExtractor(BaseExtractor):
 
                     result.append(f"| {record_type} | {type_name} | {value} |")
                     pos += record_len
-            else:
-                result.append("\n*No EXTH header found.*")
         except Exception as e:
             result.append(f"\n*Failed to parse EXTH records: {e}*")
 

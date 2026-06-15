@@ -9,7 +9,7 @@ import zipfile
 try:
     from defusedxml import ElementTree as ET
 except ImportError:
-    raise ImportError("defusedxml is required for XML parsing in microsoft_extended extractors. Install with: pip install defusedxml")
+    ET = None
 
 from .base import BaseExtractor, register_extractor
 
@@ -84,6 +84,8 @@ class MscExtractor(BaseExtractor):
     """Extracts metadata from MMC Console files (.msc, XML format)."""
 
     async def extract_to_markdown(self, file_path: str) -> str:
+        if ET is None:
+            return "Error: defusedxml library is not installed. Install with: pip install defusedxml"
         try:
             tree = ET.parse(file_path)
             root = tree.getroot()
@@ -149,6 +151,10 @@ class XpsExtractor(BaseExtractor):
     """Extracts content from XPS/OXPS files (.xps, .oxps, ZIP-based XML)."""
 
     async def extract_to_markdown(self, file_path: str) -> str:
+        if not os.path.exists(file_path):
+            return f"Error: File not found: {file_path}"
+        if ET is None:
+            return "Error: defusedxml library is not installed. Install with: pip install defusedxml"
         if not zipfile.is_zipfile(file_path):
             return "Error: Not a valid XPS/OXPS file (not a ZIP archive)."
 
@@ -427,6 +433,10 @@ class VisioExtractor(BaseExtractor):
     """Extracts content from Visio files (.vsdx, .vsdm, ZIP-based XML)."""
 
     async def extract_to_markdown(self, file_path: str) -> str:
+        if not os.path.exists(file_path):
+            return f"Error: File not found: {file_path}"
+        if ET is None:
+            return "Error: defusedxml library is not installed. Install with: pip install defusedxml"
         if not zipfile.is_zipfile(file_path):
             return "Error: Not a valid Visio file (not a ZIP archive)."
 
@@ -620,6 +630,8 @@ class EtlExtractor(BaseExtractor):
     ETL_HEADER_MIN_SIZE = 64
 
     async def extract_to_markdown(self, file_path: str) -> str:
+        if not os.path.exists(file_path):
+            return f"Error: File not found: {file_path}"
         try:
             with open(file_path, "rb") as f:
                 header = f.read(512)

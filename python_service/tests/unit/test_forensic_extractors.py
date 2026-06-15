@@ -200,7 +200,7 @@ class TestCsvExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.data_exchange import CsvExtractor
         extractor = CsvExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.csv')
         )
         assert 'Error' in result
@@ -210,7 +210,7 @@ class TestCsvExtractor:
         csv_file = tmp_path / "test.csv"
         csv_file.write_text("name,age\nAlice,30\nBob,25\n", encoding='utf-8')
         extractor = CsvExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(csv_file))
         )
         assert 'CSV Data' in result
@@ -223,7 +223,7 @@ class TestCsvExtractor:
         csv_file = tmp_path / "nums.csv"
         csv_file.write_text("id,score\n1,90\n2,85\n3,95\n", encoding='utf-8')
         extractor = CsvExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(csv_file))
         )
         assert 'Numeric Column Statistics' in result
@@ -233,7 +233,7 @@ class TestCsvExtractor:
         csv_file = tmp_path / "empty.csv"
         csv_file.write_text("", encoding='utf-8')
         extractor = CsvExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(csv_file))
         )
         assert 'Error' in result
@@ -243,7 +243,7 @@ class TestCsvExtractor:
         csv_file = tmp_path / "tab.csv"
         csv_file.write_text("name\tage\nAlice\t30\n", encoding='utf-8')
         extractor = CsvExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(csv_file))
         )
         assert 'CSV Data' in result
@@ -258,7 +258,7 @@ class TestJsonDataExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.data_exchange import JsonDataExtractor
         extractor = JsonDataExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.json')
         )
         assert 'Error' in result
@@ -268,7 +268,7 @@ class TestJsonDataExtractor:
         json_file = tmp_path / "test.json"
         json_file.write_text('{"name": "Alice", "age": 30}', encoding='utf-8')
         extractor = JsonDataExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(json_file))
         )
         assert 'JSON Data' in result
@@ -280,7 +280,7 @@ class TestJsonDataExtractor:
         json_file = tmp_path / "array.json"
         json_file.write_text('[{"id": 1}, {"id": 2}]', encoding='utf-8')
         extractor = JsonDataExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(json_file))
         )
         assert 'JSON Data' in result
@@ -291,7 +291,7 @@ class TestJsonDataExtractor:
         json_file = tmp_path / "bad.json"
         json_file.write_text('{not valid json', encoding='utf-8')
         extractor = JsonDataExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(json_file))
         )
         assert 'Error' in result
@@ -301,7 +301,7 @@ class TestJsonDataExtractor:
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text('{"a": 1}\n{"a": 2}\n', encoding='utf-8')
         extractor = JsonDataExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(jsonl_file))
         )
         assert 'JSON Lines' in result
@@ -316,7 +316,7 @@ class TestXmlDataExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.data_exchange import XmlDataExtractor
         extractor = XmlDataExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.xml')
         )
         assert 'Error' in result
@@ -329,7 +329,7 @@ class TestXmlDataExtractor:
             encoding='utf-8'
         )
         extractor = XmlDataExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(xml_file))
         )
         assert 'XML Document' in result
@@ -341,7 +341,7 @@ class TestXmlDataExtractor:
         xml_file = tmp_path / "bad.xml"
         xml_file.write_text('<root><unclosed>', encoding='utf-8')
         extractor = XmlDataExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(xml_file))
         )
         assert 'Error' in result
@@ -354,7 +354,7 @@ class TestXmlDataExtractor:
             encoding='utf-8'
         )
         extractor = XmlDataExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(xml_file))
         )
         assert 'XML Document' in result
@@ -369,7 +369,7 @@ class TestUrlExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.microsoft_extended import UrlExtractor
         extractor = UrlExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.url')
         )
         assert 'Error' in result
@@ -382,7 +382,7 @@ class TestUrlExtractor:
             encoding='utf-8'
         )
         extractor = UrlExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(url_file))
         )
         assert 'Internet Shortcut' in result
@@ -396,7 +396,7 @@ class TestUrlExtractor:
             encoding='utf-8'
         )
         extractor = UrlExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(url_file))
         )
         assert 'Internet Shortcut' in result
@@ -412,7 +412,7 @@ class TestMscExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.microsoft_extended import MscExtractor
         extractor = MscExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.msc')
         )
         assert 'Error' in result
@@ -425,7 +425,7 @@ class TestMscExtractor:
             encoding='utf-8'
         )
         extractor = MscExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(msc_file))
         )
         assert 'MMC Console' in result
@@ -440,7 +440,7 @@ class TestXpsExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.microsoft_extended import XpsExtractor
         extractor = XpsExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.xps')
         )
         assert 'Error' in result
@@ -454,7 +454,7 @@ class TestOneNoteExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.microsoft_extended import OneNoteExtractor
         extractor = OneNoteExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.one')
         )
         assert 'Error' in result
@@ -462,7 +462,7 @@ class TestOneNoteExtractor:
     def test_nonexistent_onetoc2(self):
         from httpserver.services.extractors.microsoft_extended import OneNoteExtractor
         extractor = OneNoteExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.onetoc2')
         )
         assert 'Error' in result
@@ -476,7 +476,7 @@ class TestVisioExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.microsoft_extended import VisioExtractor
         extractor = VisioExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.vsdx')
         )
         assert 'Error' in result
@@ -490,7 +490,7 @@ class TestProjectExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.microsoft_extended import ProjectExtractor
         extractor = ProjectExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.mpp')
         )
         assert 'Error' in result
@@ -504,7 +504,7 @@ class TestEtlExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.microsoft_extended import EtlExtractor
         extractor = EtlExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.etl')
         )
         assert 'Error' in result
@@ -514,7 +514,7 @@ class TestEtlExtractor:
         etl_file = tmp_path / "tiny.etl"
         etl_file.write_bytes(b'\x00' * 10)
         extractor = EtlExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(etl_file))
         )
         assert 'Error' in result
@@ -528,7 +528,7 @@ class TestPsdExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.adobe_formats import PsdExtractor
         extractor = PsdExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.psd')
         )
         assert 'Error' in result
@@ -539,7 +539,7 @@ class TestPsdExtractor:
         # Write valid-looking header size but wrong magic
         psd_file.write_bytes(b'\x00' * 40)
         extractor = PsdExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(psd_file))
         )
         assert 'Error' in result
@@ -562,7 +562,7 @@ class TestPsdExtractor:
         header += st.pack('>I', 0)           # layer/mask info length
         psd_file.write_bytes(header)
         extractor = PsdExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(psd_file))
         )
         assert 'PSD Image' in result
@@ -577,7 +577,7 @@ class TestAiExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.adobe_formats import AiExtractor
         extractor = AiExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.ai')
         )
         assert 'Error' in result
@@ -590,7 +590,7 @@ class TestAiExtractor:
             encoding='latin-1'
         )
         extractor = AiExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(ai_file))
         )
         assert 'Adobe Illustrator' in result
@@ -601,7 +601,7 @@ class TestAiExtractor:
         ai_file = tmp_path / "unknown.ai"
         ai_file.write_bytes(b'\x00\x01\x02\x03' * 20)
         extractor = AiExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(ai_file))
         )
         assert 'Adobe Illustrator' in result
@@ -616,7 +616,7 @@ class TestInddExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.adobe_formats import InddExtractor
         extractor = InddExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.indd')
         )
         assert 'Error' in result
@@ -626,7 +626,7 @@ class TestInddExtractor:
         indd_file = tmp_path / "test.indd"
         indd_file.write_bytes(b'\x00' * 256)
         extractor = InddExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(indd_file))
         )
         assert 'Adobe InDesign' in result
@@ -640,7 +640,7 @@ class TestSrtExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.ebook_science import SrtExtractor
         extractor = SrtExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.srt')
         )
         assert 'Error' in result
@@ -654,7 +654,7 @@ class TestSrtExtractor:
         )
         srt_file.write_text(srt_content, encoding='utf-8')
         extractor = SrtExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(srt_file))
         )
         assert 'SRT Subtitles' in result
@@ -667,7 +667,7 @@ class TestSrtExtractor:
         srt_file = tmp_path / "empty.srt"
         srt_file.write_text("no subtitles here\n", encoding='utf-8')
         extractor = SrtExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(srt_file))
         )
         assert 'Error' in result
@@ -681,7 +681,7 @@ class TestAssVttExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.ebook_science import AssVttExtractor
         extractor = AssVttExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.ass')
         )
         assert 'Error' in result
@@ -696,7 +696,7 @@ class TestAssVttExtractor:
         )
         vtt_file.write_text(vtt_content, encoding='utf-8')
         extractor = AssVttExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(vtt_file))
         )
         assert 'WebVTT' in result
@@ -715,7 +715,7 @@ class TestAssVttExtractor:
         )
         ass_file.write_text(ass_content, encoding='utf-8')
         extractor = AssVttExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(ass_file))
         )
         assert 'ASS/SSA Subtitles' in result
@@ -731,7 +731,7 @@ class TestObjExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.ebook_science import ObjExtractor
         extractor = ObjExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.obj')
         )
         assert 'Error' in result
@@ -751,7 +751,7 @@ class TestObjExtractor:
         )
         obj_file.write_text(obj_content, encoding='utf-8')
         extractor = ObjExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(obj_file))
         )
         assert 'OBJ 3D Model' in result
@@ -768,7 +768,7 @@ class TestStlExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.ebook_science import StlExtractor
         extractor = StlExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.stl')
         )
         assert 'Error' in result
@@ -789,7 +789,7 @@ class TestStlExtractor:
         )
         stl_file.write_text(stl_content, encoding='utf-8')
         extractor = StlExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(stl_file))
         )
         assert 'STL 3D Model' in result
@@ -805,7 +805,7 @@ class TestEpubExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.ebook_science import EpubExtractor
         extractor = EpubExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.epub')
         )
         assert 'Error' in result
@@ -819,7 +819,7 @@ class TestMobiExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.ebook_science import MobiExtractor
         extractor = MobiExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.mobi')
         )
         assert 'Error' in result
@@ -829,7 +829,7 @@ class TestMobiExtractor:
         mobi_file = tmp_path / "tiny.mobi"
         mobi_file.write_bytes(b'\x00\x01')
         extractor = MobiExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(mobi_file))
         )
         assert 'Error' in result
@@ -839,7 +839,7 @@ class TestMobiExtractor:
         mobi_file = tmp_path / "bad.mobi"
         mobi_file.write_bytes(b'\x00' * 200)
         extractor = MobiExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown(str(mobi_file))
         )
         assert 'Error' in result
@@ -853,7 +853,7 @@ class TestHdf5Extractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.ebook_science import Hdf5Extractor
         extractor = Hdf5Extractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.h5')
         )
         # Either h5py is missing (returns "Error: h5py...") or file not found
@@ -868,7 +868,7 @@ class TestDicomExtractor:
     def test_nonexistent_file(self):
         from httpserver.services.extractors.ebook_science import DicomExtractor
         extractor = DicomExtractor()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             extractor.extract_to_markdown('/nonexistent/file.dcm')
         )
         # Either pydicom is missing (returns "Error: pydicom...") or file not found
