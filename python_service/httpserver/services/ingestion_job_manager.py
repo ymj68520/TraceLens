@@ -650,6 +650,13 @@ class IngestionJobManager:
         duplicates = await self._file_ingestor.merge_duplicate_files(task_id)
         file_result.duplicates_merged = duplicates
 
+        # Step 5: Path-A episode ingestion (add_episode) so the LLM builds the
+        # Entity/RELATES_TO graph the frontend visualises. Without this the
+        # manual "Ingest" button only writes :File nodes (invisible to viz).
+        ep_stats = await self._ingest_episodes_path_a(
+            job_id, task_id, files_db, events_db, analyzed_only=False
+        )
+
         # Store result
         await self._update_job_status(
             job_id,
@@ -662,6 +669,7 @@ class IngestionJobManager:
                 "events_attached": file_result.events_attached,
                 "entities_linked": relation_result.mentioned_in_edges_created,
                 "duplicates_merged": duplicates,
+                **ep_stats,
             }
         )
 
@@ -852,11 +860,18 @@ class IngestionJobManager:
         # 6. Merge duplicate files
         await self._update_job_status(job_id, JobStatus.RUNNING, "deduplicating_files", progress=90)
 
+        duplicates = 0
         if self._file_ingestor:
             duplicates = await self._file_ingestor.merge_duplicate_files(task_id)
             file_result.duplicates_merged = duplicates
 
-        # 7. Store final result
+        # 7. Path-A episode ingestion (add_episode) for the analyzed files so
+        # the frontend visualisation actually shows entities/relationships.
+        ep_stats = await self._ingest_episodes_path_a(
+            job_id, task_id, files_db, events_db, analyzed_only=True
+        )
+
+        # 8. Store final result
         await self._update_job_status(
             job_id,
             JobStatus.RUNNING,
@@ -869,8 +884,111 @@ class IngestionJobManager:
                 "entities_linked": relation_result.mentioned_in_edges_created,
                 "duplicates_merged": duplicates,
                 "analyzed_files_processed": len(all_files),
+                **ep_stats,
             }
         )
+
+    async def _ingest_episodes_path_a(
+        self,
+        job_id: str,
+        task_id: str,
+        files_db: Optional[str],
+        events_db: Optional[str],
+        analyzed_only: bool,
+    ) -> dict:
+        """
+        Run path-A (add_episode) ingestion via GraphitiService.
+
+        The manual "Ingest" button must ALSO produce the Episodic → Entity →
+        RELATES_TO graph the frontend visualises, otherwise users see an empty
+        graph after ingesting. This reads the LLM-analyzed file_descriptions
+        (and event cluster analyses) from SQLite and feeds them to
+        ``GraphitiService.ingest_task_episodes`` so the extractor can build
+        entities/relationships.
+
+        Failures here are non-fatal: the path-B :File entities are still valid.
+        Returns a stats dict.
+        """
+        stats = {"episodes_successful": 0, "episodes_total": 0, "episodes_failed": 0, "error": None}
+        try:
+            from .. import get_service_manager
+            service_manager = get_service_manager()
+            graphiti_service = getattr(service_manager, "graphiti_service", None)
+            if graphiti_service is None:
+                stats["error"] = "graphiti_service unavailable"
+                return stats
+
+            if not files_db or not Path(files_db).exists():
+                stats["error"] = f"files_db not found: {files_db}"
+                return stats
+
+            import sqlite3
+            file_descs: list = []
+            with sqlite3.connect(files_db, timeout=10) as conn:
+                conn.row_factory = sqlite3.Row
+                # Ensure schema has the description columns (added lazily by analysis pipeline)
+                where = "WHERE description IS NOT NULL AND description != ''" if analyzed_only else ""
+                try:
+                    cur = conn.execute(
+                        f"SELECT DISTINCT file_path, description, summary FROM file_descriptions {where}"
+                    )
+                    for row in cur.fetchall():
+                        desc = row["description"] or row["summary"] or ""
+                        if desc:
+                            file_descs.append({"file_path": row["file_path"], "description": desc, "success": True})
+                except sqlite3.OperationalError:
+                    # file_descriptions table may not exist yet for this task
+                    stats["error"] = "file_descriptions table missing"
+
+            # Event cluster analyses (optional)
+            cluster_descs: list = []
+            if events_db and Path(events_db).exists():
+                import sqlite3
+                with sqlite3.connect(events_db, timeout=10) as conn:
+                    conn.row_factory = sqlite3.Row
+                    try:
+                        cur = conn.execute(
+                            "SELECT DISTINCT event_type, llm_description, llm_summary, "
+                            "(timestamp / 60) as time_window FROM events "
+                            "WHERE llm_description IS NOT NULL GROUP BY event_type, time_window"
+                        )
+                        for row in cur.fetchall():
+                            desc = row["llm_description"] or row["llm_summary"] or ""
+                            if desc:
+                                cluster_descs.append({
+                                    "event_type": row["event_type"],
+                                    "time_window": row["time_window"],
+                                    "analysis": {"description": desc},
+                                })
+                    except sqlite3.OperationalError:
+                        pass  # events table may be absent
+
+            if not file_descs and not cluster_descs:
+                stats["error"] = stats.get("error") or "no analyzed descriptions to ingest"
+                return stats
+
+            await self._update_job_status(
+                job_id, JobStatus.RUNNING, "ingesting_episodes",
+                progress=92,
+            )
+            result = await graphiti_service.ingest_task_episodes(
+                task_id=task_id,
+                file_descriptions=file_descs,
+                cluster_descriptions=cluster_descs,
+            )
+            stats["episodes_successful"] = result.get("successful", 0)
+            stats["episodes_total"] = result.get("total", 0)
+            stats["episodes_failed"] = result.get("failed", 0)
+            if result.get("error"):
+                stats["error"] = result["error"]
+            logger.info(
+                f"[{task_id}] Path-A episode ingestion: "
+                f"{stats['episodes_successful']}/{stats['episodes_total']} successful"
+            )
+        except Exception as e:
+            logger.warning(f"[{task_id}] Path-A episode ingestion failed (non-fatal): {e}")
+            stats["error"] = str(e)
+        return stats
 
     async def _process_single_file(self, job_id: str, task_id: str, file_id: int):
         """Process single file update."""

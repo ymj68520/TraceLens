@@ -588,10 +588,16 @@ class FileAnalyzer:
                 episodes=episodes,
                 group_id=task_id,
             )
-            logger.info(
-                f"Graphiti ingestion complete: {getattr(result, 'successful', 0)}/{getattr(result, 'total_episodes', len(episodes))} successful"
-            )
-            return getattr(result, 'successful', 0) > 0
+            successful = getattr(result, 'successful', 0)
+            total = getattr(result, 'total_episodes', len(episodes))
+            failed = getattr(result, 'failed', 0)
+            errors = getattr(result, 'errors', []) or []
+            logger.info(f"Graphiti ingestion complete: {successful}/{total} successful, {failed} failed")
+            # Surface per-episode failures so LLM extraction problems (the usual
+            # cause of a sparse graph) are visible instead of silently swallowed.
+            for err in errors[:5]:
+                logger.warning(f"[{task_id}] Episode ingestion failure: {err}")
+            return successful > 0
 
         except ImportError:
             logger.warning("graphiti_integration not available, skipping KG ingestion")

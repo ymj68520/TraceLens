@@ -66,6 +66,35 @@ class GraphitiService:
             logger.error(f"Graphiti service initialization failed: {e}")
             self._initialized = True  # Mark as initialized but disabled
     
+    def _build_graphiti_config(self, group_id: str):
+        """
+        Build a GraphitiConfig from server Settings.
+
+        Centralised so every entry point (task graph, case graph, pipeline)
+        honours the same .env settings — including include_full_description and
+        max_episode_tokens, which were previously dropped (leaving episodes
+        without the llm_description the entity-extraction LLM needs).
+        """
+        from graphiti_integration.config import GraphitiConfig
+
+        base = self.settings.llm_text_base_url.rstrip("/")
+        llm_base_url = base if base.endswith("/v1") else base + "/v1"
+
+        return GraphitiConfig(
+            neo4j_uri=self.settings.neo4j_uri,
+            neo4j_user=self.settings.neo4j_user,
+            neo4j_password=self.settings.neo4j_password,
+            llm_base_url=llm_base_url,
+            llm_model=self.settings.llm_text_model,
+            llm_api_key=self.settings.llm_api_key or "local",
+            batch_size=self.settings.graphiti_batch_size,
+            max_retries=self.settings.graphiti_max_retries,
+            group_id=group_id,
+            use_local_llm=self.settings.graphiti_use_local_llm,
+            include_full_description=self.settings.graphiti_include_full_desc,
+            max_episode_tokens=self.settings.graphiti_max_episode_tokens,
+        )
+
     async def _get_task_graph(self, task_id: str):
         """
         Get or create a Graphiti instance for a specific task.
@@ -78,25 +107,8 @@ class GraphitiService:
             await self.initialize()
 
         try:
-            from graphiti_integration.config import GraphitiConfig
-
             # Build GraphitiConfig from server Settings
-            config = GraphitiConfig(
-                neo4j_uri=self.settings.neo4j_uri,
-                neo4j_user=self.settings.neo4j_user,
-                neo4j_password=self.settings.neo4j_password,
-                llm_base_url=(
-                    self.settings.llm_text_base_url.rstrip("/") + "/v1"
-                    if not self.settings.llm_text_base_url.endswith("/v1")
-                    else self.settings.llm_text_base_url
-                ),
-                llm_model=self.settings.llm_text_model,
-                llm_api_key=self.settings.llm_api_key or "local",
-                batch_size=self.settings.graphiti_batch_size,
-                max_retries=self.settings.graphiti_max_retries,
-                group_id=task_id,  # Per-image isolation
-                use_local_llm=self.settings.graphiti_use_local_llm,
-            )
+            config = self._build_graphiti_config(group_id=task_id)
 
             # Create ingestor with proper config
             from graphiti_integration import GraphitiIngestor
@@ -125,25 +137,8 @@ class GraphitiService:
             await self.initialize()
 
         try:
-            from graphiti_integration.config import GraphitiConfig
-
             # Build GraphitiConfig from server Settings
-            config = GraphitiConfig(
-                neo4j_uri=self.settings.neo4j_uri,
-                neo4j_user=self.settings.neo4j_user,
-                neo4j_password=self.settings.neo4j_password,
-                llm_base_url=(
-                    self.settings.llm_text_base_url.rstrip("/") + "/v1"
-                    if not self.settings.llm_text_base_url.endswith("/v1")
-                    else self.settings.llm_text_base_url
-                ),
-                llm_model=self.settings.llm_text_model,
-                llm_api_key=self.settings.llm_api_key or "local",
-                batch_size=self.settings.graphiti_batch_size,
-                max_retries=self.settings.graphiti_max_retries,
-                group_id=case_id,  # Case-level isolation for cross-image analysis
-                use_local_llm=self.settings.graphiti_use_local_llm,
-            )
+            config = self._build_graphiti_config(group_id=case_id)
 
             # Create ingestor with proper config
             from graphiti_integration import GraphitiIngestor
@@ -247,26 +242,13 @@ class GraphitiService:
                 logger.warning(f"Could not fetch task data from C++ backend: {e}")
 
             # Build config for multi-source pipeline
-            from graphiti_integration.config import GraphitiConfig
             from graphiti_integration.pipeline import MultiSourcePipeline
 
-            config = GraphitiConfig(
-                neo4j_uri=self.settings.neo4j_uri,
-                neo4j_user=self.settings.neo4j_user,
-                neo4j_password=self.settings.neo4j_password,
-                llm_base_url=(
-                    self.settings.llm_text_base_url.rstrip("/") + "/v1"
-                    if not self.settings.llm_text_base_url.endswith("/v1")
-                    else self.settings.llm_text_base_url
-                ),
-                llm_model=self.settings.llm_text_model,
-                llm_api_key=self.settings.llm_api_key or "local",
-                batch_size=batch_size,
-                max_episodes=max_episodes,
-                group_id=task_id,
-                use_local_llm=self.settings.graphiti_use_local_llm,
-                filter_analyzed_only=not include_llm_descriptions,
-            )
+            config = self._build_graphiti_config(group_id=task_id)
+            # Apply run-specific overrides
+            config.batch_size = batch_size
+            config.max_episodes = max_episodes
+            config.filter_analyzed_only = not include_llm_descriptions
 
             # Determine the output_dir and base_name from task data
             # New structure: build/data/tasks/<uuid>/files.db
@@ -1073,6 +1055,155 @@ class GraphitiService:
             logger.error(f"[{case_id}] Case-level graph ingestion failed: {e}", exc_info=True)
             return False
 
+    async def ingest_task_episodes(
+        self,
+        task_id: str,
+        file_descriptions: List[Dict[str, Any]],
+        cluster_descriptions: Optional[List[Dict[str, Any]]] = None,
+        case_description: Optional[str] = None,
+        progress_callback=None,
+    ) -> Dict[str, Any]:
+        """
+        Unified path-A ingestion: build one Episode per analysis result and let
+        Graphiti's LLM extract entities/relationships (``add_episode``).
+
+        This is the entry point the analysis pipeline and the manual "ingest"
+        button should both funnel through, so every code path produces the same
+        Episodic → Entity → RELATES_TO graph the frontend visualises.
+
+        Unlike the older boolean-returning helpers, this returns a dict with
+        per-episode error details so LLM extraction failures are no longer
+        silently swallowed (the most common reason a graph ends up nearly empty).
+
+        Args:
+            task_id: Used as the graph group_id.
+            file_descriptions: Per-file (or per-artifact) dicts with at least
+                ``file_path``/``description``/``success``. Extra keys are passed
+                through into the episode body for richer extraction.
+            cluster_descriptions: Optional event-cluster dicts.
+            case_description: Optional case-level context text.
+            progress_callback: Optional async callback(stage, message).
+
+        Returns:
+            Dict: success (bool), successful, total, failed, errors (list),
+            episodes_built (int).
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        try:
+            from graphiti_integration.toon_transformer import EpisodeData
+            from datetime import datetime
+            import json
+
+            graph_entry = await self._get_task_graph(task_id)
+            if not graph_entry or not isinstance(graph_entry, dict):
+                return {"success": False, "error": f"Could not get task graph for {task_id}"}
+
+            ingestor = graph_entry.get("ingestor")
+            if not ingestor:
+                return {"success": False, "error": "No ingestor in task graph entry"}
+
+            episodes: List[Any] = []
+
+            # 1. Case context (chunked) — gives the extractor shared background
+            if case_description:
+                case_chunks = self._chunk_text_for_graph(case_description, max_chars=3000)
+                for i, chunk in enumerate(case_chunks):
+                    ep_name = f"案情描述 (第{i+1}部分)" if len(case_chunks) > 1 else "案情描述"
+                    episodes.append(EpisodeData(
+                        name=ep_name,
+                        episode_body=json.dumps({"text": chunk}, ensure_ascii=False),
+                        source_description=f"用户提供的案情描述 - 第{i+1}部分",
+                        reference_time=datetime.now(),
+                        file_path="",
+                        file_id=0,
+                        category="case_description",
+                    ))
+
+            # 2. One episode per analyzed file/artifact
+            successful_files = [f for f in (file_descriptions or []) if f.get("success") and f.get("description")]
+            for desc in successful_files:
+                file_path = desc.get("file_path", "") or desc.get("id", "")
+                description = desc.get("description", "")
+                if not description:
+                    continue
+                chunks = self._chunk_text_for_graph(description, max_chars=3000)
+                for j, chunk in enumerate(chunks):
+                    ep_name = f"文件分析: {file_path}"
+                    if len(chunks) > 1:
+                        ep_name += f" (第{j+1}部分)"
+                    episodes.append(EpisodeData(
+                        name=ep_name,
+                        episode_body=json.dumps({"file_path": file_path, "analysis": chunk}, ensure_ascii=False),
+                        source_description=f"LLM分析结果 - {file_path}",
+                        reference_time=datetime.now(),
+                        file_path=file_path,
+                        file_id=0,
+                        category=desc.get("category", "file_description"),
+                    ))
+
+            # 3. One episode per event cluster
+            for cluster in (cluster_descriptions or []):
+                analysis = cluster.get("analysis", {}) if isinstance(cluster.get("analysis"), dict) else {}
+                description = analysis.get("description") or cluster.get("description") or ""
+                if not description:
+                    continue
+                event_type = cluster.get("event_type", "UNKNOWN")
+                time_window = cluster.get("time_window", 0)
+                chunks = self._chunk_text_for_graph(description, max_chars=3000)
+                for j, chunk in enumerate(chunks):
+                    ep_name = f"事件簇分析: {event_type} @ {time_window}"
+                    if len(chunks) > 1:
+                        ep_name += f" (第{j+1}部分)"
+                    episodes.append(EpisodeData(
+                        name=ep_name,
+                        episode_body=json.dumps({
+                            "event_type": event_type, "time_window": time_window, "analysis": chunk,
+                        }, ensure_ascii=False),
+                        source_description=f"事件簇LLM分析 - {event_type} @ time_window={time_window}",
+                        reference_time=datetime.now(),
+                        file_path="",
+                        file_id=0,
+                        category="event_cluster_description",
+                    ))
+
+            if not episodes:
+                logger.info(f"[{task_id}] No episodes to ingest")
+                return {"success": True, "successful": 0, "total": 0, "failed": 0, "errors": [], "episodes_built": 0}
+
+            if progress_callback:
+                await progress_callback("ingesting", f"正在摄入 {len(episodes)} 个分析结果到知识图谱...")
+
+            logger.info(f"[{task_id}] Ingesting {len(episodes)} episodes via add_episode")
+            result = await ingestor.batch_ingest(episodes=episodes, group_id=task_id)
+
+            successful = getattr(result, 'successful', 0)
+            total = getattr(result, 'total_episodes', len(episodes))
+            failed = getattr(result, 'failed', 0)
+            errors = getattr(result, 'errors', []) or []
+            logger.info(f"[{task_id}] Episode ingestion: {successful}/{total} successful, {failed} failed")
+            if failed:
+                # Surface up to 5 failure samples so users can see why the graph is sparse
+                for err in errors[:5]:
+                    logger.warning(f"[{task_id}] Episode ingestion failure: {err}")
+
+            if progress_callback:
+                await progress_callback("completed", f"知识图谱摄入完成：{successful}/{total} 成功")
+
+            return {
+                "success": successful > 0,
+                "successful": successful,
+                "total": total,
+                "failed": failed,
+                "errors": errors,
+                "episodes_built": len(episodes),
+            }
+
+        except Exception as e:
+            logger.error(f"[{task_id}] Episode ingestion failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e), "episodes_built": 0}
+
     @staticmethod
     def _chunk_text_for_graph(text: str, max_chars: int = 3000) -> List[str]:
         """Split text into chunks for graph ingestion."""
@@ -1126,10 +1257,6 @@ class GraphitiService:
         if not self._initialized:
             await self.initialize()
 
-        if not self._graphiti_class:
-            logger.warning(f"[{case_id}] Graphiti not available, skipping incremental ingestion")
-            return {"skipped": True, "reason": "Graphiti not available"}
-
         if events_db_paths is None:
             events_db_paths = []
 
@@ -1141,17 +1268,24 @@ class GraphitiService:
                     f"{len(new_task_ids)} new tasks, {len(existing_task_ids)} existing tasks")
 
         try:
-            from graphiti_integration import GraphitiIngestor
+            from graphiti_integration.toon_transformer import EpisodeData
+            from datetime import datetime
+            import sqlite3
+            import json
 
-            ingestor = GraphitiIngestor(
-                neo4j_uri=self.settings.neo4j_uri,
-                neo4j_user=self.settings.neo4j_user,
-                neo4j_password=self.settings.neo4j_password,
-                llm_base_url=self.settings.llm_text_base_url.rstrip("/") + "/v1",
-                llm_model=self.settings.llm_text_model,
-                llm_api_key=self.settings.llm_api_key or "local",
-                group_id=case_id,  # Case-level graph
-            )
+            # Get or create case-level graph (reuses the same path as the
+            # non-incremental ingest_case_data so group_id/isolation is consistent).
+            # NOTE: previously this called GraphitiIngestor(neo4j_uri=...) directly,
+            # but __init__ takes a GraphitiConfig — that call always raised.
+            graph_entry = await self._get_case_graph(case_id)
+            if not graph_entry or not isinstance(graph_entry, dict):
+                logger.error(f"[{case_id}] Could not get case graph for incremental ingestion")
+                return {"success": False, "error": "Could not get case graph"}
+
+            ingestor = graph_entry.get("ingestor")
+            if not ingestor:
+                logger.error(f"[{case_id}] No ingestor available for incremental ingestion")
+                return {"success": False, "error": "No ingestor available"}
 
             # Only process NEW tasks (not existing ones)
             for idx, task_id in enumerate(new_task_ids):

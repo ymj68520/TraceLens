@@ -415,44 +415,43 @@ class WindowsArtifactAnalyzer:
         artifact_descriptions: List[Dict[str, Any]],
         cluster_descriptions: Optional[List[Dict[str, Any]]] = None,
     ) -> bool:
-        """Ingest Windows artifact descriptions into Graphiti knowledge graph."""
+        """Ingest Windows artifact descriptions into Graphiti knowledge graph.
+
+        Routes through GraphitiService.ingest_task_episodes (add_episode) so the
+        extractor can build entities/relationships. The previous implementation
+        called a non-existent ``self._graphiti_service.ingest(...)``.
+        """
         if not self._graphiti_service:
             logger.warning("Graphiti service not available")
             return False
 
         try:
-            # Build entities from artifact descriptions
-            entities = []
+            normalized = []
             for desc in artifact_descriptions:
                 if not desc.get("success"):
                     continue
-
-                entity_name = f"Windows_{desc['type']}_{desc['id']}"
-                entity_body = desc.get("description", "") + "\n\n摘要: " + desc.get("summary", "")
-
-                entities.append({
-                    "name": entity_name,
-                    "type": desc["type"],
-                    "body": entity_body,
-                    "metadata": {
-                        "artifact_id": desc["id"],
-                        "severity": desc.get("severity", "low"),
-                        "relevance": desc.get("relevance", 0.0),
-                        "keywords": desc.get("keywords", ""),
-                    }
+                body = (desc.get("description", "") or "") + "\n\n摘要: " + (desc.get("summary", "") or "")
+                normalized.append({
+                    "file_path": f"Windows_{desc.get('type', 'artifact')}_{desc.get('id', '')}",
+                    "description": body,
+                    "category": f"windows_{desc.get('type', 'artifact')}",
+                    "success": True,
                 })
 
-            # Ingest in batches
-            batch_size = 50
-            for i in range(0, len(entities), batch_size):
-                batch = entities[i:i + batch_size]
-                await self._graphiti_service.ingest(
-                    task_id=task_id,
-                    entities=batch,
-                )
-                logger.info(f"Ingested {len(batch)} Windows artifact entities")
+            if not normalized:
+                return True
 
-            return True
+            result = await self._graphiti_service.ingest_task_episodes(
+                task_id=task_id,
+                file_descriptions=normalized,
+                cluster_descriptions=cluster_descriptions,
+                case_description=case_description,
+            )
+            logger.info(
+                f"Ingested Windows artifacts: "
+                f"{result.get('successful', 0)}/{result.get('total', 0)} successful"
+            )
+            return bool(result.get("success"))
 
         except Exception as e:
             logger.error(f"Error ingesting to Graphiti: {e}")

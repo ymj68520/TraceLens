@@ -100,7 +100,7 @@ class TestTOONTransformer:
     
     def test_transform_includes_analysis(self, sample_record):
         """Test LLM analysis is included in episode body."""
-        transformer = TOONTransformer(include_analysis=True)
+        transformer = TOONTransformer(include_analysis=True, include_full_description=True)
         episode = transformer.transform(sample_record)
         body = json.loads(episode.episode_body)
         

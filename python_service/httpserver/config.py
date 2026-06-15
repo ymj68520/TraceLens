@@ -181,6 +181,11 @@ class Settings(BaseSettings):
     graphiti_batch_size: int = Field(default=50, alias="GRAPHITI_BATCH_SIZE")
     graphiti_max_retries: int = Field(default=3, alias="GRAPHITI_MAX_RETRIES")
     graphiti_group_id: str = Field(default="forensics_files", alias="GRAPHITI_GROUP_ID")
+    # Whether to include the full llm_description in each episode body. More text
+    # gives the entity-extraction LLM richer context (more entities/relations) at
+    # the cost of tokens. Mirrors graphiti_integration.GraphitiConfig default.
+    graphiti_include_full_desc: bool = Field(default=True, alias="GRAPHITI_INCLUDE_FULL_DESC")
+    graphiti_max_episode_tokens: int = Field(default=3000, alias="GRAPHITI_MAX_EPISODE_TOKENS")
     
     # Database Settings
     db_output_dir: str = Field(default="./output", alias="DB_OUTPUT_DIR")

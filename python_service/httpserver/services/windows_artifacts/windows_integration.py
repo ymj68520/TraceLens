@@ -418,36 +418,39 @@ class WindowsArtifactsService:
         case_description: str,
         artifact_descriptions: List[Dict[str, Any]],
     ):
-        """Ingest Windows artifact descriptions into Graphiti knowledge graph."""
+        """Ingest Windows artifact descriptions into Graphiti knowledge graph.
+
+        Routes through GraphitiService.ingest_task_episodes so each artifact
+        becomes a real episode (add_episode) and the LLM can extract entities/
+        relationships — the previous code called a non-existent ``.ingest()``
+        method and never ran.
+        """
         if not self._graphiti_service:
             return
 
-        # Build entities from artifact descriptions
-        entities = []
+        # Normalize artifact descriptions into the file_description-like shape
+        # expected by ingest_task_episodes (file_path/id + description + success).
+        normalized = []
         for desc in artifact_descriptions:
             if not desc.get("success"):
                 continue
-
-            entity_name = f"{desc['type']}:{desc['id']}"
-            entity_body = desc.get("description", "") + "\n\n" + desc.get("summary", "")
-
-            entities.append({
-                "name": entity_name,
-                "type": desc["type"],
-                "body": entity_body,
-                "metadata": {
-                    "artifact_id": desc["id"],
-                    "severity": desc.get("severity", "low"),
-                    "relevance": desc.get("relevance", 0.0),
-                }
+            body = (desc.get("description", "") or "") + "\n\n" + (desc.get("summary", "") or "")
+            normalized.append({
+                "file_path": f"{desc.get('type', 'windows_artifact')}:{desc.get('id', '')}",
+                "description": body,
+                "category": f"windows_{desc.get('type', 'artifact')}",
+                "success": True,
             })
 
-        # Ingest in batches
-        batch_size = 50
-        for i in range(0, len(entities), batch_size):
-            batch = entities[i:i + batch_size]
-            await self._graphiti_service.ingest(
-                task_id=task_id,
-                entities=batch,
-            )
-            logger.info(f"Ingested {len(batch)} Windows artifact entities to Graphiti")
+        if not normalized:
+            return
+
+        result = await self._graphiti_service.ingest_task_episodes(
+            task_id=task_id,
+            file_descriptions=normalized,
+            case_description=case_description,
+        )
+        logger.info(
+            f"Ingested Windows artifacts to Graphiti: "
+            f"{result.get('successful', 0)}/{result.get('total', 0)} successful"
+        )

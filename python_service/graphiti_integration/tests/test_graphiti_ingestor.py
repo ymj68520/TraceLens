@@ -20,10 +20,9 @@ def config():
         neo4j_uri="neo4j://localhost:7687",
         neo4j_user="neo4j",
         neo4j_password="password",
-        openai_api_key="test-key",
+        llm_api_key="test-key",
         batch_size=10,
         max_retries=2,
-        retry_delay=0.1,
     )
 
 
@@ -65,19 +64,24 @@ class TestGraphitiIngestor:
     
     @pytest.mark.asyncio
     async def test_initialize_creates_client(self, config):
-        """Test initialization creates Graphiti client."""
+        """Test initialization creates Graphiti client with local-LLM clients."""
         with patch("graphiti_integration.graphiti_ingestor.Graphiti") as mock_graphiti:
             mock_client = AsyncMock()
             mock_graphiti.return_value = mock_client
-            
+
             ingestor = GraphitiIngestor(config)
             await ingestor.initialize()
-            
-            mock_graphiti.assert_called_once_with(
-                uri=config.neo4j_uri,
-                user=config.neo4j_user,
-                password=config.neo4j_password,
-            )
+
+            # config defaults to use_local_llm=True, so the client is constructed
+            # with explicit llm_client/embedder/cross_encoder.
+            mock_graphiti.assert_called_once()
+            _, kwargs = mock_graphiti.call_args
+            assert kwargs["uri"] == config.neo4j_uri
+            assert kwargs["user"] == config.neo4j_user
+            assert kwargs["password"] == config.neo4j_password
+            assert "llm_client" in kwargs
+            assert "embedder" in kwargs
+            assert "cross_encoder" in kwargs
             mock_client.build_indices_and_constraints.assert_called_once()
     
     @pytest.mark.asyncio
@@ -157,17 +161,15 @@ class TestGraphitiIngestor:
         with patch("graphiti_integration.graphiti_ingestor.Graphiti") as mock_graphiti:
             mock_client = AsyncMock()
             mock_graphiti.return_value = mock_client
-            
-            # Fail on specific calls
-            call_count = [0]
-            
+
+            # Fail permanently on the second episode (exhausts all retries).
             async def side_effect(*args, **kwargs):
-                call_count[0] += 1
-                if call_count[0] == 2:
-                    raise Exception("Episode 2 failed")
-            
+                name = kwargs.get("name", "")
+                if name == "test_1":
+                    raise Exception("Episode 2 failed permanently")
+
             mock_client.add_episode.side_effect = side_effect
-            
+
             episodes = [
                 EpisodeData(
                     name=f"test_{i}",
@@ -179,14 +181,15 @@ class TestGraphitiIngestor:
                 )
                 for i in range(3)
             ]
-            
+
             ingestor = GraphitiIngestor(config)
             result = await ingestor.batch_ingest(episodes)
-            
-            # 3 episodes, 1 fails after max retries
+
+            # 3 episodes, 1 fails permanently after max_retries attempts.
             assert result.total_episodes == 3
-            assert result.failed >= 1
-            assert len(result.errors) >= 1
+            assert result.failed == 1
+            assert result.successful == 2
+            assert len(result.errors) == 1
     
     @pytest.mark.asyncio
     async def test_batch_ingest_progress_callback(self, config):
