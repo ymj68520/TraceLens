@@ -6,13 +6,16 @@ establishing first-class file nodes with bi-directional relationships to episode
 and entities.
 """
 
+import asyncio
 import hashlib
+import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Optional
 
 from neo4j import AsyncGraphDatabase
+from neo4j.exceptions import ConstraintError
 from graphiti_integration.database_reader.raw_reader import FileRecord
 
 logger = logging.getLogger(__name__)
@@ -122,13 +125,43 @@ class FileEntityIngestor:
         query: str,
         parameters: Optional[dict[str, Any]] = None
     ) -> list[dict[str, Any]]:
-        """Run a Cypher query and return results."""
+        """Run a Cypher query and return results.
+
+        Constraint violations raised by concurrent MERGE on a uniquely-constrained
+        property are retried: a concurrent winner created the node first, so the
+        retry will MATCH it. Only the write races need this; pure reads that fail
+        with ConstraintError propagate unchanged (there is no sensible retry).
+        """
         if not self._initialized:
             await self.initialize()
 
-        async with self._driver.session() as session:
-            result = await session.run(query, parameters or {})
-            return [record.data() async for record in result]
+        max_retries = 3
+        last_exc: Optional[Exception] = None
+        for attempt in range(max_retries):
+            try:
+                async with self._driver.session() as session:
+                    result = await session.run(query, parameters or {})
+                    return [record.data() async for record in result]
+            except ConstraintError as e:
+                last_exc = e
+                # Only retry write queries (MERGE/CREATE). A read-only MATCH will
+                # never raise ConstraintError, so this guard is defensive.
+                if attempt < max_retries - 1 and self._is_write_query(query):
+                    logger.debug(
+                        "ConstraintError on query (attempt %d/%d), retrying: %s",
+                        attempt + 1, max_retries, str(e)[:120],
+                    )
+                    await asyncio.sleep(0.05 * (attempt + 1))
+                    continue
+                raise
+        # Should not reach here, but satisfy the type checker.
+        raise last_exc  # type: ignore[misc]
+
+    @staticmethod
+    def _is_write_query(query: str) -> bool:
+        """Return True if the Cypher query performs writes (MERGE/CREATE/SET/DELETE)."""
+        upper = query.upper()
+        return any(tok in upper for tok in ("MERGE", "CREATE", "SET ", "DELETE", "REMOVE"))
 
     async def _get_file_entity(self, file_id: str) -> Optional[dict[str, Any]]:
         """
@@ -164,6 +197,29 @@ class FileEntityIngestor:
 
         Returns:
             The path_hash ID of the File entity.
+        """
+        path_hash, _ = await self._ensure_file_entity_core(file, task_id)
+        return path_hash
+
+    async def _ensure_file_entity_core(
+        self,
+        file: FileRecord,
+        task_id: str,
+    ) -> tuple[str, bool]:
+        """
+        Core upsert logic for a File entity plus its Task relationship.
+
+        Single atomic MERGE drives create-vs-update decision, so there is no
+        separate read that can race with a concurrent write. ``_run_query``
+        retries ConstraintError from concurrent MERGE losers automatically.
+
+        Args:
+            file: FileRecord from database.
+            task_id: Task ID for associating with the file.
+
+        Returns:
+            Tuple of (path_hash ID, is_update). ``is_update`` is True when the
+            file was already known to at least one task before this call.
         """
         path_hash = self._generate_path_hash(file.path)
 
@@ -226,17 +282,24 @@ class FileEntityIngestor:
             "llm_model": file.llm_model_used,
         })
 
-        # Create Task node and CONTAINS_FILE relationship
+        # Create Task node and CONTAINS_FILE relationship. MATCH the File node
+        # that the MERGE above just created/updated instead of re-MERGEing it:
+        # a second `MERGE (f:File {id: ...})` in its own transaction races the
+        # unique constraint and raises ConstraintError even in a serial loop,
+        # because the relationship MERGE may attempt a CREATE before the prior
+        # transaction's lock is fully released. MATCH avoids any write on the
+        # File node entirely.
         await self._run_query("""
+            MATCH (f:File {id: $file_id})
             MERGE (t:Task {id: $task_id})
             ON CREATE SET t.created_at = datetime()
-            MERGE (t)-[:CONTAINS_FILE]->(f:File {id: $file_id})
+            MERGE (t)-[:CONTAINS_FILE]->(f)
         """, {"task_id": task_id, "file_id": path_hash})
 
-        is_update = result[0].get("is_update", False)
+        is_update = result[0].get("is_update", False) if result else False
         logger.debug(f"{'Updated' if is_update else 'Created'} File entity: {path_hash} ({file.path})")
 
-        return path_hash
+        return path_hash, bool(is_update)
 
     async def attach_event_to_file(
         self,
@@ -255,12 +318,16 @@ class FileEntityIngestor:
         """
         path_hash = self._generate_path_hash(file_path)
 
-        # Build event object
-        event_data = {
+        # Serialize event as JSON string. Neo4j node properties may only be
+        # primitive types or arrays of primitives — a nested Map is rejected
+        # with "Property values can only be of primitive types". Storing the
+        # event as a JSON string keeps the events array valid while preserving
+        # all fields for downstream consumers.
+        event_data = json.dumps({
             "type": event.event_type,
             "timestamp": datetime.fromtimestamp(event.timestamp).isoformat(),
             "task_id": event.task_id
-        }
+        }, ensure_ascii=False)
 
         query = """
             MATCH (f:File {id: $file_id})
@@ -456,13 +523,12 @@ class FileEntityIngestor:
 
         for i, file in enumerate(files):
             try:
-                # Check if this is an update (file already exists)
-                path_hash = self._generate_path_hash(file.path)
-                existing = await self._get_file_entity(path_hash)
+                # Use the single atomic MERGE result to decide create-vs-update.
+                # No separate read-then-write: that pattern races under concurrent
+                # ingestion and is what produced the unique-constraint violations.
+                _, is_update = await self._ensure_file_entity_core(file, task_id)
 
-                await self.ensure_file_entity(file, task_id)
-
-                if existing:
+                if is_update:
                     result.files_updated += 1
                 else:
                     result.files_created += 1

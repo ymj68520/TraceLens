@@ -688,6 +688,9 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 forensics::LLMAnalysisService llmService;
                 if (llmService.initialize()) {
                     llmService.setSceneType(sceneType);
+                    // Provide image + raw DB paths so files can be extracted from the
+                    // image before LLM analysis (files live inside the image, not on disk).
+                    llmService.setImagePaths(imagePath, effectiveRawDb);
                     auto& config = forensics::ConfigManager::instance();
                     forensics::LLMAnalysisService::AnalysisOptions llmOpts;
                     llmOpts.maxFiles = config.getLLMMaxFiles();

@@ -341,28 +341,26 @@ inline constexpr const char* ROLLBACK_TRANSACTION = "ROLLBACK;";
 // ============================================================================
 
 inline constexpr const char* UPDATE_EVENT_LLM_ANALYSIS = R"(
-    UPDATE events SET 
-        llm_summary = ?, 
-        llm_description = ?, 
-        llm_keywords = ?, 
-        llm_analyzed_at = ?, 
-        llm_model_used = ?, 
-        llm_is_relevant = ? 
+    UPDATE events SET
+        llm_summary = ?,
+        llm_description = ?,
+        llm_keywords = ?,
+        llm_analyzed_at = ?,
+        llm_model_used = ?,
+        llm_is_relevant = ?
     WHERE id = ?
-);
 )";
 
 inline constexpr const char* UPDATE_EVENT_CLUSTER_LLM_ANALYSIS = R"(
-    UPDATE events SET 
-        llm_summary = ?, 
-        llm_description = ?, 
-        llm_keywords = ?, 
-        llm_analyzed_at = ?, 
-        llm_model_used = ?, 
-        llm_is_relevant = ? 
-    WHERE (timestamp / 60) = ? AND event_type = ? AND 
+    UPDATE events SET
+        llm_summary = ?,
+        llm_description = ?,
+        llm_keywords = ?,
+        llm_analyzed_at = ?,
+        llm_model_used = ?,
+        llm_is_relevant = ?
+    WHERE (timestamp / 60) = ? AND event_type = ? AND
           (CASE WHEN file_path LIKE '%/%' THEN SUBSTR(file_path, 1, LENGTH(file_path) - INSTR(REPLACE(file_path, '/', char(1)), char(1)) + 1) ELSE '' END) = ?
-);
 )";
 
 } // namespace EventExtractorSQL

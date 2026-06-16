@@ -78,7 +78,7 @@ mutagen>=1.47.0            # Audio file metadata (MP3, FLAC, OGG, etc.)
 
 # Binary Analysis
 pefile>=2023.2.7           # PE file analysis (EXE/DLL)
-pyelftools>=0.30           # ELF file analysis (SO/LD)
+pyelftools>=0.30           # ELF file analysis (SO/LD/KO) and GRUB bootloader modules (.mod)
 
 # Document Formats
 striprtf>=0.0.26           # RTF document parsing

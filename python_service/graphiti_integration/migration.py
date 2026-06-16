@@ -5,6 +5,7 @@ This module provides backwards compatibility and migration utilities for
 transitioning from episode-centric to File-entity-centric knowledge graph.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -13,6 +14,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from neo4j import AsyncGraphDatabase
+from neo4j.exceptions import ConstraintError
 from graphiti_integration.file_entity_ingestor import FileEntityIngestor, EventRecord
 
 logger = logging.getLogger(__name__)
@@ -113,13 +115,34 @@ class MigrationManager:
         query: str,
         parameters: Optional[dict[str, Any]] = None
     ) -> list[dict[str, Any]]:
-        """Run a Cypher query and return results."""
+        """Run a Cypher query and return results.
+
+        Retries ConstraintError from concurrent MERGE on uniquely-constrained
+        write queries; the retry MATCHes the node the concurrent winner created.
+        """
         if not self._initialized:
             await self.initialize()
 
-        async with self._driver.session() as session:
-            result = await session.run(query, parameters or {})
-            return [record.data() async for record in result]
+        max_retries = 3
+        last_exc: Optional[Exception] = None
+        upper = query.upper()
+        is_write = any(tok in upper for tok in ("MERGE", "CREATE", "SET ", "DELETE", "REMOVE"))
+        for attempt in range(max_retries):
+            try:
+                async with self._driver.session() as session:
+                    result = await session.run(query, parameters or {})
+                    return [record.data() async for record in result]
+            except ConstraintError as e:
+                last_exc = e
+                if attempt < max_retries - 1 and is_write:
+                    logger.debug(
+                        "ConstraintError on migration query (attempt %d/%d), retrying: %s",
+                        attempt + 1, max_retries, str(e)[:120],
+                    )
+                    await asyncio.sleep(0.05 * (attempt + 1))
+                    continue
+                raise
+        raise last_exc  # type: ignore[misc]
 
     async def query_file_with_fallback(
         self,

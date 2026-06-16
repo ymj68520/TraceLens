@@ -911,7 +911,7 @@ class IngestionJobManager:
         """
         stats = {"episodes_successful": 0, "episodes_total": 0, "episodes_failed": 0, "error": None}
         try:
-            from .. import get_service_manager
+            from ..dependencies import get_service_manager
             service_manager = get_service_manager()
             graphiti_service = getattr(service_manager, "graphiti_service", None)
             if graphiti_service is None:

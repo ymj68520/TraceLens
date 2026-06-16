@@ -1,5 +1,7 @@
 #include "LLMAnalysisService.h"
 #include "DatabaseManager/SQL/file_classifier_sql.h"
+#include "DatabaseManager/FileExtractor/FileExtractor.h"
+#include "core/PathManager/PathManager.h"
 #include <sqlite3.h>
 #include <iostream>
 #include <filesystem>
@@ -7,6 +9,8 @@
 #include <algorithm>
 #include <ctime>
 #include <cstring>
+
+namespace fs = std::filesystem;
 
 namespace forensics {
 
@@ -35,6 +39,67 @@ bool LLMAnalysisService::initialize() {
     } catch (const std::exception& e) {
         std::cerr << "Failed to initialize LLMAnalysisService: " << e.what() << std::endl;
         return false;
+    }
+}
+
+void LLMAnalysisService::setImagePaths(const std::string& imagePath, const std::string& rawDbPath) {
+    imagePath_ = imagePath;
+    rawDbPath_ = rawDbPath;
+}
+
+std::string LLMAnalysisService::resolveFileForAnalysis(const std::string& filePath) {
+    // No image configured: file paths are host-filesystem paths (e.g. loose files)
+    if (imagePath_.empty() || rawDbPath_.empty()) {
+        return filePath;
+    }
+
+    // Fast path: if the file already exists on the host filesystem, use it directly.
+    if (fs::exists(filePath)) {
+        return filePath;
+    }
+
+    // Extract the file from the forensic image to a temporary directory.
+    try {
+        FileExtractor extractor(imagePath_, rawDbPath_);
+        if (!extractor.initialize()) {
+            std::cerr << "Warning: Failed to initialize FileExtractor for image: " << imagePath_ << std::endl;
+            return "";
+        }
+
+        // Build a safe output path under the task's extracted_files directory.
+        // The filePath is relative to the image root (e.g. "grub/grub.cfg").
+        // Normalize it into a flat filename to avoid directory traversal issues.
+        std::string safeName = filePath;
+        std::replace(safeName.begin(), safeName.end(), '/', '_');
+        std::replace(safeName.begin(), safeName.end(), '\\', '_');
+
+        // Use a dedicated temp dir keyed by process to avoid collisions across tasks.
+        fs::path extractDir = fs::temp_directory_path() / "forensics_llm_extract";
+        fs::create_directories(extractDir);
+        fs::path outputPath = extractDir / safeName;
+
+        if (extractor.extractFileByPath(filePath, outputPath)) {
+            return outputPath.string();
+        }
+
+        // Some images store paths with a leading slash; retry without it.
+        if (!filePath.empty() && filePath[0] == '/') {
+            if (extractor.extractFileByPath(filePath.substr(1), outputPath)) {
+                return outputPath.string();
+            }
+        }
+        // Or with a leading slash added.
+        if (filePath.empty() || filePath[0] != '/') {
+            if (extractor.extractFileByPath("/" + filePath, outputPath)) {
+                return outputPath.string();
+            }
+        }
+
+        std::cerr << "Warning: Could not extract file from image: " << filePath << std::endl;
+        return "";
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: Exception extracting file " << filePath << ": " << e.what() << std::endl;
+        return "";
     }
 }
 
@@ -69,11 +134,17 @@ int LLMAnalysisService::analyzeAllFiles(const std::string& filesDbPath,
         }
 
         try {
-            auto result = fileAnalyzer_->analyzeFile(filePath, options.maxContentLength);
-            
+            // Resolve the file to a host-filesystem path (extract from image if needed)
+            std::string localPath = resolveFileForAnalysis(filePath);
+            if (localPath.empty()) {
+                continue;  // extraction failed, warning already logged
+            }
+
+            auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength);
+
             if (result.success) {
                 // Store directly to _files.db in the files table
-                storeDescription(filesDbPath, filePath, 
+                storeDescription(filesDbPath, filePath,
                                 result.description, result.summary, result.keywords,
                                 result.modelUsed);
                 analyzed++;
@@ -113,8 +184,14 @@ int LLMAnalysisService::analyzeSmartFiles(const std::string& filesDbPath,
         }
 
         try {
-            auto result = fileAnalyzer_->analyzeFile(filePath, options.maxContentLength);
-            
+            // Resolve the file to a host-filesystem path (extract from image if needed)
+            std::string localPath = resolveFileForAnalysis(filePath);
+            if (localPath.empty()) {
+                continue;  // extraction failed, warning already logged
+            }
+
+            auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength);
+
             if (result.success) {
                 // Store directly to _files.db in the files table
                 storeDescription(filesDbPath, filePath,
@@ -142,7 +219,6 @@ std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::str
     AnalysisOptions opts;
     opts.maxFiles = 10000;  // Get more files for smart selection
     auto allFiles = getFilesFromDatabase(filesDbPath, opts);
-    
     if (allFiles.empty()) {
         return {};
     }

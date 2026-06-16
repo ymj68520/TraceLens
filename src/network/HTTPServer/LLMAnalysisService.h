@@ -98,6 +98,18 @@ public:
     void setSceneType(SceneType scene);
 
     /**
+     * @brief Set the forensic image path for extracting files from within images
+     *
+     * Files selected for LLM analysis live inside a disk image, not on the host
+     * filesystem. When imagePath is set, each file is extracted via TSK to a
+     * temporary directory before analysis.
+     *
+     * @param imagePath Path to the forensic disk image (E01, DD, etc.)
+     * @param rawDbPath Path to the _raw.db containing file metadata/inodes
+     */
+    void setImagePaths(const std::string& imagePath, const std::string& rawDbPath);
+
+    /**
      * @brief Get the current scene type
      * @return Current scene type
      */
@@ -133,8 +145,12 @@ private:
     // Scene type for prioritization
     SceneType sceneType_ = SceneType::NONE;
 
+    // Forensic image paths for extracting files from within images
+    std::string imagePath_;
+    std::string rawDbPath_;
+
     // Internal helpers
-    bool storeDescription(const std::string& dbPath, 
+    bool storeDescription(const std::string& dbPath,
                           const std::string& filePath,
                           const std::string& description,
                           const std::string& summary,
@@ -145,6 +161,16 @@ private:
     std::string buildFileListSummary(const std::vector<std::string>& files);
     std::vector<std::string> parseImportantFiles(const std::string& llmResponse,
                                                   const std::vector<std::string>& allFiles);
+
+    /**
+     * @brief Resolve a file path from the image to a host-filesystem path
+     *
+     * If imagePath_ is set, extracts the file from the forensic image to a
+     * temporary directory and returns the host path. Returns the original
+     * path unchanged when no image is configured (e.g. analyzing loose files).
+     * Returns empty string on extraction failure.
+     */
+    std::string resolveFileForAnalysis(const std::string& filePath);
 };
 
 } // namespace forensics
