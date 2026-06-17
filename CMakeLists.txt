@@ -344,6 +344,8 @@ set(LIB_SOURCES
     src/analyzers/LinuxFilesAnalyzer/Parsers/Container/PodmanParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Container/ContainerRuntimeLogParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/PackageManager/PackageManagerLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/PackageManager/PackageManagerLogParser_LinuxParsers.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/PackageManager/PackageManagerLogParser_UniversalAndAnalysis.cpp
     src/analyzers/LinuxFilesAnalyzer/Analysis/AccountSSH/AccountSSHAnalyzer.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Database/DatabaseLogParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/EmailVPN/EmailVPNLogParser.cpp
