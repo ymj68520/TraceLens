@@ -352,6 +352,8 @@ set(LIB_SOURCES
     src/analyzers/LinuxFilesAnalyzer/Analysis/AnomalyDetector.cpp
     src/analyzers/LinuxFilesAnalyzer/Analysis/LogTamperingDetector.cpp
     src/analyzers/LinuxFilesAnalyzer/Analysis/PersistenceDetector.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/PersistenceDetectorScripts.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/PersistenceDetectorSystem.cpp
     src/analyzers/LinuxFilesAnalyzer/Analysis/RuleEngine.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/USBMountParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/CloudParser.cpp
