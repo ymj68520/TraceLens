@@ -20,20 +20,12 @@ import {
     reingestAnalyzedData,
 } from '../services/graphitiService';
 
-// Node color palette by label
-const NODE_COLORS = {
-    Entity: '#6366f1',
-    File: '#06b6d4',
-    Process: '#f59e0b',
-    User: '#10b981',
-    Network: '#ec4899',
-    Registry: '#8b5cf6',
-    Event: '#ef4444',
-    Directory: '#14b8a6',
-    default: '#94a3b8',
-};
-
-const getNodeColor = (label) => NODE_COLORS[label] || NODE_COLORS.default;
+// Shared graph constants (node colors) extracted to a reusable module
+import { NODE_COLORS, getNodeColor } from '../components/knowledge-graph/graphConstants';
+// Knowledge graph subcomponents (split for maintainability)
+import SearchTab from '../components/knowledge-graph/SearchTab';
+import EntitiesTab from '../components/knowledge-graph/EntitiesTab';
+import RelationshipsTab from '../components/knowledge-graph/RelationshipsTab';
 
 /**
  * 知识图谱页面 - 任务特定
@@ -718,127 +710,38 @@ export default function KnowledgeGraph() {
 
     // ── Search Tab ───────────────────────────────────────────────────────────────
     const renderSearch = () => (
-        <div>
-            <form onSubmit={handleSearch} className="mb-6">
-                <div className="flex gap-4">
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="搜索实体或关系..."
-                        disabled={!taskId}
-                        className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white disabled:opacity-50"
-                    />
-                    <Button type="submit" disabled={searching || !searchQuery.trim() || !taskId}>
-                        {searching ? '搜索中...' : '搜索'}
-                    </Button>
-                </div>
-            </form>
-            {!taskId ? (
-                <p className="text-center text-slate-500 py-8">请先选择一个任务</p>
-            ) : searchResults.length > 0 ? (
-                <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-slate-900 dark:text-white">搜索结果 ({searchResults.length})</h3>
-                    <div className="grid gap-4">
-                        {searchResults.map((result, index) => (
-                            <Card key={result.entity_id || index}>
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <h4 className="font-medium text-slate-900 dark:text-white">{result.name || '未命名实体'}</h4>
-                                        <Badge variant="blue">{result.entity_type}</Badge>
-                                    </div>
-                                    <span className="text-sm text-slate-400">相关度: {(result.score * 100).toFixed(1)}%</span>
-                                </div>
-                            </Card>
-                        ))}
-                    </div>
-                </div>
-            ) : searchResults.length === 0 && searchQuery && !searching ? (
-                <p className="text-center text-slate-500 py-8">未找到相关实体</p>
-            ) : null}
-        </div>
+        <SearchTab
+            taskId={taskId}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            handleSearch={handleSearch}
+            searching={searching}
+            searchResults={searchResults}
+        />
     );
 
     // ── Entities Tab ─────────────────────────────────────────────────────────────
     const renderEntities = () => (
-        <div>
-            {!taskId ? (
-                <p className="text-center text-slate-500 py-8">请先选择一个任务</p>
-            ) : (
-                <>
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-lg font-medium">实体 ({entitiesTotalCount})</h3>
-                        <div className="flex gap-2">
-                            <Button variant="outline" size="sm" onClick={() => fetchEntities(entitiesPage - 1)} disabled={entitiesPage <= 1}>上一页</Button>
-                            <span className="px-3 py-1">{entitiesPage} / {Math.ceil(entitiesTotalCount / PAGE_SIZE) || 1}</span>
-                            <Button variant="outline" size="sm" onClick={() => fetchEntities(entitiesPage + 1)} disabled={entitiesPage >= Math.ceil(entitiesTotalCount / PAGE_SIZE)}>下一页</Button>
-                        </div>
-                    </div>
-                    <table className="w-full text-sm">
-                        <thead className="bg-slate-50 dark:bg-slate-700">
-                            <tr>
-                                <th className="px-4 py-3 text-left">ID</th>
-                                <th className="px-4 py-3 text-left">名称</th>
-                                <th className="px-4 py-3 text-left">类型</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                            {entities.map((e, i) => (
-                                <tr key={e.id || i} className="hover:bg-slate-50 dark:hover:bg-slate-800">
-                                    <td className="px-4 py-3 font-mono text-xs">{e.id?.substring(0, 8)}...</td>
-                                    <td className="px-4 py-3">{e.name || '-'}</td>
-                                    <td className="px-4 py-3">
-                                        <Badge variant="blue">
-                                            {Array.isArray(e.type) ? (e.type[0] || 'Entity') : (e.type || 'Entity')}
-                                        </Badge>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                    {entities.length === 0 && <p className="text-center text-slate-500 py-8">暂无实体数据</p>}
-                </>
-            )}
-        </div>
+        <EntitiesTab
+            taskId={taskId}
+            entities={entities}
+            entitiesTotalCount={entitiesTotalCount}
+            entitiesPage={entitiesPage}
+            fetchEntities={fetchEntities}
+            PAGE_SIZE={PAGE_SIZE}
+        />
     );
 
     // ── Relationships Tab ─────────────────────────────────────────────────────────
     const renderRelationships = () => (
-        <div>
-            {!taskId ? (
-                <p className="text-center text-slate-500 py-8">请先选择一个任务</p>
-            ) : (
-                <>
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-lg font-medium">关系 ({relationshipsTotalCount})</h3>
-                        <div className="flex gap-2">
-                            <Button variant="outline" size="sm" onClick={() => fetchRelationships(relationshipsPage - 1)} disabled={relationshipsPage <= 1}>上一页</Button>
-                            <span className="px-3 py-1">{relationshipsPage} / {Math.ceil(relationshipsTotalCount / PAGE_SIZE) || 1}</span>
-                            <Button variant="outline" size="sm" onClick={() => fetchRelationships(relationshipsPage + 1)} disabled={relationshipsPage >= Math.ceil(relationshipsTotalCount / PAGE_SIZE)}>下一页</Button>
-                        </div>
-                    </div>
-                    <table className="w-full text-sm">
-                        <thead className="bg-slate-50 dark:bg-slate-700">
-                            <tr>
-                                <th className="px-4 py-3 text-left">源实体</th>
-                                <th className="px-4 py-3 text-left">关系</th>
-                                <th className="px-4 py-3 text-left">目标实体</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                            {relationships.map((r, i) => (
-                                <tr key={r.id || i} className="hover:bg-slate-50 dark:hover:bg-slate-800">
-                                    <td className="px-4 py-3">{r.source_name || r.source_id?.substring(0, 8)}</td>
-                                    <td className="px-4 py-3"><Badge variant="purple">{r.type || 'RELATES_TO'}</Badge></td>
-                                    <td className="px-4 py-3">{r.target_name || r.target_id?.substring(0, 8)}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                    {relationships.length === 0 && <p className="text-center text-slate-500 py-8">暂无关系数据</p>}
-                </>
-            )}
-        </div>
+        <RelationshipsTab
+            taskId={taskId}
+            relationships={relationships}
+            relationshipsTotalCount={relationshipsTotalCount}
+            relationshipsPage={relationshipsPage}
+            fetchRelationships={fetchRelationships}
+            PAGE_SIZE={PAGE_SIZE}
+        />
     );
 
     return (
