@@ -308,6 +308,8 @@ set(LIB_SOURCES
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsRegistryArtifacts.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsEventLogParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers_ExecutionTraces.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers_SystemAnalysis.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsPrefetchParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsLnkParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsAmcacheParser.cpp
