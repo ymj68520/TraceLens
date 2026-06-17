@@ -303,6 +303,7 @@ set(LIB_SOURCES
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_User.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_System.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsRegistryParser.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsRegistryArtifacts.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsEventLogParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsPrefetchParser.cpp
