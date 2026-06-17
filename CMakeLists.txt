@@ -316,6 +316,12 @@ set(LIB_SOURCES
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsBrowserAnalyzer.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsJumpListParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Core/LinuxFilesAnalyzerCore.cpp
+    src/analyzers/LinuxFilesAnalyzer/Core/LinuxFilesAnalyzerLogs.cpp
+    src/analyzers/LinuxFilesAnalyzer/Core/LinuxFilesAnalyzerContainers.cpp
+    src/analyzers/LinuxFilesAnalyzer/Core/LinuxFilesAnalyzerSecurity.cpp
+    src/analyzers/LinuxFilesAnalyzer/Core/LinuxFilesAnalyzerServices.cpp
+    src/analyzers/LinuxFilesAnalyzer/Core/LinuxFilesAnalyzerArtifacts.cpp
+    src/analyzers/LinuxFilesAnalyzer/Core/LinuxFilesAnalyzerEnhanced.cpp
     src/analyzers/LinuxFilesAnalyzer/Database/LinuxAnalysisDatabase.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxArtifactsParsers.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/LinuxLogParser.cpp
