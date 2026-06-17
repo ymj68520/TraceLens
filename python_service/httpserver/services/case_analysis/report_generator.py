@@ -580,7 +580,7 @@ class ReportGenerator:
                         event_type,
                         (timestamp / 60) as time_window,
                         CASE WHEN file_path LIKE '%/%'
-                            THEN SUBSTR(file_path, 1, LENGTH(file_path) - INSTR(REPLACE(file_path, '/', char(1)), char(1)) + 1)
+                            THEN RTRIM(file_path, REPLACE(file_path, '/', ''))
                             ELSE ''
                         END as parent_dir,
                         COUNT(*) as cluster_count,

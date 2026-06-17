@@ -37,7 +37,10 @@ namespace forensics {
         ApiResponse response;
         response.success = true;
         response.message = msg;
-        response.data = data ? data : nlohmann::json::object();
+        // NOTE: Do not use `data ? data : ...` here — nlohmann's operator bool()
+        // converts the value to a bool and throws type_error.302 for any non-bool
+        // JSON (e.g. an object or array). Use is_null() to detect "no payload".
+        response.data = data.is_null() ? nlohmann::json::object() : data;
         auto now = std::chrono::system_clock::now();
         auto time_t = std::chrono::system_clock::to_time_t(now);
         response.timestamp = std::ctime(&time_t);

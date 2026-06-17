@@ -243,10 +243,15 @@ crow::response EventClusterRoutes::handle_get_analyzed_clusters(const crow::requ
         }
 
         std::string sql = R"(
-            SELECT DISTINCT
+            SELECT
                 (timestamp / 60) as time_window,
                 event_type,
-                CASE WHEN file_path LIKE '%/%' THEN SUBSTR(file_path, 1, LENGTH(file_path) - INSTR(REPLACE(file_path, '/', char(1)), char(1)) + 1) ELSE '' END as parent_directory,
+                CASE WHEN file_path LIKE '%/%' THEN RTRIM(file_path, REPLACE(file_path, '/', '')) ELSE '' END as parent_directory,
+                MIN(timestamp) as timestamp,
+                MAX(timestamp) as end_timestamp,
+                COUNT(*) as cluster_count,
+                file_path,
+                SUM(COALESCE(file_size, 0)) as file_size,
                 MAX(llm_summary) as llm_summary,
                 MAX(llm_description) as llm_description,
                 MAX(llm_keywords) as llm_keywords,
@@ -275,12 +280,23 @@ crow::response EventClusterRoutes::handle_get_analyzed_clusters(const crow::requ
             cluster["time_window"] = sqlite3_column_int64(stmt, 0);
             cluster["event_type"] = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
             cluster["parent_directory"] = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-            cluster["llm_summary"] = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
-            cluster["llm_description"] = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
-            cluster["llm_keywords"] = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
-            cluster["llm_analyzed_at"] = sqlite3_column_int64(stmt, 6);
-            cluster["llm_model_used"] = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7));
-            cluster["llm_is_relevant"] = sqlite3_column_int(stmt, 8);
+            // Frontend (CaseIntelligence) reads these fields off each cluster:
+            //   timestamp     -> displayed via new Date(timestamp*1000)
+            //   cluster_count -> "N 个事件" badge
+            //   file_path     -> representative file
+            // Expose them so the evidence list renders correctly.
+            cluster["timestamp"] = sqlite3_column_int64(stmt, 3);
+            cluster["end_timestamp"] = sqlite3_column_int64(stmt, 4);
+            cluster["cluster_count"] = sqlite3_column_int64(stmt, 5);
+            const char* fp = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+            cluster["file_path"] = fp ? fp : "";
+            cluster["file_size"] = sqlite3_column_int64(stmt, 7);
+            cluster["llm_summary"] = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8));
+            cluster["llm_description"] = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9));
+            cluster["llm_keywords"] = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10));
+            cluster["llm_analyzed_at"] = sqlite3_column_int64(stmt, 11);
+            cluster["llm_model_used"] = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
+            cluster["llm_is_relevant"] = sqlite3_column_int(stmt, 13);
             clusters.push_back(cluster);
         }
 

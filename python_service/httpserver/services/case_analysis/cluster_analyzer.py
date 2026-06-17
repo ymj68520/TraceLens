@@ -124,7 +124,7 @@ class ClusterAnalyzer:
                         MIN(timestamp) as cluster_start,
                         MAX(timestamp) as cluster_end,
                         CASE
-                            WHEN file_path LIKE '%/%' THEN SUBSTR(file_path, 1, LENGTH(file_path) - INSTR(REPLACE(file_path, '/', char(1)), char(1)) + 1)
+                            WHEN file_path LIKE '%/%' THEN RTRIM(file_path, REPLACE(file_path, '/', ''))
                             ELSE ''
                         END as parent_directory,
                         GROUP_CONCAT(COALESCE(description, ''), '\n') as group_desc,

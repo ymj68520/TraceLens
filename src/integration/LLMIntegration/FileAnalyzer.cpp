@@ -32,6 +32,52 @@ const std::regex FileAnalyzer::DESCRIPTION_REGEX(
 const std::regex FileAnalyzer::KEYWORD_REGEX(
     "KEYWORDS:\\s*(.+)$", std::regex::icase);
 
+// ---------------------------------------------------------------------------
+// Extension routing for content extraction.
+//
+// Microsoft's markitdown library only converts document/image/audio/HTML text
+// formats. Feeding it binary forensic artifacts (disk images, PE/ELF binaries,
+// registry hives, event logs, archives, databases...) raises
+// UnsupportedFormatException, which the Python /api/markitdown/convert endpoint
+// surfaces as HTTP 500 — flooding the backend log with errors whenever such a
+// file is analyzed (e.g. Linux GRUB *.img files, evidence .img/.dd/.e01 images).
+//
+// isMarkitdownSupportedExt() is the allow-list of extensions markitdown can
+// actually handle. Everything else bypasses markitdown and relies on the
+// platform-aware extractor pipeline:
+//   - Windows artifacts (.exe/.dll/.pf/.evtx/.hiv/.lnk...) -> PeExtractor,
+//     EvtxExtractor, RegistryExtractor, LnkExtractor, PrefetchExtractor...
+//   - Linux artifacts  (.so/.ko/.mod/.journal...)          -> ElfExtractor,
+//     GrubModuleExtractor, JournalExtractor...
+//   - Common files     (.pdf/.docx/.csv/.json/...)         -> shared extractors
+// ---------------------------------------------------------------------------
+namespace {
+const std::set<std::string>& markitdownSupportedExtensions() {
+    // Mirrors MarkitdownExtractor's extension list in
+    // python_service/config/extractor_mapping.json plus the plain-text formats
+    // markitdown handles natively.
+    static const std::set<std::string> supported = {
+        // Office documents
+        ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt",
+        // Web / structured text
+        ".html", ".htm", ".ipynb", ".rss",
+        // Images (EXIF + OCR)
+        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif",
+        // Audio (transcription)
+        ".mp3", ".wav",
+        // Plain text / data formats markitdown reads directly
+        ".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".xml",
+        ".yaml", ".yml", ".rst", ".log"
+    };
+    return supported;
+}
+
+bool isMarkitdownSupportedExt(const std::string& ext) {
+    if (ext.empty()) return false;
+    return markitdownSupportedExtensions().count(ext) > 0;
+}
+} // namespace
+
 FileAnalyzer::FileAnalyzer(std::shared_ptr<ModelRouter> router)
     : router_(router) {
     initDefaultPrompts();
@@ -85,16 +131,35 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
 
     LOG_DEBUG("File: " + filePath + ", Ext: " + ext);
 
-    // Try markitdown proxy first (converts via Python service)
-    auto& markitdown = MarkitdownProxy::instance();
-    if (markitdown.isServiceAvailable()) {
-        content = markitdown.convertToMarkdown(filePath);
-        if (!content.empty() && content.find("Error:") != 0) {
-            LOG_DEBUG("Successfully converted via markitdown: " + filePath);
-        } else {
-            LOG_WARNING("markitdown failed for " + filePath + ", falling back to local parsers");
-            content.clear();
+    // Try markitdown proxy first (converts via Python service).
+    //
+    // IMPORTANT: markitdown only knows how to convert document/image/audio/text
+    // formats. Passing binary forensic artifacts — disk images (.img/.iso/.dd),
+    // executables/libraries (.exe/.dll/.so/.ko/.elf/.mod), registry hives,
+    // event logs (.evtx), databases, archives, etc. — makes markitdown throw
+    // UnsupportedFormatException, which the Python endpoint turns into an
+    // HTTP 500 and floods the backend log with errors.
+    //
+    // Gate the markitdown call on an allow-list of extensions it actually
+    // supports. Everything else goes straight to the local / Python extractor
+    // pipeline (which has platform-aware extractors: PeExtractor for Windows
+    // PE files, ElfExtractor + GrubModuleExtractor for Linux, E01Metadata
+    // for evidence images, etc.).
+    bool useMarkitdown = isMarkitdownSupportedExt(ext);
+
+    if (useMarkitdown) {
+        auto& markitdown = MarkitdownProxy::instance();
+        if (markitdown.isServiceAvailable()) {
+            content = markitdown.convertToMarkdown(filePath);
+            if (!content.empty() && content.find("Error:") != 0) {
+                LOG_DEBUG("Successfully converted via markitdown: " + filePath);
+            } else {
+                LOG_WARNING("markitdown failed for " + filePath + ", falling back to local parsers");
+                content.clear();
+            }
         }
+    } else {
+        LOG_DEBUG("Skipping markitdown for unsupported extension " + ext + " (" + filePath + ")");
     }
 
     // Fallback to local parsers if markitdown unavailable or failed

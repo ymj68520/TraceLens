@@ -360,7 +360,7 @@ inline constexpr const char* UPDATE_EVENT_CLUSTER_LLM_ANALYSIS = R"(
         llm_model_used = ?,
         llm_is_relevant = ?
     WHERE (timestamp / 60) = ? AND event_type = ? AND
-          (CASE WHEN file_path LIKE '%/%' THEN SUBSTR(file_path, 1, LENGTH(file_path) - INSTR(REPLACE(file_path, '/', char(1)), char(1)) + 1) ELSE '' END) = ?
+          (CASE WHEN file_path LIKE '%/%' THEN RTRIM(file_path, REPLACE(file_path, '/', '')) ELSE '' END) = ?
 )";
 
 } // namespace EventExtractorSQL

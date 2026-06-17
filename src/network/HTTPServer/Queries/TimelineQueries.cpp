@@ -96,9 +96,20 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
     // otherwise totalPages will be wrong and pagination will break.
     // Main query groups by: parent_directory, (timestamp/60), event_type
     // So the count must count the same groups.
+    //
+    // parent_dir_expr computes the parent directory of file_path (including
+    // the trailing slash). We use RTRIM(file_path, REPLACE(file_path,'/',''))
+    // to strip the basename from the end: REPLACE removes every '/', giving the
+    // set of "filename characters", and RTRIM strips trailing chars in that set
+    // until it hits the last '/'. This correctly handles multi-segment paths
+    // (e.g. /etc/ssh/sshd_config -> /etc/ssh/) unlike the previous INSTR-based
+    // formula, which only found the FIRST slash and produced bogus directories
+    // (e.g. /etc/ssh/sshd_config -> /etc/ssh/sshd_config), defeating clustering.
+    const std::string parent_dir_expr =
+        "(CASE WHEN file_path LIKE '%/%' THEN RTRIM(file_path, REPLACE(file_path, '/', '')) ELSE '' END)";
+
     std::string count_sql;
     if (cluster_events) {
-        std::string parent_dir_expr = "(CASE WHEN file_path LIKE '%/%' THEN SUBSTR(file_path, 1, LENGTH(file_path) - INSTR(REPLACE(file_path, '/', char(1)), char(1)) + 1) ELSE '' END)";
         count_sql = "SELECT COUNT(*) FROM (SELECT 1 FROM events" + where_clause +
                     " GROUP BY " + parent_dir_expr + ", (timestamp / 60), event_type)";
     } else {
@@ -117,9 +128,8 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
     // Build main query
     std::string sql;
     if (cluster_events) {
-        // Advanced SQL trick to get parent directory in SQLite
-        // It finds the substring before the last slash
-        std::string parent_dir_sql = "(CASE WHEN file_path LIKE '%/%' THEN SUBSTR(file_path, 1, LENGTH(file_path) - INSTR(REPLACE(file_path, '/', char(1)), char(1)) + 1) ELSE '' END)";
+        // Reuse the parent directory expression (see comment above).
+        const std::string& parent_dir_sql = parent_dir_expr;
 
         sql = R"(
             SELECT
