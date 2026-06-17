@@ -2,7 +2,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import { Virtuoso } from 'react-virtuoso';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
@@ -32,7 +31,12 @@ import {
     getAnomalySeverity,
     getAnomalyColorClass
 } from '../services/associationService';
-import { X, AlertTriangle, Clock, FileText, Layers } from 'lucide-react';
+import { Layers } from 'lucide-react';
+
+// Case-intelligence subcomponents (split for maintainability)
+import { renderCaseMarkdown } from '../components/case-intelligence/markdownRenderer.jsx';
+import ClusterFilesDrawer from '../components/case-intelligence/ClusterFilesDrawer';
+import FileClustersDrawer from '../components/case-intelligence/FileClustersDrawer';
 
 const CaseIntelligence = () => {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -502,81 +506,7 @@ const CaseIntelligence = () => {
         }, 350);
     };
 
-    const renderMarkdown = (text) => {
-        if (!text) return null;
-
-        // Render a single reference token into an interactive badge, or null.
-        const renderRef = (token, keyPrefix) => {
-            const fileMatch = token.match(/^\[\[file:(.+)\]\]$/);
-            if (fileMatch) {
-                const fPath = fileMatch[1];
-                return <button key={`${keyPrefix}-f`} onClick={() => scrollToFile(fPath)} className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-md text-[13px] font-mono hover:bg-purple-100 border border-purple-200 font-bold">📄 {fPath.split('/').pop()}</button>;
-            }
-            const eventMatch = token.match(/^\[\[event:([A-Za-z_]+)@(\d+)\/([^\]]*)\]\]$/);
-            if (eventMatch) {
-                const eType = eventMatch[1];
-                const eWindow = eventMatch[2];
-                const eDir = eventMatch[3];
-                const label = `${eType}@${eWindow}/${eDir.split('/').filter(Boolean).pop() || eDir}`;
-                const shortLabel = label.length > 32 ? label.slice(0, 32) + '…' : label;
-                const params = new URLSearchParams({
-                    task_id: activeContextId || '',
-                    cluster: 'true',
-                    type: eType,
-                });
-                return (
-                    <button
-                        key={`${keyPrefix}-e`}
-                        onClick={() => navigate(`/timeline?${params.toString()}`)}
-                        title={`事件簇: ${eType}@${eWindow}/${eDir}`}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md text-[13px] font-mono hover:bg-blue-100 dark:hover:bg-blue-800/40 border border-blue-200 dark:border-blue-700 font-bold"
-                    >
-                        ⏱ {shortLabel}
-                    </button>
-                );
-            }
-            return null;
-        };
-
-        // Split a chunk on reference tokens; refs become badges, rest is text.
-        const renderRefParts = (chunk, keyPrefix) => {
-            const parts = chunk.split(/(\[\[(?:file|event):[^\]]+\]\])/g);
-            return parts.map((part, j) => {
-                const ref = renderRef(part, `${keyPrefix}-${j}`);
-                if (ref) return ref;
-                return <span key={`${keyPrefix}-${j}-t`}>{part}</span>;
-            });
-        };
-
-        // IMPORTANT: split bold first, then resolve refs inside each chunk.
-        // The LLM often wraps a whole reference in bold, so the reference token
-        // is surrounded by double-asterisks. If we split references first and
-        // match with start/end anchors, the surrounding asterisks break the
-        // match and the whole reference renders as bold literal text instead of
-        // a badge. Splitting bold first lets refs render even inside bold spans.
-        const renderInline = (t, lineKey) => {
-            const boldParts = t.split(/(\*\*[^*]+\*\*)/g);
-            return boldParts.flatMap((bp, bi) => {
-                const boldMatch = bp.match(/^\*\*(.+)\*\*$/);
-                if (boldMatch) {
-                    return [<strong key={`${lineKey}-b-${bi}`} className="font-bold text-slate-900 dark:text-slate-100">{renderRefParts(boldMatch[1], `${lineKey}-b-${bi}`)}</strong>];
-                }
-                return renderRefParts(bp, `${lineKey}-${bi}`);
-            });
-        };
-
-        return <div className="prose prose-slate max-w-none dark:prose-invert">
-            {text.split('\n').map((line, i) => {
-                if (line.startsWith('# ')) return <h1 key={i} className="text-2xl font-bold mt-6 mb-3">{renderInline(line.slice(2), `l${i}`)}</h1>;
-                if (line.startsWith('## ')) return <h2 key={i} className="text-xl font-semibold mt-5 mb-2">{renderInline(line.slice(3), `l${i}`)}</h2>;
-                if (line.startsWith('### ')) return <h3 key={i} className="text-lg font-semibold mt-4 mb-2">{renderInline(line.slice(4), `l${i}`)}</h3>;
-                if (line.startsWith('- ') || line.startsWith('* ')) return <li key={i} className="text-sm mb-1 ml-4 list-disc text-slate-700 dark:text-slate-300">{renderInline(line.slice(2), `l${i}`)}</li>;
-                if (line.match(/^\d+\.\s/)) return <li key={i} className="text-sm mb-1 ml-4 list-decimal text-slate-700 dark:text-slate-300">{renderInline(line.replace(/^\d+\.\s/, ''), `l${i}`)}</li>;
-                if (line.trim() === '') return null;
-                return <p key={i} className="text-sm mb-2 leading-relaxed text-slate-700 dark:text-slate-300">{renderInline(line, `l${i}`)}</p>;
-            })}
-        </div>;
-    };
+    const renderMarkdown = (text) => renderCaseMarkdown(text, { scrollToFile, activeContextId, navigate });
 
     if (!activeContextId) {
         return (
@@ -855,235 +785,25 @@ const CaseIntelligence = () => {
             </div>
 
             {/* Cluster-Files Association Drawer */}
-            <AnimatePresence>
-                {selectedClusterForFiles && (
-                    <>
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40"
-                            onClick={() => setSelectedClusterForFiles(null)}
-                        />
-                        <motion.div
-                            initial={{ x: '100%' }}
-                            animate={{ x: 0 }}
-                            exit={{ x: '100%' }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                            className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white shadow-2xl z-50 border-l border-slate-200 flex flex-col"
-                        >
-                            {/* Header */}
-                            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-900">📎 关联文件</h3>
-                                    <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-                                        {selectedClusterForFiles.event_type} @ {new Date(selectedClusterForFiles.timestamp * 1000).toLocaleTimeString()}
-                                    </p>
-                                </div>
-                                <button
-                                    onClick={() => setSelectedClusterForFiles(null)}
-                                    className="p-2 hover:bg-slate-100 rounded-full transition-colors"
-                                >
-                                    <X size={18} />
-                                </button>
-                            </div>
-
-                            {/* Content */}
-                            <div className="flex-1 overflow-hidden">
-                                {loadingClusterFiles ? (
-                                    <div className="h-full flex flex-col items-center justify-center">
-                                        <Spinner size="lg" />
-                                        <span className="text-[10px] mt-4 text-slate-400">加载关联文件...</span>
-                                    </div>
-                                ) : clusterRelatedFiles.length === 0 ? (
-                                    <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                                        <FileText size={32} strokeWidth={1} />
-                                        <p className="text-sm mt-2">暂无关联文件</p>
-                                    </div>
-                                ) : (
-                                    <Virtuoso
-                                        data={clusterRelatedFiles}
-                                        style={{ height: '100%' }}
-                                        itemContent={(index, file) => {
-                                            const fileAnomalies = file.anomalies || [];
-                                            return (
-                                                <div className={`px-4 py-3 border-b border-slate-50 ${fileAnomalies.length > 0 ? 'bg-red-50/30' : ''}`}>
-                                                    {/* File Path */}
-                                                    <div className="flex items-start gap-2 mb-2">
-                                                        <span className="text-lg">📄</span>
-                                                        <p className="text-[11px] text-slate-700 font-medium break-all flex-1">{file.file_path}</p>
-                                                    </div>
-
-                                                    {/* Time Differences */}
-                                                    <div className="grid grid-cols-2 gap-2 mb-2">
-                                                        {file.time_diffs && (
-                                                            <>
-                                                                {file.time_diffs.mtime_diff !== null && (
-                                                                    <div className="text-[9px] bg-slate-50 px-2 py-1 rounded">
-                                                                        <span className="text-slate-500">mtime: </span>
-                                                                        <span className="font-mono text-slate-700">{file.time_diffs_formatted?.mtime_diff}</span>
-                                                                    </div>
-                                                                )}
-                                                                {file.time_diffs.ctime_diff !== null && (
-                                                                    <div className="text-[9px] bg-slate-50 px-2 py-1 rounded">
-                                                                        <span className="text-slate-500">ctime: </span>
-                                                                        <span className="font-mono text-slate-700">{file.time_diffs_formatted?.ctime_diff}</span>
-                                                                    </div>
-                                                                )}
-                                                            </>
-                                                        )}
-                                                    </div>
-
-                                                    {/* Anomalies */}
-                                                    {fileAnomalies.length > 0 && (
-                                                        <div className="flex flex-wrap gap-1 mt-2">
-                                                            {fileAnomalies.map((anomaly, idx) => (
-                                                                <span
-                                                                    key={idx}
-                                                                    className={`text-[9px] px-2 py-0.5 rounded-full border font-medium ${getAnomalyColorClass(getAnomalySeverity(anomaly))}`}
-                                                                >
-                                                                    <AlertTriangle size={10} className="inline mr-1" />
-                                                                    {formatAnomalyType(anomaly)}
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                    )}
-
-                                                    {/* File Summary if available */}
-                                                    {file.llm_summary && (
-                                                        <p className="text-[10px] text-slate-500 mt-2 line-clamp-2">{file.llm_summary}</p>
-                                                    )}
-                                                </div>
-                                            );
-                                        }}
-                                    />
-                                )}
-                            </div>
-
-                            {/* Footer */}
-                            <div className="p-3 border-t border-slate-100 bg-slate-50/80 text-[10px] text-slate-500 flex justify-between">
-                                <span>共 {clusterRelatedFiles.length} 个关联文件</span>
-                                <span className="text-purple-500 font-medium">时间关联分析</span>
-                            </div>
-                        </motion.div>
-                    </>
-                )}
-            </AnimatePresence>
+            <ClusterFilesDrawer
+                selectedClusterForFiles={selectedClusterForFiles}
+                onClose={() => setSelectedClusterForFiles(null)}
+                loadingClusterFiles={loadingClusterFiles}
+                clusterRelatedFiles={clusterRelatedFiles}
+                getAnomalyColorClass={getAnomalyColorClass}
+                getAnomalySeverity={getAnomalySeverity}
+                formatAnomalyType={formatAnomalyType}
+            />
 
             {/* File-Clusters Association Drawer */}
-            <AnimatePresence>
-                {selectedFileForClusters && (
-                    <>
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40"
-                            onClick={() => setSelectedFileForClusters(null)}
-                        />
-                        <motion.div
-                            initial={{ x: '100%' }}
-                            animate={{ x: 0 }}
-                            exit={{ x: '100%' }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                            className="fixed top-0 right-0 bottom-0 w-full lg:w-[500px] bg-white shadow-2xl z-50 border-l border-slate-200 flex flex-col"
-                        >
-                            {/* Header */}
-                            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-900">🔗 关联事件簇</h3>
-                                    <p className="text-[10px] text-slate-500 font-mono mt-0.5 max-w-[300px] truncate">
-                                        {selectedFileForClusters.file_path}
-                                    </p>
-                                </div>
-                                <button
-                                    onClick={() => setSelectedFileForClusters(null)}
-                                    className="p-2 hover:bg-slate-100 rounded-full transition-colors"
-                                >
-                                    <X size={18} />
-                                </button>
-                            </div>
-
-                            {/* Content */}
-                            <div className="flex-1 overflow-hidden">
-                                {loadingFileClusters ? (
-                                    <div className="h-full flex flex-col items-center justify-center">
-                                        <Spinner size="lg" />
-                                        <span className="text-[10px] mt-4 text-slate-400">加载关联事件簇...</span>
-                                    </div>
-                                ) : fileRelatedClusters.length === 0 ? (
-                                    <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                                        <Clock size={32} strokeWidth={1} />
-                                        <p className="text-sm mt-2">暂无关联事件簇</p>
-                                    </div>
-                                ) : (
-                                    <Virtuoso
-                                        data={fileRelatedClusters}
-                                        style={{ height: '100%' }}
-                                        itemContent={(index, cluster) => (
-                                            <div className="px-4 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                                                {/* Event Type Badge */}
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    <Badge variant={
-                                                        cluster.event_type === 'CREATED' ? 'green' :
-                                                        cluster.event_type === 'MODIFIED' ? 'blue' :
-                                                        cluster.event_type === 'DELETED' ? 'red' : 'gray'
-                                                    } className="text-[9px] px-2 py-0.5 font-bold">
-                                                        {cluster.event_type}
-                                                    </Badge>
-                                                    <span className="text-[10px] text-slate-500">
-                                                        {new Date(cluster.representative_timestamp * 1000).toLocaleString()}
-                                                    </span>
-                                                </div>
-
-                                                {/* Directory */}
-                                                <p className="text-[10px] text-slate-600 font-mono mb-1 truncate">
-                                                    📁 {cluster.parent_directory || '/'}
-                                                </p>
-
-                                                {/* Match Info */}
-                                                {cluster.matched_time && (
-                                                    <div className="text-[9px] bg-purple-50 px-2 py-1 rounded mb-1">
-                                                        <span className="text-purple-700">匹配时间: {cluster.matched_time} </span>
-                                                        <span className="text-purple-500 font-mono">({cluster.time_diff_formatted})</span>
-                                                    </div>
-                                                )}
-
-                                                {/* Event Count */}
-                                                <div className="text-[9px] text-slate-500">
-                                                    包含 {cluster.cluster_count || cluster.event_count} 个事件
-                                                </div>
-
-                                                {/* AI Summary */}
-                                                {cluster.llm_summary && (
-                                                    <p className="text-[10px] text-slate-600 mt-2 line-clamp-2">{cluster.llm_summary}</p>
-                                                )}
-
-                                                {/* Action Button */}
-                                                <button
-                                                    onClick={() => {
-                                                        setSelectedFileForClusters(null);
-                                                        navigate(`/timeline?task_id=${activeContextId}&type=${cluster.event_type}&cluster=true`);
-                                                    }}
-                                                    className="mt-2 text-[9px] text-blue-500 hover:text-blue-700 font-medium"
-                                                >
-                                                    在时间线中查看 →
-                                                </button>
-                                            </div>
-                                        )}
-                                    />
-                                )}
-                            </div>
-
-                            {/* Footer */}
-                            <div className="p-3 border-t border-slate-100 bg-slate-50/80 text-[10px] text-slate-500 flex justify-between">
-                                <span>共 {fileRelatedClusters.length} 个关联事件簇</span>
-                                <span className="text-blue-500 font-medium">时间关联分析</span>
-                            </div>
-                        </motion.div>
-                    </>
-                )}
-            </AnimatePresence>
+            <FileClustersDrawer
+                selectedFileForClusters={selectedFileForClusters}
+                onClose={() => setSelectedFileForClusters(null)}
+                loadingFileClusters={loadingFileClusters}
+                fileRelatedClusters={fileRelatedClusters}
+                activeContextId={activeContextId}
+                navigate={navigate}
+            />
 
             {/* Modal */}
             {showReanalyzeModal && (
