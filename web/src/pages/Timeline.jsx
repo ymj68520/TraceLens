@@ -1,4 +1,3 @@
-import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
@@ -10,8 +9,11 @@ import Spinner from '../components/common/Spinner';
 import Button from '../components/common/Button';
 import { useTranslation } from '../hooks/useTranslation';
 import { getComprehensiveTimeline, getTimelineDistribution, getTimelineDetails, analyzeEventCluster, reanalyzeEventCluster } from '../services/forensicsService';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Calendar, Filter, X, ChevronLeft, ChevronRight, FileText, Clock, Layers, Folder, ArrowRight, Search, Brain, RefreshCw, CheckCircle } from 'lucide-react';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { Calendar, Filter, X, ChevronLeft, ChevronRight, FileText, Clock, Layers, Folder, ArrowRight, Brain, RefreshCw, CheckCircle } from 'lucide-react';
+
+// Cluster investigation drawer (split for maintainability)
+import ClusterInvestigationDrawer from '../components/timeline/ClusterInvestigationDrawer';
 
 // --- Helper Functions ---
 const formatTimestamp = (timestamp) => {
@@ -422,148 +424,18 @@ const Timeline = () => {
   return (
     <div className="h-[calc(100vh-140px)] flex flex-col space-y-4 overflow-hidden relative">
       {/* Investigation Drawer */}
-      <AnimatePresence>
-        {selectedCluster && (
-          <>
-            <motion.div 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-slate-900/30 backdrop-blur-[2px] z-40"
-              onClick={() => setSelectedCluster(null)}
-            />
-            <motion.div 
-              initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="absolute top-0 right-0 bottom-0 w-full lg:w-[550px] bg-white shadow-2xl z-50 border-l border-slate-200 flex flex-col"
-            >
-              <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <div>
-                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-tighter flex items-center">
-                        <Layers className="w-4 h-4 mr-2 text-primary-500" /> Cluster Investigation
-                    </h3>
-                    <p className="text-[10px] text-slate-500 font-mono mt-0.5">{selectedCluster.event_type} @ {formatTimeOnly(selectedCluster.timestamp)}</p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {selectedCluster.llm_summary ? (
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      icon={RefreshCw} 
-                      onClick={() => handleReanalyzeCluster(selectedCluster)}
-                      disabled={analyzingClusters.has(`${selectedCluster.timestamp}-${selectedCluster.event_type}-${selectedCluster.parent_directory}`)}
-                    >
-                      Reanalyze
-                    </Button>
-                  ) : (
-                    <Button 
-                      variant="primary" 
-                      size="sm" 
-                      icon={Brain} 
-                      onClick={() => handleAnalyzeCluster(selectedCluster)}
-                      disabled={analyzingClusters.has(`${selectedCluster.timestamp}-${selectedCluster.event_type}-${selectedCluster.parent_directory}`)}
-                    >
-                      {analyzingClusters.has(`${selectedCluster.timestamp}-${selectedCluster.event_type}-${selectedCluster.parent_directory}`) ? 'Analyzing...' : 'AI Analyze'}
-                    </Button>
-                  )}
-                  <button onClick={() => setSelectedCluster(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={18} /></button>
-                </div>
-              </div>
-              
-              {/* AI Analysis Results */}
-              {selectedCluster.llm_summary && (
-                <div className="px-4 py-3 border-b border-slate-100 bg-primary-50/30">
-                  <div className="flex items-start space-x-3">
-                    <div className="flex-shrink-0 mt-1">
-                      <CheckCircle size={16} className="text-green-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-xs font-bold text-slate-700 mb-1">AI Analysis</h4>
-                      <p className="text-[11px] text-slate-600 mb-1.5 whitespace-pre-wrap break-words">{selectedCluster.llm_summary}</p>
-                      {selectedCluster.llm_description && selectedCluster.llm_description !== selectedCluster.llm_summary && (
-                        <details className="mt-2">
-                          <summary className="text-[10px] text-primary-600 cursor-pointer hover:text-primary-700 font-medium">查看详细描述 ▼</summary>
-                          <p className="text-[10px] text-slate-500 mt-1.5 whitespace-pre-wrap break-words pl-2 border-l-2 border-primary-200">{selectedCluster.llm_description}</p>
-                        </details>
-                      )}
-                      {selectedCluster.llm_keywords && (
-                        <div className="flex flex-wrap gap-1">
-                          {selectedCluster.llm_keywords.split(',').map((keyword, idx) => (
-                            <span key={idx} className="text-[9px] bg-white px-1.5 py-0.5 rounded-full border border-slate-200 text-slate-600">
-                              {keyword.trim()}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {selectedCluster.llm_is_relevant && (
-                        <Badge variant="green" className="mt-1.5">Relevant to investigation</Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
+      <ClusterInvestigationDrawer
+        selectedCluster={selectedCluster}
+        onClose={() => setSelectedCluster(null)}
+        onAnalyze={handleAnalyzeCluster}
+        onReanalyze={handleReanalyzeCluster}
+        analyzingClusters={analyzingClusters}
+        clusterDetails={clusterDetails}
+        loadingDetails={loadingDetails}
+        drawerSearch={drawerSearch}
+        setDrawerSearch={setDrawerSearch}
+      />
 
-              {/* Drawer Search Bar */}
-              <div className="px-4 py-3 border-b border-slate-100 bg-white sticky top-0 z-10">
-                <div className="relative group">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-primary-500 transition-colors" />
-                    <input 
-                        type="text"
-                        placeholder="Filter by path in this cluster..."
-                        value={drawerSearch}
-                        onChange={(e) => setDrawerSearch(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 bg-slate-100/50 border-none rounded-xl text-sm focus:ring-2 focus:ring-primary-500 transition-all"
-                    />
-                    {drawerSearch && (
-                        <button 
-                            onClick={() => setDrawerSearch('')}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-200 rounded-md"
-                        >
-                            <X size={12} className="text-slate-500" />
-                        </button>
-                    )}
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-hidden p-2">
-                {loadingDetails ? (
-                    <div className="h-full flex flex-col items-center justify-center">
-                        <Spinner size="lg" />
-                        <span className="text-[10px] mt-4 font-black uppercase tracking-widest text-slate-400">Filtering Cluster...</span>
-                    </div>
-                ) : clusterDetails.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2 opacity-60">
-                        <Search size={32} strokeWidth={1} />
-                        <p className="text-sm italic">No files match your search.</p>
-                    </div>
-                ) : (
-                    <Virtuoso
-                        data={clusterDetails}
-                        style={{ height: '100%' }}
-                        itemContent={(index, item) => (
-                            <div key={index} className="px-3 py-2.5 mb-2 bg-white rounded-xl border border-slate-100 hover:border-primary-200 hover:shadow-sm transition-all group">
-                                <div className="flex justify-between items-start gap-4">
-                                    <span className="text-[11px] font-bold text-slate-400 font-mono shrink-0 bg-slate-50 px-1.5 py-0.5 rounded">
-                                        {new Date(item.timestamp * 1000).toLocaleTimeString([], {hour12: false, fractionalSecondDigits: 2})}
-                                    </span>
-                                    <p className="text-[12px] text-slate-700 font-semibold break-all flex-1 leading-relaxed">{item.file_path}</p>
-                                </div>
-                                <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-400 font-medium">
-                                    <span className="bg-slate-50 px-1.5 rounded border border-slate-100">ID:{item.inode}</span>
-                                    <span className="flex items-center"><FileText size={10} className="mr-1 opacity-60" /> {formatFileSize(item.file_size)}</span>
-                                    {item.file_type && <span className="bg-primary-50 text-primary-600 px-1 rounded font-black uppercase text-[8px]">{item.file_type}</span>}
-                                </div>
-                            </div>
-                        )}
-                    />
-                )}
-              </div>
-              <div className="p-3 border-t border-slate-100 bg-slate-50/80 text-[10px] text-slate-500 font-black uppercase flex justify-between tracking-widest">
-                <span>INDEXED: {clusterDetails.length} RESULTS</span>
-                <span className="text-primary-500">Real-time Detail</span>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
 
       {/* Header Block */}
       <div className="flex-shrink-0 flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-1">
