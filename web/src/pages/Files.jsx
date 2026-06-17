@@ -5,16 +5,20 @@ import { useSelector, useDispatch } from 'react-redux';
 import { fetchTasks } from '../store/taskSlice';
 import { setBatchJob, updateBatchProgress, clearBatchJob, setRefreshFlag } from '../store/intelligenceSlice';
 import Card from '../components/common/Card';
-import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
-import Button from '../components/common/Button';
 import { getLargestFiles, getExtensionAnalysis } from '../services/forensicsService';
 import { startExtraction, pollExtractionStatus } from '../services/extractionService';
-import { analyzeContent, startBatchAnalysis, pollBatchStatus, getLLMStatus, getBatchStatus } from '../services/llmService';
+import { analyzeContent, startBatchAnalysis, pollBatchStatus, getLLMStatus } from '../services/llmService';
 import { reanalyzeFiles, getCaseAnalysisStatus } from '../services/caseAnalysisService';
 import { ingestTaskData, getGraphitiStatus } from '../services/graphitiService';
-import { parseFile } from '../services/officeService';
-import { getTaskResults } from '../services/taskService';
+// Subcomponents (JSX split out for maintainability; behavior unchanged)
+import FilesHeader from '../components/files/FilesHeader';
+import FileFilters from '../components/files/FileFilters';
+import ExtractionControls from '../components/files/ExtractionControls';
+import FileListTable from '../components/files/FileListTable';
+import ExtensionAnalysisTab from '../components/files/ExtensionAnalysisTab';
+import OfficePreviewTab from '../components/files/OfficePreviewTab';
+import ReanalyzeModal from '../components/files/ReanalyzeModal';
 
 const Files = () => {
   const [searchParams] = useSearchParams();
@@ -293,10 +297,6 @@ const Files = () => {
     const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif'];
     const isImage = imageExtensions.includes(extension);
     const modelType = isImage ? 'vision' : 'text';
-
-    // Check file extension only (no size limits)
-    const archiveExtensions = ['zip', 'tar', 'gz', 'tgz', 'rar', '7z'];
-    const isArchive = archiveExtensions.includes(extension);
 
     setLlmAnalyzingFiles(prev => new Set(prev).add(index));
 
@@ -813,17 +813,6 @@ ${detail}
     fetchData();
   }, [taskId]);
 
-  const formatFileSize = (bytes) => {
-    if (!bytes || bytes === 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let size = bytes;
-    let unitIndex = 0;
-    while (size >= 1024 && unitIndex < units.length - 1) {
-      size /= 1024;
-      unitIndex++;
-    }
-    return `${size.toFixed(1)} ${units[unitIndex]}`;
-  };
 
   if (!taskId) {
     return (
@@ -880,20 +869,15 @@ ${detail}
     );
   }
 
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900 dark:text-white">文件分析</motion.h1>
-        <p className="mt-2 text-slate-600 dark:text-slate-300">任务: {currentTask?.image_path || taskId}</p>
-        {currentTask && (
-          <div className="mt-2 flex gap-2">
-            <Badge variant="blue">{currentTask.status}</Badge>
-            {(llmStatus?.status === 'healthy' || llmStatus?.status === 'available') && <Badge variant="green">LLM 可用</Badge>}
-            {graphitiStatus?.neo4j_connected && <Badge variant="purple">Graphiti 已连接</Badge>}
-          </div>
-        )}
-      </div>
+      <FilesHeader
+        currentTask={currentTask}
+        taskId={taskId}
+        llmStatus={llmStatus}
+        graphitiStatus={graphitiStatus}
+      />
 
       {/* Unified Forensic Control Console */}
       <Card className="border-t-4 border-t-purple-500 shadow-lg">
@@ -929,138 +913,39 @@ ${detail}
 
           {/* Configuration Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Column 1: Filters (4/12) */}
-            <div className="lg:col-span-4 space-y-4 pr-0 lg:pr-6 lg:border-r border-slate-100 dark:border-slate-700">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">🔍 筛选器</h4>
-              <div className="space-y-3">
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-slate-400">🏷️</span>
-                  <input
-                    type="text"
-                    value={filterExtension}
-                    onChange={(e) => setFilterExtension(e.target.value)}
-                    placeholder="扩展名 (如 .jpg)"
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="number"
-                    value={filterMinSize}
-                    onChange={(e) => setFilterMinSize(e.target.value)}
-                    placeholder="最小 KB"
-                    className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
-                  />
-                  <input
-                    type="number"
-                    value={filterMaxSize}
-                    onChange={(e) => setFilterMaxSize(e.target.value)}
-                    placeholder="最大 KB"
-                    className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Column 2: Extraction & AI Actions (8/12) */}
-            <div className="lg:col-span-8 space-y-6">
-              {/* Row 1: Extract Controls */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">📁 数据提取</h4>
-                  <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
-                      <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} disabled={extractionStatus === 'running'} className="rounded text-primary-600 h-3.5 w-3.5" />
-                      覆盖
-                    </label>
-                    <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
-                      <input type="checkbox" checked={includeDeleted} onChange={(e) => setIncludeDeleted(e.target.checked)} disabled={extractionStatus === 'running'} className="rounded text-primary-600 h-3.5 w-3.5" />
-                      含已删除
-                    </label>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="primary" size="sm" onClick={handleStartExtraction} disabled={extractionStatus === 'running'}>
-                    {extractionStatus === 'running' ? <Spinner size="sm" /> : '🚀 提取所有匹配'}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={async () => {
-                    const names = [...selectedFiles].map(idx => filteredFiles[idx].name || (filteredFiles[idx].path || filteredFiles[idx].file_path)?.split('/').pop()).filter(Boolean);
-                    if (names.length > 0) { setExtractionMode('name'); setExtractionPattern(names.join(',')); handleStartExtraction(); }
-                  }} disabled={selectedFiles.size === 0 || extractionStatus === 'running'}>
-                    📥 提取选中 ({selectedFiles.size})
-                  </Button>
-                  {extractionStatus !== 'idle' && (
-                    <div className="flex-1 flex items-center gap-3 px-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg min-w-[200px]">
-                      <div className="flex-1 h-1.5 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
-                        <div className="bg-blue-600 h-full transition-all" style={{ width: `${extractionProgress}%` }} />
-                      </div>
-                      <span className="text-[10px] font-mono text-blue-700 dark:text-blue-300 whitespace-nowrap">{extractionMessage}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Row 2: AI & KG Actions */}
-              <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-700">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">🧠 AI 取证 & 建模</h4>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={handleBatchAnalyze}
-                    disabled={isBatchRunning || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
-                    className="bg-purple-600 hover:bg-purple-700 text-white"
-                    title={selectedFiles.size > 0 ? `将分析选中的 ${selectedFiles.size} 个文件` : `将分析当前筛选结果中的所有文件`}
-                  >
-                    {isBatchRunning ? <Spinner size="sm" /> : '🧠 批量分析'}
-                    {selectedFiles.size > 0 && (
-                      <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-white/20 rounded">
-                        {selectedFiles.size}
-                      </span>
-                    )}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const paths = [...selectedFiles].map(idx => filteredFiles[idx].path || filteredFiles[idx].file_path).filter(Boolean);
-                      if (paths.length > 0) openReanalyzeModal(paths);
-                    }}
-                    disabled={selectedFiles.size === 0 || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
-                  >
-                    🔄 批量重新分析
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleGraphitiIngest}
-                    disabled={graphitiIngesting || !graphitiStatus?.neo4j_connected}
-                  >
-                    {graphitiIngesting ? <Spinner size="sm" /> : '🕸️ 导入图谱'}
-                  </Button>
-
-                  {/* AI Progress */}
-                  {(isBatchRunning || graphitiIngesting || graphitiMessage) && (
-                    <div className="flex-1 flex items-center gap-3 px-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg min-w-[200px]">
-                      {isBatchRunning && (
-                        <>
-                          <div className="flex-1 h-1.5 bg-purple-200 dark:bg-purple-800 rounded-full overflow-hidden">
-                            <div className="bg-purple-600 h-full transition-all" style={{ width: `${activeBatch?.progress || 0}%` }} />
-                          </div>
-                          <span className="text-[10px] font-mono text-purple-700 dark:text-purple-300 whitespace-nowrap">{activeBatch?.message || ""}</span>
-                        </>
-                      )}
-                      {!isBatchRunning && graphitiMessage && (
-                        <span className="text-xs text-purple-700 dark:text-purple-300 truncate">
-                          {graphitiIngesting && <Spinner size="sm" className="mr-2" />}
-                          {graphitiMessage}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+            <FileFilters
+              filterExtension={filterExtension}
+              setFilterExtension={setFilterExtension}
+              filterMinSize={filterMinSize}
+              setFilterMinSize={setFilterMinSize}
+              filterMaxSize={filterMaxSize}
+              setFilterMaxSize={setFilterMaxSize}
+            />
+            <ExtractionControls
+              extractionMode={extractionMode}
+              setExtractionMode={setExtractionMode}
+              extractionPattern={extractionPattern}
+              setExtractionPattern={setExtractionPattern}
+              includeDeleted={includeDeleted}
+              setIncludeDeleted={setIncludeDeleted}
+              overwrite={overwrite}
+              setOverwrite={setOverwrite}
+              extractionStatus={extractionStatus}
+              extractionProgress={extractionProgress}
+              extractionMessage={extractionMessage}
+              handleStartExtraction={handleStartExtraction}
+              llmStatus={llmStatus}
+              isBatchRunning={isBatchRunning}
+              activeBatch={activeBatch}
+              graphitiStatus={graphitiStatus}
+              graphitiIngesting={graphitiIngesting}
+              graphitiMessage={graphitiMessage}
+              handleBatchAnalyze={handleBatchAnalyze}
+              handleGraphitiIngest={handleGraphitiIngest}
+              openReanalyzeModal={openReanalyzeModal}
+              selectedFiles={selectedFiles}
+              filteredFiles={filteredFiles}
+            />
           </div>
         </div>
       </Card>
@@ -1089,489 +974,45 @@ ${detail}
 
       {/* File List Tab */}
       {activeTab === 'largest' && (
-        <Card title={`文件列表 (${filteredFiles.length})`}>
-          {filteredFiles.length === 0 ? (
-            <div className="text-center py-12 text-slate-500 dark:text-slate-400">无文件</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-                <thead className="bg-slate-50 dark:bg-slate-800">
-                  <tr>
-                    <th className="px-3 py-3 w-10">
-                      <input
-                        type="checkbox"
-                        checked={selectAll}
-                        onChange={(e) => handleSelectAll(e.target.checked)}
-                        className="h-4 w-4 text-purple-600 rounded"
-                      />
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">#</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">名称</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">路径</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">大小</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">扩展名</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">AI 分析</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
-                  {filteredFiles.map((file, index) => {
-                    const filePath = file.path || file.file_path;
-                    const fileName = file.name || filePath?.split('/').pop() || '-';
-                    const llmDesc = getLLMDescription(file);
-                    const isAnalyzing = llmAnalyzingFiles.has(index);
-                    const isExpanded = expandedDescriptions.has(filePath);
-                    const hasDescription = llmDesc && (llmDesc.summary || llmDesc.description);
-
-                    return (
-                      <>
-                        <tr key={index} className={`hover:bg-slate-50 dark:hover:bg-slate-700 ${selectedFiles.has(index) ? 'bg-purple-50 dark:bg-purple-900/20' : ''}`}>
-                          <td className="px-3 py-4">
-                            <input
-                              type="checkbox"
-                              checked={selectedFiles.has(index)}
-                              onChange={() => handleFileSelect(index)}
-                              className="h-4 w-4 text-purple-600 rounded"
-                            />
-                          </td>
-                          <td className="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white">#{index + 1}</td>
-                          <td className="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white">
-                            {fileName}
-                          </td>
-                          <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-300 max-w-xs truncate font-mono" title={filePath}>
-                            {filePath || '-'}
-                          </td>
-                          <td className="px-4 py-4 text-sm text-slate-900 dark:text-white font-mono">
-                            {formatFileSize(file.size || file.file_size)}
-                          </td>
-                          <td className="px-4 py-4 text-sm text-slate-500 dark:text-slate-400">
-                            <Badge variant="blue">{file.extension || '-'}</Badge>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex flex-col gap-2">
-                              {/* ... (existing LLM analysis UI) */}
-                              {hasDescription ? (
-                                <div className="max-w-md">
-                                  <div className="flex items-start gap-2">
-                                    <span className="text-green-500 mt-0.5">✨</span>
-                                    <div className="flex-1 min-w-0">
-                                      {/* DLL Threat Level Badge */}
-                                      {llmDesc.isDLLAnalysis && llmDesc.threatLevel && (
-                                        <div className="mb-1">
-                                          {(() => {
-                                            const levelConfig = {
-                                              'low': { label: '低风险', variant: 'green', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
-                                              'medium': { label: '中风险', variant: 'yellow', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' },
-                                              'high': { label: '高风险', variant: 'orange', className: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
-                                              'critical': { label: '严重', variant: 'red', className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
-                                              '严重': { label: '严重', variant: 'red', className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
-                                              '高': { label: '高风险', variant: 'orange', className: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
-                                              '中': { label: '中风险', variant: 'yellow', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' },
-                                              '低': { label: '低风险', variant: 'green', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
-                                            };
-                                            const config = levelConfig[llmDesc.threatLevel] || { label: llmDesc.threatLevel, variant: 'blue', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' };
-                                            return <span className={`inline-block px-2 py-0.5 text-xs font-semibold rounded-full ${config.className}`}>{config.label}</span>;
-                                          })()}
-                                          {llmDesc.confidence && <span className="ml-1.5 text-xs text-slate-500">置信度: {llmDesc.confidence}%</span>}
-                                        </div>
-                                      )}
-                                      {/* Summary - always visible */}
-                                      {llmDesc.summary && (
-                                        <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2 mb-1">
-                                          {llmDesc.summary}
-                                        </p>
-                                      )}
-
-                                      {/* Keywords */}
-                                      {llmDesc.keywords && llmDesc.keywords.length > 0 && (
-                                        <div className="flex flex-wrap gap-1 mb-1">
-                                          {(typeof llmDesc.keywords === 'string'
-                                            ? llmDesc.keywords.split(',')
-                                            : llmDesc.keywords
-                                          ).slice(0, 3).map((kw, i) => (
-                                            <span key={i} className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded-full">
-                                              {kw.trim()}
-                                            </span>
-                                          ))}
-                                          {(typeof llmDesc.keywords === 'string'
-                                            ? llmDesc.keywords.split(',')
-                                            : llmDesc.keywords
-                                          ).length > 3 && (
-                                              <span className="text-xs text-slate-500">
-                                                +{(typeof llmDesc.keywords === 'string'
-                                                  ? llmDesc.keywords.split(',')
-                                                  : llmDesc.keywords
-                                                ).length - 3} more
-                                              </span>
-                                            )}
-                                        </div>
-                                      )}
-
-                                      {/* Expand/Collapse button for full description */}
-                                      {llmDesc.description && (
-                                        <button
-                                          onClick={() => toggleDescription(filePath)}
-                                          className="text-xs text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300"
-                                        >
-                                          {isExpanded ? '收起详情 ▲' : '展开详情 ▼'}
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              ) : (
-                                /* Analyze Button - only show if no description */
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleAnalyzeSingleFile(file, index)}
-                                  disabled={isAnalyzing || (llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available')}
-                                  className="text-xs"
-                                >
-                                  {isAnalyzing ? (
-                                    <>
-                                      <Spinner size="sm" />
-                                      <span className="ml-2">分析中...</span>
-                                    </>
-                                  ) : (
-                                    '🧠 AI 分析'
-                                  )}
-                                </Button>
-                              )}
-                              {dllAnalyzingFiles.has(index) && !isAnalyzing && (
-                                <div className="analyzing-indicator text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                  🔍 DLL分析中...
-                                </div>
-                              )}
-                              {/* Re-analyze button - shown when description exists */}
-                              {hasDescription && (
-                                <button
-                                  onClick={() => openReanalyzeModal([filePath])}
-                                  disabled={llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available'}
-                                  className="text-xs text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300 flex items-center gap-1 mt-1"
-                                >
-                                  🔄 重新分析
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-sm font-medium">
-                            <button
-                              onClick={() => {
-                                setExtractionMode('name');
-                                setExtractionPattern(fileName);
-                                handleStartExtraction();
-                              }}
-                              disabled={extractionStatus === 'running'}
-                              className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-                              title={`从镜像中提取 ${fileName}`}
-                              aria-label={`提取 ${fileName}`}
-                            >
-                              <span className="text-lg">📥</span>
-                              <span>提取</span>
-                            </button>
-                          </td>
-                        </tr>
-
-                        {/* Expanded Full Description Row */}
-                        {isExpanded && hasDescription && llmDesc.description && (
-                          <tr className="bg-purple-50 dark:bg-purple-900/20">
-                            <td colSpan={7} className="px-6 py-4">
-                              <div className="space-y-3">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-lg">📝</span>
-                                  <h4 className="font-medium text-slate-900 dark:text-white">AI 完整分析</h4>
-                                </div>
-
-                                {/* Summary */}
-                                {llmDesc.summary && (
-                                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
-                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">摘要</span>
-                                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
-                                      {llmDesc.summary}
-                                    </p>
-                                  </div>
-                                )}
-
-                                {/* Threat Level & Confidence (DLL analysis) */}
-                                {llmDesc.isDLLAnalysis && llmDesc.threatLevel && (
-                                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
-                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">威胁评估</span>
-                                    <div className="mt-2 flex items-center gap-3">
-                                      {(() => {
-                                        const levelConfig = {
-                                          'low': { label: '低风险', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
-                                          'medium': { label: '中风险', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' },
-                                          'high': { label: '高风险', className: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
-                                          'critical': { label: '严重', className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
-                                          '严重': { label: '严重', className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
-                                          '高': { label: '高风险', className: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
-                                          '中': { label: '中风险', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' },
-                                          '低': { label: '低风险', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
-                                        };
-                                        const config = levelConfig[llmDesc.threatLevel] || { label: llmDesc.threatLevel, className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' };
-                                        return (
-                                          <>
-                                            <span className={`inline-block px-3 py-1 text-sm font-bold rounded-full ${config.className}`}>
-                                              {config.label}
-                                            </span>
-                                            {llmDesc.confidence !== undefined && (
-                                              <span className="text-sm text-slate-600 dark:text-slate-300">
-                                                置信度: <span className="font-semibold">{llmDesc.confidence}%</span>
-                                              </span>
-                                            )}
-                                          </>
-                                        );
-                                      })()}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Suspicious Behaviors (DLL analysis) */}
-                                {llmDesc.isDLLAnalysis && llmDesc.suspiciousBehaviors && llmDesc.suspiciousBehaviors.length > 0 && (
-                                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
-                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">可疑行为</span>
-                                    <ul className="mt-2 space-y-1">
-                                      {llmDesc.suspiciousBehaviors.map((behavior, i) => (
-                                        <li key={i} className="text-sm text-slate-700 dark:text-slate-300 flex items-start gap-2">
-                                          <span className="text-orange-500 mt-1">&#9679;</span>
-                                          <span>{behavior}</span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-
-                                {/* MITRE ATT&CK Techniques (DLL analysis) */}
-                                {llmDesc.isDLLAnalysis && llmDesc.mitreTechniques && llmDesc.mitreTechniques.length > 0 && (
-                                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
-                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">MITRE ATT&amp;CK 技术</span>
-                                    <div className="mt-2 flex flex-wrap gap-1">
-                                      {llmDesc.mitreTechniques.map((tech, i) => (
-                                        <span key={i} className="px-2 py-1 text-xs bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-full font-mono" title={tech.name || tech}>
-                                          {typeof tech === 'string' ? tech : (tech.id || tech)}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Recommendations (DLL analysis) */}
-                                {llmDesc.isDLLAnalysis && llmDesc.recommendations && (
-                                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
-                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">处置建议</span>
-                                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
-                                      {llmDesc.recommendations}
-                                    </p>
-                                  </div>
-                                )}
-
-                                {/* Full Description */}
-                                {llmDesc.description && (
-                                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
-                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">详细描述</span>
-                                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
-                                      {llmDesc.description}
-                                    </p>
-                                  </div>
-                                )}
-
-                                {/* All Keywords */}
-                                {llmDesc.keywords && llmDesc.keywords.length > 0 && (
-                                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg">
-                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">关键词</span>
-                                    <div className="mt-2 flex flex-wrap gap-1">
-                                      {(typeof llmDesc.keywords === 'string'
-                                        ? llmDesc.keywords.split(',')
-                                        : llmDesc.keywords
-                                      ).map((kw, i) => (
-                                        <span key={i} className="px-2 py-1 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded-full">
-                                          {kw.trim()}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Metadata */}
-                                <div className="text-xs text-slate-500 dark:text-slate-400">
-                                  {llmDesc.model && <span>模型: {llmDesc.model} | </span>}
-                                  {llmDesc.timestamp && <span>分析时间: {new Date(llmDesc.timestamp).toLocaleString()}</span>}
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
+        <FileListTable
+          filteredFiles={filteredFiles}
+          selectAll={selectAll}
+          handleSelectAll={handleSelectAll}
+          selectedFiles={selectedFiles}
+          handleFileSelect={handleFileSelect}
+          llmAnalyzingFiles={llmAnalyzingFiles}
+          dllAnalyzingFiles={dllAnalyzingFiles}
+          expandedDescriptions={expandedDescriptions}
+          toggleDescription={toggleDescription}
+          getLLMDescription={getLLMDescription}
+          handleAnalyzeSingleFile={handleAnalyzeSingleFile}
+          openReanalyzeModal={openReanalyzeModal}
+          llmStatus={llmStatus}
+          extractionStatus={extractionStatus}
+          handleStartExtraction={handleStartExtraction}
+          setExtractionMode={setExtractionMode}
+          setExtractionPattern={setExtractionPattern}
+        />
       )}
 
       {/* Extension Analysis Tab */}
-      {activeTab === 'extensions' && extensionAnalysis && (
-        <Card title="按扩展名分布">
-          {extensionAnalysis.extension_analysis && extensionAnalysis.extension_analysis.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-                <thead className="bg-slate-50 dark:bg-slate-800">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">扩展名</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">数量</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">总大小</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">占比</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
-                  {extensionAnalysis.extension_analysis
-                    .sort((a, b) => (b.file_count || 0) - (a.file_count || 0))
-                    .map((ext, index) => {
-                      const totalCount = extensionAnalysis.total_count || extensionAnalysis.extension_analysis.reduce((sum, e) => sum + (e.file_count || 0), 0);
-                      const percentage = totalCount > 0 ? ((ext.file_count || 0) / totalCount * 100).toFixed(1) : '0.0';
-                      return (
-                        <tr key={index} className="hover:bg-slate-50 dark:hover:bg-slate-700">
-                          <td className="px-6 py-4">
-                            <Badge variant="blue">{ext.extension || '(无扩展名)'}</Badge>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-900 dark:text-white">{ext.file_count || 0}</td>
-                          <td className="px-6 py-4 text-sm text-slate-900 dark:text-white font-mono">{formatFileSize(ext.total_size || 0)}</td>
-                          <td className="px-6 py-4 text-sm text-slate-900 dark:text-white">{percentage}%</td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-12 text-slate-500 dark:text-slate-400">无扩展名数据</div>
-          )}
-        </Card>
+      {activeTab === 'extensions' && (
+        <ExtensionAnalysisTab extensionAnalysis={extensionAnalysis} />
       )}
 
       {/* Office Preview Tab */}
       {activeTab === 'office' && (
-        <Card title="📄 Office 文档预览">
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              选择一个 Office 文件 (PPT, Excel) 解析并预览内容。支持 .pptx, .xlsx, .xls 格式。
-            </p>
-            {/* File selector for Office files */}
-            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-              <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">选择文件</h4>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {filteredFiles
-                  .filter(f => {
-                    const ext = (f.extension || '').toLowerCase();
-                    return ['.pptx', '.ppt', '.xlsx', '.xls', '.docx', '.doc'].includes(ext);
-                  })
-                  .map((file, idx) => {
-                    const filePath = file.path || file.file_path;
-                    return (
-                      <button
-                        key={idx}
-                        onClick={async () => {
-                          setOfficeParsing(true);
-                          setOfficeError(null);
-                          setOfficePreview(null);
-                          try {
-                            const result = await parseFile(filePath);
-                            setOfficePreview({ file, ...result });
-                          } catch (err) {
-                            setOfficeError(err.message || '解析失败');
-                          } finally {
-                            setOfficeParsing(false);
-                          }
-                        }}
-                        disabled={officeParsing}
-                        className="w-full text-left px-3 py-2 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 text-sm text-slate-700 dark:text-slate-300 flex items-center gap-2"
-                      >
-                        <Badge variant="blue">{file.extension}</Badge>
-                        <span className="truncate">{file.name || filePath?.split('/').pop()}</span>
-                      </button>
-                    );
-                  })}
-                {filteredFiles.filter(f => {
-                  const ext = (f.extension || '').toLowerCase();
-                  return ['.pptx', '.ppt', '.xlsx', '.xls', '.docx', '.doc'].includes(ext);
-                }).length === 0 && (
-                    <p className="text-slate-400 text-sm py-4 text-center">无 Office 文件</p>
-                  )}
-              </div>
-            </div>
-
-            {officeParsing && (
-              <div className="flex items-center justify-center py-8">
-                <Spinner size="lg" />
-                <span className="ml-3 text-slate-600 dark:text-slate-300">解析中...</span>
-              </div>
-            )}
-
-            {officeError && (
-              <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 rounded text-sm">
-                ❌ {officeError}
-              </div>
-            )}
-
-            {officePreview && (
-              <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-                <h4 className="font-medium text-slate-900 dark:text-white mb-3">
-                  📄 {officePreview.file?.name || '文档内容'}
-                </h4>
-                {/* Slides / Sheets */}
-                {officePreview.slides && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-slate-500">幻灯片: {officePreview.slides.length} 页</p>
-                    {officePreview.slides.map((slide, i) => (
-                      <div key={i} className="p-3 bg-slate-50 dark:bg-slate-900 rounded border">
-                        <p className="text-xs text-slate-400 mb-1">第 {i + 1} 页</p>
-                        <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap">{slide.text || slide.content || '(无文本)'}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {officePreview.sheets && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-slate-500">工作表: {officePreview.sheets.length} 个</p>
-                    {officePreview.sheets.map((sheet, i) => (
-                      <div key={i} className="p-3 bg-slate-50 dark:bg-slate-900 rounded border">
-                        <p className="text-xs text-slate-400 mb-1">{sheet.name || `工作表 ${i + 1}`}</p>
-                        {sheet.data && sheet.data.length > 0 ? (
-                          <div className="overflow-x-auto">
-                            <table className="text-xs">
-                              <tbody>
-                                {sheet.data.slice(0, 20).map((row, ri) => (
-                                  <tr key={ri}>
-                                    {(Array.isArray(row) ? row : [row]).map((cell, ci) => (
-                                      <td key={ci} className="px-2 py-1 border border-slate-200 dark:border-slate-600">{String(cell ?? '')}</td>
-                                    ))}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                            {sheet.data.length > 20 && <p className="text-xs text-slate-400 mt-1">… 还有 {sheet.data.length - 20} 行</p>}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-slate-400">(无数据)</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {/* Raw text fallback */}
-                {officePreview.text && !officePreview.slides && !officePreview.sheets && (
-                  <pre className="text-sm text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-900 p-4 rounded overflow-auto max-h-96 whitespace-pre-wrap">
-                    {officePreview.text}
-                  </pre>
-                )}
-              </div>
-            )}
-          </div>
-        </Card>
+        <OfficePreviewTab
+          filteredFiles={filteredFiles}
+          officePreview={officePreview}
+          setOfficePreview={setOfficePreview}
+          officeParsing={officeParsing}
+          setOfficeParsing={setOfficeParsing}
+          officeError={officeError}
+          setOfficeError={setOfficeError}
+        />
       )}
+
       {/* Re-analysis Modal */}
       <ReanalyzeModal
         show={showReanalyzeModal}
@@ -1583,96 +1024,6 @@ ${detail}
         reanalyzing={reanalyzing}
         message={reanalyzeMessage}
       />
-    </div>
-  );
-};
-
-// Re-analysis Modal
-const ReanalyzeModal = ({ show, onClose, targetFiles, hint, setHint, onSubmit, reanalyzing, message }) => {
-  if (!show) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full mx-4 p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-            🔄 重新分析文件
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div className="mb-4">
-          <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">
-            将对 <span className="font-bold text-purple-600">{targetFiles.length}</span> 个文件进行二次分析，结合案情描述和知识图谱上下文。
-          </p>
-          {targetFiles.length <= 3 && (
-            <div className="space-y-1 mb-3">
-              {targetFiles.map((f, i) => (
-                <div key={i} className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate">
-                  📄 {f}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-            补充描述 / 分析提示
-          </label>
-          <textarea
-            value={hint}
-            onChange={(e) => setHint(e.target.value)}
-            placeholder="请输入对该文件的额外描述或分析方向，例如：请重点关注转账记录和可疑联系人..."
-            className="w-full h-28 px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white text-sm resize-none focus:ring-2 focus:ring-purple-500"
-            disabled={reanalyzing}
-          />
-        </div>
-
-        {message && (
-          <div className={`mb-4 p-3 rounded-xl text-sm ${message.startsWith('✅') ? 'bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-200' :
-            message.startsWith('❌') ? 'bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200' :
-              'bg-blue-50 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
-            }`}>
-            {message}
-          </div>
-        )}
-
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl"
-            disabled={reanalyzing}
-          >
-            取消
-          </button>
-          <button
-            onClick={onSubmit}
-            disabled={reanalyzing || !hint.trim()}
-            className={`px-6 py-2 rounded-xl text-sm font-medium transition-all ${reanalyzing || !hint.trim()
-              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-              : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-lg'
-              }`}
-          >
-            {reanalyzing ? (
-              <span className="flex items-center">
-                <Spinner size="sm" />
-                <span className="ml-2">分析中...</span>
-              </span>
-            ) : (
-              '🔄 开始重新分析'
-            )}
-          </button>
-        </div>
-      </div>
     </div>
   );
 };
