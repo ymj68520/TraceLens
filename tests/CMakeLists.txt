@@ -726,6 +726,7 @@ add_executable(
   test_database_analyzer_gtest
   UnitTest/test_database_analyzer_gtest.cpp
   ../src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp
+../src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase_Queries.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp

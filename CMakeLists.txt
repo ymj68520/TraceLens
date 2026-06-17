@@ -396,6 +396,7 @@ set(LIB_SOURCES
     # DatabaseAnalyzer module
     src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp
     src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp
+src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase_Queries.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp
     src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp
