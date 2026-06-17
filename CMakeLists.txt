@@ -230,6 +230,7 @@ set(LIB_SOURCES
     src/core/DatabaseManager/EventExtractor/Detail/SystemEventExtractor.cpp
     src/core/DatabaseManager/EventExtractor/Detail/EventCorrelationExtractor.cpp
     src/core/DatabaseManager/FileClassifier/FileClassifier.cpp
+    src/core/DatabaseManager/FileClassifier/FileClassifier_SceneRules.cpp
     src/core/DatabaseManager/FileClassifier/FileClassifierMappings.cpp
     src/core/DatabaseManager/FileClassifier/FileClassifierPatterns.cpp
     src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
