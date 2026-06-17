@@ -146,6 +146,7 @@ class ReportGenerator:
                     windows_section=windows_section,
                     task_ids=task_ids,
                     is_cross_image_report=is_cross_image_report,
+                    files_db_path=files_db_path,
                 )
                 if report_text:
                     model_used = "graph-enhanced"
@@ -193,6 +194,7 @@ class ReportGenerator:
         windows_section: str = "",
         task_ids: Optional[List[str]] = None,
         is_cross_image_report: bool = False,
+        files_db_path: Optional[str] = None,
     ) -> str:
         """
         Generate report using Graphiti RAG with optimized context management.
@@ -214,6 +216,16 @@ class ReportGenerator:
                 evidence_list_str += f"- [[file:{d['file_path']}]]\n"
         else:
             evidence_list_str += "（无显式证据文件，基于全局图谱分析）"
+
+        # Include analyzed event clusters as evidence
+        event_evidence = self._load_event_cluster_evidence(task_id, files_db_path)
+        if event_evidence:
+            evidence_list_str += "\n本案关键事件簇证据清单：\n"
+            for ev in event_evidence:
+                evidence_list_str += (
+                    f"- [[event:{ev['event_type']}@{ev['time_window']}/{ev['parent_dir']}]] "
+                    f"({ev['cluster_count']}个事件) — {ev.get('summary', '')}\n"
+                )
 
         # Include Windows artifacts summary if available
         if windows_section:
@@ -301,9 +313,10 @@ class ReportGenerator:
                 context=combined_context,
                 chapter_instruction=chapter["instruction"] +
                 "\n\nCRITICAL INSTRUCTION: "
-                "1. 你必须在分析中显式引用【核心证据清单】中的文件路径；"
+                "1. 你必须在分析中显式引用【核心证据清单】中的文件路径和事件簇；"
                 "2. 每一个引用的文件必须严格遵循 [[file:路径]] 格式（例如 [[file:/usr/bin/cmd]]）；"
-                "3. 严禁虚构不存在的文件路径。",
+                "3. 每一个引用的事件簇必须严格遵循 [[event:事件类型@时间窗口/目录]] 格式（例如 [[event:CREATED@123456/DCIM/Camera]]）；"
+                "4. 严禁虚构不存在的文件路径或事件。",
             )
 
             try:
@@ -519,6 +532,86 @@ class ReportGenerator:
                 seen.add(name)
                 deduped.append(r)
         return deduped
+
+    def _load_event_cluster_evidence(self, task_id: str, files_db_path: str = None) -> List[Dict[str, Any]]:
+        """
+        Load AI-analyzed event clusters from the events database.
+
+        Event clusters that have been analyzed by the LLM (llm_summary is not empty)
+        are returned as evidence for the report. This ensures the report includes
+        timeline-based findings alongside file-based evidence.
+
+        Args:
+            task_id: Task identifier for locating the database
+            files_db_path: Optional _files.db path to derive the events.db location from
+
+        Returns:
+            List of event cluster evidence dicts with event_type, time_window,
+            parent_dir, cluster_count, and summary fields.
+        """
+        # Derive events.db path from files_db_path (they share the same task directory)
+        events_db = None
+        if files_db_path:
+            events_db = files_db_path.replace("_files.db", "_events.db")
+        if not events_db or not Path(events_db).exists():
+            # Fallback: try to construct from build/data/tasks/<task_id>/
+            import re
+            task_match = re.search(r'(tasks/[a-f0-9-]+/)', files_db_path or "")
+            if task_match:
+                import os
+                build_dir = Path(files_db_path).parent.parent.parent.parent if files_db_path else Path.cwd()
+                events_db = str(build_dir / task_match.group(1) / "events.db")
+        if not events_db or not Path(events_db).exists():
+            logger.debug(f"Events DB not found for task {task_id}")
+            return []
+
+        try:
+            with sqlite3.connect(events_db, timeout=10) as conn:
+                conn.row_factory = sqlite3.Row
+                # Ensure AI columns exist (self-healing, same as C++ timeline route)
+                for col, col_type in [("llm_summary", "TEXT"), ("llm_description", "TEXT"),
+                                      ("llm_keywords", "TEXT"), ("llm_analyzed_at", "INTEGER"),
+                                      ("llm_model_used", "TEXT"), ("llm_is_relevant", "INTEGER")]:
+                    conn.execute(f"ALTER TABLE events ADD COLUMN {col} {col_type}")
+                conn.commit()
+
+                cur = conn.execute("""
+                    SELECT
+                        event_type,
+                        (timestamp / 60) as time_window,
+                        CASE WHEN file_path LIKE '%/%'
+                            THEN SUBSTR(file_path, 1, LENGTH(file_path) - INSTR(REPLACE(file_path, '/', char(1)), char(1)) + 1)
+                            ELSE ''
+                        END as parent_dir,
+                        COUNT(*) as cluster_count,
+                        llm_summary,
+                        llm_description,
+                        llm_is_relevant
+                    FROM events
+                    WHERE llm_summary IS NOT NULL AND llm_summary != ''
+                    GROUP BY parent_dir, time_window, event_type
+                    ORDER BY cluster_count DESC
+                    LIMIT 50
+                """)
+                rows = cur.fetchall()
+
+                result = []
+                for row in rows:
+                    result.append({
+                        "event_type": row["event_type"],
+                        "time_window": row["time_window"],
+                        "parent_dir": row["parent_dir"] or "/",
+                        "cluster_count": row["cluster_count"],
+                        "summary": row["llm_summary"],
+                        "description": row["llm_description"],
+                        "is_relevant": row["llm_is_relevant"],
+                    })
+
+                logger.info(f"Loaded {len(result)} analyzed event clusters for report from task {task_id}")
+                return result
+        except Exception as e:
+            logger.warning(f"Failed to load event cluster evidence: {e}")
+            return []
 
     def _persist_case_report(
         self, db_path: str, task_id: str,

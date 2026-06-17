@@ -92,10 +92,15 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
     }
 
     // Get total count for pagination metadata
-    // If clustering is enabled, total_count is the number of clusters
+    // The count query MUST match the GROUP BY of the main query exactly,
+    // otherwise totalPages will be wrong and pagination will break.
+    // Main query groups by: parent_directory, (timestamp/60), event_type
+    // So the count must count the same groups.
     std::string count_sql;
     if (cluster_events) {
-        count_sql = "SELECT COUNT(DISTINCT (timestamp / 60) || '_' || event_type) FROM events" + where_clause;
+        std::string parent_dir_expr = "(CASE WHEN file_path LIKE '%/%' THEN SUBSTR(file_path, 1, LENGTH(file_path) - INSTR(REPLACE(file_path, '/', char(1)), char(1)) + 1) ELSE '' END)";
+        count_sql = "SELECT COUNT(*) FROM (SELECT 1 FROM events" + where_clause +
+                    " GROUP BY " + parent_dir_expr + ", (timestamp / 60), event_type)";
     } else {
         count_sql = "SELECT COUNT(*) FROM events" + where_clause;
     }

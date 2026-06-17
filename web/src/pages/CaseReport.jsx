@@ -234,9 +234,10 @@ const CaseReport = () => {
     };
 
     const renderInlineStyles = (text) => {
-        // First handle [[file:path]] references
-        const fileRefParts = text.split(/(\[\[file:[^\]]+\]\])/g);
-        const processed = fileRefParts.map((part, i) => {
+        // Handle both [[file:path]] and [[event:...]] references
+        const refParts = text.split(/(\[\[(?:file|event):[^\]]+\]\])/g);
+        const processed = refParts.map((part, i) => {
+            // [[file:path]] reference
             const fileMatch = part.match(/^\[\[file:(.+)\]\]$/);
             if (fileMatch) {
                 const filePath = fileMatch[1];
@@ -253,6 +254,26 @@ const CaseReport = () => {
                         title={filePath}
                     >
                         📄 {fileName}
+                    </a>
+                );
+            }
+            // [[event:type@window/dir]] reference
+            const eventMatch = part.match(/^\[\[event:(.+)\]\]$/);
+            if (eventMatch) {
+                const eventRef = eventMatch[1];
+                const shortLabel = eventRef.length > 30 ? eventRef.slice(0, 30) + '…' : eventRef;
+                return (
+                    <a
+                        key={`event-${i}`}
+                        href={`/timeline?task_id=${taskId}&cluster=true`}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            navigate(`/timeline?task_id=${taskId}&cluster=true`);
+                        }}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-md text-xs font-mono hover:bg-purple-100 dark:hover:bg-purple-800/40 transition-colors cursor-pointer border border-purple-200 dark:border-purple-700"
+                        title={`事件簇: ${eventRef}`}
+                    >
+                        ⏱ {shortLabel}
                     </a>
                 );
             }

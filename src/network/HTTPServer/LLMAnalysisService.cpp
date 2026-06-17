@@ -314,12 +314,52 @@ bool LLMAnalysisService::storeDescription(const std::string& dbPath,
     rc = sqlite3_step(stmt);
     int changes = sqlite3_changes(db);
     sqlite3_finalize(stmt);
-    sqlite3_close(db);
 
     if (rc != SQLITE_DONE) {
         std::cerr << "Failed to update LLM analysis for file: " << filePath << std::endl;
+        sqlite3_close(db);
         return false;
     }
+
+    // Also write to the file_descriptions table with is_relevant=1 so that
+    // AI-analyzed files from the main pipeline appear in the investigation
+    // center's evidence list automatically. The Python side (persist_to_files_db)
+    // does the same; the C++ side must stay in sync.
+    sqlite3_exec(db,
+        "CREATE TABLE IF NOT EXISTS file_descriptions ("
+        "  file_path TEXT PRIMARY KEY,"
+        "  description TEXT,"
+        "  summary TEXT,"
+        "  keywords TEXT,"
+        "  model_used TEXT,"
+        "  is_relevant INTEGER DEFAULT 0,"
+        "  created_at INTEGER DEFAULT 0"
+        ")",
+        nullptr, nullptr, nullptr);
+
+    sqlite3_stmt* descStmt = nullptr;
+    const char* descSql =
+        "INSERT INTO file_descriptions (file_path, description, summary, keywords, model_used, is_relevant, created_at) "
+        "VALUES (?, ?, ?, ?, ?, 1, ?) "
+        "ON CONFLICT(file_path) DO UPDATE SET "
+        "  description = excluded.description, "
+        "  summary = excluded.summary, "
+        "  keywords = excluded.keywords, "
+        "  model_used = excluded.model_used, "
+        "  created_at = excluded.created_at";
+
+    if (sqlite3_prepare_v2(db, descSql, -1, &descStmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(descStmt, 1, filePath.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(descStmt, 2, description.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(descStmt, 3, summary.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(descStmt, 4, keywordsStr.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(descStmt, 5, modelUsed.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(descStmt, 6, currentTime);
+        sqlite3_step(descStmt);
+        sqlite3_finalize(descStmt);
+    }
+
+    sqlite3_close(db);
 
     if (changes == 0) {
         std::cerr << "Warning: No rows updated for file: " << filePath << std::endl;
