@@ -242,6 +242,7 @@ set(LIB_SOURCES
     src/network/Swagger/Swagger.cpp
     src/network/HTTPServer/HTTPserver.cpp
     src/network/HTTPServer/TaskManager.cpp
+    src/network/HTTPServer/TaskManagerAnalysis.cpp
     src/network/HTTPServer/SQLiteHelper.cpp
     src/network/HTTPServer/LLMAnalysisService.cpp
     src/network/HTTPServer/WindowsLLMAnalysisService.cpp
