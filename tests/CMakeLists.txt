@@ -767,6 +767,7 @@ add_executable(test_dll_analyzer_gtest
                ../src/analyzers/DLLAnalyzer/Core/DependencyAnalyzer.cpp
                ../src/analyzers/DLLAnalyzer/Core/DLLAnalyzerCore.cpp
                ../src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.cpp
+../src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase_Queries.cpp
                # Windows Files Analyzer (for forensic correlation)
                ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
                ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Prefetch.cpp
@@ -810,6 +811,7 @@ add_executable(test_dll_analyzer_integration
                ../src/analyzers/DLLAnalyzer/Core/DependencyAnalyzer.cpp
                ../src/analyzers/DLLAnalyzer/Core/DLLAnalyzerCore.cpp
                ../src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.cpp
+../src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase_Queries.cpp
                # Windows Files Analyzer (for forensic correlation)
                ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
                ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Prefetch.cpp

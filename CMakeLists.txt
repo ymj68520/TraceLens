@@ -408,6 +408,7 @@ set(LIB_SOURCES
     # DLLAnalyzer module
     src/analyzers/DLLAnalyzer/Core/DLLAnalyzerCore.cpp
     src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase.cpp
+src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase_Queries.cpp
     src/analyzers/DLLAnalyzer/Parsers/PEHeaderParser.cpp
     src/analyzers/DLLAnalyzer/Parsers/PEImportExportParser.cpp
     src/analyzers/DLLAnalyzer/Parsers/ELFParser.cpp
