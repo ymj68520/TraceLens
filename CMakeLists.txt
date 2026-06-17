@@ -353,6 +353,8 @@ set(LIB_SOURCES
     src/analyzers/LinuxFilesAnalyzer/Parsers/Database/DatabaseLogParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/EmailVPN/EmailVPNLogParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/FirewallSecurity/FirewallSecurityLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/FirewallSecurity/FirewallSecurityLogParser_Firewall.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/FirewallSecurity/FirewallSecurityLogParser_SecurityProducts.cpp
     src/analyzers/LinuxFilesAnalyzer/Analysis/LogCorrelationEngine.cpp
     src/analyzers/LinuxFilesAnalyzer/Analysis/TimelineReconstructor.cpp
     src/analyzers/LinuxFilesAnalyzer/Analysis/AnomalyDetector.cpp

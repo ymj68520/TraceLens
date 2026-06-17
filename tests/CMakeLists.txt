@@ -297,7 +297,9 @@ add_test(NAME EmailVPNLogParserTests COMMAND test_email_vpn_log_parser)
 add_executable(
   test_firewall_security_log_parser
   UnitTest/test_firewall_security_log_parser.cpp
-  ../src/analyzers/LinuxFilesAnalyzer/Parsers/FirewallSecurity/FirewallSecurityLogParser.cpp)
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/FirewallSecurity/FirewallSecurityLogParser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/FirewallSecurity/FirewallSecurityLogParser_Firewall.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/FirewallSecurity/FirewallSecurityLogParser_SecurityProducts.cpp)
 
 target_include_directories(
   test_firewall_security_log_parser
