@@ -165,11 +165,14 @@ const Timeline = () => {
     const autoAnalyzeClusters = async () => {
       setAnalysisInProgress(true);
       try {
-        // 筛选未分析的重要事件簇
-        // 双重检查：1) llm_summary不存在 2) 不在analyzedClusters中
+        // 筛选未分析的事件簇。
+        // 注意：不再用 cluster_count > 1 作为门槛。当开启聚合视图时，每个分组项
+        // （哪怕只有1个事件）都是一个有意义的簇，都应纳入自动分析。原先的 >1
+        // 门槛会让 ~62% 的单事件簇永远不被分析。仍保留按 cluster_count 降序排序
+        // （多事件簇优先）和每次最多5个的限流，避免请求量激增。
         const unanalyzedClusters = timelineData.timeline.filter(event => {
           const clusterKey = `${event.timestamp}-${event.event_type}-${event.parent_directory}`;
-          return event.cluster_count > 1 && !event.llm_summary && !analyzedClusters.has(clusterKey);
+          return !event.llm_summary && !analyzedClusters.has(clusterKey);
         });
         
         console.log('Auto-analyze: Found', unanalyzedClusters.length, 'unanalyzed clusters');
@@ -664,7 +667,14 @@ const Timeline = () => {
                   data={events}
                   style={{ height: '100%' }}
                   itemContent={(index, event) => {
-                    const isCluster = event.cluster_count > 1;
+                    // When clustering is enabled, every grouped item is a cluster
+                    // (even single-event ones). The backend groups by
+                    // (parent_directory, time_window, event_type); a group with
+                    // cluster_count === 1 is still a meaningful cluster. Treating
+                    // only count>1 as clusters left ~62% of groups rendered as
+                    // flat events with no AI analysis / directory / click support.
+                    const isCluster = isClustered;
+                    const isMultiEventCluster = (event.cluster_count || 1) > 1;
                     return (
                       <div className="px-6 py-1.5">
                         <div className="relative ml-4 pl-8 border-l-2 border-slate-100 py-2 hover:border-primary-200 transition-colors">
@@ -681,7 +691,7 @@ const Timeline = () => {
                             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                               <div className="flex items-center space-x-2">
                                 <span className="text-[12px] font-bold text-slate-800 font-mono tracking-tight">
-                                  {isCluster 
+                                  {isMultiEventCluster
                                     ? `${formatTimeOnly(event.timestamp)} - ${formatTimeOnly(event.end_timestamp)}`
                                     : formatTimestamp(event.timestamp)}
                                 </span>
@@ -692,7 +702,7 @@ const Timeline = () => {
                                 } className="text-[9px] px-1.5 py-0 uppercase font-black">
                                   {event.event_type}
                                 </Badge>
-                                {isCluster && (
+                                {isMultiEventCluster && (
                                   <Badge variant="blue" icon={Layers} className="text-[9px] px-1.5 py-0 font-bold">
                                     {event.cluster_count} {t('timeline.node.items')}
                                   </Badge>
@@ -786,7 +796,7 @@ const Timeline = () => {
                             <div className="flex items-center space-x-4 text-[10px] text-slate-400 mt-2.5 pt-2 border-t border-slate-50">
                                <div className="flex items-center">
                                 <FileText className="w-3 h-3 mr-1 opacity-70" />
-                                {isCluster && <span className="mr-1">[{event.cluster_count} {t('timeline.node.items')}]</span>}
+                                {isMultiEventCluster && <span className="mr-1">[{event.cluster_count} {t('timeline.node.items')}]</span>}
                                 {formatFileSize(event.file_size)} {isCluster ? `(${t('timeline.node.total')})` : ''}
                               </div>
                               {event.file_type && <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[9px] font-black uppercase text-slate-500 tracking-tighter">{event.file_type}</span>}
