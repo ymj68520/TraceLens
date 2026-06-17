@@ -347,6 +347,8 @@ set(LIB_SOURCES
     src/analyzers/LinuxFilesAnalyzer/Parsers/PackageManager/PackageManagerLogParser_LinuxParsers.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/PackageManager/PackageManagerLogParser_UniversalAndAnalysis.cpp
     src/analyzers/LinuxFilesAnalyzer/Analysis/AccountSSH/AccountSSHAnalyzer.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/AccountSSH/AccountSSHAnalyzer_Accounts.cpp
+    src/analyzers/LinuxFilesAnalyzer/Analysis/AccountSSH/AccountSSHAnalyzer_SSH.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Database/DatabaseLogParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/EmailVPN/EmailVPNLogParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/FirewallSecurity/FirewallSecurityLogParser.cpp
