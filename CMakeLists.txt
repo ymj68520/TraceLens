@@ -352,6 +352,8 @@ set(LIB_SOURCES
     src/analyzers/LinuxFilesAnalyzer/Analysis/AccountSSH/AccountSSHAnalyzer_SSH.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Database/DatabaseLogParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/EmailVPN/EmailVPNLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/EmailVPN/EmailVPNLogParser_Email.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/EmailVPN/EmailVPNLogParser_VPN.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/FirewallSecurity/FirewallSecurityLogParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/FirewallSecurity/FirewallSecurityLogParser_Firewall.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/FirewallSecurity/FirewallSecurityLogParser_SecurityProducts.cpp

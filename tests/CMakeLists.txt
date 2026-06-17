@@ -279,7 +279,9 @@ add_test(NAME DatabaseLogParserTests COMMAND test_database_log_parser)
 add_executable(
   test_email_vpn_log_parser
   UnitTest/test_email_vpn_log_parser.cpp
-  ../src/analyzers/LinuxFilesAnalyzer/Parsers/EmailVPN/EmailVPNLogParser.cpp)
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/EmailVPN/EmailVPNLogParser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/EmailVPN/EmailVPNLogParser_Email.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/EmailVPN/EmailVPNLogParser_VPN.cpp)
 
 target_include_directories(
   test_email_vpn_log_parser
