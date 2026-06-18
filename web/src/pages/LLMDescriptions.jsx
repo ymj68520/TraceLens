@@ -10,6 +10,10 @@ import { getTaskResults } from '../services/taskService';
 import { fetchTasks } from '../store/taskSlice';
 import { reanalyzeFiles, getCaseAnalysisStatus } from '../services/caseAnalysisService';
 
+// Subcomponents (split for maintainability)
+import LLMTaskSelector from '../components/llm-descriptions/LLMTaskSelector';
+import LLMReanalyzeModal from '../components/llm-descriptions/LLMReanalyzeModal';
+
 const LLMDescriptions = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const taskId = searchParams.get('task_id');
@@ -223,59 +227,7 @@ const LLMDescriptions = () => {
 
     // Task Selector Component
     const TaskSelector = () => (
-        <Card title="📋 选择任务">
-            {llmEnabledTasks.length === 0 ? (
-                <div className="text-center py-8">
-                    <div className="text-5xl mb-4">🔍</div>
-                    <p className="text-slate-500 mb-4">
-                        未找到已完成的包含 AI 分析的任务。
-                    </p>
-                    <p className="text-sm text-slate-400">
-                        请先在{' '}
-                        <a href="/tasks" className="text-primary-600 hover:text-blue-800 underline">
-                            任务页面
-                        </a>{' '}
-                        创建一个启用 AI 分析的任务。
-                    </p>
-                </div>
-            ) : (
-                <div className="space-y-3">
-                    <p className="text-sm text-slate-600 mb-4">
-                        选择一个已完成的任务以查看 AI 生成的文件描述：
-                    </p>
-                    <div className="space-y-2">
-                        {llmEnabledTasks.map((task) => (
-                            <button
-                                key={task.id}
-                                onClick={() => handleTaskSelect(task.id)}
-                                className="w-full text-left p-4 border border-slate-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all group"
-                            >
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center space-x-3">
-                                        <span className="text-xl">📊</span>
-                                        <div>
-                                            <p className="font-mono text-sm text-slate-700 group-hover:text-blue-700">
-                                                {task.id.substring(0, 8)}...
-                                            </p>
-                                            <p className="text-sm text-slate-500 truncate max-w-md">
-                                                {task.image_path}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                        <Badge variant="green">已完成</Badge>
-                                        <Badge variant="purple">AI</Badge>
-                                        <span className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            →
-                                        </span>
-                                    </div>
-                                </div>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </Card>
+        <LLMTaskSelector llmEnabledTasks={llmEnabledTasks} onSelect={handleTaskSelect} />
     );
 
     // No task selected - show task selector
@@ -536,7 +488,7 @@ const LLMDescriptions = () => {
             </div>
 
             {/* Re-analysis Modal */}
-            <ReanalyzeModal
+            <LLMReanalyzeModal
                 show={showReanalyzeModal}
                 onClose={() => !reanalyzing && setShowReanalyzeModal(false)}
                 targetFiles={reanalyzeTargetFiles}
@@ -551,99 +503,5 @@ const LLMDescriptions = () => {
 };
 
 // Re-analysis Modal (Local component for consistency)
-const ReanalyzeModal = ({ show, onClose, targetFiles, hint, setHint, onSubmit, reanalyzing, message }) => {
-    if (!show) return null;
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-            <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl max-w-xl w-full mx-4 overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="p-8">
-                    <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                            <span className="text-2xl">🔄</span> 重新分析选定文件
-                        </h3>
-                        <button
-                            onClick={onClose}
-                            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-                        >
-                            <span className="text-xl">✕</span>
-                        </button>
-                    </div>
-
-                    <div className="mb-6">
-                        <p className="text-sm text-slate-600 dark:text-slate-300">
-                            将对 <span className="font-bold text-purple-600">{targetFiles.length}</span> 个文件进行二次深度分析。
-                        </p>
-                        {targetFiles.length <= 2 && (
-                            <div className="mt-2 space-y-1">
-                                {targetFiles.map((f, i) => (
-                                    <div key={i} className="text-xs font-mono text-slate-400 truncate bg-slate-50 dark:bg-slate-900 p-1.5 rounded">
-                                        📄 {f}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="mb-6">
-                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
-                            分析指令 / 补充描述
-                        </label>
-                        <textarea
-                            value={hint}
-                            onChange={(e) => setHint(e.target.value)}
-                            placeholder="请输入对此文件的具体分析方向，例如：关注其中的账户信息、加密货币关键词等..."
-                            className="w-full h-36 px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-2xl dark:bg-slate-700 dark:text-white text-sm resize-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 transition-all outline-none"
-                            disabled={reanalyzing}
-                        />
-                    </div>
-
-                    {message && (
-                        <div className={`mb-6 p-4 rounded-2xl text-sm font-medium animate-pulse ${
-                            message.startsWith('✅') ? 'bg-green-50 text-green-800 border border-green-100' :
-                            message.startsWith('❌') ? 'bg-red-50 text-red-800 border border-red-100' :
-                            'bg-blue-50 text-blue-800 border border-blue-100'
-                        }`}>
-                            {message}
-                        </div>
-                    )}
-
-                    <div className="flex justify-end gap-3">
-                        <button
-                            onClick={onClose}
-                            className="px-6 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white transition-colors"
-                            disabled={reanalyzing}
-                        >
-                            取消
-                        </button>
-                        <button
-                            onClick={onSubmit}
-                            disabled={reanalyzing || !hint.trim()}
-                            className={`px-8 py-2.5 rounded-2xl text-sm font-bold transition-all shadow-lg ${
-                                reanalyzing || !hint.trim()
-                                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                                    : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 hover:scale-[1.02] active:scale-95'
-                            }`}
-                        >
-                            {reanalyzing ? (
-                                <span className="flex items-center gap-2">
-                                    <Spinner size="sm" />
-                                    执行中...
-                                </span>
-                            ) : (
-                                '🚀 开始重新分析'
-                            )}
-                        </button>
-                    </div>
-                </div>
-            </motion.div>
-        </div>
-    );
-};
 
 export default LLMDescriptions;
