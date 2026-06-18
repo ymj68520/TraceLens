@@ -733,6 +733,7 @@ add_executable(
 ../src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase_Queries.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/DBParserFactory.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer.cpp
+  ../src/analyzers/DatabaseAnalyzer/Parsers/SQLiteAnalyzer_Forensics.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/MySQLAnalyzer.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/MySQLDaemon.cpp
   ../src/analyzers/DatabaseAnalyzer/Parsers/PostgreSQLAnalyzer.cpp
