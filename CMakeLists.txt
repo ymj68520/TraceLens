@@ -372,6 +372,7 @@ set(LIB_SOURCES
     src/analyzers/LinuxFilesAnalyzer/Parsers/ExtendedHistoryParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SecurityBypassAnalyzer.cpp
     src/core/AuditLog/AuditLog.cpp
+    src/core/AuditLog/AuditLog_Queries.cpp
     src/core/PathManager/PathManager.cpp
     src/core/FullTextSearch/FullTextSearch.cpp
     src/core/FullTextSearch/TextExtractor.cpp
