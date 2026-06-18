@@ -311,6 +311,7 @@ set(LIB_SOURCES
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers_ExecutionTraces.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers_SystemAnalysis.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsPrefetchParser.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsPrefetchParser_Helpers.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsLnkParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsAmcacheParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsSrumParser.cpp
