@@ -189,6 +189,7 @@ add_executable(
   test_middleware_log_parser
   UnitTest/test_middleware_log_parser.cpp
   ../src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/MiddlewareLogParser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/MiddlewareLogParser_Middleware.cpp
   ../src/analyzers/LinuxFilesAnalyzer/Parsers/TimestampNormalizer.cpp)
 
 target_include_directories(

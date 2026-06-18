@@ -339,6 +339,7 @@ set(LIB_SOURCES
     src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/ApacheParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/NginxParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/MiddlewareLogParser.cpp
+    src/analyzers/LinuxFilesAnalyzer/Parsers/WebServer/MiddlewareLogParser_Middleware.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SetuidAnalyzer.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Security/CapabilityAnalyzer.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SELinuxAnalyzer.cpp
