@@ -70,7 +70,7 @@ class WindowsArtifactFilter:
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
 
-        from ...graphiti_integration.database_reader import WindowsDatabase
+        from graphiti_integration.database_reader import WindowsDatabase
 
         # Use all artifact types if not specified
         if artifact_types is None:

@@ -48,7 +48,7 @@ async def ingest_data(
         - Does NOT re-run LLM analysis
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         # Check if task exists via C++ backend
@@ -104,7 +104,7 @@ async def ingest_file(
     - Force re-analysis: Trigger LLM re-analysis before ingest
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         # Check if task exists
@@ -155,7 +155,7 @@ async def ingest_events(
     Events are attached to the events array property of File entities.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         # Check if task exists

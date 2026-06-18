@@ -42,7 +42,7 @@ class ReportGeneratorHelpersMixin:
         Returns:
             Aggregated list of file descriptions from all databases
         """
-        from .db_utils import ensure_file_descriptions_schema
+        from ..db_utils import ensure_file_descriptions_schema
 
         all_descriptions = []
         seen_paths = set()  # Deduplicate by file path
@@ -270,7 +270,7 @@ class ReportGeneratorHelpersMixin:
         case_description: str, report: str
     ):
         """Persist the case report to database."""
-        from .db_utils import persist_case_report
+        from ..db_utils import persist_case_report
         persist_case_report(db_path, task_id, case_description, report)
 
     def get_case_report(self, files_db_path: str, task_id: str) -> Optional[Dict[str, Any]]:
@@ -284,7 +284,7 @@ class ReportGeneratorHelpersMixin:
         Returns:
             Report dict or None if not found.
         """
-        from .db_utils import get_case_report_from_db
+        from ..db_utils import get_case_report_from_db
         return get_case_report_from_db(files_db_path, task_id)
 
     def get_filtered_files(self, files_db_path: str, task_id: str = "") -> List[str]:
@@ -292,6 +292,6 @@ class ReportGeneratorHelpersMixin:
         Retrieve the list of case-relevant files.
         Prioritizes files that already have LLM descriptions in the database.
         """
-        from .db_utils import get_filtered_files_from_db
+        from ..db_utils import get_filtered_files_from_db
         return get_filtered_files_from_db(files_db_path, task_id)
 

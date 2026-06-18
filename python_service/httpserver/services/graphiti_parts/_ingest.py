@@ -80,7 +80,7 @@ class GraphitiIngestMixin:
                         conn.row_factory = sqlite3.Row
 
                         # Get file descriptions
-                        from ..services.case_analysis.db_utils import ensure_file_descriptions_schema
+                        from ..case_analysis.db_utils import ensure_file_descriptions_schema
                         ensure_file_descriptions_schema(conn)
 
                         cur = conn.execute(

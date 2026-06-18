@@ -45,7 +45,7 @@ async def save_case_description(
     This endpoint also forwards the description to the C++ backend.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         # Forward to C++ backend to persist in tasks.json
@@ -94,7 +94,7 @@ async def start_case_analysis(
     import re
 
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         # Extract task_id from files_db_path if not provided
@@ -184,7 +184,7 @@ async def reanalyze_files(
     import uuid
 
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         case_service = _get_case_analysis_service(service_manager)
@@ -282,7 +282,7 @@ async def get_case_report(
     Retrieves the persisted report from the _files.db database.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         # Get task info to find _files.db path
@@ -330,7 +330,7 @@ async def get_filtered_files(
 ):
     """Get the LLM-filtered file list for a task."""
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         task_info = await service_manager.cpp_backend.get_task(task_id)

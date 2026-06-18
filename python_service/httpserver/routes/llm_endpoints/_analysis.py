@@ -37,7 +37,7 @@ async def analyze_event_cluster(
     It aggregates events for the given cluster and generates an AI summary.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
         
         # 1. Get database path
@@ -164,7 +164,7 @@ async def analyze_content(
         )
 
     try:
-        from ..services import get_service_manager, get_document_extractor_locator
+        from ...services import get_service_manager, get_document_extractor_locator
         service_manager = get_service_manager()
 
         # Image file extensions for auto-detection
@@ -310,7 +310,7 @@ async def analyze_uploaded_file(
     start_time = time.time()
 
     try:
-        from ..services import get_service_manager, get_document_extractor_locator
+        from ...services import get_service_manager, get_document_extractor_locator
         service_manager = get_service_manager()
 
         # Read file content
@@ -398,7 +398,7 @@ async def batch_analyze(
     with a job ID that can be used to track progress.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
         
         # Get task info to find the _files.db path for result persistence
@@ -460,7 +460,7 @@ async def get_batch_status(
     Get the status of a batch analysis job.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
         
         status = await service_manager.llm_service.get_batch_status(job_id)

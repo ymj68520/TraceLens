@@ -34,7 +34,7 @@ async def migrate_task(
     corresponding File entities with relationships.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         # Check if task exists
@@ -82,7 +82,7 @@ async def deduplicate_all(
     Finds files with identical MD5 and creates SAME_CONTENT_AS edges.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         if not hasattr(service_manager, 'migration_manager') or not service_manager.migration_manager:
@@ -119,7 +119,7 @@ async def get_migration_status(
     Check migration status for a task.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         if not hasattr(service_manager, 'migration_manager') or not service_manager.migration_manager:
@@ -161,7 +161,7 @@ async def cleanup_task(
     WARNING: This is irreversible! Only run after confirming migration success.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         if not confirm:

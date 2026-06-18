@@ -33,7 +33,7 @@ async def list_models(settings: Settings = Depends(get_settings)):
     List available LLM models and their configurations.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
         
         # Get model status
@@ -77,7 +77,7 @@ async def toggle_relevance(
     Irrelevant files will be excluded from the final case report.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
         
         task_info = await service_manager.cpp_backend.get_task(request.task_id)
@@ -108,7 +108,7 @@ async def toggle_cluster_relevance(
     Irrelevant clusters will be excluded from the final case report.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         task_info = await service_manager.cpp_backend.get_task(request.task_id)
@@ -153,7 +153,7 @@ async def get_status(settings: Settings = Depends(get_settings)):
     Get the status of LLM services.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
         
         status = await service_manager.llm_service.get_status()

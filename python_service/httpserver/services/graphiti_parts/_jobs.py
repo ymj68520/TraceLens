@@ -57,7 +57,7 @@ class GraphitiJobsMixin:
         """Run the actual ingestion using MultiSourcePipeline."""
         try:
             # Get task info from C++ backend to find database paths
-            from ..services import get_service_manager
+            from ...services import get_service_manager
             service_manager = get_service_manager()
 
             # Try to get database info for this task

@@ -245,7 +245,7 @@ class WindowsArtifactsService:
         if not self._analyzer:
             raise RuntimeError("Windows artifacts analyzer not initialized")
 
-        from ...graphiti_integration.database_reader import WindowsDatabase
+        from graphiti_integration.database_reader import WindowsDatabase
 
         windows_db = WindowsDatabase(windows_db_path)
         results = []

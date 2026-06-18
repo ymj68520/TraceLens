@@ -36,7 +36,7 @@ async def get_job_status(
     Poll this endpoint to track progress.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         # Try IngestionJobManager first
@@ -81,7 +81,7 @@ async def cancel_job(
     Cancel a running or pending ingestion job.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         # Try IngestionJobManager first
@@ -127,7 +127,7 @@ async def list_jobs(
     List ingestion jobs with optional filtering.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         # Try IngestionJobManager first

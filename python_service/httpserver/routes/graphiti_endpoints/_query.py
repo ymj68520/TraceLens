@@ -39,7 +39,7 @@ async def search_graph(
     Only returns results from the task-specific graph namespace.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
         
         results = await service_manager.graphiti_service.search(
@@ -86,7 +86,7 @@ async def list_entities(
     List entities in the knowledge graph for a specific task.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
         
         entities, total_count = await service_manager.graphiti_service.list_entities(
@@ -125,7 +125,7 @@ async def list_relationships(
     List relationships in the knowledge graph for a specific task.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
         
         relationships, total_count = await service_manager.graphiti_service.list_relationships(

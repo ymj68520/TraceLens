@@ -45,7 +45,7 @@ async def start_windows_analysis(
     import uuid
 
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         # Get Windows artifacts database path from task info
@@ -109,7 +109,7 @@ async def get_windows_report(
     Retrieves the persisted Windows artifact analysis from the _windows.db database.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         # Get task info to find _windows.db path
@@ -165,7 +165,7 @@ async def export_windows_toon(
     - limit: Maximum records to export (default: 100)
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         # Get task info to find _windows.db path
@@ -191,7 +191,7 @@ async def export_windows_toon(
         )
 
         # Export to TOON format
-        from ..services.windows_artifacts import WindowsArtifactTOONExporter
+        from ...services.windows_artifacts import WindowsArtifactTOONExporter
         exporter = WindowsArtifactTOONExporter()
 
         if artifact_type:

@@ -368,7 +368,7 @@ class FileAnalyzer:
 
                 if extractor or not is_image:
                     # Text analysis path (extractor content or raw text)
-                    from ..prompts import (
+                    from ...prompts import (
                         FILE_REANALYSIS_HEADER,
                         FILE_REANALYSIS_CONTEXT_CASE,
                         FILE_REANALYSIS_CONTEXT_KG,

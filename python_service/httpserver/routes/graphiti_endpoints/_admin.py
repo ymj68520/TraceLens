@@ -33,7 +33,7 @@ async def get_status(
     If task_id is provided, returns status for that specific task graph.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
         
         status = await service_manager.graphiti_service.get_status(task_id=task_id)
@@ -62,7 +62,7 @@ async def list_task_graphs(settings: Settings = Depends(get_settings)):
     List all task IDs that have knowledge graph data.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
         
         task_ids = await service_manager.graphiti_service.list_task_graphs()
@@ -85,7 +85,7 @@ async def delete_task_graph(
     Delete a task-specific knowledge graph.
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
         
         deleted = await service_manager.graphiti_service.delete_task_graph(task_id)
@@ -113,7 +113,7 @@ async def get_graph_data(
     Returns a force-graph compatible format: { nodes: [...], links: [...] }  
     """
     try:
-        from ..services import get_service_manager
+        from ...services import get_service_manager
         service_manager = get_service_manager()
 
         nodes, links = await service_manager.graphiti_service.get_graph_data(

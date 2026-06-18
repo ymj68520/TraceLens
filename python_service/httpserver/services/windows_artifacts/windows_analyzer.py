@@ -52,7 +52,7 @@ class WindowsArtifactAnalyzer:
         Returns:
             List of analysis results
         """
-        from ...graphiti_integration.database_reader import WindowsDatabase
+        from graphiti_integration.database_reader import WindowsDatabase
 
         windows_db = WindowsDatabase(windows_db_path)
         results = []

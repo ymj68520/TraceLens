@@ -77,7 +77,7 @@ class CaseAnalysisPipelinesMixin:
             # ------------------------------------------------------------------
             has_existing_filtered = False
             if not run_filtering:
-                from .db_utils import get_filtered_files_from_db
+                from ..db_utils import get_filtered_files_from_db
                 existing_filtered = get_filtered_files_from_db(files_db_path, task_id)
                 if not existing_filtered:
                     logger.info(f"[CASE_ANALYSIS] Task {task_id}: No filtered files found in database, auto-enabling filtering")
