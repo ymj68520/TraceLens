@@ -235,6 +235,7 @@ set(LIB_SOURCES
     src/core/DatabaseManager/FileClassifier/FileClassifierPatterns.cpp
     src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
     src/core/DatabaseManager/FileExtractor/FileExtractor.cpp
+    src/core/DatabaseManager/FileExtractor/FileExtractor_Extract.cpp
     src/core/Logger/Logger.cpp
     src/core/ThreadPool/ThreadPool.cpp
     src/analyzers/ImageAnalyzer/XFSHelper.cpp
