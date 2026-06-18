@@ -710,6 +710,7 @@ add_executable(
   test_oss_analyzer_gtest
   UnitTest/test_oss_analyzer_gtest.cpp
   ../src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp
+  ../src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase_Queries.cpp
   ../src/core/AuditLog/AuditLog.cpp ../src/core/Logger/Logger.cpp)
 
 target_include_directories(

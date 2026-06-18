@@ -400,6 +400,7 @@ set(LIB_SOURCES
     # OSSAnalyzer module
     src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp
     src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase.cpp
+    src/analyzers/OSSAnalyzer/Database/OSSAnalysisDatabase_Queries.cpp
     src/analyzers/OSSAnalyzer/Client/OSSClient.cpp
     # DatabaseAnalyzer module
     src/analyzers/DatabaseAnalyzer/Core/DatabaseAnalyzerCore.cpp
