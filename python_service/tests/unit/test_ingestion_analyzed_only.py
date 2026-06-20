@@ -687,3 +687,74 @@ def test_find_database_accepts_compact_task_id(job_manager):
 
     assert found is not None
     assert Path(found).resolve() == expected.resolve()
+
+
+# =============================================================================
+# _create_mentioned_in_edges: episode-name -> file-id hash resolution
+#
+# Regression guard for the bug that left mentioned_in_edges_created at ~0:
+# the old code did ep_name.split(":", 1) which (a) kept the leading space and
+# (b) did not handle the localised full-width colon "：", so the resulting
+# sha256 never matched the File entity's id. The fix strips whitespace,
+# handles both colon styles, and strips "(第N部分)" chunking suffixes.
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_create_mentioned_in_edges_resolves_file_hash(job_manager):
+    """Episode name '文件分析: /path' must resolve to sha256('/path'), matching File.id."""
+    import hashlib
+
+    file_path = "/var/log/auth.log"
+    expected_id = hashlib.sha256(file_path.encode("utf-8")).hexdigest()
+
+    files = [FileRecord(
+        id=1, inode=1, name="auth.log", path=file_path, size=10, extension=".log",
+        category="logs", file_type="text/plain", mtime=1, ctime=1, is_deleted=False, md5="x",
+    )]
+
+    # Episodic query returns one episode whose name carries the file path.
+    job_manager._file_ingestor._run_query = AsyncMock(return_value=[
+        {"uuid": "ep-1", "name": f"文件分析: {file_path}", "content": "..."},
+    ])
+    job_manager._entity_builder.batch_create_mentioned_in_edges = AsyncMock(
+        return_value=RelationBuildResult(mentioned_in_edges_created=1)
+    )
+    # name-based linking should be a no-op-ish extra step; stub it.
+    job_manager._link_entities_to_files_by_name = AsyncMock(return_value=0)
+
+    result = await job_manager._create_mentioned_in_edges("t1", files)
+
+    call = job_manager._entity_builder.batch_create_mentioned_in_edges.await_args
+    episode_file_map = call[0][1]
+    assert episode_file_map["ep-1"] == expected_id, (
+        "episode->file hash must match FileEntityIngestor._generate_path_hash "
+        "(sha256 of the bare path, no leading space)"
+    )
+    assert result.mentioned_in_edges_created == 1
+
+
+@pytest.mark.asyncio
+async def test_create_mentioned_in_edges_strips_chunk_suffix(job_manager):
+    """'(第N部分)' chunk suffix must not corrupt the recovered path/hash."""
+    import hashlib
+
+    file_path = "/etc/passwd"
+    expected_id = hashlib.sha256(file_path.encode("utf-8")).hexdigest()
+
+    files = [FileRecord(
+        id=1, inode=1, name="passwd", path=file_path, size=10, extension="",
+        category="config", file_type="text", mtime=1, ctime=1, is_deleted=False, md5="x",
+    )]
+
+    job_manager._file_ingestor._run_query = AsyncMock(return_value=[
+        {"uuid": "ep-2", "name": f"文件分析: {file_path} (第2部分)", "content": "..."},
+    ])
+    job_manager._entity_builder.batch_create_mentioned_in_edges = AsyncMock(
+        return_value=RelationBuildResult(mentioned_in_edges_created=1)
+    )
+    job_manager._link_entities_to_files_by_name = AsyncMock(return_value=0)
+
+    await job_manager._create_mentioned_in_edges("t1", files)
+
+    episode_file_map = job_manager._entity_builder.batch_create_mentioned_in_edges.await_args[0][1]
+    assert episode_file_map["ep-2"] == expected_id

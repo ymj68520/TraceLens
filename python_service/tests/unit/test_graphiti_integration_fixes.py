@@ -201,5 +201,144 @@ class TestIngestTaskEpisodes:
         assert "error" in result
 
 
+# ---------------------------------------------------------------------------
+# Episode rendering: source=text + forensic extraction instructions
+#
+# These guard the core fix for sparse knowledge graphs: the ingestor must
+# ingest rendered text (not JSON) so Graphiti's extract_text prompt runs
+# instead of extract_json (which actively discards forensic tokens), and it
+# must pass custom_extraction_instructions to keep usernames/IPs/paths/hashes.
+# ---------------------------------------------------------------------------
+
+class TestEpisodeRendering:
+    def test_json_body_is_rendered_as_text(self):
+        """A JSON episode body must be rendered to readable text and typed text."""
+        from graphiti_integration.graphiti_ingestor import GraphitiIngestor
+        from graphiti_integration.toon_transformer import EpisodeData
+        from graphiti_core.nodes import EpisodeType
+
+        ep = EpisodeData(
+            name="文件分析: /etc/passwd",
+            episode_body='{"file_path": "/etc/passwd", "analysis": "root user"}',
+            source_description="LLM分析结果",
+            reference_time=datetime.now(),
+            file_path="/etc/passwd",
+            file_id=1,
+            category="file_description",
+        )
+        rendered, source_type = GraphitiIngestor._render_episode_for_extraction(ep)
+
+        assert source_type == EpisodeType.text
+        assert "file_path: /etc/passwd" in rendered
+        assert "analysis: root user" in rendered
+
+    def test_forensic_tokens_survive_rendering(self):
+        """High-value forensic tokens (IP, hash, hostname) must remain in the body."""
+        from graphiti_integration.graphiti_ingestor import GraphitiIngestor
+        from graphiti_integration.toon_transformer import EpisodeData
+
+        body = (
+            '{"file_path": "/x", "analysis": "connects to dc01.corp.local at '
+            '10.0.0.5", "md5": "d41d8cd98f00b204e9800998ecf8427e"}'
+        )
+        ep = EpisodeData(
+            name="文件分析: /x",
+            episode_body=body,
+            source_description="s",
+            reference_time=datetime.now(),
+            file_path="/x",
+            file_id=1,
+        )
+        rendered, _ = GraphitiIngestor._render_episode_for_extraction(ep)
+        assert "dc01.corp.local" in rendered
+        assert "10.0.0.5" in rendered
+        assert "d41d8cd98f00b204e9800998ecf8427e" in rendered
+
+    def test_non_json_body_passes_through_as_text(self):
+        """Plain-text bodies must be returned unchanged and typed text."""
+        from graphiti_integration.graphiti_ingestor import GraphitiIngestor
+        from graphiti_integration.toon_transformer import EpisodeData
+        from graphiti_core.nodes import EpisodeType
+
+        ep = EpisodeData(
+            name="plain",
+            episode_body="just some text, no json here",
+            source_description="s",
+            reference_time=datetime.now(),
+            file_path="",
+            file_id=0,
+        )
+        rendered, source_type = GraphitiIngestor._render_episode_for_extraction(ep)
+        assert source_type == EpisodeType.text
+        assert rendered == "just some text, no json here"
+
+    @pytest.mark.asyncio
+    async def test_add_episode_uses_text_source_and_instructions(self):
+        """ingest_episode must call add_episode with source=text and forensic
+        extraction instructions (the combination that actually populates the graph)."""
+        from graphiti_integration.graphiti_ingestor import GraphitiIngestor, FORENSIC_EXTRACTION_INSTRUCTIONS
+        from graphiti_integration.toon_transformer import EpisodeData
+        from graphiti_core.nodes import EpisodeType
+
+        ingestor = GraphitiIngestor.__new__(GraphitiIngestor)
+        ingestor._initialized = True
+        ingestor.config = MagicMock(max_episode_tokens=10000, max_retries=1, group_id="g")
+        client = MagicMock()
+        client.add_episode = AsyncMock()
+        ingestor._client = client
+
+        ep = EpisodeData(
+            name="文件分析: /a",
+            episode_body='{"file_path": "/a", "analysis": "user admin"}',
+            source_description="s",
+            reference_time=datetime.now(),
+            file_path="/a",
+            file_id=1,
+        )
+        await ingestor.ingest_episode(ep, group_id="g")
+
+        client.add_episode.assert_awaited_once()
+        kwargs = client.add_episode.await_args.kwargs
+        assert kwargs["source"] == EpisodeType.text
+        assert kwargs["custom_extraction_instructions"] == FORENSIC_EXTRACTION_INSTRUCTIONS
+        # Rendered body must be text, not the raw JSON.
+        assert "file_path: /a" in kwargs["episode_body"]
+
+    @pytest.mark.asyncio
+    async def test_ingest_task_episodes_enriches_body_with_metadata(self, service):
+        """The episode body must carry summary/keywords/category/md5 so the
+        extractor sees them as first-class content."""
+        import json as _json
+        mock_ingestor = MagicMock()
+        mock_ingestor.batch_ingest = AsyncMock(return_value=MagicMock(
+            successful=1, total_episodes=1, failed=0, errors=[]
+        ))
+        service._task_graphs["t1"] = {"config": MagicMock(), "ingestor": mock_ingestor}
+
+        await service.ingest_task_episodes(
+            task_id="t1",
+            file_descriptions=[{
+                "file_path": "/a.exe",
+                "description": "malware dropper",
+                "summary": "drops payload",
+                "keywords": "malware, dropper",
+                "category": "executable",
+                "md5": "abc123",
+                "name": "a.exe",
+                "file_type": "PE32",
+                "is_relevant": 1,
+                "success": True,
+            }],
+        )
+        episodes = mock_ingestor.batch_ingest.await_args.kwargs["episodes"]
+        assert len(episodes) == 1
+        body = _json.loads(episodes[0].episode_body)
+        assert body["md5"] == "abc123"
+        assert body["category"] == "executable"
+        assert body["keywords"] == "malware, dropper"
+        assert body["summary"] == "drops payload"
+        assert body["filename"] == "a.exe"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

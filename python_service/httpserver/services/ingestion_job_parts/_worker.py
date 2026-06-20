@@ -450,15 +450,40 @@ class IngestionJobWorkerMixin:
             with sqlite3.connect(files_db, timeout=10) as conn:
                 conn.row_factory = sqlite3.Row
                 # Ensure schema has the description columns (added lazily by analysis pipeline)
-                where = "WHERE description IS NOT NULL AND description != ''" if analyzed_only else ""
+                # We JOIN against the files table to also surface category/md5/name/size
+                # which are high-value extraction signals (hashes and category names
+                # are exactly what the default JSON prompt throws away).
+                where = (
+                    "WHERE fd.description IS NOT NULL AND fd.description != ''"
+                    if analyzed_only else ""
+                )
                 try:
                     cur = conn.execute(
-                        f"SELECT DISTINCT file_path, description, summary FROM file_descriptions {where}"
+                        f"""
+                        SELECT fd.file_path, fd.description, fd.summary,
+                               fd.keywords, fd.is_relevant,
+                               f.category, f.md5, f.name, f.size, f.extension,
+                               f.type AS file_type
+                        FROM file_descriptions fd
+                        LEFT JOIN files f ON f.path = fd.file_path
+                        {where}
+                        """
                     )
                     for row in cur.fetchall():
                         desc = row["description"] or row["summary"] or ""
                         if desc:
-                            file_descs.append({"file_path": row["file_path"], "description": desc, "success": True})
+                            file_descs.append({
+                                "file_path": row["file_path"],
+                                "description": desc,
+                                "summary": row["summary"],
+                                "keywords": row["keywords"],
+                                "category": row["category"],
+                                "md5": row["md5"],
+                                "name": row["name"],
+                                "file_type": row["file_type"],
+                                "is_relevant": row["is_relevant"],
+                                "success": True,
+                            })
                 except sqlite3.OperationalError:
                     # file_descriptions table may not exist yet for this task
                     stats["error"] = "file_descriptions table missing"
@@ -550,30 +575,141 @@ class IngestionJobWorkerMixin:
         task_id: str,
         files: list,
     ):
-        """Create MENTIONED_IN edges from episodes to files."""
-        # Build episode -> file mapping
-        episode_file_map = {}
+        """Create MENTIONED_IN edges from extracted entities to File entities.
 
-        # Get episodes for this task
-        query = """
-            MATCH (e:Episodic {group_id: $task_id})
-            RETURN e.uuid AS uuid, e.name AS name
+        Graphiti's ``add_episode`` produces ``Episodic -[:MENTIONS]-> Entity``
+        edges automatically. To make the path-B ``File`` nodes queryable from
+        the entity side ("which files mention this entity?") we add back-pointing
+        ``Entity -[:MENTIONED_IN]-> File`` edges.
+
+        Previous implementation tried to recover the file path from the episode
+        ``name`` (``category:filename``) and hash it. That was broken for two
+        reasons:
+          1. Real episode names are localised ("文件分析: /path", "事件簇分析: ...")
+             and the leading space after ``:`` made the hash never match the
+             File entity's id (``sha256(path)``).
+          2. Event-cluster episodes have no file path at all.
+        The net effect was ``mentioned_in_edges_created`` was always ~0, so the
+        File<->Entity links never materialised.
+
+        We now resolve the file path from the File records passed in, mapped by
+        basename, and fall back to a direct Neo4j join on
+        ``Entity.name = File.filename`` for any entities we cannot otherwise
+        attribute.
         """
+        # Build basename -> file_id map from the actual File records (path_hash
+        # generation MUST match FileEntityIngestor._generate_path_hash).
+        basename_to_fileid: dict[str, str] = {}
+        for f in files:
+            try:
+                path = getattr(f, "path", "") or ""
+                if path:
+                    basename_to_fileid.setdefault(
+                        os.path.basename(path),
+                        hashlib.sha256(path.encode("utf-8")).hexdigest(),
+                    )
+            except Exception:
+                continue
 
-        episodes = await self._file_ingestor._run_query(query, {"task_id": task_id})
+        # Get episodes for this task and try to attribute each to a File record.
+        episode_file_map: dict[str, str] = {}
+        try:
+            episodes = await self._file_ingestor._run_query(
+                "MATCH (e:Episodic {group_id: $task_id}) "
+                "RETURN e.uuid AS uuid, e.name AS name, e.content AS content",
+                {"task_id": task_id},
+            )
+        except Exception as e:
+            logger.warning(f"[{task_id}] Could not fetch episodes for MENTIONED_IN: {e}")
+            episodes = []
 
         for ep in episodes:
-            ep_name = ep["name"]
-            # Extract file path from episode name
-            # Format: category:filename or event_type:file_path
-            if ":" in ep_name:
-                _, path_part = ep_name.split(":", 1)
-                # Generate file ID hash
-                file_id = hashlib.sha256(path_part.encode()).hexdigest()
+            ep_name = ep.get("name", "") or ""
+            # Try to recover a file path from the name. Episode names are of the
+            # form "<category>: <path>" — take the part after the (first ASCII or
+            # full-width) colon and strip whitespace.
+            path_candidate = ""
+            for sep in (":", "："):
+                if sep in ep_name:
+                    path_candidate = ep_name.split(sep, 1)[1].strip()
+                    break
+            # Clean chunking suffixes like "(第1部分)".
+            if "（第" in path_candidate:
+                path_candidate = path_candidate.split("（第")[0].strip()
+            if "(" in path_candidate and "部分" in path_candidate:
+                path_candidate = path_candidate.split("(")[0].strip()
+
+            file_id = None
+            if path_candidate:
+                file_id = basename_to_fileid.get(os.path.basename(path_candidate))
+                if not file_id:
+                    # Direct hash of the recovered path (matches File.id).
+                    file_id = hashlib.sha256(
+                        path_candidate.encode("utf-8")
+                    ).hexdigest()
+
+            if file_id:
                 episode_file_map[ep["uuid"]] = file_id
 
-        # Create edges
-        return await self._entity_builder.batch_create_mentioned_in_edges({}, episode_file_map)
+        # Create MENTIONED_IN edges for episodes we could attribute.
+        try:
+            result = await self._entity_builder.batch_create_mentioned_in_edges(
+                {}, episode_file_map
+            )
+        except Exception as e:
+            logger.warning(f"[{task_id}] batch_create_mentioned_in_edges failed: {e}")
+            return type(
+                "R", (), {"mentioned_in_edges_created": 0, "errors": [str(e)]}
+            )()
+
+        # Additionally link entities to File entities by name match as a safety
+        # net for episodes we could not attribute above (e.g. event clusters).
+        if basename_to_fileid and self._entity_builder is not None:
+            try:
+                await self._link_entities_to_files_by_name(task_id, basename_to_fileid)
+            except Exception as e:
+                logger.debug(f"[{task_id}] name-based entity/file link skipped: {e}")
+
+        return result
+
+    async def _link_entities_to_files_by_name(
+        self, task_id: str, basename_to_fileid: dict[str, str]
+    ) -> int:
+        """Link entities to File entities when the entity name equals a filename.
+
+        This catches entities the LLM extracted from episode content (e.g. the
+        extracted entity ``"cmd.exe"``) and connects them to the corresponding
+        ``File`` node by basename, which is a strong forensic signal. Only links
+        entities that belong to this task's episodes (group_id scoping).
+        """
+        if not basename_to_fileid:
+            return 0
+        # Use a single parameterised query to MERGE all matches at once.
+        pairs = [
+            {"entity_name": name, "file_id": fid}
+            for name, fid in basename_to_fileid.items()
+        ]
+        query = """
+            UNWIND $pairs AS row
+            MATCH (en:Entity {name: row.entity_name})
+            MATCH (f:File {id: row.file_id})
+            WHERE EXISTS {
+                MATCH (en)<-[:MENTIONS]-(:Episodic {group_id: $task_id})
+            }
+            MERGE (en)-[r:MENTIONED_IN]->(f)
+            ON CREATE SET r.first_seen = datetime(), r.frequency = 1,
+                          r.created_at = datetime(), r.source = 'name_match'
+            ON MATCH SET r.frequency = coalesce(r.frequency, 0) + 1,
+                         r.last_seen = datetime()
+            RETURN count(r) AS created
+        """
+        res = await self._file_ingestor._run_query(
+            query, {"pairs": pairs, "task_id": task_id}
+        )
+        created = res[0]["created"] if res else 0
+        if created:
+            logger.info(f"[{task_id}] Linked {created} entities to files by name")
+        return created
 
     def _find_database(self, task_id: str, db_type: str) -> Optional[str]:
         """Find database file for a task."""

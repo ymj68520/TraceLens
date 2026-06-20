@@ -6,15 +6,15 @@
  *  - Create a new case with multiple image paths (one task per image)
  *  - Show per-case task progress
  *  - "Start Cross-Image Analysis" button when all tasks completed
- *  - Show cross-image analysis job status
+ *  - Show cross-image analysis job status (live stage/message from backend)
  *  - Delete a case (optionally with associated tasks)
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
 import { fetchCases, createCaseWithTasks, startCrossAnalysis, updateCaseStatus, deleteCase, deleteCaseWithTasks } from '../store/caseSlice';
-import { fetchTasks } from '../store/taskSlice';
+import { fetchTasks, fetchTasksSilent } from '../store/taskSlice';
 import { pollMultiAnalysis } from '../services/caseGroupService';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -23,6 +23,8 @@ import Spinner from '../components/common/Spinner';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import { useToast } from '../components/common/ToastContext';
 import CreateCaseModal from '../components/tasks/CreateCaseModal';
+import AddTasksToCaseModal from '../components/tasks/AddTasksToCaseModal';
+import ComposeCaseModal from '../components/tasks/ComposeCaseModal';
 
 const STATUS_COLOR = {
   open:       'blue',
@@ -39,7 +41,17 @@ export default function Cases() {
   const toast = useToast();
 
   const [showCreate, setShowCreate] = useState(false);
-  const [pollingJobId, setPollingJobId] = useState(null);
+
+  // Per-case live polling state: { [caseId]: { jobId, stage, message } }
+  const [polling, setPolling] = useState({});
+  // Keep a ref so poll callbacks always see fresh state
+  const pollingRef = useRef(polling);
+  pollingRef.current = polling;
+
+  // Add-tasks-to-case modal: null when closed, else the target case id
+  const [addTasksToCaseId, setAddTasksToCaseId] = useState(null);
+  // Compose-case-from-tasks modal (Cases-page quick entry)
+  const [showCompose, setShowCompose] = useState(false);
 
   // Delete dialog state
   const [deleteState, setDeleteState] = useState({
@@ -50,7 +62,7 @@ export default function Cases() {
     loading: false,
   });
 
-  useEffect(() => { 
+  useEffect(() => {
     dispatch(fetchCases());
     dispatch(fetchTasks({ status: 'all', priority: 'all' }));
   }, [dispatch]);
@@ -67,38 +79,70 @@ export default function Cases() {
   }, [dispatch, toast]);
 
   const handleStartAnalysis = useCallback(async (forensicCase) => {
-    // Collect files_db_paths from each task (read from task details)
-    // For simplicity, user must ensure tasks are completed and db paths available
     if (!forensicCase.task_ids?.length) {
       toast.error('该案件没有关联任务');
       return;
     }
+    // Resolve real files_db paths from the task records (never hardcode).
+    const caseTasks = forensicCase.task_ids
+      .map((id) => tasks.find((t) => t.id === id))
+      .filter(Boolean);
+    const filesDbPaths = caseTasks
+      .map((t) => t.output_files_db)
+      .filter(Boolean);
+
+    if (filesDbPaths.length !== forensicCase.task_ids.length) {
+      const missing = forensicCase.task_ids.length - filesDbPaths.length;
+      toast.error(`有 ${missing} 个任务尚未生成 files.db，请等待分析完成`);
+      return;
+    }
+
     try {
       const result = await dispatch(startCrossAnalysis({
         caseId:          forensicCase.id,
         taskIds:         forensicCase.task_ids,
-        filesDbPaths:    forensicCase.task_ids.map((id) => `data/tasks/${id}/files.db`),
+        filesDbPaths,
         caseDescription: forensicCase.description,
       })).unwrap();
 
       toast.success('跨镜像分析已启动！');
-      setPollingJobId(result.job_id);
+      setPolling((p) => ({
+        ...p,
+        [forensicCase.id]: { jobId: result.job_id, stage: '初始化', message: '正在启动跨镜像分析...' },
+      }));
 
       pollMultiAnalysis(
         result.job_id,
         (s) => {
+          const prog = s.progress || {};
+          // Live-update the stage/message for this case
+          setPolling((p) => ({
+            ...p,
+            [forensicCase.id]: {
+              jobId: result.job_id,
+              stage: prog.stage || (s.status === 'completed' ? '完成' : '分析中'),
+              message: prog.message || '',
+            },
+          }));
           if (s.status === 'completed') {
             dispatch(updateCaseStatus({ caseId: forensicCase.id, status: 'completed' }));
+            setPolling((p) => { const n = { ...p }; delete n[forensicCase.id]; return n; });
             toast.success('跨镜像分析完成！');
-            setPollingJobId(null);
+            // Refresh both lists so progress bars + status stay accurate
+            dispatch(fetchCases());
+            dispatch(fetchTasksSilent({ status: 'all', priority: 'all' }));
           }
         },
         5000
-      ).catch((e) => toast.error('跨镜像分析失败：' + e.message));
+      ).catch((e) => {
+        setPolling((p) => { const n = { ...p }; delete n[forensicCase.id]; return n; });
+        toast.error('跨镜像分析失败：' + e.message);
+        dispatch(fetchCases());
+      });
     } catch (err) {
       toast.error('启动失败：' + (err?.message || err));
     }
-  }, [dispatch, toast]);
+  }, [dispatch, tasks, toast]);
 
   // --- Delete case flow ---
   const handleDeleteCase = useCallback((fc) => {
@@ -152,7 +196,10 @@ export default function Cases() {
             多镜像联合分析案件管理
           </p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>➕ 新建案件</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowCompose(true)}>📂 从已分析镜像组建</Button>
+          <Button onClick={() => setShowCreate(true)}>➕ 新建案件</Button>
+        </div>
       </div>
 
       {error && (
@@ -177,7 +224,8 @@ export default function Cases() {
               tasks={tasks}
               onStartAnalysis={handleStartAnalysis}
               onDelete={handleDeleteCase}
-              isPolling={pollingJobId != null}
+              onAddTasks={(caseId) => setAddTasksToCaseId(caseId)}
+              polling={polling[fc.id]}
               navigate={navigate}
             />
           ))}
@@ -188,7 +236,21 @@ export default function Cases() {
         <CreateCaseModal
           onSubmit={handleCreate}
           onClose={() => setShowCreate(false)}
+          existingTasks={tasks}
         />
+      )}
+
+      {/* Add-tasks-to-case modal (case-card entry point) */}
+      {addTasksToCaseId && (
+        <AddTasksToCaseModal
+          fixedCaseId={addTasksToCaseId}
+          onClose={() => setAddTasksToCaseId(null)}
+        />
+      )}
+
+      {/* Compose-case-from-tasks modal (Cases-page quick entry) */}
+      {showCompose && (
+        <ComposeCaseModal onClose={() => setShowCompose(false)} />
       )}
 
       {/* Delete case confirmation dialog */}
@@ -215,12 +277,14 @@ export default function Cases() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, isPolling, navigate }) {
+function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, onAddTasks, polling, navigate }) {
   const statusColor = STATUS_COLOR[fc.status] || 'gray';
   const allTasksCount = fc.task_ids?.length || 0;
-  
+
   const caseTasks = fc.task_ids?.map(id => tasks.find(t => t.id === id)).filter(Boolean) || [];
   const allTasksCompleted = caseTasks.length === allTasksCount && caseTasks.every(t => t.status === 'completed');
+  const failedTasks = caseTasks.filter(t => t.status === 'failed' || t.status === 'error');
+  const isPolling = !!polling;
 
   return (
     <Card>
@@ -244,15 +308,24 @@ function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, isPollin
             <Button
               size="sm"
               onClick={() => onStartAnalysis(fc)}
-              disabled={isPolling || !allTasksCompleted}
+              disabled={isPolling || (!allTasksCompleted && failedTasks.length === 0)}
             >
-              {isPolling ? '分析中...' : (!allTasksCompleted ? '等待子任务完成' : '🔍 启动案情研判')}
+              {isPolling ? '分析中...' : (
+                !allTasksCompleted
+                  ? (failedTasks.length > 0 ? `⚠️ 跳过 ${failedTasks.length} 失败任务启动` : '等待子任务完成')
+                  : '🔍 启动案情研判'
+              )}
             </Button>
           )}
           {fc.status === 'analysing' && (
-            <div className="flex items-center gap-2 text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded-lg border border-yellow-200">
-              <Spinner size="sm" />
-              <span className="text-sm font-medium">✨ 正在聚合案件线索...</span>
+            <div className="flex flex-col items-end gap-1.5 text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded-lg border border-yellow-200 max-w-xs">
+              <div className="flex items-center gap-2">
+                <Spinner size="sm" />
+                <span className="text-sm font-medium">✨ {polling?.stage || '聚合案件线索中...'}</span>
+              </div>
+              {polling?.message && (
+                <span className="text-[11px] text-yellow-700 dark:text-yellow-300 text-right line-clamp-2">{polling.message}</span>
+              )}
             </div>
           )}
           {fc.status === 'completed' && (
@@ -263,6 +336,12 @@ function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, isPollin
                 className="shadow-sm"
             >
                 👀 查看完整研判报告
+            </Button>
+          )}
+          {/* Add already-analyzed tasks to this case (allowed unless analysing) */}
+          {fc.status !== 'analysing' && (
+            <Button size="sm" variant="outline" onClick={() => onAddTasks(fc.id)}>
+              ➕ 添加任务
             </Button>
           )}
 
@@ -286,21 +365,36 @@ function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, isPollin
           <div className="space-y-2">
             {caseTasks.map(t => (
               <div key={t.id} className="flex justify-between items-center text-xs p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <span className="font-mono text-slate-400">ID:{t.id.substring(0, 6)}</span>
                   <span className="font-medium text-slate-700 dark:text-slate-300 max-w-[200px] truncate" title={t.image_path}>
-                    {t.image_path.split('/').pop()}
+                    {t.image_path?.split('/').pop() || t.id}
                   </span>
+                  {/* Quick links into task-context pages */}
+                  {t.status === 'completed' && (
+                    <span className="flex items-center gap-1.5 ml-1">
+                      <button
+                        onClick={() => navigate(`/files?task_id=${t.id}`)}
+                        className="text-slate-400 hover:text-blue-600 transition-colors"
+                        title="查看文件"
+                      >📁</button>
+                      <button
+                        onClick={() => navigate(`/timeline?task_id=${t.id}`)}
+                        className="text-slate-400 hover:text-purple-600 transition-colors"
+                        title="查看时间线"
+                      >⏱</button>
+                      <button
+                        onClick={() => navigate(`/case-report?taskId=${t.id}`)}
+                        className="text-slate-400 hover:text-emerald-600 transition-colors"
+                        title="单镜像报告"
+                      >📄</button>
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 w-48">
-                  <div className="flex-1 w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                    <div 
-                      className={`h-full ${t.status === 'completed' ? 'bg-green-500' : 'bg-purple-500'}`} 
-                      style={{ width: `${t.progress_percentage || 0}%` }} 
-                    />
-                  </div>
-                  <span className={`w-16 text-right font-medium ${t.status === 'completed' ? 'text-green-600' : 'text-purple-600'}`}>
-                    {t.status === 'completed' ? '已完成' : `${t.progress_percentage || 0}%`}
+                  <ProgressBar status={t.status} progress={t.progress_percentage || 0} />
+                  <span className="w-16 text-right font-medium">
+                    {statusLabel(t)}
                   </span>
                 </div>
               </div>
@@ -310,4 +404,26 @@ function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, isPollin
       )}
     </Card>
   );
+}
+
+// Progress bar whose color reflects the task status.
+function ProgressBar({ status, progress }) {
+  const barColor =
+    status === 'completed' ? 'bg-green-500' :
+    status === 'failed' || status === 'error' ? 'bg-red-500' :
+    status === 'running' || status === 'pending' || status === 'queued' ? 'bg-purple-500' :
+    'bg-slate-400';
+  return (
+    <div className="flex-1 w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
+      <div className={`h-full ${barColor}`} style={{ width: `${progress}%` }} />
+    </div>
+  );
+}
+
+// Human-readable, status-aware progress label.
+function statusLabel(t) {
+  if (t.status === 'completed') return <span className="text-green-600">已完成</span>;
+  if (t.status === 'failed' || t.status === 'error') return <span className="text-red-600">失败</span>;
+  if (t.status === 'queued' || t.status === 'pending') return <span className="text-slate-500">排队中</span>;
+  return <span className="text-purple-600">{t.progress_percentage || 0}%</span>;
 }

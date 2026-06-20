@@ -3,12 +3,14 @@
  *
  * The user provides:
  *  - Case name + description (mandatory)
- *  - One or more image paths ("+Add Image" button)
+ *  - One or more new image paths ("+Add Image" button), OR
+ *    associating one or more already-completed tasks (skip re-analysis).
  *  - Shared priority + Android analyze flag
- *  LLM analysis is always enabled.
+ *  LLM analysis is always enabled for new image paths.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Button from '../common/Button';
+import Badge from '../common/Badge';
 
 const INIT = {
   name:           '',
@@ -18,10 +20,11 @@ const INIT = {
   androidAnalyze: false,
 };
 
-export default function CreateCaseModal({ onSubmit, onClose }) {
+export default function CreateCaseModal({ onSubmit, onClose, existingTasks = [] }) {
   const [form, setForm] = useState(INIT);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
+  const [associateTaskIds, setAssociateTaskIds] = useState(new Set());
 
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -36,14 +39,53 @@ export default function CreateCaseModal({ onSubmit, onClose }) {
   const removeImage = (idx) =>
     setForm((f) => ({ ...f, imagePaths: f.imagePaths.filter((_, i) => i !== idx) }));
 
+  // Tasks eligible for direct association: completed with a files.db.
+  const associableTasks = useMemo(
+    () => (existingTasks || []).filter(
+      (t) => t.status === 'completed' && t.output_files_db
+    ),
+    [existingTasks]
+  );
+
+  const toggleAssociate = (taskId) =>
+    setAssociateTaskIds((prev) => {
+      const next = new Set(prev);
+      next.has(taskId) ? next.delete(taskId) : next.add(taskId);
+      return next;
+    });
+
+  // Valid (trimmed, de-duplicated) new image paths
+  const validImagePaths = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    for (const p of form.imagePaths) {
+      const t = (p || '').trim();
+      if (t && !seen.has(t)) { seen.add(t); out.push(t); }
+    }
+    return out;
+  }, [form.imagePaths]);
+
+  // total images for the submit button label
+  const totalImages = validImagePaths.length + associateTaskIds.size;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    const validPaths = form.imagePaths.map((p) => p.trim()).filter(Boolean);
-    if (!validPaths.length) { setError('请至少填写一个镜像路径'); return; }
+    if (totalImages === 0) {
+      setError('请至少填写一个镜像路径，或勾选一个已完成的任务');
+      return;
+    }
+    if (!form.name.trim() || !form.description.trim()) {
+      setError('请填写案件名称与案情描述');
+      return;
+    }
     setIsCreating(true);
     try {
-      await onSubmit({ ...form, imagePaths: validPaths });
+      await onSubmit({
+        ...form,
+        imagePaths: validImagePaths,
+        associateTaskIds: [...associateTaskIds],
+      });
     } catch (err) {
       setError(err?.message || String(err));
     } finally {
@@ -84,7 +126,7 @@ export default function CreateCaseModal({ onSubmit, onClose }) {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                镜像路径列表 *
+                新增镜像路径
               </label>
               <button type="button" onClick={addImage}
                 className="text-xs text-primary-600 hover:text-primary-700 font-medium">
@@ -92,21 +134,58 @@ export default function CreateCaseModal({ onSubmit, onClose }) {
               </button>
             </div>
             <div className="space-y-2">
-              {form.imagePaths.map((p, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400 w-6 flex-shrink-0">#{idx + 1}</span>
-                  <input type="text" disabled={isCreating} value={p}
-                    onChange={(e) => setImagePath(idx, e.target.value)}
-                    className={`${inputCls} flex-1`}
-                    placeholder="/path/to/image.E01 or .dd" />
-                  {form.imagePaths.length > 1 && (
-                    <button type="button" onClick={() => removeImage(idx)}
-                      className="text-slate-400 hover:text-red-500 text-sm flex-shrink-0">✕</button>
-                  )}
-                </div>
-              ))}
+              {form.imagePaths.map((p, idx) => {
+                const trimmed = (p || '').trim();
+                const isEmpty = trimmed === '';
+                // a duplicate if this trimmed value appears at an earlier index too
+                const firstIdx = form.imagePaths.findIndex((x) => (x || '').trim() === trimmed);
+                const isDup = !isEmpty && firstIdx !== idx;
+                return (
+                  <div key={idx} className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400 w-6 flex-shrink-0">#{idx + 1}</span>
+                    <input type="text" disabled={isCreating} value={p}
+                      onChange={(e) => setImagePath(idx, e.target.value)}
+                      className={`${inputCls} flex-1 ${isEmpty || isDup ? 'border-red-400 focus:ring-red-500' : ''}`}
+                      placeholder="/path/to/image.E01 or .dd" />
+                    {form.imagePaths.length > 1 && (
+                      <button type="button" onClick={() => removeImage(idx)}
+                        className="text-slate-400 hover:text-red-500 text-sm flex-shrink-0">✕</button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
+            {form.imagePaths.some((p) => (p || '').trim() === '') && (
+              <p className="mt-1 text-xs text-amber-600">空行将被忽略；重复路径会自动去重</p>
+            )}
           </div>
+
+          {/* Associate existing tasks */}
+          {associableTasks.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                关联已完成任务 <span className="text-xs text-slate-400">（直接复用分析结果，无需重新扫描）</span>
+              </label>
+              <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                {associableTasks.map((t) => {
+                  const checked = associateTaskIds.has(t.id);
+                  return (
+                    <label key={t.id}
+                      className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${checked ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/40'}`}>
+                      <input type="checkbox" checked={checked}
+                        onChange={() => toggleAssociate(t.id)}
+                        className="rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
+                      <span className="font-mono text-[11px] text-slate-400">{t.id.substring(0, 6)}</span>
+                      <span className="text-xs text-slate-700 dark:text-slate-300 truncate flex-1" title={t.image_path}>
+                        {t.image_path?.split('/').pop() || t.id}
+                      </span>
+                      <Badge variant="green">已完成</Badge>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <Field label="优先级">
             <select disabled={isCreating} value={form.priority}
@@ -128,15 +207,15 @@ export default function CreateCaseModal({ onSubmit, onClose }) {
           <div className="flex items-center gap-2 p-2 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
             <span className="text-primary-600 text-sm">🤖</span>
             <span className="text-xs text-primary-700 dark:text-primary-300">
-              LLM 智能分析已默认开启，将为每个镜像创建独立分析任务
+              LLM 智能分析已默认开启，将为每个新镜像创建独立分析任务
             </span>
           </div>
         </form>
 
         <div className="flex justify-end space-x-3 px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
           <Button type="button" variant="secondary" onClick={onClose} disabled={isCreating}>取消</Button>
-          <Button type="submit" onClick={handleSubmit} disabled={isCreating}>
-            {isCreating ? '创建中...' : `创建案件（${form.imagePaths.filter(Boolean).length} 个镜像）`}
+          <Button type="submit" onClick={handleSubmit} disabled={isCreating || totalImages === 0}>
+            {isCreating ? '创建中...' : `创建案件（${totalImages} 个镜像）`}
           </Button>
         </div>
       </div>

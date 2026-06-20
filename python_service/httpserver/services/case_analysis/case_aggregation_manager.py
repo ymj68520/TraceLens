@@ -182,6 +182,142 @@ class CaseAggregationManager:
             "analyzed_files": analyzed_files,
         }
 
+    async def associate_tasks(
+        self,
+        case_id: str,
+        task_ids: List[str],
+    ) -> Dict[str, Any]:
+        """
+        Associate a specific set of (typically already-completed) tasks to a case.
+
+        Unlike scan_and_associate_completed_tasks (which pulls in ALL completed
+        tasks system-wide), this only touches the explicitly requested tasks.
+        For each task it inspects the real _files.db and pre-populates the
+        case-level analysis-state row so that a subsequent cross-image /
+        incremental run correctly REUSES already-analyzed tasks instead of
+        re-analyzing them.
+
+        Tasks already present in the case are skipped (idempotent). Tasks whose
+        case-level state row already exists are not overwritten.
+
+        Args:
+            case_id: Case identifier
+            task_ids: Task IDs to associate
+
+        Returns:
+            Dict with per-task results:
+                - associated:        task IDs newly added to the case
+                - reused:            task IDs added that already have descriptions
+                                     (will be reused as-is by cross-image analysis)
+                - pending_analysis:  task IDs added without descriptions yet
+                - skipped:           task IDs already in the case
+                - not_found:         task IDs that could not be resolved
+                - not_completed:     task IDs not yet finished analyzing
+        """
+        # Ensure the case DB + status table exist
+        case_db_path = get_case_db_path(case_id)
+        ensure_case_task_status_table(case_db_path)
+
+        # Current task_ids in the case (to skip duplicates)
+        existing_task_ids: set = set()
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    f"{self.settings.cpp_backend_url}/api/cases/{case_id}"
+                )
+                if resp.status_code == 200:
+                    existing_task_ids = set(resp.json().get("task_ids", []) or [])
+        except Exception as e:
+            logger.warning(f"[CASE_AGGREG] Could not read case {case_id}: {e}")
+
+        associated: List[str] = []
+        reused: List[str] = []
+        pending_analysis: List[str] = []
+        skipped: List[str] = []
+        not_found: List[str] = []
+        not_completed: List[str] = []
+
+        for task_id in task_ids:
+            # Idempotent: skip tasks already in this case
+            if task_id in existing_task_ids:
+                skipped.append(task_id)
+                continue
+
+            # Resolve the task record + its _files.db
+            try:
+                task_info = await self._cpp_backend.get_task(task_id)
+            except Exception as e:
+                logger.warning(f"[CASE_AGGREG] associate: get_task({task_id}) failed: {e}")
+                not_found.append(task_id)
+                continue
+
+            if not task_info:
+                not_found.append(task_id)
+                continue
+
+            if task_info.get("status") != "completed":
+                not_completed.append(task_id)
+                continue
+
+            files_db = task_info.get("output_files_db", "")
+            if not files_db or not Path(files_db).exists():
+                not_completed.append(task_id)
+                continue
+
+            # Inspect real analysis state from the task's own _files.db
+            stats = get_file_description_stats(files_db)
+            has_descriptions = stats["analyzed_files"] > 0
+            status = TaskAnalysisState.ANALYZED.value if has_descriptions else TaskAnalysisState.PENDING.value
+
+            # Pre-populate the case-level state row so the next cross-image run
+            # knows whether to reuse or analyze this task.
+            update_task_analysis_status(
+                db_path=case_db_path,
+                case_id=case_id,
+                task_id=task_id,
+                status=status,
+                files_count=stats["total_files"],
+                analyzed_files_count=stats["analyzed_files"],
+            )
+
+            # Add the task to the case record in the C++ backend
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.put(
+                        f"{self.settings.cpp_backend_url}/api/cases/{case_id}/tasks",
+                        json={"task_ids": [task_id]},
+                    )
+                    if resp.status_code != 200:
+                        logger.warning(
+                            f"[CASE_AGGREG] associate: add task {task_id} to case "
+                            f"{case_id} failed: {resp.status_code}"
+                        )
+                        continue
+            except Exception as e:
+                logger.warning(f"[CASE_AGGREG] associate: add task {task_id} failed: {e}")
+                continue
+
+            associated.append(task_id)
+            if has_descriptions:
+                reused.append(task_id)
+            else:
+                pending_analysis.append(task_id)
+
+        logger.info(
+            f"[CASE_AGGREG] Case {case_id}: associated {len(associated)} tasks "
+            f"({len(reused)} reused, {len(pending_analysis)} pending), "
+            f"{len(skipped)} already present"
+        )
+
+        return {
+            "associated": associated,
+            "reused": reused,
+            "pending_analysis": pending_analysis,
+            "skipped": skipped,
+            "not_found": not_found,
+            "not_completed": not_completed,
+        }
+
     # ─────────────────────────────────────────────────────────────────────────────
     # Public API: Status Queries
     # ─────────────────────────────────────────────────────────────────────────────

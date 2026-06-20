@@ -24,6 +24,7 @@ import {
     reanalyzeFiles,
     getCaseAnalysisStatus
 } from '../services/caseAnalysisService';
+import { getCaseReportByCase } from '../services/caseGroupService';
 import {
     getClusterRelatedFiles,
     getFileRelatedClusters,
@@ -169,8 +170,13 @@ const CaseIntelligence = () => {
             }
 
             // 获取案例报告
+            // In case-level context (综合分析报告 tab), the report lives in the
+            // case DB keyed by case_id — use the case-scoped endpoint. For a
+            // sub-task context, the report lives in the task's _files.db.
+            const isCaseContext = caseId && activeContextId === caseId;
+            const fetchReport = isCaseContext ? getCaseReportByCase : getCaseReport;
             try {
-                const reportData = await getCaseReport(activeContextId);
+                const reportData = await fetchReport(activeContextId);
                 if (reportData && (reportData.report || reportData.case_report)) {
                     setReport({
                         ...reportData,
@@ -238,7 +244,9 @@ const CaseIntelligence = () => {
             // Job completed successfully — now fetch the report
             dispatch(updateAnalysisProgress({ activeContextId, status: 'completed', progress: 100 }));
             try {
-                const reportData = await getCaseReport(activeContextId);
+                const isCaseContext = caseId && activeContextId === caseId;
+                const fetchReport = isCaseContext ? getCaseReportByCase : getCaseReport;
+                const reportData = await fetchReport(activeContextId);
                 if (reportData && (reportData.report || reportData.case_report)) {
                     setReport({
                         ...reportData,

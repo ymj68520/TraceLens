@@ -42,6 +42,10 @@ class AddTasksRequest(BaseModel):
     task_ids: List[str] = Field(..., description="要添加的任务 ID 列表")
 
 
+class AssociateTasksRequest(BaseModel):
+    task_ids: List[str] = Field(..., description="要关联（通常已完成分析）的任务 ID 列表")
+
+
 class MultiImageAnalysisRequest(BaseModel):
     case_id: str           = Field(..., description="案件 ID（C++ 后端）")
     task_ids: List[str]    = Field(..., description="所有任务 ID（顺序与 files_db_paths 对应）")
@@ -171,6 +175,44 @@ async def add_tasks_to_case(
     if r.status_code != 200:
         raise HTTPException(status_code=r.status_code, detail=r.text)
     return r.json()
+
+
+@router.post("/api/llm/cases/{case_id}/associate-tasks")
+async def associate_tasks_to_case(
+    case_id: str,
+    req: AssociateTasksRequest,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Associate already-completed tasks to a case, correctly pre-populating the
+    case-level analysis-state row for each.
+
+    Unlike POST /api/llm/cases/{case_id}/tasks (which only edits the case's
+    task_ids list), this endpoint inspects each task's real _files.db and
+    writes an 'analyzed' / 'pending' state row so a subsequent cross-image
+    analysis REUSES already-analyzed tasks instead of re-analyzing them.
+
+    Returns a per-task breakdown:
+      - associated:       task IDs newly added to the case
+      - reused:           associated tasks that already have descriptions
+      - pending_analysis: associated tasks without descriptions yet
+      - skipped:          task IDs already present in the case
+      - not_found:        task IDs that could not be resolved
+      - not_completed:    task IDs not yet finished analyzing
+    """
+    if not req.task_ids:
+        raise HTTPException(status_code=400, detail="task_ids cannot be empty")
+
+    svc = get_case_analysis_service()
+    if not svc:
+        raise HTTPException(status_code=503, detail="Case analysis service not ready")
+
+    try:
+        result = await svc.associate_tasks_to_case(case_id, req.task_ids)
+        return {"case_id": case_id, **result}
+    except Exception as e:
+        logger.error(f"[ASSOCIATE_TASKS] Failed for case {case_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Multi-Image Analysis ──────────────────────────────────────────────────────

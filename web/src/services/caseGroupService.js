@@ -20,6 +20,18 @@ export const getCase = (caseId) =>
 export const addTasksToCase = (caseId, taskIds) =>
   pythonApi.post(`/api/llm/cases/${caseId}/tasks`, { task_ids: taskIds });
 
+/**
+ * Associate already-completed tasks to a case, correctly pre-populating the
+ * case-level analysis state so already-analyzed tasks are reused (not
+ * re-analyzed) by the next cross-image run.
+ *
+ * @param {string} caseId
+ * @param {string[]} taskIds
+ * @returns {Promise<{associated, reused, pending_analysis, skipped, not_found, not_completed}>}
+ */
+export const associateTasksToCase = (caseId, taskIds) =>
+  pythonApi.post(`/api/llm/cases/${caseId}/associate-tasks`, { task_ids: taskIds });
+
 // ── Multi-Image Analysis ──────────────────────────────────────────────────────
 
 /**
@@ -42,6 +54,14 @@ export const startMultiImageAnalysis = (opts) =>
 
 export const getMultiAnalysisStatus = (jobId) =>
   pythonApi.get(`/api/llm/multi-image-analysis/${jobId}`);
+
+/**
+ * Get the cross-image case report persisted to the case-level database.
+ * Use this when the context is a ForensicCase (case_id), not a single task.
+ * @param {string} caseId
+ */
+export const getCaseReportByCase = (caseId) =>
+  pythonApi.get(`/api/llm/case-report-by-case/${caseId}`);
 
 /**
  * Poll multi-image analysis job until completion.
@@ -69,6 +89,7 @@ export const deleteCase = (caseId) =>
   pythonApi.delete(`/api/llm/cases/${caseId}`);
 
 export default {
-  createCase, listCases, getCase, addTasksToCase, deleteCase,
+  createCase, listCases, getCase, addTasksToCase, associateTasksToCase, deleteCase,
   startMultiImageAnalysis, getMultiAnalysisStatus, pollMultiAnalysis,
+  getCaseReportByCase,
 };

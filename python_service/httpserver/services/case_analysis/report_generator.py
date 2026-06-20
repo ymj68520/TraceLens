@@ -176,11 +176,21 @@ class ReportGenerator(ReportGeneratorHelpersMixin):
                 report_text = "生成报告时发生错误：" + str(e)
 
         # Persist report to database
-        if files_db_path and report_text and not report_text.startswith("生成报告时发生错误"):
+        if report_text and not report_text.startswith("生成报告时发生错误"):
             try:
-                self._persist_case_report(
-                    files_db_path, task_id or "", case_description, report_text
-                )
+                if is_cross_image_report and task_id:
+                    # Cross-image reports are persisted to the case-level
+                    # database (data/cases/{case_id}/{case_id}.db), keyed by
+                    # the case_id, so they survive beyond the in-memory job and
+                    # can be retrieved via the case-report-by-case endpoint.
+                    from ..db_utils import get_case_db_path
+                    case_db = get_case_db_path(task_id)
+                    self._persist_case_report(case_db, task_id, case_description, report_text)
+                elif files_db_path:
+                    # Single-image reports persist to the task's own _files.db.
+                    self._persist_case_report(
+                        files_db_path, task_id or "", case_description, report_text
+                    )
             except Exception as e:
                 logger.warning(f"Failed to persist case report to db: {e}")
 

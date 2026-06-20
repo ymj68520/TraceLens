@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { fetchTasks, cancelTask, deleteTask, setFilters } from '../store/taskSlice';
+import { fetchCases } from '../store/caseSlice';
 import { openModal } from '../store/uiSlice';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -11,21 +12,52 @@ import { useToast } from '../components/common/ToastContext';
 import { TASK_STATUS, TASK_PRIORITY } from '../utils/constants';
 import TaskTable from '../components/tasks/TaskTable';
 import CreateTaskModal from '../components/tasks/CreateTaskModal';
+import AddTasksToCaseModal from '../components/tasks/AddTasksToCaseModal';
+import ComposeCaseModal from '../components/tasks/ComposeCaseModal';
 import { useTaskAutoTrigger } from '../hooks/useTaskAutoTrigger';
 
 const Tasks = () => {
   const dispatch = useDispatch();
   const { tasks, status, error, filters } = useSelector((state) => state.tasks);
+  const { cases } = useSelector((state) => state.cases);
   const { modal } = useSelector((state) => state.ui);
   const toast = useToast();
 
   // Confirmation dialog state
   const [confirmState, setConfirmState] = useState({ open: false, type: null, taskId: null, loading: false });
+  // Join-case modal: null when closed, else the task id to add
+  const [joinTaskId, setJoinTaskId] = useState(null);
+  // Multi-select for "compose case from tasks": Set of task ids
+  const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
+  // Compose-case modal (opened with the current selection)
+  const [showCompose, setShowCompose] = useState(false);
+
+  const toggleSelect = (taskId) =>
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      next.has(taskId) ? next.delete(taskId) : next.add(taskId);
+      return next;
+    });
+  const toggleSelectAll = (checked) => {
+    if (!checked) { setSelectedTaskIds(new Set()); return; }
+    const completed = tasks.filter((t) => t.status?.toLowerCase() === 'completed').map((t) => t.id);
+    setSelectedTaskIds(new Set(completed));
+  };
 
   // Initial load
   useEffect(() => {
     dispatch(fetchTasks(filters));
+    dispatch(fetchCases());
   }, [dispatch, filters]);
+
+  // Reverse lookup: taskId -> the case that contains it (pure frontend map)
+  const taskCaseMap = useMemo(() => {
+    const m = {};
+    for (const c of (cases || [])) {
+      for (const tid of (c.task_ids || [])) m[tid] = c;
+    }
+    return m;
+  }, [cases]);
 
   // Background silent polling + AI auto-trigger
   useTaskAutoTrigger({
@@ -98,7 +130,12 @@ const Tasks = () => {
           </motion.h1>
           <p className="mt-2 text-slate-600 dark:text-slate-300">Manage and monitor analysis tasks</p>
         </div>
-        <Button onClick={() => dispatch(openModal({ type: 'createTask' }))}>➕ Create Task</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowCompose(true)} disabled={selectedTaskIds.size === 0}>
+            📂 组建案件（{selectedTaskIds.size}）
+          </Button>
+          <Button onClick={() => dispatch(openModal({ type: 'createTask' }))}>➕ Create Task</Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -122,11 +159,33 @@ const Tasks = () => {
             <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
           </div>
         )}
-        <TaskTable tasks={filteredTasks} onCancel={handleCancel} onDelete={handleDelete} />
+        <TaskTable
+          tasks={filteredTasks}
+          onCancel={handleCancel}
+          onDelete={handleDelete}
+          onJoinCase={setJoinTaskId}
+          taskCaseMap={taskCaseMap}
+          selectedTaskIds={selectedTaskIds}
+          onToggleSelect={toggleSelect}
+          onToggleSelectAll={toggleSelectAll}
+        />
       </Card>
 
       {/* Modal */}
       {modal.open && modal.type === 'createTask' && <CreateTaskModal />}
+
+      {/* Join-case modal (task-row entry point) */}
+      {joinTaskId && (
+        <AddTasksToCaseModal fixedTaskId={joinTaskId} onClose={() => setJoinTaskId(null)} />
+      )}
+
+      {/* Compose-case modal (multi-select entry point) */}
+      {showCompose && (
+        <ComposeCaseModal
+          preselectedTaskIds={[...selectedTaskIds]}
+          onClose={() => { setShowCompose(false); setSelectedTaskIds(new Set()); }}
+        />
+      )}
 
       {/* Cancel confirmation dialog */}
       <ConfirmDialog

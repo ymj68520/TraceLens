@@ -285,9 +285,33 @@ class GraphitiIngestMixin:
                     ep_name = f"文件分析: {file_path}"
                     if len(chunks) > 1:
                         ep_name += f" (第{j+1}部分)"
+                    # Build a rich episode body. The renderer in GraphitiIngestor
+                    # turns each dict key into a "Field: value" line, so every
+                    # key here becomes visible to the entity extractor. Including
+                    # summary/keywords/category/md5/name means the LLM can extract
+                    # hash identifiers, file-type entities, and category-derived
+                    # relationships it would otherwise discard as "generic values".
+                    body = {
+                        "file_path": file_path,
+                        "analysis": chunk,
+                    }
+                    if desc.get("summary"):
+                        body["summary"] = desc["summary"]
+                    if desc.get("keywords"):
+                        body["keywords"] = desc["keywords"]
+                    if desc.get("category"):
+                        body["category"] = desc["category"]
+                    if desc.get("md5"):
+                        body["md5"] = desc["md5"]
+                    if desc.get("name"):
+                        body["filename"] = desc["name"]
+                    if desc.get("file_type"):
+                        body["file_type"] = desc["file_type"]
+                    if desc.get("is_relevant") is not None:
+                        body["is_relevant"] = bool(desc["is_relevant"])
                     episodes.append(EpisodeData(
                         name=ep_name,
-                        episode_body=json.dumps({"file_path": file_path, "analysis": chunk}, ensure_ascii=False),
+                        episode_body=json.dumps(body, ensure_ascii=False),
                         source_description=f"LLM分析结果 - {file_path}",
                         reference_time=datetime.now(),
                         file_path=file_path,

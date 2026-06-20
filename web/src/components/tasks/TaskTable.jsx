@@ -44,7 +44,7 @@ function ProgressCell({ task }) {
   );
 }
 
-function ActionsCell({ task, onCancel, onDelete }) {
+function ActionsCell({ task, onCancel, onDelete, onJoinCase }) {
   const status = task.status?.toLowerCase();
   const finished = ['completed', 'failed', 'cancelled'].includes(status);
   return (
@@ -59,6 +59,9 @@ function ActionsCell({ task, onCancel, onDelete }) {
           <Link to={`/timeline?task_id=${task.id}`} className="text-primary-600 hover:underline">Timeline</Link>
           <Link to={`/files?task_id=${task.id}`} className="text-green-600 hover:underline ml-1">Files</Link>
           <Link to={`/case-report?task_id=${task.id}`} className="text-teal-600 hover:underline ml-1">Report</Link>
+          <button onClick={() => onJoinCase(task.id)} className="text-indigo-600 hover:underline ml-1" title="将此任务加入多镜像案件">
+            加入案件
+          </button>
         </>
       )}
       {finished && (
@@ -70,7 +73,13 @@ function ActionsCell({ task, onCancel, onDelete }) {
   );
 }
 
-export default function TaskTable({ tasks, onCancel, onDelete }) {
+export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskCaseMap = {}, selectedTaskIds, onToggleSelect, onToggleSelectAll }) {
+  // Multi-select is opt-in: only rendered when selectedTaskIds is provided.
+  const selectable = Array.isArray(selectedTaskIds) || selectedTaskIds instanceof Set;
+  const isSel = (id) => selectable && (selectedTaskIds.has ? selectedTaskIds.has(id) : selectedTaskIds.includes(id));
+  const completedIds = tasks.filter((t) => t.status?.toLowerCase() === 'completed').map((t) => t.id);
+  const allSelected = selectable && completedIds.length > 0 && completedIds.every((id) => isSel(id));
+
   if (tasks.length === 0) {
     return (
       <div className="text-center py-12">
@@ -84,6 +93,17 @@ export default function TaskTable({ tasks, onCancel, onDelete }) {
       <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700 table-fixed">
         <thead className="bg-slate-50 dark:bg-slate-900/50">
           <tr>
+            {selectable && (
+              <th className="px-4 py-3 w-10">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={(e) => onToggleSelectAll && onToggleSelectAll(e.target.checked)}
+                  className="h-4 w-4 text-primary-600 rounded"
+                  title="全选已完成任务"
+                />
+              </th>
+            )}
             {['ID', 'Image Path', 'Status', 'Priority', 'Timeline', 'Progress', 'Actions'].map((h, i) => (
               <th key={h} className={`px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider ${i === 0 ? 'w-20' : i === 2 ? 'w-28' : i === 3 ? 'w-24' : i === 4 ? 'w-44' : i === 5 ? 'w-40' : i === 6 ? 'w-48' : ''}`}>
                 {h}
@@ -92,13 +112,36 @@ export default function TaskTable({ tasks, onCancel, onDelete }) {
           </tr>
         </thead>
         <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
-          {tasks.map((task) => (
-            <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+          {tasks.map((task) => {
+            const forensicCase = taskCaseMap[task.id];
+            const isCompleted = task.status?.toLowerCase() === 'completed';
+            const selected = isSel(task.id);
+            return (
+            <tr key={task.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors ${selected ? 'bg-primary-50/60 dark:bg-primary-900/20' : ''}`}>
+              {selectable && (
+                <td className="px-4 py-4 whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    disabled={!isCompleted}
+                    checked={selected}
+                    onChange={() => onToggleSelect && onToggleSelect(task.id)}
+                    className="h-4 w-4 text-primary-600 rounded disabled:opacity-30"
+                    title={isCompleted ? '勾选后可组建案件' : '仅已完成任务可选'}
+                  />
+                </td>
+              )}
               <td className="px-4 py-4 whitespace-nowrap text-[10px] font-mono text-slate-500 dark:text-slate-400">
                 {task.id?.substring(0, 8)}
               </td>
               <td className="px-4 py-4 text-sm text-slate-900 dark:text-white truncate max-w-[200px]" title={task.image_path}>
-                {task.image_path}
+                <div className="truncate">{task.image_path}</div>
+                {forensicCase && (
+                  <Link to={`/case-report?case_id=${forensicCase.id}`}
+                    className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-[10px] text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
+                    title={`所属案件：${forensicCase.name}`}>
+                    🗂 {forensicCase.name}
+                  </Link>
+                )}
               </td>
               <td className="px-4 py-4 whitespace-nowrap">
                 <StatusBadge status={task.status} />
@@ -122,10 +165,11 @@ export default function TaskTable({ tasks, onCancel, onDelete }) {
                 <ProgressCell task={task} />
               </td>
               <td className="px-4 py-4 whitespace-nowrap">
-                <ActionsCell task={task} onCancel={onCancel} onDelete={onDelete} />
+                <ActionsCell task={task} onCancel={onCancel} onDelete={onDelete} onJoinCase={onJoinCase} />
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

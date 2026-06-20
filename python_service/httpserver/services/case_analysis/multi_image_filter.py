@@ -191,13 +191,6 @@ class MultiImageFilter(FileFilter):
             "streaming_used": True,
         }
 
-        return {
-            "filtered_files": final,
-            "reasoning": " | ".join(reasonings),
-            "selected_count": len(final),
-            "streaming_used": True,
-        }
-
     def _distribute_and_persist(
         self,
         selected_tagged: List[str],
@@ -215,8 +208,16 @@ class MultiImageFilter(FileFilter):
                 per_db[rec["source_db"]].append(rec["path"])
 
         for idx, (db_path, file_list) in enumerate(per_db.items()):
-            tid = (task_ids[idx] if task_ids and idx < len(task_ids) else
-                   re.search(r'tasks/([a-f0-9-]+)/', db_path))
-            tid = tid.group(1) if hasattr(tid, "group") else (tid or "_latest")
+            # Resolve the task_id for this db: prefer the explicit list,
+            # otherwise fall back to extracting it from the db path.
+            tid = None
+            if task_ids and idx < len(task_ids):
+                tid = task_ids[idx]
+            else:
+                m = re.search(r'tasks/([a-f0-9-]+)/', db_path)
+                if m:
+                    tid = m.group(1)
+            if not tid:
+                tid = "_latest"
             self._persist_filtered_files(db_path, tid, file_list)
             logger.info(f"[MULTI_FILTER] Persisted {len(file_list)} files for DB {idx+1}")

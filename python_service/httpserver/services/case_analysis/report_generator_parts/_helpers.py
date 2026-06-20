@@ -5,6 +5,8 @@ methods to the ReportGenerator class declared in report_generator.py.
 """
 
 import logging
+import sqlite3
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -286,6 +288,24 @@ class ReportGeneratorHelpersMixin:
         """
         from ..db_utils import get_case_report_from_db
         return get_case_report_from_db(files_db_path, task_id)
+
+    def get_cross_image_report(self, case_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a persisted cross-image report for a case.
+
+        Cross-image reports are persisted to the case-level database
+        (data/cases/{case_id}/{case_id}.db) keyed by the case_id, so they
+        can be retrieved independently of any single task.
+
+        Args:
+            case_id: Case identifier.
+
+        Returns:
+            Report dict or None if not found.
+        """
+        from ..db_utils import get_case_db_path, get_case_report_from_db
+        case_db = get_case_db_path(case_id)
+        return get_case_report_from_db(case_db, case_id)
 
     def get_filtered_files(self, files_db_path: str, task_id: str = "") -> List[str]:
         """

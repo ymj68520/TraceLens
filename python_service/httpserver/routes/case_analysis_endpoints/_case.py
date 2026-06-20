@@ -320,6 +320,52 @@ async def get_case_report(
     except Exception as e:
         logger.error(f"Get case report failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/case-report-by-case/{case_id}", response_model=CaseReportResponse, responses={
+    200: {"description": "Cross-image report retrieved successfully"},
+    404: {"description": "Report not found"},
+    500: {"description": "Internal server error"},
+})
+async def get_case_report_by_case(
+    case_id: str,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Get the cross-image analysis report for a ForensicCase.
+
+    Unlike /case-report/{task_id} (single-task, keyed on a task's _files.db),
+    this endpoint retrieves the cross-image report that is persisted to the
+    case-level database (data/cases/{case_id}/{case_id}.db) keyed by case_id.
+    """
+    try:
+        from ...services import get_service_manager
+        service_manager = get_service_manager()
+
+        case_service = _get_case_analysis_service(service_manager)
+        report = case_service.get_cross_image_report(case_id)
+
+        if not report:
+            raise HTTPException(
+                status_code=404,
+                detail="No cross-image report found for this case. "
+                       "Ensure cross-image analysis has completed.",
+            )
+
+        return CaseReportResponse(
+            success=True,
+            task_id=case_id,
+            case_description=report.get("case_description"),
+            report=report.get("case_report"),
+            filtered_files=report.get("filtered_files", []),
+            generated_at=str(report.get("updated_at", "")),
+            timestamp=datetime.now().isoformat(),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get cross-image case report failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/filtered-files/{task_id}", response_model=FilteredFilesResponse, responses={
     200: {"description": "Filtered files retrieved"},
     404: {"description": "Task not found"},

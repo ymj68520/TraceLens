@@ -166,6 +166,22 @@ class CaseAnalysisCoreMixin:
             raise RuntimeError("ReportGenerator module not initialized. Ensure all dependencies are injected.")
         return self._report_generator.get_case_report(files_db_path, task_id)
 
+    def get_cross_image_report(self, case_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve a persisted cross-image report from the case-level database."""
+        if not self._report_generator:
+            raise RuntimeError("ReportGenerator module not initialized. Ensure all dependencies are injected.")
+        return self._report_generator.get_cross_image_report(case_id)
+
+    async def associate_tasks_to_case(self, case_id: str, task_ids: List[str]) -> Dict[str, Any]:
+        """Associate already-completed tasks to a case, pre-populating analysis state.
+
+        Delegates to the CaseAggregationManager so already-analyzed tasks are
+        correctly reused (not re-analyzed) by a subsequent cross-image run.
+        """
+        if not self._case_aggregation:
+            raise RuntimeError("CaseAggregationManager not initialized. Ensure all dependencies are injected.")
+        return await self._case_aggregation.associate_tasks(case_id, task_ids)
+
     def get_filtered_files(self, files_db_path: str, task_id: str = "") -> List[str]:
         """Retrieve the list of case-relevant files."""
         if not self._report_generator:
