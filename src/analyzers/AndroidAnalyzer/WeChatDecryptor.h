@@ -3,13 +3,14 @@
 #include <string>
 #include <vector>
 #include <sqlite3.h>
+#include "SqlCipherDatabase.h"
 
 class WeChatDecryptor {
 public:
     WeChatDecryptor();
     ~WeChatDecryptor();
 
-    // Non-copyable, non-movable (owns sqlite3 handle)
+    // Non-copyable, non-movable (owns the cipher handle)
     WeChatDecryptor(const WeChatDecryptor&) = delete;
     WeChatDecryptor& operator=(const WeChatDecryptor&) = delete;
     WeChatDecryptor(WeChatDecryptor&&) = delete;
@@ -24,7 +25,7 @@ public:
     static std::string derivePassword(const std::string& imageMountPath);
 
     // Get the opened database handle (valid only after openDatabase returns true)
-    sqlite3* getDb() const { return db_; }
+    sqlite3* getDb() const;
 
     // Close the database
     void close();
@@ -33,10 +34,8 @@ public:
     const std::string& getLastError() const { return lastError_; }
 
 private:
-    sqlite3* db_ = nullptr;
+    SqlCipherDatabase cipher_;
     std::string lastError_;
 
-    bool tryOpenWithCipher(const std::string& dbPath, const std::string& password,
-                           int kdfIterations, const std::string& hmacAlgo);
     static std::string md5(const std::string& input);
 };

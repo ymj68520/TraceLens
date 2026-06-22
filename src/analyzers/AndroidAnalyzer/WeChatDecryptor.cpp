@@ -18,10 +18,11 @@ WeChatDecryptor::~WeChatDecryptor() {
 }
 
 void WeChatDecryptor::close() {
-    if (db_) {
-        sqlite3_close(db_);
-        db_ = nullptr;
-    }
+    cipher_.close();
+}
+
+sqlite3* WeChatDecryptor::getDb() const {
+    return cipher_.get();
 }
 
 bool WeChatDecryptor::openDatabase(const std::string& dbPath, const std::string& password) {
@@ -33,75 +34,28 @@ bool WeChatDecryptor::openDatabase(const std::string& dbPath, const std::string&
         return false;
     }
 
-    // Try SQLCipher 4.x defaults first (newer WeChat versions)
-    if (tryOpenWithCipher(dbPath, password, 64000, "sha512")) {
+    // WeChat uses SQLCipher. Try the documented v4 defaults first, then the
+    // legacy v2 defaults, then fall back to the full auto-retry matrix. The
+    // exact-config attempts short-circuit the broad search for the common case.
+    SqlCipherConfig v4;
+    v4.compatibility = 4;
+    if (cipher_.openWithPassphrase(dbPath, password, v4)) {
         return true;
     }
 
-    // Fall back to SQLCipher 2.x defaults (older WeChat versions)
-    if (tryOpenWithCipher(dbPath, password, 4000, "sha1")) {
+    SqlCipherConfig v2;
+    v2.kdfIterations = 4000;
+    v2.hmacAlgo = "sha1";
+    if (cipher_.openWithPassphrase(dbPath, password, v2)) {
+        return true;
+    }
+
+    // Broad auto-retry across SQLCipher v1-v4 presets.
+    if (cipher_.openWithPassphrase(dbPath, password)) {
         return true;
     }
 
     lastError_ = "Failed to decrypt database with provided password";
-    return false;
-}
-
-bool WeChatDecryptor::tryOpenWithCipher(const std::string& dbPath, const std::string& password,
-                                         int kdfIterations, const std::string& hmacAlgo) {
-    close();
-
-    if (sqlite3_open(dbPath.c_str(), &db_) != SQLITE_OK) {
-        lastError_ = "Failed to open database file: " + std::string(sqlite3_errmsg(db_));
-        db_ = nullptr;
-        return false;
-    }
-
-    // Set SQLCipher key
-    // We use PRAGMA key with a hex-escaped string to avoid SQL injection.
-    // The password is 7 hex chars, but we escape it for safety.
-    std::string escapedPassword;
-    for (char c : password) {
-        if (c == '\'') escapedPassword += "''";
-        else escapedPassword += c;
-    }
-    std::string pragmaKey = "PRAGMA key = '" + escapedPassword + "';";
-    if (sqlite3_exec(db_, pragmaKey.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK) {
-        lastError_ = "Failed to set cipher key: " + std::string(sqlite3_errmsg(db_));
-        close();
-        return false;
-    }
-
-    // Configure SQLCipher parameters
-    std::string pragmaKdf = "PRAGMA kdf_iter = " + std::to_string(kdfIterations) + ";";
-    if (sqlite3_exec(db_, pragmaKdf.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK) {
-        // Non-fatal: some SQLCipher builds may not support kdf_iter
-        lastError_ = "Warning: kdf_iter PRAGMA failed (continuing): "
-                     + std::string(sqlite3_errmsg(db_));
-    }
-
-    sqlite3_exec(db_, "PRAGMA cipher_use_hmac = ON;", nullptr, nullptr, nullptr);
-
-    if (hmacAlgo == "sha512") {
-        sqlite3_exec(db_, "PRAGMA cipher_page_size = 4096;", nullptr, nullptr, nullptr);
-        sqlite3_exec(db_, "PRAGMA cipher_compatibility = 4;", nullptr, nullptr, nullptr);
-    } else {
-        sqlite3_exec(db_, "PRAGMA cipher_page_size = 1024;", nullptr, nullptr, nullptr);
-    }
-
-    // Verify by querying sqlite_master
-    sqlite3_stmt* stmt = nullptr;
-    const char* testSql = "SELECT count(*) FROM sqlite_master;";
-    if (sqlite3_prepare_v2(db_, testSql, -1, &stmt, nullptr) == SQLITE_OK) {
-        if (sqlite3_step(stmt) == SQLITE_ROW) {
-            sqlite3_finalize(stmt);
-            return true;  // Successfully decrypted
-        }
-        sqlite3_finalize(stmt);
-    }
-
-    lastError_ = "Decryption verification failed: " + std::string(sqlite3_errmsg(db_));
-    close();
     return false;
 }
 

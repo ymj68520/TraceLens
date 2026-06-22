@@ -20,6 +20,16 @@ public:
 private:
     static std::string getBaseName(const std::string& path);
     static std::string getDatabaseDir(const CommandLineArgs& args);
+
+    /**
+     * @brief Analyze an Android logical extraction (a `data/` directory or an
+     *        Image.zip) directly, bypassing the TSK disk-image pipeline.
+     *
+     * Used when --android-source is `dir` or `zip`. No _raw.db is produced and
+     * no filesystem timeline is generated; only Android artifacts are written
+     * into <baseName>_files.db.
+     */
+    static int runAndroidLogicalAnalysis(const CommandLineArgs& args);
 };
 
 } // namespace forensics

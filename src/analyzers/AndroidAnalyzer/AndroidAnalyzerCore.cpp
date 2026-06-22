@@ -1,6 +1,9 @@
 #include "AndroidAnalyzer.h"
 #include "AuditLog/AuditLog.h"
 #include "PathManager/PathManager.h"
+#include "DatabaseManager/FileExtractor/FileExtractor.h"
+#include "LogicalDirExtractor.h"
+#include "ZipArchiveExtractor.h"
 
 // AndroidAnalyzer Core Implementation
 
@@ -15,9 +18,33 @@ AndroidAnalyzer::~AndroidAnalyzer() {
 }
 
 bool AndroidAnalyzer::initialize() {
-    fileExtractor_ = std::make_unique<FileExtractor>(imagePath_, dbManager_->getDbPath());
+    // Pick a file-access backend based on the source mode. All nine call sites
+    // in this module go through fileExtractor_->extractFileByPath(...), so the
+    // backend is transparent to the parsing logic.
+    switch (sourceMode_) {
+        case AndroidSourceMode::LogicalDir:
+            fileExtractor_ = std::make_unique<LogicalDirExtractor>(imagePath_);
+            break;
+        case AndroidSourceMode::Zip:
+            fileExtractor_ = std::make_unique<ZipArchiveExtractor>(imagePath_);
+            break;
+        case AndroidSourceMode::TSK:
+        default:
+            // Legacy path: requires a populated _raw.db produced by the TSK
+            // ImageAnalyzer stage.
+            if (!dbManager_) {
+                std::cerr << "TSK source mode requires a DatabaseManager (_raw.db)" << std::endl;
+                return false;
+            }
+            fileExtractor_ = std::make_unique<FileExtractor>(imagePath_, dbManager_->getDbPath());
+            break;
+    }
+
     if (!fileExtractor_->initialize()) {
-        std::cerr << "Failed to initialize FileExtractor" << std::endl;
+        std::cerr << "Failed to initialize file extractor (source mode "
+                  << (sourceMode_ == AndroidSourceMode::TSK ? "TSK" :
+                      sourceMode_ == AndroidSourceMode::LogicalDir ? "dir" : "zip")
+                  << ")" << std::endl;
         AuditLog::instance().log("SYSTEM", "ANDROID_INIT_FAILED", "Failed to initialize Android analyzer for: " + imagePath_);
         return false;
     }
@@ -87,6 +114,14 @@ void AndroidAnalyzer::analyzeAndroidData() {
 
     // Analyze System Logs
     analyzeSystemLogs();
+
+    // ---- Logical-extraction artifacts (Phase 2) ----
+    // These are surfaced from app-specific files that the generic TSK pipeline
+    // does not target: per-app Android IDs, plaintext note-taking app DBs, and
+    // an inventory of SQLCipher-encrypted app DBs with key hints.
+    analyzeDeviceIdentifiers();
+    analyzeAppNotes();
+    analyzeEncryptedAppDatabases();
 
     std::cout << "Android data analysis completed." << std::endl;
     AuditLog::instance().log("SYSTEM", "ANDROID_ANALYSIS_COMPLETE", "Android data analysis completed for: " + imagePath_);

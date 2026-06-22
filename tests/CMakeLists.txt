@@ -993,7 +993,8 @@ if(SQLCIPHER_FOUND)
   add_executable(
     test_wechat_decryptor_gtest
     UnitTest/test_wechat_decryptor_gtest.cpp
-    ../src/analyzers/AndroidAnalyzer/WeChatDecryptor.cpp)
+    ../src/analyzers/AndroidAnalyzer/WeChatDecryptor.cpp
+    ../src/analyzers/AndroidAnalyzer/SqlCipherDatabase.cpp)
 
   target_include_directories(
     test_wechat_decryptor_gtest
@@ -1029,6 +1030,61 @@ install(TARGETS test_wechat_parser_gtest RUNTIME DESTINATION bin/tests)
 if(SQLCIPHER_FOUND)
   install(TARGETS test_wechat_decryptor_gtest RUNTIME DESTINATION bin/tests)
 endif()
+
+# Generic SQLCipher opener (extracted from WeChatDecryptor; used by Phase 2
+# encrypted app-DB inventory). Requires the sqlcipher CLI at runtime.
+if(SQLCIPHER_FOUND)
+  add_executable(
+    test_sqlcipher_database_gtest
+    UnitTest/test_sqlcipher_database_gtest.cpp
+    ../src/analyzers/AndroidAnalyzer/SqlCipherDatabase.cpp)
+
+  target_include_directories(
+    test_sqlcipher_database_gtest
+    PRIVATE ${CMAKE_SOURCE_DIR}/src
+            ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer)
+
+  target_compile_definitions(test_sqlcipher_database_gtest PRIVATE HAVE_SQLCIPHER)
+  target_link_libraries(
+    test_sqlcipher_database_gtest
+    ${GTEST_LIBRARIES}
+    ${GMOCK_LIBRARIES}
+    ${SQLITE_LINK_LIBRARIES}
+    pthread)
+
+  add_test(NAME SqlCipherDatabaseGTests COMMAND test_sqlcipher_database_gtest)
+  install(TARGETS test_sqlcipher_database_gtest RUNTIME DESTINATION bin/tests)
+endif()
+
+# Android logical-extraction source backends (dir / zip), bypassing TSK.
+add_executable(
+  test_android_logical_source_gtest
+  UnitTest/test_android_logical_source_gtest.cpp
+  ../src/analyzers/AndroidAnalyzer/LogicalDirExtractor.cpp
+  ../src/analyzers/AndroidAnalyzer/ZipArchiveExtractor.cpp
+  ../src/core/AuditLog/AuditLog.cpp)
+
+target_include_directories(
+  test_android_logical_source_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/core
+          ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer)
+
+if(LIBZIP_FOUND)
+  target_compile_definitions(test_android_logical_source_gtest PRIVATE HAVE_LIBZIP)
+  target_include_directories(test_android_logical_source_gtest PRIVATE ${LIBZIP_INCLUDE_DIRS})
+endif()
+
+target_link_libraries(
+  test_android_logical_source_gtest
+  ${GTEST_LIBRARIES}
+  ${GMOCK_LIBRARIES}
+  sqlite3
+  ${LIBZIP_LIBRARIES}
+  pthread)
+
+add_test(NAME AndroidLogicalSourceGTests COMMAND test_android_logical_source_gtest)
+install(TARGETS test_android_logical_source_gtest RUNTIME DESTINATION bin/tests)
 
 # Scene Database Tests (SQL schema definitions for scene specialization)
 add_executable(test_scene_database_gtest UnitTest/test_scene_database_gtest.cpp

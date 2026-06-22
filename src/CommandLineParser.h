@@ -28,6 +28,7 @@ struct CommandLineArgs {
     bool overwrite = false;
     bool android_analyze = false;
     std::string wechat_password;
+    std::string android_source;  // "tsk" (default), "dir", or "zip"
     bool windows_analyze = false;
     bool linux_analyze = false;
     bool analyze_dlls = false; // 启用DLL分析

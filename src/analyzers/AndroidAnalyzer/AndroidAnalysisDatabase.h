@@ -42,6 +42,19 @@ public:
     bool insertUsageStat(const UsageStatRecord& stat);
     bool insertSystemLog(const SystemLogEntry& log);
 
+    // Logical-extraction artifacts (Phase 2)
+    // Android SSAID / per-app Android ID (settings_ssaid.xml)
+    bool insertDeviceIdentifier(const std::string& type, const std::string& value,
+                                const std::string& packageName, const std::string& sourcePath);
+    // Notes recovered from plaintext note-taking app databases (generic)
+    bool insertAppNote(const std::string& packageName, const std::string& noteId,
+                       const std::string& title, const std::string& content,
+                       const std::string& tags, bool isPrivate, const std::string& sourceDb);
+    // Inventory of an encrypted app DB with its discovered key hint
+    bool insertEncryptedDb(const std::string& packageName, const std::string& dbPath,
+                           const std::string& keyHintType, const std::string& keyHintValue,
+                           const std::string& keySourcePath, const std::string& openStatus);
+
 private:
     std::string dbPath_;
     sqlite3* db_;

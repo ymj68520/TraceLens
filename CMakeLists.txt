@@ -35,6 +35,16 @@ else()
   set(SQLITE_LINK_LIBRARIES ${SQLite3_LIBRARIES})
 endif()
 
+# Optional libzip for reading Android logical-extraction archives (Image.zip)
+# directly, without extracting the whole archive to disk.
+pkg_check_modules(LIBZIP QUIET libzip)
+if(LIBZIP_FOUND)
+  message(STATUS "libzip found - Android zip-source backend enabled")
+  add_definitions(-DHAVE_LIBZIP)
+else()
+  message(STATUS "libzip not found - Android zip-source backend disabled (dir source still works)")
+endif()
+
 # Optional database connectors
 pkg_check_modules(MYSQLCLIENT mysqlclient)
 pkg_check_modules(LIBPQ libpq)
@@ -296,6 +306,11 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/BuildPropAnalyzer.cpp
     src/analyzers/AndroidAnalyzer/AndroidLogParser.cpp
     $<$<BOOL:${SQLCIPHER_FOUND}>:src/analyzers/AndroidAnalyzer/WeChatDecryptor.cpp>
+    $<$<BOOL:${SQLCIPHER_FOUND}>:src/analyzers/AndroidAnalyzer/SqlCipherDatabase.cpp>
+    src/analyzers/AndroidAnalyzer/AndroidLogicalParsers.cpp
+    # Android logical-extraction backends (dir / zip sources, bypassing TSK)
+    src/analyzers/AndroidAnalyzer/LogicalDirExtractor.cpp
+    src/analyzers/AndroidAnalyzer/ZipArchiveExtractor.cpp
     src/analyzers/WindowsFilesAnalyzer/Core/WindowsFilesAnalyzerCore.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Registry.cpp
@@ -473,6 +488,7 @@ else()
     ${LIBLZMA_LIBRARIES}
     ${BZIP2_LIBRARIES}
     ${ZSTD_LIBRARIES}
+    ${LIBZIP_LIBRARIES}
     ${PLATFORM_LIBRARIES})
 endif()
 

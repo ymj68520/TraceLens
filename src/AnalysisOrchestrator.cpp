@@ -39,6 +39,14 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         return 1;
     }
 
+    // Android logical extraction (directory or zip) does not need — and cannot
+    // use — the TSK disk-image pipeline. Route it to a dedicated path that
+    // runs only the Android analyzer against the data source directly.
+    if (args.android_analyze &&
+        (args.android_source == "dir" || args.android_source == "zip")) {
+        return runAndroidLogicalAnalysis(args);
+    }
+
     std::cout << "=== Forensic Image Analyzer ===" << std::endl;
     std::cout << "Image: " << args.image_path << std::endl;
     std::cout << "Using The Sleuth Kit 4.14.0\n" << std::endl;
@@ -217,6 +225,53 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         return 1;
     }
 
+    return 0;
+}
+
+int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args) {
+    std::cout << "=== Android Logical Extraction Analyzer ===" << std::endl;
+    std::cout << "Source: " << args.image_path << std::endl;
+    std::cout << "Mode:   " << args.android_source
+              << " (no TSK / no _raw.db)" << std::endl;
+
+    if (!args.android_analyze) {
+        std::cerr << "Error: --android-analyze is required for logical mode" << std::endl;
+        return 1;
+    }
+
+    std::string baseName = getBaseName(args.image_path);
+    std::string prefix = getDatabaseDir(args);
+    if (!prefix.empty()) fs::create_directories(args.db_dir);
+
+    // Android artifacts are written into <baseName>_files.db, mirroring the
+    // integrated-scene convention used by the TSK pipeline.
+    std::string fileDbPath = prefix + baseName + "_files.db";
+
+    try {
+        auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(args.image_path, nullptr);
+        // Select the non-TSK backend before initialize().
+        androidAnalyzer->setSourceMode(
+            args.android_source == "zip" ? AndroidSourceMode::Zip
+                                         : AndroidSourceMode::LogicalDir);
+        if (!args.wechat_password.empty()) {
+            androidAnalyzer->setWeChatPassword(args.wechat_password);
+        }
+        androidAnalyzer->setOutputDatabasePath(fileDbPath);
+
+        std::cout << "[Android] Analyzing logical extraction..." << std::endl;
+        if (!androidAnalyzer->initialize()) {
+            std::cerr << "Error: Failed to initialize Android analyzer" << std::endl;
+            return 1;
+        }
+        androidAnalyzer->analyzeAndroidData();
+        std::cout << "✓ Android analysis complete" << std::endl;
+        std::cout << "✓ Artifact database: " << fileDbPath << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Fatal error: " << e.what() << std::endl;
+        return 1;
+    }
+
+    std::cout << "=== Analysis Complete ===" << std::endl;
     return 0;
 }
 

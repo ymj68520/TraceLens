@@ -8,6 +8,7 @@
 #include <functional>
 #include <tsk/libtsk.h>
 #include "DatabaseManager/DatabaseManager.h"
+#include "analyzers/AndroidAnalyzer/IFileExtractor.h"
 
 /**
  * FileExtractor - Extract files from forensic images
@@ -17,8 +18,11 @@
  * - Search files by extension
  * - Extract file content from disk image
  * - Support for all filesystem types (NTFS, EXT, XFS, etc.)
+ *
+ * Implements IFileExtractor so AndroidAnalyzer can treat the TSK backend and
+ * the logical-extraction backends (directory/zip) uniformly.
  */
-class FileExtractor {
+class FileExtractor : public IFileExtractor {
 public:
     /**
      * Constructor
@@ -32,7 +36,7 @@ public:
      * Initialize extractor (open image and database)
      * @return true if successful
      */
-    bool initialize();
+    bool initialize() override;
 
     /**
      * Extract files by name pattern (supports wildcards: *, ?)
@@ -79,7 +83,7 @@ public:
      * @param outputPath Output file path
      * @return true if successful
      */
-    bool extractFileByPath(const std::string& filePath, const std::string& outputPath);
+    bool extractFileByPath(const std::string& filePath, const std::string& outputPath) override;
 
 private:
     std::string imagePath_;

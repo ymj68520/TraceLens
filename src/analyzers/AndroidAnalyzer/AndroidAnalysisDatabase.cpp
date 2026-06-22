@@ -324,6 +324,61 @@ bool AndroidAnalysisDatabase::insertSystemLog(const SystemLogEntry& log) {
     return success;
 }
 
+bool AndroidAnalysisDatabase::insertDeviceIdentifier(const std::string& type, const std::string& value,
+                                                     const std::string& packageName, const std::string& sourcePath) {
+    const char* sql = "INSERT INTO device_identifiers (identifier_type, value, package_name, source_path) VALUES (?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, type.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, value.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, packageName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, sourcePath.c_str(), -1, SQLITE_TRANSIENT);
+
+    bool success = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertAppNote(const std::string& packageName, const std::string& noteId,
+                                            const std::string& title, const std::string& content,
+                                            const std::string& tags, bool isPrivate, const std::string& sourceDb) {
+    const char* sql = "INSERT INTO app_notes (package_name, note_id, title, content, tags, is_private, source_db) VALUES (?, ?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, packageName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, noteId.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, title.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, content.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, tags.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 6, isPrivate ? 1 : 0);
+    sqlite3_bind_text(stmt, 7, sourceDb.c_str(), -1, SQLITE_TRANSIENT);
+
+    bool success = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertEncryptedDb(const std::string& packageName, const std::string& dbPath,
+                                                const std::string& keyHintType, const std::string& keyHintValue,
+                                                const std::string& keySourcePath, const std::string& openStatus) {
+    const char* sql = "INSERT INTO encrypted_db_inventory (package_name, db_path, key_hint_type, key_hint_value, key_source_path, open_status) VALUES (?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, packageName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, dbPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, keyHintType.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, keyHintValue.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, keySourcePath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, openStatus.c_str(), -1, SQLITE_TRANSIENT);
+
+    bool success = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return success;
+}
+
 bool AndroidAnalysisDatabase::executeSQL(const std::string& sql) {
     char* errMsg = nullptr;
     int rc = sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &errMsg);

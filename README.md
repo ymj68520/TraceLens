@@ -34,6 +34,7 @@ A comprehensive digital forensics imaging analysis tool built on The Sleuth Kit.
   3. **文件数据库**: 按类型分类的文件（13 个类别），集成 LLM 分析结果
 - **平台专项分析**:
   - **Android 取证**: 分析短信、联系人、通话记录、应用使用、设备信息、媒体文件
+    - **数据源**: 支持 TSK 磁盘镜像（E01/DD），以及 ADB 逻辑提取（已解压的 `data/` 目录或打包的 `Image.zip`，通过 `--android-source dir|zip`，无需 TSK）
   - **Windows 取证**: 解析注册表、事件日志、Prefetch、浏览器历史、Jump Lists、SRUM、Amcache
   - **Linux 取证**: 分析系统日志、用户账户、Shell 历史、认证数据、Cron 任务
 - **LLM 智能分析**:
@@ -464,6 +465,11 @@ sudo cmake --install .
 ./forensic_analyzer <镜像路径> --android-analyze
 ./forensic_analyzer <镜像路径> --windows-analyze
 ./forensic_analyzer <镜像路径> --linux-analyze
+
+# Android 逻辑提取分析（无需 TSK 磁盘镜像）
+# 直接分析 ADB 逻辑/文件系统提取：已解压的 data/ 目录，或打包的 Image.zip
+./forensic_analyzer <解压目录> --android-analyze --android-source dir
+./forensic_analyzer <Image.zip> --android-analyze --android-source zip   # 需要 libzip
 
 # XFS 文件系统分析（选择解析模式）
 sudo ./forensic_analyzer <镜像路径> --xfs-mode native    # 本地挂载（完整支持）

@@ -38,6 +38,12 @@
   - **网络配置**:WiFi 连接历史、蓝牙配对记录、移动网络信息
   - **存储统计**:内部存储和 SD 卡使用情况
 
+- **逻辑提取专有解析 (Logical-Extraction Artifacts, Phase 2)**
+  - **设备标识符**:从 `data/system/users/<uid>/settings_ssaid.xml` 提取 Android 8+ 的每应用 SSAID(即"Android ID")及设备级 `userkey` 种子,写入 `device_identifiers` 表
+  - **笔记应用内容**:通用解析常见笔记 App 的明文数据库(如 `NotePal.db` / `notevault.db`),按含 `note`/`memo` 的表自动匹配 `title`/`content`/`tags` 列,结果写入 `app_notes` 表
+  - **加密应用库清单**:对 SQLCipher 加密的 App 库(如 `social_chat.db`、`hidden_notes.db`)建立 `encrypted_db_inventory`,记录发现的密钥/口令提示(取自 `app_flutter/files/password.json`,支持 base64 raw-key、JSON `key`/`password` 字段及裸口令三种形态)与打开状态
+  - **通用 SQLCipher 助手**:从 `WeChatDecryptor` 抽出 `SqlCipherDatabase`,支持口令、raw-key(hex)两种模式及 SQLCipher v1-v4 参数自动重试,供任意加密库复用
+
 - **位置与活动追踪**
   - **GPS 历史位置**:提取系统位置缓存和 Google 位置历史
   - **WiFi 定位**:通过 WiFi 扫描记录估算设备移动轨迹
@@ -55,6 +61,30 @@
   - **QQ**:提取聊天记录、群组信息、文件传输记录
   - **WhatsApp**:消息数据库解析(基于应用备份)
   - **Telegram**:聊天记录和媒体文件提取
+
+- **数据源支持 (Data Sources)**
+
+  AndroidAnalyzer 通过 `IFileExtractor` 抽象层访问取证数据,支持三种后端,所有解析器逻辑对后端透明:
+
+  | 模式 | CLI 参数 | 输入 | 说明 |
+  |------|----------|------|------|
+  | TSK 磁盘镜像 | (默认) | E01 / DD 块级镜像 | 经 The Sleuth Kit 打开,依赖 `_raw.db` 的 path→inode 映射 |
+  | 逻辑提取目录 | `--android-source dir` | 已解压的 `data/` 目录树 | ADB 逻辑/文件系统提取,无需 TSK、无需 `_raw.db` |
+  | 逻辑提取压缩包 | `--android-source zip` | 打包的 `Image.zip` | 通过 libzip 按需读取归档内文件,无需解压整个压缩包(需 libzip) |
+
+  逻辑提取模式专为移动取证工具导出的 ADB 提取设计(例如打包为 `Image.zip` 的 `data/data/<包名>/databases/*.db` 文件树)。这类数据**不是块级磁盘镜像**,无法被 TSK 打开,因此 `dir`/`zip` 模式会绕过 TSK 流水线直接分析数据源。
+
+  ```bash
+  # 分析已解压的逻辑提取目录
+  ./forensic_analyzer /path/to/extracted --android-analyze --android-source dir
+
+  # 直接分析打包的 Image.zip(按需读取,不落地解压)
+  ./forensic_analyzer /path/to/Image.zip --android-analyze --android-source zip
+  ```
+
+  > **实现说明**:DuckX 静态链接了第三方 kuba-zip 库,它也导出 `zip_open`/`zip_close` 符号并遮蔽了 libzip 的同名符号。为避免符号冲突,`ZipArchiveExtractor` 改用 libzip 独有的 `zip_source_file_create` + `zip_open_from_source` 打开归档,并用 `zip_discard` 释放只读句柄。
+
+  > **加密库的局限性**:许多笔记/通联类 App(如 `social_chat`、`hidden_notes`)把数据库密钥/口令以明文存于 `password.json`,但对存储值再施加 App 自有的 KDF(迭代哈希)后才用作 SQLCipher 密钥。`encrypted_db_inventory` 表会忠实记录所发现的密钥提示(`key_hint_value`,这通常就是题目"数据库密码"的答案)与 `open_status`(成功为 `decrypted`,无法用标准参数还原则为 `encrypted_locked`)。对于 `encrypted_locked` 的库,需结合 App 的 `libapp.so` 进一步逆向其 KDF,或通过 `SqlCipherDatabase` 提供的口令/raw-key 接口手动尝试。
 
 ---
 

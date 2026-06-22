@@ -172,6 +172,37 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
         log_file TEXT,
         log_source TEXT
     );
+    -- Android SSAID / per-app "Android ID" values from settings_ssaid.xml
+    CREATE TABLE IF NOT EXISTS device_identifiers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        identifier_type TEXT NOT NULL,
+        value TEXT NOT NULL,
+        package_name TEXT,
+        source_path TEXT
+    );
+    -- Notes recovered from plaintext note-taking app databases (generic)
+    CREATE TABLE IF NOT EXISTS app_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        package_name TEXT NOT NULL,
+        note_id TEXT,
+        title TEXT,
+        content TEXT,
+        tags TEXT,
+        is_private INTEGER DEFAULT 0,
+        source_db TEXT
+    );
+    -- Inventory of SQLCipher-encrypted app databases with their discovered key
+    -- hints (password.json / shared_prefs). Whether the DB can be opened
+    -- depends on the app's KDF; the hint itself is the contest answer.
+    CREATE TABLE IF NOT EXISTS encrypted_db_inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        package_name TEXT NOT NULL,
+        db_path TEXT NOT NULL,
+        key_hint_type TEXT,
+        key_hint_value TEXT,
+        key_source_path TEXT,
+        open_status TEXT
+    );
 )";
 
 // ============================================================================

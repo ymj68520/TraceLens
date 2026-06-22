@@ -5,6 +5,7 @@
 
 #include "AndroidDataTypes.h"
 #include "AndroidAnalysisDatabase.h"
+#include "IFileExtractor.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -12,6 +13,24 @@
 
 class DatabaseManager;
 class FileExtractor;
+class LogicalDirExtractor;
+class ZipArchiveExtractor;
+
+/**
+ * @brief Where the Android artifacts live.
+ *
+ *  - TSK:         a block-level forensic image (E01/DD) opened via The Sleuth
+ *                 Kit + a _raw.db metadata table (legacy path).
+ *  - LogicalDir:  an already-extracted Android `data/` directory tree
+ *                 (e.g. an unzipped logical pull). No TSK, no _raw.db.
+ *  - Zip:         a logical extraction packaged as a single Image.zip;
+ *                 served on demand via libzip (requires HAVE_LIBZIP).
+ */
+enum class AndroidSourceMode {
+    TSK,
+    LogicalDir,
+    Zip
+};
 
 /**
  * @brief Analyzes Android device data
@@ -22,8 +41,9 @@ public:
     AndroidAnalyzer();
     /**
      * @brief Construct a new Android Analyzer
-     * @param imagePath Path to the disk image or directory
-     * @param dbManager Database manager for storing results
+     * @param imagePath Path to the disk image, extracted directory, or zip archive
+     * @param dbManager Database manager for storing results (may be nullptr in
+     *                  LogicalDir/Zip mode where no _raw.db is needed)
      */
     AndroidAnalyzer(const std::string& imagePath, DatabaseManager* dbManager);
     ~AndroidAnalyzer();
@@ -41,11 +61,22 @@ public:
      * @return true if initialization successful
      */
     bool initialize();
-    
+
     void setOutputDatabasePath(const std::string& path) { outputDbPath_ = path; }
 
     void setWeChatPassword(const std::string& password) { wechatPassword_ = password; }
     const std::string& getWeChatPassword() const { return wechatPassword_; }
+
+    /**
+     * @brief Choose where the Android artifacts are sourced from.
+     *
+     * Default is TSK (block image + _raw.db). Set to LogicalDir or Zip to
+     * analyze an ADB logical/file-system extraction (a `data/` directory or an
+     * Image.zip) without any TSK involvement.
+     * Must be called before initialize().
+     */
+    void setSourceMode(AndroidSourceMode mode) { sourceMode_ = mode; }
+    AndroidSourceMode getSourceMode() const { return sourceMode_; }
     
     /**
      * @brief Analyze all Android data
@@ -76,6 +107,17 @@ public:
     void analyzeSystemLogs();
     std::vector<SystemLogEntry> parseSystemLogFile(const std::string& filePath, const std::string& originalPath);
     std::string getLogTypeFromPath(const std::string& path);
+
+    // ---- Logical-extraction artifacts (Phase 2) ----
+    /// Parse per-app SSAID ("Android ID") values from settings_ssaid.xml.
+    void analyzeDeviceIdentifiers();
+    /// Scan known note-taking app databases for plaintext notes (generic).
+    void analyzeAppNotes();
+    /// Inventory SQLCipher-encrypted app DBs and record discovered key hints.
+    void analyzeEncryptedAppDatabases();
+    /// Read a key/passphrase hint from an app's password.json (base64 key or
+    /// passphrase). Returns empty if absent.
+    std::string readPasswordJsonKey(const std::string& imageRelPath, std::string& outType);
 
 private:
     void scanUserData(const std::string& dataPath);
@@ -122,7 +164,8 @@ private:
     std::string imagePath_;
     std::string outputDbPath_;
     DatabaseManager* dbManager_;
-    std::unique_ptr<FileExtractor> fileExtractor_;
+    AndroidSourceMode sourceMode_ = AndroidSourceMode::TSK;
+    std::unique_ptr<IFileExtractor> fileExtractor_;
     std::unique_ptr<AndroidAnalysisDatabase> androidDb_;
     std::string wechatPassword_;
 };
