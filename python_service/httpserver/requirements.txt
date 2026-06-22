@@ -104,3 +104,6 @@ tomli>=2.0.0; python_version < "3.11"
 # Scientific data formats
 h5py>=3.10.0               # HDF5 files
 pydicom>=2.4.0             # DICOM medical imaging
+
+# Memory forensics (Volatility3) — used by MemoryAnalyzer C++ subprocess
+volatility3>=2.7.0,<3.0

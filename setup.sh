@@ -213,6 +213,11 @@ else
     ok "Python virtual environment created and dependencies installed"
 fi
 
+# Soft check: Volatility3 for MemoryAnalyzer (non-fatal)
+if [ ! -x "$VENV_DIR/bin/vol" ]; then
+    warn "volatility3 not found in $VENV_DIR — memory forensics (--memory-analyze) will be unavailable."
+fi
+
 # ========================================================================
 # Step 6: Build C++ project
 # ========================================================================
