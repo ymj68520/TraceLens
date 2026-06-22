@@ -37,6 +37,7 @@ ForensicsRoutes::ForensicsRoutes(crow::App<>& app)
       file_extraction_routes_(app),
       statistics_routes_(app),
       android_forensics_routes_(app),
+      memory_forensics_routes_(app),
       system_event_routes_(app),
       dll_analysis_routes_(app),
       scene_query_routes_(app) {

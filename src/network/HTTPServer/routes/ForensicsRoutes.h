@@ -16,6 +16,7 @@
 #include "FileExtractionRoutes.h"
 #include "StatisticsRoutes.h"
 #include "AndroidForensicsRoutes.h"
+#include "MemoryForensicsRoutes.h"
 #include "SystemEventRoutes.h"
 #include "SceneQueryRoutes.h"
 
@@ -83,6 +84,7 @@ private:
     FileExtractionRoutes file_extraction_routes_;
     StatisticsRoutes statistics_routes_;
     AndroidForensicsRoutes android_forensics_routes_;
+    MemoryForensicsRoutes memory_forensics_routes_;
     SystemEventRoutes system_event_routes_;
     DLLAnalysisRoutes dll_analysis_routes_;
     SceneQueryRoutes scene_query_routes_;
