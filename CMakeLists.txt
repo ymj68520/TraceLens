@@ -180,6 +180,11 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers/Security
   ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Parsers/Container
   ${CMAKE_SOURCE_DIR}/src/analyzers/LinuxFilesAnalyzer/Analysis
+  ${CMAKE_SOURCE_DIR}/src/analyzers/MemoryAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/MemoryAnalyzer/Core
+  ${CMAKE_SOURCE_DIR}/src/analyzers/MemoryAnalyzer/Volatility
+  ${CMAKE_SOURCE_DIR}/src/analyzers/MemoryAnalyzer/Parsers
+  ${CMAKE_SOURCE_DIR}/src/analyzers/MemoryAnalyzer/Database
   ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
   ${CMAKE_SOURCE_DIR}/src/analyzers/ImageAnalyzer
   ${CMAKE_SOURCE_DIR}/src/analyzers/VisionAnalysis
@@ -286,6 +291,7 @@ set(LIB_SOURCES
     src/network/HTTPServer/routes/FileExtractionRoutes.cpp
     src/network/HTTPServer/routes/StatisticsRoutes.cpp
     src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp
+    src/network/HTTPServer/routes/MemoryForensicsRoutes.cpp
     src/network/HTTPServer/routes/DLLAnalysisRoutes.cpp
     src/network/HTTPServer/routes/SystemEventRoutes.cpp
     src/network/HTTPServer/routes/SceneQueryRoutes.cpp
@@ -389,6 +395,13 @@ set(LIB_SOURCES
     src/analyzers/LinuxFilesAnalyzer/Parsers/CloudParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/ExtendedHistoryParser.cpp
     src/analyzers/LinuxFilesAnalyzer/Parsers/Security/SecurityBypassAnalyzer.cpp
+    src/analyzers/MemoryAnalyzer/Core/MemoryAnalyzerCore.cpp
+    src/analyzers/MemoryAnalyzer/Volatility/Volatility3Runner.cpp
+    src/analyzers/MemoryAnalyzer/Parsers/ProcessParser.cpp
+    src/analyzers/MemoryAnalyzer/Parsers/NetworkParser.cpp
+    src/analyzers/MemoryAnalyzer/Parsers/BashHistoryParser.cpp
+    src/analyzers/MemoryAnalyzer/Parsers/BootTimeParser.cpp
+    src/analyzers/MemoryAnalyzer/Database/MemoryAnalysisDatabase.cpp
     src/core/AuditLog/AuditLog.cpp
     src/core/AuditLog/AuditLog_Queries.cpp
     src/core/PathManager/PathManager.cpp

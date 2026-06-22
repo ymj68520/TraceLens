@@ -1116,3 +1116,64 @@ target_link_libraries(test_scene_performance_gtest ${GTEST_LIBRARIES}
                       ${GMOCK_LIBRARIES} sqlite3 pthread)
 
 add_test(NAME ScenePerformanceGTests COMMAND test_scene_performance_gtest)
+
+# ============================================================================
+# MemoryAnalyzer GTest Tests
+# ============================================================================
+
+# MemoryAnalysisDatabase wrapper tests
+add_executable(
+  test_memory_database_gtest
+  UnitTest/test_memory_database_gtest.cpp
+  ../src/analyzers/MemoryAnalyzer/Database/MemoryAnalysisDatabase.cpp)
+
+target_include_directories(
+  test_memory_database_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers
+          ${CMAKE_SOURCE_DIR}/src/core)
+
+target_link_libraries(
+  test_memory_database_gtest ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} sqlite3
+  pthread)
+
+add_test(NAME MemoryDatabaseGTests COMMAND test_memory_database_gtest)
+
+# Volatility3Runner subprocess wrapper tests
+add_executable(
+  test_memory_volatility_runner_gtest
+  UnitTest/test_memory_volatility_runner_gtest.cpp
+  ../src/analyzers/MemoryAnalyzer/Volatility/Volatility3Runner.cpp)
+
+target_include_directories(
+  test_memory_volatility_runner_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers)
+
+target_link_libraries(
+  test_memory_volatility_runner_gtest ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
+  pthread)
+
+add_test(NAME MemoryVolatilityRunnerGTests COMMAND test_memory_volatility_runner_gtest)
+
+# Memory JSON parsers tests
+add_executable(
+  test_memory_parsers_gtest
+  UnitTest/test_memory_parsers_gtest.cpp
+  ../src/analyzers/MemoryAnalyzer/Database/MemoryAnalysisDatabase.cpp
+  ../src/analyzers/MemoryAnalyzer/Parsers/ProcessParser.cpp
+  ../src/analyzers/MemoryAnalyzer/Parsers/NetworkParser.cpp
+  ../src/analyzers/MemoryAnalyzer/Parsers/BashHistoryParser.cpp
+  ../src/analyzers/MemoryAnalyzer/Parsers/BootTimeParser.cpp)
+
+target_include_directories(
+  test_memory_parsers_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers
+          ${CMAKE_SOURCE_DIR}/src/core)
+
+target_link_libraries(
+  test_memory_parsers_gtest ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} sqlite3
+  pthread nlohmann_json::nlohmann_json)
+
+add_test(NAME MemoryParsersGTests COMMAND test_memory_parsers_gtest)

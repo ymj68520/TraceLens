@@ -17,3 +17,8 @@ TEST(Volatility3RunnerTest, ParseJsonOutputShape) {
     auto r = runner.run(MemoryVolatility::PSLIST, 5);
     EXPECT_FALSE(r.ok);
 }
+
+int main(int argc, char** argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}

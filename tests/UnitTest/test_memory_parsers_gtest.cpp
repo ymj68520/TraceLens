@@ -52,3 +52,8 @@ TEST(MemoryParsersTest, ParsesBoottime) {
     auto rows = db.query("SELECT value FROM boot_info WHERE key='boot_time';");
     ASSERT_EQ(rows.size(), 1u); EXPECT_EQ(rows[0][0], "1713000000");
 }
+
+int main(int argc, char** argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}
