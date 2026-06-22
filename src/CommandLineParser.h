@@ -31,6 +31,7 @@ struct CommandLineArgs {
     std::string android_source;  // "tsk" (default), "dir", or "zip"
     bool windows_analyze = false;
     bool linux_analyze = false;
+    bool memory_analyze = false;
     bool analyze_dlls = false; // 启用DLL分析
     bool analyze_dlls_only = false; // 仅DLL分析
     bool verify_signatures = true; // 验证数字签名

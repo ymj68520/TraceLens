@@ -16,6 +16,16 @@ public:
     static int runFileCarving(const CommandLineArgs& args);
     static int runHTTPServer(int port);
     static int runDLLAnalysis(const CommandLineArgs& args);
+
+    /**
+     * @brief Analyze a RAM memory image (LiME/raw) via Volatility3, bypassing
+     *        the TSK disk-image pipeline. Produces <baseName>_memory.db only.
+     *
+     * Used when --memory-analyze is set. No _raw.db / events.db / files.db are
+     * produced; memory artifacts (processes, network, bash history, boot info)
+     * are written into <baseName>_memory.db.
+     */
+    static int runMemoryAnalysis(const CommandLineArgs& args);
     
 private:
     static std::string getBaseName(const std::string& path);

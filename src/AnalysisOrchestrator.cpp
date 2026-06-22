@@ -8,6 +8,7 @@
 #include "AndroidAnalyzer/AndroidAnalyzer.h"
 #include "WindowsFilesAnalyzer/WindowsFilesAnalyzer.h"
 #include "LinuxFilesAnalyzer/LinuxFilesAnalyzer.h"
+#include "MemoryAnalyzer/MemoryAnalyzer.h"
 #include "DLLAnalyzer/Core/DLLAnalyzer.h"
 #include "FullTextSearch/FullTextSearch.h"
 #include "FullTextSearch/TextExtractor.h"
@@ -45,6 +46,13 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
     if (args.android_analyze &&
         (args.android_source == "dir" || args.android_source == "zip")) {
         return runAndroidLogicalAnalysis(args);
+    }
+
+    // Memory (RAM) image analysis also bypasses the TSK disk-image pipeline:
+    // a raw RAM dump is not a filesystem image. Route to a dedicated path that
+    // runs Volatility3 and writes <baseName>_memory.db only.
+    if (args.memory_analyze) {
+        return runMemoryAnalysis(args);
     }
 
     std::cout << "=== Forensic Image Analyzer ===" << std::endl;
@@ -271,6 +279,36 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
         return 1;
     }
 
+    std::cout << "=== Analysis Complete ===" << std::endl;
+    return 0;
+}
+
+int AnalysisOrchestrator::runMemoryAnalysis(const CommandLineArgs& args) {
+    std::cout << "=== Memory Forensics Analyzer ===" << std::endl;
+    std::cout << "Source: " << args.image_path << std::endl;
+    std::cout << "Mode:   LiME/raw RAM image (no TSK / no _raw.db)" << std::endl;
+
+    std::string baseName = getBaseName(args.image_path);
+    std::string prefix = getDatabaseDir(args);
+    if (!prefix.empty()) fs::create_directories(args.db_dir);
+
+    std::string memDbPath = prefix + baseName + "_memory.db";
+
+    try {
+        auto analyzer = std::make_unique<MemoryAnalyzer>(args.image_path);
+        analyzer->setOutputDatabasePath(memDbPath);
+        std::cout << "[Memory] Initializing..." << std::endl;
+        if (!analyzer->initialize()) {
+            std::cerr << "Error: Failed to initialize memory analyzer" << std::endl;
+            return 1;
+        }
+        analyzer->analyzeMemoryData();
+        std::cout << "✓ Memory analysis complete" << std::endl;
+        std::cout << "✓ Database: " << memDbPath << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Fatal error: " << e.what() << std::endl;
+        return 1;
+    }
     std::cout << "=== Analysis Complete ===" << std::endl;
     return 0;
 }
