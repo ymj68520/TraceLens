@@ -157,6 +157,20 @@ make -j$(nproc)
 ./forensic_analyzer <image_file_path>
 ```
 
+### Memory (RAM) Forensics
+
+Analyze a LiME/raw RAM dump with Volatility3. Produces a single `<baseName>_memory.db`
+(processes, network connections, bash history, boot info, sockets, cmdline).
+
+```bash
+# Prerequisites: volatility3 installed in python_service/.venv (see setup.sh),
+# and an ISF symbol file matching the dump's kernel in ~/.config/volatility3/symbols/.
+./forensic_analyzer mem.lime --memory-analyze
+```
+
+Results are exposed via HTTP at `/api/forensics/memory/{summary,processes,network,bash-history,boot-info}`
+and in the web UI under **Memory** (内存取证).
+
 ### Output
 The tool generates three SQLite databases:
 - **_raw.db**: Complete file system metadata
