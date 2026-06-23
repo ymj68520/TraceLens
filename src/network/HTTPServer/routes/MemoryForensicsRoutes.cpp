@@ -37,7 +37,12 @@ static std::string resolveMemoryDb(const crow::request& req) {
     return RouteHelpers::get_database_path(task_id, "memory");
 }
 
-static crow::response jsonRows(const std::string& dbPath, const std::string& sql) {
+// Parameterized variant: binds ? placeholders left-to-right to the given values.
+// Used for handlers that accept user-supplied filters (search/keyword) to avoid
+// SQL injection via string concatenation. (Declared first so the no-arg overload
+// below can forward to it.)
+static crow::response jsonRows(const std::string& dbPath, const std::string& sql,
+                                const std::vector<std::string>& params) {
     crow::response res;
     RouteHelpers::add_cors_headers(res);
     res.set_header("Content-Type", "application/json");
@@ -49,6 +54,9 @@ static crow::response jsonRows(const std::string& dbPath, const std::string& sql
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
         res.code = 500; res.write(R"({"error":"query failed"})"); sqlite3_close(db); return res;
+    }
+    for (size_t i = 0; i < params.size(); ++i) {
+        sqlite3_bind_text(stmt, static_cast<int>(i + 1), params[i].c_str(), -1, SQLITE_TRANSIENT);
     }
     int n = sqlite3_column_count(stmt);
     while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -64,6 +72,11 @@ static crow::response jsonRows(const std::string& dbPath, const std::string& sql
     sqlite3_close(db);
     res.write(out.dump());
     return res;
+}
+
+// No-parameter variant: forward to the parameterized overload with no bindings.
+static crow::response jsonRows(const std::string& dbPath, const std::string& sql) {
+    return jsonRows(dbPath, sql, {});
 }
 
 crow::response MemoryForensicsRoutes::handle_memory_summary(const crow::request& req) {
@@ -100,12 +113,15 @@ crow::response MemoryForensicsRoutes::handle_memory_processes(const crow::reques
     catch (const std::exception&) { return taskNotFound(); }
     auto params = crow::query_string(req.url_params);
     std::string search = params.get("search") ? params.get("search") : "";
-    std::string sql = "SELECT pid, ppid, comm, uid, state, thread_count FROM processes";
     if (!search.empty()) {
-        sql += " WHERE comm LIKE '%" + search + "%'";
+        // Bind the LIKE pattern as a parameter to avoid SQL injection.
+        std::string pattern = "%" + search + "%";
+        return jsonRows(dbPath,
+            "SELECT pid, ppid, comm, uid, state, thread_count FROM processes "
+            "WHERE comm LIKE ? ORDER BY pid LIMIT 1000;", {pattern});
     }
-    sql += " ORDER BY pid LIMIT 1000;";
-    return jsonRows(dbPath, sql);
+    return jsonRows(dbPath,
+        "SELECT pid, ppid, comm, uid, state, thread_count FROM processes ORDER BY pid LIMIT 1000;");
 }
 
 crow::response MemoryForensicsRoutes::handle_memory_network(const crow::request& req) {
@@ -123,10 +139,15 @@ crow::response MemoryForensicsRoutes::handle_memory_bash_history(const crow::req
     catch (const std::exception&) { return taskNotFound(); }
     auto params = crow::query_string(req.url_params);
     std::string kw = params.get("keyword") ? params.get("keyword") : "";
-    std::string sql = "SELECT pid, comm, command, history_index FROM bash_history";
-    if (!kw.empty()) sql += " WHERE command LIKE '%" + kw + "%'";
-    sql += " ORDER BY history_index LIMIT 1000;";
-    return jsonRows(dbPath, sql);
+    if (!kw.empty()) {
+        // Bind the LIKE pattern as a parameter to avoid SQL injection.
+        std::string pattern = "%" + kw + "%";
+        return jsonRows(dbPath,
+            "SELECT pid, comm, command, history_index FROM bash_history "
+            "WHERE command LIKE ? ORDER BY history_index LIMIT 1000;", {pattern});
+    }
+    return jsonRows(dbPath,
+        "SELECT pid, comm, command, history_index FROM bash_history ORDER BY history_index LIMIT 1000;");
 }
 
 crow::response MemoryForensicsRoutes::handle_memory_boot_info(const crow::request& req) {

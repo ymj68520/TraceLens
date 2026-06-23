@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <poll.h>
 #include <iostream>
 #include <filesystem>
 #include <array>
@@ -90,25 +91,72 @@ PluginResult Volatility3Runner::run(const std::string& pluginName, int timeoutSe
         return s;
     };
 
-    // Wait with timeout
+    // Set both pipe read-ends non-blocking so poll() + drain can run concurrently
+    // with the child. This avoids a deadlock when a plugin emits more JSON than
+    // the OS pipe buffer (~64KB): without draining, the child blocks on write
+    // and never exits, hanging the parent until timeout.
+    int outFd = outPipe[0];
+    int errFd = errPipe[0];
+    auto setNonblock = [](int fd) {
+        int fl = fcntl(fd, F_GETFL, 0);
+        if (fl != -1) fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+    };
+    setNonblock(outFd);
+    setNonblock(errFd);
+
+    std::string outBuf, errBuf;
+    auto drain = [&](int fd, std::string& buf) {
+        std::array<char, 4096> b;
+        ssize_t n;
+        while ((n = read(fd, b.data(), b.size())) > 0) buf.append(b.data(), n);
+    };
+
+    // Wait with timeout, draining pipes concurrently via poll().
     bool timedOut = false;
     auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSeconds);
     int status = 0;
+    pollfd pfds[2] = {{outFd, POLLIN, 0}, {errFd, POLLIN, 0}};
+    bool childAlive = true;
     while (true) {
-        pid_t r = waitpid(pid, &status, WNOHANG);
-        if (r == pid) break;
-        if (r == -1) { result.stderrText = "waitpid failed"; close(outPipe[0]); close(errPipe[0]); return result; }
+        // Drain whatever is currently available without blocking.
+        drain(outFd, outBuf);
+        drain(errFd, errBuf);
+
+        if (childAlive) {
+            pid_t r = waitpid(pid, &status, WNOHANG);
+            if (r == pid) {
+                childAlive = false;
+            } else if (r == -1) {
+                result.stderrText = "waitpid failed";
+                close(outFd); close(errFd);
+                return result;
+            }
+        }
+
+        if (!childAlive) {
+            // Child gone: final drain captures any tail bytes, then EOF ends it.
+            drain(outFd, outBuf);
+            drain(errFd, errBuf);
+            break;
+        }
+
         if (std::chrono::steady_clock::now() > deadline) {
             kill(pid, SIGTERM);
             timedOut = true;
             waitpid(pid, &status, 0);
+            drain(outFd, outBuf);
+            drain(errFd, errBuf);
             break;
         }
-        usleep(100000);
+
+        // Block briefly on the pipes so we don't spin; wakes when data arrives.
+        pfds[0].revents = 0;
+        pfds[1].revents = 0;
+        poll(pfds, 2, 100);  // 100ms cap so the deadline check runs promptly
     }
-    result.jsonText = readAll(outPipe[0]);
-    result.stderrText = readAll(errPipe[0]);
-    close(outPipe[0]); close(errPipe[0]);
+    result.jsonText = std::move(outBuf);
+    result.stderrText = std::move(errBuf);
+    close(outFd); close(errFd);
 
     if (timedOut) {
         result.stderrText += "\n[timeout after " + std::to_string(timeoutSeconds) + "s]";
