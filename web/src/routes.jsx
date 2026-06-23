@@ -7,6 +7,7 @@ import Cases from './pages/Cases';
 import Timeline from './pages/Timeline';
 import Files from './pages/Files';
 import Android from './pages/Android';
+import Memory from './pages/Memory';
 import Search from './pages/Search';
 import Statistics from './pages/Statistics';
 import Settings from './pages/Settings';
@@ -54,6 +55,10 @@ const router = createBrowserRouter([
       {
         path: 'android',
         element: <Android />,
+      },
+      {
+        path: 'memory',
+        element: <Memory />,
       },
       {
         path: 'wechat-graph',

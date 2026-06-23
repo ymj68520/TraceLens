@@ -11,6 +11,7 @@ export default {
     'nav.android': 'Android',
     'nav.wechat_graph': 'WeChat Graph',
     'nav.oss_analysis': 'OSS Analysis',
+    'nav.memory': 'Memory',
     'nav.search': 'Search',
     'nav.statistics': 'Statistics',
     'nav.terminal': 'Terminal',

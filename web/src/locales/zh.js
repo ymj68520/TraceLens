@@ -11,6 +11,7 @@ export default {
     'nav.android': '安卓取证',
     'nav.wechat_graph': '微信关系分析',
     'nav.oss_analysis': 'OSS 分析',
+    'nav.memory': '内存取证',
     'nav.search': '搜索',
     'nav.statistics': '统计',
     'nav.terminal': '系统终端',
