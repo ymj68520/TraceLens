@@ -252,7 +252,7 @@ class TestCommunityAnalysis:
 class TestPrivateChatHistory:
     def test_get_chat_history_returns_messages(self, graph_service, wechat_dbs, norm_conn):
         contact = _top_private_contact(norm_conn)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             graph_service.get_chat_history(wechat_dbs["norm"], contact, "wxid_owner")
         )
         assert "error" not in result
@@ -261,7 +261,7 @@ class TestPrivateChatHistory:
 
     def test_chat_history_is_time_ordered(self, graph_service, wechat_dbs, norm_conn):
         contact = _top_private_contact(norm_conn)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             graph_service.get_chat_history(wechat_dbs["norm"], contact, "wxid_owner", page_size=500)
         )
         msgs = result["messages"]
@@ -270,7 +270,7 @@ class TestPrivateChatHistory:
 
     def test_chat_history_has_is_send_field(self, graph_service, wechat_dbs, norm_conn):
         contact = _top_private_contact(norm_conn)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             graph_service.get_chat_history(wechat_dbs["norm"], contact, "wxid_owner")
         )
         for m in result["messages"]:
@@ -285,7 +285,7 @@ class TestPrivateChatHistory:
 class TestGroupChatHistory:
     def test_get_group_chat_history(self, graph_service, wechat_dbs, norm_conn):
         chatroom = _top_chatroom(norm_conn)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             graph_service.get_group_chat_history(wechat_dbs["norm"], chatroom)
         )
         assert "error" not in result
@@ -303,7 +303,7 @@ class TestGroupChatHistory:
         ).fetchone()
         members = set(members_row["member_list"].split(","))
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             graph_service.get_group_chat_history(wechat_dbs["norm"], chatroom, page_size=500)
         )
         for m in result["messages"]:
@@ -318,7 +318,7 @@ class TestGroupChatHistory:
 
 class TestContactAndChatroomLists:
     def test_get_contacts_list(self, graph_service, wechat_dbs, norm_conn):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             graph_service.get_contacts_list(wechat_dbs["norm"])
         )
         assert result["total"] > 0
@@ -328,7 +328,7 @@ class TestContactAndChatroomLists:
         assert result["total"] == db_count
 
     def test_get_chatrooms_list(self, graph_service, wechat_dbs, norm_conn):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             graph_service.get_chatrooms_list(wechat_dbs["norm"])
         )
         assert result["total"] > 0
@@ -345,7 +345,7 @@ class TestContactAndChatroomLists:
 
 class TestTimeline:
     def test_timeline_has_multiple_intervals(self, graph_service, wechat_dbs):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             graph_service.compute_timeline("test_task", wechat_dbs["norm"], granularity="month")
         )
         assert "error" not in result
@@ -353,7 +353,7 @@ class TestTimeline:
         assert len(result["intervals"]) >= 2
 
     def test_timeline_message_sum_matches_total(self, graph_service, wechat_dbs, norm_conn):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             graph_service.compute_timeline("test_task", wechat_dbs["norm"], granularity="month")
         )
         total_in_timeline = sum(i["total_messages"] for i in result["intervals"])

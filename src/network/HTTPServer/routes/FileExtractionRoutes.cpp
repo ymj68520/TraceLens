@@ -75,18 +75,37 @@ crow::response FileExtractionRoutes::handle_extract_files(const crow::request& r
             job.config.pattern = body["pattern"].get<std::string>();
         }
 
+        std::string user_output;
         if (body.contains("output_dir")) {
-            job.config.output_dir = body["output_dir"].get<std::string>();
+            user_output = body["output_dir"].get<std::string>();
         }
 
-        std::filesystem::path task_extract_dir = PathManager::instance().getTaskExtractDir(task_id);
-        if (!job.config.output_dir.empty() && job.config.output_dir != "extracted_files") {
-            std::filesystem::path user_path(job.config.output_dir);
-            if (user_path.is_absolute()) {
-                task_extract_dir = user_path;
-            } else {
-                task_extract_dir = std::filesystem::absolute(user_path);
+        namespace fs = std::filesystem;
+        fs::path base = PathManager::instance().getTaskExtractDir(task_id);
+        fs::path task_extract_dir = base;
+        if (!user_output.empty() && user_output != "extracted_files") {
+            // Contain the extraction target under the per-task extract root:
+            // reject absolute paths and any ".." traversal so image contents can
+            // never be written to arbitrary locations (e.g. ~/.ssh, /etc/cron.d).
+            fs::path user_path(user_output);
+            bool has_dotdot = false;
+            for (const auto& part : user_path) { if (part == "..") has_dotdot = true; }
+            if (user_path.is_absolute() || has_dotdot) {
+                json error = {{"error", "output_dir must be a relative path under the task extract directory"}};
+                res.code = 400;
+                res.write(error.dump());
+                return res;
             }
+            fs::path base_canon = fs::weakly_canonical(base);
+            fs::path candidate = fs::weakly_canonical(base / user_path);
+            fs::path rel = candidate.lexically_relative(base_canon);
+            if (rel.empty() || (*rel.begin()) == "..") {
+                json error = {{"error", "output_dir escapes the task extract directory"}};
+                res.code = 400;
+                res.write(error.dump());
+                return res;
+            }
+            task_extract_dir = candidate;
         }
         job.config.output_dir = task_extract_dir.string();
         job.output_path = task_extract_dir.string();

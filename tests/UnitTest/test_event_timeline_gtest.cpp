@@ -31,12 +31,15 @@ protected:
         sqlite3* db;
         sqlite3_open(rawDbPath.c_str(), &db);
         
+        // NOTE: the raw.db files table uses column "size" (see DatabaseManager),
+        // which is what EventExtractor SELECTs. Using "file_size" here made the
+        // extractor's query find no such column -> 0 events extracted.
         const char* createFilesTable = R"(
             CREATE TABLE files (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 inode INTEGER,
                 path TEXT,
-                file_size INTEGER,
+                size INTEGER,
                 type TEXT,
                 atime INTEGER,
                 mtime INTEGER,
@@ -46,9 +49,9 @@ protected:
             );
         )";
         sqlite3_exec(db, createFilesTable, nullptr, nullptr, nullptr);
-        
+
         const char* insertTestFiles = R"(
-            INSERT INTO files (inode, path, file_size, type, atime, mtime, ctime, crtime, is_deleted)
+            INSERT INTO files (inode, path, size, type, atime, mtime, ctime, crtime, is_deleted)
             VALUES
             (1001, '/home/user/document.txt', 1024, 'REG', 1609459200, 1609459260, 1609459320, 1609459380, 0),
             (1002, '/home/user/image.jpg', 2048, 'REG', 1609459400, 1609459460, 1609459520, 1609459580, 0),

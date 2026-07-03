@@ -62,11 +62,26 @@ void MemoryAnalyzer::analyzeMemoryData() {
     mark(MemoryVolatility::PSLIST);
     done(runAndStore(*runner_, *db_, MemoryVolatility::PSLIST, parseProcesses));
 
-    mark(MemoryVolatility::NETSTAT);
-    done(runAndStore(*runner_, *db_, MemoryVolatility::NETSTAT, parseNetstat));
-
+    // linux.sockstat feeds BOTH the sockets table and the connection view
+    // (there is no linux.netstat in vol3). Run it once, parse it into both.
     mark(MemoryVolatility::SOCKSTAT);
-    done(runAndStore(*runner_, *db_, MemoryVolatility::SOCKSTAT, parseSockstat));
+    {
+        auto res = runner_->run(MemoryVolatility::SOCKSTAT);
+        bool ok = res.ok;
+        if (ok) {
+            try {
+                json arr = json::parse(res.jsonText);
+                parseSockstat(arr, *db_);
+                parseNetstat(arr, *db_);
+            } catch (const std::exception& e) {
+                db_->setMeta("parse_err:linux.sockstat", e.what());
+                ok = false;
+            }
+        } else {
+            db_->setMeta("err:linux.sockstat", res.stderrText);
+        }
+        done(ok);
+    }
 
     mark(MemoryVolatility::BASH);
     done(runAndStore(*runner_, *db_, MemoryVolatility::BASH, parseBashHistory));
@@ -84,30 +99,10 @@ void MemoryAnalyzer::analyzeMemoryData() {
         done(ok);
     }
 
-    // cmdline: store raw args (no dedicated parser needed beyond insertCmdline)
-    mark(MemoryVolatility::CMDLINE);
-    {
-        auto res = runner_->run(MemoryVolatility::CMDLINE);
-        bool ok = false;
-        if (res.ok) {
-            try {
-                json a = json::parse(res.jsonText);
-                if (a.is_array()) {
-                    ok = true;
-                    for (const auto& c : a) {
-                        db_->insertCmdline(c.value("PID", 0),
-                                           c.value("Process", std::string("")),
-                                           c.value("Args", c.value("Command", std::string(""))));
-                    }
-                }
-            } catch (const std::exception& e) {
-                db_->setMeta("parse_err:linux.cmdline", e.what());
-            }
-        } else {
-            db_->setMeta("err:linux.cmdline", res.stderrText);
-        }
-        done(ok);
-    }
+    // Per-process command lines come from linux.psaux (there is no
+    // linux.cmdline plugin in vol3).
+    mark(MemoryVolatility::PSAUX);
+    done(runAndStore(*runner_, *db_, MemoryVolatility::PSAUX, parseCmdline));
 
     std::cout << "[Memory] Done -> " << outputDbPath_ << std::endl;
 }

@@ -78,13 +78,23 @@ CompressionType CompressedLogParser::identifyCompression(const std::string& file
     if (ext == ".bz2") return CompressionType::BZIP2;
     if (ext == ".zst") return CompressionType::ZSTD;
 
+    // Extensions that ARE compression/archive formats but are unsupported here:
+    // report UNKNOWN rather than falling through to a plain-text read.
+    if (ext == ".zip" || ext == ".7z" || ext == ".rar" ||
+        ext == ".lz4" || ext == ".lzma" || ext == ".z") {
+        return CompressionType::UNKNOWN;
+    }
+
     // If no recognized extension, try magic bytes
     return identifyCompressionFromMagic(filePath);
 }
 
 CompressionType CompressedLogParser::identifyCompressionFromMagic(const std::string& filePath) {
     std::ifstream file(filePath, std::ios::binary);
-    if (!file.is_open()) return CompressionType::UNKNOWN;
+    // A file we cannot open has no detectable compression signature; treat it as
+    // plain (NONE). Unsupported archive extensions are already mapped to UNKNOWN
+    // by identifyCompression() before reaching here.
+    if (!file.is_open()) return CompressionType::NONE;
 
     unsigned char magic[16] = {0};
     file.read(reinterpret_cast<char*>(magic), sizeof(magic));

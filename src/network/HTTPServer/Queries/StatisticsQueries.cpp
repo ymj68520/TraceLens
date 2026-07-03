@@ -367,6 +367,9 @@ json SQLiteHelper::get_system_events(const std::string& events_db, const std::st
     sqlite3* events = open_database(events_db, result);
     if (!events) return result;
 
+    limit = clamp_limit(limit);
+    offset = clamp_offset(offset);
+
     // Build WHERE clause for filters
     std::string where_clause = " WHERE event_type LIKE 'SYSTEM_%' OR event_type LIKE 'WINDOWS_%' OR event_type LIKE 'LINUX_%' OR event_type LIKE 'SERVICE_%' OR event_type LIKE 'PROCESS_%' OR event_type LIKE 'NETWORK_%'";
 

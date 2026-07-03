@@ -27,6 +27,9 @@ protected:
     std::string createSourceDb(const std::string& filename) {
         std::string path = "/tmp/test_scene_" + filename + ".db";
         tempFiles_.push_back(path);
+        // Start from a clean file: a stale DB left by a crashed/failed prior run
+        // would otherwise make the un-guarded CREATE TABLE fail with SQLITE_ERROR.
+        std::remove(path.c_str());
 
         sqlite3* db;
         int rc = sqlite3_open(path.c_str(), &db);

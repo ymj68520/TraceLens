@@ -22,7 +22,12 @@ json SQLiteHelper::get_timeline_details(const std::string& events_db,
     sqlite3* events = open_database(events_db, result);
     if (!events) return result;
 
-    // Build query to find all events in this cluster
+    limit = clamp_limit(limit);
+    offset = clamp_offset(offset);
+
+    // Build query to find all events in this cluster. All user-supplied string
+    // values are bound as parameters (never concatenated) to prevent injection.
+    std::vector<std::string> bind;
     std::string sql = R"(
         SELECT
             timestamp,
@@ -34,23 +39,26 @@ json SQLiteHelper::get_timeline_details(const std::string& events_db,
             file_type
         FROM events
         WHERE (timestamp / 60) = )" + std::to_string(time_window) + R"(
-        AND event_type = ')" + event_type + "'";
+        AND event_type = ?)";
+    bind.push_back(event_type);
 
     if (!parent_dir.empty()) {
         if (parent_dir == "/") {
             sql += " AND (file_path NOT LIKE '%/%' OR file_path LIKE '/%')";
         } else {
-            sql += " AND file_path LIKE '" + parent_dir + "%'";
+            sql += " AND file_path LIKE ?";
+            bind.push_back(parent_dir + "%");
         }
     }
 
     if (!search.empty()) {
-        sql += " AND file_path LIKE '%" + search + "%'";
+        sql += " AND file_path LIKE ?";
+        bind.push_back("%" + search + "%");
     }
 
     sql += " ORDER BY timestamp ASC LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string(offset);
 
-    json events_data = execute_query(events, sql);
+    json events_data = execute_query(events, sql, bind);
     result["events"] = events_data;
 
     sqlite3_close(events);
@@ -79,7 +87,12 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
         sqlite3_exec(events, alter_sql.c_str(), nullptr, nullptr, nullptr);
     }
 
-    // Build WHERE clause for filters
+    limit = clamp_limit(limit);
+    offset = clamp_offset(offset);
+
+    // Build WHERE clause for filters. start/end are parsed to integers (safe);
+    // event_type is user-supplied text, so it is bound (never concatenated).
+    std::vector<std::string> bind;
     std::string where_clause = " WHERE 1=1";
     if (!start_time.empty()) {
         where_clause += " AND timestamp >= " + std::to_string(parse_timestamp(start_time));
@@ -88,7 +101,8 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
         where_clause += " AND timestamp <= " + std::to_string(parse_timestamp(end_time));
     }
     if (!event_type.empty()) {
-        where_clause += " AND event_type = '" + event_type + "'";
+        where_clause += " AND event_type = ?";
+        bind.push_back(event_type);
     }
 
     // Get total count for pagination metadata
@@ -119,6 +133,9 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
     sqlite3_stmt* count_stmt;
     int64_t total_count = 0;
     if (sqlite3_prepare_v2(events, count_sql.c_str(), -1, &count_stmt, nullptr) == SQLITE_OK) {
+        for (size_t i = 0; i < bind.size(); ++i) {
+            sqlite3_bind_text(count_stmt, static_cast<int>(i + 1), bind[i].c_str(), -1, SQLITE_TRANSIENT);
+        }
         if (sqlite3_step(count_stmt) == SQLITE_ROW) {
             total_count = sqlite3_column_int64(count_stmt, 0);
         }
@@ -172,7 +189,7 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
 
     sql += " ORDER BY timestamp DESC LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string(offset);
 
-    json events_data = execute_query(events, sql);
+    json events_data = execute_query(events, sql, bind);
 
     // Add metadata
     json metadata;
@@ -232,6 +249,7 @@ json SQLiteHelper::get_file_activity_timeline(const std::string& raw_db, const s
         return result;
     }
 
+    std::vector<std::string> bind;
     std::string sql = R"(
         SELECT
             timestamp,
@@ -246,7 +264,8 @@ json SQLiteHelper::get_file_activity_timeline(const std::string& raw_db, const s
     )";
 
     if (!file_path.empty()) {
-        sql += " AND file_path LIKE '%" + file_path + "%'";
+        sql += " AND file_path LIKE ?";
+        bind.push_back("%" + file_path + "%");
     }
     if (inode != -1) {
         sql += " AND inode = " + std::to_string(inode);
@@ -254,20 +273,22 @@ json SQLiteHelper::get_file_activity_timeline(const std::string& raw_db, const s
 
     sql += " ORDER BY timestamp DESC";
 
-    json activities = execute_query(events, sql);
+    json activities = execute_query(events, sql, bind);
 
     // Get file metadata
     json file_metadata;
+    std::vector<std::string> file_bind;
     std::string file_sql = "SELECT * FROM files WHERE ";
     if (inode != -1) {
         file_sql += "inode = " + std::to_string(inode);
     } else if (!file_path.empty()) {
-        file_sql += "path LIKE '%" + file_path + "%' LIMIT 1";
+        file_sql += "path LIKE ? LIMIT 1";
+        file_bind.push_back("%" + file_path + "%");
     } else {
         file_sql += "1=0";
     }
 
-    json file_info = execute_query(raw, file_sql);
+    json file_info = execute_query(raw, file_sql, file_bind);
     if (file_info.is_array() && !file_info.empty()) {
         file_metadata = file_info[0];
     }
@@ -286,8 +307,9 @@ json SQLiteHelper::get_timeline_by_type(const std::string& events_db, const std:
     sqlite3* db = open_database(events_db, result);
     if (!db) return result;
 
-    std::string sql = "SELECT * FROM events WHERE event_type = '" + event_type + "' ORDER BY timestamp DESC LIMIT " + std::to_string(limit);
-    result["events"] = execute_query(db, sql);
+    limit = clamp_limit(limit, 100);
+    std::string sql = "SELECT * FROM events WHERE event_type = ? ORDER BY timestamp DESC LIMIT " + std::to_string(limit);
+    result["events"] = execute_query(db, sql, {event_type});
     result["event_type"] = event_type;
     result["limit"] = limit;
 
@@ -300,6 +322,7 @@ json SQLiteHelper::get_timeline_by_time_range(const std::string& events_db, int6
     sqlite3* db = open_database(events_db, result);
     if (!db) return result;
 
+    limit = clamp_limit(limit, 100);
     std::string sql = "SELECT * FROM events WHERE timestamp >= " + std::to_string(start_time) +
                      " AND timestamp <= " + std::to_string(end_time) +
                      " ORDER BY timestamp DESC LIMIT " + std::to_string(limit);
@@ -319,8 +342,9 @@ json SQLiteHelper::get_timeline_by_file(const std::string& events_db, const std:
     sqlite3* db = open_database(events_db, result);
     if (!db) return result;
 
-    std::string sql = "SELECT * FROM events WHERE file_path = '" + file_path + "' ORDER BY timestamp DESC LIMIT " + std::to_string(limit);
-    result["events"] = execute_query(db, sql);
+    limit = clamp_limit(limit, 100);
+    std::string sql = "SELECT * FROM events WHERE file_path = ? ORDER BY timestamp DESC LIMIT " + std::to_string(limit);
+    result["events"] = execute_query(db, sql, {file_path});
     result["file_path"] = file_path;
     result["limit"] = limit;
 
@@ -333,6 +357,8 @@ json SQLiteHelper::get_timeline_full(const std::string& events_db, int limit, in
     sqlite3* db = open_database(events_db, result);
     if (!db) return result;
 
+    limit = clamp_limit(limit, 100);
+    offset = clamp_offset(offset);
     std::string sql = "SELECT * FROM events ORDER BY timestamp DESC LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string(offset);
     result["events"] = execute_query(db, sql);
     result["limit"] = limit;

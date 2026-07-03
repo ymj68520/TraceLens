@@ -1,10 +1,12 @@
 #include "../SQLiteHelper.h"
 #include <iostream>
 #include <algorithm>
+#include <cctype>
 #include <ctime>
 #include <regex>
 #include <sstream>
 #include <iomanip>
+#include <vector>
 
 using json = nlohmann::json;
 
@@ -62,6 +64,104 @@ json SQLiteHelper::execute_query(sqlite3* db, const std::string& sql) {
 
     sqlite3_finalize(stmt);
     return result;
+}
+
+json SQLiteHelper::execute_query(sqlite3* db, const std::string& sql,
+                                 const std::vector<std::string>& params) {
+    json result = json::array();
+    sqlite3_stmt* stmt = nullptr;
+
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        std::cerr << "SQL error: " << sqlite3_errmsg(db) << std::endl;
+        sqlite3_finalize(stmt);
+        return result;
+    }
+    for (size_t i = 0; i < params.size(); ++i) {
+        sqlite3_bind_text(stmt, static_cast<int>(i + 1), params[i].c_str(), -1, SQLITE_TRANSIENT);
+    }
+    int column_count = sqlite3_column_count(stmt);
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        json row = json::object();
+        for (int i = 0; i < column_count; i++) {
+            const char* column_name = sqlite3_column_name(stmt, i);
+            switch (sqlite3_column_type(stmt, i)) {
+                case SQLITE_INTEGER: row[column_name] = sqlite3_column_int64(stmt, i); break;
+                case SQLITE_FLOAT:   row[column_name] = sqlite3_column_double(stmt, i); break;
+                case SQLITE_TEXT:    row[column_name] = std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, i))); break;
+                case SQLITE_BLOB:    row[column_name] = "<BLOB_DATA>"; break;
+                case SQLITE_NULL:    row[column_name] = nullptr; break;
+            }
+        }
+        result.push_back(row);
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+int SQLiteHelper::clamp_limit(int limit, int def_val, int max_val) {
+    if (limit <= 0) return def_val;
+    return limit > max_val ? max_val : limit;
+}
+
+int SQLiteHelper::clamp_offset(int offset) {
+    return offset < 0 ? 0 : offset;
+}
+
+// Shared token blocklist check: returns true if `upper` (already upper-cased)
+// contains any forbidden keyword as a whole word.
+static bool contains_forbidden_token(const std::string& upper,
+                                     const std::vector<std::string>& tokens) {
+    auto is_word_char = [](char c) {
+        return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+    };
+    for (const auto& tok : tokens) {
+        size_t pos = 0;
+        while ((pos = upper.find(tok, pos)) != std::string::npos) {
+            bool left_ok = (pos == 0) || !is_word_char(upper[pos - 1]);
+            size_t end = pos + tok.size();
+            bool right_ok = (end >= upper.size()) || !is_word_char(upper[end]);
+            if (left_ok && right_ok) return true;
+            pos = end;
+        }
+    }
+    return false;
+}
+
+bool SQLiteHelper::is_readonly_select(const std::string& sql) {
+    // Trim leading/trailing whitespace.
+    size_t b = sql.find_first_not_of(" \t\r\n");
+    if (b == std::string::npos) return true;  // empty -> caller uses default
+    size_t e = sql.find_last_not_of(" \t\r\n");
+    std::string trimmed = sql.substr(b, e - b + 1);
+
+    // No SQL comments (could hide a second statement or bypass checks).
+    if (trimmed.find("--") != std::string::npos || trimmed.find("/*") != std::string::npos) {
+        return false;
+    }
+    // Single statement only: allow a single optional trailing ';'.
+    size_t semi = trimmed.find(';');
+    if (semi != std::string::npos && semi != trimmed.size() - 1) return false;
+
+    std::string upper = trimmed;
+    std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+    // Must begin with SELECT or WITH (CTE ending in SELECT).
+    if (upper.rfind("SELECT", 0) != 0 && upper.rfind("WITH", 0) != 0) return false;
+
+    return !contains_forbidden_token(upper,
+        {"ATTACH", "DETACH", "PRAGMA", "INSERT", "UPDATE", "DELETE", "DROP",
+         "ALTER", "CREATE", "REPLACE", "VACUUM", "REINDEX"});
+}
+
+bool SQLiteHelper::is_safe_filter_clause(const std::string& clause) {
+    if (clause.find_first_not_of(" \t\r\n") == std::string::npos) return true;  // empty ok
+    if (clause.find(';') != std::string::npos) return false;
+    if (clause.find("--") != std::string::npos || clause.find("/*") != std::string::npos) return false;
+
+    std::string upper = clause;
+    std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+    return !contains_forbidden_token(upper,
+        {"ATTACH", "DETACH", "PRAGMA", "INSERT", "UPDATE", "DELETE", "DROP",
+         "ALTER", "CREATE", "REPLACE", "VACUUM", "REINDEX", "UNION", "SELECT"});
 }
 
 bool SQLiteHelper::table_exists(sqlite3* db, const std::string& table_name) {

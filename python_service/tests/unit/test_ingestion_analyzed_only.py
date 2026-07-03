@@ -24,14 +24,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 # Mock Dependencies
 # =============================================================================
 
-# Mock neo4j and graphiti_integration modules before importing
-sys.modules['neo4j'] = MagicMock()
-sys.modules['graphiti_integration'] = MagicMock()
-sys.modules['graphiti_integration.file_entity_ingestor'] = MagicMock()
-sys.modules['graphiti_integration.entity_relation_builder'] = MagicMock()
-sys.modules['graphiti_integration.database_reader'] = MagicMock()
-sys.modules['graphiti_integration.database_reader.raw_reader'] = MagicMock()
-sys.modules['graphiti_integration.database_reader.events_reader'] = MagicMock()
+# NOTE: neo4j / graphiti_integration are NOT mocked at module scope. Doing so
+# replaced the real `graphiti_integration` package for the entire pytest session
+# and made unrelated tests that import it at runtime fail with "not a package".
+# The mocks are installed per-test by the autouse `_mock_graphiti_modules`
+# fixture below (via monkeypatch, auto-restored), so they never leak. The code
+# under test imports IngestionJobManager fine without them.
 
 # Create the enums and classes we need
 class IngestionMode(str, Enum):
@@ -91,18 +89,39 @@ class EventRecord:
     timestamp: int
     task_id: str
 
-# Mock the classes in the modules
-sys.modules['graphiti_integration.file_entity_ingestor'].FileEntityIngestor = MagicMock
-sys.modules['graphiti_integration.file_entity_ingestor'].EventRecord = EventRecord
-sys.modules['graphiti_integration.file_entity_ingestor'].FileIngestionResult = FileIngestionResult
-sys.modules['graphiti_integration.entity_relation_builder'].EntityRelationBuilder = MagicMock
-sys.modules['graphiti_integration.entity_relation_builder'].RelationBuildResult = RelationBuildResult
-sys.modules['graphiti_integration.database_reader.raw_reader'].ForensicsDatabase = MagicMock
-sys.modules['graphiti_integration.database_reader.raw_reader'].FileRecord = FileRecord
-sys.modules['graphiti_integration.database_reader.events_reader'].EventsDatabase = MagicMock
-
-# Now import the actual module
+# Import the code under test (works against the real packages; graphiti/neo4j
+# are only mocked per-test by the autouse fixture below).
 from httpserver.services.ingestion_job_manager import IngestionJobManager
+
+
+@pytest.fixture(autouse=True)
+def _mock_graphiti_modules(monkeypatch):
+    """Install mock neo4j/graphiti modules for the duration of ONE test only.
+
+    monkeypatch.setitem auto-restores sys.modules afterwards, so these mocks
+    never leak into the global session. The mock classes injected here are the
+    controlled types the code under test constructs during ingestion.
+    """
+    for _name in (
+        'neo4j',
+        'graphiti_integration',
+        'graphiti_integration.file_entity_ingestor',
+        'graphiti_integration.entity_relation_builder',
+        'graphiti_integration.database_reader',
+        'graphiti_integration.database_reader.raw_reader',
+        'graphiti_integration.database_reader.events_reader',
+    ):
+        monkeypatch.setitem(sys.modules, _name, MagicMock())
+
+    sys.modules['graphiti_integration.file_entity_ingestor'].FileEntityIngestor = MagicMock
+    sys.modules['graphiti_integration.file_entity_ingestor'].EventRecord = EventRecord
+    sys.modules['graphiti_integration.file_entity_ingestor'].FileIngestionResult = FileIngestionResult
+    sys.modules['graphiti_integration.entity_relation_builder'].EntityRelationBuilder = MagicMock
+    sys.modules['graphiti_integration.entity_relation_builder'].RelationBuildResult = RelationBuildResult
+    sys.modules['graphiti_integration.database_reader.raw_reader'].ForensicsDatabase = MagicMock
+    sys.modules['graphiti_integration.database_reader.raw_reader'].FileRecord = FileRecord
+    sys.modules['graphiti_integration.database_reader.events_reader'].EventsDatabase = MagicMock
+    yield
 
 
 # =============================================================================
@@ -639,50 +658,39 @@ async def test_process_analyzed_only_no_events_for_analyzed_files(
 
 
 
-def test_find_database_resolves_from_project_root_when_cwd_is_python_service(job_manager):
+def test_find_database_resolves_under_build_data_root(job_manager, tmp_path):
     """
-    _find_database should resolve build/data under project root even when
-    current working directory is python_service/.
+    _find_database should resolve <root>/build/data/tasks/<task_id>/files.db.
+    Uses a hermetic tmp fixture (mocking Path.cwd) instead of a hard-coded repo
+    build artifact that does not exist on a clean checkout.
     """
     task_id = "a525d41c-8ff9-4aea-9bec-48bce1515791"
-    expected = (
-        Path(__file__).resolve().parents[3]
-        / "build"
-        / "data"
-        / "tasks"
-        / task_id
-        / "files.db"
-    )
-    assert expected.exists(), "Expected fixture files.db does not exist"
+    expected = tmp_path / "build" / "data" / "tasks" / task_id / "files.db"
+    expected.parent.mkdir(parents=True, exist_ok=True)
+    expected.write_bytes(b"")  # an empty file is enough for path resolution
 
     with patch("httpserver.services.ingestion_job_manager.Path.cwd") as mock_cwd:
-        mock_cwd.return_value = Path(__file__).resolve().parents[2]  # .../python_service
+        mock_cwd.return_value = tmp_path
         found = job_manager._find_database(task_id, "files")
 
     assert found is not None
     assert Path(found).resolve() == expected.resolve()
 
 
-def test_find_database_accepts_compact_task_id(job_manager):
+def test_find_database_accepts_compact_task_id(job_manager, tmp_path):
     """
-    _find_database should find hyphenated task directory even if caller passes
-    a compact UUID without hyphens.
+    _find_database should find the hyphenated task directory even when the caller
+    passes a compact UUID without hyphens.
     """
     hyphenated = "a525d41c-8ff9-4aea-9bec-48bce1515791"
     compact = hyphenated.replace("-", "")
 
-    expected = (
-        Path(__file__).resolve().parents[3]
-        / "build"
-        / "data"
-        / "tasks"
-        / hyphenated
-        / "files.db"
-    )
-    assert expected.exists(), "Expected fixture files.db does not exist"
+    expected = tmp_path / "build" / "data" / "tasks" / hyphenated / "files.db"
+    expected.parent.mkdir(parents=True, exist_ok=True)
+    expected.write_bytes(b"")
 
     with patch("httpserver.services.ingestion_job_manager.Path.cwd") as mock_cwd:
-        mock_cwd.return_value = Path(__file__).resolve().parents[2]  # .../python_service
+        mock_cwd.return_value = tmp_path
         found = job_manager._find_database(compact, "files")
 
     assert found is not None

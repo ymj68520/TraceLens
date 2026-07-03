@@ -274,10 +274,34 @@ public:
      */
     static nlohmann::json export_events_for_visualization(const std::string& events_db, const std::string& output_file);
 
+    // ---- Input-hardening helpers (public so route handlers can validate) ----
+    /**
+     * @brief Clamp a user-supplied LIMIT into a safe range (DoS guard).
+     *        Non-positive or out-of-range values collapse to a sane default/cap.
+     */
+    static int clamp_limit(int limit, int def_val = 1000, int max_val = 100000);
+    /** @brief Clamp a user-supplied OFFSET to be non-negative. */
+    static int clamp_offset(int offset);
+    /**
+     * @brief True if `sql` is a single read-only SELECT (or CTE) statement with
+     *        no statement terminator, comment, or DDL/DML/ATTACH/PRAGMA token.
+     *        An empty string is considered valid (callers substitute a default).
+     */
+    static bool is_readonly_select(const std::string& sql);
+    /**
+     * @brief True if `clause` is a safe WHERE-fragment: no ';', comments, or
+     *        DDL/DML/ATTACH/PRAGMA/UNION tokens. Empty is valid.
+     */
+    static bool is_safe_filter_clause(const std::string& clause);
+
 private:
     // Helper methods
     static sqlite3* open_database(const std::string& db_path, nlohmann::json& error_result);
     static nlohmann::json execute_query(sqlite3* db, const std::string& sql);
+    // Parameterized variant: binds each value to the '?' placeholders in order
+    // (all as TEXT). Use this whenever user-supplied strings enter a query.
+    static nlohmann::json execute_query(sqlite3* db, const std::string& sql,
+                                        const std::vector<std::string>& params);
     static bool table_exists(sqlite3* db, const std::string& table_name);
     static std::string format_timestamp(int64_t timestamp);
     static int64_t parse_timestamp(const std::string& time_str);

@@ -93,8 +93,11 @@ class FilterResultValidator:
             )
             result.items = validated_items
 
-        # Mark as valid if we still have items after validation
-        result.is_valid = len(result.items) > 0
+        # Mark as valid only if we still have items AND confidence met the
+        # threshold. Items are kept regardless (callers may still match them as a
+        # fallback), but a low-confidence result must not report itself valid.
+        result.is_valid = (len(result.items) > 0) and \
+            (parse_result.confidence >= self.confidence_threshold)
 
         return result
 

@@ -48,7 +48,10 @@ static crow::response jsonRows(const std::string& dbPath, const std::string& sql
     res.set_header("Content-Type", "application/json");
     json out = json::array();
     sqlite3* db = nullptr;
-    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
+    // READONLY (no CREATE): a missing _memory.db must 404, not be fabricated as
+    // an empty file inside the forensic evidence directory.
+    if (sqlite3_open_v2(dbPath.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+        if (db) sqlite3_close(db);
         res.code = 404; res.write(R"({"error":"memory db not found"})"); return res;
     }
     sqlite3_stmt* stmt = nullptr;
@@ -86,7 +89,9 @@ crow::response MemoryForensicsRoutes::handle_memory_summary(const crow::request&
     try { dbPath = resolveMemoryDb(req); }
     catch (const std::exception&) { return taskNotFound(); }
     sqlite3* db = nullptr;
-    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
+    // READONLY (no CREATE): missing DB → 404, never a fabricated empty file.
+    if (sqlite3_open_v2(dbPath.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+        if (db) sqlite3_close(db);
         res.code = 404; res.write(R"({"error":"memory db not found"})"); return res;
     }
     auto count = [&](const char* t) -> long {

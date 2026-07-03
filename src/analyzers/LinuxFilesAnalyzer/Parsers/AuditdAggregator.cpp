@@ -26,7 +26,10 @@ AuditdAggregator::ParsedLine AuditdAggregator::parseLine(const std::string& line
     result.rawLine = line;
 
     // Format: type=TYPE msg=audit(EPOCH.MSEC:SERIAL): key=value ...
-    std::regex auditPattern(R"(type=(\w+)\s+msg=audit\((\d+)\.(\d+):(\d+)\):(.*)");
+    // Custom delimiter re(...)re: the trailing (.*) group's ')' would otherwise
+    // be consumed by the default )" raw-string terminator, producing a malformed
+    // regex ( "(.*" unclosed ) that throws std::regex_error at construction.
+    std::regex auditPattern(R"re(type=(\w+)\s+msg=audit\((\d+)\.(\d+):(\d+)\):(.*))re");
     std::smatch match;
 
     if (!std::regex_search(line, match, auditPattern)) {
@@ -56,16 +59,39 @@ AuditdAggregator::ParsedLine AuditdAggregator::parseLine(const std::string& line
 std::map<std::string, std::string> AuditdAggregator::extractKeyValues(const std::string& body) {
     std::map<std::string, std::string> kvs;
 
-    // Match key=value patterns
-    // Values can be: quoted strings or bare words
-    std::regex kvPattern("(\\w+)=(?:\"([^\"]*)\"|(\\S+))");
-    auto begin = std::sregex_iterator(body.begin(), body.end(), kvPattern);
-    auto end = std::sregex_iterator();
+    // Match key=value patterns. Values can be double-quoted, single-quoted, or
+    // bare words. auditd wraps nested fields in single quotes, e.g.
+    //   msg='op=PAM:authentication acct="admin" ... res=success'
+    // so single-quoted values are captured whole (group 3) and then their inner
+    // key=values are parsed recursively — otherwise `op`/`res` would be swallowed
+    // into `msg` and `res=success'` would keep the trailing quote.
+    std::regex kvPattern("(\\w+)=(?:\"([^\"]*)\"|'([^']*)'|(\\S+))");
+    std::vector<std::string> nestedGroups;
 
-    for (auto it = begin; it != end; ++it) {
+    for (auto it = std::sregex_iterator(body.begin(), body.end(), kvPattern),
+              end = std::sregex_iterator(); it != end; ++it) {
         std::string key = (*it)[1].str();
-        std::string value = (*it)[2].matched ? (*it)[2].str() : (*it)[3].str();
+        std::string value;
+        if ((*it)[2].matched) {
+            value = (*it)[2].str();
+        } else if ((*it)[3].matched) {
+            value = (*it)[3].str();
+            nestedGroups.push_back(value);  // re-parse inner key=values below
+        } else {
+            value = (*it)[4].str();
+        }
         kvs[key] = value;
+    }
+
+    // Parse fields nested inside single-quoted wrappers (they augment/override).
+    std::regex innerPattern("(\\w+)=(?:\"([^\"]*)\"|(\\S+))");
+    for (const auto& inner : nestedGroups) {
+        for (auto it = std::sregex_iterator(inner.begin(), inner.end(), innerPattern),
+                  end = std::sregex_iterator(); it != end; ++it) {
+            std::string key = (*it)[1].str();
+            std::string value = (*it)[2].matched ? (*it)[2].str() : (*it)[3].str();
+            kvs[key] = value;
+        }
     }
 
     return kvs;

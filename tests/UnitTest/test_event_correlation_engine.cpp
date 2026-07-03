@@ -7,7 +7,11 @@ using namespace EventCorrelationEngine;
 
 class EventCorrelationEngineTest : public ::testing::Test {
 protected:
-    std::string testDbPath = ":memory:";
+    // A real temp file, NOT ":memory:": each :memory: connection gets its OWN
+    // private database, so the rows SetUp inserts on its connection would be
+    // invisible to the engine's separate connection (they were, hence 0
+    // correlations). A file is shared across connections. TearDown removes it.
+    std::string testDbPath = "/tmp/test_event_correlation_engine.db";
     EventCorrelationEngine::EventCorrelationEngine engine;
 
 public:
@@ -16,12 +20,13 @@ public:
 
     void SetUp() override {
         // 初始化测试数据库
+        std::remove(testDbPath.c_str());  // start from a clean file
         sqlite3* db;
         sqlite3_open(testDbPath.c_str(), &db);
-        
+
         // 创建 events 表
         const char* createEventsTable = R"(
-            CREATE TABLE events (
+            CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp INTEGER NOT NULL,
                 event_type TEXT NOT NULL,
@@ -78,20 +83,20 @@ TEST_F(EventCorrelationEngineTest, AnalyzeCorrelationsTest) {
     auto correlations = engine.getCorrelations();
     EXPECT_GT(correlations.size(), 0);
     
-    // 检查是否有时间关联
+    // 检查是否有时间关联（引擎使用 "same_time"，见 EventCorrelationAnalyzer）
     bool hasTemporalCorrelation = false;
     for (const auto& correlation : correlations) {
-        if (correlation.correlationType == "TEMPORAL") {
+        if (correlation.correlationType == "same_time") {
             hasTemporalCorrelation = true;
             break;
         }
     }
     EXPECT_TRUE(hasTemporalCorrelation);
-    
-    // 检查是否有文件路径关联
+
+    // 检查是否有文件路径关联（引擎使用 "same_file"）
     bool hasFilePathCorrelation = false;
     for (const auto& correlation : correlations) {
-        if (correlation.correlationType == "FILE_PATH") {
+        if (correlation.correlationType == "same_file") {
             hasFilePathCorrelation = true;
             break;
         }

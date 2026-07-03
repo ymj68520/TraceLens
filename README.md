@@ -180,12 +180,12 @@ The tool generates three SQLite databases:
 ## Documentation
 
 For detailed documentation, please refer to:
-- **API Reference**: [docs/API_REFERENCE.md](docs/API_REFERENCE.md) - Complete REST API documentation
-- **API Usage Guide**: [docs/API_USAGE_GUIDE.md](docs/API_USAGE_GUIDE.md) - API usage examples and workflows
-- **Project Analysis**: [docs/Project_Analysis.md](docs/Project_Analysis.md) - Detailed module analysis and design
-- **Architecture**: [docs/architecture.md](docs/architecture.md) - Module relationships and deployment architecture
-- **Classification Analysis**: [docs/Classification_Analysis.md](docs/Classification_Analysis.md) - File categorization logic
-- **Module READMEs**: Located in individual source directories under `src/*/README.md`
+- **Documentation index**: [docs/README.md](docs/README.md) - Entry point for all docs
+- **C++ REST API**: [docs/api_reference/CPP_REST_API.md](docs/api_reference/CPP_REST_API.md) - C++ service API reference (port 8080)
+- **Python REST API**: [docs/api_reference/Python_REST_API.md](docs/api_reference/Python_REST_API.md) - Python service API reference (port 8090)
+- **Architecture Overview**: [docs/architecture/Overview.md](docs/architecture/Overview.md) - Module relationships and deployment architecture
+- **Common Tasks**: [docs/getting-started/CommonTasks.md](docs/getting-started/CommonTasks.md) - API usage examples and workflows
+- **Module docs**: [docs/modules/README.md](docs/modules/README.md), plus per-module `src/*/README.md`
 
 ## Contributing
 
@@ -496,10 +496,13 @@ sudo ./forensic_analyzer <镜像路径> --xfs-mode native    # 本地挂载（�
 
 1. **<镜像名>_raw.db**: 原始取证数据（文件系统元数据）
 2. **<镜像名>_events.db**: 文件系统时间线事件
-3. **<镜像名>_files.db**: 按类型分类的文件（含 LLM 分析结果）
-4. **<镜像名>_android.db**: Android 专项分析数据（可选）
-5. **<镜像名>_windows.db**: Windows 专项分析数据（可选）
-6. **<镜像名>_linux.db**: Linux 专项分析数据（可选）
+3. **<镜像名>_files.db**: 按类型分类的文件（含 LLM 分析结果）。
+   命令行方式（`--android-analyze` / `--windows-analyze` / `--linux-analyze`）下，
+   Android/Windows/Linux 专项分析工件也写入本库（统一场景数据库）。
+4. **<镜像名>_memory.db**: 内存取证工件（仅 `--memory-analyze`，见「内存取证」一节）
+
+> 注：HTTP 任务流水线会将平台工件写入各自独立的 `android.db` / `windows.db` /
+> `linux.db`（见 `PathManager::getTaskDbPaths`）；上面的合并行为特指命令行方式。
 
 ## 数据库架构
 

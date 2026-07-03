@@ -435,3 +435,6 @@ scripts/start_python_service.sh
 scripts/diagnose_services.sh
 scripts/verify_path_fix.sh
 start.sh
+
+# Runtime audit DB created by AuditLog when run from repo root
+/forensics_audit.db

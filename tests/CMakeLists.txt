@@ -170,7 +170,9 @@ add_test(NAME LogTamperingDetectorTests COMMAND test_log_tampering_detector)
 add_executable(
   test_persistence_detector
   UnitTest/test_persistence_detector.cpp
-  ../src/analyzers/LinuxFilesAnalyzer/Analysis/PersistenceDetector.cpp)
+  ../src/analyzers/LinuxFilesAnalyzer/Analysis/PersistenceDetector.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Analysis/PersistenceDetectorScripts.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Analysis/PersistenceDetectorSystem.cpp)
 
 target_include_directories(
   test_persistence_detector
@@ -226,7 +228,9 @@ add_test(NAME ContainerRuntimeLogParserTests COMMAND test_container_runtime_log_
 add_executable(
   test_package_manager_log_parser
   UnitTest/test_package_manager_log_parser.cpp
-  ../src/analyzers/LinuxFilesAnalyzer/Parsers/PackageManager/PackageManagerLogParser.cpp)
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/PackageManager/PackageManagerLogParser.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/PackageManager/PackageManagerLogParser_LinuxParsers.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Parsers/PackageManager/PackageManagerLogParser_UniversalAndAnalysis.cpp)
 
 target_include_directories(
   test_package_manager_log_parser
@@ -244,7 +248,9 @@ add_test(NAME PackageManagerLogParserTests COMMAND test_package_manager_log_pars
 add_executable(
   test_account_ssh_analyzer
   UnitTest/test_account_ssh_analyzer.cpp
-  ../src/analyzers/LinuxFilesAnalyzer/Analysis/AccountSSH/AccountSSHAnalyzer.cpp)
+  ../src/analyzers/LinuxFilesAnalyzer/Analysis/AccountSSH/AccountSSHAnalyzer.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Analysis/AccountSSH/AccountSSHAnalyzer_Accounts.cpp
+  ../src/analyzers/LinuxFilesAnalyzer/Analysis/AccountSSH/AccountSSHAnalyzer_SSH.cpp)
 
 target_include_directories(
   test_account_ssh_analyzer
@@ -389,6 +395,7 @@ add_executable(
   test_file_classifier
   UnitTest/test_file_classifier.cpp
   ../src/core/DatabaseManager/FileClassifier/FileClassifier.cpp
+  ../src/core/DatabaseManager/FileClassifier/FileClassifier_SceneRules.cpp
   ../src/core/DatabaseManager/FileClassifier/FileClassifierMappings.cpp
   ../src/core/DatabaseManager/FileClassifier/FileClassifierPatterns.cpp
   ../src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
@@ -408,9 +415,13 @@ add_executable(
   test_scene_classifier_gtest
   UnitTest/test_scene_classifier_gtest.cpp
   ../src/core/DatabaseManager/FileClassifier/FileClassifier.cpp
+  ../src/core/DatabaseManager/FileClassifier/FileClassifier_SceneRules.cpp
   ../src/core/DatabaseManager/FileClassifier/FileClassifierMappings.cpp
   ../src/core/DatabaseManager/FileClassifier/FileClassifierPatterns.cpp
   ../src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
+  ../src/core/DatabaseManager/FileExtractor/FileExtractor.cpp
+  ../src/core/DatabaseManager/FileExtractor/FileExtractor_Extract.cpp
+  ../src/core/DatabaseManager/DatabaseManager.cpp
   ../src/core/AuditLog/AuditLog.cpp
   ../src/core/ConfigManager/ConfigManager.cpp
   ../src/core/PathManager/PathManager.cpp
@@ -428,7 +439,7 @@ add_executable(
 
 target_link_libraries(
   test_scene_classifier_gtest ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} sqlite3 pthread
-  nlohmann_json::nlohmann_json cpp_dotenv ${CURL_LIBRARIES} ${POPPLER_LIBRARIES} duckx)
+  nlohmann_json::nlohmann_json cpp_dotenv ${CURL_LIBRARIES} ${POPPLER_LIBRARIES} duckx tsk)
 
 add_test(NAME SceneClassifierGTests COMMAND test_scene_classifier_gtest)
 

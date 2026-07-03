@@ -1685,6 +1685,49 @@ database.db | /evidence/database.db | databases | 5242880 | SQLite 数据库 | �
 
 ---
 
+### Memory Forensics
+
+> 路由代码：`src/network/HTTPServer/routes/MemoryForensicsRoutes.cpp`
+> 数据来源：`--memory-analyze` 生成的 `<镜像名>_memory.db`（Volatility3）。
+> 数据库以只读方式打开；若任务无 `_memory.db`，返回 `404 {"error":"memory db not found"}`。
+
+所有端点均接受查询参数 `task_id`（string，必填）。
+
+#### GET /api/forensics/memory/summary
+
+**描述**：返回各表行数概览。
+
+**响应**：
+```json
+{ "processes": 128, "network_connections": 34, "bash_history": 57, "sockets": 40 }
+```
+
+#### GET /api/forensics/memory/processes
+
+**描述**：进程列表（来自 `linux.pslist`）。可选 `search` 参数按进程名过滤（已参数化绑定，防注入）。
+
+**响应**：字段 `pid, ppid, comm, uid, state, thread_count`，最多 1000 行，按 `pid` 排序。
+
+#### GET /api/forensics/memory/network
+
+**描述**：网络连接（来自 `linux.sockstat`）。
+
+**响应**：字段 `pid, comm, protocol, local_addr, local_port, foreign_addr, foreign_port, state`。
+
+#### GET /api/forensics/memory/bash-history
+
+**描述**：Bash 历史（来自 `linux.bash`）。可选 `keyword` 参数按命令过滤（参数化绑定）。
+
+**响应**：字段 `pid, comm, command, history_index`。
+
+#### GET /api/forensics/memory/boot-info
+
+**描述**：启动信息（来自 `linux.boottime`）。
+
+**响应**：键值对 `key, value`（如 `boot_time`）。
+
+---
+
 ## 4. 场景查询 API
 
 > 路由代码：`src/network/HTTPServer/routes/SceneQueryRoutes.cpp`

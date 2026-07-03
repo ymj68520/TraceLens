@@ -3,11 +3,36 @@
 #include "RouteHelpers.h"
 #include "FullTextSearch.h"
 #include "TextExtractor.h"
+#include "../../core/PathManager/PathManager.h"
 #include <filesystem>
+#include <cstdlib>
 
 namespace forensics {
 
 using json = nlohmann::json;
+
+// Confine a user-supplied filesystem path to an allowed root so the indexer
+// cannot read/return arbitrary files (e.g. /etc/passwd). The root defaults to
+// PathManager's data dir; operators can widen it via FTS_ALLOWED_ROOT.
+static bool fts_path_within_allowed_root(const std::string& p, std::string& allowed_out) {
+    namespace fs = std::filesystem;
+    fs::path allowed;
+    if (const char* env = std::getenv("FTS_ALLOWED_ROOT"); env && *env) {
+        allowed = fs::path(env);
+    } else {
+        allowed = PathManager::instance().getDataDir();
+    }
+    std::error_code ec;
+    fs::path allowed_canon = fs::weakly_canonical(allowed, ec);
+    if (ec) allowed_canon = fs::absolute(allowed);
+    allowed_out = allowed_canon.string();
+
+    ec.clear();
+    fs::path cand = fs::weakly_canonical(fs::path(p), ec);
+    if (ec) cand = fs::absolute(fs::path(p));
+    fs::path rel = cand.lexically_relative(allowed_canon);
+    return !rel.empty() && (*rel.begin()) != "..";
+}
 
 SearchRoutes::SearchRoutes(crow::App<>& app) {
     CROW_ROUTE(app, "/api/search/fulltext").methods("GET"_method)([this](const crow::request& req) {
@@ -121,6 +146,18 @@ crow::response SearchRoutes::handle_fulltext_index(const crow::request& req) {
         if (source_path.empty() || index_path.empty()) {
             json error = {{"error", "Both source_path and index_path are required"}};
             res.code = 400;
+            res.set_header("Content-Type", "application/json");
+            res.write(error.dump());
+            return res;
+        }
+
+        std::string allowed_root;
+        if (!fts_path_within_allowed_root(source_path, allowed_root) ||
+            !fts_path_within_allowed_root(index_path, allowed_root)) {
+            json error = {{"error", "source_path/index_path must be under the allowed root"},
+                          {"allowed_root", allowed_root},
+                          {"hint", "set FTS_ALLOWED_ROOT to widen the permitted directory"}};
+            res.code = 403;
             res.set_header("Content-Type", "application/json");
             res.write(error.dump());
             return res;

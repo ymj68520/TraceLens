@@ -69,6 +69,15 @@ crow::response ExportRoutes::handle_export_toon(const crow::request& req) {
         return res;
     }
 
+    // Reject a raw WHERE fragment that could break out into subqueries/DDL.
+    if (!SQLiteHelper::is_safe_filter_clause(filter)) {
+        json error = {{"error", "invalid filter clause"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
     try {
         std::string files_db = RouteHelpers::get_database_path(task_id, "files");
 
@@ -132,6 +141,14 @@ crow::response ExportRoutes::handle_export_events_json(const crow::request& req)
         return res;
     }
 
+    if (!SQLiteHelper::is_readonly_select(query)) {
+        json error = {{"error", "only a single read-only SELECT query is allowed"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
     try {
         std::string events_db = RouteHelpers::get_database_path(task_id, "events");
         std::string output_file = task_id + "_events.json";
@@ -156,6 +173,14 @@ crow::response ExportRoutes::handle_export_events_csv(const crow::request& req) 
 
     if (task_id.empty()) {
         json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    if (!SQLiteHelper::is_readonly_select(query)) {
+        json error = {{"error", "only a single read-only SELECT query is allowed"}};
         res.code = 400;
         res.set_header("Content-Type", "application/json");
         res.write(error.dump());

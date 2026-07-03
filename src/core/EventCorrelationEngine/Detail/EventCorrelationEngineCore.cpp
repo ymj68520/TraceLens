@@ -2,6 +2,7 @@
 #include "AuditLog/AuditLog.h"
 #include <iostream>
 #include <sstream>
+#include <set>
 
 namespace EventCorrelationEngine {
 
@@ -103,6 +104,10 @@ bool EventCorrelationEngine::openDatabase() {
         std::cerr << "Cannot open event database: " << sqlite3_errmsg(eventDb_) << std::endl;
         return false;
     }
+    // Wait for transient locks instead of failing immediately with SQLITE_BUSY
+    // ("database is locked"), which otherwise makes table creation flaky when
+    // another connection is briefly writing.
+    sqlite3_busy_timeout(eventDb_, 5000);
     return true;
 }
 
@@ -275,8 +280,14 @@ bool EventCorrelationEngine::insertEventChain(const EventChain& chain) {
     VALUES (?, ?, ?);
     )";
 
-    // 递归插入节点
+    // 递归插入节点。event chains can be cyclic (bidirectional correlations make
+    // two nodes mutual children), so track visited nodes — without this the
+    // recursion never terminates and spins on unbounded INSERTs (a hang).
+    std::set<int64_t> visitedNodes;
     std::function<bool(const std::shared_ptr<EventChainNode>&, int64_t)> insertNode = [&](const std::shared_ptr<EventChainNode>& node, int64_t parentEventId) {
+        if (!node || !visitedNodes.insert(node->eventId).second) {
+            return true;  // already inserted this node; skip to break cycles
+        }
         sqlite3_stmt* nodeStmt;
         int rc = sqlite3_prepare_v2(eventDb_, nodeQuery, -1, &nodeStmt, nullptr);
         if (rc != SQLITE_OK) {

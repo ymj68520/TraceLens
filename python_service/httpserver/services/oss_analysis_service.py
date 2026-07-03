@@ -9,6 +9,7 @@ The full implementation should be added in a future update.
 """
 
 import logging
+import uuid
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -55,3 +56,28 @@ class OSSAnalysisService:
             "total_objects": len(object_ids),
             "analyzed_count": 0,
         }
+
+    async def start_analysis(
+        self,
+        task_id: str,
+        object_ids: List[int],
+        oss_db_path: str,
+        download_dir: Optional[str] = None,
+        model_type: str = "content",
+    ) -> str:
+        """
+        Start an OSS analysis job and return its job id.
+
+        The route (`POST /analyze`) depends on this method; without it the
+        endpoint raised AttributeError -> HTTP 500. This stub performs the
+        (stubbed) analysis and returns a generated job id so the API contract
+        holds until the full implementation lands.
+        """
+        job_id = f"oss-{uuid.uuid4().hex[:12]}"
+        logger.warning(
+            "OSSAnalysisService.start_analysis is a stub; returning job_id=%s "
+            "for %d object(s) (task_id=%s)",
+            job_id, len(object_ids), task_id,
+        )
+        await self.analyze_oss_objects(oss_db_path, object_ids, model_type)
+        return job_id

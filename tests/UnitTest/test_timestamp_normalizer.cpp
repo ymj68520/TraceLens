@@ -415,29 +415,33 @@ TEST_F(TimestampNormalizerTest, ParseTimezoneUTC) {
     EXPECT_EQ(TimestampNormalizer::parseTimezoneOffset("GMT"), 0);
 }
 
+// parseTimezoneOffset returns the zone's true UTC offset (east positive), so
+// dateToEpoch computes UTC = local - offset. This is required for
+// RFC3339AndApacheSameMoment to hold (…02:30Z == 10:30 +0800). The previous
+// inverted expectations here encoded the bug those integration tests exposed.
 TEST_F(TimestampNormalizerTest, ParseTimezoneNumericPositive) {
     int offset = TimestampNormalizer::parseTimezoneOffset("+0800");
-    EXPECT_EQ(offset, -8 * 3600); // Negative because we subtract
+    EXPECT_EQ(offset, 8 * 3600); // UTC+8
 }
 
 TEST_F(TimestampNormalizerTest, ParseTimezoneNumericNegative) {
     int offset = TimestampNormalizer::parseTimezoneOffset("-0500");
-    EXPECT_EQ(offset, 5 * 3600);
+    EXPECT_EQ(offset, -5 * 3600); // UTC-5
 }
 
 TEST_F(TimestampNormalizerTest, ParseTimezoneNumericWithColon) {
     int offset = TimestampNormalizer::parseTimezoneOffset("+05:30");
-    EXPECT_EQ(offset, -(5 * 3600 + 30 * 60));
+    EXPECT_EQ(offset, 5 * 3600 + 30 * 60); // UTC+5:30
 }
 
 TEST_F(TimestampNormalizerTest, ParseTimezoneNamedEST) {
     int offset = TimestampNormalizer::parseTimezoneOffset("EST");
-    EXPECT_EQ(offset, 5 * 3600);
+    EXPECT_EQ(offset, -5 * 3600); // EST is UTC-5
 }
 
 TEST_F(TimestampNormalizerTest, ParseTimezoneNamedJST) {
     int offset = TimestampNormalizer::parseTimezoneOffset("JST");
-    EXPECT_EQ(offset, -9 * 3600);
+    EXPECT_EQ(offset, 9 * 3600); // JST is UTC+9
 }
 
 TEST_F(TimestampNormalizerTest, ParseTimezoneEmpty) {

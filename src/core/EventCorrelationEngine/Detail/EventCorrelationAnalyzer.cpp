@@ -58,7 +58,11 @@ void EventCorrelationEngine::analyzeTimeBasedCorrelations() {
 
         double confidence = calculateTimeCorrelation(time1, time2, 60);
 
-        if (confidence > 0.7) {
+        // >= 0.7: calculateTimeCorrelation returns exactly 0.7 at the window
+        // boundary (its documented floor for "within the window"). A strict
+        // > 0.7 wrongly excluded events exactly 60s apart, which ARE "within
+        // 60 seconds".
+        if (confidence >= 0.7) {
             EventCorrelation corr;
             corr.eventId1 = eventId1;
             corr.eventId2 = eventId2;

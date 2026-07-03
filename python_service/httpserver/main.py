@@ -111,11 +111,15 @@ with the C++ backend for task management and file system operations.
         lifespan=lifespan,
     )
     
-    # Configure CORS
+    # Configure CORS. Origins come from PYTHON_CORS_ORIGINS (default ["*"]).
+    # A wildcard origin cannot be combined with credentials per the CORS spec
+    # (browsers reject it), so only enable credentials when origins are explicit.
+    _cors_origins = settings.cors_origins
+    _allow_credentials = _cors_origins != ["*"]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
+        allow_origins=_cors_origins,
+        allow_credentials=_allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
     )

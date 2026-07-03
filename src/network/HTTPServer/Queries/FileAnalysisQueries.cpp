@@ -48,6 +48,7 @@ json SQLiteHelper::get_largest_files(const std::string& files_db, int limit) {
     sqlite3* db = open_database(files_db, result);
     if (!db) return result;
 
+    limit = clamp_limit(limit, 50);
     std::string sql = "SELECT * FROM files WHERE size > 0 ORDER BY size DESC LIMIT " + std::to_string(limit);
     result["largest_files"] = execute_query(db, sql);
     result["limit"] = limit;
@@ -61,8 +62,10 @@ json SQLiteHelper::get_recent_files(const std::string& files_db, const std::stri
     sqlite3* db = open_database(files_db, result);
     if (!db) return result;
 
-    int hours_int = std::stoi(hours);
-    int64_t time_threshold = time(nullptr) - (hours_int * 3600);
+    int hours_int = 24;
+    try { hours_int = std::stoi(hours); } catch (...) { hours_int = 24; }
+    if (hours_int <= 0 || hours_int > 24 * 3650) hours_int = 24;  // guard bad/huge input
+    int64_t time_threshold = time(nullptr) - (static_cast<int64_t>(hours_int) * 3600);
 
     std::string sql = "SELECT * FROM files WHERE mtime > " + std::to_string(time_threshold) +
                      " OR ctime > " + std::to_string(time_threshold) +

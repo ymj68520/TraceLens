@@ -507,8 +507,9 @@ int TimestampNormalizer::getSystemTimezoneOffset() {
     time_t now = time(nullptr);
     struct tm local_tm;
     localtime_r(&now, &local_tm);
-    // tm_gmtoff contains the UTC offset in seconds
-    return -static_cast<int>(local_tm.tm_gmtoff);
+    // tm_gmtoff is the UTC offset in seconds, east-positive — exactly the
+    // convention dateToEpoch expects (UTC = local - offset). Do NOT negate.
+    return static_cast<int>(local_tm.tm_gmtoff);
 #else
     return 0;
 #endif
@@ -520,9 +521,12 @@ int TimestampNormalizer::parseTimezoneOffset(const std::string& tz) {
     // UTC/Z
     if (tz == "Z" || tz == "z" || tz == "UTC" || tz == "GMT") return 0;
 
-    // Numeric offset: +0800, -0500, +08:00
+    // Numeric offset: +0800, -0500, +08:00. Returns the zone's UTC offset in
+    // seconds (east = positive). dateToEpoch computes UTC = local - offset, so
+    // "+0800" (UTC+8) -> +28800 -> UTC = local - 8h. (This matches the ISO8601
+    // path; the previous inverted sign made UTC = local + 8h.)
     if (tz[0] == '+' || tz[0] == '-') {
-        int sign = (tz[0] == '+') ? -1 : 1; // Negative because we subtract offset
+        int sign = (tz[0] == '+') ? 1 : -1;
         std::string digits;
         for (char c : tz) {
             if (isdigit(c)) digits += c;
@@ -534,16 +538,17 @@ int TimestampNormalizer::parseTimezoneOffset(const std::string& tz) {
         }
     }
 
-    // Named timezones
+    // Named timezones: value = the zone's UTC offset in seconds (east positive,
+    // west negative). e.g. EST is UTC-5 -> -5*3600; JST is UTC+9 -> +9*3600.
     static const std::map<std::string, int> tzMap = {
-        {"EST", 5 * 3600}, {"EDT", 4 * 3600},
-        {"CST", 6 * 3600}, {"CDT", 5 * 3600},
-        {"MST", 7 * 3600}, {"MDT", 6 * 3600},
-        {"PST", 8 * 3600}, {"PDT", 7 * 3600},
-        {"CET", -1 * 3600}, {"CEST", -2 * 3600},
-        {"JST", -9 * 3600}, {"KST", -9 * 3600},
-        {"IST", -5 * 3600 - 1800},
-        {"AEST", -10 * 3600}, {"AEDT", -11 * 3600},
+        {"EST", -5 * 3600}, {"EDT", -4 * 3600},
+        {"CST", -6 * 3600}, {"CDT", -5 * 3600},
+        {"MST", -7 * 3600}, {"MDT", -6 * 3600},
+        {"PST", -8 * 3600}, {"PDT", -7 * 3600},
+        {"CET", 1 * 3600}, {"CEST", 2 * 3600},
+        {"JST", 9 * 3600}, {"KST", 9 * 3600},
+        {"IST", 5 * 3600 + 1800},
+        {"AEST", 10 * 3600}, {"AEDT", 11 * 3600},
     };
 
     auto it = tzMap.find(tz);

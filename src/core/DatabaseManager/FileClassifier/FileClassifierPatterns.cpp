@@ -92,8 +92,10 @@ void FileClassifier::initializePathPatterns() {
 		"/var/adm/",
 		"/var/audit/",
 		"/Library/Logs/",
-		"/Users/",
-		"/home/",
+		// NOTE: "/home/" and "/Users/" were here but are USER directories, not
+		// log paths — they made every user image/video/document classify as
+		// LOG_FILE. Actual ".log" files under home are still caught by the
+		// isLogFile() filename check.
 		"C:/Windows/Logs/",
 		"C:/ProgramData/Logs/",
 		"C:/Windows/Temp/",
@@ -102,16 +104,14 @@ void FileClassifier::initializePathPatterns() {
 		"Windows/Minidump/"
 	};
 
-	// Cache paths
+	// Cache paths — genuine caches only. Temp directories (/tmp, /var/tmp,
+	// Windows/Temp, AppData/Local/Temp) belong in tempPaths_, and "C:/Users/"
+	// was a USER directory (like the old "/home/" in logPaths_) that wrongly
+	// made every Windows user file classify as CACHE.
 	cachePaths_ = {
 		"/var/cache/",
-		"/tmp/",
-		"/var/tmp/",
 		"/Library/Caches/",
 		"~/Library/Caches/",
-		"C:/Windows/Temp/",
-		"C:/Users/",
-		"AppData/Local/Temp/",
 		"AppData/Local/Microsoft/Windows/INetCache/"
 	};
 
@@ -121,7 +121,6 @@ void FileClassifier::initializePathPatterns() {
 		"/var/tmp/",
 		"/temp/",
 		"C:/Windows/Temp/",
-		"C:/Users/",
 		"AppData/Local/Temp/",
 		"~/tmp/",
 		"~/temp/"
@@ -147,7 +146,9 @@ void FileClassifier::initializeFilenamePatterns() {
 
 	// Boot files
 	bootFiles_ = {
-		"vmlinuz", "initrd", "initramfs", "System.map", "config",
+		// "config-" (not bare "config") so kernel config files like
+		// "config-5.15.0" match without swallowing config.bak / config.json etc.
+		"vmlinuz", "initrd", "initramfs", "System.map", "config-",
 		"grub.cfg", "grub.conf", "menu.lst", "lilo.conf", "elilo.conf",
 		"boot.ini", "bcdedit", "bootmgr", "winload.exe", "ntldr",
 		"EFI/", "BOOT/", ".efi", "bootx64.efi", "bootia32.efi",

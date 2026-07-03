@@ -4,11 +4,16 @@
 #include <random>
 #include <sstream>
 #include <stdexcept>
+#include <cstdlib>
 
 namespace forensics {
 
 void RouteHelpers::add_cors_headers(crow::response& res) {
-    res.set_header("Access-Control-Allow-Origin", "*");
+    // Origin is configurable via CORS_ALLOW_ORIGIN so deployments can restrict
+    // it (e.g. to a specific dashboard host). Defaults to "*" for backward
+    // compatibility / local development.
+    const char* origin = std::getenv("CORS_ALLOW_ORIGIN");
+    res.set_header("Access-Control-Allow-Origin", (origin && *origin) ? origin : "*");
     res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
 }
@@ -53,7 +58,17 @@ std::string RouteHelpers::get_database_path(const std::string& task_id, const st
         if (task.metadata.find("memory_db") != task.metadata.end()) {
             return task.metadata.at("memory_db");
         }
-        return task.output_raw_db.substr(0, task.output_raw_db.find_last_of('.')) + "_memory.db";
+        // The MemoryAnalyzer (CLI + runMemoryAnalysis) writes "<base>_memory.db",
+        // deriving <base> from the image stem — NOT from the "_raw.db" artifact.
+        // Strip a trailing "_raw" so the fallback matches that file, e.g.
+        // "/t/img_raw.db" -> "/t/img_memory.db" (not "/t/img_raw_memory.db").
+        std::string stem = task.output_raw_db.substr(0, task.output_raw_db.find_last_of('.'));
+        const std::string rawSuffix = "_raw";
+        if (stem.size() >= rawSuffix.size() &&
+            stem.compare(stem.size() - rawSuffix.size(), rawSuffix.size(), rawSuffix) == 0) {
+            stem.erase(stem.size() - rawSuffix.size());
+        }
+        return stem + "_memory.db";
     } else {
         throw std::runtime_error("Unknown database type: " + db_type);
     }

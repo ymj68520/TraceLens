@@ -28,7 +28,7 @@ const Memory = () => {
   const [error, setError] = useState(null);
 
   const loadAll = async (bashKeyword = '') => {
-    if (!taskId) return;
+    if (!taskId) { setLoading(false); return; }  // else the spinner never clears
     setLoading(true);
     setError(null);
     try {

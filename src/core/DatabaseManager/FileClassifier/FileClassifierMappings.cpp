@@ -80,9 +80,11 @@ void FileClassifier::initializeExtensionMap() {
 	std::vector<std::string> exeExts = {
 		"exe", "dll", "so", "dylib", "app", "bin", "com", "bat", "sh", "cmd",
 		"msi", "appimage", "elf", "o", "a", "lib", "obj", "sys", "drv",
-		// Script files
-		"py", "js", "rb", "pl", "php", "lua", "tcl", "vb", "vbs", "wsf",
+		// Shell / OS automation scripts (run directly)
+		"vbs", "wsf",
 		"ps1", "psm1", "psd1", "bash", "zsh", "csh", "tcsh", "fish"
+		// NOTE: interpreted-language sources (py, js, rb, pl, php, lua, tcl)
+		// are SOURCE_CODE, not EXECUTABLE — see codeExts below.
 	};
 	auto extraExeExts = forensics::ConfigManager::instance().getExtraExtensions("EXECUTABLE");
 	exeExts.insert(exeExts.end(), extraExeExts.begin(), extraExeExts.end());
@@ -105,7 +107,9 @@ void FileClassifier::initializeExtensionMap() {
 	std::vector<std::string> codeExts = {
 		"c", "cpp", "cc", "cxx", "h", "hpp", "hxx", "java", "cs", "go", "rs",
 		"kt", "swift", "scala", "groovy", "clj", "cljs", "hs", "erl", "hrl",
-		"ex", "exs", "fs", "fsi", "fsx", "vb", "vbp", "bas", "pas", "pp", "inc"
+		"ex", "exs", "fs", "fsi", "fsx", "vb", "vbp", "bas", "pas", "pp", "inc",
+		// Interpreted-language sources (moved out of EXECUTABLE)
+		"py", "js", "ts", "jsx", "tsx", "rb", "pl", "php", "lua", "tcl"
 	};
 	auto extraCodeExts = forensics::ConfigManager::instance().getExtraExtensions("SOURCE_CODE");
 	codeExts.insert(codeExts.end(), extraCodeExts.begin(), extraCodeExts.end());

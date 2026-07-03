@@ -5,6 +5,7 @@ Provides a REST endpoint for converting files to markdown using
 Microsoft's markitdown library. Used by the C++ backend via HTTP.
 """
 
+import asyncio
 import logging
 import time
 from pathlib import Path
@@ -70,7 +71,9 @@ async def convert_file(request: ConvertRequest):
         from markitdown import MarkItDown
 
         md = MarkItDown()
-        result = md.convert(str(file_path))
+        # Offload the synchronous, IO/CPU-heavy conversion so it doesn't block
+        # the event loop (and stall every other request) for large files.
+        result = await asyncio.to_thread(md.convert, str(file_path))
 
         markdown = result.markdown if result else ""
         title = getattr(result, 'title', None) or ""

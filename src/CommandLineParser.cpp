@@ -65,7 +65,8 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
             args.extract_by_extension = true;
         } else if (arg == "--extract-all") {
             args.extract_all = true;
-        } else if (arg == "--extract-deleted") {
+        } else if (arg == "--extract-deleted" || arg == "--include-deleted") {
+            // Accept both spellings: printUsage documents "--include-deleted".
             args.extract_deleted = true;
         } else if (arg == "--output-dir" && i + 1 < argc) {
             args.extract_output_dir = argv[++i];

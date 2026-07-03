@@ -8,6 +8,7 @@ Provides parsing capabilities for Office documents:
 Returns content as Markdown text for forensic analysis.
 """
 
+import asyncio
 import logging
 import subprocess
 from pathlib import Path
@@ -44,14 +45,17 @@ class OfficeService:
 
         suffix = path.suffix.lower()
 
+        # The concrete parsers (openpyxl / python-pptx / subprocess) are
+        # synchronous and can take seconds on large files; offload them to a
+        # worker thread so the async event loop is not blocked.
         if suffix == ".xlsx":
-            return self._parse_xlsx(file_path)
+            return await asyncio.to_thread(self._parse_xlsx, file_path)
         elif suffix == ".xls":
-            return self._parse_xls(file_path)
+            return await asyncio.to_thread(self._parse_xls, file_path)
         elif suffix == ".pptx":
-            return self._parse_pptx(file_path)
+            return await asyncio.to_thread(self._parse_pptx, file_path)
         elif suffix == ".ppt":
-            return self._parse_ppt(file_path)
+            return await asyncio.to_thread(self._parse_ppt, file_path)
         else:
             raise ValueError(f"Unsupported file type: {suffix}")
 

@@ -216,7 +216,10 @@ private:
     // Write buffer (pending flush to database)
     std::vector<AuditLogEntry> write_buffer_;
     std::mutex write_mutex_;
-    
+    // Set once we've warned about dropping entries because the DB is
+    // uninitialized, so the warning is not repeated for every flush.
+    bool drop_warning_emitted_ = false;
+
     // Read cache (LRU, recently queried entries)
     // Key: task_id, Value: list of entries for that task
     std::unordered_map<std::string, std::list<AuditLogEntry>> read_cache_;

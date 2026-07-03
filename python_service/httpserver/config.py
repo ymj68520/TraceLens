@@ -166,6 +166,9 @@ class Settings(BaseSettings):
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
     llm_context_length: int = Field(default=4096, alias="LLM_CONTEXT_LENGTH")
 
+    # Redis Settings (optional; IngestionJobManager falls back to in-memory)
+    redis_url: str = Field(default="redis://localhost:6379", alias="REDIS_URL")
+
     # OSS Settings
     oss_access_key_id: str = Field(default="", alias="OSS_ACCESS_KEY_ID")
     oss_access_key_secret: str = Field(default="", alias="OSS_ACCESS_KEY_SECRET")

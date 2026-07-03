@@ -200,12 +200,23 @@ void AuditLog::flushWriteBuffer() {
     write_mutex_.unlock();
     bool success = insertBatch(entries_to_insert);
     write_mutex_.lock();
-    
+
     if (!success) {
-        std::cerr << "Failed to flush write buffer, re-queuing entries" << std::endl;
-        // Re-add failed entries to buffer
-        write_buffer_.insert(write_buffer_.begin(),
-                            entries_to_insert.begin(), entries_to_insert.end());
+        // Only re-queue when the database is actually available (a transient
+        // error worth retrying). If it is not initialized (db_/insert_stmt_
+        // null), re-queuing would loop forever — the buffer grows unbounded and
+        // spams stderr, which stalls shutdown. Drop the batch and warn once.
+        if (db_ && insert_stmt_) {
+            std::cerr << "Failed to flush write buffer, re-queuing entries" << std::endl;
+            write_buffer_.insert(write_buffer_.begin(),
+                                entries_to_insert.begin(), entries_to_insert.end());
+        } else if (!drop_warning_emitted_) {
+            std::cerr << "AuditLog not initialized; dropping "
+                      << entries_to_insert.size() << " buffered entr"
+                      << (entries_to_insert.size() == 1 ? "y" : "ies")
+                      << " (further drops suppressed)" << std::endl;
+            drop_warning_emitted_ = true;
+        }
     }
 }
 

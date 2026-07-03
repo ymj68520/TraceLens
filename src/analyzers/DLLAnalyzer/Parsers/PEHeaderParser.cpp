@@ -25,6 +25,7 @@ PEHeaderParser::~PEHeaderParser() {
 }
 
 bool PEHeaderParser::parse() {
+    headerInfo_.isValid = false;  // keep the returned struct's flag in sync
     if (!file_.is_open()) {
         return false;
     }
@@ -60,6 +61,7 @@ bool PEHeaderParser::parse() {
     }
 
     isValid_ = true;
+    headerInfo_.isValid = true;  // so PEHeaderInfo consumers (PEAnalyzer) see validity
     return true;
 }
 
