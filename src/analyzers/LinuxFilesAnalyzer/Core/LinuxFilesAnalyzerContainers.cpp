@@ -46,7 +46,7 @@ void LinuxFilesAnalyzer::analyzeDockerContainers() {
     auto containerConfigs = queryFilesByPattern("var/lib/docker/containers/%/config.json");
     for (const auto& file : containerConfigs) {
         std::string outputPath = extractPath + "/" + std::to_string(file.inode) + ".json";
-        if (extractFileToPath(file.inode, outputPath)) {
+        if (extractFileToPath(file.inode, outputPath, file.partitionNum)) {
             AuditLog::instance().log("LINUX", "DOCKER_CONFIG_EXTRACTED",
                 "Extracted container config: " + file.name);
         }
@@ -81,7 +81,7 @@ void LinuxFilesAnalyzer::analyzeDockerImages() {
     auto imageFiles = queryFilesByPattern("var/lib/docker/image/%/%/repositories.json");
     for (const auto& file : imageFiles) {
         std::string outputPath = extractPath + "/" + std::to_string(file.inode) + ".json";
-        extractFileToPath(file.inode, outputPath);
+        extractFileToPath(file.inode, outputPath, file.partitionNum);
     }
 
     auto images = LinuxAnalysis::DockerContainerParser::parseImages(extractPath);

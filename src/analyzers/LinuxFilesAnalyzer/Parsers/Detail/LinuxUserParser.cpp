@@ -23,7 +23,7 @@ void LinuxFilesAnalyzer::analyzeUserAccounts() {
 
     for (const auto& file : passwdFiles) {
         std::string extractPath = getExtractPath("etc/passwd");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream f(extractPath);
             if (f.is_open()) {
                 std::stringstream buffer;
@@ -38,7 +38,7 @@ void LinuxFilesAnalyzer::analyzeUserAccounts() {
     auto shadowFiles = queryFilesByPattern("%/etc/shadow");
     for (const auto& file : shadowFiles) {
         std::string extractPath = getExtractPath("etc/shadow");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream f(extractPath);
             if (f.is_open()) {
                 std::stringstream buffer;
@@ -58,7 +58,7 @@ void LinuxFilesAnalyzer::analyzeUserAccounts() {
     auto groupFiles = queryFilesByPattern("%/etc/group");
     for (const auto& file : groupFiles) {
         std::string extractPath = getExtractPath("etc/group");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream f(extractPath);
             if (f.is_open()) {
                 std::stringstream buffer;
@@ -80,7 +80,7 @@ void LinuxFilesAnalyzer::analyzeLoginHistory() {
     auto wtmpFiles = queryFilesByPattern("%/var/log/wtmp%");
     for (const auto& file : wtmpFiles) {
         std::string extractPath = getExtractPath("var/log/wtmp");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto records = LinuxUserParser::parseWtmpFile(extractPath);
             linuxDb_->insertLoginRecords(records);
             AuditLog::instance().log("SYSTEM", "LINUX_WTMP_PARSED",
@@ -92,7 +92,7 @@ void LinuxFilesAnalyzer::analyzeLoginHistory() {
     auto btmpFiles = queryFilesByPattern("%/var/log/btmp%");
     for (const auto& file : btmpFiles) {
         std::string extractPath = getExtractPath("var/log/btmp");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto records = LinuxUserParser::parseBtmpFile(extractPath);
             linuxDb_->insertLoginRecords(records);
             AuditLog::instance().log("SYSTEM", "LINUX_BTMP_PARSED",
@@ -108,7 +108,7 @@ void LinuxFilesAnalyzer::analyzeSSHArtifacts() {
     auto authKeysFiles = queryFilesByPattern("%/.ssh/authorized_keys");
     for (const auto& file : authKeysFiles) {
         std::string extractPath = getExtractPath("ssh/" + std::to_string(file.inode) + "_authorized_keys");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             // Extract username from path
             std::string username = "unknown";
             size_t homePos = file.path.find("/home/");
@@ -133,7 +133,7 @@ void LinuxFilesAnalyzer::analyzeSSHArtifacts() {
     auto knownHostsFiles = queryFilesByPattern("%/.ssh/known_hosts");
     for (const auto& file : knownHostsFiles) {
         std::string extractPath = getExtractPath("ssh/" + std::to_string(file.inode) + "_known_hosts");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             // Extract username from path
             std::string username = "unknown";
             size_t homePos = file.path.find("/home/");

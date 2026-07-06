@@ -95,7 +95,7 @@ private:
     std::vector<FileRecord> queryWindowsSystemFiles();
     std::vector<FileRecord> queryFilesByPattern(const std::string& pathPattern);
     std::vector<FileRecord> queryFilesByCategory(const std::string& category);
-    bool extractFileToPath(int64_t inode, const std::string& outputPath);
+    bool extractFileToPath(int64_t inode, const std::string& outputPath, int partitionNum = -1);
 
     // Registry parsing helpers
     std::vector<WindowsUserInfo> parseUserAccountsFromSAM(const std::string& samPath);

@@ -256,7 +256,7 @@ void LinuxFilesAnalyzer::analyzeSecurityBypass() {
     auto preloadFiles = queryFilesByPattern("%/etc/ld.so.preload%");
     for (const auto& file : preloadFiles) {
         std::string extractPath = getExtractPath("etc/ld.so.preload");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream fs(extractPath);
             std::string content((std::istreambuf_iterator<char>(fs)),
                                  std::istreambuf_iterator<char>());
@@ -277,7 +277,7 @@ void LinuxFilesAnalyzer::analyzeSecurityBypass() {
         auto bashrcFiles = queryFilesByPattern(userDir + "%/.bashrc%");
         for (const auto& file : bashrcFiles) {
             std::string extractPath = getExtractPath(username + "/.bashrc");
-            if (extractFileToPath(file.inode, extractPath)) {
+            if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
                 std::ifstream fs(extractPath);
                 std::string content((std::istreambuf_iterator<char>(fs)),
                                      std::istreambuf_iterator<char>());
@@ -290,7 +290,7 @@ void LinuxFilesAnalyzer::analyzeSecurityBypass() {
         auto profileFiles = queryFilesByPattern(userDir + "%/.profile%");
         for (const auto& file : profileFiles) {
             std::string extractPath = getExtractPath(username + "/.profile");
-            if (extractFileToPath(file.inode, extractPath)) {
+            if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
                 std::ifstream fs(extractPath);
                 std::string content((std::istreambuf_iterator<char>(fs)),
                                      std::istreambuf_iterator<char>());

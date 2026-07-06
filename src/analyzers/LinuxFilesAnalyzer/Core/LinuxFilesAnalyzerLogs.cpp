@@ -110,7 +110,7 @@ void LinuxFilesAnalyzer::analyzeCompressedLogs() {
 
             // Extract the file
             std::string outputPath = extractPath + "/" + std::to_string(file.inode) + "_" + filename;
-            if (!extractFileToPath(file.inode, outputPath)) {
+            if (!extractFileToPath(file.inode, outputPath, file.partitionNum)) {
                 std::cerr << "    Failed to extract: " << filename << std::endl;
                 totalErrors++;
                 continue;
@@ -240,7 +240,7 @@ void LinuxFilesAnalyzer::analyzeJournalLogs() {
 
             // Extract the file
             std::string outputPath = extractPath + "/" + std::to_string(file.inode) + "_" + filename;
-            if (!extractFileToPath(file.inode, outputPath)) {
+            if (!extractFileToPath(file.inode, outputPath, file.partitionNum)) {
                 std::cerr << "    Failed to extract: " << filename << std::endl;
                 continue;
             }

@@ -421,6 +421,7 @@ add_executable(
   ../src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
   ../src/core/DatabaseManager/FileExtractor/FileExtractor.cpp
   ../src/core/DatabaseManager/FileExtractor/FileExtractor_Extract.cpp
+  ../src/analyzers/ImageAnalyzer/XFSHelper.cpp
   ../src/core/DatabaseManager/DatabaseManager.cpp
   ../src/core/AuditLog/AuditLog.cpp
   ../src/core/ConfigManager/ConfigManager.cpp

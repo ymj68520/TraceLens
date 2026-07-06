@@ -35,7 +35,7 @@ void WindowsFilesAnalyzer::analyzeRegistryHives() {
         std::string extractPath = getExtractPath("registry/" + std::to_string(hive.inode) + "_SYSTEM");
         std::cout << "  Found SYSTEM hive: " << hive.path << std::endl;
         
-        if (extractFileToPath(hive.inode, extractPath)) {
+        if (extractFileToPath(hive.inode, extractPath, hive.partitionNum)) {
             auto values = parseRegistryHive(extractPath, "SYSTEM");
             windowsDb_->insertRegistryValues(values);
             
@@ -59,7 +59,7 @@ void WindowsFilesAnalyzer::analyzeRegistryHives() {
         std::string extractPath = getExtractPath("registry/" + std::to_string(hive.inode) + "_SAM");
         std::cout << "  Found SAM hive: " << hive.path << std::endl;
         
-        if (extractFileToPath(hive.inode, extractPath)) {
+        if (extractFileToPath(hive.inode, extractPath, hive.partitionNum)) {
             auto values = parseRegistryHive(extractPath, "SAM");
             windowsDb_->insertRegistryValues(values);
             
@@ -75,7 +75,7 @@ void WindowsFilesAnalyzer::analyzeRegistryHives() {
     for (const auto& hive : softwareHives) {
         std::string extractPath = getExtractPath("registry/" + std::to_string(hive.inode) + "_SOFTWARE");
         
-        if (extractFileToPath(hive.inode, extractPath)) {
+        if (extractFileToPath(hive.inode, extractPath, hive.partitionNum)) {
             auto values = parseRegistryHive(extractPath, "SOFTWARE");
             windowsDb_->insertRegistryValues(values);
         }
@@ -88,7 +88,7 @@ void WindowsFilesAnalyzer::analyzeRegistryHives() {
         std::string extractPath = getExtractPath("registry/users/" + std::to_string(hive.inode) + "_NTUSER.DAT");
         std::cout << "  Found User hive: " << hive.path << std::endl;
         
-        if (extractFileToPath(hive.inode, extractPath)) {
+        if (extractFileToPath(hive.inode, extractPath, hive.partitionNum)) {
             auto values = parseRegistryHive(extractPath, "NTUSER");
             windowsDb_->insertRegistryValues(values);
         }

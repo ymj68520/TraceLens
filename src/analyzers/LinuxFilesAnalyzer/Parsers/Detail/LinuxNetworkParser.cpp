@@ -22,7 +22,7 @@ void LinuxFilesAnalyzer::analyzeNetworkConfiguration() {
     auto interfacesFiles = queryFilesByPattern("%/etc/network/interfaces");
     for (const auto& file : interfacesFiles) {
         std::string extractPath = getExtractPath("network/interfaces");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream f(extractPath);
             if (f.is_open()) {
                 std::string line;
@@ -63,7 +63,7 @@ void LinuxFilesAnalyzer::analyzeNetworkConfiguration() {
     auto resolvFiles = queryFilesByPattern("%/etc/resolv.conf");
     for (const auto& file : resolvFiles) {
         std::string extractPath = getExtractPath("network/resolv.conf");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream f(extractPath);
             if (f.is_open()) {
                 std::string line;
@@ -97,7 +97,7 @@ void LinuxFilesAnalyzer::analyzeNetworkConfiguration() {
     auto hostsFiles = queryFilesByPattern("%/etc/hosts");
     for (const auto& file : hostsFiles) {
         std::string extractPath = getExtractPath("network/hosts");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             // Just log that we found hosts file; detailed parsing could be added
             AuditLog::instance().log("SYSTEM", "LINUX_HOSTS_FOUND",
                                       "Found /etc/hosts file at " + file.path);
@@ -131,7 +131,7 @@ void LinuxFilesAnalyzer::analyzeFirewallRules() {
         auto ruleFiles = queryFilesByPattern(pattern);
         for (const auto& file : ruleFiles) {
             std::string extractPath = getExtractPath("firewall/" + file.name);
-            if (extractFileToPath(file.inode, extractPath)) {
+            if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
                 std::ifstream f(extractPath);
                 if (f.is_open()) {
                     std::string line;
@@ -229,7 +229,7 @@ void LinuxFilesAnalyzer::analyzeAuditLogs() {
 
     for (const auto& file : auditFiles) {
         std::string extractPath = getExtractPath("audit/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream f(extractPath);
             if (f.is_open()) {
                 totalFiles++;

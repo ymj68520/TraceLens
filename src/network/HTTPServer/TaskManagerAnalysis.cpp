@@ -313,6 +313,10 @@ void TaskManager::start_analysis(const std::string& task_id) {
                         switch (scenario) {
                             case ForensicScenario::ANDROID: {
                                 auto dbManager = std::make_unique<DatabaseManager>(effectiveRawDb);
+                                if (!dbManager->initialize()) {
+                                    std::cerr << "Warning: Failed to initialize DatabaseManager for Android analysis" << std::endl;
+                                    break;
+                                }
                                 auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(imagePath, dbManager.get());
                                 std::string androidDbPath = pm.getTaskDbPaths(task_id, baseName).androidDb.string();
                                 androidAnalyzer->setOutputDatabasePath(androidDbPath);
@@ -325,6 +329,10 @@ void TaskManager::start_analysis(const std::string& task_id) {
                             }
                             case ForensicScenario::WINDOWS: {
                                 auto dbManager = std::make_unique<DatabaseManager>(effectiveRawDb);
+                                if (!dbManager->initialize()) {
+                                    std::cerr << "Warning: Failed to initialize DatabaseManager for Windows analysis" << std::endl;
+                                    break;
+                                }
                                 auto windowsAnalyzer = std::make_unique<WindowsFilesAnalyzer>(imagePath, dbManager.get());
                                 std::string windowsDbPath = pm.getTaskDbPaths(task_id, baseName).windowsDb.string();
                                 windowsAnalyzer->setOutputDatabasePath(windowsDbPath);
@@ -337,6 +345,10 @@ void TaskManager::start_analysis(const std::string& task_id) {
                             }
                             case ForensicScenario::LINUX: {
                                 auto dbManager = std::make_unique<DatabaseManager>(effectiveRawDb);
+                                if (!dbManager->initialize()) {
+                                    std::cerr << "Warning: Failed to initialize DatabaseManager for Linux analysis" << std::endl;
+                                    break;
+                                }
                                 auto linuxAnalyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
                                 std::string linuxDbPath = pm.getTaskDbPaths(task_id, baseName).linuxDb.string();
                                 linuxAnalyzer->setOutputDatabasePath(linuxDbPath);
@@ -349,6 +361,10 @@ void TaskManager::start_analysis(const std::string& task_id) {
                             }
                             case ForensicScenario::SERVER_CLOUD: {
                                 auto dbManager = std::make_unique<DatabaseManager>(effectiveRawDb);
+                                if (!dbManager->initialize()) {
+                                    std::cerr << "Warning: Failed to initialize DatabaseManager for Server/Cloud analysis" << std::endl;
+                                    break;
+                                }
                                 auto serverAnalyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
                                 std::string serverDbPath = pm.getTaskDbPaths(task_id, baseName).ossDb.string();
                                 serverAnalyzer->setOutputDatabasePath(serverDbPath);

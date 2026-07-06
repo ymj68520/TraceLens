@@ -268,6 +268,75 @@ bool XFSHelper::walkFilesystem(FileCallback callback) {
     return parseDirectory(rootInode_, "/", callback);
 }
 
+bool XFSHelper::readFileByInode(uint64_t inodeNum, std::vector<uint8_t>& buffer) {
+    if (!initialized_) {
+        std::cerr << "XFS Helper not initialized" << std::endl;
+        return false;
+    }
+
+    XFSDinodeCore inode;
+    std::vector<uint8_t> data;
+    if (!readInode(inodeNum, inode, data)) {
+        std::cerr << "XFS: readFileByInode: failed to read inode " << inodeNum << std::endl;
+        return false;
+    }
+
+    // Check it's a regular file (S_ISREG: 0x8000)
+    if ((inode.di_mode & 0xF000) != 0x8000) {
+        std::cerr << "XFS: readFileByInode: inode " << inodeNum
+                  << " is not a regular file (mode=0x"
+                  << std::hex << inode.di_mode << std::dec << ")" << std::endl;
+        return false;
+    }
+
+    // Empty file
+    if (inode.di_size == 0) {
+        buffer.clear();
+        return true;
+    }
+
+    // Local data (inline / extents)
+    if (inode.di_format == 2 /* XFS_DINODE_FMT_LOCAL */) {
+        // Inline data is already in `data` — first 8 bytes are the data fork header
+        // (sizeof(xfs_bmbt_rec) or raw inline bytes). For small files the content
+        // is stored directly after the fork offset.
+        size_t inlineSize = static_cast<size_t>(inode.di_size);
+        if (data.size() < inlineSize) {
+            std::cerr << "XFS: readFileByInode: inline data too short for inode "
+                      << inodeNum << std::endl;
+            return false;
+        }
+        buffer.assign(data.begin(), data.begin() + inlineSize);
+        return true;
+    }
+
+    if (inode.di_format != 1 /* XFS_DINODE_FMT_EXTENTS */) {
+        // Could be XFS_DINODE_FMT_BTREE — not yet supported
+        std::cerr << "XFS: readFileByInode: inode " << inodeNum
+                  << " has unsupported format " << static_cast<int>(inode.di_format)
+                  << " (only extents and local are supported)" << std::endl;
+        return false;
+    }
+
+    // Parse extent list
+    std::vector<XFSExtent> extents;
+    size_t extentsDataSize = static_cast<size_t>(inode.di_nextents * 8);
+    size_t parseSize = (data.size() < extentsDataSize) ? data.size() : extentsDataSize;
+    if (!parseExtents(data.data(), parseSize, extents)) {
+        std::cerr << "XFS: readFileByInode: failed to parse extents for inode "
+                  << inodeNum << std::endl;
+        return false;
+    }
+
+    if (!readFileData(extents, buffer, inode.di_size)) {
+        std::cerr << "XFS: readFileByInode: failed to read file data for inode "
+                  << inodeNum << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
 bool XFSHelper::parseDirectory(uint64_t inodeNum, const std::string& path, FileCallback callback) {
     XFSDinodeCore inode;
     std::vector<uint8_t> data;

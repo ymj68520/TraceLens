@@ -29,6 +29,13 @@ public:
     using FileCallback = std::function<bool(const XFSFileInfo&)>;
     bool walkFilesystem(FileCallback callback);
 
+    /**
+     * Read a regular file's content by its inode number.
+     * Returns true on success and fills `buffer` with the file data.
+     * Returns false if the inode is invalid, not a regular file, or on I/O error.
+     */
+    bool readFileByInode(uint64_t inodeNum, std::vector<uint8_t>& buffer);
+
 private:
     // Read data from image
     bool readData(uint64_t offset, void* buffer, size_t size);

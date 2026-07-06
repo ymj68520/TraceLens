@@ -46,7 +46,7 @@ void LinuxFilesAnalyzer::analyzeUSBEvents() {
     std::vector<USBEvent> allEvents;
     for (const auto& file : kernLogFiles) {
         std::string extractPath = getExtractPath("var/log/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream fs(extractPath);
             std::vector<std::string> lines;
             std::string line;
@@ -57,7 +57,7 @@ void LinuxFilesAnalyzer::analyzeUSBEvents() {
     }
     for (const auto& file : syslogFiles) {
         std::string extractPath = getExtractPath("var/log/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream fs(extractPath);
             std::vector<std::string> lines;
             std::string line;
@@ -81,7 +81,7 @@ void LinuxFilesAnalyzer::analyzeMountEntries() {
     auto fstabFiles = queryFilesByPattern("%/etc/fstab%");
     for (const auto& file : fstabFiles) {
         std::string extractPath = getExtractPath("etc/fstab");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream fs(extractPath);
             std::string content((std::istreambuf_iterator<char>(fs)),
                                  std::istreambuf_iterator<char>());
@@ -100,7 +100,7 @@ void LinuxFilesAnalyzer::analyzeCloudLogs() {
     auto cloudInitFiles = queryFilesByPattern("%/var/log/cloud-init%");
     for (const auto& file : cloudInitFiles) {
         std::string extractPath = getExtractPath("var/log/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream fs(extractPath);
             std::string content((std::istreambuf_iterator<char>(fs)),
                                  std::istreambuf_iterator<char>());
@@ -115,7 +115,7 @@ void LinuxFilesAnalyzer::analyzeCloudLogs() {
     auto waagentFiles = queryFilesByPattern("%/var/log/waagent%");
     for (const auto& file : waagentFiles) {
         std::string extractPath = getExtractPath("var/log/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream fs(extractPath);
             std::string content((std::istreambuf_iterator<char>(fs)),
                                  std::istreambuf_iterator<char>());
@@ -146,7 +146,7 @@ void LinuxFilesAnalyzer::analyzeExtendedHistory() {
         auto pythonFiles = queryFilesByPattern(userDir + "%/.python_history%");
         for (const auto& file : pythonFiles) {
             std::string extractPath = getExtractPath(username + "/.python_history");
-            if (extractFileToPath(file.inode, extractPath)) {
+            if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
                 std::ifstream fs(extractPath);
                 std::string content((std::istreambuf_iterator<char>(fs)),
                                      std::istreambuf_iterator<char>());
@@ -159,7 +159,7 @@ void LinuxFilesAnalyzer::analyzeExtendedHistory() {
         auto mysqlFiles = queryFilesByPattern(userDir + "%/.mysql_history%");
         for (const auto& file : mysqlFiles) {
             std::string extractPath = getExtractPath(username + "/.mysql_history");
-            if (extractFileToPath(file.inode, extractPath)) {
+            if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
                 std::ifstream fs(extractPath);
                 std::string content((std::istreambuf_iterator<char>(fs)),
                                      std::istreambuf_iterator<char>());
@@ -172,7 +172,7 @@ void LinuxFilesAnalyzer::analyzeExtendedHistory() {
         auto gitconfigFiles = queryFilesByPattern(userDir + "%/.gitconfig%");
         for (const auto& file : gitconfigFiles) {
             std::string extractPath = getExtractPath(username + "/.gitconfig");
-            if (extractFileToPath(file.inode, extractPath)) {
+            if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
                 std::ifstream fs(extractPath);
                 std::string content((std::istreambuf_iterator<char>(fs)),
                                      std::istreambuf_iterator<char>());
@@ -189,7 +189,7 @@ void LinuxFilesAnalyzer::analyzeExtendedHistory() {
         auto dockerConfigFiles = queryFilesByPattern(userDir + "%/.docker/config.json%");
         for (const auto& file : dockerConfigFiles) {
             std::string extractPath = getExtractPath(username + "/.docker/config.json");
-            if (extractFileToPath(file.inode, extractPath)) {
+            if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
                 std::ifstream fs(extractPath);
                 std::string content((std::istreambuf_iterator<char>(fs)),
                                      std::istreambuf_iterator<char>());
@@ -206,7 +206,7 @@ void LinuxFilesAnalyzer::analyzeExtendedHistory() {
         auto kubeConfigFiles = queryFilesByPattern(userDir + "%/.kube/config%");
         for (const auto& file : kubeConfigFiles) {
             std::string extractPath = getExtractPath(username + "/.kube/config");
-            if (extractFileToPath(file.inode, extractPath)) {
+            if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
                 std::ifstream fs(extractPath);
                 std::string content((std::istreambuf_iterator<char>(fs)),
                                      std::istreambuf_iterator<char>());
@@ -268,7 +268,7 @@ void LinuxFilesAnalyzer::analyzeDNSConfiguration() {
     auto resolvFiles = queryFilesByPattern("etc/resolv.conf");
     for (const auto& file : resolvFiles) {
         std::string extractPath = getExtractPath("dns/resolv.conf");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream resolvFile(extractPath);
             std::string line;
             while (std::getline(resolvFile, line)) {
@@ -306,7 +306,7 @@ void LinuxFilesAnalyzer::analyzeDNSConfiguration() {
     auto hostsFiles = queryFilesByPattern("etc/hosts");
     for (const auto& file : hostsFiles) {
         std::string extractPath = getExtractPath("dns/hosts");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream hostsFile(extractPath);
             std::string line;
             while (std::getline(hostsFile, line)) {
@@ -327,7 +327,7 @@ void LinuxFilesAnalyzer::analyzeDNSConfiguration() {
     auto hostnameFiles = queryFilesByPattern("etc/hostname");
     for (const auto& file : hostnameFiles) {
         std::string extractPath = getExtractPath("dns/hostname");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream hostnameFile(extractPath);
             std::string hostname;
             if (std::getline(hostnameFile, hostname)) {
@@ -358,7 +358,7 @@ void LinuxFilesAnalyzer::analyzeCUPSLogs() {
 
     for (const auto& file : cupsFiles) {
         std::string extractPath = getExtractPath("cups/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream logFile(extractPath);
             std::string line;
 
@@ -422,7 +422,7 @@ void LinuxFilesAnalyzer::analyzeSnapFlatpak() {
     auto snapStateFiles = queryFilesByPattern("var/lib/snapd/state.json");
     for (const auto& file : snapStateFiles) {
         std::string extractPath = getExtractPath("snap/state.json");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             // Parse snap state JSON
             // The full parser would extract installed snaps, versions, channels, etc.
             LOG_INFO("Snap: Found state.json");
@@ -434,7 +434,7 @@ void LinuxFilesAnalyzer::analyzeSnapFlatpak() {
     auto flatpakFiles = queryFilesByPattern("var/lib/flatpak/app/%/metadata");
     for (const auto& file : flatpakFiles) {
         std::string extractPath = getExtractPath("flatpak/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             // Parse flatpak metadata (INI format)
             LOG_INFO("Flatpak: Found " + file.name);
             processedCount++;
@@ -460,7 +460,7 @@ void LinuxFilesAnalyzer::analyzeBrowserDetailedData() {
 
     for (const auto& file : chromeHistoryFiles) {
         std::string extractPath = getExtractPath("browser/chrome_history_" + std::to_string(file.inode) + ".sqlite");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             // Parse Chrome History SQLite database
             sqlite3* db = nullptr;
             if (sqlite3_open_v2(extractPath.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK) {
@@ -501,7 +501,7 @@ void LinuxFilesAnalyzer::analyzeBrowserDetailedData() {
     auto firefoxPlacesFiles = queryFilesByPattern("%/.mozilla/firefox/%/places.sqlite");
     for (const auto& file : firefoxPlacesFiles) {
         std::string extractPath = getExtractPath("browser/firefox_places_" + std::to_string(file.inode) + ".sqlite");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             sqlite3* db = nullptr;
             if (sqlite3_open_v2(extractPath.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK) {
                 const char* sql = "SELECT moz_places.url, moz_places.title, moz_places.visit_count, "
@@ -553,7 +553,7 @@ void LinuxFilesAnalyzer::analyzeXDGArtifacts() {
     auto recentFiles = queryFilesByPattern("%/.local/share/recently-used.xbel");
     for (const auto& file : recentFiles) {
         std::string extractPath = getExtractPath("xdg/recent_" + std::to_string(file.inode) + ".xbel");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             // Parse XBEL format (XML)
             pugi::xml_document doc;
             if (doc.load_file(extractPath.c_str())) {
@@ -590,7 +590,7 @@ void LinuxFilesAnalyzer::analyzeXDGArtifacts() {
     auto trashInfoFiles = queryFilesByPattern("%/.local/share/Trash/info/%.trashinfo");
     for (const auto& file : trashInfoFiles) {
         std::string extractPath = getExtractPath("xdg/trash_" + std::to_string(file.inode) + ".trashinfo");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream trashFile(extractPath);
             std::string line;
             XDGTrashEntry entry;
@@ -625,7 +625,7 @@ void LinuxFilesAnalyzer::analyzeXDGArtifacts() {
     auto autostartFiles = queryFilesByPattern("%/.config/autostart/%.desktop");
     for (const auto& file : autostartFiles) {
         std::string extractPath = getExtractPath("xdg/autostart_" + std::to_string(file.inode) + ".desktop");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             XDGDesktopFileEntry entry;
             entry.filePath = file.path;
             entry.isAutostart = 1;

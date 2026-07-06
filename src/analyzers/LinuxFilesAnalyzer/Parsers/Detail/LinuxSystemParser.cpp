@@ -22,7 +22,7 @@ void LinuxFilesAnalyzer::analyzeShellHistory() {
     auto bashHistoryFiles = queryFilesByPattern("%/.bash_history");
     for (const auto& file : bashHistoryFiles) {
         std::string extractPath = getExtractPath("history/" + std::to_string(file.inode) + "_bash_history");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             // Extract username from path
             std::string username = "unknown";
             size_t homePos = file.path.find("/home/");
@@ -55,7 +55,7 @@ void LinuxFilesAnalyzer::analyzeShellHistory() {
     auto zshHistoryFiles = queryFilesByPattern("%/.zsh_history");
     for (const auto& file : zshHistoryFiles) {
         std::string extractPath = getExtractPath("history/" + std::to_string(file.inode) + "_zsh_history");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::string username = "unknown";
             size_t homePos = file.path.find("/home/");
             if (homePos != std::string::npos) {
@@ -101,7 +101,7 @@ void LinuxFilesAnalyzer::analyzeCronJobs() {
     auto crontabFiles = queryFilesByPattern("%/etc/crontab");
     for (const auto& file : crontabFiles) {
         std::string extractPath = getExtractPath("etc/crontab");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto jobs = parseCronFile(extractPath, "root");
             linuxDb_->insertCronJobs(jobs);
         }
@@ -111,7 +111,7 @@ void LinuxFilesAnalyzer::analyzeCronJobs() {
     auto userCrontabs = queryFilesByPattern("%/var/spool/cron/crontabs/%");
     for (const auto& file : userCrontabs) {
         std::string extractPath = getExtractPath("cron/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto jobs = parseCronFile(extractPath, file.name);
             linuxDb_->insertCronJobs(jobs);
         }
@@ -121,7 +121,7 @@ void LinuxFilesAnalyzer::analyzeCronJobs() {
     auto cronDFiles = queryFilesByPattern("%/etc/cron.d/%");
     for (const auto& file : cronDFiles) {
         std::string extractPath = getExtractPath("cron.d/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto jobs = parseCronFile(extractPath, "root");
             linuxDb_->insertCronJobs(jobs);
         }
@@ -214,7 +214,7 @@ void LinuxFilesAnalyzer::analyzeSystemdServices() {
             }
 
             std::string extractPath = getExtractPath("systemd/" + file.name);
-            if (extractFileToPath(file.inode, extractPath)) {
+            if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
                 std::ifstream f(extractPath);
                 if (f.is_open()) {
                     SystemdServiceInfo service;
@@ -302,7 +302,7 @@ void LinuxFilesAnalyzer::analyzeInstalledPackages() {
     auto dpkgStatus = queryFilesByPattern("%/var/lib/dpkg/status");
     for (const auto& file : dpkgStatus) {
         std::string extractPath = getExtractPath("dpkg/status");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto packages = parseDpkgStatus(extractPath);
             linuxDb_->insertPackageInfos(packages);
             AuditLog::instance().log("SYSTEM", "LINUX_PACKAGES_PARSED",
@@ -372,7 +372,7 @@ std::string LinuxFilesAnalyzer::detectLinuxDistribution() {
     auto osReleaseFiles = queryFilesByPattern("%/etc/os-release");
     for (const auto& file : osReleaseFiles) {
         std::string extractPath = getExtractPath("etc/os-release");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             std::ifstream f(extractPath);
             if (f.is_open()) {
                 std::string line;
@@ -571,7 +571,7 @@ void LinuxFilesAnalyzer::analyzeRpmPackages() {
     auto rpmSqliteDb = queryFilesByPattern("%/var/lib/rpm/rpmdb.sqlite");
     for (const auto& file : rpmSqliteDb) {
         std::string extractPath = getExtractPath("rpm/rpmdb.sqlite");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto packages = parseRpmDatabase(extractPath);
             linuxDb_->insertPackageInfos(packages);
             AuditLog::instance().log("SYSTEM", "LINUX_RPM_PACKAGES_PARSED",
@@ -586,7 +586,7 @@ void LinuxFilesAnalyzer::analyzeRpmPackages() {
     auto rpmLegacyDb = queryFilesByPattern("%/var/lib/rpm/Packages");
     for (const auto& file : rpmLegacyDb) {
         std::string extractPath = getExtractPath("rpm/Packages");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             // BerkeleyDB is complex; log that we found it but can't fully parse
             AuditLog::instance().log("SYSTEM", "LINUX_RPM_DATABASE_FOUND",
                                       "Found legacy BerkeleyDB RPM database at " + file.path);

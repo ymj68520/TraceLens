@@ -139,39 +139,51 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         if (args.android_analyze) {
             std::cout << "[Android] Analyzing..." << std::endl;
             auto dbMgr = std::make_unique<DatabaseManager>(effectiveRawDb);
-            auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(args.image_path, dbMgr.get());
-            if (!args.wechat_password.empty()) {
-                androidAnalyzer->setWeChatPassword(args.wechat_password);
-            }
-            // Write Android artifacts into files.db for unified scene database
-            androidAnalyzer->setOutputDatabasePath(fileDbPath);
-            if (androidAnalyzer->initialize()) {
-                androidAnalyzer->analyzeAndroidData();
-                std::cout << "✓ Android analysis complete\n" << std::endl;
+            if (!dbMgr->initialize()) {
+                std::cerr << "Error: Failed to initialize DatabaseManager for Android analysis" << std::endl;
+            } else {
+                auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(args.image_path, dbMgr.get());
+                if (!args.wechat_password.empty()) {
+                    androidAnalyzer->setWeChatPassword(args.wechat_password);
+                }
+                // Write Android artifacts into files.db for unified scene database
+                androidAnalyzer->setOutputDatabasePath(fileDbPath);
+                if (androidAnalyzer->initialize()) {
+                    androidAnalyzer->analyzeAndroidData();
+                    std::cout << "✓ Android analysis complete\n" << std::endl;
+                }
             }
         }
 
         if (args.windows_analyze) {
             std::cout << "[Windows] Analyzing..." << std::endl;
             auto dbMgr = std::make_unique<DatabaseManager>(effectiveRawDb);
-            auto winAnalyzer = std::make_unique<WindowsFilesAnalyzer>(args.image_path, dbMgr.get());
-            // Write Windows artifacts into files.db for unified scene database
-            winAnalyzer->setOutputDatabasePath(fileDbPath);
-            if (winAnalyzer->initialize()) {
-                winAnalyzer->analyzeWindowsData();
-                std::cout << "✓ Windows analysis complete\n" << std::endl;
+            if (!dbMgr->initialize()) {
+                std::cerr << "Error: Failed to initialize DatabaseManager for Windows analysis" << std::endl;
+            } else {
+                auto winAnalyzer = std::make_unique<WindowsFilesAnalyzer>(args.image_path, dbMgr.get());
+                // Write Windows artifacts into files.db for unified scene database
+                winAnalyzer->setOutputDatabasePath(fileDbPath);
+                if (winAnalyzer->initialize()) {
+                    winAnalyzer->analyzeWindowsData();
+                    std::cout << "✓ Windows analysis complete\n" << std::endl;
+                }
             }
         }
 
         if (args.linux_analyze) {
             std::cout << "[Linux] Analyzing..." << std::endl;
             auto dbMgr = std::make_unique<DatabaseManager>(effectiveRawDb);
-            auto linuxAnalyzer = std::make_unique<LinuxFilesAnalyzer>(args.image_path, dbMgr.get());
-            // Write Linux artifacts into files.db for unified scene database
-            linuxAnalyzer->setOutputDatabasePath(fileDbPath);
-            if (linuxAnalyzer->initialize()) {
-                linuxAnalyzer->analyzeLinuxData();
-                std::cout << "✓ Linux analysis complete\n" << std::endl;
+            if (!dbMgr->initialize()) {
+                std::cerr << "Error: Failed to initialize DatabaseManager for Linux analysis" << std::endl;
+            } else {
+                auto linuxAnalyzer = std::make_unique<LinuxFilesAnalyzer>(args.image_path, dbMgr.get());
+                // Write Linux artifacts into files.db for unified scene database
+                linuxAnalyzer->setOutputDatabasePath(fileDbPath);
+                if (linuxAnalyzer->initialize()) {
+                    linuxAnalyzer->analyzeLinuxData();
+                    std::cout << "✓ Linux analysis complete\n" << std::endl;
+                }
             }
         }
 

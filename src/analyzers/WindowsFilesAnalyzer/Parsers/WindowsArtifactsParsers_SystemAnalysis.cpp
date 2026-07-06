@@ -44,7 +44,7 @@ void WindowsFilesAnalyzer::analyzeNTFSMetadata() {
     std::string extractPath = getExtractPath("mft/$MFT");
 
     // Extract $MFT file
-    if (!extractFileToPath(mftFile.inode, extractPath)) {
+    if (!extractFileToPath(mftFile.inode, extractPath, mftFile.partitionNum)) {
         LOG_ERROR("MFT分析: 无法提取 $MFT 文件");
         return;
     }
@@ -246,7 +246,7 @@ void WindowsFilesAnalyzer::analyzeScheduledTasks() {
 
         std::string extractPath = getExtractPath("tasks/" + std::to_string(file.inode) + "_" + file.name);
 
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             // Parse XML using pugixml
             pugi::xml_document doc;
             pugi::xml_parse_result result = doc.load_file(extractPath.c_str());
@@ -380,7 +380,7 @@ void WindowsFilesAnalyzer::analyzeAmcache() {
     for (const auto& file : amcacheFiles) {
         std::string extractPath = getExtractPath("amcache/" + std::to_string(file.inode) + "_Amcache.hve");
 
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             AmcacheParser parser(extractPath);
             if (parser.parse()) {
                 std::vector<AmcacheEntry> entries = parser.getEntries();
@@ -426,7 +426,7 @@ void WindowsFilesAnalyzer::analyzeSRUM() {
     for (const auto& file : srumFiles) {
         std::string extractPath = getExtractPath("srum/" + std::to_string(file.inode) + "_SRUDB.dat");
 
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             SrumParser parser(extractPath);
             if (parser.parse()) {
                 std::vector<SrumEntry> entries = parser.getEntries();

@@ -52,7 +52,7 @@ void LinuxFilesAnalyzer::analyzeApacheServers() {
         auto logFiles = queryFilesByPattern(pattern);
         for (const auto& file : logFiles) {
             std::string outputPath = extractPath + "/" + std::to_string(file.inode) + ".log";
-            if (extractFileToPath(file.inode, outputPath)) {
+            if (extractFileToPath(file.inode, outputPath, file.partitionNum)) {
                 auto parseResult = ApacheParser::parseAccessLog(outputPath);
                 if (!parseResult.accessLogs.empty()) {
                     linuxDb_->insertApacheAccessLogs(parseResult.accessLogs);
@@ -87,7 +87,7 @@ void LinuxFilesAnalyzer::analyzeNginxServers() {
         auto logFiles = queryFilesByPattern(pattern);
         for (const auto& file : logFiles) {
             std::string outputPath = extractPath + "/" + std::to_string(file.inode) + ".log";
-            if (extractFileToPath(file.inode, outputPath)) {
+            if (extractFileToPath(file.inode, outputPath, file.partitionNum)) {
                 auto parseResult = NginxParser::parseAccessLog(outputPath);
                 if (!parseResult.accessLogs.empty()) {
                     linuxDb_->insertNginxAccessLogs(parseResult.accessLogs);

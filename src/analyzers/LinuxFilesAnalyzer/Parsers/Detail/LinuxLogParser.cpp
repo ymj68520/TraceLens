@@ -22,7 +22,7 @@ void LinuxFilesAnalyzer::analyzeSystemLogs() {
 
     for (const auto& file : syslogFiles) {
         std::string extractPath = getExtractPath("var/log/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto entries = parseLogFile(extractPath, "syslog");
             linuxDb_->insertLogEntries(entries);
             AuditLog::instance().log("SYSTEM", "LINUX_SYSLOG_PARSED",
@@ -32,7 +32,7 @@ void LinuxFilesAnalyzer::analyzeSystemLogs() {
 
     for (const auto& file : messagesFiles) {
         std::string extractPath = getExtractPath("var/log/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto entries = parseLogFile(extractPath, "messages");
             linuxDb_->insertLogEntries(entries);
         }
@@ -47,7 +47,7 @@ void LinuxFilesAnalyzer::analyzeAuthLogs() {
 
     for (const auto& file : authFiles) {
         std::string extractPath = getExtractPath("var/log/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto entries = parseLogFile(extractPath, "auth");
             linuxDb_->insertLogEntries(entries);
             AuditLog::instance().log("SYSTEM", "LINUX_AUTH_PARSED",
@@ -57,7 +57,7 @@ void LinuxFilesAnalyzer::analyzeAuthLogs() {
 
     for (const auto& file : secureFiles) {
         std::string extractPath = getExtractPath("var/log/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto entries = parseLogFile(extractPath, "secure");
             linuxDb_->insertLogEntries(entries);
         }
@@ -72,7 +72,7 @@ void LinuxFilesAnalyzer::analyzeKernelLogs() {
 
     for (const auto& file : kernFiles) {
         std::string extractPath = getExtractPath("var/log/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto entries = parseLogFile(extractPath, "kern");
             linuxDb_->insertLogEntries(entries);
         }
@@ -80,7 +80,7 @@ void LinuxFilesAnalyzer::analyzeKernelLogs() {
 
     for (const auto& file : dmesgFiles) {
         std::string extractPath = getExtractPath("var/log/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto entries = parseLogFile(extractPath, "dmesg");
             linuxDb_->insertLogEntries(entries);
         }
@@ -94,7 +94,7 @@ void LinuxFilesAnalyzer::analyzeApplicationLogs() {
     auto dpkgFiles = queryFilesByPattern("%/var/log/dpkg.log%");
     for (const auto& file : dpkgFiles) {
         std::string extractPath = getExtractPath("var/log/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto entries = parseLogFile(extractPath, "dpkg");
             linuxDb_->insertLogEntries(entries);
         }
@@ -104,7 +104,7 @@ void LinuxFilesAnalyzer::analyzeApplicationLogs() {
     auto aptFiles = queryFilesByPattern("%/var/log/apt/history.log%");
     for (const auto& file : aptFiles) {
         std::string extractPath = getExtractPath("var/log/apt/" + file.name);
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto entries = parseLogFile(extractPath, "apt");
             linuxDb_->insertLogEntries(entries);
         }

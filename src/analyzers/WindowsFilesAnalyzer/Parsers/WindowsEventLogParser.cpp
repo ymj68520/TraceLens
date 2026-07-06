@@ -218,7 +218,7 @@ void WindowsFilesAnalyzer::analyzeEventLogs() {
 
         std::string extractPath = getExtractPath("eventlogs/" + logFile.name);
 
-        if (extractFileToPath(logFile.inode, extractPath)) {
+        if (extractFileToPath(logFile.inode, extractPath, logFile.partitionNum)) {
             auto [entries, recovered] = parseEventLogWithRecovery(extractPath);
 
             if (!entries.empty()) {

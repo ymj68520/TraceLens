@@ -32,7 +32,7 @@ void WindowsFilesAnalyzer::analyzePrefetchFiles() {
     for (const auto& file : pfFiles) {
         std::string extractPath = getExtractPath("prefetch/" + file.name);
         
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             PrefetchInfo info = parsePrefetchFile(extractPath);
             // If parsing failed (empty path), skip
             if (!info.filePath.empty()) {
@@ -93,7 +93,7 @@ void WindowsFilesAnalyzer::analyzeLnkFiles() {
     for (const auto& file : lnkFiles) {
         std::string extractPath = getExtractPath("shortcuts/" + std::to_string(file.inode) + "_" + file.name);
         
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             LnkFileInfo info = parseLnkFile(extractPath);
             if (!info.lnkPath.empty()) {
                 info.creationTime = file.crtime;
@@ -154,7 +154,7 @@ void WindowsFilesAnalyzer::analyzeJumpLists() {
     for (const auto& file : autoDest) {
         std::string extractPath = getExtractPath("jumplists/auto/" + file.name);
         
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto entries = parseJumpListFile(extractPath);
             
             if (!entries.empty()) {
@@ -176,7 +176,7 @@ void WindowsFilesAnalyzer::analyzeJumpLists() {
     for (const auto& file : customDest) {
         std::string extractPath = getExtractPath("jumplists/custom/" + file.name);
         
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto entries = parseJumpListFile(extractPath);
             
             if (!entries.empty()) {
@@ -224,7 +224,7 @@ void WindowsFilesAnalyzer::analyzeRecycleBin() {
     for (const auto& file : iFiles) {
         std::string extractPath = getExtractPath("recyclebin/" + file.name);
         
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto entries = parseRecycleBin(extractPath);
             for (const auto& entry : entries) {
                 windowsDb_->insertRecycleBinEntry(entry);

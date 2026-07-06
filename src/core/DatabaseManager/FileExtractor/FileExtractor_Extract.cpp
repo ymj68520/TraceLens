@@ -196,25 +196,37 @@ int FileExtractor::extractDeleted(const std::string& outputDir, bool overwrite, 
     return extracted;
 }
 
-bool FileExtractor::extractFileByInode(int64_t inode, const std::string& outputPath) {
+bool FileExtractor::extractFileByInode(int64_t inode, const std::string& outputPath, int partitionNum) {
     auto files = searchFiles("inode=" + std::to_string(inode));
     if (files.empty()) {
         std::cerr << "Error: File with inode " << inode << " not found" << std::endl;
         return false;
     }
 
-    // In multi-partition images, the same inode can exist in several partitions.
-    // Pick the record whose partition we actually have an open handle for; this
-    // avoids reading the wrong partition's content via a colliding inode.
+    // When the caller supplies a valid partitionNum, pick the matching record
+    // directly — this avoids the ambiguity of inode collisions across partitions.
     const FileRecord* chosen = nullptr;
-    for (const auto& f : files) {
-        if (fsByPartition_.find(f.partitionNum) != fsByPartition_.end()) {
-            chosen = &f;
-            break;
+    if (partitionNum >= 0) {
+        for (const auto& f : files) {
+            if (f.partitionNum == partitionNum) {
+                chosen = &f;
+                break;
+            }
+        }
+    }
+
+    // Fallback: heuristic — pick the record whose partition we actually have
+    // an open handle for (avoids reading the wrong partition's content).
+    if (!chosen) {
+        for (const auto& f : files) {
+            if (fsByPartition_.find(f.partitionNum) != fsByPartition_.end()) {
+                chosen = &f;
+                break;
+            }
         }
     }
     if (!chosen) {
-        chosen = &files[0];  // fallback: best-effort with first record
+        chosen = &files[0];  // last fallback: best-effort with first record
     }
 
     // Single file extraction implies overwrite intent usually
@@ -306,61 +318,92 @@ bool FileExtractor::extractFile(const FileRecord& record, const std::string& out
     // Read file content using TSK. Route to the filesystem handle for this
     // file's partition so inode reads don't hit the wrong partition.
     TSK_FS_INFO* fs = fsForPartition(record.partitionNum);
-    if (!fs) {
-        std::cerr << "Error: No filesystem handle for partition " << record.partitionNum
-                  << " (inode " << record.inode << ")" << std::endl;
-        return false;
-    }
-    TSK_FS_FILE* fsFile = tsk_fs_file_open_meta(fs, nullptr, record.inode);
-    if (!fsFile) {
-        std::cerr << "Error: Cannot open file inode " << record.inode
-                  << " (part " << record.partitionNum << ", fs "
-                  << tsk_fs_type_toname(fs->ftype) << "): " << tsk_error_get() << std::endl;
-        return false;
-    }
 
-    // Create output directory
-    if (!createDirectories(outputPath)) {
-        tsk_fs_file_close(fsFile);
-        return false;
-    }
-
-    // Read and write file content
-    std::ofstream ofs(outputPath, std::ios::binary);
-    if (!ofs) {
-        std::cerr << "Error: Cannot create output file: " << outputPath << std::endl;
-        tsk_fs_file_close(fsFile);
-        return false;
-    }
-
-    const size_t BUFFER_SIZE = 1024 * 1024; // 1MB buffer
-    char* buffer = new char[BUFFER_SIZE];
-    TSK_OFF_T offset = 0;
-    TSK_OFF_T remaining = record.size;
-
-    while (remaining > 0) {
-        size_t toRead = (remaining > BUFFER_SIZE) ? BUFFER_SIZE : remaining;
-        ssize_t bytesRead = tsk_fs_file_read(fsFile, offset, buffer, toRead,
-                                             TSK_FS_FILE_READ_FLAG_NONE);
-
-        if (bytesRead < 0) {
-            std::cerr << "Error reading file at offset " << offset << std::endl;
-            break;
+    if (fs) {
+        // --- TSK path (ext4, NTFS, FAT, etc.) ---
+        TSK_FS_FILE* fsFile = tsk_fs_file_open_meta(fs, nullptr, record.inode);
+        if (!fsFile) {
+            std::cerr << "Error: Cannot open file inode " << record.inode
+                      << " (part " << record.partitionNum << ", fs "
+                      << tsk_fs_type_toname(fs->ftype) << "): " << tsk_error_get() << std::endl;
+            return false;
         }
 
-        if (bytesRead == 0) {
-            break; // EOF
+        // Create output directory
+        if (!createDirectories(outputPath)) {
+            tsk_fs_file_close(fsFile);
+            return false;
         }
 
-        ofs.write(buffer, bytesRead);
-        offset += bytesRead;
-        remaining -= bytesRead;
+        // Read and write file content
+        std::ofstream ofs(outputPath, std::ios::binary);
+        if (!ofs) {
+            std::cerr << "Error: Cannot create output file: " << outputPath << std::endl;
+            tsk_fs_file_close(fsFile);
+            return false;
+        }
+
+        const size_t BUFFER_SIZE = 1024 * 1024; // 1MB buffer
+        char* buffer = new char[BUFFER_SIZE];
+        TSK_OFF_T offset = 0;
+        TSK_OFF_T remaining = record.size;
+
+        while (remaining > 0) {
+            size_t toRead = (remaining > BUFFER_SIZE) ? BUFFER_SIZE : remaining;
+            ssize_t bytesRead = tsk_fs_file_read(fsFile, offset, buffer, toRead,
+                                                 TSK_FS_FILE_READ_FLAG_NONE);
+
+            if (bytesRead < 0) {
+                std::cerr << "Error reading file at offset " << offset << std::endl;
+                break;
+            }
+
+            if (bytesRead == 0) {
+                break; // EOF
+            }
+
+            ofs.write(buffer, bytesRead);
+            offset += bytesRead;
+            remaining -= bytesRead;
+        }
+
+        delete[] buffer;
+        ofs.close();
+        tsk_fs_file_close(fsFile);
+
+        return remaining == 0;
+
+    } else {
+        // --- XFS fallback path (TSK cannot parse XFS) ---
+        XFSHelper* xfs = xfsForPartition(record.partitionNum);
+        if (!xfs) {
+            std::cerr << "Error: No TSK or XFS handle for partition " << record.partitionNum
+                      << " (inode " << record.inode << ")" << std::endl;
+            return false;
+        }
+
+        std::vector<uint8_t> fileData;
+        if (!xfs->readFileByInode(static_cast<uint64_t>(record.inode), fileData)) {
+            std::cerr << "Error: XFS readFileByInode failed for inode " << record.inode
+                      << " (partition " << record.partitionNum << ")" << std::endl;
+            return false;
+        }
+
+        // Create output directory
+        if (!createDirectories(outputPath)) {
+            return false;
+        }
+
+        std::ofstream ofs(outputPath, std::ios::binary);
+        if (!ofs) {
+            std::cerr << "Error: Cannot create output file: " << outputPath << std::endl;
+            return false;
+        }
+
+        ofs.write(reinterpret_cast<const char*>(fileData.data()), fileData.size());
+        ofs.close();
+
+        return true;
     }
-
-    delete[] buffer;
-    ofs.close();
-    tsk_fs_file_close(fsFile);
-
-    return remaining == 0;
 }
 

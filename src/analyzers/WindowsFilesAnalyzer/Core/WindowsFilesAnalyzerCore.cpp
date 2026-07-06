@@ -154,18 +154,19 @@ std::vector<FileRecord> WindowsFilesAnalyzer::queryFilesByPattern(const std::str
     if (!db) return results;
     
     // Use parameterized query to prevent SQL injection
-    const char* query = "SELECT inode, name, path, size, mtime, atime, crtime, type, is_deleted, md5 "
+    const char* query = "SELECT inode, name, path, size, mtime, atime, crtime, type, is_deleted, md5, "
+                        "COALESCE(partition_num, 0) "
                         "FROM files WHERE path LIKE ? AND is_deleted=0";
     sqlite3_stmt* stmt;
-    
+
     if (sqlite3_prepare_v2(db, query, -1, &stmt, nullptr) != SQLITE_OK) {
         std::cerr << "Error preparing query: " << sqlite3_errmsg(db) << std::endl;
         return results;
     }
-    
+
     // Bind the pattern parameter (index 1)
     sqlite3_bind_text(stmt, 1, pathPattern.c_str(), -1, SQLITE_TRANSIENT);
-    
+
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         FileRecord record;
         record.inode = sqlite3_column_int64(stmt, 0);
@@ -182,34 +183,36 @@ std::vector<FileRecord> WindowsFilesAnalyzer::queryFilesByPattern(const std::str
         record.isDeleted = sqlite3_column_int(stmt, 8);
         const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9));
         record.md5 = md5Ptr ? md5Ptr : "";
-        
+        record.partitionNum = sqlite3_column_int(stmt, 10);
+
         results.push_back(record);
     }
-    
+
     sqlite3_finalize(stmt);
     return results;
 }
 
 std::vector<FileRecord> WindowsFilesAnalyzer::queryFilesByCategory(const std::string& category) {
     if (!dbManager_) return {};
-    
+
     std::vector<FileRecord> results;
     sqlite3* db = dbManager_->getDb();
     if (!db) return results;
-    
+
     // Use parameterized query to prevent SQL injection
-    const char* query = "SELECT inode, name, path, size, mtime, atime, crtime, type, is_deleted, md5 "
+    const char* query = "SELECT inode, name, path, size, mtime, atime, crtime, type, is_deleted, md5, "
+                        "COALESCE(partition_num, 0) "
                         "FROM files WHERE category = ?";
     sqlite3_stmt* stmt;
-    
+
     if (sqlite3_prepare_v2(db, query, -1, &stmt, nullptr) != SQLITE_OK) {
         std::cerr << "Error preparing query: " << sqlite3_errmsg(db) << std::endl;
         return results;
     }
-    
+
     // Bind the category parameter (index 1)
     sqlite3_bind_text(stmt, 1, category.c_str(), -1, SQLITE_TRANSIENT);
-    
+
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         FileRecord record;
         record.inode = sqlite3_column_int64(stmt, 0);
@@ -226,17 +229,18 @@ std::vector<FileRecord> WindowsFilesAnalyzer::queryFilesByCategory(const std::st
         record.isDeleted = sqlite3_column_int(stmt, 8);
         const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9));
         record.md5 = md5Ptr ? md5Ptr : "";
-        
+        record.partitionNum = sqlite3_column_int(stmt, 10);
+
         results.push_back(record);
     }
-    
+
     sqlite3_finalize(stmt);
     return results;
 }
 
-bool WindowsFilesAnalyzer::extractFileToPath(int64_t inode, const std::string& outputPath) {
+bool WindowsFilesAnalyzer::extractFileToPath(int64_t inode, const std::string& outputPath, int partitionNum) {
     if (!fileExtractor_) return false;
-    return fileExtractor_->extractFileByInode(inode, outputPath);
+    return fileExtractor_->extractFileByInode(inode, outputPath, partitionNum);
 }
 
 std::string WindowsFilesAnalyzer::getExtractPath(const std::string& relativePath) {

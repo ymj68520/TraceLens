@@ -1,6 +1,6 @@
 #!/bin/bash
 # ForensicsProject - One-click Dependency Setup
-# Installs all C++ system libraries, builds TSK & Crow from source,
+# Installs all C++ system libraries, builds TSK, Crow & Aliyun OSS SDK from source,
 # sets up Python venv, and builds the project.
 #
 # Usage:
@@ -38,9 +38,9 @@ echo "╚═══════════════════════�
 echo -e "${NC}"
 
 # ========================================================================
-# Step 1: Install system packages (apt)
+# Step 1/7: Install system packages (apt)
 # ========================================================================
-info "Step 1/6: Installing system packages via apt..."
+info "Step 1/7: Installing system packages via apt..."
 
 APT_PACKAGES=(
     # Build tools
@@ -101,9 +101,9 @@ else
 fi
 
 # ========================================================================
-# Step 2: Install The Sleuth Kit 4.14.0 (if not present)
+# Step 2/7: Install The Sleuth Kit 4.14.0 (if not present)
 # ========================================================================
-info "Step 2/6: Checking The Sleuth Kit (TSK)..."
+info "Step 2/7: Checking The Sleuth Kit (TSK)..."
 
 TSK_LIB="/usr/local/lib/libtsk.so"
 TSK_VERSION="4.14.0"
@@ -137,9 +137,9 @@ else
 fi
 
 # ========================================================================
-# Step 3: Install Crow framework (if not present)
+# Step 3/7: Install Crow framework (if not present)
 # ========================================================================
-info "Step 3/6: Checking Crow HTTP framework..."
+info "Step 3/7: Checking Crow HTTP framework..."
 
 CROW_HEADER="/usr/local/include/crow.h"
 if [ -f "$CROW_HEADER" ] || [ -d "/usr/local/include/crow" ]; then
@@ -162,9 +162,9 @@ else
 fi
 
 # ========================================================================
-# Step 4: Install Google Test (if not present)
+# Step 4/7: Install Google Test (if not present)
 # ========================================================================
-info "Step 4/6: Checking Google Test..."
+info "Step 4/7: Checking Google Test..."
 
 if [ -f "/usr/local/lib/libgtest.a" ] || [ -f "/usr/lib/libgtest.a" ]; then
     ok "Google Test already installed"
@@ -188,9 +188,36 @@ fi
 sudo ldconfig
 
 # ========================================================================
-# Step 5: Setup Python virtual environment
+# Step 5/7: Build Aliyun OSS C++ SDK (if not present)
 # ========================================================================
-info "Step 5/6: Setting up Python virtual environment..."
+info "Step 5/7: Checking Aliyun OSS C++ SDK..."
+
+OSS_SDK_DIR="$PROJECT_ROOT/libs/aliyun-oss-cpp-sdk"
+OSS_SDK_LIB="$OSS_SDK_DIR/build/lib/libalibabacloud-oss-cpp-sdk.a"
+
+if [ -f "$OSS_SDK_LIB" ]; then
+    ok "Aliyun OSS C++ SDK already built at $OSS_SDK_LIB"
+else
+    info "Building Aliyun OSS C++ SDK from source..."
+    cd "$OSS_SDK_DIR"
+    mkdir -p build
+    cd build
+    cmake .. -DBUILD_SAMPLE=OFF -DBUILD_TESTS=OFF 2>&1 | tail -5
+    make -j$(nproc) -s 2>&1 | tail -5
+
+    if [ -f "$OSS_SDK_LIB" ]; then
+        ok "Aliyun OSS C++ SDK built successfully"
+    else
+        fail "Failed to build Aliyun OSS C++ SDK. Check cmake output above."
+    fi
+
+    cd "$PROJECT_ROOT"
+fi
+
+# ========================================================================
+# Step 6/7: Setup Python virtual environment
+# ========================================================================
+info "Step 6/7: Setting up Python virtual environment..."
 
 VENV_DIR="$PROJECT_ROOT/python_service/.venv"
 PYTHON_EXEC="$VENV_DIR/bin/python"
@@ -219,9 +246,9 @@ if [ ! -x "$VENV_DIR/bin/vol" ]; then
 fi
 
 # ========================================================================
-# Step 6: Build C++ project
+# Step 7/7: Build C++ project
 # ========================================================================
-info "Step 6/6: Building C++ project..."
+info "Step 7/7: Building C++ project..."
 
 BUILD_DIR="$PROJECT_ROOT/build"
 mkdir -p "$BUILD_DIR"

@@ -199,7 +199,7 @@ private:
     std::vector<FileRecord> queryLinuxSystemFiles();
     std::vector<FileRecord> queryFilesByPattern(const std::string& pathPattern);
     std::vector<FileRecord> queryFilesByCategory(const std::string& category);
-    bool extractFileToPath(int64_t inode, const std::string& outputPath);
+    bool extractFileToPath(int64_t inode, const std::string& outputPath, int partitionNum = -1);
 
     // Log parsing helpers
     LinuxLogEntry parseLogLine(const std::string& line, const std::string& logFile);

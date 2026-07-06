@@ -35,7 +35,7 @@ void WindowsFilesAnalyzer::analyzeBrowserData() {
         std::string profileName = BrowserHelpers::extractProfileName(file.path);
         std::string extractPath = getExtractPath("browser/chrome/" + std::to_string(file.inode) + "_History");
         
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             if (browserParser.parseChrome(extractPath, profileName)) {
                 std::cout << "    ✓ Parsed Chrome profile: " << profileName << std::endl;
             }
@@ -48,7 +48,7 @@ void WindowsFilesAnalyzer::analyzeBrowserData() {
     for (const auto& file : chromeCookies) {
         std::string profileName = BrowserHelpers::extractProfileName(file.path);
         std::string extractPath = getExtractPath("browser/chrome/" + std::to_string(file.inode) + "_Cookies");
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             // Parser will handle cookies during parseProfile
         }
     }
@@ -58,7 +58,7 @@ void WindowsFilesAnalyzer::analyzeBrowserData() {
         "%/AppData/Local/Google/Chrome/User Data/%/Bookmarks");
     for (const auto& file : chromeBookmarks) {
         std::string extractPath = getExtractPath("browser/chrome/" + std::to_string(file.inode) + "_Bookmarks");
-        extractFileToPath(file.inode, extractPath);
+        extractFileToPath(file.inode, extractPath, file.partitionNum);
         // Parser will handle bookmarks during parseProfile
     }
 
@@ -73,7 +73,7 @@ void WindowsFilesAnalyzer::analyzeBrowserData() {
         std::string profileName = BrowserHelpers::extractProfileName(file.path);
         std::string extractPath = getExtractPath("browser/edge/" + std::to_string(file.inode) + "_History");
         
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             if (browserParser.parseEdge(extractPath, profileName)) {
                 std::cout << "    ✓ Parsed Edge profile: " << profileName << std::endl;
             }
@@ -85,7 +85,7 @@ void WindowsFilesAnalyzer::analyzeBrowserData() {
         "%/AppData/Local/Microsoft/Edge/User Data/%/Cookies");
     for (const auto& file : edgeCookies) {
         std::string extractPath = getExtractPath("browser/edge/" + std::to_string(file.inode) + "_Cookies");
-        extractFileToPath(file.inode, extractPath);
+        extractFileToPath(file.inode, extractPath, file.partitionNum);
     }
 
     // ============================================================================
@@ -99,7 +99,7 @@ void WindowsFilesAnalyzer::analyzeBrowserData() {
         std::string profileName = BrowserHelpers::extractProfileName(file.path);
         std::string extractPath = getExtractPath("browser/firefox/" + std::to_string(file.inode) + "_places.sqlite");
         
-        if (extractFileToPath(file.inode, extractPath)) {
+        if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             if (browserParser.parseFirefox(extractPath, profileName)) {
                 std::cout << "    ✓ Parsed Firefox profile: " << profileName << std::endl;
             }
@@ -111,7 +111,7 @@ void WindowsFilesAnalyzer::analyzeBrowserData() {
         "%/AppData/Roaming/Mozilla/Firefox/Profiles/%/cookies.sqlite");
     for (const auto& file : firefoxCookies) {
         std::string extractPath = getExtractPath("browser/firefox/" + std::to_string(file.inode) + "_cookies.sqlite");
-        extractFileToPath(file.inode, extractPath);
+        extractFileToPath(file.inode, extractPath, file.partitionNum);
     }
 
     // ============================================================================

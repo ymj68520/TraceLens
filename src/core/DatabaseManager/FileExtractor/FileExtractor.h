@@ -10,6 +10,7 @@
 #include <tsk/libtsk.h>
 #include "DatabaseManager/DatabaseManager.h"
 #include "analyzers/AndroidAnalyzer/IFileExtractor.h"
+#include "analyzers/ImageAnalyzer/XFSHelper.h"
 
 /**
  * FileExtractor - Extract files from forensic images
@@ -42,7 +43,7 @@ public:
     int extractByExtension(const std::string& extensions, const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr);
     int extractAll(const std::string& outputDir, bool includeDeleted = false, bool overwrite = false, int* skippedCount = nullptr);
     int extractDeleted(const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr);
-    bool extractFileByInode(int64_t inode, const std::string& outputPath);
+    bool extractFileByInode(int64_t inode, const std::string& outputPath, int partitionNum = -1);
     bool extractFileByPath(const std::string& filePath, const std::string& outputPath) override;
 
 private:
@@ -53,6 +54,11 @@ private:
     // which handle to use for inode-based reads, avoiding cross-partition inode
     // collisions. partition 0 is the legacy single-FS / whole-image case.
     std::map<int, TSK_FS_INFO*> fsByPartition_;
+    // XFSHelper instances for partitions that TSK cannot open (XFS).
+    // Key = partition number, value = lazily-initialized XFSHelper.
+    std::map<int, std::unique_ptr<XFSHelper>> xfsByPartition_;
+    // Partition offsets recorded during openFileSystem for XFS fallback init.
+    std::map<int, uint64_t> xfsPartitionOffsets_;
     std::unique_ptr<DatabaseManager> dbManager_;
 
     bool openImage();
@@ -65,6 +71,12 @@ private:
      * (e.g. older databases without partition_num).
      */
     TSK_FS_INFO* fsForPartition(int partitionNum) const;
+
+    /**
+     * Get or lazily-initialize an XFSHelper for a partition that TSK could not
+     * open. Returns nullptr if the partition is not XFS or initialization fails.
+     */
+    XFSHelper* xfsForPartition(int partitionNum);
 
     std::vector<FileRecord> searchFiles(const std::string& whereClause);
     std::vector<FileRecord> searchFilesInTable(const std::string& tableName, const std::string& whereClause);

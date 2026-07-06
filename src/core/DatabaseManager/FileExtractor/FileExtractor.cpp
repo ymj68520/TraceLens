@@ -109,23 +109,47 @@ bool FileExtractor::openFileSystem() {
             TSK_FS_INFO* fs = tsk_fs_open_img(imgInfo_, offset, TSK_FS_TYPE_DETECT);
             if (fs) {
                 fsByPartition_[static_cast<int>(i)] = fs;
+            } else {
+                // TSK could not open this partition. Record the offset in case it
+                // is XFS — we will lazily initialize XFSHelper on first access.
+                xfsPartitionOffsets_[static_cast<int>(i)] = static_cast<uint64_t>(offset);
             }
         }
         tsk_vs_close(vsInfo);
     }
 
     // No partition table (or no openable partition): try the image as a single FS.
-    if (fsByPartition_.empty()) {
+    if (fsByPartition_.empty() && xfsPartitionOffsets_.empty()) {
         TSK_FS_INFO* fs = tsk_fs_open_img(imgInfo_, 0, TSK_FS_TYPE_DETECT);
         if (fs) {
             fsByPartition_[0] = fs;
+        } else {
+            // Try whole-image as XFS
+            xfsPartitionOffsets_[0] = 0;
         }
     }
 
-    if (fsByPartition_.empty()) {
+    if (fsByPartition_.empty() && xfsPartitionOffsets_.empty()) {
         std::cerr << "Error opening filesystem: " << tsk_error_get() << std::endl;
         return false;
     }
+
+    // If we have at least one open handle OR one potential XFS partition, succeed.
+    // XFS partitions will be lazily opened on first read.
+    if (!fsByPartition_.empty()) {
+        std::cout << "File extractor: " << fsByPartition_.size()
+                  << " TSK filesystem(s) opened";
+        if (!xfsPartitionOffsets_.empty()) {
+            std::cout << ", " << xfsPartitionOffsets_.size()
+                      << " partition(s) deferred to XFS fallback";
+        }
+        std::cout << std::endl;
+    } else {
+        std::cout << "File extractor: no TSK filesystems opened, "
+                  << xfsPartitionOffsets_.size()
+                  << " partition(s) will use XFS fallback" << std::endl;
+    }
+
     return true;
 }
 
@@ -137,6 +161,8 @@ void FileExtractor::closeImage() {
         }
     }
     fsByPartition_.clear();
+    xfsByPartition_.clear();
+    xfsPartitionOffsets_.clear();
     if (imgInfo_) {
         tsk_img_close(imgInfo_);
         imgInfo_ = nullptr;
@@ -154,6 +180,36 @@ TSK_FS_INFO* FileExtractor::fsForPartition(int partitionNum) const {
         if (kv.second) return kv.second;
     }
     return nullptr;
+}
+
+XFSHelper* FileExtractor::xfsForPartition(int partitionNum) {
+    // Already initialized?
+    auto it = xfsByPartition_.find(partitionNum);
+    if (it != xfsByPartition_.end() && it->second) {
+        return it->second.get();
+    }
+
+    // Do we have a recorded offset for this partition?
+    auto offIt = xfsPartitionOffsets_.find(partitionNum);
+    if (offIt == xfsPartitionOffsets_.end()) {
+        return nullptr;
+    }
+
+    // Lazily initialize XFSHelper for this partition
+    auto helper = std::make_unique<XFSHelper>(imgInfo_, offIt->second);
+    if (!helper->initialize()) {
+        std::cerr << "  XFSHelper failed to initialize for partition " << partitionNum
+                  << " at offset " << offIt->second << std::endl;
+        // Remove from offsets so we don't keep retrying
+        xfsPartitionOffsets_.erase(offIt);
+        return nullptr;
+    }
+
+    XFSHelper* ptr = helper.get();
+    xfsByPartition_[partitionNum] = std::move(helper);
+    std::cout << "  XFSHelper initialized for partition " << partitionNum
+              << " at offset " << offIt->second << std::endl;
+    return ptr;
 }
 
 std::vector<FileRecord> FileExtractor::searchFiles(const std::string& whereClause) {
@@ -267,19 +323,33 @@ bool FileExtractor::matchWildcard(const std::string& filename, const std::string
 
 ssize_t FileExtractor::readFileContent(int64_t inode, char* buffer, size_t size, int partitionNum) {
     TSK_FS_INFO* fs = fsForPartition(partitionNum);
-    if (!fs) {
-        return -1;
+    if (fs) {
+        TSK_FS_FILE* fsFile = tsk_fs_file_open_meta(fs, nullptr, inode);
+        if (!fsFile) {
+            return -1;
+        }
+
+        ssize_t bytesRead = tsk_fs_file_read(fsFile, 0, buffer, size,
+                                             TSK_FS_FILE_READ_FLAG_NONE);
+        tsk_fs_file_close(fsFile);
+
+        return bytesRead;
     }
-    TSK_FS_FILE* fsFile = tsk_fs_file_open_meta(fs, nullptr, inode);
-    if (!fsFile) {
+
+    // XFS fallback
+    XFSHelper* xfs = xfsForPartition(partitionNum);
+    if (!xfs) {
         return -1;
     }
 
-    ssize_t bytesRead = tsk_fs_file_read(fsFile, 0, buffer, size,
-                                         TSK_FS_FILE_READ_FLAG_NONE);
-    tsk_fs_file_close(fsFile);
+    std::vector<uint8_t> fileData;
+    if (!xfs->readFileByInode(static_cast<uint64_t>(inode), fileData)) {
+        return -1;
+    }
 
-    return bytesRead;
+    size_t toCopy = (size < fileData.size()) ? size : fileData.size();
+    memcpy(buffer, fileData.data(), toCopy);
+    return static_cast<ssize_t>(toCopy);
 }
 
 bool FileExtractor::createDirectories(const std::string& path) {

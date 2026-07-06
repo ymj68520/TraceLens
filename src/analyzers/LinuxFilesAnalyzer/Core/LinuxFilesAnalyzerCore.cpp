@@ -268,7 +268,8 @@ std::vector<FileRecord> LinuxFilesAnalyzer::queryFilesByPattern(const std::strin
     sqlite3* db = dbManager_->getDb();
     if (!db) return results;
 
-    const char* query = "SELECT inode, name, path, size, mtime, atime, crtime, type, is_deleted, md5 "
+    const char* query = "SELECT inode, name, path, size, mtime, atime, crtime, type, is_deleted, md5, "
+                        "COALESCE(partition_num, 0) "
                         "FROM files WHERE path LIKE ? AND is_deleted=0";
     sqlite3_stmt* stmt;
 
@@ -295,6 +296,7 @@ std::vector<FileRecord> LinuxFilesAnalyzer::queryFilesByPattern(const std::strin
         record.isDeleted = sqlite3_column_int(stmt, 8);
         const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9));
         record.md5 = md5Ptr ? md5Ptr : "";
+        record.partitionNum = sqlite3_column_int(stmt, 10);
 
         results.push_back(record);
     }
@@ -310,7 +312,8 @@ std::vector<FileRecord> LinuxFilesAnalyzer::queryFilesByCategory(const std::stri
     sqlite3* db = dbManager_->getDb();
     if (!db) return results;
 
-    const char* query = "SELECT inode, name, path, size, mtime, atime, crtime, type, is_deleted, md5 "
+    const char* query = "SELECT inode, name, path, size, mtime, atime, crtime, type, is_deleted, md5, "
+                        "COALESCE(partition_num, 0) "
                         "FROM files WHERE category = ?";
     sqlite3_stmt* stmt;
 
@@ -337,6 +340,7 @@ std::vector<FileRecord> LinuxFilesAnalyzer::queryFilesByCategory(const std::stri
         record.isDeleted = sqlite3_column_int(stmt, 8);
         const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9));
         record.md5 = md5Ptr ? md5Ptr : "";
+        record.partitionNum = sqlite3_column_int(stmt, 10);
 
         results.push_back(record);
     }
@@ -345,9 +349,9 @@ std::vector<FileRecord> LinuxFilesAnalyzer::queryFilesByCategory(const std::stri
     return results;
 }
 
-bool LinuxFilesAnalyzer::extractFileToPath(int64_t inode, const std::string& outputPath) {
+bool LinuxFilesAnalyzer::extractFileToPath(int64_t inode, const std::string& outputPath, int partitionNum) {
     if (!fileExtractor_) return false;
-    return fileExtractor_->extractFileByInode(inode, outputPath);
+    return fileExtractor_->extractFileByInode(inode, outputPath, partitionNum);
 }
 
 std::string LinuxFilesAnalyzer::getExtractPath(const std::string& relativePath) {

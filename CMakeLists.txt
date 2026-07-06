@@ -233,6 +233,28 @@ add_subdirectory(libs/cpp-dotenv)
 add_subdirectory(libs/DuckX)
 
 link_directories(${TSK_LIBRARY_DIR})
+
+# Find Aliyun OSS C++ SDK (vendored at libs/aliyun-oss-cpp-sdk)
+find_library(OSS_SDK_LIB
+  NAMES alibabacloud-oss-cpp-sdk
+  PATHS ${CMAKE_SOURCE_DIR}/libs/aliyun-oss-cpp-sdk/build/lib
+  NO_DEFAULT_PATH
+  DOC "Aliyun OSS C++ SDK library"
+)
+if(OSS_SDK_LIB)
+  message(STATUS "Aliyun OSS C++ SDK found: ${OSS_SDK_LIB}")
+else()
+  message(FATAL_ERROR
+    "Aliyun OSS C++ SDK not found!\n"
+    "The SDK library is expected at: libs/aliyun-oss-cpp-sdk/build/lib/libalibabacloud-oss-cpp-sdk.a\n"
+    "Please build it first by running:\n"
+    "  ./setup.sh\n"
+    "Or manually:\n"
+    "  cd libs/aliyun-oss-cpp-sdk && mkdir -p build && cd build\n"
+    "  cmake .. -DBUILD_SAMPLE=OFF -DBUILD_TESTS=OFF && make -j$(nproc)\n"
+  )
+endif()
+
 link_directories(${CMAKE_SOURCE_DIR}/libs/aliyun-oss-cpp-sdk/build/lib)
 
 # Source files Common source files
@@ -493,7 +515,7 @@ else()
     pq
     cpp_dotenv
     duckx
-    alibabacloud-oss-cpp-sdk
+    ${OSS_SDK_LIB}
     curl
     OpenSSL::SSL
     OpenSSL::Crypto
