@@ -98,84 +98,100 @@ bool ImageAnalyzer::openFileSystem() {
 	// Try to open volume system first
 	TSK_VS_INFO* vsInfo = tsk_vs_open(imgInfo_, 0, TSK_VS_TYPE_DETECT);
 
-	TSK_OFF_T offset = 0;
-	bool fsOpened = false;
-
 	if (vsInfo) {
 		std::cout << "Volume system detected" << std::endl;
 		std::cout << "  Partitions: " << vsInfo->part_count << std::endl;
 
-		// Try each allocated partition until we find one that works
-		for (TSK_PNUM_T i = 0; i < vsInfo->part_count && !fsOpened; i++) {
+		// Enumerate EVERY allocated partition and record those whose filesystem
+		// opens successfully. Previously this loop stopped at the first openable
+		// partition, silently dropping the rest (and almost all real evidence on
+		// multi-partition disks). See scripts/FINDINGS_MULTI_PARTITION.md.
+		int skipped = 0;
+		for (TSK_PNUM_T i = 0; i < vsInfo->part_count; i++) {
 			const TSK_VS_PART_INFO* part = tsk_vs_part_get(vsInfo, i);
-			if (part && (part->flags & TSK_VS_PART_FLAG_ALLOC)) {
-				offset = part->start * vsInfo->block_size;
-				partitionOffset_ = offset;  // Store for native mount
-				std::cout << "  Trying partition " << i
-				          << " at offset " << offset
-				          << " (desc: " << part->desc << ")" << std::endl;
+			if (!part || !(part->flags & TSK_VS_PART_FLAG_ALLOC)) {
+				continue;
+			}
+			uint64_t offset = static_cast<uint64_t>(part->start) * vsInfo->block_size;
+			std::cout << "  Trying partition " << i
+			          << " at offset " << offset
+			          << " (desc: " << part->desc << ")" << std::endl;
 
-				// Try to open filesystem on this partition
-				fsInfo_ = tsk_fs_open_img(imgInfo_, offset, TSK_FS_TYPE_DETECT);
-				if (fsInfo_) {
-					std::cout << "    Filesystem type: " << tsk_fs_type_toname(fsInfo_->ftype) << std::endl;
-
-					// Check if this filesystem is XFS
-					const char* fsTypeName = tsk_fs_type_toname(fsInfo_->ftype);
-					isXFS_ = (fsTypeName && strstr(fsTypeName, "xfs"));
-
+			// Try to open filesystem on this partition
+			TSK_FS_INFO* fs = tsk_fs_open_img(imgInfo_, offset, TSK_FS_TYPE_DETECT);
+			if (fs) {
+				const char* fsTypeName = tsk_fs_type_toname(fs->ftype);
+				std::string fsTypeStr = fsTypeName ? fsTypeName : "unknown";
+				bool partIsXfs = (fsTypeName && strstr(fsTypeName, "xfs"));
 #ifdef TSK_FS_TYPE_XFS
-					if (fsInfo_->ftype == TSK_FS_TYPE_XFS) {
-						isXFS_ = true;
-					}
+				if (fs->ftype == TSK_FS_TYPE_XFS) partIsXfs = true;
 #endif
+				std::cout << "    Filesystem type: " << fsTypeStr
+				          << (partIsXfs ? " (XFS)" : "") << std::endl;
 
-					if (isXFS_) {
+				PartitionEntry entry;
+				entry.num = i;
+				entry.offset = offset;
+				entry.desc = part->desc;
+				entry.fsType = fsTypeStr;
+				entry.isXfs = partIsXfs;
+				partitions_.push_back(entry);
+
+				// Keep the first opened FS as the "representative" used by
+				// detectOSType() and legacy XFS/native fallback paths.
+				if (!fsInfo_) {
+					fsInfo_ = fs;            // ownership retained by ImageAnalyzer
+					partitionOffset_ = offset;
+					isXFS_ = partIsXfs;
+					if (partIsXfs) {
 						std::cout << "    Detected XFS filesystem - will use alternative method if TSK fails" << std::endl;
 					}
-
-					fsOpened = true;
-					break;
 				} else {
-					std::cout << "    Could not open filesystem: " << tsk_error_get() << std::endl;
-
-#ifdef __linux__
-					// On Linux, if TSK can't open it but partition description suggests Linux filesystem
-					// assume it might be XFS and try native mount later
-					// Only use the first Linux partition we find
-					if (strstr(part->desc, "Linux") && !isXFS_) {
-						std::cout << "    Note: TSK failed on Linux partition, will try native mount" << std::endl;
-						isXFS_ = true;  // Assume XFS for native mount attempt
-						partitionOffset_ = offset;  // Store this partition's offset
-						fsOpened = true;  // Mark as "opened" to prevent trying other partitions
-						break;  // Stop trying other partitions
-					}
-#endif
+					// Subsequent partitions: we already recorded metadata, close
+					// the FS handle now (extraction reopens per-partition via walker).
+					tsk_fs_close(fs);
 				}
+			} else {
+				std::cout << "    Could not open filesystem: " << tsk_error_get() << std::endl;
+#ifdef __linux__
+				// TSK failed but partition description suggests a Linux FS — likely
+				// XFS that TSK cannot parse. Record it as an XFS candidate so the
+				// native-mount fallback can attempt it during extraction.
+				if (strstr(part->desc, "Linux")) {
+					std::cout << "    Note: assuming XFS for native mount attempt" << std::endl;
+					PartitionEntry entry;
+					entry.num = i;
+					entry.offset = offset;
+					entry.desc = part->desc;
+					entry.fsType = "xfs?";
+					entry.isXfs = true;
+					partitions_.push_back(entry);
+					if (!fsInfo_) {
+						partitionOffset_ = offset;
+						isXFS_ = true;
+					}
+					continue;
+				}
+#endif
+				std::cout << "    Skipping partition " << i
+				          << " (unsupported: " << part->desc
+				          << " — may be LVM, encrypted, or unrecognised)" << std::endl;
+				skipped++;
 			}
 		}
 
 		tsk_vs_close(vsInfo);
 
-		// If no filesystem was opened but we detected potential XFS, allow continuing
-		if (!fsOpened && isXFS_) {
-#ifdef __linux__
-			std::cout << "Note: Will attempt native mount for XFS" << std::endl;
-			// Create a fake fsInfo structure just to pass checks
-			// We won't actually use it
-			return true;
-#else
-			std::cerr << "Error: No valid filesystem found in any partition" << std::endl;
-			return false;
-#endif
-		}
-
-		if (!fsOpened) {
-			std::cerr << "Error: No valid filesystem found in any partition" << std::endl;
+		if (partitions_.empty()) {
+			std::cerr << "Error: No accessible filesystem found in any partition ("
+			          << skipped << " skipped)" << std::endl;
 			return false;
 		}
+		std::cout << "  Openable partitions: " << partitions_.size()
+		          << (skipped ? " (" + std::to_string(skipped) + " skipped)" : "") << std::endl;
 	} else {
-		// No partition table, try opening filesystem directly
+		// No partition table, try opening filesystem directly at offset 0.
+		// This is the single-partition / raw-filesystem case (e.g. test_image.img).
 		std::cout << "No volume system detected, trying direct filesystem access..." << std::endl;
 		fsInfo_ = tsk_fs_open_img(imgInfo_, 0, TSK_FS_TYPE_DETECT);
 		if (!fsInfo_) {
@@ -183,13 +199,21 @@ bool ImageAnalyzer::openFileSystem() {
 			return false;
 		}
 
-		// Check if XFS
 		const char* fsTypeName = tsk_fs_type_toname(fsInfo_->ftype);
 		isXFS_ = (fsTypeName && strstr(fsTypeName, "xfs"));
+		std::string fsTypeStr = fsTypeName ? fsTypeName : "unknown";
+
+		PartitionEntry entry;
+		entry.num = 0;
+		entry.offset = 0;
+		entry.desc = "whole image";
+		entry.fsType = fsTypeStr;
+		entry.isXfs = isXFS_;
+		partitions_.push_back(entry);
 	}
 
 	if (fsInfo_) {
-		std::cout << "Filesystem opened successfully" << std::endl;
+		std::cout << "Primary filesystem opened successfully" << std::endl;
 		std::cout << "  Type: " << tsk_fs_type_toname(fsInfo_->ftype) << std::endl;
 		std::cout << "  Block size: " << fsInfo_->block_size << std::endl;
 		std::cout << "  Block count: " << fsInfo_->block_count << std::endl;
@@ -220,81 +244,138 @@ bool ImageAnalyzer::extractToDatabase(const std::string& dbPath) {
 		return false;
 	}
 
-	// Handle XFS mode selection
-	if (isXFS_) {
-		// If user explicitly requested native mode
+	// Record partition metadata into the partitions table (previously dead code).
+	for (const auto& part : partitions_) {
+		dbManager_->insertPartitionInfo(static_cast<int>(part.num),
+		                                static_cast<int64_t>(part.offset),
+		                                0, part.desc, part.fsType);
+	}
+
+	// Walk EVERY walkable partition. Previously only the first openable partition
+	// was walked, silently discarding all others. See FINDINGS_MULTI_PARTITION.md.
+	int totalFiles = 0;
+	int okPartitions = 0;
+	for (const auto& part : partitions_) {
+		if (isCancelled()) return false;
+
+		std::cout << "\n=== Partition " << part.num << " (offset " << part.offset
+		          << ", " << part.fsType << ", " << part.desc << ") ===" << std::endl;
+
+		if (extractPartition(part)) {
+			okPartitions++;
+		} else {
+			std::cout << "  Partition " << part.num << " yielded no files." << std::endl;
+		}
+	}
+
+	if (isCancelled()) return false;
+
+	// Compute total inserted from the DB (more reliable than per-partition counters
+	// because XFS/native fallback paths insert independently).
+	totalFiles = dbManager_->getFileCount();
+
+	if (totalFiles > 0) {
+		std::cout << "\nFilesystem walk completed across " << okPartitions
+		          << "/" << partitions_.size() << " partitions. Total files: "
+		          << totalFiles << std::endl;
+		AuditLog::instance().log("SYSTEM", "EXTRACTION_COMPLETE",
+			"Filesystem walk completed for: " + imagePath_ +
+			" (" + std::to_string(okPartitions) + "/" +
+			std::to_string(partitions_.size()) + " partitions, " +
+			std::to_string(totalFiles) + " files)");
+		return true;
+	}
+
+	std::cout << "\nExtraction produced 0 files across all partitions." << std::endl;
+	return false;
+}
+
+bool ImageAnalyzer::extractPartition(const PartitionEntry& part) {
+	// XFS/Native fallback helpers read the member partitionOffset_. Point it at
+	// THIS partition so multi-image XFS extraction targets the right partition.
+	partitionOffset_ = part.offset;
+
+	// Honor an explicit XFS mode for XFS partitions, falling back to TSK in auto mode.
+	if (part.isXfs) {
 		if (xfsMode_ == XFSMode::Native) {
 #ifdef __linux__
-			std::cout << "Using native mount method (XFS mode: native)..." << std::endl;
-			return extractWithNativeMount(dbPath);
+			std::cout << "  Using native mount method for XFS partition "
+			          << part.num << "..." << std::endl;
+			return extractWithNativeMount(dbManager_->getDbPath());
 #else
-			std::cerr << "Error: Native XFS mount is only supported on Linux" << std::endl;
-			std::cerr << "Use --xfs-mode pure or --xfs-mode auto instead" << std::endl;
+			std::cerr << "  Native XFS mount is only supported on Linux" << std::endl;
 			return false;
 #endif
 		}
-
-		// If user explicitly requested pure mode
 		if (xfsMode_ == XFSMode::Pure) {
-			std::cout << "Using XFS helper (XFS mode: pure)..." << std::endl;
-			return extractWithXFS(dbPath);
+			std::cout << "  Using XFS helper for partition " << part.num << "..." << std::endl;
+			return extractWithXFS(dbManager_->getDbPath());
 		}
+		// Auto: fall through to TSK attempt below; XFS fallback handled later.
 	}
 
-	// Auto mode or non-XFS filesystem: try TSK first using Universal Walker
-	tskWalker_ = std::make_unique<TskFilesystemWalker>(imgInfo_, partitionOffset_);
-	
-	if (tskWalker_->open()) {
-		std::cout << "Walking filesystem using Universal TSK Walker (" << tskWalker_->getFsType() << ")..." << std::endl;
-		
-		int fileCount = 0;
-		bool success = tskWalker_->walk([this, &fileCount](const FileRecord& record) -> bool {
-			if (isCancelled()) return false;
-			if (dbManager_->insertFileRecord(record)) {
-				fileCount++;
-				int max_log = forensics::ConfigManager::instance().getMaxLogDisplayFiles();
-				if (fileCount <= max_log) {
-				        std::cout << "  [" << fileCount << "] " << record.path << std::endl;
-				} else if (fileCount % (max_log * 5) == 0) {
-				        std::cout << "  ... processing: [" << fileCount << "] " << record.path << " ..." << std::endl;
-				}
+	// TSK Universal Walker path. The walker opens its own fs handle from the
+	// given offset, so we simply instantiate one per partition.
+	tskWalker_ = std::make_unique<TskFilesystemWalker>(imgInfo_, part.offset);
 
-			}
-			return true;
-		});
-
-		tskWalker_->close();
-		
-		if (isCancelled()) return false;
-
-		if (success && fileCount > 0) {
-			std::cout << "Filesystem walk completed. Total files: " << fileCount << std::endl;
-			AuditLog::instance().log("SYSTEM", "EXTRACTION_COMPLETE", "Filesystem walk completed for: " + imagePath_);
-			return true;
-		} else {
-			std::cout << "TSK walk finished with 0 files or error." << std::endl;
-		}
-	} else {
-		std::cout << "TSK could not open filesystem at offset " << partitionOffset_ << std::endl;
-	}
-
-	// Falls through to XFS/Native fallback if TSK failed
-	if (isXFS_) {
+	if (!tskWalker_->open()) {
+		std::cout << "  TSK could not open filesystem at offset " << part.offset << std::endl;
+		// XFS auto fallback for partitions TSK cannot parse
+		if (part.isXfs) {
 #ifdef __linux__
-		std::cout << "Switching to native mount method for XFS..." << std::endl;
-		bool nativeResult = extractWithNativeMount(dbPath);
-		if (nativeResult) {
-			return true;
-		}
-		// Native mount failed (likely no root privileges), fall back to pure XFS parser
-		std::cout << "Native mount failed, falling back to pure XFS parser..." << std::endl;
-		return extractWithXFS(dbPath);
+			std::cout << "  Trying native mount for XFS partition " << part.num << "..." << std::endl;
+			if (extractWithNativeMount(dbManager_->getDbPath())) return true;
+			std::cout << "  Native mount failed, trying pure XFS parser..." << std::endl;
+			return extractWithXFS(dbManager_->getDbPath());
 #else
-		std::cout << "Switching to XFS helper for direct XFS parsing..." << std::endl;
-		return extractWithXFS(dbPath);
+			std::cout << "  Trying pure XFS parser..." << std::endl;
+			return extractWithXFS(dbManager_->getDbPath());
+#endif
+		}
+		return false;
+	}
+
+	std::cout << "  Walking with Universal TSK Walker ("
+	          << tskWalker_->getFsType() << ")..." << std::endl;
+
+	int fileCount = 0;
+	int maxLog = forensics::ConfigManager::instance().getMaxLogDisplayFiles();
+	bool success = tskWalker_->walk([this, &part, &fileCount, maxLog](const FileRecord& record) -> bool {
+		if (isCancelled()) return false;
+		FileRecord r = record;
+		r.partitionNum = static_cast<int>(part.num);
+		if (dbManager_->insertFileRecord(r)) {
+			fileCount++;
+			if (fileCount <= maxLog) {
+				std::cout << "  [" << fileCount << "] " << r.path << std::endl;
+			} else if (fileCount % (maxLog * 5) == 0) {
+				std::cout << "  ... processing: [" << fileCount << "] " << r.path << " ..." << std::endl;
+			}
+		}
+		return true;
+	});
+
+	tskWalker_->close();
+
+	if (isCancelled()) return false;
+
+	if (success && fileCount > 0) {
+		std::cout << "  Partition " << part.num << " yielded " << fileCount << " files." << std::endl;
+		return true;
+	}
+
+	// TSK walked but got nothing; try XFS fallback if applicable.
+	if (part.isXfs) {
+#ifdef __linux__
+		std::cout << "  TSK walk empty, trying native mount for XFS..." << std::endl;
+		if (extractWithNativeMount(dbManager_->getDbPath())) return true;
+		std::cout << "  Native mount failed, trying pure XFS parser..." << std::endl;
+		return extractWithXFS(dbManager_->getDbPath());
+#else
+		std::cout << "  TSK walk empty, trying pure XFS parser..." << std::endl;
+		return extractWithXFS(dbManager_->getDbPath());
 #endif
 	}
-
 	return false;
 }
 

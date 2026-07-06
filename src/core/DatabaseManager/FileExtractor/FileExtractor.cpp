@@ -16,9 +16,7 @@ namespace fs = std::filesystem;
 FileExtractor::FileExtractor(const std::string& imagePath, const std::string& dbPath)
     : imagePath_(imagePath)
     , dbPath_(dbPath)
-    , imgInfo_(nullptr)
-    , fsInfo_(nullptr)
-    , partitionOffset_(0) {
+    , imgInfo_(nullptr) {
 }
 
 FileExtractor::~FileExtractor() {
@@ -96,52 +94,76 @@ bool FileExtractor::openImage() {
 }
 
 bool FileExtractor::openFileSystem() {
-    // Try to open volume system first
+    // Open EVERY accessible partition's filesystem, not just the first.
+    // Records carry partition_num so extractFile() can route inode reads to the
+    // correct handle. Without this, multi-partition images read wrong content.
     TSK_VS_INFO* vsInfo = tsk_vs_open(imgInfo_, 0, TSK_VS_TYPE_DETECT);
 
     if (vsInfo) {
-        // Find first allocated partition with filesystem
         for (TSK_PNUM_T i = 0; i < vsInfo->part_count; i++) {
             const TSK_VS_PART_INFO* part = tsk_vs_part_get(vsInfo, i);
-            if (part && (part->flags & TSK_VS_PART_FLAG_ALLOC)) {
-                TSK_OFF_T offset = part->start * vsInfo->block_size;
-                partitionOffset_ = offset;
-
-                fsInfo_ = tsk_fs_open_img(imgInfo_, offset, TSK_FS_TYPE_DETECT);
-                if (fsInfo_) {
-                    tsk_vs_close(vsInfo);
-                    return true;
-                }
+            if (!part || !(part->flags & TSK_VS_PART_FLAG_ALLOC)) {
+                continue;
+            }
+            TSK_OFF_T offset = part->start * vsInfo->block_size;
+            TSK_FS_INFO* fs = tsk_fs_open_img(imgInfo_, offset, TSK_FS_TYPE_DETECT);
+            if (fs) {
+                fsByPartition_[static_cast<int>(i)] = fs;
             }
         }
         tsk_vs_close(vsInfo);
     }
 
-    // Try direct filesystem access
-    fsInfo_ = tsk_fs_open_img(imgInfo_, 0, TSK_FS_TYPE_DETECT);
-    if (!fsInfo_) {
+    // No partition table (or no openable partition): try the image as a single FS.
+    if (fsByPartition_.empty()) {
+        TSK_FS_INFO* fs = tsk_fs_open_img(imgInfo_, 0, TSK_FS_TYPE_DETECT);
+        if (fs) {
+            fsByPartition_[0] = fs;
+        }
+    }
+
+    if (fsByPartition_.empty()) {
         std::cerr << "Error opening filesystem: " << tsk_error_get() << std::endl;
         return false;
     }
-
     return true;
 }
 
 void FileExtractor::closeImage() {
-    if (fsInfo_) {
-        tsk_fs_close(fsInfo_);
-        fsInfo_ = nullptr;
+    for (auto& kv : fsByPartition_) {
+        if (kv.second) {
+            tsk_fs_close(kv.second);
+            kv.second = nullptr;
+        }
     }
+    fsByPartition_.clear();
     if (imgInfo_) {
         tsk_img_close(imgInfo_);
         imgInfo_ = nullptr;
     }
 }
 
+TSK_FS_INFO* FileExtractor::fsForPartition(int partitionNum) const {
+    auto it = fsByPartition_.find(partitionNum);
+    if (it != fsByPartition_.end() && it->second) {
+        return it->second;
+    }
+    // Fallback: older records (partition_num == 0 from pre-migration DBs) or
+    // records whose partition we couldn't open. Use the first available handle.
+    for (const auto& kv : fsByPartition_) {
+        if (kv.second) return kv.second;
+    }
+    return nullptr;
+}
+
 std::vector<FileRecord> FileExtractor::searchFiles(const std::string& whereClause) {
     std::vector<FileRecord> results;
 
-    std::string sql = "SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5 "
+    // Include partition_num so extractFile() can route inode reads to the
+    // correct filesystem handle (inodes are per-partition and collide across
+    // partitions in a multi-partition image).
+    std::string sql = "SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5, "
+                      "COALESCE(partition_num, 0) "
                       "FROM files WHERE " + whereClause;
 
     sqlite3_stmt* stmt;
@@ -162,6 +184,7 @@ std::vector<FileRecord> FileExtractor::searchFiles(const std::string& whereClaus
         record.isDeleted = sqlite3_column_int(stmt, 7);
         const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8));
         record.md5 = md5Ptr ? md5Ptr : "";
+        record.partitionNum = sqlite3_column_int(stmt, 9);
 
         // Set defaults for missing fields
         record.atime = record.mtime;
@@ -242,8 +265,12 @@ bool FileExtractor::matchWildcard(const std::string& filename, const std::string
 
 // extract* operations live in FileExtractor_Extract.cpp
 
-ssize_t FileExtractor::readFileContent(int64_t inode, char* buffer, size_t size) {
-    TSK_FS_FILE* fsFile = tsk_fs_file_open_meta(fsInfo_, nullptr, inode);
+ssize_t FileExtractor::readFileContent(int64_t inode, char* buffer, size_t size, int partitionNum) {
+    TSK_FS_INFO* fs = fsForPartition(partitionNum);
+    if (!fs) {
+        return -1;
+    }
+    TSK_FS_FILE* fsFile = tsk_fs_file_open_meta(fs, nullptr, inode);
     if (!fsFile) {
         return -1;
     }

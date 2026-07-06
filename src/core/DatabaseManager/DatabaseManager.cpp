@@ -99,12 +99,26 @@ bool DatabaseManager::createTables() {
             llm_description TEXT,
             llm_keywords TEXT,
             llm_analyzed_at INTEGER,
-            llm_model_used TEXT
+            llm_model_used TEXT,
+            partition_num INTEGER DEFAULT 0
         );
     )";
 
 	if (!executeSQL(createFilesTable)) {
 		return false;
+	}
+
+	// Migration: older databases created before partition_num existed won't have
+	// the column (CREATE TABLE IF NOT EXISTS does not alter existing tables).
+	// Add it with a default of 0 so single-partition images keep working.
+	// sqlite3_prepare_v2 returns an error if the column already exists; ignore it.
+	{
+		sqlite3_stmt* migStmt = nullptr;
+		if (sqlite3_prepare_v2(db_, "ALTER TABLE files ADD COLUMN partition_num INTEGER DEFAULT 0;",
+		                       -1, &migStmt, nullptr) == SQLITE_OK) {
+			sqlite3_step(migStmt);
+		}
+		if (migStmt) sqlite3_finalize(migStmt);
 	}
 
 	// Partitions table
@@ -128,6 +142,7 @@ bool DatabaseManager::createTables() {
 	executeSQL("CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);");
 	executeSQL("CREATE INDEX IF NOT EXISTS idx_files_type ON files(type);");
 	executeSQL("CREATE INDEX IF NOT EXISTS idx_files_deleted ON files(is_deleted);");
+	executeSQL("CREATE INDEX IF NOT EXISTS idx_files_partition ON files(partition_num);");
 
 	return true;
 }
@@ -135,8 +150,9 @@ bool DatabaseManager::createTables() {
 bool DatabaseManager::insertFileRecord(const FileRecord& record) {
 	const char* sql = R"(
         INSERT INTO files (inode, name, path, size, atime, mtime, ctime, crtime,
-                          type, md5, is_deleted, is_allocated, permissions, uid, gid)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                          type, md5, is_deleted, is_allocated, permissions, uid, gid,
+                          partition_num)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     )";
 
 	sqlite3_stmt* stmt;
@@ -162,6 +178,7 @@ bool DatabaseManager::insertFileRecord(const FileRecord& record) {
 	sqlite3_bind_text(stmt, 13, record.permissions.c_str(), -1, SQLITE_TRANSIENT);
 	sqlite3_bind_int(stmt, 14, record.uid);
 	sqlite3_bind_int(stmt, 15, record.gid);
+	sqlite3_bind_int(stmt, 16, record.partitionNum);
 
 	rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
@@ -194,6 +211,19 @@ bool DatabaseManager::insertPartitionInfo(int partNum, int64_t start,
 	sqlite3_finalize(stmt);
 
 	return rc == SQLITE_DONE;
+}
+
+int DatabaseManager::getFileCount() {
+	sqlite3_stmt* stmt = nullptr;
+	if (sqlite3_prepare_v2(db_, "SELECT COUNT(*) FROM files;", -1, &stmt, nullptr) != SQLITE_OK) {
+		return -1;
+	}
+	int count = -1;
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+		count = sqlite3_column_int(stmt, 0);
+	}
+	sqlite3_finalize(stmt);
+	return count;
 }
 
 bool DatabaseManager::executeSQL(const std::string& sql) {

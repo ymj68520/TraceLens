@@ -6,6 +6,7 @@
 #include <vector>
 #include <memory>
 #include <functional>
+#include <map>
 #include <tsk/libtsk.h>
 #include "DatabaseManager/DatabaseManager.h"
 #include "analyzers/AndroidAnalyzer/IFileExtractor.h"
@@ -18,6 +19,8 @@
  * - Search files by extension
  * - Extract file content from disk image
  * - Support for all filesystem types (NTFS, EXT, XFS, etc.)
+ * - Multi-partition aware: opens every accessible filesystem and routes
+ *   inode-based reads to the partition recorded for each file record.
  *
  * Implements IFileExtractor so AndroidAnalyzer can treat the TSK backend and
  * the logical-extraction backends (directory/zip) uniformly.
@@ -32,120 +35,46 @@ public:
     FileExtractor(const std::string& imagePath, const std::string& dbPath);
     ~FileExtractor();
 
-    /**
-     * Initialize extractor (open image and database)
-     * @return true if successful
-     */
+    /** Initialize extractor (open image, all accessible filesystems, database). */
     bool initialize() override;
 
-    /**
-     * Extract files by name pattern (supports wildcards: *, ?)
-     * @param pattern File name pattern (e.g., "*.log", "config*", "vmlinuz*")
-     * @param outputDir Output directory for extracted files
-     * @return Number of files extracted
-     */
     int extractByName(const std::string& pattern, const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr);
-
-    /**
-     * Extract files by extension(s)
-     * @param extensions Comma-separated extensions (e.g., ".jpg,.png,.gif")
-     * @param outputDir Output directory for extracted files
-     * @return Number of files extracted
-     */
     int extractByExtension(const std::string& extensions, const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr);
-
-    /**
-     * Extract all files from the image
-     * @param outputDir Output directory for extracted files
-     * @param includeDeleted Include deleted files (default: false)
-     * @return Number of files extracted
-     */
     int extractAll(const std::string& outputDir, bool includeDeleted = false, bool overwrite = false, int* skippedCount = nullptr);
-
-    /**
-     * Extract only deleted files from the image
-     * @param outputDir Output directory for extracted files
-     * @return Number of files extracted
-     */
     int extractDeleted(const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr);
-
-    /**
-     * Extract a specific file by inode
-     * @param inode File inode number
-     * @param outputPath Output file path
-     * @return true if successful
-     */
     bool extractFileByInode(int64_t inode, const std::string& outputPath);
-
-    /**
-     * Extract a specific file by path
-     * @param filePath File path in the image
-     * @param outputPath Output file path
-     * @return true if successful
-     */
     bool extractFileByPath(const std::string& filePath, const std::string& outputPath) override;
 
 private:
     std::string imagePath_;
     std::string dbPath_;
     TSK_IMG_INFO* imgInfo_;
-    TSK_FS_INFO* fsInfo_;
+    // One open filesystem per partition number. A record's partitionNum selects
+    // which handle to use for inode-based reads, avoiding cross-partition inode
+    // collisions. partition 0 is the legacy single-FS / whole-image case.
+    std::map<int, TSK_FS_INFO*> fsByPartition_;
     std::unique_ptr<DatabaseManager> dbManager_;
-    uint64_t partitionOffset_;
 
-    /**
-     * Open disk image and filesystem
-     */
     bool openImage();
     bool openFileSystem();
     void closeImage();
 
     /**
-     * Search files in database by SQL query
-     * @param whereClause SQL WHERE clause
-     * @return List of matching file records
+     * Get the filesystem handle for a given partition number.
+     * Falls back to the first opened handle if the specific one is missing
+     * (e.g. older databases without partition_num).
      */
+    TSK_FS_INFO* fsForPartition(int partitionNum) const;
+
     std::vector<FileRecord> searchFiles(const std::string& whereClause);
     std::vector<FileRecord> searchFilesInTable(const std::string& tableName, const std::string& whereClause);
 
-    /**
-     * Extract a single file from the image
-     * @param record File record from database
-     * @param outputPath Output file path
-     * @return true if successful
-     */
     bool extractFile(const FileRecord& record, const std::string& outputPath, bool overwrite, int* skippedCount);
 
-    /**
-     * Read file content using TSK
-     * @param inode File inode number
-     * @param buffer Buffer to store file content
-     * @param size Size of file to read
-     * @return Number of bytes read
-     */
-    ssize_t readFileContent(int64_t inode, char* buffer, size_t size);
+    ssize_t readFileContent(int64_t inode, char* buffer, size_t size, int partitionNum = 0);
 
-    /**
-     * Create directory structure for output path
-     * @param path Full path including filename
-     * @return true if successful
-     */
     bool createDirectories(const std::string& path);
-
-    /**
-     * Match filename against wildcard pattern
-     * @param filename Filename to match
-     * @param pattern Pattern with wildcards (*, ?)
-     * @return true if matches
-     */
     bool matchWildcard(const std::string& filename, const std::string& pattern);
-
-    /**
-     * Generate safe output path (handle path conflicts)
-     * @param outputDir Base output directory
-     * @param record File record
-     * @return Full output path
-     */
     std::string generateOutputPath(const std::string& outputDir, const FileRecord& record);
 };
 

@@ -51,11 +51,18 @@ bool TskFilesystemWalker::walk(TskFileCallback callback) {
 
 TSK_WALK_RET_ENUM TskFilesystemWalker::dirWalkCallback(TSK_FS_FILE* fsFile, const char* path, void* ptr) {
     TskFilesystemWalker* walker = static_cast<TskFilesystemWalker*>(ptr);
-    
+
     if (fsFile && fsFile->name) {
-        // Construct full path
-        std::string fullPath = std::string(path) + fsFile->name->name;
-        
+        // Construct full path. TSK's `path` is the directory path relative to
+        // the filesystem root and may or may not begin with '/'. Normalise to an
+        // absolute path (leading '/') so downstream consumers (Linux/Windows
+        // analyzers querying `path LIKE '/var/log/%'`) can match consistently.
+        std::string dir = path ? path : "";
+        std::string fullPath = dir + fsFile->name->name;
+        if (fullPath.empty() || fullPath[0] != '/') {
+            fullPath = "/" + fullPath;
+        }
+
         // Skip . and ..
         if (std::string(fsFile->name->name) == "." || std::string(fsFile->name->name) == "..") {
             return TSK_WALK_CONT;

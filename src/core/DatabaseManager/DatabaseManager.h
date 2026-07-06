@@ -61,6 +61,12 @@ public:
 		const std::string& desc, const std::string& fsType);
 
 	/**
+	 * @brief Count rows in the files table
+	 * @return number of file records, or -1 on error
+	 */
+	int getFileCount();
+
+	/**
 	 * @brief Get the raw SQLite database connection
 	 * @return sqlite3* Pointer to SQLite connection
 	 */

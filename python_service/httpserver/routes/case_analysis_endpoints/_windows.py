@@ -18,6 +18,11 @@ from ..case_analysis_models import (
     CaseAnalysisRequest,
     CaseAnalysisResponse,
 )
+from ._helpers import (
+    _analysis_jobs,
+    get_case_analysis_service as _get_case_analysis_service,
+    run_windows_analysis_background as _run_windows_analysis_background,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

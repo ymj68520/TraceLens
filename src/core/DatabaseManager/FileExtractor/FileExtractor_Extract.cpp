@@ -203,15 +203,30 @@ bool FileExtractor::extractFileByInode(int64_t inode, const std::string& outputP
         return false;
     }
 
+    // In multi-partition images, the same inode can exist in several partitions.
+    // Pick the record whose partition we actually have an open handle for; this
+    // avoids reading the wrong partition's content via a colliding inode.
+    const FileRecord* chosen = nullptr;
+    for (const auto& f : files) {
+        if (fsByPartition_.find(f.partitionNum) != fsByPartition_.end()) {
+            chosen = &f;
+            break;
+        }
+    }
+    if (!chosen) {
+        chosen = &files[0];  // fallback: best-effort with first record
+    }
+
     // Single file extraction implies overwrite intent usually
-    return extractFile(files[0], outputPath, true, nullptr);
+    return extractFile(*chosen, outputPath, true, nullptr);
 }
 
 bool FileExtractor::extractFileByPath(const std::string& filePath, const std::string& outputPath) {
     // Use parameterized query to prevent SQL injection
     std::vector<FileRecord> results;
 
-    std::string sql = "SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5 "
+    std::string sql = "SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5, "
+                      "COALESCE(partition_num, 0) "
                       "FROM files WHERE path = ?";
 
     sqlite3_stmt* stmt;
@@ -234,6 +249,7 @@ bool FileExtractor::extractFileByPath(const std::string& filePath, const std::st
         record.isDeleted = sqlite3_column_int(stmt, 7);
         const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8));
         record.md5 = md5Ptr ? md5Ptr : "";
+        record.partitionNum = sqlite3_column_int(stmt, 9);
 
         // Set defaults for missing fields
         record.atime = record.mtime;
@@ -287,10 +303,19 @@ bool FileExtractor::extractFile(const FileRecord& record, const std::string& out
         return ofs.good();
     }
 
-    // Read file content using TSK
-    TSK_FS_FILE* fsFile = tsk_fs_file_open_meta(fsInfo_, nullptr, record.inode);
+    // Read file content using TSK. Route to the filesystem handle for this
+    // file's partition so inode reads don't hit the wrong partition.
+    TSK_FS_INFO* fs = fsForPartition(record.partitionNum);
+    if (!fs) {
+        std::cerr << "Error: No filesystem handle for partition " << record.partitionNum
+                  << " (inode " << record.inode << ")" << std::endl;
+        return false;
+    }
+    TSK_FS_FILE* fsFile = tsk_fs_file_open_meta(fs, nullptr, record.inode);
     if (!fsFile) {
-        std::cerr << "Error: Cannot open file inode " << record.inode << std::endl;
+        std::cerr << "Error: Cannot open file inode " << record.inode
+                  << " (part " << record.partitionNum << ", fs "
+                  << tsk_fs_type_toname(fs->ftype) << "): " << tsk_error_get() << std::endl;
         return false;
     }
 

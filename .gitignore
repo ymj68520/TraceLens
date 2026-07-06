@@ -438,3 +438,4 @@ start.sh
 
 # Runtime audit DB created by AuditLog when run from repo root
 /forensics_audit.db
+nohup.out

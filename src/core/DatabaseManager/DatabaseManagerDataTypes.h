@@ -29,6 +29,9 @@ struct FileRecord {
 	std::string permissions;
 	int uid;
 	int gid;
+	// Partition number this file belongs to (0 = no partition table / single FS).
+	// Disambiguates inode collisions across multiple filesystems in one image.
+	int partitionNum = 0;
 
 	// Scene-aware classification fields
 	std::string sceneType;
