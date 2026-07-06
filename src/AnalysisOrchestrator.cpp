@@ -164,6 +164,7 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
                 auto winAnalyzer = std::make_unique<WindowsFilesAnalyzer>(args.image_path, dbMgr.get());
                 // Write Windows artifacts into files.db for unified scene database
                 winAnalyzer->setOutputDatabasePath(fileDbPath);
+                winAnalyzer->setSkipAI(args.skip_ai);
                 if (winAnalyzer->initialize()) {
                     winAnalyzer->analyzeWindowsData();
                     std::cout << "✓ Windows analysis complete\n" << std::endl;
@@ -180,6 +181,7 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
                 auto linuxAnalyzer = std::make_unique<LinuxFilesAnalyzer>(args.image_path, dbMgr.get());
                 // Write Linux artifacts into files.db for unified scene database
                 linuxAnalyzer->setOutputDatabasePath(fileDbPath);
+                linuxAnalyzer->setSkipAI(args.skip_ai);
                 if (linuxAnalyzer->initialize()) {
                     linuxAnalyzer->analyzeLinuxData();
                     std::cout << "✓ Linux analysis complete\n" << std::endl;

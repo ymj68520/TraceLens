@@ -37,6 +37,7 @@ void CommandLineParser::printUsage(const char* programName) {
     std::cout << "  --wechat-password <pass>    WeChat SQLCipher decryption password\n";
     std::cout << "  --windows-analyze           Analyze Windows artifacts\n";
     std::cout << "  --linux-analyze             Analyze Linux artifacts\n";
+    std::cout << "  --no-ai                     Skip AI/LLM analysis (for offline/no-key environments)\n";
     std::cout << "  --memory-analyze            Analyze a RAM memory image (LiME/raw) via Volatility3\n\n";
     std::cout << "File Filter:\n";
     std::cout << "  --filter-profile <name>     Apply filter profile (e.g., telecom_fraud, virus_intrusion)\n";
@@ -98,6 +99,8 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
             args.windows_analyze = true;
         } else if (arg == "--linux-analyze") {
             args.linux_analyze = true;
+        } else if (arg == "--no-ai") {
+            args.skip_ai = true;
         } else if (arg == "--memory-analyze") {
             args.memory_analyze = true;
         } else if (arg == "--analyze-dlls") {

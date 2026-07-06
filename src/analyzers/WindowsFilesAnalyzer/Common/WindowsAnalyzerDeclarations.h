@@ -37,6 +37,7 @@ public:
     bool initialize();
     void setOutputDatabasePath(const std::string& path) { outputDbPath_ = path; }
     void setExtractDirectory(const std::string& path) { extractDir_ = path; }
+    void setSkipAI(bool skip) { skipAI_ = skip; }
 
     /**
      * @brief Main analysis entry point
@@ -130,6 +131,7 @@ private:
     std::string imagePath_;
     std::string outputDbPath_;
     std::string extractDir_;
+    bool skipAI_ = false;
     DatabaseManager* dbManager_;
     std::unique_ptr<FileExtractor> fileExtractor_;
     std::unique_ptr<WindowsAnalysisDatabase> windowsDb_;

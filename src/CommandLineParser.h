@@ -40,6 +40,7 @@ struct CommandLineArgs {
     bool show_version = false;
     bool index_mode = false;
     bool search_mode = false;
+    bool skip_ai = false;  // 跳过 AI/LLM 分析（现场无网/无 key 时使用）
 };
 
 class CommandLineParser {

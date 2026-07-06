@@ -4,6 +4,7 @@
 #include "WindowsFilesAnalyzer.h"
 #include "HTTPServer/WindowsLLMAnalysisService.h"
 #include "AuditLog/AuditLog.h"
+#include "ConfigManager/ConfigManager.h"
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -28,14 +29,24 @@ bool WindowsFilesAnalyzer::initialize() {
         return false;
     }
 
-    // Set default extract directory if not set
-    if (extractDir_.empty()) {
-        extractDir_ = "extracted_windows_files";
-    }
-
-    // Initialize windows analysis database
+    // Initialize windows analysis database path first (extractDir derives from it)
     if (outputDbPath_.empty()) {
         outputDbPath_ = imagePath_ + "_windows.db";
+    }
+
+    // Set default extract directory if not set: place it next to outputDbPath_
+    // so extracted files live alongside the analysis database, not the process CWD.
+    if (extractDir_.empty()) {
+        namespace fs = std::filesystem;
+        fs::path dbPath(outputDbPath_);
+        fs::path dbParent = dbPath.parent_path();
+        std::string stem = dbPath.stem().string();  // e.g. "win10_files"
+        // Strip "_files" suffix to recover the image base name
+        if (stem.size() > 6 && stem.substr(stem.size() - 6) == "_files") {
+            stem = stem.substr(0, stem.size() - 6);
+        }
+        extractDir_ = (dbParent / (stem + "_extracted_files")).string();
+        fs::create_directories(extractDir_);
     }
 
     windowsDb_ = std::make_unique<WindowsAnalysisDatabase>(outputDbPath_);
@@ -51,6 +62,7 @@ bool WindowsFilesAnalyzer::initialize() {
 
 void WindowsFilesAnalyzer::analyzeWindowsData() {
     std::cout << "Starting Windows forensic analysis..." << std::endl;
+    std::cout << "  Extract directory: " << extractDir_ << std::endl;
     AuditLog::instance().log("SYSTEM", "WINDOWS_ANALYSIS_START", "Starting Windows analysis: " + imagePath_);
 
     // 1. Extract and analyze Registry Hives
@@ -97,6 +109,33 @@ void WindowsFilesAnalyzer::analyzeWindowsData() {
 }
 
 void WindowsFilesAnalyzer::analyzeWithLLM() {
+    // Skip condition 1: user explicitly requested --no-ai
+    if (skipAI_) {
+        std::cout << "AI analysis skipped (--no-ai)." << std::endl;
+        AuditLog::instance().log("SYSTEM", "WINDOWS_LLM_SKIPPED", "AI analysis skipped via --no-ai flag");
+        return;
+    }
+
+    // Skip condition 2: no API key configured → auto-skip (for offline/no-key environments)
+    try {
+        auto& configManager = forensics::ConfigManager::instance();
+        if (!configManager.isLoaded()) {
+            configManager.load();
+        }
+        if (configManager.getLLMApiKey().empty()) {
+            std::cout << "AI analysis skipped (no LLM_API_KEY configured). "
+                      << "Structured analysis results in windows_* tables are unaffected." << std::endl;
+            AuditLog::instance().log("SYSTEM", "WINDOWS_LLM_SKIPPED",
+                "No LLM_API_KEY configured, skipping LLM analysis");
+            return;
+        }
+    } catch (const std::exception& e) {
+        std::cout << "AI analysis skipped (config read failed: " << e.what() << ")." << std::endl;
+        AuditLog::instance().log("SYSTEM", "WINDOWS_LLM_SKIPPED",
+            "Config read failed, skipping LLM analysis: " + std::string(e.what()));
+        return;
+    }
+
     try {
         forensics::WindowsLLMAnalysisService llmService;
         if (!llmService.initialize()) {

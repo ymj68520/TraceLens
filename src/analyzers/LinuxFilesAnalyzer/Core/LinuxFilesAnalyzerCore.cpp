@@ -18,6 +18,7 @@
 #include "HTTPServer/LinuxLLMAnalysisService.h"
 #include "AuditLog/AuditLog.h"
 #include "Logger/Logger.h"
+#include "ConfigManager/ConfigManager.h"
 
 #include <filesystem>
 #include <fstream>
@@ -46,14 +47,24 @@ bool LinuxFilesAnalyzer::initialize() {
         return false;
     }
 
-    // Set default extract directory if not set
-    if (extractDir_.empty()) {
-        extractDir_ = "extracted_linux_files";
-    }
-
-    // Initialize Linux analysis database
+    // Initialize Linux analysis database path first (extractDir derives from it)
     if (outputDbPath_.empty()) {
         outputDbPath_ = imagePath_ + "_linux.db";
+    }
+
+    // Set default extract directory if not set: place it next to outputDbPath_
+    // so extracted files live alongside the analysis database, not the process CWD.
+    if (extractDir_.empty()) {
+        namespace fs = std::filesystem;
+        fs::path dbPath(outputDbPath_);
+        fs::path dbParent = dbPath.parent_path();
+        std::string stem = dbPath.stem().string();  // e.g. "linux_test_files"
+        // Strip "_files" suffix to recover the image base name
+        if (stem.size() > 6 && stem.substr(stem.size() - 6) == "_files") {
+            stem = stem.substr(0, stem.size() - 6);
+        }
+        extractDir_ = (dbParent / (stem + "_extracted_files")).string();
+        fs::create_directories(extractDir_);
     }
 
     linuxDb_ = std::make_unique<LinuxAnalysisDatabase>(outputDbPath_);
@@ -69,6 +80,7 @@ bool LinuxFilesAnalyzer::initialize() {
 
 void LinuxFilesAnalyzer::analyzeLinuxData() {
     std::cout << "Starting Linux forensic analysis..." << std::endl;
+    std::cout << "  Extract directory: " << extractDir_ << std::endl;
     AuditLog::instance().log("SYSTEM", "LINUX_ANALYSIS_START", "Starting Linux analysis: " + imagePath_);
 
     // Phase 1: Compressed and rotated log preprocessing
@@ -209,6 +221,33 @@ void LinuxFilesAnalyzer::analyzeServerCloudArtifacts() {
 }
 
 void LinuxFilesAnalyzer::analyzeWithLLM() {
+    // Skip condition 1: user explicitly requested --no-ai
+    if (skipAI_) {
+        std::cout << "AI analysis skipped (--no-ai)." << std::endl;
+        AuditLog::instance().log("SYSTEM", "LINUX_LLM_SKIPPED", "AI analysis skipped via --no-ai flag");
+        return;
+    }
+
+    // Skip condition 2: no API key configured → auto-skip (for offline/no-key environments)
+    try {
+        auto& configManager = forensics::ConfigManager::instance();
+        if (!configManager.isLoaded()) {
+            configManager.load();
+        }
+        if (configManager.getLLMApiKey().empty()) {
+            std::cout << "AI analysis skipped (no LLM_API_KEY configured). "
+                      << "Structured analysis results in linux_* tables are unaffected." << std::endl;
+            AuditLog::instance().log("SYSTEM", "LINUX_LLM_SKIPPED",
+                "No LLM_API_KEY configured, skipping LLM analysis");
+            return;
+        }
+    } catch (const std::exception& e) {
+        std::cout << "AI analysis skipped (config read failed: " << e.what() << ")." << std::endl;
+        AuditLog::instance().log("SYSTEM", "LINUX_LLM_SKIPPED",
+            "Config read failed, skipping LLM analysis: " + std::string(e.what()));
+        return;
+    }
+
     try {
         forensics::LinuxLLMAnalysisService llmService;
         if (!llmService.initialize()) {
