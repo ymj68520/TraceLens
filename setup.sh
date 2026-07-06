@@ -254,8 +254,8 @@ BUILD_DIR="$PROJECT_ROOT/build"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-info "  Running cmake..."
-cmake .. -DCMAKE_BUILD_TYPE=Release 2>&1 | grep -E "(error|warning:|Found|Configuring)" || true
+info "  Running cmake (fresh configure)..."
+cmake --fresh .. -DCMAKE_BUILD_TYPE=Release 2>&1 | grep -E "(error|warning:|Found|Configuring|OSS)" || true
 
 info "  Building ($(nproc) threads)..."
 cmake --build . -j$(nproc) 2>&1 | tail -20
