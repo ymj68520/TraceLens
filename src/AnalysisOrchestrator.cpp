@@ -13,6 +13,7 @@
 #include "FullTextSearch/FullTextSearch.h"
 #include "FullTextSearch/TextExtractor.h"
 #include "FileCarving/FileCarver.h"
+#include "report/ReportGenerator.h"
 #include <iostream>
 #include <filesystem>
 #include <memory>
@@ -237,6 +238,20 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             }
 
             // Windows DB 在作用域结束时自动释放（先于 DLL DB）
+        }
+
+        // Step 6 (optional): Generate human-readable Markdown report
+        if (args.generate_report) {
+            std::string reportPath = args.report_path.empty()
+                ? prefix + baseName + "_report.md"
+                : args.report_path;
+            ReportGenerator gen(fileDbPath, eventDbPath);
+            if (gen.writeMarkdown(args.image_path, reportPath)) {
+                std::cout << "✓ Report: " << reportPath << std::endl;
+            } else {
+                std::cerr << "Warning: Failed to generate report" << std::endl;
+            }
+            std::cout << std::endl;
         }
 
         std::cout << "=== Analysis Complete ===" << std::endl;

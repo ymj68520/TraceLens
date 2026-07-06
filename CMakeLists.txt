@@ -449,6 +449,7 @@ set(LIB_SOURCES
     src/core/ConfigManager/ConfigManager.cpp
     src/CommandLineParser.cpp
     src/AnalysisOrchestrator.cpp
+    src/report/ReportGenerator.cpp
     src/analyzers/VisionAnalysis/VisionAnalyzer.cpp
     # OSSAnalyzer module
     src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp
