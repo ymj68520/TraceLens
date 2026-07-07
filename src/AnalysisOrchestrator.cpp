@@ -256,24 +256,48 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         }
 
         // Step 7 (optional): Dump extracted files as text via Python extractors.
-        // Converts every file in the extract directory to a human-readable .md,
-        // mirroring the directory structure. Requires python_service running.
+        // Converts every file in the image to a human-readable .md, mirroring the
+        // directory structure. Requires python_service running.
+        //
+        // Unlike the platform analyzers (which only extract system files they
+        // recognize), this step extracts ALL regular files from the image via
+        // FileExtractor, so that ordinary documents (pdf/jpg/zip/docx/...) are
+        // also converted — not just /etc/passwd-style system artifacts.
         if (args.dump_text) {
-            std::string extractDir = prefix + baseName + "_extracted_files";
+            std::string allExtractDir = prefix + baseName + "_extracted_files";
             std::string textDir = prefix + baseName + "_extracted_text";
-            if (!fs::exists(extractDir)) {
-                std::cerr << "Warning: --dump-text found no extract directory ("
-                          << extractDir << "). Run with --linux/windows-analyze first."
+
+            auto& markitdown = forensics::llm::MarkitdownProxy::instance();
+            if (!markitdown.isServiceAvailable()) {
+                std::cerr << "Warning: --dump-text requires python_service running. "
+                          << "Start it with: ./scripts/start_python_service.sh"
                           << std::endl;
             } else {
-                auto& markitdown = forensics::llm::MarkitdownProxy::instance();
-                if (!markitdown.isServiceAvailable()) {
-                    std::cerr << "Warning: --dump-text requires python_service running. "
-                              << "Start it with: ./scripts/start_python_service.sh"
-                              << std::endl;
+                // Extract ALL regular files from the raw DB into allExtractDir.
+                // Re-extract to guarantee completeness: the platform analyzers only
+                // pull the subset they parse (system files), but --dump-text should
+                // cover ordinary documents too. extractFile() skips files that are
+                // already present with matching size, so re-extraction is cheap if
+                // the analyzers already extracted some.
+                std::cout << "Extracting all files for text dump..." << std::endl;
+                {
+                    FileExtractor allExtractor(args.image_path, effectiveRawDb);
+                    if (allExtractor.initialize()) {
+                        int n = allExtractor.extractAll(allExtractDir);
+                        std::cout << "  Extracted " << n << " files to "
+                                  << allExtractDir << std::endl;
+                    } else {
+                        std::cerr << "Warning: Failed to initialize extractor for --dump-text"
+                                  << std::endl;
+                    }
+                }
+
+                if (!fs::exists(allExtractDir) || fs::is_empty(allExtractDir)) {
+                    std::cerr << "Warning: --dump-text found no extractable files in "
+                              << args.image_path << std::endl;
                 } else {
                     std::cout << "Dumping extracted files as text..." << std::endl;
-                    auto result = markitdown.batchConvertToMarkdown(extractDir, textDir);
+                    auto result = markitdown.batchConvertToMarkdown(allExtractDir, textDir);
                     if (result.ok) {
                         std::cout << "✓ Text dump: " << result.converted << "/"
                                   << result.total << " files converted"
