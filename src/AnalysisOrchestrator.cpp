@@ -14,6 +14,7 @@
 #include "FullTextSearch/TextExtractor.h"
 #include "FileCarving/FileCarver.h"
 #include "report/ReportGenerator.h"
+#include "LLMIntegration/MarkitdownProxy.h"
 #include <iostream>
 #include <filesystem>
 #include <memory>
@@ -250,6 +251,39 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
                 std::cout << "✓ Report: " << reportPath << std::endl;
             } else {
                 std::cerr << "Warning: Failed to generate report" << std::endl;
+            }
+            std::cout << std::endl;
+        }
+
+        // Step 7 (optional): Dump extracted files as text via Python extractors.
+        // Converts every file in the extract directory to a human-readable .md,
+        // mirroring the directory structure. Requires python_service running.
+        if (args.dump_text) {
+            std::string extractDir = prefix + baseName + "_extracted_files";
+            std::string textDir = prefix + baseName + "_extracted_text";
+            if (!fs::exists(extractDir)) {
+                std::cerr << "Warning: --dump-text found no extract directory ("
+                          << extractDir << "). Run with --linux/windows-analyze first."
+                          << std::endl;
+            } else {
+                auto& markitdown = forensics::llm::MarkitdownProxy::instance();
+                if (!markitdown.isServiceAvailable()) {
+                    std::cerr << "Warning: --dump-text requires python_service running. "
+                              << "Start it with: ./scripts/start_python_service.sh"
+                              << std::endl;
+                } else {
+                    std::cout << "Dumping extracted files as text..." << std::endl;
+                    auto result = markitdown.batchConvertToMarkdown(extractDir, textDir);
+                    if (result.ok) {
+                        std::cout << "✓ Text dump: " << result.converted << "/"
+                                  << result.total << " files converted"
+                                  << " (" << result.skipped << " skipped, "
+                                  << result.failed << " failed) -> "
+                                  << textDir << std::endl;
+                    } else {
+                        std::cerr << "Warning: Text dump failed: " << result.error << std::endl;
+                    }
+                }
             }
             std::cout << std::endl;
         }

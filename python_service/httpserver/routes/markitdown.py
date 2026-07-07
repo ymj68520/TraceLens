@@ -9,9 +9,12 @@ import asyncio
 import logging
 import time
 from pathlib import Path
+from typing import List
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+
+from ..services.document_extractor import get_document_extractor_locator
 
 logger = logging.getLogger(__name__)
 
@@ -132,3 +135,154 @@ async def markitdown_status():
             "available": False,
             "error": "markitdown library is not installed",
         }
+
+
+# ---------------------------------------------------------------------------
+# Batch conversion — convert an entire directory of extracted files to text.
+# Unlike the single-file /convert endpoint (which only uses the markitdown
+# library), this endpoint routes each file through ExtractorLocator so that
+# specialized extractors (evtx, registry, PE/ELF, archives, databases, ...)
+# are used too. This gives the broadest coverage for offline field testing.
+# ---------------------------------------------------------------------------
+
+class BatchConvertRequest(BaseModel):
+    """Request model for batch directory-to-markdown conversion."""
+    input_dir: str = Field(..., description="Absolute path to the directory of files to convert")
+    output_dir: str = Field(..., description="Absolute path to the output directory for .md files")
+
+
+class BatchConvertResponse(BaseModel):
+    """Response model for batch conversion."""
+    success: bool
+    total_files: int = 0
+    converted: int = 0
+    skipped: int = 0
+    failed: int = 0
+    errors: List[str] = Field(default_factory=list)
+    output_dir: str = ""
+
+
+async def _convert_one(file_path: Path, input_root: Path, output_root: Path,
+                       sem: asyncio.Semaphore):
+    """
+    Convert a single file to markdown and write it under output_root.
+
+    Returns a tuple (status, detail) where status is one of:
+      "converted" | "skipped" | "failed"
+    """
+    # Relative path inside input_dir, used to mirror the structure.
+    rel = file_path.relative_to(input_root)
+    # Output path: same relative path + ".md" suffix.
+    out_path = output_root / (str(rel) + ".md")
+
+    locator = get_document_extractor_locator()
+    extractor = locator.get_extractor(str(file_path))
+
+    if extractor is None:
+        # No extractor for this file type — skip silently.
+        return ("skipped", str(rel))
+
+    async with sem:
+        try:
+            markdown = await extractor.extract_to_markdown(str(file_path))
+            if not markdown or not markdown.strip():
+                return ("skipped", str(rel))
+
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(markdown, encoding="utf-8")
+            return ("converted", str(rel))
+        except Exception as e:
+            return ("failed", f"{rel}: {e}")
+
+
+@router.post(
+    "/batch-convert",
+    response_model=BatchConvertResponse,
+    responses={
+        200: {"description": "Batch conversion completed"},
+        400: {"description": "Invalid input directory"},
+        500: {"description": "Batch conversion failed"},
+    },
+)
+async def batch_convert(request: BatchConvertRequest):
+    """
+    Convert every file in a directory to markdown.
+
+    Walks `input_dir` recursively, routes each file through ExtractorLocator
+    (so specialized extractors for evtx, registry, PE, archives, etc. are
+    used — not just markitdown), and writes one .md file per source file to
+    `output_dir`, mirroring the relative directory structure.
+
+    Files with no matching extractor are skipped (counted in `skipped`).
+    Individual conversion failures are counted in `failed` and recorded in
+    `errors`; they do not abort the batch.
+    """
+    start_time = time.time()
+
+    input_dir = Path(request.input_dir)
+    output_dir = Path(request.output_dir)
+
+    # Validate input directory
+    if not input_dir.exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Input directory not found: {request.input_dir}"
+        )
+    if not input_dir.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Input path is not a directory: {request.input_dir}"
+        )
+
+    # Create output directory
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Cannot create output directory {request.output_dir}: {e}"
+        )
+
+    # Collect all regular files (recursive)
+    all_files = [f for f in input_dir.rglob("*") if f.is_file()]
+    total = len(all_files)
+
+    if total == 0:
+        logger.info(f"batch-convert: input dir {input_dir} is empty")
+        return BatchConvertResponse(
+            success=True, total_files=0, output_dir=str(output_dir)
+        )
+
+    logger.info(
+        f"batch-convert: {total} files in {input_dir} -> {output_dir}"
+    )
+
+    # Limit concurrency to avoid exhausting memory on large directories.
+    sem = asyncio.Semaphore(4)
+    results = await asyncio.gather(
+        *[_convert_one(f, input_dir, output_dir, sem) for f in all_files]
+    )
+
+    converted = sum(1 for status, _ in results if status == "converted")
+    skipped = sum(1 for status, _ in results if status == "skipped")
+    failed = sum(1 for status, _ in results if status == "failed")
+    errors = [detail for status, detail in results if status == "failed"]
+    # Cap the error list to avoid a huge response payload.
+    if len(errors) > 50:
+        errors = errors[:50] + [f"... and {len(results) - 50} more failures"]
+
+    elapsed = (time.time() - start_time) * 1000
+    logger.info(
+        f"batch-convert done: {converted} converted, {skipped} skipped, "
+        f"{failed} failed of {total} in {elapsed:.0f}ms"
+    )
+
+    return BatchConvertResponse(
+        success=True,
+        total_files=total,
+        converted=converted,
+        skipped=skipped,
+        failed=failed,
+        errors=errors,
+        output_dir=str(output_dir),
+    )

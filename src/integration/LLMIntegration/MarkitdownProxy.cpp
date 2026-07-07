@@ -79,5 +79,64 @@ bool MarkitdownProxy::isServiceAvailable() {
     }
 }
 
+MarkitdownProxy::BatchResult MarkitdownProxy::batchConvertToMarkdown(
+        const std::string& inputDir, const std::string& outputDir) {
+    BatchResult result;
+    try {
+        httplib::Client cli(pythonServiceUrl_);
+        cli.set_connection_timeout(10);
+        // Batch conversion of a whole directory can take a while.
+        cli.set_read_timeout(600);
+
+        nlohmann::json body = {
+            {"input_dir", inputDir},
+            {"output_dir", outputDir}
+        };
+
+        auto res = cli.Post("/api/markitdown/batch-convert",
+                            body.dump(), "application/json");
+
+        if (!res) {
+            result.error = "Service unreachable at " + pythonServiceUrl_;
+            LOG_ERROR("markitdown batch-convert unreachable: " + pythonServiceUrl_);
+            return result;
+        }
+
+        if (res->status != 200) {
+            // Try to extract the detail message from the FastAPI error body.
+            std::string detail = "HTTP " + std::to_string(res->status);
+            try {
+                auto err = nlohmann::json::parse(res->body);
+                if (err.contains("detail")) {
+                    detail += ": " + err["detail"].get<std::string>();
+                }
+            } catch (...) {
+                detail += ": " + res->body;
+            }
+            result.error = detail;
+            LOG_ERROR("markitdown batch-convert failed: " + detail);
+            return result;
+        }
+
+        auto response = nlohmann::json::parse(res->body);
+        result.ok = response.value("success", false);
+        result.total = response.value("total_files", 0);
+        result.converted = response.value("converted", 0);
+        result.skipped = response.value("skipped", 0);
+        result.failed = response.value("failed", 0);
+
+        LOG_INFO("markitdown batch-convert: " + std::to_string(result.converted) +
+                 "/" + std::to_string(result.total) + " converted, " +
+                 std::to_string(result.skipped) + " skipped, " +
+                 std::to_string(result.failed) + " failed");
+        return result;
+
+    } catch (const std::exception& e) {
+        result.error = std::string(e.what());
+        LOG_ERROR("markitdown batch-convert exception: " + result.error);
+        return result;
+    }
+}
+
 } // namespace llm
 } // namespace forensics

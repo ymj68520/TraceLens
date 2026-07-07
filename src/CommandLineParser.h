@@ -43,6 +43,7 @@ struct CommandLineArgs {
     bool skip_ai = false;  // 跳过 AI/LLM 分析（现场无网/无 key 时使用）
     bool generate_report = false;  // 生成人类可读 Markdown 报告
     std::string report_path;  // 自定义报告路径（可选）
+    bool dump_text = false;  // 导出提取文件的文本版本（需 python_service 运行）
 };
 
 class CommandLineParser {

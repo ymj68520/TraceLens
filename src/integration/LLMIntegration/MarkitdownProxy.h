@@ -36,6 +36,35 @@ public:
     std::string convertToMarkdown(const std::string& filePath);
 
     /**
+     * @brief Result of a batch directory conversion.
+     */
+    struct BatchResult {
+        int total = 0;      ///< total files scanned
+        int converted = 0;  ///< files successfully converted to .md
+        int skipped = 0;    ///< files with no matching extractor
+        int failed = 0;     ///< files that errored during conversion
+        bool ok = false;    ///< whether the HTTP call itself succeeded
+        std::string error;  ///< error message if !ok
+    };
+
+    /**
+     * @brief Convert every file in a directory to markdown.
+     *
+     * Calls the Python service's /api/markitdown/batch-convert endpoint,
+     * which walks inputDir recursively, routes each file through the
+     * ExtractorLocator (so specialized extractors for evtx, registry, PE,
+     * archives, etc. are used), and writes one .md file per source file
+     * under outputDir, mirroring the directory structure.
+     *
+     * @param inputDir  Absolute path to the directory of files to convert.
+     * @param outputDir Absolute path to the output directory for .md files.
+     * @return BatchResult with per-status counts. If the HTTP call fails,
+     *         BatchResult::ok is false and .error describes the problem.
+     */
+    BatchResult batchConvertToMarkdown(const std::string& inputDir,
+                                        const std::string& outputDir);
+
+    /**
      * @brief Check if the markitdown service is available.
      *
      * @return true if the Python service responds and markitdown is installed.
