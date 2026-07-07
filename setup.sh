@@ -25,10 +25,48 @@ ok()    { echo -e "${GREEN}✓ $*${NC}"; }
 warn()  { echo -e "${YELLOW}⚠ $*${NC}"; }
 fail()  { echo -e "${RED}✗ $*${NC}"; exit 1; }
 
-# Ensure nvm-managed node/npm is in PATH (sudo may strip it)
+# ========================================================================
+# Step 0: Setup NVM and Node.js (LTS, with npm 10+)
+# ========================================================================
+info "Step 0/7: Checking NVM and Node.js..."
+
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+
+install_nvm() {
+    info "  NVM not found, downloading and installing..."
+    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+    # shellcheck disable=SC1090
+    source "$NVM_DIR/nvm.sh"
+    ok "NVM installed"
+}
+
+# Install NVM if missing
+if [ ! -d "$NVM_DIR" ] || [ ! -s "$NVM_DIR/nvm.sh" ]; then
+    if ! install_nvm; then
+        warn "  NVM installation failed. Falling back to system node/npm."
+    fi
+fi
+
+# Load NVM (safe to source even if NVM was just installed above)
 if [ -s "$NVM_DIR/nvm.sh" ]; then
-    source "$NVM_DIR/nvm.sh" 2>/dev/null || true
+    # shellcheck disable=SC1090
+    source "$NVM_DIR/nvm.sh"
+fi
+
+# Install and activate Node.js 22 LTS via NVM if not already available
+if command -v nvm &>/dev/null; then
+    NODE_LTS="22"
+    if ! nvm ls "$NODE_LTS" &>/dev/null; then
+        info "  Installing Node.js ${NODE_LTS} LTS via NVM..."
+        nvm install "$NODE_LTS"
+    fi
+    nvm use "$NODE_LTS" >/dev/null 2>&1 || nvm use default
+    NODE_BIN_DIR="$(dirname "$(nvm which current 2>/dev/null || command -v node)")"
+    # Prepend NVM node bin to PATH so subsequent cmake/npm calls use it
+    export PATH="$NODE_BIN_DIR:$PATH"
+    ok "Node $(node --version) / npm $(npm --version) (NVM-managed)"
+else
+    warn "  NVM not available, using system node $(node --version 2>/dev/null || echo 'not found') / npm $(npm --version 2>/dev/null || echo 'not found')"
 fi
 
 echo -e "${CYAN}${BOLD}"
@@ -46,7 +84,7 @@ APT_PACKAGES=(
     # Build tools
     build-essential cmake pkg-config git
     # Core libraries
-    libsqlite3-dev libssl-dev
+    libsqlite3-dev libsqlcipher-dev libssl-dev
     # Boost (system/thread for runtime, uuid headers for CaseManager/TaskManager)
     libboost-dev libboost-system-dev libboost-thread-dev
     # JSON / async (header-only but need the -dev for cmake find)
@@ -184,8 +222,8 @@ else
     fi
 fi
 
-# Refresh ldconfig after all installs
-sudo ldconfig
+# Refresh ldconfig after all installs (non-interactive: don't block on sudo password)
+sudo -n ldconfig 2>/dev/null || true
 
 # ========================================================================
 # Step 5/7: Build Aliyun OSS C++ SDK (if not present)
@@ -223,12 +261,22 @@ VENV_DIR="$PROJECT_ROOT/python_service/.venv"
 PYTHON_EXEC="$VENV_DIR/bin/python"
 REQUIREMENTS="$PROJECT_ROOT/python_service/httpserver/requirements.txt"
 
-if [ -f "$PYTHON_EXEC" ]; then
+# Detect broken venv: python binary exists but pyvenv.cfg is missing
+if [ -f "$PYTHON_EXEC" ] && [ ! -f "$VENV_DIR/pyvenv.cfg" ]; then
+    warn "Virtual environment at $VENV_DIR is broken (missing pyvenv.cfg), recreating..."
+    rm -rf "$VENV_DIR"
+fi
+
+if [ -f "$PYTHON_EXEC" ] && [ -f "$VENV_DIR/pyvenv.cfg" ]; then
     ok "Virtual environment exists at $VENV_DIR"
     # Upgrade pip and install/update deps
     info "  Updating pip and dependencies..."
-    "$PYTHON_EXEC" -m pip install --upgrade pip -q 2>/dev/null
-    "$PYTHON_EXEC" -m pip install -q -r "$REQUIREMENTS" 2>&1 | tail -3
+    if ! "$PYTHON_EXEC" -m pip install --upgrade pip -q 2>/dev/null; then
+        warn "  pip upgrade had issues, continuing with existing pip..."
+    fi
+    if ! "$PYTHON_EXEC" -m pip install -q -r "$REQUIREMENTS" 2>/dev/null; then
+        warn "  Some Python dependencies may not have installed correctly"
+    fi
     touch "$VENV_DIR/.deps_installed"
     ok "Python dependencies updated"
 else
@@ -250,15 +298,29 @@ fi
 # ========================================================================
 info "Step 7/7: Building C++ project..."
 
+# Build vendored Alibaba OSS SDK first (required by forensic_analyzer)
+OSS_BUILD_DIR="$PROJECT_ROOT/libs/aliyun-oss-cpp-sdk/build"
+if [ ! -f "$OSS_BUILD_DIR/lib/libalibabacloud-oss-cpp-sdk.a" ]; then
+    info "  Building Alibaba OSS SDK..."
+    mkdir -p "$OSS_BUILD_DIR"
+    cd "$OSS_BUILD_DIR"
+    cmake .. -DBUILD_SHARED_LIBS=OFF -DBUILD_SAMPLE=OFF -DBUILD_TESTS=OFF 2>&1 | tail -3
+    make -j$(nproc) -s
+    ok "OSS SDK built"
+else
+    ok "OSS SDK already built"
+fi
+
 BUILD_DIR="$PROJECT_ROOT/build"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-info "  Running cmake (fresh configure)..."
-cmake --fresh .. -DCMAKE_BUILD_TYPE=Release 2>&1 | grep -E "(error|warning:|Found|Configuring|OSS)" || true
+info "  Running cmake..."
+cmake .. -DCMAKE_BUILD_TYPE=Release 2>&1 | grep -E "(error|warning:|Found|Configuring)" || true
 
-info "  Building ($(nproc) threads)..."
-cmake --build . -j$(nproc) 2>&1 | tail -20
+info "  Building main target ($(nproc) threads)..."
+# Build only the main target; web_frontend is handled separately below
+cmake --build . --target forensic_analyzer -j$(nproc) 2>&1 | tail -20
 # Check if build actually succeeded (cmake may return 0 even with partial failures)
 if ! ldd "$BUILD_DIR/forensic_analyzer" &>/dev/null; then
     warn "Binary has missing shared libraries, build may have partially failed"

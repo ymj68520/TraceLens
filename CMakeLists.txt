@@ -333,7 +333,7 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp
     src/analyzers/AndroidAnalyzer/BuildPropAnalyzer.cpp
     src/analyzers/AndroidAnalyzer/AndroidLogParser.cpp
-    $<$<BOOL:${SQLCIPHER_FOUND}>:src/analyzers/AndroidAnalyzer/WeChatDecryptor.cpp>
+    src/analyzers/AndroidAnalyzer/WeChatDecryptor.cpp
     $<$<BOOL:${SQLCIPHER_FOUND}>:src/analyzers/AndroidAnalyzer/SqlCipherDatabase.cpp>
     src/analyzers/AndroidAnalyzer/AndroidLogicalParsers.cpp
     # Android logical-extraction backends (dir / zip sources, bypassing TSK)
