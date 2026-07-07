@@ -67,6 +67,16 @@ bool FileClassifier::openDatabases() {
 		return false;
 	}
 
+	// Apply write-performance pragmas to the output database. Without these,
+	// SQLite defaults to journal_mode=DELETE + synchronous=FULL, which forces
+	// an fsync (jbd2_log_wait_commit) on every transaction commit. On a real
+	// disk this manifests as the classifier stalling for minutes in D state;
+	// tmpfs hides it because tmpfs has no journal to wait on.
+	// Match the settings DatabaseManager applies: WAL + relaxed sync.
+	sqlite3_exec(fileDb_, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr);
+	sqlite3_exec(fileDb_, "PRAGMA synchronous=NORMAL;", nullptr, nullptr, nullptr);
+	sqlite3_busy_timeout(fileDb_, 5000);
+
 	return true;
 }
 

@@ -28,6 +28,12 @@ bool WindowsAnalysisDatabase::initialize() {
         return false;
     }
 
+    // Write-performance pragmas (see LinuxAnalysisDatabase for rationale):
+    // without WAL + relaxed sync, every commit fsyncs and stalls on disk.
+    sqlite3_exec(db_, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db_, "PRAGMA synchronous=NORMAL;", nullptr, nullptr, nullptr);
+    sqlite3_busy_timeout(db_, 5000);
+
     if (integratedMode_) {
         return createArtifactsTable();
     }

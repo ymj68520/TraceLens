@@ -42,6 +42,14 @@ bool LinuxAnalysisDatabase::initialize() {
         return false;
     }
 
+    // Write-performance pragmas. Without these SQLite defaults to
+    // journal_mode=DELETE + synchronous=FULL, forcing an fsync on every
+    // transaction commit. On a real disk this stalls the analyzer for
+    // minutes in D state (jbd2_log_wait_commit); tmpfs hides the problem.
+    sqlite3_exec(db_, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db_, "PRAGMA synchronous=NORMAL;", nullptr, nullptr, nullptr);
+    sqlite3_busy_timeout(db_, 5000);
+
     if (integratedMode_) {
         return createArtifactsTable();
     }

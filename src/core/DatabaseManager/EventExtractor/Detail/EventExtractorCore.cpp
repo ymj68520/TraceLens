@@ -56,6 +56,13 @@ bool EventExtractor::openDatabases() {
 		return false;
 	}
 
+	// Write-performance pragmas on the output DB (eventDb_). sourceDb_ is
+	// read-only so it doesn't need them. Without WAL + relaxed sync, every
+	// commit fsyncs and stalls on a real disk (jbd2_log_wait_commit).
+	sqlite3_exec(eventDb_, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr);
+	sqlite3_exec(eventDb_, "PRAGMA synchronous=NORMAL;", nullptr, nullptr, nullptr);
+	sqlite3_busy_timeout(eventDb_, 5000);
+
 	return true;
 }
 
