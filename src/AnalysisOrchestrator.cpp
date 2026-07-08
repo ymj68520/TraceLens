@@ -304,8 +304,15 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
                     std::cerr << "Warning: --dump-text found no extractable files in "
                               << args.image_path << std::endl;
                 } else {
+                    // Convert to absolute paths before sending to python_service.
+                    // The Python process may have a different CWD than this C++
+                    // process, so relative paths like ./build/output/... would
+                    // fail with HTTP 400 "Input directory not found".
+                    std::string absExtractDir = fs::absolute(allExtractDir).string();
+                    std::string absTextDir = fs::absolute(textDir).string();
+
                     std::cout << "Dumping extracted files as text..." << std::endl;
-                    auto result = markitdown.batchConvertToMarkdown(allExtractDir, textDir);
+                    auto result = markitdown.batchConvertToMarkdown(absExtractDir, absTextDir);
                     if (result.ok) {
                         std::cout << "✓ Text dump: " << result.converted << "/"
                                   << result.total << " files converted"
