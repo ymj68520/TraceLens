@@ -43,7 +43,9 @@ echo "启动 Python HTTP 服务（端口 8090）..."
 # it is only importable when python_service/ is on sys.path. Launching from the
 # project root without PYTHONPATH (the old behaviour) raised
 # "No module named 'graphiti_integration'" at startup.
-cd "$PROJECT_ROOT/python_service"
-PYTHONPATH="$PROJECT_ROOT/python_service:$PYTHONPATH" \
-    python_service/.venv/bin/python -m httpserver.main
+PYTHON_SERVICE_DIR="$PROJECT_ROOT/python_service"
+PYTHON_EXEC="$PYTHON_SERVICE_DIR/.venv/bin/python"
+cd "$PYTHON_SERVICE_DIR"
+PYTHONPATH="$PYTHON_SERVICE_DIR:$PYTHONPATH" \
+    "$PYTHON_EXEC" -m httpserver.main
 
