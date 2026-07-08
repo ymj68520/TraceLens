@@ -115,6 +115,8 @@ APT_PACKAGES=(
     libgtest-dev libgmock-dev
     # Database connectors
     libmysqlclient-dev libpq-dev
+    # Redis (job storage for IngestionJobManager)
+    redis-server redis-tools
 )
 
 # Check which packages are already installed
@@ -136,6 +138,23 @@ else
     sudo apt-get update -qq
     sudo apt-get install -y "${MISSING[@]}"
     ok "System packages installed"
+fi
+
+# Ensure Redis is enabled and running (job storage for IngestionJobManager)
+info "Ensuring Redis service is running..."
+if command -v systemctl &>/dev/null; then
+    sudo systemctl enable redis-server >/dev/null 2>&1 || true
+    sudo systemctl start redis-server 2>/dev/null || true
+fi
+# Fallback: start a local instance directly if systemd is unavailable
+if command -v redis-cli &>/dev/null && ! redis-cli ping >/dev/null 2>&1; then
+    warn "redis-cli ping failed; starting redis-server directly..."
+    redis-server --daemonize yes
+fi
+if command -v redis-cli &>/dev/null && redis-cli ping >/dev/null 2>&1; then
+    ok "Redis is running ($(redis-cli ping))"
+else
+    warn "Redis is not responding on localhost:6379 — IngestionJobManager will fall back to in-memory storage"
 fi
 
 # ========================================================================
