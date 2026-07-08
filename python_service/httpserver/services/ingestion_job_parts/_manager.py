@@ -90,11 +90,19 @@ class IngestionJobManagerMixin:
 
         # Try to initialize Neo4j-dependent component services
         try:
-            # Fix import path for graphiti_integration
+            # Locate the python_service/ dir (sibling of httpserver/) that
+            # contains graphiti_integration/, and make it importable.
+            # NOTE: this file lives at python_service/httpserver/services/
+            #       ingestion_job_parts/_manager.py, so python_service/ is
+            #       FOUR parents up — not three. Using parents[3] previously
+            #       resolved to httpserver/ and the import silently failed
+            #       ("No module named 'graphiti_integration'") whenever the
+            #       launcher forgot to pre-set PYTHONPATH (e.g. when the
+            #       service was started via start_python_service.sh instead
+            #       of start_all_services.sh).
             import sys
             from pathlib import Path
-            # Add python_service to path if not already there
-            python_service_path = str(Path(__file__).parent.parent.parent)
+            python_service_path = str(Path(__file__).resolve().parents[3])
             if python_service_path not in sys.path:
                 sys.path.insert(0, python_service_path)
 

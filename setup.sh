@@ -111,6 +111,8 @@ APT_PACKAGES=(
     libzip-dev
     # Word document parsing
     antiword
+    # Media analysis (VideoExtractor/AudioExtractor call ffmpeg/ffprobe via subprocess)
+    ffmpeg
     # Testing
     libgtest-dev libgmock-dev
     # Database connectors

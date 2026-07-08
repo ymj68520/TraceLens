@@ -38,5 +38,12 @@ fi
 
 # 启动服务
 echo "启动 Python HTTP 服务（端口 8090）..."
-python_service/.venv/bin/python -m python_service.httpserver.main
+# IMPORTANT: run from python_service/ with PYTHONPATH pointing at it, matching
+# start_all_services.sh. graphiti_integration/ is a sibling of httpserver/, so
+# it is only importable when python_service/ is on sys.path. Launching from the
+# project root without PYTHONPATH (the old behaviour) raised
+# "No module named 'graphiti_integration'" at startup.
+cd "$PROJECT_ROOT/python_service"
+PYTHONPATH="$PROJECT_ROOT/python_service:$PYTHONPATH" \
+    python_service/.venv/bin/python -m httpserver.main
 
