@@ -431,8 +431,6 @@ web/forensic_analyzer
 .gitnexus
 DataStream.md
 test_image.img
-scripts/start_python_service.sh
-scripts/diagnose_services.sh
 scripts/verify_path_fix.sh
 start.sh
 
