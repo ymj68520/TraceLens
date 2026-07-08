@@ -169,6 +169,11 @@ async def _convert_one(file_path: Path, input_root: Path, output_root: Path,
 
     Returns a tuple (status, detail) where status is one of:
       "converted" | "skipped" | "failed"
+
+    If no specialized extractor is registered for the file type, falls back
+    to reading the file as raw text (most plain-text files — .txt, .sh, .log,
+    .cpp, .py, .conf, etc. — are already human-readable). Binary files that
+    cannot be decoded as UTF-8 are skipped.
     """
     # Relative path inside input_dir, used to mirror the structure.
     rel = file_path.relative_to(input_root)
@@ -178,13 +183,29 @@ async def _convert_one(file_path: Path, input_root: Path, output_root: Path,
     locator = get_document_extractor_locator()
     extractor = locator.get_extractor(str(file_path))
 
-    if extractor is None:
-        # No extractor for this file type — skip silently.
-        return ("skipped", str(rel))
-
     async with sem:
         try:
-            markdown = await extractor.extract_to_markdown(str(file_path))
+            if extractor is not None:
+                markdown = await extractor.extract_to_markdown(str(file_path))
+            else:
+                # No specialized extractor — try raw text read as a fallback.
+                # This covers plain-text formats (.txt, .sh, .log, .cpp, .py,
+                # .conf, etc.) that don't need parsing, just content extraction.
+                raw = file_path.read_bytes()
+                # Skip files that look binary (high ratio of non-printable bytes).
+                if raw and _is_likely_binary(raw):
+                    return ("skipped", str(rel))
+                try:
+                    text = raw.decode("utf-8", errors="strict")
+                except UnicodeDecodeError:
+                    try:
+                        text = raw.decode("latin-1", errors="replace")
+                    except Exception:
+                        return ("skipped", str(rel))
+                # Wrap in a markdown code block so the content is preserved
+                # verbatim rather than being interpreted as markdown syntax.
+                markdown = f"# {file_path.name}\n\n```\n{text}\n```\n"
+
             if not markdown or not markdown.strip():
                 return ("skipped", str(rel))
 
@@ -193,6 +214,21 @@ async def _convert_one(file_path: Path, input_root: Path, output_root: Path,
             return ("converted", str(rel))
         except Exception as e:
             return ("failed", f"{rel}: {e}")
+
+
+def _is_likely_binary(data: bytes, sample_size: int = 8192) -> bool:
+    """
+    Heuristic: if the sample contains a NUL byte or too many non-text bytes,
+    treat it as binary and skip raw-text conversion.
+    """
+    sample = data[:sample_size]
+    if not sample:
+        return False
+    if b"\x00" in sample:
+        return True
+    # Count non-printable, non-whitespace bytes.
+    non_text = sum(1 for b in sample if b < 9 or (13 < b < 32))
+    return (non_text / len(sample)) > 0.30
 
 
 @router.post(
