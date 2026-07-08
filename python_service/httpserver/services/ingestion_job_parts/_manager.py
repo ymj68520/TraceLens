@@ -70,7 +70,15 @@ class IngestionJobManagerMixin:
             self._redis = await aioredis.from_url(
                 self.settings.redis_url,
                 encoding="utf-8",
-                decode_responses=True
+                decode_responses=True,
+                # Bounded connect/read timeouts so a stuck server fails fast
+                # instead of hanging the job manager. socket_timeout is kept
+                # large enough that any single command (incl. short blocking
+                # pops) completes well within it.
+                socket_connect_timeout=5,
+                socket_timeout=30,
+                # periodic keep-alive so dead connections are reaped
+                health_check_interval=30,
             )
             # Test connection
             await self._redis.ping()

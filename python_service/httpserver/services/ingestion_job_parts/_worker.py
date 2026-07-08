@@ -33,12 +33,24 @@ class IngestionJobWorkerMixin:
         while self._running:
             try:
                 if self._use_redis:
-                    # Pop from queue with timeout
-                    item = await self._redis.brpop("ingestion_queue", timeout=5)
-                    if item:
-                        queue_data_raw = item[1]
-                        queue_data = json.loads(queue_data_raw)
+                    # Drain the queue with a non-blocking RPOP loop, then idle.
+                    # We intentionally avoid BRPOP(timeout=...): when the queue is
+                    # empty the server-side block holds the socket open for up to
+                    # `timeout` seconds, and any socket read timeout smaller than
+                    # that (or a transient read delay) trips redis-py's
+                    # "Timeout reading from localhost:6379" and disconnects the
+                    # connection. RPOP returns immediately, so socket read
+                    # latency is bounded by the actual command, not the block.
+                    processed_any = False
+                    for _ in range(100):  # hard cap per cycle to stay responsive
+                        item = await self._redis.rpop("ingestion_queue")
+                        if item is None:
+                            break
+                        processed_any = True
+                        queue_data = json.loads(item)
                         await self._process_job(queue_data)
+                    if not processed_any:
+                        await asyncio.sleep(1)  # queue idle
                 else:
                     # In-memory mode: check for pending jobs periodically
                     await asyncio.sleep(1)
