@@ -308,10 +308,13 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
                     // The Python process may have a different CWD than this C++
                     // process, so relative paths like ./build/output/... would
                     // fail with HTTP 400 "Input directory not found".
-                    std::string absExtractDir = fs::absolute(allExtractDir).string();
-                    std::string absTextDir = fs::absolute(textDir).string();
+                    // weakly_canonical also collapses any ./ or // in the path.
+                    std::string absExtractDir = fs::weakly_canonical(allExtractDir).string();
+                    std::string absTextDir = fs::weakly_canonical(textDir).string();
 
                     std::cout << "Dumping extracted files as text..." << std::endl;
+                    std::cout << "  Input:  " << absExtractDir << std::endl;
+                    std::cout << "  Output: " << absTextDir << std::endl;
                     auto result = markitdown.batchConvertToMarkdown(absExtractDir, absTextDir);
                     if (result.ok) {
                         std::cout << "✓ Text dump: " << result.converted << "/"
