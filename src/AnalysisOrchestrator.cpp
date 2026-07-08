@@ -28,7 +28,15 @@ std::string AnalysisOrchestrator::getBaseName(const std::string& path) {
 }
 
 std::string AnalysisOrchestrator::getDatabaseDir(const CommandLineArgs& args) {
-    return args.db_dir.empty() ? "" : args.db_dir + "/";
+    if (args.db_dir.empty()) return "";
+    // Strip trailing slashes so prefix + name never produces a double slash
+    // (e.g. --db-dir ./out/ -> "./out" not "./out/"). Double slashes confuse
+    // some downstream HTTP path handlers (Python Path normalization).
+    std::string dir = args.db_dir;
+    while (!dir.empty() && dir.back() == '/') {
+        dir.pop_back();
+    }
+    return dir + "/";
 }
 
 int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
