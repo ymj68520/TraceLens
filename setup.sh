@@ -314,6 +314,32 @@ if [ ! -x "$VENV_DIR/bin/vol" ]; then
     warn "volatility3 not found in $VENV_DIR — memory forensics (--memory-analyze) will be unavailable."
 fi
 
+# Install bundled Volatility3 ISF symbols + dwarf2json for memory forensics.
+# ISF files are kernel-version-specific; we ship the one matching the test
+# image (kernel 6.8.0-110-generic). Use scripts/build-vol3-isf.sh for other
+# kernels.
+#
+# NOTE: vol3 2.x scans ~/.cache/volatility3/symbols (NOT ~/.config). Install
+# there so the symbols are found without needing --vol-symbols-dir at run time.
+VOL_SYM_DIR="$HOME/.cache/volatility3/symbols"
+REPO_SYM_DIR="$PROJECT_ROOT/resources/volatility3-symbols"
+if [ -x "$VENV_DIR/bin/vol" ] && [ -d "$REPO_SYM_DIR" ]; then
+    mkdir -p "$VOL_SYM_DIR"
+    for isf_xz in "$REPO_SYM_DIR"/*.json.xz; do
+        [ -e "$isf_xz" ] || continue
+        base="$(basename "$isf_xz" .xz)"          # linux-6.8.0-110-generic.json
+        target="$VOL_SYM_DIR/$base"
+        if [ ! -f "$target" ]; then
+            info "Installing ISF symbol: $base"
+            xz -dc "$isf_xz" > "$target"
+        fi
+    done
+    ok "Volatility3 symbols installed to $VOL_SYM_DIR"
+    info "For other kernel versions: ./scripts/build-vol3-isf.sh <version>"
+else
+    warn "Skipped ISF install (vol3 not installed or $REPO_SYM_DIR missing)."
+fi
+
 # ========================================================================
 # Step 7/7: Build C++ project
 # ========================================================================

@@ -160,12 +160,21 @@ make -j$(nproc)
 ### Memory (RAM) Forensics
 
 Analyze a LiME/raw RAM dump with Volatility3. Produces a single `<baseName>_memory.db`
-(processes, network connections, bash history, boot info, sockets, cmdline).
+(processes, network connections, bash history, boot info, cmdline).
 
 ```bash
-# Prerequisites: volatility3 installed in python_service/.venv (see setup.sh),
-# and an ISF symbol file matching the dump's kernel in ~/.config/volatility3/symbols/.
-./forensic_analyzer mem.lime --memory-analyze
+# Prerequisites are handled by setup.sh: it installs volatility3 into the
+# project venv AND the ISF symbol file for kernel 6.8.0-110-generic (the test
+# image's kernel) into ~/.cache/volatility3/symbols/.
+./forensic_analyzer mem.lime --memory-analyze --vol-symbols-dir ~/.cache/volatility3/symbols
+```
+
+**Other kernel versions** — ISF files are kernel-specific. Generate one for a
+different kernel with the bundled script (auto-downloads the dbgsym package,
+extracts vmlinux, runs dwarf2json, installs the ISF):
+
+```bash
+./scripts/build-vol3-isf.sh <version>      # e.g. 6.8.0-110-generic
 ```
 
 Results are exposed via HTTP at `/api/forensics/memory/{summary,processes,network,bash-history,boot-info}`

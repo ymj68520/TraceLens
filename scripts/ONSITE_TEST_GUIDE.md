@@ -115,7 +115,7 @@ LLM_TEXT_BASE_URL=http://新地址 ./start.sh
 
 ### 坑 4：RAM 内存取证失败
 
-Volatility3 需要**匹配内核版本的 symbol 文件**（`~/.config/volatility3/symbols/*.json`）。现场大概率没有 → 内存模块会报符号缺失。这是预期的，列进"现场无法覆盖"。
+Volatility3 需要**匹配内核版本的 symbol 文件**（`~/.cache/volatility3/symbols/*.json`，vol3 2.x 用 cache 目录而非 config）。现场大概率没有 → 内存模块会报符号缺失。setup.sh 现在会从仓库内置的 `resources/volatility3-symbols/` 自动安装 6.8.0-110 的符号；其它内核用 `scripts/build-vol3-isf.sh <版本>` 生成。
 
 ## 五、降级行为预期表（脚本自动断言这些）
 
