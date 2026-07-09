@@ -15,17 +15,14 @@ size_t parseProcesses(const nlohmann::json& arr, MemoryAnalysisDatabase& db) {
         db.insertProcess(
             num(p, {"OFFSET (V)", "Offset"}),
             static_cast<int>(num(p, {"PID"})),
+            static_cast<int>(num(p, {"TID", "PID"})),  // tid falls back to pid
             static_cast<int>(num(p, {"PPID"})),
             str(p, {"COMM", "Name", "Comm"}),
             static_cast<int>(num(p, {"UID"})),
             static_cast<int>(num(p, {"GID"})),
-            // pslist's "CREATION TIME" is an ISO-8601 string, not a number, so it
-            // cannot land in the INTEGER start_time column; only a legacy numeric
-            // "Start" fixture value is stored. See report: persist creation time
-            // as TEXT in a follow-up.
-            static_cast<long>(num(p, {"Start"})),
-            static_cast<int>(num(p, {"Threads"})),
-            str(p, {"State"}));
+            static_cast<int>(num(p, {"EUID", "UID"})),
+            static_cast<int>(num(p, {"EGID", "GID"})),
+            str(p, {"CREATION TIME", "Start"}));
         ++n;
     }
     return n;

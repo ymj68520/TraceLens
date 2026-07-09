@@ -47,42 +47,42 @@ bool MemoryAnalysisDatabase::bindAndStep(const std::string& sql, const std::vect
     return ok;
 }
 
-bool MemoryAnalysisDatabase::insertProcess(long offset, int pid, int ppid, const std::string& comm,
-                                           int uid, int gid, long start_time, int threads, const std::string& state) {
+bool MemoryAnalysisDatabase::insertProcess(long offset, int pid, int tid, int ppid,
+                                           const std::string& comm,
+                                           int uid, int gid, int euid, int egid,
+                                           const std::string& creation_time) {
     std::lock_guard<std::mutex> lock(mutex_);
     return bindAndStep(MemoryAnalysisSQL::INSERT_PROCESS,
-        {std::to_string(offset), std::to_string(pid), std::to_string(ppid), comm,
-         std::to_string(uid), std::to_string(gid), std::to_string(start_time),
-         std::to_string(threads), state});
+        {std::to_string(offset), std::to_string(pid), std::to_string(tid),
+         std::to_string(ppid), comm,
+         std::to_string(uid), std::to_string(gid),
+         std::to_string(euid), std::to_string(egid), creation_time});
 }
 
-bool MemoryAnalysisDatabase::insertNetworkConnection(long offset, int pid, const std::string& comm,
-                                                     const std::string& protocol,
-                                                     const std::string& local_addr, int local_port,
-                                                     const std::string& foreign_addr, int foreign_port,
-                                                     const std::string& state) {
+bool MemoryAnalysisDatabase::insertNetworkConnection(long offset, int pid, int tid,
+                                                     const std::string& comm,
+                                                     const std::string& family,
+                                                     const std::string& type,
+                                                     const std::string& proto,
+                                                     const std::string& local_addr,
+                                                     const std::string& local_port,
+                                                     const std::string& remote_addr,
+                                                     const std::string& remote_port,
+                                                     const std::string& state, long netns) {
     std::lock_guard<std::mutex> lock(mutex_);
     return bindAndStep(MemoryAnalysisSQL::INSERT_NETWORK_CONNECTION,
-        {std::to_string(offset), std::to_string(pid), comm, protocol,
-         local_addr, std::to_string(local_port), foreign_addr,
-         std::to_string(foreign_port), state});
-}
-
-bool MemoryAnalysisDatabase::insertSocket(long offset, int pid, const std::string& comm,
-                                          const std::string& family, const std::string& type,
-                                          const std::string& local_addr, const std::string& remote_addr,
-                                          const std::string& state) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return bindAndStep(MemoryAnalysisSQL::INSERT_SOCKET,
-        {std::to_string(offset), std::to_string(pid), comm, family, type,
-         local_addr, remote_addr, state});
+        {std::to_string(offset), std::to_string(pid), std::to_string(tid), comm,
+         family, type, proto, local_addr, local_port, remote_addr, remote_port,
+         state, std::to_string(netns)});
 }
 
 bool MemoryAnalysisDatabase::insertBashHistory(int pid, const std::string& comm,
-                                               const std::string& command, int history_index) {
+                                               const std::string& command,
+                                               const std::string& command_time,
+                                               int history_index) {
     std::lock_guard<std::mutex> lock(mutex_);
     return bindAndStep(MemoryAnalysisSQL::INSERT_BASH_HISTORY,
-        {std::to_string(pid), comm, command, std::to_string(history_index)});
+        {std::to_string(pid), comm, command, command_time, std::to_string(history_index)});
 }
 
 bool MemoryAnalysisDatabase::setBootInfo(const std::string& key, const std::string& value) {

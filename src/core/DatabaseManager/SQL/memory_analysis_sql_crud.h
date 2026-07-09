@@ -8,20 +8,17 @@
 namespace MemoryAnalysisSQL {
 
 inline constexpr const char* INSERT_PROCESS =
-    "INSERT INTO processes (offset, pid, ppid, comm, uid, gid, start_time, thread_count, state) "
-    "VALUES (?,?,?,?,?,?,?,?,?);";
+    "INSERT INTO processes (offset, pid, tid, ppid, comm, uid, gid, euid, egid, creation_time) "
+    "VALUES (?,?,?,?,?,?,?,?,?,?);";
 
 inline constexpr const char* INSERT_NETWORK_CONNECTION =
-    "INSERT INTO network_connections (offset, pid, comm, protocol, local_addr, local_port, foreign_addr, foreign_port, state) "
-    "VALUES (?,?,?,?,?,?,?,?,?);";
-
-inline constexpr const char* INSERT_SOCKET =
-    "INSERT INTO sockets (offset, pid, comm, family, type, local_addr, remote_addr, state) "
-    "VALUES (?,?,?,?,?,?,?,?);";
+    "INSERT INTO network_connections (offset, pid, tid, comm, family, type, proto, "
+    "local_addr, local_port, remote_addr, remote_port, state, netns) "
+    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?);";
 
 inline constexpr const char* INSERT_BASH_HISTORY =
-    "INSERT INTO bash_history (pid, comm, command, history_index) "
-    "VALUES (?,?,?,?);";
+    "INSERT INTO bash_history (pid, comm, command, command_time, history_index) "
+    "VALUES (?,?,?,?,?);";
 
 inline constexpr const char* UPSERT_BOOT_INFO =
     "INSERT INTO boot_info (key, value) VALUES (?,?) "

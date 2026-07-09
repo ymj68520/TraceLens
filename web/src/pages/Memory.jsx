@@ -150,7 +150,7 @@ const Memory = () => {
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-white dark:bg-slate-800">
               <tr>
-                {['PID', 'PPID', 'Comm', 'UID', 'State', 'Threads'].map((h) => (
+                {['PID', 'PPID', 'Comm', 'UID', 'Created'].map((h) => (
                   <th key={h} className="text-left p-2 text-slate-600 dark:text-slate-300">
                     {h}
                   </th>
@@ -164,8 +164,7 @@ const Memory = () => {
                   <td className="p-2 text-slate-700 dark:text-slate-300">{p.ppid}</td>
                   <td className="p-2 font-mono text-slate-800 dark:text-slate-200">{p.comm}</td>
                   <td className="p-2 text-slate-700 dark:text-slate-300">{p.uid}</td>
-                  <td className="p-2 text-slate-700 dark:text-slate-300">{p.state}</td>
-                  <td className="p-2 text-slate-700 dark:text-slate-300">{p.thread_count}</td>
+                  <td className="p-2 text-slate-500 dark:text-slate-400 text-xs">{p.creation_time}</td>
                 </tr>
               ))}
             </tbody>
@@ -181,7 +180,7 @@ const Memory = () => {
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-white dark:bg-slate-800">
               <tr>
-                {['PID', 'Comm', 'Proto', 'Local', 'Foreign', 'State'].map((h) => (
+                {['PID', 'Comm', 'Proto', 'Local', 'Remote', 'State'].map((h) => (
                   <th key={h} className="text-left p-2 text-slate-600 dark:text-slate-300">
                     {h}
                   </th>
@@ -193,12 +192,12 @@ const Memory = () => {
                 <tr key={i} className="border-b border-slate-100 dark:border-slate-700">
                   <td className="p-2 text-slate-700 dark:text-slate-300">{n.pid}</td>
                   <td className="p-2 font-mono text-slate-800 dark:text-slate-200">{n.comm}</td>
-                  <td className="p-2 text-slate-700 dark:text-slate-300">{n.protocol}</td>
+                  <td className="p-2 text-slate-700 dark:text-slate-300">{n.proto}</td>
                   <td className="p-2 text-slate-700 dark:text-slate-300">
                     {n.local_addr}:{n.local_port}
                   </td>
                   <td className="p-2 text-slate-700 dark:text-slate-300">
-                    {n.foreign_addr}:{n.foreign_port}
+                    {n.remote_addr}:{n.remote_port}
                   </td>
                   <td className="p-2 text-slate-700 dark:text-slate-300">{n.state}</td>
                 </tr>

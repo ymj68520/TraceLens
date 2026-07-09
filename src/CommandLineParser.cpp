@@ -42,7 +42,8 @@ void CommandLineParser::printUsage(const char* programName) {
     std::cout << "  --report-path <path>        Custom output path for the report\n";
     std::cout << "  --dump-text                 Convert extracted files to text via Python extractors\n";
     std::cout << "                              (requires python_service running; needs --linux/windows-analyze)\n";
-    std::cout << "  --memory-analyze            Analyze a RAM memory image (LiME/raw) via Volatility3\n\n";
+    std::cout << "  --memory-analyze            Analyze a RAM memory image (LiME/raw) via Volatility3\n";
+    std::cout << "  --vol-symbols-dir <path>    ISF symbol dir for vol3 (else vol3 default search)\n\n";
     std::cout << "File Filter:\n";
     std::cout << "  --filter-profile <name>     Apply filter profile (e.g., telecom_fraud, virus_intrusion)\n";
     std::cout << "                              Profiles are loaded from config/filter_profiles/\n\n";
@@ -114,6 +115,8 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
             args.dump_text = true;
         } else if (arg == "--memory-analyze") {
             args.memory_analyze = true;
+        } else if (arg == "--vol-symbols-dir" && i + 1 < argc) {
+            args.vol_symbols_dir = argv[++i];
         } else if (arg == "--analyze-dlls") {
             args.analyze_dlls = true;
         } else if (arg == "--analyze-dlls-only") {

@@ -19,19 +19,18 @@ public:
     bool initialize();
 
     // ---- Typed inserts (return false on SQL error) ----
-    bool insertProcess(long offset, int pid, int ppid, const std::string& comm,
-                       int uid, int gid, long start_time, int threads, const std::string& state);
-    bool insertNetworkConnection(long offset, int pid, const std::string& comm,
-                                 const std::string& protocol,
-                                 const std::string& local_addr, int local_port,
-                                 const std::string& foreign_addr, int foreign_port,
-                                 const std::string& state);
-    bool insertSocket(long offset, int pid, const std::string& comm,
-                      const std::string& family, const std::string& type,
-                      const std::string& local_addr, const std::string& remote_addr,
-                      const std::string& state);
+    bool insertProcess(long offset, int pid, int tid, int ppid, const std::string& comm,
+                       int uid, int gid, int euid, int egid, const std::string& creation_time);
+    // Network connection (populated from linux.sockstat in vol3 2.x).
+    bool insertNetworkConnection(long offset, int pid, int tid, const std::string& comm,
+                                 const std::string& family, const std::string& type,
+                                 const std::string& proto,
+                                 const std::string& local_addr, const std::string& local_port,
+                                 const std::string& remote_addr, const std::string& remote_port,
+                                 const std::string& state, long netns);
     bool insertBashHistory(int pid, const std::string& comm,
-                           const std::string& command, int history_index);
+                           const std::string& command, const std::string& command_time,
+                           int history_index);
     bool setBootInfo(const std::string& key, const std::string& value);
     bool insertCmdline(int pid, const std::string& comm, const std::string& args);
     bool setMeta(const std::string& key, const std::string& value);

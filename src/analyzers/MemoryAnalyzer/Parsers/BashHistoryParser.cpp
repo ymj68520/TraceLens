@@ -1,20 +1,21 @@
 #include "BashHistoryParser.h"
+#include "VolJson.h"
 #include "../Database/MemoryAnalysisDatabase.h"
 #include <string>
 
-static std::string s(const nlohmann::json& j, const char* k) {
-    if (!j.contains(k) || j[k].is_null()) return "";
-    return j[k].is_string() ? j[k].get<std::string>() : j[k].dump();
-}
-
+// linux.bash (vol3 2.x) columns: "PID", "Process", "Command", "CommandTime".
+// CommandTime is an ISO-8601 string; it is the key evidence for the
+// "dangerous deletion command time" (Q102) challenge question.
 size_t parseBashHistory(const nlohmann::json& arr, MemoryAnalysisDatabase& db) {
+    using namespace VolJson;
     if (!arr.is_array()) return 0;
     size_t n = 0, idx = 0;
     for (const auto& h : arr) {
         db.insertBashHistory(
-            h.value("PID", 0),
-            s(h, "Process"),
-            s(h, "Command"),
+            static_cast<int>(num(h, {"PID"})),
+            str(h, {"Process"}),
+            str(h, {"Command"}),
+            str(h, {"CommandTime"}),
             static_cast<int>(idx++));
         ++n;
     }

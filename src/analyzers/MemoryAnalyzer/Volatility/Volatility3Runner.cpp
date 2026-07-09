@@ -13,6 +13,8 @@
 #include <filesystem>
 #include <array>
 #include <chrono>
+#include <vector>
+#include <string>
 
 Volatility3Runner::Volatility3Runner(std::string memPath) : memPath_(std::move(memPath)) {
     volBinary_ = resolveVolBinary();
@@ -77,8 +79,18 @@ PluginResult Volatility3Runner::run(const std::string& pluginName, int timeoutSe
         close(errPipe[0]); close(errPipe[1]);
         // NOTE: in vol3 2.x the plugin is a POSITIONAL arg placed LAST.
         // `-p` is --plugin-dirs, NOT the plugin name. Correct order: flags first, plugin last.
-        execl(volBinary_.c_str(), "vol", "-r", "json",
-              "-f", memPath_.c_str(), pluginName.c_str(), (char*)nullptr);
+        // Build argv so we can conditionally include `-s <symbol_dir>` when set.
+        std::vector<std::string> argvStr = {"vol", "-r", "json", "-f", memPath_};
+        if (!symbolDir_.empty()) {
+            argvStr.push_back("-s");
+            argvStr.push_back(symbolDir_);
+        }
+        argvStr.push_back(pluginName);
+        std::vector<const char*> argv;
+        argv.reserve(argvStr.size() + 1);
+        for (const auto& a : argvStr) argv.push_back(a.c_str());
+        argv.push_back(nullptr);
+        execv(volBinary_.c_str(), const_cast<char* const*>(argv.data()));
         _exit(127);  // exec failed
     }
     // parent

@@ -8,53 +8,50 @@
 namespace MemoryAnalysisSQL {
 
 // Consolidated multi-statement CREATE TABLE block. Run via sqlite3_exec().
+// Columns mirror the real Volatility3 (2.x) JSON output field names so the
+// parsers can map fields 1:1 without renaming.
 inline constexpr const char* CREATE_ALL_TABLES = R"(
     CREATE TABLE IF NOT EXISTS processes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        offset INTEGER,
+        offset INTEGER,           -- OFFSET (V)
         pid INTEGER,
+        tid INTEGER,
         ppid INTEGER,
-        comm TEXT,
+        comm TEXT,                -- COMM
         uid INTEGER,
         gid INTEGER,
-        start_time INTEGER,
-        thread_count INTEGER,
-        state TEXT,
+        euid INTEGER,
+        egid INTEGER,
+        creation_time TEXT,       -- CREATION TIME (ISO 8601)
         inserted_at INTEGER DEFAULT (strftime('%s','now'))
     );
 
     CREATE TABLE IF NOT EXISTS network_connections (
+        -- Populated from linux.sockstat (vol3 2.x has no linux.netstat).
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        offset INTEGER,
+        offset INTEGER,           -- Sock Offset
         pid INTEGER,
-        comm TEXT,
-        protocol TEXT,
-        local_addr TEXT,
-        local_port INTEGER,
-        foreign_addr TEXT,
-        foreign_port INTEGER,
-        state TEXT,
-        inserted_at INTEGER DEFAULT (strftime('%s','now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS sockets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        offset INTEGER,
-        pid INTEGER,
-        comm TEXT,
-        family TEXT,
-        type TEXT,
-        local_addr TEXT,
-        remote_addr TEXT,
-        state TEXT,
+        tid INTEGER,
+        comm TEXT,                -- Process Name
+        family TEXT,              -- Family (AF_INET, AF_UNIX, ...)
+        type TEXT,                -- Type (STREAM, DGRAM, ...)
+        proto TEXT,               -- Proto
+        local_addr TEXT,          -- Source Addr
+        local_port TEXT,          -- Source Port (string in vol3 output)
+        remote_addr TEXT,         -- Destination Addr
+        remote_port TEXT,         -- Destination Port
+        state TEXT,               -- State
+        netns INTEGER,
         inserted_at INTEGER DEFAULT (strftime('%s','now'))
     );
 
     CREATE TABLE IF NOT EXISTS bash_history (
+        -- Populated from linux.bash.
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         pid INTEGER,
-        comm TEXT,
-        command TEXT,
+        comm TEXT,                -- Process
+        command TEXT,             -- Command
+        command_time TEXT,        -- CommandTime (ISO 8601) — key for Q102/Q103
         history_index INTEGER,
         inserted_at INTEGER DEFAULT (strftime('%s','now'))
     );
@@ -67,6 +64,7 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
     );
 
     CREATE TABLE IF NOT EXISTS cmdline (
+        -- Populated from linux.psaux (vol3 2.x has no linux.cmdline).
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         pid INTEGER,
         comm TEXT,
@@ -83,8 +81,10 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
 
     CREATE INDEX IF NOT EXISTS idx_processes_pid ON processes(pid);
     CREATE INDEX IF NOT EXISTS idx_net_pid ON network_connections(pid);
-    CREATE INDEX IF NOT EXISTS idx_net_fport ON network_connections(foreign_port);
+    CREATE INDEX IF NOT EXISTS idx_net_rport ON network_connections(remote_port);
+    CREATE INDEX IF NOT EXISTS idx_net_lport ON network_connections(local_port);
     CREATE INDEX IF NOT EXISTS idx_bash_command ON bash_history(command);
+    CREATE INDEX IF NOT EXISTS idx_bash_cmdtime ON bash_history(command_time);
 )";
 
 } // namespace MemoryAnalysisSQL

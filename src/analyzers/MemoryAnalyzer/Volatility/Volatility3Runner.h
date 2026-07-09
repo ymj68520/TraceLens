@@ -17,6 +17,11 @@ public:
     // Override the vol binary path (otherwise resolved automatically).
     void setVolBinary(const std::string& path) { volBinary_ = path; }
 
+    // Extra symbol directory passed to vol3 via `-s`. vol3 needs an ISF
+    // symbol file matching the dump's kernel; without it every plugin fails
+    // with "No Linux banners found". Empty = rely on vol3's default search.
+    void setSymbolDir(const std::string& dir) { symbolDir_ = dir; }
+
     // Run one plugin. Returns captured stdout as JSON text on success.
     PluginResult run(const std::string& pluginName, int timeoutSeconds = 600);
 
@@ -26,4 +31,5 @@ public:
 private:
     std::string memPath_;
     std::string volBinary_;
+    std::string symbolDir_;
 };

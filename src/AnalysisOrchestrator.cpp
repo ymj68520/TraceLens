@@ -402,6 +402,9 @@ int AnalysisOrchestrator::runMemoryAnalysis(const CommandLineArgs& args) {
     try {
         auto analyzer = std::make_unique<MemoryAnalyzer>(args.image_path);
         analyzer->setOutputDatabasePath(memDbPath);
+        if (!args.vol_symbols_dir.empty()) {
+            analyzer->setSymbolDir(args.vol_symbols_dir);
+        }
         std::cout << "[Memory] Initializing..." << std::endl;
         if (!analyzer->initialize()) {
             std::cerr << "Error: Failed to initialize memory analyzer" << std::endl;

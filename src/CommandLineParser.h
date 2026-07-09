@@ -32,6 +32,7 @@ struct CommandLineArgs {
     bool windows_analyze = false;
     bool linux_analyze = false;
     bool memory_analyze = false;
+    std::string vol_symbols_dir;  // ISF symbol dir passed to vol3 via -s
     bool analyze_dlls = false; // 启用DLL分析
     bool analyze_dlls_only = false; // 仅DLL分析
     bool verify_signatures = true; // 验证数字签名

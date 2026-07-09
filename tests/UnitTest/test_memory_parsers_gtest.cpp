@@ -61,10 +61,11 @@ TEST(MemoryParsersTest, ParsesBashHistory) {
     EXPECT_EQ(rows.size(), 1u);
 }
 
-TEST(MemoryParsersTest, ParsesSockstatIntoSocketsAndConnections) {
+TEST(MemoryParsersTest, ParsesSockstatIntoConnections) {
     // Real linux.sockstat columns include "Process Name", "Sock Offset",
     // "Proto", "Source Addr", "Source Port" (str), "Destination Addr",
-    // "Destination Port" (str), "State". Feeds both tables.
+    // "Destination Port" (str), "State". Feeds the network_connections table
+    // (vol3 2.x has no linux.netstat).
     auto j = nlohmann::json::parse(R"([
       {"NetNS":4026531840,"Process Name":"sshd","PID":42,"TID":42,"FD":3,
        "Sock Offset":4096,"Family":"AF_INET","Type":"SOCK_STREAM","Proto":"TCP",
@@ -73,19 +74,13 @@ TEST(MemoryParsersTest, ParsesSockstatIntoSocketsAndConnections) {
     ])");
     MemoryAnalysisDatabase db(tempDbPath()); db.initialize();
     EXPECT_EQ(parseSockstat(j, db), 1u);
-    EXPECT_EQ(parseNetstat(j, db), 1u);
 
-    auto sock = db.query("SELECT comm, family, local_addr, remote_addr FROM sockets WHERE pid=42;");
-    ASSERT_EQ(sock.size(), 1u);
-    EXPECT_EQ(sock[0][0], "sshd");
-    EXPECT_EQ(sock[0][2], "0.0.0.0");
-    EXPECT_EQ(sock[0][3], "10.0.0.1");
-
-    auto conn = db.query("SELECT protocol, local_port, foreign_port FROM network_connections WHERE pid=42;");
+    auto conn = db.query("SELECT comm, proto, local_port, remote_port FROM network_connections WHERE pid=42;");
     ASSERT_EQ(conn.size(), 1u);
-    EXPECT_EQ(conn[0][0], "TCP");
-    EXPECT_EQ(conn[0][1], "22");       // port parsed from a JSON string
-    EXPECT_EQ(conn[0][2], "51000");
+    EXPECT_EQ(conn[0][0], "sshd");
+    EXPECT_EQ(conn[0][1], "TCP");
+    EXPECT_EQ(conn[0][2], "22");       // port parsed from a JSON string
+    EXPECT_EQ(conn[0][3], "51000");
 }
 
 TEST(MemoryParsersTest, ParsesBoottime) {

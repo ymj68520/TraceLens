@@ -122,11 +122,11 @@ crow::response MemoryForensicsRoutes::handle_memory_processes(const crow::reques
         // Bind the LIKE pattern as a parameter to avoid SQL injection.
         std::string pattern = "%" + search + "%";
         return jsonRows(dbPath,
-            "SELECT pid, ppid, comm, uid, state, thread_count FROM processes "
+            "SELECT pid, ppid, comm, uid, creation_time FROM processes "
             "WHERE comm LIKE ? ORDER BY pid LIMIT 1000;", {pattern});
     }
     return jsonRows(dbPath,
-        "SELECT pid, ppid, comm, uid, state, thread_count FROM processes ORDER BY pid LIMIT 1000;");
+        "SELECT pid, ppid, comm, uid, creation_time FROM processes ORDER BY pid LIMIT 1000;");
 }
 
 crow::response MemoryForensicsRoutes::handle_memory_network(const crow::request& req) {
@@ -134,7 +134,7 @@ crow::response MemoryForensicsRoutes::handle_memory_network(const crow::request&
     try { dbPath = resolveMemoryDb(req); }
     catch (const std::exception&) { return taskNotFound(); }
     return jsonRows(dbPath,
-        "SELECT pid, comm, protocol, local_addr, local_port, foreign_addr, foreign_port, state "
+        "SELECT pid, comm, proto, local_addr, local_port, remote_addr, remote_port, state "
         "FROM network_connections ORDER BY pid LIMIT 1000;");
 }
 

@@ -28,6 +28,9 @@ bool MemoryAnalyzer::initialize() {
         return false;
     }
     runner_ = std::make_unique<Volatility3Runner>(memPath_);
+    if (!symbolDir_.empty()) {
+        runner_->setSymbolDir(symbolDir_);
+    }
     if (Volatility3Runner::resolveVolBinary().empty()) {
         std::cerr << "[Memory] WARNING: volatility3 'vol' not found — analysis will be empty" << std::endl;
     }
@@ -62,26 +65,10 @@ void MemoryAnalyzer::analyzeMemoryData() {
     mark(MemoryVolatility::PSLIST);
     done(runAndStore(*runner_, *db_, MemoryVolatility::PSLIST, parseProcesses));
 
-    // linux.sockstat feeds BOTH the sockets table and the connection view
-    // (there is no linux.netstat in vol3). Run it once, parse it into both.
+    // linux.sockstat feeds the network_connections table (there is no
+    // linux.netstat in vol3 2.x).
     mark(MemoryVolatility::SOCKSTAT);
-    {
-        auto res = runner_->run(MemoryVolatility::SOCKSTAT);
-        bool ok = res.ok;
-        if (ok) {
-            try {
-                json arr = json::parse(res.jsonText);
-                parseSockstat(arr, *db_);
-                parseNetstat(arr, *db_);
-            } catch (const std::exception& e) {
-                db_->setMeta("parse_err:linux.sockstat", e.what());
-                ok = false;
-            }
-        } else {
-            db_->setMeta("err:linux.sockstat", res.stderrText);
-        }
-        done(ok);
-    }
+    done(runAndStore(*runner_, *db_, MemoryVolatility::SOCKSTAT, parseSockstat));
 
     mark(MemoryVolatility::BASH);
     done(runAndStore(*runner_, *db_, MemoryVolatility::BASH, parseBashHistory));
