@@ -8,6 +8,7 @@
 #include "../Parsers/BootTimeParser.h"
 #include <nlohmann/json.hpp>
 #include <iostream>
+#include <cctype>
 #include <fstream>
 #include <filesystem>
 #include <cstring>
@@ -113,11 +114,25 @@ void MemoryAnalyzer::analyzeMemoryData() {
         if (!banner.empty()) {
             std::cerr << "[Memory] Kernel banner: " << banner << "\n";
         }
+        // Extract the version token (e.g. "6.8.0-110-generic") for a copy-paste
+        // hint, falling back to a placeholder.
+        std::string ver = "6.8.0-110-generic";
+        {
+            // "Linux version 6.8.0-110-generic (...)"
+            auto p = banner.find("version ");
+            if (p != std::string::npos) {
+                p += 8;
+                auto e = p;
+                while (e < banner.size() && (isalnum(static_cast<unsigned char>(banner[e])) ||
+                       banner[e] == '.' || banner[e] == '-' || banner[e] == '_')) ++e;
+                if (e > p) ver = banner.substr(p, e - p);
+            }
+        }
         std::cerr << "[Memory] vol3 needs an ISF symbol file matching this kernel.\n"
-                  << "[Memory] Fix:\n"
-                  << "[Memory]   1. Build/generate the ISF (e.g. dwarf2json linux --elf <vmlinux>)\n"
-                  << "[Memory]   2. Copy the .json to a symbols dir\n"
-                  << "[Memory]   3. Re-run with:  --vol-symbols-dir <dir>\n";
+                  << "[Memory] Fix — run from the project root:\n"
+                  << "[Memory]   ./scripts/build-vol3-isf.sh " << ver << "\n"
+                  << "[Memory]   (downloads the ISF; then re-run this analyzer)\n"
+                  << "[Memory] Or pass an existing symbol dir: --vol-symbols-dir <dir>\n";
         std::cout << "[Memory] Done (no data — symbols missing) -> " << outputDbPath_ << std::endl;
         return;
     }
