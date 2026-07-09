@@ -8,7 +8,9 @@
 #include "../Parsers/BootTimeParser.h"
 #include <nlohmann/json.hpp>
 #include <iostream>
+#include <fstream>
 #include <filesystem>
+#include <cstring>
 
 using json = nlohmann::json;
 
@@ -51,6 +53,26 @@ static bool runAndStore(Volatility3Runner& r, MemoryAnalysisDatabase& db, const 
     return true;
 }
 
+// Scan the first chunk of a memory image for a Linux banner of the form
+// "Linux version X.Y.Z-...". vol3 needs an ISF matching this exact version.
+static std::string detectKernelVersion(const std::string& memPath) {
+    std::ifstream f(memPath, std::ios::binary);
+    if (!f) return "";
+    // The banner lives in the first ~64MB on most kernels.
+    std::string buf;
+    buf.resize(64 * 1024 * 1024);
+    f.read(&buf[0], buf.size());
+    std::streamsize n = f.gcount();
+    buf.resize(n);
+    const std::string needle = "Linux version ";
+    auto pos = buf.find(needle);
+    if (pos == std::string::npos) return "";
+    // Read until newline / end of printable.
+    auto end = pos + needle.size();
+    while (end < buf.size() && buf[end] != '\n' && buf[end] != '\0') ++end;
+    return buf.substr(pos, end - pos);
+}
+
 void MemoryAnalyzer::analyzeMemoryData() {
     std::cout << "[Memory] Analyzing: " << memPath_ << std::endl;
     db_->setMeta("source_image", memPath_);
@@ -62,8 +84,43 @@ void MemoryAnalyzer::analyzeMemoryData() {
         std::cout << (ok ? " ok" : " FAIL") << std::endl;
     };
 
+    // Run pslist first; if it fails with a symbol-table error, every other
+    // plugin will too — so detect that case once and print actionable guidance
+    // (the kernel version + how to supply symbols) rather than letting all 5
+    // plugins fail silently.
+    bool symbolsOk = true;
     mark(MemoryVolatility::PSLIST);
-    done(runAndStore(*runner_, *db_, MemoryVolatility::PSLIST, parseProcesses));
+    {
+        auto res = runner_->run(MemoryVolatility::PSLIST);
+        bool ok = false;
+        if (res.ok) {
+            try { json arr = json::parse(res.jsonText); ok = parseProcesses(arr, *db_) > 0 || arr.empty(); }
+            catch (const std::exception& e) { db_->setMeta("parse_err:linux.pslist", e.what()); }
+        } else {
+            db_->setMeta("err:linux.pslist", res.stderrText);
+            if (res.stderrText.find("banner") != std::string::npos ||
+                res.stderrText.find("symbol table requirement") != std::string::npos ||
+                res.stderrText.find("Unsatisfied requirement") != std::string::npos) {
+                symbolsOk = false;
+            }
+        }
+        done(ok);
+    }
+
+    if (!symbolsOk) {
+        std::string banner = detectKernelVersion(memPath_);
+        std::cerr << "\n[Memory] ERROR: Volatility3 could not match kernel symbols.\n";
+        if (!banner.empty()) {
+            std::cerr << "[Memory] Kernel banner: " << banner << "\n";
+        }
+        std::cerr << "[Memory] vol3 needs an ISF symbol file matching this kernel.\n"
+                  << "[Memory] Fix:\n"
+                  << "[Memory]   1. Build/generate the ISF (e.g. dwarf2json linux --elf <vmlinux>)\n"
+                  << "[Memory]   2. Copy the .json to a symbols dir\n"
+                  << "[Memory]   3. Re-run with:  --vol-symbols-dir <dir>\n";
+        std::cout << "[Memory] Done (no data — symbols missing) -> " << outputDbPath_ << std::endl;
+        return;
+    }
 
     // linux.sockstat feeds the network_connections table (there is no
     // linux.netstat in vol3 2.x).
