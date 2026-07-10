@@ -423,6 +423,7 @@ set(LIB_SOURCES
     src/analyzers/MemoryAnalyzer/Parsers/NetworkParser.cpp
     src/analyzers/MemoryAnalyzer/Parsers/BashHistoryParser.cpp
     src/analyzers/MemoryAnalyzer/Parsers/BootTimeParser.cpp
+    src/analyzers/MemoryAnalyzer/Parsers/WindowsParsers.cpp
     src/analyzers/MemoryAnalyzer/Database/MemoryAnalysisDatabase.cpp
     src/core/AuditLog/AuditLog.cpp
     src/core/AuditLog/AuditLog_Queries.cpp

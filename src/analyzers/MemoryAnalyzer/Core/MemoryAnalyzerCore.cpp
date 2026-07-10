@@ -6,6 +6,7 @@
 #include "../Parsers/NetworkParser.h"
 #include "../Parsers/BashHistoryParser.h"
 #include "../Parsers/BootTimeParser.h"
+#include "../Parsers/WindowsParsers.h"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <fstream>
@@ -38,6 +39,13 @@ bool MemoryAnalyzer::initialize() {
     if (Volatility3Runner::resolveVolBinary().empty()) {
         std::cerr << "[Memory] WARNING: volatility3 'vol' not found — analysis will be empty" << std::endl;
     }
+    imageType_ = detectImageType(memPath_);
+    const char* typeName =
+        imageType_ == MemImageType::LINUX_LIME ? "Linux (LiME)" :
+        imageType_ == MemImageType::WINDOWS_DUMP ? "Windows (kernel/full dump)" :
+        "unknown (will try Linux plugins)";
+    std::cout << "[Memory] Image type: " << typeName << std::endl;
+    db_->setMeta("image_type", typeName);
     return true;
 }
 
@@ -160,6 +168,22 @@ static bool autoFetchSymbols(const std::string& version) {
     return ok;
 }
 
+MemImageType MemoryAnalyzer::detectImageType(const std::string& memPath) {
+    std::ifstream f(memPath, std::ios::binary);
+    if (!f) return MemImageType::UNKNOWN;
+    char magic[8] = {0};
+    f.read(magic, 8);
+    // LiME little-endian magic = "EMiL" (0x45 0x4D 0x69 0x4C).
+    if (magic[0] == 'E' && magic[1] == 'M' && magic[2] == 'i' && magic[3] == 'L') {
+        return MemImageType::LINUX_LIME;
+    }
+    // Windows kernel/full dump magic = "PAGEDU64".
+    if (std::string(magic, 8) == "PAGEDU64") {
+        return MemImageType::WINDOWS_DUMP;
+    }
+    return MemImageType::UNKNOWN;
+}
+
 void MemoryAnalyzer::analyzeMemoryData() {
     std::cout << "[Memory] Analyzing: " << memPath_ << std::endl;
     db_->setMeta("source_image", memPath_);
@@ -171,27 +195,37 @@ void MemoryAnalyzer::analyzeMemoryData() {
         std::cout << (ok ? " ok" : " FAIL") << std::endl;
     };
 
-    // Run pslist first; if it fails with a symbol-table error, every other
-    // plugin will too — so detect that case once and print actionable guidance
-    // (the kernel version + how to supply symbols) rather than letting all 5
-    // plugins fail silently.
+    // Pick the pslist plugin + parser per image type. Windows uses its own
+    // parser and does not need ISF symbols (vol3 auto-downloads PDBs); Linux
+    // needs an ISF and may trigger the auto-fetch path below.
+    using ParseFn = size_t(*)(const json&, MemoryAnalysisDatabase&);
+    const char* pslistPlugin = MemoryVolatility::LINUX_PSLIST;
+    ParseFn pslistParser = parseProcesses;
+    bool isWindows = (imageType_ == MemImageType::WINDOWS_DUMP);
+    if (isWindows) {
+        pslistPlugin = MemoryVolatility::WIN_PSLIST;
+        pslistParser = WindowsParsers::parseProcessList;
+    }
+
+    // Run pslist first; for Linux, if it fails with a symbol-table error,
+    // every other plugin will too — so detect that case once and auto-fetch
+    // the ISF, then retry. Windows has no such requirement.
     bool symbolsOk = true;
-    mark(MemoryVolatility::PSLIST);
+    mark(pslistPlugin);
     {
-        auto res = runner_->run(MemoryVolatility::PSLIST);
+        auto res = runner_->run(pslistPlugin);
         bool ok = false;
         if (res.ok) {
-            try { json arr = json::parse(res.jsonText); ok = parseProcesses(arr, *db_) > 0 || arr.empty(); }
-            catch (const std::exception& e) { db_->setMeta("parse_err:linux.pslist", e.what()); }
+            try { json arr = json::parse(res.jsonText); ok = pslistParser(arr, *db_) > 0 || arr.empty(); }
+            catch (const std::exception& e) { db_->setMeta(std::string("parse_err:") + pslistPlugin, e.what()); }
         } else {
-            db_->setMeta("err:linux.pslist", res.stderrText);
-            // Detect vol3 symbol/requirement failures. vol3 emits several
-            // phrasings depending on version; match them all. The most reliable
-            // is "Unable to validate the plugin requirements" (always present).
-            if (res.stderrText.find("banner") != std::string::npos ||
-                res.stderrText.find("symbol table requirement") != std::string::npos ||
-                res.stderrText.find("Unsatisfied requirement") != std::string::npos ||
-                res.stderrText.find("Unable to validate the plugin requirements") != std::string::npos) {
+            db_->setMeta(std::string("err:") + pslistPlugin, res.stderrText);
+            // Detect vol3 symbol/requirement failures (Linux only).
+            if (!isWindows &&
+                (res.stderrText.find("banner") != std::string::npos ||
+                 res.stderrText.find("symbol table requirement") != std::string::npos ||
+                 res.stderrText.find("Unsatisfied requirement") != std::string::npos ||
+                 res.stderrText.find("Unable to validate the plugin requirements") != std::string::npos)) {
                 symbolsOk = false;
             }
         }
@@ -201,8 +235,7 @@ void MemoryAnalyzer::analyzeMemoryData() {
     if (!symbolsOk) {
         // vol3 couldn't match symbols. Auto-resolve: detect the kernel version
         // from the image, fetch the ISF via build-vol3-isf.sh, point the runner
-        // at the symbol dir, and retry pslist once. Only retry once to avoid
-        // loops.
+        // at the symbol dir, and retry pslist once. Only retry once.
         std::string banner;
         std::string ver = detectKernelVersion(memPath_, &banner);
         std::cerr << "\n[Memory] vol3 could not match kernel symbols.\n";
@@ -212,20 +245,19 @@ void MemoryAnalyzer::analyzeMemoryData() {
         if (!ver.empty()) {
             std::cerr << "[Memory] Detected kernel: " << ver << "\n";
             if (autoFetchSymbols(ver)) {
-                // Point the runner at the freshly-installed symbol dir and retry.
                 std::string symDir = defaultSymbolDir();
                 if (!symDir.empty()) runner_->setSymbolDir(symDir);
-                std::cout << "[Memory] Retrying linux.pslist with new symbols ...\n";
-                mark(MemoryVolatility::PSLIST);
+                std::cout << "[Memory] Retrying " << pslistPlugin << " with new symbols ...\n";
+                mark(pslistPlugin);
                 {
-                    auto res = runner_->run(MemoryVolatility::PSLIST);
+                    auto res = runner_->run(pslistPlugin);
                     bool ok = false;
                     if (res.ok) {
                         try { json arr = json::parse(res.jsonText);
-                              ok = parseProcesses(arr, *db_) > 0 || arr.empty(); }
-                        catch (const std::exception& e) { db_->setMeta("parse_err:linux.pslist", e.what()); }
+                              ok = pslistParser(arr, *db_) > 0 || arr.empty(); }
+                        catch (const std::exception& e) { db_->setMeta(std::string("parse_err:") + pslistPlugin, e.what()); }
                     } else {
-                        db_->setMeta("err:linux.pslist", res.stderrText);
+                        db_->setMeta(std::string("err:") + pslistPlugin, res.stderrText);
                     }
                     done(ok);
                     recovered = ok;
@@ -244,31 +276,44 @@ void MemoryAnalyzer::analyzeMemoryData() {
         std::cout << "[Memory] Symbols recovered; continuing with remaining plugins.\n";
     }
 
-    // linux.sockstat feeds the network_connections table (there is no
-    // linux.netstat in vol3 2.x).
-    mark(MemoryVolatility::SOCKSTAT);
-    done(runAndStore(*runner_, *db_, MemoryVolatility::SOCKSTAT, parseSockstat));
+    if (isWindows) {
+        // ---- Windows plugins ----
+        mark(MemoryVolatility::WIN_CMDLINE);
+        done(runAndStore(*runner_, *db_, MemoryVolatility::WIN_CMDLINE, WindowsParsers::parseCmdline));
 
-    mark(MemoryVolatility::BASH);
-    done(runAndStore(*runner_, *db_, MemoryVolatility::BASH, parseBashHistory));
+        mark(MemoryVolatility::WIN_NETSTAT);
+        done(runAndStore(*runner_, *db_, MemoryVolatility::WIN_NETSTAT, WindowsParsers::parseNetstat));
 
-    mark(MemoryVolatility::BOOTTIME);
-    {   // boottime returns no rows-count; small inline handler
-        auto res = runner_->run(MemoryVolatility::BOOTTIME);
-        bool ok = res.ok;
-        if (ok) {
-            try { json a = json::parse(res.jsonText); parseBootTime(a, *db_); }
-            catch (const std::exception& e) { db_->setMeta("parse_err:linux.boottime", e.what()); ok = false; }
-        } else {
-            db_->setMeta("err:linux.boottime", res.stderrText);
+        mark(MemoryVolatility::WIN_HIVELIST);
+        done(runAndStore(*runner_, *db_, MemoryVolatility::WIN_HIVELIST, WindowsParsers::parseHivelist));
+    } else {
+        // ---- Linux plugins ----
+        // linux.sockstat feeds the network_connections table (there is no
+        // linux.netstat in vol3 2.x).
+        mark(MemoryVolatility::LINUX_SOCKSTAT);
+        done(runAndStore(*runner_, *db_, MemoryVolatility::LINUX_SOCKSTAT, parseSockstat));
+
+        mark(MemoryVolatility::LINUX_BASH);
+        done(runAndStore(*runner_, *db_, MemoryVolatility::LINUX_BASH, parseBashHistory));
+
+        mark(MemoryVolatility::LINUX_BOOTTIME);
+        {   // boottime returns no rows-count; small inline handler
+            auto res = runner_->run(MemoryVolatility::LINUX_BOOTTIME);
+            bool ok = res.ok;
+            if (ok) {
+                try { json a = json::parse(res.jsonText); parseBootTime(a, *db_); }
+                catch (const std::exception& e) { db_->setMeta("parse_err:linux.boottime", e.what()); ok = false; }
+            } else {
+                db_->setMeta("err:linux.boottime", res.stderrText);
+            }
+            done(ok);
         }
-        done(ok);
-    }
 
-    // Per-process command lines come from linux.psaux (there is no
-    // linux.cmdline plugin in vol3).
-    mark(MemoryVolatility::PSAUX);
-    done(runAndStore(*runner_, *db_, MemoryVolatility::PSAUX, parseCmdline));
+        // Per-process command lines come from linux.psaux (there is no
+        // linux.cmdline plugin in vol3).
+        mark(MemoryVolatility::LINUX_PSAUX);
+        done(runAndStore(*runner_, *db_, MemoryVolatility::LINUX_PSAUX, parseCmdline));
+    }
 
     std::cout << "[Memory] Done -> " << outputDbPath_ << std::endl;
 }
