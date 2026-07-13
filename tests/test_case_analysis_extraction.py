@@ -1,144 +1,195 @@
 #!/usr/bin/env python3
-"""
-Test script for case analysis file extraction integration.
-
-This script verifies that the file extraction step is properly
-integrated into the case analysis pipeline.
-"""
+"""AST smoke tests for case-analysis extraction and cross-image wiring."""
 
 import ast
 import sys
 from pathlib import Path
+from typing import Iterable
 
 
-def test_case_analysis_service():
-    """Test CaseAnalysisService has extraction methods."""
-    print("Testing CaseAnalysisService...")
-
-    service_path = Path(__file__).parent.parent / "python_service/httpserver/services/case_analysis_service.py"
-    with open(service_path) as f:
-        source = f.read()
-
-    tree = ast.parse(source)
-
-    # Find the CaseAnalysisService class
-    case_class = None
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and node.name == "CaseAnalysisService":
-            case_class = node
-            break
-
-    assert case_class is not None, "CaseAnalysisService class not found"
-    print("✓ CaseAnalysisService class exists")
-
-    # Check for extract_filtered_files method
-    methods = [node.name for node in case_class.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
-    assert 'extract_filtered_files' in methods, "extract_filtered_files method not found"
-    print("✓ extract_filtered_files method exists")
-
-    # Check for set_cpp_backend method
-    assert 'set_cpp_backend' in methods, "set_cpp_backend method not found"
-    print("✓ set_cpp_backend method exists")
-
-    # Check for _cpp_backend attribute in __init__
-    init_found = False
-    for node in case_class.body:
-        if isinstance(node, ast.FunctionDef) and node.name == "__init__":
-            init_found = True
-            # Check if self._cpp_backend = None exists
-            source_lines = source.split('\n')
-            for child in ast.walk(node):
-                if isinstance(child, ast.Assign):
-                    for target in child.targets:
-                        if isinstance(target, ast.Attribute) and target.attr == "_cpp_backend":
-                            print("✓ _cpp_backend attribute initialized in __init__")
-                            break
-
-    assert init_found, "__init__ method not found"
-
-    print("\n✅ CaseAnalysisService tests passed!")
-    return True
+ROOT = Path(__file__).resolve().parents[1]
+CASE_SERVICE_DIR = ROOT / "python_service/httpserver/services/case_analysis"
+CASE_PARTS_DIR = CASE_SERVICE_DIR / "case_analysis_parts"
+ROUTES_DIR = ROOT / "python_service/httpserver/routes"
 
 
-def test_cpp_backend_service():
-    """Test CppBackendService has extraction methods."""
-    print("\nTesting CppBackendService...")
-
-    service_path = Path(__file__).parent.parent / "python_service/httpserver/services/cpp_backend.py"
-    with open(service_path) as f:
-        source = f.read()
-
-    tree = ast.parse(source)
-
-    # Find the CppBackendService class
-    cpp_class = None
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and node.name == "CppBackendService":
-            cpp_class = node
-            break
-
-    assert cpp_class is not None, "CppBackendService class not found"
-    print("✓ CppBackendService class exists")
-
-    # Check for new methods
-    methods = [node.name for node in cpp_class.body if isinstance(node, ast.AsyncFunctionDef)]
-    assert 'extract_files' in methods, "extract_files method not found"
-    print("✓ extract_files async method exists")
-
-    assert 'get_extraction_status' in methods, "get_extraction_status method not found"
-    print("✓ get_extraction_status async method exists")
-
-    print("\n✅ CppBackendService tests passed!")
-    return True
+def _parse(path: Path) -> ast.Module:
+    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
-def test_case_analysis_route():
-    """Test case_analysis.py route injects cpp_backend."""
-    print("\nTesting case_analysis route...")
-
-    route_path = Path(__file__).parent.parent / "python_service/httpserver/routes/case_analysis.py"
-    with open(route_path) as f:
-        source = f.read()
-
-    # Check if set_cpp_backend is called
-    assert 'set_cpp_backend' in source, "set_cpp_backend not called in route"
-    print("✓ set_cpp_backend is called in route")
-
-    # Check if service_manager.cpp_backend is accessed
-    assert 'service_manager.cpp_backend' in source, "service_manager.cpp_backend not accessed"
-    print("✓ service_manager.cpp_backend is accessed")
-
-    print("\n✅ case_analysis route tests passed!")
-    return True
+def _class(tree: ast.AST, name: str) -> ast.ClassDef:
+    node = next(
+        (item for item in ast.walk(tree) if isinstance(item, ast.ClassDef) and item.name == name),
+        None,
+    )
+    assert node is not None, f"{name} class not found"
+    return node
 
 
-def main():
-    """Run all tests."""
+def _function(nodes: Iterable[ast.AST], name: str) -> ast.AST:
+    node = next(
+        (
+            item
+            for item in nodes
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == name
+        ),
+        None,
+    )
+    assert node is not None, f"{name} method/function not found"
+    return node
+
+
+def _calls_attribute(node: ast.AST, attribute: str) -> bool:
+    return any(
+        isinstance(item, ast.Call)
+        and isinstance(item.func, ast.Attribute)
+        and item.func.attr == attribute
+        for item in ast.walk(node)
+    )
+
+
+def _has_route(node: ast.AST, method: str, path: str) -> bool:
+    for item in ast.walk(node):
+        if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for decorator in item.decorator_list:
+            if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+                continue
+            if decorator.func.attr != method or not decorator.args:
+                continue
+            first_arg = decorator.args[0]
+            if isinstance(first_arg, ast.Constant) and first_arg.value == path:
+                return True
+    return False
+
+
+def test_case_analysis_service_composes_refactored_mixins():
+    tree = _parse(CASE_SERVICE_DIR / "case_analysis_service.py")
+    service_class = _class(tree, "CaseAnalysisService")
+
+    bases = {base.id for base in service_class.bases if isinstance(base, ast.Name)}
+    assert bases == {
+        "CaseAnalysisCoreMixin",
+        "CaseAnalysisWindowsMixin",
+        "CaseAnalysisPipelinesMixin",
+    }
+
+    init = _function(service_class.body, "__init__")
+    initialized_attributes = {
+        target.attr
+        for item in ast.walk(init)
+        if isinstance(item, ast.Assign)
+        for target in item.targets
+        if isinstance(target, ast.Attribute)
+        and isinstance(target.value, ast.Name)
+        and target.value.id == "self"
+    }
+    assert "_cpp_backend" in initialized_attributes
+
+
+def test_extraction_is_owned_by_windows_mixin():
+    tree = _parse(CASE_PARTS_DIR / "_windows.py")
+    mixin = _class(tree, "CaseAnalysisWindowsMixin")
+    extraction = _function(mixin.body, "extract_filtered_files")
+
+    assert isinstance(extraction, ast.AsyncFunctionDef)
+    assert _calls_attribute(extraction, "extract_files")
+    assert _calls_attribute(extraction, "get_extraction_status")
+
+
+def test_core_mixin_owns_dependency_and_report_operations():
+    tree = _parse(CASE_PARTS_DIR / "_core.py")
+    mixin = _class(tree, "CaseAnalysisCoreMixin")
+
+    set_backend = _function(mixin.body, "set_cpp_backend")
+    descriptions = _function(mixin.body, "generate_file_descriptions")
+    report = _function(mixin.body, "generate_case_report")
+    cross_report = _function(mixin.body, "get_cross_image_report")
+
+    assert any(
+        isinstance(item, ast.Assign)
+        and any(isinstance(target, ast.Attribute) and target.attr == "_cpp_backend" for target in item.targets)
+        for item in ast.walk(set_backend)
+    )
+    assert isinstance(descriptions, ast.AsyncFunctionDef)
+    assert isinstance(report, ast.AsyncFunctionDef)
+    assert _calls_attribute(report, "generate_final_report")
+    assert _calls_attribute(cross_report, "get_cross_image_report")
+
+
+def test_pipeline_mixin_owns_single_and_cross_image_orchestration():
+    tree = _parse(CASE_PARTS_DIR / "_pipelines.py")
+    mixin = _class(tree, "CaseAnalysisPipelinesMixin")
+
+    full_analysis = _function(mixin.body, "run_full_analysis")
+    multi_analysis = _function(mixin.body, "run_multi_image_analysis")
+
+    assert isinstance(full_analysis, ast.AsyncFunctionDef)
+    assert _calls_attribute(full_analysis, "extract_filtered_files")
+    assert isinstance(multi_analysis, ast.AsyncFunctionDef)
+    assert _calls_attribute(multi_analysis, "filter_files_multi")
+    assert _calls_attribute(multi_analysis, "run_full_analysis")
+    assert _calls_attribute(multi_analysis, "generate_case_report")
+    assert any(
+        isinstance(item, ast.keyword)
+        and item.arg == "is_cross_image_report"
+        and isinstance(item.value, ast.Constant)
+        and item.value.value is True
+        for item in ast.walk(multi_analysis)
+    )
+
+
+def test_cpp_backend_service_exposes_extraction_api():
+    tree = _parse(ROOT / "python_service/httpserver/services/cpp_backend.py")
+    service_class = _class(tree, "CppBackendService")
+
+    assert isinstance(_function(service_class.body, "extract_files"), ast.AsyncFunctionDef)
+    assert isinstance(_function(service_class.body, "get_extraction_status"), ast.AsyncFunctionDef)
+
+
+def test_refactored_routes_expose_cross_image_entry_points():
+    aggregator = _parse(ROUTES_DIR / "case_analysis.py")
+    included_modules = {
+        arg.id
+        for item in ast.walk(aggregator)
+        if isinstance(item, ast.Call)
+        and isinstance(item.func, ast.Attribute)
+        and item.func.attr == "include_router"
+        and item.args
+        for arg in [item.args[0].value]
+        if isinstance(item.args[0], ast.Attribute)
+        and item.args[0].attr == "router"
+        and isinstance(arg, ast.Name)
+    }
+    assert {"_case", "_windows"}.issubset(included_modules)
+
+    case_routes = _parse(ROUTES_DIR / "case_analysis_endpoints/_case.py")
+    assert _has_route(case_routes, "get", "/case-report-by-case/{case_id}")
+    cross_report_route = _function(case_routes.body, "get_case_report_by_case")
+    assert _calls_attribute(cross_report_route, "get_cross_image_report")
+
+    multi_routes = _parse(ROUTES_DIR / "multi_analysis.py")
+    assert _has_route(multi_routes, "post", "/api/llm/multi-image-analysis")
+    start_route = _function(multi_routes.body, "start_multi_image_analysis")
+    assert _calls_attribute(start_route, "run_multi_image_analysis")
+
+
+def main() -> int:
+    tests = [
+        value
+        for name, value in sorted(globals().items())
+        if name.startswith("test_") and callable(value)
+    ]
     try:
-        test_case_analysis_service()
-        test_cpp_backend_service()
-        test_case_analysis_route()
+        for test in tests:
+            test()
+            print(f"PASS {test.__name__}")
+    except Exception as exc:
+        print(f"FAIL {test.__name__}: {exc}")
+        return 1
 
-        print("\n" + "="*60)
-        print("🎉 ALL TESTS PASSED!")
-        print("="*60)
-        print("\nImplementation Summary:")
-        print("1. ✓ CppBackendService.extract_files() - Extract files from disk image")
-        print("2. ✓ CppBackendService.get_extraction_status() - Poll extraction progress")
-        print("3. ✓ CaseAnalysisService.extract_filtered_files() - Orchestrate extraction")
-        print("4. ✓ CaseAnalysisService.set_cpp_backend() - Dependency injection")
-        print("5. ✓ CaseAnalysisService.run_full_analysis() - Updated with extraction step")
-        print("6. ✓ CaseAnalysisService.generate_file_descriptions() - Accepts extraction_dir")
-        print("7. ✓ case_analysis.py route - Injects cpp_backend dependency")
-        return 0
-    except AssertionError as e:
-        print(f"\n❌ Test failed: {e}")
-        return 1
-    except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
-        return 1
+    print(f"All {len(tests)} structural smoke tests passed.")
+    return 0
 
 
 if __name__ == "__main__":
