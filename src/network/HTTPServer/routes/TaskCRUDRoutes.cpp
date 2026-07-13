@@ -187,6 +187,12 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         // Filter profile option
         std::string filter_profile = body.value("filter_profile", "");
 
+        // Decryption options. Accept the legacy key_dir spelling, but store and
+        // expose the canonical key_file_dir field.
+        bool enable_decryption = body.value("enable_decryption", false);
+        std::string key_file_dir = body.value("key_file_dir", body.value("key_dir", ""));
+        std::string decrypt_password = body.value("decrypt_password", "");
+
         // ATOMIC TASK CREATION: All options in one go to prevent lock contention and redundant disk I/O
         std::string task_id = task_manager_.create_task(
             image_path,
@@ -199,7 +205,10 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             llm_analyze,
             llm_mode,
             case_description,
-            filter_profile
+            filter_profile,
+            enable_decryption,
+            key_file_dir,
+            decrypt_password
         );
 
         // Check if task can start immediately

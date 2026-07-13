@@ -313,6 +313,20 @@ fi
 if [ ! -x "$VENV_DIR/bin/vol" ]; then
     warn "volatility3 not found in $VENV_DIR — memory forensics (--memory-analyze) will be unavailable."
 else
+    # Install the project-vendored BitLocker FVEK scanner into this venv only.
+    # The source remains under resources/ so recreating the venv is reproducible.
+    VOLATILITY_PLUGIN_SRC="$PROJECT_ROOT/resources/volatility3-plugins/windows/bitlocker_fvek_scan.py"
+    VOLATILITY_PLUGIN_DIR="$($PYTHON_EXEC -c 'from pathlib import Path; import volatility3; print(Path(volatility3.__file__).resolve().parent / "plugins" / "windows")' 2>/dev/null || true)"
+    if [ -f "$VOLATILITY_PLUGIN_SRC" ] && [ -n "$VOLATILITY_PLUGIN_DIR" ] && [ -d "$VOLATILITY_PLUGIN_DIR" ]; then
+        if install -m 0644 "$VOLATILITY_PLUGIN_SRC" "$VOLATILITY_PLUGIN_DIR/bitlocker_fvek_scan.py"; then
+            ok "Volatility3 BitLocker FVEK scanner installed in project venv"
+        else
+            warn "Could not install BitLocker FVEK scanner into $VOLATILITY_PLUGIN_DIR"
+        fi
+    else
+        warn "BitLocker FVEK scanner source or Volatility3 plugin directory not found"
+    fi
+
     # vol3 needs a kernel-matching ISF to parse a LiME dump. Symbols are NOT
     # shipped (kernel-specific, fetched on demand). Just point users at the
     # fetch script; the analyzer also prints this hint on symbol-mismatch.

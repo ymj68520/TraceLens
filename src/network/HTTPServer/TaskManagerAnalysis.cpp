@@ -123,6 +123,13 @@ void TaskManager::start_analysis(const std::string& task_id) {
             auto analyzer = std::make_unique<ImageAnalyzer>(imagePath);
             analyzer->setXFSMode(task.xfs_mode);
             analyzer->setCancellationCallback([this, task_id]() { return is_task_cancelled(task_id); });
+            if (task.enable_decryption) {
+                analyzer->setEnableDecryption(true);
+                if (!task.key_file_dir.empty()) analyzer->setKeyFileDir(task.key_file_dir);
+                if (!task.decrypt_password.empty()) analyzer->setDecryptPassword(task.decrypt_password);
+            }
+            task.decrypt_password.clear();
+            clear_decryption_password(task_id);
 
             if (!analyzer->analyze()) {
                 update_status(task_id, TaskStatus::FAILED, "Failed to analyze image");

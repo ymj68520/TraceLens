@@ -144,6 +144,11 @@ struct AnalysisTask {
     // File filter options
     std::string filter_profile;         // Filter profile name (e.g., "telecom_fraud")
 
+    // Decryption options (encrypted partitions are auto-detected & unlocked)
+    bool enable_decryption = false;     // Auto-decrypt encrypted partitions
+    std::string key_file_dir;           // Override dir for sibling .key files
+    std::string decrypt_password;       // Explicit password (bypasses .key lookup)
+
     // Make it copyable and movable by handling the atomic properly
     AnalysisTask() = default;
     AnalysisTask(const AnalysisTask& other)
@@ -163,7 +168,10 @@ struct AnalysisTask {
           output_descriptions_db(other.output_descriptions_db),
           case_description(other.case_description),
           graphiti_job_id(other.graphiti_job_id),
-          filter_profile(other.filter_profile) {}
+          filter_profile(other.filter_profile),
+          enable_decryption(other.enable_decryption),
+          key_file_dir(other.key_file_dir),
+          decrypt_password(other.decrypt_password) {}
 
     AnalysisTask& operator=(const AnalysisTask& other) {
         if (this != &other) {
@@ -196,6 +204,9 @@ struct AnalysisTask {
             case_description = other.case_description;
             graphiti_job_id = other.graphiti_job_id;
             filter_profile = other.filter_profile;
+            enable_decryption = other.enable_decryption;
+            key_file_dir = other.key_file_dir;
+            decrypt_password = other.decrypt_password;
         }
         return *this;
     }
@@ -219,7 +230,10 @@ struct AnalysisTask {
           output_descriptions_db(std::move(other.output_descriptions_db)),
           case_description(std::move(other.case_description)),
           graphiti_job_id(std::move(other.graphiti_job_id)),
-          filter_profile(std::move(other.filter_profile)) {}
+          filter_profile(std::move(other.filter_profile)),
+          enable_decryption(other.enable_decryption),
+          key_file_dir(std::move(other.key_file_dir)),
+          decrypt_password(std::move(other.decrypt_password)) {}
 
     AnalysisTask& operator=(AnalysisTask&& other) noexcept {
         if (this != &other) {
@@ -252,6 +266,9 @@ struct AnalysisTask {
             case_description = std::move(other.case_description);
             graphiti_job_id = std::move(other.graphiti_job_id);
             filter_profile = std::move(other.filter_profile);
+            enable_decryption = other.enable_decryption;
+            key_file_dir = std::move(other.key_file_dir);
+            decrypt_password = std::move(other.decrypt_password);
         }
         return *this;
     }

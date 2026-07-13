@@ -83,7 +83,10 @@ std::string TaskManager::create_task(const std::string& path,
                                    bool llm_analyze,
                                    const std::string& llm_mode,
                                    const std::string& case_description,
-                                   const std::string& filter_profile) {
+                                   const std::string& filter_profile,
+                                   bool enable_decryption,
+                                   const std::string& key_file_dir,
+                                   const std::string& decrypt_password) {
     std::lock_guard<std::mutex> lock(mtx_);
     boost::uuids::uuid uuid = boost::uuids::random_generator()();
     std::string id = boost::uuids::to_string(uuid);
@@ -114,6 +117,9 @@ std::string TaskManager::create_task(const std::string& path,
     new_task.llm_mode = llm_mode;
     new_task.case_description = case_description;
     new_task.filter_profile = filter_profile;
+    new_task.enable_decryption = enable_decryption;
+    new_task.key_file_dir = key_file_dir;
+    new_task.decrypt_password = decrypt_password;
     new_task.cancellation_requested = false;
     new_task.error_details = "";
     new_task.metadata = metadata;
@@ -148,6 +154,7 @@ void TaskManager::update_status(const std::string& id, TaskStatus status, const 
             tasks_[id].execution_start_time = now_steady;
         } else if (status == TaskStatus::COMPLETED || status == TaskStatus::FAILED || status == TaskStatus::CANCELLED) {
             tasks_[id].completed_time = now_system;
+            tasks_[id].decrypt_password.clear();
         }
 
         add_audit_log(id, "STATUS_CHANGE", "Status changed to " + std::to_string(static_cast<int>(status)));
@@ -203,6 +210,14 @@ void TaskManager::set_llm_analyze_options(const std::string& id, bool llm_analyz
         tasks_[id].llm_mode = llm_mode;
         add_audit_log(id, "LLM_CONFIG", "LLM analysis: " + std::string(llm_analyze ? "enabled" : "disabled") + ", mode: " + llm_mode);
         save_tasks_internal(); // Persist immediately
+    }
+}
+
+void TaskManager::clear_decryption_password(const std::string& id) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = tasks_.find(id);
+    if (it != tasks_.end()) {
+        it->second.decrypt_password.clear();
     }
 }
 

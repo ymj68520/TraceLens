@@ -231,6 +231,86 @@ TEST(AnalysisTaskTest, MultipleScenariosIncludesAndroid) {
     EXPECT_TRUE(task.get_android_analyze());
 }
 
+TEST(AnalysisTaskTest, SerializationPersistsSafeDecryptionConfigurationOnly) {
+    AnalysisTask task;
+    task.id = "decrypt-serialize";
+    task.enable_decryption = true;
+    task.key_file_dir = "/evidence/keys";
+    task.decrypt_password = "never-persist-this";
+
+    nlohmann::json j;
+    to_json(j, task);
+
+    EXPECT_TRUE(j.at("enable_decryption").get<bool>());
+    EXPECT_EQ(j.at("key_file_dir").get<std::string>(), "/evidence/keys");
+    EXPECT_FALSE(j.contains("decrypt_password"));
+}
+
+TEST(AnalysisTaskTest, DeserializationRestoresSafeDecryptionConfigurationAndClearsPassword) {
+    AnalysisTask source;
+    source.id = "decrypt-round-trip";
+    source.image_path = "/test/image.dd";
+    source.status = TaskStatus::PENDING;
+    source.priority = TaskPriority::NORMAL;
+    source.progress = {TaskPhase::INITIALIZING, 0, 0, "", {}, {}};
+    source.enable_decryption = true;
+    source.key_file_dir = "/evidence/keys";
+    source.decrypt_password = "runtime-secret";
+
+    nlohmann::json j;
+    to_json(j, source);
+    j["decrypt_password"] = "legacy-persisted-secret";
+
+    AnalysisTask restored;
+    restored.decrypt_password = "stale-secret";
+    from_json(j, restored);
+
+    EXPECT_TRUE(restored.enable_decryption);
+    EXPECT_EQ(restored.key_file_dir, "/evidence/keys");
+    EXPECT_TRUE(restored.decrypt_password.empty());
+}
+
+TEST(AnalysisTaskTest, CopyPreservesDecryptionConfiguration) {
+    AnalysisTask original;
+    original.enable_decryption = true;
+    original.key_file_dir = "/copy/keys";
+    original.decrypt_password = "copy-secret";
+
+    AnalysisTask constructed(original);
+    EXPECT_TRUE(constructed.enable_decryption);
+    EXPECT_EQ(constructed.key_file_dir, "/copy/keys");
+    EXPECT_EQ(constructed.decrypt_password, "copy-secret");
+
+    AnalysisTask assigned;
+    assigned = original;
+    EXPECT_TRUE(assigned.enable_decryption);
+    EXPECT_EQ(assigned.key_file_dir, "/copy/keys");
+    EXPECT_EQ(assigned.decrypt_password, "copy-secret");
+}
+
+TEST(AnalysisTaskTest, MovePreservesDecryptionConfiguration) {
+    AnalysisTask original;
+    original.enable_decryption = true;
+    original.key_file_dir = "/move/keys";
+    original.decrypt_password = "move-secret";
+
+    AnalysisTask constructed(std::move(original));
+    EXPECT_TRUE(constructed.enable_decryption);
+    EXPECT_EQ(constructed.key_file_dir, "/move/keys");
+    EXPECT_EQ(constructed.decrypt_password, "move-secret");
+
+    AnalysisTask assignedSource;
+    assignedSource.enable_decryption = true;
+    assignedSource.key_file_dir = "/assigned/keys";
+    assignedSource.decrypt_password = "assigned-secret";
+    AnalysisTask assigned;
+    assigned = std::move(assignedSource);
+
+    EXPECT_TRUE(assigned.enable_decryption);
+    EXPECT_EQ(assigned.key_file_dir, "/assigned/keys");
+    EXPECT_EQ(assigned.decrypt_password, "assigned-secret");
+}
+
 } // namespace
 } // namespace forensics
 

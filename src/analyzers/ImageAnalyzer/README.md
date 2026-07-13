@@ -210,11 +210,46 @@ A:这是因为选择了 `native` 模式但缺少必要权限或依赖。
 
 **Q4:能否分析加密的磁盘镜像?**
 
-A:ImageAnalyzer 本身不支持加密镜像解密。对于 BitLocker、LUKS 等加密磁盘,需要先使用其他工具解密后再进行分析。
+A:可以。ImageAnalyzer 内置了解密模块(DecryptionModule),在读取镜像时会自动检测
+BitLocker / LUKS / VeraCrypt 加密分区,并尝试用同级 `.key` 文件中的密码解密后再提取。
 
-**建议流程**:
-1. 使用专用解密工具(如 BitLocker 恢复工具)解密镜像
-2. 将解密后的镜像保存为 DD/RAW 格式
-3. 使用 ImageAnalyzer 分析解密后的镜像
+**支持三种加密类型**:
+- **BitLocker**:优先通过 `dislocker` 解密,失败时回退到 `bdemount`。注意:
+  `bdemount` 的命令行接口无法从标准输入读取密码,回退期间密码会短暂出现在其进程参数中;
+  `dislocker` 0.7.x 对 Win10 的 AES-XTS-128 支持也可能有限
+- **LUKS**:通过 `cryptsetup open` 解密(支持 LUKS1/LUKS2)
+- **VeraCrypt**:通过 `veracrypt` CLI 解密
+
+**密码文件约定**(同级目录,与镜像同名):
+- 分区级:`<镜像名>.part<分区号>.key` — 例如 `wmh-pc.E01` 的 C 盘 → `wmh-pc.part6.key`
+- 整盘加密:`<镜像名>.key` — 例如 LUKS 容器文件 → `disk.key`
+- 文件内容为纯文本密码(或 BitLocker 48 位恢复密钥),尾随换行会被自动去除
+
+**使用方式**:
+```bash
+# 命令行:启用自动解密(同级目录放好 .key 文件)
+sudo forensic_analyzer encrypted_disk.E01 --decrypt --db-dir ./out
+
+# 安全地从终端读取密码(交互输入时关闭回显)
+sudo forensic_analyzer disk.img --decrypt --key-password-stdin
+
+# 也可从标准输入重定向;输入读取到首个换行符为止
+printf '%s\n' "$DISK_PASSWORD" | forensic_analyzer disk.img --decrypt --key-password-stdin
+
+# 已弃用:密码会出现在进程参数/命令历史中,仅为兼容旧脚本保留并会打印安全警告
+sudo forensic_analyzer disk.img --decrypt --key-password "MyPass123"
+
+# 指定 .key 文件所在目录(默认为镜像同级目录)
+sudo forensic_analyzer disk.img --decrypt --key-dir /path/to/keys
+
+# HTTP API:创建任务时附带解密选项
+POST /api/tasks
+{ "image_path": "...", "enable_decryption": true, "key_dir": "...", "decrypt_password": "..." }
+```
+
+**权限要求**:解密需要 root 权限(losetup / cryptsetup / mount)。请用 `sudo` 运行。
+
+**注意**:解密工具在运行时通过 PATH 查找;若系统中未安装对应工具,该加密类型会被
+跳过并打印明确的错误信息,不影响其他分区的正常分析。
 
 ---

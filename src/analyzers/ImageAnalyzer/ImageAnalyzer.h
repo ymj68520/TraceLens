@@ -6,6 +6,7 @@
 #include <functional>
 #include <tsk/libtsk.h>
 #include "ImageAnalyzerDataTypes.h"
+#include "DecryptionModule.h"
 
 // Forward declarations
 struct TSK_IMG_INFO;
@@ -28,6 +29,9 @@ struct PartitionEntry {
 	std::string desc;          // human-readable description (e.g. "NTFS / exFAT (0x07)")
 	std::string fsType;        // filesystem type name from TSK (e.g. "ntfs", "ext4")
 	bool isXfs = false;        // true if TSK failed but partition looks like XFS
+	bool isEncrypted = false;  // true if this partition was decrypted before extraction
+	EncryptionType encType = EncryptionType::NONE;  // detected encryption type
+	std::string decryptedPath; // path to the decrypted volume (device-mapper / file) when isEncrypted
 };
 
 /**
@@ -58,6 +62,29 @@ public:
 
 	void setXFSMode(XFSMode mode) { xfsMode_ = mode; }
 
+	/**
+	 * @brief Enable automatic decryption of encrypted partitions.
+	 *
+	 * When enabled, partitions that TSK reports as encrypted (BitLocker/LUKS/
+	 * VeraCrypt) are decrypted using a password read from a sibling .key file
+	 * before extraction. See KeyFileLoader for the file naming convention.
+	 */
+	void setEnableDecryption(bool b) { enableDecryption_ = b; }
+
+	/**
+	 * @brief Override the directory where sibling .key files are searched.
+	 * @param dir Directory path (defaults to the image's own directory).
+	 */
+	void setKeyFileDir(const std::string& dir) { keyFileDir_ = dir; }
+
+	/**
+	 * @brief Provide a password directly (bypasses .key file lookup).
+	 *
+	 * When set, this password is used for all partitions of this image. Useful
+	 * for whole-image LUKS/VeraCrypt containers and CLI usage.
+	 */
+	void setDecryptPassword(const std::string& p) { explicitPassword_ = p; }
+
 	TSK_IMG_INFO* getImageInfo() const { return imgInfo_; }
 	TSK_FS_INFO* getFileSystemInfo() const { return fsInfo_; }
 
@@ -86,6 +113,13 @@ private:
 	// Per-partition extraction (walks one partition into the database).
 	bool extractPartition(const PartitionEntry& part);
 
+	// Decrypt an encrypted partition (returns a decrypted volume handle).
+	bool tryDecryptPartition(TSK_PNUM_T partNum, uint64_t offset,
+	                         const std::string& desc, PartitionEntry& out);
+
+	// Extract from an already-decrypted partition (device-mapper node or file).
+	bool extractDecryptedPartition(const PartitionEntry& part);
+
 	// Legacy single-FS extraction helpers (kept for XFS/native fallback paths).
 	bool extractWithXFS(const std::string& dbPath);
 	bool extractWithNativeMount(const std::string& dbPath);
@@ -96,6 +130,13 @@ private:
 	uint64_t partitionOffset_;     // offset of that first FS (legacy/XFS fallback)
 	bool isXFS_;                   // image-level XFS hint (legacy)
 	XFSMode xfsMode_;
+
+	// Decryption configuration
+	bool enableDecryption_ = false;
+	std::string keyFileDir_;        // override dir for .key files (empty = image dir)
+	std::string explicitPassword_;  // if non-empty, used for all partitions
+	std::unique_ptr<DecryptionModule> decryptor_;
+	std::vector<DecryptedPartition> decryptedParts_;  // for cleanup on destruction
 
 	std::vector<PartitionEntry> partitions_;  // all walkable partitions
 

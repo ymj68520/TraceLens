@@ -45,6 +45,13 @@ struct CommandLineArgs {
     bool generate_report = false;  // 生成人类可读 Markdown 报告
     std::string report_path;  // 自定义报告路径（可选）
     bool dump_text = false;  // 导出提取文件的文本版本（需 python_service 运行）
+
+    // Decryption options (encrypted partitions are auto-detected and unlocked
+    // using a sibling .key file when --decrypt is given).
+    bool enable_decryption = false;      // --decrypt
+    std::string key_file_dir;            // --key-dir <dir>: override .key search dir
+    std::string decrypt_password;        // --key-password <pass>: deprecated explicit password
+    bool decrypt_password_stdin = false; // --key-password-stdin: read password without argv exposure
 };
 
 class CommandLineParser {

@@ -35,6 +35,15 @@ bool NativeFilesystemWalker::initialize() {
     std::cout << "  Image: " << imagePath_ << std::endl;
     std::cout << "  Offset: " << partitionOffset_ << std::endl;
 
+    struct stat st;
+    if (stat(imagePath_.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+        mountPoint_ = imagePath_;
+        mounted_ = true;
+        externalMount_ = true;
+        std::cout << "  Using existing mounted filesystem: " << mountPoint_ << std::endl;
+        return true;
+    }
+
     if (!setupLoopDevice()) {
         std::cerr << "Failed to setup loop device" << std::endl;
         return false;
@@ -53,6 +62,15 @@ bool NativeFilesystemWalker::initialize() {
 }
 
 bool NativeFilesystemWalker::setupLoopDevice() {
+    // If the source is already a block device (e.g. a decrypted /dev/mapper
+    // node), no loop setup is needed — mount it directly.
+    struct stat st;
+    if (stat(imagePath_.c_str(), &st) == 0 && S_ISBLK(st.st_mode)) {
+        loopDevice_ = imagePath_;
+        loopSetup_ = false;  // we don't own it; don't detach on cleanup
+        return true;
+    }
+
     // Find free loop device
     int ctlFd = open("/dev/loop-control", O_RDWR);
     if (ctlFd < 0) {
@@ -124,11 +142,19 @@ bool NativeFilesystemWalker::mountFilesystem() {
         return false;
     }
 
-    // Mount filesystem (read-only with norecovery for XFS)
-    // norecovery: Skip log replay on XFS (needed for ro mount)
-    const char* mountOpts = "ro,norecovery";
-    if (mount(loopDevice_.c_str(), mountPoint_.c_str(), "xfs", MS_RDONLY, mountOpts) < 0) {
-        std::cerr << "Error: Cannot mount filesystem: " << strerror(errno) << std::endl;
+    // Choose mount source: a loop device for image files, or the device path
+    // directly when imagePath_ is already a block device (e.g. a decrypted
+    // /dev/mapper node from the DecryptionModule).
+    std::string mountSource = loopDevice_;
+    if (mountSource.empty()) mountSource = imagePath_;
+
+    // Determine filesystem type & options. "xfs" uses norecovery (skip log
+    // replay for ro mount); other types use plain ro.
+    std::string fsType = fsType_.empty() ? "auto" : fsType_;
+    std::string mountOpts = (fsType == "xfs") ? "ro,norecovery" : "ro";
+
+    if (mount(mountSource.c_str(), mountPoint_.c_str(), fsType.c_str(), MS_RDONLY, mountOpts.c_str()) < 0) {
+        std::cerr << "Error: Cannot mount filesystem (" << fsType << "): " << strerror(errno) << std::endl;
         std::cerr << "Note: This requires root privileges. Please run with sudo." << std::endl;
         rmdir(mountPoint_.c_str());
         return false;
@@ -139,6 +165,12 @@ bool NativeFilesystemWalker::mountFilesystem() {
 }
 
 void NativeFilesystemWalker::cleanup() {
+    if (externalMount_) {
+        mounted_ = false;
+        externalMount_ = false;
+        return;
+    }
+
     // Unmount filesystem
     if (mounted_) {
         std::cout << "Unmounting filesystem..." << std::endl;

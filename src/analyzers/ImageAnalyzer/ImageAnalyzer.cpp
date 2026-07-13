@@ -3,20 +3,51 @@
 #include "XFSHelper.h"
 #include "NativeFilesystemWalker.h"
 #include "TskFilesystemWalker.h"
+#include "KeyFileLoader.h"
 #include "AuditLog/AuditLog.h"
 #include "ConfigManager/ConfigManager.h"
 #include <iostream>
 #include <cstring>
 #include <sstream>
 #include <iomanip>
+#include <filesystem>
+#include <algorithm>
+#include <cctype>
+
+namespace fs = std::filesystem;
+
+namespace {
+
+std::string normalizeMountFilesystemType(std::string fsType) {
+	std::transform(fsType.begin(), fsType.end(), fsType.begin(),
+	               [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+	if (fsType.find("ntfs") != std::string::npos) return "ntfs";
+	if (fsType.find("ext4") != std::string::npos) return "ext4";
+	if (fsType.find("ext3") != std::string::npos) return "ext3";
+	if (fsType.find("ext2") != std::string::npos) return "ext2";
+	if (fsType.find("xfs") != std::string::npos) return "xfs";
+	if (fsType.find("exfat") != std::string::npos) return "exfat";
+	if (fsType.find("fat") != std::string::npos) return "vfat";
+	if (fsType.find("hfs") != std::string::npos) return "hfs";
+	if (fsType.find("iso9660") != std::string::npos) return "iso9660";
+	return "";
+}
+
+} // namespace
 
 ImageAnalyzer::ImageAnalyzer(const std::string& imagePath)
 	: imagePath_(imagePath), imgInfo_(nullptr), fsInfo_(nullptr),
 	  partitionOffset_(0), isXFS_(false), xfsMode_(XFSMode::Auto) {
+	decryptor_ = std::make_unique<DecryptionModule>();
 }
 
 ImageAnalyzer::~ImageAnalyzer() {
 	closeImage();
+	// Release any decrypted volumes (device-mapper nodes, loop devices, temp files).
+	for (const auto& dp : decryptedParts_) {
+		decryptor_->cleanup(dp);
+	}
 }
 
 bool ImageAnalyzer::analyze() {
@@ -153,6 +184,16 @@ bool ImageAnalyzer::openFileSystem() {
 				}
 			} else {
 				std::cout << "    Could not open filesystem: " << tsk_error_get() << std::endl;
+				// Attempt decryption before filesystem-specific fallbacks. LUKS
+				// partitions commonly carry a generic "Linux" partition description.
+				if (enableDecryption_) {
+					PartitionEntry decEntry;
+					if (tryDecryptPartition(i, offset, part->desc, decEntry)) {
+						partitions_.push_back(decEntry);
+						continue;  // decrypted OK — do NOT skip
+					}
+					// tryDecryptPartition already printed the reason on failure.
+				}
 #ifdef __linux__
 				// TSK failed but partition description suggests a Linux FS — likely
 				// XFS that TSK cannot parse. Record it as an XFS candidate so the
@@ -191,25 +232,38 @@ bool ImageAnalyzer::openFileSystem() {
 		          << (skipped ? " (" + std::to_string(skipped) + " skipped)" : "") << std::endl;
 	} else {
 		// No partition table, try opening filesystem directly at offset 0.
-		// This is the single-partition / raw-filesystem case (e.g. test_image.img).
+		// This is the single-partition / raw-filesystem case (e.g. test_image.img),
+		// OR a whole-image encrypted container (LUKS/VeraCrypt).
 		std::cout << "No volume system detected, trying direct filesystem access..." << std::endl;
 		fsInfo_ = tsk_fs_open_img(imgInfo_, 0, TSK_FS_TYPE_DETECT);
 		if (!fsInfo_) {
-			std::cerr << "Error opening filesystem: " << tsk_error_get() << std::endl;
-			return false;
+			// Could be a whole-image encrypted volume. Try decryption if enabled.
+			if (enableDecryption_) {
+				PartitionEntry decEntry;
+				if (tryDecryptPartition(0, 0, "whole image", decEntry)) {
+					partitions_.push_back(decEntry);
+					// fsInfo_ stays null; extraction will use the decrypted path.
+				} else {
+					std::cerr << "Error opening filesystem: " << tsk_error_get() << std::endl;
+					return false;
+				}
+			} else {
+				std::cerr << "Error opening filesystem: " << tsk_error_get() << std::endl;
+				return false;
+			}
+		} else {
+			const char* fsTypeName = tsk_fs_type_toname(fsInfo_->ftype);
+			isXFS_ = (fsTypeName && strstr(fsTypeName, "xfs"));
+			std::string fsTypeStr = fsTypeName ? fsTypeName : "unknown";
+
+			PartitionEntry entry;
+			entry.num = 0;
+			entry.offset = 0;
+			entry.desc = "whole image";
+			entry.fsType = fsTypeStr;
+			entry.isXfs = isXFS_;
+			partitions_.push_back(entry);
 		}
-
-		const char* fsTypeName = tsk_fs_type_toname(fsInfo_->ftype);
-		isXFS_ = (fsTypeName && strstr(fsTypeName, "xfs"));
-		std::string fsTypeStr = fsTypeName ? fsTypeName : "unknown";
-
-		PartitionEntry entry;
-		entry.num = 0;
-		entry.offset = 0;
-		entry.desc = "whole image";
-		entry.fsType = fsTypeStr;
-		entry.isXfs = isXFS_;
-		partitions_.push_back(entry);
 	}
 
 	if (fsInfo_) {
@@ -295,6 +349,13 @@ bool ImageAnalyzer::extractPartition(const PartitionEntry& part) {
 	// THIS partition so multi-image XFS extraction targets the right partition.
 	partitionOffset_ = part.offset;
 
+	// Decrypted partitions expose an accessible block device / file. Route them
+	// to a dedicated extractor that opens the decrypted volume directly, since
+	// the original TSK walker cannot read the encrypted partition.
+	if (part.isEncrypted && !part.decryptedPath.empty()) {
+		return extractDecryptedPartition(part);
+	}
+
 	// Honor an explicit XFS mode for XFS partitions, falling back to TSK in auto mode.
 	if (part.isXfs) {
 		if (xfsMode_ == XFSMode::Native) {
@@ -376,6 +437,199 @@ bool ImageAnalyzer::extractPartition(const PartitionEntry& part) {
 		return extractWithXFS(dbManager_->getDbPath());
 #endif
 	}
+	return false;
+}
+
+bool ImageAnalyzer::tryDecryptPartition(TSK_PNUM_T partNum, uint64_t offset,
+                                         const std::string& desc, PartitionEntry& out) {
+	EncryptionType encType = DecryptionModule::detect(imagePath_, offset);
+	if (encType == EncryptionType::NONE) {
+		// Not a recognised encryption type — nothing we can do here.
+		return false;
+	}
+	std::cout << "    Detected " << DecryptionModule::encryptionTypeName(encType)
+	          << " on partition " << partNum
+	          << " (offset " << offset << "). Attempting decryption..." << std::endl;
+
+	// Resolve the password: explicit CLI password first, else sibling .key file.
+	// BitLocker may still proceed without one when a sibling FVEK is available.
+	std::string password = explicitPassword_;
+	if (password.empty()) {
+		auto key = KeyFileLoader::loadForPartition(imagePath_, static_cast<int>(partNum), keyFileDir_);
+		if (key) password = *key;
+	}
+
+	DecryptedPartition dp;
+	dp.encType = encType;
+	std::string errMsg;
+	bool ok = false;
+	if (!password.empty()) {
+		ok = decryptor_->decrypt(imagePath_, offset, password, dp, errMsg);
+	}
+	if (!ok) {
+		// Password unlock failed (or no password). For BitLocker, try the FVEK
+		// direct-decrypt path: dislocker/libbde cannot handle AES-XTS-128 on
+		// older versions, but a FVEK recovered from memory decrypts directly.
+		if (encType == EncryptionType::BITLOCKER) {
+			auto fvekPath = KeyFileLoader::loadFvekForPartition(
+				imagePath_, static_cast<int>(partNum), keyFileDir_);
+			if (fvekPath) {
+					std::cout << "    Trying sibling FVEK direct decrypt..." << std::endl;
+				DecryptedPartition dpFvek;
+				std::string fvekErr;
+				if (decryptor_->decryptBitlockerWithFvek(imagePath_, offset, *fvekPath,
+				                                         dpFvek, fvekErr)) {
+					dp = dpFvek;
+					ok = true;
+				} else {
+					std::cout << "    FVEK decrypt failed: " << fvekErr << std::endl;
+				}
+			}
+		}
+	}
+	if (!ok) {
+		std::cout << "    Decryption failed for partition " << partNum
+		          << ": " << errMsg << std::endl;
+		return false;
+	}
+
+	// Probe the decrypted volume's filesystem type so callers can label it.
+	// Open the decrypted path through a fresh TSK image handle (it's a raw
+	// device/file now, not the encrypted one).
+	DecryptedPartition* stored = nullptr;
+	{
+		TSK_IMG_INFO* decImg = tsk_img_open_sing(dp.accessiblePath.c_str(),
+		                                          TSK_IMG_TYPE_DETECT, 0);
+		std::string fsType = "unknown";
+		if (decImg) {
+			TSK_FS_INFO* decFs = tsk_fs_open_img(decImg, 0, TSK_FS_TYPE_DETECT);
+			if (decFs) {
+				const char* tn = tsk_fs_type_toname(decFs->ftype);
+				if (tn) fsType = tn;
+				tsk_fs_close(decFs);
+			}
+			tsk_img_close(decImg);
+		}
+		out.num = partNum;
+		out.offset = offset;
+		out.desc = desc;
+		out.fsType = fsType;
+		out.isEncrypted = true;
+		out.encType = encType;
+		out.decryptedPath = dp.accessiblePath;
+		decryptedParts_.push_back(dp);
+		stored = &decryptedParts_.back();
+		std::cout << "    Decryption succeeded: partition " << partNum
+		          << " (" << fsType << ") accessible at " << dp.accessiblePath
+		          << std::endl;
+	}
+	(void)stored;
+	return true;
+}
+
+bool ImageAnalyzer::extractDecryptedPartition(const PartitionEntry& part) {
+	// The decrypted volume is a raw block device or file. Open it with a fresh
+	// TSK image handle and walk the filesystem directly — this reuses the
+	// universal TSK walker without needing loop/mount privileges.
+	std::cout << "  Extracting decrypted partition " << part.num
+	          << " (" << DecryptionModule::encryptionTypeName(part.encType)
+	          << " -> " << part.fsType << ") from " << part.decryptedPath
+	          << "..." << std::endl;
+
+	const bool mountedDirectory = fs::is_directory(part.decryptedPath);
+	TSK_IMG_INFO* decImg = nullptr;
+	bool opened = false;
+	if (!mountedDirectory) {
+		const char* path = part.decryptedPath.c_str();
+		decImg = tsk_img_open_sing(path, TSK_IMG_TYPE_DETECT, 0);
+		if (decImg) {
+			// Reuse the TSK walker against the decrypted image. The walker opens its
+			// own FS handle from offset 0 on the given image.
+			tskWalker_ = std::make_unique<TskFilesystemWalker>(decImg, 0);
+			opened = tskWalker_->open();
+		} else {
+			std::cerr << "  Cannot open decrypted volume " << part.decryptedPath
+			          << " with TSK: " << tsk_error_get() << std::endl;
+		}
+	}
+
+	int fileCount = 0;
+	int maxLog = forensics::ConfigManager::instance().getMaxLogDisplayFiles();
+	bool success = false;
+
+	if (opened) {
+		std::cout << "  Walking decrypted volume (" << tskWalker_->getFsType() << ")..." << std::endl;
+		success = tskWalker_->walk([this, &part, &fileCount, maxLog](const FileRecord& record) -> bool {
+			if (isCancelled()) return false;
+			FileRecord r = record;
+			// Tag extracted files so their origin (decrypted partition) is visible.
+			r.partitionNum = static_cast<int>(part.num);
+			if (dbManager_->insertFileRecord(r)) {
+				fileCount++;
+				if (fileCount <= maxLog) {
+					std::cout << "  [" << fileCount << "] " << r.path << std::endl;
+				} else if (fileCount % (maxLog * 5) == 0) {
+					std::cout << "  ... processing: [" << fileCount << "] " << r.path
+					          << " ..." << std::endl;
+				}
+			}
+			return true;
+		});
+		tskWalker_->close();
+	}
+
+	if (decImg) tsk_img_close(decImg);
+
+	if (isCancelled()) return false;
+
+	if (success && fileCount > 0) {
+		std::cout << "  Decrypted partition " << part.num << " yielded "
+		          << fileCount << " files." << std::endl;
+		AuditLog::instance().log("SYSTEM", "DECRYPT_EXTRACTION_COMPLETE",
+			"Extracted " + std::to_string(fileCount) + " files from decrypted partition " +
+			std::to_string(part.num) + " (" +
+			DecryptionModule::encryptionTypeName(part.encType) + ")");
+		return true;
+	}
+
+#ifdef __linux__
+	// TSK could not parse the decrypted FS (e.g. some NTFS variants). Fall back
+	// to a native read-only mount of the decrypted device/file.
+	std::cout << "  TSK could not walk the decrypted volume; trying native mount..." << std::endl;
+	nativeWalker_ = std::make_unique<NativeFilesystemWalker>(part.decryptedPath, 0);
+	nativeWalker_->setFilesystemType(normalizeMountFilesystemType(part.fsType));
+	if (nativeWalker_->initialize()) {
+		fileCount = 0;
+		success = nativeWalker_->walkFilesystem([this, &part, &fileCount](const NativeFileInfo& nf) -> bool {
+			if (isCancelled()) return false;
+			FileRecord r;
+			r.inode = nf.inode;
+			r.name = nf.name;
+			r.path = nf.path;
+			r.size = nf.size;
+			r.atime = nf.atime;
+			r.mtime = nf.mtime;
+			r.ctime = nf.ctime;
+			r.crtime = 0;
+			uint16_t ft = nf.mode & S_IFMT;
+			r.type = nf.is_directory ? "DIR" :
+			         (ft == S_IFREG ? "REG" : (ft == S_IFLNK ? "LNK" : "OTHER"));
+			r.isDeleted = nf.is_allocated ? 0 : 1;
+			r.isAllocated = nf.is_allocated ? 1 : 0;
+			r.uid = nf.uid;
+			r.gid = nf.gid;
+			r.partitionNum = static_cast<int>(part.num);
+			if (dbManager_->insertFileRecord(r)) fileCount++;
+			return true;
+		});
+		if (success && fileCount > 0) {
+			std::cout << "  Native mount of decrypted partition " << part.num
+			          << " yielded " << fileCount << " files." << std::endl;
+			return true;
+		}
+	}
+#endif
+	std::cerr << "  Decrypted partition " << part.num << " yielded no files." << std::endl;
 	return false;
 }
 
@@ -502,6 +756,7 @@ bool ImageAnalyzer::extractWithNativeMount(const std::string& dbPath) {
 #ifdef __linux__
 	// Create native filesystem walker
 	nativeWalker_ = std::make_unique<NativeFilesystemWalker>(imagePath_, partitionOffset_);
+	nativeWalker_->setFilesystemType(normalizeMountFilesystemType("xfs"));
 
 	if (!nativeWalker_->initialize()) {
 		std::cerr << "Failed to initialize native filesystem walker" << std::endl;

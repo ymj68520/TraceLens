@@ -55,6 +55,9 @@ public:
      * @param llm_mode LLM analysis mode ("smart" or "full")
      * @param case_description Case description for LLM
      * @param filter_profile File filter profile name
+     * @param enable_decryption Auto-detect and decrypt encrypted partitions
+     * @param key_file_dir Override directory for decryption key files
+     * @param decrypt_password Runtime-only explicit decryption password
      * @return The unique ID of the created task
      */
     std::string create_task(const std::string& path,
@@ -67,7 +70,10 @@ public:
                            bool llm_analyze = false,
                            const std::string& llm_mode = "smart",
                            const std::string& case_description = "",
-                           const std::string& filter_profile = "");
+                           const std::string& filter_profile = "",
+                           bool enable_decryption = false,
+                           const std::string& key_file_dir = "",
+                           const std::string& decrypt_password = "");
 
     // Task status management
     /**
@@ -268,6 +274,9 @@ private:
 
     // Internal save without locking
     void save_tasks_internal();
+
+    // Remove the runtime-only decryption password after analyzer handoff.
+    void clear_decryption_password(const std::string& id);
 
     // Helper methods
     int calculate_overall_percentage(TaskPhase phase, int phase_percentage);

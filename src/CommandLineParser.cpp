@@ -47,6 +47,13 @@ void CommandLineParser::printUsage(const char* programName) {
     std::cout << "File Filter:\n";
     std::cout << "  --filter-profile <name>     Apply filter profile (e.g., telecom_fraud, virus_intrusion)\n";
     std::cout << "                              Profiles are loaded from config/filter_profiles/\n\n";
+    std::cout << "Decryption (BitLocker / LUKS / VeraCrypt):\n";
+    std::cout << "  --decrypt                   Auto-detect & decrypt encrypted partitions\n";
+    std::cout << "  --key-dir <path>            Directory holding sibling .key files (default: image dir)\n";
+    std::cout << "  --key-password-stdin        Read password from stdin (no echo when interactive)\n";
+    std::cout << "  --key-password <pass>       Deprecated: password in argv (insecure; may be exposed)\n";
+    std::cout << "  Password file convention: <imageBase>.part<N>.key (e.g. disk.part2.key)\n";
+    std::cout << "                              or <imageBase>.key for whole-image encryption\n\n";
     std::cout << "Full-Text Search:\n";
     std::cout << "  --index <dir>               Index text files\n";
     std::cout << "  --search <query>            Search indexed database\n\n";
@@ -136,6 +143,17 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
             args.search_mode = true;
         } else if (arg == "--filter-profile" && i + 1 < argc) {
             args.filter_profile = argv[++i];
+        } else if (arg == "--decrypt") {
+            args.enable_decryption = true;
+        } else if (arg == "--key-dir" && i + 1 < argc) {
+            args.key_file_dir = argv[++i];
+        } else if (arg == "--key-password-stdin") {
+            args.decrypt_password_stdin = true;
+        } else if (arg == "--key-password" && i + 1 < argc) {
+            args.decrypt_password = argv[++i];
+            std::cerr << "Security warning: --key-password is deprecated because command-line "
+                      << "arguments may be visible to other users. Use --key-password-stdin instead."
+                      << std::endl;
         } else if (arg == "--carve") {
             args.carve = true;
         } else if (arg == "--carve-out" && i + 1 < argc) {

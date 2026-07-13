@@ -19,9 +19,91 @@
 #include <filesystem>
 #include <memory>
 
+#ifdef _WIN32
+#include <io.h>
+#include <windows.h>
+#else
+#include <termios.h>
+#include <unistd.h>
+#endif
+
 namespace forensics {
 
 namespace fs = std::filesystem;
+
+namespace {
+
+bool readPasswordFromStdin(std::string& password) {
+#ifdef _WIN32
+    const bool interactive = _isatty(_fileno(stdin)) != 0;
+    HANDLE inputHandle = INVALID_HANDLE_VALUE;
+    DWORD originalMode = 0;
+    bool echoDisabled = false;
+
+    if (interactive) {
+        std::cerr << "Decryption password: " << std::flush;
+        inputHandle = GetStdHandle(STD_INPUT_HANDLE);
+        if (inputHandle == INVALID_HANDLE_VALUE || !GetConsoleMode(inputHandle, &originalMode)) {
+            std::cerr << "\nError: Unable to read terminal settings for secure password input"
+                      << std::endl;
+            return false;
+        }
+        echoDisabled = SetConsoleMode(inputHandle, originalMode & ~ENABLE_ECHO_INPUT) != 0;
+        if (!echoDisabled) {
+            std::cerr << "\nError: Unable to disable terminal echo for password input"
+                      << std::endl;
+            return false;
+        }
+    }
+
+    const bool readSucceeded = static_cast<bool>(std::getline(std::cin, password));
+    if (echoDisabled) {
+        SetConsoleMode(inputHandle, originalMode);
+        std::cerr << std::endl;
+    }
+#else
+    const bool interactive = isatty(STDIN_FILENO) != 0;
+    termios originalSettings{};
+    bool echoDisabled = false;
+
+    if (interactive) {
+        std::cerr << "Decryption password: " << std::flush;
+        if (tcgetattr(STDIN_FILENO, &originalSettings) != 0) {
+            std::cerr << "\nError: Unable to read terminal settings for secure password input"
+                      << std::endl;
+            return false;
+        }
+
+        termios hiddenSettings = originalSettings;
+        hiddenSettings.c_lflag &= static_cast<tcflag_t>(~ECHO);
+        if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &hiddenSettings) != 0) {
+            std::cerr << "\nError: Unable to disable terminal echo for password input"
+                      << std::endl;
+            return false;
+        }
+        echoDisabled = true;
+    }
+
+    const bool readSucceeded = static_cast<bool>(std::getline(std::cin, password));
+    if (echoDisabled) {
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &originalSettings);
+        std::cerr << std::endl;
+    }
+#endif
+
+    if (!readSucceeded) {
+        std::cerr << "Error: Failed to read decryption password from stdin" << std::endl;
+        return false;
+    }
+    if (!password.empty() && password.back() == '\r') password.pop_back();
+    if (password.empty()) {
+        std::cerr << "Error: Decryption password from stdin is empty" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+} // namespace
 
 std::string AnalysisOrchestrator::getBaseName(const std::string& path) {
     return fs::path(path).stem().string();
@@ -65,6 +147,15 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         return runMemoryAnalysis(args);
     }
 
+    std::string decryptPassword = args.decrypt_password;
+    if (args.enable_decryption && args.decrypt_password_stdin) {
+        if (!decryptPassword.empty()) {
+            std::cerr << "Warning: Both --key-password-stdin and deprecated --key-password were "
+                      << "provided; using the password read from stdin." << std::endl;
+        }
+        if (!readPasswordFromStdin(decryptPassword)) return 1;
+    }
+
     std::cout << "=== Forensic Image Analyzer ===" << std::endl;
     std::cout << "Image: " << args.image_path << std::endl;
     std::cout << "Using The Sleuth Kit 4.14.0\n" << std::endl;
@@ -82,6 +173,11 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         std::cout << "[1/4] Analyzing image..." << std::endl;
         auto analyzer = std::make_unique<ImageAnalyzer>(args.image_path);
         analyzer->setXFSMode(args.xfs_mode);
+        if (args.enable_decryption) {
+            analyzer->setEnableDecryption(true);
+            if (!args.key_file_dir.empty()) analyzer->setKeyFileDir(args.key_file_dir);
+            if (!decryptPassword.empty()) analyzer->setDecryptPassword(decryptPassword);
+        }
 
         if (!analyzer->analyze() || !analyzer->extractToDatabase(rawDbPath)) {
             std::cerr << "Error: Failed to analyze image" << std::endl;

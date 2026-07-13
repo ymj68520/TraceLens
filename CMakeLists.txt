@@ -278,6 +278,7 @@ set(LIB_SOURCES
     src/analyzers/ImageAnalyzer/XFSHelper.cpp
     src/analyzers/ImageAnalyzer/NativeFilesystemWalker.cpp
     src/analyzers/ImageAnalyzer/TskFilesystemWalker.cpp
+    src/analyzers/ImageAnalyzer/KeyFileLoader.cpp
     src/network/Swagger/Swagger.cpp
     src/network/HTTPServer/HTTPserver.cpp
     src/network/HTTPServer/TaskManager.cpp
@@ -492,6 +493,12 @@ src/analyzers/DLLAnalyzer/Database/DLLAnalysisDatabase_Queries.cpp
     libs/cpp-mcp/src/mcp_tool.cpp)
 
 # Create executable Create executable
+if(UNIX)
+  list(APPEND LIB_SOURCES src/analyzers/ImageAnalyzer/DecryptionModule.cpp)
+else()
+  list(APPEND LIB_SOURCES src/analyzers/ImageAnalyzer/DecryptionModuleStub.cpp)
+endif()
+
 add_executable(forensic_analyzer src/main.cpp ${LIB_SOURCES})
 
 # Link libraries
@@ -531,6 +538,7 @@ endif()
 
 # Installation
 install(TARGETS forensic_analyzer DESTINATION bin)
+install(PROGRAMS scripts/bitlocker_fvek_decrypt.py DESTINATION bin/scripts)
 
 # Enable testing and add tests subdirectory for GTest-based tests
 enable_testing()
