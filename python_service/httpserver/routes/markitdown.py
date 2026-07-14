@@ -7,9 +7,10 @@ Microsoft's markitdown library. Used by the C++ backend via HTTP.
 
 import asyncio
 import logging
+import threading
 import time
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -19,6 +20,26 @@ from ..services.document_extractor import get_document_extractor_locator
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Module-level singleton MarkItDown instance.
+# Creating a new MarkItDown() per request reloads the magika ONNX model
+# every time (~0.5s overhead), wastes memory, and can cause transient
+# failures under concurrent load — which makes the C++ backend fall back
+# to its legacy local parsers.  Reuse one instance instead.
+_md_instance = None
+_md_lock = threading.Lock()
+
+
+def _get_markitdown():
+    """Return a process-wide singleton MarkItDown instance (lazy init)."""
+    global _md_instance
+    if _md_instance is None:
+        with _md_lock:
+            if _md_instance is None:
+                from markitdown import MarkItDown
+                _md_instance = MarkItDown()
+                logger.info("MarkItDown singleton initialised for /convert endpoint")
+    return _md_instance
 
 
 class ConvertRequest(BaseModel):
@@ -71,9 +92,8 @@ async def convert_file(request: ConvertRequest):
         )
 
     try:
-        from markitdown import MarkItDown
+        md = _get_markitdown()
 
-        md = MarkItDown()
         # Offload the synchronous, IO/CPU-heavy conversion so it doesn't block
         # the event loop (and stall every other request) for large files.
         result = await asyncio.to_thread(md.convert, str(file_path))

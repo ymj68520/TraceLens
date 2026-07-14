@@ -27,7 +27,13 @@ fi
 
 # 激活虚拟环境并安装依赖
 echo "检查依赖..."
-python_service/.venv/bin/pip install -q -r python_service/httpserver/requirements.txt
+# Only run pip install if core packages are missing, to avoid hitting the
+# network (and failing on transient IncompleteRead errors) on every start.
+if ! python_service/.venv/bin/python -c "import fastapi, uvicorn, pydantic" 2>/dev/null; then
+    python_service/.venv/bin/pip install -q -r python_service/httpserver/requirements.txt
+else
+    echo "核心依赖已安装，跳过 pip install"
+fi
 
 # 检查端口占用
 if lsof -i :8090 > /dev/null 2>&1; then

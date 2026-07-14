@@ -38,6 +38,16 @@ class MarkitdownExtractor(BaseExtractor):
         except ImportError as e:
             logger.error(f"markitdown library not installed: {e}")
             self._md = None
+        except Exception as e:
+            # MarkItDown() can also raise RuntimeError, OSError, or other
+            # exceptions when the bundled magika ONNX model fails to load,
+            # when onnxruntime is misconfigured, etc.  Catching only
+            # ImportError lets these propagate to load_plugins(), which
+            # silently skips MarkitdownExtractor — causing ALL document
+            # extensions to fall through to legacy extractors (PDFExtractor,
+            # DocxExtractor, ...) without any markitdown conversion.
+            logger.error(f"MarkItDown engine failed to initialize: {e}", exc_info=True)
+            self._md = None
 
     def _get_fallback(self, file_path: str) -> 'BaseExtractor | None':
         """Get the fallback extractor for the given file's extension."""

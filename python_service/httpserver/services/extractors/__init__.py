@@ -63,6 +63,10 @@ def load_plugins():
     primary_extensions = set()  # Extensions claimed by composite (primary) extractors
 
     for class_name, entry in mapping.items():
+        # Skip internal config keys that are not extractor class names
+        if class_name.startswith("_"):
+            continue
+
         # Support both old format (list of extensions) and new format (dict with extensions + fallback)
         if isinstance(entry, dict):
             ext_list = entry.get("extensions", [])
