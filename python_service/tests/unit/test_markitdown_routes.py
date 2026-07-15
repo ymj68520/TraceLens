@@ -1,6 +1,7 @@
 """Unit tests for atomic single-file MarkItDown conversion routes."""
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -445,6 +446,33 @@ def test_convert_one_reports_atomic_write_oserror_as_server_error(tmp_path, monk
 
     assert response.status_code == 500
     assert "Output write failed: disk full" in response.json()["detail"]
+
+
+def test_batch_convert_normalizes_empty_output_directory_setup_oserror(
+    tmp_path, monkeypatch
+):
+    input_root = tmp_path / "input"
+    output_root = tmp_path / "output"
+    input_root.mkdir()
+
+    real_mkdir = Path.mkdir
+
+    def fail_output_mkdir(self, *args, **kwargs):
+        if self == output_root:
+            raise OSError()
+        return real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", fail_output_mkdir)
+
+    response = _client().post(
+        "/api/markitdown/batch-convert",
+        json={"input_dir": str(input_root), "output_dir": str(output_root)},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == (
+        f"Cannot create output directory {output_root}: OSError"
+    )
 
 
 @pytest.mark.asyncio

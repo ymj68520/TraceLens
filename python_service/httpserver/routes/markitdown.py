@@ -417,11 +417,14 @@ async def batch_convert(request: BatchConvertRequest):
         )
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
+    except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Cannot create output directory {request.output_dir}: {e}"
-        )
+            detail=(
+                f"Cannot create output directory {request.output_dir}: "
+                f"{_exception_text(exc)}"
+            ),
+        ) from exc
 
     # Collect all regular files (recursive)
     all_files = [f for f in input_dir.rglob("*") if f.is_file()]
