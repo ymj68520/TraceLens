@@ -392,6 +392,24 @@ add_test(NAME LinuxSecurityParsersGTests COMMAND test_linux_security_parsers_gte
 
 # File Classifier Tests
 add_executable(
+  test_file_extractor_text_dump
+  UnitTest/test_file_extractor_text_dump.cpp
+  ../src/core/DatabaseManager/FileExtractor/FileExtractor.cpp
+  ../src/core/DatabaseManager/FileExtractor/FileExtractor_Extract.cpp
+  ../src/core/DatabaseManager/DatabaseManager.cpp
+  ../src/core/ConfigManager/ConfigManager.cpp
+  ../src/core/PathManager/PathManager.cpp
+  ../src/analyzers/ImageAnalyzer/XFSHelper.cpp
+  ../src/core/AuditLog/AuditLog.cpp)
+
+target_include_directories(test_file_extractor_text_dump PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(
+  test_file_extractor_text_dump ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} gtest_main
+  sqlite3 tsk pthread cpp_dotenv)
+add_test(NAME FileExtractorTextDumpTests COMMAND test_file_extractor_text_dump)
+
+# File Classifier Tests
+add_executable(
   test_file_classifier
   UnitTest/test_file_classifier.cpp
   ../src/core/DatabaseManager/FileClassifier/FileClassifier.cpp

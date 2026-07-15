@@ -7,6 +7,9 @@
 #include <memory>
 #include <functional>
 #include <map>
+#include <filesystem>
+#include <optional>
+#include <cstdint>
 #include <tsk/libtsk.h>
 #include "DatabaseManager/DatabaseManager.h"
 #include "analyzers/AndroidAnalyzer/IFileExtractor.h"
@@ -28,6 +31,20 @@
  */
 class FileExtractor : public IFileExtractor {
 public:
+    enum class AtomicExtractionStatus : uint8_t {
+        Extracted,
+        Reused,
+        Failed
+    };
+
+    struct AtomicExtractionResult {
+        AtomicExtractionStatus status = AtomicExtractionStatus::Failed;
+        std::filesystem::path output_path;
+        uintmax_t previous_bytes = 0;
+        uintmax_t output_bytes = 0;
+        std::string error;
+    };
+
     /**
      * Constructor
      * @param imagePath Path to disk image file
@@ -45,6 +62,17 @@ public:
     int extractDeleted(const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr);
     bool extractFileByInode(int64_t inode, const std::string& outputPath, int partitionNum = -1);
     bool extractFileByPath(const std::string& filePath, const std::string& outputPath) override;
+
+    static std::vector<FileRecord> queryRegularFilesOrdered(sqlite3* db,
+                                                            std::string* error = nullptr);
+    std::vector<FileRecord> listRegularFilesOrdered(std::string* error = nullptr);
+    static std::optional<std::filesystem::path> resolveSafeOutputPath(
+        const std::filesystem::path& outputRoot,
+        const std::string& imagePath,
+        std::string* error = nullptr);
+    AtomicExtractionResult extractRecordAtomically(
+        const FileRecord& record,
+        const std::filesystem::path& outputRoot);
 
 private:
     std::string imagePath_;

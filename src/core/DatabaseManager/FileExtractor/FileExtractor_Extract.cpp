@@ -1,19 +1,245 @@
 #include "FileExtractor.h"
 #include "AuditLog/AuditLog.h"
-#include <iostream>
-#include <fstream>
-#include <filesystem>
-#include <sstream>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <sstream>
 
 #ifdef _WIN32
 #include <Windows.h>
+#else
+#include <unistd.h>
 #endif
 
 namespace fs = std::filesystem;
 
+namespace {
+
+std::string columnText(sqlite3_stmt* statement, int column) {
+    const auto* value = reinterpret_cast<const char*>(sqlite3_column_text(statement, column));
+    return value ? value : "";
+}
+
+bool atomicReplace(const fs::path& temporaryPath, const fs::path& finalPath,
+                   std::string& error) {
+#ifdef _WIN32
+    if (MoveFileExW(temporaryPath.wstring().c_str(), finalPath.wstring().c_str(),
+                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        return true;
+    }
+    error = "Cannot replace output file: " + std::to_string(GetLastError());
+    return false;
+#else
+    std::error_code ec;
+    fs::rename(temporaryPath, finalPath, ec);
+    if (!ec) {
+        return true;
+    }
+    error = "Cannot replace output file: " + ec.message();
+    return false;
+#endif
+}
+
+fs::path temporaryPathFor(const fs::path& finalPath, const FileRecord& record) {
+    static std::atomic_uint64_t sequence{0};
+    const auto nonce = static_cast<uint64_t>(
+        std::chrono::steady_clock::now().time_since_epoch().count());
+#ifdef _WIN32
+    const auto processId = static_cast<uint64_t>(GetCurrentProcessId());
+#else
+    const auto processId = static_cast<uint64_t>(getpid());
+#endif
+    return finalPath.parent_path() /
+           (".tracelens-textdump-tmp-" + std::to_string(record.partitionNum) + "-" +
+            std::to_string(record.inode) + "-" + std::to_string(processId) + "-" +
+            std::to_string(nonce) + "-" + std::to_string(sequence.fetch_add(1)));
+}
+
+} // namespace
+
 // File extraction operations. Split from FileExtractor.cpp.
+
+std::vector<FileRecord> FileExtractor::queryRegularFilesOrdered(sqlite3* db,
+                                                                 std::string* error) {
+    if (error) {
+        error->clear();
+    }
+    if (!db) {
+        if (error) {
+            *error = "File extractor database is not initialized";
+        }
+        return {};
+    }
+
+    const char* sql = R"SQL(
+        SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5,
+               COALESCE(partition_num, 0)
+        FROM files
+        WHERE type = 'REG'
+          AND is_deleted = 0
+          AND COALESCE(is_allocated, 1) = 1
+        ORDER BY path COLLATE BINARY ASC,
+                 COALESCE(partition_num, 0) ASC,
+                 inode ASC
+    )SQL";
+
+    sqlite3_stmt* statement = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &statement, nullptr) != SQLITE_OK) {
+        if (error) {
+            *error = sqlite3_errmsg(db);
+        }
+        return {};
+    }
+
+    std::vector<FileRecord> records;
+    int stepResult = SQLITE_ROW;
+    while ((stepResult = sqlite3_step(statement)) == SQLITE_ROW) {
+        FileRecord record{};
+        record.inode = sqlite3_column_int64(statement, 0);
+        record.name = columnText(statement, 1);
+        record.path = columnText(statement, 2);
+        record.size = sqlite3_column_int64(statement, 3);
+        record.mtime = sqlite3_column_int64(statement, 4);
+        record.ctime = sqlite3_column_int64(statement, 5);
+        record.type = columnText(statement, 6);
+        record.isDeleted = sqlite3_column_int(statement, 7);
+        record.md5 = columnText(statement, 8);
+        record.partitionNum = sqlite3_column_int(statement, 9);
+        record.atime = record.mtime;
+        record.crtime = record.ctime;
+        record.isAllocated = 1;
+        record.permissions = "0644";
+        record.uid = 0;
+        record.gid = 0;
+        records.push_back(std::move(record));
+    }
+
+    if (stepResult != SQLITE_DONE && error) {
+        *error = sqlite3_errmsg(db);
+    }
+    sqlite3_finalize(statement);
+    return records;
+}
+
+std::vector<FileRecord> FileExtractor::listRegularFilesOrdered(std::string* error) {
+    if (!dbManager_ || !dbManager_->getDb()) {
+        if (error) {
+            *error = "File extractor database is not initialized";
+        }
+        return {};
+    }
+    return queryRegularFilesOrdered(dbManager_->getDb(), error);
+}
+
+std::optional<fs::path> FileExtractor::resolveSafeOutputPath(
+        const fs::path& outputRoot, const std::string& imagePath,
+        std::string* error) {
+    if (error) {
+        error->clear();
+    }
+
+    std::error_code ec;
+    fs::create_directories(outputRoot, ec);
+    if (ec || fs::is_symlink(fs::symlink_status(outputRoot, ec))) {
+        if (error) {
+            *error = "Output root is unavailable or is a symlink: " + outputRoot.string();
+        }
+        return std::nullopt;
+    }
+
+    fs::path relative = fs::path(imagePath).relative_path().lexically_normal();
+    if (relative.empty() || relative == ".") {
+        if (error) {
+            *error = "Image path does not identify a file";
+        }
+        return std::nullopt;
+    }
+    for (const auto& component : relative) {
+        if (component == "..") {
+            if (error) {
+                *error = "Image path escapes the output root: " + imagePath;
+            }
+            return std::nullopt;
+        }
+    }
+
+    fs::path current = outputRoot;
+    for (const auto& component : relative.parent_path()) {
+        current /= component;
+        const auto status = fs::symlink_status(current, ec);
+        if (!ec && fs::is_symlink(status)) {
+            if (error) {
+                *error = "Output path contains a symlink: " + current.string();
+            }
+            return std::nullopt;
+        }
+        ec.clear();
+    }
+    const fs::path result = outputRoot / relative;
+    const auto finalStatus = fs::symlink_status(result, ec);
+    if (!ec && fs::is_symlink(finalStatus)) {
+        if (error) {
+            *error = "Output file is a symlink: " + result.string();
+        }
+        return std::nullopt;
+    }
+    return result;
+}
+
+FileExtractor::AtomicExtractionResult FileExtractor::extractRecordAtomically(
+        const FileRecord& record, const fs::path& outputRoot) {
+    AtomicExtractionResult result;
+    auto finalPath = resolveSafeOutputPath(outputRoot, record.path, &result.error);
+    if (!finalPath) {
+        result.status = AtomicExtractionStatus::Failed;
+        return result;
+    }
+    result.output_path = *finalPath;
+
+    std::error_code ec;
+    const auto finalStatus = fs::status(*finalPath, ec);
+    if (!ec && fs::is_regular_file(finalStatus)) {
+        result.previous_bytes = fs::file_size(*finalPath, ec);
+        if (!ec && record.size >= 0 &&
+            result.previous_bytes == static_cast<uintmax_t>(record.size)) {
+            result.status = AtomicExtractionStatus::Reused;
+            result.output_bytes = result.previous_bytes;
+            return result;
+        }
+    }
+    ec.clear();
+
+    fs::create_directories(finalPath->parent_path(), ec);
+    if (ec) {
+        result.status = AtomicExtractionStatus::Failed;
+        result.error = "Cannot create output directory: " + ec.message();
+        return result;
+    }
+
+    const fs::path temporaryPath = temporaryPathFor(*finalPath, record);
+    if (!extractFile(record, temporaryPath.string(), true, nullptr)) {
+        fs::remove(temporaryPath, ec);
+        result.status = AtomicExtractionStatus::Failed;
+        result.error = "Failed to extract " + record.path;
+        return result;
+    }
+    if (!atomicReplace(temporaryPath, *finalPath, result.error)) {
+        fs::remove(temporaryPath, ec);
+        result.status = AtomicExtractionStatus::Failed;
+        return result;
+    }
+    result.status = AtomicExtractionStatus::Extracted;
+    result.output_bytes = fs::file_size(*finalPath, ec);
+    if (ec) {
+        result.status = AtomicExtractionStatus::Failed;
+        result.error = "Cannot stat extracted file: " + ec.message();
+    }
+    return result;
+}
 
 int FileExtractor::extractByName(const std::string& pattern, const std::string& outputDir, bool overwrite, int* skippedCount) {
     std::cout << "Searching files matching patterns: " << pattern << std::endl;
