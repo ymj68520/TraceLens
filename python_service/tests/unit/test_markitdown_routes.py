@@ -397,6 +397,31 @@ def test_convert_one_rejects_symlinked_paths(tmp_path, monkeypatch, case):
     assert response.status_code == 400
 
 
+def test_convert_one_normalizes_empty_output_write_oserror(tmp_path, monkeypatch):
+    input_root = tmp_path / "input"
+    source = input_root / "notes.txt"
+    source.parent.mkdir()
+    source.write_text("case notes", encoding="utf-8")
+    _use_raw_text_fallback(monkeypatch)
+
+    def fail_write(output_path, markdown):
+        raise OSError()
+
+    monkeypatch.setattr(markitdown, "_write_markdown_atomic", fail_write)
+
+    response = _client().post(
+        "/api/markitdown/convert-one",
+        json={
+            "input_root": str(input_root),
+            "input_file": str(source),
+            "output_root": str(tmp_path / "output"),
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Output write failed: OSError"
+
+
 def test_convert_one_reports_atomic_write_oserror_as_server_error(tmp_path, monkeypatch):
     input_root = tmp_path / "input"
     source = input_root / "notes.txt"
@@ -420,6 +445,27 @@ def test_convert_one_reports_atomic_write_oserror_as_server_error(tmp_path, monk
 
     assert response.status_code == 500
     assert "Output write failed: disk full" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_batch_wrapper_normalizes_empty_oserror(tmp_path, monkeypatch):
+    input_root = tmp_path / "input"
+    output_root = tmp_path / "output"
+    source = input_root / "notes.txt"
+    source.parent.mkdir()
+    source.write_text("notes", encoding="utf-8")
+
+    async def fail_conversion(file_path, received_input_root, received_output_root):
+        raise OSError()
+
+    monkeypatch.setattr(markitdown, "_convert_file_to_output", fail_conversion)
+
+    status, detail = await markitdown._convert_one(
+        source, input_root, output_root, asyncio.Semaphore(1)
+    )
+
+    assert status == "failed"
+    assert detail == "notes.txt: OSError"
 
 
 def test_batch_convert_uses_shared_primitive_with_bounded_concurrency_and_error_cap(

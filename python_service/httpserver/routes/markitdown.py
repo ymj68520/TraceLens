@@ -205,6 +205,10 @@ class ConvertOneRequest(BaseModel):
     output_root: str
 
 
+def _exception_text(exc: BaseException) -> str:
+    return str(exc) or type(exc).__name__
+
+
 class ConvertOneResponse(BaseModel):
     """Response model for a single atomic file conversion."""
     success: bool
@@ -293,8 +297,7 @@ async def _convert_file_to_output(
                 text = raw.decode("latin-1", errors="replace")
             markdown = f"# {file_path.name}\n\n```\n{text}\n```\n"
     except Exception as exc:
-        error = str(exc) or type(exc).__name__
-        return FileConversionOutcome("failed", file_path, error=error)
+        return FileConversionOutcome("failed", file_path, error=_exception_text(exc))
     if not markdown or not markdown.strip():
         return FileConversionOutcome("skipped", file_path)
     output_size = _write_markdown_atomic(output_path, markdown)
@@ -313,7 +316,10 @@ async def convert_one(request: ConvertOneRequest):
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OSError as exc:
-        raise HTTPException(status_code=500, detail=f"Output write failed: {exc}") from exc
+        raise HTTPException(
+            status_code=500,
+            detail=f"Output write failed: {_exception_text(exc)}",
+        ) from exc
     return ConvertOneResponse(
         success=outcome.status == "converted",
         status=outcome.status,
@@ -341,7 +347,7 @@ async def _convert_one(file_path: Path, input_root: Path, output_root: Path,
                 rel = file_path.relative_to(input_root)
             except ValueError:
                 rel = file_path
-            return ("failed", f"{rel}: {exc}")
+            return ("failed", f"{rel}: {_exception_text(exc)}")
 
 
 def _is_likely_binary(data: bytes, sample_size: int = 8192) -> bool:
