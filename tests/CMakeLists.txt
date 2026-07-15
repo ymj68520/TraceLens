@@ -1198,4 +1198,18 @@ add_executable(
 target_include_directories(test_command_line_parser PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_command_line_parser ${GTEST_LIBRARIES}
                       ${GMOCK_LIBRARIES} gtest_main pthread)
+
+add_executable(
+  test_markitdown_proxy
+  UnitTest/test_markitdown_proxy.cpp
+  ../src/integration/LLMIntegration/MarkitdownProxy.cpp
+  ../src/core/Logger/Logger.cpp
+  ../src/core/ConfigManager/ConfigManager.cpp
+  ../src/core/PathManager/PathManager.cpp)
+
+target_include_directories(test_markitdown_proxy PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(
+  test_markitdown_proxy ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} gtest_main
+  nlohmann_json::nlohmann_json cpp_dotenv pthread)
+add_test(NAME MarkitdownProxyTests COMMAND test_markitdown_proxy)
 add_test(NAME CommandLineParserTests COMMAND test_command_line_parser)

@@ -2,11 +2,27 @@
 #ifndef MARKITDOWN_PROXY_H
 #define MARKITDOWN_PROXY_H
 
+#include <cstdint>
 #include <string>
 #include <nlohmann/json.hpp>
 
 namespace forensics {
 namespace llm {
+
+enum class SingleConversionStatus {
+    Converted,
+    Skipped,
+    Failed,
+    ServiceError,
+};
+
+struct SingleConversionResult {
+    SingleConversionStatus status = SingleConversionStatus::Failed;
+    std::string output_path;
+    uint64_t output_bytes = 0;
+    uint64_t previous_bytes = 0;
+    std::string error;
+};
 
 /**
  * @brief Proxy for calling the Python markitdown service via HTTP.
@@ -25,6 +41,13 @@ public:
      * @brief Get the singleton instance.
      */
     static MarkitdownProxy& instance();
+
+    explicit MarkitdownProxy(std::string pythonServiceUrl);
+
+    SingleConversionResult convertOneToMarkdown(
+        const std::string& inputRoot,
+        const std::string& inputFile,
+        const std::string& outputRoot);
 
     /**
      * @brief Convert a file to markdown via the Python markitdown service.
@@ -72,8 +95,6 @@ public:
     bool isServiceAvailable();
 
 private:
-    MarkitdownProxy(const std::string& pythonServiceUrl);
-
     std::string pythonServiceUrl_;
 };
 

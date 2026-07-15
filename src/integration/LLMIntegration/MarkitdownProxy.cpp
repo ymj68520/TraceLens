@@ -2,18 +2,71 @@
 #include "../../core/Logger/Logger.h"
 #include "ConfigManager/ConfigManager.h"
 #include <httplib.h>
+#include <utility>
 
 namespace forensics {
 namespace llm {
 
-MarkitdownProxy::MarkitdownProxy(const std::string& pythonServiceUrl)
-    : pythonServiceUrl_(pythonServiceUrl) {}
+MarkitdownProxy::MarkitdownProxy(std::string pythonServiceUrl)
+    : pythonServiceUrl_(std::move(pythonServiceUrl)) {}
 
 MarkitdownProxy& MarkitdownProxy::instance() {
     static MarkitdownProxy instance(
         ConfigManager::instance().getPythonServiceUrl()
     );
     return instance;
+}
+
+SingleConversionResult MarkitdownProxy::convertOneToMarkdown(
+        const std::string& inputRoot,
+        const std::string& inputFile,
+        const std::string& outputRoot) {
+    SingleConversionResult result;
+    try {
+        httplib::Client cli(pythonServiceUrl_);
+        cli.set_connection_timeout(10);
+        cli.set_read_timeout(120);
+        const nlohmann::json body = {
+            {"input_root", inputRoot},
+            {"input_file", inputFile},
+            {"output_root", outputRoot},
+        };
+        auto res = cli.Post("/api/markitdown/convert-one",
+                            body.dump(), "application/json");
+        if (!res) {
+            result.status = SingleConversionStatus::ServiceError;
+            result.error = "Service unreachable at " + pythonServiceUrl_;
+            return result;
+        }
+        if (res->status >= 500) {
+            result.status = SingleConversionStatus::ServiceError;
+            result.error = "HTTP " + std::to_string(res->status) + ": " + res->body;
+            return result;
+        }
+        if (res->status >= 400) {
+            result.status = SingleConversionStatus::Failed;
+            result.error = "HTTP " + std::to_string(res->status) + ": " + res->body;
+            return result;
+        }
+
+        const auto response = nlohmann::json::parse(res->body);
+        const std::string status = response.value("status", "failed");
+        if (status == "converted") {
+            result.status = SingleConversionStatus::Converted;
+        } else if (status == "skipped") {
+            result.status = SingleConversionStatus::Skipped;
+        } else {
+            result.status = SingleConversionStatus::Failed;
+        }
+        result.output_path = response.value("output_path", "");
+        result.output_bytes = response.value("output_size", uint64_t{0});
+        result.error = response.value("error", "");
+        return result;
+    } catch (const std::exception& ex) {
+        result.status = SingleConversionStatus::ServiceError;
+        result.error = ex.what();
+        return result;
+    }
 }
 
 std::string MarkitdownProxy::convertToMarkdown(const std::string& filePath) {
