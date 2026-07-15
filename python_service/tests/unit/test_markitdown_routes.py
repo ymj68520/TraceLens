@@ -46,6 +46,27 @@ async def test_convert_file_to_output_uses_specialized_extractor(tmp_path, monke
 
 
 @pytest.mark.asyncio
+async def test_convert_file_to_output_skips_blank_extractor_markdown(tmp_path, monkeypatch):
+    input_root = tmp_path / "input"
+    output_root = tmp_path / "output"
+    source = input_root / "blank.log"
+    source.parent.mkdir()
+    source.write_text("source", encoding="utf-8")
+    extractor = MagicMock()
+    extractor.extract_to_markdown = AsyncMock(return_value="   \n")
+    locator = MagicMock()
+    locator.get_extractor.return_value = extractor
+    monkeypatch.setattr(markitdown, "get_document_extractor_locator", lambda: locator)
+
+    result = await markitdown._convert_file_to_output(source, input_root, output_root)
+
+    assert result.status == "skipped"
+    assert result.output_path is None
+    assert not list(output_root.rglob("*.md"))
+    assert not list(tmp_path.rglob(".tracelens-textdump-tmp-*"))
+
+
+@pytest.mark.asyncio
 async def test_convert_file_to_output_falls_back_to_raw_utf8_text(tmp_path, monkeypatch):
     input_root = tmp_path / "input"
     output_root = tmp_path / "output"
@@ -404,6 +425,10 @@ def test_batch_convert_uses_shared_primitive_with_bounded_concurrency_and_error_
     assert body["skipped"] == 1
     assert body["failed"] == 51
     assert len(body["errors"]) == 51
+    assert all(
+        error.startswith("failed-") and ": cannot convert failed-" in error
+        for error in body["errors"][:-1]
+    )
     assert body["errors"][-1] == "... and 1 more failures"
     assert len(calls) == 53
     assert all(call[1:] == (input_root, output_root) for call in calls)

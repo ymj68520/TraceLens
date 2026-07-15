@@ -327,7 +327,11 @@ async def _convert_one(file_path: Path, input_root: Path, output_root: Path,
     async with sem:
         try:
             outcome = await _convert_file_to_output(file_path, input_root, output_root)
-            detail = outcome.error or str(file_path.relative_to(input_root))
+            rel = file_path.relative_to(input_root)
+            if outcome.status == "failed":
+                detail = f"{rel}: {outcome.error}" if outcome.error else str(rel)
+            else:
+                detail = str(rel)
             return (outcome.status, detail)
         except Exception as exc:
             try:
