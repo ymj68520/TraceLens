@@ -238,6 +238,8 @@ def _output_path_for(input_file: Path, input_root: Path, output_root: Path) -> P
 
     if output_root.is_symlink():
         raise ValueError(f"Output root must not be a symlink: {output_root}")
+    if output_root.exists() and not output_root.is_dir():
+        raise ValueError(f"Output root is not a directory: {output_root}")
     output_root.mkdir(parents=True, exist_ok=True)
     if output_root.is_symlink():
         raise ValueError(f"Output root must not be a symlink: {output_root}")
@@ -291,7 +293,8 @@ async def _convert_file_to_output(
                 text = raw.decode("latin-1", errors="replace")
             markdown = f"# {file_path.name}\n\n```\n{text}\n```\n"
     except Exception as exc:
-        return FileConversionOutcome("failed", file_path, error=str(exc))
+        error = str(exc) or type(exc).__name__
+        return FileConversionOutcome("failed", file_path, error=error)
     if not markdown or not markdown.strip():
         return FileConversionOutcome("skipped", file_path)
     output_size = _write_markdown_atomic(output_path, markdown)
@@ -329,7 +332,7 @@ async def _convert_one(file_path: Path, input_root: Path, output_root: Path,
             outcome = await _convert_file_to_output(file_path, input_root, output_root)
             rel = file_path.relative_to(input_root)
             if outcome.status == "failed":
-                detail = f"{rel}: {outcome.error}" if outcome.error else str(rel)
+                detail = f"{rel}: {outcome.error}"
             else:
                 detail = str(rel)
             return (outcome.status, detail)

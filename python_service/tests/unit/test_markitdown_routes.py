@@ -177,6 +177,30 @@ async def test_convert_file_to_output_isolates_extractor_selection_failure(
     assert "selection failed" in result.error
 
 
+@pytest.mark.asyncio
+async def test_convert_one_normalizes_empty_failed_outcome_error(tmp_path, monkeypatch):
+    input_root = tmp_path / "input"
+    output_root = tmp_path / "output"
+    source = input_root / "empty-error.txt"
+    source.parent.mkdir()
+    source.write_text("source", encoding="utf-8")
+    monkeypatch.setattr(
+        markitdown,
+        "get_document_extractor_locator",
+        MagicMock(side_effect=RuntimeError()),
+    )
+
+    outcome = await markitdown._convert_file_to_output(source, input_root, output_root)
+    status, detail = await markitdown._convert_one(
+        source, input_root, output_root, asyncio.Semaphore(1)
+    )
+
+    assert outcome.status == "failed"
+    assert outcome.error == "RuntimeError"
+    assert status == "failed"
+    assert detail == "empty-error.txt: RuntimeError"
+
+
 def test_write_markdown_atomic_cleans_temp_after_replace_failure(tmp_path, monkeypatch):
     output = tmp_path / "notes.md"
     monkeypatch.setattr(
@@ -218,6 +242,25 @@ def test_convert_one_derives_markdown_output_name(tmp_path, monkeypatch):
         "output_size": len((output_root / "notes.txt.md").read_bytes()),
         "error": "",
     }
+
+
+def test_convert_one_rejects_existing_file_as_output_root(tmp_path, monkeypatch):
+    input_root = tmp_path / "input"
+    source = input_root / "notes.txt"
+    source.parent.mkdir()
+    source.write_text("notes", encoding="utf-8")
+    output_root = tmp_path / "output-file"
+    output_root.write_text("not a directory", encoding="utf-8")
+    _use_raw_text_fallback(monkeypatch)
+
+    response = _client().post("/api/markitdown/convert-one", json={
+        "input_root": str(input_root),
+        "input_file": str(source),
+        "output_root": str(output_root),
+    })
+
+    assert response.status_code == 400
+    assert "Output root is not a directory" in response.json()["detail"]
 
 
 def test_convert_one_returns_failed_outcome_for_locator_construction_failure(
