@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 #include "ImageAnalyzer/ImageAnalyzer.h"
@@ -45,6 +47,8 @@ struct CommandLineArgs {
     bool generate_report = false;  // 生成人类可读 Markdown 报告
     std::string report_path;  // 自定义报告路径（可选）
     bool dump_text = false;  // 导出提取文件的文本版本（需 python_service 运行）
+    std::optional<uint64_t> dump_text_max_bytes;
+    std::string parse_error;
 
     // Decryption options (encrypted partitions are auto-detected and unlocked
     // using a sibling .key file when --decrypt is given).

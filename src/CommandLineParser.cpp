@@ -1,10 +1,64 @@
 #include "CommandLineParser.h"
-#include <iostream>
+#include <charconv>
+#include <cctype>
 #include <filesystem>
+#include <iostream>
+#include <limits>
+#include <optional>
 
 namespace forensics {
 
 namespace fs = std::filesystem;
+
+namespace {
+
+std::optional<uint64_t> parseBinarySize(const std::string& text,
+                                        std::string& error) {
+    if (text.size() < 2) {
+        error = "--dump-text-max-size expects a positive integer followed by K, M, G, or T";
+        return std::nullopt;
+    }
+
+    const char unit = static_cast<char>(
+        std::toupper(static_cast<unsigned char>(text.back())));
+    uint64_t multiplier = 0;
+    switch (unit) {
+        case 'K': multiplier = 1024ULL; break;
+        case 'M': multiplier = 1024ULL * 1024ULL; break;
+        case 'G': multiplier = 1024ULL * 1024ULL * 1024ULL; break;
+        case 'T': multiplier = 1024ULL * 1024ULL * 1024ULL * 1024ULL; break;
+        default:
+            error = "--dump-text-max-size unit must be one of K, M, G, or T";
+            return std::nullopt;
+    }
+
+    const std::string digits = text.substr(0, text.size() - 1);
+    if (digits.empty()) {
+        error = "--dump-text-max-size requires a positive integer before the unit";
+        return std::nullopt;
+    }
+    for (const unsigned char ch : digits) {
+        if (!std::isdigit(ch)) {
+            error = "--dump-text-max-size does not accept signs or decimals";
+            return std::nullopt;
+        }
+    }
+
+    uint64_t value = 0;
+    const auto [end, ec] = std::from_chars(
+        digits.data(), digits.data() + digits.size(), value);
+    if (ec != std::errc{} || end != digits.data() + digits.size() || value == 0) {
+        error = "--dump-text-max-size must contain a positive integer";
+        return std::nullopt;
+    }
+    if (value > std::numeric_limits<uint64_t>::max() / multiplier) {
+        error = "--dump-text-max-size exceeds the maximum supported byte count";
+        return std::nullopt;
+    }
+    return value * multiplier;
+}
+
+} // namespace
 
 void CommandLineParser::printUsage(const char* programName) {
     std::cout << "Forensic Image Analyzer with File Extraction\n\n";
@@ -42,6 +96,8 @@ void CommandLineParser::printUsage(const char* programName) {
     std::cout << "  --report-path <path>        Custom output path for the report\n";
     std::cout << "  --dump-text                 Convert extracted files to text via Python extractors\n";
     std::cout << "                              (requires python_service running; needs --linux/windows-analyze)\n";
+    std::cout << "  --dump-text-max-size <SIZE> Limit dump originals + Markdown (e.g. 500M, 2G)\n";
+    std::cout << "                              Binary K/M/G/T soft limit; implies --dump-text\n";
     std::cout << "  --memory-analyze            Analyze a RAM memory image (LiME/raw) via Volatility3\n";
     std::cout << "  --vol-symbols-dir <path>    ISF symbol dir for vol3 (else vol3 default search)\n\n";
     std::cout << "File Filter:\n";
@@ -119,6 +175,19 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
             args.report_path = argv[++i];
             args.generate_report = true;
         } else if (arg == "--dump-text") {
+            args.dump_text = true;
+        } else if (arg == "--dump-text-max-size") {
+            if (i + 1 >= argc) {
+                args.parse_error = "Missing value for --dump-text-max-size";
+                return args;
+            }
+            std::string error;
+            auto parsed = parseBinarySize(argv[++i], error);
+            if (!parsed.has_value()) {
+                args.parse_error = error;
+                return args;
+            }
+            args.dump_text_max_bytes = *parsed;
             args.dump_text = true;
         } else if (arg == "--memory-analyze") {
             args.memory_analyze = true;

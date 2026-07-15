@@ -71,6 +71,13 @@ int main(int argc, char* argv[]) {
 #endif
     auto cmdArgs = CommandLineParser::parse(argc, argv);
 
+    if (!cmdArgs.parse_error.empty()) {
+        std::cerr << "Error: " << cmdArgs.parse_error << std::endl;
+        std::cerr << "Expected: --dump-text-max-size <positive integer><K|M|G|T>"
+                  << std::endl;
+        return 2;
+    }
+
     // Handle special flags
     if (cmdArgs.show_help) {
         CommandLineParser::printUsage(argv[0]);
