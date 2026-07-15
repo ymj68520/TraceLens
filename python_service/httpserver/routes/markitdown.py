@@ -273,9 +273,9 @@ async def _convert_file_to_output(
 ) -> FileConversionOutcome:
     """Convert one validated file and atomically write its Markdown output."""
     output_path = _output_path_for(file_path, input_root, output_root)
-    locator = get_document_extractor_locator()
-    extractor = locator.get_extractor(str(file_path))
     try:
+        locator = get_document_extractor_locator()
+        extractor = locator.get_extractor(str(file_path))
         if extractor is not None:
             markdown = await extractor.extract_to_markdown(str(file_path))
         else:

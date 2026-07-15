@@ -116,6 +116,61 @@ async def test_convert_file_to_output_isolates_extractor_error_and_cleans_temp(
     assert not list(tmp_path.rglob(".tracelens-textdump-tmp-*"))
 
 
+@pytest.mark.asyncio
+async def test_convert_file_to_output_isolates_locator_construction_failure(
+    tmp_path, monkeypatch
+):
+    input_root = tmp_path / "input"
+    output_root = tmp_path / "output"
+    source = input_root / "notes.txt"
+    source.parent.mkdir()
+    source.write_text("notes", encoding="utf-8")
+    monkeypatch.setattr(
+        markitdown,
+        "get_document_extractor_locator",
+        MagicMock(side_effect=RuntimeError("locator unavailable")),
+    )
+
+    result = await markitdown._convert_file_to_output(source, input_root, output_root)
+
+    assert result.status == "failed"
+    assert "locator unavailable" in result.error
+
+
+@pytest.mark.asyncio
+async def test_convert_file_to_output_isolates_extractor_selection_failure(
+    tmp_path, monkeypatch
+):
+    input_root = tmp_path / "input"
+    output_root = tmp_path / "output"
+    source = input_root / "notes.txt"
+    source.parent.mkdir()
+    source.write_text("notes", encoding="utf-8")
+    locator = MagicMock()
+    locator.get_extractor.side_effect = RuntimeError("selection failed")
+    monkeypatch.setattr(markitdown, "get_document_extractor_locator", lambda: locator)
+
+    result = await markitdown._convert_file_to_output(source, input_root, output_root)
+
+    assert result.status == "failed"
+    assert "selection failed" in result.error
+
+
+def test_write_markdown_atomic_cleans_temp_after_replace_failure(tmp_path, monkeypatch):
+    output = tmp_path / "notes.md"
+    monkeypatch.setattr(
+        markitdown.os,
+        "replace",
+        MagicMock(side_effect=OSError("replace failed")),
+    )
+
+    with pytest.raises(OSError, match="replace failed"):
+        markitdown._write_markdown_atomic(output, "content")
+
+    assert not output.exists()
+    assert not list(tmp_path.glob(".tracelens-textdump-tmp-*"))
+
+
 def test_convert_one_derives_markdown_output_name(tmp_path, monkeypatch):
     input_root = tmp_path / "input"
     output_root = tmp_path / "output"
@@ -142,6 +197,34 @@ def test_convert_one_derives_markdown_output_name(tmp_path, monkeypatch):
         "output_size": len((output_root / "notes.txt.md").read_bytes()),
         "error": "",
     }
+
+
+def test_convert_one_returns_failed_outcome_for_locator_construction_failure(
+    tmp_path, monkeypatch
+):
+    input_root = tmp_path / "input"
+    output_root = tmp_path / "output"
+    source = input_root / "notes.txt"
+    source.parent.mkdir()
+    source.write_text("case notes", encoding="utf-8")
+    monkeypatch.setattr(
+        markitdown,
+        "get_document_extractor_locator",
+        MagicMock(side_effect=RuntimeError("locator unavailable")),
+    )
+
+    response = _client().post(
+        "/api/markitdown/convert-one",
+        json={
+            "input_root": str(input_root),
+            "input_file": str(source),
+            "output_root": str(output_root),
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "failed"
+    assert "locator unavailable" in response.json()["error"]
 
 
 def test_convert_one_rejects_input_outside_root(tmp_path, monkeypatch):
