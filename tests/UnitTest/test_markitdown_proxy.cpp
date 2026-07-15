@@ -120,7 +120,8 @@ TEST(MarkitdownProxyConvertOne, MapsFailedAndMalformedResponses) {
 }
 
 TEST(MarkitdownProxyConvertOne, MapsUnreachableServiceToServiceError) {
-    MarkitdownProxy proxy("http://127.0.0.1:1");
+    // TCP destination port 0 is reserved and cannot identify a listening service.
+    MarkitdownProxy proxy("http://127.0.0.1:0");
 
     const auto result = proxy.convertOneToMarkdown("/in", "/in/a.txt", "/out");
 
