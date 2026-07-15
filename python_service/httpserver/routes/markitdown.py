@@ -7,10 +7,13 @@ Microsoft's markitdown library. Used by the C++ backend via HTTP.
 
 import asyncio
 import logging
+import os
 import threading
 import time
+import uuid
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -182,58 +185,153 @@ class BatchConvertResponse(BaseModel):
     output_dir: str = ""
 
 
-async def _convert_one(file_path: Path, input_root: Path, output_root: Path,
-                       sem: asyncio.Semaphore):
-    """
-    Convert a single file to markdown and write it under output_root.
+ConversionStatus = Literal["converted", "skipped", "failed"]
 
-    Returns a tuple (status, detail) where status is one of:
-      "converted" | "skipped" | "failed"
 
-    If no specialized extractor is registered for the file type, falls back
-    to reading the file as raw text (most plain-text files — .txt, .sh, .log,
-    .cpp, .py, .conf, etc. — are already human-readable). Binary files that
-    cannot be decoded as UTF-8 are skipped.
-    """
-    # Relative path inside input_dir, used to mirror the structure.
-    rel = file_path.relative_to(input_root)
-    # Output path: same relative path + ".md" suffix.
-    out_path = output_root / (str(rel) + ".md")
+@dataclass(frozen=True)
+class FileConversionOutcome:
+    """The result of converting one input file to its mirrored Markdown file."""
+    status: ConversionStatus
+    input_path: Path
+    output_path: Optional[Path] = None
+    output_size: int = 0
+    error: str = ""
 
+
+class ConvertOneRequest(BaseModel):
+    """Request model for converting one file beneath an input root."""
+    input_root: str
+    input_file: str
+    output_root: str
+
+
+class ConvertOneResponse(BaseModel):
+    """Response model for a single atomic file conversion."""
+    success: bool
+    status: ConversionStatus
+    input_path: str
+    output_path: str = ""
+    output_size: int = 0
+    error: str = ""
+
+
+def _output_path_for(input_file: Path, input_root: Path, output_root: Path) -> Path:
+    """Validate paths and return the mirrored Markdown output destination."""
+    if input_root.is_symlink():
+        raise ValueError(f"Input root must not be a symlink: {input_root}")
+    if input_file.is_symlink():
+        raise ValueError(f"Input file must not be a symlink: {input_file}")
+
+    resolved_root = input_root.resolve(strict=True)
+    if not resolved_root.is_dir():
+        raise ValueError(f"Input root is not a directory: {input_root}")
+    resolved_input = input_file.resolve(strict=True)
+    try:
+        relative_input = resolved_input.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError(f"Input file is outside input root: {input_file}") from exc
+    if not resolved_input.is_file():
+        raise ValueError(f"Input path is not a regular file: {input_file}")
+
+    if output_root.is_symlink():
+        raise ValueError(f"Output root must not be a symlink: {output_root}")
+    output_root.mkdir(parents=True, exist_ok=True)
+    if output_root.is_symlink():
+        raise ValueError(f"Output root must not be a symlink: {output_root}")
+    if not output_root.is_dir():
+        raise ValueError(f"Output root is not a directory: {output_root}")
+
+    output_path = output_root / (str(relative_input) + ".md")
+    current = output_root
+    for component in output_path.relative_to(output_root).parts[:-1]:
+        if current.is_symlink():
+            raise ValueError(f"Output path contains a symlink: {current}")
+        current = current / component
+        if current.exists() and current.is_symlink():
+            raise ValueError(f"Output path contains a symlink: {current}")
+        current.mkdir(exist_ok=True)
+    if output_path.is_symlink():
+        raise ValueError(f"Output file must not be a symlink: {output_path}")
+    return output_path
+
+
+def _write_markdown_atomic(output_path: Path, markdown: str) -> int:
+    """Write Markdown through a reserved same-directory temporary file."""
+    temp_path = output_path.parent / (
+        f".tracelens-textdump-tmp-{uuid.uuid4().hex}-{output_path.name}"
+    )
+    try:
+        temp_path.write_text(markdown, encoding="utf-8")
+        os.replace(temp_path, output_path)
+        return output_path.stat().st_size
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+async def _convert_file_to_output(
+    file_path: Path, input_root: Path, output_root: Path
+) -> FileConversionOutcome:
+    """Convert one validated file and atomically write its Markdown output."""
+    output_path = _output_path_for(file_path, input_root, output_root)
     locator = get_document_extractor_locator()
     extractor = locator.get_extractor(str(file_path))
+    try:
+        if extractor is not None:
+            markdown = await extractor.extract_to_markdown(str(file_path))
+        else:
+            raw = file_path.read_bytes()
+            if not raw or _is_likely_binary(raw):
+                return FileConversionOutcome("skipped", file_path)
+            try:
+                text = raw.decode("utf-8", errors="strict")
+            except UnicodeDecodeError:
+                text = raw.decode("latin-1", errors="replace")
+            markdown = f"# {file_path.name}\n\n```\n{text}\n```\n"
+    except Exception as exc:
+        return FileConversionOutcome("failed", file_path, error=str(exc))
+    if not markdown or not markdown.strip():
+        return FileConversionOutcome("skipped", file_path)
+    output_size = _write_markdown_atomic(output_path, markdown)
+    return FileConversionOutcome(
+        "converted", file_path, output_path=output_path, output_size=output_size
+    )
 
+
+@router.post("/convert-one", response_model=ConvertOneResponse)
+async def convert_one(request: ConvertOneRequest):
+    """Convert one file under input_root into a mirrored Markdown file."""
+    try:
+        outcome = await _convert_file_to_output(
+            Path(request.input_file), Path(request.input_root), Path(request.output_root)
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Output write failed: {exc}") from exc
+    return ConvertOneResponse(
+        success=outcome.status == "converted",
+        status=outcome.status,
+        input_path=str(outcome.input_path),
+        output_path=str(outcome.output_path or ""),
+        output_size=outcome.output_size,
+        error=outcome.error,
+    )
+
+
+async def _convert_one(file_path: Path, input_root: Path, output_root: Path,
+                       sem: asyncio.Semaphore):
+    """Run the shared conversion primitive under the batch concurrency bound."""
     async with sem:
         try:
-            if extractor is not None:
-                markdown = await extractor.extract_to_markdown(str(file_path))
-            else:
-                # No specialized extractor — try raw text read as a fallback.
-                # This covers plain-text formats (.txt, .sh, .log, .cpp, .py,
-                # .conf, etc.) that don't need parsing, just content extraction.
-                raw = file_path.read_bytes()
-                # Skip files that look binary (high ratio of non-printable bytes).
-                if raw and _is_likely_binary(raw):
-                    return ("skipped", str(rel))
-                try:
-                    text = raw.decode("utf-8", errors="strict")
-                except UnicodeDecodeError:
-                    try:
-                        text = raw.decode("latin-1", errors="replace")
-                    except Exception:
-                        return ("skipped", str(rel))
-                # Wrap in a markdown code block so the content is preserved
-                # verbatim rather than being interpreted as markdown syntax.
-                markdown = f"# {file_path.name}\n\n```\n{text}\n```\n"
-
-            if not markdown or not markdown.strip():
-                return ("skipped", str(rel))
-
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_text(markdown, encoding="utf-8")
-            return ("converted", str(rel))
-        except Exception as e:
-            return ("failed", f"{rel}: {e}")
+            outcome = await _convert_file_to_output(file_path, input_root, output_root)
+            detail = outcome.error or str(file_path.relative_to(input_root))
+            return (outcome.status, detail)
+        except Exception as exc:
+            try:
+                rel = file_path.relative_to(input_root)
+            except ValueError:
+                rel = file_path
+            return ("failed", f"{rel}: {exc}")
 
 
 def _is_likely_binary(data: bytes, sample_size: int = 8192) -> bool:
@@ -279,6 +377,11 @@ async def batch_convert(request: BatchConvertRequest):
     output_dir = Path(request.output_dir)
 
     # Validate input directory
+    if input_dir.is_symlink():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Input directory must not be a symlink: {request.input_dir}"
+        )
     if not input_dir.exists():
         raise HTTPException(
             status_code=400,
@@ -291,6 +394,11 @@ async def batch_convert(request: BatchConvertRequest):
         )
 
     # Create output directory
+    if output_dir.is_symlink():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Output directory must not be a symlink: {request.output_dir}"
+        )
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
@@ -325,7 +433,7 @@ async def batch_convert(request: BatchConvertRequest):
     errors = [detail for status, detail in results if status == "failed"]
     # Cap the error list to avoid a huge response payload.
     if len(errors) > 50:
-        errors = errors[:50] + [f"... and {len(results) - 50} more failures"]
+        errors = errors[:50] + [f"... and {failed - 50} more failures"]
 
     elapsed = (time.time() - start_time) * 1000
     logger.info(
