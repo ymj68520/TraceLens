@@ -217,21 +217,24 @@ class ConvertOneResponse(BaseModel):
 
 def _output_path_for(input_file: Path, input_root: Path, output_root: Path) -> Path:
     """Validate paths and return the mirrored Markdown output destination."""
-    if input_root.is_symlink():
-        raise ValueError(f"Input root must not be a symlink: {input_root}")
-    if input_file.is_symlink():
-        raise ValueError(f"Input file must not be a symlink: {input_file}")
-
-    resolved_root = input_root.resolve(strict=True)
-    if not resolved_root.is_dir():
-        raise ValueError(f"Input root is not a directory: {input_root}")
-    resolved_input = input_file.resolve(strict=True)
     try:
-        relative_input = resolved_input.relative_to(resolved_root)
-    except ValueError as exc:
-        raise ValueError(f"Input file is outside input root: {input_file}") from exc
-    if not resolved_input.is_file():
-        raise ValueError(f"Input path is not a regular file: {input_file}")
+        if input_root.is_symlink():
+            raise ValueError(f"Input root must not be a symlink: {input_root}")
+        if input_file.is_symlink():
+            raise ValueError(f"Input file must not be a symlink: {input_file}")
+
+        resolved_root = input_root.resolve(strict=True)
+        if not resolved_root.is_dir():
+            raise ValueError(f"Input root is not a directory: {input_root}")
+        resolved_input = input_file.resolve(strict=True)
+        try:
+            relative_input = resolved_input.relative_to(resolved_root)
+        except ValueError as exc:
+            raise ValueError(f"Input file is outside input root: {input_file}") from exc
+        if not resolved_input.is_file():
+            raise ValueError(f"Input path is not a regular file: {input_file}")
+    except OSError as exc:
+        raise ValueError(f"Invalid input path: {input_file}: {exc}") from exc
 
     if output_root.is_symlink():
         raise ValueError(f"Output root must not be a symlink: {output_root}")
@@ -247,7 +250,7 @@ def _output_path_for(input_file: Path, input_root: Path, output_root: Path) -> P
         if current.is_symlink():
             raise ValueError(f"Output path contains a symlink: {current}")
         current = current / component
-        if current.exists() and current.is_symlink():
+        if current.is_symlink():
             raise ValueError(f"Output path contains a symlink: {current}")
         current.mkdir(exist_ok=True)
     if output_path.is_symlink():

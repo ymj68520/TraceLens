@@ -246,6 +246,47 @@ def test_convert_one_rejects_input_outside_root(tmp_path, monkeypatch):
     assert response.status_code == 400
 
 
+def test_convert_one_maps_input_not_a_directory_to_400(tmp_path, monkeypatch):
+    input_root = tmp_path / "input"
+    input_root.mkdir()
+    blocker = input_root / "not-a-directory"
+    blocker.write_text("file", encoding="utf-8")
+
+    response = _client().post(
+        "/api/markitdown/convert-one",
+        json={
+            "input_root": str(input_root),
+            "input_file": str(blocker / "notes.txt"),
+            "output_root": str(tmp_path / "output"),
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Invalid input path" in response.json()["detail"]
+
+
+def test_convert_one_rejects_dangling_output_component_symlink(tmp_path, monkeypatch):
+    input_root = tmp_path / "input"
+    output_root = tmp_path / "output"
+    source = input_root / "nested" / "notes.txt"
+    source.parent.mkdir(parents=True)
+    source.write_text("notes", encoding="utf-8")
+    output_root.mkdir()
+    (output_root / "nested").symlink_to(tmp_path / "missing-target", target_is_directory=True)
+    _use_raw_text_fallback(monkeypatch)
+
+    response = _client().post(
+        "/api/markitdown/convert-one",
+        json={
+            "input_root": str(input_root),
+            "input_file": str(source),
+            "output_root": str(output_root),
+        },
+    )
+
+    assert response.status_code == 400
+
+
 @pytest.mark.parametrize("case", ["input_file", "input_root", "output_root", "output_component", "output_file"])
 def test_convert_one_rejects_symlinked_paths(tmp_path, monkeypatch, case):
     input_root = tmp_path / "input"
