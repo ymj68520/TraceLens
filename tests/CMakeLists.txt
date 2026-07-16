@@ -404,8 +404,14 @@ add_executable(
 
 target_include_directories(test_file_extractor_text_dump PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(
-  test_file_extractor_text_dump ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} gtest_main
-  sqlite3 tsk pthread cpp_dotenv)
+  test_file_extractor_text_dump
+  ${GTEST_LIBRARIES}
+  ${GMOCK_LIBRARIES}
+  gtest_main
+  ${SQLITE_LINK_LIBRARIES}
+  ${TSK_LIBRARIES}
+  ${PLATFORM_LIBRARIES}
+  cpp_dotenv)
 add_test(NAME FileExtractorTextDumpTests COMMAND test_file_extractor_text_dump)
 
 # File Classifier Tests

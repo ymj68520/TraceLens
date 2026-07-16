@@ -74,6 +74,10 @@ public:
         const FileRecord& record,
         const std::filesystem::path& outputRoot);
 
+protected:
+    virtual bool extractFile(const FileRecord& record, const std::string& outputPath,
+                             bool overwrite, int* skippedCount);
+
 private:
     std::string imagePath_;
     std::string dbPath_;
@@ -108,8 +112,6 @@ private:
 
     std::vector<FileRecord> searchFiles(const std::string& whereClause);
     std::vector<FileRecord> searchFilesInTable(const std::string& tableName, const std::string& whereClause);
-
-    bool extractFile(const FileRecord& record, const std::string& outputPath, bool overwrite, int* skippedCount);
 
     ssize_t readFileContent(int64_t inode, char* buffer, size_t size, int partitionNum = 0);
 

@@ -59,6 +59,124 @@ fs::path temporaryPathFor(const fs::path& finalPath, const FileRecord& record) {
             std::to_string(nonce) + "-" + std::to_string(sequence.fetch_add(1)));
 }
 
+bool inspectOrCreateDirectory(const fs::path& directory, const std::string& context,
+                              std::string& error) {
+    std::error_code ec;
+    const fs::file_status status = fs::symlink_status(directory, ec);
+    if (!ec) {
+        if (fs::is_symlink(status)) {
+            error = context + " is a symlink: " + directory.string();
+            return false;
+        }
+        if (!fs::is_directory(status)) {
+            error = context + " is not a directory: " + directory.string();
+            return false;
+        }
+        return true;
+    }
+
+    if (ec != std::errc::no_such_file_or_directory) {
+        error = "Cannot inspect " + context + " " + directory.string() + ": " +
+                ec.message();
+        return false;
+    }
+
+    ec.clear();
+    if (!fs::create_directory(directory, ec)) {
+        if (!ec) {
+            const fs::file_status createdStatus = fs::symlink_status(directory, ec);
+            if (!ec && fs::is_directory(createdStatus) && !fs::is_symlink(createdStatus)) {
+                return true;
+            }
+        }
+        error = "Cannot create " + context + " " + directory.string();
+        if (ec) {
+            error += ": " + ec.message();
+        }
+        return false;
+    }
+    return true;
+}
+
+bool prepareOutputRoot(const fs::path& outputRoot, std::string* error) {
+    std::error_code ec;
+    const fs::path absoluteRoot = fs::absolute(outputRoot, ec).lexically_normal();
+    if (ec) {
+        if (error) {
+            *error = "Cannot make output root absolute: " + ec.message();
+        }
+        return false;
+    }
+
+    fs::path current = absoluteRoot.root_path();
+    if (current.empty()) {
+        if (error) {
+            *error = "Output root has no filesystem root: " + outputRoot.string();
+        }
+        return false;
+    }
+
+    std::string localError;
+    if (!inspectOrCreateDirectory(current, "Output root component", localError)) {
+        if (error) {
+            *error = std::move(localError);
+        }
+        return false;
+    }
+    for (const auto& component : absoluteRoot.relative_path()) {
+        current /= component;
+        if (!inspectOrCreateDirectory(current, "Output root component", localError)) {
+            if (error) {
+                *error = std::move(localError);
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+bool validateTemporaryExtraction(const fs::path& temporaryPath,
+                                 const FileRecord& record,
+                                 std::string& error) {
+    std::error_code ec;
+    const uintmax_t actualBytes = fs::file_size(temporaryPath, ec);
+    if (ec) {
+        error = "Cannot stat temporary output: " + ec.message();
+        return false;
+    }
+    if (record.size < 0) {
+        error = "Temporary output has invalid expected size " +
+                std::to_string(record.size) + " (actual " +
+                std::to_string(actualBytes) + ")";
+        return false;
+    }
+
+    const uintmax_t expectedBytes = static_cast<uintmax_t>(record.size);
+    if (actualBytes != expectedBytes) {
+        error = "Temporary output size mismatch: expected " +
+                std::to_string(expectedBytes) + ", actual " +
+                std::to_string(actualBytes);
+        return false;
+    }
+    return true;
+}
+
+bool prepareOutputParent(const fs::path& outputRoot, const fs::path& finalPath,
+                         std::string& error) {
+    fs::path current = outputRoot;
+    const fs::path relativeParent = finalPath.lexically_relative(outputRoot).parent_path();
+    if (relativeParent.empty() || relativeParent == ".") {
+        return true;
+    }
+    for (const auto& component : relativeParent) {
+        current /= component;
+        if (!inspectOrCreateDirectory(current, "Output path component", error)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 // File extraction operations. Split from FileExtractor.cpp.
@@ -142,12 +260,7 @@ std::optional<fs::path> FileExtractor::resolveSafeOutputPath(
         error->clear();
     }
 
-    std::error_code ec;
-    fs::create_directories(outputRoot, ec);
-    if (ec || fs::is_symlink(fs::symlink_status(outputRoot, ec))) {
-        if (error) {
-            *error = "Output root is unavailable or is a symlink: " + outputRoot.string();
-        }
+    if (!prepareOutputRoot(outputRoot, error)) {
         return std::nullopt;
     }
 
@@ -167,6 +280,7 @@ std::optional<fs::path> FileExtractor::resolveSafeOutputPath(
         }
     }
 
+    std::error_code ec;
     fs::path current = outputRoot;
     for (const auto& component : relative.parent_path()) {
         current /= component;
@@ -177,6 +291,19 @@ std::optional<fs::path> FileExtractor::resolveSafeOutputPath(
             }
             return std::nullopt;
         }
+        if (!ec && !fs::is_directory(status)) {
+            if (error) {
+                *error = "Output path component is not a directory: " + current.string();
+            }
+            return std::nullopt;
+        }
+        if (ec && ec != std::errc::no_such_file_or_directory) {
+            if (error) {
+                *error = "Cannot inspect output path component " + current.string() +
+                         ": " + ec.message();
+            }
+            return std::nullopt;
+        }
         ec.clear();
     }
     const fs::path result = outputRoot / relative;
@@ -184,6 +311,13 @@ std::optional<fs::path> FileExtractor::resolveSafeOutputPath(
     if (!ec && fs::is_symlink(finalStatus)) {
         if (error) {
             *error = "Output file is a symlink: " + result.string();
+        }
+        return std::nullopt;
+    }
+    if (ec && ec != std::errc::no_such_file_or_directory) {
+        if (error) {
+            *error = "Cannot inspect output file " + result.string() + ": " +
+                     ec.message();
         }
         return std::nullopt;
     }
@@ -201,7 +335,7 @@ FileExtractor::AtomicExtractionResult FileExtractor::extractRecordAtomically(
     result.output_path = *finalPath;
 
     std::error_code ec;
-    const auto finalStatus = fs::status(*finalPath, ec);
+    const auto finalStatus = fs::symlink_status(*finalPath, ec);
     if (!ec && fs::is_regular_file(finalStatus)) {
         result.previous_bytes = fs::file_size(*finalPath, ec);
         if (!ec && record.size >= 0 &&
@@ -213,10 +347,8 @@ FileExtractor::AtomicExtractionResult FileExtractor::extractRecordAtomically(
     }
     ec.clear();
 
-    fs::create_directories(finalPath->parent_path(), ec);
-    if (ec) {
+    if (!prepareOutputParent(outputRoot, *finalPath, result.error)) {
         result.status = AtomicExtractionStatus::Failed;
-        result.error = "Cannot create output directory: " + ec.message();
         return result;
     }
 
@@ -225,6 +357,11 @@ FileExtractor::AtomicExtractionResult FileExtractor::extractRecordAtomically(
         fs::remove(temporaryPath, ec);
         result.status = AtomicExtractionStatus::Failed;
         result.error = "Failed to extract " + record.path;
+        return result;
+    }
+    if (!validateTemporaryExtraction(temporaryPath, record, result.error)) {
+        fs::remove(temporaryPath, ec);
+        result.status = AtomicExtractionStatus::Failed;
         return result;
     }
     if (!atomicReplace(temporaryPath, *finalPath, result.error)) {
@@ -536,8 +673,11 @@ bool FileExtractor::extractFile(const FileRecord& record, const std::string& out
 
     // Skip empty files (create empty file)
     if (record.size == 0) {
-        createDirectories(outputPath);
-        std::ofstream ofs(outputPath);
+        if (!createDirectories(outputPath)) {
+            return false;
+        }
+        std::ofstream ofs(outputPath, std::ios::binary);
+        ofs.flush();
         return ofs.good();
     }
 
@@ -589,15 +729,21 @@ bool FileExtractor::extractFile(const FileRecord& record, const std::string& out
             }
 
             ofs.write(buffer, bytesRead);
+            if (!ofs) {
+                std::cerr << "Error writing output file: " << outputPath << std::endl;
+                break;
+            }
             offset += bytesRead;
             remaining -= bytesRead;
         }
 
         delete[] buffer;
+        ofs.flush();
+        const bool writeSucceeded = ofs.good();
         ofs.close();
         tsk_fs_file_close(fsFile);
 
-        return remaining == 0;
+        return remaining == 0 && writeSucceeded;
 
     } else {
         // --- XFS fallback path (TSK cannot parse XFS) ---
@@ -627,9 +773,11 @@ bool FileExtractor::extractFile(const FileRecord& record, const std::string& out
         }
 
         ofs.write(reinterpret_cast<const char*>(fileData.data()), fileData.size());
+        ofs.flush();
+        const bool writeSucceeded = ofs.good();
         ofs.close();
 
-        return true;
+        return writeSucceeded;
     }
 }
 
