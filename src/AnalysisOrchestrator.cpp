@@ -15,6 +15,8 @@
 #include "FileCarving/FileCarver.h"
 #include "report/ReportGenerator.h"
 #include "LLMIntegration/MarkitdownProxy.h"
+#include "export/TextDumpExporter.h"
+#include "export/TextDumpAdapters.h"
 #include <iostream>
 #include <filesystem>
 #include <memory>
@@ -363,64 +365,61 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         // Converts every file in the image to a human-readable .md, mirroring the
         // directory structure. Requires python_service running.
         //
-        // Unlike the platform analyzers (which only extract system files they
-        // recognize), this step extracts ALL regular files from the image via
-        // FileExtractor, so that ordinary documents (pdf/jpg/zip/docx/...) are
-        // also converted — not just /etc/passwd-style system artifacts.
+        // The bounded TextDumpExporter drives extraction + conversion through the
+        // production adapters (FileExtractorTextDumpSource wraps FileExtractor's
+        // atomic API; MarkitdownTextDumpConverter wraps MarkitdownProxy). It
+        // enforces the optional --dump-text-max-size soft limit, and unlike the
+        // platform analyzers (which only extract system files they recognize) it
+        // covers ALL regular files so ordinary documents are also converted.
+        // Truncation / service loss never fails the enclosing analysis.
         if (args.dump_text) {
-            std::string allExtractDir = prefix + baseName + "_extracted_files";
-            std::string textDir = prefix + baseName + "_extracted_text";
+            // weakly_canonical resolves relative prefixes to absolute paths
+            // before handing them to the Python service (which may have a
+            // different CWD than this process) and collapses any ./ or //.
+            const fs::path originalRoot =
+                fs::weakly_canonical(prefix + baseName + "_extracted_files");
+            const fs::path markdownRoot =
+                fs::weakly_canonical(prefix + baseName + "_extracted_text");
 
-            auto& markitdown = forensics::llm::MarkitdownProxy::instance();
-            if (!markitdown.isServiceAvailable()) {
-                std::cerr << "Warning: --dump-text requires python_service running. "
-                          << "Start it with: ./scripts/start_python_service.sh"
+            textdump::FileExtractorTextDumpSource source(args.image_path, effectiveRawDb);
+            textdump::MarkitdownTextDumpConverter converter(
+                forensics::llm::MarkitdownProxy::instance());
+            textdump::TextDumpExporter exporter(source, converter);
+            const auto result = exporter.run(
+                {originalRoot, markdownRoot, args.dump_text_max_bytes});
+
+            std::cout << "Text dump: " << result.processed_files << "/"
+                      << result.candidate_files << " files processed\n"
+                      << "  Extracted: " << result.originals_extracted << " new, "
+                      << result.originals_reused << " reused, "
+                      << result.originals_failed << " failed\n"
+                      << "  Markdown: " << result.markdown_converted << " converted, "
+                      << result.markdown_reused << " reused, "
+                      << result.markdown_skipped << " skipped, "
+                      << result.markdown_failed << " failed\n";
+            if (result.max_bytes) {
+                std::cout << "  Size: "
+                          << textdump::TextDumpExporter::formatBytes(result.final_bytes)
+                          << " / "
+                          << textdump::TextDumpExporter::formatBytes(*result.max_bytes)
+                          << " soft limit\n";
+            } else {
+                std::cout << "  Size: "
+                          << textdump::TextDumpExporter::formatBytes(result.final_bytes)
+                          << " (unlimited)\n";
+            }
+            if (result.stop_reason == textdump::StopReason::Completed) {
+                std::cout << "✓ Text dump complete -> " << markdownRoot
                           << std::endl;
             } else {
-                // Extract ALL regular files from the raw DB into allExtractDir.
-                // Re-extract to guarantee completeness: the platform analyzers only
-                // pull the subset they parse (system files), but --dump-text should
-                // cover ordinary documents too. extractFile() skips files that are
-                // already present with matching size, so re-extraction is cheap if
-                // the analyzers already extracted some.
-                std::cout << "Extracting all files for text dump..." << std::endl;
-                {
-                    FileExtractor allExtractor(args.image_path, effectiveRawDb);
-                    if (allExtractor.initialize()) {
-                        int n = allExtractor.extractAll(allExtractDir);
-                        std::cout << "  Extracted " << n << " files to "
-                                  << allExtractDir << std::endl;
-                    } else {
-                        std::cerr << "Warning: Failed to initialize extractor for --dump-text"
-                                  << std::endl;
-                    }
-                }
-
-                if (!fs::exists(allExtractDir) || fs::is_empty(allExtractDir)) {
-                    std::cerr << "Warning: --dump-text found no extractable files in "
-                              << args.image_path << std::endl;
-                } else {
-                    // Convert to absolute paths before sending to python_service.
-                    // The Python process may have a different CWD than this C++
-                    // process, so relative paths like ./build/output/... would
-                    // fail with HTTP 400 "Input directory not found".
-                    // weakly_canonical also collapses any ./ or // in the path.
-                    std::string absExtractDir = fs::weakly_canonical(allExtractDir).string();
-                    std::string absTextDir = fs::weakly_canonical(textDir).string();
-
-                    std::cout << "Dumping extracted files as text..." << std::endl;
-                    std::cout << "  Input:  " << absExtractDir << std::endl;
-                    std::cout << "  Output: " << absTextDir << std::endl;
-                    auto result = markitdown.batchConvertToMarkdown(absExtractDir, absTextDir);
-                    if (result.ok) {
-                        std::cout << "✓ Text dump: " << result.converted << "/"
-                                  << result.total << " files converted"
-                                  << " (" << result.skipped << " skipped, "
-                                  << result.failed << " failed) -> "
-                                  << textDir << std::endl;
-                    } else {
-                        std::cerr << "Warning: Text dump failed: " << result.error << std::endl;
-                    }
+                std::cerr << "Warning: Text dump stopped: " << result.message << "\n"
+                          << "  Core forensic databases remain valid." << std::endl;
+                // Surface the recovery hint the previous inline block printed so
+                // users still know how to start the dependency service.
+                if (result.stop_reason == textdump::StopReason::ServiceUnavailable) {
+                    std::cerr << "  --dump-text requires python_service running. "
+                              << "Start it with: ./scripts/start_python_service.sh"
+                              << std::endl;
                 }
             }
             std::cout << std::endl;

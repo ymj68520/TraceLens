@@ -452,6 +452,9 @@ set(LIB_SOURCES
     src/CommandLineParser.cpp
     src/AnalysisOrchestrator.cpp
     src/report/ReportGenerator.cpp
+    # Text dump export module (bounded text-dump pipeline + production adapters)
+    src/export/TextDumpExporter.cpp
+    src/export/TextDumpAdapters.cpp
     src/analyzers/VisionAnalysis/VisionAnalyzer.cpp
     # OSSAnalyzer module
     src/analyzers/OSSAnalyzer/Core/OSSAnalyzerCore.cpp

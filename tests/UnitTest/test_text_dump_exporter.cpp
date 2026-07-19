@@ -22,6 +22,7 @@ public:
     std::vector<FileRecord> records;
     std::map<std::string, size_t> sizes;
     std::vector<std::string> started;
+    int extract_all_calls = 0;
 
     bool initialize(std::string& error) override {
         if (!available) error = "source unavailable";
@@ -40,7 +41,14 @@ public:
                 static_cast<uint64_t>(sizes.at(record.path)), ""};
     }
     int extractAll(const fs::path& root, std::string&) override {
-        for (const auto& record : records) extractOne(record, root);
+        ++extract_all_calls;
+        // Bulk extraction writes files directly without per-file delta tracking
+        // (started stays empty), mirroring the production extractor's unlimited
+        // path which the exporter must select when no size limit is set.
+        for (const auto& rec : records) {
+            const fs::path output = root / fs::path(rec.path).relative_path();
+            writeBytes(output, sizes.at(rec.path), 'o');
+        }
         return static_cast<int>(records.size());
     }
 };
@@ -51,12 +59,15 @@ public:
     std::map<std::string, size_t> sizes;
     std::map<std::string, MarkdownStatus> statuses;
     std::vector<std::string> started;
+    std::vector<int> force_flags;
+    int batch_calls = 0;
 
     bool isAvailable() override { return available; }
     MarkdownDeltaResult convertOne(const fs::path& inputRoot,
                                    const fs::path& inputFile,
                                    const fs::path& outputRoot,
-                                   bool) override {
+                                   bool force) override {
+        force_flags.push_back(force ? 1 : 0);
         const auto rel = fs::relative(inputFile, inputRoot);
         started.push_back("/" + rel.generic_string());
         const fs::path output = outputRoot / (rel.string() + ".md");
@@ -72,6 +83,7 @@ public:
                 status == MarkdownStatus::ServiceError ? "service lost" : "conversion failed"};
     }
     BatchConversionResult convertBatch(const fs::path&, const fs::path&) override {
+        ++batch_calls;
         return {true, 0, 0, 0, 0, ""};
     }
 };
@@ -199,12 +211,14 @@ class ResumeFakeConverter final : public ITextDumpConverter {
 public:
     bool available = true;
     std::vector<std::string> started;
+    std::vector<int> force_flags;
 
     bool isAvailable() override { return available; }
     MarkdownDeltaResult convertOne(const fs::path& inputRoot,
                                    const fs::path& inputFile,
                                    const fs::path& outputRoot,
-                                   bool) override {
+                                   bool force) override {
+        force_flags.push_back(force ? 1 : 0);
         const auto rel = fs::relative(inputFile, inputRoot);
         started.push_back("/" + rel.generic_string());
         const fs::path output = outputRoot / (rel.string() + ".md");
@@ -274,6 +288,54 @@ TEST_F(TextDumpExporterTest, FormatBytesUsesLargestBinaryUnit) {
     EXPECT_EQ(TextDumpExporter::formatBytes(1024ULL * 1024ULL), "1.0 MiB");
     EXPECT_EQ(TextDumpExporter::formatBytes(1024ULL * 1024ULL * 1024ULL), "1.0 GiB");
     EXPECT_EQ(TextDumpExporter::formatBytes(1024ULL * 1024ULL * 1024ULL * 1024ULL), "1.0 TiB");
+}
+
+// Unlimited mode (max_bytes == nullopt) must take the bulk path: initialize ->
+// extractAll -> convertBatch. It must NOT enumerate records or do per-file
+// extraction/conversion, so no per-file work is recorded.
+TEST_F(TextDumpExporterTest, UnlimitedModeUsesBatchAndDoesNotEnumerate) {
+    FakeSource source;
+    source.records = {record("/a.txt", 1), record("/b.txt", 2)};
+    source.sizes = {{"/a.txt", 4}, {"/b.txt", 8}};
+    FakeConverter converter;
+    TextDumpExporter exporter(source, converter);
+
+    const auto result = exporter.run({
+        root / "originals", root / "markdown", std::nullopt});
+
+    EXPECT_EQ(source.extract_all_calls, 1);
+    EXPECT_EQ(converter.batch_calls, 1);
+    EXPECT_TRUE(source.started.empty());    // no per-file extraction
+    EXPECT_TRUE(converter.started.empty()); // no per-file conversion
+    EXPECT_EQ(result.stop_reason, StopReason::Completed);
+}
+
+// The exporter passes force=true only when the original was freshly Extracted,
+// and force=false when it was Reused. This governs whether the converter may
+// short-circuit on existing Markdown.
+TEST_F(TextDumpExporterTest, ForceFlagReflectsOriginalStatus) {
+    // Extracted original -> converter invoked with force=true.
+    {
+        FakeSource source;
+        source.records = {record("/a.txt", 1)};
+        source.sizes = {{"/a.txt", 4}};
+        FakeConverter converter;
+        converter.sizes = {{"/a.txt", 5}};
+        TextDumpExporter exporter(source, converter);
+        exporter.run({root / "originals", root / "markdown", uint64_t{100}});
+        ASSERT_EQ(converter.force_flags.size(), 1U);
+        EXPECT_EQ(converter.force_flags[0], 1);
+    }
+    // Reused original -> converter invoked with force=false.
+    {
+        ResumeFakeSource source;
+        source.records = {record("/a.txt", 1)};
+        ResumeFakeConverter converter;
+        TextDumpExporter exporter(source, converter);
+        exporter.run({root / "originals", root / "markdown", uint64_t{100}});
+        ASSERT_EQ(converter.force_flags.size(), 1U);
+        EXPECT_EQ(converter.force_flags[0], 0);
+    }
 }
 
 } // namespace

@@ -1252,3 +1252,34 @@ target_link_libraries(
   gtest_main
   ${PLATFORM_LIBRARIES})
 add_test(NAME TextDumpExporterTests COMMAND test_text_dump_exporter)
+
+# Production adapter tests: FileExtractorTextDumpSource + MarkitdownTextDumpConverter
+# bridge the real FileExtractor / MarkitdownProxy to the exporter interfaces, so
+# this target links the heavy sources the pure exporter test deliberately avoids.
+add_executable(
+  test_text_dump_adapters
+  UnitTest/test_text_dump_adapters.cpp
+  ../src/export/TextDumpAdapters.cpp
+  ../src/export/TextDumpExporter.cpp
+  ../src/core/DatabaseManager/FileExtractor/FileExtractor.cpp
+  ../src/core/DatabaseManager/FileExtractor/FileExtractor_Extract.cpp
+  ../src/core/DatabaseManager/DatabaseManager.cpp
+  ../src/analyzers/ImageAnalyzer/XFSHelper.cpp
+  ../src/integration/LLMIntegration/MarkitdownProxy.cpp
+  ../src/core/Logger/Logger.cpp
+  ../src/core/ConfigManager/ConfigManager.cpp
+  ../src/core/PathManager/PathManager.cpp
+  ../src/core/AuditLog/AuditLog.cpp)
+
+target_include_directories(test_text_dump_adapters PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(
+  test_text_dump_adapters
+  ${GTEST_LIBRARIES}
+  ${GMOCK_LIBRARIES}
+  gtest_main
+  ${SQLITE_LINK_LIBRARIES}
+  ${TSK_LIBRARIES}
+  ${PLATFORM_LIBRARIES}
+  nlohmann_json::nlohmann_json
+  cpp_dotenv)
+add_test(NAME TextDumpAdapterTests COMMAND test_text_dump_adapters)
