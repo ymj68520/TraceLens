@@ -33,11 +33,12 @@ protected:
     fs::path root;
 };
 
-// A proxy pointed at a closed local port: the HTTP connection is refused
-// immediately (no 10s wait), so isAvailable() is false and convertOneToMarkdown
-// reports ServiceError without a live python_service.
+// A proxy pointed at destination port 0: TCP destination port 0 is reserved
+// and cannot identify a listening service, so the kernel rejects it up front
+// and isAvailable() is false and convertOneToMarkdown reports ServiceError
+// without a live python_service.
 forensics::llm::MarkitdownProxy makeOfflineProxy() {
-    return forensics::llm::MarkitdownProxy("http://127.0.0.1:1");
+    return forensics::llm::MarkitdownProxy("http://127.0.0.1:0");
 }
 
 // isAvailable() maps to the proxy's service check, so it is false when no
