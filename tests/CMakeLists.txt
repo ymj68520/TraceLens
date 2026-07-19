@@ -1237,3 +1237,18 @@ target_link_libraries(
   nlohmann_json::nlohmann_json cpp_dotenv pthread)
 add_test(NAME MarkitdownProxyTests COMMAND test_markitdown_proxy)
 add_test(NAME CommandLineParserTests COMMAND test_command_line_parser)
+
+# TextDumpExporter policy tests (independent of FileExtractor / MarkitdownProxy).
+add_executable(
+  test_text_dump_exporter
+  UnitTest/test_text_dump_exporter.cpp
+  ../src/export/TextDumpExporter.cpp)
+
+target_include_directories(test_text_dump_exporter PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(
+  test_text_dump_exporter
+  ${GTEST_LIBRARIES}
+  ${GMOCK_LIBRARIES}
+  gtest_main
+  ${PLATFORM_LIBRARIES})
+add_test(NAME TextDumpExporterTests COMMAND test_text_dump_exporter)
