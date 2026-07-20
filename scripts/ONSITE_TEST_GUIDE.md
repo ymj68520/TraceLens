@@ -45,6 +45,26 @@ bash scripts/onsite_smoke_test.sh /path/to/disk.dd
 bash scripts/onsite_smoke_test.sh
 ```
 
+如果现场需要**限制文本导出总量**（例如甲方要求导出量有上限），可以直接用 `forensic_analyzer` 跑受限导出，而不必走冒烟脚本：
+
+```bash
+# 限制 --dump-text 的现场导出总量（原文件 + Markdown，二进制单位）
+./build/forensic_analyzer /path/to/disk.E01 \
+  --db-dir ./onsite-output \
+  --linux-analyze \
+  --no-ai \
+  --dump-text-max-size 500M
+```
+
+操作要点：
+
+- `--dump-text-max-size` 会自动启用 `--dump-text`，不要求 `--no-ai`。
+- 仅统计 `<base>_extracted_files/` 与 `<base>_extracted_text/` 中的普通文件；三个核心数据库和 `--report` 不受限制。
+- `K/M/G/T` 按 1024 进位，只接受正整数，例如 `500M`、`2G`。
+- 上限是文件级软限制：已开始的原文件及其 Markdown 会完整保留，所以最终大小可能超过设置值；达到后不会开始下一个文件。
+- 重跑时已有产物会计入额度并尽量复用；提高额度后可继续导出。
+- 达到上限只会警告，主分析仍成功，核心取证数据库仍有效。
+
 脚本会自动：建任务 → 等完成 → 查 DB → 验证功能 → 测降级 → 列出带回清单。
 
 ### 步骤 3：人工验证（脚本覆盖不到的）
