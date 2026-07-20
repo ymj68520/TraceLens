@@ -1,6 +1,7 @@
 #include "TextDumpExporter.h"
 
 #include <algorithm>
+#include <iomanip>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -193,6 +194,11 @@ TextDumpResult TextDumpExporter::run(const TextDumpOptions& options) {
         }
         std::string listError;
         auto records = source_.listRegularFilesOrdered(listError);
+        if (!listError.empty()) {
+            result.stop_reason = StopReason::OutputError;
+            result.message = listError;
+            return result;
+        }
         result.candidate_files = records.size();
 
         uint64_t current = result.initial_bytes;

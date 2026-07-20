@@ -28,7 +28,13 @@ public:
         if (!available) error = "source unavailable";
         return available;
     }
-    std::vector<FileRecord> listRegularFilesOrdered(std::string&) override {
+    bool list_fail = false;
+    std::string list_error;
+    std::vector<FileRecord> listRegularFilesOrdered(std::string& error) override {
+        if (list_fail) {
+            error = list_error;
+            return {};
+        }
         return records;
     }
     FileDeltaResult extractOne(const FileRecord& record,
@@ -278,6 +284,34 @@ TEST_F(TextDumpExporterTest, ResumeAtLimitStopsBeforeAnyCandidate) {
     EXPECT_EQ(result.final_bytes, 10U);
     EXPECT_EQ(result.stop_reason, StopReason::SizeLimitReached);
     EXPECT_TRUE(result.truncated);
+}
+
+// A listing failure in the size-limited path must be surfaced as OutputError,
+// not silently completed with zero candidates. Accounting figures already
+// placed on result must be preserved, and no per-file extraction should run.
+TEST_F(TextDumpExporterTest, ListingFailureIsSurfacedNotSilentlyCompleted) {
+    // Pre-existing content so accounting produces a non-zero initial_bytes
+    // before the listing call.
+    writeBytes(root / "originals/preexisting", 2);
+    writeBytes(root / "markdown/preexisting.md", 3);
+
+    FakeSource source;
+    source.records = {record("/a.txt", 1)};
+    source.sizes = {{"/a.txt", 4}};
+    source.list_fail = true;
+    source.list_error = "listing failed: DB error";
+    FakeConverter converter;
+    converter.sizes = {{"/a.txt", 5}};
+    TextDumpExporter exporter(source, converter);
+
+    const auto result = exporter.run({
+        root / "originals", root / "markdown", uint64_t{100}});
+
+    EXPECT_EQ(result.stop_reason, StopReason::OutputError);
+    EXPECT_EQ(result.message, "listing failed: DB error");
+    EXPECT_EQ(result.initial_bytes, 5U);
+    EXPECT_EQ(result.final_bytes, 5U);
+    EXPECT_TRUE(source.started.empty());
 }
 
 TEST_F(TextDumpExporterTest, FormatBytesUsesLargestBinaryUnit) {
