@@ -7,8 +7,9 @@
 namespace forensics {
 namespace llm {
 
-MarkitdownProxy::MarkitdownProxy(std::string pythonServiceUrl)
-    : pythonServiceUrl_(std::move(pythonServiceUrl)) {}
+MarkitdownProxy::MarkitdownProxy(std::string pythonServiceUrl, HttpPoster poster)
+    : pythonServiceUrl_(std::move(pythonServiceUrl)),
+      http_poster_(std::move(poster)) {}
 
 MarkitdownProxy& MarkitdownProxy::instance() {
     static MarkitdownProxy instance(
@@ -17,22 +18,36 @@ MarkitdownProxy& MarkitdownProxy::instance() {
     return instance;
 }
 
+static httplib::Result PostJson(httplib::Client& cli,
+                                const std::string& path,
+                                const std::string& json_body) {
+    return cli.Post(path, json_body, "application/json");
+}
+
 SingleConversionResult MarkitdownProxy::convertOneToMarkdown(
         const std::string& inputRoot,
         const std::string& inputFile,
         const std::string& outputRoot) {
     SingleConversionResult result;
     try {
-        httplib::Client cli(pythonServiceUrl_);
-        cli.set_connection_timeout(10);
-        cli.set_read_timeout(120);
         const nlohmann::json body = {
             {"input_root", inputRoot},
             {"input_file", inputFile},
             {"output_root", outputRoot},
         };
-        auto res = cli.Post("/api/markitdown/convert-one",
-                            body.dump(), "application/json");
+
+        const std::string payload = body.dump();
+        httplib::Result res;
+
+        if (http_poster_) {
+            res = http_poster_("/api/markitdown/convert-one", payload, "application/json");
+        } else {
+            httplib::Client cli(pythonServiceUrl_);
+            cli.set_connection_timeout(10);
+            cli.set_read_timeout(120);
+            res = PostJson(cli, "/api/markitdown/convert-one", payload);
+        }
+
         if (!res) {
             result.status = SingleConversionStatus::ServiceError;
             result.error = "Service unreachable at " + pythonServiceUrl_;
@@ -71,15 +86,37 @@ SingleConversionResult MarkitdownProxy::convertOneToMarkdown(
 
 std::string MarkitdownProxy::convertToMarkdown(const std::string& filePath) {
     try {
+        nlohmann::json body = {{"file_path", filePath}};
+        const std::string payload = body.dump();
+
+        if (http_poster_) {
+            auto res = http_poster_("/api/markitdown/convert", payload, "application/json");
+            if (res && res->status == 200) {
+                auto response = nlohmann::json::parse(res->body);
+                if (response.contains("success") && response["success"].get<bool>()) {
+                    return response.value("content", "");
+                }
+                return "Error: " + response.value("error", "Unknown error");
+            }
+
+            if (res) {
+                std::string detail = "HTTP " + std::to_string(res->status);
+                try {
+                    auto err = nlohmann::json::parse(res->body);
+                    if (err.contains("detail")) detail += ": " + err["detail"].get<std::string>();
+                } catch (...) {
+                    detail += ": " + res->body;
+                }
+                return "Error: " + detail;
+            }
+            return "Error: Service unreachable";
+        }
+
         httplib::Client cli(pythonServiceUrl_);
         cli.set_connection_timeout(10);
         cli.set_read_timeout(120);  // Large files may take time
 
-        nlohmann::json body = {
-            {"file_path", filePath}
-        };
-
-        auto res = cli.Post("/api/markitdown/convert", body.dump(), "application/json");
+        auto res = PostJson(cli, "/api/markitdown/convert", payload);
 
         if (res && res->status == 200) {
             auto response = nlohmann::json::parse(res->body);
@@ -171,7 +208,7 @@ MarkitdownProxy::BatchResult MarkitdownProxy::batchConvertToMarkdown(
             return result;
         }
 
-        auto response = nlohmann::json::parse(res->body);
+        const auto response = nlohmann::json::parse(res->body);
         result.ok = response.value("success", false);
         result.total = response.value("total_files", 0);
         result.converted = response.value("converted", 0);

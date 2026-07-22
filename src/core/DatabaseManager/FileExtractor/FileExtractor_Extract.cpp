@@ -701,49 +701,96 @@ bool FileExtractor::extractFile(const FileRecord& record, const std::string& out
             return false;
         }
 
-        // Read and write file content
-        std::ofstream ofs(outputPath, std::ios::binary);
+        // Build atomic temp output path first so partial writes do not
+        // leave corrupt final files around extraction directories.
+        std::error_code ec;
+        const auto finalPath = std::filesystem::path(outputPath);
+        const auto tempPath = temporaryPathFor(finalPath, record);
+
+        // Read and write file content atomically.
+        std::ofstream ofs(tempPath, std::ios::binary);
         if (!ofs) {
-            std::cerr << "Error: Cannot create output file: " << outputPath << std::endl;
+            std::cerr << "Error: Cannot create temporary output: " << tempPath << std::endl;
             tsk_fs_file_close(fsFile);
             return false;
         }
 
         const size_t BUFFER_SIZE = 1024 * 1024; // 1MB buffer
-        char* buffer = new char[BUFFER_SIZE];
+        std::unique_ptr<char[]> buffer(new char[BUFFER_SIZE]);
         TSK_OFF_T offset = 0;
         TSK_OFF_T remaining = record.size;
+        bool readBySizeFailed = false;
 
         while (remaining > 0) {
-            size_t toRead = (remaining > BUFFER_SIZE) ? BUFFER_SIZE : remaining;
-            ssize_t bytesRead = tsk_fs_file_read(fsFile, offset, buffer, toRead,
-                                                 TSK_FS_FILE_READ_FLAG_NONE);
-
+            size_t toRead = static_cast<size_t>((remaining > BUFFER_SIZE) ? BUFFER_SIZE : remaining);
+            ssize_t bytesRead = 0;
+            if (!readBySizeFailed) {
+                bytesRead = tsk_fs_file_read(fsFile, offset, buffer.get(), toRead,
+                                             TSK_FS_FILE_READ_FLAG_NONE);
+            }
             if (bytesRead < 0) {
-                std::cerr << "Error reading file at offset " << offset << std::endl;
-                break;
+                std::cerr << "Warning: file read by size failed at offset " << offset
+                          << " for " << outputPath << ", switching to 1MB chunk fallback" << std::endl;
+                readBySizeFailed = true;
+                remaining = record.size;
+                offset = 0;
+                continue;
             }
-
             if (bytesRead == 0) {
-                break; // EOF
-            }
-
-            ofs.write(buffer, bytesRead);
-            if (!ofs) {
-                std::cerr << "Error writing output file: " << outputPath << std::endl;
+                if (readBySizeFailed) {
+                    break;
+                }
+                std::cerr << "Warning: unexpected EOF at offset " << offset
+                          << " for " << outputPath << std::endl;
                 break;
             }
-            offset += bytesRead;
-            remaining -= bytesRead;
+
+            uint64_t outLenU64 = static_cast<uint64_t>(bytesRead);
+            size_t outLen = readBySizeFailed
+                ? (outLenU64 < static_cast<uint64_t>(BUFFER_SIZE)
+                   ? static_cast<size_t>(bytesRead) : BUFFER_SIZE)
+                : static_cast<size_t>(bytesRead);
+            std::streamsize writeLen = static_cast<std::streamsize>(outLen);
+            if (static_cast<uint64_t>(outLen) != outLenU64) {
+                std::cerr << "Error: write length overflow for " << outputPath << std::endl;
+                break;
+            }
+
+            ofs.write(buffer.get(), writeLen);
+            if (!ofs) {
+                std::cerr << "Error writing temporary output: " << tempPath << std::endl;
+                break;
+            }
+            if (!readBySizeFailed) {
+                offset += writeLen;
+                remaining -= writeLen;
+            } else {
+                remaining = record.size;
+                offset = 0;
+            }
         }
 
-        delete[] buffer;
         ofs.flush();
         const bool writeSucceeded = ofs.good();
         ofs.close();
         tsk_fs_file_close(fsFile);
 
-        return remaining == 0 && writeSucceeded;
+        if (!writeSucceeded || remaining != 0) {
+            std::error_code rmEc;
+            std::filesystem::remove(tempPath, rmEc);
+            return false;
+        }
+
+        std::string replaceError;
+        if (!atomicReplace(tempPath, finalPath, replaceError)) {
+            std::cerr << "Error: cannot finalize extracted file " << outputPath
+                      << ": " << replaceError << std::endl;
+            std::error_code rmEc;
+            std::filesystem::remove(tempPath, rmEc);
+            return false;
+        }
+
+        return true;
 
     } else {
         // --- XFS fallback path (TSK cannot parse XFS) ---
@@ -761,14 +808,15 @@ bool FileExtractor::extractFile(const FileRecord& record, const std::string& out
             return false;
         }
 
-        // Create output directory
+        const auto finalXfsPath = std::filesystem::path(outputPath);
+        const auto tempXfsPath = temporaryPathFor(finalXfsPath, record);
         if (!createDirectories(outputPath)) {
             return false;
         }
 
-        std::ofstream ofs(outputPath, std::ios::binary);
+        std::ofstream ofs(tempXfsPath, std::ios::binary);
         if (!ofs) {
-            std::cerr << "Error: Cannot create output file: " << outputPath << std::endl;
+            std::cerr << "Error: Cannot create temporary output: " << tempXfsPath << std::endl;
             return false;
         }
 
@@ -777,7 +825,21 @@ bool FileExtractor::extractFile(const FileRecord& record, const std::string& out
         const bool writeSucceeded = ofs.good();
         ofs.close();
 
-        return writeSucceeded;
+        if (!writeSucceeded) {
+            std::error_code rmEc;
+            std::filesystem::remove(tempXfsPath, rmEc);
+            return false;
+        }
+
+        std::string replaceError;
+        if (!atomicReplace(tempXfsPath, finalXfsPath, replaceError)) {
+            std::cerr << "Error: cannot finalize XFS extracted file " << outputPath
+                      << ": " << replaceError << std::endl;
+            std::error_code rmEc;
+            std::filesystem::remove(tempXfsPath, rmEc);
+            return false;
+        }
+
+        return true;
     }
 }
-

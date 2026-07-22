@@ -1,0 +1,1 @@
+Report summary now summarizes all artifact table prefixes across `_files.db` (`linux_*`, `windows_*`, `android_*`) instead of only a fixed Linux table list. Timeline Events count now reads from `_events.db` to avoid misreporting zero when the timeline is non-empty.

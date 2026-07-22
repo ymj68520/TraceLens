@@ -8,6 +8,7 @@
 #endif
 
 #include "PersistenceDetector.h"
+#include "Common/LinuxDataTypes.h"
 #include <fstream>
 #include <sstream>
 #include <filesystem>
@@ -429,7 +430,7 @@ std::vector<PersistenceEntry> PersistenceDetector::detectAtJobs(const std::strin
 
         if (isSuspiciousCommand(commands)) {
             entry.isSuspicious = true;
-            entry.suspiciousReason = "Suspicious at job command: " + commands;
+            entry.suspiciousReason = "Suspicious command in at job: " + fileName;
         }
 
         entries.push_back(entry);
@@ -437,4 +438,3 @@ std::vector<PersistenceEntry> PersistenceDetector::detectAtJobs(const std::strin
 
     return entries;
 }
-

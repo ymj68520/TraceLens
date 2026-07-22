@@ -118,30 +118,38 @@ void LinuxFilesAnalyzer::analyzeCompressedLogs() {
 
             // Decompress if needed
             std::string content;
-            if (logInfo.isCompressed) {
-                content = CompressedLogParser::decompressFile(outputPath, compType);
-                if (content.empty()) {
-                    std::cerr << "    Failed to decompress: " << filename << std::endl;
-                    totalErrors++;
-                    continue;
-                }
-                totalDecompressed++;
+            try {
+                if (logInfo.isCompressed) {
+                    content = CompressedLogParser::decompressFile(outputPath, compType);
+                    if (content.empty()) {
+                        std::cerr << "    Failed to decompress: " << filename << std::endl;
+                        totalErrors++;
+                        continue;
+                    }
+                    totalDecompressed++;
 
-                // Save decompressed content
-                std::string decompressedPath = extractPath + "/" + std::to_string(file.inode) + "_" + logInfo.baseName;
-                std::ofstream out(decompressedPath);
-                if (out.is_open()) {
-                    out << content;
-                    out.close();
+                    // Save decompressed content
+                    std::string decompressedPath = extractPath + "/" + std::to_string(file.inode) + "_" + logInfo.baseName;
+                    std::ofstream out(decompressedPath);
+                    if (out.is_open()) {
+                        out << content;
+                        out.close();
+                    }
+                } else {
+                    // Read plain text
+                    std::ifstream inFile(outputPath);
+                    if (inFile.is_open()) {
+                        std::ostringstream ss;
+                        ss << inFile.rdbuf();
+                        content = ss.str();
+                    }
                 }
-            } else {
-                // Read plain text
-                std::ifstream inFile(outputPath);
-                if (inFile.is_open()) {
-                    std::ostringstream ss;
-                    ss << inFile.rdbuf();
-                    content = ss.str();
-                }
+            } catch (const std::exception& e) {
+                std::cerr << "    Log handling error for " << filename << ": " << e.what() << std::endl;
+                AuditLog::instance().log("ERROR", "ROTATED_LOG_HANDLING_FAILED",
+                                         filename + " -> " + e.what());
+                totalErrors++;
+                continue;
             }
 
             // Parse the log content based on base name

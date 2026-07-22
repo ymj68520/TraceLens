@@ -335,7 +335,10 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/BuildPropAnalyzer.cpp
     src/analyzers/AndroidAnalyzer/AndroidLogParser.cpp
     src/analyzers/AndroidAnalyzer/WeChatDecryptor.cpp
-    $<$<BOOL:${SQLCIPHER_FOUND}>:src/analyzers/AndroidAnalyzer/SqlCipherDatabase.cpp>
+    # WeChatDecryptor always owns a SqlCipherDatabase instance, so its
+    # implementation must be linked even when SQLCipher itself is unavailable.
+    # In that case it builds against SQLite and encrypted opens fail cleanly.
+    src/analyzers/AndroidAnalyzer/SqlCipherDatabase.cpp
     src/analyzers/AndroidAnalyzer/AndroidLogicalParsers.cpp
     # Android logical-extraction backends (dir / zip sources, bypassing TSK)
     src/analyzers/AndroidAnalyzer/LogicalDirExtractor.cpp

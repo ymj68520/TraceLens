@@ -14,7 +14,7 @@ TEST(Volatility3RunnerTest, ParseJsonOutputShape) {
     // The runner must hand callers raw JSON text; parsing is the parsers' job.
     // Here we only assert run() on a nonexistent image returns ok=false.
     Volatility3Runner runner("/nonexistent/mem.lime");
-    auto r = runner.run(MemoryVolatility::PSLIST, 5);
+    auto r = runner.run(MemoryVolatility::WIN_PSLIST, 5);
     EXPECT_FALSE(r.ok);
 }
 

@@ -124,9 +124,16 @@ std::string AnalysisOrchestrator::getDatabaseDir(const CommandLineArgs& args) {
 }
 
 int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
-    if (args.image_path.empty()) {
-        std::cerr << "Error: Image path required" << std::endl;
-        return 1;
+    const bool reportOnly = args.generate_report && !args.image_path.empty() && fs::exists(args.image_path);
+    if (args.image_path.empty() || !fs::exists(args.image_path)) {
+        if (args.image_path.empty() && !reportOnly) {
+            std::cerr << "Error: Image path required" << std::endl;
+            return 1;
+        }
+        if (!args.image_path.empty() && !fs::exists(args.image_path)) {
+            std::cerr << "Error: Image file not found: " << args.image_path << std::endl;
+            return 1;
+        }
     }
 
     if (!fs::exists(args.image_path)) {

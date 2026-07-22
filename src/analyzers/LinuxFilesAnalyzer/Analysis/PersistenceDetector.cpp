@@ -15,6 +15,7 @@
 #include "PersistenceDetector.h"
 #include <fstream>
 #include <sstream>
+#include <cassert>
 #include <filesystem>
 #include <regex>
 #include <algorithm>
@@ -161,6 +162,7 @@ bool PersistenceDetector::fileExists(const std::string& path) {
 
 bool PersistenceDetector::isSuspiciousCommand(const std::string& command) {
     if (command.empty()) return false;
+    if (command.empty()) return false;
 
     // Network tools
     if (command.find("curl ") != std::string::npos ||
@@ -233,4 +235,3 @@ bool PersistenceDetector::isSuspiciousUdevRule(const std::string& rule) {
 
     return false;
 }
-

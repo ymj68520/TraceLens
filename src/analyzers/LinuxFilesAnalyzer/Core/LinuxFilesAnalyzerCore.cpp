@@ -85,10 +85,20 @@ void LinuxFilesAnalyzer::analyzeLinuxData() {
 
     // Phase 1: Compressed and rotated log preprocessing
     // This must run before other log analysis to include historical logs
-    analyzeCompressedLogs();
+    try {
+        analyzeCompressedLogs();
+    } catch (const std::exception& e) {
+        std::cerr << "  Compressed log analysis error: " << e.what() << std::endl;
+        AuditLog::instance().log("ERROR", "COMPRESSED_LOGS_FAILED", e.what());
+    }
 
     // Phase 2: System logs
-    analyzeSystemLogs();
+    try {
+        analyzeSystemLogs();
+    } catch (const std::exception& e) {
+        std::cerr << "  System log analysis error: " << e.what() << std::endl;
+        AuditLog::instance().log("ERROR", "LINUX_SYSTEM_LOG_FAILED", e.what());
+    }
     analyzeAuthLogs();
     analyzeKernelLogs();
 

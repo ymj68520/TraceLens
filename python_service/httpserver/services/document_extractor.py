@@ -31,6 +31,19 @@ class ExtractorLocator:
         # Special fallback for LevelDB directories
         if path.is_dir() and (path / "CURRENT").exists():
             ext = "leveldb"
+        elif not path.suffix:
+            head = b""
+            try:
+                with open(file_path, "rb") as f:
+                    head = f.read(8)
+            except Exception:
+                pass
+            text_mime_candidates = {b"\xEF\xBB\xBF", b"#!", b"<?xml", b"<html", b"<!DOC", b"{\n", b"[{", b"# "}
+            if head and any(head.startswith(candidate) for candidate in text_mime_candidates):
+                ext = ".txt"
+            else:
+                logger.info("No extractor available for empty extension: %s", file_path)
+                return None
         else:
             ext = path.suffix.lower()
 

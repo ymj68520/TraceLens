@@ -142,32 +142,51 @@ void ReportGenerator::writeSummary(std::ofstream& out) {
         return;
     }
 
-    // Linux tables to summarize
-    struct TableEntry { const char* table; const char* label; };
-    TableEntry linuxTables[] = {
-        {"linux_users",               "User Accounts"},
-        {"linux_groups",              "Groups"},
-        {"linux_login_records",       "Login Records"},
-        {"linux_shell_history",       "Shell History"},
-        {"linux_cron_jobs",           "Cron Jobs"},
-        {"linux_ssh_keys",            "SSH Keys"},
-        {"linux_packages",            "Installed Packages"},
-        {"linux_network_connections", "Network Connections"},
-        {"linux_systemd_services",    "Systemd Services"},
-        {"linux_log_entries",         "Log Entries"},
-        {"linux_audit_logs",          "Audit Logs"},
-        {"linux_anomalies",           "Detected Anomalies"},
-        {"linux_tampering_findings",  "Log Tampering Findings"},
-        {"linux_timeline_events",     "Timeline Events"},
-    };
-
     out << "## Data Summary\n\n";
     out << "| Data Category | Records |\n";
     out << "|--------------|--------:|\n";
-    for (const auto& e : linuxTables) {
-        int count = tableRowCount(db, e.table);
-        if (count >= 0) {
-            out << "| " << e.label << " | " << count << " |\n";
+
+    auto appendRowsForPrefix = [&](const std::string& prefix,
+                                   const std::string& categoryPrefix) {
+        bool any = false;
+        sqlite3_stmt* stmt = nullptr;
+        const char* sql =
+            "SELECT name FROM sqlite_master "
+            "WHERE type='table' AND name NOT LIKE 'sqlite_%' "
+            "AND name GLOB ? ORDER BY name";
+        if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+            return;
+        }
+        std::string pattern = prefix + "*";
+        sqlite3_bind_text(stmt, 1, pattern.c_str(), -1, SQLITE_TRANSIENT);
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            const char* table = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+            int count = tableRowCount(db, table);
+            if (count >= 0) {
+                any = true;
+                std::string label = categoryPrefix;
+                label += table + prefix.size();
+                out << "| " << mdEscape(label) << " | " << count << " |\n";
+            }
+        }
+        sqlite3_finalize(stmt);
+        if (!any) {
+            out << "| " << mdEscape(categoryPrefix + "artifacts") << " | — |\n";
+        }
+    };
+
+    appendRowsForPrefix("linux_", "Linux ");
+    appendRowsForPrefix("windows_", "Windows ");
+    appendRowsForPrefix("android_", "Android ");
+
+    if (!eventDbPath_.empty()) {
+        sqlite3* ev = nullptr;
+        if (sqlite3_open(eventDbPath_.c_str(), &ev) == SQLITE_OK) {
+            int total = tableRowCount(ev, "events");
+            if (total >= 0) {
+                out << "| Timeline Events | " << total << " |\n";
+            }
+            sqlite3_close(ev);
         }
     }
     out << "\n---\n\n";

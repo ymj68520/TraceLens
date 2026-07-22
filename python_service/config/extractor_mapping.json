@@ -23,6 +23,8 @@
     "SQLiteExtractor": [".db", ".sqlite", ".sqlite3"],
     "SqlDumpExtractor": [".sql"],
     "LevelDBExtractor": ["leveldb"],
+    "GenericDatabaseExtractor": [],
+    "TextDumpExtractor": [".txt"],
     "RedisExtractor": [".rdb"],
     "MongoBsonExtractor": [".bson"],
     "ArchiveExtractor": [".zip", ".tar", ".gz", ".tgz", ".rar", ".7z"],
