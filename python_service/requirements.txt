@@ -6,6 +6,10 @@ alembic>=1.11.0
 # Authentication
 pyjwt>=2.8.0
 passlib[bcrypt]>=1.7.4
+# bcrypt >=4.1 removed bcrypt.__about__ and changed the C extension API, which
+# breaks passlib 1.7.4's bcrypt backend ("password cannot be longer than 72
+# bytes" even for short inputs). Pin below 4.1 until passlib releases a fix.
+bcrypt>=4.0.1,<4.1
 python-multipart>=0.0.6
 
 # Additional FastAPI dependencies
