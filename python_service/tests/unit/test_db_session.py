@@ -107,5 +107,6 @@ class TestInitDbCallable:
 
     def test_init_db_does_not_connect_on_definition(self):
         # Importing the module and referencing init_db must not require a DB.
-        # (Actual execution needs a live DB, so we only assert callability here.)
-        assert init_db.__name__ == "init_db"
+        # The engine is lazy, so merely defining/referencing init_db must leave
+        # the connection pool with nothing checked out.
+        assert engine.pool.checkedout() == 0
