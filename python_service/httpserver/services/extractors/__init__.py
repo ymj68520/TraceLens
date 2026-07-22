@@ -95,6 +95,11 @@ def load_plugins():
         if not fallback_map:
             ext_list = [ext for ext in ext_list if ext.lower() not in primary_extensions]
 
+        if class_name == "SQLiteExtractor":
+            ext_list = [ext for ext in ext_list if ext.lower() != ".db"]
+            primary_extensions.add(".sqlite")
+            primary_extensions.add(".sqlite3")
+
         # Register the extensions pointing to the singleton instance
         for ext in ext_list:
             extractor_registry[ext.lower()] = instance
@@ -134,6 +139,18 @@ def load_plugins():
             logger.info(f"Filename route: '{filename}' -> {class_name}")
         else:
             logger.warning(f"Filename route class '{class_name}' not found in plugins.")
+
+    # Ensure non-SQLite database files avoid SQLite routing.
+    if "GenericDatabaseExtractor" in instances and ".db" not in extractor_registry:
+        extractor_registry[".db"] = instances["GenericDatabaseExtractor"]
+        logger.info("Routed '.db' to GenericDatabaseExtractor for non-SQLite safety")
+
+    generic_candidates = ["TextDumpExtractor", "MarkitdownExtractor"]
+    for candidate in generic_candidates:
+        if candidate in instances and "." not in extractor_registry:
+            extractor_registry["."] = instances[candidate]
+            logger.info(f"Routed '.' to {candidate} for generic text fallback")
+            break
 
 # This ensures plugins are loaded as soon as `extractors` is imported
 load_plugins()

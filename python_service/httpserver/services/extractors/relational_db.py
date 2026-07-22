@@ -13,7 +13,16 @@ class SQLiteExtractor(BaseExtractor):
         
     async def extract_to_markdown(self, file_path: str) -> str:
         import sqlite3
-        
+
+        try:
+            with open(file_path, "rb") as f:
+                if not f.read(16).startswith(b"SQLite format 3\x00"):
+                    raise RuntimeError(f"SQLiteExtractor: file looks like a non-SQLite database: {file_path}")
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f"SQLiteExtractor: unable to inspect database file: {file_path}") from e
+
         try:
             # Connect in read-only mode to prevent lock issues
             uri_path = f"file:{file_path}?mode=ro"
@@ -90,11 +99,49 @@ class SQLiteExtractor(BaseExtractor):
             return "\n".join(result)
             
         except sqlite3.Error as e:
-            logger.error(f"SQLite error processing {file_path}: {e}")
+            db_error_msg = f"SQLite error processing {file_path}: {e}"
+            logger.error(db_error_msg)
+            if str(e).lower() in {"file is not a database", "not a database", "file is encrypted or is not a database"}:
+                raise RuntimeError(db_error_msg)
             return f"Error: Failed to process SQLite database: {e}"
         except Exception as e:
             logger.error(f"Error parsing SQLite DB {file_path}: {e}")
             raise
+
+
+@register_extractor
+class GenericDatabaseExtractor(BaseExtractor):
+    """
+    Fallback for database-like files that are not valid SQLite databases
+    (for example, certain `.db` files such as `aliases.db`).
+    """
+    def __init__(self):
+        pass
+
+    async def extract_to_markdown(self, file_path: str) -> str:
+        try:
+            file_size = os.path.getsize(file_path)
+        except Exception:
+            file_size = -1
+
+        result = [
+            "# Generic Database File Summary\n",
+            f"**File:** `{file_path}`\n",
+            f"**Size:** {file_size:,} bytes\n",
+            "**Note:** This file is not a readable SQLite database. "
+            "Displaying binary/generic metadata only.\n",
+        ]
+        try:
+            with open(file_path, "rb") as f:
+                data = f.read(64)
+            hex_dump = " ".join(f"{byte:02x}" for byte in data)
+            result.append("```hex")
+            result.append(hex_dump)
+            result.append("```\n")
+        except Exception as e:
+            result.append(f"*Unable to read file bytes: {e}*\n")
+
+        return "\n".join(result)
 
 
 @register_extractor

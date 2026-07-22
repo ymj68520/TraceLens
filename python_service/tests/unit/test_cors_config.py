@@ -123,8 +123,7 @@ class TestCORSMiddlewareIntegration:
         assert cors_middleware is not None, "CORSMiddleware not found"
         assert cors_middleware.kwargs == {
             'allow_origins': ["*"],
-            'allow_credentials': True,
+            'allow_credentials': False,
             'allow_methods': ["*"],
             'allow_headers': ["*"]
         }
-

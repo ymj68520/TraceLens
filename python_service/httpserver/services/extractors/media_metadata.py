@@ -124,7 +124,7 @@ class VideoExtractor(BaseExtractor):
                     tmp_dir = tempfile.mkdtemp()
                     sample_cmd = [
                         'ffmpeg', '-i', file_path, '-vf',
-                        f'select=not(mod(n\,{max(1, int(float(fmt.get("duration", 1)) * 25 / self.sample_frames))})),scale=320:-1',
+                        f'select=not(mod(n\\,{max(1, int(float(fmt.get("duration", 1)) * 25 / self.sample_frames))})),scale=320:-1',
                         '-vframes', str(self.sample_frames), '-vsync', 'vfr',
                         os.path.join(tmp_dir, 'frame_%03d.jpg')
                     ]

@@ -5,6 +5,9 @@
 #include <cstdint>
 #include <string>
 #include <nlohmann/json.hpp>
+#include <optional>
+#include <httplib.h>
+#include <functional>
 
 namespace forensics {
 namespace llm {
@@ -42,7 +45,9 @@ public:
      */
     static MarkitdownProxy& instance();
 
-    explicit MarkitdownProxy(std::string pythonServiceUrl);
+    using HttpPoster = std::function<httplib::Result(const std::string&, const std::string&, const std::string&)>;
+
+    explicit MarkitdownProxy(std::string pythonServiceUrl, HttpPoster poster = {});
 
     SingleConversionResult convertOneToMarkdown(
         const std::string& inputRoot,
@@ -96,6 +101,7 @@ public:
 
 private:
     std::string pythonServiceUrl_;
+    HttpPoster http_poster_{};
 };
 
 } // namespace llm
