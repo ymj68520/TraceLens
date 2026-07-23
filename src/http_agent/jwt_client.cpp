@@ -32,13 +32,14 @@ JwtClient JwtClient::load_from_file(const std::string& path) {
         throw std::runtime_error("JwtClient: cannot stat token file '" + path +
                                  "': " + ec.message());
     }
-    // Reject a group/other-readable secret file outright.
+    // Reject a file with ANY group/other permission bit set (read OR write OR
+    // exec) — a secret must be owner-only. group_all/others_all cover rwx so a
+    // group-writable 0660 file is rejected, not just a group-readable 0640 one.
     using fs::perms;
-    if ((st.permissions() & perms::group_read) != perms::none ||
-        (st.permissions() & perms::others_read) != perms::none) {
+    if ((st.permissions() & (perms::group_all | perms::others_all)) != perms::none) {
         throw std::runtime_error(
             "JwtClient: token file '" + path +
-            "' is group/other readable; chmod 0600 required");
+            "' is accessible by group/other; chmod 0600 required");
     }
     std::ifstream f(path);
     if (!f) {

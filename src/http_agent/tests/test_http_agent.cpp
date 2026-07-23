@@ -65,6 +65,18 @@ struct NoopLogger : tracelens::ILogger {
     void error(const std::string&) override {}
 };
 
+// Always-fails executor: exercises the failed-execution -> "failed" status path
+// (StubExecutor only ever succeeds, so the failed branch would otherwise go
+// untested).
+struct FailingExecutor : tracelens::ICommandExecutor {
+    tracelens::ExecutionResult execute(const tracelens::Command&) override {
+        tracelens::ExecutionResult r;
+        r.success = false;
+        r.message = "boom";
+        return r;
+    }
+};
+
 // ----------------------------------------------------------------------- JwtClient
 static void test_jwt_client() {
     tracelens::JwtClient jwt("  abc.def.ghi\n ");
@@ -261,6 +273,8 @@ static void test_status_reporter() {
     auto body = nlohmann::json::parse(fake.post_calls[0].second);
     CHECK_EQ(body["status"].get<std::string>(), std::string("in_progress"));
     CHECK_EQ(body["progress"].get<int>(), 50);
+    // command_id is REQUIRED in the body by the server schema (omitting it 422s).
+    CHECK_EQ(body["command_id"].get<std::string>(), std::string("c1"));
 
     // Server error -> false, err set, but the POST was still attempted.
     fake.post_response = {500, "", ""};
@@ -305,6 +319,38 @@ static void test_service_handles_empty_poll() {
     CHECK(fake.post_calls.empty());  // nothing to report
 }
 
+static void test_service_reports_failed_execution() {
+    // A failed execution must report status "failed" (not "completed") with the
+    // error message. Pins the Failed branch of the service ternary so a future
+    // edit that flips it (silently marking failed analyses as completed) is
+    // caught.
+    FakeHttpClient fake;
+    fake.get_response = {200,
+                         R"({"commands":[)"
+                         R"({"id":"c1","command_type":"analyze_disk"}]})",
+                         ""};
+    tracelens::Poller poller(fake);
+    tracelens::StatusReporter reporter(fake);
+    FailingExecutor executor;
+    NoopLogger logger;
+    tracelens::HttpAgentService service(poller, reporter, executor, 10, logger);
+
+    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(2));
+    CHECK_CONTAINS(fake.post_calls[0].second, "in_progress");
+    CHECK_CONTAINS(fake.post_calls[1].second, "failed");
+    CHECK_CONTAINS(fake.post_calls[1].second, "boom");
+    auto b2 = nlohmann::json::parse(fake.post_calls[1].second);
+    CHECK_EQ(b2["command_id"].get<std::string>(), std::string("c1"));
+}
+
+static void test_config_ipv6_localhost_allowed() {
+    using C = tracelens::ClientConfig;
+    // Bracketed IPv6 localhost must be accepted (not truncated to "[").
+    CHECK(C::validate({"http://[::1]:8000", 10, "/t", "h"}).empty());
+    CHECK(C::validate({"http://[::1]", 10, "/t", "h"}).empty());
+}
+
 int main() {
     test_jwt_client();
     test_config_validate();
@@ -318,6 +364,8 @@ int main() {
     test_status_reporter();
     test_service_single_iteration();
     test_service_handles_empty_poll();
+    test_service_reports_failed_execution();
+    test_config_ipv6_localhost_allowed();
 
     std::cout << "checks: " << g_checks << "  failures: " << g_failures << "\n";
     return g_failures == 0 ? 0 : 1;
