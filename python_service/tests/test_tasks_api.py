@@ -348,7 +348,11 @@ def test_get_task_not_found(client, mock_db):
 
 
 def test_get_task_cross_org_forbidden(client, mock_db):
-    """A non-super_admin fetching another org's task -> 403."""
+    """A non-super_admin fetching another org's task -> 403.
+
+    No-writes asserted to lock in "authorization check before any write" — get
+    is read-only today, but the guard catches a future reorder.
+    """
     task = _task(org_id=uuid.uuid4())
     auth_as(_user(role="analyst", org_id=uuid.uuid4()))
     mock_db.query.return_value.filter.return_value.first.return_value = task
@@ -357,6 +361,8 @@ def test_get_task_cross_org_forbidden(client, mock_db):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Access denied"
+    mock_db.add.assert_not_called()
+    mock_db.commit.assert_not_called()
 
 
 # -----------------------------------------------------------------------------
@@ -405,7 +411,7 @@ def test_cancel_task_cannot_cancel_conflict(client, mock_db):
 
 
 def test_cancel_task_not_found(client, mock_db):
-    """Unknown task -> 404."""
+    """Unknown task -> 404 (no write before the check)."""
     auth_as(_user(role="super_admin"))
     mock_db.query.return_value.filter.return_value.first.return_value = None
 
@@ -413,10 +419,17 @@ def test_cancel_task_not_found(client, mock_db):
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Task not found"
+    mock_db.add.assert_not_called()
+    mock_db.commit.assert_not_called()
 
 
 def test_cancel_task_cross_org_forbidden(client, mock_db):
-    """A non-super_admin cancelling another org's task -> 403."""
+    """A non-super_admin cancelling another org's task -> 403.
+
+    No-writes asserted so a future reorder that moved the org check AFTER
+    ``cancel_task`` could not commit a cross-org cancellation while still
+    returning 403 (mirrors the create-flow negative tests).
+    """
     task = _task(org_id=uuid.uuid4(), status="queued")
     auth_as(_user(role="analyst", org_id=uuid.uuid4()))
     mock_db.query.return_value.filter.return_value.first.return_value = task
@@ -425,6 +438,8 @@ def test_cancel_task_cross_org_forbidden(client, mock_db):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Access denied"
+    mock_db.add.assert_not_called()
+    mock_db.commit.assert_not_called()
 
 
 if __name__ == "__main__":
