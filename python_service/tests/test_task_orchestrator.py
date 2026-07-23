@@ -275,6 +275,63 @@ def test_update_task_not_found():
         TaskOrchestrator.update_task_progress(uuid.uuid4(), 50, db=db)
 
 
+def test_update_task_progress_transitions_to_running():
+    """First progress report moves a queued task to running + stamps started_at."""
+    db = MagicMock()
+    task = _task(status="queued", progress=0)
+    db.query.return_value.filter.return_value.first.return_value = task
+
+    updated = TaskOrchestrator.update_task_progress(task.id, 40, db=db)
+
+    assert updated.status == "running"
+    assert updated.progress == 40
+    assert updated.started_at is not None
+    assert updated.started_at.tzinfo is not None  # aware UTC
+
+
+def test_update_task_progress_running_is_idempotent():
+    """A later report on an already-running task keeps started_at unchanged."""
+    db = MagicMock()
+    started = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    task = _task(status="running", progress=40)
+    task.started_at = started
+    db.query.return_value.filter.return_value.first.return_value = task
+
+    updated = TaskOrchestrator.update_task_progress(task.id, 70, db=db)
+
+    assert updated.status == "running"
+    assert updated.progress == 70
+    # started_at is only stamped on the created/queued -> running transition.
+    assert updated.started_at == started
+
+
+def test_update_task_progress_terminal_task_is_noop():
+    """A terminal task ignores progress reports (no reopen, no regress)."""
+    db = MagicMock()
+    task = _task(status="completed", progress=100)
+    db.query.return_value.filter.return_value.first.return_value = task
+
+    updated = TaskOrchestrator.update_task_progress(task.id, 50, "late report", db=db)
+
+    assert updated.status == "completed"
+    assert updated.progress == 100  # not regressed
+    # No write performed.
+    db.commit.assert_not_called()
+
+
+def test_update_task_progress_none_only_transitions():
+    """progress=None transitions to running without touching the progress value."""
+    db = MagicMock()
+    task = _task(status="queued", progress=10)
+    db.query.return_value.filter.return_value.first.return_value = task
+
+    updated = TaskOrchestrator.update_task_progress(task.id, progress=None, db=db)
+
+    assert updated.status == "running"
+    assert updated.progress == 10  # unchanged
+    assert updated.started_at is not None
+
+
 # -----------------------------------------------------------------------------
 # complete_task
 # -----------------------------------------------------------------------------

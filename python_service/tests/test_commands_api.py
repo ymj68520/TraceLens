@@ -41,7 +41,7 @@ from fastapi.testclient import TestClient
 
 from server.main import app
 from server.middleware.auth import get_current_client, get_current_user
-from server.models.database import Client, CommandQueue, User
+from server.models.database import AnalysisTask, Client, CommandQueue, User
 
 
 # -----------------------------------------------------------------------------
@@ -105,6 +105,30 @@ def _populate_defaults_on_refresh(obj):
         obj.created_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
     if getattr(obj, "retry_count", None) is None:
         obj.retry_count = 0
+
+
+def _task(
+    task_id=None,
+    org_id=None,
+    client_id=None,
+    user_id=None,
+    status="queued",
+    progress=0,
+):
+    """A transient ``AnalysisTask`` for propagation tests."""
+    return AnalysisTask(
+        id=task_id or uuid.uuid4(),
+        org_id=org_id or uuid.uuid4(),
+        client_id=client_id or uuid.uuid4(),
+        user_id=user_id or uuid.uuid4(),
+        disk_image_id=uuid.uuid4(),
+        task_name="Test Analysis",
+        analysis_type="full",
+        status=status,
+        progress=progress,
+        task_metadata={},
+        created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -321,6 +345,160 @@ def test_update_command_status_wrong_client_forbidden(client, mock_db):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Access denied"
+
+
+# -----------------------------------------------------------------------------
+# POST /api/commands/{command_id}/status  — task propagation (Task 15b)
+#
+# A command whose ``parameters`` carry a ``task_id`` (the soft link stamped by
+# create_analysis_task) forwards its status report to the originating task. The
+# mock chain is consumed in order: endpoint command lookup, then the
+# update_command_status re-fetch, then the orchestrator's task lookup — so each
+# propagation test supplies a 3-element ``.first.side_effect``.
+# -----------------------------------------------------------------------------
+
+
+def test_status_in_progress_propagates_to_task(client, mock_db):
+    """in_progress + progress -> task transitions to running with the progress."""
+    cli = _client()
+    client_as(cli)
+    task = _task(status="queued", client_id=cli.id, progress=0)
+    command = _command(
+        client_id=cli.id,
+        status="assigned",
+        parameters={"task_id": str(task.id), "image_path": "/x.E01"},
+    )
+    # endpoint command, update_command_status re-fetch, orchestrator task lookup.
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        command, command, task,
+    ]
+
+    response = client.post(
+        f"/api/commands/{command.id}/status",
+        json={
+            "command_id": str(command.id),
+            "status": "in_progress",
+            "progress": 42,
+            "message": "carving files",
+        },
+    )
+
+    assert response.status_code == 200
+    # Command advanced...
+    assert command.status == "in_progress"
+    # ...and the task followed: queued -> running, progress stamped, started_at set.
+    assert task.status == "running"
+    assert task.progress == 42
+    assert task.started_at is not None
+    assert task.started_at.tzinfo is not None  # aware UTC
+
+
+def test_status_completed_propagates_to_task(client, mock_db):
+    """completed -> task completed (progress 100, completed_at set)."""
+    cli = _client()
+    client_as(cli)
+    task = _task(status="running", client_id=cli.id, progress=80)
+    command = _command(
+        client_id=cli.id,
+        status="assigned",
+        parameters={"task_id": str(task.id), "image_path": "/x.E01"},
+    )
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        command, command, task,
+    ]
+
+    response = client.post(
+        f"/api/commands/{command.id}/status",
+        json={"command_id": str(command.id), "status": "completed", "progress": 100},
+    )
+
+    assert response.status_code == 200
+    assert task.status == "completed"
+    assert task.progress == 100
+    assert task.completed_at is not None
+
+
+def test_status_failed_propagates_to_task(client, mock_db):
+    """failed + message -> task failed with the message as error_message."""
+    cli = _client()
+    client_as(cli)
+    task = _task(status="running", client_id=cli.id)
+    command = _command(
+        client_id=cli.id,
+        status="assigned",
+        parameters={"task_id": str(task.id), "image_path": "/x.E01"},
+    )
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        command, command, task,
+    ]
+
+    response = client.post(
+        f"/api/commands/{command.id}/status",
+        json={
+            "command_id": str(command.id),
+            "status": "failed",
+            "message": "E01 checksum mismatch",
+        },
+    )
+
+    assert response.status_code == 200
+    assert task.status == "failed"
+    assert task.error_message == "E01 checksum mismatch"
+
+
+def test_status_without_task_id_skips_propagation(client, mock_db):
+    """A command with no task_id reports normally and never touches a task.
+
+    Proven by a finite 2-element side_effect: only the endpoint lookup and the
+    update_command_status re-fetch consume ``.first()``. If propagation wrongly
+    ran, the orchestrator's task lookup would exhaust the side_effect
+    (StopIteration) and the request would 500.
+    """
+    cli = _client()
+    client_as(cli)
+    # Default parameters carry no task_id.
+    command = _command(client_id=cli.id, status="assigned")
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        command, command,
+    ]
+
+    response = client.post(
+        f"/api/commands/{command.id}/status",
+        json={"command_id": str(command.id), "status": "completed"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"updated": True}
+    assert command.status == "completed"
+
+
+def test_status_task_missing_still_succeeds(client, mock_db):
+    """A stale task_id (task deleted) does not fail the command report.
+
+    The command update is primary and already committed; the orchestrator raises
+    ValueError("Task not found"), which the wiring logs and swallows -> 200.
+    """
+    cli = _client()
+    client_as(cli)
+    orphan_task_id = uuid.uuid4()
+    command = _command(
+        client_id=cli.id,
+        status="assigned",
+        parameters={"task_id": str(orphan_task_id), "image_path": "/x.E01"},
+    )
+    # endpoint command, update_command_status re-fetch, then task lookup -> None.
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        command, command, None,
+    ]
+
+    response = client.post(
+        f"/api/commands/{command.id}/status",
+        json={"command_id": str(command.id), "status": "completed"},
+    )
+
+    assert response.status_code == 200
+    # The command still advanced despite the missing task.
+    assert command.status == "completed"
 
 
 # -----------------------------------------------------------------------------
