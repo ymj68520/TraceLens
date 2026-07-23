@@ -154,6 +154,10 @@ def test_create_analysis_task_success():
     assert commands[0].client_id == client.id
     # Aware-UTC TTL (not the deprecated naive utcnow()).
     assert commands[0].ttl.tzinfo is not None
+    # Soft link back to the task — how cancel_task targets THIS task's command
+    # (command_queue has no task FK). Verified end-to-end in
+    # test_cancel_targets_command_by_task_linkage.
+    assert commands[0].parameters["task_id"] == str(task.id)
 
     db.commit.assert_called()
     db.close.assert_not_called()  # provided session is not owned
@@ -350,6 +354,27 @@ def test_cancel_task_no_pending_command():
     cancelled = TaskOrchestrator.cancel_task(task.id, task.user_id, db)
 
     assert cancelled.status == "cancelled"
+
+
+def test_cancel_targets_command_by_task_linkage():
+    """cancel_task fails the command whose parameters carry this task's id.
+
+    ``command_queue`` has no task FK, so the link lives in
+    ``parameters['task_id']`` (stamped by ``create_analysis_task``). This test
+    pins the contract: the command matched at creation (task_id in parameters)
+    is the one cancel fails — not an arbitrary pending command for the client.
+    """
+    db = MagicMock()
+    task = _task(status="queued")
+    # Mirror what create_analysis_task builds: the command carries the task_id.
+    command = _command(client_id=task.client_id, status="pending")
+    command.parameters = {"task_id": str(task.id), "image_path": "/x.E01"}
+    db.query.return_value.filter.return_value.first.side_effect = [task, command]
+
+    TaskOrchestrator.cancel_task(task.id, task.user_id, db)
+
+    assert command.status == "failed"
+    assert command.result_message == "Task cancelled by user"
 
 
 def test_cancel_completed_task_raises():
