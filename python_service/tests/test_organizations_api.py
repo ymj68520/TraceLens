@@ -334,6 +334,16 @@ def test_list_registration_tokens(client, mock_db):
     assert "token" in data[0]
 
 
+def test_list_registration_tokens_cross_org_forbidden(client, mock_db):
+    """A non-super_admin listing another org's tokens -> 403 before any DB work."""
+    auth_as(FakeUser(org_id=uuid.uuid4(), role="org_admin"))
+
+    response = client.get(f"/api/organizations/{uuid.uuid4()}/registration-tokens")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Access denied"
+
+
 # -----------------------------------------------------------------------------
 # DELETE /api/organizations/registration-tokens/{token_id}
 # -----------------------------------------------------------------------------
