@@ -30,6 +30,7 @@ from server.api.auth import router as auth_router
 from server.api.clients import router as clients_router
 from server.api.commands import router as commands_router
 from server.api.organizations import router as organizations_router
+from server.api.results import router as results_router
 from server.api.tasks import router as tasks_router
 from server.config import settings
 from server.db.session import init_db
@@ -119,6 +120,7 @@ def create_app() -> FastAPI:
     app.include_router(clients_router)
     app.include_router(commands_router)
     app.include_router(tasks_router)
+    app.include_router(results_router)
 
     # Health check
     @app.get("/health", tags=["Health"])
