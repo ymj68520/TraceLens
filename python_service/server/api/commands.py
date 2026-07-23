@@ -37,6 +37,7 @@ endpoint sets ``last_poll`` *before* invoking
 reads as online (see the Task 10 forward note).
 """
 from datetime import datetime, timezone
+import logging
 import uuid
 from typing import List, Optional
 
@@ -53,8 +54,78 @@ from server.models.schemas import (
     TaskStatusUpdate,
 )
 from server.services.command_queue import CommandQueueService
+from server.services.task_orchestrator import TaskOrchestrator
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/commands", tags=["Commands"])
+
+
+def _propagate_command_status_to_task(
+    command: CommandQueue, status_update: TaskStatusUpdate, db: Session
+) -> None:
+    """Forward a command status report to its originating analysis task.
+
+    The link is the ``task_id`` stamped into ``command.parameters`` at task
+    creation (``command_queue`` has no task FK — the soft link introduced for
+    ``cancel_task``). Commands not tied to a task (``health_check``, a directly
+    issued ``extract_file``) carry no ``task_id`` and are skipped.
+
+    Command status -> task transition::
+
+        in_progress -> running   (progress via update_task_progress)
+        completed   -> completed (complete_task success)
+        failed      -> failed    (complete_task failure; message -> error)
+
+    Propagation is **best-effort**: the command status update (the primary,
+    client-facing operation) has already committed. A missing or stale task
+    (deleted between the command being created and this report) raises
+    ``ValueError`` from the orchestrator, which we log and swallow — a stale
+    soft link must never turn a legitimate client report into a 5xx. All
+    transitions share the caller's session (one logical operation, no extra
+    pool use).
+    """
+    task_id_str = (command.parameters or {}).get("task_id")
+    if not task_id_str:
+        return  # Not a task-backed command.
+    try:
+        task_id = uuid.UUID(str(task_id_str))
+    except (ValueError, TypeError):
+        logger.warning(
+            "Command %s carries an unparseable task_id %r; skipping task "
+            "propagation.",
+            command.id,
+            task_id_str,
+        )
+        return
+
+    try:
+        if status_update.status == "in_progress":
+            TaskOrchestrator.update_task_progress(
+                task_id,
+                progress=status_update.progress,
+                message=status_update.message,
+                db=db,
+            )
+        elif status_update.status == "completed":
+            TaskOrchestrator.complete_task(task_id, success=True, db=db)
+        elif status_update.status == "failed":
+            TaskOrchestrator.complete_task(
+                task_id,
+                success=False,
+                error_message=status_update.message,
+                db=db,
+            )
+        # Other statuses (pending / assigned / expired) carry no task transition.
+    except ValueError:
+        # Task gone (deleted/mismatched) — the command report already succeeded.
+        logger.warning(
+            "Command %s reports %s but its task %s is missing; command status "
+            "updated, task propagation skipped.",
+            command.id,
+            status_update.status,
+            task_id,
+        )
 
 
 @router.post("", response_model=CommandResponse)
@@ -119,7 +190,10 @@ async def update_command_status(
     """
     Client endpoint to report a command's status.
 
-    A client may only update its own commands.
+    A client may only update its own commands. After the command status is
+    recorded, the report is propagated to the command's originating analysis
+    task (if any) via the ``task_id`` soft link — see
+    :func:`_propagate_command_status_to_task`.
 
     Raises:
         HTTPException: 404 if the command does not exist; 403 if the command
@@ -148,6 +222,10 @@ async def update_command_status(
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+    # Best-effort: advance the originating analysis task's lifecycle. A missing
+    # task is logged and ignored (the command report already succeeded).
+    _propagate_command_status_to_task(command, status_update, db)
 
     return {"updated": True}
 

@@ -181,16 +181,29 @@ class TaskOrchestrator:
     @staticmethod
     def update_task_progress(
         task_id: uuid.UUID,
-        progress: int,
+        progress: Optional[int] = None,
         message: Optional[str] = None,
         db=None,
     ) -> Optional[AnalysisTask]:
         """
-        Update task progress, optionally appending a status message.
+        Record a progress report for a task, transitioning it into ``running``.
+
+        This is the entry point the command-status endpoint uses when a client
+        reports a command ``in_progress``: it stamps progress, and on the first
+        such report moves the task out of its pre-execution state
+        (``created``/``queued``) into ``running`` with a ``started_at`` timestamp.
+
+        ``progress`` is optional so the method can be used for a transition-only
+        "the client has started" signal; when supplied it is validated to 0-100.
+
+        A task already in a terminal state (``completed``/``failed``/``cancelled``)
+        ignores the report — progress updates cannot reopen or regress a finished
+        task (a stray/late report from a client must not, e.g., reset progress on
+        a completed task).
 
         Args:
             task_id: Task UUID.
-            progress: Progress percentage (0-100).
+            progress: Progress percentage (0-100), or ``None`` to transition only.
             message: Optional status message, appended to ``task_metadata``.
             db: Optional database session.
 
@@ -205,7 +218,8 @@ class TaskOrchestrator:
             db = SessionLocal()
         try:
             # Validate inside the try so an owned session is still closed on raise.
-            if not 0 <= progress <= 100:
+            # ``progress`` may be None (transition-only); only validate when given.
+            if progress is not None and not 0 <= progress <= 100:
                 raise ValueError("Progress must be between 0 and 100")
 
             task = db.query(AnalysisTask).filter(
@@ -214,7 +228,18 @@ class TaskOrchestrator:
             if not task:
                 raise ValueError("Task not found")
 
-            task.progress = progress
+            # Terminal tasks ignore further progress reports.
+            if task.status in ("completed", "failed", "cancelled"):
+                return task
+
+            if progress is not None:
+                task.progress = progress
+
+            # First execution report transitions the task into "running".
+            if task.status in ("created", "queued"):
+                task.status = "running"
+                task.started_at = datetime.now(timezone.utc)
+
             if message:
                 # Reassign the JSONB dict rather than mutating in place: plain
                 # ``Column(JSONB)`` (no MutableDict) does not flag in-place
