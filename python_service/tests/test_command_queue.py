@@ -264,6 +264,51 @@ def test_update_command_not_found(db):
         CommandQueueService.update_command_status(uuid.uuid4(), "completed", db=db)
 
 
+def test_update_command_preserves_message_when_none(db):
+    """An update with no message keeps the previously stored message."""
+    cmd = _command(status="in_progress")
+    cmd.result_message = "earlier note"
+    db.query.return_value.filter.return_value.first.return_value = cmd
+
+    CommandQueueService.update_command_status(cmd.id, "in_progress", None, db=db)
+
+    assert cmd.result_message == "earlier note"
+
+
+def test_update_command_sets_message_when_provided(db):
+    """An update that supplies a message overwrites the prior one."""
+    cmd = _command(status="in_progress")
+    cmd.result_message = "old"
+    db.query.return_value.filter.return_value.first.return_value = cmd
+
+    CommandQueueService.update_command_status(cmd.id, "in_progress", "new", db=db)
+
+    assert cmd.result_message == "new"
+
+
+def test_update_command_closes_owned_session(monkeypatch):
+    """When no session is supplied, the opened session is closed (no leak)."""
+    fake = MagicMock()
+    cmd = _command(status="assigned")
+    fake.query.return_value.filter.return_value.first.return_value = cmd
+    monkeypatch.setattr("server.services.command_queue.SessionLocal", lambda: fake)
+
+    CommandQueueService.update_command_status(cmd.id, "completed", "done")
+
+    assert cmd.status == "completed"
+    fake.close.assert_called_once()
+
+
+def test_update_command_does_not_close_provided_session(db):
+    """A caller-supplied session is never closed by the service."""
+    cmd = _command(status="assigned")
+    db.query.return_value.filter.return_value.first.return_value = cmd
+
+    CommandQueueService.update_command_status(cmd.id, "completed", "done", db=db)
+
+    db.close.assert_not_called()
+
+
 # -----------------------------------------------------------------------------
 # expire_commands
 # -----------------------------------------------------------------------------
@@ -300,6 +345,27 @@ def test_expire_commands_none(db):
 
     assert count == 0
     db.commit.assert_called_once()
+
+
+def test_expire_commands_closes_owned_session(monkeypatch):
+    """Standalone expire (no session) closes the session it opens (no leak)."""
+    fake = MagicMock()
+    fake.query.return_value.filter.return_value.all.return_value = []
+    monkeypatch.setattr("server.services.command_queue.SessionLocal", lambda: fake)
+
+    count = CommandQueueService.expire_commands()
+
+    assert count == 0
+    fake.close.assert_called_once()
+
+
+def test_expire_commands_does_not_close_provided_session(db):
+    """A caller-supplied session is never closed by the service."""
+    db.query.return_value.filter.return_value.all.return_value = []
+
+    CommandQueueService.expire_commands(db=db)
+
+    db.close.assert_not_called()
 
 
 # -----------------------------------------------------------------------------

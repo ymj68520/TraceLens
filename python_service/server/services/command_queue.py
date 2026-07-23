@@ -153,13 +153,15 @@ class CommandQueueService:
 
         ``completed`` and ``failed`` stamp ``completed_at``; ``failed`` also
         increments ``retry_count``. Any other status (e.g. ``in_progress``) only
-        flips ``status``.
+        flips ``status``. ``result_message`` is overwritten only when a new value
+        is supplied, so a progress update without a message does not clobber a
+        prior result/error.
 
         Args:
             command_id: Command UUID
             status: New status
             result_message: Optional result/error message
-            db: Database session (a fresh one is opened if omitted)
+            db: Database session (a fresh one is opened and closed if omitted)
 
         Returns:
             Updated command
@@ -167,28 +169,39 @@ class CommandQueueService:
         Raises:
             ValueError: If the command does not exist
         """
-        if db is None:
+        # When no session is supplied we own the one we open and must close it,
+        # so standalone/background callers (e.g. a TTL sweeper) do not leak
+        # pooled connections.
+        owns_session = db is None
+        if owns_session:
             db = SessionLocal()
 
-        command = db.query(CommandQueue).filter(CommandQueue.id == command_id).first()
+        try:
+            command = db.query(CommandQueue).filter(
+                CommandQueue.id == command_id
+            ).first()
 
-        if not command:
-            raise ValueError("Command not found")
+            if not command:
+                raise ValueError("Command not found")
 
-        command.status = status
-        command.result_message = result_message
+            command.status = status
+            if result_message is not None:
+                command.result_message = result_message
 
-        if status == "completed":
-            command.completed_at = _now()
-        elif status == "failed":
-            command.completed_at = _now()
-            command.retry_count += 1
-        # "in_progress" (and any other value) only changes status.
+            if status == "completed":
+                command.completed_at = _now()
+            elif status == "failed":
+                command.completed_at = _now()
+                command.retry_count += 1
+            # "in_progress" (and any other value) only changes status.
 
-        db.commit()
-        db.refresh(command)
+            db.commit()
+            db.refresh(command)
 
-        return command
+            return command
+        finally:
+            if owns_session:
+                db.close()
 
     @staticmethod
     def expire_commands(db: Optional[Session] = None) -> int:
@@ -199,33 +212,38 @@ class CommandQueueService:
         ``expired``.
 
         Args:
-            db: Database session (a fresh one is opened if omitted)
+            db: Database session (a fresh one is opened and closed if omitted)
 
         Returns:
             Number of commands expired
         """
-        if db is None:
+        owns_session = db is None
+        if owns_session:
             db = SessionLocal()
 
-        now = _now()
+        try:
+            now = _now()
 
-        expired_commands = (
-            db.query(CommandQueue)
-            .filter(
-                and_(
-                    CommandQueue.status.in_(["pending", "assigned"]),
-                    CommandQueue.ttl < now,
+            expired_commands = (
+                db.query(CommandQueue)
+                .filter(
+                    and_(
+                        CommandQueue.status.in_(["pending", "assigned"]),
+                        CommandQueue.ttl < now,
+                    )
                 )
+                .all()
             )
-            .all()
-        )
 
-        for command in expired_commands:
-            command.status = "expired"
+            for command in expired_commands:
+                command.status = "expired"
 
-        db.commit()
+            db.commit()
 
-        return len(expired_commands)
+            return len(expired_commands)
+        finally:
+            if owns_session:
+                db.close()
 
     @staticmethod
     def get_commands_for_client(
