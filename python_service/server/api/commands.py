@@ -36,9 +36,9 @@ endpoint sets ``last_poll`` *before* invoking
 ``CommandQueueService.get_commands_for_client`` so an actively-polling client
 reads as online (see the Task 10 forward note).
 """
-from datetime import datetime, timezone
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -77,13 +77,20 @@ def _propagate_command_status_to_task(
         completed   -> completed (complete_task success)
         failed      -> failed    (complete_task failure; message -> error)
 
+    The task lookup is scoped by ``command.client_id`` (passed as ``client_id``
+    to the orchestrator). This is the defense-in-depth that enforces org
+    isolation on this path: a client may only advance a task *assigned to it*.
+    A user can plant an arbitrary ``task_id`` in an ad-hoc command's parameters
+    (``POST /api/commands`` accepts free-form ``parameters``), but a planted id
+    pointing at another client's task is simply not found by the scoped lookup
+    and is treated as a missing task — no cross-tenant effect.
+
     Propagation is **best-effort**: the command status update (the primary,
     client-facing operation) has already committed. A missing or stale task
-    (deleted between the command being created and this report) raises
-    ``ValueError`` from the orchestrator, which we log and swallow — a stale
-    soft link must never turn a legitimate client report into a 5xx. All
-    transitions share the caller's session (one logical operation, no extra
-    pool use).
+    (deleted between command creation and this report, or a scoped-out/planted
+    id) raises ``ValueError`` from the orchestrator, which we log and swallow —
+    the command report still returns 200. (Other, unexpected errors are *not*
+    masked: they surface normally.) All transitions share the caller's session.
     """
     task_id_str = (command.parameters or {}).get("task_id")
     if not task_id_str:
@@ -105,26 +112,31 @@ def _propagate_command_status_to_task(
                 task_id,
                 progress=status_update.progress,
                 message=status_update.message,
+                client_id=command.client_id,
                 db=db,
             )
         elif status_update.status == "completed":
-            TaskOrchestrator.complete_task(task_id, success=True, db=db)
+            TaskOrchestrator.complete_task(
+                task_id, success=True, client_id=command.client_id, db=db
+            )
         elif status_update.status == "failed":
             TaskOrchestrator.complete_task(
                 task_id,
                 success=False,
                 error_message=status_update.message,
+                client_id=command.client_id,
                 db=db,
             )
         # Other statuses (pending / assigned / expired) carry no task transition.
     except ValueError:
-        # Task gone (deleted/mismatched) — the command report already succeeded.
+        # Task missing/stale/scoped-out — the command report already succeeded.
         logger.warning(
-            "Command %s reports %s but its task %s is missing; command status "
-            "updated, task propagation skipped.",
+            "Command %s reports %s but its task %s is missing for client %s; "
+            "command status updated, task propagation skipped.",
             command.id,
             status_update.status,
             task_id,
+            command.client_id,
         )
 
 
