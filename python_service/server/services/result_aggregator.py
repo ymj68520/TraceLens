@@ -30,7 +30,7 @@ Neither model is timestamped by this service: ``created_at`` is a
 no ``utcnow`` here — the service never sets a timestamp.
 """
 import uuid
-from typing import Any, List, Optional
+from typing import List, Optional
 
 from sqlalchemy.orm import Session
 

@@ -244,6 +244,38 @@ def test_store_results_empty_list():
     db.commit.assert_called_once()
 
 
+def test_store_results_client_mismatch():
+    """Bulk path also rejects a client that does not own the task (no writes)."""
+    db = _mock_db()
+    task = _task(client_id=uuid.uuid4())
+    db.query.return_value.filter.return_value.first.return_value = task
+
+    with pytest.raises(ValueError, match="Client does not own this task"):
+        ResultAggregator.store_results(
+            task.id,
+            uuid.uuid4(),  # not the owner
+            [{"result_type": "file"}, {"result_type": "database"}],
+            db=db,
+        )
+
+    db.add.assert_not_called()
+    db.commit.assert_not_called()
+
+
+def test_store_results_does_not_close_provided_session():
+    """A caller-provided session is left open for the caller to manage."""
+    db = _mock_db()
+    client_id = uuid.uuid4()
+    task = _task(client_id=client_id)
+    db.query.return_value.filter.return_value.first.return_value = task
+
+    ResultAggregator.store_results(
+        task.id, client_id, [{"result_type": "file"}], db=db
+    )
+
+    db.close.assert_not_called()
+
+
 # -----------------------------------------------------------------------------
 # store_llm_analysis
 # -----------------------------------------------------------------------------
