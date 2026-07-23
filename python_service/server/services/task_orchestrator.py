@@ -117,8 +117,13 @@ class TaskOrchestrator:
 
             # The command the client will claim on its next poll. ``status`` is
             # set explicitly (the model default is also "pending") so the row is
-            # claimable regardless of how it is constructed.
+            # claimable regardless of how it is constructed. ``task_id`` is
+            # stamped into the ``parameters`` JSONB as a soft link back to this
+            # task — ``command_queue`` has no task FK, so this is how
+            # ``cancel_task`` targets *this* task's command rather than any
+            # pending command for the same client.
             command_params = {
+                "task_id": str(task.id),
                 "image_path": disk_image.path,
                 "analysis_type": analysis_type,
                 "output_format": "sqlite",
@@ -325,10 +330,14 @@ class TaskOrchestrator:
             task.status = "cancelled"
             task.completed_at = datetime.now(timezone.utc)
 
-            # Fail the associated command if it has not been picked up yet.
+            # Fail this task's own command if it has not been picked up yet.
+            # The ``task_id`` soft link (stamped into ``parameters`` at
+            # creation) scopes the lookup so cancelling one task cannot fail a
+            # concurrently-running sibling task's command for the same client.
             command = db.query(CommandQueue).filter(
                 CommandQueue.client_id == task.client_id,
                 CommandQueue.status.in_(["pending", "assigned"]),
+                CommandQueue.parameters["task_id"].astext == str(task.id),
             ).first()
             if command:
                 command.status = "failed"
