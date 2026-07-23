@@ -465,11 +465,17 @@ def test_index_images_updates_existing(client, mock_db):
     cli = _client(hostname="me")
     client_as(cli)
     existing = _disk_image(client_id=cli.id, path="/img/a.e01")
+    assert existing.image_metadata == {"fs": "ntfs"}  # set by _disk_image
     mock_db.query.return_value.filter.return_value.first.return_value = existing
 
     response = client.post(
         f"/api/clients/{cli.id}/index-images",
-        json=[{"path": "/img/a.e01", "size_bytes": 999, "format": "E01"}],
+        json=[{
+            "path": "/img/a.e01",
+            "size_bytes": 999,
+            "format": "E01",
+            "image_metadata": {"fs": "ext4", "label": "data"},
+        }],
     )
 
     assert response.status_code == 200
@@ -477,6 +483,11 @@ def test_index_images_updates_existing(client, mock_db):
     assert data == {"indexed": 0, "updated": 1, "total": 1}
     # Existing row was mutated, not re-added.
     assert existing.size_bytes == 999
+    # Guards the image_metadata fix: the update must flow through the
+    # ``image_metadata`` attribute (NOT the reserved ``metadata`` name). If the
+    # line were reverted to ``existing.metadata = ...``, this assertion fails
+    # because the real column attribute stays unchanged.
+    assert existing.image_metadata == {"fs": "ext4", "label": "data"}
     mock_db.add.assert_not_called()
 
 
@@ -512,6 +523,18 @@ def test_list_client_images_success(client, mock_db):
     data = response.json()
     assert isinstance(data, list)
     assert len(data) == 2
+
+
+def test_list_client_images_cross_org_forbidden(client, mock_db):
+    """A non-super_admin listing another org's client images -> 403."""
+    target = _client(org_id=uuid.uuid4())
+    auth_as(_user(role="org_admin", org_id=uuid.uuid4()))
+    mock_db.query.return_value.filter.return_value.first.return_value = target
+
+    response = client.get(f"/api/clients/{target.id}/images")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Access denied"
 
 
 if __name__ == "__main__":

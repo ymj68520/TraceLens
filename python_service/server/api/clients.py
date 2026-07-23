@@ -28,7 +28,7 @@ matching ``server.services.auth_service`` and the registration-token expiry set
 in ``server.api.organizations``. Token expiry is compared against an aware
 timestamp; registration tokens store their expiry the same way.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import secrets
 import uuid
@@ -43,8 +43,8 @@ from server.middleware.auth import get_current_client, get_current_user
 from server.models.database import (
     Client,
     DiskImage,
-    Organization,
     RegistrationToken,
+    User,
 )
 from server.models.schemas import (
     ClientCredentialResponse,
@@ -177,7 +177,6 @@ async def list_clients(
     Returns:
         List of clients
     """
-    from server.models.database import User
 
     # Client requesting - return only themselves
     if isinstance(current_user, Client):
@@ -218,7 +217,6 @@ async def get_client(
     Raises:
         HTTPException: If client not found or access denied
     """
-    from server.models.database import User
 
     client = db.query(Client).filter(Client.id == client_id).first()
 
@@ -374,7 +372,8 @@ async def list_client_images(
 
     Args:
         client_id: Client UUID
-        current_user: Authenticated user or client
+        current_user: Authenticated user (this endpoint is user-authenticated via
+            ``get_current_user``; clients do not reach it)
         db: Database session
 
     Returns:
@@ -383,7 +382,6 @@ async def list_client_images(
     Raises:
         HTTPException: If client not found or cross-org access denied
     """
-    from server.models.database import User
 
     client = db.query(Client).filter(Client.id == client_id).first()
 
