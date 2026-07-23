@@ -23,7 +23,13 @@ struct HttpLibClient::Impl {
         cli.set_connection_timeout(10);  // seconds
         cli.set_read_timeout(300);       // generous: result uploads (Task 17) are large
         cli.set_write_timeout(60);
-        cli.set_follow_location(true);
+        // Do NOT auto-follow redirects: cpp-httplib re-sends default headers
+        // (including Authorization: Bearer ...) across a redirect and does not
+        // strip the token on a cross-host hop. The token is the agent's only
+        // secret; the poll/status/result endpoints return 2xx, never 3xx, so a
+        // redirect would be anomalous and should surface as an error, not leak
+        // the credential.
+        cli.set_follow_location(false);
         cli.set_default_headers({
             {"Authorization", "Bearer " + bearer},
             {"Accept", "application/json"},

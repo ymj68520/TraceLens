@@ -33,9 +33,14 @@ std::string ClientConfig::validate(const ClientConfig& c) {
     } else if (scheme == "http") {
         // Only localhost variants allowed (development convenience).
         std::string host = rest;
-        for (const char delim : {'/', ':'}) {
-            const auto p = host.find(delim);
-            if (p != std::string::npos) host = host.substr(0, p);
+        if (const auto p = host.find('/'); p != std::string::npos) host = host.substr(0, p);
+        if (!host.empty() && host.front() == '[') {
+            // Bracketed IPv6 literal, e.g. [::1]:8000 -> ::1
+            if (const auto rb = host.find(']'); rb != std::string::npos) {
+                host = host.substr(1, rb - 1);
+            }
+        } else if (const auto p = host.find(':'); p != std::string::npos) {
+            host = host.substr(0, p);  // drop the port
         }
         if (host != "localhost" && host != "127.0.0.1" && host != "::1") {
             return "http:// to a non-localhost server is not allowed; use https://";
