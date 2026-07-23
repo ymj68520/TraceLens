@@ -96,12 +96,31 @@ async def upload_results(
             detail="Access denied",
         )
 
-    return ResultAggregator.store_results(
-        task_id=task_id,
-        client_id=current_client.id,
-        results=[artifact.model_dump() for artifact in payload.artifacts],
-        db=db,
-    )
+    try:
+        return ResultAggregator.store_results(
+            task_id=task_id,
+            client_id=current_client.id,
+            results=[artifact.model_dump() for artifact in payload.artifacts],
+            db=db,
+        )
+    except ValueError as e:
+        # Normal flow is pre-checked above; this only trips on a rare race
+        # (task deleted or re-assigned between the gate and the service call).
+        # Map it to the same codes the gate would, never a 500.
+        message = str(e)
+        if "Task not found" in message:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Task not found",
+            )
+        if "does not own" in message:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=message
+        )
 
 
 @router.get(

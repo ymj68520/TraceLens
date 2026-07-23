@@ -388,6 +388,41 @@ def test_get_task_llm_analyses_cross_org_forbidden(client, mock_db):
     assert response.json()["detail"] == "Access denied"
 
 
+# -----------------------------------------------------------------------------
+# Cross-principal token-type enforcement
+#   Upload requires a *client* token; retrieval requires a *user* token.
+#   The token-type check lives in auth.py; these assert it at this layer so a
+#   future reordering that swaps the Depends() can't silently widen access.
+# -----------------------------------------------------------------------------
+
+
+def test_upload_requires_client_token(client, mock_db):
+    """A user token against the upload endpoint -> 401 (client token required)."""
+    # Only the *user* identity is installed; get_current_client is the real
+    # dependency, so any request lacks a valid client token -> 401.
+    auth_as(_user(role="analyst"))
+    mock_db.query.return_value.filter.return_value.first.return_value = _task()
+
+    response = client.post(
+        f"/api/tasks/{uuid.uuid4()}/results", json=_upload_payload()
+    )
+
+    assert response.status_code == 401
+    mock_db.add.assert_not_called()
+
+
+def test_get_results_requires_user_token(client, mock_db):
+    """A client token against a retrieval endpoint -> 401 (user token required)."""
+    # Only the *client* identity is installed; get_current_user is the real
+    # dependency -> 401 before any read.
+    client_as(_client())
+    mock_db.query.return_value.filter.return_value.first.return_value = _task()
+
+    response = client.get(f"/api/tasks/{uuid.uuid4()}/results")
+
+    assert response.status_code == 401
+
+
 if __name__ == "__main__":
     import pytest as _pytest
 
