@@ -27,6 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from server.api.auth import router as auth_router
+from server.api.clients import router as clients_router
 from server.api.organizations import router as organizations_router
 from server.config import settings
 from server.db.session import init_db
@@ -110,9 +111,10 @@ def create_app() -> FastAPI:
     # Mount routers.
     # The auth router already declares ``prefix="/api/auth"``, so it is mounted
     # without an additional prefix to avoid a doubled ``/api/auth/api/auth/...``.
-    # The organizations router likewise declares its own ``prefix``.
+    # The organizations and clients routers likewise declare their own prefixes.
     app.include_router(auth_router)
     app.include_router(organizations_router)
+    app.include_router(clients_router)
 
     # Health check
     @app.get("/health", tags=["Health"])
