@@ -184,6 +184,7 @@ class TaskOrchestrator:
         progress: Optional[int] = None,
         message: Optional[str] = None,
         db=None,
+        client_id: Optional[uuid.UUID] = None,
     ) -> Optional[AnalysisTask]:
         """
         Record a progress report for a task, transitioning it into ``running``.
@@ -196,6 +197,13 @@ class TaskOrchestrator:
         ``progress`` is optional so the method can be used for a transition-only
         "the client has started" signal; when supplied it is validated to 0-100.
 
+        ``client_id`` optionally scopes the task lookup. The client-status
+        propagation supplies the *reporting command's* ``client_id`` so a client
+        can only advance a task assigned to it — this is the defense-in-depth that
+        blocks a user-planted ``task_id`` (in an ad-hoc command's parameters) from
+        reaching another org's task: the scoped lookup simply does not find it.
+        User-authenticated callers omit it (the API layer enforces org scope).
+
         A task already in a terminal state (``completed``/``failed``/``cancelled``)
         ignores the report — progress updates cannot reopen or regress a finished
         task (a stray/late report from a client must not, e.g., reset progress on
@@ -205,6 +213,7 @@ class TaskOrchestrator:
             task_id: Task UUID.
             progress: Progress percentage (0-100), or ``None`` to transition only.
             message: Optional status message, appended to ``task_metadata``.
+            client_id: Optional owning-client scope for the task lookup.
             db: Optional database session.
 
         Returns:
@@ -222,9 +231,12 @@ class TaskOrchestrator:
             if progress is not None and not 0 <= progress <= 100:
                 raise ValueError("Progress must be between 0 and 100")
 
-            task = db.query(AnalysisTask).filter(
-                AnalysisTask.id == task_id
-            ).first()
+            # Scope by owning client when supplied (client-report path). A single
+            # ``.filter(*conditions)`` call keeps the lookup on one mock chain.
+            conditions = [AnalysisTask.id == task_id]
+            if client_id is not None:
+                conditions.append(AnalysisTask.client_id == client_id)
+            task = db.query(AnalysisTask).filter(*conditions).first()
             if not task:
                 raise ValueError("Task not found")
 
@@ -269,14 +281,25 @@ class TaskOrchestrator:
         success: bool = True,
         error_message: Optional[str] = None,
         db=None,
+        client_id: Optional[uuid.UUID] = None,
     ) -> Optional[AnalysisTask]:
         """
         Mark a task completed or failed and record the transition.
+
+        ``client_id`` optionally scopes the task lookup to the reporting command's
+        client (see :meth:`update_task_progress` for the cross-tenant rationale).
+
+        A task already in a terminal state (``completed``/``failed``/``cancelled``)
+        is returned unchanged: a late/duplicate client report must not re-stamp
+        ``completed_at``, double-record history, flip one terminal state to
+        another, or resurrect a task a user explicitly cancelled. This guard
+        matters now that the client-status path reaches this method.
 
         Args:
             task_id: Task UUID.
             success: Whether the task completed successfully.
             error_message: Error message if failed.
+            client_id: Optional owning-client scope for the task lookup.
             db: Optional database session.
 
         Returns:
@@ -289,11 +312,16 @@ class TaskOrchestrator:
         if owns_session:
             db = SessionLocal()
         try:
-            task = db.query(AnalysisTask).filter(
-                AnalysisTask.id == task_id
-            ).first()
+            conditions = [AnalysisTask.id == task_id]
+            if client_id is not None:
+                conditions.append(AnalysisTask.client_id == client_id)
+            task = db.query(AnalysisTask).filter(*conditions).first()
             if not task:
                 raise ValueError("Task not found")
+
+            # Terminal tasks are immutable from this path.
+            if task.status in ("completed", "failed", "cancelled"):
+                return task
 
             if success:
                 task.status = "completed"

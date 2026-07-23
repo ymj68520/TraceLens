@@ -332,6 +332,32 @@ def test_update_task_progress_none_only_transitions():
     assert updated.started_at is not None
 
 
+def test_update_task_progress_scoped_by_client_id():
+    """client_id adds a second filter condition (cross-tenant defense)."""
+    db = MagicMock()
+    task = _task(status="queued", client_id=uuid.uuid4())
+    db.query.return_value.filter.return_value.first.return_value = task
+
+    TaskOrchestrator.update_task_progress(
+        task.id, 40, client_id=task.client_id, db=db
+    )
+
+    # The single .filter() carried both the id and the client_id conditions.
+    assert len(db.query.return_value.filter.call_args[0]) == 2
+    assert task.status == "running"
+
+
+def test_update_task_progress_client_scope_miss_is_not_found():
+    """A task not owned by client_id is treated as not found (planted-id defense)."""
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+
+    with pytest.raises(ValueError, match="Task not found"):
+        TaskOrchestrator.update_task_progress(
+            uuid.uuid4(), 40, client_id=uuid.uuid4(), db=db
+        )
+
+
 # -----------------------------------------------------------------------------
 # complete_task
 # -----------------------------------------------------------------------------
@@ -375,6 +401,44 @@ def test_complete_task_not_found():
 
     with pytest.raises(ValueError, match="Task not found"):
         TaskOrchestrator.complete_task(uuid.uuid4(), db=db)
+
+
+def test_complete_task_scoped_by_client_id():
+    """client_id adds a second filter condition (cross-tenant defense)."""
+    db = MagicMock()
+    task = _task(status="running", client_id=uuid.uuid4())
+    db.query.return_value.filter.return_value.first.return_value = task
+
+    TaskOrchestrator.complete_task(
+        task.id, success=True, client_id=task.client_id, db=db
+    )
+
+    assert len(db.query.return_value.filter.call_args[0]) == 2
+    assert task.status == "completed"
+
+
+def test_complete_task_terminal_guard():
+    """An already-terminal task is returned unchanged: no flip, re-stamp, or
+    double history row (matters now that clients reach this method)."""
+    db = MagicMock()
+    task = _task(status="completed", progress=100)
+    task.completed_at = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    task.error_message = None
+    db.query.return_value.filter.return_value.first.return_value = task
+
+    result = TaskOrchestrator.complete_task(
+        task.id, success=False, error_message="late report", db=db
+    )
+
+    assert result.status == "completed"  # not flipped to failed
+    assert result.error_message is None  # no stale error written
+    # completed_at not re-stamped to "now".
+    assert result.completed_at == datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    db.commit.assert_not_called()
+    # No audit row appended for a no-op.
+    assert not any(
+        isinstance(c.args[0], TaskHistory) for c in db.add.call_args_list
+    )
 
 
 # -----------------------------------------------------------------------------

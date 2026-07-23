@@ -32,6 +32,7 @@ import os
 # Select the HS256 development path so any tokens created/verified match.
 os.environ.setdefault("ENVIRONMENT", "development")
 
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
@@ -41,7 +42,7 @@ from fastapi.testclient import TestClient
 
 from server.main import app
 from server.middleware.auth import get_current_client, get_current_user
-from server.models.database import AnalysisTask, Client, CommandQueue, User
+from server.models.database import AnalysisTask, Client, CommandQueue, TaskHistory, User
 
 
 # -----------------------------------------------------------------------------
@@ -416,6 +417,12 @@ def test_status_completed_propagates_to_task(client, mock_db):
     assert task.status == "completed"
     assert task.progress == 100
     assert task.completed_at is not None
+    # The propagation persisted on the shared session and recorded an audit row.
+    mock_db.commit.assert_called()
+    assert any(
+        isinstance(c.args[0], TaskHistory)
+        for c in mock_db.add.call_args_list
+    )
 
 
 def test_status_failed_propagates_to_task(client, mock_db):
@@ -472,7 +479,42 @@ def test_status_without_task_id_skips_propagation(client, mock_db):
     assert command.status == "completed"
 
 
-def test_status_task_missing_still_succeeds(client, mock_db):
+def test_status_cross_client_task_is_skipped(client, mock_db):
+    """A task_id pointing at another client's task is scoped out -> 200, no effect.
+
+    The orchestrator lookup is scoped by ``command.client_id``, so a planted
+    foreign task_id is simply "not found". We assert both the graceful 200 AND
+    that a client_id condition was applied (a 2-argument ``.filter()`` call) —
+    proving the scope is actually threaded through the wiring.
+    """
+    cli = _client()
+    client_as(cli)
+    foreign_task_id = uuid.uuid4()
+    command = _command(
+        client_id=cli.id,
+        status="assigned",
+        parameters={"task_id": str(foreign_task_id), "image_path": "/x.E01"},
+    )
+    # endpoint command, update_command_status re-fetch, scoped task lookup -> None.
+    mock_db.query.return_value.filter.return_value.first.side_effect = [
+        command, command, None,
+    ]
+
+    response = client.post(
+        f"/api/commands/{command.id}/status",
+        json={"command_id": str(command.id), "status": "completed"},
+    )
+
+    assert response.status_code == 200
+    assert command.status == "completed"
+    # A 2-argument .filter() was observed — the client_id scope was applied.
+    assert any(
+        len(call.args) == 2
+        for call in mock_db.query.return_value.filter.call_args_list
+    )
+
+
+def test_status_task_missing_still_succeeds(client, mock_db, caplog):
     """A stale task_id (task deleted) does not fail the command report.
 
     The command update is primary and already committed; the orchestrator raises
@@ -491,14 +533,17 @@ def test_status_task_missing_still_succeeds(client, mock_db):
         command, command, None,
     ]
 
-    response = client.post(
-        f"/api/commands/{command.id}/status",
-        json={"command_id": str(command.id), "status": "completed"},
-    )
+    with caplog.at_level(logging.WARNING, logger="server.api.commands"):
+        response = client.post(
+            f"/api/commands/{command.id}/status",
+            json={"command_id": str(command.id), "status": "completed"},
+        )
 
     assert response.status_code == 200
     # The command still advanced despite the missing task.
     assert command.status == "completed"
+    # ...and the swallow was logged (not silent).
+    assert "missing" in caplog.text
 
 
 # -----------------------------------------------------------------------------
