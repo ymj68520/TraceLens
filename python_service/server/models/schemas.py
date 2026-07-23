@@ -18,6 +18,7 @@ Pydantic schemas below use these same attribute names so that response models
 read correctly from ORM instances via ``from_attributes``.
 """
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 import uuid
 
@@ -227,6 +228,45 @@ class AnalysisResultCreate(BaseModel):
     # Matches the ORM attribute ``AnalysisResult.result_metadata`` (DB column
     # ``metadata``).
     result_metadata: Dict[str, Any] = {}
+
+
+# A single artifact a client produced (forensic DB, carved file, or metadata).
+class ResultArtifact(BaseModel):
+    result_type: str = Field(..., pattern="^(database|file|metadata)$")
+    file_path: Optional[str] = None
+    file_size: Optional[int] = Field(None, ge=0)
+    storage_location: Optional[str] = None
+    # Matches the ORM attribute ``AnalysisResult.result_metadata`` (DB column
+    # ``metadata``).
+    result_metadata: Dict[str, Any] = {}
+
+
+class ResultUploadRequest(BaseModel):
+    """A batch of artifacts a client uploads for one analysis task."""
+    artifacts: List[ResultArtifact]
+
+
+class AnalysisResultResponse(BaseSchema):
+    task_id: uuid.UUID
+    client_id: Optional[uuid.UUID] = None
+    result_type: str
+    file_path: Optional[str] = None
+    file_size: Optional[int] = None
+    storage_location: Optional[str] = None
+    # Matches the ORM attribute ``AnalysisResult.result_metadata`` (DB column
+    # ``metadata``).
+    result_metadata: Dict[str, Any]
+
+
+class LLMAnalysisResponse(BaseSchema):
+    task_id: uuid.UUID
+    file_id: Optional[uuid.UUID] = None
+    file_path: Optional[str] = None
+    input_text_hash: Optional[str] = None
+    analysis_result: str
+    model_used: Optional[str] = None
+    tokens_used: Optional[int] = None
+    cost: Optional[Decimal] = None
 
 
 class TaskStatusUpdate(BaseModel):
