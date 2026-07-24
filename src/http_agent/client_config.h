@@ -13,6 +13,7 @@ namespace tracelens {
 struct ClientConfig {
     std::string server_base_url;       // https://host[:port]
     int poll_interval_seconds = 10;    // 5..30 (plan: 10s default, 5-30 range)
+    int reindex_interval_seconds = 1800;  // 0 disables periodic re-indexing (Task 23); default 30m
     std::string token_path;            // path to the 30d client JWT file
     std::string hostname;              // informational (reported hostname)
     std::string analyzer_path;         // path to the local forensics_analyzer binary

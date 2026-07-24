@@ -92,6 +92,12 @@ int main(int argc, char** argv) {
                                             cfg.hostname);
     tracelens::ConsoleLogger logger;
 
+    // Extract client_id for indexing (both one-shot and periodic). Must be
+    // present for indexing to work (else we can't form the API path).
+    const std::string cid = jwt.client_id();
+    tracelens::DiskImageIndexer indexer(cfg.image_dirs);
+    tracelens::IndexUploader index_uploader(transport, cid);
+
     // One-shot local image index at startup (Task 19): tell the server which
     // disk images exist on this client so an analyze_disk command can later
     // target a real image. Best effort — a failure here is logged, never fatal
@@ -99,15 +105,12 @@ int main(int argc, char** argv) {
     if (cfg.image_dirs.empty()) {
         std::cerr << "image_dirs not configured; skipping local image index\n";
     } else {
-        const std::string cid = jwt.client_id();
         if (cid.empty()) {
             std::cerr << "warning: no client_id in token; skipping image index\n";
         } else {
-            tracelens::DiskImageIndexer indexer(cfg.image_dirs);
             std::string scan_err;
             auto entries = indexer.scan(scan_err);
             if (!scan_err.empty()) std::cerr << "warning: index scan: " << scan_err << "\n";
-            tracelens::IndexUploader index_uploader(transport, cid);
             std::string up_err;
             if (!index_uploader.upload(entries, up_err)) {
                 std::cerr << "warning: image index upload: " << up_err << "\n";
@@ -121,8 +124,9 @@ int main(int argc, char** argv) {
     std::signal(SIGINT,  [](int) { tracelens::g_request_stop.store(true); });
     std::signal(SIGTERM, [](int) { tracelens::g_request_stop.store(true); });
 
-    tracelens::HttpAgentService service(poller, reporter, executor, uploader,
-                                        store, cfg.poll_interval_seconds, logger);
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader, store,
+                                        indexer, index_uploader, cfg.poll_interval_seconds,
+                                        cfg.reindex_interval_seconds, cid, logger);
     try {
         return service.run(/*single_iteration=*/once);
     } catch (const std::exception& e) {
