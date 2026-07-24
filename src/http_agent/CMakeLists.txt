@@ -28,6 +28,7 @@ endif()
 find_package(OpenSSL REQUIRED)
 find_package(SQLite3 REQUIRED)
 find_package(Threads REQUIRED)
+find_package(GTest REQUIRED)
 
 set(AGENT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 # httplib.h + json.hpp live here (vendored alongside cpp-mcp).
@@ -70,9 +71,15 @@ target_link_libraries(tracelens_agent_lib PUBLIC
 add_executable(tracelens_agent http_agent_main.cpp)
 target_link_libraries(tracelens_agent PRIVATE tracelens_agent_lib)
 
-# Self-contained unit tests (no GTest, no live server).
+# Unit tests with GTest (Task 24).
 add_executable(tracelens_agent_test tests/test_http_agent.cpp)
-target_link_libraries(tracelens_agent_test PRIVATE tracelens_agent_lib)
+target_link_libraries(tracelens_agent_test PRIVATE
+    tracelens_agent_lib
+    GTest::gtest
+    GTest::gmock
+)
 
 enable_testing()
 add_test(NAME http_agent_unit COMMAND tracelens_agent_test)
+# Set 60-second timeout for the test (matches former SIGALRM guard).
+set_property(TEST http_agent_unit PROPERTY TIMEOUT 60)
