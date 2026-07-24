@@ -9269,6 +9269,7 @@ inline SSLServer::SSLServer(const char *cert_path, const char *private_key_path,
                         SSL_OP_NO_COMPRESSION |
                             SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
 
+// TraceLens: opt-in TLS 1.3 floor — see src/http_agent/CMakeLists.txt
 #ifdef CPPHTTPLIB_ENFORCE_TLS1_3_MIN
     SSL_CTX_set_min_proto_version(ctx_, TLS1_3_VERSION);
 #else

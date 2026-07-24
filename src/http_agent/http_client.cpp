@@ -14,6 +14,12 @@ namespace tracelens {
 #error "cpp-httplib built without OpenSSL — https:// unavailable; TLS is required"
 #endif
 
+// TODO(Task 21): live TLS 1.3 verification — enforce TLS 1.3 minimum at runtime
+// by spawning a TLS 1.3-only httplib::Server with a self-signed cert and asserting
+// the HttpLibClient connects successfully. Currently deferred; enforcement is
+// verified at compile-time (CPPHTTPLIB_ENFORCE_TLS1_3_MIN macro propagation through
+// the SSLClient ctor chain). Requires bundling a test cert + server config.
+
 struct HttpLibClient::Impl {
     std::mutex mtx;
     httplib::Client cli;
