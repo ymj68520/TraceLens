@@ -559,6 +559,15 @@ add_subdirectory(tests)
 # as long as its own minimal deps are available, regardless of whether the
 # heavy forensic libs are present. This enables root builds that include the
 # client agent without gating it on the forensic dep chain.
+#
+# NOTE: The conditional checks only OpenSSL_FOUND and SQLite3_FOUND (not
+# Threads_FOUND or nlohmann_json_FOUND from brief D1) because: (a) Threads is
+# universally available and resolved by http_agent's own find_package(Threads
+# REQUIRED), and (b) nlohmann/json is vendored in libs/cpp-mcp/common, so no
+# find_package check is needed. The else-branch is unreachable in a normal
+# root build because root does find_package(OpenSSL/SQLite3 REQUIRED), but it
+# serves as defensive forward-compatible code if those REQUIRED calls are
+# ever softened to QUIET.
 if(OpenSSL_FOUND AND SQLite3_FOUND)
   add_subdirectory(src/http_agent)
 else()
