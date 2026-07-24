@@ -105,13 +105,11 @@ std::vector<ResultArtifact> collect_db_artifacts(const std::string& image_path,
         // <baseName>*.db (case-insensitive suffix), excluding temp journals.
         if (name.rfind(base, 0) != 0) continue;
         const std::string lower = to_lower(name);
+        // The ".db" suffix requirement already excludes SQLite sidecars
+        // (case.db-wal / -shm / -journal), since those end in -wal/-shm/-journal,
+        // not .db. No separate sidecar filter is needed.
         if (lower.size() < 3 || lower.compare(lower.size() - 3, 3, ".db") != 0) {
             continue;
-        }
-        if (lower.find("-wal") != std::string::npos ||
-            lower.find("-shm") != std::string::npos ||
-            lower.find("-journal") != std::string::npos) {
-            continue;  // SQLite sidecar files, not final artifacts.
         }
         ResultArtifact art;
         art.result_type = "database";
@@ -158,11 +156,13 @@ ExecutionResult AnalyzeDiskExecutor::execute(const Command& cmd) {
         return r;
     }
     // Pre-check the image exists locally so we fail fast with a clear message
-    // rather than spawning the analyzer to discover the same thing.
+    // rather than spawning the analyzer to discover the same thing. Identify the
+    // case by its stem only — the full raw-image path must never appear in any
+    // uploaded status body.
     std::error_code ec;
     if (!fs::exists(image_path, ec)) {
         r.success = false;
-        r.message = "image not found locally: " + image_path;
+        r.message = "image not found locally: " + image_base_name(image_path);
         return r;
     }
 
@@ -200,8 +200,9 @@ ExecutionResult AnalyzeDiskExecutor::execute(const Command& cmd) {
 
     r.artifacts = collect_db_artifacts(image_path, work_dir.string(), hostname_);
     r.success = true;
-    r.message = "analyzed " + image_path + "; " +
-                std::to_string(r.artifacts.size()) + " artifact(s)";
+    // No image_path in the message: this string is POSTed to the server in the
+    // status body, and the raw-image path must never leave the client.
+    r.message = "analyzed; " + std::to_string(r.artifacts.size()) + " artifact(s)";
     if (r.artifacts.empty()) {
         // Analyzer reported success but produced no DBs — surface as a warning
         // in the message; the task is still marked completed (analyzer success).

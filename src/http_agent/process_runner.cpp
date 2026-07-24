@@ -1,5 +1,6 @@
 #include "process_runner.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <csignal>
 #include <cstring>
@@ -31,21 +32,29 @@ void set_nonblock(int fd) {
     if (flags != -1) fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-// Reads fd into dest until EOF or the cap, draining whatever poll reports ready.
-void drain(int fd, std::string& dest) {
-    if (fd < 0) return;
+// Drains fd into dest until EOF or would-block. Returns true on EOF. Past the
+// cap, bytes are read-and-DISCARDED so the pipe keeps draining: if we stopped
+// reading at the cap, a chatty child would block on write(), the poll loop
+// would spin on POLLIN forever, waitpid() would never return, and the whole
+// agent would wedge (the signal handler can't break a stuck run()). A forensic
+// analyzer on a large case easily exceeds 8 MiB on either stream.
+bool drain(int fd, std::string& dest) {
+    if (fd < 0) return true;
     char buf[4096];
-    while (dest.size() < kStreamCap) {
+    while (true) {
         ssize_t n = read(fd, buf, sizeof(buf));
         if (n > 0) {
-            size_t room = kStreamCap - dest.size();
-            dest.append(buf, static_cast<size_t>(n) <= room ? static_cast<size_t>(n) : room);
-            if (static_cast<size_t>(n) > room) break;  // hit cap
+            if (dest.size() < kStreamCap) {
+                size_t room = kStreamCap - dest.size();
+                size_t take = std::min(static_cast<size_t>(n), room);
+                dest.append(buf, take);
+            }
+            // else: cap reached — discard to keep the pipe draining.
         } else if (n == 0) {
-            break;  // EOF
+            return true;  // EOF
         } else {
             if (errno == EINTR) continue;
-            break;  // EAGAIN (non-blocking, nothing right now) or error: stop here
+            return false;  // EAGAIN (non-blocking, nothing right now) or error
         }
     }
 }
@@ -78,19 +87,21 @@ ProcessResult PosixProcessRunner::run(const std::vector<std::string>& argv,
 
     if (pid == 0) {
         // ---- child ----
-        if (!work_dir.empty() && chdir(work_dir.c_str()) != 0) {
-            // Cannot chdir: surface via stderr-of-the-pipe then exit 127 so the
-            // parent records a non-zero exit, not a silent success.
-            const std::string m = "chdir failed: " + std::string(std::strerror(errno)) + "\n";
-            ssize_t w = write(STDERR_FILENO, m.data(), m.size());
-            (void)w;
-            _exit(127);
-        }
+        // Redirect stdio FIRST, so any later failure diagnostic (chdir, exec)
+        // is written to the captured pipe and reaches the parent — not lost to
+        // the agent's inherited console.
         if (dup2(outp[1], STDOUT_FILENO) == -1 || dup2(errp[1], STDERR_FILENO) == -1) {
             _exit(127);
         }
         // Close all pipe descriptors in the child after dup2.
         close(outp[0]); close(outp[1]); close(errp[0]); close(errp[1]);
+
+        if (!work_dir.empty() && chdir(work_dir.c_str()) != 0) {
+            const std::string m = "chdir failed: " + std::string(std::strerror(errno)) + "\n";
+            ssize_t w = write(STDERR_FILENO, m.data(), m.size());
+            (void)w;
+            _exit(127);
+        }
 
         // Build a mutable char* argv (execvp requires char* const[], not const).
         std::vector<std::vector<char>> buffers;
@@ -117,13 +128,16 @@ ProcessResult PosixProcessRunner::run(const std::vector<std::string>& argv,
     (void)set_cloexec(outp[0]); (void)set_cloexec(errp[0]);
 
     // Poll both pipes until EOF on both, draining each as it becomes ready.
+    // Relying on drain()'s EOF return (not a dest.size() heuristic) means
+    // discarding past the cap — which keeps size flat — still closes the stream
+    // correctly at EOF.
     pollfd fds[2];
     fds[0].fd = outp[0];
     fds[1].fd = errp[0];
     bool out_open = true, err_open = true;
     while (out_open || err_open) {
-        fds[0].events = out_open ? (POLLIN) : 0;
-        fds[1].events = err_open ? (POLLIN) : 0;
+        fds[0].events = out_open ? POLLIN : static_cast<short>(0);
+        fds[1].events = err_open ? POLLIN : static_cast<short>(0);
         fds[0].revents = 0;
         fds[1].revents = 0;
         int pr = poll(fds, 2, -1);
@@ -132,21 +146,10 @@ ProcessResult PosixProcessRunner::run(const std::vector<std::string>& argv,
             break;  // unrecoverable poll error; stop reading
         }
         if (out_open && (fds[0].revents & (POLLIN | POLLHUP | POLLERR))) {
-            size_t before = r.stdout_text.size();
-            drain(outp[0], r.stdout_text);
-            if (fds[0].revents & (POLLHUP | POLLERR) && r.stdout_text.size() == before) {
-                // One more draining read in case data arrived with the hangup.
-                drain(outp[0], r.stdout_text);
-                out_open = false;
-            }
+            if (drain(outp[0], r.stdout_text)) out_open = false;  // EOF
         }
         if (err_open && (fds[1].revents & (POLLIN | POLLHUP | POLLERR))) {
-            size_t before = r.stderr_text.size();
-            drain(errp[0], r.stderr_text);
-            if (fds[1].revents & (POLLHUP | POLLERR) && r.stderr_text.size() == before) {
-                drain(errp[0], r.stderr_text);
-                err_open = false;
-            }
+            if (drain(errp[0], r.stderr_text)) err_open = false;  // EOF
         }
     }
     close(outp[0]); close(errp[0]);
