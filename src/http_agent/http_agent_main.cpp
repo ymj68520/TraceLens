@@ -78,7 +78,11 @@ int main(int argc, char** argv) {
     std::filesystem::create_directories(std::filesystem::path(state_db).parent_path(),
                                         mkec);
 
-    tracelens::HttpLibClient transport(cfg.server_base_url, jwt.bearer_value());
+    // HttpLibClient prepends "Bearer " itself (http_client.cpp), so pass the RAW
+    // token, not bearer_value() (which is already "Bearer <token>") — otherwise
+    // the header becomes "Authorization: Bearer Bearer <token>" and every call
+    // 401s. (Reviewer-found Task 16 wiring bug.)
+    tracelens::HttpLibClient transport(cfg.server_base_url, jwt.token());
     tracelens::Poller poller(transport);
     tracelens::StatusReporter reporter(transport);
     tracelens::ResultUploader uploader(transport);
