@@ -90,6 +90,7 @@ ClientConfig ClientConfig::load_from_file(const std::string& path, std::string& 
         const std::string val = trim(t.substr(eq + 1));
         if (key == "server_base_url")        c.server_base_url = val;
         else if (key == "poll_interval_seconds") c.poll_interval_seconds = std::atoi(val.c_str());
+        else if (key == "reindex_interval_seconds") c.reindex_interval_seconds = std::atoi(val.c_str());
         else if (key == "token_path")        c.token_path = val;
         else if (key == "hostname")          c.hostname = val;
         else if (key == "analyzer_path")     c.analyzer_path = val;
@@ -105,6 +106,7 @@ ClientConfig ClientConfig::load_from_env(std::string& err) {
     ClientConfig c;
     if (const char* v = std::getenv("TRACELENS_SERVER_URL"))      c.server_base_url = v;
     if (const char* v = std::getenv("TRACELENS_POLL_INTERVAL"))   c.poll_interval_seconds = std::atoi(v);
+    if (const char* v = std::getenv("TRACELENS_REINDEX_INTERVAL")) c.reindex_interval_seconds = std::atoi(v);
     if (const char* v = std::getenv("TRACELENS_TOKEN_PATH"))      c.token_path = v;
     if (const char* v = std::getenv("TRACELENS_HOSTNAME"))        c.hostname = v;
     if (const char* v = std::getenv("TRACELENS_ANALYZER_PATH"))   c.analyzer_path = v;

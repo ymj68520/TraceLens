@@ -16,14 +16,22 @@ HttpAgentService::HttpAgentService(Poller& poller,
                                    ICommandExecutor& executor,
                                    ResultUploader& uploader,
                                    ICommandStore& store,
+                                   DiskImageIndexer& indexer,
+                                   IndexUploader& index_uploader,
                                    int poll_interval_seconds,
+                                   int reindex_interval_seconds,
+                                   const std::string& client_id,
                                    ILogger& logger)
     : poller_(poller),
       reporter_(reporter),
       executor_(executor),
       uploader_(uploader),
       store_(store),
+      indexer_(indexer),
+      index_uploader_(index_uploader),
       interval_(poll_interval_seconds),
+      reindex_interval_(reindex_interval_seconds),
+      client_id_(client_id),
       logger_(logger) {}
 
 void HttpAgentService::recover() {
@@ -74,6 +82,34 @@ int HttpAgentService::run(bool single_iteration) {
     recover();  // once, before polling: surface crash-orphans from a prior run
 
     while (!stop_requested()) {
+        // Task 23: periodic re-indexing. Check if it's time to re-scan and
+        // re-upload the disk-image manifest. Runs inside the poll loop so it
+        // fires even while actively executing commands (re-indexing is fast).
+        // If reindex_interval_ is 0, periodic re-indexing is disabled.
+        if (reindex_interval_ > 0) {
+            const std::time_t now = std::time(nullptr);
+            if (now - last_reindex_time_ >= reindex_interval_) {
+                std::string scan_err;
+                auto entries = indexer_.scan(scan_err);
+                if (!scan_err.empty()) {
+                    logger_.warn("re-index scan failed: " + scan_err +
+                                 " (will retry next period)");
+                } else {
+                    std::string upload_err;
+                    if (!index_uploader_.upload(entries, upload_err)) {
+                        logger_.warn("re-index upload failed: " + upload_err +
+                                     " (will retry next period)");
+                    } else {
+                        last_reindex_time_ = now;
+                        logger_.info("re-indexed " + std::to_string(entries.size()) +
+                                    " disk image(s)");
+                    }
+                }
+                // If scan or upload failed, last_reindex_time_ is NOT updated,
+                // so we retry next period. This prevents error-flood while
+                // still keeping the agent alive and polling.
+            }
+        }
         std::string err;
         auto commands = poller_.poll(err);
         if (!err.empty()) {

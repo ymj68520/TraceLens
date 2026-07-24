@@ -221,23 +221,38 @@ static void test_jwt_client() {
 static void test_config_validate() {
     using C = tracelens::ClientConfig;
     const std::string az = "/usr/bin/forensics_analyzer";
-    CHECK(C::validate({"https://server.example.com", 10, "/t", "h", az}).empty());
-    CHECK(C::validate({"http://localhost:8000", 10, "/t", "h", az}).empty());
-    CHECK(C::validate({"http://127.0.0.1", 5, "/t", "h", az}).empty());
-    CHECK(C::validate({"http://127.0.0.1", 30, "/t", "h", az}).empty());
 
-    CHECK_CONTAINS(C::validate({"https://server.example.com", 10, "/t", "h", ""}),
+    // Helper to build config for testing (reindex_interval_seconds is unused by validate
+    // but must be set since it's a struct field).
+    auto cfg = [&](const std::string& url, int poll, const std::string& token,
+                   const std::string& hostname, const std::string& analyzer) -> C {
+        C c;
+        c.server_base_url = url;
+        c.poll_interval_seconds = poll;
+        c.reindex_interval_seconds = 1800;  // Task 23: present but unused by validate()
+        c.token_path = token;
+        c.hostname = hostname;
+        c.analyzer_path = analyzer;
+        return c;
+    };
+
+    CHECK(C::validate(cfg("https://server.example.com", 10, "/t", "h", az)).empty());
+    CHECK(C::validate(cfg("http://localhost:8000", 10, "/t", "h", az)).empty());
+    CHECK(C::validate(cfg("http://127.0.0.1", 5, "/t", "h", az)).empty());
+    CHECK(C::validate(cfg("http://127.0.0.1", 30, "/t", "h", az)).empty());
+
+    CHECK_CONTAINS(C::validate(cfg("https://server.example.com", 10, "/t", "h", "")),
                    "analyzer_path");
-    CHECK_CONTAINS(C::validate({"http://server.example.com", 10, "/t", "h", az}),
+    CHECK_CONTAINS(C::validate(cfg("http://server.example.com", 10, "/t", "h", az)),
                    "non-localhost");
-    CHECK_CONTAINS(C::validate({"ftp://server.example.com", 10, "/t", "h", az}),
+    CHECK_CONTAINS(C::validate(cfg("ftp://server.example.com", 10, "/t", "h", az)),
                    "unsupported scheme");
-    CHECK_CONTAINS(C::validate({"server.example.com", 10, "/t", "h", az}), "scheme");
-    CHECK_CONTAINS(C::validate({"https://server.example.com", 4, "/t", "h", az}),
+    CHECK_CONTAINS(C::validate(cfg("server.example.com", 10, "/t", "h", az)), "scheme");
+    CHECK_CONTAINS(C::validate(cfg("https://server.example.com", 4, "/t", "h", az)),
                    "poll_interval");
-    CHECK_CONTAINS(C::validate({"https://server.example.com", 31, "/t", "h", az}),
+    CHECK_CONTAINS(C::validate(cfg("https://server.example.com", 31, "/t", "h", az)),
                    "poll_interval");
-    CHECK_CONTAINS(C::validate({"https://server.example.com", 10, "", "h", az}),
+    CHECK_CONTAINS(C::validate(cfg("https://server.example.com", 10, "", "h", az)),
                    "token_path");
 }
 
@@ -268,9 +283,22 @@ static void test_config_load_from_file() {
 static void test_config_ipv6_localhost_allowed() {
     using C = tracelens::ClientConfig;
     const std::string az = "/usr/bin/forensics_analyzer";
+
+    auto cfg = [&](const std::string& url, int poll, const std::string& token,
+                   const std::string& hostname, const std::string& analyzer) -> C {
+        C c;
+        c.server_base_url = url;
+        c.poll_interval_seconds = poll;
+        c.reindex_interval_seconds = 1800;
+        c.token_path = token;
+        c.hostname = hostname;
+        c.analyzer_path = analyzer;
+        return c;
+    };
+
     // Bracketed IPv6 localhost must be accepted (not truncated to "[").
-    CHECK(C::validate({"http://[::1]:8000", 10, "/t", "h", az}).empty());
-    CHECK(C::validate({"http://[::1]", 10, "/t", "h", az}).empty());
+    CHECK(C::validate(cfg("http://[::1]:8000", 10, "/t", "h", az)).empty());
+    CHECK(C::validate(cfg("http://[::1]", 10, "/t", "h", az)).empty());
 }
 
 // ------------------------------------------------------------------------- models
@@ -646,8 +674,10 @@ static void test_service_single_iteration() {
     tracelens::ResultUploader uploader(fake);
     NoopLogger logger;
     FakeCommandStore store;
-    tracelens::HttpAgentService service(poller, reporter, executor, uploader,
-                                        store, 10, logger);
+    tracelens::DiskImageIndexer indexer({});
+    tracelens::IndexUploader index_uploader(fake, "test-client");
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader, store,
+                                        indexer, index_uploader, 10, 0, "test-client", logger);
 
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
 
@@ -675,8 +705,11 @@ static void test_service_handles_empty_poll() {
     tracelens::ResultUploader uploader(fake);
     NoopLogger logger;
     FakeCommandStore store;
+    tracelens::DiskImageIndexer indexer({});
+    tracelens::IndexUploader index_uploader(fake, "test-client");
     tracelens::HttpAgentService service(poller, reporter, executor, uploader,
-                                        store, 10, logger);
+                                        store, indexer, index_uploader,
+                                        10, 0, "test-client", logger);
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
     CHECK(fake.post_calls.empty());  // nothing to report
 }
@@ -697,8 +730,11 @@ static void test_service_reports_failed_execution() {
     tracelens::ResultUploader uploader(fake);
     NoopLogger logger;
     FakeCommandStore store;
+    tracelens::DiskImageIndexer indexer({});
+    tracelens::IndexUploader index_uploader(fake, "test-client");
     tracelens::HttpAgentService service(poller, reporter, executor, uploader,
-                                        store, 10, logger);
+                                        store, indexer, index_uploader,
+                                        10, 0, "test-client", logger);
 
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
     CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(2));
@@ -733,8 +769,11 @@ static void test_service_loop_uploads_then_completes() {
     tracelens::AnalyzeDiskExecutor executor(runner, "/opt/fa", work.string());
     NoopLogger logger;
     FakeCommandStore store;
+    tracelens::DiskImageIndexer indexer({});
+    tracelens::IndexUploader index_uploader(fake, "test-client");
     tracelens::HttpAgentService service(poller, reporter, executor, uploader,
-                                        store, 10, logger);
+                                        store, indexer, index_uploader,
+                                        10, 0, "test-client", logger);
 
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
 
@@ -777,8 +816,11 @@ static void test_service_loop_upload_failure_marks_failed() {
     tracelens::AnalyzeDiskExecutor executor(runner, "/opt/fa", work.string());
     NoopLogger logger;
     FakeCommandStore store;
+    tracelens::DiskImageIndexer indexer({});
+    tracelens::IndexUploader index_uploader(fake, "test-client");
     tracelens::HttpAgentService service(poller, reporter, executor, uploader,
-                                        store, 10, logger);
+                                        store, indexer, index_uploader,
+                                        10, 0, "test-client", logger);
 
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
 
@@ -952,8 +994,11 @@ static void test_service_recover_reports_orphans_failed() {
         parse_cmd(R"({"id":"orphan-1","command_type":"analyze_disk",)"
                   R"("parameters":{"task_id":"t-old","image_path":"/data/old.E01"}})"));
     NoopLogger logger;
+    tracelens::DiskImageIndexer indexer({});
+    tracelens::IndexUploader index_uploader(fake, "test-client");
     tracelens::HttpAgentService service(poller, reporter, executor, uploader,
-                                        store, 10, logger);
+                                        store, indexer, index_uploader,
+                                        10, 0, "test-client", logger);
 
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
 
@@ -991,8 +1036,11 @@ static void test_service_recover_keeps_orphan_when_report_fails() {
     store.orphans_to_return.push_back(
         parse_cmd(R"({"id":"orphan-2","command_type":"analyze_disk"})"));
     NoopLogger logger;
+    tracelens::DiskImageIndexer indexer({});
+    tracelens::IndexUploader index_uploader(fake, "test-client");
     tracelens::HttpAgentService service(poller, reporter, executor, uploader,
-                                        store, 10, logger);
+                                        store, indexer, index_uploader,
+                                        10, 0, "test-client", logger);
 
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
 
@@ -1385,6 +1433,164 @@ static void test_live_transport_dead_port_is_transport_error() {
     CHECK(!r.error.empty());
 }
 
+// Task 23: Periodic re-indexing tests.
+
+static void test_periodic_reindex_config() {
+    // Verify reindex_interval_seconds is parsed from config file and env.
+    // Default value (1800).
+    tracelens::ClientConfig c1;
+    CHECK_EQ(c1.reindex_interval_seconds, 1800);
+
+    // File parsing.
+    const fs::path cfg = fs::temp_directory_path() / "test_reindex.conf";
+    { std::ofstream f(cfg); f << "reindex_interval_seconds=600\n"; }
+    std::string err;
+    auto c2 = tracelens::ClientConfig::load_from_file(cfg.string(), err);
+    CHECK(err.empty());
+    CHECK_EQ(c2.reindex_interval_seconds, 600);
+    fs::remove(cfg);
+
+    // Zero disables.
+    { std::ofstream f(cfg); f << "reindex_interval_seconds=0\n"; }
+    auto c3 = tracelens::ClientConfig::load_from_file(cfg.string(), err);
+    CHECK(err.empty());
+    CHECK_EQ(c3.reindex_interval_seconds, 0);
+    fs::remove(cfg);
+
+    // Env override.
+    const char* old_val = std::getenv("TRACELENS_REINDEX_INTERVAL");
+    std::string old_save = old_val ? old_val : "";
+    setenv("TRACELENS_REINDEX_INTERVAL", "900", 1);
+    auto c4 = tracelens::ClientConfig::load_from_env(err);
+    CHECK(err.empty());
+    CHECK_EQ(c4.reindex_interval_seconds, 900);
+    if (old_val) setenv("TRACELENS_REINDEX_INTERVAL", old_save.c_str(), 1);
+    else unsetenv("TRACELENS_REINDEX_INTERVAL");
+}
+
+static void test_periodic_reindex_zero_disables() {
+    // reindex_interval=0 should disable periodic re-indexing (only startup index).
+    FakeHttpClient fake;
+    fake.get_response = {200, R"({"commands":[]})", ""};
+
+    tracelens::Poller poller(fake);
+    tracelens::StatusReporter reporter(fake);
+    tracelens::StubExecutor executor;
+    tracelens::ResultUploader uploader(fake);
+    NoopLogger logger;
+    FakeCommandStore store;
+    tracelens::DiskImageIndexer indexer({});
+    tracelens::IndexUploader index_uploader(fake, "test-client");
+
+    // reindex_interval=0 disables periodic re-indexing.
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader, store,
+                                        indexer, index_uploader,
+                                        10, 0, "test-client", logger);
+
+    // Run multiple iterations — upload() should only be called once (at startup)
+    // because last_reindex_time_ is initialized to 0, triggering the initial index,
+    // but the zero interval means the timer check (now - last_reindex_time_ >= 0)
+    // would always pass, so the code guards it with `if (reindex_interval_ > 0)`.
+    for (int i = 0; i < 5; ++i) {
+        service.run(/*single_iteration=*/true);
+    }
+
+    // With reindex_interval=0, the periodic branch is skipped entirely,
+    // so index_uploader.upload() is never called (not even at startup).
+    // This is the designed behavior: interval=0 means "no periodic re-indexing",
+    // and the one-shot index at startup is handled by main() before the loop.
+    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(0));
+}
+
+static void test_periodic_reindex_error_continues() {
+    // Re-index failures should log a warning but not crash the agent.
+    FakeHttpClient fake;
+    fake.get_response = {200, R"({"commands":[]})", ""};
+
+    tracelens::Poller poller(fake);
+    tracelens::StatusReporter reporter(fake);
+    tracelens::StubExecutor executor;
+    tracelens::ResultUploader uploader(fake);
+    NoopLogger logger;
+    FakeCommandStore store;
+
+    // Create a temp image dir so indexer returns non-empty entries (uploader skips
+    // POST for empty lists - see index_uploader.cpp:14).
+    const fs::path imgdir = fs::temp_directory_path() / "tracelens_reindex_err_test";
+    fs::remove_all(imgdir);
+    fs::create_directories(imgdir);
+    { std::ofstream(imgdir / "case.E01") << std::string(100, 'x'); }
+    tracelens::DiskImageIndexer indexer({imgdir.string()});
+
+    // Make index upload fail.
+    fake.post_response = {500, "", ""};
+    tracelens::IndexUploader index_uploader(fake, "test-client");
+
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader, store,
+                                        indexer, index_uploader,
+                                        10, 1, "test-client", logger);
+
+    // Run one iteration — re-index will attempt upload and fail, but service
+    // should continue (no crash, still returns 0).
+    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+
+    // Upload was attempted (POST to /index-images).
+    bool found_index = false;
+    for (const auto& call : fake.post_calls) {
+        if (call.first.find("index-images") != std::string::npos) {
+            found_index = true;
+            break;
+        }
+    }
+    CHECK(found_index);
+
+    fs::remove_all(imgdir);
+}
+
+static void test_periodic_reindex_triggers() {
+    // Verify re-index triggers after the interval elapses.
+    // Uses a small interval (1 second) to keep the test fast.
+    FakeHttpClient fake;
+    fake.get_response = {200, R"({"commands":[]})", ""};
+    fake.post_response = {200, R"({"indexed":0,"updated":0,"total":0})", ""};
+
+    tracelens::Poller poller(fake);
+    tracelens::StatusReporter reporter(fake);
+    tracelens::StubExecutor executor;
+    tracelens::ResultUploader uploader(fake);
+    NoopLogger logger;
+    FakeCommandStore store;
+
+    // Create a temp image dir so indexer returns non-empty entries.
+    const fs::path imgdir = fs::temp_directory_path() / "tracelens_reindex_trigger_test";
+    fs::remove_all(imgdir);
+    fs::create_directories(imgdir);
+    { std::ofstream(imgdir / "case.E01") << std::string(100, 'x'); }
+    tracelens::DiskImageIndexer indexer({imgdir.string()});
+    tracelens::IndexUploader index_uploader(fake, "test-client");
+
+    // reindex_interval=1 second — small for test speed.
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader, store,
+                                        indexer, index_uploader,
+                                        10, 1, "test-client", logger);
+
+    // First iteration: last_reindex_time_ is 0, so (now - 0 >= 1) is true,
+    // triggering the initial re-index.
+    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+    size_t after_first = fake.post_calls.size();
+    CHECK(after_first >= 1);  // At least the index upload POST
+
+    // Sleep for >1 second so the next iteration triggers another re-index.
+    std::this_thread::sleep_for(std::chrono::seconds(1) + std::chrono::milliseconds(100));
+
+    // Second iteration: another re-index should fire.
+    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+    size_t after_second = fake.post_calls.size();
+    CHECK(after_second > after_first);  // More POSTs (second re-index)
+
+    fs::remove_all(imgdir);
+}
+
 // Safety net: if any test wedges (most likely a regression of the pipe-capture
 // deadlock), kill the whole suite instead of hanging the gate forever.
 static void on_test_alarm(int) {
@@ -1441,6 +1647,10 @@ int main() {
     test_live_transport_get_post();
     test_live_transport_redirect_not_followed();
     test_live_transport_dead_port_is_transport_error();
+    test_periodic_reindex_config();
+    test_periodic_reindex_zero_disables();
+    test_periodic_reindex_error_continues();
+    test_periodic_reindex_triggers();
 
     std::cout << "checks: " << g_checks << "  failures: " << g_failures << "\n";
     return g_failures == 0 ? 0 : 1;

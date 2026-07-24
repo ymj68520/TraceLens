@@ -2,11 +2,14 @@
 
 #include "command_executor.h"
 #include "command_store.h"
+#include "image_indexer.h"
+#include "index_uploader.h"
 #include "poller.h"
 #include "result_uploader.h"
 #include "status_reporter.h"
 
 #include <atomic>
+#include <ctime>
 #include <string>
 
 namespace tracelens {
@@ -38,7 +41,11 @@ public:
                      ICommandExecutor& executor,
                      ResultUploader& uploader,
                      ICommandStore& store,
+                     DiskImageIndexer& indexer,
+                     IndexUploader& index_uploader,
                      int poll_interval_seconds,
+                     int reindex_interval_seconds,
+                     const std::string& client_id,
                      ILogger& logger);
 
     // Runs until stop is requested (request_stop() / g_request_stop / SIGINT).
@@ -57,9 +64,18 @@ private:
     ICommandExecutor& executor_;
     ResultUploader& uploader_;
     ICommandStore& store_;
+    DiskImageIndexer& indexer_;
+    IndexUploader& index_uploader_;
     int interval_;
+    int reindex_interval_;
+    std::string client_id_;
     ILogger& logger_;
     std::atomic<bool> stop_requested_{false};
+
+    // Tracks wall-clock time of the last re-index (Task 23). Initialized to 0
+    // so the first poll cycle triggers an initial index. Updated after each
+    // successful re-index (or unchanged on failure — retry next period).
+    std::time_t last_reindex_time_ = 0;
 
     bool stop_requested() const {
         return stop_requested_.load() || g_request_stop.load();
