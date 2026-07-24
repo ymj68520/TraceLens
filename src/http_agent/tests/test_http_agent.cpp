@@ -1,9 +1,13 @@
-// Self-contained unit tests for the TraceLens HTTP agent (Task 16).
+// Self-contained unit tests for the TraceLens HTTP agent (Tasks 16 + 17).
 //
 // No GTest dependency (so the gate builds with just g++ + OpenSSL + pthreads)
-// and no live server: a FakeHttpClient implements IHttpClient, returning canned
-// JSON and recording the POSTs the loop issues. The real HttpLibClient is
-// compiled+linked (TLS path present) but not exercised against a network here.
+// and no live server / no real analyzer binary:
+//  - a FakeHttpClient implements IHttpClient, returning canned JSON and recording
+//    the POSTs the loop issues;
+//  - a FakeProcessRunner implements IProcessRunner, returning a canned
+//    ProcessResult and (optionally) simulating the analyzer writing its output DB.
+// The real HttpLibClient / PosixProcessRunner are compiled+linked (TLS + fork/exec
+// paths present) but not exercised against a network / real process here.
 
 #include "client_config.h"
 #include "command_executor.h"
@@ -13,6 +17,8 @@
 #include "models/command.h"
 #include "models/task_status.h"
 #include "poller.h"
+#include "process_runner.h"
+#include "result_uploader.h"
 #include "status_reporter.h"
 
 #include "json.hpp"
@@ -20,6 +26,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -41,12 +48,17 @@ static void expect(bool cond, const std::string& what, int line) {
 #define CHECK_CONTAINS(s, sub) expect((s).find(sub) != std::string::npos, \
                                       #s " contains " #sub, __LINE__)
 
+static bool has_flag(const std::vector<std::string>& argv, const std::string& f) {
+    return std::find(argv.begin(), argv.end(), f) != argv.end();
+}
+
 // ---------------------------------------------------------------- FakeHttpClient
 struct FakeHttpClient : tracelens::IHttpClient {
     tracelens::HttpResponse get_response{200, "{}", ""};
     tracelens::HttpResponse post_response{200, "{}", ""};
     std::string last_get_path;
     std::vector<std::pair<std::string, std::string>> post_calls;  // path, body
+    std::set<std::string> fail_post_paths;  // paths that return a 500
 
     tracelens::HttpResponse get(const std::string& path) override {
         last_get_path = path;
@@ -55,6 +67,7 @@ struct FakeHttpClient : tracelens::IHttpClient {
     tracelens::HttpResponse post(const std::string& path,
                                  const std::string& body) override {
         post_calls.emplace_back(path, body);
+        if (fail_post_paths.count(path)) return {500, "", ""};
         return post_response;
     }
 };
@@ -76,6 +89,51 @@ struct FailingExecutor : tracelens::ICommandExecutor {
         return r;
     }
 };
+
+// ------------------------------------------------------------- FakeProcessRunner
+struct FakeProcessRunner : tracelens::IProcessRunner {
+    tracelens::ProcessResult canned;          // returned on every run()
+    std::vector<std::string> last_argv;
+    std::string last_work_dir;
+    int call_count = 0;
+    bool produce_output = false;  // simulate the analyzer writing <stem>_raw.db
+
+    tracelens::ProcessResult run(const std::vector<std::string>& argv,
+                                 const std::string& work_dir) override {
+        ++call_count;
+        last_argv = argv;
+        last_work_dir = work_dir;
+        if (produce_output && argv.size() > 1) {
+            fs::create_directories(work_dir);
+            const std::string stem = fs::path(argv[1]).stem().string();
+            std::ofstream(work_dir + "/" + stem + "_raw.db")
+                << "FAKE_DB_CONTENT_0123456789";
+        }
+        return canned;
+    }
+};
+
+// Helper: parse a JSON command string into a Command.
+static tracelens::Command parse_cmd(const std::string& json) {
+    return nlohmann::json::parse(json).get<tracelens::Command>();
+}
+
+// Helper: build an analyze_disk command programmatically (avoids raw-string
+// brace-counting when an image path is interpolated).
+static nlohmann::json analyze_cmd_json(const std::string& id,
+                                       const std::string& image,
+                                       const std::string& task_id = "",
+                                       const std::string& atype = "windows",
+                                       bool carve = true) {
+    nlohmann::json j;
+    j["id"] = id;
+    j["command_type"] = "analyze_disk";
+    if (!task_id.empty()) j["parameters"]["task_id"] = task_id;
+    if (!image.empty()) j["parameters"]["image_path"] = image;
+    if (!atype.empty()) j["parameters"]["analysis_type"] = atype;
+    if (carve) j["parameters"]["options"]["file_carving"] = true;
+    return j;
+}
 
 // ----------------------------------------------------------------------- JwtClient
 static void test_jwt_client() {
@@ -118,23 +176,28 @@ static void test_jwt_client() {
 }
 
 // ------------------------------------------------------------------ ClientConfig
+// analyzer_path is now REQUIRED by validate (fail-fast), so every valid case
+// supplies it. Field order: {url, interval, token, hostname, analyzer, work}.
 static void test_config_validate() {
     using C = tracelens::ClientConfig;
-    CHECK(C::validate({"https://server.example.com", 10, "/t", "h"}).empty());
-    CHECK(C::validate({"http://localhost:8000", 10, "/t", "h"}).empty());
-    CHECK(C::validate({"http://127.0.0.1", 5, "/t", "h"}).empty());
-    CHECK(C::validate({"http://127.0.0.1", 30, "/t", "h"}).empty());
+    const std::string az = "/usr/bin/forensics_analyzer";
+    CHECK(C::validate({"https://server.example.com", 10, "/t", "h", az}).empty());
+    CHECK(C::validate({"http://localhost:8000", 10, "/t", "h", az}).empty());
+    CHECK(C::validate({"http://127.0.0.1", 5, "/t", "h", az}).empty());
+    CHECK(C::validate({"http://127.0.0.1", 30, "/t", "h", az}).empty());
 
-    CHECK_CONTAINS(C::validate({"http://server.example.com", 10, "/t", "h"}),
+    CHECK_CONTAINS(C::validate({"https://server.example.com", 10, "/t", "h", ""}),
+                   "analyzer_path");
+    CHECK_CONTAINS(C::validate({"http://server.example.com", 10, "/t", "h", az}),
                    "non-localhost");
-    CHECK_CONTAINS(C::validate({"ftp://server.example.com", 10, "/t", "h"}),
+    CHECK_CONTAINS(C::validate({"ftp://server.example.com", 10, "/t", "h", az}),
                    "unsupported scheme");
-    CHECK_CONTAINS(C::validate({"server.example.com", 10, "/t", "h"}), "scheme");
-    CHECK_CONTAINS(C::validate({"https://server.example.com", 4, "/t", "h"}),
+    CHECK_CONTAINS(C::validate({"server.example.com", 10, "/t", "h", az}), "scheme");
+    CHECK_CONTAINS(C::validate({"https://server.example.com", 4, "/t", "h", az}),
                    "poll_interval");
-    CHECK_CONTAINS(C::validate({"https://server.example.com", 31, "/t", "h"}),
+    CHECK_CONTAINS(C::validate({"https://server.example.com", 31, "/t", "h", az}),
                    "poll_interval");
-    CHECK_CONTAINS(C::validate({"https://server.example.com", 10, "", "h"}),
+    CHECK_CONTAINS(C::validate({"https://server.example.com", 10, "", "h", az}),
                    "token_path");
 }
 
@@ -146,7 +209,9 @@ static void test_config_load_from_file() {
           << "server_base_url = https://srv.example.com\n"
           << "poll_interval_seconds=15\n"
           << "token_path=/var/lib/tracelens/token\n"
-          << "hostname = station-7\n";
+          << "hostname = station-7\n"
+          << "analyzer_path=/opt/tracelens/forensics_analyzer\n"
+          << "work_base_dir=/var/lib/tracelens/work\n";
     }
     std::string err;
     auto c = tracelens::ClientConfig::load_from_file(cfg.string(), err);
@@ -155,7 +220,17 @@ static void test_config_load_from_file() {
     CHECK_EQ(c.poll_interval_seconds, 15);
     CHECK_EQ(c.token_path, std::string("/var/lib/tracelens/token"));
     CHECK_EQ(c.hostname, std::string("station-7"));
+    CHECK_EQ(c.analyzer_path, std::string("/opt/tracelens/forensics_analyzer"));
+    CHECK_EQ(c.work_base_dir, std::string("/var/lib/tracelens/work"));
     fs::remove(cfg);
+}
+
+static void test_config_ipv6_localhost_allowed() {
+    using C = tracelens::ClientConfig;
+    const std::string az = "/usr/bin/forensics_analyzer";
+    // Bracketed IPv6 localhost must be accepted (not truncated to "[").
+    CHECK(C::validate({"http://[::1]:8000", 10, "/t", "h", az}).empty());
+    CHECK(C::validate({"http://[::1]", 10, "/t", "h", az}).empty());
 }
 
 // ------------------------------------------------------------------------- models
@@ -283,6 +358,240 @@ static void test_status_reporter() {
     CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(2));
 }
 
+// ------------------------------------------------------------- build_analyzer_argv
+static void test_build_analyzer_argv() {
+    // windows + file_carving + llm_text_extraction=true. --no-ai MUST appear
+    // regardless of llm_text_extraction (the client never runs the LLM).
+    nlohmann::json j;
+    j["id"] = "c1";
+    j["command_type"] = "analyze_disk";
+    j["parameters"]["task_id"] = "t1";
+    j["parameters"]["image_path"] = "/data/case.E01";
+    j["parameters"]["analysis_type"] = "windows";
+    j["parameters"]["options"]["file_carving"] = true;
+    j["parameters"]["options"]["llm_text_extraction"] = true;  // MUST be ignored
+    auto cmd = j.get<tracelens::Command>();
+    auto built = tracelens::build_analyzer_argv(cmd, "/opt/fa", "/tmp/work");
+    CHECK(built.valid());
+    CHECK_EQ(built.image_path, std::string("/data/case.E01"));
+    CHECK_EQ(built.argv[0], std::string("/opt/fa"));
+    CHECK_EQ(built.argv[1], std::string("/data/case.E01"));  // positional image
+    CHECK(has_flag(built.argv, "--no-ai"));           // INVARIANT: always
+    CHECK(has_flag(built.argv, "--overwrite"));
+    CHECK(has_flag(built.argv, "--windows-analyze"));
+    CHECK(has_flag(built.argv, "--carve"));
+    // db-dir is passed as the value following --db-dir.
+    auto it = std::find(built.argv.begin(), built.argv.end(), "--db-dir");
+    CHECK(it != built.argv.end());
+    CHECK_EQ(*(it + 1), std::string("/tmp/work"));
+
+    // android, no file_carving -> --android-analyze, no --carve.
+    auto cmd2 = analyze_cmd_json("c2", "/d/a.dd", "", "android", /*carve=*/false)
+                    .get<tracelens::Command>();
+    auto b2 = tracelens::build_analyzer_argv(cmd2, "/opt/fa", "/tmp/w");
+    CHECK(has_flag(b2.argv, "--android-analyze"));
+    CHECK(!has_flag(b2.argv, "--carve"));
+    CHECK(has_flag(b2.argv, "--no-ai"));
+
+    // full -> no platform flag.
+    auto cmd3 = analyze_cmd_json("c3", "/d/x.E01", "", "full", false)
+                    .get<tracelens::Command>();
+    auto b3 = tracelens::build_analyzer_argv(cmd3, "/opt/fa", "/tmp/w");
+    CHECK(!has_flag(b3.argv, "--windows-analyze"));
+    CHECK(!has_flag(b3.argv, "--linux-analyze"));
+    CHECK(!has_flag(b3.argv, "--android-analyze"));
+
+    // missing image_path -> error, empty argv.
+    nlohmann::json j4;
+    j4["id"] = "c4";
+    j4["command_type"] = "analyze_disk";
+    j4["parameters"]["analysis_type"] = "full";
+    auto cmd4 = j4.get<tracelens::Command>();
+    auto b4 = tracelens::build_analyzer_argv(cmd4, "/opt/fa", "/tmp/w");
+    CHECK(!b4.valid());
+    CHECK_CONTAINS(b4.error, "image_path");
+
+    // missing analyzer path -> error.
+    auto b5 = tracelens::build_analyzer_argv(cmd3, "", "/tmp/w");
+    CHECK(!b5.valid());
+    CHECK_CONTAINS(b5.error, "analyzer");
+}
+
+// ------------------------------------------------------------ collect_db_artifacts
+static void test_collect_db_artifacts() {
+    const fs::path dir = fs::temp_directory_path() / "tracelens_collect_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    // baseName of "case.E01" is "case".
+    { std::ofstream(dir / "case_raw.db")     << "rawbytes"; }     // 8 bytes
+    { std::ofstream(dir / "case_events.db")  << "ev"; }           // 2 bytes
+    { std::ofstream(dir / "case_raw.db-wal") << "j"; }            // excluded (sidecar)
+    { std::ofstream(dir / "unrelated.db")    << "x"; }            // excluded (prefix)
+    { std::ofstream(dir / "case_notes.txt")  << "n"; }            // excluded (suffix)
+
+    auto arts = tracelens::collect_db_artifacts("/data/case.E01", dir.string(),
+                                                "station-7");
+    CHECK_EQ(arts.size(), static_cast<size_t>(2));  // raw + events
+    CHECK_EQ(arts[0].result_type, std::string("database"));
+    CHECK_EQ(arts[1].result_type, std::string("database"));
+    // storage_location carries the hostname label.
+    CHECK_EQ(arts[0].storage_location, std::string("station-7"));
+    // file_size reflects real bytes; sorted by path so events < raw.
+    CHECK(arts[0].file_size.has_value());
+    CHECK(arts[1].file_size.has_value());
+    bool events_first = arts[0].file_path.find("events") != std::string::npos;
+    CHECK(events_first);
+    CHECK_EQ(*arts[0].file_size, static_cast<uint64_t>(2));   // events
+    CHECK_EQ(*arts[1].file_size, static_cast<uint64_t>(8));   // raw
+    // No raw-image path leaks into any field.
+    for (const auto& a : arts) {
+        CHECK_CONTAINS(a.file_path, "case_");
+        CHECK(a.file_path.find("/data/case.E01") == std::string::npos);
+    }
+    fs::remove_all(dir);
+}
+
+// -------------------------------------------------------------- AnalyzeDiskExecutor
+static void test_analyze_executor_success() {
+    // A real temp "image" file so the existence pre-check passes.
+    const fs::path imgdir = fs::temp_directory_path() / "tracelens_exec_img";
+    fs::remove_all(imgdir);
+    fs::create_directories(imgdir);
+    const fs::path image = imgdir / "case.E01";
+    { std::ofstream(image) << "IMAGEBYTES"; }
+
+    const fs::path work = fs::temp_directory_path() / "tracelens_exec_work";
+    fs::remove_all(work);
+
+    FakeProcessRunner runner;
+    runner.canned.exit_code = 0;
+    runner.produce_output = true;  // fake analyzer writes case_raw.db
+
+    tracelens::AnalyzeDiskExecutor exec(runner, "/opt/fa", work.string(), "host1");
+    auto cmd = analyze_cmd_json("c1", image.string(), "t9").get<tracelens::Command>();
+    auto r = exec.execute(cmd);
+
+    CHECK(r.success);
+    CHECK_EQ(r.task_id, std::string("t9"));          // task soft link parsed
+    CHECK(!r.artifacts.empty());
+    CHECK_EQ(r.artifacts[0].result_type, std::string("database"));
+    // The fake was invoked with the right argv (no-ai always).
+    CHECK(has_flag(runner.last_argv, "--no-ai"));
+    CHECK(has_flag(runner.last_argv, "--windows-analyze"));
+    CHECK_EQ(runner.call_count, 1);
+    // Work dir was per-command under work_base.
+    CHECK_CONTAINS(runner.last_work_dir, "c1");
+
+    fs::remove_all(imgdir);
+    fs::remove_all(work);
+}
+
+static void test_analyze_executor_missing_param_no_spawn() {
+    FakeProcessRunner runner;
+    const fs::path work = fs::temp_directory_path() / "tracelens_exec_work2";
+    fs::remove_all(work);
+    tracelens::AnalyzeDiskExecutor exec(runner, "/opt/fa", work.string());
+    auto cmd = parse_cmd(
+        R"({"id":"c1","command_type":"analyze_disk","parameters":{"task_id":"t9"}})");
+    auto r = exec.execute(cmd);
+    CHECK(!r.success);
+    CHECK_CONTAINS(r.message, "image_path");
+    CHECK_EQ(runner.call_count, 0);  // never spawned
+    fs::remove_all(work);
+}
+
+static void test_analyze_executor_missing_file_no_spawn() {
+    FakeProcessRunner runner;
+    const fs::path work = fs::temp_directory_path() / "tracelens_exec_work3";
+    fs::remove_all(work);
+    tracelens::AnalyzeDiskExecutor exec(runner, "/opt/fa", work.string());
+    auto cmd = analyze_cmd_json("c1", "/no/such/case.E01", "", /*atype=*/"", /*carve=*/false)
+                   .get<tracelens::Command>();
+    auto r = exec.execute(cmd);
+    CHECK(!r.success);
+    CHECK_CONTAINS(r.message, "not found");
+    CHECK_EQ(runner.call_count, 0);  // never spawned
+    fs::remove_all(work);
+}
+
+static void test_analyze_executor_nonzero_exit() {
+    const fs::path imgdir = fs::temp_directory_path() / "tracelens_exec_img4";
+    fs::remove_all(imgdir);
+    fs::create_directories(imgdir);
+    const fs::path image = imgdir / "case.E01";
+    { std::ofstream(image) << "x"; }
+    const fs::path work = fs::temp_directory_path() / "tracelens_exec_work4";
+    fs::remove_all(work);
+
+    FakeProcessRunner runner;
+    runner.canned.exit_code = 2;
+    runner.canned.stderr_text = "carve failed: bad magic";
+
+    tracelens::AnalyzeDiskExecutor exec(runner, "/opt/fa", work.string());
+    auto cmd = analyze_cmd_json("c1", image.string(), "", /*atype=*/"", /*carve=*/false)
+                   .get<tracelens::Command>();
+    auto r = exec.execute(cmd);
+    CHECK(!r.success);
+    CHECK_CONTAINS(r.message, "exited 2");
+    CHECK_CONTAINS(r.message, "carve failed");
+    CHECK(r.artifacts.empty());
+
+    fs::remove_all(imgdir);
+    fs::remove_all(work);
+}
+
+static void test_analyze_executor_nonanalyze_is_stub() {
+    // Non-analyze commands are acknowledged + succeed (health_check, etc.).
+    FakeProcessRunner runner;
+    const fs::path work = fs::temp_directory_path() / "tracelens_exec_work5";
+    fs::remove_all(work);
+    tracelens::AnalyzeDiskExecutor exec(runner, "/opt/fa", work.string());
+    auto cmd = parse_cmd(R"({"id":"c1","command_type":"health_check"})");
+    auto r = exec.execute(cmd);
+    CHECK(r.success);
+    CHECK_EQ(runner.call_count, 0);  // analyzer never spawned for health_check
+    fs::remove_all(work);
+}
+
+// ----------------------------------------------------------------- ResultUploader
+static void test_result_uploader() {
+    FakeHttpClient fake;
+    tracelens::ResultUploader uploader(fake);
+
+    std::vector<tracelens::ResultArtifact> arts;
+    tracelens::ResultArtifact a;
+    a.result_type = "database";
+    a.file_path = "/var/lib/tracelens/work/c1/case_raw.db";
+    a.file_size = 4096;
+    a.storage_location = "station-7";
+    arts.push_back(a);
+
+    std::string err;
+    CHECK(uploader.upload("t1", arts, err));
+    CHECK(err.empty());
+    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(1));
+    CHECK_EQ(fake.post_calls[0].first, std::string("/api/tasks/t1/results"));
+    auto body = nlohmann::json::parse(fake.post_calls[0].second);
+    CHECK(body.contains("artifacts"));
+    CHECK_EQ(body["artifacts"].size(), static_cast<size_t>(1));
+    CHECK_EQ(body["artifacts"][0]["result_type"].get<std::string>(),
+             std::string("database"));
+    CHECK_EQ(body["artifacts"][0]["file_path"].get<std::string>(),
+             std::string("/var/lib/tracelens/work/c1/case_raw.db"));
+    CHECK_EQ(body["artifacts"][0]["file_size"].get<int>(), 4096);
+    // No image path anywhere in the body.
+    CHECK(fake.post_calls[0].second.find("E01") == std::string::npos);
+
+    // Server error -> false + err.
+    fake.post_response = {500, "", ""};
+    CHECK(!uploader.upload("t1", arts, err));
+    CHECK(!err.empty());
+
+    // Empty task_id -> false (no task link).
+    CHECK(!uploader.upload("", arts, err));
+    CHECK(!err.empty());
+}
+
 // ----------------------------------------------------------------- agent service
 static void test_service_single_iteration() {
     FakeHttpClient fake;
@@ -294,12 +603,14 @@ static void test_service_single_iteration() {
     tracelens::Poller poller(fake);
     tracelens::StatusReporter reporter(fake);
     tracelens::StubExecutor executor;
+    tracelens::ResultUploader uploader(fake);
     NoopLogger logger;
-    tracelens::HttpAgentService service(poller, reporter, executor, 10, logger);
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader, 10,
+                                        logger);
 
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
 
-    // One command -> two reports (in_progress, then completed).
+    // StubExecutor produces no artifacts -> no upload; just the two status reports.
     CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(2));
     CHECK_EQ(fake.post_calls[0].first, std::string("/api/commands/c1/status"));
     CHECK_EQ(fake.post_calls[1].first, std::string("/api/commands/c1/status"));
@@ -313,8 +624,10 @@ static void test_service_handles_empty_poll() {
     tracelens::Poller poller(fake);
     tracelens::StatusReporter reporter(fake);
     tracelens::StubExecutor executor;
+    tracelens::ResultUploader uploader(fake);
     NoopLogger logger;
-    tracelens::HttpAgentService service(poller, reporter, executor, 10, logger);
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader, 10,
+                                        logger);
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
     CHECK(fake.post_calls.empty());  // nothing to report
 }
@@ -332,8 +645,10 @@ static void test_service_reports_failed_execution() {
     tracelens::Poller poller(fake);
     tracelens::StatusReporter reporter(fake);
     FailingExecutor executor;
+    tracelens::ResultUploader uploader(fake);
     NoopLogger logger;
-    tracelens::HttpAgentService service(poller, reporter, executor, 10, logger);
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader, 10,
+                                        logger);
 
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
     CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(2));
@@ -344,11 +659,85 @@ static void test_service_reports_failed_execution() {
     CHECK_EQ(b2["command_id"].get<std::string>(), std::string("c1"));
 }
 
-static void test_config_ipv6_localhost_allowed() {
-    using C = tracelens::ClientConfig;
-    // Bracketed IPv6 localhost must be accepted (not truncated to "[").
-    CHECK(C::validate({"http://[::1]:8000", 10, "/t", "h"}).empty());
-    CHECK(C::validate({"http://[::1]", 10, "/t", "h"}).empty());
+// The full loop with a real analyze_disk that produces artifacts: in_progress
+// -> upload results -> completed.
+static void test_service_loop_uploads_then_completes() {
+    const fs::path imgdir = fs::temp_directory_path() / "tracelens_loop_img";
+    fs::remove_all(imgdir);
+    fs::create_directories(imgdir);
+    const fs::path image = imgdir / "case.E01";
+    { std::ofstream(image) << "IMAGEBYTES"; }
+    const fs::path work = fs::temp_directory_path() / "tracelens_loop_work";
+    fs::remove_all(work);
+
+    FakeHttpClient fake;
+    nlohmann::json poll;
+    poll["commands"] = nlohmann::json::array({analyze_cmd_json("c1", image.string(), "t1")});
+    fake.get_response = {200, poll.dump(), ""};
+    tracelens::Poller poller(fake);
+    tracelens::StatusReporter reporter(fake);
+    tracelens::ResultUploader uploader(fake);
+    FakeProcessRunner runner;
+    runner.canned.exit_code = 0;
+    runner.produce_output = true;
+    tracelens::AnalyzeDiskExecutor executor(runner, "/opt/fa", work.string());
+    NoopLogger logger;
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader, 10,
+                                        logger);
+
+    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+
+    // Three POSTs: [0] in_progress /status, [1] /results upload, [2] completed /status.
+    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(3));
+    CHECK_EQ(fake.post_calls[0].first, std::string("/api/commands/c1/status"));
+    CHECK_CONTAINS(fake.post_calls[0].second, "in_progress");
+    CHECK_EQ(fake.post_calls[1].first, std::string("/api/tasks/t1/results"));
+    CHECK_CONTAINS(fake.post_calls[1].second, "artifacts");
+    CHECK_EQ(fake.post_calls[2].first, std::string("/api/commands/c1/status"));
+    CHECK_CONTAINS(fake.post_calls[2].second, "completed");
+
+    fs::remove_all(imgdir);
+    fs::remove_all(work);
+}
+
+// If the analyzer succeeds but the result upload fails, the command is reported
+// FAILED (results undeliverable -> unusable/retriable task).
+static void test_service_loop_upload_failure_marks_failed() {
+    const fs::path imgdir = fs::temp_directory_path() / "tracelens_loop_img2";
+    fs::remove_all(imgdir);
+    fs::create_directories(imgdir);
+    const fs::path image = imgdir / "case.E01";
+    { std::ofstream(image) << "IMAGEBYTES"; }
+    const fs::path work = fs::temp_directory_path() / "tracelens_loop_work2";
+    fs::remove_all(work);
+
+    FakeHttpClient fake;
+    nlohmann::json poll;
+    poll["commands"] = nlohmann::json::array({analyze_cmd_json("c1", image.string(), "t1")});
+    fake.get_response = {200, poll.dump(), ""};
+    fake.fail_post_paths.insert("/api/tasks/t1/results");  // upload 500s
+
+    tracelens::Poller poller(fake);
+    tracelens::StatusReporter reporter(fake);
+    tracelens::ResultUploader uploader(fake);
+    FakeProcessRunner runner;
+    runner.canned.exit_code = 0;
+    runner.produce_output = true;
+    tracelens::AnalyzeDiskExecutor executor(runner, "/opt/fa", work.string());
+    NoopLogger logger;
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader, 10,
+                                        logger);
+
+    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+
+    // [0] in_progress, [1] /results (failed), [2] /status FAILED.
+    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(3));
+    CHECK_EQ(fake.post_calls[1].first, std::string("/api/tasks/t1/results"));
+    CHECK_CONTAINS(fake.post_calls[2].second, "failed");
+    CHECK_CONTAINS(fake.post_calls[2].second, "upload failed");
+
+    fs::remove_all(imgdir);
+    fs::remove_all(work);
 }
 
 int main() {
@@ -362,10 +751,20 @@ int main() {
     test_poller_transport_error();
     test_poller_missing_commands_key();
     test_status_reporter();
+    test_build_analyzer_argv();
+    test_collect_db_artifacts();
+    test_analyze_executor_success();
+    test_analyze_executor_missing_param_no_spawn();
+    test_analyze_executor_missing_file_no_spawn();
+    test_analyze_executor_nonzero_exit();
+    test_analyze_executor_nonanalyze_is_stub();
+    test_result_uploader();
     test_service_single_iteration();
     test_service_handles_empty_poll();
     test_service_reports_failed_execution();
     test_config_ipv6_localhost_allowed();
+    test_service_loop_uploads_then_completes();
+    test_service_loop_upload_failure_marks_failed();
 
     std::cout << "checks: " << g_checks << "  failures: " << g_failures << "\n";
     return g_failures == 0 ? 0 : 1;

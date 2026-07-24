@@ -1,14 +1,13 @@
 // TraceLens client HTTP agent — entry point.
 //
-// Wires the network/protocol foundation (Task 16): loads config + the 30d
-// client JWT, builds the TLS transport, and runs the poll loop. Analysis
-// execution is a stub here (StubExecutor); Task 17 replaces it with the bridge
-// to the forensic AnalysisOrchestrator.
+// Wires the full client loop (Tasks 16 + 17): loads config + the 30d client
+// JWT, builds the TLS transport, and runs poll -> execute (local analysis via
+// the forensics_analyzer binary) -> upload artifacts -> report status.
 //
 // Usage:
 //   tracelens_agent --config /etc/tracelens/agent.conf [--once]
 //   (or TRACELENS_SERVER_URL / TRACELENS_TOKEN_PATH / TRACELENS_POLL_INTERVAL /
-//    TRACELENS_HOSTNAME env vars)
+//    TRACELENS_HOSTNAME / TRACELENS_ANALYZER_PATH / TRACELENS_WORK_DIR env vars)
 
 #include "client_config.h"
 #include "command_executor.h"
@@ -16,9 +15,12 @@
 #include "http_client.h"
 #include "jwt_client.h"
 #include "poller.h"
+#include "process_runner.h"
+#include "result_uploader.h"
 #include "status_reporter.h"
 
 #include <csignal>
+#include <filesystem>
 #include <iostream>
 #include <string>
 
@@ -57,17 +59,27 @@ int main(int argc, char** argv) {
     tracelens::JwtClient jwt =
         tracelens::JwtClient::load_from_file(cfg.token_path);  // throws on bad file/perms
 
+    // Default the work dir to a "tracelens_work" folder in the cwd if the
+    // config did not set one. Production deployments set work_base_dir explicitly.
+    std::string work_dir = cfg.work_base_dir;
+    if (work_dir.empty()) {
+        work_dir = (std::filesystem::current_path() / "tracelens_work").string();
+    }
+
     tracelens::HttpLibClient transport(cfg.server_base_url, jwt.bearer_value());
     tracelens::Poller poller(transport);
     tracelens::StatusReporter reporter(transport);
-    tracelens::StubExecutor executor;
+    tracelens::ResultUploader uploader(transport);
+    tracelens::PosixProcessRunner runner;
+    tracelens::AnalyzeDiskExecutor executor(runner, cfg.analyzer_path, work_dir,
+                                            cfg.hostname);
     tracelens::ConsoleLogger logger;
 
     // Signal handler: async-signal-safe atomic store -> loop notices within ~200ms.
     std::signal(SIGINT,  [](int) { tracelens::g_request_stop.store(true); });
     std::signal(SIGTERM, [](int) { tracelens::g_request_stop.store(true); });
 
-    tracelens::HttpAgentService service(poller, reporter, executor,
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader,
                                         cfg.poll_interval_seconds, logger);
     try {
         return service.run(/*single_iteration=*/once);
