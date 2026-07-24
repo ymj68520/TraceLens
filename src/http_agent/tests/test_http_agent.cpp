@@ -1,6 +1,6 @@
-// Self-contained unit tests for the TraceLens HTTP agent (Tasks 16–20).
+// Unit tests for the TraceLens HTTP agent (Tasks 16–24).
 //
-// No GTest dependency (so the gate builds with just g++ + OpenSSL + pthreads)
+// Migrated to GTest (Task 24) (so the gate builds with just g++ + OpenSSL + pthreads)
 // and no real analyzer binary:
 //  - a FakeHttpClient implements IHttpClient, returning canned JSON and recording
 //    the POSTs the loop issues;
@@ -13,8 +13,7 @@
 // formation, which is what let the Task-16 double-Bearer bug ship). The real
 // PosixProcessRunner IS exercised against real processes (test_process_runner_*)
 // — including an over-cap case (>8 MiB) that pins the pipe-capture deadlock fix.
-// A 60s SIGALRM guards the whole suite against a regression that would otherwise
-// wedge the test process forever.
+// 60-second timeout via GTest (CMakeLists.txt: set_property TIMEOUT 60).
 
 #include "client_config.h"
 #include "command_executor.h"
@@ -48,23 +47,12 @@
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include <gmock/gmock.h>
+
 namespace fs = std::filesystem;
 
-static int g_failures = 0;
-static int g_checks = 0;
-
-static void expect(bool cond, const std::string& what, int line) {
-    ++g_checks;
-    if (!cond) {
-        ++g_failures;
-        std::cerr << "FAIL [line " << line << "]: " << what << "\n";
-    }
-}
-#define CHECK(cond)            expect((cond), #cond, __LINE__)
-#define CHECK_EQ(a, b)         expect((a) == (b), #a " == " #b, __LINE__)
-#define CHECK_CONTAINS(s, sub) expect((s).find(sub) != std::string::npos, \
-                                      #s " contains " #sub, __LINE__)
-
+// Helper to check if a flag exists in an argv vector (for config tests).
 static bool has_flag(const std::vector<std::string>& argv, const std::string& f) {
     return std::find(argv.begin(), argv.end(), f) != argv.end();
 }
@@ -176,14 +164,14 @@ static nlohmann::json analyze_cmd_json(const std::string& id,
 }
 
 // ----------------------------------------------------------------------- JwtClient
-static void test_jwt_client() {
+TEST(HttpAgentTest, jwt_client) {
     tracelens::JwtClient jwt("  abc.def.ghi\n ");
-    CHECK_EQ(jwt.bearer_value(), std::string("Bearer abc.def.ghi"));
-    CHECK_EQ(jwt.token(), std::string("abc.def.ghi"));
+    EXPECT_EQ(jwt.bearer_value(), std::string("Bearer abc.def.ghi"));
+    EXPECT_EQ(jwt.token(), std::string("abc.def.ghi"));
 
     bool threw = false;
     try { tracelens::JwtClient bad("   "); } catch (const std::exception&) { threw = true; }
-    CHECK(threw);
+    EXPECT_TRUE(threw);
 
     // load_from_file with a 0600 file.
     const fs::path tok = fs::temp_directory_path() / "tracelens_test_token";
@@ -196,10 +184,10 @@ static void test_jwt_client() {
                     fs::perm_options::replace);
     try {
         auto from_file = tracelens::JwtClient::load_from_file(tok.string());
-        CHECK_EQ(from_file.bearer_value(), std::string("Bearer tok.from.file"));
+        EXPECT_EQ(from_file.bearer_value(), std::string("Bearer tok.from.file"));
     } catch (const std::exception& e) {
         std::cerr << "unexpected: " << e.what() << "\n";
-        CHECK(false);
+        EXPECT_TRUE(false);
     }
 
     // A group/other-readable file must be rejected.
@@ -210,7 +198,7 @@ static void test_jwt_client() {
     threw = false;
     try { tracelens::JwtClient::load_from_file(tok.string()); }
     catch (const std::exception&) { threw = true; }
-    CHECK(threw);
+    EXPECT_TRUE(threw);
 
     fs::remove(tok);
 }
@@ -218,7 +206,7 @@ static void test_jwt_client() {
 // ------------------------------------------------------------------ ClientConfig
 // analyzer_path is now REQUIRED by validate (fail-fast), so every valid case
 // supplies it. Field order: {url, interval, token, hostname, analyzer, work}.
-static void test_config_validate() {
+TEST(HttpAgentTest, config_validate) {
     using C = tracelens::ClientConfig;
     const std::string az = "/usr/bin/forensics_analyzer";
 
@@ -236,27 +224,21 @@ static void test_config_validate() {
         return c;
     };
 
-    CHECK(C::validate(cfg("https://server.example.com", 10, "/t", "h", az)).empty());
-    CHECK(C::validate(cfg("http://localhost:8000", 10, "/t", "h", az)).empty());
-    CHECK(C::validate(cfg("http://127.0.0.1", 5, "/t", "h", az)).empty());
-    CHECK(C::validate(cfg("http://127.0.0.1", 30, "/t", "h", az)).empty());
+    EXPECT_TRUE(C::validate(cfg("https://server.example.com", 10, "/t", "h", az)).empty());
+    EXPECT_TRUE(C::validate(cfg("http://localhost:8000", 10, "/t", "h", az)).empty());
+    EXPECT_TRUE(C::validate(cfg("http://127.0.0.1", 5, "/t", "h", az)).empty());
+    EXPECT_TRUE(C::validate(cfg("http://127.0.0.1", 30, "/t", "h", az)).empty());
 
-    CHECK_CONTAINS(C::validate(cfg("https://server.example.com", 10, "/t", "h", "")),
-                   "analyzer_path");
-    CHECK_CONTAINS(C::validate(cfg("http://server.example.com", 10, "/t", "h", az)),
-                   "non-localhost");
-    CHECK_CONTAINS(C::validate(cfg("ftp://server.example.com", 10, "/t", "h", az)),
-                   "unsupported scheme");
-    CHECK_CONTAINS(C::validate(cfg("server.example.com", 10, "/t", "h", az)), "scheme");
-    CHECK_CONTAINS(C::validate(cfg("https://server.example.com", 4, "/t", "h", az)),
-                   "poll_interval");
-    CHECK_CONTAINS(C::validate(cfg("https://server.example.com", 31, "/t", "h", az)),
-                   "poll_interval");
-    CHECK_CONTAINS(C::validate(cfg("https://server.example.com", 10, "", "h", az)),
-                   "token_path");
+    EXPECT_THAT(C::validate(cfg("https://server.example.com", 10, "/t", "h", "")), testing::HasSubstr("analyzer_path"));
+    EXPECT_THAT(C::validate(cfg("http://server.example.com", 10, "/t", "h", az)), testing::HasSubstr("non-localhost"));
+    EXPECT_THAT(C::validate(cfg("ftp://server.example.com", 10, "/t", "h", az)), testing::HasSubstr("unsupported scheme"));
+    EXPECT_THAT(C::validate(cfg("server.example.com", 10, "/t", "h", az)), testing::HasSubstr("scheme"));
+    EXPECT_THAT(C::validate(cfg("https://server.example.com", 4, "/t", "h", az)), testing::HasSubstr("poll_interval"));
+    EXPECT_THAT(C::validate(cfg("https://server.example.com", 31, "/t", "h", az)), testing::HasSubstr("poll_interval"));
+    EXPECT_THAT(C::validate(cfg("https://server.example.com", 10, "", "h", az)), testing::HasSubstr("token_path"));
 }
 
-static void test_config_load_from_file() {
+TEST(HttpAgentTest, config_load_from_file) {
     const fs::path cfg = fs::temp_directory_path() / "tracelens_test_cfg";
     {
         std::ofstream f(cfg);
@@ -270,17 +252,17 @@ static void test_config_load_from_file() {
     }
     std::string err;
     auto c = tracelens::ClientConfig::load_from_file(cfg.string(), err);
-    CHECK(err.empty());
-    CHECK_EQ(c.server_base_url, std::string("https://srv.example.com"));
-    CHECK_EQ(c.poll_interval_seconds, 15);
-    CHECK_EQ(c.token_path, std::string("/var/lib/tracelens/token"));
-    CHECK_EQ(c.hostname, std::string("station-7"));
-    CHECK_EQ(c.analyzer_path, std::string("/opt/tracelens/forensics_analyzer"));
-    CHECK_EQ(c.work_base_dir, std::string("/var/lib/tracelens/work"));
+    EXPECT_TRUE(err.empty());
+    EXPECT_EQ(c.server_base_url, std::string("https://srv.example.com"));
+    EXPECT_EQ(c.poll_interval_seconds, 15);
+    EXPECT_EQ(c.token_path, std::string("/var/lib/tracelens/token"));
+    EXPECT_EQ(c.hostname, std::string("station-7"));
+    EXPECT_EQ(c.analyzer_path, std::string("/opt/tracelens/forensics_analyzer"));
+    EXPECT_EQ(c.work_base_dir, std::string("/var/lib/tracelens/work"));
     fs::remove(cfg);
 }
 
-static void test_config_ipv6_localhost_allowed() {
+TEST(HttpAgentTest, config_ipv6_localhost_allowed) {
     using C = tracelens::ClientConfig;
     const std::string az = "/usr/bin/forensics_analyzer";
 
@@ -297,57 +279,57 @@ static void test_config_ipv6_localhost_allowed() {
     };
 
     // Bracketed IPv6 localhost must be accepted (not truncated to "[").
-    CHECK(C::validate(cfg("http://[::1]:8000", 10, "/t", "h", az)).empty());
-    CHECK(C::validate(cfg("http://[::1]", 10, "/t", "h", az)).empty());
+    EXPECT_TRUE(C::validate(cfg("http://[::1]:8000", 10, "/t", "h", az)).empty());
+    EXPECT_TRUE(C::validate(cfg("http://[::1]", 10, "/t", "h", az)).empty());
 }
 
 // ------------------------------------------------------------------------- models
-static void test_command_from_json() {
+TEST(HttpAgentTest, command_from_json) {
     auto c1 = nlohmann::json::parse(
         R"({"id":"c1","command_type":"analyze_disk",)"
         R"("parameters":{"task_id":"t1","image_path":"/x.E01"},"priority":"high"})")
                   .get<tracelens::Command>();
-    CHECK_EQ(c1.id, std::string("c1"));
-    CHECK_EQ(c1.command_type, std::string("analyze_disk"));
-    CHECK_EQ(c1.priority, std::string("high"));
+    EXPECT_EQ(c1.id, std::string("c1"));
+    EXPECT_EQ(c1.command_type, std::string("analyze_disk"));
+    EXPECT_EQ(c1.priority, std::string("high"));
     std::string tid;
-    CHECK(c1.has_task_id(tid));
-    CHECK_EQ(tid, std::string("t1"));
+    EXPECT_TRUE(c1.has_task_id(tid));
+    EXPECT_EQ(tid, std::string("t1"));
 
     // Optional fields default.
     auto c2 = nlohmann::json::parse(R"({"id":"c2","command_type":"health_check"})")
                   .get<tracelens::Command>();
-    CHECK_EQ(c2.priority, std::string("normal"));
-    CHECK(c2.parameters.is_object());
+    EXPECT_EQ(c2.priority, std::string("normal"));
+    EXPECT_TRUE(c2.parameters.is_object());
 
     // Missing required field -> exception (poller skips such entries).
     bool threw = false;
     try {
         nlohmann::json::parse(R"({"command_type":"x"})").get<tracelens::Command>();
     } catch (const std::exception&) { threw = true; }
-    CHECK(threw);
+    EXPECT_TRUE(threw);
 }
 
-static void test_status_update_to_json() {
+TEST(HttpAgentTest, status_update_to_json) {
     tracelens::StatusUpdate u;
     u.status = tracelens::CommandStatus::InProgress;
     u.progress = 42;
     u.message = "carving";
     auto j = nlohmann::json(u);
-    CHECK_EQ(j["status"].get<std::string>(), std::string("in_progress"));
-    CHECK_EQ(j["progress"].get<int>(), 42);
-    CHECK_EQ(j["message"].get<std::string>(), std::string("carving"));
+    EXPECT_EQ(j["status"].get<std::string>(), std::string("in_progress"));
+    EXPECT_EQ(j["progress"].get<int>(), 42);
+    EXPECT_EQ(j["message"].get<std::string>(), std::string("carving"));
 
     tracelens::StatusUpdate u2;
     u2.status = tracelens::CommandStatus::Completed;
     auto j2 = nlohmann::json(u2);
-    CHECK_EQ(j2["status"].get<std::string>(), std::string("completed"));
-    CHECK(!j2.contains("progress"));
-    CHECK(!j2.contains("message"));
+    EXPECT_EQ(j2["status"].get<std::string>(), std::string("completed"));
+    EXPECT_TRUE(!j2.contains("progress"));
+    EXPECT_TRUE(!j2.contains("message"));
 }
 
 // ------------------------------------------------------------------------- Poller
-static void test_poller_parses_commands() {
+TEST(HttpAgentTest, poller_parses_commands) {
     FakeHttpClient fake;
     fake.get_response = {200,
                          R"({"client_id":"x","commands":[)"
@@ -357,13 +339,13 @@ static void test_poller_parses_commands() {
     tracelens::Poller poller(fake);
     std::string err;
     auto cmds = poller.poll(err);
-    CHECK(err.empty());
-    CHECK_EQ(cmds.size(), static_cast<size_t>(2));
-    CHECK_EQ(cmds[0].id, std::string("c1"));
-    CHECK_EQ(fake.last_get_path, std::string("/api/commands/poll"));
+    EXPECT_TRUE(err.empty());
+    EXPECT_EQ(cmds.size(), static_cast<size_t>(2));
+    EXPECT_EQ(cmds[0].id, std::string("c1"));
+    EXPECT_EQ(fake.last_get_path, std::string("/api/commands/poll"));
 }
 
-static void test_poller_skips_malformed() {
+TEST(HttpAgentTest, poller_skips_malformed) {
     FakeHttpClient fake;
     fake.get_response = {200,
                          R"({"commands":[)"
@@ -374,33 +356,33 @@ static void test_poller_skips_malformed() {
     tracelens::Poller poller(fake);
     std::string err;
     auto cmds = poller.poll(err);
-    CHECK_EQ(cmds.size(), static_cast<size_t>(1));
-    CHECK_EQ(cmds[0].id, std::string("c1"));
-    CHECK(!err.empty());  // the skip was recorded
+    EXPECT_EQ(cmds.size(), static_cast<size_t>(1));
+    EXPECT_EQ(cmds[0].id, std::string("c1"));
+    EXPECT_TRUE(!err.empty());  // the skip was recorded
 }
 
-static void test_poller_transport_error() {
+TEST(HttpAgentTest, poller_transport_error) {
     FakeHttpClient fake;
     fake.get_response = {0, "", "connection refused"};
     tracelens::Poller poller(fake);
     std::string err;
     auto cmds = poller.poll(err);
-    CHECK(cmds.empty());
-    CHECK(!err.empty());
+    EXPECT_TRUE(cmds.empty());
+    EXPECT_TRUE(!err.empty());
 }
 
-static void test_poller_missing_commands_key() {
+TEST(HttpAgentTest, poller_missing_commands_key) {
     FakeHttpClient fake;
     fake.get_response = {200, R"({"client_id":"x"})", ""};
     tracelens::Poller poller(fake);
     std::string err;
     auto cmds = poller.poll(err);
-    CHECK(cmds.empty());
-    CHECK_CONTAINS(err, "missing 'commands'");
+    EXPECT_TRUE(cmds.empty());
+    EXPECT_THAT(err, testing::HasSubstr("missing 'commands'"));
 }
 
 // ---------------------------------------------------------------- StatusReporter
-static void test_status_reporter() {
+TEST(HttpAgentTest, status_reporter) {
     FakeHttpClient fake;
     tracelens::StatusReporter reporter(fake);
 
@@ -409,25 +391,25 @@ static void test_status_reporter() {
     u.progress = 50;
     u.message = "halfway";
     std::string err;
-    CHECK(reporter.report("c1", u, err));
-    CHECK(err.empty());
-    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(1));
-    CHECK_EQ(fake.post_calls[0].first, std::string("/api/commands/c1/status"));
+    EXPECT_TRUE(reporter.report("c1", u, err));
+    EXPECT_TRUE(err.empty());
+    EXPECT_EQ(fake.post_calls.size(), static_cast<size_t>(1));
+    EXPECT_EQ(fake.post_calls[0].first, std::string("/api/commands/c1/status"));
     auto body = nlohmann::json::parse(fake.post_calls[0].second);
-    CHECK_EQ(body["status"].get<std::string>(), std::string("in_progress"));
-    CHECK_EQ(body["progress"].get<int>(), 50);
+    EXPECT_EQ(body["status"].get<std::string>(), std::string("in_progress"));
+    EXPECT_EQ(body["progress"].get<int>(), 50);
     // command_id is REQUIRED in the body by the server schema (omitting it 422s).
-    CHECK_EQ(body["command_id"].get<std::string>(), std::string("c1"));
+    EXPECT_EQ(body["command_id"].get<std::string>(), std::string("c1"));
 
     // Server error -> false, err set, but the POST was still attempted.
     fake.post_response = {500, "", ""};
-    CHECK(!reporter.report("c1", u, err));
-    CHECK(!err.empty());
-    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(2));
+    EXPECT_TRUE(!reporter.report("c1", u, err));
+    EXPECT_TRUE(!err.empty());
+    EXPECT_EQ(fake.post_calls.size(), static_cast<size_t>(2));
 }
 
 // ------------------------------------------------------------- build_analyzer_argv
-static void test_build_analyzer_argv() {
+TEST(HttpAgentTest, build_analyzer_argv) {
     // windows + file_carving + llm_text_extraction=true. --no-ai MUST appear
     // regardless of llm_text_extraction (the client never runs the LLM).
     nlohmann::json j;
@@ -440,34 +422,34 @@ static void test_build_analyzer_argv() {
     j["parameters"]["options"]["llm_text_extraction"] = true;  // MUST be ignored
     auto cmd = j.get<tracelens::Command>();
     auto built = tracelens::build_analyzer_argv(cmd, "/opt/fa", "/tmp/work");
-    CHECK(built.valid());
-    CHECK_EQ(built.image_path, std::string("/data/case.E01"));
-    CHECK_EQ(built.argv[0], std::string("/opt/fa"));
-    CHECK_EQ(built.argv[1], std::string("/data/case.E01"));  // positional image
-    CHECK(has_flag(built.argv, "--no-ai"));           // INVARIANT: always
-    CHECK(has_flag(built.argv, "--overwrite"));
-    CHECK(has_flag(built.argv, "--windows-analyze"));
-    CHECK(has_flag(built.argv, "--carve"));
+    EXPECT_TRUE(built.valid());
+    EXPECT_EQ(built.image_path, std::string("/data/case.E01"));
+    EXPECT_EQ(built.argv[0], std::string("/opt/fa"));
+    EXPECT_EQ(built.argv[1], std::string("/data/case.E01"));  // positional image
+    EXPECT_TRUE(has_flag(built.argv, "--no-ai"));           // INVARIANT: always
+    EXPECT_TRUE(has_flag(built.argv, "--overwrite"));
+    EXPECT_TRUE(has_flag(built.argv, "--windows-analyze"));
+    EXPECT_TRUE(has_flag(built.argv, "--carve"));
     // db-dir is passed as the value following --db-dir.
     auto it = std::find(built.argv.begin(), built.argv.end(), "--db-dir");
-    CHECK(it != built.argv.end());
-    CHECK_EQ(*(it + 1), std::string("/tmp/work"));
+    EXPECT_TRUE(it != built.argv.end());
+    EXPECT_EQ(*(it + 1), std::string("/tmp/work"));
 
     // android, no file_carving -> --android-analyze, no --carve.
     auto cmd2 = analyze_cmd_json("c2", "/d/a.dd", "", "android", /*carve=*/false)
                     .get<tracelens::Command>();
     auto b2 = tracelens::build_analyzer_argv(cmd2, "/opt/fa", "/tmp/w");
-    CHECK(has_flag(b2.argv, "--android-analyze"));
-    CHECK(!has_flag(b2.argv, "--carve"));
-    CHECK(has_flag(b2.argv, "--no-ai"));
+    EXPECT_TRUE(has_flag(b2.argv, "--android-analyze"));
+    EXPECT_TRUE(!has_flag(b2.argv, "--carve"));
+    EXPECT_TRUE(has_flag(b2.argv, "--no-ai"));
 
     // full -> no platform flag.
     auto cmd3 = analyze_cmd_json("c3", "/d/x.E01", "", "full", false)
                     .get<tracelens::Command>();
     auto b3 = tracelens::build_analyzer_argv(cmd3, "/opt/fa", "/tmp/w");
-    CHECK(!has_flag(b3.argv, "--windows-analyze"));
-    CHECK(!has_flag(b3.argv, "--linux-analyze"));
-    CHECK(!has_flag(b3.argv, "--android-analyze"));
+    EXPECT_TRUE(!has_flag(b3.argv, "--windows-analyze"));
+    EXPECT_TRUE(!has_flag(b3.argv, "--linux-analyze"));
+    EXPECT_TRUE(!has_flag(b3.argv, "--android-analyze"));
 
     // missing image_path -> error, empty argv.
     nlohmann::json j4;
@@ -476,17 +458,17 @@ static void test_build_analyzer_argv() {
     j4["parameters"]["analysis_type"] = "full";
     auto cmd4 = j4.get<tracelens::Command>();
     auto b4 = tracelens::build_analyzer_argv(cmd4, "/opt/fa", "/tmp/w");
-    CHECK(!b4.valid());
-    CHECK_CONTAINS(b4.error, "image_path");
+    EXPECT_TRUE(!b4.valid());
+    EXPECT_THAT(b4.error, testing::HasSubstr("image_path"));
 
     // missing analyzer path -> error.
     auto b5 = tracelens::build_analyzer_argv(cmd3, "", "/tmp/w");
-    CHECK(!b5.valid());
-    CHECK_CONTAINS(b5.error, "analyzer");
+    EXPECT_TRUE(!b5.valid());
+    EXPECT_THAT(b5.error, testing::HasSubstr("analyzer"));
 }
 
 // ------------------------------------------------------------ collect_db_artifacts
-static void test_collect_db_artifacts() {
+TEST(HttpAgentTest, collect_db_artifacts) {
     const fs::path dir = fs::temp_directory_path() / "tracelens_collect_test";
     fs::remove_all(dir);
     fs::create_directories(dir);
@@ -499,28 +481,28 @@ static void test_collect_db_artifacts() {
 
     auto arts = tracelens::collect_db_artifacts("/data/case.E01", dir.string(),
                                                 "station-7");
-    CHECK_EQ(arts.size(), static_cast<size_t>(2));  // raw + events
-    CHECK_EQ(arts[0].result_type, std::string("database"));
-    CHECK_EQ(arts[1].result_type, std::string("database"));
+    EXPECT_EQ(arts.size(), static_cast<size_t>(2));  // raw + events
+    EXPECT_EQ(arts[0].result_type, std::string("database"));
+    EXPECT_EQ(arts[1].result_type, std::string("database"));
     // storage_location carries the hostname label.
-    CHECK_EQ(arts[0].storage_location, std::string("station-7"));
+    EXPECT_EQ(arts[0].storage_location, std::string("station-7"));
     // file_size reflects real bytes; sorted by path so events < raw.
-    CHECK(arts[0].file_size.has_value());
-    CHECK(arts[1].file_size.has_value());
+    EXPECT_TRUE(arts[0].file_size.has_value());
+    EXPECT_TRUE(arts[1].file_size.has_value());
     bool events_first = arts[0].file_path.find("events") != std::string::npos;
-    CHECK(events_first);
-    CHECK_EQ(*arts[0].file_size, static_cast<uint64_t>(2));   // events
-    CHECK_EQ(*arts[1].file_size, static_cast<uint64_t>(8));   // raw
+    EXPECT_TRUE(events_first);
+    EXPECT_EQ(*arts[0].file_size, static_cast<uint64_t>(2));   // events
+    EXPECT_EQ(*arts[1].file_size, static_cast<uint64_t>(8));   // raw
     // No raw-image path leaks into any field.
     for (const auto& a : arts) {
-        CHECK_CONTAINS(a.file_path, "case_");
-        CHECK(a.file_path.find("/data/case.E01") == std::string::npos);
+        EXPECT_THAT(a.file_path, testing::HasSubstr("case_"));
+        EXPECT_TRUE(a.file_path.find("/data/case.E01") == std::string::npos);
     }
     fs::remove_all(dir);
 }
 
 // -------------------------------------------------------------- AnalyzeDiskExecutor
-static void test_analyze_executor_success() {
+TEST(HttpAgentTest, analyze_executor_success) {
     // A real temp "image" file so the existence pre-check passes.
     const fs::path imgdir = fs::temp_directory_path() / "tracelens_exec_img";
     fs::remove_all(imgdir);
@@ -539,22 +521,22 @@ static void test_analyze_executor_success() {
     auto cmd = analyze_cmd_json("c1", image.string(), "t9").get<tracelens::Command>();
     auto r = exec.execute(cmd);
 
-    CHECK(r.success);
-    CHECK_EQ(r.task_id, std::string("t9"));          // task soft link parsed
-    CHECK(!r.artifacts.empty());
-    CHECK_EQ(r.artifacts[0].result_type, std::string("database"));
+    EXPECT_TRUE(r.success);
+    EXPECT_EQ(r.task_id, std::string("t9"));          // task soft link parsed
+    EXPECT_TRUE(!r.artifacts.empty());
+    EXPECT_EQ(r.artifacts[0].result_type, std::string("database"));
     // The fake was invoked with the right argv (no-ai always).
-    CHECK(has_flag(runner.last_argv, "--no-ai"));
-    CHECK(has_flag(runner.last_argv, "--windows-analyze"));
-    CHECK_EQ(runner.call_count, 1);
+    EXPECT_TRUE(has_flag(runner.last_argv, "--no-ai"));
+    EXPECT_TRUE(has_flag(runner.last_argv, "--windows-analyze"));
+    EXPECT_EQ(runner.call_count, 1);
     // Work dir was per-command under work_base.
-    CHECK_CONTAINS(runner.last_work_dir, "c1");
+    EXPECT_THAT(runner.last_work_dir, testing::HasSubstr("c1"));
 
     fs::remove_all(imgdir);
     fs::remove_all(work);
 }
 
-static void test_analyze_executor_missing_param_no_spawn() {
+TEST(HttpAgentTest, analyze_executor_missing_param_no_spawn) {
     FakeProcessRunner runner;
     const fs::path work = fs::temp_directory_path() / "tracelens_exec_work2";
     fs::remove_all(work);
@@ -562,13 +544,13 @@ static void test_analyze_executor_missing_param_no_spawn() {
     auto cmd = parse_cmd(
         R"({"id":"c1","command_type":"analyze_disk","parameters":{"task_id":"t9"}})");
     auto r = exec.execute(cmd);
-    CHECK(!r.success);
-    CHECK_CONTAINS(r.message, "image_path");
-    CHECK_EQ(runner.call_count, 0);  // never spawned
+    EXPECT_TRUE(!r.success);
+    EXPECT_THAT(r.message, testing::HasSubstr("image_path"));
+    EXPECT_EQ(runner.call_count, 0);  // never spawned
     fs::remove_all(work);
 }
 
-static void test_analyze_executor_missing_file_no_spawn() {
+TEST(HttpAgentTest, analyze_executor_missing_file_no_spawn) {
     FakeProcessRunner runner;
     const fs::path work = fs::temp_directory_path() / "tracelens_exec_work3";
     fs::remove_all(work);
@@ -576,13 +558,13 @@ static void test_analyze_executor_missing_file_no_spawn() {
     auto cmd = analyze_cmd_json("c1", "/no/such/case.E01", "", /*atype=*/"", /*carve=*/false)
                    .get<tracelens::Command>();
     auto r = exec.execute(cmd);
-    CHECK(!r.success);
-    CHECK_CONTAINS(r.message, "not found");
-    CHECK_EQ(runner.call_count, 0);  // never spawned
+    EXPECT_TRUE(!r.success);
+    EXPECT_THAT(r.message, testing::HasSubstr("not found"));
+    EXPECT_EQ(runner.call_count, 0);  // never spawned
     fs::remove_all(work);
 }
 
-static void test_analyze_executor_nonzero_exit() {
+TEST(HttpAgentTest, analyze_executor_nonzero_exit) {
     const fs::path imgdir = fs::temp_directory_path() / "tracelens_exec_img4";
     fs::remove_all(imgdir);
     fs::create_directories(imgdir);
@@ -599,16 +581,16 @@ static void test_analyze_executor_nonzero_exit() {
     auto cmd = analyze_cmd_json("c1", image.string(), "", /*atype=*/"", /*carve=*/false)
                    .get<tracelens::Command>();
     auto r = exec.execute(cmd);
-    CHECK(!r.success);
-    CHECK_CONTAINS(r.message, "exited 2");
-    CHECK_CONTAINS(r.message, "carve failed");
-    CHECK(r.artifacts.empty());
+    EXPECT_TRUE(!r.success);
+    EXPECT_THAT(r.message, testing::HasSubstr("exited 2"));
+    EXPECT_THAT(r.message, testing::HasSubstr("carve failed"));
+    EXPECT_TRUE(r.artifacts.empty());
 
     fs::remove_all(imgdir);
     fs::remove_all(work);
 }
 
-static void test_analyze_executor_nonanalyze_is_stub() {
+TEST(HttpAgentTest, analyze_executor_nonanalyze_is_stub) {
     // Non-analyze commands are acknowledged + succeed (health_check, etc.).
     FakeProcessRunner runner;
     const fs::path work = fs::temp_directory_path() / "tracelens_exec_work5";
@@ -616,13 +598,13 @@ static void test_analyze_executor_nonanalyze_is_stub() {
     tracelens::AnalyzeDiskExecutor exec(runner, "/opt/fa", work.string());
     auto cmd = parse_cmd(R"({"id":"c1","command_type":"health_check"})");
     auto r = exec.execute(cmd);
-    CHECK(r.success);
-    CHECK_EQ(runner.call_count, 0);  // analyzer never spawned for health_check
+    EXPECT_TRUE(r.success);
+    EXPECT_EQ(runner.call_count, 0);  // analyzer never spawned for health_check
     fs::remove_all(work);
 }
 
 // ----------------------------------------------------------------- ResultUploader
-static void test_result_uploader() {
+TEST(HttpAgentTest, result_uploader) {
     FakeHttpClient fake;
     tracelens::ResultUploader uploader(fake);
 
@@ -635,33 +617,33 @@ static void test_result_uploader() {
     arts.push_back(a);
 
     std::string err;
-    CHECK(uploader.upload("t1", arts, err));
-    CHECK(err.empty());
-    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(1));
-    CHECK_EQ(fake.post_calls[0].first, std::string("/api/tasks/t1/results"));
+    EXPECT_TRUE(uploader.upload("t1", arts, err));
+    EXPECT_TRUE(err.empty());
+    EXPECT_EQ(fake.post_calls.size(), static_cast<size_t>(1));
+    EXPECT_EQ(fake.post_calls[0].first, std::string("/api/tasks/t1/results"));
     auto body = nlohmann::json::parse(fake.post_calls[0].second);
-    CHECK(body.contains("artifacts"));
-    CHECK_EQ(body["artifacts"].size(), static_cast<size_t>(1));
-    CHECK_EQ(body["artifacts"][0]["result_type"].get<std::string>(),
+    EXPECT_TRUE(body.contains("artifacts"));
+    EXPECT_EQ(body["artifacts"].size(), static_cast<size_t>(1));
+    EXPECT_EQ(body["artifacts"][0]["result_type"].get<std::string>(),
              std::string("database"));
-    CHECK_EQ(body["artifacts"][0]["file_path"].get<std::string>(),
+    EXPECT_EQ(body["artifacts"][0]["file_path"].get<std::string>(),
              std::string("/var/lib/tracelens/work/c1/case_raw.db"));
-    CHECK_EQ(body["artifacts"][0]["file_size"].get<int>(), 4096);
+    EXPECT_EQ(body["artifacts"][0]["file_size"].get<int>(), 4096);
     // No image path anywhere in the body.
-    CHECK(fake.post_calls[0].second.find("E01") == std::string::npos);
+    EXPECT_TRUE(fake.post_calls[0].second.find("E01") == std::string::npos);
 
     // Server error -> false + err.
     fake.post_response = {500, "", ""};
-    CHECK(!uploader.upload("t1", arts, err));
-    CHECK(!err.empty());
+    EXPECT_TRUE(!uploader.upload("t1", arts, err));
+    EXPECT_TRUE(!err.empty());
 
     // Empty task_id -> false (no task link).
-    CHECK(!uploader.upload("", arts, err));
-    CHECK(!err.empty());
+    EXPECT_TRUE(!uploader.upload("", arts, err));
+    EXPECT_TRUE(!err.empty());
 }
 
 // ----------------------------------------------------------------- agent service
-static void test_service_single_iteration() {
+TEST(HttpAgentTest, service_single_iteration) {
     FakeHttpClient fake;
     fake.get_response = {200,
                          R"({"commands":[)"
@@ -679,24 +661,24 @@ static void test_service_single_iteration() {
     tracelens::HttpAgentService service(poller, reporter, executor, uploader, store,
                                         indexer, index_uploader, 10, 0, "test-client", logger);
 
-    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+    EXPECT_EQ(service.run(/*single_iteration=*/true), 0);
 
     // StubExecutor produces no artifacts -> no upload; just the two status reports.
-    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(2));
-    CHECK_EQ(fake.post_calls[0].first, std::string("/api/commands/c1/status"));
-    CHECK_EQ(fake.post_calls[1].first, std::string("/api/commands/c1/status"));
-    CHECK_CONTAINS(fake.post_calls[0].second, "in_progress");
-    CHECK_CONTAINS(fake.post_calls[1].second, "completed");
+    EXPECT_EQ(fake.post_calls.size(), static_cast<size_t>(2));
+    EXPECT_EQ(fake.post_calls[0].first, std::string("/api/commands/c1/status"));
+    EXPECT_EQ(fake.post_calls[1].first, std::string("/api/commands/c1/status"));
+    EXPECT_THAT(fake.post_calls[0].second, testing::HasSubstr("in_progress"));
+    EXPECT_THAT(fake.post_calls[1].second, testing::HasSubstr("completed"));
 
     // Persistence wiring (Task 18): each polled command is recorded in-flight
     // before execution and cleared once it reaches a terminal state.
-    CHECK_EQ(store.started_ids.size(), static_cast<size_t>(1));
-    CHECK_EQ(store.started_ids[0], std::string("c1"));
-    CHECK_EQ(store.cleared_ids.size(), static_cast<size_t>(1));
-    CHECK_EQ(store.cleared_ids[0], std::string("c1"));
+    EXPECT_EQ(store.started_ids.size(), static_cast<size_t>(1));
+    EXPECT_EQ(store.started_ids[0], std::string("c1"));
+    EXPECT_EQ(store.cleared_ids.size(), static_cast<size_t>(1));
+    EXPECT_EQ(store.cleared_ids[0], std::string("c1"));
 }
 
-static void test_service_handles_empty_poll() {
+TEST(HttpAgentTest, service_handles_empty_poll) {
     FakeHttpClient fake;
     fake.get_response = {200, R"({"commands":[]})", ""};
     tracelens::Poller poller(fake);
@@ -710,11 +692,11 @@ static void test_service_handles_empty_poll() {
     tracelens::HttpAgentService service(poller, reporter, executor, uploader,
                                         store, indexer, index_uploader,
                                         10, 0, "test-client", logger);
-    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
-    CHECK(fake.post_calls.empty());  // nothing to report
+    EXPECT_EQ(service.run(/*single_iteration=*/true), 0);
+    EXPECT_TRUE(fake.post_calls.empty());  // nothing to report
 }
 
-static void test_service_reports_failed_execution() {
+TEST(HttpAgentTest, service_reports_failed_execution) {
     // A failed execution must report status "failed" (not "completed") with the
     // error message. Pins the Failed branch of the service ternary so a future
     // edit that flips it (silently marking failed analyses as completed) is
@@ -736,18 +718,18 @@ static void test_service_reports_failed_execution() {
                                         store, indexer, index_uploader,
                                         10, 0, "test-client", logger);
 
-    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
-    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(2));
-    CHECK_CONTAINS(fake.post_calls[0].second, "in_progress");
-    CHECK_CONTAINS(fake.post_calls[1].second, "failed");
-    CHECK_CONTAINS(fake.post_calls[1].second, "boom");
+    EXPECT_EQ(service.run(/*single_iteration=*/true), 0);
+    EXPECT_EQ(fake.post_calls.size(), static_cast<size_t>(2));
+    EXPECT_THAT(fake.post_calls[0].second, testing::HasSubstr("in_progress"));
+    EXPECT_THAT(fake.post_calls[1].second, testing::HasSubstr("failed"));
+    EXPECT_THAT(fake.post_calls[1].second, testing::HasSubstr("boom"));
     auto b2 = nlohmann::json::parse(fake.post_calls[1].second);
-    CHECK_EQ(b2["command_id"].get<std::string>(), std::string("c1"));
+    EXPECT_EQ(b2["command_id"].get<std::string>(), std::string("c1"));
 }
 
 // The full loop with a real analyze_disk that produces artifacts: in_progress
 // -> upload results -> completed.
-static void test_service_loop_uploads_then_completes() {
+TEST(HttpAgentTest, service_loop_uploads_then_completes) {
     const fs::path imgdir = fs::temp_directory_path() / "tracelens_loop_img";
     fs::remove_all(imgdir);
     fs::create_directories(imgdir);
@@ -775,16 +757,16 @@ static void test_service_loop_uploads_then_completes() {
                                         store, indexer, index_uploader,
                                         10, 0, "test-client", logger);
 
-    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+    EXPECT_EQ(service.run(/*single_iteration=*/true), 0);
 
     // Three POSTs: [0] in_progress /status, [1] /results upload, [2] completed /status.
-    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(3));
-    CHECK_EQ(fake.post_calls[0].first, std::string("/api/commands/c1/status"));
-    CHECK_CONTAINS(fake.post_calls[0].second, "in_progress");
-    CHECK_EQ(fake.post_calls[1].first, std::string("/api/tasks/t1/results"));
-    CHECK_CONTAINS(fake.post_calls[1].second, "artifacts");
-    CHECK_EQ(fake.post_calls[2].first, std::string("/api/commands/c1/status"));
-    CHECK_CONTAINS(fake.post_calls[2].second, "completed");
+    EXPECT_EQ(fake.post_calls.size(), static_cast<size_t>(3));
+    EXPECT_EQ(fake.post_calls[0].first, std::string("/api/commands/c1/status"));
+    EXPECT_THAT(fake.post_calls[0].second, testing::HasSubstr("in_progress"));
+    EXPECT_EQ(fake.post_calls[1].first, std::string("/api/tasks/t1/results"));
+    EXPECT_THAT(fake.post_calls[1].second, testing::HasSubstr("artifacts"));
+    EXPECT_EQ(fake.post_calls[2].first, std::string("/api/commands/c1/status"));
+    EXPECT_THAT(fake.post_calls[2].second, testing::HasSubstr("completed"));
 
     fs::remove_all(imgdir);
     fs::remove_all(work);
@@ -792,7 +774,7 @@ static void test_service_loop_uploads_then_completes() {
 
 // If the analyzer succeeds but the result upload fails, the command is reported
 // FAILED (results undeliverable -> unusable/retriable task).
-static void test_service_loop_upload_failure_marks_failed() {
+TEST(HttpAgentTest, service_loop_upload_failure_marks_failed) {
     const fs::path imgdir = fs::temp_directory_path() / "tracelens_loop_img2";
     fs::remove_all(imgdir);
     fs::create_directories(imgdir);
@@ -822,13 +804,13 @@ static void test_service_loop_upload_failure_marks_failed() {
                                         store, indexer, index_uploader,
                                         10, 0, "test-client", logger);
 
-    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+    EXPECT_EQ(service.run(/*single_iteration=*/true), 0);
 
     // [0] in_progress, [1] /results (failed), [2] /status FAILED.
-    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(3));
-    CHECK_EQ(fake.post_calls[1].first, std::string("/api/tasks/t1/results"));
-    CHECK_CONTAINS(fake.post_calls[2].second, "failed");
-    CHECK_CONTAINS(fake.post_calls[2].second, "upload failed");
+    EXPECT_EQ(fake.post_calls.size(), static_cast<size_t>(3));
+    EXPECT_EQ(fake.post_calls[1].first, std::string("/api/tasks/t1/results"));
+    EXPECT_THAT(fake.post_calls[2].second, testing::HasSubstr("failed"));
+    EXPECT_THAT(fake.post_calls[2].second, testing::HasSubstr("upload failed"));
 
     fs::remove_all(imgdir);
     fs::remove_all(work);
@@ -838,23 +820,23 @@ static void test_service_loop_upload_failure_marks_failed() {
 // These exercise the REAL fork/exec/poll/wait path against actual processes (no
 // Fake). They pin the two behaviors a unit-test fake can't catch: real pipe
 // capture, and the over-cap deadlock fix.
-static void test_process_runner_basic() {
+TEST(HttpAgentTest, process_runner_basic) {
     tracelens::PosixProcessRunner runner;
     auto r = runner.run({"/bin/echo", "hello-world"}, "");
-    CHECK(r.error.empty());
-    CHECK_EQ(r.exit_code, 0);
-    CHECK_CONTAINS(r.stdout_text, "hello-world");
+    EXPECT_TRUE(r.error.empty());
+    EXPECT_EQ(r.exit_code, 0);
+    EXPECT_THAT(r.stdout_text, testing::HasSubstr("hello-world"));
 }
 
-static void test_process_runner_nonzero_with_stderr() {
+TEST(HttpAgentTest, process_runner_nonzero_with_stderr) {
     tracelens::PosixProcessRunner runner;
     // Write to stderr and exit 3. argv is hardcoded by the test, never derived
     // from command input, so invoking /bin/sh here does NOT undermine the
     // production invariant (the real run() still uses execvp, no shell).
     auto r = runner.run({"/bin/sh", "-c", "echo oops >&2; exit 3"}, "");
-    CHECK(r.error.empty());
-    CHECK_EQ(r.exit_code, 3);
-    CHECK_CONTAINS(r.stderr_text, "oops");
+    EXPECT_TRUE(r.error.empty());
+    EXPECT_EQ(r.exit_code, 3);
+    EXPECT_THAT(r.stderr_text, testing::HasSubstr("oops"));
 }
 
 // The deadlock pin: the child writes far MORE than the 8 MiB capture cap. Before
@@ -862,20 +844,20 @@ static void test_process_runner_nonzero_with_stderr() {
 // waitpid() never returned, and the 60s alarm killed the whole process. Now the
 // pipe keeps draining past the cap (discarding) and capture flattens at exactly
 // kStreamCap while the run still completes.
-static void test_process_runner_over_cap_does_not_deadlock() {
+TEST(HttpAgentTest, process_runner_over_cap_does_not_deadlock) {
     tracelens::PosixProcessRunner runner;
     // 10 MiB of NULs from /dev/zero (> 8 MiB cap).
     auto r = runner.run({"/bin/sh", "-c", "head -c 10000000 /dev/zero"}, "");
-    CHECK(r.error.empty());
-    CHECK_EQ(r.exit_code, 0);  // reaching here at all means it didn't hang
+    EXPECT_TRUE(r.error.empty());
+    EXPECT_EQ(r.exit_code, 0);  // reaching here at all means it didn't hang
     constexpr size_t kCap = 8 * 1024 * 1024;
-    CHECK_EQ(r.stdout_text.size(), kCap);  // capped, not unbounded
+    EXPECT_EQ(r.stdout_text.size(), kCap);  // capped, not unbounded
 }
 
 // ------------------------------------------------------------- SqliteCommandStore
 // These use REAL temp SQLite files (the executor tests already use real temp
 // files), exercising the actual sqlite3 path — no fake.
-static void test_sqlite_store_roundtrip() {
+TEST(HttpAgentTest, sqlite_store_roundtrip) {
     const fs::path db = fs::temp_directory_path() / "tracelens_store_rt.db";
     fs::remove(db);
     // Clean sidecars from any prior run too.
@@ -888,24 +870,24 @@ static void test_sqlite_store_roundtrip() {
                    .get<tracelens::Command>();
 
     std::string err;
-    CHECK(store.record_started(cmd, err));
-    CHECK(err.empty());
+    EXPECT_TRUE(store.record_started(cmd, err));
+    EXPECT_TRUE(err.empty());
 
     auto orphans = store.recover_orphans(err);
-    CHECK_EQ(orphans.size(), static_cast<size_t>(1));
-    CHECK_EQ(orphans[0].id, std::string("c-rt"));
-    CHECK_EQ(orphans[0].command_type, std::string("analyze_disk"));
+    EXPECT_EQ(orphans.size(), static_cast<size_t>(1));
+    EXPECT_EQ(orphans[0].id, std::string("c-rt"));
+    EXPECT_EQ(orphans[0].command_type, std::string("analyze_disk"));
     std::string tid;
-    CHECK(orphans[0].has_task_id(tid));
-    CHECK_EQ(tid, std::string("t-rt"));
-    CHECK_EQ(orphans[0].priority, std::string("normal"));
+    EXPECT_TRUE(orphans[0].has_task_id(tid));
+    EXPECT_EQ(tid, std::string("t-rt"));
+    EXPECT_EQ(orphans[0].priority, std::string("normal"));
 
     // clear() removes the row -> no longer an orphan.
-    CHECK(store.clear("c-rt", err));
-    CHECK(store.recover_orphans(err).empty());
+    EXPECT_TRUE(store.clear("c-rt", err));
+    EXPECT_TRUE(store.recover_orphans(err).empty());
 
     // clear() of an already-cleared id is idempotent (not an error).
-    CHECK(store.clear("c-rt", err));
+    EXPECT_TRUE(store.clear("c-rt", err));
 
     fs::remove(db);
     fs::remove(fs::path(db) += "-wal");
@@ -916,7 +898,7 @@ static void test_sqlite_store_roundtrip() {
 // The restart scenario: store1 records a command and is destroyed WITHOUT
 // clearing it (simulating a crash mid-execution). A fresh store2 opened on the
 // same file must recover it — proving the record survived process death.
-static void test_sqlite_store_restart_recovery() {
+TEST(HttpAgentTest, sqlite_store_restart_recovery) {
     const fs::path db = fs::temp_directory_path() / "tracelens_store_restart.db";
     fs::remove(db);
     fs::remove(fs::path(db) += "-wal");
@@ -926,7 +908,7 @@ static void test_sqlite_store_restart_recovery() {
     {
         tracelens::SqliteCommandStore store1(db.string());
         std::string err;
-        CHECK(store1.record_started(
+        EXPECT_TRUE(store1.record_started(
             analyze_cmd_json("c-survivor", "/d/x.E01", "t-s").get<tracelens::Command>(),
             err));
         // No clear() — "crash". store1 closes (commits) on scope exit.
@@ -936,11 +918,11 @@ static void test_sqlite_store_restart_recovery() {
     tracelens::SqliteCommandStore store2(db.string());
     std::string err;
     auto orphans = store2.recover_orphans(err);
-    CHECK_EQ(orphans.size(), static_cast<size_t>(1));
-    CHECK_EQ(orphans[0].id, std::string("c-survivor"));
+    EXPECT_EQ(orphans.size(), static_cast<size_t>(1));
+    EXPECT_EQ(orphans[0].id, std::string("c-survivor"));
     std::string tid;
-    CHECK(orphans[0].has_task_id(tid));
-    CHECK_EQ(tid, std::string("t-s"));
+    EXPECT_TRUE(orphans[0].has_task_id(tid));
+    EXPECT_EQ(tid, std::string("t-s"));
 
     fs::remove(db);
     fs::remove(fs::path(db) += "-wal");
@@ -950,7 +932,7 @@ static void test_sqlite_store_restart_recovery() {
 
 // A re-delivered command_id (e.g. server re-queue after TTL) must REPLACE, not
 // raise a PK-violation, and the recovered row reflects the latest parameters.
-static void test_sqlite_store_replace_on_redeliver() {
+TEST(HttpAgentTest, sqlite_store_replace_on_redeliver) {
     const fs::path db = fs::temp_directory_path() / "tracelens_store_replace.db";
     fs::remove(db);
     fs::remove(fs::path(db) += "-wal");
@@ -959,20 +941,20 @@ static void test_sqlite_store_replace_on_redeliver() {
 
     tracelens::SqliteCommandStore store(db.string());
     std::string err;
-    CHECK(store.record_started(
+    EXPECT_TRUE(store.record_started(
         analyze_cmd_json("c-dup", "/d/first.E01", "t-first").get<tracelens::Command>(),
         err));
     // Same id, different task/image -> replaces.
-    CHECK(store.record_started(
+    EXPECT_TRUE(store.record_started(
         analyze_cmd_json("c-dup", "/d/second.E01", "t-second").get<tracelens::Command>(),
         err));
 
     auto orphans = store.recover_orphans(err);
-    CHECK_EQ(orphans.size(), static_cast<size_t>(1));  // not two
-    CHECK_EQ(orphans[0].id, std::string("c-dup"));
+    EXPECT_EQ(orphans.size(), static_cast<size_t>(1));  // not two
+    EXPECT_EQ(orphans[0].id, std::string("c-dup"));
     std::string tid;
-    CHECK(orphans[0].has_task_id(tid));
-    CHECK_EQ(tid, std::string("t-second"));  // latest, not first
+    EXPECT_TRUE(orphans[0].has_task_id(tid));
+    EXPECT_EQ(tid, std::string("t-second"));  // latest, not first
 
     fs::remove(db);
     fs::remove(fs::path(db) += "-wal");
@@ -982,7 +964,7 @@ static void test_sqlite_store_replace_on_redeliver() {
 
 // The recovery path through the service: a pre-seeded orphan is reported FAILED
 // to the server and cleared, before any polling happens.
-static void test_service_recover_reports_orphans_failed() {
+TEST(HttpAgentTest, service_recover_reports_orphans_failed) {
     FakeHttpClient fake;
     fake.get_response = {200, R"({"commands":[]})", ""};  // empty poll
     tracelens::Poller poller(fake);
@@ -1000,31 +982,31 @@ static void test_service_recover_reports_orphans_failed() {
                                         store, indexer, index_uploader,
                                         10, 0, "test-client", logger);
 
-    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+    EXPECT_EQ(service.run(/*single_iteration=*/true), 0);
 
     // Exactly one POST: the recovery's failed report (empty poll -> no loop work).
-    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(1));
-    CHECK_EQ(fake.post_calls[0].first,
+    EXPECT_EQ(fake.post_calls.size(), static_cast<size_t>(1));
+    EXPECT_EQ(fake.post_calls[0].first,
              std::string("/api/commands/orphan-1/status"));
-    CHECK_CONTAINS(fake.post_calls[0].second, "failed");
-    CHECK_CONTAINS(fake.post_calls[0].second, "interrupted");
-    CHECK_EQ(nlohmann::json::parse(fake.post_calls[0].second)["command_id"]
+    EXPECT_THAT(fake.post_calls[0].second, testing::HasSubstr("failed"));
+    EXPECT_THAT(fake.post_calls[0].second, testing::HasSubstr("interrupted"));
+    EXPECT_EQ(nlohmann::json::parse(fake.post_calls[0].second)["command_id"]
                  .get<std::string>(),
              std::string("orphan-1"));
     // The raw image path must NOT appear in the recovery status body.
-    CHECK(fake.post_calls[0].second.find("old.E01") == std::string::npos);
-    CHECK(fake.post_calls[0].second.find("/data/") == std::string::npos);
+    EXPECT_TRUE(fake.post_calls[0].second.find("old.E01") == std::string::npos);
+    EXPECT_TRUE(fake.post_calls[0].second.find("/data/") == std::string::npos);
 
     // The orphan was cleared from the local store.
-    CHECK_EQ(store.cleared_ids.size(), static_cast<size_t>(1));
-    CHECK_EQ(store.cleared_ids[0], std::string("orphan-1"));
+    EXPECT_EQ(store.cleared_ids.size(), static_cast<size_t>(1));
+    EXPECT_EQ(store.cleared_ids[0], std::string("orphan-1"));
 }
 
 // Recovery MUST NOT clear an orphan whose FAILED report did not reach the server
 // — otherwise Task 18's value is defeated in exactly the failure case it targets
 // (crash + server briefly unreachable). Pins the Fix-1 behavior: clear() runs
 // only on a successful report.
-static void test_service_recover_keeps_orphan_when_report_fails() {
+TEST(HttpAgentTest, service_recover_keeps_orphan_when_report_fails) {
     FakeHttpClient fake;
     fake.get_response = {200, R"({"commands":[]})", ""};  // empty poll
     fake.post_response = {500, "", ""};                    // every POST fails
@@ -1042,12 +1024,12 @@ static void test_service_recover_keeps_orphan_when_report_fails() {
                                         store, indexer, index_uploader,
                                         10, 0, "test-client", logger);
 
-    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+    EXPECT_EQ(service.run(/*single_iteration=*/true), 0);
 
     // The failed report was attempted but the orphan was NOT cleared, so a later
     // restart can retry it (D3: never drop a failure signal before it lands).
-    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(1));
-    CHECK_EQ(store.cleared_ids.size(), static_cast<size_t>(0));
+    EXPECT_EQ(fake.post_calls.size(), static_cast<size_t>(1));
+    EXPECT_EQ(store.cleared_ids.size(), static_cast<size_t>(0));
 }
 
 // Pin the crash-durability defaults the whole feature rests on (D5). The store
@@ -1062,7 +1044,7 @@ static int pragma_callback(void* ctx, int argc, char** argv, char** /*cols*/) {
     return 0;
 }
 
-static void test_sqlite_store_durability_defaults() {
+TEST(HttpAgentTest, sqlite_store_durability_defaults) {
     const fs::path db = fs::temp_directory_path() / "tracelens_store_dur.db";
     fs::remove(db);
     fs::remove(fs::path(db) += "-wal");
@@ -1072,7 +1054,7 @@ static void test_sqlite_store_durability_defaults() {
     { tracelens::SqliteCommandStore store(db.string()); }  // open + ensure schema
 
     sqlite3* raw = nullptr;
-    CHECK_EQ(sqlite3_open_v2(db.string().c_str(), &raw, SQLITE_OPEN_READONLY,
+    EXPECT_EQ(sqlite3_open_v2(db.string().c_str(), &raw, SQLITE_OPEN_READONLY,
                              nullptr),
              SQLITE_OK);
     std::string synchronous, journal;
@@ -1083,12 +1065,12 @@ static void test_sqlite_store_durability_defaults() {
 
     // synchronous == 2 (FULL): an autocommitted record_started fsyncs at commit,
     // surviving SIGKILL/power loss. This is the load-bearing durability pin.
-    CHECK_EQ(synchronous, std::string("2"));
+    EXPECT_EQ(synchronous, std::string("2"));
     // journal_mode == delete: rollback journal (NOT WAL). If WAL is adopted
     // later as forward hardening, update this to assert WAL *with* synchronous
     // FULL (which still fsyncs on commit); the invariant under test is
     // commit-durability, currently satisfied by FULL + rollback.
-    CHECK_EQ(journal, std::string("delete"));
+    EXPECT_EQ(journal, std::string("delete"));
 
     fs::remove(db);
     fs::remove(fs::path(db) += "-wal");
@@ -1097,36 +1079,36 @@ static void test_sqlite_store_durability_defaults() {
 }
 
 // ----------------------------------------------------------- Task 19: indexing
-static void test_detect_format() {
+TEST(HttpAgentTest, detect_format) {
     using F = tracelens::ImageFormat;
-    CHECK(tracelens::detect_format("image.e01", false) == F::E01);
-    CHECK(tracelens::detect_format("IMAGE.E01", false) == F::E01);
-    CHECK(tracelens::detect_format("disk.E99", false) == F::E01);
-    CHECK(tracelens::detect_format("set.e00", false) == F::E01);  // first segment variant
-    CHECK(tracelens::detect_format("evidence.dd", false) == F::DD);
-    CHECK(tracelens::detect_format("EVIDENCE.IMG", false) == F::DD);
-    CHECK(tracelens::detect_format("dump.raw", false) == F::DD);
-    CHECK(tracelens::detect_format("part.000", false) == F::DD);
-    CHECK(tracelens::detect_format("whatever", true) == F::Directory);
-    CHECK(tracelens::detect_format("notes.txt", false) == F::Unknown);
-    CHECK(tracelens::detect_format("output.db", false) == F::Unknown);
-    CHECK(tracelens::detect_format("noext", false) == F::Unknown);
-    CHECK(tracelens::detect_format("image.e1", false) == F::Unknown);    // only 1 digit
-    CHECK(tracelens::detect_format("image.exx", false) == F::Unknown);   // not digits
-    CHECK_EQ(tracelens::format_string(F::E01), std::string("E01"));
-    CHECK_EQ(tracelens::format_string(F::DD), std::string("DD"));
-    CHECK_EQ(tracelens::format_string(F::Directory), std::string("Directory"));
+    EXPECT_TRUE(tracelens::detect_format("image.e01", false) == F::E01);
+    EXPECT_TRUE(tracelens::detect_format("IMAGE.E01", false) == F::E01);
+    EXPECT_TRUE(tracelens::detect_format("disk.E99", false) == F::E01);
+    EXPECT_TRUE(tracelens::detect_format("set.e00", false) == F::E01);  // first segment variant
+    EXPECT_TRUE(tracelens::detect_format("evidence.dd", false) == F::DD);
+    EXPECT_TRUE(tracelens::detect_format("EVIDENCE.IMG", false) == F::DD);
+    EXPECT_TRUE(tracelens::detect_format("dump.raw", false) == F::DD);
+    EXPECT_TRUE(tracelens::detect_format("part.000", false) == F::DD);
+    EXPECT_TRUE(tracelens::detect_format("whatever", true) == F::Directory);
+    EXPECT_TRUE(tracelens::detect_format("notes.txt", false) == F::Unknown);
+    EXPECT_TRUE(tracelens::detect_format("output.db", false) == F::Unknown);
+    EXPECT_TRUE(tracelens::detect_format("noext", false) == F::Unknown);
+    EXPECT_TRUE(tracelens::detect_format("image.e1", false) == F::Unknown);    // only 1 digit
+    EXPECT_TRUE(tracelens::detect_format("image.exx", false) == F::Unknown);   // not digits
+    EXPECT_EQ(tracelens::format_string(F::E01), std::string("E01"));
+    EXPECT_EQ(tracelens::format_string(F::DD), std::string("DD"));
+    EXPECT_EQ(tracelens::format_string(F::Directory), std::string("Directory"));
 }
 
-static void test_e01_base() {
-    CHECK_EQ(tracelens::e01_base("img.E01"), std::string("img"));
-    CHECK_EQ(tracelens::e01_base("img.E02"), std::string("img"));
-    CHECK_EQ(tracelens::e01_base("foo.E00"), std::string("foo"));
-    CHECK_EQ(tracelens::e01_base("img.dd"), std::string(""));    // not an E01 segment
-    CHECK_EQ(tracelens::e01_base("notes.txt"), std::string(""));
+TEST(HttpAgentTest, e01_base) {
+    EXPECT_EQ(tracelens::e01_base("img.E01"), std::string("img"));
+    EXPECT_EQ(tracelens::e01_base("img.E02"), std::string("img"));
+    EXPECT_EQ(tracelens::e01_base("foo.E00"), std::string("foo"));
+    EXPECT_EQ(tracelens::e01_base("img.dd"), std::string(""));    // not an E01 segment
+    EXPECT_EQ(tracelens::e01_base("notes.txt"), std::string(""));
 }
 
-static void test_disk_image_indexer_scan() {
+TEST(HttpAgentTest, disk_image_indexer_scan) {
     const fs::path root = fs::temp_directory_path() / "tracelens_idx_test";
     fs::remove_all(root);
     fs::create_directories(root);
@@ -1147,10 +1129,10 @@ static void test_disk_image_indexer_scan() {
     tracelens::DiskImageIndexer indexer({root.string()});
     std::string err;
     auto entries = indexer.scan(err);
-    CHECK(err.empty());
+    EXPECT_TRUE(err.empty());
 
     // Expected: 1 E01 + 2 DD + 1 Directory = 4.
-    CHECK_EQ(entries.size(), static_cast<size_t>(4));
+    EXPECT_EQ(entries.size(), static_cast<size_t>(4));
 
     int n_e01 = 0, n_dd = 0, n_dir = 0;
     std::string e01_path;
@@ -1165,17 +1147,17 @@ static void test_disk_image_indexer_scan() {
             default: break;
         }
     }
-    CHECK_EQ(n_e01, 1);
-    CHECK_EQ(n_dd, 2);
-    CHECK_EQ(n_dir, 1);
+    EXPECT_EQ(n_e01, 1);
+    EXPECT_EQ(n_dd, 2);
+    EXPECT_EQ(n_dir, 1);
     // The deduped entry is the first segment, with the first segment's size.
-    CHECK_CONTAINS(e01_path, "case.E01");
-    CHECK_EQ(e01_size, static_cast<std::uint64_t>(100));
+    EXPECT_THAT(e01_path, testing::HasSubstr("case.E01"));
+    EXPECT_EQ(e01_size, static_cast<std::uint64_t>(100));
     // Directory size comes from POSIX stat() (std::filesystem::file_size rejects
     // directories with EISDIR); it must be > 0 (schema constraint). Pins that fix.
-    CHECK(dir_size > 0);
+    EXPECT_TRUE(dir_size > 0);
     // All reported paths are absolute.
-    for (const auto& e : entries) CHECK(fs::path(e.path).is_absolute());
+    for (const auto& e : entries) EXPECT_TRUE(fs::path(e.path).is_absolute());
 
     // Mixed-case EWF segments dedup to one entry (case-insensitive base key).
     const fs::path mroot = fs::temp_directory_path() / "tracelens_idx_mixed";
@@ -1187,10 +1169,10 @@ static void test_disk_image_indexer_scan() {
         tracelens::DiskImageIndexer midx({mroot.string()});
         std::string merr;
         auto me = midx.scan(merr);
-        CHECK(merr.empty());
+        EXPECT_TRUE(merr.empty());
         int me01 = 0;
         for (const auto& e : me) if (e.format == tracelens::ImageFormat::E01) ++me01;
-        CHECK_EQ(me01, 1);
+        EXPECT_EQ(me01, 1);
     }
     fs::remove_all(mroot);
 
@@ -1198,13 +1180,13 @@ static void test_disk_image_indexer_scan() {
     tracelens::DiskImageIndexer bad({"/no/such/dir/here"});
     std::string berr;
     auto be = bad.scan(berr);
-    CHECK(!berr.empty());
-    CHECK(be.empty());
+    EXPECT_TRUE(!berr.empty());
+    EXPECT_TRUE(be.empty());
 
     fs::remove_all(root);
 }
 
-static void test_index_uploader() {
+TEST(HttpAgentTest, index_uploader) {
     FakeHttpClient http;
     http.post_response = {200, R"({"indexed":2,"updated":0,"total":2})", ""};
 
@@ -1215,44 +1197,44 @@ static void test_index_uploader() {
 
     tracelens::IndexUploader up(http, "client-uuid-123");
     std::string err;
-    CHECK(up.upload(entries, err));
-    CHECK(err.empty());
-    CHECK_EQ(http.post_calls.size(), static_cast<size_t>(1));
-    CHECK_EQ(http.post_calls[0].first,
+    EXPECT_TRUE(up.upload(entries, err));
+    EXPECT_TRUE(err.empty());
+    EXPECT_EQ(http.post_calls.size(), static_cast<size_t>(1));
+    EXPECT_EQ(http.post_calls[0].first,
              std::string("/api/clients/client-uuid-123/index-images"));
 
     // The body is a bare JSON array of DiskImageCreate objects.
     auto body = nlohmann::json::parse(http.post_calls[0].second);
-    CHECK(body.is_array());
-    CHECK_EQ(body.size(), static_cast<size_t>(2));
-    CHECK_EQ(body[0]["path"].get<std::string>(), std::string("/abs/case.E01"));
-    CHECK_EQ(body[0]["size_bytes"].get<std::uint64_t>(), static_cast<std::uint64_t>(100));
-    CHECK_EQ(body[0]["format"].get<std::string>(), std::string("E01"));
-    CHECK(body[0]["image_metadata"].is_object());
-    CHECK(!body[0].contains("md5_hash"));  // omitted (brief D2)
+    EXPECT_TRUE(body.is_array());
+    EXPECT_EQ(body.size(), static_cast<size_t>(2));
+    EXPECT_EQ(body[0]["path"].get<std::string>(), std::string("/abs/case.E01"));
+    EXPECT_EQ(body[0]["size_bytes"].get<std::uint64_t>(), static_cast<std::uint64_t>(100));
+    EXPECT_EQ(body[0]["format"].get<std::string>(), std::string("E01"));
+    EXPECT_TRUE(body[0]["image_metadata"].is_object());
+    EXPECT_TRUE(!body[0].contains("md5_hash"));  // omitted (brief D2)
 
     // Empty entries -> no round trip, success.
     FakeHttpClient http2;
     tracelens::IndexUploader up2(http2, "client-uuid-123");
     std::string e2;
-    CHECK(up2.upload({}, e2));
-    CHECK_EQ(http2.post_calls.size(), static_cast<size_t>(0));
+    EXPECT_TRUE(up2.upload({}, e2));
+    EXPECT_EQ(http2.post_calls.size(), static_cast<size_t>(0));
 
     // Empty client_id -> false + error (cannot form the path).
     FakeHttpClient http3;
     tracelens::IndexUploader up3(http3, "");
     std::string e3;
-    CHECK(!up3.upload(entries, e3));
-    CHECK_CONTAINS(e3, "client_id");
-    CHECK_EQ(http3.post_calls.size(), static_cast<size_t>(0));
+    EXPECT_TRUE(!up3.upload(entries, e3));
+    EXPECT_THAT(e3, testing::HasSubstr("client_id"));
+    EXPECT_EQ(http3.post_calls.size(), static_cast<size_t>(0));
 
     // Server error -> false + error.
     FakeHttpClient http4;
     http4.post_response = {500, "", ""};
     tracelens::IndexUploader up4(http4, "client-uuid-123");
     std::string e4;
-    CHECK(!up4.upload(entries, e4));
-    CHECK_CONTAINS(e4, "HTTP 500");
+    EXPECT_TRUE(!up4.upload(entries, e4));
+    EXPECT_THAT(e4, testing::HasSubstr("HTTP 500"));
 }
 
 // base64url (unpadded) encode, to mint a JWT payload for the client_id test.
@@ -1273,27 +1255,27 @@ static std::string b64url(const std::string& in) {
     return out;  // no padding
 }
 
-static void test_jwt_client_id_decode() {
+TEST(HttpAgentTest, jwt_client_id_decode) {
     // header.payload.signature — only the payload is read; sig is a dummy.
     const std::string payload = R"({"client_id":"abc-123-def","type":"client"})";
     const std::string token = "hdr." + b64url(payload) + ".sig";
     tracelens::JwtClient jwt(token);
-    CHECK_EQ(jwt.client_id(), std::string("abc-123-def"));
+    EXPECT_EQ(jwt.client_id(), std::string("abc-123-def"));
 
     // A payload without client_id -> "".
     tracelens::JwtClient none("hdr." + b64url(R"({"type":"client"})") + ".sig");
-    CHECK_EQ(none.client_id(), std::string(""));
+    EXPECT_EQ(none.client_id(), std::string(""));
 
     // A non-base64 / non-JSON payload -> "" (no throw).
     tracelens::JwtClient bogus("abc.def.ghi");
-    CHECK_EQ(bogus.client_id(), std::string(""));
+    EXPECT_EQ(bogus.client_id(), std::string(""));
 
     // A token with no dots -> "".
     tracelens::JwtClient nodot("notajwt");
-    CHECK_EQ(nodot.client_id(), std::string(""));
+    EXPECT_EQ(nodot.client_id(), std::string(""));
 }
 
-static void test_config_image_dirs() {
+TEST(HttpAgentTest, config_image_dirs) {
     using C = tracelens::ClientConfig;
     const fs::path cfgp = fs::temp_directory_path() / "tracelens_idx_cfg";
     {
@@ -1307,10 +1289,10 @@ static void test_config_image_dirs() {
                     fs::perm_options::replace);
     std::string err;
     auto c = C::load_from_file(cfgp.string(), err);
-    CHECK(err.empty());
-    CHECK_EQ(c.image_dirs.size(), static_cast<size_t>(2));
-    CHECK_EQ(c.image_dirs[0], std::string("/images"));
-    CHECK_EQ(c.image_dirs[1], std::string("/evidence"));
+    EXPECT_TRUE(err.empty());
+    EXPECT_EQ(c.image_dirs.size(), static_cast<size_t>(2));
+    EXPECT_EQ(c.image_dirs[0], std::string("/images"));
+    EXPECT_EQ(c.image_dirs[1], std::string("/evidence"));
     fs::remove(cfgp);
 }
 
@@ -1348,7 +1330,7 @@ struct LoopbackServer {
     }
 };
 
-static void test_live_transport_get_post() {
+TEST(HttpAgentTest, live_transport_get_post) {
     LoopbackServer s;
     s.svr.Get("/ping", [](const httplib::Request&, httplib::Response& res) {
         res.status = 200;
@@ -1364,32 +1346,32 @@ static void test_live_transport_get_post() {
         res.set_header("Content-Type", "application/json");
         res.body = j.dump();
     });
-    CHECK(s.start());
+    EXPECT_TRUE(s.start());
 
     const std::string raw_token = "RAWTOKEN-test-12345";
     tracelens::HttpLibClient http(s.base(), raw_token);
 
     // GET round-trip: status + body parsed from a real socket response.
     auto g = http.get("/ping");
-    CHECK(g.error.empty());
-    CHECK_EQ(g.status, 200);
-    CHECK_EQ(g.body, std::string("ok"));
+    EXPECT_TRUE(g.error.empty());
+    EXPECT_EQ(g.status, 200);
+    EXPECT_EQ(g.body, std::string("ok"));
 
     // POST round-trip + the double-Bearer regression pin: the server saw exactly
     // one "Bearer " prefix on the raw token (the Task-16 wiring bug would show
     // "Bearer Bearer ...").
     const std::string payload = R"({"hello":"world","n":7})";
     auto p = http.post("/echo", payload);
-    CHECK(p.error.empty());
-    CHECK_EQ(p.status, 200);
+    EXPECT_TRUE(p.error.empty());
+    EXPECT_EQ(p.status, 200);
     auto echoed = nlohmann::json::parse(p.body);
-    CHECK_EQ(echoed["authorization"].get<std::string>(),
+    EXPECT_EQ(echoed["authorization"].get<std::string>(),
              std::string("Bearer " + raw_token));
-    CHECK_CONTAINS(echoed["content_type"].get<std::string>(), "application/json");
-    CHECK_EQ(echoed["body"].get<std::string>(), payload);
+    EXPECT_THAT(echoed["content_type"].get<std::string>(), testing::HasSubstr("application/json"));
+    EXPECT_EQ(echoed["body"].get<std::string>(), payload);
 }
 
-static void test_live_transport_redirect_not_followed() {
+TEST(HttpAgentTest, live_transport_redirect_not_followed) {
     LoopbackServer s;
     s.svr.Get("/redir", [](const httplib::Request&, httplib::Response& res) {
         res.status = 302;
@@ -1400,18 +1382,18 @@ static void test_live_transport_redirect_not_followed() {
         res.status = 200;
         res.body = "leaked";
     });
-    CHECK(s.start());
+    EXPECT_TRUE(s.start());
 
     const std::string raw_token = "secret-bearer";
     tracelens::HttpLibClient http(s.base(), raw_token);
 
     auto r = http.get("/redir");
-    CHECK(r.error.empty());
-    CHECK_EQ(r.status, 302);          // returned as-is, NOT followed
-    CHECK(!s.canary_hit.load());      // the token-bearing client never hit /canary
+    EXPECT_TRUE(r.error.empty());
+    EXPECT_EQ(r.status, 302);          // returned as-is, NOT followed
+    EXPECT_TRUE(!s.canary_hit.load());      // the token-bearing client never hit /canary
 }
 
-static void test_live_transport_dead_port_is_transport_error() {
+TEST(HttpAgentTest, live_transport_dead_port_is_transport_error) {
     // A GET to a port with no listener must surface as a transport-level failure
     // (status 0 + non-empty error) — the branch Poller/StatusReporter treat as
     // "server down". Deterministic dead port: start a server, grab its port, then
@@ -1421,7 +1403,7 @@ static void test_live_transport_dead_port_is_transport_error() {
         res.status = 200;
         res.body = "ok";
     });
-    CHECK(s.start());
+    EXPECT_TRUE(s.start());
     const int port = s.port;
     s.svr.stop();
     if (s.thread.joinable()) s.thread.join();
@@ -1429,32 +1411,32 @@ static void test_live_transport_dead_port_is_transport_error() {
 
     tracelens::HttpLibClient http("http://127.0.0.1:" + std::to_string(port), "tok");
     auto r = http.get("/ping");
-    CHECK_EQ(r.status, 0);
-    CHECK(!r.error.empty());
+    EXPECT_EQ(r.status, 0);
+    EXPECT_TRUE(!r.error.empty());
 }
 
 // Task 23: Periodic re-indexing tests.
 
-static void test_periodic_reindex_config() {
+TEST(HttpAgentTest, periodic_reindex_config) {
     // Verify reindex_interval_seconds is parsed from config file and env.
     // Default value (1800).
     tracelens::ClientConfig c1;
-    CHECK_EQ(c1.reindex_interval_seconds, 1800);
+    EXPECT_EQ(c1.reindex_interval_seconds, 1800);
 
     // File parsing.
     const fs::path cfg = fs::temp_directory_path() / "test_reindex.conf";
     { std::ofstream f(cfg); f << "reindex_interval_seconds=600\n"; }
     std::string err;
     auto c2 = tracelens::ClientConfig::load_from_file(cfg.string(), err);
-    CHECK(err.empty());
-    CHECK_EQ(c2.reindex_interval_seconds, 600);
+    EXPECT_TRUE(err.empty());
+    EXPECT_EQ(c2.reindex_interval_seconds, 600);
     fs::remove(cfg);
 
     // Zero disables.
     { std::ofstream f(cfg); f << "reindex_interval_seconds=0\n"; }
     auto c3 = tracelens::ClientConfig::load_from_file(cfg.string(), err);
-    CHECK(err.empty());
-    CHECK_EQ(c3.reindex_interval_seconds, 0);
+    EXPECT_TRUE(err.empty());
+    EXPECT_EQ(c3.reindex_interval_seconds, 0);
     fs::remove(cfg);
 
     // Env override.
@@ -1462,12 +1444,12 @@ static void test_periodic_reindex_config() {
     std::string old_save = old_val ? old_val : "";
     setenv("TRACELENS_REINDEX_INTERVAL", "900", 1);
     auto c4 = tracelens::ClientConfig::load_from_env(err);
-    CHECK_EQ(c4.reindex_interval_seconds, 900);  // Verifies env parsing worked
+    EXPECT_EQ(c4.reindex_interval_seconds, 900);  // Verifies env parsing worked
     if (old_val) setenv("TRACELENS_REINDEX_INTERVAL", old_save.c_str(), 1);
     else unsetenv("TRACELENS_REINDEX_INTERVAL");
 }
 
-static void test_periodic_reindex_zero_disables() {
+TEST(HttpAgentTest, periodic_reindex_zero_disables) {
     // reindex_interval=0 should disable periodic re-indexing (only startup index).
     FakeHttpClient fake;
     fake.get_response = {200, R"({"commands":[]})", ""};
@@ -1498,10 +1480,10 @@ static void test_periodic_reindex_zero_disables() {
     // so index_uploader.upload() is never called (not even at startup).
     // This is the designed behavior: interval=0 means "no periodic re-indexing",
     // and the one-shot index at startup is handled by main() before the loop.
-    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(0));
+    EXPECT_EQ(fake.post_calls.size(), static_cast<size_t>(0));
 }
 
-static void test_periodic_reindex_error_continues() {
+TEST(HttpAgentTest, periodic_reindex_error_continues) {
     // Re-index failures should log a warning but not crash the agent.
     FakeHttpClient fake;
     fake.get_response = {200, R"({"commands":[]})", ""};
@@ -1535,7 +1517,7 @@ static void test_periodic_reindex_error_continues() {
 
     // Run one iteration — re-index will attempt upload and fail, but service
     // should continue (no crash, still returns 0).
-    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+    EXPECT_EQ(service.run(/*single_iteration=*/true), 0);
 
     // Upload was attempted (POST to /index-images).
     bool found_index = false;
@@ -1545,12 +1527,12 @@ static void test_periodic_reindex_error_continues() {
             break;
         }
     }
-    CHECK(found_index);
+    EXPECT_TRUE(found_index);
 
     fs::remove_all(imgdir);
 }
 
-static void test_periodic_reindex_triggers() {
+TEST(HttpAgentTest, periodic_reindex_triggers) {
     // Verify re-index triggers after the interval elapses.
     // Uses a small interval (1 second) to keep the test fast.
     FakeHttpClient fake;
@@ -1579,82 +1561,25 @@ static void test_periodic_reindex_triggers() {
 
     // First iteration: last_reindex_time_ is initialized to current time,
     // so (now - now >= 1) is false — no re-index yet.
-    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+    EXPECT_EQ(service.run(/*single_iteration=*/true), 0);
     size_t after_first = fake.post_calls.size();
-    CHECK_EQ(after_first, static_cast<size_t>(0));  // No re-index on first run
+    EXPECT_EQ(after_first, static_cast<size_t>(0));  // No re-index on first run
 
     // Sleep for >1 second so the next iteration triggers the first re-index.
     std::this_thread::sleep_for(std::chrono::seconds(1) + std::chrono::milliseconds(100));
 
     // Second iteration: enough time elapsed, re-index fires.
-    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+    EXPECT_EQ(service.run(/*single_iteration=*/true), 0);
     size_t after_second = fake.post_calls.size();
-    CHECK(after_second > after_first);  // Re-index POST made
+    EXPECT_TRUE(after_second > after_first);  // Re-index POST made
 
     fs::remove_all(imgdir);
 }
 
-// Safety net: if any test wedges (most likely a regression of the pipe-capture
-// deadlock), kill the whole suite instead of hanging the gate forever.
-static void on_test_alarm(int) {
-    const char m[] = "FAIL: test suite timed out (60s) — likely a pipe-capture "
-                     "deadlock regression\n";
-    ssize_t w = write(STDERR_FILENO, m, sizeof(m) - 1);
-    (void)w;
-    _exit(1);  // async-signal-safe
-}
 
-int main() {
-    std::signal(SIGALRM, on_test_alarm);
-    alarm(60);  // generous; the over-cap test must finish in well under a second
+int main(int argc, char** argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+// GTest provides timeout support via CMakeLists.txt (set_property TIMEOUT 60).
 
-    test_jwt_client();
-    test_jwt_client_id_decode();
-    test_config_validate();
-    test_config_load_from_file();
-    test_config_image_dirs();
-    test_command_from_json();
-    test_status_update_to_json();
-    test_poller_parses_commands();
-    test_poller_skips_malformed();
-    test_poller_transport_error();
-    test_poller_missing_commands_key();
-    test_status_reporter();
-    test_build_analyzer_argv();
-    test_collect_db_artifacts();
-    test_analyze_executor_success();
-    test_analyze_executor_missing_param_no_spawn();
-    test_analyze_executor_missing_file_no_spawn();
-    test_analyze_executor_nonzero_exit();
-    test_analyze_executor_nonanalyze_is_stub();
-    test_process_runner_basic();
-    test_process_runner_nonzero_with_stderr();
-    test_process_runner_over_cap_does_not_deadlock();
-    test_result_uploader();
-    test_service_single_iteration();
-    test_service_handles_empty_poll();
-    test_service_reports_failed_execution();
-    test_config_ipv6_localhost_allowed();
-    test_service_loop_uploads_then_completes();
-    test_service_loop_upload_failure_marks_failed();
-    test_sqlite_store_roundtrip();
-    test_sqlite_store_restart_recovery();
-    test_sqlite_store_replace_on_redeliver();
-    test_service_recover_reports_orphans_failed();
-    test_service_recover_keeps_orphan_when_report_fails();
-    test_sqlite_store_durability_defaults();
-    test_detect_format();
-    test_e01_base();
-    test_disk_image_indexer_scan();
-    test_index_uploader();
-    test_live_transport_get_post();
-    test_live_transport_redirect_not_followed();
-    test_live_transport_dead_port_is_transport_error();
-    test_periodic_reindex_config();
-    test_periodic_reindex_zero_disables();
-    test_periodic_reindex_error_continues();
-    test_periodic_reindex_triggers();
-
-    std::cout << "checks: " << g_checks << "  failures: " << g_failures << "\n";
-    return g_failures == 0 ? 0 : 1;
 }
