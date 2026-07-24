@@ -1487,10 +1487,10 @@ static void test_periodic_reindex_zero_disables() {
                                         indexer, index_uploader,
                                         10, 0, "test-client", logger);
 
-    // Run multiple iterations — upload() should only be called once (at startup)
-    // because last_reindex_time_ is initialized to 0, triggering the initial index,
-    // but the zero interval means the timer check (now - last_reindex_time_ >= 0)
-    // would always pass, so the code guards it with `if (reindex_interval_ > 0)`.
+    // Run multiple iterations — upload() should never be called because
+    // reindex_interval=0 means the periodic branch `if (reindex_interval_ > 0)`
+    // is skipped entirely. The one-shot startup index is handled by main()
+    // before the loop, not by the service.
     for (int i = 0; i < 5; ++i) {
         service.run(/*single_iteration=*/true);
     }
@@ -1529,6 +1529,10 @@ static void test_periodic_reindex_error_continues() {
     tracelens::HttpAgentService service(poller, reporter, executor, uploader, store,
                                         indexer, index_uploader,
                                         10, 1, "test-client", logger);
+
+    // Sleep for >1 second so the first iteration triggers a re-index
+    // (last_reindex_time_ is initialized to current time, so interval must elapse).
+    std::this_thread::sleep_for(std::chrono::seconds(1) + std::chrono::milliseconds(100));
 
     // Run one iteration — re-index will attempt upload and fail, but service
     // should continue (no crash, still returns 0).
@@ -1574,19 +1578,19 @@ static void test_periodic_reindex_triggers() {
                                         indexer, index_uploader,
                                         10, 1, "test-client", logger);
 
-    // First iteration: last_reindex_time_ is 0, so (now - 0 >= 1) is true,
-    // triggering the initial re-index.
+    // First iteration: last_reindex_time_ is initialized to current time,
+    // so (now - now >= 1) is false — no re-index yet.
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
     size_t after_first = fake.post_calls.size();
-    CHECK(after_first >= 1);  // At least the index upload POST
+    CHECK_EQ(after_first, static_cast<size_t>(0));  // No re-index on first run
 
-    // Sleep for >1 second so the next iteration triggers another re-index.
+    // Sleep for >1 second so the next iteration triggers the first re-index.
     std::this_thread::sleep_for(std::chrono::seconds(1) + std::chrono::milliseconds(100));
 
-    // Second iteration: another re-index should fire.
+    // Second iteration: enough time elapsed, re-index fires.
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
     size_t after_second = fake.post_calls.size();
-    CHECK(after_second > after_first);  // More POSTs (second re-index)
+    CHECK(after_second > after_first);  // Re-index POST made
 
     fs::remove_all(imgdir);
 }
