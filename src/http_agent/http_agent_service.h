@@ -72,10 +72,12 @@ private:
     ILogger& logger_;
     std::atomic<bool> stop_requested_{false};
 
-    // Tracks wall-clock time of the last re-index (Task 23). Initialized to 0
-    // so the first poll cycle triggers an initial index. Updated after each
-    // successful re-index (or unchanged on failure — retry next period).
-    std::time_t last_reindex_time_ = 0;
+    // Tracks wall-clock time of the last re-index (Task 23). Initialized to
+    // current time so the first poll cycle waits for the interval to elapse
+    // before triggering the first periodic re-index (main() already does the
+    // startup index). Updated after each successful re-index (or unchanged on
+    // failure — retry next period).
+    std::time_t last_reindex_time_ = std::time(nullptr);
 
     bool stop_requested() const {
         return stop_requested_.load() || g_request_stop.load();
