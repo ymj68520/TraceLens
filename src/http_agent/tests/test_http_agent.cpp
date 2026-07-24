@@ -6,8 +6,11 @@
 //    the POSTs the loop issues;
 //  - a FakeProcessRunner implements IProcessRunner, returning a canned
 //    ProcessResult and (optionally) simulating the analyzer writing its output DB.
-// The real HttpLibClient / PosixProcessRunner are compiled+linked (TLS + fork/exec
-// paths present) but not exercised against a network / real process here.
+// The real HttpLibClient is compiled+linked (TLS path present) but not exercised
+// against a network here. PosixProcessRunner, by contrast, IS exercised against
+// real processes (test_process_runner_*) — including an over-cap case (>8 MiB)
+// that pins the pipe-capture deadlock fix. A 60s SIGALRM guards the whole suite
+// against a regression that would otherwise wedge the test process forever.
 
 #include "client_config.h"
 #include "command_executor.h"
@@ -23,11 +26,13 @@
 
 #include "json.hpp"
 
+#include <csignal>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <set>
 #include <string>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -740,7 +745,58 @@ static void test_service_loop_upload_failure_marks_failed() {
     fs::remove_all(work);
 }
 
+// ----------------------------------------------------------- PosixProcessRunner
+// These exercise the REAL fork/exec/poll/wait path against actual processes (no
+// Fake). They pin the two behaviors a unit-test fake can't catch: real pipe
+// capture, and the over-cap deadlock fix.
+static void test_process_runner_basic() {
+    tracelens::PosixProcessRunner runner;
+    auto r = runner.run({"/bin/echo", "hello-world"}, "");
+    CHECK(r.error.empty());
+    CHECK_EQ(r.exit_code, 0);
+    CHECK_CONTAINS(r.stdout_text, "hello-world");
+}
+
+static void test_process_runner_nonzero_with_stderr() {
+    tracelens::PosixProcessRunner runner;
+    // Write to stderr and exit 3. argv is hardcoded by the test, never derived
+    // from command input, so invoking /bin/sh here does NOT undermine the
+    // production invariant (the real run() still uses execvp, no shell).
+    auto r = runner.run({"/bin/sh", "-c", "echo oops >&2; exit 3"}, "");
+    CHECK(r.error.empty());
+    CHECK_EQ(r.exit_code, 3);
+    CHECK_CONTAINS(r.stderr_text, "oops");
+}
+
+// The deadlock pin: the child writes far MORE than the 8 MiB capture cap. Before
+// the fix, drain() stopped reading at the cap, the child blocked on write(),
+// waitpid() never returned, and the 60s alarm killed the whole process. Now the
+// pipe keeps draining past the cap (discarding) and capture flattens at exactly
+// kStreamCap while the run still completes.
+static void test_process_runner_over_cap_does_not_deadlock() {
+    tracelens::PosixProcessRunner runner;
+    // 10 MiB of NULs from /dev/zero (> 8 MiB cap).
+    auto r = runner.run({"/bin/sh", "-c", "head -c 10000000 /dev/zero"}, "");
+    CHECK(r.error.empty());
+    CHECK_EQ(r.exit_code, 0);  // reaching here at all means it didn't hang
+    constexpr size_t kCap = 8 * 1024 * 1024;
+    CHECK_EQ(r.stdout_text.size(), kCap);  // capped, not unbounded
+}
+
+// Safety net: if any test wedges (most likely a regression of the pipe-capture
+// deadlock), kill the whole suite instead of hanging the gate forever.
+static void on_test_alarm(int) {
+    const char m[] = "FAIL: test suite timed out (60s) — likely a pipe-capture "
+                     "deadlock regression\n";
+    ssize_t w = write(STDERR_FILENO, m, sizeof(m) - 1);
+    (void)w;
+    _exit(1);  // async-signal-safe
+}
+
 int main() {
+    std::signal(SIGALRM, on_test_alarm);
+    alarm(60);  // generous; the over-cap test must finish in well under a second
+
     test_jwt_client();
     test_config_validate();
     test_config_load_from_file();
@@ -758,6 +814,9 @@ int main() {
     test_analyze_executor_missing_file_no_spawn();
     test_analyze_executor_nonzero_exit();
     test_analyze_executor_nonanalyze_is_stub();
+    test_process_runner_basic();
+    test_process_runner_nonzero_with_stderr();
+    test_process_runner_over_cap_does_not_deadlock();
     test_result_uploader();
     test_service_single_iteration();
     test_service_handles_empty_poll();
