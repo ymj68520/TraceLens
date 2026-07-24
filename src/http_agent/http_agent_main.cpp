@@ -11,6 +11,7 @@
 
 #include "client_config.h"
 #include "command_executor.h"
+#include "command_store.h"
 #include "http_agent_service.h"
 #include "http_client.h"
 #include "jwt_client.h"
@@ -66,10 +67,20 @@ int main(int argc, char** argv) {
         work_dir = (std::filesystem::current_path() / "tracelens_work").string();
     }
 
+    // Default the in-flight state DB alongside the work dir if not set.
+    std::string state_db = cfg.state_db_path;
+    if (state_db.empty()) {
+        state_db = (std::filesystem::path(work_dir) / "tracelens_state.db").string();
+    }
+    std::error_code mkec;
+    std::filesystem::create_directories(std::filesystem::path(state_db).parent_path(),
+                                        mkec);
+
     tracelens::HttpLibClient transport(cfg.server_base_url, jwt.bearer_value());
     tracelens::Poller poller(transport);
     tracelens::StatusReporter reporter(transport);
     tracelens::ResultUploader uploader(transport);
+    tracelens::SqliteCommandStore store(state_db);
     tracelens::PosixProcessRunner runner;
     tracelens::AnalyzeDiskExecutor executor(runner, cfg.analyzer_path, work_dir,
                                             cfg.hostname);
@@ -80,7 +91,7 @@ int main(int argc, char** argv) {
     std::signal(SIGTERM, [](int) { tracelens::g_request_stop.store(true); });
 
     tracelens::HttpAgentService service(poller, reporter, executor, uploader,
-                                        cfg.poll_interval_seconds, logger);
+                                        store, cfg.poll_interval_seconds, logger);
     try {
         return service.run(/*single_iteration=*/once);
     } catch (const std::exception& e) {

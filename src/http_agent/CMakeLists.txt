@@ -1,8 +1,11 @@
 # TraceLens client HTTP agent — standalone CMake project.
 #
 # Deliberately separate from the root ForensicAnalyzer build: the agent needs
-# only cpp-httplib (header-only), OpenSSL (TLS), Threads, and nlohmann/json —
-# NOT the heavy forensic deps (hivex/evtx/xapian/poppler/...) the root requires.
+# only cpp-httplib (header-only), OpenSSL (TLS), Threads, nlohmann/json, and
+# SQLite3 (Task 18 in-flight command store) — NOT the heavy forensic deps
+# (hivex/evtx/xapian/poppler/...) the root requires. SQLite is an ubiquitous
+# lightweight dep and is the analyzer's own output format, so it stays within
+# the standalone-build principle.
 # Build & test directly:
 #   cmake -S src/http_agent -B build/http_agent -DCMAKE_BUILD_TYPE=Release
 #   cmake --build build/http_agent
@@ -23,6 +26,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 find_package(OpenSSL REQUIRED)
+find_package(SQLite3 REQUIRED)
 find_package(Threads REQUIRED)
 
 set(AGENT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
@@ -39,6 +43,7 @@ add_library(tracelens_agent_lib STATIC
     client_config.cpp
     process_runner.cpp
     result_uploader.cpp
+    command_store.cpp
 )
 target_include_directories(tracelens_agent_lib PUBLIC
     ${AGENT_DIR}
@@ -52,7 +57,7 @@ target_compile_definitions(tracelens_agent_lib PUBLIC CPPHTTPLIB_OPENSSL_SUPPORT
 # must precede cpp-httplib's own (per libs/cpp-mcp/CMakeLists.txt note).
 target_include_directories(tracelens_agent_lib PRIVATE ${OPENSSL_INCLUDE_DIR})
 target_link_libraries(tracelens_agent_lib PUBLIC
-    OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
+    OpenSSL::SSL OpenSSL::Crypto SQLite::SQLite3 Threads::Threads)
 
 # The production agent executable.
 add_executable(tracelens_agent http_agent_main.cpp)

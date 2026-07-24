@@ -77,6 +77,7 @@ ClientConfig ClientConfig::load_from_file(const std::string& path, std::string& 
         else if (key == "hostname")          c.hostname = val;
         else if (key == "analyzer_path")     c.analyzer_path = val;
         else if (key == "work_base_dir")     c.work_base_dir = val;
+        else if (key == "state_db_path")     c.state_db_path = val;
     }
     return c;
 }
@@ -90,6 +91,7 @@ ClientConfig ClientConfig::load_from_env(std::string& err) {
     if (const char* v = std::getenv("TRACELENS_HOSTNAME"))        c.hostname = v;
     if (const char* v = std::getenv("TRACELENS_ANALYZER_PATH"))   c.analyzer_path = v;
     if (const char* v = std::getenv("TRACELENS_WORK_DIR"))        c.work_base_dir = v;
+    if (const char* v = std::getenv("TRACELENS_STATE_DB"))        c.state_db_path = v;
     return c;
 }
 

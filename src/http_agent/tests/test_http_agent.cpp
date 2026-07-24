@@ -118,6 +118,29 @@ struct FakeProcessRunner : tracelens::IProcessRunner {
     }
 };
 
+// --------------------------------------------------------------- FakeCommandStore
+struct FakeCommandStore : tracelens::ICommandStore {
+    std::vector<std::string> started_ids;
+    std::vector<std::string> cleared_ids;
+    std::vector<tracelens::Command> orphans_to_return;  // empty by default
+    bool fail = false;  // make every op return false (sets err)
+
+    bool record_started(const tracelens::Command& c, std::string& err) override {
+        started_ids.push_back(c.id);
+        if (fail) { err = "injected"; return false; }
+        return true;
+    }
+    bool clear(const std::string& id, std::string& err) override {
+        cleared_ids.push_back(id);
+        if (fail) { err = "injected"; return false; }
+        return true;
+    }
+    std::vector<tracelens::Command> recover_orphans(std::string& err) override {
+        if (fail) { err = "injected"; return {}; }
+        return orphans_to_return;  // empty -> recover() is a no-op
+    }
+};
+
 // Helper: parse a JSON command string into a Command.
 static tracelens::Command parse_cmd(const std::string& json) {
     return nlohmann::json::parse(json).get<tracelens::Command>();
@@ -610,8 +633,9 @@ static void test_service_single_iteration() {
     tracelens::StubExecutor executor;
     tracelens::ResultUploader uploader(fake);
     NoopLogger logger;
-    tracelens::HttpAgentService service(poller, reporter, executor, uploader, 10,
-                                        logger);
+    FakeCommandStore store;
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader,
+                                        store, 10, logger);
 
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
 
@@ -621,6 +645,13 @@ static void test_service_single_iteration() {
     CHECK_EQ(fake.post_calls[1].first, std::string("/api/commands/c1/status"));
     CHECK_CONTAINS(fake.post_calls[0].second, "in_progress");
     CHECK_CONTAINS(fake.post_calls[1].second, "completed");
+
+    // Persistence wiring (Task 18): each polled command is recorded in-flight
+    // before execution and cleared once it reaches a terminal state.
+    CHECK_EQ(store.started_ids.size(), static_cast<size_t>(1));
+    CHECK_EQ(store.started_ids[0], std::string("c1"));
+    CHECK_EQ(store.cleared_ids.size(), static_cast<size_t>(1));
+    CHECK_EQ(store.cleared_ids[0], std::string("c1"));
 }
 
 static void test_service_handles_empty_poll() {
@@ -631,8 +662,9 @@ static void test_service_handles_empty_poll() {
     tracelens::StubExecutor executor;
     tracelens::ResultUploader uploader(fake);
     NoopLogger logger;
-    tracelens::HttpAgentService service(poller, reporter, executor, uploader, 10,
-                                        logger);
+    FakeCommandStore store;
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader,
+                                        store, 10, logger);
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
     CHECK(fake.post_calls.empty());  // nothing to report
 }
@@ -652,8 +684,9 @@ static void test_service_reports_failed_execution() {
     FailingExecutor executor;
     tracelens::ResultUploader uploader(fake);
     NoopLogger logger;
-    tracelens::HttpAgentService service(poller, reporter, executor, uploader, 10,
-                                        logger);
+    FakeCommandStore store;
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader,
+                                        store, 10, logger);
 
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
     CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(2));
@@ -687,8 +720,9 @@ static void test_service_loop_uploads_then_completes() {
     runner.produce_output = true;
     tracelens::AnalyzeDiskExecutor executor(runner, "/opt/fa", work.string());
     NoopLogger logger;
-    tracelens::HttpAgentService service(poller, reporter, executor, uploader, 10,
-                                        logger);
+    FakeCommandStore store;
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader,
+                                        store, 10, logger);
 
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
 
@@ -730,8 +764,9 @@ static void test_service_loop_upload_failure_marks_failed() {
     runner.produce_output = true;
     tracelens::AnalyzeDiskExecutor executor(runner, "/opt/fa", work.string());
     NoopLogger logger;
-    tracelens::HttpAgentService service(poller, reporter, executor, uploader, 10,
-                                        logger);
+    FakeCommandStore store;
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader,
+                                        store, 10, logger);
 
     CHECK_EQ(service.run(/*single_iteration=*/true), 0);
 
@@ -783,6 +818,151 @@ static void test_process_runner_over_cap_does_not_deadlock() {
     CHECK_EQ(r.stdout_text.size(), kCap);  // capped, not unbounded
 }
 
+// ------------------------------------------------------------- SqliteCommandStore
+// These use REAL temp SQLite files (the executor tests already use real temp
+// files), exercising the actual sqlite3 path — no fake.
+static void test_sqlite_store_roundtrip() {
+    const fs::path db = fs::temp_directory_path() / "tracelens_store_rt.db";
+    fs::remove(db);
+    // Clean sidecars from any prior run too.
+    fs::remove(fs::path(db) += "-wal");
+    fs::remove(fs::path(db) += "-shm");
+    fs::remove(fs::path(db) += "-journal");
+
+    tracelens::SqliteCommandStore store(db.string());
+    auto cmd = analyze_cmd_json("c-rt", "/data/case.E01", "t-rt", "windows")
+                   .get<tracelens::Command>();
+
+    std::string err;
+    CHECK(store.record_started(cmd, err));
+    CHECK(err.empty());
+
+    auto orphans = store.recover_orphans(err);
+    CHECK_EQ(orphans.size(), static_cast<size_t>(1));
+    CHECK_EQ(orphans[0].id, std::string("c-rt"));
+    CHECK_EQ(orphans[0].command_type, std::string("analyze_disk"));
+    std::string tid;
+    CHECK(orphans[0].has_task_id(tid));
+    CHECK_EQ(tid, std::string("t-rt"));
+    CHECK_EQ(orphans[0].priority, std::string("normal"));
+
+    // clear() removes the row -> no longer an orphan.
+    CHECK(store.clear("c-rt", err));
+    CHECK(store.recover_orphans(err).empty());
+
+    // clear() of an already-cleared id is idempotent (not an error).
+    CHECK(store.clear("c-rt", err));
+
+    fs::remove(db);
+    fs::remove(fs::path(db) += "-wal");
+    fs::remove(fs::path(db) += "-shm");
+    fs::remove(fs::path(db) += "-journal");
+}
+
+// The restart scenario: store1 records a command and is destroyed WITHOUT
+// clearing it (simulating a crash mid-execution). A fresh store2 opened on the
+// same file must recover it — proving the record survived process death.
+static void test_sqlite_store_restart_recovery() {
+    const fs::path db = fs::temp_directory_path() / "tracelens_store_restart.db";
+    fs::remove(db);
+    fs::remove(fs::path(db) += "-wal");
+    fs::remove(fs::path(db) += "-shm");
+    fs::remove(fs::path(db) += "-journal");
+
+    {
+        tracelens::SqliteCommandStore store1(db.string());
+        std::string err;
+        CHECK(store1.record_started(
+            analyze_cmd_json("c-survivor", "/d/x.E01", "t-s").get<tracelens::Command>(),
+            err));
+        // No clear() — "crash". store1 closes (commits) on scope exit.
+    }
+
+    // Fresh process, same DB file.
+    tracelens::SqliteCommandStore store2(db.string());
+    std::string err;
+    auto orphans = store2.recover_orphans(err);
+    CHECK_EQ(orphans.size(), static_cast<size_t>(1));
+    CHECK_EQ(orphans[0].id, std::string("c-survivor"));
+    std::string tid;
+    CHECK(orphans[0].has_task_id(tid));
+    CHECK_EQ(tid, std::string("t-s"));
+
+    fs::remove(db);
+    fs::remove(fs::path(db) += "-wal");
+    fs::remove(fs::path(db) += "-shm");
+    fs::remove(fs::path(db) += "-journal");
+}
+
+// A re-delivered command_id (e.g. server re-queue after TTL) must REPLACE, not
+// raise a PK-violation, and the recovered row reflects the latest parameters.
+static void test_sqlite_store_replace_on_redeliver() {
+    const fs::path db = fs::temp_directory_path() / "tracelens_store_replace.db";
+    fs::remove(db);
+    fs::remove(fs::path(db) += "-wal");
+    fs::remove(fs::path(db) += "-shm");
+    fs::remove(fs::path(db) += "-journal");
+
+    tracelens::SqliteCommandStore store(db.string());
+    std::string err;
+    CHECK(store.record_started(
+        analyze_cmd_json("c-dup", "/d/first.E01", "t-first").get<tracelens::Command>(),
+        err));
+    // Same id, different task/image -> replaces.
+    CHECK(store.record_started(
+        analyze_cmd_json("c-dup", "/d/second.E01", "t-second").get<tracelens::Command>(),
+        err));
+
+    auto orphans = store.recover_orphans(err);
+    CHECK_EQ(orphans.size(), static_cast<size_t>(1));  // not two
+    CHECK_EQ(orphans[0].id, std::string("c-dup"));
+    std::string tid;
+    CHECK(orphans[0].has_task_id(tid));
+    CHECK_EQ(tid, std::string("t-second"));  // latest, not first
+
+    fs::remove(db);
+    fs::remove(fs::path(db) += "-wal");
+    fs::remove(fs::path(db) += "-shm");
+    fs::remove(fs::path(db) += "-journal");
+}
+
+// The recovery path through the service: a pre-seeded orphan is reported FAILED
+// to the server and cleared, before any polling happens.
+static void test_service_recover_reports_orphans_failed() {
+    FakeHttpClient fake;
+    fake.get_response = {200, R"({"commands":[]})", ""};  // empty poll
+    tracelens::Poller poller(fake);
+    tracelens::StatusReporter reporter(fake);
+    tracelens::StubExecutor executor;
+    tracelens::ResultUploader uploader(fake);
+    FakeCommandStore store;
+    store.orphans_to_return.push_back(
+        parse_cmd(R"({"id":"orphan-1","command_type":"analyze_disk",)"
+                  R"("parameters":{"task_id":"t-old","image_path":"/data/old.E01"}})"));
+    NoopLogger logger;
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader,
+                                        store, 10, logger);
+
+    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+
+    // Exactly one POST: the recovery's failed report (empty poll -> no loop work).
+    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(1));
+    CHECK_EQ(fake.post_calls[0].first,
+             std::string("/api/commands/orphan-1/status"));
+    CHECK_CONTAINS(fake.post_calls[0].second, "failed");
+    CHECK_CONTAINS(fake.post_calls[0].second, "interrupted");
+    CHECK_EQ(nlohmann::json::parse(fake.post_calls[0].second)["command_id"]
+                 .get<std::string>(),
+             std::string("orphan-1"));
+    // The raw image path must NOT appear in the recovery status body.
+    CHECK(fake.post_calls[0].second.find("old.E01") == std::string::npos);
+    CHECK(fake.post_calls[0].second.find("/data/") == std::string::npos);
+
+    // The orphan was cleared from the local store.
+    CHECK_EQ(store.cleared_ids.size(), static_cast<size_t>(1));
+    CHECK_EQ(store.cleared_ids[0], std::string("orphan-1"));
+}
+
 // Safety net: if any test wedges (most likely a regression of the pipe-capture
 // deadlock), kill the whole suite instead of hanging the gate forever.
 static void on_test_alarm(int) {
@@ -824,6 +1004,10 @@ int main() {
     test_config_ipv6_localhost_allowed();
     test_service_loop_uploads_then_completes();
     test_service_loop_upload_failure_marks_failed();
+    test_sqlite_store_roundtrip();
+    test_sqlite_store_restart_recovery();
+    test_sqlite_store_replace_on_redeliver();
+    test_service_recover_reports_orphans_failed();
 
     std::cout << "checks: " << g_checks << "  failures: " << g_failures << "\n";
     return g_failures == 0 ? 0 : 1;

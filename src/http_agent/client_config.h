@@ -16,6 +16,7 @@ struct ClientConfig {
     std::string hostname;              // informational (reported hostname)
     std::string analyzer_path;         // path to the local forensics_analyzer binary
     std::string work_base_dir;         // parent of per-command work dirs (analyzer --db-dir)
+    std::string state_db_path;         // SQLite in-flight command store (Task 18); optional here
 
     // Returns an empty string if valid, else a human-readable error. Enforces:
     //  - token_path required
