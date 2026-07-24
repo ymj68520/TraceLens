@@ -36,11 +36,11 @@ void SqliteCommandStore::sqlite3_deleter::operator()(void* db) const {
 
 SqliteCommandStore::SqliteCommandStore(const std::string& path) {
     sqlite3* raw = nullptr;
-    // SQLITE_OPEN_URI lets ":memory:" and URI forms work; READWRITE|CREATE makes
-    // a missing file. (shared cache off — single connection.)
+    // READWRITE|CREATE makes a missing file. We deliberately do NOT pass
+    // SQLITE_OPEN_URI: the path is a plain filesystem path, and URI parsing
+    // would misread any '?'/'#' in a filename as a query/fragment.
     int rc = sqlite3_open_v2(path.c_str(), &raw,
-                             SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
-                                 SQLITE_OPEN_URI,
+                             SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
                              nullptr);
     if (rc != SQLITE_OK) {
         // On open failure sqlite3_open_v2 still allocates `raw` (a handle that

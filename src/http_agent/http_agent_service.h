@@ -44,8 +44,9 @@ public:
     // Runs until stop is requested (request_stop() / g_request_stop / SIGINT).
     // Returns 0 on a clean stop, non-zero only if the loop never started.
     // single_iteration=true performs exactly one poll cycle then returns — for
-    // the unit test (no sleeping). On the first entry, recover() runs once to
-    // report any crash-orphans from a prior run (Task 18).
+    // the unit test (no sleeping). recover() runs at the top of every run() to
+    // report any crash-orphans from a prior run (Task 18); it is idempotent
+    // (clear-after-report), so repeated run() calls are safe.
     int run(bool single_iteration = false);
 
     void request_stop() { stop_requested_.store(true); }
