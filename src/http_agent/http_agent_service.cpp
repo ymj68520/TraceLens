@@ -46,14 +46,22 @@ void HttpAgentService::recover() {
             "agent restarted; command interrupted — local status uncertain";
         std::string e;
         if (!reporter_.report(cmd.id, u, e)) {
+            // Do NOT clear: the failure signal never reached the server. Leaving
+            // the row lets the next restart retry the report (D3 — never lose a
+            // failure signal by deleting before it is communicated). Re-reporting
+            // is bounded (one row per orphan) and idempotent (Task 15b terminal
+            // guard); if the server stays down the agent can't do useful work
+            // anyway (polling fails too).
             logger_.warn("recover: could not report orphan " + cmd.id +
-                         " failed: " + e);
-            // Fall through to clear() anyway: best-effort, and the server TTL is
-            // the backstop if this report never lands.
+                         " failed: " + e + " (left in store for next restart)");
+            continue;
         }
         std::string ce;
         if (!store_.clear(cmd.id, ce)) {
-            logger_.warn("recover: could not clear orphan " + cmd.id + ": " + ce);
+            // Report landed but the local clear failed: the row will be
+            // re-reported next restart (harmless — terminal guard). Log only.
+            logger_.warn("recover: reported orphan " + cmd.id +
+                         " but could not clear it: " + ce);
         }
     }
     if (!orphans.empty()) {

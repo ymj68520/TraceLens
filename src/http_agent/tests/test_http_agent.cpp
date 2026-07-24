@@ -26,6 +26,8 @@
 
 #include "json.hpp"
 
+#include <sqlite3.h>
+
 #include <csignal>
 #include <filesystem>
 #include <fstream>
@@ -963,6 +965,79 @@ static void test_service_recover_reports_orphans_failed() {
     CHECK_EQ(store.cleared_ids[0], std::string("orphan-1"));
 }
 
+// Recovery MUST NOT clear an orphan whose FAILED report did not reach the server
+// — otherwise Task 18's value is defeated in exactly the failure case it targets
+// (crash + server briefly unreachable). Pins the Fix-1 behavior: clear() runs
+// only on a successful report.
+static void test_service_recover_keeps_orphan_when_report_fails() {
+    FakeHttpClient fake;
+    fake.get_response = {200, R"({"commands":[]})", ""};  // empty poll
+    fake.post_response = {500, "", ""};                    // every POST fails
+    tracelens::Poller poller(fake);
+    tracelens::StatusReporter reporter(fake);
+    tracelens::StubExecutor executor;
+    tracelens::ResultUploader uploader(fake);
+    FakeCommandStore store;
+    store.orphans_to_return.push_back(
+        parse_cmd(R"({"id":"orphan-2","command_type":"analyze_disk"})"));
+    NoopLogger logger;
+    tracelens::HttpAgentService service(poller, reporter, executor, uploader,
+                                        store, 10, logger);
+
+    CHECK_EQ(service.run(/*single_iteration=*/true), 0);
+
+    // The failed report was attempted but the orphan was NOT cleared, so a later
+    // restart can retry it (D3: never drop a failure signal before it lands).
+    CHECK_EQ(fake.post_calls.size(), static_cast<size_t>(1));
+    CHECK_EQ(store.cleared_ids.size(), static_cast<size_t>(0));
+}
+
+// Pin the crash-durability defaults the whole feature rests on (D5). The store
+// opens with no pragmas, so SQLite's defaults apply; the in-suite restart test
+// only proves clean-close survival, so this asserts the durability mechanism is
+// actually in effect (a future PRAGMA synchronous=NORMAL would silently weaken
+// it and the gate would otherwise stay green). Read via a raw sqlite3 RO handle.
+static int pragma_callback(void* ctx, int argc, char** argv, char** /*cols*/) {
+    if (argc > 0 && argv && argv[0] && ctx) {
+        *static_cast<std::string*>(ctx) = argv[0];
+    }
+    return 0;
+}
+
+static void test_sqlite_store_durability_defaults() {
+    const fs::path db = fs::temp_directory_path() / "tracelens_store_dur.db";
+    fs::remove(db);
+    fs::remove(fs::path(db) += "-wal");
+    fs::remove(fs::path(db) += "-shm");
+    fs::remove(fs::path(db) += "-journal");
+
+    { tracelens::SqliteCommandStore store(db.string()); }  // open + ensure schema
+
+    sqlite3* raw = nullptr;
+    CHECK_EQ(sqlite3_open_v2(db.string().c_str(), &raw, SQLITE_OPEN_READONLY,
+                             nullptr),
+             SQLITE_OK);
+    std::string synchronous, journal;
+    char* zerr = nullptr;
+    sqlite3_exec(raw, "PRAGMA synchronous", pragma_callback, &synchronous, &zerr);
+    sqlite3_exec(raw, "PRAGMA journal_mode", pragma_callback, &journal, &zerr);
+    sqlite3_close(raw);
+
+    // synchronous == 2 (FULL): an autocommitted record_started fsyncs at commit,
+    // surviving SIGKILL/power loss. This is the load-bearing durability pin.
+    CHECK_EQ(synchronous, std::string("2"));
+    // journal_mode == delete: rollback journal (NOT WAL). If WAL is adopted
+    // later as forward hardening, update this to assert WAL *with* synchronous
+    // FULL (which still fsyncs on commit); the invariant under test is
+    // commit-durability, currently satisfied by FULL + rollback.
+    CHECK_EQ(journal, std::string("delete"));
+
+    fs::remove(db);
+    fs::remove(fs::path(db) += "-wal");
+    fs::remove(fs::path(db) += "-shm");
+    fs::remove(fs::path(db) += "-journal");
+}
+
 // Safety net: if any test wedges (most likely a regression of the pipe-capture
 // deadlock), kill the whole suite instead of hanging the gate forever.
 static void on_test_alarm(int) {
@@ -1008,6 +1083,8 @@ int main() {
     test_sqlite_store_restart_recovery();
     test_sqlite_store_replace_on_redeliver();
     test_service_recover_reports_orphans_failed();
+    test_service_recover_keeps_orphan_when_report_fails();
+    test_sqlite_store_durability_defaults();
 
     std::cout << "checks: " << g_checks << "  failures: " << g_failures << "\n";
     return g_failures == 0 ? 0 : 1;
