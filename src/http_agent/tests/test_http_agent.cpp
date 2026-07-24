@@ -26,16 +26,20 @@
 #include "result_uploader.h"
 #include "status_reporter.h"
 
+#include "httplib.h"
 #include "json.hpp"
 
 #include <sqlite3.h>
 
+#include <atomic>
+#include <chrono>
 #include <csignal>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <set>
 #include <string>
+#include <thread>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -1258,6 +1262,125 @@ static void test_config_image_dirs() {
     fs::remove(cfgp);
 }
 
+// --------------------------------------------------------- Task 20: live transport
+// The ONLY tests that exercise the REAL HttpLibClient over a real socket. Every
+// other transport test uses FakeHttpClient, so the live path — how the Bearer
+// header is actually formed, the body serialized, the response parsed, redirects
+// handled, transport errors surfaced — was 0% covered. The Task-19 reviewer
+// caught a double-Bearer wiring bug that exactly this gap let ship (FakeHttpClient
+// cannot see header formation). These pin that class.
+//
+// A loopback httplib::Server run on an ephemeral port in a background thread.
+// RAII: stop()+join() on destruction.
+struct LoopbackServer {
+    httplib::Server svr;
+    std::thread thread;
+    int port = 0;
+    std::atomic<bool> canary_hit{false};
+
+    bool start() {
+        port = svr.bind_to_any_port("127.0.0.1");
+        if (port <= 0) return false;
+        thread = std::thread([this] { svr.listen_after_bind(); });
+        // Wait for the accept loop to go live before any client connects.
+        for (int i = 0; i < 200 && !svr.is_running(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        return svr.is_running();
+    }
+
+    std::string base() const { return "http://127.0.0.1:" + std::to_string(port); }
+
+    ~LoopbackServer() {
+        if (svr.is_running()) svr.stop();
+        if (thread.joinable()) thread.join();
+    }
+};
+
+static void test_live_transport_get_post() {
+    LoopbackServer s;
+    s.svr.Get("/ping", [](const httplib::Request&, httplib::Response& res) {
+        res.status = 200;
+        res.body = "ok";
+    });
+    s.svr.Post("/echo", [](const httplib::Request& req, httplib::Response& res) {
+        // Echo exactly what arrived so the client can assert on the real bytes.
+        nlohmann::json j;
+        j["authorization"] = req.get_header_value("Authorization");
+        j["content_type"] = req.get_header_value("Content-Type");
+        j["body"] = req.body;
+        res.status = 200;
+        res.set_header("Content-Type", "application/json");
+        res.body = j.dump();
+    });
+    CHECK(s.start());
+
+    const std::string raw_token = "RAWTOKEN-test-12345";
+    tracelens::HttpLibClient http(s.base(), raw_token);
+
+    // GET round-trip: status + body parsed from a real socket response.
+    auto g = http.get("/ping");
+    CHECK(g.error.empty());
+    CHECK_EQ(g.status, 200);
+    CHECK_EQ(g.body, std::string("ok"));
+
+    // POST round-trip + the double-Bearer regression pin: the server saw exactly
+    // one "Bearer " prefix on the raw token (the Task-16 wiring bug would show
+    // "Bearer Bearer ...").
+    const std::string payload = R"({"hello":"world","n":7})";
+    auto p = http.post("/echo", payload);
+    CHECK(p.error.empty());
+    CHECK_EQ(p.status, 200);
+    auto echoed = nlohmann::json::parse(p.body);
+    CHECK_EQ(echoed["authorization"].get<std::string>(),
+             std::string("Bearer " + raw_token));
+    CHECK_CONTAINS(echoed["content_type"].get<std::string>(), "application/json");
+    CHECK_EQ(echoed["body"].get<std::string>(), payload);
+}
+
+static void test_live_transport_redirect_not_followed() {
+    LoopbackServer s;
+    s.svr.Get("/redir", [](const httplib::Request&, httplib::Response& res) {
+        res.status = 302;
+        res.set_header("Location", "/canary");
+    });
+    s.svr.Get("/canary", [&s](const httplib::Request&, httplib::Response& res) {
+        s.canary_hit.store(true);
+        res.status = 200;
+        res.body = "leaked";
+    });
+    CHECK(s.start());
+
+    const std::string raw_token = "secret-bearer";
+    tracelens::HttpLibClient http(s.base(), raw_token);
+
+    auto r = http.get("/redir");
+    CHECK(r.error.empty());
+    CHECK_EQ(r.status, 302);          // returned as-is, NOT followed
+    CHECK(!s.canary_hit.load());      // the token-bearing client never hit /canary
+}
+
+static void test_live_transport_dead_port_is_transport_error() {
+    // A GET to a port with no listener must surface as a transport-level failure
+    // (status 0 + non-empty error) — the branch Poller/StatusReporter treat as
+    // "server down". Deterministic dead port: start a server, grab its port, then
+    // stop it (the listen socket closes -> connect gets refused/timeout).
+    LoopbackServer s;
+    s.svr.Get("/ping", [](const httplib::Request&, httplib::Response& res) {
+        res.status = 200;
+        res.body = "ok";
+    });
+    CHECK(s.start());
+    const int port = s.port;
+    s.svr.stop();
+    if (s.thread.joinable()) s.thread.join();
+    // The dtor sees is_running()==false and thread not joinable -> no-op.
+
+    tracelens::HttpLibClient http("http://127.0.0.1:" + std::to_string(port), "tok");
+    auto r = http.get("/ping");
+    CHECK_EQ(r.status, 0);
+    CHECK(!r.error.empty());
+}
+
 // Safety net: if any test wedges (most likely a regression of the pipe-capture
 // deadlock), kill the whole suite instead of hanging the gate forever.
 static void on_test_alarm(int) {
@@ -1311,6 +1434,9 @@ int main() {
     test_e01_base();
     test_disk_image_indexer_scan();
     test_index_uploader();
+    test_live_transport_get_post();
+    test_live_transport_redirect_not_followed();
+    test_live_transport_dead_port_is_transport_error();
 
     std::cout << "checks: " << g_checks << "  failures: " << g_failures << "\n";
     return g_failures == 0 ? 0 : 1;
