@@ -55,6 +55,11 @@ target_include_directories(tracelens_agent_lib PUBLIC
 # CPPHTTPLIB_OPENSSL_SUPPORT before including it (mirrors libs/cpp-mcp line 39),
 # else an https:// URL silently falls back to plaintext.
 target_compile_definitions(tracelens_agent_lib PUBLIC CPPHTTPLIB_OPENSSL_SUPPORT)
+# Enforce TLS 1.3 minimum on the client transport (plan-mandated invariant).
+# The macro is PRIVATE to tracelens_agent_lib: only the http_agent opts in;
+# other cpp-httplib consumers (LLM proxies, cpp-mcp) retain TLS 1.2 behavior.
+# The macro gate is in libs/cpp-mcp/common/httplib.h (Task 21).
+target_compile_definitions(tracelens_agent_lib PRIVATE CPPHTTPLIB_ENFORCE_TLS1_3_MIN)
 # OpenSSL include dir is propagated as a usage requirement by OpenSSL::SSL, and
 # must precede cpp-httplib's own (per libs/cpp-mcp/CMakeLists.txt note).
 target_include_directories(tracelens_agent_lib PRIVATE ${OPENSSL_INCLUDE_DIR})

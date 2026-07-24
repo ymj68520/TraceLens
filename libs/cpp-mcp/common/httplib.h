@@ -9269,7 +9269,11 @@ inline SSLServer::SSLServer(const char *cert_path, const char *private_key_path,
                         SSL_OP_NO_COMPRESSION |
                             SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
 
+#ifdef CPPHTTPLIB_ENFORCE_TLS1_3_MIN
+    SSL_CTX_set_min_proto_version(ctx_, TLS1_3_VERSION);
+#else
     SSL_CTX_set_min_proto_version(ctx_, TLS1_2_VERSION);
+#endif
 
     if (private_key_password != nullptr && (private_key_password[0] != '\0')) {
       SSL_CTX_set_default_passwd_cb_userdata(
@@ -9302,7 +9306,11 @@ inline SSLServer::SSLServer(X509 *cert, EVP_PKEY *private_key,
                         SSL_OP_NO_COMPRESSION |
                             SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
 
+#ifdef CPPHTTPLIB_ENFORCE_TLS1_3_MIN
+    SSL_CTX_set_min_proto_version(ctx_, TLS1_3_VERSION);
+#else
     SSL_CTX_set_min_proto_version(ctx_, TLS1_2_VERSION);
+#endif
 
     if (SSL_CTX_use_certificate(ctx_, cert) != 1 ||
         SSL_CTX_use_PrivateKey(ctx_, private_key) != 1) {
@@ -9404,7 +9412,11 @@ inline SSLClient::SSLClient(const std::string &host, int port,
     : ClientImpl(host, port, client_cert_path, client_key_path) {
   ctx_ = SSL_CTX_new(TLS_client_method());
 
+#ifdef CPPHTTPLIB_ENFORCE_TLS1_3_MIN
+  SSL_CTX_set_min_proto_version(ctx_, TLS1_3_VERSION);
+#else
   SSL_CTX_set_min_proto_version(ctx_, TLS1_2_VERSION);
+#endif
 
   detail::split(&host_[0], &host_[host_.size()], '.',
                 [&](const char *b, const char *e) {
