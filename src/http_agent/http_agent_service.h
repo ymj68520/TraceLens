@@ -2,6 +2,7 @@
 
 #include "command_executor.h"
 #include "poller.h"
+#include "result_uploader.h"
 #include "status_reporter.h"
 
 #include <atomic>
@@ -24,15 +25,17 @@ public:
 // exits within a fraction of the poll interval.
 extern std::atomic<bool> g_request_stop;
 
-// The agent loop: poll -> report in_progress -> execute -> report
-// completed/failed. One iteration handles all commands claimed in that poll.
-// Robust by design: transport errors and per-command failures are logged and
-// the loop continues — a single bad request never brings the agent down.
+// The agent loop: poll -> report in_progress -> execute -> (upload artifacts)
+// -> report completed/failed. One iteration handles all commands claimed in
+// that poll. Robust by design: transport errors and per-command failures are
+// logged and the loop continues — a single bad request never brings the agent
+// down.
 class HttpAgentService {
 public:
     HttpAgentService(Poller& poller,
                      StatusReporter& reporter,
                      ICommandExecutor& executor,
+                     ResultUploader& uploader,
                      int poll_interval_seconds,
                      ILogger& logger);
 
@@ -48,6 +51,7 @@ private:
     Poller& poller_;
     StatusReporter& reporter_;
     ICommandExecutor& executor_;
+    ResultUploader& uploader_;
     int interval_;
     ILogger& logger_;
     std::atomic<bool> stop_requested_{false};

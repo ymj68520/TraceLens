@@ -14,11 +14,13 @@ std::atomic<bool> g_request_stop{false};
 HttpAgentService::HttpAgentService(Poller& poller,
                                    StatusReporter& reporter,
                                    ICommandExecutor& executor,
+                                   ResultUploader& uploader,
                                    int poll_interval_seconds,
                                    ILogger& logger)
     : poller_(poller),
       reporter_(reporter),
       executor_(executor),
+      uploader_(uploader),
       interval_(poll_interval_seconds),
       logger_(logger) {}
 
@@ -49,7 +51,24 @@ int HttpAgentService::run(bool single_iteration) {
                 }
             }
 
-            const auto result = executor_.execute(cmd);
+            auto result = executor_.execute(cmd);
+
+            // Upload derived artifacts when execution succeeded and produced
+            // some (metadata only; raw image never leaves the box). An upload
+            // failure makes the task's results undeliverable -> report FAILED so
+            // it is retriable and the operator is alerted (the local artifacts
+            // remain on disk for manual recovery; persistence is Task 18).
+            if (result.success && !result.task_id.empty() &&
+                !result.artifacts.empty()) {
+                std::string ue;
+                if (!uploader_.upload(result.task_id, result.artifacts, ue)) {
+                    result.success = false;
+                    result.message =
+                        "analysis completed but result upload failed: " + ue;
+                    logger_.error("upload failed for command " + cmd.id +
+                                  " (task " + result.task_id + "): " + ue);
+                }
+            }
 
             StatusUpdate u;
             u.status = result.success ? CommandStatus::Completed

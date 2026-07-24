@@ -19,6 +19,7 @@ std::string trim(const std::string& s) {
 
 std::string ClientConfig::validate(const ClientConfig& c) {
     if (c.token_path.empty()) return "token_path is required";
+    if (c.analyzer_path.empty()) return "analyzer_path is required";
     if (c.server_base_url.empty()) return "server_base_url is required";
 
     const auto pos = c.server_base_url.find("://");
@@ -74,6 +75,8 @@ ClientConfig ClientConfig::load_from_file(const std::string& path, std::string& 
         else if (key == "poll_interval_seconds") c.poll_interval_seconds = std::atoi(val.c_str());
         else if (key == "token_path")        c.token_path = val;
         else if (key == "hostname")          c.hostname = val;
+        else if (key == "analyzer_path")     c.analyzer_path = val;
+        else if (key == "work_base_dir")     c.work_base_dir = val;
     }
     return c;
 }
@@ -85,6 +88,8 @@ ClientConfig ClientConfig::load_from_env(std::string& err) {
     if (const char* v = std::getenv("TRACELENS_POLL_INTERVAL"))   c.poll_interval_seconds = std::atoi(v);
     if (const char* v = std::getenv("TRACELENS_TOKEN_PATH"))      c.token_path = v;
     if (const char* v = std::getenv("TRACELENS_HOSTNAME"))        c.hostname = v;
+    if (const char* v = std::getenv("TRACELENS_ANALYZER_PATH"))   c.analyzer_path = v;
+    if (const char* v = std::getenv("TRACELENS_WORK_DIR"))        c.work_base_dir = v;
     return c;
 }
 
