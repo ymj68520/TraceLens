@@ -551,6 +551,21 @@ enable_testing()
 add_subdirectory(tests)
 
 # ================================
+# C++ Client HTTP Agent
+# ================================
+# Standalone sub-project (Tasks 16-21) with minimal deps (OpenSSL, SQLite3,
+# Threads, nlohmann/json vendored). Does NOT depend on forensic libs.
+# Conditioned only on http_agent's deps (NOT on forensic deps), so it builds
+# as long as its own minimal deps are available, regardless of whether the
+# heavy forensic libs are present. This enables root builds that include the
+# client agent without gating it on the forensic dep chain.
+if(OpenSSL_FOUND AND SQLite3_FOUND)
+  add_subdirectory(src/http_agent)
+else()
+  message(WARNING "http_agent deps (OpenSSL or SQLite3) missing — skipping src/http_agent")
+endif()
+
+# ================================
 # Web Frontend Build Integration
 # ================================
 
