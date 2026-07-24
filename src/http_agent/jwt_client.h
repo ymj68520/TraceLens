@@ -24,6 +24,13 @@ public:
     // "Bearer <token>" — the Authorization header value.
     std::string bearer_value() const;
 
+    // The client's own id, read from the token's payload `client_id` claim
+    // (the server mints it at registration, auth_service.py). The token is NOT
+    // signature-verified here — we are reading our own claim, and the server
+    // re-verifies identity on the endpoint. Returns "" if the token has no
+    // parseable payload or no client_id claim (callers skip indexing that run).
+    std::string client_id() const;
+
     const std::string& token() const { return token_; }
 
 private:

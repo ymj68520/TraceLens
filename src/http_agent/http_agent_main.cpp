@@ -14,6 +14,8 @@
 #include "command_store.h"
 #include "http_agent_service.h"
 #include "http_client.h"
+#include "image_indexer.h"
+#include "index_uploader.h"
 #include "jwt_client.h"
 #include "poller.h"
 #include "process_runner.h"
@@ -85,6 +87,31 @@ int main(int argc, char** argv) {
     tracelens::AnalyzeDiskExecutor executor(runner, cfg.analyzer_path, work_dir,
                                             cfg.hostname);
     tracelens::ConsoleLogger logger;
+
+    // One-shot local image index at startup (Task 19): tell the server which
+    // disk images exist on this client so an analyze_disk command can later
+    // target a real image. Best effort — a failure here is logged, never fatal
+    // (brief D6): the command loop below still serves.
+    if (cfg.image_dirs.empty()) {
+        std::cerr << "image_dirs not configured; skipping local image index\n";
+    } else {
+        const std::string cid = jwt.client_id();
+        if (cid.empty()) {
+            std::cerr << "warning: no client_id in token; skipping image index\n";
+        } else {
+            tracelens::DiskImageIndexer indexer(cfg.image_dirs);
+            std::string scan_err;
+            auto entries = indexer.scan(scan_err);
+            if (!scan_err.empty()) std::cerr << "warning: index scan: " << scan_err << "\n";
+            tracelens::IndexUploader index_uploader(transport, cid);
+            std::string up_err;
+            if (!index_uploader.upload(entries, up_err)) {
+                std::cerr << "warning: image index upload: " << up_err << "\n";
+            } else {
+                std::cerr << "indexed " << entries.size() << " local image(s)\n";
+            }
+        }
+    }
 
     // Signal handler: async-signal-safe atomic store -> loop notices within ~200ms.
     std::signal(SIGINT,  [](int) { tracelens::g_request_stop.store(true); });

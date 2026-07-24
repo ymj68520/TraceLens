@@ -6,6 +6,7 @@
 // where its token lives.
 
 #include <string>
+#include <vector>
 
 namespace tracelens {
 
@@ -17,6 +18,7 @@ struct ClientConfig {
     std::string analyzer_path;         // path to the local forensics_analyzer binary
     std::string work_base_dir;         // parent of per-command work dirs (analyzer --db-dir)
     std::string state_db_path;         // SQLite in-flight command store (Task 18); optional here
+    std::vector<std::string> image_dirs;  // local dirs to index for disk images (Task 19); optional
 
     // Returns an empty string if valid, else a human-readable error. Enforces:
     //  - token_path required
@@ -33,7 +35,8 @@ struct ClientConfig {
 
     // Reads TRACELENS_SERVER_URL / TRACELENS_POLL_INTERVAL /
     // TRACELENS_TOKEN_PATH / TRACELENS_HOSTNAME / TRACELENS_ANALYZER_PATH /
-    // TRACELENS_WORK_DIR. Sets `err` on failure.
+    // TRACELENS_WORK_DIR / TRACELENS_STATE_DB / TRACELENS_IMAGE_DIRS. Sets `err`
+    // on failure.
     static ClientConfig load_from_env(std::string& err);
 };
 

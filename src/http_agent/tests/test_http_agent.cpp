@@ -16,6 +16,8 @@
 #include "command_executor.h"
 #include "http_agent_service.h"
 #include "http_client.h"
+#include "image_indexer.h"
+#include "index_uploader.h"
 #include "jwt_client.h"
 #include "models/command.h"
 #include "models/task_status.h"
@@ -1038,6 +1040,203 @@ static void test_sqlite_store_durability_defaults() {
     fs::remove(fs::path(db) += "-journal");
 }
 
+// ----------------------------------------------------------- Task 19: indexing
+static void test_detect_format() {
+    using F = tracelens::ImageFormat;
+    CHECK(tracelens::detect_format("image.e01", false) == F::E01);
+    CHECK(tracelens::detect_format("IMAGE.E01", false) == F::E01);
+    CHECK(tracelens::detect_format("disk.E99", false) == F::E01);
+    CHECK(tracelens::detect_format("set.e00", false) == F::E01);  // first segment variant
+    CHECK(tracelens::detect_format("evidence.dd", false) == F::DD);
+    CHECK(tracelens::detect_format("EVIDENCE.IMG", false) == F::DD);
+    CHECK(tracelens::detect_format("dump.raw", false) == F::DD);
+    CHECK(tracelens::detect_format("part.000", false) == F::DD);
+    CHECK(tracelens::detect_format("whatever", true) == F::Directory);
+    CHECK(tracelens::detect_format("notes.txt", false) == F::Unknown);
+    CHECK(tracelens::detect_format("output.db", false) == F::Unknown);
+    CHECK(tracelens::detect_format("noext", false) == F::Unknown);
+    CHECK(tracelens::detect_format("image.e1", false) == F::Unknown);    // only 1 digit
+    CHECK(tracelens::detect_format("image.exx", false) == F::Unknown);   // not digits
+    CHECK_EQ(tracelens::format_string(F::E01), std::string("E01"));
+    CHECK_EQ(tracelens::format_string(F::DD), std::string("DD"));
+    CHECK_EQ(tracelens::format_string(F::Directory), std::string("Directory"));
+}
+
+static void test_e01_base() {
+    CHECK_EQ(tracelens::e01_base("img.E01"), std::string("img"));
+    CHECK_EQ(tracelens::e01_base("img.E02"), std::string("img"));
+    CHECK_EQ(tracelens::e01_base("foo.E00"), std::string("foo"));
+    CHECK_EQ(tracelens::e01_base("img.dd"), std::string(""));    // not an E01 segment
+    CHECK_EQ(tracelens::e01_base("notes.txt"), std::string(""));
+}
+
+static void test_disk_image_indexer_scan() {
+    const fs::path root = fs::temp_directory_path() / "tracelens_idx_test";
+    fs::remove_all(root);
+    fs::create_directories(root);
+
+    // EWF set: 3 segments -> ONE E01 entry, the first (.E01).
+    { std::ofstream f(root / "case.E01"); f << std::string(100, 'x'); }
+    { std::ofstream f(root / "case.E02"); f << std::string(200, 'x'); }
+    { std::ofstream f(root / "case.E03"); f << std::string(300, 'x'); }
+    // DD + raw images.
+    { std::ofstream f(root / "disk.dd"); f << std::string(4096, 'y'); }
+    { std::ofstream f(root / "evidence.raw"); f << std::string(16, 'z'); }
+    // A directory entry -> Directory format.
+    fs::create_directory(root / "acquired_dir");
+    // Unknown + zero-size -> both skipped.
+    { std::ofstream f(root / "notes.txt"); f << "hi"; }
+    { std::ofstream f(root / "empty.dd"); /* zero bytes */ }
+
+    tracelens::DiskImageIndexer indexer({root.string()});
+    std::string err;
+    auto entries = indexer.scan(err);
+    CHECK(err.empty());
+
+    // Expected: 1 E01 + 2 DD + 1 Directory = 4.
+    CHECK_EQ(entries.size(), static_cast<size_t>(4));
+
+    int n_e01 = 0, n_dd = 0, n_dir = 0;
+    std::string e01_path;
+    std::uint64_t e01_size = 0;
+    for (const auto& e : entries) {
+        switch (e.format) {
+            case tracelens::ImageFormat::E01:
+                ++n_e01; e01_path = e.path; e01_size = e.size_bytes; break;
+            case tracelens::ImageFormat::DD:       ++n_dd; break;
+            case tracelens::ImageFormat::Directory: ++n_dir; break;
+            default: break;
+        }
+    }
+    CHECK_EQ(n_e01, 1);
+    CHECK_EQ(n_dd, 2);
+    CHECK_EQ(n_dir, 1);
+    // The deduped entry is the first segment, with the first segment's size.
+    CHECK_CONTAINS(e01_path, "case.E01");
+    CHECK_EQ(e01_size, static_cast<std::uint64_t>(100));
+    // All reported paths are absolute.
+    for (const auto& e : entries) CHECK(fs::path(e.path).is_absolute());
+
+    // A bogus directory yields an error string but no crash; empty result.
+    tracelens::DiskImageIndexer bad({"/no/such/dir/here"});
+    std::string berr;
+    auto be = bad.scan(berr);
+    CHECK(!berr.empty());
+    CHECK(be.empty());
+
+    fs::remove_all(root);
+}
+
+static void test_index_uploader() {
+    FakeHttpClient http;
+    http.post_response = {200, R"({"indexed":2,"updated":0,"total":2})", ""};
+
+    std::vector<tracelens::DiskImageEntry> entries = {
+        {"/abs/case.E01", 100, tracelens::ImageFormat::E01},
+        {"/abs/disk.dd", 4096, tracelens::ImageFormat::DD},
+    };
+
+    tracelens::IndexUploader up(http, "client-uuid-123");
+    std::string err;
+    CHECK(up.upload(entries, err));
+    CHECK(err.empty());
+    CHECK_EQ(http.post_calls.size(), static_cast<size_t>(1));
+    CHECK_EQ(http.post_calls[0].first,
+             std::string("/api/clients/client-uuid-123/index-images"));
+
+    // The body is a bare JSON array of DiskImageCreate objects.
+    auto body = nlohmann::json::parse(http.post_calls[0].second);
+    CHECK(body.is_array());
+    CHECK_EQ(body.size(), static_cast<size_t>(2));
+    CHECK_EQ(body[0]["path"].get<std::string>(), std::string("/abs/case.E01"));
+    CHECK_EQ(body[0]["size_bytes"].get<std::uint64_t>(), static_cast<std::uint64_t>(100));
+    CHECK_EQ(body[0]["format"].get<std::string>(), std::string("E01"));
+    CHECK(body[0]["image_metadata"].is_object());
+    CHECK(!body[0].contains("md5_hash"));  // omitted (brief D2)
+
+    // Empty entries -> no round trip, success.
+    FakeHttpClient http2;
+    tracelens::IndexUploader up2(http2, "client-uuid-123");
+    std::string e2;
+    CHECK(up2.upload({}, e2));
+    CHECK_EQ(http2.post_calls.size(), static_cast<size_t>(0));
+
+    // Empty client_id -> false + error (cannot form the path).
+    FakeHttpClient http3;
+    tracelens::IndexUploader up3(http3, "");
+    std::string e3;
+    CHECK(!up3.upload(entries, e3));
+    CHECK_CONTAINS(e3, "client_id");
+    CHECK_EQ(http3.post_calls.size(), static_cast<size_t>(0));
+
+    // Server error -> false + error.
+    FakeHttpClient http4;
+    http4.post_response = {500, "", ""};
+    tracelens::IndexUploader up4(http4, "client-uuid-123");
+    std::string e4;
+    CHECK(!up4.upload(entries, e4));
+    CHECK_CONTAINS(e4, "HTTP 500");
+}
+
+// base64url (unpadded) encode, to mint a JWT payload for the client_id test.
+static std::string b64url(const std::string& in) {
+    static const char* tab =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    std::string out;
+    int bits = 0, acc = 0;
+    for (unsigned char c : in) {
+        acc = (acc << 8) | c;
+        bits += 8;
+        while (bits >= 6) {
+            bits -= 6;
+            out.push_back(tab[(acc >> bits) & 0x3F]);
+        }
+    }
+    if (bits > 0) out.push_back(tab[(acc << (6 - bits)) & 0x3F]);
+    return out;  // no padding
+}
+
+static void test_jwt_client_id_decode() {
+    // header.payload.signature — only the payload is read; sig is a dummy.
+    const std::string payload = R"({"client_id":"abc-123-def","type":"client"})";
+    const std::string token = "hdr." + b64url(payload) + ".sig";
+    tracelens::JwtClient jwt(token);
+    CHECK_EQ(jwt.client_id(), std::string("abc-123-def"));
+
+    // A payload without client_id -> "".
+    tracelens::JwtClient none("hdr." + b64url(R"({"type":"client"})") + ".sig");
+    CHECK_EQ(none.client_id(), std::string(""));
+
+    // A non-base64 / non-JSON payload -> "" (no throw).
+    tracelens::JwtClient bogus("abc.def.ghi");
+    CHECK_EQ(bogus.client_id(), std::string(""));
+
+    // A token with no dots -> "".
+    tracelens::JwtClient nodot("notajwt");
+    CHECK_EQ(nodot.client_id(), std::string(""));
+}
+
+static void test_config_image_dirs() {
+    using C = tracelens::ClientConfig;
+    const fs::path cfgp = fs::temp_directory_path() / "tracelens_idx_cfg";
+    {
+        std::ofstream f(cfgp);
+        f << "server_base_url=https://server.example.com\n"
+          << "token_path=/t\nhostname=h\nanalyzer_path=/usr/bin/fa\n"
+          << "image_dirs=/images:/evidence :\n";  // trailing empty ignored
+    }
+    fs::permissions(cfgp,
+                    fs::perms::owner_read | fs::perms::owner_write,
+                    fs::perm_options::replace);
+    std::string err;
+    auto c = C::load_from_file(cfgp.string(), err);
+    CHECK(err.empty());
+    CHECK_EQ(c.image_dirs.size(), static_cast<size_t>(2));
+    CHECK_EQ(c.image_dirs[0], std::string("/images"));
+    CHECK_EQ(c.image_dirs[1], std::string("/evidence"));
+    fs::remove(cfgp);
+}
+
 // Safety net: if any test wedges (most likely a regression of the pipe-capture
 // deadlock), kill the whole suite instead of hanging the gate forever.
 static void on_test_alarm(int) {
@@ -1053,8 +1252,10 @@ int main() {
     alarm(60);  // generous; the over-cap test must finish in well under a second
 
     test_jwt_client();
+    test_jwt_client_id_decode();
     test_config_validate();
     test_config_load_from_file();
+    test_config_image_dirs();
     test_command_from_json();
     test_status_update_to_json();
     test_poller_parses_commands();
@@ -1085,6 +1286,10 @@ int main() {
     test_service_recover_reports_orphans_failed();
     test_service_recover_keeps_orphan_when_report_fails();
     test_sqlite_store_durability_defaults();
+    test_detect_format();
+    test_e01_base();
+    test_disk_image_indexer_scan();
+    test_index_uploader();
 
     std::cout << "checks: " << g_checks << "  failures: " << g_failures << "\n";
     return g_failures == 0 ? 0 : 1;

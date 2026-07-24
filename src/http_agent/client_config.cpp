@@ -15,6 +15,23 @@ std::string trim(const std::string& s) {
     return s.substr(a, b - a + 1);
 }
 
+// Splits a PATH-like colon-separated list, trimming each element and dropping
+// empties. (Linux platform: ':' is the list separator.)
+std::vector<std::string> split_dirs(const std::string& s) {
+    std::vector<std::string> out;
+    std::size_t pos = 0;
+    while (pos <= s.size()) {
+        const auto sep = s.find(':', pos);
+        const std::string tok = (sep == std::string::npos) ? s.substr(pos)
+                                                           : s.substr(pos, sep - pos);
+        const std::string t = trim(tok);
+        if (!t.empty()) out.push_back(t);
+        if (sep == std::string::npos) break;
+        pos = sep + 1;
+    }
+    return out;
+}
+
 }  // namespace
 
 std::string ClientConfig::validate(const ClientConfig& c) {
@@ -78,6 +95,7 @@ ClientConfig ClientConfig::load_from_file(const std::string& path, std::string& 
         else if (key == "analyzer_path")     c.analyzer_path = val;
         else if (key == "work_base_dir")     c.work_base_dir = val;
         else if (key == "state_db_path")     c.state_db_path = val;
+        else if (key == "image_dirs")        c.image_dirs = split_dirs(val);
     }
     return c;
 }
@@ -92,6 +110,7 @@ ClientConfig ClientConfig::load_from_env(std::string& err) {
     if (const char* v = std::getenv("TRACELENS_ANALYZER_PATH"))   c.analyzer_path = v;
     if (const char* v = std::getenv("TRACELENS_WORK_DIR"))        c.work_base_dir = v;
     if (const char* v = std::getenv("TRACELENS_STATE_DB"))        c.state_db_path = v;
+    if (const char* v = std::getenv("TRACELENS_IMAGE_DIRS"))     c.image_dirs = split_dirs(v);
     return c;
 }
 

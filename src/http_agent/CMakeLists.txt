@@ -44,6 +44,8 @@ add_library(tracelens_agent_lib STATIC
     process_runner.cpp
     result_uploader.cpp
     command_store.cpp
+    image_indexer.cpp
+    index_uploader.cpp
 )
 target_include_directories(tracelens_agent_lib PUBLIC
     ${AGENT_DIR}
