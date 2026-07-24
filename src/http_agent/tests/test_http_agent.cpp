@@ -1099,12 +1099,13 @@ static void test_disk_image_indexer_scan() {
     int n_e01 = 0, n_dd = 0, n_dir = 0;
     std::string e01_path;
     std::uint64_t e01_size = 0;
+    std::uint64_t dir_size = 0;
     for (const auto& e : entries) {
         switch (e.format) {
             case tracelens::ImageFormat::E01:
                 ++n_e01; e01_path = e.path; e01_size = e.size_bytes; break;
             case tracelens::ImageFormat::DD:       ++n_dd; break;
-            case tracelens::ImageFormat::Directory: ++n_dir; break;
+            case tracelens::ImageFormat::Directory: ++n_dir; dir_size = e.size_bytes; break;
             default: break;
         }
     }
@@ -1114,8 +1115,28 @@ static void test_disk_image_indexer_scan() {
     // The deduped entry is the first segment, with the first segment's size.
     CHECK_CONTAINS(e01_path, "case.E01");
     CHECK_EQ(e01_size, static_cast<std::uint64_t>(100));
+    // Directory size comes from POSIX stat() (std::filesystem::file_size rejects
+    // directories with EISDIR); it must be > 0 (schema constraint). Pins that fix.
+    CHECK(dir_size > 0);
     // All reported paths are absolute.
     for (const auto& e : entries) CHECK(fs::path(e.path).is_absolute());
+
+    // Mixed-case EWF segments dedup to one entry (case-insensitive base key).
+    const fs::path mroot = fs::temp_directory_path() / "tracelens_idx_mixed";
+    fs::remove_all(mroot);
+    fs::create_directories(mroot);
+    { std::ofstream f(mroot / "Case.E01"); f << std::string(50, 'q'); }
+    { std::ofstream f(mroot / "case.E02"); f << std::string(60, 'q'); }
+    {
+        tracelens::DiskImageIndexer midx({mroot.string()});
+        std::string merr;
+        auto me = midx.scan(merr);
+        CHECK(merr.empty());
+        int me01 = 0;
+        for (const auto& e : me) if (e.format == tracelens::ImageFormat::E01) ++me01;
+        CHECK_EQ(me01, 1);
+    }
+    fs::remove_all(mroot);
 
     // A bogus directory yields an error string but no crash; empty result.
     tracelens::DiskImageIndexer bad({"/no/such/dir/here"});
