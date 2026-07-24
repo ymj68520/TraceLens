@@ -1,6 +1,7 @@
 #pragma once
 
 #include "command_executor.h"
+#include "command_store.h"
 #include "poller.h"
 #include "result_uploader.h"
 #include "status_reporter.h"
@@ -36,13 +37,15 @@ public:
                      StatusReporter& reporter,
                      ICommandExecutor& executor,
                      ResultUploader& uploader,
+                     ICommandStore& store,
                      int poll_interval_seconds,
                      ILogger& logger);
 
     // Runs until stop is requested (request_stop() / g_request_stop / SIGINT).
     // Returns 0 on a clean stop, non-zero only if the loop never started.
     // single_iteration=true performs exactly one poll cycle then returns — for
-    // the unit test (no sleeping).
+    // the unit test (no sleeping). On the first entry, recover() runs once to
+    // report any crash-orphans from a prior run (Task 18).
     int run(bool single_iteration = false);
 
     void request_stop() { stop_requested_.store(true); }
@@ -52,6 +55,7 @@ private:
     StatusReporter& reporter_;
     ICommandExecutor& executor_;
     ResultUploader& uploader_;
+    ICommandStore& store_;
     int interval_;
     ILogger& logger_;
     std::atomic<bool> stop_requested_{false};
@@ -59,6 +63,10 @@ private:
     bool stop_requested() const {
         return stop_requested_.load() || g_request_stop.load();
     }
+
+    // Reports each in-flight orphan FAILED to the server and clears it. Called
+    // once at the top of run() before polling begins.
+    void recover();
 };
 
 class ConsoleLogger : public ILogger {

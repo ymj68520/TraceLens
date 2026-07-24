@@ -15,16 +15,56 @@ HttpAgentService::HttpAgentService(Poller& poller,
                                    StatusReporter& reporter,
                                    ICommandExecutor& executor,
                                    ResultUploader& uploader,
+                                   ICommandStore& store,
                                    int poll_interval_seconds,
                                    ILogger& logger)
     : poller_(poller),
       reporter_(reporter),
       executor_(executor),
       uploader_(uploader),
+      store_(store),
       interval_(poll_interval_seconds),
       logger_(logger) {}
 
+void HttpAgentService::recover() {
+    // Report any in-flight command left over from a prior (crashed) run as
+    // FAILED, then clear it. We do NOT re-run the analysis: a crash leaves
+    // on-disk state of unknown integrity, so re-execution would be unreliable.
+    // The terminal transition is idempotent (Task 15b guard), so re-reporting on
+    // a crash-during-recovery is harmless, and clear()-after-report (not before)
+    // means we never drop a failure signal.
+    std::string err;
+    auto orphans = store_.recover_orphans(err);
+    if (!err.empty()) {
+        logger_.warn("recover: could not read local in-flight store: " + err);
+        return;  // unreadable store: don't guess; let normal polling proceed
+    }
+    for (const auto& cmd : orphans) {
+        StatusUpdate u;
+        u.status = CommandStatus::Failed;
+        u.message =
+            "agent restarted; command interrupted — local status uncertain";
+        std::string e;
+        if (!reporter_.report(cmd.id, u, e)) {
+            logger_.warn("recover: could not report orphan " + cmd.id +
+                         " failed: " + e);
+            // Fall through to clear() anyway: best-effort, and the server TTL is
+            // the backstop if this report never lands.
+        }
+        std::string ce;
+        if (!store_.clear(cmd.id, ce)) {
+            logger_.warn("recover: could not clear orphan " + cmd.id + ": " + ce);
+        }
+    }
+    if (!orphans.empty()) {
+        logger_.info("recovered " + std::to_string(orphans.size()) +
+                     " orphaned command(s) from a prior run");
+    }
+}
+
 int HttpAgentService::run(bool single_iteration) {
+    recover();  // once, before polling: surface crash-orphans from a prior run
+
     while (!stop_requested()) {
         std::string err;
         auto commands = poller_.poll(err);
@@ -38,6 +78,17 @@ int HttpAgentService::run(bool single_iteration) {
 
         for (const auto& cmd : commands) {
             if (stop_requested()) break;
+
+            // Persist the in-flight marker BEFORE doing anything else, so a crash
+            // at any later point (even before the in_progress report lands) is
+            // recoverable. Best-effort: a store failure is logged, not fatal.
+            {
+                std::string se;
+                if (!store_.record_started(cmd, se)) {
+                    logger_.warn("could not persist in-flight record for " +
+                                 cmd.id + ": " + se);
+                }
+            }
 
             // Announce we have started. Best-effort: a failed in_progress report
             // is logged but does not stop us executing locally.
@@ -57,7 +108,7 @@ int HttpAgentService::run(bool single_iteration) {
             // some (metadata only; raw image never leaves the box). An upload
             // failure makes the task's results undeliverable -> report FAILED so
             // it is retriable and the operator is alerted (the local artifacts
-            // remain on disk for manual recovery; persistence is Task 18).
+            // remain on disk for manual recovery).
             if (result.success && !result.task_id.empty() &&
                 !result.artifacts.empty()) {
                 std::string ue;
@@ -81,6 +132,14 @@ int HttpAgentService::run(bool single_iteration) {
             }
             logger_.info("command " + cmd.id + " (" + cmd.command_type +
                          ") -> " + command_status_string(u.status));
+
+            // Reached a terminal state: clear the in-flight marker so it is not
+            // mistaken for an orphan on the next startup.
+            std::string ce;
+            if (!store_.clear(cmd.id, ce)) {
+                logger_.warn("could not clear in-flight record for " + cmd.id +
+                             ": " + ce);
+            }
         }
 
         if (single_iteration) break;
