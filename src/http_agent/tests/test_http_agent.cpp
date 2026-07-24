@@ -1,16 +1,20 @@
-// Self-contained unit tests for the TraceLens HTTP agent (Tasks 16 + 17).
+// Self-contained unit tests for the TraceLens HTTP agent (Tasks 16–20).
 //
 // No GTest dependency (so the gate builds with just g++ + OpenSSL + pthreads)
-// and no live server / no real analyzer binary:
+// and no real analyzer binary:
 //  - a FakeHttpClient implements IHttpClient, returning canned JSON and recording
 //    the POSTs the loop issues;
 //  - a FakeProcessRunner implements IProcessRunner, returning a canned
 //    ProcessResult and (optionally) simulating the analyzer writing its output DB.
-// The real HttpLibClient is compiled+linked (TLS path present) but not exercised
-// against a network here. PosixProcessRunner, by contrast, IS exercised against
-// real processes (test_process_runner_*) — including an over-cap case (>8 MiB)
-// that pins the pipe-capture deadlock fix. A 60s SIGALRM guards the whole suite
-// against a regression that would otherwise wedge the test process forever.
+// The real HttpLibClient IS exercised end-to-end over a loopback httplib::Server
+// (Task 20: test_live_transport_* — the only place the live transport path:
+// Bearer-header formation, body serialization, response parsing, redirect
+// handling, transport errors — is covered; FakeHttpClient cannot see header
+// formation, which is what let the Task-16 double-Bearer bug ship). The real
+// PosixProcessRunner IS exercised against real processes (test_process_runner_*)
+// — including an over-cap case (>8 MiB) that pins the pipe-capture deadlock fix.
+// A 60s SIGALRM guards the whole suite against a regression that would otherwise
+// wedge the test process forever.
 
 #include "client_config.h"
 #include "command_executor.h"
