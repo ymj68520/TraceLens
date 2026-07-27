@@ -72,7 +72,14 @@ class Settings(BaseSettings):
     DEFAULT_ORGANIZATION_NAME: str = "Default Organization"
     DEFAULT_SUBSCRIPTION_TIER: str = "enterprise"
 
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
+    # extra="ignore": the distributed server shares the repo-root ``.env``
+    # with the legacy python_service/httpserver (dual-stack deployment). That
+    # file carries httpserver-only vars (GRAPHITI_*, DB_NAME, LOG_LEVEL, ...);
+    # pydantic-settings rejects unknown keys sourced from an ``env_file``
+    # (unlike keys from os.environ, which it silently ignores), so without
+    # this the server fails to boot whenever the shared .env is present.
+    # Mirror httpserver/config.py's own extra="ignore".
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
 
 settings = Settings()
