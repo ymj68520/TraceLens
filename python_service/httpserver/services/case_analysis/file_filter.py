@@ -59,9 +59,19 @@ class FileFilter(FileFilterLegacyMixin):
         use_streaming: bool = True,
         task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Select files for case analysis.
+
+        Dispatches on settings.file_filter_mode:
+        - 'deterministic' (default): read all paths from the C++-filtered
+          files.db. No LLM, fully reproducible.
+        - 'llm': legacy LLM selection by case_description.
         """
-        Let LLM select important files based on case description.
-        """
+        mode = getattr(self.settings, "file_filter_mode", "deterministic")
+        if mode != "llm":
+            return await self._filter_files_deterministic(
+                files_db_path, max_files, task_id
+            )
+
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
 
@@ -95,6 +105,51 @@ class FileFilter(FileFilterLegacyMixin):
                 batch_size,
                 use_streaming,
             )
+
+    async def _filter_files_deterministic(
+        self,
+        files_db_path: str,
+        max_files: int,
+        task_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Deterministic file selection: read all paths from files.db.
+
+        files.db is already the product of the C++ FileFilter (scenario profile
+        applied at task creation). This method performs NO LLM call and NO
+        rule-based filtering - it selects every file the C++ filter kept, so the
+        selection is reproducible across runs.
+        """
+        records = self._get_file_list_from_db(files_db_path)
+        paths = sorted({r.get("path", "") for r in records if r.get("path")})
+        total_files = len(paths)
+
+        cap = int(getattr(self.settings, "filter_max_files", 0) or 0)
+        if cap > 0:
+            selected = paths[:cap]
+            logger.info(
+                f"[FILE_FILTER] Deterministic cap applied: {len(selected)}/{total_files} "
+                f"(filter_max_files={cap})"
+            )
+        else:
+            selected = paths
+
+        if max_files and max_files > 0:
+            logger.info(
+                f"[FILE_FILTER] max_files={max_files} ignored in deterministic mode; "
+                f"using settings.filter_max_files={cap}"
+            )
+
+        resolved_task_id = task_id or "_latest"
+        self._persist_filtered_files(files_db_path, resolved_task_id, selected)
+
+        return {
+            "filtered_files": selected,
+            "reasoning": f"Deterministic selection from C++-filtered files.db ({total_files} files)",
+            "total_files": total_files,
+            "selected_count": len(selected),
+            "model_used": "deterministic_cpp_filter",
+            "streaming_used": False,
+        }
 
     async def _do_filter_files_by_case(
         self,
