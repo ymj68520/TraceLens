@@ -209,8 +209,9 @@ class TestForeignKeys:
         total_fks = sum(
             len(t.foreign_keys) for t in Base.metadata.tables.values()
         )
-        # 16 FK relationships, matching the Task 1 schema.
-        assert total_fks == 16
+        # 17 FK relationships: 16 from the Task 1 schema + command_queue.task_id
+        # added in migration 002 (Task 4).
+        assert total_fks == 17
 
     @pytest.mark.parametrize(
         "model,col,parent,ondelete",
@@ -220,6 +221,7 @@ class TestForeignKeys:
             (DiskImage, "client_id", "clients", "CASCADE"),
             (CommandQueue, "client_id", "clients", "CASCADE"),
             (CommandQueue, "user_id", "users", "SET NULL"),
+            (CommandQueue, "task_id", "analysis_tasks", "CASCADE"),  # migration 002
             (AnalysisTask, "org_id", "organizations", "CASCADE"),
             (AnalysisTask, "client_id", "clients", "SET NULL"),
             (AnalysisTask, "user_id", "users", "SET NULL"),
