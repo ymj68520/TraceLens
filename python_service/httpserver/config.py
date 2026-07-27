@@ -251,7 +251,22 @@ class Settings(BaseSettings):
         default_factory=LLMFilterConfig,
         description="LLM file filtering configuration"
     )
-    
+
+    # File Filter Selection Mode
+    file_filter_mode: str = Field(
+        default="deterministic",
+        alias="FILE_FILTER_MODE",
+        description="File selection mode: 'deterministic' (default, reuses the "
+                    "C++ FileFilter product in files.db) or 'llm' (legacy LLM "
+                    "selection by case_description)."
+    )
+    filter_max_files: int = Field(
+        default=0,
+        alias="FILTER_MAX_FILES",
+        description="Max files selected in deterministic mode. 0 = unlimited "
+                    "(select all files meeting the profile)."
+    )
+
     @property
     def cpp_backend_base_url(self) -> str:
         """Get the full C++ backend URL."""
