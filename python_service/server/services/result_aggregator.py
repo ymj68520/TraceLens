@@ -62,6 +62,17 @@ class ResultAggregator:
         """
         Store a single analysis artifact.
 
+        Artifact-upload contract — stored **by reference only**:
+            ``file_path`` and ``storage_location`` are opaque client-supplied
+            handles; the distributed server does NOT assume ``PathManager``'s
+            local-mode fixed filenames (``raw.db`` / ``events.db`` /
+            ``files.db`` — those are a C++ in-process convention on :8080 and
+            do not apply to the distributed C/S path). ``result_metadata`` is
+            persisted verbatim, so ``result_metadata["base_name"]`` is the
+            canonical artifact base name the client sends (clients name their
+            DB outputs ``<baseName>_<kind>.db``). Raw disk-image bytes never
+            cross the wire — only references/metadata do.
+
         Args:
             task_id: Task the artifact belongs to.
             client_id: Client that produced it (must own the task).
@@ -69,7 +80,8 @@ class ResultAggregator:
             file_path: Optional path the artifact is known by on the client.
             file_size: Optional size in bytes.
             storage_location: Optional server-side storage handle.
-            result_metadata: Optional freeform metadata (JSONB).
+            result_metadata: Optional freeform metadata (JSONB); stored
+                verbatim, including any ``base_name`` key.
             db: Optional database session.
 
         Returns:
@@ -121,12 +133,22 @@ class ResultAggregator:
         """
         Store several artifacts for a task in a single transaction.
 
+        Artifact-upload contract — stored **by reference only**:
+            ``file_path`` and ``storage_location`` are opaque client-supplied
+            handles; the distributed server does NOT assume ``PathManager``'s
+            local-mode fixed filenames (``raw.db`` / ``events.db`` /
+            ``files.db``). Each item's ``result_metadata`` is persisted
+            verbatim, preserving ``base_name`` (the canonical artifact base
+            the client sends). See the "Artifact upload contract" section in
+            ``docs/api_reference/Python_REST_API.md``.
+
         Args:
             task_id: Task the artifacts belong to.
             client_id: Client that produced them (must own the task).
             results: Each dict may carry ``result_type`` (required),
                 ``file_path``, ``file_size``, ``storage_location``,
-                ``result_metadata``.
+                ``result_metadata`` (stored verbatim, including any
+                ``base_name`` key).
             db: Optional database session.
 
         Returns:
