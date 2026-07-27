@@ -117,6 +117,12 @@ std::string TaskManager::create_task(const std::string& path,
     new_task.llm_mode = llm_mode;
     new_task.case_description = case_description;
     new_task.filter_profile = filter_profile;
+    // Default to general_forensics so the deterministic C++ FileFilter always
+    // runs and files.db is always a profile-filtered product. Callers can still
+    // pass an explicit profile to override.
+    if (new_task.filter_profile.empty()) {
+        new_task.filter_profile = "general_forensics";
+    }
     new_task.enable_decryption = enable_decryption;
     new_task.key_file_dir = key_file_dir;
     new_task.decrypt_password = decrypt_password;

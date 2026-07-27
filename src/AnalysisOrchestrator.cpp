@@ -194,32 +194,30 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         }
         std::cout << "✓ Raw database: " << rawDbPath << "\n" << std::endl;
 
-        // Step 2: Apply file filter (if profile specified)
+        // Step 2: Apply file filter (default: general_forensics)
         // The filtered database is used by all downstream processors
         std::string effectiveRawDb = rawDbPath;
+        std::string effectiveProfile = args.filter_profile.empty()
+            ? "general_forensics" : args.filter_profile;
 
-        if (!args.filter_profile.empty()) {
-            std::cout << "[2/4] Applying file filter: " << args.filter_profile << "..." << std::endl;
-            std::string filteredDbPath = prefix + baseName + "_filtered.db";
+        std::cout << "[2/4] Applying file filter: " << effectiveProfile << "..." << std::endl;
+        std::string filteredDbPath = prefix + baseName + "_filtered.db";
 
-            try {
-                FileFilter filter;
-                auto stats = filter.applyFilterByName(rawDbPath, filteredDbPath, args.filter_profile);
+        try {
+            FileFilter filter;
+            auto stats = filter.applyFilterByName(rawDbPath, filteredDbPath, effectiveProfile);
 
-                if (stats.included_files > 0) {
-                    effectiveRawDb = filteredDbPath;
-                    std::cout << "✓ Filtered database: " << filteredDbPath
-                              << " (" << stats.included_files << "/" << stats.total_files
-                              << " files)\n" << std::endl;
-                } else {
-                    std::cerr << "Warning: Filter excluded all files. Using unfiltered data." << std::endl;
-                }
-            } catch (const std::exception& e) {
-                std::cerr << "Warning: Filter failed: " << e.what() << std::endl;
-                std::cerr << "Continuing with unfiltered data." << std::endl;
+            if (stats.included_files > 0) {
+                effectiveRawDb = filteredDbPath;
+                std::cout << "✓ Filtered database: " << filteredDbPath
+                          << " (" << stats.included_files << "/" << stats.total_files
+                          << " files)\n" << std::endl;
+            } else {
+                std::cerr << "Warning: Filter excluded all files. Using unfiltered data." << std::endl;
             }
-        } else {
-            std::cout << "[2/4] File filter: skipped (no profile specified)\n" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "Warning: Filter failed: " << e.what() << std::endl;
+            std::cerr << "Continuing with unfiltered data." << std::endl;
         }
 
         // Step 3: Classify files with scene-aware context
