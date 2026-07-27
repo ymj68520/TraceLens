@@ -43,11 +43,15 @@ fi
 # Default ports
 CPP_PORT=${HTTP_SERVER_PORT:-8080}
 PYTHON_PORT=${PYTHON_HTTP_PORT:-8090}
+# Distributed C/S server (python_service/server). Distinct from the legacy
+# httpserver's 8090 — dual-stack deployments run both simultaneously.
+CS_PORT="${CS_PORT:-8091}"
 WEB_PORT=${CPP_PORT}  # Web is served by C++ server
 
 # PIDs for cleanup
 CPP_PID=""
 PYTHON_PID=""
+CS_PID=""
 
 # Create logs directory
 LOG_DIR="$BUILD_DIR/logs"
@@ -81,6 +85,13 @@ cleanup() {
     echo -e "\n${YELLOW}───────────────────────────────────────────────────────${NC}"
     echo -e "${YELLOW}Shutting down all services...${NC}"
     echo -e "${YELLOW}───────────────────────────────────────────────────────${NC}"
+
+    if [ ! -z "$CS_PID" ]; then
+        echo -ne "${YELLOW}Stopping C/S server (PID: $CS_PID)...${NC} "
+        kill $CS_PID 2>/dev/null || true
+        wait $CS_PID 2>/dev/null || true
+        echo -e "${GREEN}✓ Stopped${NC}"
+    fi
 
     if [ ! -z "$PYTHON_PID" ]; then
         echo -ne "${YELLOW}Stopping Python service (PID: $PYTHON_PID)...${NC} "
@@ -116,6 +127,7 @@ echo -e "${YELLOW}────────────────────�
 # Kill any existing forensic_analyzer processes on our ports
 EXISTING_CPP=$(lsof -ti :$CPP_PORT 2>/dev/null || true)
 EXISTING_PY=$(lsof -ti :$PYTHON_PORT 2>/dev/null || true)
+EXISTING_CS=$(lsof -ti :$CS_PORT 2>/dev/null || true)
 
 if [ ! -z "$EXISTING_CPP" ]; then
     echo -e "${YELLOW}⚠ Found existing C++ service on port $CPP_PORT (PID: $EXISTING_CPP)${NC}"
@@ -129,6 +141,13 @@ if [ ! -z "$EXISTING_PY" ]; then
     kill -9 $EXISTING_PY 2>/dev/null || true
     sleep 1
     echo -e "${GREEN}✓ Killed existing Python service${NC}"
+fi
+
+if [ ! -z "$EXISTING_CS" ]; then
+    echo -e "${YELLOW}⚠ Found existing C/S server on port $CS_PORT (PID: $EXISTING_CS)${NC}"
+    kill -9 $EXISTING_CS 2>/dev/null || true
+    sleep 1
+    echo -e "${GREEN}✓ Killed existing C/S server${NC}"
 fi
 
 # ========================================================================
@@ -179,13 +198,17 @@ fi
 
 echo -e "${GREEN}✓ Virtual environment found${NC}    ${CYAN}$VENV_DIR${NC}"
 
-# Install/update dependencies if needed
+# Install/update dependencies if needed.
+# Both requirements files are installed so the launched services are covered:
+#   - httpserver/requirements.txt : legacy httpserver (:8090)
+#   - requirements.txt            : distributed C/S server (python_service/server, :8091)
 if [ "$FORCE_INSTALL" = "true" ] || [ ! -f "$VENV_DIR/.deps_installed" ]; then
     echo -ne "${YELLOW}Installing dependencies...${NC}"
-    if ! $PYTHON_EXEC -m pip install -q -r httpserver/requirements.txt; then
+    if ! $PYTHON_EXEC -m pip install -q -r httpserver/requirements.txt -r requirements.txt; then
         echo -e " ${RED}✗ Failed${NC}"
         echo -e "${RED}✗ Failed to install Python dependencies. Try recreating the venv:${NC}"
         echo -e "  ${CYAN}rm -rf $VENV_DIR && python3 -m venv $VENV_DIR${NC}"
+        echo -e "  ${CYAN}.venv/bin/pip install -r httpserver/requirements.txt -r requirements.txt${NC}"
         exit 1
     fi
     touch "$VENV_DIR/.deps_installed"
@@ -203,6 +226,34 @@ echo -e "${GREEN}✓ Python service started${NC}  PID: ${BOLD}$PYTHON_PID${NC} (
 # Wait for Python service to be ready
 if ! check_service "http://localhost:$PYTHON_PORT/health" "Python service" 30; then
     echo -e "${YELLOW}⚠ Python service health check failed. Check logs at $LOG_DIR/python_service.log${NC}"
+fi
+
+# ========================================================================
+# Start Distributed C/S Server (python_service/server, port 8091)
+# ========================================================================
+# Additive to the dual-stack: the legacy httpserver above keeps serving the
+# local-mode C++ backend on :8090; this server exposes the distributed
+# multi-tenant API on :8091. The two run simultaneously.
+echo -e "\n${BLUE}➤ Starting Distributed C/S Server${NC}"
+echo -e "${BLUE}────────────────────────────────────────────────────────────${NC}"
+
+# Pass PORT explicitly so the bound port always tracks $CS_PORT (the server's
+# settings.PORT defaults to 8091 via env, but this guarantees agreement between
+# the launched process and the health gate below regardless of .env).
+# Run in a subshell (with exec) so the script's own cwd is not mutated and
+# $CS_PID is the python process directly, not the subshell.
+( cd "$PROJECT_ROOT/python_service" && PORT="$CS_PORT" \
+    PYTHONPATH="$PROJECT_ROOT/python_service:$PYTHONPATH" \
+    exec $PYTHON_EXEC -m server.main ) > "$LOG_DIR/cs_server.log" 2>&1 &
+CS_PID=$!
+echo -e "${GREEN}✓ Distributed C/S server started${NC}  PID: ${BOLD}$CS_PID${NC} (Logging to $LOG_DIR/cs_server.log)"
+
+# Wait for the distributed server to be ready. On failure, print the log tail
+# and continue — the local C++/httpserver stack may still be useful on its own.
+if ! check_service "http://localhost:$CS_PORT/health" "C/S server" 30; then
+    echo -e "${YELLOW}⚠ C/S server health check failed. Check logs at $LOG_DIR/cs_server.log${NC}"
+    echo -e "${YELLOW}  Tail of cs_server.log:${NC}"
+    tail -n 40 "$LOG_DIR/cs_server.log" 2>/dev/null || true
 fi
 
 # ========================================================================
@@ -240,9 +291,14 @@ echo -e "     ${CYAN}→ API Docs (Swagger)${NC} ${GREEN}●${NC}  ${BLUE}http:/
 echo -e "     ${CYAN}→ API Docs (ReDoc)${NC}   ${GREEN}●${NC}  ${BLUE}http://localhost:$PYTHON_PORT/redoc${NC}"
 echo -e "     ${CYAN}→ Health Check${NC}      ${GREEN}●${NC}  ${BLUE}http://localhost:$PYTHON_PORT/health${NC}"
 
+echo -e "\n  ${CYAN}3. Distributed C/S${NC}   ${GREEN}●${NC}  ${BLUE}http://localhost:$CS_PORT${NC}"
+echo -e "     ${CYAN}→ API Docs (Swagger)${NC} ${GREEN}●${NC}  ${BLUE}http://localhost:$CS_PORT/docs${NC}"
+echo -e "     ${CYAN}→ Health Check${NC}      ${GREEN}●${NC}  ${BLUE}http://localhost:$CS_PORT/health${NC}"
+
 echo -e "\n${BOLD}🔧 Running Processes:${NC}"
-echo -e "     C++ Server:    ${GREEN}PID $CPP_PID${NC}"
-echo -e "     Python Service: ${GREEN}PID $PYTHON_PID${NC}"
+echo -e "     C++ Server:       ${GREEN}PID $CPP_PID${NC}"
+echo -e "     Python Service:   ${GREEN}PID $PYTHON_PID${NC}"
+echo -e "     C/S Server:       ${GREEN}PID $CS_PID${NC}"
 
 echo -e "\n${YELLOW}${BOLD}════════════════════════════════════════════════════════════${NC}"
 echo -e "${YELLOW}${BOLD}  Press ${RED}Ctrl+C${YELLOW} to stop all services${NC}"

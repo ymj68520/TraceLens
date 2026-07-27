@@ -78,6 +78,7 @@ echo ""
 
 check_port 8080 "C++ 后端"
 check_port 8090 "Python 服务"
+check_port ${CS_PORT:-8091} "分布式 C/S 服务"
 check_port 3000 "Web 前端" 2>/dev/null || true
 check_port 1234 "LM Studio" 2>/dev/null || true
 
@@ -107,6 +108,10 @@ fi
 if check_port 8090 "Python 服务" >/dev/null 2>&1; then
     test_endpoint "http://localhost:8090/health" "Python 健康检查"
     test_endpoint "http://localhost:8090/docs" "API 文档"
+fi
+
+if check_port ${CS_PORT:-8091} "分布式 C/S 服务" >/dev/null 2>&1; then
+    test_endpoint "http://localhost:${CS_PORT:-8091}/health" "C/S 健康检查"
 fi
 
 echo ""
