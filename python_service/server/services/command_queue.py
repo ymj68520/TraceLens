@@ -311,10 +311,12 @@ class CommandQueueService:
         late or stale report does not surface to the client. Mirrors the
         behavior of the route-resident helper this replaces.
 
-        ``TaskOrchestrator`` is imported lazily because
-        :mod:`server.services.task_orchestrator` imports
-        :class:`CommandQueueService` at module top — a top-level import here
-        would be circular.
+        ``TaskOrchestrator`` is imported lazily (at call-time, inside this
+        method) to keep the module-level coupling between two peer services
+        minimal: neither module imports the other at top level, so deferring
+        the reference avoids any import-order sensitivity and means the
+        orchestrator's heavier import chain (DB session + models) is only
+        paid when propagation actually runs.
 
         Args:
             db: Caller-owned session (the route's request session).
