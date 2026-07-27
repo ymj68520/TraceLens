@@ -28,6 +28,79 @@ Python HTTP 服务运行在端口 **8090**，提供知识图谱、LLM 分析和�
 11. [DLL 分析 API](#11-dll-分析-api)
 12. [Markitdown 文档转换 API](#12-markitdown-文档转换-api)
 13. [系统信息 API](#13-系统信息-api)
+14. [分布式 C/S 服务 — 产物上传契约 (Artifact upload contract)](#分布式-cs-服务--产物上传契约-artifact-upload-contract)
+
+---
+
+## 分布式 C/S 服务 — 产物上传契约 (Artifact upload contract)
+
+> **适用范围**：本节仅适用于 **分布式 C/S 服务**（distributed server，默认端口
+> **8091**；客户端通过 `command_executor` 上报分析产物）。它**不**适用于本地模式
+> （local mode，C++ `:8080` 进程内）或 legacy `httpserver`（`:8090`）。
+
+### 核心不变量：按引用存储 (store by reference)
+
+分布式服务对 DB 产物（forensic SQLite 数据库等）**仅按引用**存储，永远不接收原始磁盘
+镜像字节。客户端完成 `analyze_disk` 后，只把下列引用/元数据上报到服务端：
+
+| 字段 | 位置 | 含义 |
+|------|------|------|
+| `file_path` | `AnalysisResult.file_path` | 客户端侧的产物路径（opaque 字符串，服务端不解析、不假定文件名） |
+| `storage_location` | `AnalysisResult.storage_location` | 客户端/存储层句柄（如 `client-host-42`、对象存储桶等），用于定位产物的物理位置 |
+| `result_metadata.base_name` | `AnalysisResult.result_metadata["base_name"]` | **规范的产物基名**（canonical artifact base name），由客户端发送 |
+
+`ResultAggregator.store_results` / `store_result` 会把 `result_metadata` **原样**
+（verbatim）写入数据库（见 `python_service/server/services/result_aggregator.py`），
+因此 `base_name` 被完整保留。
+
+### 不假定 PathManager 的固定文件名
+
+**关键约束**：分布式服务端**不得**假设产物使用 `PathManager::getTaskDbPaths`
+（C++，`src/core/PathManager/PathManager.cpp`）所定义的固定文件名：
+
+| 固定文件名 | 仅在何处有效 |
+|-----------|--------------|
+| `raw.db` | 本地模式（C++ `:8080` 进程内） |
+| `events.db` | 本地模式（C++ `:8080` 进程内） |
+| `files.db` | 本地模式（C++ `:8080` 进程内） |
+
+这些固定名是**本地模式的约定**，在分布式链路上**不成立**。原因如下（DB 产物命名在
+本仓库中存在三套并存约定）：
+
+- `PathManager::getTaskDbPaths` 期望固定名 `raw.db` / `events.db` / `files.db`
+  ——**仅本地模式**。
+- `AnalysisOrchestrator.cpp` 实际写出的是 `<baseName>_raw.db` 等。
+- 客户端 `command_executor.cpp` 用 glob `<baseName>*.db` 匹配产物，并把
+  `result_metadata.base_name` 随结果一起上报。
+
+因此分布式服务端只能依赖客户端上报的 `base_name`，而**不能**去硬找 `raw.db`。
+
+### 客户端义务
+
+客户端可以把自己的 DB 产物命名为 `<baseName>_<kind>.db`（例如
+`case7_files.db`、`case7_raw.db`），并**必须**在 `result_metadata` 中携带
+`base_name`：
+
+```json
+{
+  "result_type": "database",
+  "file_path": "/evidence/work/case7_files.db",
+  "file_size": 4096,
+  "storage_location": "client-host-42",
+  "result_metadata": {"base_name": "case7"}
+}
+```
+
+服务端会原样保存，不校验也不改写文件名。
+
+### 项目级不变量
+
+原始磁盘镜像字节（raw disk-image bytes）**永远不离开客户端**——只有引用与元数据跨越
+网络。这是 TraceLens 的项目级安全不变量，分布式产物上传契约是其具体体现之一。
+
+**回归守护**：`python_service/tests/test_result_aggregator.py::
+test_store_results_preserves_arbitrary_db_filename_and_base_name` 锁定此契约——
+任意文件名 + `base_name` 必须被原样保留。
 
 ---
 

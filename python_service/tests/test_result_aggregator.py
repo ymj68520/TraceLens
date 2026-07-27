@@ -200,6 +200,45 @@ def test_store_results_bulk_single_commit():
     assert db.refresh.call_count == 3
 
 
+def test_store_results_preserves_arbitrary_db_filename_and_base_name():
+    # DB-artifact naming contract: the distributed server stores artifacts by
+    # reference (file_path / storage_location / result_metadata.base_name) and
+    # MUST NOT assume PathManager's local-mode fixed filenames (raw.db /
+    # events.db / files.db). Clients may name outputs <baseName>_<kind>.db and
+    # send base_name; the server preserves result_metadata verbatim and does
+    # not care about the literal filename. (See docs/api_reference contract.)
+    db = _mock_db()
+    client_id = uuid.uuid4()
+    task = _task(client_id=client_id)
+    db.query.return_value.filter.return_value.first.return_value = task
+
+    items = [
+        {
+            "result_type": "database",
+            # arbitrary name — NOT a PathManager fixed name:
+            "file_path": "/evidence/work/case7_files.db",
+            "file_size": 4096,
+            "storage_location": "client-host-42",
+            "result_metadata": {"base_name": "case7"},
+        },
+        {
+            # a fixed-name-style path is also accepted unchanged:
+            "result_type": "database",
+            "file_path": "/evidence/work/raw.db",
+            "result_metadata": {"base_name": "case7"},
+        },
+    ]
+
+    created = ResultAggregator.store_results(task.id, client_id, items, db=db)
+
+    assert len(created) == 2
+    assert created[0].result_metadata["base_name"] == "case7"
+    assert created[0].file_path == "/evidence/work/case7_files.db"
+    assert created[1].result_metadata["base_name"] == "case7"
+    # Both rows committed in one transaction.
+    db.commit.assert_called_once()
+
+
 def test_store_results_invalid_type_aborts_before_add():
     db = _mock_db()
 
