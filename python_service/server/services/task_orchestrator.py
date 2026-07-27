@@ -117,11 +117,11 @@ class TaskOrchestrator:
 
             # The command the client will claim on its next poll. ``status`` is
             # set explicitly (the model default is also "pending") so the row is
-            # claimable regardless of how it is constructed. ``task_id`` is
-            # stamped into the ``parameters`` JSONB as a soft link back to this
-            # task — ``command_queue`` has no task FK, so this is how
-            # ``cancel_task`` targets *this* task's command rather than any
-            # pending command for the same client.
+            # claimable regardless of how it is constructed. The ``task_id`` FK
+            # column (migration 002) is the authoritative link back to this task;
+            # the ``parameters["task_id"]`` JSONB soft link is kept for one
+            # release as backward-compat for any in-flight client/pre-migration
+            # row reader.
             command_params = {
                 "task_id": str(task.id),
                 "image_path": disk_image.path,
@@ -136,6 +136,7 @@ class TaskOrchestrator:
                 id=uuid.uuid4(),
                 client_id=client_id,
                 user_id=user_id,
+                task_id=task.id,
                 command_type="analyze_disk",
                 parameters=command_params,
                 priority=priority,
@@ -384,13 +385,15 @@ class TaskOrchestrator:
             task.completed_at = datetime.now(timezone.utc)
 
             # Fail this task's own command if it has not been picked up yet.
-            # The ``task_id`` soft link (stamped into ``parameters`` at
-            # creation) scopes the lookup so cancelling one task cannot fail a
-            # concurrently-running sibling task's command for the same client.
+            # The ``task_id`` FK column scopes the lookup so cancelling one task
+            # cannot fail a concurrently-running sibling task's command for the
+            # same client. Status + client_id guards are kept too: only a
+            # not-yet-running command is cancellable, and the client scope is
+            # defense-in-depth against any cross-tenant row.
             command = db.query(CommandQueue).filter(
                 CommandQueue.client_id == task.client_id,
                 CommandQueue.status.in_(["pending", "assigned"]),
-                CommandQueue.parameters["task_id"].astext == str(task.id),
+                CommandQueue.task_id == task.id,
             ).first()
             if command:
                 command.status = "failed"

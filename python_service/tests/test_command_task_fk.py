@@ -60,3 +60,65 @@ def test_deleting_a_task_cascades_to_its_command(db_session, org_and_client):
     db_session.delete(task)
     db_session.commit()
     assert db_session.query(CommandQueue).filter_by(id=cmd_id).first() is None
+
+
+# ---------------------------------------------------------------------------
+# Task 5: the orchestrator must stamp the FK column, cancel via it, and the
+# command→task propagation must resolve the task through it (not the JSONB
+# soft link). The signatures below match the real orchestrator methods
+# (db/user_id/client_id keyword params), not the brief's literal sketch.
+# ---------------------------------------------------------------------------
+
+
+def test_command_inherits_task_id_when_created_via_orchestrator(db_session, org_and_client):
+    """Creating a task must stamp the spawned command's task_id column."""
+    from server.services.task_orchestrator import TaskOrchestrator
+
+    org, client, disk_image, user = org_and_client
+    task = TaskOrchestrator.create_analysis_task(
+        db=db_session,
+        org_id=org.id,
+        client_id=client.id,
+        user_id=user.id,
+        disk_image_id=disk_image.id,
+        task_name="fk-test",
+        analysis_type="full",
+    )
+    cmd = db_session.query(CommandQueue).filter_by(task_id=task.id).one()
+    assert cmd.task_id == task.id
+    # JSONB soft link kept for one release as backward-compat; column is authoritative.
+    assert cmd.parameters["task_id"] == str(task.id)
+
+
+def test_cancel_task_fails_its_command_via_fk(db_session, org_and_client):
+    """cancel_task must find the command via the task_id FK column, not JSONB."""
+    from server.services.task_orchestrator import TaskOrchestrator
+
+    org, client, disk_image, user = org_and_client
+    task = TaskOrchestrator.create_analysis_task(
+        db=db_session, org_id=org.id, client_id=client.id, user_id=user.id,
+        disk_image_id=disk_image.id, task_name="cancel-test", analysis_type="full",
+    )
+    # Real signature: cancel_task(task_id, user_id, db=None) — no org_id param.
+    TaskOrchestrator.cancel_task(task_id=task.id, user_id=user.id, db=db_session)
+    cmd = db_session.query(CommandQueue).filter_by(task_id=task.id).one()
+    assert cmd.status == "failed"
+
+
+def test_propagate_uses_task_id_column_not_jsonb(db_session, org_and_client):
+    """A command whose parameters lack task_id must still resolve its task
+    via the task_id column."""
+    from server.services.command_queue import CommandQueueService
+    from server.services.task_orchestrator import TaskOrchestrator
+
+    org, client, disk_image, user = org_and_client
+    task = TaskOrchestrator.create_analysis_task(
+        db=db_session, org_id=org.id, client_id=client.id, user_id=user.id,
+        disk_image_id=disk_image.id, task_name="prop-test", analysis_type="full",
+    )
+    cmd = db_session.query(CommandQueue).filter_by(task_id=task.id).one()
+    cmd.parameters = {k: v for k, v in cmd.parameters.items() if k != "task_id"}  # strip JSONB
+    db_session.flush()
+    CommandQueueService.propagate_command_status(db_session, cmd, "completed", 100, "ok")
+    db_session.refresh(task)
+    assert task.status == "completed"

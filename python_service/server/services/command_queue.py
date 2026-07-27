@@ -286,3 +286,97 @@ class CommandQueueService:
             commands=[CommandResponse.model_validate(cmd) for cmd in commands],
             server_time=_now(),
         )
+
+    @staticmethod
+    def propagate_command_status(
+        db: Session,
+        command: CommandQueue,
+        status: str,
+        progress: Optional[int] = None,
+        message: Optional[str] = None,
+    ) -> None:
+        """Bridge a command status update to its owning analysis task.
+
+        Resolves the task via the ``task_id`` FK column (authoritative since
+        migration 002); falls back to the legacy ``parameters->>'task_id'`` soft
+        link only for pre-migration rows whose ``task_id`` column is NULL. The
+        task lookup is scoped by ``command.client_id`` (passed through to the
+        orchestrator) as defense-in-depth against a forged ``task_id`` planted
+        in a command's parameters: a client can only advance a task assigned to
+        it.
+
+        Best-effort: the command status update (the primary, client-facing
+        operation) has already committed. A missing/stale/scoped-out task raises
+        ``ValueError`` from the orchestrator, which is logged and swallowed so a
+        late or stale report does not surface to the client. Mirrors the
+        behavior of the route-resident helper this replaces.
+
+        ``TaskOrchestrator`` is imported lazily because
+        :mod:`server.services.task_orchestrator` imports
+        :class:`CommandQueueService` at module top — a top-level import here
+        would be circular.
+
+        Args:
+            db: Caller-owned session (the route's request session).
+            command: The command whose status was just updated.
+            status: The new command status (``in_progress`` / ``completed`` /
+                ``failed`` carry a task transition; others are no-ops).
+            progress: Optional progress percentage for ``in_progress`` reports.
+            message: Optional message — appended to task metadata for
+                ``in_progress``, becomes the error message for ``failed``.
+        """
+        import logging
+
+        from server.services.task_orchestrator import TaskOrchestrator
+
+        logger = logging.getLogger(__name__)
+
+        # FK column authoritative; JSONB soft link is a fallback for rows that
+        # pre-date migration 002 (column NULL). ``parameters`` is non-nullable
+        # but guard defensively, as the route helper did.
+        tid = command.task_id or (command.parameters or {}).get("task_id")
+        if not tid:
+            return  # health_check / extract_file have no owning task.
+
+        # Normalize a JSONB-string fallback to UUID; skip (as the route did) if
+        # unparseable rather than crashing the propagation.
+        if isinstance(tid, str):
+            try:
+                tid = uuid.UUID(tid)
+            except (ValueError, AttributeError):
+                logger.warning(
+                    "Command %s carries an unparseable task_id %r; skipping "
+                    "task propagation.",
+                    command.id,
+                    tid,
+                )
+                return
+
+        try:
+            if status == "in_progress":
+                TaskOrchestrator.update_task_progress(
+                    task_id=tid,
+                    progress=progress or 0,
+                    db=db,
+                    client_id=command.client_id,
+                )
+            elif status in ("completed", "failed"):
+                TaskOrchestrator.complete_task(
+                    task_id=tid,
+                    success=(status == "completed"),
+                    error_message=message,
+                    db=db,
+                    client_id=command.client_id,
+                )
+            # Other statuses (pending / assigned / expired) carry no transition.
+        except ValueError:
+            # Task missing/stale/scoped-out — the command report already
+            # succeeded; swallow so the client gets a 200.
+            logger.warning(
+                "Command %s reports %s but its task %s is missing for client "
+                "%s; command status updated, task propagation skipped.",
+                command.id,
+                status,
+                tid,
+                command.client_id,
+            )

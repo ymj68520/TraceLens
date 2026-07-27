@@ -54,90 +54,10 @@ from server.models.schemas import (
     TaskStatusUpdate,
 )
 from server.services.command_queue import CommandQueueService
-from server.services.task_orchestrator import TaskOrchestrator
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/commands", tags=["Commands"])
-
-
-def _propagate_command_status_to_task(
-    command: CommandQueue, status_update: TaskStatusUpdate, db: Session
-) -> None:
-    """Forward a command status report to its originating analysis task.
-
-    The link is the ``task_id`` stamped into ``command.parameters`` at task
-    creation (``command_queue`` has no task FK — the soft link introduced for
-    ``cancel_task``). Commands not tied to a task (``health_check``, a directly
-    issued ``extract_file``) carry no ``task_id`` and are skipped.
-
-    Command status -> task transition::
-
-        in_progress -> running   (progress via update_task_progress)
-        completed   -> completed (complete_task success)
-        failed      -> failed    (complete_task failure; message -> error)
-
-    The task lookup is scoped by ``command.client_id`` (passed as ``client_id``
-    to the orchestrator). This is the defense-in-depth that enforces org
-    isolation on this path: a client may only advance a task *assigned to it*.
-    A user can plant an arbitrary ``task_id`` in an ad-hoc command's parameters
-    (``POST /api/commands`` accepts free-form ``parameters``), but a planted id
-    pointing at another client's task is simply not found by the scoped lookup
-    and is treated as a missing task — no cross-tenant effect.
-
-    Propagation is **best-effort**: the command status update (the primary,
-    client-facing operation) has already committed. A missing or stale task
-    (deleted between command creation and this report, or a scoped-out/planted
-    id) raises ``ValueError`` from the orchestrator, which we log and swallow —
-    the command report still returns 200. (Other, unexpected errors are *not*
-    masked: they surface normally.) All transitions share the caller's session.
-    """
-    task_id_str = (command.parameters or {}).get("task_id")
-    if not task_id_str:
-        return  # Not a task-backed command.
-    try:
-        task_id = uuid.UUID(str(task_id_str))
-    except (ValueError, TypeError):
-        logger.warning(
-            "Command %s carries an unparseable task_id %r; skipping task "
-            "propagation.",
-            command.id,
-            task_id_str,
-        )
-        return
-
-    try:
-        if status_update.status == "in_progress":
-            TaskOrchestrator.update_task_progress(
-                task_id,
-                progress=status_update.progress,
-                message=status_update.message,
-                client_id=command.client_id,
-                db=db,
-            )
-        elif status_update.status == "completed":
-            TaskOrchestrator.complete_task(
-                task_id, success=True, client_id=command.client_id, db=db
-            )
-        elif status_update.status == "failed":
-            TaskOrchestrator.complete_task(
-                task_id,
-                success=False,
-                error_message=status_update.message,
-                client_id=command.client_id,
-                db=db,
-            )
-        # Other statuses (pending / assigned / expired) carry no task transition.
-    except ValueError:
-        # Task missing/stale/scoped-out — the command report already succeeded.
-        logger.warning(
-            "Command %s reports %s but its task %s is missing for client %s; "
-            "command status updated, task propagation skipped.",
-            command.id,
-            status_update.status,
-            task_id,
-            command.client_id,
-        )
 
 
 @router.post("", response_model=CommandResponse)
@@ -204,8 +124,8 @@ async def update_command_status(
 
     A client may only update its own commands. After the command status is
     recorded, the report is propagated to the command's originating analysis
-    task (if any) via the ``task_id`` soft link — see
-    :func:`_propagate_command_status_to_task`.
+    task (if any) via
+    :meth:`CommandQueueService.propagate_command_status`.
 
     Raises:
         HTTPException: 404 if the command does not exist; 403 if the command
@@ -237,7 +157,9 @@ async def update_command_status(
 
     # Best-effort: advance the originating analysis task's lifecycle. A missing
     # task is logged and ignored (the command report already succeeded).
-    _propagate_command_status_to_task(command, status_update, db)
+    CommandQueueService.propagate_command_status(
+        db, command, status_update.status, status_update.progress, status_update.message
+    )
 
     return {"updated": True}
 
