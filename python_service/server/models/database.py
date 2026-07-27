@@ -201,6 +201,15 @@ class CommandQueue(Base):
         UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE")
     )
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    # Real FK to analysis_tasks (migration 002). Nullable because some commands
+    # (health_check, extract_file) are not spawned by an analysis task. The soft
+    # link still lives in ``parameters`` JSONB; the orchestrator is wired to set
+    # this column in Task 5.
+    task_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("analysis_tasks.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     command_type = Column(String(100), nullable=False)  # analyze_disk, extract_file, health_check
     parameters = Column(JSONB, nullable=False)
     priority = Column(String(50), default="normal")
@@ -213,6 +222,7 @@ class CommandQueue(Base):
     retry_count = Column(Integer, default=0)
 
     client = relationship("Client", back_populates="commands")
+    task = relationship("AnalysisTask", back_populates="commands")
 
 
 class AnalysisTaskStatus(enum.Enum):
@@ -278,6 +288,16 @@ class AnalysisTask(Base):
     )
     history = relationship(
         "TaskHistory", back_populates="task", cascade="all, delete-orphan"
+    )
+    # NOTE: passive_deletes delegates the cascade to the DB-level ON DELETE CASCADE on
+    # command_queue.task_id. Without it, SQLAlchemy's unit of work would
+    # UPDATE command_queue SET task_id=NULL for loaded children BEFORE the
+    # parent DELETE, so the command would survive with a NULL FK and the DB
+    # cascade would never fire. ``Client.commands`` already owns delete-orphan
+    # for commands, so we cannot use delete-orphan here too; passive_deletes is
+    # the idiomatic way to let the FK's ON DELETE CASCADE do the work.
+    commands = relationship(
+        "CommandQueue", back_populates="task", passive_deletes=True
     )
 
 

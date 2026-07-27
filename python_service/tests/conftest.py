@@ -320,3 +320,99 @@ def mock_cpp_backend():
     backend.get_task_status = AsyncMock(return_value={"status": "completed"})
 
     return backend
+
+
+# =============================================================================
+# PostgreSQL DB Session Fixture (real DB, for FK/cascade integration tests)
+# =============================================================================
+# Deliberately kept LAZY: the engine is only built when ``db_session`` is
+# requested, so the existing httpserver/auth tests (which never touch Postgres)
+# are unaffected. We do NOT reuse the module-level ``engine`` from
+# ``server.db.session`` — that one reads ``DATABASE_URL`` at import time and
+# defaults to password ``postgres`` (wrong for this environment). Instead we
+# build our own engine bound to ``TEST_DATABASE_URL``.
+
+
+@pytest.fixture
+def db_session():
+    """Function-scoped SQLAlchemy Session over a real PostgreSQL test DB.
+
+    Builds its OWN engine bound to ``TEST_DATABASE_URL`` (default password
+    ``postgres``; override via env when running). Schema is created with
+    ``Base.metadata.create_all`` so every ORM column, CHECK/UNIQUE constraint,
+    FK, and index is present — including the new ``command_queue.task_id`` FK.
+
+    ``create_all`` / ``drop_all`` is run per test, which gives real ``commit()``
+    semantics (needed for the DB-level ``ON DELETE CASCADE``) with zero
+    cross-test row pollution. DDL cost is negligible since only a handful of
+    integration tests use this fixture.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from server.db.session import Base
+    import server.models.database  # noqa: F401 — register models on Base.metadata
+
+    url = os.getenv(
+        "TEST_DATABASE_URL",
+        "postgresql://postgres:postgres@localhost:5432/tracelens_test",
+    )
+    engine = create_engine(url, future=True)
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
+@pytest.fixture
+def org_and_client(db_session):
+    """Insert the parent rows the cascade test's AnalysisTask/CommandQueue need.
+
+    Inserts one each of ``Organization``, ``Client``, ``DiskImage``, ``User`` —
+    the parents referenced by the cascade test — and commits them so the FKs
+    resolve. UUIDs embedded in unique string fields keep multiple invocations
+    from colliding. Returns ``(org, client, disk_image, user)``.
+    """
+    import uuid
+
+    from server.models.database import Client, DiskImage, Organization, User
+
+    org = Organization(id=uuid.uuid4(), name=f"org-{uuid.uuid4()}")
+    db_session.add(org)
+    db_session.flush()
+
+    user = User(
+        id=uuid.uuid4(),
+        org_id=org.id,
+        username=f"user-{uuid.uuid4()}",
+        email="cascade@example.com",
+        password_hash="x",
+        role="analyst",
+    )
+    db_session.add(user)
+
+    client = Client(
+        id=uuid.uuid4(),
+        org_id=org.id,
+        hostname=f"host-{uuid.uuid4()}",
+        status="online",
+    )
+    db_session.add(client)
+    db_session.flush()
+
+    disk_image = DiskImage(
+        id=uuid.uuid4(),
+        client_id=client.id,
+        path="/tmp/image.raw",
+        size_bytes=1024,
+        format="DD",
+    )
+    db_session.add(disk_image)
+    db_session.commit()
+
+    return org, client, disk_image, user
