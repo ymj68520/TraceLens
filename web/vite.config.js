@@ -6,6 +6,11 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
+      '/csapi': {
+        target: 'http://localhost:8091',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/csapi/, ''),
+      },
       '/tasks': {
         target: 'http://localhost:8080',
         changeOrigin: true,

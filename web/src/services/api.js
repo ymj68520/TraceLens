@@ -105,6 +105,64 @@ pythonApi.interceptors.response.use(
   }
 );
 
-export { pythonApi };
+// 分布式 C/S 服务 (python_service/server) — 端口 8091.
+// 不同于 pythonApi (旧版 httpserver :8090) 和 api (C++ :8080).
+// baseURL 用相对路径 /csapi，经 Vite 代理转发到 :8091（与 api 客户端同模式，
+// 避免 CORS）；生产环境可用 VITE_CS_API_URL 覆盖为绝对地址。
+const CS_API_BASE_URL = import.meta.env.VITE_CS_API_URL || '/csapi';
+
+const csApi = axios.create({
+  baseURL: CS_API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 30000, // 30 seconds
+});
+
+// 分布式服务请求拦截器（token 独立存于 cs_auth_token，与本地模式 auth_token 分离）
+csApi.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('cs_auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    console.log('CS API Request:', config.method?.toUpperCase(), config.url, config.data);
+    return config;
+  },
+  (error) => {
+    console.error('CS API Request error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// 分布式服务响应拦截器
+csApi.interceptors.response.use(
+  (response) => {
+    console.log('CS API Response:', response.config.url, response.status, response.data);
+    return response.data;
+  },
+  (error) => {
+    console.error('CS API Response error:', error.config?.url, error.message);
+    console.error('Error details:', error.response?.data || error.response?.statusText);
+
+    // 401 仅清除分布式 token，不跳转 /login（分布式鉴权独立于本地模式）
+    if (error.response?.status === 401) {
+      localStorage.removeItem('cs_auth_token');
+    }
+
+    // Create a more detailed error object
+    const enhancedError = {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      config: error.config,
+    };
+
+    return Promise.reject(enhancedError);
+  }
+);
+
+export { pythonApi, csApi };
 export default api;
 

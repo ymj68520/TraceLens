@@ -16,6 +16,7 @@ import CaseIntelligence from './pages/CaseIntelligence';
 import OSS from './pages/OSS';
 import Login from './pages/Login';
 import Terminal from './pages/Terminal';
+import Distributed from './pages/Distributed';
 
 const WeChatGraph = React.lazy(() => import('./pages/WeChatGraph/WeChatGraph'));
 
@@ -95,6 +96,10 @@ const router = createBrowserRouter([
       {
         path: 'terminal',
         element: <Terminal />,
+      },
+      {
+        path: 'distributed',
+        element: <Distributed />,
       },
     ],
   },
