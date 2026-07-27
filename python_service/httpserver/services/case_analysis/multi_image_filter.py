@@ -40,8 +40,12 @@ class MultiImageFilter(FileFilter):
         batch_size: int = 50,
         task_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """
-        Filter files across multiple _files.db databases.
+        """Filter files across multiple _files.db databases.
+
+        Dispatches on settings.file_filter_mode:
+        - 'deterministic' (default): aggregate + dedup all paths from each
+          C++-filtered files.db. No LLM, fully reproducible.
+        - 'llm': legacy streaming LLM filter.
 
         Returns the same structure as FileFilter.filter_files_by_case(), plus:
             source_counts: {db_path: file_count}   — per-image file count
@@ -50,6 +54,13 @@ class MultiImageFilter(FileFilter):
         if not files_db_paths:
             return {"filtered_files": [], "total_files": 0, "selected_count": 0}
 
+        mode = getattr(self.settings, "file_filter_mode", "deterministic")
+        if mode != "llm":
+            return await self._filter_files_multi_deterministic(
+                files_db_paths, task_ids
+            )
+
+        # --- legacy LLM path (unchanged) ---
         # Step 1: load + tag all files from every db
         all_tagged: List[Dict[str, str]] = []
         source_counts: Dict[str, int] = {}
@@ -94,6 +105,55 @@ class MultiImageFilter(FileFilter):
             "source_counts":  source_counts,
             "dedup_removed":  dedup_removed,
             "total_files":    len(deduped),
+        }
+
+    async def _filter_files_multi_deterministic(
+        self,
+        files_db_paths: List[str],
+        task_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Deterministic multi-image selection: aggregate + dedup all paths."""
+        all_tagged: List[Dict[str, Any]] = []
+        source_counts: Dict[str, int] = {}
+
+        for idx, db_path in enumerate(files_db_paths):
+            records = self._get_file_list_from_db(db_path)
+            source_counts[db_path] = len(records)
+            for r in records:
+                rec = dict(r)
+                rec["tagged_path"] = rec.get("path", "")
+                rec["source_db"] = db_path
+                all_tagged.append(rec)
+            logger.info(f"[MULTI_FILTER] DB {idx+1}: {len(records)} files from {db_path}")
+
+        total_before_dedup = len(all_tagged)
+        deduped = self._cross_image_dedup(all_tagged)
+        dedup_removed = total_before_dedup - len(deduped)
+
+        paths = sorted({r.get("path", "") for r in deduped if r.get("path")})
+        total_files = len(paths)
+
+        cap = int(getattr(self.settings, "filter_max_files", 0) or 0)
+        if cap > 0:
+            selected = paths[:cap]
+            logger.info(
+                f"[MULTI_FILTER] Deterministic cap applied: {len(selected)}/{total_files} "
+                f"(filter_max_files={cap})"
+            )
+        else:
+            selected = paths
+
+        self._distribute_and_persist(selected, deduped, files_db_paths, task_ids)
+
+        return {
+            "filtered_files": selected,
+            "reasoning": f"Deterministic multi-image selection ({total_files} files after dedup)",
+            "total_files": total_files,
+            "selected_count": len(selected),
+            "model_used": "deterministic_cpp_filter",
+            "streaming_used": False,
+            "source_counts": source_counts,
+            "dedup_removed": dedup_removed,
         }
 
     # ── Internals ─────────────────────────────────────────────────────────────
