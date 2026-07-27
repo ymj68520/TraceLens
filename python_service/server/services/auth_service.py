@@ -8,13 +8,15 @@ Provides:
 * JWT verification and lookup helpers that resolve a token back to its
   ORM record via a database session.
 
-Algorithm selection
--------------------
-``HS256`` is used in development (``ENVIRONMENT == "development"``); ``RS256`` is
-selected otherwise. Development uses a symmetric ``JWT_SECRET_KEY``; production
-``RS256`` requires an RSA key pair supplied through environment configuration.
+Algorithm
+---------
+The signing algorithm is ``settings.JWT_ALGORITHM`` (default ``HS256``, a
+symmetric algorithm keyed by ``settings.JWT_SECRET_KEY``). To use an
+asymmetric algorithm such as RS256, set ``JWT_ALGORITHM=RS256`` and supply an
+RSA key pair via configuration — this is intentionally NOT auto-selected, and
+the previous ENVIRONMENT-based auto-switch to RS256 (which had no key pair and
+broke token issuance) has been removed.
 """
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
@@ -22,11 +24,15 @@ from typing import Any, Dict, Optional
 import jwt
 from passlib.context import CryptContext
 
-# JWT configuration
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", os.urandom(32).hex())
-JWT_ALGORITHM = "RS256"  # Use RSA for production, HS256 for development
-USER_TOKEN_EXPIRE_HOURS = 1
-CLIENT_TOKEN_EXPIRE_DAYS = 30
+from server.config import settings
+
+# JWT configuration — SINGLE source of truth: server.config.settings.
+# Do not re-read os.getenv here; that created a second source of truth whose
+# defaults diverged from config.py (random key vs static string; RS256 vs HS256).
+JWT_SECRET_KEY = settings.JWT_SECRET_KEY
+JWT_ALGORITHM = settings.JWT_ALGORITHM  # default "HS256"; see config.py
+USER_TOKEN_EXPIRE_HOURS = settings.USER_TOKEN_EXPIRE_HOURS
+CLIENT_TOKEN_EXPIRE_DAYS = settings.CLIENT_TOKEN_EXPIRE_DAYS
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -74,10 +80,7 @@ def create_user_token(
         "type": "user",
     }
 
-    # For development, use HS256. For production, use RS256 with proper keys
-    algorithm = "HS256" if os.getenv("ENVIRONMENT") == "development" else JWT_ALGORITHM
-
-    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=algorithm)
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
 def create_client_token(
@@ -110,9 +113,7 @@ def create_client_token(
         "type": "client",
     }
 
-    algorithm = "HS256" if os.getenv("ENVIRONMENT") == "development" else JWT_ALGORITHM
-
-    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=algorithm)
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
 def verify_token(token: str) -> Optional[Dict[str, Any]]:
@@ -126,8 +127,7 @@ def verify_token(token: str) -> Optional[Dict[str, Any]]:
         Decoded payload if valid, None if invalid
     """
     try:
-        algorithm = "HS256" if os.getenv("ENVIRONMENT") == "development" else JWT_ALGORITHM
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[algorithm])
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         return payload
     except jwt.ExpiredSignatureError:
         return None
