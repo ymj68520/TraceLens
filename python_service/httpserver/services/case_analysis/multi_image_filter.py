@@ -104,7 +104,7 @@ class MultiImageFilter(FileFilter):
             **filter_result,
             "source_counts":  source_counts,
             "dedup_removed":  dedup_removed,
-            "total_files":    len(deduped),
+            "total_files":    len({r.get("path", "") for r in deduped if r.get("path")}),
         }
 
     async def _filter_files_multi_deterministic(
@@ -131,6 +131,8 @@ class MultiImageFilter(FileFilter):
         deduped = self._cross_image_dedup(all_tagged)
         dedup_removed = total_before_dedup - len(deduped)
 
+        # total_files = unique paths (the selection pool). Aligned with the LLM
+        # path's total_files definition so both modes report the same metric.
         paths = sorted({r.get("path", "") for r in deduped if r.get("path")})
         total_files = len(paths)
 
