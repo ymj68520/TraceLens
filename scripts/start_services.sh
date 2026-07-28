@@ -17,10 +17,14 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}Starting ForensicsProject HTTP Services${NC}"
 echo "=========================================="
 
-# Load environment variables
+# Load environment variables. Use set -a/source (not xargs) so values with
+# spaces, quotes, or special characters survive - xargs mangles them.
 if [ -f "$PROJECT_ROOT/.env" ]; then
     echo -e "${GREEN}Loading environment from .env${NC}"
-    export $(grep -v '^#' "$PROJECT_ROOT/.env" | xargs)
+    set -a
+    # shellcheck disable=SC1090
+    source "$PROJECT_ROOT/.env"
+    set +a
 fi
 
 # Default ports
@@ -58,20 +62,29 @@ sleep 2
 
 # Start Python HTTP server
 echo -e "\n${BLUE}Starting Python HTTP server on port $PYTHON_PORT...${NC}"
-cd "$PROJECT_ROOT/python_service"
+PYTHON_SERVICE_DIR="$PROJECT_ROOT/python_service"
+PYTHON_EXEC="$PYTHON_SERVICE_DIR/.venv/bin/python"
 
-# Check if virtual environment exists
-if [ -d ".venv" ]; then
-    source .venv/bin/activate
+# Ensure virtual environment exists
+if [ ! -f "$PYTHON_EXEC" ]; then
+    echo -e "${YELLOW}Creating virtual environment...${NC}"
+    python3 -m venv "$PYTHON_SERVICE_DIR/.venv"
 fi
 
-# Install dependencies if needed
-if [ -f "httpserver/requirements.txt" ]; then
-    pip install -q -r httpserver/requirements.txt
+# Install dependencies if core packages are missing. Install BOTH requirements
+# files so the shared venv covers the httpserver and the distributed C/S server.
+if ! "$PYTHON_EXEC" -c "import fastapi, uvicorn, pydantic" 2>/dev/null; then
+    "$PYTHON_SERVICE_DIR/.venv/bin/pip" install -q --retries 3 \
+        -r "$PYTHON_SERVICE_DIR/httpserver/requirements.txt" \
+        -r "$PYTHON_SERVICE_DIR/requirements.txt"
 fi
 
-# Start Python server
-python -m httpserver.main &
+# Start Python server. Run from python_service/ with PYTHONPATH pointing at it
+# so sibling packages (httpserver, graphiti_integration) are importable -
+# launching without PYTHONPATH raises "No module named 'graphiti_integration'".
+cd "$PYTHON_SERVICE_DIR"
+PYTHONPATH="$PYTHON_SERVICE_DIR:$PYTHONPATH" \
+    "$PYTHON_EXEC" -m httpserver.main &
 PYTHON_PID=$!
 echo -e "${GREEN}Python server started (PID: $PYTHON_PID)${NC}"
 

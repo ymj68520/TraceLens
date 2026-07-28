@@ -527,7 +527,15 @@ info "Step 7/8: Setting up Python virtual environment..."
 
 VENV_DIR="$PROJECT_ROOT/python_service/.venv"
 PYTHON_EXEC="$VENV_DIR/bin/python"
-REQUIREMENTS="$PROJECT_ROOT/python_service/httpserver/requirements.txt"
+# Both requirements files are installed so the single shared venv covers every
+# service and the test suite:
+#   - httpserver/requirements.txt : legacy httpserver (:8090) + forensic libs
+#   - requirements.txt            : distributed C/S server (:8091) — adds
+#                                   sqlalchemy/email-validator/passlib/etc.
+# Installing only the httpserver file left the venv without the server deps,
+# which broke python_service/server and the tests/unit/ DB/schema tests.
+REQUIREMENTS_HTTPSERVER="$PROJECT_ROOT/python_service/httpserver/requirements.txt"
+REQUIREMENTS_SERVER="$PROJECT_ROOT/python_service/requirements.txt"
 
 ensure_venv_pip() {
     if ! "$PYTHON_EXEC" -m pip --version &>/dev/null; then
@@ -551,9 +559,9 @@ if [ -f "$PYTHON_EXEC" ] && [ -f "$VENV_DIR/pyvenv.cfg" ]; then
     if ! "$PYTHON_EXEC" -m pip install --upgrade pip -q 2>/dev/null; then
         warn "  pip upgrade had issues, continuing with existing pip..."
     fi
-    if ! "$PYTHON_EXEC" -m pip install -q -r "$REQUIREMENTS" 2>/dev/null; then
+    if ! "$PYTHON_EXEC" -m pip install -q --retries 3 -r "$REQUIREMENTS_HTTPSERVER" -r "$REQUIREMENTS_SERVER" 2>/dev/null; then
         rm -f "$VENV_DIR/.deps_installed"
-        fail "Failed to install Python dependencies. Re-run without -q for details: $PYTHON_EXEC -m pip install -r $REQUIREMENTS"
+        fail "Failed to install Python dependencies. Re-run without -q for details: $PYTHON_EXEC -m pip install -r $REQUIREMENTS_HTTPSERVER -r $REQUIREMENTS_SERVER"
     fi
     touch "$VENV_DIR/.deps_installed"
     ok "Python dependencies updated"
@@ -562,7 +570,7 @@ else
     python3 -m venv "$VENV_DIR"
     ensure_venv_pip
     "$PYTHON_EXEC" -m pip install --upgrade pip -q
-    "$PYTHON_EXEC" -m pip install -q -r "$REQUIREMENTS"
+    "$PYTHON_EXEC" -m pip install -q --retries 3 -r "$REQUIREMENTS_HTTPSERVER" -r "$REQUIREMENTS_SERVER"
     touch "$VENV_DIR/.deps_installed"
     ok "Python virtual environment created and dependencies installed"
 fi

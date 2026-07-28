@@ -29,8 +29,12 @@ fi
 echo "检查依赖..."
 # Only run pip install if core packages are missing, to avoid hitting the
 # network (and failing on transient IncompleteRead errors) on every start.
-if ! python_service/.venv/bin/python -c "import fastapi, uvicorn, pydantic" 2>/dev/null; then
-    python_service/.venv/bin/pip install -q -r python_service/httpserver/requirements.txt
+# Probe both stacks — fastapi (httpserver) and sqlalchemy (distributed C/S
+# server) — so a partial venv triggers a top-up of BOTH requirements files.
+if ! python_service/.venv/bin/python -c "import fastapi, uvicorn, pydantic, sqlalchemy" 2>/dev/null; then
+    python_service/.venv/bin/pip install -q --retries 3 \
+        -r python_service/httpserver/requirements.txt \
+        -r python_service/requirements.txt
 else
     echo "核心依赖已安装，跳过 pip install"
 fi

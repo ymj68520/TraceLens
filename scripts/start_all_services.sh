@@ -204,7 +204,7 @@ echo -e "${GREEN}✓ Virtual environment found${NC}    ${CYAN}$VENV_DIR${NC}"
 #   - requirements.txt            : distributed C/S server (python_service/server, :8091)
 if [ "$FORCE_INSTALL" = "true" ] || [ ! -f "$VENV_DIR/.deps_installed" ]; then
     echo -ne "${YELLOW}Installing dependencies...${NC}"
-    if ! $PYTHON_EXEC -m pip install -q -r httpserver/requirements.txt -r requirements.txt; then
+    if ! $PYTHON_EXEC -m pip install -q --retries 3 -r httpserver/requirements.txt -r requirements.txt; then
         echo -e " ${RED}✗ Failed${NC}"
         echo -e "${RED}✗ Failed to install Python dependencies. Try recreating the venv:${NC}"
         echo -e "  ${CYAN}rm -rf $VENV_DIR && python3 -m venv $VENV_DIR${NC}"
