@@ -90,13 +90,18 @@ class CaseAnalysisPipelinesMixin:
         if not report_only and run_filtering:
             # --- FULL PIPELINE MODE (Initial Task or Explicit Re-scan) ---
 
-            # Step 1: Filter files via LLM
+            # Step 1: Filter files (deterministic by default; reuses C++ profile)
+            filter_mode = getattr(self.settings, "file_filter_mode", "deterministic")
             if progress_callback:
-                await progress_callback("filtering", "正在使用 LLM 自动筛选关键文件...")
-            logger.info(f"[CASE_ANALYSIS] Task {task_id}: Starting LLM file filtering...")
+                if filter_mode == "llm":
+                    await progress_callback("filtering", "正在使用 LLM 自动筛选关键文件...")
+                else:
+                    await progress_callback("filtering", "正在使用确定性分类筛选（复用 C++ profile）...")
+            logger.info(f"[CASE_ANALYSIS] Task {task_id}: Starting file filtering (mode={filter_mode})...")
             logger.info(f"[CASE_ANALYSIS] files_db_path: {files_db_path}")
             logger.info(f"[CASE_ANALYSIS] case_description length: {len(case_description)}")
-            logger.info(f"[CASE_ANALYSIS] max_filter_files: {max_filter_files}")
+            logger.info(f"[CASE_ANALYSIS] max_filter_files: {max_filter_files} "
+                        f"(ignored in deterministic mode; cap=settings.filter_max_files)")
 
             filter_result = await self.filter_files_by_case(
                 files_db_path, case_description, max_filter_files, task_id=task_id
@@ -389,9 +394,9 @@ class CaseAnalysisPipelinesMixin:
         if progress_callback:
             await progress_callback("filtering", f"正在跨 {len(files_db_paths)} 个镜像筛选关键文件...")
 
-        # Step 1 — Cross-image LLM filter
+        # Step 1 — Cross-image filter (deterministic by default)
         logger.info(f"[MULTI_ANALYSIS] Case {case_id}: starting multi-image filter "
-                    f"({len(files_db_paths)} images)")
+                    f"({len(files_db_paths)} images, mode={getattr(self.settings, 'file_filter_mode', 'deterministic')})")
         filter_result = await self._multi_filter.filter_files_multi(
             files_db_paths=files_db_paths,
             case_description=case_description,
