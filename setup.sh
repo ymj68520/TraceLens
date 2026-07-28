@@ -559,6 +559,26 @@ ensure_venv_pip() {
     fi
 }
 
+# Install a large / network-heavy Python package only if its module is NOT
+# already importable. Tolerant: a download failure warns and continues, so one
+# flaky big wheel cannot abort the whole setup. Used by the dedicated large-
+# packages block below (kept separate from the requirements install on purpose
+# so each big package is verified and retried individually).
+ensure_large_python_package() {
+    local pip_name="$1"
+    local module="$2"
+    if "$PYTHON_EXEC" -c "import $module" 2>/dev/null; then
+        ok "  $pip_name already installed"
+        return 0
+    fi
+    info "  Installing $pip_name ..."
+    if "$PYTHON_EXEC" -m pip install --retries 5 --timeout 120 -q "$pip_name" 2>/dev/null; then
+        ok "  $pip_name installed"
+    else
+        warn "  $pip_name failed to install - continuing (the feature it provides will be unavailable until installed)"
+    fi
+}
+
 # Detect broken venv: python binary exists but pyvenv.cfg is missing
 if [ -f "$PYTHON_EXEC" ] && [ ! -f "$VENV_DIR/pyvenv.cfg" ]; then
     warn "Virtual environment at $VENV_DIR is broken (missing pyvenv.cfg), recreating..."
@@ -574,8 +594,7 @@ if [ -f "$PYTHON_EXEC" ] && [ -f "$VENV_DIR/pyvenv.cfg" ]; then
         warn "  pip upgrade had issues, continuing with existing pip..."
     fi
     if ! "$PYTHON_EXEC" -m pip install -q --retries 3 -r "$REQUIREMENTS_HTTPSERVER" -r "$REQUIREMENTS_SERVER" 2>/dev/null; then
-        rm -f "$VENV_DIR/.deps_installed"
-        fail "Failed to install Python dependencies. Re-run without -q for details: $PYTHON_EXEC -m pip install -r $REQUIREMENTS_HTTPSERVER -r $REQUIREMENTS_SERVER"
+        warn "  Some dependencies failed via the requirements files (likely a large-package network error); retrying big packages individually below..."
     fi
     touch "$VENV_DIR/.deps_installed"
     ok "Python dependencies updated"
@@ -584,9 +603,38 @@ else
     python3 -m venv "$VENV_DIR"
     ensure_venv_pip
     "$PYTHON_EXEC" -m pip install --upgrade pip -q
-    "$PYTHON_EXEC" -m pip install -q --retries 3 -r "$REQUIREMENTS_HTTPSERVER" -r "$REQUIREMENTS_SERVER"
+    if ! "$PYTHON_EXEC" -m pip install -q --retries 3 -r "$REQUIREMENTS_HTTPSERVER" -r "$REQUIREMENTS_SERVER" 2>/dev/null; then
+        warn "  Some dependencies failed via the requirements files (likely a large-package network error); retrying big packages individually below..."
+    fi
     touch "$VENV_DIR/.deps_installed"
     ok "Python virtual environment created and dependencies installed"
+fi
+
+# ------------------------------------------------------------------------
+# Large / network-heavy Python packages (separate block, check-then-install).
+# These big wheels are what break on flaky networks. They are installed
+# individually - each verified importable before install and tolerated on
+# failure - so a single flaky download cannot abort setup and packages that
+# are already present are skipped fast. The requirements install above already
+# attempts these; this block guarantees them.
+# ------------------------------------------------------------------------
+info "Installing large/optional Python packages (check-first, one at a time)..."
+ensure_large_python_package "markitdown[all]"    markitdown
+ensure_large_python_package "PyMuPDF==1.27.1"    fitz
+ensure_large_python_package "volatility3"        volatility3
+ensure_large_python_package "graphiti-core"      graphiti_core
+ensure_large_python_package "h5py"               h5py
+ensure_large_python_package "scipy"              scipy
+ensure_large_python_package "plyvel"             plyvel
+ensure_large_python_package "pillow-heif"        pillow_heif
+ensure_large_python_package "rawpy"              rawpy
+ensure_large_python_package "pydicom"            pydicom
+
+# Core sanity check: if even the lightweight core failed, the venv is unusable
+# - fail loudly rather than proceed to the C++ build.
+if ! "$PYTHON_EXEC" -c "import fastapi, pydantic" 2>/dev/null; then
+    rm -f "$VENV_DIR/.deps_installed"
+    fail "Core Python dependencies (fastapi/pydantic) are missing. Re-run setup (set PIP_PROXY on a flaky network) or install manually: $PYTHON_EXEC -m pip install -r $REQUIREMENTS_HTTPSERVER -r $REQUIREMENTS_SERVER"
 fi
 
 # Soft check: Volatility3 for MemoryAnalyzer (non-fatal)
