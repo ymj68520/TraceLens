@@ -109,7 +109,7 @@ class CaseAnalysisPipelinesMixin:
             result["steps"]["filter"] = filter_result
             filtered_files = filter_result.get("filtered_files", [])
 
-            logger.info(f"[CASE_ANALYSIS] Task {task_id}: LLM filtering complete.")
+            logger.info(f"[CASE_ANALYSIS] Task {task_id}: File filtering complete.")
             logger.info(f"[CASE_ANALYSIS]   - filtered_files count: {len(filtered_files)}")
             logger.info(f"[CASE_ANALYSIS]   - total_files: {filter_result.get('total_files', 0)}")
             logger.info(f"[CASE_ANALYSIS]   - reasoning: {filter_result.get('reasoning', '')[:200]}")
@@ -118,7 +118,7 @@ class CaseAnalysisPipelinesMixin:
             self._file_filter._persist_filtered_files(files_db_path, task_id, filtered_files)
 
             if not filtered_files:
-                msg = "LLM 未能在样本中筛选出与案情高度相关的文件。跳过文件提取和描述阶段。"
+                msg = "未能在样本中筛选出符合要求的文件。跳过文件提取和描述阶段。"
                 logger.warning(f"[CASE_ANALYSIS] Task {task_id}: {msg}")
                 logger.warning(f"[CASE_ANALYSIS] Task {task_id}: This will skip file extraction, AI analysis, and Graphiti ingestion!")
                 result["steps"]["extraction"] = {"extraction_dir": "", "extracted_count": 0}

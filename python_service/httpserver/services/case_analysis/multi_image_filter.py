@@ -57,7 +57,7 @@ class MultiImageFilter(FileFilter):
         mode = getattr(self.settings, "file_filter_mode", "deterministic")
         if mode != "llm":
             return await self._filter_files_multi_deterministic(
-                files_db_paths, task_ids
+                files_db_paths, task_ids, max_files
             )
 
         # --- legacy LLM path (unchanged) ---
@@ -111,6 +111,7 @@ class MultiImageFilter(FileFilter):
         self,
         files_db_paths: List[str],
         task_ids: Optional[List[str]] = None,
+        max_files: int = 0,
     ) -> Dict[str, Any]:
         """Deterministic multi-image selection: aggregate + dedup all paths."""
         all_tagged: List[Dict[str, Any]] = []
@@ -142,6 +143,12 @@ class MultiImageFilter(FileFilter):
             )
         else:
             selected = paths
+
+        if max_files and max_files > 0:
+            logger.info(
+                f"[MULTI_FILTER] max_files={max_files} ignored in deterministic mode; "
+                f"using settings.filter_max_files={cap}"
+            )
 
         self._distribute_and_persist(selected, deduped, files_db_paths, task_ids)
 
