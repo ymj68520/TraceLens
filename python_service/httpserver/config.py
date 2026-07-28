@@ -9,7 +9,7 @@ import os
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -253,7 +253,7 @@ class Settings(BaseSettings):
     )
 
     # File Filter Selection Mode
-    file_filter_mode: str = Field(
+    file_filter_mode: Literal["deterministic", "llm"] = Field(
         default="deterministic",
         alias="FILE_FILTER_MODE",
         description="File selection mode: 'deterministic' (default, reuses the "
