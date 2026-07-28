@@ -25,6 +25,20 @@ ok()    { echo -e "${GREEN}✓ $*${NC}"; }
 warn()  { echo -e "${YELLOW}⚠ $*${NC}"; }
 fail()  { echo -e "${RED}✗ $*${NC}"; exit 1; }
 
+# Optional download proxy for flaky networks. Set PIP_PROXY in the environment
+# or .env (e.g. PIP_PROXY=http://192.168.31.226:7897); it is exported as
+# HTTP_PROXY/HTTPS_PROXY so pip/git/curl route through it.
+if [ -z "${PIP_PROXY:-}" ] && [ -f "$PROJECT_ROOT/.env" ]; then
+    PIP_PROXY="$(sed -nE 's/^[[:space:]]*PIP_PROXY=//p' "$PROJECT_ROOT/.env" | head -1)"
+    PIP_PROXY="${PIP_PROXY%$'\r'}"
+    PIP_PROXY="${PIP_PROXY%\"}"; PIP_PROXY="${PIP_PROXY#\"}"
+    PIP_PROXY="${PIP_PROXY%\'}"; PIP_PROXY="${PIP_PROXY#\'}"
+fi
+if [ -n "${PIP_PROXY:-}" ]; then
+    export HTTP_PROXY="$PIP_PROXY" HTTPS_PROXY="$PIP_PROXY"
+    echo "Using download proxy: $PIP_PROXY"
+fi
+
 # ========================================================================
 # Step 0: Setup NVM and Node.js (LTS, with npm 10+)
 # ========================================================================
