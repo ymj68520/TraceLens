@@ -80,6 +80,39 @@ async def test_filter_files_by_case_dispatches_deterministic(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_deterministic_extracts_task_id_from_db_path(tmp_path):
+    """When task_id is None, the deterministic path must extract the UUID from
+    files_db_path (mirroring the LLM path) instead of defaulting to '_latest'.
+
+    Regression guard: a silent data-placement divergence where the deterministic
+    path persisted under '_latest' while the LLM path persisted under the real
+    UUID.
+    """
+    import uuid
+
+    task_uuid = str(uuid.uuid4())
+    # Mirror production layout: .../tasks/<uuid>/files.db
+    task_dir = tmp_path / "tasks" / task_uuid
+    task_dir.mkdir(parents=True)
+    db = str(task_dir / "files.db")
+    _make_files_db(db, ["/a/doc", "/b/img"])
+
+    f = _make_filter()
+    await f._filter_files_deterministic(db, max_files=200, task_id=None)
+
+    # The persisted case_analysis row must use the extracted UUID, not "_latest".
+    conn = sqlite3.connect(db)
+    cur = conn.execute("SELECT task_id FROM case_analysis WHERE task_id = ?", (task_uuid,))
+    row = cur.fetchone()
+    conn.close()
+    assert row is not None, (
+        "task_id should be extracted from files_db_path, but no case_analysis "
+        "row was found under the expected UUID"
+    )
+    assert row[0] == task_uuid
+
+
+@pytest.mark.asyncio
 async def test_filter_files_by_case_llm_mode_does_not_call_deterministic(tmp_path):
     """In llm mode the deterministic path is skipped (LLM service is None -> raises)."""
     db = str(tmp_path / "files.db")

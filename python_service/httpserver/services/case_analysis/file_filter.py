@@ -139,8 +139,13 @@ class FileFilter(FileFilterLegacyMixin):
                 f"using settings.filter_max_files={cap}"
             )
 
-        resolved_task_id = task_id or "_latest"
-        self._persist_filtered_files(files_db_path, resolved_task_id, selected)
+        # Mirror the LLM path's task_id extraction so callers that omit task_id
+        # still persist under the real UUID (avoids a silent data-placement
+        # divergence where the deterministic path would write to "_latest").
+        if not task_id:
+            task_match = re.search(r'tasks/([a-f0-9-]+)/', files_db_path)
+            task_id = task_match.group(1) if task_match else "_latest"
+        self._persist_filtered_files(files_db_path, task_id, selected)
 
         return {
             "filtered_files": selected,
