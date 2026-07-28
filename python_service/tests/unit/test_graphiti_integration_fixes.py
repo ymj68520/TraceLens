@@ -19,28 +19,43 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# graphiti is an optional, Neo4j-backed dependency. Episode-rendering tests
+# exercise the real GraphitiIngestor (which imports graphiti_core), so skip
+# them when the library is not installed instead of false-failing.
+try:
+    import graphiti_core  # noqa: F401
+    _HAS_GRAPHITI = True
+except ImportError:
+    _HAS_GRAPHITI = False
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 @pytest.fixture
 def settings():
-    """Build a Settings instance with deterministic graphiti-related values."""
+    """Build a Settings instance with deterministic graphiti-related values.
+
+    Values are set by attribute after construction because every field has an
+    alias and Settings uses extra='ignore' with populate_by_name at its default
+    (False): field-name kwargs are silently ignored, so passing them to the
+    constructor would let env/defaults leak in instead of the intended values.
+    """
     from httpserver.config import Settings
 
-    return Settings(
-        neo4j_uri="neo4j://localhost:7687",
-        neo4j_user="neo4j",
-        neo4j_password="pw",
-        llm_text_base_url="http://localhost:1234",
-        llm_text_model="test/model",
-        llm_api_key="key",
-        graphiti_use_local_llm=True,
-        graphiti_batch_size=5,
-        graphiti_max_retries=2,
-        graphiti_include_full_desc=True,
-        graphiti_max_episode_tokens=2500,
-        graphiti_group_id="forensics_files",
-    )
+    s = Settings()
+    s.neo4j_uri = "neo4j://localhost:7687"
+    s.neo4j_user = "neo4j"
+    s.neo4j_password = "pw"
+    s.llm_text_base_url = "http://localhost:1234"
+    s.llm_text_model = "test/model"
+    s.llm_api_key = "key"
+    s.graphiti_use_local_llm = True
+    s.graphiti_batch_size = 5
+    s.graphiti_max_retries = 2
+    s.graphiti_include_full_desc = True
+    s.graphiti_max_episode_tokens = 2500
+    s.graphiti_group_id = "forensics_files"
+    return s
 
 
 @pytest.fixture
@@ -210,6 +225,10 @@ class TestIngestTaskEpisodes:
 # must pass custom_extraction_instructions to keep usernames/IPs/paths/hashes.
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(
+    not _HAS_GRAPHITI,
+    reason="episode-rendering tests require the graphiti library (graphiti_core)",
+)
 class TestEpisodeRendering:
     def test_json_body_is_rendered_as_text(self):
         """A JSON episode body must be rendered to readable text and typed text."""
