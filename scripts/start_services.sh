@@ -27,6 +27,20 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
     set +a
 fi
 
+# Optional download proxy for flaky networks. Set PIP_PROXY in the environment
+# or .env (e.g. PIP_PROXY=http://192.168.31.226:7897); exported as
+# HTTP_PROXY/HTTPS_PROXY so pip uses it during dependency install.
+if [ -z "${PIP_PROXY:-}" ] && [ -f "$PROJECT_ROOT/.env" ]; then
+    PIP_PROXY="$(sed -nE 's/^[[:space:]]*PIP_PROXY=//p' "$PROJECT_ROOT/.env" | head -1)"
+    PIP_PROXY="${PIP_PROXY%$'\r'}"
+    PIP_PROXY="${PIP_PROXY%\"}"; PIP_PROXY="${PIP_PROXY#\"}"
+    PIP_PROXY="${PIP_PROXY%\'}"; PIP_PROXY="${PIP_PROXY#\'}"
+fi
+if [ -n "${PIP_PROXY:-}" ]; then
+    export HTTP_PROXY="$PIP_PROXY" HTTPS_PROXY="$PIP_PROXY"
+    echo -e "${YELLOW}Using download proxy${NC}: $PIP_PROXY"
+fi
+
 # Default ports
 CPP_PORT=${HTTP_SERVER_PORT:-8080}
 PYTHON_PORT=${PYTHON_HTTP_PORT:-8090}
