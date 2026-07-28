@@ -24,7 +24,7 @@ const INITIAL_FORM = {
   case_description: '',
   scenarios: [],
   xfs_mode: 'auto',
-  filter_profile: '',
+  filter_profile: 'general_forensics',
   // llm_analyze is always true — NOT a user setting
 };
 
