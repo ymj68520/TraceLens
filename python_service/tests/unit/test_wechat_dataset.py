@@ -28,6 +28,23 @@ from pathlib import Path
 
 import pytest
 
+# Optional analysis dependencies. The production code (wechat_graph_parts)
+# degrades gracefully when these are absent (logged warnings + fallbacks), so
+# they are intentionally not hard requirements. Skip the tests that assert full
+# analysis behaviour when they are not installed rather than false-failing.
+try:
+    import scipy  # noqa: F401  (PageRank solver)
+    _HAS_SCIPY = True
+except ImportError:
+    _HAS_SCIPY = False
+
+try:
+    import community  # python-louvain (community detection)
+    _HAS_LOUVAIN = True
+except ImportError:
+    _HAS_LOUVAIN = False
+
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -214,6 +231,10 @@ class TestFullGraph:
 # 3. Community detection & centrality
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(
+    not (_HAS_SCIPY and _HAS_LOUVAIN),
+    reason="community/PageRank analysis requires scipy + python-louvain (optional deps)",
+)
 class TestCommunityAnalysis:
     def test_multiple_communities_detected(self, full_graph):
         """3 social circles should yield >=2 communities."""

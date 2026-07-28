@@ -24,3 +24,10 @@ pydantic-settings>=2.1.0
 
 # Web server
 uvicorn>=0.23.0
+
+# Graph analysis (WeChat relationship graph feature)
+networkx>=3.0
+# Optional analysis enhancements (pagerank / community detection); the code
+# degrades gracefully without them.
+# scipy>=1.10.0
+# python-louvain>=0.16
