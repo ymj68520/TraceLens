@@ -6,6 +6,7 @@
 #include <cstring>
 #include "analyzers/AndroidAnalyzer/AndroidBackupHeader.h"
 #include "analyzers/AndroidAnalyzer/TarIndex.h"
+#include "analyzers/AndroidAnalyzer/MiuiPathMap.h"
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
@@ -159,6 +160,22 @@ TEST(TarIndexTest, IndexesInflatedTar) {
     EXPECT_EQ(got, "WORLD");
 }
 #endif
+
+TEST(MiuiPathMapTest, MapsDatabasesFilesSharedPrefs) {
+    EXPECT_EQ(analyzerPathToTarMember("data/data/com.foo/databases/x.db"), "apps/com.foo/db/x.db");
+    EXPECT_EQ(analyzerPathToTarMember("data/data/com.foo/files/y"), "apps/com.foo/f/y");
+    EXPECT_EQ(analyzerPathToTarMember("data/data/com.foo/shared_prefs/z.xml"), "apps/com.foo/sp/z.xml");
+}
+TEST(MiuiPathMapTest, ToleratesLeadingSlashAndBackslashes) {
+    EXPECT_EQ(analyzerPathToTarMember("/data/data/com.foo/databases/x.db"), "apps/com.foo/db/x.db");
+    EXPECT_EQ(analyzerPathToTarMember("data\\data\\com.foo\\databases\\x.db"), "apps/com.foo/db/x.db");
+}
+TEST(MiuiPathMapTest, ReturnsEmptyForUnmappable) {
+    EXPECT_TRUE(analyzerPathToTarMember("system/build.prop").empty());
+}
+TEST(MiuiPathMapTest, InverseRoundTrip) {
+    EXPECT_EQ(tarMemberToAnalyzerPath("apps/com.foo/db/x.db"), "data/data/com.foo/databases/x.db");
+}
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
