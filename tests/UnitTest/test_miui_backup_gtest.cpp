@@ -6,6 +6,9 @@
 #include <cstring>
 #include "analyzers/AndroidAnalyzer/AndroidBackupHeader.h"
 #include "analyzers/AndroidAnalyzer/TarIndex.h"
+#ifdef USE_ZLIB
+#include <zlib.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -115,6 +118,47 @@ TEST(TarIndexTest, IndexesRawTarOffsets) {
     std::string got((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     EXPECT_EQ(got, "HELLO");
 }
+
+#ifdef USE_ZLIB
+TEST(TarIndexTest, IndexesInflatedTar) {
+    // Build a raw tar, then zlib-deflate it.
+    auto tar = makeUstarTar({{"apps/com.bar/db/y.db", "WORLD"}});
+    std::ifstream tin(tar, std::ios::binary);
+    std::string raw((std::istreambuf_iterator<char>(tin)), std::istreambuf_iterator<char>());
+    ASSERT_FALSE(raw.empty());
+
+    uLong bound = compressBound(static_cast<uLong>(raw.size()));
+    std::vector<Bytef> deflated(bound);
+    uLongf deflatedLen = bound;
+    int rc = compress(deflated.data(), &deflatedLen,
+                      reinterpret_cast<const Bytef*>(raw.data()),
+                      static_cast<uLong>(raw.size()));
+    ASSERT_EQ(rc, Z_OK);
+
+    // Write deflated payload to a temp .bak PREPENDED with header bytes so
+    // payloadOffset > 0 (mirrors real ab/miui layout: header then payload).
+    const std::string headerPad = "FAKE-HEADER-BYTES";
+    fs::path p = fs::temp_directory_path() / "payload_inflated.bak";
+    std::ofstream bout(p, std::ios::binary);
+    bout.write(headerPad.data(), headerPad.size());
+    bout.write(reinterpret_cast<const char*>(deflated.data()),
+               static_cast<std::streamsize>(deflatedLen));
+    bout.close();
+
+    uint64_t payloadOffset = headerPad.size();
+    TarIndex idx;
+    ASSERT_TRUE(idx.build(p.string(), payloadOffset, /*inflate=*/true));
+
+    TarEntry e;
+    ASSERT_TRUE(idx.find("apps/com.bar/db/y.db", e));
+    EXPECT_EQ(e.size, 5u);
+    fs::path out = fs::temp_directory_path() / "out_y.db";
+    ASSERT_TRUE(idx.readEntry(e, out.string()));
+    std::ifstream f(out, std::ios::binary);
+    std::string got((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    EXPECT_EQ(got, "WORLD");
+}
+#endif
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
