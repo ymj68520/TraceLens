@@ -2,11 +2,49 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include <filesystem>
+#include <cstdlib>
+#include <unistd.h>
 #include <cstring>
 #include <sstream>
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
+
+namespace fs = std::filesystem;
+
+namespace {
+
+bool createTemporaryFile(std::string& path, std::ofstream& output) {
+    fs::path directory;
+    try {
+        directory = fs::temp_directory_path();
+    } catch (const fs::filesystem_error&) {
+        return false;
+    }
+
+    std::string pattern = (directory / "tracelens-miui-XXXXXX").string();
+    std::vector<char> writablePattern(pattern.begin(), pattern.end());
+    writablePattern.push_back('\0');
+    const int descriptor = mkstemp(writablePattern.data());
+    if (descriptor == -1) return false;
+    close(descriptor);
+
+    path.assign(writablePattern.data());
+    output.open(path, std::ios::binary | std::ios::trunc);
+    if (!output) {
+        std::remove(path.c_str());
+        path.clear();
+        return false;
+    }
+    return true;
+}
+
+}  // namespace
+
+TarIndex::~TarIndex() {
+    if (ownsTemp_) std::remove(dataFile_.c_str());
+}
 
 static uint64_t parseOctal(const char* s, int width) {
     uint64_t v = 0;
@@ -23,10 +61,13 @@ bool TarIndex::build(const std::string& bakPath, uint64_t payloadOffset, bool do
     ownsTemp_ = false;
     if (doInflate) {
 #ifdef USE_ZLIB
-        std::string tmp = bakPath + ".inflated.tmp";
+        std::string tmp;
         std::ifstream in(bakPath, std::ios::binary);
+        if (!in) return false;
         in.seekg(payloadOffset);
-        std::ofstream out(tmp, std::ios::binary);
+        if (!in) return false;
+        std::ofstream out;
+        if (!createTemporaryFile(tmp, out)) return false;
         z_stream zs{};
         if (inflateInit(&zs) != Z_OK) {
             out.close(); std::remove(tmp.c_str());
@@ -43,14 +84,16 @@ bool TarIndex::build(const std::string& bakPath, uint64_t payloadOffset, bool do
                 zs.avail_out = obuf.size();
                 int r = inflate(&zs, Z_NO_FLUSH);
                 out.write(obuf.data(), obuf.size() - zs.avail_out);
+                if (!out) { inflateEnd(&zs); out.close(); std::remove(tmp.c_str()); return false; }
                 if (r == Z_STREAM_END) { done = true; break; }
                 if (r != Z_OK) { inflateEnd(&zs); out.close(); std::remove(tmp.c_str()); return false; }
             } while (zs.avail_out == 0);
         }
         inflateEnd(&zs);
+        out.flush();
+        const bool outputOk = out.good();
         out.close();
-        if (!done) {
-            // truncated zlib stream (input ended without Z_STREAM_END)
+        if (!done || !outputOk || !out.good()) {
             std::remove(tmp.c_str());
             return false;
         }
@@ -123,6 +166,13 @@ bool TarIndex::readEntry(const TarEntry& e, const std::string& outPath) const {
             return false;
         }
         remainingToRead -= static_cast<uint64_t>(chunk);
+    }
+    out.flush();
+    const bool outputOk = out.good();
+    out.close();
+    if (!outputOk || !out.good()) {
+        std::remove(outPath.c_str());
+        return false;
     }
     return true;
 }

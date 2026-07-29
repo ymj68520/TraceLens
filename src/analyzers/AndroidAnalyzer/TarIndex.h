@@ -12,6 +12,12 @@ struct TarEntry {
 };
 class TarIndex {
 public:
+    ~TarIndex();
+    TarIndex() = default;
+    TarIndex(const TarIndex&) = delete;
+    TarIndex& operator=(const TarIndex&) = delete;
+    TarIndex(TarIndex&&) = delete;
+    TarIndex& operator=(TarIndex&&) = delete;
     // Index a tar payload located at [payloadOffset, end-of-file) of `bakPath`.
     // If inflate=true, the payload is zlib-deflated and is inflated into a temp
     // file first (offsets then refer to the temp file).
