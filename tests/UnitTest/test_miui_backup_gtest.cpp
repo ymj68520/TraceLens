@@ -2,11 +2,12 @@
 #include <gtest/gtest.h>
 #include <fstream>
 #include <filesystem>
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <memory>
 #include <utility>
-#include <unistd.h>
 #include "analyzers/AndroidAnalyzer/AndroidBackupHeader.h"
 #include "analyzers/AndroidAnalyzer/TarIndex.h"
 #include "analyzers/AndroidAnalyzer/MiuiPathMap.h"
@@ -20,10 +21,29 @@
 
 namespace fs = std::filesystem;
 
-static unsigned serial = 0;
+static std::atomic_uint64_t serial{0};
+
+static fs::path uniqueTempPath(const std::string& stem, const std::string& extension = {}) {
+    const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto suffix = std::to_string(timestamp) + "_" +
+                        std::to_string(serial.fetch_add(1, std::memory_order_relaxed));
+    return fs::temp_directory_path() / (stem + "_" + suffix + extension);
+}
+
+class TemporaryFile {
+public:
+    explicit TemporaryFile(fs::path path) : path_(std::move(path)) {}
+    ~TemporaryFile() {
+        std::error_code error;
+        fs::remove(path_, error);
+    }
+
+private:
+    fs::path path_;
+};
 
 static fs::path writeTempBak(const std::string& name, const std::string& body) {
-    fs::path p = fs::temp_directory_path() / name;
+    fs::path p = uniqueTempPath(name);
     std::ofstream(p, std::ios::binary) << body;
     return p;
 }
@@ -125,8 +145,7 @@ static fs::path makeUstarTar(const std::vector<std::pair<std::string,std::string
         tar += data;
     }
     tar.append(1024, '\0'); // two zero blocks
-    fs::path p = fs::temp_directory_path() /
-                 ("payload_" + std::to_string(::getpid()) + "_" + std::to_string(serial++) + ".tar");
+    fs::path p = uniqueTempPath("payload", ".tar");
     std::ofstream(p, std::ios::binary) << tar;
     return p;
 }
@@ -146,8 +165,7 @@ TEST(TarIndexTest, IndexesRawTarOffsets) {
 }
 
 TEST(TarIndexTest, RejectsTruncatedTar) {
-    fs::path tar = fs::temp_directory_path() /
-                   ("truncated_" + std::to_string(::getpid()) + ".tar");
+    fs::path tar = uniqueTempPath("truncated", ".tar");
     std::ofstream(tar, std::ios::binary) << std::string(511, '\0');
 
     TarIndex idx;
@@ -241,8 +259,7 @@ TEST(MiuiManifestTest, MissingFileReturnsFalse) {
 }
 
 TEST(MiuiBackupExtractorTest, ServesFileThroughAnalyzerPath) {
-    fs::path dir = fs::temp_directory_path() /
-                   ("miui_ext_test_" + std::to_string(::getpid()) + "_" + std::to_string(++serial));
+    fs::path dir = uniqueTempPath("miui_ext_test");
     fs::create_directories(dir);
 
     std::string xml = "<?xml version='1.0'?><MIUI-backup><device>cepheus</device>"
@@ -271,8 +288,7 @@ TEST(MiuiBackupExtractorTest, ServesFileThroughAnalyzerPath) {
 }
 
 TEST(MiuiBackupExtractorTest, ExtractFailsWithoutCreatingOutputForMissingMember) {
-    fs::path dir = fs::temp_directory_path() /
-                   ("miui_ext_missing_test_" + std::to_string(::getpid()) + "_" + std::to_string(++serial));
+    fs::path dir = uniqueTempPath("miui_ext_missing_test");
     fs::create_directories(dir);
 
     std::ofstream(dir / "descript.xml", std::ios::binary)
@@ -295,8 +311,7 @@ TEST(MiuiBackupExtractorTest, ExtractFailsWithoutCreatingOutputForMissingMember)
 }
 
 TEST(MiuiBackupExtractorTest, InitializeSkipsEncryptedBackupAndReturnsFalseWhenNoUsableApps) {
-    fs::path dir = fs::temp_directory_path() /
-                   ("miui_ext_encrypted_test_" + std::to_string(::getpid()) + "_" + std::to_string(++serial));
+    fs::path dir = uniqueTempPath("miui_ext_encrypted_test");
     fs::create_directories(dir);
 
     std::ofstream(dir / "descript.xml", std::ios::binary)
@@ -311,8 +326,7 @@ TEST(MiuiBackupExtractorTest, InitializeSkipsEncryptedBackupAndReturnsFalseWhenN
 }
 
 TEST(MiuiBackupExtractorTest, CreatesOutputParentBeforeTarEntryWrite) {
-    fs::path dir = fs::temp_directory_path() /
-                   ("miui_ext_output_test_" + std::to_string(::getpid()) + "_" + std::to_string(++serial));
+    fs::path dir = uniqueTempPath("miui_ext_output_test");
     fs::create_directories(dir);
 
     std::ofstream(dir / "descript.xml", std::ios::binary)
@@ -335,11 +349,9 @@ TEST(MiuiBackupExtractorTest, CreatesOutputParentBeforeTarEntryWrite) {
 }
 
 TEST(MiuiBackupExtractorTest, RejectsAbsoluteManifestBackupPath) {
-    fs::path dir = fs::temp_directory_path() /
-                   ("miui_ext_absolute_test_" + std::to_string(::getpid()) + "_" + std::to_string(++serial));
+    fs::path dir = uniqueTempPath("miui_ext_absolute_test");
     fs::create_directories(dir);
-    fs::path externalBak = fs::temp_directory_path() /
-                           ("outside_miui_" + std::to_string(::getpid()) + "_" + std::to_string(++serial) + ".bak");
+    fs::path externalBak = uniqueTempPath("outside_miui", ".bak");
     auto tar = makeUstarTar({{"apps/com.foo/db/x.db", "OUTSIDE"}});
     std::ofstream(externalBak, std::ios::binary) << rawBackup(readFile(tar));
     std::ofstream(dir / "descript.xml", std::ios::binary) << minimalBackupXml(externalBak.string());
@@ -349,8 +361,7 @@ TEST(MiuiBackupExtractorTest, RejectsAbsoluteManifestBackupPath) {
 }
 
 TEST(MiuiBackupExtractorTest, RejectsTraversalManifestBackupPath) {
-    fs::path parent = fs::temp_directory_path() /
-                      ("miui_ext_traversal_parent_" + std::to_string(::getpid()) + "_" + std::to_string(++serial));
+    fs::path parent = uniqueTempPath("miui_ext_traversal_parent");
     fs::path dir = parent / "backup";
     fs::create_directories(dir);
     auto tar = makeUstarTar({{"apps/com.foo/db/x.db", "OUTSIDE"}});
@@ -362,11 +373,9 @@ TEST(MiuiBackupExtractorTest, RejectsTraversalManifestBackupPath) {
 }
 
 TEST(MiuiBackupExtractorTest, RejectsSymlinkedManifestBackupFile) {
-    fs::path dir = fs::temp_directory_path() /
-                   ("miui_ext_symlink_test_" + std::to_string(::getpid()) + "_" + std::to_string(++serial));
+    fs::path dir = uniqueTempPath("miui_ext_symlink_test");
     fs::create_directories(dir);
-    fs::path externalBak = fs::temp_directory_path() /
-                           ("outside_symlink_miui_" + std::to_string(::getpid()) + "_" + std::to_string(++serial) + ".bak");
+    fs::path externalBak = uniqueTempPath("outside_symlink_miui", ".bak");
     auto tar = makeUstarTar({{"apps/com.foo/db/x.db", "OUTSIDE"}});
     std::ofstream(externalBak, std::ios::binary) << rawBackup(readFile(tar));
     std::error_code ec;
@@ -389,8 +398,7 @@ TEST(TarIndexTest, DeletesInflatedTemporaryFileOnDestruction) {
                        reinterpret_cast<const Bytef*>(raw.data()),
                        static_cast<uLong>(raw.size())), Z_OK);
 
-    fs::path bakDir = fs::temp_directory_path() /
-                      ("miui_evidence_" + std::to_string(::getpid()) + "_" + std::to_string(++serial));
+    fs::path bakDir = uniqueTempPath("miui_evidence");
     fs::create_directories(bakDir);
     fs::path bak = bakDir / "inflated_lifecycle.bak";
     std::ofstream(bak, std::ios::binary).write(reinterpret_cast<const char*>(deflated.data()),
@@ -408,10 +416,8 @@ TEST(TarIndexTest, DeletesInflatedTemporaryFileOnDestruction) {
 #endif
 
 TEST(MiuiDbTest, PersistsMiuiBackupMetadataAcrossAllTables) {
-    const fs::path dbPath = fs::temp_directory_path() /
-                            ("miui_metadata_" + std::to_string(::getpid()) + "_" +
-                             std::to_string(++serial) + ".db");
-    fs::remove(dbPath);
+    const fs::path dbPath = uniqueTempPath("miui_metadata", ".db");
+    TemporaryFile cleanup(dbPath);
 
     {
         AndroidAnalysisDatabase db(dbPath.string());
@@ -474,8 +480,6 @@ TEST(MiuiDbTest, PersistsMiuiBackupMetadataAcrossAllTables) {
         EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(inventoryStatement.get(), 3)), "id,text");
         EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(inventoryStatement.get(), 4)), "decrypted");
     }
-
-    fs::remove(dbPath);
 }
 
 int main(int argc, char **argv) {
