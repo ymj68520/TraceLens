@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BACKUP="${1:-/home/ymj68520/projects/Forensics/AndroidBackup}"
-OUT="$(mktemp -d)"
+OUT="$(mktemp -d /tmp/tracelens-miui-backup-e2e.XXXXXX)"
 cleanup() {
     rm -rf "$OUT"
 }
