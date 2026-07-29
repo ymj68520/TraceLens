@@ -30,6 +30,15 @@ static std::string readFile(const fs::path& path) {
                        std::istreambuf_iterator<char>());
 }
 
+static std::string minimalBackupXml(const std::string& bakFile) {
+    return "<MIUI-backup><packages><package><packageName>com.foo</packageName>"
+           "<bakFile>" + bakFile + "</bakFile></package></packages></MIUI-backup>";
+}
+
+static std::string rawBackup(const std::string& tarBytes) {
+    return "ANDROID BACKUP\n5\n0\nnone\n" + tarBytes;
+}
+
 TEST(AndroidBackupHeaderTest, ParsesMiuiPrefixedStream) {
     std::string body =
         "MIUI BACKUP\n2\ncom.android.deskclock 时钟\n-1\n0\n"
@@ -320,6 +329,77 @@ TEST(MiuiBackupExtractorTest, CreatesOutputParentBeforeTarEntryWrite) {
     EXPECT_EQ(readFile(out), "DATA");
 
 }
+
+TEST(MiuiBackupExtractorTest, RejectsAbsoluteManifestBackupPath) {
+    fs::path dir = fs::temp_directory_path() /
+                   ("miui_ext_absolute_test_" + std::to_string(::getpid()) + "_" + std::to_string(++serial));
+    fs::create_directories(dir);
+    fs::path externalBak = fs::temp_directory_path() /
+                           ("outside_miui_" + std::to_string(::getpid()) + "_" + std::to_string(++serial) + ".bak");
+    auto tar = makeUstarTar({{"apps/com.foo/db/x.db", "OUTSIDE"}});
+    std::ofstream(externalBak, std::ios::binary) << rawBackup(readFile(tar));
+    std::ofstream(dir / "descript.xml", std::ios::binary) << minimalBackupXml(externalBak.string());
+
+    MiuiBackupExtractor extractor(dir.string());
+    EXPECT_FALSE(extractor.initialize());
+}
+
+TEST(MiuiBackupExtractorTest, RejectsTraversalManifestBackupPath) {
+    fs::path parent = fs::temp_directory_path() /
+                      ("miui_ext_traversal_parent_" + std::to_string(::getpid()) + "_" + std::to_string(++serial));
+    fs::path dir = parent / "backup";
+    fs::create_directories(dir);
+    auto tar = makeUstarTar({{"apps/com.foo/db/x.db", "OUTSIDE"}});
+    std::ofstream(parent / "outside.bak", std::ios::binary) << rawBackup(readFile(tar));
+    std::ofstream(dir / "descript.xml", std::ios::binary) << minimalBackupXml("../outside.bak");
+
+    MiuiBackupExtractor extractor(dir.string());
+    EXPECT_FALSE(extractor.initialize());
+}
+
+TEST(MiuiBackupExtractorTest, RejectsSymlinkedManifestBackupFile) {
+    fs::path dir = fs::temp_directory_path() /
+                   ("miui_ext_symlink_test_" + std::to_string(::getpid()) + "_" + std::to_string(++serial));
+    fs::create_directories(dir);
+    fs::path externalBak = fs::temp_directory_path() /
+                           ("outside_symlink_miui_" + std::to_string(::getpid()) + "_" + std::to_string(++serial) + ".bak");
+    auto tar = makeUstarTar({{"apps/com.foo/db/x.db", "OUTSIDE"}});
+    std::ofstream(externalBak, std::ios::binary) << rawBackup(readFile(tar));
+    std::error_code ec;
+    fs::create_symlink(externalBak, dir / "linked.bak", ec);
+    if (ec) GTEST_SKIP() << "symlink creation unavailable: " << ec.message();
+    std::ofstream(dir / "descript.xml", std::ios::binary) << minimalBackupXml("linked.bak");
+
+    MiuiBackupExtractor extractor(dir.string());
+    EXPECT_FALSE(extractor.initialize());
+}
+
+#ifdef USE_ZLIB
+TEST(TarIndexTest, DeletesInflatedTemporaryFileOnDestruction) {
+    auto tar = makeUstarTar({{"apps/com.bar/db/y.db", "WORLD"}});
+    const std::string raw = readFile(tar);
+    uLong bound = compressBound(static_cast<uLong>(raw.size()));
+    std::vector<Bytef> deflated(bound);
+    uLongf deflatedLen = bound;
+    ASSERT_EQ(compress(deflated.data(), &deflatedLen,
+                       reinterpret_cast<const Bytef*>(raw.data()),
+                       static_cast<uLong>(raw.size())), Z_OK);
+
+    fs::path bak = fs::temp_directory_path() /
+                   ("inflated_lifecycle_" + std::to_string(::getpid()) + "_" + std::to_string(++serial) + ".bak");
+    std::ofstream(bak, std::ios::binary).write(reinterpret_cast<const char*>(deflated.data()),
+                                                static_cast<std::streamsize>(deflatedLen));
+    std::string tempPath;
+    {
+        TarIndex idx;
+        ASSERT_TRUE(idx.build(bak.string(), 0, /*inflate=*/true));
+        tempPath = idx.dataFile();
+        EXPECT_NE(fs::path(tempPath).string(), bak.string() + ".inflated.tmp");
+        EXPECT_TRUE(fs::exists(tempPath));
+    }
+    EXPECT_FALSE(fs::exists(tempPath));
+}
+#endif
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

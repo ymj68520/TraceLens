@@ -27,11 +27,47 @@ bool MiuiBackupExtractor::initialize() {
         return false;
     }
 
+    fs::path backupRoot;
+    try {
+        backupRoot = fs::canonical(folder_);
+    } catch (const fs::filesystem_error& error) {
+        std::cerr << "MiuiBackupExtractor: cannot resolve backup folder "
+                  << folder_ << ": " << error.what() << std::endl;
+        return false;
+    }
+    if (!fs::is_directory(backupRoot)) {
+        std::cerr << "MiuiBackupExtractor: backup folder is not a directory: "
+                  << backupRoot << std::endl;
+        return false;
+    }
+
     for (const auto& package : manifest_.packages) {
-        const fs::path bakPath = fs::path(folder_) / package.bakFile;
-        if (!fs::is_regular_file(bakPath)) {
+        const fs::path declaredPath(package.bakFile);
+        if (declaredPath.empty() || declaredPath.is_absolute() || declaredPath.has_parent_path()) {
+            std::cerr << "MiuiBackupExtractor: unsafe backup filename for "
+                      << package.packageName << ": " << package.bakFile << std::endl;
+            continue;
+        }
+
+        const fs::path candidate = backupRoot / declaredPath;
+        std::error_code statusError;
+        if (fs::is_symlink(fs::symlink_status(candidate, statusError)) || statusError) {
+            std::cerr << "MiuiBackupExtractor: symlinked or unreadable backup file for "
+                      << package.packageName << ": " << declaredPath << std::endl;
+            continue;
+        }
+
+        fs::path bakPath;
+        try {
+            bakPath = fs::canonical(candidate);
+        } catch (const fs::filesystem_error&) {
             std::cerr << "MiuiBackupExtractor: backup file not found for "
-                      << package.packageName << ": " << bakPath << std::endl;
+                      << package.packageName << ": " << declaredPath << std::endl;
+            continue;
+        }
+        if (bakPath.parent_path() != backupRoot || !fs::is_regular_file(bakPath)) {
+            std::cerr << "MiuiBackupExtractor: backup path escapes folder for "
+                      << package.packageName << ": " << declaredPath << std::endl;
             continue;
         }
 
