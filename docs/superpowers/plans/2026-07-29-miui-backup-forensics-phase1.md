@@ -695,8 +695,8 @@ git commit -m "feat(android): MiuiBackupManifest parses descript.xml"
       bool initialize() override;
       bool extractFileByPath(const std::string& imageRelPath, const std::string& outPath) override;
       const BackupMeta& manifest() const { return manifest_; }
-      // Enumerate every tar member across all .bak (for the inventory pass, Task 7).
-      const std::unordered_map<std::string, TarEntry>& allEntries() const;
+      // enumerateEntries()/extractTarMember() are added to this class in Task 7
+      // for the inventory pass; Task 5 leaves them out intentionally.
   private:
       std::string folder_;
       std::string password_;
@@ -809,17 +809,10 @@ bool MiuiBackupExtractor::extractFileByPath(const std::string& imageRelPath, con
     return owner->readEntry(e, outPath);
 }
 
-const std::unordered_map<std::string, TarEntry>& MiuiBackupExtractor::allEntries() const {
-    static const std::unordered_map<std::string, TarEntry> empty;
-    if (indexes_.empty()) return empty;
-    // Aggregate on demand is costly; keep a cached aggregate instead. For Phase 1 the
-    // inventory pass (Task 7) iterates indexes_ via manifest packages, so this returns
-    // the first index's map as a placeholder-free hook. (Inventory uses per-package API.)
-    return indexes_.front()->entries();
-}
+// (Task 7 adds enumerateEntries(visitor) and extractTarMember(name,outPath) here.)
 ```
 
-> Refine in Task 7: add `bool enumerateEntries(std::function<void(const std::string&,const TarEntry&)>) const;` for the inventory pass (replace the awkward `allEntries()`). Keep the signature change local.
+> Task 7 adds `enumerateEntries(visitor)` and `extractTarMember(name,outPath)` to this class for the inventory pass; Task 5 leaves them out intentionally so there is no interim stub.
 
 - [ ] **Step 5: Run test to verify it passes** — `ctest --test-dir build -R MiuiBackupHeaderTests --output-on-failure` → 11 tests PASS.
 
@@ -836,7 +829,7 @@ git commit -m "feat(android): MiuiBackupExtractor IFileExtractor backend (unencr
 ### Task 6: MIUI tables + insert methods in `AndroidAnalysisDatabase`
 
 **Files:**
-- Modify: `src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.h` (add declarations), `AndroidAnalysisDatabase.cpp` (add `createMiuiTables()` + insert methods + call from `createTables()`), and the `AndroidAnalysisSQL` definition file (locate via `grep -rn "CREATE_ALL_TABLES" src/analyzers/AndroidAnalyzer`).
+- Modify: `src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.h` (add declarations), `src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp` (add insert methods + call from `createTables()`), and `src/core/DatabaseManager/SQL/android_analysis_sql.h` (add the `CREATE_MIUI_TABLES` constant to `namespace AndroidAnalysisSQL`).
 
 **Interfaces:**
 - Produces:
@@ -880,19 +873,26 @@ TEST(MiuiDbTest, InsertsMiuiTables) {
 
 - [ ] **Step 3: Add the SQL + methods**
 
-In the `AndroidAnalysisSQL` namespace file (found via the grep above), add a constant:
+In `src/core/DatabaseManager/SQL/android_analysis_sql.h` (inside `namespace AndroidAnalysisSQL`, matching the existing `inline constexpr const char* CREATE_ALL_TABLES = R"(...)";` style), add:
 ```cpp
-inline const std::string CREATE_MIUI_TABLES =
-  "CREATE TABLE IF NOT EXISTS miui_backup_manifest("
-  "  id INTEGER PRIMARY KEY, device TEXT, miui_version TEXT, backup_date INTEGER,"
-  "  total_size INTEGER, package_count INTEGER, source_folder TEXT);"
-  "CREATE TABLE IF NOT EXISTS installed_apps("
-  "  id INTEGER PRIMARY KEY, package_name TEXT, display_name TEXT, version_code TEXT,"
-  "  version_name TEXT, data_size INTEGER, sd_size INTEGER, bak_type INTEGER,"
-  "  manifest_summary TEXT);"
-  "CREATE TABLE IF NOT EXISTS app_db_inventory("
-  "  id INTEGER PRIMARY KEY, package_name TEXT, db_path TEXT, table_name TEXT,"
-  "  row_count INTEGER, columns TEXT, open_status TEXT);";
+inline constexpr const char* CREATE_MIUI_TABLES = R"(
+    CREATE TABLE IF NOT EXISTS miui_backup_manifest (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        device TEXT, miui_version TEXT, backup_date INTEGER,
+        total_size INTEGER, package_count INTEGER, source_folder TEXT
+    );
+    CREATE TABLE IF NOT EXISTS installed_apps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        package_name TEXT, display_name TEXT, version_code TEXT,
+        version_name TEXT, data_size INTEGER, sd_size INTEGER,
+        bak_type INTEGER, manifest_summary TEXT
+    );
+    CREATE TABLE IF NOT EXISTS app_db_inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        package_name TEXT, db_path TEXT, table_name TEXT,
+        row_count INTEGER, columns TEXT, open_status TEXT
+    );
+)";
 ```
 In `AndroidAnalysisDatabase::createTables()`, after the existing `executeSQL(CREATE_ALL_TABLES)`, add `executeSQL(AndroidAnalysisSQL::CREATE_MIUI_TABLES);` (and keep the existing return).
 
