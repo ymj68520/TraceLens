@@ -2,7 +2,10 @@
 #include <gtest/gtest.h>
 #include <fstream>
 #include <filesystem>
+#include <cstdio>
+#include <cstring>
 #include "analyzers/AndroidAnalyzer/AndroidBackupHeader.h"
+#include "analyzers/AndroidAnalyzer/TarIndex.h"
 
 namespace fs = std::filesystem;
 
@@ -67,6 +70,50 @@ TEST(AndroidBackupHeaderTest, DetectsUnknownEncryptionMarker) {
     ASSERT_TRUE(parseAndroidBackupHeader(p.string(), h));
     EXPECT_EQ(h.encryption, BackupEncryption::Unknown);
     EXPECT_EQ(h.encMarker, "weird-scheme");
+}
+
+// Build a minimal POSIX (ustar) tar holding one regular file "apps/com.foo/db/x.db"
+// with known contents, optionally zlib-deflated.
+static fs::path makeUstarTar(const std::vector<std::pair<std::string,std::string>>& files) {
+    std::string tar;
+    for (auto& [name, content] : files) {
+        std::string blk(512, '\0');
+        std::memcpy(blk.data(), name.data(), std::min(name.size(), (size_t)100));
+        std::string oct; char buf[16];
+        auto toOct = [&](size_t v, int width){ std::snprintf(buf,sizeof(buf),"%0*lo",width-1,v);
+            std::string s(buf); s.push_back('\0'); s.push_back(' '); return s; };
+        std::memcpy(blk.data()+124, toOct(content.size(), 12).data(), 12); // size
+        std::memcpy(blk.data()+136, toOct(0, 12).data(), 12);              // mtime
+        blk[156] = '0';                                                     // typeflag regular
+        std::memcpy(blk.data()+257, "ustar", 5);                            // ustar magic
+        // checksum: blanks then sum
+        std::memset(blk.data()+148, ' ', 8);
+        unsigned sum = 0; for (unsigned char c : blk) sum += c;
+        std::snprintf(buf, sizeof(buf), "%06o", sum);
+        std::memcpy(blk.data()+148, buf, 6); blk[154] = '\0'; blk[155] = ' ';
+        tar += blk;
+        std::string data = content;
+        data.append(((512 - data.size() % 512) % 512), '\0');
+        tar += data;
+    }
+    tar.append(1024, '\0'); // two zero blocks
+    fs::path p = fs::temp_directory_path() / "payload.tar";
+    std::ofstream(p, std::ios::binary) << tar;
+    return p;
+}
+
+TEST(TarIndexTest, IndexesRawTarOffsets) {
+    auto tar = makeUstarTar({{"apps/com.foo/db/x.db", "HELLO"}});
+    TarIndex idx;
+    ASSERT_TRUE(idx.build(tar.string(), 0, /*inflate=*/false));
+    TarEntry e;
+    ASSERT_TRUE(idx.find("apps/com.foo/db/x.db", e));
+    EXPECT_EQ(e.size, 5u);
+    fs::path out = fs::temp_directory_path() / "out_x.db";
+    ASSERT_TRUE(idx.readEntry(e, out.string()));
+    std::ifstream f(out, std::ios::binary);
+    std::string got((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    EXPECT_EQ(got, "HELLO");
 }
 
 int main(int argc, char **argv) {
