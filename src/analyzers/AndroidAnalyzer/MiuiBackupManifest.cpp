@@ -20,6 +20,9 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr uint64_t kMaximumManifestBytes = 16ULL * 1024 * 1024;
+constexpr size_t kMaximumManifestPackages = 100000;
+constexpr size_t kMaximumManifestFieldBytes = 4096;
+constexpr size_t kMaximumManifestMetadataBytes = 16ULL * 1024 * 1024;
 
 bool parseU64(const char* text, uint64_t& value) {
     value = 0;
@@ -84,14 +87,28 @@ bool readManifestFile(const fs::path& root, std::vector<char>& bytes) {
 #endif
 }
 
-bool parsePackage(const pugi::xml_node& node, BackupPackage& package) {
+bool boundedText(const char* value, std::string& output) {
+    output = value ? value : "";
+    return output.size() <= kMaximumManifestFieldBytes;
+}
+
+bool addMetadataBytes(size_t amount, size_t& total) {
+    if (amount > kMaximumManifestMetadataBytes - total) return false;
+    total += amount;
+    return true;
+}
+
+bool parsePackage(const pugi::xml_node& node, BackupPackage& package, size_t& metadataBytes) {
     if (node.type() != pugi::node_element || std::string(node.name()) != "package") return false;
     const pugi::xml_node name = node.child("packageName");
     const pugi::xml_node bak = node.child("bakFile");
     if (!name || !bak || name.next_sibling("packageName") || bak.next_sibling("bakFile")) return false;
-    package.packageName = name.text().as_string();
-    package.bakFile = bak.text().as_string();
-    if (package.packageName.empty() || package.bakFile.empty()) return false;
+    if (!boundedText(name.text().as_string(), package.packageName) ||
+        !boundedText(bak.text().as_string(), package.bakFile) ||
+        package.packageName.empty() || package.bakFile.empty() ||
+        !addMetadataBytes(package.packageName.size() + package.bakFile.size(), metadataBytes)) {
+        return false;
+    }
     return parseInt(node.child("bakType").text().as_string(), package.bakType) &&
            parseInt(node.child("error").text().as_string(), package.error) &&
            parseInt(node.child("state").text().as_string(), package.state) &&
@@ -128,8 +145,12 @@ bool parseMiuiManifest(const std::string& backupFolder, BackupMeta& out) {
     const pugi::xml_node packages = rootNode.child("packages");
     if (!packages || packages.next_sibling("packages")) return false;
 
-    out.device = rootNode.child("device").text().as_string();
-    out.miuiVersion = rootNode.child("miuiVersion").text().as_string();
+    size_t metadataBytes = 0;
+    if (!boundedText(rootNode.child("device").text().as_string(), out.device) ||
+        !boundedText(rootNode.child("miuiVersion").text().as_string(), out.miuiVersion) ||
+        !addMetadataBytes(out.device.size() + out.miuiVersion.size(), metadataBytes)) {
+        return false;
+    }
     if (!parseU64(rootNode.child("date").text().as_string(), out.date) ||
         !parseU64(rootNode.child("size").text().as_string(), out.totalSize)) {
         return false;
@@ -141,7 +162,8 @@ bool parseMiuiManifest(const std::string& backupFolder, BackupMeta& out) {
             continue;
         }
         BackupPackage package;
-        if (!parsePackage(child, package)) return false;
+        if (out.packages.size() >= kMaximumManifestPackages ||
+            !parsePackage(child, package, metadataBytes)) return false;
         out.packages.push_back(std::move(package));
     }
     return true;

@@ -71,10 +71,15 @@ bool AndroidAnalyzer::initialize() {
         if (!miui || miui->temporaryRoot().empty()) return false;
         secureTemporaryRoot_ = miui->temporaryRoot().string();
     } else {
+        const bool sourceIsDirectory = sourceMode_ == AndroidSourceMode::LogicalDir;
+        fs::path evidenceRoot;
         fs::path root;
-        if (miui_secure_temp::createDirectory(imagePath_, "tracelens-android", root)) {
-            secureTemporaryRoot_ = root.string();
+        if (!miui_secure_temp::evidenceRootForSource(imagePath_, sourceIsDirectory, evidenceRoot) ||
+            !miui_secure_temp::createDirectory(evidenceRoot, "tracelens-android", root)) {
+            std::cerr << "Failed to create evidence-disjoint Android temporary root" << std::endl;
+            return false;
         }
+        secureTemporaryRoot_ = root.string();
     }
 
     // Initialize android analysis database
@@ -87,8 +92,7 @@ bool AndroidAnalyzer::initialize() {
 
     if (sourceMode_ == AndroidSourceMode::MiuiBackup) {
         if (auto* miui = dynamic_cast<MiuiBackupExtractor*>(fileExtractor_.get())) {
-            if (!writeMiuiManifest(*miui, *androidDb_) ||
-                !writeAppDbInventory(*miui, *androidDb_)) {
+            if (!persistMiuiBackupAnalysis(*miui, *androidDb_)) {
                 std::cerr << "Failed to persist MIUI backup analysis" << std::endl;
                 return false;
             }
@@ -135,13 +139,16 @@ void AndroidAnalyzer::analyzeAndroidData() {
 
     // Analyze WeChat (enhanced parsing with decryption support)
     {
-        std::string wechatDbPath = "data/data/com.tencent.mm/MicroMsg/testuser/EnMicroMsg.db";
-        std::string tempPath = makeAnalysisTempPath(wechatDbPath);
-        if (fileExtractor_->extractFileByPath(wechatDbPath, tempPath)) {
+        const std::string wechatDbPath = "data/data/com.tencent.mm/MicroMsg/testuser/EnMicroMsg.db";
+        const std::string tempPath = makeAnalysisTempPath(wechatDbPath);
+        std::vector<std::string> stagedPaths;
+        if (stageSqliteBundle(wechatDbPath, tempPath, stagedPaths)) {
             parseWeChatEnhanced(tempPath, wechatPassword_);
-            std::filesystem::remove(tempPath);
         } else {
             std::cout << "Failed to extract WeChat database: " << wechatDbPath << std::endl;
+        }
+        for (const std::string& path : stagedPaths) {
+            std::filesystem::remove(path);
         }
     }
 

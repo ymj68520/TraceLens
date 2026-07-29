@@ -224,7 +224,8 @@ TEST(TarIndexTest, CombinesUstarPrefixAndName) {
     const std::string name = "database-with-a-long-name.db";
     std::memcpy(block.data(), name.data(), name.size());
     std::memcpy(block.data() + 345, prefix.data(), prefix.size());
-    std::memcpy(block.data() + 257, "ustar", 5);
+    std::memcpy(block.data() + 257, "ustar\0", 6);
+    std::memcpy(block.data() + 263, "00", 2);
     const std::string sizeField("00000000004\0", 12);
     std::memcpy(block.data() + 124, sizeField.data(), 12);
     block[156] = '0';
@@ -237,6 +238,25 @@ TEST(TarIndexTest, CombinesUstarPrefixAndName) {
     TarEntry entry;
     EXPECT_TRUE(idx.find(prefix + "/" + name, entry));
     EXPECT_EQ(entry.size, 4u);
+}
+
+TEST(TarIndexTest, RejectsNonUstarHeaderWithPrefixBytes) {
+    std::string block(512, '\0');
+    const std::string forgedPrefix = "apps/com.miui.forged/db";
+    const std::string name = "identity.db";
+    std::memcpy(block.data(), name.data(), name.size());
+    std::memcpy(block.data() + 345, forgedPrefix.data(), forgedPrefix.size());
+    const std::string sizeField("00000000004\0", 12);
+    std::memcpy(block.data() + 124, sizeField.data(), 12);
+    block[156] = '0';
+    const fs::path tar = uniqueTempPath("v7_forged_prefix", ".tar");
+    std::ofstream(tar, std::ios::binary)
+        << block << "DATA" << std::string(508, '\0') << std::string(1024, '\0');
+
+    TarIndex index;
+    EXPECT_FALSE(index.build(tar.string(), 0, false));
+    TarEntry entry;
+    EXPECT_FALSE(index.find(forgedPrefix + "/" + name, entry));
 }
 
 #ifdef USE_ZLIB
@@ -545,6 +565,24 @@ TEST(MiuiBackupExtractorTest, RejectsSymlinkedManifestBackupFile) {
     ASSERT_TRUE(extractor.initialize());
     ASSERT_EQ(extractor.packageFailures().size(), 1u);
     EXPECT_EQ(extractor.packageFailures()[0].bakFile, "linked.bak");
+    EXPECT_EQ(extractor.packageFailures()[0].openStatus, "parse_error");
+}
+
+TEST(MiuiBackupExtractorTest, RejectsDuplicateManifestBackupFile) {
+    const fs::path dir = uniqueTempPath("miui_duplicate_bak");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages>"
+           "<package><packageName>com.first</packageName><bakFile>shared.bak</bakFile></package>"
+           "<package><packageName>com.second</packageName><bakFile>shared.bak</bakFile></package>"
+           "</packages></MIUI-backup>";
+    const auto tar = makeUstarTar({{"apps/com.first/db/x.db", "DATA"}});
+    std::ofstream(dir / "shared.bak", std::ios::binary) << rawBackup(readFile(tar));
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    ASSERT_EQ(extractor.packageFailures().size(), 1u);
+    EXPECT_EQ(extractor.packageFailures()[0].packageName, "com.second");
     EXPECT_EQ(extractor.packageFailures()[0].openStatus, "parse_error");
 }
 

@@ -19,6 +19,7 @@
 
 #include "LogicalDirExtractor.h"
 #include "ZipArchiveExtractor.h"
+#include "MiuiSecureTemp.h"
 
 namespace fs = std::filesystem;
 
@@ -123,6 +124,33 @@ TEST_F(LogicalDirExtractorTest, RejectsPathTraversal) {
 
     std::error_code ec;
     fs::remove(secret, ec);
+}
+
+TEST_F(LogicalDirExtractorTest, SecureTempForFileSourceIsOutsideEvidenceWhenTmpdirIsInside) {
+#ifndef _WIN32
+    const fs::path image = root_ / "Image.zip";
+    writeFile(image, "not-a-real-zip");
+    const fs::path hostileTmp = root_ / "hostile-tmp";
+    fs::create_directories(hostileTmp);
+
+    const char* previous = std::getenv("TMPDIR");
+    const std::string saved = previous ? previous : "";
+    ASSERT_EQ(::setenv("TMPDIR", hostileTmp.c_str(), 1), 0);
+
+    fs::path evidenceRoot;
+    ASSERT_TRUE(miui_secure_temp::evidenceRootForSource(image, false, evidenceRoot));
+    ASSERT_EQ(evidenceRoot, fs::canonical(root_));
+
+    fs::path secureRoot;
+    ASSERT_TRUE(miui_secure_temp::createDirectory(evidenceRoot, "tracelens-android", secureRoot));
+    EXPECT_FALSE(miui_secure_temp::isSameOrDescendant(secureRoot, fs::canonical(root_)));
+    EXPECT_TRUE(fs::is_empty(hostileTmp));
+
+    std::error_code ec;
+    fs::remove_all(secureRoot, ec);
+    if (previous) ::setenv("TMPDIR", saved.c_str(), 1);
+    else ::unsetenv("TMPDIR");
+#endif
 }
 
 // ---------------------------------------------------------------------------

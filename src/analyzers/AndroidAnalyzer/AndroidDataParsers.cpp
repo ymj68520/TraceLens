@@ -21,7 +21,10 @@ bool AndroidAnalyzer::stageSqliteBundle(const std::string& dbPathInImage,
                                         const std::string& primaryTempPath,
                                         std::vector<std::string>& stagedPaths) {
     stagedPaths.clear();
-    if (!fileExtractor_->extractFileByPath(dbPathInImage, primaryTempPath)) return false;
+    if (!fileExtractor_->extractFileByPath(dbPathInImage, primaryTempPath)) {
+        std::filesystem::remove(primaryTempPath);
+        return false;
+    }
     stagedPaths.push_back(primaryTempPath);
     for (const char* suffix : {"-wal", "-shm", "-journal"}) {
         const std::string sidecarSource = dbPathInImage + suffix;

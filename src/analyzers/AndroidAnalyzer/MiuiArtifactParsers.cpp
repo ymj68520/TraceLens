@@ -444,8 +444,7 @@ bool inventoryExtractedDatabase(const fs::path& extractedPath,
 
 }  // namespace
 
-bool writeMiuiManifest(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
-    if (!db.beginTransaction()) return false;
+bool writeMiuiManifestRows(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
     const BackupMeta& manifest = src.manifest();
     bool success = db.insertMiuiBackupManifest(
         manifest.device, manifest.miuiVersion, manifest.date, manifest.totalSize,
@@ -457,13 +456,10 @@ bool writeMiuiManifest(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
                                         package.pkgSize, package.sdSize,
                                         package.bakType, "");
     }
-    if (success && db.commitTransaction()) return true;
-    db.rollbackTransaction();
-    return false;
+    return success;
 }
 
-bool writeAppDbInventory(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
-    if (!db.beginTransaction()) return false;
+bool writeAppDbInventoryRows(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
     bool success = true;
     for (const auto& failure : src.packageFailures()) {
         if (!recordFailure(db, failure.packageName, failure.bakFile, failure.openStatus)) {
@@ -472,10 +468,7 @@ bool writeAppDbInventory(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) 
         }
     }
 
-    if (!success) {
-        db.rollbackTransaction();
-        return false;
-    }
+    if (!success) return false;
 
     std::vector<std::string> entries;
     std::unordered_set<std::string> entrySet;
@@ -494,9 +487,7 @@ bool writeAppDbInventory(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) 
                 break;
             }
         }
-        if (success && db.commitTransaction()) return true;
-        db.rollbackTransaction();
-        return false;
+        return success;
     }
 
     const size_t maximumCandidates = candidateLimit();
@@ -531,7 +522,29 @@ bool writeAppDbInventory(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) 
             break;
         }
     }
-    if (success && db.commitTransaction()) return true;
+    return success;
+}
+
+bool writeMiuiManifest(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
+    if (!db.beginTransaction()) return false;
+    if (writeMiuiManifestRows(src, db) && db.commitTransaction()) return true;
+    db.rollbackTransaction();
+    return false;
+}
+
+bool writeAppDbInventory(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
+    if (!db.beginTransaction()) return false;
+    if (writeAppDbInventoryRows(src, db) && db.commitTransaction()) return true;
+    db.rollbackTransaction();
+    return false;
+}
+
+bool persistMiuiBackupAnalysis(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
+    if (!db.beginTransaction()) return false;
+    if (writeMiuiManifestRows(src, db) && writeAppDbInventoryRows(src, db) &&
+        db.commitTransaction()) {
+        return true;
+    }
     db.rollbackTransaction();
     return false;
 }

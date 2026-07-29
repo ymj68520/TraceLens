@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <iostream>
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -63,7 +64,13 @@ bool MiuiBackupExtractor::initialize() {
         return false;
     }
 
+    std::unordered_set<std::string> processedBakFiles;
     for (const auto& package : manifest_.packages) {
+        if (!processedBakFiles.insert(package.bakFile).second) {
+            packageFailures_.push_back(
+                {package.packageName, package.bakFile, "parse_error"});
+            continue;
+        }
         const fs::path declaredPath(package.bakFile);
         if (declaredPath.empty() || declaredPath.is_absolute() || declaredPath.has_parent_path()) {
             std::cerr << "MiuiBackupExtractor: unsafe backup filename for "
