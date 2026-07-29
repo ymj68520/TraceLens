@@ -17,6 +17,7 @@ import Button from '../common/Button';
 import { useToast } from '../common/ToastContext';
 import FilterProfileSelector from '../filters/FilterProfileSelector';
 import FilterProfileEditor from '../filters/FilterProfileEditor';
+import ScenarioPicker from '../filters/ScenarioPicker';
 
 const INITIAL_FORM = {
   image_path: '',
@@ -37,6 +38,7 @@ export default function CreateTaskModal() {
   const [error, setError] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const [showAdvancedProfile, setShowAdvancedProfile] = useState(false);
 
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -105,23 +107,41 @@ export default function CreateTaskModal() {
             </select>
           </Field>
 
-          {/* Filter Profile */}
-          <Field label="过滤场景" hint="选择预定义场景可过滤无关文件，加速分析">
-            <FilterProfileSelector
+          {/* Analysis Scenario (deterministic classifier profile) */}
+          <Field label="分析场景 *" hint="选择取证场景，决定确定性分类器选取哪些文件进行分析">
+            <ScenarioPicker
               value={form.filter_profile}
               onChange={(val) => set('filter_profile', val)}
               disabled={isCreating}
             />
-            <div className="mt-1.5">
+            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+              <button
+                type="button"
+                onClick={() => setShowAdvancedProfile((v) => !v)}
+                className="text-xs text-slate-500 hover:text-primary-600 dark:text-slate-400 dark:hover:text-primary-400 hover:underline"
+              >
+                {showAdvancedProfile ? '▲ 收起（场景规则 / 下拉）' : '▼ 高级（查看规则 / 下拉选择）'}
+              </button>
               <button
                 type="button"
                 onClick={() => setShowProfileEditor(true)}
                 className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
               >
-                + 创建自定义配置
+                + 创建自定义场景
               </button>
             </div>
           </Field>
+
+          {/* Advanced: full dropdown + rule detail for power users */}
+          {showAdvancedProfile && (
+            <div className="pl-3 border-l-2 border-slate-200 dark:border-slate-600">
+              <FilterProfileSelector
+                value={form.filter_profile}
+                onChange={(val) => set('filter_profile', val)}
+                disabled={isCreating}
+              />
+            </div>
+          )}
 
           {/* Forensic Scenarios */}
           <Field label="取证场景 *" hint="选择需要分析的平台场景（可多选）">
