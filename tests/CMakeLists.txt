@@ -71,6 +71,7 @@ add_executable(
   ../src/analyzers/AndroidAnalyzer/TarIndex.cpp
   ../src/analyzers/AndroidAnalyzer/MiuiBackupManifest.cpp
   ../src/analyzers/AndroidAnalyzer/MiuiBackupExtractor.cpp
+  ../src/analyzers/AndroidAnalyzer/MiuiArtifactParsers.cpp
   ../src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp)
 
 target_include_directories(
@@ -1139,6 +1140,11 @@ target_link_libraries(
   pthread)
 
 add_test(NAME AndroidLogicalSourceGTests COMMAND test_android_logical_source_gtest)
+add_test(
+  NAME MiuiCliEndToEndTests
+  COMMAND python3
+          ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_miui_cli_e2e.py
+          --analyzer $<TARGET_FILE:forensic_analyzer>)
 install(TARGETS test_android_logical_source_gtest RUNTIME DESTINATION bin/tests)
 
 # Scene Database Tests (SQL schema definitions for scene specialization)

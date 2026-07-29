@@ -74,7 +74,35 @@ TEST(CommandLineParserAndroidSource, PreservesLegacySourceValues) {
                                  "--android-source", mode});
         EXPECT_EQ(args.android_source, mode);
         EXPECT_TRUE(args.backup_password.empty());
+        EXPECT_TRUE(args.parse_error.empty());
     }
+}
+
+TEST(CommandLineParserAndroidSource, RejectsFlagAsSourceValueBeforeConsumingSecret) {
+    const auto args = parse({"analyzer", "/evidence/miui", "--android-analyze",
+                             "--android-source", "--backup-password", "topsecret"});
+
+    EXPECT_FALSE(args.parse_error.empty());
+    EXPECT_TRUE(args.android_source.empty());
+    EXPECT_TRUE(args.backup_password.empty());
+    EXPECT_EQ(args.image_path, "/evidence/miui");
+}
+
+TEST(CommandLineParserAndroidSource, RejectsUnknownSource) {
+    const auto args = parse({"analyzer", "/evidence/miui", "--android-analyze",
+                             "--android-source", "vendor-backup"});
+
+    EXPECT_FALSE(args.parse_error.empty());
+    EXPECT_TRUE(args.android_source.empty());
+}
+
+TEST(CommandLineParserAndroidSource, RejectsFlagAsBackupPasswordValue) {
+    const auto args = parse({"analyzer", "/evidence/miui", "--android-analyze",
+                             "--android-source", "miui-backup",
+                             "--backup-password", "--no-ai"});
+
+    EXPECT_FALSE(args.parse_error.empty());
+    EXPECT_TRUE(args.backup_password.empty());
 }
 
 } // namespace
