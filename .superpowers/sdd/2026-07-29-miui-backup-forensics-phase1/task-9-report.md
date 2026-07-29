@@ -2,16 +2,21 @@
 
 ## Status
 
-Implemented and passed the real-backup MIUI smoke test. The script runs the production analyzer against the supplied offline evidence directory, writes the analyzer database only to a fresh `mktemp -d` directory, verifies MIUI metadata and generic application database inventory, checks `com.android.email`, then removes only that temporary output through an exit trap.
+Implemented and passed the real-backup MIUI smoke test. The script runs the production analyzer against the supplied offline evidence directory, writes the analyzer database only to a fresh directory under the fixed external `/tmp` parent (independent of `TMPDIR`), verifies MIUI metadata and generic application database inventory, checks `com.android.email`, then removes only that temporary output through an exit trap.
 
 ## Modified files
 
 - `tests/test_miui_backup_e2e.sh`
   - New executable Bash smoke script.
   - Accepts an optional backup directory, defaulting to `/home/ymj68520/projects/Forensics/AndroidBackup`.
+  - Creates `OUT` with `mktemp -d /tmp/tracelens-miui-backup-e2e.XXXXXX`, so an inherited `TMPDIR` cannot place output under evidence.
   - Runs `./build/forensic_analyzer "$BACKUP" --android-analyze --android-source miui-backup --db-dir "$OUT"`.
   - Asserts the expected output database exists, both `miui_backup_manifest` and `app_db_inventory` contain rows, and `app_db_inventory` includes `com.android.email`.
   - Uses `set -euo pipefail` and an exit trap that removes only its own temporary `OUT` directory.
+
+- `tests/test_miui_backup_e2e_safety.sh`
+  - New isolated regression test that assigns `TMPDIR` inside synthetic evidence, runs the smoke script through a minimal fake analyzer, and fails if the analyzer receives an output path inside evidence.
+  - Verifies the external output location is removed by the smoke script's cleanup trap.
 
 - `.superpowers/sdd/2026-07-29-miui-backup-forensics-phase1/task-9-report.md`
   - This execution and review report.
@@ -42,6 +47,22 @@ cmake --build libs/aliyun-oss-cpp-sdk/build -j2
 ```
 
 The production analyzer configuration/build then completed successfully.
+
+### TMPDIR evidence-safety regression
+
+The initial script used `mktemp -d` without a fixed parent. The regression was written against that version and failed as expected when `TMPDIR` pointed inside synthetic evidence:
+
+```text
+FAIL: smoke output was placed under evidence: .../evidence/tmpdir/tmp.*
+```
+
+The script now passes an explicit external template to `mktemp` and the regression now passes:
+
+```bash
+bash tests/test_miui_backup_e2e_safety.sh
+```
+
+Result: `MIUI backup TMPDIR safety OK`. The test uses a fake analyzer to record the passed `--db-dir`; with `TMPDIR` deliberately beneath its evidence directory, it proves the directory passed to the analyzer is not a descendant of evidence and that cleanup removes it.
 
 ### Smoke test
 
@@ -76,11 +97,13 @@ A deterministic file-list fingerprint, file count, and total byte size of `/home
 | Regular files | `55` | `55` |
 | Directory size | `4122670095` bytes | `4122670095` bytes |
 
-The identical values confirm the smoke run did not add, remove, rename, or resize evidence files. The analyzer output was created under `mktemp -d`, never underneath the supplied backup, and the script's exit trap removed that temporary output after assertions completed.
+The identical values confirm the smoke run did not add, remove, rename, or resize evidence files. `OUT` is created with an explicit `/tmp/tracelens-miui-backup-e2e.XXXXXX` template, rather than the inherited `TMPDIR`, and therefore cannot be created below the selected backup by a hostile or accidental `TMPDIR` setting. The dedicated TMPDIR regression proves this invariant before the real-backup run. The script's exit trap removes only that script-created external output after assertions complete.
 
 ## Self-review
 
 - The script follows the exact Task 9 CLI invocation and expected SQL evidence assertions.
+- The output template names `/tmp` explicitly; thus, `TMPDIR` cannot redirect output or cleanup beneath selected evidence.
+- The dedicated regression injects `TMPDIR` under synthetic evidence and validates both the external `--db-dir` and cleanup behavior.
 - The optional positional backup argument preserves the required real-export default while allowing a separately located read-only copy when needed.
 - Quoted variables support evidence paths containing spaces, Unicode, or parentheses.
 - `trap cleanup EXIT` runs for both pass and failure paths and is limited to the script-created `OUT` path.
@@ -95,4 +118,5 @@ The identical values confirm the smoke run did not add, remove, rename, or resiz
 
 ## Commits
 
-- Pending Task 9 commit at report-writing time.
+- `bfb964e` — initial Task 9 smoke script and report.
+- Pending evidence-safety follow-up commit at report-update time.
