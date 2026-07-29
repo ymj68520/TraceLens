@@ -205,6 +205,25 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
     );
 )";
 
+inline constexpr const char* CREATE_MIUI_TABLES = R"(
+    CREATE TABLE IF NOT EXISTS miui_backup_manifest (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        device TEXT, miui_version TEXT, backup_date INTEGER,
+        total_size INTEGER, package_count INTEGER, source_folder TEXT
+    );
+    CREATE TABLE IF NOT EXISTS installed_apps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        package_name TEXT, display_name TEXT, version_code TEXT,
+        version_name TEXT, data_size INTEGER, sd_size INTEGER,
+        bak_type INTEGER, manifest_summary TEXT
+    );
+    CREATE TABLE IF NOT EXISTS app_db_inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        package_name TEXT, db_path TEXT, table_name TEXT,
+        row_count INTEGER, columns TEXT, open_status TEXT
+    );
+)";
+
 // ============================================================================
 // INSERT Statements
 // ============================================================================

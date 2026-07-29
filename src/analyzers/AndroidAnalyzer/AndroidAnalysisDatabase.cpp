@@ -30,7 +30,8 @@ bool AndroidAnalysisDatabase::initialize() {
 }
 
 bool AndroidAnalysisDatabase::createTables() {
-    return executeSQL(AndroidAnalysisSQL::CREATE_ALL_TABLES);
+    return executeSQL(AndroidAnalysisSQL::CREATE_ALL_TABLES) &&
+           executeSQL(AndroidAnalysisSQL::CREATE_MIUI_TABLES);
 }
 
 bool AndroidAnalysisDatabase::createArtifactsTable() {
@@ -375,6 +376,74 @@ bool AndroidAnalysisDatabase::insertEncryptedDb(const std::string& packageName, 
     sqlite3_bind_text(stmt, 6, openStatus.c_str(), -1, SQLITE_TRANSIENT);
 
     bool success = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertMiuiBackupManifest(const std::string& device,
+                                                       const std::string& miuiVersion,
+                                                       uint64_t date, uint64_t totalSize,
+                                                       int packageCount,
+                                                       const std::string& sourceFolder) {
+    const char* sql = "INSERT INTO miui_backup_manifest (device, miui_version, backup_date, total_size, package_count, source_folder) VALUES (?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, device.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, miuiVersion.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 3, static_cast<sqlite3_int64>(date));
+    sqlite3_bind_int64(stmt, 4, static_cast<sqlite3_int64>(totalSize));
+    sqlite3_bind_int(stmt, 5, packageCount);
+    sqlite3_bind_text(stmt, 6, sourceFolder.c_str(), -1, SQLITE_TRANSIENT);
+
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertInstalledApp(const std::string& packageName,
+                                                 const std::string& displayName,
+                                                 const std::string& versionCode,
+                                                 const std::string& versionName,
+                                                 uint64_t dataSize, uint64_t sdSize,
+                                                 int bakType,
+                                                 const std::string& manifestSummary) {
+    const char* sql = "INSERT INTO installed_apps (package_name, display_name, version_code, version_name, data_size, sd_size, bak_type, manifest_summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, packageName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, displayName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, versionCode.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, versionName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 5, static_cast<sqlite3_int64>(dataSize));
+    sqlite3_bind_int64(stmt, 6, static_cast<sqlite3_int64>(sdSize));
+    sqlite3_bind_int(stmt, 7, bakType);
+    sqlite3_bind_text(stmt, 8, manifestSummary.c_str(), -1, SQLITE_TRANSIENT);
+
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertAppDbInventory(const std::string& packageName,
+                                                   const std::string& dbPath,
+                                                   const std::string& tableName,
+                                                   uint64_t rowCount,
+                                                   const std::string& columns,
+                                                   const std::string& openStatus) {
+    const char* sql = "INSERT INTO app_db_inventory (package_name, db_path, table_name, row_count, columns, open_status) VALUES (?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, packageName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, dbPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, tableName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 4, static_cast<sqlite3_int64>(rowCount));
+    sqlite3_bind_text(stmt, 5, columns.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, openStatus.c_str(), -1, SQLITE_TRANSIENT);
+
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
     sqlite3_finalize(stmt);
     return success;
 }

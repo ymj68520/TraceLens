@@ -55,6 +55,18 @@ public:
                            const std::string& keyHintType, const std::string& keyHintValue,
                            const std::string& keySourcePath, const std::string& openStatus);
 
+    // MIUI offline-backup forensic metadata
+    bool insertMiuiBackupManifest(const std::string& device, const std::string& miuiVersion,
+                                  uint64_t date, uint64_t totalSize, int packageCount,
+                                  const std::string& sourceFolder);
+    bool insertInstalledApp(const std::string& packageName, const std::string& displayName,
+                            const std::string& versionCode, const std::string& versionName,
+                            uint64_t dataSize, uint64_t sdSize, int bakType,
+                            const std::string& manifestSummary);
+    bool insertAppDbInventory(const std::string& packageName, const std::string& dbPath,
+                              const std::string& tableName, uint64_t rowCount,
+                              const std::string& columns, const std::string& openStatus);
+
 private:
     std::string dbPath_;
     sqlite3* db_;
