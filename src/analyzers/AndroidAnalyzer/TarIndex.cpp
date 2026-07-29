@@ -26,7 +26,11 @@ bool TarIndex::build(const std::string& bakPath, uint64_t payloadOffset, bool do
         std::ifstream in(bakPath, std::ios::binary);
         in.seekg(payloadOffset);
         std::ofstream out(tmp, std::ios::binary);
-        z_stream zs{}; inflateInit(&zs);
+        z_stream zs{};
+        if (inflateInit(&zs) != Z_OK) {
+            out.close(); std::remove(tmp.c_str());
+            return false;
+        }
         std::vector<char> ibuf(1<<20), obuf(1<<20);
         bool done = false;
         while (!done) {
@@ -39,11 +43,16 @@ bool TarIndex::build(const std::string& bakPath, uint64_t payloadOffset, bool do
                 int r = inflate(&zs, Z_NO_FLUSH);
                 out.write(obuf.data(), obuf.size() - zs.avail_out);
                 if (r == Z_STREAM_END) { done = true; break; }
-                if (r != Z_OK) { inflateEnd(&zs); return false; }
+                if (r != Z_OK) { inflateEnd(&zs); out.close(); std::remove(tmp.c_str()); return false; }
             } while (zs.avail_out == 0);
         }
         inflateEnd(&zs);
         out.close();
+        if (!done) {
+            // truncated zlib stream (input ended without Z_STREAM_END)
+            std::remove(tmp.c_str());
+            return false;
+        }
         dataFile_ = tmp; ownsTemp_ = true; payloadOffset = 0;
 #else
         return false; // zlib unavailable
@@ -56,7 +65,7 @@ bool TarIndex::build(const std::string& bakPath, uint64_t payloadOffset, bool do
         f.read(hdr.data(), 512);
         if (f.gcount() != 512) break;
         if (hdr[0] == 0) break; // end-of-archive zero block
-        std::string name(hdr.data(), std::min<size_t>(strlen(hdr.data()), 100));
+        std::string name(hdr.data(), strnlen(hdr.data(), 100));
         if (name.empty()) break;
         uint64_t size = parseOctal(hdr.data() + 124, 12);
         uint64_t dataOff = (uint64_t)f.tellg();  // position after the 512-byte header == start of file data
@@ -75,6 +84,11 @@ bool TarIndex::find(const std::string& memberName, TarEntry& out) const {
 
 bool TarIndex::readEntry(const TarEntry& e, const std::string& outPath) const {
     std::ifstream in(dataFile_, std::ios::binary);
+    in.seekg(0, std::ios::end);
+    uint64_t fileSize = (uint64_t)in.tellg();
+    if (e.dataOffset > fileSize) return false;
+    uint64_t remaining = fileSize - e.dataOffset;
+    if (e.size > remaining) return false;   // reject oversized/corrupt tar header
     in.seekg(e.dataOffset);
     std::vector<char> buf(e.size);
     in.read(buf.data(), e.size);
