@@ -67,7 +67,8 @@ add_test(NAME LinuxAnalyzerGTests COMMAND test_linux_analyzer_gtest)
 add_executable(
   test_miui_backup_gtest
   UnitTest/test_miui_backup_gtest.cpp
-  ../src/analyzers/AndroidAnalyzer/AndroidBackupHeader.cpp)
+  ../src/analyzers/AndroidAnalyzer/AndroidBackupHeader.cpp
+  ../src/analyzers/AndroidAnalyzer/TarIndex.cpp)
 
 target_include_directories(
   test_miui_backup_gtest
@@ -75,7 +76,7 @@ target_include_directories(
           ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer)
 
 target_link_libraries(test_miui_backup_gtest ${GTEST_LIBRARIES}
-                      ${GMOCK_LIBRARIES} sqlite3 pthread)
+                      ${GMOCK_LIBRARIES} sqlite3 pthread ${ZLIB_LIBRARIES})
 add_test(NAME MiuiBackupHeaderTests COMMAND test_miui_backup_gtest)
 
 # Compressed Log Parser Tests
