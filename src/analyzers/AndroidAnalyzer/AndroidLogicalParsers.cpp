@@ -55,6 +55,18 @@ std::string base64Decode(const std::string& in) {
     return out;
 }
 
+bool decodeRawKeyBase64(const std::string& value, std::string& decoded) {
+    decoded.clear();
+    if (value.size() != 44 || value.back() != '=') return false;
+    static const char* characters =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    for (size_t index = 0; index + 1 < value.size(); ++index) {
+        if (std::strchr(characters, value[index]) == nullptr) return false;
+    }
+    decoded = base64Decode(value);
+    return decoded.size() == 32;
+}
+
 std::string toHex(const std::string& bytes) {
     static const char* h = "0123456789abcdef";
     std::string out;
@@ -66,14 +78,27 @@ std::string toHex(const std::string& bytes) {
     return out;
 }
 
-// Is a file's first 16 bytes the SQLite magic ("SQLite format 3\0")?
 bool isPlaintextSqlite(const std::string& path) {
     std::ifstream f(path, std::ios::binary);
     char magic[16] = {0};
     f.read(magic, 16);
-    std::streamsize n = f.gcount();
-    static const char EXPECT[16] = {'S','Q','L','i','t','e',' ','f','o','r','m','a','t',' ','3','\0'};
-    return n == 16 && std::memcmp(magic, EXPECT, 16) == 0;
+    static const char expected[16] = {'S','Q','L','i','t','e',' ','f','o','r','m','a','t',' ','3','\0'};
+    if (f.gcount() != 16 || std::memcmp(magic, expected, sizeof(expected)) != 0) return false;
+
+    sqlite3* db = nullptr;
+    const std::string uri = "file:" + path + "?mode=ro";
+    if (sqlite3_open_v2(uri.c_str(), &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nullptr) != SQLITE_OK) {
+        if (db) sqlite3_close(db);
+        return false;
+    }
+    sqlite3_stmt* statement = nullptr;
+    const int prepare = sqlite3_prepare_v2(
+        db, "SELECT name FROM sqlite_master LIMIT 1;", -1, &statement, nullptr);
+    const int step = prepare == SQLITE_OK ? sqlite3_step(statement) : SQLITE_ERROR;
+    const bool valid = prepare == SQLITE_OK && (step == SQLITE_ROW || step == SQLITE_DONE);
+    if (statement) sqlite3_finalize(statement);
+    sqlite3_close(db);
+    return valid;
 }
 
 // Read a whole file to string.
@@ -330,7 +355,8 @@ std::string AndroidAnalyzer::readPasswordJsonKey(const std::string& imageRelPath
 
     if (!body.empty() && body.front() == '{') {
         std::string key = extractStrValue(content, "key");
-        if (!key.empty()) {
+        std::string decoded;
+        if (!key.empty() && decodeRawKeyBase64(key, decoded)) {
             outType = "raw_key_base64";
             return key;
         }
@@ -381,8 +407,8 @@ void AndroidAnalyzer::analyzeEncryptedAppDatabases() {
             bool opened = false;
             SqlCipherDatabase cipher;
             if (hintType == "raw_key_base64") {
-                std::string raw = base64Decode(keyHint);
-                if (raw.size() == 32) {
+                std::string raw;
+                if (decodeRawKeyBase64(keyHint, raw)) {
                     opened = cipher.openWithRawKey(dbTemp, toHex(raw));
                 }
             } else if (hintType == "passphrase" || hintType == "passphrase_raw") {

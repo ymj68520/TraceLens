@@ -153,6 +153,41 @@ TEST_F(LogicalDirExtractorTest, SecureTempForFileSourceIsOutsideEvidenceWhenTmpd
 #endif
 }
 
+TEST_F(LogicalDirExtractorTest, FileSourceUsesResolvedSymlinkParentAsEvidenceRoot) {
+#ifndef _WIN32
+    const fs::path aliasDir = root_.parent_path() / "android_source_alias";
+    const fs::path evidenceDir = root_.parent_path() / "android_source_evidence";
+    const fs::path image = evidenceDir / "Image.zip";
+    fs::create_directories(aliasDir);
+    fs::create_directories(evidenceDir / "tmp");
+    writeFile(image, "archive");
+    std::error_code error;
+    fs::create_symlink(image, aliasDir / "Image.zip", error);
+    if (error) GTEST_SKIP() << "symlink creation unavailable: " << error.message();
+
+    fs::path evidenceRoot;
+    ASSERT_TRUE(miui_secure_temp::evidenceRootForSource(aliasDir / "Image.zip", false, evidenceRoot));
+    EXPECT_EQ(evidenceRoot, fs::canonical(evidenceDir));
+
+    fs::remove_all(aliasDir, error);
+    fs::remove_all(evidenceDir, error);
+#endif
+}
+
+TEST_F(LogicalDirExtractorTest, RelativeFileSourceResolvesFromCurrentDirectory) {
+#ifndef _WIN32
+    const fs::path image = root_ / "Image.zip";
+    writeFile(image, "archive");
+    const fs::path previous = fs::current_path();
+    fs::current_path(root_);
+
+    fs::path evidenceRoot;
+    EXPECT_TRUE(miui_secure_temp::evidenceRootForSource("Image.zip", false, evidenceRoot));
+    EXPECT_EQ(evidenceRoot, fs::canonical(root_));
+    fs::current_path(previous);
+#endif
+}
+
 // ---------------------------------------------------------------------------
 // ZipArchiveExtractor (only meaningful when built with libzip)
 // ---------------------------------------------------------------------------

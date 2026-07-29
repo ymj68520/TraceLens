@@ -358,6 +358,53 @@ TEST(MiuiManifestTest, ParsesPackagesAndDevice) {
     EXPECT_EQ(m.packages[0].pkgSize, 7905280ull);
     EXPECT_EQ(m.sourceFolder, dir.string());
 }
+TEST(MiuiManifestTest, RejectsOversizedManifestField) {
+#ifndef _WIN32
+    const fs::path dir = uniqueTempPath("miui_manifest_long_field");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages><package><packageName>"
+        << std::string(9, 'p')
+        << "</packageName><bakFile>Foo.bak</bakFile></package></packages></MIUI-backup>";
+    ASSERT_EQ(::setenv("TRACELENS_MIUI_MAX_MANIFEST_FIELD_BYTES", "8", 1), 0);
+    BackupMeta manifest;
+    EXPECT_FALSE(parseMiuiManifest(dir.string(), manifest));
+    ::unsetenv("TRACELENS_MIUI_MAX_MANIFEST_FIELD_BYTES");
+#endif
+}
+
+TEST(MiuiManifestTest, RejectsManifestBeyondAggregateMetadataCap) {
+#ifndef _WIN32
+    const fs::path dir = uniqueTempPath("miui_manifest_metadata_cap");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages>"
+           "<package><packageName>abcd</packageName><bakFile>efgh</bakFile></package>"
+           "<package><packageName>ijkl</packageName><bakFile>mnop</bakFile></package>"
+           "</packages></MIUI-backup>";
+    ASSERT_EQ(::setenv("TRACELENS_MIUI_MAX_MANIFEST_METADATA_BYTES", "15", 1), 0);
+    BackupMeta manifest;
+    EXPECT_FALSE(parseMiuiManifest(dir.string(), manifest));
+    ::unsetenv("TRACELENS_MIUI_MAX_MANIFEST_METADATA_BYTES");
+#endif
+}
+
+TEST(MiuiManifestTest, RejectsManifestBeyondPackageCountCap) {
+#ifndef _WIN32
+    const fs::path dir = uniqueTempPath("miui_manifest_package_cap");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages>"
+           "<package><packageName>one</packageName><bakFile>one.bak</bakFile></package>"
+           "<package><packageName>two</packageName><bakFile>two.bak</bakFile></package>"
+           "</packages></MIUI-backup>";
+    ASSERT_EQ(::setenv("TRACELENS_MIUI_MAX_MANIFEST_PACKAGES", "1", 1), 0);
+    BackupMeta manifest;
+    EXPECT_FALSE(parseMiuiManifest(dir.string(), manifest));
+    ::unsetenv("TRACELENS_MIUI_MAX_MANIFEST_PACKAGES");
+#endif
+}
+
 TEST(MiuiManifestTest, MissingFileReturnsFalse) {
     BackupMeta m;
     EXPECT_FALSE(parseMiuiManifest(fs::temp_directory_path().string(), m));
@@ -1000,6 +1047,41 @@ TEST(MiuiArtifactTest, DoesNotFollowPreexistingInventorySymlink) {
     EXPECT_EQ(readFile(victim), "UNCHANGED");
     fs::remove_all(malicious, error);
 #endif
+}
+
+TEST(MiuiArtifactTest, PersistBackupAnalysisRollsBackManifestWhenInventoryFails) {
+    const fs::path dir = uniqueTempPath("miui_atomic_persist");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << minimalBackupXml("missing.bak");
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+
+    const fs::path analysisDb = uniqueTempPath("miui_atomic_persist", ".db");
+    TemporaryFile cleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(raw, "DROP TABLE app_db_inventory;", nullptr, nullptr, nullptr), SQLITE_OK);
+    sqlite3_close(raw);
+
+    EXPECT_FALSE(persistMiuiBackupAnalysis(extractor, db));
+
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw, "SELECT count(*) FROM miui_backup_manifest;", -1,
+                                 &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_EQ(sqlite3_column_int(statement, 0), 0);
+    sqlite3_finalize(statement);
+    ASSERT_EQ(sqlite3_prepare_v2(raw, "SELECT count(*) FROM installed_apps;", -1,
+                                 &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_EQ(sqlite3_column_int(statement, 0), 0);
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
 }
 
 TEST(MiuiArtifactTest, PropagatesPersistenceFailureAndRollsBack) {
