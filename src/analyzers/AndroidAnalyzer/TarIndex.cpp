@@ -146,7 +146,15 @@ bool TarIndex::build(const std::string& bakPath, uint64_t payloadOffset, bool do
 
         std::string name = tarText(hdr.data(), 100);
         const std::string prefix = tarText(hdr.data() + 345, 155);
-        if (!prefix.empty()) name = prefix + "/" + name;
+        if (!prefix.empty()) {
+            static constexpr char kUstarMagic[] = {'u', 's', 't', 'a', 'r', '\0'};
+            static constexpr char kUstarVersion[] = {'0', '0'};
+            if (std::memcmp(hdr.data() + 257, kUstarMagic, sizeof(kUstarMagic)) != 0 ||
+                std::memcmp(hdr.data() + 263, kUstarVersion, sizeof(kUstarVersion)) != 0) {
+                return false;
+            }
+            name = prefix + "/" + name;
+        }
         if (name.empty()) return false;
 
         uint64_t size = 0;

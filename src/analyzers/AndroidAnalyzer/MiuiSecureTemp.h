@@ -27,6 +27,13 @@ inline bool canonicalDirectory(const fs::path& input, fs::path& output) {
     return !error && fs::is_directory(output, error) && !error;
 }
 
+inline bool evidenceRootForSource(const fs::path& sourcePath, bool sourceIsDirectory,
+                                  fs::path& output) {
+    output.clear();
+    const fs::path root = sourceIsDirectory ? sourcePath : sourcePath.parent_path();
+    return canonicalDirectory(root, output);
+}
+
 inline bool safeParent(const fs::path& parent, const fs::path& evidenceRoot) {
     fs::path canonicalParent;
     fs::path canonicalEvidence;

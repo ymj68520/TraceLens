@@ -245,22 +245,22 @@ void extractNotesGeneric(const std::string& dbLocalPath,
 void AndroidAnalyzer::analyzeAppNotes() {
     int total = 0;
     for (const auto& t : kNoteTargets) {
-        std::string temp = makeAnalysisTempPath(t.dbRelPath);
-        if (!fileExtractor_->extractFileByPath(t.dbRelPath, temp)) {
+        const std::string temp = makeAnalysisTempPath(t.dbRelPath);
+        std::vector<std::string> stagedPaths;
+        if (!stageSqliteBundle(t.dbRelPath, temp, stagedPaths)) {
             std::cout << "  App notes: (absent) " << t.dbRelPath << std::endl;
-            fs::remove(temp);
             continue;
         }
         // Only parse plaintext DBs here. Encrypted DBs are inventoried by
         // analyzeEncryptedAppDatabases().
-        bool plain = isPlaintextSqlite(temp);
+        const bool plain = isPlaintextSqlite(temp);
         std::cout << "  App notes: found " << t.dbRelPath
                   << " (" << (plain ? "plaintext" : "encrypted") << ")" << std::endl;
         if (plain) {
             extractNotesGeneric(temp, t.package, t.dbRelPath, androidDb_.get());
             ++total;
         }
-        fs::remove(temp);
+        for (const auto& path : stagedPaths) fs::remove(path);
     }
     std::cout << "  App notes: parsed " << total << " plaintext note DB(s)" << std::endl;
 }
@@ -356,10 +356,9 @@ std::string AndroidAnalyzer::readPasswordJsonKey(const std::string& imageRelPath
 void AndroidAnalyzer::analyzeEncryptedAppDatabases() {
     int count = 0;
     for (const auto& t : kEncTargets) {
-        std::string dbTemp = makeAnalysisTempPath(t.dbRelPath);
-        bool extracted = fileExtractor_->extractFileByPath(t.dbRelPath, dbTemp);
-        if (!extracted) {
-            fs::remove(dbTemp);
+        const std::string dbTemp = makeAnalysisTempPath(t.dbRelPath);
+        std::vector<std::string> stagedPaths;
+        if (!stageSqliteBundle(t.dbRelPath, dbTemp, stagedPaths)) {
             continue;
         }
 
@@ -372,11 +371,12 @@ void AndroidAnalyzer::analyzeEncryptedAppDatabases() {
         std::string openStatus;
         if (isPlaintextSqlite(dbTemp)) {
             openStatus = "plaintext";
+        } else if (keyHint.empty()) {
+            openStatus = "parse_error";
         } else {
-            // Attempt to open with the discovered key using the generic helper.
-            // This may still fail if the app applies its own KDF on top of the
-            // stored value; in that case we record the hint as-is (the contest
-            // answer for "what is the DB password") and mark it locked.
+            // A key hint is positive evidence that the non-plaintext database is
+            // intended to be SQLCipher. Do not classify arbitrary/truncated data
+            // as encrypted merely because it appears in an encrypted-app path.
 #ifdef HAVE_SQLCIPHER
             bool opened = false;
             SqlCipherDatabase cipher;
@@ -398,7 +398,7 @@ void AndroidAnalyzer::analyzeEncryptedAppDatabases() {
                                       hintType.empty() ? "none_found" : hintType,
                                       keyHint, keySource, openStatus);
         ++count;
-        fs::remove(dbTemp);
+        for (const auto& path : stagedPaths) fs::remove(path);
     }
     std::cout << "  Encrypted DB inventory: recorded " << count << " app DB(s)" << std::endl;
 }
