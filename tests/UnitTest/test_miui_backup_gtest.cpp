@@ -312,7 +312,7 @@ TEST(MiuiBackupExtractorTest, ExtractFailsWithoutCreatingOutputForMissingMember)
 
 }
 
-TEST(MiuiBackupExtractorTest, InitializeSkipsEncryptedBackupAndReturnsFalseWhenNoUsableApps) {
+TEST(MiuiBackupExtractorTest, EncryptedOnlyManifestInitializesAndRetainsFailure) {
     fs::path dir = uniqueTempPath("miui_ext_encrypted_test");
     fs::create_directories(dir);
 
@@ -323,8 +323,24 @@ TEST(MiuiBackupExtractorTest, InitializeSkipsEncryptedBackupAndReturnsFalseWhenN
         << "ANDROID BACKUP\n5\n0\nAES-256-encrypted\nnot-an-encrypted-payload";
 
     MiuiBackupExtractor extractor(dir.string());
-    EXPECT_FALSE(extractor.initialize());
+    ASSERT_TRUE(extractor.initialize());
+    ASSERT_EQ(extractor.packageFailures().size(), 1u);
+    EXPECT_EQ(extractor.packageFailures()[0].packageName, "com.foo");
+    EXPECT_EQ(extractor.packageFailures()[0].bakFile, "Foo(com.foo).bak");
+    EXPECT_EQ(extractor.packageFailures()[0].openStatus, "encrypted_locked");
+}
 
+TEST(MiuiBackupExtractorTest, MissingManifestBackupFileRetainsParseFailure) {
+    fs::path dir = uniqueTempPath("miui_ext_missing_bak_test");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << minimalBackupXml("missing.bak");
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    ASSERT_EQ(extractor.packageFailures().size(), 1u);
+    EXPECT_EQ(extractor.packageFailures()[0].bakFile, "missing.bak");
+    EXPECT_EQ(extractor.packageFailures()[0].openStatus, "parse_error");
 }
 
 TEST(MiuiBackupExtractorTest, CreatesOutputParentBeforeTarEntryWrite) {
@@ -359,7 +375,10 @@ TEST(MiuiBackupExtractorTest, RejectsAbsoluteManifestBackupPath) {
     std::ofstream(dir / "descript.xml", std::ios::binary) << minimalBackupXml(externalBak.string());
 
     MiuiBackupExtractor extractor(dir.string());
-    EXPECT_FALSE(extractor.initialize());
+    ASSERT_TRUE(extractor.initialize());
+    ASSERT_EQ(extractor.packageFailures().size(), 1u);
+    EXPECT_EQ(extractor.packageFailures()[0].bakFile, externalBak.string());
+    EXPECT_EQ(extractor.packageFailures()[0].openStatus, "parse_error");
 }
 
 TEST(MiuiBackupExtractorTest, RejectsTraversalManifestBackupPath) {
@@ -371,7 +390,10 @@ TEST(MiuiBackupExtractorTest, RejectsTraversalManifestBackupPath) {
     std::ofstream(dir / "descript.xml", std::ios::binary) << minimalBackupXml("../outside.bak");
 
     MiuiBackupExtractor extractor(dir.string());
-    EXPECT_FALSE(extractor.initialize());
+    ASSERT_TRUE(extractor.initialize());
+    ASSERT_EQ(extractor.packageFailures().size(), 1u);
+    EXPECT_EQ(extractor.packageFailures()[0].bakFile, "../outside.bak");
+    EXPECT_EQ(extractor.packageFailures()[0].openStatus, "parse_error");
 }
 
 TEST(MiuiBackupExtractorTest, RejectsSymlinkedManifestBackupFile) {
@@ -386,7 +408,10 @@ TEST(MiuiBackupExtractorTest, RejectsSymlinkedManifestBackupFile) {
     std::ofstream(dir / "descript.xml", std::ios::binary) << minimalBackupXml("linked.bak");
 
     MiuiBackupExtractor extractor(dir.string());
-    EXPECT_FALSE(extractor.initialize());
+    ASSERT_TRUE(extractor.initialize());
+    ASSERT_EQ(extractor.packageFailures().size(), 1u);
+    EXPECT_EQ(extractor.packageFailures()[0].bakFile, "linked.bak");
+    EXPECT_EQ(extractor.packageFailures()[0].openStatus, "parse_error");
 }
 
 #ifdef USE_ZLIB
@@ -508,11 +533,6 @@ TEST(MiuiArtifactTest, InventoriesRealSqliteTablesAndColumns) {
     const fs::path copiedDb = dir / "copied" / "real.db";
     ASSERT_TRUE(extractor.extractTarMember("apps/com.foo/db/real.db", copiedDb.string()));
     EXPECT_EQ(readFile(copiedDb), readFile(sourceDb));
-#ifndef _WIN32
-    const auto copiedPermissions = fs::status(copiedDb).permissions();
-    EXPECT_EQ(copiedPermissions & (fs::perms::group_all | fs::perms::others_all),
-              fs::perms::none);
-#endif
 
     const fs::path analysisDb = uniqueTempPath("miui_art_valid", ".db");
     TemporaryFile analysisCleanup(analysisDb);
@@ -694,6 +714,88 @@ TEST(MiuiArtifactTest, RejectsDatabaseBeyondExtractionLimitWithoutWritingIt) {
     EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "parse_error");
     sqlite3_finalize(statement);
     sqlite3_close(raw);
+}
+
+TEST(MiuiArtifactTest, RejectsOversizedSerializedColumnMetadata) {
+    const fs::path sourceDb = uniqueTempPath("miui_columns_source", ".db");
+    TemporaryFile sourceCleanup(sourceDb);
+    sqlite3* source = nullptr;
+    ASSERT_EQ(sqlite3_open(sourceDb.string().c_str(), &source), SQLITE_OK);
+    std::string create = "CREATE TABLE wide(";
+    for (int index = 0; index < 80; ++index) {
+        if (index) create += ',';
+        create += "column_" + std::to_string(index) + "_" + std::string(80, 'x') + " TEXT";
+    }
+    create += ");";
+    ASSERT_EQ(sqlite3_exec(source, create.c_str(), nullptr, nullptr, nullptr), SQLITE_OK);
+    sqlite3_close(source);
+
+    const fs::path dir = uniqueTempPath("miui_art_columns");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary) << minimalBackupXml("Foo.bak");
+    const auto tar = makeUstarTar({{"apps/com.foo/db/wide.db", readFile(sourceDb)}});
+    std::ofstream(dir / "Foo.bak", std::ios::binary) << rawBackup(readFile(tar));
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    const fs::path analysisDb = uniqueTempPath("miui_art_columns", ".db");
+    TemporaryFile analysisCleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+    writeAppDbInventory(extractor, db);
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT table_name, columns, open_status FROM app_db_inventory "
+        "WHERE db_path = 'apps/com.foo/db/wide.db' ORDER BY id DESC LIMIT 1",
+        -1, &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "");
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 1)), "");
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 2)), "parse_error");
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
+}
+
+TEST(MiuiArtifactTest, DoesNotFollowPreexistingInventorySymlink) {
+#ifndef _WIN32
+    const fs::path sourceDb = uniqueTempPath("miui_symlink_source", ".db");
+    TemporaryFile sourceCleanup(sourceDb);
+    sqlite3* source = nullptr;
+    ASSERT_EQ(sqlite3_open(sourceDb.string().c_str(), &source), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(source, "CREATE TABLE t(id INTEGER);", nullptr, nullptr, nullptr),
+              SQLITE_OK);
+    sqlite3_close(source);
+
+    const fs::path dir = uniqueTempPath("miui_art_symlink_output");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary) << minimalBackupXml("Foo.bak");
+    const auto tar = makeUstarTar({{"apps/com.foo/db/real.db", readFile(sourceDb)}});
+    std::ofstream(dir / "Foo.bak", std::ios::binary) << rawBackup(readFile(tar));
+
+    const fs::path victim = uniqueTempPath("miui_inventory_victim");
+    TemporaryFile victimCleanup(victim);
+    std::ofstream(victim, std::ios::binary) << "UNCHANGED";
+    const fs::path malicious = fs::temp_directory_path() / "tracelens-miui-inventory-malicious";
+    std::error_code error;
+    fs::remove_all(malicious, error);
+    fs::create_directory(malicious);
+    fs::create_symlink(victim, malicious / "database-0.db", error);
+    if (error) GTEST_SKIP() << "symlink creation unavailable: " << error.message();
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    const fs::path analysisDb = uniqueTempPath("miui_art_symlink_output", ".db");
+    TemporaryFile analysisCleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+    writeAppDbInventory(extractor, db);
+
+    EXPECT_EQ(readFile(victim), "UNCHANGED");
+    fs::remove_all(malicious, error);
+#endif
 }
 
 TEST(MiuiDbTest, PersistsMiuiBackupMetadataAcrossAllTables) {

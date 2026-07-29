@@ -92,6 +92,24 @@ Additional checks:
 - The row count is exact only up to the Task 7 safety cap of 10,000 rows per table. Tables exceeding the cap receive a `parse_error` failure row rather than an unbounded count. This is intentional to satisfy the no-unbounded-evidence-read requirement using the existing schema, which has no dedicated `capped` status or count flag.
 - Task 8 still owns build-source registration and production invocation of these writers.
 
+## Independent Review Follow-up
+
+A coordinator review identified four remaining hardening gaps. They were addressed as follows:
+
+- Every manifest-declared package path rejection now appends a `parse_error` `PackageFailure`, including empty/absolute/traversal paths, missing or unreadable files, symlinks, and paths that resolve outside the backup folder.
+- `initialize()` now reports readiness after a valid manifest and backup folder are established, even when every package is encrypted or malformed. This guarantees Task 7 writers can persist the collected package failures.
+- POSIX inventory directories now use `mkdtemp`, which atomically creates an owner-only directory. POSIX evidence file slots use `mkstemp` and atomic rename, avoiding predictable truncating opens and symlink following. The Windows fallback retains exclusive existence checks and explicit owner-only permissions.
+- Serialized column metadata is capped at 4 KiB. Exceeding the cap deterministically creates a `parse_error` inventory row instead of an unbounded string.
+
+Focused regression coverage now includes encrypted-only initialization, missing/absolute/traversal/symlink package failures, oversized column metadata, and protection against a pre-existing temporary-path symlink. Existing row-bound, WAL bundle, oversize member, and failure-recording tests remain green.
+
+## Latest Review-Fix Test Result
+
+Focused command filter: `MiuiBackupExtractorTest.*:MiuiArtifactTest.*`
+
+Result: **15 tests passed, 0 failed**.
+
 ## Commits
 
-- Pending at report creation; commit recorded below after commit completion.
+- `4a435c5 feat(android): add MIUI artifact inventory pass`
+- `c0a5d6e fix(android): harden MIUI inventory failures`

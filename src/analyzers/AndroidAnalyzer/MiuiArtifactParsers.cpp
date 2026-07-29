@@ -5,6 +5,10 @@
 
 #include <sqlite3.h>
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -31,6 +35,7 @@ constexpr int kSqliteColumnLimit = 2048;
 constexpr int kSqliteSqlLengthLimit = 1024 * 1024;
 constexpr int kProgressInterval = 1000;
 constexpr int kMaximumQueryInstructions = 2000000;
+constexpr size_t kMaximumSerializedColumnsBytes = 4096;
 constexpr size_t kHeaderBytes = 16;
 
 using SqliteConnection = std::unique_ptr<sqlite3, decltype(&sqlite3_close)>;
@@ -50,13 +55,24 @@ public:
     TemporaryDirectory& operator=(const TemporaryDirectory&) = delete;
 
     bool create() {
-        static std::atomic_uint64_t serial{0};
         std::error_code error;
         const fs::path root = fs::temp_directory_path(error);
         if (error) {
             return false;
         }
 
+#ifndef _WIN32
+        std::string pattern = (root / "tracelens-miui-inventory-XXXXXX").string();
+        std::vector<char> writablePattern(pattern.begin(), pattern.end());
+        writablePattern.push_back('\0');
+        char* created = mkdtemp(writablePattern.data());
+        if (!created) {
+            return false;
+        }
+        path_ = fs::path(created);
+        return true;
+#else
+        static std::atomic_uint64_t serial{0};
         for (unsigned attempt = 0; attempt < 64; ++attempt) {
             const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
             fs::path candidate = root /
@@ -69,17 +85,11 @@ public:
                 }
                 continue;
             }
-
-            fs::permissions(candidate, fs::perms::owner_all,
-                            fs::perm_options::replace, error);
-            if (error) {
-                fs::remove(candidate, error);
-                return false;
-            }
             path_ = std::move(candidate);
             return true;
         }
         return false;
+#endif
     }
 
     const fs::path& path() const { return path_; }
@@ -165,20 +175,44 @@ std::string columnText(sqlite3_stmt* statement, int column) {
 }
 
 bool makePrivateFile(const fs::path& path) {
-    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+#ifndef _WIN32
+    std::string pattern = path.string() + ".XXXXXX";
+    std::vector<char> writablePattern(pattern.begin(), pattern.end());
+    writablePattern.push_back('\0');
+    const int descriptor = mkstemp(writablePattern.data());
+    if (descriptor == -1) {
+        return false;
+    }
+    if (close(descriptor) != 0) {
+        std::remove(writablePattern.data());
+        return false;
+    }
+    std::error_code error;
+    fs::rename(fs::path(writablePattern.data()), path, error);
+    if (error) {
+        std::remove(writablePattern.data());
+        return false;
+    }
+    return true;
+#else
+    std::error_code statusError;
+    if (fs::exists(fs::symlink_status(path, statusError)) || statusError) {
+        return false;
+    }
+    std::ofstream output(path, std::ios::binary | std::ios::out);
     if (!output) {
         return false;
     }
     output.close();
-
-    std::error_code error;
+    std::error_code permissionError;
     fs::permissions(path, fs::perms::owner_read | fs::perms::owner_write,
-                    fs::perm_options::replace, error);
-    if (error) {
-        fs::remove(path, error);
+                    fs::perm_options::replace, permissionError);
+    if (permissionError) {
+        fs::remove(path, permissionError);
         return false;
     }
     return true;
+#endif
 }
 
 bool extractBoundedMember(MiuiBackupExtractor& src, const std::string& memberName,
@@ -266,10 +300,17 @@ bool tableColumns(sqlite3* connection, const std::string& tableName, std::string
 
     int result = SQLITE_ROW;
     while ((result = sqlite3_step(statement.get())) == SQLITE_ROW) {
-        if (!columns.empty()) {
+        const std::string name = columnText(statement.get(), 0);
+        const size_t separatorBytes = columns.empty() ? 0 : 1;
+        if (name.size() > kMaximumSerializedColumnsBytes - separatorBytes ||
+            columns.size() > kMaximumSerializedColumnsBytes - separatorBytes - name.size()) {
+            columns.clear();
+            return false;
+        }
+        if (separatorBytes != 0) {
             columns.push_back(',');
         }
-        columns += columnText(statement.get(), 0);
+        columns += name;
     }
     return result == SQLITE_DONE;
 }
