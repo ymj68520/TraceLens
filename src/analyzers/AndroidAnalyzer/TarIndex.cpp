@@ -1,6 +1,7 @@
 #include "TarIndex.h"
 #include <fstream>
 #include <vector>
+#include <algorithm>
 #include <cstring>
 #include <sstream>
 #ifdef USE_ZLIB
@@ -59,21 +60,29 @@ bool TarIndex::build(const std::string& bakPath, uint64_t payloadOffset, bool do
 #endif
     }
     std::ifstream f(dataFile_, std::ios::binary);
+    if (!f) return false;
     f.seekg(payloadOffset);
+    if (!f) return false;
     std::vector<char> hdr(512);
+    bool sawEnd = false;
     while (true) {
         f.read(hdr.data(), 512);
-        if (f.gcount() != 512) break;
-        if (hdr[0] == 0) break; // end-of-archive zero block
+        if (f.gcount() == 0 && f.eof()) break;
+        if (f.gcount() != 512) return false;
+        if (hdr[0] == 0) {
+            sawEnd = true;
+            break;
+        }
         std::string name(hdr.data(), strnlen(hdr.data(), 100));
-        if (name.empty()) break;
+        if (name.empty()) return false;
         uint64_t size = parseOctal(hdr.data() + 124, 12);
         uint64_t dataOff = (uint64_t)f.tellg();  // position after the 512-byte header == start of file data
         entries_[name] = { dataOff, size };
         uint64_t padded = (size + 511) & ~uint64_t(511);
         f.seekg((uint64_t)f.tellg() + padded);
+        if (!f) return false;
     }
-    return true;
+    return sawEnd;
 }
 
 bool TarIndex::find(const std::string& memberName, TarEntry& out) const {
@@ -84,16 +93,36 @@ bool TarIndex::find(const std::string& memberName, TarEntry& out) const {
 
 bool TarIndex::readEntry(const TarEntry& e, const std::string& outPath) const {
     std::ifstream in(dataFile_, std::ios::binary);
+    if (!in) return false;
     in.seekg(0, std::ios::end);
     uint64_t fileSize = (uint64_t)in.tellg();
     if (e.dataOffset > fileSize) return false;
     uint64_t remaining = fileSize - e.dataOffset;
     if (e.size > remaining) return false;   // reject oversized/corrupt tar header
     in.seekg(e.dataOffset);
-    std::vector<char> buf(e.size);
-    in.read(buf.data(), e.size);
-    if ((uint64_t)in.gcount() != e.size) return false;
-    std::ofstream out(outPath, std::ios::binary);
-    out.write(buf.data(), e.size);
-    return out.good();
+    if (!in) return false;
+    std::ofstream out(outPath, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+
+    constexpr size_t kBufferSize = 1 << 20;
+    std::vector<char> buffer(kBufferSize);
+    uint64_t remainingToRead = e.size;
+    while (remainingToRead > 0) {
+        const std::streamsize chunk = static_cast<std::streamsize>(
+            std::min<uint64_t>(remainingToRead, buffer.size()));
+        in.read(buffer.data(), chunk);
+        if (in.gcount() != chunk) {
+            out.close();
+            std::remove(outPath.c_str());
+            return false;
+        }
+        out.write(buffer.data(), chunk);
+        if (!out) {
+            out.close();
+            std::remove(outPath.c_str());
+            return false;
+        }
+        remainingToRead -= static_cast<uint64_t>(chunk);
+    }
+    return true;
 }

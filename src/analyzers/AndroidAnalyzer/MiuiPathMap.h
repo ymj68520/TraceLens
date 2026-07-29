@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <algorithm>
+#include <cstring>
 
 // MiuiPathMap: header-only path translation between MIUI backup tar member
 // names (apps/<pkg>/db|f|sp/...) and the TSK-style analyzer query paths
