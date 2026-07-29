@@ -385,8 +385,10 @@ TEST(TarIndexTest, DeletesInflatedTemporaryFileOnDestruction) {
                        reinterpret_cast<const Bytef*>(raw.data()),
                        static_cast<uLong>(raw.size())), Z_OK);
 
-    fs::path bak = fs::temp_directory_path() /
-                   ("inflated_lifecycle_" + std::to_string(::getpid()) + "_" + std::to_string(++serial) + ".bak");
+    fs::path bakDir = fs::temp_directory_path() /
+                      ("miui_evidence_" + std::to_string(::getpid()) + "_" + std::to_string(++serial));
+    fs::create_directories(bakDir);
+    fs::path bak = bakDir / "inflated_lifecycle.bak";
     std::ofstream(bak, std::ios::binary).write(reinterpret_cast<const char*>(deflated.data()),
                                                 static_cast<std::streamsize>(deflatedLen));
     std::string tempPath;
@@ -394,7 +396,7 @@ TEST(TarIndexTest, DeletesInflatedTemporaryFileOnDestruction) {
         TarIndex idx;
         ASSERT_TRUE(idx.build(bak.string(), 0, /*inflate=*/true));
         tempPath = idx.dataFile();
-        EXPECT_NE(fs::path(tempPath).string(), bak.string() + ".inflated.tmp");
+        EXPECT_NE(fs::path(tempPath).parent_path(), bak.parent_path());
         EXPECT_TRUE(fs::exists(tempPath));
     }
     EXPECT_FALSE(fs::exists(tempPath));
