@@ -7,6 +7,7 @@
 #include "analyzers/AndroidAnalyzer/AndroidBackupHeader.h"
 #include "analyzers/AndroidAnalyzer/TarIndex.h"
 #include "analyzers/AndroidAnalyzer/MiuiPathMap.h"
+#include "analyzers/AndroidAnalyzer/MiuiBackupManifest.h"
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
@@ -175,6 +176,35 @@ TEST(MiuiPathMapTest, ReturnsEmptyForUnmappable) {
 }
 TEST(MiuiPathMapTest, InverseRoundTrip) {
     EXPECT_EQ(tarMemberToAnalyzerPath("apps/com.foo/db/x.db"), "data/data/com.foo/databases/x.db");
+}
+
+TEST(MiuiManifestTest, ParsesPackagesAndDevice) {
+    fs::path dir = fs::temp_directory_path() / "miui_manifest_test";
+    fs::create_directories(dir);
+    std::string xml =
+        "<?xml version='1.0' encoding='UTF-8' ?><MIUI-backup>"
+        "<device>cepheus</device><miuiVersion>V12.5.6.0.RFACNXM</miuiVersion>"
+        "<date>1785299538978</date><size>4122640883</size><packages>"
+        "<package><packageName>com.android.mms</packageName>"
+        "<bakFile>短信设置(com.android.mms).bak</bakFile><bakType>1</bakType>"
+        "<pkgSize>7905280</pkgSize><sdSize>0</sdSize><state>1</state><error>0</error>"
+        "</package></packages></MIUI-backup>";
+    std::ofstream(dir / "descript.xml", std::ios::binary) << xml;
+    BackupMeta m;
+    ASSERT_TRUE(parseMiuiManifest(dir.string(), m));
+    EXPECT_EQ(m.device, "cepheus");
+    EXPECT_EQ(m.miuiVersion, "V12.5.6.0.RFACNXM");
+    EXPECT_EQ(m.date, 1785299538978ull);
+    ASSERT_EQ(m.packages.size(), 1u);
+    EXPECT_EQ(m.packages[0].packageName, "com.android.mms");
+    EXPECT_EQ(m.packages[0].bakFile, "短信设置(com.android.mms).bak");
+    EXPECT_EQ(m.packages[0].bakType, 1);
+    EXPECT_EQ(m.packages[0].pkgSize, 7905280ull);
+    EXPECT_EQ(m.sourceFolder, dir.string());
+}
+TEST(MiuiManifestTest, MissingFileReturnsFalse) {
+    BackupMeta m;
+    EXPECT_FALSE(parseMiuiManifest(fs::temp_directory_path().string(), m));
 }
 
 int main(int argc, char **argv) {

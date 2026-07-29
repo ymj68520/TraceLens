@@ -68,7 +68,8 @@ add_executable(
   test_miui_backup_gtest
   UnitTest/test_miui_backup_gtest.cpp
   ../src/analyzers/AndroidAnalyzer/AndroidBackupHeader.cpp
-  ../src/analyzers/AndroidAnalyzer/TarIndex.cpp)
+  ../src/analyzers/AndroidAnalyzer/TarIndex.cpp
+  ../src/analyzers/AndroidAnalyzer/MiuiBackupManifest.cpp)
 
 target_include_directories(
   test_miui_backup_gtest
