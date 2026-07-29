@@ -77,10 +77,11 @@ add_executable(
 target_include_directories(
   test_miui_backup_gtest
   PRIVATE ${CMAKE_SOURCE_DIR}/src
-          ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer)
+          ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
+          ${CMAKE_SOURCE_DIR}/libs/DuckX/thirdparty/pugixml)
 
 target_link_libraries(test_miui_backup_gtest ${GTEST_LIBRARIES}
-                      ${GMOCK_LIBRARIES} sqlite3 pthread ${ZLIB_LIBRARIES})
+                      ${GMOCK_LIBRARIES} sqlite3 pthread ${ZLIB_LIBRARIES} duckx)
 add_test(NAME MiuiBackupHeaderTests COMMAND test_miui_backup_gtest)
 
 # Compressed Log Parser Tests

@@ -67,7 +67,7 @@ bool optionRequiresNonOptionValue(const std::string& option) {
     static const std::unordered_set<std::string> valueOptions{
         "--database", "--extract-file", "--extract-ext", "--output-dir",
         "--db-dir", "--xfs-mode", "--android-source", "--wechat-password",
-        "--backup-password", "--report-path", "--dump-text-max-size",
+        "--backup-password", "--backup-password-fd", "--report-path", "--dump-text-max-size",
         "--vol-symbols-dir", "--dll-db", "--index", "--search",
         "--filter-profile", "--key-dir", "--key-password", "--carve-out"
     };
@@ -113,7 +113,9 @@ void CommandLineParser::printUsage(const char* programName) {
                  "                              dir (extracted data/ tree), zip (Image.zip),\n"
                  "                              miui-backup (Xiaomi MIUI .bak folder)\n";
     std::cout << "  --wechat-password <pass>    WeChat SQLCipher decryption password\n";
-    std::cout << "  --backup-password <pass>    MIUI/Android backup password (AES-256)\n";
+    std::cout << "  --backup-password-stdin     Read backup password from stdin (no echo when interactive)\n";
+    std::cout << "  --backup-password-fd <fd>   Read backup password from an already-open file descriptor\n";
+    std::cout << "  --backup-password <pass>    Deprecated: password in argv; encrypted ADB v5 remains locked\n";
     std::cout << "  --windows-analyze           Analyze Windows artifacts\n";
     std::cout << "  --linux-analyze             Analyze Linux artifacts\n";
     std::cout << "  --no-ai                     Skip AI/LLM analysis (for offline/no-key environments)\n";
@@ -200,8 +202,24 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
             args.android_source = source;
         } else if (arg == "--wechat-password" && i + 1 < argc) {
             args.wechat_password = argv[++i];
+        } else if (arg == "--backup-password-stdin") {
+            args.backup_password_stdin = true;
+        } else if (arg == "--backup-password-fd" && i + 1 < argc) {
+            int descriptor = -1;
+            const std::string value = argv[++i];
+            const auto [end, error] = std::from_chars(
+                value.data(), value.data() + value.size(), descriptor, 10);
+            if (error != std::errc{} || end != value.data() + value.size() || descriptor < 0) {
+                args.parse_error = "Invalid --backup-password-fd";
+                return args;
+            }
+            args.backup_password_fd = descriptor;
         } else if (arg == "--backup-password" && i + 1 < argc) {
             args.backup_password = argv[++i];
+            std::cerr << "Security warning: --backup-password is deprecated because command-line "
+                      << "arguments may be visible to other users. Use --backup-password-stdin or "
+                      << "--backup-password-fd instead. Encrypted ADB v5 decryption is not "
+                      << "implemented and will remain encrypted_locked." << std::endl;
         } else if (arg == "--windows-analyze") {
             args.windows_analyze = true;
         } else if (arg == "--linux-analyze") {

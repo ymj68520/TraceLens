@@ -66,6 +66,9 @@ public:
     bool insertAppDbInventory(const std::string& packageName, const std::string& dbPath,
                               const std::string& tableName, uint64_t rowCount,
                               const std::string& columns, const std::string& openStatus);
+    bool beginTransaction();
+    bool commitTransaction();
+    bool rollbackTransaction();
 
 private:
     std::string dbPath_;

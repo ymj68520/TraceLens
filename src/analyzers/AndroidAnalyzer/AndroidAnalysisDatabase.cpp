@@ -448,6 +448,18 @@ bool AndroidAnalysisDatabase::insertAppDbInventory(const std::string& packageNam
     return success;
 }
 
+bool AndroidAnalysisDatabase::beginTransaction() {
+    return executeSQL("BEGIN IMMEDIATE;");
+}
+
+bool AndroidAnalysisDatabase::commitTransaction() {
+    return executeSQL("COMMIT;");
+}
+
+bool AndroidAnalysisDatabase::rollbackTransaction() {
+    return executeSQL("ROLLBACK;");
+}
+
 bool AndroidAnalysisDatabase::executeSQL(const std::string& sql) {
     char* errMsg = nullptr;
     int rc = sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &errMsg);

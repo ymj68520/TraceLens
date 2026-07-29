@@ -1,4 +1,5 @@
 #include "AndroidBackupHeader.h"
+#include <charconv>
 #include <fstream>
 
 static std::string readHead(const std::string& path, size_t cap) {
@@ -8,6 +9,18 @@ static std::string readHead(const std::string& path, size_t cap) {
     f.read(&s[0], static_cast<std::streamsize>(cap));
     s.resize(static_cast<size_t>(f.gcount()));
     return s;
+}
+
+static bool parseExactNonNegativeInt(const std::string& text, int& value) {
+    if (text.empty()) return false;
+    int parsed = 0;
+    const auto [end, error] = std::from_chars(
+        text.data(), text.data() + text.size(), parsed, 10);
+    if (error != std::errc{} || end != text.data() + text.size() || parsed < 0) {
+        return false;
+    }
+    value = parsed;
+    return true;
 }
 
 bool parseAndroidBackupHeader(const std::string& bakPath, AndroidBackupHeader& out) {
@@ -30,10 +43,10 @@ bool parseAndroidBackupHeader(const std::string& bakPath, AndroidBackupHeader& o
     };
     std::string ver, comp, enc;
     if (!nextLine(ver) || !nextLine(comp) || !nextLine(enc)) return false;
-    // Strict parse: a non-numeric version or compression field is malformed
-    // input - fail loudly rather than silently defaulting (no silent failure).
-    try { out.version = std::stoi(ver); } catch (...) { return false; }
-    try { out.compression = std::stoi(comp); } catch (...) { return false; }
+    if (!parseExactNonNegativeInt(ver, out.version)) return false;
+    if (comp == "0") out.compression = 0;
+    else if (comp == "1") out.compression = 1;
+    else return false;
     out.encMarker = enc;
     if (enc == "none") out.encryption = BackupEncryption::None;
     else if (enc == "AES-256-encrypted") out.encryption = BackupEncryption::Aes256;

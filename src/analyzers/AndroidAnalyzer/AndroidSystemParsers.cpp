@@ -10,8 +10,7 @@
 // Android System Parsers Implementation
 
 bool AndroidAnalyzer::parseWifiConfig(const std::string& configPath) {
-    std::string tempPath = forensics::PathManager::instance().makeTempPath(
-        "wifi_config_" + std::to_string(std::time(nullptr)));
+    std::string tempPath = makeAnalysisTempPath(configPath);
     if (!fileExtractor_->extractFileByPath(configPath, tempPath)) return false;
 
     std::ifstream file(tempPath);
@@ -82,8 +81,7 @@ bool AndroidAnalyzer::parseWifiConfig(const std::string& configPath) {
 }
 
 void AndroidAnalyzer::parseInstalledPackages(const std::string& xmlPath) {
-    std::string tempPath = forensics::PathManager::instance().makeTempPath(
-        "packages_" + std::to_string(std::time(nullptr)), ".xml");
+    std::string tempPath = makeAnalysisTempPath(xmlPath, ".xml");
     if (!fileExtractor_->extractFileByPath(xmlPath, tempPath)) return;
 
     std::ifstream file(tempPath);
@@ -113,8 +111,7 @@ void AndroidAnalyzer::parseInstalledPackages(const std::string& xmlPath) {
 }
 
 void AndroidAnalyzer::parseUsageStats(const std::string& usageStatsPath) {
-    std::string tempDir = forensics::PathManager::instance().makeTempPath(
-        "usagestats_" + std::to_string(std::time(nullptr)));
+    std::string tempDir = makeAnalysisTempPath(usageStatsPath);
     fs::create_directories(tempDir);
 
     // Extract simplified usage stats file (simulated as "1001" for daily)
@@ -152,8 +149,7 @@ void AndroidAnalyzer::analyzeSystemDirectory(const std::string& systemPath) {
     std::cout << "Starting system directory analysis..." << std::endl;
 
     // Create temp directory for extracted system files
-    std::string tempSystemDir = forensics::PathManager::instance().makeTempPath(
-        "system_analysis_" + std::to_string(std::time(nullptr)));
+    std::string tempSystemDir = makeAnalysisTempPath(systemPath);
     fs::create_directories(tempSystemDir);
 
     try {

@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <cstring>
-#include <sstream>
+#include <limits>
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
@@ -15,13 +15,10 @@ namespace fs = std::filesystem;
 
 namespace {
 
-bool createTemporaryFile(std::string& path, std::ofstream& output) {
-    fs::path directory;
-    try {
-        directory = fs::temp_directory_path();
-    } catch (const fs::filesystem_error&) {
-        return false;
-    }
+constexpr size_t kTarBlockBytes = 512;
+
+bool createTemporaryFile(const fs::path& directory, std::string& path, std::ofstream& output) {
+    if (directory.empty()) return false;
 
     std::string pattern = (directory / "tracelens-miui-XXXXXX").string();
     std::vector<char> writablePattern(pattern.begin(), pattern.end());
@@ -40,21 +37,40 @@ bool createTemporaryFile(std::string& path, std::ofstream& output) {
     return true;
 }
 
+bool parseOctal(const char* field, size_t width, uint64_t& value) {
+    value = 0;
+    size_t begin = 0;
+    while (begin < width && field[begin] == ' ') ++begin;
+    size_t end = width;
+    while (end > begin && (field[end - 1] == '\0' || field[end - 1] == ' ')) --end;
+    if (begin == end) return true;
+    for (size_t index = begin; index < end; ++index) {
+        const unsigned char ch = static_cast<unsigned char>(field[index]);
+        if (ch < '0' || ch > '7') return false;
+        const uint64_t digit = static_cast<uint64_t>(ch - '0');
+        if (value > (std::numeric_limits<uint64_t>::max() - digit) / 8) return false;
+        value = value * 8 + digit;
+    }
+    return true;
+}
+
+bool isZeroBlock(const std::vector<char>& block) {
+    return std::all_of(block.begin(), block.end(), [](char value) { return value == '\0'; });
+}
+
+std::string tarText(const char* field, size_t width) {
+    return std::string(field, strnlen(field, width));
+}
+
 }  // namespace
 
 TarIndex::~TarIndex() {
     if (ownsTemp_) std::remove(dataFile_.c_str());
 }
 
-static uint64_t parseOctal(const char* s, int width) {
-    uint64_t v = 0;
-    for (int i = 0; i < width && s[i]; ++i) {
-        if (s[i] >= '0' && s[i] <= '7') v = v * 8 + (s[i] - '0');
-    }
-    return v;
-}
-
-bool TarIndex::build(const std::string& bakPath, uint64_t payloadOffset, bool doInflate) {
+bool TarIndex::build(const std::string& bakPath, uint64_t payloadOffset, bool doInflate,
+                     const fs::path& requestedTemporaryRoot,
+                     uint64_t maximumInflatedBytes) {
     entries_.clear();
     if (ownsTemp_) std::remove(dataFile_.c_str());
     dataFile_ = bakPath;
@@ -67,13 +83,20 @@ bool TarIndex::build(const std::string& bakPath, uint64_t payloadOffset, bool do
         in.seekg(payloadOffset);
         if (!in) return false;
         std::ofstream out;
-        if (!createTemporaryFile(tmp, out)) return false;
+        fs::path temporaryRoot = requestedTemporaryRoot;
+        if (temporaryRoot.empty()) {
+            std::error_code tempError;
+            temporaryRoot = fs::temp_directory_path(tempError);
+            if (tempError) return false;
+        }
+        if (!createTemporaryFile(temporaryRoot, tmp, out)) return false;
         z_stream zs{};
         if (inflateInit(&zs) != Z_OK) {
             out.close(); std::remove(tmp.c_str());
             return false;
         }
         std::vector<char> ibuf(1<<20), obuf(1<<20);
+        uint64_t totalInflated = 0;
         bool done = false;
         while (!done) {
             in.read(ibuf.data(), ibuf.size()); zs.avail_in = in.gcount();
@@ -83,7 +106,12 @@ bool TarIndex::build(const std::string& bakPath, uint64_t payloadOffset, bool do
                 zs.next_out = reinterpret_cast<Bytef*>(obuf.data());
                 zs.avail_out = obuf.size();
                 int r = inflate(&zs, Z_NO_FLUSH);
-                out.write(obuf.data(), obuf.size() - zs.avail_out);
+                const uint64_t produced = obuf.size() - zs.avail_out;
+                if (produced > maximumInflatedBytes - totalInflated) {
+                    inflateEnd(&zs); out.close(); std::remove(tmp.c_str()); return false;
+                }
+                out.write(obuf.data(), static_cast<std::streamsize>(produced));
+                totalInflated += produced;
                 if (!out) { inflateEnd(&zs); out.close(); std::remove(tmp.c_str()); return false; }
                 if (r == Z_STREAM_END) { done = true; break; }
                 if (r != Z_OK) { inflateEnd(&zs); out.close(); std::remove(tmp.c_str()); return false; }
@@ -106,26 +134,33 @@ bool TarIndex::build(const std::string& bakPath, uint64_t payloadOffset, bool do
     if (!f) return false;
     f.seekg(payloadOffset);
     if (!f) return false;
-    std::vector<char> hdr(512);
-    bool sawEnd = false;
+    std::vector<char> hdr(kTarBlockBytes);
     while (true) {
-        f.read(hdr.data(), 512);
-        if (f.gcount() == 0 && f.eof()) break;
-        if (f.gcount() != 512) return false;
-        if (hdr[0] == 0) {
-            sawEnd = true;
-            break;
+        f.read(hdr.data(), static_cast<std::streamsize>(hdr.size()));
+        if (f.gcount() != static_cast<std::streamsize>(hdr.size())) return false;
+        if (isZeroBlock(hdr)) {
+            std::vector<char> second(kTarBlockBytes);
+            f.read(second.data(), static_cast<std::streamsize>(second.size()));
+            return f.gcount() == static_cast<std::streamsize>(second.size()) && isZeroBlock(second);
         }
-        std::string name(hdr.data(), strnlen(hdr.data(), 100));
+
+        std::string name = tarText(hdr.data(), 100);
+        const std::string prefix = tarText(hdr.data() + 345, 155);
+        if (!prefix.empty()) name = prefix + "/" + name;
         if (name.empty()) return false;
-        uint64_t size = parseOctal(hdr.data() + 124, 12);
-        uint64_t dataOff = (uint64_t)f.tellg();  // position after the 512-byte header == start of file data
-        entries_[name] = { dataOff, size };
-        uint64_t padded = (size + 511) & ~uint64_t(511);
-        f.seekg((uint64_t)f.tellg() + padded);
+
+        uint64_t size = 0;
+        if (!parseOctal(hdr.data() + 124, 12, size)) return false;
+        const std::streampos position = f.tellg();
+        if (position < 0) return false;
+        const uint64_t dataOff = static_cast<uint64_t>(position);
+        if (size > std::numeric_limits<uint64_t>::max() - 511) return false;
+        const uint64_t padded = (size + 511) & ~uint64_t(511);
+        if (dataOff > std::numeric_limits<uint64_t>::max() - padded) return false;
+        entries_[name] = {dataOff, size};
+        f.seekg(static_cast<std::streamoff>(dataOff + padded));
         if (!f) return false;
     }
-    return sawEnd;
 }
 
 bool TarIndex::find(const std::string& memberName, TarEntry& out) const {

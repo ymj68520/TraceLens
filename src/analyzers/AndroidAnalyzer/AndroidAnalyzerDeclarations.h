@@ -131,6 +131,10 @@ private:
 
     // Android data parsing methods
     bool extractAndParseDB(const std::string& dbPathInImage, const std::string& tempPath);
+    bool stageSqliteBundle(const std::string& dbPathInImage, const std::string& primaryTempPath,
+                           std::vector<std::string>& stagedPaths);
+    std::string makeAnalysisTempPath(const std::string& sourcePath,
+                                     const std::string& suffix = "") const;
     void parseSMS(const std::string& dbPath);
     void parseContacts(const std::string& dbPath);
     void parseCallLog(const std::string& dbPath);
@@ -171,4 +175,5 @@ private:
     std::unique_ptr<AndroidAnalysisDatabase> androidDb_;
     std::string wechatPassword_;
     std::string backupPassword_;
+    std::string secureTemporaryRoot_;
 };

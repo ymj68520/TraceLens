@@ -7,13 +7,14 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import zlib
 from io import BytesIO
 from pathlib import Path
 
 
-def create_backup(root: Path) -> Path:
+def create_backup(root: Path, compressed: bool = False) -> Path:
     backup = root / "backup"
-    backup.mkdir()
+    backup.mkdir(parents=True)
 
     payload = BytesIO()
     with tarfile.open(fileobj=payload, mode="w", format=tarfile.USTAR_FORMAT) as archive:
@@ -22,8 +23,11 @@ def create_backup(root: Path) -> Path:
         info.size = len(data)
         archive.addfile(info, BytesIO(data))
 
+    tar_bytes = payload.getvalue()
+    compression = b"1" if compressed else b"0"
+    body = zlib.compress(tar_bytes) if compressed else tar_bytes
     (backup / "Foo(com.foo).bak").write_bytes(
-        b"ANDROID BACKUP\n5\n0\nnone\n" + payload.getvalue()
+        b"ANDROID BACKUP\n5\n" + compression + b"\nnone\n" + body
     )
     (backup / "descript.xml").write_text(
         '<?xml version="1.0"?><MIUI-backup>'
@@ -107,6 +111,36 @@ def verify_malformed_input(analyzer: Path) -> None:
                 f"unknown source was not rejected by parser: {unknown.stderr}")
 
 
+def verify_secure_password_input(analyzer: Path, root: Path) -> None:
+    backup = create_backup(root / "secure")
+    output = root / "secure-out"
+    secret = "MIUI_SECURE_INPUT_SENTINEL"
+    result = subprocess.run([
+        str(analyzer), str(backup), "--android-analyze",
+        "--android-source", "miui-backup",
+        "--backup-password-stdin", "--db-dir", str(output),
+    ], input=secret + "\n", capture_output=True, text=True, check=False)
+    combined = result.stdout + result.stderr
+    assert_true(result.returncode == 0, f"secure password input failed: {combined}")
+    assert_true(secret not in combined, "secure backup password appeared in output")
+    assert_true((output / "backup_files.db").exists(), "secure input run produced no database")
+
+
+def verify_tmpdir_isolation(analyzer: Path, root: Path) -> None:
+    backup = create_backup(root / "tmpdir", compressed=True)
+    hostile_tmp = backup / "hostile-tmp"
+    hostile_tmp.mkdir()
+    output = root / "tmpdir-out"
+    environment = os.environ.copy()
+    environment["TMPDIR"] = str(hostile_tmp)
+    result = subprocess.run([
+        str(analyzer), str(backup), "--android-analyze",
+        "--android-source", "miui-backup", "--db-dir", str(output),
+    ], capture_output=True, text=True, check=False, env=environment)
+    assert_true(result.returncode == 0, f"TMPDIR isolation run failed: {result.stdout}{result.stderr}")
+    assert_true(not any(hostile_tmp.iterdir()), "analyzer created internal temporary files under evidence")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--analyzer", required=True, type=Path)
@@ -117,6 +151,8 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="tracelens_miui_cli_") as temp:
         root = Path(temp)
         verify_miui_route(analyzer, root)
+        verify_secure_password_input(analyzer, root)
+        verify_tmpdir_isolation(analyzer, root)
         verify_malformed_input(analyzer)
     return 0
 

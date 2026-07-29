@@ -18,6 +18,7 @@
 #include "export/TextDumpExporter.h"
 #include "export/TextDumpAdapters.h"
 #include <iostream>
+#include <array>
 #include <filesystem>
 #include <memory>
 
@@ -103,6 +104,28 @@ bool readPasswordFromStdin(std::string& password) {
         return false;
     }
     return true;
+}
+
+bool readPasswordFromDescriptor(int descriptor, std::string& password) {
+    password.clear();
+    std::array<char, 256> buffer{};
+    while (password.size() < 4096) {
+#ifdef _WIN32
+        const int count = _read(descriptor, buffer.data(), static_cast<unsigned>(buffer.size()));
+#else
+        const ssize_t count = ::read(descriptor, buffer.data(), buffer.size());
+#endif
+        if (count < 0) return false;
+        if (count == 0) break;
+        password.append(buffer.data(), static_cast<size_t>(count));
+        const size_t newline = password.find('\n');
+        if (newline != std::string::npos) {
+            password.resize(newline);
+            break;
+        }
+    }
+    if (!password.empty() && password.back() == '\r') password.pop_back();
+    return !password.empty() && password.size() <= 4096;
 }
 
 } // namespace
@@ -469,8 +492,22 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
             args.android_source == "miui-backup" ? AndroidSourceMode::MiuiBackup :
                                                     AndroidSourceMode::LogicalDir;
         androidAnalyzer->setSourceMode(mode);
-        if (!args.backup_password.empty()) {
-            androidAnalyzer->setBackupPassword(args.backup_password);
+        std::string backupPassword = args.backup_password;
+        if (args.backup_password_stdin || args.backup_password_fd >= 0) {
+            if (!backupPassword.empty()) {
+                std::cerr << "Warning: secure backup-password input overrides deprecated argv input."
+                          << std::endl;
+            }
+            const bool readOk = args.backup_password_fd >= 0
+                ? readPasswordFromDescriptor(args.backup_password_fd, backupPassword)
+                : readPasswordFromStdin(backupPassword);
+            if (!readOk) {
+                std::cerr << "Error: Failed to read backup password securely" << std::endl;
+                return 1;
+            }
+        }
+        if (!backupPassword.empty()) {
+            androidAnalyzer->setBackupPassword(backupPassword);
         }
         if (!args.wechat_password.empty()) {
             androidAnalyzer->setWeChatPassword(args.wechat_password);

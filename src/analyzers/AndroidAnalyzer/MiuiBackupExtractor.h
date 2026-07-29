@@ -3,6 +3,7 @@
 #define MIUI_BACKUP_EXTRACTOR_H
 
 #include <functional>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -28,6 +29,7 @@ public:
     };
 
     explicit MiuiBackupExtractor(const std::string& backupFolder);
+    ~MiuiBackupExtractor() override;
 
     // Stored for Phase 2 AES support. Phase 1 rejects encrypted payloads.
     void setBackupPassword(const std::string& password);
@@ -45,6 +47,7 @@ public:
                           const std::string& outPath) const;
     bool entrySize(const std::string& memberName, uint64_t& size) const;
     const std::vector<PackageFailure>& packageFailures() const { return packageFailures_; }
+    const std::filesystem::path& temporaryRoot() const { return temporaryRoot_; }
 
 private:
     std::string folder_;
@@ -53,6 +56,7 @@ private:
     std::vector<std::unique_ptr<TarIndex>> indexes_;
     std::unordered_map<std::string, TarIndex*> entryOwner_;
     std::vector<PackageFailure> packageFailures_;
+    std::filesystem::path temporaryRoot_;
     bool initialized_ = false;
 };
 
