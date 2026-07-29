@@ -4,6 +4,8 @@
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
 #include "LogicalDirExtractor.h"
 #include "ZipArchiveExtractor.h"
+#include "MiuiBackupExtractor.h"
+#include "MiuiArtifactParsers.h"
 
 // AndroidAnalyzer Core Implementation
 
@@ -22,6 +24,12 @@ bool AndroidAnalyzer::initialize() {
     // in this module go through fileExtractor_->extractFileByPath(...), so the
     // backend is transparent to the parsing logic.
     switch (sourceMode_) {
+        case AndroidSourceMode::MiuiBackup: {
+            auto miui = std::make_unique<MiuiBackupExtractor>(imagePath_);
+            if (!backupPassword_.empty()) miui->setBackupPassword(backupPassword_);
+            fileExtractor_ = std::move(miui);
+            break;
+        }
         case AndroidSourceMode::LogicalDir:
             fileExtractor_ = std::make_unique<LogicalDirExtractor>(imagePath_);
             break;
@@ -43,7 +51,8 @@ bool AndroidAnalyzer::initialize() {
     if (!fileExtractor_->initialize()) {
         std::cerr << "Failed to initialize file extractor (source mode "
                   << (sourceMode_ == AndroidSourceMode::TSK ? "TSK" :
-                      sourceMode_ == AndroidSourceMode::LogicalDir ? "dir" : "zip")
+                      sourceMode_ == AndroidSourceMode::LogicalDir ? "dir" :
+                      sourceMode_ == AndroidSourceMode::Zip ? "zip" : "miui-backup")
                   << ")" << std::endl;
         AuditLog::instance().log("SYSTEM", "ANDROID_INIT_FAILED", "Failed to initialize Android analyzer for: " + imagePath_);
         return false;
@@ -55,6 +64,13 @@ bool AndroidAnalyzer::initialize() {
     if (!androidDb_->initialize()) {
         std::cerr << "Failed to initialize AndroidAnalysisDatabase" << std::endl;
         return false;
+    }
+
+    if (sourceMode_ == AndroidSourceMode::MiuiBackup) {
+        if (auto* miui = dynamic_cast<MiuiBackupExtractor*>(fileExtractor_.get())) {
+            writeMiuiManifest(*miui, *androidDb_);
+            writeAppDbInventory(*miui, *androidDb_);
+        }
     }
 
     AuditLog::instance().log("SYSTEM", "ANDROID_INIT", "Android analyzer initialized for: " + imagePath_);

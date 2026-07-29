@@ -30,7 +30,8 @@ struct CommandLineArgs {
     bool overwrite = false;
     bool android_analyze = false;
     std::string wechat_password;
-    std::string android_source;  // "tsk" (default), "dir", or "zip"
+    std::string backup_password;   // MIUI/Android backup password (AES-256)
+    std::string android_source;  // "tsk" (default), "dir", "zip", or "miui-backup"
     bool windows_analyze = false;
     bool linux_analyze = false;
     bool memory_analyze = false;
