@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 
 namespace fs = std::filesystem;
@@ -49,6 +48,8 @@ bool MiuiBackupExtractor::initialize() {
         if (declaredPath.empty() || declaredPath.is_absolute() || declaredPath.has_parent_path()) {
             std::cerr << "MiuiBackupExtractor: unsafe backup filename for "
                       << package.packageName << ": " << package.bakFile << std::endl;
+            packageFailures_.push_back(
+                {package.packageName, package.bakFile, "parse_error"});
             continue;
         }
 
@@ -57,6 +58,8 @@ bool MiuiBackupExtractor::initialize() {
         if (fs::is_symlink(fs::symlink_status(candidate, statusError)) || statusError) {
             std::cerr << "MiuiBackupExtractor: symlinked or unreadable backup file for "
                       << package.packageName << ": " << declaredPath << std::endl;
+            packageFailures_.push_back(
+                {package.packageName, package.bakFile, "parse_error"});
             continue;
         }
 
@@ -66,11 +69,15 @@ bool MiuiBackupExtractor::initialize() {
         } catch (const fs::filesystem_error&) {
             std::cerr << "MiuiBackupExtractor: backup file not found for "
                       << package.packageName << ": " << declaredPath << std::endl;
+            packageFailures_.push_back(
+                {package.packageName, package.bakFile, "parse_error"});
             continue;
         }
         if (bakPath.parent_path() != backupRoot || !fs::is_regular_file(bakPath)) {
             std::cerr << "MiuiBackupExtractor: backup path escapes folder for "
                       << package.packageName << ": " << declaredPath << std::endl;
+            packageFailures_.push_back(
+                {package.packageName, package.bakFile, "parse_error"});
             continue;
         }
 
@@ -115,8 +122,8 @@ bool MiuiBackupExtractor::initialize() {
         indexes_.push_back(std::move(index));
     }
 
-    initialized_ = !indexes_.empty();
-    return initialized_;
+    initialized_ = true;
+    return true;
 }
 
 bool MiuiBackupExtractor::extractFileByPath(const std::string& imageRelPath,
@@ -147,24 +154,6 @@ bool MiuiBackupExtractor::extractFileByPath(const std::string& imageRelPath,
         const fs::path parent = output.parent_path();
         if (!parent.empty()) {
             fs::create_directories(parent);
-            std::error_code permissionError;
-            fs::permissions(parent, fs::perms::owner_all,
-                            fs::perm_options::replace, permissionError);
-            if (permissionError) {
-                return false;
-            }
-        }
-        std::ofstream privateOutput(output, std::ios::binary | std::ios::trunc);
-        if (!privateOutput) {
-            return false;
-        }
-        privateOutput.close();
-        std::error_code permissionError;
-        fs::permissions(output, fs::perms::owner_read | fs::perms::owner_write,
-                        fs::perm_options::replace, permissionError);
-        if (permissionError) {
-            fs::remove(output, permissionError);
-            return false;
         }
     } catch (const fs::filesystem_error& error) {
         std::cerr << "MiuiBackupExtractor: cannot create output parent for "
@@ -216,24 +205,6 @@ bool MiuiBackupExtractor::extractTarMember(const std::string& memberName,
         const fs::path parent = output.parent_path();
         if (!parent.empty()) {
             fs::create_directories(parent);
-            std::error_code permissionError;
-            fs::permissions(parent, fs::perms::owner_all,
-                            fs::perm_options::replace, permissionError);
-            if (permissionError) {
-                return false;
-            }
-        }
-        std::ofstream privateOutput(output, std::ios::binary | std::ios::trunc);
-        if (!privateOutput) {
-            return false;
-        }
-        privateOutput.close();
-        std::error_code permissionError;
-        fs::permissions(output, fs::perms::owner_read | fs::perms::owner_write,
-                        fs::perm_options::replace, permissionError);
-        if (permissionError) {
-            fs::remove(output, permissionError);
-            return false;
         }
     } catch (const fs::filesystem_error& error) {
         std::cerr << "MiuiBackupExtractor: cannot create output parent for "
