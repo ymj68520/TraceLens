@@ -7,12 +7,14 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <utility>
 #include "analyzers/AndroidAnalyzer/AndroidBackupHeader.h"
 #include "analyzers/AndroidAnalyzer/TarIndex.h"
 #include "analyzers/AndroidAnalyzer/MiuiPathMap.h"
 #include "analyzers/AndroidAnalyzer/MiuiBackupManifest.h"
 #include "analyzers/AndroidAnalyzer/MiuiBackupExtractor.h"
+#include "analyzers/AndroidAnalyzer/MiuiArtifactParsers.h"
 #include "analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.h"
 #include <sqlite3.h>
 #ifdef USE_ZLIB
@@ -414,6 +416,285 @@ TEST(TarIndexTest, DeletesInflatedTemporaryFileOnDestruction) {
     EXPECT_FALSE(fs::exists(tempPath));
 }
 #endif
+
+TEST(MiuiArtifactTest, WritesManifestAndRecordsUnreadableDatabaseFailure) {
+    const fs::path dir = uniqueTempPath("miui_art_invalid");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<?xml version='1.0'?><MIUI-backup><device>cepheus</device>"
+           "<miuiVersion>V12</miuiVersion><date>1</date><size>4</size><packages>"
+           "<package><packageName>com.foo</packageName><bakFile>Foo(com.foo).bak</bakFile>"
+           "<bakType>1</bakType><pkgSize>4</pkgSize><sdSize>0</sdSize><state>1</state>"
+           "<error>0</error></package></packages></MIUI-backup>";
+    const auto tar = makeUstarTar({{"apps/com.foo/db/x.db", "DATA"}});
+    std::ofstream(dir / "Foo(com.foo).bak", std::ios::binary)
+        << "MIUI BACKUP\n2\ncom.foo Foo\n-1\n0\nANDROID BACKUP\n5\n0\nnone\n"
+        << readFile(tar);
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+
+    const fs::path dbPath = uniqueTempPath("miui_art_invalid", ".db");
+    TemporaryFile cleanup(dbPath);
+    AndroidAnalysisDatabase db(dbPath.string());
+    ASSERT_TRUE(db.initialize());
+
+    writeMiuiManifest(extractor, db);
+    writeAppDbInventory(extractor, db);
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(dbPath.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT count(*) FROM installed_apps WHERE package_name = ?", -1, &statement, nullptr),
+        SQLITE_OK);
+    ASSERT_EQ(sqlite3_bind_text(statement, 1, "com.foo", -1, SQLITE_STATIC), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_EQ(sqlite3_column_int(statement, 0), 1);
+    sqlite3_finalize(statement);
+
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT table_name, row_count, columns, open_status FROM app_db_inventory "
+        "WHERE package_name = ? AND db_path = ?", -1, &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_bind_text(statement, 1, "com.foo", -1, SQLITE_STATIC), SQLITE_OK);
+    ASSERT_EQ(sqlite3_bind_text(statement, 2, "apps/com.foo/db/x.db", -1, SQLITE_STATIC), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "");
+    EXPECT_EQ(sqlite3_column_int64(statement, 1), 0);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 2)), "");
+    const std::string status = reinterpret_cast<const char*>(sqlite3_column_text(statement, 3));
+    EXPECT_TRUE(status == "encrypted_locked" || status == "parse_error");
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
+}
+
+TEST(MiuiArtifactTest, InventoriesRealSqliteTablesAndColumns) {
+    const fs::path sourceDb = uniqueTempPath("miui_source", ".db");
+    TemporaryFile sourceCleanup(sourceDb);
+    sqlite3* source = nullptr;
+    ASSERT_EQ(sqlite3_open(sourceDb.string().c_str(), &source), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(source,
+        "CREATE TABLE t(id INTEGER PRIMARY KEY, note TEXT);"
+        "INSERT INTO t(note) VALUES('one'),('two');",
+        nullptr, nullptr, nullptr), SQLITE_OK);
+    sqlite3_close(source);
+
+    const fs::path dir = uniqueTempPath("miui_art_valid");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><device>cepheus</device><miuiVersion>V12</miuiVersion>"
+           "<date>1</date><size>1</size><packages><package>"
+           "<packageName>com.foo</packageName><bakFile>Foo(com.foo).bak</bakFile>"
+           "<bakType>1</bakType><pkgSize>1</pkgSize><sdSize>0</sdSize>"
+           "</package></packages></MIUI-backup>";
+    const auto tar = makeUstarTar({
+        {"apps/com.foo/db/real.db", readFile(sourceDb)},
+        {"apps/com.foo/f/not-a-db.db", "not sqlite"}
+    });
+    std::ofstream(dir / "Foo(com.foo).bak", std::ios::binary)
+        << rawBackup(readFile(tar));
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+
+    std::vector<std::pair<std::string, std::string>> entries;
+    extractor.enumerateEntries([&](const std::string& member, const std::string& bakFile) {
+        entries.emplace_back(member, bakFile);
+    });
+    ASSERT_EQ(entries.size(), 2u);
+    EXPECT_EQ(entries[0].second, "Foo(com.foo).bak");
+    EXPECT_EQ(entries[1].second, "Foo(com.foo).bak");
+
+    const fs::path copiedDb = dir / "copied" / "real.db";
+    ASSERT_TRUE(extractor.extractTarMember("apps/com.foo/db/real.db", copiedDb.string()));
+    EXPECT_EQ(readFile(copiedDb), readFile(sourceDb));
+#ifndef _WIN32
+    const auto copiedPermissions = fs::status(copiedDb).permissions();
+    EXPECT_EQ(copiedPermissions & (fs::perms::group_all | fs::perms::others_all),
+              fs::perms::none);
+#endif
+
+    const fs::path analysisDb = uniqueTempPath("miui_art_valid", ".db");
+    TemporaryFile analysisCleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+    writeAppDbInventory(extractor, db);
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT row_count, columns, open_status FROM app_db_inventory "
+        "WHERE package_name = ? AND db_path = ? AND table_name = ?", -1, &statement, nullptr),
+        SQLITE_OK);
+    ASSERT_EQ(sqlite3_bind_text(statement, 1, "com.foo", -1, SQLITE_STATIC), SQLITE_OK);
+    ASSERT_EQ(sqlite3_bind_text(statement, 2, "apps/com.foo/db/real.db", -1, SQLITE_STATIC), SQLITE_OK);
+    ASSERT_EQ(sqlite3_bind_text(statement, 3, "t", -1, SQLITE_STATIC), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_EQ(sqlite3_column_int64(statement, 0), 2);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 1)), "id,note");
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 2)), "decrypted");
+    sqlite3_finalize(statement);
+
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT count(*) FROM app_db_inventory WHERE db_path = ?", -1, &statement, nullptr),
+        SQLITE_OK);
+    ASSERT_EQ(sqlite3_bind_text(statement, 1, "apps/com.foo/f/not-a-db.db", -1, SQLITE_STATIC),
+              SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_EQ(sqlite3_column_int(statement, 0), 0);
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
+}
+
+static std::string createWalDatabaseBytes(std::string& mainBytes,
+                                          std::string& walBytes,
+                                          std::string& shmBytes) {
+    const fs::path path = uniqueTempPath("miui_wal_source", ".db");
+    sqlite3* connection = nullptr;
+    EXPECT_EQ(sqlite3_open(path.string().c_str(), &connection), SQLITE_OK);
+    if (!connection) return {};
+    EXPECT_EQ(sqlite3_exec(connection,
+        "PRAGMA journal_mode=WAL;"
+        "PRAGMA wal_autocheckpoint=0;"
+        "CREATE TABLE t(id INTEGER PRIMARY KEY, note TEXT);"
+        "INSERT INTO t(note) VALUES('main');"
+        "PRAGMA wal_checkpoint(TRUNCATE);"
+        "INSERT INTO t(note) VALUES('wal-one'),('wal-two');",
+        nullptr, nullptr, nullptr), SQLITE_OK);
+    mainBytes = readFile(path);
+    walBytes = readFile(path.string() + "-wal");
+    shmBytes = readFile(path.string() + "-shm");
+    sqlite3_close(connection);
+    std::error_code error;
+    fs::remove(path, error);
+    fs::remove(path.string() + "-wal", error);
+    fs::remove(path.string() + "-shm", error);
+    return mainBytes;
+}
+
+TEST(MiuiArtifactTest, AppliesWalSidecarsBeforeInventory) {
+    std::string mainBytes;
+    std::string walBytes;
+    std::string shmBytes;
+    ASSERT_FALSE(createWalDatabaseBytes(mainBytes, walBytes, shmBytes).empty());
+    ASSERT_FALSE(walBytes.empty());
+
+    const fs::path dir = uniqueTempPath("miui_art_wal");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << minimalBackupXml("Foo(com.foo).bak");
+    const auto tar = makeUstarTar({
+        {"apps/com.foo/db/live.db", mainBytes},
+        {"apps/com.foo/db/live.db-wal", walBytes},
+        {"apps/com.foo/db/live.db-shm", shmBytes}
+    });
+    std::ofstream(dir / "Foo(com.foo).bak", std::ios::binary) << rawBackup(readFile(tar));
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    const fs::path analysisDb = uniqueTempPath("miui_art_wal", ".db");
+    TemporaryFile analysisCleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+    writeAppDbInventory(extractor, db);
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT row_count, open_status FROM app_db_inventory "
+        "WHERE db_path = ? AND table_name = 't'", -1, &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_bind_text(statement, 1, "apps/com.foo/db/live.db", -1, SQLITE_STATIC),
+              SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_EQ(sqlite3_column_int64(statement, 0), 3);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 1)), "decrypted");
+    sqlite3_finalize(statement);
+
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT count(*) FROM app_db_inventory WHERE db_path LIKE '%-wal' OR db_path LIKE '%-shm'",
+        -1, &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_EQ(sqlite3_column_int(statement, 0), 0);
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
+}
+
+TEST(MiuiArtifactTest, RecordsEncryptedPackageThatHasNoEnumerableEntries) {
+    const fs::path dir = uniqueTempPath("miui_art_mixed");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages>"
+           "<package><packageName>com.foo</packageName><bakFile>Foo.bak</bakFile></package>"
+           "<package><packageName>com.locked</packageName><bakFile>Locked.bak</bakFile></package>"
+           "</packages></MIUI-backup>";
+    const auto tar = makeUstarTar({{"apps/com.foo/db/x.db", "DATA"}});
+    std::ofstream(dir / "Foo.bak", std::ios::binary) << rawBackup(readFile(tar));
+    std::ofstream(dir / "Locked.bak", std::ios::binary)
+        << "ANDROID BACKUP\n5\n0\nAES-256-encrypted\nciphertext";
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    const fs::path analysisDb = uniqueTempPath("miui_art_mixed", ".db");
+    TemporaryFile analysisCleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+    writeAppDbInventory(extractor, db);
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT db_path, open_status FROM app_db_inventory WHERE package_name = 'com.locked'",
+        -1, &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "Locked.bak");
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 1)),
+                 "encrypted_locked");
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
+}
+
+TEST(MiuiArtifactTest, RejectsDatabaseBeyondExtractionLimitWithoutWritingIt) {
+    const fs::path dir = uniqueTempPath("miui_art_oversize");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << minimalBackupXml("Foo.bak");
+    std::string header(512, '\0');
+    const std::string member = "apps/com.foo/db/huge.db";
+    std::memcpy(header.data(), member.data(), member.size());
+    const uint64_t declaredSize = 513ULL * 1024 * 1024;
+    char sizeField[13]{};
+    std::snprintf(sizeField, sizeof(sizeField), "%011lo", static_cast<unsigned long>(declaredSize));
+    std::memcpy(header.data() + 124, sizeField, 12);
+    header[156] = '0';
+    const std::string backupHeader = "ANDROID BACKUP\n5\n0\nnone\n";
+    std::ofstream oversized(dir / "Foo.bak", std::ios::binary);
+    oversized << backupHeader << header;
+    oversized.seekp(static_cast<std::streamoff>(backupHeader.size() + 512 + declaredSize));
+    oversized << std::string(1024, '\0');
+    oversized.close();
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    const fs::path analysisDb = uniqueTempPath("miui_art_oversize", ".db");
+    TemporaryFile analysisCleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+    writeAppDbInventory(extractor, db);
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT open_status FROM app_db_inventory WHERE db_path = 'apps/com.foo/db/huge.db'",
+        -1, &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "parse_error");
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
+}
 
 TEST(MiuiDbTest, PersistsMiuiBackupMetadataAcrossAllTables) {
     const fs::path dbPath = uniqueTempPath("miui_metadata", ".db");

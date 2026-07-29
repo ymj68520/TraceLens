@@ -2,6 +2,7 @@
 #ifndef MIUI_BACKUP_EXTRACTOR_H
 #define MIUI_BACKUP_EXTRACTOR_H
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -20,6 +21,12 @@
  */
 class MiuiBackupExtractor : public IFileExtractor {
 public:
+    struct PackageFailure {
+        std::string packageName;
+        std::string bakFile;
+        std::string openStatus;
+    };
+
     explicit MiuiBackupExtractor(const std::string& backupFolder);
 
     // Stored for Phase 2 AES support. Phase 1 rejects encrypted payloads.
@@ -31,12 +38,21 @@ public:
 
     const BackupMeta& manifest() const { return manifest_; }
 
+    using EntryVisitor =
+        std::function<void(const std::string& memberName, const std::string& bakFile)>;
+    void enumerateEntries(const EntryVisitor& visitor) const;
+    bool extractTarMember(const std::string& memberName,
+                          const std::string& outPath) const;
+    bool entrySize(const std::string& memberName, uint64_t& size) const;
+    const std::vector<PackageFailure>& packageFailures() const { return packageFailures_; }
+
 private:
     std::string folder_;
     std::string password_;
     BackupMeta manifest_;
     std::vector<std::unique_ptr<TarIndex>> indexes_;
     std::unordered_map<std::string, TarIndex*> entryOwner_;
+    std::vector<PackageFailure> packageFailures_;
     bool initialized_ = false;
 };
 

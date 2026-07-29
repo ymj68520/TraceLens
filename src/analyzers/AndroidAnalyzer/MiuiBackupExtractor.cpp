@@ -3,7 +3,9 @@
 #include "AndroidBackupHeader.h"
 #include "MiuiPathMap.h"
 
+#include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 
 namespace fs = std::filesystem;
@@ -20,6 +22,7 @@ bool MiuiBackupExtractor::initialize() {
     initialized_ = false;
     entryOwner_.clear();
     indexes_.clear();
+    packageFailures_.clear();
     manifest_ = BackupMeta{};
 
     if (!parseMiuiManifest(folder_, manifest_)) {
@@ -75,22 +78,30 @@ bool MiuiBackupExtractor::initialize() {
         if (!parseAndroidBackupHeader(bakPath.string(), header)) {
             std::cerr << "MiuiBackupExtractor: invalid Android Backup stream: "
                       << bakPath << std::endl;
+            packageFailures_.push_back(
+                {package.packageName, package.bakFile, "parse_error"});
             continue;
         }
         if (header.encryption != BackupEncryption::None) {
             std::cerr << "MiuiBackupExtractor: encrypted backup deferred for "
                       << package.packageName << " (" << header.encMarker << ')' << std::endl;
+            packageFailures_.push_back(
+                {package.packageName, package.bakFile, "encrypted_locked"});
             continue;
         }
         if (header.compression != 0 && header.compression != 1) {
             std::cerr << "MiuiBackupExtractor: unsupported compression "
                       << header.compression << " for " << package.packageName << std::endl;
+            packageFailures_.push_back(
+                {package.packageName, package.bakFile, "parse_error"});
             continue;
         }
 
         auto index = std::make_unique<TarIndex>();
         if (!index->build(bakPath.string(), header.payloadOffset, header.compression == 1)) {
             std::cerr << "MiuiBackupExtractor: failed to index " << bakPath << std::endl;
+            packageFailures_.push_back(
+                {package.packageName, package.bakFile, "parse_error"});
             continue;
         }
 
@@ -136,6 +147,24 @@ bool MiuiBackupExtractor::extractFileByPath(const std::string& imageRelPath,
         const fs::path parent = output.parent_path();
         if (!parent.empty()) {
             fs::create_directories(parent);
+            std::error_code permissionError;
+            fs::permissions(parent, fs::perms::owner_all,
+                            fs::perm_options::replace, permissionError);
+            if (permissionError) {
+                return false;
+            }
+        }
+        std::ofstream privateOutput(output, std::ios::binary | std::ios::trunc);
+        if (!privateOutput) {
+            return false;
+        }
+        privateOutput.close();
+        std::error_code permissionError;
+        fs::permissions(output, fs::perms::owner_read | fs::perms::owner_write,
+                        fs::perm_options::replace, permissionError);
+        if (permissionError) {
+            fs::remove(output, permissionError);
+            return false;
         }
     } catch (const fs::filesystem_error& error) {
         std::cerr << "MiuiBackupExtractor: cannot create output parent for "
@@ -144,4 +173,88 @@ bool MiuiBackupExtractor::extractFileByPath(const std::string& imageRelPath,
     }
 
     return owner->second->readEntry(entry, outPath);
+}
+
+void MiuiBackupExtractor::enumerateEntries(const EntryVisitor& visitor) const {
+    if (!initialized_ || !visitor) {
+        return;
+    }
+
+    for (const auto& package : manifest_.packages) {
+        const std::string packagePrefix = "apps/" + package.packageName + "/";
+        std::vector<std::string> members;
+        for (const auto& entry : entryOwner_) {
+            if (entry.first.rfind(packagePrefix, 0) == 0) {
+                members.push_back(entry.first);
+            }
+        }
+        std::sort(members.begin(), members.end());
+        for (const auto& member : members) {
+            visitor(member, package.bakFile);
+        }
+    }
+}
+
+bool MiuiBackupExtractor::extractTarMember(const std::string& memberName,
+                                           const std::string& outPath) const {
+    if (!initialized_) {
+        return false;
+    }
+
+    const auto owner = entryOwner_.find(memberName);
+    if (owner == entryOwner_.end()) {
+        return false;
+    }
+
+    TarEntry entry;
+    if (!owner->second->find(memberName, entry)) {
+        return false;
+    }
+
+    try {
+        const fs::path output(outPath);
+        const fs::path parent = output.parent_path();
+        if (!parent.empty()) {
+            fs::create_directories(parent);
+            std::error_code permissionError;
+            fs::permissions(parent, fs::perms::owner_all,
+                            fs::perm_options::replace, permissionError);
+            if (permissionError) {
+                return false;
+            }
+        }
+        std::ofstream privateOutput(output, std::ios::binary | std::ios::trunc);
+        if (!privateOutput) {
+            return false;
+        }
+        privateOutput.close();
+        std::error_code permissionError;
+        fs::permissions(output, fs::perms::owner_read | fs::perms::owner_write,
+                        fs::perm_options::replace, permissionError);
+        if (permissionError) {
+            fs::remove(output, permissionError);
+            return false;
+        }
+    } catch (const fs::filesystem_error& error) {
+        std::cerr << "MiuiBackupExtractor: cannot create output parent for "
+                  << outPath << ": " << error.what() << std::endl;
+        return false;
+    }
+
+    return owner->second->readEntry(entry, outPath);
+}
+
+bool MiuiBackupExtractor::entrySize(const std::string& memberName, uint64_t& size) const {
+    size = 0;
+    const auto owner = entryOwner_.find(memberName);
+    if (!initialized_ || owner == entryOwner_.end()) {
+        return false;
+    }
+
+    TarEntry entry;
+    if (!owner->second->find(memberName, entry)) {
+        return false;
+    }
+    size = entry.size;
+    return true;
 }
