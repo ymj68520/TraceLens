@@ -5,6 +5,7 @@
 #include <iostream>
 #include <limits>
 #include <optional>
+#include <unordered_set>
 
 namespace forensics {
 
@@ -56,6 +57,28 @@ std::optional<uint64_t> parseBinarySize(const std::string& text,
         return std::nullopt;
     }
     return value * multiplier;
+}
+
+bool isOptionToken(const char* value) {
+    return value && value[0] == '-';
+}
+
+bool optionRequiresNonOptionValue(const std::string& option) {
+    static const std::unordered_set<std::string> valueOptions{
+        "--database", "--extract-file", "--extract-ext", "--output-dir",
+        "--db-dir", "--xfs-mode", "--android-source", "--wechat-password",
+        "--backup-password", "--report-path", "--dump-text-max-size",
+        "--vol-symbols-dir", "--dll-db", "--index", "--search",
+        "--filter-profile", "--key-dir", "--key-password", "--carve-out"
+    };
+    return valueOptions.contains(option);
+}
+
+bool isValidAndroidSource(const std::string& source) {
+    static const std::unordered_set<std::string> validSources{
+        "tsk", "dir", "zip", "miui-backup"
+    };
+    return validSources.contains(source);
 }
 
 } // namespace
@@ -126,6 +149,12 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
 
+        if (optionRequiresNonOptionValue(arg) &&
+            (i + 1 >= argc || isOptionToken(argv[i + 1]))) {
+            args.parse_error = "Missing value for " + arg;
+            return args;
+        }
+
         if (arg == "--database" && i + 1 < argc) {
             args.database_path = argv[++i];
         } else if (arg == "--extract-file" && i + 1 < argc) {
@@ -162,7 +191,13 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
         } else if (arg == "--android-analyze") {
             args.android_analyze = true;
         } else if (arg == "--android-source" && i + 1 < argc) {
-            args.android_source = argv[++i];
+            const std::string source = argv[++i];
+            if (!isValidAndroidSource(source)) {
+                args.parse_error = "Invalid --android-source '" + source +
+                    "' (expected tsk, dir, zip, or miui-backup)";
+                return args;
+            }
+            args.android_source = source;
         } else if (arg == "--wechat-password" && i + 1 < argc) {
             args.wechat_password = argv[++i];
         } else if (arg == "--backup-password" && i + 1 < argc) {
