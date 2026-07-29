@@ -99,8 +99,7 @@ void AndroidAnalyzer::analyzeDeviceIdentifiers() {
     };
 
     for (const auto& rel : srcPaths) {
-        std::string temp = forensics::PathManager::instance().makeTempPath(
-            std::to_string(std::time(nullptr)) + "_settings_ssaid.xml");
+        std::string temp = makeAnalysisTempPath(rel);
         if (!fileExtractor_->extractFileByPath(rel, temp)) {
             fs::remove(temp);
             continue;
@@ -246,8 +245,7 @@ void extractNotesGeneric(const std::string& dbLocalPath,
 void AndroidAnalyzer::analyzeAppNotes() {
     int total = 0;
     for (const auto& t : kNoteTargets) {
-        std::string temp = forensics::PathManager::instance().makeTempPath(
-            std::to_string(std::time(nullptr)) + "_" + fs::path(t.dbRelPath).filename().string());
+        std::string temp = makeAnalysisTempPath(t.dbRelPath);
         if (!fileExtractor_->extractFileByPath(t.dbRelPath, temp)) {
             std::cout << "  App notes: (absent) " << t.dbRelPath << std::endl;
             fs::remove(temp);
@@ -295,8 +293,7 @@ const EncTarget kEncTargets[] = {
 }  // namespace
 
 std::string AndroidAnalyzer::readPasswordJsonKey(const std::string& imageRelPath, std::string& outType) {
-    std::string temp = forensics::PathManager::instance().makeTempPath(
-        std::to_string(std::time(nullptr)) + "_password.json");
+    std::string temp = makeAnalysisTempPath(imageRelPath);
     if (!fileExtractor_->extractFileByPath(imageRelPath, temp)) {
         fs::remove(temp);
         return {};
@@ -359,8 +356,7 @@ std::string AndroidAnalyzer::readPasswordJsonKey(const std::string& imageRelPath
 void AndroidAnalyzer::analyzeEncryptedAppDatabases() {
     int count = 0;
     for (const auto& t : kEncTargets) {
-        std::string dbTemp = forensics::PathManager::instance().makeTempPath(
-            std::to_string(std::time(nullptr)) + "_" + fs::path(t.dbRelPath).filename().string());
+        std::string dbTemp = makeAnalysisTempPath(t.dbRelPath);
         bool extracted = fileExtractor_->extractFileByPath(t.dbRelPath, dbTemp);
         if (!extracted) {
             fs::remove(dbTemp);

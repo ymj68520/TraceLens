@@ -6,15 +6,21 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <future>
 #include <memory>
 #include <string>
 #include <utility>
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 #include "analyzers/AndroidAnalyzer/AndroidBackupHeader.h"
 #include "analyzers/AndroidAnalyzer/TarIndex.h"
 #include "analyzers/AndroidAnalyzer/MiuiPathMap.h"
 #include "analyzers/AndroidAnalyzer/MiuiBackupManifest.h"
 #include "analyzers/AndroidAnalyzer/MiuiBackupExtractor.h"
 #include "analyzers/AndroidAnalyzer/MiuiArtifactParsers.h"
+#include "analyzers/AndroidAnalyzer/MiuiSecureTemp.h"
 #include "analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.h"
 #include <sqlite3.h>
 #ifdef USE_ZLIB
@@ -110,6 +116,19 @@ TEST(AndroidBackupHeaderTest, RejectsNonNumericCompression) {
     EXPECT_FALSE(parseAndroidBackupHeader(p.string(), h));
 }
 
+class InvalidCompressionField : public ::testing::TestWithParam<const char*> {};
+TEST_P(InvalidCompressionField, RejectsAnythingExceptExactZeroOrOne) {
+    const std::string body = "ANDROID BACKUP\n5\n" + std::string(GetParam()) +
+                             "\nnone\n" + std::string(512, '\0');
+    auto p = writeTempBak("hdr_strict_comp.bak", body);
+    AndroidBackupHeader h;
+    EXPECT_FALSE(parseAndroidBackupHeader(p.string(), h));
+}
+INSTANTIATE_TEST_SUITE_P(
+    StrictGrammar, InvalidCompressionField,
+    ::testing::Values("0junk", "1 ", " 1", "+1", "-0", "2",
+                      "184467440737095516160000000000000000"));
+
 TEST(AndroidBackupHeaderTest, DetectsUnknownEncryptionMarker) {
     // An unrecognized encryption marker is detected (not decoded) as Unknown.
     std::string body =
@@ -174,7 +193,71 @@ TEST(TarIndexTest, RejectsTruncatedTar) {
     EXPECT_FALSE(idx.build(tar.string(), 0, /*inflate=*/false));
 }
 
+TEST(TarIndexTest, RejectsMalformedOrOverflowingOctalSize) {
+    for (const std::string& field : {std::string("0000000008\0 ", 12),
+                                     std::string("777777777777", 12)}) {
+        std::string block(512, '\0');
+        std::memcpy(block.data(), "apps/com.foo/db/x.db", 20);
+        std::memcpy(block.data() + 124, field.data(), 12);
+        block[156] = '0';
+        fs::path tar = uniqueTempPath("bad_octal", ".tar");
+        std::ofstream(tar, std::ios::binary) << block << std::string(1024, '\0');
+        TarIndex idx;
+        EXPECT_FALSE(idx.build(tar.string(), 0, false));
+    }
+}
+
+TEST(TarIndexTest, RequiresTwoCompleteZeroTerminatorBlocks) {
+    auto valid = makeUstarTar({{"apps/com.foo/db/x.db", "DATA"}});
+    std::string bytes = readFile(valid);
+    ASSERT_GE(bytes.size(), 1024u);
+    bytes[bytes.size() - 512] = 'X';
+    fs::path tar = uniqueTempPath("bad_terminator", ".tar");
+    std::ofstream(tar, std::ios::binary) << bytes;
+    TarIndex idx;
+    EXPECT_FALSE(idx.build(tar.string(), 0, false));
+}
+
+TEST(TarIndexTest, CombinesUstarPrefixAndName) {
+    std::string block(512, '\0');
+    const std::string prefix = "apps/com.example.very.long.package/db";
+    const std::string name = "database-with-a-long-name.db";
+    std::memcpy(block.data(), name.data(), name.size());
+    std::memcpy(block.data() + 345, prefix.data(), prefix.size());
+    std::memcpy(block.data() + 257, "ustar", 5);
+    const std::string sizeField("00000000004\0", 12);
+    std::memcpy(block.data() + 124, sizeField.data(), 12);
+    block[156] = '0';
+    std::string tarBytes = block + std::string("DATA") + std::string(508, '\0') +
+                           std::string(1024, '\0');
+    fs::path tar = uniqueTempPath("ustar_prefix", ".tar");
+    std::ofstream(tar, std::ios::binary) << tarBytes;
+    TarIndex idx;
+    ASSERT_TRUE(idx.build(tar.string(), 0, false));
+    TarEntry entry;
+    EXPECT_TRUE(idx.find(prefix + "/" + name, entry));
+    EXPECT_EQ(entry.size, 4u);
+}
+
 #ifdef USE_ZLIB
+TEST(TarIndexTest, RejectsInflationBeyondArchiveWideCapAndCleansPartialTemp) {
+    auto tar = makeUstarTar({{"apps/com.foo/db/x.db", std::string(4096, 'A')}});
+    const std::string raw = readFile(tar);
+    uLong bound = compressBound(static_cast<uLong>(raw.size()));
+    std::vector<Bytef> compressed(bound);
+    uLongf compressedSize = bound;
+    ASSERT_EQ(compress(compressed.data(), &compressedSize,
+                       reinterpret_cast<const Bytef*>(raw.data()), raw.size()), Z_OK);
+    const fs::path root = uniqueTempPath("miui_inflate_cap_root");
+    fs::create_directories(root);
+    const fs::path bak = uniqueTempPath("miui_inflate_cap", ".bak");
+    std::ofstream(bak, std::ios::binary).write(
+        reinterpret_cast<const char*>(compressed.data()), compressedSize);
+    TarIndex index;
+    EXPECT_FALSE(index.build(bak.string(), 0, true, root, 1024));
+    EXPECT_TRUE(fs::is_empty(root));
+}
+
 TEST(TarIndexTest, IndexesInflatedTar) {
     // Build a raw tar, then zlib-deflate it.
     auto tar = makeUstarTar({{"apps/com.bar/db/y.db", "WORLD"}});
@@ -259,6 +342,57 @@ TEST(MiuiManifestTest, MissingFileReturnsFalse) {
     BackupMeta m;
     EXPECT_FALSE(parseMiuiManifest(fs::temp_directory_path().string(), m));
 }
+
+TEST(MiuiManifestTest, DecodesXmlEntitiesInPackageFields) {
+    fs::path dir = uniqueTempPath("miui_manifest_entities");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages><package>"
+           "<packageName>com.foo&amp;bar</packageName>"
+           "<bakFile>Foo &amp; Bar.bak</bakFile>"
+           "</package></packages></MIUI-backup>";
+    BackupMeta m;
+    ASSERT_TRUE(parseMiuiManifest(dir.string(), m));
+    ASSERT_EQ(m.packages.size(), 1u);
+    EXPECT_EQ(m.packages[0].packageName, "com.foo&bar");
+    EXPECT_EQ(m.packages[0].bakFile, "Foo & Bar.bak");
+}
+
+TEST(MiuiManifestTest, RejectsMalformedXmlAndWrongStructure) {
+    for (const std::string& xml : {
+             "<MIUI-backup><packages><package><packageName>com.foo</packageName></packages>",
+             "<wrapper><MIUI-backup/></wrapper>",
+             "<MIUI-backup><package><packageName>com.foo</packageName></package></MIUI-backup>"}) {
+        fs::path dir = uniqueTempPath("miui_manifest_malformed");
+        fs::create_directories(dir);
+        std::ofstream(dir / "descript.xml", std::ios::binary) << xml;
+        BackupMeta m;
+        EXPECT_FALSE(parseMiuiManifest(dir.string(), m)) << xml;
+    }
+}
+
+#ifndef _WIN32
+TEST(MiuiManifestTest, RejectsSymlinkAndFifoWithoutBlocking) {
+    const fs::path root = uniqueTempPath("miui_manifest_special");
+    const fs::path external = uniqueTempPath("miui_manifest_external", ".xml");
+    fs::create_directories(root);
+    std::ofstream(external, std::ios::binary) << "<MIUI-backup><packages/></MIUI-backup>";
+    std::error_code error;
+    fs::create_symlink(external, root / "descript.xml", error);
+    if (error) GTEST_SKIP() << "symlink creation unavailable: " << error.message();
+    BackupMeta m;
+    EXPECT_FALSE(parseMiuiManifest(root.string(), m));
+    fs::remove(root / "descript.xml", error);
+
+    ASSERT_EQ(::mkfifo((root / "descript.xml").c_str(), 0600), 0);
+    auto parse = std::async(std::launch::async, [&] {
+        BackupMeta fifoMeta;
+        return parseMiuiManifest(root.string(), fifoMeta);
+    });
+    EXPECT_EQ(parse.wait_for(std::chrono::milliseconds(500)), std::future_status::ready);
+    EXPECT_FALSE(parse.get());
+}
+#endif
 
 TEST(MiuiBackupExtractorTest, ServesFileThroughAnalyzerPath) {
     fs::path dir = uniqueTempPath("miui_ext_test");
@@ -442,6 +576,39 @@ TEST(TarIndexTest, DeletesInflatedTemporaryFileOnDestruction) {
 }
 #endif
 
+TEST(MiuiBackupExtractorTest, KeepsInternalTempsOutsideEvidenceWhenTmpdirIsInside) {
+#ifndef _WIN32
+    const fs::path dir = uniqueTempPath("miui_tmpdir_evidence");
+    const fs::path hostileTmp = dir / "hostile-tmp";
+    fs::create_directories(hostileTmp);
+    std::ofstream(dir / "descript.xml", std::ios::binary) << minimalBackupXml("Foo.bak");
+    const auto tar = makeUstarTar({{"apps/com.foo/db/x.db", "DATA"}});
+    const std::string raw = readFile(tar);
+    uLong bound = compressBound(static_cast<uLong>(raw.size()));
+    std::vector<Bytef> compressed(bound);
+    uLongf compressedSize = bound;
+    ASSERT_EQ(compress(compressed.data(), &compressedSize,
+                       reinterpret_cast<const Bytef*>(raw.data()), raw.size()), Z_OK);
+    std::ofstream bak(dir / "Foo.bak", std::ios::binary);
+    bak << "ANDROID BACKUP\n5\n1\nnone\n";
+    bak.write(reinterpret_cast<const char*>(compressed.data()), compressedSize);
+    bak.close();
+
+    const char* previous = std::getenv("TMPDIR");
+    const std::string saved = previous ? previous : "";
+    ASSERT_EQ(::setenv("TMPDIR", hostileTmp.c_str(), 1), 0);
+    {
+        MiuiBackupExtractor extractor(dir.string());
+        ASSERT_TRUE(extractor.initialize());
+        EXPECT_FALSE(miui_secure_temp::isSameOrDescendant(extractor.temporaryRoot(),
+                                                           fs::canonical(dir)));
+        EXPECT_TRUE(fs::is_empty(hostileTmp));
+    }
+    if (previous) ::setenv("TMPDIR", saved.c_str(), 1);
+    else ::unsetenv("TMPDIR");
+#endif
+}
+
 TEST(MiuiArtifactTest, WritesManifestAndRecordsUnreadableDatabaseFailure) {
     const fs::path dir = uniqueTempPath("miui_art_invalid");
     fs::create_directories(dir);
@@ -487,8 +654,7 @@ TEST(MiuiArtifactTest, WritesManifestAndRecordsUnreadableDatabaseFailure) {
     EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "");
     EXPECT_EQ(sqlite3_column_int64(statement, 1), 0);
     EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 2)), "");
-    const std::string status = reinterpret_cast<const char*>(sqlite3_column_text(statement, 3));
-    EXPECT_TRUE(status == "encrypted_locked" || status == "parse_error");
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 3)), "parse_error");
     sqlite3_finalize(statement);
     sqlite3_close(raw);
 }
@@ -795,6 +961,66 @@ TEST(MiuiArtifactTest, DoesNotFollowPreexistingInventorySymlink) {
 
     EXPECT_EQ(readFile(victim), "UNCHANGED");
     fs::remove_all(malicious, error);
+#endif
+}
+
+TEST(MiuiArtifactTest, PropagatesPersistenceFailureAndRollsBack) {
+    const fs::path dir = uniqueTempPath("miui_persist_failure");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary) << minimalBackupXml("missing.bak");
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+
+    const fs::path analysisDb = uniqueTempPath("miui_persist_failure", ".db");
+    TemporaryFile analysisCleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+    ASSERT_TRUE(db.beginTransaction());
+    ASSERT_TRUE(db.insertAppDbInventory("lock", "lock", "", 0, "", "parse_error"));
+
+    EXPECT_FALSE(writeAppDbInventory(extractor, db));
+    EXPECT_TRUE(db.rollbackTransaction());
+}
+
+TEST(MiuiArtifactTest, RecordsDurableIncompleteStatusWhenBackupWideLimitHits) {
+#ifndef _WIN32
+    const fs::path sourceDb = uniqueTempPath("miui_limit_source", ".db");
+    TemporaryFile sourceCleanup(sourceDb);
+    sqlite3* source = nullptr;
+    ASSERT_EQ(sqlite3_open(sourceDb.string().c_str(), &source), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(source, "CREATE TABLE t(id INTEGER);", nullptr, nullptr, nullptr),
+              SQLITE_OK);
+    sqlite3_close(source);
+
+    const fs::path dir = uniqueTempPath("miui_art_limit");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary) << minimalBackupXml("Foo.bak");
+    const auto tar = makeUstarTar({
+        {"apps/com.foo/db/first.db", readFile(sourceDb)},
+        {"apps/com.foo/db/second.db", readFile(sourceDb)}
+    });
+    std::ofstream(dir / "Foo.bak", std::ios::binary) << rawBackup(readFile(tar));
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    const fs::path analysisDb = uniqueTempPath("miui_art_limit", ".db");
+    TemporaryFile analysisCleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+
+    ASSERT_EQ(::setenv("TRACELENS_MIUI_MAX_CANDIDATES", "1", 1), 0);
+    EXPECT_TRUE(writeAppDbInventory(extractor, db));
+    ::unsetenv("TRACELENS_MIUI_MAX_CANDIDATES");
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT count(*) FROM app_db_inventory WHERE open_status = 'incomplete_limit'",
+        -1, &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_EQ(sqlite3_column_int(statement, 0), 1);
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
 #endif
 }
 

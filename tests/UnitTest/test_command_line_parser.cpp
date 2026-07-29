@@ -68,6 +68,29 @@ TEST(CommandLineParserAndroidSource, ParsesMiuiBackupModeAndPassword) {
     EXPECT_EQ(args.backup_password, "do-not-log-this");
 }
 
+TEST(CommandLineParserAndroidSource, ParsesSecureBackupPasswordSources) {
+    const auto stdinArgs = parse({"analyzer", "/evidence/miui", "--android-analyze",
+                                  "--android-source", "miui-backup",
+                                  "--backup-password-stdin"});
+    EXPECT_TRUE(stdinArgs.backup_password_stdin);
+    EXPECT_EQ(stdinArgs.backup_password_fd, -1);
+    EXPECT_TRUE(stdinArgs.backup_password.empty());
+
+    const auto fdArgs = parse({"analyzer", "/evidence/miui", "--android-analyze",
+                               "--android-source", "miui-backup",
+                               "--backup-password-fd", "7"});
+    EXPECT_FALSE(fdArgs.backup_password_stdin);
+    EXPECT_EQ(fdArgs.backup_password_fd, 7);
+    EXPECT_TRUE(fdArgs.parse_error.empty());
+}
+
+TEST(CommandLineParserAndroidSource, RejectsInvalidBackupPasswordFd) {
+    for (const char* value : {"-1", "x", "7junk"}) {
+        const auto args = parse({"analyzer", "/evidence/miui", "--backup-password-fd", value});
+        EXPECT_FALSE(args.parse_error.empty());
+    }
+}
+
 TEST(CommandLineParserAndroidSource, PreservesLegacySourceValues) {
     for (const char* mode : {"tsk", "dir", "zip"}) {
         const auto args = parse({"analyzer", "source", "--android-analyze",

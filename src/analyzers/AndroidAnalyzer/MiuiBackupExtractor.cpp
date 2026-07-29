@@ -2,6 +2,7 @@
 
 #include "AndroidBackupHeader.h"
 #include "MiuiPathMap.h"
+#include "MiuiSecureTemp.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -13,6 +14,14 @@ MiuiBackupExtractor::MiuiBackupExtractor(const std::string& backupFolder)
     : folder_(backupFolder) {
 }
 
+MiuiBackupExtractor::~MiuiBackupExtractor() {
+    indexes_.clear();
+    if (!temporaryRoot_.empty()) {
+        std::error_code error;
+        fs::remove_all(temporaryRoot_, error);
+    }
+}
+
 void MiuiBackupExtractor::setBackupPassword(const std::string& password) {
     password_ = password;
 }
@@ -21,13 +30,13 @@ bool MiuiBackupExtractor::initialize() {
     initialized_ = false;
     entryOwner_.clear();
     indexes_.clear();
-    packageFailures_.clear();
-    manifest_ = BackupMeta{};
-
-    if (!parseMiuiManifest(folder_, manifest_)) {
-        std::cerr << "MiuiBackupExtractor: no valid descript.xml in " << folder_ << std::endl;
-        return false;
+    if (!temporaryRoot_.empty()) {
+        std::error_code error;
+        fs::remove_all(temporaryRoot_, error);
     }
+    packageFailures_.clear();
+    temporaryRoot_.clear();
+    manifest_ = BackupMeta{};
 
     fs::path backupRoot;
     try {
@@ -40,6 +49,17 @@ bool MiuiBackupExtractor::initialize() {
     if (!fs::is_directory(backupRoot)) {
         std::cerr << "MiuiBackupExtractor: backup folder is not a directory: "
                   << backupRoot << std::endl;
+        return false;
+    }
+
+    if (!parseMiuiManifest(backupRoot.string(), manifest_)) {
+        std::cerr << "MiuiBackupExtractor: no valid descript.xml in " << folder_ << std::endl;
+        return false;
+    }
+
+    if (!miui_secure_temp::createDirectory(backupRoot, "tracelens-miui", temporaryRoot_)) {
+        std::cerr << "MiuiBackupExtractor: cannot create evidence-disjoint temporary root"
+                  << std::endl;
         return false;
     }
 
@@ -105,7 +125,8 @@ bool MiuiBackupExtractor::initialize() {
         }
 
         auto index = std::make_unique<TarIndex>();
-        if (!index->build(bakPath.string(), header.payloadOffset, header.compression == 1)) {
+        if (!index->build(bakPath.string(), header.payloadOffset,
+                          header.compression == 1, temporaryRoot_)) {
             std::cerr << "MiuiBackupExtractor: failed to index " << bakPath << std::endl;
             packageFailures_.push_back(
                 {package.packageName, package.bakFile, "parse_error"});

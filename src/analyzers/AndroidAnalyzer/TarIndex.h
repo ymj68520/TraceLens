@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <vector>
 #include <cstdio>
+#include <filesystem>
 
 struct TarEntry {
     uint64_t dataOffset;   // absolute byte offset in the underlying file
@@ -21,7 +22,9 @@ public:
     // Index a tar payload located at [payloadOffset, end-of-file) of `bakPath`.
     // If inflate=true, the payload is zlib-deflated and is inflated into a temp
     // file first (offsets then refer to the temp file).
-    bool build(const std::string& bakPath, uint64_t payloadOffset, bool inflate);
+    bool build(const std::string& bakPath, uint64_t payloadOffset, bool inflate,
+               const std::filesystem::path& temporaryRoot = {},
+               uint64_t maximumInflatedBytes = 16ULL * 1024 * 1024 * 1024);
     // Look up an entry by its tar member name (e.g. "apps/com.foo/db/x.db").
     bool find(const std::string& memberName, TarEntry& out) const;
     // Read entry bytes into outPath.

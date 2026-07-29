@@ -6,6 +6,9 @@
 #include "ZipArchiveExtractor.h"
 #include "MiuiBackupExtractor.h"
 #include "MiuiArtifactParsers.h"
+#include "MiuiSecureTemp.h"
+
+namespace fs = std::filesystem;
 
 // AndroidAnalyzer Core Implementation
 
@@ -17,6 +20,11 @@ AndroidAnalyzer::AndroidAnalyzer(const std::string& imagePath, DatabaseManager* 
 }
 
 AndroidAnalyzer::~AndroidAnalyzer() {
+    fileExtractor_.reset();
+    if (!secureTemporaryRoot_.empty()) {
+        std::error_code error;
+        fs::remove_all(secureTemporaryRoot_, error);
+    }
 }
 
 bool AndroidAnalyzer::initialize() {
@@ -58,6 +66,17 @@ bool AndroidAnalyzer::initialize() {
         return false;
     }
 
+    if (sourceMode_ == AndroidSourceMode::MiuiBackup) {
+        auto* miui = dynamic_cast<MiuiBackupExtractor*>(fileExtractor_.get());
+        if (!miui || miui->temporaryRoot().empty()) return false;
+        secureTemporaryRoot_ = miui->temporaryRoot().string();
+    } else {
+        fs::path root;
+        if (miui_secure_temp::createDirectory(imagePath_, "tracelens-android", root)) {
+            secureTemporaryRoot_ = root.string();
+        }
+    }
+
     // Initialize android analysis database
     std::string androidDbPath = outputDbPath_.empty() ? imagePath_ + "_android.db" : outputDbPath_;
     androidDb_ = std::make_unique<AndroidAnalysisDatabase>(androidDbPath);
@@ -68,8 +87,11 @@ bool AndroidAnalyzer::initialize() {
 
     if (sourceMode_ == AndroidSourceMode::MiuiBackup) {
         if (auto* miui = dynamic_cast<MiuiBackupExtractor*>(fileExtractor_.get())) {
-            writeMiuiManifest(*miui, *androidDb_);
-            writeAppDbInventory(*miui, *androidDb_);
+            if (!writeMiuiManifest(*miui, *androidDb_) ||
+                !writeAppDbInventory(*miui, *androidDb_)) {
+                std::cerr << "Failed to persist MIUI backup analysis" << std::endl;
+                return false;
+            }
         }
     }
 
@@ -114,9 +136,7 @@ void AndroidAnalyzer::analyzeAndroidData() {
     // Analyze WeChat (enhanced parsing with decryption support)
     {
         std::string wechatDbPath = "data/data/com.tencent.mm/MicroMsg/testuser/EnMicroMsg.db";
-        std::string tempPath = forensics::PathManager::instance().makeTempPath(
-            std::to_string(std::time(nullptr)) + "_" +
-            std::filesystem::path(wechatDbPath).filename().string());
+        std::string tempPath = makeAnalysisTempPath(wechatDbPath);
         if (fileExtractor_->extractFileByPath(wechatDbPath, tempPath)) {
             parseWeChatEnhanced(tempPath, wechatPassword_);
             std::filesystem::remove(tempPath);

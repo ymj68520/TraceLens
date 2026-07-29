@@ -7,11 +7,38 @@
 
 // Android Data Parsers Implementation
 
+std::string AndroidAnalyzer::makeAnalysisTempPath(const std::string& sourcePath,
+                                                  const std::string& suffix) const {
+    const std::string name = std::to_string(std::time(nullptr)) + "_" +
+        std::filesystem::path(sourcePath).filename().string() + suffix;
+    if (!secureTemporaryRoot_.empty()) {
+        return (std::filesystem::path(secureTemporaryRoot_) / name).string();
+    }
+    return forensics::PathManager::instance().makeTempPath(name);
+}
+
+bool AndroidAnalyzer::stageSqliteBundle(const std::string& dbPathInImage,
+                                        const std::string& primaryTempPath,
+                                        std::vector<std::string>& stagedPaths) {
+    stagedPaths.clear();
+    if (!fileExtractor_->extractFileByPath(dbPathInImage, primaryTempPath)) return false;
+    stagedPaths.push_back(primaryTempPath);
+    for (const char* suffix : {"-wal", "-shm", "-journal"}) {
+        const std::string sidecarSource = dbPathInImage + suffix;
+        const std::string sidecarTemp = primaryTempPath + suffix;
+        if (fileExtractor_->extractFileByPath(sidecarSource, sidecarTemp)) {
+            stagedPaths.push_back(sidecarTemp);
+        } else {
+            std::filesystem::remove(sidecarTemp);
+        }
+    }
+    return true;
+}
+
 bool AndroidAnalyzer::extractAndParseDB(const std::string& dbPathInImage, const std::string& parseFunction) {
-    std::string tempPath = forensics::PathManager::instance().makeTempPath(
-        std::to_string(std::time(nullptr)) + "_" +
-        std::filesystem::path(dbPathInImage).filename().string());
-    if (!fileExtractor_->extractFileByPath(dbPathInImage, tempPath)) {
+    std::string tempPath = makeAnalysisTempPath(dbPathInImage);
+    std::vector<std::string> stagedPaths;
+    if (!stageSqliteBundle(dbPathInImage, tempPath, stagedPaths)) {
         std::cout << "Failed to extract database: " << dbPathInImage << std::endl;
         return false;
     }
@@ -41,7 +68,9 @@ bool AndroidAnalyzer::extractAndParseDB(const std::string& dbPathInImage, const 
         parseChromeHistory(tempPath);
     }
 
-    std::filesystem::remove(tempPath);
+    for (const std::string& path : stagedPaths) {
+        std::filesystem::remove(path);
+    }
     return true;
 }
 

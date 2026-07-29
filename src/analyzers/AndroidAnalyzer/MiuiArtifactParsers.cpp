@@ -11,7 +11,9 @@
 
 #include <array>
 #include <atomic>
+#include <charconv>
 #include <chrono>
+#include <cstdlib>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -30,6 +32,10 @@ constexpr uint64_t kMaximumExtractedDatabaseBytes = 512ULL * 1024 * 1024;
 constexpr uint64_t kMaximumBundleBytes = 768ULL * 1024 * 1024;
 constexpr uint64_t kMaximumInventoryRows = 10000;
 constexpr size_t kMaximumInventoryTables = 10000;
+constexpr size_t kMaximumCandidateDatabases = 100000;
+constexpr uint64_t kMaximumGlobalInventoryRows = 50000000;
+constexpr uint64_t kMaximumGlobalNameBytes = 256ULL * 1024 * 1024;
+constexpr uint64_t kMaximumGlobalSqliteInstructions = 2000000000ULL;
 constexpr int kSqliteLengthLimit = 64 * 1024 * 1024;
 constexpr int kSqliteColumnLimit = 2048;
 constexpr int kSqliteSqlLengthLimit = 1024 * 1024;
@@ -37,6 +43,7 @@ constexpr int kProgressInterval = 1000;
 constexpr int kMaximumQueryInstructions = 2000000;
 constexpr size_t kMaximumSerializedColumnsBytes = 4096;
 constexpr size_t kHeaderBytes = 16;
+constexpr const char* kInventoryLimitEnvironment = "TRACELENS_MIUI_MAX_CANDIDATES";
 
 using SqliteConnection = std::unique_ptr<sqlite3, decltype(&sqlite3_close)>;
 using SqliteStatement = std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>;
@@ -54,12 +61,9 @@ public:
     TemporaryDirectory(const TemporaryDirectory&) = delete;
     TemporaryDirectory& operator=(const TemporaryDirectory&) = delete;
 
-    bool create() {
+    bool create(const fs::path& root) {
         std::error_code error;
-        const fs::path root = fs::temp_directory_path(error);
-        if (error) {
-            return false;
-        }
+        if (root.empty() || !fs::is_directory(root, error) || error) return false;
 
 #ifndef _WIN32
         std::string pattern = (root / "tracelens-miui-inventory-XXXXXX").string();
@@ -117,14 +121,38 @@ private:
     std::vector<fs::path> paths_;
 };
 
+struct InventoryBudget {
+    uint64_t rows = 0;
+    uint64_t nameBytes = 0;
+    uint64_t instructions = 0;
+};
+
 struct InstructionBudget {
     int remaining = kMaximumQueryInstructions;
+    InventoryBudget* global = nullptr;
 };
 
 int consumeInstructionBudget(void* context) {
     auto* budget = static_cast<InstructionBudget*>(context);
     budget->remaining -= kProgressInterval;
+    if (budget->global) {
+        budget->global->instructions += kProgressInterval;
+        if (budget->global->instructions > kMaximumGlobalSqliteInstructions) return 1;
+    }
     return budget->remaining <= 0 ? 1 : 0;
+}
+
+size_t candidateLimit() {
+    const char* configured = std::getenv(kInventoryLimitEnvironment);
+    if (!configured || *configured == '\0') return kMaximumCandidateDatabases;
+    uint64_t parsed = 0;
+    const char* end = configured + std::char_traits<char>::length(configured);
+    const auto [parsedEnd, error] = std::from_chars(configured, end, parsed, 10);
+    if (error != std::errc{} || parsedEnd != end || parsed == 0 ||
+        parsed > kMaximumCandidateDatabases) {
+        return kMaximumCandidateDatabases;
+    }
+    return static_cast<size_t>(parsed);
 }
 
 bool isSidecar(const std::string& memberName) {
@@ -252,7 +280,8 @@ bool openEvidenceDatabase(const fs::path& path, sqlite3** output) {
     return true;
 }
 
-bool tableRowCount(sqlite3* connection, const std::string& tableName, uint64_t& count) {
+bool tableRowCount(sqlite3* connection, const std::string& tableName, uint64_t& count,
+                   InventoryBudget& globalBudget) {
     count = 0;
     char* quoted = sqlite3_mprintf("%w", tableName.c_str());
     if (!quoted) {
@@ -269,6 +298,7 @@ bool tableRowCount(sqlite3* connection, const std::string& tableName, uint64_t& 
     }
     SqliteStatement statement(raw, sqlite3_finalize);
     InstructionBudget budget;
+    budget.global = &globalBudget;
     sqlite3_progress_handler(connection, kProgressInterval,
                              consumeInstructionBudget, &budget);
 
@@ -282,7 +312,12 @@ bool tableRowCount(sqlite3* connection, const std::string& tableName, uint64_t& 
         }
     }
     sqlite3_progress_handler(connection, 0, nullptr, nullptr);
-    return result == SQLITE_DONE;
+    if (result != SQLITE_DONE || globalBudget.rows > kMaximumGlobalInventoryRows - count) {
+        count = 0;
+        return false;
+    }
+    globalBudget.rows += count;
+    return true;
 }
 
 bool tableColumns(sqlite3* connection, const std::string& tableName, std::string& columns) {
@@ -315,9 +350,9 @@ bool tableColumns(sqlite3* connection, const std::string& tableName, std::string
     return result == SQLITE_DONE;
 }
 
-void recordFailure(AndroidAnalysisDatabase& database, const std::string& packageName,
+bool recordFailure(AndroidAnalysisDatabase& database, const std::string& packageName,
                    const std::string& memberName, const std::string& status) {
-    database.insertAppDbInventory(packageName, memberName, "", 0, "", status);
+    return database.insertAppDbInventory(packageName, memberName, "", 0, "", status);
 }
 
 bool extractDatabaseBundle(MiuiBackupExtractor& src,
@@ -346,19 +381,18 @@ bool extractDatabaseBundle(MiuiBackupExtractor& src,
     return true;
 }
 
-void inventoryExtractedDatabase(const fs::path& extractedPath,
+bool inventoryExtractedDatabase(const fs::path& extractedPath,
                                 const std::string& packageName,
                                 const std::string& memberName,
-                                AndroidAnalysisDatabase& database) {
+                                AndroidAnalysisDatabase& database,
+                                InventoryBudget& globalBudget) {
     if (!hasSqliteHeader(extractedPath)) {
-        recordFailure(database, packageName, memberName, "parse_error");
-        return;
+        return recordFailure(database, packageName, memberName, "parse_error");
     }
 
     sqlite3* rawConnection = nullptr;
     if (!openEvidenceDatabase(extractedPath, &rawConnection)) {
-        recordFailure(database, packageName, memberName, "encrypted_locked");
-        return;
+        return recordFailure(database, packageName, memberName, "parse_error");
     }
     SqliteConnection connection(rawConnection, sqlite3_close);
 
@@ -367,8 +401,7 @@ void inventoryExtractedDatabase(const fs::path& extractedPath,
         "SELECT name FROM sqlite_schema "
         "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name";
     if (sqlite3_prepare_v2(connection.get(), tableSql, -1, &rawTables, nullptr) != SQLITE_OK) {
-        recordFailure(database, packageName, memberName, "encrypted_locked");
-        return;
+        return recordFailure(database, packageName, memberName, "parse_error");
     }
     SqliteStatement tables(rawTables, sqlite3_finalize);
 
@@ -377,48 +410,71 @@ void inventoryExtractedDatabase(const fs::path& extractedPath,
     int result = SQLITE_ROW;
     while ((result = sqlite3_step(tables.get())) == SQLITE_ROW) {
         if (++tableCount > kMaximumInventoryTables) {
-            recordFailure(database, packageName, memberName, "parse_error");
-            return;
+            return recordFailure(database, packageName, memberName, "incomplete_limit");
         }
 
         const std::string tableName = columnText(tables.get(), 0);
+        if (globalBudget.nameBytes > kMaximumGlobalNameBytes - tableName.size()) {
+            return recordFailure(database, packageName, memberName, "incomplete_limit");
+        }
+        globalBudget.nameBytes += tableName.size();
         uint64_t rowCount = 0;
         std::string columns;
-        if (!tableRowCount(connection.get(), tableName, rowCount) ||
-            !tableColumns(connection.get(), tableName, columns)) {
-            recordFailure(database, packageName, memberName, "parse_error");
-            return;
+        if (!tableRowCount(connection.get(), tableName, rowCount, globalBudget)) {
+            return recordFailure(database, packageName, memberName, "incomplete_limit");
         }
-        database.insertAppDbInventory(packageName, memberName, tableName,
-                                      rowCount, columns, "decrypted");
+        if (!tableColumns(connection.get(), tableName, columns)) {
+            return recordFailure(database, packageName, memberName, "parse_error");
+        }
+        if (!database.insertAppDbInventory(packageName, memberName, tableName,
+                                           rowCount, columns, "decrypted")) {
+            return false;
+        }
         insertedTable = true;
     }
 
     if (result != SQLITE_DONE) {
-        recordFailure(database, packageName, memberName, "parse_error");
-    } else if (!insertedTable) {
-        database.insertAppDbInventory(packageName, memberName, "", 0, "", "decrypted");
+        return recordFailure(database, packageName, memberName, "parse_error");
     }
+    if (!insertedTable) {
+        return database.insertAppDbInventory(packageName, memberName, "", 0, "", "decrypted");
+    }
+    return true;
 }
 
 }  // namespace
 
-void writeMiuiManifest(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
+bool writeMiuiManifest(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
+    if (!db.beginTransaction()) return false;
     const BackupMeta& manifest = src.manifest();
-    db.insertMiuiBackupManifest(manifest.device, manifest.miuiVersion, manifest.date,
-                                manifest.totalSize,
-                                static_cast<int>(manifest.packages.size()),
-                                manifest.sourceFolder);
+    bool success = db.insertMiuiBackupManifest(
+        manifest.device, manifest.miuiVersion, manifest.date, manifest.totalSize,
+        static_cast<int>(manifest.packages.size()), manifest.sourceFolder);
 
     for (const BackupPackage& package : manifest.packages) {
-        db.insertInstalledApp(package.packageName, "", "", "",
-                              package.pkgSize, package.sdSize, package.bakType, "");
+        if (!success) break;
+        success = db.insertInstalledApp(package.packageName, "", "", "",
+                                        package.pkgSize, package.sdSize,
+                                        package.bakType, "");
     }
+    if (success && db.commitTransaction()) return true;
+    db.rollbackTransaction();
+    return false;
 }
 
-void writeAppDbInventory(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
+bool writeAppDbInventory(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
+    if (!db.beginTransaction()) return false;
+    bool success = true;
     for (const auto& failure : src.packageFailures()) {
-        recordFailure(db, failure.packageName, failure.bakFile, failure.openStatus);
+        if (!recordFailure(db, failure.packageName, failure.bakFile, failure.openStatus)) {
+            success = false;
+            break;
+        }
+    }
+
+    if (!success) {
+        db.rollbackTransaction();
+        return false;
     }
 
     std::vector<std::string> entries;
@@ -429,29 +485,53 @@ void writeAppDbInventory(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) 
     });
 
     TemporaryDirectory temporaryDirectory;
-    if (!temporaryDirectory.create()) {
+    if (!temporaryDirectory.create(src.temporaryRoot())) {
         for (const auto& memberName : entries) {
             std::string packageName;
-            if (isPrimaryDatabaseMember(memberName, packageName)) {
-                recordFailure(db, packageName, memberName, "parse_error");
+            if (isPrimaryDatabaseMember(memberName, packageName) &&
+                !recordFailure(db, packageName, memberName, "parse_error")) {
+                success = false;
+                break;
             }
         }
-        return;
+        if (success && db.commitTransaction()) return true;
+        db.rollbackTransaction();
+        return false;
     }
 
+    const size_t maximumCandidates = candidateLimit();
     uint64_t sequence = 0;
+    size_t candidateCount = 0;
+    InventoryBudget inventoryBudget;
     for (const auto& memberName : entries) {
         std::string packageName;
         if (!isPrimaryDatabaseMember(memberName, packageName)) {
             continue;
         }
+        if (++candidateCount > maximumCandidates ||
+            inventoryBudget.nameBytes > kMaximumGlobalNameBytes - memberName.size() ||
+            inventoryBudget.nameBytes + memberName.size() > kMaximumGlobalNameBytes - packageName.size()) {
+            success = recordFailure(db, packageName, memberName, "incomplete_limit");
+            break;
+        }
+        inventoryBudget.nameBytes += memberName.size() + packageName.size();
 
         TemporaryBundle bundle(temporaryDirectory.path() /
                                ("database-" + std::to_string(sequence++) + ".db"));
         if (!extractDatabaseBundle(src, entrySet, memberName, bundle)) {
-            recordFailure(db, packageName, memberName, "parse_error");
+            if (!recordFailure(db, packageName, memberName, "parse_error")) {
+                success = false;
+                break;
+            }
             continue;
         }
-        inventoryExtractedDatabase(bundle.basePath(), packageName, memberName, db);
+        if (!inventoryExtractedDatabase(bundle.basePath(), packageName, memberName,
+                                        db, inventoryBudget)) {
+            success = false;
+            break;
+        }
     }
+    if (success && db.commitTransaction()) return true;
+    db.rollbackTransaction();
+    return false;
 }
