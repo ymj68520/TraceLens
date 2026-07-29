@@ -29,7 +29,8 @@ class ZipArchiveExtractor;
 enum class AndroidSourceMode {
     TSK,
     LogicalDir,
-    Zip
+    Zip,
+    MiuiBackup
 };
 
 /**
@@ -66,6 +67,7 @@ public:
 
     void setWeChatPassword(const std::string& password) { wechatPassword_ = password; }
     const std::string& getWeChatPassword() const { return wechatPassword_; }
+    void setBackupPassword(const std::string& password) { backupPassword_ = password; }
 
     /**
      * @brief Choose where the Android artifacts are sourced from.
@@ -168,4 +170,5 @@ private:
     std::unique_ptr<IFileExtractor> fileExtractor_;
     std::unique_ptr<AndroidAnalysisDatabase> androidDb_;
     std::string wechatPassword_;
+    std::string backupPassword_;
 };

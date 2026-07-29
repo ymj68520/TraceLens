@@ -145,7 +145,8 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
     // use — the TSK disk-image pipeline. Route it to a dedicated path that
     // runs only the Android analyzer against the data source directly.
     if (args.android_analyze &&
-        (args.android_source == "dir" || args.android_source == "zip")) {
+        (args.android_source == "dir" || args.android_source == "zip" ||
+         args.android_source == "miui-backup")) {
         return runAndroidLogicalAnalysis(args);
     }
 
@@ -463,9 +464,14 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
     try {
         auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(args.image_path, nullptr);
         // Select the non-TSK backend before initialize().
-        androidAnalyzer->setSourceMode(
-            args.android_source == "zip" ? AndroidSourceMode::Zip
-                                         : AndroidSourceMode::LogicalDir);
+        AndroidSourceMode mode =
+            args.android_source == "zip"         ? AndroidSourceMode::Zip :
+            args.android_source == "miui-backup" ? AndroidSourceMode::MiuiBackup :
+                                                    AndroidSourceMode::LogicalDir;
+        androidAnalyzer->setSourceMode(mode);
+        if (!args.backup_password.empty()) {
+            androidAnalyzer->setBackupPassword(args.backup_password);
+        }
         if (!args.wechat_password.empty()) {
             androidAnalyzer->setWeChatPassword(args.wechat_password);
         }

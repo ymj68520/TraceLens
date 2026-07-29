@@ -86,9 +86,11 @@ void CommandLineParser::printUsage(const char* programName) {
     std::cout << "  --http-server [port]        Start HTTP server (default 8080)\n\n";
     std::cout << "Platform Analysis:\n";
     std::cout << "  --android-analyze           Analyze Android data\n";
-    std::cout << "  --android-source <mode>     Android data source: tsk (default, disk image),\n";
-    std::cout << "                              dir (extracted data/ directory), or zip (Image.zip)\n";
+    std::cout << "  --android-source <mode>     Android data source: tsk (default, disk image),\n"
+                 "                              dir (extracted data/ tree), zip (Image.zip),\n"
+                 "                              miui-backup (Xiaomi MIUI .bak folder)\n";
     std::cout << "  --wechat-password <pass>    WeChat SQLCipher decryption password\n";
+    std::cout << "  --backup-password <pass>    MIUI/Android backup password (AES-256)\n";
     std::cout << "  --windows-analyze           Analyze Windows artifacts\n";
     std::cout << "  --linux-analyze             Analyze Linux artifacts\n";
     std::cout << "  --no-ai                     Skip AI/LLM analysis (for offline/no-key environments)\n";
@@ -163,6 +165,8 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
             args.android_source = argv[++i];
         } else if (arg == "--wechat-password" && i + 1 < argc) {
             args.wechat_password = argv[++i];
+        } else if (arg == "--backup-password" && i + 1 < argc) {
+            args.backup_password = argv[++i];
         } else if (arg == "--windows-analyze") {
             args.windows_analyze = true;
         } else if (arg == "--linux-analyze") {

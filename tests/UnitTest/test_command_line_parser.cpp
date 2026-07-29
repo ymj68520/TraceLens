@@ -58,4 +58,23 @@ TEST(CommandLineParserSizeLimit, RejectsMissingValue) {
     EXPECT_FALSE(args.parse_error.empty());
 }
 
+TEST(CommandLineParserAndroidSource, ParsesMiuiBackupModeAndPassword) {
+    const auto args = parse({"analyzer", "/evidence/miui", "--android-analyze",
+                             "--android-source", "miui-backup",
+                             "--backup-password", "do-not-log-this"});
+
+    EXPECT_TRUE(args.android_analyze);
+    EXPECT_EQ(args.android_source, "miui-backup");
+    EXPECT_EQ(args.backup_password, "do-not-log-this");
+}
+
+TEST(CommandLineParserAndroidSource, PreservesLegacySourceValues) {
+    for (const char* mode : {"tsk", "dir", "zip"}) {
+        const auto args = parse({"analyzer", "source", "--android-analyze",
+                                 "--android-source", mode});
+        EXPECT_EQ(args.android_source, mode);
+        EXPECT_TRUE(args.backup_password.empty());
+    }
+}
+
 } // namespace
