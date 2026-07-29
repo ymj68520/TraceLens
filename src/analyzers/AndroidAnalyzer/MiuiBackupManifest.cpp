@@ -23,6 +23,19 @@ constexpr uint64_t kMaximumManifestBytes = 16ULL * 1024 * 1024;
 constexpr size_t kMaximumManifestPackages = 100000;
 constexpr size_t kMaximumManifestFieldBytes = 4096;
 constexpr size_t kMaximumManifestMetadataBytes = 16ULL * 1024 * 1024;
+constexpr const char* kMaximumManifestPackagesEnvironment = "TRACELENS_MIUI_MAX_MANIFEST_PACKAGES";
+constexpr const char* kMaximumManifestFieldBytesEnvironment = "TRACELENS_MIUI_MAX_MANIFEST_FIELD_BYTES";
+constexpr const char* kMaximumManifestMetadataBytesEnvironment = "TRACELENS_MIUI_MAX_MANIFEST_METADATA_BYTES";
+
+size_t boundedManifestLimit(const char* environment, size_t maximum) {
+    const char* configured = std::getenv(environment);
+    if (!configured || *configured == '\0') return maximum;
+    uint64_t value = 0;
+    const char* end = configured + std::char_traits<char>::length(configured);
+    const auto [parsedEnd, error] = std::from_chars(configured, end, value, 10);
+    if (error != std::errc{} || parsedEnd != end || value == 0 || value > maximum) return maximum;
+    return static_cast<size_t>(value);
+}
 
 bool parseU64(const char* text, uint64_t& value) {
     value = 0;
@@ -87,26 +100,28 @@ bool readManifestFile(const fs::path& root, std::vector<char>& bytes) {
 #endif
 }
 
-bool boundedText(const char* value, std::string& output) {
+bool boundedText(const char* value, size_t maximumBytes, std::string& output) {
     output = value ? value : "";
-    return output.size() <= kMaximumManifestFieldBytes;
+    return output.size() <= maximumBytes;
 }
 
-bool addMetadataBytes(size_t amount, size_t& total) {
-    if (amount > kMaximumManifestMetadataBytes - total) return false;
+bool addMetadataBytes(size_t amount, size_t maximumBytes, size_t& total) {
+    if (amount > maximumBytes - total) return false;
     total += amount;
     return true;
 }
 
-bool parsePackage(const pugi::xml_node& node, BackupPackage& package, size_t& metadataBytes) {
+bool parsePackage(const pugi::xml_node& node, size_t maximumFieldBytes,
+                  size_t maximumMetadataBytes, BackupPackage& package, size_t& metadataBytes) {
     if (node.type() != pugi::node_element || std::string(node.name()) != "package") return false;
     const pugi::xml_node name = node.child("packageName");
     const pugi::xml_node bak = node.child("bakFile");
     if (!name || !bak || name.next_sibling("packageName") || bak.next_sibling("bakFile")) return false;
-    if (!boundedText(name.text().as_string(), package.packageName) ||
-        !boundedText(bak.text().as_string(), package.bakFile) ||
+    if (!boundedText(name.text().as_string(), maximumFieldBytes, package.packageName) ||
+        !boundedText(bak.text().as_string(), maximumFieldBytes, package.bakFile) ||
         package.packageName.empty() || package.bakFile.empty() ||
-        !addMetadataBytes(package.packageName.size() + package.bakFile.size(), metadataBytes)) {
+        !addMetadataBytes(package.packageName.size() + package.bakFile.size(), maximumMetadataBytes,
+                          metadataBytes)) {
         return false;
     }
     return parseInt(node.child("bakType").text().as_string(), package.bakType) &&
@@ -145,10 +160,18 @@ bool parseMiuiManifest(const std::string& backupFolder, BackupMeta& out) {
     const pugi::xml_node packages = rootNode.child("packages");
     if (!packages || packages.next_sibling("packages")) return false;
 
+    const size_t maximumPackages = boundedManifestLimit(
+        kMaximumManifestPackagesEnvironment, kMaximumManifestPackages);
+    const size_t maximumFieldBytes = boundedManifestLimit(
+        kMaximumManifestFieldBytesEnvironment, kMaximumManifestFieldBytes);
+    const size_t maximumMetadataBytes = boundedManifestLimit(
+        kMaximumManifestMetadataBytesEnvironment, kMaximumManifestMetadataBytes);
     size_t metadataBytes = 0;
-    if (!boundedText(rootNode.child("device").text().as_string(), out.device) ||
-        !boundedText(rootNode.child("miuiVersion").text().as_string(), out.miuiVersion) ||
-        !addMetadataBytes(out.device.size() + out.miuiVersion.size(), metadataBytes)) {
+    if (!boundedText(rootNode.child("device").text().as_string(), maximumFieldBytes, out.device) ||
+        !boundedText(rootNode.child("miuiVersion").text().as_string(), maximumFieldBytes,
+                     out.miuiVersion) ||
+        !addMetadataBytes(out.device.size() + out.miuiVersion.size(), maximumMetadataBytes,
+                          metadataBytes)) {
         return false;
     }
     if (!parseU64(rootNode.child("date").text().as_string(), out.date) ||
@@ -162,8 +185,10 @@ bool parseMiuiManifest(const std::string& backupFolder, BackupMeta& out) {
             continue;
         }
         BackupPackage package;
-        if (out.packages.size() >= kMaximumManifestPackages ||
-            !parsePackage(child, package, metadataBytes)) return false;
+        if (out.packages.size() >= maximumPackages ||
+            !parsePackage(child, maximumFieldBytes, maximumMetadataBytes, package, metadataBytes)) {
+            return false;
+        }
         out.packages.push_back(std::move(package));
     }
     return true;

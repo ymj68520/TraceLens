@@ -30,8 +30,16 @@ inline bool canonicalDirectory(const fs::path& input, fs::path& output) {
 inline bool evidenceRootForSource(const fs::path& sourcePath, bool sourceIsDirectory,
                                   fs::path& output) {
     output.clear();
-    const fs::path root = sourceIsDirectory ? sourcePath : sourcePath.parent_path();
-    return canonicalDirectory(root, output);
+    std::error_code error;
+    if (sourceIsDirectory) {
+        return canonicalDirectory(sourcePath, output);
+    }
+
+    const fs::path absoluteSource = fs::absolute(sourcePath, error);
+    if (error) return false;
+    const fs::path canonicalSource = fs::canonical(absoluteSource, error);
+    if (error || !fs::is_regular_file(canonicalSource, error) || error) return false;
+    return canonicalDirectory(canonicalSource.parent_path(), output);
 }
 
 inline bool safeParent(const fs::path& parent, const fs::path& evidenceRoot) {

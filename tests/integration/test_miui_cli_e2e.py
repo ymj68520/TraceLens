@@ -141,6 +141,42 @@ def verify_tmpdir_isolation(analyzer: Path, root: Path) -> None:
     assert_true(not any(hostile_tmp.iterdir()), "analyzer created internal temporary files under evidence")
 
 
+def create_corrupt_encrypted_backup(root: Path, key_hint: str) -> Path:
+    backup = root / "backup"
+    backup.mkdir(parents=True)
+    payload = BytesIO()
+    with tarfile.open(fileobj=payload, mode="w", format=tarfile.USTAR_FORMAT) as archive:
+        for member, data in {
+            "apps/com.socialchat.social_chat_app/db/social_chat.db": b"SQLite format 3\x00",
+            "apps/com.socialchat.social_chat_app/f/app_flutter/files/password.json": key_hint.encode(),
+        }.items():
+            info = tarfile.TarInfo(member)
+            info.size = len(data)
+            archive.addfile(info, BytesIO(data))
+    (backup / "Social.bak").write_bytes(b"ANDROID BACKUP\n5\n0\nnone\n" + payload.getvalue())
+    (backup / "descript.xml").write_text(
+        "<MIUI-backup><packages><package>"
+        "<packageName>com.socialchat.social_chat_app</packageName><bakFile>Social.bak</bakFile>"
+        "</package></packages></MIUI-backup>", encoding="utf-8")
+    return backup
+
+
+def verify_corrupt_sqlite_and_invalid_key_are_parse_errors(analyzer: Path, root: Path) -> None:
+    for label, key_hint in (("magic", '{"key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}'),
+                            ("invalid-key", '{"key":"!"}')):
+        backup = create_corrupt_encrypted_backup(root / label, key_hint)
+        output = root / f"{label}-out"
+        result = run([str(analyzer), str(backup), "--android-analyze",
+                      "--android-source", "miui-backup", "--db-dir", str(output)])
+        assert_true(result.returncode == 0, f"corrupt database run failed: {result.stdout}{result.stderr}")
+        with sqlite3.connect(output / "backup_files.db") as connection:
+            status = connection.execute(
+                "SELECT open_status FROM encrypted_db_inventory "
+                "WHERE package_name = 'com.socialchat.social_chat_app'"
+            ).fetchone()
+        assert_true(status == ("parse_error",), f"unexpected corrupt DB status for {label}: {status}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--analyzer", required=True, type=Path)
@@ -153,6 +189,7 @@ def main() -> int:
         verify_miui_route(analyzer, root)
         verify_secure_password_input(analyzer, root)
         verify_tmpdir_isolation(analyzer, root)
+        verify_corrupt_sqlite_and_invalid_key_are_parse_errors(analyzer, root)
         verify_malformed_input(analyzer)
     return 0
 
