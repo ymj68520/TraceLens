@@ -4,6 +4,8 @@
 #include <filesystem>
 #include <cstdio>
 #include <cstring>
+#include <memory>
+#include <utility>
 #include <unistd.h>
 #include "analyzers/AndroidAnalyzer/AndroidBackupHeader.h"
 #include "analyzers/AndroidAnalyzer/TarIndex.h"
@@ -411,59 +413,67 @@ TEST(MiuiDbTest, PersistsMiuiBackupMetadataAcrossAllTables) {
                              std::to_string(++serial) + ".db");
     fs::remove(dbPath);
 
-    AndroidAnalysisDatabase db(dbPath.string());
-    ASSERT_TRUE(db.initialize());
-    ASSERT_TRUE(db.insertMiuiBackupManifest("cepheus", "V12", 1785299538978ull,
-                                            100, 3, "/evidence/backup"));
-    ASSERT_TRUE(db.insertInstalledApp("com.foo", "Foo", "10", "1.0", 500, 0,
-                                      1, "manifest summary"));
-    ASSERT_TRUE(db.insertAppDbInventory("com.foo", "apps/com.foo/db/x.db", "msgs", 42,
-                                        "id,text", "decrypted"));
+    {
+        AndroidAnalysisDatabase db(dbPath.string());
+        ASSERT_TRUE(db.initialize());
+        ASSERT_TRUE(db.insertMiuiBackupManifest("cepheus", "V12", 1785299538978ull,
+                                                100, 3, "/evidence/backup"));
+        ASSERT_TRUE(db.insertInstalledApp("com.foo", "Foo", "10", "1.0", 500, 0,
+                                          1, "manifest summary"));
+        ASSERT_TRUE(db.insertAppDbInventory("com.foo", "apps/com.foo/db/x.db", "msgs", 42,
+                                            "id,text", "decrypted"));
 
-    sqlite3* raw = nullptr;
-    ASSERT_EQ(sqlite3_open(dbPath.string().c_str(), &raw), SQLITE_OK);
-    sqlite3_stmt* statement = nullptr;
+        using SqliteConnection = std::unique_ptr<sqlite3, decltype(&sqlite3_close)>;
+        using SqliteStatement = std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>;
 
-    ASSERT_EQ(sqlite3_prepare_v2(raw,
-                                 "SELECT device, miui_version, backup_date, total_size, "
-                                 "package_count, source_folder FROM miui_backup_manifest",
-                                 -1, &statement, nullptr), SQLITE_OK);
-    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
-    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "cepheus");
-    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 1)), "V12");
-    EXPECT_EQ(sqlite3_column_int64(statement, 2), 1785299538978ll);
-    EXPECT_EQ(sqlite3_column_int64(statement, 3), 100);
-    EXPECT_EQ(sqlite3_column_int(statement, 4), 3);
-    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 5)), "/evidence/backup");
-    sqlite3_finalize(statement);
+        sqlite3* rawConnection = nullptr;
+        const int openResult = sqlite3_open(dbPath.string().c_str(), &rawConnection);
+        SqliteConnection raw(rawConnection, sqlite3_close);
+        ASSERT_EQ(openResult, SQLITE_OK);
 
-    ASSERT_EQ(sqlite3_prepare_v2(raw,
-                                 "SELECT display_name, version_code, version_name, data_size, "
-                                 "sd_size, bak_type, manifest_summary FROM installed_apps "
-                                 "WHERE package_name = 'com.foo'",
-                                 -1, &statement, nullptr), SQLITE_OK);
-    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
-    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "Foo");
-    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 1)), "10");
-    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 2)), "1.0");
-    EXPECT_EQ(sqlite3_column_int64(statement, 3), 500);
-    EXPECT_EQ(sqlite3_column_int64(statement, 4), 0);
-    EXPECT_EQ(sqlite3_column_int(statement, 5), 1);
-    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 6)), "manifest summary");
-    sqlite3_finalize(statement);
+        auto query = [&raw](const char* sql) {
+            sqlite3_stmt* rawStatement = nullptr;
+            const int prepareResult = sqlite3_prepare_v2(raw.get(), sql, -1, &rawStatement, nullptr);
+            return std::make_pair(prepareResult,
+                                  SqliteStatement(rawStatement, sqlite3_finalize));
+        };
 
-    ASSERT_EQ(sqlite3_prepare_v2(raw,
-                                 "SELECT db_path, table_name, row_count, columns, open_status "
-                                 "FROM app_db_inventory WHERE package_name = 'com.foo'",
-                                 -1, &statement, nullptr), SQLITE_OK);
-    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
-    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "apps/com.foo/db/x.db");
-    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 1)), "msgs");
-    EXPECT_EQ(sqlite3_column_int64(statement, 2), 42);
-    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 3)), "id,text");
-    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 4)), "decrypted");
-    sqlite3_finalize(statement);
-    sqlite3_close(raw);
+        auto [manifestPrepareResult, manifestStatement] = query(
+            "SELECT device, miui_version, backup_date, total_size, package_count, source_folder "
+            "FROM miui_backup_manifest");
+        ASSERT_EQ(manifestPrepareResult, SQLITE_OK);
+        ASSERT_EQ(sqlite3_step(manifestStatement.get()), SQLITE_ROW);
+        EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(manifestStatement.get(), 0)), "cepheus");
+        EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(manifestStatement.get(), 1)), "V12");
+        EXPECT_EQ(sqlite3_column_int64(manifestStatement.get(), 2), 1785299538978ll);
+        EXPECT_EQ(sqlite3_column_int64(manifestStatement.get(), 3), 100);
+        EXPECT_EQ(sqlite3_column_int(manifestStatement.get(), 4), 3);
+        EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(manifestStatement.get(), 5)), "/evidence/backup");
+
+        auto [appPrepareResult, appStatement] = query(
+            "SELECT display_name, version_code, version_name, data_size, sd_size, bak_type, "
+            "manifest_summary FROM installed_apps WHERE package_name = 'com.foo'");
+        ASSERT_EQ(appPrepareResult, SQLITE_OK);
+        ASSERT_EQ(sqlite3_step(appStatement.get()), SQLITE_ROW);
+        EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(appStatement.get(), 0)), "Foo");
+        EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(appStatement.get(), 1)), "10");
+        EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(appStatement.get(), 2)), "1.0");
+        EXPECT_EQ(sqlite3_column_int64(appStatement.get(), 3), 500);
+        EXPECT_EQ(sqlite3_column_int64(appStatement.get(), 4), 0);
+        EXPECT_EQ(sqlite3_column_int(appStatement.get(), 5), 1);
+        EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(appStatement.get(), 6)), "manifest summary");
+
+        auto [inventoryPrepareResult, inventoryStatement] = query(
+            "SELECT db_path, table_name, row_count, columns, open_status FROM app_db_inventory "
+            "WHERE package_name = 'com.foo'");
+        ASSERT_EQ(inventoryPrepareResult, SQLITE_OK);
+        ASSERT_EQ(sqlite3_step(inventoryStatement.get()), SQLITE_ROW);
+        EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(inventoryStatement.get(), 0)), "apps/com.foo/db/x.db");
+        EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(inventoryStatement.get(), 1)), "msgs");
+        EXPECT_EQ(sqlite3_column_int64(inventoryStatement.get(), 2), 42);
+        EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(inventoryStatement.get(), 3)), "id,text");
+        EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(inventoryStatement.get(), 4)), "decrypted");
+    }
 
     fs::remove(dbPath);
 }
