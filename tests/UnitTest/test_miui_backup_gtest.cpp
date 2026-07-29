@@ -46,6 +46,29 @@ TEST(AndroidBackupHeaderTest, DetectsAesMarker) {
     EXPECT_EQ(h.encMarker, "AES-256-encrypted");
 }
 
+TEST(AndroidBackupHeaderTest, RejectsNonNumericCompression) {
+    // A non-numeric compression field is malformed input -> strict false
+    // (do not silently treat as "no compression").
+    std::string body =
+        "MIUI BACKUP\n2\ncom.example Ex\n-1\n0\n"
+        "ANDROID BACKUP\n5\nx\nnone\n" + std::string(512, '\0');
+    auto p = writeTempBak("hdr_badcomp.bak", body);
+    AndroidBackupHeader h;
+    EXPECT_FALSE(parseAndroidBackupHeader(p.string(), h));
+}
+
+TEST(AndroidBackupHeaderTest, DetectsUnknownEncryptionMarker) {
+    // An unrecognized encryption marker is detected (not decoded) as Unknown.
+    std::string body =
+        "MIUI BACKUP\n2\ncom.example Ex\n-1\n0\n"
+        "ANDROID BACKUP\n5\n0\nweird-scheme\n" + std::string(512, '\0');
+    auto p = writeTempBak("hdr_unknown_enc.bak", body);
+    AndroidBackupHeader h;
+    ASSERT_TRUE(parseAndroidBackupHeader(p.string(), h));
+    EXPECT_EQ(h.encryption, BackupEncryption::Unknown);
+    EXPECT_EQ(h.encMarker, "weird-scheme");
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
