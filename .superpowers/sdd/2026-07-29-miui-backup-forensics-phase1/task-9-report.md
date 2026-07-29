@@ -119,4 +119,4 @@ The identical values confirm the smoke run did not add, remove, rename, or resiz
 ## Commits
 
 - `bfb964e` — initial Task 9 smoke script and report.
-- Pending evidence-safety follow-up commit at report-update time.
+- `2f794c1` — isolate MIUI smoke output from TMPDIR and add the evidence-safety regression.
