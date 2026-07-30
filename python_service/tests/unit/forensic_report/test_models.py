@@ -31,3 +31,14 @@ def test_record_rejects_non_prefixed_identifier():
             source_table="wifi_networks",
             source_record_id="7",
         )
+
+
+def test_record_rejects_non_hex_identifier():
+    with pytest.raises(ValidationError):
+        ReportRecord(
+            record_id="rec_" + "z" * 64,
+            category="wifi",
+            title="Home WiFi",
+            source_table="wifi_networks",
+            source_record_id="7",
+        )
