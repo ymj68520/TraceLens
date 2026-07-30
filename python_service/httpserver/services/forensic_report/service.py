@@ -31,13 +31,21 @@ class ForensicReportService:
         self._starts: set[asyncio.Task[Any]] = set()
         self._lifecycle_lock = asyncio.Lock()
         self._accepting_starts = True
+        self._shutdown_task: asyncio.Task[None] | None = None
 
     async def initialize(self) -> None:
         await self.resume_unfinished()
 
     async def shutdown(self) -> None:
         async with self._lifecycle_lock:
-            self._accepting_starts = False
+            if self._shutdown_task is None:
+                self._accepting_starts = False
+                self._shutdown_task = asyncio.create_task(self._drain_shutdown())
+            shutdown_task = self._shutdown_task
+        await asyncio.shield(shutdown_task)
+
+    async def _drain_shutdown(self) -> None:
+        async with self._lifecycle_lock:
             starts = tuple(self._starts)
         for start in starts:
             start.cancel()
@@ -48,7 +56,7 @@ class ForensicReportService:
             async with self._lifecycle_lock:
                 pending = tuple(self._tasks.items())
             if not pending:
-                break
+                return
             for _, task in pending:
                 if not task.done():
                     task.cancel()
@@ -138,7 +146,7 @@ class ForensicReportService:
         except asyncio.CancelledError:
             if worker is not None:
                 try:
-                    await asyncio.shield(worker)
+                    await self._await_worker_cleanup(worker)
                 except Exception:
                     logger.exception("Snapshot worker failed while shutting down %s", report_id)
             self._fail_if_unfinished(
@@ -156,6 +164,16 @@ class ForensicReportService:
                 async with self._lifecycle_lock:
                     if self._workers.get(report_id) is worker:
                         self._workers.pop(report_id, None)
+
+    async def _await_worker_cleanup(self, worker: asyncio.Task[Path]) -> None:
+        cleanup = asyncio.current_task()
+        while not worker.done():
+            try:
+                await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                if cleanup is None:  # pragma: no cover - async cleanup owns a task
+                    raise
+                cleanup.uncancel()
 
     def _discard_completed(self, report_id: str, task: asyncio.Task[None]) -> None:
         async def discard() -> None:
