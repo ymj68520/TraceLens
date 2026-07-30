@@ -30,6 +30,7 @@ inline std::string analyzerPathToTarMember(const std::string& imageRelPath) {
     std::string sub;
     if (tail.rfind("databases/", 0) == 0)        sub = "db/" + tail.substr(strlen("databases/"));
     else if (tail.rfind("files/", 0) == 0)        sub = "f/" + tail.substr(strlen("files/"));
+    else if (tail.rfind("app_flutter/files/", 0) == 0) sub = "f/" + tail;
     else if (tail.rfind("shared_prefs/", 0) == 0) sub = "sp/" + tail.substr(strlen("shared_prefs/"));
     else return "";
     return "apps/" + pkg + "/" + sub;
