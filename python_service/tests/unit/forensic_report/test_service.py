@@ -114,6 +114,53 @@ async def test_shutdown_waits_for_blocking_snapshot_worker(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_concurrent_shutdowns_share_worker_drain_and_repeated_shutdown_is_safe(
+    tmp_path: Path,
+):
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+
+    class BlockingWriter:
+        report_root = tmp_path / "snapshots"
+
+        def write(self, **kwargs):
+            started.set()
+            assert release.wait(timeout=5)
+            finished.set()
+            return tmp_path / "snapshots" / "unreachable"
+
+    resolver = AsyncMock()
+    resolver.resolve_task.return_value = _resolved_task()
+    service = ForensicReportService(
+        repository=ReportRepository(tmp_path / "reports.db"),
+        resolver=resolver,
+        writer=BlockingWriter(),
+        adapters=[],
+    )
+    version = await service.start(ScopeType.TASK, "task-1")
+    await asyncio.to_thread(started.wait)
+
+    first = asyncio.create_task(service.shutdown())
+    for _ in range(10):
+        await asyncio.sleep(0)
+    second = asyncio.create_task(service.shutdown())
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert not first.done()
+    assert not second.done()
+
+    release.set()
+    await asyncio.gather(first, second)
+
+    assert finished.is_set()
+    assert service.get_status(version.report_id).status is ReportStatus.FAILED
+    assert service._tasks == {}
+    assert service._workers == {}
+    await service.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_shutdown_preserves_a_concurrent_terminal_transition(tmp_path: Path):
     service = _service(tmp_path)
     version = service.repository.create_version(ScopeType.TASK, "task-1", "Task", [])
