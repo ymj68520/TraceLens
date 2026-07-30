@@ -323,6 +323,11 @@ TEST(MiuiPathMapTest, MapsDatabasesFilesSharedPrefs) {
     EXPECT_EQ(analyzerPathToTarMember("data/data/com.foo/files/y"), "apps/com.foo/f/y");
     EXPECT_EQ(analyzerPathToTarMember("data/data/com.foo/shared_prefs/z.xml"), "apps/com.foo/sp/z.xml");
 }
+TEST(MiuiPathMapTest, MapsNestedFlutterFiles) {
+    EXPECT_EQ(analyzerPathToTarMember("data/data/com.socialchat.social_chat_app/app_flutter/files/password.json"),
+              "apps/com.socialchat.social_chat_app/f/app_flutter/files/password.json");
+}
+
 TEST(MiuiPathMapTest, ToleratesLeadingSlashAndBackslashes) {
     EXPECT_EQ(analyzerPathToTarMember("/data/data/com.foo/databases/x.db"), "apps/com.foo/db/x.db");
     EXPECT_EQ(analyzerPathToTarMember("data\\data\\com.foo\\databases\\x.db"), "apps/com.foo/db/x.db");
