@@ -133,15 +133,26 @@ class IngestionJobWorkerMixin:
         db = self._ForensicsDatabase(files_db)
         files = db.get_files()
 
+        # Throttle Redis progress updates: only persist when the percentage
+        # actually changes (avoids enqueuing 100k+ asyncio tasks that all
+        # hammer the same Redis HSET connection).
+        _last_reported = [-1]
+        def _on_progress(cur: int, total: int):
+            pct = 10 + int(70 * cur / total)
+            if pct <= _last_reported[0]:
+                return
+            _last_reported[0] = pct
+            asyncio.create_task(
+                self._update_job_status(
+                    job_id, JobStatus.RUNNING, "creating_file_entities",
+                    progress=pct,
+                )
+            )
+
         file_result = await self._file_ingestor.batch_ensure_files(
             files,
             task_id,
-            progress_callback=lambda cur, total: asyncio.create_task(
-                self._update_job_status(
-                    job_id, JobStatus.RUNNING, "creating_file_entities",
-                    progress=10 + int(70 * cur / total)
-                )
-            )
+            progress_callback=_on_progress,
         )
 
         # Step 2: Attach events to files
@@ -461,6 +472,17 @@ class IngestionJobWorkerMixin:
             file_descs: list = []
             with sqlite3.connect(files_db, timeout=10) as conn:
                 conn.row_factory = sqlite3.Row
+                # Handle non-UTF-8 filenames (e.g. GBK filenames on Chinese Windows)
+                def _text_factory(bytes_):
+                    if bytes_ is None:
+                        return None
+                    if isinstance(bytes_, str):
+                        return bytes_
+                    try:
+                        return bytes_.decode('utf-8')
+                    except UnicodeDecodeError:
+                        return bytes_.decode('gbk', errors='replace')
+                conn.text_factory = _text_factory
                 # Ensure schema has the description columns (added lazily by analysis pipeline)
                 # We JOIN against the files table to also surface category/md5/name/size
                 # which are high-value extraction signals (hashes and category names
@@ -506,6 +528,8 @@ class IngestionJobWorkerMixin:
                 import sqlite3
                 with sqlite3.connect(events_db, timeout=10) as conn:
                     conn.row_factory = sqlite3.Row
+                    # Handle non-UTF-8 filenames
+                    conn.text_factory = _text_factory
                     try:
                         cur = conn.execute(
                             "SELECT DISTINCT event_type, llm_description, llm_summary, "
@@ -531,10 +555,36 @@ class IngestionJobWorkerMixin:
                 job_id, JobStatus.RUNNING, "ingesting_episodes",
                 progress=92,
             )
+            # Wrap the (stage, message) progress_callback so the job status
+            # progresses smoothly through the 92-95 % range as episodes are
+            # processed one-by-one by Graphiti's batch_ingest.
+            total_eps = len(file_descs) + len(cluster_descs)
+            if total_eps > 0:
+                async def _ep_progress(stage: str, message: str):
+                    # Map stage to a rough progress slice: 92 % → 95 %
+                    if stage == "completed":
+                        pct = 95
+                    else:
+                        # Parse "ingesting X/Y" from the message if present
+                        import re
+                        m = re.search(r"(\d+)\s*/\s*(\d+)", message)
+                        if m:
+                            cur, tot = int(m.group(1)), int(m.group(2))
+                            pct = 92 + min(3, int(3 * cur / max(tot, 1)))
+                        else:
+                            pct = 93
+                    await self._update_job_status(
+                        job_id, JobStatus.RUNNING, "ingesting_episodes",
+                        progress=pct,
+                    )
+                _progress_callback = _ep_progress
+            else:
+                _progress_callback = progress_callback
             result = await graphiti_service.ingest_task_episodes(
                 task_id=task_id,
                 file_descriptions=file_descs,
                 cluster_descriptions=cluster_descs,
+                progress_callback=_progress_callback,
             )
             stats["episodes_successful"] = result.get("successful", 0)
             stats["episodes_total"] = result.get("total", 0)

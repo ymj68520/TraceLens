@@ -190,10 +190,23 @@ class IngestionJobManagerMixin:
             "events_count": job.events_count,
         }
 
+        # Redis HSET mapping does not accept None values — strip them
+        job_dict = {k: v for k, v in job_dict.items() if v is not None}
+
+        # Redis can only store scalar types (str, bytes, int, float).
+        # Convert dicts/lists to JSON strings so nested values serialize cleanly.
+        import json
+        _serializable = {}
+        for k, v in job_dict.items():
+            if isinstance(v, (dict, list)):
+                _serializable[k] = json.dumps(v, ensure_ascii=False, default=str)
+            else:
+                _serializable[k] = v
+
         if self._use_redis:
             await self._redis.hset(
                 f"job:{job.job_id}",
-                mapping=job_dict
+                mapping=_serializable
             )
         else:
             self._jobs[job.job_id] = job
@@ -204,6 +217,18 @@ class IngestionJobManagerMixin:
             data = await self._redis.hgetall(f"job:{job_id}")
             if not data:
                 return None
+            # Redis returns all values as strings — convert enum fields back
+            if "mode" in data and isinstance(data["mode"], str):
+                data["mode"] = IngestionMode(data["mode"])
+            if "status" in data and isinstance(data["status"], str):
+                data["status"] = JobStatus(data["status"])
+            # result was serialized to a JSON string by _save_job — restore to dict
+            if "result" in data and isinstance(data["result"], str):
+                import json
+                try:
+                    data["result"] = json.loads(data["result"])
+                except (json.JSONDecodeError, TypeError):
+                    data["result"] = None
             return IngestionJob(**data)
         else:
             return self._jobs.get(job_id)
