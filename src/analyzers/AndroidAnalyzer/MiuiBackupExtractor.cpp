@@ -36,7 +36,7 @@ bool MiuiBackupExtractor::initialize() {
         fs::remove_all(temporaryRoot_, error);
     }
     packageFailures_.clear();
-    acceptedManifestPackages_.clear();
+    uniqueManifestBakFiles_.clear();
     temporaryRoot_.clear();
     manifest_ = BackupMeta{};
 
@@ -66,7 +66,7 @@ bool MiuiBackupExtractor::initialize() {
     }
 
     std::unordered_set<std::string> processedBakFiles;
-    acceptedManifestPackages_.assign(manifest_.packages.size(), false);
+    uniqueManifestBakFiles_.assign(manifest_.packages.size(), false);
     for (size_t packageIndex = 0; packageIndex < manifest_.packages.size(); ++packageIndex) {
         const auto& package = manifest_.packages[packageIndex];
         if (!processedBakFiles.insert(package.bakFile).second) {
@@ -74,6 +74,7 @@ bool MiuiBackupExtractor::initialize() {
                 {package.packageName, package.bakFile, "parse_error"});
             continue;
         }
+        uniqueManifestBakFiles_[packageIndex] = true;
         const fs::path declaredPath(package.bakFile);
         if (declaredPath.empty() || declaredPath.is_absolute() || declaredPath.has_parent_path()) {
             std::cerr << "MiuiBackupExtractor: unsafe backup filename for "
@@ -151,7 +152,6 @@ bool MiuiBackupExtractor::initialize() {
             }
         }
         indexes_.push_back(std::move(index));
-        acceptedManifestPackages_[packageIndex] = true;
     }
 
     initialized_ = true;
@@ -202,7 +202,7 @@ void MiuiBackupExtractor::enumerateEntries(const EntryVisitor& visitor) const {
     }
 
     for (size_t packageIndex = 0; packageIndex < manifest_.packages.size(); ++packageIndex) {
-        if (!isManifestPackageAccepted(packageIndex)) continue;
+        if (!hasUniqueManifestBakFile(packageIndex)) continue;
         const auto& package = manifest_.packages[packageIndex];
         const std::string packagePrefix = "apps/" + package.packageName + "/";
         std::vector<std::string> members;

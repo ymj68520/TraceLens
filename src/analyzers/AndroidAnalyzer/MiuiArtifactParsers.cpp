@@ -451,7 +451,7 @@ bool writeMiuiManifestRows(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db
 
     for (size_t packageIndex = 0; packageIndex < manifest.packages.size(); ++packageIndex) {
         if (!success) break;
-        if (!src.isManifestPackageAccepted(packageIndex)) continue;
+        if (!src.hasUniqueManifestBakFile(packageIndex)) continue;
         const BackupPackage& package = manifest.packages[packageIndex];
         success = db.insertInstalledApp(package.packageName, "", "", "",
                                         package.pkgSize, package.sdSize,

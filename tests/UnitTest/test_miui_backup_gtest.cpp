@@ -531,6 +531,42 @@ TEST(MiuiBackupExtractorTest, EncryptedOnlyManifestInitializesAndRetainsFailure)
     EXPECT_EQ(extractor.packageFailures()[0].openStatus, "encrypted_locked");
 }
 
+TEST(MiuiArtifactTest, PersistsUniqueLockedBackupAsInstalledAppAndFailure) {
+    const fs::path dir = uniqueTempPath("miui_locked_persistence");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << minimalBackupXml("locked.bak");
+    std::ofstream(dir / "locked.bak", std::ios::binary)
+        << "ANDROID BACKUP\n5\n0\nAES-256-encrypted\nciphertext";
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    const fs::path analysisDb = uniqueTempPath("miui_locked_persistence", ".db");
+    TemporaryFile cleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+    ASSERT_TRUE(persistMiuiBackupAnalysis(extractor, db));
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT package_name FROM installed_apps", -1, &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "com.foo");
+    EXPECT_EQ(sqlite3_step(statement), SQLITE_DONE);
+    sqlite3_finalize(statement);
+
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT db_path, open_status FROM app_db_inventory WHERE package_name = 'com.foo'", -1,
+        &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "locked.bak");
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 1)), "encrypted_locked");
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
+}
+
 TEST(MiuiBackupExtractorTest, MissingManifestBackupFileRetainsParseFailure) {
     fs::path dir = uniqueTempPath("miui_ext_missing_bak_test");
     fs::create_directories(dir);
