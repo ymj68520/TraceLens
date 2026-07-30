@@ -9,6 +9,7 @@ The design supports future extension to other communication protocols:
 - Future: gRPC, WebSocket, Message Queue, etc.
 """
 
+import asyncio
 import logging
 from functools import lru_cache
 from typing import Optional
@@ -47,101 +48,123 @@ class ServiceManager:
         self._migration_manager: Optional["MigrationManager"] = None
         self._forensic_report_service = None
         self._initialized = False
+        self._lifecycle_state = "new"
+        self._lifecycle_lock = asyncio.Lock()
+        self._shutdown_task: Optional[asyncio.Task[None]] = None
     
     async def initialize(self):
         """Initialize all services."""
-        if self._initialized:
-            return
-        
-        logger.info("Initializing services...")
-        
-        # Initialize C++ backend service
-        try:
-            from .cpp_backend import CppBackendService
-            self._cpp_backend = CppBackendService(self.settings)
-            await self._cpp_backend.initialize()
-        except Exception as e:
-            logger.warning(f"C++ backend service initialization failed: {e}")
+        async with self._lifecycle_lock:
+            if self._initialized:
+                return
+            self._lifecycle_state = "initializing"
+            self._shutdown_task = None
 
-        # Recover durable report records after the C++ backend is available.
-        try:
-            await self.forensic_report_service.initialize()
-        except Exception as e:
-            logger.warning(f"ForensicReportService initialization failed: {e}")
+            logger.info("Initializing services...")
 
-        # Initialize Graphiti service
-        try:
-            from .graphiti_service import GraphitiService
-            self._graphiti_service = GraphitiService(self.settings)
-            await self._graphiti_service.initialize()
-        except Exception as e:
-            logger.warning(f"Graphiti service initialization failed: {e}")
-        
-        # Initialize LLM service
-        try:
-            from .llm_service import LLMService
-            self._llm_service = LLMService(self.settings)
-            await self._llm_service.initialize()
-        except Exception as e:
-            logger.warning(f"LLM service initialization failed: {e}")
+            # Initialize C++ backend service
+            try:
+                from .cpp_backend import CppBackendService
+                self._cpp_backend = CppBackendService(self.settings)
+                await self._cpp_backend.initialize()
+            except Exception as e:
+                logger.warning(f"C++ backend service initialization failed: {e}")
 
-        # Initialize IngestionJobManager
-        try:
-            from .ingestion_job_manager import IngestionJobManager
-            self._ingestion_job_manager = IngestionJobManager(self.settings)
-            await self._ingestion_job_manager.initialize()
-        except Exception as e:
-            logger.warning(f"IngestionJobManager initialization failed: {e}")
+            # Recover durable report records after the C++ backend is available.
+            try:
+                await self.forensic_report_service.initialize()
+            except Exception as e:
+                logger.warning(f"ForensicReportService initialization failed: {e}")
 
-        # Initialize MigrationManager (optional, requires Neo4j)
-        try:
-            # Import with absolute import path since graphiti_integration is sibling to httpserver
-            import sys
-            from pathlib import Path
-            # Add python_service to path if not already there
-            python_service_path = str(Path(__file__).parent.parent.parent)
-            if python_service_path not in sys.path:
-                sys.path.insert(0, python_service_path)
-            from graphiti_integration.migration import MigrationManager
-            self._migration_manager = MigrationManager(
-                neo4j_uri=self.settings.neo4j_uri,
-                neo4j_user=self.settings.neo4j_user,
-                neo4j_password=self.settings.neo4j_password
-            )
-            await self._migration_manager.initialize()
-        except ImportError as e:
-            logger.warning(f"MigrationManager import failed: {e}")
-        except Exception as e:
-            logger.warning(f"MigrationManager initialization failed: {e}")
+            # Initialize Graphiti service
+            try:
+                from .graphiti_service import GraphitiService
+                self._graphiti_service = GraphitiService(self.settings)
+                await self._graphiti_service.initialize()
+            except Exception as e:
+                logger.warning(f"Graphiti service initialization failed: {e}")
 
-        self._initialized = True
-        logger.info("All services initialized successfully")
+            # Initialize LLM service
+            try:
+                from .llm_service import LLMService
+                self._llm_service = LLMService(self.settings)
+                await self._llm_service.initialize()
+            except Exception as e:
+                logger.warning(f"LLM service initialization failed: {e}")
+
+            # Initialize IngestionJobManager
+            try:
+                from .ingestion_job_manager import IngestionJobManager
+                self._ingestion_job_manager = IngestionJobManager(self.settings)
+                await self._ingestion_job_manager.initialize()
+            except Exception as e:
+                logger.warning(f"IngestionJobManager initialization failed: {e}")
+
+            # Initialize MigrationManager (optional, requires Neo4j)
+            try:
+                # Import with absolute import path since graphiti_integration is sibling to httpserver
+                import sys
+                from pathlib import Path
+                # Add python_service to path if not already there
+                python_service_path = str(Path(__file__).parent.parent.parent)
+                if python_service_path not in sys.path:
+                    sys.path.insert(0, python_service_path)
+                from graphiti_integration.migration import MigrationManager
+                self._migration_manager = MigrationManager(
+                    neo4j_uri=self.settings.neo4j_uri,
+                    neo4j_user=self.settings.neo4j_user,
+                    neo4j_password=self.settings.neo4j_password
+                )
+                await self._migration_manager.initialize()
+            except ImportError as e:
+                logger.warning(f"MigrationManager import failed: {e}")
+            except Exception as e:
+                logger.warning(f"MigrationManager initialization failed: {e}")
+
+            self._initialized = True
+            self._lifecycle_state = "running"
+            logger.info("All services initialized successfully")
     
     async def shutdown(self):
         """Shutdown all services gracefully."""
+        async with self._lifecycle_lock:
+            if self._lifecycle_state == "stopped":
+                return
+            if self._shutdown_task is None:
+                self._lifecycle_state = "shutting_down"
+                self._shutdown_task = asyncio.create_task(self._drain_shutdown())
+            shutdown_task = self._shutdown_task
+        await asyncio.shield(shutdown_task)
+
+    async def _drain_shutdown(self) -> None:
         logger.info("Shutting down services...")
+        first_error: BaseException | None = None
 
-        if self._forensic_report_service:
-            await self._forensic_report_service.shutdown()
+        async def drain(service, method_name: str) -> None:
+            nonlocal first_error
+            if service is None:
+                return
+            try:
+                await getattr(service, method_name)()
+            except BaseException as error:
+                if first_error is None:
+                    first_error = error
+
+        try:
+            await drain(self._forensic_report_service, "shutdown")
             self._forensic_report_service = None
-
-        if self._cpp_backend:
-            await self._cpp_backend.shutdown()
-        
-        if self._graphiti_service:
-            await self._graphiti_service.shutdown()
-        
-        if self._llm_service:
-            await self._llm_service.shutdown()
-
-        if self._ingestion_job_manager:
-            await self._ingestion_job_manager.shutdown()
-
-        if self._migration_manager:
-            await self._migration_manager.close()
-
-        self._initialized = False
-        logger.info("All services shut down")
+            await drain(self._cpp_backend, "shutdown")
+            await drain(self._graphiti_service, "shutdown")
+            await drain(self._llm_service, "shutdown")
+            await drain(self._ingestion_job_manager, "shutdown")
+            await drain(self._migration_manager, "close")
+            if first_error is not None:
+                raise first_error
+        finally:
+            self._forensic_report_service = None
+            self._initialized = False
+            self._lifecycle_state = "stopped"
+            logger.info("All services shut down")
     
     @property
     def cpp_backend(self) -> "CppBackendService":
@@ -154,6 +177,10 @@ class ServiceManager:
     @property
     def forensic_report_service(self):
         """Get the durable forensic report generation service."""
+        if self._lifecycle_state == "shutting_down":
+            raise RuntimeError("ServiceManager is shutting down")
+        if self._lifecycle_state == "stopped":
+            raise RuntimeError("ServiceManager is not initialized")
         if self._forensic_report_service is None:
             from pathlib import Path
 
