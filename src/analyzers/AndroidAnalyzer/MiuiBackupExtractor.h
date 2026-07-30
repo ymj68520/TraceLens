@@ -47,6 +47,11 @@ public:
                           const std::string& outPath) const;
     bool entrySize(const std::string& memberName, uint64_t& size) const;
     const std::vector<PackageFailure>& packageFailures() const { return packageFailures_; }
+    // A manifest entry is accepted for installed-app persistence only when it
+    // owns a unique .bak name; later duplicate names remain failure-only.
+    bool isManifestPackageAccepted(size_t index) const {
+        return index < acceptedManifestPackages_.size() && acceptedManifestPackages_[index];
+    }
     const std::filesystem::path& temporaryRoot() const { return temporaryRoot_; }
 
 private:
@@ -56,6 +61,7 @@ private:
     std::vector<std::unique_ptr<TarIndex>> indexes_;
     std::unordered_map<std::string, TarIndex*> entryOwner_;
     std::vector<PackageFailure> packageFailures_;
+    std::vector<bool> acceptedManifestPackages_;
     std::filesystem::path temporaryRoot_;
     bool initialized_ = false;
 };

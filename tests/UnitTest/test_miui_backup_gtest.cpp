@@ -633,6 +633,54 @@ TEST(MiuiBackupExtractorTest, RejectsDuplicateManifestBackupFile) {
     EXPECT_EQ(extractor.packageFailures()[0].openStatus, "parse_error");
 }
 
+TEST(MiuiArtifactTest, PersistsDuplicateBackupOnlyAsFailureWithoutMisattribution) {
+    const fs::path dir = uniqueTempPath("miui_duplicate_persistence");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages>"
+           "<package><packageName>com.first</packageName><bakFile>shared.bak</bakFile></package>"
+           "<package><packageName>com.second</packageName><bakFile>shared.bak</bakFile></package>"
+           "</packages></MIUI-backup>";
+    const auto tar = makeUstarTar({{"apps/com.first/db/x.db", "not-a-sqlite-db"}});
+    std::ofstream(dir / "shared.bak", std::ios::binary) << rawBackup(readFile(tar));
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    const fs::path analysisDb = uniqueTempPath("miui_duplicate_persistence", ".db");
+    TemporaryFile analysisCleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+    ASSERT_TRUE(persistMiuiBackupAnalysis(extractor, db));
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT package_name FROM installed_apps ORDER BY package_name", -1, &statement, nullptr),
+        SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "com.first");
+    EXPECT_EQ(sqlite3_step(statement), SQLITE_DONE);
+    sqlite3_finalize(statement);
+
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT db_path, open_status FROM app_db_inventory WHERE package_name = 'com.second'", -1,
+        &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "shared.bak");
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 1)), "parse_error");
+    EXPECT_EQ(sqlite3_step(statement), SQLITE_DONE);
+    sqlite3_finalize(statement);
+
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT count(*) FROM app_db_inventory WHERE package_name = 'com.second' "
+        "AND db_path LIKE 'apps/com.first/%'", -1, &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_EQ(sqlite3_column_int(statement, 0), 0);
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
+}
+
 #ifdef USE_ZLIB
 TEST(TarIndexTest, DeletesInflatedTemporaryFileOnDestruction) {
     auto tar = makeUstarTar({{"apps/com.bar/db/y.db", "WORLD"}});

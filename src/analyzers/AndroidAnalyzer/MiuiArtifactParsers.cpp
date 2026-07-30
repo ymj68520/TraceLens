@@ -263,9 +263,8 @@ bool extractBoundedMember(MiuiBackupExtractor& src, const std::string& memberNam
 
 bool openEvidenceDatabase(const fs::path& path, sqlite3** output) {
     *output = nullptr;
-    const std::string uri = "file:" + path.string() + "?mode=ro";
-    const int flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_NOMUTEX;
-    if (sqlite3_open_v2(uri.c_str(), output, flags, nullptr) != SQLITE_OK) {
+    const int flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX;
+    if (sqlite3_open_v2(path.string().c_str(), output, flags, nullptr) != SQLITE_OK) {
         if (*output) {
             sqlite3_close(*output);
             *output = nullptr;
@@ -450,8 +449,10 @@ bool writeMiuiManifestRows(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db
         manifest.device, manifest.miuiVersion, manifest.date, manifest.totalSize,
         static_cast<int>(manifest.packages.size()), manifest.sourceFolder);
 
-    for (const BackupPackage& package : manifest.packages) {
+    for (size_t packageIndex = 0; packageIndex < manifest.packages.size(); ++packageIndex) {
         if (!success) break;
+        if (!src.isManifestPackageAccepted(packageIndex)) continue;
+        const BackupPackage& package = manifest.packages[packageIndex];
         success = db.insertInstalledApp(package.packageName, "", "", "",
                                         package.pkgSize, package.sdSize,
                                         package.bakType, "");

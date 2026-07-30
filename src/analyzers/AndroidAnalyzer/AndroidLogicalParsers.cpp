@@ -63,6 +63,8 @@ bool decodeRawKeyBase64(const std::string& value, std::string& decoded) {
     for (size_t index = 0; index + 1 < value.size(); ++index) {
         if (std::strchr(characters, value[index]) == nullptr) return false;
     }
+    const char* lastSextet = std::strchr(characters, value[value.size() - 2]);
+    if (!lastSextet || ((lastSextet - characters) & 0x03) != 0) return false;
     decoded = base64Decode(value);
     return decoded.size() == 32;
 }
@@ -86,8 +88,7 @@ bool isPlaintextSqlite(const std::string& path) {
     if (f.gcount() != 16 || std::memcmp(magic, expected, sizeof(expected)) != 0) return false;
 
     sqlite3* db = nullptr;
-    const std::string uri = "file:" + path + "?mode=ro";
-    if (sqlite3_open_v2(uri.c_str(), &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nullptr) != SQLITE_OK) {
+    if (sqlite3_open_v2(path.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
         if (db) sqlite3_close(db);
         return false;
     }
