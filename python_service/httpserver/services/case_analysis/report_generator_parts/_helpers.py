@@ -223,10 +223,15 @@ class ReportGeneratorHelpersMixin:
             with sqlite3.connect(events_db, timeout=10) as conn:
                 conn.row_factory = sqlite3.Row
                 # Ensure AI columns exist (self-healing, same as C++ timeline route)
+                existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(events)").fetchall()}
                 for col, col_type in [("llm_summary", "TEXT"), ("llm_description", "TEXT"),
                                       ("llm_keywords", "TEXT"), ("llm_analyzed_at", "INTEGER"),
                                       ("llm_model_used", "TEXT"), ("llm_is_relevant", "INTEGER")]:
-                    conn.execute(f"ALTER TABLE events ADD COLUMN {col} {col_type}")
+                    if col not in existing_cols:
+                        try:
+                            conn.execute(f"ALTER TABLE events ADD COLUMN {col} {col_type}")
+                        except Exception:
+                            pass  # Race condition: another writer added it first
                 conn.commit()
 
                 cur = conn.execute("""

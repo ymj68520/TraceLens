@@ -124,6 +124,17 @@ class ForensicsDatabase:
         try:
             conn = sqlite3.connect(str(self.db_path))
             conn.row_factory = sqlite3.Row
+            # Handle non-UTF-8 filenames (e.g. GBK filenames on Chinese Windows)
+            def _text_factory(bytes_):
+                if bytes_ is None:
+                    return None
+                if isinstance(bytes_, str):
+                    return bytes_
+                try:
+                    return bytes_.decode('utf-8')
+                except UnicodeDecodeError:
+                    return bytes_.decode('gbk', errors='replace')
+            conn.text_factory = _text_factory
             yield conn
         except sqlite3.Error as e:
             raise DatabaseError(f"Database connection error: {e}") from e

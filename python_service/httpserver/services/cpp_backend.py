@@ -181,7 +181,13 @@ class CppBackendService:
         params = {"task_id": task_id, "limit": limit}
         # Note: file_type filter not supported by largest endpoint, use client-side filtering
         result = await self._request("GET", "/api/forensics/files/largest", params=params)
-        files = result if isinstance(result, list) else []
+        # C++ backend may return a plain list or a wrapped {"largest_files": [...]}
+        if isinstance(result, dict):
+            files = result.get("largest_files") or result.get("files") or []
+        elif isinstance(result, list):
+            files = result
+        else:
+            files = []
 
         # Client-side filtering by file types if specified
         if file_types and files:
@@ -209,7 +215,13 @@ class CppBackendService:
 
         # Use largest files endpoint (other endpoints could be added based on file_type)
         result = await self._request("GET", "/api/forensics/files/largest", params=params)
-        all_files = result if isinstance(result, list) else []
+        # C++ backend may return a plain list or a wrapped {"largest_files": [...]}
+        if isinstance(result, dict):
+            all_files = result.get("largest_files") or result.get("files") or []
+        elif isinstance(result, list):
+            all_files = result
+        else:
+            all_files = []
 
         # Apply client-side filtering and pagination
         filtered_files = all_files

@@ -61,7 +61,7 @@ class CaseAnalysisCoreMixin:
             self._file_filter = FileFilter(self.settings, self._llm_service, self._cpp_backend)
             self._multi_filter = MultiImageFilter(self.settings, self._llm_service, self._cpp_backend)
             self._file_analyzer = FileAnalyzer(self.settings, self._llm_service, self._graphiti_service)
-            self._report_generator = ReportGenerator(self.settings, self._llm_service, self._graphiti_service)
+            self._report_generator = ReportGenerator(self.settings, self._llm_service, self._graphiti_service, self._cpp_backend)
             self._cluster_analyzer = ClusterAnalyzer(self.settings, self._llm_service, self._graphiti_service)
             self._case_aggregation = CaseAggregationManager(
                 self.settings, self._cpp_backend, self._graphiti_service
