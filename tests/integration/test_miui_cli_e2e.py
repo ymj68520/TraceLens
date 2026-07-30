@@ -233,7 +233,8 @@ def verify_staged_sqlite_path_with_uri_characters(analyzer: Path, root: Path) ->
                 f"valid staged sqlite was not classified as plaintext: {note}")
 
 
-    for label, key_hint in (("magic", '{"key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}'),
+def verify_corrupt_sqlite_and_invalid_key_are_parse_errors(analyzer: Path, root: Path) -> None:
+    for label, key_hint in (("canonical-key", '{"key":"' + "A" * 43 + '="}'),
                             ("invalid-key", '{"key":"!"}'),
                             ("noncanonical-padding", '{"key":"' + "A" * 42 + 'B="}')):
         backup = create_corrupt_encrypted_backup(root / label, key_hint)
@@ -246,7 +247,12 @@ def verify_staged_sqlite_path_with_uri_characters(analyzer: Path, root: Path) ->
                 "SELECT open_status FROM encrypted_db_inventory "
                 "WHERE package_name = 'com.socialchat.social_chat_app'"
             ).fetchone()
-        assert_true(status == ("parse_error",), f"unexpected corrupt DB status for {label}: {status}")
+        if label == "canonical-key":
+            assert_true(status in (("encrypted_locked",), ("encrypted_no_sqlcipher_build",)),
+                        f"canonical key did not reach encrypted classification: {status}")
+        else:
+            assert_true(status == ("parse_error",),
+                        f"unexpected corrupt DB status for {label}: {status}")
 
 
 def main() -> int:
