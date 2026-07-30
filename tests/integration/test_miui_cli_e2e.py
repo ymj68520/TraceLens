@@ -233,6 +233,43 @@ def verify_staged_sqlite_path_with_uri_characters(analyzer: Path, root: Path) ->
                 f"valid staged sqlite was not classified as plaintext: {note}")
 
 
+def verify_password_json_rejects_malformed_object_but_accepts_bare_password(
+    analyzer: Path, root: Path
+) -> None:
+    malformed_backup = create_corrupt_encrypted_backup(root / "malformed", '{"key":"!"}')
+    malformed_output = root / "malformed-out"
+    malformed_result = run([
+        str(analyzer), str(malformed_backup), "--android-analyze",
+        "--android-source", "miui-backup", "--db-dir", str(malformed_output),
+    ])
+    assert_true(malformed_result.returncode == 0,
+                f"malformed JSON run failed: {malformed_result.stdout}{malformed_result.stderr}")
+    with sqlite3.connect(malformed_output / "backup_files.db") as connection:
+        malformed_hint = connection.execute(
+            "SELECT key_hint_type, key_hint_value, open_status FROM encrypted_db_inventory "
+            "WHERE package_name = 'com.socialchat.social_chat_app'"
+        ).fetchone()
+    assert_true(malformed_hint == ("none_found", "", "parse_error"),
+                f"malformed JSON was accepted as a password hint: {malformed_hint}")
+
+    bare_backup = create_corrupt_encrypted_backup(root / "bare", "bare printable password")
+    bare_output = root / "bare-out"
+    bare_result = run([
+        str(analyzer), str(bare_backup), "--android-analyze",
+        "--android-source", "miui-backup", "--db-dir", str(bare_output),
+    ])
+    assert_true(bare_result.returncode == 0,
+                f"bare password run failed: {bare_result.stdout}{bare_result.stderr}")
+    with sqlite3.connect(bare_output / "backup_files.db") as connection:
+        bare_hint = connection.execute(
+            "SELECT key_hint_type, key_hint_value, open_status FROM encrypted_db_inventory "
+            "WHERE package_name = 'com.socialchat.social_chat_app'"
+        ).fetchone()
+    assert_true(bare_hint[0:2] == ("passphrase_raw", "bare printable password"),
+                f"bare printable password was not accepted: {bare_hint}")
+
+
+
 def verify_corrupt_sqlite_and_invalid_key_are_parse_errors(analyzer: Path, root: Path) -> None:
     for label, key_hint in (("canonical-key", '{"key":"' + "A" * 43 + '="}'),
                             ("invalid-key", '{"key":"!"}'),
@@ -269,6 +306,9 @@ def main() -> int:
         verify_secure_password_input(analyzer, root)
         verify_tmpdir_isolation(analyzer, root)
         verify_staged_sqlite_path_with_uri_characters(analyzer, root / "uri-characters")
+        verify_password_json_rejects_malformed_object_but_accepts_bare_password(
+            analyzer, root / "password-json"
+        )
         verify_corrupt_sqlite_and_invalid_key_are_parse_errors(analyzer, root)
         verify_malformed_input(analyzer)
     return 0
