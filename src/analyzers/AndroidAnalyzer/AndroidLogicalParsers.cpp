@@ -371,7 +371,7 @@ std::string AndroidAnalyzer::readPasswordJsonKey(const std::string& imageRelPath
     // Case 2: a bare secret (no JSON wrapper). Some apps write the raw
     // passphrase directly to password.json. Accept it if it is short and
     // printable (sanity guard against accidentally reading a binary blob).
-    if (!body.empty() && body.size() <= 256 &&
+    if (!body.empty() && body.front() != '{' && body.size() <= 256 &&
         std::all_of(body.begin(), body.end(), [](unsigned char c) { return c >= 0x20 && c < 0x7f; })) {
         outType = "passphrase_raw";
         return body;
