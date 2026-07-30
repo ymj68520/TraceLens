@@ -1,0 +1,191 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from pathlib import Path
+from typing import Any, Iterable
+
+from .models import AdapterWarning, ReportStatus, ScopeType
+from .search_index import SnapshotSearchIndex
+
+logger = logging.getLogger(__name__)
+
+
+class ForensicReportService:
+    """Coordinates durable report metadata with in-process generation handles."""
+
+    def __init__(
+        self,
+        repository: Any,
+        resolver: Any,
+        writer: Any,
+        adapters: Iterable[Any],
+    ):
+        self.repository = repository
+        self.resolver = resolver
+        self.writer = writer
+        self.adapters = list(adapters)
+        self._tasks: dict[str, asyncio.Task[None]] = {}
+
+    async def initialize(self) -> None:
+        await self.resume_unfinished()
+
+    async def shutdown(self) -> None:
+        pending = list(self._tasks.items())
+        for _, task in pending:
+            if not task.done():
+                task.cancel()
+        if pending:
+            await asyncio.gather(
+                *(task for _, task in pending), return_exceptions=True
+            )
+        for report_id, task in pending:
+            self._fail_if_unfinished(
+                report_id,
+                "shutdown",
+                "generation cancelled during service shutdown",
+            )
+            if self._tasks.get(report_id) is task:
+                self._tasks.pop(report_id, None)
+
+    async def resume_unfinished(self) -> None:
+        for version in self.repository.list_unfinished():
+            self._fail_if_unfinished(
+                version.report_id,
+                "service_restart",
+                "generation interrupted by service restart; create a new version",
+            )
+
+    async def start(self, scope_type: ScopeType, scope_id: str):
+        resolved = await self._resolve(scope_type, scope_id)
+        version = self.repository.create_version(
+            scope_type, scope_id, resolved.title, resolved.task_ids
+        )
+        task = asyncio.create_task(self._generate(version.report_id, resolved))
+        self._tasks[version.report_id] = task
+        task.add_done_callback(
+            lambda completed: self._discard_completed(version.report_id, completed)
+        )
+        return version
+
+    async def _resolve(self, scope_type: ScopeType, scope_id: str):
+        if scope_type is ScopeType.TASK:
+            return await self.resolver.resolve_task(scope_id)
+        return await self.resolver.resolve_case(scope_id)
+
+    async def _generate(self, report_id: str, resolved: Any) -> None:
+        stage = "snapshot"
+        try:
+            self.repository.mark_generating(report_id, stage)
+            version = self.repository.get(report_id)
+            if version is None:  # pragma: no cover - repository guarantees creation
+                raise KeyError(report_id)
+            final_dir = await asyncio.to_thread(
+                self.writer.write,
+                version=version,
+                title=resolved.title,
+                case_description=resolved.case_description,
+                evidence=resolved.evidence,
+                contexts=resolved.contexts,
+                adapters=self.adapters,
+                analysis=resolved.analysis,
+            )
+            manifest_path = self._assert_confined(Path(final_dir) / "manifest.json")
+            manifest = json.loads(manifest_path.read_text("utf-8"))
+            self.repository.mark_ready(
+                report_id,
+                str(manifest_path.relative_to(self._report_root())),
+                [
+                    AdapterWarning.model_validate(item)
+                    for item in manifest.get("warnings", [])
+                ],
+            )
+        except asyncio.CancelledError:
+            self._fail_if_unfinished(
+                report_id,
+                "shutdown",
+                "generation cancelled during service shutdown",
+            )
+            raise
+        except Exception as exc:
+            logger.exception("Report generation failed for %s", report_id)
+            self._fail_if_unfinished(report_id, stage, str(exc))
+
+    def _discard_completed(self, report_id: str, task: asyncio.Task[None]) -> None:
+        if self._tasks.get(report_id) is task:
+            self._tasks.pop(report_id, None)
+        try:
+            task.exception()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.exception("Report task failed unexpectedly: %s", report_id)
+
+    def _fail_if_unfinished(self, report_id: str, stage: str, error: str) -> None:
+        try:
+            self.repository.mark_failed(report_id, stage, error)
+        except (KeyError, ValueError):
+            # A concurrent terminal transition wins and must remain immutable.
+            pass
+
+    def get_status(self, report_id: str):
+        return self.repository.get(report_id)
+
+    def list_versions(self, scope_type: ScopeType, scope_id: str):
+        return self.repository.list_versions(scope_type, scope_id)
+
+    def _report_root(self) -> Path:
+        return Path(self.writer.report_root).resolve()
+
+    def _assert_confined(self, path: Path, root: Path | None = None) -> Path:
+        root = (root or self._report_root()).resolve()
+        try:
+            resolved = path.resolve()
+            resolved.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("report path must remain confined to report root") from exc
+        return resolved
+
+    def _ready_manifest_path(self, report_id: str) -> Path:
+        version = self.repository.get(report_id)
+        if version is None:
+            raise KeyError(report_id)
+        if version.status is not ReportStatus.READY:
+            raise RuntimeError(f"report is not ready: {version.status.value}")
+        if not version.manifest_path:
+            raise ValueError("ready report has no manifest path")
+        relative = Path(version.manifest_path)
+        if relative.is_absolute():
+            raise ValueError("report path must remain confined to report root")
+        return self._assert_confined(self._report_root() / relative)
+
+    def _ready_dir(self, report_id: str) -> Path:
+        return self._ready_manifest_path(report_id).parent
+
+    def get_manifest_path(self, report_id: str) -> Path:
+        return self._ready_manifest_path(report_id)
+
+    def get_page_path(self, report_id: str, category_id: str, page: int) -> Path:
+        manifest_path = self._ready_manifest_path(report_id)
+        manifest = json.loads(manifest_path.read_text("utf-8"))
+        category = next(
+            (
+                item
+                for item in manifest.get("categories", [])
+                if item.get("category_id") == category_id
+            ),
+            None,
+        )
+        if category is None or page < 1 or page > len(category.get("page_paths", [])):
+            raise KeyError(f"unknown category page: {category_id}/{page}")
+        relative = Path(category["page_paths"][page - 1])
+        if relative.is_absolute():
+            raise ValueError("report path must remain confined to report root")
+        return self._assert_confined(manifest_path.parent / relative, manifest_path.parent)
+
+    def search(self, report_id: str, query: str, offset: int, limit: int):
+        search_path = self._ready_dir(report_id) / "search.sqlite3"
+        if not search_path.is_file():
+            raise FileNotFoundError(f"report search index is missing: {search_path}")
+        return SnapshotSearchIndex(search_path).search(query, offset, limit)
