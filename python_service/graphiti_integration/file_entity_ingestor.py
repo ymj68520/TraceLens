@@ -10,6 +10,7 @@ import asyncio
 import hashlib
 import json
 import logging
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Optional
@@ -350,21 +351,71 @@ class FileEntityIngestor:
     async def attach_events_batch(
         self,
         events: list[tuple[str, EventRecord]],
+        batch_size: int = 5000,
     ) -> int:
         """
-        Attach multiple events to files in batch.
+        Attach multiple events to File entities using batched UNWIND queries.
+
+        Instead of issuing one MATCH+SET per event (O(N) round-trips), events
+        are grouped by file_path and attached with one UNWIND query per group.
+        A files-within-query cap of ``batch_size`` prevents a single Cypher
+        statement from growing unbounded when the task has hundreds of
+        thousands of events.
 
         Args:
             events: List of (file_path, EventRecord) tuples.
+            batch_size: Max number of distinct files per UNWIND query.
 
         Returns:
-            Number of events successfully attached.
+            Number of files that received at least one new event.
         """
-        attached = 0
+        if not events:
+            return 0
+
+        # Group events by file_path and serialize to dicts ready for UNWIND.
+        by_file: dict[str, list[dict]] = defaultdict(list)
+        seen: set[tuple[str, str, int]] = set()  # (file_path, type, timestamp) dedup
         for file_path, event in events:
-            if await self.attach_event_to_file(file_path, event):
-                attached += 1
-        return attached
+            key = (file_path, event.event_type, event.timestamp)
+            if key in seen:
+                continue
+            seen.add(key)
+            by_file[file_path].append({
+                "type": event.event_type,
+                "timestamp": datetime.fromtimestamp(event.timestamp).isoformat(),
+                "task_id": event.task_id,
+            })
+
+        if not by_file:
+            return 0
+
+        # Process in chunks of batch_size files to keep Cypher statements small.
+        file_items = list(by_file.items())
+        total_attached = 0
+        for chunk_start in range(0, len(file_items), batch_size):
+            chunk = file_items[chunk_start:chunk_start + batch_size]
+            rows = []
+            for file_path, evts in chunk:
+                path_hash = self._generate_path_hash(file_path)
+                for e in evts:
+                    rows.append({
+                        "file_id": path_hash,
+                        "event": json.dumps(e, ensure_ascii=False),
+                    })
+
+            query = """
+                UNWIND $rows AS row
+                MATCH (f:File {id: row.file_id})
+                WITH f, row.event AS evt
+                // Only append if this exact event JSON is not already present
+                WHERE NOT evt IN coalesce(f.events, [])
+                SET f.events = coalesce(f.events, []) + evt
+                RETURN count(DISTINCT f) AS attached
+            """
+            result = await self._run_query(query, {"rows": rows})
+            total_attached += result[0]["attached"] if result else 0
+
+        return total_attached
 
     async def link_episode_to_file(
         self,
