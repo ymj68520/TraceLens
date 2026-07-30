@@ -301,14 +301,48 @@ def test_windows_claim_fallback_rejects_live_and_recovers_dead_owner(
     tmp_path: Path, monkeypatch
 ):
     monkeypatch.setattr(snapshot_writer, "fcntl", None)
+    monkeypatch.setattr(snapshot_writer.os, "name", "nt")
     claim = snapshot_writer._ReportClaim(tmp_path, "r1")
     claim.path.parent.mkdir(parents=True)
-    claim.path.write_text(str(os.getpid()), "utf-8")
+    claim.path.write_text("101", "utf-8")
+    monkeypatch.setattr(snapshot_writer, "_windows_process_state", lambda pid: "alive")
 
     with pytest.raises(FileExistsError, match="generation already active"):
         with snapshot_writer._ReportClaim(tmp_path, "r1"):
             pass
 
-    claim.path.write_text("999999", "utf-8")
+    monkeypatch.setattr(snapshot_writer, "_windows_process_state", lambda pid: "dead")
     with snapshot_writer._ReportClaim(tmp_path, "r1"):
         assert claim.path.exists()
+
+
+def test_windows_claim_fallback_preserves_lock_when_owner_access_is_denied(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr(snapshot_writer, "fcntl", None)
+    monkeypatch.setattr(snapshot_writer.os, "name", "nt")
+    claim = snapshot_writer._ReportClaim(tmp_path, "r1")
+    claim.path.parent.mkdir(parents=True)
+    claim.path.write_text("101", "utf-8")
+    monkeypatch.setattr(
+        snapshot_writer, "_windows_process_state", lambda pid: "access_denied"
+    )
+
+    with pytest.raises(FileExistsError, match="generation already active"):
+        with snapshot_writer._ReportClaim(tmp_path, "r1"):
+            pass
+    assert claim.path.read_text("utf-8") == "101"
+
+
+def test_windows_process_state_uses_win32_result_contract(monkeypatch):
+    monkeypatch.setattr(snapshot_writer.os, "name", "nt")
+    monkeypatch.setattr(snapshot_writer, "_win32_process_exit_code", lambda pid: "alive")
+    assert snapshot_writer._process_state(101) == "alive"
+    monkeypatch.setattr(snapshot_writer, "_win32_process_exit_code", lambda pid: "dead")
+    assert snapshot_writer._process_state(101) == "dead"
+    monkeypatch.setattr(
+        snapshot_writer, "_win32_process_exit_code", lambda pid: "access_denied"
+    )
+    assert snapshot_writer._process_state(101) == "access_denied"
+    monkeypatch.setattr(snapshot_writer, "_win32_process_exit_code", lambda pid: "error")
+    assert snapshot_writer._process_state(101) == "error"

@@ -36,6 +36,62 @@ def _canonical_json(value: object) -> bytes:
     ).encode("utf-8")
 
 
+def _win32_process_exit_code(pid: int) -> str:
+    """Return a conservative Win32 owner state without importing Windows APIs elsewhere."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.GetExitCodeProcess.argtypes = (
+            wintypes.HANDLE,
+            ctypes.POINTER(wintypes.DWORD),
+        )
+        kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        process = kernel32.OpenProcess(0x1000, False, pid)
+        if not process:
+            error = ctypes.get_last_error()
+            if error == 5:  # ERROR_ACCESS_DENIED
+                return "access_denied"
+            if error == 87:  # ERROR_INVALID_PARAMETER: no such process
+                return "dead"
+            return "error"
+        try:
+            exit_code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(process, ctypes.byref(exit_code)):
+                return "error"
+            return "alive" if exit_code.value == 259 else "dead"  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(process)
+    except (AttributeError, OSError):
+        return "error"
+
+
+def _windows_process_state(pid: int) -> str:
+    return _win32_process_exit_code(pid)
+
+
+def _process_state(pid: int) -> str:
+    """Classify an owner as alive, dead, access_denied, or error."""
+    if pid <= 0:
+        return "dead"
+    if os.name == "nt":
+        return _windows_process_state(pid)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return "dead"
+    except PermissionError:
+        return "access_denied"
+    except OSError:
+        return "error"
+    return "alive"
+
+
 class _ReportClaim:
     """Process-safe exclusive claim released automatically after a worker dies."""
 
@@ -43,18 +99,6 @@ class _ReportClaim:
         self.path = report_root / ".locks" / f"{safe_segment(report_id)}.lock"
         self._lock_file = None
         self._fallback_claimed = False
-
-    @staticmethod
-    def _process_is_running(pid: int) -> bool:
-        if pid <= 0:
-            return False
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-        return True
 
     def _claim_fallback(self) -> None:
         """Claim with a PID sentinel when POSIX flock is unavailable."""
@@ -66,7 +110,7 @@ class _ReportClaim:
                     owner = int(self.path.read_text("utf-8").strip())
                 except (OSError, ValueError):
                     owner = 0
-                if self._process_is_running(owner):
+                if _process_state(owner) != "dead":
                     raise FileExistsError(
                         f"report generation already active: {self.path.stem}"
                     )
