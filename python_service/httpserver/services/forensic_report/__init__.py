@@ -1,0 +1,48 @@
+"""Shared protocol models and identifiers for forensic reports."""
+
+from .ids import safe_segment, stable_record_id
+from .models import (
+    AdapterContext,
+    AdapterWarning,
+    AnalysisReference,
+    CategoryIndex,
+    CategorySpec,
+    DataState,
+    EvidenceSource,
+    PageShard,
+    ProbeResult,
+    ReportAdapter,
+    ReportAttachment,
+    ReportManifest,
+    ReportRecord,
+    ReportStatus,
+    ReportVersion,
+    ScopeType,
+    SearchHit,
+    Severity,
+    SourceFingerprint,
+)
+
+__all__ = [
+    "AdapterContext",
+    "AdapterWarning",
+    "AnalysisReference",
+    "CategoryIndex",
+    "CategorySpec",
+    "DataState",
+    "EvidenceSource",
+    "PageShard",
+    "ProbeResult",
+    "ReportAdapter",
+    "ReportAttachment",
+    "ReportManifest",
+    "ReportRecord",
+    "ReportStatus",
+    "ReportVersion",
+    "ScopeType",
+    "SearchHit",
+    "Severity",
+    "SourceFingerprint",
+    "safe_segment",
+    "stable_record_id",
+]
