@@ -28,7 +28,7 @@ class ReportGenerator(ReportGeneratorHelpersMixin):
     (report_generator_parts/_helpers.py). Public surface unchanged.
     """
 
-    def __init__(self, settings: Settings, llm_service, graphiti_service):
+    def __init__(self, settings: Settings, llm_service, graphiti_service, cpp_backend=None):
         """
         Initialize ReportGenerator.
 
@@ -36,10 +36,12 @@ class ReportGenerator(ReportGeneratorHelpersMixin):
             settings: Application settings
             llm_service: LLM service for report generation
             graphiti_service: Knowledge graph service (optional)
+            cpp_backend: C++ backend service for fetching task metadata (optional)
         """
         self.settings = settings
         self._llm_service = llm_service
         self._graphiti_service = graphiti_service
+        self._cpp_backend = cpp_backend
 
     async def generate_final_report(
         self,
@@ -115,6 +117,17 @@ class ReportGenerator(ReportGeneratorHelpersMixin):
                         logger.info(f"Task {task_id}: No relevant evidence found in database.")
             except Exception as e:
                 logger.warning(f"Failed to aggregate evidence from database: {e}")
+
+        # If case_description is empty, try to fetch from C++ backend
+        if not case_description and task_id and self._cpp_backend:
+            try:
+                task_info = await self._cpp_backend.get_task(task_id)
+                if task_info:
+                    case_description = task_info.get("case_description", "") or ""
+                    if case_description:
+                        logger.info(f"Task {task_id}: Loaded case_description from C++ backend ({len(case_description)} chars)")
+            except Exception as e:
+                logger.warning(f"Failed to load case_description from C++ backend: {e}")
 
         # Gather Windows artifacts if available
         windows_section = ""
@@ -227,9 +240,8 @@ class ReportGenerator(ReportGeneratorHelpersMixin):
         # [Option A] LIGHTWEIGHT CHECKLIST:
         # Since full descriptions are already in the Knowledge Graph, we only need to provide
         # a checklist of file paths to ensure the LLM includes them in the final report.
-        evidence_list_str = "本案关键证据文件清单（细节请参考下文【知识图谱背景】）：\n"
+        evidence_list_str = "本案关键证据文件清单：\n"
         if file_descriptions:
-            # Only list the file paths to save thousands of tokens
             for d in file_descriptions:
                 evidence_list_str += f"- [[file:{d['file_path']}]]\n"
         else:
@@ -270,8 +282,12 @@ class ReportGenerator(ReportGeneratorHelpersMixin):
         logger.info(f"Graphiti search will query {len(search_task_ids)} task graphs: {search_task_ids}")
 
         for chapter in chapters:
+            chapter_title = chapter["title"]
+            # Build chapter-specific context with file descriptions as fallback
+            chapter_context = evidence_list_str
+
             # Special handling for timeline chapter: prioritize event clusters
-            if chapter["title"] == "时间线梳理":
+            if chapter_title == "时间线梳理":
                 # Use expanded query specifically for event clusters
                 enhanced_query = chapter["query"] + " 事件簇 时间窗口 cluster event_type"
 
@@ -320,7 +336,40 @@ class ReportGenerator(ReportGeneratorHelpersMixin):
                     truncated_body = body[:content_limit] + "..." if len(body) > content_limit else body
                     context_lines.append(f"- {truncated_body}")
 
-            kg_context = "\n".join(context_lines) if context_lines else "无相关图谱信息。"
+            kg_context = "\n".join(context_lines) if context_lines else ""
+
+            # Per-chapter fallback: when graph search returns nothing, selectively
+            # include file descriptions only for chapters that need them most.
+            # This avoids token bloat while ensuring all chapters have content.
+            if not kg_context and file_descriptions:
+                if chapter_title in ("案件概述", "时间线梳理", "证据分析"):
+                    # These chapters need descriptive content — provide truncated
+                    # file descriptions as context. Cap at 250 chars per file
+                    # to keep total tokens manageable across all 5 LLM calls.
+                    desc_lines = []
+                    for d in file_descriptions:
+                        desc = d.get("description", "")
+                        if desc:
+                            truncated = desc[:250] + "..." if len(desc) > 250 else desc
+                            desc_lines.append(f"- [[file:{d['file_path']}]] {truncated}")
+                    if desc_lines:
+                        kg_context = "【证据文件详细分析内容】\n" + "\n".join(desc_lines)
+                        logger.info(f"Chapter '{chapter_title}': No graph results, using {len(desc_lines)} file descriptions as context")
+                elif chapter_title in ("关键发现", "结论与建议"):
+                    # For synthesis chapters, include brief file summaries only
+                    desc_lines = []
+                    for d in file_descriptions[:15]:  # Cap at 15 files
+                        desc = d.get("description", "")
+                        if desc:
+                            # Extract first sentence only for brief context
+                            first_sentence = desc.split('。')[0] + '。'
+                            desc_lines.append(f"- [[file:{d['file_path']}]] {first_sentence}")
+                    if desc_lines:
+                        kg_context = "【证据文件简要摘要】\n" + "\n".join(desc_lines)
+                        logger.info(f"Chapter '{chapter_title}': No graph results, using {len(desc_lines)} brief file summaries as context")
+
+            if not kg_context:
+                kg_context = "无相关图谱信息。"
 
             # CONSOLIDATED PROMPT: Dramatically reduced size but high information density
             combined_context = f"【核心证据清单】\n{evidence_list_str}\n\n【图谱研判背景】\n{kg_context}"
@@ -345,6 +394,30 @@ class ReportGenerator(ReportGeneratorHelpersMixin):
                     max_tokens=self.settings.llm_text_max_tokens,
                 )
                 chapter_text = result.get("analysis", {}).get("description", "")
+
+                # Retry once with stronger instruction if the LLM returned empty content
+                if not chapter_text or not chapter_text.strip():
+                    logger.warning(f"Chapter '{chapter['title']}' returned empty content, retrying with stronger instruction")
+                    retry_prompt = REPORT_CHAPTER_TEMPLATE.format(
+                        chapter_title=chapter["title"],
+                        case_description=case_description,
+                        context=combined_context,
+                        chapter_instruction=chapter["instruction"] +
+                        "\n\n强制要求：你必须撰写该章节的内容，至少3-5段。"
+                        "基于提供的证据文件分析和图谱信息进行撰写。"
+                        "每个文件引用必须使用 [[file:完整文件路径]] 格式。"
+                        "绝对不能返回空内容或仅写'无相关信息'。",
+                    )
+                    try:
+                        retry_result = await self._llm_service.analyze(
+                            content=retry_prompt,
+                            model_type="text",
+                            prompt=retry_prompt,
+                            max_tokens=self.settings.llm_text_max_tokens,
+                        )
+                        chapter_text = retry_result.get("analysis", {}).get("description", "")
+                    except Exception as retry_e:
+                        logger.warning(f"Retry for chapter '{chapter['title']}' also failed: {retry_e}")
             except Exception as e:
                 logger.warning(f"Failed to generate chapter '{chapter['title']}': {e}")
                 chapter_text = f"（该章节生成失败：{e}）"
