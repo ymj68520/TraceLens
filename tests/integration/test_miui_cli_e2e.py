@@ -88,6 +88,41 @@ def verify_miui_route(analyzer: Path, root: Path) -> None:
     )
 
 
+def verify_duplicate_backup_is_failure_only(analyzer: Path, root: Path) -> None:
+    backup = root / "backup"
+    backup.mkdir(parents=True)
+    payload = BytesIO()
+    with tarfile.open(fileobj=payload, mode="w", format=tarfile.USTAR_FORMAT) as archive:
+        data = b"not-a-sqlite-db"
+        info = tarfile.TarInfo("apps/com.first/db/x.db")
+        info.size = len(data)
+        archive.addfile(info, BytesIO(data))
+    (backup / "shared.bak").write_bytes(b"ANDROID BACKUP\n5\n0\nnone\n" + payload.getvalue())
+    (backup / "descript.xml").write_text(
+        "<MIUI-backup><packages>"
+        "<package><packageName>com.first</packageName><bakFile>shared.bak</bakFile></package>"
+        "<package><packageName>com.second</packageName><bakFile>shared.bak</bakFile></package>"
+        "</packages></MIUI-backup>", encoding="utf-8")
+
+    output = root / "out"
+    result = run([str(analyzer), str(backup), "--android-analyze",
+                  "--android-source", "miui-backup", "--db-dir", str(output)])
+    assert_true(result.returncode == 0, f"duplicate backup run failed: {result.stdout}{result.stderr}")
+    with sqlite3.connect(output / "backup_files.db") as connection:
+        installed = connection.execute(
+            "SELECT package_name FROM installed_apps ORDER BY package_name"
+        ).fetchall()
+        inventory = connection.execute(
+            "SELECT package_name, db_path, open_status FROM app_db_inventory ORDER BY id"
+        ).fetchall()
+
+    assert_true(installed == [("com.first",)], f"duplicate installed-app rows: {installed}")
+    assert_true(
+        inventory == [("com.second", "shared.bak", "parse_error"),
+                      ("com.first", "apps/com.first/db/x.db", "parse_error")],
+        f"duplicate backup inventory attribution: {inventory}")
+
+
 def verify_malformed_input(analyzer: Path) -> None:
     secret = "TASK8_MALFORMED_SECRET"
     result = run([
@@ -161,9 +196,46 @@ def create_corrupt_encrypted_backup(root: Path, key_hint: str) -> Path:
     return backup
 
 
-def verify_corrupt_sqlite_and_invalid_key_are_parse_errors(analyzer: Path, root: Path) -> None:
+def verify_staged_sqlite_path_with_uri_characters(analyzer: Path, root: Path) -> None:
+    backup = root / "backup"
+    backup.mkdir(parents=True)
+    source_db = root / "note-source.db"
+    with sqlite3.connect(source_db) as connection:
+        connection.execute("CREATE TABLE notes(id INTEGER PRIMARY KEY, title TEXT, content TEXT)")
+        connection.execute("INSERT INTO notes(title, content) VALUES('uri-safe', 'staged sqlite')")
+    payload = BytesIO()
+    with tarfile.open(fileobj=payload, mode="w", format=tarfile.USTAR_FORMAT) as archive:
+        data = source_db.read_bytes()
+        info = tarfile.TarInfo("apps/com.miui.notes/db/note.db")
+        info.size = len(data)
+        archive.addfile(info, BytesIO(data))
+    (backup / "Notes.bak").write_bytes(b"ANDROID BACKUP\n5\n0\nnone\n" + payload.getvalue())
+    (backup / "descript.xml").write_text(
+        "<MIUI-backup><packages><package>"
+        "<packageName>com.miui.notes</packageName><bakFile>Notes.bak</bakFile>"
+        "</package></packages></MIUI-backup>", encoding="utf-8")
+
+    temp_root = root / "staging#?%"
+    temp_root.mkdir()
+    output = root / "out"
+    environment = os.environ.copy()
+    environment["TMPDIR"] = str(temp_root)
+    result = subprocess.run([
+        str(analyzer), str(backup), "--android-analyze", "--android-source", "miui-backup",
+        "--db-dir", str(output),
+    ], capture_output=True, text=True, check=False, env=environment)
+    assert_true(result.returncode == 0, f"URI-character staging run failed: {result.stdout}{result.stderr}")
+    with sqlite3.connect(output / "backup_files.db") as connection:
+        note = connection.execute(
+            "SELECT title, content FROM app_notes WHERE package_name = 'com.miui.notes'"
+        ).fetchone()
+    assert_true(note == ("uri-safe", "staged sqlite"),
+                f"valid staged sqlite was not classified as plaintext: {note}")
+
+
     for label, key_hint in (("magic", '{"key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}'),
-                            ("invalid-key", '{"key":"!"}')):
+                            ("invalid-key", '{"key":"!"}'),
+                            ("noncanonical-padding", '{"key":"' + "A" * 42 + 'B="}')):
         backup = create_corrupt_encrypted_backup(root / label, key_hint)
         output = root / f"{label}-out"
         result = run([str(analyzer), str(backup), "--android-analyze",
@@ -187,8 +259,10 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="tracelens_miui_cli_") as temp:
         root = Path(temp)
         verify_miui_route(analyzer, root)
+        verify_duplicate_backup_is_failure_only(analyzer, root / "duplicate")
         verify_secure_password_input(analyzer, root)
         verify_tmpdir_isolation(analyzer, root)
+        verify_staged_sqlite_path_with_uri_characters(analyzer, root / "uri-characters")
         verify_corrupt_sqlite_and_invalid_key_are_parse_errors(analyzer, root)
         verify_malformed_input(analyzer)
     return 0
