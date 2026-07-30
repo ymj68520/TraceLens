@@ -88,7 +88,12 @@ class ReportRecord(BaseModel):
     @field_validator("record_id")
     @classmethod
     def validate_record_id(cls, value: str) -> str:
-        if not value.startswith("rec_") or len(value) != 68:
+        digest = value[4:]
+        if (
+            not value.startswith("rec_")
+            or len(digest) != 64
+            or any(character not in "0123456789abcdefABCDEF" for character in digest)
+        ):
             raise ValueError("record_id must be rec_ followed by a SHA-256 hex digest")
         return value
 
