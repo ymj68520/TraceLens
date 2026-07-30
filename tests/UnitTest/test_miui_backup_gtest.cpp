@@ -338,6 +338,10 @@ TEST(MiuiPathMapTest, ReturnsEmptyForUnmappable) {
 TEST(MiuiPathMapTest, InverseRoundTrip) {
     EXPECT_EQ(tarMemberToAnalyzerPath("apps/com.foo/db/x.db"), "data/data/com.foo/databases/x.db");
 }
+TEST(MiuiPathMapTest, InverseMapsNestedFlutterFiles) {
+    EXPECT_EQ(tarMemberToAnalyzerPath("apps/com.socialchat.social_chat_app/f/app_flutter/files/password.json"),
+              "data/data/com.socialchat.social_chat_app/app_flutter/files/password.json");
+}
 
 TEST(MiuiManifestTest, ParsesPackagesAndDevice) {
     fs::path dir = fs::temp_directory_path() / "miui_manifest_test";
