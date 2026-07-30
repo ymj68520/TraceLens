@@ -34,6 +34,14 @@ class ForensicReportService:
         self._shutdown_task: asyncio.Task[None] | None = None
 
     async def initialize(self) -> None:
+        async with self._lifecycle_lock:
+            shutdown_task = self._shutdown_task
+        if shutdown_task is not None:
+            await asyncio.shield(shutdown_task)
+            async with self._lifecycle_lock:
+                if self._shutdown_task is shutdown_task:
+                    self._shutdown_task = None
+                    self._accepting_starts = True
         await self.resume_unfinished()
 
     async def shutdown(self) -> None:

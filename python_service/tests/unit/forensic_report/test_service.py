@@ -82,6 +82,19 @@ async def test_initialize_fails_interrupted_versions_with_restart_reason(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_initialize_reopens_starts_after_a_completed_shutdown(tmp_path: Path):
+    resolver = AsyncMock()
+    resolver.resolve_task.return_value = _resolved_task()
+    service = _service(tmp_path, resolver)
+
+    await service.shutdown()
+    await service.initialize()
+    version = await service.start(ScopeType.TASK, "task-1")
+
+    assert (await _wait_for_terminal(service, version.report_id)).status is ReportStatus.READY
+
+
+@pytest.mark.asyncio
 async def test_shutdown_waits_for_blocking_snapshot_worker(tmp_path: Path):
     started = threading.Event()
     release = threading.Event()

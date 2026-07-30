@@ -123,6 +123,7 @@ class ServiceManager:
 
         if self._forensic_report_service:
             await self._forensic_report_service.shutdown()
+            self._forensic_report_service = None
 
         if self._cpp_backend:
             await self._cpp_backend.shutdown()
