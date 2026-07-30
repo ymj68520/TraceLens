@@ -103,22 +103,42 @@ class ReportRepository:
         if row["status"] in (ReportStatus.READY.value, ReportStatus.FAILED.value):
             raise ValueError("published report version is immutable")
 
+    @staticmethod
+    def _mutable_status_params(report_id: str) -> tuple[str, str, str]:
+        return (report_id, ReportStatus.READY.value, ReportStatus.FAILED.value)
+
+    @staticmethod
+    def _assert_updated(cursor: sqlite3.Cursor) -> None:
+        if cursor.rowcount == 0:
+            raise ValueError("published report version is immutable")
+
     def mark_generating(self, report_id: str, stage: str) -> None:
         with self._connect() as conn:
             self._assert_mutable(conn, report_id)
-            conn.execute(
+            cursor = conn.execute(
                 "UPDATE report_versions SET status = ?, stage = ?, progress = 1 "
-                "WHERE report_id = ?",
-                (ReportStatus.GENERATING.value, stage, report_id),
+                "WHERE report_id = ? AND status NOT IN (?, ?)",
+                (
+                    ReportStatus.GENERATING.value,
+                    stage,
+                    *self._mutable_status_params(report_id),
+                ),
             )
+            self._assert_updated(cursor)
 
     def update_progress(self, report_id: str, stage: str, progress: int) -> None:
         with self._connect() as conn:
             self._assert_mutable(conn, report_id)
-            conn.execute(
-                "UPDATE report_versions SET stage = ?, progress = ? WHERE report_id = ?",
-                (stage, max(0, min(progress, 99)), report_id),
+            cursor = conn.execute(
+                "UPDATE report_versions SET stage = ?, progress = ? "
+                "WHERE report_id = ? AND status NOT IN (?, ?)",
+                (
+                    stage,
+                    max(0, min(progress, 99)),
+                    *self._mutable_status_params(report_id),
+                ),
             )
+            self._assert_updated(cursor)
 
     def mark_ready(
         self, report_id: str, manifest_path: str, warnings: list[AdapterWarning]
@@ -126,28 +146,35 @@ class ReportRepository:
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             self._assert_mutable(conn, report_id)
-            conn.execute(
+            cursor = conn.execute(
                 """UPDATE report_versions
                    SET status = ?, stage = 'ready', progress = 100,
                        generated_at = ?, manifest_path = ?, warnings_json = ?
-                   WHERE report_id = ?""",
+                   WHERE report_id = ? AND status NOT IN (?, ?)""",
                 (
                     ReportStatus.READY.value,
                     now,
                     manifest_path,
                     json.dumps([warning.model_dump(mode="json") for warning in warnings]),
-                    report_id,
+                    *self._mutable_status_params(report_id),
                 ),
             )
+            self._assert_updated(cursor)
 
     def mark_failed(self, report_id: str, stage: str, error: str) -> None:
         with self._connect() as conn:
             self._assert_mutable(conn, report_id)
-            conn.execute(
+            cursor = conn.execute(
                 "UPDATE report_versions SET status = ?, stage = ?, error = ? "
-                "WHERE report_id = ?",
-                (ReportStatus.FAILED.value, stage, error, report_id),
+                "WHERE report_id = ? AND status NOT IN (?, ?)",
+                (
+                    ReportStatus.FAILED.value,
+                    stage,
+                    error,
+                    *self._mutable_status_params(report_id),
+                ),
             )
+            self._assert_updated(cursor)
 
     def get(self, report_id: str) -> ReportVersion | None:
         with self._connect() as conn:
