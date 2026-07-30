@@ -47,6 +47,7 @@ inline std::string tarMemberToAnalyzerPath(const std::string& memberName) {
     std::string tail = rest.substr(s1 + 1);
     std::string sub;
     if (tail.rfind("db/", 0) == 0)       sub = "databases/" + tail.substr(3);
+    else if (tail.rfind("f/app_flutter/files/", 0) == 0) sub = tail.substr(2);
     else if (tail.rfind("f/", 0) == 0)    sub = "files/" + tail.substr(2);
     else if (tail.rfind("sp/", 0) == 0)   sub = "shared_prefs/" + tail.substr(3);
     else return "";
