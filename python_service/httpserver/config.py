@@ -193,7 +193,14 @@ class Settings(BaseSettings):
     # Database Settings
     db_output_dir: str = Field(default="./output", alias="DB_OUTPUT_DIR")
     db_name: str = Field(default="forensics.db", alias="DB_NAME")
-    
+
+    report_output_dir: str = Field(
+        default="build/data/reports", alias="FORENSIC_REPORT_DIR"
+    )
+    report_generator_version: str = Field(
+        default="1.0.0", alias="FORENSIC_REPORT_GENERATOR_VERSION"
+    )
+
     # File Analysis Settings
     file_analysis_max_content: int = Field(default=10000, alias="FILE_ANALYSIS_MAX_CONTENT")
     file_analysis_max_keywords: int = Field(default=10, alias="FILE_ANALYSIS_MAX_KEYWORDS")

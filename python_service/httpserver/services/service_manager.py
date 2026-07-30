@@ -45,6 +45,7 @@ class ServiceManager:
         self._llm_service: Optional["LLMService"] = None
         self._ingestion_job_manager: Optional["IngestionJobManager"] = None
         self._migration_manager: Optional["MigrationManager"] = None
+        self._forensic_report_service = None
         self._initialized = False
     
     async def initialize(self):
@@ -61,7 +62,13 @@ class ServiceManager:
             await self._cpp_backend.initialize()
         except Exception as e:
             logger.warning(f"C++ backend service initialization failed: {e}")
-        
+
+        # Recover durable report records after the C++ backend is available.
+        try:
+            await self.forensic_report_service.initialize()
+        except Exception as e:
+            logger.warning(f"ForensicReportService initialization failed: {e}")
+
         # Initialize Graphiti service
         try:
             from .graphiti_service import GraphitiService
@@ -113,7 +120,10 @@ class ServiceManager:
     async def shutdown(self):
         """Shutdown all services gracefully."""
         logger.info("Shutting down services...")
-        
+
+        if self._forensic_report_service:
+            await self._forensic_report_service.shutdown()
+
         if self._cpp_backend:
             await self._cpp_backend.shutdown()
         
@@ -140,6 +150,32 @@ class ServiceManager:
             self._cpp_backend = CppBackendService(self.settings)
         return self._cpp_backend
     
+    @property
+    def forensic_report_service(self):
+        """Get the durable forensic report generation service."""
+        if self._forensic_report_service is None:
+            from pathlib import Path
+
+            from .forensic_report.repository import ReportRepository
+            from .forensic_report.service import ForensicReportService
+            from .forensic_report.snapshot_writer import SnapshotWriter
+            from .forensic_report.source_resolver import SourceResolver
+
+            root = Path(self.settings.report_output_dir)
+            if not root.is_absolute():
+                from ..config import get_project_root
+
+                root = get_project_root() / root
+            self._forensic_report_service = ForensicReportService(
+                repository=ReportRepository(root / "reports.db"),
+                resolver=SourceResolver(self.cpp_backend),
+                writer=SnapshotWriter(
+                    root / "snapshots", self.settings.report_generator_version
+                ),
+                adapters=[],
+            )
+        return self._forensic_report_service
+
     @property
     def graphiti_service(self) -> "GraphitiService":
         """Get the Graphiti service."""
