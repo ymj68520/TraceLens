@@ -13,7 +13,7 @@ const TaskSelector = () => {
 
     const currentTaskId = searchParams.get('taskId') || searchParams.get('task_id') || currentTask?.id;
 
-    const relevantPaths = ['/timeline', '/files', '/statistics', '/llm-descriptions', '/android', '/oss', '/case-report', '/knowledge-graph'];
+    const relevantPaths = ['/timeline', '/files', '/statistics', '/llm-descriptions', '/android', '/oss', '/case-intelligence', '/case-report', '/knowledge-graph'];
     const isRelevantPage = relevantPaths.some(path => location.pathname.startsWith(path));
 
     useEffect(() => {
@@ -30,7 +30,7 @@ const TaskSelector = () => {
                 dispatch(setCurrentTask(task));
             }
         } else if (!urlTaskId && currentTask && isRelevantPage) {
-            const paramName = location.pathname.startsWith('/case-report') ? 'taskId' : 'task_id';
+            const paramName = location.pathname.startsWith('/case-intelligence') ? 'taskId' : 'task_id';
             setSearchParams({ ...Object.fromEntries(searchParams), [paramName]: currentTask.id });
         }
     }, [searchParams, tasks, dispatch, currentTask, isRelevantPage, setSearchParams, location.pathname]);

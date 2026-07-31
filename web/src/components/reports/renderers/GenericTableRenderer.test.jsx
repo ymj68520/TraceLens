@@ -1,7 +1,22 @@
 import { screen } from '@testing-library/react';
 import { renderWithRouter } from '../../../test/renderWithRouter';
 import GenericTableRenderer from './GenericTableRenderer';
+import KeyValueRenderer from './KeyValueRenderer';
+import { getReportRenderer } from './registry';
 
+test.each([
+  ['generic table fallback', getReportRenderer('unknown-renderer')],
+  ['key-value renderer', KeyValueRenderer],
+])('renders the raw top-level timestamp verbatim in the %s', (_, Renderer) => {
+  const timestamp = '2026-07-30T09:08:07.654321+08:00 [device-clock]';
+  renderWithRouter(<Renderer records={[{
+    record_id: 'timestamp-record', title: 'Timestamp artifact', timestamp,
+    data_state: 'existing', severity: 'info', is_relevant: false,
+    fields: {}, hashes: {}, attachments: [], analysis_references: [],
+  }]} />);
+
+  expect(screen.getByText(timestamp)).toBeInTheDocument();
+});
 test('shows full sensitive text and uniform forensic badges', () => {
   renderWithRouter(<GenericTableRenderer records={[{
     record_id: 'rec_1', title: 'WiFi', data_state: 'deleted', severity: 'high',

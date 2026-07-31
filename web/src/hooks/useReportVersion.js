@@ -390,13 +390,20 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
     return create;
   }, [beginIntent, beginOperation, commitSelection, commitVersions, endOperation, schedulePoll, scopeId, scopeType, updateCreatedOverlay]);
 
+  const currentScopeKey = `${scopeType}:${scopeId}`;
+  const stateOwnsCurrentScope = scopeRef.current === currentScopeKey;
+  const visibleVersions = stateOwnsCurrentScope ? versions : [];
+  const visibleSelectedVersion = stateOwnsCurrentScope ? selectedVersion : null;
+  const visibleManifest = stateOwnsCurrentScope ? manifest : null;
+  const visibleError = stateOwnsCurrentScope ? error : null;
+
   return {
-    versions,
-    selectedVersion,
-    manifest,
-    loading,
-    error,
-    generating: versions.find(isGenerating) || null,
+    versions: visibleVersions,
+    selectedVersion: visibleSelectedVersion,
+    manifest: visibleManifest,
+    loading: stateOwnsCurrentScope ? loading : true,
+    error: visibleError,
+    generating: visibleVersions.find(isGenerating) || null,
     selectVersion,
     createVersion,
     refresh,

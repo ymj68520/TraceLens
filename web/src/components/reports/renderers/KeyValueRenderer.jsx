@@ -12,6 +12,7 @@ export default function KeyValueRenderer({ records = [] }) {
       {records.map((record, index) => {
         const title = record?.title || record?.record_id || `记录 ${index + 1}`;
         const properties = [
+          ['timestamp', record?.timestamp],
           ...Object.entries(record?.fields || {}),
           ['source_path', record?.source_path],
           ['source_table', record?.source_table],

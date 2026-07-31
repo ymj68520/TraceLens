@@ -12,6 +12,7 @@ import Search from './pages/Search';
 import Statistics from './pages/Statistics';
 import Settings from './pages/Settings';
 import KnowledgeGraph from './pages/KnowledgeGraph';
+import CaseIntelligence from './pages/CaseIntelligence';
 import ForensicReportPage from './pages/ForensicReportPage';
 import LegacyReportRedirect from './pages/LegacyReportRedirect';
 import OSS from './pages/OSS';
@@ -21,7 +22,7 @@ import Distributed from './pages/Distributed';
 
 const WeChatGraph = React.lazy(() => import('./pages/WeChatGraph/WeChatGraph'));
 
-const router = createBrowserRouter([
+export const appRoutes = [
   {
     path: '/login',
     element: <Login />,
@@ -91,6 +92,10 @@ const router = createBrowserRouter([
         element: <KnowledgeGraph />,
       },
       {
+        path: 'case-intelligence',
+        element: <CaseIntelligence />,
+      },
+      {
         path: 'reports/task/:taskId',
         element: <ForensicReportPage scopeType="task" />,
       },
@@ -112,5 +117,7 @@ const router = createBrowserRouter([
       },
     ],
   },
-]);
+];
+
+const router = createBrowserRouter(appRoutes);
 export default router;

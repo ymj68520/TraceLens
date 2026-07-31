@@ -8,6 +8,7 @@ function displayValue(value) {
 
 function sourceMetadata(record) {
   return [
+    ['时间戳', record?.timestamp],
     ['路径', record?.source_path],
     ['表', record?.source_table],
     ['记录 ID', record?.source_record_id],
