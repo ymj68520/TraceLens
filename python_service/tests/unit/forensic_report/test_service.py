@@ -311,7 +311,50 @@ async def test_original_writer_error_is_logged_when_failure_transition_breaks(
 
 
 
-def test_report_resource_paths_reject_cross_report_symlinks_and_invalid_search_indexes(tmp_path: Path):
+def test_ready_manifest_paths_match_current_writer_layout_and_reject_unrelated_legacy_parent(
+    tmp_path: Path,
+):
+    service = _service(tmp_path)
+    version = service.repository.create_version(
+        ScopeType.TASK, "task-1", "Task", []
+    )
+    writer_dir = (
+        service.writer.report_root
+        / version.scope_type.value
+        / safe_segment(version.scope_id)
+        / version.report_id
+    )
+    writer_dir.mkdir(parents=True)
+    manifest = writer_dir / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    service.repository.mark_ready(
+        version.report_id,
+        str(manifest.relative_to(service.writer.report_root)),
+        [],
+    )
+
+    assert service.get_manifest_path(version.report_id) == manifest.resolve()
+
+    unrelated_version = service.repository.create_version(
+        ScopeType.TASK, "task-2", "Task", []
+    )
+    unrelated = service.writer.report_root / "unrelated" / unrelated_version.report_id
+    unrelated.mkdir(parents=True)
+    unrelated_manifest = unrelated / "manifest.json"
+    unrelated_manifest.write_text("{}", encoding="utf-8")
+    service.repository.mark_ready(
+        unrelated_version.report_id,
+        str(unrelated_manifest.relative_to(service.writer.report_root)),
+        [],
+    )
+
+    with pytest.raises(ValueError, match="confined"):
+        service.get_manifest_path(unrelated_version.report_id)
+
+
+def test_report_resource_paths_reject_cross_report_symlinks_and_invalid_search_indexes(
+    tmp_path: Path,
+):
     service = _service(tmp_path)
     first = service.repository.create_version(ScopeType.TASK, "task-1", "One", [])
     second = service.repository.create_version(ScopeType.TASK, "task-2", "Two", [])

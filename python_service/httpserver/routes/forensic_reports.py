@@ -11,6 +11,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from ..services import get_service_manager
+from ..services.forensic_report.service import ReportServiceUnavailable
 from ..services.forensic_report.models import ReportVersion, ScopeType
 
 router = APIRouter()
@@ -57,16 +58,33 @@ def _search_integrity_error() -> HTTPException:
     return HTTPException(status_code=500, detail=_SEARCH_INTEGRITY_DETAIL)
 
 
+def _reject_nonstandard_json_constant(value: str) -> None:
+    raise ValueError(f"non-standard JSON constant: {value}")
+
+
 def _file_response(loader: Any, *args: Any) -> Response:
     try:
         path = Path(loader(*args))
-        payload = path.read_bytes()
-        json.loads(payload.decode("utf-8"))
     except KeyError as exc:
         raise _not_found() from exc
     except RuntimeError as exc:
         raise _not_ready() from exc
-    except (ValueError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (TypeError, ValueError, OSError) as exc:
+        raise _resource_integrity_error() from exc
+
+    try:
+        payload = path.read_bytes()
+        json.loads(
+            payload.decode("utf-8"),
+            parse_constant=_reject_nonstandard_json_constant,
+        )
+    except (
+        RecursionError,
+        ValueError,
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    ) as exc:
         raise _resource_integrity_error() from exc
     return Response(content=payload, media_type="application/json")
 
@@ -89,6 +107,10 @@ async def create_report(
 ) -> ReportVersion:
     try:
         return await service.start(request.scope_type, request.scope_id)
+    except ReportServiceUnavailable as exc:
+        raise HTTPException(
+            status_code=503, detail="report service is unavailable"
+        ) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="report scope not found") from exc
     except NotImplementedError as exc:
