@@ -277,10 +277,19 @@ class ServiceManager:
         self._migration_manager = None
         self._cpp_backend_ready = False
         self._forensic_report_ready = False
-    
+
+    def _require_service_access(self) -> None:
+        if self._lifecycle_state == "initializing":
+            raise RuntimeError("ServiceManager is initializing")
+        if self._lifecycle_state == "shutting_down":
+            raise RuntimeError("ServiceManager is shutting down")
+        if self._lifecycle_state == "stopped":
+            raise RuntimeError("ServiceManager is not initialized")
+
     @property
     def cpp_backend(self) -> "CppBackendService":
         """Get the C++ backend service."""
+        self._require_service_access()
         if self._cpp_backend is None:
             from .cpp_backend import CppBackendService
             self._cpp_backend = CppBackendService(self.settings)
@@ -313,12 +322,7 @@ class ServiceManager:
     @property
     def forensic_report_service(self):
         """Get the ready durable forensic report generation service."""
-        if self._lifecycle_state == "initializing":
-            raise RuntimeError("ServiceManager is initializing")
-        if self._lifecycle_state == "shutting_down":
-            raise RuntimeError("ServiceManager is shutting down")
-        if self._lifecycle_state == "stopped":
-            raise RuntimeError("ServiceManager is not initialized")
+        self._require_service_access()
         if self._forensic_report_service is None:
             if self._lifecycle_state != "new":
                 raise RuntimeError("Forensic report service is unavailable")
@@ -331,14 +335,16 @@ class ServiceManager:
     @property
     def graphiti_service(self) -> "GraphitiService":
         """Get the Graphiti service."""
+        self._require_service_access()
         if self._graphiti_service is None:
             from .graphiti_service import GraphitiService
             self._graphiti_service = GraphitiService(self.settings)
         return self._graphiti_service
-    
+
     @property
     def llm_service(self) -> "LLMService":
         """Get the LLM service."""
+        self._require_service_access()
         if self._llm_service is None:
             from .llm_service import LLMService
             self._llm_service = LLMService(self.settings)
@@ -347,11 +353,13 @@ class ServiceManager:
     @property
     def ingestion_job_manager(self) -> Optional["IngestionJobManager"]:
         """Get the IngestionJobManager service."""
+        self._require_service_access()
         return self._ingestion_job_manager
 
     @property
     def migration_manager(self) -> Optional["MigrationManager"]:
         """Get the MigrationManager service."""
+        self._require_service_access()
         return self._migration_manager
 
     async def health_check(self) -> dict:

@@ -118,6 +118,110 @@ def _patched_services(
         )
 
 
+_SERVICE_PROPERTIES = (
+    "cpp_backend",
+    "graphiti_service",
+    "llm_service",
+    "ingestion_job_manager",
+    "migration_manager",
+    "forensic_report_service",
+)
+
+
+@pytest.mark.asyncio
+async def test_all_service_properties_reject_after_shutdown_cleanup_plan_snapshot(
+    tmp_path: Path,
+):
+    settings = Settings(FORENSIC_REPORT_DIR=str(tmp_path / "reports"))
+    manager = ServiceManager(settings)
+    events: list[str] = []
+    release_report_shutdown = asyncio.Event()
+    report = LifecycleService(
+        "report", events, shutdown_gate=release_report_shutdown
+    )
+    manager._forensic_report_service = report
+    manager._forensic_report_ready = True
+    manager._initialized = True
+    manager._lifecycle_state = "running"
+
+    with (
+        patch("httpserver.services.cpp_backend.httpx.AsyncClient") as client_type,
+        patch("httpserver.services.graphiti_service.GraphitiService") as graphiti_type,
+        patch("httpserver.services.llm_service.LLMService") as llm_type,
+    ):
+        shutdown = asyncio.create_task(manager.shutdown())
+        await report.shutdown_started.wait()
+
+        try:
+            with pytest.raises(RuntimeError, match="shutting down"):
+                manager.cpp_backend.client
+            client_type.assert_not_called()
+
+            for property_name in _SERVICE_PROPERTIES:
+                with pytest.raises(RuntimeError, match="shutting down"):
+                    getattr(manager, property_name)
+
+            graphiti_type.assert_not_called()
+            llm_type.assert_not_called()
+            assert manager._cpp_backend is None
+            assert manager._graphiti_service is None
+            assert manager._llm_service is None
+            assert manager._ingestion_job_manager is None
+            assert manager._migration_manager is None
+            assert manager._forensic_report_service is report
+        finally:
+            release_report_shutdown.set()
+            await shutdown
+
+    assert report.shutdown_calls == 1
+    assert all(
+        getattr(manager, field_name) is None
+        for field_name in (
+            "_cpp_backend",
+            "_graphiti_service",
+            "_llm_service",
+            "_ingestion_job_manager",
+            "_migration_manager",
+            "_forensic_report_service",
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_external_service_properties_reject_during_manager_initialization(
+    tmp_path: Path,
+):
+    settings = Settings(FORENSIC_REPORT_DIR=str(tmp_path / "reports"))
+    manager = ServiceManager(settings)
+    events: list[str] = []
+    release_backend = asyncio.Event()
+    backend = LifecycleService(
+        "backend", events, initialize_gate=release_backend
+    )
+    report = LifecycleService("report", events)
+
+    with _patched_services(manager, backend=backend, report=report) as services:
+        initialize = asyncio.create_task(manager.initialize())
+        await backend.initialize_started.wait()
+
+        try:
+            for property_name in _SERVICE_PROPERTIES:
+                with pytest.raises(RuntimeError, match="initializing"):
+                    getattr(manager, property_name)
+        finally:
+            release_backend.set()
+            await initialize
+
+    assert services.cpp_type.call_count == 1
+    assert services.report_factory.call_count == 1
+    assert manager.cpp_backend is backend
+    assert manager.graphiti_service is services.graphiti
+    assert manager.llm_service is services.llm
+    assert manager.ingestion_job_manager is services.ingestion
+    assert manager.migration_manager is services.migration
+    assert manager.forensic_report_service is report
+
+
 @pytest.mark.asyncio
 async def test_initialize_waits_for_active_shutdown_then_starts_clean_lifecycle(
     tmp_path: Path,
