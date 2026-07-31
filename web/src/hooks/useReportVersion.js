@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const GENERATING_STATUSES = new Set(['queued', 'generating']);
 
+function isGenerating(version) {
+  return version && GENERATING_STATUSES.has(version.status);
+}
+
 function latestReady(versions) {
   return versions
     .filter((version) => version.status === 'ready')
@@ -14,142 +18,257 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
   const [manifest, setManifest] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const selectedRef = useRef(null);
   const mountedRef = useRef(true);
   const scopeRef = useRef(`${scopeType}:${scopeId}`);
-  const requestRef = useRef(0);
+  const intentRef = useRef(0);
+  const versionsRef = useRef([]);
+  const selectedRef = useRef(null);
   const timerRef = useRef(null);
+  const dataSourceRef = useRef(dataSource);
+  const pollIntervalRef = useRef(pollInterval);
+  const pollRef = useRef(null);
 
-  const isCurrentScope = useCallback((scopeKey) => (
-    mountedRef.current && scopeRef.current === scopeKey
+  dataSourceRef.current = dataSource;
+  pollIntervalRef.current = pollInterval;
+
+  const clearTimer = useCallback(() => {
+    clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }, []);
+
+  const isActive = useCallback((scopeKey, intent) => (
+    mountedRef.current && scopeRef.current === scopeKey && intentRef.current === intent
   ), []);
 
-  const loadManifest = useCallback(async (version, scopeKey = scopeRef.current) => {
-    const request = ++requestRef.current;
+  const beginIntent = useCallback(() => {
+    clearTimer();
+    intentRef.current += 1;
+    return intentRef.current;
+  }, [clearTimer]);
+
+  const commitVersions = useCallback((nextVersions) => {
+    versionsRef.current = nextVersions;
+    setVersions(nextVersions);
+  }, []);
+
+  const commitSelection = useCallback((nextVersion) => {
+    selectedRef.current = nextVersion;
+    setSelectedVersion(nextVersion);
+  }, []);
+
+  const loadManifest = useCallback(async (version, scopeKey, intent) => {
     if (!version || version.status !== 'ready') {
-      if (isCurrentScope(scopeKey)) setManifest(null);
+      if (isActive(scopeKey, intent)) setManifest(null);
       return null;
     }
 
-    const nextManifest = await dataSource.getManifest(version.report_id);
-    if (isCurrentScope(scopeKey) && request === requestRef.current) {
-      setManifest(nextManifest);
+    try {
+      const nextManifest = await dataSourceRef.current.getManifest(version.report_id);
+      if (isActive(scopeKey, intent)) {
+        setManifest(nextManifest);
+        setError(null);
+      }
+      return nextManifest;
+    } catch (nextError) {
+      if (isActive(scopeKey, intent)) {
+        setManifest(null);
+        setError(nextError);
+      }
+      return null;
     }
-    return nextManifest;
-  }, [dataSource, isCurrentScope]);
+  }, [isActive]);
+
+  const schedulePoll = useCallback((scopeKey, intent) => {
+    clearTimer();
+    if (!isActive(scopeKey, intent) || !versionsRef.current.some(isGenerating)) return;
+    timerRef.current = setTimeout(() => { void pollRef.current(scopeKey, intent); }, pollIntervalRef.current);
+  }, [clearTimer, isActive]);
 
   const refresh = useCallback(async () => {
     const scopeKey = `${scopeType}:${scopeId}`;
-    const request = ++requestRef.current;
-    if (isCurrentScope(scopeKey)) setLoading(true);
+    const intent = beginIntent();
+    if (isActive(scopeKey, intent)) {
+      setLoading(true);
+      setError(null);
+    }
 
     try {
-      const list = await dataSource.listVersions(scopeType, scopeId);
-      const generating = list.filter((version) => GENERATING_STATUSES.has(version.status));
-      const statuses = await Promise.all(generating.map(async (version) => (
-        await dataSource.getStatus(version.report_id)
+      const list = await dataSourceRef.current.listVersions(scopeType, scopeId);
+      if (!isActive(scopeKey, intent)) return;
+
+      let nextVersions = list;
+      const generating = list.filter(isGenerating);
+      if (generating.length) {
+        try {
+          const statuses = await Promise.all(generating.map((version) => (
+            dataSourceRef.current.getStatus(version.report_id)
+          )));
+          if (!isActive(scopeKey, intent)) return;
+          nextVersions = list.map((version) => (
+            statuses.find((status) => status?.report_id === version.report_id) || version
+          ));
+        } catch (nextError) {
+          if (isActive(scopeKey, intent)) setError(nextError);
+        }
+      }
+      if (!isActive(scopeKey, intent)) return;
+
+      commitVersions(nextVersions);
+      const previousId = selectedRef.current?.report_id;
+      const preserved = previousId ? nextVersions.find((version) => version.report_id === previousId) : null;
+      const nextSelected = preserved || latestReady(nextVersions) || nextVersions[0] || null;
+      commitSelection(nextSelected);
+      if (nextSelected?.status === 'ready') {
+        await loadManifest(nextSelected, scopeKey, intent);
+      } else {
+        setManifest(null);
+      }
+    } catch (nextError) {
+      if (isActive(scopeKey, intent)) setError(nextError);
+    } finally {
+      if (isActive(scopeKey, intent)) {
+        setLoading(false);
+        schedulePoll(scopeKey, intent);
+      }
+    }
+  }, [beginIntent, commitSelection, commitVersions, isActive, loadManifest, schedulePoll, scopeId, scopeType]);
+
+  pollRef.current = async (scopeKey, intent) => {
+    if (!isActive(scopeKey, intent)) return;
+    const beforePoll = versionsRef.current;
+    const generating = beforePoll.filter(isGenerating);
+    if (!generating.length) return;
+
+    try {
+      const statuses = await Promise.all(generating.map((version) => (
+        dataSourceRef.current.getStatus(version.report_id)
       )));
-      const resolvedList = list.map((version) => (
+      if (!isActive(scopeKey, intent)) return;
+
+      const nextVersions = beforePoll.map((version) => (
         statuses.find((status) => status?.report_id === version.report_id) || version
       ));
-      if (!isCurrentScope(scopeKey) || request !== requestRef.current) return;
+      const currentId = selectedRef.current?.report_id;
+      const nextSelected = currentId
+        ? nextVersions.find((version) => version.report_id === currentId) || selectedRef.current
+        : null;
 
-      setVersions(resolvedList);
-      const selectedId = selectedRef.current?.report_id;
-      const preserved = selectedId ? resolvedList.find((version) => version.report_id === selectedId) : null;
-      const next = preserved || latestReady(resolvedList) || resolvedList[0] || null;
-      selectedRef.current = next;
-      setSelectedVersion(next);
-      setError(null);
-      await loadManifest(next, scopeKey);
+      commitVersions(nextVersions);
+      if (nextSelected) {
+        commitSelection(nextSelected);
+        if (nextSelected.status === 'ready') {
+          await loadManifest(nextSelected, scopeKey, intent);
+        } else if (nextSelected.status === 'failed' || isGenerating(nextSelected)) {
+          setManifest(null);
+        }
+      }
+      if (isActive(scopeKey, intent)) setError(null);
     } catch (nextError) {
-      if (isCurrentScope(scopeKey)) setError(nextError);
+      if (isActive(scopeKey, intent)) setError(nextError);
     } finally {
-      if (isCurrentScope(scopeKey)) setLoading(false);
+      if (isActive(scopeKey, intent)) schedulePoll(scopeKey, intent);
     }
-  }, [dataSource, isCurrentScope, loadManifest, scopeId, scopeType]);
+  };
 
   useEffect(() => {
     const scopeKey = `${scopeType}:${scopeId}`;
     scopeRef.current = scopeKey;
+    const intent = beginIntent();
+    versionsRef.current = [];
     selectedRef.current = null;
     setVersions([]);
     setSelectedVersion(null);
     setManifest(null);
-    void refresh();
-  }, [refresh, scopeId, scopeType]);
+    setError(null);
+    setLoading(true);
+    void (async () => {
+      // refresh owns its token, so create one operation for each scope reset.
+      const list = await dataSourceRef.current.listVersions(scopeType, scopeId);
+      if (!isActive(scopeKey, intent)) return;
 
-  useEffect(() => {
-    const scopeKey = `${scopeType}:${scopeId}`;
-    const generating = versions.filter((version) => GENERATING_STATUSES.has(version.status));
-    if (!generating.length) return undefined;
-
-    const poll = async () => {
-      try {
-        const statuses = await Promise.all(generating.map((version) => dataSource.getStatus(version.report_id)));
-        if (!isCurrentScope(scopeKey)) return;
-
-        let selectedReady = null;
-        setVersions((items) => items.map((version) => {
-          const status = statuses.find((item) => item?.report_id === version.report_id) || version;
-          if (status.report_id === selectedRef.current?.report_id && status.status === 'ready') {
-            selectedReady = status;
-          }
-          return status;
-        }));
-        if (selectedReady) {
-          selectedRef.current = selectedReady;
-          setSelectedVersion(selectedReady);
-          await loadManifest(selectedReady, scopeKey);
+      let nextVersions = list;
+      const generating = list.filter(isGenerating);
+      if (generating.length) {
+        try {
+          const statuses = await Promise.all(generating.map((version) => (
+            dataSourceRef.current.getStatus(version.report_id)
+          )));
+          if (!isActive(scopeKey, intent)) return;
+          nextVersions = list.map((version) => (
+            statuses.find((status) => status?.report_id === version.report_id) || version
+          ));
+        } catch (nextError) {
+          if (isActive(scopeKey, intent)) setError(nextError);
         }
-        setError(null);
-      } catch (nextError) {
-        if (isCurrentScope(scopeKey)) setError(nextError);
       }
-    };
+      if (!isActive(scopeKey, intent)) return;
 
-    timerRef.current = setTimeout(() => { void poll(); }, pollInterval);
-    return () => clearTimeout(timerRef.current);
-  }, [dataSource, isCurrentScope, loadManifest, pollInterval, scopeId, scopeType, versions]);
+      commitVersions(nextVersions);
+      const nextSelected = latestReady(nextVersions) || nextVersions[0] || null;
+      commitSelection(nextSelected);
+      if (nextSelected?.status === 'ready') {
+        await loadManifest(nextSelected, scopeKey, intent);
+      } else {
+        setManifest(null);
+      }
+      if (isActive(scopeKey, intent)) setLoading(false);
+      schedulePoll(scopeKey, intent);
+    })().catch((nextError) => {
+      if (isActive(scopeKey, intent)) {
+        setError(nextError);
+        setLoading(false);
+      }
+    });
+
+    return clearTimer;
+  }, [beginIntent, clearTimer, commitSelection, commitVersions, isActive, loadManifest, schedulePoll, scopeId, scopeType]);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      clearTimeout(timerRef.current);
+      clearTimer();
     };
-  }, []);
+  }, [clearTimer]);
 
   const selectVersion = useCallback(async (version) => {
-    selectedRef.current = version;
-    setSelectedVersion(version);
+    const scopeKey = scopeRef.current;
+    const intent = beginIntent();
+    commitSelection(version);
+    setManifest(null);
     setError(null);
-    try {
-      await loadManifest(version);
-    } catch (nextError) {
-      if (mountedRef.current) setError(nextError);
-    }
-  }, [loadManifest]);
+    await loadManifest(version, scopeKey, intent);
+    if (isActive(scopeKey, intent)) schedulePoll(scopeKey, intent);
+  }, [beginIntent, commitSelection, isActive, loadManifest, schedulePoll]);
 
   const createVersion = useCallback(async () => {
     const scopeKey = `${scopeType}:${scopeId}`;
-    setLoading(true);
-    setError(null);
+    const intent = beginIntent();
+    if (isActive(scopeKey, intent)) {
+      setLoading(true);
+      setError(null);
+    }
+
     try {
-      const created = await dataSource.createVersion(scopeType, scopeId);
-      if (!isCurrentScope(scopeKey)) return created;
-      setVersions((items) => [created, ...items.filter((item) => item.report_id !== created.report_id)]);
-      selectedRef.current = created;
-      setSelectedVersion(created);
+      const created = await dataSourceRef.current.createVersion(scopeType, scopeId);
+      if (!isActive(scopeKey, intent)) return created;
+
+      const nextVersions = [created, ...versionsRef.current.filter((item) => item.report_id !== created.report_id)];
+      commitVersions(nextVersions);
+      commitSelection(created);
       setManifest(null);
+      schedulePoll(scopeKey, intent);
       return created;
     } catch (nextError) {
-      if (isCurrentScope(scopeKey)) setError(nextError);
+      if (isActive(scopeKey, intent)) setError(nextError);
       throw nextError;
     } finally {
-      if (isCurrentScope(scopeKey)) setLoading(false);
+      if (isActive(scopeKey, intent)) {
+        setLoading(false);
+        schedulePoll(scopeKey, intent);
+      }
     }
-  }, [dataSource, isCurrentScope, scopeId, scopeType]);
+  }, [beginIntent, commitSelection, commitVersions, isActive, schedulePoll, scopeId, scopeType]);
 
   return {
     versions,
@@ -157,7 +276,7 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
     manifest,
     loading,
     error,
-    generating: versions.find((version) => GENERATING_STATUSES.has(version.status)) || null,
+    generating: versions.find(isGenerating) || null,
     selectVersion,
     createVersion,
     refresh,
