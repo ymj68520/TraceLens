@@ -210,6 +210,7 @@ test('shares concurrent create calls to avoid duplicate report mutations', async
   expect(result.current.loading).toBe(false);
 });
 
+
 test('preserves a manifest-load error after polling reaches ready until refresh succeeds', async () => {
   vi.useFakeTimers();
   const readyVersion = { ...running, status: 'ready', progress: 100 };
@@ -235,4 +236,77 @@ test('preserves a manifest-load error after polling reaches ready until refresh 
   expect(result.current.manifest).toEqual({ report_id: 'r2' });
   expect(result.current.error).toBeNull();
   vi.useRealTimers();
+});
+
+test('reconciles a created report into a late refresh list and keeps polling it', async () => {
+  vi.useFakeTimers();
+  const initialList = deferred();
+  const refreshList = deferred();
+  const create = deferred();
+  const created = { report_id: 'r3', version: 3, status: 'generating', stage: 'snapshot', progress: 0 };
+  const source = {
+    listVersions: vi.fn()
+      .mockReturnValueOnce(initialList.promise)
+      .mockReturnValueOnce(refreshList.promise),
+    createVersion: vi.fn().mockReturnValue(create.promise),
+    getStatus: vi.fn().mockResolvedValue(created),
+    getManifest: vi.fn(),
+  };
+  const { result } = renderHook(() => useReportVersion({
+    scopeType: 'task', scopeId: 't1', dataSource: source, pollInterval: 5,
+  }));
+  initialList.resolve([]);
+  await flush();
+
+  let creating;
+  await act(async () => { creating = result.current.createVersion(); });
+  let refreshing;
+  await act(async () => { refreshing = result.current.refresh(); });
+  create.resolve(created);
+  await act(async () => { await creating; });
+  refreshList.resolve([]);
+  await act(async () => { await refreshing; });
+
+  expect(result.current.versions).toEqual([created]);
+  await act(async () => vi.advanceTimersByTimeAsync(5));
+  expect(source.getStatus).toHaveBeenCalledWith('r3');
+  vi.useRealTimers();
+});
+
+test('keeps create guards and results isolated by scope', async () => {
+  const createA = deferred();
+  const createB = deferred();
+  const createdA = { report_id: 'a-created', version: 2, status: 'queued', stage: 'queued', progress: 0 };
+  const createdB = { report_id: 'b-created', version: 1, status: 'queued', stage: 'queued', progress: 0 };
+  const source = {
+    listVersions: vi.fn().mockResolvedValue([]),
+    createVersion: vi.fn((scopeType, scopeId) => (scopeId === 'A' ? createA.promise : createB.promise)),
+    getStatus: vi.fn(),
+    getManifest: vi.fn(),
+  };
+  const { result, rerender } = renderHook(
+    ({ scopeId }) => useReportVersion({ scopeType: 'task', scopeId, dataSource: source }),
+    { initialProps: { scopeId: 'A' } },
+  );
+  await flush();
+
+  let pendingA;
+  await act(async () => { pendingA = result.current.createVersion(); });
+  rerender({ scopeId: 'B' });
+  await flush();
+  let pendingB;
+  await act(async () => { pendingB = result.current.createVersion(); });
+  expect(source.createVersion).toHaveBeenNthCalledWith(1, 'task', 'A');
+  expect(source.createVersion).toHaveBeenNthCalledWith(2, 'task', 'B');
+
+  createA.resolve(createdA);
+  await act(async () => { await pendingA; });
+  expect(result.current.versions).toEqual([]);
+  expect(result.current.loading).toBe(true);
+
+  createB.resolve(createdB);
+  await act(async () => { await pendingB; });
+  expect(result.current.versions).toEqual([createdB]);
+  expect(result.current.selectedVersion).toEqual(createdB);
+  expect(result.current.loading).toBe(false);
 });
