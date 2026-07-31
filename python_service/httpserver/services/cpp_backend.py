@@ -144,20 +144,15 @@ class CppBackendService:
         return await self._request("GET", "/api/tasks/list", params=params)
     
     async def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """Get a specific task."""
-        try:
-            result = await self.list_tasks(page_size=1000)
-            tasks = result.get("tasks", [])
-            for task in tasks:
-                if task.get("id") == task_id:
-                    if "image_path" in task and "image_name" not in task:
-                        task["image_name"] = task["image_path"]
-                    return task
+        """Get a specific task through the backend's direct lookup route."""
+        result = await self._request("GET", f"/api/tasks/{task_id}")
+        if not isinstance(result, dict) or result.get("status") == 404:
             return None
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return None
-            raise
+        if result.get("success") is False and not result.get("id"):
+            return None
+        if "image_path" in result and "image_name" not in result:
+            result["image_name"] = result["image_path"]
+        return result
     
     async def check_task_exists(self, task_id: str) -> bool:
         """Check if a task exists."""

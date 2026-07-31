@@ -1,5 +1,8 @@
+import asyncio
+import os
 from hashlib import sha256
 from pathlib import Path
+from threading import Event
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -55,3 +58,84 @@ def test_fingerprint_file_returns_nonexistent_source_without_reading(tmp_path: P
     assert fingerprint.size is None
     assert fingerprint.mtime_ns is None
     assert fingerprint.sha256 is None
+
+
+def test_fingerprint_file_rejects_a_source_changed_while_hashing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    source = tmp_path / "changing.db"
+    source.write_bytes(b"a" * (2 * 1024 * 1024))
+    original_fstat = os.fstat
+    calls = 0
+
+    def changing_fstat(fd):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            source.write_bytes(b"b" * (2 * 1024 * 1024 + 1))
+        return original_fstat(fd)
+
+    monkeypatch.setattr(os, "fstat", changing_fstat)
+
+    with pytest.raises(RuntimeError, match="changed while fingerprinting"):
+        fingerprint_file(str(source))
+
+
+def test_fingerprint_file_rejects_a_source_replaced_while_hashing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    source = tmp_path / "replaced.db"
+    replacement = tmp_path / "replacement.db"
+    source.write_bytes(b"original")
+    replacement.write_bytes(b"replacement")
+    original_fstat = os.fstat
+    calls = 0
+
+    def replacing_fstat(fd):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            os.replace(replacement, source)
+        return original_fstat(fd)
+
+    monkeypatch.setattr(os, "fstat", replacing_fstat)
+
+    with pytest.raises(RuntimeError, match="changed while fingerprinting"):
+        fingerprint_file(str(source))
+
+
+@pytest.mark.asyncio
+async def test_task_resolution_moves_source_freeze_off_the_event_loop(tmp_path: Path):
+    source = tmp_path / "files.db"
+    source.write_bytes(b"files")
+    backend = AsyncMock()
+    backend.get_task.return_value = {
+        "id": "task-1",
+        "image_path": "/evidence/phone.E01",
+        "output_files_db": str(source),
+    }
+    backend.get_task_databases.return_value = [{"type": "files", "path": str(source)}]
+    adapter = Mock()
+    adapter.load_task.return_value = {
+        "markdown": "",
+        "generated_at": "",
+        "filtered_files": [],
+    }
+    entered = Event()
+    release = Event()
+
+    def blocking_fingerprint(path: str):
+        entered.set()
+        assert release.wait(timeout=1)
+        return fingerprint_file(path)
+
+    resolver = SourceResolver(backend, analysis_adapter=adapter)
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "httpserver.services.forensic_report.source_resolver.fingerprint_file",
+            blocking_fingerprint,
+        )
+        resolution = asyncio.create_task(resolver.resolve_task("task-1"))
+        asyncio.get_running_loop().call_later(0.01, release.set)
+        await asyncio.wait_for(resolution, timeout=0.5)
+    assert entered.is_set()

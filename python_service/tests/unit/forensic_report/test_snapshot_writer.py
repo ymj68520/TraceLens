@@ -21,10 +21,12 @@ from httpserver.services.forensic_report.search_index import SnapshotSearchIndex
 from httpserver.services.forensic_report.snapshot_writer import SnapshotWriter
 
 
-def category_spec(category_id: str, *, page_size: int = 2) -> CategorySpec:
+def category_spec(
+    category_id: str, *, page_size: int = 2, platform: str = "android"
+) -> CategorySpec:
     return CategorySpec(
         category_id=category_id,
-        platform="android",
+        platform=platform,
         title=category_id,
         renderer="chat",
         source_table="sms_messages",
@@ -89,6 +91,20 @@ class DiscoveryFailureAdapter:
 
     def iter_records(self, context, category):
         raise AssertionError("categories should not produce records")
+
+
+class PlatformEscapeAdapter:
+    name = "platform-escape"
+    platform = "android"
+
+    def probe(self, context):
+        return ProbeResult(available=True)
+
+    def categories(self, context):
+        return [category_spec("android.sms", platform="../../../escaped")]
+
+    def iter_records(self, context, category):
+        yield record(category.category_id, 12, "must stay confined")
 
 
 class BlockingAdapter:
@@ -176,6 +192,26 @@ def test_writer_publishes_pages_only_after_manifest_is_complete(
     assert category["pages"] == 2
     assert not (tmp_path / ".staging" / "r1").exists()
     assert all((final_dir / path).exists() for path in category["page_paths"])
+    pages = [
+        json.loads((final_dir / path).read_text("utf-8"))
+        for path in category["page_paths"]
+    ]
+    assert [page["total"] for page in pages] == [category["total"]] * 2
+
+
+def test_writer_confines_untrusted_platform_segments(tmp_path: Path, report_inputs):
+    version, evidence, context = report_inputs
+
+    final_dir = write_snapshot(
+        tmp_path, version, [evidence], [context], [PlatformEscapeAdapter()]
+    )
+
+    manifest = json.loads((final_dir / "manifest.json").read_text("utf-8"))
+    category = manifest["categories"][0]
+    page_path = Path(category["page_paths"][0])
+    assert ".." not in page_path.parts
+    assert (final_dir / page_path).is_file()
+    assert not (tmp_path / "escaped").exists()
 
 
 def test_writer_uses_nonrecursive_page_hash_and_refuses_existing_report(
