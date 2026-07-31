@@ -1,11 +1,13 @@
 """Versioned forensic report snapshot HTTP routes."""
 
+import json
+import sqlite3
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path as FastAPIPath, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from ..services import get_service_manager
@@ -31,7 +33,12 @@ class SearchResponse(BaseModel):
 
 def get_report_service():
     """Resolve the ready report service through the service manager."""
-    return get_service_manager().forensic_report_service
+    try:
+        return get_service_manager().forensic_report_service
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503, detail="report service is unavailable"
+        ) from exc
 
 
 def _not_found() -> HTTPException:
@@ -50,18 +57,18 @@ def _search_integrity_error() -> HTTPException:
     return HTTPException(status_code=500, detail=_SEARCH_INTEGRITY_DETAIL)
 
 
-def _file_response(loader: Any, *args: Any) -> FileResponse:
+def _file_response(loader: Any, *args: Any) -> Response:
     try:
         path = Path(loader(*args))
+        payload = path.read_bytes()
+        json.loads(payload.decode("utf-8"))
     except KeyError as exc:
         raise _not_found() from exc
     except RuntimeError as exc:
         raise _not_ready() from exc
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise _resource_integrity_error() from exc
-    if not path.is_file():
-        raise HTTPException(status_code=500, detail="published report resource is missing")
-    return FileResponse(path, media_type="application/json")
+    return Response(content=payload, media_type="application/json")
 
 
 def _serialize_hit(hit: Any) -> dict[str, Any]:
@@ -108,7 +115,7 @@ def report_status(report_id: str, service: Any = Depends(get_report_service)) ->
 
 
 @router.get("/{report_id}/manifest")
-def manifest(report_id: str, service: Any = Depends(get_report_service)) -> FileResponse:
+def manifest(report_id: str, service: Any = Depends(get_report_service)) -> Response:
     return _file_response(service.get_manifest_path, report_id)
 
 
@@ -118,7 +125,7 @@ def category_page(
     category_id: str,
     page: Annotated[int, FastAPIPath(ge=1)],
     service: Any = Depends(get_report_service),
-) -> FileResponse:
+) -> Response:
     return _file_response(service.get_page_path, report_id, category_id, page)
 
 
@@ -137,7 +144,7 @@ def search(
         raise _not_found() from exc
     except RuntimeError as exc:
         raise _not_ready() from exc
-    except (FileNotFoundError, ValueError, OSError, TypeError) as exc:
+    except (FileNotFoundError, ValueError, OSError, sqlite3.Error, TypeError) as exc:
         raise _search_integrity_error() from exc
     return SearchResponse(
         total=total,

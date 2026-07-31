@@ -1,6 +1,11 @@
 """HTTP contract tests for versioned forensic report snapshots."""
 
+import importlib
+import sqlite3
+import sys
+import types
 from pathlib import Path
+from unittest.mock import MagicMock
 from typing import Any
 
 from fastapi import FastAPI
@@ -70,6 +75,24 @@ def make_client(service: FakeReportService) -> TestClient:
     app.include_router(forensic_reports.router, prefix="/api/reports")
     app.dependency_overrides[forensic_reports.get_report_service] = lambda: service
     return TestClient(app)
+
+
+def test_report_dependency_sanitizes_service_lifecycle_errors(monkeypatch) -> None:
+    class UnavailableManager:
+        @property
+        def forensic_report_service(self):
+            raise RuntimeError("ServiceManager is shutting_down at /private/reports")
+
+    monkeypatch.setattr(forensic_reports, "get_service_manager", lambda: UnavailableManager())
+    app = FastAPI()
+    app.include_router(forensic_reports.router, prefix="/api/reports")
+
+    response = TestClient(app).get("/api/reports?scope_type=task&scope_id=t1")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "report service is unavailable"
+    assert "shutting_down" not in response.text
+    assert "/private" not in response.text
 
 
 def test_create_and_list_report_versions() -> None:
@@ -145,7 +168,7 @@ def test_status_and_manifest_distinguish_unknown_not_ready_and_integrity_errors(
     service.manifest_path = tmp_path / "missing.json"
     response = client.get("/api/reports/r1/manifest")
     assert response.status_code == 500
-    assert response.json()["detail"] == "published report resource is missing"
+    assert response.json()["detail"] == "report resource integrity error"
 
 
 def test_manifest_and_page_are_served_as_json_through_service_paths(tmp_path: Path) -> None:
@@ -166,6 +189,40 @@ def test_manifest_and_page_are_served_as_json_through_service_paths(tmp_path: Pa
     assert manifest_response.json() == {"report_id": "r1"}
     assert page_response.status_code == 200
     assert page_response.headers["content-type"].startswith("application/json")
+
+
+
+def test_manifest_and_page_reject_invalid_json_without_leaking_paths(tmp_path: Path) -> None:
+    broken = tmp_path / "manifest.json"
+    broken.write_text("{", encoding="utf-8")
+    service = FakeReportService()
+    service.manifest_path = broken
+    service.page_path = broken
+    client = make_client(service)
+
+    manifest_response = client.get("/api/reports/r1/manifest")
+    page_response = client.get("/api/reports/r1/categories/android.sms/pages/1")
+
+    assert manifest_response.status_code == 500
+    assert page_response.status_code == 500
+    assert manifest_response.json()["detail"] == "report resource integrity error"
+    assert page_response.json()["detail"] == "report resource integrity error"
+    assert str(tmp_path) not in manifest_response.text
+
+
+def test_search_corrupt_index_returns_generic_error_without_changing_file(tmp_path: Path) -> None:
+    index = tmp_path / "search.sqlite3"
+    index.write_bytes(b"not a sqlite database")
+    before = index.read_bytes()
+    service = FakeReportService()
+    service.search_result = sqlite3.DatabaseError(f"file is not a database: {index}")
+
+    response = make_client(service).get("/api/reports/r1/search?q=x")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "report search index is unavailable"
+    assert str(index) not in response.text
+    assert index.read_bytes() == before
 
 
 def test_search_serializes_model_and_mapping_hits_and_stabilizes_integrity_failures() -> None:
@@ -214,12 +271,42 @@ def test_search_serializes_model_and_mapping_hits_and_stabilizes_integrity_failu
     assert "/private" not in response.text
 
 
-def test_application_registration_preserves_legacy_routes_and_proxy_precedence() -> None:
-    main_source = (ROOT / "httpserver" / "main.py").read_text(encoding="utf-8")
-    vite_source = (ROOT.parent / "web" / "vite.config.js").read_text(encoding="utf-8")
+def test_application_registration_exposes_report_routes_and_preserves_legacy_routes(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "uvicorn", types.SimpleNamespace(run=lambda *args, **kwargs: None))
+    monkeypatch.setitem(sys.modules, "multipart", MagicMock(__version__="0.0.1"))
+    monkeypatch.setitem(sys.modules, "multipart.multipart", MagicMock(parse_options_header=object()))
+    sys.modules.pop("httpserver.main", None)
+    main = importlib.import_module("httpserver.main")
+    app = FastAPI()
 
-    assert main_source.count("forensic_reports.router") == 1
-    assert 'prefix="/api/reports"' in main_source
-    assert "case_analysis.router" in main_source
-    assert "dll.router" in main_source
+    main._register_routes(app)
+
+    expected_report_routes = {
+        ("", ("POST",)),
+        ("", ("GET",)),
+        ("/{report_id}/status", ("GET",)),
+        ("/{report_id}/manifest", ("GET",)),
+        ("/{report_id}/categories/{category_id}/pages/{page}", ("GET",)),
+        ("/{report_id}/search", ("GET",)),
+    }
+    included = [route for route in app.routes if hasattr(route, "original_router")]
+
+    def mounted_routes(router) -> set[tuple[str, tuple[str, ...]]]:
+        return {
+            (route.path, tuple(sorted(route.methods or ())))
+            for route in router.routes
+            if hasattr(route, "path")
+        }
+
+    mounted = [mounted_routes(route.original_router) for route in included]
+    report_routes = next(routes for routes in mounted if expected_report_routes <= routes)
+    all_routes = set().union(*mounted)
+
+    assert sum(path == "" for path, _ in report_routes) == 2
+    assert ("/api/llm/cases", ("GET",)) in all_routes
+    assert ("/analyze/dll", ("POST",)) in all_routes
+
+
+def test_vite_proxy_routes_reports_before_broad_api() -> None:
+    vite_source = (ROOT.parent / "web" / "vite.config.js").read_text(encoding="utf-8")
     assert vite_source.index("'/api/reports'") < vite_source.index("'/api'")

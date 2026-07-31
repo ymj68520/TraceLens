@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from httpserver.services.forensic_report.ids import safe_segment
 from httpserver.services.forensic_report.models import ReportStatus, ScopeType
 from httpserver.services.forensic_report.repository import ReportRepository
 from httpserver.services.forensic_report.service import ForensicReportService
@@ -243,7 +244,13 @@ async def test_ready_paths_reject_corrupt_manifest_page_and_search_symlink(tmp_p
         service.get_manifest_path(version.report_id)
 
     safe_version = service.repository.create_version(ScopeType.TASK, "task-2", "Task", [])
-    report_dir = tmp_path / "snapshots" / "task" / "task-2" / safe_version.report_id
+    report_dir = (
+        tmp_path
+        / "snapshots"
+        / "task"
+        / safe_segment("task-2")
+        / safe_segment(safe_version.report_id)
+    )
     report_dir.mkdir(parents=True)
     (report_dir / "manifest.json").write_text(
         json.dumps(
@@ -302,6 +309,49 @@ async def test_original_writer_error_is_logged_when_failure_transition_breaks(
     assert "original writer failure" in caplog.text
     assert "transition database failure" in caplog.text
 
+
+
+def test_report_resource_paths_reject_cross_report_symlinks_and_invalid_search_indexes(tmp_path: Path):
+    service = _service(tmp_path)
+    first = service.repository.create_version(ScopeType.TASK, "task-1", "One", [])
+    second = service.repository.create_version(ScopeType.TASK, "task-2", "Two", [])
+    root = service.writer.report_root
+    first_dir = root / "task" / safe_segment("task-1") / safe_segment(first.report_id)
+    second_dir = root / "task" / safe_segment("task-2") / safe_segment(second.report_id)
+    first_dir.mkdir(parents=True)
+    second_dir.mkdir(parents=True)
+    (second_dir / "manifest.json").write_text(
+        json.dumps({"categories": [{"category_id": "contacts", "page_paths": ["page-1.json"]}]}),
+        encoding="utf-8",
+    )
+    (second_dir / "page-1.json").write_text("{}", encoding="utf-8")
+    search = second_dir / "search.sqlite3"
+    search.write_bytes(b"")
+    (first_dir / "manifest.json").symlink_to(second_dir / "manifest.json")
+    service.repository.mark_ready(
+        first.report_id,
+        str((first_dir / "manifest.json").relative_to(root)),
+        [],
+    )
+
+    with pytest.raises(ValueError, match="confined"):
+        service.get_manifest_path(first.report_id)
+
+    (first_dir / "manifest.json").unlink()
+    (first_dir / "manifest.json").write_text(
+        json.dumps({"categories": [{"category_id": "contacts", "page_paths": ["page-1.json"]}]}),
+        encoding="utf-8",
+    )
+    (first_dir / "page-1.json").symlink_to(second_dir / "page-1.json")
+    with pytest.raises(ValueError, match="confined"):
+        service.get_page_path(first.report_id, "contacts", 1)
+
+    (first_dir / "page-1.json").unlink()
+    (first_dir / "search.sqlite3").symlink_to(search)
+    before = search.read_bytes()
+    with pytest.raises(Exception):
+        service.search(first.report_id, "x", 0, 1)
+    assert search.read_bytes() == before
 
 def test_report_access_distinguishes_unknown_from_not_ready(tmp_path: Path):
     service = _service(tmp_path)

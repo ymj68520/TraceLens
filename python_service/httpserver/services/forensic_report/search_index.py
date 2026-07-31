@@ -13,6 +13,7 @@ class SnapshotSearchIndex:
 
     def __init__(self, path: Path):
         self.path = Path(path)
+        self._read_only = False
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(
@@ -35,10 +36,32 @@ class SnapshotSearchIndex:
                 """
             )
 
+    @classmethod
+    def open_readonly(cls, path: Path) -> "SnapshotSearchIndex":
+        """Open a published index without creating or changing anything."""
+        index = cls.__new__(cls)
+        index.path = Path(path)
+        index._read_only = True
+        with index._connect() as conn:
+            columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(search_documents)")
+            }
+        required = {
+            "id", "kind", "title", "search_text", "record_id", "evidence_id",
+            "platform", "category_id", "page",
+        }
+        if not required <= columns:
+            raise sqlite3.DatabaseError("published search index schema is invalid")
+        return index
+
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path)
-        conn.row_factory = sqlite3.Row
-        return conn
+        if self._read_only:
+            connection = sqlite3.connect(f"{self.path.resolve().as_uri()}?mode=ro", uri=True)
+        else:
+            connection = sqlite3.connect(self.path)
+        connection.row_factory = sqlite3.Row
+        return connection
 
     @staticmethod
     def _document_values(document: dict[str, Any]) -> tuple[Any, ...]:

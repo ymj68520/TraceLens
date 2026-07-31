@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .models import AdapterWarning, ReportStatus, ScopeType
+from .ids import safe_segment
 from .search_index import SnapshotSearchIndex
 
 logger = logging.getLogger(__name__)
@@ -141,7 +142,10 @@ class ForensicReportService:
             async with self._lifecycle_lock:
                 self._workers[report_id] = worker
             final_dir = await asyncio.shield(worker)
-            manifest_path = self._assert_confined(Path(final_dir) / "manifest.json")
+            final_dir = Path(final_dir)
+            manifest_path = self._confined_report_path(
+                final_dir / "manifest.json", final_dir
+            )
             manifest = json.loads(manifest_path.read_text("utf-8"))
             self.repository.mark_ready(
                 report_id,
@@ -219,12 +223,34 @@ class ForensicReportService:
     def _report_root(self) -> Path:
         return Path(self.writer.report_root).resolve()
 
-    def _assert_confined(self, path: Path, root: Path | None = None) -> Path:
-        root = (root or self._report_root()).resolve()
+    def _expected_ready_dir(self, version: Any) -> Path:
+        manifest_path = Path(version.manifest_path or "")
+        if manifest_path.is_absolute() or manifest_path.name != "manifest.json":
+            raise ValueError("report path must remain confined to report root")
+        return (self._report_root() / manifest_path).parent
+
+    @staticmethod
+    def _reject_symlinks(path: Path, root: Path) -> None:
         try:
-            resolved = path.resolve()
-            resolved.relative_to(root)
+            relative = path.relative_to(root)
         except ValueError as exc:
+            raise ValueError("report path must remain confined to report root") from exc
+        current = root
+        if current.is_symlink():
+            raise ValueError("report path must remain confined to report root")
+        for segment in relative.parts:
+            current /= segment
+            if current.is_symlink():
+                raise ValueError("report path must remain confined to report root")
+
+    def _confined_report_path(
+        self, path: Path, report_dir: Path, *, must_exist: bool = True
+    ) -> Path:
+        self._reject_symlinks(path, report_dir)
+        try:
+            resolved = path.resolve(strict=must_exist)
+            resolved.relative_to(report_dir)
+        except (OSError, ValueError) as exc:
             raise ValueError("report path must remain confined to report root") from exc
         return resolved
 
@@ -236,10 +262,22 @@ class ForensicReportService:
             raise RuntimeError(f"report is not ready: {version.status.value}")
         if not version.manifest_path:
             raise ValueError("ready report has no manifest path")
+        report_dir = self._expected_ready_dir(version)
         relative = Path(version.manifest_path)
-        if relative.is_absolute():
-            raise ValueError("report path must remain confined to report root")
-        return self._assert_confined(self._report_root() / relative)
+        manifest_path = self._report_root() / relative
+        confined = self._confined_report_path(manifest_path, report_dir)
+        expected_report_dir = (
+            self._report_root()
+            / version.scope_type.value
+            / safe_segment(version.scope_id)
+            / safe_segment(version.report_id)
+        )
+        if report_dir != expected_report_dir:
+            # Compatibility with legacy pre-slug paths is permitted only when
+            # their directory segment still identifies this exact report ID.
+            if report_dir.name != version.report_id:
+                raise ValueError("report path must remain confined to report root")
+        return confined
 
     def _ready_dir(self, report_id: str) -> Path:
         return self._ready_manifest_path(report_id).parent
@@ -263,11 +301,13 @@ class ForensicReportService:
         relative = Path(category["page_paths"][page - 1])
         if relative.is_absolute():
             raise ValueError("report path must remain confined to report root")
-        return self._assert_confined(manifest_path.parent / relative, manifest_path.parent)
+        return self._confined_report_path(manifest_path.parent / relative, manifest_path.parent)
 
     def search(self, report_id: str, query: str, offset: int, limit: int):
         ready_dir = self._ready_dir(report_id)
-        search_path = self._assert_confined(ready_dir / "search.sqlite3", ready_dir)
+        search_path = self._confined_report_path(
+            ready_dir / "search.sqlite3", ready_dir, must_exist=False
+        )
         if not search_path.is_file():
-            raise FileNotFoundError(f"report search index is missing: {search_path}")
-        return SnapshotSearchIndex(search_path).search(query, offset, limit)
+            raise FileNotFoundError("report search index is missing")
+        return SnapshotSearchIndex.open_readonly(search_path).search(query, offset, limit)
