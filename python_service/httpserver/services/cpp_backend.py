@@ -16,6 +16,7 @@ The design supports future extension to other protocols:
 import asyncio
 import logging
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -145,10 +146,9 @@ class CppBackendService:
     
     async def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific task through the backend's direct lookup route."""
-        result = await self._request("GET", f"/api/tasks/{task_id}")
-        if not isinstance(result, dict) or result.get("status") == 404:
-            return None
-        if result.get("success") is False and not result.get("id"):
+        task_segment = quote(task_id, safe="")
+        result = await self._request("GET", f"/api/tasks/{task_segment}")
+        if not isinstance(result, dict) or result.get("id") != task_id:
             return None
         if "image_path" in result and "image_name" not in result:
             result["image_name"] = result["image_path"]
