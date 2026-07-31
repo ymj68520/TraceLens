@@ -146,6 +146,8 @@ class CppBackendService:
     
     async def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific task through the backend's direct lookup route."""
+        if task_id in {".", ".."}:
+            return None
         task_segment = quote(task_id, safe="")
         result = await self._request("GET", f"/api/tasks/{task_segment}")
         if not isinstance(result, dict) or result.get("id") != task_id:
