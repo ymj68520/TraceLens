@@ -27,6 +27,7 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
   const dataSourceRef = useRef(dataSource);
   const pollIntervalRef = useRef(pollInterval);
   const pollRef = useRef(null);
+  const createPromiseRef = useRef(null);
 
   dataSourceRef.current = dataSource;
   pollIntervalRef.current = pollInterval;
@@ -154,15 +155,16 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
         : null;
 
       commitVersions(nextVersions);
+      let manifestLoaded = true;
       if (nextSelected) {
         commitSelection(nextSelected);
         if (nextSelected.status === 'ready') {
-          await loadManifest(nextSelected, scopeKey, intent);
+          manifestLoaded = Boolean(await loadManifest(nextSelected, scopeKey, intent));
         } else if (nextSelected.status === 'failed' || isGenerating(nextSelected)) {
           setManifest(null);
         }
       }
-      if (isActive(scopeKey, intent)) setError(null);
+      if (manifestLoaded && isActive(scopeKey, intent)) setError(null);
     } catch (nextError) {
       if (isActive(scopeKey, intent)) setError(nextError);
     } finally {
@@ -241,34 +243,44 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
     if (isActive(scopeKey, intent)) schedulePoll(scopeKey, intent);
   }, [beginIntent, commitSelection, isActive, loadManifest, schedulePoll]);
 
-  const createVersion = useCallback(async () => {
+  const createVersion = useCallback(() => {
+    if (createPromiseRef.current) return createPromiseRef.current;
+
     const scopeKey = `${scopeType}:${scopeId}`;
-    const intent = beginIntent();
-    if (isActive(scopeKey, intent)) {
+    const selectionIntent = beginIntent();
+    if (mountedRef.current && scopeRef.current === scopeKey) {
       setLoading(true);
       setError(null);
     }
 
-    try {
-      const created = await dataSourceRef.current.createVersion(scopeType, scopeId);
-      if (!isActive(scopeKey, intent)) return created;
+    const create = (async () => {
+      try {
+        const created = await dataSourceRef.current.createVersion(scopeType, scopeId);
+        if (!mountedRef.current || scopeRef.current !== scopeKey) return created;
 
-      const nextVersions = [created, ...versionsRef.current.filter((item) => item.report_id !== created.report_id)];
-      commitVersions(nextVersions);
-      commitSelection(created);
-      setManifest(null);
-      schedulePoll(scopeKey, intent);
-      return created;
-    } catch (nextError) {
-      if (isActive(scopeKey, intent)) setError(nextError);
-      throw nextError;
-    } finally {
-      if (isActive(scopeKey, intent)) {
-        setLoading(false);
-        schedulePoll(scopeKey, intent);
+        const nextVersions = [created, ...versionsRef.current.filter((item) => item.report_id !== created.report_id)];
+        commitVersions(nextVersions);
+        if (intentRef.current === selectionIntent) {
+          commitSelection(created);
+          setManifest(null);
+        }
+        schedulePoll(scopeKey, intentRef.current);
+        return created;
+      } catch (nextError) {
+        if (mountedRef.current && scopeRef.current === scopeKey) setError(nextError);
+        throw nextError;
+      } finally {
+        createPromiseRef.current = null;
+        if (mountedRef.current && scopeRef.current === scopeKey) {
+          setLoading(false);
+          schedulePoll(scopeKey, intentRef.current);
+        }
       }
-    }
-  }, [beginIntent, commitSelection, commitVersions, isActive, schedulePoll, scopeId, scopeType]);
+    })();
+
+    createPromiseRef.current = create;
+    return create;
+  }, [commitSelection, commitVersions, schedulePoll, scopeId, scopeType]);
 
   return {
     versions,
