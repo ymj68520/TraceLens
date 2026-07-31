@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import os
 from pathlib import Path
 from typing import Any
 
@@ -23,19 +25,28 @@ class ResolvedScope(BaseModel):
 
 def fingerprint_file(path: str) -> SourceFingerprint:
     candidate = Path(path)
-    if not candidate.is_file():
+    try:
+        with candidate.open("rb") as handle:
+            before = os.fstat(handle.fileno())
+            digest = hashlib.sha256()
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+            after = os.fstat(handle.fileno())
+            current = candidate.stat()
+    except FileNotFoundError:
         return SourceFingerprint(path=str(candidate), exists=False)
 
-    stat = candidate.stat()
-    digest = hashlib.sha256()
-    with candidate.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(block)
+    if (
+        (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+        != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+        or (after.st_dev, after.st_ino) != (current.st_dev, current.st_ino)
+    ):
+        raise RuntimeError(f"source changed while fingerprinting: {candidate}")
     return SourceFingerprint(
         path=str(candidate),
         exists=True,
-        size=stat.st_size,
-        mtime_ns=stat.st_mtime_ns,
+        size=after.st_size,
+        mtime_ns=after.st_mtime_ns,
         sha256=digest.hexdigest(),
     )
 
@@ -56,9 +67,9 @@ class SourceResolver:
         if output_files_db:
             db_paths.setdefault("files", output_files_db)
 
-        fingerprints = {
-            name: fingerprint_file(path) for name, path in db_paths.items()
-        }
+        fingerprints, analysis = await asyncio.to_thread(
+            self._freeze_sources, db_paths, task_id
+        )
         evidence_name = Path(task.get("image_path") or task_id).name
         evidence = EvidenceSource(
             evidence_id=task_id,
@@ -68,7 +79,6 @@ class SourceResolver:
             db_paths=db_paths,
             source_fingerprints=fingerprints,
         )
-        analysis = self.analysis_adapter.load_task(db_paths.get("files", ""), task_id)
         relevant_paths = set(analysis.get("filtered_files", []))
         context = AdapterContext(
             scope_type=ScopeType.TASK,
@@ -90,6 +100,15 @@ class SourceResolver:
             contexts=[context],
             analysis=analysis,
         )
+
+    def _freeze_sources(
+        self, db_paths: dict[str, str], task_id: str
+    ) -> tuple[dict[str, SourceFingerprint], dict[str, Any]]:
+        fingerprints = {
+            name: fingerprint_file(path) for name, path in db_paths.items()
+        }
+        analysis = self.analysis_adapter.load_task(db_paths.get("files", ""), task_id)
+        return fingerprints, analysis
 
     @staticmethod
     def _database_paths(database_rows: Any) -> dict[str, str]:

@@ -294,7 +294,7 @@ class SnapshotWriter:
             staging
             / "data"
             / safe_segment(context.evidence_id)
-            / category.platform
+            / safe_segment(category.platform)
             / safe_segment(category.category_id)
         )
         if category_dir.exists():
@@ -330,6 +330,15 @@ class SnapshotWriter:
             relative = category_dir.relative_to(staging) / f"{page_number}.json"
             (work_dir / f"{page_number}.json").write_bytes(_canonical_json(payload))
             page_paths.append(relative.as_posix())
+
+        def finalize_page_totals() -> None:
+            for page_number in range(1, len(page_paths) + 1):
+                page_path = work_dir / f"{page_number}.json"
+                payload = json.loads(page_path.read_text("utf-8"))
+                payload.pop("sha256", None)
+                payload["total"] = totals["total"]
+                payload["sha256"] = hashlib.sha256(_canonical_json(payload)).hexdigest()
+                page_path.write_bytes(_canonical_json(payload))
 
         try:
             for record in adapter.iter_records(context, category):
@@ -370,6 +379,7 @@ class SnapshotWriter:
 
             if page_records:
                 flush_page(math.ceil(totals["total"] / category.page_size))
+            finalize_page_totals()
             category_dir.parent.mkdir(parents=True, exist_ok=True)
             search_document_ids = search.add_documents(category_search.documents())
             os.replace(work_dir, category_dir)
