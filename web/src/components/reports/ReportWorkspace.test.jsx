@@ -175,6 +175,45 @@ test('navigates a record search hit once and scrolls after its category page ren
   Element.prototype.scrollIntoView = original;
 });
 
+test('reactivates the same hit when its search activation revision changes', async () => {
+  const user = userEvent.setup();
+  const scrollIntoView = vi.fn();
+  const original = Element.prototype.scrollIntoView;
+  Element.prototype.scrollIntoView = scrollIntoView;
+  const source = {
+    getCategoryPage: vi.fn((_, categoryId, page) => Promise.resolve(categoryPage(
+      categoryId,
+      page,
+      categoryId === 'linux.shell'
+        ? [{ record_id: 'same-hit', title: 'same result', fields: {} }]
+        : [],
+    ))),
+  };
+  const hit = { record_id: 'same-hit', category_id: 'linux.shell', page: 1 };
+  const searchState = (activation) => ({
+    query: 'same', result: { total: 1, hits: [hit] }, currentHit: hit, cursor: 0,
+    activation, loading: false, error: null,
+    submit: vi.fn(), next: vi.fn(), previous: vi.fn(),
+  });
+
+  const view = render(<Harness dataSource={source} searchState={searchState(1)} />);
+  await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+
+  await user.click(screen.getByRole('button', { name: '打开 短信' }));
+  await waitFor(() => expect(source.getCategoryPage).toHaveBeenLastCalledWith('report-1', 'android.sms', 1));
+
+  view.rerender(<Harness dataSource={source} searchState={searchState(2)} />);
+  await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(2));
+  expect(source.getCategoryPage).toHaveBeenLastCalledWith('report-1', 'linux.shell', 1);
+
+  const callsAfterReactivation = source.getCategoryPage.mock.calls.length;
+  view.rerender(<Harness dataSource={source} searchState={searchState(2)} />);
+  await waitFor(() => expect(source.getCategoryPage).toHaveBeenCalledTimes(callsAfterReactivation));
+  expect(scrollIntoView).toHaveBeenCalledTimes(2);
+
+  Element.prototype.scrollIntoView = original;
+});
+
 test('navigates a section hit without attempting record scrolling', async () => {
   const scrollIntoView = vi.fn();
   const original = Element.prototype.scrollIntoView;

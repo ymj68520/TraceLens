@@ -6,6 +6,7 @@ export function useReportSearch({ dataSource, reportId }) {
   const [query, setQuery] = useState('');
   const [result, setResult] = useState(EMPTY_RESULT);
   const [cursor, setCursor] = useState(0);
+  const [activation, setActivation] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const reportRef = useRef(reportId);
@@ -17,6 +18,7 @@ export function useReportSearch({ dataSource, reportId }) {
     setQuery('');
     setResult(EMPTY_RESULT);
     setCursor(0);
+    setActivation(0);
     setLoading(false);
     setError(null);
   }, [reportId]);
@@ -54,6 +56,7 @@ export function useReportSearch({ dataSource, reportId }) {
       };
       setResult(nextResult);
       setCursor(0);
+      setActivation((value) => value + 1);
       return nextResult;
     } catch (nextError) {
       if (requestRef.current === requestId && reportRef.current === requestReport) {
@@ -71,10 +74,14 @@ export function useReportSearch({ dataSource, reportId }) {
 
   const hits = result.hits;
   const next = useCallback(() => {
-    setCursor((value) => (hits.length ? (value + 1) % hits.length : 0));
+    if (!hits.length) return;
+    setCursor((value) => (value + 1) % hits.length);
+    setActivation((value) => value + 1);
   }, [hits.length]);
   const previous = useCallback(() => {
-    setCursor((value) => (hits.length ? (value - 1 + hits.length) % hits.length : 0));
+    if (!hits.length) return;
+    setCursor((value) => (value - 1 + hits.length) % hits.length);
+    setActivation((value) => value + 1);
   }, [hits.length]);
   const currentHit = useMemo(() => hits[cursor] || null, [cursor, hits]);
 
@@ -83,6 +90,7 @@ export function useReportSearch({ dataSource, reportId }) {
     result,
     currentHit,
     cursor,
+    activation,
     loading,
     error,
     submit,
