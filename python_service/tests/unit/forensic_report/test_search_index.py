@@ -40,3 +40,20 @@ def test_search_casefolds_and_pages_deterministically(tmp_path: Path):
     assert total == 2
     assert [hit.title for hit in hits] == ["BETA"]
     assert index.search("   ", 0, 10) == (0, [])
+
+
+def test_readonly_open_rejects_empty_or_corrupt_index_without_mutating_it(tmp_path: Path):
+    empty = tmp_path / "empty.sqlite3"
+    empty.write_bytes(b"")
+    corrupt = tmp_path / "corrupt.sqlite3"
+    corrupt.write_bytes(b"not sqlite")
+
+    for path in (empty, corrupt):
+        before = path.read_bytes()
+        try:
+            SnapshotSearchIndex.open_readonly(path)
+        except Exception:
+            pass
+        else:  # pragma: no cover - a zero-byte/corrupt SQLite database is invalid
+            raise AssertionError("invalid published index was accepted")
+        assert path.read_bytes() == before
