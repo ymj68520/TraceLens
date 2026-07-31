@@ -1,35 +1,6 @@
 import CategoryPagination from './CategoryPagination';
+import { getReportRenderer } from './renderers/registry';
 import { useReportCategory } from '../../hooks/useReportCategory';
-
-function displayRecord(record, index) {
-  const title = record?.title || record?.record_id || `记录 ${index + 1}`;
-  const fields = record?.fields && typeof record.fields === 'object'
-    ? Object.entries(record.fields).slice(0, 6)
-    : [];
-
-  return (
-    <article
-      key={record?.record_id || `${title}-${index}`}
-      data-record-id={record?.record_id}
-      className="scroll-mt-24 rounded-xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70"
-    >
-      <h3 className="font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
-      {record?.source_path && <p className="mt-1 break-all font-mono text-xs text-slate-500">{record.source_path}</p>}
-      {fields.length > 0 && (
-        <dl className="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2">
-          {fields.map(([name, value]) => (
-            <div key={name} className="min-w-0">
-              <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">{name}</dt>
-              <dd className="break-words text-sm text-slate-700 dark:text-slate-200">
-                {typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </article>
-  );
-}
 
 export default function CategorySection({
   reportId, category, page, dataSource, onPageChange, onPageRendered,
@@ -41,6 +12,7 @@ export default function CategorySection({
     page,
   });
   const records = Array.isArray(data?.records) ? data.records : [];
+  const Renderer = getReportRenderer(category?.renderer);
 
   return (
     <section aria-labelledby="report-category-title" className="min-w-0 space-y-4">
@@ -70,7 +42,12 @@ export default function CategorySection({
             if (node) onPageRendered?.(node, data);
           }}
         >
-          {records.map(displayRecord)}
+          <Renderer
+            records={records}
+            category={category}
+            reportId={reportId}
+            dataSource={dataSource}
+          />
         </div>
       )}
 
