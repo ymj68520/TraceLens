@@ -43,6 +43,28 @@ async def test_get_task_encodes_confusing_id_as_one_path_segment():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("task_id", [".", ".."])
+async def test_get_task_rejects_pure_dot_segments_without_requesting(task_id: str):
+    requested_urls = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requested_urls.append(request.url)
+        return httpx.Response(200, json={"id": task_id})
+
+    service = CppBackendService(SimpleNamespace(cpp_backend_url="http://example.test"))
+    service._client = httpx.AsyncClient(
+        base_url=service.base_url,
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        assert await service.get_task(task_id) is None
+    finally:
+        await service.shutdown()
+
+    assert requested_urls == []
+
+
+@pytest.mark.asyncio
 async def test_get_task_rejects_successful_non_task_or_mismatched_id_response():
     service = CppBackendService(SimpleNamespace(cpp_backend_url="http://example.test"))
     service._request = AsyncMock(side_effect=[{"status": "ok"}, {"id": "other-task"}])
