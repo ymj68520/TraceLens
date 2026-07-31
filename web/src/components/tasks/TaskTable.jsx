@@ -58,7 +58,7 @@ function ActionsCell({ task, onCancel, onDelete, onJoinCase }) {
         <>
           <Link to={`/timeline?task_id=${task.id}`} className="text-primary-600 hover:underline">Timeline</Link>
           <Link to={`/files?task_id=${task.id}`} className="text-green-600 hover:underline ml-1">Files</Link>
-          <Link to={`/case-report?task_id=${task.id}`} className="text-teal-600 hover:underline ml-1">Report</Link>
+          <Link to={`/reports/task/${task.id}`} className="text-teal-600 hover:underline ml-1">Report</Link>
           <button onClick={() => onJoinCase(task.id)} className="text-indigo-600 hover:underline ml-1" title="将此任务加入多镜像案件">
             加入案件
           </button>
@@ -136,7 +136,7 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
               <td className="px-4 py-4 text-sm text-slate-900 dark:text-white truncate max-w-[200px]" title={task.image_path}>
                 <div className="truncate">{task.image_path}</div>
                 {forensicCase && (
-                  <Link to={`/case-report?case_id=${forensicCase.id}`}
+                  <Link to={`/reports/case/${forensicCase.id}`}
                     className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-[10px] text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
                     title={`所属案件：${forensicCase.name}`}>
                     🗂 {forensicCase.name}

@@ -332,7 +332,7 @@ function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, onAddTas
             <Button
                 variant="primary"
                 size="sm"
-                onClick={() => navigate(`/case-report?case_id=${fc.id}`)}
+                onClick={() => navigate(`/reports/case/${fc.id}`)}
                 className="shadow-sm"
             >
                 👀 查看完整研判报告
@@ -384,7 +384,7 @@ function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, onAddTas
                         title="查看时间线"
                       >⏱</button>
                       <button
-                        onClick={() => navigate(`/case-report?taskId=${t.id}`)}
+                        onClick={() => navigate(`/reports/task/${t.id}`)}
                         className="text-slate-400 hover:text-emerald-600 transition-colors"
                         title="单镜像报告"
                       >📄</button>
