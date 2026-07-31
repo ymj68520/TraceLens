@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import CategorySection from './CategorySection';
 import ReportDirectory from './ReportDirectory';
 import ReportSearch from './ReportSearch';
@@ -28,6 +28,10 @@ export default function ReportWorkspace({
   const scrolledRef = useRef(null);
 
   const currentHitKey = hitKey(searchState.currentHit);
+  const navigationActivation = searchState.activation ?? currentHitKey;
+  const navigationKey = currentHitKey
+    ? `${navigationActivation}::${currentHitKey}`
+    : null;
   useEffect(() => {
     navigationRef.current = null;
     pendingHitRef.current = null;
@@ -35,15 +39,15 @@ export default function ReportWorkspace({
   }, [reportId]);
 
   useEffect(() => {
-    if (!currentHitKey || navigationRef.current === currentHitKey) return;
+    if (!navigationKey || navigationRef.current === navigationKey) return;
     const hit = searchState.currentHit;
-    navigationRef.current = currentHitKey;
+    navigationRef.current = navigationKey;
     pendingHitRef.current = hit.record_id ? hit : null;
     scrolledRef.current = null;
     onSelectCategory(hit.category_id, hit.page);
-  }, [currentHitKey, onSelectCategory, searchState.currentHit]);
+  }, [navigationKey, onSelectCategory, searchState.currentHit]);
 
-  const scrollToPendingRecord = (container, pageData) => {
+  const scrollToPendingRecord = useCallback((container, pageData) => {
     const hit = pendingHitRef.current;
     if (
       !hit?.record_id
@@ -60,7 +64,7 @@ export default function ReportWorkspace({
     scrolledRef.current = scrollKey;
     pendingHitRef.current = null;
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
+  }, [reportId, selectedCategory, selectedPage]);
 
   return (
     <div className="relative grid min-h-[70vh] min-w-0 grid-cols-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">

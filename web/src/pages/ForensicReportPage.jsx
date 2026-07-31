@@ -17,8 +17,9 @@ export default function ForensicReportPage({ scopeType, dataSource = reportDataS
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedPage, setSelectedPage] = useState(1);
   const [directoryOpen, setDirectoryOpen] = useState(false);
-  const defaultCategoryId = state.manifest?.categories?.[0]?.category_id || null;
-  const incompatible = Boolean(state.manifest && state.manifest.schema_version !== '1.0');
+  const currentManifest = state.manifest?.report_id === reportId ? state.manifest : null;
+  const defaultCategoryId = currentManifest?.categories?.[0]?.category_id || null;
+  const incompatible = Boolean(currentManifest && currentManifest.schema_version !== '1.0');
 
   useEffect(() => {
     setSelectedCategory(defaultCategoryId);
@@ -52,9 +53,9 @@ export default function ForensicReportPage({ scopeType, dataSource = reportDataS
           onSelect={(version) => { void state.selectVersion(version); }}
         />
       )}
-      {state.manifest && !incompatible && reportId && (
+      {currentManifest && !incompatible && reportId && (
         <ReportWorkspace
-          manifest={state.manifest}
+          manifest={currentManifest}
           dataSource={dataSource}
           reportId={reportId}
           selectedCategory={selectedCategory}
