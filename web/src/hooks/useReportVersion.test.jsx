@@ -273,6 +273,122 @@ test('reconciles a created report into a late refresh list and keeps polling it'
   vi.useRealTimers();
 });
 
+test('keeps a create that completes while refresh is waiting for stale statuses', async () => {
+  vi.useFakeTimers();
+  const create = deferred();
+  const staleStatus = deferred();
+  const created = { report_id: 'r3', version: 3, status: 'generating', stage: 'snapshot', progress: 10 };
+  const source = {
+    listVersions: vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([running]),
+    createVersion: vi.fn().mockReturnValue(create.promise),
+    getStatus: vi.fn()
+      .mockReturnValueOnce(staleStatus.promise)
+      .mockImplementation((reportId) => Promise.resolve(reportId === created.report_id ? created : running)),
+    getManifest: vi.fn(),
+  };
+  const { result } = renderHook(() => useReportVersion({
+    scopeType: 'task', scopeId: 't1', dataSource: source, pollInterval: 5,
+  }));
+  await flush();
+
+  let creating;
+  await act(async () => { creating = result.current.createVersion(); });
+  let refreshing;
+  await act(async () => { refreshing = result.current.refresh(); });
+  await flush();
+  expect(source.getStatus).toHaveBeenCalledWith(running.report_id);
+
+  create.resolve(created);
+  await act(async () => { await creating; });
+  staleStatus.resolve(running);
+  await act(async () => { await refreshing; });
+
+  expect(result.current.versions.map((version) => version.report_id)).toEqual(['r3', 'r2']);
+  await act(async () => vi.advanceTimersByTimeAsync(5));
+  expect(source.getStatus).toHaveBeenCalledWith(created.report_id);
+  vi.useRealTimers();
+});
+
+test('keeps same-report progress and terminal status monotonic across refresh and polling', async () => {
+  vi.useFakeTimers();
+  const localProgress = { report_id: 'r3', version: 3, status: 'generating', stage: 'index', progress: 70 };
+  const staleList = { ...localProgress, status: 'queued', stage: 'queued', progress: 0 };
+  const staleStatus = { ...localProgress, stage: 'snapshot', progress: 20 };
+  const readyVersion = { ...localProgress, status: 'ready', stage: 'complete', progress: 100 };
+  const conflictingTerminal = { ...localProgress, status: 'failed', stage: 'complete', error: 'late failure' };
+  const source = {
+    listVersions: vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([staleList])
+      .mockResolvedValueOnce([conflictingTerminal]),
+    createVersion: vi.fn().mockResolvedValue(localProgress),
+    getStatus: vi.fn()
+      .mockResolvedValueOnce(staleStatus)
+      .mockResolvedValueOnce(readyVersion),
+    getManifest: vi.fn().mockResolvedValue({ report_id: 'r3' }),
+  };
+  const { result } = renderHook(() => useReportVersion({
+    scopeType: 'task', scopeId: 't1', dataSource: source, pollInterval: 5,
+  }));
+  await flush();
+
+  await act(async () => { await result.current.createVersion(); });
+  await act(async () => { await result.current.refresh(); });
+  expect(result.current.versions).toEqual([localProgress]);
+
+  await act(async () => vi.advanceTimersByTimeAsync(5));
+  expect(result.current.versions).toEqual([readyVersion]);
+  await act(async () => { await result.current.refresh(); });
+  expect(result.current.versions).toEqual([readyVersion]);
+  expect(result.current.selectedVersion).toEqual(readyVersion);
+  vi.useRealTimers();
+});
+
+test.each(['create', 'refresh'])(
+  'keeps loading true until concurrent create and refresh both finish when %s finishes first',
+  async (firstCompletion) => {
+    const create = deferred();
+    const refreshList = deferred();
+    const created = { report_id: 'r3', version: 3, status: 'queued', stage: 'queued', progress: 0 };
+    const source = {
+      listVersions: vi.fn()
+        .mockResolvedValueOnce([])
+        .mockReturnValueOnce(refreshList.promise),
+      createVersion: vi.fn().mockReturnValue(create.promise),
+      getStatus: vi.fn().mockResolvedValue(created),
+      getManifest: vi.fn(),
+    };
+    const { result } = renderHook(() => useReportVersion({ scopeType: 'task', scopeId: 't1', dataSource: source }));
+    await flush();
+
+    let creating;
+    let refreshing;
+    await act(async () => {
+      creating = result.current.createVersion();
+      refreshing = result.current.refresh();
+    });
+    expect(result.current.loading).toBe(true);
+
+    if (firstCompletion === 'create') {
+      create.resolve(created);
+      await act(async () => { await creating; });
+      expect(result.current.loading).toBe(true);
+      refreshList.resolve([]);
+      await act(async () => { await refreshing; });
+    } else {
+      refreshList.resolve([]);
+      await act(async () => { await refreshing; });
+      expect(result.current.loading).toBe(true);
+      create.resolve(created);
+      await act(async () => { await creating; });
+    }
+
+    expect(result.current.loading).toBe(false);
+  },
+);
+
 test('keeps create guards and results isolated by scope', async () => {
   const createA = deferred();
   const createB = deferred();

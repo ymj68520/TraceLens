@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const GENERATING_STATUSES = new Set(['queued', 'generating']);
+const STATUS_PHASE = {
+  queued: 0,
+  generating: 1,
+  ready: 2,
+  failed: 2,
+};
 
 function isGenerating(version) {
   return version && GENERATING_STATUSES.has(version.status);
@@ -10,6 +16,64 @@ function latestReady(versions) {
   return versions
     .filter((version) => version.status === 'ready')
     .sort((left, right) => Number(right.version) - Number(left.version))[0] || null;
+}
+
+function statusPhase(version) {
+  return STATUS_PHASE[version?.status] ?? -1;
+}
+
+export function mergeReportVersion(serverVersion, observedVersion) {
+  if (!serverVersion) return observedVersion;
+  if (!observedVersion) return serverVersion;
+
+  const serverPhase = statusPhase(serverVersion);
+  const observedPhase = statusPhase(observedVersion);
+  if (serverPhase > observedPhase) return serverVersion;
+  if (serverPhase < observedPhase) return observedVersion;
+
+  if (serverVersion.status === 'generating' && observedVersion.status === 'generating') {
+    return Number(serverVersion.progress || 0) > Number(observedVersion.progress || 0)
+      ? serverVersion
+      : observedVersion;
+  }
+
+  if (serverPhase === STATUS_PHASE.ready) {
+    if (serverVersion.status !== observedVersion.status) return observedVersion;
+    return { ...observedVersion, ...serverVersion };
+  }
+
+  return observedVersion;
+}
+
+export function mergeReportVersions(serverVersions, observedVersions) {
+  const serverIds = new Set(serverVersions.map((version) => version.report_id));
+  const observedById = new Map(observedVersions.map((version) => [version.report_id, version]));
+  return [
+    ...observedVersions.filter((version) => !serverIds.has(version.report_id)),
+    ...serverVersions.map((serverVersion) => (
+      mergeReportVersion(serverVersion, observedById.get(serverVersion.report_id))
+    )),
+  ];
+}
+
+function serverConfirmsObserved(serverVersion, observedVersion) {
+  const serverPhase = statusPhase(serverVersion);
+  const observedPhase = statusPhase(observedVersion);
+  if (serverPhase !== observedPhase) return serverPhase > observedPhase;
+  if (serverPhase === STATUS_PHASE.generating) {
+    return Number(serverVersion.progress || 0) >= Number(observedVersion.progress || 0);
+  }
+  if (serverPhase === STATUS_PHASE.ready) return serverVersion.status === observedVersion.status;
+  return serverVersion.status === observedVersion.status;
+}
+
+function serverSnapshotWithStatuses(list, statuses) {
+  const statusById = new Map(statuses.map((status) => [status.report_id, status]));
+  const listIds = new Set(list.map((version) => version.report_id));
+  return [
+    ...statuses.filter((status) => !listIds.has(status.report_id)),
+    ...list.map((version) => statusById.get(version.report_id) || version),
+  ];
 }
 
 export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval = 2000 }) {
@@ -29,6 +93,8 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
   const pollRef = useRef(null);
   const createPromiseRef = useRef(new Map());
   const createdOverlayRef = useRef(new Map());
+  const operationsRef = useRef(new Map());
+  const operationIdRef = useRef(0);
 
   dataSourceRef.current = dataSource;
   pollIntervalRef.current = pollInterval;
@@ -48,25 +114,59 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
     return intentRef.current;
   }, [clearTimer]);
 
-  const mergeCreated = useCallback((scopeKey, serverVersions) => {
-    const pendingCreated = createdOverlayRef.current.get(scopeKey);
-    if (!pendingCreated?.size) return serverVersions;
-
-    const serverIds = new Set(serverVersions.map((version) => version.report_id));
-    for (const reportId of serverIds) pendingCreated.delete(reportId);
-    if (!pendingCreated.size) createdOverlayRef.current.delete(scopeKey);
-
-    return [
-      ...[...pendingCreated.values()].filter((version) => !serverIds.has(version.report_id)),
-      ...serverVersions,
-    ];
+  const beginOperation = useCallback((scopeKey) => {
+    const token = ++operationIdRef.current;
+    const operations = operationsRef.current.get(scopeKey) || new Set();
+    operations.add(token);
+    operationsRef.current.set(scopeKey, operations);
+    if (mountedRef.current && scopeRef.current === scopeKey) setLoading(true);
+    return token;
   }, []);
 
-  const updateCreatedOverlay = useCallback((scopeKey, versions) => {
-    const pendingCreated = createdOverlayRef.current.get(scopeKey);
-    if (!pendingCreated) return;
-    for (const version of versions) {
-      if (pendingCreated.has(version.report_id)) pendingCreated.set(version.report_id, version);
+  const endOperation = useCallback((scopeKey, token) => {
+    const operations = operationsRef.current.get(scopeKey);
+    if (!operations?.delete(token)) return;
+    if (!operations.size) operationsRef.current.delete(scopeKey);
+    if (mountedRef.current && scopeRef.current === scopeKey) setLoading(operations.size > 0);
+  }, []);
+
+  const currentOverlay = useCallback((scopeKey) => (
+    [...(createdOverlayRef.current.get(scopeKey)?.values() || [])]
+  ), []);
+
+  const reconcileCreatedOverlay = useCallback((scopeKey, serverVersions) => {
+    const overlay = createdOverlayRef.current.get(scopeKey);
+    if (!overlay) return;
+
+    for (const serverVersion of serverVersions) {
+      const observedVersion = overlay.get(serverVersion.report_id);
+      if (!observedVersion) continue;
+      if (serverConfirmsObserved(serverVersion, observedVersion)) {
+        overlay.delete(serverVersion.report_id);
+      } else {
+        overlay.set(
+          serverVersion.report_id,
+          mergeReportVersion(serverVersion, observedVersion),
+        );
+      }
+    }
+    if (!overlay.size) createdOverlayRef.current.delete(scopeKey);
+  }, []);
+
+  const reconcileServerSnapshot = useCallback((scopeKey, serverVersions) => {
+    reconcileCreatedOverlay(scopeKey, serverVersions);
+    const withCurrent = mergeReportVersions(serverVersions, versionsRef.current);
+    return mergeReportVersions(withCurrent, currentOverlay(scopeKey));
+  }, [currentOverlay, reconcileCreatedOverlay]);
+
+  const updateCreatedOverlay = useCallback((scopeKey, nextVersions) => {
+    const overlay = createdOverlayRef.current.get(scopeKey);
+    if (!overlay) return;
+    for (const version of nextVersions) {
+      const observedVersion = overlay.get(version.report_id);
+      if (observedVersion) {
+        overlay.set(version.report_id, mergeReportVersion(version, observedVersion));
+      }
     }
   }, []);
 
@@ -108,79 +208,84 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
     timerRef.current = setTimeout(() => { void pollRef.current(scopeKey, intent); }, pollIntervalRef.current);
   }, [clearTimer, isActive]);
 
+  const readVersions = useCallback(async (scopeKey, intent, preserveSelection) => {
+    const list = await dataSourceRef.current.listVersions(scopeType, scopeId);
+    if (!isActive(scopeKey, intent)) return;
+
+    const candidateVersions = reconcileServerSnapshot(scopeKey, list);
+    const generating = candidateVersions.filter(isGenerating);
+    let serverSnapshot = list;
+    if (generating.length) {
+      try {
+        const statuses = await Promise.all(generating.map((version) => (
+          dataSourceRef.current.getStatus(version.report_id)
+        )));
+        if (!isActive(scopeKey, intent)) return;
+        serverSnapshot = serverSnapshotWithStatuses(list, statuses.filter(Boolean));
+      } catch (nextError) {
+        if (isActive(scopeKey, intent)) setError(nextError);
+      }
+    }
+    if (!isActive(scopeKey, intent)) return;
+
+    // Re-read both current state and the mutation overlay only after all status
+    // requests settle; neither the list-stage snapshot nor a stale status owns commit.
+    const nextVersions = reconcileServerSnapshot(scopeKey, serverSnapshot);
+    updateCreatedOverlay(scopeKey, nextVersions);
+    commitVersions(nextVersions);
+    const previousId = preserveSelection ? selectedRef.current?.report_id : null;
+    const preserved = previousId
+      ? nextVersions.find((version) => version.report_id === previousId)
+      : null;
+    const nextSelected = preserved || latestReady(nextVersions) || nextVersions[0] || null;
+    commitSelection(nextSelected);
+    if (nextSelected?.status === 'ready') {
+      await loadManifest(nextSelected, scopeKey, intent);
+    } else if (isActive(scopeKey, intent)) {
+      setManifest(null);
+    }
+  }, [commitSelection, commitVersions, isActive, loadManifest, reconcileServerSnapshot, scopeId, scopeType, updateCreatedOverlay]);
+
   const refresh = useCallback(async () => {
     const scopeKey = `${scopeType}:${scopeId}`;
     const intent = beginIntent();
-    if (isActive(scopeKey, intent)) {
-      setLoading(true);
-      setError(null);
-    }
+    const operation = beginOperation(scopeKey);
+    if (isActive(scopeKey, intent)) setError(null);
 
     try {
-      const list = await dataSourceRef.current.listVersions(scopeType, scopeId);
-      if (!isActive(scopeKey, intent)) return;
-
-      let nextVersions = mergeCreated(scopeKey, list);
-      const generating = nextVersions.filter(isGenerating);
-      if (generating.length) {
-        try {
-          const statuses = await Promise.all(generating.map((version) => (
-            dataSourceRef.current.getStatus(version.report_id)
-          )));
-          if (!isActive(scopeKey, intent)) return;
-          nextVersions = nextVersions.map((version) => (
-            statuses.find((status) => status?.report_id === version.report_id) || version
-          ));
-          updateCreatedOverlay(scopeKey, nextVersions);
-        } catch (nextError) {
-          if (isActive(scopeKey, intent)) setError(nextError);
-        }
-      }
-      if (!isActive(scopeKey, intent)) return;
-
-      updateCreatedOverlay(scopeKey, nextVersions);
-      commitVersions(nextVersions);
-      const previousId = selectedRef.current?.report_id;
-      const preserved = previousId ? nextVersions.find((version) => version.report_id === previousId) : null;
-      const nextSelected = preserved || latestReady(nextVersions) || nextVersions[0] || null;
-      commitSelection(nextSelected);
-      if (nextSelected?.status === 'ready') {
-        await loadManifest(nextSelected, scopeKey, intent);
-      } else {
-        setManifest(null);
-      }
+      await readVersions(scopeKey, intent, true);
     } catch (nextError) {
       if (isActive(scopeKey, intent)) setError(nextError);
     } finally {
-      if (isActive(scopeKey, intent)) {
-        setLoading(false);
-        schedulePoll(scopeKey, intent);
-      }
+      if (isActive(scopeKey, intent)) schedulePoll(scopeKey, intent);
+      endOperation(scopeKey, operation);
     }
-  }, [beginIntent, commitSelection, commitVersions, isActive, loadManifest, mergeCreated, schedulePoll, scopeId, scopeType, updateCreatedOverlay]);
+  }, [beginIntent, beginOperation, endOperation, isActive, readVersions, schedulePoll, scopeId, scopeType]);
 
   pollRef.current = async (scopeKey, intent) => {
     if (!isActive(scopeKey, intent)) return;
-    const beforePoll = versionsRef.current;
-    const generating = beforePoll.filter(isGenerating);
+    const generating = versionsRef.current.filter(isGenerating);
     if (!generating.length) return;
 
     try {
-      const statuses = await Promise.all(generating.map((version) => (
+      const statuses = (await Promise.all(generating.map((version) => (
         dataSourceRef.current.getStatus(version.report_id)
-      )));
+      )))).filter(Boolean);
       if (!isActive(scopeKey, intent)) return;
 
-      const nextVersions = beforePoll.map((version) => (
-        statuses.find((status) => status?.report_id === version.report_id) || version
+      reconcileCreatedOverlay(scopeKey, statuses);
+      const statusById = new Map(statuses.map((status) => [status.report_id, status]));
+      const nextVersions = versionsRef.current.map((version) => (
+        mergeReportVersion(statusById.get(version.report_id), version)
       ));
+      const withOverlay = mergeReportVersions(nextVersions, currentOverlay(scopeKey));
       const currentId = selectedRef.current?.report_id;
       const nextSelected = currentId
-        ? nextVersions.find((version) => version.report_id === currentId) || selectedRef.current
+        ? withOverlay.find((version) => version.report_id === currentId) || selectedRef.current
         : null;
 
-      updateCreatedOverlay(scopeKey, nextVersions);
-      commitVersions(nextVersions);
+      updateCreatedOverlay(scopeKey, withOverlay);
+      commitVersions(withOverlay);
       let manifestLoaded = true;
       if (nextSelected) {
         commitSelection(nextSelected);
@@ -202,56 +307,25 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
     const scopeKey = `${scopeType}:${scopeId}`;
     scopeRef.current = scopeKey;
     const intent = beginIntent();
+    const operation = beginOperation(scopeKey);
     versionsRef.current = [];
     selectedRef.current = null;
     setVersions([]);
     setSelectedVersion(null);
     setManifest(null);
     setError(null);
-    setLoading(true);
-    void (async () => {
-      // refresh owns its token, so create one operation for each scope reset.
-      const list = await dataSourceRef.current.listVersions(scopeType, scopeId);
-      if (!isActive(scopeKey, intent)) return;
 
-      let nextVersions = mergeCreated(scopeKey, list);
-      const generating = nextVersions.filter(isGenerating);
-      if (generating.length) {
-        try {
-          const statuses = await Promise.all(generating.map((version) => (
-            dataSourceRef.current.getStatus(version.report_id)
-          )));
-          if (!isActive(scopeKey, intent)) return;
-          nextVersions = nextVersions.map((version) => (
-            statuses.find((status) => status?.report_id === version.report_id) || version
-          ));
-          updateCreatedOverlay(scopeKey, nextVersions);
-        } catch (nextError) {
-          if (isActive(scopeKey, intent)) setError(nextError);
-        }
-      }
-      if (!isActive(scopeKey, intent)) return;
-
-      updateCreatedOverlay(scopeKey, nextVersions);
-      commitVersions(nextVersions);
-      const nextSelected = latestReady(nextVersions) || nextVersions[0] || null;
-      commitSelection(nextSelected);
-      if (nextSelected?.status === 'ready') {
-        await loadManifest(nextSelected, scopeKey, intent);
-      } else {
-        setManifest(null);
-      }
-      if (isActive(scopeKey, intent)) setLoading(false);
-      schedulePoll(scopeKey, intent);
-    })().catch((nextError) => {
-      if (isActive(scopeKey, intent)) {
-        setError(nextError);
-        setLoading(false);
-      }
-    });
+    void readVersions(scopeKey, intent, false)
+      .catch((nextError) => {
+        if (isActive(scopeKey, intent)) setError(nextError);
+      })
+      .finally(() => {
+        if (isActive(scopeKey, intent)) schedulePoll(scopeKey, intent);
+        endOperation(scopeKey, operation);
+      });
 
     return clearTimer;
-  }, [beginIntent, clearTimer, commitSelection, commitVersions, isActive, loadManifest, mergeCreated, schedulePoll, scopeId, scopeType, updateCreatedOverlay]);
+  }, [beginIntent, beginOperation, clearTimer, endOperation, isActive, readVersions, schedulePoll, scopeId, scopeType]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -277,10 +351,8 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
     if (pendingCreate) return pendingCreate;
 
     const selectionIntent = beginIntent();
-    if (mountedRef.current && scopeRef.current === scopeKey) {
-      setLoading(true);
-      setError(null);
-    }
+    const operation = beginOperation(scopeKey);
+    if (mountedRef.current && scopeRef.current === scopeKey) setError(null);
 
     const create = (async () => {
       try {
@@ -290,10 +362,12 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
         createdOverlayRef.current.set(scopeKey, overlay);
         if (!mountedRef.current || scopeRef.current !== scopeKey) return created;
 
-        const nextVersions = mergeCreated(scopeKey, versionsRef.current);
+        const nextVersions = mergeReportVersions(versionsRef.current, [created]);
+        updateCreatedOverlay(scopeKey, nextVersions);
         commitVersions(nextVersions);
         if (intentRef.current === selectionIntent) {
-          commitSelection(created);
+          const nextCreated = nextVersions.find((version) => version.report_id === created.report_id) || created;
+          commitSelection(nextCreated);
           setManifest(null);
         }
         schedulePoll(scopeKey, intentRef.current);
@@ -306,15 +380,15 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
           createPromiseRef.current.delete(scopeKey);
         }
         if (mountedRef.current && scopeRef.current === scopeKey) {
-          setLoading(false);
           schedulePoll(scopeKey, intentRef.current);
         }
+        endOperation(scopeKey, operation);
       }
     })();
 
     createPromiseRef.current.set(scopeKey, create);
     return create;
-  }, [beginIntent, commitSelection, commitVersions, mergeCreated, schedulePoll, scopeId, scopeType]);
+  }, [beginIntent, beginOperation, commitSelection, commitVersions, endOperation, schedulePoll, scopeId, scopeType, updateCreatedOverlay]);
 
   return {
     versions,
