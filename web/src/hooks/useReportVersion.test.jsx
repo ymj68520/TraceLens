@@ -1,3 +1,4 @@
+import { useLayoutEffect } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { useReportVersion } from './useReportVersion';
@@ -389,6 +390,41 @@ test.each(['create', 'refresh'])(
   },
 );
 
+test.each(['task', 'case'])(
+  'synchronously hides the previous %s scope state on a same-type route transition',
+  async (scopeType) => {
+    const source = {
+      listVersions: vi.fn((_, scopeId) => (
+        scopeId === 'A' ? Promise.resolve([ready]) : new Promise(() => {})
+      )),
+      getStatus: vi.fn(),
+      getManifest: vi.fn().mockResolvedValue({ report_id: 'r1', title: 'Scope A' }),
+    };
+    let stateSeenBeforePassiveEffects;
+    const { result, rerender } = renderHook(
+      ({ scopeId }) => {
+        const state = useReportVersion({ scopeType, scopeId, dataSource: source });
+        useLayoutEffect(() => {
+          if (scopeId === 'B' && stateSeenBeforePassiveEffects === undefined) {
+            stateSeenBeforePassiveEffects = state;
+          }
+        }, [scopeId, state]);
+        return state;
+      },
+      { initialProps: { scopeId: 'A' } },
+    );
+    await waitFor(() => expect(result.current.manifest?.report_id).toBe('r1'));
+
+    rerender({ scopeId: 'B' });
+
+    expect(stateSeenBeforePassiveEffects.versions).toEqual([]);
+    expect(stateSeenBeforePassiveEffects.selectedVersion).toBeNull();
+    expect(stateSeenBeforePassiveEffects.manifest).toBeNull();
+    expect(stateSeenBeforePassiveEffects.error).toBeNull();
+    expect(stateSeenBeforePassiveEffects.generating).toBeNull();
+    expect(stateSeenBeforePassiveEffects.loading).toBe(true);
+  },
+);
 test('keeps create guards and results isolated by scope', async () => {
   const createA = deferred();
   const createB = deferred();

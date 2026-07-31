@@ -24,6 +24,14 @@ function renderLayout(route) {
   );
 }
 
+test('links to evidence analysis with the current task query contract', () => {
+  renderLayout('/files?task_id=task-1');
+
+  expect(screen.getByRole('link', { name: '证据研判' })).toHaveAttribute(
+    'href',
+    '/case-intelligence?task_id=task-1',
+  );
+});
 test.each([
   ['/reports/task/task-1', '/reports/task/task-1'],
   ['/reports/case/case-1', '/reports/case/case-1'],
