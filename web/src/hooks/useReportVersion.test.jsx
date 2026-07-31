@@ -135,6 +135,7 @@ test('clears the old manifest immediately when selecting ready B and ignores a l
   expect(result.current.error).toMatchObject({ message: 'manifest unavailable' });
 });
 
+
 test('derives ready polling state before writing versions and loads its manifest', async () => {
   vi.useFakeTimers();
   const readyVersion = { ...running, status: 'ready', progress: 100 };
@@ -151,5 +152,87 @@ test('derives ready polling state before writing versions and loads its manifest
   expect(result.current.versions).toEqual([readyVersion]);
   expect(result.current.selectedVersion).toEqual(readyVersion);
   expect(result.current.manifest).toEqual({ report_id: 'r2' });
+  vi.useRealTimers();
+});
+
+test('merges a completed create after a newer selection without replacing that selection', async () => {
+  vi.useFakeTimers();
+  const create = deferred();
+  const created = { report_id: 'r3', version: 3, status: 'generating', stage: 'snapshot', progress: 0 };
+  const source = {
+    listVersions: vi.fn().mockResolvedValue([ready]),
+    createVersion: vi.fn().mockReturnValue(create.promise),
+    getStatus: vi.fn().mockResolvedValue(created),
+    getManifest: vi.fn().mockResolvedValue({ report_id: 'r1' }),
+  };
+  const { result } = renderHook(() => useReportVersion({
+    scopeType: 'task', scopeId: 't1', dataSource: source, pollInterval: 5,
+  }));
+  await flush();
+  expect(result.current.selectedVersion).toEqual(ready);
+
+  let creating;
+  await act(async () => { creating = result.current.createVersion(); });
+  await act(async () => { await result.current.selectVersion(ready); });
+  create.resolve(created);
+  await act(async () => { await creating; });
+
+  expect(result.current.selectedVersion).toEqual(ready);
+  expect(result.current.versions).toEqual([created, ready]);
+  expect(result.current.loading).toBe(false);
+  await act(async () => vi.advanceTimersByTimeAsync(5));
+  expect(source.getStatus).toHaveBeenCalledWith('r3');
+});
+
+test('shares concurrent create calls to avoid duplicate report mutations', async () => {
+  const create = deferred();
+  const created = { report_id: 'r3', version: 3, status: 'queued', stage: 'queued', progress: 0 };
+  const source = {
+    listVersions: vi.fn().mockResolvedValue([]),
+    createVersion: vi.fn().mockReturnValue(create.promise),
+    getStatus: vi.fn().mockResolvedValue(created),
+    getManifest: vi.fn(),
+  };
+  const { result } = renderHook(() => useReportVersion({ scopeType: 'task', scopeId: 't1', dataSource: source }));
+  await flush();
+
+  let first;
+  let second;
+  await act(async () => {
+    first = result.current.createVersion();
+    second = result.current.createVersion();
+  });
+  expect(source.createVersion).toHaveBeenCalledTimes(1);
+  create.resolve(created);
+  await act(async () => { await first; });
+
+  expect(result.current.versions).toEqual([created]);
+  expect(result.current.loading).toBe(false);
+});
+
+test('preserves a manifest-load error after polling reaches ready until refresh succeeds', async () => {
+  vi.useFakeTimers();
+  const readyVersion = { ...running, status: 'ready', progress: 100 };
+  const source = {
+    listVersions: vi.fn()
+      .mockResolvedValueOnce([running])
+      .mockResolvedValueOnce([readyVersion]),
+    getStatus: vi.fn().mockResolvedValue(readyVersion),
+    getManifest: vi.fn()
+      .mockRejectedValueOnce(new Error('manifest unavailable'))
+      .mockResolvedValueOnce({ report_id: 'r2' }),
+  };
+  const { result } = renderHook(() => useReportVersion({
+    scopeType: 'task', scopeId: 't1', dataSource: source, pollInterval: 5,
+  }));
+
+  await act(async () => vi.advanceTimersByTimeAsync(10));
+  expect(result.current.selectedVersion).toEqual(readyVersion);
+  expect(result.current.manifest).toBeNull();
+  expect(result.current.error).toMatchObject({ message: 'manifest unavailable' });
+
+  await act(async () => { await result.current.refresh(); });
+  expect(result.current.manifest).toEqual({ report_id: 'r2' });
+  expect(result.current.error).toBeNull();
   vi.useRealTimers();
 });
