@@ -10,6 +10,8 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import pytest
+from starlette.routing import Match
 
 from httpserver.routes import forensic_reports
 from httpserver.services.forensic_report.service import ReportServiceUnavailable
@@ -306,6 +308,25 @@ def test_search_serializes_model_and_mapping_hits_and_stabilizes_integrity_failu
     assert "/private" not in response.text
 
 
+
+
+def _assert_one_effective_route(app: FastAPI, method: str, path: str) -> None:
+    scope = {"type": "http", "method": method, "path": path, "headers": []}
+    matches = sum(
+        route.matches(scope.copy())[0] is Match.FULL for route in app.routes
+    )
+    assert matches == 1, f"expected one full route match for {method} {path}, got {matches}"
+
+
+def test_effective_route_cardinality_rejects_deliberate_duplicate_registration() -> None:
+    app = FastAPI()
+    app.include_router(forensic_reports.router, prefix="/api/reports")
+    app.include_router(forensic_reports.router, prefix="/api/reports")
+
+    with pytest.raises(AssertionError, match="expected one full route match"):
+        _assert_one_effective_route(app, "GET", "/api/reports/r1/manifest")
+
+
 def test_application_registration_exposes_report_routes_and_preserves_legacy_routes(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "uvicorn", types.SimpleNamespace(run=lambda *args, **kwargs: None))
     monkeypatch.setitem(sys.modules, "multipart", MagicMock(__version__="0.0.1"))
@@ -340,6 +361,18 @@ def test_application_registration_exposes_report_routes_and_preserves_legacy_rou
     } == expected_report_routes
     assert ("/api/llm/cases", "get") in effective_routes
     assert ("/api/llm/analyze/dll", "post") in effective_routes
+
+    for method, path in (
+        ("POST", "/api/reports"),
+        ("GET", "/api/reports"),
+        ("GET", "/api/reports/r1/status"),
+        ("GET", "/api/reports/r1/manifest"),
+        ("GET", "/api/reports/r1/categories/c1/pages/1"),
+        ("GET", "/api/reports/r1/search"),
+        ("GET", "/api/llm/cases"),
+        ("POST", "/api/llm/analyze/dll"),
+    ):
+        _assert_one_effective_route(app, method, path)
 
 
 def test_vite_proxy_routes_reports_before_broad_api() -> None:
