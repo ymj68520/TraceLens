@@ -13,6 +13,10 @@ from .search_index import SnapshotSearchIndex
 logger = logging.getLogger(__name__)
 
 
+class ReportServiceUnavailable(RuntimeError):
+    """Raised when shutdown prevents accepting a new report-generation start."""
+
+
 class ForensicReportService:
     """Coordinates durable report metadata with in-process generation handles."""
 
@@ -94,13 +98,17 @@ class ForensicReportService:
             raise RuntimeError("report start requires an asyncio task")
         async with self._lifecycle_lock:
             if not self._accepting_starts:
-                raise RuntimeError("report service is not accepting new starts")
+                raise ReportServiceUnavailable(
+                    "report service is not accepting new starts"
+                )
             self._starts.add(current)
         try:
             resolved = await self._resolve(scope_type, scope_id)
             async with self._lifecycle_lock:
                 if not self._accepting_starts:
-                    raise RuntimeError("report service is not accepting new starts")
+                    raise ReportServiceUnavailable(
+                        "report service is not accepting new starts"
+                    )
                 version = self.repository.create_version(
                     scope_type, scope_id, resolved.title, resolved.task_ids
                 )
@@ -266,17 +274,15 @@ class ForensicReportService:
         relative = Path(version.manifest_path)
         manifest_path = self._report_root() / relative
         confined = self._confined_report_path(manifest_path, report_dir)
-        expected_report_dir = (
+        current_layout = (
             self._report_root()
             / version.scope_type.value
             / safe_segment(version.scope_id)
-            / safe_segment(version.report_id)
+            / version.report_id
         )
-        if report_dir != expected_report_dir:
-            # Compatibility with legacy pre-slug paths is permitted only when
-            # their directory segment still identifies this exact report ID.
-            if report_dir.name != version.report_id:
-                raise ValueError("report path must remain confined to report root")
+        legacy_safe_id_layout = current_layout.with_name(safe_segment(version.report_id))
+        if report_dir not in (current_layout, legacy_safe_id_layout):
+            raise ValueError("report path must remain confined to report root")
         return confined
 
     def _ready_dir(self, report_id: str) -> Path:

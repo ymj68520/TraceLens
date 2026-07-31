@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from httpserver.routes import forensic_reports
+from httpserver.services.forensic_report.service import ReportServiceUnavailable
 from httpserver.services.forensic_report.models import ReportVersion, ScopeType, SearchHit
 
 
@@ -109,6 +110,22 @@ def test_create_and_list_report_versions() -> None:
     assert listed.json() == []
 
 
+def test_create_maps_shutdown_start_rejection_to_sanitized_service_unavailable() -> None:
+    service = FakeReportService()
+
+    async def reject_start(scope_type: ScopeType, scope_id: str) -> ReportVersion:
+        raise ReportServiceUnavailable("report service is not accepting new starts")
+
+    service.start = reject_start  # type: ignore[method-assign]
+    response = make_client(service).post(
+        "/api/reports", json={"scope_type": "task", "scope_id": "t1"}
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "report service is unavailable"
+    assert "accepting" not in response.text
+
+
 def test_create_maps_unknown_scope_and_unsupported_generation_without_details() -> None:
     service = FakeReportService()
 
@@ -189,9 +206,6 @@ def test_manifest_and_page_are_served_as_json_through_service_paths(tmp_path: Pa
     assert manifest_response.json() == {"report_id": "r1"}
     assert page_response.status_code == 200
     assert page_response.headers["content-type"].startswith("application/json")
-
-
-
 def test_manifest_and_page_reject_invalid_json_without_leaking_paths(tmp_path: Path) -> None:
     broken = tmp_path / "manifest.json"
     broken.write_text("{", encoding="utf-8")
@@ -208,6 +222,27 @@ def test_manifest_and_page_reject_invalid_json_without_leaking_paths(tmp_path: P
     assert manifest_response.json()["detail"] == "report resource integrity error"
     assert page_response.json()["detail"] == "report resource integrity error"
     assert str(tmp_path) not in manifest_response.text
+
+
+def test_file_response_rejects_nonstandard_json_constants_and_deep_recursion(
+    tmp_path: Path,
+) -> None:
+    invalid_constant = tmp_path / "invalid-constant.json"
+    invalid_constant.write_text('{"value": NaN}', encoding="utf-8")
+    deeply_nested = tmp_path / "deeply-nested.json"
+    deeply_nested.write_text("[" * 10000 + "]" * 10000, encoding="utf-8")
+    service = FakeReportService()
+    client = make_client(service)
+
+    service.manifest_path = invalid_constant
+    invalid_response = client.get("/api/reports/r1/manifest")
+    assert invalid_response.status_code == 500
+    assert invalid_response.json()["detail"] == "report resource integrity error"
+
+    service.manifest_path = deeply_nested
+    recursion_response = client.get("/api/reports/r1/manifest")
+    assert recursion_response.status_code == 500
+    assert recursion_response.json()["detail"] == "report resource integrity error"
 
 
 def test_search_corrupt_index_returns_generic_error_without_changing_file(tmp_path: Path) -> None:
@@ -282,29 +317,29 @@ def test_application_registration_exposes_report_routes_and_preserves_legacy_rou
     main._register_routes(app)
 
     expected_report_routes = {
-        ("", ("POST",)),
-        ("", ("GET",)),
-        ("/{report_id}/status", ("GET",)),
-        ("/{report_id}/manifest", ("GET",)),
-        ("/{report_id}/categories/{category_id}/pages/{page}", ("GET",)),
-        ("/{report_id}/search", ("GET",)),
+        ("/api/reports", "post"),
+        ("/api/reports", "get"),
+        ("/api/reports/{report_id}/status", "get"),
+        ("/api/reports/{report_id}/manifest", "get"),
+        ("/api/reports/{report_id}/categories/{category_id}/pages/{page}", "get"),
+        ("/api/reports/{report_id}/search", "get"),
     }
-    included = [route for route in app.routes if hasattr(route, "original_router")]
+    effective_paths = app.openapi()["paths"]
+    effective_routes = {
+        (path, method)
+        for path, operations in effective_paths.items()
+        for method in operations
+        if method in {"get", "post", "put", "patch", "delete", "options", "head"}
+    }
 
-    def mounted_routes(router) -> set[tuple[str, tuple[str, ...]]]:
-        return {
-            (route.path, tuple(sorted(route.methods or ())))
-            for route in router.routes
-            if hasattr(route, "path")
-        }
-
-    mounted = [mounted_routes(route.original_router) for route in included]
-    report_routes = next(routes for routes in mounted if expected_report_routes <= routes)
-    all_routes = set().union(*mounted)
-
-    assert sum(path == "" for path, _ in report_routes) == 2
-    assert ("/api/llm/cases", ("GET",)) in all_routes
-    assert ("/analyze/dll", ("POST",)) in all_routes
+    assert expected_report_routes <= effective_routes
+    assert {
+        (path, method)
+        for path, method in effective_routes
+        if path.startswith("/api/reports")
+    } == expected_report_routes
+    assert ("/api/llm/cases", "get") in effective_routes
+    assert ("/api/llm/analyze/dll", "post") in effective_routes
 
 
 def test_vite_proxy_routes_reports_before_broad_api() -> None:
