@@ -1,7 +1,10 @@
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import ReportStatusPanel from '../components/reports/ReportStatusPanel';
 import ReportToolbar from '../components/reports/ReportToolbar';
+import ReportWorkspace from '../components/reports/ReportWorkspace';
 import VersionHistory from '../components/reports/VersionHistory';
+import { useReportSearch } from '../hooks/useReportSearch';
 import { useReportVersion } from '../hooks/useReportVersion';
 import { reportDataSource } from '../services/reportService';
 
@@ -9,7 +12,25 @@ export default function ForensicReportPage({ scopeType, dataSource = reportDataS
   const params = useParams();
   const scopeId = scopeType === 'case' ? params.caseId : params.taskId;
   const state = useReportVersion({ scopeType, scopeId, dataSource });
+  const reportId = state.selectedVersion?.report_id || null;
+  const searchState = useReportSearch({ dataSource, reportId });
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedPage, setSelectedPage] = useState(1);
+  const [directoryOpen, setDirectoryOpen] = useState(false);
+  const defaultCategoryId = state.manifest?.categories?.[0]?.category_id || null;
   const incompatible = Boolean(state.manifest && state.manifest.schema_version !== '1.0');
+
+  useEffect(() => {
+    setSelectedCategory(defaultCategoryId);
+    setSelectedPage(1);
+    setDirectoryOpen(false);
+  }, [defaultCategoryId, reportId]);
+
+  const selectCategory = useCallback((categoryId, page = 1) => {
+    const nextPage = Number.isInteger(Number(page)) && Number(page) > 0 ? Number(page) : 1;
+    setSelectedCategory(categoryId);
+    setSelectedPage(nextPage);
+  }, []);
 
   return (
     <section aria-label="Forensic report" className="space-y-5">
@@ -31,8 +52,19 @@ export default function ForensicReportPage({ scopeType, dataSource = reportDataS
           onSelect={(version) => { void state.selectVersion(version); }}
         />
       )}
-      {state.manifest && !incompatible && (
-        <div aria-label="Report manifest">{state.manifest.title}</div>
+      {state.manifest && !incompatible && reportId && (
+        <ReportWorkspace
+          manifest={state.manifest}
+          dataSource={dataSource}
+          reportId={reportId}
+          selectedCategory={selectedCategory}
+          selectedPage={selectedPage}
+          onSelectCategory={selectCategory}
+          onSelectPage={setSelectedPage}
+          searchState={searchState}
+          directoryOpen={directoryOpen}
+          onDirectoryOpenChange={setDirectoryOpen}
+        />
       )}
     </section>
   );
