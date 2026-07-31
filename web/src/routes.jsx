@@ -12,7 +12,8 @@ import Search from './pages/Search';
 import Statistics from './pages/Statistics';
 import Settings from './pages/Settings';
 import KnowledgeGraph from './pages/KnowledgeGraph';
-import CaseIntelligence from './pages/CaseIntelligence';
+import ForensicReportPage from './pages/ForensicReportPage';
+import LegacyReportRedirect from './pages/LegacyReportRedirect';
 import OSS from './pages/OSS';
 import Login from './pages/Login';
 import Terminal from './pages/Terminal';
@@ -90,8 +91,16 @@ const router = createBrowserRouter([
         element: <KnowledgeGraph />,
       },
       {
+        path: 'reports/task/:taskId',
+        element: <ForensicReportPage scopeType="task" />,
+      },
+      {
+        path: 'reports/case/:caseId',
+        element: <ForensicReportPage scopeType="case" />,
+      },
+      {
         path: 'case-report',
-        element: <CaseIntelligence />,
+        element: <LegacyReportRedirect />,
       },
       {
         path: 'terminal',
