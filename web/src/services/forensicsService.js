@@ -164,6 +164,27 @@ export const getAndroidMediaAnalysis = async (taskId) => {
   });
 };
 
+// MIUI Offline-Backup Forensics
+// These tables (miui_backup_manifest / installed_apps / app_db_inventory)
+// are populated only by the miui-backup source mode.
+export const getMiuiOverview = async (taskId) => {
+  return await api.get('/api/forensics/android/miui-overview', {
+    params: { task_id: taskId },
+  });
+};
+
+export const getMiuiInstalledApps = async (taskId) => {
+  return await api.get('/api/forensics/android/miui-installed-apps', {
+    params: { task_id: taskId },
+  });
+};
+
+export const getMiuiDbInventory = async (taskId) => {
+  return await api.get('/api/forensics/android/miui-db-inventory', {
+    params: { task_id: taskId },
+  });
+};
+
 // Statistics
 export const getStatisticsOverview = async (taskId) => {
   return await api.get('/api/forensics/statistics/overview', {

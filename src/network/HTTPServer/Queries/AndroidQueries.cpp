@@ -195,3 +195,114 @@ json SQLiteHelper::get_android_media_analysis(const std::string& android_db) {
     sqlite3_close(db);
     return result;
 }
+
+// ============================================================================
+// MIUI OFFLINE-BACKUP FORENSICS IMPLEMENTATION
+// These tables are populated only by the miui-backup source mode
+// (MiuiBackupExtractor + MiuiArtifactParsers):
+//   miui_backup_manifest, installed_apps, app_db_inventory
+// ============================================================================
+
+json SQLiteHelper::get_miui_backup_overview(const std::string& android_db) {
+    json result;
+    sqlite3* db = open_database(android_db, result);
+    if (!db) return result;
+
+    // Backup manifest (single row)
+    if (table_exists(db, "miui_backup_manifest")) {
+        json manifest = execute_query(db, R"(
+            SELECT device, miui_version, backup_date, total_size,
+                   package_count, source_folder
+            FROM miui_backup_manifest
+            LIMIT 1
+        )");
+        // execute_query returns an array of row-objects; take the first row
+        result["manifest"] = manifest.empty() ? json::object() : manifest[0];
+    } else {
+        result["manifest"] = json::object();
+    }
+
+    // App-DB decryption status distribution, sourced from app_db_inventory.
+    if (table_exists(db, "app_db_inventory")) {
+        result["decryption_status"] = execute_query(db, R"(
+            SELECT open_status, COUNT(*) as count
+            FROM app_db_inventory
+            GROUP BY open_status
+            ORDER BY count DESC
+        )");
+    } else {
+        result["decryption_status"] = json::array();
+    }
+
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::get_miui_installed_apps(const std::string& android_db) {
+    json result;
+    sqlite3* db = open_database(android_db, result);
+    if (!db) return result;
+
+    // Per-package manifest rows (one per backed-up package/feature)
+    if (table_exists(db, "installed_apps")) {
+        result["apps"] = execute_query(db, R"(
+            SELECT package_name, display_name, version_code, version_name,
+                   data_size, sd_size, bak_type, manifest_summary
+            FROM installed_apps
+            ORDER BY data_size DESC
+        )");
+    } else {
+        result["apps"] = json::array();
+    }
+
+    // bak_type summary: 1 = system app, 2 = user app
+    if (table_exists(db, "installed_apps")) {
+        result["bak_type_summary"] = execute_query(db, R"(
+            SELECT bak_type, COUNT(*) as count
+            FROM installed_apps
+            GROUP BY bak_type
+            ORDER BY bak_type
+        )");
+    } else {
+        result["bak_type_summary"] = json::array();
+    }
+
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::get_miui_db_inventory(const std::string& android_db) {
+    json result;
+    sqlite3* db = open_database(android_db, result);
+    if (!db) return result;
+
+    // Full per-DB table inventory (package x db_path x table_name)
+    if (table_exists(db, "app_db_inventory")) {
+        result["inventory"] = execute_query(db, R"(
+            SELECT package_name, db_path, table_name, row_count,
+                   columns, open_status
+            FROM app_db_inventory
+            ORDER BY package_name, db_path, table_name
+        )");
+    } else {
+        result["inventory"] = json::array();
+    }
+
+    // Per-package aggregate summary (db count + total rows + decryption status)
+    if (table_exists(db, "app_db_inventory")) {
+        result["package_summary"] = execute_query(db, R"(
+            SELECT package_name,
+                   COUNT(DISTINCT db_path) AS db_count,
+                   COUNT(*) AS table_count,
+                   SUM(row_count) AS total_rows
+            FROM app_db_inventory
+            GROUP BY package_name
+            ORDER BY db_count DESC, package_name
+        )");
+    } else {
+        result["package_summary"] = json::array();
+    }
+
+    sqlite3_close(db);
+    return result;
+}
