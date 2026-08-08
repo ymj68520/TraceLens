@@ -153,7 +153,29 @@ async def readiness_check(settings: Settings = Depends(get_settings)):
             "error": str(e),
         }
         # LLM is optional, don't fail readiness
-    
+
+    # Check Redis connectivity (optional; job manager falls back to in-memory)
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+        job_manager = service_manager.ingestion_job_manager
+        if job_manager is not None:
+            redis_status = await job_manager.redis_health_check()
+            checks["redis"] = {
+                "status": redis_status["status"],
+                "connected": redis_status["connected"],
+                "in_use": redis_status["in_use"],
+                "url": settings.redis_url,
+            }
+        else:
+            checks["redis"] = {"status": "unavailable", "error": "IngestionJobManager not initialized"}
+    except Exception as e:
+        checks["redis"] = {
+            "status": "unavailable",
+            "error": str(e),
+        }
+        # Redis is optional, don't fail readiness
+
     return ReadinessResponse(
         ready=all_ready,
         checks=checks,
@@ -162,7 +184,46 @@ async def readiness_check(settings: Settings = Depends(get_settings)):
 
 
 @router.get(
-    "/api/system/info", 
+    "/api/system/redis/status",
+    responses={
+        200: {"description": "Redis connectivity status retrieved successfully"},
+    }
+)
+async def redis_status(settings: Settings = Depends(get_settings)):
+    """
+    Redis service status endpoint.
+
+    Returns live connectivity information for the Redis instance used by the
+    IngestionJobManager. Redis is optional — when unavailable the job manager
+    falls back to in-memory storage, so ``connected`` may be false without
+    indicating a service-wide failure.
+    """
+    from ..services import get_service_manager
+
+    service_manager = get_service_manager()
+    job_manager = service_manager.ingestion_job_manager
+    if job_manager is None:
+        return {
+            "connected": False,
+            "in_use": False,
+            "status": "unavailable",
+            "url": settings.redis_url,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    health = await job_manager.redis_health_check()
+    return {
+        "connected": health["connected"],
+        "in_use": health["in_use"],
+        "status": health["status"],
+        "error": health.get("error"),
+        "url": settings.redis_url,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@router.get(
+    "/api/system/info",
     response_model=SystemInfoResponse,
     responses={
         200: {"description": "System info retrieved successfully"},

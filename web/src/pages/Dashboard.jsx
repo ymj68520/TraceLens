@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { fetchTasks, fetchTaskStatistics } from '../store/taskSlice';
-import { getSystemHealth, getPythonHealth, exportToon } from '../services/systemService';
+import { getSystemHealth, getPythonHealth, getRedisStatus, exportToon } from '../services/systemService';
 import { getLLMStatus } from '../services/llmService';
 import { getGraphitiStatus } from '../services/graphitiService';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
 import { motion } from 'framer-motion';
-import { ListTodo, Play, CheckCircle2, XCircle, Plus, ClipboardList, Search, Upload, Zap, Server, Database, Brain } from 'lucide-react';
+import { ListTodo, Play, CheckCircle2, XCircle, Plus, ClipboardList, Search, Upload, Zap, Server, Database, Brain, HardDrive } from 'lucide-react';
 
 const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.08 } } };
 const fadeUp = { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
@@ -24,6 +24,7 @@ const Dashboard = () => {
     cpp: { status: 'checking', label: 'C++ 后端', Icon: Zap, latency: null },
     python: { status: 'checking', label: 'Python 服务', Icon: Server, latency: null },
     neo4j: { status: 'checking', label: 'Neo4j 图数据库', Icon: Database, latency: null },
+    redis: { status: 'checking', label: 'Redis 缓存', Icon: HardDrive, latency: null },
     llm: { status: 'checking', label: 'LLM 服务', Icon: Brain, latency: null },
   });
   const [exporting, setExporting] = useState(false);
@@ -61,6 +62,13 @@ const Dashboard = () => {
         setDepHealth((prev) => ({ ...prev, llm: { ...prev.llm, status: (llmStatus?.status === 'available' || llmStatus?.status === 'healthy') ? 'online' : 'offline', latency: Date.now() - llmStart } }));
       } catch {
         setDepHealth((prev) => ({ ...prev, llm: { ...prev.llm, status: 'offline' } }));
+      }
+      const redisStart = Date.now();
+      try {
+        const redisStatus = await getRedisStatus();
+        setDepHealth((prev) => ({ ...prev, redis: { ...prev.redis, status: redisStatus?.connected ? 'online' : 'offline', latency: Date.now() - redisStart } }));
+      } catch {
+        setDepHealth((prev) => ({ ...prev, redis: { ...prev.redis, status: 'offline' } }));
       }
     };
     checkAllHealth();
@@ -127,7 +135,7 @@ const Dashboard = () => {
 
       {/* Health Cards */}
       <Card title="Service Health">
-        <motion.div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" variants={stagger} initial="hidden" animate="visible">
+        <motion.div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4" variants={stagger} initial="hidden" animate="visible">
           {Object.entries(depHealth).map(([key, dep]) => {
             const Icon = dep.Icon;
             return (

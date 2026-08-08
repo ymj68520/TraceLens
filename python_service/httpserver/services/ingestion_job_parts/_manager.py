@@ -172,6 +172,37 @@ class IngestionJobManagerMixin:
 
         logger.info("IngestionJobManager shutdown")
 
+    async def redis_health_check(self) -> dict:
+        """Check Redis connectivity.
+
+        Redis is optional: when unavailable the manager falls back to in-memory
+        storage, so this never raises. ``in_use`` reflects whether Redis was
+        configured/connected at initialization time, while ``connected`` reports
+        live reachability at the moment of the check.
+        """
+        # Never initialized with Redis — running purely in-memory.
+        if not self._use_redis or self._redis is None:
+            return {
+                "connected": False,
+                "in_use": False,
+                "status": "disconnected",
+            }
+        try:
+            await self._redis.ping()
+            return {
+                "connected": True,
+                "in_use": True,
+                "status": "connected",
+            }
+        except Exception as e:
+            logger.warning(f"Redis health check failed: {e}")
+            return {
+                "connected": False,
+                "in_use": True,
+                "status": "error",
+                "error": str(e),
+            }
+
     async def _save_job(self, job: IngestionJob):
         """Save job state to storage."""
         job_dict = {
