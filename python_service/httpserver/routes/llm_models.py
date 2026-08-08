@@ -100,10 +100,11 @@ class ToggleRelevanceRequest(BaseModel):
 class EventClusterAnalyzeRequest(BaseModel):
     """Request model for event cluster analysis."""
     task_id: str = Field(..., description="Task ID")
-    time_window: int = Field(..., description="Time window (timestamp / 60)")
+    time_window: int = Field(..., description="Time window (timestamp / bucket_seconds)")
     event_type: str = Field(..., description="Event type")
     parent_directory: Optional[str] = Field("", description="Parent directory of the events")
     prompt: Optional[str] = Field(None, description="Custom prompt")
+    bucket_seconds: int = Field(60, description="Clustering time window in seconds used to compute time_window (default 60)")
 
 
 class ToggleClusterRelevanceRequest(BaseModel):

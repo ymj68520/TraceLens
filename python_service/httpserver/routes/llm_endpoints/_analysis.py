@@ -50,14 +50,17 @@ async def analyze_event_cluster(
             raise HTTPException(status_code=400, detail="No events database for this task")
 
         # 2. Extract event data for the cluster
-        # Using the same logic as C++ for consistency
+        # Using the same logic as C++ for consistency. bucket_seconds must match
+        # the window used to produce the cluster, otherwise the cluster boundary
+        # would be off. Default 60 keeps backward compatibility.
         import sqlite3
+        bucket_seconds = request.bucket_seconds or 60
         events_summary = ""
         try:
             with sqlite3.connect(events_db) as conn:
                 conn.row_factory = sqlite3.Row
-                sql = "SELECT timestamp, event_type, file_path, description FROM events WHERE (timestamp / 60) = ? AND event_type = ?"
-                params = [request.time_window, request.event_type]
+                sql = "SELECT timestamp, event_type, file_path, description FROM events WHERE (timestamp / ?) = ? AND event_type = ?"
+                params = [bucket_seconds, request.time_window, request.event_type]
                 
                 if request.parent_directory:
                     sql += " AND file_path LIKE ?"
@@ -89,7 +92,8 @@ async def analyze_event_cluster(
         analysis = result.get("analysis", {})
         
         # 4. Persist result back to _events.db using the cluster identifier
-        # Note: We update ALL events in this cluster
+        # Note: We update ALL events in this cluster. The window divisor must
+        # match the bucket used when the cluster was created (default 60).
         sql_update = """
             UPDATE events SET
                 llm_summary = ?,
@@ -98,7 +102,7 @@ async def analyze_event_cluster(
                 llm_analyzed_at = ?,
                 llm_model_used = ?,
                 llm_is_relevant = ?
-            WHERE (timestamp / 60) = ? AND event_type = ?
+            WHERE (timestamp / ?) = ? AND event_type = ?
         """
         # Use full summary/description without truncation for database storage
         summary_value = analysis.get("summary") or analysis.get("description", "")
@@ -109,10 +113,11 @@ async def analyze_event_cluster(
             int(datetime.now().timestamp()),
             result.get("model", "unknown"),
             1 if analysis.get("is_relevant", True) else 0,
+            bucket_seconds,
             request.time_window,
             request.event_type
         ]
-        
+
         if request.parent_directory:
             sql_update += " AND file_path LIKE ?"
             update_params.append(f"{request.parent_directory}%")

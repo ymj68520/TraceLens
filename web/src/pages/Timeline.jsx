@@ -10,7 +10,7 @@ import Button from '../components/common/Button';
 import { useTranslation } from '../hooks/useTranslation';
 import { getComprehensiveTimeline, getTimelineDistribution, getTimelineDetails, analyzeEventCluster, reanalyzeEventCluster } from '../services/forensicsService';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Calendar, Filter, X, ChevronLeft, ChevronRight, FileText, Clock, Layers, Folder, ArrowRight, Brain, RefreshCw, CheckCircle } from 'lucide-react';
+import { Calendar, Filter, X, ChevronLeft, ChevronRight, FileText, Clock, Layers, Folder, ArrowRight, Brain, RefreshCw, CheckCircle, History, Gauge } from 'lucide-react';
 
 // Cluster investigation drawer (split for maintainability)
 import ClusterInvestigationDrawer from '../components/timeline/ClusterInvestigationDrawer';
@@ -39,6 +39,37 @@ const formatFileSize = (bytes) => {
   return `${displaySize.toFixed(1)} ${units[unitIndex]}`;
 };
 
+// Convert a unix-seconds timestamp (the format the API uses everywhere) into a
+// value suitable for an <input type="datetime-local"> control, expressed in the
+// user's local timezone (datetime-local always operates in local time).
+const toDatetimeLocal = (unixSeconds) => {
+  if (!unixSeconds) return '';
+  const d = new Date(unixSeconds * 1000);
+  if (isNaN(d.getTime())) return '';
+  // Pad to YYYY-MM-DDTHH:MM (the format datetime-local expects, no seconds/zone)
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+// Inverse of toDatetimeLocal: a datetime-local string -> unix seconds.
+const fromDatetimeLocal = (value) => {
+  if (!value) return null;
+  const t = new Date(value).getTime();
+  return isNaN(t) ? null : Math.floor(t / 1000);
+};
+
+// Map a total event span (in days) to a sensible clustering window (seconds).
+// Used by the "auto" bucket option so very wide forensic images aggregate at a
+// coarser grain, keeping the cluster list navigable.
+const autoBucketForSpan = (spanDays) => {
+  if (spanDays <= 1) return 60;       // 1 minute
+  if (spanDays <= 7) return 300;      // 5 minutes
+  if (spanDays <= 30) return 900;     // 15 minutes
+  if (spanDays <= 90) return 1800;    // 30 minutes
+  if (spanDays <= 365) return 3600;   // 1 hour
+  return 21600;                       // 6 hours
+};
+
 const Timeline = () => {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -50,8 +81,14 @@ const Timeline = () => {
   const pageSize = itemsPerPage || 50;
   const eventType = searchParams.get('type') || '';
   const selectedDate = searchParams.get('date') || '';
+  const customStart = searchParams.get('start') || '';
+  const customEnd = searchParams.get('end') || '';
   const isClustered = searchParams.get('cluster') !== 'false';
   const viewMode = searchParams.get('view') || 'timeline';
+  // Clustering window selector. 'auto' picks a window based on the overall
+  // event span (see effectiveBucket below). Values are seconds. Default 60
+  // preserves backward compatibility for URLs that carry no ?bucket= param.
+  const bucketParam = searchParams.get('bucket') || '60';
 
   const [timelineData, setTimelineData] = useState(null);
   const [distributionData, setDistributionData] = useState(null);
@@ -66,7 +103,6 @@ const Timeline = () => {
   
   // AI Analysis State
   const [analyzingClusters, setAnalyzingClusters] = useState(new Set());
-  const [analyzedClusters, setAnalyzedClusters] = useState(new Set());
 
   const virtuosoRef = useRef();
   const dispatch = useDispatch();
@@ -84,6 +120,26 @@ const Timeline = () => {
     setSearchParams(next);
   }, [searchParams, setSearchParams]);
 
+  // Resolve the actual clustering window (seconds) to send to the backend.
+  // 'auto' derives a window from the overall event span (distributionData spans
+  // the full task timeline, independent of the current page/time filter), so
+  // it stays stable as the user narrows filters. Fixed values pass through.
+  const effectiveBucket = useMemo(() => {
+    if (bucketParam !== 'auto') {
+      const n = parseInt(bucketParam);
+      return (n && n > 0) ? n : 60;
+    }
+    if (distributionData && distributionData.length > 0) {
+      const first = new Date(distributionData[0].date).getTime();
+      const last = new Date(distributionData[distributionData.length - 1].date).getTime();
+      if (!isNaN(first) && !isNaN(last)) {
+        const spanDays = Math.max(1, Math.ceil((last - first) / 86400000));
+        return autoBucketForSpan(spanDays);
+      }
+    }
+    return 60; // fallback before distribution data is available
+  }, [bucketParam, distributionData]);
+
   const fetchTimeline = useCallback(async () => {
     if (!taskId) return;
     setLoading(true);
@@ -95,12 +151,21 @@ const Timeline = () => {
         limit: pageSize,
         offset: offset,
         event_type: eventType || undefined,
-        cluster: isClustered
+        cluster: isClustered,
+        // Always send the resolved window so the backend groups identically.
+        // (Effective only when cluster=true; backend ignores it otherwise.)
+        bucket: effectiveBucket
       };
 
       console.log('Fetching timeline with params:', params);
 
-      if (selectedDate) {
+      // Time-window filter. Three mutually exclusive sources, in priority order:
+      // custom start/end > single-day pick (date). Setting one clears the other
+      // (enforced in the UI handlers) so they never combine into an AND here.
+      if (customStart || customEnd) {
+        if (customStart) params.start_time = customStart;
+        if (customEnd) params.end_time = customEnd;
+      } else if (selectedDate) {
         const start = Math.floor(new Date(selectedDate).getTime() / 1000);
         params.start_time = start.toString();
         params.end_time = (start + 86400).toString();
@@ -125,7 +190,13 @@ const Timeline = () => {
       
       console.log('Timeline has', data.timeline.length, 'events');
       console.log('Sample event:', data.timeline[0]);
-      
+
+      // Stamp each event with the bucket used to produce it, so cluster
+      // detail/AI calls downstream use the same window boundary end-to-end.
+      if (isClustered && Array.isArray(data.timeline)) {
+        data.timeline = data.timeline.map((ev) => ({ ...ev, bucket_seconds: effectiveBucket }));
+      }
+
       setTimelineData(data);
       if (virtuosoRef.current) virtuosoRef.current.scrollToIndex({ index: 0 });
     } catch (err) {
@@ -134,7 +205,7 @@ const Timeline = () => {
     } finally {
       setLoading(false);
     }
-  }, [taskId, currentPage, pageSize, eventType, selectedDate, isClustered]);
+  }, [taskId, currentPage, pageSize, eventType, selectedDate, customStart, customEnd, isClustered, effectiveBucket]);
 
   useEffect(() => {
     if (taskId) {
@@ -157,116 +228,96 @@ const Timeline = () => {
     fetchTimeline();
   }, [fetchTimeline]);
   
-  // 分析状态管理
-  const [analysisInProgress, setAnalysisInProgress] = useState(false);
+  // 自动分析事件簇（AI 研判摘要）。
+  //
+  // 旧实现把 analyzingClusters / analyzedClusters / analysisInProgress 这些
+  // 会自身变化的 state 放进了依赖数组，且每次分析完都无条件 fetchTimeline()，
+  // 形成了"分析完成 -> 刷新 -> timelineData 变化 -> 重新分析"的无限刷新循环。
+  //
+  // 修复要点：用 ref 记录"已经为哪一批可见簇尝试过分析"的签名。effect 仍然
+  // 依赖 timelineData（这样首次拿到数据时能启动分析），但只要签名没变就直接
+  // return，不再重复分析。只有当用户翻页/改筛选导致可见簇集合真正变化时，
+  // 签名才会变，才会对新一批簇再做一次分析。分析成功后的刷新会改变
+  // timelineData 引用并重跑本 effect，但由于可见簇键集合不变 -> 签名不变 ->
+  // 立即 return，循环就此终止。
+  const autoAnalyzedSignatureRef = useRef('');
 
-  // 当数据加载完成后，分析事件簇
   useEffect(() => {
-    if (!taskId || !timelineData?.timeline?.length || analysisInProgress) return;
-    
+    if (!taskId || !timelineData?.timeline?.length) return;
+
+    // 签名 = 查询参数 + 当前可见簇的键集合。后端分析成功会给同一批簇补上
+    // llm_summary，但 timestamp/event_type/parent_directory 不变，所以刷新
+    // 后签名一致，effect 早早 return。
+    const visibleKeys = timelineData.timeline
+      .map(ev => `${ev.timestamp}-${ev.event_type}-${ev.parent_directory}`)
+      .sort()
+      .join('|');
+    const signature = `${taskId}|${currentPage}|${eventType}|${selectedDate}|${customStart}|${customEnd}|${isClustered}|${effectiveBucket}|${visibleKeys}`;
+
+    if (autoAnalyzedSignatureRef.current === signature) return;
+    autoAnalyzedSignatureRef.current = signature;
+
     const autoAnalyzeClusters = async () => {
-      setAnalysisInProgress(true);
-      try {
-        // 筛选未分析的事件簇。
-        // 注意：不再用 cluster_count > 1 作为门槛。当开启聚合视图时，每个分组项
-        // （哪怕只有1个事件）都是一个有意义的簇，都应纳入自动分析。原先的 >1
-        // 门槛会让 ~62% 的单事件簇永远不被分析。仍保留按 cluster_count 降序排序
-        // （多事件簇优先）和每次最多5个的限流，避免请求量激增。
-        const unanalyzedClusters = timelineData.timeline.filter(event => {
-          const clusterKey = `${event.timestamp}-${event.event_type}-${event.parent_directory}`;
-          return !event.llm_summary && !analyzedClusters.has(clusterKey);
-        });
-        
-        console.log('Auto-analyze: Found', unanalyzedClusters.length, 'unanalyzed clusters');
-        
-        if (unanalyzedClusters.length === 0) {
-          console.log('Auto-analyze: No clusters to analyze');
-          return;
+      // 筛选还没有 AI 摘要的簇。当开启聚合视图时，每个分组项（哪怕只有 1 个
+      // 事件）都是一个有意义的簇，都应纳入自动分析（不再用 cluster_count > 1
+      // 门槛，否则单事件簇永远不被分析）。仍按 cluster_count 降序、每次最多
+      // 5 个限流，避免请求量激增。
+      const unanalyzedClusters = timelineData.timeline.filter(event => !event.llm_summary);
+      if (unanalyzedClusters.length === 0) return;
+
+      unanalyzedClusters.sort((a, b) => (b.cluster_count || 0) - (a.cluster_count || 0));
+      const clustersToAnalyze = unanalyzedClusters.slice(0, 5);
+
+      let analyzedAny = false;
+      for (const cluster of clustersToAnalyze) {
+        const clusterKey = `${cluster.timestamp}-${cluster.event_type}-${cluster.parent_directory}`;
+        setAnalyzingClusters(prev => new Set(prev).add(clusterKey));
+        try {
+          await analyzeEventCluster(taskId, cluster);
+          analyzedAny = true;
+        } catch (error) {
+          console.error('Auto-analyze failed for cluster:', clusterKey, error);
+        } finally {
+          setAnalyzingClusters(prev => {
+            const next = new Set(prev);
+            next.delete(clusterKey);
+            return next;
+          });
         }
-        
-        // 按事件数量排序，优先分析事件数多的簇
-        unanalyzedClusters.sort((a, b) => (b.cluster_count || 0) - (a.cluster_count || 0));
-        
-        // 限制每次最多分析5个簇，避免过多请求
-        const clustersToAnalyze = unanalyzedClusters.slice(0, 5);
-        
-        console.log('Auto-analyze: Will analyze', clustersToAnalyze.length, 'clusters (max 5)');
-        
-        for (const cluster of clustersToAnalyze) {
-          // 检查是否已经在分析中
-          const clusterKey = `${cluster.timestamp}-${cluster.event_type}-${cluster.parent_directory}`;
-          if (!analyzingClusters.has(clusterKey)) {
-            console.log('Auto-analyze: Analyzing cluster:', clusterKey);
-            // 立即将簇添加到analyzedClusters，防止重复分析
-            setAnalyzedClusters(prev => new Set(prev).add(clusterKey));
-            
-            // 创建一个局部的分析函数，避免闭包问题
-            const analyzeCluster = async (clusterData) => {
-              const key = `${clusterData.timestamp}-${clusterData.event_type}-${clusterData.parent_directory}`;
-              setAnalyzingClusters(prev => new Set(prev).add(key));
-              
-              try {
-                await analyzeEventCluster(taskId, clusterData);
-                console.log('Auto-analyze: Completed analysis for cluster:', key);
-              } catch (error) {
-                console.error('Failed to analyze event cluster:', error);
-                // 失败时从analyzedClusters中移除，允许重试
-                setAnalyzedClusters(prev => {
-                  const newSet = new Set(prev);
-                  newSet.delete(key);
-                  return newSet;
-                });
-              } finally {
-                setAnalyzingClusters(prev => {
-                  const newSet = new Set(prev);
-                  newSet.delete(key);
-                  return newSet;
-                });
-              }
-            };
-            
-            await analyzeCluster(cluster);
-            // 间隔2秒，避免请求过多
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          } else {
-            console.log('Auto-analyze: Cluster already being analyzed:', clusterKey);
-          }
-        }
-        
-        // 所有分析完成后刷新数据
-        setTimeout(() => {
-          // Refresh timeline data to show AI analysis results
-          fetchTimeline();
-          // Set refresh flag to notify CaseIntelligence to refresh
-          dispatch(setRefreshFlag({ type: 'clusters' }));
-        }, 2000);
-      } catch (error) {
-        console.error('Auto-analyze error:', error);
-      } finally {
-        setAnalysisInProgress(false);
+        // 节流，避免请求过密
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      // 只有真的分析了新簇才刷新一次，把 AI 摘要显示出来。这次刷新会改变
+      // timelineData 引用并重跑本 effect，但签名不变，所以会立即 return，
+      // 不会再次触发分析。
+      if (analyzedAny) {
+        fetchTimeline();
+        dispatch(setRefreshFlag({ type: 'clusters' }));
       }
     };
-    
+
     // 延迟执行自动分析，确保数据已加载
-    const timer = setTimeout(() => {
-      autoAnalyzeClusters();
-    }, 1000);
-    
+    const timer = setTimeout(autoAnalyzeClusters, 1000);
     return () => clearTimeout(timer);
-  }, [taskId, timelineData, analyzingClusters, fetchTimeline, dispatch, analysisInProgress, analyzedClusters]);
+  }, [taskId, timelineData, currentPage, eventType, selectedDate, customStart, customEnd, isClustered, effectiveBucket, fetchTimeline, dispatch]);
 
   // Cluster Detail Fetching with Search Support
   const fetchClusterDetails = useCallback(async (cluster, search) => {
     if (!cluster) return;
     setLoadingDetails(true);
     try {
-        const window = Math.floor(cluster.timestamp / 60);
+        // Use the same bucket that produced the cluster so the detail query
+        // resolves exactly the same window boundary.
+        const bucket = cluster.bucket_seconds || effectiveBucket;
+        const window = Math.floor(cluster.timestamp / bucket);
         const data = await getTimelineDetails(taskId, {
             window,
             type: cluster.event_type,
             dir: cluster.parent_directory,
             search: search || undefined,
-            limit: 5000 
+            bucket,
+            limit: 5000
         });
         setClusterDetails(data.events || []);
     } catch (err) {
@@ -274,7 +325,7 @@ const Timeline = () => {
     } finally {
         setLoadingDetails(false);
     }
-  }, [taskId]);
+  }, [taskId, effectiveBucket]);
 
   // Handle Initial Open
   const handleOpenCluster = (event) => {
@@ -311,7 +362,6 @@ const Timeline = () => {
       const result = await analyzeEventCluster(taskId, cluster);
       console.log('[AI分析] 分析成功:', result);
 
-      setAnalyzedClusters(prev => new Set(prev).add(clusterKey));
       // Refresh timeline data to show AI analysis results
       fetchTimeline();
       // Set refresh flag to notify CaseIntelligence to refresh
@@ -391,12 +441,36 @@ const Timeline = () => {
   const handleBarClick = (data) => {
     if (data && data.activePayload && data.activePayload[0]) {
       const date = data.activePayload[0].payload.date;
-      updateParams({ date: date === selectedDate ? '' : date, page: 1 });
+      // Day pick is mutually exclusive with custom start/end time range.
+      updateParams({ date: date === selectedDate ? '' : date, start: '', end: '', page: 1 });
     }
   };
 
   const resetFilters = () => {
-    updateParams({ type: '', date: '', page: 1, cluster: 'true' });
+    updateParams({ type: '', date: '', start: '', end: '', page: 1, cluster: 'true' });
+  };
+
+  // Apply a quick time preset, anchored to the LATEST event date in the task
+  // (forensic images are captured at a point in the past, so "last 24h" is
+  // relative to that, not the real wall clock). Clears the day pick since the
+  // two filters are mutually exclusive.
+  const applyTimePreset = (presetSeconds) => {
+    if (!distributionData || distributionData.length === 0) return;
+    const lastDate = distributionData[distributionData.length - 1].date;
+    const endSec = Math.floor(new Date(lastDate).getTime() / 1000) + 86400; // end of that day
+    const startSec = endSec - presetSeconds;
+    updateParams({ start: String(startSec), end: String(endSec), date: '', page: 1 });
+  };
+
+  // Handler for the custom start/end datetime-local inputs.
+  const handleCustomTimeChange = (field, value) => {
+    const sec = fromDatetimeLocal(value);
+    if (sec === null) {
+      // empty input -> clear that bound, keep the other
+      updateParams({ [field]: '', date: '', page: 1 });
+    } else {
+      updateParams({ [field]: String(sec), date: '', page: 1 });
+    }
   };
 
   // 计算事件数据
@@ -474,6 +548,67 @@ const Timeline = () => {
             </div>
           </div>
 
+          {/* Time Range Filter — quick presets + custom start/end.
+              Mutually exclusive with the day pick (clicking a bar or setting a
+              custom range clears the other) to avoid conflicting WHERE clauses. */}
+          <Card title={t('timeline.filter.timespan')} icon={History} className="bg-white flex-shrink-0">
+            <div className="space-y-3 p-1">
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  onClick={() => applyTimePreset(3600)}
+                  disabled={!distributionData?.length}
+                  className="text-[10px] font-bold text-slate-600 hover:text-white hover:bg-primary-500 bg-slate-100 px-2 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {t('timeline.filter.preset.1h')}
+                </button>
+                <button
+                  onClick={() => applyTimePreset(86400)}
+                  disabled={!distributionData?.length}
+                  className="text-[10px] font-bold text-slate-600 hover:text-white hover:bg-primary-500 bg-slate-100 px-2 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {t('timeline.filter.preset.24h')}
+                </button>
+                <button
+                  onClick={() => applyTimePreset(86400 * 7)}
+                  disabled={!distributionData?.length}
+                  className="text-[10px] font-bold text-slate-600 hover:text-white hover:bg-primary-500 bg-slate-100 px-2 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {t('timeline.filter.preset.7d')}
+                </button>
+                <button
+                  onClick={() => applyTimePreset(86400 * 30)}
+                  disabled={!distributionData?.length}
+                  className="text-[10px] font-bold text-slate-600 hover:text-white hover:bg-primary-500 bg-slate-100 px-2 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {t('timeline.filter.preset.30d')}
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase block tracking-widest">{t('timeline.filter.custom_start')}</label>
+                <input
+                  type="datetime-local"
+                  value={toDatetimeLocal(customStart ? parseInt(customStart) : null)}
+                  onChange={(e) => handleCustomTimeChange('start', e.target.value)}
+                  className="w-full rounded-lg border-slate-200 text-xs shadow-sm focus:ring-primary-500"
+                />
+                <label className="text-[10px] font-bold text-slate-400 uppercase block tracking-widest mt-1">{t('timeline.filter.custom_end')}</label>
+                <input
+                  type="datetime-local"
+                  value={toDatetimeLocal(customEnd ? parseInt(customEnd) : null)}
+                  onChange={(e) => handleCustomTimeChange('end', e.target.value)}
+                  className="w-full rounded-lg border-slate-200 text-xs shadow-sm focus:ring-primary-500"
+                />
+              </div>
+
+              {(customStart || customEnd) && (
+                <button onClick={() => updateParams({ start: '', end: '', page: 1 })} className="text-[10px] text-rose-500 hover:text-rose-700 font-bold flex items-center gap-1">
+                  <X size={11} /> {t('timeline.filter.clear_time')}
+                </button>
+              )}
+            </div>
+          </Card>
+
           <Card title={t('timeline.filter.type')} icon={Filter} className="bg-white flex-shrink-0">
             <div className="space-y-4 p-1">
               <div>
@@ -491,9 +626,9 @@ const Timeline = () => {
               </div>
 
               <div className="flex items-center space-x-3 p-2.5 bg-slate-50/50 rounded-xl border border-slate-100">
-                <input 
-                  type="checkbox" 
-                  checked={isClustered} 
+                <input
+                  type="checkbox"
+                  checked={isClustered}
                   onChange={(e) => updateParams({ cluster: e.target.checked ? 'true' : 'false', page: 1 })}
                   className="rounded text-primary-600 w-4 h-4 cursor-pointer"
                 />
@@ -502,6 +637,31 @@ const Timeline = () => {
                   <div className="text-slate-400 mt-1 scale-90 origin-left">{t('timeline.filter.cluster_desc')}</div>
                 </div>
               </div>
+
+              {/* Aggregation window selector. Only meaningful when clustering is
+                  on. 'auto' picks a window from the overall event span so very
+                  wide images stay navigable; the fixed options give manual control. */}
+              {isClustered && (
+                <div className="p-2.5 bg-slate-50/50 rounded-xl border border-slate-100">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 flex items-center tracking-widest"><Gauge className="w-3 h-3 mr-1.5 text-primary-400" />{t('timeline.filter.bucket')}</label>
+                  <select
+                    value={bucketParam}
+                    onChange={(e) => updateParams({ bucket: e.target.value, page: 1 })}
+                    className="w-full rounded-lg border-slate-200 text-xs shadow-sm focus:ring-primary-500"
+                  >
+                    <option value="auto">{t('timeline.filter.bucket.auto')}</option>
+                    <option value="60">1 {t('timeline.filter.bucket.minute')}</option>
+                    <option value="300">5 {t('timeline.filter.bucket.minutes')}</option>
+                    <option value="900">15 {t('timeline.filter.bucket.minutes')}</option>
+                    <option value="1800">30 {t('timeline.filter.bucket.minutes')}</option>
+                    <option value="3600">1 {t('timeline.filter.bucket.hour')}</option>
+                    <option value="21600">6 {t('timeline.filter.bucket.hours')}</option>
+                  </select>
+                  {bucketParam === 'auto' && (
+                    <div className="text-[9px] text-primary-500 mt-1 font-mono">≈ {t('timeline.filter.bucket.resolved')}: {effectiveBucket}s</div>
+                  )}
+                </div>
+              )}
 
               <div className="pt-2 px-1">
                 <div className="flex justify-between text-[11px] text-slate-500">
@@ -514,7 +674,7 @@ const Timeline = () => {
                 </div>
               </div>
 
-              {(eventType || selectedDate) && (
+              {(eventType || selectedDate || customStart || customEnd) && (
                 <Button variant="outline" size="sm" fullWidth onClick={resetFilters} icon={X} className="text-[11px] border-dashed">{t('timeline.filter.reset')}</Button>
               )}
             </div>
