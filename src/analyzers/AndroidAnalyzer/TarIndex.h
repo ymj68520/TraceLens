@@ -10,6 +10,11 @@
 struct TarEntry {
     uint64_t dataOffset;   // absolute byte offset in the underlying file
     uint64_t size;
+    uint64_t modifiedTime;
+    char typeFlag;
+
+    bool isRegularFile() const { return typeFlag == '\0' || typeFlag == '0'; }
+    bool isDirectory() const { return typeFlag == '5'; }
 };
 class TarIndex {
 public:

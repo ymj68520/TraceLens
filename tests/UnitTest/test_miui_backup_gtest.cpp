@@ -171,6 +171,39 @@ static fs::path makeUstarTar(const std::vector<std::pair<std::string,std::string
     return p;
 }
 
+static fs::path makeUstarDirectory(const std::string& name) {
+    std::string header(512, '\0');
+    std::memcpy(header.data(), name.data(), std::min(name.size(), static_cast<size_t>(100)));
+    std::memcpy(header.data() + 124, "00000000000\0", 12);
+    std::memcpy(header.data() + 136, "00000000000\0", 12);
+    header[156] = '5';
+    std::memcpy(header.data() + 257, "ustar", 5);
+    std::memset(header.data() + 148, ' ', 8);
+    unsigned checksum = 0;
+    for (unsigned char byte : header) checksum += byte;
+    char checksumText[8]{};
+    std::snprintf(checksumText, sizeof(checksumText), "%06o", checksum);
+    std::memcpy(header.data() + 148, checksumText, 6);
+    header[154] = '\0';
+    header[155] = ' ';
+
+    const fs::path path = uniqueTempPath("directory_payload", ".tar");
+    std::ofstream(path, std::ios::binary) << header << std::string(1024, '\0');
+    return path;
+}
+
+TEST(TarIndexTest, PreservesDirectoryTypeAndTimestamp) {
+    const auto tar = makeUstarDirectory("apps/com.tencent.mobileqq/db/nt_db/");
+    TarIndex index;
+    ASSERT_TRUE(index.build(tar.string(), 0, false));
+
+    TarEntry entry;
+    ASSERT_TRUE(index.find("apps/com.tencent.mobileqq/db/nt_db/", entry));
+    EXPECT_TRUE(entry.isDirectory());
+    EXPECT_FALSE(entry.isRegularFile());
+    EXPECT_EQ(entry.modifiedTime, 0u);
+}
+
 TEST(TarIndexTest, IndexesRawTarOffsets) {
     auto tar = makeUstarTar({{"apps/com.foo/db/x.db", "HELLO"}});
     TarIndex idx;
@@ -785,6 +818,67 @@ TEST(MiuiBackupExtractorTest, KeepsInternalTempsOutsideEvidenceWhenTmpdirIsInsid
     if (previous) ::setenv("TMPDIR", saved.c_str(), 1);
     else ::unsetenv("TMPDIR");
 #endif
+}
+
+TEST(MiuiArtifactTest, IgnoresDatabaseDirectoryEntries) {
+    const fs::path dir = uniqueTempPath("miui_directory_inventory");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages><package><packageName>com.tencent.mobileqq</packageName>"
+           "<bakFile>QQ(com.tencent.mobileqq).bak</bakFile></package></packages></MIUI-backup>";
+    const auto tar = makeUstarDirectory("apps/com.tencent.mobileqq/db/nt_db/");
+    std::ofstream(dir / "QQ(com.tencent.mobileqq).bak", std::ios::binary) << rawBackup(readFile(tar));
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    const fs::path analysisDb = uniqueTempPath("miui_directory_inventory", ".db");
+    TemporaryFile cleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+    ASSERT_TRUE(writeAppDbInventory(extractor, db));
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw, "SELECT COUNT(*) FROM app_db_inventory", -1, &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_EQ(sqlite3_column_int(statement, 0), 0);
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
+}
+
+TEST(QqntArtifactTest, RecoversSensitiveXmlValuesWithPerValueHashes) {
+    const fs::path dir = uniqueTempPath("qqnt_xml");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages><package><packageName>com.tencent.mobileqq</packageName>"
+           "<bakFile>QQ(com.tencent.mobileqq).bak</bakFile></package></packages></MIUI-backup>";
+    const auto tar = makeUstarTar({
+        {"apps/com.tencent.mobileqq/sp/preferences.xml",
+         "<map><string name=\"deviceId\">secret-device</string><int name=\"retry_count\" value=\"2\" /></map>"}
+    });
+    std::ofstream(dir / "QQ(com.tencent.mobileqq).bak", std::ios::binary) << rawBackup(readFile(tar));
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    const fs::path analysisDb = uniqueTempPath("qqnt_xml", ".db");
+    TemporaryFile cleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+    ASSERT_TRUE(persistMiuiBackupAnalysis(extractor, db));
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT value_text, value_hash, is_sensitive FROM qqnt_kv_records WHERE key = 'deviceId'", -1,
+        &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "secret-device");
+    EXPECT_EQ(std::strlen(reinterpret_cast<const char*>(sqlite3_column_text(statement, 1))), 64u);
+    EXPECT_EQ(sqlite3_column_int(statement, 2), 1);
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
 }
 
 TEST(MiuiArtifactTest, WritesManifestAndRecordsUnreadableDatabaseFailure) {

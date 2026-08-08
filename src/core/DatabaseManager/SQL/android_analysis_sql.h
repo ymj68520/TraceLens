@@ -222,6 +222,32 @@ inline constexpr const char* CREATE_MIUI_TABLES = R"(
         package_name TEXT, db_path TEXT, table_name TEXT,
         row_count INTEGER, columns TEXT, open_status TEXT
     );
+    CREATE TABLE IF NOT EXISTS qqnt_artifact_inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        package_name TEXT NOT NULL, source_path TEXT NOT NULL,
+        bak_file TEXT, artifact_category TEXT, format TEXT,
+        size INTEGER, modified_time INTEGER, type_flag TEXT,
+        parse_status TEXT, summary TEXT, source_hash TEXT,
+        UNIQUE(package_name, source_path)
+    );
+    CREATE TABLE IF NOT EXISTS qqnt_kv_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_path TEXT NOT NULL, namespace TEXT, key TEXT NOT NULL,
+        value_type TEXT, value_text TEXT, value_hash TEXT,
+        is_sensitive INTEGER DEFAULT 0, parse_status TEXT
+    );
+    CREATE TABLE IF NOT EXISTS qqnt_sqlite_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_path TEXT NOT NULL, table_name TEXT NOT NULL,
+        record_key TEXT, record_json TEXT, artifact_kind TEXT,
+        is_sensitive INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS qqnt_log_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_path TEXT NOT NULL, event_time INTEGER,
+        level TEXT, tag TEXT, message TEXT,
+        parse_status TEXT, is_sensitive INTEGER DEFAULT 0
+    );
 )";
 
 // ============================================================================

@@ -276,7 +276,6 @@ json SQLiteHelper::get_miui_db_inventory(const std::string& android_db) {
     sqlite3* db = open_database(android_db, result);
     if (!db) return result;
 
-    // Full per-DB table inventory (package x db_path x table_name)
     if (table_exists(db, "app_db_inventory")) {
         result["inventory"] = execute_query(db, R"(
             SELECT package_name, db_path, table_name, row_count,
@@ -284,12 +283,6 @@ json SQLiteHelper::get_miui_db_inventory(const std::string& android_db) {
             FROM app_db_inventory
             ORDER BY package_name, db_path, table_name
         )");
-    } else {
-        result["inventory"] = json::array();
-    }
-
-    // Per-package aggregate summary (db count + total rows + decryption status)
-    if (table_exists(db, "app_db_inventory")) {
         result["package_summary"] = execute_query(db, R"(
             SELECT package_name,
                    COUNT(DISTINCT db_path) AS db_count,
@@ -300,9 +293,140 @@ json SQLiteHelper::get_miui_db_inventory(const std::string& android_db) {
             ORDER BY db_count DESC, package_name
         )");
     } else {
+        result["inventory"] = json::array();
         result["package_summary"] = json::array();
     }
 
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::get_miui_qqnt_overview(const std::string& android_db) {
+    json result;
+    sqlite3* db = open_database(android_db, result);
+    if (!db) return result;
+
+    result["artifact_categories"] = table_exists(db, "qqnt_artifact_inventory")
+        ? execute_query(db, "SELECT artifact_category, parse_status, COUNT(*) AS count "
+                            "FROM qqnt_artifact_inventory "
+                            "GROUP BY artifact_category, parse_status "
+                            "ORDER BY artifact_category, parse_status")
+        : json::array();
+    auto countRows = [&](const char* tableName) -> int64_t {
+        if (!table_exists(db, tableName)) return 0;
+        const json rows = execute_query(db, "SELECT COUNT(*) AS count FROM " + std::string(tableName));
+        return rows.empty() ? 0 : rows[0].value("count", 0LL);
+    };
+    result["record_counts"] = {
+        {"kv", countRows("qqnt_kv_records")},
+        {"sqlite", countRows("qqnt_sqlite_records")},
+        {"logs", countRows("qqnt_log_events")}
+    };
+    result["log_time_range"] = table_exists(db, "qqnt_log_events")
+        ? execute_query(db, "SELECT MIN(event_time) AS start_time, MAX(event_time) AS end_time "
+                            "FROM qqnt_log_events WHERE event_time > 0")
+        : json::array();
+
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::get_miui_qqnt_artifacts(const std::string& android_db,
+                                           const std::string& category,
+                                           const std::string& status,
+                                           const std::string& query,
+                                           int limit, int offset) {
+    json result = {{"items", json::array()}, {"total", 0}};
+    sqlite3* db = open_database(android_db, result);
+    if (!db || !table_exists(db, "qqnt_artifact_inventory")) {
+        if (db) sqlite3_close(db);
+        return result;
+    }
+
+    limit = std::clamp(limit, 1, 500);
+    offset = std::max(offset, 0);
+    std::string where = " WHERE 1=1";
+    std::vector<std::string> parameters;
+    if (!category.empty()) {
+        where += " AND artifact_category = ?";
+        parameters.push_back(category);
+    }
+    if (!status.empty()) {
+        where += " AND parse_status = ?";
+        parameters.push_back(status);
+    }
+    if (!query.empty()) {
+        where += " AND (source_path LIKE ? OR summary LIKE ?)";
+        const std::string pattern = "%" + query + "%";
+        parameters.push_back(pattern);
+        parameters.push_back(pattern);
+    }
+
+    const json count = execute_query(db,
+        "SELECT COUNT(*) AS count FROM qqnt_artifact_inventory" + where, parameters);
+    result["total"] = count.empty() ? 0 : count[0].value("count", 0);
+    std::vector<std::string> itemParameters = parameters;
+    itemParameters.push_back(std::to_string(limit));
+    itemParameters.push_back(std::to_string(offset));
+    result["items"] = execute_query(db,
+        "SELECT id, source_path, bak_file, artifact_category, format, size, modified_time, "
+        "type_flag, parse_status, summary, source_hash FROM qqnt_artifact_inventory" + where +
+        " ORDER BY modified_time DESC, source_path LIMIT ? OFFSET ?", itemParameters);
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::get_miui_qqnt_records(const std::string& android_db,
+                                         const std::string& kind, const std::string& query,
+                                         int limit, int offset, bool revealSensitive) {
+    json result = {{"items", json::array()}, {"total", 0}};
+    sqlite3* db = open_database(android_db, result);
+    if (!db) return result;
+    limit = std::clamp(limit, 1, 500);
+    offset = std::max(offset, 0);
+    std::string source;
+    std::string projection;
+    std::string searchable;
+    if (kind == "sqlite") {
+        source = "qqnt_sqlite_records";
+        projection = "id, source_path, table_name AS label, record_key, record_json AS value_text, "
+                     "artifact_kind AS value_type, is_sensitive, 'sqlite' AS record_kind";
+        searchable = "source_path || ' ' || table_name || ' ' || record_json";
+    } else if (kind == "logs") {
+        source = "qqnt_log_events";
+        projection = "id, source_path, tag AS label, CAST(event_time AS TEXT) AS record_key, "
+                     "message AS value_text, level AS value_type, is_sensitive, 'logs' AS record_kind";
+        searchable = "source_path || ' ' || tag || ' ' || message";
+    } else if (kind == "kv") {
+        source = "qqnt_kv_records";
+        projection = "id, source_path, key AS label, namespace AS record_key, value_text, "
+                     "value_type, is_sensitive, 'kv' AS record_kind";
+        searchable = "source_path || ' ' || key || ' ' || value_text";
+    } else {
+        result["error"] = "kind must be one of: kv, sqlite, logs";
+        sqlite3_close(db);
+        return result;
+    }
+    if (!table_exists(db, source)) {
+        sqlite3_close(db);
+        return result;
+    }
+
+    const std::string where = query.empty() ? "" : " WHERE " + searchable + " LIKE ?";
+    std::vector<std::string> parameters;
+    if (!query.empty()) parameters.push_back("%" + query + "%");
+    const json count = execute_query(db, "SELECT COUNT(*) AS count FROM " + source + where, parameters);
+    result["total"] = count.empty() ? 0 : count[0].value("count", 0);
+    parameters.push_back(std::to_string(limit));
+    parameters.push_back(std::to_string(offset));
+    json items = execute_query(db, "SELECT " + projection + " FROM " + source + where +
+                                " ORDER BY id DESC LIMIT ? OFFSET ?", parameters);
+    if (!revealSensitive) {
+        for (auto& item : items) {
+            if (item.value("is_sensitive", 0) != 0) item["value_text"] = "[已脱敏：点击显示原值]";
+        }
+    }
+    result["items"] = std::move(items);
     sqlite3_close(db);
     return result;
 }

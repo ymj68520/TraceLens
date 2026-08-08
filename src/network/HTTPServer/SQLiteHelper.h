@@ -196,6 +196,19 @@ public:
      */
     static nlohmann::json get_miui_db_inventory(const std::string& android_db);
 
+    // QQ/QQNT artifacts extracted from a MIUI backup.
+    static nlohmann::json get_miui_qqnt_overview(const std::string& android_db);
+    static nlohmann::json get_miui_qqnt_artifacts(const std::string& android_db,
+                                                   const std::string& category,
+                                                   const std::string& status,
+                                                   const std::string& query,
+                                                   int limit, int offset);
+    static nlohmann::json get_miui_qqnt_records(const std::string& android_db,
+                                                 const std::string& kind,
+                                                 const std::string& query,
+                                                 int limit, int offset,
+                                                 bool revealSensitive);
+
     // Statistical Analysis Endpoints
     // Statistical Analysis Endpoints
     /**
