@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import { useRef, useCallback } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 
 const COMMUNITY_COLORS = [
@@ -24,8 +24,9 @@ export default function GraphCanvas({
         (node) =>
             node.is_owner
                 ? '#fbbf24'
-                : COMMUNITY_COLORS[node.cluster % COMMUNITY_COLORS.length] ||
-                  '#94a3b8',
+                : COMMUNITY_COLORS[
+                      ((node.community ?? node.cluster ?? -1) + COMMUNITY_COLORS.length) % COMMUNITY_COLORS.length
+                  ] || '#94a3b8',
         []
     );
 
@@ -71,7 +72,7 @@ export default function GraphCanvas({
     return (
         <ForceGraph2D
             ref={graphRef}
-            graphData={data}
+            graphData={{ nodes: data?.nodes || [], links: data?.links || data?.edges || [] }}
             nodeCanvasObject={nodeCanvasObject}
             nodePointerAreaPaint={(node, color, ctx) => {
                 ctx.fillStyle = color;

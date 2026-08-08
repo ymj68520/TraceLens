@@ -4,6 +4,7 @@
 #include "Logger/Logger.h"
 #include <iostream>
 #include <sqlite3.h>
+#include <limits>
 
 // Android Data Parsers Implementation
 
@@ -366,7 +367,11 @@ void AndroidAnalyzer::parseWeChatEnhanced(const std::string& dbPath, const std::
             const char* content = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
 
             msg.content = content ? content : "";
-            msg.timestamp = std::to_string(sqlite3_column_int64(stmt, 2));
+            const int64_t createTime = sqlite3_column_int64(stmt, 2);
+            const int64_t timestampMs = createTime > 0 &&
+                createTime <= std::numeric_limits<int64_t>::max() / 1000
+                ? createTime * 1000 : 0;
+            msg.timestamp = std::to_string(timestampMs);
             int msgType = sqlite3_column_int(stmt, 3);
             int isSend = sqlite3_column_int(stmt, 4);
 

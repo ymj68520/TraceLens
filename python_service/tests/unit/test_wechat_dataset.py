@@ -98,18 +98,8 @@ def raw_conn(wechat_dbs):
 
 
 @pytest.fixture()
-def graph_service(monkeypatch):
-    """Instantiate WeChatGraphService.
-
-    NOTE: ``WeChatGraphCoreMixin.__init__`` (``_core.py:27``) references an
-    undefined global ``CACHE_TTL`` -- a latent NameError that breaks every
-    instantiation. We inject the intended value (1800s = 30 min, per the
-    ``/graph`` docstring) into the module namespace without touching production
-    code. Remove this once the bug is fixed upstream.
-    """
-    import httpserver.services.wechat_graph_parts._core as core_mod
-    monkeypatch.setattr(core_mod, "CACHE_TTL", 1800, raising=False)
-
+def graph_service():
+    """Instantiate WeChatGraphService with its production cache default."""
     from httpserver.services.wechat_graph_service import WeChatGraphService
     return WeChatGraphService()
 

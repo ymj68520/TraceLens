@@ -5,6 +5,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <cstdlib>
+#include <filesystem>
 
 namespace forensics {
 
@@ -45,10 +46,24 @@ std::string RouteHelpers::get_database_path(const std::string& task_id, const st
     } else if (db_type == "files") {
         return task.output_files_db;
     } else if (db_type == "android") {
-        if (task.metadata.find("android_db") != task.metadata.end()) {
+        if (task.metadata.find("android_db") != task.metadata.end() &&
+            std::filesystem::exists(task.metadata.at("android_db"))) {
             return task.metadata.at("android_db");
         }
-        return task.output_raw_db.substr(0, task.output_raw_db.find_last_of('.')) + "_android.db";
+        if (!task.output_files_db.empty()) {
+            const std::filesystem::path filesPath(task.output_files_db);
+            const std::filesystem::path taskAndroid = filesPath.parent_path() / "android.db";
+            if (std::filesystem::exists(taskAndroid)) return taskAndroid.string();
+        }
+        const auto dot = task.output_raw_db.find_last_of('.');
+        const std::string fallback = dot == std::string::npos
+            ? task.output_raw_db + "_android.db"
+            : task.output_raw_db.substr(0, dot) + "_android.db";
+        if (!fallback.empty() && std::filesystem::exists(fallback)) return fallback;
+        if (!task.output_files_db.empty() && std::filesystem::exists(task.output_files_db)) {
+            return task.output_files_db;
+        }
+        return fallback;
     } else if (db_type == "dll") {
         if (task.metadata.find("dll_db") != task.metadata.end()) {
             return task.metadata.at("dll_db");

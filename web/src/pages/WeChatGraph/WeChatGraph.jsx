@@ -1,4 +1,3 @@
-import React from 'react';
 import useWeChatGraph from './hooks/useWeChatGraph';
 import GraphCanvas from './components/GraphCanvas';
 import ChatPanel from './components/ChatPanel';
@@ -28,6 +27,7 @@ export default function WeChatGraph() {
         handleNodeClick,
         handleBackgroundClick,
         loadChatHistory,
+        loadGroupChat,
         refreshGraph,
     } = useWeChatGraph();
 
@@ -72,7 +72,11 @@ export default function WeChatGraph() {
                             typeof selectedEdge.target === 'object'
                                 ? selectedEdge.target.id
                                 : selectedEdge.target;
-                        loadChatHistory(src, tgt, offset);
+                        if (selectedEdge.edge_type === 'group' && selectedEdge.chatroom) {
+                            loadGroupChat(selectedEdge.chatroom, offset);
+                        } else {
+                            loadChatHistory(src, tgt, offset);
+                        }
                     }}
                     onClose={handleBackgroundClick}
                 />

@@ -1,7 +1,5 @@
-import React from 'react';
-
 export default function PersonDetail({ node, graphData, onClose }) {
-    const connectedEdges = (graphData?.links || graphData?.edges || []).filter(
+    const connectedEdges = (graphData?.edges || graphData?.links || []).filter(
         (e) => {
             const src =
                 typeof e.source === 'object' ? e.source.id : e.source;
@@ -52,7 +50,7 @@ export default function PersonDetail({ node, graphData, onClose }) {
                 <div className="bg-slate-700 rounded p-2">
                     <div className="text-slate-400 text-xs">社区</div>
                     <div className="text-slate-100 font-medium">
-                        社区{node.cluster || node.community || 0}
+                        社区{node.community ?? node.cluster ?? 0}
                     </div>
                 </div>
             </div>

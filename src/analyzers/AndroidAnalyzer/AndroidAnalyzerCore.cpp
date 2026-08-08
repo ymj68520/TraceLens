@@ -138,7 +138,45 @@ void AndroidAnalyzer::analyzeAndroidData() {
     extractAndParseDB("data/data/org.telegram.messenger/files/cache4.db", "parseTelegram");
 
     // Analyze WeChat (enhanced parsing with decryption support)
-    {
+    if (sourceMode_ == AndroidSourceMode::MiuiBackup) {
+        auto* miui = dynamic_cast<MiuiBackupExtractor*>(fileExtractor_.get());
+        std::vector<std::string> wechatMembers;
+        std::unordered_set<std::string> allMembers;
+        if (miui) {
+            miui->enumerateEntryDetails([&](const std::string& memberName, const std::string&,
+                                             const TarEntry& entry) {
+                allMembers.insert(memberName);
+                if (!entry.isRegularFile() || !isMiuiWeChatDatabaseMember(memberName)) {
+                    return;
+                }
+                wechatMembers.push_back(memberName);
+            });
+        }
+        std::sort(wechatMembers.begin(), wechatMembers.end());
+        if (wechatMembers.empty()) {
+            std::cout << "WeChat database not present in MIUI backup" << std::endl;
+        }
+        for (const std::string& memberName : wechatMembers) {
+            const std::string tempPath = makeAnalysisTempPath(memberName);
+            std::vector<std::string> stagedPaths;
+            bool staged = miui && miui->extractTarMember(memberName, tempPath);
+            if (staged) {
+                stagedPaths.push_back(tempPath);
+                for (const char* suffix : {"-wal", "-shm", "-journal"}) {
+                    const std::string sidecar = memberName + suffix;
+                    if (allMembers.find(sidecar) == allMembers.end()) continue;
+                    const std::string sidecarPath = tempPath + suffix;
+                    if (miui->extractTarMember(sidecar, sidecarPath)) {
+                        stagedPaths.push_back(sidecarPath);
+                    }
+                }
+                parseWeChatEnhanced(tempPath, wechatPassword_);
+            } else {
+                std::cout << "Failed to extract WeChat database member: " << memberName << std::endl;
+            }
+            for (const std::string& path : stagedPaths) std::filesystem::remove(path);
+        }
+    } else {
         const std::string wechatDbPath = "data/data/com.tencent.mm/MicroMsg/testuser/EnMicroMsg.db";
         const std::string tempPath = makeAnalysisTempPath(wechatDbPath);
         std::vector<std::string> stagedPaths;

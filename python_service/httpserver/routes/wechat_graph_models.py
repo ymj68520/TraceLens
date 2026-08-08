@@ -75,7 +75,7 @@ class ChatMessage(BaseModel):
     timestamp: Optional[int] = None
     media_url: Optional[str] = None
     media_type: Optional[str] = None
-    msg_type: Optional[str] = None
+    msg_type: Optional[int] = None
     is_send: Optional[int] = None
     chatroom_name: Optional[str] = None
     sender_nickname: Optional[str] = None
@@ -156,25 +156,81 @@ async def _resolve_android_db_path(task_id: str) -> str:
     # Try C++ backend task metadata
     task_info = await service_manager.cpp_backend.get_task(task_id)
     if task_info:
-        # Check metadata for android_db first
+        # Check metadata for android_db first.
         metadata = task_info.get("metadata", {})
         android_db = metadata.get("android_db") if isinstance(metadata, dict) else None
         if android_db and os.path.exists(android_db):
             return android_db
 
-        # Derive from output_raw_db: replace .db suffix with _android.db
+        # Some Android analysis outputs are stored directly in output_files_db,
+        # rather than in a separately named *_android.db artifact.  Only accept
+        # a SQLite database that contains at least one normalized WeChat table;
+        # files.db may otherwise be an unrelated cross-platform artifact DB.
+        files_db = task_info.get("output_files_db") or ""
+        if files_db:
+            sibling_android = os.path.join(os.path.dirname(files_db), "android.db")
+            for candidate in (sibling_android, files_db):
+                if not candidate or not os.path.exists(candidate):
+                    continue
+                try:
+                    import sqlite3
+                    with sqlite3.connect(candidate) as connection:
+                        tables = {
+                            row[0] for row in connection.execute(
+                                "SELECT name FROM sqlite_master WHERE type='table'"
+                            )
+                        }
+                    if tables.intersection({
+                        "wechat_messages", "wechat_contacts",
+                        "wechat_chatrooms", "wechat_owner_info",
+                    }):
+                        return candidate
+                except sqlite3.Error:
+                    continue
+        if files_db and os.path.exists(files_db):
+            try:
+                import sqlite3
+                with sqlite3.connect(files_db) as connection:
+                    tables = {
+                        row[0] for row in connection.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table'"
+                        )
+                    }
+                if tables.intersection({
+                    "wechat_messages", "wechat_contacts",
+                    "wechat_chatrooms", "wechat_owner_info",
+                }):
+                    return files_db
+            except sqlite3.Error:
+                pass
+
+        # Derive from output_raw_db: replace .db suffix with _android.db.
         raw_db = task_info.get("output_raw_db") or ""
         if raw_db:
             android_db = raw_db.rsplit(".", 1)[0] + "_android.db" if "." in raw_db else raw_db + "_android.db"
             if os.path.exists(android_db):
                 return android_db
 
-        # Derive from output_files_db
-        files_db = task_info.get("output_files_db") or ""
+        # Retain the legacy files -> android naming fallback, but validate it
+        # using the same WeChat-table contract before returning it.
         if files_db:
             android_db = files_db.replace("_files.db", "_android.db")
-            if os.path.exists(android_db):
-                return android_db
+            if android_db != files_db and os.path.exists(android_db):
+                try:
+                    import sqlite3
+                    with sqlite3.connect(android_db) as connection:
+                        tables = {
+                            row[0] for row in connection.execute(
+                                "SELECT name FROM sqlite_master WHERE type='table'"
+                            )
+                        }
+                    if tables.intersection({
+                        "wechat_messages", "wechat_contacts",
+                        "wechat_chatrooms", "wechat_owner_info",
+                    }):
+                        return android_db
+                except sqlite3.Error:
+                    pass
 
     # Fallback: glob search
     import glob
