@@ -234,6 +234,52 @@ json SQLiteHelper::get_miui_backup_overview(const std::string& android_db) {
         result["decryption_status"] = json::array();
     }
 
+    // WeChat graph data is written into the same Android result database.
+    // Expose a compact summary so the MIUI page can link to the graph without
+    // making a second task/database discovery request.
+    json wechat = {
+        {"available", false},
+        {"status", "not_found"},
+        {"messages", 0},
+        {"contacts", 0},
+        {"chatrooms", 0},
+        {"owners", 0},
+    };
+    const auto countRows = [&](const char* table) -> int64_t {
+        if (!table_exists(db, table)) return 0;
+        const std::string sql = std::string("SELECT COUNT(*) AS count FROM ") + table;
+        const json rows = execute_query(db, sql);
+        return rows.empty() ? 0 : rows[0].value("count", 0);
+    };
+    const int64_t messages = countRows("wechat_messages");
+    const int64_t contacts = countRows("wechat_contacts");
+    const int64_t chatrooms = countRows("wechat_chatrooms");
+    const int64_t owners = countRows("wechat_owner_info");
+    wechat["messages"] = messages;
+    wechat["contacts"] = contacts;
+    wechat["chatrooms"] = chatrooms;
+    wechat["owners"] = owners;
+    wechat["available"] = messages > 0 || contacts > 0 || chatrooms > 0 || owners > 0;
+    if (wechat["available"].get<bool>()) {
+        wechat["status"] = "parsed";
+    } else if (table_exists(db, "app_db_inventory")) {
+        const json locked = execute_query(db, R"(
+            SELECT open_status, COUNT(*) AS count
+            FROM app_db_inventory
+            WHERE package_name = 'com.tencent.mm'
+            GROUP BY open_status
+            ORDER BY CASE open_status
+                WHEN 'decrypted' THEN 1
+                WHEN 'recognized' THEN 2
+                WHEN 'encrypted_locked' THEN 3
+                ELSE 4 END
+        )");
+        if (!locked.empty()) {
+            wechat["status"] = locked[0].value("open_status", "recognized");
+        }
+    }
+    result["wechat_summary"] = wechat;
+
     sqlite3_close(db);
     return result;
 }

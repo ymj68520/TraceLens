@@ -1,5 +1,3 @@
-import React from 'react';
-
 const COLORS = [
     '#3b82f6',
     '#ef4444',
@@ -24,33 +22,36 @@ export default function CommunityLegend({ communities, selected, onSelect }) {
                 社区分组
             </div>
             <div className="space-y-1">
-                {communities.map((c) => (
-                    <button
-                        key={c.cluster}
-                        onClick={() =>
-                            onSelect(
-                                selected === c.cluster ? null : c.cluster
-                            )
-                        }
-                        className={`flex items-center gap-2 w-full px-2 py-1 rounded text-sm ${
-                            selected === c.cluster
-                                ? 'bg-slate-600'
-                                : 'hover:bg-slate-700'
-                        }`}
-                    >
+                {communities.map((c, index) => {
+                    const cluster = c.cluster ?? c.community_id ?? c.id ?? index;
+                    const members = c.members || [];
+                    return (
+                        <button
+                            key={cluster}
+                            onClick={() =>
+                                onSelect(
+                                    selected === cluster ? null : cluster
+                                )
+                            }
+                            className={`flex items-center gap-2 w-full px-2 py-1 rounded text-sm ${
+                                selected === cluster
+                                    ? 'bg-slate-600'
+                                    : 'hover:bg-slate-700'
+                            }`}
+                        >
                         <div
                             className="w-3 h-3 rounded-full"
                             style={{
-                                background:
-                                    COLORS[c.cluster % COLORS.length],
+                                background: COLORS[cluster % COLORS.length],
                             }}
                         />
-                        <span className="text-slate-300">{c.label}</span>
+                        <span className="text-slate-300">{c.label || `社区 ${Number(cluster) + 1}`}</span>
                         <span className="text-slate-500 text-xs ml-auto">
-                            {c.members?.length || 0}人
+                            {members.length}人
                         </span>
-                    </button>
-                ))}
+                        </button>
+                    );
+                })}
             </div>
         </div>
     );

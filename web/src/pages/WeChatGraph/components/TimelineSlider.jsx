@@ -1,4 +1,3 @@
-import React from 'react';
 import {
     AreaChart,
     Area,
@@ -11,7 +10,7 @@ import {
 
 export default function TimelineSlider({ data, onRangeChange }) {
     // data can be either an array directly or an object with intervals
-    const intervals = Array.isArray(data) ? data : data?.intervals || [];
+    const intervals = Array.isArray(data) ? data : data?.intervals || data?.timeline || [];
 
     if (intervals.length === 0) return null;
 

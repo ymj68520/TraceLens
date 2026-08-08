@@ -3,11 +3,67 @@ import { useSearchParams } from 'react-router-dom';
 import {
     getWeChatGraph,
     getWeChatTimeline,
-    getWeChatCommunity,
     getWeChatChat,
     getWeChatGroupChat,
     invalidateWeChatCache,
 } from '../../../services/wechatService';
+
+const normalizeCommunityId = (value, fallback) => {
+    if (value === undefined || value === null) return fallback;
+    const numeric = Number(value);
+    return Number.isNaN(numeric) ? value : numeric;
+};
+
+const nodeCommunity = (node) => node?.community ?? node?.cluster ?? null;
+
+export const normalizeWeChatGraph = (result = {}) => {
+    const rawEdges = result.edges || result.links || [];
+    const rawCommunities = result.communities || [];
+    const communities = rawCommunities.map((community, index) => {
+        if (Array.isArray(community)) {
+            return { cluster: index, label: `社区 ${index + 1}`, members: community };
+        }
+
+        const cluster = normalizeCommunityId(
+            community.community_id ?? community.cluster ?? community.id,
+            index
+        );
+        return {
+            ...community,
+            cluster,
+            label: community.label || `社区 ${Number(cluster) + 1}`,
+            members: community.members || [],
+        };
+    });
+    const communityByMember = new Map();
+    communities.forEach((community) => {
+        community.members.forEach((member) => {
+            const id = typeof member === 'object' ? member.username || member.id : member;
+            if (id !== undefined && id !== null) communityByMember.set(id, community.cluster);
+        });
+    });
+    const nodes = (result.nodes || []).map((node) => {
+        const cluster = normalizeCommunityId(
+            nodeCommunity(node),
+            communityByMember.get(node.id)
+        );
+        return { ...node, cluster, community: cluster };
+    });
+
+    return {
+        ...result,
+        nodes,
+        // Keep both names: react-force-graph consumes `links`, while the API
+        // response and other consumers use `edges`.
+        edges: rawEdges,
+        links: rawEdges,
+        communities,
+    };
+};
+
+export const normalizeWeChatTimeline = (result = {}) => (
+    Array.isArray(result) ? result : result.intervals || result.timeline || []
+);
 
 /**
  * WeChat 聊天关系图谱 Hook
@@ -18,7 +74,7 @@ export default function useWeChatGraph() {
     const taskId = searchParams.get('task_id');
 
     // Graph state
-    const [graphData, setGraphData] = useState({ nodes: [], links: [] });
+    const [graphData, setGraphData] = useState({ nodes: [], edges: [], communities: [] });
     const [timelineData, setTimelineData] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -49,11 +105,8 @@ export default function useWeChatGraph() {
                 getWeChatGraph(taskId),
                 getWeChatTimeline(taskId),
             ]);
-            setGraphData({
-                nodes: graphResult.nodes || [],
-                links: graphResult.links || [],
-            });
-            setTimelineData(timelineResult.timeline || []);
+            setGraphData(normalizeWeChatGraph(graphResult));
+            setTimelineData(normalizeWeChatTimeline(timelineResult));
         } catch (err) {
             setError('获取微信图谱数据失败: ' + (err.message || '未知错误'));
         } finally {
@@ -123,10 +176,9 @@ export default function useWeChatGraph() {
         const sourceId = typeof edge.source === 'object' ? edge.source.id : edge.source;
         const targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
 
-        // 群聊边: source 或 target 以 @chatroom 结尾
-        if (sourceId.endsWith('@chatroom') || targetId.endsWith('@chatroom')) {
-            const chatroom = sourceId.endsWith('@chatroom') ? sourceId : targetId;
-            loadGroupChat(chatroom, 0, 50);
+        // 群聊边由图谱服务标记为 group，并携带 chatroom。
+        if (edge.edge_type === 'group' && edge.chatroom) {
+            loadGroupChat(edge.chatroom, 0, 50);
         } else {
             // 私聊边
             loadChatHistory(sourceId, targetId, 0, 50);
@@ -175,7 +227,7 @@ export default function useWeChatGraph() {
         if (taskId) {
             fetchGraph();
         } else {
-            setGraphData({ nodes: [], links: [] });
+            setGraphData({ nodes: [], edges: [], links: [], communities: [] });
             setTimelineData([]);
             setSelectedNode(null);
             setSelectedEdge(null);
@@ -188,19 +240,19 @@ export default function useWeChatGraph() {
      * 过滤后的图谱数据: 按社区和搜索关键词过滤
      */
     const filteredGraphData = useMemo(() => {
-        let { nodes, links } = graphData;
+        let { nodes, edges } = graphData;
 
-        // 按社区过滤
+        // 按社区过滤，兼容 API 的 community 和 cluster 字段。
         if (selectedCommunity !== null) {
             const communityNodes = new Set(
                 nodes
-                    .filter((n) => n.community === selectedCommunity)
-                    .map((n) => n.id)
+                    .filter((node) => nodeCommunity(node) === selectedCommunity)
+                    .map((node) => node.id)
             );
-            nodes = nodes.filter((n) => n.community === selectedCommunity);
-            links = links.filter((l) => {
-                const src = typeof l.source === 'object' ? l.source.id : l.source;
-                const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+            nodes = nodes.filter((node) => nodeCommunity(node) === selectedCommunity);
+            edges = edges.filter((edge) => {
+                const src = typeof edge.source === 'object' ? edge.source.id : edge.source;
+                const tgt = typeof edge.target === 'object' ? edge.target.id : edge.target;
                 return communityNodes.has(src) && communityNodes.has(tgt);
             });
         }
@@ -210,22 +262,22 @@ export default function useWeChatGraph() {
             const query = searchQuery.trim().toLowerCase();
             const matchedNodes = new Set(
                 nodes
-                    .filter((n) =>
-                        (n.name && n.name.toLowerCase().includes(query)) ||
-                        (n.label && n.label.toLowerCase().includes(query)) ||
-                        (n.remark && n.remark.toLowerCase().includes(query))
+                    .filter((node) =>
+                        [node.name, node.label, node.remark, node.id]
+                            .filter(Boolean)
+                            .some((value) => String(value).toLowerCase().includes(query))
                     )
-                    .map((n) => n.id)
+                    .map((node) => node.id)
             );
-            nodes = nodes.filter((n) => matchedNodes.has(n.id));
-            links = links.filter((l) => {
-                const src = typeof l.source === 'object' ? l.source.id : l.source;
-                const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+            nodes = nodes.filter((node) => matchedNodes.has(node.id));
+            edges = edges.filter((edge) => {
+                const src = typeof edge.source === 'object' ? edge.source.id : edge.source;
+                const tgt = typeof edge.target === 'object' ? edge.target.id : edge.target;
                 return matchedNodes.has(src) && matchedNodes.has(tgt);
             });
         }
 
-        return { nodes, links };
+        return { nodes, edges, links: edges };
     }, [graphData, selectedCommunity, searchQuery]);
 
     return {

@@ -1,7 +1,13 @@
 #pragma once
 
+#include <string>
+
 class AndroidAnalysisDatabase;
 class MiuiBackupExtractor;
+
+// Returns true for a primary WeChat SQLCipher database stored in a MIUI
+// backup's r/MicroMsg or db subtree. Sidecars are intentionally excluded.
+bool isMiuiWeChatDatabaseMember(const std::string& memberName);
 
 // Writes the backup manifest row and one installed_apps row per manifest package.
 bool writeMiuiManifest(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db);

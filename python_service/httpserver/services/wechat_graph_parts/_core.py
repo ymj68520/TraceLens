@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+CACHE_TTL = 1800
 
 
 class WeChatGraphCoreMixin:
@@ -150,6 +151,17 @@ class WeChatGraphCoreMixin:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         try:
+            tables = {
+                row[0] for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            if "wechat_messages" not in tables:
+                return {
+                    "error": "Invalid WeChat database: wechat_messages table is missing",
+                    "nodes": [], "edges": [], "communities": [],
+                    "metadata": {"task_id": task_id, "db_path": db_path},
+                }
             G = self._build_graph(conn)
             result = self._compute_metrics(G) if include_metrics else self._graph_to_basic(G)
             result["metadata"] = {

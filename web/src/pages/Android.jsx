@@ -1,9 +1,9 @@
 import { motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { Virtuoso } from 'react-virtuoso';
-import { Search, Smartphone, Database, Package, HardDrive, Calendar, FolderInput, ShieldCheck } from 'lucide-react';
+import { Search, Smartphone, Package, HardDrive, Calendar, FolderInput, ShieldCheck } from 'lucide-react';
 
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
@@ -51,6 +51,8 @@ const openStatusBadge = (status) => {
   if (status === 'parse_error') return { variant: 'red', label: '解析失败' };
   if (status === 'incomplete_limit' || status === 'limit_exceeded') return { variant: 'yellow', label: '截断(超限)' };
   if (status === 'recognized') return { variant: 'blue', label: '已识别' };
+  if (status === 'encrypted_locked') return { variant: 'yellow', label: '已发现但未解密' };
+  if (status === 'not_found') return { variant: 'gray', label: '未发现微信主库' };
   if (status === 'unsupported') return { variant: 'gray', label: '待解码' };
   return { variant: 'gray', label: status || '未知' };
 };
@@ -140,6 +142,15 @@ const Android = () => {
   const inventory = dbInventory?.inventory || [];
   const packageSummary = dbInventory?.package_summary || [];
   const qqntArtifacts = qqntOverview?.artifact_categories || [];
+  const wechatSummary = overview?.wechat_summary || {};
+  const hasWechatData = Boolean(
+    wechatSummary.available ||
+    wechatSummary.status === 'parsed' ||
+    Number(wechatSummary.messages) > 0 ||
+    Number(wechatSummary.contacts) > 0 ||
+    Number(wechatSummary.chatrooms) > 0 ||
+    Number(wechatSummary.owners) > 0
+  );
   const tabData = {
     overview: Object.keys(manifest).length > 0,
     apps: appsList.length > 0,
@@ -165,7 +176,7 @@ const Android = () => {
           ].map((tab) => <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`${activeTab === tab.id ? 'border-blue-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}>{tab.label}{!tab.hasData && <span className="ml-1 text-xs text-slate-400">(无数据)</span>}</button>)}
         </nav>
       </div>
-      {activeTab === 'overview' && <OverviewTab manifest={manifest} decryptionStatus={decryptionStatus} />}
+      {activeTab === 'overview' && <OverviewTab taskId={taskId} manifest={manifest} decryptionStatus={decryptionStatus} wechatSummary={wechatSummary} hasWechatData={hasWechatData} />}
       {activeTab === 'apps' && <AppsTab apps={appsList} bakTypeSummary={bakTypeSummary} />}
       {activeTab === 'inventory' && <InventoryTab inventory={inventory} packageSummary={packageSummary} />}
       {activeTab === 'qqnt' && <QqntEvidenceTab taskId={taskId} overview={qqntOverview} />}
@@ -173,7 +184,7 @@ const Android = () => {
   );
 };
 
-const OverviewTab = ({ manifest, decryptionStatus }) => {
+const OverviewTab = ({ taskId, manifest, decryptionStatus, wechatSummary, hasWechatData }) => {
   if (Object.keys(manifest).length === 0) return <Card title="备份概览"><p className="text-center py-8 text-slate-500">未找到 MIUI 备份清单</p></Card>;
   const total = decryptionStatus.reduce((sum, item) => sum + Number(item.count || 0), 0);
   const cards = [
@@ -184,7 +195,15 @@ const OverviewTab = ({ manifest, decryptionStatus }) => {
     { icon: Package, label: '应用数', value: manifest.package_count ?? '-' },
     { icon: FolderInput, label: '来源文件夹', value: manifest.source_folder || '-' },
   ];
-  return <Card title="📦 备份概览"><div className="space-y-6"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">{cards.map(({ icon: Icon, label, value }) => <div key={label} className="p-4 bg-slate-50 rounded-xl"><div className="flex items-center gap-2 text-slate-500"><Icon size={16} /><p className="text-sm font-medium">{label}</p></div><p className="mt-1 text-sm text-slate-900 break-all" title={String(value)}>{value}</p></div>)}</div><div><div className="flex items-center gap-2 mb-3"><ShieldCheck size={18} className="text-slate-700" /><h4 className="font-medium text-slate-900">应用数据库解密状态</h4><span className="text-xs text-slate-400">(共 {total} 条)</span></div>{total > 0 ? <><div className="flex h-6 w-full overflow-hidden rounded-lg bg-slate-100">{decryptionStatus.map((item) => { const cfg = STATUS_BAR[item.open_status] || { bg: 'bg-slate-400', label: item.open_status }; return <div key={item.open_status} className={cfg.bg} style={{ width: `${(Number(item.count) / total) * 100}%` }} title={`${cfg.label}: ${item.count}`} />; })}</div><div className="flex flex-wrap gap-4 mt-3">{decryptionStatus.map((item) => { const cfg = STATUS_BAR[item.open_status] || { bg: 'bg-slate-400', label: item.open_status }; return <span key={item.open_status} className="flex items-center gap-2 text-sm text-slate-600"><i className={`w-3 h-3 rounded-sm ${cfg.bg}`} />{cfg.label}: <b>{item.count}</b></span>; })}</div></> : <p className="text-center py-6 text-slate-500">暂无数据库清单数据</p>}</div></div></Card>;
+  const wechatStatus = openStatusBadge(wechatSummary.status);
+  const wechatStats = [
+    { label: '消息', value: wechatSummary.messages },
+    { label: '联系人', value: wechatSummary.contacts },
+    { label: '群聊', value: wechatSummary.chatrooms },
+    { label: '账号', value: wechatSummary.owners },
+  ];
+
+  return <Card title="📦 备份概览"><div className="space-y-6"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">{cards.map(({ icon: Icon, label, value }) => <div key={label} className="p-4 bg-slate-50 rounded-xl"><div className="flex items-center gap-2 text-slate-500"><Icon size={16} /><p className="text-sm font-medium">{label}</p></div><p className="mt-1 text-sm text-slate-900 break-all" title={String(value)}>{value}</p></div>)}</div><div><div className="flex items-center gap-2 mb-3"><ShieldCheck size={18} className="text-slate-700" /><h4 className="font-medium text-slate-900">应用数据库解密状态</h4><span className="text-xs text-slate-400">(共 {total} 条)</span></div>{total > 0 ? <><div className="flex h-6 w-full overflow-hidden rounded-lg bg-slate-100">{decryptionStatus.map((item) => { const cfg = STATUS_BAR[item.open_status] || { bg: 'bg-slate-400', label: item.open_status }; return <div key={item.open_status} className={cfg.bg} style={{ width: `${(Number(item.count) / total) * 100}%` }} title={`${cfg.label}: ${item.count}`} />; })}</div><div className="flex flex-wrap gap-4 mt-3">{decryptionStatus.map((item) => { const cfg = STATUS_BAR[item.open_status] || { bg: 'bg-slate-400', label: item.open_status }; return <span key={item.open_status} className="flex items-center gap-2 text-sm text-slate-600"><i className={`w-3 h-3 rounded-sm ${cfg.bg}`} />{cfg.label}: <b>{item.count}</b></span>; })}</div></> : <p className="text-center py-6 text-slate-500">暂无数据库清单数据</p>}</div><div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="flex items-center gap-2"><span className="text-lg">💬</span><h4 className="font-medium text-slate-900">微信关系分析</h4><Badge variant={wechatStatus.variant} size="sm">{wechatStatus.label}</Badge></div><p className="mt-1 text-sm text-slate-600">从本次 MIUI 备份恢复的微信结构化证据</p></div>{hasWechatData ? <Link to={`/wechat-graph?task_id=${encodeURIComponent(taskId)}`} className="inline-flex items-center rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">打开关系图</Link> : <span className="text-sm text-slate-500">暂无可视化数据</span>}</div><div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">{wechatStats.map(({ label, value }) => <div key={label} className="rounded-lg bg-white/70 p-3 text-center"><p className="text-xl font-semibold text-slate-900">{Number(value || 0).toLocaleString()}</p><p className="text-xs text-slate-600">{label}</p></div>)}</div></div></div></Card>;
 };
 
 const AppsTab = ({ apps, bakTypeSummary }) => {

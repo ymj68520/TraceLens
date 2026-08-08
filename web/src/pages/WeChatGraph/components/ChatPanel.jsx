@@ -1,5 +1,3 @@
-import React from 'react';
-
 const MSG_TYPE_LABELS = {
     1: '文本',
     3: '图片',
@@ -18,9 +16,9 @@ export default function ChatPanel({
     onClose,
 }) {
     const srcLabel =
-        typeof edge.source === 'object' ? edge.source.label : edge.source;
+        typeof edge.source === 'object' ? edge.source.label || edge.source.id : edge.source;
     const tgtLabel =
-        typeof edge.target === 'object' ? edge.target.label : edge.target;
+        typeof edge.target === 'object' ? edge.target.label || edge.target.id : edge.target;
 
     return (
         <div className="flex flex-col h-full bg-slate-800 rounded-xl overflow-hidden">

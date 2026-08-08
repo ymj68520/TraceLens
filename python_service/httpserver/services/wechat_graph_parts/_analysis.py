@@ -87,6 +87,7 @@ class WeChatGraphAnalysisMixin:
                 "last_time": data.get("last_time"),
                 "sent_count": data.get("sent_count", 0),
                 "received_count": data.get("received_count", 0),
+                "chatroom": data.get("chatroom"),
             })
 
         # Format communities as list of lists of node IDs
@@ -175,6 +176,7 @@ class WeChatGraphAnalysisMixin:
                 "last_time": data.get("last_time"),
                 "sent_count": data.get("sent_count", 0),
                 "received_count": data.get("received_count", 0),
+                "chatroom": data.get("chatroom"),
             })
 
         return {

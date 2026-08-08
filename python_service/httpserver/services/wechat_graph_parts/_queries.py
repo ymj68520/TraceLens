@@ -89,7 +89,8 @@ class WeChatGraphQueriesMixin:
             cursor = conn.execute(
                 """
                 SELECT id, sender, receiver, content, timestamp,
-                       media_url, media_type, msg_type, is_send
+                       media_url, media_type, msg_type, is_send,
+                       chatroom_name, sender_nickname, talker
                 FROM wechat_messages
                 WHERE (chatroom_name IS NULL OR chatroom_name = '')
                   AND (
@@ -116,6 +117,9 @@ class WeChatGraphQueriesMixin:
                     "media_type": row["media_type"],
                     "msg_type": row["msg_type"],
                     "is_send": row["is_send"],
+                    "chatroom_name": row["chatroom_name"],
+                    "sender_nickname": row["sender_nickname"],
+                    "talker": row["talker"],
                 })
 
             return {

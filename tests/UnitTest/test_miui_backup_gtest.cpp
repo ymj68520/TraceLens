@@ -820,6 +820,89 @@ TEST(MiuiBackupExtractorTest, KeepsInternalTempsOutsideEvidenceWhenTmpdirIsInsid
 #endif
 }
 
+TEST(MiuiArtifactTest, DiscoversWeChatDatabasesOnlyUnderExpectedTrees) {
+    EXPECT_TRUE(isMiuiWeChatDatabaseMember("apps/com.tencent.mm/r/MicroMsg/abc/EnMicroMsg.db"));
+    EXPECT_TRUE(isMiuiWeChatDatabaseMember("apps/com.tencent.mm/db/EnMicroMsg.db"));
+    EXPECT_FALSE(isMiuiWeChatDatabaseMember("apps/com.tencent.mm/f/EnMicroMsg.db"));
+    EXPECT_FALSE(isMiuiWeChatDatabaseMember("apps/com.tencent.mm/r/MicroMsg/abc/EnMicroMsg.db-wal"));
+    EXPECT_FALSE(isMiuiWeChatDatabaseMember("apps/com.tencent.mobileqq/r/MicroMsg/abc/EnMicroMsg.db"));
+}
+
+TEST(MiuiArtifactTest, RecordsNotFoundWhenManifestListsWeChatWithoutDatabase) {
+    const fs::path dir = uniqueTempPath("miui_wechat_not_found");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages><package><packageName>com.tencent.mm</packageName>"
+           "<bakFile>WeChat.bak</bakFile></package></packages></MIUI-backup>";
+    const auto tar = makeUstarTar({
+        {"apps/com.tencent.mm/f/placeholder", "no database"}
+    });
+    std::ofstream(dir / "WeChat.bak", std::ios::binary) << rawBackup(readFile(tar));
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    const fs::path analysisDb = uniqueTempPath("miui_wechat_not_found", ".db");
+    TemporaryFile cleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+    ASSERT_TRUE(writeAppDbInventory(extractor, db));
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT db_path, open_status FROM app_db_inventory WHERE package_name = 'com.tencent.mm'",
+        -1, &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)),
+                 "MIUI_WECHAT_DISCOVERY");
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 1)), "not_found");
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
+}
+
+TEST(MiuiArtifactTest, InventoriesLockedWeChatDatabaseUnderMicroMsgAndKeepsSidecarsOut) {
+    const fs::path dir = uniqueTempPath("miui_wechat_locked");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages><package><packageName>com.tencent.mm</packageName>"
+           "<bakFile>WeChat.bak</bakFile></package></packages></MIUI-backup>";
+    const auto tar = makeUstarTar({
+        {"apps/com.tencent.mm/r/MicroMsg/account/EnMicroMsg.db", "ciphertext"},
+        {"apps/com.tencent.mm/r/MicroMsg/account/EnMicroMsg.db-wal", "wal"},
+        {"apps/com.tencent.mm/r/MicroMsg/account/EnMicroMsg.db-shm", "shm"}
+    });
+    std::ofstream(dir / "WeChat.bak", std::ios::binary) << rawBackup(readFile(tar));
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    const fs::path analysisDb = uniqueTempPath("miui_wechat_locked", ".db");
+    TemporaryFile cleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+    ASSERT_TRUE(writeAppDbInventory(extractor, db));
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT open_status FROM app_db_inventory WHERE package_name = 'com.tencent.mm' "
+        "AND db_path = 'apps/com.tencent.mm/r/MicroMsg/account/EnMicroMsg.db'",
+        -1, &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)),
+                 "encrypted_locked");
+    sqlite3_finalize(statement);
+
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT COUNT(*) FROM app_db_inventory WHERE db_path LIKE '%-wal' OR db_path LIKE '%-shm'",
+        -1, &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_EQ(sqlite3_column_int(statement, 0), 0);
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
+}
+
 TEST(MiuiArtifactTest, IgnoresDatabaseDirectoryEntries) {
     const fs::path dir = uniqueTempPath("miui_directory_inventory");
     fs::create_directories(dir);

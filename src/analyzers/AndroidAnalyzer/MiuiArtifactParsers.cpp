@@ -12,6 +12,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstring>
 #include <charconv>
 #include <chrono>
 #include <cstdlib>
@@ -165,6 +166,23 @@ bool isSidecar(const std::string& memberName) {
     return endsWith("-wal") || endsWith("-shm") || endsWith("-journal");
 }
 
+bool isMiuiWeChatDatabaseMemberName(const std::string& memberName) {
+    constexpr char prefix[] = "apps/com.tencent.mm/";
+    constexpr char suffix[] = "/EnMicroMsg.db";
+    if (memberName.rfind(prefix, 0) != 0 || isSidecar(memberName)) {
+        return false;
+    }
+
+    const std::string tail = memberName.substr(sizeof(prefix) - 1);
+    const bool isRTree = tail.rfind("r/MicroMsg/", 0) == 0;
+    const bool isDbTree = tail.rfind("db/", 0) == 0;
+    if ((!isRTree && !isDbTree) || tail.size() < sizeof(suffix) - 1) {
+        return false;
+    }
+    return tail.compare(tail.size() - (sizeof(suffix) - 1), sizeof(suffix) - 1,
+                        suffix) == 0;
+}
+
 bool isPrimaryDatabaseMember(const std::string& memberName, std::string& packageName) {
     constexpr char prefix[] = "apps/";
     if (memberName.rfind(prefix, 0) != 0 || isSidecar(memberName)) {
@@ -177,13 +195,18 @@ bool isPrimaryDatabaseMember(const std::string& memberName, std::string& package
         return false;
     }
 
-    const std::string databasePrefix = memberName.substr(0, packageEnd + 1) + "db/";
-    if (memberName.rfind(databasePrefix, 0) != 0 ||
-        memberName.size() == databasePrefix.size()) {
-        return false;
+    packageName = memberName.substr(packageStart, packageEnd - packageStart);
+    const std::string tail = memberName.substr(packageEnd + 1);
+    // WeChat stores its per-account SQLCipher database below r/MicroMsg in
+    // some MIUI exports rather than the conventional db/ directory.
+    if (packageName == "com.tencent.mm" && isMiuiWeChatDatabaseMemberName(memberName)) {
+        return true;
     }
 
-    packageName = memberName.substr(packageStart, packageEnd - packageStart);
+    const std::string databasePrefix = "db/";
+    if (tail.rfind(databasePrefix, 0) != 0 || tail.size() == databasePrefix.size()) {
+        return false;
+    }
     return true;
 }
 
@@ -387,7 +410,9 @@ bool inventoryExtractedDatabase(const fs::path& extractedPath,
                                 AndroidAnalysisDatabase& database,
                                 InventoryBudget& globalBudget) {
     if (!hasSqliteHeader(extractedPath)) {
-        return recordFailure(database, packageName, memberName, "parse_error");
+        const bool wechatCipherDatabase = isMiuiWeChatDatabaseMemberName(memberName);
+        return recordFailure(database, packageName, memberName,
+                             wechatCipherDatabase ? "encrypted_locked" : "parse_error");
     }
 
     sqlite3* rawConnection = nullptr;
@@ -444,6 +469,10 @@ bool inventoryExtractedDatabase(const fs::path& extractedPath,
 
 }  // namespace
 
+bool isMiuiWeChatDatabaseMember(const std::string& memberName) {
+    return isMiuiWeChatDatabaseMemberName(memberName);
+}
+
 bool writeMiuiManifestRows(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
     const BackupMeta& manifest = src.manifest();
     bool success = db.insertMiuiBackupManifest(
@@ -485,6 +514,35 @@ bool writeAppDbInventoryRows(MiuiBackupExtractor& src, AndroidAnalysisDatabase& 
             databaseCandidates.push_back(memberName);
         }
     });
+
+    bool wechatDatabaseFound = false;
+    for (const auto& memberName : databaseCandidates) {
+        if (isMiuiWeChatDatabaseMemberName(memberName)) {
+            wechatDatabaseFound = true;
+            break;
+        }
+    }
+    bool wechatFailureRecorded = false;
+    for (const auto& failure : src.packageFailures()) {
+        if (failure.packageName == "com.tencent.mm") {
+            wechatFailureRecorded = true;
+            break;
+        }
+    }
+    bool wechatPackageListed = false;
+    for (const auto& package : src.manifest().packages) {
+        if (package.packageName == "com.tencent.mm") {
+            wechatPackageListed = true;
+            break;
+        }
+    }
+    // Keep the generic inventory explicit when the manifest says WeChat was
+    // backed up but no database entry was recoverable. Do not add a synthetic
+    // row to unrelated backups that do not contain the WeChat package.
+    if (wechatPackageListed && !wechatDatabaseFound && !wechatFailureRecorded &&
+        !recordFailure(db, "com.tencent.mm", "MIUI_WECHAT_DISCOVERY", "not_found")) {
+        return false;
+    }
 
     TemporaryDirectory temporaryDirectory;
     if (!temporaryDirectory.create(src.temporaryRoot())) {
