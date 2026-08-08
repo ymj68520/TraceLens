@@ -13,8 +13,8 @@ import Statistics from './pages/Statistics';
 import Settings from './pages/Settings';
 import KnowledgeGraph from './pages/KnowledgeGraph';
 import CaseIntelligence from './pages/CaseIntelligence';
-import ForensicReportPage from './pages/ForensicReportPage';
-import LegacyReportRedirect from './pages/LegacyReportRedirect';
+import AnalysisCenter from './pages/AnalysisCenter';
+import LegacyReportRedirect, { TaskReportRedirect, CaseReportRedirect } from './pages/LegacyReportRedirect';
 import OSS from './pages/OSS';
 import Login from './pages/Login';
 import Terminal from './pages/Terminal';
@@ -96,12 +96,16 @@ export const appRoutes = [
         element: <CaseIntelligence />,
       },
       {
+        path: 'analysis-center',
+        element: <AnalysisCenter />,
+      },
+      {
         path: 'reports/task/:taskId',
-        element: <ForensicReportPage scopeType="task" />,
+        element: <TaskReportRedirect />,
       },
       {
         path: 'reports/case/:caseId',
-        element: <ForensicReportPage scopeType="case" />,
+        element: <CaseReportRedirect />,
       },
       {
         path: 'case-report',

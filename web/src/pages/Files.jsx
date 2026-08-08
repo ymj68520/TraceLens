@@ -364,7 +364,7 @@ const Files = () => {
           let errorMsg = dllErr.response?.data?.detail || dllErr.message || '未知错误';
 
           if (!dllErr.response && dllErr.code === 'ERR_NETWORK') {
-            errorMsg = `DLL分析服务未运行\n\n提示：\n1. 请确保 C++ 服务已启动: ./build/forensic_analyzer --http-server 8080\n2. 请确保 Python 服务已启动: python -m python_service.httpserver.main\n3. 或使用启动脚本: ./scripts/start_services.sh`;
+            errorMsg = `DLL分析服务未运行\n\n提示：\n1. 请确保 C++ 服务已启动: ./build/forensic_analyzer --http-server 8666\n2. 请确保 Python 服务已启动: python -m python_service.httpserver.main\n3. 或使用启动脚本: ./run.sh`;
           } else if (dllErr.response?.status === 400 || dllErr.response?.status === 404) {
             const detail = dllErr.response?.data?.detail || '';
             if (detail.includes('File not found') || detail.includes('not found')) {

@@ -297,11 +297,36 @@ crow::response TaskCRUDRoutes::handle_get_task_results(const crow::request& req,
     }
 
     try {
+        // Revalidate the cached result: LLM evidence can be written to the
+        // _files.db AFTER the cache was populated (e.g. the Python case-analysis
+        // service writes file_descriptions, or a relevance toggle runs). If the
+        // cache lacks llm_results but the DB now has evidence, fall through and
+        // rebuild so the investigation center's evidence list stays current.
         std::string cached_result = task_manager_.get_cached_result(task_id);
         if (!cached_result.empty()) {
-            res.set_header("Content-Type", "application/json");
-            res.write(cached_result);
-            return res;
+            try {
+                json cached = json::parse(cached_result);
+                const json& cached_descs = cached.value("llm_results",
+                    json::object()).value("descriptions", json::array());
+                bool cache_has_evidence = cached_descs.is_array() && !cached_descs.empty();
+
+                bool db_has_evidence = false;
+                if (!task.output_files_db.empty()) {
+                    auto probe = SQLiteHelper::get_llm_results(task.output_files_db);
+                    const auto& descs = probe.contains("descriptions")
+                        ? probe["descriptions"] : json::array();
+                    db_has_evidence = descs.is_array() && !descs.empty();
+                }
+
+                if (cache_has_evidence || !db_has_evidence) {
+                    res.set_header("Content-Type", "application/json");
+                    res.write(cached_result);
+                    return res;
+                }
+                // Cache is stale (DB gained evidence) — rebuild below.
+            } catch (...) {
+                // Malformed cache — fall through to rebuild.
+            }
         }
 
         auto summary = SQLiteHelper::get_file_summary(task.output_files_db);
@@ -312,12 +337,21 @@ crow::response TaskCRUDRoutes::handle_get_task_results(const crow::request& req,
             {"output_files_db", task.output_files_db}
         };
 
-        // Add LLM results if available
-        if (task.llm_analyze && !task.output_files_db.empty()) {
+        // Add LLM results when present in the files DB.
+        // NOTE: do NOT gate on task.llm_analyze. Evidence (file_descriptions /
+        // files.llm_*) can be written by multiple paths — the C++ pipeline when
+        // llm_analyze is set, the Python case-analysis service (persist_to_files_db),
+        // or manual toggle actions. A task may therefore have LLM evidence in its
+        // _files.db while llm_analyze is false. Probing the DB reflects reality.
+        if (!task.output_files_db.empty()) {
             auto llm_results = SQLiteHelper::get_llm_results(task.output_files_db);
-            response["llm_results"] = llm_results;
-            // Frontend might expect output_descriptions_db, alias it to output_files_db
-            response["output_descriptions_db"] = task.output_files_db;
+            const auto& descs = llm_results.contains("descriptions")
+                ? llm_results["descriptions"] : json::array();
+            if (descs.is_array() && !descs.empty()) {
+                response["llm_results"] = std::move(llm_results);
+                // Frontend expects output_descriptions_db; alias it to output_files_db.
+                response["output_descriptions_db"] = task.output_files_db;
+            }
         }
 
         task_manager_.cache_result(task_id, response.dump());

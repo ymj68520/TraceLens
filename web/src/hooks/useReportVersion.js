@@ -350,6 +350,17 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
     const pendingCreate = createPromiseRef.current.get(scopeKey);
     if (pendingCreate) return pendingCreate;
 
+    // The API returns 202 before generation finishes. Do not allocate another
+    // immutable version while one for this scope is already in progress.
+    const existingGenerating = versionsRef.current.find(isGenerating);
+    if (existingGenerating) {
+      if (mountedRef.current && scopeRef.current === scopeKey) {
+        commitSelection(existingGenerating);
+        setError(null);
+      }
+      return Promise.resolve(existingGenerating);
+    }
+
     const selectionIntent = beginIntent();
     const operation = beginOperation(scopeKey);
     if (mountedRef.current && scopeRef.current === scopeKey) setError(null);

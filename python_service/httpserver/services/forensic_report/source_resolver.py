@@ -8,7 +8,6 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from .analysis_adapter import AnalysisChaptersAdapter
 from .models import AdapterContext, EvidenceSource, ScopeType, SourceFingerprint
 
 
@@ -16,11 +15,9 @@ class ResolvedScope(BaseModel):
     scope_type: ScopeType
     scope_id: str
     title: str
-    case_description: str
     task_ids: list[str]
     evidence: list[EvidenceSource]
     contexts: list[AdapterContext]
-    analysis: dict[str, Any]
 
 
 def fingerprint_file(path: str) -> SourceFingerprint:
@@ -52,9 +49,8 @@ def fingerprint_file(path: str) -> SourceFingerprint:
 
 
 class SourceResolver:
-    def __init__(self, cpp_backend: Any, analysis_adapter: Any = None):
+    def __init__(self, cpp_backend: Any):
         self.cpp_backend = cpp_backend
-        self.analysis_adapter = analysis_adapter or AnalysisChaptersAdapter()
 
     async def resolve_task(self, task_id: str) -> ResolvedScope:
         task = await self.cpp_backend.get_task(task_id)
@@ -67,9 +63,7 @@ class SourceResolver:
         if output_files_db:
             db_paths.setdefault("files", output_files_db)
 
-        fingerprints, analysis = await asyncio.to_thread(
-            self._freeze_sources, db_paths, task_id
-        )
+        fingerprints = await asyncio.to_thread(self._freeze_sources, db_paths)
         evidence_name = Path(task.get("image_path") or task_id).name
         evidence = EvidenceSource(
             evidence_id=task_id,
@@ -79,7 +73,6 @@ class SourceResolver:
             db_paths=db_paths,
             source_fingerprints=fingerprints,
         )
-        relevant_paths = set(analysis.get("filtered_files", []))
         context = AdapterContext(
             scope_type=ScopeType.TASK,
             scope_id=task_id,
@@ -88,27 +81,23 @@ class SourceResolver:
             evidence_name=evidence_name,
             db_paths=db_paths,
             source_fingerprints=fingerprints,
-            relevant_paths=relevant_paths,
         )
         return ResolvedScope(
             scope_type=ScopeType.TASK,
             scope_id=task_id,
             title=f"{evidence_name} 取证报告",
-            case_description=task.get("case_description") or "",
             task_ids=[task_id],
             evidence=[evidence],
             contexts=[context],
-            analysis=analysis,
         )
 
+    @staticmethod
     def _freeze_sources(
-        self, db_paths: dict[str, str], task_id: str
-    ) -> tuple[dict[str, SourceFingerprint], dict[str, Any]]:
-        fingerprints = {
+        db_paths: dict[str, str]
+    ) -> dict[str, SourceFingerprint]:
+        return {
             name: fingerprint_file(path) for name, path in db_paths.items()
         }
-        analysis = self.analysis_adapter.load_task(db_paths.get("files", ""), task_id)
-        return fingerprints, analysis
 
     @staticmethod
     def _database_paths(database_rows: Any) -> dict[str, str]:

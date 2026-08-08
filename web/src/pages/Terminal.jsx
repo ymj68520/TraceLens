@@ -4,6 +4,13 @@ import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import { useTranslation } from '../hooks/useTranslation';
 
+// 动态推导服务地址，跨机访问时用浏览器当前 host。
+const CPP_BASE = `http://${window.location.hostname}:8666`;
+const PYTHON_BASE = `http://${window.location.hostname}:8090`;
+// 端口从地址中提取，避免硬编码数字与实际端口不一致。
+const CPP_PORT = new URL(CPP_BASE).port;
+const PYTHON_PORT = new URL(PYTHON_BASE).port;
+
 const Terminal = () => {
   const { t } = useTranslation();
 
@@ -27,7 +34,7 @@ const Terminal = () => {
               C++ Backend
             </div>
             <div className="text-2xl font-bold text-green-900 dark:text-green-100 mt-1">
-              Port 8080
+              Port {CPP_PORT}
             </div>
             <div className="text-xs text-green-600 dark:text-green-400 mt-1">
               Task Management, Forensics API
@@ -39,7 +46,7 @@ const Terminal = () => {
               Python Service
             </div>
             <div className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">
-              Port 8090
+              Port {PYTHON_PORT}
             </div>
             <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
               LLM Analysis, Knowledge Graph
@@ -51,7 +58,7 @@ const Terminal = () => {
               Web Frontend
             </div>
             <div className="text-2xl font-bold text-amber-900 dark:text-amber-100 mt-1">
-              Port 3000
+              Port {window.location.port || '80'}
             </div>
             <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
               Browser Console, Client Logs
@@ -67,21 +74,21 @@ const Terminal = () => {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => window.open('http://localhost:8080/api/system/health', '_blank')}
+              onClick={() => window.open(`${CPP_BASE}/api/system/health`, '_blank')}
             >
               Check C++ Health
             </Button>
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => window.open('http://localhost:8090/health', '_blank')}
+              onClick={() => window.open(`${PYTHON_BASE}/health`, '_blank')}
             >
               Check Python Health
             </Button>
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => window.open('http://localhost:8090/docs', '_blank')}
+              onClick={() => window.open(`${PYTHON_BASE}/docs`, '_blank')}
             >
               Python API Docs
             </Button>

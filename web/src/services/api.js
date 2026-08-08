@@ -1,10 +1,27 @@
 import axios from 'axios';
 
+// 服务端口常量
+const CPP_PORT = import.meta.env.VITE_CPP_PORT || '8666';
+const PYTHON_PORT = '8090';
+const CS_PORT = '8091';
+
+// 动态推导服务地址：跨机访问时，浏览器中的 localhost 会指向客户端自身，
+// 导致 Python/C/S 接口全部连不上（Dashboard 显示离线）。这里改为基于
+// 浏览器当前访问的 host（如 192.168.31.50）拼接对应端口，保证从任意
+// 机器访问都能正确连到服务器。VITE_*_API_URL 环境变量仍可覆盖。
+function currentHost() {
+  if (typeof window !== 'undefined' && window.location) {
+    return window.location.hostname;
+  }
+  return 'localhost';
+}
+
 // Use relative path for Vite proxy
-// C++ 后端 (端口 8080)
+// C++ 后端 (端口 CPP_PORT) — 同源，相对路径
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-// Python 服务 (端口 8090)
-const PYTHON_API_BASE_URL = import.meta.env.VITE_PYTHON_API_URL || 'http://localhost:8090';
+// Python 服务 (端口 8090) — 动态指向服务器 host
+const PYTHON_API_BASE_URL = import.meta.env.VITE_PYTHON_API_URL
+  || `http://${currentHost()}:${PYTHON_PORT}`;
 
 // C++ 后端 API 客户端
 const api = axios.create({
@@ -105,11 +122,12 @@ pythonApi.interceptors.response.use(
   }
 );
 
-// 分布式 C/S 服务 (python_service/server) — 端口 8091.
-// 不同于 pythonApi (旧版 httpserver :8090) 和 api (C++ :8080).
-// baseURL 用相对路径 /csapi，经 Vite 代理转发到 :8091（与 api 客户端同模式，
-// 避免 CORS）；生产环境可用 VITE_CS_API_URL 覆盖为绝对地址。
-const CS_API_BASE_URL = import.meta.env.VITE_CS_API_URL || '/csapi';
+// 分布式 C/S 服务 (python_service/server) — 端口 CS_PORT.
+// 不同于 pythonApi (旧版 httpserver :8090) 和 api (C++ :CPP_PORT).
+// 动态指向服务器 host（跨机访问时相对路径 /csapi 会打到 C++ 端口而失败），
+// 生产环境可用 VITE_CS_API_URL 覆盖为绝对地址。
+const CS_API_BASE_URL = import.meta.env.VITE_CS_API_URL
+  || `http://${currentHost()}:${CS_PORT}`;
 
 const csApi = axios.create({
   baseURL: CS_API_BASE_URL,

@@ -32,14 +32,33 @@ test('links to evidence analysis with the current task query contract', () => {
     '/case-intelligence?task_id=task-1',
   );
 });
-test.each([
-  ['/reports/task/task-1', '/reports/task/task-1'],
-  ['/reports/case/case-1', '/reports/case/case-1'],
-])('keeps the report navigation active at %s', (route, expectedHref) => {
-  renderLayout(route);
+
+test('links to the analysis center with the current task query contract', () => {
+  renderLayout('/files?task_id=task-1');
+
+  expect(screen.getByRole('link', { name: '研判中心' })).toHaveAttribute(
+    'href',
+    '/analysis-center?task_id=task-1',
+  );
+});
+
+test('renders 证据研判 before 研判中心 in the sidebar', () => {
+  renderLayout('/dashboard');
+
+  const links = screen.getAllByRole('link');
+  const evidenceIdx = links.findIndex((l) => l.textContent === '证据研判');
+  const centerIdx = links.findIndex((l) => l.textContent === '研判中心');
+
+  expect(evidenceIdx).toBeGreaterThanOrEqual(0);
+  expect(centerIdx).toBeGreaterThanOrEqual(0);
+  expect(evidenceIdx).toBeLessThan(centerIdx);
+});
+
+test('keeps the analysis center navigation active', () => {
+  renderLayout('/analysis-center');
 
   const reportNav = screen.getByRole('link', { name: '研判中心' });
-  expect(reportNav).toHaveAttribute('href', expectedHref);
+  expect(reportNav).toHaveAttribute('href', '/analysis-center');
   expect(reportNav).toHaveClass('bg-primary-500/20');
   expect(reportNav.querySelector('.bg-primary-400')).not.toBeNull();
   expect(screen.getByRole('heading', { name: '研判中心' })).toBeInTheDocument();

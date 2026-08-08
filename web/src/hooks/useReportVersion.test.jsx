@@ -185,6 +185,24 @@ test('merges a completed create after a newer selection without replacing that s
   expect(source.getStatus).toHaveBeenCalledWith('r3');
 });
 
+test('does not create a second version while the first version is generating', async () => {
+  const created = { report_id: 'r3', version: 3, status: 'queued', stage: 'queued', progress: 0 };
+  const source = {
+    listVersions: vi.fn().mockResolvedValue([]),
+    createVersion: vi.fn().mockResolvedValue(created),
+    getStatus: vi.fn().mockResolvedValue(created),
+    getManifest: vi.fn(),
+  };
+  const { result } = renderHook(() => useReportVersion({ scopeType: 'task', scopeId: 't1', dataSource: source }));
+  await flush();
+
+  await act(async () => { await result.current.createVersion(); });
+  await act(async () => { await result.current.createVersion(); });
+
+  expect(source.createVersion).toHaveBeenCalledTimes(1);
+  expect(result.current.selectedVersion).toEqual(created);
+});
+
 test('shares concurrent create calls to avoid duplicate report mutations', async () => {
   const create = deferred();
   const created = { report_id: 'r3', version: 3, status: 'queued', stage: 'queued', progress: 0 };

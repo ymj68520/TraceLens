@@ -32,20 +32,14 @@ async def test_task_resolution_uses_backend_paths_and_freezes_fingerprints(tmp_p
         {"type": "android", "path": str(android_db)},
     ]
 
-    adapter = Mock()
-    adapter.load_task.return_value = {
-        "markdown": "",
-        "generated_at": None,
-        "filtered_files": [],
-    }
-    resolved = await SourceResolver(backend, analysis_adapter=adapter).resolve_task("task-1")
+    resolved = await SourceResolver(backend).resolve_task("task-1")
 
     assert resolved.scope_type is ScopeType.TASK
     assert resolved.evidence[0].db_paths["android"] == str(android_db)
     assert resolved.evidence[0].source_fingerprints["android"].size == 7
     assert resolved.evidence[0].source_fingerprints["android"].sha256 == sha256(b"android").hexdigest()
     assert resolved.contexts[0].evidence_id == "task-1"
-    assert resolved.case_description == "fraud"
+    assert not hasattr(resolved, "case_description")
 
 
 def test_fingerprint_file_returns_nonexistent_source_without_reading(tmp_path: Path):
@@ -115,12 +109,6 @@ async def test_task_resolution_moves_source_freeze_off_the_event_loop(tmp_path: 
         "output_files_db": str(source),
     }
     backend.get_task_databases.return_value = [{"type": "files", "path": str(source)}]
-    adapter = Mock()
-    adapter.load_task.return_value = {
-        "markdown": "",
-        "generated_at": "",
-        "filtered_files": [],
-    }
     entered = Event()
     release = Event()
 
@@ -129,7 +117,7 @@ async def test_task_resolution_moves_source_freeze_off_the_event_loop(tmp_path: 
         assert release.wait(timeout=1)
         return fingerprint_file(path)
 
-    resolver = SourceResolver(backend, analysis_adapter=adapter)
+    resolver = SourceResolver(backend)
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr(
             "httpserver.services.forensic_report.source_resolver.fingerprint_file",

@@ -1,4 +1,11 @@
-export default function ReportToolbar({ manifest, version, onCreateVersion }) {
+export default function ReportToolbar({
+  manifest,
+  version,
+  generating = null,
+  scopeType = 'task',
+  onCreateVersion,
+  onRefresh,
+}) {
   const title = manifest?.title || version?.title || '取证报告';
   const generatedAt = manifest?.generated_at || version?.generated_at;
   const platforms = manifest?.platforms || [];
@@ -15,9 +22,21 @@ export default function ReportToolbar({ manifest, version, onCreateVersion }) {
           {platform}
         </span>
       ))}
-      <button type="button" onClick={onCreateVersion}>生成新版本</button>
+      {scopeType === 'task' ? (
+        <button
+          type="button"
+          onClick={onCreateVersion}
+          disabled={Boolean(generating)}
+          title={generating ? '报告正在生成中' : '生成新版本'}
+        >
+          {generating ? '生成中…' : '生成新版本'}
+        </button>
+      ) : (
+        <span className="text-xs text-slate-500 dark:text-slate-400">暂不支持案情级新版报告</span>
+      )}
+      <button type="button" onClick={onRefresh}>刷新</button>
       <button type="button" disabled>导出离线 HTML</button>
-      <button type="button">版本历史</button>
+      <button type="button" disabled>版本历史</button>
     </header>
   );
 }

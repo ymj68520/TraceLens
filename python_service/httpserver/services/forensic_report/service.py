@@ -140,11 +140,9 @@ class ForensicReportService:
                     self.writer.write,
                     version=version,
                     title=resolved.title,
-                    case_description=resolved.case_description,
                     evidence=resolved.evidence,
                     contexts=resolved.contexts,
                     adapters=self.adapters,
-                    analysis=resolved.analysis,
                 )
             )
             async with self._lifecycle_lock:

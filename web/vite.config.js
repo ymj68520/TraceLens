@@ -18,7 +18,7 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/csapi/, ''),
       },
       '/tasks': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8666',
         changeOrigin: true,
       },
       '/api/reports': {
@@ -26,7 +26,7 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8666',
         changeOrigin: true,
       },
       '/api/graphiti': {

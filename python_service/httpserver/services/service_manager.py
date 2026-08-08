@@ -298,6 +298,7 @@ class ServiceManager:
     def _create_forensic_report_service(self):
         from pathlib import Path
 
+        from .forensic_report.adapters import build_default_adapters
         from .forensic_report.repository import ReportRepository
         from .forensic_report.service import ForensicReportService
         from .forensic_report.snapshot_writer import SnapshotWriter
@@ -316,7 +317,7 @@ class ServiceManager:
             writer=SnapshotWriter(
                 root / "snapshots", self.settings.report_generator_version
             ),
-            adapters=[],
+            adapters=build_default_adapters(),
         )
 
     @property

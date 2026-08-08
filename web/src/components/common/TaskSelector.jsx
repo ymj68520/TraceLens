@@ -1,19 +1,19 @@
 import { useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import { fetchTasks, setCurrentTask } from '../../store/taskSlice';
 import { TASK_STATUS, STATUS_COLORS } from '../../utils/constants';
 
 const TaskSelector = () => {
     const dispatch = useDispatch();
-    const navigate = useNavigate();
     const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
     const { tasks, currentTask, status } = useSelector((state) => state.tasks);
 
+    // 研判页面统一通过 query 参数（task_id/taskId）携带当前镜像
     const currentTaskId = searchParams.get('taskId') || searchParams.get('task_id') || currentTask?.id;
 
-    const relevantPaths = ['/timeline', '/files', '/statistics', '/llm-descriptions', '/android', '/oss', '/case-report', '/knowledge-graph'];
+    const relevantPaths = ['/timeline', '/files', '/statistics', '/llm-descriptions', '/android', '/oss', '/case-report', '/knowledge-graph', '/case-intelligence', '/analysis-center'];
     const isRelevantPage = relevantPaths.some(path => location.pathname.startsWith(path));
 
     useEffect(() => {
@@ -37,8 +37,9 @@ const TaskSelector = () => {
 
     const handleTaskChange = (e) => {
         const newTaskId = e.target.value;
+
         const paramName = location.pathname.startsWith('/case-report') ? 'taskId' : 'task_id';
-        
+
         if (newTaskId) {
             const newParams = Object.fromEntries(searchParams);
             // Clean up both possible names to avoid confusion

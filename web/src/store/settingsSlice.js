@@ -2,6 +2,14 @@ import { createSlice } from '@reduxjs/toolkit';
 
 const SETTINGS_KEY = 'forensics_settings';
 
+// 动态推导服务地址：跨机访问时用浏览器当前 host（如 192.168.31.50），
+// 避免硬编码 localhost 导致跨机访问失败。
+const host = (typeof window !== 'undefined' && window.location)
+  ? window.location.hostname
+  : 'localhost';
+const defaultApiUrl = `http://${host}:8666`;
+const defaultPythonApiUrl = `http://${host}:8090`;
+
 const loadSettings = () => {
   try {
     const saved = localStorage.getItem(SETTINGS_KEY);
@@ -23,8 +31,8 @@ const saveSettings = (settings) => {
 const settingsSlice = createSlice({
   name: 'settings',
   initialState: {
-    apiUrl: 'http://localhost:8080',
-    pythonApiUrl: 'http://localhost:8090',
+    apiUrl: defaultApiUrl,
+    pythonApiUrl: defaultPythonApiUrl,
     refreshInterval: 5000,
     autoRefresh: true,
     theme: 'light',
@@ -40,8 +48,8 @@ const settingsSlice = createSlice({
     },
     resetSettings: (state) => {
       Object.assign(state, {
-        apiUrl: 'http://localhost:8080',
-        pythonApiUrl: 'http://localhost:8090',
+        apiUrl: defaultApiUrl,
+        pythonApiUrl: defaultPythonApiUrl,
         refreshInterval: 5000,
         autoRefresh: true,
         theme: 'light',

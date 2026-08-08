@@ -74,7 +74,11 @@ void to_json(nlohmann::json& j, const AnalysisTask& t) {
     j["priority"] = t.priority;
     to_json(j["progress"], t.progress);
     j["result_cache"] = t.result_cache;
-    j["scenarios"] = t.scenarios;
+    nlohmann::json scenarios_json = nlohmann::json::array();
+    for (const auto scenario : t.scenarios) {
+        scenarios_json.push_back(scenario_to_string(scenario));
+    }
+    j["scenarios"] = std::move(scenarios_json);
     j["android_analyze"] = t.get_android_analyze();  // Backward compat
     j["xfs_mode"] = t.xfs_mode;
     j["db_output_dir"] = t.db_output_dir;
@@ -110,7 +114,16 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     if(j.contains("scenarios")) {
         t.scenarios.clear();
         for (const auto& s : j.at("scenarios")) {
-            auto scenario = string_to_scenario(s.get<std::string>());
+            std::optional<ForensicScenario> scenario;
+            if (s.is_string()) {
+                scenario = string_to_scenario(s.get<std::string>());
+            } else if (s.is_number_integer()) {
+                const auto value = s.get<int>();
+                if (value >= static_cast<int>(ForensicScenario::ANDROID) &&
+                    value <= static_cast<int>(ForensicScenario::SERVER_CLOUD)) {
+                    scenario = static_cast<ForensicScenario>(value);
+                }
+            }
             if (scenario.has_value()) {
                 t.scenarios.push_back(scenario.value());
             }
