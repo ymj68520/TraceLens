@@ -120,6 +120,9 @@ crow::response TimelineRoutes::handle_timeline_comprehensive(const crow::request
     int limit = params.get("limit") ? std::stoi(params.get("limit")) : 1000;
     int offset = params.get("offset") ? std::stoi(params.get("offset")) : 0;
     bool cluster = params.get("cluster") ? (std::string(params.get("cluster")) == "true") : false;
+    // Clustering time window in seconds. Default 60 (backward compatible).
+    // Clamped to [1, 86400] inside the query layer.
+    int bucket_seconds = params.get("bucket") ? std::stoi(params.get("bucket")) : 60;
 
     if (task_id.empty()) {
         json error = {{"error", "task_id parameter is required"}};
@@ -132,7 +135,7 @@ crow::response TimelineRoutes::handle_timeline_comprehensive(const crow::request
     try {
         std::string raw_db = RouteHelpers::get_database_path(task_id, "raw");
         std::string events_db = RouteHelpers::get_database_path(task_id, "events");
-        json result = SQLiteHelper::get_comprehensive_timeline(raw_db, events_db, start_time, end_time, limit, offset, event_type, cluster);
+        json result = SQLiteHelper::get_comprehensive_timeline(raw_db, events_db, start_time, end_time, limit, offset, event_type, cluster, bucket_seconds);
         res.set_header("Content-Type", "application/json");
         res.write(result.dump());
     } catch (const std::exception& e) {
@@ -155,6 +158,9 @@ crow::response TimelineRoutes::handle_timeline_details(const crow::request& req)
     int limit = params.get("limit") ? std::stoi(params.get("limit")) : 1000;
     int offset = params.get("offset") ? std::stoi(params.get("offset")) : 0;
     std::string search = params.get("search") ? params.get("search") : "";
+    // Clustering window that was used to produce the cluster; must match it to
+    // resolve the same events. Default 60 (backward compatible).
+    int bucket_seconds = params.get("bucket") ? std::stoi(params.get("bucket")) : 60;
 
     if (task_id.empty()) {
         json error = {{"error", "task_id parameter is required"}};
@@ -166,7 +172,7 @@ crow::response TimelineRoutes::handle_timeline_details(const crow::request& req)
 
     try {
         std::string events_db = RouteHelpers::get_database_path(task_id, "events");
-        json result = SQLiteHelper::get_timeline_details(events_db, window, type, parent, limit, offset, search);
+        json result = SQLiteHelper::get_timeline_details(events_db, window, type, parent, limit, offset, search, bucket_seconds);
         res.set_header("Content-Type", "application/json");
         res.write(result.dump());
     } catch (const std::exception& e) {

@@ -17,16 +17,19 @@ json SQLiteHelper::get_timeline_details(const std::string& events_db,
                                        const std::string& event_type,
                                        const std::string& parent_dir,
                                        int limit, int offset,
-                                       const std::string& search) {
+                                       const std::string& search,
+                                       int bucket_seconds) {
     json result;
     sqlite3* events = open_database(events_db, result);
     if (!events) return result;
 
     limit = clamp_limit(limit);
     offset = clamp_offset(offset);
+    if (bucket_seconds < 1) bucket_seconds = 60;
 
     // Build query to find all events in this cluster. All user-supplied string
     // values are bound as parameters (never concatenated) to prevent injection.
+    // bucket_seconds is a clamped integer (see above), so std::to_string is safe.
     std::vector<std::string> bind;
     std::string sql = R"(
         SELECT
@@ -38,7 +41,7 @@ json SQLiteHelper::get_timeline_details(const std::string& events_db,
             file_size,
             file_type
         FROM events
-        WHERE (timestamp / 60) = )" + std::to_string(time_window) + R"(
+        WHERE (timestamp / )" + std::to_string(bucket_seconds) + R"() = )" + std::to_string(time_window) + R"(
         AND event_type = ?)";
     bind.push_back(event_type);
 
@@ -68,7 +71,7 @@ json SQLiteHelper::get_timeline_details(const std::string& events_db,
 json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const std::string& events_db,
                                                const std::string& start_time, const std::string& end_time,
                                                int limit, int offset, const std::string& event_type,
-                                               bool cluster_events) {
+                                               bool cluster_events, int bucket_seconds) {
     json result;
     sqlite3* raw = open_database(raw_db, result);
     sqlite3* events = open_database(events_db, result);
@@ -89,6 +92,11 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
 
     limit = clamp_limit(limit);
     offset = clamp_offset(offset);
+    // Clamp bucket_seconds to a sane range. It is an integer derived from the
+    // query string and used directly in SQL via std::to_string (safe), but we
+    // guard against 0/negative to avoid divide-by-zero and absurd windows.
+    if (bucket_seconds < 1) bucket_seconds = 60;
+    if (bucket_seconds > 86400) bucket_seconds = 86400;
 
     // Build WHERE clause for filters. start/end are parsed to integers (safe);
     // event_type is user-supplied text, so it is bound (never concatenated).
@@ -108,7 +116,7 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
     // Get total count for pagination metadata
     // The count query MUST match the GROUP BY of the main query exactly,
     // otherwise totalPages will be wrong and pagination will break.
-    // Main query groups by: parent_directory, (timestamp/60), event_type
+    // Main query groups by: parent_directory, (timestamp/bucket_seconds), event_type
     // So the count must count the same groups.
     //
     // parent_dir_expr computes the parent directory of file_path (including
@@ -125,7 +133,7 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
     std::string count_sql;
     if (cluster_events) {
         count_sql = "SELECT COUNT(*) FROM (SELECT 1 FROM events" + where_clause +
-                    " GROUP BY " + parent_dir_expr + ", (timestamp / 60), event_type)";
+                    " GROUP BY " + parent_dir_expr + ", (timestamp / " + std::to_string(bucket_seconds) + "), event_type)";
     } else {
         count_sql = "SELECT COUNT(*) FROM events" + where_clause;
     }
@@ -168,8 +176,10 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
         )";
         sql += where_clause;
         // Group by parent directory first, then time window and event type
-        // This creates separate clusters for different directories
-        sql += " GROUP BY parent_directory, (timestamp / 60), event_type";
+        // This creates separate clusters for different directories.
+        // bucket_seconds is a clamped integer (validated above), so std::to_string
+        // is safe here — no injection risk.
+        sql += " GROUP BY parent_directory, (timestamp / " + std::to_string(bucket_seconds) + "), event_type";
     } else {
         sql = R"(
             SELECT
@@ -202,6 +212,7 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
     metadata["end_time"] = end_time.empty() ? "all" : end_time;
     metadata["event_type_filter"] = event_type.empty() ? "all" : event_type;
     metadata["clustered"] = cluster_events;
+    metadata["bucket_seconds"] = cluster_events ? bucket_seconds : 0;
 
     result["metadata"] = metadata;
     result["timeline"] = events_data;

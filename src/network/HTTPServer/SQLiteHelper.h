@@ -22,23 +22,28 @@ public:
      * @param offset Number of records to skip (default 0)
      * @param event_type Optional event type filter
      * @param cluster_events Whether to group similar events into clusters
+     * @param bucket_seconds Clustering time window in seconds (default 60). Events in the
+     *        same parent directory, same window, and same type are merged into one cluster.
      * @return JSON object with timeline events
      */
     static nlohmann::json get_comprehensive_timeline(const std::string& raw_db, const std::string& events_db,
                                                      const std::string& start_time = "", const std::string& end_time = "",
                                                      int limit = 1000, int offset = 0, const std::string& event_type = "",
-                                                     bool cluster_events = false);
+                                                     bool cluster_events = false, int bucket_seconds = 60);
 
     /**
      * @brief Get detailed events within a specific cluster
+     * @param bucket_seconds Clustering time window in seconds used to compute time_window
+     *        (default 60). Must match the value used when the cluster was produced.
      * @return JSON object with detailed events
      */
-    static nlohmann::json get_timeline_details(const std::string& events_db, 
-                                              int64_t time_window, 
-                                              const std::string& event_type, 
+    static nlohmann::json get_timeline_details(const std::string& events_db,
+                                              int64_t time_window,
+                                              const std::string& event_type,
                                               const std::string& parent_dir,
                                               int limit = 1000, int offset = 0,
-                                              const std::string& search = "");
+                                              const std::string& search = "",
+                                              int bucket_seconds = 60);
 
     /**
      * @brief Get chronological distribution of timeline events

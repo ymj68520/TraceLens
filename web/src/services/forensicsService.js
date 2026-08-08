@@ -23,11 +23,17 @@ export const analyzeEventCluster = async (taskId, cluster) => {
     throw new Error('Invalid cluster: event_type is required and must be a string');
   }
 
+  // bucket_seconds must match the window used to create the cluster. It flows
+  // end-to-end: URL ?bucket= -> C++ GROUP BY -> cluster.bucket_seconds here ->
+  // Python (timestamp / bucket_seconds). Default 60 preserves old behavior.
+  const bucketSeconds = cluster.bucket_seconds || 60;
+
   return await pythonApi.post('/api/llm/analyze-event-cluster', {
     task_id: taskId,
-    time_window: Math.floor(cluster.timestamp / 60),
+    time_window: Math.floor(cluster.timestamp / bucketSeconds),
     event_type: cluster.event_type,
     parent_directory: cluster.parent_directory || "",
+    bucket_seconds: bucketSeconds,
   });
 };
 
@@ -54,11 +60,14 @@ export const reanalyzeEventCluster = async (taskId, cluster) => {
     throw new Error('Invalid cluster: event_type is required and must be a string');
   }
 
+  const bucketSeconds = cluster.bucket_seconds || 60;
+
   return await pythonApi.post('/api/llm/analyze-event-cluster', {
     task_id: taskId,
-    time_window: Math.floor(cluster.timestamp / 60),
+    time_window: Math.floor(cluster.timestamp / bucketSeconds),
     event_type: cluster.event_type,
     parent_directory: cluster.parent_directory || "",
+    bucket_seconds: bucketSeconds,
     prompt: "请重新审视该事件簇，深度挖掘潜在威胁。",
   });
 };
