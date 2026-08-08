@@ -42,6 +42,11 @@ export const getPythonHealth = async () => {
   return await pythonApi.get('/health');
 };
 
+/** Redis service health check */
+export const getRedisStatus = async () => {
+  return await pythonApi.get('/api/system/redis/status');
+};
+
 /** TOON data export */
 export const exportToon = async (taskId) => {
   return await api.post('/api/forensics/export/toon', { task_id: taskId });
