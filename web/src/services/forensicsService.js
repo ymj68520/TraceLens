@@ -185,6 +185,24 @@ export const getMiuiDbInventory = async (taskId) => {
   });
 };
 
+export const getMiuiQqntOverview = async (taskId) => {
+  return await api.get('/api/forensics/android/miui-qqnt-overview', {
+    params: { task_id: taskId },
+  });
+};
+
+export const getMiuiQqntArtifacts = async (taskId, params = {}) => {
+  return await api.get('/api/forensics/android/miui-qqnt-artifacts', {
+    params: { task_id: taskId, ...params },
+  });
+};
+
+export const getMiuiQqntRecords = async (taskId, params = {}) => {
+  return await api.get('/api/forensics/android/miui-qqnt-records', {
+    params: { task_id: taskId, ...params },
+  });
+};
+
 // Statistics
 export const getStatisticsOverview = async (taskId) => {
   return await api.get('/api/forensics/statistics/overview', {

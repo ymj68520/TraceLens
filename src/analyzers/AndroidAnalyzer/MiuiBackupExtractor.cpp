@@ -201,21 +201,44 @@ void MiuiBackupExtractor::enumerateEntries(const EntryVisitor& visitor) const {
         return;
     }
 
+    enumerateEntryDetails([&](const std::string& memberName, const std::string& bakFile,
+                              const TarEntry&) {
+        visitor(memberName, bakFile);
+    });
+}
+
+void MiuiBackupExtractor::enumerateEntryDetails(const EntryDetailVisitor& visitor) const {
+    if (!initialized_ || !visitor) {
+        return;
+    }
+
     for (size_t packageIndex = 0; packageIndex < manifest_.packages.size(); ++packageIndex) {
         if (!hasUniqueManifestBakFile(packageIndex)) continue;
         const auto& package = manifest_.packages[packageIndex];
         const std::string packagePrefix = "apps/" + package.packageName + "/";
-        std::vector<std::string> members;
+        std::vector<std::pair<std::string, TarEntry>> members;
         for (const auto& entry : entryOwner_) {
-            if (entry.first.rfind(packagePrefix, 0) == 0) {
-                members.push_back(entry.first);
+            if (entry.first.rfind(packagePrefix, 0) != 0) continue;
+            TarEntry metadata;
+            if (entry.second->find(entry.first, metadata)) {
+                members.emplace_back(entry.first, metadata);
             }
         }
-        std::sort(members.begin(), members.end());
-        for (const auto& member : members) {
-            visitor(member, package.bakFile);
+        std::sort(members.begin(), members.end(), [](const auto& left, const auto& right) {
+            return left.first < right.first;
+        });
+        for (const auto& [memberName, metadata] : members) {
+            visitor(memberName, package.bakFile, metadata);
         }
     }
+}
+
+bool MiuiBackupExtractor::getEntry(const std::string& memberName, TarEntry& entry) const {
+    if (!initialized_) {
+        return false;
+    }
+    const auto owner = entryOwner_.find(memberName);
+    return owner != entryOwner_.end() && owner->second->find(memberName, entry);
 }
 
 bool MiuiBackupExtractor::extractTarMember(const std::string& memberName,

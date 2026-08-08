@@ -42,7 +42,12 @@ public:
 
     using EntryVisitor =
         std::function<void(const std::string& memberName, const std::string& bakFile)>;
+    using EntryDetailVisitor =
+        std::function<void(const std::string& memberName, const std::string& bakFile,
+                           const TarEntry& entry)>;
     void enumerateEntries(const EntryVisitor& visitor) const;
+    void enumerateEntryDetails(const EntryDetailVisitor& visitor) const;
+    bool getEntry(const std::string& memberName, TarEntry& entry) const;
     bool extractTarMember(const std::string& memberName,
                           const std::string& outPath) const;
     bool entrySize(const std::string& memberName, uint64_t& size) const;

@@ -17,6 +17,9 @@ private:
     crow::response handle_miui_backup_overview(const crow::request& req);
     crow::response handle_miui_installed_apps(const crow::request& req);
     crow::response handle_miui_db_inventory(const crow::request& req);
+    crow::response handle_miui_qqnt_overview(const crow::request& req);
+    crow::response handle_miui_qqnt_artifacts(const crow::request& req);
+    crow::response handle_miui_qqnt_records(const crow::request& req);
 };
 
 } // namespace forensics

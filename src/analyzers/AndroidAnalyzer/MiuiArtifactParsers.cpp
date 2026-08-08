@@ -1,4 +1,5 @@
 #include "MiuiArtifactParsers.h"
+#include "QqntArtifactParsers.h"
 
 #include "AndroidAnalysisDatabase.h"
 #include "MiuiBackupExtractor.h"
@@ -472,15 +473,22 @@ bool writeAppDbInventoryRows(MiuiBackupExtractor& src, AndroidAnalysisDatabase& 
     if (!success) return false;
 
     std::vector<std::string> entries;
+    std::vector<std::string> databaseCandidates;
     std::unordered_set<std::string> entrySet;
-    src.enumerateEntries([&](const std::string& memberName, const std::string&) {
+    src.enumerateEntryDetails([&](const std::string& memberName, const std::string&,
+                                  const TarEntry& entry) {
         entries.push_back(memberName);
         entrySet.insert(memberName);
+
+        std::string packageName;
+        if (entry.isRegularFile() && isPrimaryDatabaseMember(memberName, packageName)) {
+            databaseCandidates.push_back(memberName);
+        }
     });
 
     TemporaryDirectory temporaryDirectory;
     if (!temporaryDirectory.create(src.temporaryRoot())) {
-        for (const auto& memberName : entries) {
+        for (const auto& memberName : databaseCandidates) {
             std::string packageName;
             if (isPrimaryDatabaseMember(memberName, packageName) &&
                 !recordFailure(db, packageName, memberName, "parse_error")) {
@@ -495,7 +503,7 @@ bool writeAppDbInventoryRows(MiuiBackupExtractor& src, AndroidAnalysisDatabase& 
     uint64_t sequence = 0;
     size_t candidateCount = 0;
     InventoryBudget inventoryBudget;
-    for (const auto& memberName : entries) {
+    for (const auto& memberName : databaseCandidates) {
         std::string packageName;
         if (!isPrimaryDatabaseMember(memberName, packageName)) {
             continue;
@@ -543,7 +551,7 @@ bool writeAppDbInventory(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) 
 bool persistMiuiBackupAnalysis(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
     if (!db.beginTransaction()) return false;
     if (writeMiuiManifestRows(src, db) && writeAppDbInventoryRows(src, db) &&
-        db.commitTransaction()) {
+        persistQqntBackupAnalysis(src, db) && db.commitTransaction()) {
         return true;
     }
     db.rollbackTransaction();

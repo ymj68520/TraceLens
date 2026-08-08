@@ -158,14 +158,19 @@ bool TarIndex::build(const std::string& bakPath, uint64_t payloadOffset, bool do
         if (name.empty()) return false;
 
         uint64_t size = 0;
-        if (!parseOctal(hdr.data() + 124, 12, size)) return false;
+        uint64_t modifiedTime = 0;
+        if (!parseOctal(hdr.data() + 124, 12, size) ||
+            !parseOctal(hdr.data() + 136, 12, modifiedTime)) {
+            return false;
+        }
+        const char typeFlag = hdr[156];
         const std::streampos position = f.tellg();
         if (position < 0) return false;
         const uint64_t dataOff = static_cast<uint64_t>(position);
         if (size > std::numeric_limits<uint64_t>::max() - 511) return false;
         const uint64_t padded = (size + 511) & ~uint64_t(511);
         if (dataOff > std::numeric_limits<uint64_t>::max() - padded) return false;
-        entries_[name] = {dataOff, size};
+        entries_[name] = {dataOff, size, modifiedTime, typeFlag};
         f.seekg(static_cast<std::streamoff>(dataOff + padded));
         if (!f) return false;
     }

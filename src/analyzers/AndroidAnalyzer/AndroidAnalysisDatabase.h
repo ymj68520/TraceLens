@@ -66,6 +66,24 @@ public:
     bool insertAppDbInventory(const std::string& packageName, const std::string& dbPath,
                               const std::string& tableName, uint64_t rowCount,
                               const std::string& columns, const std::string& openStatus);
+
+    // QQNT MIUI-backup artifacts
+    bool insertQqntArtifactInventory(const std::string& packageName, const std::string& sourcePath,
+                                     const std::string& bakFile, const std::string& category,
+                                     const std::string& format, uint64_t size, uint64_t modifiedTime,
+                                     const std::string& typeFlag, const std::string& parseStatus,
+                                     const std::string& summary, const std::string& sourceHash);
+    bool insertQqntKvRecord(const std::string& sourcePath, const std::string& nameSpace,
+                            const std::string& key, const std::string& valueType,
+                            const std::string& valueText, const std::string& valueHash,
+                            bool isSensitive, const std::string& parseStatus);
+    bool insertQqntSqliteRecord(const std::string& sourcePath, const std::string& tableName,
+                                const std::string& recordKey, const std::string& recordJson,
+                                const std::string& artifactKind, bool isSensitive);
+    bool insertQqntLogEvent(const std::string& sourcePath, uint64_t eventTime,
+                            const std::string& level, const std::string& tag,
+                            const std::string& message, const std::string& parseStatus,
+                            bool isSensitive);
     bool beginTransaction();
     bool commitTransaction();
     bool rollbackTransaction();

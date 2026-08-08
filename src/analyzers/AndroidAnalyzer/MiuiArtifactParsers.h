@@ -14,3 +14,6 @@ bool writeAppDbInventory(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db);
 // Persists MIUI manifest and database inventory in one transaction so an
 // initialization failure cannot leave a partial, apparently complete result.
 bool persistMiuiBackupAnalysis(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db);
+
+// Adds QQ/QQNT evidence inventory and validated structured artifacts.
+bool persistQqntBackupAnalysis(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db);

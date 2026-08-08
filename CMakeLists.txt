@@ -351,6 +351,7 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/TarIndex.cpp
     src/analyzers/AndroidAnalyzer/MiuiBackupExtractor.cpp
     src/analyzers/AndroidAnalyzer/MiuiArtifactParsers.cpp
+    src/analyzers/AndroidAnalyzer/QqntArtifactParsers.cpp
     src/analyzers/WindowsFilesAnalyzer/Core/WindowsFilesAnalyzerCore.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Registry.cpp

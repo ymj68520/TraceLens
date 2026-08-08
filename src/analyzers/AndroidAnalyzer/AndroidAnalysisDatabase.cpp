@@ -448,6 +448,111 @@ bool AndroidAnalysisDatabase::insertAppDbInventory(const std::string& packageNam
     return success;
 }
 
+bool AndroidAnalysisDatabase::insertQqntArtifactInventory(
+    const std::string& packageName, const std::string& sourcePath, const std::string& bakFile,
+    const std::string& category, const std::string& format, uint64_t size,
+    uint64_t modifiedTime, const std::string& typeFlag, const std::string& parseStatus,
+    const std::string& summary, const std::string& sourceHash) {
+    const char* sql = R"(
+        INSERT OR REPLACE INTO qqnt_artifact_inventory
+        (package_name, source_path, bak_file, artifact_category, format, size, modified_time,
+         type_flag, parse_status, summary, source_hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    )";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, packageName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, sourcePath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, bakFile.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, category.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, format.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 6, static_cast<sqlite3_int64>(size));
+    sqlite3_bind_int64(stmt, 7, static_cast<sqlite3_int64>(modifiedTime));
+    sqlite3_bind_text(stmt, 8, typeFlag.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 9, parseStatus.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 10, summary.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 11, sourceHash.c_str(), -1, SQLITE_TRANSIENT);
+
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertQqntKvRecord(
+    const std::string& sourcePath, const std::string& nameSpace, const std::string& key,
+    const std::string& valueType, const std::string& valueText, const std::string& valueHash,
+    bool isSensitive, const std::string& parseStatus) {
+    const char* sql = R"(
+        INSERT INTO qqnt_kv_records
+        (source_path, namespace, key, value_type, value_text, value_hash, is_sensitive, parse_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+    )";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, sourcePath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, nameSpace.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, key.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, valueType.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, valueText.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, valueHash.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 7, isSensitive ? 1 : 0);
+    sqlite3_bind_text(stmt, 8, parseStatus.c_str(), -1, SQLITE_TRANSIENT);
+
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertQqntSqliteRecord(
+    const std::string& sourcePath, const std::string& tableName, const std::string& recordKey,
+    const std::string& recordJson, const std::string& artifactKind, bool isSensitive) {
+    const char* sql = R"(
+        INSERT INTO qqnt_sqlite_records
+        (source_path, table_name, record_key, record_json, artifact_kind, is_sensitive)
+        VALUES (?, ?, ?, ?, ?, ?);
+    )";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, sourcePath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, tableName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, recordKey.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, recordJson.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, artifactKind.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 6, isSensitive ? 1 : 0);
+
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertQqntLogEvent(
+    const std::string& sourcePath, uint64_t eventTime, const std::string& level,
+    const std::string& tag, const std::string& message, const std::string& parseStatus,
+    bool isSensitive) {
+    const char* sql = R"(
+        INSERT INTO qqnt_log_events
+        (source_path, event_time, level, tag, message, parse_status, is_sensitive)
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+    )";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, sourcePath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 2, static_cast<sqlite3_int64>(eventTime));
+    sqlite3_bind_text(stmt, 3, level.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, tag.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, message.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, parseStatus.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 7, isSensitive ? 1 : 0);
+
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return success;
+}
+
 bool AndroidAnalysisDatabase::beginTransaction() {
     return executeSQL("BEGIN IMMEDIATE;");
 }
