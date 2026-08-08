@@ -4,6 +4,13 @@ import Button from './Button';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useTranslation } from '../../hooks/useTranslation';
 
+// 动态推导服务地址，跨机访问时用浏览器当前 host。
+const PYTHON_BASE = `http://${window.location.hostname}:8090`;
+const WS_BASE = `ws://${window.location.hostname}:8666`;
+// 端口从地址中提取，避免硬编码数字与实际端口不一致。
+const CPP_PORT = new URL(`http://${window.location.hostname}:8666`).port;
+const PYTHON_PORT = new URL(PYTHON_BASE).port;
+
 const TERMINAL_COLORS = {
   cpp: '#10b981',    // green
   python: '#3b82f6', // blue
@@ -45,8 +52,8 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
     if (source === 'web') return;
 
     const endpoints = {
-      cpp: 'http://localhost:8090/api/system/logs-stream/cpp',
-      python: 'http://localhost:8090/api/system/logs-stream/python',
+      cpp: `${PYTHON_BASE}/api/system/logs-stream/cpp`,
+      python: `${PYTHON_BASE}/api/system/logs-stream/python`,
     };
 
     const url = endpoints[source];
@@ -82,8 +89,8 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
     if (source === 'web') return;
     try {
       const endpoints = {
-        cpp: 'http://localhost:8090/api/system/logs/cpp',
-        python: 'http://localhost:8090/api/system/logs/python',
+        cpp: `${PYTHON_BASE}/api/system/logs/cpp`,
+        python: `${PYTHON_BASE}/api/system/logs/python`,
       };
 
       const endpoint = endpoints[source];
@@ -169,7 +176,7 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
   };
 
   const { connected } = useWebSocket(
-    taskId ? `ws://localhost:8080/ws/tasks/${taskId}/logs` : 'ws://localhost:8080/ws/logs',
+    taskId ? `${WS_BASE}/ws/tasks/${taskId}/logs` : `${WS_BASE}/ws/logs`,
     wsHandlers,
     { enabled: !!taskId }
   );
@@ -313,8 +320,8 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
           {logs[activeTab].length} entries
         </span>
         <span>
-          {activeTab === 'cpp' && 'Port 8080'}
-          {activeTab === 'python' && 'Port 8090'}
+          {activeTab === 'cpp' && `Port ${CPP_PORT}`}
+          {activeTab === 'python' && `Port ${PYTHON_PORT}`}
           {activeTab === 'web' && 'Browser Console'}
         </span>
       </div>

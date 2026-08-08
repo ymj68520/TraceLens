@@ -30,8 +30,14 @@ function renderSelector(route) {
   );
 }
 
-test('does not expose the global task selector on the dedicated intelligence route', () => {
+test('exposes the global task selector on the dedicated intelligence route', () => {
   renderSelector('/case-intelligence?taskId=task-A');
 
-  expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  expect(screen.getByRole('combobox')).toBeInTheDocument();
+});
+
+test('exposes the global task selector on the analysis center route', () => {
+  renderSelector('/analysis-center?task_id=task-A');
+
+  expect(screen.getByRole('combobox')).toBeInTheDocument();
 });

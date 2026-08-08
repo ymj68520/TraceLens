@@ -8,10 +8,21 @@ import { useReportSearch } from '../hooks/useReportSearch';
 import { useReportVersion } from '../hooks/useReportVersion';
 import { reportDataSource } from '../services/reportService';
 
-export default function ForensicReportPage({ scopeType, dataSource = reportDataSource }) {
+function reportErrorMessage(error) {
+  const detail = error?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((item) => item?.msg || JSON.stringify(item)).join('; ');
+  }
+  return error?.message || String(error || '报告操作失败');
+}
+
+export default function ForensicReportPage({ scopeType, scopeId, dataSource = reportDataSource }) {
   const params = useParams();
-  const scopeId = scopeType === 'case' ? params.caseId : params.taskId;
-  const state = useReportVersion({ scopeType, scopeId, dataSource });
+  // Prefer an explicit prop (used when embedded outside of /reports/.../:id routes);
+  // fall back to the route param otherwise.
+  const resolvedScopeId = scopeId ?? (scopeType === 'case' ? params.caseId : params.taskId);
+  const state = useReportVersion({ scopeType, scopeId: resolvedScopeId, dataSource });
   const reportId = state.selectedVersion?.report_id || null;
   const searchState = useReportSearch({ dataSource, reportId });
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -38,9 +49,12 @@ export default function ForensicReportPage({ scopeType, dataSource = reportDataS
       <ReportToolbar
         manifest={state.manifest}
         version={state.selectedVersion}
-        onCreateVersion={() => { void state.createVersion().catch(() => {}); }}
+        generating={state.generating}
+        scopeType={scopeType}
+        onCreateVersion={() => { void state.createVersion(); }}
+        onRefresh={() => { void state.refresh(); }}
       />
-      {state.error && <div role="alert">{state.error.message || String(state.error)}</div>}
+      {state.error && <div role="alert">{reportErrorMessage(state.error)}</div>}
       <ReportStatusPanel
         versions={state.versions}
         version={state.selectedVersion}

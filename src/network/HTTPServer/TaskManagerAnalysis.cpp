@@ -8,6 +8,7 @@
 #include "TaskSerialization.h"
 #include "LLMPythonProxy.h"
 #include "EventClusterAnalyzer.h"
+#include "SceneDetector.h"
 #include "ConfigManager/ConfigManager.h"
 #include "PathManager/PathManager.h"
 #include "FileFilter/FileFilter.h"
@@ -142,6 +143,40 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 return;
             }
             update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 100, "Image analysis and metadata extraction completed");
+
+            // 1.4b. Auto-detect platform scenarios when the user did not pick any.
+            // Probes the *un-filtered* raw DB for tell-tale artifact paths and
+            // back-fills task.scenarios so downstream classification / platform
+            // analyzers run against the right OS. Must run before the filter,
+            // since filter profiles drop system-noise — exactly these markers.
+            if (task.scenarios.empty()) {
+                if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+                update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 2,
+                                "Detecting platform scenarios from image...");
+                SceneDetection detection = detectScenes(rawDbPath);
+                if (detection.ok && !detection.detected.empty()) {
+                    {
+                        std::lock_guard<std::mutex> lock(mtx_);
+                        if (tasks_.count(task_id)) {
+                            tasks_[task_id].scenarios = detection.detected;
+                            task.scenarios = detection.detected;
+                        }
+                    }
+                    // Record the detection for traceability (which platforms,
+                    // and how many marker files each matched).
+                    std::string detail;
+                    for (size_t i = 0; i < detection.detected.size(); ++i) {
+                        if (i) detail += ", ";
+                        detail += scenario_to_string(detection.detected[i]);
+                        detail += "=" + std::to_string(detection.counts[detection.detected[i]]);
+                    }
+                    add_audit_log(task_id, "SCENE_DETECTED",
+                                  "Auto-detected scenarios: " + detail);
+                } else if (detection.ok) {
+                    add_audit_log(task_id, "SCENE_DETECTED",
+                                  "No platform markers found; running generic analysis");
+                }
+            }
 
             // 1.5. Apply file filter (if profile specified)
             std::string effectiveRawDb = rawDbPath;

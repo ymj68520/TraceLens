@@ -17,6 +17,7 @@ import logging
 from fastapi import APIRouter
 
 from .case_analysis_endpoints import _case, _windows
+from . import intelligence_report
 
 # Re-export models for backward compatibility.
 from .case_analysis_models import (  # noqa: F401
@@ -36,3 +37,4 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(_case.router)
 router.include_router(_windows.router)
+router.include_router(intelligence_report.router)

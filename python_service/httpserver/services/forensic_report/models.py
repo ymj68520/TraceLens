@@ -180,7 +180,6 @@ class ReportManifest(BaseModel):
     scope_id: str
     status: ReportStatus
     title: str
-    case_description: str = ""
     generated_at: str
     generated_by: str
     generator_version: str
@@ -189,7 +188,6 @@ class ReportManifest(BaseModel):
     evidence: list[EvidenceSource]
     directory: list[dict[str, Any]]
     categories: list[CategoryIndex]
-    analysis: dict[str, Any] = Field(default_factory=dict)
     source_fingerprints: dict[str, SourceFingerprint]
     warnings: list[AdapterWarning]
     integrity: dict[str, Any] = Field(default_factory=dict)

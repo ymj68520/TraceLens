@@ -8,15 +8,14 @@ function Destination() {
 }
 
 test.each([
-  ['/case-report?task_id=t1', '/reports/task/t1'],
-  ['/case-report?taskId=t2', '/reports/task/t2'],
-  ['/case-report?case_id=c1', '/reports/case/c1'],
-])('redirects %s to the dedicated report route', (route) => {
+  ['/case-report?task_id=t1', '/case-intelligence?task_id=t1'],
+  ['/case-report?taskId=t2', '/case-intelligence?task_id=t2'],
+  ['/case-report?case_id=c1', '/case-intelligence?case_id=c1'],
+])('redirects %s to the intelligence report route', (route) => {
   renderWithRouter(
     <Routes>
       <Route path="/case-report" element={<LegacyReportRedirect />} />
-      <Route path="/reports/task/:taskId" element={<Destination />} />
-      <Route path="/reports/case/:caseId" element={<Destination />} />
+      <Route path="/case-intelligence" element={<Destination />} />
     </Routes>,
     { route },
   );
@@ -25,9 +24,9 @@ test.each([
 });
 
 test.each([
-  ['task_id=t1', '/reports/task/t1'],
-  ['taskId=t2', '/reports/task/t2'],
-  ['case_id=c1', '/reports/case/c1'],
+  ['task_id=t1', '/case-intelligence?task_id=t1'],
+  ['taskId=t2', '/case-intelligence?task_id=t2'],
+  ['case_id=c1', '/case-intelligence?case_id=c1'],
   ['', '/tasks'],
 ])('getReportTarget resolves %s to %s', (query, expected) => {
   expect(getReportTarget(new URLSearchParams(query))).toBe(expected);

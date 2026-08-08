@@ -22,11 +22,9 @@ def _resolved_task() -> ResolvedScope:
         scope_type=ScopeType.TASK,
         scope_id="task-1",
         title="Task report",
-        case_description="",
         task_ids=["task-1"],
         evidence=[],
         contexts=[],
-        analysis={},
     )
 
 

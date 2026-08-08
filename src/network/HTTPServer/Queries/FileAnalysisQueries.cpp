@@ -204,16 +204,37 @@ json SQLiteHelper::get_llm_results(const std::string& descriptions_db) {
     sqlite3* db = open_database(descriptions_db, result);
     if (!db) return result;
 
-    // Use COALESCE to handle older databases that might have NULL in is_relevant (default to 1)
-    // Also use a subquery check or just select it if the migration logic ensures it exists
-    // Given the Python service migration, it should exist.
-    result["descriptions"] = execute_query(db,
-        "SELECT file_path, description, summary, keywords, "
-        "COALESCE(is_relevant, 1) as is_relevant, created_at "
-        "FROM file_descriptions ORDER BY created_at DESC");
+    json descriptions = json::array();
+
+    // Primary source: the file_descriptions table. The Python case-analysis
+    // pipeline and the C++ storeDescription() both write here, so it is the
+    // canonical evidence list. Use COALESCE so older rows with NULL is_relevant
+    // default to "relevant".
+    if (table_exists(db, "file_descriptions")) {
+        descriptions = execute_query(db,
+            "SELECT file_path, description, summary, keywords, "
+            "COALESCE(is_relevant, 1) as is_relevant, created_at "
+            "FROM file_descriptions ORDER BY created_at DESC");
+    }
+
+    // Fallback: the files table's llm_* columns. Older tasks (or tasks created
+    // before file_descriptions was introduced) only populate these columns.
+    // Surface any analyzed files that are not already in file_descriptions so
+    // the evidence list reflects every file the LLM ever described.
+    if (descriptions.empty() && table_exists(db, "files")) {
+        descriptions = execute_query(db,
+            "SELECT path AS file_path, llm_description AS description, "
+            "llm_summary AS summary, llm_keywords AS keywords, "
+            "1 AS is_relevant, llm_analyzed_at AS created_at "
+            "FROM files WHERE llm_summary IS NOT NULL AND llm_summary != '' "
+            "ORDER BY llm_analyzed_at DESC");
+    }
+
+    result["descriptions"] = std::move(descriptions);
 
     // Summary stats
-    json stats = execute_query(db, "SELECT COUNT(*) as total_analyzed FROM file_descriptions");
+    json stats = execute_query(db,
+        "SELECT COUNT(*) as total_analyzed FROM file_descriptions");
     if (stats.is_array() && !stats.empty()) {
         result["stats"] = stats[0];
     }

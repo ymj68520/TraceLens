@@ -110,6 +110,33 @@ TEST(AnalysisTaskTest, NewFormatFromJson) {
     EXPECT_TRUE(task.get_android_analyze());
 }
 
+TEST(AnalysisTaskTest, LegacyNumericScenariosFromJson) {
+    nlohmann::json j = {
+        {"id", "test-legacy-numeric"},
+        {"image_path", "/test/image.dd"},
+        {"status", "PENDING"},
+        {"message", ""},
+        {"output_files_db", ""},
+        {"output_raw_db", ""},
+        {"output_events_db", ""},
+        {"priority", "NORMAL"},
+        {"progress", {
+            {"current_phase", "INITIALIZING"},
+            {"phase_percentage", 0},
+            {"overall_percentage", 0},
+            {"phase_description", ""}
+        }},
+        {"scenarios", {0, 1}}
+    };
+
+    AnalysisTask task;
+    from_json(j, task);
+
+    ASSERT_EQ(task.scenarios.size(), 2);
+    EXPECT_EQ(task.scenarios[0], ForensicScenario::ANDROID);
+    EXPECT_EQ(task.scenarios[1], ForensicScenario::WINDOWS);
+}
+
 TEST(AnalysisTaskTest, EmptyScenariosFromJson) {
     nlohmann::json j = {
         {"id", "test-empty"},

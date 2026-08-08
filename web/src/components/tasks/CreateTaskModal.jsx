@@ -5,7 +5,8 @@
  *  - LLM analysis is ALWAYS enabled (no toggle)
  *  - Case description is a required top-level field
  *  - Windows / Linux type checkboxes removed (backend never had this param)
- *  - Multi-scenario selection (Android, Windows, Linux, Server/Cloud) replaces single Android toggle
+ *  - Forensic scenarios (Android/Windows/Linux/Server-Cloud) are auto-detected
+ *    by the backend by default; a multi-select override lives under "Advanced"
  *  - XFS mode hidden inside collapsible "Advanced" section
  *  - Filter profile selection for scenario-based file filtering
  */
@@ -143,39 +144,6 @@ export default function CreateTaskModal() {
             </div>
           )}
 
-          {/* Forensic Scenarios */}
-          <Field label="取证场景 *" hint="选择需要分析的平台场景（可多选）">
-            <div className="space-y-2">
-              {[
-                { value: 'android', label: '📱 Android', desc: 'SMS、联系人、通话记录、应用数据' },
-                { value: 'windows', label: '🪟 Windows', desc: '注册表、事件日志、Prefetch、浏览器历史' },
-                { value: 'linux', label: '🐧 Linux', desc: '系统日志、用户账户、Shell 历史、SSH' },
-                { value: 'server_cloud', label: '☁️ 服务器/云', desc: 'Docker、Nginx/Apache、K8s、云配置' },
-              ].map((s) => (
-                <label key={s.value} className="flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.scenarios.includes(s.value)}
-                    disabled={isCreating}
-                    onChange={(e) => {
-                      set(
-                        'scenarios',
-                        e.target.checked
-                          ? [...form.scenarios, s.value]
-                          : form.scenarios.filter((v) => v !== s.value)
-                      );
-                    }}
-                    className="mt-1 rounded border-slate-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
-                  />
-                  <div>
-                    <span className="text-sm text-slate-700 dark:text-slate-300">{s.label}</span>
-                    <p className="text-xs text-slate-400">{s.desc}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </Field>
-
           {/* Advanced options */}
           <div>
             <button
@@ -186,7 +154,40 @@ export default function CreateTaskModal() {
               {showAdvanced ? '▲ 收起高级选项' : '▼ 高级选项'}
             </button>
             {showAdvanced && (
-              <div className="mt-2">
+              <div className="mt-2 space-y-4">
+                {/* Forensic scenario override — 默认留空=自动检测，勾选则覆盖 */}
+                <Field label="取证场景覆盖" hint="默认留空，分析器会根据镜像内容自动判断平台；如需限定，勾选覆盖自动判断">
+                  <div className="space-y-2">
+                    {[
+                      { value: 'android', label: '📱 Android', desc: 'SMS、联系人、通话记录、应用数据' },
+                      { value: 'windows', label: '🪟 Windows', desc: '注册表、事件日志、Prefetch、浏览器历史' },
+                      { value: 'linux', label: '🐧 Linux', desc: '系统日志、用户账户、Shell 历史、SSH' },
+                      { value: 'server_cloud', label: '☁️ 服务器/云', desc: 'Docker、Nginx/Apache、K8s、云配置' },
+                    ].map((s) => (
+                      <label key={s.value} className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={form.scenarios.includes(s.value)}
+                          disabled={isCreating}
+                          onChange={(e) => {
+                            set(
+                              'scenarios',
+                              e.target.checked
+                                ? [...form.scenarios, s.value]
+                                : form.scenarios.filter((v) => v !== s.value)
+                            );
+                          }}
+                          className="mt-1 rounded border-slate-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
+                        />
+                        <div>
+                          <span className="text-sm text-slate-700 dark:text-slate-300">{s.label}</span>
+                          <p className="text-xs text-slate-400">{s.desc}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </Field>
+
                 <Field label="XFS Mode">
                   <select disabled={isCreating} value={form.xfs_mode} onChange={(e) => set('xfs_mode', e.target.value)} className={inputCls}>
                     <option value="auto">Auto（推荐）</option>

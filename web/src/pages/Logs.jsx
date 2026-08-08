@@ -4,6 +4,9 @@ import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
 
+// 动态推导 Python 服务地址，跨机访问时用浏览器当前 host。
+const PYTHON_BASE = `http://${window.location.hostname}:8090`;
+
 const Logs = () => {
   const [activeService, setActiveService] = useState('python');
   const [logs, setLogs] = useState([]);
@@ -14,7 +17,7 @@ const Logs = () => {
 
   const fetchLogs = async (service) => {
     try {
-      const response = await fetch(`http://localhost:8090/api/system/logs/${service}?lines=200`);
+      const response = await fetch(`${PYTHON_BASE}/api/system/logs/${service}?lines=200`);
       const data = await response.json();
       if (data.logs) {
         setLogs(data.logs);
@@ -31,7 +34,7 @@ const Logs = () => {
     }
 
     setIsStreaming(true);
-    const eventSource = new EventSource(`http://localhost:8090/api/system/logs-stream/${service}`);
+    const eventSource = new EventSource(`${PYTHON_BASE}/api/system/logs-stream/${service}`);
     eventSourceRef.current = eventSource;
 
     eventSource.onmessage = (event) => {

@@ -171,11 +171,9 @@ class SnapshotWriter:
         *,
         version: ReportVersion,
         title: str,
-        case_description: str,
         evidence: list[EvidenceSource],
         contexts: list[AdapterContext],
         adapters: Iterable[ReportAdapter],
-        analysis: dict,
     ) -> Path:
         staging = self.report_root / ".staging" / version.report_id
         final_dir = (
@@ -253,7 +251,6 @@ class SnapshotWriter:
                     scope_id=version.scope_id,
                     status=ReportStatus.READY,
                     title=title,
-                    case_description=case_description,
                     generated_at=datetime.now(timezone.utc).isoformat(),
                     generated_by="TraceLens",
                     generator_version=self.generator_version,
@@ -262,7 +259,6 @@ class SnapshotWriter:
                     evidence=evidence,
                     directory=self._build_directory(evidence, indexes),
                     categories=indexes,
-                    analysis=analysis,
                     source_fingerprints={
                         f"{item.evidence_id}:{name}": fingerprint
                         for item in evidence

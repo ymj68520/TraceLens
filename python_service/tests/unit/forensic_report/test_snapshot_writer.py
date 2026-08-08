@@ -156,11 +156,9 @@ def write_snapshot(tmp_path, version, evidence, contexts, adapters):
     return SnapshotWriter(tmp_path, "test").write(
         version=version,
         title="Task report",
-        case_description="",
         evidence=evidence,
         contexts=contexts,
         adapters=adapters,
-        analysis={},
     )
 
 

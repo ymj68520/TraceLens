@@ -489,6 +489,19 @@ target_link_libraries(
 
 add_test(NAME SceneClassifierGTests COMMAND test_scene_classifier_gtest)
 
+# Scene Detector Tests (platform auto-detection from raw DB paths)
+add_executable(test_scene_detector_gtest
+  UnitTest/test_scene_detector_gtest.cpp
+  ../src/network/HTTPServer/SceneDetector.cpp)
+
+target_include_directories(test_scene_detector_gtest PRIVATE
+  ${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(test_scene_detector_gtest
+  ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} gtest_main sqlite3 pthread)
+
+add_test(NAME SceneDetectorGTests COMMAND test_scene_detector_gtest)
+
 # Audit Log GTest Tests
 add_executable(test_audit_log_gtest UnitTest/test_audit_log_gtest.cpp
                                     ../src/core/AuditLog/AuditLog.cpp)
