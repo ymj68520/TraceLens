@@ -174,6 +174,28 @@ public:
      */
     static nlohmann::json get_android_media_analysis(const std::string& android_db);
 
+    // MIUI Offline-Backup Forensics Endpoints
+    /**
+     * @brief Get MIUI backup manifest + app-db decryption status distribution
+     * @param android_db Path to Android analysis database
+     * @return JSON { manifest: {...}, decryption_status: [...] }
+     */
+    static nlohmann::json get_miui_backup_overview(const std::string& android_db);
+
+    /**
+     * @brief Get MIUI backup installed apps (per-package manifest rows)
+     * @param android_db Path to Android analysis database
+     * @return JSON { apps: [...], bak_type_summary: [...] }
+     */
+    static nlohmann::json get_miui_installed_apps(const std::string& android_db);
+
+    /**
+     * @brief Get MIUI app database inventory (per-DB table/row/column inventory)
+     * @param android_db Path to Android analysis database
+     * @return JSON { inventory: [...], package_summary: [...] }
+     */
+    static nlohmann::json get_miui_db_inventory(const std::string& android_db);
+
     // Statistical Analysis Endpoints
     // Statistical Analysis Endpoints
     /**

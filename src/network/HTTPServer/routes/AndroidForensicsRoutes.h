@@ -14,6 +14,9 @@ private:
     crow::response handle_android_app_usage(const crow::request& req);
     crow::response handle_android_device_info(const crow::request& req);
     crow::response handle_android_media_analysis(const crow::request& req);
+    crow::response handle_miui_backup_overview(const crow::request& req);
+    crow::response handle_miui_installed_apps(const crow::request& req);
+    crow::response handle_miui_db_inventory(const crow::request& req);
 };
 
 } // namespace forensics
