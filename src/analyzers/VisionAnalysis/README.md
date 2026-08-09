@@ -598,16 +598,8 @@ ComparisonResult compareImages(
 );
 
 // 视频分析
-struct VideoAnalysisResult {
-    std::vector<AnalysisResult> frames;  // 关键帧分析
-    std::string summary;                 // 视频摘要
-    std::vector<std::string> events;     // 事件列表
-};
-
-VideoAnalysisResult analyzeVideo(
-    const std::string& videoPath,
-    int maxFrames = 5
-);
+// 当前构建尚未实现视频帧提取。VisionAnalyzer::analyzeVideo() 返回
+// unavailable 结果；请先使用独立媒体提取流程生成帧，再调用图像分析接口。
 
 // 批量分析
 std::vector<AnalysisResult> analyzeBatch(
@@ -664,24 +656,9 @@ int main() {
     return 0;
 }
 
-// 示例3: 视频分析
-int main() {
-    auto router = create_router();
-    VisionAnalyzer analyzer(router);
-
-    auto video_result = analyzer.analyzeVideo(
-        "/path/to/video.mp4",
-        10  // 提取10个关键帧
-    );
-
-    std::cout << "视频摘要: " << video_result.summary << std::endl;
-    std::cout << "检测到的事件:" << std::endl;
-    for (const auto& event : video_result.events) {
-        std::cout << "  - " << event << std::endl;
-    }
-
-    return 0;
-}
+// 示例3: 视频分析当前不可用
+// VisionAnalyzer::analyzeVideo() 会返回未实现错误。先通过独立媒体提取流程
+// 生成帧文件，再用 analyzeImage() 对生成的帧进行分析。
 
 // 示例4: 批量分析
 int main() {

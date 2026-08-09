@@ -354,7 +354,6 @@ TSK_WALK_RET_ENUM carving_block_walk_ctx(const TSK_FS_BLOCK* block, void* ptr) {
                 size_t currentSize = 0;
                 char buffer[4096];
                 uint64_t currentOffset = startByteAddr;
-                bool footerFound = false;
 
                 while (currentSize < sig.maxSize) {
                     ssize_t cnt = tsk_img_read(ctx->fs->img_info, currentOffset, buffer, sizeof(buffer));
@@ -371,7 +370,6 @@ TSK_WALK_RET_ENUM carving_block_walk_ctx(const TSK_FS_BLOCK* block, void* ptr) {
                             size_t writeLen = (fit - (uint8_t*)buffer) + sig.footer.size();
                             outFile.write(buffer, writeLen);
                             currentSize += writeLen;
-                            footerFound = true;
                             break;
                         }
                     }
@@ -404,18 +402,22 @@ TSK_WALK_RET_ENUM carving_block_walk_ctx(const TSK_FS_BLOCK* block, void* ptr) {
                 info.extension = sig.extension;
                 info.sourceOffset = startByteAddr;
                 info.size = currentSize;
-                info.validated = true;
-                info.validationMessage = footerFound ? "Footer found" : "Max size reached";
-                
+                if (ctx->validationEnabled) {
+                    info.validated = ctx->carver->validateCarvedFile(outPath, sig, info.validationMessage);
+                } else {
+                    info.validated = false;
+                    info.validationMessage = "Validation disabled";
+                }
+
                 ctx->carvedFiles->push_back(info);
                 ctx->recoveredCount++;
-                
+
                 // Update statistics
                 ctx->stats->totalFilesCarved++;
                 ctx->stats->totalBytesCarved += currentSize;
                 ctx->stats->filesByType[sig.name]++;
-                
-                if (footerFound) {
+
+                if (info.validated) {
                     ctx->stats->validFiles++;
                 } else {
                     ctx->stats->invalidFiles++;
@@ -578,8 +580,8 @@ bool FileCarver::validateCarvedFile(const std::string& filepath, const CarvingSi
     } else if (sig.extension == "zip") {
         return validateZIP(filepath, message);
     }
-    message = "No specific validation for this type";
-    return true;
+    message = "No content validator for this type";
+    return false;
 }
 
 bool FileCarver::validateJPEG(const std::string& filepath, std::string& message) {

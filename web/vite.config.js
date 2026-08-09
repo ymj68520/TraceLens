@@ -25,10 +25,6 @@ export default defineConfig({
         target: 'http://localhost:8090',
         changeOrigin: true,
       },
-      '/api': {
-        target: 'http://localhost:8666',
-        changeOrigin: true,
-      },
       '/api/graphiti': {
         target: 'http://localhost:8090',
         changeOrigin: true,
@@ -47,6 +43,10 @@ export default defineConfig({
       },
       '/api/wechat': {
         target: 'http://localhost:8090',
+        changeOrigin: true,
+      },
+      '/api': {
+        target: 'http://localhost:8666',
         changeOrigin: true,
       },
     },

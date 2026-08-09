@@ -22,12 +22,11 @@ export const useFileExtraction = (taskId) => {
     setExtractionMessage('Starting extraction...');
 
     try {
-      const jobData = await startExtraction({
-        task_id: taskId,
+      const jobData = await startExtraction(taskId, {
         mode: extractionMode,
         pattern: extractionPattern,
-        include_deleted: includeDeleted,
-        overwrite: overwrite
+        includeDeleted,
+        overwrite,
       });
 
       const jobId = jobData.job_id;

@@ -8,7 +8,7 @@ import Card from '../components/common/Card';
 import Spinner from '../components/common/Spinner';
 import { getLargestFiles, getExtensionAnalysis } from '../services/forensicsService';
 import { startExtraction, pollExtractionStatus } from '../services/extractionService';
-import { analyzeContent, startBatchAnalysis, pollBatchStatus, getLLMStatus } from '../services/llmService';
+import { analyzeContent, analyzeDLL, startBatchAnalysis, pollBatchStatus, getLLMStatus } from '../services/llmService';
 import { reanalyzeFiles, getCaseAnalysisStatus } from '../services/caseAnalysisService';
 import { ingestTaskData, getGraphitiStatus } from '../services/graphitiService';
 // Subcomponents (JSX split out for maintainability; behavior unchanged)
@@ -250,21 +250,10 @@ const Files = () => {
 
   // DLL file analysis via Python service
   const analyzeDLLFile = async ({ filePath, filesDbPath }) => {
-    const response = await fetch('/api/llm/analyze/dll', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        file_path: filePath,
-        files_db_path: filesDbPath
-      })
+    return await analyzeDLL({
+      filePath,
+      filesDbPath,
     });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'DLL分析失败');
-    }
-
-    return await response.json();
   };
 
   // Analyze single file

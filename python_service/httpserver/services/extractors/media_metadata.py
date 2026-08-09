@@ -1,10 +1,9 @@
-"""Media metadata extractors: Audio and Video files with content sampling."""
+"""Media metadata extractors: Audio and video files with content sampling."""
+import json
 import logging
 import os
 import subprocess
-import json
 import tempfile
-from datetime import datetime
 
 from .base import BaseExtractor, register_extractor
 
@@ -12,43 +11,90 @@ logger = logging.getLogger(__name__)
 
 
 def _format_size(size_bytes: int) -> str:
-    if size_bytes < 1024: return f"{size_bytes} B"
-    elif size_bytes < 1024*1024: return f"{size_bytes/1024:.1f} KB"
-    elif size_bytes < 1024*1024*1024: return f"{size_bytes/1024/1024:.2f} MB"
-    else: return f"{size_bytes/1024/1024/1024:.2f} GB"
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    if size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    if size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / 1024 / 1024:.2f} MB"
+    return f"{size_bytes / 1024 / 1024 / 1024:.2f} GB"
 
 
 def _format_duration(seconds: float) -> str:
     if seconds < 60:
         return f"{seconds:.1f}s"
-    elif seconds < 3600:
-        m, s = divmod(int(seconds), 60)
-        return f"{m}m {s}s"
-    else:
-        h, remainder = divmod(int(seconds), 3600)
-        m, s = divmod(remainder, 60)
-        return f"{h}h {m}m {s}s"
+    if seconds < 3600:
+        minutes, remainder = divmod(int(seconds), 60)
+        return f"{minutes}m {remainder}s"
+    hours, remainder = divmod(int(seconds), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours}h {minutes}m {seconds}s"
+
+
+def _to_float(value, default=None):
+    try:
+        converted = float(value)
+    except (TypeError, ValueError):
+        return default
+    return converted if converted >= 0 else default
+
+
+def _format_bitrate(value) -> str:
+    bitrate = _to_float(value)
+    if bitrate is None:
+        return "N/A"
+    return f"{int(bitrate) // 1000} kbps"
+
+
+def _format_frame_rate(value) -> str:
+    if value in (None, "", "N/A"):
+        return "N/A"
+    try:
+        numerator, denominator = str(value).split("/", 1)
+        denominator_value = float(denominator)
+        if denominator_value == 0:
+            return "N/A"
+        return f"{float(numerator) / denominator_value:.2f}"
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def _run_ffprobe(file_path: str) -> dict:
-    """Run ffprobe to extract media metadata."""
+    """Run ffprobe and return its JSON output when available."""
     try:
-        result = subprocess.run(
-            ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', file_path],
-            capture_output=True, text=True, timeout=30
+        completed = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-print_format", "json",
+                "-show_format", "-show_streams", file_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
-        if result.returncode == 0:
-            return json.loads(result.stdout)
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
-        pass
-    return {}
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as error:
+        logger.debug("ffprobe unavailable for %s: %s", file_path, error)
+        return {}
+
+    if completed.returncode != 0:
+        logger.debug("ffprobe failed for %s: %s", file_path, completed.stderr.strip())
+        return {}
+
+    try:
+        data = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        logger.debug("ffprobe returned invalid JSON for %s: %s", file_path, error)
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 @register_extractor
 class VideoExtractor(BaseExtractor):
-    """Extracts metadata from video files and optionally samples keyframes."""
+    """Extracts video metadata and optionally creates temporary frame samples."""
 
-    VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v', '.mpg', '.mpeg', '.3gp', '.ts'}
+    VIDEO_EXTENSIONS = {
+        ".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv", ".webm",
+        ".m4v", ".mpg", ".mpeg", ".3gp", ".ts",
+    }
 
     def __init__(self, sample_frames: int = 3):
         self.sample_frames = sample_frames
@@ -57,101 +103,112 @@ class VideoExtractor(BaseExtractor):
         ext = os.path.splitext(file_path)[1].lower()
         if ext not in self.VIDEO_EXTENSIONS:
             return f"Error: {ext} is not a recognized video format."
+        if not os.path.isfile(file_path):
+            return f"Error: Video file not found: {file_path}"
 
         ffprobe_data = _run_ffprobe(file_path)
-
         result = [f"# Video File: `{os.path.basename(file_path)}`"]
         result.append(f"**File Size:** {_format_size(os.path.getsize(file_path))}")
         result.append(f"**Format:** {ext.upper()[1:]}")
 
-        if ffprobe_data:
-            fmt = ffprobe_data.get('format', {})
-            duration = float(fmt.get('duration', 0))
-            if duration:
-                result.append(f"**Duration:** {_format_duration(duration)}")
-            result.append(f"**Bit Rate:** {int(fmt.get('bit_rate', 0)) // 1000} kbps")
+        if not ffprobe_data:
             result.append("")
+            result.append("*ffprobe metadata is unavailable; the file may be unsupported or incomplete.*")
+            return "\n".join(result)
 
-            # Stream info
-            streams = ffprobe_data.get('streams', [])
-            video_streams = [s for s in streams if s.get('codec_type') == 'video']
-            audio_streams = [s for s in streams if s.get('codec_type') == 'audio']
+        fmt = ffprobe_data.get("format") or {}
+        duration = _to_float(fmt.get("duration"))
+        if duration is not None and duration > 0:
+            result.append(f"**Duration:** {_format_duration(duration)}")
+        result.append(f"**Bit Rate:** {_format_bitrate(fmt.get('bit_rate'))}")
+        result.append("")
 
-            if video_streams:
-                result.append("## Video Streams")
-                result.append("| Codec | Resolution | FPS | Bitrate |")
-                result.append("| --- | --- | --- | --- |")
-                for vs in video_streams:
-                    codec = vs.get('codec_name', 'N/A')
-                    w = vs.get('width', 'N/A')
-                    h = vs.get('height', 'N/A')
-                    fps = vs.get('r_frame_rate', 'N/A')
-                    if '/' in str(fps):
-                        try:
-                            num, den = fps.split('/')
-                            fps = f"{int(num)/int(den):.2f}"
-                        except: pass
-                    br = int(vs.get('bit_rate', 0)) // 1000
-                    result.append(f"| {codec} | {w}x{h} | {fps} | {br} kbps |")
+        streams = ffprobe_data.get("streams") or []
+        video_streams = [stream for stream in streams if stream.get("codec_type") == "video"]
+        audio_streams = [stream for stream in streams if stream.get("codec_type") == "audio"]
 
-            if audio_streams:
-                result.append("")
-                result.append("## Audio Streams")
-                result.append("| Codec | Sample Rate | Channels | Bitrate |")
-                result.append("| --- | --- | --- | --- |")
-                for aus in audio_streams:
-                    codec = aus.get('codec_name', 'N/A')
-                    sr = aus.get('sample_rate', 'N/A')
-                    ch = aus.get('channels', 'N/A')
-                    br = int(aus.get('bit_rate', 0)) // 1000
-                    result.append(f"| {codec} | {sr} Hz | {ch} | {br} kbps |")
+        if video_streams:
+            result.append("## Video Streams")
+            result.append("| Codec | Resolution | FPS | Bitrate |")
+            result.append("| --- | --- | --- | --- |")
+            for stream in video_streams:
+                codec = stream.get("codec_name", "N/A")
+                width = stream.get("width", "N/A")
+                height = stream.get("height", "N/A")
+                fps = _format_frame_rate(stream.get("r_frame_rate"))
+                bitrate = _format_bitrate(stream.get("bit_rate"))
+                result.append(f"| {codec} | {width}x{height} | {fps} | {bitrate} |")
 
-            # Tags
-            tags = fmt.get('tags', {})
-            if tags:
-                result.append("")
-                result.append("## Tags")
-                result.append("| Key | Value |")
-                result.append("| --- | --- |")
-                for k, v in list(tags.items())[:20]:
-                    result.append(f"| {k} | {str(v)[:100]} |")
-
-            # Keyframe sampling
-            if self.sample_frames > 0:
-                result.append("")
-                result.append(f"## Keyframe Samples (First {self.sample_frames})")
-                try:
-                    tmp_dir = tempfile.mkdtemp()
-                    sample_cmd = [
-                        'ffmpeg', '-i', file_path, '-vf',
-                        f'select=not(mod(n\\,{max(1, int(float(fmt.get("duration", 1)) * 25 / self.sample_frames))})),scale=320:-1',
-                        '-vframes', str(self.sample_frames), '-vsync', 'vfr',
-                        os.path.join(tmp_dir, 'frame_%03d.jpg')
-                    ]
-                    subprocess.run(sample_cmd, capture_output=True, timeout=30)
-
-                    frames = sorted([f for f in os.listdir(tmp_dir) if f.endswith('.jpg')])
-                    if frames:
-                        result.append(f"Extracted {len(frames)} keyframe(s) to: `{tmp_dir}`")
-                        for frame in frames:
-                            frame_path = os.path.join(tmp_dir, frame)
-                            result.append(f"- `{frame_path}` ({_format_size(os.path.getsize(frame_path))})")
-                    else:
-                        result.append("*Could not extract keyframes (ffmpeg may not be available)*")
-                except Exception as e:
-                    result.append(f"*Keyframe extraction failed: {e}*")
-        else:
+        if audio_streams:
             result.append("")
-            result.append("*ffprobe not available. Install ffmpeg for detailed media analysis.*")
+            result.append("## Audio Streams")
+            result.append("| Codec | Sample Rate | Channels | Bitrate |")
+            result.append("| --- | --- | --- | --- |")
+            for stream in audio_streams:
+                codec = stream.get("codec_name", "N/A")
+                sample_rate = stream.get("sample_rate", "N/A")
+                channels = stream.get("channels", "N/A")
+                bitrate = _format_bitrate(stream.get("bit_rate"))
+                result.append(f"| {codec} | {sample_rate} Hz | {channels} | {bitrate} |")
+
+        tags = fmt.get("tags") or {}
+        if tags:
+            result.append("")
+            result.append("## Tags")
+            result.append("| Key | Value |")
+            result.append("| --- | --- |")
+            for key, value in list(tags.items())[:20]:
+                result.append(f"| {key} | {str(value)[:100]} |")
+
+        if self.sample_frames > 0:
+            self._append_frame_samples(result, file_path, duration)
 
         return "\n".join(result)
+
+    def _append_frame_samples(self, result: list[str], file_path: str, duration: float | None) -> None:
+        result.append("")
+        result.append(f"## Temporary Frame Samples (Up to {self.sample_frames})")
+        if duration is None or duration <= 0:
+            result.append("*Frame sampling skipped because video duration is unavailable.*")
+            return
+
+        tmp_dir = tempfile.mkdtemp(prefix="tracelens_video_samples_")
+        sample_cmd = [
+            "ffmpeg", "-v", "error", "-i", file_path,
+            "-vf", f"fps={self.sample_frames}/{duration:.6f},scale=320:-1",
+            "-frames:v", str(self.sample_frames),
+            os.path.join(tmp_dir, "frame_%03d.jpg"),
+        ]
+        try:
+            completed = subprocess.run(sample_cmd, capture_output=True, text=True, timeout=30)
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as error:
+            result.append(f"*Frame sampling unavailable: {error}*")
+            return
+
+        frames = sorted(
+            name for name in os.listdir(tmp_dir) if name.lower().endswith(".jpg")
+        )
+        if completed.returncode != 0 or not frames:
+            result.append("*Could not create frame samples; the video may be incomplete or ffmpeg is unavailable.*")
+            return
+
+        result.append(
+            f"Created {len(frames)} temporary frame sample(s) in: `{tmp_dir}`"
+        )
+        result.append("*These derived samples do not validate the source video or its completeness.*")
+        for frame in frames:
+            frame_path = os.path.join(tmp_dir, frame)
+            result.append(f"- `{frame_path}` ({_format_size(os.path.getsize(frame_path))})")
 
 
 @register_extractor
 class AudioExtractor(BaseExtractor):
     """Extracts metadata from audio files."""
 
-    AUDIO_EXTENSIONS = {'.mp3', '.wav', '.aac', '.ogg', '.flac', '.wma', '.m4a', '.opus', '.aiff', '.ape', '.alac'}
+    AUDIO_EXTENSIONS = {
+        ".mp3", ".wav", ".aac", ".ogg", ".flac", ".wma", ".m4a",
+        ".opus", ".aiff", ".ape", ".alac",
+    }
 
     async def extract_to_markdown(self, file_path: str) -> str:
         ext = os.path.splitext(file_path)[1].lower()
@@ -162,7 +219,6 @@ class AudioExtractor(BaseExtractor):
         result.append(f"**File Size:** {_format_size(os.path.getsize(file_path))}")
         result.append(f"**Format:** {ext.upper()[1:]}")
 
-        # Try mutagen for metadata
         try:
             from mutagen import File as MutagenFile
             audio = MutagenFile(file_path)
@@ -172,13 +228,12 @@ class AudioExtractor(BaseExtractor):
                     result.append(f"**Duration:** {_format_duration(audio.info.length)}")
                     result.append(f"**Sample Rate:** {audio.info.sample_rate} Hz")
                     result.append(f"**Channels:** {audio.info.channels}")
-                    if hasattr(audio.info, 'bitrate') and audio.info.bitrate:
+                    if hasattr(audio.info, "bitrate") and audio.info.bitrate:
                         result.append(f"**Bitrate:** {audio.info.bitrate // 1000} kbps")
-                    if hasattr(audio.info, 'bits_per_sample') and audio.info.bits_per_sample:
+                    if hasattr(audio.info, "bits_per_sample") and audio.info.bits_per_sample:
                         result.append(f"**Bit Depth:** {audio.info.bits_per_sample} bit")
                 result.append("")
 
-                # Tags
                 if audio.tags:
                     result.append("## Tags")
                     result.append("| Key | Value |")
@@ -191,23 +246,20 @@ class AudioExtractor(BaseExtractor):
         except ImportError:
             result.append("")
             result.append("*mutagen library not installed. Install for detailed audio metadata.*")
-        except Exception as e:
+        except Exception as error:
             result.append("")
-            result.append(f"*Error reading audio metadata: {e}*")
+            result.append(f"*Error reading audio metadata: {error}*")
 
-        # Fallback to ffprobe
         ffprobe_data = _run_ffprobe(file_path)
-        if ffprobe_data and not result[-1].startswith('*'):
-            pass  # mutagen already handled it
-        elif ffprobe_data:
-            fmt = ffprobe_data.get('format', {})
-            tags = fmt.get('tags', {})
+        if ffprobe_data and result[-1].startswith("*"):
+            fmt = ffprobe_data.get("format") or {}
+            tags = fmt.get("tags") or {}
             if tags:
                 result.append("")
                 result.append("## Tags (via ffprobe)")
                 result.append("| Key | Value |")
                 result.append("| --- | --- |")
-                for k, v in list(tags.items())[:20]:
-                    result.append(f"| {k} | {str(v)[:100]} |")
+                for key, value in list(tags.items())[:20]:
+                    result.append(f"| {key} | {str(value)[:100]} |")
 
         return "\n".join(result)

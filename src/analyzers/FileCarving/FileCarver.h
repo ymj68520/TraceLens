@@ -114,14 +114,16 @@ private:
     void initializeSignatures();
     void processUnallocatedBlock(const void* data, size_t len, uint64_t addr);
     void extractFile(TSK_FS_INFO* fs, uint64_t startBlock, const CarvingSignature& sig, const std::string& outputDir);
-    
+
+protected:
     // Validation methods
     bool validateCarvedFile(const std::string& filepath, const CarvingSignature& sig, std::string& message);
     bool validateJPEG(const std::string& filepath, std::string& message);
     bool validatePNG(const std::string& filepath, std::string& message);
     bool validatePDF(const std::string& filepath, std::string& message);
     bool validateZIP(const std::string& filepath, std::string& message);
-    
+
+private:
     // Database logging
     void logToDatabase(const CarvedFileInfo& info);
     void initDatabaseTable();

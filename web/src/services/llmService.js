@@ -52,6 +52,18 @@ export const analyzeFile = async (file, modelType = 'text', prompt = null) => {
 };
 
 /**
+ * 分析 DLL/EXE/SYS 等二进制文件
+ * @param {Object} options - 文件路径和持久化数据库路径
+ */
+export const analyzeDLL = async ({ filePath, filesDbPath, prompt = null }) => {
+    return await pythonApi.post('/api/llm/analyze/dll', {
+        file_path: filePath,
+        files_db_path: filesDbPath || null,
+        prompt,
+    });
+};
+
+/**
  * 启动批量分析任务
  * @param {string} taskId - 任务 ID
  * @param {Object} options - 批量分析选项
@@ -142,6 +154,7 @@ export const toggleFileRelevance = async (taskId, filePath, isRelevant) => {
 export default {
     analyzeContent,
     analyzeFile,
+    analyzeDLL,
     startBatchAnalysis,
     getBatchStatus,
     pollBatchStatus,
