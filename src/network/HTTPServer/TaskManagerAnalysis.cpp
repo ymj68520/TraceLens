@@ -118,6 +118,84 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
             update_progress(task_id, TaskPhase::INITIALIZING, 30, "Analysis environment initialized");
 
+            // ── Logical Android analysis short-circuit ───────────────────────
+            // A logical data source (directory / zip / MIUI backup) is NOT a TSK
+            // disk image: there is no filesystem to carve and no _raw.db to build.
+            // Run the Android analyzer directly against the source and skip the
+            // entire TSK / event / classification pipeline.
+            if (task.android_source == "dir" ||
+                task.android_source == "zip" ||
+                task.android_source == "miui-backup") {
+
+                if (is_task_cancelled(task_id)) {
+                    update_status(task_id, TaskStatus::CANCELLED, "Task cancelled");
+                    clear_backup_password(task_id);
+                    return;
+                }
+
+                bool ok = runLogicalAndroidAnalysis(task, baseName);
+
+                // Drop the runtime-only backup password as soon as the analyzer
+                // has consumed it (mirrors the decryption-password handling).
+                clear_backup_password(task_id);
+
+                if (!ok) {
+                    update_status(task_id, TaskStatus::FAILED,
+                                  "Android logical analysis failed for source: " + task.android_source);
+                    return;
+                }
+
+                if (is_task_cancelled(task_id)) {
+                    update_status(task_id, TaskStatus::CANCELLED, "Task cancelled");
+                    return;
+                }
+
+                // The helper wrote android.db and overwrote output_files_db so
+                // results + MIUI query routes resolve to it. Re-read the task.
+                std::string logicalResultDb;
+                {
+                    std::lock_guard<std::mutex> lock(mtx_);
+                    if (tasks_.count(task_id)) logicalResultDb = tasks_[task_id].output_files_db;
+                }
+                if (logicalResultDb.empty()) logicalResultDb = fileDbPath;
+
+                // The Android analyzer already ran its own artifact-level LLM
+                // analysis inside analyzeAndroidData() (AndroidLLMAnalysisService,
+                // mirroring the Linux/Windows analyzers). The legacy file-level
+                // LLMAnalysisService is a no-op on android.db (no `files` table),
+                // so we only surface a progress note here rather than re-running it.
+                if (task.llm_analyze) {
+                    update_progress(task_id, TaskPhase::LLM_ANALYSIS, 100,
+                                    "Android artifact LLM analysis completed (per-artifact)");
+                }
+
+                // Graphiti ingestion (best-effort, fire-and-forget) — same as the
+                // TSK pipeline tail so logical tasks join the knowledge graph too.
+                if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+                update_progress(task_id, TaskPhase::FINALIZING, 10, "Triggering knowledge graph ingestion...");
+                try {
+                    auto& proxy = forensics::LLMPythonProxy::instance();
+                    std::string graphiti_job_id = proxy.async_ingest(task_id, forensics::IngestionMode::FULL);
+                    if (!graphiti_job_id.empty()) {
+                        add_audit_log(task_id, "GRAPHITI_INGESTION",
+                            "Triggered Graphiti knowledge graph ingestion (job_id: " + graphiti_job_id + ")");
+                        {
+                            std::lock_guard<std::mutex> lock(mtx_);
+                            if (tasks_.count(task_id)) tasks_[task_id].graphiti_job_id = graphiti_job_id;
+                        }
+                        save_tasks_internal();
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "Warning: Exception triggering Graphiti ingestion: " << e.what() << std::endl;
+                }
+
+                // Finalize — android.db is the result database for logical tasks.
+                if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+                update_progress(task_id, TaskPhase::FINALIZING, 100, "Analysis completed successfully");
+                update_status(task_id, TaskStatus::COMPLETED, "Android logical analysis completed");
+                return;
+            }
+
             // 1. Image Analysis
             if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
             update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 10, "Analyzing image structure...");
@@ -470,5 +548,75 @@ void TaskManager::start_analysis(const std::string& task_id) {
             add_audit_log(task_id, "ERROR", "Analysis failed: " + std::string(e.what()));
         }
     });
+}
+
+bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
+                                            const std::string& baseName) {
+    const std::string& task_id = task.id;
+    const std::string& imagePath = task.image_path;
+
+    update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 10,
+                    "Analyzing Android artifacts (source=" + task.android_source + ")...");
+
+    try {
+        auto& pm = forensics::PathManager::instance();
+        pm.ensureTaskDir(task_id);
+
+        // android.db follows the per-task convention used by RouteHelpers'
+        // get_database_path("android"). It is also exposed as the task's
+        // output_files_db so /tasks/<id>/results and the MIUI query routes
+        // (which fall back to output_files_db) both resolve to it.
+        std::string androidDbPath;
+        if (!task.db_output_dir.empty()) {
+            androidDbPath = task.db_output_dir + "/" + baseName + "_android.db";
+        } else {
+            androidDbPath = pm.getTaskDbPaths(task_id, baseName).androidDb.string();
+        }
+
+        // dbManager is nullptr: logical sources have no _raw.db to read from.
+        auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(imagePath, nullptr);
+
+        // Select the non-TSK backend matching the chosen data source.
+        AndroidSourceMode mode =
+            task.android_source == "zip"          ? AndroidSourceMode::Zip :
+            task.android_source == "miui-backup"  ? AndroidSourceMode::MiuiBackup :
+                                                     AndroidSourceMode::LogicalDir;
+        androidAnalyzer->setSourceMode(mode);
+
+        if (!task.backup_password.empty()) {
+            androidAnalyzer->setBackupPassword(task.backup_password);
+        }
+
+        androidAnalyzer->setOutputDatabasePath(androidDbPath);
+
+        if (!androidAnalyzer->initialize()) {
+            add_audit_log(task_id, "ERROR", "Failed to initialize Android analyzer (logical)");
+            return false;
+        }
+        androidAnalyzer->analyzeAndroidData();
+
+        // Record the produced database on the task so downstream result
+        // retrieval and the MIUI query routes find it.
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            if (tasks_.count(task_id)) {
+                tasks_[task_id].output_files_db = androidDbPath;
+                tasks_[task_id].metadata["android_db"] = androidDbPath;
+            }
+        }
+        set_result_db(task_id, androidDbPath);
+
+        update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 100,
+                        "Android analysis completed");
+        add_audit_log(task_id, "ANDROID_ANALYSIS",
+                      "Logical Android analysis completed (source=" + task.android_source +
+                      ", db=" + androidDbPath + ")");
+        return true;
+    } catch (const std::exception& e) {
+        add_audit_log(task_id, "ERROR",
+                      std::string("Logical Android analysis exception: ") + e.what());
+        std::cerr << "Error: Logical Android analysis failed: " << e.what() << std::endl;
+        return false;
+    }
 }
 

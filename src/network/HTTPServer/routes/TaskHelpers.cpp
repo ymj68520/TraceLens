@@ -78,6 +78,7 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
         {"scenarios", scenarios_json},
         {"scenario_databases", scenario_databases},
         {"android_analyze", task.get_android_analyze()},  // Backward compat
+        {"android_source", task.android_source},
         {"llm_analyze", task.llm_analyze},
         {"llm_mode", task.llm_mode},
         {"case_description", task.case_description},

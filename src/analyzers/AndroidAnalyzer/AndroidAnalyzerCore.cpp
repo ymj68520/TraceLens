@@ -5,10 +5,41 @@
 #include "LogicalDirExtractor.h"
 #include "ZipArchiveExtractor.h"
 #include "MiuiBackupExtractor.h"
+#include "MiuiBackupManifest.h"
 #include "MiuiArtifactParsers.h"
 #include "MiuiSecureTemp.h"
+#include "AndroidLLMAnalysisService.h"
+#include "ConfigManager/ConfigManager.h"
 
 namespace fs = std::filesystem;
+
+// Detect whether a directory is actually a MIUI offline backup folder, even
+// when the caller picked the generic "dir" source. A MIUI backup is identified
+// by a descript.xml whose root tag is <MIUI-backup> plus at least one .bak
+// file. Returns true and (optionally) parses the manifest when it is.
+static bool dirLooksLikeMiuiBackup(const std::string& dirPath, BackupMeta* outManifest = nullptr) {
+    std::error_code ec;
+    if (!fs::is_directory(dirPath, ec)) return false;
+    const fs::path manifestPath = fs::path(dirPath) / "descript.xml";
+    if (!fs::exists(manifestPath, ec)) return false;
+
+    BackupMeta manifest;
+    if (!parseMiuiManifest(dirPath, manifest)) return false;
+
+    // Require at least one .bak file referenced by the manifest to avoid
+    // matching an unrelated descript.xml.
+    bool hasBak = false;
+    for (const auto& pkg : manifest.packages) {
+        if (!pkg.bakFile.empty() && fs::exists(fs::path(dirPath) / pkg.bakFile, ec)) {
+            hasBak = true;
+            break;
+        }
+    }
+    if (!hasBak) return false;
+
+    if (outManifest) *outManifest = std::move(manifest);
+    return true;
+}
 
 // AndroidAnalyzer Core Implementation
 
@@ -28,6 +59,19 @@ AndroidAnalyzer::~AndroidAnalyzer() {
 }
 
 bool AndroidAnalyzer::initialize() {
+    // Auto-promote a generic directory source to MIUI backup mode when the
+    // folder is in fact a MIUI backup (descript.xml + .bak files). This keeps
+    // analysis correct regardless of which source the user picked in the UI —
+    // a MIUI backup folder selected as "Android 目录" still parses correctly.
+    if (sourceMode_ == AndroidSourceMode::LogicalDir &&
+        dirLooksLikeMiuiBackup(imagePath_, nullptr)) {
+        std::cout << "[Android] Source directory is a MIUI backup; "
+                     "auto-selecting miui-backup mode." << std::endl;
+        AuditLog::instance().log("SYSTEM", "ANDROID_SOURCE_PROMOTED",
+            "Logical dir auto-promoted to miui-backup: " + imagePath_);
+        sourceMode_ = AndroidSourceMode::MiuiBackup;
+    }
+
     // Pick a file-access backend based on the source mode. All nine call sites
     // in this module go through fileExtractor_->extractFileByPath(...), so the
     // backend is transparent to the parsing logic.
@@ -204,6 +248,85 @@ void AndroidAnalyzer::analyzeAndroidData() {
     analyzeAppNotes();
     analyzeEncryptedAppDatabases();
 
+    // Phase 3: AI-powered LLM analysis of all Android artifacts. Mirrors the
+    // final phase of LinuxFilesAnalyzer / WindowsFilesAnalyzer. Auto-skipped
+    // when no LLM endpoint is configured or skipAI_ is set.
+    analyzeWithLLM();
+
     std::cout << "Android data analysis completed." << std::endl;
     AuditLog::instance().log("SYSTEM", "ANDROID_ANALYSIS_COMPLETE", "Android data analysis completed for: " + imagePath_);
+}
+
+void AndroidAnalyzer::analyzeWithLLM() {
+    // Skip condition 1: user explicitly requested --no-ai.
+    if (skipAI_) {
+        std::cout << "AI analysis skipped (--no-ai)." << std::endl;
+        AuditLog::instance().log("SYSTEM", "ANDROID_LLM_SKIPPED", "AI analysis skipped via --no-ai flag");
+        return;
+    }
+
+    // Skip condition 2: no LLM endpoint configured → auto-skip. The local LLM
+    // servers (LM Studio / Ollama / vLLM) the C++ LLMClient targets do not
+    // require an API key (no Authorization header is sent), so the gate is the
+    // base URL rather than the key. This keeps Android consistent with the
+    // Linux/Windows analyzers' gate after their key-based check was relaxed.
+    try {
+        auto& configManager = forensics::ConfigManager::instance();
+        if (!configManager.isLoaded()) {
+            configManager.load();
+        }
+        if (configManager.getTextBaseUrl().empty() && configManager.getLLMBaseUrl().empty()) {
+            std::cout << "AI analysis skipped (no LLM_BASE_URL configured). "
+                      << "Structured analysis results in android tables are unaffected." << std::endl;
+            AuditLog::instance().log("SYSTEM", "ANDROID_LLM_SKIPPED",
+                "No LLM_BASE_URL configured, skipping LLM analysis");
+            return;
+        }
+    } catch (const std::exception& e) {
+        std::cout << "AI analysis skipped (config read failed: " << e.what() << ")." << std::endl;
+        AuditLog::instance().log("SYSTEM", "ANDROID_LLM_SKIPPED",
+            "Config read failed, skipping LLM analysis: " + std::string(e.what()));
+        return;
+    }
+
+    if (outputDbPath_.empty()) {
+        std::cerr << "Warning: Cannot run Android LLM analysis, output database path is empty" << std::endl;
+        return;
+    }
+
+    try {
+        std::cout << "Running AI analysis on Android artifacts..." << std::endl;
+        AuditLog::instance().log("SYSTEM", "ANDROID_LLM_ANALYSIS_START",
+            "Starting LLM analysis for Android artifacts: " + imagePath_);
+
+        forensics::AndroidLLMAnalysisService llmService;
+        if (!llmService.initialize()) {
+            std::cerr << "Warning: Failed to initialize Android LLM analysis service" << std::endl;
+            AuditLog::instance().log("SYSTEM", "ANDROID_LLM_INIT_FAILED",
+                "Failed to initialize LLM service for: " + imagePath_);
+            return;
+        }
+
+        forensics::AndroidLLMAnalysisService::AnalysisOptions options;
+        options.maxArtifacts = 1000;
+        options.includeMessages = true;
+        options.includeContacts = true;
+        options.includeMiui = true;
+        options.includeWechatEvidence = true;
+        options.includeSystem = true;
+
+        auto progressCallback = [](const std::string& artifactType, int current, int total, const std::string& details) {
+            std::cout << "  [" << artifactType << "] " << current << "/" << total << " - " << details << std::endl;
+        };
+
+        int analyzed = llmService.analyzeAndroidArtifacts(outputDbPath_, options, progressCallback);
+        std::cout << "AI analysis completed for " << analyzed << " Android artifacts." << std::endl;
+        AuditLog::instance().log("SYSTEM", "ANDROID_LLM_ANALYSIS_COMPLETE",
+            "LLM analysis completed for " + std::to_string(analyzed) + " artifacts from: " + imagePath_);
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error during Android LLM analysis: " << e.what() << std::endl;
+        AuditLog::instance().log("SYSTEM", "ANDROID_LLM_ANALYSIS_ERROR",
+            "LLM analysis error for " + imagePath_ + ": " + e.what());
+    }
 }

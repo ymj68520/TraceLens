@@ -58,6 +58,11 @@ public:
      * @param enable_decryption Auto-detect and decrypt encrypted partitions
      * @param key_file_dir Override directory for decryption key files
      * @param decrypt_password Runtime-only explicit decryption password
+     * @param android_source Android data source backend: "tsk" (default, uses the
+     *                       TSK disk-image pipeline), "dir", "zip", or
+     *                       "miui-backup" (the latter three short-circuit the
+     *                       TSK pipeline and run the Android analyzer directly).
+     * @param backup_password Runtime-only MIUI/Android backup AES-256 password.
      * @return The unique ID of the created task
      */
     std::string create_task(const std::string& path,
@@ -73,7 +78,9 @@ public:
                            const std::string& filter_profile = "",
                            bool enable_decryption = false,
                            const std::string& key_file_dir = "",
-                           const std::string& decrypt_password = "");
+                           const std::string& decrypt_password = "",
+                           const std::string& android_source = "tsk",
+                           const std::string& backup_password = "");
 
     // Task status management
     /**
@@ -277,6 +284,15 @@ private:
 
     // Remove the runtime-only decryption password after analyzer handoff.
     void clear_decryption_password(const std::string& id);
+
+    // Remove the runtime-only MIUI/Android backup password after analyzer handoff.
+    void clear_backup_password(const std::string& id);
+
+    // Logical Android analysis (dir / zip / miui-backup). Short-circuits the
+    // TSK disk-image pipeline — runs the Android analyzer directly against the
+    // given data source. Returns true on success.
+    bool runLogicalAndroidAnalysis(const AnalysisTask& task,
+                                   const std::string& baseName);
 
     // Helper methods
     int calculate_overall_percentage(TaskPhase phase, int phase_percentage);

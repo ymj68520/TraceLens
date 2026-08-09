@@ -30,8 +30,28 @@ bool AndroidAnalysisDatabase::initialize() {
 }
 
 bool AndroidAnalysisDatabase::createTables() {
-    return executeSQL(AndroidAnalysisSQL::CREATE_ALL_TABLES) &&
-           executeSQL(AndroidAnalysisSQL::CREATE_MIUI_TABLES);
+    if (!executeSQL(AndroidAnalysisSQL::CREATE_ALL_TABLES) ||
+        !executeSQL(AndroidAnalysisSQL::CREATE_MIUI_TABLES) ||
+        !executeSQL(AndroidAnalysisSQL::CREATE_ANALYSIS_PROGRESS)) {
+        return false;
+    }
+    // Add the 5 llm_* columns to every artifact table that the LLM service
+    // analyzes. Each ALTER is idempotent: a duplicate-column error is tolerated
+    // so re-opening an existing android.db is safe.
+    static const char* kLlmTables[] = {
+        "sms_messages", "wechat_messages", "whatsapp_messages", "telegram_messages",
+        "contacts", "call_logs",
+        "miui_backup_manifest", "installed_apps",
+        "wechat_sqlite_records", "wechat_kv_records", "qqnt_sqlite_records",
+        "system_logs", "device_identifiers", "wifi_networks"
+    };
+    for (const char* tbl : kLlmTables) {
+        if (!addLlmColumns(tbl)) {
+            // Non-fatal: a malformed/incompatible table should not abort init.
+            std::cerr << "Warning: failed to add llm_* columns to " << tbl << std::endl;
+        }
+    }
+    return true;
 }
 
 bool AndroidAnalysisDatabase::createArtifactsTable() {
@@ -553,6 +573,111 @@ bool AndroidAnalysisDatabase::insertQqntLogEvent(
     return success;
 }
 
+bool AndroidAnalysisDatabase::insertWechatArtifactInventory(
+    const std::string& packageName, const std::string& sourcePath, const std::string& bakFile,
+    const std::string& category, const std::string& format, uint64_t size,
+    uint64_t modifiedTime, const std::string& typeFlag, const std::string& parseStatus,
+    const std::string& summary, const std::string& sourceHash) {
+    const char* sql = R"(
+        INSERT OR REPLACE INTO wechat_artifact_inventory
+        (package_name, source_path, bak_file, artifact_category, format, size, modified_time,
+         type_flag, parse_status, summary, source_hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    )";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, packageName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, sourcePath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, bakFile.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, category.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, format.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 6, static_cast<sqlite3_int64>(size));
+    sqlite3_bind_int64(stmt, 7, static_cast<sqlite3_int64>(modifiedTime));
+    sqlite3_bind_text(stmt, 8, typeFlag.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 9, parseStatus.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 10, summary.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 11, sourceHash.c_str(), -1, SQLITE_TRANSIENT);
+
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertWechatKvRecord(
+    const std::string& sourcePath, const std::string& nameSpace, const std::string& key,
+    const std::string& valueType, const std::string& valueText, const std::string& valueHash,
+    bool isSensitive, const std::string& parseStatus) {
+    const char* sql = R"(
+        INSERT INTO wechat_kv_records
+        (source_path, namespace, key, value_type, value_text, value_hash, is_sensitive, parse_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+    )";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, sourcePath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, nameSpace.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, key.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, valueType.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, valueText.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, valueHash.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 7, isSensitive ? 1 : 0);
+    sqlite3_bind_text(stmt, 8, parseStatus.c_str(), -1, SQLITE_TRANSIENT);
+
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertWechatSqliteRecord(
+    const std::string& sourcePath, const std::string& tableName, const std::string& recordKey,
+    const std::string& recordJson, const std::string& artifactKind, bool isSensitive) {
+    const char* sql = R"(
+        INSERT INTO wechat_sqlite_records
+        (source_path, table_name, record_key, record_json, artifact_kind, is_sensitive)
+        VALUES (?, ?, ?, ?, ?, ?);
+    )";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, sourcePath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, tableName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, recordKey.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, recordJson.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, artifactKind.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 6, isSensitive ? 1 : 0);
+
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertWechatLogEvent(
+    const std::string& sourcePath, uint64_t eventTime, const std::string& level,
+    const std::string& tag, const std::string& message, const std::string& parseStatus,
+    bool isSensitive) {
+    const char* sql = R"(
+        INSERT INTO wechat_log_events
+        (source_path, event_time, level, tag, message, parse_status, is_sensitive)
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+    )";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, sourcePath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 2, static_cast<sqlite3_int64>(eventTime));
+    sqlite3_bind_text(stmt, 3, level.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, tag.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, message.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, parseStatus.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 7, isSensitive ? 1 : 0);
+
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return success;
+}
+
 bool AndroidAnalysisDatabase::beginTransaction() {
     return executeSQL("BEGIN IMMEDIATE;");
 }
@@ -575,5 +700,33 @@ bool AndroidAnalysisDatabase::executeSQL(const std::string& sql) {
         return false;
     }
 
+    return true;
+}
+
+bool AndroidAnalysisDatabase::addLlmColumns(const std::string& tableName) {
+    // The 5 llm_* columns mirror the Linux/Windows artifact-table convention.
+    // ALTER TABLE ... ADD COLUMN cannot add multiple columns in one statement,
+    // so we issue one statement per column. A "duplicate column" error means
+    // the column already exists (re-opened db) and is treated as success.
+    static const char* kColumnDefs[] = {
+        "llm_summary TEXT",
+        "llm_description TEXT",
+        "llm_keywords TEXT",
+        "llm_analyzed_at INTEGER",
+        "llm_model_used TEXT"
+    };
+    for (const char* colDef : kColumnDefs) {
+        std::string sql = "ALTER TABLE " + tableName + " ADD COLUMN " + colDef + ";";
+        char* errMsg = nullptr;
+        int rc = sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &errMsg);
+        if (rc != SQLITE_OK) {
+            // "duplicate column name" → already migrated; anything else → real error.
+            const std::string err = errMsg ? errMsg : "";
+            sqlite3_free(errMsg);
+            if (err.find("duplicate column name") == std::string::npos) {
+                return false;
+            }
+        }
+    }
     return true;
 }

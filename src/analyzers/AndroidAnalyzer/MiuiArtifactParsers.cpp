@@ -1,5 +1,6 @@
 #include "MiuiArtifactParsers.h"
 #include "QqntArtifactParsers.h"
+#include "WechatArtifactParsers.h"
 
 #include "AndroidAnalysisDatabase.h"
 #include "MiuiBackupExtractor.h"
@@ -609,7 +610,8 @@ bool writeAppDbInventory(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) 
 bool persistMiuiBackupAnalysis(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
     if (!db.beginTransaction()) return false;
     if (writeMiuiManifestRows(src, db) && writeAppDbInventoryRows(src, db) &&
-        persistQqntBackupAnalysis(src, db) && db.commitTransaction()) {
+        persistQqntBackupAnalysis(src, db) && persistWechatBackupAnalysis(src, db) &&
+        db.commitTransaction()) {
         return true;
     }
     db.rollbackTransaction();

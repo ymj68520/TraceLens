@@ -84,6 +84,24 @@ public:
                             const std::string& level, const std::string& tag,
                             const std::string& message, const std::string& parseStatus,
                             bool isSensitive);
+    // WeChat (com.tencent.mm) MIUI-backup artifacts — same shape as the QQNT
+    // inventory, persisted into dedicated wechat_* tables.
+    bool insertWechatArtifactInventory(const std::string& packageName, const std::string& sourcePath,
+                                       const std::string& bakFile, const std::string& category,
+                                       const std::string& format, uint64_t size, uint64_t modifiedTime,
+                                       const std::string& typeFlag, const std::string& parseStatus,
+                                       const std::string& summary, const std::string& sourceHash);
+    bool insertWechatKvRecord(const std::string& sourcePath, const std::string& nameSpace,
+                              const std::string& key, const std::string& valueType,
+                              const std::string& valueText, const std::string& valueHash,
+                              bool isSensitive, const std::string& parseStatus);
+    bool insertWechatSqliteRecord(const std::string& sourcePath, const std::string& tableName,
+                                  const std::string& recordKey, const std::string& recordJson,
+                                  const std::string& artifactKind, bool isSensitive);
+    bool insertWechatLogEvent(const std::string& sourcePath, uint64_t eventTime,
+                              const std::string& level, const std::string& tag,
+                              const std::string& message, const std::string& parseStatus,
+                              bool isSensitive);
     bool beginTransaction();
     bool commitTransaction();
     bool rollbackTransaction();
@@ -96,4 +114,7 @@ private:
     bool createTables();
     bool createArtifactsTable();
     bool executeSQL(const std::string& sql);
+    // Idempotently add the llm_* analysis columns to a table. Safe to call on
+    // tables/columns that already exist (duplicate-column errors are ignored).
+    bool addLlmColumns(const std::string& tableName);
 };

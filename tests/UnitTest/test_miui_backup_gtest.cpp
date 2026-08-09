@@ -964,6 +964,57 @@ TEST(QqntArtifactTest, RecoversSensitiveXmlValuesWithPerValueHashes) {
     sqlite3_close(raw);
 }
 
+TEST(WechatArtifactTest, RecoversSensitiveXmlAndInventoriesLockedPrimaryDatabase) {
+    const fs::path dir = uniqueTempPath("wechat_xml");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages><package><packageName>com.tencent.mm</packageName>"
+           "<bakFile>WeChat(com.tencent.mm).bak</bakFile></package></packages></MIUI-backup>";
+    const auto tar = makeUstarTar({
+        {"apps/com.tencent.mm/sp/auth_prefs.xml",
+         "<map><string name=\"imei\">secret-imei</string>"
+         "<int name=\"retry_count\" value=\"2\" /></map>"},
+        // Per-account SQLCipher primary database held under r/MicroMsg in a
+        // MIUI backup. The ciphertext is intentionally not a SQLite header —
+        // it must be inventoried as recognized evidence, not parsed.
+        {"apps/com.tencent.mm/r/MicroMsg/acct/EnMicroMsg.db", "ciphertext"},
+    });
+    std::ofstream(dir / "WeChat(com.tencent.mm).bak", std::ios::binary) << rawBackup(readFile(tar));
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    const fs::path analysisDb = uniqueTempPath("wechat_xml", ".db");
+    TemporaryFile cleanup(analysisDb);
+    AndroidAnalysisDatabase db(analysisDb.string());
+    ASSERT_TRUE(db.initialize());
+    ASSERT_TRUE(persistMiuiBackupAnalysis(extractor, db));
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(analysisDb.string().c_str(), &raw), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT value_text, value_hash, is_sensitive FROM wechat_kv_records WHERE key = 'imei'", -1,
+        &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "secret-imei");
+    EXPECT_EQ(std::strlen(reinterpret_cast<const char*>(sqlite3_column_text(statement, 1))), 64u);
+    EXPECT_EQ(sqlite3_column_int(statement, 2), 1);
+    sqlite3_finalize(statement);
+
+    // The SQLCipher primary database is recorded as recognized evidence
+    // (parse_status = recognized) without being staged/decrypted.
+    ASSERT_EQ(sqlite3_prepare_v2(raw,
+        "SELECT artifact_category, format, parse_status FROM wechat_artifact_inventory "
+        "WHERE source_path = 'apps/com.tencent.mm/r/MicroMsg/acct/EnMicroMsg.db'", -1,
+        &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "database");
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 1)), "sqlcipher");
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 2)), "recognized");
+    sqlite3_finalize(statement);
+    sqlite3_close(raw);
+}
+
 TEST(MiuiArtifactTest, WritesManifestAndRecordsUnreadableDatabaseFailure) {
     const fs::path dir = uniqueTempPath("miui_art_invalid");
     fs::create_directories(dir);

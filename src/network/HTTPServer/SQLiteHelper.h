@@ -209,6 +209,27 @@ public:
                                                  int limit, int offset,
                                                  bool revealSensitive);
 
+    // WeChat (com.tencent.mm) evidence inventory from a MIUI backup.
+    static nlohmann::json get_miui_wechat_overview(const std::string& android_db);
+    static nlohmann::json get_miui_wechat_artifacts(const std::string& android_db,
+                                                     const std::string& category,
+                                                     const std::string& status,
+                                                     const std::string& query,
+                                                     int limit, int offset);
+    static nlohmann::json get_miui_wechat_records(const std::string& android_db,
+                                                   const std::string& kind,
+                                                   const std::string& query,
+                                                   int limit, int offset,
+                                                   bool revealSensitive);
+
+    /**
+     * @brief Aggregate per-table AI-analysis coverage (analyzed vs total) for
+     *        the Android artifact tables. Used by the Android page AI card.
+     * @param android_db Path to Android analysis database
+     * @return JSON { coverage: [{table,label,total,analyzed}], totals: {total,analyzed} }
+     */
+    static nlohmann::json get_android_llm_summary(const std::string& android_db);
+
     // Statistical Analysis Endpoints
     // Statistical Analysis Endpoints
     /**
@@ -343,6 +364,7 @@ private:
     static nlohmann::json execute_query(sqlite3* db, const std::string& sql,
                                         const std::vector<std::string>& params);
     static bool table_exists(sqlite3* db, const std::string& table_name);
+    static bool column_exists(sqlite3* db, const std::string& table_name, const std::string& column_name);
     static std::string format_timestamp(int64_t timestamp);
     static int64_t parse_timestamp(const std::string& time_str);
     static bool is_suspicious_extension(const std::string& ext);

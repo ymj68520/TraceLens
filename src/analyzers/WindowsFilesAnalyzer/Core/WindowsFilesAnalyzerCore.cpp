@@ -116,17 +116,20 @@ void WindowsFilesAnalyzer::analyzeWithLLM() {
         return;
     }
 
-    // Skip condition 2: no API key configured → auto-skip (for offline/no-key environments)
+    // Skip condition 2: no LLM endpoint configured → auto-skip. The local LLM
+    // servers (LM Studio / Ollama / vLLM) the C++ LLMClient targets do not
+    // require an API key (no Authorization header is sent), so the gate is the
+    // base URL rather than the key.
     try {
         auto& configManager = forensics::ConfigManager::instance();
         if (!configManager.isLoaded()) {
             configManager.load();
         }
-        if (configManager.getLLMApiKey().empty()) {
-            std::cout << "AI analysis skipped (no LLM_API_KEY configured). "
+        if (configManager.getTextBaseUrl().empty() && configManager.getLLMBaseUrl().empty()) {
+            std::cout << "AI analysis skipped (no LLM_BASE_URL configured). "
                       << "Structured analysis results in windows_* tables are unaffected." << std::endl;
             AuditLog::instance().log("SYSTEM", "WINDOWS_LLM_SKIPPED",
-                "No LLM_API_KEY configured, skipping LLM analysis");
+                "No LLM_BASE_URL configured, skipping LLM analysis");
             return;
         }
     } catch (const std::exception& e) {

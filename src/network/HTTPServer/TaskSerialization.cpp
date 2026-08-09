@@ -92,6 +92,8 @@ void to_json(nlohmann::json& j, const AnalysisTask& t) {
     j["enable_decryption"] = t.enable_decryption;
     j["key_file_dir"] = t.key_file_dir;
     // decrypt_password is intentionally runtime-only and must never be persisted.
+    // backup_password is likewise runtime-only and must never be persisted.
+    j["android_source"] = t.android_source;
 
     j["extraction_directory"] = forensics::PathManager::instance().getTaskExtractDir(t.id).string();
 
@@ -142,6 +144,12 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     if(j.contains("enable_decryption")) j.at("enable_decryption").get_to(t.enable_decryption);
     if(j.contains("key_file_dir")) j.at("key_file_dir").get_to(t.key_file_dir);
     t.decrypt_password.clear();
+    // android_source is persisted so a logical (non-TSK) task survives restart;
+    // backup_password is runtime-only and always starts cleared after reload.
+    if (j.contains("android_source")) {
+        j.at("android_source").get_to(t.android_source);
+    }
+    t.backup_password.clear();
 
     if (j.contains("created_time")) {
         auto secs = j["created_time"].get<long long>();

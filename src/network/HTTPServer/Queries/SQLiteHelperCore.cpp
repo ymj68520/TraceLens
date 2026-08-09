@@ -178,6 +178,28 @@ bool SQLiteHelper::table_exists(sqlite3* db, const std::string& table_name) {
     return exists;
 }
 
+bool SQLiteHelper::column_exists(sqlite3* db, const std::string& table_name,
+                                 const std::string& column_name) {
+    // pragma_table_info is safe against attacker-controlled names only when
+    // table_name is itself validated (callers gate on table_exists first); the
+    // column name is matched in code, not interpolated into SQL.
+    std::string sql = "SELECT name FROM pragma_table_info('" + table_name + "');";
+    sqlite3_stmt* stmt;
+    bool exists = false;
+
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            const char* name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+            if (name && column_name == name) {
+                exists = true;
+                break;
+            }
+        }
+        sqlite3_finalize(stmt);
+    }
+    return exists;
+}
+
 std::string SQLiteHelper::format_timestamp(int64_t timestamp) {
     if (timestamp <= 0) return "Unknown";
 

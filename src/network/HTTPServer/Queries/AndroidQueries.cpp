@@ -458,6 +458,15 @@ json SQLiteHelper::get_miui_qqnt_records(const std::string& android_db,
         return result;
     }
 
+    // Surface the per-artifact AI analysis columns when present (added by
+    // AndroidLLMAnalysisService via AndroidAnalysisDatabase::addLlmColumns).
+    if (column_exists(db, source, "llm_summary")) {
+        projection += ", llm_summary, llm_description, llm_keywords, llm_analyzed_at, llm_model_used";
+    } else {
+        projection += ", NULL AS llm_summary, NULL AS llm_description, NULL AS llm_keywords, "
+                      "NULL AS llm_analyzed_at, NULL AS llm_model_used";
+    }
+
     const std::string where = query.empty() ? "" : " WHERE " + searchable + " LIKE ?";
     std::vector<std::string> parameters;
     if (!query.empty()) parameters.push_back("%" + query + "%");
@@ -473,6 +482,198 @@ json SQLiteHelper::get_miui_qqnt_records(const std::string& android_db,
         }
     }
     result["items"] = std::move(items);
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::get_miui_wechat_overview(const std::string& android_db) {
+    json result;
+    sqlite3* db = open_database(android_db, result);
+    if (!db) return result;
+
+    result["artifact_categories"] = table_exists(db, "wechat_artifact_inventory")
+        ? execute_query(db, "SELECT artifact_category, parse_status, COUNT(*) AS count "
+                            "FROM wechat_artifact_inventory "
+                            "GROUP BY artifact_category, parse_status "
+                            "ORDER BY artifact_category, parse_status")
+        : json::array();
+    auto countRows = [&](const char* tableName) -> int64_t {
+        if (!table_exists(db, tableName)) return 0;
+        const json rows = execute_query(db, "SELECT COUNT(*) AS count FROM " + std::string(tableName));
+        return rows.empty() ? 0 : rows[0].value("count", 0LL);
+    };
+    result["record_counts"] = {
+        {"kv", countRows("wechat_kv_records")},
+        {"sqlite", countRows("wechat_sqlite_records")},
+        {"logs", countRows("wechat_log_events")}
+    };
+    result["log_time_range"] = table_exists(db, "wechat_log_events")
+        ? execute_query(db, "SELECT MIN(event_time) AS start_time, MAX(event_time) AS end_time "
+                            "FROM wechat_log_events WHERE event_time > 0")
+        : json::array();
+
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::get_miui_wechat_artifacts(const std::string& android_db,
+                                             const std::string& category,
+                                             const std::string& status,
+                                             const std::string& query,
+                                             int limit, int offset) {
+    json result = {{"items", json::array()}, {"total", 0}};
+    sqlite3* db = open_database(android_db, result);
+    if (!db || !table_exists(db, "wechat_artifact_inventory")) {
+        if (db) sqlite3_close(db);
+        return result;
+    }
+
+    limit = std::clamp(limit, 1, 500);
+    offset = std::max(offset, 0);
+    std::string where = " WHERE 1=1";
+    std::vector<std::string> parameters;
+    if (!category.empty()) {
+        where += " AND artifact_category = ?";
+        parameters.push_back(category);
+    }
+    if (!status.empty()) {
+        where += " AND parse_status = ?";
+        parameters.push_back(status);
+    }
+    if (!query.empty()) {
+        where += " AND (source_path LIKE ? OR summary LIKE ?)";
+        const std::string pattern = "%" + query + "%";
+        parameters.push_back(pattern);
+        parameters.push_back(pattern);
+    }
+
+    const json count = execute_query(db,
+        "SELECT COUNT(*) AS count FROM wechat_artifact_inventory" + where, parameters);
+    result["total"] = count.empty() ? 0 : count[0].value("count", 0);
+    std::vector<std::string> itemParameters = parameters;
+    itemParameters.push_back(std::to_string(limit));
+    itemParameters.push_back(std::to_string(offset));
+    result["items"] = execute_query(db,
+        "SELECT id, source_path, bak_file, artifact_category, format, size, modified_time, "
+        "type_flag, parse_status, summary, source_hash FROM wechat_artifact_inventory" + where +
+        " ORDER BY modified_time DESC, source_path LIMIT ? OFFSET ?", itemParameters);
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::get_miui_wechat_records(const std::string& android_db,
+                                           const std::string& kind, const std::string& query,
+                                           int limit, int offset, bool revealSensitive) {
+    json result = {{"items", json::array()}, {"total", 0}};
+    sqlite3* db = open_database(android_db, result);
+    if (!db) return result;
+    limit = std::clamp(limit, 1, 500);
+    offset = std::max(offset, 0);
+    std::string source;
+    std::string projection;
+    std::string searchable;
+    if (kind == "sqlite") {
+        source = "wechat_sqlite_records";
+        projection = "id, source_path, table_name AS label, record_key, record_json AS value_text, "
+                     "artifact_kind AS value_type, is_sensitive, 'sqlite' AS record_kind";
+        searchable = "source_path || ' ' || table_name || ' ' || record_json";
+    } else if (kind == "logs") {
+        source = "wechat_log_events";
+        projection = "id, source_path, tag AS label, CAST(event_time AS TEXT) AS record_key, "
+                     "message AS value_text, level AS value_type, is_sensitive, 'logs' AS record_kind";
+        searchable = "source_path || ' ' || tag || ' ' || message";
+    } else if (kind == "kv") {
+        source = "wechat_kv_records";
+        projection = "id, source_path, key AS label, namespace AS record_key, value_text, "
+                     "value_type, is_sensitive, 'kv' AS record_kind";
+        searchable = "source_path || ' ' || key || ' ' || value_text";
+    } else {
+        result["error"] = "kind must be one of: kv, sqlite, logs";
+        sqlite3_close(db);
+        return result;
+    }
+    if (!table_exists(db, source)) {
+        sqlite3_close(db);
+        return result;
+    }
+
+    // Surface the per-artifact AI analysis columns when present.
+    if (column_exists(db, source, "llm_summary")) {
+        projection += ", llm_summary, llm_description, llm_keywords, llm_analyzed_at, llm_model_used";
+    } else {
+        projection += ", NULL AS llm_summary, NULL AS llm_description, NULL AS llm_keywords, "
+                      "NULL AS llm_analyzed_at, NULL AS llm_model_used";
+    }
+
+    const std::string where = query.empty() ? "" : " WHERE " + searchable + " LIKE ?";
+    std::vector<std::string> parameters;
+    if (!query.empty()) parameters.push_back("%" + query + "%");
+    const json count = execute_query(db, "SELECT COUNT(*) AS count FROM " + source + where, parameters);
+    result["total"] = count.empty() ? 0 : count[0].value("count", 0);
+    parameters.push_back(std::to_string(limit));
+    parameters.push_back(std::to_string(offset));
+    json items = execute_query(db, "SELECT " + projection + " FROM " + source + where +
+                                " ORDER BY id DESC LIMIT ? OFFSET ?", parameters);
+    if (!revealSensitive) {
+        for (auto& item : items) {
+            if (item.value("is_sensitive", 0) != 0) item["value_text"] = "[已脱敏：点击显示原值]";
+        }
+    }
+    result["items"] = std::move(items);
+    sqlite3_close(db);
+    return result;
+}
+// Aggregate per-table AI-analysis coverage (analyzed vs total) plus a small
+// sample of analyzed rows, used by the Android page's AI-overview card.
+json SQLiteHelper::get_android_llm_summary(const std::string& android_db) {
+    json result;
+    sqlite3* db = open_database(android_db, result);
+    if (!db) return result;
+
+    // Tables covered by AndroidLLMAnalysisService, with a human-readable label.
+    struct TableSpec { const char* name; const char* label; };
+    static const TableSpec kTables[] = {
+        {"sms_messages",          "短信"},
+        {"wechat_messages",       "微信消息"},
+        {"whatsapp_messages",     "WhatsApp 消息"},
+        {"telegram_messages",     "Telegram 消息"},
+        {"contacts",              "联系人"},
+        {"call_logs",             "通话记录"},
+        {"miui_backup_manifest",  "备份清单"},
+        {"installed_apps",        "已安装应用"},
+        {"wechat_sqlite_records", "微信 SQLite 记录"},
+        {"wechat_kv_records",     "微信键值记录"},
+        {"qqnt_sqlite_records",   "QQ SQLite 记录"},
+        {"system_logs",           "系统日志"},
+        {"device_identifiers",    "设备标识"},
+        {"wifi_networks",         "WiFi 网络"}
+    };
+
+    json coverage = json::array();
+    int64_t totalArtifacts = 0;
+    int64_t totalAnalyzed = 0;
+    for (const auto& spec : kTables) {
+        if (!table_exists(db, spec.name) || !column_exists(db, spec.name, "llm_analyzed_at")) {
+            continue;
+        }
+        const json totalRow = execute_query(db,
+            "SELECT COUNT(*) AS total FROM " + std::string(spec.name));
+        const json analyzedRow = execute_query(db,
+            "SELECT COUNT(*) AS analyzed FROM " + std::string(spec.name) +
+            " WHERE llm_analyzed_at IS NOT NULL");
+        int64_t total = totalRow.empty() ? 0 : totalRow[0].value("total", 0LL);
+        int64_t analyzed = analyzedRow.empty() ? 0 : analyzedRow[0].value("analyzed", 0LL);
+        if (total == 0) continue;
+        coverage.push_back({
+            {"table", spec.name}, {"label", spec.label},
+            {"total", total}, {"analyzed", analyzed}
+        });
+        totalArtifacts += total;
+        totalAnalyzed += analyzed;
+    }
+    result["coverage"] = std::move(coverage);
+    result["totals"] = {{"total", totalArtifacts}, {"analyzed", totalAnalyzed}};
+
     sqlite3_close(db);
     return result;
 }
