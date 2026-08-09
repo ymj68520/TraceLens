@@ -564,6 +564,21 @@ target_link_libraries(test_android_analyzer_gtest ${GTEST_LIBRARIES}
 
 add_test(NAME AndroidAnalyzerGTests COMMAND test_android_analyzer_gtest)
 
+# Android media endpoint query regression tests
+add_executable(test_android_media_queries_gtest
+               UnitTest/test_android_media_queries_gtest.cpp
+               ../src/network/HTTPServer/Queries/SQLiteHelperCore.cpp
+               ../src/network/HTTPServer/Queries/AndroidQueries.cpp)
+
+target_include_directories(test_android_media_queries_gtest PRIVATE
+                           ${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(test_android_media_queries_gtest ${GTEST_LIBRARIES}
+                      ${GMOCK_LIBRARIES} gtest_main sqlite3 pthread
+                      nlohmann_json::nlohmann_json)
+
+add_test(NAME AndroidMediaQueriesGTests COMMAND test_android_media_queries_gtest)
+
 # FullText Search Tests (with Xapian integration)
 add_executable(
   test_fulltext_search_gtest

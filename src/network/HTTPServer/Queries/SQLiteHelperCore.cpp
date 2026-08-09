@@ -26,7 +26,7 @@ sqlite3* SQLiteHelper::open_database(const std::string& db_path, json& error_res
 
 json SQLiteHelper::execute_query(sqlite3* db, const std::string& sql) {
     json result = json::array();
-    sqlite3_stmt* stmt;
+    sqlite3_stmt* stmt = nullptr;
 
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
         int column_count = sqlite3_column_count(stmt);

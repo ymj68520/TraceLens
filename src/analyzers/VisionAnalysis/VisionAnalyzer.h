@@ -78,10 +78,10 @@ public:
     std::vector<AnalysisResult> analyzeBatch(const std::vector<std::string>& imagePaths);
     
     /**
-     * @brief Analyze video by extracting key frames
+     * @brief Report that video analysis is unavailable in the current build
      * @param videoPath Path to video file
-     * @param maxFrames Maximum number of frames to analyze
-     * @return Analysis result with combined frame descriptions
+     * @param maxFrames Reserved for future frame extraction support
+     * @return Analysis result with an unavailable error message
      */
     AnalysisResult analyzeVideo(const std::string& videoPath, int maxFrames = 5);
     

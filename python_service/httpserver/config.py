@@ -11,7 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional, List, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -151,6 +151,15 @@ class Settings(BaseSettings):
     llm_base_url: str = Field(default="http://localhost:1234", alias="LLM_BASE_URL")
     llm_endpoint: str = Field(default="/v1/chat/completions", alias="LLM_ENDPOINT")
     llm_api_key: str = Field(default="", alias="LLM_API_KEY")
+
+    @field_validator("llm_endpoint", mode="before")
+    @classmethod
+    def normalize_llm_endpoint(cls, value: str) -> str:
+        """Keep legacy model-name values from becoming request URL paths."""
+        endpoint = str(value or "").strip()
+        if not endpoint or endpoint.split("/", 1)[0] not in {"http:", "https:"} and not endpoint.startswith("/"):
+            return "/v1/chat/completions"
+        return endpoint
     
     llm_text_base_url: str = Field(default="http://localhost:1234", alias="LLM_TEXT_BASE_URL")
     llm_text_model: str = Field(default="openai/gpt-oss-20b", alias="LLM_TEXT_MODEL")

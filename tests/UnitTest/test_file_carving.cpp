@@ -6,8 +6,21 @@
 #include <gmock/gmock.h>
 #include <vector>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <string>
 
 #include "FileCarving/FileCarver.h"
+
+namespace fs = std::filesystem;
+
+class TestableFileCarver : public FileCarver {
+public:
+    bool validate(const std::string& path, const CarvingSignature& signature,
+                  std::string& message) {
+        return validateCarvedFile(path, signature, message);
+    }
+};
 
 using ::testing::Eq;
 using ::testing::Ge;
@@ -268,6 +281,58 @@ TEST_F(FileCarverTest, SetProgressCallback) {
     
     // Callback is set, but won't be called until carve() is invoked
     SUCCEED();
+}
+
+TEST(FileCarverValidationTest, ValidatesCompleteJpeg) {
+    const fs::path path = fs::temp_directory_path() / "tracelens_valid.jpg";
+    {
+        std::ofstream output(path, std::ios::binary);
+        output.write("\xFF\xD8\xFF", 3);
+        output.write("test", 4);
+        output.write("\xFF\xD9", 2);
+    }
+
+    CarvingSignature signature{"JPEG Image", "jpg", {0xFF, 0xD8, 0xFF},
+                               {0xFF, 0xD9}, 1024};
+    TestableFileCarver carver;
+    std::string message;
+
+    EXPECT_TRUE(carver.validate(path.string(), signature, message));
+    EXPECT_EQ(message, "Valid JPEG");
+    fs::remove(path);
+}
+
+TEST(FileCarverValidationTest, DoesNotValidateVideoWithoutContainerParser) {
+    const fs::path path = fs::temp_directory_path() / "tracelens_candidate.mp4";
+    {
+        std::ofstream output(path, std::ios::binary);
+        output.write("\x00\x00\x00\x18" "ftypisom", 12);
+    }
+
+    CarvingSignature signature{"MP4/MOV Video", "mp4", {0x66, 0x74, 0x79, 0x70},
+                               {}, 1024, -4};
+    TestableFileCarver carver;
+    std::string message;
+
+    EXPECT_FALSE(carver.validate(path.string(), signature, message));
+    EXPECT_EQ(message, "No content validator for this type");
+    fs::remove(path);
+}
+
+TEST(FileCarverValidationTest, DoesNotValidateUnknownFormat) {
+    const fs::path path = fs::temp_directory_path() / "tracelens_candidate.bin";
+    {
+        std::ofstream output(path, std::ios::binary);
+        output << "candidate data";
+    }
+
+    CarvingSignature signature{"Unknown", "bin", {0x00}, {}, 1024};
+    TestableFileCarver carver;
+    std::string message;
+
+    EXPECT_FALSE(carver.validate(path.string(), signature, message));
+    EXPECT_EQ(message, "No content validator for this type");
+    fs::remove(path);
 }
 
 // ============================================================================

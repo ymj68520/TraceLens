@@ -159,38 +159,10 @@ json SQLiteHelper::get_android_media_analysis(const std::string& android_db) {
     sqlite3* db = open_database(android_db, result);
     if (!db) return result;
 
-    // Framework media files
-    if (table_exists(db, "framework_files")) {
-        json media_files = execute_query(db, R"(
-            SELECT file_path, file_size, mime_type
-            FROM framework_files
-            WHERE mime_type LIKE 'image/%' OR mime_type LIKE 'video/%' OR mime_type LIKE 'audio/%'
-            ORDER BY file_size DESC
-            LIMIT 100
-        )");
-
-        // Media files by type
-        json media_by_type = execute_query(db, R"(
-            SELECT
-                CASE
-                    WHEN mime_type LIKE 'image/%' THEN 'images'
-                    WHEN mime_type LIKE 'video/%' THEN 'videos'
-                    WHEN mime_type LIKE 'audio/%' THEN 'audio'
-                    ELSE 'other'
-                END as media_type,
-                COUNT(*) as file_count,
-                SUM(file_size) as total_size
-            FROM framework_files
-            WHERE mime_type IS NOT NULL
-            GROUP BY media_type
-        )");
-
-        result["media_files"] = media_files;
-        result["media_by_type"] = media_by_type;
-    } else {
-        result["media_files"] = json::array();
-        result["media_by_type"] = json::array();
-    }
+    // framework_files inventories framework JAR/DEX/SO artifacts, not user media.
+    // Preserve the legacy response shape until a dedicated Android media source exists.
+    result["media_files"] = json::array();
+    result["media_by_type"] = json::array();
 
     sqlite3_close(db);
     return result;
