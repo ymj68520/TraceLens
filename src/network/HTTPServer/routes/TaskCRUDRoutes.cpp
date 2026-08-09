@@ -193,6 +193,13 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         std::string key_file_dir = body.value("key_file_dir", body.value("key_dir", ""));
         std::string decrypt_password = body.value("decrypt_password", "");
 
+        // Android data source mode. "tsk" (default) runs the standard TSK
+        // disk-image pipeline; "dir" / "zip" / "miui-backup" short-circuit
+        // straight to the Android analyzer (no _raw.db produced).
+        std::string android_source = body.value("android_source", "tsk");
+        // MIUI / Android backup AES-256 password (runtime-only, never persisted).
+        std::string backup_password = body.value("backup_password", "");
+
         // ATOMIC TASK CREATION: All options in one go to prevent lock contention and redundant disk I/O
         std::string task_id = task_manager_.create_task(
             image_path,
@@ -208,7 +215,9 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             filter_profile,
             enable_decryption,
             key_file_dir,
-            decrypt_password
+            decrypt_password,
+            android_source,
+            backup_password
         );
 
         // Check if task can start immediately
@@ -228,6 +237,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             {"llm_analyze", llm_analyze},
             {"llm_mode", llm_mode},
             {"filter_profile", filter_profile},
+            {"android_source", android_source},
             {"dependencies_count", dependencies.size()}
         };
 

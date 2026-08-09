@@ -86,6 +86,20 @@ public:
     void analyzeAndroidData();
 
     /**
+     * @brief AI-powered LLM analysis of all Android artifacts
+     *
+     * Mirrors LinuxFilesAnalyzer::analyzeWithLLM / WindowsFilesAnalyzer::analyzeWithLLM:
+     * runs as the final analysis phase over the android.db artifact tables and
+     * writes llm_summary / llm_description / llm_keywords columns in place.
+     * Auto-skipped when no LLM endpoint is configured or skipAI_ is set.
+     */
+    void analyzeWithLLM();
+
+    /// Skip the AI analysis phase (mirrors the analyzers' --no-ai flag).
+    void setSkipAI(bool skip) { skipAI_ = skip; }
+    bool getSkipAI() const { return skipAI_; }
+
+    /**
      * @brief Analyze the /system directory
      * @param systemPath Path to system directory
      */
@@ -176,4 +190,5 @@ private:
     std::string wechatPassword_;
     std::string backupPassword_;
     std::string secureTemporaryRoot_;
+    bool skipAI_ = false;
 };

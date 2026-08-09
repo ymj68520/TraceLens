@@ -248,6 +248,35 @@ inline constexpr const char* CREATE_MIUI_TABLES = R"(
         level TEXT, tag TEXT, message TEXT,
         parse_status TEXT, is_sensitive INTEGER DEFAULT 0
     );
+    -- WeChat (com.tencent.mm) evidence mirrors the QQNT inventory tables so
+    -- the MIUI backup page can present file-evidence + recovered structured
+    -- records alongside the existing decrypted-content tables.
+    CREATE TABLE IF NOT EXISTS wechat_artifact_inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        package_name TEXT NOT NULL, source_path TEXT NOT NULL,
+        bak_file TEXT, artifact_category TEXT, format TEXT,
+        size INTEGER, modified_time INTEGER, type_flag TEXT,
+        parse_status TEXT, summary TEXT, source_hash TEXT,
+        UNIQUE(package_name, source_path)
+    );
+    CREATE TABLE IF NOT EXISTS wechat_kv_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_path TEXT NOT NULL, namespace TEXT, key TEXT NOT NULL,
+        value_type TEXT, value_text TEXT, value_hash TEXT,
+        is_sensitive INTEGER DEFAULT 0, parse_status TEXT
+    );
+    CREATE TABLE IF NOT EXISTS wechat_sqlite_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_path TEXT NOT NULL, table_name TEXT NOT NULL,
+        record_key TEXT, record_json TEXT, artifact_kind TEXT,
+        is_sensitive INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS wechat_log_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_path TEXT NOT NULL, event_time INTEGER,
+        level TEXT, tag TEXT, message TEXT,
+        parse_status TEXT, is_sensitive INTEGER DEFAULT 0
+    );
 )";
 
 // ============================================================================
@@ -311,6 +340,15 @@ inline constexpr const char* INSERT_APP_DATABASE_FILE =
 
 inline constexpr const char* INSERT_SYSTEM_LOG = 
     "INSERT INTO system_logs (timestamp, log_level, tag, process, pid, message, log_file, log_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
+
+// ============================================================================
+// LLM analysis progress tracking table (mirrors linux/windows *_analysis_progress)
+// ============================================================================
+inline constexpr const char* CREATE_ANALYSIS_PROGRESS =
+    "CREATE TABLE IF NOT EXISTS android_analysis_progress ("
+    "  task_id TEXT, table_name TEXT, total_artifacts INTEGER, completed_artifacts INTEGER,"
+    "  started_at INTEGER, last_updated INTEGER, status TEXT"
+    ");";
 
 } // namespace AndroidAnalysisSQL
 

@@ -149,6 +149,17 @@ struct AnalysisTask {
     std::string key_file_dir;           // Override dir for sibling .key files
     std::string decrypt_password;       // Explicit password (bypasses .key lookup)
 
+    // Android data source mode. Selects the AndroidAnalyzer backend:
+    //   "tsk" (default) — Android artifacts read from a TSK-produced _raw.db
+    //   "dir"           — logical extraction laid out as a directory tree
+    //   "zip"           — logical extraction packaged as a single .zip
+    //   "miui-backup"   — Xiaomi MIUI offline backup (.bak folder + descript.xml)
+    // Only "tsk" participates in the standard TSK disk-image pipeline; the
+    // other values short-circuit straight to the Android analyzer.
+    std::string android_source = "tsk";
+    // MIUI / Android backup AES-256 password. Runtime-only — never persisted.
+    std::string backup_password;
+
     // Make it copyable and movable by handling the atomic properly
     AnalysisTask() = default;
     AnalysisTask(const AnalysisTask& other)
@@ -171,7 +182,9 @@ struct AnalysisTask {
           filter_profile(other.filter_profile),
           enable_decryption(other.enable_decryption),
           key_file_dir(other.key_file_dir),
-          decrypt_password(other.decrypt_password) {}
+          decrypt_password(other.decrypt_password),
+          android_source(other.android_source),
+          backup_password(other.backup_password) {}
 
     AnalysisTask& operator=(const AnalysisTask& other) {
         if (this != &other) {
@@ -207,6 +220,8 @@ struct AnalysisTask {
             enable_decryption = other.enable_decryption;
             key_file_dir = other.key_file_dir;
             decrypt_password = other.decrypt_password;
+            android_source = other.android_source;
+            backup_password = other.backup_password;
         }
         return *this;
     }
@@ -233,7 +248,9 @@ struct AnalysisTask {
           filter_profile(std::move(other.filter_profile)),
           enable_decryption(other.enable_decryption),
           key_file_dir(std::move(other.key_file_dir)),
-          decrypt_password(std::move(other.decrypt_password)) {}
+          decrypt_password(std::move(other.decrypt_password)),
+          android_source(std::move(other.android_source)),
+          backup_password(std::move(other.backup_password)) {}
 
     AnalysisTask& operator=(AnalysisTask&& other) noexcept {
         if (this != &other) {
@@ -269,6 +286,8 @@ struct AnalysisTask {
             enable_decryption = other.enable_decryption;
             key_file_dir = std::move(other.key_file_dir);
             decrypt_password = std::move(other.decrypt_password);
+            android_source = std::move(other.android_source);
+            backup_password = std::move(other.backup_password);
         }
         return *this;
     }

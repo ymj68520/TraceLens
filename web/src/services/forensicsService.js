@@ -203,6 +203,30 @@ export const getMiuiQqntRecords = async (taskId, params = {}) => {
   });
 };
 
+export const getMiuiWechatOverview = async (taskId) => {
+  return await api.get('/api/forensics/android/miui-wechat-overview', {
+    params: { task_id: taskId },
+  });
+};
+
+export const getMiuiWechatArtifacts = async (taskId, params = {}) => {
+  return await api.get('/api/forensics/android/miui-wechat-artifacts', {
+    params: { task_id: taskId, ...params },
+  });
+};
+
+export const getMiuiWechatRecords = async (taskId, params = {}) => {
+  return await api.get('/api/forensics/android/miui-wechat-records', {
+    params: { task_id: taskId, ...params },
+  });
+};
+
+export const getAndroidLlmSummary = async (taskId) => {
+  return await api.get('/api/forensics/android/llm-summary', {
+    params: { task_id: taskId },
+  });
+};
+
 // Statistics
 export const getStatisticsOverview = async (taskId) => {
   return await api.get('/api/forensics/statistics/overview', {

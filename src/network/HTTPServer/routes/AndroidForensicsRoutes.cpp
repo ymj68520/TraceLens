@@ -80,6 +80,27 @@ AndroidForensicsRoutes::AndroidForensicsRoutes(crow::App<>& app) {
     CROW_ROUTE(app, "/api/forensics/android/miui-qqnt-records").methods("GET"_method)([this](const crow::request& req) {
         return handle_miui_qqnt_records(req);
     });
+    CROW_ROUTE(app, "/api/forensics/android/miui-wechat-overview").methods("GET"_method)([this](const crow::request& req) {
+        return handle_miui_wechat_overview(req);
+    });
+    CROW_ROUTE(app, "/api/forensics/android/miui-wechat-artifacts").methods("GET"_method)([this](const crow::request& req) {
+        return handle_miui_wechat_artifacts(req);
+    });
+    CROW_ROUTE(app, "/api/forensics/android/miui-wechat-records").methods("GET"_method)([this](const crow::request& req) {
+        return handle_miui_wechat_records(req);
+    });
+    CROW_ROUTE(app, "/api/forensics/android/llm-summary").methods("GET"_method)([this](const crow::request& req) {
+        return handle_android_llm_summary(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/android/llm-summary", "GET",
+        "Get Android AI-analysis coverage summary",
+        "Aggregate per-table AI-analysis coverage (analyzed vs total) for the "
+        "Android artifact tables.",
+        {"Forensics", "Android"},
+        {{"task_id", "query", "Task ID", true}},
+        {{200, "Android LLM coverage summary"}}
+    );
     Swagger::instance().RegisterEndpoint(
         "/api/forensics/android/miui-qqnt-overview", "GET",
         "Get QQNT backup evidence overview",
@@ -87,6 +108,14 @@ AndroidForensicsRoutes::AndroidForensicsRoutes(crow::App<>& app) {
         {"Forensics", "Android"},
         {{"task_id", "query", "Task ID", true}},
         {{200, "QQNT evidence overview"}}
+    );
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/android/miui-wechat-overview", "GET",
+        "Get WeChat backup evidence overview",
+        "Retrieve WeChat (com.tencent.mm) artifact category and recovered-record counts from a MIUI backup.",
+        {"Forensics", "Android"},
+        {{"task_id", "query", "Task ID", true}},
+        {{200, "WeChat evidence overview"}}
     );
 }
 
@@ -371,6 +400,122 @@ crow::response AndroidForensicsRoutes::handle_miui_qqnt_records(const crow::requ
         res.code = 500;
         res.set_header("Content-Type", "application/json");
         res.write(json{{"error", error.what()}}.dump());
+    }
+    return res;
+}
+
+crow::response AndroidForensicsRoutes::handle_miui_wechat_overview(const crow::request& req) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    const std::string taskId = params.get("task_id") ? params.get("task_id") : "";
+    if (taskId.empty()) {
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(json{{"error", "task_id parameter is required"}}.dump());
+        return res;
+    }
+    try {
+        const auto database = RouteHelpers::get_database_path(taskId, "android");
+        res.set_header("Content-Type", "application/json");
+        res.write(SQLiteHelper::get_miui_wechat_overview(database).dump());
+    } catch (const std::exception& error) {
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(json{{"error", error.what()}}.dump());
+    }
+    return res;
+}
+
+crow::response AndroidForensicsRoutes::handle_miui_wechat_artifacts(const crow::request& req) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    const std::string taskId = params.get("task_id") ? params.get("task_id") : "";
+    if (taskId.empty()) {
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(json{{"error", "task_id parameter is required"}}.dump());
+        return res;
+    }
+    try {
+        const auto database = RouteHelpers::get_database_path(taskId, "android");
+        const int limit = params.get("limit") ? std::max(1, std::atoi(params.get("limit"))) : 100;
+        const int offset = params.get("offset") ? std::max(0, std::atoi(params.get("offset"))) : 0;
+        res.set_header("Content-Type", "application/json");
+        res.write(SQLiteHelper::get_miui_wechat_artifacts(
+            database,
+            params.get("category") ? params.get("category") : "",
+            params.get("status") ? params.get("status") : "",
+            params.get("query") ? params.get("query") : "", limit, offset).dump());
+    } catch (const std::exception& error) {
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(json{{"error", error.what()}}.dump());
+    }
+    return res;
+}
+
+crow::response AndroidForensicsRoutes::handle_miui_wechat_records(const crow::request& req) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    const std::string taskId = params.get("task_id") ? params.get("task_id") : "";
+    if (taskId.empty()) {
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(json{{"error", "task_id parameter is required"}}.dump());
+        return res;
+    }
+    const std::string kind = params.get("kind") ? params.get("kind") : "kv";
+    if (kind != "kv" && kind != "sqlite" && kind != "logs") {
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(json{{"error", "kind must be one of: kv, sqlite, logs"}}.dump());
+        return res;
+    }
+    try {
+        const auto database = RouteHelpers::get_database_path(taskId, "android");
+        const int limit = params.get("limit") ? std::max(1, std::atoi(params.get("limit"))) : 100;
+        const int offset = params.get("offset") ? std::max(0, std::atoi(params.get("offset"))) : 0;
+        const bool revealSensitive = params.get("reveal_sensitive") &&
+            std::string(params.get("reveal_sensitive")) == "1";
+        res.set_header("Content-Type", "application/json");
+        res.write(SQLiteHelper::get_miui_wechat_records(
+            database, kind,
+            params.get("query") ? params.get("query") : "", limit, offset,
+            revealSensitive).dump());
+    } catch (const std::exception& error) {
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(json{{"error", error.what()}}.dump());
+    }
+    return res;
+}
+
+crow::response AndroidForensicsRoutes::handle_android_llm_summary(const crow::request& req) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+
+    if (task_id.empty()) {
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(json{{"error", "task_id parameter is required"}}.dump());
+        return res;
+    }
+
+    try {
+        std::string android_db = RouteHelpers::get_database_path(task_id, "android");
+        json result = SQLiteHelper::get_android_llm_summary(android_db);
+        res.set_header("Content-Type", "application/json");
+        res.write(result.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
     }
     return res;
 }

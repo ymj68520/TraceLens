@@ -83,10 +83,12 @@ std::string TaskManager::create_task(const std::string& path,
                                    bool llm_analyze,
                                    const std::string& llm_mode,
                                    const std::string& case_description,
-                                   const std::string& filter_profile,
-                                   bool enable_decryption,
-                                   const std::string& key_file_dir,
-                                   const std::string& decrypt_password) {
+                           const std::string& filter_profile,
+                           bool enable_decryption,
+                           const std::string& key_file_dir,
+                           const std::string& decrypt_password,
+                           const std::string& android_source,
+                           const std::string& backup_password) {
     std::lock_guard<std::mutex> lock(mtx_);
     boost::uuids::uuid uuid = boost::uuids::random_generator()();
     std::string id = boost::uuids::to_string(uuid);
@@ -126,6 +128,8 @@ std::string TaskManager::create_task(const std::string& path,
     new_task.enable_decryption = enable_decryption;
     new_task.key_file_dir = key_file_dir;
     new_task.decrypt_password = decrypt_password;
+    new_task.android_source = android_source.empty() ? "tsk" : android_source;
+    new_task.backup_password = backup_password;
     new_task.cancellation_requested = false;
     new_task.error_details = "";
     new_task.metadata = metadata;
@@ -161,6 +165,7 @@ void TaskManager::update_status(const std::string& id, TaskStatus status, const 
         } else if (status == TaskStatus::COMPLETED || status == TaskStatus::FAILED || status == TaskStatus::CANCELLED) {
             tasks_[id].completed_time = now_system;
             tasks_[id].decrypt_password.clear();
+            tasks_[id].backup_password.clear();
         }
 
         add_audit_log(id, "STATUS_CHANGE", "Status changed to " + std::to_string(static_cast<int>(status)));
@@ -224,6 +229,14 @@ void TaskManager::clear_decryption_password(const std::string& id) {
     auto it = tasks_.find(id);
     if (it != tasks_.end()) {
         it->second.decrypt_password.clear();
+    }
+}
+
+void TaskManager::clear_backup_password(const std::string& id) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = tasks_.find(id);
+    if (it != tasks_.end()) {
+        it->second.backup_password.clear();
     }
 }
 
