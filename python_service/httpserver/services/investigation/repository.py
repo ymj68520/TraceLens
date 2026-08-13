@@ -43,17 +43,18 @@ from .acquisition import build_snapshot_candidate, canonical_json
 from .models import (
     SECONDARY_TRANSITIONS,
     TERMINAL_SECONDARY_STATUSES,
-    AnalysisInputEnvelope,
+    AnalysisInputEnvelopeV2,
     ClusterSnapshotPayload,
     EvidenceSnapshot,
     FileSnapshotPayload,
+    RelatedEvidenceEntry,
     SecondaryAnalysis,
     SecondaryAnalysisStatus,
 )
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSION = 3
 
 # ---------------------------------------------------------------------------
 # DDL: evidence_snapshots (v1, unchanged)
@@ -161,6 +162,24 @@ BEGIN
     SELECT RAISE(ABORT, 'terminal secondary analysis is immutable');
 END
 """
+# DB guard 3 (v3): input columns are immutable for ALL states, not just terminal.
+# Only output/state columns (status, description, summary, model, lifecycle
+# timestamps, decision/error fields) may change via the state machine.
+_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_secondary_no_input_update
+BEFORE UPDATE ON secondary_analyses
+WHEN
+       NEW.task_id             IS NOT OLD.task_id
+    OR NEW.evidence_key        IS NOT OLD.evidence_key
+    OR NEW.snapshot_id         IS NOT OLD.snapshot_id
+    OR NEW.version             IS NOT OLD.version
+    OR NEW.input_hash          IS NOT OLD.input_hash
+    OR NEW.input_envelope_json IS NOT OLD.input_envelope_json
+    OR NEW.prompt_version      IS NOT OLD.prompt_version
+BEGIN
+    SELECT RAISE(ABORT, 'secondary analysis input is immutable');
+END
+"""
 
 _REQUIRED_SECONDARY_COLUMNS = {
     "analysis_id", "task_id", "evidence_key", "snapshot_id", "version", "status",
@@ -195,7 +214,7 @@ def _new_analysis_id() -> str:
 class InvestigationRepository:
     """SQLite-backed immutable Evidence Snapshot + Secondary Analysis store.
 
-    A single repository owns the full v2 schema for both tables (avoids
+    A single repository owns the full v3 schema for both tables (avoids
     user_version contention / duplicate migration paths).
     """
 
@@ -221,24 +240,27 @@ class InvestigationRepository:
         with self._connect() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
-            self._initialize_v2_atomically()
-            self._validate_v2_schema()
+            self._initialize_v3_atomically()
+            self._validate_v3_schema()
         elif version == 1:
-            self._migrate_v1_to_v2()
-            self._validate_v2_schema()
+            self._migrate_v1_to_v3()
+            self._validate_v3_schema()
+        elif version == 2:
+            self._migrate_v2_to_v3()
+            self._validate_v3_schema()
         elif version == SUPPORTED_SCHEMA_VERSION:
             # Validate core schema FIRST (columns/UNIQUE/trigger/FK); a corrupt
             # store must fail closed before building auxiliary objects.
-            self._validate_v2_schema()
-            self._ensure_v2_auxiliary_objects()
+            self._validate_v3_schema()
+            self._ensure_v3_auxiliary_objects()
         else:
             raise EvidenceStoreError(
                 f"unsupported investigation.db schema version: {version} "
                 f"(supported: {SUPPORTED_SCHEMA_VERSION})"
             )
 
-    def _initialize_v2_atomically(self) -> None:
-        """New database: build both tables + objects + version=2 in one tx (A13)."""
+    def _initialize_v3_atomically(self) -> None:
+        """New database: build both tables + all objects + version=3 in one tx."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             # evidence_snapshots (v1 table)
@@ -247,21 +269,20 @@ class InvestigationRepository:
             conn.execute(_INDEX_CLUSTER_SQL)
             conn.execute(_INDEX_TASK_SQL)
             conn.execute(_TRIGGER_EVSNAP_NO_UPDATE_SQL)
-            # secondary_analyses (v2 addition)
+            # secondary_analyses (v2 table + v3 input immutability trigger)
             conn.execute(_CREATE_SECONDARY_ANALYSES_SQL)
             conn.execute(_INDEX_SECONDARY_SCOPE_VERSION_SQL)
             conn.execute(_INDEX_SECONDARY_STATUS_SQL)
             conn.execute(_TRIGGER_SECONDARY_LEGAL_TRANSITION_SQL)
             conn.execute(_TRIGGER_SECONDARY_NO_TERMINAL_UPDATE_SQL)
+            conn.execute(_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL)
             conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
             conn.commit()
 
-    def _migrate_v1_to_v2(self) -> None:
-        """Existing v1 database: add secondary_analyses objects + bump version (A13).
+    def _migrate_v1_to_v3(self) -> None:
+        """v1 database: add secondary_analyses with all triggers + bump to v3.
 
-        Uses explicit ``conn.execute()`` per statement -- ``executescript()`` is
-        FORBIDDEN because it implicitly COMMITs pending transactions, breaking
-        migration atomicity.  Any exception rolls back; user_version stays 1.
+        Equivalent to v1->v2->v3 in one atomic step.
         """
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -270,10 +291,24 @@ class InvestigationRepository:
             conn.execute(_INDEX_SECONDARY_STATUS_SQL)
             conn.execute(_TRIGGER_SECONDARY_LEGAL_TRANSITION_SQL)
             conn.execute(_TRIGGER_SECONDARY_NO_TERMINAL_UPDATE_SQL)
+            conn.execute(_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL)
             conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
             conn.commit()
 
-    def _ensure_v2_auxiliary_objects(self) -> None:
+    def _migrate_v2_to_v3(self) -> None:
+        """v2 database: add input immutability trigger + bump to v3 (CCTX6).
+
+        Uses explicit ``conn.execute()`` per statement -- ``executescript()`` is
+        FORBIDDEN because it implicitly COMMITs pending transactions, breaking
+        migration atomicity.  Any exception rolls back; user_version stays 2.
+        """
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+
+    def _ensure_v3_auxiliary_objects(self) -> None:
         """Self-heal missing indexes/triggers only (idempotent CREATE IF NOT EXISTS)."""
         with self._connect() as conn:
             conn.execute(_INDEX_PATH_SQL)
@@ -284,9 +319,10 @@ class InvestigationRepository:
             conn.execute(_INDEX_SECONDARY_STATUS_SQL)
             conn.execute(_TRIGGER_SECONDARY_LEGAL_TRANSITION_SQL)
             conn.execute(_TRIGGER_SECONDARY_NO_TERMINAL_UPDATE_SQL)
+            conn.execute(_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL)
             conn.commit()
 
-    def _validate_v2_schema(self) -> None:
+    def _validate_v3_schema(self) -> None:
         with self._connect() as conn:
             self._validate_evidence_snapshots(conn)
             self._validate_secondary_analyses(conn)
@@ -349,6 +385,7 @@ class InvestigationRepository:
         for trig_name in (
             "trg_secondary_legal_transition",
             "trg_secondary_no_terminal_update",
+            "trg_secondary_no_input_update",
         ):
             trig = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?",
@@ -497,14 +534,31 @@ class InvestigationRepository:
                 )
             trusted_snapshot = self._row_to_snapshot(row)
 
-            # A7/A8/A11: build envelope from DB-trusted snapshot.
-            # model_dump(mode="json") excludes snapshot_id (Field exclude=True, A12),
-            # so the surrogate never enters the hash material.
-            envelope = AnalysisInputEnvelope(
+            # C4c/CCTX5: re-read each related evidence snapshot from DB (A11).
+            related_entries = []
+            for rel_key in related_evidence:
+                rel_row = conn.execute(
+                    "SELECT * FROM evidence_snapshots "
+                    "WHERE task_id = ? AND evidence_key = ?",
+                    [self.task_id, rel_key],
+                ).fetchone()
+                if rel_row is None:
+                    raise ValueError(
+                        f"related evidence snapshot not found: {rel_key!r}"
+                    )
+                rel_snapshot = self._row_to_snapshot(rel_row)
+                related_entries.append(RelatedEvidenceEntry(
+                    evidence_key=rel_key,
+                    snapshot=rel_snapshot.model_dump(mode="json"),
+                ))
+
+            # A7/A8/A11: build V2 envelope from DB-trusted snapshots.
+            # model_dump(mode="json") excludes snapshot_id (Field exclude=True, A12).
+            envelope = AnalysisInputEnvelopeV2(
                 evidence_snapshot=trusted_snapshot.model_dump(mode="json"),
                 analyst_note=analyst_note,
                 case_context=case_context,
-                related_evidence=tuple(related_evidence),
+                related_evidence=tuple(related_entries),
                 prompt_version=prompt_version,
             )
             envelope_json = canonical_json(envelope)

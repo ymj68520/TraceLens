@@ -18,16 +18,19 @@ from .execution import SecondaryAnalysisExecutor
 from .models import (
     SECONDARY_TRANSITIONS,
     TERMINAL_SECONDARY_STATUSES,
-    AnalysisInputEnvelope,
+    AnalysisInputEnvelopeV1,
+    AnalysisInputEnvelopeV2,
     ClusterSnapshotPayload,
     EvidenceSnapshot,
     FileSnapshotPayload,
+    RelatedEvidenceEntry,
     SecondaryAnalysis,
     SecondaryAnalysisStatus,
     SnapshotCandidate,
+    parse_analysis_input_envelope,
 )
 from .paths import investigation_db_path_for_task
-from .prompts import CURRENT_PROMPT_VERSION, PROMPT_REGISTRY, get_prompt
+from .prompts import CURRENT_PROMPT_VERSION, ENVELOPE_PROMPT_COMPAT, PROMPT_REGISTRY, get_prompt
 from .repository import InvestigationRepository, SUPPORTED_SCHEMA_VERSION
 from .service import InvestigationCaptureService
 
@@ -43,12 +46,16 @@ __all__ = [
     "ClusterSnapshotPayload",
     "SecondaryAnalysis",
     "SecondaryAnalysisStatus",
-    "AnalysisInputEnvelope",
+    "AnalysisInputEnvelopeV1",
+    "AnalysisInputEnvelopeV2",
+    "RelatedEvidenceEntry",
+    "parse_analysis_input_envelope",
     "SECONDARY_TRANSITIONS",
     "TERMINAL_SECONDARY_STATUSES",
     "InvestigationCaptureService",
     "SecondaryAnalysisExecutor",
     "CURRENT_PROMPT_VERSION",
+    "ENVELOPE_PROMPT_COMPAT",
     "PROMPT_REGISTRY",
     "get_prompt",
 ]

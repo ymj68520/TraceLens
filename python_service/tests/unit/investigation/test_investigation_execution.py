@@ -421,12 +421,16 @@ async def test_input_hash_mismatch_detected(tmp_path):
     _, idb, repo, snap, analysis = _setup(tmp_path)
     mock_llm = _mock_llm()
 
-    # Tamper with envelope (hash no longer matches)
+    # v3 trigger blocks input column UPDATEs; DROP → tamper → recreate to
+    # simulate bypass/corruption and test executor defense-in-depth (hash check).
+    from httpserver.services.investigation.repository import _TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL
     conn = sqlite3.connect(idb)
+    conn.execute("DROP TRIGGER trg_secondary_no_input_update")
     conn.execute(
         "UPDATE secondary_analyses SET input_envelope_json = ? WHERE analysis_id = ?",
-        ['{"tampered": true}', analysis.analysis_id],
+        ['{"schema_version":2,"evidence_snapshot":{}}', analysis.analysis_id],
     )
+    conn.execute(_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL)  # recreate
     conn.commit()
     conn.close()
 
@@ -448,12 +452,15 @@ async def test_prompt_version_mismatch(tmp_path):
     _, idb, repo, snap, analysis = _setup(tmp_path)
     mock_llm = _mock_llm()
 
-    # Tamper: row prompt_version differs from envelope
+    # v3 trigger blocks prompt_version UPDATE; DROP → tamper → recreate
+    from httpserver.services.investigation.repository import _TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL
     conn = sqlite3.connect(idb)
+    conn.execute("DROP TRIGGER trg_secondary_no_input_update")
     conn.execute(
         "UPDATE secondary_analyses SET prompt_version = 'different:v1' WHERE analysis_id = ?",
         [analysis.analysis_id],
     )
+    conn.execute(_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL)  # recreate
     conn.commit()
     conn.close()
 

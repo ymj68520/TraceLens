@@ -73,12 +73,23 @@ async def capture_snapshot(
 # ---------------------------------------------------------------------------
 
 class CreateAnalysisRequest(BaseModel):
-    """Strict public boundary: exactly task_id + evidence_key (no context yet)."""
+    """Public boundary for Secondary Analysis with optional analyst context (C4c).
+
+    analyst_note and case_context are plain text (CCTX1: Note != Evidence).
+    related_evidence is a list of evidence_keys that will be canonicalized,
+    deduplicated, and resolved + captured in the SAME task before analysis.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     task_id: str = Field(min_length=1)
     evidence_key: str = Field(min_length=1)
+    analyst_note: Optional[str] = Field(default=None, max_length=20_000)
+    case_context: Optional[str] = Field(default=None, max_length=20_000)
+    related_evidence: list[str] = Field(
+        default_factory=list, max_length=20,
+        description="Canonical evidence_keys of related evidence (max 20)",
+    )
 
 
 def get_secondary_analysis_executor() -> SecondaryAnalysisExecutor:
@@ -99,7 +110,13 @@ async def create_analysis(
 ) -> SecondaryAnalysis:
     """Create a queued Secondary Analysis and start background LLM execution."""
     try:
-        return await executor.submit(request.task_id, request.evidence_key)
+        return await executor.submit(
+            request.task_id,
+            request.evidence_key,
+            analyst_note=request.analyst_note,
+            case_context=request.case_context,
+            related_evidence=tuple(request.related_evidence),
+        )
     except InvalidEvidenceKeyError as exc:
         raise HTTPException(status_code=400, detail="invalid evidence key") from exc
     except EvidenceNotFoundError as exc:

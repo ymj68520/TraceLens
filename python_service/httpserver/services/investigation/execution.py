@@ -27,9 +27,10 @@ from typing import TYPE_CHECKING, Any, Optional
 import httpx
 
 from ..evidence.exceptions import EvidenceNotFoundError, EvidenceStoreError
-from .models import SecondaryAnalysis, SecondaryAnalysisStatus
+from ..evidence.keys import parse_evidence_key
+from .models import SecondaryAnalysis, SecondaryAnalysisStatus, parse_analysis_input_envelope
 from .paths import investigation_db_path_for_task
-from .prompts import CURRENT_PROMPT_VERSION, build_user_prompt, get_prompt
+from .prompts import CURRENT_PROMPT_VERSION, ENVELOPE_PROMPT_COMPAT, build_user_prompt, get_prompt
 from .repository import InvestigationRepository
 
 if TYPE_CHECKING:
@@ -129,16 +130,43 @@ class SecondaryAnalysisExecutor:
     # public API
     # =====================================================================
 
-    async def submit(self, task_id: str, evidence_key: str) -> SecondaryAnalysis:
+    async def submit(
+        self,
+        task_id: str,
+        evidence_key: str,
+        *,
+        analyst_note: Optional[str] = None,
+        case_context: Optional[str] = None,
+        related_evidence: tuple[str, ...] = (),
+    ) -> SecondaryAnalysis:
         """Capture snapshot, create a queued analysis, start background execution.
 
         E1: the queued record is persisted BEFORE the background task starts.
         The admission lock ensures submit and shutdown are mutually exclusive
         (no new task appears after shutdown completes).
+
+        C4c: analyst_note / case_context / related_evidence are frozen into the
+        envelope at create time. Related evidence keys are canonicalized,
+        deduplicated, self-references removed, and deterministically sorted
+        (same logical input → same input_hash). Each is resolved + captured
+        in the SAME task before create_analysis.
         """
-        # Phase 1: capture + derive db_path (OUTSIDE the admission lock so
-        # concurrent submits don't serialize on capture latency).
+        # Phase 1: capture primary + related evidence (OUTSIDE the admission lock).
         snapshot = await self._capture_service.capture(task_id, evidence_key)
+
+        # Canonicalize related evidence: parse → dedupe → discard primary → sort.
+        primary_key = snapshot.evidence_key
+        canonical_related: set[str] = set()
+        for raw_key in related_evidence:
+            parsed = parse_evidence_key(raw_key)
+            canonical_related.add(parsed.canonical_key)
+        canonical_related.discard(primary_key)
+        ordered_related = tuple(sorted(canonical_related))
+
+        # CCTX3/CCTX4: resolve + capture each related evidence in the SAME task.
+        for rel_key in ordered_related:
+            await self._capture_service.capture(task_id, rel_key)
+
         task = await self._cpp_backend.get_task(task_id)
         if task is None:
             raise EvidenceNotFoundError(f"task not found: {task_id!r}")
@@ -152,9 +180,9 @@ class SecondaryAnalysisExecutor:
             analysis = await asyncio.to_thread(
                 repo.create_analysis,
                 snapshot,
-                analyst_note=None,
-                case_context=None,
-                related_evidence=(),
+                analyst_note=analyst_note,
+                case_context=case_context,
+                related_evidence=ordered_related,
                 prompt_version=CURRENT_PROMPT_VERSION,
             )
             # E11: pass the SAME db_path — worker never re-derives it.
@@ -224,7 +252,7 @@ class SecondaryAnalysisExecutor:
                 return
 
             # === Input integrity verification (before LLM) ===
-            envelope = json.loads(analysis.input_envelope_json)
+            envelope = parse_analysis_input_envelope(analysis.input_envelope_json)
 
             # Verify input_hash matches envelope content (tamper detection)
             actual_hash = hashlib.sha256(
@@ -238,7 +266,7 @@ class SecondaryAnalysisExecutor:
                 return
 
             # Verify prompt_version consistency (envelope vs row)
-            env_prompt_version = envelope.get("prompt_version")
+            env_prompt_version = envelope.prompt_version
             if env_prompt_version != analysis.prompt_version:
                 await self._fail(
                     repo, analysis_id, "input_integrity_error",
@@ -259,6 +287,14 @@ class SecondaryAnalysisExecutor:
                     "unsupported prompt_version in envelope",
                 )
                 return
+            # C4c: envelope schema ↔ prompt version 1:1 compatibility
+            expected_prompt = ENVELOPE_PROMPT_COMPAT.get(envelope.schema_version)
+            if env_prompt_version != expected_prompt:
+                await self._fail(
+                    repo, analysis_id, "input_integrity_error",
+                    "envelope schema/prompt version mismatch",
+                )
+                return
 
             # LLM availability
             if self._llm_service is None:
@@ -268,7 +304,7 @@ class SecondaryAnalysisExecutor:
                 )
                 return
 
-            # E3: build prompt ONLY from envelope (never re-reads source DB)
+            # E3: build prompt ONLY from typed envelope (never re-reads source DB)
             user_prompt = build_user_prompt(user_template, envelope)
 
             # LLM call with classified error handling

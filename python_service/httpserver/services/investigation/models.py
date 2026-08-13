@@ -8,10 +8,11 @@ Missing source fields are NULL -- a Snapshot never generates data (no LLM).
 
 from __future__ import annotations
 
+import json
 from enum import Enum
 from typing import Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class FileSnapshotPayload(BaseModel):
@@ -148,14 +149,27 @@ TERMINAL_SECONDARY_STATUSES: frozenset[SecondaryAnalysisStatus] = frozenset(
 )
 
 
-class AnalysisInputEnvelope(BaseModel):
-    """Content-addressed input envelope for a Secondary Analysis (A7/A8/A11).
+class RelatedEvidenceEntry(BaseModel):
+    """A frozen related-evidence entry in the analysis envelope (C4c/CCTX5).
 
-    ``evidence_snapshot`` is the DB-trusted Snapshot's ``model_dump(mode="json")``
-    (with no surrogate ``snapshot_id``) -- re-read inside the write transaction,
-    never caller-supplied. The envelope is deterministically serialized and
-    SHA-256 hashed so the same logical input yields the same ``input_hash``.
+    ``evidence_key`` is canonical; ``snapshot`` is the DB-trusted
+    ``EvidenceSnapshot.model_dump(mode="json")`` (no surrogate ``snapshot_id``).
     """
+
+    model_config = ConfigDict(frozen=True)
+
+    evidence_key: str
+    snapshot: dict
+
+    @model_validator(mode="after")
+    def _validate_identity(self):
+        if self.snapshot.get("evidence_key") != self.evidence_key:
+            raise ValueError("related evidence snapshot identity mismatch")
+        return self
+
+
+class AnalysisInputEnvelopeV1(BaseModel):
+    """Envelope schema v1 (C4b-1): related_evidence is canonical key strings."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -165,6 +179,42 @@ class AnalysisInputEnvelope(BaseModel):
     case_context: Optional[str] = None
     related_evidence: tuple[str, ...] = ()
     prompt_version: Optional[str] = None
+
+
+class AnalysisInputEnvelopeV2(BaseModel):
+    """Envelope schema v2 (C4c): related_evidence carries frozen snapshots.
+
+    ``analyst_note`` and ``case_context`` are plain text frozen at create time
+    (CCTX1: Note != Evidence != Fact). ``related_evidence`` entries contain
+    canonical key + frozen EvidenceSnapshot so the worker never re-reads source.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: Literal[2] = 2
+    evidence_snapshot: dict
+    analyst_note: Optional[str] = None
+    case_context: Optional[str] = None
+    related_evidence: tuple[RelatedEvidenceEntry, ...] = ()
+    prompt_version: Optional[str] = None
+
+
+AnalysisInputEnvelope = Union[AnalysisInputEnvelopeV1, AnalysisInputEnvelopeV2]
+
+
+def parse_analysis_input_envelope(raw: Union[str, dict]) -> AnalysisInputEnvelope:
+    """Parse an envelope JSON string or dict into the correct typed model.
+
+    Dispatches on ``schema_version``: v1 -> V1 (key strings), v2 -> V2 (frozen
+    snapshots). Raises ``ValueError`` for unsupported versions.
+    """
+    payload = json.loads(raw) if isinstance(raw, str) else raw
+    version = payload.get("schema_version")
+    if version == 1:
+        return AnalysisInputEnvelopeV1.model_validate(payload)
+    if version == 2:
+        return AnalysisInputEnvelopeV2.model_validate(payload)
+    raise ValueError(f"unsupported envelope schema version: {version!r}")
 
 
 class SecondaryAnalysis(BaseModel):
