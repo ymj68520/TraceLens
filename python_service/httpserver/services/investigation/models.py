@@ -180,7 +180,7 @@ class SecondaryAnalysis(BaseModel):
     analysis_id: str
     task_id: str
     evidence_key: str  # canonical
-    snapshot_id: int  # FK -> evidence_snapshots.id (internal relational key)
+    snapshot_id: int = Field(exclude=True)  # FK -> evidence_snapshots.id (internal, A12)
     version: int
     status: SecondaryAnalysisStatus
     input_hash: str

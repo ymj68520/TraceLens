@@ -1,4 +1,4 @@
-"""Investigation Snapshot Foundation and public capture orchestration (Phase C4a/C3/C4b-1).
+"""Investigation Snapshot Foundation and Secondary Analysis execution (Phase C4a/C3/C4b-1/C4b-2).
 
 Public capture flow:
     task_id + evidence_key
@@ -6,12 +6,15 @@ Public capture flow:
       -> InvestigationCaptureService
       -> task-bound InvestigationRepository.capture_if_absent
 
-The package still owns no HTTP route for Secondary Analysis; routes live under
-``httpserver.routes``.  Secondary Analysis persistence (create/transition/query)
-is available via ``InvestigationRepository`` but not yet wired to LLM/Job/route.
+Secondary Analysis execution:
+    task_id + evidence_key
+      -> SecondaryAnalysisExecutor.submit
+      -> capture snapshot -> create_analysis(queued) -> background LLM execution
+      -> queued -> running -> review_pending / failed
 """
 
 from .acquisition import build_snapshot_candidate, canonical_json
+from .execution import SecondaryAnalysisExecutor
 from .models import (
     SECONDARY_TRANSITIONS,
     TERMINAL_SECONDARY_STATUSES,
@@ -24,6 +27,7 @@ from .models import (
     SnapshotCandidate,
 )
 from .paths import investigation_db_path_for_task
+from .prompts import CURRENT_PROMPT_VERSION, PROMPT_REGISTRY, get_prompt
 from .repository import InvestigationRepository, SUPPORTED_SCHEMA_VERSION
 from .service import InvestigationCaptureService
 
@@ -43,4 +47,8 @@ __all__ = [
     "SECONDARY_TRANSITIONS",
     "TERMINAL_SECONDARY_STATUSES",
     "InvestigationCaptureService",
+    "SecondaryAnalysisExecutor",
+    "CURRENT_PROMPT_VERSION",
+    "PROMPT_REGISTRY",
+    "get_prompt",
 ]

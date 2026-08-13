@@ -363,6 +363,63 @@ class LLMService:
 
         return await self.file_analyzer.analyze_image(image_data, self._vision_client, prompt)
 
+    async def chat_completion(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        model_type: str = "text",
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Raw chat completion with explicit system + user prompts.
+
+        Unlike ``analyze``, this method does not inject a predefined system
+        prompt -- the caller controls both messages. Used by Secondary Analysis
+        execution (C4b-2) where prompts are version-bound.
+
+        Returns:
+            ``{"content": str, "model": str, "tokens_used": int}``
+        """
+        if model_type not in ("text", "vision"):
+            raise ValueError(f"unsupported model_type: {model_type!r}")
+        if not self._initialized:
+            logger.info("LLM service not initialized, initializing now...")
+            await self.initialize()
+
+        client = self._text_client if model_type == "text" else self._vision_client
+        if client is None:
+            raise RuntimeError(f"{model_type} client is not initialized")
+
+        model = self.settings.llm_text_model if model_type == "text" else self.settings.llm_vision_model
+        default_max = self.settings.llm_text_max_tokens if model_type == "text" else self.settings.llm_vision_max_tokens
+        default_temp = self.settings.llm_text_temperature if model_type == "text" else self.settings.llm_vision_temperature
+
+        response = await client.post(
+            self.settings.llm_endpoint,
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "max_tokens": default_max if max_tokens is None else max_tokens,
+                "temperature": default_temp if temperature is None else temperature,
+            },
+            headers=(
+                {"Authorization": f"Bearer {self.settings.llm_api_key}"}
+                if self.settings.llm_api_key
+                else {}
+            ),
+        )
+        response.raise_for_status()
+        result = response.json()
+        return {
+            "content": result["choices"][0]["message"]["content"],
+            "model": result.get("model", ""),
+            "tokens_used": result.get("usage", {}).get("total_tokens", 0),
+        }
+
     async def start_batch_analysis(
         self,
         files: list,

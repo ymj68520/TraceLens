@@ -698,6 +698,20 @@ class InvestigationRepository:
             ).fetchone()
         return self._row_to_analysis(row) if row is not None else None
 
+    def list_stale_analyses(self) -> list[SecondaryAnalysis]:
+        """Return all analyses in a non-terminal state (queued/running).
+
+        Used by restart recovery (E9) to find rows left behind by a crash/kill.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM secondary_analyses "
+                "WHERE task_id = ? AND status IN ('queued', 'running') "
+                "ORDER BY created_at",
+                [self.task_id],
+            ).fetchall()
+        return [self._row_to_analysis(r) for r in rows]
+
     # =====================================================================
     # secondary_analyses -- row mapping
     # =====================================================================

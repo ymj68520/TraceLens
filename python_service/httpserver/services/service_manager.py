@@ -48,9 +48,11 @@ class ServiceManager:
         self._migration_manager: Optional["MigrationManager"] = None
         self._forensic_report_service = None
         self._investigation_service = None
+        self._secondary_analysis_executor = None
         self._initialized = False
         self._cpp_backend_ready = False
         self._forensic_report_ready = False
+        self._secondary_analysis_ready = False
         self._lifecycle_state = "new"
         self._lifecycle_lock = asyncio.Lock()
         self._initialization_task: Optional[asyncio.Task[None]] = None
@@ -144,6 +146,19 @@ class ServiceManager:
         except Exception as error:
             logger.warning(f"LLM service initialization failed: {error}")
 
+        # Initialize Secondary Analysis Executor (after LLM + investigation_service)
+        # Requires cpp_backend_ready; LLM may be None (tolerated by executor).
+        if self._cpp_backend_ready:
+            try:
+                executor = self._create_secondary_analysis_executor()
+                await executor.initialize()  # E9: restart recovery
+                self._secondary_analysis_executor = executor
+                self._secondary_analysis_ready = True
+            except Exception as error:
+                logger.warning(
+                    f"SecondaryAnalysisExecutor initialization failed: {error}"
+                )
+
         # Initialize IngestionJobManager
         try:
             from .ingestion_job_manager import IngestionJobManager
@@ -179,6 +194,7 @@ class ServiceManager:
         rollback_plan = (
             (self._migration_manager, "close"),
             (self._ingestion_job_manager, "shutdown"),
+            (self._secondary_analysis_executor, "shutdown"),
             (self._llm_service, "shutdown"),
             (self._graphiti_service, "shutdown"),
             (self._forensic_report_service, "shutdown"),
@@ -261,6 +277,7 @@ class ServiceManager:
 
     def _service_cleanup_plan(self) -> tuple[tuple[object | None, str], ...]:
         return (
+            (self._secondary_analysis_executor, "shutdown"),
             (self._forensic_report_service, "shutdown"),
             (self._cpp_backend, "shutdown"),
             (self._graphiti_service, "shutdown"),
@@ -272,6 +289,7 @@ class ServiceManager:
     def _clear_services(self) -> None:
         self._forensic_report_service = None
         self._investigation_service = None
+        self._secondary_analysis_executor = None
         self._cpp_backend = None
         self._graphiti_service = None
         self._llm_service = None
@@ -279,6 +297,7 @@ class ServiceManager:
         self._migration_manager = None
         self._cpp_backend_ready = False
         self._forensic_report_ready = False
+        self._secondary_analysis_ready = False
 
     def _require_service_access(self) -> None:
         if self._lifecycle_state == "initializing":
@@ -353,6 +372,28 @@ class ServiceManager:
         if self._investigation_service is None:
             self._investigation_service = self._create_investigation_service()
         return self._investigation_service
+
+    def _create_secondary_analysis_executor(self):
+        from .investigation.execution import SecondaryAnalysisExecutor
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        return SecondaryAnalysisExecutor(
+            cpp_backend=self._cpp_backend,
+            llm_service=self._llm_service,  # may be None
+            capture_service=self.investigation_service,
+        )
+
+    @property
+    def secondary_analysis_executor(self):
+        """Get the ready Secondary Analysis executor (with restart recovery done)."""
+        self._require_service_access()
+        if (
+            self._secondary_analysis_executor is None
+            or not self._secondary_analysis_ready
+        ):
+            raise RuntimeError("secondary analysis executor is unavailable")
+        return self._secondary_analysis_executor
 
     @property
     def graphiti_service(self) -> "GraphitiService":
