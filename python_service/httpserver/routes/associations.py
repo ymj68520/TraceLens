@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..config import Settings, get_settings
+from ..path_utils import normalize_evidence_path
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -63,14 +64,26 @@ class FileClustersResponse(BaseModel):
 # Helper Functions
 
 def extract_parent_directory(file_path: str) -> str:
-    """Extract parent directory from file path."""
+    """Extract parent directory from file path (canonicalized first)."""
     if not file_path:
         return "/"
-    # Normalize path separators
-    normalized = file_path.replace("\\", "/")
-    # Get parent directory
+    # Canonicalize separators/structure before deriving the parent.
+    normalized = normalize_evidence_path(file_path)
     parent = os.path.dirname(normalized)
     return parent or "/"
+
+
+def is_path_under_directory(path: str, parent: str) -> bool:
+    """Segment-aware containment: True if canonical `path` equals or is inside canonical `parent`.
+
+    An empty or "/" parent means "no directory constraint" (matches everything).
+    Segment-aware so '/case/a' does NOT match '/case/abc' or '/case/a-extra'.
+    """
+    path_n = normalize_evidence_path(path)
+    parent_n = normalize_evidence_path(parent)
+    if not parent_n or parent_n == "/":
+        return True
+    return path_n == parent_n or path_n.startswith(parent_n + "/")
 
 
 def detect_time_anomaly(file_data: Dict[str, Any], cluster_time: int) -> List[str]:
@@ -176,56 +189,68 @@ async def get_cluster_related_files(
         else:
             cluster_timestamp = 0
 
-        # Build a map of complete timestamps from raw.db (has atime, mtime, ctime, crtime)
-        raw_timestamps = {}
-        if raw_db and os.path.exists(raw_db):
-            try:
-                with sqlite3.connect(raw_db) as raw_conn:
-                    raw_conn.row_factory = sqlite3.Row
-                    raw_cur = raw_conn.execute("""
-                        SELECT path, atime, mtime, ctime, crtime
-                        FROM files
-                        WHERE atime IS NOT NULL OR mtime IS NOT NULL OR ctime IS NOT NULL OR crtime IS NOT NULL
-                    """)
-                    for row in raw_cur.fetchall():
-                        raw_timestamps[row['path']] = {
-                            'atime': row['atime'],
-                            'mtime': row['mtime'],
-                            'ctime': row['ctime'],
-                            'crtime': row['crtime']
-                        }
-            except sqlite3.Error as e:
-                logger.warning(f"Could not read raw.db for timestamps: {e}")
+        # Time window: strict inequalities preserve the exact `abs(diff) < 300`
+        # association semantics (BETWEEN would silently turn it into <= 300).
+        lo = cluster_timestamp - 300
+        hi = cluster_timestamp + 300
+        parent_n = normalize_evidence_path(request.parent_directory)
 
         try:
             with sqlite3.connect(files_db) as conn:
                 conn.row_factory = sqlite3.Row
 
-                # Query files table for file metadata and LLM data
-                files_table_sql = """
-                    SELECT path as file_path, size as file_size, mtime, ctime,
-                           extension, name, llm_summary, llm_description
-                    FROM files
-                    ORDER BY mtime DESC
-                    LIMIT ?
-                """
+                # Candidate union (raw atime/crtime ∪ files mtime/ctime) via
+                # ATTACH + LEFT JOIN per path. files.db stays primary (metadata
+                # source); a file present in files.db but absent from raw is still
+                # selected by the f.mtime/f.ctime clauses — per-Evidence fallback
+                # to files.db, NOT "raw entirely missing only".
+                attached_raw = False
+                if raw_db and os.path.exists(raw_db):
+                    try:
+                        conn.execute("ATTACH DATABASE ? AS raw", (raw_db,))
+                        attached_raw = True
+                    except sqlite3.Error as e:
+                        logger.warning(f"Could not attach raw.db for timestamps: {e}")
 
-                cur = conn.execute(files_table_sql, [request.limit * 3])
-                files_table_rows = cur.fetchall()
+                if attached_raw:
+                    files_table_sql = """
+                        SELECT f.path AS file_path, f.size AS file_size, f.mtime, f.ctime,
+                               f.extension, f.name, f.llm_summary, f.llm_description,
+                               r.atime AS atime, r.crtime AS crtime
+                        FROM files f
+                        LEFT JOIN raw.files r ON r.path = f.path
+                        WHERE (f.mtime IS NOT NULL AND f.mtime > ? AND f.mtime < ?)
+                           OR (f.ctime IS NOT NULL AND f.ctime > ? AND f.ctime < ?)
+                           OR (r.atime IS NOT NULL AND r.atime > ? AND r.atime < ?)
+                           OR (r.crtime IS NOT NULL AND r.crtime > ? AND r.crtime < ?)
+                        ORDER BY f.mtime DESC
+                    """
+                    params = [lo, hi, lo, hi, lo, hi, lo, hi]
+                else:
+                    # raw.db unavailable: uniform per-path fallback to files.db
+                    # mtime/ctime (atime/crtime are not stored in files.db).
+                    files_table_sql = """
+                        SELECT path AS file_path, size AS file_size, mtime, ctime,
+                               extension, name, llm_summary, llm_description,
+                               NULL AS atime, NULL AS crtime
+                        FROM files
+                        WHERE (mtime IS NOT NULL AND mtime > ? AND mtime < ?)
+                           OR (ctime IS NOT NULL AND ctime > ? AND ctime < ?)
+                        ORDER BY mtime DESC
+                    """
+                    params = [lo, hi, lo, hi]
 
-                for row in files_table_rows:
+                cur = conn.execute(files_table_sql, params)
+
+                for row in cur.fetchall():
                     file_data = dict(row)
 
-                    # Merge with raw timestamps if available (has all 4 timestamps)
-                    raw_ts = raw_timestamps.get(file_data['file_path'], {})
-                    if raw_ts:
-                        file_data['atime'] = raw_ts.get('atime')
-                        file_data['crtime'] = raw_ts.get('crtime')
-                    else:
-                        file_data['atime'] = None
-                        file_data['crtime'] = None
+                    # B3: require the file to be inside the cluster's parent
+                    # directory (segment-aware; empty/"/" = unconstrained).
+                    if not is_path_under_directory(file_data['file_path'], parent_n):
+                        continue
 
-                    # Calculate time differences from cluster time (now uses all 4 timestamps)
+                    # Calculate time differences from cluster time (all 4 timestamps).
                     time_diffs = {
                         'atime_diff': abs(file_data.get('atime', 0) - cluster_timestamp) if file_data.get('atime') else None,
                         'mtime_diff': abs(file_data.get('mtime', 0) - cluster_timestamp) if file_data.get('mtime') else None,
@@ -240,7 +265,9 @@ async def get_cluster_related_files(
 
                     min_diff = min(valid_diffs)
 
-                    # Only include if at least one timestamp is within ±5 minutes (300 seconds)
+                    # Final adjudication: at least one timestamp strictly within
+                    # ±5 minutes (300s). SQL already bounded candidates; this is
+                    # the source of truth for the boundary.
                     if min_diff < 300:
                         file_data['time_diffs'] = time_diffs
                         file_data['min_time_diff'] = min_diff
@@ -317,8 +344,8 @@ async def get_file_related_clusters(
         if not events_db:
             raise HTTPException(status_code=400, detail="No events database for this task")
 
-        file_path_normalized = request.file_path.replace("\\", "/")
-        file_parent_dir = extract_parent_directory(request.file_path)
+        file_path_normalized = normalize_evidence_path(request.file_path)
+        file_parent_dir = extract_parent_directory(file_path_normalized)
 
         # Get file timestamps from raw.db (has all 4: atime, mtime, ctime, crtime)
         file_timestamps = {'mtime': None, 'ctime': None, 'atime': None, 'crtime': None}
@@ -329,8 +356,8 @@ async def get_file_related_clusters(
                 with sqlite3.connect(raw_db) as raw_conn:
                     raw_conn.row_factory = sqlite3.Row
                     query = "SELECT atime, mtime, ctime, crtime FROM files WHERE path = ?"
-                    logger.info(f"[Associations] Query raw.db with: {query} params: [{request.file_path}]")
-                    raw_cur = raw_conn.execute(query, [request.file_path])
+                    logger.info(f"[Associations] Query raw.db with: {query} params: [{file_path_normalized}]")
+                    raw_cur = raw_conn.execute(query, [file_path_normalized])
                     row = raw_cur.fetchone()
                     logger.info(f"[Associations] raw.db row: {row}")
                     if row:
@@ -345,18 +372,21 @@ async def get_file_related_clusters(
             except sqlite3.Error as e:
                 logger.warning(f"Could not read raw.db for file timestamps: {e}")
 
-        # Fallback: query files.db if raw.db didn't have the data
-        if not any(v for v in file_timestamps.values()) and files_db:
+        # Fallback: query files.db if raw.db didn't have the data (timestamp 0 is valid)
+        if not any(v is not None for v in file_timestamps.values()) and files_db:
             try:
                 with sqlite3.connect(files_db) as conn:
                     conn.row_factory = sqlite3.Row
-                    cur = conn.execute("SELECT mtime, ctime FROM files WHERE path = ?", [request.file_path])
+                    cur = conn.execute("SELECT mtime, ctime FROM files WHERE path = ?", [file_path_normalized])
                     row = cur.fetchone()
                     if row:
                         file_timestamps['mtime'] = row['mtime']
                         file_timestamps['ctime'] = row['ctime']
             except sqlite3.Error as e:
                 logger.warning(f"Could not query files.db for timestamps: {e}")
+
+        # Whether the file has any usable timestamp (0 is a valid timestamp).
+        has_timestamps = any(v is not None for v in file_timestamps.values())
 
         # Get related clusters from events database
         related_clusters = []
@@ -365,75 +395,79 @@ async def get_file_related_clusters(
             with sqlite3.connect(events_db) as conn:
                 conn.row_factory = sqlite3.Row
 
-                # Get unique event clusters (grouped by time_window and event_type)
-                sql = """
-                    SELECT
-                        (timestamp / 60) as time_window,
-                        event_type,
-                        MIN(timestamp) as cluster_start,
-                        MAX(timestamp) as cluster_end,
-                        COUNT(*) as event_count,
-                        CASE
-                            WHEN MIN(timestamp) != MAX(timestamp) THEN MIN(timestamp)
-                            ELSE timestamp
-                        END as representative_timestamp,
-                        llm_summary,
-                        llm_description,
-                        llm_keywords,
-                        llm_is_relevant
-                    FROM events
-                    GROUP BY time_window, event_type
+                # B5b: complete the clustering FIRST (CTE), then filter clusters by
+                # the file's timestamp window. Do NOT pre-truncate event rows (that
+                # would alter cluster_start/end/count/representative and cluster
+                # membership) and do NOT ORDER BY ... LIMIT limit*10 (that dropped
+                # valid clusters for being "not new enough").
+                valid_ts = [v for v in file_timestamps.values() if v is not None]
+                if valid_ts:
+                    rep_lo = min(valid_ts) - 300
+                    rep_hi = max(valid_ts) + 300
+                    cluster_filter = "WHERE representative_timestamp > ? AND representative_timestamp < ?"
+                    cluster_params = [rep_lo, rep_hi]
+                else:
+                    cluster_filter = ""
+                    cluster_params = []
+
+                sql = f"""
+                    WITH clusters AS (
+                        SELECT
+                            (timestamp / 60) AS time_window,
+                            event_type,
+                            MIN(timestamp) AS cluster_start,
+                            MAX(timestamp) AS cluster_end,
+                            COUNT(*) AS event_count,
+                            CASE
+                                WHEN MIN(timestamp) != MAX(timestamp) THEN MIN(timestamp)
+                                ELSE timestamp
+                            END AS representative_timestamp,
+                            llm_summary,
+                            llm_description,
+                            llm_keywords,
+                            llm_is_relevant
+                        FROM events
+                        GROUP BY time_window, event_type
+                    )
+                    SELECT * FROM clusters
+                    {cluster_filter}
                     ORDER BY representative_timestamp DESC
-                    LIMIT ?
                 """
 
-                cur = conn.execute(sql, [request.limit * 10])  # Get more candidates, filter later
+                cur = conn.execute(sql, cluster_params)
                 rows = cur.fetchall()
 
                 for row in rows:
                     cluster = dict(row)
                     cluster_time = cluster['representative_timestamp']
 
-                    # Get sample events from this cluster to extract parent directory
-                    sample_sql = """
-                        SELECT DISTINCT file_path
-                        FROM events
-                        WHERE (timestamp / 60) = ? AND event_type = ?
-                        LIMIT 5
-                    """
-                    sample_cur = conn.execute(sample_sql, [cluster['time_window'], cluster['event_type']])
-                    sample_rows = sample_cur.fetchall()
+                    # Derive the cluster's directories from the FULL set of event
+                    # paths (no LIMIT 5) so a target directory appearing only in
+                    # the 6th+ event is not missed. The response still exposes only
+                    # a small sample.
+                    all_paths = [
+                        r['file_path'] for r in conn.execute(
+                            "SELECT DISTINCT file_path FROM events "
+                            "WHERE (timestamp / 60) = ? AND event_type = ?",
+                            [cluster['time_window'], cluster['event_type']],
+                        )
+                        if r['file_path']
+                    ]
 
-                    if not sample_rows:
+                    if not all_paths:
                         continue
 
-                    # Extract parent directory from sample file paths
-                    cluster_parent_dirs = set()
-                    cluster_sample_files = []
-                    for sample_row in sample_rows:
-                        sample_path = sample_row['file_path']
-                        if sample_path:
-                            cluster_parent_dirs.add(extract_parent_directory(sample_path))
-                            cluster_sample_files.append(sample_path)
+                    cluster_parent_dirs = {extract_parent_directory(p) for p in all_paths}
+                    cluster_sample_files = all_paths[:5]
 
-                    # Use the most common parent directory
-                    if cluster_parent_dirs:
-                        cluster['parent_directory'] = list(cluster_parent_dirs)[0]
-                    else:
-                        cluster['parent_directory'] = '/'
+                    # Response field (kept stable; NOT used as the predicate).
+                    cluster['parent_directory'] = next(iter(cluster_parent_dirs), '/')
 
-                    # Check if file path matches cluster directory
-                    # Handle root-level files (no parent directory)
-                    dir_matches = False
-                    if not cluster_parent_dirs or list(cluster_parent_dirs)[0] in ['/', '']:
-                        # No specific directory constraint, files match
-                        dir_matches = True
-                    else:
-                        for cluster_dir in cluster_parent_dirs:
-                            normalized_cluster_dir = cluster_dir.replace("\\", "/")
-                            if file_path_normalized.startswith(normalized_cluster_dir):
-                                dir_matches = True
-                                break
+                    # B2/B4: segment-aware directory predicate over the full dir set.
+                    dir_matches = (
+                        not cluster_parent_dirs
+                        or any(is_path_under_directory(file_path_normalized, d) for d in cluster_parent_dirs)
+                    )
 
                     # Check time matching
                     matched = False
@@ -460,13 +494,14 @@ async def get_file_related_clusters(
                                 break
 
                     # If no timestamps available, include cluster if directory matches
-                    if not matched and not file_timestamps and dir_matches:
+                    if not matched and not has_timestamps and dir_matches:
                         matched = True
                         cluster['matched_time'] = None
                         cluster['time_diff'] = None
                         cluster['time_diff_formatted'] = "无时间戳"
 
-                    if matched:
+                    # B4: require BOTH temporal and directory match.
+                    if matched and dir_matches:
                         # Add sample file
                         cluster['file_path'] = cluster_sample_files[0] if cluster_sample_files else None
                         cluster['cluster_count'] = cluster['event_count']
