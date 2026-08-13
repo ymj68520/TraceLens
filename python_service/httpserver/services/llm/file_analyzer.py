@@ -20,6 +20,7 @@ from ...config import Settings
 from ...prompts import (
     TEXT_ANALYSIS_SYSTEM,
     TEXT_ANALYSIS_USER_TEMPLATE,
+    TEXT_ANALYSIS_USER_WITH_INSTRUCTION_TEMPLATE,
     VISION_ANALYSIS_SYSTEM,
     VISION_ANALYSIS_USER_DEFAULT,
 )
@@ -154,7 +155,12 @@ class FileAnalyzer:
 
         # Build prompt
         system_prompt = TEXT_ANALYSIS_SYSTEM
-        user_prompt = prompt or TEXT_ANALYSIS_USER_TEMPLATE.format(content=content)
+        if prompt:
+            user_prompt = TEXT_ANALYSIS_USER_WITH_INSTRUCTION_TEMPLATE.format(
+                content=content, instruction=prompt
+            )
+        else:
+            user_prompt = TEXT_ANALYSIS_USER_TEMPLATE.format(content=content)
 
         # Make API request
         try:
@@ -480,14 +486,12 @@ class FileAnalyzer:
                     analysis = result.get("analysis", {})
                     description = analysis.get("description", "")
 
-                    self._jobs[job_id]["results"].append({
-                        "file_path": file_path,
-                        "analysis": analysis,
-                    })
-
-                    # Persist results if callback provided
+                    # Persist results if a callback is provided. Persistence runs
+                    # BEFORE recording success so that a file can never appear in
+                    # both `results` and `errors` (A7). The callback contract here
+                    # is synchronous (returns bool); do NOT await it (A6).
                     if persist_callback and description:
-                        await persist_callback(
+                        persisted = persist_callback(
                             db_path=files_db_path,
                             file_path=file_path,
                             description=description,
@@ -495,6 +499,15 @@ class FileAnalyzer:
                             keywords=", ".join(analysis.get("keywords", [])),
                             model_used=result.get("model", ""),
                         )
+                        if not persisted:
+                            raise RuntimeError(
+                                f"Failed to persist analysis result for {file_path}"
+                            )
+
+                    self._jobs[job_id]["results"].append({
+                        "file_path": file_path,
+                        "analysis": analysis,
+                    })
                 except Exception as e:
                     logger.error(f"Failed to analyze {file_path}: {e}", exc_info=True)
                     self._jobs[job_id]["errors"].append(f"{file_path}: {str(e)}")

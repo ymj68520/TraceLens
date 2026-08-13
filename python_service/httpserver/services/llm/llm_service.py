@@ -18,9 +18,8 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from ...config import get_project_root
-
 from ...config import Settings
+from ...path_utils import normalize_evidence_path
 from .file_analyzer import FileAnalyzer
 from .model_manager import ModelManager
 from .event_analyzer import EventAnalyzer
@@ -139,31 +138,56 @@ class LLMService:
         Returns:
             True if a row was updated, False otherwise.
         """
+        # Fail-closed: never fall back to another DB (e.g. build/test_image_files.db).
+        # A missing target DB is a genuine error — refuse to write anywhere else.
         if not db_path or not Path(db_path).exists():
-            test_db = str(get_project_root() / "build" / "test_image_files.db")
-            if Path(test_db).exists():
-                logger.debug(f"persist_to_files_db: db not found at {db_path!r}, falling back to {test_db!r}")
-                db_path = test_db
-            else:
-                logger.debug(f"persist_to_files_db: db not found at {db_path!r}, skipping")
-                return False
+            logger.warning(
+                f"persist_to_files_db: target db not found at {db_path!r}; "
+                "refusing to write anywhere else (fail-closed)"
+            )
+            return False
 
-        sql = """
+        # Canonicalize once for consistent Evidence identity matching.
+        # normalize_evidence_path is idempotent on already-canonical paths, so the
+        # normal flow (file_path from SELECT path, already '/'-style) is unchanged;
+        # only backslash / duplicate-separator inputs are aligned with files.path.
+        norm_path = normalize_evidence_path(file_path)
+
+        update_files_sql = """
             UPDATE files SET
                 llm_summary = ?,
                 llm_description = ?,
                 llm_keywords = ?,
                 llm_analyzed_at = ?,
                 llm_model_used = ?
-            WHERE path = ? OR path LIKE ? OR instr(path, ?) > 0
+            WHERE path = ?
         """
         try:
             with sqlite3.connect(db_path, timeout=10) as conn:
-                self._ensure_file_descriptions_schema(conn)
-
                 cur = conn.cursor()
 
-                # Insert into file_descriptions table
+                # 1) Update the main files table FIRST and require an exact match on
+                #    the canonical path. Only proceed if the Evidence row really exists.
+                cur.execute(update_files_sql, (
+                    summary or description[:200],
+                    description,
+                    keywords,
+                    int(time.time()),
+                    model_used,
+                    norm_path,
+                ))
+
+                if cur.rowcount <= 0:
+                    logger.warning(
+                        f"Path match failed for {file_path!r} "
+                        f"(normalized: {norm_path!r}) in {db_path!r}"
+                    )
+                    return False
+
+                # 2) Only after the Evidence row is confirmed, upsert the description.
+                #    Using the normalized path as the conflict key keeps file_descriptions
+                #    consistent with files.path identity.
+                self._ensure_file_descriptions_schema(conn)
                 cur.execute("""
                     INSERT INTO file_descriptions
                         (file_path, description, summary, keywords, model_used, is_relevant, created_at)
@@ -175,7 +199,7 @@ class LLMService:
                         model_used = excluded.model_used,
                         created_at = excluded.created_at
                 """, (
-                    file_path,
+                    norm_path,
                     description,
                     summary or description[:200],
                     keywords,
@@ -183,31 +207,12 @@ class LLMService:
                     int(time.time())
                 ))
 
-                # Update main files table with path variants
-                path_variants = [
-                    file_path,
-                    f"%{Path(file_path).name}",
-                    Path(file_path).name
-                ]
-
-                cur.execute(sql, (
-                    summary or description[:200],
-                    description,
-                    keywords,
-                    int(time.time()),
-                    model_used,
-                    path_variants[0],
-                    path_variants[1],
-                    path_variants[2]
-                ))
                 conn.commit()
-
-                if cur.rowcount > 0 or conn.total_changes > 0:
-                    logger.info(f"Successfully persisted LLM result for {file_path!r}")
-                    return True
-
-                logger.warning(f"Path match failed for {file_path!r} in {db_path!r}")
-                return False
+                logger.info(
+                    f"Successfully persisted LLM result for {file_path!r} "
+                    f"(normalized: {norm_path!r})"
+                )
+                return True
         except Exception as e:
             logger.error(f"persist_to_files_db failed for {file_path!r}: {e}", exc_info=True)
             return False

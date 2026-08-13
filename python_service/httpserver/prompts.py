@@ -39,6 +39,10 @@ TEXT_ANALYSIS_SYSTEM = """你是一名资深数字取证分析师，正在对电
 
 TEXT_ANALYSIS_USER_TEMPLATE = "请分析以下文件内容：\n\n{content}"
 
+# 当调用方提供自定义 prompt（调查人员补充要求）时使用：始终携带证据内容，
+# 再追加 analyst 指令，避免 custom prompt 把 Evidence content 完全丢弃。
+TEXT_ANALYSIS_USER_WITH_INSTRUCTION_TEMPLATE = "请分析以下文件内容：\n\n{content}\n\n调查人员补充要求：\n{instruction}"
+
 
 # =====================================================================
 # 区块二：图像分析
