@@ -149,6 +149,41 @@ TERMINAL_SECONDARY_STATUSES: frozenset[SecondaryAnalysisStatus] = frozenset(
 )
 
 
+# ---------------------------------------------------------------------------
+# Claims & Grounding (Phase C5a)
+# ---------------------------------------------------------------------------
+
+
+class ClaimType(str, Enum):
+    """Claim classification (G6)."""
+    FACT = "FACT"
+    INFERENCE = "INFERENCE"
+    HYPOTHESIS = "HYPOTHESIS"
+
+
+class ClaimGroundingStatus(str, Enum):
+    """Per-claim grounding status.
+
+    ``grounded`` means all evidence_refs are valid allowed IDs (G8: this does
+    NOT mean the evidence semantically proves the claim — only that the refs
+    point to real, permitted Evidence).
+    """
+    GROUNDED = "grounded"
+    PARTIALLY_GROUNDED = "partially_grounded"
+    UNGROUNDED = "ungrounded"
+
+
+class AnalysisGroundingStatus(str, Enum):
+    """Aggregated analysis-level grounding status.
+
+    ``valid`` = no invalid evidence reference detected (NOT "all conclusions
+    are fully proven by evidence"). 0-claim analyses are ``valid``.
+    """
+    VALID = "valid"
+    PARTIALLY_GROUNDED = "partially_grounded"
+    INVALID = "invalid"
+
+
 class RelatedEvidenceEntry(BaseModel):
     """A frozen related-evidence entry in the analysis envelope (C4c/CCTX5).
 
@@ -248,3 +283,57 @@ class SecondaryAnalysis(BaseModel):
     failed_at: Optional[str] = None
     error_code: Optional[str] = None
     error_message: Optional[str] = None
+    grounding_status: Optional[AnalysisGroundingStatus] = None
+
+
+# ---------------------------------------------------------------------------
+# Claim models (C5a)
+# ---------------------------------------------------------------------------
+
+
+class ClaimCandidate(BaseModel):
+    """Untrusted pre-validation claim from LLM (or test).
+
+    This is the ONLY type ``persist_claims`` accepts — the Repository runs
+    GroundingValidator internally (G11) so callers cannot bypass validation
+    by constructing ValidatedClaim directly.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    claim_type: ClaimType
+    claim_text: str
+    evidence_refs: tuple[str, ...] = ()
+
+
+class ValidatedClaim(BaseModel):
+    """Post-validation claim with adjusted type, grounding, and warnings.
+
+    Produced by ``GroundingValidator.validate``. ``evidence_refs`` contains only
+    valid refs (invalid ones moved to ``warnings``). ``claim_type`` may differ
+    from the original candidate (FACT → HYPOTHESIS downgrade, G7).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    claim_type: ClaimType
+    claim_text: str
+    grounding_status: ClaimGroundingStatus
+    evidence_refs: tuple[str, ...] = ()
+    warnings: dict = Field(default_factory=dict)
+
+
+class AnalysisClaim(BaseModel):
+    """A persisted Claim row with its evidence refs (read model)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    claim_id: str
+    analysis_id: str
+    claim_index: int
+    claim_type: ClaimType
+    claim_text: str
+    grounding_status: ClaimGroundingStatus
+    warnings: Optional[dict] = None
+    evidence_refs: tuple[str, ...] = ()
+    created_at: str

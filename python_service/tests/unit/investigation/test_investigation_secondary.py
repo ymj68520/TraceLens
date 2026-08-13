@@ -573,13 +573,13 @@ def test_migration_failure_rolls_back(tmp_path):
             raise RuntimeError("injected migration failure")
 
     # Monkeypatch the method on the class before instantiation
-    original = InvestigationRepository._migrate_v1_to_v3
-    InvestigationRepository._migrate_v1_to_v3 = failing_migrate
+    original = InvestigationRepository._migrate_v1_to_v4
+    InvestigationRepository._migrate_v1_to_v4 = failing_migrate
     try:
         with pytest.raises(RuntimeError, match="injected"):
             InvestigationRepository(idb, "A")
     finally:
-        InvestigationRepository._migrate_v1_to_v3 = original
+        InvestigationRepository._migrate_v1_to_v4 = original
 
     conn = sqlite3.connect(idb)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
@@ -622,19 +622,21 @@ def test_fk_definition_validated_at_init(tmp_path):
 # New DB + future version
 # ---------------------------------------------------------------------------
 
-def test_new_db_is_v3_with_all_objects(tmp_path):
+def test_new_db_is_v4_with_all_objects(tmp_path):
     idb = str(tmp_path / "investigation.db")
     InvestigationRepository(idb, "A")
-    assert SUPPORTED_SCHEMA_VERSION == 3
+    assert SUPPORTED_SCHEMA_VERSION == 4
     conn = sqlite3.connect(idb)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
-    for table in ("evidence_snapshots", "secondary_analyses"):
+    for table in ("evidence_snapshots", "secondary_analyses", "analysis_claims", "claim_evidence_refs"):
         assert conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", [table]
         ).fetchone() is not None
     for trigger in (
         "trg_evsnap_no_update", "trg_secondary_legal_transition",
         "trg_secondary_no_terminal_update", "trg_secondary_no_input_update",
+        "trg_claims_no_update", "trg_claims_no_delete",
+        "trg_claim_refs_no_update", "trg_claim_refs_no_delete",
     ):
         assert conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?", [trigger]
@@ -646,7 +648,7 @@ def test_future_version_fail_closed(tmp_path):
     idb = str(tmp_path / "investigation.db")
     InvestigationRepository(idb, "A")
     conn = sqlite3.connect(idb)
-    conn.execute("PRAGMA user_version = 4")
+    conn.execute("PRAGMA user_version = 5")
     conn.commit()
     conn.close()
     with pytest.raises(Exception, match="unsupported"):

@@ -35,26 +35,37 @@ import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 from ..evidence.exceptions import EvidenceNotFoundError, EvidenceStoreError
 from ..evidence.models import ResolvedEvidence
 from .acquisition import build_snapshot_candidate, canonical_json
+from .grounding import (
+    GroundingValidator,
+    compute_analysis_grounding,
+    derive_allowed_evidence_ids,
+)
 from .models import (
     SECONDARY_TRANSITIONS,
     TERMINAL_SECONDARY_STATUSES,
+    AnalysisClaim,
+    AnalysisGroundingStatus,
     AnalysisInputEnvelopeV2,
+    ClaimCandidate,
+    ClaimGroundingStatus,
+    ClaimType,
     ClusterSnapshotPayload,
     EvidenceSnapshot,
     FileSnapshotPayload,
     RelatedEvidenceEntry,
     SecondaryAnalysis,
     SecondaryAnalysisStatus,
+    parse_analysis_input_envelope,
 )
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 3
+SUPPORTED_SCHEMA_VERSION = 4
 
 # ---------------------------------------------------------------------------
 # DDL: evidence_snapshots (v1, unchanged)
@@ -129,6 +140,10 @@ CREATE TABLE IF NOT EXISTS secondary_analyses (
     failed_at TEXT,
     error_code TEXT,
     error_message TEXT,
+    grounding_status TEXT CHECK(
+        grounding_status IS NULL
+        OR grounding_status IN ('valid', 'partially_grounded', 'invalid')
+    ),
     UNIQUE(task_id, evidence_key, version)
 )
 """
@@ -181,11 +196,78 @@ BEGIN
 END
 """
 
+# ---------------------------------------------------------------------------
+# DDL: analysis_claims + claim_evidence_refs (v4 addition, C5a)
+# ---------------------------------------------------------------------------
+
+_CREATE_ANALYSIS_CLAIMS_SQL = """
+CREATE TABLE IF NOT EXISTS analysis_claims (
+    claim_id TEXT PRIMARY KEY,
+    analysis_id TEXT NOT NULL REFERENCES secondary_analyses(analysis_id) ON DELETE RESTRICT,
+    claim_index INTEGER NOT NULL,
+    claim_type TEXT NOT NULL CHECK(claim_type IN ('FACT','INFERENCE','HYPOTHESIS')),
+    claim_text TEXT NOT NULL,
+    grounding_status TEXT NOT NULL CHECK(grounding_status IN
+        ('grounded','partially_grounded','ungrounded')),
+    warning_json TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE(analysis_id, claim_index)
+)
+"""
+_CREATE_CLAIM_EVIDENCE_REFS_SQL = """
+CREATE TABLE IF NOT EXISTS claim_evidence_refs (
+    claim_id TEXT NOT NULL REFERENCES analysis_claims(claim_id) ON DELETE CASCADE,
+    evidence_key TEXT NOT NULL,
+    PRIMARY KEY(claim_id, evidence_key)
+)
+"""
+_INDEX_CLAIMS_ANALYSIS_SQL = (
+    "CREATE INDEX IF NOT EXISTS idx_claims_analysis ON analysis_claims(analysis_id)"
+)
+_INDEX_REFS_CLAIM_SQL = (
+    "CREATE INDEX IF NOT EXISTS idx_refs_claim ON claim_evidence_refs(claim_id)"
+)
+# G14: Claims and evidence refs are DB-level immutable (no UPDATE, no DELETE).
+_TRIGGER_CLAIMS_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_claims_no_update
+BEFORE UPDATE ON analysis_claims
+BEGIN
+    SELECT RAISE(ABORT, 'analysis claims are immutable');
+END
+"""
+_TRIGGER_CLAIMS_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_claims_no_delete
+BEFORE DELETE ON analysis_claims
+BEGIN
+    SELECT RAISE(ABORT, 'analysis claims are immutable');
+END
+"""
+_TRIGGER_CLAIM_REFS_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_claim_refs_no_update
+BEFORE UPDATE ON claim_evidence_refs
+BEGIN
+    SELECT RAISE(ABORT, 'claim evidence refs are immutable');
+END
+"""
+_TRIGGER_CLAIM_REFS_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_claim_refs_no_delete
+BEFORE DELETE ON claim_evidence_refs
+BEGIN
+    SELECT RAISE(ABORT, 'claim evidence refs are immutable');
+END
+"""
+
+_REQUIRED_CLAIM_COLUMNS = {
+    "claim_id", "analysis_id", "claim_index", "claim_type", "claim_text",
+    "grounding_status", "warning_json", "created_at",
+}
+
 _REQUIRED_SECONDARY_COLUMNS = {
     "analysis_id", "task_id", "evidence_key", "snapshot_id", "version", "status",
     "input_hash", "input_envelope_json", "prompt_version", "description", "summary",
     "model", "created_at", "started_at", "review_pending_at", "decided_at",
     "decided_by", "decision_reason", "failed_at", "error_code", "error_message",
+    "grounding_status",
 }
 
 # Per-target-status writable fields for transition().  The timestamp field is
@@ -214,7 +296,7 @@ def _new_analysis_id() -> str:
 class InvestigationRepository:
     """SQLite-backed immutable Evidence Snapshot + Secondary Analysis store.
 
-    A single repository owns the full v3 schema for both tables (avoids
+    A single repository owns the full v4 schema for all tables (avoids
     user_version contention / duplicate migration paths).
     """
 
@@ -240,92 +322,115 @@ class InvestigationRepository:
         with self._connect() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
-            self._initialize_v3_atomically()
-            self._validate_v3_schema()
+            self._initialize_v4_atomically()
+            self._validate_v4_schema()
         elif version == 1:
-            self._migrate_v1_to_v3()
-            self._validate_v3_schema()
+            self._migrate_v1_to_v4()
+            self._validate_v4_schema()
         elif version == 2:
-            self._migrate_v2_to_v3()
-            self._validate_v3_schema()
+            self._migrate_v2_to_v4()
+            self._validate_v4_schema()
+        elif version == 3:
+            self._migrate_v3_to_v4()
+            self._validate_v4_schema()
         elif version == SUPPORTED_SCHEMA_VERSION:
-            # Validate core schema FIRST (columns/UNIQUE/trigger/FK); a corrupt
-            # store must fail closed before building auxiliary objects.
-            self._validate_v3_schema()
-            self._ensure_v3_auxiliary_objects()
+            self._validate_v4_schema()
+            self._ensure_v4_auxiliary_objects()
         else:
             raise EvidenceStoreError(
                 f"unsupported investigation.db schema version: {version} "
                 f"(supported: {SUPPORTED_SCHEMA_VERSION})"
             )
 
-    def _initialize_v3_atomically(self) -> None:
-        """New database: build both tables + all objects + version=3 in one tx."""
+    def _build_all_secondary_objects(self, conn: sqlite3.Connection) -> None:
+        """Create all secondary_analyses + claims tables, indexes, triggers."""
+        conn.execute(_CREATE_SECONDARY_ANALYSES_SQL)
+        conn.execute(_INDEX_SECONDARY_SCOPE_VERSION_SQL)
+        conn.execute(_INDEX_SECONDARY_STATUS_SQL)
+        conn.execute(_TRIGGER_SECONDARY_LEGAL_TRANSITION_SQL)
+        conn.execute(_TRIGGER_SECONDARY_NO_TERMINAL_UPDATE_SQL)
+        conn.execute(_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL)
+        # claims (v4)
+        conn.execute(_CREATE_ANALYSIS_CLAIMS_SQL)
+        conn.execute(_CREATE_CLAIM_EVIDENCE_REFS_SQL)
+        conn.execute(_INDEX_CLAIMS_ANALYSIS_SQL)
+        conn.execute(_INDEX_REFS_CLAIM_SQL)
+        conn.execute(_TRIGGER_CLAIMS_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_CLAIMS_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_CLAIM_REFS_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_CLAIM_REFS_NO_DELETE_SQL)
+
+    def _initialize_v4_atomically(self) -> None:
+        """New database: build everything + version=4 in one tx."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            # evidence_snapshots (v1 table)
             conn.execute(_CREATE_EVIDENCE_SNAPSHOTS_SQL)
             conn.execute(_INDEX_PATH_SQL)
             conn.execute(_INDEX_CLUSTER_SQL)
             conn.execute(_INDEX_TASK_SQL)
             conn.execute(_TRIGGER_EVSNAP_NO_UPDATE_SQL)
-            # secondary_analyses (v2 table + v3 input immutability trigger)
-            conn.execute(_CREATE_SECONDARY_ANALYSES_SQL)
-            conn.execute(_INDEX_SECONDARY_SCOPE_VERSION_SQL)
-            conn.execute(_INDEX_SECONDARY_STATUS_SQL)
-            conn.execute(_TRIGGER_SECONDARY_LEGAL_TRANSITION_SQL)
-            conn.execute(_TRIGGER_SECONDARY_NO_TERMINAL_UPDATE_SQL)
-            conn.execute(_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL)
+            self._build_all_secondary_objects(conn)
             conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
             conn.commit()
 
-    def _migrate_v1_to_v3(self) -> None:
-        """v1 database: add secondary_analyses with all triggers + bump to v3.
-
-        Equivalent to v1->v2->v3 in one atomic step.
-        """
+    def _migrate_v1_to_v4(self) -> None:
+        """v1 database: add secondary + claims + all triggers → v4."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            conn.execute(_CREATE_SECONDARY_ANALYSES_SQL)
-            conn.execute(_INDEX_SECONDARY_SCOPE_VERSION_SQL)
-            conn.execute(_INDEX_SECONDARY_STATUS_SQL)
-            conn.execute(_TRIGGER_SECONDARY_LEGAL_TRANSITION_SQL)
-            conn.execute(_TRIGGER_SECONDARY_NO_TERMINAL_UPDATE_SQL)
-            conn.execute(_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL)
+            self._build_all_secondary_objects(conn)
             conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
             conn.commit()
 
-    def _migrate_v2_to_v3(self) -> None:
-        """v2 database: add input immutability trigger + bump to v3 (CCTX6).
-
-        Uses explicit ``conn.execute()`` per statement -- ``executescript()`` is
-        FORBIDDEN because it implicitly COMMITs pending transactions, breaking
-        migration atomicity.  Any exception rolls back; user_version stays 2.
-        """
+    def _migrate_v2_to_v4(self) -> None:
+        """v2 database: add input trigger (v3) + claims (v4) → v4."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL)
+            conn.execute(_CREATE_ANALYSIS_CLAIMS_SQL)
+            conn.execute(_CREATE_CLAIM_EVIDENCE_REFS_SQL)
+            conn.execute(_INDEX_CLAIMS_ANALYSIS_SQL)
+            conn.execute(_INDEX_REFS_CLAIM_SQL)
+            conn.execute(_TRIGGER_CLAIMS_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_CLAIMS_NO_DELETE_SQL)
+            conn.execute(_TRIGGER_CLAIM_REFS_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_CLAIM_REFS_NO_DELETE_SQL)
             conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
             conn.commit()
 
-    def _ensure_v3_auxiliary_objects(self) -> None:
-        """Self-heal missing indexes/triggers only (idempotent CREATE IF NOT EXISTS)."""
+    def _migrate_v3_to_v4(self) -> None:
+        """v3 database: add grounding_status column + claims tables/triggers → v4."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            # Add grounding_status if not already present (idempotent).
+            cols = {row["name"] for row in conn.execute("PRAGMA table_info(secondary_analyses)")}
+            if "grounding_status" not in cols:
+                conn.execute("ALTER TABLE secondary_analyses ADD COLUMN grounding_status TEXT")
+            conn.execute(_CREATE_ANALYSIS_CLAIMS_SQL)
+            conn.execute(_CREATE_CLAIM_EVIDENCE_REFS_SQL)
+            conn.execute(_INDEX_CLAIMS_ANALYSIS_SQL)
+            conn.execute(_INDEX_REFS_CLAIM_SQL)
+            conn.execute(_TRIGGER_CLAIMS_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_CLAIMS_NO_DELETE_SQL)
+            conn.execute(_TRIGGER_CLAIM_REFS_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_CLAIM_REFS_NO_DELETE_SQL)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+
+    def _ensure_v4_auxiliary_objects(self) -> None:
+        """Self-heal missing indexes/triggers (idempotent CREATE IF NOT EXISTS)."""
         with self._connect() as conn:
             conn.execute(_INDEX_PATH_SQL)
             conn.execute(_INDEX_CLUSTER_SQL)
             conn.execute(_INDEX_TASK_SQL)
             conn.execute(_TRIGGER_EVSNAP_NO_UPDATE_SQL)
-            conn.execute(_INDEX_SECONDARY_SCOPE_VERSION_SQL)
-            conn.execute(_INDEX_SECONDARY_STATUS_SQL)
-            conn.execute(_TRIGGER_SECONDARY_LEGAL_TRANSITION_SQL)
-            conn.execute(_TRIGGER_SECONDARY_NO_TERMINAL_UPDATE_SQL)
-            conn.execute(_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL)
+            self._build_all_secondary_objects(conn)
             conn.commit()
 
-    def _validate_v3_schema(self) -> None:
+    def _validate_v4_schema(self) -> None:
         with self._connect() as conn:
             self._validate_evidence_snapshots(conn)
             self._validate_secondary_analyses(conn)
+            self._validate_claims(conn)
 
     def _validate_evidence_snapshots(self, conn: sqlite3.Connection) -> None:
         cols = {row["name"] for row in conn.execute("PRAGMA table_info(evidence_snapshots)")}
@@ -386,6 +491,39 @@ class InvestigationRepository:
             "trg_secondary_legal_transition",
             "trg_secondary_no_terminal_update",
             "trg_secondary_no_input_update",
+        ):
+            trig = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?",
+                [trig_name],
+            ).fetchone()
+            if trig is None:
+                raise EvidenceStoreError(f"missing {trig_name} trigger")
+
+    def _validate_claims(self, conn: sqlite3.Connection) -> None:
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(analysis_claims)")}
+        missing = _REQUIRED_CLAIM_COLUMNS - cols
+        if missing:
+            raise EvidenceStoreError(
+                f"analysis_claims missing required columns: {sorted(missing)}"
+            )
+        # FK analysis_claims.analysis_id -> secondary_analyses(analysis_id)
+        fks = conn.execute("PRAGMA foreign_key_list(analysis_claims)").fetchall()
+        found_fk = any(
+            fk["table"] == "secondary_analyses"
+            and fk["from"] == "analysis_id"
+            for fk in fks
+        )
+        if not found_fk:
+            raise EvidenceStoreError(
+                "analysis_claims missing FK(analysis_id) REFERENCES secondary_analyses"
+            )
+        # claim_evidence_refs table exists
+        ref_cols = {row["name"] for row in conn.execute("PRAGMA table_info(claim_evidence_refs)")}
+        if not {"claim_id", "evidence_key"} <= ref_cols:
+            raise EvidenceStoreError("claim_evidence_refs missing required columns")
+        for trig_name in (
+            "trg_claims_no_update", "trg_claims_no_delete",
+            "trg_claim_refs_no_update", "trg_claim_refs_no_delete",
         ):
             trig = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?",
@@ -771,6 +909,7 @@ class InvestigationRepository:
     # =====================================================================
 
     def _row_to_analysis(self, row: sqlite3.Row) -> SecondaryAnalysis:
+        gs = row["grounding_status"]
         return SecondaryAnalysis(
             analysis_id=row["analysis_id"],
             task_id=row["task_id"],
@@ -793,4 +932,150 @@ class InvestigationRepository:
             failed_at=row["failed_at"],
             error_code=row["error_code"],
             error_message=row["error_message"],
+            grounding_status=AnalysisGroundingStatus(gs) if gs else None,
         )
+
+    # =====================================================================
+    # analysis_claims -- persist (C5a: G11-G14)
+    # =====================================================================
+
+    def persist_claims(
+        self,
+        analysis_id: str,
+        candidates: Sequence[ClaimCandidate],
+    ) -> list[AnalysisClaim]:
+        """Persist validated claims for a running analysis (write-once, G11-G14).
+
+        Accepts **untrusted** ClaimCandidates — the GroundingValidator runs
+        INSIDE this transaction using the analysis's own frozen envelope, so
+        callers can never bypass the evidence-ref trust boundary (G11).
+
+        Preconditions (enforced inside the transaction):
+          - analysis exists (else ValueError)
+          - status == running (else ValueError, G13)
+          - no existing claims (else ValueError, G12 write-once)
+        """
+        now = _now_iso()
+
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+
+            row = conn.execute(
+                "SELECT * FROM secondary_analyses WHERE analysis_id = ?",
+                [analysis_id],
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"analysis not found: {analysis_id!r}")
+
+            if row["status"] != SecondaryAnalysisStatus.running.value:
+                raise ValueError(
+                    f"claims require running status (current: {row['status']!r})"
+                )
+
+            existing = conn.execute(
+                "SELECT COUNT(*) FROM analysis_claims WHERE analysis_id = ?",
+                [analysis_id],
+            ).fetchone()[0]
+            if existing > 0:
+                raise ValueError(
+                    f"claims already exist for analysis {analysis_id!r} (write-once)"
+                )
+
+            # G11: re-derive allowed from the frozen envelope inside the tx.
+            envelope = parse_analysis_input_envelope(row["input_envelope_json"])
+            allowed = derive_allowed_evidence_ids(envelope)
+            validated = GroundingValidator(allowed).validate(candidates)
+            grounding = compute_analysis_grounding(validated)
+
+            for idx, vc in enumerate(validated):
+                claim_id = f"cl_{uuid.uuid4().hex}"
+                conn.execute(
+                    """
+                    INSERT INTO analysis_claims
+                        (claim_id, analysis_id, claim_index, claim_type,
+                         claim_text, grounding_status, warning_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        claim_id, analysis_id, idx,
+                        vc.claim_type.value,
+                        vc.claim_text,
+                        vc.grounding_status.value,
+                        json.dumps(vc.warnings, ensure_ascii=False) if vc.warnings else None,
+                        now,
+                    ),
+                )
+                for ref in vc.evidence_refs:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO claim_evidence_refs (claim_id, evidence_key) VALUES (?, ?)",
+                        (claim_id, ref),
+                    )
+
+            conn.execute(
+                "UPDATE secondary_analyses SET grounding_status = ? WHERE analysis_id = ?",
+                (grounding.value, analysis_id),
+            )
+
+            # Re-read persisted claims for the return value.
+            claims = self._query_claims(conn, analysis_id)
+            conn.commit()
+
+        return claims
+
+    # =====================================================================
+    # analysis_claims -- read
+    # =====================================================================
+
+    def list_claims(self, analysis_id: str) -> list[AnalysisClaim]:
+        """Return all claims for an analysis (with evidence refs)."""
+        with self._connect() as conn:
+            return self._query_claims(conn, analysis_id)
+
+    def _query_claims(self, conn: sqlite3.Connection, analysis_id: str) -> list[AnalysisClaim]:
+        rows = conn.execute(
+            "SELECT * FROM analysis_claims WHERE analysis_id = ? ORDER BY claim_index",
+            [analysis_id],
+        ).fetchall()
+        result: list[AnalysisClaim] = []
+        for row in rows:
+            refs = tuple(
+                r["evidence_key"]
+                for r in conn.execute(
+                    "SELECT evidence_key FROM claim_evidence_refs WHERE claim_id = ? ORDER BY evidence_key",
+                    [row["claim_id"]],
+                ).fetchall()
+            )
+            warning = None
+            if row["warning_json"]:
+                try:
+                    warning = json.loads(row["warning_json"])
+                except (ValueError, TypeError):
+                    warning = None
+            result.append(AnalysisClaim(
+                claim_id=row["claim_id"],
+                analysis_id=row["analysis_id"],
+                claim_index=row["claim_index"],
+                claim_type=ClaimType(row["claim_type"]),
+                claim_text=row["claim_text"],
+                grounding_status=ClaimGroundingStatus(row["grounding_status"]),
+                warnings=warning,
+                evidence_refs=refs,
+                created_at=row["created_at"],
+            ))
+        return result
+
+    def get_grounding_summary(self, analysis_id: str) -> Optional[AnalysisGroundingStatus]:
+        """Return the analysis-level grounding status.
+
+        Raises KeyError if the analysis does not exist.
+        Returns None if grounding has not been computed yet (no claims persisted).
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT grounding_status FROM secondary_analyses WHERE analysis_id = ?",
+                [analysis_id],
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"analysis not found: {analysis_id!r}")
+        gs = row["grounding_status"]
+        return AnalysisGroundingStatus(gs) if gs else None

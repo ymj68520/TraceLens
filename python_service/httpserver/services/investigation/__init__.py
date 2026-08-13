@@ -15,11 +15,21 @@ Secondary Analysis execution:
 
 from .acquisition import build_snapshot_candidate, canonical_json
 from .execution import SecondaryAnalysisExecutor
+from .grounding import (
+    GroundingValidator,
+    compute_analysis_grounding,
+    derive_allowed_evidence_ids,
+)
 from .models import (
     SECONDARY_TRANSITIONS,
     TERMINAL_SECONDARY_STATUSES,
+    AnalysisClaim,
+    AnalysisGroundingStatus,
     AnalysisInputEnvelopeV1,
     AnalysisInputEnvelopeV2,
+    ClaimCandidate,
+    ClaimGroundingStatus,
+    ClaimType,
     ClusterSnapshotPayload,
     EvidenceSnapshot,
     FileSnapshotPayload,
@@ -27,6 +37,7 @@ from .models import (
     SecondaryAnalysis,
     SecondaryAnalysisStatus,
     SnapshotCandidate,
+    ValidatedClaim,
     parse_analysis_input_envelope,
 )
 from .paths import investigation_db_path_for_task
@@ -58,4 +69,13 @@ __all__ = [
     "ENVELOPE_PROMPT_COMPAT",
     "PROMPT_REGISTRY",
     "get_prompt",
+    "ClaimType",
+    "ClaimGroundingStatus",
+    "AnalysisGroundingStatus",
+    "ClaimCandidate",
+    "ValidatedClaim",
+    "AnalysisClaim",
+    "GroundingValidator",
+    "derive_allowed_evidence_ids",
+    "compute_analysis_grounding",
 ]
