@@ -14,7 +14,8 @@ This module performs NO database access and NO persistence.
 
 from __future__ import annotations
 
-from urllib.parse import quote, unquote
+import re
+from urllib.parse import quote, unquote_to_bytes
 
 from ...path_utils import normalize_evidence_path
 from .models import ParsedEvidenceKey
@@ -22,6 +23,26 @@ from .models import ParsedEvidenceKey
 _FILE_PREFIX = "file:"
 _CLUSTER_PREFIX = "cluster:"
 _SUPPORTED_CLUSTER_VERSION = "v1"
+
+# A '%' not followed by exactly two hex digits (malformed percent-escape).
+_MALFORMED_PERCENT_RE = re.compile(r"%(?![0-9A-Fa-f]{2})")
+
+
+def _decode_event_type(encoded_event_type: str) -> str:
+    """Strictly percent-decode event_type; fail closed on malformed/invalid input.
+
+    ``urllib.parse.unquote`` replaces invalid bytes with U+FFFD, which could let
+    distinct malformed keys collapse onto one identity. Evidence keys are
+    persistent identities, so we reject malformed escapes and non-UTF-8 byte
+    sequences instead of silently "repairing" them.
+    """
+    if _MALFORMED_PERCENT_RE.search(encoded_event_type):
+        raise ValueError(f"malformed percent-encoding in event_type: {encoded_event_type!r}")
+    raw = unquote_to_bytes(encoded_event_type)
+    try:
+        return raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"event_type is not valid UTF-8: {encoded_event_type!r}") from exc
 
 
 def parse_evidence_key(evidence_key: str) -> ParsedEvidenceKey:
@@ -64,7 +85,7 @@ def parse_evidence_key(evidence_key: str) -> ParsedEvidenceKey:
             raise ValueError(
                 f"cluster evidence key has non-integer unix_minute: {minute_str!r}"
             ) from exc
-        event_type = unquote(encoded_event_type)
+        event_type = _decode_event_type(encoded_event_type)
         canonical_encoded = quote(event_type, safe="")  # idempotent re-encode
         return ParsedEvidenceKey(
             evidence_type="cluster",

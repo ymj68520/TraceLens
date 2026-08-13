@@ -1,8 +1,7 @@
-"""Tests for EvidenceResolver (C2): task-scoped, fail-closed, zero-write.
+"""Tests for EvidenceResolver (C2 + C2.1): task-scoped, fail-closed, zero-write.
 
-Covers R1-R8: file/cluster resolution, task boundary / cross-task isolation
-(R6), fail-closed on task/evidence/db/table not-found (R1/R4/R5/R7), zero-write
-(R8 via mode=ro + hash check), and canonical evidence_key on the result (C1a).
+Covers R1-R8 plus the C2.1 error taxonomy: not-found (EvidenceNotFoundError,
+also a LookupError) vs store failure (EvidenceStoreError, NOT a LookupError).
 """
 
 import hashlib
@@ -12,7 +11,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from httpserver.services.evidence import EvidenceResolver, ResolvedEvidence
+from httpserver.services.evidence import (
+    EvidenceNotFoundError,
+    EvidenceResolver,
+    EvidenceStoreError,
+    ResolvedEvidence,
+)
 
 
 # ---------- fixtures ----------
@@ -48,6 +52,13 @@ def _file_hash(p):
     return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 
 
+# ---------- error taxonomy (C2.1) ----------
+
+def test_C21_taxonomy_notfound_is_lookuperror_store_is_not():
+    assert issubclass(EvidenceNotFoundError, LookupError)
+    assert not issubclass(EvidenceStoreError, LookupError)
+
+
 # ---------- file resolution ----------
 
 @pytest.mark.asyncio
@@ -66,13 +77,13 @@ async def test_resolve_file_hit(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_resolve_file_miss_raises(tmp_path):
+async def test_resolve_file_miss_raises_not_found(tmp_path):
     fdb, edb = str(tmp_path / "files.db"), str(tmp_path / "events.db")
     _make_files_db(fdb, ["/other/file.txt"])
     _make_events_db(edb, [])
     r = EvidenceResolver(_backend({"A": {"output_files_db": fdb, "output_events_db": edb}}))
 
-    with pytest.raises(LookupError):
+    with pytest.raises(EvidenceNotFoundError):
         await r.resolve_evidence("A", "file:/case/report.docx")
 
 
@@ -113,22 +124,22 @@ async def test_resolve_cluster_hit_recomputed(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_resolve_cluster_miss_not_fabricated(tmp_path):
+async def test_resolve_cluster_miss_raises_not_found(tmp_path):
     fdb, edb = str(tmp_path / "files.db"), str(tmp_path / "events.db")
     _make_files_db(fdb, [])
     _make_events_db(edb, [{"timestamp": 6000, "event_type": "MODIFIED"}])
     r = EvidenceResolver(_backend({"A": {"output_files_db": fdb, "output_events_db": edb}}))
 
-    with pytest.raises(LookupError):  # no CREATED cluster exists -> fail, don't fabricate
+    with pytest.raises(EvidenceNotFoundError):  # not fabricated
         await r.resolve_evidence("A", "cluster:v1:100:CREATED")
 
 
 # ---------- task boundary / fail-closed ----------
 
 @pytest.mark.asyncio
-async def test_R1_task_not_found_raises():
+async def test_R1_task_not_found_raises_not_found():
     r = EvidenceResolver(_backend({}))
-    with pytest.raises(LookupError):
+    with pytest.raises(EvidenceNotFoundError):
         await r.resolve_evidence("nope", "file:/x")
 
 
@@ -160,25 +171,26 @@ async def test_R6_cross_task_isolation(tmp_path):
     res_a = await r.resolve_evidence("A", "file:/case/report.docx")
     assert res_a.source_db == fa  # resolved from A's DB only
 
-    with pytest.raises(LookupError):  # B must not see A's evidence
+    with pytest.raises(EvidenceNotFoundError):  # B must not see A's evidence
         await r.resolve_evidence("B", "file:/case/report.docx")
 
 
 @pytest.mark.asyncio
-async def test_db_missing_fail_closed_and_no_create(tmp_path):
+async def test_db_missing_raises_store_error_and_no_create(tmp_path):
     missing_files = str(tmp_path / "nope_files.db")
     missing_events = str(tmp_path / "nope_events.db")
     r = EvidenceResolver(_backend({
         "A": {"output_files_db": missing_files, "output_events_db": missing_events},
     }))
 
-    with pytest.raises(LookupError):
+    # DB file missing is a STORE failure (not a not-found), and never creates the DB.
+    with pytest.raises(EvidenceStoreError):
         await r.resolve_evidence("A", "file:/case/report.docx")
-    assert not Path(missing_files).exists()  # never created a DB
+    assert not Path(missing_files).exists()
 
 
 @pytest.mark.asyncio
-async def test_table_missing_fail_closed(tmp_path):
+async def test_table_missing_raises_store_error(tmp_path):
     fdb, edb = str(tmp_path / "files.db"), str(tmp_path / "events.db")
     conn = sqlite3.connect(fdb)
     conn.execute("CREATE TABLE other (x TEXT)")  # files.db exists but has no files table
@@ -187,9 +199,9 @@ async def test_table_missing_fail_closed(tmp_path):
     Path(edb).write_bytes(b"")  # empty events db (no tables)
     r = EvidenceResolver(_backend({"A": {"output_files_db": fdb, "output_events_db": edb}}))
 
-    with pytest.raises(LookupError):
+    with pytest.raises(EvidenceStoreError):
         await r.resolve_evidence("A", "file:/case/report.docx")
-    with pytest.raises(LookupError):
+    with pytest.raises(EvidenceStoreError):
         await r.resolve_evidence("A", "cluster:v1:100:CREATED")
 
 

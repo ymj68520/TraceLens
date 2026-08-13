@@ -102,3 +102,19 @@ def test_C1c_cluster_key_rejects_normalized_path():
             event_type="CREATED",
             normalized_path="/x",
         )
+
+
+# --- C2.1: strict percent-decoding of event_type ---
+
+def test_C21_strict_decode_accepts_valid_unicode():
+    encoded = "%E5%BE%AE%E4%BF%A1%E4%BA%8B%E4%BB%B6"  # 微信事件
+    p = parse_evidence_key(f"cluster:v1:1:{encoded}")
+    assert p.event_type == "微信事件"
+    assert p.canonical_key == f"cluster:v1:1:{encoded}"
+
+
+@pytest.mark.parametrize("bad_encoded", ["%FF", "%ZZ", "%", "%2", "ab%"])
+def test_C21_strict_decode_rejects_malformed_event_type(bad_encoded):
+    # Malformed escapes / invalid UTF-8 must NOT be "repaired" into another identity.
+    with pytest.raises(ValueError):
+        parse_evidence_key(f"cluster:v1:1:{bad_encoded}")

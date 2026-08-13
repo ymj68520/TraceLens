@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
 
+from .exceptions import EvidenceNotFoundError, EvidenceStoreError
 from .keys import parse_evidence_key
 from .models import ParsedEvidenceKey, ResolvedEvidence
 
@@ -29,29 +30,34 @@ logger = logging.getLogger(__name__)
 def _connect_ro(path: str) -> sqlite3.Connection:
     """Open a read-only sqlite connection (mirrors SqliteTaskReportAdapter._connect).
 
-    Raises LookupError if the file does not exist (fail closed; never creates it).
+    Raises EvidenceStoreError if the file does not exist (fail closed; never
+    creates it). This is a store-level failure, not a not-found.
     """
     candidate = Path(path)
     if not candidate.is_file():
-        raise LookupError(f"database file not found: {path!r}")
+        raise EvidenceStoreError(f"database file not found: {path!r}")
     uri = f"file:{quote(str(candidate.resolve()), safe='/')}?mode=ro"
     return sqlite3.connect(uri, uri=True, timeout=10)
 
 
 def _file_exists(files_db: str, normalized_path: str) -> bool:
-    """Exact existence check of normalized_path in files.db (R4)."""
+    """Exact existence check of normalized_path in files.db (R4).
+
+    Raises EvidenceStoreError if the store cannot be read (DB missing, files
+    table missing, query/schema error). Returns False only for a genuine
+    not-found (file present, DB readable, path simply absent).
+    """
     try:
         conn = _connect_ro(files_db)
-    except (LookupError, sqlite3.Error):
-        return False
+    except sqlite3.Error as exc:
+        raise EvidenceStoreError(f"cannot open files.db {files_db!r}: {exc}") from exc
     try:
         row = conn.execute(
             "SELECT 1 FROM files WHERE path = ? LIMIT 1", [normalized_path]
         ).fetchone()
         return row is not None
-    except sqlite3.OperationalError:
-        # No files table -> not resolvable here.
-        return False
+    except sqlite3.OperationalError as exc:
+        raise EvidenceStoreError(f"cannot query files table in {files_db!r}: {exc}") from exc
     finally:
         conn.close()
 
@@ -59,12 +65,14 @@ def _file_exists(files_db: str, normalized_path: str) -> bool:
 def _cluster_lookup(events_db: str, unix_minute: int, event_type: str) -> Optional[dict]:
     """Recompute the cluster for (unix_minute, event_type) from events.db (R5).
 
-    Returns None if the cluster does not currently exist (it is never fabricated).
+    Raises EvidenceStoreError if the store cannot be read. Returns None only when
+    the store is readable but the cluster genuinely does not exist (never
+    fabricated).
     """
     try:
         conn = _connect_ro(events_db)
-    except (LookupError, sqlite3.Error):
-        return None
+    except sqlite3.Error as exc:
+        raise EvidenceStoreError(f"cannot open events.db {events_db!r}: {exc}") from exc
     conn.row_factory = sqlite3.Row
     try:
         row = conn.execute(
@@ -87,9 +95,8 @@ def _cluster_lookup(events_db: str, unix_minute: int, event_type: str) -> Option
             "event_count": row["event_count"],
             "representative_timestamp": row["representative_timestamp"],
         }
-    except sqlite3.OperationalError:
-        # No events table -> not resolvable here.
-        return None
+    except sqlite3.OperationalError as exc:
+        raise EvidenceStoreError(f"cannot query events table in {events_db!r}: {exc}") from exc
     finally:
         conn.close()
 
@@ -111,7 +118,7 @@ class EvidenceResolver:
         # R1/R2/R3: task must exist; DB paths come ONLY from get_task.
         task = await self._cpp_backend.get_task(task_id)
         if not task:
-            raise LookupError(f"task not found: {task_id}")
+            raise EvidenceNotFoundError(f"task not found: {task_id}")
 
         files_db = task.get("output_files_db") or ""
         events_db = task.get("output_events_db") or ""
@@ -127,7 +134,7 @@ class EvidenceResolver:
         # R4/R6: exact match inside THIS task's files.db only.
         exists = await asyncio.to_thread(_file_exists, files_db, normalized_path)
         if not exists:
-            raise LookupError(
+            raise EvidenceNotFoundError(
                 f"file evidence not found in task {task_id}: {normalized_path!r}"
             )
         return ResolvedEvidence(
@@ -146,7 +153,7 @@ class EvidenceResolver:
             _cluster_lookup, events_db, parsed.unix_minute, parsed.event_type
         )
         if row is None:
-            raise LookupError(
+            raise EvidenceNotFoundError(
                 f"cluster evidence not found in task {task_id}: "
                 f"(unix_minute={parsed.unix_minute}, event_type={parsed.event_type!r})"
             )
