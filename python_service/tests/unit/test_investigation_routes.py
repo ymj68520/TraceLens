@@ -22,6 +22,7 @@ def _snapshot():
         evidence_type="file",
         captured_at=123,
         payload=FileSnapshotPayload(normalized_path="/case/a.txt", name="a.txt"),
+        snapshot_id=1,
     )
 
 
@@ -42,6 +43,7 @@ def test_success_returns_canonical_snapshot_without_source_db():
     assert response.status_code == 200
     assert response.json()["evidence_key"] == "file:/case/a.txt"
     assert "source_db" not in response.json()
+    assert "snapshot_id" not in response.json()  # A12: internal key never serialized
     service.capture.assert_awaited_once_with("A", r"file:\case\a.txt")
 
 

@@ -1,4 +1,4 @@
-"""Investigation Snapshot Foundation and public capture orchestration (Phase C4a/C3).
+"""Investigation Snapshot Foundation and public capture orchestration (Phase C4a/C3/C4b-1).
 
 Public capture flow:
     task_id + evidence_key
@@ -6,15 +6,21 @@ Public capture flow:
       -> InvestigationCaptureService
       -> task-bound InvestigationRepository.capture_if_absent
 
-The package still owns no HTTP route; routes live under ``httpserver.routes``.
-No Secondary Analysis / Jobs / Claims tables are created here.
+The package still owns no HTTP route for Secondary Analysis; routes live under
+``httpserver.routes``.  Secondary Analysis persistence (create/transition/query)
+is available via ``InvestigationRepository`` but not yet wired to LLM/Job/route.
 """
 
 from .acquisition import build_snapshot_candidate, canonical_json
 from .models import (
+    SECONDARY_TRANSITIONS,
+    TERMINAL_SECONDARY_STATUSES,
+    AnalysisInputEnvelope,
     ClusterSnapshotPayload,
     EvidenceSnapshot,
     FileSnapshotPayload,
+    SecondaryAnalysis,
+    SecondaryAnalysisStatus,
     SnapshotCandidate,
 )
 from .paths import investigation_db_path_for_task
@@ -31,5 +37,10 @@ __all__ = [
     "SnapshotCandidate",
     "FileSnapshotPayload",
     "ClusterSnapshotPayload",
+    "SecondaryAnalysis",
+    "SecondaryAnalysisStatus",
+    "AnalysisInputEnvelope",
+    "SECONDARY_TRANSITIONS",
+    "TERMINAL_SECONDARY_STATUSES",
     "InvestigationCaptureService",
 ]
