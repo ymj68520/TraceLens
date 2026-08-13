@@ -10,7 +10,12 @@ task's own databases and returns a canonical descriptor. It performs no
 persistence and never crosses task boundaries.
 """
 
-from .exceptions import EvidenceNotFoundError, EvidenceResolutionError, EvidenceStoreError
+from .exceptions import (
+    EvidenceNotFoundError,
+    EvidenceResolutionError,
+    EvidenceStoreError,
+    InvalidEvidenceKeyError,
+)
 from .keys import parse_evidence_key
 from .models import ParsedEvidenceKey, ResolvedEvidence
 from .resolver import EvidenceResolver
@@ -23,4 +28,5 @@ __all__ = [
     "EvidenceResolutionError",
     "EvidenceNotFoundError",
     "EvidenceStoreError",
+    "InvalidEvidenceKeyError",
 ]

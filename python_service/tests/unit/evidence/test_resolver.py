@@ -15,6 +15,7 @@ from httpserver.services.evidence import (
     EvidenceNotFoundError,
     EvidenceResolver,
     EvidenceStoreError,
+    InvalidEvidenceKeyError,
     ResolvedEvidence,
 )
 
@@ -150,8 +151,9 @@ async def test_malformed_key_raises_value_error(tmp_path):
     _make_events_db(edb, [])
     r = EvidenceResolver(_backend({"A": {"output_files_db": fdb, "output_events_db": edb}}))
 
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidEvidenceKeyError):
         await r.resolve_evidence("A", "unknown:x")
+    r._cpp_backend.get_task.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -10,6 +10,10 @@ task database.
 from __future__ import annotations
 
 
+class InvalidEvidenceKeyError(ValueError):
+    """The client supplied a malformed Evidence key (HTTP 400 semantics)."""
+
+
 class EvidenceResolutionError(Exception):
     """Base class for Evidence resolution failures."""
 

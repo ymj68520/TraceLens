@@ -47,6 +47,7 @@ class ServiceManager:
         self._ingestion_job_manager: Optional["IngestionJobManager"] = None
         self._migration_manager: Optional["MigrationManager"] = None
         self._forensic_report_service = None
+        self._investigation_service = None
         self._initialized = False
         self._cpp_backend_ready = False
         self._forensic_report_ready = False
@@ -270,6 +271,7 @@ class ServiceManager:
 
     def _clear_services(self) -> None:
         self._forensic_report_service = None
+        self._investigation_service = None
         self._cpp_backend = None
         self._graphiti_service = None
         self._llm_service = None
@@ -332,6 +334,25 @@ class ServiceManager:
         if not self._forensic_report_ready:
             raise RuntimeError("Forensic report service is unavailable")
         return self._forensic_report_service
+
+    def _create_investigation_service(self):
+        from .evidence import EvidenceResolver
+        from .investigation.service import InvestigationCaptureService
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        return InvestigationCaptureService(
+            cpp_backend=self._cpp_backend,
+            evidence_resolver=EvidenceResolver(self._cpp_backend),
+        )
+
+    @property
+    def investigation_service(self):
+        """Get the Investigation capture service bound to the ready backend."""
+        self._require_service_access()
+        if self._investigation_service is None:
+            self._investigation_service = self._create_investigation_service()
+        return self._investigation_service
 
     @property
     def graphiti_service(self) -> "GraphitiService":

@@ -18,6 +18,7 @@ import re
 from urllib.parse import quote, unquote_to_bytes
 
 from ...path_utils import normalize_evidence_path
+from .exceptions import InvalidEvidenceKeyError
 from .models import ParsedEvidenceKey
 
 _FILE_PREFIX = "file:"
@@ -37,12 +38,12 @@ def _decode_event_type(encoded_event_type: str) -> str:
     sequences instead of silently "repairing" them.
     """
     if _MALFORMED_PERCENT_RE.search(encoded_event_type):
-        raise ValueError(f"malformed percent-encoding in event_type: {encoded_event_type!r}")
+        raise InvalidEvidenceKeyError(f"malformed percent-encoding in event_type: {encoded_event_type!r}")
     raw = unquote_to_bytes(encoded_event_type)
     try:
         return raw.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
-        raise ValueError(f"event_type is not valid UTF-8: {encoded_event_type!r}") from exc
+        raise InvalidEvidenceKeyError(f"event_type is not valid UTF-8: {encoded_event_type!r}") from exc
 
 
 def parse_evidence_key(evidence_key: str) -> ParsedEvidenceKey:
@@ -53,15 +54,15 @@ def parse_evidence_key(evidence_key: str) -> ParsedEvidenceKey:
             version, non-integer unix_minute, empty event_type, ...).
     """
     if not isinstance(evidence_key, str) or not evidence_key:
-        raise ValueError("evidence_key must be a non-empty string")
+        raise InvalidEvidenceKeyError("evidence_key must be a non-empty string")
 
     if evidence_key.startswith(_FILE_PREFIX):
         raw_path = evidence_key[len(_FILE_PREFIX):]
         if not raw_path:
-            raise ValueError("file evidence key missing path")
+            raise InvalidEvidenceKeyError("file evidence key missing path")
         normalized_path = normalize_evidence_path(raw_path)
         if not normalized_path:
-            raise ValueError("file evidence key has empty normalized path")
+            raise InvalidEvidenceKeyError("file evidence key has empty normalized path")
         return ParsedEvidenceKey(
             evidence_type="file",
             canonical_key=f"file:{normalized_path}",
@@ -73,16 +74,16 @@ def parse_evidence_key(evidence_key: str) -> ParsedEvidenceKey:
         rest = evidence_key[len(_CLUSTER_PREFIX):]
         parts = rest.split(":", 2)
         if len(parts) != 3:
-            raise ValueError(f"malformed cluster evidence key: {evidence_key!r}")
+            raise InvalidEvidenceKeyError(f"malformed cluster evidence key: {evidence_key!r}")
         version, minute_str, encoded_event_type = parts
         if version != _SUPPORTED_CLUSTER_VERSION:
-            raise ValueError(f"unsupported cluster evidence key version: {version!r}")
+            raise InvalidEvidenceKeyError(f"unsupported cluster evidence key version: {version!r}")
         if not encoded_event_type:
-            raise ValueError("cluster evidence key missing event_type")
+            raise InvalidEvidenceKeyError("cluster evidence key missing event_type")
         try:
             unix_minute = int(minute_str)
         except ValueError as exc:
-            raise ValueError(
+            raise InvalidEvidenceKeyError(
                 f"cluster evidence key has non-integer unix_minute: {minute_str!r}"
             ) from exc
         event_type = _decode_event_type(encoded_event_type)
@@ -95,4 +96,4 @@ def parse_evidence_key(evidence_key: str) -> ParsedEvidenceKey:
             event_type=event_type,
         )
 
-    raise ValueError(f"unknown evidence key type: {evidence_key!r}")
+    raise InvalidEvidenceKeyError(f"unknown evidence key type: {evidence_key!r}")

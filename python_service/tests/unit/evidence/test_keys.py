@@ -10,6 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from httpserver.services.evidence import ParsedEvidenceKey, parse_evidence_key
+from httpserver.services.evidence import InvalidEvidenceKeyError
 
 
 # --- file ---
@@ -111,6 +112,12 @@ def test_C21_strict_decode_accepts_valid_unicode():
     p = parse_evidence_key(f"cluster:v1:1:{encoded}")
     assert p.event_type == "微信事件"
     assert p.canonical_key == f"cluster:v1:1:{encoded}"
+
+
+def test_C3_invalid_key_uses_dedicated_value_error():
+    with pytest.raises(InvalidEvidenceKeyError):
+        parse_evidence_key("unknown:x")
+    assert issubclass(InvalidEvidenceKeyError, ValueError)
 
 
 @pytest.mark.parametrize("bad_encoded", ["%FF", "%ZZ", "%", "%2", "ab%"])
