@@ -22,12 +22,18 @@ from .models import (
 # Version registry
 # ---------------------------------------------------------------------------
 
-CURRENT_PROMPT_VERSION = "investigation-evidence-analysis:v2"
+CURRENT_PROMPT_VERSION = "investigation-evidence-analysis:v3"
 
-# Envelope schema ↔ prompt version 1:1 compatibility (C4c correction #1).
-ENVELOPE_PROMPT_COMPAT: dict[int, str] = {
-    1: "investigation-evidence-analysis:v1",
-    2: "investigation-evidence-analysis:v2",
+# Input envelope compatibility. V2 input is shared by historical legacy v2
+# and current structured v3 output contracts.
+ENVELOPE_PROMPT_COMPAT: dict[int, frozenset[str]] = {
+    1: frozenset({"investigation-evidence-analysis:v1"}),
+    2: frozenset({"investigation-evidence-analysis:v2", "investigation-evidence-analysis:v3"}),
+}
+PROMPT_OUTPUT_CONTRACT: dict[str, str] = {
+    "investigation-evidence-analysis:v1": "legacy_text",
+    "investigation-evidence-analysis:v2": "legacy_text",
+    "investigation-evidence-analysis:v3": "structured_claims_v1",
 }
 
 # ---------------------------------------------------------------------------
@@ -118,13 +124,50 @@ SECONDARY_ANALYSIS_USER_TEMPLATE_V2 = """\
 注意：分析员备注和案件语境仅作为调查参考，不得作为已证实事实引用。
 """
 
+# v3 is immutable. It changes ONLY the output contract, not the input envelope.
+SECONDARY_ANALYSIS_SYSTEM_V3 = """\
+你是一名数字取证分析专家。请基于提供的证据快照、相关证据快照和分析员语境进行二次分析。
+
+严格输出要求：
+1. 只输出一个合法 JSON 对象，不要输出 Markdown、代码围栏或解释文字
+2. 顶层字段只能是 description、summary、claims
+3. claims 必须是数组；每个 Claim 只能包含 claim_type、claim_text、evidence_refs
+4. claim_type 只能是 FACT、INFERENCE、HYPOTHESIS
+5. evidence_refs 只能使用输入中明确展示的 canonical Evidence ID，不得创造、解释或规范化新的 ID
+6. Analyst Note / Case Context 只是调查语境，不是 Evidence，不能作为事实来源
+7. FACT 应尽量提供 Evidence refs；不确定内容使用 INFERENCE 或 HYPOTHESIS
+8. 不要输出 grounding_status、accepted、rejected 或任何审核字段
+"""
+
+SECONDARY_ANALYSIS_USER_TEMPLATE_V3 = """\
+请对以下输入执行结构化二次分析，并严格按照系统要求输出 JSON。
+
+证据类型：{evidence_type}
+证据标识：{evidence_key}
+快照数据：
+{snapshot_text}
+
+初始分析摘要：{initial_summary}
+初始分析描述：{initial_description}
+
+相关证据：
+{related_evidence_text}
+
+分析员备注（调查语境，非证据）：
+{analyst_note}
+
+案件语境（调查方向，非证据）：
+{case_context}
+"""
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
 PROMPT_REGISTRY: dict[str, tuple[str, str]] = {
     "investigation-evidence-analysis:v1": (SECONDARY_ANALYSIS_SYSTEM_V1, SECONDARY_ANALYSIS_USER_TEMPLATE_V1),
-    CURRENT_PROMPT_VERSION: (SECONDARY_ANALYSIS_SYSTEM_V2, SECONDARY_ANALYSIS_USER_TEMPLATE_V2),
+    "investigation-evidence-analysis:v2": (SECONDARY_ANALYSIS_SYSTEM_V2, SECONDARY_ANALYSIS_USER_TEMPLATE_V2),
+    "investigation-evidence-analysis:v3": (SECONDARY_ANALYSIS_SYSTEM_V3, SECONDARY_ANALYSIS_USER_TEMPLATE_V3),
 }
 
 

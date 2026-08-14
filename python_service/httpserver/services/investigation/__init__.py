@@ -15,6 +15,7 @@ Secondary Analysis execution:
 
 from .acquisition import build_snapshot_candidate, canonical_json
 from .execution import SecondaryAnalysisExecutor
+from .structured import StructuredOutputError, parse_structured_analysis_response
 from .grounding import (
     GroundingValidator,
     compute_analysis_grounding,
@@ -36,12 +37,19 @@ from .models import (
     RelatedEvidenceEntry,
     SecondaryAnalysis,
     SecondaryAnalysisStatus,
+    StructuredAnalysisResponse,
     SnapshotCandidate,
     ValidatedClaim,
     parse_analysis_input_envelope,
 )
 from .paths import investigation_db_path_for_task
-from .prompts import CURRENT_PROMPT_VERSION, ENVELOPE_PROMPT_COMPAT, PROMPT_REGISTRY, get_prompt
+from .prompts import (
+    CURRENT_PROMPT_VERSION,
+    ENVELOPE_PROMPT_COMPAT,
+    PROMPT_OUTPUT_CONTRACT,
+    PROMPT_REGISTRY,
+    get_prompt,
+)
 from .repository import InvestigationRepository, SUPPORTED_SCHEMA_VERSION
 from .service import InvestigationCaptureService
 
@@ -67,6 +75,7 @@ __all__ = [
     "SecondaryAnalysisExecutor",
     "CURRENT_PROMPT_VERSION",
     "ENVELOPE_PROMPT_COMPAT",
+    "PROMPT_OUTPUT_CONTRACT",
     "PROMPT_REGISTRY",
     "get_prompt",
     "ClaimType",
@@ -78,4 +87,7 @@ __all__ = [
     "GroundingValidator",
     "derive_allowed_evidence_ids",
     "compute_analysis_grounding",
+    "StructuredAnalysisResponse",
+    "StructuredOutputError",
+    "parse_structured_analysis_response",
 ]

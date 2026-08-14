@@ -70,7 +70,7 @@ def _file_resolved(fdb, task_id="A", path="/case/report.docx"):
     )
 
 
-def _setup(tmp_path, *, desc="DESC", prompt_version=CURRENT_PROMPT_VERSION):
+def _setup(tmp_path, *, desc="DESC", prompt_version="investigation-evidence-analysis:v2"):
     """Create files.db + investigation.db with a captured snapshot and queued analysis."""
     fdb = str(tmp_path / "files.db")
     idb = str(tmp_path / "investigation.db")
@@ -129,7 +129,7 @@ EVIDENCE_KEY = "file:/case/report.docx"
 # ---------------------------------------------------------------------------
 
 def test_E1_queued_persisted_before_background(tmp_path):
-    _, idb, repo, snap, analysis = _setup(tmp_path)
+    _, idb, repo, snap, analysis = _setup(tmp_path, prompt_version=CURRENT_PROMPT_VERSION)
     assert analysis.status == SecondaryAnalysisStatus.queued
     # DB has the row
     row = InvestigationRepository(idb, "A").get_analysis(analysis.analysis_id)
@@ -418,7 +418,7 @@ async def test_single_worker_claim_dual_execute(tmp_path):
 
 @pytest.mark.asyncio
 async def test_input_hash_mismatch_detected(tmp_path):
-    _, idb, repo, snap, analysis = _setup(tmp_path)
+    _, idb, repo, snap, analysis = _setup(tmp_path, prompt_version="investigation-evidence-analysis:v2")
     mock_llm = _mock_llm()
 
     # v3 trigger blocks input column UPDATEs; DROP → tamper → recreate to
@@ -449,7 +449,7 @@ async def test_input_hash_mismatch_detected(tmp_path):
 
 @pytest.mark.asyncio
 async def test_prompt_version_mismatch(tmp_path):
-    _, idb, repo, snap, analysis = _setup(tmp_path)
+    _, idb, repo, snap, analysis = _setup(tmp_path, prompt_version="investigation-evidence-analysis:v2")
     mock_llm = _mock_llm()
 
     # v3 trigger blocks prompt_version UPDATE; DROP → tamper → recreate

@@ -433,6 +433,10 @@ def test_prompt_v2_immutable_hash():
 
 
 def test_envelope_prompt_compat_map():
-    assert ENVELOPE_PROMPT_COMPAT[1] == "investigation-evidence-analysis:v1"
-    assert ENVELOPE_PROMPT_COMPAT[2] == "investigation-evidence-analysis:v2"
+    assert ENVELOPE_PROMPT_COMPAT[1] == frozenset({"investigation-evidence-analysis:v1"})
+    assert ENVELOPE_PROMPT_COMPAT[2] == frozenset({
+        "investigation-evidence-analysis:v2",
+        "investigation-evidence-analysis:v3",
+    })
+    assert CURRENT_PROMPT_VERSION == "investigation-evidence-analysis:v3"
     assert CURRENT_PROMPT_VERSION in PROMPT_REGISTRY

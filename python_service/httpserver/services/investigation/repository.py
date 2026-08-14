@@ -382,10 +382,13 @@ class InvestigationRepository:
             conn.commit()
 
     def _migrate_v2_to_v4(self) -> None:
-        """v2 database: add input trigger (v3) + claims (v4) → v4."""
+        """v2 database: add input trigger (v3) + grounding/claims (v4) → v4."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL)
+            cols = {row["name"] for row in conn.execute("PRAGMA table_info(secondary_analyses)")}
+            if "grounding_status" not in cols:
+                conn.execute("ALTER TABLE secondary_analyses ADD COLUMN grounding_status TEXT")
             conn.execute(_CREATE_ANALYSIS_CLAIMS_SQL)
             conn.execute(_CREATE_CLAIM_EVIDENCE_REFS_SQL)
             conn.execute(_INDEX_CLAIMS_ANALYSIS_SQL)
@@ -936,8 +939,48 @@ class InvestigationRepository:
         )
 
     # =====================================================================
-    # analysis_claims -- persist (C5a: G11-G14)
+    # analysis_claims -- persist (C5a/C5b: G11-G14)
     # =====================================================================
+
+    def _validate_and_insert_claims(
+        self,
+        conn: sqlite3.Connection,
+        analysis_id: str,
+        row: sqlite3.Row,
+        candidates: Sequence[ClaimCandidate],
+        *,
+        now: str,
+    ) -> tuple[list, AnalysisGroundingStatus]:
+        """Validate candidates from this analysis envelope and insert claims.
+
+        The caller owns the surrounding transaction and precondition checks.
+        """
+        envelope = parse_analysis_input_envelope(row["input_envelope_json"])
+        allowed = derive_allowed_evidence_ids(envelope)
+        validated = GroundingValidator(allowed).validate(candidates)
+        grounding = compute_analysis_grounding(validated)
+        for idx, vc in enumerate(validated):
+            claim_id = f"cl_{uuid.uuid4().hex}"
+            conn.execute(
+                """
+                INSERT INTO analysis_claims
+                    (claim_id, analysis_id, claim_index, claim_type,
+                     claim_text, grounding_status, warning_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    claim_id, analysis_id, idx, vc.claim_type.value, vc.claim_text,
+                    vc.grounding_status.value,
+                    json.dumps(vc.warnings, ensure_ascii=False) if vc.warnings else None,
+                    now,
+                ),
+            )
+            for ref in vc.evidence_refs:
+                conn.execute(
+                    "INSERT INTO claim_evidence_refs (claim_id, evidence_key) VALUES (?, ?)",
+                    (claim_id, ref),
+                )
+        return validated, grounding
 
     def persist_claims(
         self,
@@ -976,41 +1019,14 @@ class InvestigationRepository:
                 "SELECT COUNT(*) FROM analysis_claims WHERE analysis_id = ?",
                 [analysis_id],
             ).fetchone()[0]
+            if row["grounding_status"] is not None:
+                raise ValueError("analysis grounding has already been persisted (write-once)")
             if existing > 0:
-                raise ValueError(
-                    f"claims already exist for analysis {analysis_id!r} (write-once)"
-                )
+                raise EvidenceStoreError("analysis has claims but no grounding status")
 
-            # G11: re-derive allowed from the frozen envelope inside the tx.
-            envelope = parse_analysis_input_envelope(row["input_envelope_json"])
-            allowed = derive_allowed_evidence_ids(envelope)
-            validated = GroundingValidator(allowed).validate(candidates)
-            grounding = compute_analysis_grounding(validated)
-
-            for idx, vc in enumerate(validated):
-                claim_id = f"cl_{uuid.uuid4().hex}"
-                conn.execute(
-                    """
-                    INSERT INTO analysis_claims
-                        (claim_id, analysis_id, claim_index, claim_type,
-                         claim_text, grounding_status, warning_json, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        claim_id, analysis_id, idx,
-                        vc.claim_type.value,
-                        vc.claim_text,
-                        vc.grounding_status.value,
-                        json.dumps(vc.warnings, ensure_ascii=False) if vc.warnings else None,
-                        now,
-                    ),
-                )
-                for ref in vc.evidence_refs:
-                    conn.execute(
-                        "INSERT OR IGNORE INTO claim_evidence_refs (claim_id, evidence_key) VALUES (?, ?)",
-                        (claim_id, ref),
-                    )
-
+            _, grounding = self._validate_and_insert_claims(
+                conn, analysis_id, row, candidates, now=now
+            )
             conn.execute(
                 "UPDATE secondary_analyses SET grounding_status = ? WHERE analysis_id = ?",
                 (grounding.value, analysis_id),
@@ -1021,6 +1037,67 @@ class InvestigationRepository:
             conn.commit()
 
         return claims
+
+    def complete_analysis_for_review(
+        self,
+        analysis_id: str,
+        *,
+        description: str,
+        summary: str,
+        model: str,
+        candidates: Sequence[ClaimCandidate],
+    ) -> SecondaryAnalysis:
+        """Atomically persist structured output, Claims, Grounding, and review state.
+
+        This is the only C5b success path. It never calls public persistence or
+        transition methods because those would commit separate transactions.
+        """
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT * FROM secondary_analyses WHERE analysis_id = ?",
+                [analysis_id],
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"analysis not found: {analysis_id!r}")
+            if row["status"] != SecondaryAnalysisStatus.running.value:
+                raise ValueError(
+                    f"completion requires running status (current: {row['status']!r})"
+                )
+            if any(row[name] is not None for name in ("description", "summary", "model", "grounding_status")):
+                raise ValueError("analysis already contains persisted result data")
+            claim_count = conn.execute(
+                "SELECT COUNT(*) FROM analysis_claims WHERE analysis_id = ?",
+                [analysis_id],
+            ).fetchone()[0]
+            if claim_count:
+                raise ValueError("analysis claims already exist (write-once)")
+
+            _, grounding = self._validate_and_insert_claims(
+                conn, analysis_id, row, candidates, now=now
+            )
+            cursor = conn.execute(
+                """
+                UPDATE secondary_analyses
+                SET description = ?, summary = ?, model = ?,
+                    grounding_status = ?, status = 'review_pending',
+                    review_pending_at = ?
+                WHERE analysis_id = ? AND status = 'running'
+                """,
+                (description, summary, model, grounding.value, now, analysis_id),
+            )
+            if cursor.rowcount != 1:
+                raise EvidenceStoreError(
+                    f"analysis completion status race for {analysis_id!r}"
+                )
+            result_row = conn.execute(
+                "SELECT * FROM secondary_analyses WHERE analysis_id = ?",
+                [analysis_id],
+            ).fetchone()
+            result = self._row_to_analysis(result_row)
+            conn.commit()
+        return result
 
     # =====================================================================
     # analysis_claims -- read
@@ -1067,8 +1144,8 @@ class InvestigationRepository:
     def get_grounding_summary(self, analysis_id: str) -> Optional[AnalysisGroundingStatus]:
         """Return the analysis-level grounding status.
 
-        Raises KeyError if the analysis does not exist.
-        Returns None if grounding has not been computed yet (no claims persisted).
+        Raises KeyError if the analysis does not exist. Returns None if claims
+        have not been persisted yet.
         """
         with self._connect() as conn:
             row = conn.execute(
@@ -1077,5 +1154,4 @@ class InvestigationRepository:
             ).fetchone()
         if row is None:
             raise KeyError(f"analysis not found: {analysis_id!r}")
-        gs = row["grounding_status"]
-        return AnalysisGroundingStatus(gs) if gs else None
+        return AnalysisGroundingStatus(row["grounding_status"]) if row["grounding_status"] else None

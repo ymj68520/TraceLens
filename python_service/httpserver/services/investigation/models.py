@@ -299,11 +299,27 @@ class ClaimCandidate(BaseModel):
     by constructing ValidatedClaim directly.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     claim_type: ClaimType
-    claim_text: str
-    evidence_refs: tuple[str, ...] = ()
+    claim_text: str = Field(min_length=1, max_length=20_000)
+    evidence_refs: tuple[str, ...] = Field(default=(), max_length=100)
+
+    @model_validator(mode="after")
+    def _validate_ref_lengths(self):
+        if any(not isinstance(ref, str) or not 1 <= len(ref) <= 4096 for ref in self.evidence_refs):
+            raise ValueError("evidence_refs must contain strings of 1-4096 characters")
+        return self
+
+
+class StructuredAnalysisResponse(BaseModel):
+    """Strict structured LLM output for prompt v3 (L1-L3, L8-L10)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    description: str = Field(min_length=1, max_length=20_000)
+    summary: str = Field(min_length=1, max_length=20_000)
+    claims: tuple[ClaimCandidate, ...] = Field(default=(), max_length=100)
 
 
 class ValidatedClaim(BaseModel):

@@ -30,8 +30,15 @@ from ..evidence.exceptions import EvidenceNotFoundError, EvidenceStoreError
 from ..evidence.keys import parse_evidence_key
 from .models import SecondaryAnalysis, SecondaryAnalysisStatus, parse_analysis_input_envelope
 from .paths import investigation_db_path_for_task
-from .prompts import CURRENT_PROMPT_VERSION, ENVELOPE_PROMPT_COMPAT, build_user_prompt, get_prompt
+from .prompts import (
+    CURRENT_PROMPT_VERSION,
+    ENVELOPE_PROMPT_COMPAT,
+    PROMPT_OUTPUT_CONTRACT,
+    build_user_prompt,
+    get_prompt,
+)
 from .repository import InvestigationRepository
+from .structured import StructuredOutputError, parse_structured_analysis_response
 
 if TYPE_CHECKING:
     from ..cpp_backend import CppBackendService
@@ -246,6 +253,8 @@ class SecondaryAnalysisExecutor:
                 )
                 claimed = True
             except ValueError:
+                # Another worker already claimed this analysis. Do not execute
+                # or fail it: the winner owns the running row.
                 logger.warning(
                     "analysis %s already claimed by another worker", analysis_id
                 )
@@ -288,11 +297,18 @@ class SecondaryAnalysisExecutor:
                 )
                 return
             # C4c: envelope schema ↔ prompt version 1:1 compatibility
-            expected_prompt = ENVELOPE_PROMPT_COMPAT.get(envelope.schema_version)
-            if env_prompt_version != expected_prompt:
+            allowed_prompts = ENVELOPE_PROMPT_COMPAT.get(envelope.schema_version, frozenset())
+            if env_prompt_version not in allowed_prompts:
                 await self._fail(
                     repo, analysis_id, "input_integrity_error",
                     "envelope schema/prompt version mismatch",
+                )
+                return
+            output_contract = PROMPT_OUTPUT_CONTRACT.get(env_prompt_version)
+            if output_contract is None:
+                await self._fail(
+                    repo, analysis_id, "unknown_prompt_version",
+                    "unsupported prompt_version in envelope",
                 )
                 return
 
@@ -328,18 +344,38 @@ class SecondaryAnalysisExecutor:
                 )
                 return
 
-            description = content
-            summary = description[:200].split("\n")[0] if description else ""
-
-            # E5: success -> review_pending (NEVER accepted)
-            await asyncio.to_thread(
-                repo.transition,
-                analysis_id,
-                SecondaryAnalysisStatus.review_pending,
-                description=description,
-                summary=summary,
-                model=result.get("model", ""),
-            )
+            if output_contract == "legacy_text":
+                description = content
+                summary = description[:200].split("\n")[0]
+                # Historical v1/v2 output contract: no Claims/Grounding.
+                await asyncio.to_thread(
+                    repo.transition,
+                    analysis_id,
+                    SecondaryAnalysisStatus.review_pending,
+                    description=description,
+                    summary=summary,
+                    model=result.get("model", ""),
+                )
+            elif output_contract == "structured_claims_v1":
+                try:
+                    response = parse_structured_analysis_response(content)
+                except StructuredOutputError:
+                    logger.exception("Structured LLM response invalid for analysis %s", analysis_id)
+                    await self._fail(
+                        repo, analysis_id, "structured_output_invalid",
+                        "structured LLM response is invalid",
+                    )
+                    return
+                await asyncio.to_thread(
+                    repo.complete_analysis_for_review,
+                    analysis_id,
+                    description=response.description,
+                    summary=response.summary,
+                    model=result.get("model", ""),
+                    candidates=response.claims,
+                )
+            else:
+                raise RuntimeError("unknown output contract")
 
         except asyncio.CancelledError:
             # Graceful shutdown: always attempt failed transition.
