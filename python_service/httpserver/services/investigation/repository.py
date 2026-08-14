@@ -51,6 +51,7 @@ from .models import (
     AnalysisClaim,
     AnalysisGroundingStatus,
     AnalysisInputEnvelopeV2,
+    AnalysisReviewDecision,
     ClaimCandidate,
     ClaimGroundingStatus,
     ClaimType,
@@ -62,6 +63,11 @@ from .models import (
     SecondaryAnalysisStatus,
     parse_analysis_input_envelope,
 )
+from .prompts import PROMPT_OUTPUT_CONTRACT
+
+
+class AnalysisReviewConflictError(RuntimeError):
+    """The analysis exists but is not currently reviewable."""
 
 logger = logging.getLogger(__name__)
 
@@ -745,19 +751,16 @@ class InvestigationRepository:
     # secondary_analyses -- transition (state machine, A9)
     # =====================================================================
 
-    def transition(
+    def _transition_with_conn(
         self,
+        conn: sqlite3.Connection,
         analysis_id: str,
         to: SecondaryAnalysisStatus,
+        *,
+        expected_status: Optional[SecondaryAnalysisStatus] = None,
         **fields,
     ) -> SecondaryAnalysis:
-        """Advance a Secondary Analysis along the state machine.
-
-        Only fields allowed for the target status are accepted (per-target
-        validation); unexpected fields raise ``ValueError`` and leave the DB
-        untouched.  The expected-status ``WHERE`` clause is the primary
-        concurrency guard; the two DB triggers are backstops.
-        """
+        """Advance one analysis using a caller-owned transaction."""
         allowed = _ALLOWED_TRANSITION_FIELDS.get(to)
         if allowed is None:
             raise ValueError(f"transition to non-targetable status {to.value!r} is not supported")
@@ -768,19 +771,55 @@ class InvestigationRepository:
                 f"(allowed: {sorted(allowed)})"
             )
 
+        row = conn.execute(
+            "SELECT status FROM secondary_analyses WHERE task_id = ? AND analysis_id = ?",
+            [self.task_id, analysis_id],
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"analysis not found: {analysis_id!r}")
+
+        current = SecondaryAnalysisStatus(row["status"])
+        if expected_status is not None and current != expected_status:
+            if expected_status == SecondaryAnalysisStatus.review_pending:
+                raise AnalysisReviewConflictError(
+                    f"analysis is not review_pending (current: {current.value!r})"
+                )
+            raise ValueError(
+                f"concurrent status change for analysis {analysis_id!r} "
+                f"(expected status {expected_status.value!r})"
+            )
+        if current in TERMINAL_SECONDARY_STATUSES:
+            if expected_status == SecondaryAnalysisStatus.review_pending:
+                raise AnalysisReviewConflictError(
+                    f"analysis {analysis_id!r} is terminal ({current.value!r})"
+                )
+            raise ValueError(
+                f"analysis {analysis_id!r} is terminal ({current.value!r}); "
+                f"create a new version to redo"
+            )
+        allowed_targets = SECONDARY_TRANSITIONS.get(current, frozenset())
+        if to not in allowed_targets:
+            if expected_status == SecondaryAnalysisStatus.review_pending:
+                raise AnalysisReviewConflictError(
+                    f"illegal review transition {current.value!r} -> {to.value!r}"
+                )
+            raise ValueError(
+                f"illegal transition {current.value!r} -> {to.value!r} "
+                f"for analysis {analysis_id!r}"
+            )
+
         now = _now_iso()
         set_clauses: list[str] = ["status = ?"]
         params: list = [to.value]
-        # Timestamp field is always written on this transition (auto -> now).
-        _ts_col = {
+        timestamp_columns = {
             SecondaryAnalysisStatus.running: "started_at",
             SecondaryAnalysisStatus.review_pending: "review_pending_at",
             SecondaryAnalysisStatus.failed: "failed_at",
         }
-        if to in _ts_col:
-            ts_col = _ts_col[to]
-            set_clauses.append(f"{ts_col} = ?")
-            params.append(fields.get(ts_col, now))
+        if to in timestamp_columns:
+            timestamp_column = timestamp_columns[to]
+            set_clauses.append(f"{timestamp_column} = ?")
+            params.append(fields.get(timestamp_column, now))
         if to in (
             SecondaryAnalysisStatus.accepted,
             SecondaryAnalysisStatus.rejected,
@@ -788,53 +827,110 @@ class InvestigationRepository:
         ):
             set_clauses.append("decided_at = ?")
             params.append(fields.get("decided_at", now))
-        # Optional content fields -- only written when present.
-        for f in ("description", "summary", "model", "decided_by", "decision_reason",
-                  "error_code", "error_message"):
-            if f in fields:
-                set_clauses.append(f"{f} = ?")
-                params.append(fields[f])
+        for field in (
+            "description", "summary", "model", "decided_by", "decision_reason",
+            "error_code", "error_message",
+        ):
+            if field in fields:
+                set_clauses.append(f"{field} = ?")
+                params.append(fields[field])
+
+        params.extend([self.task_id, analysis_id, current.value])
+        cursor = conn.execute(
+            f"UPDATE secondary_analyses SET {', '.join(set_clauses)} "
+            "WHERE task_id = ? AND analysis_id = ? AND status = ?",
+            params,
+        )
+        if cursor.rowcount != 1:
+            if expected_status == SecondaryAnalysisStatus.review_pending:
+                raise AnalysisReviewConflictError(
+                    f"concurrent review decision for analysis {analysis_id!r}"
+                )
+            raise EvidenceStoreError(
+                f"concurrent status change for analysis {analysis_id!r} "
+                f"(expected status {current.value!r})"
+            )
+
+        result_row = conn.execute(
+            "SELECT * FROM secondary_analyses WHERE task_id = ? AND analysis_id = ?",
+            [self.task_id, analysis_id],
+        ).fetchone()
+        return self._row_to_analysis(result_row)
+
+    def transition(
+        self,
+        analysis_id: str,
+        to: SecondaryAnalysisStatus,
+        **fields,
+    ) -> SecondaryAnalysis:
+        """Advance a Secondary Analysis along the state machine."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            result = self._transition_with_conn(conn, analysis_id, to, **fields)
+            conn.commit()
+        return result
+
+    def review_analysis(
+        self,
+        analysis_id: str,
+        *,
+        decision: AnalysisReviewDecision,
+        reviewer: str,
+        reason: Optional[str] = None,
+    ) -> SecondaryAnalysis:
+        """Atomically validate and record one analyst review decision."""
+        try:
+            target = SecondaryAnalysisStatus(decision.value)
+        except (AttributeError, ValueError) as exc:
+            raise ValueError("invalid analysis review decision") from exc
 
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
-                "SELECT status FROM secondary_analyses WHERE analysis_id = ?",
-                [analysis_id],
+                "SELECT * FROM secondary_analyses "
+                "WHERE task_id = ? AND analysis_id = ?",
+                [self.task_id, analysis_id],
             ).fetchone()
             if row is None:
-                raise ValueError(f"analysis not found: {analysis_id!r}")
+                raise EvidenceNotFoundError("analysis not found")
 
             current = SecondaryAnalysisStatus(row["status"])
-            if current in TERMINAL_SECONDARY_STATUSES:
-                raise ValueError(
-                    f"analysis {analysis_id!r} is terminal ({current.value!r}); "
-                    f"create a new version to redo"
-                )
-            allowed_targets = SECONDARY_TRANSITIONS.get(current, frozenset())
-            if to not in allowed_targets:
-                raise ValueError(
-                    f"illegal transition {current.value!r} -> {to.value!r} "
-                    f"for analysis {analysis_id!r}"
+            if current != SecondaryAnalysisStatus.review_pending:
+                raise AnalysisReviewConflictError(
+                    f"analysis is not review_pending (current: {current.value!r})"
                 )
 
-            params.extend([analysis_id, current.value])
-            cursor = conn.execute(
-                f"UPDATE secondary_analyses SET {', '.join(set_clauses)} "
-                f"WHERE analysis_id = ? AND status = ?",
-                params,
+            contract = PROMPT_OUTPUT_CONTRACT.get(row["prompt_version"])
+            if contract is None:
+                raise EvidenceStoreError("analysis has an unknown output contract")
+            grounding_status = row["grounding_status"]
+            if grounding_status is not None:
+                try:
+                    AnalysisGroundingStatus(grounding_status)
+                except ValueError as exc:
+                    raise EvidenceStoreError("analysis has invalid grounding status") from exc
+            if contract == "structured_claims_v1":
+                if not row["description"] or not row["summary"]:
+                    raise EvidenceStoreError(
+                        "structured analysis is missing persisted description or summary"
+                    )
+                if grounding_status is None:
+                    raise EvidenceStoreError(
+                        "structured analysis is missing persisted grounding status"
+                    )
+            elif contract != "legacy_text":
+                raise EvidenceStoreError("analysis has an unsupported output contract")
+
+            result = self._transition_with_conn(
+                conn,
+                analysis_id,
+                target,
+                expected_status=SecondaryAnalysisStatus.review_pending,
+                decided_by=reviewer,
+                decision_reason=reason,
             )
-            if cursor.rowcount == 0:
-                raise EvidenceStoreError(
-                    f"concurrent status change for analysis {analysis_id!r} "
-                    f"(expected status {current.value!r})"
-                )
-
-            result_row = conn.execute(
-                "SELECT * FROM secondary_analyses WHERE analysis_id = ?", [analysis_id]
-            ).fetchone()
             conn.commit()
-
-        return self._row_to_analysis(result_row)
+        return result
 
     # =====================================================================
     # secondary_analyses -- query

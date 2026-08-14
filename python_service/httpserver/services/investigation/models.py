@@ -125,6 +125,14 @@ class SecondaryAnalysisStatus(str, Enum):
     failed = "failed"
 
 
+class AnalysisReviewDecision(str, Enum):
+    """Explicit analyst decision for a review-pending analysis."""
+
+    accepted = "accepted"
+    rejected = "rejected"
+    invalid = "invalid"
+
+
 # Legal transitions keyed by source status. Terminal statuses have zero
 # out-degree (absent from this mapping).
 SECONDARY_TRANSITIONS: dict[SecondaryAnalysisStatus, frozenset[SecondaryAnalysisStatus]] = {

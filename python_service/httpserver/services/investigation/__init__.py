@@ -28,6 +28,7 @@ from .models import (
     AnalysisGroundingStatus,
     AnalysisInputEnvelopeV1,
     AnalysisInputEnvelopeV2,
+    AnalysisReviewDecision,
     ClaimCandidate,
     ClaimGroundingStatus,
     ClaimType,
@@ -51,6 +52,7 @@ from .prompts import (
     get_prompt,
 )
 from .repository import InvestigationRepository, SUPPORTED_SCHEMA_VERSION
+from .review import AnalysisReviewConflictError, InvestigationReviewService
 from .service import InvestigationCaptureService
 
 __all__ = [
@@ -67,11 +69,14 @@ __all__ = [
     "SecondaryAnalysisStatus",
     "AnalysisInputEnvelopeV1",
     "AnalysisInputEnvelopeV2",
+    "AnalysisReviewDecision",
     "RelatedEvidenceEntry",
     "parse_analysis_input_envelope",
     "SECONDARY_TRANSITIONS",
     "TERMINAL_SECONDARY_STATUSES",
     "InvestigationCaptureService",
+    "InvestigationReviewService",
+    "AnalysisReviewConflictError",
     "SecondaryAnalysisExecutor",
     "CURRENT_PROMPT_VERSION",
     "ENVELOPE_PROMPT_COMPAT",

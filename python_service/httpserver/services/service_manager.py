@@ -48,6 +48,7 @@ class ServiceManager:
         self._migration_manager: Optional["MigrationManager"] = None
         self._forensic_report_service = None
         self._investigation_service = None
+        self._investigation_review_service = None
         self._secondary_analysis_executor = None
         self._initialized = False
         self._cpp_backend_ready = False
@@ -289,6 +290,7 @@ class ServiceManager:
     def _clear_services(self) -> None:
         self._forensic_report_service = None
         self._investigation_service = None
+        self._investigation_review_service = None
         self._secondary_analysis_executor = None
         self._cpp_backend = None
         self._graphiti_service = None
@@ -365,6 +367,12 @@ class ServiceManager:
             evidence_resolver=EvidenceResolver(self._cpp_backend),
         )
 
+    def _get_or_create_investigation_service(self):
+        """Create the internal capture dependency during startup if needed."""
+        if self._investigation_service is None:
+            self._investigation_service = self._create_investigation_service()
+        return self._investigation_service
+
     @property
     def investigation_service(self):
         """Get the Investigation capture service bound to the ready backend."""
@@ -372,6 +380,21 @@ class ServiceManager:
         if self._investigation_service is None:
             self._investigation_service = self._create_investigation_service()
         return self._investigation_service
+
+    def _create_investigation_review_service(self):
+        from .investigation.review import InvestigationReviewService
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        return InvestigationReviewService(self._cpp_backend)
+
+    @property
+    def investigation_review_service(self):
+        """Get the analyst review service bound to the ready backend."""
+        self._require_service_access()
+        if self._investigation_review_service is None:
+            self._investigation_review_service = self._create_investigation_review_service()
+        return self._investigation_review_service
 
     def _create_secondary_analysis_executor(self):
         from .investigation.execution import SecondaryAnalysisExecutor
@@ -381,7 +404,7 @@ class ServiceManager:
         return SecondaryAnalysisExecutor(
             cpp_backend=self._cpp_backend,
             llm_service=self._llm_service,  # may be None
-            capture_service=self.investigation_service,
+            capture_service=self._get_or_create_investigation_service(),
         )
 
     @property

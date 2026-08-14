@@ -21,9 +21,12 @@ from ..services.evidence import (
 from ..services.investigation import (
     EvidenceSnapshot,
     InvestigationCaptureService,
+    InvestigationReviewService,
+    AnalysisReviewConflictError,
     SecondaryAnalysis,
     SecondaryAnalysisExecutor,
     SecondaryAnalysisStatus,
+    AnalysisReviewDecision,
 )
 
 router = APIRouter()
@@ -121,6 +124,55 @@ async def create_analysis(
         raise HTTPException(status_code=400, detail="invalid evidence key") from exc
     except EvidenceNotFoundError as exc:
         raise HTTPException(status_code=404, detail="evidence not found") from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+class ReviewAnalysisRequest(BaseModel):
+    """Strict analyst decision boundary for one analysis version."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str = Field(min_length=1)
+    decision: AnalysisReviewDecision
+    reviewer: str = Field(min_length=1, max_length=256)
+    reason: Optional[str] = Field(default=None, max_length=4000)
+
+
+def get_investigation_review_service() -> InvestigationReviewService:
+    """Resolve the ready analyst review service through ServiceManager."""
+    try:
+        return get_service_manager().investigation_review_service
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="investigation review service is unavailable",
+        ) from exc
+
+
+@router.post(
+    "/analyses/{analysis_id}/review",
+    response_model=SecondaryAnalysis,
+    status_code=200,
+)
+async def review_analysis(
+    analysis_id: str,
+    request: ReviewAnalysisRequest,
+    service: InvestigationReviewService = Depends(get_investigation_review_service),
+) -> SecondaryAnalysis:
+    """Record one explicit analyst decision for an exact analysis version."""
+    try:
+        return await service.review(
+            request.task_id,
+            analysis_id,
+            decision=request.decision,
+            reviewer=request.reviewer,
+            reason=request.reason,
+        )
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="analysis not found") from exc
+    except AnalysisReviewConflictError as exc:
+        raise HTTPException(status_code=409, detail="analysis review conflict") from exc
     except EvidenceStoreError as exc:
         raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
 

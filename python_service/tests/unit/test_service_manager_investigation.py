@@ -6,6 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from httpserver.services.service_manager import ServiceManager
+from httpserver.services.investigation import SecondaryAnalysisExecutor
 
 
 def _manager_with_backend(ready=True):
@@ -50,6 +51,32 @@ def test_investigation_service_respects_lifecycle_access(state):
         _ = manager.investigation_service
 
 
+def test_review_service_lazy_cached_and_rebinds_after_clear():
+    manager, backend_a = _manager_with_backend()
+    first = manager.investigation_review_service
+    second = manager.investigation_review_service
+    assert first is second
+    assert first._cpp_backend is backend_a
+
+    manager._clear_services()
+    backend_b = object()
+    manager._cpp_backend = backend_b
+    manager._cpp_backend_ready = True
+    manager._lifecycle_state = "running"
+    replacement = manager.investigation_review_service
+    assert replacement is not first
+    assert replacement._cpp_backend is backend_b
+
+
+def test_secondary_executor_factory_reuses_capture_during_initialization():
+    manager, backend = _manager_with_backend()
+    manager._lifecycle_state = "initializing"
+    executor = manager._create_secondary_analysis_executor()
+    assert isinstance(executor, SecondaryAnalysisExecutor)
+    assert executor._cpp_backend is backend
+    assert executor._capture_service is manager._investigation_service
+
+
 def test_clear_services_drops_old_investigation_backend_binding():
     manager, backend_a = _manager_with_backend()
     service_a = manager.investigation_service
@@ -64,3 +91,11 @@ def test_clear_services_drops_old_investigation_backend_binding():
     assert service_b is not service_a
     assert service_b._cpp_backend is backend_b
     assert service_b._evidence_resolver._cpp_backend is backend_b
+
+
+@pytest.mark.parametrize("state", ["initializing", "shutting_down", "stopped"])
+def test_review_service_respects_lifecycle_access(state):
+    manager, _ = _manager_with_backend()
+    manager._lifecycle_state = state
+    with pytest.raises(RuntimeError):
+        _ = manager.investigation_review_service
