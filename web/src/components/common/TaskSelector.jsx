@@ -13,7 +13,7 @@ const TaskSelector = () => {
     // 研判页面统一通过 query 参数（task_id/taskId）携带当前镜像
     const currentTaskId = searchParams.get('taskId') || searchParams.get('task_id') || currentTask?.id;
 
-    const relevantPaths = ['/timeline', '/files', '/statistics', '/llm-descriptions', '/android', '/oss', '/case-report', '/knowledge-graph', '/case-intelligence', '/analysis-center'];
+    const relevantPaths = ['/timeline', '/files', '/statistics', '/llm-descriptions', '/android', '/oss', '/case-report', '/knowledge-graph', '/investigation-graph', '/case-intelligence', '/analysis-center'];
     const isRelevantPage = relevantPaths.some(path => location.pathname.startsWith(path));
 
     useEffect(() => {

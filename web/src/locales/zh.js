@@ -8,6 +8,7 @@ export default {
     'nav.ai_descriptions': 'AI 描述',
     'nav.case_center': '研判中心',
     'nav.knowledge_graph': '知识图谱',
+    'nav.investigation_graph': '调查图谱',
     'nav.android': '安卓取证',
     'nav.wechat_graph': '微信关系分析',
     'nav.oss_analysis': 'OSS 分析',
@@ -75,6 +76,23 @@ export default {
     'timeline.node.items': '个事件',
     'timeline.node.sample': '示例文件',
     'timeline.node.total': '总计',
+
+    // Investigation Graph
+    'investigation_graph.title': '调查图谱',
+    'investigation_graph.subtitle': 'Base 知识图谱与 Investigation 叠加层的只读组合',
+    'investigation_graph.base_unavailable_warning': 'Base Knowledge Graph 当前不可用，正在显示 Investigation Overlay。',
+    'investigation_graph.no_task': '请先选择任务',
+    'investigation_graph.empty': '暂无可显示的图谱数据',
+    'investigation_graph.error': '加载调查图谱失败',
+    'investigation_graph.retry': '重试',
+    'investigation_graph.refresh': '刷新',
+    'investigation_graph.max_base_nodes': 'Base KG 上限',
+    'investigation_graph.max_base_nodes_hint': '仅限制 Base KG 节点；Investigation Overlay 不会被截断',
+    'investigation_graph.base_nodes': 'Base',
+    'investigation_graph.overlay_nodes': 'Investigation',
+    'investigation_graph.select_hint': '点击节点查看精确 provenance',
+    'investigation_graph.unconfirmed': '待确认',
+    'investigation_graph.confirmed': '已接受',
 
     // Terminal
     'terminal.title': '系统终端',

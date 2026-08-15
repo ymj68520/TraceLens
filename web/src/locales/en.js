@@ -8,6 +8,7 @@ export default {
     'nav.ai_descriptions': 'AI Descriptions',
     'nav.case_center': 'Case Center',
     'nav.knowledge_graph': 'Knowledge Graph',
+    'nav.investigation_graph': 'Investigation Graph',
     'nav.android': 'Android',
     'nav.wechat_graph': 'WeChat Graph',
     'nav.oss_analysis': 'OSS Analysis',
@@ -21,6 +22,23 @@ export default {
     'sidebar.expand': 'Expand',
     'system.status': 'System Status',
     'system.online': 'Online',
+
+    // Investigation Graph
+    'investigation_graph.title': 'Investigation Graph',
+    'investigation_graph.subtitle': 'Read-only composition of the Base Knowledge Graph and the Investigation overlay',
+    'investigation_graph.base_unavailable_warning': 'Base Knowledge Graph is currently unavailable; showing the Investigation overlay.',
+    'investigation_graph.no_task': 'Select a task first',
+    'investigation_graph.empty': 'No graph data to display yet',
+    'investigation_graph.error': 'Failed to load the investigation graph',
+    'investigation_graph.retry': 'Retry',
+    'investigation_graph.refresh': 'Refresh',
+    'investigation_graph.max_base_nodes': 'Base KG limit',
+    'investigation_graph.max_base_nodes_hint': 'Only limits Base KG nodes; the Investigation overlay is never truncated',
+    'investigation_graph.base_nodes': 'Base',
+    'investigation_graph.overlay_nodes': 'Investigation',
+    'investigation_graph.select_hint': 'Click a node to inspect its exact provenance',
+    'investigation_graph.unconfirmed': 'Unconfirmed',
+    'investigation_graph.confirmed': 'Accepted',
 
     // Settings
     'settings.title': 'Settings',
