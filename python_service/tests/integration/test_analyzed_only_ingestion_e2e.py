@@ -20,16 +20,82 @@ import os
 import sys
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+
+def _register_pending_cpp_task(test_settings) -> tuple[str, Path, Path]:
+    """Create an isolated pending C++ task and return its canonical files DB path."""
+    base_url = test_settings.cpp_backend_url.rstrip("/")
+    dependency_id = str(uuid.uuid4())
+    image_path = f"/tmp/tracelens-analyzed-only-{uuid.uuid4()}.img"
+    task_id: Optional[str] = None
+    task_dir: Optional[Path] = None
+
+    try:
+        with httpx.Client(base_url=base_url, timeout=10.0) as client:
+            create_response = client.post(
+                "/api/tasks",
+                json={
+                    "image_path": image_path,
+                    "llm_analyze": False,
+                    "dependencies": [{"task_id": dependency_id, "required": True}],
+                },
+            )
+            assert create_response.status_code == 201, (
+                f"C++ task creation failed: {create_response.status_code}: "
+                f"{create_response.text}"
+            )
+            task_id = create_response.json().get("id")
+            assert task_id, f"C++ task creation returned no id: {create_response.text}"
+
+            task_response = client.get(f"/api/tasks/{task_id}")
+            assert task_response.status_code == 200, (
+                f"C++ task lookup failed: {task_response.status_code}: "
+                f"{task_response.text}"
+            )
+            task = task_response.json()
+            assert task.get("id") == task_id
+            assert task.get("status") == "pending"
+            extraction_directory = task.get("extraction_directory")
+            assert extraction_directory, f"C++ task returned no extraction directory: {task}"
+
+        task_dir = Path(extraction_directory).parent
+        task_dir.mkdir(parents=True, exist_ok=True)
+        return task_id, task_dir, task_dir / "files.db"
+    except Exception:
+        if task_id:
+            with httpx.Client(base_url=base_url, timeout=10.0) as client:
+                client.delete(f"/api/tasks/{task_id}")
+        if task_dir and task_dir.exists():
+            import shutil
+            shutil.rmtree(task_dir, ignore_errors=True)
+        raise
+
+
+def _delete_cpp_task(test_settings, task_id: Optional[str], task_dir: Optional[Path]) -> None:
+    """Delete only the generated test task and remove any leftover fixture files."""
+    if task_id:
+        base_url = test_settings.cpp_backend_url.rstrip("/")
+        with httpx.Client(base_url=base_url, timeout=10.0) as client:
+            delete_response = client.delete(f"/api/tasks/{task_id}")
+        assert delete_response.status_code in (200, 404), (
+            f"C++ test task cleanup failed: {delete_response.status_code}: "
+            f"{delete_response.text}"
+        )
+    if task_dir and task_dir.exists():
+        import shutil
+        shutil.rmtree(task_dir, ignore_errors=True)
 
 
 # =============================================================================
@@ -62,21 +128,14 @@ async def test_analyzed_only_ingestion_end_to_end(
     if not neo4j_available:
         pytest.skip("Neo4j not available, skipping integration test")
 
-    # Prepare test environment
-    task_id = "test_task_analyzed_only"
+    # Prepare test environment using a task registered by the C++ backend.
+    task_id: Optional[str] = None
+    task_dir: Optional[Path] = None
+    test_db_path: Optional[Path] = None
     job_id: Optional[str] = None
 
-    # Create test database in configured output directory
     import shutil
-    output_dir = Path(test_settings.db_output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    task_dir = output_dir / "tasks" / task_id
-    task_dir.mkdir(parents=True, exist_ok=True)
-
-    # Copy test database to task directory
-    test_db_name = f"{task_id}_files.db"
-    test_db_path = task_dir / test_db_name
+    task_id, task_dir, test_db_path = _register_pending_cpp_task(test_settings)
     shutil.copy(database_with_analyzed_files, test_db_path)
 
     try:
@@ -183,8 +242,8 @@ async def test_analyzed_only_ingestion_end_to_end(
                     MATCH (f:File {task_id: $task_id})
                     RETURN count(f) as file_count
                 """
-                result = session.run(query, task_id=task_id)
-                record = result.single()
+                neo4j_result = session.run(query, task_id=task_id)
+                record = neo4j_result.single()
                 neo4j_file_count = record["file_count"]
 
                 # Verify we have exactly the analyzed files count
@@ -197,8 +256,8 @@ async def test_analyzed_only_ingestion_end_to_end(
                     WHERE f.llm_summary IS NOT NULL
                     RETURN count(f) as analyzed_count
                 """
-                result = session.run(query, task_id=task_id)
-                record = result.single()
+                neo4j_result = session.run(query, task_id=task_id)
+                record = neo4j_result.single()
                 analyzed_count = record["analyzed_count"]
 
                 assert analyzed_count == 5, \
@@ -220,14 +279,7 @@ async def test_analyzed_only_ingestion_end_to_end(
         print(f"  Entities linked: {result['entities_linked']}")
 
     finally:
-        # Cleanup: Delete test database
-        try:
-            if test_db_path.exists():
-                test_db_path.unlink()
-            if task_dir.exists():
-                task_dir.rmdir()
-        except Exception as e:
-            print(f"Warning: Could not cleanup test database: {e}")
+        _delete_cpp_task(test_settings, task_id, task_dir)
 
 
 @pytest.mark.integration
@@ -297,20 +349,12 @@ async def test_analyzed_only_ingestion_no_analyzed_files(
     conn.commit()
     conn.close()
 
-    # Prepare test environment
-    task_id = "test_task_no_analyzed"
-
-    # Create test database in configured output directory
+    # Prepare test environment using a task registered by the C++ backend.
+    task_id: Optional[str] = None
+    task_dir: Optional[Path] = None
+    test_db_target_path: Optional[Path] = None
+    task_id, task_dir, test_db_target_path = _register_pending_cpp_task(test_settings)
     import shutil
-    output_dir = Path(test_settings.db_output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    task_dir = output_dir / "tasks" / task_id
-    task_dir.mkdir(parents=True, exist_ok=True)
-
-    # Copy test database to task directory
-    test_db_name = f"{task_id}_files.db"
-    test_db_target_path = task_dir / test_db_name
     shutil.copy(test_db_path, test_db_target_path)
 
     try:
@@ -360,14 +404,7 @@ async def test_analyzed_only_ingestion_no_analyzed_files(
         print(f"  Message: {result.get('message')}")
 
     finally:
-        # Cleanup
-        try:
-            if test_db_target_path.exists():
-                test_db_target_path.unlink()
-            if task_dir.exists():
-                task_dir.rmdir()
-        except Exception as e:
-            print(f"Warning: Could not cleanup test database: {e}")
+        _delete_cpp_task(test_settings, task_id, task_dir)
 
 
 @pytest.mark.integration
