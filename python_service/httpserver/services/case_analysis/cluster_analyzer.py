@@ -129,6 +129,7 @@ class ClusterAnalyzer:
                         END as parent_directory,
                         GROUP_CONCAT(COALESCE(description, ''), '\n') as group_desc,
                         GROUP_CONCAT(COALESCE(file_path, ''), '\n') as group_paths,
+                        GROUP_CONCAT(id) as member_ids,
                         MIN(id) as first_event_id
                     FROM events
                     WHERE llm_analyzed_at IS NULL
@@ -301,10 +302,13 @@ class ClusterAnalyzer:
             keywords = analysis.get("keywords", [])
             keywords_str = ", ".join(keywords) if isinstance(keywords, list) else str(keywords)
             model_used = analysis_result.get("model", "unknown")
+            member_ids = [int(value) for value in str(cluster.get("member_ids") or "").split(",") if value]
+            if not member_ids:
+                raise sqlite3.DatabaseError("cluster has no trusted member IDs")
 
             with sqlite3.connect(events_db, timeout=10) as conn:
-                # Update all events in this cluster
-                sql = """
+                placeholders = ", ".join("?" for _ in member_ids)
+                sql = f"""
                     UPDATE events
                     SET llm_summary = ?,
                         llm_description = ?,
@@ -312,30 +316,24 @@ class ClusterAnalyzer:
                         llm_is_relevant = 1,
                         llm_analyzed_at = ?,
                         llm_model_used = ?
-                    WHERE (timestamp / 60) = ?
-                      AND event_type = ?
-                      AND ? = COALESCE(?, '')
+                    WHERE id IN ({placeholders})
                 """
                 import time
                 now = int(time.time())
-
-                conn.execute(sql, (
-                    summary,
-                    description,
-                    keywords_str,
-                    now,
-                    model_used,
-                    cluster['time_window'],
-                    cluster['event_type'],
-                    cluster.get('parent_directory', ''),
-                    cluster.get('parent_directory', ''),
+                cur = conn.execute(sql, (
+                    summary, description, keywords_str, now, model_used, *member_ids
                 ))
+                if cur.rowcount != len(member_ids):
+                    raise sqlite3.DatabaseError(
+                        f"cluster member update incomplete: expected {len(member_ids)}, got {cur.rowcount}"
+                    )
                 conn.commit()
 
             logger.debug(f"Persisted cluster analysis: {cluster['event_type']} @ {cluster['time_window']}")
 
         except sqlite3.Error as e:
             logger.error(f"Failed to persist cluster analysis: {e}")
+            raise
 
     async def ingest_clusters_to_graphiti(
         self,

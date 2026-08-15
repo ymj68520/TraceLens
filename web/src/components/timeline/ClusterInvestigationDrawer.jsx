@@ -23,7 +23,12 @@ const formatFileSize = (bytes) => {
     return `${size.toFixed(1)} ${units[i]}`;
 };
 
-const clusterKey = (c) => `${c.timestamp}-${c.event_type}-${c.parent_directory}`;
+const clusterKey = (c) => JSON.stringify(c?.group_descriptor || {
+    bucket_index: c?.bucket_index,
+    bucket_seconds: c?.bucket_seconds,
+    event_type: c?.event_type,
+    parent_directory: c?.parent_directory || '',
+});
 
 const ClusterInvestigationDrawer = ({
     selectedCluster,

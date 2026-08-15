@@ -49,52 +49,54 @@ async def analyze_event_cluster(
         if not events_db:
             raise HTTPException(status_code=400, detail="No events database for this task")
 
-        # 2. Extract event data for the cluster
-        # Using the same logic as C++ for consistency. bucket_seconds must match
-        # the window used to produce the cluster, otherwise the cluster boundary
-        # would be off. Default 60 keeps backward compatibility.
+        # 2. Extract event data for the cluster. The descriptor is optional for
+        # legacy callers, but when present it is validated and resolved solely
+        # from this task's source database; client rows are never accepted.
         import sqlite3
-        bucket_seconds = request.bucket_seconds or 60
-        events_summary = ""
-        try:
-            with sqlite3.connect(events_db) as conn:
-                conn.row_factory = sqlite3.Row
-                sql = "SELECT timestamp, event_type, file_path, description FROM events WHERE (timestamp / ?) = ? AND event_type = ?"
-                params = [bucket_seconds, request.time_window, request.event_type]
-                
-                if request.parent_directory:
-                    sql += " AND file_path LIKE ?"
-                    params.append(f"{request.parent_directory}%")
-                
-                sql += " LIMIT 50"
-                cur = conn.execute(sql, params)
-                rows = cur.fetchall()
-                
-                if not rows:
-                    raise HTTPException(status_code=404, detail="No events found in this cluster")
-                    
-                lines = [f"- {r['timestamp']}: {r['event_type']} | {r['file_path']} | {r['description'] or ''}" for r in rows]
-                events_summary = "\n".join(lines)
-        except Exception as e:
-            logger.error(f"Failed to read events for cluster: {e}")
-            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        from ...services.investigation_evidence import (
+            read_timeline_group_members,
+            validate_timeline_group_descriptor,
+        )
+        if request.group_descriptor is not None:
+            descriptor = validate_timeline_group_descriptor(request.group_descriptor)
+        else:
+            if request.time_window is None or not request.event_type:
+                raise HTTPException(status_code=422, detail="cluster descriptor is required")
+            descriptor = validate_timeline_group_descriptor({
+                "bucket_index": request.time_window,
+                "bucket_seconds": request.bucket_seconds,
+                "event_type": request.event_type,
+                "parent_directory": request.parent_directory or "",
+            })
+        members = read_timeline_group_members(events_db, descriptor)
+        if not members:
+            raise HTTPException(status_code=404, detail="No events found in this cluster")
+        member_ids = [int(row["id"]) for row in members]
+        event_type = descriptor["event_type"]
+        time_window = descriptor["bucket_index"]
+        bucket_seconds = descriptor["bucket_seconds"]
+        events_summary = "\n".join(
+            f"- {r['timestamp']}: {r['event_type']} | {r.get('file_path') or ''} | {r.get('description') or ''}"
+            for r in members[:50]
+        )
 
         # 3. Call LLM for analysis
         result = await service_manager.llm_service.analyze_event_cluster(
             event_data={
-                "event_type": request.event_type,
+                "event_type": event_type,
                 "description": events_summary,
-                "time_window": request.time_window
+                "time_window": time_window,
             },
-            prompt=request.prompt
+            prompt=request.prompt,
         )
-        
+
         analysis = result.get("analysis", {})
-        
-        # 4. Persist result back to _events.db using the cluster identifier
-        # Note: We update ALL events in this cluster. The window divisor must
-        # match the bucket used when the cluster was created (default 60).
-        sql_update = """
+
+        # Persist only the trusted member IDs selected above. The browser never
+        # supplies IDs, and a partial update is treated as a failed transaction.
+        summary_value = analysis.get("summary") or analysis.get("description", "")
+        placeholders = ", ".join("?" for _ in member_ids)
+        sql_update = f"""
             UPDATE events SET
                 llm_summary = ?,
                 llm_description = ?,
@@ -102,33 +104,25 @@ async def analyze_event_cluster(
                 llm_analyzed_at = ?,
                 llm_model_used = ?,
                 llm_is_relevant = ?
-            WHERE (timestamp / ?) = ? AND event_type = ?
+            WHERE id IN ({placeholders})
         """
-        # Use full summary/description without truncation for database storage
-        summary_value = analysis.get("summary") or analysis.get("description", "")
         update_params = [
-            summary_value,  # Store full summary, no truncation
+            summary_value,
             analysis.get("description", ""),
             ", ".join(analysis.get("keywords", [])) if isinstance(analysis.get("keywords"), list) else "",
             int(datetime.now().timestamp()),
             result.get("model", "unknown"),
             1 if analysis.get("is_relevant", True) else 0,
-            bucket_seconds,
-            request.time_window,
-            request.event_type
+            *member_ids,
         ]
-
-        if request.parent_directory:
-            sql_update += " AND file_path LIKE ?"
-            update_params.append(f"{request.parent_directory}%")
-
-        try:
-            with sqlite3.connect(events_db) as conn:
-                cur = conn.execute(sql_update, update_params)
-                conn.commit()
-                logger.info(f"Updated {cur.rowcount} events in cluster {request.time_window}")
-        except Exception as e:
-            logger.warning(f"Failed to persist cluster analysis: {e}")
+        with sqlite3.connect(events_db) as conn:
+            cur = conn.execute(sql_update, update_params)
+            if cur.rowcount != len(member_ids):
+                raise sqlite3.DatabaseError(
+                    f"cluster member update incomplete: expected {len(member_ids)}, got {cur.rowcount}"
+                )
+            conn.commit()
+        logger.info("Updated %s exact events in cluster %s", len(member_ids), time_window)
 
         return {
             "success": True,

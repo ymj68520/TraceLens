@@ -191,10 +191,13 @@ const Timeline = () => {
       console.log('Timeline has', data.timeline.length, 'events');
       console.log('Sample event:', data.timeline[0]);
 
-      // Stamp each event with the bucket used to produce it, so cluster
-      // detail/AI calls downstream use the same window boundary end-to-end.
+      // Preserve the backend descriptor exactly; it is the only trusted group
+      // identity used by detail and analysis calls.
       if (isClustered && Array.isArray(data.timeline)) {
-        data.timeline = data.timeline.map((ev) => ({ ...ev, bucket_seconds: effectiveBucket }));
+        data.timeline = data.timeline.map((ev) => ({
+          ...ev,
+          group_descriptor: ev.group_descriptor,
+        }));
       }
 
       setTimelineData(data);
@@ -223,7 +226,10 @@ const Timeline = () => {
     }
   }, [taskId]);
 
-  // 自动分析重要的事件簇
+  const clusterIdentity = useCallback((cluster) => (
+    JSON.stringify(cluster?.group_descriptor || null)
+  ), []);
+
   useEffect(() => {
     fetchTimeline();
   }, [fetchTimeline]);
@@ -249,7 +255,7 @@ const Timeline = () => {
     // llm_summary，但 timestamp/event_type/parent_directory 不变，所以刷新
     // 后签名一致，effect 早早 return。
     const visibleKeys = timelineData.timeline
-      .map(ev => `${ev.timestamp}-${ev.event_type}-${ev.parent_directory}`)
+      .map(ev => clusterIdentity(ev))
       .sort()
       .join('|');
     const signature = `${taskId}|${currentPage}|${eventType}|${selectedDate}|${customStart}|${customEnd}|${isClustered}|${effectiveBucket}|${visibleKeys}`;
@@ -270,8 +276,12 @@ const Timeline = () => {
 
       let analyzedAny = false;
       for (const cluster of clustersToAnalyze) {
-        const clusterKey = `${cluster.timestamp}-${cluster.event_type}-${cluster.parent_directory}`;
-        setAnalyzingClusters(prev => new Set(prev).add(clusterKey));
+        const clusterKey = clusterIdentity(cluster);
+        const descriptor = cluster.group_descriptor;
+        if (!descriptor) {
+          throw new Error('Timeline group descriptor missing');
+        }
+
         try {
           await analyzeEventCluster(taskId, cluster);
           analyzedAny = true;
@@ -300,23 +310,21 @@ const Timeline = () => {
     // 延迟执行自动分析，确保数据已加载
     const timer = setTimeout(autoAnalyzeClusters, 1000);
     return () => clearTimeout(timer);
-  }, [taskId, timelineData, currentPage, eventType, selectedDate, customStart, customEnd, isClustered, effectiveBucket, fetchTimeline, dispatch]);
+  }, [taskId, timelineData, currentPage, eventType, selectedDate, customStart, customEnd, isClustered, effectiveBucket, fetchTimeline, dispatch, clusterIdentity]);
 
   // Cluster Detail Fetching with Search Support
   const fetchClusterDetails = useCallback(async (cluster, search) => {
     if (!cluster) return;
     setLoadingDetails(true);
     try {
-        // Use the same bucket that produced the cluster so the detail query
-        // resolves exactly the same window boundary.
-        const bucket = cluster.bucket_seconds || effectiveBucket;
-        const window = Math.floor(cluster.timestamp / bucket);
+        const descriptor = cluster.group_descriptor;
+        if (!descriptor) throw new Error('Timeline group descriptor missing');
         const data = await getTimelineDetails(taskId, {
-            window,
-            type: cluster.event_type,
-            dir: cluster.parent_directory,
+            bucket_index: descriptor.bucket_index,
+            type: descriptor.event_type,
+            dir: descriptor.parent_directory,
             search: search || undefined,
-            bucket,
+            bucket: descriptor.bucket_seconds,
             limit: 5000
         });
         setClusterDetails(data.events || []);
@@ -325,7 +333,7 @@ const Timeline = () => {
     } finally {
         setLoadingDetails(false);
     }
-  }, [taskId, effectiveBucket]);
+  }, [taskId]);
 
   // Handle Initial Open
   const handleOpenCluster = (event) => {
@@ -352,7 +360,7 @@ const Timeline = () => {
       return;
     }
 
-    const clusterKey = `${cluster.timestamp}-${cluster.event_type}-${cluster.parent_directory}`;
+    const clusterKey = clusterIdentity(cluster);
     setAnalyzingClusters(prev => new Set(prev).add(clusterKey));
 
     try {
@@ -399,7 +407,7 @@ const Timeline = () => {
       return;
     }
 
-    const clusterKey = `${cluster.timestamp}-${cluster.event_type}-${cluster.parent_directory}`;
+    const clusterKey = clusterIdentity(cluster);
     setAnalyzingClusters(prev => new Set(prev).add(clusterKey));
 
     try {
@@ -683,6 +691,11 @@ const Timeline = () => {
 
         {/* Main Content Area */}
         <main className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
+          {error && (
+            <div role="alert" className="mx-4 mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {error}
+            </div>
+          )}
           {loading && (
             <div className="absolute inset-0 bg-white/80 z-50 flex flex-col items-center justify-center backdrop-blur-sm">
                 <Spinner size="lg" />
@@ -753,10 +766,10 @@ const Timeline = () => {
                                         e.stopPropagation();
                                         handleAnalyzeCluster(event);
                                       }}
-                                      disabled={analyzingClusters.has(`${event.timestamp}-${event.event_type}-${event.parent_directory}`)}
+                                      disabled={analyzingClusters.has(clusterIdentity(event))}
                                       className="text-[10px] font-bold text-purple-600 hover:text-purple-700 px-2 py-1 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors flex items-center gap-1"
                                     >
-                                      {analyzingClusters.has(`${event.timestamp}-${event.event_type}-${event.parent_directory}`) ? (
+                                      {analyzingClusters.has(clusterIdentity(event)) ? (
                                         <>
                                           <Spinner size="sm" />
                                           <span>分析中...</span>
@@ -774,10 +787,10 @@ const Timeline = () => {
                                         e.stopPropagation();
                                         handleReanalyzeCluster(event);
                                       }}
-                                      disabled={analyzingClusters.has(`${event.timestamp}-${event.event_type}-${event.parent_directory}`)}
+                                      disabled={analyzingClusters.has(clusterIdentity(event))}
                                       className="text-[10px] font-bold text-amber-600 hover:text-amber-700 px-2 py-1 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors flex items-center gap-1"
                                     >
-                                      {analyzingClusters.has(`${event.timestamp}-${event.event_type}-${event.parent_directory}`) ? (
+                                      {analyzingClusters.has(clusterIdentity(event)) ? (
                                         <>
                                           <Spinner size="sm" />
                                           <span>分析中...</span>

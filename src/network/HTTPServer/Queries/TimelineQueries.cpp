@@ -27,12 +27,14 @@ json SQLiteHelper::get_timeline_details(const std::string& events_db,
     offset = clamp_offset(offset);
     if (bucket_seconds < 1) bucket_seconds = 60;
 
-    // Build query to find all events in this cluster. All user-supplied string
-    // values are bound as parameters (never concatenated) to prevent injection.
-    // bucket_seconds is a clamped integer (see above), so std::to_string is safe.
+    // Use the same derived parent expression as comprehensive grouping. This
+    // keeps root and prefix-collision groups exact instead of using LIKE.
+    const std::string parent_dir_expr =
+        "(CASE WHEN file_path LIKE '%/%' THEN RTRIM(file_path, REPLACE(file_path, '/', '')) ELSE '' END)";
     std::vector<std::string> bind;
     std::string sql = R"(
         SELECT
+            id,
             timestamp,
             event_type,
             file_path,
@@ -42,27 +44,27 @@ json SQLiteHelper::get_timeline_details(const std::string& events_db,
             file_type
         FROM events
         WHERE (timestamp / )" + std::to_string(bucket_seconds) + R"() = )" + std::to_string(time_window) + R"(
-        AND event_type = ?)";
+        AND event_type = ?
+        AND )" + parent_dir_expr + R"( = ?)";
     bind.push_back(event_type);
-
-    if (!parent_dir.empty()) {
-        if (parent_dir == "/") {
-            sql += " AND (file_path NOT LIKE '%/%' OR file_path LIKE '/%')";
-        } else {
-            sql += " AND file_path LIKE ?";
-            bind.push_back(parent_dir + "%");
-        }
-    }
+    bind.push_back(parent_dir);
 
     if (!search.empty()) {
         sql += " AND file_path LIKE ?";
         bind.push_back("%" + search + "%");
     }
 
-    sql += " ORDER BY timestamp ASC LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string(offset);
+    sql += " ORDER BY timestamp ASC, id ASC LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string(offset);
 
     json events_data = execute_query(events, sql, bind);
     result["events"] = events_data;
+    result["descriptor"] = {
+        {"bucket_index", time_window},
+        {"bucket_seconds", bucket_seconds},
+        {"event_type", event_type},
+        {"parent_directory", parent_dir},
+        {"bucket_start_timestamp", time_window * static_cast<int64_t>(bucket_seconds)},
+    };
 
     sqlite3_close(events);
     return result;
@@ -160,6 +162,7 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
             SELECT
                 MIN(timestamp) as timestamp,
                 MAX(timestamp) as end_timestamp,
+                (timestamp / )" + std::to_string(bucket_seconds) + R"() as bucket_index,
                 event_type,
                 COUNT(*) as cluster_count,
                 file_path, -- Representative file path
@@ -200,6 +203,23 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
     sql += " ORDER BY timestamp DESC LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string(offset);
 
     json events_data = execute_query(events, sql, bind);
+
+    // Keep the grouping unit explicit in every clustered row. The value named
+    // bucket_index is always timestamp / bucket_seconds, never a Unix start.
+    if (cluster_events && events_data.is_array()) {
+        for (auto& item : events_data) {
+            const int64_t bucket_index = item.value("bucket_index", int64_t{0});
+            const std::string row_event_type = item.value("event_type", std::string{});
+            const std::string row_parent = item.value("parent_directory", std::string{});
+            item["group_descriptor"] = {
+                {"bucket_index", bucket_index},
+                {"bucket_seconds", bucket_seconds},
+                {"event_type", row_event_type},
+                {"parent_directory", row_parent},
+                {"bucket_start_timestamp", bucket_index * static_cast<int64_t>(bucket_seconds)},
+            };
+        }
+    }
 
     // Add metadata
     json metadata;

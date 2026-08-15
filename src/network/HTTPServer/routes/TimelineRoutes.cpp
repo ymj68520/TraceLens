@@ -152,14 +152,35 @@ crow::response TimelineRoutes::handle_timeline_details(const crow::request& req)
     RouteHelpers::add_cors_headers(res);
     auto params = crow::query_string(req.url_params);
     std::string task_id = params.get("task_id") ? params.get("task_id") : "";
-    int64_t window = params.get("window") ? std::stoll(params.get("window")) : 300;
+    const bool has_bucket_index = params.get("bucket_index") != nullptr;
+    const bool has_window = params.get("window") != nullptr;
+    int64_t window = has_bucket_index
+        ? std::stoll(params.get("bucket_index"))
+        : (has_window ? std::stoll(params.get("window")) : 0);
+    if (has_bucket_index && has_window &&
+        window != std::stoll(params.get("window"))) {
+        json error = {{"error", "bucket_index and window must match"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
     std::string type = params.get("type") ? params.get("type") : "";
-    std::string parent = params.get("parent") ? params.get("parent") : "";
+    const bool has_parent = params.get("parent") != nullptr;
+    const bool has_dir = params.get("dir") != nullptr;
+    std::string parent = has_parent ? params.get("parent") : (has_dir ? params.get("dir") : "");
+    if (has_parent && has_dir && parent != std::string(params.get("dir"))) {
+        json error = {{"error", "parent and dir must match"}};
+        res.code = 400;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
     int limit = params.get("limit") ? std::stoi(params.get("limit")) : 1000;
     int offset = params.get("offset") ? std::stoi(params.get("offset")) : 0;
     std::string search = params.get("search") ? params.get("search") : "";
     // Clustering window that was used to produce the cluster; must match it to
-    // resolve the same events. Default 60 (backward compatible).
+    // resolve the same bucket index. Default 60 (backward compatible).
     int bucket_seconds = params.get("bucket") ? std::stoi(params.get("bucket")) : 60;
 
     if (task_id.empty()) {
