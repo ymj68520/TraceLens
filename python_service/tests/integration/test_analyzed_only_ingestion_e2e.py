@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 # =============================================================================
 
 @pytest.mark.integration
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_analyzed_only_ingestion_end_to_end(
     test_client,
@@ -231,6 +232,7 @@ async def test_analyzed_only_ingestion_end_to_end(
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_analyzed_only_ingestion_no_analyzed_files(
     test_client,

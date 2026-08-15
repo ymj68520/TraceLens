@@ -185,6 +185,7 @@ def test_S2_cross_task_rejected_no_write(tmp_path):
 
 # ---------- S3: concurrency ----------
 
+@pytest.mark.concurrency
 def test_S3_concurrent_capture_single_row(tmp_path):
     fdb, idb = str(tmp_path / "files.db"), str(tmp_path / "investigation.db")
     _make_files_db(fdb, [{"path": "/case/report.docx"}])

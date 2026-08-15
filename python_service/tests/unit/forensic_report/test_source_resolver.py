@@ -98,6 +98,7 @@ def test_fingerprint_file_rejects_a_source_replaced_while_hashing(
         fingerprint_file(str(source))
 
 
+@pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_task_resolution_moves_source_freeze_off_the_event_loop(tmp_path: Path):
     source = tmp_path / "files.db"

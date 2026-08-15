@@ -93,6 +93,7 @@ async def test_initialize_reopens_starts_after_a_completed_shutdown(tmp_path: Pa
     assert (await _wait_for_terminal(service, version.report_id)).status is ReportStatus.READY
 
 
+@pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_shutdown_waits_for_blocking_snapshot_worker(tmp_path: Path):
     started = threading.Event()
@@ -125,6 +126,7 @@ async def test_shutdown_waits_for_blocking_snapshot_worker(tmp_path: Path):
     await shutdown
 
 
+@pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_concurrent_shutdowns_share_worker_drain_and_repeated_shutdown_is_safe(
     tmp_path: Path,
@@ -191,6 +193,7 @@ async def test_shutdown_preserves_a_concurrent_terminal_transition(tmp_path: Pat
     assert service.get_status(version.report_id).status is ReportStatus.READY
 
 
+@pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_shutdown_rejects_new_starts_and_cancels_a_start_already_resolving(tmp_path: Path):
     entered = asyncio.Event()

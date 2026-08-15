@@ -222,6 +222,7 @@ async def test_external_service_properties_reject_during_manager_initialization(
     assert manager.forensic_report_service is report
 
 
+@pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_initialize_waits_for_active_shutdown_then_starts_clean_lifecycle(
     tmp_path: Path,
@@ -267,6 +268,7 @@ async def test_initialize_waits_for_active_shutdown_then_starts_clean_lifecycle(
     assert manager._lifecycle_state == "running"
 
 
+@pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_initialize_continues_after_active_shutdown_reports_cleanup_error(
     tmp_path: Path,
@@ -304,6 +306,7 @@ async def test_initialize_continues_after_active_shutdown_reports_cleanup_error(
     assert manager._lifecycle_state == "running"
 
 
+@pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_concurrent_initialize_callers_share_one_transition(tmp_path: Path):
     settings = Settings(FORENSIC_REPORT_DIR=str(tmp_path / "reports"))
@@ -332,6 +335,7 @@ async def test_concurrent_initialize_callers_share_one_transition(tmp_path: Path
     assert manager._lifecycle_state == "running"
 
 
+@pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_cancelling_one_initialize_waiter_does_not_cancel_transition(
     tmp_path: Path,
@@ -438,6 +442,7 @@ async def test_report_property_rejects_partially_initialized_service(tmp_path: P
     assert manager.forensic_report_service is report
 
 
+@pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_shutdown_during_initialize_waits_then_drains_without_deadlock(
     tmp_path: Path,
@@ -471,6 +476,7 @@ async def test_shutdown_during_initialize_waits_then_drains_without_deadlock(
     assert manager._forensic_report_service is None
 
 
+@pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_cancelled_shutdown_waiter_during_initialize_does_not_abandon_drain(
     tmp_path: Path,
@@ -658,6 +664,7 @@ async def test_reinitialize_recreates_report_service_with_current_cpp_backend(
     assert second_report_service.writer.report_root == first_report_root
 
 
+@pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_concurrent_shutdowns_share_one_manager_transition(tmp_path: Path):
     settings = Settings(FORENSIC_REPORT_DIR=str(tmp_path / "reports"))
@@ -682,6 +689,7 @@ async def test_concurrent_shutdowns_share_one_manager_transition(tmp_path: Path)
     assert manager._forensic_report_service is None
 
 
+@pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_cancelled_shutdown_completes_transition_and_allows_reinitialize(
     tmp_path: Path,

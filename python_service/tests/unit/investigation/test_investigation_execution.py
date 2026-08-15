@@ -71,10 +71,20 @@ def _file_resolved(fdb, task_id="A", path="/case/report.docx"):
     )
 
 
-def _setup(tmp_path, *, desc="DESC", prompt_version="investigation-evidence-analysis:v2"):
+def _setup(
+    tmp_path,
+    *,
+    desc="DESC",
+    prompt_version="investigation-evidence-analysis:v2",
+    investigation_db_factory=None,
+):
     """Create files.db + investigation.db with a captured snapshot and queued analysis."""
     fdb = str(tmp_path / "files.db")
-    idb = str(tmp_path / "investigation.db")
+    idb = str(
+        investigation_db_factory(tmp_path)
+        if investigation_db_factory is not None
+        else tmp_path / "investigation.db"
+    )
     _make_files_db(fdb, [{"path": "/case/report.docx", "llm_description": desc, "size": 7}])
     repo = InvestigationRepository(idb, "A")
     snapshot = repo.capture_if_absent(_file_resolved(fdb))
@@ -129,8 +139,14 @@ EVIDENCE_KEY = "file:/case/report.docx"
 # E1: queued persisted before background task
 # ---------------------------------------------------------------------------
 
-def test_E1_queued_persisted_before_background(tmp_path):
-    _, idb, repo, snap, analysis = _setup(tmp_path, prompt_version=CURRENT_PROMPT_VERSION)
+def test_E1_queued_persisted_before_background(
+    tmp_path, copy_investigation_v7_baseline
+):
+    _, idb, repo, snap, analysis = _setup(
+        tmp_path,
+        prompt_version=CURRENT_PROMPT_VERSION,
+        investigation_db_factory=copy_investigation_v7_baseline,
+    )
     assert analysis.status == SecondaryAnalysisStatus.queued
     # DB has the row
     row = InvestigationRepository(idb, "A").get_analysis(analysis.analysis_id)
@@ -392,23 +408,33 @@ async def test_E11_worker_uses_passed_db_path(tmp_path):
 # Single-worker claim
 # ---------------------------------------------------------------------------
 
+@pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_single_worker_claim_dual_execute(tmp_path):
     _, idb, repo, snap, analysis = _setup(tmp_path)
 
+    started = asyncio.Event()
+    release = asyncio.Event()
+
     async def slow_chat(*args, **kwargs):
-        await asyncio.sleep(0.1)
+        started.set()
+        await release.wait()
         return {"content": "result", "model": "m", "tokens_used": 1}
 
     mock_llm = Mock()
     mock_llm.chat_completion = AsyncMock(side_effect=slow_chat)
     executor = _executor(llm_service=mock_llm)
 
-    # Two concurrent executions of the same analysis_id
-    await asyncio.gather(
-        executor._execute(analysis.analysis_id, "A", Path(idb)),
-        executor._execute(analysis.analysis_id, "A", Path(idb)),
+    # Two concurrent executions of the same analysis
+    first = asyncio.create_task(
+        executor._execute(analysis.analysis_id, "A", Path(idb))
     )
+    second = asyncio.create_task(
+        executor._execute(analysis.analysis_id, "A", Path(idb))
+    )
+    await started.wait()
+    release.set()
+    await asyncio.gather(first, second)
 
     # LLM called exactly once
     assert mock_llm.chat_completion.call_count == 1
@@ -536,8 +562,12 @@ async def test_llm_empty_response(tmp_path):
 async def test_graceful_shutdown_marks_failed(tmp_path):
     fdb, idb, repo, snap, analysis = _setup(tmp_path)
 
+    started = asyncio.Event()
+    release = asyncio.Event()
+
     async def slow_chat(*args, **kwargs):
-        await asyncio.sleep(10)  # won't complete before shutdown
+        started.set()
+        await release.wait()
         return {"content": "x", "model": "m", "tokens_used": 1}
 
     mock_llm = Mock()
@@ -553,6 +583,7 @@ async def test_graceful_shutdown_marks_failed(tmp_path):
 
     # Submit creates analysis + starts background task
     submitted = await executor.submit("A", EVIDENCE_KEY)
+    await started.wait()
     # Shutdown cancels the in-flight task
     await executor.shutdown()
 

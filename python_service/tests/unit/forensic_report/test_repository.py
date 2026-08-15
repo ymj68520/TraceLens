@@ -26,6 +26,7 @@ def test_published_version_cannot_return_to_generating(tmp_path: Path):
     assert repo.get(version.report_id).status is ReportStatus.READY
 
 
+@pytest.mark.concurrency
 def test_concurrent_ready_transition_cannot_overwrite_terminal_state(tmp_path: Path):
     repo = ReportRepository(tmp_path / "reports.db")
     version = repo.create_version(ScopeType.TASK, "task-a", "A", ["task-a"])

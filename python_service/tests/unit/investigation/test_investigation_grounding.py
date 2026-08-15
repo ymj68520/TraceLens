@@ -370,6 +370,7 @@ def test_grounding_summary_null_before_claims(tmp_path):
 # v4 migration (v3 → v4)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.migration_matrix
 def test_v4_migration_from_v3(tmp_path):
     """v3 DB (stripped claims) → reopen → latest (v5) with claims tables."""
     idb = str(tmp_path / "investigation.db")

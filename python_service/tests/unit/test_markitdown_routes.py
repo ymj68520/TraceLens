@@ -496,6 +496,7 @@ async def test_batch_wrapper_normalizes_empty_oserror(tmp_path, monkeypatch):
     assert detail == "notes.txt: OSError"
 
 
+@pytest.mark.concurrency
 def test_batch_convert_uses_shared_primitive_with_bounded_concurrency_and_error_cap(
     tmp_path, monkeypatch
 ):

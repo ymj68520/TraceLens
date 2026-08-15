@@ -61,6 +61,7 @@ def _accepted(repo, snap, *, prompt="investigation-evidence-analysis:v2"):
     )
 
 
+@pytest.mark.migration_matrix
 def test_v5_to_v7_migration_and_new_db_v7(tmp_path):
     repo, snap = _repo(tmp_path)
     event = repo.create_event("event", created_by="a")

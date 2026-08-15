@@ -204,6 +204,7 @@ async def test_legacy_v2_execution_remains_text_contract(tmp_path):
     assert repo.list_claims(analysis.analysis_id) == []
 
 
+@pytest.mark.migration_matrix
 @pytest.mark.asyncio
 async def test_v2_migration_adds_grounding_column(tmp_path):
     idb = str(tmp_path / "investigation.db")

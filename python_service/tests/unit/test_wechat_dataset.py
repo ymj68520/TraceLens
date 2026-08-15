@@ -28,6 +28,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 # Optional analysis dependencies. The production code (wechat_graph_parts)
 # degrades gracefully when these are absent (logged warnings + fallbacks), so
 # they are intentionally not hard requirements. Skip the tests that assert full

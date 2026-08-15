@@ -345,6 +345,12 @@ ctest --output-on-failure
 ```bash
 cd python_service
 pytest tests/ -v
+
+# 日常快速回归（从仓库根目录或 python_service 目录调用均可）
+python scripts/test.py focused tests/unit/investigation/test_investigation_refresh_execution.py -q
+python scripts/test.py investigation
+python scripts/test.py fast
+python scripts/test.py full
 ```
 
 ### 集成测试
@@ -354,7 +360,7 @@ pytest tests/ -v
 bash tests/create_android_image.sh
 
 # HTTP 服务器测试
-bash tests/test_e01_http.sh
+bash scripts/test_e01_http.sh
 ```
 
 ### 测试镜像生成

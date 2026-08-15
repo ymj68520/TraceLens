@@ -124,8 +124,25 @@ test-cpp:
 	@cd $(BUILD_DIR) && ctest --output-on-failure
 
 test-python:
-	@echo "$(BLUE)➤ Running Python tests...$(NC)"
+	@echo "$(BLUE)➤ Running all Python tests...$(NC)"
 	@cd python_service && .venv/bin/python -m pytest tests/ -v
+
+# Stable Python regression profiles. Each runner fixes its own cwd.
+test-python-focused:
+	@echo "$(BLUE)➤ Running focused Python tests...$(NC)"
+	@python_service/.venv/bin/python python_service/scripts/test.py focused $(ARGS)
+
+test-python-investigation:
+	@echo "$(BLUE)➤ Running Investigation fast regression...$(NC)"
+	@python_service/.venv/bin/python python_service/scripts/test.py investigation
+
+test-python-fast:
+	@echo "$(BLUE)➤ Running fast Python unit regression...$(NC)"
+	@python_service/.venv/bin/python python_service/scripts/test.py fast
+
+test-python-full:
+	@echo "$(BLUE)➤ Running full Python unit regression...$(NC)"
+	@python_service/.venv/bin/python python_service/scripts/test.py full
 
 test-all: test-cpp test-python
 	@echo "$(GREEN)✓ All tests complete$(NC)"
@@ -155,9 +172,13 @@ help:
 	@echo "  make setup-web      - Setup web dependencies"
 	@echo ""
 	@echo "$(GREEN)Test Commands:$(NC)"
-	@echo "  make test           - Run all tests"
-	@echo "  make test-cpp       - Run C++ tests"
-	@echo "  make test-python    - Run Python tests"
+	@echo "  make test           - Run C++ CTest suite"
+	@echo "  make test-cpp       - Run C++ CTest suite"
+	@echo "  make test-python    - Run all Python tests"
+	@echo "  make test-python-focused ARGS=... - Run selected Python tests"
+	@echo "  make test-python-investigation - Run Investigation fast regression"
+	@echo "  make test-python-fast - Run fast Python unit regression"
+	@echo "  make test-python-full - Run full Python unit regression"
 	@echo ""
 	@echo "$(GREEN)Quick Start:$(NC)"
 	@echo "  1. make setup       - Install dependencies"

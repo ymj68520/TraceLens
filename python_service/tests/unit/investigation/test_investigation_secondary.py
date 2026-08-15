@@ -485,6 +485,7 @@ def test_db_trigger_aborts_illegal_transition(tmp_path):
 # A4/A5: concurrency
 # ---------------------------------------------------------------------------
 
+@pytest.mark.concurrency
 def test_concurrent_create_distinct_versions(tmp_path):
     _, idb, repo, snap = _setup(tmp_path)
 
@@ -499,6 +500,7 @@ def test_concurrent_create_distinct_versions(tmp_path):
     assert _count_secondary(idb) == 16
 
 
+@pytest.mark.concurrency
 def test_concurrent_different_evidence_each_from_1(tmp_path):
     _, idb, repo, snap = _setup(tmp_path)
 
@@ -546,6 +548,7 @@ def test_restart_preserves_state(tmp_path):
 # A13: migration v1->v2
 # ---------------------------------------------------------------------------
 
+@pytest.mark.migration_matrix
 def test_migration_v1_to_v3_success_preserves_data(tmp_path):
     fdb, idb, snap = _create_v1_db_with_snapshot(tmp_path)
 
@@ -575,6 +578,7 @@ def test_migration_v1_to_v3_success_preserves_data(tmp_path):
     assert a.version == 1
 
 
+@pytest.mark.migration_matrix
 def test_migration_failure_rolls_back(tmp_path):
     """A13: migration fault after CREATE TABLE rolls back; user_version stays 1."""
     _, idb, _ = _create_v1_db_with_snapshot(tmp_path)
@@ -669,6 +673,7 @@ def test_new_db_is_v7_with_all_objects(tmp_path):
     conn.close()
 
 
+@pytest.mark.migration_matrix
 def test_future_version_fail_closed(tmp_path):
     idb = str(tmp_path / "investigation.db")
     InvestigationRepository(idb, "A")
