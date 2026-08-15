@@ -153,6 +153,35 @@ class InvestigationEventService:
                 "investigation event store is unavailable"
             ) from exc
 
+    async def resolve_db_path(self, task_id: str) -> Path:
+        """Return the trusted investigation DB path for an existing task."""
+        return await self._resolve_db_path(task_id)
+
+    async def get_event_refresh(
+        self, task_id: str, refresh_id: str
+    ) -> EventRefresh:
+        db_path = await self._resolve_db_path(task_id)
+        if not db_path.exists():
+            raise EvidenceNotFoundError("event refresh not found")
+        try:
+            repository = InvestigationRepository(db_path, task_id)
+            refresh = await asyncio.to_thread(repository.get_event_refresh, refresh_id)
+        except sqlite3.DatabaseError as exc:
+            raise EvidenceStoreError("investigation event store is unavailable") from exc
+        if refresh is None:
+            raise EvidenceNotFoundError("event refresh not found")
+        return refresh
+
+    async def list_stale_event_refreshes(self, task_id: str) -> list[EventRefresh]:
+        db_path = await self._resolve_db_path(task_id)
+        if not db_path.exists():
+            return []
+        try:
+            repository = InvestigationRepository(db_path, task_id)
+            return await asyncio.to_thread(repository.list_stale_event_refreshes)
+        except sqlite3.DatabaseError as exc:
+            raise EvidenceStoreError("investigation event store is unavailable") from exc
+
     async def create_event_refresh(
         self, task_id: str, event_id: str, *, requested_by: str | None = None
     ) -> EventRefresh:

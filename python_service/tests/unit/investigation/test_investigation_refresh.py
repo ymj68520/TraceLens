@@ -61,7 +61,7 @@ def _accepted(repo, snap, *, prompt="investigation-evidence-analysis:v2"):
     )
 
 
-def test_v5_to_v6_migration_and_new_db_v6(tmp_path):
+def test_v5_to_v7_migration_and_new_db_v7(tmp_path):
     repo, snap = _repo(tmp_path)
     event = repo.create_event("event", created_by="a")
     repo.link_event_evidence(event.event_id, KEY)
@@ -76,7 +76,7 @@ def test_v5_to_v6_migration_and_new_db_v6(tmp_path):
     conn.commit(); conn.close()
 
     reopened = InvestigationRepository(repo.db_path, "A")
-    assert sqlite3.connect(repo.db_path).execute("PRAGMA user_version").fetchone()[0] == 6
+    assert sqlite3.connect(repo.db_path).execute("PRAGMA user_version").fetchone()[0] == 7
     assert reopened.get_event(event.event_id).title == "event"
     assert len(reopened.list_event_evidence(event.event_id)) == 1
 
@@ -201,8 +201,9 @@ def test_active_refresh_partial_unique_index_and_history_slot(tmp_path):
 
     conn = sqlite3.connect(repo.db_path)
     conn.execute(
-        "UPDATE investigation_event_refreshes SET status='failed', failed_at='x' "
-        "WHERE refresh_id=?", [first.refresh_id]
+        "UPDATE investigation_event_refreshes SET status='failed', failed_at='x', "
+        "error_code='test', error_message='test' WHERE refresh_id=?",
+        [first.refresh_id],
     )
     conn.commit(); conn.close()
     second = repo.create_event_refresh(event.event_id, requested_by="b")
@@ -217,10 +218,13 @@ def test_refresh_input_and_terminal_immutability_triggers(tmp_path):
     with pytest.raises(sqlite3.DatabaseError, match="input"):
         conn.execute("UPDATE investigation_event_refreshes SET input_hash='x' WHERE refresh_id=?", [refresh.refresh_id])
     conn.execute(
-        "UPDATE investigation_event_refreshes SET status='running' WHERE refresh_id=?", [refresh.refresh_id]
+        "UPDATE investigation_event_refreshes SET status='running', started_at='s' "
+        "WHERE refresh_id=?", [refresh.refresh_id]
     )
     conn.execute(
-        "UPDATE investigation_event_refreshes SET status='failed', failed_at='x' WHERE refresh_id=?", [refresh.refresh_id]
+        "UPDATE investigation_event_refreshes SET status='failed', failed_at='x', "
+        "error_code='test', error_message='test' WHERE refresh_id=?",
+        [refresh.refresh_id],
     )
     conn.commit()
     with pytest.raises(sqlite3.DatabaseError, match="terminal"):

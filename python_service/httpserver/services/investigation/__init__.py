@@ -16,6 +16,11 @@ Secondary Analysis execution:
 from .acquisition import build_snapshot_candidate, canonical_json
 from .event import InvestigationEventService
 from .execution import SecondaryAnalysisExecutor
+from .event_refresh_execution import EventRefreshExecutor
+from .event_refresh_structured import (
+    StructuredEventRefreshOutputError,
+    parse_event_refresh_response,
+)
 from .structured import StructuredOutputError, parse_structured_analysis_response
 from .grounding import (
     GroundingValidator,
@@ -40,8 +45,10 @@ from .models import (
     EventRefreshAcceptedAnalysisV1,
     EventRefreshClaimV1,
     EventRefreshEnvelopeV1,
+    EventRefreshEnvelopeV2,
     EventRefreshLinkV1,
     EventRefreshStatus,
+    StructuredEventRefreshResponse,
     FileSnapshotPayload,
     InvestigationEvent,
     InvestigationEventVersion,
@@ -52,13 +59,20 @@ from .models import (
     SnapshotCandidate,
     ValidatedClaim,
     parse_analysis_input_envelope,
+    parse_event_refresh_envelope,
 )
 from .paths import investigation_db_path_for_task
 from .prompts import (
     CURRENT_PROMPT_VERSION,
     ENVELOPE_PROMPT_COMPAT,
+    EVENT_REFRESH_PROMPT_VERSION,
+    EVENT_REFRESH_PROMPT_REGISTRY,
+    REFRESH_ENVELOPE_PROMPT_COMPAT,
+    REFRESH_PROMPT_OUTPUT_CONTRACT,
     PROMPT_OUTPUT_CONTRACT,
     PROMPT_REGISTRY,
+    build_event_refresh_user_prompt,
+    get_event_refresh_prompt,
     get_prompt,
 )
 from .repository import (
@@ -92,6 +106,7 @@ __all__ = [
     "InvestigationCaptureService",
     "InvestigationReviewService",
     "InvestigationEventService",
+    "EventRefreshExecutor",
     "AnalysisReviewConflictError",
     "InvestigationEventConflictError",
     "EvidenceSnapshot",
@@ -102,13 +117,22 @@ __all__ = [
     "EventRefreshAcceptedAnalysisV1",
     "EventRefreshLinkV1",
     "EventRefreshEnvelopeV1",
+    "EventRefreshEnvelopeV2",
+    "StructuredEventRefreshResponse",
+    "parse_event_refresh_envelope",
     "InvestigationEvent",
     "InvestigationEventVersion",
     "SecondaryAnalysisExecutor",
     "CURRENT_PROMPT_VERSION",
     "ENVELOPE_PROMPT_COMPAT",
+    "EVENT_REFRESH_PROMPT_VERSION",
+    "EVENT_REFRESH_PROMPT_REGISTRY",
+    "REFRESH_ENVELOPE_PROMPT_COMPAT",
+    "REFRESH_PROMPT_OUTPUT_CONTRACT",
     "PROMPT_OUTPUT_CONTRACT",
     "PROMPT_REGISTRY",
+    "build_event_refresh_user_prompt",
+    "get_event_refresh_prompt",
     "get_prompt",
     "ClaimType",
     "ClaimGroundingStatus",
@@ -122,4 +146,6 @@ __all__ = [
     "StructuredAnalysisResponse",
     "StructuredOutputError",
     "parse_structured_analysis_response",
+    "StructuredEventRefreshOutputError",
+    "parse_event_refresh_response",
 ]

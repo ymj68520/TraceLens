@@ -390,10 +390,10 @@ def test_v4_migration_from_v3(tmp_path):
     conn.execute("PRAGMA user_version = 3")
     conn.commit()
     conn.close()
-    # Reopen → triggers v3→v4→v5→v6 migration chain
+    # Reopen → triggers v3→v4→v5→v6→v7 migration chain
     InvestigationRepository(idb, "A")
     conn = sqlite3.connect(idb)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
     assert conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='analysis_claims'"
     ).fetchone() is not None

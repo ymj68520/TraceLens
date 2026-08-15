@@ -16,7 +16,92 @@ from typing import Union
 from .models import (
     AnalysisInputEnvelopeV1,
     AnalysisInputEnvelopeV2,
+    EventRefreshEnvelopeV2,
 )
+
+EVENT_REFRESH_PROMPT_VERSION = "investigation-event-refresh:v1"
+REFRESH_ENVELOPE_PROMPT_COMPAT: dict[int, frozenset[str]] = {
+    2: frozenset({EVENT_REFRESH_PROMPT_VERSION}),
+}
+REFRESH_PROMPT_OUTPUT_CONTRACT = {
+    EVENT_REFRESH_PROMPT_VERSION: "structured_event_narrative_v1",
+}
+
+EVENT_REFRESH_SYSTEM_V1 = """\\
+你是一名数字取证调查事件叙事整理专家。你只能基于提供的冻结输入生成事件标题和摘要。
+
+严格语义边界：
+- envelope.links[*].evidence_key 才是本 Event 的 authoritative Evidence IDs。
+- Evidence Snapshot 是证据事实。
+- accepted Analysis 和 Claims 是已被分析员接受的派生上下文，不是新的 Evidence Source。
+- Claim 的 evidence_refs 只是该 accepted analysis 的历史 provenance；即使引用其他 ID，也不会扩大 Event 的 Evidence membership。
+- base title/summary 是旧 Event narrative，不是 Evidence Source。
+- 不得发明 Evidence ID、文件、事件、Claim 或审核字段。
+
+只输出一个 JSON object，字段只能是 title、summary；不得输出 Markdown、代码围栏或解释文字。
+"""
+
+EVENT_REFRESH_USER_TEMPLATE_V1 = """\\
+请基于以下冻结 Event 输入生成新的事件叙事。
+
+Event ID: {event_id}
+基础版本: {base_version}
+旧标题: {base_title}
+旧摘要: {base_summary}
+
+Authoritative Event Evidence IDs:
+{evidence_ids}
+
+冻结 Evidence Snapshots 与 accepted derived context:
+{links_text}
+
+输出要求：只返回严格 JSON：{{"title":"...","summary":"..."}}。
+"""
+
+EVENT_REFRESH_PROMPT_REGISTRY: dict[str, tuple[str, str]] = {
+    EVENT_REFRESH_PROMPT_VERSION: (
+        EVENT_REFRESH_SYSTEM_V1,
+        EVENT_REFRESH_USER_TEMPLATE_V1,
+    ),
+}
+
+
+def get_event_refresh_prompt(version: str) -> tuple[str, str]:
+    entry = EVENT_REFRESH_PROMPT_REGISTRY.get(version)
+    if entry is None:
+        raise ValueError(f"unknown event refresh prompt version: {version!r}")
+    return entry
+
+
+def _format_refresh_link(link) -> str:
+    accepted = link.accepted_analysis
+    lines = [f"Evidence ID: {link.evidence_key}", f"Snapshot: {link.snapshot}"]
+    if accepted is None:
+        lines.append("Accepted Analysis: none")
+    else:
+        lines.extend([
+            f"Accepted Analysis {accepted.analysis_id} v{accepted.version}:",
+            f"  description: {accepted.description or 'none'}",
+            f"  summary: {accepted.summary or 'none'}",
+            f"  claims: {accepted.claims}",
+            "  claim evidence_refs are historical provenance, not Event links",
+        ])
+    return "\\n".join(lines)
+
+
+def build_event_refresh_user_prompt(
+    user_template: str, envelope: EventRefreshEnvelopeV2
+) -> str:
+    links_text = "\\n\\n".join(_format_refresh_link(link) for link in envelope.links) or "none"
+    evidence_ids = "\\n".join(link.evidence_key for link in envelope.links) or "none"
+    return user_template.format(
+        event_id=envelope.event_id,
+        base_version=envelope.base_version,
+        base_title=envelope.base_title,
+        base_summary=envelope.base_summary or "none",
+        evidence_ids=evidence_ids,
+        links_text=links_text,
+    )
 
 # ---------------------------------------------------------------------------
 # Version registry

@@ -31,20 +31,21 @@ def _refresh(status=EventRefreshStatus.queued):
 def _client(service):
     app = FastAPI()
     app.include_router(investigation.router, prefix="/api/investigation")
+    app.dependency_overrides[investigation.get_event_refresh_executor] = lambda: service
     app.dependency_overrides[investigation.get_investigation_event_service] = lambda: service
     return TestClient(app)
 
 
 def test_create_refresh_201_and_passes_request_fields():
     service = Mock()
-    service.create_event_refresh = AsyncMock(return_value=_refresh())
+    service.submit = AsyncMock(return_value=_refresh())
     response = _client(service).post(
         "/api/investigation/events/ie_1/refresh",
         json={"task_id": "A", "requested_by": "analyst"},
     )
     assert response.status_code == 201
     assert response.json()["refresh_id"] == "er_1"
-    service.create_event_refresh.assert_awaited_once_with(
+    service.submit.assert_awaited_once_with(
         "A", "ie_1", requested_by="analyst"
     )
 
@@ -62,7 +63,7 @@ def test_list_refresh_history_200():
 
 def test_refresh_strict_request_rejects_internal_fields():
     service = Mock()
-    service.create_event_refresh = AsyncMock()
+    service.submit = AsyncMock()
     client = _client(service)
     for extra in ("status", "input_hash", "needs_refresh", "event_id", "base_version"):
         response = client.post(
@@ -70,7 +71,7 @@ def test_refresh_strict_request_rejects_internal_fields():
             json={"task_id": "A", "requested_by": "a", extra: "hack"},
         )
         assert response.status_code == 422, extra
-    service.create_event_refresh.assert_not_called()
+    service.submit.assert_not_called()
 
 
 def test_refresh_maps_404_409_503():
@@ -81,7 +82,7 @@ def test_refresh_maps_404_409_503():
     )
     for error, status, detail in cases:
         service = Mock()
-        service.create_event_refresh = AsyncMock(side_effect=error)
+        service.submit = AsyncMock(side_effect=error)
         response = _client(service).post(
             "/api/investigation/events/ie_1/refresh",
             json={"task_id": "A", "requested_by": "a"},

@@ -388,17 +388,27 @@ async def list_investigation_event_evidence(
         raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
 
 
+def get_event_refresh_executor():
+    try:
+        return get_service_manager().event_refresh_executor
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="event refresh executor is unavailable",
+        ) from exc
+
+
 @router.post(
     "/events/{event_id}/refresh", response_model=EventRefresh, status_code=201
 )
 async def create_event_refresh(
     event_id: str,
     request: CreateEventRefreshRequest,
-    service: InvestigationEventService = Depends(get_investigation_event_service),
+    executor = Depends(get_event_refresh_executor),
 ) -> EventRefresh:
-    """Admit one explicit refresh with a frozen input envelope."""
+    """Admit and schedule one explicit refresh without waiting for the LLM."""
     try:
-        return await service.create_event_refresh(
+        return await executor.submit(
             request.task_id, event_id, requested_by=request.requested_by
         )
     except EvidenceNotFoundError as exc:

@@ -51,10 +51,12 @@ class ServiceManager:
         self._investigation_review_service = None
         self._investigation_event_service = None
         self._secondary_analysis_executor = None
+        self._event_refresh_executor = None
         self._initialized = False
         self._cpp_backend_ready = False
         self._forensic_report_ready = False
         self._secondary_analysis_ready = False
+        self._event_refresh_ready = False
         self._lifecycle_state = "new"
         self._lifecycle_lock = asyncio.Lock()
         self._initialization_task: Optional[asyncio.Task[None]] = None
@@ -161,6 +163,16 @@ class ServiceManager:
                     f"SecondaryAnalysisExecutor initialization failed: {error}"
                 )
 
+            try:
+                executor = self._create_event_refresh_executor()
+                await executor.initialize()
+                self._event_refresh_executor = executor
+                self._event_refresh_ready = True
+            except Exception as error:
+                logger.warning(
+                    f"EventRefreshExecutor initialization failed: {error}"
+                )
+
         # Initialize IngestionJobManager
         try:
             from .ingestion_job_manager import IngestionJobManager
@@ -196,6 +208,7 @@ class ServiceManager:
         rollback_plan = (
             (self._migration_manager, "close"),
             (self._ingestion_job_manager, "shutdown"),
+            (self._event_refresh_executor, "shutdown"),
             (self._secondary_analysis_executor, "shutdown"),
             (self._llm_service, "shutdown"),
             (self._graphiti_service, "shutdown"),
@@ -279,6 +292,7 @@ class ServiceManager:
 
     def _service_cleanup_plan(self) -> tuple[tuple[object | None, str], ...]:
         return (
+            (self._event_refresh_executor, "shutdown"),
             (self._secondary_analysis_executor, "shutdown"),
             (self._forensic_report_service, "shutdown"),
             (self._cpp_backend, "shutdown"),
@@ -293,6 +307,7 @@ class ServiceManager:
         self._investigation_service = None
         self._investigation_review_service = None
         self._investigation_event_service = None
+        self._event_refresh_executor = None
         self._secondary_analysis_executor = None
         self._cpp_backend = None
         self._graphiti_service = None
@@ -302,6 +317,7 @@ class ServiceManager:
         self._cpp_backend_ready = False
         self._forensic_report_ready = False
         self._secondary_analysis_ready = False
+        self._event_refresh_ready = False
 
     def _require_service_access(self) -> None:
         if self._lifecycle_state == "initializing":
@@ -415,6 +431,26 @@ class ServiceManager:
         if self._investigation_event_service is None:
             self._investigation_event_service = self._create_investigation_event_service()
         return self._investigation_event_service
+
+    def _create_event_refresh_executor(self):
+        from .investigation.event_refresh_execution import EventRefreshExecutor
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        if self._investigation_event_service is None:
+            self._investigation_event_service = self._create_investigation_event_service()
+        return EventRefreshExecutor(
+            cpp_backend=self._cpp_backend,
+            llm_service=self._llm_service,
+            event_service=self._investigation_event_service,
+        )
+
+    @property
+    def event_refresh_executor(self):
+        self._require_service_access()
+        if self._event_refresh_executor is None or not self._event_refresh_ready:
+            raise RuntimeError("event refresh executor is unavailable")
+        return self._event_refresh_executor
 
     def _create_secondary_analysis_executor(self):
         from .investigation.execution import SecondaryAnalysisExecutor

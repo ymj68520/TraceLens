@@ -35,7 +35,7 @@ def _connect_ro(path: str) -> sqlite3.Connection:
 def canonical_json(payload) -> str:
     """Deterministic JSON serialization (S8)."""
     return json.dumps(
-        payload.model_dump(),
+        payload.model_dump(mode="json"),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),

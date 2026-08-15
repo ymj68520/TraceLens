@@ -470,7 +470,7 @@ class EventRefreshLinkV1(BaseModel):
 
 
 class EventRefreshEnvelopeV1(BaseModel):
-    """Self-contained frozen refresh input (F1-F8, F12)."""
+    """Self-contained frozen refresh input (C7c-1 historical format)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -481,6 +481,44 @@ class EventRefreshEnvelopeV1(BaseModel):
     base_summary: Optional[str] = None
     needs_refresh_at_submission: bool
     links: tuple[EventRefreshLinkV1, ...] = ()
+
+
+class EventRefreshEnvelopeV2(BaseModel):
+    """Executable refresh input with an immutable prompt contract."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: Literal[2] = 2
+    prompt_version: str
+    event_id: str
+    base_version: int
+    base_title: str
+    base_summary: Optional[str] = None
+    needs_refresh_at_submission: bool
+    links: tuple[EventRefreshLinkV1, ...] = ()
+
+
+EventRefreshEnvelope = Union[EventRefreshEnvelopeV1, EventRefreshEnvelopeV2]
+
+
+def parse_event_refresh_envelope(raw: Union[str, dict]) -> EventRefreshEnvelope:
+    """Parse a historical V1 or executable V2 refresh envelope."""
+    payload = json.loads(raw) if isinstance(raw, str) else raw
+    version = payload.get("schema_version")
+    if version == 1:
+        return EventRefreshEnvelopeV1.model_validate(payload)
+    if version == 2:
+        return EventRefreshEnvelopeV2.model_validate(payload)
+    raise ValueError(f"unsupported event refresh envelope schema: {version!r}")
+
+
+class StructuredEventRefreshResponse(BaseModel):
+    """Strict title/summary output for an Event narrative refresh."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    title: str = Field(min_length=1, max_length=500)
+    summary: str = Field(min_length=1, max_length=20_000)
 
 
 class EventRefresh(BaseModel):
@@ -503,3 +541,4 @@ class EventRefresh(BaseModel):
     failed_at: Optional[str] = None
     error_code: Optional[str] = None
     error_message: Optional[str] = None
+    model: Optional[str] = None
