@@ -193,7 +193,7 @@ with the C++ backend for task management and file system operations.
 
 def _register_routes(app: FastAPI):
     """Register all route modules."""
-    from .routes import health, graphiti, llm, database, office, case_analysis, system, associations, oss_analysis, multi_analysis, dll, markitdown, wechat_graph, forensic_reports
+    from .routes import health, graphiti, llm, database, office, case_analysis, system, associations, oss_analysis, multi_analysis, dll, markitdown, wechat_graph, forensic_reports, investigation
 
     # Health routes (no prefix)
     app.include_router(health.router, tags=["Health"])
@@ -216,6 +216,7 @@ def _register_routes(app: FastAPI):
     app.include_router(dll.router, prefix="/api/llm", tags=["DLL"])
     app.include_router(markitdown.router, prefix="/api/markitdown", tags=["Markitdown"])
     app.include_router(wechat_graph.router, prefix="/api/wechat", tags=["WeChat Analysis"])
+    app.include_router(investigation.router, prefix="/api/investigation", tags=["Investigation"])
 
 
 def get_app() -> FastAPI:

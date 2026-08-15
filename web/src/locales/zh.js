@@ -7,6 +7,7 @@ export default {
     'nav.files': '文件管理',
     'nav.ai_descriptions': 'AI 描述',
     'nav.case_center': '研判中心',
+    'nav.investigation': '二次调查分析',
     'nav.knowledge_graph': '知识图谱',
     'nav.android': '安卓取证',
     'nav.wechat_graph': '微信关系分析',

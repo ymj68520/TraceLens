@@ -118,6 +118,7 @@ class FileAnalyzer:
         prompt: Optional[str] = None,
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
+        system_prompt: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Analyze content using LLM.
@@ -153,7 +154,7 @@ class FileAnalyzer:
             logger.info(f"Using vision model: {model} at {self.settings.llm_vision_base_url}")
 
         # Build prompt
-        system_prompt = TEXT_ANALYSIS_SYSTEM
+        system_prompt = system_prompt or TEXT_ANALYSIS_SYSTEM
         user_prompt = prompt or TEXT_ANALYSIS_USER_TEMPLATE.format(content=content)
 
         # Make API request

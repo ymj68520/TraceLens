@@ -7,6 +7,7 @@ export default {
     'nav.files': 'Files',
     'nav.ai_descriptions': 'AI Descriptions',
     'nav.case_center': 'Case Center',
+    'nav.investigation': 'Investigation',
     'nav.knowledge_graph': 'Knowledge Graph',
     'nav.android': 'Android',
     'nav.wechat_graph': 'WeChat Graph',

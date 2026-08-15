@@ -315,6 +315,7 @@ class LLMService:
         prompt: Optional[str] = None,
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
+        system_prompt: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Analyze content using LLM.
@@ -335,7 +336,7 @@ class LLMService:
 
         return await self.file_analyzer.analyze_file(
             content, self._text_client, self._vision_client,
-            model_type, prompt, max_tokens, temperature
+            model_type, prompt, max_tokens, temperature, system_prompt
         )
 
     async def analyze_image(

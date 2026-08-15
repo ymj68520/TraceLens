@@ -7,7 +7,7 @@ import { useTranslation } from '../../hooks/useTranslation';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, ListTodo, Clock, FolderOpen, Network,
-  Smartphone, Cloud, Search, BarChart3, Settings, Menu, X, ChevronLeft, ChevronRight, FileText, Briefcase, MessageCircle, Cpu
+  Smartphone, Cloud, Search, BarChart3, Settings, Menu, X, ChevronLeft, ChevronRight, FileText, Briefcase, MessageCircle, Cpu, Microscope
 } from 'lucide-react';
 
 const Layout = ({ children }) => {
@@ -16,7 +16,7 @@ const Layout = ({ children }) => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const currentTaskId = searchParams.get('task_id');
-  const { theme, showTerminal } = useSelector((state) => state.settings);
+  const { showTerminal } = useSelector((state) => state.settings);
   const { sidebarOpen } = useSelector((state) => state.ui);
   const { t } = useTranslation();
 
@@ -28,6 +28,7 @@ const Layout = ({ children }) => {
     { name: t('nav.files'), href: '/files', icon: FolderOpen },
     { name: '证据研判', href: '/case-intelligence', icon: FileText },
     { name: t('nav.case_center'), href: '/analysis-center', icon: FileText },
+    { name: t('nav.investigation'), href: '/investigation', icon: Microscope },
     { name: t('nav.knowledge_graph'), href: '/knowledge-graph', icon: Network },
     { name: t('nav.android'), href: '/android', icon: Smartphone },
     { name: t('nav.memory'), href: '/memory', icon: Cpu },
@@ -44,10 +45,12 @@ const Layout = ({ children }) => {
   }
 
   const isActive = (path) =>
-    location.pathname === path || (location.pathname.startsWith('/reports/') && path.startsWith('/reports/'));
+    location.pathname === path
+    || (path === '/investigation' && location.pathname.startsWith('/investigation/'))
+    || (location.pathname.startsWith('/reports/') && path.startsWith('/reports/'));
 
   const getLinkUrl = (href) => {
-    const taskContextPages = ['/timeline', '/files', '/case-intelligence', '/analysis-center', '/knowledge-graph', '/android', '/memory', '/wechat-graph', '/oss', '/search', '/statistics'];
+    const taskContextPages = ['/timeline', '/files', '/case-intelligence', '/analysis-center', '/investigation', '/investigation/report', '/knowledge-graph', '/android', '/memory', '/wechat-graph', '/oss', '/search', '/statistics'];
     if (currentTaskId && taskContextPages.includes(href)) {
       return `${href}?task_id=${currentTaskId}`;
     }

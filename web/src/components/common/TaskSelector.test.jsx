@@ -2,7 +2,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 import { render, screen } from '@testing-library/react';
-import { vi } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import TaskSelector from './TaskSelector';
 
 vi.mock('../../store/taskSlice', () => ({
@@ -38,6 +38,12 @@ test('exposes the global task selector on the dedicated intelligence route', () 
 
 test('exposes the global task selector on the analysis center route', () => {
   renderSelector('/analysis-center?task_id=task-A');
+
+  expect(screen.getByRole('combobox')).toBeInTheDocument();
+});
+
+test('exposes the global task selector on the final report viewer route', () => {
+  renderSelector('/investigation/report?task_id=task-A');
 
   expect(screen.getByRole('combobox')).toBeInTheDocument();
 });
