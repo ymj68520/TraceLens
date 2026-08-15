@@ -43,6 +43,8 @@ async def get_job_status(
         if hasattr(service_manager, 'ingestion_job_manager') and service_manager.ingestion_job_manager:
             status = await service_manager.ingestion_job_manager.get_job_status(job_id)
             if status:
+                status = dict(status)
+                status["status"] = str(status.get("status", "unknown")).upper()
                 return JobStatusResponse(**status)
 
         # Fallback to old GraphitiService
@@ -50,7 +52,7 @@ async def get_job_status(
         if status:
             return JobStatusResponse(
                 job_id=job_id,
-                status=status.get("status", "unknown"),
+                status=str(status.get("status", "unknown")).upper(),
                 progress=int(status.get("progress", 0) * 100),
                 current_phase=status.get("current_phase", "unknown"),
                 created_at=status.get("created_at", ""),
