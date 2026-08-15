@@ -27,6 +27,8 @@ from ..services.investigation import (
     InvestigationEventConflictError,
     InvestigationEventService,
     InvestigationEventVersion,
+    InvestigationGraphResponse,
+    InvestigationGraphService,
     InvestigationReviewService,
     AnalysisReviewConflictError,
     SecondaryAnalysis,
@@ -440,3 +442,41 @@ async def list_event_refreshes(
         ) from exc
     except EvidenceStoreError as exc:
         raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+# ---------------------------------------------------------------------------
+# Graph routes (C8b)
+# ---------------------------------------------------------------------------
+
+def get_investigation_graph_service() -> InvestigationGraphService:
+    """Resolve the read-only graph composition service via ServiceManager."""
+    try:
+        return get_service_manager().investigation_graph_service
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="investigation graph service is unavailable",
+        ) from exc
+
+
+@router.get("/graph", response_model=InvestigationGraphResponse)
+async def get_investigation_graph(
+    task_id: str = Query(..., min_length=1),
+    max_base_nodes: int = Query(default=200, ge=1, le=1000),
+    service: InvestigationGraphService = Depends(get_investigation_graph_service),
+) -> InvestigationGraphResponse:
+    """Compose the Base KG with the derived Investigation Overlay (read-only).
+
+    Base KG failure degrades gracefully (``base_graph_available=false`` +
+    warning); Investigation store corruption fails closed (503) instead of
+    masquerading as an empty overlay.  ``max_base_nodes`` bounds only the
+    Base KG read, never the overlay.
+    """
+    try:
+        return await service.get_graph(task_id, max_base_nodes=max_base_nodes)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="task not found") from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(
+            status_code=503, detail="investigation store is unavailable"
+        ) from exc

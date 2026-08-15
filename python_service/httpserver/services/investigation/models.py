@@ -542,3 +542,68 @@ class EventRefresh(BaseModel):
     error_code: Optional[str] = None
     error_message: Optional[str] = None
     model: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Investigation Graph overlay read models (Phase C8b)
+# ---------------------------------------------------------------------------
+
+
+class InvestigationGraphNode(BaseModel):
+    """One composed graph node: a Base KG entity or an overlay projection.
+
+    ``id`` is deterministic: overlay nodes use the ``event:`` / ``analysis:``
+    / ``claim:`` / ``evidence:`` namespaces over persisted IDs; base_kg nodes
+    keep the Graphiti Entity uuid untouched (G12).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    name: str
+    label: str
+    summary: Optional[str] = None
+    source: Literal["base_kg", "investigation"]
+    confirmed: Optional[bool] = None
+    provenance: Optional[dict] = None
+
+
+class InvestigationGraphLink(BaseModel):
+    """One composed graph edge.
+
+    ``kind`` is the authoritative relation class.  Base KG links carry no
+    persisted edge id, so their ``id`` is derived from the
+    (source, relation, target) triple the Base query returns.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    source: str
+    target: str
+    label: str
+    kind: Literal[
+        "base_relation",
+        "event_evidence",
+        "analysis_evidence",
+        "analysis_claim",
+        "claim_evidence",
+    ]
+    provenance: Optional[dict] = None
+
+
+class InvestigationGraphResponse(BaseModel):
+    """Derived read-only composition of Base KG + Investigation Overlay.
+
+    ``base_max_nodes`` bounds only the Base KG read; the overlay is never
+    truncated (B4).  An empty ``warnings`` tuple means both sources read.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    task_id: str
+    base_graph_available: bool
+    base_max_nodes: int
+    nodes: tuple[InvestigationGraphNode, ...] = ()
+    links: tuple[InvestigationGraphLink, ...] = ()
+    warnings: tuple[str, ...] = ()

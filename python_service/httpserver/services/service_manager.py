@@ -50,6 +50,7 @@ class ServiceManager:
         self._investigation_service = None
         self._investigation_review_service = None
         self._investigation_event_service = None
+        self._investigation_graph_service = None
         self._secondary_analysis_executor = None
         self._event_refresh_executor = None
         self._initialized = False
@@ -307,6 +308,7 @@ class ServiceManager:
         self._investigation_service = None
         self._investigation_review_service = None
         self._investigation_event_service = None
+        self._investigation_graph_service = None
         self._event_refresh_executor = None
         self._secondary_analysis_executor = None
         self._cpp_backend = None
@@ -431,6 +433,29 @@ class ServiceManager:
         if self._investigation_event_service is None:
             self._investigation_event_service = self._create_investigation_event_service()
         return self._investigation_event_service
+
+    def _create_investigation_graph_service(self):
+        from .investigation.graph import InvestigationGraphService
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        manager = self
+        return InvestigationGraphService(
+            cpp_backend=self._cpp_backend,
+            # Resolved lazily per GET so a Graphiti/Neo4j outage degrades to
+            # base_graph_available=false instead of failing the endpoint.
+            base_graph_provider=lambda: manager.graphiti_service,
+        )
+
+    @property
+    def investigation_graph_service(self):
+        """Get the read-only Investigation graph composition service."""
+        self._require_service_access()
+        if self._investigation_graph_service is None:
+            self._investigation_graph_service = (
+                self._create_investigation_graph_service()
+            )
+        return self._investigation_graph_service
 
     def _create_event_refresh_executor(self):
         from .investigation.event_refresh_execution import EventRefreshExecutor

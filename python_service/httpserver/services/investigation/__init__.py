@@ -16,6 +16,12 @@ Secondary Analysis execution:
 from .acquisition import build_snapshot_candidate, canonical_json
 from .event import InvestigationEventService
 from .execution import SecondaryAnalysisExecutor
+from .graph import BASE_GRAPH_UNAVAILABLE_WARNING, InvestigationGraphService
+from .graph_reader import (
+    GraphAnalysisSelection,
+    InvestigationGraphReader,
+    OverlayReadResult,
+)
 from .event_refresh_execution import EventRefreshExecutor
 from .event_refresh_structured import (
     StructuredEventRefreshOutputError,
@@ -48,6 +54,9 @@ from .models import (
     EventRefreshEnvelopeV2,
     EventRefreshLinkV1,
     EventRefreshStatus,
+    InvestigationGraphNode,
+    InvestigationGraphLink,
+    InvestigationGraphResponse,
     StructuredEventRefreshResponse,
     FileSnapshotPayload,
     InvestigationEvent,
@@ -107,6 +116,14 @@ __all__ = [
     "InvestigationReviewService",
     "InvestigationEventService",
     "EventRefreshExecutor",
+    "InvestigationGraphService",
+    "InvestigationGraphReader",
+    "GraphAnalysisSelection",
+    "OverlayReadResult",
+    "BASE_GRAPH_UNAVAILABLE_WARNING",
+    "InvestigationGraphNode",
+    "InvestigationGraphLink",
+    "InvestigationGraphResponse",
     "AnalysisReviewConflictError",
     "InvestigationEventConflictError",
     "EvidenceSnapshot",
