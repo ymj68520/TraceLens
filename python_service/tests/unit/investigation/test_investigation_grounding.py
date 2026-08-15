@@ -14,6 +14,7 @@ import pytest
 from httpserver.services.evidence import ResolvedEvidence
 from httpserver.services.investigation import (
     AnalysisGroundingStatus,
+    AnalysisReviewDecision,
     ClaimCandidate,
     ClaimGroundingStatus,
     ClaimType,
@@ -340,7 +341,11 @@ def test_G10_grounding_survives_review_lifecycle(tmp_path):
     repo.persist_claims(analysis.analysis_id, [_c(ClaimType.FACT, "grounded", (PRIMARY,))])
     assert repo.get_grounding_summary(analysis.analysis_id) == AnalysisGroundingStatus.VALID
     repo.transition(analysis.analysis_id, SecondaryAnalysisStatus.review_pending)
-    repo.transition(analysis.analysis_id, SecondaryAnalysisStatus.accepted, decided_by="analyst")
+    repo.review_analysis(
+        analysis.analysis_id,
+        decision=AnalysisReviewDecision.accepted,
+        reviewer="analyst",
+    )
     assert repo.get_grounding_summary(analysis.analysis_id) == AnalysisGroundingStatus.VALID
 
 

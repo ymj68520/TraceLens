@@ -77,24 +77,31 @@ def _analysis(
         SecondaryAnalysisStatus.rejected,
         SecondaryAnalysisStatus.invalid,
     }:
-        if prompt_version == PROMPT_V2:
+        if status is SecondaryAnalysisStatus.review_pending:
+            # Leave structured output intentionally incomplete: several tests
+            # assert review-time integrity failures on exactly this state.
             repo.transition(
                 analysis.analysis_id,
                 SecondaryAnalysisStatus.review_pending,
                 description="desc", summary="sum", model="m",
             )
         else:
-            repo.transition(
+            if prompt_version == PROMPT_V3:
+                repo.complete_analysis_for_review(
+                    analysis.analysis_id,
+                    description="desc", summary="sum", model="m", candidates=[],
+                )
+            else:
+                repo.transition(
+                    analysis.analysis_id,
+                    SecondaryAnalysisStatus.review_pending,
+                    description="desc", summary="sum", model="m",
+                )
+            repo.review_analysis(
                 analysis.analysis_id,
-                SecondaryAnalysisStatus.review_pending,
-                description="desc", summary="sum", model="m",
+                decision=AnalysisReviewDecision(status.value),
+                reviewer="prior",
             )
-    if status in {
-        SecondaryAnalysisStatus.accepted,
-        SecondaryAnalysisStatus.rejected,
-        SecondaryAnalysisStatus.invalid,
-    }:
-        repo.transition(analysis.analysis_id, status, decided_by="prior")
     elif status == SecondaryAnalysisStatus.failed:
         repo.transition(
             analysis.analysis_id,

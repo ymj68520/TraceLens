@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from httpserver.services.investigation import (
+    AnalysisReviewDecision,
     EvidenceSnapshot,
     FileSnapshotPayload,
     InvestigationRepository,
@@ -241,7 +242,7 @@ def test_snapshot_id_excluded_from_model_dump():
 
 def test_legal_chain_queued_to_accepted_with_fields(tmp_path):
     _, _, repo, snap = _setup(tmp_path)
-    a = repo.create_analysis(snap)
+    a = repo.create_analysis(snap, prompt_version="investigation-evidence-analysis:v2")
 
     running = repo.transition(a.analysis_id, SecondaryAnalysisStatus.running)
     assert running.status == SecondaryAnalysisStatus.running
@@ -258,9 +259,11 @@ def test_legal_chain_queued_to_accepted_with_fields(tmp_path):
     assert review.summary == "sum"
     assert review.model == "m1"
 
-    accepted = repo.transition(
-        a.analysis_id, SecondaryAnalysisStatus.accepted,
-        decided_by="analyst1", decision_reason="looks good",
+    accepted = repo.review_analysis(
+        a.analysis_id,
+        decision=AnalysisReviewDecision.accepted,
+        reviewer="analyst1",
+        reason="looks good",
     )
     assert accepted.status == SecondaryAnalysisStatus.accepted
     assert accepted.decided_at is not None
@@ -284,22 +287,28 @@ def test_queued_to_failed_writes_error_fields(tmp_path):
 
 def test_review_pending_to_rejected_and_invalid(tmp_path):
     _, _, repo, snap = _setup(tmp_path)
-    a = repo.create_analysis(snap)
+    a = repo.create_analysis(snap, prompt_version="investigation-evidence-analysis:v2")
     repo.transition(a.analysis_id, SecondaryAnalysisStatus.running)
     repo.transition(a.analysis_id, SecondaryAnalysisStatus.review_pending)
 
-    rejected = repo.transition(
-        a.analysis_id, SecondaryAnalysisStatus.rejected, decided_by="x", decision_reason="no",
+    rejected = repo.review_analysis(
+        a.analysis_id,
+        decision=AnalysisReviewDecision.rejected,
+        reviewer="x",
+        reason="no",
     )
     assert rejected.status == SecondaryAnalysisStatus.rejected
     assert rejected.decided_by == "x"
 
     # Separate analysis for invalid
-    b = repo.create_analysis(snap)
+    b = repo.create_analysis(snap, prompt_version="investigation-evidence-analysis:v2")
     repo.transition(b.analysis_id, SecondaryAnalysisStatus.running)
     repo.transition(b.analysis_id, SecondaryAnalysisStatus.review_pending)
-    invalid = repo.transition(
-        b.analysis_id, SecondaryAnalysisStatus.invalid, decided_by="y", decision_reason="bad input",
+    invalid = repo.review_analysis(
+        b.analysis_id,
+        decision=AnalysisReviewDecision.invalid,
+        reviewer="y",
+        reason="bad input",
     )
     assert invalid.status == SecondaryAnalysisStatus.invalid
 
@@ -311,8 +320,10 @@ def test_review_pending_to_rejected_and_invalid(tmp_path):
 def test_illegal_queued_to_accepted(tmp_path):
     _, _, repo, snap = _setup(tmp_path)
     a = repo.create_analysis(snap)
-    with pytest.raises(ValueError, match="illegal transition"):
+    # P1: review-terminal targets are reserved for review_analysis().
+    with pytest.raises(ValueError, match="requires review_analysis"):
         repo.transition(a.analysis_id, SecondaryAnalysisStatus.accepted, decided_by="x")
+    assert repo.get_analysis(a.analysis_id).status == SecondaryAnalysisStatus.queued
 
 
 def test_illegal_queued_to_review_pending(tmp_path):
@@ -326,8 +337,9 @@ def test_illegal_running_to_accepted(tmp_path):
     _, _, repo, snap = _setup(tmp_path)
     a = repo.create_analysis(snap)
     repo.transition(a.analysis_id, SecondaryAnalysisStatus.running)
-    with pytest.raises(ValueError, match="illegal transition"):
+    with pytest.raises(ValueError, match="requires review_analysis"):
         repo.transition(a.analysis_id, SecondaryAnalysisStatus.accepted, decided_by="x")
+    assert repo.get_analysis(a.analysis_id).status == SecondaryAnalysisStatus.running
 
 
 def test_illegal_review_pending_to_queued(tmp_path):
@@ -374,10 +386,12 @@ def test_transition_rejects_summary_for_failed(tmp_path):
 def test_latest_vs_latest_accepted(tmp_path):
     _, _, repo, snap = _setup(tmp_path)
 
-    v1 = repo.create_analysis(snap)
+    v1 = repo.create_analysis(snap, prompt_version="investigation-evidence-analysis:v2")
     repo.transition(v1.analysis_id, SecondaryAnalysisStatus.running)
     repo.transition(v1.analysis_id, SecondaryAnalysisStatus.review_pending)
-    repo.transition(v1.analysis_id, SecondaryAnalysisStatus.accepted, decided_by="x")
+    repo.review_analysis(
+        v1.analysis_id, decision=AnalysisReviewDecision.accepted, reviewer="x"
+    )
 
     v2 = repo.create_analysis(snap)  # new queued version
 
@@ -422,10 +436,12 @@ def test_list_analyses_filtered_by_status(tmp_path):
 
 def test_terminal_transition_raises(tmp_path):
     _, _, repo, snap = _setup(tmp_path)
-    a = repo.create_analysis(snap)
+    a = repo.create_analysis(snap, prompt_version="investigation-evidence-analysis:v2")
     repo.transition(a.analysis_id, SecondaryAnalysisStatus.running)
     repo.transition(a.analysis_id, SecondaryAnalysisStatus.review_pending)
-    repo.transition(a.analysis_id, SecondaryAnalysisStatus.accepted, decided_by="x")
+    repo.review_analysis(
+        a.analysis_id, decision=AnalysisReviewDecision.accepted, reviewer="x"
+    )
 
     with pytest.raises(ValueError, match="terminal"):
         repo.transition(a.analysis_id, SecondaryAnalysisStatus.running)

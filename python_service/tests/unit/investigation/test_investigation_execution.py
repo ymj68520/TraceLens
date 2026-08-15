@@ -20,6 +20,7 @@ import pytest
 
 from httpserver.services.evidence import ResolvedEvidence
 from httpserver.services.investigation import (
+    AnalysisReviewDecision,
     CURRENT_PROMPT_VERSION,
     InvestigationRepository,
     SecondaryAnalysisStatus,
@@ -326,10 +327,14 @@ async def test_E9_restart_recovery(tmp_path):
     repo.transition(analysis2.analysis_id, SecondaryAnalysisStatus.running)
 
     # Also create a terminal analysis (should NOT be recovered)
-    analysis3 = repo.create_analysis(snap, prompt_version=CURRENT_PROMPT_VERSION)
+    analysis3 = repo.create_analysis(snap, prompt_version="investigation-evidence-analysis:v2")
     repo.transition(analysis3.analysis_id, SecondaryAnalysisStatus.running)
     repo.transition(analysis3.analysis_id, SecondaryAnalysisStatus.review_pending)
-    repo.transition(analysis3.analysis_id, SecondaryAnalysisStatus.accepted, decided_by="x")
+    repo.review_analysis(
+        analysis3.analysis_id,
+        decision=AnalysisReviewDecision.accepted,
+        reviewer="x",
+    )
 
     fake_cpp = FakeCppBackend("A", tmp_path)
     executor = _executor(llm_service=_mock_llm(), cpp_backend=fake_cpp)

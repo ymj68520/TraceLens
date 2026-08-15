@@ -406,6 +406,17 @@ _ALLOWED_TRANSITION_FIELDS: dict[SecondaryAnalysisStatus, frozenset[str]] = {
     SecondaryAnalysisStatus.failed: frozenset({"failed_at", "error_code", "error_message"}),
 }
 
+# P1 (C7b): analyst review-terminal decisions may only be recorded through
+# review_analysis(), which also propagates needs_refresh to related
+# Investigation Events inside the same transaction.
+_REVIEW_TERMINAL_STATUSES: frozenset[SecondaryAnalysisStatus] = frozenset(
+    {
+        SecondaryAnalysisStatus.accepted,
+        SecondaryAnalysisStatus.rejected,
+        SecondaryAnalysisStatus.invalid,
+    }
+)
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -1116,12 +1127,67 @@ class InvestigationRepository:
         to: SecondaryAnalysisStatus,
         **fields,
     ) -> SecondaryAnalysis:
-        """Advance a Secondary Analysis along the state machine."""
+        """Advance a Secondary Analysis along the state machine.
+
+        P1: analyst review-terminal decisions (accepted/rejected/invalid) are
+        rejected here -- they must go through ``review_analysis()`` so the
+        C7b needs_refresh propagation cannot be bypassed.
+        """
+        if to in _REVIEW_TERMINAL_STATUSES:
+            raise ValueError(
+                f"review terminal transition to {to.value!r} requires review_analysis()"
+            )
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             result = self._transition_with_conn(conn, analysis_id, to, **fields)
             conn.commit()
         return result
+
+    def _mark_related_events_dirty(
+        self, conn: sqlite3.Connection, evidence_key: str, now: str
+    ) -> None:
+        """P2/P4/P6: mark events explicitly linked to this evidence dirty.
+
+        Idempotent: rows already dirty keep their updated_at (one bump per
+        clean→dirty state change).  P7/P8/P9: touches only needs_refresh and
+        updated_at on investigation_events -- never narrative, versions, or
+        any source database.
+        """
+        conn.execute(
+            """
+            UPDATE investigation_events
+            SET needs_refresh = 1, updated_at = ?
+            WHERE task_id = ? AND needs_refresh = 0
+              AND event_id IN (
+                  SELECT event_id FROM investigation_event_evidence
+                  WHERE task_id = ? AND evidence_key = ?
+              )
+            """,
+            [now, self.task_id, self.task_id, evidence_key],
+        )
+
+    def _mark_event_dirty_if_evidence_accepted(
+        self,
+        conn: sqlite3.Connection,
+        event_id: str,
+        evidence_key: str,
+        now: str,
+    ) -> None:
+        """P5: a newly established relation to evidence that already has ANY
+        accepted analysis version makes this event's narrative possibly
+        stale immediately (conservative: not latest-only)."""
+        accepted = conn.execute(
+            "SELECT 1 FROM secondary_analyses "
+            "WHERE task_id = ? AND evidence_key = ? AND status = ? LIMIT 1",
+            [self.task_id, evidence_key, SecondaryAnalysisStatus.accepted.value],
+        ).fetchone()
+        if accepted is not None:
+            conn.execute(
+                "UPDATE investigation_events "
+                "SET needs_refresh = 1, updated_at = ? "
+                "WHERE task_id = ? AND event_id = ? AND needs_refresh = 0",
+                [now, self.task_id, event_id],
+            )
 
     def review_analysis(
         self,
@@ -1182,6 +1248,10 @@ class InvestigationRepository:
                 decided_by=reviewer,
                 decision_reason=reason,
             )
+            # P2/P3: accepted → related Events become possibly-stale in this
+            # same transaction (P10: any failure rolls the review back too).
+            if decision is AnalysisReviewDecision.accepted:
+                self._mark_related_events_dirty(conn, row["evidence_key"], _now_iso())
             conn.commit()
         return result
 
@@ -1654,6 +1724,10 @@ class InvestigationRepository:
                 "(task_id, event_id, evidence_key, linked_at, linked_by) "
                 "VALUES (?, ?, ?, ?, ?)",
                 [self.task_id, event_id, evidence_key, now, linked_by],
+            )
+            # P5/P10: same transaction as the link INSERT.
+            self._mark_event_dirty_if_evidence_accepted(
+                conn, event_id, evidence_key, now
             )
             conn.commit()
         return EventEvidenceLink(
