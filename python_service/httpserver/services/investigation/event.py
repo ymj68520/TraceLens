@@ -17,6 +17,7 @@ from pathlib import Path
 from ..evidence.exceptions import EvidenceNotFoundError, EvidenceStoreError
 from .models import (
     EventEvidenceLink,
+    EventRefresh,
     InvestigationEvent,
     InvestigationEventVersion,
 )
@@ -147,6 +148,33 @@ class InvestigationEventService:
         repository = await self._require_event(task_id, event_id)
         try:
             return await asyncio.to_thread(repository.list_event_evidence, event_id)
+        except sqlite3.DatabaseError as exc:
+            raise EvidenceStoreError(
+                "investigation event store is unavailable"
+            ) from exc
+
+    async def create_event_refresh(
+        self, task_id: str, event_id: str, *, requested_by: str | None = None
+    ) -> EventRefresh:
+        """Admit one explicit refresh with frozen input (C7c-1)."""
+        await self._require_event(task_id, event_id)
+        db_path = await self._resolve_db_path(task_id)
+        repository = InvestigationRepository(db_path, task_id)
+        try:
+            return await asyncio.to_thread(
+                repository.create_event_refresh, event_id, requested_by=requested_by
+            )
+        except sqlite3.DatabaseError as exc:
+            raise EvidenceStoreError(
+                "investigation event store is unavailable"
+            ) from exc
+
+    async def list_event_refreshes(
+        self, task_id: str, event_id: str
+    ) -> list[EventRefresh]:
+        repository = await self._require_event(task_id, event_id)
+        try:
+            return await asyncio.to_thread(repository.list_event_refreshes, event_id)
         except sqlite3.DatabaseError as exc:
             raise EvidenceStoreError(
                 "investigation event store is unavailable"

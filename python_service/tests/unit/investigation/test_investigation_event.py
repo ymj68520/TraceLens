@@ -68,18 +68,17 @@ def _backend(task_id: str, db_dir: Path) -> Mock:
     return backend
 
 
-def _strip_to_v4(idb: str) -> None:
+def _strip_to_v5(idb: str) -> None:
     conn = sqlite3.connect(idb)
     for t in (
-        "trg_inv_events_no_identity_update",
-        "trg_inv_event_versions_no_update", "trg_inv_event_versions_no_delete",
-        "trg_inv_event_evidence_no_update", "trg_inv_event_evidence_no_delete",
+        "trg_inv_refresh_no_input_update", "trg_inv_refresh_legal_transition",
+        "trg_inv_refresh_no_terminal_update",
     ):
         conn.execute(f"DROP TRIGGER IF EXISTS {t}")
-    conn.execute("DROP TABLE IF EXISTS investigation_event_evidence")
-    conn.execute("DROP TABLE IF EXISTS investigation_event_versions")
-    conn.execute("DROP TABLE IF EXISTS investigation_events")
-    conn.execute("PRAGMA user_version = 4")
+    conn.execute("DROP TABLE IF EXISTS investigation_event_refreshes")
+    conn.execute("DROP INDEX IF EXISTS idx_inv_refresh_one_active_per_event")
+    conn.execute("DROP INDEX IF EXISTS idx_inv_refreshs_event")
+    conn.execute("PRAGMA user_version = 5")
     conn.commit()
     conn.close()
 
@@ -88,29 +87,26 @@ def _strip_to_v4(idb: str) -> None:
 # migration / schema
 # ---------------------------------------------------------------------------
 
-def test_new_db_is_v5(tmp_path):
+def test_new_db_is_v6(tmp_path):
     idb = str(tmp_path / "investigation.db")
     InvestigationRepository(idb, "A")
     conn = sqlite3.connect(idb)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
     conn.close()
 
 
-def test_v4_to_v5_migration_preserves_existing_data(tmp_path):
+def test_v5_to_v6_migration_preserves_existing_data(tmp_path):
     idb, repo, snapshot = _setup_task(tmp_path)
     analysis = repo.create_analysis(snapshot)
-    _strip_to_v4(idb)
+    _strip_to_v5(idb)
 
     reopened = InvestigationRepository(idb, "A")
     conn = sqlite3.connect(idb)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
-    for table in ("investigation_events", "investigation_event_versions",
-                  "investigation_event_evidence"):
-        assert conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", [table]
-        ).fetchone() is not None
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='investigation_event_refreshes'"
+    ).fetchone() is not None
     conn.close()
-    # Pre-existing rows untouched by the event migration.
     assert reopened.get_snapshot("file:/case/a.txt") is not None
     assert reopened.get_analysis(analysis.analysis_id).version == 1
 

@@ -412,3 +412,94 @@ class EventEvidenceLink(BaseModel):
     evidence_key: str
     linked_at: str
     linked_by: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Event Refresh models (Phase C7c-1)
+# ---------------------------------------------------------------------------
+
+
+class EventRefreshStatus(str, Enum):
+    """Event refresh lifecycle: the refresh row IS the job (C4b-2 model)."""
+
+    queued = "queued"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+
+
+class EventRefreshClaimV1(BaseModel):
+    """Frozen claim projection consumed by refresh execution (no row IDs)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    claim_type: ClaimType
+    claim_text: str
+    grounding_status: ClaimGroundingStatus
+    evidence_refs: tuple[str, ...] = ()
+    warnings: Optional[dict] = None
+
+
+class EventRefreshAcceptedAnalysisV1(BaseModel):
+    """The exact accepted analysis frozen at admission (F6).
+
+    No decided_by/decided_at: reviewer identity is not LLM input and must
+    not enter the input_hash.  description/summary/grounding_status are
+    Optional because legacy v1/v2 accepted analyses may lack them.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    analysis_id: str
+    version: int
+    evidence_key: str
+    description: Optional[str] = None
+    summary: Optional[str] = None
+    grounding_status: Optional[AnalysisGroundingStatus] = None
+    claims: tuple[EventRefreshClaimV1, ...] = ()
+
+
+class EventRefreshLinkV1(BaseModel):
+    """One authoritative link with its frozen snapshot and chosen analysis."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    evidence_key: str
+    snapshot: dict  # canonical EvidenceSnapshot.model_dump() (no snapshot_id)
+    accepted_analysis: Optional[EventRefreshAcceptedAnalysisV1] = None
+
+
+class EventRefreshEnvelopeV1(BaseModel):
+    """Self-contained frozen refresh input (F1-F8, F12)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: Literal[1] = 1
+    event_id: str
+    base_version: int
+    base_title: str
+    base_summary: Optional[str] = None
+    needs_refresh_at_submission: bool
+    links: tuple[EventRefreshLinkV1, ...] = ()
+
+
+class EventRefresh(BaseModel):
+    """A persisted refresh job row (read model)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    refresh_id: str
+    task_id: str
+    event_id: str
+    base_version: int
+    status: EventRefreshStatus
+    requested_by: Optional[str] = None
+    input_hash: str
+    input_envelope_json: str
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    produced_version: Optional[int] = None
+    failed_at: Optional[str] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None

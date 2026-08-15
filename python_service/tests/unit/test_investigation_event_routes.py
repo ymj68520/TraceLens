@@ -13,6 +13,8 @@ from httpserver.services.evidence import (
 )
 from httpserver.services.investigation import (
     EventEvidenceLink,
+    EventRefresh,
+    EventRefreshStatus,
     InvestigationEvent,
     InvestigationEventConflictError,
     InvestigationEventVersion,

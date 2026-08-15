@@ -57,6 +57,12 @@ from .models import (
     ClaimType,
     ClusterSnapshotPayload,
     EventEvidenceLink,
+    EventRefresh,
+    EventRefreshAcceptedAnalysisV1,
+    EventRefreshClaimV1,
+    EventRefreshEnvelopeV1,
+    EventRefreshLinkV1,
+    EventRefreshStatus,
     EvidenceSnapshot,
     FileSnapshotPayload,
     InvestigationEvent,
@@ -78,7 +84,7 @@ class InvestigationEventConflictError(RuntimeError):
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 5
+SUPPORTED_SCHEMA_VERSION = 6
 
 # ---------------------------------------------------------------------------
 # DDL: evidence_snapshots (v1, unchanged)
@@ -384,6 +390,93 @@ _REQUIRED_EVENT_EVIDENCE_COLUMNS = {
     "id", "task_id", "event_id", "evidence_key", "linked_at", "linked_by",
 }
 
+# ---------------------------------------------------------------------------
+# DDL: investigation_event_refreshes (v6 addition, C7c-1)
+# ---------------------------------------------------------------------------
+#
+# F9: base_version and (future, C7c-2) produced_version carry composite FKs
+# onto investigation_event_versions, locking refresh provenance to exact
+# immutable narrative versions at the DB level.  F10: a partial unique index
+# enforces at most one non-terminal refresh per event.  F11: requested_by is
+# persisted audit metadata (NOT part of the envelope / input_hash).
+
+_CREATE_INVESTIGATION_EVENT_REFRESHES_SQL = """
+CREATE TABLE IF NOT EXISTS investigation_event_refreshes (
+    refresh_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    base_version INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('queued','running','completed','failed')),
+    requested_by TEXT,
+    input_hash TEXT NOT NULL,
+    input_envelope_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    completed_at TEXT,
+    produced_version INTEGER,
+    failed_at TEXT,
+    error_code TEXT,
+    error_message TEXT,
+    FOREIGN KEY(task_id, event_id)
+        REFERENCES investigation_events(task_id, event_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, event_id, base_version)
+        REFERENCES investigation_event_versions(task_id, event_id, version)
+        ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, event_id, produced_version)
+        REFERENCES investigation_event_versions(task_id, event_id, version)
+        ON DELETE RESTRICT
+)
+"""
+_INDEX_REFRESH_EVENT_SQL = (
+    "CREATE INDEX IF NOT EXISTS idx_inv_refreshs_event "
+    "ON investigation_event_refreshes(task_id, event_id)"
+)
+# F10: at most one queued/running refresh per (task_id, event_id).
+_INDEX_REFRESH_ONE_ACTIVE_SQL = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_inv_refresh_one_active_per_event
+ON investigation_event_refreshes(task_id, event_id)
+WHERE status IN ('queued', 'running')
+"""
+_TRIGGER_REFRESH_NO_INPUT_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_inv_refresh_no_input_update
+BEFORE UPDATE ON investigation_event_refreshes
+WHEN new.refresh_id != OLD.refresh_id
+  OR new.task_id != OLD.task_id
+  OR new.event_id != OLD.event_id
+  OR new.base_version != OLD.base_version
+  OR new.input_hash != OLD.input_hash
+  OR new.input_envelope_json != OLD.input_envelope_json
+  OR new.created_at != OLD.created_at
+BEGIN
+    SELECT RAISE(ABORT, 'event refresh input is immutable');
+END
+"""
+_TRIGGER_REFRESH_LEGAL_TRANSITION_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_inv_refresh_legal_transition
+BEFORE UPDATE OF status ON investigation_event_refreshes
+WHEN (OLD.status = 'queued' AND NEW.status NOT IN ('running', 'failed'))
+  OR (OLD.status = 'running' AND NEW.status NOT IN ('completed', 'failed'))
+  OR OLD.status IN ('completed', 'failed')
+BEGIN
+    SELECT RAISE(ABORT, 'illegal event refresh status transition');
+END
+"""
+_TRIGGER_REFRESH_NO_TERMINAL_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_inv_refresh_no_terminal_update
+BEFORE UPDATE ON investigation_event_refreshes
+WHEN OLD.status IN ('completed', 'failed')
+BEGIN
+    SELECT RAISE(ABORT, 'terminal event refreshes are immutable');
+END
+"""
+
+_REQUIRED_EVENT_REFRESH_COLUMNS = {
+    "refresh_id", "task_id", "event_id", "base_version", "status",
+    "requested_by", "input_hash", "input_envelope_json", "created_at",
+    "started_at", "completed_at", "produced_version", "failed_at",
+    "error_code", "error_message",
+}
+
 _REQUIRED_SECONDARY_COLUMNS = {
     "analysis_id", "task_id", "evidence_key", "snapshot_id", "version", "status",
     "input_hash", "input_envelope_json", "prompt_version", "description", "summary",
@@ -430,6 +523,10 @@ def _new_event_id() -> str:
     return f"ie_{uuid.uuid4().hex}"
 
 
+def _new_refresh_id() -> str:
+    return f"er_{uuid.uuid4().hex}"
+
+
 class InvestigationRepository:
     """SQLite-backed immutable Evidence Snapshot + Secondary Analysis +
     Investigation Event store.
@@ -460,26 +557,33 @@ class InvestigationRepository:
         with self._connect() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
-            self._initialize_v5_atomically()
-            self._validate_v5_schema()
+            self._initialize_v6_atomically()
+            self._validate_v6_schema()
         elif version == 1:
             self._migrate_v1_to_v4()
             self._migrate_v4_to_v5()
-            self._validate_v5_schema()
+            self._migrate_v5_to_v6()
+            self._validate_v6_schema()
         elif version == 2:
             self._migrate_v2_to_v4()
             self._migrate_v4_to_v5()
-            self._validate_v5_schema()
+            self._migrate_v5_to_v6()
+            self._validate_v6_schema()
         elif version == 3:
             self._migrate_v3_to_v4()
             self._migrate_v4_to_v5()
-            self._validate_v5_schema()
+            self._migrate_v5_to_v6()
+            self._validate_v6_schema()
         elif version == 4:
             self._migrate_v4_to_v5()
-            self._validate_v5_schema()
+            self._migrate_v5_to_v6()
+            self._validate_v6_schema()
+        elif version == 5:
+            self._migrate_v5_to_v6()
+            self._validate_v6_schema()
         elif version == SUPPORTED_SCHEMA_VERSION:
-            self._validate_v5_schema()
-            self._ensure_v5_auxiliary_objects()
+            self._validate_v6_schema()
+            self._ensure_v6_auxiliary_objects()
         else:
             raise EvidenceStoreError(
                 f"unsupported investigation.db schema version: {version} "
@@ -516,8 +620,17 @@ class InvestigationRepository:
         conn.execute(_TRIGGER_EVENT_EVIDENCE_NO_DELETE_SQL)
         conn.execute(_TRIGGER_EVENTS_NO_IDENTITY_UPDATE_SQL)
 
-    def _initialize_v5_atomically(self) -> None:
-        """New database: build everything + version=5 in one tx."""
+    def _build_all_refresh_objects(self, conn: sqlite3.Connection) -> None:
+        """Create all investigation_event_refreshes objects (v6)."""
+        conn.execute(_CREATE_INVESTIGATION_EVENT_REFRESHES_SQL)
+        conn.execute(_INDEX_REFRESH_EVENT_SQL)
+        conn.execute(_INDEX_REFRESH_ONE_ACTIVE_SQL)
+        conn.execute(_TRIGGER_REFRESH_NO_INPUT_UPDATE_SQL)
+        conn.execute(_TRIGGER_REFRESH_LEGAL_TRANSITION_SQL)
+        conn.execute(_TRIGGER_REFRESH_NO_TERMINAL_UPDATE_SQL)
+
+    def _initialize_v6_atomically(self) -> None:
+        """New database: build everything + version=6 in one tx."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(_CREATE_EVIDENCE_SNAPSHOTS_SQL)
@@ -527,6 +640,7 @@ class InvestigationRepository:
             conn.execute(_TRIGGER_EVSNAP_NO_UPDATE_SQL)
             self._build_all_secondary_objects(conn)
             self._build_all_event_objects(conn)
+            self._build_all_refresh_objects(conn)
             conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
             conn.commit()
 
@@ -577,11 +691,11 @@ class InvestigationRepository:
             conn.commit()
 
     def _migrate_v4_to_v5(self) -> None:
-        """v4 database: add investigation_events objects → v5."""
+        """v4 database: add investigation_events objects → v5 (frozen)."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             self._build_all_event_objects(conn)
-            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.execute("PRAGMA user_version = 5")
             conn.commit()
 
     def _ensure_v4_auxiliary_objects(self) -> None:
@@ -595,18 +709,34 @@ class InvestigationRepository:
             conn.commit()
 
     def _ensure_v5_auxiliary_objects(self) -> None:
-        """Self-heal missing indexes/triggers (idempotent CREATE IF NOT EXISTS)."""
+        """Self-heal snapshot/secondary/event objects (idempotent)."""
         self._ensure_v4_auxiliary_objects()
         with self._connect() as conn:
             self._build_all_event_objects(conn)
             conn.commit()
 
-    def _validate_v5_schema(self) -> None:
+    def _migrate_v5_to_v6(self) -> None:
+        """v5 database: add investigation_event_refreshes objects → v6."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._build_all_refresh_objects(conn)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+
+    def _ensure_v6_auxiliary_objects(self) -> None:
+        """Self-heal missing indexes/triggers (idempotent CREATE IF NOT EXISTS)."""
+        self._ensure_v5_auxiliary_objects()
+        with self._connect() as conn:
+            self._build_all_refresh_objects(conn)
+            conn.commit()
+
+    def _validate_v6_schema(self) -> None:
         with self._connect() as conn:
             self._validate_evidence_snapshots(conn)
             self._validate_secondary_analyses(conn)
             self._validate_claims(conn)
             self._validate_event_tables(conn)
+            self._validate_event_refresh_table(conn)
 
     def _validate_evidence_snapshots(self, conn: sqlite3.Connection) -> None:
         cols = {row["name"] for row in conn.execute("PRAGMA table_info(evidence_snapshots)")}
@@ -797,6 +927,66 @@ class InvestigationRepository:
             "trg_inv_event_versions_no_delete",
             "trg_inv_event_evidence_no_update",
             "trg_inv_event_evidence_no_delete",
+        ):
+            trig = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?",
+                [trig_name],
+            ).fetchone()
+            if trig is None:
+                raise EvidenceStoreError(f"missing {trig_name} trigger")
+
+    def _validate_event_refresh_table(self, conn: sqlite3.Connection) -> None:
+        cols = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(investigation_event_refreshes)")
+        }
+        missing = _REQUIRED_EVENT_REFRESH_COLUMNS - cols
+        if missing:
+            raise EvidenceStoreError(
+                f"investigation_event_refreshes missing required columns: {sorted(missing)}"
+            )
+
+        version_fk = (("task_id", "task_id"), ("event_id", "event_id"), ("base_version", "version"))
+        produced_fk = (
+            ("task_id", "task_id"), ("event_id", "event_id"),
+            ("produced_version", "version"),
+        )
+        fk_specs = (
+            ("investigation_events", (("task_id", "task_id"), ("event_id", "event_id"))),
+            ("investigation_event_versions", version_fk),
+            ("investigation_event_versions", produced_fk),
+        )
+        for parent, mapping in fk_specs:
+            if not self._has_composite_fk(
+                conn, "investigation_event_refreshes", parent, mapping
+            ):
+                raise EvidenceStoreError(
+                    "investigation_event_refreshes missing composite FK "
+                    f"{tuple(f for f, _ in mapping)} REFERENCES {parent}"
+                )
+
+        # F10: partial unique index for one active refresh per event.
+        found_partial = False
+        for idx in conn.execute("PRAGMA index_list(investigation_event_refreshes)"):
+            if not idx["unique"] or not idx["partial"]:
+                continue
+            idx_cols = {
+                r["name"]
+                for r in conn.execute(f'PRAGMA index_info("{idx["name"]}")')
+            }
+            if idx_cols == {"task_id", "event_id"}:
+                found_partial = True
+                break
+        if not found_partial:
+            raise EvidenceStoreError(
+                "investigation_event_refreshes missing partial unique index "
+                "on (task_id, event_id) for active refreshes"
+            )
+
+        for trig_name in (
+            "trg_inv_refresh_no_input_update",
+            "trg_inv_refresh_legal_transition",
+            "trg_inv_refresh_no_terminal_update",
         ):
             trig = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?",
@@ -1772,3 +1962,171 @@ class InvestigationRepository:
                 [self.task_id, self.task_id, evidence_key],
             ).fetchall()
         return [self._row_to_event(r) for r in rows]
+
+    # =====================================================================
+    # investigation_event_refreshes (C7c-1)
+    # =====================================================================
+
+    @staticmethod
+    def _row_to_refresh(row: sqlite3.Row) -> EventRefresh:
+        return EventRefresh(
+            refresh_id=row["refresh_id"],
+            task_id=row["task_id"],
+            event_id=row["event_id"],
+            base_version=row["base_version"],
+            status=EventRefreshStatus(row["status"]),
+            requested_by=row["requested_by"],
+            input_hash=row["input_hash"],
+            input_envelope_json=row["input_envelope_json"],
+            created_at=row["created_at"],
+            started_at=row["started_at"],
+            completed_at=row["completed_at"],
+            produced_version=row["produced_version"],
+            failed_at=row["failed_at"],
+            error_code=row["error_code"],
+            error_message=row["error_message"],
+        )
+
+    def create_event_refresh(
+        self, event_id: str, *, requested_by: Optional[str] = None
+    ) -> EventRefresh:
+        """Admit one explicit refresh job with a fully frozen input (F1-F12).
+
+        F8: every envelope read happens on THIS connection inside the single
+        BEGIN IMMEDIATE -- no self-opening public reader is called, so the
+        frozen input is an admission-time atomic view.
+        """
+        refresh_id = _new_refresh_id()
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+
+            event_row = conn.execute(
+                self._EVENT_READ_SQL + " AND e.event_id = ?",
+                [self.task_id, event_id],
+            ).fetchone()
+            if event_row is None:
+                raise EvidenceNotFoundError("investigation event not found")
+
+            active = conn.execute(
+                "SELECT 1 FROM investigation_event_refreshes "
+                "WHERE task_id = ? AND event_id = ? AND status IN ('queued','running')",
+                [self.task_id, event_id],
+            ).fetchone()
+            if active is not None:
+                raise InvestigationEventConflictError(
+                    "an event refresh is already in progress"
+                )
+
+            link_keys = [
+                r["evidence_key"]
+                for r in conn.execute(
+                    "SELECT evidence_key FROM investigation_event_evidence "
+                    "WHERE task_id = ? AND event_id = ? ORDER BY evidence_key",
+                    [self.task_id, event_id],
+                ).fetchall()
+            ]
+
+            links: list[EventRefreshLinkV1] = []
+            for key in link_keys:
+                snap_row = conn.execute(
+                    "SELECT * FROM evidence_snapshots "
+                    "WHERE task_id = ? AND evidence_key = ?",
+                    [self.task_id, key],
+                ).fetchone()
+                if snap_row is None:  # unreachable: link FK guarantees capture
+                    raise EvidenceStoreError(
+                        f"linked evidence has no captured snapshot: {key!r}"
+                    )
+                accepted_row = conn.execute(
+                    "SELECT * FROM secondary_analyses "
+                    "WHERE task_id = ? AND evidence_key = ? AND status = ? "
+                    "ORDER BY version DESC LIMIT 1",
+                    [self.task_id, key, SecondaryAnalysisStatus.accepted.value],
+                ).fetchone()
+                accepted: Optional[EventRefreshAcceptedAnalysisV1] = None
+                if accepted_row is not None:
+                    analysis = self._row_to_analysis(accepted_row)
+                    claims = self._query_claims(conn, analysis.analysis_id)
+                    accepted = EventRefreshAcceptedAnalysisV1(
+                        analysis_id=analysis.analysis_id,
+                        version=analysis.version,
+                        evidence_key=key,
+                        description=analysis.description,
+                        summary=analysis.summary,
+                        grounding_status=analysis.grounding_status,
+                        claims=tuple(
+                            EventRefreshClaimV1(
+                                claim_type=c.claim_type,
+                                claim_text=c.claim_text,
+                                grounding_status=c.grounding_status,
+                                evidence_refs=c.evidence_refs,
+                                warnings=c.warnings,
+                            )
+                            for c in claims
+                        ),
+                    )
+                links.append(EventRefreshLinkV1(
+                    evidence_key=key,
+                    snapshot=self._row_to_snapshot(snap_row).model_dump(mode="json"),
+                    accepted_analysis=accepted,
+                ))
+
+            envelope = EventRefreshEnvelopeV1(
+                event_id=event_id,
+                base_version=event_row["current_version"],
+                base_title=event_row["title"],
+                base_summary=event_row["summary"],
+                needs_refresh_at_submission=bool(event_row["needs_refresh"]),
+                links=tuple(links),
+            )
+            # F3: hash exactly the persisted serialization (serialize once).
+            envelope_json = canonical_json(envelope)
+            input_hash = hashlib.sha256(envelope_json.encode("utf-8")).hexdigest()
+
+            conn.execute(
+                "INSERT INTO investigation_event_refreshes "
+                "(refresh_id, task_id, event_id, base_version, status, requested_by, "
+                " input_hash, input_envelope_json, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    refresh_id, self.task_id, event_id,
+                    envelope.base_version, EventRefreshStatus.queued.value,
+                    requested_by, input_hash, envelope_json, now,
+                ],
+            )
+            row = conn.execute(
+                "SELECT * FROM investigation_event_refreshes WHERE refresh_id = ?",
+                [refresh_id],
+            ).fetchone()
+            conn.commit()
+        return self._row_to_refresh(row)
+
+    def get_event_refresh(self, refresh_id: str) -> Optional[EventRefresh]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM investigation_event_refreshes "
+                "WHERE task_id = ? AND refresh_id = ?",
+                [self.task_id, refresh_id],
+            ).fetchone()
+        return self._row_to_refresh(row) if row is not None else None
+
+    def list_event_refreshes(self, event_id: str) -> list[EventRefresh]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM investigation_event_refreshes "
+                "WHERE task_id = ? AND event_id = ? ORDER BY created_at",
+                [self.task_id, event_id],
+            ).fetchall()
+        return [self._row_to_refresh(r) for r in rows]
+
+    def list_stale_event_refreshes(self) -> list[EventRefresh]:
+        """Non-terminal refresh rows (C7c-2 restart recovery seam)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM investigation_event_refreshes "
+                "WHERE task_id = ? AND status IN ('queued','running') "
+                "ORDER BY created_at",
+                [self.task_id],
+            ).fetchall()
+        return [self._row_to_refresh(r) for r in rows]

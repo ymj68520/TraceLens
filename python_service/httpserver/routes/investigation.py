@@ -21,6 +21,7 @@ from ..services.evidence import (
 from ..services.investigation import (
     EvidenceSnapshot,
     EventEvidenceLink,
+    EventRefresh,
     InvestigationCaptureService,
     InvestigationEvent,
     InvestigationEventConflictError,
@@ -248,6 +249,15 @@ class LinkEventEvidenceRequest(BaseModel):
     linked_by: str = Field(min_length=1, max_length=256)
 
 
+class CreateEventRefreshRequest(BaseModel):
+    """Strict boundary for explicit refresh admission (C7c-1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str = Field(min_length=1)
+    requested_by: str = Field(min_length=1, max_length=256)
+
+
 def get_investigation_event_service() -> InvestigationEventService:
     """Resolve the ready investigation event service through ServiceManager."""
     try:
@@ -370,6 +380,50 @@ async def list_investigation_event_evidence(
     """List the explicit Event→Evidence relations of one event."""
     try:
         return await service.list_event_evidence(task_id, event_id)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="investigation event not found"
+        ) from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+@router.post(
+    "/events/{event_id}/refresh", response_model=EventRefresh, status_code=201
+)
+async def create_event_refresh(
+    event_id: str,
+    request: CreateEventRefreshRequest,
+    service: InvestigationEventService = Depends(get_investigation_event_service),
+) -> EventRefresh:
+    """Admit one explicit refresh with a frozen input envelope."""
+    try:
+        return await service.create_event_refresh(
+            request.task_id, event_id, requested_by=request.requested_by
+        )
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="investigation event not found"
+        ) from exc
+    except InvestigationEventConflictError as exc:
+        raise HTTPException(
+            status_code=409, detail="event refresh already in progress"
+        ) from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+@router.get(
+    "/events/{event_id}/refreshes", response_model=list[EventRefresh]
+)
+async def list_event_refreshes(
+    event_id: str,
+    task_id: str = Query(..., min_length=1),
+    service: InvestigationEventService = Depends(get_investigation_event_service),
+) -> list[EventRefresh]:
+    """Return admitted refresh history for one event."""
+    try:
+        return await service.list_event_refreshes(task_id, event_id)
     except EvidenceNotFoundError as exc:
         raise HTTPException(
             status_code=404, detail="investigation event not found"
