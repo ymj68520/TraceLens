@@ -13,6 +13,7 @@ import Statistics from './pages/Statistics';
 import Settings from './pages/Settings';
 import KnowledgeGraph from './pages/KnowledgeGraph';
 import InvestigationGraph from './pages/InvestigationGraph';
+import Investigation from './pages/Investigation';
 import CaseIntelligence from './pages/CaseIntelligence';
 import AnalysisCenter from './pages/AnalysisCenter';
 import LegacyReportRedirect, { TaskReportRedirect, CaseReportRedirect } from './pages/LegacyReportRedirect';
@@ -95,6 +96,10 @@ export const appRoutes = [
       {
         path: 'investigation-graph',
         element: <InvestigationGraph />,
+      },
+      {
+        path: 'investigation',
+        element: <Investigation />,
       },
       {
         path: 'case-intelligence',

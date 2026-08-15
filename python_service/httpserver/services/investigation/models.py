@@ -607,3 +607,50 @@ class InvestigationGraphResponse(BaseModel):
     nodes: tuple[InvestigationGraphNode, ...] = ()
     links: tuple[InvestigationGraphLink, ...] = ()
     warnings: tuple[str, ...] = ()
+
+
+# ---------------------------------------------------------------------------
+# Workbench read models (Phase C9a) -- read-only projections only
+# ---------------------------------------------------------------------------
+
+class SelectedAnalysisRef(BaseModel):
+    """The one analysis version selected for one evidence (C8b G3/G5 rules).
+
+    ``accepted`` wins over newer pending/rejected; ``review_pending`` only
+    appears as the explicit unconfirmed fallback.  This is the same frozen
+    selection the Graph overlay uses -- not a new semantics.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    evidence_key: str
+    analysis_id: str
+    version: int
+    review_state: Literal["accepted", "review_pending"]
+    summary: Optional[str] = None
+
+
+class EvidenceSummary(BaseModel):
+    """One evidence row for the Workbench evidence list (read-only)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    task_id: str
+    evidence_key: str  # canonical
+    evidence_type: Literal["file", "cluster"]
+    captured_at: int
+    selected_analysis: Optional[SelectedAnalysisRef] = None
+
+
+class AnalysisClaimsResponse(BaseModel):
+    """The exact historical claims of one exact analysis version (read-only).
+
+    Claims are immutable and never re-derived: this is the persisted
+    ``analysis_claims`` row set of the requested ``analysis_id`` only.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    task_id: str
+    analysis_id: str
+    claims: tuple[AnalysisClaim, ...] = ()

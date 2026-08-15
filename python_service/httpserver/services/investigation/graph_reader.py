@@ -24,8 +24,13 @@ from .models import (
     AnalysisClaim,
     ClaimGroundingStatus,
     ClaimType,
+    ClusterSnapshotPayload,
     EventEvidenceLink,
+    EvidenceSnapshot,
+    EvidenceSummary,
+    FileSnapshotPayload,
     InvestigationEvent,
+    SelectedAnalysisRef,
 )
 from .repository import InvestigationRepository, SUPPORTED_SCHEMA_VERSION
 
@@ -126,22 +131,38 @@ class InvestigationGraphReader:
         return conn
 
     def read(self) -> OverlayReadResult:
+        return self._run(self._read_with_conn)
+
+    def list_evidence(self) -> list[EvidenceSummary]:
+        """Every captured evidence of the task plus its C8b selection state."""
+        return self._run(self._list_evidence_with_conn)
+
+    def latest_snapshot(self, evidence_key: str) -> EvidenceSnapshot | None:
+        """The single captured snapshot of one evidence (UNIQUE(task_id,
+        evidence_key)), or ``None`` when this evidence was never captured."""
+        return self._run(lambda conn: self._latest_snapshot_with_conn(conn, evidence_key))
+
+    def claims_for_analysis(self, analysis_id: str) -> tuple[AnalysisClaim, ...] | None:
+        """Exact persisted claims of one analysis, or ``None`` when the
+        analysis_id does not belong to this task."""
+        return self._run(lambda conn: self._claims_with_conn(conn, analysis_id))
+
+    def _run(self, read_fn):
         try:
             with contextlib.closing(self._connect()) as conn:
-                return self._read_with_conn(conn)
+                version = conn.execute("PRAGMA user_version").fetchone()[0]
+                if version != SUPPORTED_SCHEMA_VERSION:
+                    # B3: an unsupported store fails closed, never partial data.
+                    raise EvidenceStoreError(
+                        "investigation graph store schema is unsupported"
+                    )
+                return read_fn(conn)
         except sqlite3.DatabaseError as exc:
             raise EvidenceStoreError(
                 "investigation graph store is unavailable"
             ) from exc
 
     def _read_with_conn(self, conn: sqlite3.Connection) -> OverlayReadResult:
-        version = conn.execute("PRAGMA user_version").fetchone()[0]
-        if version != SUPPORTED_SCHEMA_VERSION:
-            # B3: an unsupported store fails closed, never a partial overlay.
-            raise EvidenceStoreError(
-                "investigation graph store schema is unsupported"
-            )
-
         events = tuple(
             self._row_to_event(row)
             for row in conn.execute(
@@ -200,6 +221,105 @@ class InvestigationGraphReader:
             selections=selections,
             claims=claims,
             evidence_types=evidence_types,
+        )
+
+    # -- Workbench read projections (C9a) ------------------------------------
+
+    def _list_evidence_with_conn(
+        self, conn: sqlite3.Connection
+    ) -> list[EvidenceSummary]:
+        selections = {
+            row["evidence_key"]: SelectedAnalysisRef(
+                evidence_key=row["evidence_key"],
+                analysis_id=row["analysis_id"],
+                version=row["version"],
+                review_state=(
+                    "accepted"
+                    if row["status"] == "accepted"
+                    else "review_pending"
+                ),
+                summary=row["summary"],
+            )
+            for row in conn.execute(_SELECTED_ROWS_SQL, [self._task_id])
+        }
+        return [
+            EvidenceSummary(
+                task_id=self._task_id,
+                evidence_key=row["evidence_key"],
+                evidence_type=row["evidence_type"],
+                captured_at=row["captured_at"],
+                selected_analysis=selections.get(row["evidence_key"]),
+            )
+            for row in conn.execute(
+                "SELECT evidence_key, evidence_type, captured_at "
+                "FROM evidence_snapshots WHERE task_id = ? "
+                "ORDER BY evidence_key",
+                [self._task_id],
+            )
+        ]
+
+    def _latest_snapshot_with_conn(
+        self, conn: sqlite3.Connection, evidence_key: str
+    ) -> EvidenceSnapshot | None:
+        # evidence_snapshots enforces UNIQUE(task_id, evidence_key): there is
+        # at most one row, so id DESC only keeps the statement deterministic.
+        row = conn.execute(
+            "SELECT id, task_id, evidence_key, evidence_type, snapshot_json, "
+            "captured_at FROM evidence_snapshots "
+            "WHERE task_id = ? AND evidence_key = ? ORDER BY id DESC LIMIT 1",
+            [self._task_id, evidence_key],
+        ).fetchone()
+        if row is None:
+            return None
+        evidence_type = row["evidence_type"]
+        try:
+            data = json.loads(row["snapshot_json"])
+        except (ValueError, TypeError) as exc:
+            raise EvidenceStoreError(
+                f"snapshot_json is corrupt for id={row['id']}: {exc}"
+            ) from exc
+        if evidence_type == "file":
+            payload = FileSnapshotPayload.model_validate(data)
+        elif evidence_type == "cluster":
+            payload = ClusterSnapshotPayload.model_validate(data)
+        else:  # pragma: no cover - guarded by the table CHECK
+            raise EvidenceStoreError(
+                f"unknown evidence_type {evidence_type!r} for id={row['id']}"
+            )
+        return EvidenceSnapshot(
+            task_id=row["task_id"],
+            evidence_key=row["evidence_key"],
+            evidence_type=evidence_type,
+            captured_at=row["captured_at"],
+            payload=payload,
+            snapshot_id=row["id"],
+        )
+
+    def _claims_with_conn(
+        self, conn: sqlite3.Connection, analysis_id: str
+    ) -> tuple[AnalysisClaim, ...] | None:
+        owned = conn.execute(
+            "SELECT 1 FROM secondary_analyses WHERE task_id = ? AND analysis_id = ?",
+            [self._task_id, analysis_id],
+        ).fetchone()
+        if owned is None:
+            return None
+        refs: dict[str, list[str]] = {}
+        for row in conn.execute(
+            "SELECT r.claim_id, r.evidence_key FROM claim_evidence_refs r "
+            "JOIN analysis_claims c ON c.claim_id = r.claim_id "
+            "WHERE c.analysis_id = ? ORDER BY r.claim_id, r.evidence_key",
+            [analysis_id],
+        ):
+            refs.setdefault(row["claim_id"], []).append(row["evidence_key"])
+        return tuple(
+            self._row_to_claim(row, tuple(refs.get(row["claim_id"], ())))
+            for row in conn.execute(
+                "SELECT claim_id, analysis_id, claim_index, claim_type, "
+                "claim_text, grounding_status, warning_json, created_at "
+                "FROM analysis_claims WHERE analysis_id = ? ORDER BY claim_index",
+                [analysis_id],
+            )
         )
 
     @staticmethod

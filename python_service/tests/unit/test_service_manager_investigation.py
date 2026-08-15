@@ -172,3 +172,34 @@ def test_graph_service_respects_lifecycle_access(state):
     manager._lifecycle_state = state
     with pytest.raises(RuntimeError):
         _ = manager.investigation_graph_service
+
+
+def test_read_service_lazy_cached_and_rebinds_after_clear():
+    manager, backend_a = _manager_with_backend()
+    first = manager.investigation_read_service
+    second = manager.investigation_read_service
+    assert first is second
+    assert first._cpp_backend is backend_a
+
+    manager._clear_services()
+    backend_b = object()
+    manager._cpp_backend = backend_b
+    manager._cpp_backend_ready = True
+    manager._lifecycle_state = "running"
+    replacement = manager.investigation_read_service
+    assert replacement is not first
+    assert replacement._cpp_backend is backend_b
+
+
+def test_read_service_rejects_backend_not_ready():
+    manager, _ = _manager_with_backend(ready=False)
+    with pytest.raises(RuntimeError, match=r"C\+\+ backend is not initialized"):
+        _ = manager.investigation_read_service
+
+
+@pytest.mark.parametrize("state", ["initializing", "shutting_down", "stopped"])
+def test_read_service_respects_lifecycle_access(state):
+    manager, _ = _manager_with_backend()
+    manager._lifecycle_state = state
+    with pytest.raises(RuntimeError):
+        _ = manager.investigation_read_service

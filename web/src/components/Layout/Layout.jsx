@@ -30,6 +30,7 @@ const Layout = ({ children }) => {
     { name: t('nav.case_center'), href: '/analysis-center', icon: FileText },
     { name: t('nav.knowledge_graph'), href: '/knowledge-graph', icon: Network },
     { name: t('nav.investigation_graph'), href: '/investigation-graph', icon: FileSearch },
+    { name: t('nav.investigation_workbench'), href: '/investigation', icon: FileSearch },
     { name: t('nav.android'), href: '/android', icon: Smartphone },
     { name: t('nav.memory'), href: '/memory', icon: Cpu },
     { name: t('nav.wechat_graph'), href: '/wechat-graph', icon: MessageCircle },
@@ -48,7 +49,7 @@ const Layout = ({ children }) => {
     location.pathname === path || (location.pathname.startsWith('/reports/') && path.startsWith('/reports/'));
 
   const getLinkUrl = (href) => {
-    const taskContextPages = ['/timeline', '/files', '/case-intelligence', '/analysis-center', '/knowledge-graph', '/investigation-graph', '/android', '/memory', '/wechat-graph', '/oss', '/search', '/statistics'];
+    const taskContextPages = ['/timeline', '/files', '/case-intelligence', '/analysis-center', '/knowledge-graph', '/investigation-graph', '/investigation', '/android', '/memory', '/wechat-graph', '/oss', '/search', '/statistics'];
     if (currentTaskId && taskContextPages.includes(href)) {
       return `${href}?task_id=${currentTaskId}`;
     }

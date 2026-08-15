@@ -19,7 +19,10 @@ from ..services.evidence import (
     parse_evidence_key,
 )
 from ..services.investigation import (
+    AnalysisClaimsResponse,
+    AnalysisReviewConflictError,
     EvidenceSnapshot,
+    EvidenceSummary,
     EventEvidenceLink,
     EventRefresh,
     InvestigationCaptureService,
@@ -29,8 +32,8 @@ from ..services.investigation import (
     InvestigationEventVersion,
     InvestigationGraphResponse,
     InvestigationGraphService,
+    InvestigationReadService,
     InvestigationReviewService,
-    AnalysisReviewConflictError,
     SecondaryAnalysis,
     SecondaryAnalysisExecutor,
     SecondaryAnalysisStatus,
@@ -447,6 +450,93 @@ async def list_event_refreshes(
 # ---------------------------------------------------------------------------
 # Graph routes (C8b)
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Workbench read routes (C9a) -- strictly read-only projections
+# ---------------------------------------------------------------------------
+
+def get_investigation_read_service() -> InvestigationReadService:
+    """Resolve the read-only Workbench data service via ServiceManager."""
+    try:
+        return get_service_manager().investigation_read_service
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="investigation read service is unavailable",
+        ) from exc
+
+
+@router.get("/evidence", response_model=list[EvidenceSummary])
+async def list_investigation_evidence(
+    task_id: str = Query(..., min_length=1),
+    service: InvestigationReadService = Depends(get_investigation_read_service),
+) -> list[EvidenceSummary]:
+    """List every captured evidence of the task with its C8b selection state.
+
+    A task without an investigation.db yet simply has no findings ([]); the
+    GET never captures or migrates anything.
+    """
+    try:
+        return await service.list_evidence(task_id)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="task not found") from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+@router.get(
+    "/evidence/snapshot",
+    response_model=EvidenceSnapshot,
+    responses={404: {"description": "task/evidence not found"}},
+)
+async def get_investigation_evidence_snapshot(
+    task_id: str = Query(..., min_length=1),
+    evidence_key: str = Query(..., min_length=1),
+    service: InvestigationReadService = Depends(get_investigation_read_service),
+) -> EvidenceSnapshot:
+    """Return the captured Snapshot of one evidence (the Initial Analysis source).
+
+    Read-only: never captures on demand, never re-reads files.db.  The
+    Workbench's Initial Analysis comes exclusively from this frozen payload.
+    """
+    try:
+        parsed = parse_evidence_key(evidence_key)
+    except InvalidEvidenceKeyError as exc:
+        raise HTTPException(status_code=400, detail="invalid evidence key") from exc
+    try:
+        snapshot = await service.get_snapshot(task_id, parsed.canonical_key)
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="evidence snapshot not found")
+    return snapshot
+
+
+@router.get(
+    "/analyses/{analysis_id}/claims",
+    response_model=AnalysisClaimsResponse,
+    responses={404: {"description": "analysis not found"}},
+)
+async def list_investigation_analysis_claims(
+    analysis_id: str,
+    task_id: str = Query(..., min_length=1),
+    service: InvestigationReadService = Depends(get_investigation_read_service),
+) -> AnalysisClaimsResponse:
+    """Return the exact persisted claims of one exact analysis version.
+
+    Claims are immutable rows -- never re-derived, never a current/effective
+    claim projection, and no fallback to any other analysis version.
+    """
+    try:
+        claims = await service.list_analysis_claims(task_id, analysis_id)
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+    if claims is None:
+        raise HTTPException(status_code=404, detail="analysis not found")
+    return AnalysisClaimsResponse(
+        task_id=task_id, analysis_id=analysis_id, claims=tuple(claims)
+    )
+
 
 def get_investigation_graph_service() -> InvestigationGraphService:
     """Resolve the read-only graph composition service via ServiceManager."""

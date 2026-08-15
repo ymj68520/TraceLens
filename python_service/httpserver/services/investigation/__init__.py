@@ -54,9 +54,12 @@ from .models import (
     EventRefreshEnvelopeV2,
     EventRefreshLinkV1,
     EventRefreshStatus,
+    EvidenceSummary,
     InvestigationGraphNode,
     InvestigationGraphLink,
     InvestigationGraphResponse,
+    SelectedAnalysisRef,
+    AnalysisClaimsResponse,
     StructuredEventRefreshResponse,
     FileSnapshotPayload,
     InvestigationEvent,
@@ -71,6 +74,7 @@ from .models import (
     parse_event_refresh_envelope,
 )
 from .paths import investigation_db_path_for_task
+from .read import InvestigationReadService
 from .prompts import (
     CURRENT_PROMPT_VERSION,
     ENVELOPE_PROMPT_COMPAT,
@@ -120,6 +124,10 @@ __all__ = [
     "InvestigationGraphReader",
     "GraphAnalysisSelection",
     "OverlayReadResult",
+    "InvestigationReadService",
+    "EvidenceSummary",
+    "SelectedAnalysisRef",
+    "AnalysisClaimsResponse",
     "BASE_GRAPH_UNAVAILABLE_WARNING",
     "InvestigationGraphNode",
     "InvestigationGraphLink",

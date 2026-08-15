@@ -15,6 +15,7 @@ INVESTIGATION_PATHS = [
     "tests/unit/investigation",
     "tests/unit/test_investigation_event_routes.py",
     "tests/unit/test_investigation_graph_routes.py",
+    "tests/unit/test_investigation_read_routes.py",
     "tests/unit/test_investigation_refresh_routes.py",
     "tests/unit/test_investigation_review_routes.py",
     "tests/unit/test_service_manager_investigation.py",

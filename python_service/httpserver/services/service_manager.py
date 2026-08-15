@@ -51,6 +51,7 @@ class ServiceManager:
         self._investigation_review_service = None
         self._investigation_event_service = None
         self._investigation_graph_service = None
+        self._investigation_read_service = None
         self._secondary_analysis_executor = None
         self._event_refresh_executor = None
         self._initialized = False
@@ -309,6 +310,7 @@ class ServiceManager:
         self._investigation_review_service = None
         self._investigation_event_service = None
         self._investigation_graph_service = None
+        self._investigation_read_service = None
         self._event_refresh_executor = None
         self._secondary_analysis_executor = None
         self._cpp_backend = None
@@ -456,6 +458,23 @@ class ServiceManager:
                 self._create_investigation_graph_service()
             )
         return self._investigation_graph_service
+
+    def _create_investigation_read_service(self):
+        from .investigation.read import InvestigationReadService
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        return InvestigationReadService(cpp_backend=self._cpp_backend)
+
+    @property
+    def investigation_read_service(self):
+        """Get the read-only Investigation Workbench data service (C9a)."""
+        self._require_service_access()
+        if self._investigation_read_service is None:
+            self._investigation_read_service = (
+                self._create_investigation_read_service()
+            )
+        return self._investigation_read_service
 
     def _create_event_refresh_executor(self):
         from .investigation.event_refresh_execution import EventRefreshExecutor
