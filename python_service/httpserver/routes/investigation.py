@@ -20,7 +20,12 @@ from ..services.evidence import (
 )
 from ..services.investigation import (
     EvidenceSnapshot,
+    EventEvidenceLink,
     InvestigationCaptureService,
+    InvestigationEvent,
+    InvestigationEventConflictError,
+    InvestigationEventService,
+    InvestigationEventVersion,
     InvestigationReviewService,
     AnalysisReviewConflictError,
     SecondaryAnalysis,
@@ -216,3 +221,158 @@ async def list_analyses(
             raise HTTPException(status_code=400, detail="invalid status filter") from exc
         analyses = [a for a in analyses if a.status == status_enum]
     return analyses
+
+
+# ---------------------------------------------------------------------------
+# Investigation Event routes (C7a)
+# ---------------------------------------------------------------------------
+
+class CreateInvestigationEventRequest(BaseModel):
+    """Strict boundary for creating one Investigation Event with its v1 narrative."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str = Field(min_length=1)
+    title: str = Field(min_length=1, max_length=500)
+    summary: Optional[str] = Field(default=None, max_length=20_000)
+    created_by: str = Field(min_length=1, max_length=256)
+
+
+class LinkEventEvidenceRequest(BaseModel):
+    """Strict boundary for one explicit Event→Evidence relation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str = Field(min_length=1)
+    evidence_key: str = Field(min_length=1)
+    linked_by: str = Field(min_length=1, max_length=256)
+
+
+def get_investigation_event_service() -> InvestigationEventService:
+    """Resolve the ready investigation event service through ServiceManager."""
+    try:
+        return get_service_manager().investigation_event_service
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="investigation event service is unavailable",
+        ) from exc
+
+
+@router.post("/events", response_model=InvestigationEvent, status_code=201)
+async def create_investigation_event(
+    request: CreateInvestigationEventRequest,
+    service: InvestigationEventService = Depends(get_investigation_event_service),
+) -> InvestigationEvent:
+    """Create one Investigation Event with its immutable v1 narrative version."""
+    try:
+        return await service.create_event(
+            request.task_id,
+            title=request.title,
+            summary=request.summary,
+            created_by=request.created_by,
+        )
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="task not found") from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+@router.get("/events", response_model=list[InvestigationEvent])
+async def list_investigation_events(
+    task_id: str = Query(..., min_length=1),
+    needs_refresh: Optional[bool] = Query(None),
+    service: InvestigationEventService = Depends(get_investigation_event_service),
+) -> list[InvestigationEvent]:
+    """List events. Reading never creates investigation.db ([] if absent)."""
+    try:
+        return await service.list_events(task_id, needs_refresh=needs_refresh)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="task not found") from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+@router.get("/events/{event_id}", response_model=InvestigationEvent)
+async def get_investigation_event(
+    event_id: str,
+    task_id: str = Query(..., min_length=1),
+    service: InvestigationEventService = Depends(get_investigation_event_service),
+) -> InvestigationEvent:
+    """Return one event with its current (MAX version) narrative."""
+    try:
+        return await service.get_event(task_id, event_id)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="investigation event not found"
+        ) from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+@router.get(
+    "/events/{event_id}/versions", response_model=list[InvestigationEventVersion]
+)
+async def list_investigation_event_versions(
+    event_id: str,
+    task_id: str = Query(..., min_length=1),
+    service: InvestigationEventService = Depends(get_investigation_event_service),
+) -> list[InvestigationEventVersion]:
+    """Return the immutable narrative version history of one event."""
+    try:
+        return await service.list_event_versions(task_id, event_id)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="investigation event not found"
+        ) from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+@router.post(
+    "/events/{event_id}/evidence", response_model=EventEvidenceLink, status_code=200
+)
+async def link_investigation_event_evidence(
+    event_id: str,
+    request: LinkEventEvidenceRequest,
+    service: InvestigationEventService = Depends(get_investigation_event_service),
+) -> EventEvidenceLink:
+    """Link canonical evidence to an event (resolve + capture, INSERT-only)."""
+    try:
+        return await service.link_event_evidence(
+            request.task_id,
+            event_id,
+            request.evidence_key,
+            linked_by=request.linked_by,
+        )
+    except InvalidEvidenceKeyError as exc:
+        raise HTTPException(status_code=400, detail="invalid evidence key") from exc
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="investigation event or evidence not found"
+        ) from exc
+    except InvestigationEventConflictError as exc:
+        raise HTTPException(
+            status_code=409, detail="event evidence link already exists"
+        ) from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+@router.get(
+    "/events/{event_id}/evidence", response_model=list[EventEvidenceLink]
+)
+async def list_investigation_event_evidence(
+    event_id: str,
+    task_id: str = Query(..., min_length=1),
+    service: InvestigationEventService = Depends(get_investigation_event_service),
+) -> list[EventEvidenceLink]:
+    """List the explicit Event→Evidence relations of one event."""
+    try:
+        return await service.list_event_evidence(task_id, event_id)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="investigation event not found"
+        ) from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc

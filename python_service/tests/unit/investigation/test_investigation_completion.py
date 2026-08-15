@@ -239,7 +239,7 @@ async def test_v2_migration_adds_grounding_column(tmp_path):
     conn = sqlite3.connect(idb)
     cols = {row[1] for row in conn.execute("PRAGMA table_info(secondary_analyses)")}
     assert "grounding_status" in cols
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
     conn.close()
 
 

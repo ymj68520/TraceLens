@@ -14,6 +14,7 @@ Secondary Analysis execution:
 """
 
 from .acquisition import build_snapshot_candidate, canonical_json
+from .event import InvestigationEventService
 from .execution import SecondaryAnalysisExecutor
 from .structured import StructuredOutputError, parse_structured_analysis_response
 from .grounding import (
@@ -34,7 +35,10 @@ from .models import (
     ClaimType,
     ClusterSnapshotPayload,
     EvidenceSnapshot,
+    EventEvidenceLink,
     FileSnapshotPayload,
+    InvestigationEvent,
+    InvestigationEventVersion,
     RelatedEvidenceEntry,
     SecondaryAnalysis,
     SecondaryAnalysisStatus,
@@ -51,7 +55,12 @@ from .prompts import (
     PROMPT_REGISTRY,
     get_prompt,
 )
-from .repository import InvestigationRepository, SUPPORTED_SCHEMA_VERSION
+from .repository import (
+    AnalysisReviewConflictError,
+    InvestigationEventConflictError,
+    InvestigationRepository,
+    SUPPORTED_SCHEMA_VERSION,
+)
 from .review import AnalysisReviewConflictError, InvestigationReviewService
 from .service import InvestigationCaptureService
 
@@ -76,7 +85,13 @@ __all__ = [
     "TERMINAL_SECONDARY_STATUSES",
     "InvestigationCaptureService",
     "InvestigationReviewService",
+    "InvestigationEventService",
     "AnalysisReviewConflictError",
+    "InvestigationEventConflictError",
+    "EvidenceSnapshot",
+    "EventEvidenceLink",
+    "InvestigationEvent",
+    "InvestigationEventVersion",
     "SecondaryAnalysisExecutor",
     "CURRENT_PROMPT_VERSION",
     "ENVELOPE_PROMPT_COMPAT",

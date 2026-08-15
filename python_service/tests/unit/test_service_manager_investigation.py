@@ -93,6 +93,33 @@ def test_clear_services_drops_old_investigation_backend_binding():
     assert service_b._evidence_resolver._cpp_backend is backend_b
 
 
+def test_event_service_lazy_cached_and_rebinds_after_clear():
+    manager, backend_a = _manager_with_backend()
+    first = manager.investigation_event_service
+    second = manager.investigation_event_service
+    assert first is second
+    assert first._cpp_backend is backend_a
+    assert first._capture_service is manager._investigation_service
+
+    manager._clear_services()
+    backend_b = object()
+    manager._cpp_backend = backend_b
+    manager._cpp_backend_ready = True
+    manager._lifecycle_state = "running"
+    replacement = manager.investigation_event_service
+    assert replacement is not first
+    assert replacement._cpp_backend is backend_b
+    assert replacement._capture_service is manager._investigation_service
+
+
+@pytest.mark.parametrize("state", ["initializing", "shutting_down", "stopped"])
+def test_event_service_respects_lifecycle_access(state):
+    manager, _ = _manager_with_backend()
+    manager._lifecycle_state = state
+    with pytest.raises(RuntimeError):
+        _ = manager.investigation_event_service
+
+
 @pytest.mark.parametrize("state", ["initializing", "shutting_down", "stopped"])
 def test_review_service_respects_lifecycle_access(state):
     manager, _ = _manager_with_backend()

@@ -361,3 +361,54 @@ class AnalysisClaim(BaseModel):
     warnings: Optional[dict] = None
     evidence_refs: tuple[str, ...] = ()
     created_at: str
+
+
+# ---------------------------------------------------------------------------
+# Investigation Event models (Phase C7a)
+# ---------------------------------------------------------------------------
+
+
+class InvestigationEvent(BaseModel):
+    """An Investigation-layer event: stable identity + current narrative.
+
+    ``current_version``/``title``/``summary`` are DERIVED from the highest
+    version row at read time — there is no materialized pointer. Snapshots of
+    this model are point-in-time reads, not mutable references.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    event_id: str
+    task_id: str
+    needs_refresh: bool
+    current_version: int
+    title: str
+    summary: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class InvestigationEventVersion(BaseModel):
+    """One immutable narrative version of an Investigation Event."""
+
+    model_config = ConfigDict(frozen=True)
+
+    task_id: str
+    event_id: str
+    version: int
+    title: str
+    summary: Optional[str] = None
+    created_at: str
+    created_by: Optional[str] = None
+
+
+class EventEvidenceLink(BaseModel):
+    """An explicit, INSERT-only Event→Evidence relation (canonical key)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    task_id: str
+    event_id: str
+    evidence_key: str
+    linked_at: str
+    linked_by: Optional[str] = None

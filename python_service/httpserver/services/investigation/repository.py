@@ -56,8 +56,11 @@ from .models import (
     ClaimGroundingStatus,
     ClaimType,
     ClusterSnapshotPayload,
+    EventEvidenceLink,
     EvidenceSnapshot,
     FileSnapshotPayload,
+    InvestigationEvent,
+    InvestigationEventVersion,
     RelatedEvidenceEntry,
     SecondaryAnalysis,
     SecondaryAnalysisStatus,
@@ -69,9 +72,13 @@ from .prompts import PROMPT_OUTPUT_CONTRACT
 class AnalysisReviewConflictError(RuntimeError):
     """The analysis exists but is not currently reviewable."""
 
+
+class InvestigationEventConflictError(RuntimeError):
+    """The investigation event exists but the requested relation conflicts."""
+
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 4
+SUPPORTED_SCHEMA_VERSION = 5
 
 # ---------------------------------------------------------------------------
 # DDL: evidence_snapshots (v1, unchanged)
@@ -268,6 +275,115 @@ _REQUIRED_CLAIM_COLUMNS = {
     "grounding_status", "warning_json", "created_at",
 }
 
+# ---------------------------------------------------------------------------
+# DDL: investigation_events (v5 addition, C7a)
+# ---------------------------------------------------------------------------
+#
+# EV1 Event identity = (task_id, event_id).  Child tables carry task_id and
+# composite FKs so task scoping is a DB-level constraint (EV2/EV3), not just a
+# repository query convention.  There is NO materialized current_version: the
+# current narrative is derived as MAX(version) at read time.  Evidence links
+# are INSERT-only (EV4) and must point at a captured snapshot of the SAME task
+# (composite FK onto evidence_snapshots(task_id, evidence_key)).
+
+_CREATE_INVESTIGATION_EVENTS_SQL = """
+CREATE TABLE IF NOT EXISTS investigation_events (
+    event_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    needs_refresh INTEGER NOT NULL DEFAULT 0 CHECK(needs_refresh IN (0,1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(task_id, event_id)
+)
+"""
+_CREATE_INVESTIGATION_EVENT_VERSIONS_SQL = """
+CREATE TABLE IF NOT EXISTS investigation_event_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT,
+    created_at TEXT NOT NULL,
+    created_by TEXT,
+    UNIQUE(task_id, event_id, version),
+    FOREIGN KEY(task_id, event_id)
+        REFERENCES investigation_events(task_id, event_id) ON DELETE RESTRICT
+)
+"""
+_CREATE_INVESTIGATION_EVENT_EVIDENCE_SQL = """
+CREATE TABLE IF NOT EXISTS investigation_event_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    evidence_key TEXT NOT NULL,
+    linked_at TEXT NOT NULL,
+    linked_by TEXT,
+    UNIQUE(task_id, event_id, evidence_key),
+    FOREIGN KEY(task_id, event_id)
+        REFERENCES investigation_events(task_id, event_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, evidence_key)
+        REFERENCES evidence_snapshots(task_id, evidence_key) ON DELETE RESTRICT
+)
+"""
+# Reverse lookup (task_id, evidence_key) -> events; the C7b propagation seam.
+_INDEX_EVENT_EVIDENCE_KEY_SQL = (
+    "CREATE INDEX IF NOT EXISTS idx_inv_event_evidence_key "
+    "ON investigation_event_evidence(task_id, evidence_key)"
+)
+# EV4: narrative versions and evidence links are immutable (INSERT only).
+_TRIGGER_EVENT_VERSIONS_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_inv_event_versions_no_update
+BEFORE UPDATE ON investigation_event_versions
+BEGIN
+    SELECT RAISE(ABORT, 'investigation event versions are immutable');
+END
+"""
+_TRIGGER_EVENT_VERSIONS_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_inv_event_versions_no_delete
+BEFORE DELETE ON investigation_event_versions
+BEGIN
+    SELECT RAISE(ABORT, 'investigation event versions are immutable');
+END
+"""
+_TRIGGER_EVENT_EVIDENCE_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_inv_event_evidence_no_update
+BEFORE UPDATE ON investigation_event_evidence
+BEGIN
+    SELECT RAISE(ABORT, 'investigation event evidence links are immutable');
+END
+"""
+_TRIGGER_EVENT_EVIDENCE_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_inv_event_evidence_no_delete
+BEFORE DELETE ON investigation_event_evidence
+BEGIN
+    SELECT RAISE(ABORT, 'investigation event evidence links are immutable');
+END
+"""
+# EV5: event identity columns are immutable; needs_refresh/updated_at stay
+# writable for C7b (mark dirty) and C7c (record refresh).
+_TRIGGER_EVENTS_NO_IDENTITY_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_inv_events_no_identity_update
+BEFORE UPDATE ON investigation_events
+WHEN new.event_id != OLD.event_id
+  OR new.task_id != OLD.task_id
+  OR new.created_at != OLD.created_at
+BEGIN
+    SELECT RAISE(ABORT, 'investigation event identity is immutable');
+END
+"""
+
+_REQUIRED_EVENT_COLUMNS = {
+    "event_id", "task_id", "needs_refresh", "created_at", "updated_at",
+}
+_REQUIRED_EVENT_VERSION_COLUMNS = {
+    "id", "task_id", "event_id", "version", "title", "summary",
+    "created_at", "created_by",
+}
+_REQUIRED_EVENT_EVIDENCE_COLUMNS = {
+    "id", "task_id", "event_id", "evidence_key", "linked_at", "linked_by",
+}
+
 _REQUIRED_SECONDARY_COLUMNS = {
     "analysis_id", "task_id", "evidence_key", "snapshot_id", "version", "status",
     "input_hash", "input_envelope_json", "prompt_version", "description", "summary",
@@ -299,10 +415,15 @@ def _new_analysis_id() -> str:
     return f"sa_{uuid.uuid4().hex}"
 
 
-class InvestigationRepository:
-    """SQLite-backed immutable Evidence Snapshot + Secondary Analysis store.
+def _new_event_id() -> str:
+    return f"ie_{uuid.uuid4().hex}"
 
-    A single repository owns the full v4 schema for all tables (avoids
+
+class InvestigationRepository:
+    """SQLite-backed immutable Evidence Snapshot + Secondary Analysis +
+    Investigation Event store.
+
+    A single repository owns the full v5 schema for all tables (avoids
     user_version contention / duplicate migration paths).
     """
 
@@ -328,20 +449,26 @@ class InvestigationRepository:
         with self._connect() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
-            self._initialize_v4_atomically()
-            self._validate_v4_schema()
+            self._initialize_v5_atomically()
+            self._validate_v5_schema()
         elif version == 1:
             self._migrate_v1_to_v4()
-            self._validate_v4_schema()
+            self._migrate_v4_to_v5()
+            self._validate_v5_schema()
         elif version == 2:
             self._migrate_v2_to_v4()
-            self._validate_v4_schema()
+            self._migrate_v4_to_v5()
+            self._validate_v5_schema()
         elif version == 3:
             self._migrate_v3_to_v4()
-            self._validate_v4_schema()
+            self._migrate_v4_to_v5()
+            self._validate_v5_schema()
+        elif version == 4:
+            self._migrate_v4_to_v5()
+            self._validate_v5_schema()
         elif version == SUPPORTED_SCHEMA_VERSION:
-            self._validate_v4_schema()
-            self._ensure_v4_auxiliary_objects()
+            self._validate_v5_schema()
+            self._ensure_v5_auxiliary_objects()
         else:
             raise EvidenceStoreError(
                 f"unsupported investigation.db schema version: {version} "
@@ -366,8 +493,20 @@ class InvestigationRepository:
         conn.execute(_TRIGGER_CLAIM_REFS_NO_UPDATE_SQL)
         conn.execute(_TRIGGER_CLAIM_REFS_NO_DELETE_SQL)
 
-    def _initialize_v4_atomically(self) -> None:
-        """New database: build everything + version=4 in one tx."""
+    def _build_all_event_objects(self, conn: sqlite3.Connection) -> None:
+        """Create all investigation_events tables, indexes, triggers (v5)."""
+        conn.execute(_CREATE_INVESTIGATION_EVENTS_SQL)
+        conn.execute(_CREATE_INVESTIGATION_EVENT_VERSIONS_SQL)
+        conn.execute(_CREATE_INVESTIGATION_EVENT_EVIDENCE_SQL)
+        conn.execute(_INDEX_EVENT_EVIDENCE_KEY_SQL)
+        conn.execute(_TRIGGER_EVENT_VERSIONS_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_EVENT_VERSIONS_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_EVENT_EVIDENCE_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_EVENT_EVIDENCE_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_EVENTS_NO_IDENTITY_UPDATE_SQL)
+
+    def _initialize_v5_atomically(self) -> None:
+        """New database: build everything + version=5 in one tx."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(_CREATE_EVIDENCE_SNAPSHOTS_SQL)
@@ -376,19 +515,20 @@ class InvestigationRepository:
             conn.execute(_INDEX_TASK_SQL)
             conn.execute(_TRIGGER_EVSNAP_NO_UPDATE_SQL)
             self._build_all_secondary_objects(conn)
+            self._build_all_event_objects(conn)
             conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
             conn.commit()
 
     def _migrate_v1_to_v4(self) -> None:
-        """v1 database: add secondary + claims + all triggers → v4."""
+        """v1 database: add secondary + claims + all triggers → v4 (frozen)."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             self._build_all_secondary_objects(conn)
-            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.execute("PRAGMA user_version = 4")
             conn.commit()
 
     def _migrate_v2_to_v4(self) -> None:
-        """v2 database: add input trigger (v3) + grounding/claims (v4) → v4."""
+        """v2 database: add input trigger (v3) + grounding/claims (v4) → v4 (frozen)."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL)
@@ -403,11 +543,11 @@ class InvestigationRepository:
             conn.execute(_TRIGGER_CLAIMS_NO_DELETE_SQL)
             conn.execute(_TRIGGER_CLAIM_REFS_NO_UPDATE_SQL)
             conn.execute(_TRIGGER_CLAIM_REFS_NO_DELETE_SQL)
-            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.execute("PRAGMA user_version = 4")
             conn.commit()
 
     def _migrate_v3_to_v4(self) -> None:
-        """v3 database: add grounding_status column + claims tables/triggers → v4."""
+        """v3 database: add grounding_status column + claims tables/triggers → v4 (frozen)."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             # Add grounding_status if not already present (idempotent).
@@ -422,11 +562,19 @@ class InvestigationRepository:
             conn.execute(_TRIGGER_CLAIMS_NO_DELETE_SQL)
             conn.execute(_TRIGGER_CLAIM_REFS_NO_UPDATE_SQL)
             conn.execute(_TRIGGER_CLAIM_REFS_NO_DELETE_SQL)
+            conn.execute("PRAGMA user_version = 4")
+            conn.commit()
+
+    def _migrate_v4_to_v5(self) -> None:
+        """v4 database: add investigation_events objects → v5."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._build_all_event_objects(conn)
             conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
             conn.commit()
 
     def _ensure_v4_auxiliary_objects(self) -> None:
-        """Self-heal missing indexes/triggers (idempotent CREATE IF NOT EXISTS)."""
+        """Self-heal missing snapshot/secondary indexes and triggers."""
         with self._connect() as conn:
             conn.execute(_INDEX_PATH_SQL)
             conn.execute(_INDEX_CLUSTER_SQL)
@@ -435,11 +583,19 @@ class InvestigationRepository:
             self._build_all_secondary_objects(conn)
             conn.commit()
 
-    def _validate_v4_schema(self) -> None:
+    def _ensure_v5_auxiliary_objects(self) -> None:
+        """Self-heal missing indexes/triggers (idempotent CREATE IF NOT EXISTS)."""
+        self._ensure_v4_auxiliary_objects()
+        with self._connect() as conn:
+            self._build_all_event_objects(conn)
+            conn.commit()
+
+    def _validate_v5_schema(self) -> None:
         with self._connect() as conn:
             self._validate_evidence_snapshots(conn)
             self._validate_secondary_analyses(conn)
             self._validate_claims(conn)
+            self._validate_event_tables(conn)
 
     def _validate_evidence_snapshots(self, conn: sqlite3.Connection) -> None:
         cols = {row["name"] for row in conn.execute("PRAGMA table_info(evidence_snapshots)")}
@@ -533,6 +689,103 @@ class InvestigationRepository:
         for trig_name in (
             "trg_claims_no_update", "trg_claims_no_delete",
             "trg_claim_refs_no_update", "trg_claim_refs_no_delete",
+        ):
+            trig = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?",
+                [trig_name],
+            ).fetchone()
+            if trig is None:
+                raise EvidenceStoreError(f"missing {trig_name} trigger")
+
+    @staticmethod
+    def _has_composite_fk(
+        conn: sqlite3.Connection,
+        table: str,
+        parent: str,
+        mapping: tuple[tuple[str, str], ...],
+        *,
+        on_delete: str = "RESTRICT",
+    ) -> bool:
+        """True iff ``table`` has one composite FK matching (parent, mapping)."""
+        groups: dict[int, list[sqlite3.Row]] = {}
+        for row in conn.execute(f"PRAGMA foreign_key_list({table})"):
+            groups.setdefault(row["id"], []).append(row)
+        for rows in groups.values():
+            if {r["table"] for r in rows} != {parent}:
+                continue
+            if {(r["from"], r["to"]) for r in rows} != set(mapping):
+                continue
+            if {r["on_delete"] for r in rows} != {on_delete}:
+                continue
+            return True
+        return False
+
+    def _validate_event_tables(self, conn: sqlite3.Connection) -> None:
+        specs = (
+            ("investigation_events", _REQUIRED_EVENT_COLUMNS),
+            ("investigation_event_versions", _REQUIRED_EVENT_VERSION_COLUMNS),
+            ("investigation_event_evidence", _REQUIRED_EVENT_EVIDENCE_COLUMNS),
+        )
+        for table, required in specs:
+            cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            missing = required - cols
+            if missing:
+                raise EvidenceStoreError(
+                    f"{table} missing required columns: {sorted(missing)}"
+                )
+
+        unique_specs = (
+            ("investigation_events", ("task_id", "event_id")),
+            ("investigation_event_versions", ("task_id", "event_id", "version")),
+            ("investigation_event_evidence", ("task_id", "event_id", "evidence_key")),
+        )
+        for table, columns in unique_specs:
+            found = False
+            for idx in conn.execute(f"PRAGMA index_list({table})"):
+                if not idx["unique"]:
+                    continue
+                idx_cols = {
+                    r["name"]
+                    for r in conn.execute(f'PRAGMA index_info("{idx["name"]}")')
+                }
+                if idx_cols == set(columns):
+                    found = True
+                    break
+            if not found:
+                raise EvidenceStoreError(
+                    f"{table} missing UNIQUE{columns}"
+                )
+
+        event_fk = (("task_id", "task_id"), ("event_id", "event_id"))
+        snapshot_fk = (("task_id", "task_id"), ("evidence_key", "evidence_key"))
+        if not self._has_composite_fk(
+            conn, "investigation_event_versions", "investigation_events", event_fk
+        ):
+            raise EvidenceStoreError(
+                "investigation_event_versions missing composite FK(task_id,event_id) "
+                "REFERENCES investigation_events(task_id,event_id)"
+            )
+        if not self._has_composite_fk(
+            conn, "investigation_event_evidence", "investigation_events", event_fk
+        ):
+            raise EvidenceStoreError(
+                "investigation_event_evidence missing composite FK(task_id,event_id) "
+                "REFERENCES investigation_events(task_id,event_id)"
+            )
+        if not self._has_composite_fk(
+            conn, "investigation_event_evidence", "evidence_snapshots", snapshot_fk
+        ):
+            raise EvidenceStoreError(
+                "investigation_event_evidence missing composite FK(task_id,evidence_key) "
+                "REFERENCES evidence_snapshots(task_id,evidence_key)"
+            )
+
+        for trig_name in (
+            "trg_inv_events_no_identity_update",
+            "trg_inv_event_versions_no_update",
+            "trg_inv_event_versions_no_delete",
+            "trg_inv_event_evidence_no_update",
+            "trg_inv_event_evidence_no_delete",
         ):
             trig = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?",
@@ -1251,3 +1504,197 @@ class InvestigationRepository:
         if row is None:
             raise KeyError(f"analysis not found: {analysis_id!r}")
         return AnalysisGroundingStatus(row["grounding_status"]) if row["grounding_status"] else None
+
+    # =====================================================================
+    # investigation_events (C7a)
+    # =====================================================================
+
+    # Current narrative is derived as MAX(version) — no materialized
+    # current_version column (single source of truth in the version table).
+    _EVENT_READ_SQL = """
+        SELECT e.event_id AS event_id, e.task_id AS task_id,
+               e.needs_refresh AS needs_refresh,
+               e.created_at AS created_at, e.updated_at AS updated_at,
+               v.version AS current_version, v.title AS title, v.summary AS summary
+        FROM investigation_events e
+        JOIN investigation_event_versions v
+          ON v.task_id = e.task_id AND v.event_id = e.event_id
+         AND v.version = (SELECT MAX(v2.version) FROM investigation_event_versions v2
+                          WHERE v2.task_id = e.task_id AND v2.event_id = e.event_id)
+        WHERE e.task_id = ?
+    """
+
+    def _row_to_event(self, row: sqlite3.Row) -> InvestigationEvent:
+        return InvestigationEvent(
+            event_id=row["event_id"],
+            task_id=row["task_id"],
+            needs_refresh=bool(row["needs_refresh"]),
+            current_version=row["current_version"],
+            title=row["title"],
+            summary=row["summary"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def create_event(
+        self,
+        title: str,
+        *,
+        summary: Optional[str] = None,
+        created_by: Optional[str] = None,
+    ) -> InvestigationEvent:
+        """Atomically create one Event + its immutable v1 narrative version."""
+        if not title:
+            raise ValueError("event title must be a non-empty string")
+        event_id = _new_event_id()
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                "INSERT INTO investigation_events "
+                "(event_id, task_id, needs_refresh, created_at, updated_at) "
+                "VALUES (?, ?, 0, ?, ?)",
+                [event_id, self.task_id, now, now],
+            )
+            conn.execute(
+                "INSERT INTO investigation_event_versions "
+                "(task_id, event_id, version, title, summary, created_at, created_by) "
+                "VALUES (?, ?, 1, ?, ?, ?, ?)",
+                [self.task_id, event_id, title, summary, now, created_by],
+            )
+            row = conn.execute(
+                self._EVENT_READ_SQL + " AND e.event_id = ?",
+                [self.task_id, event_id],
+            ).fetchone()
+            conn.commit()
+        return self._row_to_event(row)
+
+    def get_event(self, event_id: str) -> Optional[InvestigationEvent]:
+        with self._connect() as conn:
+            row = conn.execute(
+                self._EVENT_READ_SQL + " AND e.event_id = ?",
+                [self.task_id, event_id],
+            ).fetchone()
+        return self._row_to_event(row) if row is not None else None
+
+    def list_events(
+        self, *, needs_refresh: Optional[bool] = None
+    ) -> list[InvestigationEvent]:
+        sql = self._EVENT_READ_SQL
+        params: list = [self.task_id]
+        if needs_refresh is not None:
+            sql += " AND e.needs_refresh = ?"
+            params.append(1 if needs_refresh else 0)
+        sql += " ORDER BY e.created_at"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._row_to_event(r) for r in rows]
+
+    def list_event_versions(self, event_id: str) -> list[InvestigationEventVersion]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM investigation_event_versions "
+                "WHERE task_id = ? AND event_id = ? ORDER BY version",
+                [self.task_id, event_id],
+            ).fetchall()
+        return [
+            InvestigationEventVersion(
+                task_id=row["task_id"],
+                event_id=row["event_id"],
+                version=row["version"],
+                title=row["title"],
+                summary=row["summary"],
+                created_at=row["created_at"],
+                created_by=row["created_by"],
+            )
+            for row in rows
+        ]
+
+    def link_event_evidence(
+        self,
+        event_id: str,
+        evidence_key: str,
+        *,
+        linked_by: Optional[str] = None,
+    ) -> EventEvidenceLink:
+        """INSERT one explicit Event→Evidence relation (write-once per pair).
+
+        Requires the evidence to already be captured in this task (the
+        composite FK is the DB-level backstop; this check gives clean
+        not-found semantics).
+        """
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            event = conn.execute(
+                "SELECT 1 FROM investigation_events WHERE task_id = ? AND event_id = ?",
+                [self.task_id, event_id],
+            ).fetchone()
+            if event is None:
+                raise EvidenceNotFoundError("investigation event not found")
+            existing = conn.execute(
+                "SELECT 1 FROM investigation_event_evidence "
+                "WHERE task_id = ? AND event_id = ? AND evidence_key = ?",
+                [self.task_id, event_id, evidence_key],
+            ).fetchone()
+            if existing is not None:
+                raise InvestigationEventConflictError(
+                    "event evidence link already exists"
+                )
+            snapshot = conn.execute(
+                "SELECT 1 FROM evidence_snapshots WHERE task_id = ? AND evidence_key = ?",
+                [self.task_id, evidence_key],
+            ).fetchone()
+            if snapshot is None:
+                raise EvidenceNotFoundError(
+                    "evidence snapshot not captured for this task"
+                )
+            conn.execute(
+                "INSERT INTO investigation_event_evidence "
+                "(task_id, event_id, evidence_key, linked_at, linked_by) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [self.task_id, event_id, evidence_key, now, linked_by],
+            )
+            conn.commit()
+        return EventEvidenceLink(
+            task_id=self.task_id,
+            event_id=event_id,
+            evidence_key=evidence_key,
+            linked_at=now,
+            linked_by=linked_by,
+        )
+
+    def list_event_evidence(self, event_id: str) -> list[EventEvidenceLink]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM investigation_event_evidence "
+                "WHERE task_id = ? AND event_id = ? ORDER BY linked_at, evidence_key",
+                [self.task_id, event_id],
+            ).fetchall()
+        return [
+            EventEvidenceLink(
+                task_id=row["task_id"],
+                event_id=row["event_id"],
+                evidence_key=row["evidence_key"],
+                linked_at=row["linked_at"],
+                linked_by=row["linked_by"],
+            )
+            for row in rows
+        ]
+
+    def list_events_for_evidence(self, evidence_key: str) -> list[InvestigationEvent]:
+        """Reverse lookup: events explicitly referencing this canonical key.
+
+        The C7b propagation seam (accepted analysis -> affected events) reads
+        exactly this mapping; no Timeline heuristics are involved.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                self._EVENT_READ_SQL
+                + " AND e.event_id IN ("
+                "    SELECT event_id FROM investigation_event_evidence"
+                "    WHERE task_id = ? AND evidence_key = ?"
+                ") ORDER BY e.created_at",
+                [self.task_id, self.task_id, evidence_key],
+            ).fetchall()
+        return [self._row_to_event(r) for r in rows]

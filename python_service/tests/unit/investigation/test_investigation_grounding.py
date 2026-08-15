@@ -366,25 +366,34 @@ def test_grounding_summary_null_before_claims(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_v4_migration_from_v3(tmp_path):
-    """v3 DB (stripped claims) → reopen → v4 with claims tables."""
+    """v3 DB (stripped claims) → reopen → latest (v5) with claims tables."""
     idb = str(tmp_path / "investigation.db")
-    InvestigationRepository(idb, "A")  # creates v4
-    # Strip to v3: drop claims objects, keep everything else
+    InvestigationRepository(idb, "A")  # creates latest
+    # Strip to v3: drop claims objects + event objects, keep everything else
     conn = sqlite3.connect(idb)
     for t in ("trg_claim_refs_no_delete", "trg_claim_refs_no_update",
-              "trg_claims_no_delete", "trg_claims_no_update"):
+              "trg_claims_no_delete", "trg_claims_no_update",
+              "trg_inv_events_no_identity_update",
+              "trg_inv_event_versions_no_update", "trg_inv_event_versions_no_delete",
+              "trg_inv_event_evidence_no_update", "trg_inv_event_evidence_no_delete"):
         conn.execute(f"DROP TRIGGER IF EXISTS {t}")
     conn.execute("DROP TABLE IF EXISTS claim_evidence_refs")
     conn.execute("DROP TABLE IF EXISTS analysis_claims")
+    conn.execute("DROP TABLE IF EXISTS investigation_event_evidence")
+    conn.execute("DROP TABLE IF EXISTS investigation_event_versions")
+    conn.execute("DROP TABLE IF EXISTS investigation_events")
     conn.execute("PRAGMA user_version = 3")
     conn.commit()
     conn.close()
-    # Reopen → triggers v3→v4 migration
+    # Reopen → triggers v3→v4→v5 migration chain
     InvestigationRepository(idb, "A")
     conn = sqlite3.connect(idb)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
     assert conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='analysis_claims'"
+    ).fetchone() is not None
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='investigation_events'"
     ).fetchone() is not None
     for trigger in ("trg_claims_no_update", "trg_claims_no_delete",
                      "trg_claim_refs_no_update", "trg_claim_refs_no_delete"):

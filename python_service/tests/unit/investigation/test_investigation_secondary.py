@@ -622,13 +622,16 @@ def test_fk_definition_validated_at_init(tmp_path):
 # New DB + future version
 # ---------------------------------------------------------------------------
 
-def test_new_db_is_v4_with_all_objects(tmp_path):
+def test_new_db_is_v5_with_all_objects(tmp_path):
     idb = str(tmp_path / "investigation.db")
     InvestigationRepository(idb, "A")
-    assert SUPPORTED_SCHEMA_VERSION == 4
+    assert SUPPORTED_SCHEMA_VERSION == 5
     conn = sqlite3.connect(idb)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
-    for table in ("evidence_snapshots", "secondary_analyses", "analysis_claims", "claim_evidence_refs"):
+    for table in (
+        "evidence_snapshots", "secondary_analyses", "analysis_claims", "claim_evidence_refs",
+        "investigation_events", "investigation_event_versions", "investigation_event_evidence",
+    ):
         assert conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", [table]
         ).fetchone() is not None
@@ -637,6 +640,9 @@ def test_new_db_is_v4_with_all_objects(tmp_path):
         "trg_secondary_no_terminal_update", "trg_secondary_no_input_update",
         "trg_claims_no_update", "trg_claims_no_delete",
         "trg_claim_refs_no_update", "trg_claim_refs_no_delete",
+        "trg_inv_events_no_identity_update",
+        "trg_inv_event_versions_no_update", "trg_inv_event_versions_no_delete",
+        "trg_inv_event_evidence_no_update", "trg_inv_event_evidence_no_delete",
     ):
         assert conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?", [trigger]
@@ -648,7 +654,7 @@ def test_future_version_fail_closed(tmp_path):
     idb = str(tmp_path / "investigation.db")
     InvestigationRepository(idb, "A")
     conn = sqlite3.connect(idb)
-    conn.execute("PRAGMA user_version = 5")
+    conn.execute("PRAGMA user_version = 6")
     conn.commit()
     conn.close()
     with pytest.raises(Exception, match="unsupported"):
