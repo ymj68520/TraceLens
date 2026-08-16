@@ -6,7 +6,13 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import AdapterWarning, ReportStatus, ReportVersion, ScopeType
+from .models import (
+    AdapterWarning,
+    ReportGenerationInput,
+    ReportStatus,
+    ReportVersion,
+    ScopeType,
+)
 
 
 class ReportRepository:
@@ -46,6 +52,49 @@ class ReportRepository:
                 );
                 CREATE INDEX IF NOT EXISTS idx_report_scope
                     ON report_versions(scope_type, scope_id, version DESC);
+
+                -- Phase R2b: additive frozen generation admission companion.
+                -- Insert-only rows; the trigger freezes identity/scope/
+                -- requester/prompt version/envelope bytes/hash after
+                -- admission, leaving status/report_id for the R2c lifecycle.
+                CREATE TABLE IF NOT EXISTS report_generation_inputs (
+                    generation_id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    scope_type TEXT NOT NULL,
+                    scope_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'admitted',
+                    requested_by TEXT NOT NULL,
+                    input_schema_version INTEGER NOT NULL,
+                    prompt_version TEXT NOT NULL,
+                    input_envelope_json TEXT NOT NULL,
+                    input_hash TEXT NOT NULL,
+                    report_id TEXT,
+                    created_at TEXT NOT NULL,
+                    CHECK (scope_type = 'task' AND scope_id = task_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_report_generation_task
+                    ON report_generation_inputs(task_id, created_at);
+                CREATE TRIGGER IF NOT EXISTS trg_report_generation_input_frozen
+                BEFORE UPDATE ON report_generation_inputs
+                FOR EACH ROW
+                WHEN NEW.generation_id IS NOT OLD.generation_id
+                  OR NEW.task_id IS NOT OLD.task_id
+                  OR NEW.scope_type IS NOT OLD.scope_type
+                  OR NEW.scope_id IS NOT OLD.scope_id
+                  OR NEW.requested_by IS NOT OLD.requested_by
+                  OR NEW.input_schema_version IS NOT OLD.input_schema_version
+                  OR NEW.prompt_version IS NOT OLD.prompt_version
+                  OR NEW.input_envelope_json IS NOT OLD.input_envelope_json
+                  OR NEW.input_hash IS NOT OLD.input_hash
+                  OR NEW.created_at IS NOT OLD.created_at
+                BEGIN
+                    SELECT RAISE(ABORT, 'report generation input is immutable');
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_report_generation_input_no_delete
+                BEFORE DELETE ON report_generation_inputs
+                BEGIN
+                    SELECT RAISE(ABORT, 'report generation input is never deleted');
+                END;
                 """
             )
 
@@ -202,6 +251,80 @@ class ReportRepository:
                 (ReportStatus.QUEUED.value, ReportStatus.GENERATING.value),
             ).fetchall()
         return [self._to_model(row) for row in rows]
+
+    def create_generation_input(
+        self,
+        task_id: str,
+        *,
+        requested_by: str,
+        input_schema_version: int,
+        prompt_version: str,
+        input_envelope_json: str,
+        input_hash: str,
+    ) -> ReportGenerationInput:
+        """Persist one frozen report generation admission (R2b).
+
+        The row is insert-only: identity, scope, requester, prompt version,
+        envelope bytes, and hash are frozen by trigger after admission;
+        ``status``/``report_id`` stay mutable for the R2c execution
+        lifecycle.
+        """
+        generation_id = f"rg_{uuid.uuid4().hex}"
+        created_at = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO report_generation_inputs
+                   (generation_id, task_id, scope_type, scope_id, status,
+                    requested_by, input_schema_version, prompt_version,
+                    input_envelope_json, input_hash, created_at)
+                   VALUES (?, ?, ?, ?, 'admitted', ?, ?, ?, ?, ?, ?)""",
+                (
+                    generation_id,
+                    task_id,
+                    ScopeType.TASK.value,
+                    task_id,
+                    requested_by,
+                    input_schema_version,
+                    prompt_version,
+                    input_envelope_json,
+                    input_hash,
+                    created_at,
+                ),
+            )
+        created = self.get_generation_input(generation_id)
+        if created is None:  # pragma: no cover - defensive against DB tampering
+            raise RuntimeError(
+                f"created report generation {generation_id} disappeared"
+            )
+        return created
+
+    def get_generation_input(
+        self, generation_id: str
+    ) -> ReportGenerationInput | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM report_generation_inputs "
+                "WHERE generation_id = ?",
+                (generation_id,),
+            ).fetchone()
+        return self._to_generation_model(row) if row else None
+
+    @staticmethod
+    def _to_generation_model(row: sqlite3.Row) -> ReportGenerationInput:
+        return ReportGenerationInput(
+            generation_id=row["generation_id"],
+            task_id=row["task_id"],
+            scope_type=ScopeType(row["scope_type"]),
+            scope_id=row["scope_id"],
+            status=row["status"],
+            requested_by=row["requested_by"],
+            input_schema_version=row["input_schema_version"],
+            prompt_version=row["prompt_version"],
+            input_envelope_json=row["input_envelope_json"],
+            input_hash=row["input_hash"],
+            report_id=row["report_id"],
+            created_at=row["created_at"],
+        )
 
     @staticmethod
     def _to_model(row: sqlite3.Row) -> ReportVersion:

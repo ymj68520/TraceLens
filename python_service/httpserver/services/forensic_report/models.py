@@ -2,9 +2,17 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterator, Protocol, Sequence
+from typing import Any, Iterator, Literal, Protocol, Sequence
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from ..investigation.models import (
+    AnalysisGroundingStatus,
+    ClaimGroundingStatus,
+    ClaimType,
+    ReportEvidenceStatus,
+    SnapshotPayload,
+)
 
 
 class ScopeType(str, Enum):
@@ -220,3 +228,169 @@ class SearchHit(BaseModel):
     platform: str | None = None
     category_id: str | None = None
     page: int | None = None
+
+
+# ---------------------------------------------------------------------------
+# Frozen Report Generation Input (Phase R2b)
+# ---------------------------------------------------------------------------
+
+
+class EnvelopeSnapshotV1(BaseModel):
+    """Exact immutable Evidence Snapshot projection inside the envelope.
+
+    Only canonical persisted snapshot fields: no surrogate ids, no source
+    store paths, no runtime metadata. ``payload`` is the frozen capture-time
+    projection itself (C4), never a re-read of files.db.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    task_id: str
+    evidence_key: str
+    evidence_type: Literal["file", "cluster"]
+    captured_at: int
+    payload: SnapshotPayload
+
+
+class EnvelopeClaimV1(BaseModel):
+    """One persisted Claim of the bound analysis, with exact historical refs.
+
+    ``evidence_refs`` keeps the claim's full persisted provenance (it may
+    reference evidence outside the report set); those keys are claim
+    provenance only and never become citation candidates by themselves.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    claim_id: str
+    claim_index: int
+    claim_type: ClaimType
+    claim_text: str
+    grounding_status: ClaimGroundingStatus
+    warnings: dict[str, Any] | None = None
+    evidence_refs: tuple[str, ...] = ()
+    created_at: str
+
+
+class EnvelopeBoundAnalysisReviewV1(BaseModel):
+    """Review metadata of the frozen accepted binding (audit fields only)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    decided_by: str | None = None
+    decided_at: str | None = None
+    decision_reason: str | None = None
+
+
+class EnvelopeBoundAnalysisV1(BaseModel):
+    """The exact accepted Secondary Analysis bound to one Report Evidence."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    analysis_id: str
+    version: int
+    description: str | None = None
+    summary: str | None = None
+    model: str | None = None
+    grounding_status: AnalysisGroundingStatus | None = None
+    review: EnvelopeBoundAnalysisReviewV1
+    claims: tuple[EnvelopeClaimV1, ...] = ()
+
+
+class EnvelopeEvidenceItemV1(BaseModel):
+    """One main/appendix Report Evidence with its frozen provenance."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    evidence_key: str
+    report_status: ReportEvidenceStatus
+    snapshot: EnvelopeSnapshotV1
+    bound_analysis: EnvelopeBoundAnalysisV1 | None = None
+
+    @model_validator(mode="after")
+    def _validate_identity(self):
+        allowed = (ReportEvidenceStatus.main, ReportEvidenceStatus.appendix)
+        if self.report_status not in allowed:
+            raise ValueError("envelope report_status must be main or appendix")
+        if self.snapshot.evidence_key != self.evidence_key:
+            raise ValueError("envelope snapshot identity mismatch")
+        return self
+
+
+class ReportGenerationEnvelopeV1(BaseModel):
+    """Frozen LLM-generation input assembled from R1 Report Evidence (R2b).
+
+    Deterministic by construction and by validator: main/appendix sorted by
+    evidence_key, claims sorted by claim_id, claim refs sorted, and
+    ``allowed_report_evidence_ids`` exactly the sorted-unique main+appendix
+    keys (server-derived; clients can never supply it). Never contains
+    excluded rows, UI hints (``newer_accepted_available``), latest/current
+    selections, or runtime metadata — ``requested_by`` and audit info live
+    on the generation row, not in the LLM input.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: Literal[1] = 1
+    prompt_version: str
+    task_id: str
+    main_evidence: tuple[EnvelopeEvidenceItemV1, ...] = ()
+    appendix_evidence: tuple[EnvelopeEvidenceItemV1, ...] = ()
+    allowed_report_evidence_ids: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_determinism(self):
+        items = (*self.main_evidence, *self.appendix_evidence)
+        for name, keys in (
+            ("main_evidence", [i.evidence_key for i in self.main_evidence]),
+            ("appendix_evidence", [i.evidence_key for i in self.appendix_evidence]),
+        ):
+            if keys != sorted(keys):
+                raise ValueError(f"{name} must be sorted by evidence_key")
+            if len(set(keys)) != len(keys):
+                raise ValueError(f"{name} contains a duplicate evidence_key")
+        if list(self.allowed_report_evidence_ids) != sorted(set(self.allowed_report_evidence_ids)):
+            raise ValueError("allowed_report_evidence_ids must be sorted and unique")
+        if set(self.allowed_report_evidence_ids) != {i.evidence_key for i in items}:
+            raise ValueError(
+                "allowed_report_evidence_ids must equal the main+appendix keys"
+            )
+        for item in items:
+            if item.snapshot.task_id != self.task_id:
+                raise ValueError("envelope snapshot task mismatch")
+            bound = item.bound_analysis
+            if bound is None:
+                continue
+            claim_ids = [claim.claim_id for claim in bound.claims]
+            if claim_ids != sorted(claim_ids):
+                raise ValueError("claims must be sorted by claim_id")
+            for claim in bound.claims:
+                if list(claim.evidence_refs) != sorted(claim.evidence_refs):
+                    raise ValueError("claim evidence_refs must be sorted")
+        return self
+
+
+class ReportGenerationInput(BaseModel):
+    """One persisted frozen generation admission row (read model).
+
+    ``status`` starts ``admitted`` and stays mutable only for the future R2c
+    execution lifecycle; identity, scope, requester, prompt version,
+    envelope bytes, and hash are frozen at the DB level after admission.
+    ``report_id`` is the future link to the published report version and is
+    deliberately outside the frozen set.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    generation_id: str
+    task_id: str
+    scope_type: ScopeType
+    scope_id: str
+    status: str
+    requested_by: str
+    input_schema_version: int
+    prompt_version: str
+    input_envelope_json: str
+    input_hash: str
+    report_id: str | None = None
+    created_at: str
