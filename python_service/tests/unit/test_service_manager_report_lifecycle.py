@@ -55,6 +55,25 @@ class LifecycleService:
         await self.shutdown()
 
 
+class SilentLifecycleService:
+    """Fake executor: records calls but never touches the shared event log.
+
+    Used for the report generation executor so the manager lifecycle tests
+    stay hermetic (no real durable DDL / disk IO) and their order-sensitive
+    event assertions remain untouched.
+    """
+
+    def __init__(self):
+        self.initialize_calls = 0
+        self.shutdown_calls = 0
+
+    async def initialize(self):
+        self.initialize_calls += 1
+
+    async def shutdown(self):
+        self.shutdown_calls += 1
+
+
 @contextmanager
 def _patched_services(
     manager: ServiceManager,
@@ -65,6 +84,7 @@ def _patched_services(
     llm: LifecycleService | None = None,
     ingestion: LifecycleService | None = None,
     migration: LifecycleService | None = None,
+    generation_executor: SilentLifecycleService | None = None,
 ):
     events = backend.events
     graphiti = graphiti or LifecycleService("graphiti", events)
@@ -108,6 +128,15 @@ def _patched_services(
                 create=True,
             )
         )
+        generation_executor = generation_executor or SilentLifecycleService()
+        stack.enter_context(
+            patch.object(
+                manager,
+                "_create_report_generation_executor",
+                return_value=generation_executor,
+                create=True,
+            )
+        )
         yield SimpleNamespace(
             cpp_type=cpp_type,
             report_factory=report_factory,
@@ -115,6 +144,7 @@ def _patched_services(
             llm=llm,
             ingestion=ingestion,
             migration=migration,
+            generation_executor=generation_executor,
         )
 
 

@@ -56,7 +56,10 @@ class ReportRepository:
                 -- Phase R2b: additive frozen generation admission companion.
                 -- Insert-only rows; the trigger freezes identity/scope/
                 -- requester/prompt version/envelope bytes/hash after
-                -- admission, leaving status/report_id for the R2c lifecycle.
+                -- admission, leaving the execution lifecycle columns free.
+                -- Phase R2c adds the execution columns inline (legacy R2b
+                -- stores get them via ALTER below) plus the state-machine
+                -- triggers created after the column migration.
                 CREATE TABLE IF NOT EXISTS report_generation_inputs (
                     generation_id TEXT PRIMARY KEY,
                     task_id TEXT NOT NULL,
@@ -69,7 +72,14 @@ class ReportRepository:
                     input_envelope_json TEXT NOT NULL,
                     input_hash TEXT NOT NULL,
                     report_id TEXT,
+                    produced_version INTEGER,
+                    model TEXT,
                     created_at TEXT NOT NULL,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    failed_at TEXT,
+                    error_code TEXT,
+                    error_message TEXT,
                     CHECK (scope_type = 'task' AND scope_id = task_id)
                 );
                 CREATE INDEX IF NOT EXISTS idx_report_generation_task
@@ -97,6 +107,87 @@ class ReportRepository:
                 END;
                 """
             )
+            self._add_generation_execution_columns(conn)
+            conn.executescript(
+                """
+                -- R2c state machine: admitted(=queued) -> running ->
+                -- completed | failed, plus admitted -> failed for
+                -- scheduling/restart. Terminal rows are immutable.
+                CREATE TRIGGER IF NOT EXISTS trg_report_generation_status_transition
+                BEFORE UPDATE OF status ON report_generation_inputs
+                FOR EACH ROW
+                WHEN NOT (
+                    (OLD.status = 'admitted' AND NEW.status IN ('running', 'failed'))
+                    OR (OLD.status = 'running' AND NEW.status IN ('completed', 'failed'))
+                    OR OLD.status = NEW.status
+                )
+                BEGIN
+                    SELECT RAISE(ABORT, 'invalid report generation status transition');
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_report_generation_completed_invariants
+                BEFORE UPDATE OF status ON report_generation_inputs
+                FOR EACH ROW
+                WHEN NEW.status = 'completed' AND (
+                    NEW.report_id IS NULL OR NEW.produced_version IS NULL
+                    OR NEW.model IS NULL OR NEW.completed_at IS NULL
+                )
+                BEGIN
+                    SELECT RAISE(ABORT, 'completed report generation requires its published version');
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_report_generation_failed_invariants
+                BEFORE UPDATE OF status ON report_generation_inputs
+                FOR EACH ROW
+                WHEN NEW.status = 'failed' AND (
+                    NEW.report_id IS NOT NULL OR NEW.produced_version IS NOT NULL
+                    OR NEW.failed_at IS NULL
+                )
+                BEGIN
+                    SELECT RAISE(ABORT, 'failed report generation must not reference a published version');
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_report_generation_terminal_immutable
+                BEFORE UPDATE ON report_generation_inputs
+                FOR EACH ROW
+                WHEN OLD.status IN ('completed', 'failed') AND (
+                    NEW.status IS NOT OLD.status
+                    OR NEW.started_at IS NOT OLD.started_at
+                    OR NEW.completed_at IS NOT OLD.completed_at
+                    OR NEW.failed_at IS NOT OLD.failed_at
+                    OR NEW.model IS NOT OLD.model
+                    OR NEW.produced_version IS NOT OLD.produced_version
+                    OR NEW.report_id IS NOT OLD.report_id
+                    OR NEW.error_code IS NOT OLD.error_code
+                    OR NEW.error_message IS NOT OLD.error_message
+                )
+                BEGIN
+                    SELECT RAISE(ABORT, 'terminal report generation is immutable');
+                END;
+                """
+            )
+
+    _GENERATION_EXECUTION_COLUMNS: tuple[tuple[str, str], ...] = (
+        ("report_id", "TEXT"),
+        ("produced_version", "INTEGER"),
+        ("model", "TEXT"),
+        ("started_at", "TEXT"),
+        ("completed_at", "TEXT"),
+        ("failed_at", "TEXT"),
+        ("error_code", "TEXT"),
+        ("error_message", "TEXT"),
+    )
+
+    def _add_generation_execution_columns(self, conn: sqlite3.Connection) -> None:
+        """Additive migration for R2b-era stores (all columns nullable)."""
+        existing = {
+            row[1] for row in conn.execute(
+                "PRAGMA table_info(report_generation_inputs)"
+            )
+        }
+        for name, decl in self._GENERATION_EXECUTION_COLUMNS:
+            if name not in existing:
+                conn.execute(
+                    f"ALTER TABLE report_generation_inputs "
+                    f"ADD COLUMN {name} {decl}"
+                )
 
     def create_version(
         self,
@@ -309,6 +400,141 @@ class ReportRepository:
             ).fetchone()
         return self._to_generation_model(row) if row else None
 
+    def claim_generation(self, generation_id: str) -> ReportGenerationInput | None:
+        """Atomically admit -> running for exactly one worker.
+
+        The concurrent loser gets ``None`` and must do nothing: no LLM call,
+        no failure write that could clobber the winner.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            cursor = conn.execute(
+                "UPDATE report_generation_inputs "
+                "SET status = 'running', started_at = ? "
+                "WHERE generation_id = ? AND status = 'admitted'",
+                (now, generation_id),
+            )
+            if cursor.rowcount == 0:
+                conn.rollback()
+                return None
+            conn.commit()
+        return self.get_generation_input(generation_id)
+
+    def fail_generation(
+        self,
+        generation_id: str,
+        *,
+        error_code: str,
+        error_message: str,
+        model: str | None = None,
+    ) -> ReportGenerationInput | None:
+        """Terminalize a non-terminal generation (audit columns only).
+
+        ``None`` means the row is already terminal -- the caller must not
+        interpret it as a failure to record. ``model`` is kept as execution
+        audit metadata when already known (LLM answered, parse failed).
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            cursor = conn.execute(
+                "UPDATE report_generation_inputs "
+                "SET status = 'failed', failed_at = ?, error_code = ?, "
+                "error_message = ?, model = COALESCE(?, model) "
+                "WHERE generation_id = ? AND status IN ('admitted', 'running')",
+                (now, error_code, error_message, model, generation_id),
+            )
+            if cursor.rowcount == 0:
+                conn.rollback()
+                return None
+            conn.commit()
+        return self.get_generation_input(generation_id)
+
+    def complete_generation_publication(
+        self,
+        generation_id: str,
+        *,
+        report_id: str,
+        title: str,
+        manifest_path: str,
+        model: str,
+    ) -> ReportGenerationInput:
+        """Atomically allocate the report version and complete the generation.
+
+        Runs AFTER the snapshot directory has been published (os.replace):
+        version allocation, the ready ``report_versions`` row, and the
+        completed generation linkage commit in ONE transaction, so a version
+        is only ever visible together with its published manifest, and a
+        crash between publish and commit leaves at most an invisible orphan
+        directory that restart recovery fails closed.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            generation_row = conn.execute(
+                "SELECT task_id FROM report_generation_inputs "
+                "WHERE generation_id = ?",
+                (generation_id,),
+            ).fetchone()
+            if generation_row is None:
+                conn.rollback()
+                raise KeyError(generation_id)
+            task_id = generation_row["task_id"]
+            version_row = conn.execute(
+                "SELECT COALESCE(MAX(version), 0) + 1 AS next_version "
+                "FROM report_versions WHERE scope_type = ? AND scope_id = ?",
+                (ScopeType.TASK.value, task_id),
+            ).fetchone()
+            version = int(version_row["next_version"])
+            conn.execute(
+                """INSERT INTO report_versions
+                   (report_id, version, scope_type, scope_id, status, title,
+                    task_ids_json, stage, progress, generated_at,
+                    manifest_path, warnings_json, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', 100, ?, ?, '[]', ?)""",
+                (
+                    report_id,
+                    version,
+                    ScopeType.TASK.value,
+                    task_id,
+                    ReportStatus.READY.value,
+                    title,
+                    json.dumps([task_id]),
+                    now,
+                    manifest_path,
+                    now,
+                ),
+            )
+            cursor = conn.execute(
+                "UPDATE report_generation_inputs "
+                "SET status = 'completed', completed_at = ?, report_id = ?, "
+                "produced_version = ?, model = ? "
+                "WHERE generation_id = ? AND status = 'running'",
+                (now, report_id, version, model, generation_id),
+            )
+            if cursor.rowcount == 0:
+                conn.rollback()
+                raise RuntimeError(
+                    "report generation is not in the running state"
+                )
+            conn.commit()
+        completed = self.get_generation_input(generation_id)
+        if completed is None:  # pragma: no cover - defensive against tampering
+            raise RuntimeError(
+                f"completed report generation {generation_id} disappeared"
+            )
+        return completed
+
+    def list_stale_generations(self) -> list[ReportGenerationInput]:
+        """Non-terminal generations (restart/shutdown recovery input)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM report_generation_inputs "
+                "WHERE status IN ('admitted', 'running') ORDER BY created_at"
+            ).fetchall()
+        return [self._to_generation_model(row) for row in rows]
+
     @staticmethod
     def _to_generation_model(row: sqlite3.Row) -> ReportGenerationInput:
         return ReportGenerationInput(
@@ -323,7 +549,14 @@ class ReportRepository:
             input_envelope_json=row["input_envelope_json"],
             input_hash=row["input_hash"],
             report_id=row["report_id"],
+            produced_version=row["produced_version"],
+            model=row["model"],
             created_at=row["created_at"],
+            started_at=row["started_at"],
+            completed_at=row["completed_at"],
+            failed_at=row["failed_at"],
+            error_code=row["error_code"],
+            error_message=row["error_message"],
         )
 
     @staticmethod

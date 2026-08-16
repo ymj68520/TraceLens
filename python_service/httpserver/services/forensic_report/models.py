@@ -373,11 +373,12 @@ class ReportGenerationEnvelopeV1(BaseModel):
 class ReportGenerationInput(BaseModel):
     """One persisted frozen generation admission row (read model).
 
-    ``status`` starts ``admitted`` and stays mutable only for the future R2c
-    execution lifecycle; identity, scope, requester, prompt version,
-    envelope bytes, and hash are frozen at the DB level after admission.
-    ``report_id`` is the future link to the published report version and is
-    deliberately outside the frozen set.
+    ``status`` starts ``admitted`` (R2b naming; it is the queued state) and
+    moves ``admitted -> running -> completed | failed`` under the R2c
+    executor; identity, scope, requester, prompt version, envelope bytes,
+    and hash are frozen at the DB level after admission. ``report_id`` /
+    ``produced_version`` link the published report version and are set only
+    by the successful publication transaction.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -393,4 +394,119 @@ class ReportGenerationInput(BaseModel):
     input_envelope_json: str
     input_hash: str
     report_id: str | None = None
+    produced_version: int | None = None
+    model: str | None = None
     created_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    failed_at: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Structured report output & citation manifest (Phase R2c)
+# ---------------------------------------------------------------------------
+
+
+class StructuredReportCitation(BaseModel):
+    """One machine-readable exact citation emitted by the LLM."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    citation_id: str = Field(min_length=1, max_length=256)
+    evidence_key: str = Field(min_length=1, max_length=4096)
+    analysis_id: str | None = Field(default=None, min_length=1, max_length=128)
+    claim_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class StructuredReportSection(BaseModel):
+    """One narrative section with its exact citation references."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    heading: str = Field(min_length=1, max_length=500)
+    content: str = Field(min_length=1, max_length=100_000)
+    citation_ids: tuple[str, ...] = ()
+
+
+class StructuredReportResponse(BaseModel):
+    """Strict structured LLM output for report generation (R2c).
+
+    Free-form Markdown is rejected: the report is born as this structure and
+    any rendering happens deterministically server-side later.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    title: str = Field(min_length=1, max_length=500)
+    sections: tuple[StructuredReportSection, ...] = Field(min_length=1)
+    citations: tuple[StructuredReportCitation, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_citation_references(self):
+        ids = [citation.citation_id for citation in self.citations]
+        if len(set(ids)) != len(ids):
+            raise ValueError("duplicate citation_id in report output")
+        known = set(ids)
+        for section in self.sections:
+            unknown = [cid for cid in section.citation_ids if cid not in known]
+            if unknown:
+                raise ValueError("section references an unknown citation_id")
+        return self
+
+
+class CitationManifestEntry(BaseModel):
+    """One immutable manifest entry persisted with a published report.
+
+    Exact persisted identity only (citation -> evidence -> optional frozen
+    analysis/claim), plus the frozen provenance metadata copied from the
+    admitted envelope so the Viewer never re-derives citation provenance.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    citation_id: str
+    evidence_key: str
+    analysis_id: str | None = None
+    claim_id: str | None = None
+    evidence_captured_at: int | None = None
+    analysis_version: int | None = None
+    claim_type: ClaimType | None = None
+
+
+class GenerationReportManifest(BaseModel):
+    """The published artifact of one successful LLM generation (R2c).
+
+    The narrative body, the citation manifest, and the generation linkage
+    are ONE canonical JSON file, so a published report version can never
+    expose a body without its manifest. The report ``version`` is
+    intentionally absent: version identity is owned by the
+    ``report_versions`` row allocated in the publication transaction.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: str = "1.0"
+    report_kind: Literal["llm_generation"] = "llm_generation"
+    report_id: str
+    scope_type: ScopeType
+    scope_id: str
+    task_id: str
+    generation_id: str
+    title: str
+    prompt_version: str
+    input_hash: str
+    model: str
+    generated_at: str
+    sections: tuple[StructuredReportSection, ...]
+    citations: tuple[CitationManifestEntry, ...]
+
+
+class ReportGenerationStatus(BaseModel):
+    """Generation row plus the published manifest (completed reads only)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    generation: ReportGenerationInput
+    report: dict[str, Any] | None = None

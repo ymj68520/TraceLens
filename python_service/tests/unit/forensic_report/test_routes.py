@@ -343,6 +343,8 @@ def test_application_registration_exposes_report_routes_and_preserves_legacy_rou
         ("/api/reports/evidence", "post"),
         ("/api/reports/evidence", "get"),
         ("/api/reports/evidence", "put"),
+        ("/api/reports/generate", "post"),
+        ("/api/reports/generations/{generation_id}", "get"),
         ("/api/reports/{report_id}/status", "get"),
         ("/api/reports/{report_id}/manifest", "get"),
         ("/api/reports/{report_id}/categories/{category_id}/pages/{page}", "get"),

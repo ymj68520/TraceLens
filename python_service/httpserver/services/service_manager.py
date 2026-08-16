@@ -54,11 +54,13 @@ class ServiceManager:
         self._investigation_read_service = None
         self._report_evidence_service = None
         self._report_generation_service = None
+        self._report_generation_executor = None
         self._secondary_analysis_executor = None
         self._event_refresh_executor = None
         self._initialized = False
         self._cpp_backend_ready = False
         self._forensic_report_ready = False
+        self._report_generation_ready = False
         self._secondary_analysis_ready = False
         self._event_refresh_ready = False
         self._lifecycle_state = "new"
@@ -177,6 +179,23 @@ class ServiceManager:
                     f"EventRefreshExecutor initialization failed: {error}"
                 )
 
+            # Initialize Report Generation Executor (after forensic report
+            # service + LLM). LLM may be None: recovery must still run and
+            # real submissions fail durably with llm_unavailable. The
+            # factory does durable DDL (mkdir + schema + triggers), so it
+            # runs off the event loop.
+            try:
+                executor = await asyncio.to_thread(
+                    self._create_report_generation_executor
+                )
+                await executor.initialize()  # restart recovery
+                self._report_generation_executor = executor
+                self._report_generation_ready = True
+            except Exception as error:
+                logger.warning(
+                    f"ReportGenerationExecutor initialization failed: {error}"
+                )
+
         # Initialize IngestionJobManager
         try:
             from .ingestion_job_manager import IngestionJobManager
@@ -213,6 +232,7 @@ class ServiceManager:
             (self._migration_manager, "close"),
             (self._ingestion_job_manager, "shutdown"),
             (self._event_refresh_executor, "shutdown"),
+            (self._report_generation_executor, "shutdown"),
             (self._secondary_analysis_executor, "shutdown"),
             (self._llm_service, "shutdown"),
             (self._graphiti_service, "shutdown"),
@@ -297,6 +317,7 @@ class ServiceManager:
     def _service_cleanup_plan(self) -> tuple[tuple[object | None, str], ...]:
         return (
             (self._event_refresh_executor, "shutdown"),
+            (self._report_generation_executor, "shutdown"),
             (self._secondary_analysis_executor, "shutdown"),
             (self._forensic_report_service, "shutdown"),
             (self._cpp_backend, "shutdown"),
@@ -316,6 +337,7 @@ class ServiceManager:
         self._report_evidence_service = None
         self._report_generation_service = None
         self._event_refresh_executor = None
+        self._report_generation_executor = None
         self._secondary_analysis_executor = None
         self._cpp_backend = None
         self._graphiti_service = None
@@ -324,6 +346,7 @@ class ServiceManager:
         self._migration_manager = None
         self._cpp_backend_ready = False
         self._forensic_report_ready = False
+        self._report_generation_ready = False
         self._secondary_analysis_ready = False
         self._event_refresh_ready = False
 
@@ -517,17 +540,43 @@ class ServiceManager:
 
     @property
     def report_generation_service(self):
-        """Get the frozen report generation admission service (Phase R2b).
-
-        R2b wires the service only -- no public route exists until the R2c
-        executor can actually run admitted generations.
-        """
+        """Get the frozen report generation admission service (Phase R2b)."""
         self._require_service_access()
         if self._report_generation_service is None:
             self._report_generation_service = (
                 self._create_report_generation_service()
             )
         return self._report_generation_service
+
+    def _create_report_generation_executor(self):
+        from pathlib import Path
+
+        from .forensic_report.generation_execution import ReportGenerationExecutor
+        from .forensic_report.generation_writer import GenerationReportWriter
+        from .forensic_report.repository import ReportRepository
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        root = Path(self.settings.report_output_dir)
+        if not root.is_absolute():
+            from ..config import get_project_root
+
+            root = get_project_root() / root
+        # LLM may be None (tolerated): recovery still runs; real submissions
+        # fail durably with llm_unavailable.
+        return ReportGenerationExecutor(
+            repository=ReportRepository(root / "reports.db"),
+            writer=GenerationReportWriter(root),
+            llm_service=self._llm_service,
+        )
+
+    @property
+    def report_generation_executor(self):
+        """Get the report generation executor (Phase R2c)."""
+        self._require_service_access()
+        if self._report_generation_executor is None or not self._report_generation_ready:
+            raise RuntimeError("Report generation executor is unavailable")
+        return self._report_generation_executor
 
     def _create_event_refresh_executor(self):
         from .investigation.event_refresh_execution import EventRefreshExecutor
