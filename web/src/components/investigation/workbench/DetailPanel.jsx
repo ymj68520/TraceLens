@@ -1,6 +1,7 @@
 // DetailPanel.jsx
 // Workbench 右栏：Analysis Workspace。按当前 primary selection 渲染：
-//   event    → 当前 narrative / 版本历史 / refresh 状态
+//   event    → 当前 narrative / 版本历史 / refresh 状态 + C9c 的
+//              Add Evidence / Refresh Event Narrative 动作
 //   evidence → Snapshot Initial Analysis（唯一来源，不回读 files.db）+ Analysis 版本
 //              + C9b 的 Run Secondary Analysis 动作
 //   analysis → exact analysis 的 description/summary/Claims + 分区展示的
@@ -13,6 +14,8 @@ import Badge from '../../common/Badge';
 import Spinner from '../../common/Spinner';
 import SubmitAnalysisForm from './SubmitAnalysisForm';
 import ReviewDecisionForm from './ReviewDecisionForm';
+import LinkEvidenceForm from './LinkEvidenceForm';
+import RefreshNarrativeForm from './RefreshNarrativeForm';
 import { useTranslation } from '../../../hooks/useTranslation';
 
 const Row = ({ label, value, mono = false, breakAll = false }) => (
@@ -35,8 +38,9 @@ const Section = ({ title, children, action }) => (
 );
 
 const statusVariant = (status) => {
-    if (status === 'accepted') return 'green';
-    if (status === 'review_pending') return 'yellow';
+    if (status === 'accepted' || status === 'completed') return 'green';
+    if (status === 'review_pending' || status === 'queued') return 'yellow';
+    if (status === 'running') return 'blue';
     if (status === 'rejected' || status === 'invalid' || status === 'failed') return 'red';
     return 'gray';
 };
@@ -72,7 +76,14 @@ const formatTime = (iso) => {
     return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 };
 
-const EventDetail = ({ bundle, onSelectEvidence }) => {
+const EventDetail = ({
+    bundle,
+    onSelectEvidence,
+    evidenceOptions = [],
+    onLinkEvidence,
+    refreshBusy = false,
+    onStartRefresh,
+}) => {
     const { t } = useTranslation();
     const { event, versions = [], links = [], refreshes = [] } = bundle || {};
     if (!event) return null;
@@ -108,21 +119,60 @@ const EventDetail = ({ bundle, onSelectEvidence }) => {
                 ))}
             </Section>
 
+            {/* §8：clean / dirty 都允许显式 refresh（C7c R8），只换提示文案。 */}
+            <RefreshNarrativeForm
+                eventId={event.event_id}
+                needsRefresh={Boolean(event.needs_refresh)}
+                busy={refreshBusy}
+                onStartRefresh={onStartRefresh}
+            />
+
+            {/* §15：轻量 refresh 历史——不展示 envelope/snapshot/prompt 全文。 */}
             <Section title={t('investigation_workbench.event_refreshes')}>
                 {refreshes.length === 0 ? (
                     <p className="text-[11px] text-slate-400">{t('investigation_workbench.no_refreshes')}</p>
                 ) : refreshes.map((refresh) => (
-                    <div key={refresh.refresh_id} className="py-1 border-t border-slate-200/40 dark:border-slate-700/30 first:border-0">
+                    <div
+                        key={refresh.refresh_id}
+                        data-testid={`refresh-item-${refresh.refresh_id}`}
+                        className="py-1 border-t border-slate-200/40 dark:border-slate-700/30 first:border-0"
+                    >
                         <div className="flex items-center justify-between gap-2">
                             <span className="text-[11px] font-mono text-slate-600 dark:text-slate-300 truncate">
                                 {refresh.refresh_id}
                             </span>
                             <Badge variant={statusVariant(refresh.status)} size="sm">{refresh.status}</Badge>
                         </div>
+                        <Row label={t('investigation_workbench.requested_by')} value={refresh.requested_by} />
+                        <Row label={t('investigation_workbench.base_version_label')} value={`v${refresh.base_version}`} />
                         {refresh.produced_version !== null && refresh.produced_version !== undefined && (
                             <Row label={t('investigation_workbench.produced_version')} value={`v${refresh.produced_version}`} />
                         )}
-                        {refresh.error_code && <Row label="error" value={refresh.error_code} mono />}
+                        {refresh.model && <Row label={t('investigation_workbench.model_label')} value={refresh.model} mono />}
+                        <Row label={t('investigation_workbench.event_created_at')} value={formatTime(refresh.created_at)} />
+                        <Row label={t('investigation_workbench.started_at_label')} value={formatTime(refresh.started_at)} />
+                        {(refresh.status === 'completed' || refresh.completed_at) && (
+                            <Row label={t('investigation_workbench.completed_at_label')} value={formatTime(refresh.completed_at)} />
+                        )}
+                        {(refresh.status === 'failed' || refresh.failed_at) && (
+                            <Row label={t('investigation_workbench.failed_at_label')} value={formatTime(refresh.failed_at)} />
+                        )}
+                        {refresh.status === 'failed' && (
+                            <>
+                                <Row label="error_code" value={refresh.error_code} mono />
+                                <Row label="error_message" value={refresh.error_message} breakAll />
+                                {refresh.error_code === 'base_version_changed' ? (
+                                    // §18：fail-closed 并发保护，不是系统故障。
+                                    <p className="mt-1 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                                        {t('investigation_workbench.base_version_changed_note')}
+                                    </p>
+                                ) : (
+                                    <p className="mt-1 text-[10px] text-slate-400">
+                                        {t('investigation_workbench.failure_no_retry')}
+                                    </p>
+                                )}
+                            </>
+                        )}
                     </div>
                 ))}
             </Section>
@@ -147,6 +197,14 @@ const EventDetail = ({ bundle, onSelectEvidence }) => {
                     </button>
                 ))}
             </Section>
+
+            {/* §3/§4/§5：append-only 显式 link；候选排除已链接 key，无自由输入。 */}
+            <LinkEvidenceForm
+                eventId={event.event_id}
+                linkedKeys={links.map((link) => link.evidence_key)}
+                evidenceOptions={evidenceOptions}
+                onLinkEvidence={onLinkEvidence}
+            />
         </div>
     );
 };
@@ -452,6 +510,9 @@ const DetailPanel = ({
     submitBusy = false,
     onSubmitAnalysis,
     onSubmitReview,
+    onLinkEvidence,
+    refreshBusy = false,
+    onStartRefresh,
 }) => {
     const { t } = useTranslation();
 
@@ -484,7 +545,16 @@ const DetailPanel = ({
             </div>
         );
     } else if (selection.type === 'event') {
-        content = <EventDetail bundle={eventBundle} onSelectEvidence={onSelectEvidence} />;
+        content = (
+            <EventDetail
+                bundle={eventBundle}
+                onSelectEvidence={onSelectEvidence}
+                evidenceOptions={evidenceOptions}
+                onLinkEvidence={onLinkEvidence}
+                refreshBusy={refreshBusy}
+                onStartRefresh={onStartRefresh}
+            />
+        );
     } else if (selection.type === 'evidence') {
         content = (
             <EvidenceDetail

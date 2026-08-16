@@ -21,6 +21,9 @@ vi.mock('../services/investigationService', () => ({
   listInvestigationEventVersions: vi.fn(),
   listInvestigationEventEvidence: vi.fn(),
   listInvestigationEventRefreshes: vi.fn(),
+  createInvestigationEvent: vi.fn(),
+  linkInvestigationEventEvidence: vi.fn(),
+  startInvestigationEventRefresh: vi.fn(),
 }));
 
 vi.mock('../hooks/useTranslation', () => ({
@@ -143,6 +146,20 @@ function stubService(overrides = {}) {
     listInvestigationEventVersions: versions.versions,
     listInvestigationEventEvidence: versions.links,
     listInvestigationEventRefreshes: versions.refreshes,
+    createInvestigationEvent: {
+      event_id: 'ie_new', task_id: 't1', needs_refresh: false, current_version: 1,
+      title: 'New event', summary: 'fresh v1 narrative',
+      created_at: '2026-08-16T00:00:00+00:00', updated_at: '2026-08-16T00:00:00+00:00',
+    },
+    linkInvestigationEventEvidence: {
+      task_id: 't1', event_id: EVENT_ID, evidence_key: KEY_B,
+      linked_at: '2026-08-16T00:00:00+00:00', linked_by: 'analyst-1',
+    },
+    startInvestigationEventRefresh: {
+      refresh_id: 'er_new', task_id: 't1', event_id: EVENT_ID,
+      base_version: 3, status: 'queued', requested_by: 'analyst-1',
+      created_at: '2026-08-16T00:00:00+00:00',
+    },
     getInvestigationGraph: graphResponse(),
     ...overrides,
   };
@@ -575,5 +592,368 @@ describe('Investigation Workbench analysis actions (C9b)', () => {
     expect(within(detail).getByText('frozen note')).toBeInTheDocument();
     expect(within(detail).getByText('frozen context')).toBeInTheDocument();
     expect(within(detail).getByText(KEY_B)).toBeInTheDocument();
+  });
+});
+
+describe('Investigation Workbench event actions (C9c)', () => {
+  const NEW_EVENT_ID = 'ie_new';
+  const NEW_REFRESH_ID = 'er_new';
+  const EVENT_2_ID = 'ie_222';
+  const TS = '2026-08-16T00:00:00+00:00';
+
+  beforeEach(() => {
+    ForceGraph2D.mockClear();
+    stubService();
+  });
+
+  async function openEvent(eventId = EVENT_ID) {
+    renderPage();
+    await screen.findByTestId(`event-item-${eventId}`);
+    act(() => screen.getByTestId(`event-item-${eventId}`).click());
+    return screen.findByTestId('event-detail');
+  }
+
+  // 轮询 history 与 eventBundle 共用同一个 GET：mutable 行对象随步骤推进。
+  function stubEventState(initial) {
+    const state = { ...initial };
+    service.listInvestigationEvents.mockImplementation(async () => [{ ...state }]);
+    service.getInvestigationEvent.mockImplementation(async () => ({ ...state }));
+    return state;
+  }
+
+  test('creates an event with exactly the backend contract fields and selects it from a reload', async () => {
+    // 新事件从 exact GET 读取（不插入本地临时 row）
+    service.getInvestigationEvent.mockImplementation(
+      async (taskId, eventId) => (eventId === NEW_EVENT_ID
+        ? { event_id: NEW_EVENT_ID, task_id: 't1', needs_refresh: false, current_version: 1, title: 'USB exfil', summary: 'suspected exfiltration', created_at: TS, updated_at: TS }
+        : eventBundleResponses().event),
+    );
+    renderPage();
+    act(() => screen.getByTestId('new-event-toggle').click());
+
+    await userEvent.type(screen.getByTestId('event-title-input'), 'USB exfil');
+    await userEvent.type(screen.getByTestId('event-summary-input'), 'suspected exfiltration');
+    await userEvent.type(screen.getByTestId('event-created-by-input'), 'analyst-1');
+    await userEvent.click(screen.getByTestId('create-event-button'));
+
+    await waitFor(() => expect(service.createInvestigationEvent).toHaveBeenCalledTimes(1));
+    expect(service.createInvestigationEvent).toHaveBeenCalledWith('t1', {
+      title: 'USB exfil',
+      summary: 'suspected exfiltration',
+      createdBy: 'analyst-1',
+    });
+    // Event list 重新读取；selection 切到 exact new event_id
+    await waitFor(() => expect(service.listInvestigationEvents.mock.calls.length).toBeGreaterThanOrEqual(2));
+    const detail = await screen.findByTestId('event-detail');
+    expect(within(detail).getByText('USB exfil')).toBeInTheDocument();
+    expect(service.getInvestigationEvent).toHaveBeenCalledWith('t1', NEW_EVENT_ID);
+  });
+
+  test('rapid double click on create posts exactly once', async () => {
+    renderPage();
+    act(() => screen.getByTestId('new-event-toggle').click());
+    await userEvent.type(screen.getByTestId('event-title-input'), 'dup');
+    await userEvent.type(screen.getByTestId('event-created-by-input'), 'analyst-1');
+    fireEvent.click(screen.getByTestId('create-event-button'));
+    fireEvent.click(screen.getByTestId('create-event-button'));
+    await waitFor(() => expect(service.createInvestigationEvent).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(service.createInvestigationEvent).toHaveBeenCalledTimes(1);
+  });
+
+  test('create form keeps the analyst-event disclaimer, not a timeline-cluster conversion', async () => {
+    renderPage();
+    act(() => screen.getByTestId('new-event-toggle').click());
+    expect(screen.getByText('investigation_workbench.event_form_disclaimer')).toBeInTheDocument();
+  });
+
+  test('link picker only offers captured evidence that is not already linked', async () => {
+    const detail = await openEvent();
+    // KEY_A 已在 fixture links 中：候选只有 KEY_B；没有自由输入
+    act(() => within(detail).getByTestId('add-evidence-toggle').click());
+    const options = within(detail).getByTestId('link-evidence-options');
+    expect(within(options).getByTestId(`link-option-${KEY_B}`)).toBeInTheDocument();
+    expect(within(options).queryByTestId(`link-option-${KEY_A}`)).not.toBeInTheDocument();
+    expect(within(detail).queryByTestId('link-evidence-free-input')).not.toBeInTheDocument();
+  });
+
+  test('linking posts the exact contract fields and reloads links/list/graph', async () => {
+    renderPage();
+    // 先在 Timeline 选中事件（切到 Graph 后 Timeline 卸载）
+    await screen.findByTestId(`event-item-${EVENT_ID}`);
+    act(() => screen.getByTestId(`event-item-${EVENT_ID}`).click());
+    const detail = await screen.findByTestId('event-detail');
+    await userEvent.click(screen.getByTestId('tab-graph'));
+    await waitFor(() => expect(service.getInvestigationGraph).toHaveBeenCalledTimes(1));
+
+    act(() => within(detail).getByTestId('add-evidence-toggle').click());
+    await userEvent.click(within(detail).getByTestId(`link-option-${KEY_B}`));
+    await userEvent.type(within(detail).getByTestId('linked-by-input'), 'analyst-7');
+    await userEvent.click(within(detail).getByTestId('link-evidence-button'));
+
+    await waitFor(() => expect(service.linkInvestigationEventEvidence).toHaveBeenCalledTimes(1));
+    expect(service.linkInvestigationEventEvidence).toHaveBeenCalledWith('t1', EVENT_ID, KEY_B, {
+      linkedBy: 'analyst-7',
+    });
+    // §6：link 成功 → event links/detail、Event list、Graph 全部重读
+    await waitFor(() => expect(service.listInvestigationEventEvidence.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(service.listInvestigationEvents.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(service.getInvestigationGraph.mock.calls.length).toBeGreaterThanOrEqual(2));
+  });
+
+  test('a 409 duplicate link shows a stable conflict message', async () => {
+    service.linkInvestigationEventEvidence.mockRejectedValue(
+      Object.assign(new Error('duplicate'), { status: 409 }),
+    );
+    const detail = await openEvent();
+    act(() => within(detail).getByTestId('add-evidence-toggle').click());
+    await userEvent.click(within(detail).getByTestId(`link-option-${KEY_B}`));
+    await userEvent.type(within(detail).getByTestId('linked-by-input'), 'analyst-7');
+    await userEvent.click(within(detail).getByTestId('link-evidence-button'));
+
+    const error = await within(detail).findByTestId('link-evidence-error');
+    expect(error.textContent).toContain('investigation_workbench.link_conflict');
+  });
+
+  test('a late link success after switching events never yanks the selection back', async () => {
+    const gate = {};
+    gate.promise = new Promise((resolve) => { gate.resolve = resolve; });
+    service.linkInvestigationEventEvidence.mockImplementation(async () => gate.promise);
+    // 两个事件：E1 fixture + E2
+    service.listInvestigationEvents.mockImplementation(async () => [
+      ...eventRows(),
+      { event_id: EVENT_2_ID, task_id: 't1', needs_refresh: false, current_version: 1, title: 'Event two', summary: null, created_at: TS, updated_at: TS },
+    ]);
+    service.getInvestigationEvent.mockImplementation(
+      async (taskId, eventId) => (eventId === EVENT_2_ID
+        ? { event_id: EVENT_2_ID, task_id: 't1', needs_refresh: false, current_version: 1, title: 'Event two', summary: null, created_at: TS, updated_at: TS }
+        : eventBundleResponses().event),
+    );
+    const detail = await openEvent();
+    act(() => within(detail).getByTestId('add-evidence-toggle').click());
+    await userEvent.click(within(detail).getByTestId(`link-option-${KEY_B}`));
+    await userEvent.type(within(detail).getByTestId('linked-by-input'), 'analyst-7');
+    await userEvent.click(within(detail).getByTestId('link-evidence-button'));
+
+    // E1 POST 未返回时用户切到 E2
+    act(() => screen.getByTestId(`event-item-${EVENT_2_ID}`).click());
+    const detailTwo = await screen.findByTestId('event-detail');
+    expect(within(detailTwo).getByText('Event two')).toBeInTheDocument();
+
+    // E1 link 此刻才成功：只失效全局数据，selection 停留在 E2
+    await act(async () => gate.resolve({ task_id: 't1', event_id: EVENT_ID, evidence_key: KEY_B, linked_at: TS, linked_by: 'analyst-7' }));
+    await waitFor(() => expect(service.listInvestigationEvents.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(within(screen.getByTestId('event-detail')).getByText('Event two')).toBeInTheDocument();
+  });
+
+  test('refresh stays available on a dirty event with the staleness hint', async () => {
+    const dirtyDetail = await openEvent(); // fixture: needs_refresh=true
+    expect(within(dirtyDetail).getByText('investigation_workbench.refresh_hint_dirty')).toBeInTheDocument();
+    await userEvent.type(within(dirtyDetail).getByTestId('requested-by-input'), 'analyst-9');
+    // needs_refresh=true 绝不禁用 refresh（只换提示文案）
+    expect(within(dirtyDetail).getByTestId('refresh-narrative-button')).not.toBeDisabled();
+    expect(within(dirtyDetail).queryByTestId('refresh-in-progress')).not.toBeInTheDocument();
+  });
+
+  test('refresh stays available on a clean event (R8: only the hint changes)', async () => {
+    stubEventState({ ...eventRows()[0], needs_refresh: false });
+    const cleanDetail = await openEvent();
+    expect(within(cleanDetail).getByText('investigation_workbench.refresh_hint_clean')).toBeInTheDocument();
+    await userEvent.type(within(cleanDetail).getByTestId('requested-by-input'), 'analyst-9');
+    // needs_refresh=0 同样允许显式 refresh（C7c R8）
+    expect(within(cleanDetail).getByTestId('refresh-narrative-button')).not.toBeDisabled();
+    expect(within(cleanDetail).queryByText('investigation_workbench.needs_refresh')).not.toBeInTheDocument();
+  });
+
+  test('refresh admission posts only task_id/requested_by and polls the exact refresh_id', async () => {
+    const state = stubEventState({ ...eventRows()[0] });
+    const erRow = {
+      refresh_id: NEW_REFRESH_ID, task_id: 't1', event_id: EVENT_ID,
+      base_version: 3, status: 'queued', requested_by: 'analyst-9', created_at: TS,
+    };
+    // gate 只扣住 admission 之后的第一次轮询，不劫持 bundle 的初始加载。
+    let admitted = false;
+    let firstPollGated = false;
+    const gate = {};
+    gate.promise = new Promise((resolve) => { gate.resolve = resolve; });
+    service.startInvestigationEventRefresh.mockImplementation(async () => {
+      admitted = true;
+      return { ...erRow };
+    });
+    service.listInvestigationEventRefreshes.mockImplementation(async () => {
+      if (admitted && !firstPollGated) {
+        firstPollGated = true;
+        return gate.promise;
+      }
+      return [...eventBundleResponses().refreshes, { ...erRow }];
+    });
+
+    const detail = await openEvent();
+    await userEvent.type(within(detail).getByTestId('requested-by-input'), 'analyst-9');
+    await userEvent.click(within(detail).getByTestId('refresh-narrative-button'));
+
+    await waitFor(() => expect(service.startInvestigationEventRefresh).toHaveBeenCalledTimes(1));
+    expect(service.startInvestigationEventRefresh).toHaveBeenCalledWith('t1', EVENT_ID, {
+      requestedBy: 'analyst-9',
+    });
+
+    // admission 不等待 LLM：首个轮询在途时按钮已进入 busy
+    await waitFor(() => expect(screen.getByTestId('refresh-in-progress')).toBeInTheDocument());
+    expect(screen.getByTestId('refresh-narrative-button')).toBeDisabled();
+
+    // 轮询看到 exact refresh_id 已 completed → terminal 处理 + 全量重读
+    Object.assign(erRow, { status: 'completed', produced_version: 4 });
+    Object.assign(state, { needs_refresh: false, current_version: 4, summary: 'narrative v4', updated_at: TS });
+    await act(async () => gate.resolve([{ ...erRow }]));
+    await waitFor(() => expect(service.getInvestigationEvent.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(service.listInvestigationEventVersions.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(service.listInvestigationEvents.mock.calls.length).toBeGreaterThanOrEqual(2));
+
+    const updated = await screen.findByTestId('event-detail');
+    await waitFor(() => expect(within(updated).getByText('narrative v4')).toBeInTheDocument());
+    expect(within(updated).getByText(NEW_REFRESH_ID)).toBeInTheDocument();
+    // §14：primary selection 仍是 Event（右栏还是 event-detail，不是 refresh 对象）
+    expect(within(updated).queryByText('investigation_workbench.needs_refresh')).not.toBeInTheDocument();
+  });
+
+  test('a failed refresh stops polling, surfaces the error, and never retries automatically', async () => {
+    stubEventState({ ...eventRows()[0] });
+    const erRow = {
+      refresh_id: NEW_REFRESH_ID, task_id: 't1', event_id: EVENT_ID,
+      base_version: 3, status: 'queued', requested_by: 'analyst-9', created_at: TS,
+    };
+    // 第一次轮询即看到 failed（queued→failed 中间态由 hook 测试覆盖）
+    service.startInvestigationEventRefresh.mockImplementation(async () => ({ ...erRow }));
+    service.listInvestigationEventRefreshes.mockImplementation(async () => [{
+      ...erRow,
+      status: 'failed', failed_at: TS,
+      error_code: 'llm_timeout', error_message: 'sanitized timeout detail',
+    }]);
+
+    const detail = await openEvent();
+    await userEvent.type(within(detail).getByTestId('requested-by-input'), 'analyst-9');
+    await userEvent.click(within(detail).getByTestId('refresh-narrative-button'));
+    await waitFor(() => expect(service.startInvestigationEventRefresh).toHaveBeenCalledTimes(1));
+
+    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await waitFor(() => expect(service.getInvestigationEvent.mock.calls.length).toBeGreaterThanOrEqual(2));
+
+    const updated = await screen.findByTestId('event-detail');
+    const historyRow = within(updated).getByTestId(`refresh-item-${NEW_REFRESH_ID}`);
+    expect(within(historyRow).getByText('llm_timeout')).toBeInTheDocument();
+    expect(within(historyRow).getByText('sanitized timeout detail')).toBeInTheDocument();
+    expect(within(historyRow).getByText('investigation_workbench.failure_no_retry')).toBeInTheDocument();
+    // 不自动重试；terminal 后按钮恢复（Refresh Again = 显式新 refresh_id）
+    expect(service.startInvestigationEventRefresh).toHaveBeenCalledTimes(1);
+    expect(within(updated).getByTestId('refresh-narrative-button')).not.toBeDisabled();
+  });
+
+  test('base_version_changed renders the neutral concurrency explanation', async () => {
+    const versions = eventBundleResponses();
+    stubService({
+      listInvestigationEventRefreshes: [
+        {
+          refresh_id: 'er_bvc', task_id: 't1', event_id: EVENT_ID, base_version: 2,
+          status: 'failed', requested_by: 'analyst-1', created_at: TS, failed_at: TS,
+          error_code: 'base_version_changed', error_message: 'base moved to v3',
+        },
+        ...versions.refreshes,
+      ],
+    });
+    const detail = await openEvent();
+    const row = within(detail).getByTestId('refresh-item-er_bvc');
+    expect(within(row).getByText('base_version_changed')).toBeInTheDocument();
+    expect(within(row).getByText('investigation_workbench.base_version_changed_note')).toBeInTheDocument();
+  });
+
+  // §26：Evidence Analysis accepted → Event dirty → 显式 refresh → 新版本 + clean
+  test('integration chain: accepted analysis marks the event dirty, refresh produces a clean new version', async () => {
+    const state = stubEventState({
+      ...eventRows()[0], needs_refresh: false, current_version: 1, summary: 'narrative v1',
+    });
+    // C9b review：accepted 后服务器把 Event 标 dirty（C7b propagation）
+    service.reviewSecondaryAnalysis.mockImplementation(async () => {
+      state.needs_refresh = true;
+      return analysisRow(ANALYSIS_ID, 2, 'accepted');
+    });
+    const pending = analysisRow(ANALYSIS_ID, 2, 'review_pending');
+    service.getInvestigationAnalysis.mockImplementation(
+      async (taskId, analysisId) => (analysisId === ANALYSIS_ID ? pending : analysisRow()),
+    );
+    service.listInvestigationAnalysisClaims.mockImplementation(
+      async (taskId, analysisId) => ({ ...claimsResponse(), analysis_id: analysisId }),
+    );
+
+    renderPage();
+    await screen.findByTestId(`evidence-item-${KEY_A}`);
+    act(() => screen.getByTestId(`evidence-item-${KEY_A}`).click());
+    const evidenceDetail = await screen.findByTestId('evidence-detail');
+    act(() => within(evidenceDetail).getByTestId(`analysis-item-${ANALYSIS_ID}`).click());
+    await screen.findByTestId('analysis-detail');
+    const form = screen.getByTestId('review-decision-form');
+    await userEvent.click(within(form).getByTestId('review-decision-accepted'));
+    await userEvent.type(within(form).getByTestId('reviewer-input'), 'analyst-9');
+    await userEvent.click(within(form).getByTestId('submit-review-button'));
+    await waitFor(() => expect(service.reviewSecondaryAnalysis).toHaveBeenCalledTimes(1));
+
+    // Event reload 返回 needs_refresh=true → dirty badge 出现（§25 critical）
+    act(() => screen.getByTestId(`event-item-${EVENT_ID}`).click());
+    const dirtyDetail = await screen.findByTestId('event-detail');
+    expect(within(dirtyDetail).getByText('investigation_workbench.needs_refresh')).toBeInTheDocument();
+
+    // 显式 refresh → exact refresh_id 轮询 → completed → 服务器返回 clean v2
+    const erRow = {
+      refresh_id: NEW_REFRESH_ID, task_id: 't1', event_id: EVENT_ID,
+      base_version: 1, status: 'queued', requested_by: 'analyst-9', created_at: TS,
+    };
+    // admission 返回 queued；此后服务器完成写入（新版本 + clean），
+    // 第一次轮询即看到 completed。
+    service.startInvestigationEventRefresh.mockImplementation(async () => {
+      Object.assign(erRow, { status: 'completed', produced_version: 2 });
+      Object.assign(state, {
+        needs_refresh: false, current_version: 2, summary: 'narrative v2', updated_at: TS,
+      });
+      return { ...erRow, status: 'queued' };
+    });
+    service.listInvestigationEventRefreshes.mockImplementation(async () => [{ ...erRow }]);
+
+    await userEvent.type(within(dirtyDetail).getByTestId('requested-by-input'), 'analyst-9');
+    await userEvent.click(within(dirtyDetail).getByTestId('refresh-narrative-button'));
+    await waitFor(() => expect(service.startInvestigationEventRefresh).toHaveBeenCalledTimes(1));
+
+    const cleanDetail = await screen.findByTestId('event-detail');
+    await waitFor(() => expect(within(cleanDetail).getByText('narrative v2')).toBeInTheDocument());
+    expect(within(cleanDetail).queryByText('investigation_workbench.needs_refresh')).not.toBeInTheDocument();
+    expect(within(cleanDetail).getAllByText(/v2/).length).toBeGreaterThan(0);
+  });
+
+  // §26 并发版本：completed 后 Event reload 仍 needs_refresh=true → dirty badge 保留
+  test('integration chain: completed refresh with a concurrent accepted analysis keeps the event dirty', async () => {
+    const state = stubEventState({
+      ...eventRows()[0], needs_refresh: true, current_version: 2, summary: 'narrative v2',
+    });
+    const erRow = {
+      refresh_id: NEW_REFRESH_ID, task_id: 't1', event_id: EVENT_ID,
+      base_version: 2, status: 'queued', requested_by: 'analyst-9', created_at: TS,
+    };
+    // admission 返回 queued；执行期间 A2 accepted → completed 写入 v3 但仍 dirty
+    // （C7c-2 completion-time staleness），第一次轮询即看到 completed。
+    service.startInvestigationEventRefresh.mockImplementation(async () => {
+      Object.assign(erRow, { status: 'completed', produced_version: 3 });
+      Object.assign(state, { current_version: 3, summary: 'narrative v3' });
+      // needs_refresh 保持 true——绝不能被前端本地清除
+      return { ...erRow, status: 'queued' };
+    });
+    service.listInvestigationEventRefreshes.mockImplementation(async () => [{ ...erRow }]);
+
+    const detail = await openEvent();
+    await userEvent.type(within(detail).getByTestId('requested-by-input'), 'analyst-9');
+    await userEvent.click(within(detail).getByTestId('refresh-narrative-button'));
+    await waitFor(() => expect(service.startInvestigationEventRefresh).toHaveBeenCalledTimes(1));
+
+    const updated = await screen.findByTestId('event-detail');
+    await waitFor(() => expect(within(updated).getByText('narrative v3')).toBeInTheDocument());
+    // completed ≠ clean：dirty badge 由服务器 reload 决定，仍然显示
+    expect(within(updated).getByText('investigation_workbench.needs_refresh')).toBeInTheDocument();
   });
 });

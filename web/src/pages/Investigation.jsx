@@ -5,9 +5,11 @@
 // 单一 primary selection（{type, id}，claim 附 analysisId 上下文）由本页持有，
 // 不引入 Redux Investigation store；task 来自全局 TaskSelector（searchParam）。
 // C9b：Evidence Analysis 动作面——显式提交 Secondary Analysis、按 exact
-// analysis_id 轮询、review_pending 后的显式 Analyst Review；一切 read-side
-// 变化通过重新读取服务端状态获得（C7b needs_refresh / C8b selection），
-// 本页从不前端 patch 业务结论。Event 创建/链接/refresh 属于 C9c。
+// analysis_id 轮询、review_pending 后的显式 Analyst Review。
+// C9c：Investigation Event 动作面——显式创建 Event、append-only Evidence
+// link、显式 refresh admission + 按 exact refresh_id 轮询 history。一切
+// read-side 变化通过重新读取服务端状态获得（C7b needs_refresh / C7c
+// completion-time staleness / C8b selection），本页从不前端 patch 业务结论。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import EvidenceListPanel from '../components/investigation/workbench/EvidenceListPanel';
@@ -16,12 +18,15 @@ import GraphTabPanel from '../components/investigation/workbench/GraphTabPanel';
 import DetailPanel from '../components/investigation/workbench/DetailPanel';
 import { useStaleResource } from '../hooks/useStaleResource';
 import { useSecondaryAnalysisPolling } from '../hooks/useSecondaryAnalysisPolling';
+import { useEventRefreshPolling } from '../hooks/useEventRefreshPolling';
 import { useTranslation } from '../hooks/useTranslation';
 import {
+    createInvestigationEvent,
     createSecondaryAnalysis,
     getInvestigationAnalysis,
     getInvestigationEvent,
     getInvestigationSnapshot,
+    linkInvestigationEventEvidence,
     listInvestigationAnalyses,
     listInvestigationAnalysisClaims,
     listInvestigationEventEvidence,
@@ -30,6 +35,7 @@ import {
     listInvestigationEvents,
     listInvestigationEvidence,
     reviewSecondaryAnalysis,
+    startInvestigationEventRefresh,
 } from '../services/investigationService';
 
 const STATUS_BADGES = {
@@ -55,10 +61,17 @@ const Investigation = () => {
 
     // 单一 primary selection；task 切换时清空（含 Graph 节点选择）。
     const [selection, setSelection] = useState(null);
+    // 渲染期同步的 refs：mutation 晚返回时用它们判定"用户是否仍在原地"，
+    // 绝不让晚到的成功劫持当前 selection（§20）。
+    const selectionRef = useRef(null);
+    selectionRef.current = selection;
+    const taskIdRef = useRef(taskId);
+    taskIdRef.current = taskId;
     const [middleTab, setMiddleTab] = useState('timeline');
     useEffect(() => {
         setSelection(null);
         setSubmission(null); // 旧 task 的轮询/提交上下文一并丢弃（§4 stale-safe）
+        setRefreshSubmission(null);
     }, [taskId]);
 
     const selectedEvidenceKey = selection?.type === 'evidence' ? selection.id : null;
@@ -83,6 +96,16 @@ const Investigation = () => {
     const [graphRefreshSignal, setGraphRefreshSignal] = useState(0);
 
     const polling = useSecondaryAnalysisPolling(taskId ? submission : null);
+
+    // ── C9c：Event refresh 提交 + exact refresh_id 轮询 ──────────────────────
+    // refreshSubmission 是轮询身份三元组 {taskId, eventId, refreshId}；
+    // admission 不等待 LLM，hook 轮询 refresh history 并按 exact
+    // refresh_id 过滤（后端无 exact GET，绝不轮询 latest）。
+    const [refreshSubmission, setRefreshSubmission] = useState(null);
+    const refreshSubmissionRef = useRef(null);
+    refreshSubmissionRef.current = refreshSubmission;
+
+    const refreshPolling = useEventRefreshPolling(taskId ? refreshSubmission : null);
 
     // Graph 节点点击 → 统一 Workbench selection（§8：四类 overlay 命名空间）。
     const handleGraphNodeClick = useCallback((node) => {
@@ -189,8 +212,6 @@ const Investigation = () => {
     // read-side，且仅在用户仍停留在同一 Evidence 时自动选中这次新 Analysis
     // （§15）。用户已切走则不打扰当前工作区——晚到的完成不切换右栏（§4）。
     const autoSelectedRef = useRef(null);
-    const selectionRef = useRef(null);
-    selectionRef.current = selection;
     const refreshEvidenceList = evidenceList.refresh;
     const refreshEvidenceBundle = evidenceBundle.refresh;
     useEffect(() => {
@@ -211,6 +232,87 @@ const Investigation = () => {
             selectAnalysis(analysis.analysis_id);
         }
     }, [polling.analysis, refreshEvidenceList, refreshEvidenceBundle, selectAnalysis]);
+
+    // ── C9c mutation 面：createEvent / linkEventEvidence / startEventRefresh
+    //    三类 mutation 分开持有 identity/loading/error/invalidation（§19）。──
+
+    // §1：创建成功 → 重新读取 Event list（不插入临时 row），且仅在用户
+    // 仍停留在同一 task 时按 exact event_id 选中新建事件（§20 晚返回不劫持）。
+    const handleCreateEvent = useCallback(async (payload) => {
+        const created = await createInvestigationEvent(taskId, {
+            title: payload.title,
+            summary: payload.summary,
+            createdBy: payload.created_by,
+        });
+        if (!created?.event_id) {
+            throw new Error('admission response missing event_id');
+        }
+        const createdEventId = created.event_id;
+        eventList.refresh();
+        setGraphRefreshSignal((signal) => signal + 1);
+        if (taskIdRef.current === taskId) {
+            selectEvent(createdEventId);
+        }
+        return created;
+    }, [taskId, eventList, selectEvent]);
+
+    // §6：link 成功 → 重读 event detail/links、Event list、Graph。C7b 的
+    // needs_refresh 传播完全由 link transaction 决定，前端只重新 GET。
+    const handleLinkEvidence = useCallback(async (eventId, evidenceKey, { linked_by: linkedBy }) => {
+        const linked = await linkInvestigationEventEvidence(taskId, eventId, evidenceKey, {
+            linkedBy,
+        });
+        // §20：用户已切走时只失效全局数据，绝不把 selection 切回该 event。
+        if (selectionRef.current?.type === 'event' && selectionRef.current.id === eventId) {
+            eventBundle.refresh();
+        }
+        eventList.refresh();
+        setGraphRefreshSignal((signal) => signal + 1);
+        return linked;
+    }, [taskId, eventBundle, eventList]);
+
+    // §9/§10：admission 只发送 task_id/requested_by，立即拿到 queued
+    // refresh row；exact refresh_id 进入轮询身份，不等待 LLM。
+    const handleStartRefresh = useCallback(async (eventId, { requested_by: requestedBy }) => {
+        const admitted = await startInvestigationEventRefresh(taskId, eventId, { requestedBy });
+        if (!admitted?.refresh_id) {
+            throw new Error('admission response missing refresh_id');
+        }
+        setRefreshSubmission({
+            taskId,
+            eventId,
+            refreshId: admitted.refresh_id,
+        });
+        return admitted;
+    }, [taskId]);
+
+    // refresh 轮询离开 queued/running（completed/failed）时：重读 event
+    // detail/versions/refresh history（同一个 bundle）、Event list、Graph。
+    // §13：绝不能因 completed 就本地清 needs_refresh——dirty 与否由服务器
+    // 在 completion transaction 里决定（C7c-2 允许 completed 后仍 dirty）。
+    // §14：primary selection 保持 Event，不切到任何 Refresh 对象。
+    const refreshHandledRef = useRef(null);
+    const refreshEventBundle = eventBundle.refresh;
+    const refreshEventList = eventList.refresh;
+    useEffect(() => {
+        const refreshRow = refreshPolling.refresh;
+        const current = refreshSubmissionRef.current;
+        if (!refreshRow || !current) return;
+        if (refreshRow.status === 'queued' || refreshRow.status === 'running') return;
+        if (refreshHandledRef.current === refreshRow.refresh_id) return;
+        refreshHandledRef.current = refreshRow.refresh_id;
+        if (taskIdRef.current !== current.taskId) return; // 跨 task 晚返回：只忽略
+
+        refreshEventBundle();
+        refreshEventList();
+        setGraphRefreshSignal((signal) => signal + 1);
+    }, [refreshPolling.refresh, refreshEventBundle, refreshEventList]);
+
+    // 本页发起的 refresh 仍在 queued/running 期间：该 event 的 refresh
+    // admission 按钮保持 disabled（§10/§17；后端 409 in-progress 之外的前端防抖）。
+    const refreshBusyEventId = refreshSubmission && refreshSubmission.taskId === taskId && refreshPolling.active
+        ? refreshSubmission.eventId
+        : null;
 
     // 该 Evidence 上有本页发起的 submission 仍在排队/执行时，提交按钮保持
     // disabled（§13 防误双击；后端 versioning 契约不被前端改写）。
@@ -351,6 +453,7 @@ const Investigation = () => {
                                     loading={eventList.loading}
                                     error={eventList.error}
                                     onRetry={eventList.refresh}
+                                    onCreateEvent={handleCreateEvent}
                                 />
                             ) : (
                                 <GraphTabPanel
@@ -382,6 +485,9 @@ const Investigation = () => {
                             submitBusy={submitBusyEvidenceKey !== null && submitBusyEvidenceKey === selectedEvidenceKey}
                             onSubmitAnalysis={handleSubmitAnalysis}
                             onSubmitReview={handleReviewAnalysis}
+                            onLinkEvidence={handleLinkEvidence}
+                            refreshBusy={refreshBusyEventId !== null && refreshBusyEventId === selectedEventId}
+                            onStartRefresh={handleStartRefresh}
                         />
                     </aside>
                 </div>

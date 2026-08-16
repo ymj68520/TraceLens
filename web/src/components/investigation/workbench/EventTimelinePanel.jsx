@@ -1,9 +1,11 @@
 // EventTimelinePanel.jsx
 // Workbench 中栏 Timeline 视图：Investigation Events 的当前 narrative 列表。
-// 点击 → 页面持有 selectedEventId（只读，不触发任何 refresh mutation）。
+// 点击 → 页面持有 selectedEventId；C9c 起顶部提供显式 New Investigation
+// Event 表单（不做 Timeline Cluster 自动转换）。
 import { CircleAlert, RefreshCw, Clock } from 'lucide-react';
 import Badge from '../../common/Badge';
 import Spinner from '../../common/Spinner';
+import CreateEventForm from './CreateEventForm';
 import { useTranslation } from '../../../hooks/useTranslation';
 
 const formatTime = (iso) => {
@@ -19,6 +21,7 @@ const EventTimelinePanel = ({
     loading = false,
     error = null,
     onRetry,
+    onCreateEvent,
 }) => {
     const { t } = useTranslation();
 
@@ -38,6 +41,8 @@ const EventTimelinePanel = ({
                     <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
                 </button>
             </div>
+
+            {onCreateEvent && <CreateEventForm onCreateEvent={onCreateEvent} />}
 
             <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
                 {error ? (

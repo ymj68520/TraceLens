@@ -1,8 +1,10 @@
 /**
- * Investigation 服务 (C9b 起含 Evidence Analysis mutation)
+ * Investigation 服务 (C9b 起含 Evidence Analysis mutation，
+ * C9c 起含 Investigation Event 创建/链接/refresh mutation)
  * 与 Python FastAPI 服务 (端口 8090) 通信
- * 消费 C8b 冻结的 GET /api/investigation/graph 与 C4b-2/C6 冻结的
- * POST /api/investigation/analyses(+/review)
+ * 消费 C8b 冻结的 GET /api/investigation/graph、C4b-2/C6 冻结的
+ * POST /api/investigation/analyses(+/review) 与 C7a-C7c 冻结的
+ * POST /api/investigation/events(+/evidence,+/refresh)
  */
 import { pythonApi } from './api';
 
@@ -158,6 +160,66 @@ export const listInvestigationEventRefreshes = async (taskId, eventId) => {
     );
 };
 
+/**
+ * 创建一个 Investigation Event（含 immutable v1 narrative）。
+ * 请求体严格对应后端 CreateInvestigationEventRequest（extra=forbid）：
+ * task_id / title / summary / created_by——created_by 是必填 analyst 标识。
+ * 不做任何 Timeline Cluster 自动转换（C9c §2）。
+ */
+export const createInvestigationEvent = async (
+    taskId,
+    { title, summary = null, createdBy },
+) => {
+    return await pythonApi.post('/api/investigation/events', {
+        task_id: taskId,
+        title,
+        summary,
+        created_by: createdBy,
+    });
+};
+
+/**
+ * 显式建立一条 Event→Evidence 关联（append-only，无 unlink）。
+ * 请求体严格对应后端 LinkEventEvidenceRequest（extra=forbid）：
+ * task_id / evidence_key / linked_by。resolve + capture 的完整性
+ * 边界完全由后端 transaction 保证；前端只限制候选减少误操作。
+ */
+export const linkInvestigationEventEvidence = async (
+    taskId,
+    eventId,
+    evidenceKey,
+    { linkedBy },
+) => {
+    return await pythonApi.post(
+        `/api/investigation/events/${encodeURIComponent(eventId)}/evidence`,
+        {
+            task_id: taskId,
+            evidence_key: evidenceKey,
+            linked_by: linkedBy,
+        },
+    );
+};
+
+/**
+ * 显式发起一次 Event narrative refresh（admission 不等待 LLM）。
+ * 请求体严格对应后端 CreateEventRefreshRequest（extra=forbid）：
+ * task_id / requested_by——frozen envelope 完全由服务器构造。
+ * 返回的 exact refresh_id 是唯一轮询身份（无 latest 回退）。
+ */
+export const startInvestigationEventRefresh = async (
+    taskId,
+    eventId,
+    { requestedBy },
+) => {
+    return await pythonApi.post(
+        `/api/investigation/events/${encodeURIComponent(eventId)}/refresh`,
+        {
+            task_id: taskId,
+            requested_by: requestedBy,
+        },
+    );
+};
+
 export default {
     getInvestigationGraph,
     listInvestigationEvidence,
@@ -172,4 +234,7 @@ export default {
     listInvestigationEventVersions,
     listInvestigationEventEvidence,
     listInvestigationEventRefreshes,
+    createInvestigationEvent,
+    linkInvestigationEventEvidence,
+    startInvestigationEventRefresh,
 };
