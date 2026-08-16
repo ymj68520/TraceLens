@@ -1,12 +1,13 @@
 /**
  * Investigation 服务 (C9b 起含 Evidence Analysis mutation，
  * C9c 起含 Investigation Event 创建/链接/refresh mutation，
- * C10 起含 Evidence Snapshot capture——用户链第一步的显式入口)
+ * C10 起含 Evidence Snapshot capture——用户链第一步的显式入口，
+ * R1 起含 Report Evidence 显式绑定——Investigation findings 进入 Report 的唯一入口)
  * 与 Python FastAPI 服务 (端口 8090) 通信
  * 消费 C8b 冻结的 GET /api/investigation/graph、C4b-2/C6 冻结的
  * POST /api/investigation/analyses(+/review) 与 C7a-C7c 冻结的
  * POST /api/investigation/events(+/evidence,+/refresh)、C3 冻结的
- * POST /api/investigation/snapshots
+ * POST /api/investigation/snapshots、R1 冻结的 /api/reports/evidence
  */
 import { pythonApi } from './api';
 
@@ -233,6 +234,52 @@ export const startInvestigationEventRefresh = async (
     );
 };
 
+/**
+ * 列出任务的全部 Report Evidence（exact frozen binding + 只读的
+ * newer_accepted_available 提示；绑定永不自动跟随最新 accepted 版本）
+ */
+export const listReportEvidence = async (taskId) => {
+    return await pythonApi.get('/api/reports/evidence', {
+        params: { task_id: taskId },
+    });
+};
+
+/**
+ * 显式把一条已捕获 Evidence 加入 Report（main/appendix）。
+ * analysis_id 省略 = Original Evidence only；提供时由后端三重检查。
+ */
+export const addReportEvidence = async (
+    taskId,
+    evidenceKey,
+    { reportStatus, analysisId = null, addedBy },
+) => {
+    return await pythonApi.post('/api/reports/evidence', {
+        task_id: taskId,
+        evidence_key: evidenceKey,
+        report_status: reportStatus,
+        analysis_id: analysisId,
+        added_by: addedBy,
+    });
+};
+
+/**
+ * 显式更新 Report Evidence 状态或 frozen analysis binding。
+ * omitted analysisId 保持现有 binding，不执行隐式解绑。
+ */
+export const updateReportEvidence = async (
+    taskId,
+    evidenceKey,
+    { reportStatus = null, analysisId = undefined, updatedBy },
+) => {
+    return await pythonApi.put('/api/reports/evidence', {
+        task_id: taskId,
+        evidence_key: evidenceKey,
+        report_status: reportStatus,
+        ...(analysisId !== undefined ? { analysis_id: analysisId } : {}),
+        updated_by: updatedBy,
+    });
+};
+
 export default {
     getInvestigationGraph,
     captureInvestigationSnapshot,
@@ -251,4 +298,7 @@ export default {
     createInvestigationEvent,
     linkInvestigationEventEvidence,
     startInvestigationEventRefresh,
+    listReportEvidence,
+    addReportEvidence,
+    updateReportEvidence,
 };

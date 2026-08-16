@@ -52,6 +52,7 @@ class ServiceManager:
         self._investigation_event_service = None
         self._investigation_graph_service = None
         self._investigation_read_service = None
+        self._report_evidence_service = None
         self._secondary_analysis_executor = None
         self._event_refresh_executor = None
         self._initialized = False
@@ -311,6 +312,7 @@ class ServiceManager:
         self._investigation_event_service = None
         self._investigation_graph_service = None
         self._investigation_read_service = None
+        self._report_evidence_service = None
         self._event_refresh_executor = None
         self._secondary_analysis_executor = None
         self._cpp_backend = None
@@ -475,6 +477,23 @@ class ServiceManager:
                 self._create_investigation_read_service()
             )
         return self._investigation_read_service
+
+    def _create_report_evidence_service(self):
+        from .investigation.report_evidence import ReportEvidenceService
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        return ReportEvidenceService(cpp_backend=self._cpp_backend)
+
+    @property
+    def report_evidence_service(self):
+        """Get the Report Evidence binding service (Phase R1)."""
+        self._require_service_access()
+        if self._report_evidence_service is None:
+            self._report_evidence_service = (
+                self._create_report_evidence_service()
+            )
+        return self._report_evidence_service
 
     def _create_event_refresh_executor(self):
         from .investigation.event_refresh_execution import EventRefreshExecutor

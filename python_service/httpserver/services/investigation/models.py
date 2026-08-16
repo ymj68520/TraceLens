@@ -654,3 +654,81 @@ class AnalysisClaimsResponse(BaseModel):
     task_id: str
     analysis_id: str
     claims: tuple[AnalysisClaim, ...] = ()
+
+
+# ---------------------------------------------------------------------------
+# Report Evidence models (Phase R1) -- frozen explicit Report binding
+# ---------------------------------------------------------------------------
+
+
+class ReportEvidenceStatus(str, Enum):
+    """Analyst-decided placement of one evidence inside the Report.
+
+    ``excluded`` is an explicit state, never a DELETE: it records that the
+    analyst considered the evidence and then removed it from the report body.
+    All three states may transition into each other via explicit updates.
+    """
+
+    excluded = "excluded"
+    main = "main"
+    appendix = "appendix"
+
+
+class ReportEvidence(BaseModel):
+    """One persisted report_evidence row (exact persisted binding).
+
+    ``analysis_id`` is the FROZEN accepted Secondary Analysis the analyst
+    explicitly bound at add/rebind time -- never a "latest accepted" pointer.
+    The Evidence itself (``task_id`` + ``evidence_key``) is always the real
+    report source; the analysis is only an attached interpretation version.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    task_id: str
+    evidence_key: str  # canonical
+    report_status: ReportEvidenceStatus
+    analysis_id: Optional[str] = None
+    added_by: str
+    created_at: str
+    updated_at: str
+    updated_by: Optional[str] = None
+
+
+class BoundAnalysisRef(BaseModel):
+    """Exact metadata of the frozen analysis binding (read projection).
+
+    Joined from the immutable ``secondary_analyses`` row of the bound
+    ``analysis_id`` at read time; terminal rows never change, so this is a
+    stable projection of the frozen binding.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    analysis_id: str
+    version: int
+    decided_by: Optional[str] = None
+    decided_at: Optional[str] = None
+    summary: Optional[str] = None
+
+
+class ReportEvidenceItem(BaseModel):
+    """One report_evidence row plus its exact bound-analysis read projection.
+
+    ``newer_accepted_available`` is a read-time hint ONLY (an accepted
+    analysis exists that is not the frozen binding).  It never changes the
+    binding automatically -- rebinding is always an explicit analyst action.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    task_id: str
+    evidence_key: str  # canonical
+    report_status: ReportEvidenceStatus
+    analysis_id: Optional[str] = None
+    added_by: str
+    created_at: str
+    updated_at: str
+    updated_by: Optional[str] = None
+    bound_analysis: Optional[BoundAnalysisRef] = None
+    newer_accepted_available: bool = False

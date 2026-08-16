@@ -16,6 +16,7 @@ import SubmitAnalysisForm from './SubmitAnalysisForm';
 import ReviewDecisionForm from './ReviewDecisionForm';
 import LinkEvidenceForm from './LinkEvidenceForm';
 import RefreshNarrativeForm from './RefreshNarrativeForm';
+import ReportEvidenceForm from './ReportEvidenceForm';
 import { useTranslation } from '../../../hooks/useTranslation';
 
 const Row = ({ label, value, mono = false, breakAll = false }) => (
@@ -217,6 +218,9 @@ const EvidenceDetail = ({
     evidenceOptions,
     submitBusy,
     onSubmitAnalysis,
+    reportEvidence,
+    onAddReportEvidence,
+    onUpdateReportEvidence,
 }) => {
     const { t } = useTranslation();
     const { snapshot, analyses = [] } = bundle || {};
@@ -271,6 +275,14 @@ const EvidenceDetail = ({
                     </button>
                 ))}
             </Section>
+
+            <ReportEvidenceForm
+                evidenceKey={evidenceKey}
+                analyses={analyses}
+                reportEvidence={reportEvidence}
+                onAdd={onAddReportEvidence}
+                onUpdate={onUpdateReportEvidence}
+            />
 
             <SubmitAnalysisForm
                 evidenceKey={evidenceKey}
@@ -507,8 +519,11 @@ const DetailPanel = ({
     selectedAnalysisId,
     selectedClaimId,
     evidenceOptions = [],
+    reportEvidence = null,
     submitBusy = false,
     onSubmitAnalysis,
+    onAddReportEvidence,
+    onUpdateReportEvidence,
     onSubmitReview,
     onLinkEvidence,
     refreshBusy = false,
@@ -563,8 +578,11 @@ const DetailPanel = ({
                 onSelectAnalysis={onSelectAnalysis}
                 selectedAnalysisId={selectedAnalysisId}
                 evidenceOptions={evidenceOptions}
+                reportEvidence={reportEvidence}
                 submitBusy={submitBusy}
                 onSubmitAnalysis={onSubmitAnalysis}
+                onAddReportEvidence={onAddReportEvidence}
+                onUpdateReportEvidence={onUpdateReportEvidence}
             />
         );
     } else if (selection.type === 'analysis') {

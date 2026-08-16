@@ -96,7 +96,7 @@ def test_new_db_is_v7(tmp_path):
 
 
 @pytest.mark.migration_matrix
-def test_v5_to_v7_migration_preserves_existing_data(tmp_path):
+def test_v5_migration_to_current_preserves_existing_data(tmp_path):
     idb, repo, snapshot = _setup_task(tmp_path)
     analysis = repo.create_analysis(snapshot)
     _strip_to_v5(idb)

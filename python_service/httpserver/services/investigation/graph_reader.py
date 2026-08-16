@@ -22,6 +22,7 @@ from urllib.parse import quote
 from ..evidence.exceptions import EvidenceStoreError
 from .models import (
     AnalysisClaim,
+    BoundAnalysisRef,
     ClaimGroundingStatus,
     ClaimType,
     ClusterSnapshotPayload,
@@ -32,6 +33,8 @@ from .models import (
     FileSnapshotPayload,
     InvestigationEvent,
     InvestigationEventVersion,
+    ReportEvidenceItem,
+    ReportEvidenceStatus,
     SecondaryAnalysis,
     SelectedAnalysisRef,
 )
@@ -276,6 +279,88 @@ class InvestigationGraphReader:
             return [InvestigationRepository._row_to_analysis(r) for r in rows]
 
         return self._run(read)
+
+    # -- Report Evidence reads (Phase R1) ------------------------------------
+    # Exact frozen bindings only: the bound analysis is joined from the
+    # immutable secondary_analyses row of the PERSISTED analysis_id -- never
+    # get_latest_accepted_analysis.  newer_accepted_available is a read-time
+    # hint (an accepted version exists that is not the frozen binding); it
+    # never changes the binding and rebinding stays an explicit PUT.
+
+    _REPORT_EVIDENCE_SELECT_SQL = """
+        SELECT re.task_id, re.evidence_key, re.report_status, re.analysis_id,
+               re.added_by, re.created_at, re.updated_at, re.updated_by,
+               sa.version AS bound_version,
+               sa.decided_by AS bound_decided_by,
+               sa.decided_at AS bound_decided_at,
+               sa.summary AS bound_summary,
+               (SELECT MAX(sa2.version) FROM secondary_analyses sa2
+                WHERE sa2.task_id = re.task_id
+                  AND sa2.evidence_key = re.evidence_key
+                  AND sa2.status = 'accepted') AS max_accepted_version
+        FROM report_evidence re
+        LEFT JOIN secondary_analyses sa
+            ON sa.task_id = re.task_id AND sa.analysis_id = re.analysis_id
+        WHERE re.task_id = ?
+    """
+
+    def list_report_evidence(self) -> list[ReportEvidenceItem]:
+        def read(conn: sqlite3.Connection) -> list[ReportEvidenceItem]:
+            if not self._report_evidence_table_exists(conn):
+                return []
+            rows = conn.execute(
+                self._REPORT_EVIDENCE_SELECT_SQL + " ORDER BY re.evidence_key",
+                [self._task_id],
+            ).fetchall()
+            return [self._row_to_report_item(r) for r in rows]
+
+        return self._run(read)
+
+    def get_report_evidence(self, evidence_key: str) -> ReportEvidenceItem | None:
+        def read(conn: sqlite3.Connection) -> ReportEvidenceItem | None:
+            if not self._report_evidence_table_exists(conn):
+                return None
+            row = conn.execute(
+                self._REPORT_EVIDENCE_SELECT_SQL + " AND re.evidence_key = ?",
+                [self._task_id, evidence_key],
+            ).fetchone()
+            return self._row_to_report_item(row) if row is not None else None
+
+        return self._run(read)
+
+    @staticmethod
+    def _report_evidence_table_exists(conn: sqlite3.Connection) -> bool:
+        return conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_evidence'"
+        ).fetchone() is not None
+
+    @staticmethod
+    def _row_to_report_item(row: sqlite3.Row) -> ReportEvidenceItem:
+        bound = None
+        if row["analysis_id"] is not None:
+            bound = BoundAnalysisRef(
+                analysis_id=row["analysis_id"],
+                version=row["bound_version"],
+                decided_by=row["bound_decided_by"],
+                decided_at=row["bound_decided_at"],
+                summary=row["bound_summary"],
+            )
+        max_accepted = row["max_accepted_version"]
+        newer_available = max_accepted is not None and (
+            row["bound_version"] is None or max_accepted > row["bound_version"]
+        )
+        return ReportEvidenceItem(
+            task_id=row["task_id"],
+            evidence_key=row["evidence_key"],
+            report_status=ReportEvidenceStatus(row["report_status"]),
+            analysis_id=row["analysis_id"],
+            added_by=row["added_by"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            updated_by=row["updated_by"],
+            bound_analysis=bound,
+            newer_accepted_available=newer_available,
+        )
 
     def _run(self, read_fn):
         try:

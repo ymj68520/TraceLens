@@ -70,6 +70,8 @@ from .models import (
     InvestigationEvent,
     InvestigationEventVersion,
     RelatedEvidenceEntry,
+    ReportEvidence,
+    ReportEvidenceStatus,
     SecondaryAnalysis,
     SecondaryAnalysisStatus,
     parse_analysis_input_envelope,
@@ -84,6 +86,15 @@ class AnalysisReviewConflictError(RuntimeError):
 
 class InvestigationEventConflictError(RuntimeError):
     """The investigation event exists but the requested relation conflicts."""
+
+
+class ReportEvidenceConflictError(RuntimeError):
+    """The report_evidence row exists but the requested action conflicts."""
+
+
+class AnalysisBindingConflictError(RuntimeError):
+    """The analysis cannot be bound to this report evidence (wrong evidence
+    or not accepted) -- the triple check (R1 §7) failed."""
 
 logger = logging.getLogger(__name__)
 
@@ -567,6 +578,68 @@ _REQUIRED_EVENT_REFRESH_COLUMNS = {
     "error_code", "error_message", "model",
 }
 
+# ---------------------------------------------------------------------------
+# DDL: report_evidence (R1, optional v7 extension)
+# ---------------------------------------------------------------------------
+#
+# R1 semantics frozen at the DB level:
+#   - Identity is exactly (task_id, evidence_key) of a CAPTURED snapshot
+#     (composite FK; canonical Evidence is always the report source).
+#   - analysis_id is an EXPLICIT frozen binding to one accepted Secondary
+#     Analysis of the SAME task and the SAME evidence (composite FK backed by
+#     idx_secondary_task_analysis).  NULL = Original Evidence only.
+#   - report_status is an explicit analyst state; `excluded` is a state, not
+#     a DELETE (no-delete trigger) -- the consideration history is kept.
+#   - added_by/created_at are immutable audit fields; report_status /
+#     analysis_id / updated_at / updated_by change only via explicit
+#     analyst actions (add/update report evidence).
+
+_CREATE_REPORT_EVIDENCE_SQL = """
+CREATE TABLE IF NOT EXISTS report_evidence (
+    task_id TEXT NOT NULL,
+    evidence_key TEXT NOT NULL,
+    report_status TEXT NOT NULL CHECK(report_status IN ('excluded','main','appendix')),
+    analysis_id TEXT NULL,
+    added_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    PRIMARY KEY (task_id, evidence_key),
+    FOREIGN KEY(task_id, evidence_key)
+        REFERENCES evidence_snapshots(task_id, evidence_key) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, analysis_id)
+        REFERENCES secondary_analyses(task_id, analysis_id) ON DELETE RESTRICT
+)
+"""
+# Parent-side unique index backing the (task_id, analysis_id) composite FK.
+_INDEX_SECONDARY_TASK_ANALYSIS_SQL = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_secondary_task_analysis
+    ON secondary_analyses(task_id, analysis_id)
+"""
+_TRIGGER_REPORT_EVIDENCE_NO_IDENTITY_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_report_evidence_no_identity_update
+BEFORE UPDATE ON report_evidence
+WHEN NEW.task_id != OLD.task_id
+  OR NEW.evidence_key != OLD.evidence_key
+  OR NEW.added_by != OLD.added_by
+  OR NEW.created_at != OLD.created_at
+BEGIN
+    SELECT RAISE(ABORT, 'report evidence identity is immutable');
+END
+"""
+_TRIGGER_REPORT_EVIDENCE_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_report_evidence_no_delete
+BEFORE DELETE ON report_evidence
+BEGIN
+    SELECT RAISE(ABORT, 'report evidence is never deleted; set excluded');
+END
+"""
+
+_REQUIRED_REPORT_EVIDENCE_COLUMNS = {
+    "task_id", "evidence_key", "report_status", "analysis_id", "added_by",
+    "created_at", "updated_at", "updated_by",
+}
+
 _REQUIRED_SECONDARY_COLUMNS = {
     "analysis_id", "task_id", "evidence_key", "snapshot_id", "version", "status",
     "input_hash", "input_envelope_json", "prompt_version", "description", "summary",
@@ -738,6 +811,13 @@ class InvestigationRepository:
         conn.execute(_TRIGGER_REFRESH_STATE_FIELDS_SQL)
         conn.execute(_TRIGGER_REFRESH_STATE_FIELDS_INSERT_SQL)
 
+    def _build_all_report_evidence_objects(self, conn: sqlite3.Connection) -> None:
+        """Create the report_evidence table, FK-backing index, and triggers."""
+        conn.execute(_INDEX_SECONDARY_TASK_ANALYSIS_SQL)
+        conn.execute(_CREATE_REPORT_EVIDENCE_SQL)
+        conn.execute(_TRIGGER_REPORT_EVIDENCE_NO_IDENTITY_UPDATE_SQL)
+        conn.execute(_TRIGGER_REPORT_EVIDENCE_NO_DELETE_SQL)
+
     def _initialize_v7_atomically(self) -> None:
         """New database: build everything + version=7 in one tx."""
         with self._connect() as conn:
@@ -750,6 +830,7 @@ class InvestigationRepository:
             self._build_all_secondary_objects(conn)
             self._build_all_event_objects(conn)
             self._build_all_refresh_objects(conn)
+            self._build_all_report_evidence_objects(conn)
             conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
             conn.commit()
 
@@ -861,6 +942,7 @@ class InvestigationRepository:
                     "ALTER TABLE investigation_event_refreshes ADD COLUMN model TEXT"
                 )
             self._build_all_refresh_objects(conn)
+            self._build_all_report_evidence_objects(conn)
             conn.commit()
 
     def _validate_v7_schema(self) -> None:
@@ -870,6 +952,57 @@ class InvestigationRepository:
             self._validate_claims(conn)
             self._validate_event_tables(conn)
             self._validate_event_refresh_table(conn)
+            report_table = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_evidence'"
+            ).fetchone()
+            if report_table is not None:
+                # A legacy migration chain may have rebuilt secondary_analyses
+                # under a surviving report_evidence table, dropping the parent
+                # with it. Restore the FK-backing unique index (idempotent and
+                # infallible: analysis_id is the PK, so (task_id, analysis_id)
+                # is trivially unique). Everything else about the extension
+                # stays strictly validated below.
+                conn.execute(_INDEX_SECONDARY_TASK_ANALYSIS_SQL)
+                self._repair_report_evidence_foreign_keys(conn)
+                self._validate_report_evidence_table(conn)
+
+    def _repair_report_evidence_foreign_keys(self, conn: sqlite3.Connection) -> None:
+        """Repair SQLite's renamed-parent FK after legacy table-rewrite migrations.
+
+        Older migration tests and real legacy stores may rebuild
+        ``secondary_analyses`` with ``ALTER TABLE ... RENAME``. SQLite rewrites
+        child FK metadata to the temporary parent name (for example
+        ``secondary_analyses_v4``), even after the replacement table is named
+        ``secondary_analyses`` again. Rebuild only the small R1 child table so
+        its composite FK points at the authoritative current parent while
+        preserving every existing Report Evidence row.
+        """
+        table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_evidence'"
+        ).fetchone()
+        if table is None:
+            return
+        targets = {
+            row["table"]
+            for row in conn.execute("PRAGMA foreign_key_list(report_evidence)")
+            if row["from"] == "analysis_id"
+        }
+        if targets == {"secondary_analyses"}:
+            return
+        rows = conn.execute(
+            "SELECT task_id, evidence_key, report_status, analysis_id, added_by, "
+            "created_at, updated_at, updated_by FROM report_evidence"
+        ).fetchall()
+        conn.execute("DROP TABLE report_evidence")
+        conn.execute(_CREATE_REPORT_EVIDENCE_SQL)
+        for row in rows:
+            conn.execute(
+                "INSERT INTO report_evidence "
+                "(task_id, evidence_key, report_status, analysis_id, added_by, "
+                "created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                tuple(row),
+            )
+        self._build_all_report_evidence_objects(conn)
 
     def _validate_evidence_snapshots(self, conn: sqlite3.Connection) -> None:
         cols = {row["name"] for row in conn.execute("PRAGMA table_info(evidence_snapshots)")}
@@ -1171,6 +1304,77 @@ class InvestigationRepository:
             "trg_inv_refresh_no_terminal_update",
             "trg_inv_refresh_state_fields",
             "trg_inv_refresh_state_fields_insert",
+        ):
+            trig = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?",
+                [trig_name],
+            ).fetchone()
+            if trig is None:
+                raise EvidenceStoreError(f"missing {trig_name} trigger")
+
+    def _validate_report_evidence_table(self, conn: sqlite3.Connection) -> None:
+        cols = {
+            row["name"] for row in conn.execute("PRAGMA table_info(report_evidence)")
+        }
+        missing = _REQUIRED_REPORT_EVIDENCE_COLUMNS - cols
+        if missing:
+            raise EvidenceStoreError(
+                f"report_evidence missing required columns: {sorted(missing)}"
+            )
+
+        found_pk = False
+        for idx in conn.execute("PRAGMA index_list(report_evidence)"):
+            if idx["unique"] and idx["origin"] == "pk":
+                idx_cols = {
+                    r["name"]
+                    for r in conn.execute(f'PRAGMA index_info("{idx["name"]}")')
+                }
+                if idx_cols == {"task_id", "evidence_key"}:
+                    found_pk = True
+                    break
+        if not found_pk:
+            raise EvidenceStoreError(
+                "report_evidence missing PRIMARY KEY(task_id, evidence_key)"
+            )
+
+        snapshot_fk = (("task_id", "task_id"), ("evidence_key", "evidence_key"))
+        analysis_fk = (("task_id", "task_id"), ("analysis_id", "analysis_id"))
+        if not self._has_composite_fk(
+            conn, "report_evidence", "evidence_snapshots", snapshot_fk
+        ):
+            raise EvidenceStoreError(
+                "report_evidence missing composite FK(task_id,evidence_key) "
+                "REFERENCES evidence_snapshots(task_id,evidence_key)"
+            )
+        if not self._has_composite_fk(
+            conn, "report_evidence", "secondary_analyses", analysis_fk
+        ):
+            raise EvidenceStoreError(
+                "report_evidence missing composite FK(task_id,analysis_id) "
+                "REFERENCES secondary_analyses(task_id,analysis_id)"
+            )
+        # The composite FK onto secondary_analyses requires a parent-side
+        # UNIQUE(task_id, analysis_id) index to be enforced at all.
+        has_backing_index = False
+        for idx in conn.execute("PRAGMA index_list(secondary_analyses)"):
+            if not idx["unique"]:
+                continue
+            idx_cols = {
+                r["name"]
+                for r in conn.execute(f'PRAGMA index_info("{idx["name"]}")')
+            }
+            if idx_cols == {"task_id", "analysis_id"}:
+                has_backing_index = True
+                break
+        if not has_backing_index:
+            raise EvidenceStoreError(
+                "secondary_analyses missing UNIQUE(task_id, analysis_id) "
+                "backing index for report_evidence FK"
+            )
+
+        for trig_name in (
+            "trg_report_evidence_no_identity_update",
+            "trg_report_evidence_no_delete",
         ):
             trig = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?",
@@ -2492,3 +2696,155 @@ class InvestigationRepository:
                 [self.task_id],
             ).fetchall()
         return [self._row_to_refresh(r) for r in rows]
+
+    # =====================================================================
+    # report_evidence (Phase R1)
+    # =====================================================================
+
+    @staticmethod
+    def _row_to_report_evidence(row: sqlite3.Row) -> ReportEvidence:
+        return ReportEvidence(
+            task_id=row["task_id"],
+            evidence_key=row["evidence_key"],
+            report_status=ReportEvidenceStatus(row["report_status"]),
+            analysis_id=row["analysis_id"],
+            added_by=row["added_by"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            updated_by=row["updated_by"],
+        )
+
+    def _require_bindable_analysis_with_conn(
+        self, conn: sqlite3.Connection, evidence_key: str, analysis_id: str
+    ) -> None:
+        """R1 §7 triple check inside the caller's transaction.
+
+        The bound analysis must belong to THIS task (opaque 404 otherwise --
+        another task's analysis must not be probeable), to THIS evidence, and
+        be ``accepted``.  The composite FK is the DB-level backstop; this
+        check gives clean per-cause errors.
+        """
+        row = conn.execute(
+            "SELECT evidence_key, status FROM secondary_analyses "
+            "WHERE task_id = ? AND analysis_id = ?",
+            [self.task_id, analysis_id],
+        ).fetchone()
+        if row is None:
+            raise EvidenceNotFoundError("analysis not found")
+        if row["evidence_key"] != evidence_key:
+            raise AnalysisBindingConflictError(
+                "analysis belongs to a different evidence"
+            )
+        if row["status"] != "accepted":
+            raise AnalysisBindingConflictError("analysis is not accepted")
+
+    def add_report_evidence(
+        self,
+        evidence_key: str,
+        *,
+        report_status: str,
+        analysis_id: Optional[str] = None,
+        added_by: str,
+    ) -> ReportEvidence:
+        """INSERT one explicit Report Evidence row (add includes: main|appendix).
+
+        The evidence must already be captured in this task (canonical Evidence
+        is always the report source); ``analysis_id`` is an OPTIONAL frozen
+        binding to one accepted analysis of the SAME evidence (R1 §3/§7).
+        """
+        if report_status not in ("main", "appendix"):
+            raise ValueError("report_status must be main or appendix when adding")
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            # R1 is an optional v7 extension. Existing C10 stores may not
+            # have the table; the first explicit Report write creates it in
+            # this write transaction. GET paths never call this repository.
+            self._build_all_report_evidence_objects(conn)
+            snapshot = conn.execute(
+                "SELECT 1 FROM evidence_snapshots WHERE task_id = ? AND evidence_key = ?",
+                [self.task_id, evidence_key],
+            ).fetchone()
+            if snapshot is None:
+                raise EvidenceNotFoundError(
+                    "evidence snapshot not captured for this task"
+                )
+            existing = conn.execute(
+                "SELECT 1 FROM report_evidence WHERE task_id = ? AND evidence_key = ?",
+                [self.task_id, evidence_key],
+            ).fetchone()
+            if existing is not None:
+                raise ReportEvidenceConflictError(
+                    "report evidence already exists"
+                )
+            if analysis_id is not None:
+                self._require_bindable_analysis_with_conn(
+                    conn, evidence_key, analysis_id
+                )
+            conn.execute(
+                "INSERT INTO report_evidence "
+                "(task_id, evidence_key, report_status, analysis_id, "
+                " added_by, created_at, updated_at, updated_by) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    self.task_id, evidence_key, report_status, analysis_id,
+                    added_by, now, now, added_by,
+                ],
+            )
+            row = conn.execute(
+                "SELECT * FROM report_evidence WHERE task_id = ? AND evidence_key = ?",
+                [self.task_id, evidence_key],
+            ).fetchone()
+            conn.commit()
+        return self._row_to_report_evidence(row)
+
+    def update_report_evidence(
+        self,
+        evidence_key: str,
+        *,
+        report_status: Optional[str] = None,
+        analysis_id: Optional[str] = None,
+        bind_analysis: bool = False,
+        updated_by: str,
+    ) -> ReportEvidence:
+        """Explicitly set report_status and/or rebind the frozen analysis.
+
+        ``report_status`` (any of excluded/main/appendix -- all explicit
+        analyst transitions are legal) and ``analysis_id`` (triple-checked
+        accepted analysis of this evidence) are only written when supplied;
+        ``bind_analysis=False`` keeps the current binding untouched (R1 has
+        no unbind: clearing a binding is not an analyst action).
+        """
+        if report_status is not None and report_status not in (
+            "excluded", "main", "appendix"
+        ):
+            raise ValueError("invalid report_status")
+        if report_status is None and not bind_analysis:
+            raise ValueError("update requires report_status or analysis_id")
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT * FROM report_evidence WHERE task_id = ? AND evidence_key = ?",
+                [self.task_id, evidence_key],
+            ).fetchone()
+            if row is None:
+                raise EvidenceNotFoundError("report evidence not found")
+            if bind_analysis and analysis_id is not None:
+                self._require_bindable_analysis_with_conn(
+                    conn, evidence_key, analysis_id
+                )
+            next_status = report_status if report_status is not None else row["report_status"]
+            next_analysis = analysis_id if bind_analysis else row["analysis_id"]
+            conn.execute(
+                "UPDATE report_evidence SET report_status=?, analysis_id=?, "
+                "updated_at=?, updated_by=? WHERE task_id=? AND evidence_key=?",
+                [next_status, next_analysis, now, updated_by,
+                 self.task_id, evidence_key],
+            )
+            updated = conn.execute(
+                "SELECT * FROM report_evidence WHERE task_id = ? AND evidence_key = ?",
+                [self.task_id, evidence_key],
+            ).fetchone()
+            conn.commit()
+        return self._row_to_report_evidence(updated)

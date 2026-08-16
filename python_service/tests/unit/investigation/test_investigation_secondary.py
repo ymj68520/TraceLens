@@ -642,7 +642,7 @@ def test_fk_definition_validated_at_init(tmp_path):
 # New DB + future version
 # ---------------------------------------------------------------------------
 
-def test_new_db_is_v7_with_all_objects(tmp_path):
+def test_new_db_is_v7_with_report_extension(tmp_path):
     idb = str(tmp_path / "investigation.db")
     InvestigationRepository(idb, "A")
     assert SUPPORTED_SCHEMA_VERSION == 7
@@ -651,7 +651,7 @@ def test_new_db_is_v7_with_all_objects(tmp_path):
     for table in (
         "evidence_snapshots", "secondary_analyses", "analysis_claims", "claim_evidence_refs",
         "investigation_events", "investigation_event_versions", "investigation_event_evidence",
-        "investigation_event_refreshes",
+        "investigation_event_refreshes", "report_evidence",
     ):
         assert conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", [table]
@@ -666,6 +666,7 @@ def test_new_db_is_v7_with_all_objects(tmp_path):
         "trg_inv_event_evidence_no_update", "trg_inv_event_evidence_no_delete",
         "trg_inv_refresh_no_input_update", "trg_inv_refresh_legal_transition",
         "trg_inv_refresh_no_terminal_update",
+        "trg_report_evidence_no_identity_update", "trg_report_evidence_no_delete",
     ):
         assert conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?", [trigger]
@@ -678,7 +679,7 @@ def test_future_version_fail_closed(tmp_path):
     idb = str(tmp_path / "investigation.db")
     InvestigationRepository(idb, "A")
     conn = sqlite3.connect(idb)
-    conn.execute("PRAGMA user_version = 8")
+    conn.execute("PRAGMA user_version = 9")
     conn.commit()
     conn.close()
     with pytest.raises(Exception, match="unsupported"):

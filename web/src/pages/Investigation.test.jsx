@@ -25,6 +25,9 @@ vi.mock('../services/investigationService', () => ({
   linkInvestigationEventEvidence: vi.fn(),
   startInvestigationEventRefresh: vi.fn(),
   captureInvestigationSnapshot: vi.fn(),
+  listReportEvidence: vi.fn(),
+  addReportEvidence: vi.fn(),
+  updateReportEvidence: vi.fn(),
 }));
 
 vi.mock('../services/forensicsService', () => ({
@@ -170,6 +173,20 @@ function stubService(overrides = {}) {
     captureInvestigationSnapshot: {
       task_id: 't1', evidence_key: 'file:/case/new.txt', evidence_type: 'file',
       captured_at: 1700000100, payload: { normalized_path: '/case/new.txt' },
+    },
+    listReportEvidence: [],
+    addReportEvidence: {
+      task_id: 't1', evidence_key: KEY_A, report_status: 'main',
+      analysis_id: null, added_by: 'analyst-1', created_at: '2026-08-16T00:00:00+00:00',
+      updated_at: '2026-08-16T00:00:00+00:00', updated_by: 'analyst-1',
+      bound_analysis: null, newer_accepted_available: false,
+    },
+    updateReportEvidence: {
+      task_id: 't1', evidence_key: KEY_A, report_status: 'appendix',
+      analysis_id: ANALYSIS_ID, added_by: 'analyst-1', created_at: '2026-08-16T00:00:00+00:00',
+      updated_at: '2026-08-16T00:00:00+00:00', updated_by: 'analyst-1',
+      bound_analysis: { analysis_id: ANALYSIS_ID, version: 2, decided_by: 'analyst-1' },
+      newer_accepted_available: false,
     },
     ...overrides,
   };

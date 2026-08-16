@@ -65,6 +65,10 @@ from .models import (
     InvestigationEvent,
     InvestigationEventVersion,
     RelatedEvidenceEntry,
+    BoundAnalysisRef,
+    ReportEvidence,
+    ReportEvidenceItem,
+    ReportEvidenceStatus,
     SecondaryAnalysis,
     SecondaryAnalysisStatus,
     StructuredAnalysisResponse,
@@ -88,10 +92,13 @@ from .prompts import (
     get_event_refresh_prompt,
     get_prompt,
 )
+from .report_evidence import ReportEvidenceService
 from .repository import (
+    AnalysisBindingConflictError,
     AnalysisReviewConflictError,
     InvestigationEventConflictError,
     InvestigationRepository,
+    ReportEvidenceConflictError,
     SUPPORTED_SCHEMA_VERSION,
 )
 from .review import AnalysisReviewConflictError, InvestigationReviewService
@@ -125,6 +132,13 @@ __all__ = [
     "GraphAnalysisSelection",
     "OverlayReadResult",
     "InvestigationReadService",
+    "ReportEvidenceService",
+    "ReportEvidence",
+    "ReportEvidenceItem",
+    "BoundAnalysisRef",
+    "ReportEvidenceStatus",
+    "ReportEvidenceConflictError",
+    "AnalysisBindingConflictError",
     "EvidenceSummary",
     "SelectedAnalysisRef",
     "AnalysisClaimsResponse",

@@ -37,6 +37,9 @@ import {
     listInvestigationEventVersions,
     listInvestigationEvents,
     listInvestigationEvidence,
+    listReportEvidence,
+    addReportEvidence,
+    updateReportEvidence,
     reviewSecondaryAnalysis,
     startInvestigationEventRefresh,
 } from '../services/investigationService';
@@ -135,6 +138,10 @@ const Investigation = () => {
     );
     const eventList = useStaleResource(
         () => listInvestigationEvents(taskId),
+        taskId || null,
+    );
+    const reportEvidenceList = useStaleResource(
+        () => listReportEvidence(taskId),
         taskId || null,
     );
 
@@ -253,6 +260,26 @@ const Investigation = () => {
         setGraphRefreshSignal((signal) => signal + 1);
         return captured;
     }, [taskId, evidenceList]);
+
+    const handleAddReportEvidence = useCallback(async ({ evidenceKey, reportStatus, analysisId, addedBy }) => {
+        const added = await addReportEvidence(taskId, evidenceKey, {
+            reportStatus,
+            analysisId,
+            addedBy,
+        });
+        reportEvidenceList.refresh();
+        return added;
+    }, [taskId, reportEvidenceList]);
+
+    const handleUpdateReportEvidence = useCallback(async ({ evidenceKey, reportStatus, analysisId, updatedBy }) => {
+        const updated = await updateReportEvidence(taskId, evidenceKey, {
+            reportStatus,
+            analysisId,
+            updatedBy,
+        });
+        reportEvidenceList.refresh();
+        return updated;
+    }, [taskId, reportEvidenceList]);
 
     // §1：创建成功 → 重新读取 Event list（不插入临时 row），且仅在用户
     // 仍停留在同一 task 时按 exact event_id 选中新建事件（§20 晚返回不劫持）。
@@ -518,8 +545,13 @@ const Investigation = () => {
                             selectedAnalysisId={activeAnalysisId}
                             selectedClaimId={selectedClaimId}
                             evidenceOptions={evidenceOptions}
+                            reportEvidence={(reportEvidenceList.data || []).find(
+                                (item) => item.evidence_key === selectedEvidenceKey,
+                            ) || null}
                             submitBusy={submitBusyEvidenceKey !== null && submitBusyEvidenceKey === selectedEvidenceKey}
                             onSubmitAnalysis={handleSubmitAnalysis}
+                            onAddReportEvidence={handleAddReportEvidence}
+                            onUpdateReportEvidence={handleUpdateReportEvidence}
                             onSubmitReview={handleReviewAnalysis}
                             onLinkEvidence={handleLinkEvidence}
                             refreshBusy={refreshBusyEventId !== null && refreshBusyEventId === selectedEventId}
