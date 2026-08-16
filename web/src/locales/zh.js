@@ -163,6 +163,12 @@ export default {
 
     // C9c — Investigation Event 动作面
     'investigation_workbench.new_event': '新建调查事件',
+    // C10 — 显式 Evidence 捕获（Phase C 用户链第一步）
+    'investigation_workbench.capture_evidence': '捕获证据',
+    'investigation_workbench.capture_evidence_hint': '候选来自本任务的文件列表。解析与捕获校验都在服务端完成；不属于本任务证据源的 key 会被拒绝。',
+    'investigation_workbench.no_capture_candidates': '本任务没有未捕获的文件候选',
+    'investigation_workbench.capture': '捕获',
+    'investigation_workbench.capture_failed': '捕获失败',
     'investigation_workbench.event_form_disclaimer': '调查事件 (Investigation Event) 是调查员组织的高级语义事件——不是 Timeline Cluster，也不会被自动转换创建。',
     'investigation_workbench.event_title_label': '标题',
     'investigation_workbench.event_summary_label': '摘要（可选）',

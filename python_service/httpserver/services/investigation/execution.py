@@ -37,6 +37,7 @@ from .prompts import (
     build_user_prompt,
     get_prompt,
 )
+from .graph_reader import InvestigationGraphReader
 from .repository import InvestigationRepository
 from .structured import StructuredOutputError, parse_structured_analysis_response
 
@@ -206,22 +207,27 @@ class SecondaryAnalysisExecutor:
     async def get_analysis(
         self, task_id: str, analysis_id: str
     ) -> Optional[SecondaryAnalysis]:
-        """Query a single analysis from SQLite (E8: DB is source of truth)."""
+        """Query a single analysis from SQLite (E8: DB is source of truth).
+
+        C10 §14/E13: GET reads go through the strict mode=ro reader -- the
+        write-path repository constructor would CREATE the store here when
+        the task has no investigation.db yet.
+        """
         db_path = await self._resolve_db_path(task_id)
-        if db_path is None:
+        if db_path is None or not db_path.exists():
             return None
-        repo = InvestigationRepository(db_path, task_id)
-        return await asyncio.to_thread(repo.get_analysis, analysis_id)
+        reader = InvestigationGraphReader(db_path, task_id)
+        return await asyncio.to_thread(reader.get_analysis, analysis_id)
 
     async def list_analyses(
         self, task_id: str, canonical_evidence_key: str
     ) -> list[SecondaryAnalysis]:
-        """Query analyses for an evidence from SQLite."""
+        """Query analyses for an evidence from SQLite (strict reader)."""
         db_path = await self._resolve_db_path(task_id)
-        if db_path is None:
+        if db_path is None or not db_path.exists():
             return []
-        repo = InvestigationRepository(db_path, task_id)
-        return await asyncio.to_thread(repo.list_analyses, canonical_evidence_key)
+        reader = InvestigationGraphReader(db_path, task_id)
+        return await asyncio.to_thread(reader.list_analyses, canonical_evidence_key)
 
     # =====================================================================
     # background execution (E2-E7, E11)

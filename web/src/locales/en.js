@@ -109,6 +109,12 @@ export default {
 
     // C9c — Investigation Event actions
     'investigation_workbench.new_event': 'New Investigation Event',
+    // C10 — explicit Evidence capture (Phase C user chain, step one)
+    'investigation_workbench.capture_evidence': 'Capture Evidence',
+    'investigation_workbench.capture_evidence_hint': 'Candidates come from this task\'s file list. Resolution and capture validation happen on the server; a key that is not a source of this task is rejected.',
+    'investigation_workbench.no_capture_candidates': 'No uncaptured file candidates in this task',
+    'investigation_workbench.capture': 'Capture',
+    'investigation_workbench.capture_failed': 'Capture failed',
     'investigation_workbench.event_form_disclaimer': 'An Investigation Event is a high-level semantic event organized by the analyst — it is not a Timeline cluster and is never created automatically.',
     'investigation_workbench.event_title_label': 'Title',
     'investigation_workbench.event_summary_label': 'Summary (optional)',

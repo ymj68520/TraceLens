@@ -16,11 +16,14 @@ import EvidenceListPanel from '../components/investigation/workbench/EvidenceLis
 import EventTimelinePanel from '../components/investigation/workbench/EventTimelinePanel';
 import GraphTabPanel from '../components/investigation/workbench/GraphTabPanel';
 import DetailPanel from '../components/investigation/workbench/DetailPanel';
+import CaptureEvidenceForm from '../components/investigation/workbench/CaptureEvidenceForm';
 import { useStaleResource } from '../hooks/useStaleResource';
 import { useSecondaryAnalysisPolling } from '../hooks/useSecondaryAnalysisPolling';
 import { useEventRefreshPolling } from '../hooks/useEventRefreshPolling';
 import { useTranslation } from '../hooks/useTranslation';
+import { getLargestFiles } from '../services/forensicsService';
 import {
+    captureInvestigationSnapshot,
     createInvestigationEvent,
     createSecondaryAnalysis,
     getInvestigationAnalysis,
@@ -122,6 +125,12 @@ const Investigation = () => {
     // ── 列表（左栏 / 中栏 Timeline） ───────────────────────────────────────────
     const evidenceList = useStaleResource(
         () => listInvestigationEvidence(taskId),
+        taskId || null,
+    );
+    // C10 §20：capture 候选来自任务真实文件列表（与 Files 页同一 API），
+    // 不做自由文本输入；resolve/capture 的完整性边界在后端。
+    const fileList = useStaleResource(
+        () => getLargestFiles(taskId, 100),
         taskId || null,
     );
     const eventList = useStaleResource(
@@ -235,6 +244,15 @@ const Investigation = () => {
 
     // ── C9c mutation 面：createEvent / linkEventEvidence / startEventRefresh
     //    三类 mutation 分开持有 identity/loading/error/invalidation（§19）。──
+
+    // C10 §20：capture 成功 → 重读 Evidence 列表 + Graph。capture 不改变
+    // selection（用户链第一步；晚返回同样不劫持当前工作区）。
+    const handleCaptureEvidence = useCallback(async (evidenceKey) => {
+        const captured = await captureInvestigationSnapshot(taskId, evidenceKey);
+        evidenceList.refresh();
+        setGraphRefreshSignal((signal) => signal + 1);
+        return captured;
+    }, [taskId, evidenceList]);
 
     // §1：创建成功 → 重新读取 Event list（不插入临时 row），且仅在用户
     // 仍停留在同一 task 时按 exact event_id 选中新建事件（§20 晚返回不劫持）。
@@ -357,6 +375,17 @@ const Investigation = () => {
         });
     }, [selectedEventId, eventBundle.data, evidenceList.data, statusByEvidenceKey, t]);
 
+    // capture 候选 = 任务文件列表（file:<path> canonical 形态）去重；
+    // 已捕获项由表单按 capturedKeys 排除。
+    const captureFileOptions = useMemo(() => {
+        const files = fileList.data?.files || [];
+        const keys = files
+            .map((file) => file?.path || file?.file_path)
+            .filter(Boolean)
+            .map((path) => `file:${path}`);
+        return [...new Set(keys)];
+    }, [fileList.data]);
+
     // 右栏数据按 selection 类型路由。
     const detail = selection?.type === 'event' ? eventBundle
         : selection?.type === 'evidence' ? evidenceBundle
@@ -409,7 +438,13 @@ const Investigation = () => {
             {taskId && (
                 <div className="flex flex-col lg:flex-row gap-3 flex-1 min-h-0">
                     {/* 左栏：Evidence Workspace */}
-                    <aside className="w-full lg:w-80 shrink-0 glass rounded-2xl overflow-hidden min-h-[220px] lg:min-h-0">
+                    <aside className="w-full lg:w-80 shrink-0 glass rounded-2xl overflow-hidden min-h-[220px] lg:min-h-0 flex flex-col">
+                        <CaptureEvidenceForm
+                            capturedKeys={(evidenceList.data || []).map((row) => row.evidence_key)}
+                            fileOptions={captureFileOptions}
+                            onCapture={handleCaptureEvidence}
+                        />
+                        <div className="flex-1 min-h-0 flex flex-col">
                         <EvidenceListPanel
                             title={selectedEventId
                                 ? t('investigation_workbench.event_evidence_title')
@@ -421,6 +456,7 @@ const Investigation = () => {
                             error={selectedEventId ? eventBundle.error : evidenceList.error}
                             onRetry={selectedEventId ? eventBundle.refresh : evidenceList.refresh}
                         />
+                        </div>
                     </aside>
 
                     {/* 中栏：Timeline | Graph */}

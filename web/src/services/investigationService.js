@@ -1,12 +1,25 @@
 /**
  * Investigation 服务 (C9b 起含 Evidence Analysis mutation，
- * C9c 起含 Investigation Event 创建/链接/refresh mutation)
+ * C9c 起含 Investigation Event 创建/链接/refresh mutation，
+ * C10 起含 Evidence Snapshot capture——用户链第一步的显式入口)
  * 与 Python FastAPI 服务 (端口 8090) 通信
  * 消费 C8b 冻结的 GET /api/investigation/graph、C4b-2/C6 冻结的
  * POST /api/investigation/analyses(+/review) 与 C7a-C7c 冻结的
- * POST /api/investigation/events(+/evidence,+/refresh)
+ * POST /api/investigation/events(+/evidence,+/refresh)、C3 冻结的
+ * POST /api/investigation/snapshots
  */
 import { pythonApi } from './api';
+
+/**
+ * 显式捕获一条 Evidence Snapshot（resolve + capture_if_absent 都在
+ * 后端发生；key 非本任务 source 时后端 404，前端不做任何本地校验）
+ */
+export const captureInvestigationSnapshot = async (taskId, evidenceKey) => {
+    return await pythonApi.post('/api/investigation/snapshots', {
+        task_id: taskId,
+        evidence_key: evidenceKey,
+    });
+};
 
 /**
  * 获取 Investigation Graph (Base KG + Investigation Overlay 只读组合)
@@ -222,6 +235,7 @@ export const startInvestigationEventRefresh = async (
 
 export default {
     getInvestigationGraph,
+    captureInvestigationSnapshot,
     listInvestigationEvidence,
     getInvestigationSnapshot,
     listInvestigationAnalyses,

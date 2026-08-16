@@ -15,6 +15,7 @@ import sqlite3
 from pathlib import Path
 
 from ..evidence.exceptions import EvidenceNotFoundError, EvidenceStoreError
+from .graph_reader import InvestigationGraphReader
 from .models import (
     EventEvidenceLink,
     EventRefresh,
@@ -37,6 +38,18 @@ class InvestigationEventService:
         if not isinstance(task, dict) or task.get("id") != task_id:
             raise EvidenceNotFoundError("task not found")
         return investigation_db_path_for_task(task)
+
+    async def _reader_for(self, task_id: str) -> InvestigationGraphReader | None:
+        """Strict reader for GET paths (C10 §14/E13).
+
+        Returns ``None`` when the task has no investigation.db yet (GET never
+        creates it); the mode=ro reader never migrates or self-heals an
+        existing store, unlike the write-path repository constructor.
+        """
+        db_path = await self._resolve_db_path(task_id)
+        if not db_path.exists():
+            return None
+        return InvestigationGraphReader(db_path, task_id)
 
     async def create_event(
         self,
@@ -61,26 +74,28 @@ class InvestigationEventService:
     async def list_events(
         self, task_id: str, *, needs_refresh: bool | None = None
     ) -> list[InvestigationEvent]:
-        db_path = await self._resolve_db_path(task_id)
-        if not db_path.exists():
+        reader = await self._reader_for(task_id)
+        if reader is None:
             return []
         try:
-            repository = InvestigationRepository(db_path, task_id)
             return await asyncio.to_thread(
-                repository.list_events, needs_refresh=needs_refresh
+                reader.list_events, needs_refresh=needs_refresh
             )
+        except EvidenceStoreError:
+            raise
         except sqlite3.DatabaseError as exc:
             raise EvidenceStoreError(
                 "investigation event store is unavailable"
             ) from exc
 
     async def get_event(self, task_id: str, event_id: str) -> InvestigationEvent:
-        db_path = await self._resolve_db_path(task_id)
-        if not db_path.exists():
+        reader = await self._reader_for(task_id)
+        if reader is None:
             raise EvidenceNotFoundError("investigation event not found")
         try:
-            repository = InvestigationRepository(db_path, task_id)
-            event = await asyncio.to_thread(repository.get_event, event_id)
+            event = await asyncio.to_thread(reader.get_event, event_id)
+        except EvidenceStoreError:
+            raise
         except sqlite3.DatabaseError as exc:
             raise EvidenceStoreError(
                 "investigation event store is unavailable"
@@ -110,9 +125,11 @@ class InvestigationEventService:
     async def list_event_versions(
         self, task_id: str, event_id: str
     ) -> list[InvestigationEventVersion]:
-        repository = await self._require_event(task_id, event_id)
+        reader = await self._require_event_reader(task_id, event_id)
         try:
-            return await asyncio.to_thread(repository.list_event_versions, event_id)
+            return await asyncio.to_thread(reader.list_event_versions, event_id)
+        except EvidenceStoreError:
+            raise
         except sqlite3.DatabaseError as exc:
             raise EvidenceStoreError(
                 "investigation event store is unavailable"
@@ -145,9 +162,11 @@ class InvestigationEventService:
     async def list_event_evidence(
         self, task_id: str, event_id: str
     ) -> list[EventEvidenceLink]:
-        repository = await self._require_event(task_id, event_id)
+        reader = await self._require_event_reader(task_id, event_id)
         try:
-            return await asyncio.to_thread(repository.list_event_evidence, event_id)
+            return await asyncio.to_thread(reader.list_event_evidence, event_id)
+        except EvidenceStoreError:
+            raise
         except sqlite3.DatabaseError as exc:
             raise EvidenceStoreError(
                 "investigation event store is unavailable"
@@ -160,12 +179,13 @@ class InvestigationEventService:
     async def get_event_refresh(
         self, task_id: str, refresh_id: str
     ) -> EventRefresh:
-        db_path = await self._resolve_db_path(task_id)
-        if not db_path.exists():
+        reader = await self._reader_for(task_id)
+        if reader is None:
             raise EvidenceNotFoundError("event refresh not found")
         try:
-            repository = InvestigationRepository(db_path, task_id)
-            refresh = await asyncio.to_thread(repository.get_event_refresh, refresh_id)
+            refresh = await asyncio.to_thread(reader.get_event_refresh, refresh_id)
+        except EvidenceStoreError:
+            raise
         except sqlite3.DatabaseError as exc:
             raise EvidenceStoreError("investigation event store is unavailable") from exc
         if refresh is None:
@@ -201,13 +221,34 @@ class InvestigationEventService:
     async def list_event_refreshes(
         self, task_id: str, event_id: str
     ) -> list[EventRefresh]:
-        repository = await self._require_event(task_id, event_id)
+        reader = await self._require_event_reader(task_id, event_id)
         try:
-            return await asyncio.to_thread(repository.list_event_refreshes, event_id)
+            return await asyncio.to_thread(reader.list_event_refreshes, event_id)
+        except EvidenceStoreError:
+            raise
         except sqlite3.DatabaseError as exc:
             raise EvidenceStoreError(
                 "investigation event store is unavailable"
             ) from exc
+
+    async def _require_event_reader(
+        self, task_id: str, event_id: str
+    ) -> InvestigationGraphReader:
+        """Strict-reader variant of _require_event for pure GET reads."""
+        reader = await self._reader_for(task_id)
+        if reader is None:
+            raise EvidenceNotFoundError("investigation event not found")
+        try:
+            event = await asyncio.to_thread(reader.get_event, event_id)
+        except EvidenceStoreError:
+            raise
+        except sqlite3.DatabaseError as exc:
+            raise EvidenceStoreError(
+                "investigation event store is unavailable"
+            ) from exc
+        if event is None:
+            raise EvidenceNotFoundError("investigation event not found")
+        return reader
 
 
 __all__ = ["InvestigationEventService"]

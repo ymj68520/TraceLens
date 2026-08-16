@@ -1715,7 +1715,10 @@ class InvestigationRepository:
     # secondary_analyses -- row mapping
     # =====================================================================
 
-    def _row_to_analysis(self, row: sqlite3.Row) -> SecondaryAnalysis:
+    # Static so the strict C10 read path (graph_reader) can reuse the exact
+    # row mapping without constructing this write-capable repository.
+    @staticmethod
+    def _row_to_analysis(row: sqlite3.Row) -> SecondaryAnalysis:
         gs = row["grounding_status"]
         return SecondaryAnalysis(
             analysis_id=row["analysis_id"],

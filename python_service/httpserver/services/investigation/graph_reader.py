@@ -26,10 +26,13 @@ from .models import (
     ClaimType,
     ClusterSnapshotPayload,
     EventEvidenceLink,
+    EventRefresh,
     EvidenceSnapshot,
     EvidenceSummary,
     FileSnapshotPayload,
     InvestigationEvent,
+    InvestigationEventVersion,
+    SecondaryAnalysis,
     SelectedAnalysisRef,
 )
 from .repository import InvestigationRepository, SUPPORTED_SCHEMA_VERSION
@@ -146,6 +149,133 @@ class InvestigationGraphReader:
         """Exact persisted claims of one analysis, or ``None`` when the
         analysis_id does not belong to this task."""
         return self._run(lambda conn: self._claims_with_conn(conn, analysis_id))
+
+    # -- Strict Workbench reads (C10 §14/E13) ------------------------------
+    # These projections exist so the events/analyses GET services never
+    # construct InvestigationRepository: its constructor mkdir/migrates/
+    # self-heals (and initializes a fresh store when the file is absent),
+    # which no GET may do. All methods here open mode=ro + query_only and
+    # fail closed on any non-v7 store.
+
+    def list_events(self, *, needs_refresh: bool | None = None) -> list[InvestigationEvent]:
+        def read(conn: sqlite3.Connection) -> list[InvestigationEvent]:
+            sql = _EVENT_READ_SQL
+            params: list = [self._task_id]
+            if needs_refresh is not None:
+                sql += " AND e.needs_refresh = ?"
+                params.append(1 if needs_refresh else 0)
+            sql += " ORDER BY e.created_at"
+            return [self._row_to_event(r) for r in conn.execute(sql, params)]
+
+        return self._run(read)
+
+    def get_event(self, event_id: str) -> InvestigationEvent | None:
+        def read(conn: sqlite3.Connection) -> InvestigationEvent | None:
+            row = conn.execute(
+                _EVENT_READ_SQL + " AND e.event_id = ?",
+                [self._task_id, event_id],
+            ).fetchone()
+            return self._row_to_event(row) if row is not None else None
+
+        return self._run(read)
+
+    def list_event_versions(
+        self, event_id: str
+    ) -> list[InvestigationEventVersion]:
+        def read(conn: sqlite3.Connection) -> list[InvestigationEventVersion]:
+            rows = conn.execute(
+                "SELECT * FROM investigation_event_versions "
+                "WHERE task_id = ? AND event_id = ? ORDER BY version",
+                [self._task_id, event_id],
+            ).fetchall()
+            return [
+                InvestigationEventVersion(
+                    task_id=r["task_id"],
+                    event_id=r["event_id"],
+                    version=r["version"],
+                    title=r["title"],
+                    summary=r["summary"],
+                    created_at=r["created_at"],
+                    created_by=r["created_by"],
+                )
+                for r in rows
+            ]
+
+        return self._run(read)
+
+    def list_event_evidence(self, event_id: str) -> list[EventEvidenceLink]:
+        def read(conn: sqlite3.Connection) -> list[EventEvidenceLink]:
+            rows = conn.execute(
+                "SELECT * FROM investigation_event_evidence "
+                "WHERE task_id = ? AND event_id = ? ORDER BY linked_at, evidence_key",
+                [self._task_id, event_id],
+            ).fetchall()
+            return [
+                EventEvidenceLink(
+                    task_id=r["task_id"],
+                    event_id=r["event_id"],
+                    evidence_key=r["evidence_key"],
+                    linked_at=r["linked_at"],
+                    linked_by=r["linked_by"],
+                )
+                for r in rows
+            ]
+
+        return self._run(read)
+
+    def get_event_refresh(self, refresh_id: str) -> EventRefresh | None:
+        def read(conn: sqlite3.Connection) -> EventRefresh | None:
+            row = conn.execute(
+                "SELECT * FROM investigation_event_refreshes "
+                "WHERE task_id = ? AND refresh_id = ?",
+                [self._task_id, refresh_id],
+            ).fetchone()
+            return (
+                InvestigationRepository._row_to_refresh(row)
+                if row is not None
+                else None
+            )
+
+        return self._run(read)
+
+    def list_event_refreshes(self, event_id: str) -> list[EventRefresh]:
+        def read(conn: sqlite3.Connection) -> list[EventRefresh]:
+            rows = conn.execute(
+                "SELECT * FROM investigation_event_refreshes "
+                "WHERE task_id = ? AND event_id = ? ORDER BY created_at",
+                [self._task_id, event_id],
+            ).fetchall()
+            return [InvestigationRepository._row_to_refresh(r) for r in rows]
+
+        return self._run(read)
+
+    def get_analysis(self, analysis_id: str) -> SecondaryAnalysis | None:
+        """Exact analysis of THIS task, or ``None`` (task-scoped by design)."""
+
+        def read(conn: sqlite3.Connection) -> SecondaryAnalysis | None:
+            row = conn.execute(
+                "SELECT * FROM secondary_analyses "
+                "WHERE task_id = ? AND analysis_id = ?",
+                [self._task_id, analysis_id],
+            ).fetchone()
+            return (
+                InvestigationRepository._row_to_analysis(row)
+                if row is not None
+                else None
+            )
+
+        return self._run(read)
+
+    def list_analyses(self, evidence_key: str) -> list[SecondaryAnalysis]:
+        def read(conn: sqlite3.Connection) -> list[SecondaryAnalysis]:
+            rows = conn.execute(
+                "SELECT * FROM secondary_analyses "
+                "WHERE task_id = ? AND evidence_key = ? ORDER BY version DESC",
+                [self._task_id, evidence_key],
+            ).fetchall()
+            return [InvestigationRepository._row_to_analysis(r) for r in rows]
+
+        return self._run(read)
 
     def _run(self, read_fn):
         try:

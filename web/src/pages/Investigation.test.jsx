@@ -24,6 +24,11 @@ vi.mock('../services/investigationService', () => ({
   createInvestigationEvent: vi.fn(),
   linkInvestigationEventEvidence: vi.fn(),
   startInvestigationEventRefresh: vi.fn(),
+  captureInvestigationSnapshot: vi.fn(),
+}));
+
+vi.mock('../services/forensicsService', () => ({
+  getLargestFiles: vi.fn(),
 }));
 
 vi.mock('../hooks/useTranslation', () => ({
@@ -32,6 +37,7 @@ vi.mock('../hooks/useTranslation', () => ({
 
 import ForceGraph2D from 'react-force-graph-2d';
 import * as service from '../services/investigationService';
+import * as forensicsService from '../services/forensicsService';
 import Investigation from './Investigation';
 
 const KEY_A = 'file:/case/a.txt';
@@ -161,6 +167,10 @@ function stubService(overrides = {}) {
       created_at: '2026-08-16T00:00:00+00:00',
     },
     getInvestigationGraph: graphResponse(),
+    captureInvestigationSnapshot: {
+      task_id: 't1', evidence_key: 'file:/case/new.txt', evidence_type: 'file',
+      captured_at: 1700000100, payload: { normalized_path: '/case/new.txt' },
+    },
     ...overrides,
   };
   for (const [name, value] of Object.entries(defaults)) {
@@ -955,5 +965,67 @@ describe('Investigation Workbench event actions (C9c)', () => {
     await waitFor(() => expect(within(updated).getByText('narrative v3')).toBeInTheDocument());
     // completed ≠ clean：dirty badge 由服务器 reload 决定，仍然显示
     expect(within(updated).getByText('investigation_workbench.needs_refresh')).toBeInTheDocument();
+  });
+});
+
+describe('Investigation Workbench capture entry (C10)', () => {
+  const NEW_FILE_KEY = 'file:/case/new.txt';
+
+  beforeEach(() => {
+    ForceGraph2D.mockClear();
+    stubService();
+    forensicsService.getLargestFiles.mockReset();
+    forensicsService.getLargestFiles.mockResolvedValue({
+      files: [{ path: '/case/a.txt' }, { path: '/case/new.txt' }],
+    });
+  });
+
+  test('lists only uncaptured file candidates and offers no free-text key input', async () => {
+    renderPage();
+    await screen.findByTestId(`evidence-item-${KEY_A}`);
+    await userEvent.click(screen.getByTestId('capture-evidence-toggle'));
+
+    // KEY_A already captured → excluded; only the new file remains.
+    expect(screen.getByTestId(`capture-option-${NEW_FILE_KEY}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`capture-option-${KEY_A}`)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`capture-option-${KEY_B}`)).not.toBeInTheDocument();
+    expect(screen.getByText('investigation_workbench.capture_evidence_hint')).toBeInTheDocument();
+    // §3 纪律延续：候选只能从任务文件列表选择，没有自由输入框。
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  test('capture posts the exact task/key and reloads evidence list + graph without touching selection', async () => {
+    renderPage();
+    await screen.findByTestId(`evidence-item-${KEY_A}`);
+    fireEvent.click(screen.getByTestId('tab-graph'));
+    await waitFor(() => expect(service.getInvestigationGraph.mock.calls.length).toBeGreaterThanOrEqual(1));
+    const graphCalls = service.getInvestigationGraph.mock.calls.length;
+
+    await userEvent.click(screen.getByTestId('capture-evidence-toggle'));
+    await userEvent.click(screen.getByTestId(`capture-option-${NEW_FILE_KEY}`));
+    await userEvent.click(screen.getByTestId('capture-evidence-button'));
+
+    await waitFor(() => expect(service.captureInvestigationSnapshot).toHaveBeenCalledTimes(1));
+    expect(service.captureInvestigationSnapshot).toHaveBeenCalledWith('t1', NEW_FILE_KEY);
+    // 成功后重读 Evidence 列表与 Graph（服务端是唯一投影权威）。
+    await waitFor(() => expect(service.listInvestigationEvidence.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(service.getInvestigationGraph.mock.calls.length).toBe(graphCalls + 1));
+    // capture 不改变 selection：右栏仍是空提示。
+    expect(screen.getByTestId('detail-empty')).toBeInTheDocument();
+  });
+
+  test('shows the HTTP failure inline and keeps the form usable', async () => {
+    renderPage();
+    await screen.findByTestId(`evidence-item-${KEY_A}`);
+    service.captureInvestigationSnapshot.mockRejectedValueOnce(Object.assign(new Error('down'), { status: 503 }));
+
+    await userEvent.click(screen.getByTestId('capture-evidence-toggle'));
+    await userEvent.click(screen.getByTestId(`capture-option-${NEW_FILE_KEY}`));
+    await userEvent.click(screen.getByTestId('capture-evidence-button'));
+
+    const error = await screen.findByTestId('capture-evidence-error');
+    expect(error.textContent).toContain('capture_failed');
+    expect(error.textContent).toContain('503');
+    expect(screen.getByTestId('capture-evidence-button')).not.toBeDisabled();
   });
 });
