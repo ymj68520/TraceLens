@@ -1,7 +1,8 @@
 /**
- * Investigation 服务 (只读)
+ * Investigation 服务 (C9b 起含 Evidence Analysis mutation)
  * 与 Python FastAPI 服务 (端口 8090) 通信
- * 消费 C8b 冻结的 GET /api/investigation/graph
+ * 消费 C8b 冻结的 GET /api/investigation/graph 与 C4b-2/C6 冻结的
+ * POST /api/investigation/analyses(+/review)
  */
 import { pythonApi } from './api';
 
@@ -58,12 +59,53 @@ export const getInvestigationAnalysis = async (taskId, analysisId) => {
 };
 
 /**
- * 读取一个 exact analysis 的已持久化 Claims（含 evidence refs / grounding）
+ * 显式提交一个 Secondary Analysis（202 admission；返回的 analysis_id 是
+ * 后续唯一的 polling identity，绝不回退到 "latest"）。
+ * 请求体严格对应后端 CreateAnalysisRequest（extra=forbid）：
+ * task_id / evidence_key / analyst_note / case_context / related_evidence。
+ */
+export const createSecondaryAnalysis = async (
+    taskId,
+    evidenceKey,
+    { analystNote = null, caseContext = null, relatedEvidence = [] } = {},
+) => {
+    return await pythonApi.post('/api/investigation/analyses', {
+        task_id: taskId,
+        evidence_key: evidenceKey,
+        analyst_note: analystNote,
+        case_context: caseContext,
+        related_evidence: relatedEvidence,
+    });
+};
+
+/**
+ * 按 exact analysis_id 读取一个 Secondary Analysis（不回退到 latest）
  */
 export const listInvestigationAnalysisClaims = async (taskId, analysisId) => {
     return await pythonApi.get(
         `/api/investigation/analyses/${encodeURIComponent(analysisId)}/claims`,
         { params: { task_id: taskId } },
+    );
+};
+
+/**
+ * 对一个 exact analysis version 记录一次显式 analyst decision。
+ * 决策 terminal 且不可更改；请求体只有后端 ReviewAnalysisRequest 的
+ * task_id / decision / reviewer / reason 四个字段。
+ */
+export const reviewSecondaryAnalysis = async (
+    taskId,
+    analysisId,
+    { decision, reviewer, reason = null },
+) => {
+    return await pythonApi.post(
+        `/api/investigation/analyses/${encodeURIComponent(analysisId)}/review`,
+        {
+            task_id: taskId,
+            decision,
+            reviewer,
+            reason,
+        },
     );
 };
 
@@ -122,6 +164,8 @@ export default {
     getInvestigationSnapshot,
     listInvestigationAnalyses,
     getInvestigationAnalysis,
+    createSecondaryAnalysis,
+    reviewSecondaryAnalysis,
     listInvestigationAnalysisClaims,
     listInvestigationEvents,
     getInvestigationEvent,

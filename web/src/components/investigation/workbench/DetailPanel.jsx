@@ -2,12 +2,17 @@
 // Workbench 右栏：Analysis Workspace。按当前 primary selection 渲染：
 //   event    → 当前 narrative / 版本历史 / refresh 状态
 //   evidence → Snapshot Initial Analysis（唯一来源，不回读 files.db）+ Analysis 版本
-//   analysis → exact analysis 的 description/summary/grounding/Claims/review 状态
+//              + C9b 的 Run Secondary Analysis 动作
+//   analysis → exact analysis 的 description/summary/Claims + 分区展示的
+//              Grounding 与 Analyst Review（C9b：grounding ≠ accepted，
+//              review 表单只在 review_pending 出现）
 //   claim    → exact 持久化 Claim 的 provenance（含 evidence refs）
-// 所有数据由页面加载；本组件只渲染与转发 selection。
+// 数据由页面加载；本组件只渲染、转发 selection 与提交动作。
 import { ArrowUpRight, CircleAlert } from 'lucide-react';
 import Badge from '../../common/Badge';
 import Spinner from '../../common/Spinner';
+import SubmitAnalysisForm from './SubmitAnalysisForm';
+import ReviewDecisionForm from './ReviewDecisionForm';
 import { useTranslation } from '../../../hooks/useTranslation';
 
 const Row = ({ label, value, mono = false, breakAll = false }) => (
@@ -34,6 +39,31 @@ const statusVariant = (status) => {
     if (status === 'review_pending') return 'yellow';
     if (status === 'rejected' || status === 'invalid' || status === 'failed') return 'red';
     return 'gray';
+};
+
+// grounding 徽章一律中性灰（§6）：grounded ≠ analyst accepted，不能用绿色
+// 让用户误读为人工确认。绿色只属于 status=accepted。
+const groundingVariant = () => 'gray';
+
+// 解析冻结的 AnalysisInputEnvelope（v1 related_evidence 是 string[]，
+// v2 是 {evidence_key, snapshot}[]——只展示 key，不渲染快照本体）。
+const parseSubmittedContext = (analysis) => {
+    if (!analysis?.input_envelope_json) return null;
+    try {
+        const envelope = JSON.parse(analysis.input_envelope_json);
+        const related = Array.isArray(envelope.related_evidence)
+            ? envelope.related_evidence
+                .map((entry) => (typeof entry === 'string' ? entry : entry?.evidence_key))
+                .filter(Boolean)
+            : [];
+        return {
+            analystNote: envelope.analyst_note ?? null,
+            caseContext: envelope.case_context ?? null,
+            relatedEvidence: related,
+        };
+    } catch {
+        return null;
+    }
 };
 
 const formatTime = (iso) => {
@@ -121,7 +151,15 @@ const EventDetail = ({ bundle, onSelectEvidence }) => {
     );
 };
 
-const EvidenceDetail = ({ bundle, evidenceKey, onSelectAnalysis, selectedAnalysisId }) => {
+const EvidenceDetail = ({
+    bundle,
+    evidenceKey,
+    onSelectAnalysis,
+    selectedAnalysisId,
+    evidenceOptions,
+    submitBusy,
+    onSubmitAnalysis,
+}) => {
     const { t } = useTranslation();
     const { snapshot, analyses = [] } = bundle || {};
     const payload = snapshot?.payload || null;
@@ -175,14 +213,34 @@ const EvidenceDetail = ({ bundle, evidenceKey, onSelectAnalysis, selectedAnalysi
                     </button>
                 ))}
             </Section>
+
+            <SubmitAnalysisForm
+                evidenceKey={evidenceKey}
+                evidenceOptions={evidenceOptions}
+                busy={submitBusy}
+                onSubmit={onSubmitAnalysis}
+            />
         </div>
     );
 };
 
-const AnalysisDetail = ({ bundle, onSelectClaim, selectedClaimId, onSelectEvidence }) => {
+const AnalysisDetail = ({
+    bundle,
+    onSelectClaim,
+    selectedClaimId,
+    onSelectEvidence,
+    onSubmitReview,
+}) => {
     const { t } = useTranslation();
     const { analysis, claims = [] } = bundle || {};
     if (!analysis) return null;
+
+    const submittedContext = parseSubmittedContext(analysis);
+    const hasSubmittedContext = Boolean(
+        submittedContext
+        && (submittedContext.analystNote || submittedContext.caseContext || submittedContext.relatedEvidence.length > 0),
+    );
+
     return (
         <div className="space-y-3" data-testid="analysis-detail">
             <div className="flex items-start justify-between gap-2 flex-wrap">
@@ -192,14 +250,15 @@ const AnalysisDetail = ({ bundle, onSelectClaim, selectedClaimId, onSelectEviden
                 <span className="flex items-center gap-1 shrink-0">
                     <Badge variant="gray" size="sm">v{analysis.version}</Badge>
                     <Badge variant={statusVariant(analysis.status)} size="sm">{analysis.status}</Badge>
+                    {analysis.status === 'review_pending' && (
+                        <Badge variant="yellow" size="sm">{t('investigation_workbench.awaiting_review')}</Badge>
+                    )}
                 </span>
             </div>
 
             <Section title={t('investigation_workbench.analysis_meta')}>
                 <Row label="evidence_key" value={analysis.evidence_key} mono breakAll />
                 <Row label="created_at" value={formatTime(analysis.created_at)} />
-                {analysis.decided_by && <Row label="decided_by" value={analysis.decided_by} />}
-                {analysis.decided_at && <Row label="decided_at" value={formatTime(analysis.decided_at)} />}
                 {analysis.model && <Row label="model" value={analysis.model} mono />}
                 <button
                     type="button"
@@ -210,6 +269,16 @@ const AnalysisDetail = ({ bundle, onSelectClaim, selectedClaimId, onSelectEviden
                     {t('investigation_workbench.goto_evidence')}
                 </button>
             </Section>
+
+            {analysis.status === 'failed' && (
+                <Section title={t('investigation_workbench.execution_failure')}>
+                    <Row label="error_code" value={analysis.error_code} mono />
+                    <Row label="error_message" value={analysis.error_message} breakAll />
+                    <p className="mt-1 text-[10px] text-slate-400">
+                        {t('investigation_workbench.failure_no_retry')}
+                    </p>
+                </Section>
+            )}
 
             {analysis.description && (
                 <Section title="description">
@@ -225,6 +294,21 @@ const AnalysisDetail = ({ bundle, onSelectClaim, selectedClaimId, onSelectEviden
                     </p>
                 </Section>
             )}
+
+            {/* §6：Grounding 与 Analyst Review 是两个独立区域。
+                grounding=valid 只表示引用校验通过，绝不是人工 accepted。 */}
+            <Section title={t('investigation_workbench.grounding')}>
+                {analysis.grounding_status ? (
+                    <div className="flex items-center justify-between gap-2 py-1">
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {t('investigation_workbench.grounding_note')}
+                        </span>
+                        <Badge variant={groundingVariant()} size="sm">{analysis.grounding_status}</Badge>
+                    </div>
+                ) : (
+                    <p className="text-[11px] text-slate-400">{t('investigation_workbench.grounding_not_run')}</p>
+                )}
+            </Section>
 
             <Section title={t('investigation_workbench.claims')}>
                 {claims.length === 0 ? (
@@ -243,16 +327,46 @@ const AnalysisDetail = ({ bundle, onSelectClaim, selectedClaimId, onSelectEviden
                     >
                         <div className="flex items-center justify-between gap-2">
                             <span className="text-[11px] font-mono text-slate-500">{claim.claim_type}</span>
-                            <Badge variant={claim.grounding_status === 'grounded' ? 'green' : 'yellow'} size="sm">
+                            <Badge variant={groundingVariant()} size="sm">
                                 {claim.grounding_status}
                             </Badge>
                         </div>
                         <span className="block mt-0.5 text-[11px] text-slate-600 dark:text-slate-300 line-clamp-2">
                             {claim.claim_text}
                         </span>
+                        {(claim.evidence_refs || []).length > 0 && (
+                            <span className="block text-[10px] text-slate-400">
+                                {(claim.evidence_refs || []).length} refs
+                            </span>
+                        )}
                     </button>
                 ))}
             </Section>
+
+            {/* §12：提交后 envelope 已冻结；这里展示的是冻结时的 analyst
+                context（从 exact read 的 input_envelope_json 解析），绝不
+                回显表单当前内容冒充该 Analysis 的输入。 */}
+            {hasSubmittedContext && (
+                <Section title={t('investigation_workbench.submitted_context')}>
+                    <Row label={t('investigation_workbench.analyst_note')} value={submittedContext.analystNote} breakAll />
+                    <Row label={t('investigation_workbench.case_context')} value={submittedContext.caseContext} breakAll />
+                    {submittedContext.relatedEvidence.map((key) => (
+                        <Row key={key} label={t('investigation_workbench.related_evidence')} value={key} mono breakAll />
+                    ))}
+                </Section>
+            )}
+
+            {/* §7/§8：review 表单只在 review_pending 出现；决策信息独立分区。 */}
+            {analysis.status === 'review_pending' ? (
+                <ReviewDecisionForm analysisId={analysis.analysis_id} onSubmitReview={onSubmitReview} />
+            ) : analysis.decided_by ? (
+                <Section title={t('investigation_workbench.analyst_review')}>
+                    <Row label="decision" value={analysis.status} />
+                    <Row label="decided_by" value={analysis.decided_by} />
+                    <Row label="decided_at" value={formatTime(analysis.decided_at)} />
+                    <Row label="reason" value={analysis.decision_reason} breakAll />
+                </Section>
+            ) : null}
         </div>
     );
 };
@@ -268,7 +382,7 @@ const ClaimDetail = ({ claim, onSelectAnalysis, onSelectEvidence }) => {
                 </h2>
                 <span className="flex items-center gap-1 shrink-0">
                     <Badge variant="gray" size="sm">{claim.claim_type}</Badge>
-                    <Badge variant={claim.grounding_status === 'grounded' ? 'green' : 'yellow'} size="sm">
+                    <Badge variant={groundingVariant()} size="sm">
                         {claim.grounding_status}
                     </Badge>
                 </span>
@@ -334,6 +448,10 @@ const DetailPanel = ({
     onSelectClaim,
     selectedAnalysisId,
     selectedClaimId,
+    evidenceOptions = [],
+    submitBusy = false,
+    onSubmitAnalysis,
+    onSubmitReview,
 }) => {
     const { t } = useTranslation();
 
@@ -374,6 +492,9 @@ const DetailPanel = ({
                 evidenceKey={selection.id}
                 onSelectAnalysis={onSelectAnalysis}
                 selectedAnalysisId={selectedAnalysisId}
+                evidenceOptions={evidenceOptions}
+                submitBusy={submitBusy}
+                onSubmitAnalysis={onSubmitAnalysis}
             />
         );
     } else if (selection.type === 'analysis') {
@@ -383,6 +504,7 @@ const DetailPanel = ({
                 onSelectClaim={onSelectClaim}
                 selectedClaimId={selectedClaimId}
                 onSelectEvidence={onSelectEvidence}
+                onSubmitReview={onSubmitReview}
             />
         );
     } else if (selection.type === 'claim') {

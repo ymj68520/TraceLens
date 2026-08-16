@@ -1,19 +1,24 @@
 // Investigation.jsx
-// Investigation Workbench 三栏 Shell（Phase C9a，只读）：
+// Investigation Workbench 三栏 Shell：
 //   左栏 Evidence Workspace | 中栏 Timeline | Graph | 右栏 Analysis Workspace
 //
 // 单一 primary selection（{type, id}，claim 附 analysisId 上下文）由本页持有，
 // 不引入 Redux Investigation store；task 来自全局 TaskSelector（searchParam）。
-// 本页不发起任何 mutation——C9b/C9c 才接操作面。
-import { useCallback, useEffect, useMemo, useState } from 'react';
+// C9b：Evidence Analysis 动作面——显式提交 Secondary Analysis、按 exact
+// analysis_id 轮询、review_pending 后的显式 Analyst Review；一切 read-side
+// 变化通过重新读取服务端状态获得（C7b needs_refresh / C8b selection），
+// 本页从不前端 patch 业务结论。Event 创建/链接/refresh 属于 C9c。
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import EvidenceListPanel from '../components/investigation/workbench/EvidenceListPanel';
 import EventTimelinePanel from '../components/investigation/workbench/EventTimelinePanel';
 import GraphTabPanel from '../components/investigation/workbench/GraphTabPanel';
 import DetailPanel from '../components/investigation/workbench/DetailPanel';
 import { useStaleResource } from '../hooks/useStaleResource';
+import { useSecondaryAnalysisPolling } from '../hooks/useSecondaryAnalysisPolling';
 import { useTranslation } from '../hooks/useTranslation';
 import {
+    createSecondaryAnalysis,
     getInvestigationAnalysis,
     getInvestigationEvent,
     getInvestigationSnapshot,
@@ -24,6 +29,7 @@ import {
     listInvestigationEventVersions,
     listInvestigationEvents,
     listInvestigationEvidence,
+    reviewSecondaryAnalysis,
 } from '../services/investigationService';
 
 const STATUS_BADGES = {
@@ -52,6 +58,7 @@ const Investigation = () => {
     const [middleTab, setMiddleTab] = useState('timeline');
     useEffect(() => {
         setSelection(null);
+        setSubmission(null); // 旧 task 的轮询/提交上下文一并丢弃（§4 stale-safe）
     }, [taskId]);
 
     const selectedEvidenceKey = selection?.type === 'evidence' ? selection.id : null;
@@ -66,6 +73,16 @@ const Investigation = () => {
     const selectEvent = useCallback((eventId) => setSelection({ type: 'event', id: eventId }), []);
     const selectAnalysis = useCallback((analysisId) => setSelection({ type: 'analysis', id: analysisId }), []);
     const selectClaim = useCallback((claimId, analysisId) => setSelection({ type: 'claim', id: claimId, analysisId }), []);
+
+    // ── C9b：Secondary Analysis 提交 + exact-id 轮询 ──────────────────────────
+    // submission 是轮询身份三元组 {taskId, evidenceKey, analysisId}；POST
+    // admission 返回的 exact analysis_id 是唯一轮询对象，绝不回退 latest。
+    const [submission, setSubmission] = useState(null);
+    const submissionRef = useRef(null);
+    submissionRef.current = submission;
+    const [graphRefreshSignal, setGraphRefreshSignal] = useState(0);
+
+    const polling = useSecondaryAnalysisPolling(taskId ? submission : null);
 
     // Graph 节点点击 → 统一 Workbench selection（§8：四类 overlay 命名空间）。
     const handleGraphNodeClick = useCallback((node) => {
@@ -128,6 +145,81 @@ const Investigation = () => {
     const selectedClaim = useMemo(
         () => (analysisBundle.data?.claims || []).find((claim) => claim.claim_id === selectedClaimId) || null,
         [analysisBundle.data, selectedClaimId],
+    );
+
+    // ── C9b mutation 面 ────────────────────────────────────────────────────────
+
+    const handleSubmitAnalysis = useCallback(async (payload) => {
+        const created = await createSecondaryAnalysis(taskId, payload.evidence_key, {
+            analystNote: payload.analyst_note,
+            caseContext: payload.case_context,
+            relatedEvidence: payload.related_evidence,
+        });
+        if (!created?.analysis_id) {
+            throw new Error('admission response missing analysis_id');
+        }
+        const next = {
+            taskId,
+            evidenceKey: payload.evidence_key,
+            analysisId: created.analysis_id,
+        };
+        setSubmission(next);
+        return created;
+    }, [taskId]);
+
+    const handleReviewAnalysis = useCallback(async (analysisId, decision, { reviewer, reason }) => {
+        const updated = await reviewSecondaryAnalysis(taskId, analysisId, {
+            decision,
+            reviewer,
+            reason,
+        });
+        // §9/§10：决策后统一失效重读——exact Analysis、Evidence 版本列表、
+        // accepted-first 选择徽章、Event needs_refresh（C7b 服务端传播）、
+        // Graph overlay confirmed（C8b 服务端 selection）全部以服务端为准，
+        // 前端不做任何本地业务状态 patch。
+        analysisBundle.refresh();
+        evidenceBundle.refresh();
+        evidenceList.refresh();
+        eventList.refresh();
+        setGraphRefreshSignal((signal) => signal + 1);
+        return updated;
+    }, [taskId, analysisBundle, evidenceBundle, evidenceList, eventList]);
+
+    // 轮询离开 queued/running（review_pending 或 terminal）时：重读相关
+    // read-side，且仅在用户仍停留在同一 Evidence 时自动选中这次新 Analysis
+    // （§15）。用户已切走则不打扰当前工作区——晚到的完成不切换右栏（§4）。
+    const autoSelectedRef = useRef(null);
+    const selectionRef = useRef(null);
+    selectionRef.current = selection;
+    const refreshEvidenceList = evidenceList.refresh;
+    const refreshEvidenceBundle = evidenceBundle.refresh;
+    useEffect(() => {
+        const analysis = polling.analysis;
+        const current = submissionRef.current;
+        if (!analysis || !current) return;
+        if (analysis.status === 'queued' || analysis.status === 'running') return;
+        if (autoSelectedRef.current === analysis.analysis_id) return;
+        autoSelectedRef.current = analysis.analysis_id;
+
+        refreshEvidenceList();
+        refreshEvidenceBundle();
+        setGraphRefreshSignal((signal) => signal + 1);
+
+        const stillOnEvidence = selectionRef.current?.type === 'evidence'
+            && selectionRef.current.id === current.evidenceKey;
+        if (stillOnEvidence) {
+            selectAnalysis(analysis.analysis_id);
+        }
+    }, [polling.analysis, refreshEvidenceList, refreshEvidenceBundle, selectAnalysis]);
+
+    // 该 Evidence 上有本页发起的 submission 仍在排队/执行时，提交按钮保持
+    // disabled（§13 防误双击；后端 versioning 契约不被前端改写）。
+    const submitBusyEvidenceKey = submission && submission.taskId === taskId && polling.active
+        ? submission.evidenceKey
+        : null;
+    const evidenceOptions = useMemo(
+        () => (evidenceList.data || []).map((row) => row.evidence_key),
+        [evidenceList.data],
     );
 
     // 左栏：选中 Event 时显示其 authoritative evidence；否则显示任务全量 evidence。
@@ -265,6 +357,7 @@ const Investigation = () => {
                                     taskId={taskId}
                                     selectedNodeId={graphNodeIdForSelection(selection)}
                                     onNodeClick={handleGraphNodeClick}
+                                    refreshSignal={graphRefreshSignal}
                                 />
                             )}
                         </div>
@@ -285,6 +378,10 @@ const Investigation = () => {
                             onSelectClaim={selectClaim}
                             selectedAnalysisId={activeAnalysisId}
                             selectedClaimId={selectedClaimId}
+                            evidenceOptions={evidenceOptions}
+                            submitBusy={submitBusyEvidenceKey !== null && submitBusyEvidenceKey === selectedEvidenceKey}
+                            onSubmitAnalysis={handleSubmitAnalysis}
+                            onSubmitReview={handleReviewAnalysis}
                         />
                     </aside>
                 </div>

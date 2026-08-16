@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -13,6 +13,8 @@ vi.mock('../services/investigationService', () => ({
   getInvestigationSnapshot: vi.fn(),
   listInvestigationAnalyses: vi.fn(),
   getInvestigationAnalysis: vi.fn(),
+  createSecondaryAnalysis: vi.fn(),
+  reviewSecondaryAnalysis: vi.fn(),
   listInvestigationAnalysisClaims: vi.fn(),
   listInvestigationEvents: vi.fn(),
   getInvestigationEvent: vi.fn(),
@@ -134,6 +136,8 @@ function stubService(overrides = {}) {
     getInvestigationSnapshot: snapshotResponse(),
     listInvestigationAnalyses: [analysisRow()],
     getInvestigationAnalysis: analysisRow(),
+    createSecondaryAnalysis: { analysis_id: 'sa_new', status: 'queued' },
+    reviewSecondaryAnalysis: analysisRow(),
     listInvestigationAnalysisClaims: claimsResponse(),
     getInvestigationEvent: versions.event,
     listInvestigationEventVersions: versions.versions,
@@ -339,5 +343,237 @@ describe('Investigation Workbench (C9a)', () => {
     await waitFor(() => expect(lastCanvasProps()).toBeDefined());
     expect(screen.getByTestId('workbench-base-unavailable')).toBeInTheDocument();
     expect(lastCanvasProps().graphData.nodes).toHaveLength(4);
+  });
+});
+
+describe('Investigation Workbench analysis actions (C9b)', () => {
+  const NEW_ANALYSIS_ID = 'sa_new';
+
+  beforeEach(() => {
+    ForceGraph2D.mockClear();
+    stubService();
+  });
+
+  async function openEvidenceAndForm() {
+    renderPage();
+    await screen.findByTestId(`evidence-item-${KEY_A}`);
+    act(() => screen.getByTestId(`evidence-item-${KEY_A}`).click());
+    const detail = await screen.findByTestId('evidence-detail');
+    act(() => within(detail).getByTestId('run-analysis-toggle').click());
+    return detail;
+  }
+
+  // 让 polling 与 analysisBundle 共用同一个 exact GET：按 analysis_id 分发。
+  function stubExactAnalysis(analysisById) {
+    service.getInvestigationAnalysis.mockImplementation(
+      async (taskId, analysisId) => analysisById[analysisId] ?? analysisRow(),
+    );
+    service.listInvestigationAnalysisClaims.mockImplementation(
+      async (taskId, analysisId) => ({
+        ...claimsResponse(),
+        analysis_id: analysisId,
+        claims: claimsResponse().claims.map((claim) => ({ ...claim, analysis_id: analysisId })),
+      }),
+    );
+  }
+
+  test('submit sends exactly the backend contract fields and auto-selects the new analysis at review_pending', async () => {
+    stubExactAnalysis({
+      [ANALYSIS_ID]: analysisRow(),
+      [NEW_ANALYSIS_ID]: { ...analysisRow(NEW_ANALYSIS_ID, 3, 'review_pending'), evidence_key: KEY_A },
+    });
+    const detail = await openEvidenceAndForm();
+
+    await userEvent.type(within(detail).getByTestId('analyst-note-input'), 'note from analyst');
+    await userEvent.type(within(detail).getByTestId('case-context-input'), 'case background');
+    await userEvent.click(within(detail).getByTestId(`related-option-${KEY_B}`));
+    await userEvent.click(within(detail).getByTestId('submit-analysis-button'));
+
+    // 请求只携带后端 CreateAnalysisRequest 支持的字段（extra=forbid）。
+    await waitFor(() => expect(service.createSecondaryAnalysis).toHaveBeenCalledTimes(1));
+    expect(service.createSecondaryAnalysis).toHaveBeenCalledWith('t1', KEY_A, {
+      analystNote: 'note from analyst',
+      caseContext: 'case background',
+      relatedEvidence: [KEY_B],
+    });
+
+    // admission 的 exact analysis_id 成为轮询身份；完成后自动选中该 analysis。
+    await waitFor(() => expect(service.getInvestigationAnalysis).toHaveBeenCalledWith('t1', NEW_ANALYSIS_ID));
+    const analysisDetail = await screen.findByTestId('analysis-detail');
+    expect(within(analysisDetail).getByText(NEW_ANALYSIS_ID)).toBeInTheDocument();
+    expect(within(analysisDetail).getByText('investigation_workbench.awaiting_review')).toBeInTheDocument();
+    expect(within(analysisDetail).getByTestId('review-decision-form')).toBeInTheDocument();
+  });
+
+  test('related evidence picker only offers other captured evidence of the task', async () => {
+    const detail = await openEvidenceAndForm();
+    const options = within(detail).getByTestId('related-evidence-options');
+    expect(within(options).getByTestId(`related-option-${KEY_B}`)).toBeInTheDocument();
+    // primary evidence 自动排除；没有自由输入框
+    expect(within(options).queryByTestId(`related-option-${KEY_A}`)).not.toBeInTheDocument();
+    expect(within(detail).queryByTestId('related-evidence-free-input')).not.toBeInTheDocument();
+  });
+
+  test('rapid double click submits exactly one POST', async () => {
+    stubExactAnalysis({
+      [NEW_ANALYSIS_ID]: { ...analysisRow(NEW_ANALYSIS_ID, 3, 'review_pending'), evidence_key: KEY_A },
+    });
+    const detail = await openEvidenceAndForm();
+    fireEvent.click(within(detail).getByTestId('submit-analysis-button'));
+    fireEvent.click(within(detail).getByTestId('submit-analysis-button'));
+    await waitFor(() => expect(service.createSecondaryAnalysis).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(service.createSecondaryAnalysis).toHaveBeenCalledTimes(1);
+  });
+
+  test('a late completion never yanks the workspace after the analyst switched evidence', async () => {
+    const gate = {};
+    gate.promise = new Promise((resolve) => { gate.resolve = resolve; });
+    // 该 submission 的轮询响应被扣住，直到用户已切到 KEY_B 之后才放行
+    service.getInvestigationAnalysis.mockImplementation(async (taskId, analysisId) => {
+      if (analysisId === NEW_ANALYSIS_ID) return gate.promise;
+      return analysisRow();
+    });
+    service.listInvestigationAnalysisClaims.mockImplementation(
+      async (taskId, analysisId) => ({ ...claimsResponse(), analysis_id: analysisId }),
+    );
+    const detail = await openEvidenceAndForm();
+    await userEvent.click(within(detail).getByTestId('submit-analysis-button'));
+    await waitFor(() => expect(service.createSecondaryAnalysis).toHaveBeenCalledTimes(1));
+
+    // 切到另一条 Evidence：右栏必须停留在 KEY_B
+    act(() => screen.getByTestId(`evidence-item-${KEY_B}`).click());
+    await screen.findByText(KEY_B);
+    expect(screen.queryByTestId('analysis-detail')).not.toBeInTheDocument();
+
+    // E1 的 A1 轮询此刻才完成——只刷新 read-side，不把右栏切回 E1
+    await act(async () => gate.resolve({ ...analysisRow(NEW_ANALYSIS_ID, 3, 'review_pending'), evidence_key: KEY_A }));
+    await waitFor(() => expect(service.listInvestigationEvidence).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('evidence-detail')).toBeInTheDocument();
+    expect(screen.queryByTestId('analysis-detail')).not.toBeInTheDocument();
+  });
+
+  test('review_pending exposes the review form and an explicit decision reloads all read-sides', async () => {
+    stubService({ getInvestigationAnalysis: analysisRow(ANALYSIS_ID, 2, 'review_pending') });
+    stubExactAnalysis({ [ANALYSIS_ID]: analysisRow(ANALYSIS_ID, 2, 'review_pending') });
+    renderPage();
+    await screen.findByTestId(`evidence-item-${KEY_A}`);
+    act(() => screen.getByTestId(`evidence-item-${KEY_A}`).click());
+    const evidenceDetail = await screen.findByTestId('evidence-detail');
+    act(() => within(evidenceDetail).getByTestId(`analysis-item-${ANALYSIS_ID}`).click());
+    const detail = await screen.findByTestId('analysis-detail');
+
+    // grounding=valid + review_pending：显示待复核，绝不显示 accepted
+    expect(within(detail).getByText('investigation_workbench.awaiting_review')).toBeInTheDocument();
+    expect(within(detail).queryByText('accepted')).not.toBeInTheDocument();
+
+    const form = within(detail).getByTestId('review-decision-form');
+    expect(within(form).getByText('investigation_workbench.review_terminal_warning')).toBeInTheDocument();
+
+    await userEvent.click(within(form).getByTestId('review-decision-rejected'));
+    await userEvent.type(within(form).getByTestId('reviewer-input'), 'analyst-9');
+    await userEvent.type(within(form).getByTestId('review-reason-input'), 'not supported');
+    await userEvent.click(within(form).getByTestId('submit-review-button'));
+
+    // 请求体只有 ReviewAnalysisRequest 的四个字段语义
+    await waitFor(() => expect(service.reviewSecondaryAnalysis).toHaveBeenCalledTimes(1));
+    expect(service.reviewSecondaryAnalysis).toHaveBeenCalledWith('t1', ANALYSIS_ID, {
+      decision: 'rejected',
+      reviewer: 'analyst-9',
+      reason: 'not supported',
+    });
+
+    // §9：统一失效重读——exact analysis / evidence 选择徽章 / events；
+    // 版本列表按 selection key 在回到 evidence 视图时重读（见下）
+    await waitFor(() => expect(service.getInvestigationAnalysis.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(service.listInvestigationEvidence.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(service.listInvestigationEvents.mock.calls.length).toBeGreaterThanOrEqual(2));
+
+    // 回到 evidence 视图：版本列表重新读取（不做本地状态 patch）
+    await userEvent.click(within(detail).getByText('investigation_workbench.goto_evidence'));
+    await screen.findByTestId('evidence-detail');
+    await waitFor(() => expect(service.listInvestigationAnalyses.mock.calls.length).toBeGreaterThanOrEqual(2));
+  });
+
+  test('review decision reloads the graph when the graph tab is mounted', async () => {
+    stubExactAnalysis({ [ANALYSIS_ID]: analysisRow(ANALYSIS_ID, 2, 'review_pending') });
+    renderPage();
+    await screen.findByTestId(`evidence-item-${KEY_A}`);
+    await userEvent.click(screen.getByTestId('tab-graph'));
+    await waitFor(() => expect(service.getInvestigationGraph).toHaveBeenCalledTimes(1));
+
+    act(() => screen.getByTestId(`evidence-item-${KEY_A}`).click());
+    const evidenceDetail = await screen.findByTestId('evidence-detail');
+    act(() => within(evidenceDetail).getByTestId(`analysis-item-${ANALYSIS_ID}`).click());
+    await screen.findByTestId('analysis-detail');
+
+    const form = screen.getByTestId('review-decision-form');
+    await userEvent.type(within(form).getByTestId('reviewer-input'), 'analyst-9');
+    await userEvent.click(within(form).getByTestId('submit-review-button'));
+
+    // review 成功后只调用 graph refresh，前端不改节点/confirmed
+    await waitFor(() => expect(service.getInvestigationGraph.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(service.getInvestigationGraph).toHaveBeenCalledWith('t1', { maxBaseNodes: 200 });
+  });
+
+  test('review controls stay hidden for non-review_pending statuses', async () => {
+    stubService({ getInvestigationAnalysis: analysisRow(ANALYSIS_ID, 2, 'accepted') });
+    stubExactAnalysis({ [ANALYSIS_ID]: analysisRow(ANALYSIS_ID, 2, 'accepted') });
+    renderPage();
+    await screen.findByTestId(`evidence-item-${KEY_A}`);
+    act(() => screen.getByTestId(`evidence-item-${KEY_A}`).click());
+    const evidenceDetail = await screen.findByTestId('evidence-detail');
+    act(() => within(evidenceDetail).getByTestId(`analysis-item-${ANALYSIS_ID}`).click());
+    const detail = await screen.findByTestId('analysis-detail');
+
+    expect(screen.queryByTestId('review-decision-form')).not.toBeInTheDocument();
+    // 已决策的分析显示决策信息分区
+    expect(within(detail).getByText('analyst-1')).toBeInTheDocument();
+  });
+
+  test('failed analysis surfaces error_code/error_message without any automatic resubmission', async () => {
+    const failedRow = {
+      ...analysisRow(ANALYSIS_ID, 2, 'failed'),
+      error_code: 'LLM_TIMEOUT',
+      error_message: 'sanitized failure detail',
+    };
+    stubService({ getInvestigationAnalysis: failedRow });
+    stubExactAnalysis({ [ANALYSIS_ID]: failedRow });
+    renderPage();
+    await screen.findByTestId(`evidence-item-${KEY_A}`);
+    act(() => screen.getByTestId(`evidence-item-${KEY_A}`).click());
+    const evidenceDetail = await screen.findByTestId('evidence-detail');
+    act(() => within(evidenceDetail).getByTestId(`analysis-item-${ANALYSIS_ID}`).click());
+    const detail = await screen.findByTestId('analysis-detail');
+
+    expect(within(detail).getByText('LLM_TIMEOUT')).toBeInTheDocument();
+    expect(within(detail).getByText('sanitized failure detail')).toBeInTheDocument();
+    expect(within(detail).getByText('investigation_workbench.failure_no_retry')).toBeInTheDocument();
+    expect(screen.queryByTestId('review-decision-form')).not.toBeInTheDocument();
+    expect(service.createSecondaryAnalysis).not.toHaveBeenCalled();
+  });
+
+  test('submitted analyst context renders the frozen envelope, not the live form', async () => {
+    const row = {
+      ...analysisRow(),
+      input_envelope_json: JSON.stringify({
+        schema_version: 2,
+        analyst_note: 'frozen note',
+        case_context: 'frozen context',
+        related_evidence: [{ evidence_key: KEY_B, snapshot: { evidence_key: KEY_B } }],
+      }),
+    };
+    stubService({ getInvestigationAnalysis: row });
+    stubExactAnalysis({ [ANALYSIS_ID]: row });
+    renderPage();
+    await screen.findByTestId(`evidence-item-${KEY_A}`);
+    act(() => screen.getByTestId(`evidence-item-${KEY_A}`).click());
+    const evidenceDetail = await screen.findByTestId('evidence-detail');
+    act(() => within(evidenceDetail).getByTestId(`analysis-item-${ANALYSIS_ID}`).click());
+    const detail = await screen.findByTestId('analysis-detail');
+
+    expect(within(detail).getByText('frozen note')).toBeInTheDocument();
+    expect(within(detail).getByText('frozen context')).toBeInTheDocument();
+    expect(within(detail).getByText(KEY_B)).toBeInTheDocument();
   });
 });

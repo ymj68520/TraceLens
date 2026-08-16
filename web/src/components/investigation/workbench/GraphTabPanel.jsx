@@ -2,15 +2,28 @@
 // Workbench 中栏 Graph 视图：直接复用 C8c 的 InvestigationGraphCanvas 与
 // useInvestigationGraph（不实现第二份 Graph）。节点点击交给页面统一为
 // Workbench selection（event:/evidence:/analysis:/claim: 命名空间）。
+// C9b：refreshSignal 变化时重新拉取服务端 Graph（review/submit 后由页面
+// 递增）——前端从不增删节点或改 confirmed，一切以服务端 C8b selection 为准。
+import { useEffect, useRef } from 'react';
 import { AlertTriangle, CircleAlert, RefreshCw } from 'lucide-react';
 import Spinner from '../../common/Spinner';
 import InvestigationGraphCanvas from '../InvestigationGraphCanvas';
 import { useInvestigationGraph } from '../../../hooks/useInvestigationGraph';
 import { useTranslation } from '../../../hooks/useTranslation';
 
-const GraphTabPanel = ({ taskId, selectedNodeId, onNodeClick }) => {
+const GraphTabPanel = ({ taskId, selectedNodeId, onNodeClick, refreshSignal = 0 }) => {
     const { t } = useTranslation();
     const { graph, loading, error, refresh } = useInvestigationGraph({ taskId });
+
+    // 跳过初次渲染（hook 自身已加载），之后每次信号递增都重读服务端状态。
+    const mountedRef = useRef(false);
+    useEffect(() => {
+        if (!mountedRef.current) {
+            mountedRef.current = true;
+            return;
+        }
+        refresh();
+    }, [refreshSignal, refresh]);
 
     const baseUnavailable = (graph.warnings || []).includes('base_graph_unavailable');
 
