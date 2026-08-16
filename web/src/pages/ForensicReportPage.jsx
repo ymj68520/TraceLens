@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import GenerateReportPanel from '../components/reports/GenerateReportPanel';
+import NarrativeReportView from '../components/reports/NarrativeReportView';
 import ReportStatusPanel from '../components/reports/ReportStatusPanel';
 import ReportToolbar from '../components/reports/ReportToolbar';
 import ReportWorkspace from '../components/reports/ReportWorkspace';
 import VersionHistory from '../components/reports/VersionHistory';
 import { useReportSearch } from '../hooks/useReportSearch';
 import { useReportVersion } from '../hooks/useReportVersion';
+import { getNarrativeReport } from '../services/reportGenerationService';
 import { reportDataSource } from '../services/reportService';
 
 function reportErrorMessage(error) {
@@ -17,7 +20,13 @@ function reportErrorMessage(error) {
   return error?.message || String(error || '报告操作失败');
 }
 
-export default function ForensicReportPage({ scopeType, scopeId, dataSource = reportDataSource }) {
+export default function ForensicReportPage({
+  scopeType,
+  scopeId,
+  dataSource = reportDataSource,
+  narrativeLoader = getNarrativeReport,
+  generationPollIntervalMs,
+}) {
   const params = useParams();
   // Prefer an explicit prop (used when embedded outside of /reports/.../:id routes);
   // fall back to the route param otherwise.
@@ -31,6 +40,42 @@ export default function ForensicReportPage({ scopeType, scopeId, dataSource = re
   const currentManifest = state.manifest?.report_id === reportId ? state.manifest : null;
   const defaultCategoryId = currentManifest?.categories?.[0]?.category_id || null;
   const incompatible = Boolean(currentManifest && currentManifest.schema_version !== '1.0');
+  // R2d: a published narrative version renders the Narrative view; it never
+  // enters the deterministic category/page workspace.
+  const selectedIsNarrative = state.selectedVersion?.report_kind === 'llm_generation';
+
+  // 渲染期同步 refs：generation 晚完成时用它们判定"用户是否仍在原地"，
+  // 绝不让晚到的 completed 劫持当前 selection（§7/§30）。
+  const selectionRef = useRef(null);
+  selectionRef.current = state.selectedVersion;
+  const scopeRef = useRef(null);
+  const selectionWhenAdmittedRef = useRef(undefined);
+
+  const handleGenerationAdmitted = useCallback(() => {
+    // 记录 admission 时刻的 selection；completed 时只有"selection 未被
+    // 用户改变"才允许自动打开 exact 产物版本。
+    selectionWhenAdmittedRef.current = selectionRef.current?.report_id ?? null;
+  }, []);
+
+  const handleGenerationComplete = useCallback((generation) => {
+    if (!generation?.report_id || !generation?.produced_version) return;
+    const scopeKey = `${scopeType}:${resolvedScopeId}`;
+    if (scopeRef.current !== scopeKey) return;
+    const selectionStillAtAdmission = selectionRef.current?.report_id
+      === selectionWhenAdmittedRef.current;
+    void state.refresh().then(() => {
+      if (scopeRef.current !== scopeKey) return;
+      // 用户已主动查看历史版本：只刷新列表，绝不劫持 Viewer。
+      if (!selectionStillAtAdmission) return;
+      // §8：只使用 completed 返回的 exact identity（绝不 GET latest）。
+      void state.selectByReportId(generation.report_id);
+    });
+  }, [resolvedScopeId, scopeType, state]);
+
+  useEffect(() => {
+    scopeRef.current = `${scopeType}:${resolvedScopeId}`;
+    selectionWhenAdmittedRef.current = undefined;
+  }, [scopeType, resolvedScopeId]);
 
   useEffect(() => {
     setSelectedCategory(defaultCategoryId);
@@ -55,6 +100,14 @@ export default function ForensicReportPage({ scopeType, scopeId, dataSource = re
         onRefresh={() => { void state.refresh(); }}
       />
       {state.error && <div role="alert">{reportErrorMessage(state.error)}</div>}
+      {scopeType === 'task' && resolvedScopeId && (
+        <GenerateReportPanel
+          taskId={resolvedScopeId}
+          pollIntervalMs={generationPollIntervalMs}
+          onAdmitted={handleGenerationAdmitted}
+          onComplete={handleGenerationComplete}
+        />
+      )}
       <ReportStatusPanel
         versions={state.versions}
         version={state.selectedVersion}
@@ -67,19 +120,27 @@ export default function ForensicReportPage({ scopeType, scopeId, dataSource = re
           onSelect={(version) => { void state.selectVersion(version); }}
         />
       )}
-      {currentManifest && !incompatible && reportId && (
-        <ReportWorkspace
-          manifest={currentManifest}
-          dataSource={dataSource}
+      {selectedIsNarrative && resolvedScopeId ? (
+        <NarrativeReportView
+          taskId={resolvedScopeId}
           reportId={reportId}
-          selectedCategory={selectedCategory}
-          selectedPage={selectedPage}
-          onSelectCategory={selectCategory}
-          onSelectPage={setSelectedPage}
-          searchState={searchState}
-          directoryOpen={directoryOpen}
-          onDirectoryOpenChange={setDirectoryOpen}
+          fetchNarrative={narrativeLoader}
         />
+      ) : (
+        currentManifest && !incompatible && reportId && (
+          <ReportWorkspace
+            manifest={currentManifest}
+            dataSource={dataSource}
+            reportId={reportId}
+            selectedCategory={selectedCategory}
+            selectedPage={selectedPage}
+            onSelectCategory={selectCategory}
+            onSelectPage={setSelectedPage}
+            searchState={searchState}
+            directoryOpen={directoryOpen}
+            onDirectoryOpenChange={setDirectoryOpen}
+          />
+        )
       )}
     </section>
   );

@@ -415,7 +415,13 @@ class ReportGenerationExecutor:
                     generation_id,
                     report_id=report_id,
                     title=response.title,
-                    manifest_path=str(final_dir),
+                    # Relative to the report root, matching the A-chain
+                    # convention: the stored path is display metadata only
+                    # (reads resolve the layout through the writer), and it
+                    # must not disclose absolute server filesystem paths.
+                    manifest_path=str(
+                        final_dir.relative_to(self._writer.report_root)
+                    ),
                     model=model or "unknown",
                 )
                 if completed.status != "completed":  # pragma: no cover

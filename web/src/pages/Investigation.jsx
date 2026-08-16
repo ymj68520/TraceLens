@@ -11,7 +11,8 @@
 // read-side 变化通过重新读取服务端状态获得（C7b needs_refresh / C7c
 // completion-time staleness / C8b selection），本页从不前端 patch 业务结论。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { FileText } from 'lucide-react';
 import EvidenceListPanel from '../components/investigation/workbench/EvidenceListPanel';
 import EventTimelinePanel from '../components/investigation/workbench/EventTimelinePanel';
 import GraphTabPanel from '../components/investigation/workbench/GraphTabPanel';
@@ -451,6 +452,18 @@ const Investigation = () => {
                         <span data-testid="needs-refresh-count" className="px-2 py-0.5 rounded-lg bg-amber-100/70 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300">
                             {t('investigation_workbench.needs_refresh')}: {needsRefreshCount}
                         </span>
+                    )}
+                    {/* R2d：进入 Report 页面的唯一生成/阅读入口（§3 轻量跳转，
+                        不在 Workbench 复制 generation UI）。 */}
+                    {taskId && (
+                        <Link
+                            to={`/case-intelligence?taskId=${encodeURIComponent(taskId)}&tab=forensic`}
+                            data-testid="open-reports-link"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary-500/90 text-white hover:bg-primary-500 font-medium"
+                        >
+                            <FileText size={12} />
+                            {t('investigation_workbench.open_reports')}
+                        </Link>
                     )}
                 </div>
             </div>

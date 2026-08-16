@@ -48,10 +48,15 @@ class ReportRepository:
                     warnings_json TEXT NOT NULL DEFAULT '[]',
                     error TEXT,
                     created_at TEXT NOT NULL,
+                    report_kind TEXT,
                     UNIQUE(scope_type, scope_id, version)
                 );
                 CREATE INDEX IF NOT EXISTS idx_report_scope
                     ON report_versions(scope_type, scope_id, version DESC);
+
+                -- Phase R2d: NULL report_kind keeps meaning "deterministic
+                -- forensic snapshot" for every pre-existing row; only the
+                -- R2c publication transaction writes 'llm_generation'.
 
                 -- Phase R2b: additive frozen generation admission companion.
                 -- Insert-only rows; the trigger freezes identity/scope/
@@ -108,6 +113,7 @@ class ReportRepository:
                 """
             )
             self._add_generation_execution_columns(conn)
+            self._add_report_kind_column(conn)
             conn.executescript(
                 """
                 -- R2c state machine: admitted(=queued) -> running ->
@@ -188,6 +194,27 @@ class ReportRepository:
                     f"ALTER TABLE report_generation_inputs "
                     f"ADD COLUMN {name} {decl}"
                 )
+
+    def _add_report_kind_column(self, conn: sqlite3.Connection) -> None:
+        """Additive R2d migration: explicit version type marker.
+
+        Stores written by R2c code already contain published narrative
+        versions whose ``manifest_path`` lives in the writer-owned
+        ``snapshots/`` subtree (deterministic snapshots are always under
+        ``<scope_type>/...``), so a one-time backfill types them correctly.
+        """
+        existing = {
+            row[1] for row in conn.execute(
+                "PRAGMA table_info(report_versions)"
+            )
+        }
+        if "report_kind" not in existing:
+            conn.execute("ALTER TABLE report_versions ADD COLUMN report_kind TEXT")
+            conn.execute(
+                "UPDATE report_versions SET report_kind = 'llm_generation' "
+                "WHERE manifest_path IS NOT NULL "
+                "AND manifest_path LIKE 'snapshots/%'"
+            )
 
     def create_version(
         self,
@@ -491,8 +518,9 @@ class ReportRepository:
                 """INSERT INTO report_versions
                    (report_id, version, scope_type, scope_id, status, title,
                     task_ids_json, stage, progress, generated_at,
-                    manifest_path, warnings_json, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', 100, ?, ?, '[]', ?)""",
+                    manifest_path, warnings_json, created_at, report_kind)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', 100, ?, ?, '[]', ?,
+                           'llm_generation')""",
                 (
                     report_id,
                     version,
@@ -579,4 +607,5 @@ class ReportRepository:
                 for value in json.loads(row["warnings_json"])
             ],
             error=row["error"],
+            report_kind=row["report_kind"],
         )

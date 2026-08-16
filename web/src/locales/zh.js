@@ -133,6 +133,7 @@ export default {
     'investigation_workbench.goto_evidence': '查看证据',
     'investigation_workbench.goto_analysis': '查看分析',
     'investigation_workbench.evidence_count': '证据',
+    'investigation_workbench.open_reports': '生成叙事报告 / 打开报告',
     'investigation_workbench.event_count': '事件',
     'investigation_workbench.run_analysis': '发起 Secondary Analysis',
     'investigation_workbench.analyst_note': '分析师注记',

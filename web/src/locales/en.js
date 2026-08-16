@@ -79,6 +79,7 @@ export default {
     'investigation_workbench.goto_evidence': 'Go to evidence',
     'investigation_workbench.goto_analysis': 'Go to analysis',
     'investigation_workbench.evidence_count': 'Evidence',
+    'investigation_workbench.open_reports': 'Generate Narrative Report / Open Reports',
     'investigation_workbench.event_count': 'Events',
     'investigation_workbench.run_analysis': 'Run Secondary Analysis',
     'investigation_workbench.analyst_note': 'Analyst Note',

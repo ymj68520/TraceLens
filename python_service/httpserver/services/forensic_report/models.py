@@ -216,6 +216,9 @@ class ReportVersion(BaseModel):
     offline_bundle_path: str | None = None
     warnings: list[AdapterWarning] = Field(default_factory=list)
     error: str | None = None
+    # R2d explicit type marker: None = deterministic forensic snapshot
+    # (every pre-existing row), 'llm_generation' = R2c narrative version.
+    report_kind: str | None = None
 
 
 class SearchHit(BaseModel):
