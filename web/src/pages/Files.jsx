@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { fetchTasks } from '../store/taskSlice';
@@ -32,6 +32,7 @@ const Files = () => {
   // 2. Derived State - MUST happen after hooks
   const activeBatch = activeBatchJobs[taskId];
   const isBatchRunning = activeBatch && activeBatch.status === "running";
+  const pollingRef = useRef({ taskId: null, jobId: null, controller: null });
 
   // 3. Initial effects
   useEffect(() => {
@@ -63,27 +64,28 @@ const Files = () => {
   const [existingLlmDescriptions, setExistingLlmDescriptions] = useState({});
   const [expandedDescriptions, setExpandedDescriptions] = useState(new Set());
 
-  // AUTO-RESUME: Detect active batch job on mount
-  useEffect(() => {
-    if (activeBatch && activeBatch.status === 'running' && activeBatch.jobId) {
-      console.log(`[Files] Auto-resuming batch analysis polling: ${activeBatch.jobId}`);
-      startBatchAnalysisPolling(activeBatch.jobId);
-    }
-  }, [taskId]); // Re-run if taskId changes
+  const startBatchAnalysisPolling = useCallback(async (jobId, pollingTaskId = taskId) => {
+    const controller = new AbortController();
+    pollingRef.current = { taskId: pollingTaskId, jobId, controller };
+    const isCurrent = () => (
+      pollingRef.current.taskId === pollingTaskId
+      && pollingRef.current.jobId === jobId
+      && !controller.signal.aborted
+    );
 
-  const startBatchAnalysisPolling = useCallback(async (jobId) => {
     try {
       const finalStatus = await pollBatchStatus(jobId, (status) => {
+        if (!isCurrent()) return;
         const processed = status.files_processed || 0;
         const total = status.files_total || 1;
         dispatch(updateBatchProgress({
-          taskId,
+          taskId: pollingTaskId,
           progress: Math.round((processed / total) * 100),
           message: status.message || `正在分析: ${processed}/${total}`
         }));
-      }, 2000);
+      }, 2000, { signal: controller.signal });
 
-      // Success processing
+      if (!isCurrent()) return;
       if (finalStatus.results) {
         const newDesc = {};
         finalStatus.results.forEach((r) => {
@@ -96,18 +98,36 @@ const Files = () => {
           }
         });
         setLlmResults(prev => ({ ...prev, ...newDesc }));
-
-        // Set refresh flag to notify CaseIntelligence to refresh
         dispatch(setRefreshFlag({ type: 'files' }));
       }
 
-      dispatch(updateBatchProgress({ taskId, status: 'completed', message: '✅ 批量分析完成' }));
-      setTimeout(() => dispatch(clearBatchJob({ taskId })), 10000);
+      dispatch(updateBatchProgress({ taskId: pollingTaskId, status: 'completed', message: '✅ 批量分析完成' }));
+      setTimeout(() => {
+        if (isCurrent()) dispatch(clearBatchJob({ taskId: pollingTaskId }));
+      }, 10000);
     } catch (err) {
+      if (!isCurrent() || err?.name === 'AbortError') return;
       console.error('Batch polling failed:', err);
-      dispatch(updateBatchProgress({ taskId, status: 'failed', message: '❌ 失败: ' + err.message }));
+      dispatch(updateBatchProgress({ taskId: pollingTaskId, status: 'failed', message: '❌ 失败: ' + err.message }));
     }
   }, [taskId, dispatch]);
+
+  // AUTO-RESUME: Detect active batch job on mount/task switch. The previous
+  // task/job is cancelled before a new identity is allowed to poll.
+  useEffect(() => {
+    const previous = pollingRef.current;
+    if (previous.controller) previous.controller.abort();
+    pollingRef.current = { taskId, jobId: null, controller: null };
+
+    if (activeBatch && activeBatch.status === 'running' && activeBatch.jobId) {
+      console.log(`[Files] Auto-resuming batch analysis polling: ${activeBatch.jobId}`);
+      startBatchAnalysisPolling(activeBatch.jobId, taskId);
+    }
+
+    return () => {
+      if (pollingRef.current.controller) pollingRef.current.controller.abort();
+    };
+  }, [taskId, activeBatch?.jobId, startBatchAnalysisPolling]);
 
   // Graphiti state
   const [graphitiStatus, setGraphitiStatus] = useState(null);
@@ -493,7 +513,7 @@ ${detail}
 
       if (result.job_id) {
         dispatch(setBatchJob({ taskId, jobId: result.job_id }));
-        startBatchAnalysisPolling(result.job_id);
+        startBatchAnalysisPolling(result.job_id, taskId);
       }
     } catch (err) {
       console.error('Batch analysis failed:', err);

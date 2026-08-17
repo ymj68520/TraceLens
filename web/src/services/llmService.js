@@ -99,25 +99,58 @@ export const getBatchStatus = async (jobId) => {
  * @param {Function} onProgress - 进度回调
  * @param {number} interval - 轮询间隔 (毫秒)
  */
-export const pollBatchStatus = async (jobId, onProgress, interval = 2000) => {
+export const pollBatchStatus = async (jobId, onProgress, interval = 2000, { signal } = {}) => {
     return new Promise((resolve, reject) => {
+        let timer = null;
+        let settled = false;
+
+        const cleanup = () => {
+            if (timer !== null) {
+                clearTimeout(timer);
+                timer = null;
+            }
+            signal?.removeEventListener('abort', abort);
+        };
+
+        const abort = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            const error = new Error('batch polling cancelled');
+            error.name = 'AbortError';
+            reject(error);
+        };
+
+        const finish = (callback, value) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            callback(value);
+        };
+
+        if (signal?.aborted) {
+            abort();
+            return;
+        }
+        signal?.addEventListener('abort', abort, { once: true });
+
         const poll = async () => {
+            if (settled || signal?.aborted) return;
             try {
                 const status = await getBatchStatus(jobId);
+                if (settled || signal?.aborted) return;
 
-                if (onProgress) {
-                    onProgress(status);
-                }
+                if (onProgress) onProgress(status);
 
                 if (status.status === 'completed') {
-                    resolve(status);
+                    finish(resolve, status);
                 } else if (status.status === 'failed') {
-                    reject(new Error(status.errors?.join(', ') || '批量分析失败'));
+                    finish(reject, new Error(status.errors?.join(', ') || '批量分析失败'));
                 } else {
-                    setTimeout(poll, interval);
+                    timer = setTimeout(poll, interval);
                 }
             } catch (error) {
-                reject(error);
+                finish(reject, error);
             }
         };
 
