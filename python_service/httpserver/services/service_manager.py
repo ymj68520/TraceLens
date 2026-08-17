@@ -669,12 +669,15 @@ class ServiceManager:
                 "status": "healthy" if cpp_healthy else "unhealthy",
             }
         except Exception as e:
+            logger.warning(f"cpp_backend health check failed: {e}", exc_info=True)
+            # Exception class only: this dict reaches the /health/ready
+            # response and transport errors embed internal URLs.
             result["services"]["cpp_backend"] = {
                 "status": "error",
-                "error": str(e),
+                "error": type(e).__name__,
             }
             result["overall"] = "degraded"
-        
+
         # Check Graphiti
         try:
             graphiti_healthy = await self.graphiti_service.health_check()
@@ -682,11 +685,12 @@ class ServiceManager:
                 "status": "healthy" if graphiti_healthy else "unhealthy",
             }
         except Exception as e:
+            logger.warning(f"graphiti health check failed: {e}", exc_info=True)
             result["services"]["graphiti"] = {
                 "status": "unavailable",
-                "error": str(e),
+                "error": type(e).__name__,
             }
-        
+
         # Check LLM
         try:
             llm_healthy = await self.llm_service.health_check()
@@ -694,11 +698,12 @@ class ServiceManager:
                 "status": "healthy" if llm_healthy else "unhealthy",
             }
         except Exception as e:
+            logger.warning(f"llm health check failed: {e}", exc_info=True)
             result["services"]["llm"] = {
                 "status": "unavailable",
-                "error": str(e),
+                "error": type(e).__name__,
             }
-        
+
         return result
 
 

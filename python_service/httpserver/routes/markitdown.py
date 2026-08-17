@@ -133,7 +133,7 @@ async def convert_file(request: ConvertRequest):
         logger.error(f"markitdown conversion failed for {request.file_path}: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Conversion failed: {str(e)}"
+            detail="conversion failed"
         )
 
 
@@ -206,7 +206,9 @@ class ConvertOneRequest(BaseModel):
 
 
 def _exception_text(exc: BaseException) -> str:
-    return str(exc) or type(exc).__name__
+    # Exception class only: conversion/library errors can embed resolved
+    # server paths in their message text and this reaches client responses.
+    return type(exc).__name__
 
 
 class ConvertOneResponse(BaseModel):

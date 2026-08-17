@@ -262,6 +262,34 @@ class Settings(BaseSettings):
         origins = [item.strip() for item in value.split(",") if item.strip()]
         return origins if origins else ["*"]
 
+
+def mask_url_credentials(url: str) -> str:
+    """Return ``url`` with any password component masked.
+
+    Used whenever a service URL (redis://:pass@host, postgresql://user:pass@
+    host) may reach a client response or a log line; the full value stays in
+    settings only. Unparseable values degrade to a fixed string rather than
+    echoing the input.
+    """
+    from urllib.parse import urlsplit, urlunsplit
+
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "***"
+    if parts.password is None:
+        return url
+    userinfo = (
+        f"{parts.username}:***" if parts.username is not None else ":***"
+    )
+    hostinfo = parts.hostname or ""
+    if parts.port is not None:
+        hostinfo = f"{hostinfo}:{parts.port}"
+    masked = urlunsplit(
+        (parts.scheme, f"{userinfo}@{hostinfo}", parts.path, parts.query, parts.fragment)
+    )
+    return masked
+
     # LLM Filter Configuration
     llm_filter_config: LLMFilterConfig = Field(
         default_factory=LLMFilterConfig,

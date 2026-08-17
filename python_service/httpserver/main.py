@@ -156,13 +156,16 @@ with the C++ backend for task management and file system operations.
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
         """Handle all unhandled exceptions."""
+        # The full exception (message + traceback) stays in the server log;
+        # the response is a fixed string even under DEBUG because str(exc)
+        # can carry filesystem paths and internal endpoint details.
         logger.error(f"Unhandled exception: {exc}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={
                 "success": False,
                 "message": "Internal server error",
-                "error": str(exc) if settings.log_level == "DEBUG" else "An unexpected error occurred",
+                "error": "An unexpected error occurred",
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             }
         )

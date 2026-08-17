@@ -75,7 +75,7 @@ async def list_task_graphs(settings: Settings = Depends(get_settings)):
         )
     except Exception as e:
         logger.error(f"List task graphs failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="task graph list is unavailable")
 @router.delete("/tasks/{task_id}")
 async def delete_task_graph(
     task_id: str,
@@ -98,7 +98,7 @@ async def delete_task_graph(
         }
     except Exception as e:
         logger.error(f"Delete task graph failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="task graph deletion failed")
 @router.get("/graph", responses={
     200: {"description": "Graph data for visualization"},
     500: {"description": "Internal server error"},
@@ -132,4 +132,4 @@ async def get_graph_data(
         }
     except Exception as e:
         logger.error(f"Get graph data failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="graph data is unavailable")

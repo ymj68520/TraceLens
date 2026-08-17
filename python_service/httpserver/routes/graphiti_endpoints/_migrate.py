@@ -67,7 +67,7 @@ async def migrate_task(
         raise
     except Exception as e:
         logger.error(f"Migration failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="graph migration failed")
 @router.post("/migrate/deduplicate", responses={
     200: {"description": "Deduplication completed successfully"},
     500: {"description": "Internal server error"}
@@ -105,7 +105,7 @@ async def deduplicate_all(
         raise
     except Exception as e:
         logger.error(f"Deduplication failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="graph deduplication failed")
 @router.get("/migrate/status/{task_id}", responses={
     200: {"description": "Migration status retrieved successfully"},
     404: {"description": "Task not found"},
@@ -143,7 +143,7 @@ async def get_migration_status(
         raise
     except Exception as e:
         logger.error(f"Get migration status failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="migration status is unavailable")
 @router.post("/migrate/cleanup/{task_id}", responses={
     200: {"description": "Cleanup completed successfully"},
     400: {"description": "Confirmation required"},
@@ -190,4 +190,4 @@ async def cleanup_task(
         raise
     except Exception as e:
         logger.error(f"Cleanup failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="graph cleanup failed")

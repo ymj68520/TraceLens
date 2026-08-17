@@ -117,7 +117,7 @@ async def create_case(
         raise
     except Exception as e:
         logger.error(f"[CREATE_CASE] Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="case creation failed")
 
 
 @router.get("/api/llm/cases")
@@ -157,7 +157,7 @@ async def delete_case(case_id: str, settings: Settings = Depends(get_settings)):
         raise
     except Exception as e:
         logger.error(f"[DELETE_CASE] Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="case deletion failed")
 
 
 @router.post("/api/llm/cases/{case_id}/tasks")
@@ -212,7 +212,7 @@ async def associate_tasks_to_case(
         return {"case_id": case_id, **result}
     except Exception as e:
         logger.error(f"[ASSOCIATE_TASKS] Failed for case {case_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="case task association failed")
 
 
 # ── Multi-Image Analysis ──────────────────────────────────────────────────────
@@ -282,7 +282,7 @@ async def start_multi_image_analysis(
         except Exception as e:
             logger.error(f"[MULTI_ANALYSIS] Job {job_id} failed: {e}", exc_info=True)
             _jobs[job_id]["status"] = "failed"
-            _jobs[job_id]["error"]  = str(e)
+            _jobs[job_id]["error"] = "multi-image analysis failed"
             async with httpx.AsyncClient(timeout=5) as client:
                 await client.put(
                     f"{settings.cpp_backend_url}/api/cases/{req.case_id}/status",
@@ -438,7 +438,7 @@ async def trigger_incremental_analysis(
         except Exception as e:
             logger.error(f"[INCREMENTAL_ANALYSIS] Job {job_id} failed: {e}", exc_info=True)
             _jobs[job_id]["status"] = "failed"
-            _jobs[job_id]["error"] = str(e)
+            _jobs[job_id]["error"] = "incremental analysis failed"
 
     asyncio.create_task(_run())
 

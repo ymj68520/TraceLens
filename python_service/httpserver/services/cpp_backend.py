@@ -111,7 +111,9 @@ class CppBackendService:
             except Exception as e:
                 if attempt == max_retries - 1:
                     logger.error(f"C++ backend request failed after {max_retries} attempts: {e}")
-                    return {"success": False, "error": str(e)}
+                    # Exception class only: this dict reaches proxy responses
+                    # and transport errors embed the internal C++ URL.
+                    return {"success": False, "error": type(e).__name__}
                 await asyncio.sleep(1)
         return {"success": False, "error": "Max retries exceeded"}
     

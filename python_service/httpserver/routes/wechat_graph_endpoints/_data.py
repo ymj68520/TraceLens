@@ -76,7 +76,7 @@ async def get_chat(
         raise
     except Exception as e:
         logger.error(f"Get chat history failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="wechat chat history is unavailable")
 @router.get("/chat/group", response_model=ChatResponse, responses={
     200: {"description": "Group chat history returned successfully"},
     404: {"description": "Task, database, or chatroom not found"},
@@ -127,7 +127,7 @@ async def get_group_chat(
         raise
     except Exception as e:
         logger.error(f"Get group chat history failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="wechat chat history is unavailable")
 @router.get("/owner", response_model=OwnerResponse, responses={
     200: {"description": "Owner info returned successfully"},
     404: {"description": "Task or database not found"},
@@ -160,7 +160,7 @@ async def get_owner(
         raise
     except Exception as e:
         logger.error(f"Get owner info failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="wechat owner info is unavailable")
 @router.get("/contacts", response_model=ContactsResponse, responses={
     200: {"description": "Contacts list returned successfully"},
     404: {"description": "Task or database not found"},
@@ -196,4 +196,4 @@ async def get_contacts(
         raise
     except Exception as e:
         logger.error(f"Get contacts failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="wechat contacts are unavailable")

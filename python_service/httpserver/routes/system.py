@@ -80,7 +80,7 @@ async def get_service_logs(
     
     log_path = log_map.get(service)
     if not log_path or not os.path.exists(log_path):
-        return {"service": service, "logs": [{"timestamp": "", "level": "WARN", "message": f"Log file not found at {log_path}"}]}
+        return {"service": service, "logs": [{"timestamp": "", "level": "WARN", "message": "Log file not found"}]}
         
     try:
         with open(log_path, 'r', errors='replace') as f:
@@ -89,7 +89,8 @@ async def get_service_logs(
             structured_logs = [_parse_line(line) for line in last_lines]
             return {"service": service, "logs": structured_logs, "total_lines": len(content)}
     except Exception as e:
-        return {"service": service, "logs": [{"timestamp": "", "level": "ERROR", "message": str(e)}]}
+        logger.error(f"Failed to read logs for {service}: {e}", exc_info=True)
+        return {"service": service, "logs": [{"timestamp": "", "level": "ERROR", "message": "log file read failed"}]}
 
 @router.get("/logs-stream/{service}")
 async def stream_service_logs(

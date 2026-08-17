@@ -98,7 +98,7 @@ class CaseAggregationManager:
                 "pending_analysis": [],
                 "total_files": 0,
                 "analyzed_files": 0,
-                "error": str(e),
+                "error": "task aggregation failed",
             }
 
         # Filter completed tasks
@@ -565,7 +565,7 @@ class CaseAggregationManager:
                     case_id=case_id,
                     task_id=task_id,
                     status="failed",
-                    error_message=str(e),
+                    error_message="task analysis failed",
                 )
 
         total_time = time.time() - start_time

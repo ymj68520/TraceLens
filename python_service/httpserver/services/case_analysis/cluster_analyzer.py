@@ -198,7 +198,7 @@ class ClusterAnalyzer:
                         "event_type": cluster.get("event_type", "UNKNOWN"),
                         "time_window": cluster.get("time_window", 0),
                         "success": False,
-                        "error": str(e),
+                        "error": "cluster analysis failed",
                     }
 
         tasks = [analyze_one(c) for c in clusters]
@@ -275,7 +275,7 @@ class ClusterAnalyzer:
                 "event_type": cluster['event_type'],
                 "time_window": cluster['time_window'],
                 "success": False,
-                "error": str(e),
+                "error": "cluster analysis failed",
             }
 
     def persist_cluster_analysis(

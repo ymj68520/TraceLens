@@ -98,7 +98,7 @@ async def start_windows_analysis(
         raise
     except Exception as e:
         logger.error(f"Start Windows analysis failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="windows analysis could not be started")
 @router.get("/windows-report/{task_id}", responses={
     200: {"description": "Windows artifacts report retrieved successfully"},
     404: {"description": "Report not found"},
@@ -148,7 +148,7 @@ async def get_windows_report(
         raise
     except Exception as e:
         logger.error(f"Get Windows report failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="windows report is unavailable")
 @router.get("/windows-export/{task_id}/toon", responses={
     200: {"description": "Windows artifacts exported to TOON format"},
     404: {"description": "Task not found"},
@@ -226,4 +226,4 @@ async def export_windows_toon(
         raise
     except Exception as e:
         logger.error(f"Export Windows TOON failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="windows export failed")

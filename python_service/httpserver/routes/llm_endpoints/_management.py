@@ -66,7 +66,7 @@ async def list_models(settings: Settings = Depends(get_settings)):
         )
     except Exception as e:
         logger.error(f"List models failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="llm model list is unavailable")
 @router.post("/toggle-relevance")
 async def toggle_relevance(
     request: ToggleRelevanceRequest,
@@ -97,7 +97,7 @@ async def toggle_relevance(
         raise
     except Exception as e:
         logger.error(f"Error toggling relevance: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="relevance toggle failed")
 @router.post("/toggle-cluster-relevance")
 async def toggle_cluster_relevance(
     request: ToggleClusterRelevanceRequest,
@@ -136,14 +136,14 @@ async def toggle_cluster_relevance(
 
         except Exception as e:
             logger.warning(f"Failed to persist cluster relevance: {e}")
-            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+            raise HTTPException(status_code=500, detail="database query failed")
 
         return {"success": True, "message": f"Event cluster relevance updated to {request.is_relevant}"}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error toggling cluster relevance: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="relevance toggle failed")
 @router.get("/status", response_model=LLMStatusResponse, responses={
     200: {"description": "Status retrieved successfully"},
     500: {"description": "Internal server error"}
@@ -168,7 +168,7 @@ async def get_status(settings: Settings = Depends(get_settings)):
         logger.error(f"Get status failed: {e}", exc_info=True)
         return LLMStatusResponse(
             status="error",
-            text_model={"error": str(e)},
-            vision_model={"error": str(e)},
+            text_model={"error": "llm service is unavailable"},
+            vision_model={"error": "llm service is unavailable"},
             timestamp=datetime.now().isoformat(),
         )

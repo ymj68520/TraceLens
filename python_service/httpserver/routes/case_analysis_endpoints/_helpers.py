@@ -90,7 +90,7 @@ async def run_case_analysis_background(
         logger.error(f"Background case analysis failed: {e}", exc_info=True)
         _analysis_jobs[job_id]["status"] = "failed"
         _analysis_jobs[job_id]["current_step"] = "错误"
-        _analysis_jobs[job_id]["detail"] = str(e)
+        _analysis_jobs[job_id]["detail"] = "case analysis job failed"
 
 
 async def run_reanalyze_background(
@@ -125,7 +125,7 @@ async def run_reanalyze_background(
         logger.error(f"Background re-analysis failed: {e}", exc_info=True)
         _analysis_jobs[job_id]["status"] = "failed"
         _analysis_jobs[job_id]["current_step"] = "错误"
-        _analysis_jobs[job_id]["detail"] = str(e)
+        _analysis_jobs[job_id]["detail"] = "case analysis job failed"
 
 
 async def run_windows_analysis_background(
@@ -166,4 +166,4 @@ async def run_windows_analysis_background(
         logger.error(f"Background Windows analysis failed: {e}", exc_info=True)
         _analysis_jobs[job_id]["status"] = "failed"
         _analysis_jobs[job_id]["current_step"] = "错误"
-        _analysis_jobs[job_id]["detail"] = str(e)
+        _analysis_jobs[job_id]["detail"] = "case analysis job failed"

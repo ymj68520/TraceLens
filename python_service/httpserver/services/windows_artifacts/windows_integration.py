@@ -275,7 +275,7 @@ class WindowsArtifactsService:
 
             except Exception as e:
                 logger.error(f"Error re-analyzing {artifact_type}:{artifact_id}: {e}")
-                results.append({"success": False, "error": str(e)})
+                results.append({"success": False, "error": "artifact analysis failed"})
 
         return results
 

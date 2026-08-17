@@ -4,6 +4,7 @@ Health check routes.
 Provides endpoints for monitoring service health and readiness.
 """
 
+import logging
 import time
 from datetime import datetime
 from typing import Dict, Any
@@ -11,8 +12,9 @@ from typing import Dict, Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from ..config import Settings, get_settings
+from ..config import Settings, get_settings, mask_url_credentials
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -116,9 +118,11 @@ async def readiness_check(settings: Settings = Depends(get_settings)):
         if not cpp_status:
             all_ready = False
     except Exception as e:
+        logger.warning(f"Readiness check failed (cpp_backend): {e}", exc_info=True)
         checks["cpp_backend"] = {
             "status": "error",
-            "error": str(e),
+            # Exception class only: transport errors embed internal URLs/paths.
+            "error": type(e).__name__,
         }
         all_ready = False
     
@@ -132,9 +136,10 @@ async def readiness_check(settings: Settings = Depends(get_settings)):
             "uri": settings.neo4j_uri,
         }
     except Exception as e:
+        logger.warning(f"Readiness check failed (neo4j): {e}", exc_info=True)
         checks["neo4j"] = {
             "status": "unavailable",
-            "error": str(e),
+            "error": type(e).__name__,
         }
         # Neo4j is optional, don't fail readiness
     
@@ -148,9 +153,10 @@ async def readiness_check(settings: Settings = Depends(get_settings)):
             "url": settings.llm_text_base_url,
         }
     except Exception as e:
+        logger.warning(f"Readiness check failed (llm): {e}", exc_info=True)
         checks["llm"] = {
             "status": "unavailable",
-            "error": str(e),
+            "error": type(e).__name__,
         }
         # LLM is optional, don't fail readiness
 
@@ -165,14 +171,16 @@ async def readiness_check(settings: Settings = Depends(get_settings)):
                 "status": redis_status["status"],
                 "connected": redis_status["connected"],
                 "in_use": redis_status["in_use"],
-                "url": settings.redis_url,
+                # Masked: the raw redis URL can embed the password.
+                "url": mask_url_credentials(settings.redis_url),
             }
         else:
             checks["redis"] = {"status": "unavailable", "error": "IngestionJobManager not initialized"}
     except Exception as e:
+        logger.warning(f"Readiness check failed (redis): {e}", exc_info=True)
         checks["redis"] = {
             "status": "unavailable",
-            "error": str(e),
+            "error": type(e).__name__,
         }
         # Redis is optional, don't fail readiness
 
@@ -207,7 +215,7 @@ async def redis_status(settings: Settings = Depends(get_settings)):
             "connected": False,
             "in_use": False,
             "status": "unavailable",
-            "url": settings.redis_url,
+            "url": mask_url_credentials(settings.redis_url),
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -217,7 +225,7 @@ async def redis_status(settings: Settings = Depends(get_settings)):
         "in_use": health["in_use"],
         "status": health["status"],
         "error": health.get("error"),
-        "url": settings.redis_url,
+        "url": mask_url_credentials(settings.redis_url),
         "timestamp": datetime.now().isoformat(),
     }
 

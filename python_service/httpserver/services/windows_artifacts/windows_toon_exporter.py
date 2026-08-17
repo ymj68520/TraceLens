@@ -90,7 +90,7 @@ class WindowsArtifactTOONExporter:
 
         except Exception as e:
             logger.error(f"Error exporting to TOON: {e}", exc_info=True)
-            return f"# Error: {str(e)}"
+            return "# Error: TOON export failed"
 
     def _export_single_type(
         self,

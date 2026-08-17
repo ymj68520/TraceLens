@@ -99,7 +99,7 @@ class WindowsArtifactAnalyzer:
                         "id": artifact_id,
                         "type": artifact_type,
                         "success": False,
-                        "error": str(e)
+                        "error": "artifact analysis failed"
                     }
 
         # Build analysis tasks
@@ -165,7 +165,7 @@ class WindowsArtifactAnalyzer:
                 "id": artifact.get("id"),
                 "type": artifact_type,
                 "success": False,
-                "error": str(e)
+                "error": "artifact analysis failed"
             }
 
     def _build_analysis_prompt(

@@ -142,7 +142,7 @@ async def list_tasks(
         }
     except Exception as e:
         logger.error(f"List tasks failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="task list is unavailable")
 
 
 @router.get(
@@ -179,7 +179,7 @@ async def get_task(
         raise
     except Exception as e:
         logger.error(f"Get task failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="task lookup failed")
 
 
 @router.get("/tasks/{task_id}/databases", response_model=TaskDatabasesResponse, responses={
@@ -207,7 +207,7 @@ async def list_task_databases(
         )
     except Exception as e:
         logger.error(f"List databases failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="task databases are unavailable")
 
 
 @router.get(
@@ -275,7 +275,7 @@ async def get_task_files(
         )
     except Exception as e:
         logger.error(f"Get files failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="file records are unavailable")
 
 
 @router.get(
@@ -334,7 +334,7 @@ async def get_task_events(
         )
     except Exception as e:
         logger.error(f"Get events failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="event records are unavailable")
 
 
 @router.post(
@@ -395,7 +395,7 @@ async def execute_query(
         )
     except Exception as e:
         logger.error(f"Query failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="database query failed")
 
 
 @router.get(
@@ -435,7 +435,7 @@ async def export_toon(
         )
     except Exception as e:
         logger.error(f"TOON export failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="database export failed")
 
 
 @router.get(
@@ -478,4 +478,4 @@ async def export_json(
         )
     except Exception as e:
         logger.error(f"JSON export failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="database export failed")

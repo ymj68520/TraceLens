@@ -85,7 +85,7 @@ async def filter_oss_objects(
         )
     except Exception as e:
         logger.error(f"OSS filter failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="oss filter failed")
 
 
 @router.post("/analyze", response_model=OSSAnalyzeResponse, responses={
@@ -120,7 +120,7 @@ async def analyze_oss_objects(
         )
     except Exception as e:
         logger.error(f"OSS analysis failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="oss analysis failed")
 
 
 # ------------------------------------------------------------------

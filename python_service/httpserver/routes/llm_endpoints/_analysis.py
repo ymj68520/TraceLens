@@ -77,7 +77,7 @@ async def analyze_event_cluster(
                 events_summary = "\n".join(lines)
         except Exception as e:
             logger.error(f"Failed to read events for cluster: {e}")
-            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+            raise HTTPException(status_code=500, detail="database query failed")
 
         # 3. Call LLM for analysis
         result = await service_manager.llm_service.analyze_event_cluster(
@@ -141,7 +141,7 @@ async def analyze_event_cluster(
         raise
     except Exception as e:
         logger.error(f"Event cluster analysis failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="event cluster analysis failed")
 @router.post("/analyze", response_model=AnalyzeResponse, responses={
     200: {"description": "Content analyzed successfully"},
     400: {"description": "Invalid request parameters"},
@@ -215,7 +215,7 @@ async def analyze_content(
                     logger.warning(f"Failed to analyze {request.file_path} as image: {e}")
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Failed to analyze image: {str(e)}"
+                        detail="image analysis failed"
                     )
             else:
                 doc_locator = get_document_extractor_locator()
@@ -236,7 +236,7 @@ async def analyze_content(
                         logger.warning(f"Failed to extract document {request.file_path}: {e}")
                         raise HTTPException(
                             status_code=400,
-                            detail=f"Failed to extract document content: {str(e)}"
+                            detail="document content extraction failed"
                         )
                 else:
                     # Read as text
@@ -286,12 +286,13 @@ async def analyze_content(
             timestamp=datetime.now().isoformat(),
         )
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.error(f"Analysis file not found: {e}")
+        raise HTTPException(status_code=404, detail="file not found")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Analysis failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="file analysis failed")
 @router.post(
     "/analyze/file", 
     response_model=AnalyzeResponse,
@@ -382,10 +383,10 @@ async def analyze_uploaded_file(
     except ValueError as e:
         # Handle specific validation errors (like image too large)
         logger.error(f"File validation failed: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="file validation failed")
     except Exception as e:
         logger.error(f"File analysis failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"File analysis failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="file analysis failed")
 @router.post("/batch", response_model=BatchAnalyzeResponse, responses={
     200: {"description": "Batch analysis started successfully"},
     404: {"description": "Task not found"},
@@ -451,7 +452,7 @@ async def batch_analyze(
         raise
     except Exception as e:
         logger.error(f"Batch analysis failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="batch analysis failed")
 @router.get("/batch/{job_id}", response_model=BatchStatusResponse, responses={
     200: {"description": "Status retrieved successfully"},
     404: {"description": "Job not found"},
@@ -488,4 +489,4 @@ async def get_batch_status(
         raise
     except Exception as e:
         logger.error(f"Get batch status failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="batch status is unavailable")

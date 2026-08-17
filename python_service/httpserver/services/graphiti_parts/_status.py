@@ -64,7 +64,7 @@ class GraphitiStatusMixin:
                 return {
                     "status": "error",
                     "neo4j_connected": True,
-                    "message": f"Error querying task data: {str(e)}",
+                    "message": "task data query failed",
                     "total_entities": 0,
                     "total_relationships": 0,
                     "task_id": task_id,

@@ -66,7 +66,7 @@ async def get_job_status(
         raise
     except Exception as e:
         logger.error(f"Get job status failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="job status is unavailable")
 @router.delete("/jobs/{job_id}", responses={
     200: {"description": "Job cancelled successfully"},
     404: {"description": "Job not found"},
@@ -112,7 +112,7 @@ async def cancel_job(
         raise
     except Exception as e:
         logger.error(f"Cancel job failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="job cancellation failed")
 @router.get("/jobs", responses={
     200: {"description": "Jobs listed successfully"},
     500: {"description": "Internal server error"}
@@ -154,4 +154,4 @@ async def list_jobs(
 
     except Exception as e:
         logger.error(f"List jobs failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="job list is unavailable")

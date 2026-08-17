@@ -510,7 +510,7 @@ class FileAnalyzer:
                     })
                 except Exception as e:
                     logger.error(f"Failed to analyze {file_path}: {e}", exc_info=True)
-                    self._jobs[job_id]["errors"].append(f"{file_path}: {str(e)}")
+                    self._jobs[job_id]["errors"].append(f"{file_path}: file analysis failed")
 
                 self._jobs[job_id]["files_processed"] = i + 1
                 self._jobs[job_id]["progress"] = (i + 1) / total
@@ -519,7 +519,7 @@ class FileAnalyzer:
         except Exception as e:
             logger.error(f"Batch analysis job {job_id} failed: {e}")
             self._jobs[job_id]["status"] = "failed"
-            self._jobs[job_id]["errors"].append(str(e))
+            self._jobs[job_id]["errors"].append("batch analysis failed")
 
     async def get_batch_status(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Get the status of a batch analysis job."""

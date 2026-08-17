@@ -81,11 +81,11 @@ async def parse_office_file(request: ParseRequest) -> ParseResponse:
 
     except FileNotFoundError as e:
         logger.error(f"File not found: {e}")
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail="file not found")
 
     except ValueError as e:
         logger.error(f"Invalid file type: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="unsupported file type")
 
     except Exception as e:
         logger.error(f"Error parsing file {file_path}: {e}")
@@ -93,7 +93,7 @@ async def parse_office_file(request: ParseRequest) -> ParseResponse:
             success=False,
             content="",
             file_type=suffix[1:].upper(),
-            error=str(e)
+            error="office parse failed"
         )
 
 

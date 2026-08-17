@@ -284,7 +284,7 @@ async def get_cluster_related_files(
 
         except sqlite3.Error as e:
             logger.error(f"Database error querying files: {e}")
-            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+            raise HTTPException(status_code=500, detail="database query failed")
 
         # Sort by minimum time difference (most relevant first)
         related_files.sort(key=lambda x: x.get('min_time_diff', float('inf')))
@@ -307,7 +307,7 @@ async def get_cluster_related_files(
         raise
     except Exception as e:
         logger.error(f"Failed to get cluster related files: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="association query failed")
 
 
 @router.post("/file-clusters", response_model=FileClustersResponse)
@@ -510,7 +510,7 @@ async def get_file_related_clusters(
 
         except sqlite3.Error as e:
             logger.error(f"Database error querying clusters: {e}")
-            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+            raise HTTPException(status_code=500, detail="database query failed")
 
         # Sort by time difference (most relevant first), put null timestamp matches at end
         def sort_key(cluster):
@@ -540,4 +540,4 @@ async def get_file_related_clusters(
         raise
     except Exception as e:
         logger.error(f"Failed to get file related clusters: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="association query failed")

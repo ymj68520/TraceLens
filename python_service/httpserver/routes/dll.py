@@ -170,5 +170,5 @@ async def analyze_dll(
         logger.error(f"DLL analysis failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"DLL analysis failed: {str(e)}"
+            detail="dll analysis failed"
         )

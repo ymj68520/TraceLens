@@ -134,7 +134,9 @@ async def test_convert_file_to_output_isolates_extractor_error_and_cleans_temp(
     result = await markitdown._convert_file_to_output(source, input_root, output_root)
 
     assert result.status == "failed"
-    assert "extract failed" in result.error
+    # D1: internal exception text is sanitized to the exception class only.
+    assert result.error == "RuntimeError"
+    assert "extract failed" not in result.error
     assert not list(tmp_path.rglob(".tracelens-textdump-tmp-*"))
 
 
@@ -156,7 +158,9 @@ async def test_convert_file_to_output_isolates_locator_construction_failure(
     result = await markitdown._convert_file_to_output(source, input_root, output_root)
 
     assert result.status == "failed"
-    assert "locator unavailable" in result.error
+    # D1: internal exception text is sanitized to the exception class only.
+    assert result.error == "RuntimeError"
+    assert "locator unavailable" not in result.error
 
 
 @pytest.mark.asyncio
@@ -175,7 +179,9 @@ async def test_convert_file_to_output_isolates_extractor_selection_failure(
     result = await markitdown._convert_file_to_output(source, input_root, output_root)
 
     assert result.status == "failed"
-    assert "selection failed" in result.error
+    # D1: internal exception text is sanitized to the exception class only.
+    assert result.error == "RuntimeError"
+    assert "selection failed" not in result.error
 
 
 @pytest.mark.asyncio
@@ -289,7 +295,9 @@ def test_convert_one_returns_failed_outcome_for_locator_construction_failure(
 
     assert response.status_code == 200
     assert response.json()["status"] == "failed"
-    assert "locator unavailable" in response.json()["error"]
+    # D1: internal exception text is sanitized to the exception class only.
+    assert response.json()["error"] == "RuntimeError"
+    assert "locator unavailable" not in response.json()["error"]
 
 
 def test_convert_one_rejects_input_outside_root(tmp_path, monkeypatch):
@@ -445,7 +453,9 @@ def test_convert_one_reports_atomic_write_oserror_as_server_error(tmp_path, monk
     )
 
     assert response.status_code == 500
-    assert "Output write failed: disk full" in response.json()["detail"]
+    # D1: internal exception text is sanitized to the exception class only.
+    assert response.json()["detail"] == "Output write failed: OSError"
+    assert "disk full" not in response.json()["detail"]
 
 
 def test_batch_convert_normalizes_empty_output_directory_setup_oserror(

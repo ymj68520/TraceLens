@@ -132,7 +132,7 @@ class WeChatGraphQueriesMixin:
 
         except sqlite3.OperationalError as e:
             logger.warning(f"Error fetching chat history: {e}")
-            return {"error": str(e), "messages": [], "total": 0}
+            return {"error": "database query failed", "messages": [], "total": 0}
         finally:
             conn.close()
 
@@ -229,7 +229,7 @@ class WeChatGraphQueriesMixin:
 
         except sqlite3.OperationalError as e:
             logger.warning(f"Error fetching group chat history: {e}")
-            return {"error": str(e), "messages": [], "total": 0}
+            return {"error": "database query failed", "messages": [], "total": 0}
         finally:
             conn.close()
 
@@ -325,7 +325,7 @@ class WeChatGraphQueriesMixin:
 
         except sqlite3.OperationalError as e:
             logger.warning(f"Error fetching contacts: {e}")
-            return {"error": str(e), "contacts": [], "total": 0}
+            return {"error": "database query failed", "contacts": [], "total": 0}
         finally:
             conn.close()
 
@@ -374,7 +374,7 @@ class WeChatGraphQueriesMixin:
 
         except sqlite3.OperationalError as e:
             logger.warning(f"Error fetching chatrooms: {e}")
-            return {"error": str(e), "chatrooms": [], "total": 0}
+            return {"error": "database query failed", "chatrooms": [], "total": 0}
         finally:
             conn.close()
 

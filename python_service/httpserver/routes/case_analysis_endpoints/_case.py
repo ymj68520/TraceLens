@@ -76,7 +76,7 @@ async def save_case_description(
         )
     except Exception as e:
         logger.error(f"Save case description failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="save case description failed")
 @router.post("/case-analysis", response_model=CaseAnalysisResponse, responses={
     200: {"description": "Case analysis started successfully"},
     422: {"description": "Validation error"},
@@ -168,7 +168,7 @@ async def start_case_analysis(
         )
     except Exception as e:
         logger.error(f"Start case analysis failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="case analysis could not be started")
 @router.post("/reanalyze-files", response_model=ReanalyzeResponse, responses={
     200: {"description": "Re-analysis started successfully"},
     400: {"description": "Invalid request"},
@@ -253,7 +253,7 @@ async def reanalyze_files(
         )
     except Exception as e:
         logger.error(f"Start reanalyze failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="reanalyze could not be started")
 @router.get("/case-analysis/{job_id}", response_model=AnalysisStatusResponse, responses={
     200: {"description": "Status retrieved successfully"},
     404: {"description": "Job not found"},
@@ -325,7 +325,7 @@ async def get_case_report(
         raise
     except Exception as e:
         logger.error(f"Get case report failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="case report is unavailable")
 
 @router.get("/case-report-by-case/{case_id}", response_model=CaseReportResponse, responses={
     200: {"description": "Cross-image report retrieved successfully"},
@@ -370,7 +370,7 @@ async def get_case_report_by_case(
         raise
     except Exception as e:
         logger.error(f"Get cross-image case report failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="case report is unavailable")
 
 @router.get("/filtered-files/{task_id}", response_model=FilteredFilesResponse, responses={
     200: {"description": "Filtered files retrieved"},
@@ -403,4 +403,4 @@ async def get_filtered_files(
         raise
     except Exception as e:
         logger.error(f"Get filtered files failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="filtered files are unavailable")

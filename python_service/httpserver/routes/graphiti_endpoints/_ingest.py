@@ -84,7 +84,7 @@ async def ingest_data(
         raise
     except Exception as e:
         logger.error(f"Ingestion failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="graph ingestion failed")
 @router.post("/ingest/file", response_model=IngestionResponse, responses={
     200: {"description": "File ingestion queued successfully"},
     404: {"description": "Task or file not found"},
@@ -138,7 +138,7 @@ async def ingest_file(
         raise
     except Exception as e:
         logger.error(f"File ingestion failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="graph ingestion failed")
 @router.post("/ingest/events", response_model=IngestionResponse, responses={
     200: {"description": "Event sync queued successfully"},
     404: {"description": "Task not found"},
@@ -183,4 +183,4 @@ async def ingest_events(
         raise
     except Exception as e:
         logger.error(f"Event sync failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="graph event sync failed")
