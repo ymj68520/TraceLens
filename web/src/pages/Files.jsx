@@ -127,7 +127,7 @@ const Files = () => {
     return () => {
       if (pollingRef.current.controller) pollingRef.current.controller.abort();
     };
-  }, [taskId, activeBatch?.jobId, startBatchAnalysisPolling]);
+  }, [taskId, activeBatch, startBatchAnalysisPolling]);
 
   // Graphiti state
   const [graphitiStatus, setGraphitiStatus] = useState(null);
@@ -142,9 +142,6 @@ const Files = () => {
   const [extractionStatus, setExtractionStatus] = useState('idle');
   const [extractionProgress, setExtractionProgress] = useState(0);
   const [extractionMessage, setExtractionMessage] = useState('');
-  const [extractedCount, setExtractedCount] = useState(0);
-  const [skippedCount, setSkippedCount] = useState(0);
-  const [extractionError, setExtractionError] = useState(null);
 
   // Office preview state
   const [officePreview, setOfficePreview] = useState(null);
@@ -740,9 +737,6 @@ ${detail}
     setExtractionStatus('pending');
     setExtractionProgress(0);
     setExtractionMessage('Starting extraction...');
-    setExtractionError(null);
-    setExtractedCount(0);
-    setSkippedCount(0);
 
     try {
       const result = await startExtraction(taskId, {
@@ -764,21 +758,16 @@ ${detail}
         (status) => {
           setExtractionProgress(status.progress || 0);
           setExtractionMessage(status.message || 'Extracting...');
-          setExtractedCount(status.extracted_files || 0);
-          setSkippedCount(status.skipped_files || 0);
         },
         1000
       );
 
       setExtractionStatus('completed');
       setExtractionMessage(`Results: ${finalStatus.extracted_files} extracted, ${finalStatus.skipped_files || 0} skipped`);
-      setExtractedCount(finalStatus.extracted_files || 0);
-      setSkippedCount(finalStatus.skipped_files || 0);
 
     } catch (err) {
       console.error('Extraction failed:', err);
       setExtractionStatus('failed');
-      setExtractionError(err.message || 'Extraction failed');
       setExtractionMessage('Extraction failed');
     }
   };

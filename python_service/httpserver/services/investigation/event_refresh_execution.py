@@ -123,7 +123,9 @@ class EventRefreshExecutor:
         D4b: terminal writes go through the live-task boundary; a task deleted
         mid-flight discards the result without writing.
         """
-        repo = InvestigationRepository(db_path, task_id)
+        # D4b: worker terminal paths are existing-store-only from the first
+        # access. A deleted store must never be recreated before claim/read.
+        repo = InvestigationRepository.open_existing(db_path, task_id)
         claimed = False
         model: str | None = None
         try:

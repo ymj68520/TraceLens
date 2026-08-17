@@ -249,8 +249,9 @@ class SecondaryAnalysisExecutor:
         task deleted mid-flight is never resurrected by a completion or
         failure write.
         """
-        # Construct repo synchronously (fast; always available in handlers).
-        repo = InvestigationRepository(db_path, task_id)
+        # D4b: worker terminal paths are existing-store-only from the first
+        # access. A deleted store must never be recreated before claim/read.
+        repo = InvestigationRepository.open_existing(db_path, task_id)
         claimed = False
         try:
             # E2: must exist

@@ -739,6 +739,10 @@ class InvestigationRepository:
                 f"unsupported investigation.db schema version: {version} "
                 f"(supported: {SUPPORTED_SCHEMA_VERSION})"
             )
+        try:
+            repo._validate_v7_schema()
+        except (sqlite3.DatabaseError, ValueError, EvidenceStoreError) as exc:
+            raise EvidenceStoreError("investigation store schema is invalid") from exc
         return repo
 
     # =====================================================================
