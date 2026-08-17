@@ -115,6 +115,8 @@ class GraphitiIngestor:
         """
         self.config = config
         self._client = graphiti_client
+        self._owned_llm_client = None
+        self._owned_embedder = None
         self._initialized = False
     
     def _create_llm_client(self) -> OpenAIGenericClient:
@@ -245,6 +247,8 @@ class GraphitiIngestor:
                 
                 llm_client = self._create_llm_client()
                 embedder = self._create_embedder()
+                self._owned_llm_client = llm_client
+                self._owned_embedder = embedder
                 
                 # Create reranker using the same LLM client
                 llm_config = LLMConfig(
@@ -280,11 +284,42 @@ class GraphitiIngestor:
         logger.info("Graphiti initialized successfully")
     
     async def close(self) -> None:
-        """Close the Graphiti client connection."""
+        """Close owned HTTP pools and the Graphiti/Neo4j driver (D4b).
+
+        A Graphiti instance supplied by a caller owns its own clients and is
+        therefore not closed here. Clients created in ``initialize`` are
+        per-ingestor owned resources and must be closed independently: one
+        failure must not prevent the other resources from being released.
+        """
+        errors = []
+        for resource in (self._owned_llm_client, self._owned_embedder):
+            if resource is None:
+                continue
+            close = getattr(resource, "aclose", None)
+            if close is None:
+                close = getattr(resource, "close", None)
+            if close is None:
+                continue
+            try:
+                result = close()
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as exc:
+                errors.append(exc)
+                logger.warning("Failed to close owned Graphiti client: %s", type(exc).__name__)
+        self._owned_llm_client = None
+        self._owned_embedder = None
         if self._client:
-            await self._client.close()
-            self._client = None
-            self._initialized = False
+            try:
+                await self._client.close()
+            except Exception as exc:
+                errors.append(exc)
+                logger.warning("Failed to close Graphiti driver: %s", type(exc).__name__)
+            finally:
+                self._client = None
+                self._initialized = False
+        if errors:
+            raise errors[0]
     
     async def ingest_episode(
         self,

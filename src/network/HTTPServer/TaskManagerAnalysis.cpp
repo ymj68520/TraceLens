@@ -46,6 +46,8 @@ void TaskManager::start_analysis(const std::string& task_id) {
                             std::filesystem::remove_all(task_root);
                         }
                     } catch (...) {}
+                    // D4b: also drop the task-scoped LLM extraction scratch.
+                    forensics::LLMAnalysisService::CleanupTaskScratch(id);
                 }
             }
         } cleanup_handler{*this, task_id};
@@ -340,6 +342,8 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     // Provide image + raw DB paths so files can be extracted from the
                     // image before LLM analysis (files live inside the image, not on disk).
                     llmService.setImagePaths(imagePath, effectiveRawDb);
+                    // D4b: scope the extraction scratch to this task.
+                    llmService.setTaskId(task_id);
                     auto& config = forensics::ConfigManager::instance();
                     forensics::LLMAnalysisService::AnalysisOptions llmOpts;
                     llmOpts.maxFiles = config.getLLMMaxFiles();

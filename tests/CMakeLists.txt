@@ -1355,3 +1355,12 @@ target_link_libraries(
   nlohmann_json::nlohmann_json
   cpp_dotenv)
 add_test(NAME TextDumpAdapterTests COMMAND test_text_dump_adapters)
+
+# Task-scoped LLM extraction scratch lifecycle tests (D4b)
+add_executable(
+  test_llm_scratch_gtest
+  UnitTest/test_llm_scratch_gtest.cpp
+  ../src/network/HTTPServer/LLMScratch.cpp)
+target_include_directories(test_llm_scratch_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_llm_scratch_gtest ${GTEST_LIBRARIES} gtest_main)
+add_test(NAME LLMScratchTests COMMAND test_llm_scratch_gtest)

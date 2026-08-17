@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import shutil
 import subprocess
 import tempfile
 
@@ -173,32 +174,38 @@ class VideoExtractor(BaseExtractor):
             return
 
         tmp_dir = tempfile.mkdtemp(prefix="tracelens_video_samples_")
-        sample_cmd = [
-            "ffmpeg", "-v", "error", "-i", file_path,
-            "-vf", f"fps={self.sample_frames}/{duration:.6f},scale=320:-1",
-            "-frames:v", str(self.sample_frames),
-            os.path.join(tmp_dir, "frame_%03d.jpg"),
-        ]
         try:
-            completed = subprocess.run(sample_cmd, capture_output=True, text=True, timeout=30)
-        except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as error:
-            result.append(f"*Frame sampling unavailable: {error}*")
-            return
+            sample_cmd = [
+                "ffmpeg", "-v", "error", "-i", file_path,
+                "-vf", f"fps={self.sample_frames}/{duration:.6f},scale=320:-1",
+                "-frames:v", str(self.sample_frames),
+                os.path.join(tmp_dir, "frame_%03d.jpg"),
+            ]
+            try:
+                completed = subprocess.run(sample_cmd, capture_output=True, text=True, timeout=30)
+            except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as error:
+                result.append(f"*Frame sampling unavailable: {error}*")
+                return
 
-        frames = sorted(
-            name for name in os.listdir(tmp_dir) if name.lower().endswith(".jpg")
-        )
-        if completed.returncode != 0 or not frames:
-            result.append("*Could not create frame samples; the video may be incomplete or ffmpeg is unavailable.*")
-            return
+            frames = sorted(
+                name for name in os.listdir(tmp_dir) if name.lower().endswith(".jpg")
+            )
+            if completed.returncode != 0 or not frames:
+                result.append("*Could not create frame samples; the video may be incomplete or ffmpeg is unavailable.*")
+                return
 
-        result.append(
-            f"Created {len(frames)} temporary frame sample(s) in: `{tmp_dir}`"
-        )
-        result.append("*These derived samples do not validate the source video or its completeness.*")
-        for frame in frames:
-            frame_path = os.path.join(tmp_dir, frame)
-            result.append(f"- `{frame_path}` ({_format_size(os.path.getsize(frame_path))})")
+            # D4b: samples are transient processing aids. The scratch
+            # directory is removed in the finally block below, so its path
+            # must never appear in the returned Markdown.
+            result.append(
+                f"Created {len(frames)} temporary frame sample(s) for analysis (discarded after extraction)."
+            )
+            result.append("*These derived samples do not validate the source video or its completeness.*")
+            for frame in frames:
+                frame_path = os.path.join(tmp_dir, frame)
+                result.append(f"- `{frame}` ({_format_size(os.path.getsize(frame_path))})")
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 @register_extractor

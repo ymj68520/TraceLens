@@ -287,6 +287,7 @@ set(LIB_SOURCES
     src/network/HTTPServer/SceneDetector.cpp
     src/network/HTTPServer/SQLiteHelper.cpp
     src/network/HTTPServer/LLMAnalysisService.cpp
+    src/network/HTTPServer/LLMScratch.cpp
     src/network/HTTPServer/WindowsLLMAnalysisService.cpp
     src/network/HTTPServer/WindowsLLMAnalysisService_ArtifactAnalyzers.cpp
     src/network/HTTPServer/WindowsLLMAnalysisService_Database.cpp

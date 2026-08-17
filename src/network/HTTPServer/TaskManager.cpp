@@ -3,6 +3,7 @@
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
 #include "LLMPythonProxy.h"
+#include "LLMAnalysisService.h"
 #include "EventClusterAnalyzer.h"
 #include "ConfigManager/ConfigManager.h"
 #include "PathManager/PathManager.h"
@@ -336,6 +337,10 @@ bool TaskManager::delete_task(const std::string& id) {
     // Attempt to delete Graphiti data in Neo4j via Python API
     auto& proxy = forensics::LLMPythonProxy::instance();
     proxy.deleteGraphitiData(id);
+
+    // D4b: remove this task's LLM extraction scratch (crash leftovers;
+    // normal exits are cleaned by the service destructor).
+    forensics::LLMAnalysisService::CleanupTaskScratch(id);
 
     // If task was not running, we can safely delete its files now.
     // If it WAS running, the background thread will clean it up when it exits

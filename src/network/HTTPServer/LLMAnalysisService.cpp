@@ -1,4 +1,5 @@
 #include "LLMAnalysisService.h"
+#include "LLMScratch.h"
 #include "DatabaseManager/SQL/file_classifier_sql.h"
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
 #include "core/PathManager/PathManager.h"
@@ -15,7 +16,26 @@ namespace fs = std::filesystem;
 namespace forensics {
 
 LLMAnalysisService::LLMAnalysisService() = default;
-LLMAnalysisService::~LLMAnalysisService() = default;
+
+LLMAnalysisService::~LLMAnalysisService() {
+    // D4b RAII: the task-scoped extraction scratch dies with the analysis
+    // run, on every exit path (success, failure, cancellation, exception).
+    if (!taskId_.empty()) {
+        llm_scratch::cleanupTask(taskId_);
+    }
+}
+
+void LLMAnalysisService::setTaskId(const std::string& taskId) {
+    taskId_ = taskId;
+}
+
+std::string LLMAnalysisService::TaskScratchDir(const std::string& taskId) {
+    return llm_scratch::dirForTask(taskId);
+}
+
+void LLMAnalysisService::CleanupTaskScratch(const std::string& taskId) {
+    llm_scratch::cleanupTask(taskId);
+}
 
 bool LLMAnalysisService::initialize() {
     try {
@@ -73,8 +93,10 @@ std::string LLMAnalysisService::resolveFileForAnalysis(const std::string& filePa
         std::replace(safeName.begin(), safeName.end(), '/', '_');
         std::replace(safeName.begin(), safeName.end(), '\\', '_');
 
-        // Use a dedicated temp dir keyed by process to avoid collisions across tasks.
-        fs::path extractDir = fs::temp_directory_path() / "forensics_llm_extract";
+        // Use a task-scoped temp dir (D4b): per-task subtree avoids the old
+        // flat-namespace collisions across tasks and is cleaned by the
+        // service destructor / task deletion.
+        fs::path extractDir(llm_scratch::dirForTask(taskId_));
         fs::create_directories(extractDir);
         fs::path outputPath = extractDir / safeName;
 
