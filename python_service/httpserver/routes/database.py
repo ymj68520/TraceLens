@@ -68,25 +68,6 @@ class EventListResponse(BaseModel):
     timestamp: str
 
 
-class QueryRequest(BaseModel):
-    """Request model for custom queries."""
-    task_id: str = Field(..., description="Task ID to query")
-    database_type: str = Field(..., description="Database type: 'files', 'events', 'android', 'windows', 'linux'")
-    table: Optional[str] = Field(None, description="Table name")
-    sql: Optional[str] = Field(None, description="Custom SQL query (SELECT only)")
-    parameters: Optional[Dict[str, Any]] = Field(None, description="Query parameters")
-    limit: int = Field(default=1000, ge=1, le=10000, description="Maximum results")
-
-
-class QueryResponse(BaseModel):
-    """Response model for custom queries."""
-    success: bool
-    columns: List[str]
-    rows: List[List[Any]]
-    row_count: int
-    timestamp: str
-
-
 class ExportResponse(BaseModel):
     """Response model for export operations."""
     success: bool
@@ -335,67 +316,6 @@ async def get_task_events(
     except Exception as e:
         logger.error(f"Get events failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="event records are unavailable")
-
-
-@router.post(
-    "/query", 
-    response_model=QueryResponse,
-    responses={
-        200: {"description": "Query executed successfully"},
-        400: {"description": "Invalid query or parameters"},
-        500: {"description": "Internal server error"}
-    }
-)
-async def execute_query(
-    request: QueryRequest,
-    settings: Settings = Depends(get_settings),
-):
-    """
-    Execute a custom query on a task's database.
-    
-    Only SELECT queries are allowed for security.
-    """
-    # Validate SQL if provided
-    if request.sql:
-        sql_upper = request.sql.strip().upper()
-        if not sql_upper.startswith("SELECT"):
-            raise HTTPException(
-                status_code=400,
-                detail="Only SELECT queries are allowed"
-            )
-        
-        # Check for dangerous keywords
-        dangerous_keywords = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "TRUNCATE"]
-        for keyword in dangerous_keywords:
-            if keyword in sql_upper:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Query contains forbidden keyword: {keyword}"
-                )
-    
-    try:
-        from ..services import get_service_manager
-        service_manager = get_service_manager()
-        
-        result = await service_manager.cpp_backend.execute_query(
-            task_id=request.task_id,
-            database_type=request.database_type,
-            table=request.table,
-            sql=request.sql,
-            parameters=request.parameters,
-            limit=request.limit,
-        )
-        
-        return QueryResponse(
-            success=True,
-            columns=result.get("columns", []),
-            rows=result.get("rows", []),
-            row_count=len(result.get("rows", [])),
-            timestamp=datetime.now().isoformat(),
-        )
-    except Exception as e:
-        logger.error(f"Query failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="database query failed")
 
 
 @router.get(

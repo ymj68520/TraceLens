@@ -278,37 +278,7 @@ class CppBackendService:
             "events": result if isinstance(result, list) else [],
             "total_count": 0,
         }
-    
-    # Query Operations
-    
-    async def execute_query(
-        self,
-        task_id: str,
-        database_type: str,
-        table: Optional[str] = None,
-        sql: Optional[str] = None,
-        parameters: Optional[Dict[str, Any]] = None,
-        limit: int = 1000,
-    ) -> Dict[str, Any]:
-        """Execute a query on a task's database."""
-        payload = {
-            "task_id": task_id,
-            "database_type": database_type,
-            "limit": limit,
-        }
-        if table:
-            payload["table"] = table
-        if sql:
-            payload["sql"] = sql
-        if parameters:
-            payload["parameters"] = parameters
-        
-        result = await self._request("POST", "/api/database/query", json=payload)
-        return {
-            "columns": result.get("columns", []),
-            "rows": result.get("rows", []),
-        }
-    
+
     # File Extraction Operations
 
     async def extract_files(
