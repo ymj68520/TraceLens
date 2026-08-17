@@ -47,7 +47,87 @@ def _get_markitdown():
 
 class ConvertRequest(BaseModel):
     """Request model for file-to-markdown conversion."""
+    task_id: str | None = Field(None, description="Task ID owning the file (workspace anchor)")
+    workspace_root: str | None = Field(None, description="Deprecated standalone workspace anchor for CLI callers")
     file_path: str = Field(..., description="Absolute path to the file to convert")
+
+
+async def _task_conversion_anchors(
+    task_id: str | None, workspace_root: str | None
+):
+    """Resolve task or explicit standalone workspace conversion anchors."""
+    from ..services import task_store
+
+    if task_id:
+        try:
+            task = await task_store.get_task_record(task_id)
+            workspace = task_store.workspace_from_record(task)
+            files_db = task_store.files_db_from_record(task)
+        except task_store.TaskStoreError as exc:
+            if exc.code == task_store.TASK_NOT_FOUND:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return workspace, task_store.internal_extract_root(), files_db
+
+    if not workspace_root:
+        raise HTTPException(
+            status_code=400, detail="task_id or workspace_root is required"
+        )
+    return Path(workspace_root).resolve(strict=False), None, None
+
+
+async def _assert_file_readable_for_task(
+    task_id: str | None, workspace_root: str | None, file_path: str
+) -> None:
+    """Gate /convert reads using task or explicit standalone workspace."""
+    from ..services import task_store
+
+    workspace, extract_root, files_db = await _task_conversion_anchors(
+        task_id, workspace_root
+    )
+    candidate = Path(file_path)
+    try:
+        task_store.resolved_within(workspace, candidate)
+        return
+    except task_store.TaskStoreError:
+        pass
+    if extract_root is not None:
+        try:
+            task_store.resolved_within(extract_root, candidate)
+            return
+        except task_store.TaskStoreError:
+            pass
+    if files_db is not None:
+        try:
+            if task_store.file_known_to_task(files_db, file_path):
+                return
+        except task_store.TaskStoreError:
+            raise HTTPException(
+                status_code=400, detail="task files database is unavailable"
+            ) from None
+    raise HTTPException(
+        status_code=400, detail="file is outside the task workspace"
+    )
+
+
+async def _task_workspace_or_400(
+    task_id: str | None, workspace_root: str | None
+) -> Path:
+    """Resolve the task workspace or standalone CLI workspace anchor."""
+    from ..services import task_store
+
+    if not task_id:
+        if not workspace_root:
+            raise HTTPException(
+                status_code=400, detail="task_id or workspace_root is required"
+            )
+        return Path(workspace_root).resolve(strict=False)
+    try:
+        return await task_store.resolve_task_workspace(task_id)
+    except task_store.TaskStoreError as exc:
+        if exc.code == task_store.TASK_NOT_FOUND:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 class ConvertResponse(BaseModel):
@@ -79,6 +159,11 @@ async def convert_file(request: ConvertRequest):
     to markdown before sending to LLM for analysis.
     """
     start_time = time.time()
+
+    # Task ownership gate: the file must belong to the requesting task.
+    await _assert_file_readable_for_task(
+        request.task_id, request.workspace_root, request.file_path
+    )
 
     # Validate file exists
     file_path = Path(request.file_path)
@@ -170,6 +255,8 @@ async def markitdown_status():
 
 class BatchConvertRequest(BaseModel):
     """Request model for batch directory-to-markdown conversion."""
+    task_id: str | None = Field(None, description="Task ID owning the conversion roots")
+    workspace_root: str | None = Field(None, description="Deprecated standalone workspace anchor for CLI callers")
     input_dir: str = Field(..., description="Absolute path to the directory of files to convert")
     output_dir: str = Field(..., description="Absolute path to the output directory for .md files")
 
@@ -200,6 +287,8 @@ class FileConversionOutcome:
 
 class ConvertOneRequest(BaseModel):
     """Request model for converting one file beneath an input root."""
+    task_id: str | None = Field(None, description="Task ID owning the conversion roots")
+    workspace_root: str | None = Field(None, description="Deprecated standalone workspace anchor for CLI callers")
     input_root: str
     input_file: str
     output_root: str
@@ -311,9 +400,73 @@ async def _convert_file_to_output(
 @router.post("/convert-one", response_model=ConvertOneResponse)
 async def convert_one(request: ConvertOneRequest):
     """Convert one file under input_root into a mirrored Markdown file."""
+    # Both roots must live inside the task workspace (write anchor).
+    from ..services import task_store
+
+    workspace = await _task_workspace_or_400(
+        request.task_id, request.workspace_root
+    )
+    try:
+        if task_store.has_symlink_component(request.input_root) or task_store.has_symlink_component(request.input_file) or task_store.has_symlink_component(request.output_root):
+            raise HTTPException(
+                status_code=400,
+                detail="conversion paths must not contain symlinks",
+            )
+        input_root = task_store.resolved_within(workspace, Path(request.input_root))
+        input_file = task_store.resolved_within(workspace, Path(request.input_file))
+        output_root = task_store.resolved_within(workspace, Path(request.output_root))
+    except task_store.TaskStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # The conversion primitive requires the input file to be beneath the
+    # declared input root. Resolve that relationship before calculating the
+    # mirrored output path so malformed roots fail as a stable 400.
+    try:
+        relative_input = input_file.relative_to(input_root)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400, detail="input file is outside the input root"
+        ) from exc
+
+    # A conversion output must never overwrite its own input (§D2b), and an
+    # output tree nested in (or containing) the input tree would turn the
+    # source Evidence tree into a write target.
+    try:
+        if (
+            output_root == input_root
+            or output_root.is_relative_to(input_root)
+            or input_root.is_relative_to(output_root)
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="output tree overlaps the input tree",
+            )
+    except AttributeError:  # Python < 3.9 compatibility for Path.is_relative_to
+        try:
+            output_root.relative_to(input_root)
+            output_overlaps = True
+        except ValueError:
+            try:
+                input_root.relative_to(output_root)
+                output_overlaps = True
+            except ValueError:
+                output_overlaps = output_root == input_root
+        if output_overlaps:
+            raise HTTPException(
+                status_code=400,
+                detail="output tree overlaps the input tree",
+            )
+
+    expected_output = output_root / (str(relative_input) + ".md")
+    if expected_output.resolve(strict=False) == input_file.resolve(strict=False):
+        raise HTTPException(
+            status_code=400,
+            detail="output path overlaps the input file",
+        )
+
     try:
         outcome = await _convert_file_to_output(
-            Path(request.input_file), Path(request.input_root), Path(request.output_root)
+            input_file, input_root, output_root
         )
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -391,8 +544,23 @@ async def batch_convert(request: BatchConvertRequest):
     """
     start_time = time.time()
 
-    input_dir = Path(request.input_dir)
-    output_dir = Path(request.output_dir)
+    # Both roots must live inside the task workspace (write anchor) and the
+    # mirrored output tree must never overwrite any input file (§D2b).
+    from ..services import task_store
+
+    workspace = await _task_workspace_or_400(
+        request.task_id, request.workspace_root
+    )
+    try:
+        if task_store.has_symlink_component(request.input_dir) or task_store.has_symlink_component(request.output_dir):
+            raise HTTPException(
+                status_code=400,
+                detail="conversion paths must not contain symlinks",
+            )
+        input_dir = task_store.resolved_within(workspace, Path(request.input_dir))
+        output_dir = task_store.resolved_within(workspace, Path(request.output_dir))
+    except task_store.TaskStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Validate input directory
     if input_dir.is_symlink():
@@ -431,6 +599,18 @@ async def batch_convert(request: BatchConvertRequest):
     # Collect all regular files (recursive)
     all_files = [f for f in input_dir.rglob("*") if f.is_file()]
     total = len(all_files)
+
+    # Mirrored output names must never overwrite a source file: converting
+    # input "x" writes "x.md", which collides with a sibling input "x.md".
+    if total:
+        resolved_inputs = {f.resolve(strict=False) for f in all_files}
+        for f in all_files:
+            candidate = output_dir / (str(f.relative_to(input_dir)) + ".md")
+            if candidate.resolve(strict=False) in resolved_inputs:
+                raise HTTPException(
+                    status_code=400,
+                    detail="output tree overlaps an input file",
+                )
 
     if total == 0:
         logger.info(f"batch-convert: input dir {input_dir} is empty")

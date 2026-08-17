@@ -22,6 +22,8 @@ router = APIRouter()
 class ParseRequest(BaseModel):
     """Request model for parsing an Office file."""
 
+    task_id: str | None = Field(None, description="Task ID owning the file (membership anchor)")
+    workspace_root: str | None = Field(None, description="Deprecated standalone workspace anchor for C++ callers")
     file_path: str = Field(..., description="Absolute path to the Office file")
 
 
@@ -52,6 +54,55 @@ async def parse_office_file(request: ParseRequest) -> ParseResponse:
         ParseResponse with extracted content or error message.
     """
     file_path = request.file_path
+
+    # Task ownership gate (D2b): the file must be a known record of this
+    # task (exact files.path match) or live in the C++ pipeline's shared
+    # internal extraction scratch root. Never a bare host-existence check.
+    from ..services import task_store
+
+    try:
+        if request.task_id:
+            task = await task_store.get_task_record(request.task_id)
+            workspace = task_store.workspace_from_record(task)
+            files_db = task_store.files_db_from_record(task)
+        elif request.workspace_root:
+            task = {}
+            workspace = Path(request.workspace_root).resolve(strict=False)
+            files_db = None
+        else:
+            raise HTTPException(
+                status_code=400, detail="task_id or workspace_root is required"
+            )
+    except task_store.TaskStoreError as exc:
+        if exc.code == task_store.TASK_NOT_FOUND:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    known = False
+    try:
+        # A task workspace path is not automatically a known Evidence file.
+        # Accept exact files.path membership, or the server-derived extraction
+        # directory used by the C++ FileAnalyzer/OfficeAnalyzer pipeline.
+        known = task_store.file_known_to_task(files_db, file_path) if files_db else False
+        if not known:
+            extraction_dir = task.get("extraction_directory") if task else None
+            if extraction_dir:
+                task_store.resolved_within(
+                    extraction_dir, Path(file_path)
+                )
+                known = True
+            elif request.workspace_root:
+                task_store.resolved_within(workspace, Path(file_path))
+                known = True
+    except task_store.TaskStoreError as exc:
+        if exc.code != task_store.PATH_OUTSIDE_WORKSPACE:
+            raise HTTPException(
+                status_code=400, detail="task files database is unavailable"
+            ) from exc
+    if not known:
+        raise HTTPException(
+            status_code=404, detail="file is not part of the current task"
+        )
 
     # Validate file exists
     path = Path(file_path)

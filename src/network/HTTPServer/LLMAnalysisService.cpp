@@ -103,7 +103,8 @@ std::string LLMAnalysisService::resolveFileForAnalysis(const std::string& filePa
     }
 }
 
-int LLMAnalysisService::analyzeAllFiles(const std::string& filesDbPath,
+int LLMAnalysisService::analyzeAllFiles(const std::string& task_id,
+                                         const std::string& filesDbPath,
                                          const AnalysisOptions& options,
                                          ProgressCallback progressCallback) {
     if (!initialized_) {
@@ -140,7 +141,7 @@ int LLMAnalysisService::analyzeAllFiles(const std::string& filesDbPath,
                 continue;  // extraction failed, warning already logged
             }
 
-            auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength);
+            auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength, task_id);
 
             if (result.success) {
                 // Store directly to _files.db in the files table
@@ -157,7 +158,8 @@ int LLMAnalysisService::analyzeAllFiles(const std::string& filesDbPath,
     return analyzed;
 }
 
-int LLMAnalysisService::analyzeSmartFiles(const std::string& filesDbPath,
+int LLMAnalysisService::analyzeSmartFiles(const std::string& task_id,
+                                           const std::string& filesDbPath,
                                            const AnalysisOptions& options,
                                            ProgressCallback progressCallback) {
     if (!initialized_) {
@@ -190,7 +192,7 @@ int LLMAnalysisService::analyzeSmartFiles(const std::string& filesDbPath,
                 continue;  // extraction failed, warning already logged
             }
 
-            auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength);
+            auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength, task_id);
 
             if (result.success) {
                 // Store directly to _files.db in the files table

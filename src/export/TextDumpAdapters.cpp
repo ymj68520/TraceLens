@@ -65,8 +65,10 @@ int FileExtractorTextDumpSource::extractAll(const fs::path& outputRoot,
 // ---------------------------------------------------------------------------
 
 MarkitdownTextDumpConverter::MarkitdownTextDumpConverter(
-        forensics::llm::MarkitdownProxy& proxy)
-    : proxy_(proxy) {}
+        forensics::llm::MarkitdownProxy& proxy, std::string taskId,
+        std::string workspaceRoot)
+    : proxy_(proxy), task_id_(std::move(taskId)),
+      workspace_root_(std::move(workspaceRoot)) {}
 
 bool MarkitdownTextDumpConverter::isAvailable() {
     return proxy_.isServiceAvailable();
@@ -98,7 +100,8 @@ MarkdownDeltaResult MarkitdownTextDumpConverter::convertOne(
     }
 
     const auto converted = proxy_.convertOneToMarkdown(
-        inputRoot.string(), inputFile.string(), outputRoot.string());
+        inputRoot.string(), inputFile.string(), outputRoot.string(),
+        task_id_, workspace_root_);
 
     MarkdownStatus status = MarkdownStatus::Failed;
     switch (converted.status) {
@@ -136,7 +139,7 @@ MarkdownDeltaResult MarkitdownTextDumpConverter::convertOne(
 BatchConversionResult MarkitdownTextDumpConverter::convertBatch(
         const fs::path& inputRoot, const fs::path& outputRoot) {
     const auto batch = proxy_.batchConvertToMarkdown(
-        inputRoot.string(), outputRoot.string());
+        inputRoot.string(), outputRoot.string(), task_id_, workspace_root_);
     return {batch.ok, batch.total, batch.converted, batch.skipped,
             batch.failed, batch.error};
 }

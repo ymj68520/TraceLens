@@ -15,7 +15,7 @@ public:
      * @param filePath The absolute path to the file.
      * @return The extracted content in Markdown format.
      */
-    std::string analyze(const std::string& filePath);
+    std::string analyze(const std::string& filePath, const std::string& taskId = "");
 
     /**
      * @brief Analyze an Office document and save the content to a Markdown file.
@@ -54,6 +54,12 @@ private:
     
     // Helper to call Python service
     std::string callPythonService(const std::string& filePath);
+
+    // Task anchor and explicit standalone workspace for the Python route.
+    std::string currentWorkspaceRoot_;
+
+    // Task anchor threaded from analyze() into the Python payload (D2b).
+    std::string currentTaskId_;
     
     // Helper to get base filename without extension
     std::string getBaseName(const std::string& filePath);

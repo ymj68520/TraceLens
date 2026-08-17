@@ -63,7 +63,8 @@ public:
      * @param progressCallback Progress callback function
      * @return Number of files analyzed
      */
-    int analyzeAllFiles(const std::string& filesDbPath,
+    int analyzeAllFiles(const std::string& task_id,
+                        const std::string& filesDbPath,
                         const AnalysisOptions& options,
                         ProgressCallback progressCallback = nullptr);
 
@@ -78,7 +79,8 @@ public:
      * @param progressCallback Progress callback function
      * @return Number of files analyzed
      */
-    int analyzeSmartFiles(const std::string& filesDbPath,
+    int analyzeSmartFiles(const std::string& task_id,
+                          const std::string& filesDbPath,
                           const AnalysisOptions& options,
                           ProgressCallback progressCallback = nullptr);
 

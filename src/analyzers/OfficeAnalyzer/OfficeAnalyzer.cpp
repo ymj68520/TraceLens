@@ -2,6 +2,7 @@
 #include <duckx.hpp>
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include <sstream>
 #include <algorithm>
 #include <array>
@@ -26,7 +27,9 @@ void OfficeAnalyzer::setPythonServiceUrl(const std::string& url) {
     pythonServiceUrl_ = url;
 }
 
-std::string OfficeAnalyzer::analyze(const std::string& filePath) {
+std::string OfficeAnalyzer::analyze(const std::string& filePath, const std::string& taskId) {
+    currentTaskId_ = taskId;
+    currentWorkspaceRoot_ = std::filesystem::path(filePath).parent_path().string();
     if (hasExtension(filePath, ".docx")) {
         return analyzeDocx(filePath);
     } else if (hasExtension(filePath, ".doc")) {
@@ -107,6 +110,8 @@ std::string OfficeAnalyzer::callPythonService(const std::string& filePath) {
     // Prepare JSON payload
     json payload;
     payload["file_path"] = filePath;
+    payload["task_id"] = currentTaskId_;
+    payload["workspace_root"] = currentWorkspaceRoot_;
     std::string jsonStr = payload.dump();
 
     // Set headers

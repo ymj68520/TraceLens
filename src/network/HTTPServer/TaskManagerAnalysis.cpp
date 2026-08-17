@@ -351,7 +351,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     if (task.llm_mode == "full") {
                         // Full mode: analyze all files
                         update_progress(task_id, TaskPhase::LLM_ANALYSIS, 30, "Full mode: Analyzing all files...");
-                        analyzedCount = llmService.analyzeAllFiles(fileDbPath, llmOpts,
+                        analyzedCount = llmService.analyzeAllFiles(task_id, fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) {
                                 if (is_task_cancelled(task_id)) return; // Wait, analyzeAllFiles doesn't support cancellation return value?
                                 int progress = 30;
@@ -367,7 +367,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                         // For smart mode, we scan more files initially (up to 2x global limit) to provide better context
                         llmOpts.maxFiles = std::max(llmOpts.maxFiles, static_cast<size_t>(1000));
 
-                        analyzedCount = llmService.analyzeSmartFiles(fileDbPath, llmOpts,
+                        analyzedCount = llmService.analyzeSmartFiles(task_id, fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) {
                                 if (is_task_cancelled(task_id)) return;
                                 int progress = 30;

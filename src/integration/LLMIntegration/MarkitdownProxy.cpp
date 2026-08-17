@@ -27,14 +27,18 @@ static httplib::Result PostJson(httplib::Client& cli,
 SingleConversionResult MarkitdownProxy::convertOneToMarkdown(
         const std::string& inputRoot,
         const std::string& inputFile,
-        const std::string& outputRoot) {
+        const std::string& outputRoot,
+        const std::string& taskId,
+        const std::string& workspaceRoot) {
     SingleConversionResult result;
     try {
-        const nlohmann::json body = {
+        nlohmann::json body = {
             {"input_root", inputRoot},
             {"input_file", inputFile},
             {"output_root", outputRoot},
         };
+        body["task_id"] = taskId;
+        body["workspace_root"] = workspaceRoot;
 
         const std::string payload = body.dump();
         httplib::Result res;
@@ -84,9 +88,13 @@ SingleConversionResult MarkitdownProxy::convertOneToMarkdown(
     }
 }
 
-std::string MarkitdownProxy::convertToMarkdown(const std::string& filePath) {
+std::string MarkitdownProxy::convertToMarkdown(const std::string& filePath,
+                                               const std::string& taskId,
+                                               const std::string& workspaceRoot) {
     try {
-        nlohmann::json body = {{"file_path", filePath}};
+        nlohmann::json body = {{"file_path", filePath},
+                              {"task_id", taskId},
+            {"workspace_root", workspaceRoot}};
         const std::string payload = body.dump();
 
         if (http_poster_) {
@@ -170,7 +178,8 @@ bool MarkitdownProxy::isServiceAvailable() {
 }
 
 MarkitdownProxy::BatchResult MarkitdownProxy::batchConvertToMarkdown(
-        const std::string& inputDir, const std::string& outputDir) {
+        const std::string& inputDir, const std::string& outputDir,
+        const std::string& taskId, const std::string& workspaceRoot) {
     BatchResult result;
     try {
         httplib::Client cli(pythonServiceUrl_);
@@ -180,7 +189,9 @@ MarkitdownProxy::BatchResult MarkitdownProxy::batchConvertToMarkdown(
 
         nlohmann::json body = {
             {"input_dir", inputDir},
-            {"output_dir", outputDir}
+            {"output_dir", outputDir},
+            {"task_id", taskId},
+            {"workspace_root", workspaceRoot}
         };
 
         auto res = cli.Post("/api/markitdown/batch-convert",

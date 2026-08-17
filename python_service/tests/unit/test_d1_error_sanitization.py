@@ -180,8 +180,27 @@ async def test_service_manager_health_check_classifies_errors():
 async def test_office_parse_failure_error_is_fixed(monkeypatch, tmp_path):
     from httpserver.routes import office as office_routes
 
-    xlsx = tmp_path / "sheet.xlsx"
+    ws = tmp_path / "task_ws"
+    ws.mkdir()
+    xlsx = ws / "sheet.xlsx"
     xlsx.write_bytes(b"PK")
+    files_db = ws / "x_files.db"
+    conn = sqlite3.connect(files_db)
+    conn.execute("CREATE TABLE files (path TEXT)")
+    conn.execute("INSERT INTO files VALUES (?)", (str(xlsx),))
+    conn.commit()
+    conn.close()
+
+    class FakeCppBackend:
+        async def get_task(self, task_id):
+            return {"id": task_id, "output_files_db": str(files_db)}
+
+    class FakeServiceManager:
+        cpp_backend = FakeCppBackend()
+
+    monkeypatch.setattr(
+        "httpserver.services.get_service_manager", lambda: FakeServiceManager()
+    )
 
     class BrokenService:
         async def parse_file(self, path):
@@ -191,7 +210,7 @@ async def test_office_parse_failure_error_is_fixed(monkeypatch, tmp_path):
 
     monkeypatch.setattr(office_routes, "get_office_service", lambda: BrokenService())
     response = await office_routes.parse_office_file(
-        office_routes.ParseRequest(file_path=str(xlsx))
+        office_routes.ParseRequest(task_id="t1", file_path=str(xlsx))
     )
     assert response.error == "office parse failed"
     dumped = str(response)

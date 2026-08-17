@@ -24,6 +24,34 @@ def _use_raw_text_fallback(monkeypatch):
     return locator
 
 
+@pytest.fixture(autouse=True)
+def _task_workspace(tmp_path, monkeypatch):
+    """D2b: every HTTP-level conversion request carries a task anchor.
+
+    The fake task record declares ``tmp_path`` itself as the task workspace
+    (the directory holding ``t_files.db``), so the legacy per-test layouts
+    under ``tmp_path`` stay inside the task tree.
+    """
+
+    class FakeCppBackend:
+        async def get_task(self, task_id):
+            if task_id == "t1":
+                return {
+                    "id": "t1",
+                    "output_files_db": str(tmp_path / "t_files.db"),
+                }
+            return None
+
+    class FakeServiceManager:
+        cpp_backend = FakeCppBackend()
+
+    monkeypatch.setattr(
+        "httpserver.services.get_service_manager",
+        lambda: FakeServiceManager(),
+    )
+    return tmp_path
+
+
 @pytest.mark.asyncio
 async def test_convert_file_to_output_uses_specialized_extractor(tmp_path, monkeypatch):
     input_root = tmp_path / "input"
@@ -233,7 +261,7 @@ def test_convert_one_derives_markdown_output_name(tmp_path, monkeypatch):
 
     response = _client().post(
         "/api/markitdown/convert-one",
-        json={
+        json={"task_id": "t1",
             "input_root": str(input_root),
             "input_file": str(source),
             "output_root": str(output_root),
@@ -260,7 +288,7 @@ def test_convert_one_rejects_existing_file_as_output_root(tmp_path, monkeypatch)
     output_root.write_text("not a directory", encoding="utf-8")
     _use_raw_text_fallback(monkeypatch)
 
-    response = _client().post("/api/markitdown/convert-one", json={
+    response = _client().post("/api/markitdown/convert-one", json={"task_id": "t1",
         "input_root": str(input_root),
         "input_file": str(source),
         "output_root": str(output_root),
@@ -286,7 +314,7 @@ def test_convert_one_returns_failed_outcome_for_locator_construction_failure(
 
     response = _client().post(
         "/api/markitdown/convert-one",
-        json={
+        json={"task_id": "t1",
             "input_root": str(input_root),
             "input_file": str(source),
             "output_root": str(output_root),
@@ -309,7 +337,7 @@ def test_convert_one_rejects_input_outside_root(tmp_path, monkeypatch):
 
     response = _client().post(
         "/api/markitdown/convert-one",
-        json={
+        json={"task_id": "t1",
             "input_root": str(input_root),
             "input_file": str(source),
             "output_root": str(tmp_path / "output"),
@@ -327,7 +355,7 @@ def test_convert_one_maps_input_not_a_directory_to_400(tmp_path, monkeypatch):
 
     response = _client().post(
         "/api/markitdown/convert-one",
-        json={
+        json={"task_id": "t1",
             "input_root": str(input_root),
             "input_file": str(blocker / "notes.txt"),
             "output_root": str(tmp_path / "output"),
@@ -350,7 +378,7 @@ def test_convert_one_rejects_dangling_output_component_symlink(tmp_path, monkeyp
 
     response = _client().post(
         "/api/markitdown/convert-one",
-        json={
+        json={"task_id": "t1",
             "input_root": str(input_root),
             "input_file": str(source),
             "output_root": str(output_root),
@@ -396,7 +424,7 @@ def test_convert_one_rejects_symlinked_paths(tmp_path, monkeypatch, case):
 
     response = _client().post(
         "/api/markitdown/convert-one",
-        json={
+        json={"task_id": "t1",
             "input_root": str(request_input_root),
             "input_file": str(request_input_file),
             "output_root": str(request_output_root),
@@ -420,7 +448,7 @@ def test_convert_one_normalizes_empty_output_write_oserror(tmp_path, monkeypatch
 
     response = _client().post(
         "/api/markitdown/convert-one",
-        json={
+        json={"task_id": "t1",
             "input_root": str(input_root),
             "input_file": str(source),
             "output_root": str(tmp_path / "output"),
@@ -445,7 +473,7 @@ def test_convert_one_reports_atomic_write_oserror_as_server_error(tmp_path, monk
 
     response = _client().post(
         "/api/markitdown/convert-one",
-        json={
+        json={"task_id": "t1",
             "input_root": str(input_root),
             "input_file": str(source),
             "output_root": str(tmp_path / "output"),
@@ -476,7 +504,7 @@ def test_batch_convert_normalizes_empty_output_directory_setup_oserror(
 
     response = _client().post(
         "/api/markitdown/batch-convert",
-        json={"input_dir": str(input_root), "output_dir": str(output_root)},
+        json={"task_id": "t1","input_dir": str(input_root), "output_dir": str(output_root)},
     )
 
     assert response.status_code == 500
@@ -543,7 +571,7 @@ def test_batch_convert_uses_shared_primitive_with_bounded_concurrency_and_error_
 
     response = _client().post(
         "/api/markitdown/batch-convert",
-        json={"input_dir": str(input_root), "output_dir": str(output_root)},
+        json={"task_id": "t1","input_dir": str(input_root), "output_dir": str(output_root)},
     )
 
     assert response.status_code == 200

@@ -412,10 +412,11 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
 
             textdump::FileExtractorTextDumpSource source(args.image_path, effectiveRawDb);
             textdump::MarkitdownTextDumpConverter converter(
-                forensics::llm::MarkitdownProxy::instance());
+                forensics::llm::MarkitdownProxy::instance(), args.task_id,
+                std::filesystem::weakly_canonical(originalRoot.parent_path()).string());
             textdump::TextDumpExporter exporter(source, converter);
             const auto result = exporter.run(
-                {originalRoot, markdownRoot, args.dump_text_max_bytes});
+                {originalRoot, markdownRoot, args.dump_text_max_bytes, args.task_id});
 
             std::cout << "Text dump: " << result.processed_files << "/"
                       << result.candidate_files << " files processed\n"
