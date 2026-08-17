@@ -102,7 +102,7 @@ async def test_CCTX2_analyst_note_frozen(tmp_path):
     _, idb, repo, snap, _ = _setup(tmp_path)
     analysis = repo.create_analysis(snap, analyst_note="ORIGINAL_NOTE", prompt_version=CURRENT_PROMPT_VERSION)
     mock_llm = _mock_llm()
-    executor = SecondaryAnalysisExecutor(Mock(), mock_llm, Mock())
+    executor = SecondaryAnalysisExecutor(_FakeCpp(tmp_path), mock_llm, Mock())
     await executor._execute(analysis.analysis_id, "A", Path(idb))
     call_kwargs = mock_llm.chat_completion.call_args
     user_prompt = call_kwargs.kwargs.get("user_prompt") or call_kwargs.args[1]
@@ -281,7 +281,7 @@ async def test_related_snapshot_frozen(tmp_path):
     conn.execute("UPDATE files SET llm_description='MODIFIED' WHERE path='/case/other.txt'")
     conn.commit(); conn.close()
     mock_llm = _mock_llm()
-    executor = SecondaryAnalysisExecutor(Mock(), mock_llm, Mock())
+    executor = SecondaryAnalysisExecutor(_FakeCpp(tmp_path), mock_llm, Mock())
     await executor._execute(analysis.analysis_id, "A", Path(idb))
     call_kwargs = mock_llm.chat_completion.call_args
     user_prompt = call_kwargs.kwargs.get("user_prompt") or call_kwargs.args[1]
@@ -301,7 +301,7 @@ async def test_prompt_v2_includes_context(tmp_path):
         prompt_version=CURRENT_PROMPT_VERSION,
     )
     mock_llm = _mock_llm()
-    executor = SecondaryAnalysisExecutor(Mock(), mock_llm, Mock())
+    executor = SecondaryAnalysisExecutor(_FakeCpp(tmp_path), mock_llm, Mock())
     await executor._execute(analysis.analysis_id, "A", Path(idb))
     call = mock_llm.chat_completion.call_args
     user_prompt = call.kwargs.get("user_prompt") or call.args[1]
@@ -326,7 +326,7 @@ async def test_envelope_prompt_compat_mismatch(tmp_path):
                  [analysis.analysis_id])
     conn.execute(_TRIGGER_SECONDARY_NO_INPUT_UPDATE_SQL)
     conn.commit(); conn.close()
-    executor = SecondaryAnalysisExecutor(Mock(), _mock_llm(), Mock())
+    executor = SecondaryAnalysisExecutor(_FakeCpp(tmp_path), _mock_llm(), Mock())
     await executor._execute(analysis.analysis_id, "A", Path(idb))
     result = InvestigationRepository(idb, "A").get_analysis(analysis.analysis_id)
     assert result.status == SecondaryAnalysisStatus.failed

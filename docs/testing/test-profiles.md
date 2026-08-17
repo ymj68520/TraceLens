@@ -19,7 +19,22 @@ The runner resolves its own `python_service` root and passes it as the subproces
 
 Equivalent Makefile targets are `test-python-focused`, `test-python-investigation`, `test-python-fast`, and `test-python-full`. Use `ARGS=...` with the focused target.
 
-## Marker ownership
+## Current verification
+
+The post-D4b rerun on the current `Dev` branch completed with the following results. The focused command also verified argument forwarding (`-q` and `-k`).
+
+| Profile | Result | Runtime |
+| --- | --- | --- |
+| Focused | `1 passed, 14 deselected` | 1.03s |
+| Investigation | `425 passed, 19 deselected, 1 warning` | 26:15 |
+| Fast Unit | `1086 passed, 49 deselected, 1 warning` | 39:26 |
+| Full Unit | `1135 passed, 1 warning` | 35:06 |
+
+The four Fast failures initially exposed a real configuration regression: `file_filter_mode` and `filter_max_files` had been left inside `mask_url_credentials()` by a prior config edit. The fields were restored to `Settings`; the isolated filter contract and all Fast/Full tests then passed. Older executor and Event Refresh tests were also updated to provide the trusted C++ task-path lookup required by D4b's terminal write boundary.
+
+Frontend verification completed with `38` Vitest files and `206` tests passing, plus a successful production build. Build warnings remain for stale Browserslist data, existing dynamic-import/static-import overlap, and large chunks. Full ESLint remains a pre-existing baseline failure: `363 problems (347 errors, 16 warnings)`, primarily test globals and unrelated inactive/production files; changed frontend files are clean.
+
+## Marker inventory
 
 - `slow`: real polling E2E tests and the generated 10,000+ message WeChat graph dataset. The two analyzed-only ingestion tests remain `integration`; the database-not-found contract remains integration but is not marked slow.
 - `concurrency`: tests whose primary value is thread/async contention, worker claiming, lifecycle ordering, shutdown races, source-freeze offloading, or bounded parallel conversion. Deterministic ServiceManager property and wiring tests remain in Fast/Investigation.

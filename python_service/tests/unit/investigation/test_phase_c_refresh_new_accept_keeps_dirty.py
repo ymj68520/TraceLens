@@ -29,6 +29,18 @@ PROMPT_V3 = "investigation-evidence-analysis:v3"
 KEY = "file:/case/a.txt"
 
 
+class _FakeCppBackend:
+    def __init__(self, task_dir: Path):
+        self._task_dir = task_dir
+
+    async def get_task(self, task_id):
+        return {
+            "id": task_id,
+            "output_files_db": str(self._task_dir / "files.db"),
+            "output_events_db": str(self._task_dir / "events.db"),
+        }
+
+
 def _repo(tmp_path: Path):
     files_db = str(tmp_path / "files.db")
     conn = sqlite3.connect(files_db)
@@ -80,7 +92,7 @@ async def _run_refresh(repo, event, during_execution=None):
 
     llm = Mock()
     llm.chat_completion = AsyncMock(side_effect=fake_chat)
-    executor = EventRefreshExecutor(Mock(), llm, Mock())
+    executor = EventRefreshExecutor(_FakeCppBackend(repo.db_path.parent), llm, Mock())
     await executor._execute(refresh.refresh_id, "A", repo.db_path)
     return repo.get_event_refresh(refresh.refresh_id)
 
@@ -165,7 +177,7 @@ async def test_base_version_change_fails_without_overwriting_narrative(tmp_path)
         "content": '{"title":"loser","summary":"loser narrative"}',
         "model": "transport-model",
     })
-    executor = EventRefreshExecutor(Mock(), llm, Mock())
+    executor = EventRefreshExecutor(_FakeCppBackend(repo.db_path.parent), llm, Mock())
     await executor._execute(refresh.refresh_id, "A", repo.db_path)
 
     stale = repo.get_event_refresh(refresh.refresh_id)

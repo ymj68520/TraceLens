@@ -29,6 +29,18 @@ PROMPT_V3 = "investigation-evidence-analysis:v3"
 KEY = "file:/case/a.txt"
 
 
+class _FakeCppBackend:
+    def __init__(self, task_dir: Path):
+        self._task_dir = task_dir
+
+    async def get_task(self, task_id):
+        return {
+            "id": task_id,
+            "output_files_db": str(self._task_dir / "files.db"),
+            "output_events_db": str(self._task_dir / "events.db"),
+        }
+
+
 def _dirty_repo(tmp_path: Path):
     files_db = str(tmp_path / "files.db")
     conn = sqlite3.connect(files_db)
@@ -78,7 +90,7 @@ async def test_s1_dirty_refresh_completes_writes_v2_and_clears_dirty(tmp_path):
         "content": '{"title":"E1 refreshed","summary":"v2 narrative"}',
         "model": "transport-model",
     })
-    executor = EventRefreshExecutor(Mock(), llm, Mock())
+    executor = EventRefreshExecutor(_FakeCppBackend(tmp_path), llm, Mock())
     await executor._execute(refresh.refresh_id, "A", repo.db_path)
 
     # §10: the LLM saw the frozen envelope only — one call, built from the

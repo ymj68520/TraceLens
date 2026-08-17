@@ -53,6 +53,18 @@ def _running(tmp_path, prompt_version="investigation-evidence-analysis:v3", *, r
     return investigation_db, repo, analysis
 
 
+class _FakeCpp:
+    def __init__(self, task_dir):
+        self._task_dir = Path(task_dir)
+
+    async def get_task(self, task_id):
+        return {
+            "id": task_id,
+            "output_files_db": str(self._task_dir / "files.db"),
+            "output_events_db": str(self._task_dir / "events.db"),
+        }
+
+
 def _candidate(text="claim", refs=("file:/case/report.docx",)):
     return ClaimCandidate(claim_type=ClaimType.FACT, claim_text=text, evidence_refs=refs)
 
@@ -164,7 +176,7 @@ async def test_structured_executor_success_uses_atomic_completion(tmp_path):
         "model": "structured-model",
         "tokens_used": 2,
     })
-    executor = SecondaryAnalysisExecutor(Mock(), llm, Mock())
+    executor = SecondaryAnalysisExecutor(_FakeCpp(tmp_path), llm, Mock())
     await executor._execute(analysis.analysis_id, "A", Path(idb))
     result = repo.get_analysis(analysis.analysis_id)
     assert result.status == SecondaryAnalysisStatus.review_pending
@@ -179,7 +191,7 @@ async def test_structured_executor_invalid_output_fails_without_claims(tmp_path)
     llm.chat_completion = AsyncMock(return_value={
         "content": "not json", "model": "m", "tokens_used": 1,
     })
-    executor = SecondaryAnalysisExecutor(Mock(), llm, Mock())
+    executor = SecondaryAnalysisExecutor(_FakeCpp(tmp_path), llm, Mock())
     await executor._execute(analysis.analysis_id, "A", Path(idb))
     result = repo.get_analysis(analysis.analysis_id)
     assert result.status == SecondaryAnalysisStatus.failed
@@ -195,7 +207,7 @@ async def test_legacy_v2_execution_remains_text_contract(tmp_path):
     llm.chat_completion = AsyncMock(return_value={
         "content": "legacy free text", "model": "legacy-model", "tokens_used": 1,
     })
-    executor = SecondaryAnalysisExecutor(Mock(), llm, Mock())
+    executor = SecondaryAnalysisExecutor(_FakeCpp(tmp_path), llm, Mock())
     await executor._execute(analysis.analysis_id, "A", Path(idb))
     result = repo.get_analysis(analysis.analysis_id)
     assert result.status == SecondaryAnalysisStatus.review_pending
@@ -252,7 +264,7 @@ async def test_structured_executor_does_not_accept_llm_grounding_fields(tmp_path
         "content": '{"description":"d","summary":"s","grounding_status":"valid","claims":[]}',
         "model": "m", "tokens_used": 1,
     })
-    executor = SecondaryAnalysisExecutor(Mock(), llm, Mock())
+    executor = SecondaryAnalysisExecutor(_FakeCpp(tmp_path), llm, Mock())
     await executor._execute(analysis.analysis_id, "A", Path(idb))
     result = repo.get_analysis(analysis.analysis_id)
     assert result.status == SecondaryAnalysisStatus.failed

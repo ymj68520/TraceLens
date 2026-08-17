@@ -262,6 +262,27 @@ class Settings(BaseSettings):
         origins = [item.strip() for item in value.split(",") if item.strip()]
         return origins if origins else ["*"]
 
+    # LLM Filter Configuration
+    llm_filter_config: LLMFilterConfig = Field(
+        default_factory=LLMFilterConfig,
+        description="LLM file filtering configuration"
+    )
+
+    # File Filter Selection Mode
+    file_filter_mode: Literal["deterministic", "llm"] = Field(
+        default="deterministic",
+        alias="FILE_FILTER_MODE",
+        description="File selection mode: 'deterministic' (default, reuses the "
+                    "C++ FileFilter product in files.db) or 'llm' (legacy LLM "
+                    "selection by case_description)."
+    )
+    filter_max_files: int = Field(
+        default=0,
+        alias="FILTER_MAX_FILES",
+        description="Max files selected in deterministic mode. 0 = unlimited "
+                    "(select all files meeting the profile)."
+    )
+
 
 def mask_url_credentials(url: str) -> str:
     """Return ``url`` with any password component masked.
@@ -290,26 +311,6 @@ def mask_url_credentials(url: str) -> str:
     )
     return masked
 
-    # LLM Filter Configuration
-    llm_filter_config: LLMFilterConfig = Field(
-        default_factory=LLMFilterConfig,
-        description="LLM file filtering configuration"
-    )
-
-    # File Filter Selection Mode
-    file_filter_mode: Literal["deterministic", "llm"] = Field(
-        default="deterministic",
-        alias="FILE_FILTER_MODE",
-        description="File selection mode: 'deterministic' (default, reuses the "
-                    "C++ FileFilter product in files.db) or 'llm' (legacy LLM "
-                    "selection by case_description)."
-    )
-    filter_max_files: int = Field(
-        default=0,
-        alias="FILTER_MAX_FILES",
-        description="Max files selected in deterministic mode. 0 = unlimited "
-                    "(select all files meeting the profile)."
-    )
 
     @property
     def cpp_backend_base_url(self) -> str:
