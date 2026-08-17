@@ -251,6 +251,7 @@ const Files = () => {
   // DLL file analysis via Python service
   const analyzeDLLFile = async ({ filePath, filesDbPath }) => {
     return await analyzeDLL({
+      taskId,
       filePath,
       filesDbPath,
     });
@@ -374,6 +375,7 @@ const Files = () => {
         console.log('Analyzing file:', filePath, `(${extension}, ${(fileSize / 1024).toFixed(1)} KB, model: ${modelType})`);
 
         const result = await analyzeContent({
+          taskId: taskId,
           filePath: filePath,
           dbFilePath: file.path || file.file_path,
           modelType: modelType,
@@ -992,6 +994,7 @@ ${detail}
       {/* Office Preview Tab */}
       {activeTab === 'office' && (
         <OfficePreviewTab
+          taskId={taskId}
           filteredFiles={filteredFiles}
           officePreview={officePreview}
           setOfficePreview={setOfficePreview}

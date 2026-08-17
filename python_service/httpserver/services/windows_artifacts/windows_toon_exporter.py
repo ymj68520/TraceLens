@@ -62,7 +62,7 @@ class WindowsArtifactTOONExporter:
         artifact_type: Optional[str] = None,
         include_llm: bool = True,
         limit: Optional[int] = None,
-        where_clause: Optional[str] = None,
+        severity: Optional[str] = None,
     ) -> str:
         """
         Export Windows artifacts to TOON format.
@@ -72,7 +72,7 @@ class WindowsArtifactTOONExporter:
             artifact_type: Specific artifact type (None = all with LLM analysis)
             include_llm: Include LLM analysis fields
             limit: Maximum records to export
-            where_clause: Optional WHERE clause
+            severity: Optional severity filter (bound as a query parameter)
 
         Returns:
             TOON formatted string
@@ -83,10 +83,10 @@ class WindowsArtifactTOONExporter:
 
                 if artifact_type:
                     # Export specific artifact type
-                    return self._export_single_type(conn, artifact_type, include_llm, limit, where_clause)
+                    return self._export_single_type(conn, artifact_type, include_llm, limit, severity)
                 else:
                     # Export all artifacts with LLM analysis
-                    return self._export_all_with_llm(conn, include_llm, limit)
+                    return self._export_all_with_llm(conn, include_llm, limit, severity)
 
         except Exception as e:
             logger.error(f"Error exporting to TOON: {e}", exc_info=True)
@@ -98,7 +98,7 @@ class WindowsArtifactTOONExporter:
         artifact_type: str,
         include_llm: bool,
         limit: Optional[int],
-        where_clause: Optional[str],
+        severity: Optional[str],
     ) -> str:
         """Export a single artifact type to TOON format."""
         schema_info = self.ARTIFACT_SCHEMAS.get(artifact_type)
@@ -129,8 +129,11 @@ class WindowsArtifactTOONExporter:
             query = f"SELECT * FROM {artifact_type} WHERE 1=1"
             params = []
 
-        if where_clause:
-            query += f" AND ({where_clause})"
+        if severity:
+            if not include_llm:
+                return "# Severity filtering requires LLM fields"
+            query += " AND d.severity = ?"
+            params.append(severity)
 
         query += " ORDER BY a.id"
         if limit:
@@ -153,7 +156,7 @@ class WindowsArtifactTOONExporter:
         for row in rows:
             values = []
             for field in export_fields:
-                value = row.get(field, "")
+                value = row[field] if field in row.keys() else ""
                 if value is None:
                     value = ""
                 values.append(self._escape_value(str(value)))
@@ -166,18 +169,24 @@ class WindowsArtifactTOONExporter:
         conn: sqlite3.Connection,
         include_llm: bool,
         limit: Optional[int],
+        severity: Optional[str] = None,
     ) -> str:
         """Export all artifacts with LLM analysis to TOON format."""
         # Get all artifacts with LLM descriptions
+        params: list = []
         query = """
             SELECT artifact_type, artifact_id, summary, description, keywords, severity
             FROM windows_artifact_descriptions
-            ORDER BY relevance DESC
         """
+        if severity:
+            query += " WHERE severity = ?"
+            params.append(severity)
+        query += " ORDER BY relevance DESC"
         if limit:
             query += " LIMIT ?"
+            params.append(limit)
 
-        cur = conn.execute(query, [limit] if limit else [])
+        cur = conn.execute(query, params)
         descriptions = cur.fetchall()
 
         if not descriptions:

@@ -205,15 +205,15 @@ async def export_windows_toon(
                 artifact_type=artifact_type,
                 include_llm=True,
                 limit=limit,
+                severity=severity,
             )
         else:
             # Export all with LLM analysis, filtered by severity if specified
-            where_clause = f"severity = '{severity}'" if severity else None
             toon_data = exporter.export_artifacts_toon(
                 windows_db_path=windows_db_path,
                 include_llm=True,
                 limit=limit,
-                where_clause=where_clause,
+                severity=severity,
             )
 
         from fastapi.responses import PlainTextResponse
