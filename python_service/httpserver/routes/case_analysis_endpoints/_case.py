@@ -78,90 +78,20 @@ async def save_case_description(
         logger.error(f"Save case description failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="save case description failed")
 @router.post("/case-analysis", response_model=CaseAnalysisResponse, responses={
-    200: {"description": "Case analysis started successfully"},
+    410: {"description": "Legacy case analysis generation has been retired"},
     422: {"description": "Validation error"},
-    500: {"description": "Internal server error"},
 })
 async def start_case_analysis(
     request: CaseAnalysisRequest,
     settings: Settings = Depends(get_settings),
 ):
-    """
-    Start the full case analysis pipeline.
+    """Return the retired contract without scheduling the legacy writer."""
+    raise HTTPException(
+        status_code=410,
+        detail="legacy case analysis generation has been retired; use report generation",
+    )
 
-    This operation runs in the background:
-    1. LLM filters relevant files based on case description
-    2. Generates per-file descriptions for filtered files
-    3. Generates a comprehensive case report
 
-    Returns a job_id for tracking progress.
-    """
-    import uuid
-
-    try:
-        from ...services import get_service_manager, task_store
-        service_manager = get_service_manager()
-
-        # The task identity comes from the request; the analysis target is
-        # the task-owned files database resolved server-side (D2b). A supplied
-        # files_db_path is a deprecated exact-validated hint — task identity
-        # is never derived from a client path.
-        task_id = request.task_id
-        try:
-            trusted_files_db = await task_store.resolve_task_files_db(task_id)
-            task_store.validate_legacy_db_path(
-                request.files_db_path, trusted_files_db
-            )
-        except task_store.TaskStoreError as exc:
-            if exc.code == task_store.TASK_NOT_FOUND:
-                raise HTTPException(status_code=404, detail=str(exc)) from exc
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-        # Validate inputs
-        logger.info(f"Starting case analysis for task {task_id}")
-        logger.info(f"trusted files_db_path: '{trusted_files_db}'")
-        logger.info(f"case_description length: {len(request.case_description)}")
-        logger.info(f"max_filter_files: {request.max_filter_files}")
-        logger.info(f"run_filtering: {request.run_filtering}")
-
-        # Get or create case analysis service
-        case_service = _get_case_analysis_service(service_manager)
-
-        job_id = str(uuid.uuid4())
-        _analysis_jobs[job_id] = {
-            "status": "running",
-            "current_step": "初始化",
-            "detail": "正在启动案情分析...",
-            "task_id": task_id,
-            "result": None,
-        }
-
-        # Run analysis in background
-        asyncio.create_task(
-            _run_case_analysis_background(
-                job_id=job_id,
-                case_service=case_service,
-                task_id=task_id,
-                files_db_path=str(trusted_files_db),
-                case_description=request.case_description,
-                max_filter_files=request.max_filter_files,
-                run_filtering=request.run_filtering,
-                report_only=request.report_only,
-            )
-        )
-
-        return CaseAnalysisResponse(
-            success=True,
-            task_id=task_id,
-            job_id=job_id,
-            message="案情分析已启动",
-            timestamp=datetime.now().isoformat(),
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Start case analysis failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="case analysis could not be started")
 @router.post("/reanalyze-files", response_model=ReanalyzeResponse, responses={
     200: {"description": "Re-analysis started successfully"},
     400: {"description": "Invalid request"},
@@ -218,6 +148,7 @@ async def reanalyze_files(
         logger.info(f"Reanalyze persistence target resolved from task: {files_db_path!r}")
 
         _analysis_jobs[job_id] = {
+            "kind": "reanalyze",
             "status": "running",
             "current_step": "重新分析",
             "detail": f"正在重新分析 {len(request.file_paths)} 个文件...",
@@ -259,6 +190,11 @@ async def get_analysis_status(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
+    if job.get("kind") not in {"reanalyze", "windows"}:
+        raise HTTPException(
+            status_code=410,
+            detail="legacy case analysis generation has been retired; use report generation",
+        )
     return AnalysisStatusResponse(
         success=True,
         job_id=job_id,

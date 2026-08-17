@@ -4,27 +4,15 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
-import Spinner from '../components/common/Spinner';
 import Button from '../components/common/Button';
 import { fetchTasks } from '../store/taskSlice';
 import { fetchCases } from '../store/caseSlice';
 import {
-    setAnalysisJob,
-    updateAnalysisProgress,
-    clearAnalysisJob,
     clearRefreshFlag
 } from '../store/intelligenceSlice';
 import { useToast } from '../components/common/ToastContext';
 import { toggleFileRelevance } from '../services/llmService';
-import {
-    getCaseReport,
-    startCaseAnalysis,
-    pollCaseAnalysis,
-    saveCaseDescription,
-    reanalyzeFiles,
-    getCaseAnalysisStatus
-} from '../services/caseAnalysisService';
-import { getCaseReportByCase } from '../services/caseGroupService';
+import { reanalyzeFiles, getCaseAnalysisStatus, saveCaseDescription } from '../services/caseAnalysisService';
 import {
     getClusterRelatedFiles,
     getFileRelatedClusters,
@@ -35,7 +23,6 @@ import {
 import { Layers } from 'lucide-react';
 
 // Case-intelligence subcomponents (split for maintainability)
-import { renderCaseMarkdown } from '../components/case-intelligence/markdownRenderer.jsx';
 import ClusterFilesDrawer from '../components/case-intelligence/ClusterFilesDrawer';
 import FileClustersDrawer from '../components/case-intelligence/FileClustersDrawer';
 
@@ -56,16 +43,12 @@ const AnalysisCenter = () => {
     const toast = useToast();
     const { tasks } = useSelector((state) => state.tasks);
     const { cases } = useSelector((state) => state.cases);
-    const { activeAnalysisJobs, refreshFlags } = useSelector((state) => state.intelligence);
+    const { refreshFlags } = useSelector((state) => state.intelligence);
 
     const activeCase = caseId ? cases.find(c => c.id === caseId) : null;
-    // Get current job state from Redux
-    const activeJob = activeAnalysisJobs[activeContextId];
 
-    // --- State: Case Context ---
-    const [report, setReport] = useState(null);
     const [caseDescription, setCaseDescription] = useState('');
-    const [runFiltering, setRunFiltering] = useState(false);
+
 
     // --- State: Evidence (LLM Descriptions & Event Clusters) ---
     const [llmResults, setLlmResults] = useState(null);
@@ -134,24 +117,8 @@ const AnalysisCenter = () => {
                 setLlmResults({ descriptions: [] });
             }
 
-            // 获取案例报告
-            // In case-level context (综合分析报告 tab), the report lives in the
-            // case DB keyed by case_id — use the case-scoped endpoint. For a
-            // sub-task context, the report lives in the task's _files.db.
-            const isCaseContext = caseId && activeContextId === caseId;
-            const fetchReport = isCaseContext ? getCaseReportByCase : getCaseReport;
-            try {
-                const reportData = await fetchReport(activeContextId);
-                if (reportData && (reportData.report || reportData.case_report)) {
-                    setReport({
-                        ...reportData,
-                        report: reportData.report || reportData.case_report
-                    });
-                    setCaseDescription(reportData.case_description || '');
-                }
-            } catch (err) {
-                console.error('Failed to fetch case report:', err);
-            }
+            // Report generation is retired from this evidence workspace. Current
+            // reports are generated explicitly from the R2 forensic report page.
 
             // 获取事件簇分析结果
             try {
@@ -194,74 +161,17 @@ const AnalysisCenter = () => {
         }
     }, [refreshFlags, fetchData, dispatch]);
 
-    // --- Actions: Case Analysis (Report Generation) ---
-    const startPolling = useCallback(async (jobId) => {
-        try {
-            await pollCaseAnalysis(jobId, (status) => {
-                dispatch(updateAnalysisProgress({
-                    activeContextId,
-                    currentStep: status.current_step || '分析中',
-                    detail: status.detail || '正在处理...',
-                    progress: status.progress || 0
-                }));
-            }, 3000);
-
-            // Job completed successfully — now fetch the report
-            dispatch(updateAnalysisProgress({ activeContextId, status: 'completed', progress: 100 }));
-            try {
-                const isCaseContext = caseId && activeContextId === caseId;
-                const fetchReport = isCaseContext ? getCaseReportByCase : getCaseReport;
-                const reportData = await fetchReport(activeContextId);
-                if (reportData && (reportData.report || reportData.case_report)) {
-                    setReport({
-                        ...reportData,
-                        report: reportData.report || reportData.case_report
-                    });
-                }
-            } catch (reportErr) {
-                console.error('Report fetch after job completion failed:', reportErr);
-                // Report will be loaded on next fetchData via page refresh
-            }
-            toast.success('报告生成成功！');
-            setTimeout(() => dispatch(clearAnalysisJob({ activeContextId })), 10000);
-        } catch (err) {
-            console.error('Polling failed:', err);
-            dispatch(updateAnalysisProgress({ activeContextId, status: 'failed', detail: err.message }));
-            toast.error('生成失败: ' + err.message);
-        }
-    }, [activeContextId, dispatch, toast]);
-
-    // AUTO-RESUME: Detect active job on mount and start polling
-    useEffect(() => {
-        if (activeJob && activeJob.status === 'running' && activeJob.jobId) {
-            console.log(`[Intelligence] Auto-resuming polling for job: ${activeJob.jobId}`);
-            startPolling(activeJob.jobId);
-        }
-    }, [activeContextId, activeJob?.status, activeJob?.jobId, startPolling]);
-
-    const handleStartAnalysis = async () => {
+    // --- Actions: Evidence workspace ---
+    const saveDescription = async () => {
         if (!activeContextId || !caseDescription.trim()) return;
         try {
-            await saveCaseDescription(activeContextId, caseDescription);
-            const result = await startCaseAnalysis({
-                taskId: activeContextId,
-                filesDbPath: currentTask?.output_files_db || '',
-                caseDescription: caseDescription.trim(),
-                maxFilterFiles: 200,
-                run_filtering: runFiltering,
-                report_only: !runFiltering,
-            });
-
-            if (result.job_id) {
-                dispatch(setAnalysisJob({ activeContextId, jobId: result.job_id }));
-                startPolling(result.job_id);
-            }
+            await saveCaseDescription(activeContextId, caseDescription.trim());
+            toast.success('案情描述已保存');
         } catch (err) {
-            toast.error('启动失败: ' + err.message);
+            toast.error('保存案情描述失败: ' + (err?.message || err));
         }
     };
 
-    // --- Other Logic ---
     const filteredDescriptions = useMemo(() => {
         const items = llmResults?.descriptions || [];
         if (!searchQuery) return items;
@@ -415,71 +325,6 @@ const AnalysisCenter = () => {
         return `file-id-${Math.abs(hash)}-${path.length}`;
     };
 
-    const scrollToFile = (targetPath) => {
-        if (!targetPath) return;
-
-        // 1. Clear search to ensure DOM elements exist
-        setSearchQuery('');
-
-        /**
-         * Ultra-robust path normalization for forensic contexts
-         */
-        const superNormalize = (p) => {
-            if (!p) return '';
-            return p.trim()
-                .replace(/\\/g, '/')           // Backslashes to forward
-                .replace(/^\.\/+/g, '')        // Remove leading ./
-                .replace(/\/+/g, '/')          // Dedup slashes
-                .replace(/^\/+|\/+$/g, '')     // Remove start/end slashes
-                .toLowerCase();
-        };
-
-        const normalizedTarget = superNormalize(targetPath);
-        console.log(`[Indexing] Target: "${targetPath}" -> Normalized: "${normalizedTarget}"`);
-
-        setTimeout(() => {
-            const allItems = llmResults?.descriptions || [];
-
-            // TIER 1: Exact Match
-            let foundItem = allItems.find(d => d.file_path === targetPath);
-
-            // TIER 2: Normalized Match
-            if (!foundItem) {
-                foundItem = allItems.find(d => superNormalize(d.file_path) === normalizedTarget);
-            }
-
-            // TIER 3: Tail Match (for cases where LLM uses short path)
-            if (!foundItem && normalizedTarget.length > 3) {
-                foundItem = allItems.find(d => {
-                    const normDb = superNormalize(d.file_path);
-                    return normDb.endsWith(normalizedTarget) || normalizedTarget.endsWith(normDb);
-                });
-            }
-
-            if (foundItem) {
-                const elementId = pathToId(foundItem.file_path);
-                const element = document.getElementById(elementId);
-
-                console.log(`[Indexing] Match found: "${foundItem.file_path}". Element ID: ${elementId}`);
-
-                if (element) {
-                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    element.classList.add('ring-4', 'ring-purple-500', 'ring-opacity-60', 'scale-[1.02]');
-                    setTimeout(() => element.classList.remove('ring-4', 'ring-purple-500', 'ring-opacity-60', 'scale-[1.02]'), 3000);
-
-                    setExpandedItems(p => ({ ...p, [foundItem.file_path]: true }));
-                } else {
-                    console.error('[Indexing] Element not found in DOM:', elementId);
-                    toast.error('渲染延迟，请再点一次');
-                }
-            } else {
-                console.warn('[Indexing] No evidence match for:', targetPath);
-                toast.error(`未在证据库中找到: ${targetPath.split('/').pop()}`);
-            }
-        }, 350);
-    };
-
-    const renderMarkdown = (text) => renderCaseMarkdown(text, { scrollToFile, activeContextId, navigate });
 
     if (!activeContextId) {
         return (
@@ -541,16 +386,32 @@ const AnalysisCenter = () => {
                         <div className="space-y-4">
                             <div className="flex items-center justify-between">
                                 <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">📝 案情背景</h2>
-                                <div className="flex items-center gap-4">
-                                    <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 cursor-help">
-                                        <input type="checkbox" checked={runFiltering} onChange={(e) => setRunFiltering(e.target.checked)} className="h-3.5 w-3.5 text-purple-600 rounded" />
-                                        执行 AI 自动筛选
-                                    </label>
-                                    <Button variant="primary" size="sm" onClick={handleStartAnalysis} disabled={activeJob?.status === 'running' || !caseDescription.trim()}>
-                                        {activeJob?.status === 'running' ? <Spinner size="sm" /> : '🚀 生成/更新报告'}
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={saveDescription}
+                                        disabled={!caseDescription.trim()}
+                                    >
+                                        保存案情描述
                                     </Button>
+                                    <Button
+                                        variant="primary"
+                                        size="sm"
+                                        onClick={() => {
+                                        const query = caseId && activeContextId === caseId
+                                            ? `case_id=${encodeURIComponent(activeContextId)}`
+                                            : `taskId=${encodeURIComponent(activeContextId)}`;
+                                        navigate(`/case-intelligence?${query}&tab=forensic`);
+                                    }}
+                                >
+                                    📋 打开取证报告
+                                </Button>
                                 </div>
                             </div>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                                当前报告工作流使用版本化取证报告；历史 Chain B 报告请从“历史研判报告”标签只读查看。
+                            </p>
                             <textarea value={caseDescription} onChange={(e) => setCaseDescription(e.target.value)} className="w-full h-24 p-3 text-sm border border-slate-200 dark:border-slate-700 rounded-xl dark:bg-slate-900 resize-none focus:ring-2 focus:ring-purple-500" placeholder="描述案情关键词..." />
                         </div>
                     </Card>
@@ -738,22 +599,14 @@ const AnalysisCenter = () => {
                                 <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2"><span className="text-xl">📃</span> 案情报告预览</h3>
                                 <div className="flex gap-2">
                                     <button onClick={fetchData} className="p-1.5 text-slate-400 hover:text-purple-500 transition-all">🔄</button>
-                                    <Button variant="outline" size="sm" onClick={() => { const blob = new Blob([report?.report || ''], { type: 'text/markdown' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `report.md`; a.click(); }}>📥 导出</Button>
                                 </div>
                             </div>
                             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-white/30 dark:bg-slate-900/30">
-                                {activeJob?.status === 'running' ? (
-                                    <div className="h-full flex flex-col items-center justify-center space-y-4">
-                                        <Spinner size="lg" className="text-purple-500" />
-                                        <div className="text-center"><p className="font-bold text-slate-700">{activeJob.currentStep}</p><p className="text-xs text-slate-500">{activeJob.detail}</p>{activeJob.progress !== undefined && <div className="mt-4 w-48 bg-slate-200 rounded-full h-1.5 overflow-hidden"><div className="bg-purple-500 h-full" style={{ width: `${activeJob.progress}%` }} /></div>}</div>
-                                    </div>
-                                ) : activeJob?.status === 'failed' ? (
-                                    <div className="h-full flex flex-col items-center justify-center text-center p-4"><span className="text-red-500 text-4xl mb-2">⚠️</span><p className="text-sm font-bold text-red-600">生成失败</p><p className="text-xs text-slate-500">{activeJob.detail}</p><Button variant="outline" size="sm" className="mt-4" onClick={() => dispatch(clearAnalysisJob({ activeContextId }))}>清除状态</Button></div>
-                                ) : report?.report ? (
-                                    <div className="p-1 animate-in fade-in duration-500">{renderMarkdown(report.report)}</div>
-                                ) : (
-                                    <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2 opacity-50"><span className="text-6xl mb-2">📄</span><p className="text-sm font-medium">暂无报告内容</p></div>
-                                )}
+                                <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2 opacity-50">
+                                    <span className="text-6xl mb-2">📋</span>
+                                    <p className="text-sm font-medium">请从取证报告页面生成或查看当前报告</p>
+                                    <p className="text-xs">历史研判报告仅在 Case Intelligence 的历史标签中只读显示</p>
+                                </div>
                             </div>
                         </div>
                     </div>

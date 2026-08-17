@@ -59,11 +59,8 @@ const Tasks = () => {
     return m;
   }, [cases]);
 
-  // Background silent polling + AI auto-trigger
-  useTaskAutoTrigger({
-    onAiStarted: (task) =>
-      toast.success(`Task ${task.id.substring(0, 8)} finished! AI analysis started.`),
-  });
+  // Background silent polling only. Report generation is analyst-triggered in R2.
+  useTaskAutoTrigger();
 
   const handleFilterChange = (key, value) => dispatch(setFilters({ [key]: value }));
 

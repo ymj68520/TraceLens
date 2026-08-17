@@ -94,12 +94,7 @@ bash scripts/onsite_smoke_test.sh
 - `windows.db` / `linux.db` / `android.db`（平台专项，如有）
 - 任务的 `tasks.json`、案情描述
 
-回到本地后，启动 LLM，用这些真实 DB 回放：
-```bash
-curl -X POST http://localhost:8090/api/llm/case-analysis \
-  -H "Content-Type: application/json" \
-  -d '{"task_id":"<现场任务id>","files_db_path":"<带回的files.db路径>"}'
-```
+回到本地后，当前报告应通过 R2 取证报告工作流显式生成：先选择 Report Evidence，再调用 `/api/reports/generate` 并按精确 `generation_id` 轮询。旧的 `/api/llm/case-analysis` POST 已退役，仅保留历史数据读取兼容，不要再用它创建新报告。
 
 ## 四、已知坑与应对
 

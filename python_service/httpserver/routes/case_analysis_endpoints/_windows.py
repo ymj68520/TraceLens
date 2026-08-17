@@ -69,6 +69,7 @@ async def start_windows_analysis(
 
         job_id = str(uuid.uuid4())
         _analysis_jobs[job_id] = {
+            "kind": "windows",
             "status": "running",
             "current_step": "初始化",
             "detail": "正在启动Windows痕迹分析...",

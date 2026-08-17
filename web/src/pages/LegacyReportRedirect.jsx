@@ -6,10 +6,10 @@ import { Navigate, useParams, useSearchParams } from 'react-router-dom';
  */
 export function getReportTarget(searchParams) {
   const caseId = searchParams.get('case_id');
-  if (caseId) return `/case-intelligence?case_id=${encodeURIComponent(caseId)}`;
+  if (caseId) return `/case-intelligence?case_id=${encodeURIComponent(caseId)}&tab=forensic`;
 
   const taskId = searchParams.get('task_id') || searchParams.get('taskId');
-  if (taskId) return `/case-intelligence?task_id=${encodeURIComponent(taskId)}`;
+  if (taskId) return `/case-intelligence?task_id=${encodeURIComponent(taskId)}&tab=forensic`;
 
   return '/tasks';
 }
@@ -22,12 +22,12 @@ export default function LegacyReportRedirect() {
 /** /reports/task/:taskId → /case-intelligence?task_id=:taskId */
 export function TaskReportRedirect() {
   const { taskId } = useParams();
-  return <Navigate to={`/case-intelligence?task_id=${encodeURIComponent(taskId)}`} replace />;
+  return <Navigate to={`/case-intelligence?task_id=${encodeURIComponent(taskId)}&tab=forensic`} replace />;
 }
 
 /** /reports/case/:caseId → /case-intelligence?case_id=:caseId */
 export function CaseReportRedirect() {
   const { caseId } = useParams();
-  return <Navigate to={`/case-intelligence?case_id=${encodeURIComponent(caseId)}`} replace />;
+  return <Navigate to={`/case-intelligence?case_id=${encodeURIComponent(caseId)}&tab=forensic`} replace />;
 }
 

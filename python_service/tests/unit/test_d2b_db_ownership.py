@@ -261,71 +261,65 @@ async def test_case_analysis_requires_explicit_task_id(two_task_stores):
 
 
 @pytest.mark.asyncio
-async def test_case_analysis_unknown_task_rejected_even_with_valid_path(
+async def test_case_analysis_writer_retired_before_task_lookup(
     two_task_stores, monkeypatch
 ):
     from httpserver.routes.case_analysis_endpoints import _case
 
-    db_a = two_task_stores["A"]
-    # Old behaviour: task identity regex-extracted from the path. Now the
-    # explicit unknown task wins -> 404, no job spawned.
     recorded = []
-    monkeypatch.setattr(_case, "_run_case_analysis_background", recorded.append)
+    monkeypatch.setattr(_case, "_get_case_analysis_service", recorded.append)
+    monkeypatch.setattr(_case.asyncio, "create_task", recorded.append)
+
+    request = _case.CaseAnalysisRequest(
+        task_id="ghost", files_db_path=str(two_task_stores["A"])
+    )
+    with pytest.raises(HTTPException) as excinfo:
+        await _case.start_case_analysis(request, Settings(_env_file=None))
+
+    assert excinfo.value.status_code == 410
+    assert recorded == []
+
+
+@pytest.mark.asyncio
+async def test_case_analysis_writer_is_retired_without_scheduling(
+    two_task_stores, monkeypatch
+):
+    from httpserver.routes.case_analysis_endpoints import _case
+
+    recorded = []
+
+    def fail_if_called(*args, **kwargs):
+        recorded.append((args, kwargs))
+        raise AssertionError("retired case-analysis writer must not be invoked")
+
+    monkeypatch.setattr(_case, "_get_case_analysis_service", fail_if_called)
+    monkeypatch.setattr(_case.asyncio, "create_task", fail_if_called)
+    monkeypatch.setattr(_case, "_analysis_jobs", {})
+
+    request = _case.CaseAnalysisRequest(
+        task_id="A", files_db_path=str(two_task_stores["A"])
+    )
+    with pytest.raises(HTTPException) as excinfo:
+        await _case.start_case_analysis(request, Settings(_env_file=None))
+
+    assert excinfo.value.status_code == 410
+    assert recorded == []
+    assert _case._analysis_jobs == {}
+
+
+@pytest.mark.asyncio
+async def test_case_analysis_status_retires_legacy_jobs(monkeypatch):
+    from httpserver.routes.case_analysis_endpoints import _case
+
     monkeypatch.setattr(
         _case,
-        "_get_case_analysis_service",
-        lambda sm: object(),
+        "_analysis_jobs",
+        {"legacy-job": {"status": "running"}},
     )
-    request = _case.CaseAnalysisRequest(task_id="ghost", files_db_path=str(db_a))
     with pytest.raises(HTTPException) as excinfo:
-        await _case.start_case_analysis(request, Settings(_env_file=None))
-    assert excinfo.value.status_code == 404
-    assert recorded == []
+        await _case.get_analysis_status("legacy-job")
 
-
-@pytest.mark.asyncio
-async def test_case_analysis_background_receives_trusted_store(
-    two_task_stores, monkeypatch
-):
-    from httpserver.routes.case_analysis_endpoints import _case
-
-    db_a = two_task_stores["A"]
-    recorded = []
-
-    async def recorder(**kwargs):
-        recorded.append(kwargs)
-
-    monkeypatch.setattr(_case, "_run_case_analysis_background", recorder)
-    monkeypatch.setattr(_case, "_get_case_analysis_service", lambda sm: object())
-
-    request = _case.CaseAnalysisRequest(task_id="A", files_db_path=str(db_a))
-    response = await _case.start_case_analysis(request, Settings(_env_file=None))
-    await asyncio.sleep(0)
-    assert response.task_id == "A"
-    assert recorded[0]["files_db_path"] == str(db_a)
-
-    # No legacy path at all -> trusted resolution still feeds the pipeline.
-    recorded.clear()
-    request = _case.CaseAnalysisRequest(task_id="A")
-    await _case.start_case_analysis(request, Settings(_env_file=None))
-    await asyncio.sleep(0)
-    assert recorded[0]["files_db_path"] == str(db_a)
-
-
-@pytest.mark.asyncio
-async def test_case_analysis_rejects_cross_task_path(two_task_stores, monkeypatch):
-    from httpserver.routes.case_analysis_endpoints import _case
-
-    db_b = two_task_stores["B"]
-    recorded = []
-    monkeypatch.setattr(_case, "_run_case_analysis_background", recorded.append)
-    monkeypatch.setattr(_case, "_get_case_analysis_service", lambda sm: object())
-
-    request = _case.CaseAnalysisRequest(task_id="A", files_db_path=str(db_b))
-    with pytest.raises(HTTPException) as excinfo:
-        await _case.start_case_analysis(request, Settings(_env_file=None))
-    assert excinfo.value.status_code == 400
-    assert recorded == []
+    assert excinfo.value.status_code == 410
 
 
 # ------------------------------------------------------ /api/llm/reanalyze-files

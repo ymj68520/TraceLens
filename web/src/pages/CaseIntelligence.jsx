@@ -20,10 +20,10 @@ const CaseIntelligence = () => {
     const urlTaskId = searchParams.get('taskId') || searchParams.get('task_id');
     const activeContextId = caseId || urlTaskId;
 
-    // Tab 切换：'intelligence' 情报研判报告 | 'forensic' 取证快照/叙事报告。
-    // R2d：Workbench 的 "生成叙事报告" 入口通过 ?tab=forensic 直达报告页。
+    // Tab 切换：'intelligence' 历史兼容报告 | 'forensic' 当前取证/叙事报告。
+    // 当前报告工作流默认使用 R2；历史 Chain B 内容必须通过显式 query 查看。
     const [reportTab, setReportTab] = useState(
-        () => (searchParams.get('tab') === 'forensic' ? 'forensic' : 'intelligence'),
+        () => (searchParams.get('tab') === 'intelligence' ? 'intelligence' : 'forensic'),
     );
 
     // 取证快照报告的 scope：case 上下文用 case_id，否则用 task_id
@@ -58,7 +58,7 @@ const CaseIntelligence = () => {
                         : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                     }`}
                 >
-                    📑 情报研判报告
+                    📑 历史研判报告
                 </button>
                 <button
                     onClick={() => setReportTab('forensic')}
@@ -68,7 +68,7 @@ const CaseIntelligence = () => {
                         : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                     }`}
                 >
-                    📋 取证快照 / 叙事报告
+                    📋 取证报告
                 </button>
                 {/* R2d：task 上下文时返回调查工作台（同一全局 TaskSelector task）。 */}
                 {urlTaskId && (

@@ -509,24 +509,15 @@ for db in d.get('databases', []):
         fi
     fi
 
-    # 4.4 案件分析管线：应能启动（job 入队），不应 500 NameError
-    echo -e "${C_DIM}触发案件分析（期望：job 启动成功，后台优雅失败）...${C_RST}"
-    CA_RESP=$(curl -s -m 30 -X POST "$PY_URL/api/llm/case-analysis" \
-        -H "Content-Type: application/json" \
-        -d "{\"task_id\":\"$TASK_ID\",\"files_db_path\":\"$FILES_DB\"}" 2>/dev/null)
-    CA_SUCCESS=$(echo "$CA_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success','?'))" 2>/dev/null)
-    if [ "$CA_SUCCESS" = "True" ]; then
-        log_pass "案件分析管线成功启动（job 入队）— 重构 bug 已修复"
-        JOB_ID=$(echo "$CA_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('job_id',''))" 2>/dev/null)
-        if [ -n "$JOB_ID" ]; then
-            sleep 3
-            JOB_STATUS=$(curl -s -m 10 "$PY_URL/api/llm/case-analysis/$JOB_ID" 2>/dev/null)
-            JSTAT=$(echo "$JOB_STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','?'))" 2>/dev/null)
-            log_pass "案件分析 job 状态: $JSTAT（LLM 不可用时可能 completed 但产出空，属正常降级）"
-        fi
+    # 4.4 Current report surface: the legacy Chain B writer is retired. Keep this
+    # deployment smoke read-only so it does not require Report Evidence or an LLM.
+    echo -e "${C_DIM}验证当前取证报告 API 已挂载（不触发生成）...${C_RST}"
+    REPORT_CODE=$(curl -s -m 10 -o /dev/null -w "%{http_code}" \
+        "$PY_URL/api/reports?scope_type=task&scope_id=$TASK_ID" 2>/dev/null || echo "000")
+    if [ "$REPORT_CODE" = "200" ] || [ "$REPORT_CODE" = "404" ]; then
+        log_pass "取证报告 API 已挂载（HTTP $REPORT_CODE；未触发生成）"
     else
-        log_fail "案件分析启动失败（响应: $CA_RESP）"
-        log_warn "若错误含 'NameError: _get_case_analysis_service'，说明重构 bug 未修复，需重新部署"
+        log_warn "取证报告 API 返回 HTTP $REPORT_CODE"
     fi
 
     # 4.5 知识图谱：Neo4j 不可用时应 disabled 而非崩溃
@@ -568,7 +559,7 @@ for p in paths:
     print('    ' + p + ' \\\\')
 " 2>/dev/null
     echo
-    echo -e "  ${C_DIM}带回后：本地启动 LLM，用这些 DB 回放 /api/llm/case-analysis${C_RST}"
+    echo -e "  ${C_DIM}带回后：使用 R2 Report Evidence + /api/reports/generate 显式生成报告${C_RST}"
 fi
 
 # ============================================================
