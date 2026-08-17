@@ -311,6 +311,38 @@ async def test_original_writer_error_is_logged_when_failure_transition_breaks(
     assert "transition database failure" in caplog.text
 
 
+@pytest.mark.asyncio
+async def test_writer_failure_persists_sanitized_error_without_paths(tmp_path: Path):
+    # R3 §10B: OSError str() embeds absolute filesystem paths, and the
+    # persisted error is served verbatim by the version read routes -- the
+    # durable failure reason must be the fixed sanitized string, with the
+    # raw exception preserved only in the service log.
+    class FailingWriter:
+        report_root = tmp_path / "snapshots"
+
+        def write(self, **kwargs):
+            raise FileNotFoundError(
+                f"[Errno 2] No such file or directory: '{tmp_path}/secrets/evidence.sqlite3'"
+            )
+
+    resolver = AsyncMock()
+    resolver.resolve_task.return_value = _resolved_task()
+    service = ForensicReportService(
+        repository=ReportRepository(tmp_path / "reports.db"),
+        resolver=resolver,
+        writer=FailingWriter(),
+        adapters=[],
+    )
+    version = await service.start(ScopeType.TASK, "task-1")
+    with pytest.raises(FileNotFoundError):
+        await asyncio.shield(service._tasks[version.report_id])
+
+    failed = service.get_status(version.report_id)
+    assert failed.status is ReportStatus.FAILED
+    assert failed.error == "report generation failed"
+    assert str(tmp_path) not in (failed.error or "")
+
+
 
 def test_ready_manifest_paths_match_current_writer_layout_and_reject_unrelated_legacy_parent(
     tmp_path: Path,

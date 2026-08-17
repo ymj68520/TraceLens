@@ -123,7 +123,10 @@ describe('useReportGenerationPolling', () => {
     await act(async () => steps[2].resolve(generation('failed', 'rg_1', {
       error_code: 'service_restart',
     })));
-    await waitFor(() => expect(result.current.error).toBeNull());
+    // 先等 terminal failed 生效：intervalMs=0 下 error 已被 running 步骤清空，
+    // 只等 error===null 会在 failed 应用前就通过（负载相关 flake）。
+    await waitFor(() => expect(result.current.generation?.status).toBe('failed'));
+    expect(result.current.error).toBeNull();
     expect(result.current.generation.error_code).toBe('service_restart');
   });
 

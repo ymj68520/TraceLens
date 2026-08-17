@@ -175,7 +175,12 @@ class ForensicReportService:
             raise
         except Exception as exc:
             logger.exception("Report generation failed for %s", report_id)
-            self._fail_if_unfinished(report_id, stage, str(exc))
+            # The raw exception text can carry filesystem paths and internal
+            # details (snapshot-writer OSError str() embeds absolute paths),
+            # and the persisted reason is served verbatim by the version read
+            # routes -- so it must stay a fixed sanitized string. The full
+            # traceback lives in the service log above.
+            self._fail_if_unfinished(report_id, stage, "report generation failed")
             raise
         finally:
             if worker is not None:
