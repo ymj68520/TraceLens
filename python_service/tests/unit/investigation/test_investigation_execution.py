@@ -162,7 +162,7 @@ def test_E1_queued_persisted_before_background(
 @pytest.mark.asyncio
 async def test_E2_nonexistent_analysis_no_crash(tmp_path):
     _, idb, _, _, _ = _setup(tmp_path)
-    executor = _executor(llm_service=_mock_llm())
+    executor = _executor(llm_service=_mock_llm(), cpp_backend=FakeCppBackend("A", tmp_path))
     # Should not raise
     await executor._execute("nonexistent-id", "A", Path(idb))
 
@@ -182,7 +182,7 @@ async def test_E3_input_from_envelope_not_source(tmp_path):
     conn.commit()
     conn.close()
 
-    executor = _executor(llm_service=mock_llm)
+    executor = _executor(llm_service=mock_llm, cpp_backend=FakeCppBackend("A", tmp_path))
     await executor._execute(analysis.analysis_id, "A", Path(idb))
 
     # LLM received ORIGINAL snapshot data, not modified
@@ -216,7 +216,7 @@ async def test_E4_running_before_llm(tmp_path):
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(InvestigationRepository, "transition", tracking_transition)
-        executor = _executor(llm_service=mock_llm)
+        executor = _executor(llm_service=mock_llm, cpp_backend=FakeCppBackend("A", tmp_path))
         await executor._execute(analysis.analysis_id, "A", Path(idb))
 
     # running transition must come before LLM call
@@ -232,7 +232,7 @@ async def test_E4_running_before_llm(tmp_path):
 @pytest.mark.asyncio
 async def test_E5_success_to_review_pending(tmp_path):
     _, idb, repo, snap, analysis = _setup(tmp_path)
-    executor = _executor(llm_service=_mock_llm(content="详细分析内容"))
+    executor = _executor(llm_service=_mock_llm(content="详细分析内容"), cpp_backend=FakeCppBackend("A", tmp_path))
     await executor._execute(analysis.analysis_id, "A", Path(idb))
 
     result = InvestigationRepository(idb, "A").get_analysis(analysis.analysis_id)
@@ -252,7 +252,7 @@ async def test_E6_llm_timeout(tmp_path):
     _, idb, repo, snap, analysis = _setup(tmp_path)
     mock_llm = Mock()
     mock_llm.chat_completion = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
-    executor = _executor(llm_service=mock_llm)
+    executor = _executor(llm_service=mock_llm, cpp_backend=FakeCppBackend("A", tmp_path))
     await executor._execute(analysis.analysis_id, "A", Path(idb))
 
     result = InvestigationRepository(idb, "A").get_analysis(analysis.analysis_id)
@@ -269,7 +269,7 @@ async def test_E6_llm_connection_error(tmp_path):
     mock_llm.chat_completion = AsyncMock(
         side_effect=httpx.ConnectError("Connection refused to http://internal:1234")
     )
-    executor = _executor(llm_service=mock_llm)
+    executor = _executor(llm_service=mock_llm, cpp_backend=FakeCppBackend("A", tmp_path))
     await executor._execute(analysis.analysis_id, "A", Path(idb))
 
     result = InvestigationRepository(idb, "A").get_analysis(analysis.analysis_id)
@@ -285,7 +285,7 @@ async def test_E6_generic_exception(tmp_path):
     _, idb, repo, snap, analysis = _setup(tmp_path)
     mock_llm = Mock()
     mock_llm.chat_completion = AsyncMock(side_effect=RuntimeError("secret internal path /var/secrets"))
-    executor = _executor(llm_service=mock_llm)
+    executor = _executor(llm_service=mock_llm, cpp_backend=FakeCppBackend("A", tmp_path))
     await executor._execute(analysis.analysis_id, "A", Path(idb))
 
     result = InvestigationRepository(idb, "A").get_analysis(analysis.analysis_id)
@@ -307,7 +307,7 @@ async def test_E7_other_version_untouched(tmp_path):
     v2_hash_before = analysis2.input_hash
     v2_status_before = analysis2.status
 
-    executor = _executor(llm_service=_mock_llm())
+    executor = _executor(llm_service=_mock_llm(), cpp_backend=FakeCppBackend("A", tmp_path))
     await executor._execute(analysis1.analysis_id, "A", Path(idb))
 
     v2_after = InvestigationRepository(idb, "A").get_analysis(analysis2.analysis_id)
@@ -322,7 +322,7 @@ async def test_E7_other_version_untouched(tmp_path):
 @pytest.mark.asyncio
 async def test_E8_status_from_db_not_memory(tmp_path):
     _, idb, repo, snap, analysis = _setup(tmp_path)
-    executor = _executor(llm_service=_mock_llm())
+    executor = _executor(llm_service=_mock_llm(), cpp_backend=FakeCppBackend("A", tmp_path))
     await executor._execute(analysis.analysis_id, "A", Path(idb))
 
     # Query from a brand-new repo instance (no memory)
@@ -381,7 +381,7 @@ async def test_E10_no_writes_to_source_dbs(tmp_path):
     files_mtime_before = os.path.getmtime(fdb)
     events_mtime_before = os.path.getmtime(edb)
 
-    executor = _executor(llm_service=_mock_llm())
+    executor = _executor(llm_service=_mock_llm(), cpp_backend=FakeCppBackend("A", tmp_path))
     await executor._execute(analysis.analysis_id, "A", Path(idb))
 
     assert os.path.getmtime(fdb) == files_mtime_before
@@ -398,10 +398,15 @@ async def test_E11_worker_uses_passed_db_path(tmp_path):
     fake_cpp = FakeCppBackend("A", tmp_path)
     executor = _executor(llm_service=_mock_llm(), cpp_backend=fake_cpp)
 
-    # _execute uses db_path directly — does NOT call cpp_backend.get_task
+    # D4b: execution input still comes only from the submitted db_path (never
+    # re-derived); the write boundary now additionally consults get_task to
+    # confirm liveness/identity before the terminal write.
     initial_count = fake_cpp.get_task_call_count
     await executor._execute(analysis.analysis_id, "A", Path(idb))
-    assert fake_cpp.get_task_call_count == initial_count  # no new get_task calls
+    assert fake_cpp.get_task_call_count > initial_count  # liveness consulted
+    # The terminal write landed in the submitted store, not a re-derived one.
+    final = InvestigationRepository(idb, "A").get_analysis(analysis.analysis_id)
+    assert final.status == SecondaryAnalysisStatus.review_pending
 
 
 # ---------------------------------------------------------------------------
@@ -423,7 +428,7 @@ async def test_single_worker_claim_dual_execute(tmp_path):
 
     mock_llm = Mock()
     mock_llm.chat_completion = AsyncMock(side_effect=slow_chat)
-    executor = _executor(llm_service=mock_llm)
+    executor = _executor(llm_service=mock_llm, cpp_backend=FakeCppBackend("A", tmp_path))
 
     # Two concurrent executions of the same analysis
     first = asyncio.create_task(
@@ -465,7 +470,7 @@ async def test_input_hash_mismatch_detected(tmp_path):
     conn.commit()
     conn.close()
 
-    executor = _executor(llm_service=mock_llm)
+    executor = _executor(llm_service=mock_llm, cpp_backend=FakeCppBackend("A", tmp_path))
     await executor._execute(analysis.analysis_id, "A", Path(idb))
 
     result = InvestigationRepository(idb, "A").get_analysis(analysis.analysis_id)
@@ -495,7 +500,7 @@ async def test_prompt_version_mismatch(tmp_path):
     conn.commit()
     conn.close()
 
-    executor = _executor(llm_service=mock_llm)
+    executor = _executor(llm_service=mock_llm, cpp_backend=FakeCppBackend("A", tmp_path))
     await executor._execute(analysis.analysis_id, "A", Path(idb))
 
     result = InvestigationRepository(idb, "A").get_analysis(analysis.analysis_id)
@@ -507,7 +512,7 @@ async def test_prompt_version_mismatch(tmp_path):
 async def test_prompt_version_none(tmp_path):
     _, idb, repo, snap, analysis = _setup(tmp_path, prompt_version=None)
     mock_llm = _mock_llm()
-    executor = _executor(llm_service=mock_llm)
+    executor = _executor(llm_service=mock_llm, cpp_backend=FakeCppBackend("A", tmp_path))
     await executor._execute(analysis.analysis_id, "A", Path(idb))
 
     result = InvestigationRepository(idb, "A").get_analysis(analysis.analysis_id)
@@ -519,7 +524,7 @@ async def test_prompt_version_none(tmp_path):
 async def test_prompt_version_unknown(tmp_path):
     _, idb, repo, snap, analysis = _setup(tmp_path, prompt_version="bogus:v99")
     mock_llm = _mock_llm()
-    executor = _executor(llm_service=mock_llm)
+    executor = _executor(llm_service=mock_llm, cpp_backend=FakeCppBackend("A", tmp_path))
     await executor._execute(analysis.analysis_id, "A", Path(idb))
 
     result = InvestigationRepository(idb, "A").get_analysis(analysis.analysis_id)
@@ -534,7 +539,7 @@ async def test_prompt_version_unknown(tmp_path):
 @pytest.mark.asyncio
 async def test_llm_unavailable(tmp_path):
     _, idb, repo, snap, analysis = _setup(tmp_path)
-    executor = _executor(llm_service=None)  # no LLM
+    executor = _executor(llm_service=None, cpp_backend=FakeCppBackend("A", tmp_path))  # no LLM
     await executor._execute(analysis.analysis_id, "A", Path(idb))
 
     result = InvestigationRepository(idb, "A").get_analysis(analysis.analysis_id)
@@ -546,7 +551,7 @@ async def test_llm_unavailable(tmp_path):
 async def test_llm_empty_response(tmp_path):
     _, idb, repo, snap, analysis = _setup(tmp_path)
     mock_llm = _mock_llm(content="")
-    executor = _executor(llm_service=mock_llm)
+    executor = _executor(llm_service=mock_llm, cpp_backend=FakeCppBackend("A", tmp_path))
     await executor._execute(analysis.analysis_id, "A", Path(idb))
 
     result = InvestigationRepository(idb, "A").get_analysis(analysis.analysis_id)

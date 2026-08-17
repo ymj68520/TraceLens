@@ -16,6 +16,7 @@ from .event_refresh_structured import (
     parse_event_refresh_response,
 )
 from .models import EventRefresh, EventRefreshEnvelopeV2, EventRefreshStatus, parse_event_refresh_envelope
+from ..evidence.exceptions import EvidenceStoreError
 from .paths import investigation_db_path_for_task
 from .prompts import (
     EVENT_REFRESH_PROMPT_VERSION,
@@ -24,6 +25,7 @@ from .prompts import (
     get_event_refresh_prompt,
 )
 from .repository import InvestigationRepository
+from .live_store import open_existing_store, open_live_task_store
 
 logger = logging.getLogger(__name__)
 
@@ -68,13 +70,18 @@ class EventRefreshExecutor:
                     self._execute(refresh.refresh_id, task_id, db_path)
                 )
             except Exception:
-                failed = await asyncio.to_thread(
-                    InvestigationRepository(db_path, task_id).fail_event_refresh,
-                    refresh.refresh_id,
-                    error_code="execution_schedule_failed",
-                    error_message="event refresh could not be scheduled",
-                )
-                return failed or refresh
+                # D4b: existing-store-only — the scheduling-failure write must
+                # not recreate a deleted task's store.
+                repo = open_existing_store(db_path, task_id)
+                if repo is not None:
+                    failed = await asyncio.to_thread(
+                        repo.fail_event_refresh,
+                        refresh.refresh_id,
+                        error_code="execution_schedule_failed",
+                        error_message="event refresh could not be scheduled",
+                    )
+                    return failed or refresh
+                return refresh
             self._tasks[refresh.refresh_id] = task
             self._task_ctx[refresh.refresh_id] = (task_id, db_path)
             task.add_done_callback(
@@ -91,10 +98,15 @@ class EventRefreshExecutor:
             task.cancel()
         if tracked:
             await asyncio.gather(*tracked.values(), return_exceptions=True)
+        # D4b: each shutdown write goes through the live-task boundary; a task
+        # deleted before/during shutdown is never resurrected on disk.
         for refresh_id, (task_id, db_path) in contexts.items():
+            repo = await open_live_task_store(self._cpp_backend, task_id, db_path)
+            if repo is None:
+                continue
             try:
                 await asyncio.to_thread(
-                    InvestigationRepository(db_path, task_id).fail_event_refresh,
+                    repo.fail_event_refresh,
                     refresh_id,
                     error_code="service_shutdown",
                     error_message="event refresh cancelled during service shutdown",
@@ -106,6 +118,11 @@ class EventRefreshExecutor:
             self._task_ctx.clear()
 
     async def _execute(self, refresh_id: str, task_id: str, db_path: Path) -> None:
+        """Execute one refresh from its frozen input (C7c-2).
+
+        D4b: terminal writes go through the live-task boundary; a task deleted
+        mid-flight discards the result without writing.
+        """
         repo = InvestigationRepository(db_path, task_id)
         claimed = False
         model: str | None = None
@@ -116,21 +133,21 @@ class EventRefreshExecutor:
             claimed = True
             envelope = parse_event_refresh_envelope(refresh.input_envelope_json)
             if not isinstance(envelope, EventRefreshEnvelopeV2):
-                await self._fail(repo, refresh_id, "historical_envelope", "historical refresh input is not executable")
+                await self._fail(task_id, db_path, refresh_id, "historical_envelope", "historical refresh input is not executable")
                 return
             canonical = __import__("json").dumps(
                 envelope.model_dump(mode="json"), ensure_ascii=False, sort_keys=True, separators=(",", ":")
             )
             actual_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
             if canonical != refresh.input_envelope_json or not hmac.compare_digest(actual_hash, refresh.input_hash):
-                await self._fail(repo, refresh_id, "input_integrity_error", "stored refresh input failed integrity validation")
+                await self._fail(task_id, db_path, refresh_id, "input_integrity_error", "stored refresh input failed integrity validation")
                 return
             if envelope.prompt_version not in REFRESH_ENVELOPE_PROMPT_COMPAT.get(envelope.schema_version, frozenset()):
-                await self._fail(repo, refresh_id, "input_integrity_error", "refresh envelope prompt is incompatible")
+                await self._fail(task_id, db_path, refresh_id, "input_integrity_error", "refresh envelope prompt is incompatible")
                 return
             system_prompt, user_template = get_event_refresh_prompt(envelope.prompt_version)
             if self._llm_service is None:
-                await self._fail(repo, refresh_id, "llm_unavailable", "LLM service is not initialized")
+                await self._fail(task_id, db_path, refresh_id, "llm_unavailable", "LLM service is not initialized")
                 return
             result = await self._llm_service.chat_completion(
                 system_prompt,
@@ -139,16 +156,23 @@ class EventRefreshExecutor:
             model = result.get("model") or None
             content = result.get("content", "")
             if not content:
-                await self._fail(repo, refresh_id, "llm_empty_response", "LLM returned empty response", model=model)
+                await self._fail(task_id, db_path, refresh_id, "llm_empty_response", "LLM returned empty response", model=model)
                 return
             try:
                 response = parse_event_refresh_response(content)
             except StructuredEventRefreshOutputError:
                 logger.exception("Structured Event Refresh output invalid: %s", refresh_id)
-                await self._fail(repo, refresh_id, "structured_output_invalid", "structured refresh response is invalid", model=model)
+                await self._fail(task_id, db_path, refresh_id, "structured_output_invalid", "structured refresh response is invalid", model=model)
+                return
+            # D4b live-task write boundary: the completion write only reaches a
+            # confirmed-live task through the existing-only store.
+            live_repo = await open_live_task_store(
+                self._cpp_backend, task_id, db_path
+            )
+            if live_repo is None:
                 return
             completed = await asyncio.to_thread(
-                repo.complete_event_refresh,
+                live_repo.complete_event_refresh,
                 refresh_id,
                 title=response.title,
                 summary=response.summary,
@@ -158,18 +182,31 @@ class EventRefreshExecutor:
                 return
             raise RuntimeError("unexpected refresh completion state")
         except asyncio.CancelledError:
+            # D4b: existing-only open; a deleted task's store cannot be
+            # recreated here (full liveness check is impossible post-cancel).
             if claimed:
-                repo.fail_event_refresh(
-                    refresh_id, error_code="service_shutdown",
-                    error_message="event refresh cancelled during service shutdown", model=model,
-                )
+                live_repo = open_existing_store(db_path, task_id)
+                if live_repo is not None:
+                    try:
+                        live_repo.fail_event_refresh(
+                            refresh_id, error_code="service_shutdown",
+                            error_message="event refresh cancelled during service shutdown", model=model,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to record refresh shutdown: %s", refresh_id
+                        )
             raise
         except Exception as exc:
             if claimed:
                 logger.exception("Event Refresh execution failed: %s", refresh_id)
-                await self._fail(repo, refresh_id, *_classify_refresh_error(exc), model=model)
+                await self._fail(task_id, db_path, refresh_id, *_classify_refresh_error(exc), model=model)
 
-    async def _fail(self, repo, refresh_id, error_code, error_message, *, model=None):
+    async def _fail(self, task_id, db_path, refresh_id, error_code, error_message, *, model=None):
+        """Write failed state through the live-task boundary (never raises)."""
+        repo = await open_live_task_store(self._cpp_backend, task_id, db_path)
+        if repo is None:
+            return
         try:
             await asyncio.to_thread(
                 repo.fail_event_refresh,
@@ -222,7 +259,11 @@ class EventRefreshExecutor:
         if not db_path.exists():
             return
         try:
-            repo = InvestigationRepository(db_path, task_id)
+            # D4b: existing-store-only — a task deleted between the registry
+            # lookup and this open is skipped, never recreated.
+            repo = InvestigationRepository.open_existing(db_path, task_id)
+        except EvidenceStoreError:
+            return
             stale = await asyncio.to_thread(repo.list_stale_event_refreshes)
             for refresh in stale:
                 await asyncio.to_thread(

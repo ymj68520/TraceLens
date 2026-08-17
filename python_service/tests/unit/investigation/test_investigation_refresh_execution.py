@@ -24,6 +24,26 @@ from httpserver.services.investigation import (
 KEY = "file:/case/a.txt"
 
 
+class FakeCppBackend:
+    """Minimal cpp_backend answering live-task lookups for executor tests."""
+
+    def __init__(self, task_id: str, task_dir: Path):
+        self._task_id = task_id
+        self._task_dir = task_dir
+
+    async def get_task(self, task_id):
+        if task_id != self._task_id:
+            return None
+        return {
+            "id": task_id,
+            "output_files_db": str(self._task_dir / "files.db"),
+            "output_events_db": str(self._task_dir / "events.db"),
+        }
+
+    async def list_tasks(self, page=1, page_size=100, status=None):
+        return {"tasks": [{"id": self._task_id}]}
+
+
 def _repo(tmp_path: Path, task_id: str = "A"):
     files_db = tmp_path / "files.db"
     idb = tmp_path / "investigation.db"
@@ -175,7 +195,9 @@ async def test_executor_consumes_frozen_envelope_and_completes(tmp_path):
         "content": '{"title":"generated","summary":"generated summary"}',
         "model": "transport-model",
     })
-    executor = EventRefreshExecutor(Mock(), llm, Mock())
+    executor = EventRefreshExecutor(
+        FakeCppBackend("A", tmp_path), llm, Mock()
+    )
     await executor._execute(refresh.refresh_id, "A", repo.db_path)
     result = repo.get_event_refresh(refresh.refresh_id)
     assert result.status == EventRefreshStatus.completed

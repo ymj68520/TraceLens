@@ -34,9 +34,11 @@ import json
 import logging
 import sqlite3
 import uuid
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Sequence
+from urllib.parse import quote
 
 from ..evidence.exceptions import EvidenceNotFoundError, EvidenceStoreError
 from ..evidence.models import ResolvedEvidence
@@ -701,15 +703,54 @@ class InvestigationRepository:
     def __init__(self, investigation_db_path, task_id: str):
         self.db_path = Path(investigation_db_path)
         self.task_id = task_id
+        # D4b: when True, every connection opens SQLite mode=rw so a vanished
+        # store is an error instead of a silently recreated file.
+        self.existing_only = False
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_schema()
+
+    @classmethod
+    def open_existing(cls, investigation_db_path, task_id: str) -> "InvestigationRepository":
+        """Existing-store-only construction for terminal write boundaries (D4b).
+
+        Never creates or heals: no mkdir, no CREATE, no migration, no auxiliary
+        object build. The file must already exist and carry the supported
+        schema version; anything else fails closed with EvidenceStoreError.
+        All subsequent connections use URI mode=rw, so a store deleted after
+        this call cannot be recreated by a write.
+        """
+        path = Path(investigation_db_path)
+        if not path.is_file():
+            raise EvidenceStoreError("investigation store does not exist")
+        repo = cls.__new__(cls)
+        repo.db_path = path
+        repo.task_id = task_id
+        repo.existing_only = True
+        uri = f"file:{quote(str(path))}?mode=rw"
+        try:
+            with closing(sqlite3.connect(uri, uri=True, timeout=30)) as conn:
+                version = conn.execute("PRAGMA user_version").fetchone()[0]
+        except sqlite3.DatabaseError as exc:
+            raise EvidenceStoreError(
+                "investigation store is unavailable"
+            ) from exc
+        if version != SUPPORTED_SCHEMA_VERSION:
+            raise EvidenceStoreError(
+                f"unsupported investigation.db schema version: {version} "
+                f"(supported: {SUPPORTED_SCHEMA_VERSION})"
+            )
+        return repo
 
     # =====================================================================
     # connection / schema
     # =====================================================================
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, timeout=30)
+        if self.existing_only:
+            uri = f"file:{quote(str(self.db_path))}?mode=rw"
+            conn = sqlite3.connect(uri, uri=True, timeout=30)
+        else:
+            conn = sqlite3.connect(self.db_path, timeout=30)
         conn.row_factory = sqlite3.Row
         # A14: enforce FK lifecycle per connection.  Must be issued before any
         # transaction begins (the pragma is a no-op inside a transaction).

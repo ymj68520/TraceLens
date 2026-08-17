@@ -38,6 +38,7 @@ from .prompts import (
     get_prompt,
 )
 from .graph_reader import InvestigationGraphReader
+from .live_store import open_existing_store, open_live_task_store
 from .repository import InvestigationRepository
 from .structured import StructuredOutputError, parse_structured_analysis_response
 
@@ -115,9 +116,13 @@ class SecondaryAnalysisExecutor:
         if tracked:
             await asyncio.gather(*tracked.values(), return_exceptions=True)
         # Explicit sweep: transition any remaining non-terminal analyses.
+        # D4b: each write goes through the live-task boundary, so a task
+        # deleted before/during shutdown is never resurrected on disk.
         for analysis_id, (task_id, db_path) in contexts.items():
+            repo = await open_live_task_store(self._cpp_backend, task_id, db_path)
+            if repo is None:
+                continue
             try:
-                repo = InvestigationRepository(db_path, task_id)
                 repo.transition(
                     analysis_id,
                     SecondaryAnalysisStatus.failed,
@@ -238,7 +243,11 @@ class SecondaryAnalysisExecutor:
     ) -> None:
         """The background LLM execution path.
 
-        Uses ``db_path`` directly (E11) — does NOT call get_task again.
+        Uses ``db_path`` directly (E11) — execution input never re-resolves the
+        task or source DB. D4b adds a live-task write boundary: terminal writes
+        revalidate liveness/identity and open the store existing-only, so a
+        task deleted mid-flight is never resurrected by a completion or
+        failure write.
         """
         # Construct repo synchronously (fast; always available in handlers).
         repo = InvestigationRepository(db_path, task_id)
@@ -275,7 +284,7 @@ class SecondaryAnalysisExecutor:
             ).hexdigest()
             if not hmac.compare_digest(actual_hash, analysis.input_hash):
                 await self._fail(
-                    repo, analysis_id, "input_hash_mismatch",
+                    task_id, db_path, analysis_id, "input_hash_mismatch",
                     "stored input_hash does not match envelope content",
                 )
                 return
@@ -284,13 +293,13 @@ class SecondaryAnalysisExecutor:
             env_prompt_version = envelope.prompt_version
             if env_prompt_version != analysis.prompt_version:
                 await self._fail(
-                    repo, analysis_id, "input_integrity_error",
+                    task_id, db_path, analysis_id, "input_integrity_error",
                     "envelope prompt_version does not match row",
                 )
                 return
             if env_prompt_version is None:
                 await self._fail(
-                    repo, analysis_id, "missing_prompt_version",
+                    task_id, db_path, analysis_id, "missing_prompt_version",
                     "analysis envelope has no prompt_version",
                 )
                 return
@@ -298,7 +307,7 @@ class SecondaryAnalysisExecutor:
                 system_prompt, user_template = get_prompt(env_prompt_version)
             except ValueError:
                 await self._fail(
-                    repo, analysis_id, "unknown_prompt_version",
+                    task_id, db_path, analysis_id, "unknown_prompt_version",
                     "unsupported prompt_version in envelope",
                 )
                 return
@@ -306,14 +315,14 @@ class SecondaryAnalysisExecutor:
             allowed_prompts = ENVELOPE_PROMPT_COMPAT.get(envelope.schema_version, frozenset())
             if env_prompt_version not in allowed_prompts:
                 await self._fail(
-                    repo, analysis_id, "input_integrity_error",
+                    task_id, db_path, analysis_id, "input_integrity_error",
                     "envelope schema/prompt version mismatch",
                 )
                 return
             output_contract = PROMPT_OUTPUT_CONTRACT.get(env_prompt_version)
             if output_contract is None:
                 await self._fail(
-                    repo, analysis_id, "unknown_prompt_version",
+                    task_id, db_path, analysis_id, "unknown_prompt_version",
                     "unsupported prompt_version in envelope",
                 )
                 return
@@ -321,7 +330,7 @@ class SecondaryAnalysisExecutor:
             # LLM availability
             if self._llm_service is None:
                 await self._fail(
-                    repo, analysis_id, "llm_unavailable",
+                    task_id, db_path, analysis_id, "llm_unavailable",
                     "LLM service is not initialized",
                 )
                 return
@@ -339,23 +348,31 @@ class SecondaryAnalysisExecutor:
                 logger.exception(
                     "LLM call failed for analysis %s", analysis_id
                 )
-                await self._fail(repo, analysis_id, code, msg)
+                await self._fail(task_id, db_path, analysis_id, code, msg)
                 return
 
             content = result.get("content", "")
             if not content:
                 await self._fail(
-                    repo, analysis_id, "llm_empty_response",
+                    task_id, db_path, analysis_id, "llm_empty_response",
                     "LLM returned empty response",
                 )
                 return
 
+            # D4b live-task write boundary: completion writes only reach a
+            # confirmed-live task through the existing-only store. A task
+            # deleted during the LLM call discards the result without writing.
+            live_repo = await open_live_task_store(
+                self._cpp_backend, task_id, db_path
+            )
+            if live_repo is None:
+                return
             if output_contract == "legacy_text":
                 description = content
                 summary = description[:200].split("\n")[0]
                 # Historical v1/v2 output contract: no Claims/Grounding.
                 await asyncio.to_thread(
-                    repo.transition,
+                    live_repo.transition,
                     analysis_id,
                     SecondaryAnalysisStatus.review_pending,
                     description=description,
@@ -368,12 +385,12 @@ class SecondaryAnalysisExecutor:
                 except StructuredOutputError:
                     logger.exception("Structured LLM response invalid for analysis %s", analysis_id)
                     await self._fail(
-                        repo, analysis_id, "structured_output_invalid",
+                        task_id, db_path, analysis_id, "structured_output_invalid",
                         "structured LLM response is invalid",
                     )
                     return
                 await asyncio.to_thread(
-                    repo.complete_analysis_for_review,
+                    live_repo.complete_analysis_for_review,
                     analysis_id,
                     description=response.description,
                     summary=response.summary,
@@ -393,8 +410,13 @@ class SecondaryAnalysisExecutor:
             # acceptable in this path.
             # _fail semantics: idempotent — swallows illegal transitions so a
             # completed analysis (review_pending/accepted/...) stays as-is.
+            # D4b: existing-only open; a deleted task's store cannot be
+            # recreated here (full liveness check is impossible post-cancel).
+            live_repo = open_existing_store(db_path, task_id)
+            if live_repo is None:
+                raise
             try:
-                repo.transition(
+                live_repo.transition(
                     analysis_id,
                     SecondaryAnalysisStatus.failed,
                     error_code="service_shutdown",
@@ -414,7 +436,7 @@ class SecondaryAnalysisExecutor:
                     "Secondary analysis failed: %s", analysis_id
                 )
                 await self._fail(
-                    repo, analysis_id, "execution_error",
+                    task_id, db_path, analysis_id, "execution_error",
                     "secondary analysis execution failed",
                 )
             else:
@@ -428,12 +450,21 @@ class SecondaryAnalysisExecutor:
 
     async def _fail(
         self,
-        repo: InvestigationRepository,
+        task_id: str,
+        db_path: Path,
         analysis_id: str,
         error_code: str,
         error_message: str,
     ) -> None:
-        """Write failed state. Never raises — tolerates concurrent terminal."""
+        """Write failed state through the live-task boundary.
+
+        Never raises — tolerates concurrent terminal writes and skips the
+        write entirely when task liveness or store identity cannot be
+        confirmed (D4b fail-closed).
+        """
+        repo = await open_live_task_store(self._cpp_backend, task_id, db_path)
+        if repo is None:
+            return
         try:
             await asyncio.to_thread(
                 repo.transition,
@@ -509,7 +540,12 @@ class SecondaryAnalysisExecutor:
         if not db_path.exists():
             return  # no investigation.db yet
         try:
-            repo = InvestigationRepository(db_path, task_id)
+            # D4b: existing-store-only — a task deleted between the registry
+            # lookup and this open is skipped, never recreated.
+            repo = InvestigationRepository.open_existing(db_path, task_id)
+        except EvidenceStoreError:
+            return
+        try:
             stale = await asyncio.to_thread(repo.list_stale_analyses)
             for analysis in stale:
                 try:
