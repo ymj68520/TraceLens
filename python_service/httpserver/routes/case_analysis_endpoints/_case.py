@@ -97,41 +97,32 @@ async def start_case_analysis(
     Returns a job_id for tracking progress.
     """
     import uuid
-    import re
 
     try:
-        from ...services import get_service_manager
+        from ...services import get_service_manager, task_store
         service_manager = get_service_manager()
 
-        # Extract task_id from files_db_path if not provided
+        # The task identity comes from the request; the analysis target is
+        # the task-owned files database resolved server-side (D2b). A supplied
+        # files_db_path is a deprecated exact-validated hint — task identity
+        # is never derived from a client path.
         task_id = request.task_id
-        if not task_id:
-            # Extract task_id from path like: /path/to/tasks/{task_id}/files.db
-            match = re.search(r'/tasks/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/files\.db', request.files_db_path)
-            if match:
-                task_id = match.group(1)
-                logger.info(f"Extracted task_id from files_db_path: {task_id}")
-            else:
-                logger.error("Cannot extract task_id from files_db_path and task_id not provided")
-                raise HTTPException(
-                    status_code=422,
-                    detail="Cannot extract task_id from files_db_path. Please provide task_id explicitly."
-                )
+        try:
+            trusted_files_db = await task_store.resolve_task_files_db(task_id)
+            task_store.validate_legacy_db_path(
+                request.files_db_path, trusted_files_db
+            )
+        except task_store.TaskStoreError as exc:
+            if exc.code == task_store.TASK_NOT_FOUND:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         # Validate inputs
         logger.info(f"Starting case analysis for task {task_id}")
-        logger.info(f"files_db_path: '{request.files_db_path}'")
+        logger.info(f"trusted files_db_path: '{trusted_files_db}'")
         logger.info(f"case_description length: {len(request.case_description)}")
         logger.info(f"max_filter_files: {request.max_filter_files}")
         logger.info(f"run_filtering: {request.run_filtering}")
-
-        # Validate files_db_path is not empty
-        if not request.files_db_path or not request.files_db_path.strip():
-            logger.error("files_db_path is empty")
-            raise HTTPException(
-                status_code=422,
-                detail="files_db_path cannot be empty. Please ensure the task has completed analysis."
-            )
 
         # Get or create case analysis service
         case_service = _get_case_analysis_service(service_manager)
@@ -151,7 +142,7 @@ async def start_case_analysis(
                 job_id=job_id,
                 case_service=case_service,
                 task_id=task_id,
-                files_db_path=request.files_db_path,
+                files_db_path=str(trusted_files_db),
                 case_description=request.case_description,
                 max_filter_files=request.max_filter_files,
                 run_filtering=request.run_filtering,
@@ -166,6 +157,8 @@ async def start_case_analysis(
             message="案情分析已启动",
             timestamp=datetime.now().isoformat(),
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Start case analysis failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="case analysis could not be started")
@@ -200,8 +193,29 @@ async def reanalyze_files(
         # Log request details
         logger.info(f"Reanalyze request received - task_id: {request.task_id}, "
                    f"files: {len(request.file_paths)}, "
-                   f"files_db_path: {request.files_db_path!r}, "
                    f"user_hint: {request.user_hint[:50] if request.user_hint else ''}...")
+
+        # The persistence target is the task-owned files database resolved
+        # server-side (D2b); a supplied files_db_path is an exact-validated
+        # deprecated hint. Case description still falls back to task info.
+        from ...services import task_store
+
+        case_desc = request.case_description
+        try:
+            task_info = await task_store.get_task_record(request.task_id)
+            trusted_files_db = await task_store.resolve_task_files_db(request.task_id)
+            task_store.validate_legacy_db_path(
+                request.files_db_path, trusted_files_db
+            )
+            if not case_desc:
+                case_desc = task_info.get("case_description", "")
+        except task_store.TaskStoreError as exc:
+            if exc.code == task_store.TASK_NOT_FOUND:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        files_db_path = str(trusted_files_db)
+        logger.info(f"Reanalyze persistence target resolved from task: {files_db_path!r}")
 
         _analysis_jobs[job_id] = {
             "status": "running",
@@ -210,27 +224,6 @@ async def reanalyze_files(
             "task_id": request.task_id,
             "result": None,
         }
-
-        # Get case description and files_db_path from task info if not provided
-        case_desc = request.case_description
-        files_db_path = request.files_db_path
-
-        if not case_desc or not files_db_path:
-            try:
-                task_info = await service_manager.cpp_backend.get_task(request.task_id)
-                if task_info:
-                    if not case_desc:
-                        case_desc = task_info.get("case_description", "")
-                    if not files_db_path:
-                        files_db_path = task_info.get("output_files_db") or task_info.get("output_files_db_path", "")
-                        logger.info(f"Retrieved files_db_path from task info: {files_db_path!r}")
-            except Exception as e:
-                logger.warning(f"Failed to get task info: {e}")
-
-        # Warn if files_db_path is still empty
-        if not files_db_path:
-            logger.warning(f"No files_db_path provided for task {request.task_id}. "
-                         f"Results will NOT be persisted to database!")
 
         asyncio.create_task(
             _run_reanalyze_background(
@@ -251,6 +244,8 @@ async def reanalyze_files(
             message=f"已启动 {len(request.file_paths)} 个文件的重新分析",
             timestamp=datetime.now().isoformat(),
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Start reanalyze failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="reanalyze could not be started")

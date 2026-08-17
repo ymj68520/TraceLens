@@ -35,8 +35,10 @@ class CaseDescriptionResponse(BaseModel):
 
 class CaseAnalysisRequest(BaseModel):
     """Request to start full case analysis."""
-    task_id: Optional[str] = Field(None, description="Task ID (auto-extracted from files_db_path if not provided)")
-    files_db_path: str = Field(..., description="Path to _files.db")
+    task_id: str = Field(..., description="Task ID owning the analysis target")
+    # Deprecated: the target database is always resolved server-side from
+    # task_id; a supplied value must exactly match that resolution.
+    files_db_path: Optional[str] = Field(None, description="(deprecated) Path to _files.db; validated against the task-owned database")
     case_description: str = Field(default="", description="案情描述")
     max_filter_files: int = Field(default=200, ge=1, le=2000, description="Max files to filter")
     run_filtering: bool = Field(default=False, description="是否重新运行 LLM 文件筛选")
@@ -88,7 +90,9 @@ class ReanalyzeRequest(BaseModel):
     task_id: str = Field(..., description="Task ID")
     file_paths: List[str] = Field(..., min_length=1, description="要重新分析的文件路径列表")
     user_hint: str = Field(..., min_length=1, description="用户补充描述")
-    files_db_path: str = Field(..., description="Path to _files.db")
+    # Deprecated: the persistence target is always resolved server-side from
+    # task_id; a supplied value must exactly match that resolution.
+    files_db_path: Optional[str] = Field(None, description="(deprecated) Path to _files.db; validated against the task-owned database")
     case_description: str = Field(default="", description="案情描述（可选，为空时自动获取）")
 
 

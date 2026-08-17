@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 class AnalyzeRequest(BaseModel):
     """Request model for file analysis."""
+    task_id: Optional[str] = Field(None, description="Task ID owning the persistence target (required to persist)")
     file_path: Optional[str] = Field(None, description="Path to file to analyze")
     db_file_path: Optional[str] = Field(None, description="Path to file in DB (for persistence)")
     content: Optional[str] = Field(None, description="Direct content to analyze")
@@ -26,7 +27,9 @@ class AnalyzeRequest(BaseModel):
     prompt: Optional[str] = Field(None, description="Custom analysis prompt")
     max_tokens: Optional[int] = Field(None, ge=1, le=8192, description="Max response tokens")
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0, description="Model temperature")
-    files_db_path: Optional[str] = Field(None, description="Path to _files.db for persisting result")
+    # Deprecated: the persistence target is always resolved server-side from
+    # task_id; a supplied value must exactly match that resolution.
+    files_db_path: Optional[str] = Field(None, description="(deprecated) Path to _files.db; validated against the task-owned database")
 
 
 class AnalyzeResponse(BaseModel):

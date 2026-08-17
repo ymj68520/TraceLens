@@ -162,10 +162,10 @@ async def analyze_content(
     from pathlib import Path
     start_time = time.time()
 
-    if not request.file_path and not request.content:
+    if request.files_db_path and not request.task_id:
         raise HTTPException(
             status_code=400,
-            detail="Either file_path or content must be provided"
+            detail="task_id is required to persist analysis results",
         )
 
     try:
@@ -262,14 +262,37 @@ async def analyze_content(
         analysis = result.get("analysis", {})
         description = analysis.get("description", "")
 
-        # Persist to C++ SQLite _files.db if db path and file path are provided
-        if request.files_db_path and (request.db_file_path or request.file_path) and description:
+        # Persist to the task-owned _files.db. The persistence target is
+        # resolved server-side from task_id (D2b); a supplied files_db_path
+        # is a deprecated exact-validated hint, never the authority.
+        if (request.files_db_path or request.task_id) and (
+            request.db_file_path or request.file_path
+        ) and description:
+            from ...services import task_store
+
+            if not request.task_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="task_id is required to persist analysis results",
+                )
+            try:
+                trusted_files_db = await task_store.resolve_task_files_db(
+                    request.task_id
+                )
+                task_store.validate_legacy_db_path(
+                    request.files_db_path, trusted_files_db
+                )
+            except task_store.TaskStoreError as exc:
+                if exc.code == task_store.TASK_NOT_FOUND:
+                    raise HTTPException(status_code=404, detail=str(exc)) from exc
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
             keywords_list = analysis.get("keywords", [])
             keywords_str = ", ".join(keywords_list) if isinstance(keywords_list, list) else str(keywords_list)
 
             db_path_to_save = request.db_file_path or request.file_path
             service_manager.llm_service.persist_to_files_db(
-                db_path=request.files_db_path,
+                db_path=str(trusted_files_db),
                 file_path=db_path_to_save,
                 description=description,
                 summary=analysis.get("summary") or description[:200],

@@ -232,7 +232,22 @@ async def start_multi_image_analysis(
             detail="task_ids and files_db_paths must have the same length",
         )
 
-    from ..dependencies import get_case_analysis_service
+    # Each analysis target is resolved server-side from its own task_id
+    # (D2b); the parallel files_db_paths entries are deprecated exact-
+    # validated hints, never the authority.
+    from ..services import task_store
+
+    trusted_paths = []
+    for task_id, supplied_path in zip(req.task_ids, req.files_db_paths):
+        try:
+            trusted = await task_store.resolve_task_files_db(task_id)
+            task_store.validate_legacy_db_path(supplied_path, trusted)
+        except task_store.TaskStoreError as exc:
+            if exc.code == task_store.TASK_NOT_FOUND:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        trusted_paths.append(str(trusted))
+
     svc = get_case_analysis_service()
     if not svc:
         raise HTTPException(status_code=503, detail="Case analysis service not ready")
@@ -266,7 +281,7 @@ async def start_multi_image_analysis(
             result = await svc.run_multi_image_analysis(
                 case_id=req.case_id,
                 task_ids=req.task_ids,
-                files_db_paths=req.files_db_paths,
+                files_db_paths=trusted_paths,
                 case_description=req.case_description,
                 max_filter_files=req.max_filter_files,
                 progress_callback=progress_cb,

@@ -34,8 +34,11 @@ def normalize_threat_level(raw: str, numeric_score: int) -> str:
 
 class DLLAnalysisRequest(BaseModel):
     """Request model for DLL analysis."""
+    task_id: str | None = Field(None, description="Task ID owning the persistence target (required to persist)")
     file_path: str = Field(..., description="Absolute path to DLL file")
-    files_db_path: str | None = Field(None, description="Optional _files.db path for persistence")
+    # Deprecated: the persistence target is always resolved server-side from
+    # task_id; a supplied value must exactly match that resolution.
+    files_db_path: str | None = Field(None, description="(deprecated) Optional _files.db path; validated against the task-owned database")
     prompt: str | None = Field(None, description="Custom prompt for LLM analysis")
 
 
@@ -107,7 +110,7 @@ async def analyze_dll(
             dll_data = await dll_client.analyze_dll(request.file_path)
 
         # Step 2: Generate Markdown report
-        markdown_report = DLLMarkdownGenerator.generate(dll_data)
+        markdown_report = DLLMarkdownGenerator().generate(dll_data)
         logger.debug(f"Generated Markdown report ({len(markdown_report)} chars)")
 
         # Extract C++ threat score for LLM context
@@ -135,8 +138,29 @@ async def analyze_dll(
         threat_level_raw = analysis.get("threat_level", "")
         analysis["threat_level"] = normalize_threat_level(threat_level_raw, threat_score_from_cpp)
 
-        # Step 4: Persist to database if path provided
-        if request.files_db_path:
+        # Step 4: Persist to the task-owned database (D2b). The target is
+        # resolved server-side from task_id; a supplied files_db_path is a
+        # deprecated exact-validated hint, never the authority.
+        if request.files_db_path or request.task_id:
+            from ..services import task_store
+
+            if not request.task_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="task_id is required to persist analysis results",
+                )
+            try:
+                trusted_files_db = await task_store.resolve_task_files_db(
+                    request.task_id
+                )
+                task_store.validate_legacy_db_path(
+                    request.files_db_path, trusted_files_db
+                )
+            except task_store.TaskStoreError as exc:
+                if exc.code == task_store.TASK_NOT_FOUND:
+                    raise HTTPException(status_code=404, detail=str(exc)) from exc
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
             try:
                 description = analysis.get("description", "")
                 summary = analysis.get("summary") or description[:200]
@@ -144,14 +168,14 @@ async def analyze_dll(
                 keywords_str = ", ".join(keywords) if isinstance(keywords, list) else str(keywords)
 
                 service_manager.llm_service.persist_to_files_db(
-                    db_path=request.files_db_path,
+                    db_path=str(trusted_files_db),
                     file_path=request.file_path,
                     description=description,
                     summary=summary,
                     keywords=keywords_str,
                     model_used=llm_result.get("model", "unknown"),
                 )
-                logger.info(f"Persisted LLM analysis to database: {request.files_db_path}")
+                logger.info(f"Persisted LLM analysis to task files database for task {request.task_id}")
             except Exception as e:
                 logger.warning(f"Failed to persist to database: {e}")
 
