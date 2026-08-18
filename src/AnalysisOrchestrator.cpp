@@ -493,6 +493,7 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
             args.android_source == "miui-backup" ? AndroidSourceMode::MiuiBackup :
                                                     AndroidSourceMode::LogicalDir;
         androidAnalyzer->setSourceMode(mode);
+        androidAnalyzer->setSkipAI(args.skip_ai);
         std::string backupPassword = args.backup_password;
         if (args.backup_password_stdin || args.backup_password_fd >= 0) {
             if (!backupPassword.empty()) {
