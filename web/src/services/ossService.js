@@ -43,14 +43,14 @@ export const getSummary = async (taskId) => {
 
 /** 按存储类型统计对象 */
 export const getStorageClassStats = async (taskId) => {
-    return await api.get('/api/forensics/oss/statistics/storage-class', {
+    return await api.get('/api/forensics/oss/stats/storage-class', {
         params: { task_id: taskId },
     });
 };
 
 /** 按扩展名统计对象 */
 export const getExtensionStats = async (taskId) => {
-    return await api.get('/api/forensics/oss/statistics/extensions', {
+    return await api.get('/api/forensics/oss/stats/extensions', {
         params: { task_id: taskId },
     });
 };

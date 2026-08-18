@@ -491,6 +491,7 @@ add_executable(
   ../src/core/PathManager/PathManager.cpp
   ../src/core/Logger/Logger.cpp
   ../src/network/HTTPServer/LLMAnalysisService.cpp
+  ../src/network/HTTPServer/LLMScratch.cpp
   ../src/integration/LLMIntegration/ModelRouter.cpp
   ../src/integration/LLMIntegration/FileAnalyzer.cpp
   ../src/integration/LLMIntegration/LLMClient.cpp
