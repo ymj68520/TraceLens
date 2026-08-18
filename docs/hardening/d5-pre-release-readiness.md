@@ -49,10 +49,10 @@ Static route/caller inspection confirms:
 
 At the T1 baseline before D5 cleanup:
 
-- Investigation: 425 passed, 19 deselected.
-- Fast Unit: 1086 passed, 49 deselected.
-- Full Unit: 1135 passed.
-- Frontend: 38 files / 206 tests passed.
+- Investigation: 425 passed, 19 deselected, 26:40.
+- Fast Unit: 1086 passed, 49 deselected, 36:37.
+- Full Unit: 1135 passed, 30:55.
+- Frontend: 39 files / 207 tests passed after the OSS route contract test was added.
 - Full frontend lint: 363 problems (347 errors, 16 warnings).
 
 After D5 frontend cleanup:

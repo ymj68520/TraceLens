@@ -11,9 +11,9 @@ Measured by the established Python profile runner on synthetic/unit fixtures:
 | Operation | Dataset/profile | Result |
 |---|---:|---:|
 | Investigation regression | unit Investigation paths | 425 passed, about 26 minutes |
-| Fast Unit regression | `tests/unit` excluding `slow`, `concurrency`, `migration_matrix` | 1086 passed, about 39 minutes |
-| Full Unit regression | `tests/unit -q` | 1135 passed, about 35 minutes |
-| Frontend unit suite | 38 Vitest files | 206 passed, about 4 seconds |
+| Fast Unit regression | `tests/unit` excluding `slow`, `concurrency`, `migration_matrix` | 1086 passed, about 36:37 |
+| Full Unit regression | `tests/unit -q` | 1135 passed, about 30:55 |
+| Frontend unit suite | 39 Vitest files after OSS route contract coverage | 207 passed, about 4.9 seconds |
 
 These are regression baselines, not SLAs. Runtime is affected by filesystem, SQLite journal, and environment scheduling.
 
