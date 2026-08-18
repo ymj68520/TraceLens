@@ -30,9 +30,14 @@ bool AndroidAnalysisDatabase::initialize() {
 }
 
 bool AndroidAnalysisDatabase::createTables() {
+    if (!executeSQL("BEGIN;")) {
+        return false;
+    }
+
     if (!executeSQL(AndroidAnalysisSQL::CREATE_ALL_TABLES) ||
         !executeSQL(AndroidAnalysisSQL::CREATE_MIUI_TABLES) ||
         !executeSQL(AndroidAnalysisSQL::CREATE_ANALYSIS_PROGRESS)) {
+        executeSQL("ROLLBACK;");
         return false;
     }
     // Add the 5 llm_* columns to every artifact table that the LLM service
@@ -50,6 +55,11 @@ bool AndroidAnalysisDatabase::createTables() {
             // Non-fatal: a malformed/incompatible table should not abort init.
             std::cerr << "Warning: failed to add llm_* columns to " << tbl << std::endl;
         }
+    }
+
+    if (!executeSQL("COMMIT;")) {
+        executeSQL("ROLLBACK;");
+        return false;
     }
     return true;
 }
