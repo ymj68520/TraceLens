@@ -100,4 +100,4 @@ E7 remains intentionally marked PARTIAL because a browser backend was unavailabl
 
 ## Final disposition
 
-D6 measurement, the evidence-backed low-risk optimizations, C++ aggregate gate, Python gates, frontend gates, and large synthetic stability loop are complete. No automatic D7/Phase E/architecture work follows this document.
+D6 measurement, the evidence-backed low-risk optimizations, C++ aggregate gate, Python gates, frontend static/unit/build gates, fake LLM scheduler baseline, and large synthetic stability loop are complete. This is a **conditional release-candidate baseline**: E7 remains open until a browser-capable environment records frontend runtime/payload behavior. No automatic D7/Phase E/architecture work follows this document.
