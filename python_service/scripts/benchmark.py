@@ -10,6 +10,7 @@ and after a measured change.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import platform
 import resource
@@ -261,6 +262,53 @@ def _environment() -> dict[str, str]:
     }
 
 
+def _fake_llm_concurrency(samples: int) -> list[dict[str, Any]]:
+    async def run_level(concurrency: int) -> dict[str, Any]:
+        current = 0
+        peak = 0
+        lock = asyncio.Lock()
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def request(index: int) -> dict[str, Any]:
+            nonlocal current, peak
+            async with semaphore:
+                async with lock:
+                    current += 1
+                    peak = max(peak, current)
+                await asyncio.sleep(0)
+                result = {"content": f"synthetic-{index}", "model": "fake", "tokens_used": 3}
+                async with lock:
+                    current -= 1
+                return result
+
+        timings = []
+        result_count = 0
+        for _ in range(samples):
+            started = time.perf_counter_ns()
+            results = await asyncio.gather(*(request(index) for index in range(32)))
+            timings.append((time.perf_counter_ns() - started) / 1_000_000.0)
+            result_count = len(results)
+        return {
+            "operation": "fake_llm_concurrency",
+            "concurrency": concurrency,
+            "requests": 32,
+            "samples": samples,
+            "median_ms": round(statistics.median(timings), 4),
+            "p95_ms": round(_percentile(timings, 0.95), 4),
+            "max_ms": round(max(timings), 4),
+            "peak_in_flight": peak,
+            "result_count": result_count,
+        }
+
+    async def run_all() -> list[dict[str, Any]]:
+        results = []
+        for concurrency in (1, 2, 4, 8):
+            results.append(await run_level(concurrency))
+        return results
+
+    return asyncio.run(run_all())
+
+
 def run(tier: str, samples: int) -> dict[str, Any]:
     counts = TIERS[tier]
     root = Path(tempfile.mkdtemp(prefix=f"tracelens-d6-{tier}-"))
@@ -295,6 +343,7 @@ def run(tier: str, samples: int) -> dict[str, Any]:
             "dataset": counts,
             "environment": _environment(),
             "results": results,
+            "fake_llm_concurrency": _fake_llm_concurrency(max(3, min(samples, 7))),
             "query_plans": _query_plans(investigation_path),
         }
     finally:

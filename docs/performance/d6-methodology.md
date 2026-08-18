@@ -58,6 +58,8 @@ Measured operations:
 
 The report search and version listing measurements exclude setup and report generation/LLM latency. Fresh initialization is measured separately from steady-state reads.
 
+The harness also runs 32 deterministic local fake LLM responses at semaphore levels 1, 2, 4, and 8. These requests use `asyncio.sleep(0)` only as a scheduler yield, never access a provider, and assert result count plus observed peak in-flight work. This is a platform scheduling baseline, not a model-quality or provider-throughput benchmark.
+
 ## Query plans
 
 The harness records `EXPLAIN QUERY PLAN` for representative task-scoped snapshot, analysis, and event queries. The output is diagnostic only. An index change is admissible only when a measured hotspot, a stable production query shape, and an `EXPLAIN` result showing a missing index all agree. No index or schema migration is implied by this harness.

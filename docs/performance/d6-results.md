@@ -31,7 +31,19 @@ Times are median milliseconds. RSS is a rough process `ru_maxrss` observation an
 
 Observed result counts were consistent with the generated stores: overlay returned the sum of its event/link/selection/claim/evidence projections, evidence/event/version listings returned their corresponding row counts, and report search matched all generated documents.
 
-## Query-plan inventory
+## Fake LLM concurrency baseline
+
+The harness also measured 32 deterministic local fake responses at semaphore levels 1/2/4/8. SMALL-tier sample run results were:
+
+| Max in-flight | Median | P95 | Results |
+|---:|---:|---:|---:|
+| 1 | 0.955 ms | 0.955 ms | 32/32 |
+| 2 | 0.809 ms | 0.809 ms | 32/32 |
+| 4 | 0.747 ms | 0.747 ms | 32/32 |
+| 8 | 0.709 ms | 0.709 ms | 32/32 |
+
+Observed peak in-flight work exactly matched each configured level. This is only a local event-loop/scheduling baseline. It does not measure model latency, provider limits, HTTP connection pools, memory under real responses, or correctness of concurrent production workers; no production concurrency change was admitted.
+
 
 Representative task-scoped query plans were the same across all tiers:
 

@@ -69,8 +69,8 @@ No persistent schema version, Investigation state machine, Event Refresh frozen-
 | E3 reproducible synthetic harness | PASS | `scripts/benchmark.py`, fixed seed and tiers |
 | E4 backend key-path profiling | PASS | graph/report repository paths and plans measured |
 | E5 Investigation/report scale profiling | PASS | SMALL/MEDIUM/LARGE results recorded |
-| E6 Graph/LLM lifecycle/concurrency profiling | PARTIAL | graph read measured; fake LLM concurrency not run |
-| E7 frontend bundle/runtime profiling | PARTIAL | build/bundle baseline measured; browser runtime not run |
+| E6 Graph/LLM lifecycle/concurrency profiling | PASS (local fake baseline) | graph read plus deterministic fake 1/2/4/8 scheduler baseline; provider/worker concurrency remains future measurement |
+| E7 frontend bundle/runtime profiling | PARTIAL | build/bundle baseline measured; browser runtime unavailable in this environment |
 | E8 large synthetic stability | PASS | 10 sequential LARGE runs, no temp growth |
 | E9 implemented optimizations have before/after | PASS | Android DDL timing before/after |
 | E10 no measurement-free optimization | PASS | rejected candidates documented |
@@ -89,7 +89,7 @@ No persistent schema version, Investigation state machine, Event Refresh frozen-
 | E23 performance documentation | PASS | methodology, results, RC documents |
 | E24 worktree clean | PASS | verified after final commit |
 
-E6 and E7 are intentionally marked PARTIAL rather than overstated. Their remaining measurement candidates are recorded for a future review; no cache, concurrency, virtualization, pagination, dependency, or frontend chunk rewrite was made without evidence.
+E7 remains intentionally marked PARTIAL because a browser backend was unavailable in this environment. E6 has a reproducible local fake scheduler baseline, while provider latency, connection-pool behavior, and concurrent production-worker correctness remain future measurements. No cache, concurrency, virtualization, pagination, dependency, or frontend chunk rewrite was made without evidence.
 
 ## Accepted limitations and future backlog
 
