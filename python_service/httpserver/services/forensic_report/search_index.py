@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterable
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -15,26 +16,27 @@ class SnapshotSearchIndex:
         self.path = Path(path)
         self._read_only = False
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as conn:
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS search_documents (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    kind TEXT NOT NULL,
-                    title TEXT NOT NULL,
-                    search_text TEXT NOT NULL,
-                    record_id TEXT,
-                    evidence_id TEXT,
-                    platform TEXT,
-                    category_id TEXT,
-                    page INTEGER
-                );
-                CREATE INDEX IF NOT EXISTS idx_search_record
-                    ON search_documents(record_id);
-                CREATE INDEX IF NOT EXISTS idx_search_category
-                    ON search_documents(category_id, page);
-                """
-            )
+        with closing(self._connect()) as conn:
+            with conn:
+                conn.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS search_documents (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        kind TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        search_text TEXT NOT NULL,
+                        record_id TEXT,
+                        evidence_id TEXT,
+                        platform TEXT,
+                        category_id TEXT,
+                        page INTEGER
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_search_record
+                        ON search_documents(record_id);
+                    CREATE INDEX IF NOT EXISTS idx_search_category
+                        ON search_documents(category_id, page);
+                    """
+                )
 
     @classmethod
     def open_readonly(cls, path: Path) -> "SnapshotSearchIndex":
@@ -42,7 +44,7 @@ class SnapshotSearchIndex:
         index = cls.__new__(cls)
         index.path = Path(path)
         index._read_only = True
-        with index._connect() as conn:
+        with closing(index._connect()) as conn:
             columns = {
                 row["name"]
                 for row in conn.execute("PRAGMA table_info(search_documents)")
@@ -82,20 +84,21 @@ class SnapshotSearchIndex:
     def add_documents(self, documents: Iterable[dict[str, Any]]) -> list[int]:
         """Commit a completed category's staged documents as one transaction."""
         inserted_ids = []
-        with self._connect() as conn:
-            for document in documents:
-                cursor = conn.execute(
-                    """INSERT INTO search_documents
-                       (kind, title, search_text, record_id, evidence_id, platform,
-                        category_id, page) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    self._document_values(document),
-                )
-                inserted_ids.append(cursor.lastrowid)
+        with closing(self._connect()) as conn:
+            with conn:
+                for document in documents:
+                    cursor = conn.execute(
+                        """INSERT INTO search_documents
+                           (kind, title, search_text, record_id, evidence_id, platform,
+                            category_id, page) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        self._document_values(document),
+                    )
+                    inserted_ids.append(cursor.lastrowid)
         return inserted_ids
 
     def documents(self) -> list[dict[str, Any]]:
         """Return staged documents in insertion order for atomic category merge."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             rows = conn.execute("SELECT * FROM search_documents ORDER BY id").fetchall()
         return [
             {
@@ -116,8 +119,9 @@ class SnapshotSearchIndex:
         if not ids:
             return
         placeholders = ",".join("?" for _ in ids)
-        with self._connect() as conn:
-            conn.execute(f"DELETE FROM search_documents WHERE id IN ({placeholders})", ids)
+        with closing(self._connect()) as conn:
+            with conn:
+                conn.execute(f"DELETE FROM search_documents WHERE id IN ({placeholders})", ids)
 
     def search(self, query: str, offset: int, limit: int) -> tuple[int, list[SearchHit]]:
         needle = query.strip().casefold()
@@ -125,7 +129,7 @@ class SnapshotSearchIndex:
             return 0, []
 
         where = "instr(search_text, ?) > 0"
-        with self._connect() as conn:
+        with closing(self._connect()) as conn:
             total = conn.execute(
                 f"SELECT COUNT(*) FROM search_documents WHERE {where}", (needle,)
             ).fetchone()[0]
