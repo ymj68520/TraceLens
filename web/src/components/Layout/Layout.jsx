@@ -16,7 +16,7 @@ const Layout = ({ children }) => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const currentTaskId = searchParams.get('task_id');
-  const { theme, showTerminal } = useSelector((state) => state.settings);
+  const { showTerminal } = useSelector((state) => state.settings);
   const { sidebarOpen } = useSelector((state) => state.ui);
   const { t } = useTranslation();
 

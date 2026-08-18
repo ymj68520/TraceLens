@@ -2,8 +2,6 @@ import { useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { fetchTasks, setCurrentTask } from '../../store/taskSlice';
-import { TASK_STATUS, STATUS_COLORS } from '../../utils/constants';
-
 const TaskSelector = () => {
     const dispatch = useDispatch();
     const location = useLocation();

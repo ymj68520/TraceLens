@@ -21,7 +21,7 @@ import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
 import ConfirmDialog from '../components/common/ConfirmDialog';
-import { useToast } from '../components/common/ToastContext';
+import { useToast } from '../components/common/useToast';
 import CreateCaseModal from '../components/tasks/CreateCaseModal';
 import AddTasksToCaseModal from '../components/tasks/AddTasksToCaseModal';
 import ComposeCaseModal from '../components/tasks/ComposeCaseModal';
@@ -212,7 +212,7 @@ export default function Cases() {
       {cases.length === 0 ? (
         <Card>
           <p className="text-center py-12 text-slate-500 dark:text-slate-400">
-            暂无案件，点击"新建案件"开始多镜像联合分析。
+            暂无案件，点击“新建案件”开始多镜像联合分析。
           </p>
         </Card>
       ) : (

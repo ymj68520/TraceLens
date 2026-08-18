@@ -524,6 +524,11 @@ const Timeline = () => {
       </div>
 
       <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 overflow-hidden">
+        {error && (
+          <div className="absolute inset-x-0 top-0 z-10 mx-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {error}
+          </div>
+        )}
         {/* Sidebar */}
         <aside className="w-full lg:w-80 flex flex-col min-h-0 space-y-4 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
           <div className="flex-shrink-0 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">

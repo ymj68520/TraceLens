@@ -3,7 +3,8 @@
  * The backend synthesizes one record whose keys are the Chinese item labels;
  * this component lists them all, showing "—" for missing values.
  */
-import { SectionCard, Field, val, EmptySection } from './shared';
+import { SectionCard, Field, EmptySection } from './shared';
+import { val } from './reportSectionUtils';
 
 export default function DeviceInfoSection({ pageData }) {
   const record = pageData?.records?.[0] || {};

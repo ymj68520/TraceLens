@@ -3,7 +3,8 @@
  * Reads values from the task metadata dict; renders every field (empty values
  * show "—") to match the reference report schema.
  */
-import { SectionCard, Field, val } from './shared';
+import { SectionCard, Field } from './shared';
+import { val } from './reportSectionUtils';
 import { CASE_INFO_FIELDS } from './metadataFields';
 
 export default function CaseInfoSection({ metadata, onEdit }) {

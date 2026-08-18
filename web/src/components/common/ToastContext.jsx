@@ -1,8 +1,7 @@
-import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
+import { ToastContext } from './toastContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, Info, AlertTriangle, X } from 'lucide-react';
-
-const ToastContext = createContext(null);
 
 let toastId = 0;
 
@@ -78,12 +77,6 @@ export function ToastProvider({ children }) {
             </div>
         </ToastContext.Provider>
     );
-}
-
-export function useToast() {
-    const ctx = useContext(ToastContext);
-    if (!ctx) throw new Error('useToast must be used within ToastProvider');
-    return ctx;
 }
 
 export default ToastContext;

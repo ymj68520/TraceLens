@@ -14,7 +14,7 @@ import { getReportMetadata, saveReportMetadata } from '../../../services/intelli
 
 // Stub the ToastContext via the Button/toast — wrap provider in test helper is enough;
 // useToast is consumed; provide a minimal stand-in by mocking the context.
-vi.mock('../../common/ToastContext', () => ({
+vi.mock('../../common/useToast', () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }));
 

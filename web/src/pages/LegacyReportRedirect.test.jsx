@@ -1,7 +1,8 @@
 import { Route, Routes } from 'react-router-dom';
 import { screen } from '@testing-library/react';
 import { renderWithRouter } from '../test/renderWithRouter';
-import LegacyReportRedirect, { getReportTarget } from './LegacyReportRedirect';
+import LegacyReportRedirect from './LegacyReportRedirect';
+import { getReportTarget } from './reportRedirectTarget';
 
 function Destination() {
   return <div>new-report-route</div>;

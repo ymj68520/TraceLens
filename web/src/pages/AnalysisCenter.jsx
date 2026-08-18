@@ -10,7 +10,7 @@ import { fetchCases } from '../store/caseSlice';
 import {
     clearRefreshFlag
 } from '../store/intelligenceSlice';
-import { useToast } from '../components/common/ToastContext';
+import { useToast } from '../components/common/useToast';
 import { toggleFileRelevance } from '../services/llmService';
 import { reanalyzeFiles, getCaseAnalysisStatus, saveCaseDescription } from '../services/caseAnalysisService';
 import {

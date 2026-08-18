@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import TerminalOutput from '../components/common/TerminalOutput';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';

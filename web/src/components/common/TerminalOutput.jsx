@@ -32,57 +32,18 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
   });
   const [autoScroll, setAutoScroll] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
-  const eventSourceRef = useRef(null);
-  
-  const terminalEndRefs = {
-    cpp: useRef(null),
-    python: useRef(null),
-    web: useRef(null),
-  };
+
+  const cppEndRef = useRef(null);
+  const pythonEndRef = useRef(null);
+  const webEndRef = useRef(null);
+  const activeEndRef = activeTab === 'cpp' ? cppEndRef : activeTab === 'python' ? pythonEndRef : webEndRef;
 
   // Scroll to bottom when new logs arrive
   useEffect(() => {
-    if (autoScroll && terminalEndRefs[activeTab]?.current) {
-      terminalEndRefs[activeTab].current.scrollIntoView({ behavior: 'smooth' });
+    if (autoScroll && activeEndRef.current) {
+      activeEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [logs, activeTab, autoScroll]);
-
-  const startStreaming = (source) => {
-    if (eventSourceRef.current) eventSourceRef.current.close();
-    if (source === 'web') return;
-
-    const endpoints = {
-      cpp: `${PYTHON_BASE}/api/system/logs-stream/cpp`,
-      python: `${PYTHON_BASE}/api/system/logs-stream/python`,
-    };
-
-    const url = endpoints[source];
-    if (!url) return;
-
-    setIsStreaming(true);
-    const es = new EventSource(url);
-    eventSourceRef.current = es;
-
-    es.onmessage = (event) => {
-      try {
-        const entry = JSON.parse(event.data);
-        setLogs(prev => ({
-          ...prev,
-          [source]: [...prev[source].slice(-499), entry],
-        }));
-      } catch (e) {
-        setLogs(prev => ({
-          ...prev,
-          [source]: [...prev[source].slice(-499), { timestamp: '', level: 'INFO', message: event.data }],
-        }));
-      }
-    };
-
-    es.onerror = () => {
-      setIsStreaming(false);
-      es.close();
-    };
-  };
+  }, [logs, activeTab, autoScroll, activeEndRef]);
 
   // Fetch logs via REST API
   const fetchLogs = async (source) => {
@@ -309,7 +270,7 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
             <div className="space-y-1">
               {logs[activeTab].map((entry, index) => formatLogEntry(entry, index))}
             </div>
-            <div ref={terminalEndRefs[activeTab]} />
+            <div ref={activeEndRef} />
           </>
         )}
       </div>

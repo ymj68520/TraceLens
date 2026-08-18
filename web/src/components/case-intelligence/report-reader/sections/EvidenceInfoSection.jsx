@@ -2,7 +2,8 @@
  * EvidenceInfoSection — renders the 证据信息 chapter.
  * Same metadata-driven pattern as CaseInfoSection.
  */
-import { SectionCard, Field, val } from './shared';
+import { SectionCard, Field } from './shared';
+import { val } from './reportSectionUtils';
 import { EVIDENCE_INFO_FIELDS } from './metadataFields';
 
 export default function EvidenceInfoSection({ metadata, onEdit }) {

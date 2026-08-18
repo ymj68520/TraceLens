@@ -29,14 +29,6 @@ export const useFileLLMAnalysis = (taskId) => {
   const activeBatch = activeBatchJobs[taskId];
   const isBatchRunning = activeBatch && activeBatch.status === "running";
 
-  // Auto-resume batch analysis polling
-  useEffect(() => {
-    if (activeBatch && activeBatch.status === 'running' && activeBatch.jobId) {
-      console.log(`[useFileLLMAnalysis] Auto-resuming batch analysis: ${activeBatch.jobId}`);
-      startBatchAnalysisPolling(activeBatch.jobId);
-    }
-  }, [taskId]);
-
   const startBatchAnalysisPolling = useCallback(async (jobId) => {
     try {
       const finalStatus = await pollBatchStatus(jobId, (status) => {
@@ -97,6 +89,14 @@ export const useFileLLMAnalysis = (taskId) => {
       alert(`批量分析失败: ${err.message}`);
     }
   }, [taskId, dispatch, startBatchAnalysisPolling]);
+
+  // Auto-resume batch analysis polling
+  useEffect(() => {
+    if (activeBatch && activeBatch.status === 'running' && activeBatch.jobId) {
+      console.log(`[useFileLLMAnalysis] Auto-resuming batch analysis: ${activeBatch.jobId}`);
+      startBatchAnalysisPolling(activeBatch.jobId);
+    }
+  }, [activeBatch, startBatchAnalysisPolling]);
 
   const handleSingleAnalyze = useCallback(async (filePath) => {
     if (!taskId) return;

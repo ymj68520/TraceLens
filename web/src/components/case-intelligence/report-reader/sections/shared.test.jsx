@@ -1,4 +1,4 @@
-import { val, fileSize, fmtDuration, callTypeLabel, smsTypeLabel } from './shared';
+import { val, fileSize, fmtDuration, callTypeLabel, smsTypeLabel } from './reportSectionUtils';
 
 describe('report section shared helpers', () => {
   test('val renders em dash for empty values', () => {

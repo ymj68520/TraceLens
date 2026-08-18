@@ -1,7 +1,6 @@
 import axios from 'axios';
 
 // 服务端口常量
-const CPP_PORT = import.meta.env.VITE_CPP_PORT || '8666';
 const PYTHON_PORT = '8090';
 const CS_PORT = '8091';
 

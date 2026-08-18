@@ -18,7 +18,7 @@ import Button from '../common/Button';
 import Badge from '../common/Badge';
 import { createCaseWithTasks, fetchCases } from '../../store/caseSlice';
 import { fetchTasks } from '../../store/taskSlice';
-import { useToast } from '../common/ToastContext';
+import { useToast } from '../common/useToast';
 
 export default function ComposeCaseModal({ preselectedTaskIds = [], onClose }) {
   const dispatch = useDispatch();

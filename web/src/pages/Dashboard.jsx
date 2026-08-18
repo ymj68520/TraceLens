@@ -100,7 +100,13 @@ const Dashboard = () => {
     const completedTask = tasks.find((t) => t.status === 'completed');
     if (!completedTask) return;
     setExporting(true);
-    try { await exportToon(completedTask.id); } catch { } finally { setExporting(false); }
+    try {
+      await exportToon(completedTask.id);
+    } catch (exportError) {
+      console.error('TOON export failed:', exportError);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (

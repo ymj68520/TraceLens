@@ -6,7 +6,6 @@ import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
-import ProgressBar from '../components/common/ProgressBar';
 import {
     startAnalysis,
     pollAnalysisStatus,

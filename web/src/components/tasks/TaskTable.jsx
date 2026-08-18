@@ -7,7 +7,7 @@
 import { Link } from 'react-router-dom';
 import Badge from '../common/Badge';
 import ProgressBar from '../common/ProgressBar';
-import { TASK_STATUS, TASK_PRIORITY, STATUS_COLORS, PRIORITY_COLORS } from '../../utils/constants';
+import { STATUS_COLORS, PRIORITY_COLORS } from '../../utils/constants';
 
 /** Helper: convert timestamp (ms or s) to locale string */
 function formatDate(timestamp) {
