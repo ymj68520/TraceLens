@@ -12,7 +12,7 @@
 
 .PHONY: all build start start-all cpp python web web-dev web-frontend clean rebuild \
 	help test test-cpp test-python test-python-focused test-python-investigation \
-	test-python-fast test-python-full test-all setup setup-venv setup-web docs
+	test-python-fast test-python-full test-all acceptance-smoke acceptance-task acceptance-analyst acceptance-restart acceptance-matrix setup setup-venv setup-web docs
 
 # Default target
 all: build
@@ -55,6 +55,26 @@ start: start-all
 start-all:
 	@echo "$(BLUE)➤ Starting all services...$(NC)"
 	@./scripts/start_all_services.sh
+
+acceptance-smoke:
+	@echo "$(BLUE)➤ Running isolated live-service acceptance smoke...$(NC)"
+	@python3 scripts/acceptance/live_services.py --profile smoke
+
+acceptance-task:
+	@echo "$(BLUE)➤ Running isolated real-task acceptance journey...$(NC)"
+	@python3 scripts/acceptance/live_services.py --profile task
+
+acceptance-analyst:
+	@echo "$(BLUE)➤ Running isolated Investigation-to-Report acceptance journey...$(NC)"
+	@python3 scripts/acceptance/live_services.py --profile analyst
+
+acceptance-restart:
+	@echo "$(BLUE)➤ Running process restart recovery acceptance journey...$(NC)"
+	@python3 scripts/acceptance/live_services.py --profile restart
+
+acceptance-matrix:
+	@echo "$(BLUE)➤ Running live extractor handoff matrix...$(NC)"
+	@python3 scripts/acceptance/live_services.py --profile matrix
 
 cpp:
 	@echo "$(BLUE)➤ Starting C++ HTTP server...$(NC)"
@@ -183,6 +203,11 @@ help:
 	@echo "  make test-python-investigation - Run Investigation fast regression"
 	@echo "  make test-python-fast - Run fast Python unit regression"
 	@echo "  make test-python-full - Run full Python unit regression"
+	@echo "  make acceptance-smoke - Run isolated live-service smoke"
+	@echo "  make acceptance-task  - Run isolated Task -> Evidence journey"
+	@echo "  make acceptance-analyst - Run isolated Investigation -> Report journey"
+	@echo "  make acceptance-restart - Run process restart recovery journey"
+	@echo "  make acceptance-matrix - Run live Markitdown/Office/DLL handoff matrix"
 	@echo ""
 	@echo "$(GREEN)Quick Start:$(NC)"
 	@echo "  1. make setup       - Install dependencies"

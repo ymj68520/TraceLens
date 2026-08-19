@@ -55,6 +55,16 @@ int main(int argc, char* argv[]) {
     // Load configuration from .env file
     ConfigManager::instance().load(".env");
 
+    // Apply storage overrides before any singleton touches task paths.  This
+    // keeps DATA_DIR/PROJECT_ROOT effective for isolated acceptance runs.
+    auto& pathManager = PathManager::instance();
+    const auto configuredProjectRoot = ConfigManager::instance().get("PROJECT_ROOT", "");
+    if (!configuredProjectRoot.empty()) {
+        pathManager.setProjectRoot(configuredProjectRoot);
+    }
+    pathManager.setDataDirName(ConfigManager::instance().get("DATA_DIR", "data"));
+    pathManager.ensureDirectories();
+
     // Initialize AuditLog if configured (singleton with config)
     AuditLogConfig auditConfig;
     auditConfig.db_path = ConfigManager::instance().get("AUDIT_LOG_DB", "forensics_audit.db");

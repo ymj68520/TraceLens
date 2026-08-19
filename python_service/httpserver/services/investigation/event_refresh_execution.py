@@ -266,6 +266,7 @@ class EventRefreshExecutor:
             repo = InvestigationRepository.open_existing(db_path, task_id)
         except EvidenceStoreError:
             return
+        try:
             stale = await asyncio.to_thread(repo.list_stale_event_refreshes)
             for refresh in stale:
                 await asyncio.to_thread(
