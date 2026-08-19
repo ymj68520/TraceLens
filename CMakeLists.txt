@@ -683,7 +683,8 @@ if(BUILD_PYTHON_SERVICE)
   else()
     set(PYTHON_SERVICE_DIR "${CMAKE_SOURCE_DIR}/python_service")
     set(PYTHON_VENV_DIR "${PYTHON_SERVICE_DIR}/.venv")
-    set(PYTHON_REQUIREMENTS "${PYTHON_SERVICE_DIR}/httpserver/requirements.txt")
+    set(PYTHON_HTTP_REQUIREMENTS "${PYTHON_SERVICE_DIR}/httpserver/requirements.txt")
+    set(PYTHON_SERVER_REQUIREMENTS "${PYTHON_SERVICE_DIR}/requirements.txt")
 
     if(EXISTS "${PYTHON_SERVICE_DIR}")
       # Create virtual environment
@@ -692,12 +693,15 @@ if(BUILD_PYTHON_SERVICE)
         COMMAND ${Python3_EXECUTABLE} -m venv ${PYTHON_VENV_DIR}
         COMMENT "Creating Python virtual environment")
 
-      # Install dependencies
+      # Install both the legacy HTTP-server and distributed C/S dependencies.
       add_custom_command(
         OUTPUT ${PYTHON_VENV_DIR}/.deps_installed
-        DEPENDS ${PYTHON_VENV_DIR}/pyvenv.cfg ${PYTHON_REQUIREMENTS}
+        DEPENDS ${PYTHON_VENV_DIR}/pyvenv.cfg
+                ${PYTHON_HTTP_REQUIREMENTS}
+                ${PYTHON_SERVER_REQUIREMENTS}
         COMMAND ${PYTHON_VENV_DIR}/bin/pip install --upgrade pip
-        COMMAND ${PYTHON_VENV_DIR}/bin/pip install -r ${PYTHON_REQUIREMENTS}
+        COMMAND ${PYTHON_VENV_DIR}/bin/pip install -r ${PYTHON_HTTP_REQUIREMENTS}
+        COMMAND ${PYTHON_VENV_DIR}/bin/pip install -r ${PYTHON_SERVER_REQUIREMENTS}
         COMMAND ${CMAKE_COMMAND} -E touch ${PYTHON_VENV_DIR}/.deps_installed
         WORKING_DIRECTORY ${PYTHON_SERVICE_DIR}
         COMMENT "Installing Python dependencies")
@@ -736,7 +740,7 @@ if(BUILD_PYTHON_SERVICE)
       message(STATUS "Python service setup configured")
       message(STATUS "  Source: ${PYTHON_SERVICE_DIR}")
       message(STATUS "  Venv: ${PYTHON_VENV_DIR}")
-      message(STATUS "  Requirements: ${PYTHON_REQUIREMENTS}")
+      message(STATUS "  Requirements: ${PYTHON_HTTP_REQUIREMENTS}; ${PYTHON_SERVER_REQUIREMENTS}")
     else()
       message(
         WARNING "Python service directory not found: ${PYTHON_SERVICE_DIR}")

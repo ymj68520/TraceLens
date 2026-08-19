@@ -216,7 +216,8 @@ echo -e "${GREEN}✓ Virtual environment found${NC}    ${CYAN}$VENV_DIR${NC}"
 # Both requirements files are installed so the launched services are covered:
 #   - httpserver/requirements.txt : legacy httpserver (:8090)
 #   - requirements.txt            : distributed C/S server (python_service/server, :8091)
-if [ "$FORCE_INSTALL" = "true" ] || [ ! -f "$VENV_DIR/.deps_installed" ]; then
+if [ "$FORCE_INSTALL" = "true" ] || [ ! -f "$VENV_DIR/.deps_installed" ] || \
+   ! "$PYTHON_EXEC" -c "import sqlalchemy, psycopg2, jwt, passlib" 2>/dev/null; then
     echo -ne "${YELLOW}Installing dependencies...${NC}"
     if ! $PYTHON_EXEC -m pip install -q --retries 3 -r httpserver/requirements.txt -r requirements.txt; then
         echo -e " ${RED}✗ Failed${NC}"

@@ -10,7 +10,9 @@
 #   make clean          - Clean build artifacts
 #   make rebuild        - Clean and rebuild everything
 
-.PHONY: all build start cpp python web clean rebuild help test
+.PHONY: all build start start-all cpp python web web-dev web-frontend clean rebuild \
+	help test test-cpp test-python test-python-focused test-python-investigation \
+	test-python-fast test-python-full test-all setup setup-venv setup-web docs
 
 # Default target
 all: build
@@ -57,7 +59,7 @@ start-all:
 cpp:
 	@echo "$(BLUE)➤ Starting C++ HTTP server...$(NC)"
 	@if [ -f "$(BUILD_DIR)/forensic_analyzer" ]; then \
-		cd $(BUILD_DIR) && ./forensic_analyzer --http-server 8080; \
+		cd $(BUILD_DIR) && ./forensic_analyzer --http-server $${HTTP_SERVER_PORT:-8080}; \
 	else \
 		echo "$(YELLOW)⚠ C++ binary not found. Run 'make build' first.$(NC)"; \
 		exit 1; \
@@ -73,6 +75,8 @@ python:
 		python_service/.venv/bin/pip install -r python_service/httpserver/requirements.txt; \
 		cd python_service && .venv/bin/python -m httpserver.main; \
 	fi
+
+web: web-dev
 
 web-dev:
 	@echo "$(BLUE)➤ Starting web development server...$(NC)"
@@ -100,7 +104,7 @@ setup-venv:
 	@echo "$(BLUE)➤ Setting up Python virtual environment...$(NC)"
 	@python3 -m venv python_service/.venv
 	@python_service/.venv/bin/pip install --upgrade pip
-	@python_service/.venv/bin/pip install -r python_service/httpserver/requirements.txt
+	@python_service/.venv/bin/pip install -r python_service/httpserver/requirements.txt -r python_service/requirements.txt
 	@echo "$(GREEN)✓ Virtual environment ready$(NC)"
 
 setup-web:
