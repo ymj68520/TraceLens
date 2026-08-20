@@ -43,6 +43,8 @@ async def get_job_status(
         if hasattr(service_manager, 'ingestion_job_manager') and service_manager.ingestion_job_manager:
             status = await service_manager.ingestion_job_manager.get_job_status(job_id)
             if status:
+                status = dict(status)
+                status["status"] = str(status.get("status", "unknown")).upper()
                 return JobStatusResponse(**status)
 
         # Fallback to old GraphitiService
@@ -50,7 +52,7 @@ async def get_job_status(
         if status:
             return JobStatusResponse(
                 job_id=job_id,
-                status=status.get("status", "unknown"),
+                status=str(status.get("status", "unknown")).upper(),
                 progress=int(status.get("progress", 0) * 100),
                 current_phase=status.get("current_phase", "unknown"),
                 created_at=status.get("created_at", ""),
@@ -66,7 +68,7 @@ async def get_job_status(
         raise
     except Exception as e:
         logger.error(f"Get job status failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="job status is unavailable")
+        raise HTTPException(status_code=500, detail=str(e))
 @router.delete("/jobs/{job_id}", responses={
     200: {"description": "Job cancelled successfully"},
     404: {"description": "Job not found"},
@@ -112,7 +114,7 @@ async def cancel_job(
         raise
     except Exception as e:
         logger.error(f"Cancel job failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="job cancellation failed")
+        raise HTTPException(status_code=500, detail=str(e))
 @router.get("/jobs", responses={
     200: {"description": "Jobs listed successfully"},
     500: {"description": "Internal server error"}
@@ -154,4 +156,4 @@ async def list_jobs(
 
     except Exception as e:
         logger.error(f"List jobs failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="job list is unavailable")
+        raise HTTPException(status_code=500, detail=str(e))

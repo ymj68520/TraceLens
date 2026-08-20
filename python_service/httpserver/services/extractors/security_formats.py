@@ -254,36 +254,30 @@ class CertificateExtractor(BaseExtractor):
             result.append("## Certificate Details")
             try:
                 import subprocess
-                with tempfile.NamedTemporaryFile(
-                    mode="wb", suffix=".pem", prefix="tracelens_cert_", delete=False
-                ) as tmp:
-                    tmp_path = tmp.name
-                    tmp.write(data)
+                tmp_path = file_path + '.tmp.pem'
+                with open(tmp_path, 'wb') as f:
+                    f.write(data)
 
-                try:
-                    proc = subprocess.run(
-                        ['openssl', 'x509', '-in', tmp_path, '-text', '-noout'],
-                        capture_output=True, text=True, timeout=10
-                    )
+                proc = subprocess.run(
+                    ['openssl', 'x509', '-in', tmp_path, '-text', '-noout'],
+                    capture_output=True, text=True, timeout=10
+                )
 
-                    if proc.returncode == 0:
-                        output = proc.stdout
-                        # Extract key fields
-                        for line in output.split('\n'):
-                            line = line.strip()
-                            if 'Issuer:' in line:
-                                result.append(f"**Issuer:** {line.split('Issuer:')[1].strip()}")
-                            elif 'Subject:' in line:
-                                result.append(f"**Subject:** {line.split('Subject:')[1].strip()}")
-                            elif 'Not Before:' in line:
-                                result.append(f"**Valid From:** {line.split('Not Before:')[1].strip()}")
-                            elif 'Not After :' in line:
-                                result.append(f"**Valid Until:** {line.split('Not After :')[1].strip()}")
-                finally:
-                    try:
-                        os.unlink(tmp_path)
-                    except FileNotFoundError:
-                        pass
+                if proc.returncode == 0:
+                    output = proc.stdout
+                    # Extract key fields
+                    for line in output.split('\n'):
+                        line = line.strip()
+                        if 'Issuer:' in line:
+                            result.append(f"**Issuer:** {line.split('Issuer:')[1].strip()}")
+                        elif 'Subject:' in line:
+                            result.append(f"**Subject:** {line.split('Subject:')[1].strip()}")
+                        elif 'Not Before:' in line:
+                            result.append(f"**Valid From:** {line.split('Not Before:')[1].strip()}")
+                        elif 'Not After :' in line:
+                            result.append(f"**Valid Until:** {line.split('Not After :')[1].strip()}")
+
+                os.unlink(tmp_path)
             except FileNotFoundError:
                 result.append("*OpenSSL not available for detailed certificate parsing.*")
             except: pass

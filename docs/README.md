@@ -15,10 +15,6 @@
 - **[架构总览](architecture/Overview.md)** - 系统整体架构和技术栈
 - **[C++ REST API 参考](api_reference/CPP_REST_API.md)** - C++ 服务 API（端口 8080）
 - **[Python REST API 参考](api_reference/Python_REST_API.md)** - Python 服务 API（端口 8090）
-- **[浏览器 E2E 测试](testing/browser-e2e.md)** - Phase E 可重复浏览器运行时 harness
-- **[Phase F live integration](testing/live-integration.md)** - 隔离多服务 acceptance harness 与 fake/local LLM
-- **[Phase F 产品验收](releases/phase-f-product-acceptance.md)** - live journeys、restart、extractor matrix 与 browser blocker
-- **[Phase E 发布就绪](releases/phase-e-release-readiness.md)** - 当前发布矩阵与已知限制
 
 ### 📚 核心模块文档
 - **[镜像分析器](modules/cpp/analyzers/ImageAnalyzer.md)** - 磁盘镜像分析核心

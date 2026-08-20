@@ -181,9 +181,7 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
   }, []);
 
   const loadManifest = useCallback(async (version, scopeKey, intent) => {
-    // Narrative versions (R2d) never read the A-chain manifest route: their
-    // body+citation manifest come from the task-scoped narrative read path.
-    if (!version || version.status !== 'ready' || version.report_kind === 'llm_generation') {
+    if (!version || version.status !== 'ready') {
       if (isActive(scopeKey, intent)) setManifest(null);
       return null;
     }
@@ -347,13 +345,8 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
     if (isActive(scopeKey, intent)) schedulePoll(scopeKey, intent);
   }, [beginIntent, commitSelection, isActive, loadManifest, schedulePoll]);
 
-  // R2d: exact-identity selection by report_id. Reads versionsRef (kept
-  // fresh synchronously by commitVersions), so a caller that just awaited
-  // refresh() sees the newest server list without waiting for a render.
   const selectByReportId = useCallback((reportId) => {
-    const exact = versionsRef.current.find(
-      (version) => version.report_id === reportId,
-    ) || null;
+    const exact = versionsRef.current.find((version) => version.report_id === reportId) || null;
     if (!exact) return Promise.resolve(false);
     return selectVersion(exact).then(() => true);
   }, [selectVersion]);

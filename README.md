@@ -345,7 +345,6 @@ ctest --output-on-failure
 ```bash
 cd python_service
 pytest tests/ -v
-
 # 日常快速回归（从仓库根目录或 python_service 目录调用均可）
 python scripts/test.py focused tests/unit/investigation/test_investigation_refresh_execution.py -q
 python scripts/test.py investigation

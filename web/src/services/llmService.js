@@ -56,9 +56,8 @@ export const analyzeFile = async (file, modelType = 'text', prompt = null) => {
  * 分析 DLL/EXE/SYS 等二进制文件
  * @param {Object} options - 文件路径和持久化数据库路径
  */
-export const analyzeDLL = async ({ taskId, filePath, filesDbPath, prompt = null }) => {
+export const analyzeDLL = async ({ filePath, filesDbPath, prompt = null }) => {
     return await pythonApi.post('/api/llm/analyze/dll', {
-        task_id: taskId || null,
         file_path: filePath,
         files_db_path: filesDbPath || null,
         prompt,

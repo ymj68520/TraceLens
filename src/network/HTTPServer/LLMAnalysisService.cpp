@@ -1,5 +1,4 @@
 #include "LLMAnalysisService.h"
-#include "LLMScratch.h"
 #include "DatabaseManager/SQL/file_classifier_sql.h"
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
 #include "core/PathManager/PathManager.h"
@@ -16,26 +15,7 @@ namespace fs = std::filesystem;
 namespace forensics {
 
 LLMAnalysisService::LLMAnalysisService() = default;
-
-LLMAnalysisService::~LLMAnalysisService() {
-    // D4b RAII: the task-scoped extraction scratch dies with the analysis
-    // run, on every exit path (success, failure, cancellation, exception).
-    if (!taskId_.empty()) {
-        llm_scratch::cleanupTask(taskId_);
-    }
-}
-
-void LLMAnalysisService::setTaskId(const std::string& taskId) {
-    taskId_ = taskId;
-}
-
-std::string LLMAnalysisService::TaskScratchDir(const std::string& taskId) {
-    return llm_scratch::dirForTask(taskId);
-}
-
-void LLMAnalysisService::CleanupTaskScratch(const std::string& taskId) {
-    llm_scratch::cleanupTask(taskId);
-}
+LLMAnalysisService::~LLMAnalysisService() = default;
 
 bool LLMAnalysisService::initialize() {
     try {
@@ -93,10 +73,8 @@ std::string LLMAnalysisService::resolveFileForAnalysis(const std::string& filePa
         std::replace(safeName.begin(), safeName.end(), '/', '_');
         std::replace(safeName.begin(), safeName.end(), '\\', '_');
 
-        // Use a task-scoped temp dir (D4b): per-task subtree avoids the old
-        // flat-namespace collisions across tasks and is cleaned by the
-        // service destructor / task deletion.
-        fs::path extractDir(llm_scratch::dirForTask(taskId_));
+        // Use a dedicated temp dir keyed by process to avoid collisions across tasks.
+        fs::path extractDir = fs::temp_directory_path() / "forensics_llm_extract";
         fs::create_directories(extractDir);
         fs::path outputPath = extractDir / safeName;
 
@@ -125,8 +103,7 @@ std::string LLMAnalysisService::resolveFileForAnalysis(const std::string& filePa
     }
 }
 
-int LLMAnalysisService::analyzeAllFiles(const std::string& task_id,
-                                         const std::string& filesDbPath,
+int LLMAnalysisService::analyzeAllFiles(const std::string& filesDbPath,
                                          const AnalysisOptions& options,
                                          ProgressCallback progressCallback) {
     if (!initialized_) {
@@ -163,7 +140,7 @@ int LLMAnalysisService::analyzeAllFiles(const std::string& task_id,
                 continue;  // extraction failed, warning already logged
             }
 
-            auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength, task_id);
+            auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength);
 
             if (result.success) {
                 // Store directly to _files.db in the files table
@@ -180,8 +157,7 @@ int LLMAnalysisService::analyzeAllFiles(const std::string& task_id,
     return analyzed;
 }
 
-int LLMAnalysisService::analyzeSmartFiles(const std::string& task_id,
-                                           const std::string& filesDbPath,
+int LLMAnalysisService::analyzeSmartFiles(const std::string& filesDbPath,
                                            const AnalysisOptions& options,
                                            ProgressCallback progressCallback) {
     if (!initialized_) {
@@ -214,7 +190,7 @@ int LLMAnalysisService::analyzeSmartFiles(const std::string& task_id,
                 continue;  // extraction failed, warning already logged
             }
 
-            auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength, task_id);
+            auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength);
 
             if (result.success) {
                 // Store directly to _files.db in the files table

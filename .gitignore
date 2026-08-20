@@ -37,6 +37,7 @@ gui-test-screenshots
 **/data/tasks.json
 
 # User-specific files
+.env
 *.rsuser
 *.suo
 *.user
@@ -444,7 +445,6 @@ forensics_audit.db*
 nohup.out
 extracted*
 src/http_agent/tests/test_http_agent.cpp.pre-gtest
-
 # Local environment secrets (.env leaked into git history earlier; keep only
 # the placeholder example tracked and rotate every credential that appeared)
 .env

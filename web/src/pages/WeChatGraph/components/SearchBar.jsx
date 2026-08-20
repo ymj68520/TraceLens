@@ -1,3 +1,5 @@
+import React from 'react';
+
 export default function SearchBar({ query, onChange, onRefresh }) {
     return (
         <div className="flex items-center gap-3">

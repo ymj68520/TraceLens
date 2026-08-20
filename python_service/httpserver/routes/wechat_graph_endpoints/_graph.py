@@ -63,7 +63,7 @@ async def get_graph(
         raise
     except Exception as e:
         logger.error(f"Get graph failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="wechat graph is unavailable")
+        raise HTTPException(status_code=500, detail=str(e))
 @router.get("/graph/timeline", response_model=TimelineResponse, responses={
     200: {"description": "Timeline data returned successfully"},
     404: {"description": "Task or database not found"},
@@ -102,7 +102,7 @@ async def get_timeline(
         raise
     except Exception as e:
         logger.error(f"Get timeline failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="wechat timeline is unavailable")
+        raise HTTPException(status_code=500, detail=str(e))
 @router.get("/graph/community", response_model=CommunityResponse, responses={
     200: {"description": "Community details returned successfully"},
     404: {"description": "Task or database not found"},
@@ -163,7 +163,7 @@ async def get_community(
         raise
     except Exception as e:
         logger.error(f"Get community failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="wechat community data is unavailable")
+        raise HTTPException(status_code=500, detail=str(e))
 @router.get("/graph/person/{username}", response_model=PersonEgoResponse, responses={
     200: {"description": "Ego network returned successfully"},
     404: {"description": "Task, database, or person not found"},
@@ -227,7 +227,7 @@ async def get_person(
         raise
     except Exception as e:
         logger.error(f"Get person ego network failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="wechat ego network is unavailable")
+        raise HTTPException(status_code=500, detail=str(e))
 @router.post("/graph/invalidate", response_model=CacheInvalidateResponse, responses={
     200: {"description": "Cache invalidated successfully"},
     500: {"description": "Internal server error"},
@@ -253,4 +253,4 @@ async def invalidate_cache(
         )
     except Exception as e:
         logger.error(f"Cache invalidation failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="cache invalidation failed")
+        raise HTTPException(status_code=500, detail=str(e))

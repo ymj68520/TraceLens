@@ -283,15 +283,19 @@ class Settings(BaseSettings):
                     "(select all files meeting the profile)."
     )
 
+    @property
+    def cpp_backend_base_url(self) -> str:
+        """Get the full C++ backend URL."""
+        return f"http://{self.http_server_host}:{self.http_server_port}"
+
+    @property
+    def llm_full_endpoint(self) -> str:
+        """Get the full LLM endpoint URL."""
+        return f"{self.llm_base_url}{self.llm_endpoint}"
+
 
 def mask_url_credentials(url: str) -> str:
-    """Return ``url`` with any password component masked.
-
-    Used whenever a service URL (redis://:pass@host, postgresql://user:pass@
-    host) may reach a client response or a log line; the full value stays in
-    settings only. Unparseable values degrade to a fixed string rather than
-    echoing the input.
-    """
+    """Return ``url`` with any password component masked."""
     from urllib.parse import urlsplit, urlunsplit
 
     try:
@@ -300,27 +304,13 @@ def mask_url_credentials(url: str) -> str:
         return "***"
     if parts.password is None:
         return url
-    userinfo = (
-        f"{parts.username}:***" if parts.username is not None else ":***"
-    )
+    userinfo = f"{parts.username}:***" if parts.username is not None else ":***"
     hostinfo = parts.hostname or ""
     if parts.port is not None:
         hostinfo = f"{hostinfo}:{parts.port}"
-    masked = urlunsplit(
+    return urlunsplit(
         (parts.scheme, f"{userinfo}@{hostinfo}", parts.path, parts.query, parts.fragment)
     )
-    return masked
-
-
-    @property
-    def cpp_backend_base_url(self) -> str:
-        """Get the full C++ backend URL."""
-        return f"http://{self.http_server_host}:{self.http_server_port}"
-    
-    @property
-    def llm_full_endpoint(self) -> str:
-        """Get the full LLM endpoint URL."""
-        return f"{self.llm_base_url}{self.llm_endpoint}"
 
 
 @lru_cache()

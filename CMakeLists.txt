@@ -740,7 +740,8 @@ if(BUILD_PYTHON_SERVICE)
       message(STATUS "Python service setup configured")
       message(STATUS "  Source: ${PYTHON_SERVICE_DIR}")
       message(STATUS "  Venv: ${PYTHON_VENV_DIR}")
-      message(STATUS "  Requirements: ${PYTHON_HTTP_REQUIREMENTS}; ${PYTHON_SERVER_REQUIREMENTS}")
+      message("Requirements: ${PYTHON_HTTP_REQUIREMENTS}; ${PYTHON_SERVER_REQUIREMENTS}")
+
     else()
       message(
         WARNING "Python service directory not found: ${PYTHON_SERVICE_DIR}")

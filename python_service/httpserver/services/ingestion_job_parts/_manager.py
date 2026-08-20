@@ -83,14 +83,7 @@ class IngestionJobManagerMixin:
             # Test connection
             await self._redis.ping()
             self._use_redis = True
-            # Masked: redis URLs can embed the password and logs are not a
-            # sanctioned place for credentials.
-            from ...config import mask_url_credentials
-
-            logger.info(
-                "IngestionJobManager using Redis at "
-                f"{mask_url_credentials(self.settings.redis_url)}"
-            )
+            logger.info(f"IngestionJobManager using Redis at {self.settings.redis_url}")
         except Exception as e:
             logger.warning(f"Redis not available, using in-memory storage: {e}")
             self._use_redis = False
@@ -207,9 +200,7 @@ class IngestionJobManagerMixin:
                 "connected": False,
                 "in_use": True,
                 "status": "error",
-                # Exception class only: the message reaches the redis status
-                # HTTP response and transport errors embed the URL/host.
-                "error": type(e).__name__,
+                "error": str(e),
             }
 
     async def _save_job(self, job: IngestionJob):

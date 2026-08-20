@@ -18,20 +18,4 @@ module.exports = {
     ],
     'react/prop-types': 'off',
   },
-  overrides: [
-    {
-      files: ['**/*.test.js', '**/*.test.jsx', '**/*.spec.js', '**/*.spec.jsx'],
-      globals: {
-        afterAll: 'readonly',
-        afterEach: 'readonly',
-        beforeAll: 'readonly',
-        beforeEach: 'readonly',
-        describe: 'readonly',
-        expect: 'readonly',
-        it: 'readonly',
-        test: 'readonly',
-        vi: 'readonly',
-      },
-    },
-  ],
 };

@@ -247,11 +247,11 @@ def test_settings():
 
     return Settings(
         python_http_port=8090,
-        cpp_backend_url="http://localhost:8080",
-        neo4j_uri="bolt://localhost:7687",
-        neo4j_user="neo4j",
-        neo4j_password="password",
-        redis_url="redis://localhost:6379",
+        cpp_backend_url=os.getenv("CPP_BACKEND_URL", "http://localhost:8080"),
+        neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+        neo4j_user=os.getenv("NEO4J_USER", "neo4j"),
+        neo4j_password=os.getenv("NEO4J_PASSWORD", "password"),
+        redis_url=os.getenv("REDIS_URL", "redis://localhost:6379"),
         db_output_dir="/tmp/test_db",
         cors_origins=["*"],  # Default for tests
     )
@@ -286,19 +286,19 @@ def test_app(test_settings):
 
 
 @pytest.fixture
+
 def test_client(test_app):
     """
-    Create a test client for FastAPI app.
+    Create a TestClient with the application lifespan active.
 
-    Args:
-        test_app: FastAPI application.
-
-    Returns:
-        TestClient instance.
+    The service manager and ingestion worker are initialized by FastAPI's
+    lifespan. Keeping the client context open for the test is required for
+    background ingestion jobs to outlive the request that queues them.
     """
     from fastapi.testclient import TestClient
 
-    return TestClient(test_app)
+    with TestClient(test_app) as client:
+        yield client
 
 
 # =============================================================================

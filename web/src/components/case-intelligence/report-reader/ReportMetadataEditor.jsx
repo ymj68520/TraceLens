@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react';
 import Modal from '../../common/Modal';
 import Button from '../../common/Button';
-import { useToast } from '../../common/useToast';
+import { useToast } from '../../common/ToastContext';
 import { getReportMetadata, saveReportMetadata } from '../../../services/intelligenceReportService';
 import { CASE_INFO_FIELDS, EVIDENCE_INFO_FIELDS } from './sections/metadataFields';
 

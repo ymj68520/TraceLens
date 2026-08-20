@@ -11,7 +11,7 @@ import { fetchProfiles, fetchProfileDetail } from '../../store/filterSlice';
 
 export default function FilterProfileSelector({ value, onChange, disabled }) {
   const dispatch = useDispatch();
-  const { profiles, profileDetail, status } = useSelector((s) => s.filter);
+  const { profiles, profileDetail, status, detailStatus } = useSelector((s) => s.filter);
   const [showRules, setShowRules] = useState(false);
 
   // Load profiles on mount
@@ -144,6 +144,7 @@ function RuleSection({
   minSize,
   maxSize,
   includeDeleted,
+  includeAllocated,
 }) {
   const hasRules =
     (extensions && extensions.length > 0) ||

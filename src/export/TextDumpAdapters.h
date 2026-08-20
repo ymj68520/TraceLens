@@ -32,9 +32,7 @@ private:
 // exporter's ITextDumpConverter interface.
 class MarkitdownTextDumpConverter final : public ITextDumpConverter {
 public:
-    explicit MarkitdownTextDumpConverter(forensics::llm::MarkitdownProxy& proxy,
-                                        std::string taskId = "",
-                                        std::string workspaceRoot = "");
+    explicit MarkitdownTextDumpConverter(forensics::llm::MarkitdownProxy& proxy);
     bool isAvailable() override;
     MarkdownDeltaResult convertOne(
         const std::filesystem::path& inputRoot,
@@ -47,8 +45,6 @@ public:
 
 private:
     forensics::llm::MarkitdownProxy& proxy_;
-    std::string task_id_;
-    std::string workspace_root_;
 };
 
 } // namespace textdump

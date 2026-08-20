@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { getLargestFiles, getExtensionAnalysis } from '../services/forensicsService';
 
 /**
@@ -10,7 +10,7 @@ export const useFilesData = (taskId) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchLargestFiles = useCallback(async (limit = 100) => {
+  const fetchLargestFiles = async (limit = 100) => {
     if (!taskId) return;
     
     setLoading(true);
@@ -25,9 +25,9 @@ export const useFilesData = (taskId) => {
     } finally {
       setLoading(false);
     }
-  }, [taskId]);
+  };
 
-  const fetchExtensionAnalysis = useCallback(async () => {
+  const fetchExtensionAnalysis = async () => {
     if (!taskId) return;
     
     setLoading(true);
@@ -42,14 +42,15 @@ export const useFilesData = (taskId) => {
     } finally {
       setLoading(false);
     }
-  }, [taskId]);
+  };
 
   useEffect(() => {
     if (taskId) {
       fetchLargestFiles();
       fetchExtensionAnalysis();
     }
-  }, [taskId, fetchLargestFiles, fetchExtensionAnalysis]);
+  }, [taskId]);
+
   return {
     largestFiles,
     extensionAnalysis,

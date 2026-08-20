@@ -10,7 +10,6 @@ import { parseFile } from '../../services/officeService';
 const OFFICE_EXTENSIONS = ['.pptx', '.ppt', '.xlsx', '.xls', '.docx', '.doc'];
 
 const OfficePreviewTab = ({
-  taskId,
   filteredFiles,
   officePreview,
   setOfficePreview,
@@ -28,7 +27,7 @@ const OfficePreviewTab = ({
     setOfficeError(null);
     setOfficePreview(null);
     try {
-      const result = await parseFile(taskId, filePath);
+      const result = await parseFile(filePath);
       setOfficePreview({ file, ...result });
     } catch (err) {
       setOfficeError(err.message || '解析失败');

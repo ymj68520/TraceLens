@@ -103,10 +103,10 @@ Python FastAPI 服务作为 C++ 后端的重要补充，提供以下核心能力
 #### 5. Case Analysis Routes（案例分析路由）
 
 **功能**：
-- 旧案例分析生成入口（`POST /api/llm/case-analysis`，已退役并返回 HTTP 410；仅保留兼容反馈）
+- 案例分析（`POST /api/llm/case-analysis`）
 - 保存分析描述（`POST /api/llm/case-analysis/description`）
-- 获取历史分析报告（`GET /api/llm/case-analysis/{task_id}/report`）
-- 获取历史过滤文件（`GET /api/llm/case-analysis/{task_id}/filtered-files`）
+- 获取分析报告（`GET /api/llm/case-analysis/{task_id}/report`）
+- 获取过滤文件（`GET /api/llm/case-analysis/{task_id}/filtered-files`）
 
 #### 6. Multi-Image Analysis Routes（多镜像分析路由）
 

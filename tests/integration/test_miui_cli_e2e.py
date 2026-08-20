@@ -55,7 +55,7 @@ def verify_miui_route(analyzer: Path, root: Path) -> None:
     output = root / "out"
     secret = "TASK8_E2E_SECRET_SENTINEL"
     result = run([
-        str(analyzer), str(backup), "--android-analyze", "--no-ai",
+        str(analyzer), str(backup), "--android-analyze",
         "--android-source", "miui-backup",
         "--backup-password", secret,
         "--db-dir", str(output),
@@ -105,7 +105,7 @@ def verify_duplicate_backup_is_failure_only(analyzer: Path, root: Path) -> None:
         "</packages></MIUI-backup>", encoding="utf-8")
 
     output = root / "out"
-    result = run([str(analyzer), str(backup), "--android-analyze", "--no-ai",
+    result = run([str(analyzer), str(backup), "--android-analyze",
                   "--android-source", "miui-backup", "--db-dir", str(output)])
     assert_true(result.returncode == 0, f"duplicate backup run failed: {result.stdout}{result.stderr}")
     with sqlite3.connect(output / "backup_files.db") as connection:
@@ -126,7 +126,7 @@ def verify_duplicate_backup_is_failure_only(analyzer: Path, root: Path) -> None:
 def verify_malformed_input(analyzer: Path) -> None:
     secret = "TASK8_MALFORMED_SECRET"
     result = run([
-        str(analyzer), "/evidence/miui", "--android-analyze", "--no-ai",
+        str(analyzer), "/evidence/miui", "--android-analyze",
         "--android-source", "--backup-password", secret,
     ])
     combined = result.stdout + result.stderr
@@ -138,7 +138,7 @@ def verify_malformed_input(analyzer: Path) -> None:
                 "malformed CLI reached analysis before rejection")
 
     unknown = run([
-        str(analyzer), "/evidence/miui", "--android-analyze", "--no-ai",
+        str(analyzer), "/evidence/miui", "--android-analyze",
         "--android-source", "vendor-backup",
     ])
     assert_true(unknown.returncode == 2, f"unknown source returned {unknown.returncode}")
@@ -151,7 +151,7 @@ def verify_secure_password_input(analyzer: Path, root: Path) -> None:
     output = root / "secure-out"
     secret = "MIUI_SECURE_INPUT_SENTINEL"
     result = subprocess.run([
-        str(analyzer), str(backup), "--android-analyze", "--no-ai",
+        str(analyzer), str(backup), "--android-analyze",
         "--android-source", "miui-backup",
         "--backup-password-stdin", "--db-dir", str(output),
     ], input=secret + "\n", capture_output=True, text=True, check=False)
@@ -169,7 +169,7 @@ def verify_tmpdir_isolation(analyzer: Path, root: Path) -> None:
     environment = os.environ.copy()
     environment["TMPDIR"] = str(hostile_tmp)
     result = subprocess.run([
-        str(analyzer), str(backup), "--android-analyze", "--no-ai",
+        str(analyzer), str(backup), "--android-analyze",
         "--android-source", "miui-backup", "--db-dir", str(output),
     ], capture_output=True, text=True, check=False, env=environment)
     assert_true(result.returncode == 0, f"TMPDIR isolation run failed: {result.stdout}{result.stderr}")
@@ -221,7 +221,7 @@ def verify_staged_sqlite_path_with_uri_characters(analyzer: Path, root: Path) ->
     environment = os.environ.copy()
     environment["TMPDIR"] = str(temp_root)
     result = subprocess.run([
-        str(analyzer), str(backup), "--android-analyze", "--no-ai", "--android-source", "miui-backup",
+        str(analyzer), str(backup), "--android-analyze", "--android-source", "miui-backup",
         "--db-dir", str(output),
     ], capture_output=True, text=True, check=False, env=environment)
     assert_true(result.returncode == 0, f"URI-character staging run failed: {result.stdout}{result.stderr}")
@@ -239,7 +239,7 @@ def verify_password_json_rejects_malformed_object_but_accepts_bare_password(
     malformed_backup = create_corrupt_encrypted_backup(root / "malformed", '{"key":"!"}')
     malformed_output = root / "malformed-out"
     malformed_result = run([
-        str(analyzer), str(malformed_backup), "--android-analyze", "--no-ai",
+        str(analyzer), str(malformed_backup), "--android-analyze",
         "--android-source", "miui-backup", "--db-dir", str(malformed_output),
     ])
     assert_true(malformed_result.returncode == 0,
@@ -255,7 +255,7 @@ def verify_password_json_rejects_malformed_object_but_accepts_bare_password(
     bare_backup = create_corrupt_encrypted_backup(root / "bare", "bare printable password")
     bare_output = root / "bare-out"
     bare_result = run([
-        str(analyzer), str(bare_backup), "--android-analyze", "--no-ai",
+        str(analyzer), str(bare_backup), "--android-analyze",
         "--android-source", "miui-backup", "--db-dir", str(bare_output),
     ])
     assert_true(bare_result.returncode == 0,
@@ -276,7 +276,7 @@ def verify_corrupt_sqlite_and_invalid_key_are_parse_errors(analyzer: Path, root:
                             ("noncanonical-padding", '{"key":"' + "A" * 42 + 'B="}')):
         backup = create_corrupt_encrypted_backup(root / label, key_hint)
         output = root / f"{label}-out"
-        result = run([str(analyzer), str(backup), "--android-analyze", "--no-ai",
+        result = run([str(analyzer), str(backup), "--android-analyze",
                       "--android-source", "miui-backup", "--db-dir", str(output)])
         assert_true(result.returncode == 0, f"corrupt database run failed: {result.stdout}{result.stderr}")
         with sqlite3.connect(output / "backup_files.db") as connection:

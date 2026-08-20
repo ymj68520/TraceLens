@@ -52,9 +52,7 @@ public:
     SingleConversionResult convertOneToMarkdown(
         const std::string& inputRoot,
         const std::string& inputFile,
-        const std::string& outputRoot,
-        const std::string& taskId = "",
-        const std::string& workspaceRoot = "");
+        const std::string& outputRoot);
 
     /**
      * @brief Convert a file to markdown via the Python markitdown service.
@@ -63,9 +61,7 @@ public:
      * @return Markdown content, or empty string on failure.
      *         On error, the returned string starts with "Error: ".
      */
-    std::string convertToMarkdown(const std::string& filePath,
-                                  const std::string& taskId = "",
-                                  const std::string& workspaceRoot = "");
+    std::string convertToMarkdown(const std::string& filePath);
 
     /**
      * @brief Result of a batch directory conversion.
@@ -94,9 +90,7 @@ public:
      *         BatchResult::ok is false and .error describes the problem.
      */
     BatchResult batchConvertToMarkdown(const std::string& inputDir,
-                                        const std::string& outputDir,
-                                        const std::string& taskId = "",
-                                        const std::string& workspaceRoot = "");
+                                        const std::string& outputDir);
 
     /**
      * @brief Check if the markitdown service is available.

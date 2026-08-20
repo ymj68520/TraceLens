@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
@@ -14,10 +14,8 @@ const Logs = () => {
   const [isStreaming, setIsStreaming] = useState(false);
   const logContainerRef = useRef(null);
   const eventSourceRef = useRef(null);
-  const isStreamingRef = useRef(false);
-  isStreamingRef.current = isStreaming;
 
-  const fetchLogs = useCallback(async (service) => {
+  const fetchLogs = async (service) => {
     try {
       const response = await fetch(`${PYTHON_BASE}/api/system/logs/${service}?lines=200`);
       const data = await response.json();
@@ -28,9 +26,9 @@ const Logs = () => {
       console.error('Failed to fetch logs:', error);
       setLogs(['Error: Failed to fetch logs from server.']);
     }
-  }, []);
+  };
 
-  const startStreaming = useCallback((service) => {
+  const startStreaming = (service) => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
@@ -48,23 +46,23 @@ const Logs = () => {
       setIsStreaming(false);
       eventSource.close();
     };
-  }, []);
+  };
 
-  const stopStreaming = useCallback(() => {
+  const stopStreaming = () => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
     setIsStreaming(false);
-  }, []);
+  };
 
   useEffect(() => {
     fetchLogs(activeService);
-    if (isStreamingRef.current) {
+    if (isStreaming) {
       startStreaming(activeService);
     }
-    return stopStreaming;
-  }, [activeService, fetchLogs, startStreaming, stopStreaming]);
+    return () => stopStreaming();
+  }, [activeService]);
 
   useEffect(() => {
     if (isAutoScroll && logContainerRef.current) {

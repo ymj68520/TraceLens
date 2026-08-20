@@ -36,6 +36,7 @@ export default function KnowledgeGraph() {
     const { tasks } = useSelector((state) => state.tasks);
 
     const [status, setStatus] = useState(null);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [taskGraphs, setTaskGraphs] = useState([]);
 
@@ -75,11 +76,6 @@ export default function KnowledgeGraph() {
     const [highlightLinks, setHighlightLinks] = useState(new Set());
     const [maxNodes, setMaxNodes] = useState(200);
     const graphRef = useRef(null);
-    const taskIdRef = useRef(taskId);
-    const ingestRunRef = useRef(0);
-    const ingestIntervalRef = useRef(null);
-    const ingestTimerRef = useRef(null);
-    taskIdRef.current = taskId;
 
     const [activeTab, setActiveTab] = useState('graph');
     const PAGE_SIZE = 20;
@@ -93,7 +89,8 @@ export default function KnowledgeGraph() {
             setError(null);
         } catch (err) {
             setStatus({ status: 'error', neo4j_connected: false });
-            setError(err.message || '获取图谱状态失败');
+        } finally {
+            setLoading(false);
         }
     }, [taskId]);
 
@@ -101,9 +98,7 @@ export default function KnowledgeGraph() {
         try {
             const result = await listTaskGraphs();
             setTaskGraphs(result.task_ids || []);
-        } catch (err) {
-            setError(`获取图谱任务失败: ${err.message || '未知错误'}`);
-        }
+        } catch { }
     }, []);
 
     useEffect(() => {
@@ -124,31 +119,16 @@ export default function KnowledgeGraph() {
         if (taskId) fetchStatus();
     }, [taskId, fetchStatus]);
 
-    useEffect(() => {
-        taskIdRef.current = taskId;
-        ingestRunRef.current += 1;
-        clearInterval(ingestIntervalRef.current);
-        clearTimeout(ingestTimerRef.current);
-        ingestIntervalRef.current = null;
-        ingestTimerRef.current = null;
-    }, [taskId]);
-
-    useEffect(() => () => {
-        clearInterval(ingestIntervalRef.current);
-        clearTimeout(ingestTimerRef.current);
-    }, []);
-
     // Poll re-ingestion job status
     useEffect(() => {
         if (!reingestJobId) return;
 
         let isMounted = true;
-        const pollingTaskId = taskId;
 
         const pollStatus = async () => {
             try {
                 const status = await getJobStatus(reingestJobId);
-                if (!isMounted || taskIdRef.current !== pollingTaskId) return;
+                if (!isMounted) return;
 
                 setReingestProgress(status.progress || 0);
                 setReingestMessage(status.current_phase || 'Processing...');
@@ -172,7 +152,7 @@ export default function KnowledgeGraph() {
                     setReingestMessage('操作已取消');
                 }
             } catch (err) {
-                if (!isMounted || taskIdRef.current !== pollingTaskId) return;
+                if (!isMounted) return;
                 setReingesting(false);
                 setReingestProgress(0);
                 setReingestMessage('');
@@ -188,7 +168,7 @@ export default function KnowledgeGraph() {
             isMounted = false;
             clearInterval(interval);
         };
-    }, [reingestJobId, taskId, fetchStatus, fetchTaskGraphs]);
+    }, [reingestJobId, fetchStatus, fetchTaskGraphs]);
 
     // ── Graph visualization ──────────────────────────────────────────────────────
     const fetchGraphData = useCallback(async () => {
@@ -209,7 +189,7 @@ export default function KnowledgeGraph() {
         if (activeTab === 'graph' && taskId && graphData.nodes.length === 0 && !graphLoading) {
             fetchGraphData();
         }
-    }, [activeTab, taskId, graphData.nodes.length, graphLoading, fetchGraphData]);
+    }, [activeTab, taskId]);
 
     const handleNodeClick = useCallback((node) => {
         setSelectedNode(node);
@@ -262,29 +242,29 @@ export default function KnowledgeGraph() {
     };
 
     // ── Entities ─────────────────────────────────────────────────────────────────
-    const fetchEntities = useCallback(async (page = 1) => {
+    const fetchEntities = async (page = 1) => {
         if (!taskId) return;
+        setLoading(true);
         try {
             const result = await listEntities(taskId, { page, pageSize: PAGE_SIZE });
             setEntities(result.entities || []);
             setEntitiesTotalCount(result.total_count || 0);
             setEntitiesPage(page);
-        } catch (err) {
-            setError(`获取实体列表失败: ${err.message || '未知错误'}`);
-        }
-    }, [taskId]);
+        } catch { setError('获取实体列表失败'); }
+        finally { setLoading(false); }
+    };
 
-    const fetchRelationships = useCallback(async (page = 1) => {
+    const fetchRelationships = async (page = 1) => {
         if (!taskId) return;
+        setLoading(true);
         try {
             const result = await listRelationships(taskId, { page, pageSize: PAGE_SIZE });
             setRelationships(result.relationships || []);
             setRelationshipsTotalCount(result.total_count || 0);
             setRelationshipsPage(page);
-        } catch (err) {
-            setError(`获取关系列表失败: ${err.message || '未知错误'}`);
-        }
-    }, [taskId]);
+        } catch { setError('获取关系列表失败'); }
+        finally { setLoading(false); }
+    };
 
     // ── Ingest ───────────────────────────────────────────────────────────────────
     const handleIngest = async () => {
@@ -377,7 +357,7 @@ export default function KnowledgeGraph() {
         if (!taskId) return;
         if (activeTab === 'entities') fetchEntities(1);
         else if (activeTab === 'relationships') fetchRelationships(1);
-    }, [activeTab, taskId, fetchEntities, fetchRelationships]);
+    }, [activeTab, taskId]);
 
     // ── Render helpers ────────────────────────────────────────────────────────────
     const renderTaskSelector = () => (
@@ -590,7 +570,7 @@ export default function KnowledgeGraph() {
                     <div className="flex flex-col items-center justify-center h-80 text-slate-400">
                         <span className="text-5xl mb-3">📭</span>
                         <p className="mb-2">暂无图谱数据</p>
-                        <p className="text-sm">请先点击“导入数据”，再点击“加载图谱”</p>
+                        <p className="text-sm">请先点击"导入数据"，再点击"加载图谱"</p>
                     </div>
                 ) : (
                     <div className="flex gap-4">

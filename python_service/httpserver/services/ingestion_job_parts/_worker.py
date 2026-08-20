@@ -103,7 +103,7 @@ class IngestionJobWorkerMixin:
             await self._update_job_status(
                 job_id,
                 JobStatus.FAILED,
-                error="ingestion job failed"
+                error=str(e)
             )
 
     async def _process_full_ingestion(self, job_id: str, task_id: str):
@@ -597,7 +597,7 @@ class IngestionJobWorkerMixin:
             )
         except Exception as e:
             logger.warning(f"[{task_id}] Path-A episode ingestion failed (non-fatal): {e}")
-            stats["error"] = type(e).__name__
+            stats["error"] = str(e)
         return stats
 
     async def _process_single_file(self, job_id: str, task_id: str, file_id: int):
@@ -721,7 +721,7 @@ class IngestionJobWorkerMixin:
         except Exception as e:
             logger.warning(f"[{task_id}] batch_create_mentioned_in_edges failed: {e}")
             return type(
-                "R", (), {"mentioned_in_edges_created": 0, "errors": [type(e).__name__]}
+                "R", (), {"mentioned_in_edges_created": 0, "errors": [str(e)]}
             )()
 
         # Additionally link entities to File entities by name match as a safety

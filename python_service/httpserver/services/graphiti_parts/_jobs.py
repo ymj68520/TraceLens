@@ -139,7 +139,7 @@ class GraphitiJobsMixin:
             logger.error(traceback.format_exc())
             self._jobs[job_id].update({
                 "status": "failed",
-                "message": "ingestion job failed",
+                "message": str(e),
             })
 
     def _update_job_progress(self, job_id: str, progress: float):

@@ -509,8 +509,8 @@ for db in d.get('databases', []):
         fi
     fi
 
-    # 4.4 Current report surface: the legacy Chain B writer is retired. Keep this
-    # deployment smoke read-only so it does not require Report Evidence or an LLM.
+    # 4.4 Current report surface: Chain B generation is retired. Keep this
+    # deployment smoke read-only; explicit R2 generation is analyst-triggered.
     echo -e "${C_DIM}验证当前取证报告 API 已挂载（不触发生成）...${C_RST}"
     REPORT_CODE=$(curl -s -m 10 -o /dev/null -w "%{http_code}" \
         "$PY_URL/api/reports?scope_type=task&scope_id=$TASK_ID" 2>/dev/null || echo "000")
@@ -559,7 +559,7 @@ for p in paths:
     print('    ' + p + ' \\\\')
 " 2>/dev/null
     echo
-    echo -e "  ${C_DIM}带回后：使用 R2 Report Evidence + /api/reports/generate 显式生成报告${C_RST}"
+    echo -e "  ${C_DIM}带回后：选择 Report Evidence，通过 R2 /api/reports/generate 显式生成并按 generation_id 轮询${C_RST}"
 fi
 
 # ============================================================

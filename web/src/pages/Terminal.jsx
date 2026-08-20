@@ -1,14 +1,14 @@
+import { useState } from 'react';
 import TerminalOutput from '../components/common/TerminalOutput';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import { useTranslation } from '../hooks/useTranslation';
+import { CPP_BASE_URL, PYTHON_BASE_URL } from '../services/api';
 
-// 动态推导服务地址，跨机访问时用浏览器当前 host。
-const CPP_BASE = `http://${window.location.hostname}:8666`;
-const PYTHON_BASE = `http://${window.location.hostname}:8090`;
-// 端口从地址中提取，避免硬编码数字与实际端口不一致。
-const CPP_PORT = new URL(CPP_BASE).port;
-const PYTHON_PORT = new URL(PYTHON_BASE).port;
+const CPP_BASE = CPP_BASE_URL;
+const PYTHON_BASE = PYTHON_BASE_URL;
+const CPP_PORT = new URL(CPP_BASE, window.location.origin).port || '80';
+const PYTHON_PORT = new URL(PYTHON_BASE, window.location.origin).port || '80';
 
 const Terminal = () => {
   const { t } = useTranslation();

@@ -3,13 +3,12 @@ import Card from './Card';
 import Button from './Button';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useTranslation } from '../../hooks/useTranslation';
+import { CPP_BASE_URL, PYTHON_API_BASE_URL } from '../../services/api';
 
-// 动态推导服务地址，跨机访问时用浏览器当前 host。
-const PYTHON_BASE = `http://${window.location.hostname}:8090`;
-const WS_BASE = `ws://${window.location.hostname}:8666`;
-// 端口从地址中提取，避免硬编码数字与实际端口不一致。
-const CPP_PORT = new URL(`http://${window.location.hostname}:8666`).port;
-const PYTHON_PORT = new URL(PYTHON_BASE).port;
+const PYTHON_BASE = PYTHON_API_BASE_URL;
+const WS_BASE = CPP_BASE_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+const CPP_PORT = new URL(CPP_BASE_URL, window.location.origin).port || '80';
+const PYTHON_PORT = new URL(PYTHON_BASE, window.location.origin).port || '80';
 
 const TERMINAL_COLORS = {
   cpp: '#10b981',    // green
@@ -32,18 +31,57 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
   });
   const [autoScroll, setAutoScroll] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
+  const eventSourceRef = useRef(null);
 
-  const cppEndRef = useRef(null);
-  const pythonEndRef = useRef(null);
-  const webEndRef = useRef(null);
-  const activeEndRef = activeTab === 'cpp' ? cppEndRef : activeTab === 'python' ? pythonEndRef : webEndRef;
+  const terminalEndRefs = {
+    cpp: useRef(null),
+    python: useRef(null),
+    web: useRef(null),
+  };
 
   // Scroll to bottom when new logs arrive
   useEffect(() => {
-    if (autoScroll && activeEndRef.current) {
-      activeEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (autoScroll && terminalEndRefs[activeTab]?.current) {
+      terminalEndRefs[activeTab].current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [logs, activeTab, autoScroll, activeEndRef]);
+  }, [logs, activeTab, autoScroll]);
+
+  const startStreaming = (source) => {
+    if (eventSourceRef.current) eventSourceRef.current.close();
+    if (source === 'web') return;
+
+    const endpoints = {
+      cpp: `${PYTHON_BASE}/api/system/logs-stream/cpp`,
+      python: `${PYTHON_BASE}/api/system/logs-stream/python`,
+    };
+
+    const url = endpoints[source];
+    if (!url) return;
+
+    setIsStreaming(true);
+    const es = new EventSource(url);
+    eventSourceRef.current = es;
+
+    es.onmessage = (event) => {
+      try {
+        const entry = JSON.parse(event.data);
+        setLogs(prev => ({
+          ...prev,
+          [source]: [...prev[source].slice(-499), entry],
+        }));
+      } catch (e) {
+        setLogs(prev => ({
+          ...prev,
+          [source]: [...prev[source].slice(-499), { timestamp: '', level: 'INFO', message: event.data }],
+        }));
+      }
+    };
+
+    es.onerror = () => {
+      setIsStreaming(false);
+      es.close();
+    };
+  };
 
   // Fetch logs via REST API
   const fetchLogs = async (source) => {
@@ -270,7 +308,7 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
             <div className="space-y-1">
               {logs[activeTab].map((entry, index) => formatLogEntry(entry, index))}
             </div>
-            <div ref={activeEndRef} />
+            <div ref={terminalEndRefs[activeTab]} />
           </>
         )}
       </div>

@@ -412,11 +412,10 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
 
             textdump::FileExtractorTextDumpSource source(args.image_path, effectiveRawDb);
             textdump::MarkitdownTextDumpConverter converter(
-                forensics::llm::MarkitdownProxy::instance(), args.task_id,
-                std::filesystem::weakly_canonical(originalRoot.parent_path()).string());
+                forensics::llm::MarkitdownProxy::instance());
             textdump::TextDumpExporter exporter(source, converter);
             const auto result = exporter.run(
-                {originalRoot, markdownRoot, args.dump_text_max_bytes, args.task_id});
+                {originalRoot, markdownRoot, args.dump_text_max_bytes});
 
             std::cout << "Text dump: " << result.processed_files << "/"
                       << result.candidate_files << " files processed\n"
@@ -493,7 +492,6 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
             args.android_source == "miui-backup" ? AndroidSourceMode::MiuiBackup :
                                                     AndroidSourceMode::LogicalDir;
         androidAnalyzer->setSourceMode(mode);
-        androidAnalyzer->setSkipAI(args.skip_ai);
         std::string backupPassword = args.backup_password;
         if (args.backup_password_stdin || args.backup_password_fd >= 0) {
             if (!backupPassword.empty()) {

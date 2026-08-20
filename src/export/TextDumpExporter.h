@@ -70,7 +70,6 @@ struct TextDumpOptions {
     std::filesystem::path original_root;
     std::filesystem::path markdown_root;
     std::optional<uint64_t> max_bytes;
-    std::string task_id;  // task anchor for the Python conversion service (D2b)
 };
 
 struct TextDumpResult {

@@ -3,7 +3,7 @@
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
 #include "LLMPythonProxy.h"
-#include "LLMAnalysisService.h"
+#include "network/HTTPServer/LLMScratch.h"
 #include "EventClusterAnalyzer.h"
 #include "ConfigManager/ConfigManager.h"
 #include "PathManager/PathManager.h"
@@ -340,7 +340,7 @@ bool TaskManager::delete_task(const std::string& id) {
 
     // D4b: remove this task's LLM extraction scratch (crash leftovers;
     // normal exits are cleaned by the service destructor).
-    forensics::LLMAnalysisService::CleanupTaskScratch(id);
+    forensics::llm_scratch::cleanupTask(id);
 
     // If task was not running, we can safely delete its files now.
     // If it WAS running, the background thread will clean it up when it exits

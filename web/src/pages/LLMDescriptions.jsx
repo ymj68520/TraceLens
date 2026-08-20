@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import Card from '../components/common/Card';
@@ -46,7 +46,7 @@ const LLMDescriptions = () => {
     }, [dispatch]);
 
     // Fetch LLM results when taskId changes
-    const fetchResults = useCallback(async () => {
+    const fetchResults = async () => {
         if (!taskId) {
             setLlmResults(null);
             setError(null);
@@ -69,11 +69,11 @@ const LLMDescriptions = () => {
         } finally {
             setLoading(false);
         }
-    }, [taskId]);
+    };
 
     useEffect(() => {
         fetchResults();
-    }, [fetchResults]);
+    }, [taskId]);
 
     // Filter tasks with LLM analysis enabled and completed
     const llmEnabledTasks = tasks.filter(

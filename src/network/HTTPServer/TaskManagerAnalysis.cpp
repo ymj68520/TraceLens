@@ -46,8 +46,6 @@ void TaskManager::start_analysis(const std::string& task_id) {
                             std::filesystem::remove_all(task_root);
                         }
                     } catch (...) {}
-                    // D4b: also drop the task-scoped LLM extraction scratch.
-                    forensics::LLMAnalysisService::CleanupTaskScratch(id);
                 }
             }
         } cleanup_handler{*this, task_id};
@@ -342,8 +340,6 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     // Provide image + raw DB paths so files can be extracted from the
                     // image before LLM analysis (files live inside the image, not on disk).
                     llmService.setImagePaths(imagePath, effectiveRawDb);
-                    // D4b: scope the extraction scratch to this task.
-                    llmService.setTaskId(task_id);
                     auto& config = forensics::ConfigManager::instance();
                     forensics::LLMAnalysisService::AnalysisOptions llmOpts;
                     llmOpts.maxFiles = config.getLLMMaxFiles();
@@ -355,7 +351,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     if (task.llm_mode == "full") {
                         // Full mode: analyze all files
                         update_progress(task_id, TaskPhase::LLM_ANALYSIS, 30, "Full mode: Analyzing all files...");
-                        analyzedCount = llmService.analyzeAllFiles(task_id, fileDbPath, llmOpts,
+                        analyzedCount = llmService.analyzeAllFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) {
                                 if (is_task_cancelled(task_id)) return; // Wait, analyzeAllFiles doesn't support cancellation return value?
                                 int progress = 30;
@@ -371,7 +367,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                         // For smart mode, we scan more files initially (up to 2x global limit) to provide better context
                         llmOpts.maxFiles = std::max(llmOpts.maxFiles, static_cast<size_t>(1000));
 
-                        analyzedCount = llmService.analyzeSmartFiles(task_id, fileDbPath, llmOpts,
+                        analyzedCount = llmService.analyzeSmartFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) {
                                 if (is_task_cancelled(task_id)) return;
                                 int progress = 30;

@@ -378,7 +378,7 @@ class GraphitiIngestMixin:
 
         except Exception as e:
             logger.error(f"[{task_id}] Episode ingestion failed: {e}", exc_info=True)
-            return {"success": False, "error": "episode ingestion failed", "episodes_built": 0}
+            return {"success": False, "error": str(e), "episodes_built": 0}
 
     @staticmethod
     def _chunk_text_for_graph(text: str, max_chars: int = 3000) -> List[str]:
@@ -620,6 +620,6 @@ class GraphitiIngestMixin:
             logger.error(f"[{case_id}] Incremental case-level graph ingestion failed: {e}", exc_info=True)
             return {
                 "success": False,
-                "error": "graph ingestion failed",
+                "error": str(e),
             }
 

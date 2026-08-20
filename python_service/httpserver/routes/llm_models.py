@@ -27,9 +27,7 @@ class AnalyzeRequest(BaseModel):
     prompt: Optional[str] = Field(None, description="Custom analysis prompt")
     max_tokens: Optional[int] = Field(None, ge=1, le=8192, description="Max response tokens")
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0, description="Model temperature")
-    # Deprecated: the persistence target is always resolved server-side from
-    # task_id; a supplied value must exactly match that resolution.
-    files_db_path: Optional[str] = Field(None, description="(deprecated) Path to _files.db; validated against the task-owned database")
+    files_db_path: Optional[str] = Field(None, description="Path to _files.db for persisting result")
 
 
 class AnalyzeResponse(BaseModel):
@@ -103,11 +101,14 @@ class ToggleRelevanceRequest(BaseModel):
 class EventClusterAnalyzeRequest(BaseModel):
     """Request model for event cluster analysis."""
     task_id: str = Field(..., description="Task ID")
-    time_window: int = Field(..., description="Time window (timestamp / bucket_seconds)")
-    event_type: str = Field(..., description="Event type")
-    parent_directory: Optional[str] = Field("", description="Parent directory of the events")
+    time_window: Optional[int] = Field(None, description="Legacy bucket index (timestamp / bucket_seconds)")
+    event_type: Optional[str] = Field(None, description="Legacy event type")
+    parent_directory: Optional[str] = Field("", description="Legacy parent directory")
+    group_descriptor: Optional[Dict[str, Any]] = Field(
+        None, description="Backend-emitted Timeline Group descriptor"
+    )
     prompt: Optional[str] = Field(None, description="Custom prompt")
-    bucket_seconds: int = Field(60, description="Clustering time window in seconds used to compute time_window (default 60)")
+    bucket_seconds: int = Field(60, description="Legacy clustering window in seconds")
 
 
 class ToggleClusterRelevanceRequest(BaseModel):

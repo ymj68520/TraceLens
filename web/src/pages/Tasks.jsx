@@ -8,7 +8,7 @@ import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Spinner from '../components/common/Spinner';
 import ConfirmDialog from '../components/common/ConfirmDialog';
-import { useToast } from '../components/common/useToast';
+import { useToast } from '../components/common/ToastContext';
 import { TASK_STATUS, TASK_PRIORITY } from '../utils/constants';
 import TaskTable from '../components/tasks/TaskTable';
 import CreateTaskModal from '../components/tasks/CreateTaskModal';
@@ -59,7 +59,7 @@ const Tasks = () => {
     return m;
   }, [cases]);
 
-  // Background silent polling only. Report generation is analyst-triggered in R2.
+  // Background silent polling only; report generation remains explicit in the R2 workflow.
   useTaskAutoTrigger();
 
   const handleFilterChange = (key, value) => dispatch(setFilters({ [key]: value }));

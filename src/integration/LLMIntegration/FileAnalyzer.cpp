@@ -108,8 +108,7 @@ void FileAnalyzer::initDefaultPrompts() {
 }
 
 AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
-                                          size_t maxContentLength,
-                                          const std::string& taskId) {
+                                          size_t maxContentLength) {
     AnalysisResult result;
     result.filePath = filePath;
 
@@ -151,7 +150,7 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
     if (useMarkitdown) {
         auto& markitdown = MarkitdownProxy::instance();
         if (markitdown.isServiceAvailable()) {
-            content = markitdown.convertToMarkdown(filePath, taskId, fs::path(filePath).parent_path().string());
+            content = markitdown.convertToMarkdown(filePath);
             if (!content.empty() && content.find("Error:") != 0) {
                 LOG_DEBUG("Successfully converted via markitdown: " + filePath);
             } else {
@@ -172,7 +171,7 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
             LOG_DEBUG("Using OfficeAnalyzer (fallback)");
             OfficeAnalyzer officeAnalyzer;
             officeAnalyzer.setPythonServiceUrl(ConfigManager::instance().getPythonServiceUrl());
-            content = officeAnalyzer.analyze(filePath, taskId);
+            content = officeAnalyzer.analyze(filePath);
         } else if (result.fileType == "Archive" || result.fileType == "Binary" || result.fileType == "Database") {
             LOG_DEBUG("Binary/Archive detected. Skipping content read.");
             content = "[Binary/Archive File Content Omitted. Analysis based on metadata only.]";

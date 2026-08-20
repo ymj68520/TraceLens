@@ -208,7 +208,7 @@ class FileAnalyzer:
                     processed_count += 1
                     if progress_callback:
                         await progress_callback(processed_count, total, file_path)
-                    return {"file_path": file_path, "description": "", "error": "file analysis failed", "success": False}
+                    return {"file_path": file_path, "description": "", "error": str(e), "success": False}
 
         # Run analysis tasks concurrently (only for files without existing descriptions)
         tasks = [analyze_file(fp) for fp in files_to_analyze]
@@ -356,7 +356,7 @@ class FileAnalyzer:
                             results.append({
                                 "file_path": file_path,
                                 "description": "",
-                                "error": "vision analysis failed",
+                                "error": f"Vision analysis failed: {str(e)}",
                                 "success": False,
                                 "reanalysis": True,
                             })
@@ -442,7 +442,7 @@ class FileAnalyzer:
                 results.append({
                     "file_path": file_path,
                     "description": "",
-                    "error": "file analysis failed",
+                    "error": str(e),
                     "success": False,
                     "reanalysis": True,
                 })

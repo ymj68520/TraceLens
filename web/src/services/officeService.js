@@ -4,12 +4,9 @@
  */
 import { pythonApi } from './api';
 
-/** 解析 Office 文件 (通过路径；task_id 用于服务端任务归属校验) */
-export const parseFile = async (taskId, filePath) => {
-    return await pythonApi.post('/api/office/parse', {
-        task_id: taskId,
-        file_path: filePath,
-    });
+/** 解析 Office 文件 (通过路径) */
+export const parseFile = async (filePath) => {
+    return await pythonApi.post('/api/office/parse', { file_path: filePath });
 };
 
 /** 上传并解析 Office 文件 */

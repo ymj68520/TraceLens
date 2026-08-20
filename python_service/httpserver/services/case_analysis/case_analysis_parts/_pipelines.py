@@ -141,7 +141,7 @@ class CaseAnalysisPipelinesMixin:
                     logger.info(f"[CASE_ANALYSIS] Task {task_id}: Extraction completed - dir: {extraction_dir}, count: {extract_result.get('extracted_count', 0)}")
                 except Exception as e:
                     logger.error(f"[CASE_ANALYSIS] Task {task_id}: Extraction step critical failure: {e}", exc_info=True)
-                    result["steps"]["extraction"] = {"success": False, "error": "extraction failed", "extracted_count": 0}
+                    result["steps"]["extraction"] = {"success": False, "error": str(e), "extracted_count": 0}
                     extraction_dir = ""
 
                 # Step 3: Parallel execution of file analysis and event cluster analysis
@@ -209,7 +209,7 @@ class CaseAnalysisPipelinesMixin:
                         logger.error(f"[CASE_ANALYSIS] Task {task_id}: KG ingestion failed (non-fatal): {e}", exc_info=True)
                         result["steps"]["knowledge_graph"] = {
                             "ingested": False,
-                            "error": "knowledge graph ingestion failed",
+                            "error": str(e),
                             "file_episodes": len(descriptions),
                             "cluster_episodes": len(cluster_results)
                         }
@@ -242,7 +242,7 @@ class CaseAnalysisPipelinesMixin:
                     extraction_dir = extract_result.get("extraction_dir", "")
                 except Exception as e:
                     logger.error(f"Extraction step critical failure: {e}", exc_info=True)
-                    result["steps"]["extraction"] = {"success": False, "error": "extraction failed", "extracted_count": 0}
+                    result["steps"]["extraction"] = {"success": False, "error": str(e), "extracted_count": 0}
 
                 # Step 3: File analysis and event cluster analysis
                 if progress_callback:
@@ -304,7 +304,7 @@ class CaseAnalysisPipelinesMixin:
                         logger.error(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] KG ingestion failed (non-fatal): {e}", exc_info=True)
                         result["steps"]["knowledge_graph"] = {
                             "ingested": False,
-                            "error": "knowledge graph ingestion failed",
+                            "error": str(e),
                             "file_episodes": len(descriptions),
                             "cluster_episodes": len(cluster_results)
                         }
@@ -440,7 +440,7 @@ class CaseAnalysisPipelinesMixin:
                 }
             except Exception as e:
                 logger.error(f"[MULTI_ANALYSIS] Image {idx+1} pipeline failed: {e}", exc_info=True)
-                result["steps"][f"image_{idx+1}"] = {"task_id": task_id, "error": "image analysis failed"}
+                result["steps"][f"image_{idx+1}"] = {"task_id": task_id, "error": str(e)}
 
         # Step 3 — Ingest all data into case-level knowledge graph
         if self._graphiti_service:
@@ -466,7 +466,7 @@ class CaseAnalysisPipelinesMixin:
                 logger.error(f"[MULTI_ANALYSIS] Case {case_id}: case-level graph ingestion failed: {e}", exc_info=True)
                 result["steps"]["knowledge_graph"] = {
                     "ingested": False,
-                    "error": "knowledge graph ingestion failed",
+                    "error": str(e),
                 }
         else:
             logger.info(f"[MULTI_ANALYSIS] Case {case_id}: graphiti_service not available, skipping case-level graph ingestion")
@@ -493,8 +493,8 @@ class CaseAnalysisPipelinesMixin:
         except Exception as e:
             logger.error(f"[MULTI_ANALYSIS] Case {case_id}: report generation failed: {e}", exc_info=True)
             result["steps"]["report"] = {
-                "error": "report generation failed",
-                "report": "报告生成失败"
+                "error": str(e),
+                "report": "报告生成失败：" + str(e)
             }
 
         logger.info(f"[MULTI_ANALYSIS] Case {case_id}: complete — "
@@ -563,7 +563,7 @@ class CaseAnalysisPipelinesMixin:
 
         except Exception as e:
             logger.error(f"[SMART_CASE] Failed to create case: {e}", exc_info=True)
-            result["steps"]["create_case"] = {"success": False, "error": "case creation failed"}
+            result["steps"]["create_case"] = {"success": False, "error": str(e)}
             return result
 
         # Step 2: Scan and associate completed tasks
@@ -593,7 +593,7 @@ class CaseAnalysisPipelinesMixin:
 
         except Exception as e:
             logger.error(f"[SMART_CASE] Failed to scan tasks: {e}", exc_info=True)
-            result["steps"]["scan_tasks"] = {"error": "task scan failed"}
+            result["steps"]["scan_tasks"] = {"error": str(e)}
             return result
 
         # Step 3: Execute incremental analysis
@@ -672,7 +672,7 @@ class CaseAnalysisPipelinesMixin:
 
         except Exception as e:
             logger.error(f"[INCREMENTAL] Failed to plan analysis: {e}", exc_info=True)
-            result["steps"]["plan"] = {"error": "analysis planning failed"}
+            result["steps"]["plan"] = {"error": str(e)}
             return result
 
         # Step 2: Execute analysis on pending tasks
@@ -712,7 +712,7 @@ class CaseAnalysisPipelinesMixin:
 
         except Exception as e:
             logger.error(f"[INCREMENTAL] Failed to execute analysis: {e}", exc_info=True)
-            result["steps"]["execution"] = {"error": "analysis execution failed"}
+            result["steps"]["execution"] = {"error": str(e)}
             return result
 
         # Step 3: Incremental knowledge graph update
@@ -753,7 +753,7 @@ class CaseAnalysisPipelinesMixin:
 
             except Exception as e:
                 logger.error(f"[INCREMENTAL] Graph ingestion failed: {e}", exc_info=True)
-                result["steps"]["knowledge_graph"] = {"error": "knowledge graph ingestion failed"}
+                result["steps"]["knowledge_graph"] = {"error": str(e)}
 
         # Step 4: Generate updated case report
         if progress_callback:
@@ -790,7 +790,7 @@ class CaseAnalysisPipelinesMixin:
 
         except Exception as e:
             logger.error(f"[INCREMENTAL] Report generation failed: {e}", exc_info=True)
-            result["steps"]["report"] = {"error": "report generation failed"}
+            result["steps"]["report"] = {"error": str(e)}
 
         logger.info(f"[INCREMENTAL] Case {case_id}: Complete - "
                     f"{len(execution_result.get('analyzed_tasks', []))} analyzed, "

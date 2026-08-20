@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { fetchTasks } from '../store/taskSlice';
@@ -32,7 +32,6 @@ const Files = () => {
   // 2. Derived State - MUST happen after hooks
   const activeBatch = activeBatchJobs[taskId];
   const isBatchRunning = activeBatch && activeBatch.status === "running";
-  const pollingRef = useRef({ taskId: null, jobId: null, controller: null });
 
   // 3. Initial effects
   useEffect(() => {
@@ -64,28 +63,27 @@ const Files = () => {
   const [existingLlmDescriptions, setExistingLlmDescriptions] = useState({});
   const [expandedDescriptions, setExpandedDescriptions] = useState(new Set());
 
-  const startBatchAnalysisPolling = useCallback(async (jobId, pollingTaskId = taskId) => {
-    const controller = new AbortController();
-    pollingRef.current = { taskId: pollingTaskId, jobId, controller };
-    const isCurrent = () => (
-      pollingRef.current.taskId === pollingTaskId
-      && pollingRef.current.jobId === jobId
-      && !controller.signal.aborted
-    );
+  // AUTO-RESUME: Detect active batch job on mount
+  useEffect(() => {
+    if (activeBatch && activeBatch.status === 'running' && activeBatch.jobId) {
+      console.log(`[Files] Auto-resuming batch analysis polling: ${activeBatch.jobId}`);
+      startBatchAnalysisPolling(activeBatch.jobId);
+    }
+  }, [taskId]); // Re-run if taskId changes
 
+  const startBatchAnalysisPolling = useCallback(async (jobId) => {
     try {
       const finalStatus = await pollBatchStatus(jobId, (status) => {
-        if (!isCurrent()) return;
         const processed = status.files_processed || 0;
         const total = status.files_total || 1;
         dispatch(updateBatchProgress({
-          taskId: pollingTaskId,
+          taskId,
           progress: Math.round((processed / total) * 100),
           message: status.message || `正在分析: ${processed}/${total}`
         }));
-      }, 2000, { signal: controller.signal });
+      }, 2000);
 
-      if (!isCurrent()) return;
+      // Success processing
       if (finalStatus.results) {
         const newDesc = {};
         finalStatus.results.forEach((r) => {
@@ -98,36 +96,18 @@ const Files = () => {
           }
         });
         setLlmResults(prev => ({ ...prev, ...newDesc }));
+
+        // Set refresh flag to notify CaseIntelligence to refresh
         dispatch(setRefreshFlag({ type: 'files' }));
       }
 
-      dispatch(updateBatchProgress({ taskId: pollingTaskId, status: 'completed', message: '✅ 批量分析完成' }));
-      setTimeout(() => {
-        if (isCurrent()) dispatch(clearBatchJob({ taskId: pollingTaskId }));
-      }, 10000);
+      dispatch(updateBatchProgress({ taskId, status: 'completed', message: '✅ 批量分析完成' }));
+      setTimeout(() => dispatch(clearBatchJob({ taskId })), 10000);
     } catch (err) {
-      if (!isCurrent() || err?.name === 'AbortError') return;
       console.error('Batch polling failed:', err);
-      dispatch(updateBatchProgress({ taskId: pollingTaskId, status: 'failed', message: '❌ 失败: ' + err.message }));
+      dispatch(updateBatchProgress({ taskId, status: 'failed', message: '❌ 失败: ' + err.message }));
     }
   }, [taskId, dispatch]);
-
-  // AUTO-RESUME: Detect active batch job on mount/task switch. The previous
-  // task/job is cancelled before a new identity is allowed to poll.
-  useEffect(() => {
-    const previous = pollingRef.current;
-    if (previous.controller) previous.controller.abort();
-    pollingRef.current = { taskId, jobId: null, controller: null };
-
-    if (activeBatch && activeBatch.status === 'running' && activeBatch.jobId) {
-      console.log(`[Files] Auto-resuming batch analysis polling: ${activeBatch.jobId}`);
-      startBatchAnalysisPolling(activeBatch.jobId, taskId);
-    }
-
-    return () => {
-      if (pollingRef.current.controller) pollingRef.current.controller.abort();
-    };
-  }, [taskId, activeBatch, startBatchAnalysisPolling]);
 
   // Graphiti state
   const [graphitiStatus, setGraphitiStatus] = useState(null);
@@ -142,6 +122,9 @@ const Files = () => {
   const [extractionStatus, setExtractionStatus] = useState('idle');
   const [extractionProgress, setExtractionProgress] = useState(0);
   const [extractionMessage, setExtractionMessage] = useState('');
+  const [extractedCount, setExtractedCount] = useState(0);
+  const [skippedCount, setSkippedCount] = useState(0);
+  const [extractionError, setExtractionError] = useState(null);
 
   // Office preview state
   const [officePreview, setOfficePreview] = useState(null);
@@ -268,7 +251,6 @@ const Files = () => {
   // DLL file analysis via Python service
   const analyzeDLLFile = async ({ filePath, filesDbPath }) => {
     return await analyzeDLL({
-      taskId,
       filePath,
       filesDbPath,
     });
@@ -371,7 +353,7 @@ const Files = () => {
           let errorMsg = dllErr.response?.data?.detail || dllErr.message || '未知错误';
 
           if (!dllErr.response && dllErr.code === 'ERR_NETWORK') {
-            errorMsg = `DLL分析服务未运行\n\n提示：\n1. 请确保 C++ 服务已启动: ./build/forensic_analyzer --http-server 8666\n2. 请确保 Python 服务已启动: python -m python_service.httpserver.main\n3. 或使用启动脚本: ./run.sh`;
+            errorMsg = `DLL分析服务未运行\n\n提示：\n1. 请确保 C++ 服务已启动: ./build/forensic_analyzer --http-server 8080\n2. 请确保 Python 服务已启动: python -m python_service.httpserver.main\n3. 或使用启动脚本: ./run.sh`;
           } else if (dllErr.response?.status === 400 || dllErr.response?.status === 404) {
             const detail = dllErr.response?.data?.detail || '';
             if (detail.includes('File not found') || detail.includes('not found')) {
@@ -392,7 +374,6 @@ const Files = () => {
         console.log('Analyzing file:', filePath, `(${extension}, ${(fileSize / 1024).toFixed(1)} KB, model: ${modelType})`);
 
         const result = await analyzeContent({
-          taskId: taskId,
           filePath: filePath,
           dbFilePath: file.path || file.file_path,
           modelType: modelType,
@@ -510,7 +491,7 @@ ${detail}
 
       if (result.job_id) {
         dispatch(setBatchJob({ taskId, jobId: result.job_id }));
-        startBatchAnalysisPolling(result.job_id, taskId);
+        startBatchAnalysisPolling(result.job_id);
       }
     } catch (err) {
       console.error('Batch analysis failed:', err);
@@ -737,6 +718,9 @@ ${detail}
     setExtractionStatus('pending');
     setExtractionProgress(0);
     setExtractionMessage('Starting extraction...');
+    setExtractionError(null);
+    setExtractedCount(0);
+    setSkippedCount(0);
 
     try {
       const result = await startExtraction(taskId, {
@@ -758,16 +742,21 @@ ${detail}
         (status) => {
           setExtractionProgress(status.progress || 0);
           setExtractionMessage(status.message || 'Extracting...');
+          setExtractedCount(status.extracted_files || 0);
+          setSkippedCount(status.skipped_files || 0);
         },
         1000
       );
 
       setExtractionStatus('completed');
       setExtractionMessage(`Results: ${finalStatus.extracted_files} extracted, ${finalStatus.skipped_files || 0} skipped`);
+      setExtractedCount(finalStatus.extracted_files || 0);
+      setSkippedCount(finalStatus.skipped_files || 0);
 
     } catch (err) {
       console.error('Extraction failed:', err);
       setExtractionStatus('failed');
+      setExtractionError(err.message || 'Extraction failed');
       setExtractionMessage('Extraction failed');
     }
   };
@@ -1003,7 +992,6 @@ ${detail}
       {/* Office Preview Tab */}
       {activeTab === 'office' && (
         <OfficePreviewTab
-          taskId={taskId}
           filteredFiles={filteredFiles}
           officePreview={officePreview}
           setOfficePreview={setOfficePreview}

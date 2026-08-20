@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 // 服务端口常量
+const CPP_PORT = import.meta.env.VITE_CPP_PORT || import.meta.env.HTTP_SERVER_PORT || '8080';
 const PYTHON_PORT = '8090';
 const CS_PORT = '8091';
 
@@ -21,6 +22,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 // Python 服务 (端口 8090) — 动态指向服务器 host
 const PYTHON_API_BASE_URL = import.meta.env.VITE_PYTHON_API_URL
   || `http://${currentHost()}:${PYTHON_PORT}`;
+const CPP_BASE_URL = import.meta.env.VITE_CPP_API_URL
+  || `http://${currentHost()}:${CPP_PORT}`;
 
 // C++ 后端 API 客户端
 const api = axios.create({
@@ -180,6 +183,6 @@ csApi.interceptors.response.use(
   }
 );
 
-export { pythonApi, csApi };
+export { pythonApi, csApi, CPP_BASE_URL, PYTHON_API_BASE_URL };
 export default api;
 

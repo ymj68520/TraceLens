@@ -5,7 +5,7 @@
 # 功能：CMake 编译 C++ → 构建 Web 前端 (npm) → 启动全部服务（前台运行）
 #
 # 用法:
-#   ./run.sh                  # 编译 + 启动 C++(8080) + Python(8090) + C/S(8091)
+#   ./run.sh                  # 编译 + 启动 C++(8666) + Python(8090) + C/S(8091)
 #   ./run.sh --build-only     # 仅编译，不启动服务
 #   ./run.sh --no-build       # 跳过编译，直接启动（需已构建）
 #   ./run.sh --no-web         # 跳过 web 前端构建
@@ -13,7 +13,7 @@
 #   ./run.sh --jobs 4         # 指定编译并行数（默认 4，避免占满 CPU）
 #   ./run.sh --clean          # 编译前先清理 build 目录（保留数据库等数据）
 #
-# 端口从 .env 读取（默认: C++ 8080 / Python 8090 / C/S 8091）。
+# 端口从 .env 读取（默认: C++ 8666 / Python 8090 / C/S 8091）。
 # 按 Ctrl+C 停止所有服务。
 # ---------------------------------------------------------------------------
 
@@ -76,7 +76,7 @@ fi
 # 始终用脚本算出的项目根，不受 .env 影响
 PROJECT_ROOT="$TRACELENS_ROOT"
 
-CPP_PORT="${HTTP_SERVER_PORT:-8080}"
+CPP_PORT="${HTTP_SERVER_PORT:-8666}"
 PYTHON_PORT="${PYTHON_HTTP_PORT:-8090}"
 CS_PORT="${CS_PORT:-8091}"
 

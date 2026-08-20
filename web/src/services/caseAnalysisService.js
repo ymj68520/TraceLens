@@ -5,11 +5,6 @@
 import { pythonApi } from './api';
 
 /**
- * Legacy compatibility service. Full case-report generation is retired; the
- * explicit re-analysis endpoints remain for existing file-analysis workflows.
- */
-
-/**
  * 保存案情描述
  * @param {string} taskId - 任务 ID
  * @param {string} caseDescription - 案情描述

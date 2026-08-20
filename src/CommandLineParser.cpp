@@ -69,8 +69,7 @@ bool optionRequiresNonOptionValue(const std::string& option) {
         "--db-dir", "--xfs-mode", "--android-source", "--wechat-password",
         "--backup-password", "--backup-password-fd", "--report-path", "--dump-text-max-size",
         "--vol-symbols-dir", "--dll-db", "--index", "--search",
-        "--filter-profile", "--key-dir", "--key-password", "--carve-out",
-        "--task-id"
+        "--filter-profile", "--key-dir", "--key-password", "--carve-out"
     };
     return valueOptions.contains(option);
 }
@@ -94,7 +93,6 @@ void CommandLineParser::printUsage(const char* programName) {
     std::cout << "Analysis options:\n";
     std::cout << "  --xfs-mode <mode>           XFS parsing mode (auto/native/pure)\n";
     std::cout << "  --db-dir <path>             Directory to store databases\n\n";
-  std::cout << "  --task-id <id>               Task anchor for --dump-text conversion service\n\n";
     std::cout << "DLL Analysis:\n";
     std::cout << "  --analyze-dlls              Enable DLL analysis\n";
     std::cout << "  --analyze-dlls-only         DLL analysis only (skip other steps)\n";
@@ -176,8 +174,6 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
             args.extract_output_dir = argv[++i];
         } else if (arg == "--db-dir" && i + 1 < argc) {
             args.db_dir = argv[++i];
-        } else if (arg == "--task-id" && i + 1 < argc) {
-            args.task_id = argv[++i];
         } else if (arg == "--overwrite") {
             args.overwrite = true;
         } else if (arg == "--xfs-mode" && i + 1 < argc) {

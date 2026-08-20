@@ -177,5 +177,5 @@ class ModelManager:
                 "models": [],
                 "default_model": default_model if model_type == "text" else self.settings.llm_vision_model,
                 "base_url": base_url,
-                "error": "llm service is unavailable",
+                "error": str(e),
             }

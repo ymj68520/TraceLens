@@ -64,7 +64,7 @@ class GraphitiStatusMixin:
                 return {
                     "status": "error",
                     "neo4j_connected": True,
-                    "message": "task data query failed",
+                    "message": f"Error querying task data: {str(e)}",
                     "total_entities": 0,
                     "total_relationships": 0,
                     "task_id": task_id,
@@ -183,16 +183,14 @@ class GraphitiStatusMixin:
                 self.settings.neo4j_uri,
                 auth=(self.settings.neo4j_user, self.settings.neo4j_password),
             )
-            try:
-                async with driver.session() as session:
-                    await session.run(
-                        "MATCH (n {group_id: $gid}) DETACH DELETE n",
-                        gid=task_id,
-                    )
-                deleted = True
-                logger.info(f"Deleted Neo4j data for task: {task_id}")
-            finally:
-                await driver.close()
+            async with driver.session() as session:
+                await session.run(
+                    "MATCH (n {group_id: $gid}) DETACH DELETE n",
+                    gid=task_id,
+                )
+            await driver.close()
+            deleted = True
+            logger.info(f"Deleted Neo4j data for task: {task_id}")
         except Exception as e:
             logger.error(f"Failed to delete Neo4j data for task {task_id}: {e}")
 

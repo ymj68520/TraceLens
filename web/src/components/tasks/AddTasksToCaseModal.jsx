@@ -17,7 +17,7 @@ import Button from '../common/Button';
 import Badge from '../common/Badge';
 import { associateTasks, fetchCases } from '../../store/caseSlice';
 import { fetchTasks } from '../../store/taskSlice';
-import { useToast } from '../common/useToast';
+import { useToast } from '../common/ToastContext';
 
 export default function AddTasksToCaseModal({ fixedCaseId, fixedTaskId, onClose }) {
   const dispatch = useDispatch();

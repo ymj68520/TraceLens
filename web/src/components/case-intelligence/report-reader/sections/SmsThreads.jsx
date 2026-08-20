@@ -2,8 +2,7 @@
  * SmsThreads — renders the 短信息 chapter as a conversation bubble list,
  * grouped by the remote address. Mirrors the reference report's messaging view.
  */
-import { SectionCard, EmptySection, Badge } from './shared';
-import { val, fmtTime, smsTypeLabel } from './reportSectionUtils';
+import { SectionCard, EmptySection, val, fmtTime, smsTypeLabel, Badge } from './shared';
 
 export default function SmsThreads({ pageData }) {
   const records = pageData?.records || [];

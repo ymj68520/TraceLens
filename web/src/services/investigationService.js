@@ -280,6 +280,86 @@ export const updateReportEvidence = async (
     });
 };
 
+const workbenchBase = (taskId) => `/api/investigation/workbench/${encodeURIComponent(taskId)}`;
+
+export const getOverview = (taskId) => pythonApi.get(workbenchBase(taskId));
+export const bootstrapInvestigation = (taskId, options = {}) =>
+    pythonApi.post(`${workbenchBase(taskId)}/bootstrap`, { mode: 'cluster_seed', ...options });
+export const getInvestigationEvents = (taskId, params = {}) =>
+    pythonApi.get(`${workbenchBase(taskId)}/events`, { params });
+export const getEventEvidence = (taskId, eventId, params = {}) =>
+    pythonApi.get(`${workbenchBase(taskId)}/events/${encodeURIComponent(eventId)}/evidence`, { params });
+export const linkEventEvidence = (taskId, eventId, payload) =>
+    pythonApi.post(`${workbenchBase(taskId)}/events/${encodeURIComponent(eventId)}/evidence/link`, payload);
+export const getEvidenceDetail = (taskId, evidenceKey) =>
+    pythonApi.get(`${workbenchBase(taskId)}/evidence/detail`, { params: { evidence_key: evidenceKey } });
+export const getAnalystNote = (taskId, targetType, targetKey) =>
+    pythonApi.get(`${workbenchBase(taskId)}/notes`, { params: { target_type: targetType, target_key: targetKey } });
+export const saveAnalystNote = (taskId, targetType, targetKey, content, author = null) =>
+    pythonApi.post(`${workbenchBase(taskId)}/notes`, { target_type: targetType, target_key: targetKey, content, author });
+export const startEvidenceAnalysis = (taskId, payload) =>
+    pythonApi.post(`${workbenchBase(taskId)}/evidence/analyze`, payload);
+export const getAnalysisJob = (taskId, jobId) =>
+    pythonApi.get(`${workbenchBase(taskId)}/analysis-jobs/${encodeURIComponent(jobId)}`);
+export const getAnalysisVersions = (taskId, evidenceKey) =>
+    pythonApi.get(`${workbenchBase(taskId)}/evidence/analysis`, { params: { evidence_key: evidenceKey } });
+export const acceptAnalysis = (taskId, analysisId, acknowledgeWarnings = false) =>
+    pythonApi.post(`${workbenchBase(taskId)}/analysis/${encodeURIComponent(analysisId)}/accept`, { acknowledge_warnings: acknowledgeWarnings });
+export const rejectAnalysis = (taskId, analysisId) =>
+    pythonApi.post(`${workbenchBase(taskId)}/analysis/${encodeURIComponent(analysisId)}/reject`);
+export const refreshInvestigationEvent = (taskId, eventId, payload = {}) =>
+    pythonApi.post(`${workbenchBase(taskId)}/events/${encodeURIComponent(eventId)}/refresh`, payload);
+export const getEventSemanticVersions = (taskId, eventId) =>
+    pythonApi.get(`${workbenchBase(taskId)}/events/${encodeURIComponent(eventId)}/versions`);
+export const acceptEventSemanticVersion = (taskId, eventId, versionId) =>
+    pythonApi.post(`${workbenchBase(taskId)}/events/${encodeURIComponent(eventId)}/versions/${encodeURIComponent(versionId)}/accept`);
+export const rejectEventSemanticVersion = (taskId, eventId, versionId) =>
+    pythonApi.post(`${workbenchBase(taskId)}/events/${encodeURIComponent(eventId)}/versions/${encodeURIComponent(versionId)}/reject`);
+export const getEventClaims = (taskId, eventId, versionId) =>
+    pythonApi.get(`${workbenchBase(taskId)}/events/${encodeURIComponent(eventId)}/versions/${encodeURIComponent(versionId)}/claims`);
+export const acceptEventClaim = (taskId, eventId, versionId, claimId) =>
+    pythonApi.post(`${workbenchBase(taskId)}/events/${encodeURIComponent(eventId)}/versions/${encodeURIComponent(versionId)}/claims/${encodeURIComponent(claimId)}/accept`);
+export const rejectEventClaim = (taskId, eventId, versionId, claimId) =>
+    pythonApi.post(`${workbenchBase(taskId)}/events/${encodeURIComponent(eventId)}/versions/${encodeURIComponent(versionId)}/claims/${encodeURIComponent(claimId)}/reject`);
+export const getEffectiveEventClaims = (taskId, eventId) =>
+    pythonApi.get(`${workbenchBase(taskId)}/events/${encodeURIComponent(eventId)}/claims/effective`);
+export const reviewInvestigationEvent = (taskId, eventId, status) =>
+    pythonApi.post(`${workbenchBase(taskId)}/events/${encodeURIComponent(eventId)}/review`, { status });
+export const setReportEvidence = (taskId, payload) =>
+    pythonApi.put(`${workbenchBase(taskId)}/report-evidence`, payload);
+export const removeReportEvidence = (taskId, evidenceKey) =>
+    pythonApi.post(`${workbenchBase(taskId)}/report-evidence/remove`, { evidence_key: evidenceKey });
+export const getReportEvidence = (taskId) => pythonApi.get(`${workbenchBase(taskId)}/report-evidence`);
+export const getLocalGraph = (taskId, params = {}) =>
+    pythonApi.get(`${workbenchBase(taskId)}/graph/local`, { params });
+export const getFinalReports = (taskId) => pythonApi.get(`${workbenchBase(taskId)}/final-reports`);
+export const getFinalReport = (taskId, reportId) =>
+    pythonApi.get(`${workbenchBase(taskId)}/final-reports/${encodeURIComponent(reportId)}`);
+export const getFinalReportMarkdown = (taskId, reportId) =>
+    pythonApi.get(`${workbenchBase(taskId)}/final-reports/${encodeURIComponent(reportId)}/markdown`, { responseType: 'text' });
+export const getFinalReportHtml = (taskId, reportId) =>
+    pythonApi.get(`${workbenchBase(taskId)}/final-reports/${encodeURIComponent(reportId)}/html`, { responseType: 'text' });
+export const getFinalReportPrint = (taskId, reportId) =>
+    pythonApi.get(`${workbenchBase(taskId)}/final-reports/${encodeURIComponent(reportId)}/print`, { responseType: 'text' });
+export const getFinalReportPublication = (taskId, reportId) =>
+    pythonApi.get(`${workbenchBase(taskId)}/final-reports/${encodeURIComponent(reportId)}/publication`);
+export const publishFinalReport = (taskId, reportId) =>
+    pythonApi.post(`${workbenchBase(taskId)}/final-reports/${encodeURIComponent(reportId)}/publish`);
+export const getClaimProvenance = (taskId, claimId) =>
+    pythonApi.get(`${workbenchBase(taskId)}/claims/${encodeURIComponent(claimId)}`);
+export const pollAnalysisJob = async (taskId, jobId, onProgress, interval = 1500) => {
+    const poll = async () => {
+        const response = await getAnalysisJob(taskId, jobId);
+        const job = response.job;
+        onProgress?.(job);
+        if (job.status === 'completed') return job;
+        if (['failed', 'invalid'].includes(job.status)) throw new Error(job.error || '二次分析失败');
+        await new Promise((resolve) => setTimeout(resolve, interval));
+        return poll();
+    };
+    return poll();
+};
+
 export default {
     getInvestigationGraph,
     captureInvestigationSnapshot,
@@ -301,4 +381,39 @@ export default {
     listReportEvidence,
     addReportEvidence,
     updateReportEvidence,
+    getOverview,
+    bootstrapInvestigation,
+    getInvestigationEvents,
+    getEventEvidence,
+    linkEventEvidence,
+    getEvidenceDetail,
+    getAnalystNote,
+    saveAnalystNote,
+    startEvidenceAnalysis,
+    getAnalysisJob,
+    getAnalysisVersions,
+    acceptAnalysis,
+    rejectAnalysis,
+    refreshInvestigationEvent,
+    getEventSemanticVersions,
+    acceptEventSemanticVersion,
+    rejectEventSemanticVersion,
+    getEventClaims,
+    acceptEventClaim,
+    rejectEventClaim,
+    getEffectiveEventClaims,
+    reviewInvestigationEvent,
+    setReportEvidence,
+    removeReportEvidence,
+    getReportEvidence,
+    getLocalGraph,
+    getFinalReports,
+    getFinalReport,
+    getFinalReportMarkdown,
+    getFinalReportHtml,
+    getFinalReportPrint,
+    getFinalReportPublication,
+    publishFinalReport,
+    getClaimProvenance,
+    pollAnalysisJob,
 };

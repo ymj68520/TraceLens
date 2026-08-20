@@ -216,9 +216,10 @@ test('shares concurrent create calls to avoid duplicate report mutations', async
   await flush();
 
   let first;
+  let second;
   await act(async () => {
     first = result.current.createVersion();
-    result.current.createVersion();
+    second = result.current.createVersion();
   });
   expect(source.createVersion).toHaveBeenCalledTimes(1);
   create.resolve(created);

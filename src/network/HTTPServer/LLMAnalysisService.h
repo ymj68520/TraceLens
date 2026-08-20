@@ -47,28 +47,6 @@ public:
     ~LLMAnalysisService();
 
     /**
-     * @brief Scope the image-extraction scratch directory to one task (D4b).
-     *
-     * Extracted files land under
-     * ``<tempdir>/forensics_llm_extract/<task_id>/`` and are removed when the
-     * service is destroyed (RAII) or the task is deleted.
-     */
-    void setTaskId(const std::string& taskId);
-
-    /**
-     * @brief Task-scoped scratch directory for image file extraction.
-     *
-     * Static so task deletion / worker cleanup can remove exactly one task's
-     * subtree without touching other tasks' scratch.
-     */
-    static std::string TaskScratchDir(const std::string& taskId);
-
-    /**
-     * @brief Remove one task's scratch subtree (idempotent, never throws).
-     */
-    static void CleanupTaskScratch(const std::string& taskId);
-
-    /**
      * @brief Initialize the service with LLM configuration
      * @return true if initialization successful
      */
@@ -85,8 +63,7 @@ public:
      * @param progressCallback Progress callback function
      * @return Number of files analyzed
      */
-    int analyzeAllFiles(const std::string& task_id,
-                        const std::string& filesDbPath,
+    int analyzeAllFiles(const std::string& filesDbPath,
                         const AnalysisOptions& options,
                         ProgressCallback progressCallback = nullptr);
 
@@ -101,8 +78,7 @@ public:
      * @param progressCallback Progress callback function
      * @return Number of files analyzed
      */
-    int analyzeSmartFiles(const std::string& task_id,
-                          const std::string& filesDbPath,
+    int analyzeSmartFiles(const std::string& filesDbPath,
                           const AnalysisOptions& options,
                           ProgressCallback progressCallback = nullptr);
 
@@ -172,9 +148,6 @@ private:
     // Forensic image paths for extracting files from within images
     std::string imagePath_;
     std::string rawDbPath_;
-
-    // Task owning this analysis run; scopes the extraction scratch dir.
-    std::string taskId_;
 
     // Internal helpers
     bool storeDescription(const std::string& dbPath,

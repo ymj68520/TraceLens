@@ -133,7 +133,7 @@ class WeChatGraphTimelineMixin:
 
         except sqlite3.OperationalError as e:
             logger.warning(f"Error computing timeline: {e}")
-            return {"error": "database query failed", "intervals": []}
+            return {"error": str(e), "intervals": []}
         finally:
             conn.close()
 

@@ -11,29 +11,34 @@ export const getComprehensiveTimeline = async (taskId, params = {}) => {
  * 分析事件簇 (AI 研判)
  * 彻底切换到 Python 服务执行，不再使用 C++ 侧的 LLM 逻辑
  */
+const getClusterDescriptor = (cluster) => {
+  const descriptor = cluster?.group_descriptor;
+  if (!descriptor || typeof descriptor !== 'object') {
+    throw new Error('Invalid cluster: backend group descriptor is required');
+  }
+  if (!Number.isInteger(Number(descriptor.bucket_index)) || !Number.isInteger(Number(descriptor.bucket_seconds))) {
+    throw new Error('Invalid cluster: backend group descriptor bucket values are required');
+  }
+  if (!descriptor.event_type || typeof descriptor.event_type !== 'string') {
+    throw new Error('Invalid cluster: backend group descriptor event_type is required');
+  }
+  return {
+    bucket_index: Number(descriptor.bucket_index),
+    bucket_seconds: Number(descriptor.bucket_seconds),
+    event_type: descriptor.event_type,
+    parent_directory: descriptor.parent_directory || '',
+  };
+};
+
 export const analyzeEventCluster = async (taskId, cluster) => {
-  // 防御性验证：确保 cluster 对象有效
   if (!cluster || typeof cluster !== 'object') {
     throw new Error('Invalid cluster: cluster object is required');
   }
-  if (!cluster?.timestamp || typeof cluster.timestamp !== 'number') {
-    throw new Error('Invalid cluster: timestamp is required and must be a number');
-  }
-  if (!cluster?.event_type || typeof cluster.event_type !== 'string') {
-    throw new Error('Invalid cluster: event_type is required and must be a string');
-  }
-
-  // bucket_seconds must match the window used to create the cluster. It flows
-  // end-to-end: URL ?bucket= -> C++ GROUP BY -> cluster.bucket_seconds here ->
-  // Python (timestamp / bucket_seconds). Default 60 preserves old behavior.
-  const bucketSeconds = cluster.bucket_seconds || 60;
+  const groupDescriptor = getClusterDescriptor(cluster);
 
   return await pythonApi.post('/api/llm/analyze-event-cluster', {
     task_id: taskId,
-    time_window: Math.floor(cluster.timestamp / bucketSeconds),
-    event_type: cluster.event_type,
-    parent_directory: cluster.parent_directory || "",
-    bucket_seconds: bucketSeconds,
+    group_descriptor: groupDescriptor,
   });
 };
 
@@ -49,25 +54,14 @@ export const analyzeEventClustersBatch = async (taskId, clusters) => {
  * 重新分析事件簇
  */
 export const reanalyzeEventCluster = async (taskId, cluster) => {
-  // 防御性验证：确保 cluster 对象有效
   if (!cluster || typeof cluster !== 'object') {
     throw new Error('Invalid cluster: cluster object is required');
   }
-  if (!cluster?.timestamp || typeof cluster.timestamp !== 'number') {
-    throw new Error('Invalid cluster: timestamp is required and must be a number');
-  }
-  if (!cluster?.event_type || typeof cluster.event_type !== 'string') {
-    throw new Error('Invalid cluster: event_type is required and must be a string');
-  }
-
-  const bucketSeconds = cluster.bucket_seconds || 60;
+  const groupDescriptor = getClusterDescriptor(cluster);
 
   return await pythonApi.post('/api/llm/analyze-event-cluster', {
     task_id: taskId,
-    time_window: Math.floor(cluster.timestamp / bucketSeconds),
-    event_type: cluster.event_type,
-    parent_directory: cluster.parent_directory || "",
-    bucket_seconds: bucketSeconds,
+    group_descriptor: groupDescriptor,
     prompt: "请重新审视该事件簇，深度挖掘潜在威胁。",
   });
 };

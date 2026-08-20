@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { fetchTasks, setCurrentTask } from '../../store/taskSlice';
+
 const TaskSelector = () => {
     const dispatch = useDispatch();
     const location = useLocation();
@@ -11,7 +12,7 @@ const TaskSelector = () => {
     // 研判页面统一通过 query 参数（task_id/taskId）携带当前镜像
     const currentTaskId = searchParams.get('taskId') || searchParams.get('task_id') || currentTask?.id;
 
-    const relevantPaths = ['/timeline', '/files', '/statistics', '/llm-descriptions', '/android', '/oss', '/case-report', '/knowledge-graph', '/investigation-graph', '/investigation', '/case-intelligence', '/analysis-center'];
+    const relevantPaths = ['/timeline', '/files', '/statistics', '/llm-descriptions', '/android', '/oss', '/case-report', '/knowledge-graph', '/case-intelligence', '/analysis-center', '/investigation'];
     const isRelevantPage = relevantPaths.some(path => location.pathname.startsWith(path));
 
     useEffect(() => {

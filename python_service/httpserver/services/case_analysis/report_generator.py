@@ -186,7 +186,7 @@ class ReportGenerator(ReportGeneratorHelpersMixin):
                 model_used = "direct"
             except Exception as e:
                 logger.error(f"Fallback generation also failed: {e}", exc_info=True)
-                report_text = "生成报告时发生错误"
+                report_text = "生成报告时发生错误：" + str(e)
 
         # Persist report to database
         if report_text and not report_text.startswith("生成报告时发生错误"):

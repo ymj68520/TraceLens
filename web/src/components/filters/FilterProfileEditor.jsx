@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react';
 import { useDispatch } from 'react-redux';
 import { saveProfile, fetchProfiles } from '../../store/filterSlice';
 import Button from '../common/Button';
-import { useToast } from '../common/useToast';
+import { useToast } from '../common/ToastContext';
 
 const EMPTY_PROFILE = {
   name: '',

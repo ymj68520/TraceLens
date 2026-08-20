@@ -58,7 +58,11 @@ std::filesystem::path PathManager::getProjectRoot() const {
 }
 
 std::filesystem::path PathManager::getDataDir() const {
-    return exeDir_ / dataDirName_;
+    const std::filesystem::path configured(dataDirName_);
+    if (configured.is_absolute()) {
+        return configured;
+    }
+    return projectRoot_ / configured;
 }
 
 // --- sub-directories ---

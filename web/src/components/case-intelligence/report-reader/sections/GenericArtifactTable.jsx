@@ -10,13 +10,11 @@
  * "full schema always visible" requirement.
  */
 import { useMemo } from 'react';
-import { SectionCard, EmptySection } from './shared';
-import { val } from './reportSectionUtils';
+import { SectionCard, EmptySection, val } from './shared';
 import { resolveColumns } from './artifactColumns';
 
 export default function GenericArtifactTable({ sectionId, title, pageData }) {
-  const recordSource = pageData?.records;
-  const records = useMemo(() => recordSource || [], [recordSource]);
+  const records = pageData?.records || [];
   const total = pageData?.total ?? records.length;
   const start = ((pageData?.page || 1) - 1) * (pageData?.page_size || 0);
 

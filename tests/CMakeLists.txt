@@ -1356,7 +1356,6 @@ target_link_libraries(
   nlohmann_json::nlohmann_json
   cpp_dotenv)
 add_test(NAME TextDumpAdapterTests COMMAND test_text_dump_adapters)
-
 # Task-scoped LLM extraction scratch lifecycle tests (D4b)
 add_executable(
   test_llm_scratch_gtest

@@ -18,7 +18,7 @@ import { useDispatch } from 'react-redux';
 import { createTask, fetchTasks } from '../../store/taskSlice';
 import { closeModal } from '../../store/uiSlice';
 import Button from '../common/Button';
-import { useToast } from '../common/useToast';
+import { useToast } from '../common/ToastContext';
 import FilterProfileSelector from '../filters/FilterProfileSelector';
 import FilterProfileEditor from '../filters/FilterProfileEditor';
 

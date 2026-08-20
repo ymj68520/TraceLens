@@ -53,6 +53,10 @@ export default defineConfig(({ mode }) => {
           target: 'http://localhost:8090',
           changeOrigin: true,
         },
+        '/api/investigation': {
+          target: 'http://localhost:8090',
+          changeOrigin: true,
+        },
         '/api': {
           target: cppTarget,
           changeOrigin: true,

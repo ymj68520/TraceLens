@@ -7,7 +7,7 @@ const SETTINGS_KEY = 'forensics_settings';
 const host = (typeof window !== 'undefined' && window.location)
   ? window.location.hostname
   : 'localhost';
-const defaultApiUrl = `http://${host}:8666`;
+const defaultApiUrl = `http://${host}:8080`;
 const defaultPythonApiUrl = `http://${host}:8090`;
 
 const loadSettings = () => {

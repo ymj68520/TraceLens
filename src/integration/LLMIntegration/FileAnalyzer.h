@@ -40,8 +40,7 @@ public:
      * @return Analysis result with summary, keywords, description
      */
     AnalysisResult analyzeFile(const std::string& filePath, 
-                               size_t maxContentLength = 10000,
-                               const std::string& taskId = "");
+                               size_t maxContentLength = 10000);
     
     /**
      * @brief Analyze multiple files

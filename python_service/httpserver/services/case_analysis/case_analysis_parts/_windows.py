@@ -254,7 +254,7 @@ class CaseAnalysisWindowsMixin:
             logger.error(f"File extraction failed: {e}", exc_info=True)
             return {
                 "success": False,
-                "error": "extraction failed",
+                "error": str(e),
                 "extracted_count": 0,
                 "extraction_dir": "",
             }

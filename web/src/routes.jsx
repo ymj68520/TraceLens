@@ -12,10 +12,10 @@ import Search from './pages/Search';
 import Statistics from './pages/Statistics';
 import Settings from './pages/Settings';
 import KnowledgeGraph from './pages/KnowledgeGraph';
-import InvestigationGraph from './pages/InvestigationGraph';
-import Investigation from './pages/Investigation';
 import CaseIntelligence from './pages/CaseIntelligence';
 import AnalysisCenter from './pages/AnalysisCenter';
+import Investigation from './pages/Investigation/Investigation';
+import FinalReportViewer from './pages/Investigation/FinalReportViewer';
 import LegacyReportRedirect, { TaskReportRedirect, CaseReportRedirect } from './pages/LegacyReportRedirect';
 import OSS from './pages/OSS';
 import Login from './pages/Login';
@@ -94,20 +94,20 @@ export const appRoutes = [
         element: <KnowledgeGraph />,
       },
       {
-        path: 'investigation-graph',
-        element: <InvestigationGraph />,
-      },
-      {
-        path: 'investigation',
-        element: <Investigation />,
-      },
-      {
         path: 'case-intelligence',
         element: <CaseIntelligence />,
       },
       {
         path: 'analysis-center',
         element: <AnalysisCenter />,
+      },
+      {
+        path: 'investigation',
+        element: <Investigation />,
+      },
+      {
+        path: 'investigation/report',
+        element: <FinalReportViewer />,
       },
       {
         path: 'reports/task/:taskId',

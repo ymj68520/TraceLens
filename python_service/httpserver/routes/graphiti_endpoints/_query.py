@@ -70,7 +70,7 @@ async def search_graph(
         )
     except Exception as e:
         logger.error(f"Search failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="graph search is unavailable")
+        raise HTTPException(status_code=500, detail=str(e))
 @router.get("/entities", response_model=EntityListResponse, responses={
     200: {"description": "Entities listed successfully"},
     500: {"description": "Internal server error during listing"}
@@ -107,7 +107,7 @@ async def list_entities(
         )
     except Exception as e:
         logger.error(f"List entities failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="graph entities are unavailable")
+        raise HTTPException(status_code=500, detail=str(e))
 @router.get("/relationships", response_model=RelationshipListResponse, responses={
     200: {"description": "Relationships listed successfully"},
     500: {"description": "Internal server error during listing"}
@@ -148,4 +148,4 @@ async def list_relationships(
         )
     except Exception as e:
         logger.error(f"List relationships failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="graph relationships are unavailable")
+        raise HTTPException(status_code=500, detail=str(e))

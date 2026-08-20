@@ -10,7 +10,9 @@
  * field with its raw key name — so adding a backend section needs no frontend
  * change to be visible.
  */
-import { fmtTime, fileSize, callTypeLabel } from './reportSectionUtils';
+import { fmtTime, fileSize, callTypeLabel, smsTypeLabel } from './shared';
+
+const t = fmtTime;
 
 export const ARTIFACT_COLUMNS = {
   // ── Android ──
