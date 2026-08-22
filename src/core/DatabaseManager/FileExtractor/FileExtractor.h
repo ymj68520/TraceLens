@@ -45,6 +45,19 @@ public:
         std::string error;
     };
 
+    struct ExtractionLimits {
+        int64_t max_files = 0;
+        int64_t max_total_size = 0;
+        int64_t max_file_size = 0;
+        int* failed_count = nullptr;
+        int* total_count = nullptr;
+        int* processed_count = nullptr;
+        int64_t* extracted_bytes = nullptr;
+        bool* bounded = nullptr;
+        std::string* limit_reason = nullptr;
+        std::vector<std::string>* errors = nullptr;
+    };
+
     /**
      * Constructor
      * @param imagePath Path to disk image file
@@ -56,10 +69,10 @@ public:
     /** Initialize extractor (open image, all accessible filesystems, database). */
     bool initialize() override;
 
-    int extractByName(const std::string& pattern, const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr);
-    int extractByExtension(const std::string& extensions, const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr);
-    int extractAll(const std::string& outputDir, bool includeDeleted = false, bool overwrite = false, int* skippedCount = nullptr);
-    int extractDeleted(const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr);
+    int extractByName(const std::string& pattern, const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr, ExtractionLimits* limits = nullptr);
+    int extractByExtension(const std::string& extensions, const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr, ExtractionLimits* limits = nullptr);
+    int extractAll(const std::string& outputDir, bool includeDeleted = false, bool overwrite = false, int* skippedCount = nullptr, ExtractionLimits* limits = nullptr);
+    int extractDeleted(const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr, ExtractionLimits* limits = nullptr);
     bool extractFileByInode(int64_t inode, const std::string& outputPath, int partitionNum = -1);
     bool extractFileByPath(const std::string& filePath, const std::string& outputPath) override;
 
@@ -118,6 +131,11 @@ private:
     bool createDirectories(const std::string& path);
     bool matchWildcard(const std::string& filename, const std::string& pattern);
     std::string generateOutputPath(const std::string& outputDir, const FileRecord& record);
+    int extractRecords(const std::vector<FileRecord>& files,
+                       const std::string& outputDir,
+                       bool overwrite,
+                       int* skippedCount,
+                       ExtractionLimits* limits);
 };
 
 #endif // FILE_EXTRACTOR_H

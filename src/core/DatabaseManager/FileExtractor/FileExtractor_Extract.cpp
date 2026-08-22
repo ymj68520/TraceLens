@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -378,7 +379,69 @@ FileExtractor::AtomicExtractionResult FileExtractor::extractRecordAtomically(
     return result;
 }
 
-int FileExtractor::extractByName(const std::string& pattern, const std::string& outputDir, bool overwrite, int* skippedCount) {
+int FileExtractor::extractRecords(const std::vector<FileRecord>& files,
+                                  const std::string& outputDir,
+                                  bool overwrite,
+                                  int* skippedCount,
+                                  ExtractionLimits* limits) {
+    int extracted = 0;
+    int skipped = 0;
+    int failed = 0;
+    int processed = 0;
+    int64_t writtenBytes = 0;
+    int64_t attempts = 0;
+    for (const auto& file : files) {
+        if (limits && limits->max_files > 0 && attempts >= limits->max_files) {
+            if (limits->bounded) *limits->bounded = true;
+            if (limits->limit_reason) *limits->limit_reason = "max_files";
+            break;
+        }
+        if (limits && limits->max_file_size > 0 && file.size > limits->max_file_size) {
+            ++skipped;
+            ++processed;
+            if (limits->errors && limits->errors->size() < 50) {
+                limits->errors->push_back(file.path + ": max_file_size");
+            }
+            continue;
+        }
+        if (limits && limits->max_total_size > 0 &&
+            file.size >= 0 && writtenBytes + file.size > limits->max_total_size) {
+            if (limits->bounded) *limits->bounded = true;
+            if (limits->limit_reason) *limits->limit_reason = "max_total_size";
+            break;
+        }
+        ++attempts;
+        ++processed;
+        const std::string outputPath = generateOutputPath(outputDir, file);
+        if (outputPath.empty()) {
+            ++failed;
+            if (limits && limits->errors && limits->errors->size() < 50) {
+                limits->errors->push_back(file.path + ": unsafe output path");
+            }
+            continue;
+        }
+        const int skippedBefore = skipped;
+        if (extractFile(file, outputPath, overwrite, &skipped)) {
+            ++extracted;
+            if (file.size > 0) writtenBytes += file.size;
+        } else if (skipped == skippedBefore) {
+            ++failed;
+            if (limits && limits->errors && limits->errors->size() < 50) {
+                limits->errors->push_back(file.path + ": extraction failed");
+            }
+        }
+    }
+    if (skippedCount) *skippedCount = skipped;
+    if (limits) {
+        if (limits->failed_count) *limits->failed_count = failed;
+        if (limits->total_count) *limits->total_count = static_cast<int>(files.size());
+        if (limits->processed_count) *limits->processed_count = processed;
+        if (limits->extracted_bytes) *limits->extracted_bytes = writtenBytes;
+    }
+    return extracted;
+}
+
+int FileExtractor::extractByName(const std::string& pattern, const std::string& outputDir, bool overwrite, int* skippedCount, ExtractionLimits* limits) {
     std::cout << "Searching files matching patterns: " << pattern << std::endl;
 
     // Parse patterns (comma-separated)
@@ -398,22 +461,17 @@ int FileExtractor::extractByName(const std::string& pattern, const std::string& 
         return 0;
     }
 
-    // Get all files from database
     auto files = searchFiles("type='REG' AND is_allocated=1");
-
     std::vector<FileRecord> matches;
     for (const auto& file : files) {
         bool matched = false;
         for (const auto& p : patterns) {
-            // Check if it's an exact path match or a wildcard filename match
             if (file.path == p || matchWildcard(file.name, p)) {
                 matched = true;
                 break;
             }
         }
-        if (matched) {
-            matches.push_back(file);
-        }
+        if (matched) matches.push_back(file);
     }
 
     std::cout << "Found " << matches.size() << " matching files" << std::endl;
@@ -422,23 +480,10 @@ int FileExtractor::extractByName(const std::string& pattern, const std::string& 
         return 0;
     }
 
-    // Extract each file
-    int extracted = 0;
-    for (const auto& file : matches) {
-        std::string outputPath = generateOutputPath(outputDir, file);
-        std::cout << "Extracting: " << file.path << " -> " << outputPath << std::endl;
-
-        if (extractFile(file, outputPath, overwrite, skippedCount)) {
-            extracted++;
-        } else {
-            std::cerr << "  Failed to extract: " << file.path << std::endl;
-        }
-    }
-
-    return extracted;
+    return extractRecords(matches, outputDir, overwrite, skippedCount, limits);
 }
 
-int FileExtractor::extractByExtension(const std::string& extensions, const std::string& outputDir, bool overwrite, int* skippedCount) {
+int FileExtractor::extractByExtension(const std::string& extensions, const std::string& outputDir, bool overwrite, int* skippedCount, ExtractionLimits* limits) {
     std::cout << "Searching files with extensions: " << extensions << std::endl;
 
     // Parse extensions
@@ -456,39 +501,34 @@ int FileExtractor::extractByExtension(const std::string& extensions, const std::
         extList.push_back(ext);
     }
 
-    // Build SQL WHERE clause
-    std::stringstream whereClause;
-    whereClause << "type='REG' AND is_allocated=1 AND (";
-    for (size_t i = 0; i < extList.size(); i++) {
-        if (i > 0) whereClause << " OR ";
-        whereClause << "name LIKE '%" << extList[i] << "'";
+    // Extension matching is performed in memory so request patterns never become SQL.
+    auto files = searchFiles("type='REG' AND is_allocated=1");
+    std::vector<FileRecord> matches;
+    for (const auto& file : files) {
+        const auto dot = file.name.find_last_of('.');
+        const std::string file_ext = dot == std::string::npos ? "" : file.name.substr(dot);
+        for (const auto& requested : extList) {
+            if (file_ext.size() == requested.size() &&
+                std::equal(file_ext.begin(), file_ext.end(), requested.begin(),
+                           [](char a, char b) {
+                               return static_cast<char>(std::tolower(static_cast<unsigned char>(a))) ==
+                                      static_cast<char>(std::tolower(static_cast<unsigned char>(b)));
+                           })) {
+                matches.push_back(file);
+                break;
+            }
+        }
     }
-    whereClause << ")";
+    std::cout << "Found " << matches.size() << " matching files" << std::endl;
 
-    auto files = searchFiles(whereClause.str());
-    std::cout << "Found " << files.size() << " matching files" << std::endl;
-
-    if (files.empty()) {
+    if (matches.empty()) {
         return 0;
     }
 
-    // Extract each file
-    int extracted = 0;
-    for (const auto& file : files) {
-        std::string outputPath = generateOutputPath(outputDir, file);
-        std::cout << "Extracting: " << file.path << " -> " << outputPath << std::endl;
-
-        if (extractFile(file, outputPath, overwrite, skippedCount)) {
-            extracted++;
-        } else {
-            std::cerr << "  Failed to extract: " << file.path << std::endl;
-        }
-    }
-
-    return extracted;
+    return extractRecords(matches, outputDir, overwrite, skippedCount, limits);
 }
 
-int FileExtractor::extractAll(const std::string& outputDir, bool includeDeleted, bool overwrite, int* skippedCount) {
+int FileExtractor::extractAll(const std::string& outputDir, bool includeDeleted, bool overwrite, int* skippedCount, ExtractionLimits* limits) {
     std::cout << "Extracting all files..." << std::endl;
 
     // Extract from main files table
@@ -504,26 +544,10 @@ int FileExtractor::extractAll(const std::string& outputDir, bool includeDeleted,
         return 0;
     }
 
-    // Extract each file
-    int extracted = 0;
-    for (size_t i = 0; i < files.size(); i++) {
-        const auto& file = files[i];
-        std::string outputPath = generateOutputPath(outputDir, file);
-
-        if (i < 10 || i % 50 == 0) {
-            std::cout << "Extracting [" << (i + 1) << "/" << files.size() << "]: "
-                      << file.path << std::endl;
-        }
-
-        if (extractFile(file, outputPath, overwrite, skippedCount)) {
-            extracted++;
-        }
-    }
-
-    return extracted;
+    return extractRecords(files, outputDir, overwrite, skippedCount, limits);
 }
 
-int FileExtractor::extractDeleted(const std::string& outputDir, bool overwrite, int* skippedCount) {
+int FileExtractor::extractDeleted(const std::string& outputDir, bool overwrite, int* skippedCount, ExtractionLimits* limits) {
     std::cout << "Extracting deleted files (Metadata Recovery)..." << std::endl;
 
     // files where is_deleted = 1
@@ -536,27 +560,7 @@ int FileExtractor::extractDeleted(const std::string& outputDir, bool overwrite, 
         return 0;
     }
 
-    int extracted = 0;
-    for (size_t i = 0; i < files.size(); i++) {
-        const auto& file = files[i];
-        std::string outputPath = generateOutputPath(outputDir, file);
-        
-        // Add "recovered_" prefix or similar if needed? 
-        // No, keep original name structure, but maybe ensure outputDir is distinct.
-        
-        if (i < 10 || i % 50 == 0) {
-            std::cout << "Recovering [" << (i + 1) << "/" << files.size() << "]: " 
-                      << file.path << std::endl;
-        }
-
-        if (extractFile(file, outputPath, overwrite, skippedCount)) {
-            extracted++;
-        } else {
-             std::cerr << "  Failed to recover: " << file.path << " (Content might be overwritten)" << std::endl;
-        }
-    }
-
-    return extracted;
+    return extractRecords(files, outputDir, overwrite, skippedCount, limits);
 }
 
 bool FileExtractor::extractFileByInode(int64_t inode, const std::string& outputPath, int partitionNum) {
@@ -663,7 +667,7 @@ bool FileExtractor::extractFile(const FileRecord& record, const std::string& out
                     if (skippedCount) {
                         (*skippedCount)++;
                     }
-                    return true; // Treat as success
+                    return false; // skipped is not an extracted success
                 }
             } catch (const std::exception& e) {
                 // If checking size fails, proceed to overwrite attempt

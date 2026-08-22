@@ -16,6 +16,9 @@ const ExtractionControls = ({
   extractionStatus,
   extractionProgress,
   extractionMessage,
+  extractedCount,
+  skippedCount,
+  extractionError,
   handleStartExtraction,
   // AI / KG
   llmStatus,
@@ -56,16 +59,24 @@ const ExtractionControls = ({
           </Button>
           <Button variant="outline" size="sm" onClick={async () => {
             const names = [...selectedFiles].map(idx => filteredFiles[idx].name || (filteredFiles[idx].path || filteredFiles[idx].file_path)?.split('/').pop()).filter(Boolean);
-            if (names.length > 0) { setExtractionMode('name'); setExtractionPattern(names.join(',')); handleStartExtraction(); }
+            if (names.length > 0) {
+              setExtractionMode('name');
+              setExtractionPattern(names.join(','));
+              handleStartExtraction({ mode: 'name', pattern: names.join(',') });
+            }
           }} disabled={selectedFiles.size === 0 || extractionStatus === 'running'}>
             📥 提取选中 ({selectedFiles.size})
           </Button>
+          {extractionError && extractionStatus !== 'running' && (
+            <span className="text-[10px] text-red-600 dark:text-red-400 truncate">{extractionError}</span>
+          )}
           {extractionStatus !== 'idle' && (
             <div className="flex-1 flex items-center gap-3 px-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg min-w-[200px]">
               <div className="flex-1 h-1.5 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
                 <div className="bg-blue-600 h-full transition-all" style={{ width: `${extractionProgress}%` }} />
               </div>
               <span className="text-[10px] font-mono text-blue-700 dark:text-blue-300 whitespace-nowrap">{extractionMessage}</span>
+              <span className="text-[10px] text-slate-500 whitespace-nowrap">{extractedCount} / {extractedCount + skippedCount} files</span>
             </div>
           )}
         </div>

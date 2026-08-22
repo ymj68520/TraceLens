@@ -368,18 +368,13 @@ bool FileExtractor::createDirectories(const std::string& path) {
 }
 
 std::string FileExtractor::generateOutputPath(const std::string& outputDir, const FileRecord& record) {
-    fs::path outPath(outputDir);
-
-    // Use relative path from image
-    std::string relPath = record.path;
-
-    // Remove leading slash
-    if (!relPath.empty() && relPath[0] == '/') {
-        relPath = relPath.substr(1);
+    std::string safeError;
+    auto safePath = FileExtractor::resolveSafeOutputPath(
+        fs::path(outputDir), record.path, &safeError);
+    if (!safePath) {
+        return {};
     }
-
-    // Build full output path
-    outPath /= relPath;
+    fs::path outPath = *safePath;
 
     std::string pathStr = outPath.string();
     

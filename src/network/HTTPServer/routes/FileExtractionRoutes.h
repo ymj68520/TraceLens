@@ -4,17 +4,24 @@
 #include <nlohmann/json.hpp>
 #include "../HTTPServerDataTypes.h"
 #include <mutex>
+#include <thread>
 #include <unordered_map>
+#include <vector>
 
 namespace forensics {
 
 class FileExtractionRoutes {
 public:
     explicit FileExtractionRoutes(crow::App<>& app);
+    ~FileExtractionRoutes();
+
+    FileExtractionRoutes(const FileExtractionRoutes&) = delete;
+    FileExtractionRoutes& operator=(const FileExtractionRoutes&) = delete;
     
 private:
     std::unordered_map<std::string, ExtractionJob> extraction_jobs_;
     std::mutex extraction_mutex_;
+    std::vector<std::thread> workers_;
     
     crow::response handle_extract_files(const crow::request& req);
     crow::response handle_extraction_status(const crow::request& req);

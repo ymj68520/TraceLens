@@ -338,10 +338,10 @@ struct ExtractionConfig {
     bool include_deleted = false;
     bool overwrite = false;           // If false, skip existing files
     
-    // Future extensibility - limits (currently unused, reserved for future)
-    int max_files = 0;                // 0 = no limit
-    int64_t max_total_size = 0;       // 0 = no limit (bytes)
-    int64_t max_file_size = 0;        // 0 = no limit per file (bytes)
+    // Extraction limits: 0 means unlimited.
+    int64_t max_files = 0;
+    int64_t max_total_size = 0;
+    int64_t max_file_size = 0;
 };
 
 /**
@@ -355,9 +355,12 @@ struct ExtractionJob {
     
     // Progress tracking
     int total_files = 0;
+    int processed_files = 0;
     int extracted_files = 0;
     int skipped_files = 0;
     int failed_files = 0;
+    bool bounded = false;
+    std::string limit_reason;
     std::string current_file;
     std::string message;
     std::string error_details;

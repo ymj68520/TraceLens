@@ -23,6 +23,9 @@ export const startExtraction = async (taskId, options = {}) => {
     output_dir: options.outputDir || 'extracted_files',
     include_deleted: options.includeDeleted || false,
     overwrite: options.overwrite || false,
+    ...(options.maxFiles != null ? { max_files: options.maxFiles } : {}),
+    ...(options.maxTotalSize != null ? { max_total_size: options.maxTotalSize } : {}),
+    ...(options.maxFileSize != null ? { max_file_size: options.maxFileSize } : {}),
   };
 
   const response = await api.post('/api/forensics/extract', payload);
@@ -34,40 +37,75 @@ export const startExtraction = async (taskId, options = {}) => {
  * @param {string} jobId - Extraction job ID
  * @returns {Promise<Object>} Job status info
  */
-export const getExtractionStatus = async (jobId) => {
-  const response = await api.get(`/api/forensics/extract/status?job_id=${jobId}`);
+export const getExtractionStatus = async (jobId, signal) => {
+  const response = await api.get(`/api/forensics/extract/status?job_id=${encodeURIComponent(jobId)}`, {
+    signal,
+  });
   return response;
 };
 
 /**
- * Poll extraction status until completion
- * @param {string} jobId - Extraction job ID
- * @param {Function} onProgress - Progress callback (receives status object)
- * @param {number} interval - Polling interval in ms (default: 1000)
- * @returns {Promise<Object>} Final job status
+ * Poll with task/job identity, cancellation, and an absolute deadline.
  */
-export const pollExtractionStatus = async (jobId, onProgress, interval = 1000) => {
+export const pollExtractionStatus = async (
+  jobId,
+  onProgress,
+  interval = 1000,
+  options = {},
+) => {
+  const {
+    taskId,
+    expectedTaskId = taskId,
+    signal,
+    timeoutMs = 15 * 60 * 1000,
+    isCurrent = () => true,
+  } = options;
+  const deadline = Date.now() + timeoutMs;
+
   return new Promise((resolve, reject) => {
+    let timer;
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      callback(value);
+    };
+    const abortError = () => {
+      const error = new Error('Extraction polling cancelled');
+      error.name = 'AbortError';
+      return error;
+    };
     const poll = async () => {
+      if (signal?.aborted || !isCurrent(taskId, jobId) || Date.now() > deadline) {
+        finish(reject, signal?.aborted ? abortError() : new Error('Extraction polling timed out'));
+        return;
+      }
       try {
-        const status = await getExtractionStatus(jobId);
-
-        if (onProgress) {
-          onProgress(status);
+        const status = await getExtractionStatus(jobId, signal);
+        if (signal?.aborted || !isCurrent(expectedTaskId, jobId)) {
+          finish(reject, signal?.aborted ? abortError() : new Error('Extraction job is no longer current'));
+          return;
         }
-
+        if (status.task_id && expectedTaskId && status.task_id !== expectedTaskId) {
+          finish(reject, new Error('Extraction job belongs to another task'));
+          return;
+        }
+        onProgress?.(status);
         if (status.status === 'completed') {
-          resolve(status);
+          finish(resolve, status);
         } else if (status.status === 'failed' || status.status === 'cancelled') {
-          reject(new Error(status.error_details || status.message || 'Extraction failed'));
+          const error = new Error(status.error_details || status.message || 'Extraction failed');
+          error.status = status;
+          finish(reject, error);
         } else {
-          setTimeout(poll, interval);
+          timer = setTimeout(poll, interval);
         }
       } catch (error) {
-        reject(error);
+        if (signal?.aborted) finish(reject, abortError());
+        else finish(reject, error);
       }
     };
-
     poll();
   });
 };

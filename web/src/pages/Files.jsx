@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { fetchTasks } from '../store/taskSlice';
@@ -69,6 +69,7 @@ const Files = () => {
       console.log(`[Files] Auto-resuming batch analysis polling: ${activeBatch.jobId}`);
       startBatchAnalysisPolling(activeBatch.jobId);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]); // Re-run if taskId changes
 
   const startBatchAnalysisPolling = useCallback(async (jobId) => {
@@ -125,6 +126,7 @@ const Files = () => {
   const [extractedCount, setExtractedCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
   const [extractionError, setExtractionError] = useState(null);
+  const extractionControllerRef = useRef(null);
 
   // Office preview state
   const [officePreview, setOfficePreview] = useState(null);
@@ -140,7 +142,11 @@ const Files = () => {
 
   const currentTask = tasks.find((t) => t.id === taskId);
 
-  // Check LLM and Graphiti service status
+  useEffect(() => () => {
+    extractionControllerRef.current?.abort();
+    extractionControllerRef.current = null;
+  }, [taskId]);
+
   useEffect(() => {
     const checkServices = async () => {
       try {
@@ -711,9 +717,13 @@ ${detail}
     return null;
   };
 
-  // Handle extraction start
-  const handleStartExtraction = async () => {
+  const handleStartExtraction = async (requestOverrides = {}) => {
     if (!taskId) return;
+    extractionControllerRef.current?.abort();
+    const controller = new AbortController();
+    extractionControllerRef.current = controller;
+    const requestMode = requestOverrides.mode ?? extractionMode;
+    const requestPattern = requestOverrides.pattern ?? extractionPattern;
 
     setExtractionStatus('pending');
     setExtractionProgress(0);
@@ -724,8 +734,8 @@ ${detail}
 
     try {
       const result = await startExtraction(taskId, {
-        mode: extractionMode,
-        pattern: extractionPattern,
+        mode: requestMode,
+        pattern: requestPattern,
         includeDeleted: includeDeleted,
         overwrite: overwrite,
       });
@@ -740,16 +750,29 @@ ${detail}
       const finalStatus = await pollExtractionStatus(
         result.job_id,
         (status) => {
+          if (status.task_id && status.task_id !== taskId) return;
           setExtractionProgress(status.progress || 0);
           setExtractionMessage(status.message || 'Extracting...');
           setExtractedCount(status.extracted_files || 0);
           setSkippedCount(status.skipped_files || 0);
+          if (status.failed_files) {
+            setExtractionError(`${status.failed_files} files failed${status.error_details ? `: ${status.error_details}` : ''}`);
+          }
         },
-        1000
+        1000,
+        {
+          taskId,
+          signal: controller.signal,
+          isCurrent: (currentTaskId, currentJobId) => (
+            currentTaskId === taskId && currentJobId === result.job_id
+          ),
+        },
       );
 
       setExtractionStatus('completed');
-      setExtractionMessage(`Results: ${finalStatus.extracted_files} extracted, ${finalStatus.skipped_files || 0} skipped`);
+      const failureSuffix = finalStatus.failed_files ? `, ${finalStatus.failed_files} failed` : '';
+      const boundSuffix = finalStatus.bounded ? ` (limited by ${finalStatus.limit_reason || 'configured limit'})` : '';
+      setExtractionMessage(`Results: ${finalStatus.extracted_files} extracted, ${finalStatus.skipped_files || 0} skipped${failureSuffix}${boundSuffix}`);
       setExtractedCount(finalStatus.extracted_files || 0);
       setSkippedCount(finalStatus.skipped_files || 0);
 
@@ -922,6 +945,9 @@ ${detail}
               extractionStatus={extractionStatus}
               extractionProgress={extractionProgress}
               extractionMessage={extractionMessage}
+              extractedCount={extractedCount}
+              skippedCount={skippedCount}
+              extractionError={extractionError}
               handleStartExtraction={handleStartExtraction}
               llmStatus={llmStatus}
               isBatchRunning={isBatchRunning}
@@ -993,6 +1019,7 @@ ${detail}
       {activeTab === 'office' && (
         <OfficePreviewTab
           filteredFiles={filteredFiles}
+          taskId={taskId}
           officePreview={officePreview}
           setOfficePreview={setOfficePreview}
           officeParsing={officeParsing}
