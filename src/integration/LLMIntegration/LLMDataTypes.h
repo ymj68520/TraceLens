@@ -12,7 +12,7 @@ namespace llm {
  * @brief LLM connection configuration
  */
 struct LLMConfig {
-    std::string baseUrl = "http://localhost:1234";  // LM Studio default
+    std::string baseUrl = "http://192.168.31.170:1234";  // OpenAI-compatible endpoint
     std::string endpoint = "/v1/chat/completions";
     std::string apiKey = "";  // Optional for local LM Studio
     std::string model = "";   // Model name, empty for auto-select

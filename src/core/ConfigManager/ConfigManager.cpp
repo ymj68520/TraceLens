@@ -83,7 +83,7 @@ bool ConfigManager::getBool(const std::string& key, bool defaultValue) const {
 }
 
 // --- LLM Analysis Settings ---
-std::string ConfigManager::getLLMBaseUrl() const { return get("LLM_BASE_URL", "http://localhost:1234"); }
+std::string ConfigManager::getLLMBaseUrl() const { return get("LLM_BASE_URL", "http://192.168.31.170:1234"); }
 std::string ConfigManager::getLLMEndpoint() const { return get("LLM_ENDPOINT", "/v1/chat/completions"); }
 std::string ConfigManager::getLLMApiKey() const { return get("LLM_API_KEY", ""); }
 int ConfigManager::getLLMTimeoutSeconds() const { return getInt("LLM_TIMEOUT_SECONDS", 120); }
