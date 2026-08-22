@@ -2,7 +2,13 @@
 #include "../../core/Logger/Logger.h"
 #include "ConfigManager/ConfigManager.h"
 #include <httplib.h>
+#include <filesystem>
+#include <initializer_list>
+#include <optional>
 #include <utility>
+#include <vector>
+
+namespace fs = std::filesystem;
 
 namespace forensics {
 namespace llm {
@@ -18,6 +24,39 @@ MarkitdownProxy& MarkitdownProxy::instance() {
     return instance;
 }
 
+static std::optional<fs::path> commonWorkspace(std::initializer_list<std::string> values) {
+    if (values.size() == 0) return std::nullopt;
+    std::vector<fs::path> paths;
+    paths.reserve(values.size());
+    for (const auto& value : values) {
+        if (value.empty()) return std::nullopt;
+        paths.push_back(fs::weakly_canonical(fs::path(value)));
+    }
+    fs::path common = paths.front().root_path();
+    const auto& first = paths.front();
+    std::size_t component = 0;
+    for (auto it = first.begin(); it != first.end(); ++it, ++component) {
+        bool matches = true;
+        for (const auto& path : paths) {
+            auto other = path.begin();
+            std::advance(other, static_cast<long>(component));
+            if (other == path.end() || *other != *it) {
+                matches = false;
+                break;
+            }
+        }
+        if (!matches) break;
+        common /= *it;
+    }
+    if (common.empty() || common == common.root_path()) return std::nullopt;
+    return common;
+}
+
+static std::string workspaceOrEmpty(std::initializer_list<std::string> values) {
+    auto workspace = commonWorkspace(values);
+    return workspace ? workspace->string() : std::string{};
+}
+
 static httplib::Result PostJson(httplib::Client& cli,
                                 const std::string& path,
                                 const std::string& json_body) {
@@ -30,10 +69,17 @@ SingleConversionResult MarkitdownProxy::convertOneToMarkdown(
         const std::string& outputRoot) {
     SingleConversionResult result;
     try {
+        const std::string workspace = workspaceOrEmpty({inputRoot, inputFile, outputRoot});
+        if (workspace.empty()) {
+            result.status = SingleConversionStatus::Failed;
+            result.error = "conversion paths do not share a safe workspace";
+            return result;
+        }
         const nlohmann::json body = {
             {"input_root", inputRoot},
             {"input_file", inputFile},
             {"output_root", outputRoot},
+            {"workspace_root", workspace},
         };
 
         const std::string payload = body.dump();
@@ -86,7 +132,15 @@ SingleConversionResult MarkitdownProxy::convertOneToMarkdown(
 
 std::string MarkitdownProxy::convertToMarkdown(const std::string& filePath) {
     try {
-        nlohmann::json body = {{"file_path", filePath}};
+        const auto file = fs::weakly_canonical(fs::path(filePath));
+        const std::string workspace = workspaceOrEmpty({file.parent_path().string()});
+        nlohmann::json body = {
+            {"file_path", filePath},
+            {"workspace_root", workspace},
+        };
+        if (workspace.empty()) {
+            return "Error: file path has no safe workspace";
+        }
         const std::string payload = body.dump();
 
         if (http_poster_) {
@@ -178,13 +232,18 @@ MarkitdownProxy::BatchResult MarkitdownProxy::batchConvertToMarkdown(
         // Batch conversion of a whole directory can take a while.
         cli.set_read_timeout(600);
 
+        const std::string workspace = workspaceOrEmpty({inputDir, outputDir});
+        if (workspace.empty()) {
+            result.error = "conversion paths do not share a safe workspace";
+            return result;
+        }
         nlohmann::json body = {
             {"input_dir", inputDir},
-            {"output_dir", outputDir}
+            {"output_dir", outputDir},
+            {"workspace_root", workspace},
         };
 
-        auto res = cli.Post("/api/markitdown/batch-convert",
-                            body.dump(), "application/json");
+        auto res = PostJson(cli, "/api/markitdown/batch-convert", body.dump());
 
         if (!res) {
             result.error = "Service unreachable at " + pythonServiceUrl_;

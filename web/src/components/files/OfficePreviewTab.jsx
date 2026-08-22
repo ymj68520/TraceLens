@@ -7,9 +7,10 @@ import Badge from '../common/Badge';
 import Spinner from '../common/Spinner';
 import { parseFile } from '../../services/officeService';
 
-const OFFICE_EXTENSIONS = ['.pptx', '.ppt', '.xlsx', '.xls', '.docx', '.doc'];
+const OFFICE_EXTENSIONS = ['.pptx', '.ppt', '.xlsx', '.xls'];
 
 const OfficePreviewTab = ({
+  taskId,
   filteredFiles,
   officePreview,
   setOfficePreview,
@@ -27,7 +28,7 @@ const OfficePreviewTab = ({
     setOfficeError(null);
     setOfficePreview(null);
     try {
-      const result = await parseFile(filePath);
+      const result = await parseFile(taskId, filePath);
       setOfficePreview({ file, ...result });
     } catch (err) {
       setOfficeError(err.message || '解析失败');
@@ -84,7 +85,7 @@ const OfficePreviewTab = ({
             <h4 className="font-medium text-slate-900 dark:text-white mb-3">
               📄 {officePreview.file?.name || '文档内容'}
             </h4>
-            {/* Slides / Sheets */}
+            {/* Structured content takes precedence; the API's Markdown content is the fallback. */}
             {officePreview.slides && (
               <div className="space-y-3">
                 <p className="text-sm text-slate-500">幻灯片: {officePreview.slides.length} 页</p>
@@ -124,7 +125,12 @@ const OfficePreviewTab = ({
                 ))}
               </div>
             )}
-            {/* Raw text fallback */}
+            {officePreview.content && !officePreview.slides && !officePreview.sheets && !officePreview.text && (
+              <pre className="text-sm text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-900 p-4 rounded overflow-auto max-h-96 whitespace-pre-wrap">
+                {officePreview.content}
+              </pre>
+            )}
+            {/* Raw text compatibility fallback */}
             {officePreview.text && !officePreview.slides && !officePreview.sheets && (
               <pre className="text-sm text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-900 p-4 rounded overflow-auto max-h-96 whitespace-pre-wrap">
                 {officePreview.text}

@@ -183,6 +183,6 @@ csApi.interceptors.response.use(
   }
 );
 
-export { pythonApi, csApi, CPP_BASE_URL, PYTHON_API_BASE_URL };
+export { pythonApi, csApi, CPP_BASE_URL, PYTHON_API_BASE_URL, PYTHON_API_BASE_URL as PYTHON_BASE_URL };
 export default api;
 
