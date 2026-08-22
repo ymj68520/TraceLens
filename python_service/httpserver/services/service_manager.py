@@ -104,7 +104,9 @@ class ServiceManager:
     async def _run_initialization(self) -> None:
         logger.info("Initializing services...")
         try:
-            await self._initialize_services()
+            startup_timeout = getattr(self.settings, "startup_timeout", 30.0)
+            async with asyncio.timeout(startup_timeout):
+                await self._initialize_services()
         except BaseException:
             await self._rollback_initialization()
             raise
@@ -143,7 +145,10 @@ class ServiceManager:
             from .graphiti_service import GraphitiService
 
             self._graphiti_service = GraphitiService(self.settings)
-            await self._graphiti_service.initialize()
+            await asyncio.wait_for(
+                self._graphiti_service.initialize(),
+                timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
+            )
         except Exception as error:
             logger.warning(f"Graphiti service initialization failed: {error}")
 
@@ -161,7 +166,10 @@ class ServiceManager:
         if self._cpp_backend_ready:
             try:
                 executor = self._create_secondary_analysis_executor()
-                await executor.initialize()  # E9: restart recovery
+                await asyncio.wait_for(
+                    executor.initialize(),
+                    timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
+                )
                 self._secondary_analysis_executor = executor
                 self._secondary_analysis_ready = True
             except Exception as error:
@@ -171,7 +179,10 @@ class ServiceManager:
 
             try:
                 executor = self._create_event_refresh_executor()
-                await executor.initialize()
+                await asyncio.wait_for(
+                    executor.initialize(),
+                    timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
+                )
                 self._event_refresh_executor = executor
                 self._event_refresh_ready = True
             except Exception as error:
@@ -188,7 +199,10 @@ class ServiceManager:
                 executor = await asyncio.to_thread(
                     self._create_report_generation_executor
                 )
-                await executor.initialize()  # restart recovery
+                await asyncio.wait_for(
+                    executor.initialize(),
+                    timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
+                )
                 self._report_generation_executor = executor
                 self._report_generation_ready = True
             except Exception as error:
@@ -201,7 +215,10 @@ class ServiceManager:
             from .ingestion_job_manager import IngestionJobManager
 
             self._ingestion_job_manager = IngestionJobManager(self.settings)
-            await self._ingestion_job_manager.initialize()
+            await asyncio.wait_for(
+                self._ingestion_job_manager.initialize(),
+                timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
+            )
         except Exception as error:
             logger.warning(f"IngestionJobManager initialization failed: {error}")
 
@@ -219,8 +236,13 @@ class ServiceManager:
                 neo4j_uri=self.settings.neo4j_uri,
                 neo4j_user=self.settings.neo4j_user,
                 neo4j_password=self.settings.neo4j_password,
+                neo4j_connect_timeout=getattr(self.settings, "neo4j_connect_timeout", 5.0),
+                neo4j_query_timeout=getattr(self.settings, "neo4j_query_timeout", 5.0),
             )
-            await self._migration_manager.initialize()
+            await asyncio.wait_for(
+                self._migration_manager.initialize(),
+                timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
+            )
         except ImportError as error:
             logger.warning(f"MigrationManager import failed: {error}")
         except Exception as error:

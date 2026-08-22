@@ -5,6 +5,7 @@ This module provides functionality to create bi-directional relationships betwee
 entities and files, and resolve cross-task entity references.
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -36,18 +37,14 @@ class EntityRelationBuilder:
         neo4j_uri: str,
         neo4j_user: str,
         neo4j_password: str,
+        neo4j_connect_timeout: float = 5.0,
+        neo4j_query_timeout: float = 5.0,
     ):
-        """
-        Initialize Entity Relation Builder.
-
-        Args:
-            neo4j_uri: Neo4j connection URI.
-            neo4j_user: Neo4j username.
-            neo4j_password: Neo4j password.
-        """
         self.neo4j_uri = neo4j_uri
         self.neo4j_user = neo4j_user
         self.neo4j_password = neo4j_password
+        self.neo4j_connect_timeout = neo4j_connect_timeout
+        self.neo4j_query_timeout = neo4j_query_timeout
         self._driver: Optional[AsyncGraphDatabase.driver] = None
         self._initialized = False
 
@@ -58,16 +55,24 @@ class EntityRelationBuilder:
 
         self._driver = AsyncGraphDatabase.driver(
             self.neo4j_uri,
-            auth=(self.neo4j_user, self.neo4j_password)
+            auth=(self.neo4j_user, self.neo4j_password),
+            connection_timeout=self.neo4j_connect_timeout,
         )
 
         # Mark as initialized before running queries to prevent recursion
         self._initialized = True
 
-        # Create index for MENTIONED_IN relationship queries
-        await self._run_query("""
-            CREATE INDEX entity_name_index IF NOT EXISTS FOR (e:Entity) ON (e.name)
-        """)
+        try:
+            # Create index for MENTIONED_IN relationship queries
+            await asyncio.wait_for(
+                self._run_query("""
+                    CREATE INDEX entity_name_index IF NOT EXISTS FOR (e:Entity) ON (e.name)
+                """),
+                timeout=self.neo4j_query_timeout,
+            )
+        except BaseException:
+            await self.close()
+            raise
 
         logger.info("EntityRelationBuilder initialized")
 

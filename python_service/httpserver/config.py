@@ -147,8 +147,16 @@ class Settings(BaseSettings):
     dll_cpp_backend_url: str = Field(default="http://localhost:8080", env="DLL_CPP_BACKEND_URL")
     dll_analysis_timeout: float = Field(default=30.0, env="DLL_ANALYSIS_TIMEOUT")
 
+    # Startup/recovery budgets are intentionally separate from inference timeout.
+    cpp_startup_request_timeout: float = Field(default=5.0, alias="CPP_STARTUP_REQUEST_TIMEOUT")
+    cpp_recovery_timeout: float = Field(default=8.0, alias="CPP_RECOVERY_TIMEOUT")
+    neo4j_connect_timeout: float = Field(default=5.0, alias="NEO4J_CONNECT_TIMEOUT")
+    neo4j_query_timeout: float = Field(default=5.0, alias="NEO4J_QUERY_TIMEOUT")
+    optional_service_init_timeout: float = Field(default=12.0, alias="OPTIONAL_SERVICE_INIT_TIMEOUT")
+    startup_timeout: float = Field(default=30.0, alias="PYTHON_STARTUP_TIMEOUT")
+
     # LLM Settings
-    llm_base_url: str = Field(default="http://localhost:1234", alias="LLM_BASE_URL")
+    llm_base_url: str = Field(default="http://192.168.31.170:1234", alias="LLM_BASE_URL")
     llm_endpoint: str = Field(default="/v1/chat/completions", alias="LLM_ENDPOINT")
     llm_api_key: str = Field(default="", alias="LLM_API_KEY")
 
@@ -161,12 +169,12 @@ class Settings(BaseSettings):
             return "/v1/chat/completions"
         return endpoint
     
-    llm_text_base_url: str = Field(default="http://localhost:1234", alias="LLM_TEXT_BASE_URL")
+    llm_text_base_url: str = Field(default="http://192.168.31.170:1234", alias="LLM_TEXT_BASE_URL")
     llm_text_model: str = Field(default="openai/gpt-oss-20b", alias="LLM_TEXT_MODEL")
     llm_text_max_tokens: int = Field(default=4096, alias="LLM_TEXT_MAX_TOKENS")
     llm_text_temperature: float = Field(default=0.7, alias="LLM_TEXT_TEMPERATURE")
     
-    llm_vision_base_url: str = Field(default="http://localhost:1234", alias="LLM_VISION_BASE_URL")
+    llm_vision_base_url: str = Field(default="http://192.168.31.170:1234", alias="LLM_VISION_BASE_URL")
     llm_vision_model: str = Field(default="qwen/qwen3-vl-4b", alias="LLM_VISION_MODEL")
     llm_vision_max_tokens: int = Field(default=4096, alias="LLM_VISION_MAX_TOKENS")
     llm_vision_temperature: float = Field(default=0.5, alias="LLM_VISION_TEMPERATURE")

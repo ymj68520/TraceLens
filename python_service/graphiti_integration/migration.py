@@ -63,6 +63,8 @@ class MigrationManager:
         neo4j_uri: str,
         neo4j_user: str,
         neo4j_password: str,
+        neo4j_connect_timeout: float = 5.0,
+        neo4j_query_timeout: float = 5.0,
     ):
         """
         Initialize Migration Manager.
@@ -75,6 +77,8 @@ class MigrationManager:
         self.neo4j_uri = neo4j_uri
         self.neo4j_user = neo4j_user
         self.neo4j_password = neo4j_password
+        self.neo4j_connect_timeout = neo4j_connect_timeout
+        self.neo4j_query_timeout = neo4j_query_timeout
         self._driver: Optional[AsyncGraphDatabase.driver] = None
         self._initialized = False
 
@@ -88,16 +92,26 @@ class MigrationManager:
 
         self._driver = AsyncGraphDatabase.driver(
             self.neo4j_uri,
-            auth=(self.neo4j_user, self.neo4j_password)
+            auth=(self.neo4j_user, self.neo4j_password),
+            connection_timeout=self.neo4j_connect_timeout,
         )
 
-        # Initialize File Entity Ingestor
-        self._file_ingestor = FileEntityIngestor(
-            neo4j_uri=self.neo4j_uri,
-            neo4j_user=self.neo4j_user,
-            neo4j_password=self.neo4j_password
-        )
-        await self._file_ingestor.initialize()
+        try:
+            # Initialize File Entity Ingestor
+            self._file_ingestor = FileEntityIngestor(
+                neo4j_uri=self.neo4j_uri,
+                neo4j_user=self.neo4j_user,
+                neo4j_password=self.neo4j_password,
+                neo4j_connect_timeout=self.neo4j_connect_timeout,
+                neo4j_query_timeout=self.neo4j_query_timeout,
+            )
+            await asyncio.wait_for(
+                self._file_ingestor.initialize(),
+                timeout=self.neo4j_query_timeout * 2 + self.neo4j_connect_timeout,
+            )
+        except BaseException:
+            await self.close()
+            raise
 
         self._initialized = True
         logger.info("MigrationManager initialized")

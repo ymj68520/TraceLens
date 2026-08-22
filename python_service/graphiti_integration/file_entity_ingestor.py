@@ -56,6 +56,8 @@ class FileEntityIngestor:
         neo4j_uri: str,
         neo4j_user: str,
         neo4j_password: str,
+        neo4j_connect_timeout: float = 5.0,
+        neo4j_query_timeout: float = 5.0,
     ):
         """
         Initialize File Entity Ingestor.
@@ -64,10 +66,14 @@ class FileEntityIngestor:
             neo4j_uri: Neo4j connection URI.
             neo4j_user: Neo4j username.
             neo4j_password: Neo4j password.
+            neo4j_connect_timeout: Driver connection timeout (seconds).
+            neo4j_query_timeout: Per-query timeout (seconds).
         """
         self.neo4j_uri = neo4j_uri
         self.neo4j_user = neo4j_user
         self.neo4j_password = neo4j_password
+        self.neo4j_connect_timeout = neo4j_connect_timeout
+        self.neo4j_query_timeout = neo4j_query_timeout
         self._driver: Optional[AsyncGraphDatabase.driver] = None
         self._initialized = False
 
@@ -78,27 +84,35 @@ class FileEntityIngestor:
 
         self._driver = AsyncGraphDatabase.driver(
             self.neo4j_uri,
-            auth=(self.neo4j_user, self.neo4j_password)
+            auth=(self.neo4j_user, self.neo4j_password),
+            connection_timeout=self.neo4j_connect_timeout,
         )
 
         # Mark as initialized before running queries to prevent recursion
         self._initialized = True
 
-        # Create unique constraint on File.id
-        await self._run_query(
-            "CREATE CONSTRAINT file_id_unique IF NOT EXISTS FOR (f:File) REQUIRE f.id IS UNIQUE"
-        )
+        try:
+            # Create unique constraint on File.id
+            await asyncio.wait_for(
+                self._run_query(
+                    "CREATE CONSTRAINT file_id_unique IF NOT EXISTS FOR (f:File) REQUIRE f.id IS UNIQUE"
+                ),
+                timeout=self.neo4j_query_timeout,
+            )
 
-        # Create indexes for common queries
-        indexes = [
-            "CREATE INDEX file_md5_index IF NOT EXISTS FOR (f:File) ON (f.md5)",
-            "CREATE INDEX file_path_hash_index IF NOT EXISTS FOR (f:File) ON (f.path_hash)",
-            "CREATE INDEX file_category_index IF NOT EXISTS FOR (f:File) ON (f.category)",
-            "CREATE INDEX file_llm_analyzed_index IF NOT EXISTS FOR (f:File) ON (f.llm_analyzed_at)",
-        ]
+            # Create indexes for common queries
+            indexes = [
+                "CREATE INDEX file_md5_index IF NOT EXISTS FOR (f:File) ON (f.md5)",
+                "CREATE INDEX file_path_hash_index IF NOT EXISTS FOR (f:File) ON (f.path_hash)",
+                "CREATE INDEX file_category_index IF NOT EXISTS FOR (f:File) ON (f.category)",
+                "CREATE INDEX file_llm_analyzed_index IF NOT EXISTS FOR (f:File) ON (f.llm_analyzed_at)",
+            ]
 
-        for index_query in indexes:
-            await self._run_query(index_query)
+            for index_query in indexes:
+                await asyncio.wait_for(self._run_query(index_query), timeout=self.neo4j_query_timeout)
+        except BaseException:
+            await self.close()
+            raise
 
         logger.info("FileEntityIngestor initialized with constraints and indexes")
 

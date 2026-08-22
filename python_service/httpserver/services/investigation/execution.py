@@ -515,7 +515,12 @@ class SecondaryAnalysisExecutor:
         """Sweep all tasks' investigation.db for stale queued/running rows."""
         page = 1
         while True:
-            result = await self._cpp_backend.list_tasks(page=page, page_size=100)
+            result = await self._cpp_backend.list_tasks(
+                page=page,
+                page_size=100,
+                timeout=getattr(self._cpp_backend.settings, "cpp_recovery_timeout", 8.0),
+                max_retries=1,
+            )
             tasks = result.get("tasks") or result.get("data") or []
             if not isinstance(tasks, list) or not tasks:
                 break
@@ -531,7 +536,11 @@ class SecondaryAnalysisExecutor:
         if not task_id or not isinstance(task_id, str):
             return
         # Get the full task dict (with trusted DB paths)
-        full_task = await self._cpp_backend.get_task(task_id)
+        full_task = await self._cpp_backend.get_task(
+            task_id,
+            timeout=getattr(self._cpp_backend.settings, "cpp_recovery_timeout", 8.0),
+            max_retries=1,
+        )
         if full_task is None:
             return
         try:

@@ -139,10 +139,23 @@ class GraphitiStatusMixin:
             uri = self.settings.neo4j_uri
             user = self.settings.neo4j_user
             password = self.settings.neo4j_password
-            driver = AsyncGraphDatabase.driver(uri, auth=(user, password))
-            async with driver.session() as session:
-                await session.run("RETURN 1")
-            await driver.close()
+            driver = AsyncGraphDatabase.driver(
+                uri,
+                auth=(user, password),
+                connection_timeout=getattr(self.settings, "neo4j_connect_timeout", 5.0),
+            )
+            try:
+                async with driver.session() as session:
+                    result = await asyncio.wait_for(
+                        session.run("RETURN 1"),
+                        timeout=getattr(self.settings, "neo4j_query_timeout", 5.0),
+                    )
+                    await asyncio.wait_for(
+                        result.consume(),
+                        timeout=getattr(self.settings, "neo4j_query_timeout", 5.0),
+                    )
+            finally:
+                await driver.close()
             return True
         except Exception as e:
             logger.debug(f"Neo4j connection check failed: {e}")

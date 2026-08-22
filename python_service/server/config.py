@@ -43,6 +43,12 @@ class Settings(BaseSettings):
         "DATABASE_URL",
         "postgresql://postgres:postgres@localhost:5432/tracelens",
     )
+    # Keep driver, pool checkout, and lifespan budgets independent.  The
+    # driver timeout must be shorter than DB_STARTUP_TIMEOUT because cancelling
+    # a worker thread cannot interrupt an in-flight socket operation.
+    DB_CONNECT_TIMEOUT: int = int(os.getenv("DB_CONNECT_TIMEOUT", "5"))
+    DB_POOL_TIMEOUT: int = int(os.getenv("DB_POOL_TIMEOUT", "5"))
+    DB_STARTUP_TIMEOUT: float = float(os.getenv("DB_STARTUP_TIMEOUT", "30"))
 
     # JWT
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "change-this-in-production")

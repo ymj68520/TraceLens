@@ -237,7 +237,12 @@ class EventRefreshExecutor:
     async def _recover_stale_refreshes(self) -> None:
         page = 1
         while True:
-            result = await self._cpp_backend.list_tasks(page=page, page_size=100)
+            result = await self._cpp_backend.list_tasks(
+                page=page,
+                page_size=100,
+                timeout=getattr(self._cpp_backend.settings, "cpp_recovery_timeout", 8.0),
+                max_retries=1,
+            )
             tasks = result.get("tasks") or result.get("data") or []
             if not tasks:
                 break
@@ -251,7 +256,11 @@ class EventRefreshExecutor:
         task_id = summary.get("id")
         if not isinstance(task_id, str) or not task_id:
             return
-        task = await self._cpp_backend.get_task(task_id)
+        task = await self._cpp_backend.get_task(
+            task_id,
+            timeout=getattr(self._cpp_backend.settings, "cpp_recovery_timeout", 8.0),
+            max_retries=1,
+        )
         if task is None:
             return
         try:

@@ -18,6 +18,7 @@ A module-level ``app`` is exposed for ASGI servers and for
 A ``create_app`` factory is also provided so callers (e.g. future wiring or
 tests) can construct a fresh application instance with overridden settings.
 """
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -43,6 +44,36 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+_db_available = False
+_db_error: str | None = None
+
+
+async def initialize_database() -> bool:
+    """Run synchronous schema creation without blocking the event loop."""
+    global _db_available, _db_error
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(init_db),
+            timeout=settings.DB_STARTUP_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        _db_available = False
+        _db_error = "database initialization timed out"
+        logger.error(
+            "Database initialization exceeded DB_STARTUP_TIMEOUT=%ss; "
+            "the driver timeout bounds the underlying connection attempt",
+            settings.DB_STARTUP_TIMEOUT,
+        )
+        return False
+    except Exception as exc:  # pragma: no cover - depends on external DB
+        _db_available = False
+        _db_error = type(exc).__name__
+        logger.error("Database initialization failed", exc_info=True)
+        return False
+    _db_available = True
+    _db_error = None
+    logger.info("Database initialized successfully")
+    return True
 
 
 @asynccontextmanager
@@ -59,11 +90,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {settings.ENVIRONMENT}")
 
     try:
-        init_db()
-        logger.info("Database initialized successfully")
-    except Exception as e:  # pragma: no cover - depends on a live DB
-        logger.error(f"Database initialization failed: {e}")
-        raise
+        await initialize_database()
+    except Exception:  # defensive: startup must remain bounded/degraded
+        logger.error("Unexpected database startup failure", exc_info=True)
 
     yield
 
@@ -130,7 +159,22 @@ def create_app() -> FastAPI:
             "status": "healthy",
             "app": settings.APP_NAME,
             "version": settings.APP_VERSION,
+            "database": "available" if _db_available else "degraded",
         }
+
+    @app.get("/health/ready", tags=["Health"])
+    async def readiness_check():
+        """Report dependency readiness without affecting liveness."""
+        if _db_available:
+            return {"ready": True, "database": "available"}
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "ready": False,
+                "database": "unavailable",
+                "error": _db_error,
+            },
+        )
 
     # Root
     @app.get("/", tags=["Root"])

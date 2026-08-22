@@ -44,6 +44,7 @@ class CppBackendService:
         self.base_url = settings.cpp_backend_url
         self._client: Optional[httpx.AsyncClient] = None
         self._initialized = False
+        self._request_timeout_override: Optional[float] = None
     
     async def initialize(self):
         """Initialize the HTTP client."""
@@ -79,40 +80,57 @@ class CppBackendService:
         self,
         method: str,
         path: str,
+        *,
+        timeout: Optional[float] = None,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
         **kwargs,
     ) -> Dict[str, Any]:
-        """
-        Make an HTTP request to the C++ backend with detailed logging.
-        """
-        payload_preview = kwargs.get('json') or kwargs.get('params')
+        """Make a request, with optional short-lived startup/recovery bounds."""
+        payload_preview = kwargs.get("json") or kwargs.get("params")
         logger.info(f"C++ Request: {method} {path} - Payload: {payload_preview}")
-        
-        max_retries = 3
+
+        request_kwargs = dict(kwargs)
+        if timeout is not None:
+            request_kwargs["timeout"] = httpx.Timeout(timeout)
         for attempt in range(max_retries):
             try:
-                response = await self.client.request(method, path, **kwargs)
-                
-                # Check for HTML content (usually means 404 or SPA fallback)
+                response = await self.client.request(method, path, **request_kwargs)
                 content_type = response.headers.get("Content-Type", "").lower()
                 if "text/html" in content_type:
-                    logger.error(f"C++ API returned HTML instead of JSON! Status: {response.status_code}")
-                    return {"success": False, "error": "Backend returned HTML", "status": response.status_code}
-
+                    logger.error(
+                        "C++ API returned HTML instead of JSON! Status: %s",
+                        response.status_code,
+                    )
+                    return {
+                        "success": False,
+                        "error": "Backend returned HTML",
+                        "status": response.status_code,
+                    }
                 if response.status_code >= 400:
-                    logger.error(f"C++ API Error ({response.status_code}): {response.text}")
-                    return {"success": False, "error": response.text, "status": response.status_code}
-                
+                    logger.error(
+                        "C++ API Error (%s): %s", response.status_code, response.text
+                    )
+                    return {
+                        "success": False,
+                        "error": response.text,
+                        "status": response.status_code,
+                    }
                 if not response.content:
                     return {}
-                    
                 result = response.json()
-                logger.info(f"C++ Response from {path}: {str(result)[:200]}...")
+                logger.info("C++ Response from %s: %s...", path, str(result)[:200])
                 return result
-            except Exception as e:
+            except Exception as exc:
                 if attempt == max_retries - 1:
-                    logger.error(f"C++ backend request failed after {max_retries} attempts: {e}")
-                    return {"success": False, "error": type(e).__name__}
-                await asyncio.sleep(1)
+                    logger.error(
+                        "C++ backend request failed after %d attempts: %s",
+                        max_retries,
+                        type(exc).__name__,
+                    )
+                    return {"success": False, "error": type(exc).__name__}
+                if retry_delay:
+                    await asyncio.sleep(retry_delay)
         return {"success": False, "error": "Max retries exceeded"}
     
     async def health_check(self) -> bool:
@@ -136,20 +154,46 @@ class CppBackendService:
         status: Optional[str] = None,
         page: int = 1,
         page_size: int = 50,
+        *,
+        timeout: Optional[float] = None,
+        max_retries: int = 3,
     ) -> Dict[str, Any]:
-        """List all tasks."""
+        """List tasks, optionally using a bounded startup/recovery request."""
         params = {"page": page, "page_size": page_size}
         if status:
             params["status"] = status
-        
-        return await self._request("GET", "/api/tasks/list", params=params)
+        return await self._request(
+            "GET",
+            "/api/tasks/list",
+            params=params,
+            timeout=timeout,
+            max_retries=max_retries,
+            retry_delay=0.25 if timeout is not None else 1.0,
+        )
     
-    async def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """Get a specific task through the backend's direct lookup route."""
+    async def get_task(
+        self,
+        task_id: str,
+        *,
+        timeout: Optional[float] = None,
+        max_retries: int = 3,
+    ) -> Optional[Dict[str, Any]]:
+        """Get a task, optionally with a bounded startup/recovery request."""
         if task_id in {".", ".."}:
             return None
         task_segment = quote(task_id, safe="")
-        result = await self._request("GET", f"/api/tasks/{task_segment}")
+        request_kwargs = {}
+        if timeout is not None:
+            request_kwargs.update(
+                timeout=timeout,
+                max_retries=max_retries,
+                retry_delay=0.25,
+            )
+        result = await self._request(
+            "GET",
+            f"/api/tasks/{task_segment}",
+            **request_kwargs,
+        )
         if not isinstance(result, dict) or result.get("id") != task_id:
             return None
         if "image_path" in result and "image_name" not in result:

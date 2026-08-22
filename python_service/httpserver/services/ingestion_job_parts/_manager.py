@@ -121,14 +121,18 @@ class IngestionJobManagerMixin:
             self._file_ingestor = FileEntityIngestor(
                 neo4j_uri=self.settings.neo4j_uri,
                 neo4j_user=self.settings.neo4j_user,
-                neo4j_password=self.settings.neo4j_password
+                neo4j_password=self.settings.neo4j_password,
+                neo4j_connect_timeout=getattr(self.settings, "neo4j_connect_timeout", 5.0),
+                neo4j_query_timeout=getattr(self.settings, "neo4j_query_timeout", 5.0),
             )
             await self._file_ingestor.initialize()
 
             self._entity_builder = EntityRelationBuilder(
                 neo4j_uri=self.settings.neo4j_uri,
                 neo4j_user=self.settings.neo4j_user,
-                neo4j_password=self.settings.neo4j_password
+                neo4j_password=self.settings.neo4j_password,
+                neo4j_connect_timeout=getattr(self.settings, "neo4j_connect_timeout", 5.0),
+                neo4j_query_timeout=getattr(self.settings, "neo4j_query_timeout", 5.0),
             )
             await self._entity_builder.initialize()
 
