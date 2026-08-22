@@ -182,6 +182,23 @@ async def analyze_content(
 
         # Handle file path
         if request.file_path:
+            # Resolve image-internal paths ("/etc/motd") to the extracted host
+            # copy under the task's extraction directory before existence checks.
+            if request.task_id:
+                try:
+                    task_info_for_path = await service_manager.cpp_backend.get_task(request.task_id)
+                except Exception:
+                    task_info_for_path = None
+                if task_info_for_path:
+                    from ...services.llm.file_analyzer import resolve_analysis_path
+
+                    resolved = resolve_analysis_path(
+                        request.file_path,
+                        task_info_for_path.get("extraction_directory") or "",
+                    )
+                    if resolved:
+                        request.file_path = resolved
+
             # Check if file exists before attempting to read
             from pathlib import Path as FilePath
             file_path_obj = FilePath(request.file_path)

@@ -28,6 +28,35 @@ from ...prompts import (
 logger = logging.getLogger(__name__)
 
 
+def resolve_analysis_path(file_path: str, extraction_dir: Optional[str]) -> Optional[str]:
+    """Resolve an evidence path to a readable host file.
+
+    ``files.db`` records image-internal paths with a leading slash (``/etc/motd``).
+    Such a path is absolute from Python's perspective but is NOT a host path; the
+    extracted copy lives under the task's ``extraction_dir``. A path that exists
+    on the host (e.g. an already-extracted absolute path) is used as-is.
+
+    Returns None when the path cannot be resolved to an existing host file
+    inside the extraction directory (including ``..`` traversal attempts).
+    """
+    if not file_path:
+        return None
+    if not extraction_dir:
+        # Legacy passthrough: no task extraction dir to resolve against.
+        return file_path
+    candidate = Path(file_path)
+    if candidate.exists():
+        return file_path
+    relative = file_path.lstrip("/")
+    if not relative or ".." in Path(relative).parts:
+        return None
+    resolved = Path(extraction_dir) / relative
+    try:
+        return str(resolved) if resolved.is_file() else None
+    except OSError:
+        return None
+
+
 class FileAnalyzer:
     """
     Handles file analysis operations for LLM service.
@@ -429,10 +458,13 @@ class FileAnalyzer:
                     if not file_path:
                         continue
 
-                    # Resolve actual path if relative
-                    actual_path = file_path
-                    if extraction_dir and not Path(file_path).is_absolute():
-                        actual_path = str(Path(extraction_dir) / file_path)
+                    # Resolve the evidence path to a host file. Image-internal
+                    # absolute paths ("/etc/motd") live under extraction_dir.
+                    actual_path = resolve_analysis_path(file_path, extraction_dir)
+                    if actual_path is None:
+                        raise FileNotFoundError(
+                            f"evidence file not available on host: {file_path}"
+                        )
 
                     # Auto-detect if file is an image
                     file_ext = Path(actual_path).suffix.lower()
@@ -454,6 +486,9 @@ class FileAnalyzer:
                                     result = await self.analyze_image(image_data, vision_client)
                                 except Exception as e2:
                                     logger.warning(f"Vision fallback also failed for {actual_path}: {e2}")
+                                    self._jobs[job_id]["errors"].append(
+                                        f"{file_path}: image analysis failed"
+                                    )
                                     continue
                             else:
                                 try:

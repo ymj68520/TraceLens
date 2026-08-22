@@ -121,8 +121,8 @@ class IngestionJobWorkerMixin:
         # Get database paths
         output_dir = self.settings.db_output_dir
         # Try to find database files
-        files_db = self._find_database(task_id, "files")
-        events_db = self._find_database(task_id, "events")
+        files_db = await self._resolve_task_database(task_id, "files")
+        events_db = await self._resolve_task_database(task_id, "events")
 
         if not files_db:
             raise FileNotFoundError(f"Files database not found for task {task_id}")
@@ -231,7 +231,7 @@ class IngestionJobWorkerMixin:
 
         await self._update_job_status(job_id, JobStatus.RUNNING, "reading_files", progress=10)
 
-        files_db = self._find_database(task_id, "files")
+        files_db = await self._resolve_task_database(task_id, "files")
         if not files_db:
             raise FileNotFoundError(f"Files database not found for task {task_id}")
 
@@ -317,8 +317,8 @@ class IngestionJobWorkerMixin:
         await self._update_job_status(job_id, JobStatus.RUNNING, "reading_databases", progress=5)
 
         # 1. Get database paths
-        files_db = self._find_database(task_id, "files")
-        events_db = self._find_database(task_id, "events")
+        files_db = await self._resolve_task_database(task_id, "files")
+        events_db = await self._resolve_task_database(task_id, "events")
 
         if not files_db:
             logger.warning(f"[ANALYZED_ONLY] Files database not found for task {task_id}, skipping ingestion")
@@ -612,7 +612,7 @@ class IngestionJobWorkerMixin:
 
         await self._update_job_status(job_id, JobStatus.RUNNING, "reading_file", progress=10)
 
-        files_db = self._find_database(task_id, "files")
+        files_db = await self._resolve_task_database(task_id, "files")
         if not files_db:
             raise FileNotFoundError(f"Files database not found for task {task_id}")
 
@@ -772,6 +772,27 @@ class IngestionJobWorkerMixin:
         if created:
             logger.info(f"[{task_id}] Linked {created} entities to files by name")
         return created
+
+    async def _resolve_task_database(self, task_id: str, db_type: str) -> Optional[str]:
+        """Prefer the trusted C++ task record over filesystem heuristics.
+
+        The task record's output_*_db paths are the authoritative DB
+        locations (D2b trust source); the heuristic scan in _find_database
+        only exists for legacy layouts.
+        """
+        try:
+            from .. import get_service_manager
+
+            service_manager = get_service_manager()
+            task = await service_manager.cpp_backend.get_task(task_id)
+        except Exception:
+            task = None
+        if task:
+            key = "output_files_db" if db_type == "files" else "output_events_db"
+            path = task.get(key)
+            if path and Path(path).exists():
+                return str(path)
+        return self._find_database(task_id, db_type)
 
     def _find_database(self, task_id: str, db_type: str) -> Optional[str]:
         """Find database file for a task."""

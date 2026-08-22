@@ -93,6 +93,14 @@ class MarkitdownExtractor(BaseExtractor):
             markdown = result.markdown if result else ""
             title = getattr(result, 'title', None)
 
+            # markitdown wraps read failures into the markdown body instead of
+            # raising ("An error occurred while reading the file..."). Treating
+            # that text as content would send an error message to the LLM as if
+            # it were evidence, so surface it as a missing-file failure instead.
+            if markdown and "an error occurred while reading the file" in markdown[:300].lower():
+                logger.error(f"markitdown could not read {file_path}; refusing error text as content")
+                raise FileNotFoundError(file_path)
+
             if title:
                 logger.debug(f"markitdown extracted title: {title}")
 
