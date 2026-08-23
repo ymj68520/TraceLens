@@ -14,17 +14,93 @@
 
 路由层（`TaskCRUDRoutes.cpp`）校验后交给 `TaskManager::create_task`：任务获得 ID、状态 `pending`（HTTP 层全部小写），被塞进队列，工作线程从 `ThreadPool`（默认 4 线程）里把它取出来的那一刻，状态变 `running`，好戏开场（`TMA:26 start_analysis`）。从这一刻起到任务终结，`TaskPersistence` 会把每次状态变化节流写入 `data/tasks.json`——所以即使进程崩溃重启，任务列表也不会丢（重启时未完成任务被标记为 failed，这是诚实的处理：进度无法恢复，就不假装还在跑）。
 
+前端看到的进度百分比来自一个简单的加权累计。`TaskManager.cpp:545` 的权重表是唯一权威：
+
+```cpp
+int TaskManager::calculate_overall_percentage(TaskPhase phase, int phase_percentage) {
+    std::map<TaskPhase, int> phase_weights = {
+        {TaskPhase::INITIALIZING, 5},
+        {TaskPhase::IMAGE_ANALYSIS, 25},
+        {TaskPhase::EVENT_EXTRACTION, 10},
+        {TaskPhase::FILE_CLASSIFICATION, 15},
+        {TaskPhase::LLM_ANALYSIS, 20},
+        {TaskPhase::PLATFORM_ANALYSIS, 20},
+        {TaskPhase::FILE_CARVING, 3},
+        {TaskPhase::FINALIZING, 2}
+    };
+    int total_percentage = 0;
+    for (const auto& p : phase_weights) {
+        if (p.first < phase) total_percentage += p.second;          // 已完成阶段：整份权重
+        else if (p.first == phase) total_percentage += (p.second * phase_percentage) / 100;  // 当前阶段：按比例
+    }
+    return std::min(total_percentage, 100);
+}
+```
+
+逐块读：`std::map` 按枚举值有序遍历，天然形成"扫过已完成阶段、在当前阶段按比例折算"的累计逻辑；权重之和恰好 100（5+25+10+15+20+20+3+2），所以 `min(..., 100)` 只是防御。两个隐含约定值得知道：其一，阶段推进调用 `update_progress(task_id, phase, pct, msg)` 时**先加锁更新 tasks_ 表再触发落盘**，进度条不会回跳；其二，FILE_CARVING 只有 3%——雕刻是可选的尾部步骤，设计上不让它左右总进度的体感。
+
 ## 第二幕：解析——建立唯一的事实来源
 
 第一阶段 `IMAGE_ANALYSIS`（占整体进度 25%，最重的一环）由 [ImageAnalyzer](../modules/cpp/analyzers/ImageAnalyzer.md) 负责：它打开镜像（E01 或 DD）、枚举分区、对每个可识别的文件系统（NTFS/FAT/EXT2/3/4/XFS）逐文件读出元数据——路径、大小、四个时间戳、是否已删除——全部写入 `raw.db` 的 `files` 和 `partitions` 表（`TMA:203-225`）。
 
 这一步的哲学是**忠实**：不做任何判断、不过滤、不翻译，文件系统说什么就记什么。raw.db 因此成为整个任务唯一的"事实来源"——后面所有层都是从它派生的观点，任何结论存疑时回到这里对质。
 
-紧接着是一个容易被忽略但顺序讲究的步骤：**场景自动检测**（`TMA:227-259`）。如果创建任务时没选 `scenarios`，`SceneDetector` 会扫一遍 raw.db 里的特征路径（比如 `/data/app` 意味着 Android，`Windows/System32/config` 意味着 Windows）。源码注释解释了为什么它必须跑在过滤**之前**：过滤配置的职责恰恰是丢弃"系统噪音"，而场景特征路径就是系统路径——先过滤再检测，证据就被自己人扔掉了。检测结果会写一条 `SCENE_DETECTED` 审计日志（包括每个场景命中了多少特征文件），保证"系统替你做了判断"这件事本身可追溯。
+紧接着是一个容易被忽略但顺序讲究的步骤：**场景自动检测**（`TMA:227-259`）。如果创建任务时没选 `scenarios`，`SceneDetector` 会扫一遍 raw.db 里的特征路径（比如 `/data/app` 意味着 Android，`Windows/System32/config` 意味着 Windows）。源码注释解释了为什么它必须跑在过滤**之前**：过滤配置的职责恰恰是丢弃"系统噪音"，而场景特征路径就是系统路径——先过滤再检测，证据就被自己人扔掉了。核心几行：
+
+```cpp
+// 1.4b. Auto-detect platform scenarios when the user did not pick any.
+// Probes the *un-filtered* raw DB for tell-tale artifact paths and
+// back-fills task.scenarios so downstream classification / platform
+// analyzers run against the right OS. Must run before the filter,
+// since filter profiles drop system-noise — exactly these markers.
+if (task.scenarios.empty()) {
+    SceneDetection detection = detectScenes(rawDbPath);
+    if (detection.ok && !detection.detected.empty()) {
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            if (tasks_.count(task_id)) {
+                tasks_[task_id].scenarios = detection.detected;   // 回填到任务对象
+                task.scenarios = detection.detected;
+            }
+        }
+        // Record the detection for traceability (which platforms,
+        // and how many marker files each matched).
+        ...
+        add_audit_log(task_id, "SCENE_DETECTED", "Auto-detected scenarios: " + detail);
+    }
+}
+```
+
+逐块读：检测跑在**原始** raw.db 上（注释第一句特意强调 un-filtered）；检测结果在互斥锁内同时回填到共享的 `tasks_` 表和本次执行的局部 `task` 副本——前者让前端立即看到，后者驱动本流水线后续的平台分支；最后强制写一条 `SCENE_DETECTED` 审计日志，附带每个场景命中的特征文件数。也就是说"系统替你做了判断"这件事本身是可追溯、可复核的——这是取证工具的纪律。
 
 ## 第三幕：过滤与提炼——从"全部文件"到"值得看的文件"
 
-如果任务指定了 `filter_profile`，`FileFilter`（`TMA:261-298`）按 `config/filter_profiles/` 下的画像（扩展名、路径模式、大小、是否已删除……）从 raw.db **复制**出一个 `<...>_filtered.db`——注意不是修改原库，raw.db 永远保持完整；过滤只是决定"下游用哪个视角"。之后的事件提取和分类都以这个过滤后的库为输入（任务对象上的 `output_raw_db` 字段被更新为过滤库路径，前端展示的也是它）。
+如果任务指定了 `filter_profile`，`FileFilter`（`TMA:261-298`）按 `config/filter_profiles/` 下的画像（扩展名、路径模式、大小、是否已删除……）从 raw.db **复制**出一个 `<...>_filtered.db`——注意不是修改原库，raw.db 永远保持完整；过滤只是决定"下游用哪个视角"。之后的事件提取和分类都以这个过滤后的库为输入（任务对象上的 `output_raw_db` 字段被更新为过滤库路径，前端展示的也是它）。关键几行：
+
+```cpp
+FileFilter filter;
+std::string filteredDbPath = rawDbPath;
+size_t pos = filteredDbPath.rfind("_raw.db");
+if (pos != std::string::npos) {
+    filteredDbPath.replace(pos, 7, "_filtered.db");     // raw.db → filtered.db 命名约定
+}
+auto filterStats = filter.applyFilterByName(rawDbPath, filteredDbPath, task.filter_profile);
+if (filterStats.included_files > 0) {
+    effectiveRawDb = filteredDbPath;                     // 下游全部改读过滤库
+    update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 10,
+        "Filter applied: " + std::to_string(filterStats.included_files) + "/" +
+        std::to_string(filterStats.total_files) + " files selected");
+} else {
+    std::cerr << "Warning: Filter excluded all files for task " << task_id << std::endl;
+}
+...
+if (effectiveRawDb != rawDbPath) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (tasks_.count(task_id)) tasks_[task_id].output_raw_db = effectiveRawDb;
+}
+```
+
+逐块读：过滤结果是一个**新文件**而不是原库上的 DELETE——这是"raw.db 不可变"纪律的落实，换过滤画像重跑只需重新复制；`effectiveRawDb` 局部变量让本流水线后续阶段立即切换数据源，而 `output_raw_db` 回填让**前端和 Python 服务**也能发现过滤库（D2b 的任务库发现按后缀约定找 `_raw.db`/`_filtered.db`）；一个诚实的边界：如果画像把所有文件都筛掉了，代码只打警告并**继续用未过滤库**跑——宁可全量分析也不产出空结果，这个取舍值得知道。
 
 然后是两步"翻译"：
 
@@ -35,7 +111,7 @@
 
 只要 `llm_analyze` 为真（前端固定传 true），`LLM_ANALYSIS` 阶段（20%）开始，注意它其实是**先后两件事**：
 
-1. **文件级描述**（`TMA:334-386`）：[LLMAnalysisService](../modules/cpp/network/LLMAnalysisService.md) 把分类后的文件逐个（必要时先从镜像提取内容）送给 LLM，生成摘要/描述/关键词，写回 files.db 的 `llm_*` 列和 `file_descriptions` 表。full 模式全量分析；smart 模式先让模型粗选一批"值得深挖"的文件再精析——这是成本与覆盖的取舍旋钮。
+1. **文件级描述**（`TMA:334-386`）：[LLMAnalysisService](../modules/cpp/network/LLMAnalysisService.md) 把分类后的文件逐个（必要时先从镜像提取内容）送给 LLM，生成摘要/描述/关键词，写回 files.db 的 `llm_*` 列和 `file_descriptions` 表。full 模式全量分析；smart 模式先让模型粗选一批"值得深挖"的文件再精析——这是成本与覆盖的取舍旋钮。一个例外值得知道：Android 逻辑提取路径（`--android-source` 类任务）的工件级 LLM 在 `analyzeAndroidData()` 内部就完成了（`AndroidLLMAnalysisService`），文件级服务对 android.db 没有 `files` 表可写、实际空转，代码注释（`TMA:164-171`）明确说明了这层分工。
 2. **事件簇分析**（`TMA:396-429`）：时间线事件先按时间邻近聚簇，`EventClusterAnalyzer` 让 LLM 对每个簇回答"这段时间发生了什么"。限额由 `LLM_MAX_EVENT_CLUSTERS` 控制（0 = 不限）。
 
 ## 第五幕：平台语义化——把字节变成"一条聊天记录"
@@ -52,7 +128,30 @@
 
 ## 第六幕：收尾——完成不等于结束
 
-`FINALIZING`（2%）做两件事（`TMA:170-196`）：把进度推到 100%、状态置 `completed`；以及**触发知识图谱摄取**——通过 `LLMPythonProxy::async_ingest(task_id, FULL)` 调 Python 的 `/api/graphiti/ingest`，拿到 job id 存在任务对象上（前端知识图谱页可以拿它查进度）。注意源码注释：这是 fire-and-forget——Python/Neo4j 不可用时**不影响任务成功**，图谱只是缺席。这个设计让"分析"和"图谱"的故障域彻底分离。
+`FINALIZING`（2%）做两件事（`TMA:170-196`）：把进度推到 100%、状态置 `completed`；以及**触发知识图谱摄取**——通过 `LLMPythonProxy::async_ingest(task_id, FULL)` 调 Python 的 `/api/graphiti/ingest`，拿到 job id 存在任务对象上（前端知识图谱页可以拿它查进度）。真实代码：
+
+```cpp
+// Graphiti ingestion (best-effort, fire-and-forget) — same as the
+// TSK pipeline tail so logical tasks join the knowledge graph too.
+update_progress(task_id, TaskPhase::FINALIZING, 10, "Triggering knowledge graph ingestion...");
+try {
+    auto& proxy = forensics::LLMPythonProxy::instance();
+    std::string graphiti_job_id = proxy.async_ingest(task_id, forensics::IngestionMode::FULL);
+    if (!graphiti_job_id.empty()) {
+        add_audit_log(task_id, "GRAPHITI_INGESTION",
+            "Triggered Graphiti knowledge graph ingestion (job_id: " + graphiti_job_id + ")");
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            if (tasks_.count(task_id)) tasks_[task_id].graphiti_job_id = graphiti_job_id;
+        }
+        save_tasks_internal();      // 立即落盘，job id 不因重启丢失
+    }
+} catch (const std::exception& e) {
+    std::cerr << "Warning: Exception triggering Graphiti ingestion: " << e.what() << std::endl;
+}
+```
+
+逐块读：注释明说这是 best-effort、fire-and-forget——`async_ingest` 只提交作业就返回，不等摄取完成；整段被 try/catch 包住且 catch 只打警告，**Python/Neo4j 不可用时任务照样 `completed`**，图谱只是缺席；job id 会立即写审计日志并同步进 `tasks_` + 落盘（`save_tasks_internal()`），所以重启后前端仍能查到这次摄取作业。这个设计把"分析"和"图谱"的故障域彻底分离——代价是图谱缺席时界面上要靠用户主动发现，好在知识图谱页会显示 job 状态。
 
 ## 任务之后：产出物给谁用
 
@@ -100,4 +199,4 @@ CLI（`./forensic_analyzer 镜像` → `AnalysisOrchestrator`）复用完全相�
 
 ---
 
-**最后更新**: 2026-08-23（解释式重写：以任务生命周期为叙事主线）
+**最后更新**: 2026-08-23（技术深化：叙事主线保留，补 4 段核心源码逐块走读）
