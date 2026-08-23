@@ -38,6 +38,8 @@ public:
     int getLLMTimeoutSeconds() const;
     int getLLMMaxRetries() const;
     int getLLMMaxFiles() const;
+    // Maximum event clusters for smart LLM analysis; 0 means unlimited.
+    int getLLMMaxEventClusters() const;
     int getLLMMaxContentLength() const;
     bool getLLMSkipBinary() const;
     

@@ -89,6 +89,10 @@ std::string ConfigManager::getLLMApiKey() const { return get("LLM_API_KEY", "");
 int ConfigManager::getLLMTimeoutSeconds() const { return getInt("LLM_TIMEOUT_SECONDS", 120); }
 int ConfigManager::getLLMMaxRetries() const { return getInt("LLM_MAX_RETRIES", 3); }
 int ConfigManager::getLLMMaxFiles() const { return getInt("LLM_MAX_FILES", 500); }
+int ConfigManager::getLLMMaxEventClusters() const {
+    const int value = getInt("LLM_MAX_EVENT_CLUSTERS", 0);
+    return value > 0 ? value : 0;
+}
 int ConfigManager::getLLMMaxContentLength() const { return getInt("LLM_MAX_CONTENT_LENGTH", 10000); }
 bool ConfigManager::getLLMSkipBinary() const { return getBool("LLM_SKIP_BINARY", true); }
 

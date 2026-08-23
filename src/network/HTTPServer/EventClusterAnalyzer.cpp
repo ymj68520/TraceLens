@@ -184,14 +184,24 @@ std::vector<std::tuple<int64_t, std::string, std::string>> EventClusterAnalyzer:
         return {};
     }
 
-    // 少于预算时无需让 LLM 选择
-    if (allClusters.size() <= maxClusters) {
+    // 少于预算时无需让 LLM 选择；0 means no upper limit.
+    if (maxClusters > 0 && allClusters.size() <= maxClusters) {
         return allClusters;
     }
 
-    // 构建事件簇列表摘要
+    const size_t selectionLimit = maxClusters > 0 ? maxClusters : allClusters.size();
+
+    auto truncateToConfiguredLimit = [&]() {
+        if (maxClusters > 0 && allClusters.size() > maxClusters) {
+            allClusters.resize(maxClusters);
+        }
+        return allClusters;
+    };
+
+    // 构建事件簇列表摘要。没有隐藏的固定 100 条上限；调用方的
+    // LLM_MAX_EVENT_CLUSTERS 配置只限制最终分析数量。
     std::stringstream ss;
-    for (size_t i = 0; i < allClusters.size() && i < 100; ++i) {
+    for (size_t i = 0; i < allClusters.size(); ++i) {
         auto [timeWindow, eventType, parentDirectory] = allClusters[i];
         ss << "Cluster " << i + 1 << ": Time window=" << timeWindow 
            << ", Event type=" << eventType 
@@ -211,7 +221,7 @@ Consider:
 Event clusters:
 )" + ss.str() + R"(
 
-Return ONLY a JSON array of cluster indices (0-based) that should be analyzed, limited to )" + std::to_string(maxClusters) + R"( most important clusters.
+Return ONLY a JSON array of cluster indices (0-based) that should be analyzed, limited to )" + std::to_string(selectionLimit) + R"( most important clusters.
 Format: [0, 1, 2, ...]
 Do not include any explanation, only the JSON array.)";
 
@@ -220,11 +230,7 @@ Do not include any explanation, only the JSON array.)";
         auto response = router_->chat(prompt);
         if (!response.success) {
             std::cerr << "LLM request failed: " << response.errorMessage << std::endl;
-            //  fallback: 返回前N个事件簇
-            if (allClusters.size() > maxClusters) {
-                allClusters.resize(maxClusters);
-            }
-            return allClusters;
+            return truncateToConfiguredLimit();
         }
 
         // 解析LLM响应
@@ -243,11 +249,7 @@ Do not include any explanation, only the JSON array.)";
             }
         } catch (...) {
             std::cerr << "Failed to parse LLM response" << std::endl;
-            //  fallback: 返回前N个事件簇
-            if (allClusters.size() > maxClusters) {
-                allClusters.resize(maxClusters);
-            }
-            return allClusters;
+            return truncateToConfiguredLimit();
         }
 
         // 提取选中的事件簇
@@ -262,21 +264,14 @@ Do not include any explanation, only the JSON array.)";
         // fall back to the first N clusters instead of skipping the whole stage.
         if (importantClusters.empty()) {
             std::cerr << "LLM cluster selection resolved to 0 clusters"
-                      << " — falling back to first " << maxClusters << " clusters" << std::endl;
-            if (allClusters.size() > maxClusters) {
-                allClusters.resize(maxClusters);
-            }
-            return allClusters;
+                      << " — falling back to first " << selectionLimit << " clusters" << std::endl;
+            return truncateToConfiguredLimit();
         }
 
         return importantClusters;
     } catch (const std::exception& e) {
         std::cerr << "Failed to select important event clusters: " << e.what() << std::endl;
-        //  fallback: 返回前N个事件簇
-        if (allClusters.size() > maxClusters) {
-            allClusters.resize(maxClusters);
-        }
-        return allClusters;
+        return truncateToConfiguredLimit();
     }
 }
 

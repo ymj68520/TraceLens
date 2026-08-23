@@ -413,13 +413,17 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     } else {
                         // Smart mode: LLM selects important event clusters first
                         update_progress(task_id, TaskPhase::LLM_ANALYSIS, 92, "Smart mode: Selecting important event clusters...");
-                        analyzedCount = clusterAnalyzer.analyzeSmartEventClusters(eventDbPath, 100,
+                        const int configuredClusterLimit = forensics::ConfigManager::instance().getLLMMaxEventClusters();
+                        const size_t clusterLimit = configuredClusterLimit > 0
+                            ? static_cast<size_t>(configuredClusterLimit)
+                            : 0;
+                        analyzedCount = clusterAnalyzer.analyzeSmartEventClusters(eventDbPath, clusterLimit,
                             [this, task_id](int current, int total, const std::string&) -> bool {
                                 if (is_task_cancelled(task_id)) return false;
                                 update_progress(task_id, TaskPhase::LLM_ANALYSIS, 93,
                                     "Analyzing event cluster " + std::to_string(current) + "/" + std::to_string(total));
                                 return true;
-                            }); // 分析最多100个重要事件簇
+                            });
                     }
                     
                     update_progress(task_id, TaskPhase::LLM_ANALYSIS, 95, 

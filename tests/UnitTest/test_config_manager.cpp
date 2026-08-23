@@ -94,6 +94,17 @@ TEST_F(ConfigManagerTest, LoadFromGrandParentDirectory) {
     
     fs::current_path(currentPath);
 }
+TEST_F(ConfigManagerTest, EventClusterLimitIsConfigurable) {
+    createEnvFile("LLM_MAX_EVENT_CLUSTERS=37\n");
+    auto currentPath = fs::current_path();
+    fs::current_path(testDir_);
+
+    auto& config = forensics::ConfigManager::instance();
+    ASSERT_TRUE(config.load(".env"));
+    EXPECT_EQ(config.getLLMMaxEventClusters(), 37);
+
+    fs::current_path(currentPath);
+}
 
 
 int main(int argc, char** argv) {
