@@ -22,42 +22,185 @@ TaskManager (TaskManager.cpp)
    ├─ 构造时: load_tasks()  ─────▶ TaskPersistence::load_tasks + cleanup_orphan_directories
    ├─ 每次状态变化: save_tasks_internal() ─▶ TaskPersistence::save_tasks (内部调 TaskSerialization)
    ├─ 构造时: watchdog_thread_ ───▶ TaskWatchdog::run（共享 tasks_/mtx_）
-   └─ start_analysis() ──────────▶ TaskManagerAnalysis.cpp（流水线，见 TaskManager.md §4）
+   └─ start_analysis() ──────────▶ TaskManagerAnalysis.cpp（流水线，见 TaskManager.md §6）
 ```
 
-这些组件不对外暴露——外界只看得到 TaskManager 的公共 API。TaskWatchdog 直接持有 `tasks_` 引用和锁引用（TaskWatchdog.cpp:9-18），是"共享状态而非消息传递"的省事设计。
+这些组件不对外暴露——外界只看得到 TaskManager 的公共 API。TaskWatchdog 直接持有 `tasks_` 引用和锁引用，是"共享状态而非消息传递"的省事设计：
+
+```cpp
+// TaskWatchdog.cpp:9-18
+TaskWatchdog::TaskWatchdog(
+    std::map<std::string, AnalysisTask>& tasks,
+    const std::atomic<bool>& shutdown,
+    std::function<void()> save_callback,
+    std::mutex& task_mutex)
+    : tasks_(tasks)
+    , shutdown_requested_(shutdown)
+    , save_callback_(std::move(save_callback))
+    , task_mutex_(task_mutex) {
+}
+```
+
+四个参数全是引用/回调：tasks_ 是 TaskManager 的字典本体（不是副本），task_mutex_ 是同一把 mtx_，shutdown 直接共享原子变量，save_callback 指向 `save_tasks_internal`（TaskManager.cpp:538-540）。这个注入方式决定了 TaskWatchdog **必须**在 TaskManager 析构前退出（否则引用悬垂）——TaskManager 析构函数先置 shutdown_requested_ 再 join 看门狗线程（TaskManager.cpp:41-46）正是履约。若给看门狗加新逻辑，同样必须遵守"所有访问都先拿 task_mutex_"的纪律。
 
 ## 3. 核心概念与设计
 
 ### 3.1 重启恢复：宁可信其坏
 
-`load_tasks` 读回 JSON 后，把状态为 RUNNING/PENDING 的任务一律改为 FAILED，并写明原因（TaskPersistence.cpp:55-62）：
+```cpp
+// TaskPersistence.cpp:50-65（load_tasks 的恢复段）
+for (const auto& element : j) {
+    AnalysisTask task;
+    from_json(element, task);
 
-> "The server was restarted while this task was in queue or running."
+    // Fix up state for restarted tasks (Recovery Logic)
+    if (task.status == TaskStatus::RUNNING || task.status == TaskStatus::PENDING) {
+        task.status = TaskStatus::FAILED;
+        task.message = "Interrupted by server restart";
+        task.error_details = "The server was restarted while this task was in queue or running. Please delete and recreate if necessary.";
 
-理由：进程没了，工作线程必然消失，"假装还在跑"只会让前端永远转圈。用户看到明确失败信息后可以重建任务。同时 `cleanup_orphan_directories`（TaskPersistence.cpp:74-99）把 `data/tasks/` 下不在 tasks_ 字典里的 UUID 目录整体删除——防止删除任务时崩溃留下的垃圾数据无限累积。
+        // Reset timestamps to current for visibility
+        task.completed_time = std::chrono::system_clock::now();
+    }
 
-### 3.2 序列化的"只写真相"原则
+    tasks[task.id] = task;
+}
+```
+
+进程没了，工作线程必然消失，"假装还在跑"只会让前端永远转圈。PENDING 也一并判死是因为调度器（本应立即 start_analysis 的路由层）同样不存在了。completed_time 重置为当前时刻是给 cleanup_completed_tasks 的年龄计算一个合理起点。用户看到明确失败信息后可以重建任务。同时 `cleanup_orphan_directories`（TaskPersistence.cpp:74-99）把 `data/tasks/` 下不在 tasks_ 字典里的 UUID 目录整体删除——防止删除任务时崩溃留下的垃圾数据无限累积。
+
+### 3.2 保存：全量覆写，一把梭
+
+```cpp
+// TaskPersistence.cpp:12-29
+void TaskPersistence::save_tasks(
+    const std::map<std::string, AnalysisTask>& tasks,
+    const std::string& tasksPath) {
+
+    nlohmann::json j = nlohmann::json::array();
+    for (const auto& pair : tasks) {
+        nlohmann::json task_json;
+        to_json(task_json, pair.second);
+        j.push_back(task_json);
+    }
+
+    std::ofstream out(tasksPath);
+    if (out.is_open()) {
+        out << j.dump(4);
+    } else {
+        std::cerr << "CRITICAL: Failed to save tasks to " << tasksPath << std::endl;
+    }
+}
+```
+
+每次保存都是**全量数组 dump(4) 直接覆写**——没有临时文件+rename 的原子替换。打开失败只打 CRITICAL 日志、不抛异常、不重试，调用方（save_tasks_internal）也无从感知失败。这组合出两个后果：文件打开失败时内存态与磁盘态静默分叉；写入中途被杀会留下半截 JSON（后果见 §6）。写成 map 迭代还有一个隐含特性：任务按 id 字典序落盘，与创建顺序无关。
+
+### 3.3 序列化的"只写真相"原则
 
 TaskSerialization 是 AnalysisTask 的 JSON 形态唯一定义：
 
-- 枚举用 `NLOHMANN_JSON_SERIALIZE_ENUM` 映射为字符串（TaskSerialization.cpp:9-45）。**注意 TaskStatus/Priority/Phase 在这里是大写**（"PENDING"...），而 REST 层用小写（TaskHelpers.cpp:117-126）——两套转换互不相干，排查时别混淆。
+- 枚举用 `NLOHMANN_JSON_SERIALIZE_ENUM` 映射为字符串（TaskSerialization.cpp:9-45）。**注意 TaskStatus/Priority/Phase 在这里是大写**（"PENDING"...），而 REST 层用小写（TaskHelpers.cpp:117-126）——两套转换互不相干，排查时别混淆。宏必须放在全局作用域（文件头注释解释了 ADL 查找的原因）。
 - 密码绝不落盘：`decrypt_password`/`backup_password` 不进 to_json，from_json 里显式 clear（TaskSerialization.cpp:95-96、148、154）。
 - 不可序列化的运行时字段在加载时重置：`phase_start_time` 重置为 now（:63）、`cancellation_requested` 归 false（:170）、`execution_start_time` 重置（:169）——时间点类字段跨进程没有意义。
-- `android_source` 会被持久化（:151-153）：逻辑 Android 任务重启后仍知道自己该走哪条短路。
 
-### 3.3 看门狗：两类停滞，两个阈值
+```cpp
+// TaskSerialization.cpp:106-135、148-154（from_json 的容错骨架，节选）
+void from_json(const nlohmann::json& j, AnalysisTask& t) {
+    j.at("id").get_to(t.id);
+    j.at("image_path").get_to(t.image_path);
+    j.at("status").get_to(t.status);
+    // ...
+    if(j.contains("result_cache")) j.at("result_cache").get_to(t.result_cache);
+    if(j.contains("scenarios")) {
+        t.scenarios.clear();
+        for (const auto& s : j.at("scenarios")) {
+            std::optional<ForensicScenario> scenario;
+            if (s.is_string()) {
+                scenario = string_to_scenario(s.get<std::string>());
+            } else if (s.is_number_integer()) {
+                const auto value = s.get<int>();
+                if (value >= static_cast<int>(ForensicScenario::ANDROID) &&
+                    value <= static_cast<int>(ForensicScenario::SERVER_CLOUD)) {
+                    scenario = static_cast<ForensicScenario>(value);
+                }
+            }
+            if (scenario.has_value()) {
+                t.scenarios.push_back(scenario.value());
+            }
+        }
+    }
+    else if(j.contains("android_analyze") && j["android_analyze"].get<bool>()) t.scenarios = {ForensicScenario::ANDROID};
+    // ...
+    t.decrypt_password.clear();
+    // ...
+    t.backup_password.clear();
+}
+```
 
-TaskWatchdog::run（TaskWatchdog.cpp:24-89）循环巡检 `tasks_`：
+这里能看到三层容错设计：核心字段（id/status）用 `j.at()` 硬取——旧文件缺这些键属数据损坏，抛异常由 load_tasks 的 catch 兜住；可选字段一律 `j.contains() ? ... : 默认值`——旧版本 tasks.json 缺新字段也能加载，向前兼容；scenarios 同时接受字符串与整数两种形态（历史上枚举曾被序列化成数字），越界整数被丢弃而非报错。`android_source` 会被持久化（:151-153）：逻辑 Android 任务重启后仍知道自己该走哪条短路。
 
-- **PENDING 超时**：创建后超过 `TASK_WATCHDOG_PENDING_MINUTES`（默认 30 分钟）仍是 PENDING → 判 FAILED"调度失败"（:53-65）；
-- **RUNNING 心跳超时**：`progress.phase_start_time` 距今超过 `TASK_WATCHDOG_STALE_MINUTES`（默认 30 分钟）没有进度更新 → 判 FAILED"执行超时"（:70-82）。LLM 阶段每个文件/簇都会打心跳，所以该阈值只在真挂死时触发。
+### 3.4 看门狗：两类停滞，两个阈值
 
-有变更才回调保存（:85-87），避免无谓写盘。
+TaskWatchdog::run（TaskWatchdog.cpp:24-89）循环巡检 `tasks_`，双阈值都从 ConfigManager 读环境变量、非法值回落 30 分钟：
+
+```cpp
+// TaskWatchdog.cpp:28-35
+const long stale_minutes = []() {
+    int v = ConfigManager::instance().getInt("TASK_WATCHDOG_STALE_MINUTES", 30);
+    return v > 0 ? static_cast<long>(v) : 30L;
+}();
+const long pending_minutes = []() {
+    int v = ConfigManager::instance().getInt("TASK_WATCHDOG_PENDING_MINUTES", 30);
+    return v > 0 ? static_cast<long>(v) : 30L;
+}();
+```
+
+两个判定分支的代码形态几乎对称，但计时基准不同——这是理解它们的钥匙：
+
+```cpp
+// TaskWatchdog.cpp:51-82（巡检循环体，节选）
+for (auto& [id, task] : tasks_) {
+    // Case A: PENDING tasks stuck beyond the pending threshold (scheduler loss)
+    if (task.status == TaskStatus::PENDING) {
+        auto elapsed = std::chrono::duration_cast<std::chrono::minutes>(
+            now_system - task.created_time).count();
+        if (elapsed > pending_minutes) {
+            task.cancellation_requested = true;
+            task.status = TaskStatus::FAILED;
+            task.message = "Stale task detected (Pending timeout)";
+            task.error_details = "The task remained in pending state for over " + std::to_string(pending_minutes) + " minutes. This usually indicates a system scheduling failure.";
+            task.completed_time = now_system;
+            changed = true;
+            std::cout << "[Watchdog] Failed stale pending task: " << id << std::endl;
+        }
+    }
+
+    // Case B: RUNNING tasks with no progress update beyond the stale
+    // threshold (C++ thread hang). LLM-heavy phases emit per-file /
+    // per-cluster heartbeats, so this only trips on genuine hangs.
+    if (task.status == TaskStatus::RUNNING) {
+        auto elapsed = std::chrono::duration_cast<std::chrono::minutes>(
+            now_steady - task.progress.phase_start_time).count();
+        if (elapsed > stale_minutes) {
+            task.cancellation_requested = true;
+            task.status = TaskStatus::FAILED;
+            // ...
+            changed = true;
+            std::cout << "[Watchdog] Failed hung running task: " << id << std::endl;
+        }
+    }
+}
+
+if (changed && save_callback_) {
+    save_callback_();
+}
+```
+
+**PENDING 用 system_clock 比 created_time**（等待时长，挂钟即可）；**RUNNING 用 steady_clock 比 phase_start_time**（心跳间隔，必须不受挂钟跳变影响）。PENDING 超时通常意味着调度丢失——任务建了但没人 start 它（依赖链断裂、路由层异常）；RUNNING 心跳超时意味着 C++ 线程真挂死——LLM 阶段每个文件/簇都会打心跳，所以该阈值只在真挂死时触发。两个分支都置 `cancellation_requested = true`：若线程其实还活着（误判场景），它会在下一个检查点配合退出，不至于出现"状态 FAILED 但线程还在写库"的精神分裂。有变更才回调保存（:85-87），避免每秒一次的无谓全量写盘——巡检周期实际是 1 秒（见 §6 的注释不符项）。
 
 ## 4. 工作流程走读
 
-**启动**：TaskManager 构造 → `load_tasks`（TaskManager.cpp:63-70）→ TaskPersistence 读 tasks.json、执行恢复改写、清理孤儿目录 → 起看门狗线程（TaskManager.cpp:37）。
+**启动**：TaskManager 构造 → `load_tasks`（TaskManager.cpp:63-70）→ TaskPersistence 读 tasks.json、执行恢复改写、清理孤儿目录 → 起看门狗线程（TaskManager.cpp:37）。加载入口还有一个防御分支：tasks_ 为空且磁盘无 tasks.json 时 save_tasks_internal 直接返回（TaskManager.cpp:55-57），防止首次启动就把空数组写出去覆盖旧数据。
 
 **运行中**：任何 `update_status`/`create_task`/`set_result_db` 都会在锁内调 `save_tasks_internal`（TaskManager.cpp:53-61）→ TaskPersistence::save_tasks 把全量任务数组 dump(4) 写文件（TaskPersistence.cpp:12-29）。**直接覆写、无临时文件**——断电瞬间可能得到半截 JSON（见 §6）。
 
@@ -71,19 +214,21 @@ TaskWatchdog::run（TaskWatchdog.cpp:24-89）循环巡检 `tasks_`：
 - **PathManager**：tasks.json 路径与任务目录的唯一来源（TaskPersistence.cpp:3、79）。
 - **ConfigManager**：看门狗两个阈值的环境变量读取（TaskWatchdog.cpp:28-35）。
 - **流水线各分析器**：仅经 TaskManagerAnalysis.cpp 间接相关（该文件的走读放在 TaskManager.md）。
+- **TaskProgress.phase_start_time**：看门狗 Case B 的心跳依据——流水线必须持续调 update_progress，否则被误判挂死。
 
 ## 6. 注意事项与已知问题
 
 - **保存不是原子的**：`std::ofstream` 直接打开目标文件覆写（TaskPersistence.cpp:23-25），进程在写入中途被杀会留下损坏的 tasks.json；下次 `load_tasks` 解析失败则**全部任务丢失**（catch 后只打印错误，TaskPersistence.cpp:69-71）。重要场景建议先备份该文件。
 - **FILE_CARVING 缺席枚举映射**：TaskPhase 的序列化映射（TaskSerialization.cpp:24-32）没有 FILE_CARVING 这一项——若任务在雕复阶段崩溃，落盘的 current_phase 处理是未定义边界。补映射是一行修复。
-- **看门狗注释与实现不符**：注释说"每 60 秒检查一次"（TaskWatchdog.cpp:38-39），实际 `wait_for` 是 1 秒（:41-43）。行为无害（阈值是分钟级），但读代码别被注释带偏。
-- **状态字符串大小写分裂**：tasks.json 大写、REST 小写（§3.2）。手工编辑 tasks.json 时必须用大写。
+- **看门狗注释与实现不符**：注释说"每 60 秒检查一次"（TaskWatchdog.cpp:38-39），实际 `wait_for` 是 1 秒（:41-43）。行为无害（阈值是分钟级），但读代码别被注释带偏。1 秒醒来+无变更不写盘，代价只是一次空锁。
+- **状态字符串大小写分裂**：tasks.json 大写、REST 小写（§3.3）。手工编辑 tasks.json 时必须用大写。
 - **TaskAnalysisRunner.h 是死文件**：再次强调，别引用它。
+- **孤儿清理按目录名查 tasks_ 键**：`data/tasks/` 下任何"不在字典里的目录"都会被删（TaskPersistence.cpp:85-94）——若有人手工把无关资料放进 tasks/ 目录，重启即被清走；注释说"If directory name is a UUID (common for tasks)"，但代码实际不校验 UUID 形态，任何目录名都删。
 
 ## 7. 如何验证与扩展
 
 - **验证重启恢复**：跑一个任务，中途 `kill -9` 服务进程，重启后该任务应为 FAILED 且 error_details 含 "Interrupted by server restart"；同时在 `data/tasks/` 下手工建一个假 UUID 目录、重启，它应被清掉。
 - **验证看门狗**：把 `TASK_WATCHDOG_PENDING_MINUTES` 设为 1，创建一个依赖未完成任务的 PENDING 任务，等 1 分钟观察其变 FAILED。
-- **扩展**：新增 AnalysisTask 字段时，同步改 TaskSerialization 的 to_json/from_json（from_json 记得用 contains 容错）；新增阶段时补 TaskSerialization.cpp:24 的 Phase 映射与 TaskManager.cpp:546 的权重表。
+- **扩展**：新增 AnalysisTask 字段时，同步改 TaskSerialization 的 to_json/from_json（from_json 记得用 contains 容错）；新增阶段时补 TaskSerialization.cpp:24 的 Phase 映射与 TaskManager.cpp:546 的权重表；若想根治原子性问题，save_tasks 改为"写 tasks.json.tmp → fsync → rename"三步即可，签名无需变化。
 
-**最后更新**: 2026-08-23（解释式重写）
+**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）

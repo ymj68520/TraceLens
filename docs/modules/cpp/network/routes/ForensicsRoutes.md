@@ -25,7 +25,28 @@
 
 ### 3.1 聚合器本身几乎为空
 
-`ForensicsRoutes` 构造函数组合 11 个子路由成员（ForensicsRoutes.cpp:31-45）；自己保留了一套**遗留的提取作业跟踪表**（create/get/update/cleanup_extraction_job，:51-119），注释说明文件提取路由现在自管作业、这些方法"kept for potential backward compatibility"——读代码时可跳过。
+`ForensicsRoutes` 构造函数组合 11 个子路由成员（ForensicsRoutes.cpp:31-45）；自己保留了一套**遗留的提取作业跟踪表**（create/get/update/cleanup_extraction_job，:51-119），注释说明文件提取路由现在自管作业、这些方法"kept for potential backward compatibility"——读代码时可跳过：
+
+```cpp
+// ForensicsRoutes.cpp:31-45
+ForensicsRoutes::ForensicsRoutes(crow::App<>& app)
+    : task_manager_(TaskManager::instance()),
+      timeline_routes_(app),
+      event_cluster_routes_(app),
+      export_routes_(app),
+      file_analysis_routes_(app),
+      file_extraction_routes_(app),
+      statistics_routes_(app),
+      android_forensics_routes_(app),
+      memory_forensics_routes_(app),
+      system_event_routes_(app),
+      dll_analysis_routes_(app),
+      scene_query_routes_(app) {
+    // Route handlers are registered by the sub-route constructors
+}
+```
+
+11 个成员的初始化列表就是本组的全部端点归属表：TimelineRoutes、EventClusterRoutes、ExportRoutes、FileAnalysisRoutes、FileExtractionRoutes、StatisticsRoutes、AndroidForensicsRoutes、MemoryForensicsRoutes、SystemEventRoutes、DLLAnalysisRoutes、SceneQueryRoutes。遗留作业跟踪方法操作的是 `extraction_jobs_` map + `extraction_mutex_`，但没有任何路由再调它们——FileExtractionRoutes 内部有自己的作业表。真正活跃的只有 `generate_job_id()` 的静态副本（两处实现完全相同，ForensicsRoutes.cpp:18-29 与 RouteHelpers.cpp:22-33）。
 
 ### 3.2 时间线组（TimelineRoutes + EventClusterRoutes）
 
@@ -34,6 +55,42 @@
 - 辅助视角：by-type / by-time-range / by-file / full / distribution / statistics-by-period / file-activity / suspicious-patterns / user-activity；
 - **clusters/ 组是写端点**：analyze/batch-analyze/reanalyze 触发 LLM 簇分析（复用 EventClusterAnalyzer），analyzed 读取已分析簇——这是时间线页簇抽屉里"AI 分析"按钮的后端。
 
+主查询 handler 的参数解析是本组的模板：
+
+```cpp
+// TimelineRoutes.cpp:112-148（handle_timeline_comprehensive，节选）
+crow::response TimelineRoutes::handle_timeline_comprehensive(const crow::request& req) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+    auto params = crow::query_string(req.url_params);
+    std::string task_id = params.get("task_id") ? params.get("task_id") : "";
+    std::string start_time = params.get("start_time") ? params.get("start_time") : "";
+    std::string end_time = params.get("end_time") ? params.get("end_time") : "";
+    std::string event_type = params.get("event_type") ? params.get("event_type") : "";
+    int limit = params.get("limit") ? std::stoi(params.get("limit")) : 1000;
+    int offset = params.get("offset") ? std::stoi(params.get("offset")) : 0;
+    bool cluster = params.get("cluster") ? (std::string(params.get("cluster")) == "true") : false;
+    // Clustering time window in seconds. Default 60 (backward compatible).
+    // Clamped to [1, 86400] inside the query layer.
+    int bucket_seconds = params.get("bucket") ? std::stoi(params.get("bucket")) : 60;
+
+    if (task_id.empty()) {
+        json error = {{"error", "task_id parameter is required"}};
+        res.code = 400;
+        // ...
+    }
+
+    try {
+        std::string raw_db = RouteHelpers::get_database_path(task_id, "raw");
+        std::string events_db = RouteHelpers::get_database_path(task_id, "events");
+        json result = SQLiteHelper::get_comprehensive_timeline(raw_db, events_db, start_time, end_time, limit, offset, event_type, cluster, bucket_seconds);
+        // ...
+```
+
+三层职责一目了然：handler 只做"解析参数→缺 task_id 即 400→解析库路径→转发"；SQL 构造、聚簇、防御全在 SQLiteHelper。注意**注意 URL 参数名是 `cluster`/`bucket`**，而 SQLiteHelper 形参名是 `cluster_events`/`bucket_seconds`——前端文档与 C++ 签名之间隔着一次改名。task_id 不存在时 `get_database_path` 抛 runtime_error，被 catch 转 500——这就是 §5 说的"404 语义混杂"。
+
+`timeline/details` 的参数兼容层更厚（TimelineRoutes.cpp:150-184）：`window`/`bucket_index` 互为别名、`parent`/`dir` 互为别名，**两者同时给出且不一致时 400**（"bucket_index and window must match"）——新旧前端字段名共存期的典型防御；bucket_seconds 同样默认 60 且必须与聚簇时一致。
+
 ### 3.3 文件与统计组
 
 files/* 全部映射 SQLiteHelper::FileAnalysisQueries（largest/recent/suspicious/duplicates/extensions-analysis + llm 结果）；statistics/* 映射 StatisticsQueries。语义上都是"一个维度一个端点"的平铺设计，参数基本是 task_id + limit。
@@ -41,6 +98,21 @@ files/* 全部映射 SQLiteHelper::FileAnalysisQueries（largest/recent/suspicio
 ### 3.4 Android/MIUI 组（AndroidForensicsRoutes，14 个端点）
 
 最大的一组：通信摘要/应用使用/设备信息/媒体分析四个通用端点，加上 MIUI 离线备份的 overview/installed-apps/db-inventory，以及 QQNT、微信两族 artifacts/records/overview 端点（敏感字段默认脱敏，revealSensitive 参数控制）。数据全部来自 `android.db`（经 RouteHelpers 的多级回退解析）。
+
+```cpp
+// AndroidForensicsRoutes.cpp:390-398（QQNT records 的脱敏开关读取）
+const int limit = params.get("limit") ? std::max(1, std::atoi(params.get("limit"))) : 100;
+const int offset = params.get("offset") ? std::max(0, std::atoi(params.get("offset"))) : 0;
+const bool revealSensitive = params.get("reveal_sensitive") &&
+    std::string(params.get("reveal_sensitive")) == "1";
+res.set_header("Content-Type", "application/json");
+res.write(SQLiteHelper::get_miui_qqnt_records(
+    database, kind,
+    params.get("query") ? params.get("query") : "", limit, offset,
+    revealSensitive).dump());
+```
+
+脱敏在查询层做（`get_miui_qqnt_records`/`get_miui_wechat_records` 的 revealSensitive 形参直传 SQLiteHelper），路由层只负责字符串→bool；显式传 `1` 才明文，其他任何值（true/yes/缺省）都是脱敏——默认安全的取向。顺带注意这里 limit/offset 用的是 `std::max` 下限保护而非 SQLiteHelper::clamp_limit，防的是 0/负数，不设上限——各子路由的防御纪律不完全统一。
 
 ### 3.5 专项组
 
@@ -63,17 +135,20 @@ files/* 全部映射 SQLiteHelper::FileAnalysisQueries（largest/recent/suspicio
 | memory/* | `_memory.db` | MemoryForensicsRoutes 内联查询 |
 | clusters/*（分析写入） | `_events.db` 簇 LLM 列 | EventClusterAnalyzer（非 SQLiteHelper） |
 
+android 类型路径解析的三级回退（RouteHelpers.cpp:48-66）：任务 metadata 里的 `android_db` → output_files_db 同目录的 `android.db` → raw 库去后缀推导 `<base>_android.db` → 最后兜底 output_files_db 本身。逻辑 Android 任务（miui-backup 等）在流水线里把 android.db 同时写进 metadata 与 output_files_db（TaskManagerAnalysis.cpp:647-653），保证任何一级回退都命中。memory 类型的 `_raw` 剥离（:76-86）是为了对齐 MemoryAnalyzer 的命名约定：`img_raw.db → img_memory.db` 而非 `img_raw_memory.db`。
+
 ## 5. 常见错误与边界
 
 - **404 语义混杂**：task_id 不存在（RouteHelpers 抛 runtime_error）与"库文件还没生成"都可能以 404/错误 JSON 返回——任务未完成就调结果端点是常见时序问题，前端应以任务状态为先导。
-- **limit 未钳制的端点存在**：新代码都应走 clamp_limit；给老端点传超大 limit 可能拖垮大库。
+- **limit 未钳制的端点存在**：新代码都应走 clamp_limit；给老端点传超大 limit 可能拖垮大库。（comprehensive 的钳制在查询层兜底，TimelineQueries.cpp:95-96；但 std::stoi 解析失败会直接抛异常转 500——传 `limit=abc` 得到 500 而非 400。）
 - **bucket_seconds 错位**：details 端点的 bucket 必须与聚簇时一致（默认 60），否则簇明细为空。
 - **导出自定义 query 被拒**：含分号/注释/非 SELECT 关键词一律 400——这是特性不是 bug（防注入）。
 - **extract 作业是内存态**：服务重启后未完成作业的状态查询 404。
+- **两个 generate_job_id 副本**：ForensicsRoutes.cpp:18-29 与 RouteHelpers.cpp:22-33 逐字符相同——改一处忘另一处会得到格式不一致的 job id（前缀都是 `ext-`，目前无害）。
 
 ## 6. 如何验证与扩展
 
-- 冒烟：完成任务后依次 curl `timeline/comprehensive?task_id=...&cluster_events=true`、`files/largest?task_id=...&limit=5`、`android/communication-summary?task_id=...`，与 `sqlite3 data/tasks/<id>/*.db` 的行数互相印证。
+- 冒烟：完成任务后依次 curl `timeline/comprehensive?task_id=...&cluster_events=true`（注意参数名实为 `cluster`）、`files/largest?task_id=...&limit=5`、`android/communication-summary?task_id=...`，与 `sqlite3 data/tasks/<id>/*.db` 的行数互相印证。
 - 扩展新查询端点：选好所属域 → 在 SQLiteHelper 对应 Queries 文件加方法 → 子路由文件注册端点（+Swagger RegisterEndpoint）→ 若是新域则建子路由类并在 ForensicsRoutes.cpp:31-45 挂载。
 
-**最后更新**: 2026-08-23（解释式重写）
+**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）

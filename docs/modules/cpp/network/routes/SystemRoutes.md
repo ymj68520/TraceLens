@@ -18,7 +18,7 @@
 
 ### 3.1 聚合结构
 
-`SystemRoutes` 构造函数组合 SystemHealthRoutes + SystemInfoRoutes + SystemDocsRoutes 三个子路由（SystemRoutes.cpp:8-13），自身零逻辑——是新增路由组时最简的模仿模板。
+`SystemRoutes` 构造函数组合 SystemHealthRoutes + SystemInfoRoutes + SystemDocsRoutes 三个子路由（SystemRoutes.cpp:8-13），自身零逻辑——是新增路由组时最简的模仿模板。三个子路由构造函数各自 CROW_ROUTE，均无 Swagger 注册（本组是文档的"伺服者"，自己反而不进注册表——openapi.json 里因此看不到 /api/docs/* 自身，属自指豁免）。
 
 ### 3.2 健康检查组（SystemHealthRoutes.cpp:13-31）
 
@@ -26,7 +26,59 @@
 - `/api/health/live`：纯存活，不做任何依赖检查（:64-77）——探针快速失败用；
 - `/api/health/ready` 与 `/api/health/dependencies`：就绪与依赖细节，检查会涉及下游（Python 服务等）可达性。
 
-语义分工是标准 K8s 套路：live 判"进程要不要重启"，ready 判"能不能接流量"。
+语义分工是标准 K8s 套路：live 判"进程要不要重启"，ready 判"能不能接流量"。富健康的实现：
+
+```cpp
+// SystemHealthRoutes.cpp:34-62（handle_system_health，节选）
+crow::response SystemHealthRoutes::handle_system_health(const crow::request& req) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+    try {
+        auto task_stats = TaskManager::instance().get_task_statistics();
+
+        json health;
+        health["status"] = "healthy";
+        health["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        health["version"] = "1.0.0";
+        health["task_management"]["total_tasks"] = task_stats["total_tasks"];
+        health["task_management"]["running_tasks"] = task_stats["by_status"]["running"];
+        health["task_management"]["failed_tasks"] = task_stats["by_status"]["failed"];
+        health["task_management"]["system_load"] = "low";
+        health["services"]["http_server"] = "running";
+        health["services"]["task_manager"] = "running";
+        health["services"]["database_access"] = "available";
+        // ...
+```
+
+关键在读法：`status`/`services` 是**写死的常量**，唯一真实的数据源是从 TaskManager 拉来的三个数字；`system_load` 恒为 "low"（没有采样逻辑）。只有 get_task_statistics 抛异常才会走 catch 返回 500/unhealthy——所以"healthy"的语义实际是"TaskManager 大锁没死锁"。就绪探针的检查面更实一些：
+
+```cpp
+// SystemHealthRoutes.cpp:83-106（handle_health_ready，节选）
+bool ready = true;
+json checks;
+
+// Check task manager
+try {
+    auto stats = TaskManager::instance().get_task_statistics();
+    checks["task_manager"]["status"] = "ready";
+    checks["task_manager"]["total_tasks"] = stats["total_tasks"];
+} catch (const std::exception& e) {
+    checks["task_manager"]["status"] = "error";
+    checks["task_manager"]["error"] = e.what();
+    ready = false;
+}
+
+checks["database"]["status"] = "ready";
+
+json health;
+health["ready"] = ready;
+health["checks"] = checks;
+// ...
+res.code = ready ? 200 : 503;
+```
+
+ready 的判定=task_manager 检查不抛错；`database` 检查是**无条件 ready**（没有真的开 SQLite 试连）；失败时返回 503 语义码——这是全组唯一会返回非 200 成功码的探针端点，编排层应据此摘流量。dependencies 端点（:118-148）更进一步列出 llm_service/python_service 的配置值，但全部是"configured/optional"的静态标记，不做真实探测——注释里的 status 字符串是配置状态而非可达状态。
 
 ### 3.3 系统信息组（SystemInfoRoutes.cpp:11-29）
 
@@ -36,9 +88,61 @@
 - `/api/system/logs`：读服务日志；
 - `POST /api/export/<task_id>`：触发该任务结果导出（挂在 info 组属历史位置）。
 
+database-schema 也是硬编码 JSON（SystemInfoRoutes.cpp:118-160），只认识 raw/files/events 三类，未知类型 400：
+
+```cpp
+// SystemInfoRoutes.cpp:118-160（节选）
+if (db_type == "raw") {
+    schema = {
+        {"type", "raw"},
+        {"tables", {
+            {"files", {
+                {"columns", {"id", "path", "name", "size", "mtime", "atime", "ctime", "inode", "deleted", "content_hash"}}
+            }},
+            {"partitions", {
+                {"columns", {"id", "number", "start", "length", "description", "fs_type"}}
+            }}
+        }}
+    };
+} else if (db_type == "files") {
+    // ...
+```
+
+与 docs/database-schema 端点（SystemDocsRoutes.cpp:85-102）是**第三份**表结构描述——三处描述（真实建表 SQL、本端点、docs 端点）各自手工维护，列名一旦演进就会出现"描述与库不符"的漂移。
+
+databases 端点的数据组装：
+
+```cpp
+// SystemInfoRoutes.cpp:76-99（节选）
+if (!task_id.empty()) {
+    AnalysisTask task = task_manager_.get_task(task_id);
+    if (!task.id.empty()) {
+        if (!task.output_raw_db.empty() && std::filesystem::exists(task.output_raw_db)) {
+            databases.push_back({
+                {"type", "raw"},
+                {"path", task.output_raw_db},
+                {"size", std::filesystem::file_size(task.output_raw_db)}
+            });
+        }
+        if (!task.output_events_db.empty() && std::filesystem::exists(task.output_events_db)) {
+            // ...
+        }
+        if (!task.output_files_db.empty() && std::filesystem::exists(task.output_files_db)) {
+            // ...
+        }
+    }
+}
+```
+
+三个 if 同构（events/files 各查一次 exists + file_size）。只列 raw/events/files 三类——android.dll/memory 等专项库**不在此清单**（要用 TaskRoutes 的 databases 端点或 metadata 才能发现）；`exists()` 先行防的是 file_size 对不存在文件抛异常；task_id 无效时**静默返回空列表而非 404**（`task.id.empty()` 分支只跳过填充），与 TaskRoutes 的 404 纪律不同——调用方拿空数组时要能区分"任务不存在"与"任务还没产出库"，当前响应无法区分。这个端点与 `/api/tasks/{id}/databases`（TaskCRUDRoutes.cpp:527-585）功能高度重叠，差异只在 size 字段与空目录行为。
+
 ### 3.4 文档组（SystemDocsRoutes.cpp:10-24）
 
 四个端点：`/api/docs/endpoints`（**手写维护的端点清单 JSON**，:27-60+）、`/api/docs/database-schema`、`/api/docs/openapi.json`、`/api/docs`（简易 UI 页）。要区分两份"文档事实"：Swagger 单例注册表（各路由构造时 RegisterEndpoint 喂入，openapi.json 由此生成，**与代码同步**）与 endpoints 端点里的手写清单（**会过时**）——优先信前者。
+
+openapi.json 端点就是一层薄转发（SystemDocsRoutes.cpp:115-130）：`Swagger::instance().GetSwaggerJSON()` → `dump(2)` 写回。UI 页（:136-168）是内嵌 HTML 字符串，从 unpkg CDN 加载 Swagger UI 5.11.0 指向同源 openapi.json——离线环境 UI 白屏但 JSON 端点不受影响。
+
+手写清单与注册表的具体差距（SystemDocsRoutes.cpp:31-68）：它只列了 task_management/forensics/system/search 四组约 25 条，没有 cases/filter/clusters/extract/memory/dlls/miui 等后来加的端点，且用 `<id>` 而非 `{id}` 的 Crow 占位风格——与 openapi.json 对比即可看出漂移程度。
 
 ## 4. 数据从哪来
 
@@ -50,15 +154,17 @@
 
 ## 5. 常见错误与边界
 
-- **health 的 "healthy" 近乎无条件**：handle_system_health 只要 TaskManager 统计不抛异常就返回 healthy，running 任务很多也不会变 degraded——告警策略别指望它分级；
-- **version 硬编码 "1.0.0"**：与构建版本无联动；
-- **info 的特性清单会漂移**：新增能力忘了改就误导调用方；
-- **endpoints 手写清单与真实路由可能不一致**：以 openapi.json/Swagger 注册表为准；
-- **dependencies 检查的超时**：Python 服务慢时 ready 探针可能抖动，编排层需配容忍。
+- **health 的 "healthy" 近乎无条件**：handle_system_health 只要 TaskManager 统计不抛异常就返回 healthy，running 任务很多也不会变 degraded——告警策略别指望它分级（system_load 恒 "low"、services 三项恒 "running/available"，全是常量）。
+- **version 硬编码 "1.0.0"**：与构建版本无联动；Swagger 文档里的 1.0.0 是另一处独立硬编码。
+- **info 的特性清单会漂移**：新增能力忘了改就误导调用方（如 file_carving/LLM 簇分析均不在 features 列表里）。
+- **endpoints 手写清单与真实路由可能不一致**：以 openapi.json/Swagger 注册表为准。
+- **dependencies 检查的超时**：Python 服务慢时 ready 探针可能抖动，编排层需配容忍——实际上 dependencies 不做真实探测（§3.2），真正的抖动源是 ready 里的 get_task_statistics 在大锁被占时的等待。
+- **databases 空列表的歧义**：task_id 无效与无产出库都返回空数组（§3.3）。
+- **本组端点不在 openapi.json 里**：文档组/健康组自己没注册 Swagger 条目——用 openapi.json 做端点审计时会漏掉这批。
 
 ## 6. 如何验证与扩展
 
-- 冒烟：`curl /api/health/live` 秒回 alive；`curl /api/system/health | jq .task_management`；`curl /api/docs/openapi.json | jq '.paths | keys | length'` 对比 RouteReference.md 的端点数；
-- 扩展：健康维度（如磁盘水位、线程池队列长度）加在 SystemHealthRoutes 并考虑让 status 出现 degraded 档位；新路由组照抄 SystemRoutes.cpp:8-13 的三行聚合模式。
+- 冒烟：`curl /api/health/live` 秒回 alive；`curl /api/system/health | jq .task_management`；`curl /api/docs/openapi.json | jq '.paths | keys | length'` 对比 RouteReference.md 的端点数；`curl /api/health/ready -i` 看正常时应为 200。
+- 扩展：健康维度（如磁盘水位、线程池队列长度）加在 SystemHealthRoutes 并考虑让 status 出现 degraded 档位——现有代码里 status 从未被赋过第二种植；新路由组照抄 SystemRoutes.cpp:8-13 的三行聚合模式。
 
-**最后更新**: 2026-08-23（解释式重写）
+**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）

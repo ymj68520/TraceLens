@@ -16,45 +16,148 @@ EventClusterRoutes (/api/forensics/timeline/clusters/*)
                                           ──读──▶ llm::ModelRouter（文本模型）
 ```
 
-- 上游：任务流水线（LLM_ANALYSIS 阶段尾部，进度占 90-95%）与 EventClusterRoutes 的四个端点（analyze/batch-analyze/reanalyze/analyzed）。
+- 上游：任务流水线（LLM_ANALYSIS 阶段尾部，进度占 90-95%）与 EventClusterRoutes 的四个端点（analyze/batch-analyze/reanalyze/analyzed，EventClusterRoutes.cpp:13-67）。
 - 下游：只读 `_events.db` 的 events 表、只写簇级 LLM 列（经 `EventExtractorSQL::UPDATE_EVENT_CLUSTER_LLM_ANALYSIS`，EventClusterAnalyzer.cpp:305-323）；LLM 经 ModelRouter 使用 ConfigManager 的文本模型配置（:18-40）。
 
 ## 3. 核心概念与设计
 
-### 3.1 簇的定义是 SQL，不是代码
+### 3.1 簇的表示：三元组 std::tuple，没有结构体
+
+本模块没有为"簇"定义专门类型，全部用裸 tuple 传递（EventClusterAnalyzer.h:27-60）：
+
+```cpp
+// src/network/HTTPServer/EventClusterAnalyzer.h:27-45（节选）
+// 分析单个事件簇
+bool analyzeEventCluster(const std::string& eventsDbPath, 
+                       int64_t timeWindow, 
+                       const std::string& eventType, 
+                       const std::string& parentDirectory);
+
+// 批量分析事件簇
+int analyzeEventClusters(const std::string& eventsDbPath,
+                        const std::vector<std::tuple<int64_t, std::string, std::string>>& clusters,
+                        ProgressCallback progressCallback = nullptr);
+
+// 智能分析（只分析重要的事件簇）
+int analyzeSmartEventClusters(const std::string& eventsDbPath,
+                             size_t maxClusters,
+                             ProgressCallback progressCallback = nullptr);
+```
+
+- `std::tuple<int64_t, std::string, std::string>` 即 `(timeWindow, eventType, parentDirectory)`——簇的**完整身份**就是这三元组，它同时是查询键（WHERE 条件）与回写键（UPDATE 的 WHERE）；
+- 簇内事件是五元组 `tuple<int64_t, string, string, int64_t, string>` = `(timestamp, event_type, file_path, file_size, description)`（getClusterEvents 的返回，:67-71），仅供拼 prompt，不落库；
+- `ProgressCallback = function<bool(int,int,const string&)>`（h:24）：当前序号/总数/事件类型，返回 false 即取消。
+
+### 3.2 簇的定义是 SQL，不是代码
 
 `getAllEventClusters`（EventClusterAnalyzer.cpp:432-472）的一条 GROUP BY 就是簇的全部语义：
 
 ```sql
-SELECT (timestamp / 60) AS time_window, event_type,
-       ...parent_directory...
+-- src/network/HTTPServer/EventClusterAnalyzer.cpp:443-451
+SELECT 
+    (timestamp / 60) as time_window, 
+    event_type, 
+    CASE WHEN file_path LIKE '%/%' THEN RTRIM(file_path, REPLACE(file_path, '/', '')) ELSE '' END as parent_directory
 FROM events
 GROUP BY time_window, event_type, parent_directory
 ORDER BY COUNT(*) DESC
 ```
 
-即：**同一分钟（timestamp/60 取整）、同类型、同父目录**的事件为一个簇，按事件量降序返回。时间窗固定为 60 秒——这与 SQLiteHelper 时间线路由的 `bucket_seconds`（默认 60）默认对齐，改动任何一侧都要想着另一侧。
+即：**同一分钟（timestamp/60 取整）、同类型、同父目录**的事件为一个簇，按事件量降序返回。`RTRIM(file_path, REPLACE(file_path,'/',''))` 是 SQLite 惯用的"掐掉最后一段"技巧——把非斜杠字符全删掉剩下斜杠串，再从尾部裁掉这串斜杠，等价于 dirname。时间窗固定为 60 秒——这与 SQLiteHelper 时间线路由的 `bucket_seconds`（默认 60）默认对齐，改动任何一侧都要想着另一侧。
 
-### 3.2 full / smart 两种分析策略
+取簇内事件的 SQL（:357-367）复用同一个 `/60` 口径：
+
+```cpp
+// src/network/HTTPServer/EventClusterAnalyzer.cpp:357-367
+std::string sql = "SELECT timestamp, event_type, file_path, file_size, description FROM events WHERE (timestamp / 60) = ? AND event_type = ?";
+
+if (!parentDirectory.empty()) {
+    if (parentDirectory == "/") {
+        sql += " AND (file_path NOT LIKE '%/%' OR file_path LIKE '/%')";
+    } else {
+        sql += " AND file_path LIKE ?";
+    }
+}
+
+sql += " ORDER BY timestamp ASC";
+```
+
+目录过滤有两分支：普通目录用 `parentDirectory + "%"` 前缀 LIKE（:381-382）；根目录 `"/"` 特判为"根下文件"（路径不含斜杠或以单斜杠开头）。ORDER BY timestamp ASC 保证 buildClusterSummary 里的首尾时间戳（:408-410）有意义。
+
+### 3.3 full / smart 两种分析策略
 
 - **full**（analyzeEventClusters，:121-150）：拿全部簇逐个分析。簇多时耗时与费用线性增长。
 - **smart**（analyzeSmartEventClusters，:152-170）：先让 LLM 从簇清单里挑重要的，再只分析选中的。预算 `maxClusters` 由任务流水线从 `LLM_MAX_EVENT_CLUSTERS` 读取（TaskManagerAnalysis.cpp:416-419），**0 表示不限额**（ConfigManager.cpp:92-93 默认 0）。
 
-### 3.3 smart 的降级链：LLM 不可靠时不空手而归
+### 3.4 smart 的降级链：LLM 不可靠时不空手而归
 
-`selectImportantEventClusters`（:172-276）有三层兜底，保证选择阶段永远返回可用清单：
+`selectImportantEventClusters`（:172-276）的核心防御结构：
+
+```cpp
+// src/network/HTTPServer/EventClusterAnalyzer.cpp:186-199
+// 少于预算时无需让 LLM 选择；0 means no upper limit.
+if (maxClusters > 0 && allClusters.size() <= maxClusters) {
+    return allClusters;
+}
+
+const size_t selectionLimit = maxClusters > 0 ? maxClusters : allClusters.size();
+
+auto truncateToConfiguredLimit = [&]() {
+    if (maxClusters > 0 && allClusters.size() > maxClusters) {
+        allClusters.resize(maxClusters);
+    }
+    return allClusters;
+};
+```
+
+`truncateToConfiguredLimit` 是捕获引用的 lambda，在后续**每一个失败出口**被复用，构成三层兜底：
 
 1. 簇总数 ≤ 预算 → 直接全要，根本不调 LLM（:187-189）；
-2. LLM 调用失败 / 返回解析失败 → 截断到预算取前 N（`truncateToConfiguredLimit`，:194-199、:231-234、:250-253）；
+2. LLM 调用失败 / 返回解析失败 → 截断到预算取前 N（:194-199、:231-234、:250-253）；
 3. LLM 返回的索引解析后一个都对不上 → 同样截断兜底（:264-269）。
 
-对 LLM 返回只信"形如 [0,2,5] 的 JSON 数组"，用 find('[')/rfind(']') 截取后解析（:239-249），并对越界索引过滤（:257-261）。
+对 LLM 返回只信"形如 [0,2,5] 的 JSON 数组"：
 
-### 3.4 取消经进度回调
+```cpp
+// src/network/HTTPServer/EventClusterAnalyzer.cpp:239-249、257-261（节选）
+size_t start = response.content.find('[');
+size_t end = response.content.rfind(']');
+if (start != std::string::npos && end != std::string::npos && end > start) {
+    std::string jsonStr = response.content.substr(start, end - start + 1);
+    auto jsonArray = nlohmann::json::parse(jsonStr);
+    for (const auto& item : jsonArray) {
+        if (item.is_number()) {
+            selectedIndices.push_back(item.get<size_t>());
+        }
+    }
+}
+// ...
+for (size_t index : selectedIndices) {
+    if (index < allClusters.size()) {          // 越界索引静默过滤
+        importantClusters.push_back(allClusters[index]);
+    }
+}
+```
+
+find/rfind 截取能容忍模型在 JSON 前后加解释文字；越界索引过滤防模型幻觉出不存在的簇号；若过滤后一个不剩则走第 3 层兜底（"falling back to first N clusters"，:265-268）。**截断的前 N 由 getAllEventClusters 的 ORDER BY COUNT(*) DESC 保证是事件量最大的簇**——兜底也是"最热闹优先"，不是随机。
+
+### 3.5 取消经进度回调
 
 `ProgressCallback` 返回 false 即停止（:136-142），任务流水线借它在用户取消任务时中断簇分析循环（TaskManagerAnalysis.cpp:407-411）。
 
-## 4. 工作流程走读
+## 4. 核心接口清单
+
+| 方法（真实签名，EventClusterAnalyzer.h） | 语义 | 调用方 | 失败行为 |
+|---|---|---|---|
+| `bool initialize()` | 惰性建 ModelRouter（文本模型） | 内部首调 + 外部 | 异常打印并返回 false |
+| `bool analyzeEventCluster(db, timeWindow, eventType, parentDirectory)` | 单簇全流程：取事件→prompt→chat→解析→回写 | analyzeEventClusters / EventClusterRoutes | 任一步失败返回 false，不落库 |
+| `int analyzeEventClusters(db, clusters, cb)` | 逐簇循环 + 进度回调 | 流水线 full 模式（先 getAllEventClusters） | 单簇失败仅不计入返回值 |
+| `int analyzeSmartEventClusters(db, maxClusters, cb)` | 选择 + 分析的复合入口 | 流水线 smart 模式 | 选出 0 簇时打日志返回 0 |
+| `vector<tuple<...>> selectImportantEventClusters(db, maxClusters)` | §3.4 降级链 | smart 入口 / 可独立调用 | 永不抛出，最差返回截断清单 |
+| `bool storeClusterDescription(db, key..., summary, description, keywords, modelUsed, isRelevant)` | 簇级回写 | analyzeEventCluster | 更新行数 0 视为失败（:335-338） |
+| `vector<tuple<...>> getAllEventClusters(db)` | 枚举全部簇（降序） | 流水线 full / selectImportant | 开库失败返回空 vector |
+
+## 5. 工作流程走读
 
 单个簇的分析（analyzeEventCluster，:42-119）：
 
@@ -63,25 +166,52 @@ ORDER BY COUNT(*) DESC
 3. 固定 prompt 要求 LLM 只回 JSON：`{summary, description, keywords[], is_relevant}`（:63-81）；
 4. 解析结果后 `storeClusterDescription`（:278-341）把 summary/description/keywords（逗号拼接）/时间戳/模型名/is_relevant 写回 events 库的对应簇行；**更新行数为 0 视为失败**（:335-338），防止"写了个寂寞"还报成功。
 
+回写的绑定参数与检查（节选）：
+
+```cpp
+// src/network/HTTPServer/EventClusterAnalyzer.cpp:314-338
+// Bind parameters
+sqlite3_bind_text(stmt, 1, summary.c_str(), -1, SQLITE_TRANSIENT);
+sqlite3_bind_text(stmt, 2, description.c_str(), -1, SQLITE_TRANSIENT);
+sqlite3_bind_text(stmt, 3, keywordsStr.c_str(), -1, SQLITE_TRANSIENT);
+sqlite3_bind_int64(stmt, 4, currentTime);
+sqlite3_bind_text(stmt, 5, modelUsed.c_str(), -1, SQLITE_TRANSIENT);
+sqlite3_bind_int(stmt, 6, isRelevant ? 1 : 0);
+sqlite3_bind_int64(stmt, 7, timeWindow);
+sqlite3_bind_text(stmt, 8, eventType.c_str(), -1, SQLITE_TRANSIENT);
+sqlite3_bind_text(stmt, 9, parentDirectory.c_str(), -1, SQLITE_TRANSIENT);
+
+rc = sqlite3_step(stmt);
+int changes = sqlite3_changes(db);
+// ...
+if (changes == 0) {
+    std::cerr << "Warning: No rows updated for event cluster" << std::endl;
+    return false;
+}
+```
+
+注意 UPDATE 的 WHERE 是**三键同时匹配**（timeWindow/eventType/parentDirectory，参数 7-9）——一个簇的所有事件行都会被同一组 llm_* 值覆盖。`sqlite3_changes` 取的是本次连接的变更行数，恰好等于簇内行数；为 0 说明簇键对不上（比如事件已被清理或键口径变化），按失败处理。另一个细节：keywords 在 :294-300 用逗号 join 成单串存进 llm_keywords 列——模型返回的关键词若自身含逗号则无法还原。
+
 流水线批量路径见 TaskManager.md §4 第 6 步；时间线页点"分析此簇"时走 EventClusterRoutes 复用同一入口。
 
-## 5. 与其他模块的协作
+## 6. 与其他模块的协作
 
-- **TaskManager**：LLM_ANALYSIS 阶段的调用者与进度上报者。
+- **TaskManager**：LLM_ANALYSIS 阶段的调用者与进度上报者（TaskManagerAnalysis.cpp:398-433）。
 - **EventClusterRoutes**：按需重分析的 REST 入口；"analyzed" 端点读取这里写入的簇 LLM 列。
 - **ModelRouter / ConfigManager**：文本模型配置（与 LLMAnalysisService、平台 LLM 服务共用 getTextModelConfig）。
 - **SQLiteHelper::get_comprehensive_timeline**：消费同一套簇定义（bucket_seconds 聚类）展示簇列表——分析结果与展示分组天然对齐。
 
-## 6. 注意事项与已知问题
+## 7. 注意事项与已知问题
 
 - **时间窗硬编码 60 秒**：簇键的 `/60` 写死在两处 SQL（:357、:443-451）；若前端以非默认 bucket_seconds 聚簇展示，再触发重分析会按 60 秒窗错位。
 - **is_relevant 完全信任 LLM**：没有规则校验，误判会直接落库并影响调查中心证据列表的展示权重。
 - **full 模式无预算**：`LLM_MAX_EVENT_CLUSTERS=0`（默认）+ smart 模式时"全量"其实等价于"LLM 选全部"；真正的无界全量只在 full 模式发生，大事件库慎用。
 - **keywords 存成逗号串**：关键词含逗号时会破坏可读性（:294-300）。
+- **簇键就是文本匹配**：parentDirectory 用 LIKE 前缀匹配，目录名含 `%`/`_` 等 LIKE 元字符的病态路径会被误并簇/漏簇（罕见但存在）。
 
-## 7. 如何验证与扩展
+## 8. 如何验证与扩展
 
 - **验证**：跑一个 llm_analyze=true 的任务后，对 `_events.db` 查询簇行（`SELECT time_window, event_type, llm_summary, llm_is_relevant FROM events ... LIMIT 20`）确认 llm_* 列已填充；或在时间线页展开簇抽屉触发 reanalyze 端点。
 - **扩展**：新的簇级字段（如 risk_score）需同时改 prompt（:63-81）、解析（:100-110）、`UPDATE_EVENT_CLUSTER_LLM_ANALYSIS` SQL 与展示路由；若要支持可变时间窗，建议把 `/60` 参数化并让调用方传入 bucket_seconds（默认 60 保持兼容）。
 
-**最后更新**: 2026-08-23（解释式重写）
+**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
