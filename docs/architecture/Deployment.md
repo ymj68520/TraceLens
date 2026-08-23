@@ -119,7 +119,7 @@ graph LR
 
 步骤：
 
-1. 准备 PostgreSQL 并设置 `DATABASE_URL`（如 `postgresql://postgres:***@localhost:5432/tracelens`），应用 `migrations/postgresql/` 下 3 个迁移
+1. 准备 PostgreSQL 并设置 `DATABASE_URL`（如 `postgresql://postgres:***@localhost:5432/tracelens`），应用 `migrations/postgresql/` 下 3 个迁移。**注意**：服务端启动时的自动迁移只应用 `001`；`002`（命令-任务外键回填）和 `003`（修复 super_admin 种子凭据）需要已有环境手工执行 `psql -f`——不应用 003 时内置 super_admin 登录会恒 401（见 [server/Main](../modules/python/server/Main.md) 注意事项）
 2. 启动 `server`（`:8091`），通过 `/api/auth`、`/api/organizations` 创建组织/用户、生成客户端注册令牌（`registration_tokens` 表）
 3. 取证机上编译并运行 `tracelens_agent`（`--once` 可单轮轮询后退出，见 `http_agent_main.cpp`），配置服务端地址与注册令牌；代理本地调用 `forensic_analyzer` 执行分析并上传结果/索引
 

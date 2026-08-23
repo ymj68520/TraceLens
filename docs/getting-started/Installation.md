@@ -289,7 +289,7 @@ cp .env.example .env
 | `LOG_MAX_DISPLAY_FILES` | `20` | 日志展示文件数 |
 | `DB_JOURNAL_MODE` | `WAL` | SQLite journal 模式 |
 | `DLL_ANALYSIS_ENABLED` | `true` | DLL 分析开关 |
-| `DLL_CPP_BACKEND_URL` | `http://localhost:8080` | DLL 分析请求的 C++ 后端 |
+| `DLL_CPP_BACKEND_URL` | `http://localhost:8080` | （预留）DLL 分析专用后端——当前无代码读取，dll.py 实际用通用 `CPP_BACKEND_URL` |
 | `DLL_ANALYSIS_TIMEOUT` | `30` | DLL 分析超时（秒） |
 | `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 空 | OSS 凭证 |
 | `OSS_ENDPOINT` | 空 | 如 `oss-cn-hangzhou.aliyuncs.com` |
