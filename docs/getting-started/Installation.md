@@ -231,9 +231,9 @@ cp .env.example .env
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `MCP_SERVER_PORT` | `8890` | MCP 服务端口 |
-| `MCP_SERVER_HOST` | `localhost` | MCP 绑定地址 |
-| `MCP_ALLOWED_PATHS` | 空 | MCP 文件访问白名单（逗号分隔，空 = 不限） |
+| `MCP_SERVER_PORT` | `8890` | （预留）MCP 服务端口——当前无代码读取，MCPIntegration 尚未接线 |
+| `MCP_SERVER_HOST` | `localhost` | （预留）MCP 绑定地址——同上 |
+| `MCP_ALLOWED_PATHS` | 空 | （预留）MCP 文件访问白名单——同上；实际被读取的只有 `MCP_HOST` |
 | `FILE_ANALYSIS_MAX_CONTENT` | `10000` | 送 LLM 的内容长度上限（字符） |
 | `FILE_ANALYSIS_MAX_KEYWORDS` | `10` | 关键词提取上限 |
 | `FILE_ANALYSIS_MAX_CONTENT_LIMIT` | `50000` | 绝对上限（字符） |
@@ -282,8 +282,8 @@ cp .env.example .env
 |------|--------|------|
 | `DEBUG_OUTPUT_MODE` | `stdout` | 调试输出：stdout / file / none |
 | `DEBUG_LOG_FILE` | `debug.log` | 调试日志文件名 |
-| `LOG_LEVEL` | `INFO` | 日志级别 |
-| `LOG_FILE` | `forensics.log` | 日志文件名 |
+| `LOG_LEVEL` | `INFO` | （预留）日志级别——当前无生产代码调用 `Logger::setLevel/setOutput`，实际恒为 INFO/stdout |
+| `LOG_FILE` | `forensics.log` | （预留）日志文件——同上，未接线 |
 | `THREAD_POOL_SIZE` | `4` | 线程池大小 |
 | `MAX_BATCH_SIZE` | `100` | 批处理文件数上限 |
 | `LOG_MAX_DISPLAY_FILES` | `20` | 日志展示文件数 |

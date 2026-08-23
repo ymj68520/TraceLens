@@ -3,7 +3,8 @@
 ## 说明
 
 - 模块文档按目录组织，与源码位置对应：`docs/modules/cpp/**` 对应 `src/**`，`docs/modules/python/**` 对应 `python_service/**`。
-- 本索引只链接实际存在的文档文件；每个文档的详细内容可能滞后于代码，**阅读时请以代码为准**。
+- 每篇模块文档按统一的**解释式结构**组织：`为什么有这个模块 → 在系统中的位置 → 核心概念与设计 → 工作流程走读（含 file:line 锚点）→ 与其他模块的协作 → 注意事项与已知问题 → 如何验证与扩展`。先读 [架构总览](../architecture/Overview.md) 和 [数据流](../architecture/DataFlow.md) 建立全局图景，再按需深入单个模块。
+- 文档于 2026-08-23 按代码重写；后续代码演进时**请以代码为准**。
 - 下表描述均依据当前代码核实编写；个别模块在代码中已处于过时/死代码状态，见下方"过时与死代码模块"标注。
 
 ## 过时与死代码模块
@@ -13,7 +14,8 @@
 | 文档 | 代码状态 |
 |------|----------|
 | [VisionAnalysis](cpp/analyzers/VisionAnalysis.md) | `src/analyzers/VisionAnalysis/VisionAnalyzer.cpp` 已编入 CMake，但项目中无任何调用方引用，属**死代码** |
-| [AndroidAdbExtractor](cpp/integration/AndroidAdbExtractor.md) | `src/integration/AndroidAdbExtractor` 仅作为 include 目录出现在 CMakeLists.txt，其源文件**未编入构建** |
+| [AndroidAdbExtractor](cpp/integration/AndroidAdbExtractor.md) | `src/integration/AndroidAdbExtractor` 仅作为 include 目录出现在 CMakeLists.txt，其源文件**未编入构建**（且已无法通过语法检查） |
+| [MCPIntegration](cpp/integration/MCPIntegration.md) | MCP 服务器已编译但**无生产调用方**（没有任何地方启动它）；`.env.example` 的 `MCP_SERVER_PORT`/`MCP_ALLOWED_PATHS` 无代码读取，仅 `MCP_HOST` 被读 |
 | [OSSRoutes](cpp/network/routes/OSSRoutes.md) | OSS 路由源码（`OSSRoutes.cpp` 等）已编译，但 `HTTPserver` 从未注册该路由，**运行时不可用** |
 | [LLMAnalysisService](cpp/network/LLMAnalysisService.md) | `LLMPythonProxy.h` 头注释将其标记为 deprecated，但任务流水线（`TaskManagerAnalysis.cpp`）仍调用它执行文件级 LLM 分析，**仍是活跃路径** |
 | [EventClusterAnalyzer](cpp/network/EventClusterAnalyzer.md) | 存在且活跃（`TaskManager` / `TaskManagerAnalysis` 中使用） |
@@ -45,7 +47,7 @@
 | [AnalysisOrchestrator](cpp/core/AnalysisOrchestrator.md) | 分析编排器：调度镜像/内存/Android 逻辑提取等分析工作流（源码位于 `src/AnalysisOrchestrator.*`） |
 | [DatabaseManager](cpp/core/DatabaseManager.md) | 案例与任务 SQLite 数据库的创建/访问封装（`src/core/DatabaseManager/`，含 EventExtractor/FileClassifier/FileExtractor 子模块） |
 | [EventExtractor](cpp/core/EventExtractor.md) | 从镜像元数据提取时间线事件 |
-| [EventCorrelationEngine](cpp/core/EventCorrelationEngine.md) | 时间线事件关联分析引擎 |
+| [EventCorrelationEngine](cpp/core/EventCorrelationEngine.md) | 时间线事件关联分析引擎（**未接入任务流水线**：`analyzeEventCorrelations()` 无生产调用方，见文档标注） |
 | [FileClassifier](cpp/core/FileClassifier.md) | 文件分类：24 个分类（`getCategoryName` 分类表）+ 场景规则 |
 | [FileExtractor](cpp/core/FileExtractor.md) | 按分类/过滤规则提取文件内容到输出目录 |
 | [FullTextSearch](cpp/core/FullTextSearch.md) | Xapian 全文搜索引擎封装 |
