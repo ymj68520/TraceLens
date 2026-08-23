@@ -1,131 +1,68 @@
-# WindowsLLMAnalysisService - Windows 取证 LLM 分析服务
+# WindowsLLMAnalysisService（src/network/HTTPServer/WindowsLLMAnalysisService{,_ArtifactAnalyzers,_Database}.cpp）
 
-> **模块定位**: 使用 LLM 分析 Windows 系统工件，为调查提供 AI 驱动的上下文理解
+> **一句话**：LinuxLLMAnalysisService 的 Windows 镜像版——在 PLATFORM_ANALYSIS 阶段遍历 _windows.db 的 14 类 Windows 工件表（注册表、事件日志、预取、LNK、跳转列表、浏览器四件套、服务、计划任务、Amcache、SRUM），逐条生成 LLM 注解写回 llm_* 列。
 
----
+## 1. 为什么有这个模块
 
-## 1. 模块概述
+Windows 取证的核心证据几乎都是结构化工件：注册表值、事件日志条目、Prefetch、LNK/JumpList、Amcache/SRUM……它们由 WindowsFilesAnalyzer 提取进 `_windows.db` 的专属表，但"原始行 → 调查员可读的解读"这一步仍缺。本模块补上它：与 Linux 版同一骨架，只换工件类型与 prompt（骨架说明请读 LinuxLLMAnalysisService.md，本文只讲 Windows 特有之处）。
 
-### 位置
+同族：LinuxLLMAnalysisService、AndroidLLMAnalysisService（后者无独立文档，调用点 AndroidAnalyzerCore.cpp:302）。
 
-`src/network/HTTPServer/WindowsLLMAnalysisService.h`
+## 2. 在系统中的位置
 
-### 设计目标
-
-WindowsLLMAnalysisService 是 Windows 取证分析的**必需步骤**。它对所有 Windows 系统工件进行 LLM 分析，生成摘要、描述和关键词。
-
-### 支持的工件类型
-
-| 工件类型 | 说明 |
-|---------|------|
-| REGISTRY | 注册表键值 |
-| EVENT_LOG | Windows 事件日志 |
-| PREFETCH | 预读取文件 |
-| LNK | 快捷方式文件 |
-| JUMP_LIST | 跳转列表 |
-| BROWSER_HISTORY | 浏览器历史 |
-| BROWSER_DOWNLOAD | 浏览器下载 |
-| BROWSER_BOOKMARK | 浏览器书签 |
-| BROWSER_LOGIN | 浏览器登录信息 |
-| MFT_ENTRY | MFT 条目 |
-| WINDOWS_SERVICE | Windows 服务 |
-| SCHEDULED_TASK | 计划任务 |
-| AMCACHE | Amcache 工件 |
-| SRUM | SRUM 数据 |
-
----
-
-## 2. 数据结构
-
-### AnalysisOptions
-
-```cpp
-struct AnalysisOptions {
-    size_t maxArtifacts = 1000;      // 每种类型最大分析数
-    bool includeRegistry = true;
-    bool includeEventLogs = true;
-    bool includePrefetch = true;
-    bool includeLnk = true;
-    bool includeJumpLists = true;
-    bool includeBrowser = true;
-    bool includeSystem = true;       // 服务/计划任务/Amcache/SRUM
-    bool includeMFT = false;         // MFT 条目（可能非常大）
-};
+```
+TaskManager::start_analysis PLATFORM_ANALYSIS 阶段 (TaskManagerAnalysis.cpp:470-485)
+    └─ scenario=WINDOWS ──▶ WindowsFilesAnalyzer::analyzeWindowsData()
+                                └─ 末尾调用 (WindowsFilesAnalyzerCore.cpp:167)
+                                      WindowsLLMAnalysisService::analyzeWindowsArtifacts(_windows.db)
 ```
 
----
+与 Linux 版一致：TaskManager 不直接调用，平台分析器提取完工件后立即接续注解；同样**不受任务级 llm_analyze 开关控制**（头文件同样标注 MANDATORY，WindowsLLMAnalysisService.h:23-25）。
 
-## 3. API 参考
+## 3. 核心概念与设计
 
-### 初始化
+### 3.1 工件类型分组
 
-```cpp
-WindowsLLMAnalysisService service;
-service.initialize();
-```
+AnalysisOptions 的开关不是一一对应类型，而是语义分组（WindowsLLMAnalysisService.h:52-62）：
 
-### 分析所有工件
+- `includeBrowser` 一次触发 **4** 个子类型（history/downloads/bookmarks/logins），核心循环里连调四次 analyzeArtifactType（WindowsLLMAnalysisService.cpp:93-109）；
+- `includeSystem` 覆盖 services/scheduled_tasks/Amcache/SRUM（:111-127）；
+- **`includeMFT` 默认 false**——MFT 条目动辄十万行，默认排除是刻意的成本控制（h:61 注释 "can be very large"）。
 
-```cpp
-WindowsLLMAnalysisService::AnalysisOptions options;
-options.maxArtifacts = 500;
-options.includeRegistry = true;
-options.includeEventLogs = true;
+### 3.2 表映射
 
-int analyzed = service.analyzeWindowsArtifacts(
-    "/output/windows.db",
-    options,
-    [](const std::string& type, int current, int total, const std::string& details) {
-        std::cout << "[" << type << "] " << current << "/" << total << ": " << details << std::endl;
-    }
-);
-```
+`getTableNameForType`（WindowsLLMAnalysisService_Database.cpp:104-122）：REGISTRY→`registry_values`、EVENT_LOG→`event_logs`、PREFETCH→`prefetch_files`、LNK→`lnk_files`、JUMP_LIST→`jump_list_entries`、BROWSER_*→`browser_history/browser_downloads/browser_bookmarks/browser_logins`、MFT_ENTRY→`mft_entries`、WINDOWS_SERVICE→`windows_services`、SCHEDULED_TASK→`scheduled_tasks`、AMCACHE→`amcache_entries`、SRUM→`srum_entries`。SELECT 语句来自 `windows_analysis_sql.h` 的 PENDING_ANALYSIS 系列（同样只取未分析行，天然增量）。
 
-### 分析特定类型
+### 3.3 与 Linux 版共用的三个设计决定
 
-```cpp
-int analyzed = service.analyzeArtifactType(
-    "/output/windows.db",
-    WindowsLLMAnalysisService::ArtifactType::REGISTRY,
-    100,  // 最大数量
-    progressCallback
-);
-```
+1. **记录即 JSON**：任意表行动态拼 JSON 进 prompt（Database.cpp 的 getArtifactsFromDatabase 与 Linux 版同构）；
+2. **通用回写**：一套 `UPDATE <表> SET llm_*` 走天下（Database.cpp:16-58）；
+3. **文件三层拆分**：核心循环 / prompt（_ArtifactAnalyzers）/ SQL 映射（_Database）。
 
----
+## 4. 工作流程走读
 
-## 4. 分析流程
+`analyzeWindowsArtifacts`（WindowsLLMAnalysisService.cpp:43-146）：initialize（文本模型 ModelRouter，:18-41）→ 按 include 分组循环调 `analyzeArtifactType`（:63-143）→ 每类型开库、取未分析行（上限默认 1000/类）、逐条"进度回调 → 类型路由到 prompt 函数 → chat → 解析 → 成功才 UPDATE"（:149-244 段，与 Linux 版逐行同构）。
 
-1. 从 `_windows.db` 读取工件记录
-2. 将工件数据格式化为 LLM 可理解的文本
-3. 调用 LLM 生成分析结果
-4. 将结果写回数据库
+浏览器组值得一看：一次开关带来四次全流程（cpp:93-109），浏览器痕迹重的镜像里这四张表往往是证据密度最高的，属于合理的预算倾斜。
 
-每种工件类型有专门的分析方法：
-- `analyzeRegistryArtifact()` - 注册表
-- `analyzeEventLogArtifact()` - 事件日志
-- `analyzePrefetchArtifact()` - 预读取
-- `analyzeLnkArtifact()` - 快捷方式
-- `analyzeJumpListArtifact()` - 跳转列表
-- `analyzeBrowserArtifact()` - 浏览器
-- `analyzeSystemArtifact()` - 服务/计划任务
-- `analyzeMftArtifact()` - MFT
+## 5. 与其他模块的协作
 
----
+- **WindowsFilesAnalyzer**：唯一调用方（提取→注解一条龙）。
+- **WindowsAnalysisSQL**：PENDING_ANALYSIS 查询定义处。
+- **TaskManager**：间接上游（PLATFORM_ANALYSIS 进度）。
+- **前端 Windows 相关视图 / 报告**：消费 llm_* 列。
+- **Linux/Android 同族**：同骨架的平台变体。
 
-## 5. 使用场景
+## 6. 注意事项与已知问题
 
-- **入侵调查**: 分析事件日志、注册表自启动项、计划任务
-- **用户行为分析**: 分析浏览器历史、跳转列表、最近文件
-- **恶意软件分析**: 分析预读取文件、服务、Amcache
-- **数据恢复**: 分析 MFT 条目，恢复已删除文件信息
+- **不受 llm_analyze 门控**：无 LLM 后端时跑 Windows 场景仍会逐条尝试调用（超时兜底但拖慢阶段），与 Linux 版一致。
+- **MFT 默认关闭**：需要时间线佐证 MFT 行为时记得显式开 includeMFT，并接受耗时与费用。
+- **逐条同步、无重试**：模型输出不合 JSON 即丢弃该条（与 Linux 版相同）。
+- **注册表量级风险**：registry_values 若提取了几十万行，1000/类的截断意味着覆盖不全——截断顺序由 SELECT 决定，先到先得。
 
----
+## 7. 如何验证与扩展
 
-## 相关模块
+- **验证**：跑含 windows 场景的任务后查 `_windows.db`：`SELECT path, llm_summary FROM prefetch_files WHERE llm_analyzed_at > 0 LIMIT 10`；确认 browser_history/browser_downloads 等四表都有注解（分组开关生效）。
+- **扩展新工件类型**：与 Linux 版步骤一致——WindowsFilesAnalyzer 建表填充 → windows_analysis_sql.h 加 PENDING 查询 → _Database.cpp 两映射函数加 case → _ArtifactAnalyzers.cpp 加 prompt 函数并在 analyzeArtifactType 的 switch 注册（如需默认执行再加分组和循环调用）。
 
-| 模块 | 说明 |
-|------|------|
-| [WindowsFilesAnalyzer](../analyzers/WindowsFilesAnalyzer.md) | Windows 工件提取 |
-| [LinuxLLMAnalysisService](./LinuxLLMAnalysisService.md) | Linux 平台对应模块 |
-| [LLMAnalysisService](./LLMAnalysisService.md) | 文件级 LLM 分析 |
+**最后更新**: 2026-08-23（解释式重写）

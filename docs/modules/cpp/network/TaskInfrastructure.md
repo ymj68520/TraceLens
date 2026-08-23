@@ -1,190 +1,89 @@
-# TaskInfrastructure - 任务基础设施组件
+# TaskInfrastructure（TaskManager 的内部支撑组件群）
 
-> **模块定位**: TaskManager 的内部支撑组件，负责任务执行、持久化、序列化和监控
+> **一句话**：TaskManager 身后四个不出风头的零件——流水线执行体（TaskManagerAnalysis.cpp）、JSON 持久化（TaskPersistence）、序列化（TaskSerialization）、停滞任务看门狗（TaskWatchdog），它们让任务状态能落盘、能恢复、不会悄悄卡死。
 
----
+## 1. 为什么有这个模块
 
-## 1. 概述
+TaskManager.cpp 如果把执行、持久化、序列化、巡检全部塞下，会是上千行的大杂烩。这个"组件群"按职责拆开：
 
-TaskManager 的功能由以下组件协作完成：
+| 组件 | 文件 | 一句话职责 |
+|---|---|---|
+| 流水线执行体 | TaskManagerAnalysis.cpp | `TaskManager::start_analysis` 的实现（仍是成员函数，只是换了文件） |
+| 持久化 | TaskPersistence.{h,cpp} | tasks_ 字典 ↔ data/tasks.json，含重启恢复与孤儿目录清理 |
+| 序列化 | TaskSerialization.{h,cpp} | AnalysisTask/枚举 ↔ JSON 的唯一权威定义 |
+| 看门狗 | TaskWatchdog.{h,cpp} | 周期巡检，把停滞的 PENDING/RUNNING 任务判 FAILED |
 
-| 组件 | 文件 | 职责 |
-|------|------|------|
-| TaskManager::start_analysis | `TaskManagerAnalysis.cpp` | 执行分析流水线（成员函数实现） |
-| TaskPersistence | `TaskPersistence.h` | JSON 持久化 |
-| TaskSerialization | `TaskSerialization.h` | JSON 序列化 |
-| TaskWatchdog | `TaskWatchdog.h` | 检测停滞任务 |
+> ⚠️ **死文件警示**：`src/network/HTTPServer/TaskAnalysisRunner.h` 是**未被任何代码引用的遗留头文件**（无对应 .cpp、无人 include，里面的 `TaskAnalysisRunner` 类从未实现）。实际的执行逻辑在 `TaskManagerAnalysis.cpp:26` 的 `TaskManager::start_analysis`。不要在 TaskAnalysisRunner.h 上开发。
 
-> 注：`src/network/HTTPServer/TaskAnalysisRunner.h` 是一个**未被任何代码引用的遗留头文件**（无对应 .cpp、无 include），不要在其上开发；实际的阶段权重与进度计算在 `TaskManager.cpp::calculate_overall_percentage`。
-
----
-
-## 2. 任务执行（TaskManagerAnalysis.cpp）
-
-### 位置
-
-`src/network/HTTPServer/TaskManagerAnalysis.cpp`（`TaskManager::start_analysis`，在 ThreadPool 的工作线程中运行）
-
-### 功能
-
-执行完整取证分析流水线，包括进度跟踪和取消检查（`cancellation_requested` 原子标志）。
-
-### 阶段权重
-
-`TaskManager.cpp::calculate_overall_percentage` 中的实际权重（总进度 = 已完成阶段权重之和 + 当前阶段 × 阶段内百分比）：
-
-| 阶段 | 权重 | 说明 |
-|------|------|------|
-| INITIALIZING | 5% | 初始化 |
-| IMAGE_ANALYSIS | 25% | 镜像分析 |
-| EVENT_EXTRACTION | 10% | 事件提取 |
-| FILE_CLASSIFICATION | 15% | 文件分类 |
-| LLM_ANALYSIS | 20% | LLM 文件/事件簇分析 |
-| PLATFORM_ANALYSIS | 20% | 平台分析（Android/Windows/Linux/Server） |
-| FILE_CARVING | 3% | 签名雕刻 |
-| FINALIZING | 2% | 完成 |
-
----
-
-## 3. TaskPersistence
-
-### 位置
-
-`src/network/HTTPServer/TaskPersistence.h`
-
-### 功能
-
-任务状态的 JSON 文件持久化。
-
-```cpp
-class TaskPersistence {
-public:
-    // 保存任务到 JSON 文件
-    static void save_tasks(
-        const std::map<std::string, AnalysisTask>& tasks,
-        const std::string& tasksPath
-    );
-
-    // 从 JSON 文件加载任务
-    static void load_tasks(
-        std::map<std::string, AnalysisTask>& tasks,
-        const std::string& tasksPath,
-        std::unordered_set<std::string>& runningTaskIds
-    );
-
-    // 清理孤立的任务目录
-    static void cleanup_orphan_directories(
-        const std::map<std::string, AnalysisTask>& tasks
-    );
-};
-```
-
-### 持久化时机
-
-- 任务创建时
-- 任务状态变更时
-- 进度更新时（节流）
-- 服务关闭时
-
-### 恢复机制
-
-启动时自动加载任务：
-1. 从 JSON 文件读取任务列表
-2. 将之前标记为 RUNNING/PENDING 的任务加入 `runningTaskIds`
-3. 这些任务会被标记为 FAILED（因为进程已重启）
-4. 清理不再存在的任务目录
-
----
-
-## 4. TaskSerialization
-
-### 位置
-
-`src/network/HTTPServer/TaskSerialization.h`
-
-### 功能
-
-提供 `TaskProgress` 和 `AnalysisTask` 的 JSON 序列化/反序列化。
-
-```cpp
-namespace forensics {
-    void to_json(nlohmann::json& j, const TaskProgress& p);
-    void from_json(const nlohmann::json& j, TaskProgress& p);
-    void to_json(nlohmann::json& j, const AnalysisTask& t);
-    void from_json(const nlohmann::json& j, AnalysisTask& t);
-}
-```
-
-### 序列化格式
-
-```json
-{
-    "id": "task_abc123",
-    "image_path": "/evidence/disk.E01",
-    "status": "RUNNING",
-    "priority": "HIGH",
-    "progress": {
-        "current_phase": "IMAGE_ANALYSIS",
-        "phase_percentage": 45,
-        "overall_percentage": 18,
-        "phase_description": "Analyzing filesystem..."
-    },
-    "created_time": "2024-01-01T10:00:00Z",
-    "llm_analyze": true,
-    "llm_mode": "smart",
-    "case_description": "Fraud investigation"
-}
-```
-
----
-
-## 5. TaskWatchdog
-
-### 位置
-
-`src/network/HTTPServer/TaskWatchdog.h`
-
-### 功能
-
-监控停滞任务，每 60 秒检查一次。如果任务在 RUNNING 状态超过阈值时间而没有进度更新，将其标记为 FAILED。
-
-```cpp
-class TaskWatchdog {
-public:
-    TaskWatchdog(
-        std::map<std::string, AnalysisTask>& tasks,
-        const std::atomic<bool>& shutdown,
-        std::function<void()> save_callback
-    );
-
-    // 运行看门狗循环
-    void run();
-};
-```
-
-### 检测逻辑
-
-1. 每 60 秒遍历所有任务
-2. 检查 RUNNING 状态的任务
-3. 如果 RUNNING/PENDING 状态持续超过 `TASK_WATCHDOG_STALE_MINUTES`（默认 30 分钟）而无进度更新
-4. 且 `phase_percentage` 未变化
-5. 将任务标记为 FAILED
-6. 调用 `save_callback` 持久化状态
-
----
-
-## 6. 组件关系
+## 2. 在系统中的位置
 
 ```
-TaskManager
-    ├── TaskManagerAnalysis.cpp (start_analysis 执行分析流水线)
-    ├── TaskPersistence      (持久化)
-    ├── TaskSerialization    (序列化)
-    └── TaskWatchdog         (监控)
+TaskManager (TaskManager.cpp)
+   ├─ 构造时: load_tasks()  ─────▶ TaskPersistence::load_tasks + cleanup_orphan_directories
+   ├─ 每次状态变化: save_tasks_internal() ─▶ TaskPersistence::save_tasks (内部调 TaskSerialization)
+   ├─ 构造时: watchdog_thread_ ───▶ TaskWatchdog::run（共享 tasks_/mtx_）
+   └─ start_analysis() ──────────▶ TaskManagerAnalysis.cpp（流水线，见 TaskManager.md §4）
 ```
 
-这些组件是 TaskManager 的内部实现细节，外部代码不应直接使用。所有任务操作应通过 TaskManager 的公开 API 进行。
+这些组件不对外暴露——外界只看得到 TaskManager 的公共 API。TaskWatchdog 直接持有 `tasks_` 引用和锁引用（TaskWatchdog.cpp:9-18），是"共享状态而非消息传递"的省事设计。
 
----
+## 3. 核心概念与设计
 
-**最后更新**: 2026-08-23（以代码为准修正：TaskAnalysisRunner.h 为未引用遗留文件；阶段权重与阶段名对齐 TaskManager.cpp）
+### 3.1 重启恢复：宁可信其坏
+
+`load_tasks` 读回 JSON 后，把状态为 RUNNING/PENDING 的任务一律改为 FAILED，并写明原因（TaskPersistence.cpp:55-62）：
+
+> "The server was restarted while this task was in queue or running."
+
+理由：进程没了，工作线程必然消失，"假装还在跑"只会让前端永远转圈。用户看到明确失败信息后可以重建任务。同时 `cleanup_orphan_directories`（TaskPersistence.cpp:74-99）把 `data/tasks/` 下不在 tasks_ 字典里的 UUID 目录整体删除——防止删除任务时崩溃留下的垃圾数据无限累积。
+
+### 3.2 序列化的"只写真相"原则
+
+TaskSerialization 是 AnalysisTask 的 JSON 形态唯一定义：
+
+- 枚举用 `NLOHMANN_JSON_SERIALIZE_ENUM` 映射为字符串（TaskSerialization.cpp:9-45）。**注意 TaskStatus/Priority/Phase 在这里是大写**（"PENDING"...），而 REST 层用小写（TaskHelpers.cpp:117-126）——两套转换互不相干，排查时别混淆。
+- 密码绝不落盘：`decrypt_password`/`backup_password` 不进 to_json，from_json 里显式 clear（TaskSerialization.cpp:95-96、148、154）。
+- 不可序列化的运行时字段在加载时重置：`phase_start_time` 重置为 now（:63）、`cancellation_requested` 归 false（:170）、`execution_start_time` 重置（:169）——时间点类字段跨进程没有意义。
+- `android_source` 会被持久化（:151-153）：逻辑 Android 任务重启后仍知道自己该走哪条短路。
+
+### 3.3 看门狗：两类停滞，两个阈值
+
+TaskWatchdog::run（TaskWatchdog.cpp:24-89）循环巡检 `tasks_`：
+
+- **PENDING 超时**：创建后超过 `TASK_WATCHDOG_PENDING_MINUTES`（默认 30 分钟）仍是 PENDING → 判 FAILED"调度失败"（:53-65）；
+- **RUNNING 心跳超时**：`progress.phase_start_time` 距今超过 `TASK_WATCHDOG_STALE_MINUTES`（默认 30 分钟）没有进度更新 → 判 FAILED"执行超时"（:70-82）。LLM 阶段每个文件/簇都会打心跳，所以该阈值只在真挂死时触发。
+
+有变更才回调保存（:85-87），避免无谓写盘。
+
+## 4. 工作流程走读
+
+**启动**：TaskManager 构造 → `load_tasks`（TaskManager.cpp:63-70）→ TaskPersistence 读 tasks.json、执行恢复改写、清理孤儿目录 → 起看门狗线程（TaskManager.cpp:37）。
+
+**运行中**：任何 `update_status`/`create_task`/`set_result_db` 都会在锁内调 `save_tasks_internal`（TaskManager.cpp:53-61）→ TaskPersistence::save_tasks 把全量任务数组 dump(4) 写文件（TaskPersistence.cpp:12-29）。**直接覆写、无临时文件**——断电瞬间可能得到半截 JSON（见 §6）。
+
+**巡检**：看门狗每轮加锁扫描，发现停滞任务就改状态并经回调持久化；随后路由层轮询到的就是 FAILED + error_details 解释。
+
+**反序列化容错**：from_json 大量使用 `j.contains(...) ? ... : 默认值`（TaskSerialization.cpp:116-154），旧版本 tasks.json 缺新字段也能加载，向前兼容。
+
+## 5. 与其他模块的协作
+
+- **TaskManager**：唯一调用方；save/load 的锁语义由它保证（`save_tasks_internal` 必须在 mtx_ 内调用）。
+- **PathManager**：tasks.json 路径与任务目录的唯一来源（TaskPersistence.cpp:3、79）。
+- **ConfigManager**：看门狗两个阈值的环境变量读取（TaskWatchdog.cpp:28-35）。
+- **流水线各分析器**：仅经 TaskManagerAnalysis.cpp 间接相关（该文件的走读放在 TaskManager.md）。
+
+## 6. 注意事项与已知问题
+
+- **保存不是原子的**：`std::ofstream` 直接打开目标文件覆写（TaskPersistence.cpp:23-25），进程在写入中途被杀会留下损坏的 tasks.json；下次 `load_tasks` 解析失败则**全部任务丢失**（catch 后只打印错误，TaskPersistence.cpp:69-71）。重要场景建议先备份该文件。
+- **FILE_CARVING 缺席枚举映射**：TaskPhase 的序列化映射（TaskSerialization.cpp:24-32）没有 FILE_CARVING 这一项——若任务在雕复阶段崩溃，落盘的 current_phase 处理是未定义边界。补映射是一行修复。
+- **看门狗注释与实现不符**：注释说"每 60 秒检查一次"（TaskWatchdog.cpp:38-39），实际 `wait_for` 是 1 秒（:41-43）。行为无害（阈值是分钟级），但读代码别被注释带偏。
+- **状态字符串大小写分裂**：tasks.json 大写、REST 小写（§3.2）。手工编辑 tasks.json 时必须用大写。
+- **TaskAnalysisRunner.h 是死文件**：再次强调，别引用它。
+
+## 7. 如何验证与扩展
+
+- **验证重启恢复**：跑一个任务，中途 `kill -9` 服务进程，重启后该任务应为 FAILED 且 error_details 含 "Interrupted by server restart"；同时在 `data/tasks/` 下手工建一个假 UUID 目录、重启，它应被清掉。
+- **验证看门狗**：把 `TASK_WATCHDOG_PENDING_MINUTES` 设为 1，创建一个依赖未完成任务的 PENDING 任务，等 1 分钟观察其变 FAILED。
+- **扩展**：新增 AnalysisTask 字段时，同步改 TaskSerialization 的 to_json/from_json（from_json 记得用 contains 容错）；新增阶段时补 TaskSerialization.cpp:24 的 Phase 映射与 TaskManager.cpp:546 的权重表。
+
+**最后更新**: 2026-08-23（解释式重写）
