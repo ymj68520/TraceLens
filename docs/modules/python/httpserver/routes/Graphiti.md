@@ -8,9 +8,52 @@
 
 ## 典型调用方
 
-- 前端 `/knowledge-graph` 页（web/src/services/graphitiService.js：ingest、search、entities、relationships、status、tasks、jobs 全套）。
+- 前端 `/knowledge-graph` 页（web/src/services/graphitiService.js：ingest :19/:114、search :36、entities :45、relationships :61、status :79、tasks :86、jobs :102、graph :123，全部 pythonApi）。
 - C++ `LLMPythonProxy`（src/network/HTTPServer/LLMPythonProxy.cpp:63,104,138）在流水线节点回调 `POST /api/graphiti/ingest*`——这是本目录最重要的**服务间**调用方。
 - 迁移/清理端点主要由运维或维护脚本使用。
+
+## 核心数据结构
+
+摄取的请求模型与模式枚举（graphiti_models.py:21-40）：
+
+```python
+# graphiti_models.py:21-27
+class IngestionMode(str, Enum):
+    """Ingestion operation modes."""
+    FULL = "full"
+    FILES_ONLY = "files_only"
+    EVENTS_ONLY = "events_only"
+    SINGLE_FILE = "single_file"
+    ANALYZED_ONLY = "analyzed_only"
+
+# graphiti_models.py:34-40
+class IngestRequest(BaseModel):
+    task_id: str = Field(..., description="Task ID to ingest data from (also used as graph namespace)")
+    mode: IngestionMode = Field(default=IngestionMode.FULL, description="Ingestion mode")
+    include_llm_descriptions: bool = Field(default=True, description="Include LLM-generated descriptions")
+    batch_size: int = Field(default=50, ge=1, le=500, description="Batch size for processing")
+    max_episodes: int = Field(default=100, ge=0, le=10000, description="Maximum episodes to process (0 = unlimited)")
+```
+
+逐字段：`task_id` 同时是图命名空间（graphiti group_id 与 Neo4j 过滤键，串数据防护的根基）；`mode` 由 worker 分派（见下）；`max_episodes` 是限流阀（0=不限），旧回退路径消费它、新作业系统暂不透传。作业侧的等价物是 dataclass `IngestionJob`（ingestion_job_models.py:31-48）：
+
+```python
+# ingestion_job_models.py:31-48（节选）
+@dataclass
+class IngestionJob:
+    job_id: str
+    task_id: str
+    mode: IngestionMode
+    status: JobStatus = JobStatus.PENDING      # pending/running/completed/failed/cancelled
+    progress: int = 0                          # 0-100
+    current_phase: str = "queued"
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    # ...
+    file_id: Optional[int] = None              # For SINGLE_FILE mode
+    events_count: int = 0                      # For EVENTS_ONLY mode
+```
+
+谁写：manager 在 `queue_*` 建 PENDING 行、worker 随阶段更新 status/progress/current_phase；谁读：`GET /jobs/{id}` 路由。progress 是 0-100 整数（与旧服务的 0-1 浮点不同，见"边界"）。
 
 ## 端点分组语义
 
@@ -24,24 +67,76 @@
 
 ## 数据流（读写什么）
 
-**摄取（写）**走双路径选择，这是本模块最重要的机制：`POST /ingest` 先经 C++ 确认 task 存在（_ingest.py:55），然后**优先**走 `IngestionJobManager.queue_ingestion`（:60-69，作业持久化在 Redis，不可用回退内存），仅当管理器不可用时才回落到旧的 `GraphitiService.start_ingestion`（:71-77）。摄取 worker 最终仍汇聚到 `GraphitiService.ingest_task_episodes`（ingestion_job_parts/_worker.py:583）——所有代码路径产出同一张 Episodic → Entity → RELATES_TO 图。
+**摄取（写）走双路径选择**，这是本模块最重要的机制（_ingest.py:54-82）：
 
-**查询（读）**：search 走 Graphiti 的 COMBINED_HYBRID_SEARCH_RRF 混合检索，Graphiti 不可用时回退 Neo4j CONTAINS 文本匹配（机制详见 [services/GraphitiService.md](../../services/GraphitiService.md)）；entities/relationships/graph 是直接 Cypher 分页查询。所有查询都带 task_id 过滤（group_id 隔离），不会跨任务串数据。
+```python
+# _ingest.py:54-77（节选）
+task_exists = await service_manager.cpp_backend.check_task_exists(request.task_id)
+if not task_exists:
+    raise HTTPException(status_code=404, detail=f"Task {request.task_id} not found")
+
+# Use new IngestionJobManager if available
+if hasattr(service_manager, 'ingestion_job_manager') and service_manager.ingestion_job_manager:
+    job_id = await service_manager.ingestion_job_manager.queue_ingestion(
+        task_id=request.task_id,
+        mode=request.mode,
+    )
+    return IngestionResponse(job_id=job_id, status="PENDING", ...)
+else:
+    # Fallback to old GraphitiService
+    job_id = await service_manager.graphiti_service.start_ingestion(
+        task_id=request.task_id,
+        include_llm_descriptions=request.include_llm_descriptions,
+        batch_size=request.batch_size,
+        max_episodes=request.max_episodes,
+    )
+```
+
+404 前置（:55-57）之后**优先**走 `IngestionJobManager.queue_ingestion`（作业持久化在 Redis，不可用回退内存），仅当管理器不可用时才回落到旧的 `GraphitiService.start_ingestion`。入队本身（ingestion_job_parts/_manager.py:307-341）：
+
+```python
+# _manager.py:322-338（节选）
+job = IngestionJob(job_id=job_id, task_id=task_id, mode=mode)
+await self._save_job(job)
+# Signal worker by adding to queue
+if self._use_redis:
+    await self._redis.lpush("ingestion_queue", json.dumps({
+        "job_id": job_id, "task_id": task_id, "mode": mode.value,
+    }))
+```
+
+job_id 形如 `job_{uuid4.hex[:16]}`（:303-305）。`_save_job`（:210-247）先剔除 None 值（Redis HSET 不收 None），再把 dict/list 序列化成 JSON 字符串（Redis 只存标量），内存模式则直接存 dataclass；`_load_job`（:249-269）反向把 mode/status 字符串还原成枚举、result 还原成 dict——这就是重启后作业仍可查询的原因。worker 侧的分派（ingestion_job_parts/_worker.py:76-107）按 mode 走五条分支（full/files_only/events_only/single_file/analyzed_only），异常统一转 `JobStatus.FAILED + error`。摄取 worker 最终仍汇聚到同一张 Episodic → Entity → RELATES_TO 图（`GraphitiService.ingest_task_episodes` 系列实现）——所有代码路径产出同构数据。
+
+**查询（读）**：search 走 Graphiti 的 COMBINED_HYBRID_SEARCH_RRF 混合检索，Graphiti 不可用时回退 Neo4j CONTAINS 文本匹配（graphiti_parts/_query.py:40-42 的 `if not self._initialized: return await self._neo4j_text_search(...)`）；entities/relationships/graph 是直接 Cypher 分页查询。所有查询都带 task_id 过滤（group_id 隔离），不会跨任务串数据。
+
+## 关键接口/方法签名
+
+| 端点/方法 | 签名要点 | 失败行为 |
+|---|---|---|
+| `POST /ingest` | `IngestRequest → IngestionResponse{job_id,status,message}` | 任务不存在 404；其余 500 `str(e)` |
+| `POST /ingest/file` | `FileIngestRequest{file_id:int,task_id,update_analysis}` | 404/501（无管理器时 :133-136） |
+| `POST /ingest/events` | `EventSyncRequest{task_id,events:List[dict]}` | 404/501（:178-181） |
+| `GET /jobs/{id}` | → `JobStatusResponse`（含 progress:int、result） | 404；500 `str(e)` |
+| `DELETE /jobs/{id}` | → `{success,job_id,message}` | 已完成/失败返回 success:false（不 4xx） |
+| `manager.queue_ingestion(task_id, mode) -> str` | 建行 + LPUSH | Redis 断连时 lpush 抛异常向上传播 |
+| `manager.get_job_status(job_id) -> Optional[dict]` | 读 Redis HGETALL / 内存 | 无行返回 None（路由转 404） |
+| `manager.cancel_job(job_id) -> bool` | 终态返回 False | —— |
 
 ## 边界与已知状态
 
 - **404 前置**：摄取/迁移先查 C++ 任务存在性，不存在直接 404（_ingest.py:57）。
-- **501 降级**：`ingest/file`、`ingest/events` 与全部 migrate 端点在对应管理器（IngestionJobManager / MigrationManager）未初始化时返回 501（_ingest.py:133-136、_migrate.py:46-50）——例如 Neo4j 没起来时启动阶段跳过了 MigrationManager。
-- **进度单位不一致**：新作业系统返回 0-100 整数进度，旧回退路径乘 100（_jobs.py:47 vs :56）——前端按百分比理解即可。
+- **501 降级**：`ingest/file`、`ingest/events` 与全部 migrate 端点在对应管理器（IngestionJobManager / MigrationManager）未初始化时返回 501（_ingest.py:133-136、_migrate.py:46-50、:170-173）——例如 Neo4j 没起来时启动阶段跳过了 MigrationManager。
+- **进度单位不一致**：新作业系统返回 0-100 整数进度，旧回退路径乘 100（_jobs.py:47 vs :56 `int(status.get("progress", 0) * 100)`）——前端按百分比理解即可。
 - **错误脱敏**：search/entities 等查询失败时 detail 传的是 `str(e)`（_query.py:73），与全局"固定文案"纪律不完全一致，属于已知瑕疵。
-- cleanup 不可逆，confirm 参数是唯一的护栏（_migrate.py:167-171）。
+- cleanup 不可逆，confirm 参数是唯一的护栏（_migrate.py:167-171，未 confirm 直接 400）。
+- env：`NEO4J_URI/USER/PASSWORD`（驱动参数）、`NEO4J_CONNECT/QUERY_TIMEOUT=5s`、`GRAPHITI_BATCH_SIZE=50`、`GRAPHITI_MAX_EPISODES=3000`、`GRAPHITI_INCLUDE_FULL_DESC=true`、`REDIS_URL`（作业持久层，断连回退内存）。
 
 ## 如何验证与扩展
 
 - `python_service/tests/unit/test_graphiti_integration_fixes.py`（摄取契约与修复回归）、`test_ingestion_analyzed_only.py`（analyzed_only 模式）、`test_d4b_graphiti_cleanup.py`（任务图删除边界）。
 - 手工链路：`POST /api/graphiti/ingest {"task_id": "..."}` → 轮询 `GET /api/graphiti/jobs/{job_id}` → `GET /api/graphiti/graph?task_id=...` 看节点。
-- 新增摄取模式：在 `IngestionMode`（graphiti_models.py）加枚举 → worker `_process_job`（_worker.py:76-107）加分支 → 端点 docstring 同步。
+- 新增摄取模式：在 `IngestionMode`（graphiti_models.py 与 ingestion_job_models.py 各一处）加枚举 → worker `_process_job`（_worker.py:76-107）加分支 → 端点 docstring 同步。
 
 相关阅读：[HTTPRoutes.md](../HTTPRoutes.md)、[services/GraphitiService.md](../../services/GraphitiService.md)、[graphiti/GraphitiIntegration.md](../../graphiti/GraphitiIntegration.md)。
 
-**最后更新**: 2026-08-23（解释式重写）
+**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）

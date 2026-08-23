@@ -4,7 +4,7 @@
 
 ## 1. 这组路由承担什么职责（为什么存在）
 
-case_analysis.py 本体只是**聚合器**：把 `_case.py`、`_windows.py`、intelligence_report.py 三个子路由 include 进同一个 `/api/llm` 挂载点（case_analysis.py:37-40），公共面不变。multi_analysis.py 独立挂载（main.py:238），负责案件（ForensicCase）这一层：案件记录的 CRUD 是 C++ 后端的**代理**，跨镜像分析是 Python 的 LLM 编排。intelligence_report.py 是刻意与版本化报告（/api/reports）和旧生成器分开的**只读 reader**（intelligence_report.py:1-14）：只读任务元数据、files.db、events.db 和五章节 LLM 报告文本，从不把 case_analysis 表当原始证据、从不变异源库。
+case_analysis.py 本体只是**聚合器**：把 `_case.py`、`_windows.py`、intelligence_report.py 三个子路由 include 进同一个 `/api/llm` 挂载点（case_analysis.py:37-40），公共面不变。multi_analysis.py 独立挂载（main.py:238），负责案件（ForensicCase）这一层：案件记录的 CRUD 是 C++ 后端的**代理**，跨镜像分析是 Python 的 LLM 编排。intelligence_report.py 是刻意与版本化报告（/api/reports）和旧生成器分开的**只读 reader**（intelligence_report.py:1-14）：只读任务元数据、files.db、events.db 和五章节 LLM 报告文本，从不把 case_analysis 表当原始证据、从不变异源库（metadata 表除外，见第 4 节）。
 
 ## 2. 典型调用方（前端哪个页面/组件）
 
@@ -12,38 +12,124 @@ case_analysis.py 本体只是**聚合器**：把 `_case.py`、`_windows.py`、in
 - **multi_analysis**：`web/src/services/caseGroupService.js`（cases CRUD :12-21、associate-tasks :33、multi-image-analysis+轮询 :47-56、case-report-by-case :64、delete :89），消费者是 `/cases` 多镜像案件页（pages/Cases.jsx:18 `pollMultiAnalysis`、caseSlice 的 `startCrossAnalysis`）。
 - **intelligence_report**：`web/src/services/intelligenceReportService.js`（report/records/search/metadata GET+PUT :13-49），消费者是 `/case-intelligence` 页（pages/CaseIntelligence.jsx，配套 CaseIntelligence.test.jsx）。
 
-## 3. 端点语义分组（散文）
+## 3. 核心数据结构
+
+multi_analysis 的作业状态与请求模型（multi_analysis.py:30-49）：
+
+```python
+# multi_analysis.py:30-31
+# In-memory job store (same pattern as case_analysis.py)
+_jobs: Dict[str, Dict[str, Any]] = {}
+
+# multi_analysis.py:42-49
+class MultiImageAnalysisRequest(BaseModel):
+    case_id: str           = Field(..., description="案件 ID（C++ 后端）")
+    task_ids: List[str]    = Field(..., description="所有任务 ID（顺序与 files_db_paths 对应）")
+    files_db_paths: List[str] = Field(..., description="_files.db 路径列表")
+    case_description: str  = Field(..., description="案情描述")
+    max_filter_files: int  = Field(default=400, ge=1, le=2000)
+```
+
+逐字段：`task_ids` 与 `files_db_paths` **必须等长**（:229-233 校验）且按索引配对——但后者只是"精确校验的过时提示"（见第 4 节 D2b 段）；`max_filter_files` 限制确定性过滤的文件上限（默认 400）。`_jobs` 是模块级 dict，作业行形如 `{job_id, case_id, status, progress:{stage,message}, result, error, created_at}`（:256-264）——**进程内存态**，重启即失。案件状态查询模型 `CaseAnalysisStatusResponse`（:81-95）给出 per-task 的 analysis_status/files_count/analyzed_files_count 等聚合。
+
+_case 族的作业注册表是 `_helpers.py` 里的另一个内存 dict（case_analysis_endpoints/_helpers.py:18-20），reanalyze 写入的行带 kind 标记（_case.py:150-157）：
+
+```python
+# case_analysis_endpoints/_case.py:150-157
+_analysis_jobs[job_id] = {
+    "kind": "reanalyze",
+    "status": "running",
+    "current_step": "重新分析",
+    "detail": f"正在重新分析 {len(request.file_paths)} 个文件...",
+    "task_id": request.task_id,
+    "result": None,
+}
+```
+
+轮询端靠 `kind in {"reanalyze","windows"}` 放行（:193-197）——这是退役 410 与存活轮询共存机制的一半；另一半是服务实例的懒加载注入（_helpers.py:23-43）：`get_case_analysis_service` 把 llm_service/cpp_backend（必需）与 graphiti_service（可选，失败仅 warning）动态挂到 ServiceManager 私有属性上缓存——与 oss_analysis 同属"绕过正式生命周期"的实用主义模式。
+
+## 3.5 案情描述的持久化转发
+
+`POST /case-description` 不落任何 Python 侧存储，而是直连 C++ 任务系统（tasks.json）：
+
+```python
+# case_analysis_endpoints/_case.py:57-69（节选）
+# Forward to C++ backend to persist in tasks.json
+try:
+    cpp_url = settings.cpp_backend_url
+    import httpx
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.put(
+            f"{cpp_url}/api/tasks/{request.task_id}",
+            json={"case_description": request.case_description},
+        )
+        if resp.status_code not in (200, 204):
+            logger.warning(f"C++ backend returned {resp.status_code} for case description update")
+except Exception as e:
+    logger.warning(f"Could not forward case description to C++ backend: {e}")
+```
+
+注意"成功"语义：**C++ 转发失败时端点仍返回 success:true**（仅 warning）——前端拿到 200 不等于案情描述已持久化；后续 multi/reanalyze 读取 case_description 时若 tasks.json 里没有，会拿到空串并以空案情继续跑。这是已知的有意取舍（保存流程不因 C++ 抖动中断）。
+
+## 4. 端点语义分组（散文）
 
 完整契约见 docs/api_reference/Python_REST_API.md 第 4/5 节。分组：
 
 - **案情与二次分析（_case.py）**：`POST /case-description`（:39，持久化经 C++ 任务系统 tasks.json，转发失败仅 warning）；`POST /case-analysis`（:80-92，**固定 410**，见第 5 节）；`POST /reanalyze-files`（:95，用户不满首次描述时带 hint 的二次分析，可多文件同 hint）；读侧 `GET /case-analysis/{job_id}`、`GET /case-report/{task_id}`、`GET /case-report-by-case/{case_id}`、`GET /filtered-files/{task_id}`（:183-:325）。
 - **Windows 取证（_windows.py）**：`POST /windows-analysis`（:31）、`GET /windows-report/{task_id}`（:103）、`GET /windows-export/{task_id}/toon`（:153）。
 - **智能报告读端（intelligence_report.py）**：`GET /intelligence-report/{task_id}`（:895，目录树 + 各节统计）、`GET .../records`（:964，分类分页记录）、`GET .../search`（:1107，跨分类检索）、`GET/PUT .../metadata`（:1220/:1231，报告元数据回写）。
-- **案件与多镜像（multi_analysis.py）**：案件 CRUD 代理（`POST/GET /cases`、`GET/DELETE /cases/{id}`、`POST /cases/{id}/tasks`，:98-177）；`POST /cases/{id}/associate-tasks`（:180，读取每个任务真实 `_files.db` 预置 analyzed/pending 状态行，使后续跨镜像分析**复用**已完成任务）；`POST /multi-image-analysis`（:220）+ `GET /multi-image-analysis/{job_id}` 轮询（:311）；增量族 `POST /cases/smart-create`（:322）、`POST /cases/{id}/tasks/incremental`（:360）、`GET /cases/{id}/analysis-status`（:397）、`POST /cases/{id}/incremental-analysis`（:418）。
+- **案件与多镜像（multi_analysis.py）**：案件 CRUD 代理（`POST/GET /api/llm/cases`、`GET/DELETE /cases/{id}`、`POST /cases/{id}/tasks`，:98-177）；`POST /cases/{id}/associate-tasks`（:180，读取每个任务真实 `_files.db` 预置 analyzed/pending 状态行，使后续跨镜像分析**复用**已完成任务）；`POST /multi-image-analysis`（:220）+ `GET /multi-image-analysis/{job_id}` 轮询（:311）；增量族 `POST /cases/smart-create`（:322）、`POST /cases/{id}/tasks/incremental`（:360）、`GET /cases/{id}/analysis-status`（:397）、`POST /cases/{id}/incremental-analysis`（:418）。
 
-## 4. 数据流（读什么库/服务、写什么）
+## 5. 数据流（读什么库/服务、写什么）
 
-**案件 CRUD 是纯代理**：httpx 直连 `settings.cpp_backend_url` 的 `/api/cases*`（multi_analysis.py:107-115 等），Python 不存案件记录。**跨镜像分析的 D2b 信任边界**在启动端点里：
+**案件 CRUD 是纯代理**：httpx 直连 `settings.cpp_backend_url` 的 `/api/cases*`（multi_analysis.py:107-115 等），Python 不存案件记录。**跨镜像分析的 D2b 信任边界**在启动端点里（multi_analysis.py:229-249）：
 
 ```python
-# multi_analysis.py:243-249（节选）
-trusted = await task_store.resolve_task_files_db(task_id)
-task_store.validate_legacy_db_path(supplied_path, trusted)
+# multi_analysis.py:229-249（节选）
+if len(req.task_ids) != len(req.files_db_paths):
+    raise HTTPException(status_code=400,
+        detail="task_ids and files_db_paths must have the same length")
+
+# Each analysis target is resolved server-side from its own task_id
+# (D2b); the parallel files_db_paths entries are deprecated exact-
+# validated hints, never the authority.
+from ..services import task_store
+
+trusted_paths = []
+for task_id, supplied_path in zip(req.task_ids, req.files_db_paths):
+    try:
+        trusted = await task_store.resolve_task_files_db(task_id)
+        task_store.validate_legacy_db_path(supplied_path, trusted)
+    except task_store.TaskStoreError as exc:
+        if exc.code == task_store.TASK_NOT_FOUND:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    trusted_paths.append(str(trusted))
 ```
 
-每个分析目标都由服务端从 task_id 解析；请求里并行的 `files_db_paths` 只是"精确校验的过时提示"，绝非权威（:235-249 注释）。作业状态存**进程内存字典** `_jobs`（:30）——后台 `asyncio.create_task` 跑 `run_multi_image_analysis`，同时 PUT C++ 案例状态 analysing/completed/failed（:267-305）；服务重启丢作业状态。分析本体经 `get_case_analysis_service()`（dependencies 注入）编排 LLM，结果回写各任务 `_files.db` 的 LLM 列。
+每个分析目标都由服务端从 task_id 解析；请求里并行的 `files_db_paths` 只是"精确校验的过时提示"，绝非权威（:235-249 注释）。校验通过后：作业写入 `_jobs`、`asyncio.create_task(_run())` 后台跑 `run_multi_image_analysis`（复用 trusted_paths），同时 PUT C++ 案例状态 analysing → completed/failed（:267-305）；服务重启丢作业状态。分析本体经 `get_case_analysis_service()`（dependencies 注入）编排 LLM，结果回写各任务 `_files.db` 的 LLM 列。reanalyze-files 走同一条纪律：`task_store.resolve_task_files_db` + `validate_legacy_db_path`（_case.py:131-148），案情描述缺省时从任务记录回落（:140-141）。
 
-**intelligence_report 直读 SQLite**：`_connect_ro` 以只读方式打开任务 files.db/events_db（intelligence_report.py:195-198），目录统计用 `COUNT(*)` + `is_deleted`/`scene_relevant`/`llm_is_relevant`（:766-:814）；五章节来自 `_files.db` 里 `case_analysis.case_report` 的 Markdown 按已知章节标题切分（`_load_chapter_markdown`，:815-862）；metadata 是**唯一写路径**——在 files.db 里确保 metadata 表后 upsert（`_ensure_metadata_table`/`_save_metadata`，:271-336）。
+**intelligence_report 直读 SQLite**：`_connect_ro` 以只读方式打开任务 files.db/events_db（intelligence_report.py:194-198）：
 
-## 5. 边界与已知状态（410 退役/内存作业/私有属性）
+```python
+# intelligence_report.py:194-198
+def _connect_ro(path: Path) -> sqlite3.Connection:
+    uri = f"file:{quote(str(path.resolve()), safe='/')}?mode=ro"
+    return sqlite3.connect(uri, uri=True, timeout=10)
+```
 
-- **410 退役**：`POST /api/llm/case-analysis` 固定返回 410 "legacy case analysis generation has been retired; use report generation"（_case.py:89-92）——旧的单任务报告生成器已删，**现行替代**是 `/api/reports` 快照报告 + R2c 生成（见 [ForensicReports.md](ForensicReports.md)）以及 multi_analysis 的案件级分析。任何把旧端点当活接口的调用都会拿到 410；`GET /case-analysis/{job_id}` 仍服务于 reanalyze-files 的作业轮询（caseAnalysisService.js:38），不要与退役端点混淆。
+`mode=ro` URI 保证读路径不可能意外写库（写侧另有 `_connect_rw`，仅 metadata 用）。目录统计用 `COUNT(*)` + `is_deleted`/`scene_relevant`/`llm_is_relevant`（:766-:814）；五章节来自 `_files.db` 里 `case_analysis.case_report` 的 Markdown 按已知章节标题切分（`_load_chapter_markdown`，:815-862）；metadata 是**唯一写路径**——在 files.db 里确保 metadata 表后 upsert（`_ensure_metadata_table`/`_save_metadata`，:271-336）。
+
+## 6. 边界与已知状态（410 退役/内存作业/私有属性）
+
+- **410 退役**：`POST /api/llm/case-analysis` 固定返回 410 "legacy case analysis generation has been retired; use report generation"（_case.py:89-92）——旧的单任务报告生成器已删，**现行替代**是 `/api/reports` 快照报告 + R2c 生成（见 [ForensicReports.md](ForensicReports.md)）以及 multi_analysis 的案件级分析。任何把旧端点当活接口的调用都会拿到 410；`GET /case-analysis/{job_id}` 仍服务于 reanalyze-files 的作业轮询（caseAnalysisService.js:38），不要与退役端点混淆——轮询端对 reanalyze/windows 类作业照常 200，对其它 kind 反手 410（_case.py:193-197）。
 - **内存作业**：multi/incremental 的 job_id 查询只在本进程 `_jobs` 里命中，重启后 404（multi_analysis.py:30、:314-317）——与 /api/reports 的持久化 generation 轮询是两种不同持久级。
 - **私有属性穿透**：`GET /cases/{id}/analysis-status` 直接摸 `svc._case_aggregation`（multi_analysis.py:411-414），是路由层访问服务私有成员的例外，重构时需留意。
 - intelligence_report 的所有统计读失败都降级为 0 计数并 warning（:780-:813 各 `except sqlite3.Error`），不会让整页 500。
 - 案件删除**不**删关联任务（multi_analysis.py:147 docstring 明示）；C++ 状态更新失败被吞（`except Exception: pass`，:273-274）——分析仍继续，只是案件状态可能滞后。
+- env：`FILE_FILTER_MODE`（deterministic|llm，默认 deterministic——过滤模式切换）、`FILTER_MAX_FILES`（0=不限）、`CPP_BACKEND_URL`。
 
-## 6. 如何验证
+## 7. 如何验证
 
 - `python_service/tests/unit/test_case_analysis_routes.py`（case-analysis 410 与 _case 契约）、`test_intelligence_report_routes.py`（目录/分页/检索/metadata）、`test_multi_deterministic_filter.py`（多镜像过滤确定性）、`test_d2b_db_ownership.py` / `test_d2b_task_store.py`（files_db_paths 提示校验）。
 - 前端契约：`web/src/pages/CaseIntelligence.test.jsx`。
@@ -51,4 +137,4 @@ task_store.validate_legacy_db_path(supplied_path, trusted)
 
 相关阅读：[ForensicReports.md](ForensicReports.md)（410 的现行替代）、[LLM.md](LLM.md)（同前缀的通用分析与 reanalyze 的底层）、[HTTPRoutes.md](../HTTPRoutes.md)。
 
-**最后更新**: 2026-08-23（新建，解释式）
+**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
