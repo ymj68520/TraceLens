@@ -1,731 +1,81 @@
-# ConfigManager 模块文档
+# ConfigManager（src/core/ConfigManager/）
 
-## 1. 模块背景
+> **一句话**：进程级单例的配置读取层，用 cpp-dotenv 加载 `.env` 文件，为 LLM、线程池、数据库 PRAGMA、全文检索等所有子系统提供带类型和默认值的 getter——C++ 服务与 Python 服务通过同一个 `.env` 共享配置。
 
-### 业务背景
+## 1. 为什么有这个模块
 
-在数字取证分析系统中，集中化的配置管理是确保系统可维护性和灵活性的关键：
+TraceLens 是三服务协作的系统（C++ forensic_analyzer :8080、Python httpserver :8090、分布式 server :8091），加上前端。如果每个服务各持一份配置，LLM 地址、端口、超时这些值很快会失去同步：改了 C++ 侧的 LLM 端点，Python 侧还在打旧地址。项目选择 `.env` 作为唯一配置源，Python 侧用 python-dotenv 读，C++ 侧就是本模块（基于 `libs/cpp-dotenv`，`ConfigManager.cpp:2` 的 `#include "dotenv.h"`）。
 
-**核心需求**：
-- **统一配置**：集中管理所有配置项
-- **环境适配**：支持开发、测试、生产环境
-- **类型安全**：提供类型化的配置访问
-- **默认值**：合理的默认配置
+第二个动机是**默认值兜底**。取证工具常被部署在离线环境，一个缺失的配置项不应该让进程起不来。ConfigManager 的每个 getter 都带编译期默认值（如 `THREAD_POOL_SIZE` 缺省 4、`HTTP_SERVER_PORT` 缺省 8080），`.env` 只覆盖需要改的项。这让"克隆仓库→build→直接跑"成为可能。
 
-**解决挑战**：
-- **配置分散**：避免配置散布在代码各处
-- **硬编码问题**：消除硬编码的配置值
-- **环境差异**：不同环境使用不同配置
-- **类型转换**：安全的类型转换和验证
+最后，它还承担**配置寻址**：从哪个目录找 `.env`？程序可能从仓库根、build/ 或安装目录启动，模块按优先级搜索多个候选位置（见第 4 节），其中借助 PathManager 的 exeDir/projectRoot，与 PathManager.md 第 5 节描述的启动时序呼应。
 
-### 技术背景
+## 2. 在系统中的位置
 
-**配置文件格式**：
-- **.env 文件**：简单的 KEY=VALUE 格式
-- **cpp-dotenv 库**：第三方解析库
+ConfigManager 位于基础设施层，依赖只有 cpp-dotenv 和 PathManager（仅用于找配置文件）。上游是唯一的：`main.cpp:56` 在进程启动时调用一次 `load(".env")`。下游几乎是所有子系统：
 
-**设计模式**：
-- **Singleton Pattern**：全局唯一配置实例
-- **Meyer's Singleton**：C++11 线程安全保证
+- **TaskManager/ThreadPool**：`THREAD_POOL_SIZE`（`ConfigManager.cpp:138`）；
+- **DatabaseManager**：`DB_BUSY_TIMEOUT_MS`/`DB_JOURNAL_MODE`/`DB_SYNCHRONOUS_OFF`（`ConfigManager.cpp:146-148`，在 `DatabaseManager.cpp:28-36` 被消费）；
+- **LLM 栈**：base url、文本/视觉模型名、超时重试（`ConfigManager.cpp:86-135`），组装成 `llm::LLMConfig` 交给 LLMIntegration；
+- **FullTextSearch**：缓存大小、内容截断、snippet 长度（`ConfigManager.cpp:151-154`）；
+- **FileClassifier**：`EXTRA_<类别>_EXTS` 动态扩展名（`ConfigManager.cpp:159-173`）；
+- **AuditLog**：`AUDIT_LOG_DB` 等（在 `main.cpp:69-74` 由调用方读取后组装 AuditLogConfig）。
 
-## 2. 模块功能
+它不调用任何业务模块；HTTP 服务端口 `HTTP_SERVER_PORT`（默认 8080）也是从这里读的（`ConfigManager.cpp:140`）。
 
-### 核心功能
+## 3. 核心概念与设计
 
-#### 1. 配置文件加载
+**"全局 env + 即时读"而非"快照对象"**。`load()` 把键值灌进 cpp-dotenv 的全局 `dotenv::env`，此后每个 getter 每次都实时查这个 map（`ConfigManager.cpp:50-53`）。没有 `reload()`、没有 `set()`，配置在进程生命周期内不可变——这简化了并发（无锁读全局 map）也符合"改配置重启服务"的运维习惯。代价是单测无法注入配置，只能靠准备临时 `.env` 文件。
 
-**.env 文件格式**：
-```env
-# LLM 配置
-LLM_BASE_URL=http://localhost:1234
-LLM_TEXT_MODEL=openai/gpt-oss-20b
-LLM_VISION_MODEL=qwen/qwen3-vl-4b
-LLM_API_KEY=your-api-key-here
-LLM_MAX_TOKENS=4096
-LLM_TIMEOUT=120
+**四层类型转换**，全部带失败回退到默认值（`ConfigManager.cpp:50-83`）：
 
-# 系统配置
-THREAD_POOL_SIZE=4
-HTTP_SERVER_PORT=8080
-HTTP_SERVER_HOST=0.0.0.0
+- `get(key, default)`：空串视为未设置返回默认；
+- `getInt`：`std::stoi` 异常（如 `"4abc"`）回退默认；
+- `getDouble` 同理；
+- `getBool`：接受 `true/1/yes/on` 与 `false/0/no/off`（大小写不敏感），其余回退默认——比裸字符串比较宽容，因为 `.env` 生态里这几种写法都常见。
 
-# 数据库配置
-DB_JOURNAL_MODE=WAL
-DB_BUSY_TIMEOUT=5000
-
-# 日志配置
-LOG_LEVEL=INFO
-LOG_FILE=forensics.log
-
-# 文件分析配置
-FILE_ANALYSIS_MAX_CONTENT=10000
-FILE_ANALYSIS_MAX_KEYWORDS=10
-
-# 搜索配置
-SEARCH_MAX_CACHE_SIZE=1000
-SEARCH_MAX_CONTENT_LENGTH=100000
-```
-
-**加载配置**：
-```cpp
-auto& config = ConfigManager::instance();
-
-// 自动搜索多个路径
-bool loaded = config.load(".env");
-if (loaded) {
-    LOG_INFO("Configuration loaded successfully");
-} else {
-    LOG_WARNING("Failed to load .env file, using defaults");
-}
-```
-
-**搜索路径顺序**：
-1. 提供的显式路径
-2. 可执行文件目录
-3. 项目根目录（`PROJECT_ROOT` 环境变量）
-4. 标准相对位置 (`../env`, `../../env`, `../../../env`)
-
-#### 2. 类型化访问
-
-**基础类型**：
-```cpp
-// 字符串
-std::string baseUrl = config.get("LLM_BASE_URL", "http://localhost:1234");
-
-// 整数
-int port = config.getInt("HTTP_SERVER_PORT", 8080);
-int timeout = config.getInt("LLM_TIMEOUT", 120);
-
-// 浮点数
-double version = config.getDouble("VERSION", 1.0);
-
-// 布尔值（支持多种格式）
-bool enableFeature = config.getBool("FEATURE_ENABLED", false);
-// 支持: true/false, 1/0, yes/no, on/off (不区分大小写)
-```
-
-#### 3. LLM 配置
-
-**获取 LLM 配置**：
-```cpp
-// 完整配置对象
-llm::LLMConfig textConfig = config.getTextModelConfig();
-std::cout << "Model: " << textConfig.model << std::endl;
-std::cout << "Base URL: " << textConfig.base_url << std::endl;
-
-// 视觉模型配置
-llm::LLMConfig visionConfig = config.getVisionModelConfig();
-
-// 便捷方法
-std::string baseUrl = config.getLLMBaseUrl();
-std::string endpoint = config.getLLMEndpoint();
-std::string apiKey = config.getLLMApiKey();
-```
-
-#### 4. 系统配置
-
-**线程池**：
-```cpp
-int poolSize = config.getThreadPoolSize();  // 默认: 4
-```
-
-**HTTP 服务器**：
-```cpp
-int port = config.getHTTPServerPort();      // 默认: 8080
-std::string host = config.getHTTPServerHost(); // 默认: 0.0.0.0
-```
-
-**数据库**：
-```cpp
-std::string journalMode = config.getDBJournalMode();  // 默认: WAL
-int busyTimeout = config.getDBBusyTimeoutMs();        // 默认: 5000ms
-```
-
-**日志**：
-```cpp
-int maxFiles = config.getMaxLogDisplayFiles();  // 默认: 10
-int maxContent = config.getFileAnalysisMaxContent();  // 默认: 10000
-```
-
-#### 5. 扩展配置
-
-**自定义扩展名解析**：
-```cpp
-// 解析逗号分隔的扩展名列表
-std::vector<std::string> extensions =
-    config.getExtraExtensions("IMAGES");
-// 返回: [".jpg", ".png", ".gif", ...]
-```
-
-### 边界与限制
-
-**功能边界**：
-- ❌ 仅支持 .env 格式（不支持 .ini、.json、.yaml）
-- ❌ 不支持配置热重载（需要重启应用）
-- ❌ 不支持配置验证（类型转换失败使用默认值）
-- ❌ 不支持嵌套配置结构
-
-**已知限制**：
-| 限制 | 影响 | 缓解方法 |
-|------|------|----------|
-| 单一格式 | 不能使用其他配置格式 | 转换为 .env |
-| 无热重载 | 修改配置需重启 | 使用信号处理 |
-| 无验证 | 错误配置静默失败 | 添加验证逻辑 |
-
-## 3. 模块使用的库
-
-### 依赖库清单
-
-| 库名称 | 版本 | 用途 |
-|--------|------|------|
-| **cpp-dotenv** | latest | .env 文件解析 |
-
-### 依赖关系图
-
-```mermaid
-graph TD
-    A[ConfigManager] --> B[cpp-dotenv]
-    A --> C[PathManager]
-
-    D[LLMIntegration] --> A
-    E[HTTPServer] --> A
-    F[FullTextSearch] --> A
-    G[Logger] --> A
-
-    style A fill:#e1f5fe
-    style B fill:#ffe1e1
-```
-
-## 4. 模块实现方式
-
-### 核心类
+**LLM 配置的继承结构**。视觉/文本模型可以各自指定 base url，不指定则继承通用 `LLM_BASE_URL`（`ConfigManager.cpp:100, 119`）：
 
 ```cpp
-class ConfigManager {
-public:
-    // Singleton
-    static ConfigManager& instance();
-
-    // 删除复制操作
-    ConfigManager(const ConfigManager&) = delete;
-    ConfigManager& operator=(const ConfigManager&) = delete;
-
-    // 加载配置
-    bool load(const std::string& envPath = ".env");
-    bool isLoaded() const;
-
-    // 基础访问
-    std::string get(const std::string& key, const std::string& defaultValue = "") const;
-    int getInt(const std::string& key, int defaultValue = 0) const;
-    double getDouble(const std::string& key, double defaultValue = 0.0) const;
-    bool getBool(const std::string& key, bool defaultValue = false) const;
-
-    // LLM 配置
-    std::string getLLMBaseUrl() const;
-    std::string getLLMEndpoint() const;
-    std::string getLLMApiKey() const;
-    int getLLMTimeoutSeconds() const;
-    int getLLMMaxRetries() const;
-    int getLLMMaxFiles() const;
-    int getLLMMaxContentLength() const;
-    bool getLLMSkipBinary() const;
-
-    // Text Model 配置
-    llm::LLMConfig getTextModelConfig() const;
-    std::string getTextBaseUrl() const;
-    std::string getTextModel() const;
-    int getTextMaxTokens() const;
-    double getTextTemperature() const;
-
-    // Vision Model 配置
-    llm::LLMConfig getVisionModelConfig() const;
-    std::string getVisionBaseUrl() const;
-    std::string getVisionModel() const;
-    int getVisionMaxTokens() const;
-    double getVisionTemperature() const;
-
-    // 系统配置
-    int getThreadPoolSize() const;
-    int getMaxBatchSize() const;
-    int getHTTPServerPort() const;
-    std::string getHTTPServerHost() const;
-    std::string getPythonServiceUrl() const;
-    std::string getMCPHost() const;
-
-    // 数据库配置
-    int getDBBusyTimeoutMs() const;
-    std::string getDBJournalMode() const;
-    bool getDBSyncOff() const;
-
-    // 搜索配置
-    int getSearchMaxCacheSize() const;
-    int getSearchMaxContentLength() const;
-    int getSearchSnippetLength() const;
-    int getSearchDefaultLimit() const;
-
-    // 分析阈值
-    int getMaxLogDisplayFiles() const;
-    int getFileAnalysisMaxContent() const;
-    int getFileAnalysisMaxKeywords() const;
-    int getContextLength() const;
-
-    // 扩展配置
-    std::vector<std::string> getExtraExtensions(const std::string& categoryName) const;
-
-    // 存储与日志
-    std::string getDBOutputDir() const;
-    std::string getDBName() const;
-    std::string getLogLevel() const;
-    std::string getLogFile() const;
-    std::string getDebugOutputMode() const;
-
-private:
-    ConfigManager() = default;
-    ~ConfigManager() = default;
-
-    // 内部方法
-    bool tryLoad(const std::string& path);
-    std::vector<std::string> getSearchPaths(const std::string& envPath) const;
-
-    // 成员变量
-    bool loaded_ = false;
-    std::unordered_map<std::string, std::string> config_;
-    mutable std::mutex mutex_;  // 线程安全
-};
+std::string ConfigManager::getTextBaseUrl() const { return get("LLM_TEXT_BASE_URL", getLLMBaseUrl()); }
+std::string ConfigManager::getVisionBaseUrl() const { return get("LLM_VISION_BASE_URL", getLLMBaseUrl()); }
 ```
 
-### Singleton 实现
+这两行实现了"一套部署只填一个 LLM_BASE_URL 就够；混布两个模型服务时再分别覆盖"。`getTextModelConfig()`/`getVisionModelConfig()` 把散装项组装成 `llm::LLMConfig` 结构（`ConfigManager.cpp:105-135`），调用方一次拿到完整配置，模型默认名 `gpt-oss`（文本）/`qwen3-vl`（视觉）也在这里。
 
-```cpp
-ConfigManager& ConfigManager::instance() {
-    static ConfigManager instance;  // Meyer's singleton
-    return instance;
-}
-```
+**约定式键名**。`getExtraExtensions("IMAGE")` 拼出 `EXTRA_IMAGE_EXTS` 并按逗号切分、去空白（`ConfigManager.cpp:159-173`）——新增一个类别的扩展名支持不需要写任何解析代码。
 
-### 配置加载
+## 4. 工作流程走读
 
-```cpp
-bool ConfigManager::load(const std::string& envPath) {
-    std::vector<std::string> searchPaths = getSearchPaths(envPath);
+启动时的加载序列（`ConfigManager.cpp:17-44`）：
 
-    for (const auto& path : searchPaths) {
-        if (tryLoad(path)) {
-            loaded_ = true;
-            LOG_INFO("Configuration loaded from: " + path);
-            return true;
-        }
-    }
+1. 组装候选路径列表：显式传入的 `envPath`、`<exeDir>/.env`、`<projectRoot>/.env`（仅当 PathManager 已初始化，`:26-31`）、然后 `../`、`../../`、`../../../` 三个上级目录（`:18-23`）。顺序就是优先级：显式指定 > 可执行文件旁边 > 项目根 > 各级父目录。
+2. 逐个检查存在性，第一个存在的文件调用 `dotenv::env.load_dotenv(path, false, true)`（`:33-40`），成功即置 `loaded_ = true` 返回。**先找到的文件全胜**，不做多文件合并。
+3. 找不到任何文件时 `load()` 返回 false——进程不死，所有 getter 回退默认值，`main.cpp` 也不检查返回值，所以"忘写 .env"表现为"用默认配置跑"，通常体现为 LLM 打向默认地址失败。
 
-    LOG_WARNING("No .env file found, using default configuration");
-    return false;
-}
+运行期的典型读取，以 DatabaseManager 初始化为例（`DatabaseManager.cpp:28-36`）：`getDBBusyTimeoutMs()` → `getInt("DB_BUSY_TIMEOUT_MS", 5000)` → `dotenv::env["DB_BUSY_TIMEOUT_MS"]` 命中返回，未命中返回 5000。
 
-bool ConfigManager::tryLoad(const std::string& path) {
-    try {
-        if (!std::filesystem::exists(path)) {
-            return false;
-        }
+## 5. 与其他模块的协作
 
-        // 使用 cpp-dotenv 加载
-        dotenv::env config;
-        bool success = config.load_dotenv(path, false, true);  // 不覆盖，启用插值
+- **PathManager**：load 时消费 exeDir/projectRoot（`ConfigManager.cpp:26-31`）；main.cpp 随后反向把 PROJECT_ROOT/DATA_DIR 写回 PathManager（`main.cpp:60-65`）。两个单例在启动期互相喂，之后互不相扰。
+- **DatabaseManager**：三个 DB PRAGMA 配置的消费点（`DatabaseManager.cpp:29-36`）。`DB_JOURNAL_MODE=WAL` 是全系统写库不卡磁盘的关键（详见 DatabaseManager.md 第 6 节）。
+- **ThreadPool/TaskManager 与 LLMIntegration**：共享 `THREAD_POOL_SIZE`——调大它同时增加任务并发与 LLM 并发，联动效应见 ThreadPool.md 第 5 节。
+- **FileClassifier**：`EXTRA_*_EXTS` 在分类器初始化扩展映射时合并进基础映射（调用方 `FileClassifier.cpp:26-29` 的 initialize 系列）。
+- **AuditLog**：main.cpp 手工搬运三个键（`main.cpp:70-72`），因为 AuditLogConfig 是构造期一次性参数而非运行期查询——两种配置消费模式的对照。
+- 出错时行为：所有 getter 不抛异常（转换有 try/catch），`load` 吞掉文件解析异常（`:35-39`）；配置错误的最终表现是"走了默认值"，需要靠日志或行为异常反推。
 
-        if (success) {
-            std::lock_guard<std::mutex> lock(mutex_);
-            config_.clear();
+## 6. 注意事项与已知问题
 
-            // 复制到内部 map
-            for (const auto& [key, value] : config) {
-                config_[key] = value;
-            }
+- **无运行期更新**：改 `.env` 必须重启进程；也没有 `set()` 接口，测试想覆盖配置只能写临时 `.env`（`tests/UnitTest/test_config_manager.cpp` 即如此）。
+- **默认值硬编码在 getter 里**而非集中表，想知道"某键不填会是什么"只能读对应 getter 源码（本文引用的行号即权威位置）。改默认值时注意同步 `.env.example`/部署文档。
+- `getBool` 不认识的值（如 `"enable"`）静默回退默认，容易掩盖拼写错误。
+- `LOG_LEVEL`/`LOG_FILE`/`DEBUG_OUTPUT_MODE` 三个 getter（`ConfigManager.cpp:181-183`）当前无消费者（Logger 未接线，见 Logger.md 第 2 节）——改它们不会影响任何行为。
+- Python 服务读取同名 `.env` 但解析逻辑独立（python-dotenv），新增键时两侧默认值需人工保持一致。
 
-            return true;
-        }
-    } catch (const std::exception& e) {
-        LOG_ERROR("Failed to load config from " + path + ": " + e.what());
-    }
+## 7. 如何验证与扩展
 
-    return false;
-}
-```
+- 单元测试：`tests/UnitTest/test_config_manager.cpp`（注册于 `tests/CMakeLists.txt:764`，测试名 `ConfigManagerTests`）。
+- 手工验证默认值链：临时移走 `.env` 后启动服务，观察日志中 LLM 地址是否变为 `http://192.168.31.170:1234`（`ConfigManager.cpp:86` 的默认值）。
+- 扩展新配置项的步骤：(1) 在头文件加 getter 声明（按 LLM/系统/DB 等分区放置）；(2) 在 `ConfigManager.cpp` 对应分区实现，带默认值；(3) `.env.example` 补文档；(4) 调用方 import 单例直接用。若键名可由类别推导（如 `EXTRA_<X>_EXTS` 模式），优先复用第 3 节的约定式读取。
 
-### 类型化访问
-
-```cpp
-int ConfigManager::getInt(const std::string& key, int defaultValue) const {
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    auto it = config_.find(key);
-    if (it == config_.end()) {
-        return defaultValue;
-    }
-
-    try {
-        return std::stoi(it->second);
-    } catch (const std::exception&) {
-        LOG_WARNING("Invalid integer value for " + key + ", using default");
-        return defaultValue;
-    }
-}
-
-bool ConfigManager::getBool(const std::string& key, bool defaultValue) const {
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    auto it = config_.find(key);
-    if (it == config_.end()) {
-        return defaultValue;
-    }
-
-    std::string value = it->second;
-    std::transform(value.begin(), value.end(), value.begin(), ::tolower);
-
-    // 支持多种格式
-    if (value == "true" || value == "1" || value == "yes" || value == "on") {
-        return true;
-    } else if (value == "false" || value == "0" || value == "no" || value == "off") {
-        return false;
-    }
-
-    LOG_WARNING("Invalid boolean value for " + key + ", using default");
-    return defaultValue;
-}
-```
-
-### LLM 配置构建
-
-```cpp
-llm::LLMConfig ConfigManager::getTextModelConfig() const {
-    llm::LLMConfig config;
-
-    config.base_url = get("LLM_BASE_URL", "http://localhost:1234");
-    config.model = get("LLM_TEXT_MODEL", "openai/gpt-oss-20b");
-    config.api_key = get("LLM_API_KEY", "");
-    config.max_tokens = getInt("LLM_MAX_TOKENS", 4096);
-    config.timeout = getInt("LLM_TIMEOUT", 120);
-    config.max_retries = getInt("LLM_MAX_RETRIES", 3);
-
-    return config;
-}
-```
-
-### 扩展配置解析
-
-```cpp
-std::vector<std::string> ConfigManager::getExtraExtensions(
-    const std::string& categoryName) const {
-
-    std::string key = "EXTRA_" + categoryName + "_EXTENSIONS";
-    std::string value = get(key, "");
-
-    if (value.empty()) {
-        return {};
-    }
-
-    // 解析逗号分隔列表
-    std::vector<std::string> extensions;
-    std::stringstream ss(value);
-    std::string ext;
-
-    while (std::getline(ss, ext, ',')) {
-        // 去除空格
-        ext.erase(0, ext.find_first_not_of(" \t"));
-        ext.erase(ext.find_last_not_of(" \t") + 1);
-
-        // 确保以 . 开头
-        if (!ext.empty() && ext[0] != '.') {
-            ext = "." + ext;
-        }
-
-        if (!ext.empty()) {
-            extensions.push_back(ext);
-        }
-    }
-
-    return extensions;
-}
-```
-
-## 5. API 调用
-
-### C++ API
-
-```cpp
-#include "core/ConfigManager/ConfigManager.h"
-
-// 1. 加载配置
-auto& config = ConfigManager::instance();
-
-// 显式路径
-config.load("/etc/forensics/.env");
-
-// 或使用默认搜索路径
-config.load(".env");
-
-// 2. 基础访问
-std::string model = config.get("LLM_TEXT_MODEL", "default-model");
-int port = config.getInt("HTTP_SERVER_PORT", 8080);
-bool debug = config.getBool("DEBUG_MODE", false);
-
-// 3. LLM 配置
-auto llmConfig = config.getTextModelConfig();
-std::cout << "Using model: " << llmConfig.model << std::endl;
-std::cout << "API endpoint: " << llmConfig.base_url << std::endl;
-
-// 4. 系统配置
-int threadCount = config.getThreadPoolSize();
-LOG_INFO("Using " + std::to_string(threadCount) + " worker threads");
-
-// 5. 扩展配置
-auto imageExts = config.getExtraExtensions("IMAGES");
-for (const auto& ext : imageExts) {
-    std::cout << "Image extension: " << ext << std::endl;
-}
-
-// 6. 检查加载状态
-if (!config.isLoaded()) {
-    LOG_WARNING("Configuration not loaded, using defaults");
-}
-```
-
-### 集成到应用初始化
-
-```cpp
-// main.cpp
-int main(int argc, char* argv[]) {
-    // 1. 初始化 PathManager
-    PathManager::instance().initialize(argv[0]);
-    PathManager::instance().ensureDirectories();
-
-    // 2. 加载配置
-    auto& config = ConfigManager::instance();
-    if (!config.load(".env")) {
-        LOG_WARNING("Using default configuration");
-    }
-
-    // 3. 配置 Logger
-    std::string logLevel = config.get("LOG_LEVEL", "INFO");
-    if (logLevel == "DEBUG") {
-        Logger::instance().setLevel(LogLevel::DEBUG);
-    } else if (logLevel == "INFO") {
-        Logger::instance().setLevel(LogLevel::INFO);
-    }
-
-    std::string logFile = config.get("LOG_FILE", "");
-    if (!logFile.empty()) {
-        Logger::instance().setOutput(LogOutput::FILE, logFile);
-    }
-
-    // 4. 使用配置初始化其他组件
-    int poolSize = config.getThreadPoolSize();
-    ThreadPool pool(poolSize);
-
-    // ...
-}
-```
-
-### .env 文件示例
-
-```env
-# ================================
-# 数字取证分析系统配置文件
-# ================================
-
-# ----------------
-# LLM 配置
-# ----------------
-LLM_BASE_URL=http://localhost:1234
-LLM_TEXT_MODEL=openai/gpt-oss-20b
-LLM_VISION_MODEL=qwen/qwen3-vl-4b
-LLM_API_KEY=
-LLM_MAX_TOKENS=4096
-LLM_TIMEOUT=120
-LLM_MAX_RETRIES=3
-
-# ----------------
-# HTTP 服务器
-# ----------------
-HTTP_SERVER_PORT=8080
-HTTP_SERVER_HOST=0.0.0.0
-
-# ----------------
-# 数据库配置
-# ----------------
-DB_JOURNAL_MODE=WAL
-DB_BUSY_TIMEOUT=5000
-DB_SYNCHRONOUS=NORMAL
-
-# ----------------
-# 线程池配置
-# ----------------
-THREAD_POOL_SIZE=4
-
-# ----------------
-# 日志配置
-# ----------------
-LOG_LEVEL=INFO
-LOG_FILE=forensics.log
-
-# ----------------
-# 文件分析配置
-# ----------------
-FILE_ANALYSIS_MAX_CONTENT=10000
-FILE_ANALYSIS_MAX_KEYWORDS=10
-FILE_ANALYSIS_CONTEXT_LENGTH=4096
-
-# ----------------
-# 搜索配置
-# ----------------
-SEARCH_MAX_CACHE_SIZE=1000
-SEARCH_MAX_CONTENT_LENGTH=100000
-
-# ----------------
-# 任务管理
-# ----------------
-MAX_CONCURRENT_TASKS=5
-TASK_TIMEOUT_SECONDS=3600
-
-# ----------------
-# 存储配置
-# ----------------
-DATA_DIR=data
-PROJECT_ROOT=
-```
-
-## 6. 二次开发
-
-### 添加新的配置项
-
-```cpp
-// 1. 在 .env 中添加配置
-MY_NEW_CONFIG=value
-
-// 2. 添加访问方法
-class ConfigManager {
-public:
-    std::string getMyNewConfig() const {
-        return get("MY_NEW_CONFIG", "default_value");
-    }
-
-    int getMyNewConfigInt() const {
-        return getInt("MY_NEW_CONFIG", 42);
-    }
-};
-
-// 3. 使用
-auto value = ConfigManager::instance().getMyNewConfig();
-```
-
-### 配置验证
-
-```cpp
-class ConfigManager {
-public:
-    struct ValidationResult {
-        bool valid;
-        std::vector<std::string> errors;
-    };
-
-    ValidationResult validate() const {
-        ValidationResult result;
-        result.valid = true;
-
-        // 验证必需配置
-        if (get("LLM_BASE_URL", "").empty()) {
-            result.valid = false;
-            result.errors.push_back("LLM_BASE_URL is required");
-        }
-
-        // 验证范围
-        int port = getInt("HTTP_SERVER_PORT", 8080);
-        if (port < 1 || port > 65535) {
-            result.valid = false;
-            result.errors.push_back("HTTP_SERVER_PORT must be 1-65535");
-        }
-
-        // 验证文件路径
-        std::string logFile = get("LOG_FILE", "");
-        if (!logFile.empty()) {
-            std::ofstream test(logFile, std::ios::app);
-            if (!test) {
-                result.valid = false;
-                result.errors.push_back("LOG_FILE path not writable");
-            }
-        }
-
-        return result;
-    }
-};
-```
-
-### 环境特定配置
-
-```cpp
-// 加载环境特定配置
-bool loadEnvironmentConfig(const std::string& env) {
-    std::string envFile = ".env." + env;
-
-    if (std::filesystem::exists(envFile)) {
-        return ConfigManager::instance().load(envFile);
-    }
-
-    // 回退到默认配置
-    return ConfigManager::instance().load(".env");
-}
-
-// 使用
-int main(int argc, char* argv[]) {
-    std::string env = (argc > 1) ? argv[1] : "production";
-
-    if (!loadEnvironmentConfig(env)) {
-        LOG_ERROR("Failed to load configuration for environment: " + env);
-        return 1;
-    }
-
-    LOG_INFO("Running in environment: " + env);
-    // ...
-}
-```
-
-## 7. 其他
-
-### 测试
-
-```bash
-cd build
-./test_config_manager
-
-# 测试配置加载
-./test_config_manager --test-load .env.test
-
-# 测试类型转换
-./test_config_manager --test-types
-```
-
-### 故障排查
-
-| 问题 | 可能原因 | 解决方法 |
-|------|----------|----------|
-| 配置未加载 | 文件路径错误 | 检查搜索路径 |
-| 类型转换失败 | 配置值格式错误 | 提供正确格式 |
-| 默认值未生效 | 键名拼写错误 | 检查配置键名 |
-
-### 最佳实践
-
-1. **提供合理的默认值**
-2. **使用环境变量覆盖敏感配置**
-3. **不要在配置文件中存储密码**
-4. **文档化所有配置项**
-5. **验证配置有效性**
-6. **使用有意义的配置键名**
-
-### 相关模块
-
-- **[PathManager](./PathManager.md)** - 路径管理
-- **[Logger](./Logger.md)** - 日志系统
-- **[LLMIntegration](../integration/LLMIntegration.md)** - LLM 集成
-
----
-
-**最后更新**: 2026-05-19
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（解释式重写）

@@ -1,586 +1,79 @@
-# FileExtractor 模块文档
+# FileExtractor（src/core/DatabaseManager/FileExtractor/）
 
-## 1. 模块背景
+> **一句话**：把文件从磁盘镜像里"捞出来"的组件——按 inode/路径/模式/扩展名在 raw.db 里定位记录，再通过 TSK（或 XFS 自研解析器）把字节流读出镜像、以原子写落盘到输出目录；它同时实现 `IFileExtractor` 接口，让 AndroidAnalyzer 能把 TSK 后端和目录/zip 逻辑后端一视同仁。
 
-### 业务背景
+## 1. 为什么有这个模块
 
-在数字取证分析中，从磁盘镜像中提取文件是关键的基础操作：
+raw.db 记录了"镜像里有什么"，但很多下游工作需要**文件内容本身**：聊天数据库要用 SQLite 打开才能解析、DLL 要读到字节才能查签名、LLM 要内容才能摘要。取证语境下的"读文件"远比 `open()` 复杂：文件在镜像内部，必须经文件系统驱动按 inode 读扇区；删除的文件内容仍在未分配空间里；一个镜像可能有多个分区，inode 在分区之间会撞号；TSK 不支持 XFS，得有自研回退。
 
-**核心需求**：
-- **批量文件提取**：从镜像中提取大量文件
-- **灵活过滤**：按文件名、扩展名、状态过滤
-- **元数据保留**：保留原始文件的时间戳和权限
-- **进度跟踪**：长时间操作的进度反馈
+安全是另一层必须内建的约束。输出路径由**镜像内的文件路径**拼接而来——取证镜像里完全可能存在 `/../../etc/passwd` 这样的路径条目或指向敏感位置的名称。如果没有路径消毒，解出来的文件能写到输出目录之外的任意位置（路径穿越），symlink 还可能让后续流程写坏系统文件。本模块把这些防御做成了硬性关卡。
 
-**解决挑战**：
-- **大规模提取**：高效处理数百万文件
-- **命名冲突**：处理同名文件和已删除文件
-- **路径重建**：保持原始目录结构
-- **错误恢复**：单个文件失败不影响整体
+最后是**取证级可靠性**：部分读取的文件如果以最终名字留在盘上，会被下游当成完整证据。模块采用"临时文件 + 校验 + 原子 rename"三段式，保证磁盘上要么是旧文件、要么是完整新文件，不存在中间态。
 
-### 技术背景
+## 2. 在系统中的位置
 
-**核心技术**：
-- **The Sleuth Kit (TSK)**：磁盘镜像分析库
-- **TSK API**：文件系统遍历和数据读取
+三条生产路径使用 FileExtractor：
 
-**支持格式**：
-- **E01**：EnCase 格式
-- **DD/RAW**：原始镜像
-- **VMDK**：虚拟机磁盘（通过 TSK）
+- **CLI 提取模式**：`AnalysisOrchestrator::runExtraction`（`src/AnalysisOrchestrator.cpp:567-632`），即 `--extract-all/--extract-by-name/--extract-by-extension` 子命令；
+- **平台 Analyzer 的内容后端**：通过 `IFileExtractor` 接口注入 AndroidAnalyzer（`FileExtractor.h:32` 的继承声明，接口在 `src/analyzers/AndroidAnalyzer/IFileExtractor.h`），AndroidAnalyzer 拿它按路径取应用数据库；
+- **HTTP 提取路由与 TextDump 导出**：`FileExtractionRoutes` 调按 inode/路径提取；`textdump::FileExtractorTextDumpSource` 包装 `extractRecordAtomically` 做全量文本导出（`src/export/TextDumpAdapters.cpp`）。
 
-## 2. 模块功能
+输入三元组：镜像文件路径 + 元数据库（raw.db/files.db）+ 输出目录。它组合持有 `DatabaseManager`（`FileExtractor.h:107`）做记录查询。
 
-### 核心功能
-
-#### 1. 按文件名提取
-
-**通配符匹配**：
-```cpp
-FileExtractor extractor(imagePath, dbManager);
-
-// 提取所有 .log 文件
-int count = extractor.extractByName("*.log", "/output/dir");
-
-// 提取多个模式
-count = extractor.extractByName("*.log,*.conf,*.ini", "/output/dir");
-
-// 问号通配符
-count = extractor.extractByName("config?.ini", "/output/dir");
+```
+files/raw.db(记录) ──searchFiles──> FileRecord(含 partitionNum)
+       + 磁盘镜像 ──TSK(tsk_fs_file_read) / XFSHelper──> 字节流
+                                          └─ 临时文件 → 校验 → 原子 rename → 输出目录
 ```
 
-**特性**：
-- 支持 `*`（多字符）和 `?`（单字符）通配符
-- 逗号分隔的多个模式
-- 完整路径或仅文件名匹配
+## 3. 核心概念与设计
 
-#### 2. 按扩展名提取
+**每分区一个文件系统句柄**是正确性的根基。`openFileSystem()`（`FileExtractor.cpp:96-154`）枚举分区表，对每个已分配分区尝试 `tsk_fs_open_img`，成功则存入 `fsByPartition_[分区号]`；TSK 打不开的分区记录偏移到 `xfsPartitionOffsets_` 留给 XFS 惰性初始化（`:112-116`）。无分区表时整镜像当单文件系统、键为 0（`:122-130`）。
 
-**扩展名过滤**：
-```cpp
-// 提取特定扩展名
-int count = extractor.extractByExtension(".log,.conf,.txt", "/output/dir");
+路由与拒绝规则在 `fsForPartition()`（`:172-188`）：优先精确匹配分区号；**分区号非 0 时绝不回退到其他分区的句柄**——inode 会跨分区撞号，"在错误的文件系统上成功打开"意味着静默提取错误内容，这是取证不可接受的；只有分区 0（旧库的遗留值）允许在"仅有一个句柄"时借用。查询侧同步携带 `partition_num`（`searchFiles`，`:220-228`，注释同样强调消歧）。
 
-// 或使用命令行
-./forensic_analyzer --database image_raw.db \
-    --extract-ext ".log,.conf" \
-    --output-dir logs
-```
+**XFS 回退**：`xfsForPartition()`（`:190-218`）首次访问某分区时才构造 `XFSHelper`（自研 XFS 读取器，`src/analyzers/ImageAnalyzer/XFSHelper.h`），初始化失败则把偏移从候选表删除避免反复重试。读路径 `readFileContent()`（`:329-358`）先 TSK 后 XFS。
 
-**自动前缀处理**：
-```cpp
-// 自动添加点号
-".log"     → 正确
-"log"      → 自动添加 ".log"
-".log,.txt" → 正确
-```
+**路径消毒**（`resolveSafeOutputPath`，`FileExtractor_Extract.cpp:257-326`）：逐条检查相对路径组件，`..` 直接拒绝（`:275-282`）；输出路径上任何一级是 symlink 也拒绝（`:286-317`，防 TOCTOU 与替换攻击）；每级必须已是目录。返回 `std::optional`，失败原因写进 error 出参。
 
-#### 3. 提取所有文件
+**原子提取**（`extractRecordAtomically`，`:328-380`）三段式：先消毒出最终路径；若目标已存在且大小与记录一致则返回 `Reused`（幂等断点续跑的关键，`:339-348`）；否则写临时文件 → `validateTemporaryExtraction` 校验 → `atomicReplace` rename（`:351-373`）。任何一步失败删除临时文件，最终路径不受污染。`AtomicExtractionResult` 的 status（Extracted/Reused/Failed）让调用方（如 TextDumpExporter）能区分"新提取/复用/失败"三种账目。
 
-**全量提取**：
-```cpp
-// 提取所有已分配的常规文件
-int count = extractor.extractAll("/output/dir");
+**ExtractionLimits**（`FileExtractor.h:48-59`）：max_files/max_total_size/max_file_size 三个上限加一组的出参计数器（成功/失败/字节数），HTTP 任务的提取阶段用它防止失控提取撑爆磁盘（`extractRecords`，`FileExtractor_Extract.cpp:382-442` 的逐条检查与 bounded 标记）。
 
-// 命令行
-./forensic_analyzer --database image_raw.db --extract-all --output-dir extracted
-```
+## 4. 工作流程走读
 
-**特性**：
-- 仅提取常规文件（`REG` 类型）
-- 跳过目录和符号链接
-- 跳过已删除文件（默认）
+以 `--extract-by-name "wechat*.db"` 为例：
 
-#### 4. 包含已删除文件
+1. `initialize()`（`FileExtractor.cpp:26-56`）：先开库（提示"请先跑分析"，`:35-37`）再开镜像（DETECT 失败重试 RAW，`:58-94`）再开各分区文件系统。
+2. `extractByName`（`FileExtractor_Extract.cpp:444-484`）：逗号拆分模式 → `searchFiles("type='REG' AND is_allocated=1")` 全量取 REG 记录 → 自研通配符匹配器筛选（`matchWildcard`，`FileExtractor.cpp:298-324`，回溯式 `*`/`?` 匹配）。
+3. `extractRecords` 逐条调 `extractFile`（`FileExtractor_Extract.cpp:660-869`）：
+   - 跳过目录；输出已存在且大小一致且未要求覆盖则计 skipped（`:667-682`）；
+   - 大小为 0 直接创建空文件（`:685-692`）；
+   - TSK 路径：按记录的 partitionNum 取句柄（`:696`），`tsk_fs_file_open_meta` 失败且库是多分区旧数据时尝试其他句柄消歧（`:701-714`，注释解释了这一遗留兼容）；随后 1MB 缓冲循环读（`:742-795`），按 size 读取失败时切换到"固定 1MB 块直读到 EOF"的回退模式（`:755-761`）；
+   - 全程写临时文件，成功后 rename（`:802-817`）；XFS 记录走 `xfsForPartition` 分支整读后同样原子落盘（`:819-868`）。
+4. 统计返回：提取数/skipped/失败数（含上限截断原因）。
 
-**已删除文件恢复**：
-```cpp
-// 提取包含已删除的文件
-int count = extractor.extractAll("/output/dir", true);
+## 5. 与其他模块的协作
 
-// 命令行
-./forensic_analyzer --database image_raw.db --extract-all \
-    --include-deleted --output-dir recovered
-```
+- **DatabaseManager**：记录查询的数据源（组合持有，`FileExtractor.h:107`）。
+- **IFileExtractor / AndroidAnalyzer**：接口把"按路径取文件"抽象掉后端差异——TSK 镜像、Android 逻辑目录、zip、MIUI 备份四种来源对上层同构（接口声明见 `FileExtractor.h:70-77` 的 override）。
+- **XFSHelper**：TSK 无 XFS 支持的补位者；偏移表由 `openFileSystem` 预登记。
+- **TextDumpExporter / FileExtractorTextDumpSource**：把原子提取 + Reused 语义包装成"断点续跑的全量文本导出"（CLI `--dump-text`，`AnalysisOrchestrator.cpp:404-455`）。
+- **AnalysisOrchestrator.runExtraction**：CLI 入口；它还会做库名换算（传 `_raw.db` 自动改用 `_files.db`，`AnalysisOrchestrator.cpp:575-579`）和镜像名猜测（按 `.dd/.e01/.raw` 等扩展名，`:586-597`）。
+- 出错时行为：单文件失败返回 false 并 stderr 记录，不中断批量；路径消毒失败在 limits->errors 里留痕（最多 50 条，`FileExtractor_Extract.cpp:402-404`）。
 
-**命名冲突处理**：
-```cpp
-// 已删除文件：追加 inode 号避免冲突
-original.txt         → original.txt (已分配)
-original.txt (deleted) → original.txt_12345 (inode 12345)
-```
+## 6. 注意事项与已知问题
 
-#### 5. 单文件提取
+- **多分区歧义是硬约束**：`extractFileByPath` 遇到一路径对应多分区记录时直接拒绝（`FileExtractor_Extract.cpp:651-655`），错误信息明确要求"partition-aware metadata"；调用方应改用带 partitionNum 的接口（如 `extractFileByInode(inode, out, partition)`，`:566-601`）。
+- 旧库（所有记录 partition_num=0）依赖 `:701-714` 的句柄试探消歧——"能打开就认为对了"在 inode 撞号时仍可能取错内容，升级库比依赖试探更可靠。
+- `generateOutputPath` 对已删除文件加 inode 后缀防覆盖（`FileExtractor.cpp:386-395`），但已分配文件假设路径唯一——与 raw.db 的现实（不同分区同路径）存在理论冲突，多用按 inode 接口。
+- 通配符匹配在**文件名**上做（`:469`），不是全路径；要按目录提取请用 extractAll + limits 或 FileFilter。
+- 大小校验只比对记录 size，不做哈希——TSK 读出的内容若在镜像层面就损坏，提取流程不会发现。
 
-**按 Inode 提取**：
-```cpp
-bool success = extractor.extractFileByInode(inodeNumber, "/output/path.txt");
-```
+## 7. 如何验证与扩展
 
-**按路径提取**：
-```cpp
-bool success = extractor.extractFileByPath(
-    "/path/in/image/document.txt",
-    "/output/document.txt"
-);
-```
+- 单元测试：`tests/UnitTest/test_file_extractor_text_dump.cpp`（含原子提取/路径消毒行为）；手工冒烟可用仓库根的 `test_image.img`：`./forensic_analyzer --database test_image_raw.db --extract-all --extract-output-dir /tmp/out`（需先跑一次分析生成库）。
+- 安全回归：构造含 `..` 的文件名记录插入测试库，断言提取被拒——`resolveSafeOutputPath` 的两个拒绝分支（`..` 与 symlink）是必须保持的防线，任何重构不得放松。
+- 扩展方向：(1) 新文件系统支持——优先评估给 TSK 打补丁，其次仿照 XFSHelper 做"偏移登记 + 惰性初始化 + readFileContent 分派"三件套；(2) 增量提取——当前 Reused 判定基于大小一致，可升级为 mtime+size 双因子；(3) 校验增强——提取完成后对比记录 md5（raw.db 有该列）。
 
-### 边界与限制
-
-**功能边界**：
-- ❌ 不恢复已删除的数据内容（仅元数据）
-- ❌不解压嵌套文件（ZIP 内部文件）
-- ❌不支持流式传输（必须写入磁盘）
-
-**已知限制**：
-| 限制 | 影响 | 缓解方法 |
-|------|------|----------|
-| 磁盘空间 | 大镜像可能耗尽空间 | 预检查可用空间 |
-| 命名冲突 | 同名文件覆盖 | 追加 inode 或时间戳 |
-| 特殊文件 | 设备文件、管道不提取 | 跳过并记录 |
-
-**性能指标**：
-- **提取速度**：取决于磁盘类型（HDD ~50MB/s，SSD ~500MB/s）
-- **内存占用**：<100MB（流式读取）
-- **进度显示**：每 50 个文件或每 10 个初始文件更新
-
-## 3. 模块使用的库
-
-### 依赖库清单
-
-| 库名称 | 版本 | 用途 |
-|--------|------|------|
-| **The Sleuth Kit** | 4.14.0+ | 磁盘镜像和文件系统分析 |
-| **SQLite3** | 3.35.0+ | 数据库查询（文件元数据） |
-
-### 架构图
-
-```mermaid
-graph TD
-    A[FileExtractor] --> B[TSK API]
-    A --> C[DatabaseManager]
-
-    B --> D[镜像文件<br/>E01/DD/VMDK]
-    B --> E[文件系统<br/>NTFS/FAT/EXT4]
-
-    C --> F[_raw.db<br/>files 表]
-
-    G[输出目录] --> H[保留目录结构]
-    G --> I[文件命名处理]
-
-    style A fill:#e1f5fe
-    style B fill:#ffe1e1
-    style F fill:#fff4e1
-```
-
-## 4. 模块实现方式
-
-### 核心类
-
-```cpp
-class FileExtractor {
-public:
-    FileExtractor(const std::string& imagePath, DatabaseManager* dbManager);
-
-    // 按名称提取
-    int extractByName(const std::string& pattern,
-                     const std::string& outputDir);
-
-    // 按扩展名提取
-    int extractByExtension(const std::string& extensions,
-                          const std::string& outputDir);
-
-    // 提取所有
-    int extractAll(const std::string& outputDir,
-                  bool includeDeleted = false);
-
-    // 单文件提取
-    bool extractFileByInode(int64_t inode,
-                           const std::string& outputPath);
-    bool extractFileByPath(const std::string& imagePath,
-                          const std::string& outputPath);
-
-private:
-    std::string imagePath_;
-    DatabaseManager* dbManager_;
-
-    // TSK 对象
-    TSK_IMG_INFO* imgInfo_ = nullptr;
-    TSK_FS_INFO* fsInfo_ = nullptr;
-
-    // 辅助方法
-    bool openImage();
-    bool openFileSystem();
-    void closeImage();
-    std::string generateOutputPath(const FileRecord& record,
-                                  const std::string& outputDir);
-    bool extractFile(const FileRecord& record,
-                    const std::string& outputPath);
-};
-```
-
-### FileRecord 结构
-
-```cpp
-struct FileRecord {
-    int64_t inode;              // Inode 编号
-    std::string name;           // 文件名
-    std::string path;           // 完整路径
-    int64_t size;              // 文件大小
-    int64_t atime;             // 访问时间
-    int64_t mtime;             // 修改时间
-    int64_t ctime;             // 创建时间
-    int64_t crtime;            // 内容创建时间
-    std::string type;           // 文件类型（REG, DIR, LNK 等）
-    std::string md5;            // MD5 哈希
-    int isDeleted;             // 删除标志
-    int isAllocated;           // 分配标志
-    std::string permissions;    // 权限字符串
-    int uid;                   // 用户 ID
-    int gid;                   // 组 ID
-};
-```
-
-### 按名称提取实现
-
-```cpp
-int FileExtractor::extractByName(const std::string& pattern,
-                                const std::string& outputDir) {
-    if (!openImage() || !openFileSystem()) {
-        return 0;
-    }
-
-    int extractedCount = 0;
-    std::vector<std::string> patterns = parsePatterns(pattern);
-
-    // 构建 SQL 查询
-    std::string whereClause = buildNameWhereClause(patterns);
-
-    // 查询数据库
-    std::string sql = "SELECT * FROM files WHERE type='REG' AND is_allocated=1 AND "
-                     + whereClause;
-
-    auto callback = [&](
-        const FileRecord& record,
-        const std::string& outputPath
-    ) {
-        if (extractFile(record, outputPath)) {
-            extractedCount++;
-            displayProgress(record, extractedCount);
-        }
-        return true;  // 继续
-    };
-
-    queryAndExtract(sql, outputDir, callback);
-
-    closeImage();
-    return extractedCount;
-}
-```
-
-### 文件提取实现
-
-```cpp
-bool FileExtractor::extractFile(const FileRecord& record,
-                               const std::string& outputPath) {
-    // 创建输出目录
-    std::filesystem::create_directories(
-        std::filesystem::path(outputPath).parent_path()
-    );
-
-    // 打开文件
-    TSK_FS_FILE* file = tsk_fs_file_open_meta(fsInfo_, record.inode);
-    if (!file) {
-        LOG_ERROR("Failed to open file: " + record.path);
-        return false;
-    }
-
-    // 读取文件内容
-    const size_t BUFFER_SIZE = 1024 * 1024;  // 1MB
-    std::vector<char> buffer(BUFFER_SIZE);
-
-    std::ofstream out(outputPath, std::ios::binary);
-    if (!out) {
-        LOG_ERROR("Failed to create output file: " + outputPath);
-        tsk_fs_file_close(file);
-        return false;
-    }
-
-    size_t bytesRead = 0;
-    size_t totalRead = 0;
-
-    while ((bytesRead = tsk_fs_file_read(file, totalRead, buffer.data(),
-                                          BUFFER_SIZE, TSK_FS_FILE_READ_FLAG_NONE)) > 0) {
-        out.write(buffer.data(), bytesRead);
-        totalRead += bytesRead;
-    }
-
-    out.close();
-    tsk_fs_file_close(file);
-
-    return totalRead == record.size || record.size == 0;
-}
-```
-
-### 路径生成策略
-
-```cpp
-std::string FileExtractor::generateOutputPath(const FileRecord& record,
-                                            const std::string& outputDir) {
-    std::filesystem::path baseDir(outputDir);
-
-    // 保留原始目录结构
-    std::string relativePath = record.path;
-    if (!relativePath.empty() && relativePath[0] == '/') {
-        relativePath = relativePath.substr(1);  // 移除前导斜杠
-    }
-
-    std::filesystem::path outputPath = baseDir / relativePath;
-
-    // 处理已删除文件的命名冲突
-    if (record.isDeleted && std::filesystem::exists(outputPath)) {
-        std::filesystem::path p = outputPath;
-        std::string stem = p.stem().string();
-        std::string ext = p.extension().string();
-        p.replace_filename(stem + "_" + std::to_string(record.inode) + ext);
-        outputPath = p;
-    }
-
-    return outputPath.string();
-}
-```
-
-### 进度显示
-
-```cpp
-void FileExtractor::displayProgress(const FileRecord& record, int count) {
-    // 初始文件：显示前 10 个
-    if (count <= 10) {
-        std::cout << "[" << count << "] " << record.path << std::endl;
-    }
-    // 批量更新：每 50 个文件
-    else if (count % 50 == 0) {
-        std::cout << "Progress: " << count << " files extracted..." << std::endl;
-    }
-}
-```
-
-## 5. API 调用
-
-### C++ API
-
-```cpp
-#include "core/DatabaseManager/FileExtractor/FileExtractor.h"
-
-// 1. 创建提取器
-FileExtractor extractor("/path/to/disk_image.dd", &dbManager);
-
-// 2. 按文件名提取
-int count1 = extractor.extractByName("*.log", "/output/logs");
-
-// 3. 按扩展名提取
-int count2 = extractor.extractByExtension(".txt,.md,.pdf", "/output/docs");
-
-// 4. 提取所有文件
-int count3 = extractor.extractAll("/output/all");
-
-// 5. 包含已删除文件
-int count4 = extractor.extractAll("/output/recovered", true);
-
-// 6. 单文件提取
-bool success = extractor.extractFileByInode(12345, "/output/specific_file.txt");
-
-std::cout << "Extracted " << count1 << " files" << std::endl;
-```
-
-### 命令行 API
-
-```bash
-# 按文件名提取
-./forensic_analyzer --database evidence_raw.db \
-    --extract-file "*.log,*.conf" \
-    --output-dir logs
-
-# 按扩展名提取
-./forensic_analyzer --database evidence_raw.db \
-    --extract-ext ".txt,.md" \
-    --output-dir documents
-
-# 提取所有文件
-./forensic_analyzer --database evidence_raw.db \
-    --extract-all \
-    --output-dir extracted
-
-# 包含已删除文件
-./forensic_analyzer --database evidence_raw.db \
-    --extract-all \
-    --include-deleted \
-    --output-dir recovered
-```
-
-### REST API（通过 HTTPServer）
-
-```bash
-# 提取文件
-curl -X POST http://localhost:8080/api/forensics/extract \
-  -H "Content-Type: application/json" \
-  -d '{
-    "task_id": "task_abc123",
-    "pattern": "*.log",
-    "output_dir": "/output/logs"
-  }'
-
-# 按扩展名提取
-curl -X POST http://localhost:8080/api/forensics/extract/ext \
-  -H "Content-Type: application/json" \
-  -d '{
-    "task_id": "task_abc123",
-    "extensions": ".log,.conf",
-    "output_dir": "/output/configs"
-  }'
-```
-
-## 6. 二次开发
-
-### 添加新的过滤条件
-
-```cpp
-class FileExtractor {
-public:
-    // 新增：按大小范围提取
-    int extractBySizeRange(int64_t minSize, int64_t maxSize,
-                          const std::string& outputDir) {
-        std::string sql = "SELECT * FROM files WHERE "
-                         "type='REG' AND is_allocated=1 AND "
-                         "size >= " + std::to_string(minSize) + " AND "
-                         "size <= " + std::to_string(maxSize);
-
-        int count = 0;
-        auto callback = [&](const FileRecord& record, const std::string& path) {
-            if (extractFile(record, path)) {
-                count++;
-            }
-            return true;
-        };
-
-        queryAndExtract(sql, outputDir, callback);
-        return count;
-    }
-
-    // 新增：按时间范围提取
-    int extractByTimeRange(int64_t startTime, int64_t endTime,
-                          const std::string& outputDir) {
-        std::string sql = "SELECT * FROM files WHERE "
-                         "type='REG' AND is_allocated=1 AND "
-                         "mtime >= " + std::to_string(startTime) + " AND "
-                         "mtime <= " + std::to_string(endTime);
-
-        // ... 类似实现
-    }
-};
-```
-
-### 并行提取优化
-
-```cpp
-class ParallelFileExtractor : public FileExtractor {
-public:
-    int extractAllParallel(const std::string& outputDir,
-                          int threadCount = 4) {
-        // 查询所有文件
-        std::vector<FileRecord> files = queryAllFiles();
-
-        // 创建线程池
-        ThreadPool pool(threadCount);
-        std::vector<std::future<bool>> futures;
-
-        std::atomic<int> successCount{0};
-
-        // 并行提取
-        for (const auto& file : files) {
-            futures.push_back(pool.enqueue([this, file, outputDir, &successCount]() {
-                std::string outputPath = this->generateOutputPath(file, outputDir);
-                bool success = this->extractFile(file, outputPath);
-                if (success) {
-                    successCount.fetch_add(1);
-                }
-                return success;
-            }));
-        }
-
-        // 等待所有任务完成
-        for (auto& future : futures) {
-            future.get();
-        }
-
-        return successCount.load();
-    }
-};
-```
-
-### 压缩输出
-
-```cpp
-class CompressingFileExtractor : public FileExtractor {
-public:
-    bool extractFileCompressed(const FileRecord& record,
-                             const std::string& outputPath) {
-        // 提取到临时文件
-        std::string tempPath = outputPath + ".tmp";
-
-        if (!extractFile(record, tempPath)) {
-            return false;
-        }
-
-        // 压缩文件
-        std::string command = "gzip -c \"" + tempPath + "\" > \"" + outputPath + "\"";
-        int result = std::system(command.c_str());
-
-        // 删除临时文件
-        std::filesystem::remove(tempPath);
-
-        return result == 0;
-    }
-};
-```
-
-## 7. 其他
-
-### 测试
-
-```bash
-cd build
-./test_file_extractor
-
-# 测试特定格式
-./test_file_extractor --test-e01 /path/to/image.E01
-./test_file_extractor --test-dd /path/to/image.dd
-```
-
-### 故障排查
-
-| 问题 | 可能原因 | 解决方法 |
-|------|----------|----------|
-| 镜像打开失败 | 格式不支持或损坏 | 检查镜像格式和完整性 |
-| 权限被拒绝 | 需要管理员权限 | 使用 sudo 运行 |
-| 磁盘空间不足 | 输出目录空间不够 | 预检查可用空间 |
-| 提取速度慢 | 机械磁盘性能 | 使用 SSD 或优化 I/O |
-
-### 最佳实践
-
-1. **预检查磁盘空间**：提取前验证可用空间
-2. **使用输出目录**：避免污染当前目录
-3. **分批提取**：大型镜像分多次提取
-4. **记录日志**：保存提取日志用于审计
-5. **验证提取结果**：检查文件完整性
-
-### 相关模块
-
-- **[ImageAnalyzer](../analyzers/ImageAnalyzer.md)** - 镜像分析
-- **[DatabaseManager](./DatabaseManager.md)** - 数据库管理
-- **[FileClassifier](./FileClassifier.md)** - 文件分类
-
----
-
-**最后更新**: 2026-05-19
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（解释式重写）

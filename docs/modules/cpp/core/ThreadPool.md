@@ -1,740 +1,79 @@
-# ThreadPool 模块文档
+# ThreadPool（src/core/ThreadPool/）
 
-## 1. 模块背景
+> **一句话**：一个约百行的通用固定线程池，把"并发执行一批独立任务并收集结果"这件事标准化为 `enqueue()` 返回 `std::future`，供 HTTP 任务流水线、LLM 批量分析和 DLL 扫描复用，避免各处手搓线程生命周期管理。
 
-### 业务背景
+## 1. 为什么有这个模块
 
-在数字取证分析中，许多操作可以并行执行以提升性能：
+TraceLens 的核心负载天然是"一批同质条目、彼此独立、可以并行"：一个镜像里几万个文件要做 LLM 分析，一个目录下成百上千个 DLL 要解析，Windows 镜像里大量注册表/预取文件要并发解析。如果每个调用点都自己 `std::thread` + 计数器 + join，会重复处理三类同样的问题：线程数量失控（一个任务创建几千个线程）、异常在子线程里被吞掉（没有 future 就没人接住 throw）、以及退出时的 join 顺序混乱。
 
-**核心需求**：
-- **并行执行**：充分利用多核 CPU
-- **任务调度**：高效的任务队列管理
-- **结果获取**：便捷的任务结果访问
-- **异常处理**：任务异常的安全传播
+ThreadPool 用最朴素的"固定 worker + 共享任务队列"模型一次性解决这三件事。它不追求精细调度——没有优先级、没有 work stealing、队列无上限——因为在取证场景里，任务粒度大（每个任务处理一个文件或一个目录），几十个 worker 已经能吃满磁盘或 LLM 服务，调度器再聪明也无所谓。
 
-**解决挑战**：
-- **线程管理**：避免频繁创建/销毁线程
-- **负载均衡**：合理分配任务到工作线程
-- **资源控制**：限制并发线程数量
-- **死锁避免**：正确的同步原语使用
+另一个动机是**背压统一由配置控制**：线程数来自 `.env` 的 `THREAD_POOL_SIZE`（默认 4），运维只需要改一个数字就能调节"这台机器同时打多少并发到 LLM 服务"。
 
-### 技术背景
+## 2. 在系统中的位置
 
-**设计模式**：
-- **Thread Pool Pattern**：预创建工作线程
-- **Producer-Consumer Pattern**：任务队列生产消费
-- **Future/Promise Pattern**：异步结果获取
+ThreadPool 位于基础设施层最底部，不依赖任何其他业务模块（只依赖标准库）。目前有三个生产调用方：
 
-**C++ 技术栈**：
-- **std::thread**：线程管理
-- **std::mutex**：互斥锁
-- **std::condition_variable**：条件变量
-- **std::future**：异步结果
-- **Perfect Forwarding**：完美转发参数
+- **TaskManager**（HTTP 服务）：持有唯一的长生命周期池 `analysis_pool_`，任务流水线（INITIALIZING→…→FINALIZING 各阶段）在池上执行，见 `src/network/HTTPServer/TaskManager.cpp:31`（构造时读取 `ConfigManager::getThreadPoolSize()`）与 `TaskManager.h:318`。
+- **LLM FileAnalyzer**：批量文件分析时临时建一个池，并发发 LLM 请求，见 `src/integration/LLMIntegration/FileAnalyzer.cpp:280-289`（仅当 `poolSize > 1` 且文件数大于 1 时）。
+- **DLLAnalyzer**：目录扫描与并发解析，见 `src/analyzers/DLLAnalyzer/Core/DLLAnalyzerCore.cpp:85` 和 `:333`。
 
-## 2. 模块功能
-
-### 核心功能
-
-#### 1. 线程池初始化
-
-**自动大小**：
-```cpp
-// 使用硬件并发（默认）
-ThreadPool pool;  // 创建 CPU 核心数量的线程
-
-// 或显式指定
-ThreadPool pool(8);  // 创建 8 个工作线程
+```
+TaskManager(常驻池, THREAD_POOL_SIZE) ─┐
+LLM FileAnalyzer(临时池)  ────────────┼──> ThreadPool.enqueue(f) ──> worker×N ──> f()
+DLLAnalyzer(临时池)       ────────────┘                │
+                                                      std::future<T> 回到调用方
 ```
 
-**硬件并发检测**：
-```cpp
-size_t threads = std::thread::hardware_concurrency();
-std::cout << "CPU cores: " << threads << std::endl;
-```
+## 3. 核心概念与设计
 
-#### 2. 任务提交
+整个模块只有两个状态字段加一个队列（`ThreadPool.h:67-72`）：`workers_`（固定线程）、`tasks_`（`std::function<void()>` 队列）、`stop_` 标志。设计上有三个关键取舍值得理解：
 
-**基本用法**：
-```cpp
-ThreadPool pool(4);
-
-// 提交任务
-auto future = pool.enqueue([](int x) {
-    return x * 2;
-}, 21);
-
-// 获取结果
-int result = future.get();  // 42
-```
-
-**返回值任务**：
-```cpp
-auto future1 = pool.enqueue([]() {
-    return std::string("Hello");
-});
-
-auto future2 = pool.enqueue([]() -> int {
-    return 42;
-});
-
-auto future3 = pool.enqueue([]() {
-    return 3.14;
-});
-```
-
-**无返回值任务**：
-```cpp
-pool.enqueue([]() {
-    LOG_INFO("Task executed");
-});
-```
-
-**成员函数调用**：
-```cpp
-class Database {
-public:
-    std::vector<std::string> query(const std::string& sql) { /* ... */ }
-};
-
-Database db;
-auto future = pool.enqueue(&Database::query, &db, "SELECT * FROM files");
-auto results = future.get();
-```
-
-#### 3. 批量处理
-
-**批量任务提交**：
-```cpp
-ThreadPool pool(8);
-std::vector<std::string> files = {"file1.txt", "file2.txt", "file3.txt"};
-
-std::vector<std::future<AnalysisResult>> futures;
-
-for (const auto& file : files) {
-    futures.push_back(pool.enqueue([&file]() {
-        return analyzeFile(file);
-    }));
-}
-
-// 收集结果
-std::vector<AnalysisResult> results;
-for (auto& future : futures) {
-    results.push_back(future.get());
-}
-```
-
-**并行处理模式**：
-```cpp
-template<typename Iterator, typename Function>
-void parallelFor(ThreadPool& pool, Iterator begin, Iterator end, Function func) {
-    const size_t batchSize = std::distance(begin, end) / pool.size();
-    std::vector<std::future<void>> futures;
-
-    for (Iterator it = begin; it < end; it += batchSize) {
-        Iterator last = std::min(it + batchSize, end);
-        futures.push_back(pool.enqueue([it, last, func]() {
-            for (Iterator i = it; i != last; ++i) {
-                func(*i);
-            }
-        }));
-    }
-
-    for (auto& future : futures) {
-        future.get();
-    }
-}
-
-// 使用
-parallelFor(pool, files.begin(), files.end(), [](const std::string& file) {
-    processFile(file);
-});
-```
-
-#### 4. 异常处理
-
-**任务异常传播**：
-```cpp
-auto future = pool.enqueue([]() -> int {
-    if (errorCondition) {
-        throw std::runtime_error("Analysis failed");
-    }
-    return 42;
-});
-
-try {
-    int result = future.get();  // 抛出异常
-} catch (const std::runtime_error& e) {
-    LOG_ERROR("Task failed: " + std::string(e.what()));
-}
-```
-
-**安全异常处理**：
-```cpp
-auto future = pool.enqueue([]() -> Result {
-    try {
-        return performAnalysis();
-    } catch (const std::exception& e) {
-        LOG_ERROR("Exception in task: " + std::string(e.what()));
-        return Result::FAILED;
-    }
-});
-```
-
-#### 5. 线程池状态
-
-**查询状态**：
-```cpp
-ThreadPool pool(4);
-
-// 线程数量
-size_t threadCount = pool.size();
-
-// 停止状态
-bool stopped = pool.isStopped();
-
-// 待处理任务（需要扩展实现）
-size_t pending = pool.pendingTasks();
-```
-
-### 边界与限制
-
-**功能边界**：
-- ❌ 不支持动态调整线程数量
-- ❌ 不支持任务优先级
-- ❌ 不支持任务取消（已提交的任务）
-- ❌ 不支持超时控制
-
-**已知限制**：
-| 限制 | 影响 | 缓解方法 |
-|------|------|----------|
-| 固定线程数 | 无法动态扩展 | 预估合理大小 |
-| 无任务优先级 | 所有任务平等 | 使用多个线程池 |
-| 无任务取消 | 无法中止运行任务 | 使用原子标志检查 |
-
-**性能指标**：
-- **任务提交**：O(1) 时间复杂度
-- **内存占用**：每个线程 ~8MB 栈空间
-- **最佳大小**：CPU 密集 = 核心数，I/O 密集 = 2x 核心数
-
-## 3. 模块使用的库
-
-### 依赖库清单
-
-**零外部依赖**：仅使用 C++17 标准库
+**用 `packaged_task` 抹平"任意签名 → future"**。`enqueue` 是模板（`ThreadPool.h:79-101`），接受任意可调用对象和参数。它把 `f(args...)` 绑定成一个无参 `packaged_task<return_type()>`，用 `shared_ptr` 包一层塞进类型擦除的 lambda 里（`ThreadPool.h:85-97`）：
 
 ```cpp
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <queue>
-#include <functional>
-#include <future>
-#include <vector>
+auto task = std::make_shared<std::packaged_task<return_type()>>(
+    std::bind(std::forward<F>(f), std::forward<Args>(args)...));
+std::future<return_type> res = task->get_future();
+...
+tasks_.emplace([task]() { (*task)(); });
 ```
 
-### 架构图
+这段代码是模块的心脏：`std::function<void()>` 只能存无参无返回的闭包，而 `packaged_task` 既类型擦除了原始签名、又把返回值（和异常）桥接到 future。worker 执行 `(*task)()` 时如果函数抛异常，异常会被存进 future，调用方 `future.get()` 时重新抛出——这是"子线程异常不丢失"的机制保证。
 
-```mermaid
-graph TD
-    A[ThreadPool] --> B[Workers Vector]
-    A --> C[Task Queue]
-    A --> D[Mutex]
-    A --> E[Condition Variable]
+**退出语义是"排干队列"而不是"丢弃任务"**。析构函数置 `stop_ = true` 后 `notify_all` 再逐个 `join`（`ThreadPool.cpp:36-48`）；worker 的退出条件是 `stop_ && tasks_.empty()`（`ThreadPool.cpp:22-24`）。也就是说已提交的任务保证执行完，只是不再接受新任务——`enqueue` 到已停止的池会直接抛 `runtime_error`（`ThreadPool.h:93-95`）。这对取证任务很重要：半途丢弃一个文件的 LLM 分析结果，比跑慢一点更糟。
 
-    B --> F[Worker Thread 1]
-    B --> G[Worker Thread 2]
-    B --> H[Worker Thread N]
+**构造参数兜底**。`threads == 0` 时强制改成 1（`ThreadPool.cpp:6-8`），防止配置错误（比如 `.env` 里 `THREAD_POOL_SIZE=0`）把服务变成"提交任务但永远没人执行"的死锁状态。
 
-    C --> I[Task 1]
-    C --> J[Task 2]
-    C --> K[Task N]
+## 4. 工作流程走读
 
-    F --> L[Wait/Notify Loop]
-    G --> L
-    H --> L
+以 TaskManager 提交一个分析任务为例：
 
-    L --> M[Execute Task]
-    M --> N[Return Result via Future]
+1. **构造**。HTTP 服务启动时 `TaskManager` 构造函数读取配置并建池（`TaskManager.cpp:23-31`）。假设 `THREAD_POOL_SIZE=4`，则 4 个 worker 线程同时进入等待循环。
+2. **worker 主循环**。每个 worker 拿着队列锁等待条件变量，唤醒条件是"池要停了或队列非空"（`ThreadPool.cpp:17-20`）。被唤醒后如果池还在运行且队列有任务，就 `std::move` 出队首任务，**先解锁再执行**（`ThreadPool.cpp:26-30`）——锁只保护队列本身，任务执行期间不持锁，这是多 worker 能真正并行的前提。
+3. **提交**。`enqueue` 在锁内做两件事：检查 `stop_`、把 packaged_task 塞进队列，然后 `notify_one` 唤醒一个 worker（`ThreadPool.h:90-99`），返回 future 给调用方。
+4. **收结果**。TaskManager 把 future 存起来，稍后在需要进度/状态的地方 `get()`。任务函数正常返回则拿到值；抛异常则在 `get()` 处重抛，由 TaskManager 的异常处理记入任务失败原因。
+5. **析构**。服务退出时池析构，先排干队列再 join 所有 worker（`ThreadPool.cpp:36-48`）。
 
-    style A fill:#e1f5fe
-    style C fill:#ffe1e1
-    style L fill:#fff4e1
-```
+## 5. 与其他模块的协作
 
-## 4. 模块实现方式
+- **ConfigManager** 给它线程数：`getThreadPoolSize()` 读 `THREAD_POOL_SIZE`，默认 4（`src/core/ConfigManager/ConfigManager.cpp:138`）。TaskManager 与 LLM FileAnalyzer 共用这一个配置项，意味着调大它会同时影响任务并发和 LLM 并发。
+- **TaskManager / TaskWatchdog**：池上的任务长时间不结束会表现为任务停在某个阶段，由 TaskWatchdog 的轮询（约每秒一跳）与 30 分钟僵死判定兜底（`src/network/HTTPServer/TaskWatchdog.cpp`）。ThreadPool 自身没有超时/取消能力。
+- **LLM FileAnalyzer**：每个文件的 LLM 调用作为一个任务提交，future 收集后汇总（`FileAnalyzer.cpp:282-289`）。LLM 服务慢时，future 的 `get()` 是无超时阻塞——上限由 LLM 请求自身的 timeout 控制（`LLM_TIMEOUT_SECONDS`）。
+- **AuditLog/Logger**：worker 里执行的代码大量调用这两个模块写日志；它们内部各自有锁，与池的队列锁无嵌套关系，不会死锁。
 
-### 核心类
+## 6. 注意事项与已知问题
 
-```cpp
-class ThreadPool {
-public:
-    // 构造函数
-    explicit ThreadPool(size_t threads = std::thread::hardware_concurrency());
+- **队列无上限**。任务提交速度远快于执行速度时（例如镜像里有几十万文件全部入队），`tasks_` 会占用大量内存持有闭包及其捕获值。当前调用方都是"先分批再提交"或任务本身就是大批量循环，暂未成为问题，但新调用方要注意。
+- **没有取消机制**。任务一旦入队只能执行完。TaskManager 层面的"取消任务"实际是标记状态并等待当前阶段自然结束，池本身感知不到。
+- **异常只在 `future.get()` 时可见**。如果调用方拿了 future 却从不 `get()`，任务里的异常会被静默吞掉（future 析构丢弃共享状态异常）。提交任务后务必消费 future。
+- **析构等待是无限期的**。某个任务死循环会让进程退出卡在 join 上；生产上依赖任务内部有超时（LLM 超时等）来避免。
+- 临时池模式（FileAnalyzer/DLLAnalyzer）每次用完即析构，会先排干所有已提交任务——确认这符合调用方预期再复用该模式。
 
-    // 析构函数（等待所有任务完成）
-    ~ThreadPool();
+## 7. 如何验证与扩展
 
-    // 禁止复制
-    ThreadPool(const ThreadPool&) = delete;
-    ThreadPool& operator=(const ThreadPool&) = delete;
+- 单元测试：`tests/UnitTest/test_thread_pool.cpp`，注册于 `tests/CMakeLists.txt:771-779`（目标 `test_thread_pool`，测试名 `ThreadPoolTests`）。构建后 `ctest -R ThreadPoolTests` 可单独跑。
+- 手工验证：调大 `.env` 的 `THREAD_POOL_SIZE`，提交一个含大量文件的任务，观察 LLM 分析阶段日志的并发时间戳。
+- 想扩展的方向与切入点：(1) 有界队列 + 提交阻塞——在 `enqueue` 的锁内加 `cv_full_` 等待；(2) 优先级——把 `std::queue` 换成 `std::priority_queue`，任务附带序号；(3) 优雅取消——引入 `std::stop_token`（C++20）并在 worker 循环里检查。改动都集中在 `ThreadPool.h:66-72` 的状态字段和两个函数内，注意保持"锁内只做入队/出队"的现有纪律。
 
-    // 提交任务
-    template<class F, class... Args>
-    auto enqueue(F&& f, Args&&... args)
-        -> std::future<typename std::invoke_result<F, Args...>::type>;
-
-    // 查询方法
-    size_t size() const;
-    bool isStopped() const;
-
-private:
-    // 工作线程
-    std::vector<std::thread> workers_;
-
-    // 任务队列
-    std::queue<std::function<void()>> tasks_;
-
-    // 同步原语
-    std::mutex queueMutex_;
-    std::condition_variable condition_;
-    std::atomic<bool> stop_{false};
-};
-```
-
-### 构造函数实现
-
-```cpp
-ThreadPool::ThreadPool(size_t threads) {
-    // 确保至少 1 个线程
-    threads = std::max(1u, threads);
-
-    // 预留空间
-    workers_.reserve(threads);
-
-    // 创建工作线程
-    for (size_t i = 0; i < threads; ++i) {
-        workers_.emplace_back([this] {
-            while (true) {
-                std::function<void()> task;
-
-                {
-                    std::unique_lock<std::mutex> lock(queueMutex_);
-
-                    // 等待任务或停止信号
-                    condition_.wait(lock, [this] {
-                        return stop_ || !tasks_.empty();
-                    });
-
-                    // 停止且无任务
-                    if (stop_ && tasks_.empty()) {
-                        return;
-                    }
-
-                    // 获取任务
-                    task = std::move(tasks_.front());
-                    tasks_.pop();
-                }
-
-                // 执行任务（锁外执行）
-                task();
-            }
-        });
-    }
-}
-```
-
-### 任务提交实现
-
-```cpp
-template<class F, class... Args>
-auto ThreadPool::enqueue(F&& f, Args&&... args)
-    -> std::future<typename std::invoke_result<F, Args...>::type>
-{
-    using ReturnType = typename std::invoke_result<F, Args...>::type;
-
-    // 创建 packaged_task
-    auto task = std::make_shared<std::packaged_task<ReturnType()>>(
-        std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-    );
-
-    // 获取 future
-    std::future<ReturnType> result = task->get_future();
-
-    {
-        std::unique_lock<std::mutex> lock(queueMutex_);
-
-        // 检查停止状态
-        if (stop_) {
-            throw std::runtime_error("enqueue on stopped ThreadPool");
-        }
-
-        // 添加任务到队列
-        tasks_.emplace([task]() {
-            (*task)();
-        });
-    }
-
-    // 通知一个工作线程
-    condition_.notify_one();
-
-    return result;
-}
-```
-
-### 析构函数实现
-
-```cpp
-ThreadPool::~ThreadPool() {
-    {
-        std::unique_lock<std::mutex> lock(queueMutex_);
-        stop_ = true;  // 设置停止标志
-    }
-
-    // 唤醒所有工作线程
-    condition_.notify_all();
-
-    // 等待所有线程完成
-    for (std::thread& worker : workers_) {
-        if (worker.joinable()) {
-            worker.join();
-        }
-    }
-}
-```
-
-## 5. API 调用
-
-### C++ API
-
-```cpp
-#include "core/ThreadPool/ThreadPool.h"
-
-// 1. 创建线程池
-ThreadPool pool(8);  // 8 个工作线程
-
-// 2. 简单任务
-auto future1 = pool.enqueue([]() {
-    return 42;
-});
-int result1 = future1.get();  // 42
-
-// 3. 带参数任务
-auto future2 = pool.enqueue([](int x, int y) {
-    return x + y;
-}, 10, 20);
-int result2 = future2.get();  // 30
-
-// 4. 无返回值任务
-pool.enqueue([]() {
-    LOG_INFO("Background task");
-});
-
-// 5. 成员函数调用
-class Analyzer {
-public:
-    Result analyze(const std::string& file) { /* ... */ }
-};
-
-Analyzer analyzer;
-auto future3 = pool.enqueue(&Analyzer::analyze, &analyzer, "file.txt");
-Result result3 = future3.get();
-
-// 6. 批量处理
-std::vector<std::string> files = {/* ... */};
-std::vector<std::future<Result>> futures;
-
-for (const auto& file : files) {
-    futures.push_back(pool.enqueue([&analyzer, file]() {
-        return analyzer.analyze(file);
-    }));
-}
-
-// 收集结果
-std::vector<Result> results;
-for (auto& future : futures) {
-    results.push_back(future.get());
-}
-```
-
-### 集成到文件分析
-
-```cpp
-class FileAnalyzer {
-    ThreadPool pool_;
-
-public:
-    FileAnalyzer() : pool_(4) {}
-
-    std::vector<AnalysisResult> batchAnalyze(
-        const std::vector<std::string>& files
-    ) {
-        std::vector<std::future<AnalysisResult>> futures;
-
-        // 提交所有任务
-        for (const auto& file : files) {
-            futures.push_back(pool_.enqueue([this, file]() {
-                return analyzeSingleFile(file);
-            }));
-        }
-
-        // 收集结果
-        std::vector<AnalysisResult> results;
-        for (auto& future : futures) {
-            results.push_back(future.get());
-        }
-
-        return results;
-    }
-
-private:
-    AnalysisResult analyzeSingleFile(const std::string& file) {
-        // 分析逻辑
-        return AnalysisResult{};
-    }
-};
-```
-
-### 数据库并行查询
-
-```cpp
-std::vector<FileRecord> parallelQueryFiles(
-    ThreadPool& pool,
-    const std::vector<std::string>& queries
-) {
-    std::vector<std::future<std::vector<FileRecord>>> futures;
-
-    for (const auto& query : queries) {
-        futures.push_back(pool.enqueue([query]() {
-            return dbManager->query(query);
-        }));
-    }
-
-    std::vector<FileRecord> allRecords;
-    for (auto& future : futures) {
-        auto records = future.get();
-        allRecords.insert(allRecords.end(), records.begin(), records.end());
-    }
-
-    return allRecords;
-}
-```
-
-## 6. 二次开发
-
-### 添加任务优先级
-
-```cpp
-class PriorityThreadPool : public ThreadPool {
-public:
-    enum class Priority { LOW, NORMAL, HIGH };
-
-    template<class F, class... Args>
-    auto enqueue(Priority priority, F&& f, Args&&... args)
-        -> std::future<typename std::invoke_result<F, Args...>::type>
-    {
-        using ReturnType = typename std::invoke_result<F, Args...>::type;
-
-        auto task = std::make_shared<std::packaged_task<ReturnType()>>(
-            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-        );
-
-        std::future<ReturnType> result = task->get_future();
-
-        {
-            std::unique_lock<std::mutex> lock(queueMutex_);
-
-            if (stop_) {
-                throw std::runtime_error("enqueue on stopped ThreadPool");
-            }
-
-            // 使用优先级队列
-            priorityTasks_.push({priority, task});
-        }
-
-        condition_.notify_one();
-        return result;
-    }
-
-private:
-    struct PriorityTask {
-        Priority priority;
-        std::function<void()> task;
-
-        bool operator<(const PriorityTask& other) const {
-            return priority < other.priority;  // 优先级高的先出队
-        }
-    };
-
-    std::priority_queue<PriorityTask> priorityTasks_;
-};
-```
-
-### 添加任务取消
-
-```cpp
-class CancellableThreadPool : public ThreadPool {
-public:
-    template<class F, class... Args>
-    auto enqueueCancellable(std::atomic<bool>& cancelFlag, F&& f, Args&&... args)
-        -> std::future<typename std::invoke_result<F, Args...>::type>
-    {
-        using ReturnType = typename std::invoke_result<F, Args...>::type;
-
-        auto task = std::make_shared<std::packaged_task<ReturnType()>>(
-            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-        );
-
-        std::future<ReturnType> result = task->get_future();
-
-        {
-            std::unique_lock<std::mutex> lock(queueMutex_);
-
-            if (stop_) {
-                throw std::runtime_error("enqueue on stopped ThreadPool");
-            }
-
-            tasks_.emplace([task, &cancelFlag]() {
-                if (!cancelFlag.load()) {
-                    (*task)();
-                }
-            });
-        }
-
-        condition_.notify_one();
-        return result;
-    }
-};
-
-// 使用
-std::atomic<bool> cancel{false};
-auto future = pool.enqueueCancellable(cancel, []() {
-    // 长时间任务，定期检查 cancel
-    for (int i = 0; i < 1000000; ++i) {
-        if (cancel.load()) break;
-        doWork();
-    }
-});
-
-// 取消任务
-cancel.store(true);
-```
-
-### 添加超时控制
-
-```cpp
-template<class F, class... Args>
-auto enqueueWithTimeout(std::chrono::milliseconds timeout, F&& f, Args&&... args)
-    -> std::future<typename std::invoke_result<F, Args...>::type>
-{
-    using ReturnType = typename std::invoke_result<F, Args...>::type;
-
-    auto task = std::make_shared<std::packaged_task<ReturnType()>>(
-        std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-    );
-
-    std::future<ReturnType> result = task->get_future();
-
-    {
-        std::unique_lock<std::mutex> lock(queueMutex_);
-
-        if (stop_) {
-            throw std::runtime_error("enqueue on stopped ThreadPool");
-        }
-
-        tasks_.emplace([task, timeout]() {
-            std::thread([task, timeout]() {
-                std::this_thread::sleep_for(timeout);
-                // 设置超时（需要扩展实现）
-            }).detach();
-
-            (*task)();
-        });
-    }
-
-    condition_.notify_one();
-    return result;
-}
-```
-
-## 7. 其他
-
-### 测试
-
-```bash
-cd build
-./test_thread_pool
-
-# 运行特定测试
-./test_thread_pool --gtest_filter="ThreadPoolTest.ConcurrentExecution"
-```
-
-### 常见模式
-
-**Map-Reduce 模式**：
-```cpp
-// Map: 并行处理
-std::vector<std::future<ProcessedData>> futures;
-for (const auto& item : items) {
-    futures.push_back(pool.enqueue([&item]() {
-        return processItem(item);
-    }));
-}
-
-// Reduce: 汇总结果
-ProcessedData finalResult;
-for (auto& future : futures) {
-    finalResult.merge(future.get());
-}
-```
-
-**Parallel ForEach 模式**：
-```cpp
-template<typename Iterator, typename Function>
-void parallelForEach(ThreadPool& pool, Iterator begin, Iterator end, Function func) {
-    const size_t total = std::distance(begin, end);
-    const size_t batchSize = std::max(1u, total / pool.size());
-
-    std::vector<std::future<void>> futures;
-
-    for (Iterator it = begin; it < end; std::advance(it, batchSize)) {
-        Iterator last = std::min(it + batchSize, end);
-        futures.push_back(pool.enqueue([it, last, func]() {
-            for (Iterator i = it; i != last; ++i) {
-                func(*i);
-            }
-        }));
-    }
-
-    for (auto& future : futures) {
-        future.get();
-    }
-}
-```
-
-### 故障排查
-
-| 问题 | 可能原因 | 解决方法 |
-|------|----------|----------|
-| 线程池卡死 | 任务死锁 | 检查锁顺序 |
-| 内存占用高 | 线程数过多 | 减少线程数量 |
-| 性能差 | 线程数过少 | 增加线程到核心数 |
-| 异常丢失 | 未检查 future | 始终调用 get() |
-
-### 最佳实践
-
-1. **合理设置线程数**：CPU 密集 = 核心数，I/O 密集 = 2x 核心数
-2. **异常处理**：始终检查 future.get() 的异常
-3. **避免死锁**：不要在任务中获取相同的锁
-4. **任务粒度**：任务不要太小或太大
-5. **资源清理**：析构前等待所有任务完成
-
-### 相关模块
-
-- **[ConfigManager](./ConfigManager.md)** - 线程池配置
-- **[TaskManager](../network/TaskManager.md)** - 任务管理
-
----
-
-**最后更新**: 2026-05-19
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（解释式重写）

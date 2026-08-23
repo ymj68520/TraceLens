@@ -1,633 +1,74 @@
-# AuditLog 模块文档
+# AuditLog（src/core/AuditLog/）
 
-## 1. 模块背景
+> **一句话**：进程级单例的审计日志器，把"谁在什么时候对哪个任务做了什么"以 SQLite（WAL）持久化，用写缓冲 + 后台刷盘线程 + 按任务 LRU 读缓存换取吞吐，并自带轮转、保留清理和 JSON/CSV 导出。
 
-### 业务背景
+## 1. 为什么有这个模块
 
-在数字取证系统中，完整的审计日志是确保**证据链完整性**和**合规性**的关键组件。每个操作都需要可追溯的记录：
+取证系统的产出会被用于指控与辩护，因此**操作本身也要留痕**：任务何时创建、分析走到哪个阶段、哪个模块失败、解密动作何时发生——这些"关于分析的分析"是可追责性的基础。普通日志（Logger）给开发者看，会被轮转清掉、格式随意；审计需要的是结构化（task_id/action/details/user_id/毫秒时间戳）、可查询（按任务/时间段/动作类型）、可导出（给报告或合规审查）的持久记录。
 
-**核心需求**：
-- **完整审计追踪**：记录所有关键操作（文件挂载、分析开始/结束、错误等）
-- **任务生命周期**：跟踪每个分析任务的状态变化
-- **法律合规**：满足取证标准和 chain of custody 要求
-- **性能优化**：支持高频日志记录而不影响分析性能
+吞吐是第二个设计约束。流水线里几乎每个阶段转换、每个 analyzer 的关键节点都写审计（全仓库 25+ 处调用，如 `DatabaseManager.cpp:23,49`、`EventExtractorCore.cpp:20`、`FileClassifier.cpp:37`），长任务下写入量可观。如果每条都同步 fsync，审计本身会拖慢分析。模块为此准备了三层机制：预编译 INSERT、批量事务插入、可选的异步刷盘线程——但默认配置选择了**数据安全优先**（`AuditLogDataTypes.h:48-57`：`batch_size=1`、`async_write=false`，注释写明"Disable async write by default for data safety"）。
 
-**解决挑战**：
-- **高并发写入**：多个线程同时记录日志
-- **持久化存储**：确保日志在系统崩溃后不丢失
-- **查询性能**：快速检索特定任务或时间范围的日志
-- **存储管理**：日志轮转和自动清理
+第三个问题是**进程被杀时的兜底**。Ctrl-C 杀掉服务时，缓冲里的审计不能丢。模块安装了自己的 SIGINT/SIGTERM/SIGHUP 处理器：信号处理器只置一个 `sig_atomic_t` 标志（异步信号安全），由刷盘线程在下次唤醒时执行 flush、恢复默认处理器并重新 raise 信号（`AuditLog.cpp:9-45, 284-320`）——优雅退出与内核默认终止语义的折中。
 
-### 技术背景
+## 2. 在系统中的位置
 
-**设计模式**：
-- **Singleton Pattern**：全局唯一实例
-- **Layered Architecture**：API 层 → 缓冲层 → 存储层
-- **Performance Optimizations**：写缓冲、LRU 缓存、异步处理
+- **初始化**：`main.cpp:69-74` 用 `.env` 组装 `AuditLogConfig`（`AUDIT_LOG_DB` 默认相对路径 `forensics_audit.db`、`AUDIT_LOG_CACHE_SIZE` 默认 100、`AUDIT_LOG_WAL` 默认开），首次 `AuditLog::instance(auditConfig)` 触发单例构造（`AuditLog.cpp:48-53`，配置仅第一次生效）。
+- **写入方**（约 25 处）：DatabaseManager（库初始化成败）、EventExtractor/FileClassifier/FileExtractor（阶段起止）、FileFilter、ImageAnalyzer 解密动作（`DecryptionModule.cpp:345,443,557,622`）、LinuxFilesAnalyzer 各 parser、SetuidAnalyzer 等。动作风格为 `"SYSTEM"|"ERROR"|"WARNING"|"SUCCESS"` + 大写动作名。
+- **读取方**：HTTP 层的审计查询/统计/导出接口。
+- 存储：单表 `audit_logs`（task_id/timestamp/action/details/user_id，`AuditLog.cpp:115-125`），三个索引覆盖三种查询维度（`:136-140`）。
 
-**数据库技术**：
-- **SQLite WAL 模式**：增强并发性能
-- **Prepared Statements**：高效的批量插入
-- **B-Tree Indexes**：快速查询索引
-
-## 2. 模块功能
-
-### 核心功能
-
-#### 1. 结构化日志记录
-
-**日志条目结构**：
-```cpp
-struct AuditLogEntry {
-    int64_t id;                              // 自增主键
-    std::string task_id;                     // 关联任务 ID
-    std::chrono::system_clock::time_point timestamp;  // 高精度时间戳
-    std::string action;                      // 操作类型
-    std::string details;                     // 详细信息
-    std::string user_id;                     // 可选用户标识
-};
+```
+analyzer/parser ──log(task,action,details)──> 写缓冲(写锁) ──批量事务──> audit_logs(SQLite WAL)
+                                                  ▲ 后台线程每 flush_interval 秒刷一次(可选)
+前端/路由 <──getTaskLogs/ByTimeRange/ByAction──  LRU 读缓存(task_id → entries)
 ```
 
-**记录方法**：
-```cpp
-// 基础日志
-AuditLog::instance().log(task_id, "IMAGE_MOUNTED", "Image mounted successfully");
+## 3. 核心概念与设计
 
-// 带用户 ID
-AuditLog::instance().log(task_id, "FILE_EXTRACTED", "1000 files extracted", "analyst_1");
+**写路径三级流水**。`log()` 构造 entry 后进 `addToWriteBuffer`（`AuditLog.cpp:164-186`）：同步模式（默认）或缓冲满（`batch_size`）时立即 `flushWriteBuffer`。`flushWriteBuffer`（`:189-221`）有一个值得学习的锁手法——调用者持有 `write_mutex_`，它把缓冲 swap 到局部变量后**手动解锁、执行 DB 操作、再加锁**（`:199-202`），让并发写 log() 不必等待磁盘；失败时条目重新插回队首。落库由 `insertBatch` 完成（`:230-277`）：单事务内循环绑定预编译语句、失败整体回滚。
 
-// 立即刷新缓冲
-AuditLog::instance().flush();
-```
+**"数据库未初始化就丢弃并只警告一次"** 是刻意的行为（`:204-219`）：db 打开失败时如果无限重排队，缓冲会无界增长并在关机时卡死 flush，因此选择丢弃批次、`drop_warning_emitted_` 标志保证 stderr 只吵一次。审计"尽力而为"优先于进程可用性。
 
-#### 2. 任务日志查询
+**读缓存以任务为粒度**：`unordered_map<task_id, list<entry>>`（`AuditLog.h:225`），只缓存"完整结果"（`getTaskLogs` 仅在 `limit==0` 时写入缓存，`AuditLog_Queries.cpp:91-102`），否则分页请求会毒化缓存。淘汰按"整任务逐出"（`:97-101`），粒度粗但实现简单——`current_cache_size_` 按条目数对齐 `config_.cache_size`（默认 100 条）。
 
-**按任务查询**：
-```cpp
-// 获取特定任务的所有日志
-auto logs = AuditLog::instance().getTaskLogs("task_abc123");
+**时间戳统一毫秒**（`AuditLogDataTypes.h:24-42` 的 toUnixMs/fromUnixMs），与 events.db 的秒级时间戳不同源，跨库对齐时须换算。
 
-// 分页查询
-auto logs = AuditLog::instance().getTaskLogs("task_abc123", 100, 0);  // limit, offset
-```
+**信号安全模板**：处理器只做 `g_signal_received = signum`（`AuditLog.cpp:14-16`），所有非异步安全的操作（加锁、SQL）都在刷盘线程的常规上下文里做（`:291-307`）。`atexit` 处理器兜底正常退出路径的 flush（`:41-45`）。
 
-**按时间范围查询**：
-```cpp
-auto start = std::chrono::system_clock::now() - std::chrono::hours(24);
-auto end = std::chrono::system_clock::now();
+## 4. 工作流程走读
 
-auto logs = AuditLog::instance().getLogsByTimeRange(start, end);
-```
+一次典型写入（EventExtractor 阶段开始）：
 
-**按操作类型查询**：
-```cpp
-auto logs = AuditLog::instance().getLogsByAction("ERROR");
-```
+1. `AuditLog::instance().log("SYSTEM", "EVENT_EXTRACTION_START", "Starting...")`（`EventExtractorCore.cpp:20`）→ 构造 entry、取当前时间点（`AuditLog.cpp:164-174`）。
+2. `addToWriteBuffer` 加写锁入队；默认配置（`async_write=false`）立即触发 `flushWriteBuffer`（`:177-186`）。
+3. swap 出缓冲 → 解锁 → `insertBatch`：`BEGIN TRANSACTION` → 逐条 `sqlite3_reset/clear_bindings/bind/step` 预编译语句 → `COMMIT`（`:236-276`）。WAL + `synchronous=NORMAL`（`:102-112`）保证这一步只写 WAL 不 fsync 主库。
+4. 失败（如库被锁超时）时条目回到缓冲，等下次触发重试；DB 句柄为 null 则走丢弃分支（`:204-219`）。
 
-#### 3. 统计与监控
+查询路径（按任务）：`getTaskLogs` 先查缓存（`AuditLog_Queries.cpp:70-81`），未命中执行 `ORDER BY timestamp DESC` 查询（`:84-88`），完整结果入缓存并按需淘汰（`:91-102`）。
 
-**统计信息**：
-```cpp
-auto stats = AuditLog::instance().getStatistics();
+维护路径：`cleanup(days)`（`:219-256`）按保留期 DELETE + `VACUUM` 回收空间并清空缓存；`rotate()`（`:259-298`）在库超过 `max_db_size_mb`（默认 100）时改名备份（后缀 `.YYYYmmdd_HHMMSS.backup`）并重建空库；`exportToFile` 支持 JSON（借 nlohmann 的 adl_serializer，`AuditLogDataTypes.h:60-76`）与 CSV（`:301-332`）。
 
-// 返回 JSON：
-// {
-//   "total_logs": 15234,
-//   "tasks_count": 45,
-//   "actions": {
-//     "IMAGE_MOUNTED": 45,
-//     "FILES_EXTRACTED": 45,
-//     "ERROR": 3
-//   }
-// }
-```
+## 5. 与其他模块的协作
 
-**日志计数**：
-```cpp
-int64_t totalLogs = AuditLog::instance().getLogCount();
-int64_t taskLogs = AuditLog::instance().getLogCount("task_abc123");
-```
+- **main.cpp**：唯一初始化点；想改审计行为（异步、批量、轮转阈值）只能改 `.env` 三个键或代码默认值，运行期不可调。
+- **DatabaseManager/EventExtractor/FileClassifier/FileExtractor/FileFilter**：阶段级审计写入方，动作名构成事实上的审计词表（DB_INIT、EVENT_EXTRACTION_START、CLASSIFICATION_COMPLETE、EXTRACTOR_INIT、FILE_FILTER……）。
+- **ImageAnalyzer/DecryptionModule**：记录解密动作（LUKS/BitLocker/VeraCrypt，`DecryptionModule.cpp:345` 等）——取证上最敏感的操作必须留痕。
+- **Logger**：分工见 Logger.md 第 5 节——Logger 控制台、AuditLog 证据。
+- 出错时行为：初始化失败不抛异常（`AuditLog.cpp:59-61` 打 stderr），后续写入走丢弃分支；查询在 `db_` 为 null 时返回空集合（`AuditLog_Queries.cpp:19-21`）——审计永远不是阻断项。
 
-#### 4. 维护操作
+## 6. 注意事项与已知问题
 
-**日志清理**：
-```cpp
-// 清理 30 天前的日志
-AuditLog::instance().cleanup(30);
-```
+- **审计库落在 CWD 而非 data/audit/**：main.cpp 的默认值是相对路径 `forensics_audit.db`（`main.cpp:70`），PathManager 的 `getAuditDbPath()`（`data/audit/forensics_audit.db`）没有接线——这就是仓库根目录出现 `forensics_audit.db` 的原因。想收敛位置应在 `.env` 设 `AUDIT_LOG_DB` 为绝对路径，或按 PathManager.md 第 7 节接线。
+- **读缓存不做失效**：任务有新日志写入后，缓存里仍是旧快照，直到淘汰或 cleanup。对"实时审计视图"需求，当前实现会返回陈旧数据。
+- **CSV 导出未转义**：details 里若含引号/逗号会破坏格式（`AuditLog_Queries.cpp:317-328` 只有 details 一对裸引号）。导出合规材料请用 JSON。
+- **轮转是手动触发**：没有任何调用方周期性调 `rotate()`/`cleanup()`，超阈值后库会继续增长，需要运维脚本或将来在 HTTP 层挂定时任务。
+- 异步模式（`async_write=true`）牺牲最多 `flush_interval_seconds`（默认 3 秒）的审计记录，崩溃窗口内的条目会丢——默认关闭即为此。
+- 单例构造线程不安全（C++11 magic static 保证并发首调安全，但 `instance(config)` 的 config 只在最早那次生效，晚到的配置被忽略）。
 
-**数据库轮转**：
-```cpp
-// 当数据库超过 100MB 时轮转
-AuditLog::instance().rotate();
+## 7. 如何验证与扩展
 
-// 生成带时间戳的备份
-// forensics_audit_20240311_143022.db
-```
+- 单元测试：`tests/UnitTest/test_audit_log_gtest.cpp`（`tests/CMakeLists.txt:526-533`，测试名 `AuditLogGTests`）；模块目录内另有 `src/core/AuditLog/test_audit_log.cpp`。
+- 手工验证：跑一次分析任务后 `sqlite3 forensics_audit.db "SELECT action, COUNT(*) FROM audit_logs GROUP BY 1 ORDER BY 2 DESC"`，应看到 DB_INIT、EVENT_EXTRACTION_* 等动作；`kill -INT` 服务进程后再查，最后一批（同步模式下无丢失）应已落库。
+- 扩展点：(1) 接线 PathManager 审计路径（改 `main.cpp:70` 默认值）；(2) 缓存失效——写入路径成功后对同 task_id 的缓存项打脏标记；(3) 定期维护——在 HTTP 服务里加定时器调 `rotate()+cleanup()`；(4) CSV 转义——把 `exportToFile` 的拼接换成逐字段 escape（可参考 TOONExporter::escapeValue 的思路，`TOONExporter.cpp:21-65`）。
 
-**导出功能**：
-```cpp
-// JSON 导出
-AuditLog::instance().exportToFile("audit_report.json", "json");
-
-// CSV 导出
-AuditLog::instance().exportToFile("audit_report.csv", "csv");
-```
-
-### 边界与限制
-
-**功能边界**：
-- ❌ 不修改已写入的日志条目（审计不可变性）
-- ❌ 不删除日志（仅通过 cleanup 按时间清理）
-- ❌ 不支持分布式存储（单机 SQLite）
-
-**已知限制**：
-| 限制 | 影响 | 缓解方法 |
-|------|------|----------|
-| 单文件数据库 | 并发写入限制 | 使用 WAL 模式 |
-| 无日志轮转自动化 | 需手动调用 rotate() | 定期任务调度 |
-| 异步写入默认关闭 | 可能阻塞主线程 | 配置 async_write=true |
-
-**性能指标**：
-- **缓冲写入**：~0.1ms/条（内存）
-- **批量插入**：~5ms/50 条（磁盘）
-- **查询响应**：<1ms（有索引）
-
-## 3. 模块使用的库
-
-### 依赖库清单
-
-| 库名称 | 版本 | 用途 |
-|--------|------|------|
-| **SQLite3** | 3.35.0+ | 持久化存储 |
-| **nlohmann/json** | 3.11.2 | JSON 导出 |
-
-### 数据库模式
-
-```sql
-CREATE TABLE IF NOT EXISTS audit_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id TEXT NOT NULL,
-    timestamp INTEGER NOT NULL,           -- Unix 毫秒时间戳
-    action TEXT NOT NULL,
-    details TEXT,
-    user_id TEXT,
-    created_at INTEGER DEFAULT (cast(strftime('%s', 'now') as integer) * 1000)
-);
-
-CREATE INDEX IF NOT EXISTS idx_task_id ON audit_logs(task_id);
-CREATE INDEX IF NOT EXISTS idx_timestamp ON audit_logs(timestamp);
-CREATE INDEX IF NOT EXISTS idx_action ON audit_logs(action);
-```
-
-### 架构图
-
-```mermaid
-graph TD
-    A[API 层] --> B[缓冲层]
-    B --> C[存储层]
-
-    B --> D[写缓冲<br/>100 条 × 200 字节]
-    B --> E[LRU 读取缓存<br/>100 条]
-
-    C --> F[SQLite 数据库]
-    F --> G[WAL 模式]
-    F --> H[Prepared Statements]
-
-    I[后台线程<br/>可选] --> B
-
-    style A fill:#e1f5fe
-    style B fill:#fff4e1
-    style C fill:#ffe1e1
-```
-
-## 4. 模块实现方式
-
-### 核心类
-
-```cpp
-class AuditLog {
-public:
-    // Singleton
-    static AuditLog& instance(const AuditLogConfig& config = {});
-
-    // 日志记录
-    void log(const std::string& task_id,
-             const std::string& action,
-             const std::string& details,
-             const std::string& user_id = "");
-
-    // 刷新缓冲
-    void flush();
-
-    // 查询方法
-    std::vector<AuditLogEntry> getTaskLogs(const std::string& task_id,
-                                          int limit = 0, int offset = 0);
-    std::vector<AuditLogEntry> getLogsByTimeRange(
-        const std::chrono::system_clock::time_point& start,
-        const std::chrono::system_clock::time_point& end,
-        int limit = 0, int offset = 0);
-    std::vector<AuditLogEntry> getLogsByAction(const std::string& action,
-                                              int limit = 0, int offset = 0);
-
-    // 统计
-    nlohmann::json getStatistics();
-    int64_t getLogCount(const std::string& task_id = "");
-
-    // 维护
-    void cleanup(int retention_days = -1);
-    void rotate();
-    void exportToFile(const std::string& output_path,
-                     const std::string& format = "json");
-
-private:
-    AuditLog(const AuditLogConfig& config);
-    ~AuditLog();
-
-    // 内部方法
-    void flushInternal();
-    void startBackgroundThread();
-    void stopBackgroundThread();
-
-    // 配置
-    AuditLogConfig config_;
-
-    // 存储
-    std::unique_ptr<SQLite::Database> db_;
-    std::vector<AuditLogEntry> writeBuffer_;
-    std::unordered_map<std::string, std::vector<AuditLogEntry>> readCache_;
-
-    // 同步
-    std::mutex writeMutex_;
-    std::mutex cacheMutex_;
-    std::condition_variable cv_;
-    std::thread backgroundThread_;
-    std::atomic<bool> stopFlag_{false};
-};
-```
-
-### 配置结构
-
-```cpp
-struct AuditLogConfig {
-    std::string db_path = "forensics_audit.db";
-    size_t cache_size = 100;             // LRU 缓存大小
-    size_t batch_size = 1;               // 批量写入阈值（默认 1=立即写）
-    int flush_interval_seconds = 3;      // 自动刷新间隔
-    bool async_write = false;            // 异步写入（默认关闭，安全优先）
-    size_t max_db_size_mb = 100;         // 数据库轮转阈值
-    int retention_days = 30;             // 日志保留天数
-    bool enable_wal = true;              // WAL 模式
-};
-```
-
-### 写缓冲实现
-
-```cpp
-void AuditLog::log(const std::string& task_id,
-                  const std::string& action,
-                  const std::string& details,
-                  const std::string& user_id) {
-    AuditLogEntry entry;
-    entry.task_id = task_id;
-    entry.timestamp = std::chrono::system_clock::now();
-    entry.action = action;
-    entry.details = details;
-    entry.user_id = user_id;
-
-    std::lock_guard<std::mutex> lock(writeMutex_);
-    writeBuffer_.push_back(std::move(entry));
-
-    // 达到批量阈值时刷新
-    if (writeBuffer_.size() >= config_.batch_size) {
-        flushInternal();
-    }
-}
-
-void AuditLog::flushInternal() {
-    if (writeBuffer_.empty()) return;
-
-    try {
-        // 开始事务
-        db_->exec("BEGIN TRANSACTION");
-
-        // 准备语句
-        SQLite::Statement insert(*db_,
-            "INSERT INTO audit_logs (task_id, timestamp, action, details, user_id) "
-            "VALUES (?, ?, ?, ?, ?)"
-        );
-
-        // 批量插入
-        for (const auto& entry : writeBuffer_) {
-            int64_t timestampMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                entry.timestamp.time_since_epoch()).count();
-
-            insert.bind(1, entry.task_id);
-            insert.bind(2, timestampMs);
-            insert.bind(3, entry.action);
-            insert.bind(4, entry.details);
-            insert.bind(5, entry.user_id);
-            insert.exec();
-            insert.reset();
-        }
-
-        // 提交事务
-        db_->exec("COMMIT");
-        writeBuffer_.clear();
-
-    } catch (const std::exception& e) {
-        db_->exec("ROLLBACK");
-        // 记录错误但不抛出异常
-        std::cerr << "[AuditLog] Flush failed: " << e.what() << std::endl;
-    }
-}
-```
-
-### LRU 读取缓存
-
-```cpp
-std::vector<AuditLogEntry> AuditLog::getTaskLogs(const std::string& task_id,
-                                                int limit, int offset) {
-    // 先检查缓存
-    {
-        std::lock_guard<std::mutex> lock(cacheMutex_);
-        auto it = readCache_.find(task_id);
-        if (it != readCache_.end()) {
-            // 缓存命中
-            auto& cached = it->second;
-            if (offset < cached.size()) {
-                size_t end = (limit == 0) ? cached.size()
-                                          : std::min(offset + limit, cached.size());
-                return std::vector<AuditLogEntry>(
-                    cached.begin() + offset,
-                    cached.begin() + end
-                );
-            }
-        }
-    }
-
-    // 缓存未命中，查询数据库
-    std::vector<AuditLogEntry> results;
-    // ... 数据库查询逻辑 ...
-
-    // 更新缓存（LRU 淘汰）
-    {
-        std::lock_guard<std::mutex> lock(cacheMutex_);
-        if (readCache_.size() >= config_.cache_size) {
-            // 移除最旧的缓存
-            auto oldest = std::min_element(readCache_.begin(), readCache_.end(),
-                [](const auto& a, const auto& b) {
-                    return a.second[0].timestamp < b.second[0].timestamp;
-                });
-            readCache_.erase(oldest);
-        }
-        readCache_[task_id] = results;
-    }
-
-    return results;
-}
-```
-
-### 信号处理
-
-```cpp
-// 优雅关闭
-static void signalHandler(int signal) {
-    if (signal == SIGINT || signal == SIGTERM) {
-        AuditLog::instance().flush();  // 刷新缓冲
-        exit(0);
-    }
-}
-
-// 构造函数中注册
-std::signal(SIGINT, signalHandler);
-std::signal(SIGTERM, signalHandler);
-#ifdef SIGHUP
-std::signal(SIGHUP, signalHandler);
-#endif
-```
-
-## 5. API 调用
-
-### C++ API
-
-```cpp
-#include "core/AuditLog/AuditLog.h"
-
-// 1. 初始化（可选配置）
-AuditLogConfig config;
-config.db_path = "audit.db";
-config.batch_size = 50;              // 每 50 条刷新一次
-config.async_write = true;           // 启用异步写入
-config.retention_days = 90;          // 保留 90 天
-
-AuditLog::instance(config);
-
-// 2. 记录日志
-std::string taskId = "task_" + generateId();
-
-AuditLog::instance().log(taskId, "CREATED", "Task created by analyst");
-AuditLog::instance().log(taskId, "IMAGE_MOUNTED", "Disk image mounted: /evidence.dd");
-AuditLog::instance().log(taskId, "ANALYSIS_STARTED", "File system analysis started");
-
-// 3. 查询任务日志
-auto logs = AuditLog::instance().getTaskLogs(taskId);
-for (const auto& log : logs) {
-    std::cout << "[" << log.action << "] " << log.details << std::endl;
-}
-
-// 4. 按操作类型查询
-auto errors = AuditLog::instance().getLogsByAction("ERROR");
-for (const auto& error : errors) {
-    std::cout << "Error in task " << error.task_id << ": " << error.details << std::endl;
-}
-
-// 5. 时间范围查询
-auto now = std::chrono::system_clock::now();
-auto yesterday = now - std::chrono::hours(24);
-auto recentLogs = AuditLog::instance().getLogsByTimeRange(yesterday, now);
-
-// 6. 统计信息
-auto stats = AuditLog::instance().getStatistics();
-std::cout << "Total logs: " << stats["total_logs"] << std::endl;
-std::cout << "Total tasks: " << stats["tasks_count"] << std::endl;
-
-// 7. 维护操作
-AuditLog::instance().flush();           // 手动刷新
-AuditLog::instance().cleanup(30);        // 清理 30 天前日志
-AuditLog::instance().rotate();           // 轮转数据库
-
-// 8. 导出审计报告
-AuditLog::instance().exportToFile("audit_report_2024.json", "json");
-AuditLog::instance().exportToFile("audit_report_2024.csv", "csv");
-```
-
-### TaskManager 集成
-
-```cpp
-// TaskManager 自动记录任务生命周期
-TaskManager::instance().createTask("analysis_task", {...});
-// 自动记录：task_id, CREATED, "Task created"
-
-TaskManager::instance().updateTaskStatus(task_id, TaskStatus::RUNNING);
-// 自动记录：task_id, STATUS_CHANGE, "Status: RUNNING"
-
-TaskManager::instance().cancelTask(task_id);
-// 自动记录：task_id, CANCELLED, "Task cancelled by user"
-```
-
-### 配置示例
-
-**开发环境**（快速调试）：
-```cpp
-AuditLogConfig config;
-config.batch_size = 1;          // 立即写入
-config.async_write = false;     // 同步模式
-config.retention_days = 7;      // 短期保留
-```
-
-**生产环境**（高性能）：
-```cpp
-AuditLogConfig config;
-config.batch_size = 100;        // 批量写入
-config.async_write = true;      // 异步模式
-config.flush_interval_seconds = 5;
-config.retention_days = 365;    // 长期保留
-config.max_db_size_mb = 500;    // 大容量
-```
-
-**高频环境**（超高性能）：
-```cpp
-AuditLogConfig config;
-config.cache_size = 1000;       // 大缓存
-config.batch_size = 1000;       // 大批量
-config.async_write = true;
-config.flush_interval_seconds = 1;  // 频繁刷新
-```
-
-## 6. 二次开发
-
-### 添加自定义操作类型
-
-```cpp
-// 在应用代码中定义操作类型常量
-namespace AuditActions {
-    constexpr const char* MALWARE_DETECTED = "MALWARE_DETECTED";
-    constexpr const char* SUSPICIOUS_FILE = "SUSPICIOUS_FILE";
-    constexpr const char* DATA_EXFILTRATION = "DATA_EXFILTRATION";
-}
-
-// 使用自定义操作类型
-AuditLog::instance().log(task_id, AuditActions::MALWARE_DETECTED,
-                        "Malware signature found: trojan.gen");
-```
-
-### 扩展统计信息
-
-```cpp
-// 扩展 getStatistics() 方法
-nlohmann::json AuditLog::getStatistics() {
-    nlohmann::json stats;
-
-    // 基础统计
-    stats["total_logs"] = getLogCount();
-    stats["tasks_count"] = /* 查询不重复任务数 */;
-
-    // 操作类型分布
-    SQLite::Statement query(*db_,
-        "SELECT action, COUNT(*) as count FROM audit_logs GROUP BY action"
-    );
-    while (query.executeStep()) {
-        std::string action = query.getColumn(0);
-        int count = query.getColumn(1);
-        stats["actions"][action] = count;
-    }
-
-    // 新增：按小时统计
-    SQLite::Statement hourlyQuery(*db_,
-        "SELECT strftime('%Y-%m-%d %H:00', timestamp/1000, 'unixepoch') as hour, "
-        "COUNT(*) as count FROM audit_logs GROUP BY hour ORDER BY hour DESC LIMIT 24"
-    );
-    while (hourlyQuery.executeStep()) {
-        std::string hour = hourlyQuery.getColumn(0);
-        int count = hourlyQuery.getColumn(1);
-        stats["hourly_distribution"][hour] = count;
-    }
-
-    return stats;
-}
-```
-
-### 自定义导出格式
-
-```cpp
-// 添加 XML 导出
-void AuditLog::exportToXML(const std::string& output_path) {
-    auto logs = getTaskLogs("", 0, 0);  // 获取所有日志
-
-    std::ofstream out(output_path);
-    out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-    out << "<audit_logs>\n";
-
-    for (const auto& log : logs) {
-        int64_t timestampMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-            log.timestamp.time_since_epoch()).count();
-
-        out << "  <entry>\n";
-        out << "    <id>" << log.id << "</id>\n";
-        out << "    <task_id>" << log.task_id << "</task_id>\n";
-        out << "    <timestamp>" << timestampMs << "</timestamp>\n";
-        out << "    <action>" << log.action << "</action>\n";
-        out << "    <details>" << escapeXML(log.details) << "</details>\n";
-        out << "    <user_id>" << log.user_id << "</user_id>\n";
-        out << "  </entry>\n";
-    }
-
-    out << "</audit_logs>\n";
-}
-```
-
-## 7. 其他
-
-### 测试
-
-```bash
-cd build
-./test_audit_log_gtest
-
-# 运行特定测试
-./test_audit_log_gtest --gtest_filter="AuditLogTest.BufferPerformance"
-```
-
-### 故障排查
-
-| 问题 | 可能原因 | 解决方法 |
-|------|----------|----------|
-| 日志丢失 | 程序崩溃未刷新 | 使用信号处理器自动 flush |
-| 性能下降 | 同步写入阻塞 | 启用 async_write |
-| 数据库锁定 | 多进程访问 | 使用 WAL 模式 |
-| 磁盘空间不足 | 日志未清理 | 定期调用 cleanup() |
-
-### 最佳实践
-
-1. **始终使用操作类型常量**：避免字符串拼写错误
-2. **合理的批量大小**：根据日志频率调整 batch_size
-3. **定期维护**：设置 cron 任务定期 cleanup 和 rotate
-4. **异步写入谨慎使用**：生产环境建议默认关闭，确保数据安全
-5. **监控数据库大小**：避免单个文件过大影响查询性能
-
-### 相关模块
-
-- **[TaskManager](../../network/TaskManager.md)** - 任务管理集成
-- **[DatabaseManager](../core/DatabaseManager.md)** - 数据库操作
-- **[Logger](../core/Logger.md)** - 应用日志
-
-### 参考资源
-
-- [SQLite WAL 模式](https://www.sqlite.org/wal.html)
-- [数字取证标准](https://www.swgde.org/)
-
----
-
-**最后更新**: 2026-05-19
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（解释式重写）

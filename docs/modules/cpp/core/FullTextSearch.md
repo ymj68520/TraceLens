@@ -1,601 +1,81 @@
-# FullTextSearch 模块文档
+# FullTextSearch（src/core/FullTextSearch/）
 
-## 1. 模块背景
+> **一句话**：基于 Xapian 的全文检索组件——`XapianIndexer` 把文件内容（路径/扩展名/正文）索引进倒排库，`XapianSearcher` 支持布尔/通配/字段前缀查询并生成高亮摘要，`TextExtractor` 负责"任意文件 → 文本"的抽取（100+ 扩展名白名单 + 二进制 strings 兜底）。
 
-### 业务背景
+## 1. 为什么有这个模块
 
-在数字取证分析中，快速从大量文件中定位关键信息至关重要：
+取证调查里有一类问题和时间线正交：**按内容找文件**。"镜像里哪些文件提到了某个账号、某个域名、某段代码？"SQL 的 LIKE 做不到分词、打分和排序，几十万文件的逐个 grep 又慢且无法做前缀/短语组合。Xapian 是成熟的倒排索引引擎，本模块把它包装成两个小类：索引器与查询器，加上查询语法的预设（布尔、通配、`path:`/`ext:` 字段前缀），让 CLI 与 HTTP 路由用同一套能力。
 
-**核心需求**：
-- **全文搜索**：在文件内容中搜索关键词
-- **高性能**：毫秒级响应时间
-- **多格式支持**：支持 90+ 种文本和代码文件格式
-- **智能提取**：从二进制文件中提取可读字符串
+文本抽取是隐藏的另一半工作量。取证镜像里的文件什么类型都有：纯文本、源码、配置、还有大量二进制。直接把字节塞进索引会产生垃圾 token；只收白名单又漏掉"藏在二进制里的字符串证据"（无扩展名的木马样本里的 URL）。`TextExtractor` 的策略是双轨：约 130 个文本扩展名（`TextExtractor.cpp:14-71`）走原文读取，其余走 `strings` 式抽取（最小长度 4 的可打印序列，`:91`）。
 
-**解决挑战**：
-- **文件数量庞大**：数十万文件的快速检索
-- **格式多样性**：不同文件格式的文本提取
-- **搜索准确性**：相关度排序和结果高亮
-- **索引效率**：快速构建和更新索引
+安全边界是第三个设计点。HTTP 接口接受用户指定的索引目录，如果放任不管，攻击者可以让服务索引 `/etc` 并搜索出任意主机文件内容。因此路由层用 `FTS_ALLOWED_ROOT`（默认 PathManager 的 data 目录）把可索引路径圈死（`SearchRoutes.cpp:17-35`）。
 
-### 技术背景
+## 2. 在系统中的位置
 
-**核心技术**：
-- **Xapian 搜索引擎**：高性能全文检索库
-- **Stemming 算法**：词干提取提升召回率
-- **LRU 缓存**：优化重复查询性能
+三个使用面：
 
-**Xapian 特性**：
-- **概率排序**：相关度评分
-- **布尔查询**：AND、OR、NOT 操作
-- **短语搜索**：精确短语匹配
-- **通配符**：前缀和通配符搜索
+- **CLI 子命令**：`AnalysisOrchestrator::runFullTextSearch`（`src/AnalysisOrchestrator.cpp:634-688`）——`--index <dir>` 遍历目录建索引（`:650-667`，每 100 个文件报一次进度），`--search <kw>` 查询（`:670-685`）；索引库默认 `search_index_xapian`，可用 `--db-dir` 改位置（`:635-639`）。
+- **HTTP 路由**：`/api/search/index`（POST，建索引）与 `/api/search/fulltext`（GET，查询，q + index + limit/offset 参数）——`src/network/HTTPServer/routes/SearchRoutes.cpp:37-66` 注册，`handle_fulltext_search` 在 `:106-107` 直接构造 `XapianSearcher`。
+- **http_agent（分布式部署的节点代理）**：在节点上完成索引构建后上传（`src/http_agent/index_uploader.cpp`、`image_indexer.cpp`）。
 
-## 2. 模块功能
+模块内部依赖 ConfigManager（缓存与截断参数）与 Xapian 库；TextExtractor 被索引侧和摘要生成侧共用。
 
-### 核心功能
-
-#### 1. 文本提取
-
-**支持 90+ 种文件格式**：
-
-**纯文本**：`.txt`, `.log`, `.csv`, `.tsv`
-
-**配置文件**：`.ini`, `.conf`, `.cfg`, `.yaml`, `.yml`, `.toml`, `.env`, `.properties`, `.json`, `.xml`
-
-**Web 技术**：`.html`, `.htm`, `.xhtml`, `.css`, `.scss`, `.sass`, `.less`, `.js`, `.jsx`, `.ts`, `.tsx`, `.vue`, `.svelte`
-
-**编程语言**：
-- C/C++: `.c`, `.cpp`, `.cc`, `.cxx`, `.h`, `.hpp`, `.hxx`
-- Python: `.py`, `.pyw`, `.pyi`
-- Java: `.java`, `.kt`, `.kts`, `.scala`, `.groovy`
-- Ruby: `.rb`, `.rake`, `.gemspec`
-- PHP: `.php`, `.phtml`
-- Rust: `.rs`
-- Go: `.go`
-- Swift: `.swift`, `.m`, `.mm`
-- .NET: `.cs`, `.fs`, `.vb`
-- 以及其他：Lua, Tcl, Perl, R, Julia, Elixir, Erlang, Clojure, Haskell, OCaml, Dart, Kotlin, Scala
-
-**Shell 脚本**：`.sh`, `.bash`, `.zsh`, `.fish`, `.csh`, `.ksh`, `.bat`, `.cmd`, `.ps1`, `.psm1`
-
-**文档**：`.md`, `.markdown`, `.rst`, `.asciidoc`, `.adoc`, `.tex`, `.latex`, `.bib`, `.org`
-
-**数据**：`.sql`, `.mysql`, `.pgsql`, `.graphql`, `.gql`
-
-**DevOps**：`.dockerfile`, `.cmake`, `.make`, `.mk`, `.gradle`, `.maven`, `.tf`, `.tfvars`, `.rego`
-
-**其他**：`.diff`, `.patch`, `.svg`, `.plist`, `.manifest`, `.gitignore`, `.gitattributes`, `.editorconfig`
-
-**文本提取实现**：
-```cpp
-// 直接文本文件读取
-std::string content = TextExtractor::extractFromTextFile("document.txt");
-
-// 二进制文件字符串提取（类似 Unix strings）
-std::string strings = TextExtractor::extractStrings("binary.exe", 4, 1024 * 1024);
-
-// 自动检测并提取
-std::string content = TextExtractor::extract("any_file.ext");
+```
+目录/文件 ──TextExtractor.extract──> 文本 ──XapianIndexer.addDocument──> search_index_xapian/
+                                                                    (倒排库, Q<path> 去重)
+查询串(布尔/通配/path:/ext:) ──XapianSearcher.search──> MSet ──> {path,score,snippet,...}
 ```
 
-#### 2. 索引构建
+## 3. 核心概念与设计
 
-**添加文档到索引**：
-```cpp
-XapianIndexer indexer("/path/to/index.db");
+**索引侧的字段布局**（`FullTextSearch.cpp:111-154` 的 `addDocument`）：路径文本用前缀 `P` 索引（`:119`，供 `path:` 查询）；正文无前缀入主索引（`:120`）；扩展名既是布尔项 `E.pdf` 又是自由文本（`:123-128`，供 `ext:.pdf` 过滤）；文档 data 存一段手拼 JSON（path/size/extension/mtime，`:131-136`）；value 0/1 存 sortable_serialise 的 size/mtime 供将来排序（`:139-140`）。
 
-// 设置词干语言
-indexer.setStemmerLanguage("english");
+**用 `Q<path>` 幂等去重**是索引器的关键决定：每个文档以路径生成唯一布尔项 `idterm`，写库用 `replace_document(idterm, doc)`（`:142-146`）——同一文件重复索引是**替换**而不是追加，这让"重建索引"可以增量跑而不会膨胀。
 
-// 添加文档
-FileMetadata metadata;
-metadata.path = "/evidence/document.txt";
-metadata.extension = ".txt";
-metadata.size = 1024;
-metadata.mtime = std::time(nullptr);
+**进程内内容缓存**：`contentCache_` 是**静态**成员（`FullTextSearch.h:87`），按 path 存截断到 `SEARCH_MAX_CONTENT_LENGTH`（默认 50000）的内容（`:62-88`），容量对齐 `SEARCH_MAX_CACHE_SIZE`（默认 1000），淘汰用最旧 indexTime（`:66-79`）。它存在的唯一理由是**摘要生成**：Xapian 文档 data 里没存正文，命中后要展示上下文片段，从缓存拿比重新读文件快一个量级。`XapianSearcher` 通过 friend 声明访问它（`FullTextSearch.h:93`）。缓存 miss 时回退到 `TextExtractor::extract` 现读文件（`:232-244`），仍失败给出占位串。
 
-std::string content = TextExtractor::extract("/evidence/document.txt");
-indexer.addDocument("/evidence/document.txt", content, metadata);
+**查询语法预设**（`search`，`:278-304`）：QueryParser 挂 `path→P`、`ext→E` 前缀（`:291-292`），打开 WILDCARD/PHRASE/BOOLEAN 旗标（`:294-298`），STEM_SOME 策略平衡召回与精确。命中后逐条从 data JSON 里**手工截取** path/size/extension（`:309-347`）——老格式（data 就是路径字符串）有回退分支（`:344-347`）。分数用 `get_percent()`。
 
-// 提交更改
-indexer.commit();
-```
+**摘要生成**（`generateSnippet`，`:188-247`）：取查询 terms，在缓存内容里找首个命中位置，向两侧各扩 `snippetLength_/2`（默认 150，可由 `SEARCH_SNIPPET_LENGTH` 配置经路由传入），加 `...` 省略号，最后 `highlightTerms` 把命中词包成 `**词**`（`:249-276`，Markdown 风格，前端可直接渲染）。
 
-**索引特性**：
-- **字段前缀**：路径 (`P`)、扩展名 (`E`)
-- **值排序**：按大小、时间排序
-- **去重**：基于文件路径的唯一 ID
-- **内容缓存**：LRU 缓存优化重复索引
+**TextExtractor 的白名单**（`TextExtractor.cpp:14-71`）：覆盖纯文本、配置、Web、几十种编程语言、Shell、文档标记、SQL/GraphQL、构建/IaC、VCS 元数据等约 130 个扩展名；`isTextFile` 大小写归一比较（`:99-103`）。注意 `.pdf`、`.docx` 等**不在**名单——它们会被 strings 兜底抽出乱码碎片而非真正文本；富文档转换实际由 Python 服务的 markitdown 承担（见 AnalysisOrchestrator.md 的 --dump-text 一节），二者是互补关系。
 
-#### 3. 全文搜索
+## 4. 工作流程走读
 
-**基础搜索**：
-```cpp
-XapianSearcher searcher("/path/to/index.db");
+CLI 建索引（`AnalysisOrchestrator.cpp:650-667`）：
 
-// 简单关键词搜索
-auto results = searcher.search("password", 10, 0);
+1. 构造 `XapianIndexer(indexDbPath)`——`DB_CREATE_OR_OPEN` 打开/创建倒排库，TermGenerator 挂库、设 english 词干器、开拼写纠正旗标（`FullTextSearch.cpp:22-34`）。
+2. `recursive_directory_iterator` 遍历源目录，`TextExtractor::extract` 取文本，非空则 `addDocument`（`AnalysisOrchestrator.cpp:653-661`）。
+3. `addDocument` 内部完成第 3 节的字段布局、`replace_document` 幂等写入、内容入缓存（`FullTextSearch.cpp:114-153`）。
+4. 循环外 `commit()`（`:156-160`；析构函数也会兜底 commit，`:36-44`）。
 
-for (const auto& result : results) {
-    std::cout << "File: " << result.path << std::endl;
-    std::cout << "Score: " << result.score << "%" << std::endl;
-    std::cout << "Snippet: " << result.snippet << std::endl;
-}
-```
+HTTP 查询（`SearchRoutes.cpp:68-130`）：
 
-**布尔查询**：
-```cpp
-// AND 操作
-auto results1 = searcher.search("password AND key");
+1. 参数校验：q 与 index 必填，limit 默认 50（`:72-104`）。
+2. `XapianSearcher(index_path)` 打开只读 Database；`search(q, limit, offset)` 走 QueryParser → Enquire → `get_mset(offset, limit)` 分页（`FullTextSearch.cpp:283-305`）。
+3. 每条命中解析 data、算 percent、生成高亮摘要（`:306-355`），组装 JSON 响应。
 
-// OR 操作
-auto results2 = searcher.search("virus OR malware OR trojan");
+## 5. 与其他模块的协作
 
-// NOT 操作
-auto results3 = searcher.search("admin NOT root");
+- **ConfigManager**：四个搜索参数的消费点（`ConfigManager.cpp:151-154`）——缓存容量、内容截断、摘要长度、默认 limit。
+- **PathManager/SearchRoutes**：`FTS_ALLOWED_ROOT` 安全校验以 PathManager 的 data 目录为默认根（`SearchRoutes.cpp:17-35`），越界请求被 4xx 拒绝并提示设置该变量（`:159`）。
+- **TextExtractor ↔ 摘要回退**：索引时与查询时的文件内容抽取走同一实现，保证 token 一致性。
+- **http_agent**：分布式部署里索引构建在节点本地完成（`image_indexer.cpp`），产物由 `index_uploader.cpp` 回传，服务端只做查询——带宽友好。
+- 出错时行为：Xapian 异常全部捕获打 stderr 后吞掉（构造函数除外，它会重抛，`FullTextSearch.cpp:30-33`）； searcher 打不开库时 `isValid()` 为 false、search 返回空数组——路由层据此报错。
 
-// 组合查询
-auto results4 = searcher.search("(admin OR root) AND password");
-```
+## 6. 注意事项与已知问题
 
-**短语搜索**：
-```cpp
-auto results = searcher.search("\"database connection\"");
-```
+- **内容缓存是进程级静态**且跨 Indexer/Searcher 实例共享（`FullTextSearch.h:87-88`）：索引后立即查询能拿到摘要；但服务重启后缓存空，摘要退化为现读文件，被索引后又删除的文件摘要变为占位串。
+- **data 的 JSON 是手拼的**（`FullTextSearch.cpp:131-136`）：路径含引号/反斜杠会产生非法 JSON，查询侧的字符串截取（`:309-347`）也会随之取错。Windows 风格路径（含 `\`）尤其危险。修复应换成 nlohmann 序列化。
+- 查询侧 QueryParser 固定 english 词干器（`:285`），索引侧可 `setStemmerLanguage` 改语言——两侧不一致会导致中文等其他语言检索行为混乱；当前系统主要面向英文内容，暂无问题。
+- `XapianIndexer` 每次构造都 `DB_CREATE_OR_OPEN`，两个进程同时索引同一库会锁冲突（Xapian 单写者）；http_agent 的"节点本地索引"模式正是为绕开它。
+- 大文件没有截断上限传入索引（`TextExtractor::extract(path)` 的无限制重载，`AnalysisOrchestrator.cpp:655` 用的是它），超大日志会全量入索引拖慢构建——可用 `extract(path, maxBytes)` 重载改善。
+- strings 兜底对 PDF/Office 只能抽碎片，评估"内容检索覆盖率"时不要把它算作完整支持。
 
-**通配符搜索**：
-```cpp
-auto results = searcher.search("admin*");  // admin, administrator, ...
-```
+## 7. 如何验证与扩展
 
-**路径和扩展名过滤**：
-```cpp
-// 按路径过滤
-auto results1 = searcher.search("path:/var/log/ AND error");
+- 单元测试：`tests/UnitTest/test_fulltext_search_gtest.cpp`（`tests/CMakeLists.txt:597`，测试名 `FullTextSearchGTests`）。
+- 手工验证：`./forensic_analyzer --index <某目录> --search "test AND path:src"`，观察 CLI 打分的 `[NN%]` 行；再用 `curl 'localhost:8080/api/search/fulltext?q=test&index=<index_path>'` 对比 HTTP 行为。
+- 扩展方向：(1) data 换正规 JSON 序列化并加版本字段（改 `FullTextSearch.cpp:111-154` 与 `:309-347` 两处）；(2) 富文档抽取——在 TextExtractor 增加对 markitdown 代理的可选调用，注意失败回退 strings；(3) 排序支持——value 0/1 已存 size/mtime，给 search 加 `set_sort_by_value` 参数即可暴露给前端。
 
-// 按扩展名过滤
-auto results2 = searcher.search("ext:.log AND error");
-
-// 组合过滤
-auto results3 = searcher.search("path:/home/user/ AND ext:.txt AND (secret OR password)");
-```
-
-#### 4. 结果片段
-
-**智能片段生成**：
-- **缓存优先**：优先从 LRU 缓存读取
-- **关键词定位**：查找第一个匹配项
-- **上下文提取**：提取匹配周围的文本
-- **关键词高亮**：用 `**` 标记匹配词
-
-**示例片段**：
-```
-...system **configuration** file contains administrative **password** for ...
-```
-
-### 边界与限制
-
-**功能边界**：
-- ❌ 不支持 PDF、Office 文档（需专门的文本提取器）
-- ❌ 不支持图像 OCR（需 VisionAnalysis）
-- ❌ 不支持实时索引更新（需手动 commit）
-- ❌ 不支持分布式索引
-
-**已知限制**：
-| 限制 | 影响 | 缓解方法 |
-|------|------|----------|
-| 文件大小限制 | 大文件可能截断 | 设置合理的 maxBytes |
-| 内存占用 | 索引占用内存 | 分批索引，限制缓存 |
-| 语言支持 | 默认英语词干 | 配置其他语言的 stemmer |
-
-**性能指标**：
-- **索引速度**：5,000-10,000 小文件/秒
-- **搜索响应**：<10ms (10K 文档)
-- **索引大小**：原文本大小的 30-50%
-
-## 3. 模块使用的库
-
-### 依赖库清单
-
-| 库名称 | 版本 | 用途 |
-|--------|------|------|
-| **Xapian** | 1.4.0+ (推荐 1.5.0+) | 全文搜索引擎 |
-
-### 架构图
-
-```mermaid
-graph TD
-    A[FullTextSearch] --> B[TextExtractor]
-    A --> C[XapianIndexer]
-    A --> D[XapianSearcher]
-
-    B --> E[90+ 文件格式]
-
-    C --> F[Xapian 数据库]
-    F --> G[WAL 模式]
-    F --> H[Prepared Statements]
-
-    D --> F
-    D --> I[LRU 缓存]
-
-    C --> I
-
-    style A fill:#e1f5fe
-    style F fill:#ffe1e1
-    style I fill:#fff4e1
-```
-
-## 4. 模块实现方式
-
-### TextExtractor 类
-
-```cpp
-class TextExtractor {
-public:
-    // 提取文本（自动检测格式）
-    static std::string extract(const std::string& filePath, size_t maxBytes = 0);
-
-    // 文本文件读取
-    static std::string extractFromTextFile(const std::string& filePath, size_t maxBytes = 0);
-
-    // 二进制文件字符串提取
-    static std::string extractStrings(const std::string& filePath,
-                                    size_t minLength = 4,
-                                    size_t maxBytes = 0);
-
-    // 元数据提取
-    static ExtractedMetadata extractMetadata(const std::string& filePath);
-
-    // 格式检测
-    static bool isTextFile(const std::string& extension);
-
-private:
-    static const std::unordered_set<std::string>& getSupportedExtensions();
-};
-```
-
-### XapianIndexer 类
-
-```cpp
-class XapianIndexer {
-public:
-    XapianIndexer(const std::string& dbPath);
-    ~XapianIndexer();
-
-    // 配置
-    void setStemmerLanguage(const std::string& language);
-
-    // 索引操作
-    void addDocument(const std::string& filePath,
-                   const std::string& content,
-                   const FileMetadata& metadata);
-    void deleteDocument(const std::string& filePath);
-    void commit();
-
-    // 缓存管理
-    void cacheContent(const std::string& path, const std::string& content);
-
-private:
-    std::unique_ptr<Xapian::WritableDatabase> db_;
-    Xapian::TermGenerator termGenerator_;
-    std::string stemmerLanguage_;
-
-    // LRU 缓存
-    static std::unordered_map<std::string, ContentCacheEntry> contentCache_;
-    static std::mutex cacheMutex_;
-};
-```
-
-### XapianSearcher 类
-
-```cpp
-class XapianSearcher {
-public:
-    XapianSearcher(const std::string& dbPath);
-
-    // 搜索
-    std::vector<SearchResult> search(const std::string& queryStr,
-                                   size_t limit = 10,
-                                   size_t offset = 0);
-
-    // 片段生成
-    std::string generateSnippet(const std::string& path, const Xapian::Query& query);
-
-private:
-    std::unique_ptr<Xapian::Database> db_;
-    size_t snippetLength_ = 200;
-
-    std::string highlightTerms(const std::string& text,
-                              const std::vector<std::string>& terms);
-};
-```
-
-### 数据结构
-
-```cpp
-struct FileMetadata {
-    std::string path;
-    std::string filename;
-    std::string extension;
-    int64_t size = 0;
-    int64_t mtime = 0;
-    int64_t ctime = 0;
-    bool isText = false;
-};
-
-struct SearchResult {
-    std::string path;
-    int score;              // 相关度百分比 (0-100)
-    std::string snippet;    // 搜索结果片段
-    int64_t size;
-    std::string extension;
-    int64_t mtime;
-};
-
-struct ContentCacheEntry {
-    std::string content;
-    int64_t indexTime;
-};
-```
-
-### 索引流程
-
-```mermaid
-flowchart TD
-    A[输入文件路径] --> B[提取文本内容]
-    B --> C[提取元数据]
-    C --> D[创建 Xapian 文档]
-
-    D --> E[索引路径<br/>前缀: P]
-    D --> F[索引内容<br/>词干处理]
-    D --> G[索引扩展名<br/>前缀: E]
-
-    E --> H[存储排序值<br/>大小、时间]
-    F --> H
-    G --> H
-
-    H --> I[添加唯一 ID<br/>Q + 路径]
-    I --> J[替换到数据库]
-    J --> K[更新 LRU 缓存]
-
-    K --> L[提交事务]
-```
-
-### 搜索流程
-
-```mermaid
-flowchart TD
-    A[输入查询字符串] --> B[解析查询]
-    B --> C[构建 Xapian 查询]
-
-    C --> D[设置查询选项]
-    D --> E[执行查询]
-
-    E --> F[获取结果集 MSet]
-    F --> G[遍历结果]
-
-    G --> H{有缓存?}
-    H -->|是| I[从缓存读取]
-    H -->|否| J[读取文件]
-
-    I --> K[生成片段]
-    J --> K
-
-    K --> L[高亮关键词]
-    L --> M[返回结果列表]
-```
-
-## 5. API 调用
-
-### C++ API
-
-```cpp
-#include "core/FullTextSearch/FullTextSearch.h"
-
-// 1. 创建索引
-XapianIndexer indexer("/path/to/index.db");
-indexer.setStemmerLanguage("english");
-
-// 2. 索引文件
-std::vector<std::string> files = {
-    "/evidence/config.ini",
-    "/evidence/script.py",
-    "/evidence/log.txt"
-};
-
-for (const auto& file : files) {
-    auto metadata = TextExtractor::extractMetadata(file);
-    std::string content = TextExtractor::extract(file);
-    indexer.addDocument(file, content, metadata);
-}
-
-indexer.commit();
-
-// 3. 搜索
-XapianSearcher searcher("/path/to/index.db");
-
-// 简单搜索
-auto results1 = searcher.search("password");
-
-// 布尔查询
-auto results2 = searcher.search("password AND (key OR secret)");
-
-// 短语搜索
-auto results3 = searcher.search("\"database password\"");
-
-// 路径过滤
-auto results4 = searcher.search("path:/etc/ AND config");
-
-// 扩展名过滤
-auto results5 = searcher.search("ext:.log AND error");
-
-// 4. 处理结果
-for (const auto& result : results5) {
-    std::cout << "File: " << result.path << std::endl;
-    std::cout << "Score: " << result.score << "%" << std::endl;
-    std::cout << "Size: " << result.size << " bytes" << std::endl;
-    std::cout << "Snippet: " << result.snippet << std::endl;
-    std::cout << "---" << std::endl;
-}
-```
-
-### 命令行集成
-
-```bash
-# 构建索引
-./forensic_analyzer --index /path/to/extracted_files
-
-# 搜索
-./forensic_analyzer --search "password" --db-dir /path/to/databases
-
-# 高级搜索
-./forensic_analyzer --search "path:/home/ AND ext:.txt AND secret" \
-    --limit 20 --offset 0
-```
-
-### REST API（通过 HTTPServer）
-
-```bash
-# 索引文件
-curl -X POST http://localhost:8080/api/search/index \
-  -H "Content-Type: application/json" \
-  -d '{"directory": "/path/to/files"}'
-
-# 搜索
-curl "http://localhost:8080/api/search/query?q=password&limit=10"
-
-# 高级搜索
-curl --get http://localhost:8080/api/search/query \
-  --data-urlencode "q=(admin OR root) AND password" \
-  --data-urlencode "limit=20"
-```
-
-## 6. 二次开发
-
-### 添加新的文件格式
-
-```cpp
-class TextExtractor {
-public:
-    static bool isTextFile(const std::string& extension) {
-        static const std::unordered_set<std::string> supportedExtensions = {
-            // 现有格式...
-            ".newformat",  // 添加新格式
-        };
-
-        std::string ext = extension;
-        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-        return supportedExtensions.count(ext) > 0;
-    }
-};
-```
-
-### 自定义评分算法
-
-```cpp
-class CustomXapianSearcher : public XapianSearcher {
-public:
-    std::vector<SearchResult> search(const std::string& queryStr,
-                                   size_t limit = 10,
-                                   size_t offset = 0) override {
-        Xapian::Enquire enquire(*db_);
-        Xapian::QueryParser parser;
-        Xapian::Query query = parser.parse_query(queryStr);
-
-        enquire.set_query(query);
-
-        // 自定义排序策略
-        enquire.set_sort_by_value_then_relevance(0, true);  // 先按大小，再按相关度
-
-        Xapian::MSet mset = enquire.get_mset(offset, limit);
-
-        // 处理结果...
-    }
-};
-```
-
-### 多语言支持
-
-```cpp
-// 配置不同语言的 stemmer
-indexer.setStemmerLanguage("english");   // 英语
-indexer.setStemmerLanguage("french");     // 法语
-indexer.setStemmerLanguage("german");     // 德语
-indexer.setStemmerLanguage("spanish");    // 西班牙语
-indexer.setStemmerLanguage("russian");    // 俄语
-
-// 对于中文等没有空格分隔的语言，使用 n-gram
-// 需要额外的分词器集成
-```
-
-## 7. 其他
-
-### 测试
-
-```bash
-cd build
-./test_fulltext_search_gtest
-
-# 性能测试
-./test_fulltext_search_gtest --gtest_filter="*Performance*"
-
-# 索引测试
-./test_fulltext_search_gtest --gtest_filter="*Indexing*"
-```
-
-### 故障排查
-
-| 问题 | 可能原因 | 解决方法 |
-|------|----------|----------|
-| 索引失败 | 文件权限错误 | 检查文件读取权限 |
-| 搜索无结果 | 查询语法错误 | 检查布尔表达式 |
-| 性能差 | 缓存太小 | 增大缓存大小 |
-| 内存占用高 | 索引过大 | 分批索引 |
-
-### 性能优化
-
-**索引优化**：
-```cpp
-// 批量提交
-const int BATCH_SIZE = 1000;
-int count = 0;
-
-for (const auto& file : files) {
-    indexer.addDocument(file.path, file.content, file.metadata);
-    if (++count >= BATCH_SIZE) {
-        indexer.commit();
-        count = 0;
-    }
-}
-indexer.commit();  // 提交剩余
-```
-
-**搜索优化**：
-```cpp
-// 限制结果集大小
-auto results = searcher.search(query, 100, 0);  // 最多 100 条
-
-// 使用更精确的查询
-// 差: "content"
-// 好: "path:/home/user/ AND ext:.txt AND content"
-```
-
-### 最佳实践
-
-1. **索引前提取文本**：避免在索引时重复提取
-2. **合理设置缓存**：根据可用内存调整
-3. **定期优化索引**：使用 Xapian 的 compact 功能
-4. **使用字段前缀**：提高过滤查询效率
-5. **限制索引大小**：单个索引不超过 500K 文档
-
-### 相关模块
-
-- **[FileClassifier](./FileClassifier.md)** - 文件分类
-- **[FileExtractor](./FileExtractor.md)** - 文件提取
-- **[ConfigManager](./ConfigManager.md)** - 搜索配置
-
----
-
-**最后更新**: 2026-05-19
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（解释式重写）

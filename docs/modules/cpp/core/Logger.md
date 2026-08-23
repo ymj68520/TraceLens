@@ -1,552 +1,73 @@
-# Logger 模块文档
+# Logger（src/core/Logger/）
 
-## 1. 模块背景
+> **一句话**：进程级单例的极简同步日志器，提供 DEBUG/INFO/WARNING/ERROR 四级过滤和 STDOUT/FILE/静默三种输出，通过 `LOG_*` 宏被约 30 个源文件、上百处调用点使用——注意它目前在生产路径上从不被配置，实际始终以 INFO 级别打到标准输出。
 
-### 业务背景
+## 1. 为什么有这个模块
 
-在开发和调试复杂的取证分析系统时，一个灵活、可靠的日志系统至关重要：
+取证分析器是一个多线程长任务进程：镜像解析、平台工件分析、LLM 调用同时跑在 ThreadPool 的 worker 里（见 ThreadPool.md）。没有统一日志时，开发者会各写各的 `std::cout`/`std::cerr`，结果有两个：一是多线程交错输出导致一行日志被撕碎，二是无法事后过滤——出了问题想在生产上只看 ERROR，只能靠肉眼。
 
-**核心需求**：
-- **多级别日志**：DEBUG、INFO、WARNING、ERROR
-- **多种输出模式**：控制台、文件、静默
-- **线程安全**：多线程环境下的并发日志记录
-- **性能优化**：可选的编译时优化（release 模式禁用 DEBUG）
+Logger 解决的就是这两件最小的事：**一把互斥锁保证行完整性**，**一个级别阈值做运行时过滤**。它刻意不做异步队列、滚动文件、结构化字段——那些重量级需求由另外两个组件分担：业务/审计追溯走 AuditLog（落 SQLite），HTTP API 层有自己的 JSON 响应。Logger 只面向开发者在控制台看执行过程。
 
-**解决挑战**：
-- **环境适配**：开发、测试、生产环境的不同配置
-- **性能影响**：最小化日志对分析性能的影响
-- **并发安全**：多线程同时写入的安全性
+模块是零依赖设计（仅标准库，`Logger.h:3-9`），因此它可以被任何层包括最底层的基础模块引用，而不会引入循环依赖——这是它作为"地基"的必要条件。
 
-### 技术背景
+## 2. 在系统中的位置
 
-**设计模式**：
-- **Singleton Pattern**：全局唯一实例
-- **Meyer's Singleton**：C++11 线程安全保证
+Logger 在依赖图的最底层，被全栈使用：`grep` 统计 `LOG_INFO/LOG_DEBUG/LOG_WARNING/LOG_ERROR` 在 `src/` 下有 133 处调用，分布在 DLLAnalyzer、WindowsFilesAnalyzer、OSSAnalyzer、LLMIntegration、HTTPServer 路由等约 29 个文件。它是纯输出端：不读配置、不感知任务，谁都能调 `LOG_INFO(...)`。
 
-**实现特点**：
-- 零依赖（仅使用标准库）
-- 轻量级实现
-- 跨平台兼容
+一个重要的事实是：**没有任何生产代码调用 `setLevel`/`setOutput`**（全仓库检索仅测试文件调用）。因此单例永远以默认配置运行——级别 INFO、输出 STDOUT（`Logger.h:115-116` 的成员默认值）。换句话说，`.env` 里的 `LOG_LEVEL`、`LOG_FILE`、`DEBUG_OUTPUT_MODE` 虽然有对应的 ConfigManager getter（`src/core/ConfigManager/ConfigManager.cpp:181-183`），但从未被接到 Logger 上；PathManager 提供的 `getLogFilePath()`/`getDebugLogPath()`（`PathManager.cpp:92-98`）也只在系统信息接口里展示（`src/network/HTTPServer/routes/SystemInfoRoutes.cpp:242`），没有真正写日志文件。
 
-## 2. 模块功能
+## 3. 核心概念与设计
 
-### 核心功能
+**Meyer's 单例**（`Logger.cpp:5-8`）：函数内 `static Logger instance;`，C++11 起初始化线程安全。所有状态（级别、输出模式、文件流、互斥锁）都在实例里，全局唯一入口是 `Logger::instance()`。
 
-#### 1. 日志级别
+**两级过滤模型**。`log()` 是唯一的写入口（`Logger.cpp:60-75`）：先比级别（DEBUG=0 到 ERROR=3 的整数序，`Logger.h:16-21`），低于 `level_` 直接返回；再看输出模式，`NONE` 直接返回；通过后才格式化并写出。级别比较用 `static_cast<int>` 而非关系符重载，简单且无坑。
+
+**行格式**：`2026-08-23 14:03:21.123 [INFO] message`（`Logger.cpp:102-114`）。毫秒部分单独用 `duration_cast` 取余得到（`Logger.cpp:105-110`），因为 `put_time` 不支持毫秒。注意 `WARNING` 级别输出成 `[WARN]`（`Logger.cpp:120`）——解析日志时不要按完整单词匹配。
+
+**宏与编译期消除**（`Logger.h:126-136`）：
 
 ```cpp
-enum class LogLevel {
-    DEBUG = 0,    // 详细调试信息
-    INFO = 1,     // 一般信息
-    WARNING = 2,  // 警告信息
-    ERROR = 3     // 错误信息
-};
-```
-
-**级别过滤**：
-```cpp
-// 设置日志级别
-Logger::instance().setLevel(LogLevel::INFO);
-
-// INFO 及以上级别会输出，DEBUG 被过滤
-LOG_DEBUG("这条不会输出");
-LOG_INFO("这条会输出");
-LOG_WARNING("这条会输出");
-LOG_ERROR("这条会输出");
-```
-
-#### 2. 输出模式
-
-```cpp
-enum class LogOutput {
-    STDOUT,   // 输出到控制台
-    FILE,     // 输出到文件
-    NONE      // 禁用所有输出
-};
-```
-
-**STDOUT 模式**：
-```cpp
-Logger::instance().setOutput(LogOutput::STDOUT);
-LOG_INFO("输出到控制台");
-```
-
-**FILE 模式**：
-```cpp
-Logger::instance().setOutput(LogOutput::FILE, "forensics.log");
-LOG_INFO("写入到文件");
-```
-
-**NONE 模式**（静默）：
-```cpp
-Logger::instance().setOutput(LogOutput::NONE);
-LOG_ERROR("完全静默，不会输出");
-```
-
-#### 3. 便捷宏
-
-```cpp
-#define LOG_DEBUG(msg)   ::forensics::Logger::instance().debug(msg)
-#define LOG_INFO(msg)    ::forensics::Logger::instance().info(msg)
-#define LOG_WARNING(msg) ::forensics::Logger::instance().warning(msg)
-#define LOG_ERROR(msg)   ::forensics::Logger::instance().error(msg)
-
+#define LOG_DEBUG(msg) ::forensics::Logger::instance().debug(msg)
+...
 #ifdef NDEBUG
-    #define LOG_DEBUG_ONLY(msg) ((void)0)  // Release 模式编译掉
+    #define LOG_DEBUG_ONLY(msg) ((void)0)
 #else
-    #define LOG_DEBUG_ONLY(msg) LOG_DEBUG(msg)
+    #define LOG_DEBUG(msg) LOG_DEBUG(msg)
 #endif
 ```
 
-**使用示例**：
-```cpp
-LOG_DEBUG("Processing file: " + filename);
-LOG_INFO("Analysis completed successfully");
-LOG_WARNING("Large file detected: " + largeFilename);
-LOG_ERROR("Failed to open database: " + errorMessage);
+四个 `LOG_*` 宏只是转调；真正有编译期优化的是 `LOG_DEBUG_ONLY`——release 构建（定义 `NDEBUG`）下整体消失，连字符串构造都不发生。热循环里的高频调试输出应使用它而不是 `LOG_DEBUG`，后者即使被级别过滤掉，msg 字符串（往往是拼接产物）也已经构造完了。
 
-// Debug 模式专用（Release 模式完全编译掉）
-LOG_DEBUG_ONLY("Performance critical info: " + debugInfo);
-```
+**FILE 模式的失败回退**：`setOutput` 打不开文件时回退 STDOUT 并打一条 stderr 提示（`Logger.cpp:33-41`），保证"日志系统自身失败不拖死进程"。
 
-#### 4. 日志格式
+## 4. 工作流程走读
 
-**标准格式**：
-```
-[2024-03-11 14:30:45.123] [INFO] Analysis started
-[2024-03-11 14:30:46.456] [DEBUG] Processing file: evidence.dd
-[2024-03-11 14:30:47.789] [WARNING] Large file detected
-[2024-03-11 14:30:48.012] [ERROR] Database connection failed
-```
+一次 `LOG_WARNING("low disk: " + path)` 的完整路径：
 
-**时间戳精度**：毫秒级
+1. 宏展开为 `Logger::instance().warning(msg)`（`Logger.h:128`），`warning` 转调 `log(LogLevel::WARNING, msg)`（`Logger.cpp:52-54`）。
+2. `log()` 拿 `mutex_`（`Logger.cpp:61`），此后整个"过滤 + 格式化 + 写出"都在锁内——行完整性由此保证。
+3. 级别检查：WARNING(2) >= INFO(1)，通过（`Logger.cpp:64-66`）；若是 DEBUG 则在此被丢弃。
+4. `formatMessage` 生成带时间戳和级别标签的行（`Logger.cpp:73, 102-114`）。
+5. `write` 按当前模式输出：STDOUT 走 `std::cout << ... << std::endl`（每次 flush，`Logger.cpp:88-90`）；FILE 模式写入 `ofstream`（`Logger.cpp:91-94`），注意文件模式不会自动 flush，需要调用 `flush()`（`Logger.cpp:77-84`）才落盘。
 
-### 边界与限制
+## 5. 与其他模块的协作
 
-**功能边界**：
-- ❌ 不支持日志轮转（需外部工具如 logrotate）
-- ❌ 不支持多目标输出（同时输出到文件和终端）
-- ❌ 不支持结构化日志（JSON 格式）
-- ❌ 无网络日志功能
+- **ThreadPool 的 worker**：绝大多数调用发生在 worker 线程里，靠 Logger 内部互斥锁保证交错安全；Logger 不区分线程，输出里没有线程 ID——排查并发问题时可配合 AuditLog 的 task 维度。
+- **AuditLog**：分工是"Logger 给人看控制台，AuditLog 给系统留证据"。业务关键节点（任务创建、阶段切换、DB 初始化）两边都会写：例如 DatabaseManager 初始化同时打 `std::cout` 和 `AuditLog::instance().log("SYSTEM","DB_INIT",...)`（`DatabaseManager.cpp:49`）。
+- **ConfigManager / PathManager**：如第 2 节所述，配置项与路径函数已备好但未接线。如果要让 LOG_LEVEL 生效，应在 `main.cpp` 的启动序列里（`main.cpp:53-74`，PathManager/ConfigManager/AuditLog 初始化的同一段）加 `Logger::instance().setLevel(...)`。
+- 出错时行为：写文件失败不抛异常（ofstream 静默置错），最坏情况是日志丢失，进程不受影响——这是刻意的设计取舍。
 
-**已知限制**：
-| 限制 | 影响 | 缓解方法 |
-|------|------|----------|
-| 单一输出 | 不能同时输出到多个目标 | 使用外部工具重定向 |
-| 无轮转 | 长时间运行日志文件过大 | 使用 logrotate |
-| 格式固定 | 不能自定义格式 | 后处理或使用 AuditLog |
+## 6. 注意事项与已知问题
 
-## 3. 模块使用的库
+- **配置未接线是最大的坑**：`.env` 的 `LOG_LEVEL=DEBUG` 不会生效，服务永远只输出 INFO 及以上。需要 DEBUG 时当前只能改代码重新编译，或补上 main.cpp 里的初始化调用。
+- **每条日志一次锁 + 一次 endl flush**：STDOUT 模式下高频日志（如分类器逐文件打印）会成为吞吐瓶颈。现有代码里 FileClassifier 的逐文件统计是在循环结束后汇总打印（`FileClassifier.cpp:300-305`），遵守了这一约定。
+- FILE 模式无轮转：文件会无限增长，且当前没有生产调用方使用 FILE 模式，属于半成品能力。
+- `std::localtime` 非线程安全（`Logger.cpp:109`），但因为整段格式化都在 `mutex_` 内，实际被锁保护住了；如果将来把格式化移出锁，这里要换成 `localtime_r`。
 
-### 依赖库清单
+## 7. 如何验证与扩展
 
-**零外部依赖**：仅使用 C++ 标准库
+- 单元测试：`tests/UnitTest/test_logger.cpp`（`tests/CMakeLists.txt:782-789`，测试名 `LoggerTests`），覆盖级别过滤、输出模式切换等。
+- 快速验证：在任一 analyzer 里临时加 `LOG_DEBUG(...)`，默认配置下看不到输出；改 `LOG_INFO` 后可见——这个实验能直观确认"默认 INFO"。
+- 扩展建议：(1) 启动时从 ConfigManager 读取 LOG_LEVEL/LOG_FILE 完成接线（改动点在 `main.cpp:53` 之后）；(2) 输出行加线程 ID（`std::this_thread::get_id()`，改 `formatMessage`）；(3) 若需要异步化，参考 AuditLog 的写缓冲 + 后台刷盘线程模式（AuditLog.md 第 3 节），不要直接在 Logger 上加无界队列。
 
-```cpp
-#include <iostream>      // stdout
-#include <fstream>       // file output
-#include <mutex>         // thread safety
-#include <chrono>        // timestamp
-#include <sstream>       // formatting
-```
-
-### 架构图
-
-```mermaid
-classDiagram
-    class Logger {
-        -static Logger instance_
-        -LogLevel level_
-        -LogOutput output_
-        -std::ofstream file_
-        -mutable std::mutex mutex_
-        +static instance() Logger&
-        +setLevel(level)
-        +setOutput(mode, filePath)
-        +debug(msg)
-        +info(msg)
-        +warning(msg)
-        +error(msg)
-        -log(level, msg)
-        -write(msg)
-        -formatMessage(level, msg)
-    }
-
-    class LogLevel {
-        <<enumeration>>
-        DEBUG
-        INFO
-        WARNING
-        ERROR
-    }
-
-    class LogOutput {
-        <<enumeration>>
-        STDOUT
-        FILE
-        NONE
-    }
-```
-
-## 4. 模块实现方式
-
-### 核心类
-
-```cpp
-class Logger {
-public:
-    // Singleton
-    static Logger& instance();
-
-    // 删除复制操作
-    Logger(const Logger&) = delete;
-    Logger& operator=(const Logger&) = delete;
-
-    // 配置
-    void setLevel(LogLevel level);
-    LogLevel getLevel() const;
-    void setOutput(LogOutput output, const std::string& filePath = "debug.log");
-    LogOutput getOutput() const;
-
-    // 日志方法
-    void debug(const std::string& msg);
-    void info(const std::string& msg);
-    void warning(const std::string& msg);
-    void error(const std::string& msg);
-    void log(LogLevel level, const std::string& msg);
-
-    // 刷新
-    void flush();
-
-private:
-    Logger() = default;
-    ~Logger();
-
-    // 内部方法
-    void write(const std::string& formattedMsg);
-    std::string formatMessage(LogLevel level, const std::string& msg);
-    const char* levelToString(LogLevel level);
-
-    // 成员变量
-    LogLevel level_ = LogLevel::INFO;
-    LogOutput output_ = LogOutput::STDOUT;
-    std::ofstream file_;
-    mutable std::mutex mutex_;
-};
-```
-
-### Singleton 实现
-
-```cpp
-Logger& Logger::instance() {
-    static Logger instance;  // Meyer's singleton（C++11 线程安全）
-    return instance;
-}
-```
-
-**Meyer's Singleton 优势**：
-- C++11 保证线程安全的初始化
-- 自动析构
-- 零开销（无额外指针）
-
-### 日志记录实现
-
-```cpp
-void Logger::log(LogLevel level, const std::string& msg) {
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    // 级别过滤
-    if (level < level_) {
-        return;
-    }
-
-    // 输出模式过滤
-    if (output_ == LogOutput::NONE) {
-        return;
-    }
-
-    // 格式化消息
-    std::string formatted = formatMessage(level, msg);
-
-    // 写入
-    write(formatted);
-}
-
-std::string Logger::formatMessage(LogLevel level, const std::string& msg) {
-    auto now = std::chrono::system_clock::now();
-    auto time = std::chrono::system_clock::to_time_t(now);
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now.time_since_epoch()) % 1000;
-
-    std::ostringstream oss;
-    oss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S");
-    oss << '.' << std::setfill('0') << std::setw(3) << ms.count();
-    oss << " [" << levelToString(level) << "] " << msg;
-
-    return oss.str();
-}
-
-void Logger::write(const std::string& formattedMsg) {
-    switch (output_) {
-        case LogOutput::STDOUT:
-            std::cout << formattedMsg << std::endl;
-            break;
-        case LogOutput::FILE:
-            if (file_.is_open()) {
-                file_ << formattedMsg << std::endl;
-            } else {
-                // 文件打开失败，回退到 stdout
-                std::cout << formattedMsg << std::endl;
-            }
-            break;
-        case LogOutput::NONE:
-            // 静默模式
-            break;
-    }
-}
-```
-
-### 输出模式切换
-
-```cpp
-void Logger::setOutput(LogOutput output, const std::string& filePath) {
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    // 关闭旧文件流
-    if (file_.is_open()) {
-        file_.close();
-    }
-
-    output_ = output;
-
-    if (output == LogOutput::FILE && !filePath.empty()) {
-        // 打开文件（追加模式）
-        file_.open(filePath, std::ios::app);
-
-        if (!file_.is_open()) {
-            // 文件打开失败，回退到 stdout
-            std::cerr << "[Logger] Failed to open log file: " << filePath
-                      << ", falling back to stdout" << std::endl;
-            output_ = LogOutput::STDOUT;
-        }
-    }
-}
-```
-
-### 线程安全保证
-
-```cpp
-// 所有公共方法都使用 mutex 保护
-void Logger::info(const std::string& msg) {
-    std::lock_guard<std::mutex> lock(mutex_);  // 自动加锁/解锁
-    log(LogLevel::INFO, msg);
-}
-```
-
-**性能考虑**：
-- 最小化锁范围：仅在必要操作时持有锁
-- 级别过滤优先：在锁保护前过滤低级别日志
-- 字符串构建：仅在日志会输出时才构建
-
-## 5. API 调用
-
-### C++ API
-
-```cpp
-#include "core/Logger/Logger.h"
-
-using namespace forensics;
-
-// 1. 基础配置
-Logger::instance().setLevel(LogLevel::DEBUG);  // 开发环境
-Logger::instance().setOutput(LogOutput::STDOUT);
-
-// 2. 记录日志
-LOG_DEBUG("Debug message: variable = " + std::to_string(value));
-LOG_INFO("Application started successfully");
-LOG_WARNING("Configuration file not found, using defaults");
-LOG_ERROR("Failed to connect to database: " + errorMessage);
-
-// 3. 生产环境配置
-Logger::instance().setLevel(LogLevel::INFO);  // 过滤 DEBUG
-Logger::instance().setOutput(LogOutput::FILE, "forensics.log");
-
-// 4. 静默模式（性能测试）
-Logger::instance().setOutput(LogOutput::NONE);
-LOG_DEBUG("完全不会输出");
-
-// 5. 手动刷新
-Logger::instance().flush();
-
-// 6. 运行时配置切换
-if (isProduction()) {
-    Logger::instance().setLevel(LogLevel::WARNING);
-    Logger::instance().setOutput(LogOutput::FILE, "/var/log/forensics/app.log");
-} else {
-    Logger::instance().setLevel(LogLevel::DEBUG);
-    Logger::instance().setOutput(LogOutput::STDOUT);
-}
-```
-
-### 模块集成示例
-
-```cpp
-class ImageAnalyzer {
-public:
-    bool analyze(const std::string& imagePath) {
-        LOG_DEBUG("ImageAnalyzer::analyze() called with: " + imagePath);
-
-        if (!validatePath(imagePath)) {
-            LOG_ERROR("Invalid image path: " + imagePath);
-            return false;
-        }
-
-        LOG_INFO("Starting image analysis: " + imagePath);
-
-        try {
-            // 分析逻辑
-            processImage(imagePath);
-
-            LOG_INFO("Image analysis completed: " + imagePath);
-            return true;
-        } catch (const std::exception& e) {
-            LOG_ERROR("Exception during analysis: " + std::string(e.what()));
-            return false;
-        }
-    }
-};
-```
-
-### 环境特定配置
-
-**开发环境**：
-```cpp
-// main.cpp
-Logger::instance().setLevel(LogLevel::DEBUG);
-Logger::instance().setOutput(LogOutput::STDOUT);
-LOG_INFO("Application started in DEBUG mode");
-```
-
-**测试环境**：
-```cpp
-Logger::instance().setLevel(LogLevel::INFO);
-Logger::instance().setOutput(LogOutput::FILE, "test.log");
-LOG_INFO("Test suite started");
-```
-
-**生产环境**：
-```cpp
-Logger::instance().setLevel(LogLevel::WARNING);
-Logger::instance().setOutput(LogOutput::FILE, "/var/log/forensics/app.log");
-LOG_INFO("Production instance started");
-```
-
-## 6. 二次开发
-
-> **注意**：Logger 的 `formatMessage()`、`write()`、`setOutput()` 等方法均为非虚函数，不支持继承扩展。如需自定义行为，建议使用组合模式（wrapper）而非继承。
-
-### 包装器模式扩展
-
-```cpp
-// JSON 格式日志包装器
-class JsonLogger {
-public:
-    void log(LogLevel level, const std::string& msg) {
-        auto now = std::chrono::system_clock::now();
-        auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now.time_since_epoch()).count();
-
-        std::ostringstream oss;
-        oss << "{\"timestamp\":" << timestamp
-            << ",\"level\":\"" << levelToString(level) << "\""
-            << ",\"message\":\"" << msg << "\"}";
-
-        Logger::instance().log(level, oss.str());
-    }
-
-private:
-    const char* levelToString(LogLevel level) {
-        switch (level) {
-            case LogLevel::DEBUG:   return "DEBUG";
-            case LogLevel::INFO:    return "INFO";
-            case LogLevel::WARNING: return "WARNING";
-            case LogLevel::ERROR:   return "ERROR";
-            default:                return "UNKNOWN";
-        }
-    }
-};
-```
-
-### 日志轮转（外部脚本）
-
-由于 Logger 不支持内置轮转，推荐使用系统级 `logrotate`：
-
-```
-# /etc/logrotate.d/forensics
-/var/log/forensics/*.log {
-    daily
-    rotate 30
-    compress
-    missingok
-    notifempty
-}
-```
-
-## 7. 其他
-
-### 测试
-
-```bash
-cd build
-./test_logger_gtest
-
-# 运行特定测试
-./test_logger_gtest --gtest_filter="LoggerTest.LevelFiltering"
-```
-
-### 配合 logrotate
-
-**配置文件** (`/etc/logrotate.d/forensics`)：
-```
-/var/log/forensics/*.log {
-    daily
-    rotate 30
-    compress
-    delaycompress
-    missingok
-    notifempty
-    create 0640 forensics forensics
-    sharedscripts
-    postrotate
-        /bin/kill -USR1 $(cat /var/run/forensics.pid 2>/dev/null) 2>/dev/null || true
-    endscript
-}
-```
-
-### 故障排查
-
-| 问题 | 可能原因 | 解决方法 |
-|------|----------|----------|
-| 日志未输出 | 级别过滤 | 检查 setLevel() |
-| 文件未写入 | 权限问题 | 检查文件路径权限 |
-| 性能下降 | DEBUG 日志过多 | 提高日志级别 |
-| 乱码 | 编码问题 | 确保使用 UTF-8 |
-
-### 最佳实践
-
-1. **生产环境使用 WARNING 或更高级别**
-2. **开发环境可以使用 DEBUG**
-3. **关键路径使用 ERROR 级别**
-4. **使用有意义的日志消息**
-5. **避免在循环中频繁记录日志**
-6. **定期检查日志文件大小**
-
-### 相关模块
-
-- **[AuditLog](./AuditLog.md)** - 审计日志系统
-- **[ConfigManager](./ConfigManager.md)** - 配置管理
-
----
-
-**最后更新**: 2026-05-19
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（解释式重写）

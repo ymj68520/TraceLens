@@ -1,667 +1,80 @@
-# PathManager 模块文档
+# PathManager（src/core/PathManager/）
 
-## 1. 模块背景
+> **一句话**：进程级单例的"路径宪法"，把所有运行时路径（data 目录、任务目录、任务数据库命名、日志/审计文件位置、临时文件）锚定到可配置的 `DATA_DIR` 下，让程序从任何工作目录启动都把数据写到同一个地方。
 
-### 业务背景
+## 1. 为什么有这个模块
 
-在数字取证分析系统中，统一管理所有文件路径对于系统的可靠性和可维护性至关重要：
+取证服务刚起步时最容易出现的混乱是"数据写到哪去了"：用 systemd 启动时 CWD 是 `/`，手动启动时是仓库根，测试时又是 build 目录——于是 raw.db、tasks.json 散落各处，任务重启后找不到历史数据，清理时不知道删哪个目录。更隐蔽的是多分区并发：两个任务同时写 `tasks.json` 或互相覆盖同名数据库。
 
-**核心需求**：
-- **统一路径管理**：集中管理所有文件系统路径
-- **跨平台兼容**：Windows/Linux/macOS 路径处理
-- **任务隔离**：每个分析任务独立的目录结构
-- **自动创建**：自动创建必要的目录结构
+PathManager 用两条规则终结这类问题。第一，**一切路径从一个根推导**：根 = 可执行文件所在目录（运行时通过 `/proc/self/exe` 解析，不依赖 argv[0] 是否为相对路径），再叠加 `.env` 的 `PROJECT_ROOT`/`DATA_DIR` 覆盖。第二，**命名收敛到唯一函数**：每个任务的七个数据库文件名由 `getTaskDbPaths()` 一处定义（`PathManager.cpp:102-115`），HTTP 流水线、任务持久化、路由层都向它要路径，拼写漂移（`raw.db` vs `image_raw.db`）从此不可能发生。
 
-**解决挑战**：
-- **路径硬编码**：消除硬编码的路径字符串
-- **平台差异**：处理不同操作系统的路径格式
-- **相对路径**：正确处理相对路径和符号链接
-- **目录组织**：合理组织任务数据和输出
+## 2. 在系统中的位置
 
-### 技术背景
+PathManager 是启动序列的第一块基石：`main()` 先 `PathManager::instance().initialize(argv[0])`，**然后**才能加载 `.env`（因为 ConfigManager 找配置文件时要用 exeDir/projectRoot，见 ConfigManager.cpp:26-31），最后用配置回写 PROJECT_ROOT/DATA_DIR 并创建目录树（`main.cpp:53-66`）。这个"先初始化、后覆盖"的顺序是刻意的：配置文件本身的位置也依赖 PathManager。
 
-**设计模式**：
-- **Singleton Pattern**：全局唯一路径管理器
-- **Service Locator Pattern**：集中路径查询服务
+下游消费者遍布 HTTP 层与分析层：TaskPersistence（`data/tasks.json`）、TaskManagerAnalysis（任务库路径）、各路由（SearchRoutes、FileExtractionRoutes、TaskCRUDRoutes、CaseManager 等）、以及 ImageAnalyzer/AndroidAnalyzer 等分析器。它不调用任何业务模块，只依赖 `<filesystem>`。
 
-**文件系统技术**：
-- **C++17 std::filesystem**：现代跨平台文件系统 API
-- **符号链接解析**：使用 `fs::canonical()` 解析链接
-
-## 2. 模块功能
-
-### 核心功能
-
-#### 1. 可执行文件路径解析
-
-**路径解析策略**：
-```cpp
-void PathManager::initialize(const std::string& executablePath) {
-    namespace fs = std::filesystem;
-
-    fs::path exePath;
-
-    // Linux: 使用 /proc/self/exe（最可靠）
-#ifdef __linux__
-    if (fs::exists("/proc/self/exe")) {
-        exePath = fs::canonical("/proc/self/exe");
-    } else
-#endif
-    {
-        // 其他平台：使用 argv[0]
-        exePath = fs::canonical(executablePath);
-    }
-
-    exeDir_ = exePath.parent_path();
-}
+```
+main.cpp 启动序列（顺序敏感）:
+  PathManager.initialize(argv[0])      # 解析 exeDir
+  ConfigManager.load(".env")           # 借助 exeDir/projectRoot 找 .env
+  setProjectRoot / setDataDirName      # .env 覆盖生效
+  ensureDirectories()                  # 建 data/ 树
+  ── 之后所有模块通过 instance() 取路径 ──
 ```
 
-**特性**：
-- **Linux 优化**：优先使用 `/proc/self/exe`
-- **符号链接解析**：自动解析所有符号链接
-- **回退机制**：失败时回退到当前工作目录
+## 3. 核心概念与设计
 
-#### 2. 数据库目录管理
+**三层路径模型**：`exeDir_`（可执行文件目录，不可变）→ `projectRoot_`（默认等于 exeDir，可被 PROJECT_ROOT 覆盖）→ `dataDir_ = projectRoot / dataDirName_`（dataDirName_ 默认 `"data"`，可被 DATA_DIR 覆盖；若 DATA_DIR 是绝对路径则直接使用，`PathManager.cpp:60-66`）。这个小逻辑是"同机部署改根目录、容器部署给挂载卷"的开关。
 
-**目录结构**：
+**exeDir 解析的容错**：优先 `/proc/self/exe`（Linux 上最可靠，解析符号链接后的真实路径），失败才退回 `canonical(argv[0])`，再失败退回当前目录并打警告（`PathManager.cpp:16-35`）。这保证了通过 symlink 启动、或从其他目录用相对路径调用时行为一致。
+
+**任务目录布局**是整个系统数据组织的核心约定，由 `getTaskDbPaths()` 定义（`PathManager.cpp:102-115`）：
+
 ```
-<exe_dir>/data/
-├── tasks.json                    # 任务注册表
-├── tasks/                        # 任务目录
-│   ├── task_abc123/             # 任务专属目录
-│   │   ├── raw.db               # 原始元数据
-│   │   ├── events.db            # 时间线事件
-│   │   ├── files.db             # 文件分类
-│   │   ├── android.db           # Android 工件
-│   │   ├── windows.db           # Windows 工件
-│   │   ├── linux.db             # Linux 工件
-│   │   └── extracted_files/     # 提取的文件
-│   └── task_def456/
-│       └── ...
-├── audit/                        # 审计日志
-│   └── forensics_audit.db
-└── logs/                         # 应用日志
-    ├── forensics.log
-    └── debug.log
+data/
+├── tasks.json                  # 任务列表持久化（getTasksJsonPath, :84-86）
+├── tasks/<task_id>/            # getTaskDir（按需创建, ensureTaskDir :110-113）
+│   ├── raw.db / events.db / files.db      # 三段流水线产物
+│   ├── android.db / windows.db / linux.db / oss.db   # 平台库
+│   └── extracted_files/        # getTaskExtractDir（:120-122）
+├── audit/                      # getAuditDir（:74-76）
+└── logs/                       # getLogsDir（:78-80）
 ```
 
-**路径查询**：
-```cpp
-auto& pm = PathManager::instance();
+`getTaskDbPaths` 的 `imageName` 参数是**死参数**——历史上任务库以镜像名命名，现在改为固定文件名，参数保留只为兼容旧调用（`PathManager.cpp:103-104` 的注释）。
 
-// 核心目录
-fs::path dataDir = pm.getDataDir();           // <exe_dir>/data/
-fs::path auditDir = pm.getAuditDir();         // <exe_dir>/data/audit/
-fs::path logsDir = pm.getLogsDir();           // <exe_dir>/data/logs/
+**临时路径生成**（`makeTempPath`，`PathManager.cpp:137-145`）用"pid + 线程 id 哈希 + 进程内原子计数器"三元组保证多线程、多进程下不碰撞，供挂载点、解密中间文件等场景使用。
 
-// 任务目录
-fs::path taskDir = pm.getTaskDir("task_abc123");
-fs::path extractDir = pm.getTaskExtractDir("task_abc123");
+## 4. 工作流程走读
 
-// 特定文件
-fs::path tasksJson = pm.getTasksJsonPath();   // <exe_dir>/data/tasks.json
-fs::path auditDb = pm.getAuditDbPath();       // <exe_dir>/data/audit/forensics_audit.db
-fs::path logFile = pm.getLogFilePath();       // <exe_dir>/data/logs/forensics.log
-```
+以一次 HTTP 分析任务创建路径为例：
 
-#### 3. 任务数据库路径
+1. 服务启动：`initialize(argv[0])` 解析出 exeDir（`PathManager.cpp:12-40`）；`main.cpp:61-65` 读到 `PROJECT_ROOT`/`DATA_DIR` 后调用 `setProjectRoot`/`setDataDirName`（空串被忽略，`PathManager.cpp:119-129`，防止误把根清空）；`ensureDirectories()` 用 `create_directories` 建好 data/ 四个子目录（`PathManager.cpp:42-48`，幂等）。
+2. TaskManager 收到新任务，生成 UUID，调用 `getTaskDbPaths(taskId)` 一次性拿到七个库路径（`PathManager.cpp:102-115`），`ensureTaskDir` 顺带创建任务目录。
+3. 流水线各阶段向这些路径写库；任务状态变化时 TaskPersistence 写 `getTasksJsonPath()`。
+4. 路由层收到查询请求，同样用 `getTaskDir(taskId)` 拼出库文件路径——写方和读方引用同一函数，天然一致。
 
-**TaskDbPaths 结构**：
-```cpp
-struct TaskDbPaths {
-    std::filesystem::path rawDb;        // raw.db
-    std::filesystem::path eventsDb;     // events.db
-    std::filesystem::path filesDb;      // files.db
-    std::filesystem::path androidDb;    // android.db
-    std::filesystem::path ossDb;        // oss.db
-    std::filesystem::path windowsDb;    // windows.db
-    std::filesystem::path linuxDb;      // linux.db
-};
-```
+## 5. 与其他模块的协作
 
-**获取任务数据库路径**：
-```cpp
-auto dbPaths = PathManager::instance().getTaskDbPaths(
-    "task_abc123",
-    "evidence.dd"  // 可选参数，默认为空
-);
+- **ConfigManager**：双向依赖的解法是"时序"——ConfigManager 找 `.env` 时调用 `PathManager::getExeDir()/getProjectRoot()`（`ConfigManager.cpp:26-31`，带 try/catch，因为此时 PathManager 可能未初始化）；反向地，main.cpp 把 ConfigManager 读到的 PROJECT_ROOT/DATA_DIR 回写给 PathManager。
+- **TaskManager/TaskPersistence/TaskWatchdog**：任务目录与 `data/tasks.json` 的唯一权威来源；Watchdog 判僵死、断点续跑都依赖这套稳定布局。
+- **AuditLog**：注意一个**未接线点**——PathManager 提供 `getAuditDbPath()`（`data/audit/forensics_audit.db`，`PathManager.cpp:88-90`），但 main.cpp 配置 AuditLog 时用的是 `AUDIT_LOG_DB` 环境变量、默认相对路径 `forensics_audit.db`（`main.cpp:70`），即审计库实际落在 CWD 而非 data/audit/。仓库根目录能看到 `forensics_audit.db` 就是这个原因（详见 AuditLog.md 第 6 节）。
+- **FullTextSearch/SearchRoutes**：`FTS_ALLOWED_ROOT` 未设置时以 `getDataDir()` 作为索引允许根（`SearchRoutes.cpp:17-24`），PathManager 由此参与安全边界。
+- 出错时行为：目录创建失败会在调用 `std::filesystem` 处抛异常，由上层 try/catch 转成任务失败；`initialize` 自身不抛（内部捕获，回退 CWD）。
 
-// 访问各个数据库路径
-std::string rawDbPath = dbPaths.rawDb.string();      // .../task_abc123/raw.db
-std::string eventsDbPath = dbPaths.eventsDb.string(); // .../task_abc123/events.db
-```
+## 6. 注意事项与已知问题
 
-#### 4. 自动目录创建
+- **调用顺序是硬约束**：任何 `get*` 前必须 `initialize()`。未初始化时 exeDir/projectRoot 为空，相对 DATA_DIR 会拼出 `data/...` 相对路径（行为等于回到 CWD 时代）。ConfigManager 已做防御（`isInitialized()` 检查，`ConfigManager.cpp:27`），新代码也应检查。
+- `getAuditDbPath()` 目前没有生产调用方（见上），属于"规划中但未接线"的 API；接线时应把 main.cpp:70 的默认值改成它。
+- `setDataDirName`/`setProjectRoot` 忽略空串（`PathManager.cpp:119-129`），这是特性也是坑：想"清掉覆盖、回到默认"做不到，只能重启进程。
+- DATA_DIR 设为绝对路径时 projectRoot 完全不影响数据位置——容器/CI 场景常用（`main.cpp:59` 注释提到的 isolated acceptance runs 即此用法）。
+- 线程安全说明：getter 都是无状态读，但 `setProjectRoot`/`setDataDirName` 与并发读之间无锁；实践中它们只在 main 启动单线程阶段被调用，勿在运行期调用。
 
-**确保目录存在**：
-```cpp
-PathManager::instance().ensureDirectories();
+## 7. 如何验证与扩展
 
-// 自动创建：
-// - <exe_dir>/data/
-// - <exe_dir>/data/tasks/
-// - <exe_dir>/data/audit/
-// - <exe_dir>/data/logs/
-```
+- 单元测试：PathManager 没有独立的 gtest 目标；最直接的验证是运行 `./run.sh` 启动服务、创建一个任务，然后检查 `data/tasks/<uuid>/` 下七个库文件是否齐备。
+- 快速实验：分别用 `DATA_DIR=/tmp/tl_data ./forensic_analyzer ...` 和默认配置各跑一次，对比数据落点，验证第 3 节的绝对路径规则。
+- 扩展场景入手点：(1) 接线审计库路径——改 `main.cpp:69-74` 用 `getAuditDbPath().string()` 作为默认值；(2) 新增任务级产物目录（如 carved_files）——在 `PathManager.h:120-122` 旁加一个 `getTaskDir(id) / "carved_files"` 的内联函数，并在使用方统一改调它，不要在业务代码里手拼字符串。
 
-**任务目录创建**：
-```cpp
-std::string taskId = "task_new";
-PathManager::instance().ensureTaskDir(taskId);
-
-// 自动创建：<exe_dir>/data/tasks/task_new/
-```
-
-#### 5. 配置与自定义
-
-**设置数据目录**：
-```cpp
-// 默认：data
-PathManager::instance().setDataDirName("data");
-
-// 自定义：使用不同的数据目录名
-PathManager::instance().setDataDirName("forensics_data");
-```
-
-**设置项目根目录**：
-```cpp
-// 从配置文件读取
-std::string projectRoot = ConfigManager::instance().get("PROJECT_ROOT", "");
-PathManager::instance().setProjectRoot(projectRoot);
-```
-
-### 边界与限制
-
-**功能边界**：
-- ❌ 不支持网络路径（UNC、SMB）
-- ❌ 不支持路径通配符
-- ❌ 不处理路径权限问题
-
-**已知限制**：
-| 限制 | 影响 | 缓解方法 |
-|------|------|----------|
-| 相对路径依赖 | 启动位置影响路径 | 使用绝对路径 |
-| 符号链接循环 | 可能导致解析失败 | 捕获异常并回退 |
-| 权限问题 | 无法创建目录 | 检查并报告权限 |
-
-## 3. 模块使用的库
-
-### 依赖库清单
-
-**零外部依赖**：仅使用 C++17 标准库
-
-```cpp
-#include <filesystem>  // C++17 文件系统
-#include <string>
-```
-
-### 架构图
-
-```mermaid
-graph TD
-    A[PathManager] --> B[可执行文件目录]
-    A --> C[数据目录]
-    A --> D[任务目录]
-
-    C --> E[审计目录]
-    C --> F[日志目录]
-    C --> G[Tasks 目录]
-
-    G --> H[任务 1 目录]
-    G --> I[任务 2 目录]
-    G --> J[任务 N 目录]
-
-    H --> K[数据库文件]
-    H --> L[提取文件目录]
-
-    style A fill:#e1f5fe
-    style C fill:#ffe1e1
-    style G fill:#fff4e1
-```
-
-## 4. 模块实现方式
-
-### 核心类
-
-```cpp
-class PathManager {
-public:
-    // Singleton
-    static PathManager& instance();
-
-    // 初始化
-    void initialize(const std::string& executablePath);
-    bool isInitialized() const;
-
-    // 配置
-    void setDataDirName(const std::string& name);
-    void setProjectRoot(const std::string& root);
-
-    // 核心目录
-    std::filesystem::path getExeDir() const;
-    std::filesystem::path getProjectRoot() const;
-    std::filesystem::path getDataDir() const;
-
-    // 子目录
-    std::filesystem::path getTaskDir(const std::string& taskId) const;
-    std::filesystem::path getTaskExtractDir(const std::string& taskId) const;
-    std::filesystem::path getAuditDir() const;
-    std::filesystem::path getLogsDir() const;
-
-    // 特定文件
-    std::filesystem::path getTasksJsonPath() const;
-    std::filesystem::path getAuditDbPath() const;
-    std::filesystem::path getLogFilePath() const;
-    std::filesystem::path getDebugLogPath() const;
-
-    // 任务数据库
-    TaskDbPaths getTaskDbPaths(const std::string& taskId,
-                              const std::string& imageName = "") const;
-
-    // 目录管理
-    void ensureDirectories() const;
-    void ensureTaskDir(const std::string& taskId) const;
-
-    // 临时目录
-    std::filesystem::path getTempDir() const;
-    std::string makeTempPath(const std::string& prefix,
-                             const std::string& suffix = "") const;
-
-private:
-    PathManager() = default;
-    ~PathManager() = default;
-
-    // 成员变量
-    bool initialized_ = false;
-    std::filesystem::path exeDir_;
-    std::filesystem::path projectRoot_;
-    std::string dataDirName_ = "data";
-};
-```
-
-### 初始化实现
-
-```cpp
-void PathManager::initialize(const std::string& executablePath) {
-    namespace fs = std::filesystem;
-
-    fs::path exePath;
-
-    try {
-        // Linux 特定优化
-#ifdef __linux__
-        if (fs::exists("/proc/self/exe")) {
-            exePath = fs::canonical("/proc/self/exe");
-        } else
-#endif
-        {
-            // 使用提供的路径
-            exePath = fs::canonical(executablePath);
-        }
-
-        exeDir_ = exePath.parent_path();
-        projectRoot_ = exeDir_;  // 默认项目根目录
-
-        initialized_ = true;
-
-    } catch (const fs::filesystem_error& e) {
-        // 回退到当前工作目录
-        exeDir_ = fs::current_path();
-        projectRoot_ = exeDir_;
-        initialized_ = true;
-
-        std::cerr << "[PathManager] Warning: could not resolve executable path, "
-                  << "falling back to CWD: " << exeDir_ << std::endl;
-    }
-}
-```
-
-### 目录管理
-
-```cpp
-void PathManager::ensureDirectories() const {
-    namespace fs = std::filesystem;
-
-    try {
-        fs::create_directories(getDataDir());
-        fs::create_directories(getDataDir() / "tasks");
-        fs::create_directories(getAuditDir());
-        fs::create_directories(getLogsDir());
-
-    } catch (const fs::filesystem_error& e) {
-        std::cerr << "[PathManager] Failed to create directories: "
-                  << e.what() << std::endl;
-    }
-}
-
-void PathManager::ensureTaskDir(const std::string& taskId) const {
-    namespace fs = std::filesystem;
-
-    try {
-        auto taskDir = getTaskDir(taskId);
-        fs::create_directories(taskDir);
-
-    } catch (const fs::filesystem_error& e) {
-        std::cerr << "[PathManager] Failed to create task directory: "
-                  << e.what() << std::endl;
-    }
-}
-```
-
-### 任务数据库路径
-
-```cpp
-TaskDbPaths PathManager::getTaskDbPaths(
-    const std::string& taskId,
-    const std::string& imageName) const {
-
-    TaskDbPaths paths;
-    auto taskDir = getTaskDir(taskId);
-
-    // 基础数据库名称
-    std::string baseName = fs::path(imageName).stem().string();
-
-    paths.rawDb = taskDir / (baseName + "_raw.db");
-    paths.eventsDb = taskDir / (baseName + "_events.db");
-    paths.filesDb = taskDir / (baseName + "_files.db");
-    paths.androidDb = taskDir / (baseName + "_android.db");
-    paths.windowsDb = taskDir / (baseName + "_windows.db");
-    paths.linuxDb = taskDir / (baseName + "_linux.db");
-    paths.ossDb = taskDir / (baseName + "_oss.db");
-
-    return paths;
-}
-```
-
-## 5. API 调用
-
-### C++ API
-
-```cpp
-#include "core/PathManager/PathManager.h"
-
-// 1. 初始化（在 main 函数开始）
-PathManager::instance().initialize(argv[0]);
-
-// 2. 加载配置后更新路径
-auto& config = ConfigManager::instance();
-if (config.load(".env")) {
-    PathManager::instance().setProjectRoot(config.get("PROJECT_ROOT", ""));
-    PathManager::instance().setDataDirName(config.get("DATA_DIR", "data"));
-}
-
-// 3. 创建必要目录
-PathManager::instance().ensureDirectories();
-
-// 4. 获取各种路径
-auto& pm = PathManager::instance();
-
-// 核心目录
-std::cout << "Executable: " << pm.getExeDir() << std::endl;
-std::cout << "Data dir: " << pm.getDataDir() << std::endl;
-std::cout << "Logs dir: " << pm.getLogsDir() << std::endl;
-
-// 5. 任务路径
-std::string taskId = "task_" + generateId();
-pm.ensureTaskDir(taskId);
-
-auto dbPaths = pm.getTaskDbPaths(taskId, "evidence.dd");
-std::string rawDbPath = dbPaths.rawDb.string();
-
-// 6. 审计日志路径
-auto auditConfig = AuditLogConfig{};
-auditConfig.db_path = pm.getAuditDbPath().string();
-AuditLog::instance(auditConfig);
-
-// 7. 日志文件路径
-Logger::instance().setOutput(LogOutput::FILE, pm.getLogFilePath().string());
-```
-
-### 集成到应用启动
-
-```cpp
-// main.cpp
-int main(int argc, char* argv[]) {
-    // 1. 初始化 PathManager（最先执行）
-    PathManager::instance().initialize(argv[0]);
-    PathManager::instance().ensureDirectories();
-
-    // 2. 加载配置
-    auto& config = ConfigManager::instance();
-    config.load(".env");
-
-    // 3. 更新路径（根据配置）
-    PathManager::instance().setProjectRoot(config.get("PROJECT_ROOT", ""));
-    PathManager::instance().setDataDirName(config.get("DATA_DIR", "data"));
-
-    // 4. 使用路径初始化其他组件
-    AuditLogConfig auditConfig;
-    auditConfig.db_path = PathManager::instance().getAuditDbPath().string();
-    AuditLog::instance(auditConfig);
-
-    std::string logFile = PathManager::instance().getLogFilePath().string();
-    Logger::instance().setOutput(LogOutput::FILE, logFile);
-
-    // 5. 继续应用初始化
-    // ...
-}
-```
-
-### 任务管理集成
-
-```cpp
-// TaskManager 使用 PathManager
-Task TaskManager::createTask(const std::string& type, const nlohmann::json& params) {
-    Task task;
-    task.id = generateTaskId();
-    task.type = type;
-    task.status = TaskStatus::PENDING;
-
-    // 设置任务目录
-    task.extraction_directory = PathManager::instance()
-        .getTaskExtractDir(task.id).string();
-
-    // 确保目录存在
-    PathManager::instance().ensureTaskDir(task.id);
-
-    // 设置数据库路径
-    auto dbPaths = PathManager::instance().getTaskDbPaths(
-        task.id,
-        params.value("image_path", "evidence.dd")
-    );
-
-    task.databases["raw"] = dbPaths.rawDb.string();
-    task.databases["events"] = dbPaths.eventsDb.string();
-    task.databases["files"] = dbPaths.filesDb.string();
-
-    return task;
-}
-```
-
-### 配置文件集成
-
-```cpp
-// ConfigManager 使用 PathManager 搜索 .env 文件
-bool ConfigManager::load(const std::string& envPath) {
-    std::vector<std::string> searchPaths;
-
-    // 1. 显式路径
-    if (!envPath.empty()) {
-        searchPaths.push_back(envPath);
-    }
-
-    // 2. 可执行文件目录
-    if (PathManager::instance().isInitialized()) {
-        searchPaths.push_back(
-            (PathManager::instance().getExeDir() / ".env").string()
-        );
-        searchPaths.push_back(
-            (PathManager::instance().getExeDir() / "config" / ".env").string()
-        );
-    }
-
-    // 3. 项目根目录
-    if (PathManager::instance().isInitialized()) {
-        searchPaths.push_back(
-            (PathManager::instance().getProjectRoot() / ".env").string()
-        );
-    }
-
-    // 尝试加载
-    for (const auto& path : searchPaths) {
-        if (tryLoad(path)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-```
-
-## 6. 二次开发
-
-### 添加新的路径类型
-
-```cpp
-class PathManager {
-public:
-    // 新增：备份目录
-    std::filesystem::path getBackupDir() const {
-        return getDataDir() / "backups";
-    }
-
-    // 新增：临时文件目录
-    std::filesystem::path getTempDir() const {
-        return getDataDir() / "temp";
-    }
-
-    // 新增：报告目录
-    std::filesystem::path getReportsDir() const {
-        return getDataDir() / "reports";
-    }
-
-    // 新增：插件目录
-    std::filesystem::path getPluginsDir() const {
-        return getProjectRoot() / "plugins";
-    }
-};
-
-// 使用
-auto backupDir = PathManager::instance().getBackupDir();
-std::filesystem::create_directories(backupDir);
-```
-
-### 自定义任务目录结构
-
-```cpp
-struct ExtendedTaskDbPaths : public TaskDbPaths {
-    std::filesystem::path thumbnailsDb;   // 缩略图数据库
-    std::filesystem::path ocrDb;          // OCR 结果数据库
-    std::filesystem::path hashesDb;       // 文件哈希数据库
-};
-
-ExtendedTaskDbPaths PathManager::getExtendedTaskDbPaths(
-    const std::string& taskId,
-    const std::string& imageName) const {
-
-    ExtendedTaskDbPaths paths;
-    auto taskDir = getTaskDir(taskId);
-    std::string baseName = fs::path(imageName).stem().string();
-
-    // 基础路径
-    static_cast<TaskDbPaths&>(paths) = getTaskDbPaths(taskId, imageName);
-
-    // 扩展路径
-    paths.thumbnailsDb = taskDir / (baseName + "_thumbnails.db");
-    paths.ocrDb = taskDir / (baseName + "_ocr.db");
-    paths.hashesDb = taskDir / (baseName + "_hashes.db");
-
-    return paths;
-}
-```
-
-### 路径验证
-
-```cpp
-class PathManager {
-public:
-    struct ValidationResult {
-        bool valid;
-        std::vector<std::string> errors;
-        std::vector<std::string> warnings;
-    };
-
-    ValidationResult validatePaths() const {
-        ValidationResult result;
-        result.valid = true;
-
-        // 检查可执行目录
-        if (!fs::exists(exeDir_)) {
-            result.valid = false;
-            result.errors.push_back("Executable directory does not exist");
-        }
-
-        // 检查数据目录
-        auto dataDir = getDataDir();
-        if (!fs::exists(dataDir)) {
-            result.warnings.push_back("Data directory does not exist");
-        }
-
-        // 检查写入权限
-        std::ofstream test(dataDir / "test.tmp");
-        if (!test) {
-            result.valid = false;
-            result.errors.push_back("No write permission to data directory");
-        } else {
-            test.close();
-            fs::remove(dataDir / "test.tmp");
-        }
-
-        return result;
-    }
-};
-```
-
-## 7. 其他
-
-### 测试
-
-```bash
-cd build
-./test_path_manager
-
-# 测试路径解析
-./test_path_manager --test-resolution
-
-# 测试目录创建
-./test_path_manager --test-directories
-```
-
-### 故障排查
-
-| 问题 | 可能原因 | 解决方法 |
-|------|----------|----------|
-| 路径未初始化 | 未调用 initialize() | 在 main 开始时调用 |
-| 目录创建失败 | 权限不足 | 检查文件系统权限 |
-| 相对路径错误 | 工作目录不正确 | 使用绝对路径 |
-| 符号链接循环 | 文件系统循环链接 | 捕获异常 |
-
-### 最佳实践
-
-1. **首先初始化 PathManager**
-2. **使用 ensureDirectories() 创建必要目录**
-3. **优先使用绝对路径**
-4. **检查路径存在性**
-5. **处理文件系统异常**
-6. **文档化自定义路径**
-
-### 相关模块
-
-- **[ConfigManager](./ConfigManager.md)** - 配置管理
-- **[TaskManager](../network/TaskManager.md)** - 任务管理
-- **[AuditLog](./AuditLog.md)** - 审计日志
-
----
-
-**最后更新**: 2026-05-19
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（解释式重写）
