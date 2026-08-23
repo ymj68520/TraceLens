@@ -19,7 +19,7 @@
 但验证源码得到的现状链条是：
 
 1. **路由未注册**：`HTTPServer` 构造函数只实例化 Task/Forensics/System/Search/CaseCRUD/Filter 六组路由（`HTTPserver.cpp:63-75`，`HTTPserver.h:20-25` 的 include 清单同样没有 OSS）。注册逻辑存在于 `OSSRoutes.cpp`/`OSSRoutes_new.cpp`，但没有任何人调用它们——前端 OSS 页面请求会落到 SPA 兜底路由，拿到的是 404。
-2. **路由内部也未完工**：即便注册了，`run_analysis_job` 目前是"睡 100ms 然后标记完成"的占位（`OSSAnalysisRoutes.cpp:221-230` 的注释原话 "Placeholder implementation"）；AI 三条路由直接返回 503"Python service not yet integrated"；下载对象返回 501 Not Implemented。
+2. **路由内部也未完工**：即便注册了，`run_analysis_job` 目前是"睡 100ms 然后标记完成"的占位（`OSSAnalysisRoutes.cpp:222-230` 的注释原话 "Placeholder implementation"）；AI 三条路由直接返回 503"Python service not yet integrated"；下载对象返回 501 Not Implemented。
 3. **因此 OSSAnalyzer 类没有任何生产调用方**——它只在单元测试（`tests/UnitTest/test_oss_analyzer_gtest.cpp`）里被构造过。
 
 换言之：**分析器本身（OSSClient/OSSAnalyzer/oss.db）是成品，外层的接线（路由注册 + job 执行体）是半成品**。另外注意：HTTP 任务里 SERVER_CLOUD 场景产出的 `<镜像>_oss.db` 与本模块无关（那是 LinuxFilesAnalyzer 借用了 oss.db 这个文件名，见 `TaskManagerAnalysis.cpp:508-510`）；本模块的 oss.db 是独立的库，schema 来自 `oss_sql.h`。
@@ -41,15 +41,15 @@
 
 ## 4. 解析机制走读
 
-**链路一：API 模式的对象编目（`analyzeFromAPI`，`Core/OSSAnalyzerCore.cpp:68-122`）。** 先取 Bucket 信息落 oss_buckets，然后开一个事务，`client_->listAllObjects` 流式回调逐对象插入（每 100 个报一次进度，回调里给每条记录盖上 `analyzedAt` 时间戳），最后用实际对象数回写 Bucket 统计。事务包裹保证"半途网络断掉不会留半本账"。
+**链路一：API 模式的对象编目（`analyzeFromAPI`，`Core/OSSAnalyzerCore.cpp:66-122`）。** 先取 Bucket 信息落 oss_buckets，然后开一个事务，`client_->listAllObjects` 流式回调逐对象插入（每 100 个报一次进度，回调里给每条记录盖上 `analyzedAt` 时间戳），最后用实际对象数回写 Bucket 统计。事务包裹保证"半途网络断掉不会留半本账"。
 
-**链路二：访问日志的行解析（`parseAccessLogLine`，`Core/OSSAnalyzerCore.cpp:374-400`）。** OSS 访问日志是类 Apache Combined 格式（空格分隔、请求行与引号字段包裹），这里用一个正则一次性捕获八个字段：`IP - - [时间] "METHOD /path HTTP/x" status bytes "referer" "ua"`，再从请求行里拆出方法与对象 key。诚实标注：时间戳字段当前**没有真正解析**（`entry.timestamp = 0; // 实际应解析 match[2]`，第 389-390 行），做时间线排序前需要先补上这段。
+**链路二：访问日志的行解析（`parseAccessLogLine`，`Core/OSSAnalyzerCore.cpp:374-410`）。** OSS 访问日志是类 Apache Combined 格式（空格分隔、请求行与引号字段包裹），这里用一个正则一次性捕获八个字段：`IP - - [时间] "METHOD /path HTTP/x" status bytes "referer" "ua"`，再从请求行里拆出方法与对象 key。诚实标注：时间戳字段当前**没有真正解析**（`entry.timestamp = 0; // 实际应解析 match[2]`，第 388 行），做时间线排序前需要先补上这段。
 
-**链路三：离线目录模式（`parseLocalDirectory`，`Core/OSSAnalyzerCore.cpp:130-160`）。** 事务内递归遍历，把每个文件的 `fs` 元数据（大小、修改时间）包装成 `OSSObjectInfo`，相对路径拼上 prefix 作为对象 key——这使"从 OSS 同步下来的目录"和"API 拉到的清单"在 oss_objects 里结构一致，后续查询/统计/AI 过滤不用区分来源。
+**链路三：离线目录模式（`parseLocalDirectory`，`Core/OSSAnalyzerCore.cpp:131-160`）。** 事务内递归遍历，把每个文件的 `fs` 元数据（大小、修改时间）包装成 `OSSObjectInfo`，相对路径拼上 prefix 作为对象 key——这使"从 OSS 同步下来的目录"和"API 拉到的清单"在 oss_objects 里结构一致，后续查询/统计/AI 过滤不用区分来源。
 
 ## 5. 与 LLM 的协作（设计中的 Python 协作）
 
-设计上 OSS 的 AI 能力放在 Python 服务侧：`/api/forensics/oss/ai/filter`（AI 筛选相关文件）与 `/ai/analyze`，注释指向 `python_service/httpserver/routes/oss_analysis.py`。C++ 侧目前只返回 503 占位（`OSSAnalysisRoutes.cpp:229-273`），真正的协作尚未发生。可参照的现成模式是 OfficeAnalyzer 经 `PYTHON_SERVICE_URL` 调 Python `/api/office/parse` 的跨服务调用。
+设计上 OSS 的 AI 能力放在 Python 服务侧：`/api/forensics/oss/ai/filter`（AI 筛选相关文件）与 `/ai/analyze`，注释指向 `python_service/httpserver/routes/oss_analysis.py`。C++ 侧目前只返回 503 占位（`OSSAnalysisRoutes.cpp:233-290`），真正的协作尚未发生。可参照的现成模式是 OfficeAnalyzer 经 `PYTHON_SERVICE_URL` 调 Python `/api/office/parse` 的跨服务调用。
 
 ## 6. 与其他模块的协作 / 注意事项
 
