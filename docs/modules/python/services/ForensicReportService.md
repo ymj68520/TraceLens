@@ -197,4 +197,74 @@ os.replace(staging, final_dir)
 - final 链：`test_final_report_assembly.py`、`test_final_report_repository.py`、`test_final_report_presentation.py`；配套 `test_report_dataset.py`、`test_citation_validation.py`、`test_section_planning.py`、`test_report_rendering.py` 等。
 - 手工链路：`POST /api/reports`（202）→ `GET /api/reports/{id}/status` 至 ready → `GET .../manifest`、`.../categories/evidence.files/pages/1`、`.../search?q=`；`sqlite3 build/data/reports/reports.db "SELECT report_id,version,status,report_kind FROM report_versions"`。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 二轮深化 A：R2 生成失败码全清单（generation_execution.py 全部 _fail 调用点）
+
+| error_code | 触发条件 | 阶段 | 行 |
+|---|---|---|---|
+| `execution_schedule_failed` | executor.submit 后台任务创建失败 | 调度 | :254 |
+| `input_integrity_error` | 持久化 envelope 重序列化后与 input_hash 不一致（hmac.compare_digest 失败） | 执行前校验 | :301/:313 |
+| `unsupported_input_contract` | schema↔prompt 版本兼容表不匹配 | 同上 | :327-329 |
+| `llm_unavailable` | llm_service 为 None（ServiceManager 启动期 LLM 失败） | 执行 | :341 |
+| `llm_empty_response` | chat_completion 返回空串 | 执行 | :353 附近 |
+| `structured_output_invalid` | 结构化输出解析失败 | 解析 | :368 |
+| `citation_invalid` | 引用越界（不在冻结证据/精确 analysis_id/claim_id 内） | 校验 | :380 附近 |
+| `publication_error` | GenerationReportWriter.publish 或发布事务失败 | 发布 | :437 |
+| `service_shutdown` | 执行中收到服务关闭（两处） | 任意 | :274、:445 |
+| `service_restart` | 重启恢复把 stale admitted/running 判失败（绝不重放 LLM） | 恢复 | :227 |
+
+十个码全部持久化在 `report_generation_inputs.error_code`，轮询端点原样返回——前端可据此区分"可重试"（llm_unavailable/service_restart）与"需改输入"（input_integrity_error/citation_invalid）。error_message 是固定英文短句（:471 附近统一写入），不含异常原文。
+
+## 10. 二轮深化 B：快照目录布局（落盘事实）
+
+```
+{FORENSIC_REPORT_DIR}/                          # 默认 build/data/reports
+├── reports.db                                  # 版本表 + 生成表（两表五触发器）
+├── .locks/                                     # _ReportClaim 的 flock 文件（safe_segment(report_id).lock）
+├── .staging/<report_id>/                       # 构建中目录（发布后整体改名消失）
+└── snapshots/
+    └── task/<safe_segment(task_id)>/
+        └── <safe_segment(report_id)>/
+            ├── manifest.json                   # ReportManifest 的 canonical JSON
+            ├── search.sqlite3                  # 全文检索索引（search_documents 表）
+            └── <platform>/<category_id>/       # 如 sqlite/evidence.files/
+                ├── 1.json                      # 每页一个 JSON（含 sha256 字段）
+                ├── 2.json
+                └── ...
+```
+
+要点：页文件的哈希在 `sha256` 字段加入**前**对 payload 求值（自引用规避，snapshot_writer.py:160-163 docstring）；category 路径由 platform 与 category_id 双段组成（:289-294）；`.staging` 与 `.locks` 是写入方私有目录，读路径的 confinement 检查（service.py:243-266）会把试图指向它们的 manifest 判为布局非法。R2c 的叙事快照共用同一根但目录键是 task_id（generation_writer.py:37-66）。
+
+## 11. 二轮深化 C：方法全清单（按文件）
+
+**service.py（A 链门面）**：start/list_versions/get_version/get_status（含 resume 语义）/get_manifest_path/get_page_path/search/resume_unfinished。
+**repository.py**：create_version（BEGIN IMMEDIATE 分配）/claim_generation/mark_running/complete_generation_publication/mark_failed/list_generations/get_generation/read_narrative_version 等。
+**snapshot_writer.py**：SnapshotWriter.write（总入口）/`_write_category`/`_build_directory`；`_ReportClaim`（flock/PID 哨兵双实现）。
+**source_resolver.py**：SourceResolver（任务→库路径+指纹，含 TOCTOU 复核）。
+**adapters/sqlite_task.py**：probe/categories/iter_records/_severity（五档）。
+**generation.py（准入）**：admit（get_task→信封→hash→落行）+ ReportGenerationInputBuilder.assemble。
+**generation_execution.py**：submit/_execute/_fail/recover_stale_generations。
+**generation_prompts.py**：get_report_generation_prompt/build_report_generation_user_prompt（prompt_version 绑定）。
+**generation_structured.py**：结构化输出解析。
+**generation_writer.py**：GenerationReportWriter.publish。
+**narrative_reader.py**：read_narrative_version_strict（精确双键读）。
+**search_index.py**：SnapshotSearchIndex（schema 校验 + instr 子串检索）。
+**ids.py**：safe_segment/stable_record_id。
+**final_report_*.py / office_service.py**：见 (e)/(f) 节。
+
+## 12. 二轮深化 D：新走读——claim_generation 的并发输家分支（repository.py:430-449）
+
+```python
+# repository.py:430-449（骨架）
+cur.execute(
+    "UPDATE report_generation_inputs "
+    "SET status='running', started_at=? "
+    "WHERE generation_id=? AND status='admitted'"
+)
+if cur.rowcount != 1:
+    conn.rollback()          # 输家：别人已 claim / 已终态
+    return None
+```
+
+逐块解释：claim 用**条件 UPDATE 的 rowcount**做原子抢占——同一 generation_id 的两个执行器实例（例如重启恢复与新提交竞态）只有一个能把 admitted 改成 running；输家拿到 rowcount=0 后**回滚并返回 None，不写任何失败**。这是"输家不惩罚"设计：输家无法区分"别人在跑"与"已经完成"，写 failed 都可能是误伤；调用方（_execute 开头）对 None 直接 return。与 trg_report_generation_status_transition 触发器配合：即使两个赢家并发 UPDATE，SQLite 的写锁 + 触发器保证第二个 UPDATE 要么 rowcount=0 要么 ABORT——状态机在数据库层无竞态窗口。对比 ServiceManager 的 initialize（shield 共享 task）与 Investigation 的 capture_if_absent（BEGIN IMMEDIATE + ON CONFLICT），这是本仓库第三种并发原语选型：**条件 UPDATE 抢占**，适合"一行一赢家、输家静默"的场景。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

@@ -139,6 +139,217 @@ async def start_case_analysis(request: CaseAnalysisRequest, ...):
 - 新增端点：放进对应领域模块（或新建子包 + 聚合器），模型放 `*_models.py`，main.py 注册前缀，契约补进 `docs/api_reference/Python_REST_API.md`。
 - 契约核对清单：请求模型是否 `extra="forbid"`（canonical 族路由必须）、错误 detail 是否固定短句、job 状态是否说明持久级。
 
+## 完整端点全表（二轮深化，152 个，源码核对）
+
+以下全表由各路由源码的 `@router.*` 装饰器逐一核对生成（含门面背后的子模块），路径均为最终完整路径（挂载前缀已拼入）。这是本目录的权威表面清单，与 `docs/api_reference/Python_REST_API.md` 互为校对物。
+
+**Health（health.py，5 个）**
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/health` | 进程存活总检（含依赖探测） |
+| GET | `/health/live` | 轻量心跳 |
+| GET | `/health/ready` | 就绪检查（C++ 连通性门控） |
+| GET | `/api/system/redis/status` | Redis 状态（URL 脱敏回显） |
+| GET | `/api/system/info` | 配置快照 |
+
+**Graphiti（graphiti_endpoints/，17 个）**
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/graphiti/ingest` | 按任务摄取图谱 |
+| POST | `/api/graphiti/ingest/file` | 单文件摄取 |
+| POST | `/api/graphiti/ingest/events` | 事件库摄取 |
+| GET | `/api/graphiti/jobs` | 作业列表 |
+| GET | `/api/graphiti/jobs/{job_id}` | 作业状态 |
+| DELETE | `/api/graphiti/jobs/{job_id}` | 取消/删除作业 |
+| POST | `/api/graphiti/migrate/task/{task_id}` | 单任务图结构迁移 |
+| POST | `/api/graphiti/migrate/deduplicate` | 实体去重 |
+| GET | `/api/graphiti/migrate/status/{task_id}` | 迁移状态 |
+| POST | `/api/graphiti/migrate/cleanup/{task_id}` | 清理任务图谱数据 |
+| POST | `/api/graphiti/search` | 图谱语义检索 |
+| GET | `/api/graphiti/entities` | 实体列表 |
+| GET | `/api/graphiti/relationships` | 关系列表 |
+| GET | `/api/graphiti/status` | 服务状态 |
+| GET | `/api/graphiti/tasks` | 已摄取任务列表 |
+| DELETE | `/api/graphiti/tasks/{task_id}` | 删除任务全部图谱数据 |
+| GET | `/api/graphiti/graph` | 可视化图数据 |
+
+**LLM（llm_endpoints/，9 个）**
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/llm/analyze` | 文本/内容分析 |
+| POST | `/api/llm/analyze/file` | 文件分析（multipart） |
+| POST | `/api/llm/analyze-event-cluster` | 事件簇 AI 研判 |
+| POST | `/api/llm/batch` | 启动批量分析作业 |
+| GET | `/api/llm/batch/{job_id}` | 批量作业状态（内存态） |
+| GET | `/api/llm/models` | 可用模型列表 |
+| GET | `/api/llm/status` | LLM 服务状态 |
+| POST | `/api/llm/toggle-relevance` | 文件相关性人工开关 |
+| POST | `/api/llm/toggle-cluster-relevance` | 事件簇相关性开关 |
+
+**Case Analysis（case_analysis_endpoints/ + intelligence_report.py，15 个）**
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/llm/case-description` | 保存案情描述 |
+| POST | `/api/llm/case-analysis` | **410 退役**（固定 Gone） |
+| GET | `/api/llm/case-analysis/{job_id}` | 旧作业状态（退役链路） |
+| POST | `/api/llm/reanalyze-files` | 二次筛选分析 |
+| GET | `/api/llm/case-report/{task_id}` | 单镜像案情报告 |
+| GET | `/api/llm/case-report-by-case/{case_id}` | 跨镜像报告 |
+| GET | `/api/llm/filtered-files/{task_id}` | 筛选结果文件集 |
+| POST | `/api/llm/windows-analysis` | Windows 工件分析作业 |
+| GET | `/api/llm/windows-report/{task_id}` | Windows 报告 |
+| GET | `/api/llm/windows-export/{task_id}/toon` | 导出 TOON |
+| GET | `/api/llm/intelligence-report/{task_id}` | 情报报告读取 |
+| GET | `/api/llm/intelligence-report/{task_id}/records` | 记录分页 |
+| GET | `/api/llm/intelligence-report/{task_id}/search` | 报告内检索 |
+| GET | `/api/llm/intelligence-report/{task_id}/metadata` | 元数据 |
+| PUT | `/api/llm/intelligence-report/{task_id}/metadata` | 更新元数据 |
+
+**DLL（dll.py，1 个）**
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/llm/analyze/dll` | DLL 依赖分析（转发 C++） |
+
+**Reports（4 模块，12 个）**
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/reports` | 创建报告版本（202） |
+| GET | `/api/reports` | 版本列表 |
+| GET | `/api/reports/{report_id}/status` | 版本状态 |
+| GET | `/api/reports/{report_id}/manifest` | 版本清单 |
+| GET | `/api/reports/{report_id}/categories/{category_id}/pages/{page}` | 分类分页正文 |
+| GET | `/api/reports/{report_id}/search` | 报告内检索 |
+| GET | `/api/reports/evidence` | 证据列表 |
+| POST | `/api/reports/evidence` | 新增证据 |
+| PUT | `/api/reports/evidence` | 更新证据 |
+| POST | `/api/reports/generate` | 触发生成（R2c 冻结契约） |
+| GET | `/api/reports/generations/{generation_id}` | 生成状态（exact id 轮询） |
+| GET | `/api/reports/narrative/versions/{report_id}` | 已发布叙事版 |
+
+**Investigation 冻结契约（investigation.py，17 个）**
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/investigation/snapshots` | 捕获调查快照 |
+| GET | `/api/investigation/evidence` | 证据列表 |
+| GET | `/api/investigation/evidence/snapshot` | 快照证据 |
+| POST | `/api/investigation/analyses` | 创建二次分析 |
+| GET | `/api/investigation/analyses` | 分析列表 |
+| GET | `/api/investigation/analyses/{analysis_id}` | 单条分析 |
+| GET | `/api/investigation/analyses/{analysis_id}/claims` | 分析声明 |
+| POST | `/api/investigation/analyses/{analysis_id}/review` | 审查结论 |
+| POST | `/api/investigation/events` | 创建调查事件 |
+| GET | `/api/investigation/events` | 事件列表 |
+| GET | `/api/investigation/events/{event_id}` | 单事件 |
+| GET | `/api/investigation/events/{event_id}/versions` | 事件版本链 |
+| POST | `/api/investigation/events/{event_id}/evidence` | 绑定证据 |
+| GET | `/api/investigation/events/{event_id}/evidence` | 事件证据 |
+| POST | `/api/investigation/events/{event_id}/refresh` | 触发事件刷新 |
+| GET | `/api/investigation/events/{event_id}/refreshes` | 刷新历史 |
+| GET | `/api/investigation/graph` | 调查图谱 |
+
+**Investigation Workbench（investigation_workbench.py，35 个）**
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/investigation/workbench/{task_id}` | 工作台总览 |
+| POST | `…/bootstrap` | 初始化调查（mode=cluster_seed） |
+| GET | `…/events` | 事件列表 |
+| GET | `…/events/{event_id}` | 单事件 |
+| POST | `…/events/{event_id}/review` | 事件审查 |
+| GET | `…/events/{event_id}/evidence` | 事件证据 |
+| POST | `…/events/{event_id}/evidence/link` | 关联证据 |
+| POST | `…/events/{event_id}/refresh` | 触发刷新 |
+| GET | `…/events/{event_id}/refreshes` | 刷新记录 |
+| GET | `…/events/{event_id}/versions` | 版本链 |
+| POST | `…/events/{event_id}/versions/{version_id}/accept` | 接受版本 |
+| POST | `…/events/{event_id}/versions/{version_id}/reject` | 拒绝版本 |
+| GET | `…/events/{event_id}/versions/{version_id}/claims` | 版本声明 |
+| GET | `…/events/{event_id}/claims/effective` | 生效声明集 |
+| POST | `…/events/{event_id}/versions/{version_id}/claims/{claim_id}/accept` | 接受声明 |
+| POST | `…/events/{event_id}/versions/{version_id}/claims/{claim_id}/reject` | 拒绝声明 |
+| GET | `…/claims/{claim_id}` | 单声明 |
+| GET | `…/evidence/detail` | 证据详情 |
+| POST | `…/evidence/analyze` | 证据分析作业 |
+| GET | `…/evidence/analysis` | 证据分析结果 |
+| GET | `…/analysis-jobs/{job_id}` | 分析作业状态 |
+| POST | `…/analysis/{analysis_id}/accept` | 接受二次分析 |
+| POST | `…/analysis/{analysis_id}/reject` | 拒绝二次分析 |
+| POST | `…/notes` | 新增笔记 |
+| GET | `…/notes` | 笔记列表 |
+| GET | `…/report-evidence` | 报告证据列表 |
+| PUT | `…/report-evidence` | 更新报告证据 |
+| POST | `…/report-evidence/remove` | 移除报告证据 |
+| GET | `…/graph/local` | 任务局部图 |
+| GET | `…/final-reports` | 终版报告列表 |
+| GET | `…/final-reports/{report_id}` | 终版报告 |
+| GET | `…/final-reports/{report_id}/markdown` | Markdown 渲染 |
+| GET | `…/final-reports/{report_id}/html` | HTML 渲染 |
+| GET | `…/final-reports/{report_id}/print` | 打印视图 |
+| GET | `…/final-reports/{report_id}/publication` | 发布状态 |
+| POST | `…/final-reports/{report_id}/publish` | 发布报告 |
+
+（表中 `…` = `/api/investigation/workbench/{task_id}`。）
+
+**Multi-Image Analysis（multi_analysis.py，12 个，无挂载前缀）**
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/llm/cases` | 创建案件 |
+| GET | `/api/llm/cases` | 案件列表 |
+| GET | `/api/llm/cases/{case_id}` | 案件详情 |
+| DELETE | `/api/llm/cases/{case_id}` | 删除案件（回调 C++） |
+| POST | `/api/llm/cases/{case_id}/tasks` | 追加任务 |
+| POST | `/api/llm/cases/{case_id}/associate-tasks` | 关联已分析任务（复用不重跑） |
+| POST | `/api/llm/cases/smart-create` | 智能建案 |
+| POST | `/api/llm/cases/{case_id}/tasks/incremental` | 增量追加 |
+| GET | `/api/llm/cases/{case_id}/analysis-status` | 聚合分析状态 |
+| POST | `/api/llm/cases/{case_id}/incremental-analysis` | 增量分析 |
+| POST | `/api/llm/multi-image-analysis` | 跨镜像分析作业 |
+| GET | `/api/llm/multi-image-analysis/{job_id}` | 作业状态 |
+
+**Associations / Database / Office / System / Markitdown / OSS / WeChat（共 29 个）**
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/associations/cluster-files` | 簇↔文件关联 |
+| POST | `/api/associations/file-clusters` | 文件↔簇关联 |
+| GET | `/api/db/tasks` | 任务（含库路径） |
+| GET | `/api/db/tasks/{task_id}` | 任务详情 |
+| GET | `/api/db/tasks/{task_id}/databases` | 产出库列表 |
+| GET | `/api/db/tasks/{task_id}/files` | files.db 只读查询 |
+| GET | `/api/db/tasks/{task_id}/events` | events.db 只读查询 |
+| GET | `/api/db/tasks/{task_id}/export/toon` | TOON 导出 |
+| GET | `/api/db/tasks/{task_id}/export/json` | JSON 导出 |
+| POST | `/api/office/parse` | Office 解析（C++ 调用） |
+| GET | `/api/office/supported-types` | 支持类型 |
+| POST | `/api/forensics/oss/ai/filter` | OSS 智能筛选 |
+| POST | `/api/forensics/oss/ai/analyze` | OSS 智能分析 |
+| GET | `/api/system/logs` | 日志入口 |
+| GET | `/api/system/logs/{service}` | 服务日志读取 |
+| GET | `/api/system/logs-stream/{service}` | 日志 SSE |
+| POST | `/api/markitdown/convert` | 批量转换（task 门控） |
+| POST | `/api/markitdown/convert-one` | 单文件转换 |
+| POST | `/api/markitdown/batch-convert` | 批量转换（另一形态） |
+| GET | `/api/markitdown/status` | 转换器状态 |
+| GET | `/api/wechat/chat` | 单聊记录 |
+| GET | `/api/wechat/chat/group` | 群聊记录 |
+| GET | `/api/wechat/owner` | 账号主人 |
+| GET | `/api/wechat/contacts` | 联系人 |
+| GET | `/api/wechat/graph` | 微信关系图 |
+| GET | `/api/wechat/graph/timeline` | 消息时间线 |
+| GET | `/api/wechat/graph/community` | 社区发现 |
+| GET | `/api/wechat/graph/person/{username}` | 单人画像 |
+| POST | `/api/wechat/graph/invalidate` | 图缓存失效 |
+
+合计：5+17+9+15+1+12+17+35+12+29 = **152**。`routes/system_logs.py` 的端点不在表内（未注册）；`routes/investigation_workbench.py` 的 35 个端点全部以 task_id 为第一路径段，天然任务隔离。
+
 相关阅读：[Main.md](./Main.md)（挂载与 lifespan）、各 `routes/*.md` 子文档。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

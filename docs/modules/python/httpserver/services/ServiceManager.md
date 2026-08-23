@@ -199,4 +199,147 @@ return InvestigationGraphService(
 - `test_service_manager_report_lifecycle.py`、`test_service_manager_investigation.py`（报告与调查服务的生命周期语义）。
 - 新增服务：私有字段 + `_create_*` 工厂（断言 C++ ready 若依赖）+ 惰性属性；需要启动期初始化则在 `_initialize_services` 加一段 try/except + 12s `wait_for`，并同步补进 `_rollback_initialization` 与 `_service_cleanup_plan` 两个清理清单。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 二轮深化 A：生命周期状态机完整转移表
+
+`_lifecycle_state` 共 5 个取值，全部转移如下（源码核对；`SM` = 本类实例）：
+
+| # | 当前态 | 触发 | 转移到 | 守卫/副作用 | 源码 |
+|---|---|---|---|---|---|
+| 1 | （构造） | `ServiceManager(settings)` | new | 16 个服务字段全 None、5 个 ready 全 False | :36-69 |
+| 2 | new | `initialize()` 且无在途 shutdown | initializing | 创建 `_initialization_task` | :81-85 |
+| 3 | initializing | `_initialize_services` 全部完成 | running | `_initialized=True` | :113-118 |
+| 4 | initializing | 任一 BaseException（含 30s 超时/Ctrl-C） | stopped | `_rollback_initialization()` 先执行（逆序回收全部已建服务、`_clear_services()`） | :110-112、:275-278 |
+| 5 | initializing | C++/Graphiti/LLM 等**普通 Exception** | （不转移） | 仅 warning，服务标记缺失，最终仍走 #3 → running | :129-130 等 |
+| 6 | running | `shutdown()` | shutting_down | 创建 `_shutdown_task`；stopped 态直接 return（幂等） | :287-296 |
+| 7 | shutting_down | drain 完成 | stopped | `_clear_services()`；首个清理异常最后 re-raise | :325-331 |
+| 8 | shutting_down | 并发 `initialize()` 到达 | （等待） | shield 等 shutdown_task 完成、吞其异常，`continue` 回到循环头 → 干净走 #2 重开 | :89-100 |
+| 9 | running | 任意属性访问 | （不变） | `_require_service_access` 放行 | :375-381 |
+| 10 | initializing / shutting_down / stopped | 任意属性访问 | — | RuntimeError → 路由转 503（或 501） | :375-381 |
+| 11 | new | 任意属性访问 | （不变，放行） | 惰性属性允许 lifespan 失败后按需重建 | :45（既有叙述） |
+
+关键不变量：**new 与 stopped 对属性访问的语义不同**——new 放行（允许自愈），stopped 拒绝（关闭后必须重启进程语义上才算干净）；`_active_task()`（:333-337）把 done 的 task 当 None，所以 #4/#7 完成后残留的 task 引用不会阻塞下一轮。
+
+## 10. 二轮深化 B：属性访问矩阵（16 个属性 × 创建时机 × 门控 × 消费路由）
+
+| 属性 | 行 | 创建时机 | 门控/未就绪行为 | 主要消费路由 |
+|---|---|---|---|---|
+| cpp_backend | :383 | 启动期 + 惰性重建（唯一允许自愈） | 仅状态校验；None 即重建 | health、associations、oss_analysis、wechat(模型)、intelligence_report、graphiti/_ingest |
+| graphiti_service | :645 | 启动期(12s) + 惰性重建 | 服务内部 disabled 判定 | graphiti 全部 5 个子模块、case/_helpers、health |
+| llm_service | :654 | 启动期 + 惰性重建 | 同上 | llm/_analysis、_management、case/_helpers、dll、oss_analysis、health |
+| ingestion_job_manager | :663 | 仅启动期(12s) | **不重建**，None 时路由转 501 | graphiti/_ingest、_jobs、health |
+| migration_manager | :669 | 仅启动期(12s) | 同上 | graphiti/_migrate |
+| forensic_report_service | :417 | 启动期(仅 C++ ready) 或 state==new 时惰性 | 非 new 且未就绪 → RuntimeError | forensic_reports |
+| investigation_service | :447 | 惰性（工厂断言 C++ ready） | RuntimeError("C++ backend is not initialized") | investigation |
+| investigation_review_service | :462 | 惰性 | 同上 | investigation、investigation_workbench |
+| investigation_event_service | :480 | 惰性（同时被 _create_event_refresh_executor 触发，:608-609） | 同上 | investigation、investigation_workbench |
+| investigation_graph_service | :501 | 惰性（base_graph_provider 每次 GET 解析） | 同上；Graphiti 宕机降级 base_graph_available=false | investigation、investigation_workbench |
+| investigation_read_service | :518 | 惰性 | 同上 | investigation_workbench、investigation |
+| report_evidence_service | :535 | 惰性 | 同上 | investigation_workbench、report_evidence |
+| report_generation_service | :563 | 惰性（R2b 准入服务） | 同上 | report_generation |
+| report_generation_executor | :595 | 仅启动期(to_thread + 12s) | None 或未 ready → RuntimeError（**不可惰性重建**） | report_generation |
+| event_refresh_executor | :616 | 仅启动期(12s) | 同上 | investigation、investigation_workbench |
+| secondary_analysis_executor | :634 | 仅启动期(12s) | 同上 | investigation、investigation_workbench |
+
+方法面（非属性）：`initialize()`(:71)、`shutdown()`(:285)、`health_check()`(:675) 三个公开协程 + 模块级 `get_service_manager()`(:736-746)。规律总结：**报告/调查读侧服务可惰性创建（失败=503 可自愈），三个执行器与两个管理器是"启动期一次性"（失败=503/501，重启才能恢复）**——因为执行器在 initialize() 里做过重启恢复（scan pending jobs），惰性重建会绕过恢复语义。
+
+## 11. 二轮深化 C：初始化 / 回滚 / 关闭三序对照表
+
+| 服务 | 初始化序（:120-249） | 回滚序（:253-263） | 关闭序（:339-350） |
+|---|---|---|---|
+| CppBackendService | 1 | 9（最后） | 5 |
+| ForensicReportService | 2（仅 C++ ready） | 8 | 4 |
+| GraphitiService | 3 | 7 | 6 |
+| LLMService | 4 | 6 | 7 |
+| SecondaryAnalysisExecutor | 5（仅 C++ ready） | 5 | 3 |
+| EventRefreshExecutor | 6（仅 C++ ready） | 4 | 1 |
+| ReportGenerationExecutor | 7（仅 C++ ready，to_thread） | 3 | 2 |
+| IngestionJobManager | 8 | 2 | 8 |
+| MigrationManager | 9 | 1（最先） | 9（最后） |
+
+两个结构性差异值得指出：
+
+1. **回滚序 = 初始化序的严格逆序**（9→1），这是"按依赖反向拆除"的标准形态；**关闭序不是逆序**——它把三执行器放最前、forensic_report 与 C++ 提前（4/5 位）、基础设施（Graphiti/LLM/Redis/Neo4j 迁移）垫后。关闭的排序原则是"先停业务写入方，再关承载层"，与回滚的"刚建到哪拆到哪"不同。
+2. `_drain_shutdown` 的 finally 里**只**对 forensic_report 做即时引用清空（:321-324），其余 8 个服务要等循环结束后 `_clear_services()` 统一清——因为后续清理步骤（adapters 等）可能还要访问其他服务，唯独 forensic_report 的 shutdown 之后不允许任何人再碰。
+
+## 12. 二轮深化 D：新走读——initialize/shutdown 并发交错分支
+
+第 3 节(a)只解释了 shield 的语义，没有展开交错路径。补两个真实分支：
+
+**分支一：关闭进行中来了初始化请求**（`initialize()` 的 while 循环体，:89-100）：
+
+```python
+# service_manager.py:89-100（节选）
+if shutdown_task is not None:
+    try:
+        await asyncio.shield(shutdown_task)
+    except asyncio.CancelledError:
+        current = asyncio.current_task()
+        if current is not None and current.cancelling():
+            raise
+    except BaseException:
+        # Cleanup errors belong to shutdown callers; once the drain has
+        # restored stopped state, initialization may start a clean cycle.
+        pass
+    continue
+```
+
+逐块：等待关闭期间若本协程被 cancel，`current.cancelling()` 为真才把取消向上传播（Python 3.11 的 Task.cancelling() 计数）——否则把这次取消视作"等待被打断"，继续走流程；关闭自身的异常（含 #7 的 re-raise）被吞掉，因为那些错误归属关闭调用方；`continue` 回到循环头，此时状态已是 stopped、两个 task 都 done → 走 #2 开始全新一轮初始化。**语义：进程里"关闭后立即重启"是被显式支持的路径**，不是未定义行为。
+
+**分支二：初始化进行中来了关闭请求**（`_coordinate_shutdown`，:299-307）：
+
+```python
+# service_manager.py:299-307
+async def _coordinate_shutdown(self) -> None:
+    async with self._lifecycle_lock:
+        initialization_task = self._active_task(self._initialization_task)
+    if initialization_task is not None:
+        try:
+            await asyncio.shield(initialization_task)
+        except BaseException:
+            pass
+    await self._drain_shutdown()
+```
+
+关闭不取消在途初始化，而是等它自然结束（成功或回滚），再 drain。初始化抛出的任何异常（包括回滚后 re-raise 的原始异常）在这里被吞——因为此时唯一重要的事是让状态机落回 stopped。注意 `shutdown()`(:287-297) 与 `initialize()` 不同，**没有循环**：它只处理一轮，调用方拿到的是 drain 完成后的结果。
+
+## 13. 二轮深化 E：health_check 的三个隐式细节（新走读）
+
+`health_check()`（:675-729）看似纯读，实际有三处副作用/语义边界：
+
+1. **它可能触发惰性构造**：`self.cpp_backend` / `self.graphiti_service` / `self.llm_service` 是属性访问（:689、:705、:718）——若启动期失败留下了 None，健康检查会当场重建实例（cpp_backend 分支**不会** await 其 initialize()，直接调 health_check()；Graphiti/LLM 同样）。也就是说 `/health/ready` 在降级进程上有"顺手把服务对象建回来"的副作用。
+2. **三档不同的失败降级**：C++ 异常把 `overall` 打成 degraded 且状态记 `"error"`（:697-701）；Graphiti/LLM 异常状态记 `"unavailable"` 且**不动 overall**（:711-714、:724-727）——与第 4 节"C++ 是硬门槛"的设计一致；返回 False（非异常）时两者都记 `"unhealthy"`。
+3. **错误只回 `type(e).__name__`**：注释（:695-696）说明原因是 transport 异常的 str 里嵌着内部 URL——这条纪律与 main.py 的 500 处理器一致。
+
+## 14. 二轮深化 F：本模块配置影响表
+
+| env | 字段 | 默认 | 作用点 | 备注 |
+|---|---|---|---|---|
+| PYTHON_STARTUP_TIMEOUT | startup_timeout | 30.0 | `_run_initialization` 总预算（:107-108） | 超时 → CancelledError → 回滚 → stopped |
+| OPTIONAL_SERVICE_INIT_TIMEOUT | optional_service_init_timeout | 12.0 | Graphiti/三执行器/Ingestion/Migration 的 `wait_for`（5 处） | 每个服务独立 12s，不共享池 |
+| NEO4J_CONNECT_TIMEOUT / NEO4J_QUERY_TIMEOUT | neo4j_connect/query_timeout | 5.0 / 5.0 | MigrationManager 构造参数（:239-240） | GraphitiService 另有自己的驱动参数 |
+| REDIS_URL | redis_url | redis://localhost:6379 | IngestionJobManager 初始化（:214-223） | 失败回退内存（见 IngestionJobManager.md） |
+| FORENSIC_REPORT_DIR | report_output_dir | build/data/reports | 三个报告工厂的 root 解析（:403-407、:553-557、:582-586） | 相对路径锚定 get_project_root() |
+| FORENSIC_REPORT_GENERATOR_VERSION | report_generator_version | 1.0.0 | SnapshotWriter 版本戳（:411-413） | |
+| CPP_BACKEND_URL | cpp_backend_url | http://localhost:8080 | CppBackendService(self.settings) 内部 | 本模块不直接读 |
+
+注意 `getattr(self.settings, "startup_timeout", 30.0)` 这类写法（:107、:150 等）让 ServiceManager 对测试用的简化 settings 对象也兼容——缺字段时回落硬编码默认，与 Settings 的 Field 默认值一致。
+
+## 15. 二轮深化 G：RuntimeError 消息 → HTTP 状态码映射（服务边界契约）
+
+属性抛出的 RuntimeError 字符串会原样进入路由层翻译后的 HTTPException detail（`raise ... detail=str(exc)`，如 report_generation.py:46-47、:55-56）。全表：
+
+| RuntimeError 消息（service_manager.py） | 触发属性 | 路由翻译 | 状态码 |
+|---|---|---|---|
+| "ServiceManager is initializing" | 任意属性（:377） | Depends 工厂 / handler 内 except | 503 |
+| "ServiceManager is shutting down" | 任意属性（:379） | 同上 | 503 |
+| "ServiceManager is not initialized" | 任意属性（:381，stopped 态） | 同上 | 503 |
+| "C++ backend is not initialized" | 9 个 `_create_*` 工厂（:402 等） | investigation/forensic_reports/report_generation/report_evidence 各 Depends | 503 |
+| "Forensic report service is unavailable" | forensic_report_service（:423、:427） | forensic_reports.py:39、:70、:167 | 503 |
+| "Report generation executor is unavailable" | report_generation_executor（:600） | report_generation.py:55 | 503 |
+| "event refresh executor is unavailable" | event_refresh_executor（:620） | investigation.py、investigation_workbench.py 的 refresh 端点 | 503 |
+| "secondary analysis executor is unavailable" | secondary_analysis_executor（:642） | analyses accept/reject 端点 | 503 |
+| （属性返回 None，不抛） | ingestion_job_manager / migration_manager | graphiti_endpoints/_ingest.py:134、:179 与 _migrate.py:48、:90、:127、:175 的 `if ... is None` 分支 | **501** |
+
+两种降级码的分工由此固定：**503 = 状态机拒绝或依赖服务未就绪（可等待重试）；501 = Graphiti 作业/迁移管理器启动期缺失（功能整体不可用）**。前端 Graphiti 页对 501 的处理是提示服务未启用，对 503 是提示稍后重试。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

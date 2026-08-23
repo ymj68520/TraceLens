@@ -209,4 +209,125 @@ C++ 端点使用清单（全部经由本类）：`GET /api/health`、`/api/tasks
 
 相关阅读：[httpserver/services/ServiceManager.md](./ServiceManager.md)、[httpserver/routes/Database.md](../routes/Database.md)。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 二轮深化 A：方法签名全清单（含默认值与精确调用点）
+
+| 方法（完整签名要点） | 行 | 调用点（源码核对） |
+|---|---|---|
+| `health_check() -> bool` | :136 | ServiceManager.health_check（service_manager.py:689）；routes/health.py |
+| `list_tasks(status=None, page=1, page_size=50, *, timeout=None, max_retries=3)` | :152 | routes/database.py:110；case_aggregation_manager.py:92；investigation/execution.py:518；investigation/event_refresh_execution.py:240（后两者为重启恢复，传短 timeout） |
+| `get_task(task_id, *, timeout=None, max_retries=3) -> Optional[dict]` | :174 | task_store（get_task_record）；graphiti/_ingest、llm/case 各前置检查；ServiceManager 内部（报告工厂仅引用对象） |
+| `check_task_exists(task_id) -> bool` | :203 | graphiti_endpoints/_ingest.py（404 前置判定） |
+| `get_task_databases(task_id) -> List[dict]` | :208 | routes/database.py:181；forensic_report/source_resolver.py:60（DB 路径解析） |
+| `get_task_files(task_id, file_types=None, limit=100) -> List[dict]` | :215 | llm_endpoints/_analysis.py:465（批量分析取文件清单） |
+| `get_task_files_paginated(task_id, file_type=None, extension=None, deleted_only=False, include_llm=True, page=1, page_size=50) -> dict` | :238 | routes/database.py:221（唯一调用方） |
+| `get_task_events(task_id, event_type=None, start_time=None, end_time=None, page=1, page_size=50) -> dict` | :287 | routes/database.py:288（唯一调用方） |
+| `extract_files(task_id, file_paths, output_dir=None, overwrite=False) -> dict` | :326 | case_analysis_parts/_windows.py:199（Windows 工件先抽取再分析） |
+| `get_extraction_status(job_id) -> dict` | :358 | case_analysis_parts/_windows.py:219（抽取进度轮询） |
+| `export_toon(task_id, include_llm=True) -> str` | :373 | routes/database.py:344；file_filter.py 经 get_files_toon_stream 间接 |
+| `get_files_toon_stream(task_id, batch_size=100, include_llm=False) -> dict` | :387 | case_analysis/file_filter.py:203（deterministic 筛选数据源） |
+| `export_json(task_id, database_type, include_llm=True) -> dict` | :429 | routes/database.py:384（唯一调用方；`database_type` 参数当前未拼进请求——端点固定 events 导出） |
+
+构造/生命周期：`__init__(settings)`（:36-47，读 `settings.cpp_backend_url` 存 base_url）、`initialize()`（:49-60，建池化客户端）、`shutdown()`（:62-67）、`client` property（:69-77，None 兜底懒建**无池参数**）。两个二轮新发现：`_request_timeout_override` 字段（:47）定义后**全仓无任何读写**——死字段；`__init__` 对 base_url 不做尾部斜杠归一（对比 dll_analyzer.py:20 有 `rstrip('/')`），若 CPP_BACKEND_URL 配成 `http://localhost:8080/`，httpx 拼接行为将依赖其自身的 base_url 合并规则。
+
+## 10. 二轮深化 B：失败返回形状契约（逐方法）
+
+`_request` 的失败 dict 是 `{"success": False, "error": <str>, ["status": int]}`，但每个公开方法把它二次加工成不同形状——这张表是上游路由实际拿到的契约：
+
+| 方法 | 成功形状 | C++ 宕机/失败时的实际返回 | 静默空值风险 |
+|---|---|---|---|
+| list_tasks | C++ 原始 dict | 失败 dict（保留 success=False） | 低（database 路由检查 success） |
+| get_task | task dict 或 **None** | None | 中：None 语义="任务不存在"，与"后端宕机"不可区分 |
+| get_task_databases | `[{...}]` | `[]`（`.get("databases", [])` 吞掉失败 dict，:211） | **高**：宕机时表现为"任务无数据库" |
+| get_task_files | `[{...}]` | `[]`（:226-231 兼容解包吞掉失败） | **高**：同上 |
+| get_task_files_paginated | `{files, total_count}` | `{files: [], total_count: 0}` | **高**（见 3c 既有叙述） |
+| get_task_events | `{events, total_count}` | `{events: [], total_count: 0}` | **高** |
+| extract_files | C++ 原始 dict | 失败 dict | 低（_windows.py 检查） |
+| get_extraction_status | C++ 原始 dict | 失败 dict | 低 |
+| export_toon | TOON 文本 str | **抛 httpx.HTTPStatusError**（raise_for_status，:384） | 无静默（见 12 节走读） |
+| get_files_toon_stream | `{schema, data_lines, total_files, batch_size}` | 继承 export_toon 的抛异常 | 无 |
+| export_json | dict（或 `{"data": <list>}` 包装，:442） | 失败 dict 原样 | 中 |
+
+规律：**只有直连 client 的两个 TOON 方法会抛异常，其余全部走"失败 dict / 空集合"降值**。排障口诀：文件/事件/数据库列表"变空"先怀疑 C++ 可用性，再看 `_request` 日志里的 HTML/超时行。
+
+## 11. 二轮深化 C：新走读——get_task_events 的双形态解包与 total_count 陷阱
+
+```python
+# cpp_backend.py:309-322
+result = await self._request("GET", "/api/forensics/timeline/comprehensive", params=params)
+
+# Handle different response formats
+if isinstance(result, dict):
+    timeline = result.get("timeline", [])
+    metadata = result.get("metadata", {})
+    return {
+        "events": timeline,
+        "total_count": metadata.get("total_events", len(timeline)),
+    }
+return {
+    "events": result if isinstance(result, list) else [],
+    "total_count": 0,
+}
+```
+
+逐块解释：dict 分支取 `timeline` 数组与 `metadata.total_events`（缺失时退回当页条数——本身也只是"本页大小"而非总数）；非 dict 分支兼容 C++ 直接返回裸 list 的形态。三个边界：
+
+1. **失败 dict 也命中 dict 分支**：`{"success": False, "error": "ConnectError"}` 没有 `timeline` 键 → `events: [], total_count: 0`，错误信息被完全吞掉。
+2. **裸 list 形态下 total_count 恒为 0**：即使 events 非空，`total_count: 0`——前端若用它做分页总数会得到"共 0 条却有数据"的自相矛盾展示。这是真实存在的形态依赖：只有 C++ 按时返回包装 dict 时分页才是对的。
+3. `limit/offset` 直接透传（:299-300），不像 files 系列做客户端切片——事件分页是**服务端分页**，两种机制的差异在 database 路由文档里再展开。
+
+## 12. 二轮深化 D：新走读——export_toon 直连路径（唯一会抛异常的出口）
+
+```python
+# cpp_backend.py:373-385
+async def export_toon(
+    self,
+    task_id: str,
+    include_llm: bool = True,
+) -> str:
+    """Export task data in TOON format."""
+    params = {"include_llm": include_llm}
+    response = await self.client.get(
+        f"/api/forensics/export/toon",
+        params={"task_id": task_id, **params},
+    )
+    response.raise_for_status()
+    return response.text
+```
+
+与 `_request` 的四条规则对照，这条路**全都没有**：无重试（C++ 抖动一次即失败）、无 HTML 检测（错误页会当正文返回——好在 raise_for_status 通常先拦住 4xx/5xx，但 200+HTML 的极端形态会漏过）、无错误 dict（`raise_for_status()` 抛 httpx.HTTPStatusError，`str(e)` 内含 URL）、无 payload 日志。两个消费者：database.py:344 把异常交给路由的兜底 500；file_filter.py:203 的 `get_files_toon_stream` 让异常继续上抛到确定性筛选入口——也就是说 **deterministic 文件筛选在 C++ 宕机时是显式失败（500/作业失败），不是静默空集**，与 get_task_files 系列行为相反。`include_llm=True` 默认值在 `get_files_toon_stream`(:391) 被显式改回 `False`——筛选场景不要 LLM 列，减小传输。
+
+## 13. 二轮深化 E：配置与传输参数影响表
+
+| 参数 | 值 | 位置 | 说明 |
+|---|---|---|---|
+| CPP_BACKEND_URL | http://localhost:8080 | config.py:141 → :44 | 唯一地址来源；不做尾部斜杠归一（见上） |
+| 默认请求超时 | 30.0s | :55（httpx.Timeout(30.0)） | `_request` 的 timeout 参数可覆盖（startup 路径传 5s 档） |
+| 吞吐恢复期超时/重试 | 调用方传 | :158-159、:171 | `list_tasks(timeout=...)` 触发 `retry_delay=0.25`，否则 1.0s |
+| 连接池 | keepalive 10 / max 20 | :56 | 并发>20 的调用会排队等连接 |
+| 重试次数 | 3（默认） | :96 | HTML/4xx/5xx **不**重试——只有传输异常重试（:110-118 直接返回） |
+| 日志 | payload + 响应前 200 字符 | :91、:122 | INFO 级 |
+
+注意重试语义的精确边界：HTTP >= 400 与 HTML 响应在**第一次**尝试就直接返回失败 dict，`for attempt in range(max_retries)` 循环只对 `Exception`（网络层）生效——重试不是通用的。
+
+## 14. 二轮深化 F：C++ 端点请求参数明细（Python 侧实际发送的形状）
+
+| C++ 端点 | 方法 | 发送的参数（源码核对） | 期望响应形态 |
+|---|---|---|---|
+| `/api/health` | GET | 无 | 仅看状态码 200（health_check，:144-145） |
+| `/api/tasks/list` | GET | `page`(默认1)、`page_size`(默认50)、可选 `status`（:162-164） | 包装 dict（含任务数组与分页字段） |
+| `/api/tasks/{id}` | GET | 路径段经 `quote(task_id, safe="")`；`.`/`..` 直接拒收（:182-184） | dict，且 `id` 必须回显一致（:197） |
+| `/api/tasks/{id}/databases` | GET | 仅路径 | `{"databases": [...]}` |
+| `/api/forensics/files/largest` | GET | `task_id`、`limit`（paginated 版传 `page_size+offset`，:254-258；plain 版传 limit，:222） | 裸 list 或 `{"largest_files":[...]}` 或 `{"files":[...]}` 三态（:226-231、:259-265） |
+| `/api/forensics/timeline/comprehensive` | GET | `task_id`、`limit`、`offset`、可选 `event_type/start_time/end_time`（:297-307） | `{"timeline":[...], "metadata":{"total_events":N}}` 或裸 list |
+| `/api/forensics/extract` | POST | json：`task_id`、`mode:"name"`、`pattern:`逗号拼接的 file_paths、`output_dir`（默认 "extracted_files"）、`overwrite`（:347-353） | 含 `job_id` 的 dict |
+| `/api/forensics/extract/status` | GET | `job_id`（:368） | 进度 dict |
+| `/api/forensics/export/toon` | GET | `task_id`、`include_llm`（:379-383） | TOON 纯文本（非 JSON） |
+| `/api/forensics/export/events/json` | GET | `task_id`（:440；`database_type`/`include_llm` **未发送**） | dict 或 list（:442 统一包装成 dict） |
+
+三处值得标注的契约缝隙：`extract_files` 的逗号拼接 pattern（:345-346 注释自认"may need C++ backend extension for true list mode"——文件名本身含逗号会被误拆）；`export_json` 的 `database_type` 形参从未进请求（端点名固定 events）；`get_task` 的身份回显校验（:197）是唯一防"错配响应"的防线。
+
+## 15. 二轮深化 G：与 DLL 独立客户端的对照
+
+`services/dll/dll_analyzer.py` 的 DLLAnalyzerClient 是仓库里第二个直连 C++ 的客户端（`POST {cpp_backend_url}/api/forensics/dlls/analyze`，dll_analyzer.py:54），与本类的差异构成一组有意无意的对照：它有 `rstrip('/')` 归一（dll_analyzer.py:20）、超时来自 `DLL_ANALYSIS_TIMEOUT`（30s，dll_analyzer.py:26）、无重试无 HTML 检测、异常直接上抛（DLL 路由自己转 502/503）。也就是说"C++ 毛边处理"只存在于 CppBackendService 一处——新代码若要直连 C++，应优先复用本类而不是再起一个客户端。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

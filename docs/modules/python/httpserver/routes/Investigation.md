@@ -178,4 +178,78 @@ workbench 门面的 final-reports 是另一条读路径：直接只读打开 `{F
 
 相关阅读：[ForensicReports.md](ForensicReports.md)（R1/R2c/R2d 与本组的报告证据/生成衔接）、[HTTPRoutes.md](../HTTPRoutes.md)。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 二轮深化 A：canonical 端点全表（17 个，含状态码与响应模型）
+
+| 端点 | 方法 | 成功码 | 响应模型 | 主要错误码 |
+|---|---|---|---|---|
+| /snapshots | POST | 200（幂等胜出） | EvidenceSnapshot | 404 证据不存在、503 |
+| /evidence | GET | 200 | list[EvidenceSnapshot] | 503 |
+| /evidence/snapshot | GET | 200 | EvidenceSnapshot（query: task_id+evidence_key） | 404、503 |
+| /analyses | POST | **202** | SecondaryAnalysis（排队记录） | 404、422、503 |
+| /analyses | GET | 200 | list（历史可查） | 503 |
+| /analyses/{id} | GET | 200 | SecondaryAnalysis | 404、503 |
+| /analyses/{id}/review | POST | 200 | AnalysisReview | **409** 冲突、404 |
+| /analyses/{id}/claims | GET | 200 | list（精确版本持久化集） | 404 |
+| /events | POST | **201**（连带 v1 版本） | InvestigationEvent | 422、503 |
+| /events | GET | 200 | list（无库→[]） | — |
+| /events/{id} | GET | 200 | InvestigationEvent | 404 |
+| /events/{id}/versions | GET | 200 | list[EventVersion] | 404 |
+| /events/{id}/evidence | POST | 200/201 | 关联记录 | **409** 已关联、404 |
+| /events/{id}/evidence | GET | 200 | list | 404 |
+| /events/{id}/refresh | POST | **201** | EventRefresh | **409** 在途、404、503 |
+| /events/{id}/refreshes | GET | 200 | list[EventRefresh] | 404 |
+| /graph | GET | 200 | InvestigationGraph（max_base_nodes 1-1000 默认 200） | 503（库损坏 fail-closed） |
+
+## 9. 二轮深化 B：workbench 端点行为标注（35 个）
+
+在 HTTPRoutes.md 的全路径清单基础上，按行为分类：**真实现**（overview/bootstrap/events 读写/evidence 三件套/analysis-jobs/accept/reject/report-evidence/graph/local/final-reports 五读 = 26 个）；**固定 409**（第 6 节列出的 6 个：事件 review、版本 accept/reject、claim accept/reject、notes POST、publish）；**软桩**（claims 含 effective 恒 `[]`、notes GET 恒 `note:null`、claims/{id} 恒 404、publication 恒 null = 4 个）；bootstrap 特殊（忽略请求体，:223-229 `del request`）。前端对 409/软桩的既定策略是静默降级（investigationService 封装不抛错）。
+
+## 10. 二轮深化 C：investigation.db 表契约（9 张表 + 触发器）
+
+| 表 | 行 | 关键列/约束 | 写入方 |
+|---|---|---|---|
+| evidence_snapshots | repository.py:110 | UNIQUE(task_id,evidence_key)；payload 为冻结 JSON | capture_if_absent（S1/S3/S5） |
+| secondary_analyses | :155 | 状态机列 + input_hash + envelope_json | create_analysis（E1 先持久化） |
+| analysis_claims | :239 | 挂精确 analysis 版本 | 分析 worker |
+| claim_evidence_refs | :253 | claim→evidence_key 引用 | 同上 |
+| investigation_events | :312 | UNIQUE(task_id,event_id) | POST /events |
+| investigation_event_versions | :322 | UNIQUE(task_id,event_id,version)；**EV4 触发器禁止 UPDATE**（trg_inv_event_versions_no_update，:358 起） | 创建 v1 / 刷新产新版本（INSERT-only） |
+| investigation_event_evidence | :337 | UNIQUE(task_id,event_id,evidence_key)；双外键 ON DELETE RESTRICT；反向索引 idx_inv_event_evidence_key（C7b 传播缝） | 链接端点（INSERT-only） |
+| investigation_event_refreshes（base 版） | :420 | status CHECK IN ('queued','running','completed','failed')；base_version/produced_version 双外键 | 刷新准入 |
+| investigation_event_refreshes（V6 迁移版） | :448 | 同名重建（列集扩展），靠 IF NOT EXISTS 幂等 | 同上 |
+| report_evidence | :600 | R1 绑定 | report_evidence 服务 |
+
+两类硬约束值得强调：版本表用**触发器**而非约定实现不可变（任何 UPDATE 直接报错）；外键全部 ON DELETE RESTRICT——删任务/事件的级联被数据库层禁止，与"历史不灭失"的验收语义一致。
+
+## 11. 二轮深化 D：事件刷新状态机（repository CHECK 约束背书）
+
+`investigation_event_refreshes.status` 四态（:424 CHECK）：
+
+| 转移 | 触发 | 伴随列 |
+|---|---|---|
+| → queued | POST /refresh 准入成功 | base_version、input_hash、input_envelope_json、requested_by、created_at |
+| queued → running | worker 接手 | started_at、model |
+| running → completed | 新版本产出 | completed_at、**produced_version**（指向新版本行） |
+| running → failed | 任何失败 | failed_at、error_code、error_message |
+
+语义要点：刷新**永不修改既有版本**（EV4），只追加 produced_version；completed 与 failed 互斥（同一行只走其一）；409 "already in progress" 对应"存在 queued/running 行"的准入判定——不是数据库约束而是服务层检查（InvestigationEventConflictError）。base_version 外键锚定"从哪个版本刷新"，input_hash 让"相同输入的重复刷新"可被识别（幂等语义的基础）。
+
+## 12. 二轮深化 E：新走读——refresh 提交的三路异常映射
+
+```python
+# investigation.py:416-427
+try:
+    return await executor.submit(
+        request.task_id, event_id, requested_by=request.requested_by
+    )
+except EvidenceNotFoundError as exc:
+    raise HTTPException(status_code=404, detail="investigation event not found") from exc
+except InvestigationEventConflictError as exc:
+    raise HTTPException(status_code=409, detail="event refresh already in progress") from exc
+except EvidenceStoreError as exc:
+    raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+```
+
+逐块解释：三个异常类型是服务层定义的语义边界（services/investigation_errors.py 一族）——404 表示"事件 ID 在该任务下不存在"（注意 task_id 来自请求体而非路径，跨任务的事件 ID 不会命中）；409 是"在途去重"（同事件已有 queued/running 刷新）；503 是底层库打不开/损坏（fail-closed）。**未列出的异常类型会落到全局 500 固定文案**——例如 executor 未就绪时 Depends 工厂已先行 503，但 submit 内部的其他 RuntimeError 会走 500。`from exc` 保留服务端日志里的因果链，而 detail 是固定短句，符合脱敏纪律。同类三段式映射在 /analyses/{id}/review（:164-190）与 evidence 链接（:347-373）上重复出现，是这组路由的错误翻译模板。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

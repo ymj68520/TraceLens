@@ -157,4 +157,77 @@ for ext in ext_list:
 - `test_forensic_extractors.py`（各插件提取正确性/路由命中）、`test_media_metadata.py`（图像/视频元数据提取器）、`test_markitdown_routes.py`（路由门卫、输出原子性、回退链触发）。
 - 手工验证：`python -c "from httpserver.services.extractors import get_extractor; print(get_extractor('.evtx'))"` 应返回 EvtxExtractor 实例；`GET /api/markitdown/...` 后检查镜像 `.md` 的产出与 `_filename_routes` 行为。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 10. 二轮深化 A：提取器家族地图（35 个插件文件、99 个 @register_extractor）
+
+| 插件文件 | 注册数 | 覆盖域（代表性扩展名/文件） |
+|---|---|---|
+| microsoft_extended.py | 8 | .docx 附加、.one、.msg 等 Office 边角格式 |
+| ebook_science.py | 8 | .epub/.mobi/.pdf（科学格式 .nb/.cdf 等） |
+| archives_extended.py | 6 | .7z/.rar/.iso 等扩展归档 |
+| windows_extended.py / office_extended.py / image_metadata.py | 各 5 | Windows 痕迹/Office 边角/EXIF 图像 |
+| office.py / email.py / config_parsers.py | 各 4 | xlsx/pptx（OfficeServiceAdapter）、.eml/.mbox、ini/yaml |
+| security_formats.py / relational_db.py / nosql_db.py | 各 3 | 证书/密钥、SQLite 系、Mongo/Redis dump |
+| 其余 22 个文件 | 共 38 | evtx/registry/lnk/pcap/内存镜像/磁盘镜像/字体/GRUB/journal… |
+| markitdown_extractor.py | 1（主） | 数十扩展名的 MarkItDown 主路径 |
+
+数量事实：**99 个注册类、35 个插件模块**——新增格式时先找家族文件而不是建新文件（除非全新域）。
+
+## 11. 二轮深化 B：_filename_routes 全表（23 条，JSON 实测）
+
+| 文件名（精确键） | 提取器 | 说明 |
+|---|---|---|
+| auth.log、auth.log.1 | AuthLogExtractor | 两条独立精确键，无通配 |
+| wtmp / utmp / btmp | WtmpExtractor | 二进制登录记录 |
+| SAM / SYSTEM / SOFTWARE / SECURITY / DEFAULT | RegistryExtractor | 注册表五件套 |
+| NTUSER.DAT / UsrClass.dat | RegistryExtractor | **大小写敏感**（ntuser.dat 不命中，见第 8 节） |
+| History | ChromeHistoryExtractor | Chrome 历史 |
+| places.sqlite | FirefoxHistoryExtractor | Firefox 历史 |
+| thumbcache_256.db / thumbcache_1024.db / thumbcache_32.db / thumbcache_idx.db | ThumbcacheExtractor | 四个固定尺寸逐一列出，无通配 |
+| Manifest.db / Info.plist | IosBackupExtractor | iOS 备份清单 |
+
+路由是 `filename_extractor_registry.get(filename)` 的**精确 dict 查找**（__init__.py:27-29）——rotate 出的 auth.log.2、其他尺寸的 thumbcache 都不命中，需要扩表。路由优先级在扩展名之前（document_extractor.py:51-54）——`SAM` 无扩展名走文件名路由；`auth.log` 有扩展名但文件名路由先命中，不会进日志类扩展名分支。
+
+## 12. 二轮深化 C：主格式 × 回退链对照表（mapping JSON 的 fallback 段）
+
+| 扩展名 | 主提取器 | 回退 | 再回退（代码兜底） |
+|---|---|---|---|
+| .pdf | MarkitdownExtractor | PDFExtractor | 二进制嗅探跳过 |
+| .docx | MarkitdownExtractor | DocxExtractor | 同上 |
+| .doc | MarkitdownExtractor | DocParserProxy（外部工具） | 同上 |
+| .xlsx / .xls / .pptx / .ppt | MarkitdownExtractor | OfficeServiceAdapter（office_service） | 同上 |
+| 其余 markitdown 覆盖（.html/.ipynb/.jpg…） | MarkitdownExtractor | 无 fallback 条目 → raise | 调用方 latin-1 兜底 |
+| .evtx / .pcap / .raw 等专用 | 对应 Extractor | 无 | 同上 |
+| .db | GenericDatabaseExtractor | — | SQLiteExtractor 被禁止认领 .db（装载期规则，__init__.py:98-102） |
+| .sqlite / .sqlite3 | SQLiteExtractor | — | 主扩展名硬编码添加（:100-101） |
+| （无扩展名+文本头） | TextExtractor（"." 路由） | — | 头字节嗅探前置（8 字节） |
+
+回退接线在装载期完成（`instance._fallback_map[ext] = fallback_instance`，__init__.py:107-125）——运行期 `extract_to_markdown` 的失败路径只做一次 dict 查找；fallback 类不在 registered_extractor_classes 时仅 warning（:125-126），表现为"该扩展名回退静默缺失"。
+
+## 13. 二轮深化 D：新走读——markitdown 错误文本检测分支（markitdown_extractor.py:88-102）
+
+```python
+# markitdown_extractor.py:88-102（骨架）
+result = await loop.run_in_executor(None, self._md.convert, file_path)
+markdown = result.markdown if result else ""
+# markitdown wraps read failures INTO the markdown body instead of raising.
+if markdown and "an error occurred while reading the file" in markdown[:300].lower():
+    raise FileNotFoundError(file_path)
+```
+
+逐块解释：这个分支的存在理由是 markitdown 的**异常契约缺陷**——源文件读不了时它把错误消息写进正文返回，上层看到"成功"就会把"An error occurred while reading the file"当证据内容喂给 LLM（污染分析结果）。检测窗口只看**前 300 字符小写化**：错误文本必然在开头，避免误伤正文中段出现该短语的真实文档。触发 FileNotFoundError 后走与"markitdown 崩溃"相同的 fallback 路径（:107-135）。契约依赖风险（第 8 节已记录）：markitdown 升级若改写这句错误文案，检测即失效——回归用例应包含"损坏 PDF 走回退链"的断言。
+
+## 14. 二轮深化 E：装载时序与单例不变量
+
+| 步 | 动作 | 失败语义 |
+|---|---|---|
+| 1 | 包 import 触发 load_plugins（__init__.py:156） | 顶层异常 → 进程仍启动，插件缺席 |
+| 2 | 动态 import 全部插件模块，@register_extractor 填 classes | 单插件失败 warning 跳过 |
+| 3a | 主提取器实例化 + 扩展名注册（记 primary_extensions） | 类名拼错 warning |
+| 3b | 简单提取器注册（让位 primary；SQLite 特例） | 同上 |
+| 3c | fallback 接线（实例级 _fallback_map） | fallback 类缺失 warning |
+| 4 | _filename_routes 建表（复用 instances 单例） | 同上 |
+| 5 | 兜底路由：`.` → 文本提取器、`.db` → GenericDatabaseExtractor | — |
+
+**单例不变量**：一个类名全程只实例化一次（instances dict），扩展名路由与文件名路由共享同一实例——所有提取器实现必须无状态（可重入）。MarkItDown 引擎因此全局唯一（与 routes/markitdown.py 的 _get_markitdown 单例是**两个不同实例**：一个在提取器体系内、一个在路由层——两处各自规避 magika 重复加载，互不复用）。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

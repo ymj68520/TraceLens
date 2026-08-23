@@ -145,4 +145,66 @@ except Exception as e:
 - `test_wechat_dataset.py`（测试库上的图构建/聚合正确性）、`test_wechat_graph_routes.py`（路由契约：404/缓存失效端点/ego 子图形状）。
 - 手工链路：`GET /api/wechat/graph?task_id=`（看 nodes/edges/communities）→ `GET /api/wechat/graph/person/{username}` → `GET /api/wechat/data/chat?...` → `GET /api/wechat/timeline?granularity=week` → `POST /api/wechat/graph/invalidate`。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 二轮深化 A：方法全清单（四 mixin，11 个公开方法）
+
+| 方法 | mixin:行 | 签名要点 |
+|---|---|---|
+| get_full_graph | _core:74 | `(task_id, db_path, include_metrics=True) -> Dict`（缓存+to_thread） |
+| invalidate_cache | _core:62 | `(task_id)` 删 `{task_id}:` 前缀键 |
+| compute_timeline | _timeline:24 | `(task_id, db_path, granularity="month") -> Dict` |
+| get_chat_history | _queries:24 | `(db_path, owner_username, contact_username, page, page_size, start/end?)` |
+| get_group_chat_history | _queries:139 | `(db_path, chatroom_name, page, page_size, ...)` |
+| get_owner_info | _queries:236 | `(db_path) -> Dict` |
+| get_contacts_list | _queries:263 | `(db_path, include_chatrooms=False)` |
+| get_chatrooms_list | _queries:332 | `(db_path) -> Dict` |
+| （内部）_build_and_analyze/_build_graph/_compute_metrics/_graph_to_basic/_detect_communities/_get_ego_subgraph | _core/_analysis | 同步实现，全部经 to_thread |
+
+## 10. 二轮深化 B：SQL 读取面汇总（表 × 列 × 方法）
+
+| 表 | 读取列 | 读取方法 |
+|---|---|---|
+| wechat_messages | sender、receiver、content（LENGTH 聚合）、timestamp（MIN/MAX）、chatroom_name（NULL/空=私聊过滤） | _build_graph 私聊边聚合、get_chat_history、get_group_chat_history、compute_timeline |
+| wechat_messages | id、media_url、media_type、msg_type、is_send、sender_nickname、talker | get_chat_history/get_group_chat_history 的行直读 |
+| wechat_contacts | username、nickname、remark（label 优先级：remark>nickname） | _build_graph 节点、get_contacts_list |
+| wechat_chatrooms | chatroomname/成员 | get_chatrooms_list、include_chatrooms 并入联系人 |
+| wechat_owner_info | username、nickname、uin、imei | get_owner_info、_build_graph 机主节点、owner 自动探测 |
+
+全部查询带 `is_send/chatroom_name` 等业务过滤但**没有 LIMIT 上限保护**（除分页端点）——群共变边的全量加载（:362-466 按聊天室逐个 ORDER BY timestamp）在百万消息库上是主要内存风险点。
+
+## 11. 二轮深化 C：节点/边序列化字段契约（_analysis.py:63-91）
+
+**node**：id（username）、label（remark 优先）、is_owner、message_count（收发合计）、pagerank、betweenness、cluster（社区 id，round 6 位浮点仅中心性）。
+**edge（私聊，edge_type="chat"）**：source、target、weight（msg_count）、total_chars、first_time、last_time、sent_count/received_count（机主视角拆分）、chatroom（私聊边为 None）。
+**edge（群共变，edge_type="group"）**：双向两条、weight=1、chatroom=群名——不携带 total_chars/时间窗信息（窗口只是建边条件，不进边属性）。
+前端 force-graph 直接消费这组字段；community 端点在 node.cluster 之上再展开成员明细。
+
+## 12. 二轮深化 D：新走读——群共变边的窗口参数与复杂度（_core.py:362-466）
+
+```python
+# _core.py:406-432 的关键常量与循环结构
+ONE_HOUR_MS = 3_600_000          # 窗口硬编码
+for i, msg_i in enumerate(messages):        # messages 已按 timestamp 排序
+    for j in range(i + 1, len(messages)):
+        if ts_j - ts_i > ONE_HOUR_MS:
+            break                            # 有序性保证可提前断
+        if sender_i == sender_j:
+            continue
+        pair = (min(sender_i, sender_j), max(sender_i, sender_j))
+        if pair in seen_pairs:
+            continue
+        seen_pairs.add(pair)
+```
+
+逐块解释：① 窗口 1 小时是**硬编码常量**（不可配置）——改窗口要改代码；② 内层 break 依赖"messages 已排序"的前置（每个聊天室的查询带 ORDER BY），复杂度 O(n·w)（w=窗口内平均消息数）；③ `seen_pairs` 是**每群一套**（外层循环每个 chatroom 重置），同一对用户在不同群共变会得到多条 group 边（chatroom 字段区分）；④ 双向加边发生在循环外（:445-463 对 `(u,v)`/`(v,u)` 各加一条 weight=1）。语义边界重申：这是"同期活跃"共现证据，两用户可能从未互发消息。
+
+## 13. 二轮深化 E：资源与复杂度参数表
+
+| 参数 | 值 | 位置 | 说明 |
+|---|---|---|---|
+| CACHE_TTL | 1800s | _core:19 | 实例级（第 7 节已证不生效） |
+| 群共变窗口 | 1h（硬编码） | _core:362 附近 | 不可配 |
+| betweenness | O(VE) | networkx | include_metrics=false 可跳过 |
+| timeline top_contacts | 前 10 | _timeline | receiver 也计数（机主霸榜风险） |
+| 时间线周期键 | `YYYY-Www`（ISO 周）/ `YYYY-MM` | _timeline:94-99 | 跨年周正确（isocalendar） |
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

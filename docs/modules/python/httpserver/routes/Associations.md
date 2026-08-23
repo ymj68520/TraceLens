@@ -138,4 +138,83 @@ if times and len(times) >= 2:
 
 相关阅读：[Database.md](Database.md)（events/files 库的常规读端）、[LLM.md](LLM.md)（簇的 LLM 摘要写回）、[HTTPRoutes.md](../HTTPRoutes.md)。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 7. 二轮深化 A：端点与响应字段全表
+
+| 端点 | 方法 | 请求字段 | 响应模型 |
+|---|---|---|---|
+| /api/associations/cluster-files | POST | task_id、time_window、timestamp?（deprecated）、event_type、parent_directory=""、limit=100（1-1000） | ClusterFilesResponse（:48-53） |
+| /api/associations/file-clusters | POST | task_id、file_path、limit=100 | FileClustersResponse（:56-61） |
+
+**files[] 元素字段**（:245-299 组装）：
+
+| 字段 | 来源 | 说明 |
+|---|---|---|
+| file_path/file_size/extension/name/llm_summary/llm_description | files 表直读 | 元数据主体 |
+| mtime/ctime | files 表 | 候选谓词之一 |
+| atime/crtime | LEFT JOIN raw.files | raw 缺失时 NULL |
+| time_diffs | Python 计算 | {atime_diff,mtime_diff,ctime_diff,crtime_diff}，缺时间戳为 None |
+| min_time_diff | min(有效 diffs) | 排序键（升序=最相关在前，:296） |
+| time_diffs_formatted | format_time_diff | 人类可读版 |
+| anomalies | detect_time_anomaly | 见 C 节 |
+
+**clusters[] 元素字段**（:413-499）：time_window、event_type、cluster_start、cluster_end、event_count、representative_timestamp、llm_* 四列回显、**directories**（全量推导、只展示 5 个样本）、matched_time（命中的时间戳名：atime/mtime/ctime/crtime 之一，无时间戳降级时 None 并标注）。
+
+## 8. 二轮深化 B：SQLite 列读取清单（与 schema 文档交叉）
+
+| 库.表 | 读取列 | 用途 |
+|---|---|---|
+| files.db.files | path、size、mtime、ctime、extension、name、llm_summary、llm_description | 候选粗筛 + 元数据 |
+| raw.db.files（ATTACH 别名 raw） | path、atime、crtime | 四时间戳补全 |
+| events.db.events | timestamp、event_type、llm_summary、llm_description、llm_keywords、llm_is_relevant | CTE 建簇（file→cluster 方向） |
+
+对照 [FilesDB.md](../../../schema/FilesDB.md)/[RawDB.md](../../../schema/RawDB.md)/[EventsDB.md](../../../schema/EventsDB.md)：raw 表的 atime/crtime 正是本模块**唯一**的消费者级读取点之一；files 表的 llm_* 列在此只读不写（写在 /api/llm）。
+
+## 9. 二轮深化 C：异常规则 ↔ 前端展示映射
+
+| anomalies 值 | 触发条件（:113-130） | 前端 formatAnomalyType 文案（associationService.js:76-140） | 严重度 |
+|---|---|---|---|
+| mtime_mismatch | abs(mtime−cluster_time) > 3600 | mtime 与簇时间不符 | 中 |
+| crtime_after_mtime | crtime > mtime | 创建时间晚于修改时间（倒填嫌疑） | 高 |
+| atime_before_mtime | atime < mtime | 访问时间早于修改时间 | 低 |
+| high_time_variance | max−min > 86400（≥2 个有效时间戳） | 时间跨度异常 | 中 |
+
+注意 `if mtime` 真值判断把 0 当缺失（:113 起）而 file→cluster 方向 `is not None`（:389）——同一文件在两个方向可能被不同地判定"有无时间戳"，这是既文记录的语义差异（:376 注释）。前端 severity/colorClass 由这三个纯前端函数分级，后端不输出严重度。
+
+## 10. 二轮深化 D：新走读——无时间戳文件的降级分支（:485-509）
+
+```python
+# associations.py:471-509（骨架）
+matched = False
+for ts_name, ts_value in [('atime',...), ('mtime',...), ('ctime',...), ('crtime',...)]:
+    if ts_value is not None:
+        diff = abs(ts_value - cluster_time)
+        if diff < min_diff:
+            min_diff = diff
+        if diff < 300:
+            matched = True
+            cluster['matched_time'] = ts_name
+            cluster['time_diff'] = diff
+            break
+# 无时间戳降级：目录匹配即收
+if not matched and not has_timestamps and dir_matches:
+    matched = True
+    cluster['matched_time'] = None
+    cluster['time_diff'] = None
+    cluster['time_diff_formatted'] = "无时间戳"
+# B4：时间与目录双条件
+if matched and dir_matches:
+    related_clusters.append(cluster)
+```
+
+逐块解释：两级时间过滤——SQL 候选层用 `representative_timestamp` 落在 [文件最早时间戳−300, 最晚+300]（:403-411），Python 裁决层对四个时间戳按 atime→mtime→ctime→crtime 顺序短路，`abs(时间戳 − cluster_time) < 300` 命中即记 matched_time 与 time_diff（注意遍历会先更新 min_diff 再判断，break 只在命中时发生）。无时间戳文件走显式降级分支：`not matched and not has_timestamps and dir_matches` 三条件同时成立才收，并打上中文标记 `"无时间戳"`（:497-501）——它是响应里唯一的非英文字面量。B4 双条件在最后统一把关：时间命中但目录不符同样被拒。含义：**无时间戳文件靠目录谓词兜底、不受时间条件约束**，只受 limit 截断——响应里 matched_time=null 的占比是判断降级量的快捷指标。
+
+## 11. 二轮深化 E：调用矩阵
+
+| 前端符号（associationService.js） | 端点 | 页面 |
+|---|---|---|
+| getClusterRelatedFiles（:28） | POST /cluster-files | AnalysisCenter 簇抽屉 |
+| getFileRelatedClusters（:58） | POST /file-clusters | AnalysisCenter 文件抽屉 |
+| formatAnomalyType / getAnomalySeverity / getAnomalyColorClass（:76-140） | （纯前端） | 异常徽标渲染 |
+| （调试残留）console.log（:21-44） | — | web/Services.md 注意事项已记录 |
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

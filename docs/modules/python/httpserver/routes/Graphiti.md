@@ -139,4 +139,101 @@ job_id 形如 `job_{uuid4.hex[:16]}`（:303-305）。`_save_job`（:210-247）�
 
 相关阅读：[HTTPRoutes.md](../HTTPRoutes.md)、[services/GraphitiService.md](../../services/GraphitiService.md)、[graphiti/GraphitiIntegration.md](../../graphiti/GraphitiIntegration.md)。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 二轮深化 A：Pydantic 模型全表（graphiti_models.py，15 个模型逐字段）
+
+| 模型 | 字段 | 类型/默认 | 校验 | 消费方 |
+|---|---|---|---|---|
+| IngestRequest | task_id | str 必填 | — | worker 分派 + 图命名空间 |
+| | mode | IngestionMode=full | 枚举五值 | worker 五分支 |
+| | include_llm_descriptions | bool=True | — | 仅旧回退路径消费（新作业系统不透传） |
+| | batch_size | int=50 | ge=1 le=500 | 仅旧回退路径 |
+| | max_episodes | int=100 | ge=0 le=10000（0=不限） | 仅旧回退路径 |
+| FileIngestRequest | file_id | int 必填 | — | SINGLE_FILE worker（files.db 主键） |
+| | task_id | str 必填 | — | 命名空间 |
+| | update_analysis | bool=False | — | True 时强制 LLM 重分析再摄取 |
+| EventSyncRequest | task_id | str 必填 | — | 命名空间 |
+| | events | List[Dict] 必填 | —（无逐元素校验，信任 C++ 发来的形状） | EVENTS_ONLY worker |
+| IngestionResponse | job_id/status/message | str×3 | — | ingest 系列三端点共用 |
+| JobStatusResponse | job_id/status/progress/current_phase/created_at | 必填 | progress int | GET /jobs/{id} |
+| | started_at/completed_at/error/result | Optional | — | result 仅终态有值 |
+| IngestResponse | success/task_id/message/timestamp | 必填 | — | 旧回退路径（罕见） |
+| | job_id | Optional[str] | — | |
+| | entities_created / relationships_created | int=0 | — | |
+| SearchRequest | query | str 必填 | min_length=1 | search |
+| | task_id | str 必填 | — | 命名空间过滤 |
+| | entity_types | Optional[List[str]]=None | — | |
+| | limit | int=100 | ge=1 le=1000 | |
+| | include_relationships | bool=True | — | |
+| SearchResult | entity_id/entity_type/name/properties/score | 必填 | — | score 缺省 0.5（RRF 分数缺失时，服务层） |
+| | relationships | Optional[List[Dict]] | — | |
+| SearchResponse | success/query/task_id/results/total_count/timestamp | 必填 | total_count=len(results) | search |
+| EntityListResponse / RelationshipListResponse | success/task_id/{entities\|relationships}/total_count/page/page_size/timestamp | 必填 | — | 分页列表两端点 |
+| GraphitiStatusResponse | status/neo4j_connected/total_entities/total_relationships/timestamp | 必填 | — | GET /status |
+| | task_id | Optional | — | |
+| TaskGraphsResponse | success/task_ids/count/timestamp | 必填 | — | GET /tasks |
+
+注意 IngestRequest 三个调优字段（include_llm_descriptions/batch_size/max_episodes）在新作业系统路径上是**接受但忽略**——`queue_ingestion(task_id, mode)` 只透传两个参数（_ingest.py:58-61）；真正生效的是 Settings 的 GRAPHITI_* env。这是"请求字段 ≠ 生效配置"的典型案例，排障时别在请求体里调 batch_size。
+
+## 二轮深化 B：作业状态机与 phase 全表
+
+JobStatus 五态（ingestion_job_models.py:24-30）的合法转移（源码核对）：
+
+| 转移 | 触发 | 写入点 | 附带效果 |
+|---|---|---|---|
+| → pending | queue_* 入队 | _manager.py（_save_job） | created_at 填 UTC isoformat |
+| pending → running | worker 取到作业 | _worker.py:83 | 补 started_at（_manager.py:296-297） |
+| running → completed | 分派函数正常返回 | _worker.py:97、:114、:227 等 | progress=100、completed_at、result 摘要 |
+| running → failed | 分派函数抛异常 | _worker.py:105 | error=str(e)、completed_at |
+| pending → cancelled | DELETE /jobs/{id} 在 worker 触达前 | _manager.py:467-470 | cancel_job 返回 True |
+| （终态不变） | DELETE 已完成/失败/取消的作业 | _manager.py:467 | 返回 False（路由 200 + success:false） |
+
+**没有 running → cancelled**：worker 一旦开始执行，DELETE 无法中断——取消只在排队窗口有效。这解释了 DELETE 端点的 success:false 文案（"job already in terminal state or running"语义）。
+
+running 态的 current_phase 枚举（worker 实测写入值，非 Enum、自由字符串）与 progress 里程碑：
+
+| phase | progress | 阶段语义 |
+|---|---|---|
+| queued | 0 | 入队初始值 |
+| starting | — | worker 接手 |
+| reading_databases | 5-10 | 打开 files.db/events.db |
+| reading_files / reading_events | 10 | files_only/events_only 分支读取 |
+| processing_files | 10-? | 逐批处理文件 |
+| creating_file_entities | 10→? | 建实体 |
+| attaching_events | 80 | 事件挂到 File 实体 |
+| linking_entities | 85 | 实体间关系 |
+| deduplicating_files | 90 | MD5 去重 |
+| （终态 completed） | 100 | |
+
+前端轮询可按 phase 文本显示阶段名；progress 在 10→80 之间是批次粒度推进（每批更新一次）。
+
+## 二轮深化 C：新走读——search 的两级实现与降级路径
+
+路由层（_query.py:40-49）只是参数透传 + 结果组装；值得走的是服务层的双路径（graphiti_parts/_query.py:38-42 与 44-70）：
+
+```python
+# graphiti_parts/_query.py:38-42
+if not self._initialized:
+    # Fallback: Neo4j full-text search
+    return await self._neo4j_text_search(query, task_id, limit)
+```
+
+逐块解释：`_initialized=False` 是 GraphitiService 的"initialized-but-disabled"降级态（Neo4j 启动期连不上）——此时 search **不报错**，退到 `_neo4j_text_search` 的 CONTAINS 文本匹配。两级的差异是检索质量：降级路径无向量/全文索引、无 RRF 融合、无 entity_types 过滤（参数被丢弃）、无 relationships 附加——返回的 score 是固定值。也就是说**同一个端点在 Neo4j 部分可用时静默给出更差的结果**，前端无法从响应区分（success 恒 true）。判断当前在哪一级：`GET /api/graphiti/status` 的 neo4j_connected + 服务日志的降级 warning。
+
+正常路径（:44-70）：从 `_task_graphs` 缓存拿该 task 的 ingestor → `ingestor._client.search_`（注意是三下划线结尾的 `search_`，返回 edges+nodes+episodes 三层；`search` 只回 edges——注释 :48-49 明说）→ `COMBINED_HYBRID_SEARCH_RRF` 配置改写 limit → 结果分三类格式化：Edges 的 `properties.body=fact`（LLM 抽取的关系文本）、Nodes 的 `summary`、Episodes 的 `content`。edge 分数缺失时补 0.5（:70-73 附近）。一个边界：`_task_graphs.get(task_id)` 未命中（进程重启后缓存为空但图在库里）时走不到 `search_`——会落入更外层的异常/空结果分支，重启后首次 search 可能返回空直到重新摄取或缓存重建。
+
+## 二轮深化 D：前端方法 ↔ 端点 ↔ 状态码关联矩阵
+
+| graphitiService.js 方法 | 端点 | 期望状态码 | 失败形态 |
+|---|---|---|---|
+| ingestTask（:19） | POST /ingest | 200 | 404 任务不存在 / 500 str(e) |
+| ingestFile（:114） | POST /ingest/file | 200 | 404 / **501** 管理器缺失 |
+| searchGraph（:36） | POST /search | 200 | 500 str(e)（含内部信息，已知瑕疵） |
+| getEntities（:45） | GET /entities | 200 | 同上 |
+| getRelationships（:61） | GET /relationships | 200 | 同上 |
+| getStatus（:79） | GET /status | 200 | — |
+| getTasks（:86） | GET /tasks | 200 | — |
+| getJobs / getJobStatus（:102） | GET /jobs[/{id}] | 200 | 404 作业不存在（重启后内存态丢失） |
+| deleteGraph（:123）→ | DELETE /tasks/{id} | 200 | cleanup 与它不同端点 |
+| （C++ LLMPythonProxy） | POST /ingest、/ingest/file、/ingest/events | 200 | 同上，重试由 C++ 侧负责 |
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

@@ -163,4 +163,85 @@ search_results = await ingestor._client.search_(
 - 手工链路：`POST /api/graphiti/ingest` → `GET /api/graphiti/jobs/{id}` → `POST /api/graphiti/search {"task_id","query"}` → `GET /api/graphiti/graph?task_id=`。
 - 案例图验证：跨镜像摄取后若案例图无内容，先查日志里 "Failed to aggregate files from image" warning（该 NameError 根因已于 2026-08-24 修复，正常不应再出现）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 二轮深化 A：方法全清单（graphiti_parts 五 mixin，22 个方法）
+
+| 方法 | mixin:行 | 签名要点 | 调用方 |
+|---|---|---|---|
+| initialize | _core:21 | `() -> None` | ServiceManager |
+| shutdown | _core:137 | `()` 逐图关闭 | ServiceManager |
+| health_check | _core:150 | `(task_id=None) -> bool` | /health/ready、/api/graphiti/status |
+| _build_graphiti_config | _core:48 | `(group_id)` | 内部 |
+| _get_task_graph / _get_case_graph | _core:77/:107 | `(id) -> {config, ingestor}` | 全部摄取/检索 |
+| get_status | _status:21 | `(task_id=None) -> Dict` | GET /status |
+| _query_neo4j_counts | _status:93 | `(task_id) -> (int,int)` | 健康检查/状态 |
+| _check_neo4j_connection | _status:135 | `() -> bool` | 同上 |
+| list_task_graphs | _status:164 | `() -> List[str]` | GET /tasks |
+| delete_task_graph | _status:190 | `(task_id) -> bool` | DELETE /tasks/{id} |
+| search | _query:21 | `(query,task_id,entity_types?,limit=100,include_relationships=True)` | POST /search、报告生成 |
+| _neo4j_text_search | _query:134 | `(query,task_id,limit)` | search 降级 |
+| list_entities | _query:171 | `(task_id,entity_type?,page=1,page_size=50) -> (List,int)` | GET /entities |
+| list_relationships | _query:229 | `(task_id,relationship_type?,source_id?,target_id?,page,page_size)` | GET /relationships |
+| get_graph_data | _query:293 | `(task_id,...)` | GET /graph |
+| ingest_case_data | _ingest:22 | `(case_id,task_ids,files_db_paths,...) -> bool` | multi_analysis |
+| ingest_task_episodes | _ingest:211 | `(task_id,file_descriptions,...) -> Dict` | 汇聚点（见 4d） |
+| ingest_case_data_incremental | _ingest:403 | `(case_id,new_task_ids,existing_task_ids,...) -> Dict` | 增量分析 |
+| start_ingestion | _jobs:21 | `(task_id,...) -> str` | 路由回落路径 |
+| _run_ingestion | _jobs:49 | 后台跑 MultiSourcePipeline | 内部 |
+| get_job_status | _jobs:150 | `(job_id) -> Optional[Dict]` | GET /jobs/{id}（旧路径） |
+| cancel_job | _jobs:154 | `(job_id) -> bool` | DELETE /jobs/{id}（旧路径） |
+
+## 9. 二轮深化 B：Neo4j 读取面（Cypher 模式与图标签）
+
+list/count 系列全部走同一 Cypher 骨架（_query.py:186-228、:238-283）：
+
+```
+实体：MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) ...
+关系：MATCH (e:Episodic {group_id: $gid})-[m1:MENTIONS]->(s:Entity)-[r:RELATES_TO]->(t:Entity)
+      WHERE (e)-[:MENTIONS]->(t) ...
+```
+
+三个结构性事实：① **隔离锚点是 Episodic 节点的 group_id 属性**，而非 Entity 上的标签——实体通过"被某任务的 episode MENTION 过"归属任务；WHERE `(e)-[:MENTIONS]->(t)` 保证关系的两端都在本任务 episode 的提及集合内（防跨任务实体串边）；② 读取的节点标签恰为 Graphiti 的三层模型（Episodic/Entity），关系类型 MENTIONS/RELATES_TO——与 GraphitiIngestor 写入的结构对称；③ entity_type 过滤用 `$et IN labels(n)`（标签数组包含），relationship_type 过滤 `r.name = $rt`（注意是**属性** name 不是关系类型键）。计数与取页是两条语句（count(DISTINCT ...) + SKIP/LIMIT），无聚合复用。
+
+## 10. 二轮深化 C：旧作业状态机与取消语义（_jobs.py）
+
+| 转移 | 触发 | 行 |
+|---|---|---|
+| → running | start_ingestion 建 `_jobs[job_id]` | :35 |
+| running → completed | MultiSourcePipeline 正常结束 | :128 |
+| running → failed | 异常 | :141 |
+| running → cancelled | cancel_job **仅改状态字段** | :163-164 |
+
+cancel 的 docstring（:154-160）明说："marks the job as cancelled but doesn't actually stop the background task"——后台协程照跑完，只是状态先变了；进度是 0-1 浮点（`_update_job_progress`，:145-148），路由层乘 100 转整数（与 Graphiti.md 路由文档的进度换算记录一致）。内存 dict，重启即失。
+
+## 11. 二轮深化 D：新走读——查询路径的驱动生命周期（与摄取路径对照）
+
+```python
+# _query.py:181-186、:236-241、:284-291（list 系列的统一形态）
+from neo4j import AsyncGraphDatabase
+driver = AsyncGraphDatabase.driver(
+    self.settings.neo4j_uri,
+    auth=(self.settings.neo4j_user, self.settings.neo4j_password),
+)
+try:
+    async with driver.session() as session:
+        ...
+    return entities, total
+finally:
+    await driver.close()
+```
+
+逐块解释：**每次 list/count 调用新建一个 AsyncGraphDatabase 驱动、用完即关**（finally 保证）——驱动内含连接池，新建意味着每次请求做一次 Bolt 握手（本地 ~毫秒级、远程明显）。这与摄取路径形成对照：`_task_graphs` 缓存的 GraphitiIngestor 长持自己的客户端。得失：无连接泄漏（finally 兜底）、无池复用收益、高并发分页时握手开销累积。异常分支返回 `([], 0)` 而非抛错——GET /entities 在 Neo4j 宕机时表现为 200 + 空列表（又一个"空 ≠ 无数据"点）。若要优化，方向是把驱动提升为服务级单例并在 shutdown 关闭——但需同时处理"Neo4j 重启后池内死连接"问题。
+
+## 12. 二轮深化 E：两套 GraphitiConfig 默认值对照（与 Environment.md 第 6 节对齐）
+
+| 参数 | httpserver Settings（_build_graphiti_config 消费） | graphiti_integration GraphitiConfig.from_env | 实际生效规则 |
+|---|---|---|---|
+| batch_size | **50**（GRAPHITI_BATCH_SIZE） | **10** | httpserver 摄取任务走 50；管线 CLI 走 10 |
+| include_full_description | **True**（GRAPHITI_INCLUDE_FULL_DESC） | **False** | 同上分裂——`_core.py:59-75` 注释声称 mirror，实际相反（见 Main.md 14 节） |
+| llm_api_key | `settings.llm_api_key or "local"`（_core.py:66） | 缺省 `"local"` | httpserver 侧空 key 归一为 "local" |
+| llm_base_url | 自动补 `/v1`（:59-60） | 自动补 `/v1` | 一致 |
+| max_episode_tokens / max_retries / group_id | 3000 / 3 / 按任务或案件 | 同 | 一致 |
+
+含义：**同一环境变量在两条代码路径上可以产生不同配置**——经 `/api/graphiti/ingest`（httpserver）与经 graphiti_integration CLI 直跑的结果（episode 丰满度、批次大小）可能不同；对比实验必须固定 `GRAPHITI_BATCH_SIZE` 与 `GRAPHITI_INCLUDE_FULL_DESC` 的显式值。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

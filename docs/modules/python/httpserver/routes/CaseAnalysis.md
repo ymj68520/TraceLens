@@ -137,4 +137,99 @@ def _connect_ro(path: Path) -> sqlite3.Connection:
 
 相关阅读：[ForensicReports.md](ForensicReports.md)（410 的现行替代）、[LLM.md](LLM.md)（同前缀的通用分析与 reanalyze 的底层）、[HTTPRoutes.md](../HTTPRoutes.md)。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 二轮深化 A：端点全表（27 个）
+
+**_case.py（7 个）**
+
+| 端点 | 方法 | 请求要点 | 成功码 | 特殊码 |
+|---|---|---|---|---|
+| /api/llm/case-description | POST | task_id+case_description | 200 | C++ 转发失败仍 200（warning） |
+| /api/llm/case-analysis | POST | — | — | **固定 410** |
+| /api/llm/case-analysis/{job_id} | GET | — | 200 | 404；kind 不在 {reanalyze,windows} → 410 |
+| /api/llm/reanalyze-files | POST | task_id+file_paths[]+hint | 202/200 | 404、400（D2b） |
+| /api/llm/case-report/{task_id} | GET | — | 200 | 404 |
+| /api/llm/case-report-by-case/{case_id} | GET | — | 200 | 404 |
+| /api/llm/filtered-files/{task_id} | GET | — | 200 | 404 |
+
+**_windows.py（3 个）**：`POST /windows-analysis`（202 风格作业）、`GET /windows-report/{task_id}`、`GET /windows-export/{task_id}/toon`（TOON 流）。
+
+**intelligence_report.py（5 个）**：`GET /intelligence-report/{task_id}`（目录树+统计）、`GET .../records?category=&offset=&limit=`（分类分页）、`GET .../search?q=`（跨分类）、`GET .../metadata`、`PUT .../metadata`（唯一写路径，metadata 表 upsert）。
+
+**multi_analysis.py（12 个）**
+
+| 端点 | 方法 | 成功码 | 备注 |
+|---|---|---|---|
+| /api/llm/cases | POST/GET | 200 | 纯代理 C++ /api/cases |
+| /api/llm/cases/{id} | GET/DELETE | 200 | 删除不级联删任务 |
+| /api/llm/cases/{id}/tasks | POST | 200 | 代理 |
+| /api/llm/cases/{id}/associate-tasks | POST | 200 | 预置 analyzed 状态行（复用） |
+| /api/llm/cases/smart-create | POST | 200 | 智能建案 |
+| /api/llm/cases/{id}/tasks/incremental | POST | 200 | 增量追加 |
+| /api/llm/cases/{id}/analysis-status | GET | 200 | 摸 svc._case_aggregation（私有穿透） |
+| /api/llm/cases/{id}/incremental-analysis | POST | 200 | 增量分析（同样走 _jobs） |
+| /api/llm/multi-image-analysis | POST | 200 | 400（长度不等）、404/400（D2b） |
+| /api/llm/multi-image-analysis/{job_id} | GET | 200 | 404（内存态丢失） |
+
+## 9. 二轮深化 B：内存作业状态机（两个注册表对照）
+
+| 维度 | multi_analysis._jobs（:30） | _helpers._analysis_jobs（:18-20） |
+|---|---|---|
+| 状态值 | running → completed \| failed（:259/:289/:299；无 pending/cancelled） | running → 终态（reanalyze/windows kind） |
+| 进度 | `progress: {stage, message}` 由服务层 progress_cb 回写（:277-278） | `current_step`/`detail` 字符串 |
+| error | 固定文案 "multi-image analysis failed"（:300，**不含 str(e)**） | 同风格 |
+| 副信道 | PUT C++ `/api/cases/{id}/status`：analysing → completed/failed（:267-306） | 无 |
+| 持久级 | 进程内存 | 进程内存 |
+
+状态机注释：multi 作业创建即 running（与 FileAnalyzer 批量一致、与 Graphiti 作业不同——后者有 pending 排队态）；C++ 案件状态是**尽力而为的第二真源**：三处 PUT 里只有第一处（analysing）包了 `except Exception: pass`（:272-274），completed/failed 两处若 C++ 宕机会把异常留在后台 task 里（asyncio 默默记录），案件状态可能滞留在 analysing。
+
+## 10. 二轮深化 C：新走读——multi-image-analysis 的 C++ 状态联动分支
+
+```python
+# multi_analysis.py:267-306（骨架）
+try:
+    async with httpx.AsyncClient(timeout=5) as client:
+        await client.put(
+            f"{settings.cpp_backend_url}/api/cases/{req.case_id}/status",
+            json={"status": "analysing", "cross_analysis_job_id": job_id},
+        )
+except Exception:
+    pass
+
+async def _run():
+    async def progress_cb(stage: str, msg: str):
+        _jobs[job_id]["progress"] = {"stage": stage, "message": msg}
+    try:
+        result = await svc.run_multi_image_analysis(..., progress_callback=progress_cb)
+        _jobs[job_id]["status"] = "completed"
+        _jobs[job_id]["result"] = result
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.put(..., json={"status": "completed"})
+    except Exception as e:
+        logger.error(f"[MULTI_ANALYSIS] Job {job_id} failed: {e}", exc_info=True)
+        _jobs[job_id]["status"] = "failed"
+        _jobs[job_id]["error"] = "multi-image analysis failed"
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.put(..., json={"status": "failed"})
+```
+
+逐块解释：① 开局 PUT 携带 `cross_analysis_job_id`——C++ 侧案件记录因此能反查 Python 作业 ID（前端 Cases 页展示分析中状态的数据源）；② progress_cb 是服务层→路由层的唯一进度通道，stage/message 原样透传给轮询端点；③ except 分支记完整 traceback 到日志但对外只给固定文案——**脱敏纪律在这里是对的**；④ 尾部两个 PUT 未包 try/except：C++ 不可用时 _run 协程以异常收场，`_jobs` 状态已先行写对（completed/failed），但 C++ 案件状态永久停在 analysing——排障看到"案件一直分析中但作业早已 completed"时先查这三个 PUT。
+
+## 11. 二轮深化 D：intelligence_report 数据契约要点
+
+- `_connect_ro`（:194-198）：`file:<percent-encoded>?mode=ro` URI + timeout=10——路径含中文/空格也安全（quote(safe='/')）；对照 `_connect_rw` 仅 metadata 表使用。
+- 目录树统计的三个口径列：`is_deleted`（删除文件单独成组）、`scene_relevant`、`llm_is_relevant`——与 files 表的列名一一对应（[FilesDB.md](../../../schema/FilesDB.md)）。
+- 五章节来源：`case_analysis.case_report` 的 Markdown 按已知标题切分（`_load_chapter_markdown`，:815-862）——章节标题集合是隐式契约，改名即切不出章节。
+- metadata 表：`_ensure_metadata_table` 建表后 upsert（:271-336），键为 task 维度；PUT 端点接受任意 JSON 值（无 Pydantic 深度校验）。
+
+## 12. 二轮深化 E：前端调用矩阵（与 web/Services.md 对齐）
+
+| 前端方法 | 端点 | 页面 |
+|---|---|---|
+| saveCaseDescription（caseAnalysisService.js:13） | POST /case-description | AnalysisCenter |
+| getCaseAnalysisStatus+pollCaseAnalysis（:38） | GET /case-analysis/{job_id} | 同上（3s 轮询） |
+| getCaseReport / getFilteredFiles / reanalyzeFiles（:78/:86/:98） | 对应 GET/POST | Files 二次分析 |
+| startCaseAnalysis（:29-31） | （throw 存根） | **已退役**，调用方应改走报告生成 |
+| caseGroupService 全族（:12-89） | /api/llm/cases*、multi-image-analysis | /cases 页 |
+| intelligenceReportService（:13-49） | /intelligence-report/* | /case-intelligence |
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

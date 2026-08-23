@@ -154,4 +154,60 @@ else:
 
 相关阅读：[HTTPRoutes.md](../HTTPRoutes.md)、[Database.md](Database.md)（android.db 之外的取证库读端）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 7. 二轮深化 A：端点全表（9 个，含 query 参数）
+
+| 端点 | 方法 | query 参数 | 响应要点 | 失败形态 |
+|---|---|---|---|---|
+| /api/wechat/graph | GET | task_id 必填、include_metrics=**true** | nodes/edges/communities/metadata | 404（error 且无 nodes）/500 str(e) |
+| /api/wechat/graph/timeline | GET | task_id、interval=month（month\|week，其他 400） | 周期聚合数组 | 400/404 |
+| /api/wechat/graph/community | GET | task_id | 社区明细+消息量合计 | 同 /graph |
+| /api/wechat/graph/person/{username} | GET | task_id | ego 节点+直连边 | 404/500 |
+| /api/wechat/graph/invalidate | POST | task_id | 清缓存（见第 5 节局限） | 200 |
+| /api/wechat/chat | GET | task_id、contact_username、page=1、page_size=50 | 双向会话分页 | 404（error dict）/500 |
+| /api/wechat/chat/group | GET | task_id、chatroom_name、page、page_size | 群聊分页 | 同上 |
+| /api/wechat/owner | GET | task_id | username/nickname/uin/imei | 404 |
+| /api/wechat/contacts | GET | task_id、include_chatrooms=false | 联系人（可含群） | 404 |
+
+## 8. 二轮深化 B：android.db 四表读写列清单（与 [AndroidDB.md](../../../schema/AndroidDB.md) 交叉核对）
+
+本组**只读**以下列（写侧是 C++ Android 分析，AndroidDB.md:113 指出存的是 SQLCipher 解密后内容）：
+
+| 表（列数） | 本组读取的列 | 用途 |
+|---|---|---|
+| wechat_messages（13+5） | sender、receiver、content、timestamp、media_url、media_type、msg_type、is_send、chatroom_name、sender_nickname、talker、id | 边聚合（GROUP BY sender,receiver）、私聊/群聊分页、时间线 |
+| wechat_contacts（8） | 全部（username、nickname 等） | 节点构建、联系人列表 |
+| wechat_chatrooms（7） | 群名/成员 | include_chatrooms 时并入联系人 |
+| wechat_owner_info（6） | username、nickname、uin、imei | 机主节点 + 私聊会话的 owner_username 探测（_queries.py:68-70） |
+
+注意 `_resolve_android_db_path` 的表契约恰好以这四张表的**前三张+owner_info** 为白名单（wechat_graph_models.py:186-89），MIUI 备份系列四表（wechat_artifact_inventory 等）不在白名单——只有"解密后内容"形态的库会被当作微信库。
+
+## 9. 二轮深化 C：新走读——/graph 的部分容错分支（_graph.py:44-64）
+
+```python
+# _graph.py:44-64（骨架）
+db_path = await _resolve_android_db_path(task_id)
+service = _get_service()
+result = await service.get_full_graph(task_id, db_path, include_metrics=include_metrics)
+if "error" in result and not result.get("nodes"):
+    raise HTTPException(status_code=404, detail=result["error"])
+return GraphResponse(
+    success=True,
+    nodes=result.get("nodes", []),
+    ...
+)
+```
+
+逐块解释：判定条件是 `error 且无 nodes`——服务层遇到可恢复问题（如 Louvain 缺失、指标失败）会返回带 error 字段**但同时带部分数据**的结果，此时端点返回 200；只有"连图都没建出来"才 404。注意 `success=True` 是**硬编码**的——即使 result 带 error（降级数据），响应仍报 success:true，前端无法从该字段感知降级，只能看 metadata。三档实际信号：200+success:true（含降级数据）、404（无微信数据/任务未做 Android 分析）、500（异常，detail=str(e) 是脱敏偏离点）。
+
+## 10. 二轮深化 D：缓存与构建参数表
+
+| 参数 | 值 | 位置 | 实效 |
+|---|---|---|---|
+| CACHE_TTL | 1800s（30 分钟） | _core.py:19 | 因实例每请求新建而**实际无效**（第 5 节） |
+| 缓存键 | `{task_id}:{db mtime}` | _core.py:30-45 | mtime 变更即换键（防旧数据） |
+| PageRank | `nx.pagerank(G, weight="weight")` | _analysis.py:42 | 失败→全 0 向量 |
+| betweenness | nx.betweenness_centrality | _analysis.py:49 | 同上（大图上是主要耗时点） |
+| 社区 | python-louvain → 连通分量 → 单社区 | _analysis.py:120-141 | 三级降级 |
+| 线程卸载 | 全部构建/查询 asyncio.to_thread | _core/_timeline/_queries | 不阻塞事件循环 |
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

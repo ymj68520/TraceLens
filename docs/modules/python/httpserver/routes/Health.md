@@ -152,4 +152,137 @@ else:
 
 相关阅读：[httpserver/Main.md](../Main.md)（lifespan 与降级启动）、[httpserver/services/ServiceManager.md](../services/ServiceManager.md)（health_check 汇总）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 二轮深化 A：端点全表与响应字段级契约
+
+| 端点 | 方法 | 请求参数 | 响应模型 | 状态码 |
+|---|---|---|---|---|
+| `/health` | GET | 无 | HealthResponse | 恒 200 |
+| `/health/live` | GET | 无 | HealthResponse | 恒 200 |
+| `/health/ready` | GET | 无 | ReadinessResponse | 恒 200（语义看 `ready` 字段） |
+| `/api/system/redis/status` | GET | 无 | 无模型（裸 dict） | 恒 200 |
+| `/api/system/info` | GET | 无 | SystemInfoResponse | 200（OpenAPI 声明了 500 但 handler 内无抛点） |
+
+四个响应体的逐字段契约：
+
+**HealthResponse（health.py:21-26）**
+
+| 字段 | 类型 | 取值来源 | 说明 |
+|---|---|---|---|
+| status | str | 字面量 "healthy"（/health）或 "alive"（/health/live） | 区分两个探针的稳定标记 |
+| timestamp | str | `datetime.now().isoformat()` | **本地时间、无时区后缀**——跨时区聚合日志时需注意 |
+| version | str | 硬编码 "1.0.0"（:65、:86） | 与 FastAPI(title version) main.py:107、`report_generator_version` 默认值三处各自硬编码，无单一来源 |
+| uptime_seconds | float | `time.time() - _start_time`（:46） | 模块 import 时刻起算（含路由注册），早于 uvicorn 监听几毫秒 |
+
+**ReadinessResponse.checks 各键的子字段（契约上 `Dict[str, Any]`，实际形状固定）**
+
+| 键 | 正常形态 | 异常形态 | 对 ready 的影响 |
+|---|---|---|---|
+| cpp_backend | `{status: connected\|disconnected, url}` | `{status: "error", error: <异常类名>}` | **唯一能置 ready=false 的键**（:118-119、:127） |
+| neo4j | `{status: connected\|disconnected, uri}` | `{status: "unavailable", error}` | 不影响（:144 注释明说） |
+| llm | `{status: available\|unavailable, url}` | `{status: "unavailable", error}` | 不影响 |
+| redis | `{status, connected, in_use, url}` | `{status: "unavailable", error: "IngestionJobManager not initialized"}`（job_manager 为 None）或 `{status: "unavailable", error: <类名>}` | 不影响 |
+
+**`/api/system/redis/status` 裸 dict（health.py:213-230）**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| connected | bool | 当下 ping 结果 |
+| in_use | bool | 初始化时是否真的启用了 Redis（内存回退后恒 False） |
+| status | str | job_manager 内部状态字 |
+| error | str \| None | **该端点独有**——正常路径也带这个键（值 None）；readiness 内嵌的 redis 检查正常路径**没有** error 键，两处形状不完全一致 |
+| url | str | mask_url_credentials 处理后的 REDIS_URL |
+| timestamp | str | 同上 isoformat |
+
+**SystemInfoResponse.config 固定 8 键**（:255-264）：http_port、http_host、cpp_backend_url、neo4j_uri、llm_text_model、llm_vision_model、log_level、platform——枚举封闭，加配置项要改代码。
+
+## 二轮深化 B：readiness 判定真值表
+
+四个依赖 × 三种观测态对 `ready` 的影响（源码推导）：
+
+| C++ | Neo4j | LLM | Redis | ready | 典型场景 |
+|---|---|---|---|---|---|
+| connected | connected | available | in_use | true | 全依赖就绪 |
+| connected | disconnected | unavailable | 未配置 | true | 只用基础分析（无图谱/LLM/Redis） |
+| connected | unavailable(error) | unavailable(error) | unavailable(error) | **true** | 三个可选依赖全抛异常——探针自身问题不影响接流 |
+| disconnected | 任意 | 任意 | 任意 | **false** | C++ 宕机或网络分区 |
+| error(异常) | 任意 | 任意 | 任意 | **false** | cpp_backend 属性访问抛异常（如 shutting_down 态） |
+
+注意最后一行：readiness 里 `service_manager.cpp_backend` 是属性访问（:113），在 ServiceManager 处于 initializing/shutting_down/stopped 态时抛 RuntimeError → except 分支 → ready=false。也就是说**关机窗口期的 readiness 会短暂变 false**，编排器据此摘流量正是预期行为。
+
+## 二轮深化 C：新走读——redis_status 的双形态分支
+
+```python
+# health.py:209-230（节选）
+service_manager = get_service_manager()
+job_manager = service_manager.ingestion_job_manager
+if job_manager is None:
+    return {
+        "connected": False,
+        "in_use": False,
+        "status": "unavailable",
+        "url": mask_url_credentials(settings.redis_url),
+        "timestamp": datetime.now().isoformat(),
+    }
+
+health = await job_manager.redis_health_check()
+return {
+    "connected": health["connected"],
+    "in_use": health["in_use"],
+    "status": health["status"],
+    "error": health.get("error"),
+    ...
+}
+```
+
+逐块解释：`ingestion_job_manager` 是 ServiceManager 里**唯一不惰性重建**的管理器属性（service_manager.py:663-667）——启动期 Redis 初始化失败时它是 None，于是走第一分支返回 `in_use:false` 的固定形态（没有 error 键）；非 None 时转发 `redis_health_check()` 的完整结果，**恒有 error 键**（值可为 None）。前端 Dashboard 的 Redis 状态卡（systemService.getRedisStatus）区分"未启用"与"启用但断连"就靠这两个形态：前者 `in_use=false`，后者 `in_use=true, connected=false`。与 readiness 内嵌检查（上一节）的第三点差异：readiness 版本在异常时返回 `{"status": "unavailable", "error": <类名>}`（:180-184），本端点没有外层 try/except——`redis_health_check()` 若抛异常会直接冒泡成全局 500（固定文案），而它内部实现（ingestion_job_parts/_manager.py:179-208）自己 catch 了网络错误，实际很难触达。
+
+## 二轮深化 D：调用方关联矩阵
+
+| 调用方 | 端点 | 用途 |
+|---|---|---|
+| web/src/services/systemService.js:42（getPythonHealth） | GET /health | Dashboard Python 服务卡片 |
+| web/src/services/systemService.js:47（getRedisStatus） | GET /api/system/redis/status | Dashboard Redis 卡片 |
+| 编排器/run.sh 健康等待 | GET /health/ready（探针推荐）或 /health | 拉起判定 |
+| （无前端调用方） | GET /health/live、/api/system/info | 可达但闲置（systemService 的 /api/system/info 走 C++ 基座同名端点） |
+| ServiceManager.health_check | （间接） | 三依赖汇总的另一条平行路径，见 ServiceManager.md 第 13 节——两者判定口径不同（health_check 会把 C++ 异常降 overall=degraded，readiness 置 ready=false，语义等价但字段不同） |
+
+## 二轮深化 E：配置影响表
+
+| env | 默认 | 出现位置 |
+|---|---|---|
+| CPP_BACKEND_URL | http://localhost:8080 | checks.cpp_backend.url（:116）、/api/system/info（:258） |
+| NEO4J_URI | neo4j://127.0.0.1:7687 | checks.neo4j.uri（:136）、info（:259） |
+| LLM_TEXT_BASE_URL | http://192.168.31.170:1234 | checks.llm.url（:153） |
+| REDIS_URL | redis://localhost:6379 | 两处 Redis 端点的 url（掩码后，:175、:218、:228） |
+| PYTHON_HTTP_PORT / PYTHON_HTTP_HOST | 8090 / 0.0.0.0 | info（:256-257） |
+| LLM_TEXT_MODEL / LLM_VISION_MODEL | openai/gpt-oss-20b / qwen/qwen3-vl-4b | info（:260-261） |
+| LOG_LEVEL | INFO | info 回显（:262）——**仅回显**，不驱动日志级别（见 Main.md 第 14 节） |
+
+## 二轮深化 F：readiness 最坏延迟预算（串行无总超时，新走读）
+
+`/health/ready` 没有整体超时包裹，四项检查**串行**执行，每项的内部上限各不相同（源码核对）：
+
+| 检查 | 实现链 | 单项最坏耗时 | 依据 |
+|---|---|---|---|
+| cpp_backend | `client.get("/api/health")`（cpp_backend.py:144） | **30s** | 复用池化客户端的默认 `httpx.Timeout(30.0)`（cpp_backend.py:56） |
+| neo4j | `_check_neo4j_connection`（graphiti_parts/_core.py:157） | ≈5s | Neo4j 驱动 connect/query 超时（Settings 默认 5s） |
+| llm | `model_manager.health_check` → 先 text 后 vision 各一次 `GET /v1/models`（model_manager.py:79-94、:104-111） | **240s** | 持久客户端超时 = `llm_timeout_seconds`（默认 120s，llm_service.py:65-67、:71-73），两次串行 |
+| redis | `redis_health_check` ping | ≈数秒 | 连接池超时（connect 5s） |
+
+最坏合计约 **4.7 分钟**——注意这是"依赖挂起（accept 后不响应）"而不是"连接拒绝"的形态；连接拒绝通常毫秒级返回。两个工程结论：编排探针的超时务必小于依赖挂起场景（否则探针先死）；`llm_timeout_seconds` 同时承担"推理超时"与"探活超时"两个角色是已知的耦合点——想缩短 readiness 延迟不能直接调小它，会误伤长推理。`check_model_status` 在无持久客户端时走的临时客户端反而只有 10s 超时（model_manager.py:113-115）——两条路径超时预算不同。
+
+## 二轮深化 G：手工验证矩阵（curl）
+
+```bash
+# 全绿基线
+curl -s localhost:8090/health/ready | python3 -m json.tool
+# 停 C++：ready:false，checks.cpp_backend.status=disconnected
+# 停 Neo4j：ready:true，checks.neo4j.status=disconnected（Graphiti 降级态）
+# 停 LLM：ready:true，checks.llm.status=unavailable
+# 停 Redis：ready:true，checks.redis.in_use=false（内存回退）
+# 关机窗口（向进程发 SIGTERM 后立刻探测）：ready:false，cpp_backend.status=error=RuntimeError
+curl -s localhost:8090/api/system/redis/status   # 对比 in_use/connected 两维
+curl -s localhost:8090/api/system/info           # 8 键配置摘要
+```
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

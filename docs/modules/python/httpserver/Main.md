@@ -170,4 +170,152 @@ uvicorn 开始监听后触发 lifespan：ServiceManager 按依赖顺序初始化
 
 相关阅读：[HTTPRoutes.md](./HTTPRoutes.md)（路由总览）、[httpserver/services/ServiceManager.md](./services/ServiceManager.md)（启动编排细节）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 二轮深化 A：路由挂载全表与端点数
+
+`_register_routes`（main.py:197-246）共挂载 **19 个路由模块、合计 152 个端点**。其中四个门面模块（graphiti.py、llm.py、case_analysis.py、wechat_graph.py）自身零端点，只聚合 `*_endpoints/` 子包中的子 router（门面 docstring 自述 "Public surface unchanged"——router 符号与路径不变，main.py 无需感知内部拆分；case_analysis 门面额外串入平级的 intelligence_report.py，见 case_analysis.py:38-40）：
+
+| # | 模块 | 前缀 | tags | 端点数 | 挂载行 |
+|---|---|---|---|---|---|
+| 1 | routes/health.py | （无） | Health | 5 | main.py:202 |
+| 2 | routes/graphiti.py（门面） | `/api/graphiti` | Graphiti | 17（_ingest 3 + _jobs 3 + _migrate 4 + _query 3 + _admin 4） | main.py:205 |
+| 3 | routes/llm.py（门面） | `/api/llm` | LLM | 9（_analysis 5 + _management 4） | main.py:206 |
+| 4 | routes/case_analysis.py（门面） | `/api/llm` | Case Analysis | 15（_case 7 + _windows 3 + intelligence_report 5） | main.py:207 |
+| 5 | routes/forensic_reports.py | `/api/reports` | Forensic Reports | 6 | main.py:208-212 |
+| 6 | routes/report_evidence.py | `/api/reports` | Report Evidence | 3 | main.py:213-217 |
+| 7 | routes/report_generation.py | `/api/reports` | Report Generation | 2 | main.py:218-222 |
+| 8 | routes/report_narrative.py | `/api/reports` | Report Narrative | 1 | main.py:223-227 |
+| 9 | routes/investigation_workbench.py | `/api/investigation/workbench` | Investigation Workbench | 35 | main.py:228-232 |
+| 10 | routes/investigation.py | `/api/investigation` | Investigation | 17 | main.py:233-237 |
+| 11 | routes/multi_analysis.py | （无，自带 `/api/llm/*` 全路径） | Multi-Image Analysis | 12 | main.py:238 |
+| 12 | routes/associations.py | `/api/associations` | Associations | 2 | main.py:239 |
+| 13 | routes/database.py | `/api/db` | Database | 7 | main.py:240 |
+| 14 | routes/office.py | `/api/office` | Office | 2 | main.py:241 |
+| 15 | routes/oss_analysis.py | （无，自带 `/api/forensics/oss/ai`） | OSS Analysis | 2 | main.py:242 |
+| 16 | routes/system.py | `/api/system` | System | 3 | main.py:243 |
+| 17 | routes/dll.py | `/api/llm` | DLL | 1 | main.py:244 |
+| 18 | routes/markitdown.py | `/api/markitdown` | Markitdown | 4 | main.py:245 |
+| 19 | routes/wechat_graph.py（门面） | `/api/wechat` | WeChat Analysis | 9（_data 4 + _graph 5） | main.py:246 |
+
+三点结构事实：`/api/llm` 前缀被三个模块共享（llm.py、case_analysis.py、dll.py，具体路径互不冲突），`/api/reports` 被四个模块共享——OpenAPI 的分组只能靠 tags 而非路径前缀；注册顺序即匹配顺序，`investigation_workbench`（长前缀）刻意先于 `investigation` 注册（main.py:228-237）；`routes/system_logs.py` 不在上表中（未注册，见第 7 节）。
+
+## 10. 二轮深化 B：Settings 字段级数据契约（config.py:122-302 全量）
+
+下表覆盖 `Settings` 全部 59 个字段 + 3 个 property + 1 个校验器，按代码分组排列：
+
+| 分组 | 字段 | alias（env） | 类型/默认 | 消费者（生产代码） |
+|---|---|---|---|---|
+| Server | python_http_port / python_http_host | PYTHON_HTTP_PORT / PYTHON_HTTP_HOST | int 8090 / str "0.0.0.0" | run_server（main.py:274-275）、health.py:256-257 |
+| 路径 | project_root / data_dir | PROJECT_ROOT / DATA_DIR | str "" / str "data" | get_project_root（config.py:33）、service_manager.py:405 |
+| C++ 后端 | cpp_backend_url | CPP_BACKEND_URL | str "http://localhost:8080" | cpp_backend.py:44、multi_analysis.py:109 等 11 处、dll.py:105、health.py:116,258、case 聚合 |
+| C++ 后端 | http_server_port / http_server_host | HTTP_SERVER_PORT / HTTP_SERVER_HOST | int 8080 / str "0.0.0.0" | 仅拼 cpp_backend_base_url property（见下） |
+| DLL | dll_analysis_enabled / dll_cpp_backend_url / dll_analysis_timeout | DLL_ANALYSIS_ENABLED / DLL_CPP_BACKEND_URL / DLL_ANALYSIS_TIMEOUT | True / str / 30.0 | dll_analysis_timeout→dll_analyzer.py:26；dll_cpp_backend_url **无消费者（未接线）** |
+| 启动预算 | cpp_startup_request_timeout … startup_timeout | CPP_STARTUP_REQUEST_TIMEOUT … PYTHON_STARTUP_TIMEOUT | 5.0/8.0/5.0/5.0/12.0/30.0 | 全部由 ServiceManager 消费（见 ServiceManager.md） |
+| LLM | llm_base_url / llm_endpoint / llm_api_key | LLM_* | str / "/v1/chat/completions" / "" | llm_full_endpoint property；endpoint 经校验器 normalize |
+| LLM 文本 | llm_text_base_url / llm_text_model / llm_text_max_tokens / llm_text_temperature | LLM_TEXT_* | str / "openai/gpt-oss-20b" / 4096 / 0.7 | LLMService、health.py:153,260 |
+| LLM 视觉 | llm_vision_base_url / llm_vision_model / llm_vision_max_tokens / llm_vision_temperature | LLM_VISION_* | str / "qwen/qwen3-vl-4b" / 4096 / 0.5 | LLMService 视觉路径、health.py:261 |
+| LLM 公共 | llm_timeout_seconds / llm_max_retries / llm_context_length | LLM_TIMEOUT_SECONDS / LLM_MAX_RETRIES / LLM_CONTEXT_LENGTH | 120 / 3 / 4096 | LLMService 重试与上下文预算 |
+| Redis | redis_url | REDIS_URL | "redis://localhost:6379" | health.py:175,218,228（经 mask_url_credentials）；IngestionJobManager 可选 |
+| OSS | oss_access_key_id / oss_access_key_secret / oss_endpoint / oss_region | OSS_* | ""/""/""/"cn-hangzhou" | oss 分析服务 |
+| Neo4j | neo4j_uri / neo4j_user / neo4j_password | NEO4J_* | "neo4j://127.0.0.1:7687" / "neo4j" / "" | GraphitiService、health.py:136,259 |
+| Graphiti | graphiti_use_local_llm … graphiti_max_episode_tokens（6 个） | GRAPHITI_* | True/50/3/"forensics_files"/True/3000 | GraphitiService 摄取参数 |
+| DB | db_output_dir / db_name | DB_OUTPUT_DIR / DB_NAME | "./output" / "forensics.db" | database.py 路由定位 SQLite |
+| 报告 | report_output_dir / report_generator_version | FORENSIC_REPORT_DIR / FORENSIC_REPORT_GENERATOR_VERSION | "build/data/reports" / "1.0.0" | 报告仓库写盘 |
+| 文件分析 | file_analysis_max_content / max_keywords / max_content_limit | FILE_ANALYSIS_* | 10000 / 10 / 12000 | LLM 文件内容截断 |
+| 日志 | log_level / log_file / debug_output_mode | LOG_LEVEL / LOG_FILE / DEBUG_OUTPUT_MODE | "INFO"/"forensics.log"/"stdout" | log_level 仅 health.py:262 回显——**不驱动实际级别**（basicConfig 固定 INFO，main.py:29-35） |
+| 性能 | thread_pool_size / max_batch_size | THREAD_POOL_SIZE / MAX_BATCH_SIZE | 4 / 100 | 服务侧并发上限 |
+| CORS | cors_origins_raw | PYTHON_CORS_ORIGINS | '["*"]' | cors_origins property → main.py:117 |
+| 筛选 | file_filter_mode / filter_max_files | FILE_FILTER_MODE / FILTER_MAX_FILES | "deterministic" / 0 | file_filter.py:69,126、multi_image_filter.py:57,139、_pipelines.py:94 |
+| 嵌套 | llm_filter_config | （无 alias） | LLMFilterConfig() | 见下表 |
+
+**子模型 LLMFilterConfig（config.py:41-119）12 个字段的消费现状**（生产代码实测）：
+
+| 字段 | 默认 | 消费者 |
+|---|---|---|
+| match_confidence_threshold（ge=0, le=1） | 0.3 | filter_validator.py:40 |
+| score_weight_path_semantic / freshness / size / depth | 0.4/0.3/0.2/0.1 | file_matcher.py:52-55 |
+| enable_concurrent_lock | True | file_filter.py:90 |
+| enable_enhanced_parser / parser_fallback_enabled / enable_smart_dedup / lock_timeout / max_parse_retries / retry_delay | True/True/True/300/2/1 | **无生产消费者**（lock_timeout 尤其值得注意：concurrent_filter.py 的 FilterLockManager 用裸 asyncio.Lock，`filter_with_lock` 没有任何超时参数） |
+
+且该子模型未设 `env_nested_delimiter`，.env.example 中也没有对应声明——实际不可通过环境变量调整，只能改代码。
+
+**两个 property 一个校验器**：
+
+- `cpp_backend_base_url`（config.py:294-297，`http://<http_server_host>:<http_server_port>`）与 `llm_full_endpoint`（:299-302，`llm_base_url + llm_endpoint`）**在生产代码中零消费**——仅 test_dll_route.py:80 等 5 处 mock 里出现 cpp_backend_base_url；真实链路全部用 `cpp_backend_url` 字段（dll.py:105 也是）。它们与 `cpp_backend_url` 并存形成"两条拼法"，属于遗留死代码。
+- `normalize_llm_endpoint` 校验器（config.py:163-170，`mode="before"`）：值非空且不以 `http:`/`https:`/`/` 开头（即历史遗留的裸模型名）时强制改写为 `/v1/chat/completions`。
+
+## 11. 二轮深化 C：中间件与异常处理器的执行顺序（新走读）
+
+第 3 节只列了四层横切关注点，没有说它们的**包裹顺序**。Starlette 的规则是：`add_middleware`/`app.middleware(...)` 每次 `insert(0, ...)`，最终栈为 `[ServerErrorMiddleware] + user_middleware + [ExceptionMiddleware]` 后**从内向外**包裹。对照本模块的注册顺序（CORS 先、log_requests 后，main.py:119、128），实际请求路径是：
+
+```
+请求 → ServerErrorMiddleware → log_requests(BaseHTTPMiddleware) → CORSMiddleware
+     → ExceptionMiddleware → 路由 → 原路返回
+```
+
+两个可观测的后果：
+
+1. **log_requests 在 CORS 之外**——浏览器发的 CORS 预检（OPTIONS）也会被记一行 `OPTIONS /api/... - 200`；同时日志中间件看到的 response 已带 `Access-Control-Allow-Origin` 头。
+2. **两个异常处理器的分工**：路由内抛出的、未被业务代码捕获的异常穿过 CORSMiddleware 与 log_requests（后者的 `except` 分支记一行 ERROR 再 `raise`，main.py:147-153），最终由最外层 ServerErrorMiddleware 调用注册的 `global_exception_handler` 产出 500；而 `RequestValidationError` 在路由解析阶段抛出，由**内层** ExceptionMiddleware 匹配 `validation_exception_handler` 直接转成 422，不会走 500 那条路。也就是说同一请求只会命中二者之一。
+
+## 12. 二轮深化 D：422 处理器为什么能二次读 body（新走读）
+
+```python
+# main.py:174-188（节选）
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle Pydantic validation errors with detailed logging."""
+    logger.error(f"[VALIDATION_ERROR] Path: {request.url.path}")
+    logger.error(f"[VALIDATION_ERROR] Body: {await request.body()}")
+    logger.error(f"[VALIDATION_ERROR] Errors: {exc.errors()}")
+    return JSONResponse(status_code=422, content={...})
+```
+
+逐块解释：校验失败发生在 FastAPI **已经读完请求体并完成 Pydantic 解析之后**；Starlette 的 `Request.body()` 首次读取会把字节缓存在 `request._body`，因此处理器里的 `await request.body()` 拿的是缓存而非二次消费流——GET 请求（无 body）则返回 `b""`。日志顺序固定三行 `[VALIDATION_ERROR]`（Path/Body/Errors），可用于在服务端 grep 复现前端畸形请求。
+
+一个潜在坑：`exc.errors()` 的 `ctx` 字段可能携带原始异常对象（例如非法枚举值时的 `ValueError` 实例），直接塞进 `JSONResponse` 的 content 序列化会抛 TypeError；FastAPI 自带的 422 处理器用 `jsonable_encoder` 规避了这一点，这里的自定义处理器没有做这层防护——遇到"校验错误反而 500"时应先查这里。
+
+## 13. 二轮深化 E：全局错误响应契约（字段级）
+
+| 场景 | 状态码 | 响应体字段 | 取值 |
+|---|---|---|---|
+| 未捕获异常 | 500 | `success` / `message` / `error` / `timestamp` | `false` / `"Internal server error"` / 固定文案 `"An unexpected error occurred"` / `time.strftime("%Y-%m-%d %H:%M:%S")` 本地时间字符串（main.py:163-171） |
+| Pydantic 校验失败 | 422 | `success` / `message` / `errors` / `timestamp` | `false` / `"Validation error"` / `exc.errors()` 列表（含 `loc/input/msg/type`）/ 同上（main.py:180-188） |
+| 业务 HTTPException | 404/409/… | FastAPI 默认 `{"detail": ...}` | 由各路由自行抛出，**不走**上面两个处理器 |
+
+前端拦截器据此可区分：`success=false` + `errors` 列表 = 请求构造问题（改客户端）；`error="An unexpected error occurred"` = 服务端异常（必须查服务端日志，响应里没有更多信息）。
+
+## 14. 二轮深化 F：本模块相关的缺省不一致与未接线清单
+
+结合 [reference/Environment.md](../../../reference/Environment.md) 的全仓结论，与 httpserver 入口直接相关的项：
+
+| 项 | 详情 |
+|---|---|
+| `GRAPHITI_BATCH_SIZE` | Settings 缺省 **50**（config.py:201），graphiti_integration/GraphitiConfig 缺省 **10**；.env.example 又写 25。管线 CLI 走 10，httpserver 摄取任务走 50 |
+| `GRAPHITI_INCLUDE_FULL_DESC` | Settings 缺省 **True**（config.py:207），GraphitiConfig 缺省 **False**——注意 config.py:204-206 的注释声称 "Mirrors graphiti_integration.GraphitiConfig default"，实际两处相反 |
+| `LLM_TEXT_MAX_TOKENS` | Python 缺省 4096，C++ ConfigManager 缺省 2048 |
+| `DLL_CPP_BACKEND_URL` | 字段存在（config.py:147）但无消费者；DLL 路由实际用 `cpp_backend_url`（dll.py:105） |
+| `LOG_LEVEL` / `LOG_FILE` | 只进 health 回显，不驱动任何日志行为（basicConfig 硬编码 INFO） |
+| `LLM_CONTEXT_LENGTH` | 代码缺省 4096，.env.example 示例 163840 |
+| `FILE_ANALYSIS_MAX_CONTENT_LIMIT` | 代码缺省 12000，.env.example 示例 50000 |
+| `cpp_backend_base_url` / `llm_full_endpoint` property | 死代码（无生产消费点），见第 10 节 |
+
+## 15. 二轮深化 G：一次冷启动/热退出的完整时序（新走读）
+
+把第 4 节的叙述展开为可逐条对照日志的时序（行号均为源码行）：
+
+| 步 | 动作 | 源码位置 | 可观测结果 |
+|---|---|---|---|
+| 1 | `python -m httpserver.main` → `run_server()` | main.py:291-292 | 无参调用，host/port 全靠 Settings |
+| 2 | `get_settings()` 首次构建（加载 .env） | config.py:324-327 | `find_env_file()` 从 cwd 逐级上溯（含 python_service/、仓库根），**不含根目录 "/" 本身**（`while current != current.parent`，config.py:21） |
+| 3 | `get_app()` → `create_app()` 装配中间件/处理器/路由 | main.py:249-254、74-194 | 此刻**不触任何网络连接**——所有重依赖初始化被推迟到 lifespan |
+| 4 | `uvicorn.run(app, ...)` 开始监听 | main.py:282-288 | 日志 `Starting server at http://0.0.0.0:8090`（main.py:277） |
+| 5 | lifespan 启动段：打三条配置日志（port/cpp_backend_url/neo4j_uri） | main.py:45-48 | 首行 `Starting Python HTTP Service on port 8090` |
+| 6 | `service_manager.initialize()`（30s 总预算，内部按依赖分层） | main.py:55 | 细节见 ServiceManager.md；成功或降级 |
+| 7 | `init_dependencies(service_manager)` | main.py:58、dependencies.py:15 | 之后路由的 `Depends(get_service_manager)` 全部指向该实例 |
+| 8 | initialize 抛异常 → 仅 warning | main.py:59-60 | 进程**继续**进入 yield，开始服务请求 |
+| 9 | 收到 SIGTERM/SIGINT → uvicorn 触发 lifespan yield 之后 | main.py:62-71 | 日志 `Shutting down Python HTTP Service` |
+| 10 | `service_manager.shutdown()`（反向逐个关闭） | main.py:69 | 再抛异常也只 warning（main.py:70-71），进程随后正常退出 |
+
+注意步骤 7 的事实推论：**DI 与单例是同一实例的两条引用**——`get_service_manager()`（services/__init__.py 转发）与 `Depends` 链拿到的是同一个对象，因此 ServiceManager 的 shutting_down 状态门控（503）对两种写法同时生效。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

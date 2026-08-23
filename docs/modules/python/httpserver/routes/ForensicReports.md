@@ -159,4 +159,77 @@ R2d 的响应模型 `NarrativeReportResponse`（report_narrative.py:32-49）字�
 
 相关阅读：[Investigation.md](Investigation.md)（R1 绑定的上游评审流）、[LLM.md](LLM.md)（旧 410 生成器的退役历史）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 二轮深化 A：端点全表（12 个，含参数与状态码）
+
+| 端点 | 方法 | 请求要点 | 成功码 | 错误码 |
+|---|---|---|---|---|
+| /api/reports | POST | `{scope_type,scope_id,task_ids,title}`（case→501） | **202** | 501、503、422 |
+| /api/reports | GET | query `scope_type`+`scope_id` | 200 | 422 |
+| /{report_id}/status | GET | — | 200 | 404、503 |
+| /{report_id}/manifest | GET | — | 200（冻结 JSON 字节） | 404、409 未就绪、500 完整性 |
+| /{report_id}/categories/{category_id}/pages/{page} | GET | 路径参数 | 200 | 404、409、500 完整性 |
+| /{report_id}/search | GET | query `q`（必填）、`offset=0`、`limit` | 200 | 404、409、500 索引完整性 |
+| /api/reports/evidence | GET | query `task_id` | 200 | 503 |
+| /api/reports/evidence | POST | 严格 body（见 R1 模型） | 200/201 | 404、409、422、503 |
+| /api/reports/evidence | PUT | `report_status` 或 `analysis_id` 至少其一 | 200 | 404、409、422、503 |
+| /api/reports/generate | POST | `{task_id,requested_by}`（extra=forbid） | **202** | **409** no_report_evidence、404、422、503 |
+| /api/reports/generations/{generation_id} | GET | query `task_id`（域强校验） | 200 | 404（含跨任务不可区分） |
+| /api/reports/narrative/versions/{report_id} | GET | query `task_id` | 200 | 404（跨任务同形态） |
+
+## 9. 二轮深化 B：ReportStatus 版本状态机（models.py:23-27）
+
+`queued → generating → ready | failed`，外加一条恢复边：
+
+| 转移 | 触发 | 伴随列更新 |
+|---|---|---|
+| → queued | POST /api/reports 落行 | stage="queued"、progress=0 |
+| queued → generating | 快照 writer 接手 | stage/progress 随阶段推进（0-100，ge/le 由模型约束） |
+| generating → ready | staging 目录原子落盘完成 | generated_at、manifest_path、warnings |
+| generating → failed | 任一阶段异常 | error |
+| （恢复边）admitted/generating → failed | 服务重启 `resume_unfinished`（service.py:105-112） | error 指明 `service_restart`，客户端须新建版本 |
+
+`report_kind` 旁路标记：None=确定性快照行、`'llm_generation'`=R2c 发布事务写入的叙事版本——同一张表两种产物靠它区分，R2d 只回后者。
+
+## 10. 二轮深化 C：generation 生命周期状态机（DB 触发器背书，repository.py:92-165）
+
+`report_generation_inputs.status` 三态 + 终态不可变，**由四个数据库触发器强制**（不是服务层约定）：
+
+| 触发器 | 强制的不变量 |
+|---|---|
+| trg_report_generation_input_frozen | 准入后 identity/scope/requester/prompt_version/envelope 字节/input_hash/created_at 九列**任何修改即 ABORT** |
+| trg_report_generation_input_no_delete | 行不可删除（审计轨迹） |
+| trg_report_generation_status_transition | 合法转移仅：admitted→running\|failed、running→completed\|failed、自环 |
+| trg_report_generation_completed_invariants | completed 必须带 report_id+produced_version+model+completed_at |
+| trg_report_generation_failed_invariants | failed 必须 failed_at 非空且**不得**引用任何已发布版本 |
+| trg_report_generation_terminal_immutable | 终态行的执行列（时间戳/model/版本/错误）全部冻结 |
+
+状态流转：`admitted`（准入落行，DEFAULT 'admitted'，repository.py:73）→ `running`（executor 接手）→ `completed`（发布事务写 report_id+produced_version）或 `failed`（error_code 如 `llm_unavailable`（generation_execution.py:343，LLM 服务缺失时持久失败）与 `service_restart`（:227，重启恢复把 stale admitted/running 打失败））。轮询端点据此返回：completed 附 manifest、failed 带 error_code/error_message。
+
+## 11. 二轮深化 D：reports.db 表契约（2 张表）
+
+**report_versions（repository.py:35-53）**：15 列——report_id（PK）、version、scope_type、scope_id、status、title、task_ids_json、stage、progress（DEFAULT 0）、generated_at、manifest_path、offline_bundle_path、warnings_json（DEFAULT '[]'）、error、created_at、report_kind；UNIQUE(scope_type,scope_id,version) + 索引 idx_report_scope（scope+version DESC，列表查询走它）。
+
+**report_generation_inputs（:68-88）**：19 列——generation_id（PK）、task_id、scope_type、scope_id、status（DEFAULT 'admitted'）、requested_by、input_schema_version、prompt_version、input_envelope_json、input_hash、report_id、produced_version、model、created_at、started_at、completed_at、failed_at、error_code、error_message；**CHECK(scope_type='task' AND scope_id=task_id)** 在 DB 层封死 case 域；索引 idx_report_generation_task(task_id,created_at) 支撑"任务下的生成历史"查询。
+
+R1 的绑定行不在 reports.db——在任务各自的 investigation.db `report_evidence` 表（见 [Investigation.md](Investigation.md) 第 10 节），生成准入经 `investigation_db_path_for_task` 跨库读取。
+
+## 12. 二轮深化 E：新走读——terminal_immutable 的工程含义（并发收口）
+
+```python
+# repository.py:153-165（节选）
+CREATE TRIGGER IF NOT EXISTS trg_report_generation_terminal_immutable
+BEFORE UPDATE ON report_generation_inputs
+FOR EACH ROW
+WHEN OLD.status IN ('completed', 'failed') AND (
+    NEW.status IS NOT OLD.status
+    OR NEW.started_at IS NOT OLD.started_at
+    ... (八列逐列比较)
+)
+BEGIN
+    SELECT RAISE(ABORT, 'report generation terminal row is immutable');
+END
+```
+
+逐块解释：终态行允许的唯一"更新"是不改任何执行列的等值写（每列 `IS NOT` 比较兼容 NULL）。工程含义有两点：① **迟到的 worker 与重启恢复不会互相覆盖**——一个已经 completed 的 generation，即使有滞留的旧协程试图把它改回 failed（例如发布成功后 LLM 连接才超时），数据库直接 ABORT，发布结果不丢；② 恢复逻辑 `resume_unfinished`（generation_execution.py:217-227）只敢碰 admitted/running 行，terminal 行的命中会以 IntegrityError 暴露编程错误而不是静默改历史。这与 investigation 侧 EV4 触发器（版本不可 UPDATE）构成同一套"不可变靠数据库不靠自觉"的纪律。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

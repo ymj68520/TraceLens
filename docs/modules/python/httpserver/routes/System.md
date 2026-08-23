@@ -133,4 +133,70 @@ async def log_generator():
 
 相关阅读：[HTTPRoutes.md](../HTTPRoutes.md)、[Main.md](../Main.md)（:8090 生命周期与日志落盘）、[Health.md](Health.md)。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 7. 二轮深化 A：端点全表与响应契约
+
+| 端点 | 方法 | query | 成功响应 | 失败形态 |
+|---|---|---|---|---|
+| /api/system/logs | GET | lines=100（1-2000） | `{service:"python", logs:[...], total_lines}` | 200 + WARN 行（文件缺失） |
+| /api/system/logs/{service} | GET | lines=100（1-2000） | 同上（service 回显） | 200 + WARN 行（未知服务名/文件缺失共用分支） |
+| /api/system/logs-stream/{service} | GET | — | SSE 流（data: JSON/行） | **404**（文件缺失，:109-110） |
+
+`logs[]` 元素契约（_parse_line 输出，恒三键）：
+
+| 字段 | 类型 | 来源 |
+|---|---|---|
+| timestamp | str | Format1 命中→`YYYY-MM-DDTHH:MM:SS`；Format2 命中→**硬编码日期** `2026-03-06T...`；未命中→`datetime.now().isoformat()` |
+| level | str | 正则组/前缀解析；未命中→"INFO"；文件缺失占位行→"WARN" |
+| message | str | 剩余正文；未命中→整行原文（绝不丢行） |
+
+三种可解析格式与来源：
+
+| 格式 | 正则/判定 | 产生者 |
+|---|---|---|
+| `YYYY-MM-DD HH:MM:SS[,ms] - NAME - LEVEL - MSG` | Format 1（:38-43） | Python logging（main.py:29-35 的 format 串） |
+| `HH:MM:SS [LEVEL] MSG` | Format 2（:44-51） | C++ 侧输出 |
+| `LEVEL: MSG`（前 10 字符内有冒号） | Format 3（:52-56） | 简易格式 |
+
+## 8. 二轮深化 B：新走读——SSE 生成器的生命周期与断开回收（:95-127）
+
+```python
+# system.py:95-127（骨架）
+return StreamingResponse(log_generator(), media_type="text/event-stream")
+
+async def log_generator():
+    with open(log_path, 'r', errors='replace') as f:
+        f.seek(0, os.SEEK_END)
+        while True:
+            line = f.readline()
+            if not line:
+                await asyncio.sleep(0.5)
+                continue
+            structured = _parse_line(line)
+            yield f"data: {json.dumps(structured)}\n\n"
+```
+
+逐块解释：① StreamingResponse **没有**附带 `Cache-Control: no-cache` / `X-Accel-Buffering: no` 头——SSE 的惯例做法是禁用反向代理（nginx 等）缓冲，否则经过代理的流会攒批才发、"实时"变"分钟级"；当前裸返回在直连 :8090 时无碍，前面加代理时需要补这两个头；② 生成器在客户端断开时由 Starlette 取消——`await asyncio.sleep(0.5)` 处抛 CancelledError，with 块关闭文件句柄，协程结束（这就是"没有显式心跳也最终能回收"的机制，代价是断开检测最多延迟 0.5s）；③ `f.readline()` 在文件末尾返回空串是 Python 文件对象的标准语义——不需要额外的 EOF 标记；④ 文件被轮转/截断（`truncate` 或重建 inode）后，旧句柄读到的是旧 inode 的末尾——**流会静默停止更新**且不报错，前端表现为"日志不再增长"；只有重连才恢复。这是 tail -f 轮询模式的固有局限，排障时先 `ls -i` 对比 inode。另注意流式的 log_map 用的是 `os.getcwd()/..`（:103-106），与拉取端点的 project_root 推断（:71-74）是**两套独立拼法**——同一次请求形态下两者可能指向不同目录。
+
+## 9. 二轮深化 C：前端调用矩阵
+
+| 调用方 | 端点 | 行为 |
+|---|---|---|
+| pages/Logs.jsx:20 | GET /api/system/logs/{service}?lines=200 | 拉取式首屏 |
+| pages/Logs.jsx:37 | EventSource /logs-stream/{service} | 实时尾随 |
+| components/common/TerminalOutput.jsx:91-92 | GET /logs/{service} | 双 tab（cpp/python） |
+| components/common/TerminalOutput.jsx:54-55 | EventSource /logs-stream/{service} | 终端模式 |
+| （无调用方） | GET /api/system/logs（无服务名兜底） | 旧组件遗留路径，现役代码不使用 |
+
+## 10. 二轮深化 D：已知缺陷/局限汇总表（二轮复核）
+
+| # | 事实 | 位置 | 影响 |
+|---|---|---|---|
+| 1 | system_logs.py 未注册（死代码），探测路径也与现实不符 | main.py:199 无 import | 见第 5 节，保留记录 |
+| 2 | Format 2 时间戳补硬编码日期 2026-03-06 | :47 | 展示层日期失真 |
+| 3 | `readlines()` 全量入内存再切片 | :86-88 | 大日志（数百 MB）时内存尖峰；lines 参数不省内存 |
+| 4 | 拉取 200+WARN / 流式 404 的语义不一致 | :82-83 vs :109-110 | 前端需双兜底 |
+| 5 | SSE 无轮转感知 | :112-125 | 日志轮转后流静默停更 |
+| 6 | project_root 按 cwd/.. 推断 | :71-74 | 启动目录变化即读不到日志（隐式耦合） |
+| 7 | 无鉴权/限流，日志原文外发 | 全文件 | 内网部署假设 |
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

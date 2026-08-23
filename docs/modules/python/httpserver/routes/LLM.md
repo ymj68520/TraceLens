@@ -212,4 +212,95 @@ def normalize_threat_level(raw: str, numeric_score: int) -> str:
 
 相关阅读：[HTTPRoutes.md](../HTTPRoutes.md)、[services/LLMService.md](../../services/LLMService.md)。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 二轮深化 A：llm_models.py 模型全表（12 个模型逐字段）
+
+| 模型 | 字段 | 类型/默认 | 校验 | 消费方 |
+|---|---|---|---|---|
+| AnalyzeRequest | （10 字段） | 见上文走读 | max_tokens ge=1 le=8192；temperature ge=0.0 le=2.0 | POST /analyze |
+| AnalyzeResponse | success / analysis / model_used / tokens_used / processing_time_ms | bool / Dict / str / int / float | — | analysis 的内部键（description/summary/keywords/model）由服务层约定 |
+| BatchAnalyzeRequest | task_id | str 必填 | — | 文件发现与持久化锚点 |
+| | file_types / file_paths | Optional[List[str]] | 二选一：白名单优先 | 自动发现 vs 显式清单 |
+| | limit | int=100 | ge=1 le=1000 | |
+| | model_type | str="text" | 无枚举校验（自由串） | |
+| BatchAnalyzeResponse | success/task_id/job_id/message/total_files | 必填 | — | total_files 即入队文件数 |
+| BatchStatusResponse | success/job_id/status/progress/files_processed/files_total/errors/results | progress **float 0-1**（与 Graphiti 作业的 int 0-100 不同） | — | 轮询端点 |
+| ModelInfo | name/type/base_url/max_tokens/temperature/status | 必填 | — | GET /models |
+| ModelsResponse | success/models | — | — | |
+| LLMStatusResponse | status/text_model/vision_model | status 字符串 | — | GET /status |
+| ToggleRelevanceRequest | task_id/file_path/is_relevant | 必填 | — | POST /toggle-relevance（写 files.llm_is_relevant） |
+| EventClusterAnalyzeRequest | task_id | str 必填 | — | 簇定位 |
+| | time_window/event_type/parent_directory | Optional（legacy 三件套） | parent_directory 默认 "" | 旧代定位 |
+| | group_descriptor | Optional[Dict] | 无 schema（信任后端描述符） | 新代定位 |
+| | prompt | Optional[str] | — | 自定义提示 |
+| | bucket_seconds | int=60 | — | 必须与建簇一致 |
+| ToggleClusterRelevanceRequest | task_id/time_window/event_type/is_relevant | 全必填 | time_window 是 int 无默认（比分析端点更严） | 写 events.llm_is_relevant |
+
+一个契约缝隙：`model_type` 在两个请求模型上都是自由字符串（非 Literal["text","vision"]），传错值不会被 422 拦截，而是在服务层落到 else 分支（视实现为 text 或报错）。
+
+## 二轮深化 B：SQLite 读写列清单（与 docs/schema/ 交叉核对）
+
+本组路由经 LLMService 触碰三张表：
+
+**files 表（`<image>_files.db`，[FilesDB.md](../../../schema/FilesDB.md)）**——`persist_to_files_db` 的 UPDATE 目标列：
+
+| 列 | 写入时机 | 值来源 |
+|---|---|---|
+| llm_summary | 单/批量分析成功 | analysis.summary 或 description[:200] |
+| llm_description | 同上 | LLM 全文描述 |
+| llm_keywords | 同上 | 逗号拼接关键词 |
+| llm_analyzed_at | 同上 | int(time.time()) |
+| llm_model_used | 同上 | result.model |
+| llm_is_relevant | toggle-relevance（人工） | 请求布尔 → 0/1 |
+
+前置条件：`WHERE path = ?` 命中（rowcount>0）才继续——路径必须真实存在于 files 表；读取侧 `idx_files_llm_analyzed(llm_analyzed_at)` 索引支撑"未分析文件"调度（FilesDB.md:76）。
+
+**file_descriptions 表（Python 侧惰性建，FilesDB.md:196-199 有对应快照列）**——`_ensure_file_descriptions_schema`（llm_service.py:95-116）`CREATE TABLE IF NOT EXISTS` + PRAGMA 检查补 `is_relevant` 列；随后 `ON CONFLICT(file_path) DO UPDATE` upsert 8 列（id/file_path/description/summary/keywords/model_used/is_relevant/created_at）。身份键是 `normalize_evidence_path(file_path)`——与 Investigation 证据身份 `file:<normalized>` 同源。
+
+**events 表（`<image>_events.db`，[EventsDB.md](../../../schema/EventsDB.md)）**——簇分析/toggle 的 UPDATE 目标：llm_summary/llm_description/llm_keywords/llm_analyzed_at/llm_model_used/llm_is_relevant 六列，定位条件 `(timestamp / bucket_seconds) = time_window AND event_type = ?`（_analysis.py:97-106、_management.py:126-135）；EventsDB.md:290 指出 llm_* 默认 NULL、只有分析后才有值——本组路由就是那个"之后"。
+
+## 二轮深化 C：批量作业状态机（FileAnalyzer 内存态）
+
+job dict 初始即 `"running"`（file_analyzer.py:418-419），**没有 pending 态**：
+
+| 转移 | 触发 | 行 |
+|---|---|---|
+| → running | start_batch_analysis 创建 job + asyncio.create_task | :418-425 |
+| running → completed | 全部文件处理完 | :553 |
+| running → failed | 外层异常 | :556-557（errors 追加 "batch analysis failed"） |
+| （无 cancelled） | — | 不存在取消端点 |
+
+进度字段：progress 为 0.0-1.0 浮点（每文件 +1/total，:550-551）；单文件失败进 errors 列表但**不停机**（继续下一文件）；persist 失败按上文 A7 不变量进 errors。持久级：`self._jobs` 进程内存——重启即 404，前端轮询需容忍。
+
+## 二轮深化 D：新走读——/analyze 的前置校验顺序（错误路径）
+
+```python
+# _analysis.py:168-216（骨架）
+if request.files_db_path and not request.task_id:
+    raise HTTPException(400, "task_id is required to persist analysis results")
+...
+if request.task_id:
+    task_info_for_path = await service_manager.cpp_backend.get_task(request.task_id)  # 失败容忍→None
+    if task_info_for_path:
+        resolved = resolve_analysis_path(request.file_path, task_info_for_path.get("extraction_directory") or "")
+        if resolved:
+            request.file_path = resolved
+if not FilePath(request.file_path).exists():
+    raise HTTPException(404, "File not found: ...\n\nFiles must be extracted ...")
+```
+
+逐块解释四个分支的顺序语义：① 400 只拦"给了持久化提示却无法定位任务"这一种契约错误；② 镜像内路径解析期间 **C++ 请求失败被静默吞掉**（except → None，直接用原始 file_path 试探）——此时若文件在本地恰好存在同名路径仍能分析，属于尽力而为；③ 404 的 detail 是全部端点里最长的（带使用建议），因为"先抽取再分析"是用户最高频踩的坑；④ 校验完存在性才进内容路由（图像/文档/文本三分支）。顺带更正上文一处笔误：IMAGE_EXTENSIONS 实际是 **16** 个扩展名（.jpg/.jpeg/.png/.gif/.bmp/.webp/.tiff/.tif/.svg/.ico/.heic/.heif/.raw/.cr2/.nef/.arw，_analysis.py:176-179），不是 15 个。
+
+## 二轮深化 E：调用矩阵补充（精确到函数）
+
+| 调用方 | 端点 | 场景 |
+|---|---|---|
+| llmService.analyzeContent（:29） | POST /analyze | Files 页单文件分析 |
+| llmService.analyzeFile（:48，multipart） | POST /analyze/file | 无页面调用（暂闲置） |
+| llmService.startBatchAnalysis（:84）+ pollBatchStatus（:92） | POST /batch、GET /batch/{id} | Files/useFileLLMAnalysis |
+| llmService.analyzeDLL（:60） | POST /analyze/dll | Files 页 DLL 抽屉 |
+| forensicsService.analyzeEventCluster（:39,:62） | POST /analyze-event-cluster | AnalysisCenter 事件簇 |
+| llmService.toggleFileRelevance（:181） | POST /toggle-relevance | AnalysisCenter |
+| （前端 toggleClusterRelevance 尚无 service 包装） | POST /toggle-cluster-relevance | 预留 |
+| llmService.getModels/getLLMStatus（:164,:171） | GET /models、/status | Settings/Dashboard |
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

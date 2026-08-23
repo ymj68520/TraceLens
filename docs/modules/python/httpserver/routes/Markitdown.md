@@ -130,4 +130,84 @@ def _write_markdown_atomic(output_path: Path, markdown: str) -> int:
 
 相关阅读：[HTTPRoutes.md](../HTTPRoutes.md)、[LLM.md](LLM.md)（消费这些文本的 LLM 分析链）、[Database.md](Database.md)。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 二轮深化 A：模型字段全表
+
+| 模型 | 字段 | 类型/默认 | 校验/说明 |
+|---|---|---|---|
+| ConvertRequest | task_id | str\|None | 正规锚（与 workspace_root 至少其一，否则 400） |
+| | workspace_root | str\|None | deprecated CLI 锚 |
+| | file_path | str 必填 | 绝对路径 |
+| ConvertResponse | success/content/title/processing_time_ms | bool/str=""/str=""/float=0.0（:133-138） | content 即 Markdown 正文 |
+| ConvertOneRequest | task_id / workspace_root | 同上双锚 | |
+| | input_root / input_file / output_root | str×3 必填 | input_file 必须在 input_root 之下（:313-356 强校验） |
+| ConvertOneResponse | success/status/input_path/output_path/output_size/error | :303-310 | 单文件版 outcome 直译 |
+| BatchConvertRequest | task_id / workspace_root | 同上 | |
+| | input_dir / output_dir | str×2 必填 | 双根必须都在 workspace 内且不重叠 |
+| BatchConvertResponse | success | bool | 仅表示"批跑完"，看 failed 计数 |
+| | total_files/converted/skipped/failed | int=0 | 三态计数 |
+| | errors | List[str] 默认 [] | **封顶 50 条**（:636-637） |
+| | output_dir | str="" | 实际输出根 |
+| FileConversionOutcome | status | Literal["converted","skipped","failed"] | frozen dataclass |
+| | input_path/output_path/output_size/error | Path/Path\|None/int/str | error=异常类名（_exception_text :297-301） |
+
+## 9. 二轮深化 B：端点全表与状态码语义
+
+| 端点 | 方法 | 成功码 | 门控失败 | 其他 |
+|---|---|---|---|---|
+| /api/markitdown/convert | POST | 200 | 400（三层门控全不过） | 404（门控过但文件不存在）、500（ImportError 带安装提示/转换异常） |
+| /api/markitdown/status | GET | 200 | — | 无门控（可用性探测） |
+| /api/markitdown/convert-one | POST | 200 | 400（workspace 外/符号链接/根重叠） | 400（input_file 不在 input_root 下） |
+| /api/markitdown/batch-convert | POST | 200 | 400（同上 + 镜像名冲突 :604-613） | 恒 200（失败进计数） |
+| /api/office/parse | POST | 200 | **404** "file is not part of the current task" | 解析异常 200+success:false（软失败） |
+| /api/office/supported-types | GET | 200 | — | 静态清单 |
+
+注意 markitdown 与 office 的门控失败码不同（400 vs 404）——前者是"路径越界"语义，后者是"此文件不属于本任务"语义。
+
+## 10. 二轮深化 C：新走读——_output_path_for 的五重符号链接防御（:313-356）
+
+```python
+# markitdown.py:313-356（骨架，五处 is_symlink 检查）
+if input_root.is_symlink():        # ① 输入根本身
+    raise ValueError(...)
+if input_file.is_symlink():        # ② 输入文件本身
+    raise ValueError(...)
+resolved_root = input_root.resolve(strict=True)   # 不存在直接 ValueError
+resolved_input = input_file.resolve(strict=True)
+relative_input = resolved_input.relative_to(resolved_root)  # 越界→ValueError
+if output_root.is_symlink():       # ③ 输出根本身
+    ...
+output_root.mkdir(parents=True, exist_ok=True)
+if output_root.is_symlink():       # ④ mkdir 后再查（防 TOCTOU：并发下刚被换成链接）
+    ...
+for component in output_path.relative_to(output_root).parts[:-1]:
+    if current.is_symlink():       # ⑤ 逐级目录组件
+        ...
+output_path = output_root / (str(relative_input) + ".md")
+```
+
+逐块解释：镜像命名规则是 `output_root / (str(relative_input) + ".md")`——输入 `sub/x.xlsx` 产 `output_root/sub/x.xlsx.md`（**追加** .md 而非替换扩展名，同名兄弟输入 `x` 与 `x.xlsx` 因此都会映射到不同输出，但 `x` 与 `x.md` 若同为输入则争抢 `x.md.md`/`x.md`——:604-613 的同名冲突检查兜住后者）。五重符号链接检查的动机：`resolve()` 会跟随链接，若先 resolve 再检查就只能防"解析前是链接"的形态；①②在 resolve 前查（lexical），④在 mkdir 后复查（防 mkdir/检查之间被替换），⑤逐组件查（防中间目录被换成指向 workspace 外的链接）。所有失败统一 ValueError → 路由层 400。输出目录按需逐级创建，失败清理交给上层。
+
+## 11. 二轮深化 D：C++ 调用矩阵（服务间契约）
+
+| C++ 调用方 | Python 端点 | 行为契约 |
+|---|---|---|
+| MarkitdownProxy.cpp:89/94 | POST /convert-one | 单文件镜像转换；失败回退 C++ 本地旧解析器 |
+| MarkitdownProxy.cpp:147/173 | POST /convert | 文本化正文；同上回退 |
+| MarkitdownProxy.cpp:214 | GET /status | 探测可用性（available=false 时 C++ 直接走本地，不发转换请求） |
+| OfficeAnalyzer.cpp:105 | POST /api/office/parse | 表格/幻灯片解析；响应按 success 字段决定回退 |
+
+这张表是"回退链"的两端：Python 端必须**快速失败**（不能挂 30s）C++ 才能及时回退——/convert 的 to_thread + 单例设计（避免冷启动 0.5s×N）都服务于此。前端 office 面（officeService.js）只是顺带用户。
+
+## 12. 二轮深化 E：批量资源与并发参数
+
+| 参数 | 值 | 位置 | 说明 |
+|---|---|---|---|
+| 并发上限 | Semaphore(4) | :626 | 同时最多 4 个提取器在 to_thread 里跑（内存保护） |
+| 错误清单封顶 | 50 | :636-637 | 超出的失败只进计数不进 errors |
+| 二进制启发式 | NUL 字节或非文本字节 >30%（采样 8192B） | :508-520 | 判定 skipped 而非 failed |
+| 文本回退链 | UTF-8 严格 → latin-1 | :382-389 | 无提取器扩展名的最后手段 |
+| 原子写 | 同目录临时文件 + os.replace | :358-368 | 见第 4 节走读 |
+
+排障提示：batch-convert 的 skipped 高时先看 /status 的支持格式与 extractor_mapping.json 的映射；failed 高且 errors 全是异常类名时只能回服务端日志找 traceback。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

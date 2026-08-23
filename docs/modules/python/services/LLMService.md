@@ -130,4 +130,82 @@ if cur.rowcount <= 0:
 - 手工验证：`POST /api/llm/analyze` 后 `sqlite3 <task>_files.db "SELECT path, llm_summary, llm_analyzed_at FROM files WHERE llm_analyzed_at IS NOT NULL LIMIT 5"`。
 - 新增分析类型：优先扩展 FileAnalyzer/EventAnalyzer（保持"客户端由外部传入"的模式），编排方法加在 llm/llm_service.py 并经门面 re-export。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 二轮深化 A：方法全清单（llm 子包 24 个方法）
+
+**编排层（llm/llm_service.py，门面 re-export）**：
+
+| 方法 | 行 | 委托目标 |
+|---|---|---|
+| initialize / shutdown | :59 / :79 | 自有（建/关两客户端） |
+| health_check / check_model_status / get_status / list_models | :459-477 | ModelManager |
+| read_file_content / analyze / analyze_image | :312 / :316 / :346 | FileAnalyzer |
+| start_batch_analysis / get_batch_status | :423 / :451 | FileAnalyzer |
+| analyze_event_cluster | :479 | EventAnalyzer |
+| chat_completion | :366 | 自有（裸通道） |
+| persist_to_files_db / persist_to_events_db / set_file_relevance | :118 / :232 / :285 | 自有（SQLite） |
+| _ensure_file_descriptions_schema / _ensure_events_schema | :95 / :220 | 自有 |
+
+**FileAnalyzer（file_analyzer.py）**：`read_file_content`(:98)、`analyze_file`(:142)、`analyze_image`(:242)、`_compress_image`(:345，静态，3MB 上限)、`start_batch_analysis`(:391)、`_run_batch_analysis`(:437)、`get_batch_status`(:559)。
+**EventAnalyzer（event_analyzer.py）**：`analyze_event_cluster`(:48)、`_parse_event_cluster_analysis`(:171，中文/英文小节头解析器)。
+**ModelManager（model_manager.py）**：`check_model_status`(:39)、`health_check`(:79)、`get_status`(:98)、`list_models`(:130)。
+
+## 10. 二轮深化 B：analyze 的异常分类契约（file_analyzer.py:204-240）
+
+`analyze_file` 把 httpx 异常翻译成三类 RuntimeError，路由/执行器可据此区分处置：
+
+| 异常 | 消息形态 | 语义 |
+|---|---|---|
+| httpx.ReadTimeout | `LLM request timed out after {N}s. Consider increasing LLM_TIMEOUT_SECONDS...` | 推理太慢——唯一可望调参解决的一类 |
+| httpx.HTTPStatusError | `LLM request failed with status {code}: {body}` | 端点回了 4xx/5xx（含 body 原文——会进日志，注意脱敏边界在路由层） |
+| httpx.ConnectError | `Cannot connect to LLM service at {base_url}` | 端点不可达 |
+| 其余 | 原 raise | 编程错误 |
+
+调用链上的分工：批量作业把这三种都计为该文件的 errors（继续下一文件）；ReportGenerationExecutor 把它们归类为稳定 error_code 持久化。请求侧的公共参数：`max_tokens or default`、`temperature or default`（请求级覆盖，None 落回 Settings 分通道默认）——注意 `or` 语义意味着 **max_tokens=0 也会落到默认**，但路由层 Pydantic 已用 ge=1 挡住 0。
+
+## 11. 二轮深化 C：输出结构契约与 keywords 空串事实（二轮新发现）
+
+TEXT_ANALYSIS_SYSTEM（httpserver/prompts.py:21-39）要求**纯文本中文输出、明确禁止 Markdown/JSON**。因此 `analyze_file` 返回的 analysis dict 只有 `{description: <原始全文>, model_type}`——没有 summary、没有 keywords。持久化侧的两条路径据此推导（file_analyzer.py:529-534、routes/_analysis.py:294-296）：
+
+| 持久化列 | 单文件 /analyze | 批量 /batch | 事件簇 |
+|---|---|---|---|
+| llm_description | 原始全文 | 原始全文 | 解析器"详细分析"节 |
+| llm_summary | `description[:200]` | 同左 | 解析器"简要总结"节（真摘要） |
+| llm_keywords | **空串**（`", ".join([])`） | **空串** | 解析器关键词节（真列表） |
+| llm_is_relevant | 不写（保持原值） | 不写 | 解析器判定 |
+
+也就是说：**文件分析链路当前从不产生真实 keywords/summary**——llm_keywords 恒空串、llm_summary 恒为描述前 200 字；只有事件簇分析（EventAnalyzer 的中文小节头解析器 :171-215，识别"简要总结/总结/摘要/summary""详细分析/描述/详细描述/description/分析"等标题）产出结构化四元组。下游影响：图谱 episode 的 body["keywords"] 键在文件路径上恒缺席、按 keywords 检索的界面拿不到文件关键词。这与 prompts 的"纯文本"要求是自洽的设计（解析留给了簇），但阅读 files 表时不要把空 keywords 当异常。
+
+## 12. 二轮深化 D：新走读——EventAnalyzer 的双格式解析器（event_analyzer.py:171-215）
+
+```python
+# event_analyzer.py:171-190（节选）
+result = {"summary": "", "description": analysis_text, "keywords": [], "is_relevant": True}
+lines = analysis_text.split('\n')
+current_section = None
+content_parts = []
+for line in lines:
+    line = line.strip()
+    if re.match(r'^(简要总结|总结|摘要|summary)', line, re.IGNORECASE):
+        ...
+        current_section = "summary"
+        continue
+    elif re.match(r'^(详细分析|描述|详细描述|description|分析)', line, re.IGNORECASE):
+        ...
+        current_section = "description"
+```
+
+逐块解释：解析器按**中文小节标题**切分 LLM 输出（与 EVENT_CLUSTER 系列 prompt 的输出要求配套）；未命中任何标题时整段进 description（兜底不丢内容）；keywords/is_relevant 有各自的标题分支（:190 之后）；`re.IGNORECASE` 让英文标题大小写不敏感。这个解析器是"文件链没有、簇链独有"的结构化来源（C 节表格）。脆弱点：标题必须行首——LLM 若把"总结："写成段落中间或加粗（虽然 system prompt 禁 Markdown），该节会漏切并整体落 description，表现为"summary 为空"。
+
+## 13. 二轮深化 E：批量内容路由决策表（file_analyzer.py:474-519）
+
+| 输入形态 | 判定 | 通道 |
+|---|---|---|
+| 文档扩展名命中提取器映射 | extractor_mapping.json | 先抽 Markdown → analyze_file(text) |
+| 图像扩展名（15+1 种集合） | 后缀 | vision 客户端（压缩至 3MB 内） |
+| 其余可读文本 | UTF-8 读取成功 | analyze_file(text) |
+| 二进制（NUL 或非文本字节 >30%） | 启发式 | **跳过、不计错误**（results/errors 都不进） |
+| 抽取失败的可读文件 | 文档抽取器抛错 | 计入 errors |
+
+跳过不计错的语义使 files_total ≠ processed + errors + converted 可能恒差一个"跳过数"——前端进度条以 files_total 为分母，跳过文件让进度永远到不了 100% 的分子加和（但作业仍会 completed）。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

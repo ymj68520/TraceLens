@@ -170,4 +170,87 @@ with self._connect() as conn:
 - legacy 栈：`test_investigation_persistence.py`、`test_investigation_evidence.py`、`test_claim_provenance_reader.py`、`test_report_dataset.py`、`test_citation_validation.py`。
 - 手工链路：`POST /api/investigation/analyses` → 轮询至 review_pending → `POST .../review {"decision":"accepted"}` → `GET /api/investigation/evidence`；`sqlite3 <task>/investigation.db "PRAGMA user_version"` 应为 7。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 二轮深化 A：分析失败码全清单与 LLM 异常分类链
+
+`secondary_analyses.error_code` 的全部取值（execution.py 逐一核对）：
+
+| error_code | 触发 | 层 |
+|---|---|---|
+| `input_hash_mismatch` / `input_integrity_error` | 信封复验失败（hmac） | 执行前 |
+| `missing_prompt_version` | 行缺失 prompt 版本 | 执行前 |
+| `unsupported_input_contract`（表中同族） | schema/prompt 兼容表不匹配 | 执行前 |
+| `llm_unavailable` | llm_service 为 None | 执行 |
+| `llm_timeout` | httpx.ReadTimeout | 执行 |
+| `llm_connection_error` | httpx.ConnectError | 执行 |
+| `llm_http_error` | httpx.HTTPStatusError | 执行 |
+| `llm_empty_response` | 空响应 | 执行 |
+| `structured_output_invalid` | 解析失败 | 解析 |
+| `execution_error` | 其余异常（兜底） | 任意 |
+| `service_restart` / `service_shutdown` | 恢复/关机 | 生命周期 |
+
+`_classify_llm_error`（execution.py:53-66）的映射就是中间五行——注意 **error_message 是固定英文短句**（"LLM request timed out" 等），docstring 明说"must never contain internal URLs, paths, or stack details"，完整 traceback 只进 `logger.exception`。这与 forensic_report 域的失败码族（ForensicReportService.md 第 9 节）同构，但码集独立演化。
+
+## 9. 二轮深化 B：分析状态机完整转移表（7 态）
+
+| 转移 | 触发 | 伴随列 | 约束来源 |
+|---|---|---|---|
+| → queued | create_analysis（E1 先持久化） | created_at、input_hash、envelope_json | INSERT |
+| queued → running | executor 认领（CAS，输家退出） | started_at | 触发器 :194-214 |
+| queued/running → failed | 任一 error_code | failed_at、error_code、error_message | 触发器 |
+| running → review_pending | LLM 完成按契约落盘（E5 永不自动 accepted） | review_pending_at、description/summary/model、grounding_status | 触发器 |
+| review_pending → accepted | review 决策（单事务替换旧 accepted） | decided_at/by、decision_reason | 触发器 |
+| review_pending → rejected / invalid | 同上 | 同上 | 触发器 |
+| （终态零出度） | accepted/rejected/invalid/failed 不可 UPDATE | — | 触发器 |
+
+grounding_status 三值（valid/partially_grounded/invalid，CHECK :75-78）只在 review_pending 之后有值——它是 (d) 节纯函数校验器的聚合输出，随分析结果一起冻结。
+
+## 10. 二轮深化 C：新走读——open_live_task_store 的四重丢弃分支（live_store.py:38-76）
+
+```python
+# live_store.py:38-76（骨架）
+try:
+    task = await cpp_backend.get_task(task_id)
+except Exception:
+    logger.warning("task liveness could not be confirmed (%s); terminal write skipped", task_id)
+    return None
+if task is None:
+    logger.info("task %s no longer exists; terminal result discarded", task_id)
+    return None
+try:
+    current_path = investigation_db_path_for_task(task)
+except EvidenceStoreError:
+    return None
+if Path(current_path) != Path(submitted_db_path):
+    logger.warning("task %s store identity changed (%s != %s); terminal write skipped", ...)
+    return None
+```
+
+逐块解释 D4b 的四个丢弃条件：① **transport 异常也丢弃**——"确认不了任务是否活着"与"任务死了"同权处理（fail-closed：绝不退化为盲目构造，否则可能复活已删任务的库）；② 任务确实没了（registry miss）→ 丢弃；③ 当前可信路径推导失败 → 丢弃；④ **路径身份漂移**——admission 时的 db_path 与现在的可信路径不一致（任务被重建过）→ 丢弃，因为终态行属于"提交时刻的库"，写到新库等于张冠李戴。四条全部返回 None 且**不写任何失败行**——调用方对 None 静默放弃。这是"宁可丢一次 LLM 结果也不写脏库"的极端取舍，测试 `test_d4b_task_deletion_boundary.py` 逐条覆盖。
+
+## 11. 二轮深化 D：规范栈服务/执行器方法清单
+
+| 单元 | 公开方法（要点） |
+|---|---|
+| InvestigationCaptureService | capture（二次 get_task 验活 + to_thread） |
+| InvestigationReviewService | review（决策转发） |
+| InvestigationEventService | 创建事件/版本/链接证据/查询（经 repository） |
+| InvestigationGraphService | compose_graph（overlay+Base KG、错误不对称） |
+| InvestigationReadService | 证据清单/单快照/精确 claim（C9a 只读族） |
+| ReportEvidenceService | bind/list/update（R1 三重复核） |
+| SecondaryAnalysisExecutor | submit / shutdown / recover_stale_generations |
+| EventRefreshExecutor | submit（409 在途）/恢复 |
+| InvestigationRepository | capture_if_absent/create_analysis/review_analysis/claim_event_refresh/complete_analysis_for_review/fail_analysis/mark_related_events_dirty 等（v7 全表 DDL 与迁移） |
+| InvestigationGraphReader | 唯一 GET 通道（ro+query_only） |
+| EvidenceResolver / keys | resolve（R1-R8）/parse_evidence_key（纯函数） |
+
+## 12. 二轮深化 E：证据键语法与容量上限速查
+
+| 项 | 值 | 位置 |
+|---|---|---|
+| file 键 | `file:<normalized_path>` | keys.py |
+| cluster 键 | `cluster:v1:<unix_minute>:<percent-encoded event_type>` | keys.py（v1 为版本段，坏转义/非 UTF-8 直接抛） |
+| 相关证据上限 | 20（MAX_RELATED_EVIDENCE） | investigation_evidence.py:20-22（legacy 栈常量，规范栈路由层同样用它校验 ≤20） |
+| 簇事件送 LLM 上限 | 50（MAX_CLUSTER_EVENTS_FOR_LLM） | 同上 |
+| 内容字符上限 | 8000（MAX_CONTENT_CHARS） | 同上 |
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

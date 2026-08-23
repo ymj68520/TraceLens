@@ -143,4 +143,65 @@ return StreamingResponse(
 
 相关阅读：[HTTPRoutes.md](../HTTPRoutes.md)、[httpserver/services/CppBackendClient.md](../services/CppBackendClient.md)。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 二轮深化 A：端点全表（含 query 参数与响应码）
+
+| 端点 | 方法 | query 参数（默认/上限） | 响应 | 声明状态码 |
+|---|---|---|---|---|
+| `/api/db/tasks` | GET | status?、page=1、page_size=50（le=100） | Dict[str,Any]（C++ 原始形状直通） | 200/500 |
+| `/api/db/tasks/{task_id}` | GET | — | `{success,task,timestamp}` | 200/404/500 |
+| `/api/db/tasks/{task_id}/databases` | GET | — | TaskDatabasesResponse | 200/500 |
+| `/api/db/tasks/{task_id}/files` | GET | file_type?、extension?、deleted_only=false、include_llm=true、page=1、page_size=50（le=500） | FileListResponse | 200/500 |
+| `/api/db/tasks/{task_id}/events` | GET | event_type?、start_time?、end_time?、page=1、page_size=50（le=500） | EventListResponse | 200/500 |
+| `/api/db/tasks/{task_id}/export/toon` | GET | include_llm=true | StreamingResponse（application/x-toon） | 200/500 |
+| `/api/db/tasks/{task_id}/export/json` | GET | database_type="files"、include_llm=true | StreamingResponse（application/json） | 200/500 |
+
+`{task_id}` 是纯路径段（无 Pydantic 校验）；`page/page_size` 的上限只在这组路由声明（Query le=），CppBackendService 侧不复查。
+
+## 二轮深化 B：模型契约补全与死模型
+
+六个模型中一个此前未提及的细节：**ExportResponse（database.py:71-76）定义后从未被任何端点引用**——两个 export 端点实际返回 StreamingResponse（无 response_model），这是死模型。其余包络字段（success/total_count/page/page_size/timestamp）的写者/读者：
+
+| 模型 | 字段 | 来源 | 说明 |
+|---|---|---|---|
+| FileRecord | is_deleted | `f.get("is_deleted", False)` | 客户端过滤 deleted_only 的同源字段 |
+| | llm_description | include_llm=False 时强制 None（:244） | **响应层过滤**，不改变 C++ 请求 |
+| EventRecord | details | Optional[Dict] | C++ 的 JSON 详情列直通；无 schema |
+| TaskDatabasesResponse | databases | List[Dict[str,Any]] | 行内含 name/path/type 等键（C++ 定义） |
+| 四个 List 包络 | total_count | files=客户端切片总数；events=C++ metadata.total_events（缺失回落本页条数） | 两族语义不同（见 CppBackendClient.md 11 节） |
+
+## 二轮深化 C：分页机制对照表（files vs events）
+
+| 维度 | /files | /events |
+|---|---|---|
+| C++ 端点 | /api/forensics/files/largest | /api/forensics/timeline/comprehensive |
+| 分页位置 | **Python 客户端切片**（limit=page_size+offset 拉全量） | **C++ 服务端**（limit/offset 直传） |
+| 过滤位置 | Python 客户端（file_type/extension/deleted_only） | C++ 服务端（event_type/start/end_time） |
+| total_count 语义 | 过滤后全量数（准确） | 依赖 metadata；裸 list 形态恒 0（失真） |
+| 深翻页成本 | O(累计行数) 传输 | 恒定 |
+| C++ 宕机表现 | 200 + 空列表 | 200 + 空列表 |
+| page_size 上限 | 500 | 500 |
+
+## 二轮深化 D：新走读——export/json 的"失败也成文件"分支
+
+```python
+# database.py:383-398（节选）
+data = await service_manager.cpp_backend.export_json(
+    task_id=task_id,
+    database_type=database_type,
+    include_llm=include_llm,
+)
+json_content = json.dumps(data, indent=2, ensure_ascii=False)
+return StreamingResponse(
+    iter([json_content.encode("utf-8")]),
+    media_type="application/json",
+    headers={"Content-Disposition": f"attachment; filename={task_id}_{database_type}.json"}
+)
+```
+
+逐块解释：`export_json` 失败时返回的是 `{"success": False, "error": <类名>}` dict（CppBackendClient.md 10 节），而这里**不检查 success**——失败 dict 会被 `json.dumps` 序列化成一份合法 JSON 下载文件（HTTP 200）。也就是说：C++ 宕机时用户拿到的是名为 `<task>_files.json`、内容为 `{"success": false, "error": "ConnectError"}` 的"导出成果"。触发条件（异常直抛成 500 "database export failed"）只覆盖传输层 httpx 异常，覆盖不了 `_request` 的失败 dict 形态。TOON 导出没有这个问题——`export_toon` 直连 client、失败直接抛异常进 except 分支。排障/验收时应先 `jq .success` 检查导出文件。另外 `json.dumps(indent=2, ensure_ascii=False)`：大任务全量 events 的导出在 Python 侧一次性驻留内存（无流式切分），内存敏感场景注意。
+
+## 二轮深化 E：调用方矩阵（二轮新发现）
+
+对 `web/src/` 全量 grep（services、pages、hooks）的结果：**没有任何前端代码引用 `/api/db/*`**——forensicsService 的文件/时间线方法全部走 C++ 基座（`api` → `/api/forensics/*`），与本组无关。结合上文"典型调用方"一节的描述，二轮核实的结论是：**`/api/db` 七个端点当前没有前端消费者**，实际用户是手工 curl、测试（`test_database_models.py`）与潜在的集成方；本文前面"前端任务/文件/时间线相关页面调用 /api/db/tasks*"的说法与源码不符，以本节 grep 结果为准。这组路由因此更像"预留的 Python 侧只读代理层"：功能可用、无人在用、下线不影响前端。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

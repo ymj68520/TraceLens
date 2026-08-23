@@ -132,4 +132,52 @@ def _get_oss_filter_service(service_manager):
 
 相关阅读：[HTTPRoutes.md](../HTTPRoutes.md)、[LLM.md](LLM.md)（llm_service 的通用分析面）、[CaseAnalysis.md](CaseAnalysis.md)（同为 LLM 编排但活跃在用的端点）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 7. 二轮深化 A：端点与模型字段全表
+
+| 端点 | 方法 | 请求字段 | 响应模型 | 实际行为 |
+|---|---|---|---|---|
+| /api/forensics/oss/ai/filter | POST | task_id、oss_db_path、case_description、bucket?、max_objects=200（1-2000） | OSSFilterResponse（:34-42） | **当前一调即 500**（bucket 形参 TypeError，见第 4 节） |
+| /api/forensics/oss/ai/analyze | POST | task_id、object_ids[]、oss_db_path、download_dir、model_type="text"（pattern 限定） | {job_id,...} | 200 + stub job_id（`oss-{uuid12}`） |
+
+OSSFilterResponse 字段（:34-42）：filtered_objects（对象标识列表）、selected_count、total_objects、reasoning（LLM 推理文本）——不写库、不落盘。OSSAnalyzeRequest 的 `download_dir` 同样未过门控（与 oss_db_path 同一问题）。
+
+## 8. 二轮深化 B：oss_objects 读取列清单（与 [OssDB.md](../../../schema/OssDB.md) 交叉）
+
+`_get_objects_from_db`（oss_filter_service.py:236-252）只读 8 列：bucket、key、size、last_modified、storage_class、content_type、owner、（WHERE 谓词）is_deleted——对应 oss_objects 全 20 列（OssDB.md:23-47）的子集；`is_deleted = 0` 过滤删除标记对象，`ORDER BY bucket, key` 保证批处理顺序稳定（同桶相邻，LLM 上下文更聚焦）。注意查询**忽略** etag/version 等版本列——筛选粒度是"对象键"而非"对象版本"。
+
+## 9. 二轮深化 C：TOON 流水线契约（流式过滤路径）
+
+`_filter_oss_objects_streaming`（oss_filter_service.py:82 起）的四步：
+
+| 步骤 | 实现 | 要点 |
+|---|---|---|
+| 1. 转 TOON | `_convert_to_toon_format`（:271-298） | schema 行固定为 `bucket \| key \| size \| last_modified \| storage_class \| content_type \| owner` 七列管道分隔；size 经 `_format_size` 人类可读化（"1.5 MB"）——**LLM 看到的是格式化值不是字节数** |
+| 2. 切批 | `_create_batches`（:300） | data_lines 按 batch_size（默认 50）切片，防上下文溢出 |
+| 3. 逐批喂 LLM | `_build_filter_prompt`（:307） | 每批独立请求，选中集合跨批合并 |
+| 4. 解析响应 | `_parse_filter_response`（:340-395+） | 鲁棒链：先抽 JSON 前的 reasoning 前缀 → 剥 markdown 代码栅栏（```json）→ 找首个 `[`/`{` 到末个 `]`/`}` 的边界切片 → 解析失败仍返回已解析部分 |
+
+第 4 步的解析器是"对抗 LLM 输出"的典型实现——模型可能把 JSON 包在解释文字或代码栅栏里，解析器逐层剥离；日志前缀 `[PARSE_OSS_FILTER]` 全程 INFO 级打出（首 500 字符等），排障直接 grep。选中对象以 bucket+key 回配到原始行，最终只剩 id 集合与 reasoning。
+
+## 10. 二轮深化 D：实例生命周期事实表
+
+| 维度 | 事实 | 对比正式生命周期 |
+|---|---|---|
+| 创建时机 | 首次请求时 `hasattr(service_manager, "_oss_filter_service")` 检查后动态挂载（oss_analysis.py:130-140） | 正式服务在 `_initialize_services` 启动期创建 |
+| 关闭时机 | **从不关闭**——不在 `_clear_services`/`_service_cleanup_plan` 清单 | 正式服务 shutdown 时逆序回收 |
+| 依赖 | 惰性取 `service_manager.llm_service` / `cpp_backend`（属性自带就绪校验） | 同 |
+| 重启语义 | 进程重启后自然消失重建（无状态可丢） | 同 |
+| 风险 | ServiceManager 处于 shutting_down 时属性访问抛 RuntimeError → 端点 500 | 正式路由转 503 |
+
+与 case_analysis 的 `_helpers.get_case_analysis_service` 同属"绕过正式生命周期"模式（CaseAnalysis.md 第 3 节已记录）。
+
+## 11. 二轮深化 E：断链修复路径清单（三处）
+
+| # | 断点 | 现状 | 修复动作 |
+|---|---|---|---|
+| 1 | 前端→C++ | /oss 页请求全 404（OSSRoutes 未实例化，HTTPserver.h:91-96） | 在 HTTPServer 组装 OSSRoutes，或把 ossService.js 切到 pythonApi |
+| 2 | C++→Python | AI 代理 handler 固定 503 TODO 桩（OSSAnalysisRoutes.cpp:232-257） | 实现转发到 :8090 /api/forensics/oss/ai/* |
+| 3 | Python 内部 | /filter 一调即 500（bucket 形参 TypeError，oss_analysis.py:72 vs 服务签名无 bucket） | 删路由侧 bucket 传参，或给服务加形参（在 SQL 加 `AND bucket = ?`） |
+
+三处独立成立——只修 3 可让 Python 端点直接可用（绕过 C++），只修 1+2 则仍会撞上 3。另外 detail=str(e) 的脱敏偏离（:86-88、:121-123）建议随 3 一并收敛为固定短句。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

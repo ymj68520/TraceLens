@@ -152,4 +152,80 @@ self._persist_filtered_files(files_db_path, task_id, selected)
 - `test_deterministic_filter.py`（deterministic 模式/截断/持久化）、`test_multi_deterministic_filter.py`（跨镜像聚合分发）、`test_filter_validator.py`、`test_file_matcher.py`、`test_llm_response_parser.py`、`test_filter_config.py`（LLMFilterConfig）、`test_cluster_analyzer.py`、`test_case_analysis_routes.py`（作业 202/轮询契约与 task_store 门卫）。
 - 手工链路：`FILE_FILTER_MODE=deterministic` 下 `POST /api/llm/case-analysis` → 轮询 job → `GET /api/llm/case-report/{task_id}`；`sqlite3 <task>/files.db "SELECT task_id, json_array_length(filtered_files), length(case_report) FROM case_analysis"`。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 二轮深化 A：主流水线 steps 键全清单（result["steps"] 契约）
+
+`run_full_analysis` 的返回 dict 里 `steps` 是前端/排障的主要观测面（_pipelines.py 逐键核对）：
+
+| 键 | 写入行 | 成功形态 | 失败/跳过形态 |
+|---|---|---|---|
+| filter | :109/:406 | 筛选结果（selected 数、模式） | 异常上抛前无键 |
+| extraction | :139/:241 | `{extraction_dir, extracted_count, ...}` | `{success:false, error:str(e), extracted_count:0}`（:144/:245） |
+| descriptions | :172/:270 | 描述列表（每项 file_path+analysis） | `[]`（:124-125） |
+| event_clusters | :183/:280 | `{analyzed, ...}` 计数 | 同构错误形态 |
+| knowledge_graph | :203/:298 | `{ingested:true, file_episodes, cluster_episodes}` | 失败 `{ingested:false, **error:str(e)**, ...}`；服务缺席 `{skipped:true, reason}` |
+| report | :345 | 报告全文 + 统计 | 图谱缺席时 REPORT_FALLBACK_TEMPLATE |
+| image_{n}（multi 管线） | :437 | 每镜像的分发结果 | — |
+
+两个二轮观察：① **knowledge_graph 失败时 `error: str(e)` 原文进结果**——它会经内存作业的状态端点回到前端，与"固定短句"纪律不符（同 extraction 的 error 键），是本域的脱敏偏离点；② extraction 失败不阻断后续（descriptions 继续为空跑、报告仍生成）——"步骤错误记入 steps、报告仍尝试"的容错语义落实到每个键。
+
+## 9. 二轮深化 B：增量分析状态机与决策矩阵
+
+TaskAnalysisState 四态的推导与消费（case_aggregation_manager.py）：
+
+| 状态 | 推导条件 | 行 |
+|---|---|---|
+| analyzed | 任务有已持久描述（has_descriptions）或 case_analysis 行存在 | :138、:270、:405 |
+| pending | 无描述 | :142、:411 |
+| needs_update | 任务元数据（库 mtime 等）晚于上次分析 | :415 |
+| failed | 分析作业失败（由调用方标记） | 枚举定义（db_utils.py:19-24） |
+
+`plan_incremental_analysis`（:421）把任务分进两个集合：analyze（pending/needs_update/failed）与 skip（analyzed）；`execute_incremental_analysis`（:489）只对 analyze 集合调注入的 analyze_func，skip 集合直接复用库中描述。状态是**推导出来的**而非持久化的独立字段——每次规划都重算，因此库被外部改动后无需手工刷新状态。
+
+## 10. 二轮深化 C：LLM 筛选三段管线与 LLMFilterConfig 的真实接线
+
+llm 模式的增强管线（file_filter.py:359-429）与配置的对应：
+
+| 段 | 模块 | 消费的 LLMFilterConfig 字段 | 未接线字段（Main.md 第 10 节已证） |
+|---|---|---|---|
+| 1. 解析 | LLMResponseParser | —（enable_enhanced_parser/parser_fallback_enabled/max_parse_retries/retry_delay 均无消费者） | 4 个 |
+| 2. 校验修复 | FilterResultValidator | match_confidence_threshold（filter_validator.py:40） | — |
+| 3. 匹配 | FileMatcher | score_weight_* 四权重（file_matcher.py:52-55） | enable_smart_dedup |
+| 并发 | FileFilter | enable_concurrent_lock（file_filter.py:90） | lock_timeout |
+
+含义：**LLMFilterConfig 的 12 个字段里只有 6 个真实生效**，且解析段的重试/回退开关是空转的——解析失败的实际行为由代码内固定的 try/except 决定（零命中或校验失败回退 legacy 解析器），与配置无关。调筛选行为时先看这张表，别改未接线字段。
+
+## 11. 二轮深化 D：新走读——KG 摄取的三分支（_pipelines.py:194-221）
+
+```python
+if self._graphiti_service:
+    try:
+        kg_ok = await self.ingest_to_knowledge_graph(...)
+        result["steps"]["knowledge_graph"] = {"ingested": kg_ok, "file_episodes": ..., "cluster_episodes": ...}
+    except Exception as e:
+        logger.error(f"... KG ingestion failed (non-fatal): {e}", exc_info=True)
+        result["steps"]["knowledge_graph"] = {"ingested": False, "error": str(e), ...}
+else:
+    result["steps"]["knowledge_graph"] = {"skipped": True, "reason": "graphiti_service not available"}
+```
+
+逐块解释三分支：① 正常——ingested 布尔即便为 False（如图谱内部降级）也只记数值不抛；② 异常——**non-fatal** 注释明示：KG 挂掉不阻断报告生成，错误全文进 steps（A 节已标注的脱敏偏离）+ traceback 进服务端日志；③ 服务缺席——skipped 分支是"依赖注入未完成"的显式记录（_helpers 注入 graphiti 失败仅 warning，服务照样跑）。三条分支都保证 `steps["report"]` 一定会被写入（:345）——报告是这个流水线的最终一致性目标，图谱只是增强。
+
+## 12. 二轮深化 E：case_analysis/ 子包文件地图
+
+| 文件 | 职责 | 消费方 |
+|---|---|---|
+| case_analysis_service.py | mixin 壳（39-65） | _helpers 构造 |
+| case_analysis_parts/_core.py | 依赖注入 + _initialize_modules | 内部 |
+| case_analysis_parts/_pipelines.py | 四条流水线（full/multi/smart/incremental） | 路由作业 |
+| case_analysis_parts/_windows.py | Windows 管线（extract_files→分析） | _windows 路由 |
+| file_filter.py / multi_image_filter.py | 双模式筛选 | 流水线第 1 步 |
+| file_matcher.py / filter_validator.py / llm_response_parser.py | LLM 筛选三段 | file_filter |
+| concurrent_filter.py | FilterLockManager 单例 | file_filter |
+| cluster_analyzer.py | 事件簇聚合 | 流水线并行段 |
+| report_generator.py | 五章报告 | 流水线末步 |
+| case_aggregation_manager.py | 增量规划/执行 | smart 流水线 |
+| db_utils.py | case_analysis 表 DDL/读写 | 全部持久化 |
+| windows_artifacts/（平级包） | Windows 痕迹分析器 | _windows |
+| （死代码）case_persistence.py / case_file_filter.py | 与 db_utils 重叠 | 无 importer |
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

@@ -170,4 +170,59 @@ finally:
 - `test_d2b_task_store.py`（精确校验/包含性/符号链接/错误码）、`test_d2b_db_ownership.py`（端到端归属：错误目标绝不写入）、`test_d2b_office_routes.py`、`test_d2b_standalone_contracts.py`、`test_markitdown_routes.py`（转换入口全链路门卫）。
 - 手工验证：对同一任务 POST 一个 `files_db_path` 差一个字符的请求应得 400 `path_mismatch`；`GET` 一个不存在任务的任何受保护资源应得 404 而非 500。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 10. 二轮深化 A：六路由 × 函数 × 错误码映射矩阵
+
+| 路由（入口） | 调用的 task_store 函数 | 消费的 task 键 | TaskStoreError → HTTP |
+|---|---|---|---|
+| markitdown /convert | get_task_record + workspace_from_record + file_known_to_task/resolved_within | output_files_db、output_events_db、output_raw_db | not_found→404、unavailable→400/503、outside→400 |
+| markitdown /convert-one、/batch-convert | workspace 解析 + has_symlink_component×3 + resolved_within | 同上 | 同上 + 符号链接→400 |
+| office /parse | workspace_from_record + internal_extract_root + file_known_to_task | 三库键 | not part of task→404 |
+| dll /analyze/dll | resolve_task_files_db + validate_legacy_db_path | output_files_db[_path] | mismatch→400、not_found→404 |
+| multi_analysis（每任务循环） | resolve_task_files_db + validate_legacy_db_path | 同上 | not_found→404、其余→400 |
+| case_analysis _case（reanalyze） | resolve_task_files_db + validate_legacy_db_path | 同上 | 同上 |
+| llm_endpoints /analyze | resolve_task_files_db + validate_legacy_db_path | 同上 | 同上 |
+
+`extraction_directory` 键不在 task_store 消费（它由 llm_endpoints/_analysis.py:189 与 file_filter 直接读 task 记录用于镜像内路径解析——task_store 的职责边界只到"库与工作区"）。
+
+## 11. 二轮深化 B：与 investigation/paths.py 的同构对照
+
+| 维度 | task_store.py | investigation/paths.py |
+|---|---|---|
+| 信任源 | cpp_backend.get_task（经 `_get_service_manager()` 延迟导入防环，:49-53） | 调用方传入的 task dict |
+| 父目录一致键 | 三键（files/events/raw，:87-101） | 两键（files/events，paths.py:23-26） |
+| 产出 | 工作区根（三库共同父目录） | `<父>/investigation.db` |
+| 异常类型 | TaskStoreError(code) | EvidenceStoreError |
+| 语义 | 404/400/503 分流 | 503（fail-closed 域错误） |
+
+两处 `len(set(parents)) != 1` 判定逐字符同构——模块头注释（task_store.py:10-24）自认复用后者纪律。差异点在键集：investigation 侧不需要 raw.db（调查域不读 raw），因此**只挂 raw.db 的任务**能过 investigation 检查却过不了 markitdown 工作区检查——排障时按域选对模块。
+
+## 12. 二轮深化 C：路径攻击向量 × 防御机制对照表
+
+| 攻击向量 | 示例 | 防御机制 | 位置 |
+|---|---|---|---|
+| 兄弟前缀冒充 | `/t/a` 冒充 `/t/abc` 的成员 | resolve + `relative_to`（组件感知） | resolved_within :122-137 |
+| `..` 穿越 | `workspace/../../etc/passwd` | 同上（resolve 抹平再判包含） | 同上 |
+| 符号链接重定向 | 根内 symlink 指向根外 | resolve **前**逐组件 is_symlink | has_symlink_component :140-155 |
+| 客户端猜路径 | files_db_path 填别的库 | 精确相等（无 basename/后缀/大小写兜底） | validate_legacy_db_path :104-119 |
+| 记录内字段不一致 | 三库父目录不同 | set(parents) 唯一性 | workspace_from_record :87-101 |
+| 库损坏冒充"无文件" | files.db 打不开 | 三层 unavailable（不返回 False） | file_known_to_task :163-191 |
+| 空任务 ID | `""`/空白 | 入口即 task_not_found | get_task_record :55-59 |
+
+已知残余（第 8 节已记录的补充视角）：validate_legacy_db_path 的 `resolve(strict=False)` 可能把"仅符号链接差异"的两条路径折叠成相等——防御靠路由层叠加 has_symlink_component，新增入口忘叠即留洞。
+
+## 13. 二轮深化 D：新走读——`_get_service_manager()` 的防环延迟导入（:49-53）
+
+```python
+# task_store.py:49-53
+def _get_service_manager():
+    from . import get_service_manager
+    return get_service_manager()
+```
+
+逐块解释：task_store 被 services/__init__ 的消费者（六个路由）在**模块导入期**引用，而 `services/__init__.py` 又 re-export get_service_manager——若 task_store 顶部直接 `from . import get_service_manager` 会形成"包初始化中导入包成员再反向导入包"的循环。函数体内的延迟导入把时序推迟到**首次调用**（此时包已初始化完毕）。代价是每次 get_task_record 都做一次函数级 import（Python 的 import 缓存使其为字典查找级开销，可忽略）；收益是 task_store 可以被任何层安全导入。同样的模式在 markitdown/office/dll 等路由的 handler 内 `from ..services import get_service_manager` 里反复出现——这是本仓库处理 services 包循环的标准手法（对比 ServiceManager 用"函数体内导入服务模块"解决同类问题，main.py:52-57）。
+
+## 14. 二轮深化 E：get_task 的前置防御链（上游契约）
+
+task_store 的信任完全建立在 `cpp_backend.get_task` 之上，其自身的防御（CppBackendClient.md 第 4 节）构成门卫的前置层：`task_id ∈ {".", ".."}` 直接拒收（cpp_backend.py:182-184）→ `quote(task_id, safe="")` 防 path 注入（:184）→ 响应 `id` 回显一致才返回（:197，防错配响应）。因此 task_store 收到的 task dict 已经过三层过滤；`image_name ← image_path` 别名补齐（:199-200）发生在同一方法内——下游读 `image_name` 的代码实际拿的可能是镜像路径，两个键的语义差异要在展示层自行处理。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

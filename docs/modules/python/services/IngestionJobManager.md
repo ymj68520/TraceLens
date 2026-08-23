@@ -192,4 +192,62 @@ JOIN 的动机在注释：默认 JSON prompt 会丢哈希/类别这类字段值�
 - `test_ingestion_analyzed_only.py`（ANALYZED_ONLY 模式：跳过未分析、事件过滤、结果统计）、`test_graphiti_integration_fixes.py`（episode 契约）、`test_d4b_graphiti_cleanup.py`（任务图删除边界）、`test_startup_reliability.py`（ServiceManager 初始化预算/回滚）。
 - 手工链路：`POST /api/graphiti/ingest {"task_id","mode":"analyzed_only"}` → `GET /api/graphiti/jobs/{job_id}`（Redis 模式 `redis-cli HGETALL job:{id}` 可直接看）→ 终态后 `GET /api/graphiti/graph?task_id=` 应看到实体而非只有 File 节点。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 二轮深化 A：Redis 键空间契约（字段级）
+
+| 键 | 类型 | 字段/语义 | TTL |
+|---|---|---|---|
+| `job:{job_id}` | HASH | 14 字段：job_id、task_id、mode（枚举 value）、status、progress(int)、current_phase、created_at、started_at、completed_at、error、result（JSON 串）、file_id、events_count | **无 TTL**——作业历史永驻，需运维清理 |
+| `ingestion_queue` | LIST | 元素为小信封 JSON `{job_id, task_id, mode}`（LPUSH 进 / RPOP 出 = FIFO） | 无 |
+| `job_events:{job_id}` | STRING(?) | EVENTS_ONLY 的完整 events 载荷（入队时暂存，worker 取走） | 3600s（:406-412） |
+
+`_save_job`（_manager.py:210-247）的两层转换规则：**None 字段直接剥离**（HSET 不收 None——意味着 started_at/completed_at/error/result 未赋值时键不存在，HGETALL 读回后 dataclass 用默认值补）；dict/list 序列化为 JSON 字符串（`ensure_ascii=False, default=str`）。`_load_job`（:249-269）的反向规则：mode/status 字符串经 `IngestionMode(...)`/`JobStatus(...)` 复原成枚举；result 尝试 `json.loads`，**坏 JSON 静默置 None**（TypeError/JSONDecodeError 双捕获）——手改过 Redis 里的 result 后作业会"丢失结果"但不报错。`IngestionJob(**data)` 用 dict 直接构造：多一个未知字段会 TypeError，因此**禁止往 HSET 手工加字段**。
+
+## 9. 二轮深化 B：五模式 × 图产物对照表
+
+| 模式 | :File 实体 | 事件挂载 | MENTIONED_IN 边 | 去重 | path-A episode |
+|---|---|---|---|---|---|
+| FULL | batch_ensure_files（全量） | attach_events_batch | ✓ | merge_duplicate_files | ✓（全部有描述的文件） |
+| FILES_ONLY | ✓ | ✗ | ✓ | ✓ | ✗（worker :232-258，到 reading/processing 即止） |
+| EVENTS_ONLY | ✗ | events 载荷直挂（来自 job_events 暂存） | ✗ | ✗ | ✗ |
+| SINGLE_FILE | 单文件（file_id 定位） | ✗ | ✓ | ✗ | ✗ |
+| ANALYZED_ONLY | 仅 analyzed 文件 | ✓ | ✓ | ✓ | ✓（仅 file_descriptions 非空者） |
+
+对照含义：前端 `/graph` 看到的"实体+关系"来自 path-A（FULL/ANALYZED_ONLY 才有）；只跑 FILES_ONLY 会得到"纯 File 节点森林"。EVENTS_ONLY 是唯一不建 File 实体的模式（事件挂到已有 File 上，库中无 File 时事件无处可挂——作业会统计 attached=0）。
+
+## 10. 二轮深化 C：进度区间全表（worker 实测写入值）
+
+| 区间 | 模式 | 阶段 |
+|---|---|---|
+| 5-10 | FULL/ANALYZED_ONLY | reading_databases |
+| 10-? | FULL | creating_file_entities（批次推进） |
+| 80 | FULL | attaching_events |
+| 85 | FULL | linking_entities |
+| 90 | FULL | deduplicating_files |
+| 92-95 | 有 path-A 的模式 | episode 摄取（`_ep_progress` 把阶段消息里的 "X/Y" 线性映射进区间，:556-566） |
+| 100 | 全部 | 终态 COMPLETED |
+
+FILES_ONLY/SINGLE_FILE 等短路径的阶段值更稀疏（10/processing 后直接 100）。前端若做进度条，注意 80→85→90 的跳跃只在 FULL 出现；progress 可能因 fire-and-forget 更新瞬时回跳（第 6 节已记录），显示层应取 max。
+
+## 11. 二轮深化 D：新走读——Redis 模式下 worker 崩溃的队列窗口（已知取舍的边界）
+
+```python
+# _worker.py:35-53 的关键两步
+item = await self._redis.rpop("ingestion_queue")   # ① 信封出队
+...
+await self._process_job(queue_data)                 # ② 处理（标 RUNNING）
+```
+
+逐块解释丢失窗口：①与②之间（或②内部标 RUNNING 前）进程崩溃——信封已从 LIST 移除、作业本体还停在 `job:{id}` 的 PENDING；重启后没有任何机制会重新入队（worker 只消费 LIST，不扫描孤儿 PENDING）。这与第 6 节"重提交即可"的记录一致，但值得补齐精确边界：**只要 `_process_job` 已把状态写成 RUNNING，重启后作业同样无人接手**——恢复扫描在本管理器里不存在（对比：SecondaryAnalysis/ReportGeneration 执行器都有 recover_stale_*，本管理器没有）。补齐方向（如需）：initialize 时 `scan_iter("job:*")` 找 PENDING/RUNNING 行重新 LPUSH——注意幂等（避免与仍在跑的进程双跑，需要借 Neo4j 侧幂等或分布式锁）。另一个事实：内存模式的 worker 不会丢作业（重启即整体丢失，无窗口概念）。
+
+## 12. 二轮深化 E：配置影响表
+
+| env | 字段 | 默认 | 消费点 |
+|---|---|---|---|
+| REDIS_URL | redis_url | redis://localhost:6379 | from_url（connect 5s / 命令 30s / 健康检查 30s） |
+| NEO4J_URI/USER/PASSWORD | neo4j_* | 本地默认 | FileEntityIngestor 等组件构造 |
+| NEO4J_CONNECT_TIMEOUT / NEO4J_QUERY_TIMEOUT | 5.0 | 组件驱动参数 | |
+| GRAPHITI_BATCH_SIZE | graphiti_batch_size | 50 | path-A 的 episode 批 |
+| GRAPHITI_MAX_RETRIES | 3 | 组件重试 | |
+| （无专属 env） | worker 节奏 | 每周期 ≤100 条 / 空转 sleep(1)s | 硬编码 _worker.py:44、:52 |
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）
