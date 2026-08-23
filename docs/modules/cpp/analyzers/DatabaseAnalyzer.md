@@ -2,7 +2,7 @@
 
 > **一句话**：数据库取证专用分析器——离线解析 SQLite 数据库文件和 MySQL/PostgreSQL 数据目录，提取表结构、记录、用户、工件，甚至恢复已删除记录，结果写入独立结果库的五张 `db_*` 表。
 >
-> **状态提示**：模块已编译进主程序（CMakeLists 挂入 LIB_SOURCES），但目前**没有任何生产调用方**——CLI 没有 `--analyze-dbs` 参数，HTTP 流水线不跑它，仅单元测试在用。详见第 2 节。
+> **状态提示**：模块已编译进主程序（CMakeLists 挂入 LIB_SOURCES），但目前**没有任何生产调用方**——CLI 没有 `--analyze-dbs` 参数，HTTP 流水线不跑它，仅单元测试在用。详见第 3 节。
 
 ## 1. 为什么有这个模块
 
@@ -83,7 +83,6 @@ std::map<DatabaseType, ParserCreator>& DBParserFactory::getRegistry() {
 函数级 static 保证线程安全初始化（C++11 magic static），`registerParser(type, creator)` 允许外部在运行时追加/覆盖条目——加 Redis/MongoDB 时这是唯一要动的工厂代码。
 
 ### 2.1 核心接口清单
-
 `DatabaseAnalyzer`（`DatabaseAnalyzer.h:44-170`）的公开 API：
 
 | 方法 | 语义 | 调用方 | 失败行为 |
@@ -109,7 +108,6 @@ std::map<DatabaseType, ParserCreator>& DBParserFactory::getRegistry() {
 注意与 LinuxFilesAnalyzer 的 `analyzeDatabaseLogs()` 区分：那是解析 MySQL/PostgreSQL 的**日志文件**（慢查询日志、错误日志），写 linux.db；本模块解析的是**数据文件本体**。两者互补，无调用关系。
 
 ### 3.1 产出表结构说明（结果库五张表）
-
 建表语句在 `Database/DBAnalysisDatabase.cpp:48-127`：
 
 | 表 | 关键列 | 取证含义 |

@@ -12,7 +12,7 @@
 
 ## 2. 核心数据结构
 
-模块的关键结构分三组：证据源抽象、MIUI 备份模型、SQLCipher 解密参数。
+**证据源抽象、MIUI 备份模型与 SQLCipher 解密参数**——三组核心结构如下。
 
 **证据源模式与后端接口**（`AndroidAnalyzerDeclarations.h:29-34`、`IFileExtractor.h:41-62`）：
 
@@ -32,10 +32,9 @@ public:
 };
 ```
 
-`AndroidSourceMode` 就是 CLI `--android-source` 与 HTTP `android_source` 字段的四个取值；`IFileExtractor` 的契约是"给镜像内相对路径（如 `data/data/com.foo/databases/foo.db`，容忍前导 `/`），把完整字节写到本地 outPath，返回后可用普通 `std::ifstream` 读"。头注释统计过：模块内九处取文件调用全部走这一个方法，换后端不动任何解析代码。
+`AndroidSourceMode` 就是 CLI `--android-source` 与 HTTP `android_source` 字段的四个取值；`IFileExtractor` 的契约是"给镜像内相对路径（容忍前导 `/`），把完整字节写到本地 outPath"。头注释统计过：模块内九处取文件调用全部走这一个方法，换后端不动任何解析代码。
 
-**MIUI 备份模型**（`MiuiBackupManifest.h:9-26`、`AndroidBackupHeader.h:5-12`、`TarIndex.h:10-18`）：
-
+**MIUI 备份模型**（`MiuiBackupManifest.h:9-26`、`AndroidBackupHeader.h:5-12`、`TarIndex.h:10-18`）。三组结构串成 MIUI 模式的完整数据通路：`BackupMeta` 来自 descript.xml（清单），`AndroidBackupHeader` 解析每个 `.bak` 的私有头部（tar 载荷偏移与压缩标志），`TarIndex` 在该偏移上建成员名→`TarEntry` 的哈希表：
 ```cpp
 struct BackupPackage {           // descript.xml 里的一个 <item>
     std::string packageName;
@@ -50,13 +49,9 @@ struct BackupMeta {
     std::string device;          // 机型代号，如 "cepheus"
     std::string miuiVersion;     // 如 "V12.5.6.0.RFACNXM"
     uint64_t date = 0;           // epoch 毫秒
-    uint64_t totalSize = 0;
     std::vector<BackupPackage> packages;
-    std::string sourceFolder;
 };
-
 struct AndroidBackupHeader {     // 每个 .bak 的私有头部
-    int version = 0;
     int compression = 0;         // 0=裸 tar，1=zlib 压缩
     BackupEncryption encryption; // None / Aes256 / Unknown
     uint64_t payloadOffset = 0;  // tar 载荷在 .bak 内的起始偏移
@@ -71,10 +66,9 @@ struct TarEntry {                // tar 索引的一条成员记录
 };
 ```
 
-这三组结构串起来就是 MIUI 模式的完整数据通路：`BackupMeta` 来自 descript.xml（清单），`AndroidBackupHeader` 解析每个 `.bak` 的私有头部（拿到 tar 载荷偏移与压缩标志），`TarIndex` 在该偏移上建一次成员名→`TarEntry` 的哈希表。`TarIndex::build` 若被告知 `inflate=true` 会先把 zlib 载荷解到临时文件（上限 16GB，`TarIndex.h:30-32`），之后所有偏移都指这个临时文件——换取的是"按需单取一个成员"而不用反复解压整个包。
+`TarIndex::build` 若被告知 `inflate=true` 会先把 zlib 载荷解到临时文件（上限 16GB，`TarIndex.h:30-32`），之后所有偏移都指这个临时文件——换取的是"按需单取一个成员"而不用反复解压整个包。
 
 **SQLCipher 解密参数**（`SqlCipherDatabase.h:36-46`）：
-
 ```cpp
 struct SqlCipherConfig {
     int compatibility = 0;    // SQLCipher 主版本（1-4），0=自动
@@ -99,7 +93,6 @@ struct SqlCipherConfig {
 入口流程（`AndroidAnalyzerCore.cpp:61-148, 150-258`）：`initialize()` 选后端并建库 → `analyzeAndroidData()` 按固定清单依次解析（见第 4 节）→ 最后 `analyzeWithLLM()` 做工件级 AI 分析。MIUI 模式还有一个贴心的自动晋升：用户把 MIUI 备份目录当成普通"目录"源提交时，`initialize()` 检测到 `descript.xml` 根标签是 `<MIUI-backup>` 且有 `.bak` 文件就自动切到 miui-backup 模式（`AndroidAnalyzerCore.cpp:61-73`）。
 
 ### 3.1 核心接口清单
-
 `AndroidAnalyzer` 的公开 API（真实签名见 `AndroidAnalyzerDeclarations.h:40-136`）：
 
 | 方法 | 语义 | 调用方 | 失败行为 |
@@ -126,7 +119,6 @@ struct SqlCipherConfig {
 两个解析细节体现工程质量：其一，所有 SQLite 都按"bundle"暂存——主库加上 `-wal/-shm/-journal` 边车一起提取到安全临时目录再打开（`stageSqliteBundle`，`AndroidDataParsers.cpp:21-40`），避免 WAL 未合并导致读到旧数据；临时目录刻意与证据源隔离（`miui_secure_temp`），析构时清理。其二，MIUI 备份的 `.bak` 用 `TarIndex` 建一次内存索引（成员名→字节偏移），之后按需单取某个成员而不用反复解压（`TarIndex.h:24-27`，inflate 上限 16GB）。
 
 ### 4.1 产出表结构说明（android.db 关键表）
-
 android.db 的 33 张表全部定义在 `android_analysis_sql.h`（`CREATE_ALL_TABLES` 通用表 + `CREATE_MIUI_TABLES` 专项表）。最有取证意义的几张：
 
 | 表 | 关键列（取自真实 schema） | 取证含义 |
@@ -199,7 +191,7 @@ std::string WeChatDecryptor::derivePassword(const std::string& imageMountPath) {
 }
 ```
 
-做什么/为什么：微信把 UIN 存在两个 shared_prefs XML 里（`<int name="_auth_uin" value="..."/>`），这里不做完整 XML 解析而是字符串定位 + 200 字符窗口约束，防误命中同名属性；IMEI 在镜像里拿不到（新版 Android 限制），硬编码占位值——所以**自动推导在无 IMEI 的设备上大概率失败，需要人工给密码**（这是已登记的坑）。`OPENSSL_cleanse` 清掉拼接串是密钥卫生习惯。拿到密码后 `openDatabase`（第 28-60 行）按"SQLCipher v4 默认 → v2 传统参数（4000 轮 KDF + SHA1 HMAC）→ 全版本矩阵"的顺序尝试打开，两步快路径先短路常见情形。矩阵本体在 `SqlCipherDatabase.cpp:88-112`：
+做什么/为什么：微信把 UIN 存在两个 shared_prefs XML 里（`<int name="_auth_uin" value="..."/>`），这里不做完整 XML 解析而是字符串定位 + 200 字符窗口约束，防误命中同名属性；IMEI 在镜像里拿不到（新版 Android 限制），硬编码占位值——所以**自动推导在无 IMEI 的设备上大概率失败，需要人工给密码**（已登记的坑）。`OPENSSL_cleanse` 清掉拼接串是密钥卫生习惯。拿到密码后 `openDatabase`（第 28-60 行）按"SQLCipher v4 默认 → v2 传统参数（4000 轮 KDF + SHA1 HMAC）→ 全版本矩阵"的顺序尝试打开。矩阵本体在 `SqlCipherDatabase.cpp:88-112`：
 
 ```cpp
 // SqlCipherDatabase.cpp:88-112（节选）
