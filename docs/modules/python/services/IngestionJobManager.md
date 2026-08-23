@@ -8,37 +8,174 @@ Graphiti 摄取是长任务（一个任务几万文件 + LLM 抽取），不能�
 
 ## 2. 在系统中的位置
 
-- **谁调用它**：routes/graphiti_endpoints（手动 Ingest 按钮优先走本管理器，失败才回落 GraphitiService 的旧式内存作业，_ingest.py:60-77）；ServiceManager 启动序列在其 initialize 上给 12s 可选服务预算（service_manager.py:213-223）。
+- **谁调用它**：routes/graphiti_endpoints（手动 Ingest 按钮优先走本管理器，失败才回落 GraphitiService 的旧式内存作业，_ingest.py:60-77：`hasattr(service_manager, 'ingestion_job_manager')` 判定后 `queue_ingestion(task_id, mode)`，否则 `graphiti_service.start_ingestion`）；ServiceManager 启动序列在其 initialize 上给 12s 可选服务预算（service_manager.py:213-223）。
 - **它调用谁**：Redis（`redis.asyncio`，作业哈希 + 队列 + 事件暂存）；graphiti_integration 的 `FileEntityIngestor` / `EntityRelationBuilder` / `ForensicsDatabase` / `EventsDatabase`（path-B 直写 Neo4j）；`GraphitiService.ingest_task_episodes`（path-A，经 service_manager 反查）；CppBackendService（任务数据库路径的权威来源）。
 - **结构**：`ingestion_job_manager.py` 只是组装壳 + 兼容 re-export；实现在 `ingestion_job_parts/_manager.py`（生命周期/持久化/队列与状态 API）与 `_worker.py`（后台 worker 与各模式处理）；数据类在 `ingestion_job_models.py`。
 
-## 3. 核心概念与设计
+## 3. 核心数据结构
 
-**（a）作业模型（ingestion_job_models.py）。** `IngestionMode`：FULL/FILES_ONLY/EVENTS_ONLY/SINGLE_FILE/ANALYZED_ONLY（:13-19，最后一项"只摄取 AI 已分析文件"）；`JobStatus`：PENDING/RUNNING/COMPLETED/FAILED/CANCELLED（:22-28）；`IngestionJob` dataclass 带 progress/current_phase/started_at/completed_at/error/result（:31-48）。状态迁移由 `_update_job_status` 集中落时间戳（_manager.py:296-301）。
+```python
+# ingestion_job_models.py:13-48
+class IngestionMode(str, Enum):
+    """Ingestion operation modes."""
+    FULL = "full"
+    FILES_ONLY = "files_only"
+    EVENTS_ONLY = "events_only"
+    SINGLE_FILE = "single_file"
+    ANALYZED_ONLY = "analyzed_only"  # Only AI-analyzed files
 
-**（b）Redis 持久化 + 内存回退。** `initialize`（_manager.py:62-155）先 `aioredis.from_url(settings.redis_url)`（默认 `redis://localhost:6379`，config.py:187），带 5s 连接/30s 命令超时与 30s 健康检查（:70-82 注释解释了为何不用 BRPOP：阻塞读会撞 socket 超时）；ping 失败即 `_use_redis=False` 落内存 dict，**永远不抛**。存储形态：每作业一个 `job:{id}` HSET（None 剥离、dict/list 序列化为 JSON，:210-247），队列是 `ingestion_queue` LIST（LPUSH 进/RPOP 出），EVENTS_ONLY 的载荷暂存 `job_events:{id}`（TTL 3600s，:406-412）。读回时恢复枚举与 result dict（:249-269）。`list_jobs` 在 Redis 模式用 `scan_iter(match="job:*")`（:491-505）。
 
-**（c）降级的 Neo4j 组件装载。** `initialize` 第二步把 `python_service/`（本文件 `parents[3]`）插入 sys.path 后导入 graphiti_integration 组件——注释记录了历史上 `parents[3]` 误算成 `httpserver/` 导致启动脚本忘了 PYTHONPATH 时静默 ImportNotFound 的教训（:93-107）。任何失败都只降级（`_file_ingestor is None`），worker 照常启动（:151-153）；各模式处理函数开头检查组件并把作业标 COMPLETED 附 `"Neo4j not available"` 说明（如 _worker.py:112-117）。
+class JobStatus(str, Enum):
+    """Job status states."""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
 
-**（d）Worker 循环（_worker.py:29-74）。** Redis 模式：非阻塞 RPOP 循环，单周期上限 100 条保持响应性，队列空 sleep(1)；内存模式：每秒扫一次 PENDING，**一次只处理一条**。`_process_job`（:76-107）是状态机骨架：标 RUNNING → 按 mode 分发 → COMPLETED(progress=100)；任何异常标 FAILED 并存 error。
 
-**（e）FULL 模式的五步（:109-220）。** 读库（`_resolve_task_database` :776-795 **优先 C++ 任务记录的 output_*_db**，找不到才走 `_find_database` 的文件系统启发式 :797-856）→ `batch_ensure_files` 建文件实体（进度回调做了百分比去抖，避免几十万次 HSET，:138-150）→ `attach_events_batch` 挂事件 → `_create_mentioned_in_edges` → `merge_duplicate_files` → path-A episode 摄取。`_create_mentioned_in_edges`（:635-735）的 docstring 记录了一个被修复的老 bug：旧实现试图从 episode 名恢复文件路径再哈希，但 episode 名是本地化的（"文件分析: /path"）且事件簇 episode 根本没有路径，导致 `mentioned_in_edges_created` 恒为 0；现在从 File 记录按 basename 建映射，另有 `_link_entities_to_files_by_name`（:737-774）用一条参数化 UNWIND MERGE 把"实体名 == 文件名"的强取证信号连上。
+@dataclass
+class IngestionJob:
+    """Represents an ingestion job."""
+    job_id: str
+    task_id: str
+    mode: IngestionMode
+    status: JobStatus = JobStatus.PENDING
+    progress: int = 0  # 0-100
+    current_phase: str = "queued"
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    error: Optional[str] = None
+    result: Optional[dict[str, Any]] = None
 
-**（f）ANALYZED_ONLY 与 path-A。** `_process_analyzed_only`（:307-435）只取 `iter_files_batched(analyzed_only=True)` 的文件走同套流程。`_ingest_episodes_path_a`（:437-601）从 `_files.db` 读 file_descriptions 并 **JOIN files 表带上 category/md5/name/size**（注释：默认 JSON prompt 会丢掉这些高价值抽取信号，:486-489），text_factory 兜底 GBK 文件名（:476-485）；事件簇分析按 `(event_type, minute)` 去重读出；全部喂给 `GraphitiService.ingest_task_episodes`，进度映射到 92-95% 区间。此路径**失败非致命**——path-B 的 :File 节点仍然有效。
+    # Additional metadata
+    file_id: Optional[int] = None  # For SINGLE_FILE mode
+    events_count: int = 0  # For EVENTS_ONLY mode
+```
 
-## 4. 工作流程走读：一次手动摄取
+- 两枚举都继承 `str, Enum`：Redis/JSON 里以 value 往返，读回时 `IngestionMode(data["mode"])` 复原；
+- `current_phase` 是机器可读的阶段名（reading_databases/creating_file_entities/attaching_events/ingesting_episodes...），前端据此渲染步骤；`progress` 与 phase 由 worker 双轨更新；
+- `created_at` 用 `datetime.utcnow()`（naive ISO 串，仅作记录不参与比较）；
+- `file_id`/`events_count` 是模式专属载荷；注意 `queue_event_sync` 在内存模式还会动态挂 `_events` 属性（见第 6 节）。
 
-`POST /api/graphiti/ingest`（路由优先选 job manager）→ `queue_ingestion(task_id, mode)`（_manager.py:307-341）：生成 `job_{uuid16}` → 保存 HSET → `LPUSH ingestion_queue` → 返回 job_id → worker RPOP → `_process_job` 标 RUNNING("starting") → FULL 五步逐步更新 phase/progress → COMPLETED → 前端轮询 `get_job_status`（:425-451）读 HSET 直至终态。`cancel_job`（:453-472）只允许取消非终态作业，把状态改 CANCELLED——正在执行中的作业不会被中断，worker 完成后仍会尝试写入状态（见第 6 节）。
+## 4. 核心接口清单
 
-## 5. 与其他模块的协作
+| 方法（真实签名） | 语义 | 调用方 | 失败行为 |
+|---|---|---|---|
+| `async initialize()` | Redis 连接 + Neo4j 组件装载 + 起 worker | ServiceManager（12s 预算） | 任何失败只降级，永不抛 |
+| `async queue_ingestion(task_id, mode=IngestionMode.FULL) -> str` | 建 PENDING 作业并 LPUSH 队列 | 摄取路由 | Redis 失败前已回退内存 |
+| `async queue_file_update(file_id, task_id) -> str` | SINGLE_FILE 入队 | 文件级更新入口 | 同上 |
+| `async queue_event_sync(task_id, events: list[dict]) -> str` | EVENTS_ONLY 入队 + 载荷暂存（TTL 3600s） | 事件同步入口 | 同上 |
+| `async get_job_status(job_id) -> Optional[dict]` | 读回作业（HGETALL/内存） | 前端轮询 | 不存在返回 None→404 |
+| `async cancel_job(job_id) -> bool` | 非终态作业改 CANCELLED | 取消按钮 | 终态作业拒绝 |
+| `async list_jobs() / redis_health_check() -> dict` | 扫描 job:* / Redis 健康 | 管理端点 | 不抛 |
+| `async shutdown()` | 停 worker、关组件与 Redis | ServiceManager 关停 | 容忍各步异常 |
+| `_process_job` / `_process_full_ingestion` / `_process_analyzed_only` / `_ingest_episodes_path_a`（worker 内部） | 状态机分发与五模式执行 | worker 自身 | 异常→FAILED+error |
 
-| 模块 | 协作方式 |
-|---|---|
-| GraphitiService | path-A 的最终执行者（ingest_task_episodes）；其 `_jobs.py` 旧式内存作业是本管理器的回退 |
-| graphiti_integration | FileEntityIngestor/EntityRelationBuilder/数据库读取器（path-B） |
-| CppBackendService | 任务库路径的信任源（D2b） |
-| ServiceManager | 12s 可选初始化预算；shutdown 会 cancel worker 并关闭组件连接 |
-| routes/graphiti_endpoints | 队列入口与状态/取消/列表端点 |
+## 5. 核心概念与设计
+
+**（a）Redis 持久化 + 内存回退。** `initialize`（_manager.py:62-155）先 `aioredis.from_url(settings.redis_url)`（默认 `redis://localhost:6379`，config.py:187），带 5s 连接/30s 命令超时与 30s 健康检查；ping 失败即 `_use_redis=False` 落内存 dict，**永远不抛**。存储形态——每作业一个 `job:{id}` HSET（None 剥离、dict/list 序列化为 JSON），队列是 `ingestion_queue` LIST（LPUSH 进/RPOP 出）。序列化代码：
+
+```python
+# ingestion_job_parts/_manager.py:228-245（节选）
+# Redis HSET mapping does not accept None values — strip them
+job_dict = {k: v for k, v in job_dict.items() if v is not None}
+
+# Redis can only store scalar types (str, bytes, int, float).
+# Convert dicts/lists to JSON strings so nested values serialize cleanly.
+import json
+_serializable = {}
+for k, v in job_dict.items():
+    if isinstance(v, (dict, list)):
+        _serializable[k] = json.dumps(v, ensure_ascii=False, default=str)
+    else:
+        _serializable[k] = v
+
+if self._use_redis:
+    await self._redis.hset(
+        f"job:{job.job_id}",
+        mapping=_serializable
+    )
+else:
+    self._jobs[job.job_id] = job
+```
+
+两层转换的原因写在注释里：HSET 的 mapping 不接受 None；Redis 只存标量，嵌套 result 必须先 JSON 化。读回时恢复枚举与 result dict（:249-269：`IngestionMode(data["mode"])` / `json.loads(data["result"])`，坏 JSON 静默置 None）。EVENTS_ONLY 的载荷暂存 `job_events:{id}`（TTL 3600s，:406-412）。`list_jobs` 在 Redis 模式用 `scan_iter(match="job:*")`（:491-505）。入队侧：
+
+```python
+# ingestion_job_parts/_manager.py:330-338（节选）
+await self._save_job(job)
+
+# Signal worker by adding to queue
+if self._use_redis:
+    await self._redis.lpush("ingestion_queue", json.dumps({
+        "job_id": job_id,
+        "task_id": task_id,
+        "mode": mode.value,
+    }))
+```
+
+作业本体先落 HSET、再 LPUSH 小信封——worker 只从信封拿 job_id 回读全量，队列元素保持极小。
+
+**（b）降级的 Neo4j 组件装载。** `initialize` 第二步把 `python_service/`（本文件 `parents[3]`）插入 sys.path 后导入 graphiti_integration 组件——注释记录了历史上 `parents[3]` 误算成 `httpserver/` 导致启动脚本忘了 PYTHONPATH 时静默 ImportNotFound 的教训（:93-107）。任何失败都只降级（`_file_ingestor is None`），worker 照常启动（:151-153）；各模式处理函数开头检查组件并把作业标 COMPLETED 附 `"Neo4j not available"` 说明（如 _worker.py:112-117）。
+
+**（c）Worker 循环（_worker.py:29-74）。** Redis 模式：非阻塞 RPOP 循环，单周期上限 100 条保持响应性，队列空 sleep(1)：
+
+```python
+# ingestion_job_parts/_worker.py:35-53（节选）
+if self._use_redis:
+    # Drain the queue with a non-blocking RPOP loop, then idle.
+    # We intentionally avoid BRPOP(timeout=...): when the queue is
+    # empty the server-side block holds the socket open for up to
+    # `timeout` seconds, and any socket read timeout smaller than
+    # that (or a transient read delay) trips redis-py's
+    # "Timeout reading from localhost:6379" and disconnects the
+    # connection. RPOP returns immediately, so socket read
+    # latency is bounded by the actual command, not the block.
+    processed_any = False
+    for _ in range(100):  # hard cap per cycle to stay responsive
+        item = await self._redis.rpop("ingestion_queue")
+        if item is None:
+            break
+        processed_any = True
+        queue_data = json.loads(item)
+        await self._process_job(queue_data)
+    if not processed_any:
+        await asyncio.sleep(1)  # queue idle
+```
+
+BRPOP 被弃用的原因写足在注释：阻塞读与 socket_timeout 相互踩踏会周期性断连。内存模式：每秒扫一次 PENDING，**一次只处理一条**。`_process_job`（:76-107）是状态机骨架：标 RUNNING → 按 mode 分发 → COMPLETED(progress=100)；任何异常标 FAILED 并存 error。
+
+**（d）FULL 模式的五步（:109-220）。** 读库（`_resolve_task_database` :776-795 **优先 C++ 任务记录的 output_*_db**，找不到才走 `_find_database` 的文件系统启发式 :797-856）→ `batch_ensure_files` 建文件实体（进度回调做了百分比去抖，避免几十万次 HSET，:138-150）→ `attach_events_batch` 挂事件 → `_create_mentioned_in_edges` → `merge_duplicate_files` → path-A episode 摄取。`_create_mentioned_in_edges`（:635-735）的 docstring 记录了一个被修复的老 bug：旧实现试图从 episode 名恢复文件路径再哈希，但 episode 名是本地化的（"文件分析: /path"）且事件簇 episode 根本没有路径，导致 `mentioned_in_edges_created` 恒为 0；现在从 File 记录按 basename 建映射，另有 `_link_entities_to_files_by_name`（:737-774）用一条参数化 UNWIND MERGE 把"实体名 == 文件名"的强取证信号连上。
+
+**（e）ANALYZED_ONLY 与 path-A 的 JOIN files 高价值信号。** `_process_analyzed_only`（:307-435）只取 `iter_files_batched(analyzed_only=True)` 的文件走同套流程。`_ingest_episodes_path_a`（:437-601）从 `_files.db` 读 file_descriptions 并 **JOIN files 表带上 category/md5/name/size**，text_factory 兜底 GBK 文件名（:476-485）：
+
+```python
+# ingestion_job_parts/_worker.py:486-505（节选）
+# Ensure schema has the description columns (added lazily by analysis pipeline)
+# We JOIN against the files table to also surface category/md5/name/size
+# which are high-value extraction signals (hashes and category names
+# are exactly what the default JSON prompt throws away).
+where = (
+    "WHERE fd.description IS NOT NULL AND fd.description != ''"
+    if analyzed_only else ""
+)
+try:
+    cur = conn.execute(
+        f"""
+        SELECT fd.file_path, fd.description, fd.summary,
+               fd.keywords, fd.is_relevant,
+               f.category, f.md5, f.name, f.size, f.extension,
+               f.type AS file_type
+        FROM file_descriptions fd
+        LEFT JOIN files f ON f.path = fd.file_path
+        {where}
+        """
+    )
+```
+
+JOIN 的动机在注释：默认 JSON prompt 会丢哈希/类别这类字段值，带进 episode body 才能被取证抽取指令捞回。行转成带 `success: True` 的 desc dict 后，连同 `(event_type, minute)` 去重的事件簇，全部喂给 `GraphitiService.ingest_task_episodes`（:583-588），进度映射到 92-95% 区间（`_ep_progress` 用正则从消息里解析 "X/Y"）。此路径**失败非致命**——path-B 的 :File 节点仍然有效（外层 try/except 只写 stats["error"]，:598-600）。
 
 ## 6. 注意事项与已知问题
 
@@ -48,10 +185,11 @@ Graphiti 摄取是长任务（一个任务几万文件 + LLM 抽取），不能�
 - 进度回调用 `asyncio.create_task` fire-and-forget 更新状态（:145-150、:244-249），顺序不保证——progress 可能瞬时回跳一次，轮询端要做单调显示处理。
 - `_process_single_file` 用 `get_files(limit=1, offset=file_id-1)` 定位文件（:619-620），假定 files.id 连续且从 1 开始；对删除过行的库可能取错文件。
 - `queue_event_sync` 在内存模式把 events 挂到 `self._jobs[job_id]._events`（:412），而 `IngestionJob` dataclass 未声明该字段——依赖 Python 动态属性，重构成 slots 会炸。
+- Redis 队列语义：LPUSH+RPOP 是 FIFO；worker 崩溃在 RPOP 与处理之间会丢一条信封（作业本体仍在 job:{id}，但永远 PENDING）——重提交即可，属于已知取舍。
 
 ## 7. 如何验证（python_service/tests/unit/）
 
 - `test_ingestion_analyzed_only.py`（ANALYZED_ONLY 模式：跳过未分析、事件过滤、结果统计）、`test_graphiti_integration_fixes.py`（episode 契约）、`test_d4b_graphiti_cleanup.py`（任务图删除边界）、`test_startup_reliability.py`（ServiceManager 初始化预算/回滚）。
 - 手工链路：`POST /api/graphiti/ingest {"task_id","mode":"analyzed_only"}` → `GET /api/graphiti/jobs/{job_id}`（Redis 模式 `redis-cli HGETALL job:{id}` 可直接看）→ 终态后 `GET /api/graphiti/graph?task_id=` 应看到实体而非只有 File 节点。
 
-**最后更新**: 2026-08-23（新建，解释式）
+**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）

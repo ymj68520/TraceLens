@@ -13,7 +13,97 @@ TraceLens 有两种运行形态：**本地模式**（C++ :8666 单机一体，ht
 - **它调用谁**：只依赖 PostgreSQL（`DATABASE_URL`）；不调用 C++、Neo4j、LLM——那些是本地栈 httpserver 的职责。
 - **与本地栈的共存关系**：config.py:33-39 的注释锁定了端口边界——8090 归 httpserver，8091 归本服务；两者读同一个 `.env` 但字段不相交（为此 `extra="ignore"`，见下）。
 
-## 3. 核心概念与设计
+## 3. 核心数据结构
+
+**（a）Settings（config.py:19-91）。** 全部运行参数的唯一真相源（模块级 `settings` 单例），关键段：
+
+```python
+# server/config.py:38-57（节选）
+HOST: str = os.getenv("HOST", "0.0.0.0")
+PORT: int = int(os.getenv("PORT", "8091"))
+
+DATABASE_URL: str = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:postgres@localhost:5432/tracelens",
+)
+# Keep driver, pool checkout, and lifespan budgets independent.  The
+# driver timeout must be shorter than DB_STARTUP_TIMEOUT because cancelling
+# a worker thread cannot interrupt an in-flight socket operation.
+DB_CONNECT_TIMEOUT: int = int(os.getenv("DB_CONNECT_TIMEOUT", "5"))
+DB_POOL_TIMEOUT: int = int(os.getenv("DB_POOL_TIMEOUT", "5"))
+DB_STARTUP_TIMEOUT: float = float(os.getenv("DB_STARTUP_TIMEOUT", "30"))
+
+JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "change-this-in-production")
+JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+USER_TOKEN_EXPIRE_HOURS: int = 1
+CLIENT_TOKEN_EXPIRE_DAYS: int = 30
+```
+
+`model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")`（:88）——注释解释了 `extra="ignore"` 的必要性：共享 `.env` 带 httpserver 专属变量（GRAPHITI_*/DB_NAME/LOG_LEVEL...），pydantic-settings 对 env_file 来源的未知键会**拒绝启动**（不像 os.environ 会静默忽略）。时间预算三层刻意分离：驱动 5s < 池 5s < 启动 30s，原因见下节。
+
+**（b）clients / command_queue ORM（models/database.py，镜像 001 迁移）。** 协议的两张核心表：
+
+```python
+# server/models/database.py:96-120（节选）
+class Client(Base):
+    """A registered forensic machine that polls for commands."""
+
+    __tablename__ = "clients"
+    __table_args__ = (
+        UniqueConstraint("org_id", "hostname", name="clients_org_id_hostname_key"),
+        CheckConstraint(
+            "status IN ('online', 'offline', 'error')", name="clients_status_check"
+        ),
+        Index("idx_clients_org_status", "org_id", "status"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
+    hostname = Column(String(255), nullable=False)
+    registration_token = Column(String(255), unique=True)
+    jwt_secret = Column(String(255))
+    capabilities = Column(JSONB, default=dict)
+    status = Column(String(50), default="offline")
+    last_poll = Column(DateTime)
+    last_seen = Column(DateTime)
+    version = Column(String(50))
+    created_at = Column(DateTime, server_default=func.now())
+```
+
+逐列：`registration_token` 一次性注册凭据（unique）；`capabilities` JSONB 记录机器能力（供任务分派参考）；`last_poll`（由 poll 路由盖章）与 `last_seen`（由 get_commands_for_client 刷新）双时间戳支撑 60s 在线窗口判定；`(org_id, hostname)` 唯一——同组织不能注册两台同名机器。
+
+```python
+# server/models/database.py:199-222（节选）
+class CommandQueue(Base):
+    """Server-to-client command. Clients poll, claim, and report back."""
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"))
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    # Real FK to analysis_tasks (migration 002). Nullable because some commands
+    # (health_check, extract_file) are not spawned by an analysis task. The soft
+    # link still lives in ``parameters`` JSONB; the orchestrator is wired to set
+    # this column in Task 5.
+    task_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("analysis_tasks.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    command_type = Column(String(100), nullable=False)  # analyze_disk, extract_file, health_check
+    parameters = Column(JSONB, nullable=False)
+    priority = Column(String(50), default="normal")
+    status = Column(String(50), default="pending")
+    ttl = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    assigned_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    result_message = Column(Text)
+    retry_count = Column(Integer, default=0)
+```
+
+`task_id` 是 002 迁移加的真 FK（ON DELETE CASCADE），`parameters` JSONB 里还保留一份软链接（过渡兼容）；`ttl` 是过期死线（critical 1h、其余默认 24h）；CHECK 约束把 command_type/priority/status 钉死在枚举集内。
+
+## 4. 核心概念与设计
 
 **（a）create_app() 是唯一装配点。** `create_app()`（main.py:103-189）创建 FastAPI 实例后叠加三层横切关注点：CORS（main.py:121-128，来源是 `CORS_ORIGINS` 固定三项 `localhost:5173` / `127.0.0.1:5173` / `localhost:3000`，config.py:60-64——注意与 httpserver 可通配的 CORS 策略不同，这里永远 `allow_credentials=True`，所以不能改成 `["*"]`）；全局 500 处理器（main.py:134-141，只回固定文案 `"Internal server error"`，真实异常进日志——Starlette 自己的 ExceptionMiddleware 先处理 HTTPException/422，所以 401/403/422 不会被它吞掉，见 main.py:130-133 注释）；六个路由模块各自声明前缀后无前缀挂载（main.py:147-152，前缀在各 router 内：`/api/auth`、`/api/organizations`、`/api/clients`、`/api/commands`、`/api/tasks`，其中 results 路由与 tasks 共用 `/api/tasks` 前缀，api/results.py:42）。
 
@@ -51,13 +141,47 @@ return JSONResponse(
 - `002_command_task_fk.sql`：把 `command_queue.parameters->>'task_id'` 软链接升级为真 FK（ON DELETE CASCADE）并回填旧行、建 `idx_command_queue_task`；
 - `003_fix_super_admin_seed_credentials.sql`：修复 001 的坏种子——001 里 super_admin 的 bcrypt 哈希无法验证文档口令 `admin123`（登录恒 401），且 `super_admin@tracelens.local` 的 `.local` 保留 TLD 被 Pydantic EmailStr 拒绝（/api/auth/me 序列化 500）。003 只改仍是坏值的行（非破坏性、幂等）。
 
-注意：`run_migrations()` **不会**应用 002/003——仓库里没有任何脚本或代码遍历 `migrations/postgresql/`，这两个文件只能手工 `psql -f` 应用（详见第 6 节）。
+注意：`run_migrations()` **不会**应用 002/003——仓库里没有任何脚本或代码遍历 `migrations/postgresql/`，这两个文件只能手工 `psql -f` 应用（详见第 8 节）。
 
-**（f）JWT Bearer 依赖层。** `middleware/auth.py` 提供三个 FastAPI 依赖（不是 ASGI 中间件，靠 `Depends` 挂进路由）：`get_current_user`（auth.py:29-74）、`get_current_client`（auth.py:77-121）、`get_optional_user`（auth.py:124-141）。两类 token 靠 payload 里的 `type` 声明**严格互斥**——client token 打 user 路由（或反之）返回 401（auth.py:59-64、106-111）。验签与 ORM 回查委托给 `services/auth_service`（见 [Services.md](./Services.md)）。`require_permission()`（auth.py:144-164）目前是**存根**：super_admin 直通，其余只查"已认证"，真正的 RBAC 还是 TODO（auth.py:160-161）——组织隔离实际由路由层比较 `org_id` 实现。
+**（f）JWT Bearer 依赖层。** `middleware/auth.py` 提供三个 FastAPI 依赖（不是 ASGI 中间件，靠 `Depends` 挂进路由）：`get_current_user`（auth.py:29-74）、`get_current_client`（auth.py:77-121）、`get_optional_user`（auth.py:124-141）。两类 token 靠 payload 里的 `type` 声明**严格互斥**——client token 打 user 路由（或反之）返回 401（auth.py:59-64、106-111）：
+
+```python
+# server/middleware/auth.py:52-64（get_current_user 的类型门）
+payload = verify_token(token)
+
+if payload is None:
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid authentication credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+if payload.get("type") != "user":
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="User token required",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+```
+
+验签与 ORM 回查委托给 `services/auth_service`（见 [Services.md](./Services.md)）。`require_permission()`（auth.py:144-164）目前是**存根**：super_admin 直通，其余只查"已认证"，真正的 RBAC 还是 TODO（auth.py:160-161）——组织隔离实际由路由层比较 `org_id` 实现。
 
 **（g）models/：忠实镜像 + 保留名映射。** `models/database.py` 的 10 个 ORM 模型逐列镜像 001 的 CHECK/UNIQUE/FK/索引（database.py:9-21 注释）。两个易踩的点：多张表有名为 `metadata` 的数据库列，而 `metadata` 是 SQLAlchemy 声明类的保留属性，故映射为 `image_metadata` / `task_metadata` / `result_metadata`（database.py:152-153、279-280、327-328）；`AnalysisTask.commands` 用 `passive_deletes=True`（database.py:292-301），否则 unit of work 会先把子命令的 `task_id` UPDATE 成 NULL，让 002 的 DB 级联永远不触发。`models/schemas.py` 是 Pydantic 请求/响应层（`from_attributes=True` 直接吃 ORM 对象，schemas.py:29-37），字段名沿用上述 `*_metadata` 属性名，约束如 `ttl_hours: 1..168`（schemas.py:174）、密码 ≥8 字符、role 正则白名单（schemas.py:59）。
 
-## 4. 工作流程走读：一次冷启动
+## 5. env 全表（本进程消费的变量）
+
+| env | 默认 | 说明 |
+|---|---|---|
+| `HOST` / `PORT` | 0.0.0.0 / **8091** | 8090 归 httpserver，勿混用 |
+| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/tracelens` | 唯一外部依赖 |
+| `DB_CONNECT_TIMEOUT` / `DB_POOL_TIMEOUT` / `DB_STARTUP_TIMEOUT` | 5 / 5 / 30 | 三层时间预算 |
+| `JWT_SECRET_KEY` / `JWT_ALGORITHM` | `change-this-in-production` / HS256 | **必须**在生产覆盖密钥 |
+| `USER_TOKEN_EXPIRE_HOURS` / `CLIENT_TOKEN_EXPIRE_DAYS` | 1 / 30 | 两类 token 时效 |
+| `CORS_ORIGINS` | 固定三项 | 带 credentials，不能 `*` |
+| `ENVIRONMENT` | development | 日志级别/热重载开关 |
+| 其余 httpserver 变量（GRAPHITI_*/NEO4J_*/REDIS_URL/LLM_* 等） | — | 经 `extra="ignore"` 被无视 |
+
+## 6. 工作流程走读：一次冷启动
 
 `run.sh` 编译 C++、起 :8666 与 :8090 后，在 `python_service/` 里 `PORT=8091 python -m server.main` → `app = create_app()`（模块级实例，main.py:193）。装配顺序：CORS → 全局异常处理器 → 六个 router → `/health`、`/health/ready`、`/`。
 
@@ -65,7 +189,7 @@ uvicorn 监听后触发 lifespan：`initialize_database()` 在线程里执行 `i
 
 生产首次部署的完整路径是手工三步：`--migrate`（001）→ 手工 `psql -f` 002/003 → `--seed`（幂等：默认组织 + super_admin，口令 bcrypt 哈希化，init_db.py:96-119）。日常开发若不想跑 SQL 迁移，`create_all` 也能建出等价 schema（ORM 已带全约束），只是没有种子数据。
 
-## 5. 与其他模块的协作
+## 7. 与其他模块的协作
 
 | 协作方 | 关系 |
 |---|---|
@@ -75,7 +199,7 @@ uvicorn 监听后触发 lifespan：`initialize_database()` 在线程里执行 `i
 | tracelens_agent（src/http_agent/） | 轮询客户端：JWT 轮询 `/api/commands/poll`、本地跑 forensic_analyzer 子进程、经 result_uploader/index_uploader/status_reporter 回传 |
 | migrations/postgresql/ | 001 由 `--migrate` 应用；002/003 手工应用；ORM metadata 与之保持逐列一致 |
 
-## 6. 注意事项与已知问题
+## 8. 注意事项与已知问题
 
 - **002/003 迁移没有自动化应用路径**：`run_migrations()` 只认 001（init_db.py:45-52 的候选列表里写死了文件名）。已有 001 环境升级时必须手工执行 002/003，否则 `command_queue.task_id` FK 不存在、super_admin 仍是坏种子（登录 401）。三个迁移本身都幂等，可安全重放。
 - **`/health/ready` 是启动快照不是活性探测**：`_db_available` 只在 lifespan 初始化时写入，DB 中途挂掉后 `/health` 仍显示 available，直到进程重启。
@@ -84,7 +208,7 @@ uvicorn 监听后触发 lifespan：`initialize_database()` 在线程里执行 `i
 - **JWT_SECRET_KEY 默认值是 `change-this-in-production`**（config.py:54）：不设环境变量等于公开签名密钥。
 - `--drop` 会交互确认后删全表（init_db.py:147-154）；`--seed` 的 super_admin 口令是 `admin123`，两处都标注 CHANGE IN PRODUCTION。
 
-## 7. 如何验证与扩展
+## 9. 如何验证与扩展
 
 - 应用装配/健康端点/CORS/异常脱敏：`python_service/tests/test_main_app.py`（TestClient 故意不进 `with` 块以跳过 lifespan，避免测试碰 PostgreSQL）。
 - 端口与双栈区分：`tests/test_config_port.py`；JWT 算法/中间件类型互斥：`tests/test_auth_algorithm.py`、`tests/test_auth_middleware.py`。
@@ -94,4 +218,4 @@ uvicorn 监听后触发 lifespan：`initialize_database()` 在线程里执行 `i
 
 相关阅读：[Services.md](./Services.md)（services 四件套）、[httpserver/Main.md](../httpserver/Main.md)（本地栈对照）、`docs/architecture/DatabaseSchema.md` 第 9 节（C/S PostgreSQL ER 图）、`docs/superpowers/plans/2026-07-27-cs-integration-hardening.md`（双栈端口责任表）。
 
-**最后更新**: 2026-08-23（新建，解释式）
+**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
