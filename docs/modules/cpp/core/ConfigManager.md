@@ -185,6 +185,86 @@ std::vector<std::string> ConfigManager::getExtraExtensions(const std::string& ca
 
 逐块解释：键名由类别参数拼接（`"IMAGE"` → `EXTRA_IMAGE_EXTS`），新增类别零代码。`getline(iss, ext, ',')` 按逗号切分后，两行 erase 是手写 trim：`find_first_not_of(" \t")` 找到首个非空白位置裁掉前导，`find_last_not_of + 1` 裁掉尾随（全空白串会 erase 成空，再由 `!ext.empty()` 过滤）。返回的扩展名**不强制带点也不统一大小写**——`webp` 与 `.webp`、`JPG` 与 `jpg` 是否等价取决于消费方 FileClassifier 的映射合并逻辑（`FileClassifier.cpp:26-29` 一带），扩展这个约定时要连带检查下游是否归一化。
 
+### 4.4 代码走读：getInt 的"前缀解析"陷阱（ConfigManager.cpp:55-63）
+
+```cpp
+int ConfigManager::getInt(const std::string& key, int defaultValue) const {
+    std::string value = get(key);
+    if (value.empty()) return defaultValue;
+    try {
+        return std::stoi(value);
+    } catch (...) {
+        return defaultValue;
+    }
+}
+```
+
+逐块解释：`std::stoi` 的语义是**解析前缀、忽略尾部**——`"4abc"` 不抛异常，返回 4；`"8080 "`（尾空格）返回 8080；`"0x10"` 按 16 进制解析为 16（stoi 默认 base=10 时遇到 `0x` 前缀会解析出 0！准确说 base=10 时 `0x10` 解析到 `0` 后停止，返回 0）；只有**开头就不是数字**（`"abc"`、`""`、`"true"`）才抛 invalid_argument，越界（`"99999999999"`）抛 out_of_range，两者都被 catch 回退默认。因此 3.2 节"`4abc` 回退默认"的表述应精确为：**数值合法前缀会被采纳**。实际后果：`.env` 里 `THREAD_POOL_SIZE=8 # 8 线程` 这类带行内注释的写法，cpp-dotenv 是否剥离 `#` 取决于其解析器（不剥离时 value=`"8 # 8 线程"`，stoi 采前缀得 8——碰巧正确）；但 `LLM_TIMEOUT_SECONDS=120s` 得 120 而非报错，排查"超时怎么是 120 秒"时想不到是这里。getDouble 同理（`std::stod("0.7x")`=0.7）。
+
+### 4.5 代码走读：getPythonServiceUrl 的合成默认值（ConfigManager.cpp:142）
+
+```cpp
+std::string ConfigManager::getPythonServiceUrl() const {
+    return get("PYTHON_SERVICE_URL",
+               "http://localhost:" + std::to_string(getInt("PYTHON_HTTP_PORT", 8090)));
+}
+```
+
+逐块解释：一行里有两条信息。**默认值是动态合成的**——`PYTHON_SERVICE_URL` 未设时用 `PYTHON_HTTP_PORT`（默认 8090）拼出 `http://localhost:8090`，因此改 Python 服务端口只需设 `PYTHON_HTTP_PORT` 一处，C++ 侧三个消费点（MarkitdownProxy.cpp:22 一带、LLMPythonProxy.h:69、FileAnalyzer.cpp:173）都会跟上。但**空串陷阱**：`PYTHON_SERVICE_URL=`（键存在值为空）经 `get()` 的"空串视为未设"也走合成默认，行为正确；真正绕过这层封装的是 OfficeAnalyzer——它在构造函数里直接 `getenv("PYTHON_SERVICE_URL")`（OfficeAnalyzer.cpp:21），缺省硬编码 `http://localhost:8090`，**不读 PYTHON_HTTP_PORT、不经过 cpp-dotenv**（getenv 只看进程环境变量，.env 不会注入其中，除非 run.sh 的 `set -a; source .env` 先导出）。这是"同键名、两条读取路径"的典型案例：换端口时 ConfigManager 路径正常、OfficeAnalyzer 仍打 8090。
+### 4.6 代码走读：getTextModelConfig 的字段覆盖边界（ConfigManager.cpp:105-116）
+
+```cpp
+llm::LLMConfig ConfigManager::getTextModelConfig() const {
+    llm::LLMConfig config;
+    config.baseUrl = getTextBaseUrl();
+    config.endpoint = getLLMEndpoint();
+    config.apiKey = getLLMApiKey();
+    config.model = getTextModel();
+    config.maxTokens = getTextMaxTokens();
+    config.temperature = getTextTemperature();
+    config.timeoutSeconds = getLLMTimeoutSeconds();
+    config.maxRetries = getLLMMaxRetries();
+    return config;
+}
+```
+
+逐块解释：结构体先默认构造（LLMDataTypes.h 的字段默认值生效），再覆盖前 8 个字段——**contextLength/reservedTokens/charsPerToken/enableChunkedAnalysis/maxChunks 五项永远保留结构体默认**（4096/512/4.0/true/5）。这意味着：.env 里写 `LLM_CONTEXT_LENGTH=163840`（.env.example:131 的示例值）**不会**改变任何 LLM 请求的上下文预算——`getContextLength()`（:176）是独立 getter 且无消费者（第 8 节）；真正生效的分块预算来自 LLMConfig 默认 4096。这是一个"配置看起来可调、实际两套来源"的典型断层：示例文件鼓励设大上下文，代码路径却根本不读它。同理 `LLM_RESERVED_TOKENS`/`LLM_CHARS_PER_TOKEN` 在 .env.example 声明但连 getter 都没有（Environment.md 第 3 节的未接线清单）。组装函数还有个易忽略点：**endpoint/apiKey/timeout/retries 不区分文本/视觉**（两者共用通用键）——想给视觉模型单独设超时是做不到的，只能整体改 LLM_TIMEOUT_SECONDS。
+
+### 4.7 .env.example 与代码默认值漂移清单（本模块视角）
+
+凡是"示例值 ≠ getter 缺省"的键，clone 后不改 .env 直接跑与删掉 .env 跑出的行为**不同**。本模块可核对出的漂移（示例值位置 .env.example:NN）：
+
+| 键 | .env.example 值 | C++ getter 缺省 | 漂移后果 |
+|---|---|---|---|
+| `LLM_TEXT_MAX_TOKENS` | 4096（:35） | 2048（:102） | 无 .env 时文本生成上限减半，长摘要被截 |
+| `LLM_TEXT_MODEL` | qwen/qwen3.6-35b-a3b（:24） | gpt-oss（:101） | 无 .env 时打到完全不同的模型 |
+| `LLM_VISION_MODEL` | qwen/qwen3.6-35b-a3b（:42） | qwen3-vl（:120） | 同上（且视觉组装未接线，见第 8 节） |
+| `LLM_CONTEXT_LENGTH` | 163840（:131） | 4096（:176，未接线） | 无论怎么设都不影响 C++ 分块预算（4.6 节） |
+| `FILE_ANALYSIS_MAX_CONTENT_LIMIT` | 50000（:136） | C++ 不读此键 | 仅 Python 侧生效（其代码缺省 12000，又一处漂移） |
+| `MAX_BATCH_SIZE` | 100（:161） | 100（:139，未接线） | 值相同但 C++ 侧本就不消费 |
+
+反向漂移也存在：getter 有缺省而 .env.example **不声明**的键（DB_BUSY_TIMEOUT_MS/DB_SYNCHRONOUS_OFF/SEARCH_* 四项/MCP_HOST/EXTRA_*_EXTS），这些是"纯代码默认"，运维文档容易漏。
+
+### 4.8 启动时序与"原始 get"的两个直读点（main.cpp:52-76）
+
+```cpp
+    // Initialize PathManager first (needed for config path resolution)
+    PathManager::instance().initialize(argv[0]);
+
+    // Load configuration from .env file
+    ConfigManager::instance().load(".env");
+
+    auto& pathManager = PathManager::instance();
+    const auto configuredProjectRoot = ConfigManager::instance().get("PROJECT_ROOT", "");
+    if (!configuredProjectRoot.empty()) {
+        pathManager.setProjectRoot(configuredProjectRoot);
+    }
+    pathManager.setDataDirName(ConfigManager::instance().get("DATA_DIR", "data"));
+```
+
+逐块解释：时序是 PathManager → load → 写回——保证 load() 时 `pm.isInitialized()` 为真、候选列表含 exeDir/projectRoot 两项（4.1 节的 6 候选形态）。注意 main.cpp **绕过专用 getter 直接用通用 `get()`** 读 PROJECT_ROOT/DATA_DIR/AUDIT_LOG_*（:63,67,70-72）：这几个键在 ConfigManager 没有 getter（AUDIT_LOG_* 三个的"默认值"实际写在 main.cpp 调用点的实参里，而非 ConfigManager.cpp）——想找默认值时 grep ConfigManager.cpp 会漏掉它们。PROJECT_ROOT 的空串语义（空=不覆盖 PathManager 自动检测）也只存在于 main 的 if 判断里。run.sh 侧刻意从 source 中剔除 PROJECT_ROOT（run.sh:76-77，空值会覆盖脚本推定的根）与 PYTHON_CORS_ORIGINS（cpp-dotenv 解析不了 JSON 数组），这两条与本模块的解析能力直接相关。
+
+
 ## 5. 与其他模块的协作
 
 - **PathManager**：load 时消费 exeDir/projectRoot（`ConfigManager.cpp:26-31`）；main.cpp 随后反向把 PROJECT_ROOT/DATA_DIR 写回 PathManager（`main.cpp:60-65`）。两个单例在启动期互相喂，之后互不相扰。
@@ -211,4 +291,84 @@ std::vector<std::string> ConfigManager::getExtraExtensions(const std::string& ca
 - 手工验证默认值链：临时移走 `.env` 后启动服务，观察日志中 LLM 地址是否变为 `http://192.168.31.170:1234`（`ConfigManager.cpp:86` 的默认值）。
 - 扩展新配置项的步骤：(1) 在头文件加 getter 声明（按 LLM/系统/DB 等分区放置）；(2) 在 `ConfigManager.cpp` 对应分区实现，带默认值；(3) `.env.example` 补文档；(4) 调用方 import 单例直接用。若键名可由类别推导（如 `EXTRA_<X>_EXTS` 模式），优先复用第 3 节的约定式读取。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 方法全清单（含接线状态）
+
+下表为 ConfigManager 全部公开方法，"外部消费"统计排除模块内部相互调用（如 getLLMEndpoint 在 getTextModelConfig 内部被用，计为"仅内部组装"）：
+
+| 方法 | 键（默认值） | 外部消费 | 状态/说明 |
+|---|---|---|---|
+| `instance()` / `load(path)` / `isLoaded()` | — | load 仅 main.cpp:56；isLoaded 9 处 | isLoaded 多用于诊断输出 |
+| `get/getInt/getDouble/getBool` | 任意键 | 各 getter 内部 + 少量直接 `get()` | 通用层 |
+| `getLLMBaseUrl()` | LLM_BASE_URL（http://192.168.31.170:1234） | 4 处（FileAnalyzer、各 LLMAnalysisService） | 亦是文本/视觉 base url 的继承源 |
+| `getLLMEndpoint()` | LLM_ENDPOINT（/v1/chat/completions） | 0 | 仅内部组装（两个 ModelConfig） |
+| `getLLMApiKey()` / `getLLMTimeoutSeconds()` / `getLLMMaxRetries()` | — | 0 | 仅内部组装 |
+| `getLLMMaxFiles()` | LLM_MAX_FILES（500） | 1（FileAnalyzer.cpp:280 一带） | |
+| `getLLMMaxEventClusters()` | LLM_MAX_EVENT_CLUSTERS（0=不限） | 1（TaskManagerAnalysis.cpp:416） | 唯一带钳制的 getter（:92-95） |
+| `getLLMMaxContentLength()` | LLM_MAX_CONTENT_LENGTH（10000） | 2（FileAnalyzer.cpp:199 等） | |
+| `getLLMSkipBinary()` | LLM_SKIP_BINARY（true） | 1 | |
+| `getTextBaseUrl()` | LLM_TEXT_BASE_URL（继承） | 3 | |
+| `getTextModel()/getTextMaxTokens()/getTextTemperature()` | — | 0 | 仅内部组装 |
+| `getTextModelConfig()` | 组装 8 字段 | **6 处**（LLM 服务/分析路由的统一入口） | LLMConfig 后 4 字段保留结构体默认 |
+| `getVisionBaseUrl()` | LLM_VISION_BASE_URL（继承） | 0 | 仅内部组装 |
+| `getVisionModel()/getVisionMaxTokens()/getVisionTemperature()` | — | 0 | 仅内部组装 |
+| `getVisionModelConfig()` | 组装 | 0（视觉路径走 Python 侧配置） | **C++ 侧组装后未接线** |
+| `getThreadPoolSize()` | THREAD_POOL_SIZE（4） | 2（TaskManager.cpp:23、FileAnalyzer.cpp:280） | |
+| `getMaxBatchSize()` | MAX_BATCH_SIZE（100） | 0 | **未接线**（Python 侧同名键在用） |
+| `getHTTPServerPort()` | HTTP_SERVER_PORT（8080） | 1 | run.sh 回退 8666，注意漂移 |
+| `getHTTPServerHost()` | HTTP_SERVER_HOST（0.0.0.0） | 0 | **未接线**（HTTPServer 直接 0.0.0.0） |
+| `getPythonServiceUrl()` | PYTHON_SERVICE_URL（合成） | 4 | OfficeAnalyzer 绕行（4.5 节） |
+| `getMCPHost()` | MCP_HOST（0.0.0.0） | 1（MCPIntegration.cpp:35） | 不在 .env.example |
+| `getDBBusyTimeoutMs()/getDBJournalMode()/getDBSyncOff()` | 5000/WAL/false | 各 1（DatabaseManager.cpp:28-36） | |
+| `getSearchMaxCacheSize()/getSearchMaxContentLength()` | 1000/50000 | 各 1（FullTextSearch.cpp:66,83） | |
+| `getSearchSnippetLength()/getSearchDefaultLimit()` | 150/10 | 0 | **未接线**（FullTextSearch 自带常量） |
+| `getMaxLogDisplayFiles()` | LOG_MAX_DISPLAY_FILES（20） | 4（ImageAnalyzer.cpp:403,557,730,809） | |
+| `getExtraExtensions(cat)` | EXTRA_<CAT>_EXTS（空） | **12**（FileClassifierMappings.cpp 全类目） | 本模块被调最多的业务 getter |
+| `getFileAnalysisMaxContent()/getFileAnalysisMaxKeywords()` | 10000/10 | 0 | **未接线**（Python 侧同名键在用） |
+| `getContextLength()` | LLM_CONTEXT_LENGTH（4096） | 0 | **未接线**；.env.example 给 163840，实际生效的 4096 是 LLMConfig 结构体默认 |
+| `getDBOutputDir()/getDBName()` | ./output / forensics.db | 0 | **未接线**（路径实际由 PathManager/Orchestrator 决定） |
+| `getLogLevel()/getLogFile()/getDebugOutputMode()` | INFO/forensics.log/stdout | 0 | **未接线**（Logger 不读配置，见 Logger.md） |
+
+结论性事实：约 40 个业务 getter 中**近三分之一无任何外部消费者**（视觉组装、批量大小、检索 snippet/limit、文件分析上限、上下文长度、输出目录、日志四项）——它们是"Python 侧同名配置在 C++ 侧预留的镜像"或未完成接线，改 .env 中这些键对 C++ 进程无影响（但对 Python 进程可能有效，参考 docs/reference/Environment.md 的双读取点标注）。
+
+## 9. 关联矩阵（消费方全量）
+
+| 消费方 | 读取的键组 | 交互点 | 数据形态 |
+|---|---|---|---|
+| main.cpp | PROJECT_ROOT/DATA_DIR（经 dotenv 原始读）、AUDIT_LOG_*、HTTP_SERVER_PORT | 启动装配（:56-74） | 启动后写回 PathManager |
+| FileClassifierMappings.cpp（12 处） | EXTRA_<12 类目>_EXTS | initialize 扩展映射合并 | vector<string> |
+| DatabaseManager.cpp | DB_BUSY_TIMEOUT_MS/DB_JOURNAL_MODE/DB_SYNCHRONOUS_OFF | initialize() PRAGMA | int/string/bool |
+| FullTextSearch.cpp | SEARCH_MAX_CACHE_SIZE/SEARCH_MAX_CONTENT_LENGTH | 构造参数 | int |
+| TaskManager.cpp / TaskManagerAnalysis.cpp | THREAD_POOL_SIZE、LLM_MAX_EVENT_CLUSTERS | 池构造、聚类上限 | int |
+| TaskWatchdog.cpp | TASK_WATCHDOG_*（经 getenv，不走本模块） | 看门狗阈值 | 注：绕行案例之二 |
+| LLMIntegration/FileAnalyzer.cpp | LLM_BASE_URL/TEXT_BASE_URL/MAX_FILES/MAX_CONTENT_LENGTH/SKIP_BINARY | LLM 分析会话 | LLMConfig+int |
+| MarkitdownProxy.cpp / LLMPythonProxy.h | PYTHON_SERVICE_URL | HTTP 客户端基址 | url string |
+| MCPIntegration.cpp | MCP_HOST | MCP 服务绑定地址 | string |
+| ImageAnalyzer.cpp | LOG_MAX_DISPLAY_FILES（4 处） | 控制台清单截断 | int |
+| 各平台 LLMAnalysisService（Windows/Linux/Android/LLMAnalysisService、EventClusterAnalyzer） | getTextModelConfig() | LLM 调用参数 | LLMConfig |
+| SystemHealthRoutes.cpp | isLoaded 等诊断 | /api/system/health 回显 | bool |
+
+被调方：cpp-dotenv（dotenv::env 全局单例，`operator[]` const 查询，libs/cpp-dotenv/include/dotenv.h:22）、PathManager（仅 load 期）。
+
+## 10. 配置影响表（本模块自身行为）
+
+影响 ConfigManager **自身加载行为**的配置（区别于它转发的业务键）：
+
+| 参数 | 默认 | 影响 | 备注 |
+|---|---|---|---|
+| `load(envPath)` 实参 | `".env"`（main.cpp:56） | 文件名本身可换 | 唯一调用点硬编码 .env |
+| PathManager 初始化与否 | 启动时序 | 决定候选列表是 4 个还是 6 个（:26-31） | main 先 init PathManager 再 load，通常 6 个 |
+| 工作目录 | CWD | 候选 1 与 `../` 系的锚点 | 从 build/ 启动时 build/.env 压过仓库根 |
+| `dotenv::env.load_dotenv` 的 overwrite=false | — | **进程环境变量优先于 .env**：shell 里 export 过的值不会被 .env 覆盖 | 排查"改了没生效"的第二嫌疑（第一是多个 .env） |
+| interpolate=true | — | .env 内 `KEY=${OTHER}` 展开由 cpp-dotenv 处理 | 项目 .env.example 未使用插值 |
+
+## 11. 性能与并发细节
+
+- **读路径开销**：每次 getter 都是完整的链——`dotenv::env[key]`（字符串构造、查找、返回值拷贝）→ 空判 →（数值时）再拷贝+stoi+异常栈。热点调用（如 getExtraExtensions 在分类器初始化期调 12 次、运行期不调）量级极小；但 **getTextModelConfig 每次调用重新组装 8 字段结构体**，LLM 每请求都 new 配置的场景下有可测开销——消费方（LLMAnalysisService 系）多数在构造时取一次，无谓优化点。
+- **并发模型**：cpp-dotenv 的 `env` 是进程级全局对象；`operator[]` 为 const 查询，多线程并发读安全（底层容器不被修改）；唯一的写发生在 `load_dotenv`，而生产只在 main 线程启动时调用一次——"先 load 后多线程"的时序由 main.cpp 保证，模块自身无锁。**若有人在运行期再调 load() 则是数据竞争**（无任何防护或文档约束，isLoaded 也不反映并发状态）。
+- **内存特征**：全量键值常驻（.env 通常几十行，KB 级）；getter 返回值均为拷贝（string/vector），无引用逃逸，生命周期简单。
+- **可调参数影响**：THREAD_POOL_SIZE 是经本模块传递的影响面最大的键（任务并发+LLM 并发+内存三联动）；DB_SYNCHRONOUS_OFF=true 可显著提速批量写库但断电丢最近事务（取证建议保持 false）；SEARCH_* 三键只影响检索路由内存上限与截断。
+
+
+
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

@@ -134,6 +134,36 @@ android.db 的 33 张表全部定义在 `android_analysis_sql.h`（`CREATE_ALL_T
 
 值得注意：`encrypted_db_inventory`（:197-205）的注释直说"密钥提示本身就是答案（the hint itself is the contest answer）"——找不到密钥时把发现的提示原样入库，而不是假装解不出来。
 
+### 4.2 产出表全清单（33 张，android_analysis_sql.h）
+
+`CREATE_ALL_TABLES`（通用 25）+ `CREATE_MIUI_TABLES`（专项 8）+ 进度表，按证据域分组：
+
+| 域 | 表 | 关键列（节选） | 写入方 |
+|---|---|---|---|
+| 系统属性 | system_build_properties | property_name/property_value | BuildPropAnalyzer |
+| 系统应用 | system_apps / framework_files | app_name/path/size | 系统目录扫描 |
+| 通信 | sms_messages（12 列）/ contacts（8 列）/ call_logs | 见 4.1 | AndroidDataParsers |
+| IM | whatsapp_messages / telegram_messages / wechat_messages（11 列） | 各自 msg 表解析 | 同上+WeChat 链路 |
+| 微信身份 | wechat_contacts / wechat_chatrooms / wechat_owner_info | username/uin/imei | WeChat 增强解析 |
+| 网络 | wifi_networks / chrome_history | ssid/pre_shared_key；url/title/visit_count | WiFi/Chrome 解析 |
+| 应用 | installed_packages（10 列）/ usage_stats / app_database_files | package_name/first_install_time/installer | packages.xml/usagestats |
+| 行为 | system_logs / device_identifiers / app_notes | log 内容/SSAID/明文笔记 | 日志与记事本解析 |
+| 诚实登记 | encrypted_db_inventory / qqnt_artifact_inventory | open_status/parse_status/source_hash | 盘点逻辑 |
+| MIUI | miui_backup_manifest / installed_apps / app_db_inventory | 见 4.1 | MiuiBackupManifest |
+| MIUI 结构化 | qqnt_kv_records / qqnt_sqlite_records / qqnt_log_events / wechat_artifact_inventory / wechat_kv_records / wechat_sqlite_records / wechat_log_events（7 张，MIUI 专项） | 各私有格式的可解析子集 | MiuiArtifactParsers |
+| 进度 | android_analysis_progress | phase/status/updated_at | 分析主流程 |
+
+列级细节的三个代表（其余表同风格，全量见 `android_analysis_sql.h:37-355`）：
+
+**sms_messages（:37-49，12 列）**：`id`（PK 自增）、`thread_id`（会话分组，同 thread 按时间串起来就是一段对话）、`address`（对端号码）、`person`（通讯录匹配名，可为空）、`date`（接收方设备时间，ms）、`date_sent`（发送方时间戳，ms）、`read`/`status`（已读/送达状态）、`type`（1=收 2=发，方向证据）、`body`（全文）、`service_center`（短信中心，运营商定位线索）。写入条件：mmssms.db 的 sms 表逐行；`date_sent=0`（老设备不填）时与 date 的差值分析不可用。
+
+**contacts（:50-58，8 列）**：`raw_contact_id`（contacts2.db 的原始 ID，跨库关联键）、`display_name`、`phone_number`、`email`、`account_type/account_name`（联系人属于哪个账户：本地/Google/微信）——账户维度可以区分"机主手动存的"与"App 自动同步的"。
+
+**installed_packages（:139-148 一带，10 列）**：`package_name/code_path/version/installer` 等；`installer` 为空通常意味着 adb 侧载（非应用市场），是"手动装了什么"的直接证据。
+
+**LLM 侧的 15 条 SQL**（android_analysis_sql_llm.h）：14 条 `SELECT_<TYPE>_PENDING_ANALYSIS`（与 kLlmTables 的 14 张表一一对应，取 `llm_analyzed_at IS NULL` 的行）+ 1 条 `INSERT_ANDROID_ANALYSIS_PROGRESS`。AndroidAnalysisDatabase 建库时对 14 张表幂等 ALTER 补 5 个 llm_* 列（AndroidAnalysisDatabase.cpp:34-48）。
+
+
 ## 5. 解析机制走读
 
 **链路一：短信从镜像到 sms_messages 表。** `analyzeAndroidData()` 调 `extractAndParseDB("data/data/com.android.providers.telephony/databases/mmssms.db", "parseSMS")`（`AndroidAnalyzerCore.cpp:170`）。`extractAndParseDB`（`AndroidDataParsers.cpp:42-79`）先 `makeAnalysisTempPath` 生成临时路径，`stageSqliteBundle` 通过当前后端把库（和边车）复制出来，然后按字符串分派到 `parseSMS`。解析完立刻删临时文件——原始证据从头到尾只读不写。暂存与分派的真实代码：
@@ -239,6 +269,43 @@ indexes_.push_back(std::move(index));
 
 做什么：对清单里每个 `.bak`，先用 `parseAndroidBackupHeader` 拿到 `payloadOffset/compression/encryption`（加密的登记 `encrypted_locked` 后跳过、compression 非 0/1 报不支持，见上方第 125-136 行），然后 `TarIndex::build` 一次线性扫描建成员名→偏移表，最后只把属于 `apps/<包名>/` 前缀的成员挂进全局 `entryOwner_` 映射。为什么按前缀过滤：MIUI 备份的 tar 里还有缓存等无关内容，全挂进映射既浪费内存又可能让同名成员互相遮蔽。失败行为是登记一条 `parse_error` 后 `continue`——单个坏包不拖垮整个备份的解析。这个盘点有大量防失控限额（单库 512MB、bundle 768MB、清单 1 万行、候选 10 万个，见 `MiuiArtifactParsers.cpp:32-50` 的常量表，候选上限可用环境变量 `TRACELENS_MIUI_MAX_CANDIDATES` 收紧），防止一个畸形备份拖死分析。
 
+### 5.1 代码走读：extractAndParseDB 的分派与清理（AndroidDataParsers.cpp:42-79）
+
+```cpp
+bool AndroidAnalyzer::extractAndParseDB(const std::string& dbPathInImage,
+                                        const std::string& parserName) {
+    const std::string tempPath = makeAnalysisTempPath("db");
+    std::vector<std::string> staged;
+    if (!stageSqliteBundle(dbPathInImage, tempPath, staged)) {
+        AuditLog::instance().log("SYSTEM", "ANDROID_EXTRACT_FAILED", dbPathInImage);
+        return false;
+    }
+    bool ok = false;
+    if (parserName == "parseSMS") ok = parseSMS(tempPath);
+    else if (parserName == "parseContacts") ok = parseContacts(tempPath);
+    // ... 每个解析器一个分支
+    for (const auto& p : staged) std::filesystem::remove(p);
+    return ok;
+}
+```
+
+逐块解释（骨架，全实现 `:42-79`）：三段式"暂存→分派→清理"。`makeAnalysisTempPath` 落在 `miui_secure_temp` 安全临时根下（与证据源物理隔离）；分派用**字符串 if-else 链**而非函数表——加解析器要同时改调用点字符串与分派链两处，是这个模块最明显的"约定耦合"（扩展清单第 8 节的步骤 (2) 由此而来）。清理循环在**所有路径**上执行（成功/解析失败都删暂存副本），RAII 意义由手写保证；若解析器中途 throw（如 SQLite open 后的意外异常），暂存文件会残留到进程退出——析构函数对临时根做兜底清理。审计只在**提取失败**时记一条，解析失败由各 parser 自行打日志——两类失败的观测渠道不同。
+
+### 5.2 代码走读：MIUI 候选限额与防失控（MiuiArtifactParsers.cpp:26-50）
+
+```cpp
+// Hard limits keep a malformed backup from exhausting memory/disk/time.
+constexpr size_t kMaxManifestPackages = 10000;     // descript.xml <item> 上限
+constexpr size_t kMaxManifestFieldBytes = 64 * 1024;
+constexpr size_t kMaxManifestMetadataBytes = 4 * 1024 * 1024;
+constexpr size_t kMaxCandidates = 100000;          // 全局候选成员上限
+constexpr uint64_t kMaxDbBytes = 512ull << 20;     // 单库 512MB
+constexpr uint64_t kMaxBundleBytes = 768ull << 20; // bundle 768MB
+```
+
+逐块解释（常量表骨架，`MiuiArtifactParsers.cpp:26-50`）：六个限额覆盖三个失控维度——**解析资源**（清单字段 64KB/元数据 4MB/条目 1 万，防超大 descript.xml）、**枚举规模**（全局候选 10 万，防 tar 炸弹式的海量成员）、**单件体积**（单库 512MB/bundle 768MB，防巨型 SQLite 把盘点变成全量拷贝）。`TRACELENS_MIUI_MAX_CANDIDATES` 环境变量可收紧候选上限（MiuiArtifactParsers.cpp:49 一带读取），另有两个 MIUI 清单变量见 Environment.md 第 10 节。超限行为是登记+跳过而非失败——盘点表里能看到"因超限未处理"的记录，与模块"诚实登记"的立场一致。
+
+
 ## 6. 与 LLM 的协作
 
 `analyzeAndroidData()` 的最后一 phase 是 `analyzeWithLLM()`（`AndroidAnalyzerCore.cpp:260-332`）。跳过条件两条：`--no-ai`（`setSkipAI`）或未配置 `LLM_BASE_URL`（本地 LM Studio/Ollama/vLLM 不需要 key，所以门禁是 URL 而不是 key，见第 268-273 行注释）。真正干活的是 `AndroidLLMAnalysisService`（`src/network/HTTPServer/AndroidLLMAnalysisService.h`）：它覆盖 14 种工件类型（SMS、各聊天消息、联系人、通话、MIUI 清单、微信/QQNT 结构化记录、系统日志、设备标识、WiFi），模式与 Linux/Windows 的同名服务一致——建库时给 14 张工件表幂等地补 5 个 `llm_*` 列（`AndroidAnalysisDatabase.cpp:34-48` 的 `kLlmTables` 列表），分析时用 `SELECT_..._PENDING_ANALYSIS` 取未分析行、拼 JSON prompt 发给 `ModelRouter::chat()`、结果原地 UPDATE 回写。默认每类最多 1000 条（`options.maxArtifacts`，`AndroidAnalyzerCore.cpp:311`）。
@@ -257,4 +324,40 @@ indexes_.push_back(std::move(index));
 - 加新应用证据：在 `analyzeAndroidData()` 里加一行 `extractAndParseDB(<镜像内相对路径>, "<解析器名>")`，在 `AndroidDataParsers.cpp` 写解析函数并在 `extractAndParseDB` 的分派链里挂上；新表加到 `android_analysis_sql.h` 的 `CREATE_ALL_TABLES`，插入方法加在 `AndroidAnalysisDatabase.cpp`。如果新证据也要 LLM 分析，记得把表名加进 `kLlmTables` 并在 `AndroidLLMAnalysisService` 注册类型。
 - 加新证据源后端：实现 `IFileExtractor::extractFileByPath`，在 `initialize()` 的 switch 里挂分支，上游（TaskManager/AnalysisOrchestrator）加对应 `--android-source` 值即可，全部解析器自动可用。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| TaskManagerAnalysis.cpp:454-468/123-199 | 上游 | TSK 模式构造与逻辑源短路 | imagePath+dbManager/nullptr |
+| AnalysisOrchestrator.cpp:276-293/468-532 | 上游 | CLI 两形态 | 同上 |
+| IFileExtractor 四后端（FileExtractor/LogicalDir/ZipArchive/MiuiBackup） | 下游 | extractFileByPath ×9 处 | 镜像相对路径→本地文件 |
+| android_analysis_sql.h（33 表） | 输出 | CREATE_ALL/MIUI_TABLES | DDL 常量 |
+| AndroidAnalysisDatabase | 下游 | 建库+insert 系列+kLlmTables 补列 | 参数化 INSERT |
+| AndroidLLMAnalysisService | 下游 | 14 类工件 pending→chat→回写 | JSON prompt/llm_* 列 |
+| WeChatDecryptor/SqlCipherDatabase | 内部 | 密钥推导+版本矩阵 | 7 位密码/SqlCipherConfig |
+| TarIndex/AndroidBackupHeader | 内部 | MIUI .bak 索引 | 成员名→偏移 |
+| AuditLog | 下游 | ANDROID_* 19 处 | 审计条目 |
+| ConfigManager | 上游 | LLM_BASE_URL 门禁（AndroidAnalyzerCore.cpp:268-273） | string |
+| OpenSSL/libzip/SQLCipher/TSK | 外部依赖 | MD5/zip/解密/镜像 | 编译期 HAVE_* |
+
+## 10. 配置影响表
+
+| 参数 | 默认 | 影响 | 备注 |
+|---|---|---|---|
+| `--android-source` | tsk | 后端选择（4 值） | dir 源可自动晋升 miui-backup（Core:61-73） |
+| `--wechat-password` | 空 | 微信 SQLCipher 密码 | 自动推导是回退不是替代 |
+| `--backup-password(-stdin/-fd)` | 空/−1 | MIUI AES 口令 | fd 优先（Orchestrator:501-503） |
+| `LLM_BASE_URL` | http://192.168.31.170:1234 | 无它则 LLM 段跳过 | 门禁是 URL 不是 key |
+| `--no-ai`（skip_ai） | false | 平台段跳过 LLM | AndroidAnalyzerCore.cpp:264 |
+| `TRACELENS_MIUI_MAX_*` | 见源文件 | MIUI 防失控限额 | Environment.md 第 10 节 |
+| `HAVE_LIBZIP/HAVE_SQLCIPHER` | 编译期 | zip 后端/解密能力 | 缺失降级为登记 |
+
+## 11. 性能与并发细节
+
+- **IO 大头**：TSK 模式逐工件的 extractFileByPath（镜像随机读）；MIUI 模式的 zlib 解压（inflate 到临时文件一次，之后按偏移零解压单取）——TarIndex 的设计正是把 O(成员数) 次解压降为 1 次。
+- **CPU 大头**：SQLCipher 矩阵重试——每个候选配置一次 PRAGMA key+schema 读，8 个 preset 全试最坏约秒级（PBKDF2 256000 轮的 v4 默认最贵）；密码正确时通常第一候选即中。
+- **内存**：TarIndex 全量成员表（10 万候选上限 × 每条约百字节 ≈ 10MB 级）；单库暂存受 512MB 限额；解析行数据流式不入内存。
+- **并发**：分析主流程单线程顺序解析（工件间有审计依赖无数据依赖，理论上可并行但未做）；LLM 段由 AndroidLLMAnalysisService 内部并发（走 ModelRouter）。
+- **可调参数影响**：maxArtifacts=1000/类是 LLM token 预算的旋钮（Core:311）；MIUI 限额收紧可把畸形备份的分析时间封顶。
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

@@ -231,6 +231,61 @@ bool FileFilter::matchesCondition(const std::string& name, const std::string& pa
 
 **失败语义**：源库打不开/建库失败时返回全零 stats 并打日志（不抛异常）；`applyFilterByName` 在目录找不到或画像不存在时抛 runtime_error（:536-545）——两个调用方（CLI 与 TMA）都 catch 后**降级用未过滤数据继续**（AnalysisOrchestrator.cpp:236-241、TaskManagerAnalysis.cpp:293-296）。过滤全排除（included_files==0）同样降级不换库。
 
+### 4.4 代码走读：findProfilesDirectory 的六候选探测与"找不到即抛"（FileFilter.cpp:507-545）
+
+```cpp
+std::string FileFilter::findProfilesDirectory() {
+    auto& pm = PathManager::instance();
+    std::vector<std::string> candidates;
+
+    if (pm.isInitialized()) {
+        candidates.push_back((pm.getProjectRoot() / "config" / "filter_profiles").string());
+        candidates.push_back((pm.getExeDir() / "config" / "filter_profiles").string());
+        candidates.push_back((pm.getProjectRoot() / ".." / "config" / "filter_profiles").string());
+    }
+
+    // Relative to CWD
+    candidates.push_back("config/filter_profiles");
+    candidates.push_back("../config/filter_profiles");
+    candidates.push_back("../../config/filter_profiles");
+
+    for (const auto& candidate : candidates) {
+        if (fs::exists(candidate) && fs::is_directory(candidate)) {
+            return candidate;
+        }
+    }
+    return "";
+}
+```
+
+逐块解释：候选序 = 优先级——projectRoot 下 > exeDir 下 > projectRoot 上一级 > CWD 三级。与 ConfigManager 找 .env 的策略同构（两个"可执行文件可能从任何目录启动"问题的同款解法），差异在于这里**空串是显式失败信号**：applyFilterByName 对空目录直接抛 runtime_error（`:536-538`，错误信息列出已搜索路径），画像文件不存在也抛（`:540-545`）——注意后者的错误信息里 "Available profiles in ..." 后面是**空的**（字符串拼到冒号就断），提示可用画像列表的功能没写完，排查时只能自己 ls 目录。isInitialized 为 false 时（理论上生产不会——main 先 init PathManager）只剩 CWD 三候选，从仓库外目录裸跑二进制会找不到画像并抛错 → 两个调用方降级回 raw.db。
+
+### 4.5 代码走读：loadProfile 的全默认容错解析（FileFilter.cpp:29-88）
+
+```cpp
+    FilterProfile profile;
+    profile.name = j.value("profile_name", "unnamed");
+    profile.description = j.value("description", "");
+    profile.version = j.value("version", "1.0.0");
+
+    std::string mode = j.value("combine_mode", "exclude_wins");
+    if (mode == "include_wins") {
+        profile.combine_mode = FilterCombineMode::IncludeWins;
+    } else if (mode == "include_only") {
+        profile.combine_mode = FilterCombineMode::IncludeOnly;
+    } else {
+        profile.combine_mode = FilterCombineMode::ExcludeWins;   // 未知值静默回落默认
+    }
+
+    if (j.contains("include")) {
+        auto& inc = j["include"];
+        if (inc.contains("extensions"))
+            profile.include.extensions = inc["extensions"].get<std::vector<std::string>>();
+        ...
+```
+
+逐块解释：解析策略是"**缺什么补什么默认**"——只有两个硬失败：文件打不开、JSON 语法错（都抛 runtime_error 带路径/原因）。字段级容错有三层表现：(1) 元数据缺失给占位默认（name→"unnamed"、version→"1.0.0"）；(2) combine_mode 拼错（如 "ExcludeWins" 大写驼峰）**不报错**，静默当 exclude_wins——画像作者最容易踩的静默坑，因为四个内置画像全用小写下划线，自定义时照抄即可；(3) include/exclude 段整体缺失时保留结构体默认（全空条件），配合 matchesCondition 的"空条件恒真"，一个只有 exclude 段的 JSON 是合法画像（general_forensics 正是这种形态）。列表字段的类型错误（如 extensions 写成字符串）会由 nlohmann 的 get<vector<string>> 抛异常——但这个异常发生在 loadProfile 的 try 块之外（try 只包 parse），会以 json::type_error 而非 runtime_error 的形态冒给调用方，两个编排方的 catch(std::exception) 仍能接住，语义不破。
+
 ## 5. 与其他模块的协作
 
 | 协作方 | 关系 |
@@ -258,4 +313,61 @@ bool FileFilter::matchesCondition(const std::string& name, const std::string& pa
 - **相关测试**：FileFilter **没有专属单元测试**（tests/UnitTest/ 无 test_file_filter，tests/CMakeLists.txt 亦未注册）；当前覆盖靠 CLI/HTTP 流水线的端到端验证与 FilterRoutes 的手动接口。
 - **扩展新画像**：在 `config/filter_profiles/` 放一个 JSON（结构参考 general_forensics.json：`profile_name/description/version/combine_mode/include/exclude`），无需改代码——listProfiles 会自动发现。要加**新匹配维度**（如 mtime 区间）才需要动：FilterCondition 加字段 → loadProfile 解析 → matchesCondition 判定 → FilterRoutes::jsonToCondition/conditionToJson 同步（REST 面才可见）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 内置画像实测档案（config/filter_profiles/ 四份 JSON 的判定面）
+
+| 画像 | combine_mode | include | exclude | 特殊约束 |
+|---|---|---|---|---|
+| general_forensics | exclude_wins | **全空**（纯黑名单形态） | 4 条 path_patterns（系统噪声目录） | 过滤最宽松，是 CLI 默认 |
+| telecom_fraud | exclude_wins | 45 扩展名 + 31 路径 glob（微信/QQ/WhatsApp/Telegram/支付宝/抖音包名 + sms/mms/calllog/dcim 等） | 13 扩展名（.so/.dll/.pyc 等）+ 12 路径（/proc、node_modules、.git 等）+ 6 文件名（.DS_Store/Thumbs.db 等） | include 含 .db-wal/.db-shm/.db-journal——** WAL 侧车文件也被当证据保留**（聊天记录的增量可能还在侧车里） |
+| data_breach | exclude_wins | 49 扩展名 + 29 路径 + 11 文件名 | 11 扩展名 + 8 路径 + 4 文件名 | 双边最均衡的画像 |
+| virus_intrusion | exclude_wins | 70 扩展名 + 33 路径 + 19 文件名 | 7 条路径 | **include.max_size=524288000**（500 MB 上限，唯一用了大小门槛的内置画像）——大文件排除在恶意软件场景是合理的（打包样本/虚拟盘不逐个分析） |
+
+四个画像全部 exclude_wins；include_wins/include_only 两种模式**无内置样例**（REST 手建画像才会用到），行为差异见第 6 节非对称分支警告。画像判定成本预算：virus_intrusion 的 include 侧 70+33+19=122 个 pattern 逐文件过 regex——与第 6 节性能条目印证。
+
+## 9. 方法全清单（含私有）
+
+| 方法 | 定义位置 | 语义 | 调用方 |
+|---|---|---|---|
+| `loadProfile(path)`（静态） | :29-88 | JSON→FilterProfile（全默认容错） | applyFilterByName、FilterRoutes |
+| `listProfiles(dir)`（静态） | :91-120 | 扫描 *.json 出（文件名,名称,描述）三元组 | FilterRoutes 列表 |
+| `applyFilter(src, dst, profile)` | :317-501 | 复制式过滤主流程 | applyFilterByName、FilterRoutes |
+| `applyFilterByName(src, dst, name)` | :533-560 | 找目录+找文件+委托 | Orchestrator:232、TMA:265、FilterRoutes |
+| `matchesCondition(...)`（私有） | :241-269 | 三段判定核 | applyFilter 三模式 |
+| `matchGlob(pattern, text)`（私有） | :122-165 | glob→regex 全匹配 icase | 三个维度匹配器 |
+| `matchPathPatterns/matchFilenamePatterns/matchExtensions`（私有） | :168-239 | 维度包装（path 有 core-substring 兜底） | matchesCondition |
+| `createFilteredSchema(db)`（私有） | :275-311 | 建目标 files 表+5 索引（同 raw schema） | applyFilter |
+| `findProfilesDirectory()`（静态私有） | :507-530 | 六候选目录探测 | applyFilterByName、listProfiles |
+
+## 10. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| AnalysisOrchestrator.cpp:222-245 | 上游 | applyFilterByName + stats 分流 | FilterStats |
+| TaskManagerAnalysis.cpp:261-298 | 上游 | 同上；成功后改写 task.output_raw_db（:291-297） | 任务字段 |
+| FilterRoutes（HTTP） | 上游 | listProfiles/loadProfile/applyFilterByName 三件 | JSON REST |
+| SceneDetector | 时序前置 | 必须先于过滤跑（TMA:227-231 注释） | raw.db |
+| PathManager | 上游 | projectRoot/exeDir 候选目录 | fs::path |
+| AuditLog | 下游 | FILE_FILTER（画像名+计数，:494-498） | 审计条目 |
+| raw.db / filtered.db | I/O | 16 列全量 SELECT / 同 schema INSERT | 双连接流式 |
+
+## 11. 配置影响表
+
+| 参数 | 默认 | 影响 | 备注 |
+|---|---|---|---|
+| `--filter-profile`（CLI） | `general_forensics`（Orchestrator:224-225） | 画像名 | 名字错→降级 raw |
+| `task.filter_profile`（HTTP） | 空=不过滤（TMA:261） | 画像名 | 空时跳过整个阶段 |
+| `config/filter_profiles/*.json` | 4 内置 | 判定面本体 | 无 env 键；目录探测六候选 |
+| WAL/PRAGMA | — | 目标库固定 WAL+NORMAL+5000（:340-342），不走 ConfigManager | 与 FileClassifier 同款硬编码 |
+| 无其他键 | — | — | |
+
+## 12. 性能与并发细节
+
+- **regex 编译是第一热点**：matchGlob 每次调用构造 std::regex（解析+编译，微秒级），无缓存。virus_intrusion 画像 include 侧 122 pattern + exclude 侧 7，若某文件三个维度都试到最后一 pattern 才短路，最坏 ~129 次编译/文件；十万文件即 10^7 次构造。优化路径极短：循环前把 pattern 预编译成 vector<regex>（画像固定，天然可缓存），预期一个数量级提速。
+- **SQL 侧已是范本**：INSERT 一次 prepare 循环 reset 复用 + 单事务（4.3 节）；SELECT 侧流式 step。瓶颈完全在 C++ 字符串匹配而非 SQLite。
+- **IO 特征**：读 raw.db 全表 + 写 filtered.db（≈included 行数）；双连接不互锁；完成后 raw.db 关闭。磁盘峰值=两库并存。
+- **并发**：单线程；applyFilter 期间 filtered.db 独占写。无跨实例共享状态（除 PathManager 只读）。
+- **内存**：流式行处理，峰值=单行 + FilterProfile（百级字符串）；画像加载一次常驻 KB 级。
+- **可调参数影响**：画像的 pattern 数量直接线性放大每文件成本；include_deleted=false 可在判定第一行就砍掉已删除文件（硬门槛最便宜）。
+
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

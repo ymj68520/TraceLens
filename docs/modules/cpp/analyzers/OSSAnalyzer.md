@@ -91,6 +91,33 @@ schema 全部在 `src/core/DatabaseManager/SQL/oss_sql.h`：
 | `oss_buckets`（:78-96） | `name/region/endpoint/acl/owner/versioning_enabled/logging_enabled/logging_bucket/logging_prefix/object_count/total_size/analyzed_at` | Bucket 档案：`logging_enabled + logging_bucket/prefix` 告诉你访问日志落在哪（取证调证的第一步常是确认日志是否开启） |
 | 视图 `oss_objects_summary` / `oss_access_timeline`（:245-265） | 按 bucket 聚合对象数/总量/新旧；按日期+操作聚合计数与流量 | 现成的统计视图，查询路由直接 SELECT |
 
+### 4.2 产出表列级说明（oss.db 全三表全列，oss_sql.h:16-96）
+
+**oss_objects（20 列，:16-38）**：
+
+| 列 | 类型 | 写入条件 |
+|---|---|---|
+| id | INTEGER PK 自增 | 自动 |
+| bucket / key | TEXT NOT NULL | 四种对象来源模式逐条；与 version_id 构成 UNIQUE |
+| size | INTEGER DEFAULT 0 | API/目录/inventory 均有 |
+| etag | TEXT | API 模式（目录模式无） |
+| last_modified | INTEGER | 同上 |
+| storage_class / content_type / owner / user_metadata / version_id | TEXT | API 模式（Inventory 视清单列） |
+| is_deleted | INTEGER DEFAULT 0 | 增量重扫时清单消失的对象标 1（当前无调用方） |
+| md5_hash | TEXT | 预留（对象下载后可算） |
+| analyzed_at | INTEGER | 每次扫描盖时间戳 |
+| llm_summary/description/keywords/analyzed_at/model_used | — | UPDATE_OSS_OBJECT_LLM_ANALYSIS 预留（:171-201），无调用方 |
+| llm_is_relevant | INTEGER DEFAULT 1 | AI 筛选预留，无调用方 |
+
+索引 4 个（:41-47）：bucket、key、last_modified、storage_class。
+
+**oss_access_logs（17 列，:49-69）**：id、request_id（无真实 ID 时 `"log_"+hash` 合成）、timestamp（**当前恒 0**——parseAccessLogLine 未实现解析，链路二）、operation（HTTP 方法）、bucket、object_key、remote_ip、user_agent、accesser_id（主/子账号）、http_status、bytes_sent、object_size、time_taken_ms、referer、host、signature_version、ssl_enabled（DEFAULT 0）。索引 4 个：timestamp/operation/object_key/remote_ip。
+
+**oss_buckets（16 列，:78-96）**：id、name（**UNIQUE NOT NULL**——upsert 键）、region、endpoint、acl、owner、creation_date、versioning_enabled（DEFAULT 0）、logging_enabled、logging_bucket、logging_prefix、storage_class、object_count、total_size（两统计列由分析结束回写）、analyzed_at。
+
+视图 2 个（:245-265）：oss_objects_summary（按 bucket 聚合计数/总量/最新修改）、oss_access_timeline（按日期+操作聚合，依赖 timestamp——当前因恒 0 而聚在同一个"纪元日"）。
+
+
 ## 5. 解析机制走读
 
 **链路一：API 模式的对象编目（`analyzeFromAPI`，`Core/OSSAnalyzerCore.cpp:66-122`）。** 先取 Bucket 信息落 oss_buckets，然后开一个事务，`client_->listAllObjects` 流式回调逐对象插入，最后用实际对象数回写 Bucket 统计。分页列举的底层（`Client/OSSClient.cpp:285-341`）：
@@ -158,6 +185,21 @@ schema 全部在 `src/core/DatabaseManager/SQL/oss_sql.h`：
 
 **链路三：离线目录模式（`parseLocalDirectory`，`Core/OSSAnalyzerCore.cpp:142-179`）。** 事务内递归遍历，把每个文件的 `fs` 元数据（大小、修改时间）包装成 `OSSObjectInfo`，相对路径拼上 prefix 作为对象 key——这使"从 OSS 同步下来的目录"和"API 拉到的清单"在 oss_objects 里结构一致，后续查询/统计/AI 过滤不用区分来源。反斜杠归一为 `/`（第 154-155 行）是 Windows 兼容处理；遍历结束同样回写一条虚拟 Bucket 统计记录（objectCount/totalSize）。
 
+### 5.1 代码走读：Inventory CSV 的行解析（analyzeFromInventory）
+
+```cpp
+// Core/OSSAnalyzerCore.cpp（骨架）：逐行读 CSV，列序对应 OSS Inventory 输出
+// Bucket, Key, Size, LastModified, ETag, StorageClass, ...（清单配置决定列集）
+std::string line;
+while (std::getline(file, line)) {
+    if (line.empty() || line.starts_with("Bucket,")) continue;  // 跳表头
+    // 按逗号切列 -> OSSObjectInfo -> 插入
+}
+```
+
+逐块解释（骨架，全实现见 Core/OSSAnalyzerCore.cpp 的 inventory 段）：Inventory 是 OSS 服务端定期生成的对象清单（CSV），列集由清单配置决定——解析按**约定列序**切分而非按表头名映射，清单配置改列序时会错位（与 EventCorrelationEngine 序列规则的"硬编码白名单"同款脆弱性）。表头跳过用 `starts_with("Bucket,")` 的字面前缀——非默认配置（首列不是 Bucket）会把表头当数据行。这是激活路径上次优先的加固点（先补 timestamp，再补表头驱动映射）。
+
+
 ## 6. 与 LLM 的协作（设计中的 Python 协作）
 
 设计上 OSS 的 AI 能力放在 Python 服务侧：`/api/forensics/oss/ai/filter`（AI 筛选相关文件）与 `/ai/analyze`，注释指向 `python_service/httpserver/routes/oss_analysis.py`。C++ 侧目前只返回 503 占位（`OSSAnalysisRoutes.cpp:233-290`），真正的协作尚未发生。可参照的现成模式是 OfficeAnalyzer 经 `PYTHON_SERVICE_URL` 调 Python `/api/office/parse` 的跨服务调用。数据库侧其实已备好接口：`oss_sql.h:171-201` 的 `UPDATE_OSS_OBJECT_LLM_ANALYSIS`（回写 5+1 个 llm 列）与 `SELECT_OSS_OBJECTS_FOR_FILTERING`（取未分析行）——SQL 都写好了，只差调用方。
@@ -175,4 +217,51 @@ schema 全部在 `src/core/DatabaseManager/SQL/oss_sql.h`：
 - 加新证据模式：在 `OSSAnalyzer` 加 `analyzeFromXxx`（参照 `analyzeFromInventory` 的 CSV 读取），产出统一塞进 `OSSObjectInfo`/`OSSAccessLogEntry` 即可复用全部查询与导出。
 - 补时间线能力：完成 `parseAccessLogLine` 的 timestamp 解析后，`oss_access_logs` 的四个索引（timestamp/operation/object_key/remote_ip）就能支撑"按时间窗找操作"的典型取证查询；`oss_access_timeline` 视图也会随之有意义。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 方法全清单（OSSAnalyzer.h:46-187）
+
+| 方法 | 语义 | 调用方 |
+|---|---|---|
+| `OSSAnalyzer(config, dbManager)` + `initialize()` | 建客户端与 oss.db | 测试（生产未接线） |
+| `analyzeOSSData()` | 按 config 自动分派四模式 | 同上 |
+| `analyzeFromAPI(bucket="", prefix="")` | getBucketInfo+流式列举 | analyzeOSSData |
+| `analyzeFromLocalDirectory(dir, bucket="local")` | 递归目录→对象 | 同上 |
+| `analyzeFromInventory(csvPath)` | 清单 CSV→对象 | 同上 |
+| `analyzeAccessLogs(logPath)` | 日志（文件/目录）→访问记录 | 同上 |
+| `fetchAndAnalyzeAccessLogs(bucket, start=0, end=0)` | 从 OSS 拉日志再分析 | 同上 |
+| `getAllObjects/getObjectsByBucket/getObjectsByExtension/getAccessLogs/getAnalysisSummary` | 查询接口 | 查询路由（未注册） |
+| `setOutputDbPath(path)`/`setProgressCallback(cb)` | 输出库与进度 | 预期 job 执行体 |
+
+OSSClient 侧（Client/OSSClient.cpp）：initialize（SDK ClientConfiguration 注入超时/连接数/代理）、getBucketInfo、listAllObjects（marker 分页+回调）、listBuckets、generatePresignedUrl（预签名 URL）、downloadObject、fetchAccessLogs；每方法 setError 错误通道。
+
+OSSAnalysisDatabase 侧（Database/OSSAnalysisDatabase.cpp）：建三表四+四+四索引、insertObject（UNIQUE 冲突处理）、insertAccessLog、upsertBucket、beginTransaction/commit、query 系列。
+
+## 10. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| OSSRoutes/OSSAnalysisRoutes/OSSQueryRoutes/OSSStatsRoutes | 上游（**未注册**） | HTTPserver.cpp:63-75 无实例化 | — |
+| aliyun-oss-cpp-sdk | 下游 | OssClient 封装 | C++ API |
+| oss_sql.h（SQL::OSS 命名空间） | 输出 | 三表两视图+LLM 回写 SQL | DDL |
+| OSSAnalysisDatabase | 下游 | 参数化 INSERT | sqlite3 |
+| Python oss_analysis.py（设计） | 平行 | AI filter/analyze 503 占位 | — |
+| test_oss_analyzer_gtest | 消费者 | 唯一构造点 | — |
+| SERVER_CLOUD 的 oss.db | 命名撞车 | 无代码关系（第 3/7 节） | — |
+
+## 11. 配置影响表
+
+| 参数 | 默认 | 影响 | 备注 |
+|---|---|---|---|
+| `OSS_ACCESS_KEY_ID/SECRET/ENDPOINT/REGION` | 空/空/空/cn-hangzhou | Python 侧 Settings 读取（config.py:190-193） | **C++ 侧不读**——凭证当前只能代码注入 OSSConnectionConfig |
+| OSSConnectionConfig 超时 | 连接 10s/请求 30s/连接数 16 | SDK ClientConfiguration | 结构体默认值 |
+| 代理四字段 | 关 | 经代理出网的取证工作站 | |
+| 无 CLI 参数 | — | — | 未接线 |
+
+## 12. 性能与并发细节
+
+- **API 模式是网络密集**：每页 1000 对象一次 HTTP 往返，百万对象=千次请求（顺序翻页无并发）；SDK 内部连接池 maxConnections=16 只对并发请求有意义，marker 串行链用不满。
+- **离线模式是 IO/CPU 双密集**：目录遍历逐文件 stat；日志解析每行一次 regex（构造在循环外的常量 pattern，尚可）——百万行日志秒级到分钟级。
+- **事务包裹**：对象批量插入在 BEGIN/COMMIT 内（链路一），半途失败不留半本账；访问日志路径同样有事务。
+- **内存**：流式回调不物化对象列表（峰值=单条记录）；日志行逐行处理；CSV 同样流式。
+- **可调参数影响**：maxKeys 固定 1000（SDK 上限）；prefix 过滤可把大 Bucket 的扫描范围砍到子目录级，是 API 模式的最大成本开关。
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

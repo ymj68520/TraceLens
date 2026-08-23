@@ -209,6 +209,23 @@ size_t parseSockstat(const nlohmann::json& arr, MemoryAnalysisDatabase& db) {
 | `cmdline`（:66-73） | `pid/comm/args` | 从 linux.psaux 派生的完整命令行（含参数） |
 | `analysis_meta`（:75-80） | `key/value` | 运行元数据：`image_type`、`err:<plugin>`、`parse_err:<plugin>`——排查第一站 |
 
+### 5.1 产出表列级说明（六张表全列，memory_analysis_sql_tables.h:13-88）
+
+**processes（13 列）**：id（PK 自增）、offset（INTEGER，vol3 "OFFSET (V)" 虚拟地址）、pid、tid、ppid、comm（TEXT）、uid、gid、euid、egid、creation_time（TEXT，ISO 8601）、inserted_at（DEFAULT strftime）——写入方 pslist/psaux 解析器；pid 有索引。
+
+**network_connections（16 列）**：id、offset、pid、tid、comm、family（TEXT，AF_INET/AF_UNIX）、type（STREAM/DGRAM）、proto、local_addr、local_port（**TEXT**——vol3 渲染为字符串，建表注释明示）、remote_addr、remote_port（TEXT）、state、netns、inserted_at——写入方 parseSockstat；三索引（pid/remote_port/local_port）。
+
+**bash_history（7 列）**：id、pid、comm、command、command_time（TEXT ISO 8601，注释标 "key for Q102/Q103"）、history_index、inserted_at——写入方 parseBash；command 与 command_time 两索引（前者支持命令检索、后者时间排序）。
+
+**boot_info（5 列）**：id、key（**UNIQUE**）、value、inserted_at——键值 upsert（linux.boottime 输出）；UNIQUE 约束使重复解析幂等（INSERT OR REPLACE 语义由调用方实现）。
+
+**cmdline（6 列）**：id、pid、comm、args（完整命令行单串）、inserted_at——parseAux。
+
+**analysis_meta（5 列）**：id、key（UNIQUE）、value、inserted_at——运行元数据（image_type、err:*、parse_err:*、plugin 计数）；排查第一站。
+
+值得注意：六张表**全部没有 llm_* 列**（唯一没有 LLM 回写通道的平台分析器），也没有 FK——表间以 pid 弱关联（processes.pid ↔ network_connections.pid/cmdline.pid），无级联。
+
+
 ## 6. 与其他模块的协作
 
 | 协作方 | 关系 |
@@ -218,6 +235,41 @@ size_t parseSockstat(const nlohmann::json& arr, MemoryAnalysisDatabase& db) {
 | MemoryForensicsRoutes | HTTP 读侧；经 RouteHelpers::get_database_path(task_id,"memory") 按命名约定定位库（RouteHelpers.cpp:71-86），`SQLITE_OPEN_READONLY` 打开、缺库 404（MemoryForensicsRoutes.cpp:51-53） |
 | scripts/build-vol3-isf.sh | 符号自愈调用的外部脚本；findProjectRoot 靠它定位项目根（Core:130-136） |
 | python_service/.venv/bin/vol | 实际被 exec 的 vol3 二进制（resolveVolBinary 的首选：CWD → 向上 6 层 → PATH，Volatility3Runner.cpp:23-48） |
+
+### 6.1 代码走读：resolveVolBinary 的三级探测（Volatility3Runner.cpp:23-48）
+
+```cpp
+std::string Volatility3Runner::resolveVolBinary() {
+    // 1) CWD 及向上 6 层找 python_service/.venv/bin/vol（仓库内开发态）
+    // 2) PATH 上的 vol
+    // 3) 找不到返回空串 -> run() 直接失败并写 meta
+}
+```
+
+逐块解释（骨架）：探测顺序服务两种部署形态——开发/自包含部署用仓库 venv（向上 6 层覆盖 build/ 子目录启动），生产裸装靠 PATH。失败语义是"返回空串由上层记 err"而非崩溃；这意味着**vol 缺失的表现与插件失败相同**（analysis_meta 里一条 err），排障时先确认二进制解析成功（meta 无 vol 相关 err）再查符号。execv 用绝对路径执行（探测产物），不带 PATH 搜索——同进程内多次 run 复用解析结果（构造时一次）。
+
+### 6.2 代码走读：analyzeMemoryData 的插件调度与容错（MemoryAnalyzerCore.cpp:279-316）
+
+```cpp
+void MemoryAnalyzer::analyzeMemoryData() {
+    const bool isWindows = (imageType_ == "windows");
+    runAndStore(MemoryVolatility::isPsList(isWindows), "pslist");
+    if (isWindows) {
+        runAndStore(MemoryVolatility::WIN_CMDLINE, "cmdline");
+        runAndStore(MemoryVolatility::WIN_NETSTAT, "netstat");
+        runAndStore(MemoryVolatility::WIN_HIVELIST, "hivelist");
+    } else {
+        runAndStore(MemoryVolatility::LINUX_BASH, "bash");
+        runAndStore(MemoryVolatility::LINUX_SOCKSTAT, "sockstat");
+        runAndStore(MemoryVolatility::LINUX_PSAUX, "psaux");
+        runAndStore(MemoryVolatility::LINUX_BOOTTIME, "boottime");
+    }
+    // 汇总 meta（image_type、各表计数）与完成日志
+}
+```
+
+逐块解释：调度是**平铺列表而非表驱动**——isPsList 按 OS 选首插件（Linux 符号自愈逻辑围绕它展开，见链路二），其后按 OS 二选一分派。runAndStore 的容错三态（成功/err/parse_err）保证任一插件失败不中断后续；Windows 分支的 hivelist 结果当前**只写 meta 计数不落表**（六张表无 registry 表）——插件跑了、数据丢了，是扩展点也是已知浪费。整体无进度回调（CLI 侧用户只能看子进程的 stderr 原样透传）。
+
 
 ## 7. 注意事项与已知问题
 
@@ -231,4 +283,47 @@ size_t parseSockstat(const nlohmann::json& arr, MemoryAnalysisDatabase& db) {
 - **验证**：`python_service/.venv/bin/vol` 就位后，`./build/forensic_analyzer <lime.dump> --memory-analyze --db-dir /tmp/m`，然后 `sqlite3 /tmp/m/<stem>_memory.db "SELECT COUNT(*) FROM processes; SELECT key FROM analysis_meta;"`；HTTP 侧再建一个同镜像的任务，`curl 'localhost:8080/api/forensics/memory/summary?task_id=<id>'` 验证命名约定命中。
 - **扩展新插件**：① VolatilityPlugins.h 加常量；② Parsers/ 写一个 `size_t fn(const json&, MemoryAnalysisDatabase&)`（参考 NetworkParser.cpp）；③ 需要新表时在 memory_analysis_sql_tables.h 加 CREATE、crud.h 加 INSERT，并给 MemoryAnalysisDatabase 加 typed insert；④ 在 analyzeMemoryData 的 Windows/Linux 分支（Core:279-316）挂上 `runAndStore`。表格驱动程度不高（对比 AndroidLLMAnalysisService 的四件套），但模式统一。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 方法全清单
+
+**MemoryAnalyzer（MemoryAnalyzer.h / Core/MemoryAnalyzerDeclarations.h）**：`initialize()`（开库+建表）、`analyzeMemoryData()`（主调度）、`setOutputDatabasePath(path)`、`setSymbolDir(dir)`（--vol-symbols-dir 直通）、`detectImageType()`（8 字节魔数）、`runAndStore(plugin, tag)`（跑插件+解析+落库+meta）、符号自愈内部函数（detectKernelVersion/autoFetchSymbols/findProjectRoot）。
+
+**MemoryAnalysisDatabase（Database/MemoryAnalysisDatabase.h:19-45）**：`initialize()`；typed inserts——`insertProcess(offset,pid,tid,ppid,comm,uid,gid,euid,egid,creationTime)`、`insertNetworkConnection(offset,pid,tid,comm,family,type,proto,localAddr,localPort,remoteAddr,remotePort,state,netns)`、`insertBashHistory(pid,comm,command,commandTime,historyIndex)`、`setBootInfo(key,value)`（upsert）、`insertCmdline(pid,comm,args)`、`setMeta(key,value)`（upsert）；通用面——`query(sql)`（行列表，路由读侧用）、`exec(sql)`、`bindAndStep(sql, vals)`（字符串绑定参数的通用写）。内部：一把 mutex 串行化全部 sqlite 调用 + 每语句一次 prepare（crud.h 常量）。
+
+**Parsers/（每插件一对文件）**：ProcessParser（pslist/psaux 共用）、NetworkParser（sockstat/netstat）、BashHistoryParser、BootTimeParser、CmdlineParser——全部签名 `size_t parse(const json&, MemoryAnalysisDatabase&)`。
+
+**Volatility3Runner**：`run(pluginName, timeoutSeconds)` → PluginResult；`resolveVolBinary()`（三级探测）；`setSymbolDir`。
+
+## 10. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| AnalysisOrchestrator.cpp:534-564 | 上游 | --memory-analyze 旁路 | memDb 路径 |
+| vol3（python_service/.venv/bin/vol） | 下游 | execv + 管道 JSON | 子进程 ×5-6 |
+| scripts/build-vol3-isf.sh | 下游 | 符号自愈 | bash 子进程 |
+| memory_analysis_sql_tables/crud.h | 输出 | 六表六索引/INSERT 常量 | DDL |
+| MemoryForensicsRoutes（HTTP 读侧） | 下游 | query() 通用读（只读打开） | JSON 行 |
+| web /memory 页 | 下游 | memoryService.js | REST |
+| HOME 环境变量 | 上游 | vol3 符号默认目录 ~/.cache/volatility3（MemoryAnalyzerCore.cpp:140 一带） | getenv |
+| 无 AuditLog/无 TaskManager | — | 旁路子命令不进任务体系（第 7 节） | — |
+
+## 11. 配置影响表
+
+| 参数 | 默认 | 影响 | 备注 |
+|---|---|---|---|
+| `--memory-analyze` | false | CLI 旁路触发 | 不与磁盘旗标组合 |
+| `--vol-symbols-dir` | 空 | `-s` 直通；空则依赖 vol3 自查（含自愈下载） | |
+| `--db-dir` | CWD | memDb 前缀 | HTTP 读侧命名约定的一部分（第 7 节） |
+| `HOME` | 系统 | ISF 缓存目录定位 | Environment.md 第 10 节 |
+| vol 超时 | 600s（Runner 默认） | 每插件一次 | 调用方未覆盖 |
+| 无 .env 键 | — | — | |
+
+## 12. 性能与并发细节
+
+- **每插件一次冷启动是最大成本**：5-6 个插件 = 5-6 次 vol 完整启动（Python 解释器+符号加载，大 ISF 表加载秒级到十秒级）；插件间串行。合并为单进程多插件（vol3 支持 `-q` 多插件或批处理模式）是最直接的优化，但要改 JSON 分流。
+- **IO 大头**：vol 自己读镜像（内核遍历随机读，Go 量级）；本模块自身 IO 只有 banner 扫描（流式 64MB 窗口，顺序读整镜像一次）与最终写库。
+- **超时与管道**：非阻塞 + poll 100ms 循环使父进程 CPU 占用近零；64KB 管道死锁已由 drain 解决（链路一）。
+- **内存**：JSON 全量解析（pslist 万级进程的 JSON 数组几十 MB 瞬时）；db 层逐行插入不物化。
+- **并发**：单线程编排；db mutex 串行化；无跨进程锁（CLI 独占运行）。
+- **可调参数影响**：符号目录预热（--vol-symbols-dir 指向已下载的 ISF）可省自愈的网络下载（CDN 秒到分钟级）与二次 pslist 重试的整轮开销。
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

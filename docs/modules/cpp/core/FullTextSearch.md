@@ -228,6 +228,56 @@ void XapianIndexer::cacheContent(const std::string& path, const std::string& con
 
 逐块解释：查询能力由三处配置合成——`add_prefix("path","P")/("ext","E")` 把用户语法 `path:src` 映射到索引侧前缀（两侧的字符串约定必须一致，改任何一边都断）；四个 FLAG 打开布尔（AND/OR/NOT）、通配（`tes*`）、短语（`"exact phrase"`）；`STEM_SOME` 只对未加前缀的自由词做词干化，路径/扩展名字段保持精确——否则 `path:src` 会被词干折成别的形式。`set_database` 让 `db*:` 之类的智能语法可用。分页由 `get_mset(offset, limit)` 在引擎内完成（不是取全量再切片），深翻页成本可控。**data 反解是全函数最脆的部分**：三段 find/substr 假设 JSON 无转义——路径含 `"` 或 `\` 时 pathEnd 找错位置，截出的 path 残缺且静默（`res.path` 默认空触发老格式回退 `res.path = data`，把整段 JSON 当路径用）；size 的 `std::stoll` 有 try/catch 兜底但字符串截取没有。`Parsed Query` 的 cout 是调试残留，生产上每次查询打一行 stdout。
 
+### 4.4 代码走读：TextExtractor::extract 的分派与两轨实现（TextExtractor.cpp:73-103）
+
+```cpp
+std::string TextExtractor::extract(const std::string& path, size_t maxBytes) {
+    if (!fs::exists(path)) {
+        return "";
+    }
+
+    try {
+        std::string ext = fs::path(path).extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c){ return std::tolower(c); });
+
+        if (isTextFile(ext)) {
+            return extractFromTextFile(path, maxBytes);
+        } else {
+            // Fallback to strings extraction for binary or unknown files
+            return extractStrings(path, 4, maxBytes);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "TextExtractor::extract error for " << path << ": " << e.what() << std::endl;
+        return "";
+    }
+}
+```
+
+逐块解释：三个判定细节值得记录。(1) **无扩展名文件 ext 为空串**——isTextFile("") 查 set miss，走 strings 兜底，这正是"无扩展名木马样本里的 URL 也能被检索"的实现点（第 1 节承诺的双轨在此落地）。(2) tolower 的 lambda 参数显式转 `unsigned char`——避免 char 为负时 ::tolower 的 UB（对比 ConfigManager.cpp:79 直接传 char 的写法，这里更严谨）。(3) `fs::exists` 先行意味着**每次调用都有一次 stat**：CLI 索引循环里每个文件 stat 一次 + 打开读一次；summary 回退路径同样。extractFromTextFile 是"读整个文件（或 maxBytes 截断）原文返回"；extractStrings 逐字节扫可打印序列、长度 ≥4 才收——二进制文件的 token 密度远低于真文本，索引体积可控。两轨输出都不做编码转换：GBK/UTF-16 文本按字节入索引，中文检索因此基本不可用（Xapian 默认按 Unicode 字流处理单字节输入）——已知能力边界。
+
+### 4.5 代码走读：highlightTerms 的 Markdown 包裹（FullTextSearch.cpp:249-276）
+
+```cpp
+std::string XapianSearcher::highlightTerms(const std::string& text,
+                                           const std::string::size_type snippetLen,
+                                           const std::vector<std::string>& terms) {
+    std::string result = text;
+    std::string::size_type pos = 0;
+    for (const auto& term : terms) {
+        pos = 0;
+        while ((pos = result.find(term, pos)) != std::string::npos) {
+            result.insert(pos, "**");
+            result.insert(pos + term.size() + 2, "**");
+            pos += term.size() + 4;
+        }
+    }
+    return result;
+}
+```
+
+逐块解释（骨架，完整实现见 `:249-276`）：对每个查询 term 在摘要文本里**子串替换式**加 `**` 包裹——大小写敏感的 `find` 意味着查询词 "Test" 不会高亮文本里的 "test"（词干化后的 term 与原文形态差异也不会高亮）；insert 两次移动后续偏移，`pos += term.size() + 4` 跳过刚包好的词避免 `**` 里再嵌 `**`。已知边界：term 恰是另一个 term 的子串时先处理者把后者切碎；term 含 `*` 字符时包裹与 Markdown 语义冲突。输出直接进 HTTP JSON 响应，前端按 Markdown 渲染即得高亮——这是"服务端做高亮"的取舍（客户端做则查询侧要传 terms 数组）。
+
 ## 5. 与其他模块的协作
 
 - **ConfigManager**：四个搜索参数的消费点（`ConfigManager.cpp:151-154`）——`SEARCH_MAX_CACHE_SIZE`（缓存容量，默认 1000）、`SEARCH_MAX_CONTENT_LENGTH`（内容截断，默认 50000）、`SEARCH_SNIPPET_LENGTH`（摘要长度，默认 150）、`SEARCH_DEFAULT_LIMIT`（默认 limit，默认 10）。
@@ -254,4 +304,74 @@ void XapianIndexer::cacheContent(const std::string& path, const std::string& con
 - 手工验证：`./forensic_analyzer --index <某目录> --search "test AND path:src"`，观察 CLI 打分的 `[NN%]` 行；再用 `curl 'localhost:8080/api/search/fulltext?q=test&index=<index_path>'` 对比 HTTP 行为。
 - 扩展方向：(1) data 换正规 JSON 序列化并加版本字段（改 `FullTextSearch.cpp:111-154` 与 `:309-347` 两处）；(2) 富文档抽取——在 TextExtractor 增加对 markitdown 代理的可选调用，注意失败回退 strings；(3) 排序支持——value 0/1 已存 size/mtime，给 search 加 `set_sort_by_value` 参数即可暴露给前端。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 方法全清单（含 TextExtractor）
+
+**XapianIndexer**（FullTextSearch.h:47-91）：
+
+| 方法 | 定义位置 | 语义 | 调用方 |
+|---|---|---|---|
+| `XapianIndexer(dbPath)` | cpp:22-34 | DB_CREATE_OR_OPEN + TermGenerator + english 词干 + 拼写纠正 | CLI/SearchRoutes/http_agent |
+| `addDocument(path, content)` | cpp:96-108 | stat 补元数据转四参版 | CLI 循环 |
+| `addDocument(path, content, metadata)` | cpp:111-154 | 字段布局+upsert+入缓存 | 上一重载 |
+| `commit()` | cpp:156-160 | 提交（析构兜底再 commit，:36-44） | 批尾 |
+| `setStemmerLanguage(lang)` | cpp:46-55 | 换词干语言（未接线） | 无生产调用方 |
+| `getDocumentCount()` | .h | 库内文档数 | 进度 |
+| 私有 `cacheContent(path, content)` | cpp:62-88 | 全表淘汰缓存 | addDocument |
+| 静态成员 `contentCache_/cacheMutex_` | .h:87-88 | 进程级共享 | 两类实例 |
+
+**XapianSearcher**（h:95-143）：
+
+| 方法 | 定义位置 | 语义 | 调用方 |
+|---|---|---|---|
+| `XapianSearcher(dbPath)` | cpp:262-275 | 只读打开，异常吞 | SearchRoutes:106 |
+| `search(query, limit=10, offset=0)` | cpp:278-355 | 解析+MSet+组装 | CLI/HTTP |
+| `setSnippetLength(n)` | .h | 摘要窗长（默认 150） | SearchRoutes 注入 |
+| `isValid()/getTotalDocuments()` | .h | 诊断 | 路由 |
+| 私有 `generateSnippet(...)` | cpp:188-247 | 缓存/回退/占位三段 | search |
+| 私有 `highlightTerms(...)` | cpp:249-276 | `**` 包裹 | generateSnippet |
+
+**TextExtractor**（TextExtractor.h:26-70，全静态）：
+
+| 方法 | 定义位置 | 语义 | 调用方 |
+|---|---|---|---|
+| `extract(path)` / `extract(path, maxBytes)` | cpp:73-90 | 白名单/strings 分派 | 索引+摘要 |
+| `isTextFile(ext)` | cpp:99-103 | 大小写归一 set 查询 | extract |
+| `getSupportedExtensions()` | .h | 130+ 扩展名集合只读 | 路由展示 |
+| `extractMetadata(path)` | cpp:105 起 | isText+扩展名判定（ExtractedMetadata） | http_agent |
+| `extractFromTextFile(path, maxBytes=0)` | .h:67 | 原文读取 | extract |
+| `extractStrings(path, minLength=4, maxBytes=0)` | .h:68 | strings 兜底 | extract |
+
+## 9. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| AnalysisOrchestrator.runFullTextSearch | 上游 | 索引循环+查询（:650-685） | 目录路径 |
+| SearchRoutes（HTTP） | 上游 | index/fulltext 两路由；FTS_ALLOWED_ROOT 圈禁 | JSON 请求/响应 |
+| http_agent（image_indexer/index_uploader） | 上游 | 节点本地索引+回传 | Xapian 目录 |
+| ConfigManager | 上游 | 四个 SEARCH_* 键（cpp:158,175 每次现读） | int |
+| Xapian 库 | 下游 |WritableDatabase/Database/QueryParser/MSet | C++ API |
+| TextExtractor | 内部 | extract 双轨 | string |
+| Python markitdown | 互补 | 富文档转文本不归本模块（--dump-text 管线） | — |
+
+## 10. 配置影响表
+
+| 参数 | 默认 | 影响 | 未接线标注 |
+|---|---|---|---|
+| `SEARCH_MAX_CACHE_SIZE` | 1000 | 摘要缓存条目上限（FullTextSearch.cpp:158） | 不在 .env.example |
+| `SEARCH_MAX_CONTENT_LENGTH` | 50000 | 入缓存截断=摘要可见窗口（:175） | 不在 .env.example |
+| `SEARCH_SNIPPET_LENGTH` | 150 | 摘要窗长（SearchRoutes 读后 setSnippetLength 注入） | getter getSearchSnippetLength 无 C++ 调用方——**经路由间接接线** |
+| `SEARCH_DEFAULT_LIMIT` | 10 | **未接线**：getter 无调用方（路由默认硬编码 50，SearchRoutes.cpp:72-104） | 缺省与代码实际默认不一致 |
+| `FTS_ALLOWED_ROOT` | PathManager data 目录 | HTTP 可索引根白名单（SearchRoutes.cpp:17-35） | 不在 .env.example |
+| `--db-dir`（CLI） | 空 | 索引目录前缀（Orchestrator:635-639） | |
+
+## 11. 性能与并发细节
+
+- **索引构建是 CPU+IO 双重热点**：每文件一次 stat + 全量读 + TextGenerator 分词 + Xapian B 树写。百万级小文件时 CLI 单线程顺序处理（Orchestrator:653-661 无并行）；commit 只在批尾一次（崩溃丢整批，见 AnalysisOrchestrator.md 4.6 节）。
+- **strings 兜底的读放大**：二进制文件全量读入但只留 ≥4 字节可打印序列——一个 2 GB 的虚拟机磁盘文件会把 2 GB 读进内存再丢掉 99% 字节；maxBytes 重载（CLI 未用，第 6 节）是现成的刹车。
+- **静态缓存的两面**：进程级共享让 Indexer→Searcher 零拷贝传递摘要素材（好），也意味着多任务并发索引共享同一 1000 条容量、互相逐出（坏）——HTTP 并发任务的摘要质量不可预期。锁只有 cacheMutex_ 一把，读写都走它（generateSnippet 取缓存时同样 lock_guard cacheMutex_，FullTextSearch.cpp:191-193）——并发面正确；friend 声明（h:93）只是访问授权不是绕锁通道。
+- **Xapian 单写者**：同库并发写直接报错（DB_LOCKED），http_agent 分而治之；查询侧只读打开无限并发。
+- **内存峰值**：单文件内容（extract 无限制重载时）+ 50MB 级缓存上界（1000×50KB）；深翻页的 MSet 在引擎内截取，不占应用内存。
+- **可调参数影响**：SEARCH_MAX_CONTENT_LENGTH 调大提升尾部命中摘要质量但线性放大缓存内存；SEARCH_MAX_CACHE_SIZE 调大降低回退现读频率但淘汰 O(n) 变贵。
+
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

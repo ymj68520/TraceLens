@@ -223,6 +223,51 @@ void EventCorrelationEngine::analyzeTimeBasedCorrelations() {
 
 逐块解释：因果是关联的**严格子集**，四道门按序收紧——(1) 方向门：UNI 关联（序列产出）或 id 有序的对才考虑；(2) 存在门：两个事件都能查到（getEventInfo 按 eventId 反查 events 表，空则弃）；(3) 时间门：time1 < time2 严格小于（同时事件不可能有因果）；(4) 机制门：只有三种 correlationType 有资格谈因果，same_time/same_context 这类纯巧合关联被拒之门外。`confidence * 0.9` 的折损是有方向的认知立场——"相关不蕴含因果"，宁可漏报不可虚报，这正是取证报告能站住脚的前提；折损后仍须 >0.7 意味着原始置信度低于约 0.78 的关联连因果候选都不是。mechanism 从 correlationType 映射而来，是给人读的因果解释标签——报告里"为什么 A 导致 B"的答案就是它。注意因果不建新边，只在既有关联上**加注方向与机制**：链分析用关联构图，因果分析给边定向，两者共用同一份 correlations_。
 
+### 4.4 代码走读：链落库的 visitedNodes 环切断（EventCorrelationEngineCore.cpp:283-320）
+
+```cpp
+    // 递归插入节点。event chains can be cyclic (bidirectional correlations make
+    // two nodes mutual children), so track visited nodes — without this the
+    // recursion never terminates and spins on unbounded INSERTs (a hang).
+    std::set<int64_t> visitedNodes;
+    std::function<bool(const std::shared_ptr<EventChainNode>&, int64_t)> insertNode =
+        [&](const std::shared_ptr<EventChainNode>& node, int64_t parentEventId) {
+        if (!node || !visitedNodes.insert(node->eventId).second) {
+            return true;  // already inserted this node; skip to break cycles
+        }
+        // prepare nodeStmt -> bind chain_id/event_id/parent(或 NULL) -> step
+        ...
+        for (const auto& child : node->children) {
+            if (!insertNode(child, node->eventId)) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    if (chain.root) {
+        return insertNode(chain.root, 0);
+    }
+```
+
+逐块解释：链的内存形态是**任意图**（节点有双向 children/parents），落库形态是**每节点一行 + parent_event_id 指针**的树形表达——图到树的转换靠 `visitedNodes`：`insert(eventId).second` 为 false 即"本节点已在本链落过库"，直接 return true 剪枝。注释记录的是真实修过的挂死：双向关联（BI 方向）让 A、B 互为 child，无访问集的递归 A→B→A→… 永不终止且每次都发 INSERT。剪枝的代价是**第二个 parent 的边丢失**——若 C 同时是 A 和 B 的子，先到的那条边落库，后到的被剪掉，event_chain_nodes 表因此只表达生成树而非完整图；要完整图需另建边表。`parent > 0 ? bind : bind_null` 把"根节点"编码为 NULL parent（根以 0 调入），树重构查询用 `WHERE parent_event_id IS NULL` 找根。lambda 自递归用 std::function 包装（有间接调用开销，节点数不大无碍）。
+
+### 4.5 代码走读：上下文相似度的逐字符实现（EventCorrelationUtils.cpp:27-43）
+
+```cpp
+double calculateContextCorrelation(const std::string& context1, const std::string& context2) {
+    if (context1.empty() || context2.empty()) return 0.0;
+    int matchingChars = 0;
+    int minLength = std::min(context1.size(), context2.size());
+    for (int i = 0; i < minLength; ++i) {
+        if (context1[i] == context2[i]) matchingChars++;
+    }
+    return static_cast<double>(matchingChars) / std::max(context1.size(), context2.size());
+}
+```
+
+逐块解释：空串短路（任一为空即 0 分——FILE_SYSTEM 事件 system_context 多为空，天然出局）；逐**同位**字符比较，分母取较长串。这不是编辑距离也不是 n-gram：两串错位一个字符（如 "login:alice" vs "login: alice"）就从高分跌到接近前缀比例——对"同一模板加一个空格"的日志上下文，得分断崖。因此该规则实际上只在**等长同构**的上下文之间起作用；改进方向是取公共前缀长度或 Jaccard(token)。同文件另一支 calculateSourceCorrelation（:19-25）是纯等值（1/0），与 context 的模糊匹配形成规则族内部的两种判定哲学。
+
 ## 5. 与其他模块的协作
 
 - **EventExtractor**：宿主关系。引擎消费 EventExtractor 建的 events 表（依赖 normalized_type/source_id/file_path 等列的语义，这些列的填充见 EventExtractor.md 第 3 节）；包装器 `analyzeEventCorrelations()`（`EventCorrelationExtractor.cpp:31-80`）是二者唯一的桥，且当前无调用方。
@@ -248,4 +293,78 @@ void EventCorrelationEngine::analyzeTimeBasedCorrelations() {
 - 扩展新关联维度：在 `EventCorrelationAnalyzer.cpp` 加一个 `analyzeXxxCorrelations`（自连接 + 置信度函数放 `EventCorrelationUtils.cpp`）+ 在 `analyzeCorrelations`（`:14-18`）挂上 + `registerDefaultRules` 补元数据。想让"规则对象真正驱动分析"是更大的重构：把 SQL 参数化出 rule 的 window/threshold。
 - 修复序列规则：以 `normalizeEventType` 的输出集为准重写 `:270-272` 的模式表，并为每类平台事件补典型序列（如 PREFETCH_EXECUTION 之后同文件的 FILE_DELETED）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 产出表列级说明（events.db 的四张结果表）
+
+DDL 全部在 `Detail/EventCorrelationEngineCore.cpp:124-179`（createCorrelationTables），索引 `:211-215`。
+
+**event_correlations（10 列，:124-138）**：
+
+| 列名 | 类型 | 含义 | 写入条件 |
+|---|---|---|---|
+| `id` | INTEGER PK 自增 | 行 ID | 自动 |
+| `event_id1`/`event_id2` | INTEGER NOT NULL | 关联对（id1<id2 由自连接保证） | 五个 analyze 各自命中时 |
+| `correlation_type` | TEXT NOT NULL | same_time/same_source/same_file/same_context/sequence | 同上 |
+| `confidence` | REAL NOT NULL | 0-1 | 同上 |
+| `description` | TEXT | 人读描述 | 同上 |
+| `strength` | INTEGER | 枚举值转 int（LOW=0…CRITICAL=3） | 同上 |
+| `direction` | INTEGER | UNI/BI/UNKNOWN 转 int | 同上 |
+| `timestamp` | INTEGER | 对中较早时间 | 同上 |
+| `rule_id` | TEXT | 规则 ID | 同上 |
+| （FK） | — | event_id1/2 → events(id) | 引擎不设 foreign_keys=ON（打开连接只设 busy_timeout），FK 仅是声明 |
+
+**event_chains（6 列，:142-152）**：`id`（PK）、`chain_id`（TEXT NOT NULL，链的 UUID）、`description`、`confidence`（REAL NOT NULL，节点均值）、`start_time`/`end_time`（链内最早/最晚事件时间）。写入条件：analyzeEventChains 每链一行。
+
+**event_chain_nodes（5 列，:154-164）**：`id`（PK）、`chain_id`（TEXT NOT NULL）、`event_id`（INTEGER NOT NULL，FK events）、`parent_event_id`（INTEGER 可空，NULL=根）。写入条件：insertNode 递归，visitedNodes 剪枝后每节点一行（4.4 节：只表达生成树）。
+
+**causal_relationships（7 列，:166-178）**：`id`（PK）、`cause_event_id`/`effect_event_id`（INTEGER NOT NULL，FK events）、`confidence`（REAL NOT NULL，关联×0.9）、`description`、`time_delay`（INTEGER，秒）、`mechanism`（TEXT，三种之一）。写入条件：四道门（4.3 节）全过的关联。
+
+**索引 5 个**（:211-215）：correlations 的 event_id1/event_id2、chain_nodes 的 chain_id、causal 的 cause/effect——全部服务于"从事件反查关联/因果"的回溯查询；没有 confidence/rule_id 索引，按规则过滤走全表。
+
+## 9. 方法全清单（含私有与 Detail 分工）
+
+| 方法 | 定义位置 | 语义 | 调用方 |
+|---|---|---|---|
+| `initialize()` | Core.cpp:17-33 | 开库+建表+注册规则 | 包装器/测试第一步 |
+| `registerRule(rule)` | Core.cpp | 追加规则元数据 | registerDefaultRules/外部 |
+| `registerDefaultRules()` | Core.cpp:35-95 | 五条内置规则入 rules_ | initialize |
+| `analyzeCorrelations()` | Analyzer.cpp:8-27 | 串联五个 analyze + 逐条 insert | 包装器/测试 |
+| `analyzeTimeBasedCorrelations()` | Analyzer.cpp:29-88 | 60 秒窗自连接 | analyzeCorrelations |
+| `analyzeSourceBasedCorrelations()` | Analyzer.cpp（同族） | 同 source_id | 同上 |
+| `analyzeTargetBasedCorrelations()` | 同上 | 同 file_path | 同上 |
+| `analyzeContextBasedCorrelations()` | 同上 | context 相似 | 同上 |
+| `analyzeSequenceBasedCorrelations()` | Analyzer.cpp:262-289 | 相邻对三种模式 | 同上 |
+| `analyzeEventChains()` | ChainBuilder.cpp:12-24 | BFS 连通分量 | 包装器/测试 |
+| `discoverCausalRelationships()` | ChainBuilder.cpp:156-168 | 四门因果 | 同上 |
+| `getCorrelations/getEventChains/getCausalRelationships` | Core.cpp | 内存结果 getter | 导出/测试 |
+| `exportCorrelations/exportEventChains/exportCausalRelationships` | Exporter.cpp | JSON 写盘 | 包装器 |
+| `visualizeCorrelations/visualizeEventChains` | Exporter.cpp | dot 文本 | 包装器 |
+| 私有 `openDatabase/closeDatabase` | Core.cpp:101-118 | 连接管理（busy_timeout 5000） | initialize/析构 |
+| 私有 `createCorrelationTables` | Core.cpp:121-221 | 四表五索引 | initialize |
+| 私有 `insertCorrelation/insertEventChain/insertCausalRelationship` | Core.cpp:230-345 | 三类落库 | 各 analyze |
+| 自由函数 `calculateTimeCorrelation/calculateSourceCorrelation/calculateContextCorrelation` | Utils.cpp:6-43 | 置信度 | 各 analyze |
+
+## 10. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| EventExtractor（宿主） | 上游/唯一桥 | events 表只读；包装器 analyzeEventCorrelations（EventCorrelationExtractor.cpp:31-80，无调用方） | sqlite 句柄共享 |
+| events 表 | 输入 | id/timestamp/event_type/file_path/source_id/system_context 六列 | 自连接 SELECT |
+| event_correlations 等四表 | 输出 | 本引擎建并写 | 参数化 INSERT |
+| AuditLog | 下游 | ENGINE_INIT/ANALYSIS_COMPLETE 等 8 条（第 5 节） | 审计条目 |
+| EventClusterAnalyzer | 平行 | 无代码交互；产物对比见第 5 节 | — |
+| 测试 | 消费者 | test_event_correlation_engine.cpp | 全公开接口 |
+
+## 11. 配置影响表
+
+本模块**不读任何 ConfigManager 键**——busy_timeout 5000 是硬编码（Core.cpp:101-112 一带），五个时间窗/阈值也是字面量（第 6 节双源问题）。间接影响：无。这意味着调优只能改代码；接线时建议顺手把窗口/阈值参数化进 CorrelationRule 并让 analyze 真正消费 rules_。
+
+## 12. 性能与并发细节
+
+- **CPU 大头是自连接候选对的置信度计算**：SQL 粗筛（ABS<=window）之后每对都要一次 C++ 置信度函数调用；600 秒 context 窗在每秒多事件的生产流上候选对可达 10^6-10^7，串行循环秒级到分钟级。缓解：给 events(timestamp) 建索引无助于自连接（JOIN 键是 id），真正有效的是缩小窗口或按 source_id 分桶后再配对。
+- **events 全量载入内存**：序列分析把全部事件（五元组 tuple）拉进 vector；百万事件约 100+ MB，是本模块的内存峰值。其余四个 analyze 是流式 step 循环。
+- **落库逐条自动提交**：insertCorrelation 每条一事务（无 BEGIN 包裹），与 DatabaseManager 同款慢路径；关联对多时落库时间可观，批量化是接线前顺手可做的优化。
+- **单线程**：五个 analyze 顺序执行，无内部并行；不同维度理论上可并行（各自独立 SELECT），但共享 correlations_ vector 需加锁。
+- **锁与连接**：单连接、构造析构开关；busy_timeout 5000 防与 EventExtractor 主流程的锁竞争（接线后二者先后持锁）。FK 声明未激活（未设 foreign_keys=ON，对照 DatabaseManager.cpp:35-37）——孤儿行（事件被清后关联残留）不会被数据库层拒绝。
+
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

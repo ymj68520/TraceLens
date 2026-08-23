@@ -198,6 +198,71 @@ inline const char* errorCodeToString(ErrorCode code) {
 
 逐块解释：函数是 `inline` 自由函数而非成员——错误码与 Result 解耦，光有个码也能查描述（比如解析历史日志时）。全 switch 无表驱动，编译器会优化成跳转表；每加一个枚举值必须同步加一个 case，否则落到 `default: return "Unknown error code"`——这是一个**可观测的失配信号**：日志里出现该字样即说明"枚举加了但 toString 忘了"，比静默返回空串可诊断得多。返回 `const char*` 字面量而非 `std::string`，零分配；也因此调用方不应持有指针做格式化之外的事。
 
+### 4.4 代码走读：Result\<void\> 特化的减法（ErrorHandling.h:200-232）
+
+```cpp
+template<>
+class Result<void> {
+public:
+    static Result success() {
+        Result r;
+        r.success_ = true;
+        r.errorCode_ = ErrorCode::Success;
+        return r;
+    }
+
+    static Result error(ErrorCode code, const std::string& message = "") {
+        Result r;
+        r.success_ = false;
+        r.errorCode_ = code;
+        r.errorMessage_ = message.empty() ? errorCodeToString(code) : message;
+        return r;
+    }
+
+    bool isSuccess() const { return success_; }
+    bool isError() const { return !success_; }
+
+    ErrorCode errorCode() const { return errorCode_; }
+    const std::string& errorMessage() const { return errorMessage_; }
+
+    explicit operator bool() const { return success_; }
+
+private:
+    Result() = default;
+
+    ErrorCode errorCode_ = ErrorCode::Unknown;
+    std::string errorMessage_;
+    bool success_ = false;
+};
+```
+
+逐块解释：特化做的是**减法**——去掉 value_/value()/valueOr()，保留全部错误面。这证明 3.2 节说的"独立 success_ 字段让 void 版复用同一形状"：三个成员（code/message/flag）在两个版本间完全同构，泛型代码模板参数换成 void 也能编译通过相同的状态查询调用。与 `std::expected<void, E>` 的对齐度也在这里体现（expected 的 void 特化同样只有错误面）。注意 `success()` 工厂无参——void 没有可 move 的东西，调用形态是 `Result<void>::success()`；而 Linux 版用 `makeSuccess()` 无参重载达成同一目的（LinuxAnalyzerErrors.h:404），形态差异是"静态工厂 vs 自由函数"的路线分歧。特化版保留了 `errorCode_ = Unknown` 的默认——中间态不安全的原则贯穿两个版本。
+
+### 4.5 对照走读：LinuxAnalyzerErrors.h 的同型异构（:19-71, 297-360）
+
+```cpp
+// LinuxAnalyzerErrors.h:19-31 —— 分段方案完全不同
+enum class ErrorCode {
+    SUCCESS = 0,
+    // Database errors (100-199)
+    DATABASE_OPEN_FAILED = 100,
+    DATABASE_CREATE_TABLE_FAILED = 101,
+    ...
+    // Container-specific errors (1000-1999)
+    DOCKER_DIR_NOT_FOUND = 1001,
+    ...
+    UNKNOWN_ERROR = 999      // 注意：排在 4000 段之后声明，值却回到 999
+};
+
+// :304-311 —— 公开构造器而非私有+工厂
+Result(const T& value) : storage_(value) {}
+Result(T&& value) : storage_(std::move(value)) {}
+Result(const LinuxAnalyzerError& error) : storage_(error) {}
+Result(ErrorCode code) : storage_(LinuxAnalyzerError(code)) {}
+```
+
+逐块解释：两套实现的分歧逐条对照——**分段语义互斥**：core 版 1xx=文件、2xx=LLM、5xx=数据库；Linux 版 1xx=数据库、2xx=文件，同一个数字在两个命名空间里语义完全不同（core 的 500 是 DatabaseOpenError，Linux 的 500 是 SYSTEM_MEMORY_ERROR）——这是"两套码表并存"最危险的一点，日志聚合时必须先判断来源模块。**Linux 版多了千位段**（1xxx 容器、2xxx Web 服务器、3xxx 安全、4xxx 增强分析），领域粒度更细。**构造纪律**：core 版私有构造+双工厂（构造即分类强制检查），Linux 版公开 5 个构造器（含从 ErrorCode 隐式构造错误 Result），写起来短但允许跳过显式分类。**存储**：variant vs optional（3.2 节）。**错误对象**：Linux 版的 LinuxAnalyzerError 是完整类（code/message/details/isRecoverable 四字段，:206-290），`isRecoverable()` 给调用方"要不要重试"的策略信号——core 版没有这个语义，是其功能缺口。**UNKNOWN_ERROR=999 声明位置**：在 4004 之后却回到 999，纯可读性排版，无语义影响。
+
 ## 5. 与其他模块的协作
 
 - **理想协作模型**（尚未大规模落地）：分析器返回 `Result<...>`，TaskManager 据此决定任务阶段成败并写 AuditLog；ThreadPool worker 里的 Result 通过 future 传回（异常路径由 packaged_task 接住，见 ThreadPool.md 第 3 节）。
@@ -221,4 +286,89 @@ inline const char* errorCodeToString(ErrorCode code) {
 - 扩展路径：(1) 新增错误码——在 `ErrorHandling.h` 对应分段加枚举值 + `errorCodeToString` 分支；(2) 推广落地——给新写的分析器直接返回 `Result<T>`，旧模块在重构时逐个迁移；迁移时可参考 LinuxAnalyzerErrors.h 的调用面写法（`makeSuccess`/`makeError` 的自由函数形态更省字，可作为 core 版的语法糖补充）。
 - 与 C++23 `std::expected` 的关系：接口刻意相似（`error()`/`value()` 语义对齐），未来切换成本主要在工厂函数形态，业务代码结构可保留。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 方法全清单（core 版 Result\<T\> / Result\<void\> 双表）
+
+| 成员（Result\<T\>，ErrorHandling.h:118-195） | 行 | 语义 | 调用方 |
+|---|---|---|---|
+| `static Result success(T)` | :124-130 | 成功态工厂（move 入 optional） | 任意返回 Result 的函数 |
+| `static Result error(ErrorCode, msg="")` | :132-141 | 错误态工厂（空消息兜底 toString） | 同上 |
+| `bool isSuccess() const` | :146 | 状态查询 | 调用方 if 分流 |
+| `bool isError() const` | :147 | 即 !isSuccess | |
+| `const T& value() const` | :152-156 | 取值，错误态抛 runtime_error | 已检查后 |
+| `T& value()` | :159-164 | 可变取值（可移出） | |
+| `T valueOr(T) const` | :168-171 | 安全取默认值 | noexcept 语境 |
+| `ErrorCode errorCode() const` | :175 | 错误码（成功=Success） | 策略分发 |
+| `const std::string& errorMessage() const` | :180 | 消息（成功=空串） | 日志/审计 |
+| `explicit operator bool() const` | :186 | 惯用检查 | |
+| 私有：`Result() = default`、四成员 | :189-194 | 中间态=未成功 | |
+
+| 成员（Result\<void\> 特化，:200-232） | 语义 |
+|---|---|
+| `success()` / `error(code, msg="")` | 无值工厂 |
+| `isSuccess()/isError()/errorCode()/errorMessage()/operator bool` | 与 T 版同形 |
+| （无 value/valueOr） | 无值可取 |
+
+自由函数：`errorCodeToString(ErrorCode)`（:63-98，31 个 case + default 兜底）。Linux 版对应物：`getErrorMessage`（43 个 case）、`makeSuccess(T&&)/makeSuccess()/makeError(code)/makeError(code, details)`（:400-417）、`LinuxAnalyzerError::toString()`。
+
+## 9. 全仓库错误体系地图（关联矩阵）
+
+| 体系 | 位置 | 形态 | 使用范围 |
+|---|---|---|---|
+| core ErrorHandling | src/core/ErrorHandling/ErrorHandling.h | optional+工厂 Result | **仅单元测试**（test_error_handling.cpp:4 唯一 include） |
+| Linux AnalyzerErrors | src/analyzers/LinuxFilesAnalyzer/Common/LinuxAnalyzerErrors.h | variant Result + isRecoverable | LinuxFilesAnalyzer 全部 parser/analysis（17+ 文件） |
+| TextDump 状态枚举 | src/export/TextDumpExporter.h:16-17 | MarkdownStatus/StopReason（非 Result，枚举+结果结构体） | TextDumpExporter/AnalysisOrchestrator 的 --dump-text 段 |
+| bool + cerr 惯例 | DatabaseManager/EventExtractor/FileClassifier/FileExtractor/AuditLog 等核心链 | 返回 bool，stderr 打印，AuditLog 留痕 | 生产主流 |
+| int 退出码 | AnalysisOrchestrator run* 系列 | 0/1 进程语义 | CLI 边界 |
+| 异常 | runAnalysis 的 catch-all、AuditLog::value() | 跨阶段兜底 | 边界防护 |
+
+推论：**生产代码的错误通道事实上是"bool+stderr+AuditLog"三件套**，两套 Result 都只覆盖各自角落。统一的最大阻力不是技术而是迁移面（core 链全部函数签名都要改）；务实的路径是 Linux 版保持现状、新模块用 core 版、老模块不动。
+
+## 10. 与 std::expected 的接口映射
+
+| 本头文件 | C++23 std::expected<T, E> | 差异 |
+|---|---|---|
+| `success(v)` | `return v;`（隐式构造） | expected 零样板 |
+| `error(c, m)` | `return std::unexpected(err)` | expected 的 E 需自定义错误类型 |
+| `isSuccess()` | `has_value()` | |
+| `value()`（错误抛异常） | `value()`（抛 bad_expected_access） | 异常类型不同，语义一致 |
+| `valueOr(d)` | `value_or(d)` | 同名近形 |
+| `errorMessage()` | 无直接对应 | expected 无内建消息，需 E 自带 |
+| `errorCode()` 分段策略 | 无对应 | expected 的 E 即错误对象本身 |
+| `Result<void>` | `std::expected<void, E>` | 一致 |
+
+切换评估：项目若升 C++23，core 版 Result 可用 typedef 过渡（`template<class T> using Result = std::expected<T, ForensicsError>`），但 errorCodeToString 的兜底、error() 的空消息回填这两个便利语义需要在新的 Error 类型构造器里复刻，否则调用方代码会多出空串判断。
+
+## 11. 性能与并发细节
+
+- **零分配路径**：`success(v)` 的成本 = T 的一次 move + optional 装箱 + RVO 返回；`errorMessage_` 为空串（SSO，无堆分配）。错误路径有一次 string 拷贝（自定义消息）或零拷贝（用 toString 的 const char* 构造 SSO 串——超过 15 字符的消息会堆分配）。相较异常抛掷（栈展开微秒级），错误路径完全可预测，适合热循环。
+- **体积特征**：`Result<T>` = optional<T>（T+1 字节对齐）+ string（32 字节）+ enum(4)+bool ≈ sizeof(T)+40 字节；返回大 vector 时整体按值返回依赖 RVO/移动，无拷贝放大。Linux 版 variant 形状相近（variant 自身带索引开销）。
+- **线程语义**：纯值类型，无共享状态；跨线程经 future/promise 传递安全。`value()` 抛出的 runtime_error 在 packaged_task 中会被捕获并存入 future（ThreadPool.md 的 worker 契约），不会 terminate。
+- **可调参数影响**：无（本模块不读任何配置）。
+
+
+
+## 12. 测试契约细目（test_error_handling.cpp，182 行）
+
+该测试文件是本头文件唯一的消费者，其断言事实上构成 ErrorCode 的**兼容性契约**——任何重排分段值的行为都会先红在这里：
+
+| 测试组 | 覆盖 | 关键断言（行号） |
+|---|---|---|
+| `ErrorCodeTest.ErrorCodeValues` | 分段锚点值 | Success=0、FileNotFound=100、LLMConnectionFailed=200、NoModelsAvailable=300、InvalidConfiguration=400、DatabaseOpenError=500、AnalysisFailed=600（:16-22）——每段的**首码**被钉死 |
+| `ErrorCodeTest.ErrorCodeToString` | 码→文案 | 7 个代表码的字符串精确匹配（:26-31），`Cancelled` 的注释 "// Check if correct" 是仓库里少见的存疑标记 |
+| `ResultTest.SuccessWithValue` | 成功态全部查询面 | isSuccess/isError/value/errorCode/operator bool 五连（:41-45） |
+| `ResultTest.ErrorWithCode` | 错误码兜底消息 | error 工厂不给消息时 errorMessage=="File not found"（:54）——兜底回填的行为被锁定 |
+| `ResultTest.ErrorWithCustomMessage` | 自定义消息 | 自定义串覆盖兜底（:61-62） |
+| `ResultTest.ValueThrows` | value() 雷区 | 错误态取值抛 runtime_error（EXPECT_THROW） |
+| `ResultTest.ValueOr` | 安全取值 | 错误态返回默认值 |
+| `VoidResultTest` | Result\<void\> 特化 | success()/error() 两工厂与状态查询 |
+
+注意测试**没有**覆盖的：operator bool 在 void 特化上的行为、错误码段间空号的合法性、Result 的拷贝/移动语义、并发传递。迁移到 std::expected 时，前两组测试应原样保留（分段值与文案是外部可见契约），后几组改写为 expected 的对应断言。
+
+## 13. 迁移剧本（若决定统一错误体系）
+
+1. core 版补齐两个能力缺口再推广：错误对象化（带 details 字段）与可恢复性标志（对齐 LinuxAnalyzerErrors.h:245-252 的 isRecoverable/setRecoverable）——否则 Linux 侧迁移是功能回退。
+2. LinuxAnalyzerErrors.h 改为薄层：`namespace LinuxAnalysis { using forensics::Result; ... }`，ErrorCode 保留本地枚举（分段已固化为日志契约，不能重映射），仅 Result/工厂转发 core。
+3. 分段冲突的消解：core 1xx=文件与 Linux 1xx=数据库不可调和，统一方向是 core 版让出 1xx（文件移到 7xx 空段）或接受"枚举本地化、Result 全局化"的折中——后者改动面为零，推荐。
+4. bool 惯例的渐进替换只做在新代码；存量核心链（DatabaseManager 等）改动收益低、回归风险高。
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

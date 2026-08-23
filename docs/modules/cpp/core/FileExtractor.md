@@ -253,6 +253,49 @@ fs::path temporaryPathFor(const fs::path& finalPath, const FileRecord& record) {
 
 逐块解释：WHERE 三条件圈定"活的常规文件"——REG、未删除、已分配（`COALESCE(is_allocated,1)` 把旧库 NULL 行当已分配，读取侧兜底）。ORDER BY 是**确定性契约**：path 用 `COLLATE BINARY` 强制字节序（避免不同 locale 的排序差异导致两次运行顺序不同），同路径再按分区号、inode 决出唯一序——断点续跑时"处理到哪"才有可比性，软限额（max_total_size）截断的位置也可复现。SELECT 只取 10 列，FileRecord 里没有的 atime/crtime/权限字段用回填值（atime←mtime、permissions="0644"）补齐——**这些字段对提取无意义**，回填只为结构完整，下游不要把它们当真实元数据用。
 
+### 4.5 代码走读：extractByName 的全量取回与内存过滤（FileExtractor_Extract.cpp:444-487）
+
+```cpp
+    auto files = searchFiles("type='REG' AND is_allocated=1");
+    std::vector<FileRecord> matches;
+    for (const auto& file : files) {
+        bool matched = false;
+        for (const auto& p : patterns) {
+            if (file.path == p || matchWildcard(file.name, p)) {
+                matched = true;
+                break;
+            }
+        }
+        if (matched) matches.push_back(std::move(file));
+    }
+
+    std::cout << "Found " << matches.size() << " matching files" << std::endl;
+```
+
+逐块解释：两个值得注意的实现选择。**匹配在 C++ 侧做**而非 SQL LIKE——searchFiles 只带硬过滤条件（REG+已分配），模式匹配用自研回溯式通配符（`*`/`?`，`matchWildcard`，FileExtractor.cpp:298-324）逐文件跑；代价是全量 FileRecord 先进内存（几十万条 × 数百字节 = 百 MB 级），换来的是与 SQL LIKE 不同的匹配语义（LIKE 的 `%/_` 与本实现的 `*`/`?` 不可互换，且大小写敏感性由自己控制——此处区分大小写）。**`file.path == p ||` 的精确匹配分支**是通配符之外的白名单通道：传入完整路径（无通配符）时走 O(1) 字符串比较，`/data/data/com.tencent.mm/MicroMsg/EnMicroMsg.db` 这种精确目标不用拼通配符。extractByExtension 同构（`:489-530`）：逗号拆分→保证前导点→对 extension 字段（入库时已归一小写）等值比较——注意它比按名匹配**省内存的路径**：等值比较不需要通配符回溯但仍全量进内存。三入口（byName/byExtension/all）共用 extractRecords 的限额与错误通道。
+
+### 4.6 代码走读：initialize 的镜像类型探测与降级（FileExtractor.cpp:26-94）
+
+```cpp
+bool FileExtractor::initialize() {
+    // ... dbMgr_->initialize() 失败提示先跑分析（:35-37）
+    if (!openImage()) return false;
+    if (!openFileSystem()) { /* 容错处理 */ }
+    return true;
+}
+
+bool FileExtractor::openImage() {
+    image_ = tsk_img_open_sing(imagePath_.c_str(), TSK_IMG_TYPE_DETECT, 0);
+    if (!image_) {
+        // Retry with explicit RAW type when auto-detection fails
+        image_ = tsk_img_open_sing(imagePath_.c_str(), TSK_IMG_TYPE_RAW, 0);
+    }
+    return image_ != nullptr;
+}
+```
+
+逐块解释（节选骨架，完整实现 `FileExtractor.cpp:26-94`）：DETECT 自动探测失败时的 **RAW 显式重试**是对"无分区表的裸文件系统镜像"（整盘 ext4、raw XFS）的兼容——DETECT 会因为认不出容器格式返回 null，而 RAW 类型告诉 TSK"这就是线性扇区流"，让内层文件系统探测接手。这个两段式与 ImageAnalyzer 的开镜像逻辑同构（镜像侧惯例）。openFileSystem 对**每个分区**独立尝试打开（TSK 失败≠致命，登记进 xfsPartitionOffsets_ 留给 XFS 后备，见第 3 节），但整镜像连一个文件系统都打不开时 initialize 仍返回 true 的情况存在（容错分支只打警告）——提取会在运行期逐文件失败，错误集中出现在 limits->errors。库未初始化的失败信息（"请先跑分析"）是最常见的新手错误入口。
+
 ## 5. 与其他模块的协作
 
 - **DatabaseManager**：记录查询的数据源（组合持有，`FileExtractor.h:107`）；读 files/raw.db 的 files 表（inode/path/size/type/is_deleted/is_allocated/md5/partition_num 列）。
@@ -279,4 +322,56 @@ fs::path temporaryPathFor(const fs::path& finalPath, const FileRecord& record) {
 - 安全回归：构造含 `..` 的文件名记录插入测试库，断言提取被拒——`resolveSafeOutputPath` 的两个拒绝分支（`..` 与 symlink）是必须保持的防线，任何重构不得放松。
 - 扩展方向：(1) 新文件系统支持——优先评估给 TSK 打补丁，其次仿照 XFSHelper 做"偏移登记 + 惰性初始化 + readFileContent 分派"三件套；(2) 增量提取——当前 Reused 判定基于大小一致，可升级为 mtime+size 双因子；(3) 校验增强——提取完成后对比记录 md5（raw.db 有该列）；(4) 孤儿清理——extractRecords 入口扫一遍输出目录删除带 `.tracelens-textdump-tmp-` 前缀的残留。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 方法全清单（含私有）
+
+| 方法 | 定义位置 | 语义 | 调用方 |
+|---|---|---|---|
+| `initialize()` | FileExtractor.cpp:26-56 | 开库+开镜像+开分区 FS | 三条生产路径入口 |
+| `extractByName(pattern, out, overwrite, skipped, limits)` | Extract.cpp:444-487 | 逗号多模式通配（内存过滤） | Orchestrator:612 |
+| `extractByExtension(exts, ...)` | Extract.cpp:489-530 | 扩展名等值（自动补点） | Orchestrator:614 |
+| `extractAll(out, includeDeleted, ...)` | Extract.cpp | 全量/含删除 | Orchestrator:616 |
+| `extractDeleted(...)` | Extract.cpp | 仅已删除 | HTTP 路由 |
+| `extractFileByInode(inode, out, partition=-1)` | Extract.cpp:566-601 | 定点提取（分区消歧首选） | FileExtractionRoutes |
+| `extractFileByPath(path, out)`（override） | Extract.cpp:630-658 | IFileExtractor 接口 | AndroidAnalyzer |
+| `queryRegularFilesOrdered(db, error)`（静态） | Extract.cpp:185-228 | 确定性全量 REG | TextDumpSource |
+| `listRegularFilesOrdered(error)` | Extract.cpp | 同上（实例版，走自身库） | 复用 |
+| `resolveSafeOutputPath(root, imgPath, error)`（静态） | Extract.cpp:257-326 | 路径消毒 | 原子提取/路由 |
+| `extractRecordAtomically(record, root)` | Extract.cpp:328-380 | 三段式原子提取 | TextDumpAdapters.cpp |
+| `extractRecords(files, out, overwrite, skipped, limits)`（私有） | Extract.cpp:382-442 | 批量循环+限额 | 四个 extract* 入口 |
+| `extractFile(record, out, overwrite, skipped)`（虚） | Extract.cpp:660-869 | 单文件读出+落盘 | extractRecords/原子提取 |
+| `validateTemporaryExtraction/atomicReplace/temporaryPathFor`（私有/自由） | Extract.cpp:28-61 等 | 校验/原子换名/临时名 | 原子路径 |
+| `openImage/openFileSystem`（私有） | FileExtractor.cpp:58-170 | 镜像与分区句柄管理 | initialize |
+| `fsForPartition/xfsForPartition`（私有） | :172-218 | 后端路由 | 读路径 |
+| `searchFiles/searchFilesInTable`（私有） | :220-260 | 记录查询（自拼 where） | 各入口 |
+| `readFileContent(inode, buf, size, partition)`（私有） | :329-358 | TSK→XFS 读分派 | extractFile |
+| `matchWildcard(filename, pattern)`（私有） | :298-324 | 回溯式通配 | extractByName |
+| `generateOutputPath(outDir, record)`（私有） | :386-395 | 输出路径（删除文件加 inode 后缀） | extractFile |
+| `createDirectories(path)`（私有） | :360-384 | 递归建目录 | extractFile |
+
+## 9. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| DatabaseManager | 组合下游 | 组合持有（FileExtractor.h:107），files 表 10 列查询 | FileRecord vector |
+| TSK（libtsk） | 下游 | tsk_img_open_sing/tsk_fs_open_img/tsk_fs_file_read | C 句柄、1MB 缓冲 |
+| XFSHelper | 下游 | 惰性构造、readFileContent 回退 | 分区偏移 |
+| IFileExtractor/AndroidAnalyzer | 上游接口 | extractFileByPath override（FileExtractor.h:70-77） | 字节流写文件 |
+| AnalysisOrchestrator.runExtraction | 上游 | 四个 extract* 入口（:612-621） | int 计数返回 |
+| FileExtractionRoutes（HTTP） | 上游 | extractFileByInode/extractDeleted + limits | JSON 结果+limits 计数 |
+| FileExtractorTextDumpSource | 上游 | queryRegularFilesOrdered + extractRecordAtomically | AtomicExtractionResult |
+| CLI overwrite 参数 | — | runExtraction 不透传（Orchestrator:612-617 均用默认 false）；HTTP 路由透传（FileExtractionRoutes.cpp:349-358） | 旗标未接线记录 |
+
+## 10. 配置影响表
+
+本模块不读任何 ConfigManager 键（无 .env 影响）。CLI 侧参数：`--extract-output-dir`（默认 `extracted_files`，CommandLineArgs.h:17）、`--extract-deleted`（仅 extractAll 分支透传）、`--overwrite`（解析但 CLI 未透传——见上表）。限额三参数（max_files/max_total_size/max_file_size）全部由调用方（HTTP 路由/TextDump 旗标）运行期注入，无全局配置。
+
+## 11. 性能与并发细节
+
+- **IO 大头**：镜像随机读（按 inode 的 TSK 读，非顺序）+ 输出顺序写。1MB 缓冲（`:742-795`）把小文件的多次 read 合并；大文件在"按 size 读失败→固定 1MB 直读到 EOF"回退模式下可能多读尾部（`:755-761`）。
+- **内存峰值**：三个 search 入口都是**全量 FileRecord 进内存**（byName/byExtension/all 共用），百 MB 级；TextDump 路径同样全量（queryRegularFilesOrdered 返回整个 vector）后逐条消费——数十万文件的镜像上这是最大的内存项，改造方向是回调式/分批拉取。
+- **无内部并行**：extractRecords 串行循环；TSK 句柄非线程安全，多线程提取需每线程独立 FileExtractor 实例（各自 openImage，镜像可共享只读）。HTTP 的并发提取任务正是这么做的。
+- **锁**：DatabaseManager 只读连接；提取期间 raw.db 无写竞争。原子 rename 依赖同目录保证同文件系统。
+- **Reused 快路径的价值**：断点续跑把已完成文件从"读镜像+写盘"降为一次 stat——TextDump 重跑的耗时主要来自 Markdown 转换而非提取，验证了该设计的收益。
+
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

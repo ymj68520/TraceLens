@@ -116,6 +116,40 @@ enum class PersistenceType {
 | `linux_attack_chains`（:728+） | `chain_id/attack_type/events/timeline/summary/confidence` | 攻击链：events/timeline 是序列化的事件 ID 与时间线 |
 | `linux_timeline_events` / `linux_timeline_gaps` | `timestamp/source_type/event_type/username/ip_address` / 空档区间 | 统一时间线与"无法解释的空档"（空档本身是证据） |
 
+### 4.2 产出表全清单概览与列级抽查（linux_analysis_sql_tables.h，74 张表）
+
+74 张表按证据域聚合（每族含 2-8 张同构表，全部带 parser_name/parser_version 溯源列与 5 个 llm_* 列——**llm_* 由 LLM 服务 ALTER 补列或建表自带**）：
+
+| 族 | 表数 | 代表表与关键列 |
+|---|---|---|
+| 基础日志 | 3 | linux_log_entries（log_file/hostname/process/pid/message，双索引 time/log_file）、linux_journal_entries（realtime_timestamp/boot_id/systemd_unit）、linux_audit_events（44 列全聚合字段） |
+| 账号/认证 | 6 | linux_users（passwd+shadow 合一）、linux_login_records（wtmp/btmp）、linux_ssh_keys、account/ssh security_findings 两张 |
+| 历史与行为 | 4 | linux_shell_history、linux_extended_history（python/mysql/git/kube/AWS 凭证）、browser_* 两张 |
+| 持久化 | 3 | linux_cron_jobs、linux_systemd_services(+timers)、linux_persistence_entries（14 机制） |
+| 容器 | 5 | linux_docker_containers/images、linux_container_logs、container_security_findings |
+| Web/中间件 | 8 | apache_access/error、nginx_access/error、linux_web_error_logs、linux_middleware_logs、linux_modsecurity_logs |
+| 安全 | 9 | setuid/capabilities/selinux_avc/apparmor/firewall_rules + 安全发现类 |
+| 专项日志 | 12 | database/email/vpn/security_product/package 各"logs+findings"两张 + suspicious_packages |
+| 分析层产物 | 8 | tampering_findings、correlated_events、timeline_events/gaps、anomalies、rule_matches、attack_chains |
+| 进度 | 1 | linux_analysis_progress（Phase 级状态，排查空表的入口） |
+
+列级抽查（与第 6 节的坏列问题直接相关，DDL 位置 linux_analysis_sql_tables.h 对应段）：
+
+**linux_tampering_findings（16 列）**：id、tampering_type、severity、description、**log_source**（受影响日志的来源——注意不是 affected_log，见第 6 节）、timestamp_start/timestamp_end、evidence、related_files、parser_name/parser_version、llm_* 5 列。
+
+**linux_web_error_logs（17 列）**：id、timestamp、level、source、client_ip、message、module、pid、file_path、parser_name/parser_version、source_file、raw_record、llm_* 5 列——**没有 error_code 列**。
+
+**linux_middleware_logs（18 列）**：id、timestamp、level、source、logger、message、thread、exception、pid、file_path、parser 双列、source_file、raw_record、llm_* 5 列——**没有 component 列**（近义列是 logger）。
+
+**linux_database_logs（22 列）**：id、timestamp/timestamp_unix、db_type、severity、component、message、source_file、line_number、username、database_name、client_addr、query_text、error_code、parser 双列、llm_* 5 列——**没有 operation 列**。
+
+**linux_email_logs（21 列）**：id、timestamp/timestamp_unix、service_type、severity、component、message_id、message、source_file、line_number、**sender/recipient**、client_addr、relay_host、message_size、status、parser 双列、llm_* 5 列——**没有 from_addr/to_addr/subject**。
+
+**linux_vpn_logs（21 列）**：id、timestamp/timestamp_unix、service_type、severity、message、source_file、line_number、username、**client_addr/virtual_addr/server_addr**、common_name、bytes_sent/bytes_received、parser 双列、llm_* 5 列——**没有 event_type/remote_ip**。
+
+**linux_security_product_logs（17 列）**：id、timestamp/timestamp_unix、tool_type、severity、message、source_file、line_number、event_type（这张表有！）、**target_file**（不是 target）、result、parser 双列、llm_* 5 列。
+
+
 ## 5. 解析机制走读
 
 **链路一：压缩轮转日志（Phase 1，必须最先跑）。** `analyzeCompressedLogs()` 用 `CompressedLogParser` 处理 `auth.log.2.gz` 这类文件。文件名先被拆成"基础名 + 轮转号 + 压缩扩展"，压缩格式按魔数识别，解压到临时文件后复用普通日志解析器入库：
@@ -211,6 +245,30 @@ const std::map<std::string, std::string> RuleEngine::TECHNIQUE_TO_TACTIC = {
 
 `ATTCK_STAGES` 的 11 个战术既是映射表的目标，也是攻击链排序的依据——`buildAttackChains` 按这个顺序把命中串成"Initial Access → Execution → Persistence → …"的链，链上的时间顺序若有倒挂（后面战术的事件反而更早）本身就是疑点。规则命中示例：暴力破解规则标 `T1110`（Credential Access）、可疑 cron 标 `T1053`、异常登录标 `T1078`、sudo 滥用标 `T1548`。结果分别落 linux_rule_matches 和 linux_attack_chains。前面的 `correlateEvents/reconstructTimeline/detectAnomalies`（`LinuxFilesAnalyzerEnhanced.cpp:111-184`）同理都是"查库-推理-落表"的独立引擎。
 
+### 5.1 代码走读：LLM 取数 SQL 与表 schema 的错位（本轮复核的 7 条坏 SELECT）
+
+`linux_analysis_sql_llm.h` 的 15+ 条 pending SELECT 中，**7 条引用了表中不存在的列**（列名与真实 schema 逐一比对核实，真实 DDL 见 4.2 节抽查）：
+
+| SELECT 常量（行号） | 引用的坏列 | 表中真实近义列 |
+|---|---|---|
+| SELECT_TAMPERING_FINDINGS_PENDING_ANALYSIS（:171） | `affected_log` | `log_source` |
+| SELECT_WEB_ERROR_LOGS_PENDING_ANALYSIS（:180） | `error_code` | 无近义（可去 file_path/module） |
+| SELECT_MIDDLEWARE_LOGS_PENDING_ANALYSIS（:183） | `component` | `logger` |
+| SELECT_DATABASE_LOGS_PENDING_ANALYSIS（:204） | `operation` | 无近义（query_text/error_code 可用） |
+| SELECT_EMAIL_LOGS_PENDING_ANALYSIS（:210） | `from_addr`、`to_addr`、`subject` | `sender`、`recipient`、无 subject（message 可用） |
+| SELECT_VPN_LOGS_PENDING_ANALYSIS（:216） | `event_type`、`remote_ip` | 无 event_type、`client_addr` |
+| SELECT_SECURITY_PRODUCT_LOGS_PENDING_ANALYSIS（:225） | `target` | `target_file` |
+
+```cpp
+// linux_analysis_sql_llm.h:171-172（坏列示例）
+inline constexpr const char* SELECT_TAMPERING_FINDINGS_PENDING_ANALYSIS =
+    "SELECT id, tampering_type, severity, description, affected_log, timestamp_start "
+    "FROM linux_tampering_findings WHERE llm_analyzed_at IS NULL ORDER BY severity DESC LIMIT ?;";
+```
+
+后果链：这 7 条常量是 `LinuxLLMAnalysisService_Database.cpp:157-168` 的 getPendingAnalysisSql 分派的**生产路径**——运行时 sqlite3_prepare_v2 因 "no such column" 失败，取数返回空，对应 7 种工件类型（TAMPERING_INDICATOR/ERROR_LOG/MIDDLEWARE_LOG/DATABASE_LOG/EMAIL_LOG/VPN_LOG/SECURITY_PRODUCT_LOG）的 LLM 分析**静默空转**：不报错、不落 llm_* 列、进度表显示无待分析行。对 TAMPERING_INDICATOR 的影响最可惜——那是对分析引擎产出的反取证发现做二次解读的通道（第 6 节）。其余 8 条 SELECT（log/journal/persistence/container/package/ssh/account/findings 类）列名核对无误，正常工作。修复方式：把 7 条 SELECT 的列名改成右列的真实列即可（一处头文件改动，无代码联动）；修复前诊断方法是 `sqlite3 <linux.db> "SELECT COUNT(*) FROM linux_tampering_findings WHERE llm_analyzed_at IS NULL"` 非零但 LLM 侧零处理。
+
+
 ## 6. 与 LLM 的协作
 
 `analyzeWithLLM()` 是主流程最后一步（`LinuxFilesAnalyzerCore.cpp:233-...`），跳过条件与 Windows/Android 一致：`--no-ai` 或无 `LLM_BASE_URL`。`LinuxLLMAnalysisService`（`src/network/HTTPServer/LinuxLLMAnalysisService.h`）是三个平台服务里覆盖类型最多的：25+ 种 ArtifactType，从原始 LOG_ENTRY 到 TAMPERING_INDICATOR、MIDDLEWARE_LOG、ACCOUNT_ANOMALY——也就是说它不只总结"原始记录"，还会对分析引擎产出的异常/篡改发现做二次解读。写回模式同前：5 个 `llm_*` 列原地 UPDATE。另有 `LinuxLLMAnalysisService_SystemAnalyzers.cpp` 存放按工件类型定制的分析器实现。
@@ -229,4 +287,67 @@ const std::map<std::string, std::string> RuleEngine::TECHNIQUE_TO_TACTIC = {
 - 加新证据类型：解析器放 `Parsers/`（输入用 `queryFilesByPattern` 定位 + `getExtractPath`/`extractFileToPath` 提取，复杂格式参考 `JournalParser` 的二进制解析或 `TimestampNormalizer` 的时间规整），落表加到 `linux_analysis_sql_tables.h`，然后在 `analyzeLinuxData()` 挂一个新 Phase；若要参与关联/规则分析，还需在 `LogCorrelationEngine`/`RuleEngine` 里加对应查询。
 - 加新检测规则：`RuleEngine.cpp` 的规则表内联在源码里，追加一条（含 ATT&CK 编号、severity、匹配谓词）即可被 `evaluateAllRules` 和攻击链组装自动使用。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. Phase 全清单（analyzeLinuxData 的 21+ 段）
+
+主流程各段（LinuxFilesAnalyzerCore.cpp:81-216 的调用序，段名→落表族）：
+
+| # | 段 | 落表族 |
+|---|---|---|
+| 1 | analyzeCompressedLogs（必须最先） | linux_log_entries（历史轮转补齐） |
+| 2 | analyzeSystemLogs | linux_log_entries/linux_journal_entries |
+| 3 | analyzeAuditLogs | linux_audit_events |
+| 4 | analyzeUsersAndGroups | linux_users/linux_groups |
+| 5 | analyzeLoginRecords | linux_login_records |
+| 5.5 | LogTamperingDetector | linux_tampering_findings |
+| 6 | analyzeShellHistory | linux_shell_history |
+| 7 | analyzeSSHKeys | linux_ssh_keys |
+| 8 | analyzeCronAndSystemd | linux_cron_jobs/linux_systemd_* |
+| 9 | analyzePersistence | linux_persistence_entries |
+| 10 | analyzeNetworkConfig | 网络配置族 |
+| 11 | analyzeBrowserData | linux_browser_* |
+| 12 | analyzeDockerAndContainers | linux_docker_*/linux_container_* |
+| 13 | analyzeExtendedHistory | linux_extended_history |
+| 14 | analyzeWebServers | apache/nginx 族 |
+| 15 | analyzeSecurityArtifacts | setuid/capabilities/selinux/apparmor |
+| 16 | analyzeSystemArtifacts | 杂项系统工件 |
+| 17-21 | 防火墙/包管理/邮件/VPN/安全产品/中间件/数据库日志等扩展段 | firewall/package/email/vpn/security_product/middleware/database 各族 |
+| 尾 | correlateEvents→reconstructTimeline→detectAnomalies→analyzeWithRuleEngine→analyzeWithLLM | 分析层 8 张表 + llm_* 列 |
+
+每段独立 try/catch + linux_analysis_progress 记账；空表排查顺序：progress 表→审计日志（132 处调用）→路径模式是否命中。
+
+## 10. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| TaskManagerAnalysis.cpp:486-501/509 | 上游 | LINUX/SERVER_CLOUD 场景 | linux.db 或 oss.db 路径 |
+| AnalysisOrchestrator.cpp:312-327 | 上游 | CLI --linux-analyze | files.db 并库 |
+| DatabaseManager(raw.db) | 输入 | queryFilesByPattern 路径定位 | SELECT |
+| FileExtractor/IFileExtractor | 下游 | getExtractPath/extractFileToPath | 临时文件 |
+| linux_analysis_sql_tables.h（74 表） | 输出 | CREATE_ALL_TABLES | DDL |
+| LinuxAnalysisDatabase | 下游 | insert 系列 | 参数化 INSERT |
+| LinuxLLMAnalysisService（25+ 类型） | 下游 | 15+ 条 pending SELECT（**7 条坏列**，5.1 节）+ llm_* UPDATE | JSON prompt |
+| LogCorrelationEngine/TimelineReconstructor/AnomalyDetector/LogTamperingDetector/RuleEngine | 内部分析层 | 读库-推理-落表 | 分析表 |
+| zlib/xz/bzip2/zstd | 下游 | 解压库直调 | 无 popen |
+| AuditLog | 下游 | 132 处（全仓库最多） | 审计条目 |
+| EventExtractor.importLinuxArtifacts | 下游 | 时间线合并（9 类） | INSERT..SELECT |
+
+## 11. 配置影响表
+
+| 参数 | 默认 | 影响 | 备注 |
+|---|---|---|---|
+| `--linux-analyze` / scene=LINUX | false | 触发 | |
+| `--skip-ai` | false | 跳过 LLM 段 | Core 一带检查 |
+| `LLM_BASE_URL` | 192.168.31.170 | 无则 LLM 段跳过 | 门禁 URL |
+| `THREAD_POOL_SIZE` | 4 | **不影响**：各 Phase 串行 | |
+| SERVER_CLOUD 场景 | — | 同类换 oss.db 输出 | 历史命名撞车（第 7 节） |
+| root 权限 | — | 部分工件提取受路径权限影响（经 FileExtractor 走 TSK 则无碍） | |
+
+## 12. 性能与并发细节
+
+- **IO 大头**：Phase 1 解压（zlib 等直调，CPU+IO 双密集，大 .gz 日志秒级每个）与逐工件的镜像提取（TSK 随机读）；21 段串行，总时长≈各段之和。
+- **CPU 大头**：auditd 聚合（全量行进 map 分组）、RuleEngine 规则评估（每规则一次全表扫描）、正则密集的日志解析（CompressedLogParser 的 4 组轮转正则每文件名一次编译——与 FileFilter 同款问题）。
+- **内存**：AuditdAggregator 全量行物化（ParsedLine vector + groups map）——百万行 audit.log 的峰值在数百 MB；JournalParser 按 entry 流式。
+- **并发**：单线程主流程；LLM 段由服务内部并发。linux.db 写入集中在本模块，无跨进程竞争（阶段串行）。
+- **可调参数影响**：无运行期参数；--skip-ai 省掉 LLM 段（25+ 类 × maxArtifacts 条的 HTTP 往返）是最大的时间开关。
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

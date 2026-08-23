@@ -59,6 +59,17 @@ private:
 - **元数据**：信息字典六键（Title/Author/Subject/Keywords/Creator/Producer，第 80-85 行）+ 页数 + 加密标志 + 权限（锁定时记 "Read Locked"）。
 - **明确不覆盖的**：PDF 里的嵌入图片（OCR 不做）、附件文件、注释/批注、JavaScript；时间戳字段当前恒为 0——源码注释直言 PDF 的 `D:YYYYMMDDHHmmSS` 格式解析"留待以后"（第 87-89 行）。做时间线时别指望这里的 creationTime。
 
+### 2.1（补充）PDFMetadata 逐字段与写入条件对照（PDFAnalyzer.cpp:58-97）
+
+| 字段 | 来源 | 写入条件 | 取证备注 |
+|---|---|---|---|
+| title/author/subject/keywords/creator/producer | doc->info_key("...") 六键 | 打开成功且键存在 | 空键返回空串（Poppler 的 optional 语义） |
+| pageCount | doc->pages() | 打开成功 | 加锁文档也可读页数 |
+| permissions | 硬编码 "Read Locked" 一项 | is_locked() 为真 | 无细粒度权限位（打印/复制权限不读） |
+| creationTime/modificationTime | **恒 0** | 从不写 | 源码注释（:86-88）明言 D: 格式解析留待以后 |
+| isEncrypted | doc->is_encrypted() | 打开成功 | 与 is_locked 语义差：加密但可读时 true/false 并存 |
+
+
 ## 5. 解析机制走读
 
 **链路一：逐页文本提取（`extractText`，`PDFAnalyzer.cpp:16-56`）。**
@@ -146,6 +157,35 @@ private:
 
 **链路三：LLM 报告生成（`createLLMReport`，第 161-228 行）。** 汇总前两条链路：先 `extractMetadata`，写报告头与元数据表格（文件名、生成时间、Title/Author/Subject/Keywords/Pages/Encrypted 的 Markdown 表），然后**重新打开文档**逐页写 `### Page N` 加 `cleanText` 后的正文（锁定文档写占位说明 `*Content could not be extracted...*`）。输出是自包含的 Markdown 文件，可直接作为 LLM 的输入文档或人工审阅材料。该方法封装完整但目前无调用方，属"即用型预留能力"。注意它把文档打开两次（一次取元数据、一次取正文，第 167 与 196 行）——全静态设计的代价，大文件场景有优化空间。
 
+### 5.1 代码走读：extractMetadata 的容错与 UTF-8 转换（PDFAnalyzer.cpp:58-97）
+
+```cpp
+    try {
+        std::unique_ptr<poppler::document> doc(poppler::document::load_from_file(pdfPath));
+        if (!doc) return meta;
+
+        meta.isEncrypted = doc->is_encrypted();
+        meta.pageCount = doc->pages();
+
+        auto to_string = [](const std::vector<char>& bytes) -> std::string {
+            if (bytes.empty()) return "";
+            return std::string(bytes.begin(), bytes.end());
+        };
+
+        meta.title = to_string(doc->info_key("Title").to_utf8());
+        // ... Author/Subject/Keywords/Creator/Producer 同构六连
+        if (doc->is_locked()) {
+            meta.permissions.push_back("Read Locked");
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error extracting metadata from PDF " << pdfPath << ": " << e.what() << std::endl;
+    }
+    return meta;
+```
+
+逐块解释：三个层次的容错——空路径早退（全默认结构体）、load 失败返回（同）、异常 catch 后仍返回**已填充部分**（页数/加密标志可能已写）——调用方拿到"部分成功"的结构体而非报错，与 extractText 的空串/占位串语义可对照。六键读取用同一个 `to_string` lambda 抹平 Poppler 的 `vector<char>` 返回（ustring→utf8 的两步转换收口在一处）；键不存在时 info_key 返回空 ustring、to_string 归一空串——六字段无 null/空之分。is_encrypted 在 is_locked 检查**之前**读——意味着加锁文档的元数据六键与页数照样尽力读（多数加密 PDF 的 Info 字典本身不加密），这是"能拿多少拿多少"的取证姿势。整个函数一次开文档，与 createLLMReport 的双开形成对照。
+
+
 ## 6. 与 LLM 的协作
 
 间接协作：`extractText` 的产出经 `FileAnalyzer` 进入 LLM prompt（与 OfficeAnalyzer 同一条降级链）。`createLLMReport` 的设计意图是给 LLM 提供更结构化的输入（元数据+分页正文），但尚未接线。
@@ -164,4 +204,38 @@ private:
 - 手工验证：任选一个 PDF，`extractText` 看分页与段落规整效果，`extractMetadata` 看信息字典（可用 `pdfinfo` 命令交叉核对）。
 - 扩展方向：补 `D:` 时间戳解析（十几行正则的事）；`createLLMReport` 接入流水线（如在 FileClassifier 或报告生成阶段调用）；如需注释/附件，Poppler API 有对应能力（`poppler::annotation` 等），在此模块加方法即可。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 方法全清单（PDFAnalyzer.h:10-54，全静态）
+
+| 方法 | 定义位置 | 语义 | 调用方 |
+|---|---|---|---|
+| `extractText(pdfPath)` | cpp:16-56 | 逐页文本+页分隔+cleanText | FileAnalyzer.cpp:166-170、测试 |
+| `extractMetadata(pdfPath)` | cpp:58-97 | 六键信息字典+页数+加密/锁定 | createLLMReport、测试 |
+| `createLLMReport(pdfPath, outputPath)` | cpp:161-228 | Markdown 报告（元数据表+分页正文） | **无生产调用方**（即用型预留） |
+| 私有 `cleanText(text)` | cpp:102-159 | 空白规整（段落保留） | extractText/createLLMReport |
+
+无实例方法、无成员变量——并发调用安全，无需单例。
+
+## 10. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| FileAnalyzer.cpp:166-170 | 上游 | markitdown 失败后 .pdf 降级 | string |
+| Poppler-cpp | 下游 | document/page API | C++ 库 |
+| MarkitdownProxy | 平行首选 | Python 侧转换 | — |
+| OfficeAnalyzer | 平行同类 | 同一条降级链的 .docx/.doc 分支 | — |
+| test_pdf_analyzer | 消费者 | 三方法+缺文件路径 | GTEST_SKIP 兜底 |
+| 无数据库/无 AuditLog/无配置 | — | 纯函数工具 | — |
+
+## 11. 配置影响表
+
+无任何 env/CLI/ConfigManager 键。唯一环境依赖：系统安装 poppler 与 poppler-cpp（编译期链接，运行期无 PATH 探测——与 antiword 的动态探测不同）。
+
+## 12. 性能与并发细节
+
+- **成本线性于页数**：每页一次 create_page+text+UTF-8 转换；Poppler 的 text() 对复杂字体（多字节 CJK、扫描件的隐形 OCR 层）更贵。百页文档毫秒到秒级。
+- **内存**：整文档文本一次性成串（stringstream 累积）——千页大书的全文本可能几十 MB；cleanText 再复制一份（峰值翻倍）。无页级流式接口。
+- **无锁并发**：全静态无状态，多线程并行分析多个 PDF 安全；Poppler 库本身线程安全（文档级隔离）。
+- **createLLMReport 的双开成本**：文档解析两遍（元数据+正文），大文件可先 extractText 一次复用——接线时的顺手优化。
+- **可调参数影响**：无参数可调；页分隔标记格式（`--- Page N ---`）是输出契约的一部分，改动会影响下游引用习惯。
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

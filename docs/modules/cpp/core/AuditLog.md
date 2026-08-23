@@ -233,6 +233,82 @@ void AuditLog::flushThreadFunc() {
 
 逐块解释：这是"信号处理器只置标志、善后在线程里做"的标准范式落地。`wait_for` 的谓词同时监视停止标志与信号标志，因此最坏等待一个 flush 周期（默认 3 秒）就能响应 Ctrl-C。善后序列是关键：先抢 `write_mutex_` 清空缓冲（保证 SIGKILL 之前的最后一批落库），再 `signal(sig, SIG_DFL)` + `raise(sig)` **以默认语义重新自杀**——进程的退出码、`$?`、shell 的信号报告都与未安装处理器时一致，外层 supervisor（systemd/docker）看到的仍是"被信号杀死"而非"exit 0"。注意此路径只在 `async_write=true` 时存在：**默认同步配置下信号处理器置完标志后没有任何线程消费它**，进程直接按默认语义终止（缓冲为空所以无损），安装处理器只是给异步模式预留。
 
+### 4.4 代码走读：getTaskLogs 的缓存命中分页与"只缓存完整结果"（AuditLog_Queries.cpp:68-105）
+
+```cpp
+std::vector<AuditLogEntry> AuditLog::getTaskLogs(const std::string& task_id,
+                                                 int limit, int offset) {
+    // Try cache first
+    std::vector<AuditLogEntry> cached_results;
+    if (tryGetFromCache(task_id, cached_results)) {
+        // Apply limit/offset to cached results
+        if (limit > 0 && offset < static_cast<int>(cached_results.size())) {
+            auto begin = cached_results.begin() + offset;
+            auto end = (offset + limit < static_cast<int>(cached_results.size()))
+                ? begin + limit : cached_results.end();
+            return std::vector<AuditLogEntry>(begin, end);
+        }
+        return cached_results;
+    }
+
+    // Query database
+    std::string sql =
+        "SELECT id, task_id, timestamp, action, details, user_id "
+        "FROM audit_logs WHERE task_id = ? ORDER BY timestamp DESC";
+
+    auto results = executeQuery(sql, {task_id}, limit, offset);
+
+    // Add to cache
+    if (!results.empty() && limit == 0) {  // Only cache complete results
+        std::lock_guard<std::mutex> lock(cache_mutex_);
+        read_cache_[task_id] = std::list<AuditLogEntry>(results.begin(), results.end());
+        current_cache_size_ = results.size();
+        ...
+```
+
+逐块解释：读路径的第一分叉是缓存。命中时**在内存副本上重放分页**——缓存里存的是该任务的完整倒序列表（limit==0 时才写入），limit/offset 用迭代器区间切出，省掉一次 SQL；注意 `offset >= size` 时（请求越过末尾）条件不成立，返回**整份缓存**而非空页，这是与 SQL `LIMIT n OFFSET m`（越过末尾返回空）的语义差异，分页 UI 若依赖"空=到底了"会在这里误判。未命中走 `executeQuery`：字符串拼接 LIMIT/OFFSET（`:24-30`，int 拼接无注入面）、按位序绑定参数（全部 bind_text，连 timestamp 也以文本绑定——SQLite 亲和性会把数字字面量字符串与 INTEGER 列正确比较，`getLogsByTimeRange` 的 `to_string(start_ms)` 同理）。缓存写入的三个护栏：**非空**（空结果多为任务无日志，缓存它会让后续写入不可见）、**limit==0**（分页请求若入缓存，后续命中会把它当完整列表切片，页 2 的请求会返回错位数据）、淘汰循环按"最早插入的任务"整组逐出（`unordered_map` 的 begin 迭代序无时间语义，"近似 LRU"实为任意序——注释与实现都承认粒度粗）。另一个细节：`current_cache_size_ = results.size()` 是**覆盖赋值而非累加**，多个任务共存时统计会互相冲掉，`getStatistics` 的 cache_size 因此只反映最近一次写入的任务（见第 6 节）。
+
+### 4.5 代码走读：rotate() 的关停-改名-重建（AuditLog_Queries.cpp:259-298）
+
+```cpp
+void AuditLog::rotate() {
+    size_t current_size = getDatabaseSizeMB();
+
+    if (current_size < config_.max_db_size_mb) {
+        return;  // No rotation needed
+    }
+
+    std::cout << "Rotating audit log database (current size: " << current_size << ") MB)" << std::endl;
+
+    // Flush and close
+    flush();
+
+    if (insert_stmt_) {
+        sqlite3_finalize(insert_stmt_);
+        insert_stmt_ = nullptr;
+    }
+
+    if (db_) {
+        sqlite3_close(db_);
+        db_ = nullptr;
+    }
+
+    // Rename old database
+    auto now = std::chrono::system_clock::now();
+    ...
+    std::ostringstream oss;
+    oss << config_.db_path << "."
+        << std::put_time(&tm_now, "%Y%m%d_%H%M%S")
+        << ".backup";
+
+    std::filesystem::rename(config_.db_path, oss.str());
+
+    // Reinitialize
+    initDatabase();
+```
+
+逐块解释：轮转是唯一会把 `db_` 置 null 又重建的路径，顺序至关重要：**flush（缓冲清空）→ finalize 预编译语句 → close 连接 → rename → initDatabase 重开**。任何颠倒都会踩空指针或对已关闭句柄操作。三个已知边界（与第 6 节呼应）：(1) `rename` 只动主库文件，**WAL 的 `-wal`/`-shm` 侧车文件不跟着改名**——WAL 模式下 rename 后新开的库可能读到旧 wal 残留或校验失败，稳妥做法是 rotate 前先 `PRAGMA wal_checkpoint(TRUNCATE)` 或把侧车一并改名；(2) 关停窗口内其他线程的 `log()` 会因为 `db_==null` 走丢弃分支（drop_warning 语义），轮转期间到达的审计**真实丢失**而非缓冲；(3) rename 跨文件系统会抛 `filesystem_error` 且无 catch，冒到调用方。阈值判断用整数 MB（`file_size/(1024*1024)`，`:335-345`），100 MB 阈值意味着实际触发点在 [100, 101) MB——精度问题对轮转无碍，但别拿它做精细容量控制。
+
 ## 5. 与其他模块的协作
 
 - **main.cpp**：唯一初始化点；想改审计行为（异步、批量、轮转阈值）只能改 `.env` 三个键或代码默认值，运行期不可调。影响本模块的 .env 变量：`AUDIT_LOG_DB`（默认 `forensics_audit.db`）、`AUDIT_LOG_CACHE_SIZE`（默认 100）、`AUDIT_LOG_WAL`（默认 true）——`batch_size`/`async_write`/`flush_interval_seconds`/`max_db_size_mb`/`retention_days` 五项**均未接 .env**，只能改 `AuditLogDataTypes.h` 默认值。
@@ -259,4 +335,88 @@ void AuditLog::flushThreadFunc() {
 - 手工验证：跑一次分析任务后 `sqlite3 forensics_audit.db "SELECT action, COUNT(*) FROM audit_logs GROUP BY 1 ORDER BY 2 DESC"`，应看到 DB_INIT、EVENT_EXTRACTION_* 等动作；`kill -INT` 服务进程后再查，最后一批（同步模式下无丢失）应已落库。再验证毫秒时间戳：`SELECT timestamp, created_at, created_at-timestamp AS lag_ms FROM audit_logs ORDER BY id DESC LIMIT 5`，同步模式 lag 应接近 0。
 - 扩展点：(1) 接线 PathManager 审计路径（改 `main.cpp:70` 默认值）；(2) 缓存失效——写入路径成功后对同 task_id 的缓存项打脏标记；(3) 定期维护——在 HTTP 服务里加定时器调 `rotate()+cleanup()`；(4) CSV 转义——把 `exportToFile` 的拼接换成逐字段 escape（可参考 TOONExporter::escapeValue 的思路，`TOONExporter.cpp:21-65`）；(5) 若要开异步/批量，先给 `insertBatch` 补语句级互斥（见第 6 节并发边界）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 产出表列级说明（audit_logs）
+
+本模块唯一的表，DDL 在 `AuditLog.cpp:115-125`（CREATE TABLE）与 `:136-140`（三个索引）：
+
+| 列名 | 类型 | 含义 | 写入条件 |
+|---|---|---|---|
+| `id` | INTEGER PRIMARY KEY AUTOINCREMENT | 行号；AUTOINCREMENT 保证不复用已删除行的号，审计连续性检测（id 应严格递增）依赖这一点 | SQLite 自动赋值；INSERT 语句（`:150-152`）不绑此列 |
+| `task_id` | TEXT NOT NULL | 关联任务/来源标识。生产值有两类风格：HTTP 任务的真实 task_id；CLI/分析器写入的 `"SYSTEM"`/`"ERROR"` 等伪任务 ID（详见第 10 节矩阵） | 每次 log() 必写（bind 1，`:178`） |
+| `timestamp` | INTEGER NOT NULL | 业务时间戳，**毫秒**（entry.timestampToUnixMs()，bind 2，`:179`） | 每次 log() 必写；墙钟可回拨 |
+| `action` | TEXT NOT NULL | 动作名（全大写蛇形，词表见第 10 节）；无外键/枚举约束，getLogsByAction 等值匹配大小写敏感 | 每次 log() 必写（bind 3） |
+| `details` | TEXT（可空） | 自由文本详情，多数调用方拼路径/计数/错误串；无长度限制 | 每次 log() 必写（bind 4；DDL 允许 NULL 但绑定路径恒写非空——空串） |
+| `user_id` | TEXT（可空） | 操作者标识；**全仓库生产调用均不传**（默认空串），多用户能力未启用 | bind 5，恒为 `""` |
+| `created_at` | INTEGER DEFAULT (cast(strftime('%s','now') as integer)*1000) | 落库时刻（SQLite 侧生成，毫秒）；与 timestamp 的差值=写路径滞留（异步模式排查用） | INSERT 不绑此列，走 DDL 默认表达式 |
+
+索引（`AuditLog.cpp:136-140`）：`idx_task_id(audit_logs.task_id)` 服务 getTaskLogs；`idx_timestamp(timestamp)` 服务 getLogsByTimeRange 与 cleanup 的范围删除；`idx_action(action)` 服务 getLogsByAction 与 getStatistics 的 GROUP BY（idx_action 的 GROUP BY 仍需排序，等值查询才是它的主场景）。created_at 无索引；`ORDER BY timestamp DESC` 在命中 task_id 过滤后仍需对每任务行集排序。查询列序固定为 `id, task_id, timestamp, action, details, user_id`（executeQuery 按位序读 0-5，`AuditLog_Queries.cpp:46-51`）——created_at 从不被读回内存结构。
+
+## 9. 方法全清单（含私有）
+
+公开方法（AuditLog.h:41-125）已列 3.4 节，此处补全私有实现面与文件内辅助（AuditLog.h:128-211）：
+
+| 方法 | 定义位置 | 语义要点 | 调用方 |
+|---|---|---|---|
+| `~AuditLog()` | AuditLog.cpp:63-84 | stopFlushThread → finalize/close → 置空全局指针 | 单例进程退出 |
+| `AuditLog(config)`（私有构造） | AuditLog.cpp:48-61 | 存配置、installSignalHandlers、initDatabase 失败仅 stderr | instance() |
+| `initDatabase()` | AuditLog.cpp:87-161 | 建目录/WAL/表/索引/预编译；三级失败语义（表与 stmt 失败=init 失败，WAL 与索引失败=警告继续） | 构造、rotate |
+| `insertBatch(entries)` | AuditLog.cpp:230-277 | 单事务批量 INSERT；全或无 | flushWriteBuffer |
+| `addToWriteBuffer(entry)` | AuditLog.cpp:177-186 | 持写锁入队；同步模式或满 batch 立即 flush | log() |
+| `flushWriteBuffer()` | AuditLog.cpp:189-221 | 约定持锁；swap→解锁→insertBatch→加锁；失败重排队/丢弃 | addToWriteBuffer、flush、flushThreadFunc |
+| `executeQuery(sql, params, limit, offset)` | AuditLog_Queries.cpp:14-65 | 通用 SELECT：拼分页、prepare、逐位 bind_text、step 循环读 6 列 | 三个 get* 与 exportToFile |
+| `tryGetFromCache(task_id, out)` | AuditLog_Queries.cpp:136-144 | 持 cache_mutex_ 查 map，list→vector 拷贝 | getTaskLogs |
+| `addToReadCache(entry)` | **仅有声明（AuditLog.h:170），无定义无调用——死声明**，实际缓存写入内联在 getTaskLogs | — | — |
+| `flushThreadFunc()` | AuditLog.cpp:284-320 | wait_for 谓词=stop‖signal；信号分支 flush 后自杀；常规分支周期 flush | flush_thread_ |
+| `startFlushThread()/stopFlushThread()` | AuditLog.cpp:323-335 | 线程启停；stop 用 notify_all+join | 构造（仅 async）/析构 |
+| `getDatabaseSizeMB()` | AuditLog_Queries.cpp:335-345 | file_size 整除 MB；异常时打 stderr 返 0 | rotate、getStatistics |
+
+另：文件级自由项 `g_audit_log_instance`（单例指针）、`g_signal_received`（sig_atomic_t 标志）与信号处理器/AtExitHandler（AuditLog.cpp:9-45）不属于类，但构成生命周期骨架。
+
+## 10. 关联矩阵（写入方全量盘点）
+
+全仓库 `AuditLog::instance().log(...)` 共 **241 处**、分布在 47 个文件（不含本模块自身与测试）。按模块聚合（数字为调用点数，抽样动作名）：
+
+| 模块 | 文件数 | 调用点 | 代表动作名 | 数据形态 |
+|---|---|---|---|---|
+| LinuxFilesAnalyzer（Core/Parsers/Analysis） | 17 | 132 | LINUX_ANALYSIS_START、SETUID_ANALYSIS_*(SetuidAnalyzer.cpp)、NGINX_PARSE_*、DOCKER_CONTAINER_* | details 多为"路径+计数" |
+| WindowsFilesAnalyzer | 6 | 43 | WINDOWS_ANALYSIS_*、AMCACHE_PARSE_*、EVENTLOG_*、JUMPLIST_* | 同上 |
+| AndroidAnalyzer | 4 | 19 | ANDROID_INIT/ANALYSIS_*/LLM_*、ANDROID_SOURCE_PROMOTED（AndroidAnalyzerCore.cpp:70） | 路径+跳过原因 |
+| DatabaseManager（含 EventExtractor） | 5 | 12 | DB_INIT（DatabaseManager.cpp:23,49）、EVENT_EXTRACTION_START/COMPLETE、SYSTEM_EVENT_* | 阶段起止+计数 |
+| EventCorrelationEngine | 3 | 8 | CORRELATION_*、CHAIN_BUILD_* | 链计数 |
+| FileClassifier/FileExtractor/FileFilter | 3 | 10 | CLASSIFICATION_*、EXTRACTOR_*、FILE_FILTER | 计数为主 |
+| ImageAnalyzer/DecryptionModule | 2 | 9+ | LUKS_UNLOCK_*、BITLOCKER_*、VERACRYPT_*（DecryptionModule.cpp:345,443,557,622）——**最敏感的操作留痕** | 设备路径+成败 |
+| DLLAnalyzer/OSSAnalyzer | 2 | 4 | DLL_DB_INIT、OSS_* | 库路径 |
+| main.cpp / TaskManager | 2 | 4 | 进程启动、任务审计闸门（TaskManager.cpp:511-516） | 任务 id |
+
+读取方仅两条：TaskManager::get_audit_logs → getTaskLogs（HTTP `GET /api/tasks/<id>/logs` 类路由）；getStatistics/exportToFile/cleanup/rotate/getLogsByTimeRange/getLogsByAction 六个读/维护接口**零生产调用方**（合规导出与运维需要自行接线或写脚本直查库）。
+
+动作词表没有代码级注册表——227 个去重动作名全部来自调用点字符串（前缀即模块名：ANDROID_/WINDOWS_/LINUX_ + 生命周期段 INIT→ANALYSIS_START→…→COMPLETE/FAILED，LLM 段另有 LLM_ANALYSIS_* 与 LLM_SKIPPED 三态）。出现频次最高的是 *_LLM_SKIPPED（各平台 3 处，分别对应 --no-ai、LLM 配置缺失、上下文为空三种跳过原因）。查词表用 `sqlite3 forensics_audit.db "SELECT DISTINCT action FROM audit_logs"`。
+
+## 11. 配置影响表
+
+| 参数 | 默认值 | 来源 | 影响 | 未接线标注 |
+|---|---|---|---|---|
+| `AUDIT_LOG_DB` | `forensics_audit.db`（main.cpp:70） | .env | 库路径；相对 CWD。PathManager 的 `data/audit/` 方案未接线（第 6 节） | |
+| `AUDIT_LOG_CACHE_SIZE` | `100`（main.cpp:71） | .env | 读缓存条目上限；只影响 getTaskLogs(limit=0) 的缓存写入 | |
+| `AUDIT_LOG_WAL` | `true`（main.cpp:72） | .env | WAL 开关；关闭则退回 journal 删除模式（写阻塞读） | |
+| `batch_size` | 1 | 仅代码默认（AuditLogDataTypes.h:52） | 缓冲落库阈值 | **未接 .env** |
+| `flush_interval_seconds` | 3 | 仅代码默认（:53） | 异步线程周期=最大丢失窗口 | **未接 .env** |
+| `async_write` | false | 仅代码默认（:54） | 后台刷盘开关；默认同步 | **未接 .env** |
+| `max_db_size_mb` | 100 | 仅代码默认（:55） | rotate 阈值；rotate 无自动调用方 | **未接 .env 且无调度** |
+| `retention_days` | 30 | 仅代码默认（:56） | cleanup 保留期；cleanup 无自动调用方 | **未接 .env 且无调度** |
+| `enable_wal` | true | 由 AUDIT_LOG_WAL 注入 | 与 AUDIT_LOG_WAL 同一开关的两个名字（config 字段 vs env 键） | |
+| （无键）`DB_BUSY_TIMEOUT_MS` | — | — | **不影响本模块**：AuditLog 不设 busy_timeout，锁冲突直接失败走重排队 | |
+
+## 12. 性能与并发细节
+
+- **同步路径成本**（默认配置）：每条 log() = 一次 mutex + 一次事务（BEGIN/INSERT/COMMIT）。WAL+synchronous=NORMAL 下 COMMIT 只追加 WAL 帧，无主库 fsync；事务三语句的 SQLite 虚拟机开销是主要 CPU 成本。241 个调用点在长任务下每阶段几十条，量级完全可承受；真正的高频场景（每文件一条）不存在——调用粒度是"阶段/解析器"，不是"文件"。
+- **锁拓扑**：三把锁各管一段——`write_mutex_`（缓冲+flush 的约定持锁与解锁窗口）、`cache_mutex_`（读缓存 map/list）、`flush_mtx_`+`flush_cv_`（仅异步线程的等待）。读写之间无共享锁；`getStatistics` 跨抓 write_mutex_ 读 pending_writes（`AuditLog_Queries.cpp:212`）与不加锁读 current_cache_size_（`:208`）。
+- **并发窗口的真实风险**：flushWriteBuffer 解锁窗口内，线程 A 的 insertBatch 与线程 B 再次进入 flushWriteBuffer 并 insertBatch 并发——共享 `insert_stmt_` 数据竞争（第 6 节已述）；此外并发事务在 SQLite 默认 DEFERRED 开始下可能同时升级写锁，一方 SQLITE_BUSY → insertBatch false → 重排队（这属于可自愈路径）。
+- **内存特征**：`write_buffer_` 正常瞬时为空（同步模式下条条即刷）；异常重排队时无上限（仅句柄可用时的暂时性失败路径）；读缓存上限=cache_size 条 entry（每条几个 string，KB 级），淘汰粒度为整任务。
+- **可调参数影响**：batch_size=50 + async_write=true 可把事务开销摊薄 50 倍并移出调用线程，代价=崩溃丢最多 flush_interval 秒 + 上述 stmt 竞争概率上升；cache_size 调大减少热门任务回库次数，但写入侧永不失效缓存（第 6 节），调大反而延长陈旧窗口。
+- **IO 特征**：审计库独立于取证库（不与 raw/files/events 争同一文件的锁）；WAL 侧车随写增长，checkpoint 由 SQLite 自动（默认 1000 页）；VACUUM（cleanup 内）需要约等于库大小的临时空间且独占写锁。
+
+
+
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

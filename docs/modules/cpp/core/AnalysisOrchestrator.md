@@ -203,10 +203,191 @@ runAnalysis(TSK 镜像主路径):
 - TextDump 的 `--dump-text-max-bytes` 是软限额（到量即停，`:429-434` 的输出区分 Completed 与截断）。
 - **失败分档不一致**：分类失败 return 1（`:271-274`）、时间线失败仅静默跳过（`:332` 的 if 无 else）——同为"核心产物"，退出码语义却不同；写自动化脚本前先核对这份清单。
 
-## 7. 如何验证与扩展
+### 4.5 代码走读：runExtraction 的库→镜像反推（AnalysisOrchestrator.cpp:570-602）
+
+```cpp
+    std::string dbPath = args.database_path;
+    if (dbPath.ends_with("_raw.db")) {
+        dbPath = dbPath.substr(0, dbPath.length() - 7) + "_files.db";
+        std::cout << "Using: " << dbPath << std::endl;
+    }
+
+    if (!fs::exists(dbPath)) {
+        std::cerr << "Error: Database not found: " << dbPath << std::endl;
+        return 1;
+    }
+
+    std::string imagePath;
+    std::string dbName = fs::path(dbPath).stem().string();
+    if (dbName.ends_with("_files")) dbName = dbName.substr(0, dbName.length() - 6);
+    else if (dbName.ends_with("_events")) dbName = dbName.substr(0, dbName.length() - 7);
+    else if (dbName.ends_with("_raw")) dbName = dbName.substr(0, dbName.length() - 4);
+
+    for (const auto& ext : {".dd", ".DD", ".001", ".e01", ".E01", ".raw", ".RAW"}) {
+        if (fs::exists(dbName + ext)) {
+            imagePath = dbName + ext;
+            break;
+        }
+    }
+
+    if (imagePath.empty()) {
+        std::cerr << "Error: Cannot find image file" << std::endl;
+        return 1;
+    }
+```
+
+逐块解释：这是整条 CLI 里唯一的"逆向命名约定"——主流水线是镜像名派生库名，这里是库名反推镜像名。第一段把 `_raw.db` 改写成 `_files.db`：FileExtractor 要的是分类后的清单（含 mtime/分类/哈希等列），raw.db 的 files 表不足以驱动 extractAll 的展示输出，因此**宁可改写也不拒绝**，并在 stdout 打 `Using:` 提示改写结果。第二段剥掉三种阶段后缀得到 baseName，再对固定 7 个扩展名（大小写成对出现 `.dd/.DD`、`.e01/.E01`、`.raw/.RAW`，外加 `.001`）逐一 exists 探测。两个边界：`.E01` 只覆盖首字母大写，`image.E01`/`image.Ex01` 等混合大小写会漏；`--db-dir` 前缀路径下的库探测的是**当前工作目录**的镜像（dbName 不带 prefix），库与镜像不同目录时必须显式传库同目录运行。镜像找不到直接 return 1——提取没有"降级"档位，因为没有镜像就无事可做。注意 `extract_deleted` 只在 `extract_all` 分支透传给 `extractAll(..., args.extract_deleted)`（`:617`），按名/按扩展名提取永远不碰已删除文件。
+
+### 4.6 代码走读：runFullTextSearch 的索引循环与退出码（AnalysisOrchestrator.cpp:635-667）
+
+```cpp
+    std::string indexDbPath = "search_index_xapian";
+    if (!args.db_dir.empty()) {
+        fs::create_directories(args.db_dir);
+        indexDbPath = args.db_dir + "/" + indexDbPath;
+    }
+
+    if (!args.index_path.empty()) {
+        ...
+        try {
+            forensics::XapianIndexer indexer(indexDbPath);
+            int count = 0;
+            for (const auto& entry : fs::recursive_directory_iterator(args.index_path)) {
+                if (entry.is_regular_file()) {
+                    std::string content = forensics::TextExtractor::extract(entry.path().string());
+                    if (!content.empty()) {
+                        indexer.addDocument(entry.path().string(), content);
+                        if (++count % 100 == 0) std::cout << "Indexed " << count << " files..." << std::endl;
+                    }
+                }
+            }
+            indexer.commit();
+```
+
+逐块解释：索引目录名是硬编码的 `search_index_xapian`（相对 CWD，除非 `--db-dir` 给前缀）——注意这里拼的是 `dir + "/" + name`（与主流水线 `getDatabaseDir` 的"去尾斜线再加"不同风格，双重斜线在此路径无害）。`--index` 与 `--search` 可以同命令连用：索引完成后接着查询（`:670-685`），两个 try 块独立，索引失败不影响查询已存在的旧索引。循环三特征：(1) `recursive_directory_iterator` 默认**跟随目录符号链接与否——不跟随**，但会抛 filesystem_error（权限/断链），被外层 try 捕获后整个索引中止返回 1；(2) TextExtractor 返回空串的文件静默跳过（二进制/抽取失败统一视为无文本）；(3) 进度每 100 个文件打一行。`commit()` 只在**全部文件处理完后调用一次**——中途 Ctrl-C 会丢掉整批未提交文档（Xapian 的事务语义），大目录务必跑完。
+
+### 4.7 代码走读：readPasswordFromDescriptor 的 fd 密码读取（AnalysisOrchestrator.cpp:109-129）
+
+```cpp
+bool readPasswordFromDescriptor(int descriptor, std::string& password) {
+    password.clear();
+    std::array<char, 256> buffer{};
+    while (password.size() < 4096) {
+        const ssize_t count = ::read(descriptor, buffer.data(), buffer.size());
+        if (count < 0) return false;
+        if (count == 0) break;
+        password.append(buffer.data(), static_cast<size_t>(count));
+        const size_t newline = password.find('\n');
+        if (newline != std::string::npos) {
+            password.resize(newline);
+            break;
+        }
+    }
+    if (!password.empty() && password.back() == '\r') password.pop_back();
+    return !password.empty() && password.size() <= 4096;
+}
+```
+
+逐块解释：`--backup-password-fd` 的落地实现，供脚本用管道/临时文件传密而不进 argv。三个护栏：**4 KiB 上限**（`password.size() < 4096` 是循环条件，超限退出后靠末行 `size() <= 4096` 判假返回 false——注意 4096 字节恰好读满而 EOF 未到时会漏判一次循环，但最终判定仍会拒绝）；**遇到首个换行即截断**（管道写端 `printf 'pass\n'` 的惯用形态），CRLF 再剥 `\r`；**EOF（count==0）或读错误（count<0）终止**，空串直接判失败。与 readPasswordFromStdin 的差异：fd 版**不做回显控制也不打提示**（假设写端已处理），且不覆盖 argv 传入值之外的场景——覆盖逻辑在调用侧 `:496-508`（backup_password_stdin 或 fd>=0 时安全输入赢，警告后覆盖）。Windows 分支用 `_read`（`:114`），fd 语义来自 CRT 而非 Win32 句柄。
+
+## 7.1 产物数据库总览（本模块视角）
+
+Orchestrator 自身不执行任何 SQL，但由它决定"哪个库在什么条件下诞生、由谁写入"。产物清单（列定义见 docs/schema/ 各库专文，此处只记写入条件）：
+
+| 产物 | 生成条件 | 实际写入者 | 主要内容 |
+|---|---|---|---|
+| `<base>_raw.db` | 主流水线（必产） | ImageAnalyzer→DatabaseManager | `files` 表全量文件清单（raw.db 的 files 列见 docs/schema/RawDB.md；注意 `llm_*` 5 列为死列，见 DatabaseManager.md 第 9 节） |
+| `<base>_filtered.db` | 过滤 included_files>0（`:234`） | FileFilter（复制 raw.db 后 DELETE 不匹配行） | 同 raw.db 结构的子集 |
+| `<base>_files.db` | 主流水线（必产）；Android 逻辑模式（`:485`） | FileClassifier 建 24 表；平台 Analyzer 追加工件表 | 分类清单+场景工件（docs/schema/FilesDB.md） |
+| `<base>_events.db` | 主流水线（必产） | EventExtractor；平台工件 import 自 files.db | `events` 时间线（docs/schema/EventsDB.md） |
+| `<base>_dll.db` | `--analyze-dlls`（`:346`）或 `--analyze-dlls-only`（`:721`） | dll::DLLAnalyzer | DLL 清单/签名/异常 |
+| `<base>_memory.db` | `--memory-analyze`（`:543`） | MemoryAnalyzer | 进程/网络/命令行（docs/schema/MemoryDB.md） |
+| `<base>_report.md` | `--generate-report`（`:381`） | ReportGenerator | Markdown 报告 |
+| `search_index_xapian/` | `--index <dir>`（`:635`） | XapianIndexer | Xapian 倒排索引（非 SQLite） |
+| `<base>_extracted_files/` + `_extracted_text/` | `--dump-text`（`:408-411`） | FileExtractorTextDumpSource + MarkitdownTextDumpConverter | 原件目录树 + Markdown 镜像 |
+
+不产 raw/events 的两条路径（Android 逻辑 `:469-472`、内存 `:535-537`）在横幅输出里显式标注 `no TSK / no _raw.db`——这是判断产物集合的最快信号。
+
+## 7.2 方法与辅助函数全清单
+
+公开静态方法（AnalysisOrchestrator.h:15-43，均为 static，无实例状态）已列于 3.1 节；此处补齐**文件内全部可调用单元**，含匿名命名空间与实现细节：
+
+| 函数 | 位置 | 语义要点 | 调用方 |
+|---|---|---|---|
+| `runAnalysis` | cpp:149-466 | 主流水线；唯一会写 raw/filtered/files/events 的路径 | main.cpp 默认分支 |
+| `runAndroidLogicalAnalysis`（私有） | cpp:468-532 | dir/zip/miui-backup 三模式；密码三通道（argv/stdin/fd） | runAnalysis `:173` |
+| `runMemoryAnalysis` | cpp:534-565 | MemoryAnalyzer+Volatility3；可设 `--vol-symbols-dir` | runAnalysis `:180` |
+| `runExtraction` | cpp:567-632 | 提取子命令；库→镜像反推；三种提取模式互斥解析 | main.cpp |
+| `runFullTextSearch` | cpp:634-688 | 索引+查询两段独立 try | main.cpp |
+| `runFileCarving` | cpp:690-701 | FileCarver.carve；**不 catch 异常**（carve 内部吞掉） | main.cpp |
+| `runHTTPServer` | cpp:703-708 | asio io_context + HTTPServer.run(port)；阻塞至服务退出 | main.cpp |
+| `runDLLAnalysis` | cpp:710-752 | 独立 DLL 库分析；输出四行统计（含 signed/unsigned） | main.cpp |
+| `getBaseName`（私有） | cpp:133-135 | `fs::path::stem()`——只去**最后一个**扩展名，`disk.img.raw`→`disk.img` | 各 run* |
+| `getDatabaseDir`（私有） | cpp:137-147 | 归一化 `--db-dir`：剥尾部连续 `/` 再补一个，注释说明双斜线会破坏 Python 侧路径归一化 | runAnalysis/runAndroidLogical/runMemory/runDLL |
+| `readPasswordFromStdin`（匿名 ns） | cpp:39-107 | termios/SetConsoleMode 双平台关回显；空串/读失败返回 false | runAnalysis `:189`、runAndroidLogical `:503` |
+| `readPasswordFromDescriptor`（匿名 ns） | cpp:109-129 | fd 读密码；4 KiB 上限、首个 `\n` 截断 | runAndroidLogical `:502` |
+
+`runFileCarving` 是唯一没有 try/catch 的子命令——FileCarver 内部以返回值表达失败，异常路径若真抛出会一路冒到 main 的顶层（main.cpp 无 catch），进程非零退出。
+
+## 7.3 关联矩阵（完整调用方/被调方）
+
+| 对端模块 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| main.cpp/CommandLineParser | 上游 | `run*(CommandLineArgs)`（main.cpp:102-123） | 结构体值传递；Orchestrator 不回写 |
+| ImageAnalyzer | 下游 | `analyze()/extractToDatabase()` + setXFSMode/setEnableDecryption/setKeyFileDir/setDecryptPassword（`:207-218`） | raw.db 路径字符串 |
+| FileFilter | 下游 | `applyFilterByName(raw, filtered, profile)`（`:232`） | FilterStats{total_files, included_files} |
+| FileClassifier | 下游 | `setSceneType/classifyAndExtract`（`:249-273`） | effectiveRawDb→fileDbPath |
+| AndroidAnalyzer | 下游 | 构造(image, dbMgr) / setSourceMode / setBackupPassword / setWeChatPassword / setOutputDatabasePath / initialize / analyzeAndroidData（`:282-291, 488-523`） | dbMgr 裸指针或 nullptr（逻辑模式） |
+| WindowsFilesAnalyzer | 下游 | 同上模式 + `setSkipAI`（`:301-308`） | dbMgr 裸指针 |
+| LinuxFilesAnalyzer | 下游 | 同上模式 + `setSkipAI`（`:318-325`） | dbMgr 裸指针 |
+| EventExtractor | 下游 | `extractEvents()` + `import{Android,Windows,Linux}Artifacts(files.db)`（`:331-339`） | bool 返回；import 静默失败 |
+| dll::DLLAnalyzer + WindowsAnalysisDatabase | 下游 | `enableAnomalyDetection/enableSignatureVerification/setWindowsDatabase/analyze/getStats`（`:347-374`） | Windows DB 只读、先于 DLL DB 释放（`:376` 注释） |
+| MemoryAnalyzer | 下游 | `setOutputDatabasePath/setSymbolDir/initialize/analyzeMemoryData`（`:546-556`） | memDb 路径 |
+| ReportGenerator | 下游 | 构造(files, events) + `writeMarkdown`（`:384-389`） | bool；失败仅警告 |
+| TextDumpExporter + 两个适配器 | 下游 | `run({origRoot, mdRoot, maxBytes})`（`:417-418`） | TextDumpResult（9 个计数字段+stop_reason） |
+| XapianIndexer/XapianSearcher/TextExtractor | 下游 | addDocument/commit/search（`:651-663, 675-676`） | 索引目录路径 |
+| FileExtractor | 下游 | extractByName/ByExtension/All（`:605-621`） | int 计数 |
+| FileCarver | 下游 | `carve(image, outDir)`（`:698`） | int 恢复数 |
+| HTTPServer（Crow/asio） | 下游 | `server.run(port)`（`:705-706`） | 端口 int |
+| MarkitdownProxy 单例 | 下游 | `MarkitdownProxy::instance()` 包进转换器（`:414-415`） | 本模块唯一触碰的单例 |
+
+## 7.4 旗标与环境影响表
+
+直接消费的 CLI 旗标（默认值见 CommandLineParser.h:11-62）：
+
+| 旗标/参数 | 默认 | 影响点 | 备注 |
+|---|---|---|---|
+| `--db-dir` | 空（CWD） | 全部产物前缀（`:137-147`） | 尾斜线归一化 |
+| `--filter-profile` | `general_forensics`（`:224-225`） | FileFilter 画像名 | 画像不存在→降级 raw |
+| `--xfs-mode` | Auto | ImageAnalyzer.setXFSMode | |
+| `--decrypt/--key-dir/--key-password(-stdin)` | 关 | 解密选项注入（`:209-213`） | stdin 优先于 argv（`:184-189`） |
+| `--android-analyze/--android-source` | false/"tsk" | 分流判断（`:170-173`）与平台段（`:276-293`） | source∈{dir,zip,miui-backup} 触发分流 |
+| `--windows-analyze/--linux-analyze` | false | 平台段+时间线 import+DLL 关联（`:295-327, 336-339, 355`） | 多平台可同时开 |
+| `--memory-analyze/--vol-symbols-dir` | false/空 | 内存分流（`:179-181, 548-550`） | 独占式：有它就不走 TSK |
+| `--analyze-dlls(-only)/--dll-db/--no-verify-signatures` | false/.../验证开 | DLL 段（`:344-377, 710-752`） | `analyze_dlls_only` 隐含 analyze_dlls（解析器 :255-257） |
+| `--skip-ai` | false | 平台 Analyzer 的 setSkipAI（`:304, 321`） | 仅 Windows/Linux 段；Android 段不透传 |
+| `--wechat-password/--backup-password(-stdin/-fd)` | 空/…/−1 | Android 逻辑模式密码（`:283-285, 495-514`） | fd 优先于 stdin（`:501-503`） |
+| `--generate-report/--report-path` | false/自动 | 报告段（`:380-391`） | |
+| `--dump-text/--dump-text-max-bytes` | false/无限 | 文本导出段（`:404-455`） | 软限额 |
+| `--dll-threshold` | 30 | **未接线**：解析进 args（CommandLineParser.cpp:260-261）但 DLLAnalyzer 从不读取 | |
+| `--overwrite` | false | **CLI 未接线**：runExtraction 不透传（HTTP 侧 FileExtractionRoutes.cpp:349-358 另有自己的 overwrite） | |
+| `--index/--search/--carve/--extract-*` | — | 子命令互斥性由 main 路由决定 | |
+
+环境变量（间接，经被调模块）：`PYTHON_SERVICE_URL`（默认 `http://localhost:8090`，`--dump-text` 的 markitdown 依赖，服务不可用不置失败 `:448-452`）；`LOG_MAX_DISPLAY_FILES`（ImageAnalyzer 输出量）；`DB_JOURNAL_MODE/DB_BUSY_TIMEOUT_MS`（各 DatabaseManager 连接）；`THREAD_POOL_SIZE`（TaskManager/FileAnalyzer，CLI 路径基本单线程）。Orchestrator 自身不 getenv。
+
+## 7.5 性能与并发特征
+
+- **单线程编排**：runAnalysis 全程在 main 线程顺序执行，无自有线程池；并行只发生在被调模块内部（ImageAnalyzer 的 TSK 遍历、平台 Analyzer 的 ThreadPool）。因此阶段间是串行墙——总耗时≈各阶段之和，`--analyze-dlls`/`--dump-text` 这类可选段直接线性叠加。
+- **IO 大头**三处：ImageAnalyzer 读镜像+写 raw.db；FileFilter **整库复制** raw.db（大镜像下 filtered.db 与 raw.db 同量级，磁盘占用双倍）；`--dump-text` 逐文件抽原件再过 HTTP 转 Markdown（受 python_service 吞吐限制，`originals_reused` 缓存可让重跑近乎跳过提取，`:422-423`）。
+- **锁与生命周期**：每个阶段用 unique_ptr 圈定资源边界，阶段结束即析构关库——`classifier.reset()`（`:273`）是显式提前释放；DLL 段的 windowsDb 注释（`:376`）强调声明序保证 Windows DB 先于 DLL DB 关闭。同一时刻至多一个模块持有 files.db 写连接。
+- **内存特征**：镜像内容不驻留（全部流式/按需读）；峰值内存取决于单阶段（分类的哈希计算、TextExtractor 的整文件读入——见 FullTextSearch.md）；TextDump 的 `--dump-text-max-bytes` 同时是磁盘与网络预算。
+- **可调参数影响**：`--filter-profile` 选激进画像可把下游（分类/平台/时间线）输入砍到 10% 以下，是最大的性能杠杆；`--db-dir` 指向高速盘可缩短库写；`--no-verify-signatures` 可省 DLL 段的签名验证开销。
+
+## 8. 如何验证与扩展
 
 - 测试：`tests/UnitTest/test_command_line_parser.cpp` 覆盖旗标解析；编排本身的端到端验证靠 `tests/` 下的镜像样本（如 `tests/ubuntu_real.img`、仓库根 `test_image.img`）跑 `./forensic_analyzer <image> --linux-analyze` 后检查 `<base>_*.db` 三件套与报告。
 - 冒烟清单：跑一次全旗标命令，用 `sqlite3` 打开三个库确认表存在（files 24 分表见 FileClassifier.md）；`--dump-text` 需先 `./scripts/start_python_service.sh`。
+- **死代码：不可达的二次存在性检查**：`:162-165` 的 `if (!fs::exists(args.image_path)) return 1` 永不可达——前面的 `:151-160` 已把"路径空"与"文件不存在"两种情况全部 return 1；`:150` 的 `reportOnly` 变量只被 `:152` 的 `!reportOnly` 引用，而其定义要求"路径非空且存在"，与外层条件互斥，恒为无效守卫（疑似历史"report-only 模式"残留）。阅读时直接忽略这两段。
 - 扩展新的分析阶段：(1) 在 `runAnalysis` 找到依赖锚点（需要 files.db 就排在分类后，需要 events.db 排在时间线后）；(2) 构造 Analyzer、setOutputDatabasePath 指向既有库或新 `<base>_x.db`；(3) 失败策略遵循"可选步骤警告继续"；若该阶段也应出现在 HTTP 形态，需同步改 TaskManagerAnalysis.cpp——两处编排目前是手工保持等价的，这是最大的维护风险点。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

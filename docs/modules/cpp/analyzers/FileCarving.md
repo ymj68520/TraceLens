@@ -131,6 +131,23 @@ MP4 案例解释了 `headerOffset` 的用途：匹配到 `ftyp` 时它在文件�
 
 这张表让"恢复出的证据"可以像其他工件一样被 SQL 查询（按类型、按验证状态、按偏移排序），而不是散在目录里只能靠文件名——但如第 3 节所述，当前生产入口都没接 `setDatabasePath`。
 
+### 4.2 产出表列级说明（carved_files 全 9 列，FileCarver.cpp:574-586）
+
+| 列 | 类型 | 含义 | 写入条件 |
+|---|---|---|---|
+| `id` | INTEGER PK 自增 | 行号 | 自动 |
+| `path` | TEXT NOT NULL | 恢复文件落盘路径（含 carved_<偏移> 命名） | 每次成功雕刻后 logToDatabase |
+| `signature_name` | TEXT | 命中的签名（"JPEG Image" 等） | 同上 |
+| `extension` | TEXT | 判定扩展名 | 同上 |
+| `source_offset` | INTEGER | 镜像绝对字节偏移 | 同上；与文件名一致 |
+| `size` | INTEGER | 实际恢复字节数 | 同上 |
+| `validated` | INTEGER | 0/1（未验证与验证失败同为 0） | 同上 |
+| `validation_message` | TEXT | 验证信息（"No content validator..." 等） | 同上 |
+| `carved_at` | DATETIME DEFAULT CURRENT_TIMESTAMP | 落库时刻 | DDL 默认 |
+
+写入路径是**每次一条独立连接**：initDatabaseTable 建表后即 close，logToDatabase 每条重开库插入再关（`:599-630` 一带）——无事务批插、无 PRAGMA，大恢复量时逐条 open/close 是明显可优化点，但当前生产入口不接库（第 3/7 节），量级为零。
+
+
 ## 5. 解析机制走读
 
 **链路一：整体扫描流程（`carve`，`FileCarver.cpp:481-563`）。** 打开镜像后先尝试在 `partitionOffset`（默认 0）处直接开文件系统；成功就对这一个文件系统雕刻。失败且偏移为 0 时，按"分区磁盘镜像"处理：
@@ -217,6 +234,62 @@ bool FileCarver::validateCarvedFile(const std::string& filepath, const CarvingSi
 
 按扩展名分派到四个具体验证器（JPEG 查头尾魔数齐全、PNG/PDF/ZIP 查头部正确，`validateJPEG` 等在第 642 行起）。其余 25 种类型统一返回 "No content validator"——验证结果不影响文件保存（都保留），只影响 `validated` 字段与统计里的 valid/invalid 计数——把"判断真伪"留给调查者，工具只负责给线索排序。注意"未验证"与"验证失败"在 `validated=0` 上不可区分，要看 `validation_message` 才知道是哪种。
 
+### 5.1 代码走读：重叠抑制的区间判定（FileCarver.cpp:286-297, 342-346, 415）
+
+```cpp
+static bool isRegionCarved(const std::vector<std::pair<uint64_t, uint64_t>>& regions,
+                           uint64_t start, uint64_t end) {
+    for (const auto& region : regions) {
+        // Check for overlap
+        if (start < region.second && end > region.first) {
+            return true;
+        }
+    }
+    return false;
+}
+// 命中处（:342-346）：
+if (isRegionCarved(*ctx->carvedRegions,
+                   fsBase + startByteAddr,
+                   fsBase + startByteAddr + sig.maxSize)) {
+    continue;
+}
+// 成功雕刻后（:415）：
+ctx->carvedRegions->push_back({imageStartByte, imageStartByte + currentSize});
+```
+
+逐块解释：区间相交的标准半开判定（`start < region.second && end > region.first`），四个严格/非严格方向都正确处理了相邻与包含。抑制的语义有两层：(1) **同签名去重**——一个文件头只会命中一次，但同一数据区被另一个签名（如 RIFF 家族的 WAV/AVI/WebP）先命中后，后到的签名整段被跳过——先注册先得的顺序因此影响产物归属；(2) **预登记用 maxSize 而非实际大小**——命中检查在读取之前发生，此时只能按签名上限预判重叠，这会**过度抑制**：一个 3MB JPEG 落在某 500MB 上限签名的预登记区间内时会被跳过，即使那个大文件最终没雕成。区间表线性扫（O(n²) 总成本），恢复数上万时逐次扫描变慢——量级所限可接受。表在每次 carve() 开头 clear（`:484`），跨分区共享（绝对坐标，第 4 节已述）。
+
+### 5.2 代码走读：分块读取与尾部搜索（FileCarver.cpp:355-398）
+
+```cpp
+    // 从 startByteAddr 读出文件内容（骨架）
+    uint64_t maxRead = std::min<uint64_t>(sig.maxSize, fsEndByte - startByteAddr);
+    std::ofstream out(filename, std::ios::binary);
+    uint8_t buf[4096];
+    uint64_t totalRead = 0;
+    while (totalRead < maxRead) {
+        size_t toRead = std::min<uint64_t>(sizeof(buf), maxRead - totalRead);
+        ssize_t n = tsk_img_read(ctx->img, fsBase + startByteAddr + totalRead,
+                                 reinterpret_cast<char*>(buf), toRead);
+        if (n <= 0) break;
+        if (!sig.footer.empty()) {
+            // 在 buf 里搜尾部魔数，命中则写入含尾部的数据后 break
+            auto fit = std::search(buf, buf + n, sig.footer.begin(), sig.footer.end());
+            if (fit != buf + n) {
+                size_t upto = (fit - buf) + sig.footer.size();
+                out.write(reinterpret_cast<char*>(buf), upto);
+                totalRead += upto;
+                break;
+            }
+        }
+        out.write(reinterpret_cast<char*>(buf), n);
+        totalRead += n;
+    }
+```
+
+逐块解释：4KB 栈缓冲流式读写，内存占用恒定——500MB 上限的签名也只占 4KB 峰值。`maxRead` 取签名上限与"文件系统末尾"的较小值——跨分区边界不越界读（fsEndByte 由 last_block 换算）。**尾部魔数的跨缓冲区盲区**：`std::search` 只在当前 4KB buf 内找，尾部恰好横跨两次 read 的边界（如 4095/4096 处开始）时会漏检——该文件继续读到上限、尾巴带垃圾；4KB 相对常见尾部签名（EOCD 22 字节、JPEG FFD9 两字节）的漏检概率约千分之一每文件，是已知精度取舍。`tsk_img_read` 的地址是**镜像绝对地址**（fsBase+startByteAddr+totalRead）——换算链在此闭环。读失败（n<=0，镜像截断）静默 break，产物按已读部分保留（validated 大概率失败但文件不删）。
+
+
 ## 6. 与 LLM 的协作
 
 没有。雕刻产物是原始文件，不经过 LLM。如果未来要让 LLM 分析恢复出的文件，路径是把 `carved_files/` 里的产物接入 FileClassifier/LLMAnalysisService 流程（目前未接）。
@@ -235,4 +308,51 @@ bool FileCarver::validateCarvedFile(const std::string& filepath, const CarvingSi
 - 加新签名：`initializeSignatures()` 里追加一个 `CarvingSignature`（name/extension/header/footer/maxSize，可选 headerOffset/hasFixedSize），或运行时 `addSignature()` 注入；签名越独特（魔数越长）误报越低。
 - 提升方向：把 `setDatabasePath` 接到任务库（让 HTTP 模式也落 carved_files 表）；为更多类型补验证器（ogg/flac 头部结构都很规整）；对 PST/SQLite 这类"内部有结构"的格式做二次解析而非只存原文件。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 方法全清单（FileCarver.h:64-151 + cpp）
+
+| 方法 | 定义位置 | 语义 | 调用方 |
+|---|---|---|---|
+| `carve(imagePath, outputDir, partitionOffset=0)` | cpp:481-563 | 主入口（单 FS/逐分区） | TMA:531、Orchestrator:698 |
+| `carveFilesystem(fs, outputDir, base, total)` | cpp:466-479 | 驱动 block_walk（UNALLOC） | carve |
+| `carving_block_walk_ctx`（静态回调） | cpp:298-448 | 块内匹配+截取+登记 | TSK 回调 |
+| `getSignatures()/getCarvedFiles()/getStatistics()` | .h | 结果查询 | 调用方/回调 |
+| `setProgressCallback/setCancelCallback(cb)` | .h | 进度（每 1000 块）/取消 | HTTP 任务 |
+| `setDatabasePath(dbPath)` | cpp:565-597 | 开 carved_files 表 | **无生产调用方** |
+| `setValidationEnabled(bool)` | .h | 验证开关（默认 true） | 预留 |
+| `addSignature(sig)` | .h | 运行时注入 | 预留 |
+| `initializeSignatures()` | cpp:34-283 | 29 个内置签名 | 构造 |
+| `validateCarvedFile` + 四个验证器 | cpp:628-728 | 结构验证 | 回调尾部 |
+| `isRegionCarved`（静态） | cpp:286-297 | 重叠抑制 | 回调 |
+| `logToDatabase(info)` | cpp:599-630 | 单条落库 | 雕刻成功后 |
+| `processUnallocatedBlock/extractFile` | cpp:730-736 | **空壳死代码**（第 7 节） | 无 |
+
+## 10. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| TaskManagerAnalysis.cpp:531-556 | 上游 | HTTP 第 7 步（权重 3%、可取消） | 镜像+task 目录 |
+| AnalysisOrchestrator.cpp:690-701 | 上游 | CLI --carve | 镜像+目录 |
+| TSK（img/block_walk/fs/vs） | 下游 | 四组 API | C 句柄 |
+| carved_files/ 目录 | 输出 | carved_<偏移>.<ext>（多分区 part<N>/） | 二进制文件 |
+| carved_files 表 | 输出（未接线） | setDatabasePath 后 | INSERT |
+| TaskManager::add_audit_log | 下游 | FILE_CARVING 恢复数 | 审计 |
+| ImageAnalyzer | 平行互补 | 目录项 vs 未分配块 | — |
+
+## 11. 配置影响表
+
+| 参数 | 默认 | 影响 | 备注 |
+|---|---|---|---|
+| `--carve` / `file_carving` 选项 | false | 触发 | |
+| `--carve-output-dir` | `carved_files`（CLI） | 输出目录 | HTTP 用 task 目录下 carved_files |
+| 无 .env 键 | — | 签名表/上限/4KB 缓冲全部硬编码 | 加签名=改代码或 addSignature |
+| 取消/进度回调 | 无 | 由调用方注入 | 仅 HTTP 模式用 |
+
+## 12. 性能与并发细节
+
+- **单线程串行扫描**：block_walk 回调逐块处理，29 签名 × std::search 朴素匹配是每块成本（块大小 4KB 时约 29×4K 次字节比较，memcmp 加速后实际更快）；未分配块占比决定总时长（典型 10-30% 磁盘）。
+- **IO 双份**：扫描读一遍未分配块，命中后 tsk_img_read 再读一遍目标区域（页缓存吸收大部分）。
+- **内存恒定**：4KB 读缓冲 + 区间表 O(恢复数)；无全量物化。
+- **恢复时的磁盘写**是唯一可能撑爆的量：无尾部签名格式按上限截断（RAR/7z 200-500MB），一个误报就可能写 500MB 垃圾——validated 字段是事后的过滤器，磁盘占用在雕刻时已经发生。
+- **可调参数影响**：无运行期参数；改签名 maxSize 直接改变磁盘占用与抑制区间大小（第 5.1 节过度抑制问题也随之变化）。
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

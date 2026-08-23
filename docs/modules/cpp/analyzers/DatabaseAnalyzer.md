@@ -120,6 +120,32 @@ std::map<DatabaseType, ParserCreator>& DBParserFactory::getRegistry() {
 
 所有子表都对 `session_id` 建 `ON DELETE CASCADE` 外键——删会话即级联清空其全部产物，多会话并存互不污染。
 
+### 3.2 产出表列级说明（五张表全列，DBAnalysisDatabase.cpp:48-127）
+
+**db_sessions（14 列）**：
+
+| 列 | 类型 | 写入条件 |
+|---|---|---|
+| id | INTEGER PK 自增 | beginSession 时插入 |
+| source_path | TEXT NOT NULL | 证物路径 |
+| database_type | INTEGER NOT NULL | 枚举值（SQLITE/MYSQL/POSTGRESQL 转整数） |
+| version | TEXT | 引擎版本（getAnalysisSummary 填） |
+| file_size/table_count/total_records/deleted_records/user_count/artifact_count | INTEGER DEFAULT 0 | endSession 时按 summary 回填 |
+| started_at | INTEGER NOT NULL | beginSession |
+| completed_at | INTEGER | endSession（未收尾为 NULL——分析中断的信号） |
+| last_error | TEXT | 五步 try/catch 捕获的异常消息（正常为 NULL） |
+
+**db_tables（11 列）**：id、session_id（FK CASCADE）、name、schema_name（PG 的 schema/MySQL 的库名）、row_count、size_bytes、create_statement（原始 DDL）、engine（InnoDB/MyISAM）、collation、columns_json、indexes_json（列/索引结构折叠为 JSON 数组串）。索引：idx_db_tables_session。
+
+**db_records（9 列）**：id、session_id、table_name、row_id（恢复记录可为 NULL）、values_json（NOT NULL，列名→字符串值的 JSON 对象）、is_deleted（DEFAULT 0；恢复通道写入 1）、page_number、cell_offset（恢复记录的物理地址）。索引：session、(session_id, table_name) 复合。
+
+**db_artifacts（10 列）**：id、session_id、type（INTEGER，ArtifactType 枚举）、source、description、data_json、page_number、offset、timestamp、raw_data。索引：session、(session_id, type) 复合。
+
+**db_users（10 列）**：id、session_id、username、host、auth_method、password_hash、privileges_json、is_locked、created_at、last_login。索引：session。
+
+写入节奏：beginSession 先插 sessions 行拿自增 id；四张子表随后携带该 id 插入；endSession 用 UPDATE 回填统计——会话行因此经历"不完整→完整"两个状态，中途 kill 时 completed_at 为 NULL 即残留第一态。
+
+
 ## 4. 证据来源与覆盖范围
 
 类型检测在 `DBParserFactory::detectType`（`Parsers/DBParserFactory.cpp:42-67`），识别三种证据形态：
@@ -240,6 +266,57 @@ std::vector<DBRecordInfo> SQLiteAnalyzer::recoverDeletedRecords(int maxRecords) 
 
 即 SQLite 当前只统计 freelist 规模，**并没有真正从 freelist 页里挖出记录内容**——恢复能力三家深度不一，PostgreSQL > MySQL(InnoDB) > SQLite，接口一致但实现要看清。
 
+### 5.1 代码走读：SQLite 的 freelist 工件与"半成品恢复"边界（SQLiteAnalyzer_Forensics.cpp:136-190）
+
+```cpp
+std::vector<DBArtifact> SQLiteAnalyzer::extractArtifacts(const DBAnalysisOptions& options) {
+    // ... 第 136-174 行：PRAGMA freelist_count 读页数
+    if (freelistPages > 0) {
+        DBArtifact artifact;
+        artifact.type = ArtifactType::RECOVERED_DATA;
+        artifact.source = "freelist";
+        artifact.description = "SQLite freelist contains " + std::to_string(freelistPages) +
+                               " pages with potential deleted data";
+        artifact.data["potential_deleted_data"] = "true";
+        artifact.data["freelist_pages"] = std::to_string(freelistPages);
+        artifacts.push_back(artifact);
+    }
+    // ... 加密标志（PRAGMA cipher_version）等工件
+}
+
+std::vector<DBRecordInfo> SQLiteAnalyzer::recoverDeletedRecords(int maxRecords) {
+    std::vector<DBRecordInfo> recovered;
+    if (!db_ || maxRecords == 0) return recovered;
+    (void)maxRecords;  // 未来实现使用
+    // TODO: 实现完整的freelist解析和记录恢复
+    return recovered;
+}
+```
+
+逐块解释：工件侧走的是 SQLite 官方 PRAGMA——`freelist_count` 给出"已释放但未复用的页数"，这是**删除数据存在的确定性信号**（0 页=无残留可挖），工件把它登记成"有潜在删除数据"而非具体内容，与能力边界一致；`cipher_version` 的 PRAGMA 则能探测 SQLCipher 加密库（与 AndroidAnalyzer 的微信链路呼应）。恢复侧 `(void)maxRecords` 显式压掉未用参数的编译警告 + TODO 注释直接承认"需要解析 B-Tree 结构"——**接口承诺与实现现状的落差被写在代码里**，而不是靠文档外传。这组对照就是第 5 节结尾"三家深度不一"判断的代码依据。
+
+### 5.2 代码走读：PostgreSQL 死元组恢复的 infomask 判定（PostgreSQLHeapParser.cpp 恢复段）
+
+```cpp
+// PostgreSQLHeapParser.cpp（骨架，常量见 .h:24-65）
+for (uint16_t slot = 0; slot < maxOffset; ++slot) {
+    const ItemIdData& itemId = itemIds[slot];
+    if (itemId.flags == PG::LP_DEAD || itemId.flags == PG::LP_UNUSED) {
+        // 槽位已死/未用——页内偏移仍指向旧元组字节，尝试按 HeapTupleHeader 解析
+        ...
+    } else if (itemId.flags == PG::LP_NORMAL) {
+        // 活元组：读 t_xmin/t_xmax 判断可见性；t_xmax != 0 且已提交 = 已删除版本
+        uint32_t xmax = readU32(tupleStart + PG::T_XMAX);
+        if (xmax != 0 && (infomask & PG::HEAP_XMAX_COMMITTED)) {
+            // 已提交的删除：这是旧行版本，取证上仍可读出内容
+        }
+    }
+}
+```
+
+逐块解释（骨架，全实现见 PostgreSQLHeapParser.cpp）：恢复的入口分两路——**槽位级**（LP_DEAD/LP_UNUSED 的 ItemId，槽本身已释放但指向的字节还在页内空闲区）与**元组级**（LP_NORMAL 但 t_xmax 非零且提交，即被 DELETE/UPDATE 淘汰的旧版本，MVCC 未 vacuum 前不会物理清除）。两路恢复出的记录都带 page_number（块号）与页内偏移，落进 db_records 的 page_number/cell_offset 列——复核时可用 hexdump 直接对到字节。8KB 块的常量（BLCKSZ/PageHeaderData 各偏移）与 PostgreSQL 源码逐一对应（.h:24-46 注释），这是模块里**唯一对到引擎源码级**的二进制解析；改版本兼容性时先对照 PG 的 PageHeaderData 是否变了布局。
+
+
 ## 6. 与 LLM 的协作
 
 无。模块自身不接 LLM；预期的接入点是分析完之后把 db_records 里的敏感内容交给平台 LLM 服务，但目前连调用方都没有，谈不上 LLM 管道。
@@ -258,4 +335,47 @@ std::vector<DBRecordInfo> SQLiteAnalyzer::recoverDeletedRecords(int maxRecords) 
 - 加新数据库类型：实现 `IDBParser` 的全部纯虚函数（`connect/recoverDeletedRecords/getUsers` 有默认实现可不写），在 `DBParserFactory::getRegistry()` 注册 lambda，`DatabaseType` 枚举加值，`detectType` 加识别特征（`DBParserFactory.cpp:27-41` 的注册表是唯一需要动的工厂代码）。
 - 接入流水线的最小改法：给 `CommandLineArgs` 加 `analyze_dbs` 标志与目标路径参数，`main.cpp` 路由到新的 `AnalysisOrchestrator::runDatabaseAnalysis`（照抄 `runDLLAnalysis` 的骨架即可，`AnalysisOrchestrator.cpp:710-752`）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 方法全清单（DBAnalysisDatabase，Database/DBAnalysisDatabase.h:43-151）
+
+| 方法 | 语义 | 调用方 |
+|---|---|---|
+| `initialize()` | 建五表七索引（DDL 单串） | DatabaseAnalyzer.initialize |
+| `beginSession(sourcePath, type)` | 插 sessions 行返回自增 id | doAnalyze |
+| `endSession(sessionId, summary)` | 回填统计与 completed_at/last_error | doAnalyze 收尾 |
+| `insertTable/insertTables` | 表结构入库（单条/批量） | doAnalyze 第 1 步 |
+| `getTables(sessionId)` | 按会话查表清单 | 查询接口 |
+| `insertRecord/insertRecords` | 记录入库（values 转 JSON） | 第 2/5 步 |
+| `getRecords(sessionId, tableName, limit, offset)` | 分页查记录 | 查询接口 |
+| `insertArtifact/insertArtifacts` | 工件入库 | 第 3 步 |
+| `getArtifacts/getArtifactsByType` | 工件查询（type 过滤） | 查询接口 |
+| `insertUser/getUsers` | 用户表读写 | 第 4 步/查询 |
+| `getAllSessions/getSessionSummary` | 会话清单/单会话统计 | 查询接口 |
+| `beginTransaction/commit` | 手动事务（批量插入提速） | doAnalyze 大库路径 |
+
+解析器侧公开面（每解析器一份同构）：`open/getTables/getRecords/extractArtifacts/recoverDeletedRecords/getUsers/getAnalysisSummary/close` + `lastError()`——由 IDBParser 纯虚与默认实现约定（IDBParser.h:35-223）。
+
+## 10. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| 无生产调用方（测试独占） | 上游 | test_database_analyzer_gtest/test_mysql_daemon | — |
+| SQLite C API / 自研 forensics | 下游 | SQLiteAnalyzer 两文件 | PRAGMA + 文件读 |
+| mysqld + MySQL C API | 下游 | MySQLDaemon fork/exec + socket | 进程 + 连接 |
+| postgres + libpq | 下游 | PostgreSQLDaemon | 同上 |
+| PostgreSQLHeapParser/InnoDBParser/MySQLBinlogParser | 内部 | 离线二进制解析 | 页/事件 |
+| DBAnalysisDatabase（自有结果库） | 下游 | 五表 INSERT | sqlite3 直连 |
+| PathManager | 上游 | PostgreSQLDaemon.cpp:140 一带的配置定位 | projectRoot |
+
+## 11. 配置影响表
+
+无 .env/CLI 键（未接线）。运行期环境依赖：PATH 上的 mysqld/postgres 二进制（`which` 探测，MySQLDaemon.cpp:24）；libmysqlclient/libpq 动态库在编译期链接。DBAnalysisOptions（includeTables/excludeTables/maxRecordsPerTable/recoverDeleted 等）只能由调用方代码设置。
+
+## 12. 性能与并发细节
+
+- **IO 大头**：MySQL/PG 的"复活引擎"路径本质是让真实引擎自己读数据目录——性能等于该引擎的正常启动+查询时间（mysqld 冷启 10 秒轮询上限 + InnoDB recovery 可能远超）；离线路径（frm/heap 解析）是纯文件读，快但覆盖窄。
+- **CPU 大头**：HeapParser 的逐页逐槽位解析（8KB 页 × ItemId 数 × 元组字段）；binlog 事件的逐字节状态机。
+- **fork 的并发边界**：MySQLDaemon 的子进程独立于主进程，daemon 崩溃不影响分析进程；但同一数据目录**禁止并发两个 daemon**（InnoDB 锁），批量 analyzeDirectory 时 daemon 逐库起停。
+- **内存**：getRecords 全量物化（limit=-1 时不设限——大表会 OOM 风险，选项的 maxRecordsPerTable 是唯一护栏）；HeapParser 单页缓冲 8KB。
+- **可调参数影响**：maxRecordsPerTable 与 include/exclude 名单直接决定结果库体积；recoverDeleted 开关在 PG 侧翻倍扫描量（活+死元组两遍）。
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

@@ -157,6 +157,39 @@ std::string makeTempPath(const std::string& prefix,
 
 逐块解释：唯一性由三个正交维度叠加——`getpid()` 隔离多进程（两台并发跑的实例）、线程 id 哈希隔离同进程多线程（解密与挂载常并发）、函数级 `static atomic` 计数器隔离同线程连续调用（`fetch_add` 返回旧值保证递增不重号）。返回的是**路径字符串而非已存在的文件**：调用方要自己 open/create，存在理论竞态（拿到路径到创建之间别人可能占用），但对前缀受控的内部使用场景足够；需要强保证的场合应换成 `mkdtemp` 一类的原子创建接口。`getTempDir()` 转发 `std::filesystem::temp_directory_path()`（读 TMPDIR/TMP 环境变量），运维可用环境变量把中间文件引到大盘。
 
+### 4.4 代码走读：setDataDirName/setProjectRoot 的空串护栏（PathManager.cpp:119-129）
+
+```cpp
+void PathManager::setDataDirName(const std::string& name) {
+    if (!name.empty()) {
+        dataDirName_ = name;
+    }
+}
+
+void PathManager::setProjectRoot(const std::string& root) {
+    if (!root.empty()) {
+        projectRoot_ = root;
+    }
+}
+```
+
+逐块解释：两个 setter 共用同一护栏——空串被静默忽略。动机是 main.cpp 的调用形态：`ConfigManager::instance().get("PROJECT_ROOT", "")` 在 .env 未写该键时返回**空串**而非"不调用"，没有护栏会把 projectRoot_ 清空、随后所有 getDataDir() 拼出 `/data`（根为空）——灾难性路径漂移。护栏的另一面（第 6 节已记）：**无法主动清回默认**，覆盖一旦发生只能重启。还有一层细节：setDataDirName 不做 is_absolute 归一，大小写、尾斜线原样保留——`DATA_DIR=./out/` 会得到 `projectRoot_/"./out/"`（lexically_normal 由消费方 filesystem 自动处理，通常无碍）；setProjectRoot 同样不 canonicalize，`.env` 里写相对 PROJECT_ROOT 时 data 目录随 CWD 漂移，运维应写绝对路径。
+
+### 4.5 代码走读：ensureTaskDir/getTaskExtractDir 的头文件内联（PathManager.h:110-126）
+
+```cpp
+    void ensureTaskDir(const std::string& taskId) const {
+        std::error_code ec;
+        std::filesystem::create_directories(getTaskDir(taskId), ec);
+    }
+
+    std::filesystem::path getTaskExtractDir(const std::string& taskId) const {
+        return getTaskDir(taskId) / "extracted_files";
+    }
+```
+
+逐块解释：这对内联函数体现本模块的两种风格并存——**ensureTaskDir 用 error_code 重载吞掉异常**（创建失败静默，后续 SQLite open 才会真正报错），而 `ensureDirectories()`（cpp:42-48，无 ec 版本）失败会抛 filesystem_error；同为建目录、容错语义相反，因为任务目录创建失败属于"单任务可失败"而 data 根目录失败属于"进程不可用"。getTaskExtractDir 是 getTaskDir 的一行特化，`extracted_files` 这个名字被 HTTP 提取路由与 FileExtractor 的输出拼装共用（FileExtractionRoutes.cpp:147 一带的 task_extract_dir）——提取产物因此天然落在任务目录内、随任务一起归档/清理。
+
 ## 5. 与其他模块的协作
 
 - **ConfigManager**：双向依赖的解法是"时序"——ConfigManager 找 `.env` 时调用 `PathManager::getExeDir()/getProjectRoot()`（`ConfigManager.cpp:26-31`，带 try/catch，因为此时 PathManager 可能未初始化）；反向地，main.cpp 把 ConfigManager 读到的 PROJECT_ROOT/DATA_DIR 回写给 PathManager。相关 .env 键：`PROJECT_ROOT`（getProjectRoot 的覆盖源，空则用 exeDir）、`DATA_DIR`（dataDirName_，默认 `"data"`，接受绝对或相对）。
@@ -181,4 +214,84 @@ std::string makeTempPath(const std::string& prefix,
 - 快速实验：分别用 `DATA_DIR=/tmp/tl_data ./forensic_analyzer ...` 和默认配置各跑一次，对比数据落点，验证第 3 节的绝对路径规则。
 - 扩展场景入手点：(1) 接线审计库路径——改 `main.cpp:69-74` 用 `getAuditDbPath().string()` 作为默认值；(2) 新增任务级产物目录（如 carved_files）——在 `PathManager.h:120-122` 旁加一个 `getTaskDir(id) / "carved_files"` 的内联函数，并在使用方统一改调它，不要在业务代码里手拼字符串。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 方法全清单
+
+| 方法 | 定义位置 | 语义 | 调用方 |
+|---|---|---|---|
+| `initialize(executablePath)` | cpp:12-40 | 解析 exeDir（三级回退） | main.cpp:54 |
+| `isInitialized()` | h:44 | 读 initialized_ | ConfigManager:27、多处防御 |
+| `ensureDirectories()` | cpp:42-48 | 建 data/tasks/audit/logs 四目录（抛错版） | main.cpp:66 |
+| `getExeDir()` | cpp:50-58 | 可执行目录 | ConfigManager、SystemInfoRoutes |
+| `getProjectRoot()` | cpp 同段 | 项目根（默认=exeDir） | ConfigManager、FileFilter |
+| `getDataDir()` | cpp:60-66 | 绝对/相对分流的数据根 | SearchRoutes(FTS 根)、路由层 |
+| `getTaskDir(taskId)` | h | data/tasks/<id>（纯拼接） | TaskManager 系列 |
+| `ensureTaskDir(taskId)` | h:110-113 | 建任务目录（ec 吞错版） | TaskManagerAnalysis |
+| `getTaskDbPaths(taskId, imageName="")` | cpp:102-115 | 七库路径打包 | TMA、TaskPersistence |
+| `getTaskExtractDir(taskId)` | h:120-122 | 任务提取目录 | 提取路由 |
+| `getAuditDir()/getLogsDir()` | cpp:74-80 | data/audit、data/logs | ensureDirectories |
+| `getTasksJsonPath()` | cpp:84-86 | data/tasks.json | TaskPersistence/Watchdog |
+| `getAuditDbPath()` | cpp:88-90 | data/audit/forensics_audit.db | **无生产调用方**（第 5 节） |
+| `getLogFilePath()/getDebugLogPath()` | cpp:92-98 | logs/forensics.log、logs/debug.log | 仅 SystemInfoRoutes 展示（无写入方） |
+| `setDataDirName(name)/setProjectRoot(root)` | cpp:119-129 | 覆盖（空串忽略） | main.cpp:61-65 |
+| `getTempDir()` | cpp:131-135 | temp_directory_path 转发 | makeTempPath |
+| `makeTempPath(prefix, suffix="")` | cpp:137-145 | 三元唯一临时路径 | DecryptionModule（12 处调用者之一） |
+
+## 9. 关联矩阵（消费方全量，17 文件）
+
+| 消费方 | 调用点数 | 用途 | 取的路径 |
+|---|---|---|---|
+| ImageAnalyzer/DecryptionModule.cpp | 12 | 解密工具定位、密钥目录、临时文件 | projectRoot、makeTempPath |
+| TaskManager.cpp | 4 | 任务目录/库路径 | getTaskDir/getTaskDbPaths |
+| TaskManagerAnalysis.cpp | 3 | 流水线产物路径 | 同上 |
+| TaskHelpers/TaskSerialization/TaskPersistence | 4 | tasks.json 与任务字段 | getTasksJsonPath 等 |
+| main.cpp | 2 | initialize + 覆盖回写 | 全部 |
+| 路由层（Search/Filter/FileExtraction/Task/CaseManager/SystemInfo） | 6 | FTS 根、提取目录、案件目录、系统信息 | getDataDir/getTaskDir |
+| ConfigManager.cpp | 1 | .env 候选目录 | getExeDir/getProjectRoot |
+| FileFilter.cpp | 1 | 画像目录候选 | 同上 |
+| NativeFilesystemWalker.cpp | 1 | 根定位 | projectRoot |
+| DatabaseAnalyzer/PostgreSQLDaemon.cpp | 1 | 配置文件定位 | 同上 |
+| AndroidDataParsers.cpp | 1 | 资源定位 | 同上 |
+
+被调方：仅 std::filesystem 与（间接）unistd 的 getpid。
+
+## 10. 配置影响表
+
+| 参数 | 默认 | 影响 | 备注 |
+|---|---|---|---|
+| `PROJECT_ROOT` | 空=按可执行文件自动检测（main.cpp:61-64） | projectRoot_ 覆盖 | run.sh 显式剔除该行（run.sh:76-77）；建议绝对路径 |
+| `DATA_DIR` | `data`（main.cpp:65） | dataDirName_；绝对路径时脱离 projectRoot | 相对/绝对分流见 4.2 |
+| `TMPDIR`/`TMP` | 系统默认 | getTempDir → makeTempPath 的落点 | 环境变量非 .env |
+| `FTS_ALLOWED_ROOT` | 未设=getDataDir | HTTP 索引白名单根 | SearchRoutes.cpp:17-35 |
+| （无键） | — | 任务内文件名 raw.db 等七个**固定不可配** | 冻结约定 |
+
+## 11. 性能与并发细节
+
+- **纯函数式 getter**：无缓存（dataDir_ 现拼）、无锁——启动后路径成员只读，多线程并发 get* 安全；setter 仅限启动期（第 6 节）。开销为一次 path 拼接（纳秒级），任务级调用频率下可忽略。
+- **唯一的 IO 在 ensure**：ensureDirectories/ensureTaskDir 的 create_directories 是幂等目录树创建，任务创建时一次、毫秒级。
+- **makeTempPath 的静态计数器**是本模块唯一的可变共享状态（atomic），并发安全。
+- **内存**：三个成员（两个 path 一个 string），常驻百字节。
+- **可调参数影响**：DATA_DIR 指向不同磁盘可把库写入与镜像读分离（IO 分流是唯一性能相关的用法）；绝对路径绕过 projectRoot 使多实例同盘根下互不干扰。
+
+
+## 12. 产物路径字典（本模块视角的全量路径清单）
+
+PathManager 能产出的每一条路径及其真实写入方（"写入方为空"=规范位置无写入，接线状态一目了然）：
+
+| 路径 | 生成函数 | 写入方 | 状态 |
+|---|---|---|---|
+| `<data>/tasks.json` | getTasksJsonPath | TaskPersistence（任务增删改后序列化） | 在用 |
+| `<data>/tasks/<id>/` | getTaskDir/ensureTaskDir | TaskManagerAnalysis 建目录 | 在用 |
+| `<data>/tasks/<id>/raw.db` | getTaskDbPaths.rawDb | ImageAnalyzer→DatabaseManager | 在用 |
+| `<data>/tasks/<id>/events.db` | .eventsDb | EventExtractor | 在用 |
+| `<data>/tasks/<id>/files.db` | .filesDb | FileClassifier + 平台 Analyzer 工件 | 在用 |
+| `<data>/tasks/<id>/android.db` | .androidDb | 平台深度分析路径（当前工件并入 files.db，独立库仅遗留调用） | 半退役 |
+| `<data>/tasks/<id>/windows.db` / `linux.db` / `oss.db` | 同结构字段 | 同上 | 半退役 |
+| `<data>/tasks/<id>/extracted_files/` | getTaskExtractDir | HTTP 提取路由→FileExtractor | 在用 |
+| `<data>/audit/forensics_audit.db` | getAuditDbPath | **无**（实际落 CWD 的 forensics_audit.db，见第 5 节） | **未接线** |
+| `<data>/logs/forensics.log` | getLogFilePath | **无**（Logger 恒 STDOUT） | **未接线** |
+| `<data>/logs/debug.log` | getDebugLogPath | **无** | **未接线** |
+| `<系统临时目录>/<prefix><pid>_<tid>_<n><suffix>` | makeTempPath | DecryptionModule 挂载/解密中间文件 | 在用（用后即删） |
+
+注意 CLI 形态**不经本模块**：`<镜像名>_raw.db` 等前缀式产物由 AnalysisOrchestrator 自行拼装（Orchestrator.cpp:196-202）——PathManager 只服务 HTTP 任务形态。两套命名并存是"同系统两种运行形态"在文件系统上的投影。
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

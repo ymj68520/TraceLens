@@ -215,6 +215,67 @@ std::string TOONExporter::exportToTOON(const std::vector<FileRecordWithLLM>& rec
 
 逐块解释：输出协议三层——schema 行（`TOON.schema: ` 前缀 + 字段名按分隔符连接，消费方靠它对列，关掉它就要求双方带外约定列序）、计数行（`# records[n]` 让 LLM 在读数据前建立规模预期，也让人眼抽查行数）、数据行（每行 formatRecord + `\n`）。默认 7 字段的选择本身是个 prompt 工程决策：全是"LLM 用得上"的列（名称/路径/大小/类别 + 三个 LLM 产物），把 inode/时间戳/md5 这类机器字段裁掉省 token——注释 "Default: export commonly useful fields for LLM" 说得很直白；要全量得显式传 `getAllFieldNames()`。逐行 `oss << ... << "\n"` 而非 join 整串，流式追加对几十万行也可接受（ostringstream 会整体驻留内存，见第 6 节的内存注意）。`config.delimiter` 以 const 引用取用——schema 行与数据行共用同一分隔符字符串，保证两层的切分语法一致。
 
+### 4.4 代码走读：formatRecord 与 getFieldValue 的字段映射链（TOONExporter.cpp:154-215）
+
+```cpp
+std::string TOONExporter::getFieldValue(const FileRecordWithLLM& record,
+                                        const std::string& field) const {
+    if (field == "inode") return std::to_string(record.inode);
+    if (field == "name") return record.name;
+    if (field == "path") return record.path;
+    if (field == "size") return std::to_string(record.size);
+    if (field == "extension") return record.extension;
+    if (field == "category") return record.category;
+    if (field == "type") return record.type;
+    if (field == "mtime") return std::to_string(record.mtime);
+    if (field == "ctime") return std::to_string(record.ctime);
+    if (field == "is_deleted") return std::to_string(record.isDeleted);
+    if (field == "md5") return record.md5;
+    if (field == "llm_summary") return record.llm_summary;
+    // ... llm_description/llm_keywords/llm_analyzed_at/llm_model_used 同构
+    return "";
+}
+
+std::string TOONExporter::formatRecord(const FileRecordWithLLM& record,
+                                       const std::vector<std::string>& fields,
+                                       const std::string& delimiter) const {
+    std::string line;
+    for (size_t i = 0; i < fields.size(); ++i) {
+        if (i > 0) line += delimiter;
+        line += escapeValue(getFieldValue(record, fields[i]));
+    }
+    return line;
+}
+```
+
+逐块解释（骨架，全链见 `:154-215`）：字段分发是**16 个 if 的平铺链**而非 switch/map——字段名是 string，switch 不适用，map 需要静态初始化；平铺的平均代价是 8 次字符串比较（前缀字段更快），每行每字段一次，几十万行 × 7 字段 × 8 比较 = 千万级 string::==，是渲染的 CPU 大头之一但远低于 SQL 读库。两个已知语义点：(1) **未知名静默空串**——fields 里拼错名（"lmm_summary"）不报错，输出里是一对引号的空列，消费方对列时才发现；路由层有 getAllFieldNames 校验挡住 HTTP 入口，但直接调用方没有这层防护；(2) `size`/`inode`/时间戳用 to_string——int64 直接十进制化，与 SQLite 里存的 INTEGER 文本形态一致，无损。formatRecord 的拼接顺序"取值→转义→加分隔符"保证**转义后的值（可能含引号与转义序列）不参与分隔符判定**——分隔符永远是干净的三字符 ` | `。
+
+### 4.5 代码走读：路由侧的字段校验与附件返回（ExportRoutes.cpp:64-117）
+
+```cpp
+    // Parse fields parameter (optional)
+    std::vector<std::string> fields;
+    if (req.url_params.get("fields")) {
+        std::string fieldsStr = req.url_params.get("fields");
+        // split by comma, trim
+        ...
+    }
+
+    // Validate field names
+    auto validFields = TOONExporter::getAllFieldNames();
+    for (const auto& f : fields) {
+        if (std::find(validFields.begin(), validFields.end(), f) == validFields.end()) {
+            return RouteHelpers::errorResponse(400, "Invalid field name: " + f);
+        }
+    }
+
+    TOONExporter exporter;
+    std::string toon_content = exporter.exportToTOON(db, config);
+    // ... 附件返回 text/toon（:114-117）
+```
+
+逐块解释（骨架）：HTTP 入口为本模块补上两道防线——**字段白名单**（getAllFieldNames 的 16 名单逐一 find，未知名 400 带名字返回，调用方因此永远送不进 getFieldValue 的静默空串分支）与 **filter 消毒**（is_safe_filter_clause，第 3 节）。fields 为空时走 7 字段默认集，与"all"语义的偏差对 HTTP 用户不可见（无参默认就是精选）。附件返回的 Content-Disposition 让浏览器下载而非渲染，.toon 扩展名即由此而来。注意 db 在此之前以 SQLITE_OPEN_READONLY 打开（:85）——导出与在跑任务并发安全（WAL 读不阻塞写）。
+
 ## 5. 与其他模块的协作
 
 - **FileClassifier（间接上游）**：files 表的 category 与 scene 列由分类器写入；llm_* 列由 LLM 分析服务回写（`SQL/file_classifier_sql.h:85-94` 的 UPDATE 语句族）。导出质量直接取决于这些列的填充率。
@@ -240,4 +301,41 @@ std::string TOONExporter::exportToTOON(const std::vector<FileRecordWithLLM>& rec
 - 手工验证：`curl 'localhost:8080/api/forensics/export/toon?task_id=<id>&fields=name,size,category'`，检查首行 schema 与 `# records[n]`、行数与 `sqlite3 <files.db> 'SELECT COUNT(*) FROM files'` 一致。
 - 扩展方向：(1) 行数上限/分页参数——`queryFiles` 加 LIMIT 与 `getAllFieldNames` 旁的默认字段集文档；(2) 导出 events 表——复制 queryFiles 模式建 `EventRecordWithLLM` 与字段映射，渲染管线直接复用；(3) 让 quoteStrings 真正生效或从配置中删除，避免误导。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 方法全清单
+
+| 方法 | 定义位置 | 语义 | 调用方 |
+|---|---|---|---|
+| `exportToTOON(db, config={})` | cpp:67-69（委托） | 查库+渲染一步 | ExportRoutes.cpp:110 |
+| `exportToTOON(records, config)` | cpp:228-265 | 纯记录渲染 | 上一重载/测试 |
+| `queryFiles(db, whereClause="")`（静态） | cpp:71-148 | 16 列查询 NULL 归一 | db 版导出 |
+| `escapeValue(value)`（静态） | cpp:21-65 | TOON 转义 | formatRecord/测试 |
+| `getAllFieldNames()`（静态） | cpp:192-207 | 16 字段白名单 | 路由校验 |
+| `formatRecord(record, fields, delimiter)`（私有） | cpp:213-224 | 单行拼接 | 记录版导出 |
+| `getFieldValue(record, field)`（私有） | cpp:154-210 | 字段分发（未知名 ""） | formatRecord |
+| 构造/析构（默认） | h:62-63 | 无状态 | — |
+
+## 9. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| ExportRoutes（唯一 HTTP 入口） | 上游 | /api/forensics/export/toon（:14, 55-124） | text/toon 附件 |
+| files.db 主表 | 输入 | 16 列只读 SELECT（ORDER BY path） | FileRecordWithLLM vector |
+| FileClassifier（数据上游） | 间接 | category/scene 列写入方 | — |
+| LLMAnalysisService（数据上游） | 间接 | llm_* 五列 UPDATE（storeDescription） | — |
+| SQLiteHelper.is_safe_filter_clause | 平行 | whereClause 闸门（ExportRoutes.cpp:72-79） | bool |
+| RouteHelpers | 平行 | 错误 JSON/CORS | — |
+| 同文件其他导出器（events/json、events/csv、visualization 三路由） | 平行 | 不复用本模块（events 走 SQLiteHelper 自家 JSON/CSV 拼装） | 值得注意的平行实现 |
+
+## 10. 配置影响表
+
+本模块无 .env/CLI 配置（纯函数式）；运行期自由度全部在 TOONExportConfig 五字段（其中 delimiter/quoteStrings 两个未生效或高危，见第 6 节）。路由参数：task_id（必填）、fields（逗号白名单）、filter（经消毒的 WHERE 片段）。
+
+## 11. 性能与并发细节
+
+- **内存峰值 = 全量记录 + 全量输出**：queryFiles 物化 vector（每记录约 300 字节 + 字符串堆）后 ostringstream 再拼等量文本——几十万行库的导出内存翻倍。分批/limit 是唯一缓解（未实现，第 6 节）。
+- **CPU 三段**：SQL 读库（IO 密集，ORDER BY path 走 idx_files_path）、getFieldValue 链（平均 8 次串比较/字段）、escapeValue（单遍扫描+条件拷贝）。比例大约 6:3:1，读库主导。
+- **无锁单线程**：整个导出在 HTTP handler 线程内完成；只读连接不与写方竞争（WAL）。并发导出同一库安全但各自吃内存。
+- **token 收益实测口径**：7 字段默认集下，TOON 相对等价 JSON 的节省主要来自省去字段名重复与引号括号——记录数越多节省率越高（schema 头固定开销摊薄）；llm_description 为空时收益最明显。无内置基准，验证方法见第 7 节的手工命令对比字符数。
+
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

@@ -132,6 +132,15 @@ ImageAnalyzer 是**所有 TSK 流水线的第一站**，两条入口都会跑到
 
 **`partitions`**——`partition_num/start_offset/description/fs_type`：`start_offset` 是回镜像定位分区的字节数，`fs_type="xfs?"` 会原样入库（带问号的候选标记）。
 
+### 4.2 产出表列级说明（raw.db 视角的完整性核对）
+
+files/partitions 两表的**全列**定义与写入条件在 DatabaseManager.md 第 8 节有逐列表（DDL 于 DatabaseManager.cpp:80-105/125-134），本模块视角补充三点：
+
+- **本模块是 files 表 16 个绑定列的唯一写入方**（insertFileRecord 的 bind 1-16，DatabaseManager.cpp:215-219）；`extension/category/scene_*` 与 `llm_*` 五列在本表中**从不被任何代码写入**——llm_* 的 UPDATE 全部打在 files.db 主表上（LLMAnalysisService.cpp:367 一带，注释 "Store directly to _files.db"）。因此 raw.db 的 llm_* 五列恒为 NULL（建表/迁移带出的死列），第 6 节"桌子先摆好"的比喻应修正为：**摆桌的是 files.db 的同名列**，raw.db 这五列是从 FileClassifierSQL 的建表语句同源复制的历史痕迹。用 `WHERE llm_analyzed_at IS NOT NULL` 查 raw.db 永远为空。
+- partitions 表的 `length` 列恒为 0（本模块调用 insertPartitionInfo 时第三参硬编码 0，ImageAnalyzer.cpp:143-145）——想知道分区大小得用 fsType/desc 旁证或下一个分区 offset 相减。
+- `md5` 列由本模块写入但**几乎恒为空串**：仅显式开启哈希计算时填充（默认关），下游 FileClassifier 也不回填 raw.db——files.db 里同样无 md5 填充逻辑，实际哈希产能集中在 DLLAnalyzer（dll.db）。
+
+
 ## 5. 解析机制走读
 
 **链路一：多分区遍历骨架（`extractToDatabase`，`ImageAnalyzer.cpp:293-345`）。**
@@ -200,6 +209,44 @@ TSK_WALK_RET_ENUM TskFilesystemWalker::dirWalkCallback(TSK_FS_FILE* fsFile, cons
 
 **链路四：加密分区的解锁（`tryDecryptPartition`，`ImageAnalyzer.cpp:443+`）。** 当某分区文件系统打不开且开启了 `--decrypt` 时（`ImageAnalyzer.cpp:189-196` 的分支，见上文链路一的分区循环），`DecryptionModule::detect()` 读分区首扇区匹配魔数（`-FVE-FS-`→BitLocker、`LUKS\xba\xbe`→LUKS、`TRUE/VERA`→VeraCrypt，枚举即第 2 节的 `EncryptionType`）。密码解析顺序：CLI 显式密码 → 同名 `.key` 文件（约定 `<镜像基名>.part<N>.key`，回退 `<镜像基名>.key/.txt/.password`，见 `KeyFileLoader.h:9-23`）。解密本体是调用外部工具（头文件类注释 `DecryptionModule.h:44-54` 写明分工）：LUKS 用 cryptsetup 产出 `/dev/mapper/<name>` 设备节点，BitLocker 优先 bdemount、退 dislocker，VeraCrypt 用 veracrypt CLI；子进程执行用无 shell 的 `runProcess`（argv 数组直传，避免路径注入）。解密成功后，`PartitionEntry.decryptedPath` 指向可读的明文卷，`extractDecryptedPartition()`（第 530 行起）用一个**新的 TSK image 句柄**直接打开该路径来遍历（第 544-548 行）；TSK 仍解析不了（如某些 NTFS 变体）时再退到 native mount（第 595-631 行）。析构函数统一 `cleanup()`：卸载、删 device-mapper 节点、detach loop、删临时文件（第 45-51 行）。还有一条 BitLocker 特例旁路：密码解锁失败时可尝试 FVEK 直解——读 `<镜像>.part<N>.fvek`（32 字节 = 16 字节 key + 16 字节 tweak，volatility3 的 bitlocker_fvek_scan 插件可从内存导出），由 `scripts/bitlocker_fvek_decrypt.py` 做 AES-XTS-128 解密（`ImageAnalyzer.cpp:473-488`，设计说明在 `DecryptionModule.h:129-147`）。这是为老版本 dislocker 不支持 AES-XTS-128 准备的旁路。
 
+### 5.1 代码走读：detectOSType 与"代表句柄"的遗留设计（ImageAnalyzer.cpp:247-283）
+
+```cpp
+// 骨架：分区枚举后保留第一个可打开的 FS 句柄作"代表"
+TSK_FS_INFO* representativeFs = nullptr;
+for (const auto& part : candidates) {
+    TSK_FS_INFO* fs = tsk_fs_open_img(imgInfo_, part.offset, TSK_FS_TYPE_DETECT);
+    if (fs) {
+        partitions_.push_back(entry);
+        if (!representativeFs) representativeFs = fs;   // 第一个成功的保留
+        else tsk_fs_close(fs);                          // 其余即关
+        continue;
+    }
+    // TSK 打不开：加密检测 / xfs? 候选登记（见 :189-215）
+}
+if (representativeFs) {
+    detectOSType(representativeFs);   // 用 fsType 字符串推断平台
+    tsk_fs_close(representativeFs);
+}
+```
+
+逐块解释（骨架，全实现 `ImageAnalyzer.cpp:234-283`）：枚举期的句柄策略是"开-验-关"——每个分区都真开一次 FS 验证可遍历性（能开=能进 partitions_），只有**第一个**成功的句柄存活到 detectOSType。detectOSType 按 fsType 字符串（ntfs→WINDOWS、ext/xfs→LINUX）给整镜像一个平台初判——它是**启发式提示**而非权威判定（权威是下游 SceneDetector 扫 raw.db 路径），多系统盘（EFI+NTFS+ext4 混布）时只反映第一个分区的类型。提取阶段 walker 会按 partition offset 重开句柄，枚举期的开关纯粹为了探测——代价是每个分区多一次 FS open（毫秒级×分区数，可忽略）。
+
+### 5.2 代码走读：FVEK 旁路的密钥格式（ImageAnalyzer.cpp:473-488 + DecryptionModule.h:129-147）
+
+```cpp
+// 骨架：密码解锁 BitLocker 失败后的 FVEK 直解旁路
+const std::string fvekPath = imageBase + ".part" + std::to_string(part.num) + ".fvek";
+if (std::filesystem::exists(fvekPath)) {
+    // 32 字节 = 16 字节 FVEK + 16 字节 TWEAK（AES-XTS-128 的双钥结构）
+    // 委托 scripts/bitlocker_fvek_decrypt.py（Python 侧 AES-XTS 实现）
+    // 产出明文卷文件 -> decryptedPath
+}
+```
+
+逐块解释：这条旁路解决的是"知道 FVEK 但不知道口令"的现场（内存镜像里用 volatility3 的 bitlocker_fvek_scan 插件可导出 FVEK）。密钥文件命名约定 `<镜像基名>.part<N>.fvek` 与 .key 文件平行；32 字节的固定布局（key‖tweak）对应 AES-XTS-128 的两个半钥——格式错了解密结果是噪声而非报错，排查时先 hexdump 前 32 字节。跨语言实现（C++ 探测 + Python 解密）的动机是老版 dislocker 不支持 AES-XTS-128；`FORENSICS_PROJECT_ROOT` 环境变量（DecryptionModule.cpp:462）定位脚本根，未设时按可执行文件上推。
+
+
 ## 6. 与 LLM 的协作
 
 ImageAnalyzer 本身不碰 LLM。但它建的 `files` 表预留了 `llm_summary/llm_description/llm_keywords/llm_analyzed_at/llm_model_used` 五列（`DatabaseManager.cpp` 的 `checkAndMigrate()` 负责给旧库补列），流水线后面的 LLMAnalysisService 会把每文件的分析结论写回这里。可以把它理解为"LLM 的桌子先摆好，饭后面来吃"。
@@ -217,4 +264,59 @@ ImageAnalyzer 本身不碰 LLM。但它建的 `files` 表预留了 `llm_summary/
 - 加新文件系统支持：优先看 TSK 是否原生支持（能打开就自动覆盖）；否则参照 `XFSHelper` 的模式写一个"从超级块到目录树"的解析器，在 `extractPartition()` 的降级链里挂上自己的分支，输出统一回调 `FileRecord`。
 - 加新加密类型：在 `EncryptionType` 枚举（`DecryptionModule.h:15-21`）加值、在 `detect()` 加魔数、在 `decrypt()` 分派表加一个 `decryptXxx`，产出 `DecryptedPartition.accessiblePath` 即可被现有提取链复用。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 方法与文件全清单
+
+模块文件（src/analyzers/ImageAnalyzer/）：ImageAnalyzer.{h,cpp}（编排）、TskFilesystemWalker.{h,cpp}（TSK 遍历）、NativeFilesystemWalker.{h,cpp}（loop 挂载遍历）、XFSHelper.{h,cpp}（纯用户态 XFS）、DecryptionModule.{h,cpp}+DecryptionModuleStub.cpp（解密）、KeyFileLoader.h（密钥文件约定）。
+
+| 方法 | 语义 | 调用方 |
+|---|---|---|
+| `analyze()` | 开镜像+分区枚举+平台初判 | 两个编排入口 |
+| `extractToDatabase(dbPath)` | 建 raw.db+登记分区+逐区遍历 | 同上 |
+| `extractPartition(part)` | 单分区三分支（TSK/native/pure）分派 | extractToDatabase |
+| `extractWithNativeMount / extractWithXFS / extractDecryptedPartition` | 三条补充通道 | extractPartition |
+| `tryDecryptPartition(part)` | 魔数检测+密码解析+外部工具解密 | analyze 的枚举分支 |
+| `setXFSMode/setEnableDecryption/setKeyFileDir/setDecryptPassword/setCancellationCallback` | 配置注入 | 编排层 |
+| `partitions()` | 分区清单查询 | 下游/测试 |
+| TskFilesystemWalker：`walk(fsInfo, partitionNum, callback)` + `dirWalkCallback` | ALLOC|UNALLOC 递归遍历 | extractPartition |
+| NativeFilesystemWalker：`walk(mountPoint, callback)` | POSIX 遍历（root） | extractWithNativeMount |
+| XFSHelper：`openImageAndFindSuperblock/openByOffset/readDirectory/readFileByInode` | 超级块/inode/目录四格式/内容读 | extractWithXFS（FileExtractor 复用） |
+| DecryptionModule：`detect/decrypt/cleanup` | 魔数/工具分派/资源回收 | tryDecryptPartition |
+| KeyFileLoader：`findKeyFile(imageBase, partNum)` | .key 约定查找 | 密码解析 |
+
+## 10. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| TaskManagerAnalysis.cpp:204-225 / Orchestrator:206-219 | 上游 | analyze+extractToDatabase | raw.db 路径 |
+| DatabaseManager | 下游 | insertFileRecord/insertPartitionInfo/getFileCount | FileRecord |
+| SceneDetector/FileFilter/EventExtractor/FileClassifier/平台分析器 | 下游 | 消费 raw.db | SELECT |
+| FileExtractor/XFSHelper | 下游复用 | XFS 后端共享 | inode 读 |
+| TSK（img/fs/dir_walk） | 下游 | 三组 API | C 句柄 |
+| cryptsetup/dislocker/bdemount/veracrypt（外部） | 下游 | runProcess 无 shell 子进程 | 设备/文件 |
+| scripts/bitlocker_fvek_decrypt.py | 下游 | FVEK 旁路 | Python 子进程 |
+| AuditLog | 下游 | XFS_EXTRACTION_COMPLETE、LUKS/BITLOCKER/VERACRYPT_*（DecryptionModule 9 处） | 审计 |
+| ConfigManager | 上游 | LOG_MAX_DISPLAY_FILES（4 处展示截断） | int |
+
+## 11. 配置影响表
+
+| 参数 | 默认 | 影响 | 备注 |
+|---|---|---|---|
+| `--xfs-mode` | auto | native/pure/auto 三态降级链 | |
+| `--decrypt` | false | 加密分区自动解密总开关 | |
+| `--key-dir` | 空 | .key 查找目录覆盖 | 约定 `<base>.part<N>.key` |
+| `--key-password(-stdin)` | 空 | 显式密码 | stdin 优先（Orchestrator:184-189） |
+| `FORENSICS_PROJECT_ROOT` | 空 | FVEK 脚本根定位（DecryptionModule.cpp:462） | 不在 .env.example |
+| `LOG_MAX_DISPLAY_FILES` | 20 | 控制台文件清单截断（4 处） | |
+| root 权限 | — | native XFS 挂载的硬前提 | 失败提示 :763 |
+| 无线程参数 | — | 遍历单线程（TSK 回调） | |
+
+## 12. 性能与并发细节
+
+- **吞吐结构**：每文件一次 insertFileRecord（无事务包裹、语句不复用——DatabaseManager.md 第 13 节已算过账），十万文件即十万次提交协议；WAL 下尚可，机械盘上这是 IMAGE_ANALYSIS 阶段时长的主导项。对比 EventExtractor/FileClassifier 的事务批写，本阶段是最慢一环。
+- **IO 双通道**：镜像读（TSK 按 inode 随机读元数据）+ raw.db 写（顺序追加）；md5 开启时再叠加一遍全文件读（默认关）。
+- **遍历单线程**：dir_walk 回调串行；多分区也是顺序处理。取消检查在每分区边界（isCancelled），粒度是"分区级"——大分区内不可中断。
+- **内存**：流式（每文件一个 FileRecord 栈对象）；XFSHelper 的目录解析按块读；解密临时文件占磁盘（cleartext 卷可能=分区大小，cleanup 负责删）。
+- **降级链的成本阶梯**：TSK（最快）→ native mount（挂载秒级+POSIX 遍历快）→ pure XFS（逐 inode 自解析，慢一个量级）——auto 模式只在 TSK 失败才付降级成本。
+- **可调参数影响**：--decrypt 开启增加每加密分区一次外部工具调用（cryptsetup 开卷秒级、bdemount 可能分钟级）；xfs-mode=pure 跳过挂载尝试，受限环境省时但纯解析对复杂目录（btree）较慢。
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

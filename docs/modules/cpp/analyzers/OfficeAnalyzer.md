@@ -149,6 +149,47 @@ std::string OfficeAnalyzer::analyzeDoc(const std::string& filePath) {
 
 老版 .doc 是 OLE2 二进制，C++ 侧没有好库，直接 `popen("antiword '<路径>'")` 取 stdout。工具缺失时输出为空，返回警告字符串（注意是 "Warning:" 前缀，不是 "Error:"）。`execCommand`（第 155-166 行）是标准 popen/pclose 封装，用 RAII unique_ptr 管 FILE*。路径被单引号包进 shell 命令——这条注入面在第 6 节详述。
 
+### 4.1（补充）分派表与六个私有解析器的执行方式对照
+
+`analyze()`（OfficeAnalyzer.cpp:29-44）的六分支 if-else 链即完整分派表：
+
+| 扩展名 | 解析器 | 执行位置 | 依赖 |
+|---|---|---|---|
+| .docx | analyzeDocx | C++ 进程内 | DuckX（libs/DuckX） |
+| .doc | analyzeDoc | 外部进程 popen | antiword（PATH） |
+| .xlsx | analyzeXlsx | Python 服务 HTTP | openpyxl |
+| .xls | analyzeXls | Python 服务 HTTP | Python 侧（xlrd 或兼容层） |
+| .pptx | analyzePptx | Python 服务 HTTP | python-pptx |
+| .ppt | analyzePpt | Python 服务 HTTP | Python 侧转换 |
+| 其他 | — | — | 返回 "Error: Unsupported..." |
+
+三种执行形态（进程内库/本机子进程/远程 HTTP）在同一个类里并存——按扩展名选路的背后实际是"哪里有生态就走哪里"的工程决策。四个转发壳（xlsx/xls/pptx/ppt）实现完全相同（调 callPythonService），Python 侧按后缀二次分派；这意味着**格式识别做了两遍**（C++ 一遍、Python 一遍），C++ 侧认错时 Python 侧会再报 "Unsupported file type"——两层错误消息不一致是排障时的小陷阱。
+
+### 4.2 代码走读：analyzeToFile 的写盘与判错（OfficeAnalyzer.cpp:168-201）
+
+```cpp
+std::string OfficeAnalyzer::analyzeToFile(const std::string& filePath,
+                                          const std::string& outputDir) {
+    std::string content = analyze(filePath);
+    if (content.find("Error:") == 0) {
+        return "";
+    }
+    std::string baseName = getBaseName(filePath);
+    std::string outputPath = outputDir.empty() ? baseName + ".md"
+                                               : outputDir + "/" + baseName + ".md";
+    std::ofstream outFile(outputPath);
+    if (!outFile.is_open()) {
+        return "";
+    }
+    outFile << content;
+    outFile.close();
+    return outputPath;
+}
+```
+
+逐块解释：写盘路径拼接是朴素字符串相加（`outputDir + "/" + baseName`）——没有创建目录，outputDir 不存在时 open 失败静默返回空串（与"解析失败"同返回值，调用方无法区分）。判错只认 `Error:` 前缀（第 6 节的坑在此），`Warning:`（antiword 空输出）与 `Error parsing DOCX:`（前缀是 "Error " 带空格）都漏网——**会被写成 .md 文件的内容**。baseName 取自 getBaseName（去扩展名的文件名，不含目录）——两个不同目录的同名文档会写同一个 .md（后者覆盖前者）。返回输出路径（成功）或空串（一切失败），无部分写出的中间态（ofstream 一次 << 全量）。
+
+
 ## 5. 与 LLM 的协作
 
 它本身就是 LLM 链路的一环，但自己不调 LLM。产出直接成为 `FileAnalyzer` 拼进 prompt 的文件内容；文本质量（干净的段落结构）直接影响 LLM 摘要质量，这也是 `cleanText` 类整理逻辑存在的意义（PDFAnalyzer 侧有更完整实现，可对照）。
@@ -168,4 +209,51 @@ std::string OfficeAnalyzer::analyzeDoc(const std::string& filePath) {
 - 加新格式：本地库能搞定的（如 odt——本质是 zip+xml）在 `analyze` 分派表加分支写 `analyzeOdt`；只有 Python 生态能搞定的，确认 Python 侧 office_service 支持后同样加分支转发即可，`callPythonService` 是格式无关的。
 - 提升方向：docx 提取补充表格与页眉页脚（DuckX 能力有限，可能要换库或解压 XML 直接解析）；给 doc 分支换成无 shell 的调用方式；返回值区分"空文档"与"解析失败"（现在都可能是空串或 Error/Warning 前缀，语义模糊）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 方法全清单（OfficeAnalyzer.h:8-70 / cpp 234 行）
+
+| 方法 | 定义位置 | 语义 | 调用方 |
+|---|---|---|---|
+| `OfficeAnalyzer()` | cpp:20 | getenv PYTHON_SERVICE_URL，缺省硬编码 8090 | FileAnalyzer/测试 |
+| `analyze(filePath)` | cpp:29-44 | 六扩展名分派 | FileAnalyzer.cpp:166-175 |
+| `analyzeToFile(filePath, outputDir="")` | cpp:168-201 | 转 Markdown 落盘 | 独立用法/测试 |
+| `setPythonServiceUrl(url)` | cpp:25-27 | 覆盖转发地址 | FileAnalyzer（注入 ConfigManager 值） |
+| 私有 `analyzeDocx` | cpp:47-65 | DuckX 段落/run 遍历 | analyze |
+| 私有 `analyzeDoc` | cpp:67-80 | antiword popen | analyze |
+| 私有 `analyzeXlsx/Xls/Pptx/Ppt` | cpp:82-96 一带 | 四个转发壳（同构） | analyze |
+| 私有 `hasExtension(path, ext)` | cpp:147-153 | 大小写不敏感后缀比较 | 分派 |
+| 私有 `execCommand(cmd)` | cpp:155-166 | popen/RAII 封装 | analyzeDoc |
+| 私有 `callPythonService(filePath)` | cpp:98-145 | libcurl POST /api/office/parse | 四个转发壳 |
+| 私有 `getBaseName(path)` | cpp:约 203-210 | 去扩展名基名 | analyzeToFile |
+
+## 9. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| FileAnalyzer.cpp:166-175 | 上游 | markitdown 失败后的本地兜底（.docx/.doc） | string Markdown |
+| ConfigManager.getPythonServiceUrl | 上游 | setPythonServiceUrl 注入 | url |
+| DuckX（libs/DuckX） | 下游 | 进程内解析 | C++ API |
+| antiword（PATH） | 下游 | popen | stdout |
+| python_service /api/office/parse | 下游 | libcurl POST（60s 超时） | JSON{file_path}→{content} |
+| office_service.py（Python 侧） | 对端 | openpyxl/python-pptx + asyncio.to_thread | Markdown |
+| MarkitdownProxy | 平行 | 不同端点、不同格式面（第 6 节） | — |
+| 测试 test_office_analyzer | 消费者 | docx/扩展名识别 | — |
+
+## 10. 配置影响表
+
+| 参数 | 默认 | 影响 | 备注 |
+|---|---|---|---|
+| `PYTHON_SERVICE_URL`（env，直接 getenv） | `http://localhost:8090`（硬编码） | 转发目标 | **不经 ConfigManager、不回退 PYTHON_HTTP_PORT**（Environment.md 第 7 节已标注）；换端口必须设此变量 |
+| `setPythonServiceUrl` 注入 | — | 运行期覆盖 | FileAnalyzer 用 ConfigManager 值注入（两默认值不一致时以注入为准） |
+| antiword 在 PATH | — | doc 解析可用性 | 缺失返回 Warning 前缀 |
+| curl 超时 | 60s（硬编码） | 转发上限 | 大 ppt 超时即失败 |
+| 无 CLI 参数 | — | — | |
+
+## 11. 性能与并发细节
+
+- **三种执行形态的成本差三个量级**：docx 本地解析（毫秒级，zip 解压+XML 遍历）；antiword 子进程（进程创建 ~10ms + 解析）；HTTP 转发（网络往返 + Python 异步队列 + to_thread 解析，大 xlsx 秒级）。批量分析混合文档时耗时由 Python 转发主导。
+- **每次转发独立 curl 句柄**：callPythonService 每次 easy_init/cleanup——无连接复用，批量时有可测的握手开销；Keep-Alive 复用是现成优化。
+- **线程安全**：类无可变共享状态（pythonServiceUrl_ 构造后只读）——实例可跨线程共用；popen 与 curl 各自线程安全。DuckX 的 Document 是局部对象，无竞争。
+- **内存**：整文档文本一次性成串（stringstream 累积），超大 pptx 的 Markdown 输出（数十 MB 级）全驻内存；无流式接口。
+- **超时叠加**：调用方（FileAnalyzer）自身有 LLM 超时预算，转发 60s 占用其中大头——超长文档会让 LLM 请求在文档转换阶段就耗尽耐心。
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

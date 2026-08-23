@@ -161,6 +161,64 @@ OCR prompt 的三个约束（只要文本/保布局/无字时明确说无）让�
 
 双图对比直接利用 `ChatMessage::images` 是向量这一点——两次 `push_back` 后模型在同一轮里看到两张图，输出异同描述。两者都是纯编排，无新机制。
 
+### 4.1 代码走读：loadImageAsBase64 的全量读入与 MIME 表（VisionAnalyzer.cpp:404-430）
+
+```cpp
+std::string VisionAnalyzer::loadImageAsBase64(const std::string& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return "";
+    }
+
+    std::vector<unsigned char> buffer{
+        std::istreambuf_iterator<char>(file),
+        std::istreambuf_iterator<char>()
+    };
+
+    return base64Encode(buffer);
+}
+
+std::string VisionAnalyzer::getMimeType(const std::string& path) {
+    std::string ext = fs::path(path).extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+    static const std::map<std::string, std::string> mimeTypes = {
+        {".jpg", "image/jpeg"}, {".jpeg", "image/jpeg"},
+        {".png", "image/png"},  {".gif", "image/gif"},
+        {".bmp", "image/bmp"},  {".webp", "image/webp"},
+        {".tiff", "image/tiff"}, {".tif", "image/tiff"}
+    };
+    // 未命中返回 "application/octet-stream" 一类的通用值
+```
+
+逐块解释：两段实现各有一个值得记录的取舍。读文件用 istreambuf_iterator 一次性物化整文件——**整图驻内存**（未压缩的相机原图 20-50MB 也照单全收），随后 base64 再生成约 1.33 倍的第二份（瞬时峰值 ≈2.33 倍文件大小）；无尺寸上限与降采样，接线批量场景必须外挂限额（第 7 节）。MIME 按扩展名查 8 项静态表——**不读魔数**，与 OfficeAnalyzer 的 hasExtension 同款假设：改名文件会带错 MIME（多数视觉 API 对错误 MIME 容忍度低，会拒收或误判）。getMimeType 的 static map 是 C++11 线程安全的（首次调用初始化），并发调用无竞争。
+
+### 4.2 代码走读：analyzeImage 前置检查链（VisionAnalyzer.cpp:89-113）
+
+```cpp
+AnalysisResult VisionAnalyzer::analyzeImage(const std::string& imagePath) {
+    AnalysisResult result;
+
+    if (!router_) {
+        result.errorMessage = "ModelRouter not initialized";
+        return result;
+    }
+
+    if (!fs::exists(imagePath)) {
+        result.errorMessage = "Image file not found: " + imagePath;
+        return result;
+    }
+
+    if (!isSupportedImage(imagePath)) {
+        result.errorMessage = "Unsupported image format: " + imagePath;
+        return result;
+    }
+    // ... createImageContent -> 组消息 -> router_->chat
+```
+
+逐块解释：三重前置检查的顺序是"最便宜的先做"——router 空指针（一次比较）、文件存在（一次 stat）、扩展名（字符串后缀）。每条失败路径都返回**带区分度 errorMessage** 的 AnalysisResult（而非统一错误码），调用方能精确报告"配置问题"还是"证据问题"。这个模式贯穿模块所有入口（analyzeImageData/extractText/describeImage 同款三段式），是薄适配层应有的纪律：自己不产生新错误类别，只做输入验证与转发。
+
+
 ## 5. 与 LLM 的协作
 
 本模块本身就是 LLM 协作件，且是项目里唯一使用**多模态消息**（`ImageContent` 挂在 `ChatMessage` 上）的代码。它依赖 `ModelRouter` 的 Vision 能力路由：调用方需先 `router->addModel(...)` 注册一个 `capabilities` 含 `ModelCapability::Vision` 的模型（枚举定义在 `LLMIntegration/LLMDataTypes.h:45-53`，测试 `llm_files_test.cpp:38-45` 是现成的注册示例）。不配置视觉模型时所有调用返回 "Vision analysis failed" 类错误，不会崩溃。
@@ -200,4 +258,50 @@ double ConfigManager::getVisionTemperature() const { return getDouble("LLM_VISIO
 - 激活路径：在 `LLMAnalysisService`/`FileAnalyzer` 里按文件类型分流——图片走 `VisionAnalyzer::analyzeImage`，结果写入 files 表已有的 `llm_*` 列；OCR 文本可同时喂给 FullTextSearch 索引。
 - 补视频能力：实现 `analyzeVideo` 的抽帧（popen ffmpeg 每 N 秒取关键帧到临时目录，逐帧复用 `analyzeImage`，聚合结论），`maxFrames` 参数已预留。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 方法全清单（VisionAnalyzer.h:21-133，含真实签名要点）
+
+| 方法 | 定义位置 | 语义 | 调用方 |
+|---|---|---|---|
+| `VisionAnalyzer(std::shared_ptr<ModelRouter>)` | cpp:60-67 | 注入 router+initDefaultPrompts | 测试 |
+| `analyzeImage(path) -> AnalysisResult` | cpp:89-147 | 主入口（system+user 多模态消息） | 测试（生产接线点） |
+| `analyzeImageData(base64, mime)` | cpp:约 150-180 | 内存数据入口 | 预留 |
+| `analyzeWithPrompt(path, prompt)` | cpp:约 182-210 | 自定义 prompt | 预留 |
+| `extractText(path)` / `describeImage(path)` | cpp:204-280 一带 | OCR/描述（换 prompt 同管道） | 预留 |
+| `analyzeBatch(paths)` | cpp:282-303 | 逐张+进度回调 | 预留 |
+| `analyzeVideo(path, maxFrames=5)` | cpp:305-327 | **存根**（未实现抽帧） | 无 |
+| `compareImages(path1, path2)` | cpp:330-360 | 双图同消息 | 预留 |
+| `setAnalysisPrompt/setDescriptionPrompt/setOCRPrompt/setProgressCallback` | .h | 定制注入 | 预留 |
+| `isSupportedImage/isSupportedVideo(path)`（静态） | cpp:381-402 | 8/7 扩展名白名单 | 内部+预留 |
+| 私有 `loadImageAsBase64/getMimeType/createImageContent/initDefaultPrompts` | cpp:70-87, 404-430 | 基础设施 | 各入口 |
+| 文件级 `base64Encode(vector<uint8_t>)`（static 自由函数） | cpp:20-58 | 手写编码器 | loadImageAsBase64 |
+
+## 10. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| ModelRouter | 下游 | chat(messages, ModelCapability::Vision) | ChatMessage{images} |
+| LLMDataTypes（ImageContent/ChatMessage/AnalysisResult） | 类型依赖 | 多模态结构复用 | — |
+| ConfigManager（LLM_VISION_* 四键） | 上游（间接） | 调用方组装 LLMConfig 后注册模型 | **C++ getter 均未接线**（ConfigManager.md 第 8 节） |
+| tests/llm_files_test.cpp | 消费者 | 唯一构造点（:38-45 注册示例） | 手工集成测试 |
+| CMake LIB_SOURCES | 编译 | 编入主二进制无调用方 | — |
+| 无 HTTP/CLI/DB 触点 | — | 死代码状态 | — |
+
+## 11. 配置影响表
+
+| 参数 | 默认 | 影响 | 未接线标注 |
+|---|---|---|---|
+| `LLM_VISION_BASE_URL` | 回退 LLM_BASE_URL | 视觉端点 | getter 无消费者（组装链断在 getVisionModelConfig 无调用方） |
+| `LLM_VISION_MODEL` | qwen3-vl | 模型名 | 同上 |
+| `LLM_VISION_MAX_TOKENS` | 4096 | 生成上限 | 同上 |
+| `LLM_VISION_TEMPERATURE` | 0.5 | 采样温度 | 同上 |
+| Python 侧同名键 | qwen/qwen3-vl-4b 等 | **Python httpserver 在用**（config.py:177-180）——视觉能力当前实际由 Python 侧承载 | 两侧默认值不同 |
+
+## 12. 性能与并发细节
+
+- **成本结构 = 网络+模型推理**：每图一次多模态请求（秒级起，视觉模型比纯文本慢数倍）；base64 编码本身微秒级可忽略。
+- **内存峰值 ≈ 2.33×图片大小**（原文+编码串，4.1 节）；批量无并行（串行循环+回调），无内置并发限制。
+- **线程安全**：实例有可变状态（prompt 成员、进度回调），非线程安全；全静态的 isSupportedImage/isSupportedVideo 无碍。多线程需每线程一实例或外部加锁。
+- **token 经济**：图片按 vision 模型的图像 token 计价（qwen3-vl 约每图数百到数千 token，随分辨率），detail="auto" 让服务端裁量；批量上千图前先估算。
+- **可调参数影响**：无运行期参数（除 prompt setter）；detail 字段（ImageContent 默认 "auto"）从未被本模块设置——预留通道。
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

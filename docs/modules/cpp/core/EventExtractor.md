@@ -247,6 +247,55 @@ bool EventExtractor::insertEvent(const TimelineEvent& event) {
 
 逐块解释：这是**唯一的主表写入入口**——枚举在绑定边界统一转文本（四个 *ToString），保证库里永远是可读字符串；SQL 本体来自 `EventExtractorSQL::INSERT_EVENT` 常量（SQL-as-headers 纪律），拼写与 schema 单点同步。与 AuditLog 不同，这里没有常驻预编译语句，每次调用 prepare/finalize——在"单大事务包裹几十万次调用"的前提下（BEGIN 在 extractFileSystemEvents 开头），性能损失可接受但仍是优化点。注意 `priorityToString(...).c_str()` 这类**临时 string 的 c_str()**：临时对象存活到完整表达式结束（bind 调用完才析构），SQLITE_TRANSIENT 又让 SQLite 立即拷贝——两层保险下这是安全的，但若有人把这段改成先存 `const char*` 再 bind 就会悬垂。返回值精确区分 DONE 与其他（BUSY/约束失败返回 false），调用方（分表旁的主表写入）**没有检查这个返回值**——主表行可能静默缺失，对账以分表为准反向也成立（见第 6 节双写风险）。
 
+### 4.5 代码走读：单列索引确实存在——CREATE_EVENT_INDICES（SQL/event_extractor_sql.h:130-142 与 EventExtractorCore.cpp:99-100）
+
+```cpp
+inline constexpr const char* CREATE_EVENT_INDICES = R"(
+    CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+    CREATE INDEX IF NOT EXISTS idx_events_path ON events(file_path);
+    CREATE INDEX IF NOT EXISTS idx_events_inode ON events(inode);
+    CREATE INDEX IF NOT EXISTS idx_system_events_timestamp ON system_events(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_system_events_type ON system_events(event_type);
+    CREATE INDEX IF NOT EXISTS idx_system_events_source ON system_events(source);
+    CREATE INDEX IF NOT EXISTS idx_system_events_user ON system_events(user);
+    CREATE INDEX IF NOT EXISTS idx_event_correlations_event1 ON event_correlations(event_id1);
+    CREATE INDEX IF NOT EXISTS idx_event_correlations_event2 ON event_correlations(event_id2);
+    CREATE INDEX IF NOT EXISTS idx_event_correlations_type ON event_correlations(correlation_type);
+)";
+```
+
+逐块解释：对第 6 节"主表无索引"表述的精确化——**单列索引 timestamp/type/path/inode 四个在每次建库时都会创建**（createEventTables 里一段 sqlite3_exec 跑整个多语句常量）；缺的是 (timestamp, event_type) **复合**索引：时间范围 + 类型过滤的组合查询只能用其中一个索引再过滤另一维。另外注意这串多语句 EXEC 一次跑 11 条 CREATE INDEX，任一条失败（如某表不存在导致其索引建不了）后续语句是否执行取决于 sqlite3_exec 的中止语义（遇错停止）——但返回值未检查，整体静默。索引的写放大成本落在 extractFileSystemEvents 的大事务里：每条主表 INSERT 维护 4 棵 B 树，是双写之外的第二块写放大。
+
+### 4.6 代码走读：五分表与主表的列差异（SQL/event_extractor_sql.h:41-95）
+
+```cpp
+inline constexpr const char* CREATE_CREATION_EVENTS_TABLE = R"(
+    CREATE TABLE IF NOT EXISTS creation_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        file_path TEXT NOT NULL,
+        inode INTEGER,
+        file_size INTEGER,
+        file_type TEXT
+    );
+)";
+// modification/access/deletion_events 同构（6 列）
+inline constexpr const char* CREATE_CHANGE_EVENTS_TABLE = R"(
+    CREATE TABLE IF NOT EXISTS change_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        file_path TEXT NOT NULL,
+        inode INTEGER,
+        file_size INTEGER,
+        file_type TEXT,
+        description TEXT          -- 仅 change 分表多这一列
+    );
+)";
+```
+
+逐块解释：五张分表是**精简物化**：主表 21 列只留 6（change 多 1）。三个可推论的约束差异：分表的 `file_path TEXT NOT NULL`（主表可空）——分表 INSERT 由 FS 事件路径独占，路径恒非空；分表**没有标注列、没有 llm_* 列**，按分表查询无法用 priority 过滤，一切标注查询必须回主表；分表 id 与主表 id **各自独立自增**，没有任何关联键（连 inode 都重复存储）——从分表行反查主表行只能靠 (timestamp, file_path, inode) 三元组，不保证唯一。change_events 的 description 列是唯一例外（ctime 变更的语义解释），说明分表设计并非完全机械复制。INSERT 路径（4.2 节）分表侧 5-6 个绑定参数、现场拼 SQL——与 SQL 头文件的常量纪律脱节，改分表列时 grep 不到 SQL 头文件（只在 FileSystemEventExtractor.cpp 内）。
+
 ## 5. 与其他模块的协作
 
 - **ImageAnalyzer/DatabaseManager**（上游）：files 表是唯一的事件原料；四时间戳语义继承自 TSK 的定义。
@@ -273,4 +322,117 @@ bool EventExtractor::insertEvent(const TimelineEvent& event) {
 - 手工验证：`sqlite3 <events.db> "SELECT event_type, COUNT(*) FROM events GROUP BY 1"` 对比五类数量与文件数的关系；`SELECT * FROM timeline LIMIT 20`（视图）看标注列是否齐全。
 - 扩展新事件来源：优先走 import 路线——(1) 让对应 Analyzer 把工件写进平台库或 files.db artifacts 表；(2) 在 `SystemEventExtractor.cpp` 的对应 import 函数里加一段 INSERT..SELECT，字段映射参考现有段落；(3) 在 `identifySource`/`normalizeEventType`（`EventCorrelationExtractor.cpp`）加新类型分支。文件系统侧的新事件类型则改 `FileSystemEventExtractor.cpp` 的翻译规则，并同步 `SQL/event_extractor_sql.h` 的分表。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 产出表列级说明（events.db 全量）
+
+**events 主表（21 列）**列级表见 4.1 节走读（事实 8 列 + 标注 6 列 + llm 7 列）。其余表（DDL 全部在 `SQL/event_extractor_sql.h`，创建于 `EventExtractorCore.cpp:69-108`）：
+
+**五张分表（各 6 列，change 7 列，:41-95）**：
+
+| 列名 | 类型 | 含义 | 写入条件 |
+|---|---|---|---|
+| `id` | INTEGER PK 自增 | 分表行号（与主表 id 无关） | 自动 |
+| `timestamp` | INTEGER NOT NULL | 事件时间（Unix 秒） | 对应类型事件生成时（crtime>0 → creation 等） |
+| `file_path` | TEXT NOT NULL | 文件路径 | 同上 |
+| `inode` | INTEGER | inode | 同上 |
+| `file_size` | INTEGER | 字节数 | 同上 |
+| `file_type` | TEXT | TSKit 类型 | 同上 |
+| `description` | TEXT（仅 change_events） | 变更说明 | 仅 CHANGED 事件 |
+
+**system_events（12 列，:97-111）**：`id`、`timestamp`（NOT NULL）、`event_type`（NOT NULL）、`source`、`user`、`process`、`ip_address`、`port`、`service`、`description`、`severity`、`system_context`——为"带主体（用户/进程/IP）的系统级事件"预留的结构化通道，四个专用索引（timestamp/type/source/user）。**写入方 extractSystemEvents/insertSystemEvent 均无生产调用方**，生产 events.db 中此表为空表（建表不写入）。
+
+**event_correlations（events.db 版，:114-125）**：与 EventCorrelationEngine 建的独立引擎版同名表并存于同一 DDL 家族（id/event_id1/event_id2/correlation_type/confidence/description 等 + 三个索引）；因 analyzeEventCorrelations 未接线，生产库中同样为空表。
+
+**视图 7 个（:149-253）**：`timeline`（主表按时间排序投影）、`event_statistics`（按类型聚合计数）、`hourly_activity`（按小时直方图）、`system_event_view`、`event_correlation_view`、`enhanced_timeline`、`enhanced_event_statistics`。视图是纯查询面（CREATE VIEW IF NOT EXISTS），无物化；enhanced_* 两个是后加的聚合层。
+
+## 9. 方法全清单（含私有与 Detail 分工）
+
+| 方法 | 定义位置 | 语义 | 调用方 |
+|---|---|---|---|
+| `extractEvents()` | Core.cpp:19-44 | 主流程编排（开库/建表/FS 事件/标准化/审计） | TMA:303、Orchestrator:331 |
+| `openDatabases()`（私有） | Core.cpp:46-67 | 双库连接；eventDb 应用 WAL+NORMAL+busy_timeout | extractEvents |
+| `createEventTables()`（私有） | Core.cpp:69-108 | 8 表+11 索引+7 视图（DDL 全部来自 SQL 头） | extractEvents |
+| `extractFileSystemEvents()`（私有） | FileSystemEventExtractor.cpp:62-245 | 五规则翻译+双写 | extractEvents |
+| `insertEvent(event)` | FileSystemEventExtractor.cpp:247-277 | 主表 14 参数绑定插入 | extract/各 import |
+| `standardizeEvents()` | Core.cpp:111-244 | 事务内补六项标注（幂等） | extractEvents/import 收尾 |
+| `standardizeEvent(event)`（私有重载） | Core.cpp:247-269 | 单事件标注五步 | standardizeEvents |
+| `identifySource/classifyEvent/assessPriority/assessSeverity/normalizeEventType/getSourceId`（私有） | EventCorrelationExtractor.cpp:126-331 | 标注五件套 | standardizeEvent |
+| `importWindowsArtifacts(path)` | SystemEventExtractor.cpp:9-100 | ATTACH+11 段 INSERT..SELECT | TMA/Orchestrator |
+| `importLinuxArtifacts(path)` | SystemEventExtractor.cpp:102-185 | 9 类同构 | 同上 |
+| `importAndroidArtifacts(path)` | SystemEventExtractor.cpp:187-205 | 仅 system_logs 1 类 | 同上 |
+| `importSceneArtifacts(fileDb, sceneType)` | Core.cpp:280-293 | 按 sceneType 分发到三个 FromFilesDb | TMA（files.db 路径） |
+| `importWindowsFromFilesDb/importLinuxFromFilesDb/importAndroidFromFilesDb`（私有） | Core.cpp:295 起 | C++ 逐行读 artifacts 表再 insertEvent | importSceneArtifacts |
+| `analyzeEventCorrelations()` | EventCorrelationExtractor.cpp:31-80 | 包装 EventCorrelationEngine+导出 | **无生产调用方** |
+| `extractSystemEvents()/insertSystemEvent()` | SystemEventExtractor.cpp:207-300 | system_events 通道 | **无生产调用方** |
+| 析构 | Core.cpp | 双连接关闭 | RAII |
+
+## 10. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| raw.db（files 表） | 输入 | 四时间戳+type/is_deleted/type='REG' 过滤 | SELECT 流式 |
+| events.db 全部 8 表 7 视图 | 输出 | 主表双写+分表+（未接线的）system/correlations | 参数化 INSERT |
+| TaskManagerAnalysis.cpp:303 | 上游 | 构造+extractEvents+import*Artifacts(files.db) | 库路径字符串 |
+| AnalysisOrchestrator.cpp:331-339 | 上游 | 同上（effectiveRawDb） | 同上 |
+| Windows/Linux/Android Analyzer | 数据上游 | artifacts 表结构被 import SQL 硬编码（win_db.prefetch_info 等） | 跨库 SELECT |
+| EventCorrelationEngine | 下游（未接线） | analyzeEventCorrelations 包装 | events 表读 |
+| EventClusterAnalyzer | 下游 | events.llm_* 回写（TMA:398） | UPDATE |
+| AuditLog | 下游 | EVENT_EXTRACTION_START/COMPLETE、TIMELINE_MERGE×3 | 审计条目 |
+| 前端时间线/统计视图 | 下游 | timeline/statistics/hourly_activity 视图 | 只读 SELECT |
+
+## 11. 配置影响表
+
+| 参数 | 默认 | 影响 | 备注 |
+|---|---|---|---|
+| `DB_JOURNAL_MODE` | WAL | openDatabases 对 eventDb 应用（Core.cpp:59-66 注释提 jbd2 卡顿） | 与其他库共享基线 |
+| `DB_BUSY_TIMEOUT_MS` | 5000 | 同上 | |
+| `DB_SYNCHRONOUS_OFF` | false | 未在本模块应用（openDatabases 固定 NORMAL，不走配置） | 与 DatabaseManager 行为不同 |
+| 无其他键 | — | 翻译规则/标准化规则均硬编码 | 调行为=改代码 |
+
+## 12. 性能与并发细节
+
+- **写放大三倍**：每条 FS 事件 = 主表 INSERT（4 索引）+ 分表 INSERT（无索引）+ 未来 standardize 的 UPDATE（无索引列）。单大事务把这三次 IO 合并为一次提交，事务外的成本是 CPU 侧的 B 树维护——十万文件（约 25 万事件）在 NVMe 上秒级。
+- **prepare 复用缺失**：insertEvent 与分表插入每次 prepare/finalize（4.4 节）；standardize 的 UPDATE 同样每行 prepare（Core.cpp:176）。事务包裹下可接受，接线更高吞吐时先做语句常驻。
+- **内存特征**：FS 提取是流式（每文件一行循环）；import 的 C++ 路径（FromFilesDb 系）按批 vector 装载工件行再逐条 insertEvent——批量大小取决于工件表行数（Windows 事件日志可达数十万行，是内存峰值点）。
+- **并发**：单线程执行；与平台 Analyzer 无并发接触（阶段串行）。ATTACH 期间 eventDb 连接同时持有两个库的锁（import 段），DETACH 前对平台库的写会被阻塞。
+- **可调参数**：无（规则硬编码）；提速的三个手段按性价比排序：分表写开关（只写主表）、standardize 语句复用、(timestamp,event_type) 复合索引。
+
+
+## 13. 标注规则明细（standardizeEvent 五件套的判定序）
+
+判定顺序即优先级——先命中先生效（定义于 `EventCorrelationExtractor.cpp:126-331`）：
+
+**classifyEvent（:126-158）**：
+
+| 序 | 条件 | 类别 |
+|---|---|---|
+| 1 | eventType ∈ {CREATED,MODIFIED,ACCESSED,CHANGED,DELETED} | FILE_OPERATION |
+| 2 | source==SYSTEM | SYSTEM_ACTIVITY |
+| 3 | source==NETWORK | NETWORK_ACTIVITY |
+| 4 | source==SECURITY | SECURITY_EVENT |
+| 5 | source==APPLICATION | APPLICATION_EVENT |
+| 6 | eventType 含 LOGIN 或 USER（子串） | USER_ACTIVITY |
+| 兜底 | — | UNKNOWN_CATEGORY |
+
+注意 DATABASE_ACTIVITY/HARDWARE_EVENT/EXTERNAL_SOURCE 三个枚举值**没有任何规则会产生**——它们只存在于枚举定义（EventExtractor.h:67-69），是未接线的类别。
+
+**assessPriority（:160-182）**：
+
+| 序 | 条件 | 优先级 |
+|---|---|---|
+| 1 | eventType=="DELETED" | HIGH |
+| 2-4 | 类型含 SECURITY/ERROR/WARNING | CRITICAL/HIGH/MEDIUM |
+| 5-7 | fileType=="executable"/"database"/"system" | HIGH/MEDIUM/HIGH |
+| 8 | fileSize>100MB | MEDIUM |
+| 9-10 | source==SECURITY/NETWORK | CRITICAL/MEDIUM |
+| 11 | isSuspiciousActivity（可疑路径/名） | HIGH |
+| 兜底 | — | LOW |
+
+**assessSeverity（:184-203）**：类型含 ERROR/CRITICAL/WARNING → 同名档；isSecurityEvent → CRITICAL；isSuspiciousActivity → WARNING；executable+CREATED → WARNING；system+DELETED → ERROR；兜底 INFO。与 priority 的关键差别：severity 只看"事件本身多糟"，priority 混入"对调查多重要"（大文件、网络来源）——FILE_DELETED=HIGH/INFO 的组合正是两刻度正交的实例。
+
+**identifySource（:206-267）**：eventType 前缀/子串匹配十来源（WIN_→WINDOWS_EVENT_LOG、LINUX_/SYSLOG→LINUX_SYSLOG、ANDROID→ANDROID_LOG、BROWSER/WEB→WEB_BROWSER、NETWORK→NETWORK、LOGIN/AUTH→SECURITY、其余含 SERVICE/PROCESS→SYSTEM 等），兜底 UNKNOWN。
+
+**normalizeEventType（:270-313）**：精确匹配映射表（CREATED→FILE_CREATED、MODIFIED→FILE_MODIFIED、WIN_LOG_*→WINDOWS_EVENT、BROWSER_*→WEB_ACTIVITY 等）+ 前缀族归并；未命中保留原串。**该映射表是 EventCorrelationEngine 序列规则的对照基准**（其硬编码的 LOGIN/FILE_DOWNLOADED 与此处输出不齐，见 EventCorrelationEngine.md 第 6 节）。
+
+**getSourceId（:316-331）**：按来源拼唯一串——FILE_SYSTEM→`FS_<inode>`、WEB_BROWSER→`WEB_<file_path>`、SECURITY→`SEC_<user,从 systemContext 提取>`；供 same_source 关联规则消费。
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

@@ -152,6 +152,44 @@ void Logger::setOutput(LogOutput output, const std::string& filePath) {
 
 逐块解释：切换是"先关旧再开新"的顺序，FILE→FILE 切换会关闭上一个文件句柄——若 open 新文件失败，`output_` 已被改写为 STDOUT，日志不至于写进已关闭的流。`std::ios::app` 意味着追加而非截断，重复启动不会清掉历史日志（也因此没有轮转，文件无限增长）。错误提示走 `std::cerr` 而非 Logger 自身——日志器报告自己的失败不能递归调用自己。整个函数持锁执行 open（磁盘操作），运行期频繁切换输出会阻塞写日志的线程；当前无生产调用方，实际无影响。
 
+### 4.4 代码走读：write 的双模式与 endl 语义（Logger.cpp:86-99）
+
+```cpp
+void Logger::write(const std::string& formatted) {
+    switch (output_) {
+        case LogOutput::STDOUT:
+            std::cout << formatted << std::endl;
+            break;
+        case LogOutput::FILE:
+            if (file_.is_open()) {
+                file_ << formatted << '\n';
+            }
+            break;
+        case LogOutput::NONE:
+        default:
+            break;
+    }
+}
+```
+
+逐块解释（骨架，完整实现 `Logger.cpp:86-99`）：两模式的刷新策略**不对称**——STDOUT 每行 `std::endl`（等价 `<< '\n' << flush`，行行落终端），FILE 每行 `'\n'` 不刷新（进 ofstream 缓冲，靠缓冲满或显式 flush()）。这个不对称有合理的一面（终端交互要即时、文件批量写要效率），也有隐患的一面（FILE 模式崩溃丢尾部缓冲日志——而 FILE 模式恰恰是"无人看终端的生产环境"才用的）。FILE 分支的 `is_open()` 防御处理"setOutput 打开失败回退后 file_ 已关但 output_ 仍为 FILE 的中间态"——实际上 setOutput 失败时会同步改 output_ 为 STDOUT，这层检查是双保险。NONE 到达不了这里（log() 已早退），default 分支与 NONE 合并是 switch 完备性写法。
+
+### 4.5 调用面普查（本轮 grep 复核）
+
+`LOG_*` 宏在 `src/` 下的实际分布（本轮统计，比第 2 节的旧数更细）：**总计 142 处**——LOG_INFO 50、LOG_WARNING 34、LOG_ERROR 29、LOG_DEBUG 27、LOG_DEBUG_ONLY 2（均在 SignatureVerifier.cpp）。文件分布 15 个，按模块聚合：
+
+| 模块 | 文件 | 主要级别倾向 |
+|---|---|---|
+| DLLAnalyzer（含 Parsers/ELF/Signature/LLM 服务） | 5 | DEBUG 密集（27 处 LOG_DEBUG 的绝大部分）——签名验证与 ELF 解析的细节输出 |
+| OSSAnalyzer | 3 | INFO/WARNING（对象存储解析进度） |
+| WindowsFilesAnalyzer | 1 | 系统工件解析 |
+| AndroidAnalyzer | 1 | 数据解析 |
+| LinuxFilesAnalyzer | 1 | 工件写入 |
+| LLMIntegration | 2 | INFO/ERROR（markitdown 代理、文件分析） |
+| HTTPServer 路由 | 2 | ERROR（DLL 分析路由等） |
+
+结构面观察：核心链（DatabaseManager/EventExtractor/FileClassifier/FileExtractor/AuditLog）**一处 LOG 都不用**，它们用 std::cout/std::cerr + AuditLog 三件套——LOG_* 宏实际是"外围分析器"的偏好。这意味着把 Logger 接上配置（第 6 节建议）只影响这 15 个文件的输出，不会改变核心链的控制台行为；两套输出习惯将长期并存。
+
 ## 5. 与其他模块的协作
 
 - **ThreadPool 的 worker**：绝大多数调用发生在 worker 线程里，靠 Logger 内部互斥锁保证交错安全；Logger 不区分线程，输出里没有线程 ID——排查并发问题时可配合 AuditLog 的 task 维度。
@@ -174,4 +212,75 @@ void Logger::setOutput(LogOutput output, const std::string& filePath) {
 - 快速验证：在任一 analyzer 里临时加 `LOG_DEBUG(...)`，默认配置下看不到输出；改 `LOG_INFO` 后可见——这个实验能直观确认"默认 INFO"。再验证格式：`grep -E '\[WARN\]'` 能命中 WARNING 行，`[WARNING]` 永远命中不了。
 - 扩展建议：(1) 启动时从 ConfigManager 读取 LOG_LEVEL/LOG_FILE 完成接线（改动点在 `main.cpp:53` 之后）；(2) 输出行加线程 ID（`std::this_thread::get_id()`，改 `formatMessage`）；(3) 若需要异步化，参考 AuditLog 的写缓冲 + 后台刷盘线程模式（AuditLog.md 第 3 节），不要直接在 Logger 上加无界队列。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 方法全清单
+
+| 方法 | 定义位置 | 语义 | 调用方 |
+|---|---|---|---|
+| `instance()`（静态） | Logger.cpp:5-8 | Meyer's 单例 | 全部 LOG_* 宏 |
+| `setLevel(LogLevel)` | Logger.cpp:11-15 | 持锁写 level_ | 仅测试 |
+| `setOutput(LogOutput, filePath="debug.log")` | Logger.cpp:21-42 | 切模式；FILE 失败回退 STDOUT | 仅测试 |
+| `debug/info/warning/error(msg)` | Logger.cpp:46-57 | 四级便捷转调 | 对应宏（142 处） |
+| `log(level, msg)` | Logger.cpp:60-75 | 唯一写入口 | 便捷方法 |
+| `flush()` | Logger.cpp:77-84 | FILE 刷 ofstream / STDOUT 刷 cout | 无调用方 |
+| `getLevel()/getOutput()` | Logger.h:59,71 | 无锁读 | 诊断 |
+| 私有 `formatMessage(level, msg)` | Logger.cpp:102-114 | 时间戳+级别+消息 | log |
+| 私有 `write(formatted)` | Logger.cpp:86-99 | 双模式输出 | log |
+| 私有 `levelToString(level)` | Logger.cpp:116-124 | 枚举→"DEBUG"/"INFO"/"WARN"/"ERROR" | formatMessage |
+
+宏层（Logger.h:126-136）：LOG_DEBUG/INFO/WARNING/ERROR 四转发 + LOG_DEBUG_ONLY（NDEBUG 下 ((void)0)）。
+
+## 9. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| 15 个 LOG_* 消费文件（上表） | 上游 | LOG_* 宏 | string（调用前拼好） |
+| ThreadPool worker 线程 | 运行环境 | 并发调用；mutex_ 保证行完整 | 无线程 ID 输出 |
+| AuditLog | 平行 | 分工：控制台 vs 证据库 | — |
+| ConfigManager | 未接线 | getLogLevel/getLogFile/getDebugOutputMode 三 getter 无消费者 | string |
+| PathManager | 未接线 | getLogFilePath/getDebugLogPath 仅在 SystemInfoRoutes.cpp:242 展示 | path |
+| std::cout/std::cerr | 下游 | STDOUT 模式写 cout；自身错误写 cerr | 流 |
+| tests/UnitTest/test_logger.cpp | 消费者 | setLevel/setOutput 的唯一调用方 | 断言 |
+
+## 10. 配置影响表
+
+| 参数 | 默认 | 影响 | 未接线标注 |
+|---|---|---|---|
+| `LOG_LEVEL` | INFO（ConfigManager.cpp:181） | **未接线**：getter 无调用方；Logger 恒 INFO | .env.example 声明 |
+| `LOG_FILE` | forensics.log（:182） | **未接线** | 同上 |
+| `DEBUG_OUTPUT_MODE` | stdout（:183） | **未接线**：与 LogOutput 三态无映射代码 | 同上 |
+| `DEBUG_LOG_FILE` | debug.log（.env.example） | **未接线**且无 getter；实际调试日志路径固定 `logs/debug.log`（PathManager.cpp:96-98，亦无写入方） | |
+| setOutput 的 filePath 形参默认值 | "debug.log"（Logger.h） | 仅测试用到 | |
+
+## 11. 性能与并发细节
+
+- **热路径成本**：可见日志 = 1 次锁 + localtime + ostringstream 构造/格式化/析构 + cout 写 + endl flush。ostringstream 是最贵的一项（堆分配两次左右）；被过滤日志 = 1 次锁 + 1 次比较，几乎零成本——但调用方的字符串拼接（`"Parsed " + to_string(count) + ...`）在进入 log() 前已发生，OSSAnalyzerCore.cpp:370 这类三段拼接每条都白付。
+- **锁竞争面**：单把 mutex_ 串行化所有线程的所有日志；142 处调用点在并发分析（ThreadPool 4-16 worker）下的竞争概率低（日志频率 << 分析操作频率），不是当前瓶颈；若未来加逐文件日志则先改异步。
+- **endl 的 flush 开销**：STDOUT 模式每行刷新缓冲到终端；重定向到管道/文件时 cout 变全缓冲，endl 仍每行强制 write(2) 系统调用——高频日志下系统调用是主要开销，可换 `'\n'`（代价是崩溃丢缓冲）。
+- **内存**：瞬时 ostringstream，无驻留；FILE 模式 ofstream 缓冲默认数 KB。
+- **可调参数影响**：无（未接线）；切 NONE 可完全消除 142 处输出，但当前无人切。
+
+
+## 12. 进程输出通道全景（本轮盘点）
+
+C++ 进程里实际并存四种输出通道，量级对比（grep 全 src/，.cpp 口径）：
+
+| 通道 | 调用点 | 特征 | 主要使用者 |
+|---|---|---|---|
+| `std::cout` | 858 | 无锁（iostream 自带内部同步仅缓冲级）、无级别、无时间戳 | 核心链全部模块（DatabaseManager/FileClassifier/EventExtractor/各编排器） |
+| `std::cerr` | 516 | 同上，走 stderr | 错误路径、警告降级提示 |
+| `LOG_*` 宏 | 142 | 带锁带毫秒时间戳带级别过滤 | 外围分析器 15 文件（第 4.5 节） |
+| `AuditLog::instance().log` | 250 | 落 SQLite、毫秒时间戳、按任务查询 | 47 文件（AuditLog.md 第 10 节） |
+
+三个可推论的事实：(1) **时间戳覆盖率极低**——858+516 处 cout/cerr 全部裸输出，事后对账只能靠终端回滚或 AuditLog；(2) **stdout 混流**——cout 的 ✓ 进度行（Orchestrator 的 `[2/4] ...`）与 LOG_INFO 同走 stdout，运维重定向时无法按流分离，cerr 的 Warning 才进错误流；(3) **Logger 宏的份额约 9%**——它是四通道里最"规范"但最少用的一个。任何"统一日志"改造都要面对这个存量现实，顺序应是先接 LOG_LEVEL 配置（改 1 处生效）再逐模块迁移 cout。
+
+## 13. 接线剧本（让 .env 的 LOG_LEVEL 真正生效）
+
+改动最小集（三处，均在既有建议上给出精确落点）：
+
+1. `main.cpp:56`（ConfigManager::load 之后）：解析级别串映射——`"DEBUG"→LogLevel::DEBUG、"INFO"→INFO、"WARNING"→WARNING、"ERROR"→ERROR`，未知值落 INFO 并打一条 cerr；调 `Logger::instance().setLevel(...)`。
+2. 同段处理输出模式：`DEBUG_OUTPUT_MODE` 的 `"stdout"→STDOUT、"file"→FILE、"none"→NONE` 映射；FILE 时路径取 `ConfigManager::getLogFile()` 并 mkdir 父目录（Logger 的 ofstream 不建目录，PathManager.getLogFilePath 的 `logs/` 目录由 ensureDirectories 建，接线时注意顺序在 ensureDirectories 之后）。
+3. 回归点：`tests/UnitTest/test_logger.cpp` 已覆盖 setLevel/setOutput，无需新增；验收命令 `LOG_LEVEL=DEBUG ./forensic_analyzer ... 2>&1 | grep DEBUG` 应出现 SignatureVerifier 的签名细节行（当前默认 INFO 下不可见）。
+
+注意事项：Python httpserver 的 `LOG_LEVEL`（config.py:227）只在 /api/system/health 回显，两侧接线后语义仍是"各自进程各自的级别"，无跨进程传播。
+
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

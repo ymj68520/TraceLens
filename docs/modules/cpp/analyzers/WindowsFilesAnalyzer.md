@@ -109,6 +109,31 @@ std::vector<FileRecord> WindowsFilesAnalyzer::queryFilesByPattern(const std::str
 | `mft_entries`（:267-290） | `entry_number/file_path/parent_entry/creation_time/fn_creation_time/is_deleted/has_ads/permissions` | MFT 级时间线：`fn_*` 列是 $FILE_NAME 属性里的时间（与 $STANDARD_INFORMATION 双时间戳交叉可测时间篡改）；`has_ads` 标记备用数据流 |
 | `recycle_bin`（:141-149） | `original_path/file_name/deletion_time/original_size/user_sid` | 回收站 $I 文件：**删除时间**是别的工件都没有的事件类型 |
 
+### 4.2 产出表全清单（32 张，windows_analysis_sql_tables.h）
+
+按写入状态分三档：
+
+**在流水线中有写入方的 19 张**：registry_values、event_logs、prefetch_files、lnk_files、jump_list_entries、user_accounts、usb_devices、recycle_bin、browser_history/downloads/bookmarks/cookies/logins（5 张）、mft_entries、windows_services、scheduled_tasks、amcache_entries、srum_entries、windows_analysis_progress。
+
+**建表+解析器齐备但无调用方的 4 张**：wifi_profiles、rdp_connections、shimcache_entries、user_assist_entries（第 7 节死代码清单，激活=补一行调用）。
+
+**只有表没有解析器的 2 张**：shell_bag_entries（连解析器都没有）、browser_artifacts（浏览器杂项兜底表，无写入方）。
+
+**共享给 DLLAnalyzer 的 7 张**：dll_base_info 等（本模块建出、DLLAnalyzer 写入——两个库各有一份空/满互补的同名表）。
+
+列级补充（关键表逐列核对，DDL 行号）：
+
+**event_logs（17 列，:30-46）**：id、record_id（EVTX 记录号）、log_source（Security/System 等日志名）、event_id、level（Information/Warning/Error/Critical）、timestamp（Unix 秒，FILETIME 换算）、source（事件来源组件）、message（渲染后的消息文本）、computer_name、user_sid、channel + llm_* 5 列——写入条件：libevtx 正常段+恢复段双读（链路二）。
+
+**registry_values（16 列，:12-27）**：id、hive_path、hive_type（SAM/SYSTEM/SOFTWARE/SECURITY/NTUSER 五值）、key_path、value_name（默认值记 "(Default)"）、value_type（REG_* 名）、value_data（统一字符串化）、last_modified（**键级**时间戳）、forensic_importance（HIGH/MEDIUM/LOW）+ llm_* 5 列。
+
+**prefetch_files（14 列，:50-65）**：executable_name/executable_path/prefetch_hash/run_count/last_run_time（+多次运行时间列族）/referenced_files/referenced_directories + llm_*——run_count 与 last_run_time 是"程序执行"的核心量化。
+
+**mft_entries（25 列，:267-289）**：entry_number/parent_entry/file_path/file_size/flags、四组 $SI 时间（creation/modification/access/entry_mod）、四组 $FILE_NAME 时间（fn_*，双时间戳篡改交叉用）、is_deleted/has_ads/permissions/attributes + llm_*。
+
+LLM 侧语句族（windows_analysis_sql_llm.h，31 条 SELECT + UPDATE）：15 类工件的 pending 取数与回写；MFT 默认排除在服务 options 层（includeMFT=false），不在 SQL 层。
+
+
 ## 5. 解析机制走读
 
 **链路一：注册表 hive 的递归遍历（`parseRegistryHive`，`WindowsRegistryParser.cpp:98-165`）。** `analyzeRegistryHives()`（`WindowsRegistryParser.cpp:28-96`）对 SYSTEM/SAM/SOFTWARE/NTUSER 四类 hive 都先跑这一个通用遍历：
@@ -224,6 +249,33 @@ std::vector<FileRecord> WindowsFilesAnalyzer::queryFilesByPattern(const std::str
 
 **链路五：$MFT → 全盘文件级时间线（`analyzeNTFSMetadata()`，`WindowsArtifactsParsers_SystemAnalysis.cpp:26-...`）。** 提取 `$MFT` 后用 libfsntfs 的 MFT metadata file API 逐条枚举，默认只处理前 10 万条防止内存爆掉（第 84-85 行），事务批量插入 mft_entries。相比 raw.db（来自目录项遍历），MFT 直接读 inode 记录，能覆盖更多已删除/无目录项的文件记录。
 
+### 5.1 代码走读：normalizeWindowsPath 的分隔符与盘符归一（WindowsFilesAnalyzerCore.cpp:317-350）
+
+```cpp
+std::string WindowsFilesAnalyzer::normalizeWindowsPath(const std::string& input) {
+    // 骨架：\Device\HarddiskVolumeX\... 或 C:\Users\... 或 /Users/...
+    // 1) 统一替换 \ 为 /
+    // 2) 剥离盘符前缀（C:）或 \Device\HarddiskVolumeN 前缀
+    // 3) 保证以 / 开头
+    // 4) 折叠连续分隔符
+}
+```
+
+逐块解释（骨架，全实现 :317-350）：为什么要归一——镜像里的工件内容（注册表键、LNK 目标、Prefetch 路径）用的是 Windows 原生写法，而 raw.db 的 files.path 是 TSK 归一后的 `/` 风格（ImageAnalyzer.md 链路二的路径规范化）；两套写法不统一，"Prefetch 里引用的 DLL 是否在 files 表里"这类跨表 join 就永远 join 不上。归一化把三种输入形态（盘符式/设备路径式/已归一式）压成同一种，是全部工件表路径列可对齐 files 表的前提。已知局限：只处理结构不处理大小写（Windows 路径大小写不敏感但 SQLite LIKE 默认敏感——join 时需要 LOWER() 或 COLLATE NOCASE 配合，当前查询未做）。
+
+### 5.2 代码走读：readUTF16LEString 的 ASCII 截断（WindowsFilesAnalyzerCore.cpp:386-404）
+
+```cpp
+std::string WindowsFilesAnalyzer::readUTF16LEString(const uint8_t* data, size_t maxChars) {
+    // 骨架：逐 UTF-16LE 码元读取
+    // 非 ASCII 码元（>0x7F 或代理对）替换为 '?'
+    // 注释原文解释了取舍：解析器只需要路径/名称等标识性文本，完整 UTF-8 转换留待需要时
+}
+```
+
+逐块解释（骨架）：中文用户名、中文文件名、中文注释在这条通道上全部变 `?`—— Prefetch 引用路径、JumpList、注册表值数据都经过它。对"路径是否存在于 files 表"的结构比对无碍（分隔符与 ASCII 部分保留），但 message 类文本会失真，LLM 分析中文系统的 EVTX 消息时要注意这一层损耗在 C++ 侧而非模型侧。修复点是标准 UTF-16→UTF-8 转换（iconv 或手写 BMP 映射，几十行）。
+
+
 ## 6. 与 LLM 的协作
 
 `analyzeWindowsData()` 的最后一步是 `analyzeWithLLM()`（`WindowsFilesAnalyzerCore.cpp:111-177`），代码注释里写着 "MANDATORY"，但实际有两道自动跳过闸门：`--no-ai` 或未配置 `LLM_BASE_URL`（本地 LLM 无需 key，门禁看 URL，第 119-134 行）。干活的是 `WindowsLLMAnalysisService`（`src/network/HTTPServer/WindowsLLMAnalysisService.h`），覆盖 15 种工件类型（registry、event_log、prefetch、lnk、jump_list、五类 browser、mft、service、task、amcache、srum）。模式与其他平台一致：建库时给工件表补 5 个 `llm_*` 列（UPDATE 语句集中在 `src/core/DatabaseManager/SQL/windows_analysis_sql_llm.h`），分析时取 pending 行 → JSON prompt → `ModelRouter::chat()` → 原地回写。默认上限 10000 条/类型；MFT 默认排除（量太大，`options.includeMFT = false`，第 160 行）。
@@ -242,4 +294,4 @@ std::vector<FileRecord> WindowsFilesAnalyzer::queryFilesByPattern(const std::str
 - 加新工件：四步——(1) 在某个 `analyzeXxx` 或新方法里 `queryFilesByPattern("<模式>")`；(2) `extractFileToPath(inode, getExtractPath(...), partitionNum)` 提出；(3) 写解析器（复杂格式优先找 libyal 系列库：libregf/libmsiecf/libolecf…）；(4) 在 `windows_analysis_sql_tables.h` 加表、`WindowsDBOperations_*.cpp` 加插入方法。参考 `analyzeAmcache()`（`WindowsArtifactsParsers_SystemAnalysis.cpp:369-411`）是最标准的样板。
 - 要 LLM 也分析新表：给表补 5 个 `llm_*` 列的迁移 + 在 `windows_analysis_sql_llm.h` 加 UPDATE、在 `WindowsLLMAnalysisService` 注册 ArtifactType。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）
