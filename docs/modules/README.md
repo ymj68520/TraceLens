@@ -188,6 +188,19 @@
 | [Main](python/server/Main.md) | C/S 服务端应用装配（:8091，PostgreSQL + JWT；启动降级语义与双栈共存） |
 | [Services](python/server/Services.md) | 四件套：auth（JWT）/command_queue（命令队列）/task_orchestrator/result_aggregator |
 
+### Web 前端（web/）
+
+| 文档 | 描述 |
+|------|------|
+| [Overview](web/Overview.md) | 前端架构：入口链、三 axios 客户端、vite 代理与分包 |
+| [Pages](web/Pages.md) | 23 条路由逐页走读 + 死代码页面与已知问题 |
+| [Services](web/Services.md) | 24 个 service 文件的方法↔端点↔消费者三向映射 |
+| [Store](web/Store.md) | 7 个 Redux slice 逐个：state/thunk/localStorage |
+| [Hooks](web/Hooks.md) | 16 个 hooks：轮询身份绑定模式、死 hooks 标注 |
+| [Components](web/Components.md) | 组件库导览：common/reports 渲染器/workbench/抽屉 |
+| [I18nTheming](web/I18nTheming.md) | i18n 键表、主题链、设置持久化、日志三通道 |
+| [Testing](web/Testing.md) | Vitest 配置与 48 个测试文件解读 |
+
 ---
 
 ## 阅读建议

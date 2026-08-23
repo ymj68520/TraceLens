@@ -22,10 +22,23 @@
 | 文档 | 内容 |
 |------|------|
 | [Overview.md](architecture/Overview.md) | 系统组成、技术栈、模块依赖、扩展点 |
-| [DataFlow.md](architecture/DataFlow.md) | CLI / HTTP 任务 / C/S 三条数据流 |
-| [DatabaseSchema.md](architecture/DatabaseSchema.md) | 各 SQLite 库全部表 + C/S PostgreSQL 表 |
+| [DataFlow.md](architecture/DataFlow.md) | 一个任务的一生：CLI / HTTP / C/S 数据流（含核心代码走读） |
+| [Concurrency.md](architecture/Concurrency.md) | 线程/协程/锁全景与已知并发坑速查表 |
+| [DatabaseSchema.md](architecture/DatabaseSchema.md) | 各库表清单与分层理由（逐列参考见 [schema/](schema/)） |
 | [Deployment.md](architecture/Deployment.md) | 单机 run.sh、分布式 C/S、外部依赖 |
 | [Security.md](architecture/Security.md) | 审计日志、任务数据边界、认证现状 |
+
+### 🗄️ 数据库字段参考（docs/schema/）
+逐表逐列字段说明（列名/类型/含义/写入方），全部取自建表 SQL：[raw](schema/RawDB.md) · [events](schema/EventsDB.md) · [files](schema/FilesDB.md) · [android](schema/AndroidDB.md) · [windows](schema/WindowsDB.md) · [linux（73 表）](schema/LinuxDB.md) · [memory](schema/MemoryDB.md) · [oss](schema/OssDB.md) · [C/S PostgreSQL](schema/PostgreSQLCS.md)
+
+### 📖 分析师教程（docs/tutorials/）
+端到端实操主线（命令全部核实）：[Linux 入侵排查](tutorials/LinuxIntrusion.md) · [Windows 取证](tutorials/WindowsCase.md) · [Android/微信取证](tutorials/AndroidWechat.md) · [内存取证](tutorials/MemoryForensics.md) · [知识图谱与报告](tutorials/KnowledgeGraphReports.md) · [分布式 C/S 实操](tutorials/DistributedCS.md)
+
+### 🛠️ 运维手册（docs/ops/）
+[服务启停 Runbook](ops/ServiceRunbook.md) · [数据与备份](ops/DataAndBackup.md) · [外部服务（Neo4j/Redis/PG/LLM）](ops/ExternalServices.md) · [升级与迁移](ops/UpgradeMigration.md) · [性能调优](ops/PerformanceTuning.md) · [安全加固清单](ops/SecurityHardening.md)
+
+### 📐 参考手册（docs/reference/）
+[CLI 完整参数](reference/CLI.md) · [.env 全变量](reference/Environment.md)（含未接线/默认值漂移标注） · [错误码目录](reference/ErrorCodes.md) · [跨服务契约](reference/ServiceContracts.md)
 
 ### 🧩 模块文档（docs/modules/）
 索引见 **[modules/README.md](modules/README.md)**，按 `docs/modules/cpp/** ↔ src/**`、`docs/modules/python/** ↔ python_service/**` 对应。覆盖 C++ 分析器（Android/Windows/Linux/DLL/数据库/OSS/PDF/Office/雕刻/镜像）、核心基础设施（数据库/分类/事件/搜索/TOON/审计/线程池等）、网络层（HTTPServer/TaskManager/路由）、LLM 集成（LLMClient/ModelRouter/MCP）、Python 服务（httpserver/Graphiti 集成/服务层）。
@@ -35,9 +48,13 @@
 ### 🧪 测试文档（docs/testing/）
 | 文档 | 内容 |
 |------|------|
+| [CppTestCatalog.md](testing/CppTestCatalog.md) | C++ 全部 61+1 个测试目标目录（怎么跑/测什么/依赖） |
+| [PythonTestCatalog.md](testing/PythonTestCatalog.md) | Python 117 个测试文件目录与标记体系 |
+| [AcceptanceHarness.md](testing/AcceptanceHarness.md) | live_services.py 验收框架：隔离契约/五 profile 旅程/fake LLM |
+| [TestFixtures.md](testing/TestFixtures.md) | 测试数据与镜像生成脚本全景 |
 | [test-profiles.md](testing/test-profiles.md) | Python 测试档案（fast/focused/investigation/full） |
-| [live-integration.md](testing/live-integration.md) | 真实环境集成测试 |
-| [browser-e2e.md](testing/browser-e2e.md) | 浏览器端到端验证 |
+| [live-integration.md](testing/live-integration.md) | 真实环境集成测试（历史记录） |
+| [browser-e2e.md](testing/browser-e2e.md) | 浏览器端到端验证（历史记录） |
 
 验收框架：`make acceptance-{smoke,task,analyst,restart,matrix}`（scripts/acceptance/live_services.py，隔离环境）。
 

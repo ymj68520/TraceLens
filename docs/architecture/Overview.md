@@ -143,7 +143,8 @@ LLM 在系统里出现在**三个层级**，各有分工，理解这个分层就
 ## 9. 相关文档
 
 - **[DataFlow.md](./DataFlow.md)** —— 一个 HTTP 任务从创建到图谱摄取的完整走读（叙事版）
-- **[DatabaseSchema.md](./DatabaseSchema.md)** —— 各库表清单与分层理由
+- **[Concurrency.md](./Concurrency.md)** —— 线程/协程/锁的全景：四种并发主体、大锁纪律、协作式取消、已知并发坑速查表
+- **[DatabaseSchema.md](./DatabaseSchema.md)** —— 各库表清单与分层理由（逐列字段参考见 [docs/schema/](../schema/)）
 - **[Deployment.md](./Deployment.md)** —— 部署形态与外部依赖
 - **[Security.md](./Security.md)** —— 安全机制与边界
 - **[模块文档索引](../modules/README.md)** —— 按模块深入
