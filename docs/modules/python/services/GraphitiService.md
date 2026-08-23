@@ -152,7 +152,7 @@ search_results = await ingestor._client.search_(
 - 旧作业的进度只在内存，重启即失；新作业系统 Redis 持久化解决这一点。
 - `search()` 依赖 `ingestor._client` 私有属性（_query.py:48）——跨层触达实现细节，升级 graphiti-core 时需回归。
 - Neo4j 密码为空是常见配置错误：initialize 的 warning（_core.py:29-30）会给出排查提示。
-- **案例级摄取存在 NameError 隐患（本次核对源码新发现）**：`_ingest.py` 的 mixin 模块**没有导入 `Path`**（模块级 import 只有 asyncio/logging/uuid/os/typing，其余是函数内局部 import），但 `ingest_case_data`（:75、:130）与 `ingest_case_data_incremental`（:471、:529）都在用 `Path(files_db).exists()`——AST 核实确认该名字未导入。运行时每个镜像/任务的聚合块会因 `NameError` 落进各自的 `except Exception` 记 warning（"Failed to aggregate files from image N"），episodes 为空，最终以 "No episodes to ingest" 返回 True/成功字典——**症状是案例图静默为空**。任务级 `ingest_task_episodes` 不用 Path（路径来自调用方 dict），不受影响；修复只需在 `_ingest.py` 顶部补 `from pathlib import Path`。
+- ~~案例级摄取存在 NameError 隐患~~ **已于 2026-08-24 修复**：`_ingest.py` 曾缺少 `from pathlib import Path`，导致 `ingest_case_data`/`ingest_case_data_incremental` 的聚合块全部落入 except、案例图静默为空；现已在模块顶部补齐导入（此前若日志出现 "Failed to aggregate files from image" 即为此因）。
 - 错误处理边界：`ingest_task_episodes` 整体 try/except（:379-381），任何构造期异常返回 success=False 而非 500——调用方（作业 worker）把 error 记入 stats，path-B 结果不受影响。
 
 ## 7. 如何验证与扩展
@@ -161,6 +161,6 @@ search_results = await ingestor._client.search_(
 - graphiti_integration 自带 `graphiti_integration/tests/`（test_graphiti_ingestor.py 等），**不在 pytest testpaths 里**（pytest.ini 只收 `tests/`），需单独跑。
 - 新增检索能力：改 `_query.py` 对应 mixin 方法；保持"带 task_id 过滤 + 降级路径"两个不变量。
 - 手工链路：`POST /api/graphiti/ingest` → `GET /api/graphiti/jobs/{id}` → `POST /api/graphiti/search {"task_id","query"}` → `GET /api/graphiti/graph?task_id=`。
-- 案例图验证注意第 6 节的 NameError：若跨镜像摄取后案例图无内容，先查日志里 "Failed to aggregate files from image" warning。
+- 案例图验证：跨镜像摄取后若案例图无内容，先查日志里 "Failed to aggregate files from image" warning（该 NameError 根因已于 2026-08-24 修复，正常不应再出现）。
 
 **最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
