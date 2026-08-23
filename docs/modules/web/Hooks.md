@@ -210,6 +210,127 @@ const t = (key) => {
 | 同上 | useReportTraceback / useFinalReportPublication / useFinalReportPresentation | 引用回溯 / 发布事实 / md-html-print 切换 |
 | pages/WeChatGraph/hooks | useWeChatGraph | 图+时间线+社区+聊天记录的全部状态 |
 
+## 二轮补充：identity 轮询的统一时序
+
+三个 `use*Polling`（ReportGeneration / SecondaryAnalysis / EventRefresh）是同一骨架的
+三次实例化，统一时序如下（以 useReportGenerationPolling 为例，`submission =
+{taskId, generationId}`）：
+
+```mermaid
+sequenceDiagram
+    participant U as 页面(GenerateReportPanel)
+    participant H as use*Polling hook
+    participant R as identityRef
+    participant S as service(pythonApi)
+
+    U->>H: submission = {taskId, generationId}
+    H->>H: identity = `${taskId}|${generationId}`
+    H->>R: identityRef.current = identity
+    H->>H: setGeneration(null) / setError(null)（丢弃旧 identity 全部状态）
+    loop 直到离开继续集合
+        H->>S: GET（exact id，绝不 latest）
+        S-->>H: 200 {status, ...}
+        alt cancelled 或 identityRef.current !== identity
+            H-->>H: 丢弃（晚到响应不写状态）
+        else status ∈ POLLING_STATUSES
+            H->>U: setGeneration(next)（UI 更新进度）
+            H->>H: setTimeout(poll, intervalMs)
+        else 终态（completed/failed/...）
+            H->>U: setGeneration(next)（final）
+            Note over H: 不再调度
+        end
+    end
+    U->>H: submission = null（关闭面板）
+    H->>R: identityRef.current = null
+    Note over H,S: effect 的 `if (!identity) return` → 完全不发请求
+```
+
+三条不变量都画在图里：exact id 请求、晚到响应丢弃（成功与失败同权）、null identity
+零请求。`useEventRefreshPolling` 多一步"history 中按 refresh_id 过滤，行缺失按停止
+处理"（fail-closed）。
+
+### identity 绑定代码并排对照
+
+三个 hook 的 identity 构造与继续集合（逐字摘自源码头注释与常量）：
+
+```js
+// useReportGenerationPolling.js:9,31-33 —— R2c 冻结状态机
+const POLLING_STATUSES = ['admitted', 'running'];
+const identity = submission
+    ? `${submission.taskId}|${submission.generationId}`
+    : null;
+
+// useSecondaryAnalysisPolling.js:9,30-33 —— C4b-2 冻结状态机
+const POLLING_STATUSES = ['queued', 'running'];
+const identity = submission
+    ? `${submission.taskId}|${submission.evidenceKey}|${submission.analysisId}`
+    : null;
+
+// useEventRefreshPolling.js:9,36-39 —— C7c 冻结状态机
+const POLLING_STATUSES = ['queued', 'running'];
+const identity = submission
+    ? `${submission.taskId}|${submission.eventId}|${submission.refreshId}`
+    : null;
+```
+
+对照要点：
+
+- identity 元组宽度 = 身份粒度：generation 只需二元组（scope 内唯一），analysis 需要
+  三元组（evidence 可换），refresh 需要三元组（同一 event 可多次刷新）——**任何会把
+  轮询对象换掉的维度都必须进 identity**，否则会出现"旧对象状态污染新对象"；
+- 继续集合各不相同（`admitted/running` vs `queued/running`），但"停止条件 =
+  `!next || !POLLING_STATUSES.includes(next.status)`"的结构一致——`!next`（404/空响应）
+  也按停止处理，防止对已删除行无限轮询；
+- 三者的测试用例（Testing.md 模式 B）都以这三个常量为断言对象，改动集合必须同步改
+  测试。
+
+### useFinalReportViewer — requestId×3 的最重防陈旧
+
+页面局部 hooks 里防陈旧做得最狠的是报告查看器，
+`web/src/pages/Investigation/hooks/useFinalReportViewer.js:44-69`（节选）：
+
+```js
+const response = await getFinalReport(requestTask, requestReport);
+if (
+  detailRequestRef.current !== requestId        // ① 本次请求序号仍是最新的
+  || taskRef.current !== requestTask            // ② 任务没被切走
+  || selectedReportRef.current !== requestReport // ③ 报告没被切走
+) return;                                        // 任一失守：静默丢弃
+setSelectedReport(response?.report || null);
+```
+
+- 三个 ref 分别绑定"第几次请求、哪个任务、哪份报告"——三元组任一维度变化都判过期；
+  与全局轮询 hooks 的 identity 字符串相比，这里没有把三元组拼成字符串，而是逐个比较，
+  语义相同、写法更直白；
+- catch 分支与 finally 分支**各自再做一次三元组核对**——错误态和 loading 态同样不允许
+  被旧请求写入（否则切走任务后页面会残留上一个任务的错误提示）；
+- 这是"复制第三份 requestId 逻辑"警告（注意 2）的例外：报告查看器的三元组身份确实
+  无法用 `useStaleResource` 的单 key 表达，属于合理特化。
+
+## 与后端契约的对应
+
+轮询 hooks 是 R/C 系列冻结契约在前端的"哨兵"，逐条对应
+[ServiceContracts.md](../../reference/ServiceContracts.md)：
+
+1. **202 + admitted 语义**：`useReportGenerationPolling` 的 `admitted` 继续状态对应
+   `POST /api/reports/generate` 返回 202（admission，排队）而非 201 的设计
+   （Python_REST_API.md §6.3）；轮询端点
+   `GET /api/reports/generations/{generation_id}?task_id=` 是 exact 查询，服务端不提供
+   latest 通道——hook 头注释"绝无 latest 回退"与契约两侧互相锁定。
+2. **作业状态的跨服务大小写**：本组 hooks 轮询的 Python 域状态全小写
+   （`queued/running/review_pending/...`）；而 Graphiti 作业（KnowledgeGraph 页的
+   setInterval 轮询、C++ LLMPythonProxy）是大写 `COMPLETED/FAILED`——**同一个前端里
+   两套字面量并存**，因为它们属于两个不同的后端契约（ServiceContracts.md §2 漂移
+   点 4 只约定了 Graphiti 侧统一大写）。
+3. **EventRefresh 无 exact 端点**：`useEventRefreshPolling` 头注释（14-17 行）明说
+   后端没有 `GET /refreshes/{refresh_id}`，hook 改轮询
+   `GET /api/investigation/events/{event_id}/refreshes` 列表并按 id 过滤——这是
+   "契约缺口的前端侧补偿"，若后端将来补出 exact 端点，该 hook 可整体简化。
+4. **fetchGeneration/fetchAnalysis 依赖注入**：第二参默认绑 service 方法，正是为了让
+   测试不依赖网络契约（Testing.md）；生产代码不要绕过注入直接 import service 调用。
+5. **瞬时错误 vs 业务终态分离**：503/网络错误只 setError 不断轮询，对应后端"job 行
+   上的 `status=failed` 才是业务终态"的语义（Python_REST_API.md §8 的状态机）。
+
 ## 协作
 
 - 轮询 hooks ↔ Services.md：`fetchGeneration`/`fetchAnalysis`/`listInvestigationEventRefreshes`
@@ -234,4 +355,4 @@ cd web && npx vitest run src/hooks/
 # "task switch drops the late response" 与 "null submission never polls" 用例。
 ```
 
-**最后更新**: 2026-08-24（新建，解释式）
+**最后更新**: 2026-08-24（二轮深化：补代码走读与契约对应）

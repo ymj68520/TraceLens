@@ -183,6 +183,136 @@ const { connected } = useWebSocket(
 - TerminalOutput ↔ systemService 同域端点（Python 代读）、useWebSocket（预留）、
   api.js 拦截器日志（被动进入 web Tab）。
 
+## 二轮补充走读：web 日志通道的 console 劫持
+
+`web/src/components/common/TerminalOutput.jsx:113-155` 的通道 3 是全组件最"黑"的一段，
+值得整段读（节选）：
+
+```js
+useEffect(() => {
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalWarn = console.warn;
+
+  const addLog = (level, ...args) => {
+    const timestamp = new Date().toISOString();
+    const message = args.map(arg =>
+      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+    ).join(' ');
+    const entry = { timestamp, level, message };
+    window.forensics_web_logs.push(entry);
+    if (window.forensics_web_logs.length > 500) window.forensics_web_logs.shift();
+    setLogs(prev => ({ ...prev, web: [...window.forensics_web_logs] }));
+  };
+
+  console.log = (...args) => { addLog('INFO', ...args); originalLog.apply(console, args); };
+  console.error = (...args) => { addLog('ERROR', ...args); originalError.apply(console, args); };
+  console.warn = (...args) => { addLog('WARN', ...args); originalWarn.apply(console, args); };
+
+  return () => {                                   // 成对还原
+    console.log = originalLog;
+    console.error = originalError;
+    console.warn = originalWarn;
+  };
+}, []);
+```
+
+逐块解释：
+
+- **对象参数走 `JSON.stringify(arg, null, 2)`，其余走 `String(arg)`**——api.js 拦截器
+  打印的 `config.data` 等对象能以可读形式出现在 web Tab；
+- `window.forensics_web_logs` 是**会话级伪持久化**：挂在 window 上而非 state，组件
+  卸载再挂载不丢历史；上限 500 条，超出 `shift()` 丢最旧；
+- 劫持与还原严格成对（cleanup 还原三个原函数），多次挂载安全；但**劫持期间**页面
+  任何库的 console 输出都会进缓冲——包括 React 的开发期警告，噪音与信号混在一起；
+- `setLogs` 每条都全量复制 `[...window.forensics_web_logs]`，500 条上限同时也是这条
+  复制路径的性能护栏。
+
+### 词表键值的真实形状
+
+`web/src/locales/zh.js` 的键值结构（en.js 同构）：
+
+```js
+export default {
+    // Navigation
+    'nav.dashboard': '仪表盘',
+    'nav.tasks': '任务列表',
+    'nav.cases': '案件管理',
+    'nav.timeline': '时间线',
+    'nav.files': '文件管理',
+    'nav.ai_descriptions': 'AI 描述',
+    'nav.case_center': '研判中心',
+    'nav.investigation': '二次调查分析',
+    'nav.knowledge_graph': '知识图谱',
+    'nav.android': '安卓取证',
+    ...
+};
+```
+
+扁平单层、键名用点分命名空间（`nav.*`/`settings.*`/`terminal.*`），没有嵌套与插值
+机制——`t()` 不接受参数，需要拼变量的文案（如"任务 xxx 已完成"）只能整句硬编码，
+这是词表只覆盖四个页面的根本原因之一。
+
+### SSE 通道 — startStreaming 的取数与截断
+
+`web/src/components/common/TerminalOutput.jsx:49-84`（节选）：
+
+```js
+const startStreaming = (source) => {
+  if (eventSourceRef.current) eventSourceRef.current.close();   // ① 串行化：先关旧流
+  if (source === 'web') return;                                  // web Tab 无后端流
+
+  const endpoints = {
+    cpp: `${PYTHON_BASE}/api/system/logs-stream/cpp`,
+    python: `${PYTHON_BASE}/api/system/logs-stream/python`,
+  };
+  setIsStreaming(true);
+  const es = new EventSource(url);
+  eventSourceRef.current = es;
+
+  es.onmessage = (event) => {
+    try {
+      const entry = JSON.parse(event.data);
+      setLogs(prev => ({ ...prev, [source]: [...prev[source].slice(-499), entry] }));
+    } catch (e) {
+      setLogs(prev => ({ ...prev, [source]: [...prev[source].slice(-499),
+        { timestamp: '', level: 'INFO', message: event.data }] }));
+    }
+  };
+  es.onerror = () => { setIsStreaming(false); es.close(); };     // ② 断流即回退 REST 模式
+};
+```
+
+- `PYTHON_BASE` 直指 `http://<host>:8090`——SSE 端点在 Python（Python 代读 C++ 日志），
+  且用原生 `EventSource`（不能带自定义头，好在这组端点无鉴权）；
+- `slice(-499)` + 新条 = 每通道上限 500 条，与 web Tab 的 `window.forensics_web_logs`
+  上限一致，防长会话内存膨胀；
+- onerror 只置非流式并关流，**不自动重连**——用户手动切 Tab 才会重新 startStreaming；
+  断流期间的日志靠挂载时的 REST 回填补齐（时间线不连续是接受的取舍）。
+
+## 与后端契约的对应
+
+本篇三个机制各自咬合的后端契约（对照
+[ServiceContracts.md](../../reference/ServiceContracts.md)）：
+
+1. **TerminalOutput 的日志端点全部在 Python :8090**：REST 回填
+   `/api/system/logs/{cpp|python}` 与 SSE 流 `/api/system/logs-stream/{service}` 都是
+   Python 侧代读（python_service 读 `build/logs/` 下的文件再喂给前端）；C++ 独立部署
+   时 cpp Tab 是否有内容取决于 Python 能否读到 C++ 日志文件。终端里的端口卡片取自
+   api.js 导出的 `CPP_BASE_URL`/`PYTHON_API_BASE_URL`——即 ServiceContracts.md §7.2
+   三个客户端的推导结果。
+2. **健康三口径的展示面**：Settings 页的 Neo4j 连接测试（`getGraphitiStatus`）与
+   LLM 状态（`getLLMStatus`）消费 Python `/api/graphiti/status` 与 `/api/llm/status`；
+   Python `/health/ready` 里 Neo4j/LLM/Redis 是可选依赖（失败只降级不阻断，
+   ServiceContracts.md §9-8 的三口径并存提醒同样适用于前端展示）。
+3. **语言/主题无后端参与**：language/theme/itemsPerPage 只存在于
+   `forensics_settings`（localStorage），后端没有用户偏好端点——多用户/多浏览器之间
+   不同步，这是当前架构的显式取舍（本地单机取证工具的假设）。
+4. **`apiUrl`/`pythonApiUrl` 展示性字段**与真实请求地址（api.js 环境变量/host 推导）
+   脱钩的结论，与 ServiceContracts.md §7.1"`VITE_*` 只影响前端构建/开发期"一致：在
+   Settings 页改地址不会有任何效果，改 `.env` 后 dev 需重启 vite（代理表启动期求值）、
+   prod 需重新构建（`VITE_*` 构建期内联）。
+
 ## 注意
 
 1. **新增文案请同时补 en/zh 两张表**，否则界面直接显示键名（现状已有 2 个侧栏项
@@ -204,4 +334,4 @@ cd web && npm run dev
 #    /api/system/logs-stream/cpp 与 web Tab 收录的拦截器日志。
 ```
 
-**最后更新**: 2026-08-24（新建，解释式）
+**最后更新**: 2026-08-24（二轮深化：补代码走读与契约对应）

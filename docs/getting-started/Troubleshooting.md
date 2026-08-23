@@ -245,7 +245,176 @@ sqlite3 corrupted.db ".dump" | sqlite3 recovered.db
 
 ---
 
-## 13. 获取帮助
+## 13. 深挖工具箱
+
+常规症状查不通时，按本节五件工具深挖：sqlite3 直查、三方日志对时、任务库解剖、
+性能定位、已知问题索引。
+
+### 13.1 sqlite3 常用诊断 SQL
+
+**任务注册表（tasks.json）**——JSON 不是 SQL，配 `jq`：
+
+```bash
+TJ=build/data/tasks.json
+
+# 全部任务的 id/状态/镜像（注意：文件内状态是大写，API 返回是小写）
+jq '.tasks[] | {id, status, image_path}' $TJ | head -40
+
+# 卡 RUNNING 的任务及其库产物
+jq '.tasks[] | select(.status=="RUNNING") | {id, created_at, output_files_db, error_details}' $TJ
+
+# 某任务的全部产物路径（raw/events/files）
+jq '.tasks[] | select(.id=="task_aaa") | {output_raw_db, output_events_db, output_files_db}' $TJ
+```
+
+> 大小写陷阱：REST API 与 tasks.json 的状态值**一套小写一套大写**
+> （TaskHelpers.cpp vs TaskSerialization.cpp），jq 过滤用大写、API 比较用小写。
+
+**任务库完整性与 WAL 状态**（对任务目录下任一库）：
+
+```bash
+DB=build/data/tasks/task_aaa/files.db
+sqlite3 $DB "PRAGMA integrity_check;"            # 应返回 ok
+sqlite3 $DB "PRAGMA journal_mode;"               # 应为 wal（DB_JOURNAL_MODE=WAL）
+ls -la build/data/tasks/task_aaa/ | grep -E '\-wal|\-shm'   # 残留大小
+sqlite3 $DB "PRAGMA wal_checkpoint(TRUNCATE);"   # 手动合并 WAL（无人占用时）
+sqlite3 $DB ".tables"                            # 该库到底有哪些表
+sqlite3 $DB "SELECT COUNT(*) FROM files;"        # 主表行数（先看规模再看细节）
+```
+
+**时间线分布**（events.db，判断"哪天出的事"最快的 SQL）：
+
+```bash
+EDB=build/data/tasks/task_aaa/events.db
+sqlite3 $EDB "SELECT date(timestamp, 'unixepoch') d, event_type, COUNT(*) c
+  FROM events GROUP BY d, event_type ORDER BY d;"
+sqlite3 $EDB "SELECT COUNT(*) FROM system_events;"       # 系统叙事事件量
+sqlite3 $EDB "SELECT * FROM deletion_events ORDER BY timestamp DESC LIMIT 10;"
+```
+
+> 字段名以 [docs/schema/](../schema/) 各库文档为准（上表用 events 主表的
+> timestamp/event_type 列；不同版本列名有差异时先 `.schema events` 看真实定义）。
+
+### 13.2 日志关联定位法（三方对时间戳）
+
+三个独立日志源各有时间基准，对齐后才能还原"同一时刻系统在干什么"：
+
+| 源 | 位置 | 时间格式 |
+|----|------|----------|
+| C++ 应用日志 | `build/data/logs/forensics.log`（DEBUG_LOG_FILE 另出 debug.log） | 行内时间戳（本地时区） |
+| 服务启动日志 | `build/logs/{cpp_server,python_service,cs_server}.log` | run.sh/进程输出 |
+| Python 日志 | `build/logs/python_service.log` 或 `GET :8090/api/system/logs?lines=200` | 行内时间戳 |
+| 审计库 | `forensics_audit.db`（相对服务 CWD，run.sh 下即 `build/`） | **Unix 毫秒** |
+
+操作流程：
+
+```bash
+# ① 先在审计库锁定可疑时刻（毫秒 → 人类可读）
+sqlite3 build/forensics_audit.db "SELECT datetime(timestamp/1000,'unixepoch','localtime') t,
+  action, task_id FROM audit_logs WHERE task_id='task_aaa' ORDER BY timestamp;" | less
+
+# ② 用同一时间窗 grep 两个服务日志（按上一步的 t 前后各放宽 1 分钟）
+grep -n "14:23:" build/data/logs/forensics.log | head -40      # C++ 侧
+grep -n "14:23:" build/logs/python_service.log | head -40      # Python 侧
+
+# ③ 前端视角补充：/terminal 页 web Tab 收录了浏览器端请求日志（api.js 拦截器）
+```
+
+对齐要点：审计毫秒时间戳是**最权威**的排序基准（`datetime(ts/1000,'unixepoch')` 转
+换）；C++/Python 日志行内时间通常是本地时区字符串，直接字符串前缀 grep 即可；三方
+对出同一分钟后再看该任务的 phase/事件，基本能定位到具体模块。
+
+### 13.3 任务库"解剖"流程（哪个表看什么）
+
+拿到一个任务目录 `build/data/tasks/<task_id>/` 后，按依赖顺序看：
+
+| 顺序 | 库 | 重点表 | 看什么 |
+|------|----|--------|--------|
+| 1 | raw.db | `files`、`partitions` | 输入全貌：文件数、分区、四时间戳、md5、is_deleted 分布 |
+| 2 | events.db | `events`（主表）、`{creation,modification,access,change,deletion}_events`、`system_events` | 时间线总量与按天/类型分布；系统叙事事件 |
+| 3 | files.db | `files`（主表）、24 张分类物化表（images…unknown_files）、`analysis_progress`、`file_descriptions`、`{android,windows,linux}_artifacts` | 分类结果、LLM 进度与证据、平台工件 |
+| 4 | 各平台库 | android.db / windows.db / linux.db | 场景工件明细（HTTP 任务为纯名，CLI 为镜像前缀名） |
+| 5 | 可选 | `_memory.db`、`_dll.db`、investigation.db | 仅对应专项任务存在 |
+
+```bash
+# 典型解剖三连：
+sqlite3 raw.db "SELECT COUNT(*) total, SUM(is_deleted) deleted FROM files;"
+sqlite3 files.db "SELECT category, COUNT(*) FROM files GROUP BY category ORDER BY 2 DESC;"
+sqlite3 files.db "SELECT COUNT(*) FROM analysis_progress;"      # LLM 批量进度行
+```
+
+排障判读：raw 有量而 events 为 0 → 事件提取阶段失败（看任务 error_details 与审计
+EVENT_EXTRACTION_* 动作）；files 主表有量而 LLM 列全空 → llm_analyze 未开或 LLM 不可达；
+artifacts 表恒空 → 场景未选或分析器未接线（Windows 部分解析器"实现未接线"，见
+[WindowsFilesAnalyzer](../modules/cpp/analyzers/WindowsFilesAnalyzer.md)）。
+
+### 13.4 性能问题定位
+
+**SQLite/WAL 层**：
+
+```bash
+ls -la build/data/tasks/<id>/                 # -wal 巨大 → 长事务未提交或进程僵死
+lsof build/data/tasks/<id>/files.db           # 谁占着库（锁等待排查）
+sqlite3 <db> "EXPLAIN QUERY PLAN SELECT * FROM files WHERE path LIKE '%etc%';"
+# 全表扫描（SCAN）且表大 → 确认索引（idx_files_path 等，建库时创建）未被破坏
+```
+
+慢的常见根因：`files/largest` 是"假分页"——无服务端分页，Python 侧取
+`page_size+offset` 全量再切片（ServiceContracts §9-6），超大任务放大传输；对策是前端
+传更小 limit、或直接 sqlite3 查库绕过 API。
+
+**LLM 队列层**：
+
+```bash
+curl http://localhost:8090/api/llm/status                       # LLM 服务状态
+curl http://localhost:8090/api/llm/batch/<job_id>               # 批量 job 进度/排队
+curl http://localhost:8090/api/graphiti/jobs                    # 摄取队列
+redis-cli ping                                                  # 队列持久化是否退化内存
+grep -E "LLM_TIMEOUT|LLM_MAX_RETRIES|batch_size" .env           # 超时/重试/批大小
+```
+
+判读：批量 job 长时间 queued → LLM 端点吞吐不足或前一批未消化；Graphiti job 卡
+RUNNING → Neo4j 慢或嵌入模型未加载（缺嵌入模型在摄取时直接报错）；任务在 llm_analysis
+阶段超 30 分钟无进度更新 → 会被看门狗误杀（§7），必要时调大
+`TASK_WATCHDOG_STALE_MINUTES`。
+
+**吞吐层**：并发任务各自写独立库（无锁竞争），瓶颈通常在外部（LLM/Neo4j/磁盘 IO）；
+先看 `GET /api/system/health` 的 `task_management.system_load` 与
+`/api/health/dependencies` 再下结论。
+
+### 13.5 已知问题索引表
+
+各文档已记录、尚未修复的缺陷与坑（排障时先对照，避免重复定位）：
+
+| 症状/现象 | 根因 | 详见 |
+|-----------|------|------|
+| /oss 页各数据 Tab 全 404 | C++ OSS 查询路由未注册 | [web/Pages](../modules/web/Pages.md)、[CPP_REST_API §7](../api_reference/CPP_REST_API.md) |
+| /analysis-center 整页错误兜底 | 误从孤儿 `common/useToast` 导入（Provider 不匹配） | [web/Pages](../modules/web/Pages.md)、[web/Components](../modules/web/Components.md) |
+| 侧栏"调查图谱"点击 404 | 指向无路由的 `/investigation-graph` 死链 | [web/Pages](../modules/web/Pages.md) |
+| 侧栏两项显示原始键名 | `nav.investigation_graph` 等键缺词表 | [web/I18nTheming](../modules/web/I18nTheming.md) |
+| 5 个前端 hooks 零调用方 | 死代码（其一内含签名 bug） | [web/Hooks](../modules/web/Hooks.md) |
+| 4 个前端页面无路由 | 死代码页面（测试仍绿） | [web/Pages](../modules/web/Pages.md) |
+| 改主题不生效 | 改了 `uiSlice.setTheme`/ThemeProvider（平行假状态） | [web/Store](../modules/web/Store.md) |
+| 重置设置后 Terminal 入口不变 | `resetSettings` 不含 showTerminal | [web/Store](../modules/web/Store.md) |
+| PUT priority 无效果 | 端点只回显不实现 | [CPP_REST_API §1](../api_reference/CPP_REST_API.md) |
+| Graphiti batch_size 三处默认不一致 | 模型 50 / Config 10 / .env 25 | [ServiceContracts §9-2](../reference/ServiceContracts.md)、[Environment](../reference/Environment.md) |
+| 提取含逗号路径碎裂 | Python 列表模式是逗号拼接模拟 | [ServiceContracts §9-5](../reference/ServiceContracts.md) |
+| dev 下直调 markitdown 错打 C++ | 前缀未入代理表，落 `/api` 兜底 | [ServiceContracts 附录 A](../reference/ServiceContracts.md) |
+| 改端口后 Python 仍打 8080 | OfficeAnalyzer 不回退 PYTHON_HTTP_PORT | [ServiceContracts §9-9](../reference/ServiceContracts.md) |
+| C++ 返回 HTML 被报"Backend returned HTML" | SPA 首页被折叠为错误 | [ServiceContracts §9-7](../reference/ServiceContracts.md) |
+| 事件关联表恒空 | EventCorrelationEngine 未接流水线 | [modules/README](../modules/README.md) |
+| 数据库取证不产出 | DatabaseAnalyzer 未接线（仅单测） | [modules/README](../modules/README.md) |
+| 视觉分析无效果 | VisionAnalysis 死代码 | [modules/README](../modules/README.md) |
+| MCP 端口不监听 | MCPIntegration 无生产调用方 | [modules/README](../modules/README.md) |
+| 仓库根出现 forensics_audit.db | 审计库默认相对 CWD，PathManager 未接线 | [AuditLog §7](../modules/cpp/core/AuditLog.md) |
+| `/api/system/logs/stream` 404 | system_logs.py 的 router 未注册（死代码） | [Python_REST_API §15](../api_reference/Python_REST_API.md) |
+| legacy 案情分析报 410 | 端点已退役，须走报告生成 | [Python_REST_API §4](../api_reference/Python_REST_API.md)、[ErrorCodes](../reference/ErrorCodes.md) |
+| run.sh 与 .env 端口口径打架 | run.sh 兜底 8666、其余默认 8080 | 本文 §1、[ServiceContracts 附录 B](../reference/ServiceContracts.md) |
+| tasks.json 与 API 状态值大小写不同 | 序列化层两套字面量 | [TaskManager](../modules/cpp/network/TaskManager.md) |
+
+---
+
+## 14. 获取帮助
 
 提交 Issue 前请收集：
 
@@ -271,4 +440,4 @@ cat .env          # 注意抹去密码/key
 
 ---
 
-**最后更新**: 2026-08-23（以代码为准重写）
+**最后更新**: 2026-08-24（扩充：高级工作流/深挖工具箱/产出导览）

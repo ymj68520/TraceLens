@@ -227,6 +227,131 @@ action、断言三个路由下出现 combobox）。`CaseIntelligence.test.jsx:7-
 - Testing ↔ Pages.md：routes.test/CaseIntelligence.test 守护路由迁移；死页面的测试
   （InvestigationGraph.test、根目录 Investigation.test）仍在跑。
 
+## 二轮补充走读：两条最值得抄的测试
+
+### "task switch drops the late response"（§23）— 防陈旧不变量的可执行规格
+
+`web/src/hooks/useReportGenerationPolling.test.js:81-98`：
+
+```js
+test('task switch drops the late response of the old generation (§23)', async () => {
+  const late = deferred();
+  const next = deferred();
+  const fetchGeneration = vi.fn()
+    .mockReturnValueOnce(late.promise)     // 第 1 次轮询（任务 A）→ 先挂起
+    .mockReturnValueOnce(next.promise);    // 切到任务 B 后的第 2 次 → 也挂起
+  const { result, rerender } = renderHook(
+    ({ submission }) => useReportGenerationPolling(submission, { intervalMs: 0, fetchGeneration }),
+    { initialProps: { submission: SUBMISSION_A } },
+  );
+
+  await act(async () => rerender({ submission: SUBMISSION_B }));   // 切任务
+  await act(async () => late.resolve(generation('completed', 'rg_1')));  // A 的响应晚到
+  await act(async () => next.resolve(generation('admitted', 'rg_2', { task_id: 't2' })));
+
+  await waitFor(() => expect(result.current.generation?.generation_id).toBe('rg_2'));
+  // Task A 的晚返回 completed 绝不写入 B 的状态，也绝不携带 A 的 report。
+  expect(result.current.generation.report_id).toBeUndefined();
+});
+```
+
+逐块解释：
+
+- 两个 deferred 把"先发出 A 的请求、后切到 B、A 的响应最后才回来"这一竞态**手工
+  排成确定顺序**——不依赖 fake timers、不依赖真实网络时序；
+- 断言分两层：正向（`generation_id === 'rg_2'`）与反向（`report_id` 为 undefined——
+  completed 的响应本来会带 report，没带上就证明它被丢弃了）；
+- 该用例与 hook 的 `identityRef` 实现互为规格：改坏 identity 判断，这条测试立刻红。
+
+### CaseIntelligence.test.jsx — 壳组件的 testid 协议
+
+`web/src/pages/CaseIntelligence.test.jsx:5-16`：
+
+```js
+vi.mock('../components/case-intelligence/report-reader/IntelligenceReportReader', () => ({
+  default: ({ taskId }) => <div data-testid="legacy-reader">legacy:{taskId}</div>,
+}));
+
+vi.mock('./ForensicReportPage', () => ({
+  default: ({ scopeType, scopeId }) => (
+    <div data-testid="forensic-page">forensic:{scopeType}:{scopeId}</div>
+  ),
+}));
+```
+
+- mock 组件把**收到的 props 渲染进字符串**（`forensic:{scopeType}:{scopeId}`），
+  断言即可验证"壳组件把 URL 正确翻译成了 scope"——不用渲染真阅读器，也不用 mock
+  任何 service；
+- 三个用例覆盖默认 tab、`?tab=intelligence` 切换、case/task 双 scope——正好是
+  Pages.md 里 CaseIntelligence 的三条行为契约。
+
+### useTaskAutoTrigger.test.js — "无 store 跑 hook"的完整最小样本
+
+`web/src/hooks/useTaskAutoTrigger.test.js:1-50`（节选）把模式 A 展开到可复制：
+
+```js
+vi.mock('react-redux', () => ({
+  useDispatch: vi.fn(),
+  useSelector: vi.fn(),
+}));
+
+vi.mock('../store/taskSlice', () => ({
+  fetchTasksSilent: vi.fn((filters) => ({ type: 'tasks/fetchTasksSilent', payload: filters })),
+}));
+
+test('refreshes tasks without creating a legacy report when a task is completed', async () => {
+  const dispatch = vi.fn(() => ({
+    unwrap: vi.fn().mockResolvedValue({
+      tasks: [{ id: 'task-1', status: 'completed', output_files_db: '/tmp/files.db' }],
+    }),
+  }));
+  useDispatch.mockReturnValue(dispatch);
+  useSelector.mockImplementation((selector) => selector({
+    tasks: { filters: { status: 'all' } },
+    settings: { autoRefresh: true, refreshInterval: 60_000 },
+  }));
+
+  const { unmount } = renderHook(() => useTaskAutoTrigger());
+  await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1));
+  expect(fetchTasksSilent).toHaveBeenCalledWith({ status: 'all' });
+  unmount();
+});
+```
+
+逐块解释：
+
+- mock 掉的 `fetchTasksSilent` 返回**普通 action 对象**（不是真 thunk）——hook 只调用
+  dispatch，不 care 中间件；`dispatch` 的返回值造一个带 `unwrap` 的对象以匹配
+  `.unwrap()` 调用点；
+- `useSelector.mockImplementation((selector) => selector({...最小 state}))` 是关键一行：
+  selector 由被测 hook 传入，喂给它一个只含所需分支的字面量 state——不需要
+  `configureStore`；
+- `refreshInterval: 60_000` 让 interval 不触发，测试只验证"立即一次"的 dispatch；
+  `unmount()` 在断言后清理（该文件未依赖自动 cleanup 也安全）；
+- 用例名本身就是行为契约：任务 completed 时**只静默刷新、不再触发 legacy 报告**
+  （R2 工作流把报告生成改为显式的回归守护）。
+
+## 与后端契约的对应
+
+测试目录里有两类"契约守护测试"，对应关系如下（对照
+[ServiceContracts.md](../../reference/ServiceContracts.md)）：
+
+1. **URL 契约测试**：`reportService.test.js:13-24` 断言 `encodeURIComponent` 把
+   categoryId 里的 `/` 编码为 `%2F`——守护的是
+   `GET /api/reports/{report_id}/categories/{category_id}/pages/{page}` 的路径参数
+   契约（未编码的 `/` 会被 FastAPI 路由劈开，404）。
+2. **请求体形状测试**：`llmService.test.js` 断言 `analyzeDLL` 发出的 body 是
+   `{file_path, files_db_path, prompt}`（snake_case）——Python 侧
+   `AnalyzeRequest`/`DLLAnalyzeRequest` 的字段名契约由这条测试在前端锁定。
+3. **状态机契约测试**：三个轮询 hooks 的 deferred 用例锁定 `admitted/running`、
+   `queued/running` 继续集合与终态停止——与 Python_REST_API.md §6.3/§7/§8 的状态机
+   逐字对应。后端改状态字面量时，这批测试是最早的报警器（比页面行为更早）。
+4. **路由迁移契约**：`routes.test.jsx` 的 `matchRoutes` 断言守护 `/reports/task/:taskId`
+   → `/case-intelligence` 的迁移不破坏旧跳转（Pages.md 走读）。
+5. **反向提醒**：`ossService.test.js`、`investigationService.test.js` 等只断言请求
+   形状，不断言响应——后端响应字段的回归（如 `files` → `largest_files` 改名）不会被
+   前端测试抓住，只能靠 Services.md 的"端点→响应字段要点"表人工核对。
+
 ## 注意
 
 1. **绿灯 ≠ 可达**：`pages/InvestigationGraph.test.jsx`、`pages/Investigation.test.jsx`
@@ -247,4 +372,4 @@ cd web && npx vitest run src/hooks/useReportGenerationPolling.test.js
 cd web && npm run lint              # ESLint（--max-warnings 0）
 ```
 
-**最后更新**: 2026-08-24（新建，解释式）
+**最后更新**: 2026-08-24（二轮深化：补代码走读与契约对应）

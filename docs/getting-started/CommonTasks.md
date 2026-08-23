@@ -336,6 +336,234 @@ ls config/filter_profiles/
 
 ---
 
+## 13. 高级工作流
+
+本节是五个端到端流程的完整走读：多镜像案件、调查工作台、全文索引策略、TOON 消费、
+审计日志。每步给出可直接复制的命令与背后的调用链（谁代理谁、状态存在哪）。
+
+### 13.1 多镜像案件完整流程（含 Python 代理链路）
+
+场景：同一案件的 3 个镜像（手机 + 两台电脑），要统一关联分析并出案件级结论。
+
+**第 1 步：为每个镜像创建任务**（C++ :8666，可带各自适合的过滤画像）：
+
+```bash
+# 手机镜像走 Android 逻辑提取；电脑镜像各选场景
+curl -X POST http://localhost:8666/api/tasks -H "Content-Type: application/json" \
+  -d '{"image_path": "/evidence/phone_miui.bak.dir", "scenarios": ["android"],
+       "android_source": "miui-backup", "backup_password": "...", "llm_analyze": true}'
+curl -X POST http://localhost:8666/api/tasks -H "Content-Type: application/json" \
+  -d '{"image_path": "/evidence/pc1.E01", "scenarios": ["windows"], "filter_profile": "data_breach"}'
+curl -X POST http://localhost:8666/api/tasks -H "Content-Type: application/json" \
+  -d '{"image_path": "/evidence/pc2.dd", "scenarios": ["linux"], "filter_profile": "data_breach"}'
+```
+
+等待完成（可轮询 `batch-status` 或看前端 Tasks 页）。**注意：跨镜像分析要求参与任务
+已完成分析**（associate-tasks 也只接受已完成的任务）。
+
+**第 2 步：创建案件并挂任务**（Python :8090）：
+
+```bash
+curl -X POST http://localhost:8090/api/llm/cases -H "Content-Type: application/json" \
+  -d '{"name": "2026-08 数据泄露案", "description": "三设备关联分析",
+       "task_ids": ["task_aaa", "task_bbb", "task_ccc"]}'
+# → 201，返回 case_id
+```
+
+**代理链路**（重要，排障时用）：这一步的调用链是
+`浏览器 pythonApi → POST :8090/api/llm/cases → Python multi_analysis.py → C++ POST /api/cases →
+CaseManager 落 cases.json`——Python 案件域是 C++ 案件后端的**代理/编排层**，不是独立
+存储。因此 `GET http://localhost:8666/api/cases` 与 `GET :8090/api/llm/cases` 看到
+同一份数据。已完成的旧任务也可事后挂入（复用分析态不重跑）：
+
+```bash
+curl -X POST http://localhost:8090/api/llm/cases/<case_id>/associate-tasks \
+  -H "Content-Type: application/json" -d '{"task_ids": ["task_older"]}'
+```
+
+**第 3 步：发起跨镜像分析并轮询**：
+
+```bash
+# 发起（files_db_paths 为弃用的精确校验提示，权威路径由服务端从 task 解析）
+curl -X POST http://localhost:8090/api/llm/multi-image-analysis -H "Content-Type: application/json" \
+  -d '{"case_id": "<case_id>", "task_ids": ["task_aaa","task_bbb","task_ccc"],
+       "files_db_paths": ["/x/files.db","/y/files.db","/z/files.db"],
+       "case_description": "关注外发文档与异常登录", "max_filter_files": 400}'
+# → {"job_id": "...", ...}
+
+# 轮询 job（返回 status/progress{stage,message}/result）
+watch -n 3 'curl -s http://localhost:8090/api/llm/multi-image-analysis/<job_id>'
+```
+
+**回写链路**：job 结束时 Python 会回调 `PUT http://localhost:8666/api/cases/<case_id>/status`
+（`{"status":"completed","cross_analysis_job_id":"<job_id>"}`；失败回 `failed`，不阻断）。
+之后前端 Cases 页显示完成，`cross_analysis_job_id` 持久化在案件记录里（cases.json）。
+
+**第 4 步：取案件级结论**：
+
+```bash
+curl http://localhost:8090/api/llm/cases/<case_id>/analysis-status   # 聚合分析状态
+curl http://localhost:8090/api/llm/case-report-by-case/<case_id>     # 案件级报告
+# 增量追加新任务时：
+curl -X POST http://localhost:8090/api/llm/cases/<case_id>/tasks/incremental \
+  -H "Content-Type: application/json" -d '{"task_ids": ["task_new"]}'
+```
+
+前端入口：`/cases` 页"组建案件/加入案件"，`createCaseWithTasks` thunk 就是上述
+1-2 步的四步编排（详见 [modules/web/Store.md](../modules/web/Store.md)）。
+
+### 13.2 调查工作台全流程（证据→分析→评审→事件→报告发布）
+
+场景：对已完成任务做**二次调查**——证据只读，分析员产出可溯源的二级分析与事件，
+最终发布终版报告。全部端点在 Python :8090 的 `/api/investigation/workbench/{task_id}`
+下（前端 `/investigation?task_id=` 页即此流程的 UI）。
+
+```bash
+TID=task_aaa
+WB=http://localhost:8090/api/investigation/workbench/$TID
+
+# ① 总览；若 initialized=false 则 bootstrap（默认 mode=cluster_seed，从事件簇播种）
+curl $WB
+curl -X POST $WB/bootstrap -H "Content-Type: application/json" -d '{}'
+
+# ② 事件与证据：浏览 bootstrap 生成的事件，看某事件的挂接证据
+curl $WB/events
+curl $WB/events/<event_id>/evidence
+curl "$WB/evidence/detail?evidence_key=<key>"
+
+# ③ 对证据启动二级分析 job（异步），轮询到终态
+curl -X POST $WB/evidence/analyze -H "Content-Type: application/json" \
+  -d '{"evidence_key": "<key>", "hint": "关注时间窗口内的外发行为"}'
+curl $WB/analysis-jobs/<job_id>          # 1.5s 间隔轮询，completed/failed/invalid 终止
+
+# ④ 评审：采纳分析结论（驳回端点按设计固定 409，见下）
+curl -X POST $WB/analysis/<analysis_id>/accept
+
+# ⑤ 事件版本与声明：刷新叙事产生新版本，采纳版本/声明使 claims 生效
+curl -X POST $WB/events/<event_id>/refresh
+curl $WB/events/<event_id>/versions
+curl -X POST $WB/events/<event_id>/versions/<version_id>/accept
+curl $WB/events/<event_id>/claims/effective      # 当前生效声明
+curl $WB/claims/<claim_id>                        # 声明溯源（引用了哪些 evidence）
+
+# ⑥ 组装报告：登记报告证据集 → 生成终版报告 → 发布
+curl -X POST $WB/report-evidence -H "Content-Type: application/json" -d '{...}'
+curl $WB/final-reports
+curl $WB/final-reports/<report_id>/markdown      # 或 /html、/print
+curl -X POST $WB/final-reports/<report_id>/publish
+```
+
+**契约边界（不是故障）**：workbench 域中 `events/<id>/review`、版本/声明的 `reject`、
+`notes` 的 POST 都是**已注册但固定返回 409** 的端点——审阅语义只存在于冻结契约域
+（`/api/investigation/analyses/{id}/review`），本地工作台明确不提供。
+
+前端对应：`/investigation` 三栏工作台（左证据/中事件时间线/右分析区）+ 右上角
+Final Report Viewer（`/investigation/report?task_id=`）。R2 报告（`/api/reports/generate`，
+202 准入 + exact 轮询）是另一条独立链路，适合"快照式"报告而非调查叙事。
+
+### 13.3 全文索引策略：大任务先 filter 后 index
+
+大镜像直接对全量提取目录建索引又慢又大（Xapian 索引体积≈文本量级）。推荐顺序：
+**过滤 → 提取 → 索引 → 检索**。
+
+```bash
+TID=task_aaa
+# ① 任务创建时就选过滤画像（产出 _filtered.db，raw.db 不动）：
+#    POST /api/tasks 带 "filter_profile": "telecom_fraud"
+#    已有任务也可补做：POST /api/filter/apply {"task_id": TID, "profile_name": "telecom_fraud"}
+
+# ② 只把过滤命中的文件提取到任务提取目录（相对路径，限制在任务工作区内）
+curl -X POST http://localhost:8666/api/forensics/extract -H "Content-Type: application/json" \
+  -d "{\"task_id\": \"$TID\", \"mode\": \"all\", \"output_dir\": \"filtered_out\"}"
+curl "http://localhost:8666/api/forensics/extract/status?job_id=<job_id>"   # 等到 completed
+
+# ③ 对提取目录建索引（source/index 均必填；索引路径必须在 FTS_ALLOWED_ROOT 允许的根内）
+curl -X POST http://localhost:8666/api/search/index -H "Content-Type: application/json" \
+  -d "{\"source_path\": \"/abs/build/data/tasks/$TID/filtered_out\",
+       \"index_path\": \"/abs/build/data/tasks/$TID/search_index_${TID:0:8}\"}"
+
+# ④ 检索（q 必填，index 指向上一步的索引路径）
+curl "http://localhost:8666/api/search/fulltext?q=转账&index=/abs/build/data/tasks/$TID/search_index_${TID:0:8}&limit=50"
+```
+
+前端 `/search` 页自动推导这两个值：索引名 `search_index_<taskId 前 8 位>`、源路径取
+任务的 `extraction_directory`（缺失则回退 `../build/data/tasks/<taskId>/extracted_files`，
+`web/src/pages/Search.jsx:21-33`）。CLI 等价物：`--index <目录>` 后 `--search "关键词"`。
+
+注意事项：
+
+- `FTS_ALLOWED_ROOT`（默认 PathManager 数据目录）约束索引路径——索引放到任务目录内
+  天然合规，放系统其他位置会被拒绝（防任意文件读取）；
+- 二进制文件不会被索引出有用内容；如需文档文本，可先对提取目录跑 markitdown
+  batch-convert（§10）再对 Markdown 输出目录建索引；
+- 重复建同名索引会重建，大任务建议一次建好多次复用（`index` 参数按路径寻址）。
+
+### 13.4 TOON 导出与消费示例
+
+TOON 是"首行 schema + 管道符分隔行"的紧凑文本格式（比 JSON 省 30-60% token），用于
+把文件证据喂给 LLM。
+
+```bash
+TID=task_aaa
+# 导出（C++ 直出；fields 选列、filter 过滤行）
+curl "http://localhost:8666/api/forensics/export/toon?task_id=$TID&include_llm=true" -o task.toon
+# Python 侧等价端点（/api/db 前缀）
+curl "http://localhost:8090/api/db/tasks/$TID/export/toon" -o task.toon
+head -3 task.toon
+```
+
+输出形如（首行声明列序，`# records[n]` 预告规模，每行一条记录）：
+
+```text
+TOON.schema: name | path | size | category | llm_summary | ...
+# records[123]
+photo.jpg | /dcim/photo.jpg | 204800 | Images | A photo of ...
+report.docx | /docs/report.docx | 40960 | Documents | 2026Q2 财务报表...
+```
+
+**消费方式一（人工）**：把 task.toon 全文粘贴进任意 LLM 对话，附一句
+"按首行 schema 对齐列"，即可提问（找异常、聚类、写摘要）。这是零代码路径。
+
+**消费方式二（程序分批）**：Python 的 CppBackendService 提供 TOON 流式切分——
+`get_files_toon_stream(batch_size, include_llm)` 把导出文本按 `TOON.schema:` 行与数据行
+切开，返回 `{schema, data_lines, total_files, batch_size}`，供下游按批送入 LLM
+（Graphiti 摄取的 TOONTransformer 同源）。批量阈值建议从 50 行/批起步，
+按模型上下文调整。
+
+**消费方式三（Windows 报告）**：`GET /api/llm/windows-export/{task_id}/toon` 输出
+Windows 场景分析结论的 TOON 形态，可直接并入案件卷宗。
+
+### 13.5 审计日志查询工作流
+
+审计库是独立的 SQLite（默认 `forensics_audit.db`，**相对服务进程 CWD**——run.sh 启动
+即 `build/` 下；仓库根出现的同名文件是 CWD 漂移所致，见 AuditLog 模块文档第 7 节）。
+单表 `audit_logs(task_id, timestamp(Unix 毫秒), action, details, user_id)`，WAL 模式。
+
+**HTTP 路径**（任务维度，最常用）：
+
+```bash
+# 最近 50 条（limit/offset 分页）
+curl "http://localhost:8666/api/tasks/task_aaa/audit-log?limit=50&offset=0"
+# → {"task_id": "...", "logs": [{"timestamp": 1724...123, "action": "...", "details": "...", "user_id": "..."}], "count": 50}
+```
+
+**sqlite3 直查**（跨任务汇总、时间窗、动作分布——HTTP 不提供这些维度）：
+
+```bash
+sqlite3 build/forensics_audit.db "SELECT action, COUNT(*) FROM audit_logs GROUP BY 1 ORDER BY 2 DESC;"
+sqlite3 build/forensics_audit.db "SELECT datetime(timestamp/1000,'unixepoch','localtime'), action, user_id
+  FROM audit_logs WHERE task_id='task_aaa' ORDER BY timestamp DESC LIMIT 20;"
+sqlite3 build/forensics_audit.db "SELECT task_id, COUNT(*) FROM audit_logs
+  WHERE timestamp > (strftime('%s','now','-24 hours')*1000) GROUP BY task_id;"
+```
+
+**工作流建议**：出报告前跑一遍"任务动作清单"（第二条查询），把关键动作
+（创建/过滤/提取/LLM 分析）与时间戳纳入证据保管链叙述；`user_id` 在本地模式多为
+空/默认值，分布式模式下来自 JWT 身份。审计不可关（任务存在即写），写入经缓存批量
+落库，读接口优先读缓存。
+
+---
+
 ## 相关文档
 
 - **[快速入门](QuickStart.md)** - 30 分钟路径
@@ -344,4 +572,4 @@ ls config/filter_profiles/
 
 ---
 
-**最后更新**: 2026-08-23（以代码为准重写）
+**最后更新**: 2026-08-24（扩充：高级工作流/深挖工具箱/产出导览）

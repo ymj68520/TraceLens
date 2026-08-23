@@ -31,18 +31,27 @@ officeService、filterService、csAuthService/csClientService/csTaskService。
 
 ### taskService.js — C++ 任务 CRUD（`api`）
 
-| 方法 | 端点 | 消费者 |
-|---|---|---|
-| `fetchTasks` / `listTasks` | GET `/api/tasks` | taskSlice（fetchTasks/fetchTasksSilent）、TaskSelector |
-| `fetchTaskById` | GET `/api/tasks/{id}` | （备用） |
-| `getTaskProgress` | GET `/api/tasks/{id}/progress` | taskSlice.fetchTaskProgress → useTaskPolling |
-| `getTaskResults` | GET `/api/tasks/{id}/results` | AnalysisCenter（llm_results.descriptions） |
-| `cancelTask(taskId, reason)` | DELETE `/api/tasks/{id}`（body 带 reason） | taskSlice.cancelTask → Tasks 页 |
-| `deleteTask` | DELETE `/api/tasks/{id}` | taskSlice.deleteTask → Tasks/Cases 页 |
-| `getTaskStatistics` | GET `/api/tasks/statistics` | taskSlice → Dashboard |
-| `batchCreateTasks` / `batchGetTaskStatus` / `batchCancelTasks` | POST `/api/tasks/{batch-create,batch-status,batch-cancel}` | （暂无页面） |
-| `getTaskAuditLog` / `updateTaskPriority` / `cleanupOldTasks` | GET/PUT/POST | （暂无页面） |
-| `createTask` | POST `/api/tasks` | taskSlice.createTask、caseSlice.createCaseWithTasks |
+| 方法 | 端点 | 响应字段要点（后端 handler） | 消费者 |
+|---|---|---|---|
+| `fetchTasks` / `listTasks` | GET `/api/tasks` | `{tasks:[task 对象], pagination:{total,limit,offset,has_more}, filters}`；task 对象见下注 | taskSlice（fetchTasks/fetchTasksSilent）、TaskSelector |
+| `fetchTaskById` | GET `/api/tasks/{id}` | 单个 task 对象（`task_to_json` 全字段） | （备用） |
+| `getTaskProgress` | GET `/api/tasks/{id}/progress` | `{task_id, status, progress:{current_phase, phase_percentage, overall_percentage, phase_description}}` | taskSlice.fetchTaskProgress → useTaskPolling |
+| `getTaskResults` | GET `/api/tasks/{id}/results` | 未完成 **202** `{status, message:"Task not completed yet", task_id}`；完成 200 `{task_id, status:"completed", results, output_files_db}` + 可选 `llm_results/output_descriptions_db` | AnalysisCenter（llm_results.descriptions） |
+| `cancelTask(taskId, reason)` | DELETE `/api/tasks/{id}`（body 带 reason） | `{success:true, task_id, message:"Task deleted successfully"}`；不存在 404 | taskSlice.cancelTask → Tasks 页 |
+| `deleteTask` | DELETE `/api/tasks/{id}` | 同上（同一 handler，区别只在 body） | taskSlice.deleteTask → Tasks/Cases 页 |
+| `getTaskStatistics` | GET `/api/tasks/statistics` | `TaskManager::get_task_statistics()` 原始 JSON（总数、按状态/优先级分布） | taskSlice → Dashboard |
+| `batchCreateTasks` 等 3 个 | POST `/api/tasks/{batch-create,batch-status,batch-cancel}` | create: 201 `{success, task_ids, count}`；status: `{statuses:[{task_id,status,progress}\|{task_id,error}], count}`；cancel: `{success, cancelled_task_ids, cancelled_count}` | （暂无页面） |
+| `getTaskAuditLog` / `updateTaskPriority` / `cleanupOldTasks` | GET/PUT/POST | audit: `{task_id, logs:[{timestamp(ms),action,details,user_id}], count}`；priority: `{success, task_id, new_priority}`（**只回显不生效**，源码注释自认）；cleanup: `{success, removed_count, message}` | （暂无页面） |
+| `createTask` | POST `/api/tasks` | **201** `{id, status:"created", priority, scenarios, llm_analyze, llm_mode, file_carving, filter_profile, android_source, dependencies_count}`；非法 400 文本 `Invalid request: <原因>` | taskSlice.createTask、caseSlice.createCaseWithTasks |
+
+> task 对象字段（`TaskHelpers::task_to_json`）：`id, image_path, status, priority, message,
+> output_files_db, output_raw_db, output_events_db, progress{current_phase, phase_percentage,
+> overall_percentage, phase_description}, timestamps{created, started, completed,
+> execution_time_seconds}(Unix 毫秒), scenarios, scenario_databases, android_analyze,
+> android_source, llm_analyze, llm_mode, file_carving, filter_profile, case_description,
+> xfs_mode, db_output_dir, extraction_directory, cancellation_requested, dependencies,
+> dependents_count, metadata, error_details`。前端 Files 页 reanalyze 用的
+> `output_files_db`（别名 `output_files_db_path`）、Cases 页建案用的 `status` 都在其中。
 
 注意 `cancelTask` 与 `deleteTask` 是**同一个 DELETE 端点**，区别仅在于是否带
 `{data:{reason}}`（`taskService.js:23-29`）。
@@ -104,18 +113,56 @@ bucket_seconds/event_type` 三个整数/字符串字段，非法直接抛错，�
 
 ### llmService.js — Python LLM（`pythonApi`）
 
-| 方法 | 端点 | 消费者 |
-|---|---|---|
-| `analyzeContent` | POST `/api/llm/analyze` | Files、useFileLLMAnalysis |
-| `analyzeFile`（multipart） | POST `/api/llm/analyze/file?model_type=` | （暂无页面） |
-| `analyzeDLL` | POST `/api/llm/analyze/dll` | Files 页 |
-| `startBatchAnalysis(taskId, options)` | POST `/api/llm/batch` | Files、useFileLLMAnalysis |
-| `getBatchStatus` / `pollBatchStatus` | GET `/api/llm/batch/{jobId}` | 同上 |
-| `getModels` / `getLLMStatus` | GET `/api/llm/{models,status}` | Settings、Dashboard、Files |
-| `toggleFileRelevance` | POST `/api/llm/toggle-relevance` | AnalysisCenter |
+| 方法 | 端点 | 响应字段要点（后端 handler） | 消费者 |
+|---|---|---|---|
+| `analyzeContent` | POST `/api/llm/analyze` | `AnalyzeRequest`：`task_id?/file_path?/content?/model_type(text\|vision)/prompt?/max_tokens(1-8192)/temperature(0-2)/files_db_path?` | Files、useFileLLMAnalysis |
+| `analyzeFile`（multipart） | POST `/api/llm/analyze/file?model_type=` | 上传文件分析 | （暂无页面） |
+| `analyzeDLL` | POST `/api/llm/analyze/dll` | body `{file_path, files_db_path, prompt?}`（service 层组装） | Files 页 |
+| `startBatchAnalysis(taskId, options)` | POST `/api/llm/batch` | 后台 job；Files 页消费 `result.job_id` | Files、useFileLLMAnalysis |
+| `getBatchStatus` / `pollBatchStatus` | GET `/api/llm/batch/{jobId}` | Files 页消费 `status.files_processed/files_total/message` 与终态 `results:[{file_path, analysis:{summary,description,keywords}}]` | 同上 |
+| `getModels` / `getLLMStatus` | GET `/api/llm/{models,status}` | models：text/vision 列表；status：服务状态（Settings/Files 兜底 `{status:'error'}`） | Settings、Dashboard、Files |
+| `toggleFileRelevance` | POST `/api/llm/toggle-relevance` | 切换文件相关性标记 | AnalysisCenter |
 
 `pollBatchStatus`（`llmService.js:101-158`）是带 AbortSignal 的标准轮询：`settled` 标志
 防双 resolve、`cleanup` 清 timer 与事件监听。
+
+### 端点 → 响应字段要点速查（按 service 汇总）
+
+下表把其余 service 的"前端最关心字段"汇总成一列，全部推导自后端 handler（与
+[CPP_REST_API.md](../../api_reference/CPP_REST_API.md)、
+[Python_REST_API.md](../../api_reference/Python_REST_API.md) 一致）：
+
+| Service.方法 | 端点（归属） | 响应字段要点 |
+|---|---|---|
+| forensics.getComprehensiveTimeline | `/api/forensics/timeline/comprehensive`（C++） | `{timeline:[事件\|簇], metadata:{total_events}}`；`cluster=true` 时簇带 `group_descriptor{bucket_index,bucket_seconds,event_type,parent_directory}`、`cluster_count`、`llm_summary?` |
+| forensics.getTimelineDetails | `.../timeline/details`（C++） | `{events:[...]}`；簇内明细按 descriptor 定位 |
+| forensics.getTimelineDistribution | `.../timeline/distribution`（C++） | `{distribution:[{event_date, event_type, count}]}` |
+| forensics.getAnalyzedEventClusters | `.../timeline/clusters/analyzed`（C++） | 已分析簇列表（`task_id` 必填） |
+| forensics.getLargestFiles | `/api/forensics/files/largest`（C++） | 文件数组（Python 侧 CppBackendService 兼容裸数组或 `{largest_files\|files}` 包装——同一端点两种形态的历史遗留） |
+| forensics.getExtensionAnalysis | `.../files/extensions-analysis`（C++） | 扩展名统计 |
+| extraction.startExtraction | `/api/forensics/extract`（C++） | 含 `job_id`；`mode∈{all,extension,name,deleted}`，非法 400 |
+| extraction.getExtractionStatus | `.../extract/status?job_id=`（C++） | `{status, task_id, error_details?, message?, ...}`——`task_id` 是轮询方做跨任务污染检查的依据 |
+| system.getSystemHealth | `/api/system/health`（C++） | `{status:"healthy", timestamp(ms), version, task_management{total_tasks,running_tasks,failed_tasks,system_load}, services{...}}` |
+| system.getPythonHealth | `/health`（Python） | `{status, timestamp, version:"1.0.0", uptime_seconds}` |
+| system.getRedisStatus | `/api/system/redis/status`（Python） | `{connected, in_use, status, url(已脱敏), timestamp}` |
+| system.exportToon | `/api/forensics/export/toon`（C++） | 原始 TOON 文本（首行 `TOON.schema:`） |
+| search.searchFulltext | `/api/search/fulltext`（C++） | 匹配文档列表 + 分页；`q` 必填 |
+| search.createSearchIndex | `/api/search/index`（C++） | `source_path`/`index_path` 均必填，缺 400 |
+| filter.fetchProfiles | `/api/filter/profiles`（C++） | **ApiResponse 封装** `{success, message, data, timestamp, pagination, error_code}`（全后端唯一使用该外壳的路由组）——filterSlice 因此多剥一层 `.data` |
+| graphiti.ingestTaskData | `/api/graphiti/ingest`（Python） | `IngestionResponse {job_id, status:"PENDING", message}`；前端只消费 `job_id` |
+| graphiti.getJobStatus | `/api/graphiti/jobs/{job_id}`（Python） | `{job_id, status(大写), progress:int, current_phase, created_at, started_at?, completed_at?, error?, result?}` |
+| graphiti.getGraphData | `/api/graphiti/graph`（Python） | `{nodes:[], links:[]}`（ForceGraph2D 直接可吃） |
+| caseGroup.createCase | `/api/llm/cases`（Python） | **201**；`CreateCaseRequest {name, description="", task_ids?[]}` |
+| caseGroup.startMultiAnalysis→pollMultiAnalysis | `/api/llm/multi-image-analysis{,/{job_id}}`（Python） | job dict `{job_id, case_id, status(running/completed/failed), progress{stage,message}, result?, error?}`；404=job 不存在 |
+| investigation（workbench 组） | `/api/investigation/workbench/{taskId}/*`（Python） | overview：`{initialized, event_count, analysis_count, report_evidence_count}`；events：`{events:[...]}`；analysis-jobs：`{status∈queued/running/...}` |
+| reportGeneration.generateReport | `/api/reports/generate`（Python） | **202**（admission）；body 仅 `{task_id, requested_by}`，`extra="forbid"` 拒绝多余字段 |
+| reportGeneration.getReportGeneration | `/api/reports/generations/{id}?task_id=`（Python） | `{status∈admitted/running/completed/failed, ...}`——exact 轮询，无 latest 回退 |
+| reportDataSource.listVersions | `/api/reports?scope_type=&scope_id=`（Python） | 版本数组（queued/generating/ready/failed） |
+| intelligenceReport.* | `/api/llm/intelligence-report/{task_id}[/records\|/search\|/metadata]`（Python） | 分章节正文 / 记录 / 检索 / 元数据 |
+| association.clusterFiles 等 | `/api/associations/{cluster-files,file-clusters}`（Python） | 关联对列表；无对应数据库 400 |
+| wechat.* | `/api/wechat/*`（Python） | 全部 GET 需 `task_id` 查询参数 |
+| office.parseFile | `/api/office/parse`（Python） | `{success, content(Markdown), ...}`；需 `task_id` 或 `workspace_root` 锚定工作区 |
+| cs.csLogin | `/api/auth/login`（C/S :8091） | `TokenResponse {access_token, token_type:"bearer", expires_in:3600}`；**form-encoded**，JSON 422 |
 
 ### caseAnalysisService / caseGroupService / graphitiService — Python 业务域
 
@@ -218,12 +265,96 @@ export const csLogin = (username, password) => {
 `csClientService.listClients/getClient`、`csTaskService` 的 4 个分布式任务方法。目前
 唯一消费者是 `/distributed` 冒烟页。
 
+### 走读：pollExtractionStatus — service 层轮询的防御性样板
+
+`web/src/services/extractionService.js:52-110` 是全仓库写得最防御的轮询器，值得整段读
+（节选核心）：
+
+```js
+export const pollExtractionStatus = async (jobId, onProgress, interval = 1000, options = {}) => {
+  const { taskId, expectedTaskId = taskId, signal,
+          timeoutMs = 15 * 60 * 1000, isCurrent = () => true } = options;
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {          // ① 单次 settle 保护
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      callback(value);
+    };
+    const poll = async () => {
+      if (signal?.aborted || !isCurrent(taskId, jobId) || Date.now() > deadline) {
+        finish(reject, /* AbortError 或 timeout */);  // ② 调度前三重身份检查
+        return;
+      }
+      const status = await getExtractionStatus(jobId, signal);
+      if (signal?.aborted || !isCurrent(expectedTaskId, jobId)) {
+        finish(reject, new Error('Extraction job is no longer current'));  // ③ 响应后再查一次
+        return;
+      }
+      if (status.task_id && expectedTaskId && status.task_id !== expectedTaskId) {
+        finish(reject, new Error('Extraction job belongs to another task')); // ④ 服务端身份核对
+        return;
+      }
+      onProgress?.(status);
+      if (status.status === 'completed') finish(resolve, status);
+      else if (status.status === 'failed' || status.status === 'cancelled') {
+        const error = new Error(status.error_details || status.message || 'Extraction failed');
+        error.status = status;                      // ⑤ 把终态行挂到 error 上
+        finish(reject, error);
+      } else {
+        timer = setTimeout(poll, interval);
+      }
+    };
+    poll();
+  });
+};
+```
+
+逐块解释：
+
+- ① `settled` 标志保证 resolve/reject 只会发生一次（AbortSignal 事件、超时、正常终态
+  可能竞争）；
+- ②③ **调度前与响应后各做一次 `isCurrent(taskId, jobId)`**——页面切换任务后，即使
+  请求已在途，晚到的响应也不会写回新任务的 UI；
+- ④ 是唯一做"服务端身份核对"的轮询器：后端返回的 `status.task_id` 若与预期不符，
+  视为跨任务污染直接抛错（`GET /api/forensics/extract/status` 的响应包含 `task_id`
+  才使这成为可能，见上表）；
+- ⑤ `error.status = status` 让调用方能在 catch 里拿到完整的失败行（`error_details`
+  优先于 `message`）。
+
 ## 协作
 
 - Services ↔ Store.md：taskService/caseGroupService/filterService 被 slice 的 thunk 包裹；
   其余 service 由页面/hooks 直调。
 - Services ↔ Hooks.md：`poll*` 系列的调用方、identity 绑定都写在 hooks 里。
 - Services ↔ Pages.md：每个页面"调哪些 service"在页面小节列出。
+
+## 与后端契约的对应
+
+Service 层是前端对三份契约的唯一消费面，逐条对应
+[ServiceContracts.md](../../reference/ServiceContracts.md)：
+
+1. **解包约定**：所有 service 函数返回拦截器解包后的 `response.data`（Overview.md），
+   即后端 handler 的**原始响应体**——C++ 侧除 `/api/filter/*` 外不套 ApiResponse 外壳
+   （CPP_REST_API.md"响应约定"），因此 filterSlice 需要再多剥一层 `.data`（Store.md）。
+2. **状态字面量大小写**：C++ 任务状态全小写（`completed/failed/...`，TaskHelpers），
+   Python Graphiti 作业状态全大写（`COMPLETED/FAILED/CANCELLED`，`_jobs.py:52` 统一
+   大写化）。KnowledgeGraph 页比较大写、Tasks/Timeline 比小写——两套并存是有意的，
+   改动任一侧都会静默破坏轮询终止条件（ServiceContracts.md §2 漂移点 4）。
+3. **202 准入语义**：`/api/reports`（版本创建）与 `/api/reports/generate`（生成）都
+   返回 **202** 而非 201——"admitted，异步执行中"。`useReportGenerationPolling` 的
+   `admitted/running` 继续轮询集合正对应这个语义。
+4. **exact id 轮询**：R 系列冻结契约（`reportGenerationService`、investigation 部分
+   端点）要求"绝不回退到 latest"；`getReportGeneration(taskId, generationId)` 的双参
+   签名就是为此设计。ServiceContracts.md §9 未发现该契约的漂移。
+5. **form-encoded 特例**：C/S 登录 `OAuth2PasswordRequestForm` 要求
+   `application/x-www-form-urlencoded`，`csLogin` 用 `URLSearchParams` 实现（cs* 三件套
+   走读）。Python_REST_API.md §16.2 的 curl 示例与之等价。
+6. **已知漂移提醒**：`/api/markitdown/*` 前端不直调（仅 C++ 调，OfficeAnalyzer/
+   MarkitdownProxy）；`files/largest` 无服务端分页（Python 侧取全量再切片，
+   ServiceContracts.md §9-6"假分页"）——前端 Files 页应传合理 `limit`。
 
 ## 注意
 
@@ -242,4 +373,4 @@ cd web && npx vitest run src/services/   # 8 个 service 测试文件
 # 手工：起后端后访问对应页面，DevTools Network 按端点前缀过滤核对方法↔端点映射。
 ```
 
-**最后更新**: 2026-08-24（新建，解释式）
+**最后更新**: 2026-08-24（二轮深化：补代码走读与契约对应）

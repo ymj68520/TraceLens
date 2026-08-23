@@ -197,6 +197,131 @@ setCache/clearCache/invalidateCache`（`dataSlice.js:14-43`）。全仓库检索
 `saveProfile`、`removeProfile`。消费者：`components/filters/FilterProfileSelector/
 FilterProfileEditor` 与 Files 页。
 
+## 二轮补充走读：两个容易读错的 thunk
+
+### filterSlice.fetchProfiles — 多剥一层 `.data` 的适配
+
+`web/src/store/filterSlice.js:10-21`：
+
+```js
+export const fetchProfiles = createAsyncThunk(
+  'filter/fetchProfiles',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await fetchFilterProfiles();
+      return response?.data?.profiles || [];     // ← 两层 .data 里的第二层
+    } catch (err) {
+      return rejectWithValue(err.message || 'Failed to fetch filter profiles');
+    }
+  }
+);
+```
+
+逐块解释：
+
+- 第一层解包发生在 axios 响应拦截器（`return response.data`，Overview.md），所以
+  `response` 已经是后端响应体；
+- 第二层 `response?.data?.profiles` 是对 C++ FilterRoutes 的**专属适配**：
+  `/api/filter/*` 是全后端唯一使用 ApiResponse 统一封装（`{success, message, data,
+  timestamp, pagination, error_code}`）的路由组（CPP_REST_API.md"响应约定"），真正的
+  载荷在 `data` 字段里。其他 service（taskService 等）对应的 C++ 路由直接返回领域
+  JSON，**没有也不需要**这一层——把这里的写法复制到别的 slice 是常见错误；
+- `|| []`：后端 404 或空档案时兜底空数组，避免 FilterProfileSelector 渲染 undefined。
+
+### caseSlice.deleteCaseWithTasks — best-effort 删除的编排
+
+`web/src/store/caseSlice.js:118-138`：
+
+```js
+export const deleteCaseWithTasks = createAsyncThunk(
+  'cases/deleteWithTasks',
+  async ({ caseId, taskIds }, { rejectWithValue }) => {
+    try {
+      // Step 1 — delete all associated tasks (best-effort, don't fail the whole op)
+      const deleteResults = await Promise.allSettled(
+        taskIds.map((taskId) => taskService.deleteTask(taskId))
+      );
+      const deletedTaskIds = taskIds.filter(
+        (_, i) => deleteResults[i].status === 'fulfilled'
+      );
+      // Step 2 — delete the case record itself
+      await caseGroupSvc.deleteCase(caseId);
+      return { caseId, deletedTaskIds };
+    } catch (err) {
+      return rejectWithValue(err.response?.data || err.message);
+    }
+  }
+);
+```
+
+- 用 `Promise.allSettled` 而非 `Promise.all`：个别任务删除失败（比如已被别人先删、
+  404）不应阻断整个"案件+任务"级联删除——这与 `createCaseWithTasks` Step 4 的
+  "associate 失败非致命"是同一条设计取向：**案件记录本身的成功优先，可修复的次级
+  失败留给之后重试**；
+- `deletedTaskIds` 按 `allSettled` 结果下标过滤，fulfilled 的 payload 恰好是被删 id
+  （taskService 返回体里有），页面可以据此提示"2/3 任务已删，1 个失败"；
+- 真正让整个 thunk rejected 的只有 `deleteCase` 失败（案件本体删不掉），此时部分任务
+  可能已被删——UI 层无法回滚，Cases 页删除前用 ConfirmDialog 做了二次确认兜底。
+
+### taskSlice.extraReducers — loading/静默/patch 三种 reducer 形态并排
+
+`web/src/store/taskSlice.js:120-142` 的 extraReducers 是理解本 slice 行为差异的最短路径：
+
+```js
+// fetchTasks — shows loading spinner (initial / filter change)
+.addCase(fetchTasks.pending,    (state)          => { state.status = 'loading'; })
+.addCase(fetchTasks.fulfilled,  (state, action)  => {
+  state.status = 'succeeded';
+  state.tasks = action.payload.tasks || [];
+  if (action.payload.pagination) state.pagination = action.payload.pagination;
+})
+.addCase(fetchTasks.rejected,   (state, action)  => { state.status = 'failed'; state.error = action.payload; })
+
+// fetchTasksSilent — background poll; does NOT touch status
+.addCase(fetchTasksSilent.fulfilled, (state, action) => {
+  state.tasks = action.payload.tasks || [];
+  if (action.payload.pagination) state.pagination = action.payload.pagination;
+})
+
+// fetchTaskProgress
+.addCase(fetchTaskProgress.fulfilled, (state, action) => {
+  const idx = state.tasks.findIndex((t) => t.id === action.payload.taskId);
+  if (idx !== -1) state.tasks[idx] = { ...state.tasks[idx], ...action.payload };
+  if (state.currentTask?.id === action.payload.taskId)
+    state.currentTask = { ...state.currentTask, ...action.payload };
+})
+```
+
+- `fetchTasks` 三态齐全（pending/fulfilled/rejected），`fetchTasksSilent` **只注册
+  fulfilled**——pending 缺席意味着 status 永不被置 loading（这正是"静默"的全部实现），
+  rejected 缺席意味着后台轮询失败静默吞掉（注意 3）；
+- `fetchTaskProgress` 是**局部 patch**：按 id 找到列表行浅合并进度，且同步 patch
+  `currentTask`（两处都存任务对象，必须双写，否则 TaskSelector 与 TaskTable 显示的
+  进度会分叉）；
+- `action.payload.pagination` 的守卫式赋值：后端 `GET /api/tasks` 的响应带
+  `{tasks, pagination, filters}`（Services.md 表），pagination 缺失时保留旧值。
+
+## 与后端契约的对应
+
+Store 层只直接碰三个 service（task/caseGroup/filter），对应的契约面在
+[ServiceContracts.md](../../reference/ServiceContracts.md)：
+
+1. **taskSlice ↔ C++ 任务系统**：`fetchTasks` 的 filters（`status/priority/limit/offset`）
+   即 `GET /api/tasks` 的查询参数；`createTask` 的 payload 是
+   `handle_create_task` 验证过的字段集（`image_path` 必填、`scenarios` 四值、
+   `android_source` 四值等）。`task_to_json` 的字段（`output_files_db`、
+   `progress.current_phase`、`timestamps.execution_time_seconds` 毫秒）是 Tasks 页
+   表格与 Dashboard 卡片的直接数据源。
+2. **caseSlice ↔ Python 案件域 + C++ 任务域的混合**：`createCaseWithTasks` 的四步里
+   Step 1/2 打 C++ `POST /api/tasks`，Step 3/4 打 Python `/api/llm/cases*`——
+   ServiceContracts.md §5 的"案件跨服务双写"在前端的实现体就是这一个 thunk。
+   `startCrossAnalysis` 的 fulfilled 回填依赖 Python 回写 C++
+   `PUT /api/cases/{id}/status` 的 `{status, cross_analysis_job_id}` 契约。
+3. **filterSlice ↔ ApiResponse 外壳**：见上文走读；这也是唯一需要双层解包的 slice。
+4. **settingsSlice / uiSlice / intelligenceSlice 不触碰网络**：它们的持久化边界是
+   localStorage（`forensics_settings`）与页面内存，与后端无契约关系——把网络状态放
+   进这三个 slice 会破坏现有分层。
+
 ## 协作
 
 - taskSlice ↔ taskService（全部 7 个方法）；caseSlice ↔ caseGroupService + taskService；
@@ -225,4 +350,4 @@ cd web && npx vitest run src/hooks/useTaskAutoTrigger.test.js  # 验证 fetchTas
 # Redux DevTools 观察 tasks/fetchSilent 每 5s 一次且 status 不变。
 ```
 
-**最后更新**: 2026-08-24（新建，解释式）
+**最后更新**: 2026-08-24（二轮深化：补代码走读与契约对应）

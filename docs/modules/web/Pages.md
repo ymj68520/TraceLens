@@ -217,6 +217,149 @@ AnalysisWorkspace）。数据链：`useInvestigationEvents(taskId)` 先 `getOver
 `cs_auth_token` → `listClients` + `csMe` 回显 JSON，证明 `/csapi` 代理链路通
 （`Distributed.jsx:20-41`）。默认账号 `super_admin/admin123` 硬编码在表单初始值里。
 
+## 二轮补充：五个最复杂页面的状态流走读
+
+下面按"用户操作 → Redux/轮询 → 渲染"把五个最重的页面串一遍。这五条链覆盖了本前端
+全部三类数据获取模式（Redux thunk、页面本地 state + service 直调、内置轮询器）。
+
+### /tasks 状态流 — Redux thunk 的教科书样本
+
+```text
+挂载 ──▶ dispatch(fetchTasks(filters)) + dispatch(fetchCases())     [Tasks.jsx:48-51]
+      └─▶ taskSlice: status='loading' → fulfilled 写 tasks/pagination
+      └─▶ caseSlice: cases=[...]（供 taskCaseMap 反查）
+useTaskAutoTrigger() ──▶ 每 settings.refreshInterval ms 静默 dispatch(fetchTasksSilent)
+      └─▶ fulfilled 只覆盖 tasks/pagination，status 不动（页面不闪 loading）
+用户点"取消" ──▶ setConfirmState(open) → ConfirmDialog
+      └─▶ doCancel: dispatch(cancelTask) → thunk 调 taskService.cancelTask
+          (DELETE /api/tasks/{id} + body{reason})
+      └─▶ fulfilled: 乐观置 cancelled + dispatch(fetchTasks) 强刷
+用户点筛选 ──▶ dispatch(setFilters) → filters 变化 → 首个 effect 重跑（fetchTasks 带 filter）
+```
+
+两个细节：`fetchTasks` 的参数是 `filters`（status/priority），但**过滤同时在客户端再做
+一遍**（`filteredTasks`，105-111 行）——服务端分页与客户端过滤叠加时，实际语义是"当前
+页内再筛"；取消/删除完成后都 `dispatch(fetchTasks(filters))` 手动强刷而不是等 5 秒轮询，
+保证弹窗关闭时列表已是新状态。
+
+### /timeline 状态流 — URL 驱动 + 自动簇分析
+
+```text
+URL ?task_id=&page=&type=... ──▶ 派生 8 个视图参数（Timeline.jsx:80-91）
+挂载 ──▶ getTimelineDistribution(taskId)（独立 effect，只跑一次/task）
+      └─▶ 聚合成 distributionData（按天 × CREATED/MODIFIED/DELETED/OTHER）
+effectiveBucket = useMemo(bucketParam, distributionData)        [127-141 行]
+      └─ 'auto' 时按分布首尾日期算跨度 → autoBucketForSpan → 60s~6h
+fetchTimeline = useCallback(...)  ──▶ 依赖任一 URL 参数变化即重拉
+      └─▶ getComprehensiveTimeline(taskId, {limit,offset,event_type,cluster,bucket,
+                                            start_time,end_time})
+      └─▶ setTimelineData；Virtuoso scrollToIndex(0)
+自动簇分析 effect（251-313 行）──▶ 签名 = taskId|page|filters|可见簇键集合
+      └─ 签名不变 → return（防"分析完成→刷新→再分析"死循环）
+      └─ 取无 llm_summary 的前 5 簇（按 cluster_count 降序）
+          → analyzeEventCluster（pythonApi /api/llm/analyze-event-cluster）
+          → 每簇间隔 2s 节流
+      └─ analyzedAny → fetchTimeline() + dispatch(setRefreshFlag({type:'clusters'}))
+用户点簇 ──▶ setSelectedCluster → ClusterInvestigationDrawer 打开
+      └─▶ getTimelineDetails(taskId, {bucket_index, type, dir, bucket, limit:5000})
+用户翻页/改时间 ──▶ updateParams 写回 URL → effect 链自动重跑
+```
+
+关键不变量是 `group_descriptor`：主列表返回的簇描述符被原样保留（196-201 行显式
+`group_descriptor: ev.group_descriptor`），明细查询与 AI 研判都用它做唯一身份——这是
+与后端"簇由 (bucket_index, event_type, parent_directory, bucket_seconds) 唯一标识"
+契约的前端侧对应（见 Services.md forensicsService 走读）。
+
+### /files 状态流 — 批量 LLM 的全局进度桥
+
+```text
+挂载 ──▶ fetchTasks()（若空）+ getLargestFiles/getExtensionAnalysis
+      └─▶ 服务健康：getLLMStatus + getGraphitiStatus（Promise.all，各自 catch 兜底）
+AUTO-RESUME effect（Files.jsx:66-73）──▶ 读 intelligenceSlice.activeBatchJobs[taskId]
+      └─ 若 status==='running' && jobId → startBatchAnalysisPolling(jobId)
+用户勾选文件 → 批量分析 ──▶ handleBatchAnalyze（463-507 行）
+      └─ 无勾选 → 分析当前筛选结果全部（confirm 二次确认）
+      └─ startBatchAnalysis(taskId, {filePaths, modelType:'text'})
+         （pythonApi POST /api/llm/batch）
+      └─ result.job_id → dispatch(setBatchJob({taskId, jobId}))
+                       → startBatchAnalysisPolling(jobId)
+轮询 ──▶ pollBatchStatus(jobId, onProgress, 2000)
+      └─ onProgress → dispatch(updateBatchProgress({taskId, progress, message}))
+      └─ 终态: results 合并进 llmResults + dispatch(setRefreshFlag({type:'files'}))
+              + updateBatchProgress(completed) + 10s 后 clearBatchJob
+渲染 ── activeBatch = activeBatchJobs[taskId] → 顶部进度条/按钮禁用
+```
+
+`intelligenceSlice` 在这条链里的角色是"页面局部进度提升为全局"：切走再切回 /files、
+甚至整页刷新前，只要 activeBatchJobs 里还有 running 记录，AUTO-RESUME effect 就会把
+轮询接回来（页面硬刷新会丢，因为 Redux 不持久化）。`setRefreshFlag({type:'files'})`
+则通知 /case-intelligence 与 /analysis-center"文件描述已变脏"。
+
+### /knowledge-graph 状态流 — Graphiti 作业轮询（页面内 setInterval 版）
+
+```text
+挂载 ──▶ fetchStatus()：getGraphitiStatus(taskId) → status 卡片
+      └─▶ fetchTaskGraphs()：listTaskGraphs() → task_ids 列表
+taskId 变化 ──▶ 复位 effect（110-120 行）：清搜索/实体/关系/图数据/页码
+图 Tab ──▶ fetchGraphData()：getGraphData(taskId, maxNodes) → ForceGraph2D
+用户点"重新摄入" ──▶ reingestAnalyzedData(taskId) → setReingestJobId(job_id)
+      └─▶ 轮询 effect（123-171 行）：setInterval(pollStatus, 2000) + 立即一次
+          getJobStatus(reingestJobId)
+          └─ COMPLETED → 停轮询 + fetchStatus + fetchTaskGraphs
+                          + setGraphData({nodes:[],links:[]}) 触发图重载
+          └─ FAILED → setReingestError(status.error)
+          └─ CANCELLED → 提示取消
+卸载/换 job ──▶ isMounted=false + clearInterval
+```
+
+注意这里的轮询是**页面本地 setInterval**，不是 hooks 里那套 identity 轮询——因为
+`reingestJobId` 本身就是单一 state，job 切换时 effect 重跑、cleanup 清掉旧 interval，
+身份天然绑定。状态字面量是大写 `COMPLETED/FAILED/CANCELLED`（Python `_jobs.py:52`
+统一大写化后返回，与 C++ 侧 LLMPythonProxy 按大写比较的约定一致——ServiceContracts.md
+§2 契约漂移点第 4 条）。
+
+### /investigation 状态流 — bootstrap 一次 + 三面板联动
+
+```text
+URL ?task_id= ──▶ useInvestigationEvents(taskId)
+      └─ getOverview(taskId)                    [GET /api/investigation/workbench/{id}]
+      └─ !overview.initialized ─▶ bootstrapInvestigation(taskId)
+                                 [POST .../bootstrap {mode:'cluster_seed'}]
+      └─ getInvestigationEvents(taskId) ─▶ events
+选中事件（URL ?event= 或点击）──▶ selectedEventId
+      └─ 失效守卫 effect（23-30 行）：events 里找不到 → 回退第一个事件
+      └─ useEventEvidence(taskId, selectedEventId) ─▶ evidence
+中面板点击 claim ──▶ traceClaim(claim)
+      └─ claim.evidence_refs.map(ref => ref.evidence_key) → claimEvidenceScope
+      └─ 左面板高亮这批 evidence_key（引用可溯源到真实 Evidence 行）
+右面板 AnalysisWorkspace ──▶ 触发二级分析 → pollAnalysisJob（1.5s，service 内置）
+      └─ accept/reject ─▶ onRefreshEvents → refresh()（重走 useInvestigationEvents）
+```
+
+这条链全部落在 pythonApi 的 workbench 前缀下，与 C++ 无交互；唯一的"契约边界"是
+`bootstrap` 只在 `initialized=false` 时发生一次，之后所有刷新都是幂等 GET。
+
+## 与后端契约的对应
+
+各页面消费的端点归属、代理前缀与 axios 客户端对齐关系，权威表在
+[ServiceContracts.md 附录 A](../../reference/ServiceContracts.md)（端点 ↔ 代理前缀 ↔
+客户端对齐表）。与本篇走读直接相关的结论：
+
+1. 任务页（Tasks/Cases）与 Dashboard 走 C++ `/api/tasks*`、`/api/cases*`（`api` 客户端，
+   dev 下 `/api` 兜底代理）；案件跨镜像分析实际是 **Python** `/api/llm/multi-image-analysis`
+   job（caseGroupService），完成后由 Python 回写 C++ `PUT /api/cases/{id}/status`
+   （ServiceContracts.md §5 的双向调用对）。
+2. Timeline/Files 的主数据来自 C++ `/api/forensics/*`，但 **AI 研判/批量 LLM 走 Python**
+   `/api/llm/*`——同一页面横跨两个后端是常态（Timeline 页的 analyzeEventCluster、
+   Files 页的 startBatchAnalysis 均为 pythonApi 直连 `http://<host>:8090`，不经代理）。
+3. KnowledgeGraph/Investigation/CaseIntelligence 整页都是 Python 域（`/api/graphiti/*`、
+   `/api/investigation/*`、`/api/reports/*`、`/api/llm/intelligence-report/*`）。
+4. 任务产物的物理位置（页面之外但决定页面能不能查到数据）：HTTP 任务库在
+   `data/tasks/<task_id>/{raw,events,files,...}.db`，纯名无镜像前缀；CLI 分析则是
+   `<镜像stem>_raw/_events/_files.db`——两套命名靠 RouteHelpers 的后缀回退兜底
+   （ServiceContracts.md §8）。Files 页 reanalyze 需要的 `output_files_db` 就取自
+   C++ 任务对象字段。
+
 ## 死代码页面（无路由，勿误改）
 
 | 文件 | 行数 | 说明 |
@@ -251,4 +394,4 @@ cd web && npm run dev
 cd web && npx vitest run src/routes.test.jsx   # 路由表断言
 ```
 
-**最后更新**: 2026-08-24（新建，解释式）
+**最后更新**: 2026-08-24（二轮深化：补代码走读与契约对应）

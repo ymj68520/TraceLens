@@ -173,6 +173,129 @@ App.jsx ─ ErrorBoundary ─ Layout(common+TaskSelector) ┤
        (死) pages/InvestigationGraph.jsx → InvestigationGraphCanvas
 ```
 
+## 二轮补充走读：两个代表性组件的关键代码
+
+### InvestigationGraphCanvas.nodeCanvasObject — canvas 自绘节点
+
+`web/src/components/investigation/InvestigationGraphCanvas.jsx:24-70`（节选）：
+
+```jsx
+const NODE_RADIUS = {
+    InvestigationEvent: 7,
+    Evidence: 6,
+    Analysis: 6,
+    Claim: 4,
+};
+
+const nodeCanvasObject = useCallback((node, ctx, globalScale) => {
+    const radius = NODE_RADIUS[node.label] || 5;
+    const color = getNodeColor(node);
+    const isSelected = selectedNodeId && node.id === selectedNodeId;
+
+    // Halo / glow
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, radius + (isSelected ? 5 : 2), 0, 2 * Math.PI);
+    ctx.fillStyle = color + (isSelected ? '70' : '30');   // 8 位 hex 透明度
+    ctx.fill();
+    ...
+    // review_pending fallback 的 Analysis/Claim：虚线描边标注 Unconfirmed
+    if (isUnconfirmed(node)) {
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, radius + 2, 0, 2 * Math.PI);
+        ctx.setLineDash([3, 3]);
+        ...
+    }
+    if (globalScale >= 1.2) {                              // 缩放足够才画标签
+        ctx.font = `${11 / globalScale}px Sans-Serif`;
+        ...
+    }
+}, [selectedNodeId]);
+```
+
+逐块解释：
+
+- `NODE_RADIUS[node.label]`：**半径即类型编码**——事件最大（7），证据/分析次之（6），
+  claim 最小（4），不用图例也能一眼分层；
+- 光环 + `color + '70'/'30'`：直接在 6 位 hex 后拼两位透明度实现选中高亮（选中更实、
+  未选中只留淡晕），零依赖的 canvas 惯用法；
+- `isUnconfirmed(node)`（来自 `investigationGraphConstants`，独立成模块并配测试）画
+  虚线圈——`review_pending` 的 Analysis/Claim 在视觉上与已采纳的区分开，这是
+  "前端从不增删节点，一切以服务端 selection 为准"原则在渲染层的表达；
+- `globalScale >= 1.2` 才 `fillText`：缩小视图时省掉数百个文本绘制的性能保护；
+  `11 / globalScale` 让标签在缩放中保持恒定屏幕像素大小。
+
+### ClusterInvestigationDrawer.clusterKey — 簇身份的前端序列化
+
+`web/src/components/timeline/ClusterInvestigationDrawer.jsx:26-32`：
+
+```js
+const clusterKey = (c) => JSON.stringify(c?.group_descriptor || {
+    bucket_index: c?.bucket_index,
+    bucket_seconds: c?.bucket_seconds,
+    event_type: c?.event_type,
+    parent_directory: c?.parent_directory || '',
+});
+```
+
+- 首选后端下发的 `group_descriptor`（唯一可信身份），只有旧数据没有 descriptor 时才
+  用散落的四个字段拼一个等价对象——兜底字段的选取与后端簇定义（CPP_REST_API.md
+  2.2 节：`time_window+event_type` 唯一标识簇，`parent_directory` 可选）一致；
+- `JSON.stringify` 做 key 让 `analyzingClusters: Set<string>` 可以 O(1) 判断"该簇是否
+  正在分析"（Timeline 页的 `clusterIdentity` 是同一逻辑的另一份实现——见 Pages.md
+  走读，两处需同步演进）。
+
+### Button — variant/size 的查表实现
+
+`web/src/components/common/Button.jsx:23-41`（节选）是"样式即约定"的代表：
+
+```jsx
+const variants = {
+  primary:
+    'bg-gradient-to-r from-primary-600 to-primary-500 text-white hover:from-primary-500 hover:to-primary-400 focus:ring-primary-500 shadow-md hover:shadow-glow-primary active:scale-[0.97]',
+  secondary:
+    'bg-slate-200/80 text-slate-800 hover:bg-slate-300/80 focus:ring-slate-400 dark:bg-slate-700/60 dark:text-slate-200 dark:hover:bg-slate-600/60 active:scale-[0.97]',
+  danger:
+    'bg-gradient-to-r from-rose-600 to-rose-500 text-white hover:from-rose-500 hover:to-rose-400 focus:ring-rose-500 shadow-md hover:shadow-glow-danger active:scale-[0.97]',
+  outline:
+    'border-2 border-primary-500/50 text-primary-600 dark:text-primary-400 hover:bg-primary-50/50 dark:hover:bg-primary-950/30 focus:ring-primary-500 active:scale-[0.97]',
+  ghost:
+    'text-slate-600 dark:text-slate-400 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 focus:ring-slate-400 active:scale-[0.97]',
+};
+const sizes = {
+  sm: 'px-3.5 py-1.5 text-sm gap-1.5',
+  md: 'px-5 py-2.5 text-sm gap-2',
+  lg: 'px-7 py-3 text-base gap-2.5',
+};
+const classes = clsx(base, variants[variant] || variants.primary, sizes[size], className);
+```
+
+- 每个 variant 都是完整的明/暗双色字符串（`dark:` 变体内联），调用方不需要知道主题
+  存在——这是全站组件暗色化的基本手法；
+- `variants[variant] || variants.primary`：非法值静默回落主样式，与渲染器注册表的
+  "未知名回落表格"同一取向（宁可降级不可崩）；
+- `active:scale-[0.97]` 按压缩放 + `shadow-glow-*`（styles/index.css 定义）是按钮的
+  全部动效，无独立 CSS 文件。
+
+## 与后端契约的对应
+
+组件层是响应字段的"最终消费者"，与契约的对应集中在三处（对照
+[ServiceContracts.md](../../reference/ServiceContracts.md)）：
+
+1. **reports/ 渲染器族 ↔ 报告 manifest 契约**：manifest 每个 category 携带 `renderer`
+   名，`renderers/registry.js` 按名查 Map、未注册回落 GenericTableRenderer——新增
+   artifact 类型（后端 report_evidence/report_generation 的产出）只需前端注册渲染器，
+   不改分发组件。分页读 `GET /api/reports/{id}/categories/{cid}/pages/{page}`、检索
+   `GET /api/reports/{id}/search`（返回 `{total, offset, limit, ...}`）的字段被
+   ReportWorkspace/ReportSearch 直接渲染。
+2. **GenerateReportPanel ↔ 202 准入 + 状态机**：面板的进度文案跟着
+   `useReportGenerationPolling` 的 `admitted/running/completed/failed` 走，ERROR_HINTS
+   表（`GenerateReportPanel.jsx:12-26`）覆盖的 409（无报告证据）等错误码与
+   Python_REST_API.md §6.3 的响应语义一致（另见 ErrorCodes.md §5.3 的 410/409 契约）。
+3. **InvestigationGraphCanvas ↔ 调查图只读契约**：节点只有
+   `InvestigationEvent/Evidence/Analysis/Claim` 四类（半径表），`isUnconfirmed` 的
+   review_pending 回落语义来自 `/api/investigation` 域的审阅模型；canvas 组件不发起
+   任何请求，图结构完全由服务端 `selection` 决定（GraphTabPanel 头注释）。
+
 ## 注意
 
 1. **不要引用 `common/useToast` / `common/toastContext`**——应从
@@ -193,4 +316,4 @@ cd web && npx vitest run src/components/
 # 死组件组的测试仍会跑——通过不代表组件可达。
 ```
 
-**最后更新**: 2026-08-24（新建，解释式）
+**最后更新**: 2026-08-24（二轮深化：补代码走读与契约对应）

@@ -176,6 +176,133 @@ Python 服务开 CORS），而 `api` 走同源相对路径 + 代理。生产部�
 | `VITE_CPP_API_URL` | 导出的 CPP_BASE_URL | `api.js:25` |
 | `VITE_CS_API_URL` | 分布式客户端 baseURL | `api.js:131` |
 
+## 二轮补充走读：任务上下文与鉴权头
+
+### TaskSelector — URL ↔ store 的双向同步
+
+"当前在分析哪个镜像任务"是全应用最重要的上下文，而它的权威载体既不是 Redux 也不是
+context，而是 **URL query 参数**。`web/src/components/common/TaskSelector.jsx:24-35`
+实现了 URL → store 的回灌与反方向的补写：
+
+```js
+useEffect(() => {
+  const urlTaskId = searchParams.get('taskId') || searchParams.get('task_id');
+  if (urlTaskId && tasks.length > 0) {
+    const task = tasks.find((t) => t.id === urlTaskId);
+    if (task && (!currentTask || currentTask.id !== urlTaskId)) {
+      dispatch(setCurrentTask(task));           // URL 有值 → 回灌 store
+    }
+  } else if (!urlTaskId && currentTask && isRelevantPage) {
+    const paramName = location.pathname.startsWith('/case-report') ? 'taskId' : 'task_id';
+    setSearchParams({ ...Object.fromEntries(searchParams), [paramName]: currentTask.id });
+  }                                            // URL 无值但页面需要 → 从 store 补写
+}, [searchParams, tasks, dispatch, currentTask, isRelevantPage, setSearchParams, location.pathname]);
+```
+
+逐块解释：
+
+- `searchParams.get('taskId') || searchParams.get('task_id')`：兼容两种拼写。历史路由
+  `/reports/task/:taskId` 用驼峰，任务上下文页用下划线——`handleTaskChange`（37-55 行）
+  切换任务时**两个键都先删再写一个**，保证 URL 上永远不会同时残留两个互相矛盾的 id；
+- 第一个分支是"链接进入"：用户从分享的 URL 直接打开 `/timeline?task_id=xxx`，
+  `fetchTasks` 已在 18-22 行把列表拉齐，这里把命中的任务对象写进 `currentTask`；
+- 第二个分支是"导航进入"：直接点侧栏进入任务页而 URL 上没带 id 时，用 store 里记住的
+  最近任务回填 URL——这解释了"换任务后跳到别的任务页，任务能跟着走"的体验；
+- `relevantPaths`（15 行）只覆盖 11 个任务上下文前缀，Dashboard/Tasks/Cases 等全局页
+  不渲染选择器也不写参数（57 行 `if (!isRelevantPage) return null`）。
+
+### Layout.getLinkUrl — 侧栏的任务上下文透传
+
+`web/src/components/Layout/Layout.jsx:48-57` 是上面机制的另一半（store/URL → 新链接）：
+
+```js
+const isActive = (path) =>
+  location.pathname === path ||
+  (location.pathname.startsWith('/reports/') && path.startsWith('/reports/'));
+
+const getLinkUrl = (href) => {
+  const taskContextPages = ['/timeline', '/files', '/case-intelligence', '/analysis-center',
+    '/knowledge-graph', '/investigation-graph', '/investigation', '/android', '/memory',
+    '/wechat-graph', '/oss', '/search', '/statistics'];
+  if (currentTaskId && taskContextPages.includes(href)) {
+    return `${href}?task_id=${currentTaskId}`;
+  }
+  return href;
+};
+```
+
+- `currentTaskId` 取自 `searchParams.get('task_id')`（18 行），即"本页 URL 上的任务"；
+- `getLinkUrl` 只在跳向 13 个任务上下文页时追加 `?task_id=`，跳 Dashboard 等全局页则
+  保持干净 URL——于是"任务选择"可以一路跟着用户在分析页之间跳转；
+- 两份列表并不一致：TaskSelector 的 `relevantPaths` 有 `/statistics`、`/llm-descriptions`
+  （死路由）、`/case-report`，而 `taskContextPages` 多了 `/memory`、`/wechat-graph`。
+  后果是：在 `/statistics` 上选任务会写 URL，但侧栏跳走时不透传——两处清单需要人工保持
+  同步，是这条机制最脆的点。
+
+### api 拦截器 — token 注入与错误增强
+
+`web/src/services/api.js:47-90`（C++ 客户端）值得整段读一次，它是全部 service 错误
+约定的源头：
+
+```js
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('auth_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;   // mock 登录的假 JWT 也照发
+  }
+  console.log('API Request:', config.method?.toUpperCase(), config.url, config.data);
+  return config;
+}, /* ... */);
+
+api.interceptors.response.use(
+  (response) => {
+    console.log('API Response:', response.config.url, response.status, response.data);
+    return response.data;                              // 全局解包：service 层拿到的就是 body
+  },
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('auth_token');
+      window.location.href = '/login';                 // 仅本地 token 走整页跳转
+    }
+    const enhancedError = {                            // 页面 catch 到的是这个形状
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      config: error.config,
+    };
+    return Promise.reject(enhancedError);
+  },
+);
+```
+
+三个要点：`return response.data` 是"函数返回值即响应体"约定的实现点（Services.md 的
+前提）；`enhancedError` 让页面可以直接 `err?.message` 渲染、`err?.response?.status`
+在 Files 页做 400/404/500 分级文案；401 整页跳转只此一处，`csApi` 的同名逻辑**不跳转**
+（`api.js:168-171`，注释写明分布式鉴权独立于本地模式）。
+
+## 与后端契约的对应
+
+本篇的四块内容（入口链、构建、客户端、代理表）与
+[ServiceContracts.md §7 前端 ↔ 双后端](../../reference/ServiceContracts.md)是同一事实的
+两种视角，核对结论一致：
+
+1. **代理表**：`vite.config.js:22-64` 的前缀表与 ServiceContracts.md §7.1 逐条相同
+   （`/csapi` rewrite 剥前缀 → :8091；`/api/{reports,graphiti,llm,office,db,wechat,
+   investigation}` → :8090；`/tasks` 与 `/api` 兜底 → C++）。已知漂移：
+   `/api/markitdown` 不在专属前缀表里，dev 下若前端直调会落入 `/api` 兜底错打到 C++
+   （当前无前端调用方，属潜在坑）。
+2. **双形态**：dev 走 vite :3000 代理；prod 由 C++ `HTTPserver.cpp:109-151` 托管
+   `web/dist`，Python/C/S 走 `http://<host>:8090/8091` 绝对地址直连（依赖 Python 开
+   CORS、依赖 `currentHost()` 推导）。
+3. **端口回退差异**：前端 `api.js:4` 的兜底是 `8080`，而 `run.sh:79` 的兜底是 `8666`
+   ——改端口部署时除 `.env` 的 `HTTP_SERVER_PORT` 外还要同步
+   `CPP_BACKEND_URL`/`PYTHON_SERVICE_URL`（ServiceContracts.md 附录 B 的五条检查清单）。
+4. **健康探针三口径**：前端 Dashboard 消费 `getSystemHealth`（C++ `/api/system/health`）
+   与 `getPythonHealth`（Python `/health`）；而 C++ 探 Python 也用 `/health`，Python 探
+   C++ 用 `/api/health`，run.sh 探 C++ 用 `/api/system/health`——三个口径并存见
+   ServiceContracts.md §9-8。
+
 ## 协作
 
 - 入口链 ↔ Store.md：`index.jsx` 挂的 store 由 7 个 slice 组成（`store/index.js:10-20`）；
@@ -209,4 +336,4 @@ cd web && npm test        # Vitest，48 个测试文件（见 Testing.md）
 - 代理验证：DevTools Network 里 `/api/tasks` 应是同源请求（经代理到 :8080），
   `/api/llm/...` 是直连 `<host>:8090`。
 
-**最后更新**: 2026-08-24（新建，解释式）
+**最后更新**: 2026-08-24（二轮深化：补代码走读与契约对应）

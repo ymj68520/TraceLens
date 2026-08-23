@@ -29,6 +29,9 @@ TraceLens 由三个服务组成，`run.sh` 会一并启动：
 5. [CLI 最小示例](#5-cli-最小示例)
 6. [常用 Makefile 命令](#6-常用-makefile-命令)
 7. [下一步](#7-下一步)
+8. [第一次分析之后：看懂任务产出](#8-第一次分析之后看懂任务产出)
+9. [五个最常用查询](#9-五个最常用查询)
+10. [下一步学习路径图](#10-下一步学习路径图)
 
 ---
 
@@ -217,4 +220,114 @@ make docs           # 打印 API 文档 URL
 
 ---
 
-**最后更新**: 2026-08-23（以代码为准重写）
+## 8. 第一次分析之后：看懂任务产出
+
+CLI 分析的产出在与镜像同目录；HTTP 任务的产出在 `data/tasks/<task_id>/`（相对可执行
+文件，通常是 `build/data/tasks/<task_id>/`，可用
+`curl http://localhost:8666/api/tasks/<task_id>/databases` 查路径）。逐文件导览：
+
+| 文件/目录 | 是什么 | 深入阅读 |
+|-----------|--------|----------|
+| `raw.db` | 唯一事实来源：TSK 看到的全量文件系统元数据（路径、四时间戳、md5、删除标志）；不可重建 | [RawDB](../schema/RawDB.md) |
+| `_filtered.db`（可选） | 过滤画像产出的 raw 子集（仅配置 filter_profile 时出现） | [FileFilter](../modules/cpp/core/FileFilter.md) |
+| `events.db` | 时间线事件流：从 raw 四时间戳提取 + 系统叙事事件 | [EventsDB](../schema/EventsDB.md) |
+| `files.db` | 文件分类 + LLM 描述列 + 平台工件统一库——最重要的库 | [FilesDB](../schema/FilesDB.md) |
+| `android.db` / `windows.db` / `linux.db` | 按所选场景产出的平台工件库（没选则没有） | [AndroidDB](../schema/AndroidDB.md) 等 |
+| `<task_id>/extracted_files/` | 提取输出目录（跑过 `/api/forensics/extract` 才有） | [CommonTasks §4](CommonTasks.md) |
+| `../tasks.json` | 全部任务的注册表（注意：文件内状态是大写） | [Troubleshooting §13.1](Troubleshooting.md) |
+
+派生关系一句话：**raw.db →（filter→filtered.db）→ events.db + files.db + 平台库**，
+单向流动、raw 永不被下游修改（详见 [DatabaseSchema](../architecture/DatabaseSchema.md)）。
+
+HTTP 任务目录的典型长相（`build/data/tasks/<task_id>/`）：
+
+```text
+build/data/tasks/task_xxx/
+├── raw.db            # TSK 全量（有磁盘管线时才有；逻辑 Android 任务无此库）
+├── events.db         # 时间线
+├── files.db          # 分类 + LLM + 工件（永远有）
+├── android.db        # 选了 android 场景才有（windows.db / linux.db 同理）
+└── extracted_files/  # 跑过提取才有；全文索引的默认源路径
+```
+
+三条快速判读（产物"健康自检"）：
+
+```bash
+# ① 规模感：raw 行数应是 files 行数的超集，events 行数通常远大于文件数
+sqlite3 raw.db "SELECT COUNT(*) FROM files;"
+sqlite3 files.db "SELECT COUNT(*) FROM files;"
+sqlite3 events.db "SELECT COUNT(*) FROM events;"
+
+# ② LLM 是否真跑了：有行 = 跑了（llm_analyze 开且 LLM 可达）
+sqlite3 files.db "SELECT COUNT(*) FROM files WHERE llm_analyzed_at IS NOT NULL;"
+
+# ③ 时间范围：任务的"起止时刻"，用于对照案情
+sqlite3 events.db "SELECT datetime(MIN(timestamp),'unixepoch'), datetime(MAX(timestamp),'unixepoch') FROM events;"
+```
+
+## 9. 五个最常用查询
+
+前两个 curl 对 HTTP 任务，后三个 sqlite3 对任意产物库：
+
+```bash
+TID=task_xxx
+
+# ① 任务进度与当前阶段（轮询用）
+curl http://localhost:8666/api/tasks/$TID/progress
+
+# ② 任务结果摘要（完成 200 / 未完成 202；含 llm_results 时说明 LLM 证据已落库）
+curl http://localhost:8666/api/tasks/$TID/results
+
+# ③ 文件分类总览——最先看的一张分布
+sqlite3 files.db "SELECT category, COUNT(*), SUM(size) FROM files GROUP BY category ORDER BY 2 DESC;"
+
+# ④ 时间线按天分布——找"案发日"
+sqlite3 events.db "SELECT date(timestamp,'unixepoch'), COUNT(*) FROM events GROUP BY 1 ORDER BY 1;"
+
+# ⑤ 已 LLM 分析的文件清单（files.db，llm_analyzed_at 非空即已分析）
+sqlite3 files.db "SELECT path, substr(llm_summary,1,80) FROM files WHERE llm_analyzed_at IS NOT NULL LIMIT 20;"
+```
+
+> 各库列名以 [docs/schema/](../schema/) 为准；查不对时先 `.schema <表>` 看真实定义。
+
+## 10. 下一步学习路径图
+
+按角色选一条线读完，比跳读快得多：
+
+```text
+所有角色
+  └─ 本篇 QuickStart → [Installation](Installation.md)（.env 全量） → [Glossary](../reference/Glossary.md)（术语速查）
+        │
+        ├─ 取证分析师线
+        │    [CommonTasks](CommonTasks.md) §1-8（工作流）→ §13 高级工作流（案件/调查/索引/TOON/审计）
+        │    → 教程：[LinuxIntrusion](../tutorials/LinuxIntrusion.md) / [WindowsCase](../tutorials/WindowsCase.md)
+        │            / [AndroidWechat](../tutorials/AndroidWechat.md) / [MemoryForensics](../tutorials/MemoryForensics.md)
+        │            / [KnowledgeGraphReports](../tutorials/KnowledgeGraphReports.md) / [DistributedCS](../tutorials/DistributedCS.md)
+        │
+        ├─ 后端开发线
+        │    [架构总览](../architecture/Overview.md) → [数据流](../architecture/DataFlow.md) → [数据库模式](../architecture/DatabaseSchema.md)
+        │    → API 参考：[C++](../api_reference/CPP_REST_API.md) / [Python](../api_reference/Python_REST_API.md)
+        │    → 模块索引 [modules/README](../modules/README.md)（按 src/ 与 python_service/ 对应深入）
+        │
+        ├─ 前端开发线
+        │    [modules/web/Overview](../modules/web/Overview.md)（地图）→ Pages → Services → Store → Hooks
+        │    → Components / I18nTheming / Testing（模块七篇按序）
+        │
+        └─ 运维/部署线
+             [ServiceRunbook](../ops/ServiceRunbook.md) → [ExternalServices](../ops/ExternalServices.md)
+             → [Troubleshooting](Troubleshooting.md) §1-12（症状速查）→ §13 深挖工具箱
+             → 参考：[ServiceContracts](../reference/ServiceContracts.md)（端口/契约）· [Environment](../reference/Environment.md) · [ErrorCodes](../reference/ErrorCodes.md)
+```
+
+三条建议：
+
+1. **别跳过 Glossary**——本仓库文档用词高度一致（TOON/episode/派生链/三口径），
+   术语表 120 条可在十分钟内扫完，之后所有文档的阅读摩擦都会显著下降；
+2. **改代码前先查 [modules/README](../modules/README.md) 的"过时与死代码模块"表**——
+   有 5+ 个模块（VisionAnalysis、OSSRoutes 等）看起来活着实际未接线；
+3. **排障先查 [Troubleshooting §13.5 已知问题索引表](Troubleshooting.md)**——
+   二十余个已记录缺陷覆盖了最常撞见的"诡异现象"，避免重复定位。
+
+---
+
+**最后更新**: 2026-08-24（扩充：高级工作流/深挖工具箱/产出导览）

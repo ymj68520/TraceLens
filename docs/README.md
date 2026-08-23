@@ -38,7 +38,7 @@
 [服务启停 Runbook](ops/ServiceRunbook.md) · [数据与备份](ops/DataAndBackup.md) · [外部服务（Neo4j/Redis/PG/LLM）](ops/ExternalServices.md) · [升级与迁移](ops/UpgradeMigration.md) · [性能调优](ops/PerformanceTuning.md) · [安全加固清单](ops/SecurityHardening.md)
 
 ### 📐 参考手册（docs/reference/）
-[CLI 完整参数](reference/CLI.md) · [.env 全变量](reference/Environment.md)（含未接线/默认值漂移标注） · [错误码目录](reference/ErrorCodes.md) · [跨服务契约](reference/ServiceContracts.md)
+[CLI 完整参数](reference/CLI.md) · [.env 全变量](reference/Environment.md)（含未接线/默认值漂移标注） · [错误码目录](reference/ErrorCodes.md) · [跨服务契约](reference/ServiceContracts.md) · [术语表](reference/Glossary.md)（120 条，含跨文档同名对照）
 
 ### 🧩 模块文档（docs/modules/）
 索引见 **[modules/README.md](modules/README.md)**，按 `docs/modules/cpp/** ↔ src/**`、`docs/modules/python/** ↔ python_service/**` 对应。覆盖 C++ 分析器（Android/Windows/Linux/DLL/数据库/OSS/PDF/Office/雕刻/镜像）、核心基础设施（数据库/分类/事件/搜索/TOON/审计/线程池等）、网络层（HTTPServer/TaskManager/路由）、LLM 集成（LLMClient/ModelRouter/MCP）、Python 服务（httpserver/Graphiti 集成/服务层）。
