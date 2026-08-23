@@ -91,6 +91,10 @@ bool FileClassifier::createCategoryTables() {
         sqlite3_free(errMsg);
         return false;
     }
+    // Additive migration for files.db created before partition-aware output.
+    sqlite3_exec(fileDb_,
+        "ALTER TABLE files ADD COLUMN partition_num INTEGER DEFAULT 0;",
+        nullptr, nullptr, nullptr);
 
     // Create indices for files table
     sqlite3_exec(fileDb_, CREATE_MAIN_FILES_INDICES, nullptr, nullptr, nullptr);
@@ -144,6 +148,13 @@ bool FileClassifier::createCategoryTables() {
             return false;
         }
 
+        // Additive migration for category tables created before partition-aware
+        // classification. Existing tables report a duplicate-column error which
+        // is intentionally ignored.
+        std::string alterPartitionSql =
+            "ALTER TABLE " + tableName + " ADD COLUMN partition_num INTEGER DEFAULT 0;";
+        sqlite3_exec(fileDb_, alterPartitionSql.c_str(), nullptr, nullptr, nullptr);
+
         // Create indices using templates
         std::string indexSql = std::string(CREATE_CATEGORY_INDEX_PATH_TEMPLATE);
         pos = 0;
@@ -180,7 +191,8 @@ bool FileClassifier::createCategoryTables() {
 
 bool FileClassifier::classifyFiles() {
 	const char* query = R"(
-        SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5
+        SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5,
+               COALESCE(partition_num, 0)
         FROM files
         WHERE type = 'REG';
     )";
@@ -209,6 +221,7 @@ bool FileClassifier::classifyFiles() {
 		int isDeleted = sqlite3_column_int(stmt, 7);
 		const char* md5Ptr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8));
 		std::string md5 = md5Ptr ? md5Ptr : "";
+		int partitionNum = sqlite3_column_int(stmt, 9);
 
 		// Determine category using integrated classification logic
 		FileCategory category = determineCategory(name, path);
@@ -226,8 +239,8 @@ bool FileClassifier::classifyFiles() {
 		// Insert into appropriate table
 		std::string tableName = getCategoryTableName(category);
 		std::string insertSql = "INSERT INTO " + tableName +
-			" (inode, name, path, size, extension, mtime, ctime, is_deleted, md5) "
-			"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
+			" (inode, name, path, size, extension, mtime, ctime, is_deleted, md5, partition_num) "
+			"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
 		sqlite3_stmt* insertStmt;
 		sqlite3_prepare_v2(fileDb_, insertSql.c_str(), -1, &insertStmt, nullptr);
@@ -241,6 +254,7 @@ bool FileClassifier::classifyFiles() {
 		sqlite3_bind_int64(insertStmt, 7, ctime);
 		sqlite3_bind_int(insertStmt, 8, isDeleted);
 		sqlite3_bind_text(insertStmt, 9, md5.c_str(), -1, SQLITE_TRANSIENT);
+		sqlite3_bind_int(insertStmt, 10, partitionNum);
 
 		sqlite3_step(insertStmt);
 		sqlite3_finalize(insertStmt);
@@ -253,8 +267,8 @@ bool FileClassifier::classifyFiles() {
 		// Also insert into main files table
 		std::string categoryName = getCategoryName(category);
 		std::string filesInsertSql = "INSERT INTO files "
-			"(inode, name, path, size, extension, category, type, mtime, ctime, is_deleted, md5, scene_type, scene_priority, scene_relevant) "
-			"VALUES (?, ?, ?, ?, ?, ?, 'REG', ?, ?, ?, ?, ?, ?, ?);";
+			"(inode, name, path, size, extension, category, type, mtime, ctime, is_deleted, md5, partition_num, scene_type, scene_priority, scene_relevant) "
+			"VALUES (?, ?, ?, ?, ?, ?, 'REG', ?, ?, ?, ?, ?, ?, ?, ?);";
 
 		sqlite3_prepare_v2(fileDb_, filesInsertSql.c_str(), -1, &insertStmt, nullptr);
 
@@ -268,9 +282,10 @@ bool FileClassifier::classifyFiles() {
 		sqlite3_bind_int64(insertStmt, 8, ctime);
 		sqlite3_bind_int(insertStmt, 9, isDeleted);
 		sqlite3_bind_text(insertStmt, 10, md5.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_text(insertStmt, 11, sceneTypeStr.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_int(insertStmt, 12, priority);
-		sqlite3_bind_int(insertStmt, 13, relevant ? 1 : 0);
+		sqlite3_bind_int(insertStmt, 11, partitionNum);
+		sqlite3_bind_text(insertStmt, 12, sceneTypeStr.c_str(), -1, SQLITE_TRANSIENT);
+		sqlite3_bind_int(insertStmt, 13, priority);
+		sqlite3_bind_int(insertStmt, 14, relevant ? 1 : 0);
 
 		sqlite3_step(insertStmt);
 		sqlite3_finalize(insertStmt);
@@ -357,6 +372,13 @@ FileCategory FileClassifier::determineCategory(const std::string& filename,
 	// Check for additional boot files
 	if (filename == "BOOTNXT" || filename == "bootnxt") {
 		return FileCategory::OS_BOOT;
+	}
+
+	// A genuine database file keeps its category even when the name says
+	// "backup"/".bak" — e.g. chat-evidence exports like wechat_backup.db must
+	// stay visible to database parsers instead of hiding in Backup Files.
+	if (category == FileCategory::DATABASE) {
+		return FileCategory::DATABASE;
 	}
 
 	if (isBackupFile(filename)) {

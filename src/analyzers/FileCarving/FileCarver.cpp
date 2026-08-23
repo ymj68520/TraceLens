@@ -18,6 +18,8 @@ struct CarvingContext {
     CarvingStatistics* stats;
     std::vector<CarvedFileInfo>* carvedFiles;
     CarvingProgressCallback progressCallback;
+    uint64_t progressBase;
+    uint64_t progressTotal;
     std::vector<std::pair<uint64_t, uint64_t>>* carvedRegions;
     bool validationEnabled;
     std::string databasePath;
@@ -298,11 +300,16 @@ TSK_WALK_RET_ENUM carving_block_walk_ctx(const TSK_FS_BLOCK* block, void* ptr) {
     size_t blockSize = ctx->fs->block_size;
     
     ctx->stats->blocksScanned++;
-    
+
+    if (ctx->carver->cancelCallback_ && ctx->carver->cancelCallback_()) {
+        return TSK_WALK_STOP;
+    }
+
     // Report progress every 1000 blocks
     if (ctx->progressCallback && ctx->stats->blocksScanned % 1000 == 0) {
         uint64_t total = ctx->fs->last_block - ctx->fs->first_block + 1;
-        ctx->progressCallback(ctx->stats->blocksScanned, total, "");
+        ctx->progressCallback(ctx->stats->blocksScanned,
+                              ctx->progressTotal, "");
     }
 
     if (block->flags & TSK_FS_BLOCK_FLAG_UNALLOC) {
@@ -321,7 +328,8 @@ TSK_WALK_RET_ENUM carving_block_walk_ctx(const TSK_FS_BLOCK* block, void* ptr) {
                 // Found a header!
                 size_t offsetInBlock = it - (uint8_t*)block->buf;
                 uint64_t startByteAddr = block->addr * blockSize + offsetInBlock;
-                
+                const uint64_t fsBase = static_cast<uint64_t>(ctx->fs->offset);
+
                 // Apply header offset adjustment
                 if (sig.headerOffset != 0) {
                     if (sig.headerOffset < 0 && static_cast<size_t>(-sig.headerOffset) > startByteAddr) {
@@ -331,18 +339,21 @@ TSK_WALK_RET_ENUM carving_block_walk_ctx(const TSK_FS_BLOCK* block, void* ptr) {
                 }
                 
                 // Check if this region was already carved
-                if (isRegionCarved(*ctx->carvedRegions, startByteAddr, startByteAddr + sig.maxSize)) {
+                if (isRegionCarved(*ctx->carvedRegions,
+                                   fsBase + startByteAddr,
+                                   fsBase + startByteAddr + sig.maxSize)) {
                     continue;
                 }
                 
                 // Construct output filename
-                std::string filename = "carved_" + std::to_string(startByteAddr) + "." + sig.extension;
+                std::string filename = "carved_" + std::to_string(fsBase + startByteAddr) + "." + sig.extension;
                 std::string outPath = ctx->outputDir + "/" + filename;
                 
                 // Report progress
                 if (ctx->progressCallback) {
                     uint64_t total = ctx->fs->last_block - ctx->fs->first_block + 1;
-                    ctx->progressCallback(ctx->stats->blocksScanned, total, filename);
+                    ctx->progressCallback(ctx->stats->blocksScanned,
+                                          ctx->progressTotal, filename);
                 }
                 
                 std::ofstream outFile(outPath, std::ios::binary);
@@ -354,9 +365,14 @@ TSK_WALK_RET_ENUM carving_block_walk_ctx(const TSK_FS_BLOCK* block, void* ptr) {
                 size_t currentSize = 0;
                 char buffer[4096];
                 uint64_t currentOffset = startByteAddr;
+                const uint64_t fsEnd = static_cast<uint64_t>(ctx->fs->block_count) *
+                                       static_cast<uint64_t>(ctx->fs->block_size);
+                const uint64_t available = currentOffset < fsEnd ? fsEnd - currentOffset : 0;
+                const uint64_t maxRead = std::min<uint64_t>(sig.maxSize, available);
 
-                while (currentSize < sig.maxSize) {
-                    ssize_t cnt = tsk_img_read(ctx->fs->img_info, currentOffset, buffer, sizeof(buffer));
+                while (currentSize < maxRead) {
+                    size_t request = std::min<uint64_t>(sizeof(buffer), maxRead - currentSize);
+                    ssize_t cnt = tsk_img_read(ctx->fs->img_info, fsBase + currentOffset, buffer, request);
                     if (cnt <= 0) break;
 
                     // Check for footer if it exists
@@ -392,15 +408,18 @@ TSK_WALK_RET_ENUM carving_block_walk_ctx(const TSK_FS_BLOCK* block, void* ptr) {
                     continue;
                 }
                 
-                // Track carved region
-                ctx->carvedRegions->push_back({startByteAddr, startByteAddr + currentSize});
-                
+                const uint64_t imageStartByte = fsBase + startByteAddr;
+                // Track carved regions in image-absolute coordinates so two
+                // partitions with equal relative offsets do not suppress each
+                // other's recovered files.
+                ctx->carvedRegions->push_back({imageStartByte, imageStartByte + currentSize});
+
                 // Create carved file info
                 CarvedFileInfo info;
                 info.path = outPath;
                 info.signatureName = sig.name;
                 info.extension = sig.extension;
-                info.sourceOffset = startByteAddr;
+                info.sourceOffset = imageStartByte;
                 info.size = currentSize;
                 if (ctx->validationEnabled) {
                     info.validated = ctx->carver->validateCarvedFile(outPath, sig, info.validationMessage);
@@ -428,29 +447,10 @@ TSK_WALK_RET_ENUM carving_block_walk_ctx(const TSK_FS_BLOCK* block, void* ptr) {
     return TSK_WALK_CONT;
 }
 
-int FileCarver::carve(const std::string& imagePath, const std::string& outputDir, uint64_t partitionOffset) {
-    // Reset state
-    carvedFiles_.clear();
-    carvedRegions_.clear();
-    statistics_ = CarvingStatistics();
-    
-    auto startTime = std::chrono::high_resolution_clock::now();
-    
+int FileCarver::carveFilesystem(TSK_FS_INFO* fs_info, const std::string& outputDir,
+                                uint64_t progressBase, uint64_t progressTotal) {
     if (!fs::exists(outputDir)) {
         fs::create_directories(outputDir);
-    }
-
-    TSK_IMG_INFO* img = tsk_img_open_utf8_sing(imagePath.c_str(), TSK_IMG_TYPE_DETECT, 0);
-    if (!img) {
-        std::cerr << "FileCarver: Failed to open image: " << imagePath << std::endl;
-        return 0;
-    }
-
-    TSK_FS_INFO* fs_info = tsk_fs_open_img(img, partitionOffset, TSK_FS_TYPE_DETECT);
-    if (!fs_info) {
-        std::cerr << "FileCarver: Failed to open filesystem at offset " << partitionOffset << std::endl;
-        tsk_img_close(img);
-        return 0;
     }
 
     CarvingContext ctx;
@@ -461,12 +461,12 @@ int FileCarver::carve(const std::string& imagePath, const std::string& outputDir
     ctx.stats = &statistics_;
     ctx.carvedFiles = &carvedFiles_;
     ctx.progressCallback = progressCallback_;
+    ctx.progressBase = progressBase;
+    ctx.progressTotal = progressTotal > 0 ? progressTotal :
+        (fs_info->last_block - fs_info->first_block + 1);
     ctx.carvedRegions = &carvedRegions_;
     ctx.validationEnabled = validationEnabled_;
     ctx.databasePath = databasePath_;
-
-    std::cout << "FileCarver: Scanning unallocated blocks..." << std::endl;
-    std::cout << "FileCarver: Registered " << signatures_.size() << " file signatures" << std::endl;
 
     // Walk unallocated blocks
     if (tsk_fs_block_walk(fs_info, fs_info->first_block, fs_info->last_block,
@@ -475,17 +475,73 @@ int FileCarver::carve(const std::string& imagePath, const std::string& outputDir
         // Errors are printed by TSK
     }
 
+    return ctx.recoveredCount;
+}
+
+int FileCarver::carve(const std::string& imagePath, const std::string& outputDir, uint64_t partitionOffset) {
+    // Reset state
+    carvedFiles_.clear();
+    carvedRegions_.clear();
+    statistics_ = CarvingStatistics();
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+
+    if (!fs::exists(outputDir)) {
+        fs::create_directories(outputDir);
+    }
+
+    TSK_IMG_INFO* img = tsk_img_open_utf8_sing(imagePath.c_str(), TSK_IMG_TYPE_DETECT, 0);
+    if (!img) {
+        std::cerr << "FileCarver: Failed to open image: " << imagePath << std::endl;
+        return 0;
+    }
+
+    int recoveredTotal = 0;
+    std::cout << "FileCarver: Registered " << signatures_.size() << " file signatures" << std::endl;
+
+    TSK_FS_INFO* fs_info = tsk_fs_open_img(img, partitionOffset, TSK_FS_TYPE_DETECT);
+    if (fs_info) {
+        std::cout << "FileCarver: Scanning unallocated blocks..." << std::endl;
+        recoveredTotal += carveFilesystem(fs_info, outputDir);
+        tsk_fs_close(fs_info);
+    } else if (partitionOffset == 0) {
+        // Partitioned disk image: offset 0 holds a volume system, not a
+        // filesystem. Carve every openable partition into its own subdirectory.
+        TSK_VS_INFO* vs = tsk_vs_open(img, 0, TSK_VS_TYPE_DETECT);
+        if (vs) {
+            std::cout << "FileCarver: partitioned image — carving each partition's unallocated space" << std::endl;
+            for (TSK_PNUM_T i = 0; i < vs->part_count; i++) {
+                const TSK_VS_PART_INFO* part = tsk_vs_part_get(vs, i);
+                if (!part || !(part->flags & TSK_VS_PART_FLAG_ALLOC)) continue;
+                TSK_OFF_T off = part->start * vs->block_size;
+                TSK_FS_INFO* pfs = tsk_fs_open_img(img, off, TSK_FS_TYPE_DETECT);
+                if (!pfs) continue;
+                std::cout << "FileCarver: partition " << i << " (offset " << off << ")" << std::endl;
+                std::string subDir = outputDir + "/part" + std::to_string(i);
+                uint64_t partitionBlocks = pfs->last_block - pfs->first_block + 1;
+                recoveredTotal += carveFilesystem(pfs, subDir, statistics_.blocksScanned,
+                                                  statistics_.blocksScanned + partitionBlocks);
+                tsk_fs_close(pfs);
+            }
+            tsk_vs_close(vs);
+        } else {
+            std::cerr << "FileCarver: neither filesystem nor volume system found in image" << std::endl;
+        }
+    } else {
+        std::cerr << "FileCarver: Failed to open filesystem at offset " << partitionOffset << std::endl;
+    }
+
     auto endTime = std::chrono::high_resolution_clock::now();
     statistics_.elapsedSeconds = std::chrono::duration<double>(endTime - startTime).count();
 
     // Print summary
     std::cout << "\n=== FileCarver Summary ===" << std::endl;
-    std::cout << "Recovered: " << ctx.recoveredCount << " files" << std::endl;
+    std::cout << "Recovered: " << recoveredTotal << " files" << std::endl;
     std::cout << "Total size: " << (statistics_.totalBytesCarved / 1024) << " KB" << std::endl;
     std::cout << "Blocks scanned: " << statistics_.blocksScanned << std::endl;
     std::cout << "Unallocated blocks: " << statistics_.unallocatedBlocks << std::endl;
     std::cout << "Time elapsed: " << statistics_.elapsedSeconds << " seconds" << std::endl;
-    
+
     if (!statistics_.filesByType.empty()) {
         std::cout << "\nFiles by type:" << std::endl;
         for (const auto& [type, count] : statistics_.filesByType) {
@@ -501,10 +557,9 @@ int FileCarver::carve(const std::string& imagePath, const std::string& outputDir
         }
     }
 
-    tsk_fs_close(fs_info);
     tsk_img_close(img);
 
-    return ctx.recoveredCount;
+    return recoveredTotal;
 }
 
 void FileCarver::initDatabaseTable() {

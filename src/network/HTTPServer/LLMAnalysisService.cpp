@@ -2,11 +2,14 @@
 #include "DatabaseManager/SQL/file_classifier_sql.h"
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
 #include "core/PathManager/PathManager.h"
+#include "network/HTTPServer/LLMScratch.h"
 #include <sqlite3.h>
 #include <iostream>
 #include <filesystem>
 #include <sstream>
 #include <algorithm>
+#include <unordered_set>
+#include <cctype>
 #include <ctime>
 #include <cstring>
 
@@ -15,7 +18,11 @@ namespace fs = std::filesystem;
 namespace forensics {
 
 LLMAnalysisService::LLMAnalysisService() = default;
-LLMAnalysisService::~LLMAnalysisService() = default;
+LLMAnalysisService::~LLMAnalysisService() {
+    if (!scratchTaskId_.empty()) {
+        forensics::llm_scratch::cleanupTask(scratchTaskId_);
+    }
+}
 
 bool LLMAnalysisService::initialize() {
     try {
@@ -42,9 +49,12 @@ bool LLMAnalysisService::initialize() {
     }
 }
 
-void LLMAnalysisService::setImagePaths(const std::string& imagePath, const std::string& rawDbPath) {
+void LLMAnalysisService::setImagePaths(const std::string& imagePath,
+                                       const std::string& rawDbPath,
+                                       const std::string& taskId) {
     imagePath_ = imagePath;
     rawDbPath_ = rawDbPath;
+    scratchTaskId_ = taskId;
 }
 
 std::string LLMAnalysisService::resolveFileForAnalysis(const std::string& filePath) {
@@ -53,18 +63,23 @@ std::string LLMAnalysisService::resolveFileForAnalysis(const std::string& filePa
         return filePath;
     }
 
-    // Fast path: if the file already exists on the host filesystem, use it directly.
-    if (fs::exists(filePath)) {
-        return filePath;
-    }
+    // Image-backed analysis: ALWAYS extract from the image. A host-filesystem
+    // fast path (fs::exists) would silently analyse the ANALYST's own files
+    // (e.g. /etc/passwd exists on any Linux host) instead of the evidence.
 
     // Extract the file from the forensic image to a temporary directory.
     try {
-        FileExtractor extractor(imagePath_, rawDbPath_);
-        if (!extractor.initialize()) {
-            std::cerr << "Warning: Failed to initialize FileExtractor for image: " << imagePath_ << std::endl;
-            return "";
+        // Reuse one extractor across files: opening the image + every partition
+        // + the SQLite DB per file dominates analysis time on large images.
+        if (!imageExtractor_) {
+            auto extractor = std::make_unique<FileExtractor>(imagePath_, rawDbPath_);
+            if (!extractor->initialize()) {
+                std::cerr << "Warning: Failed to initialize FileExtractor for image: " << imagePath_ << std::endl;
+                return "";
+            }
+            imageExtractor_ = std::move(extractor);
         }
+        FileExtractor& extractor = *imageExtractor_;
 
         // Build a safe output path under the task's extracted_files directory.
         // The filePath is relative to the image root (e.g. "grub/grub.cfg").
@@ -73,8 +88,9 @@ std::string LLMAnalysisService::resolveFileForAnalysis(const std::string& filePa
         std::replace(safeName.begin(), safeName.end(), '/', '_');
         std::replace(safeName.begin(), safeName.end(), '\\', '_');
 
-        // Use a dedicated temp dir keyed by process to avoid collisions across tasks.
-        fs::path extractDir = fs::temp_directory_path() / "forensics_llm_extract";
+        // Use a task-scoped scratch directory so concurrent tasks cannot
+        // overwrite one another's flattened evidence files.
+        fs::path extractDir = forensics::llm_scratch::dirForTask(scratchTaskId_);
         fs::create_directories(extractDir);
         fs::path outputPath = extractDir / safeName;
 
@@ -130,7 +146,11 @@ int LLMAnalysisService::analyzeAllFiles(const std::string& filesDbPath,
         const auto& filePath = files[i];
 
         if (progressCallback) {
-            progressCallback(i + 1, total, filePath);
+            if (!progressCallback(i + 1, total, filePath)) {
+                std::cout << "LLM full-mode analysis stopped by callback after "
+                          << i << "/" << total << " files" << std::endl;
+                break;  // task cancelled
+            }
         }
 
         try {
@@ -180,7 +200,11 @@ int LLMAnalysisService::analyzeSmartFiles(const std::string& filesDbPath,
         const auto& filePath = importantFiles[i];
 
         if (progressCallback) {
-            progressCallback(i + 1, total, filePath);
+            if (!progressCallback(i + 1, total, filePath)) {
+                std::cout << "LLM smart-mode analysis stopped by callback after "
+                          << i << "/" << total << " files" << std::endl;
+                break;  // task cancelled
+            }
         }
 
         try {
@@ -198,6 +222,11 @@ int LLMAnalysisService::analyzeSmartFiles(const std::string& filesDbPath,
                                 result.description, result.summary, result.keywords,
                                 result.modelUsed);
                 analyzed++;
+            } else {
+                // Failed LLM analyses were previously silent — the task summary
+                // under-reported with no way to see why.
+                std::cerr << "Warning: LLM analysis failed for " << filePath
+                          << ": " << result.errorMessage << std::endl;
             }
         } catch (const std::exception& e) {
             std::cerr << "Failed to analyze file " << filePath << ": " << e.what() << std::endl;
@@ -223,10 +252,48 @@ std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::str
         return {};
     }
 
-    // Build summary of file list for LLM
-    std::string fileListSummary = buildFileListSummary(allFiles);
+    // Nothing to select when everything fits the budget.
+    if (allFiles.size() <= maxFiles) {
+        return allFiles;
+    }
 
-    // Ask LLM to select important files
+    // Drop TSK virtual entries ($MFT-style pseudo files): they are filesystem
+    // metadata, not analysable evidence for the LLM file-description stage.
+    std::vector<std::string> candidates;
+    candidates.reserve(allFiles.size());
+    for (auto& f : allFiles) {
+        std::filesystem::path p(f);
+        std::string name = p.filename().string();
+        if (!name.empty() && name[0] == '$') continue;
+        candidates.push_back(std::move(f));
+    }
+    if (candidates.empty()) {
+        candidates = std::move(allFiles);
+    }
+
+    // Bound the prompt sent to the LLM: on real images (thousands of files) an
+    // unbounded file list overflows context/timeouts and the selection call
+    // always fails. Order candidates by forensic priority first so truncation
+    // keeps the interesting files, then cap the summary at a char budget.
+    auto ranked = selectByHeuristic(candidates, candidates.size());
+    const size_t kMaxSummaryChars = 48000;
+    size_t summaryFiles = 0, summaryChars = 0;
+    for (const auto& f : ranked) {
+        summaryChars += f.size() + 8;  // path + "- " + newline overhead
+        if (summaryChars > kMaxSummaryChars) break;
+        summaryFiles++;
+    }
+    if (summaryFiles < maxFiles) {
+        summaryFiles = std::min(ranked.size(), maxFiles);
+    }
+    if (summaryFiles > ranked.size()) {
+        summaryFiles = ranked.size();
+    }
+    std::vector<std::string> summaryList(ranked.begin(), ranked.begin() + summaryFiles);
+
+    // Build summary of file list for LLM
+    std::string fileListSummary = buildFileListSummary(summaryList);
+
     std::string prompt = R"(You are a digital forensics expert. Analyze the following list of files from a forensic disk image and identify the most important files for investigation.
 
 Consider:
@@ -248,24 +315,27 @@ Do not include any explanation, only the JSON array.)";
 
     try {
         auto response = router_->chat(prompt);
-        
+
         if (!response.success) {
-            std::cerr << "LLM request failed: " << response.errorMessage << std::endl;
-            // Fallback: return first N files
-            if (allFiles.size() > maxFiles) {
-                allFiles.resize(maxFiles);
-            }
-            return allFiles;
+            std::cerr << "LLM request failed: " << response.errorMessage
+                      << " — falling back to heuristic file selection" << std::endl;
+            return selectByHeuristic(candidates, maxFiles);
         }
 
-        return parseImportantFiles(response.content, allFiles);
-    } catch (const std::exception& e) {
-        std::cerr << "Failed to select important files: " << e.what() << std::endl;
-        // Fallback: return first N files
-        if (allFiles.size() > maxFiles) {
-            allFiles.resize(maxFiles);
+        auto selected = parseImportantFiles(response.content, allFiles);
+        if (selected.empty() || selected.size() < maxFiles / 4) {
+            // The model responded but returned (nearly) nothing usable —
+            // its selection is unreliable, prefer the deterministic ranking.
+            std::cerr << "LLM selection returned only " << selected.size()
+                      << " usable paths (budget " << maxFiles
+                      << ") — falling back to heuristic file selection" << std::endl;
+            return selectByHeuristic(candidates, maxFiles);
         }
-        return allFiles;
+        return selected;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to select important files: " << e.what()
+                  << " — falling back to heuristic file selection" << std::endl;
+        return selectByHeuristic(candidates, maxFiles);
     }
 }
 
@@ -428,6 +498,85 @@ std::vector<std::string> LLMAnalysisService::getFilesFromDatabase(const std::str
     return files;
 }
 
+int LLMAnalysisService::forensicPathPriority(const std::string& path) {
+    static const std::vector<std::string> credPatterns = {
+        "shadow", "passwd", "authorized_keys", "known_hosts", "id_rsa", "id_ed25519",
+        ".bash_history", ".zsh_history", "sh_history", "history.db", "sudoers"};
+    static const std::vector<std::string> highExt = {
+        ".log", ".db", ".sqlite", ".sqlite3", ".md", ".txt", ".json", ".xml",
+        ".csv", ".conf", ".cfg", ".ini", ".yaml", ".yml", ".sh", ".py", ".pdf",
+        ".docx", ".xlsx", ".pptx", ".eml", ".htm", ".html"};
+
+    std::string lower;
+    lower.reserve(path.size());
+    for (char c : path) lower += static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+
+    // Credentials / histories / access artefacts: top priority
+    for (const auto& p : credPatterns) {
+        if (lower.find(p) != std::string::npos) return 100;
+    }
+    // User data areas beat system areas
+    if (lower.find("/home/") != std::string::npos || lower.rfind("/home/", 0) == 0 ||
+        lower.find("/users/") != std::string::npos || lower.find("/root/") != std::string::npos ||
+        lower.find("desktop") != std::string::npos || lower.find("documents") != std::string::npos ||
+        lower.find("downloads") != std::string::npos) {
+        return 90;
+    }
+    // System logs and journals
+    if (lower.find("/var/log/") != std::string::npos || lower.find("journal") != std::string::npos) {
+        return 80;
+    }
+    // Browser / mail / chat profiles
+    if (lower.find(".mozilla") != std::string::npos || lower.find("chrome") != std::string::npos ||
+        lower.find("wechat") != std::string::npos || lower.find("telegram") != std::string::npos ||
+        lower.find("mail") != std::string::npos) {
+        return 75;
+    }
+    // Databases anywhere
+    if (lower.size() > 3 &&
+        (lower.substr(lower.size() - 3) == ".db" ||
+         lower.find(".sqlite") != std::string::npos)) {
+        return 70;
+    }
+    // System configuration
+    if (lower.find("/etc/") != std::string::npos || lower.rfind("/etc/", 0) == 0) {
+        return 60;
+    }
+    // Boot / scheduler
+    if (lower.find("/boot/") != std::string::npos || lower.find("cron") != std::string::npos) {
+        return 50;
+    }
+    // Low-value bulk content
+    if (lower.find("/usr/share/") != std::string::npos ||
+        lower.find("/usr/lib") != std::string::npos ||
+        lower.find("fonts") != std::string::npos ||
+        lower.find("ssl/certs") != std::string::npos ||
+        lower.find("locale") != std::string::npos ||
+        lower.find("icons") != std::string::npos ||
+        lower.find("node_modules") != std::string::npos) {
+        return 5;
+    }
+    // Analysable extensions get a mid score, everything else low
+    for (const auto& e : highExt) {
+        if (lower.size() >= e.size() &&
+            lower.compare(lower.size() - e.size(), e.size(), e) == 0) {
+            return 30;
+        }
+    }
+    return 10;
+}
+
+std::vector<std::string> LLMAnalysisService::selectByHeuristic(std::vector<std::string> files,
+                                                               size_t maxFiles) {
+    std::stable_sort(files.begin(), files.end(), [](const std::string& a, const std::string& b) {
+        return forensicPathPriority(a) > forensicPathPriority(b);
+    });
+    if (files.size() > maxFiles) {
+        files.resize(maxFiles);
+    }
+    return files;
+}
+
 std::string LLMAnalysisService::buildFileListSummary(const std::vector<std::string>& files) {
     std::stringstream ss;
     
@@ -471,15 +620,22 @@ std::vector<std::string> LLMAnalysisService::parseImportantFiles(const std::stri
                 if (endQuote == std::string::npos) break;
                 
                 std::string path = jsonStr.substr(pos + 1, endQuote - pos - 1);
-                
+
+                // Reject junk entries the model sometimes emits ("", "/").
+                // An empty needle would partial-match EVERY file below.
+                if (path.size() < 2 || path == "/") {
+                    pos = endQuote + 1;
+                    continue;
+                }
+
                 // Check if this path exists in our file list
                 auto it = std::find(allFiles.begin(), allFiles.end(), path);
                 if (it != allFiles.end()) {
                     importantFiles.push_back(path);
                 } else {
-                    // Try partial match
+                    // Try partial match (only for meaningful path fragments)
                     for (const auto& f : allFiles) {
-                        if (f.find(path) != std::string::npos || 
+                        if (f.find(path) != std::string::npos ||
                             path.find(f) != std::string::npos) {
                             importantFiles.push_back(f);
                             break;
@@ -493,6 +649,17 @@ std::vector<std::string> LLMAnalysisService::parseImportantFiles(const std::stri
     } catch (...) {
         // Fallback: return empty, caller should handle
     }
+
+    // Dedupe while keeping first occurrence
+    std::unordered_set<std::string> seen;
+    std::vector<std::string> unique;
+    unique.reserve(importantFiles.size());
+    for (auto& f : importantFiles) {
+        if (seen.insert(f).second) {
+            unique.push_back(std::move(f));
+        }
+    }
+    importantFiles = std::move(unique);
 
     return importantFiles;
 }

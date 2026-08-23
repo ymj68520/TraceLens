@@ -89,6 +89,7 @@ void to_json(nlohmann::json& j, const AnalysisTask& t) {
     j["output_descriptions_db"] = t.output_descriptions_db;
     j["case_description"] = t.case_description;
     j["filter_profile"] = t.filter_profile;
+    j["file_carving"] = t.file_carving;
     j["enable_decryption"] = t.enable_decryption;
     j["key_file_dir"] = t.key_file_dir;
     // decrypt_password is intentionally runtime-only and must never be persisted.
@@ -141,6 +142,7 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     if(j.contains("output_descriptions_db")) j.at("output_descriptions_db").get_to(t.output_descriptions_db);
     if(j.contains("case_description")) j.at("case_description").get_to(t.case_description);
     if(j.contains("filter_profile")) j.at("filter_profile").get_to(t.filter_profile);
+    if(j.contains("file_carving")) j.at("file_carving").get_to(t.file_carving);
     if(j.contains("enable_decryption")) j.at("enable_decryption").get_to(t.enable_decryption);
     if(j.contains("key_file_dir")) j.at("key_file_dir").get_to(t.key_file_dir);
     t.decrypt_password.clear();

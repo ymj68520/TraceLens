@@ -290,12 +290,14 @@ bool FileFilter::createFilteredSchema(sqlite3* db) {
             is_allocated INTEGER,
             permissions TEXT,
             uid INTEGER,
-            gid INTEGER
+            gid INTEGER,
+            partition_num INTEGER DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_files_inode ON files(inode);
         CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
         CREATE INDEX IF NOT EXISTS idx_files_type ON files(type);
         CREATE INDEX IF NOT EXISTS idx_files_deleted ON files(is_deleted);
+        CREATE INDEX IF NOT EXISTS idx_files_partition ON files(partition_num);
     )";
 
     char* errMsg = nullptr;
@@ -351,8 +353,8 @@ FilterStats FileFilter::applyFilter(const std::string& sourceDbPath,
     // Prepare insert statement
     const char* insertSql = R"(
         INSERT INTO files (inode, name, path, size, atime, mtime, ctime, crtime,
-                          type, md5, is_deleted, is_allocated, permissions, uid, gid)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                          type, md5, is_deleted, is_allocated, permissions, uid, gid, partition_num)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     )";
     sqlite3_stmt* insertStmt = nullptr;
     if (sqlite3_prepare_v2(filteredDb, insertSql, -1, &insertStmt, nullptr) != SQLITE_OK) {
@@ -366,7 +368,8 @@ FilterStats FileFilter::applyFilter(const std::string& sourceDbPath,
     // Read all files from source
     const char* selectSql = R"(
         SELECT inode, name, path, size, atime, mtime, ctime, crtime,
-               type, md5, is_deleted, is_allocated, permissions, uid, gid
+               type, md5, is_deleted, is_allocated, permissions, uid, gid,
+               COALESCE(partition_num, 0)
         FROM files;
     )";
     sqlite3_stmt* selectStmt = nullptr;
@@ -402,6 +405,7 @@ FilterStats FileFilter::applyFilter(const std::string& sourceDbPath,
         const char* permPtr = reinterpret_cast<const char*>(sqlite3_column_text(selectStmt, 12));
         int uid = sqlite3_column_int(selectStmt, 13);
         int gid = sqlite3_column_int(selectStmt, 14);
+        int partition_num = sqlite3_column_int(selectStmt, 15);
 
         std::string name = namePtr ? namePtr : "";
         std::string path = pathPtr ? pathPtr : "";
@@ -462,6 +466,7 @@ FilterStats FileFilter::applyFilter(const std::string& sourceDbPath,
             sqlite3_bind_text(insertStmt, 13, permPtr ? permPtr : "", -1, SQLITE_TRANSIENT);
             sqlite3_bind_int(insertStmt, 14, uid);
             sqlite3_bind_int(insertStmt, 15, gid);
+            sqlite3_bind_int(insertStmt, 16, partition_num);
 
             sqlite3_step(insertStmt);
             sqlite3_reset(insertStmt);

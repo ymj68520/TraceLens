@@ -132,12 +132,18 @@ class GraphitiIngestor:
     def _create_embedder(self) -> OpenAIEmbedder:
         """Create embedder - uses local LLM or OpenAI based on config."""
         if self.config.use_local_llm:
-            # Use local LLM for embeddings too
+            # Use local LLM for embeddings too. EMBEDDING_BASE_URL overrides
+            # the endpoint so the embedder can differ from the chat LLM
+            # (e.g. cloud chat + local nomic embeddings).
+            embedder_base = self.config.embedder_base_url or self.config.llm_base_url
+            embedder_base = embedder_base.rstrip("/")
+            if not embedder_base.endswith("/v1"):
+                embedder_base += "/v1"
             embedder_config = OpenAIEmbedderConfig(
-                api_key=self.config.llm_api_key or "local",
+                api_key=self.config.embedder_api_key or self.config.llm_api_key or "local",
                 embedding_model=self.config.embedder_model,  # Configured embedding model
                 embedding_dim=self.config.embedder_dim,
-                base_url=self.config.llm_base_url,
+                base_url=embedder_base,
             )
         else:
             # Use OpenAI

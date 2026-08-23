@@ -26,6 +26,7 @@ enum class TaskPhase {
     FILE_CLASSIFICATION,
     LLM_ANALYSIS,        // LLM file description generation
     PLATFORM_ANALYSIS,   // Platform-specific analysis (Android/Windows/Linux/Server)
+    FILE_CARVING,        // Signature-based carving of unallocated space
     FINALIZING
 };
 
@@ -144,6 +145,9 @@ struct AnalysisTask {
     // File filter options
     std::string filter_profile;         // Filter profile name (e.g., "telecom_fraud")
 
+    // Signature-based file carving of unallocated space (optional stage)
+    bool file_carving = false;
+
     // Decryption options (encrypted partitions are auto-detected & unlocked)
     bool enable_decryption = false;     // Auto-decrypt encrypted partitions
     std::string key_file_dir;           // Override dir for sibling .key files
@@ -180,6 +184,7 @@ struct AnalysisTask {
           case_description(other.case_description),
           graphiti_job_id(other.graphiti_job_id),
           filter_profile(other.filter_profile),
+          file_carving(other.file_carving),
           enable_decryption(other.enable_decryption),
           key_file_dir(other.key_file_dir),
           decrypt_password(other.decrypt_password),
@@ -217,6 +222,7 @@ struct AnalysisTask {
             case_description = other.case_description;
             graphiti_job_id = other.graphiti_job_id;
             filter_profile = other.filter_profile;
+            file_carving = other.file_carving;
             enable_decryption = other.enable_decryption;
             key_file_dir = other.key_file_dir;
             decrypt_password = other.decrypt_password;
@@ -246,6 +252,7 @@ struct AnalysisTask {
           case_description(std::move(other.case_description)),
           graphiti_job_id(std::move(other.graphiti_job_id)),
           filter_profile(std::move(other.filter_profile)),
+          file_carving(other.file_carving),
           enable_decryption(other.enable_decryption),
           key_file_dir(std::move(other.key_file_dir)),
           decrypt_password(std::move(other.decrypt_password)),
@@ -283,6 +290,7 @@ struct AnalysisTask {
             case_description = std::move(other.case_description);
             graphiti_job_id = std::move(other.graphiti_job_id);
             filter_profile = std::move(other.filter_profile);
+            file_carving = other.file_carving;
             enable_decryption = other.enable_decryption;
             key_file_dir = std::move(other.key_file_dir);
             decrypt_password = std::move(other.decrypt_password);

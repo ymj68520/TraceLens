@@ -92,7 +92,14 @@ class GraphitiConfig:
             llm_base_url=llm_base_url,
             llm_model=os.getenv("LLM_TEXT_MODEL", "openai/gpt-oss-20b"),
             llm_api_key=os.getenv("LLM_API_KEY", "local"),
-            embedder_api_key=os.getenv("OPENAI_API_KEY"),
+            # Embedder can point at a different provider than the chat LLM
+            # (e.g. cloud chat model + local nomic embeddings). Falls back to
+            # the LLM base URL/key so a single all-in-one local server (LM
+            # Studio) keeps working without extra configuration.
+            embedder_base_url=os.getenv("EMBEDDING_BASE_URL"),
+            embedder_model=os.getenv("EMBEDDING_MODEL", "text-embedding-nomic-embed-text-v1.5"),
+            embedder_api_key=os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY"),
+            embedder_dim=int(os.getenv("EMBEDDING_DIM", "768")),
             db_path=os.getenv("GRAPHITI_DB_PATH"),
             batch_size=int(os.getenv("GRAPHITI_BATCH_SIZE", "10")),  # Reduced from 50
             max_retries=int(os.getenv("GRAPHITI_MAX_RETRIES", "3")),

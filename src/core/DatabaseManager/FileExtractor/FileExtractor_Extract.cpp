@@ -644,7 +644,13 @@ bool FileExtractor::extractFileByPath(const std::string& filePath, const std::st
     sqlite3_finalize(stmt);
 
     if (results.empty()) {
-        std::cerr << "Error: File with path " << filePath << " not found" << std::endl;
+        std::cerr << "Error: File with path " << filePath << " not found or is ambiguous across partitions" << std::endl;
+        return false;
+    }
+
+    if (results.size() > 1) {
+        std::cerr << "Error: File path " << filePath
+                  << " maps to multiple partitions; extraction requires partition-aware metadata" << std::endl;
         return false;
     }
 
@@ -692,6 +698,20 @@ bool FileExtractor::extractFile(const FileRecord& record, const std::string& out
     if (fs) {
         // --- TSK path (ext4, NTFS, FAT, etc.) ---
         TSK_FS_FILE* fsFile = tsk_fs_file_open_meta(fs, nullptr, record.inode);
+        if (!fsFile && fsByPartition_.size() > 1) {
+            // Legacy DBs stored partition_num=0 for every record; the handle
+            // returned above may belong to another partition. Try the other
+            // open handles before giving up — inode numbers can repeat across
+            // partitions, so only an open success disambiguates.
+            for (const auto& kv : fsByPartition_) {
+                if (kv.second == fs || !kv.second) continue;
+                fsFile = tsk_fs_file_open_meta(kv.second, nullptr, record.inode);
+                if (fsFile) {
+                    fs = kv.second;
+                    break;
+                }
+            }
+        }
         if (!fsFile) {
             std::cerr << "Error: Cannot open file inode " << record.inode
                       << " (part " << record.partitionNum << ", fs "

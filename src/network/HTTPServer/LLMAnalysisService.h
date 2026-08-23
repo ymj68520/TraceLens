@@ -11,6 +11,9 @@
 #include "DatabaseManager/FileClassifier/FileClassifier.h"
 #include "DatabaseManager/DatabaseManagerDataTypes.h"
 
+// Global-scope forward declaration (FileExtractor lives at global scope).
+class FileExtractor;
+
 namespace forensics {
 
 /**
@@ -37,8 +40,9 @@ public:
      * @param current Current file number
      * @param total Total files to analyze
      * @param currentFile Current file path
+     * @return true to continue analysis, false to stop (task cancelled)
      */
-    using ProgressCallback = std::function<void(int current, int total, const std::string& currentFile)>;
+    using ProgressCallback = std::function<bool(int current, int total, const std::string& currentFile)>;
 
     /**
      * @brief Constructor
@@ -107,7 +111,8 @@ public:
      * @param imagePath Path to the forensic disk image (E01, DD, etc.)
      * @param rawDbPath Path to the _raw.db containing file metadata/inodes
      */
-    void setImagePaths(const std::string& imagePath, const std::string& rawDbPath);
+    void setImagePaths(const std::string& imagePath, const std::string& rawDbPath,
+                       const std::string& taskId = "");
 
     /**
      * @brief Get the current scene type
@@ -148,6 +153,11 @@ private:
     // Forensic image paths for extracting files from within images
     std::string imagePath_;
     std::string rawDbPath_;
+    std::string scratchTaskId_;
+
+    // Lazily-created shared extractor for image-backed file resolution.
+    // Opening the image + partitions + DB per file is far too slow.
+    std::unique_ptr<::FileExtractor> imageExtractor_;
 
     // Internal helpers
     bool storeDescription(const std::string& dbPath,
@@ -161,6 +171,21 @@ private:
     std::string buildFileListSummary(const std::vector<std::string>& files);
     std::vector<std::string> parseImportantFiles(const std::string& llmResponse,
                                                   const std::vector<std::string>& allFiles);
+
+    /**
+     * @brief Heuristic forensic importance score for a file path (higher = more important)
+     *
+     * Used to bound the smart-selection prompt and as fallback ordering when
+     * the LLM selection call fails. Prioritises user artefacts, credentials,
+     * shell histories, logs and databases over system libraries/fonts/certs.
+     */
+    static int forensicPathPriority(const std::string& path);
+
+    /**
+     * @brief Order files by forensic priority (stable) and truncate to maxFiles
+     */
+    static std::vector<std::string> selectByHeuristic(std::vector<std::string> files,
+                                                      size_t maxFiles);
 
     /**
      * @brief Resolve a file path from the image to a host-filesystem path

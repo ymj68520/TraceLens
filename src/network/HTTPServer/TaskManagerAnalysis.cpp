@@ -12,9 +12,11 @@
 #include "ConfigManager/ConfigManager.h"
 #include "PathManager/PathManager.h"
 #include "FileFilter/FileFilter.h"
+#include "FileCarving/FileCarver.h"
 #include "../../analyzers/WindowsFilesAnalyzer/Common/WindowsAnalyzerDeclarations.h"
 #include "../../analyzers/LinuxFilesAnalyzer/Common/LinuxAnalyzerDeclarations.h"
 #include <fstream>
+#include <filesystem>
 
 
 using forensics::TaskPersistence;
@@ -339,7 +341,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     llmService.setSceneType(sceneType);
                     // Provide image + raw DB paths so files can be extracted from the
                     // image before LLM analysis (files live inside the image, not on disk).
-                    llmService.setImagePaths(imagePath, effectiveRawDb);
+                    llmService.setImagePaths(imagePath, effectiveRawDb, task_id);
                     auto& config = forensics::ConfigManager::instance();
                     forensics::LLMAnalysisService::AnalysisOptions llmOpts;
                     llmOpts.maxFiles = config.getLLMMaxFiles();
@@ -352,30 +354,32 @@ void TaskManager::start_analysis(const std::string& task_id) {
                         // Full mode: analyze all files
                         update_progress(task_id, TaskPhase::LLM_ANALYSIS, 30, "Full mode: Analyzing all files...");
                         analyzedCount = llmService.analyzeAllFiles(fileDbPath, llmOpts,
-                            [this, task_id](int current, int total, const std::string& file) {
-                                if (is_task_cancelled(task_id)) return; // Wait, analyzeAllFiles doesn't support cancellation return value?
+                            [this, task_id](int current, int total, const std::string& file) -> bool {
+                                if (is_task_cancelled(task_id)) return false;
                                 int progress = 30;
                                 if (total > 0) {
                                     progress += (current * 60 / total);
                                 }
-                                update_progress(task_id, TaskPhase::LLM_ANALYSIS, progress, 
+                                update_progress(task_id, TaskPhase::LLM_ANALYSIS, progress,
                                     "Analyzing file " + std::to_string(current) + "/" + std::to_string(total));
+                                return true;
                             });
                     } else {
-                        // Smart mode: LLM selects important files first
+                        // Smart mode: LLM selects important files first.
+                        // File budget honours LLM_MAX_FILES exactly — the previous
+                        // hardcoded floor of 1000 made real-image tasks run for
+                        // many hours on local LLMs.
                         update_progress(task_id, TaskPhase::LLM_ANALYSIS, 20, "Smart mode: Selecting important files...");
-                        // For smart mode, we scan more files initially (up to 2x global limit) to provide better context
-                        llmOpts.maxFiles = std::max(llmOpts.maxFiles, static_cast<size_t>(1000));
-
                         analyzedCount = llmService.analyzeSmartFiles(fileDbPath, llmOpts,
-                            [this, task_id](int current, int total, const std::string& file) {
-                                if (is_task_cancelled(task_id)) return;
+                            [this, task_id](int current, int total, const std::string& file) -> bool {
+                                if (is_task_cancelled(task_id)) return false;
                                 int progress = 30;
                                 if (total > 0) {
                                     progress += (current * 60 / total);
                                 }
-                                update_progress(task_id, TaskPhase::LLM_ANALYSIS, progress, 
+                                update_progress(task_id, TaskPhase::LLM_ANALYSIS, progress,
                                     "Analyzing important file " + std::to_string(current) + "/" + std::to_string(total));
+                                return true;
                             });
                     }
                     
@@ -399,11 +403,23 @@ void TaskManager::start_analysis(const std::string& task_id) {
                         // Full mode: analyze all event clusters
                         update_progress(task_id, TaskPhase::LLM_ANALYSIS, 92, "Full mode: Analyzing all event clusters...");
                         auto allClusters = clusterAnalyzer.getAllEventClusters(eventDbPath);
-                        analyzedCount = clusterAnalyzer.analyzeEventClusters(eventDbPath, allClusters);
+                        analyzedCount = clusterAnalyzer.analyzeEventClusters(eventDbPath, allClusters,
+                            [this, task_id](int current, int total, const std::string&) -> bool {
+                                if (is_task_cancelled(task_id)) return false;
+                                update_progress(task_id, TaskPhase::LLM_ANALYSIS, 92,
+                                    "Analyzing event cluster " + std::to_string(current) + "/" + std::to_string(total));
+                                return true;
+                            });
                     } else {
                         // Smart mode: LLM selects important event clusters first
                         update_progress(task_id, TaskPhase::LLM_ANALYSIS, 92, "Smart mode: Selecting important event clusters...");
-                        analyzedCount = clusterAnalyzer.analyzeSmartEventClusters(eventDbPath, 100); // 分析最多100个重要事件簇
+                        analyzedCount = clusterAnalyzer.analyzeSmartEventClusters(eventDbPath, 100,
+                            [this, task_id](int current, int total, const std::string&) -> bool {
+                                if (is_task_cancelled(task_id)) return false;
+                                update_progress(task_id, TaskPhase::LLM_ANALYSIS, 93,
+                                    "Analyzing event cluster " + std::to_string(current) + "/" + std::to_string(total));
+                                return true;
+                            }); // 分析最多100个重要事件簇
                     }
                     
                     update_progress(task_id, TaskPhase::LLM_ANALYSIS, 95, 
@@ -508,7 +524,34 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 }
             }
 
-            // 7. Graphiti Knowledge Graph Ingestion (Async, Fire-and-Forget)
+            // 7. File Carving (Optional) — signature-based recovery from unallocated space
+            if (task.file_carving && !is_task_cancelled(task_id)) {
+                update_progress(task_id, TaskPhase::FILE_CARVING, 0, "Starting file carving...");
+                try {
+                    std::filesystem::path carveDir = pm.getTaskDir(task_id) / "carved_files";
+                    std::filesystem::create_directories(carveDir);
+                    FileCarver carver;
+                    carver.setCancelCallback([this, task_id]() {
+                        return is_task_cancelled(task_id);
+                    });
+                    carver.setProgressCallback(
+                        [this, task_id](uint64_t current, uint64_t total, const std::string&) {
+                            int pct = total > 0 ? static_cast<int>(current * 100 / total) : 0;
+                            update_progress(task_id, TaskPhase::FILE_CARVING, std::min(pct, 100),
+                                "Carving unallocated space: " + std::to_string(current) + "/" + std::to_string(total));
+                        });
+                    int carved = carver.carve(imagePath, carveDir.string());
+                    add_audit_log(task_id, "FILE_CARVING",
+                        "Recovered " + std::to_string(carved) + " files to " + carveDir.string());
+                    update_progress(task_id, TaskPhase::FILE_CARVING, 100,
+                        "File carving completed: " + std::to_string(carved) + " files recovered");
+                } catch (const std::exception& e) {
+                    std::cerr << "Warning: File carving failed: " << e.what() << std::endl;
+                    add_audit_log(task_id, "WARNING", std::string("File carving failed: ") + e.what());
+                }
+            }
+
+            // 8. Graphiti Knowledge Graph Ingestion (Async, Fire-and-Forget)
             if (is_task_cancelled(task_id)) { return; }
             update_progress(task_id, TaskPhase::FINALIZING, 10, "Triggering knowledge graph ingestion...");
 

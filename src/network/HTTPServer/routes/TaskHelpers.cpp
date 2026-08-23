@@ -81,6 +81,8 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
         {"android_source", task.android_source},
         {"llm_analyze", task.llm_analyze},
         {"llm_mode", task.llm_mode},
+        {"file_carving", task.file_carving},
+        {"filter_profile", task.filter_profile},
         {"case_description", task.case_description},
         {"xfs_mode", task.xfs_mode == XFSMode::Native ? "native" :
                    task.xfs_mode == XFSMode::Pure ? "pure" : "auto"},
@@ -131,6 +133,7 @@ std::string TaskHelpers::phase_to_string(TaskPhase phase) {
         case TaskPhase::FILE_CLASSIFICATION: return "file_classification";
         case TaskPhase::LLM_ANALYSIS: return "llm_analysis";
         case TaskPhase::PLATFORM_ANALYSIS: return "platform_analysis";
+        case TaskPhase::FILE_CARVING: return "file_carving";
         case TaskPhase::FINALIZING: return "finalizing";
         default: return "unknown";
     }

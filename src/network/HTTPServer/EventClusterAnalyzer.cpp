@@ -118,8 +118,9 @@ Do not include any other text outside of the JSON object.)";
     }
 }
 
-int EventClusterAnalyzer::analyzeEventClusters(const std::string& eventsDbPath, 
-                                            const std::vector<std::tuple<int64_t, std::string, std::string>>& clusters) {
+int EventClusterAnalyzer::analyzeEventClusters(const std::string& eventsDbPath,
+                                            const std::vector<std::tuple<int64_t, std::string, std::string>>& clusters,
+                                            ProgressCallback progressCallback) {
     if (!initialized_) {
         if (!initialize()) {
             return 0;
@@ -132,6 +133,14 @@ int EventClusterAnalyzer::analyzeEventClusters(const std::string& eventsDbPath,
     for (size_t i = 0; i < clusters.size(); ++i) {
         auto [timeWindow, eventType, parentDirectory] = clusters[i];
 
+        if (progressCallback) {
+            if (!progressCallback(i + 1, total, eventType)) {
+                std::cout << "Event cluster analysis stopped by callback after "
+                          << i << "/" << total << " clusters" << std::endl;
+                break;  // task cancelled
+            }
+        }
+
         if (analyzeEventCluster(eventsDbPath, timeWindow, eventType, parentDirectory)) {
             analyzed++;
         }
@@ -140,8 +149,9 @@ int EventClusterAnalyzer::analyzeEventClusters(const std::string& eventsDbPath,
     return analyzed;
 }
 
-int EventClusterAnalyzer::analyzeSmartEventClusters(const std::string& eventsDbPath, 
-                                                 size_t maxClusters) {
+int EventClusterAnalyzer::analyzeSmartEventClusters(const std::string& eventsDbPath,
+                                                 size_t maxClusters,
+                                                 ProgressCallback progressCallback) {
     if (!initialized_) {
         if (!initialize()) {
             return 0;
@@ -151,12 +161,12 @@ int EventClusterAnalyzer::analyzeSmartEventClusters(const std::string& eventsDbP
     // 选择重要的事件簇
     auto importantClusters = selectImportantEventClusters(eventsDbPath, maxClusters);
     if (importantClusters.empty()) {
-        std::cerr << "No important event clusters selected by LLM" << std::endl;
+        std::cerr << "No important event clusters selected" << std::endl;
         return 0;
     }
 
     // 分析重要的事件簇
-    return analyzeEventClusters(eventsDbPath, importantClusters);
+    return analyzeEventClusters(eventsDbPath, importantClusters, std::move(progressCallback));
 }
 
 std::vector<std::tuple<int64_t, std::string, std::string>> EventClusterAnalyzer::selectImportantEventClusters(
@@ -172,6 +182,11 @@ std::vector<std::tuple<int64_t, std::string, std::string>> EventClusterAnalyzer:
     auto allClusters = getAllEventClusters(eventsDbPath);
     if (allClusters.empty()) {
         return {};
+    }
+
+    // 少于预算时无需让 LLM 选择
+    if (allClusters.size() <= maxClusters) {
+        return allClusters;
     }
 
     // 构建事件簇列表摘要
@@ -241,6 +256,17 @@ Do not include any explanation, only the JSON array.)";
             if (index < allClusters.size()) {
                 importantClusters.push_back(allClusters[index]);
             }
+        }
+
+        // The model responded but its indices resolved to nothing usable —
+        // fall back to the first N clusters instead of skipping the whole stage.
+        if (importantClusters.empty()) {
+            std::cerr << "LLM cluster selection resolved to 0 clusters"
+                      << " — falling back to first " << maxClusters << " clusters" << std::endl;
+            if (allClusters.size() > maxClusters) {
+                allClusters.resize(maxClusters);
+            }
+            return allClusters;
         }
 
         return importantClusters;

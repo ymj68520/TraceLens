@@ -100,6 +100,10 @@ public:
 private:
     LLMConfig config_;
     std::unique_ptr<httplib::Client> httpClient_;
+    // Path prefix from base URLs like https://host/prefix — httplib's string
+    // constructor drops (or mis-parses) URLs containing paths, so the prefix
+    // is kept here and prepended to every request path.
+    std::string basePath_;
     std::string lastError_;
     mutable std::mutex mutex_;
     bool ready_ = false;

@@ -504,7 +504,8 @@ add_executable(
 
 target_link_libraries(
   test_scene_classifier_gtest ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} sqlite3 pthread
-  nlohmann_json::nlohmann_json cpp_dotenv ${CURL_LIBRARIES} ${POPPLER_LIBRARIES} duckx tsk)
+  nlohmann_json::nlohmann_json cpp_dotenv ${CURL_LIBRARIES} ${POPPLER_LIBRARIES} duckx tsk
+  OpenSSL::SSL OpenSSL::Crypto)
 
 add_test(NAME SceneClassifierGTests COMMAND test_scene_classifier_gtest)
 

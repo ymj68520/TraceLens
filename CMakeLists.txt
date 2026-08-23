@@ -12,6 +12,13 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Find required packages
 find_package(SQLite3 REQUIRED)
 find_package(OpenSSL REQUIRED)
+# cpp-httplib (libs/cpp-mcp/common/httplib.h) gates its TLS backend behind
+# this macro. Without it every https:// LLM endpoint fails with
+# "Could not establish connection" even though OpenSSL is linked.
+add_compile_definitions(CPPHTTPLIB_OPENSSL_SUPPORT)
+# Every target that includes the header-only httplib client must link its TLS
+# symbols, including standalone test executables under tests/.
+link_libraries(OpenSSL::SSL OpenSSL::Crypto)
 find_package(Boost REQUIRED COMPONENTS system thread)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(HIVEX REQUIRED hivex)

@@ -41,11 +41,7 @@ TaskManager::TaskManager() {
 TaskManager::~TaskManager() {
     shutdown_requested_ = true;
     if (watchdog_thread_.joinable()) {
-        // We don't want to wait 60s for the sleep, but for a singleton at exit,
-        // it's acceptable or we could use CV for sleep. 
-        // For simplicity, we just detach or use a shorter interval.
-        // Actually, let's just detach to ensure program exits quickly.
-        watchdog_thread_.detach();
+        watchdog_thread_.join();
     }
 }
 
@@ -89,7 +85,8 @@ std::string TaskManager::create_task(const std::string& path,
                            const std::string& key_file_dir,
                            const std::string& decrypt_password,
                            const std::string& android_source,
-                           const std::string& backup_password) {
+                           const std::string& backup_password,
+                           bool file_carving) {
     std::lock_guard<std::mutex> lock(mtx_);
     boost::uuids::uuid uuid = boost::uuids::random_generator()();
     std::string id = boost::uuids::to_string(uuid);
@@ -131,6 +128,7 @@ std::string TaskManager::create_task(const std::string& path,
     new_task.decrypt_password = decrypt_password;
     new_task.android_source = android_source.empty() ? "tsk" : android_source;
     new_task.backup_password = backup_password;
+    new_task.file_carving = file_carving;
     new_task.cancellation_requested = false;
     new_task.error_details = "";
     new_task.metadata = metadata;
@@ -292,20 +290,24 @@ std::vector<AnalysisTask> TaskManager::get_tasks_by_priority(TaskPriority priori
 // Task cancellation
 bool TaskManager::cancel_task(const std::string& id, const std::string& reason) {
     std::lock_guard<std::mutex> lock(mtx_);
-    if (tasks_.count(id)) {
-        auto& task = tasks_[id];
-        if (task.status == TaskStatus::RUNNING) {
-            task.cancellation_requested = true;
-            update_status(id, TaskStatus::CANCELLED, reason.empty() ? "Task cancelled by user" : reason);
-            add_audit_log(id, "CANCELLED", reason.empty() ? "Task cancelled" : "Task cancelled: " + reason);
-            return true;
-        } else if (task.status == TaskStatus::PENDING) {
-            update_status(id, TaskStatus::CANCELLED, reason.empty() ? "Task cancelled by user" : reason);
-            add_audit_log(id, "CANCELLED", reason.empty() ? "Task cancelled" : "Task cancelled: " + reason);
-            return true;
-        }
+    auto it = tasks_.find(id);
+    if (it == tasks_.end()) return false;
+
+    auto& task = it->second;
+    if (task.status != TaskStatus::RUNNING && task.status != TaskStatus::PENDING) {
+        return false;
     }
-    return false;
+
+    const std::string message = reason.empty() ? "Task cancelled by user" : reason;
+    task.cancellation_requested = true;
+    task.status = TaskStatus::CANCELLED;
+    task.message = message;
+    task.completed_time = std::chrono::system_clock::now();
+    task.decrypt_password.clear();
+    task.backup_password.clear();
+    add_audit_log(id, "CANCELLED", reason.empty() ? "Task cancelled" : "Task cancelled: " + reason);
+    save_tasks_internal();
+    return true;
 }
 
 bool TaskManager::delete_task(const std::string& id) {
@@ -359,7 +361,6 @@ bool TaskManager::delete_task(const std::string& id) {
 
 // Batch operations
 std::vector<std::string> TaskManager::cancel_multiple_tasks(const std::vector<std::string>& task_ids, const std::string& reason) {
-    std::lock_guard<std::mutex> lock(mtx_);
     std::vector<std::string> cancelled_ids;
     for (const auto& id : task_ids) {
         if (cancel_task(id, reason)) {
@@ -435,6 +436,7 @@ nlohmann::json TaskManager::get_task_statistics() {
             {"event_extraction", phase_counts[TaskPhase::EVENT_EXTRACTION]},
             {"file_classification", phase_counts[TaskPhase::FILE_CLASSIFICATION]},
             {"platform_analysis", phase_counts[TaskPhase::PLATFORM_ANALYSIS]},
+            {"file_carving", phase_counts[TaskPhase::FILE_CARVING]},
             {"finalizing", phase_counts[TaskPhase::FINALIZING]}
         }},
         {"average_execution_time_seconds", completed_tasks > 0 ? total_execution_time / completed_tasks : 0}
@@ -535,7 +537,7 @@ bool TaskManager::is_task_cancelled(const std::string& id) {
 void TaskManager::run_watchdog() {
     TaskWatchdog watchdog(tasks_, shutdown_requested_, [this]() {
         save_tasks_internal();
-    });
+    }, mtx_);
     watchdog.run();
 }
 
@@ -547,7 +549,8 @@ int TaskManager::calculate_overall_percentage(TaskPhase phase, int phase_percent
         {TaskPhase::EVENT_EXTRACTION, 10},
         {TaskPhase::FILE_CLASSIFICATION, 15},
         {TaskPhase::LLM_ANALYSIS, 20},
-        {TaskPhase::PLATFORM_ANALYSIS, 23},
+        {TaskPhase::PLATFORM_ANALYSIS, 20},
+        {TaskPhase::FILE_CARVING, 3},
         {TaskPhase::FINALIZING, 2}
     };
 

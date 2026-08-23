@@ -316,6 +316,22 @@ std::vector<FileRecord> LinuxFilesAnalyzer::queryLinuxSystemFiles() {
 std::vector<FileRecord> LinuxFilesAnalyzer::queryFilesByPattern(const std::string& pathPattern) {
     if (!dbManager_) return {};
 
+    // TSK paths are persisted with a leading '/'. Older Linux artifact rules
+    // use relative patterns ("etc/...", "var/log/..."). Normalize at this
+    // single query boundary so all existing rules see real image files.
+    std::string normalizedPattern = pathPattern;
+    if (!normalizedPattern.empty() && normalizedPattern.front() != '/' &&
+        normalizedPattern.front() != '%' && normalizedPattern.front() != '_') {
+        normalizedPattern.insert(normalizedPattern.begin(), '/');
+    }
+    // For wildcard-leading patterns, insert the slash after the wildcard so
+    // `%/var/log/%` remains compatible with stored absolute image paths.
+    if (!normalizedPattern.empty() &&
+        (normalizedPattern.front() == '%' || normalizedPattern.front() == '_') &&
+        normalizedPattern.size() > 1 && normalizedPattern[1] != '/') {
+        normalizedPattern.insert(1, 1, '/');
+    }
+
     std::vector<FileRecord> results;
     sqlite3* db = dbManager_->getDb();
     if (!db) return results;
@@ -330,7 +346,7 @@ std::vector<FileRecord> LinuxFilesAnalyzer::queryFilesByPattern(const std::strin
         return results;
     }
 
-    sqlite3_bind_text(stmt, 1, pathPattern.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 1, normalizedPattern.c_str(), -1, SQLITE_TRANSIENT);
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         FileRecord record;

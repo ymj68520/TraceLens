@@ -20,6 +20,9 @@ public:
 
     bool initialize();
 
+    // 进度回调类型：返回 false 表示任务已取消，应停止分析
+    using ProgressCallback = std::function<bool(int, int, const std::string&)>;
+
     // 分析单个事件簇
     bool analyzeEventCluster(const std::string& eventsDbPath, 
                            int64_t timeWindow, 
@@ -27,12 +30,14 @@ public:
                            const std::string& parentDirectory);
 
     // 批量分析事件簇
-    int analyzeEventClusters(const std::string& eventsDbPath, 
-                            const std::vector<std::tuple<int64_t, std::string, std::string>>& clusters);
+    int analyzeEventClusters(const std::string& eventsDbPath,
+                            const std::vector<std::tuple<int64_t, std::string, std::string>>& clusters,
+                            ProgressCallback progressCallback = nullptr);
 
     // 智能分析（只分析重要的事件簇）
-    int analyzeSmartEventClusters(const std::string& eventsDbPath, 
-                                 size_t maxClusters);
+    int analyzeSmartEventClusters(const std::string& eventsDbPath,
+                                 size_t maxClusters,
+                                 ProgressCallback progressCallback = nullptr);
 
     // 选择重要的事件簇
     std::vector<std::tuple<int64_t, std::string, std::string>> selectImportantEventClusters(
@@ -53,9 +58,6 @@ public:
     // 获取所有事件簇
     std::vector<std::tuple<int64_t, std::string, std::string>> getAllEventClusters(
         const std::string& eventsDbPath);
-
-    // 进度回调类型
-    using ProgressCallback = std::function<void(int, int, const std::string&)>;
 
 private:
     bool initialized_ = false;

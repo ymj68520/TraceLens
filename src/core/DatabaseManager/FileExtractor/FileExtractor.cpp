@@ -174,10 +174,15 @@ TSK_FS_INFO* FileExtractor::fsForPartition(int partitionNum) const {
     if (it != fsByPartition_.end() && it->second) {
         return it->second;
     }
-    // Fallback: older records (partition_num == 0 from pre-migration DBs) or
-    // records whose partition we couldn't open. Use the first available handle.
-    for (const auto& kv : fsByPartition_) {
-        if (kv.second) return kv.second;
+    // A nonzero partition number identifies a specific image partition. Never
+    // read another partition as a fallback: inode numbers can collide and a
+    // successful open on the wrong filesystem silently corrupts evidence.
+    if (partitionNum != 0) {
+        return nullptr;
+    }
+    // Legacy single-filesystem databases used partition_num=0.
+    if (fsByPartition_.size() == 1) {
+        return fsByPartition_.begin()->second;
     }
     return nullptr;
 }

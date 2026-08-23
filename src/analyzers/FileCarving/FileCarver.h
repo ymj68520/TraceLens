@@ -56,6 +56,7 @@ struct CarvingStatistics {
  * @param currentFile Currently carving file (empty if not carving)
  */
 using CarvingProgressCallback = std::function<void(uint64_t current, uint64_t total, const std::string& currentFile)>;
+using CarvingCancelCallback = std::function<bool()>;
 
 /**
  * @brief File carving class for recovering deleted files from unallocated space
@@ -104,6 +105,9 @@ public:
      * @brief Enable or disable file validation after carving
      */
     void setValidationEnabled(bool enabled) { validationEnabled_ = enabled; }
+
+    // Stop a long carve promptly when the owning task is cancelled.
+    void setCancelCallback(CarvingCancelCallback callback) { cancelCallback_ = std::move(callback); }
     
     /**
      * @brief Add a custom signature for carving
@@ -112,6 +116,9 @@ public:
 
 private:
     void initializeSignatures();
+    // Carve unallocated blocks of ONE open filesystem into outputDir.
+    int carveFilesystem(TSK_FS_INFO* fs_info, const std::string& outputDir,
+                        uint64_t progressBase = 0, uint64_t progressTotal = 0);
     void processUnallocatedBlock(const void* data, size_t len, uint64_t addr);
     void extractFile(TSK_FS_INFO* fs, uint64_t startBlock, const CarvingSignature& sig, const std::string& outputDir);
 
@@ -135,6 +142,7 @@ private:
     std::vector<CarvedFileInfo> carvedFiles_;
     CarvingStatistics statistics_;
     CarvingProgressCallback progressCallback_;
+    CarvingCancelCallback cancelCallback_;
     std::string databasePath_;
     bool validationEnabled_ = true;
     

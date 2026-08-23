@@ -25,6 +25,7 @@ inline constexpr const char* CREATE_MAIN_FILES_TABLE = R"(
         ctime INTEGER,
         is_deleted INTEGER,
         md5 TEXT,
+        partition_num INTEGER DEFAULT 0,
         llm_summary TEXT,
         llm_description TEXT,
         llm_keywords TEXT,
@@ -48,7 +49,8 @@ inline constexpr const char* CREATE_CATEGORY_TABLE_TEMPLATE = R"(
         mtime INTEGER,
         ctime INTEGER,
         is_deleted INTEGER,
-        md5 TEXT
+        md5 TEXT,
+        partition_num INTEGER DEFAULT 0
     );
 )";
 
@@ -87,7 +89,8 @@ inline constexpr const char* UPDATE_FILE_LLM_ANALYSIS = R"(
         llm_keywords = ?,
         llm_analyzed_at = ?,
         llm_model_used = ?
-    WHERE path = ?;
+    WHERE path = ?
+      AND (SELECT COUNT(*) FROM files AS candidate WHERE candidate.path = files.path) = 1;
 )";
 
 // Get file LLM analysis by path
