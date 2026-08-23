@@ -21,7 +21,7 @@ raw.db（事实） ──► events.db（时间线观点）      ┐
 
 | 模式 | 位置 | 说明 |
 |------|------|------|
-| HTTP 任务 | `data/tasks/<task_id>/` | `raw.db`、`events.db`、`files.db`、`android.db`、`windows.db`、`linux.db`、`oss.db`（`PathManager.cpp getTaskDbPaths`） |
+| HTTP 任务 | `data/tasks/<task_id>/` | `raw.db`、`events.db`、`files.db`、`android.db`、`windows.db`、`linux.db`、`oss.db`（SERVER_CLOUD 场景的 linux_* 工件库，见第 8 节同名澄清；`PathManager.cpp getTaskDbPaths`） |
 | CLI 模式 | 镜像同目录 | `<image>_raw.db`、`<image>_events.db`、`<image>_files.db`（平台工件并入 files.db）、`<image>_dll.db`（`--analyze-dlls`）、`<image>_memory.db`（`--memory-analyze`） |
 | 审计 | `data/audit/forensics_audit.db` | `PathManager.h:73`；`AUDIT_LOG_DB` 可覆盖 |
 | 任务状态 | `data/tasks.json` | TaskPersistence |
@@ -179,10 +179,10 @@ DLL 分析表同时用于 CLI 独立输出 `<image>_dll.db`（`--analyze-dlls` �
 | 库/表 | 定义位置 | 用途 |
 |-------|---------|------|
 | 内存分析库（`<image>_memory.db`）：`processes`、`network_connections`、`bash_history`、`boot_info`、`cmdline`、`analysis_meta` | `src/core/DatabaseManager/SQL/memory_analysis_sql_tables.h` | Volatility3 内存取证结果 |
-| `oss_objects`、`oss_access_logs`、`oss_buckets`（+ 视图 `oss_objects_summary`、`oss_access_timeline`） | `src/core/DatabaseManager/SQL/oss_sql.h` | 阿里云 OSS 对象存储取证 |
+| `oss_objects`、`oss_access_logs`、`oss_buckets`（+ 视图 `oss_objects_summary`、`oss_access_timeline`） | `src/core/DatabaseManager/SQL/oss_sql.h` | 阿里云 OSS 对象存储取证。注意：OSSAnalyzer 当前**无生产调用方**（消费路由未注册，仅单测调用），这些表不会在任务产出中出现；任务目录里的 `oss.db` 是 SERVER_CLOUD 场景由 LinuxFilesAnalyzer 写入的 `linux_*` 表族，与此同名不同物 |
 | `event_chains`、`event_chain_nodes`、`causal_relationships` | `src/core/EventCorrelationEngine/Detail/EventCorrelationEngineCore.cpp` | 事件因果链分析（写入 events.db）。同 `event_correlations`：引擎未接入生产流水线，任务产出中通常为空 |
 | `carved_files` | `src/analyzers/FileCarving/FileCarver.cpp:575` | 雕刻恢复文件记录 |
-| `db_sessions`、`db_tables`、`db_records`、`db_artifacts`、`db_users` | `src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp` | 数据库取证 |
+| `db_sessions`、`db_tables`、`db_records`、`db_artifacts`、`db_users` | `src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp` | 数据库取证。注意：DatabaseAnalyzer 当前无 CLI/流水线入口（仅单测调用），任务产出中不出现 |
 | 审计日志（`forensics_audit.db`） | `src/core/AuditLog/` | 见 Security.md |
 
 ---

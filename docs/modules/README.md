@@ -30,14 +30,14 @@
 |------|------|
 | [ImageAnalyzer](cpp/analyzers/ImageAnalyzer.md) | 磁盘镜像分析入口：TSK/原生文件系统遍历、加密镜像解密、XFS 支持 |
 | [AndroidAnalyzer](cpp/analyzers/AndroidAnalyzer.md) | Android 取证分析：QQNT/微信/MIUI 备份工件解析、SQLCipher 解密、逻辑提取（dir/zip/miui-backup） |
-| [WindowsFilesAnalyzer](cpp/analyzers/WindowsFilesAnalyzer.md) | Windows 系统工件分析 |
+| [WindowsFilesAnalyzer](cpp/analyzers/WindowsFilesAnalyzer.md) | Windows 系统工件分析（Shimcache/UserAssist/RDP/WiFi 解析器已实现未接线，对应表恒空） |
 | [LinuxFilesAnalyzer](cpp/analyzers/LinuxFilesAnalyzer.md) | Linux 工件分析：日志/journal/auditd/容器/云工件解析与篡改、持久化检测 |
-| [DatabaseAnalyzer](cpp/analyzers/DatabaseAnalyzer.md) | 数据库取证：SQLite/MySQL/PostgreSQL 分析，InnoDB/堆页与 binlog 解析 |
+| [DatabaseAnalyzer](cpp/analyzers/DatabaseAnalyzer.md) | 数据库取证：SQLite/MySQL/PostgreSQL 分析，InnoDB/堆页与 binlog 解析（**未接线**：无 CLI/流水线入口，仅单测调用） |
 | [DLLAnalyzer](cpp/analyzers/DLLAnalyzer.md) | PE/ELF 共享库分析：导入导出、依赖、异常检测、签名校验 |
 | [FileCarving](cpp/analyzers/FileCarving.md) | 基于文件签名的雕刻恢复（含已删除文件） |
 | [PDFAnalyzer](cpp/analyzers/PDFAnalyzer.md) | PDF 文档解析与元数据提取 |
 | [OfficeAnalyzer](cpp/analyzers/OfficeAnalyzer.md) | Office 文档解析 |
-| [OSSAnalyzer](cpp/analyzers/OSSAnalyzer.md) | 阿里云 OSS 数据分析集成 |
+| [OSSAnalyzer](cpp/analyzers/OSSAnalyzer.md) | 阿里云 OSS 数据分析集成（**未接线**：消费路由未注册，无生产调用方；任务目录的 oss.db 与之无关，见 Overview） |
 | [VisionAnalysis](cpp/analyzers/VisionAnalysis.md) | 图像/视频视觉 LLM 分析（**死代码**，见上方标注） |
 
 ### 核心基础设施（cpp/core/）

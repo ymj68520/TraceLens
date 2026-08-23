@@ -43,8 +43,8 @@
 `PLATFORM_ANALYSIS`（20%）是取证价值最密集的一步。按检测出的场景**依次**运行平台分析器（`TMA:440-526`，多场景任务按顺序执行，进度按场景数折算）：
 
 - [AndroidAnalyzer](../modules/cpp/analyzers/AndroidAnalyzer.md)：找到短信/联系人/通话/Chrome 历史/已装应用数据库逐表解析；微信库是 SQLCipher 加密的，用 `--backup-password` 提供的密钥解密；MIUI 备份走 manifest+tar 索引；QQNT 走专用工件解析。产出 `android.db`（33 张表）。
-- [WindowsFilesAnalyzer](../modules/cpp/analyzers/WindowsFilesAnalyzer.md)：注册表（hivex）、事件日志（libevtx）、Prefetch/LNK/JumpList/Amcache/SRUM/Shimcache/UserAssist/MFT/浏览器……产出 `windows.db`（32 张表）。
-- [LinuxFilesAnalyzer](../modules/cpp/analyzers/LinuxFilesAnalyzer.md)：syslog/journal/auditd、账户与登录、Shell 历史、13 种持久化机制检测、容器、Web 服务器、攻击链与异常分析，产出 `linux.db`（73 张表）。
+- [WindowsFilesAnalyzer](../modules/cpp/analyzers/WindowsFilesAnalyzer.md)：注册表（hivex）、事件日志（libevtx）、Prefetch/LNK/JumpList/Amcache/SRUM/MFT/浏览器……产出 `windows.db`（32 张表；Shimcache/UserAssist/RDP/WiFi 解析器已实现但未接线，对应表恒空）。
+- [LinuxFilesAnalyzer](../modules/cpp/analyzers/LinuxFilesAnalyzer.md)：syslog/journal/auditd、账户与登录、Shell 历史、13 种持久化机制检测、容器、Web 服务器、攻击链与异常分析，产出 `linux.db`（73 张表）。SERVER_CLOUD 场景也由它处理（`analyzeServerCloudArtifacts`），工件写入 `oss.db`——文件名容易误会成阿里云 OSS 分析，实际是服务器/云场景的 Linux 工件库。
 
 每个平台分析器内部还会调用自己的 LLM 服务（`Linux/Windows/AndroidLLMAnalysisService`）对工件做语义标注——注意这与第四幕的文件级 LLM 是两回事：那里读"文件"，这里读"已经解析成取证工件的记录"。
 

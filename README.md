@@ -11,7 +11,7 @@
 - **三层数据库产出**：`_raw.db`（文件系统元数据）→ `_events.db`（时间线事件）→ `_files.db`（24 类文件分类 + LLM 分析列 + 场景优先级）
 - **平台专项取证**：
   - **Android**：短信/联系人/通话记录、Chrome 历史、已装应用、WiFi；MIUI 备份（`.bak`）解析、微信（SQLCipher 解密，支持 `--backup-password-stdin/-fd` 避免密码进 argv）、QQNT 工件；逻辑取证数据源 `--android-source tsk|dir|zip|miui-backup`
-  - **Windows**：注册表、事件日志、Prefetch、Amcache、SRUM、LNK、Jump List、Shimcache、UserAssist、ShellBag、MFT、浏览器（Chromium/Firefox）、USB/RDP/WiFi 等
+  - **Windows**：注册表、事件日志、Prefetch、Amcache、SRUM、LNK、Jump List、MFT、浏览器（Chromium/Firefox）、USB 等（Shimcache/UserAssist/RDP/WiFi 解析器已实现但尚未接线）
   - **Linux**：70+ 张 `linux_*` 工件表 —— 系统日志(syslog/journal/auditd)、用户/登录/SSH、Shell 历史、持久化检测、容器(Docker/Podman)、Web 服务器(Apache/Nginx)、防火墙/SELinux/AppArmor、攻击链与异常分析等
 - **内存取证**：`--memory-analyze` 调用 Volatility3（进程/网络/Bash 历史/启动信息 → `<镜像>_memory.db`），`scripts/build-vol3-isf.sh` 生成内核 ISF 符号
 - **LLM 智能分析**：OpenAI 兼容端点（LM Studio 等）；文件级描述生成（FULL/SMART 模式）、平台工件 LLM 分析（Linux/Windows/Android 各自服务）、事件簇 LLM 分析、视觉模型图像分析；`LLM_MAX_EVENT_CLUSTERS` 等限额可配
@@ -20,10 +20,10 @@
 - **文件雕刻**：基于签名的已删除文件恢复（29 种文件签名）
 - **全文搜索**：Xapian 索引与搜索（布尔/通配符/`path:`/`ext:` 过滤），覆盖 100+ 常见文本/代码扩展名
 - **文档解析**：PDF（Poppler）、Office → Markdown（Python markitdown 服务，支持批量转换）
-- **数据库取证**：SQLite/MySQL/PostgreSQL 数据目录分析（含 InnoDB、PostgreSQL Heap、MySQL Binlog 解析）
+- **数据库取证（未接线）**：SQLite/MySQL/PostgreSQL 数据目录分析组件（含 InnoDB、PostgreSQL Heap、MySQL Binlog 解析）已实现并有单测，但当前无 CLI 参数或流水线入口调用
 - **DLL/可执行文件分析**：PE/ELF 解析、异常检测、威胁评分、依赖分析、签名验证（osslsigncode）
 - **TOON 导出**：Token-Oriented Object Notation，面向 LLM 提示的紧凑表格格式
-- **对象存储取证**：阿里云 OSS（对象/访问日志/桶分析）
+- **对象存储取证（未接线）**：阿里云 OSS 分析组件（对象/访问日志/桶编目）已实现并有单测，但其消费路由未注册、无生产调用方
 - **分布式 C/S 模式**：PostgreSQL + JWT 的服务端（组织/客户端注册/命令队列/结果回收）与部署在取证机上的 `tracelens_agent` 客户端
 
 ## 多服务架构
@@ -143,7 +143,7 @@ make build && make start
 | `<镜像>_memory.db` | processes、network_connections、bash_history、boot_info、cmdline |
 | `<镜像>_dll.db` | PE/ELF 分析工件（亦可在 HTTP 任务模式下写入 windows.db 的 dll_* 表） |
 
-HTTP 任务模式下每个任务的数据库独立存放于 `data/tasks/<task_id>/`：`raw.db`、`events.db`、`files.db`、`android.db`、`windows.db`、`linux.db`、`oss.db` 及 `extracted_files/`、`carved_files/`。
+HTTP 任务模式下每个任务的数据库独立存放于 `data/tasks/<task_id>/`：`raw.db`、`events.db`、`files.db`、`android.db`、`windows.db`、`linux.db`、`oss.db`（SERVER_CLOUD 场景由 Linux 分析器写入服务器/云工件，与阿里云 OSS 分析无关）及 `extracted_files/`、`carved_files/`。
 
 ## 测试
 

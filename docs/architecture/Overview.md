@@ -78,7 +78,7 @@ TraceLens 跑起来是三个进程，很多设计只有知道"为什么分开"�
 | `raw.db` | ImageAnalyzer | 所有下游阶段、Graphiti 摄取 | **唯一事实来源**。忠实镜像文件系统元数据，保证任何结论可以回溯到原始证据 |
 | `events.db` | EventExtractor | 时间线页/前端、事件簇分析 | 把元数据变成"叙事单位"（事件），支撑按时间调查 |
 | `files.db` | FileClassifier、LLM 服务 | 文件页、报告、Python 服务 | "值得看的东西"的分拣结果 + LLM 结论的落点（`llm_*` 列、`file_descriptions`） |
-| `android/windows/linux/oss.db` | 各平台分析器 | 平台页面、微信关系图、Graphiti | 平台语义层："路径 + 字节"在这里变成"一条聊天记录"这样的取证工件 |
+| `android/windows/linux/oss.db` | 各平台分析器 | 平台页面、微信关系图、Graphiti | 平台语义层："路径 + 字节"在这里变成"一条聊天记录"这样的取证工件。注意 `oss.db` 是 SERVER_CLOUD 场景由 LinuxFilesAnalyzer 写入的服务器/云工件库，与阿里云 OSS 分析组件（未接线）同名不同物 |
 | `forensics_audit.db` | AuditLog（全局） | 审计接口 | 独立于任何任务，记录"谁对系统做了什么操作" |
 
 两个容易误解的点：
@@ -111,7 +111,7 @@ LLM 在系统里出现在**三个层级**，各有分工，理解这个分层就
 
 **平台语义层**：[AndroidAnalyzer](../modules/cpp/analyzers/AndroidAnalyzer.md)（含微信 SQLCipher 解密、QQNT、MIUI 备份）、[WindowsFilesAnalyzer](../modules/cpp/analyzers/WindowsFilesAnalyzer.md)（注册表/事件日志/Prefetch/SRUM……）、[LinuxFilesAnalyzer](../modules/cpp/analyzers/LinuxFilesAnalyzer.md)（73 张表，日志/账户/持久化/容器/Web 服务器/攻击链）。三个分析器结构同构：Parsers（格式解析）→ Analysis（取证推理）→ Database（落库）→ LLM 服务（语义标注）。
 
-**专项分析器**：[DLLAnalyzer](../modules/cpp/analyzers/DLLAnalyzer.md)（PE/ELF 威胁分析）、[DatabaseAnalyzer](../modules/cpp/analyzers/DatabaseAnalyzer.md)（SQLite/MySQL/PG 数据目录取证）、[FileCarving](../modules/cpp/analyzers/FileCarving.md)（29 种签名雕刻）、内存取证（Volatility3 子进程）、[OSSAnalyzer](../modules/cpp/analyzers/OSSAnalyzer.md)。
+**专项分析器**：[DLLAnalyzer](../modules/cpp/analyzers/DLLAnalyzer.md)（PE/ELF 威胁分析，注意当前扫描的是分析机本机系统目录而非镜像内容）、[FileCarving](../modules/cpp/analyzers/FileCarving.md)（29 种签名雕刻）、内存取证（Volatility3 子进程）。另有两个**已实现但未接线**的组件：[DatabaseAnalyzer](../modules/cpp/analyzers/DatabaseAnalyzer.md)（SQLite/MySQL/PG 数据目录取证，无 CLI/流水线入口，仅单测调用）与 [OSSAnalyzer](../modules/cpp/analyzers/OSSAnalyzer.md)（阿里云 OSS 编目，消费路由未注册，仅单测调用）。
 
 **智能层**：[LLMClient](../modules/cpp/integration/LLMClient.md)/[ModelRouter](../modules/cpp/integration/ModelRouter.md)（C++ 出站 LLM）、Python [LLMService](../modules/python/services/LLMService.md)（重分析/批量 job）、[GraphitiService](../modules/python/services/GraphitiService.md) + [GraphitiIngestor](../modules/python/graphiti_integration/GraphitiIngestor.md)（图谱摄取与查询）。
 
@@ -132,7 +132,7 @@ LLM 在系统里出现在**三个层级**，各有分工，理解这个分层就
 
 这些代码在仓库里但**不在运行路径上**，读代码或写文档时不要把它们当活功能（它们尚未被清理是历史原因，清理前先确认无外部脚本依赖）：
 
-- `src/network/HTTPServer/routes/OSS*.cpp`：OSS 路由已编译但从未注册，`/api/forensics/oss/*` 运行时 404（前端 `/oss` 页面因此不可用；OSSAnalyzer 分析器本身是活的）。
+- `src/network/HTTPServer/routes/OSS*.cpp`：OSS 路由已编译但从未注册，`/api/forensics/oss/*` 运行时 404（前端 `/oss` 页面因此不可用）；其消费的 OSSAnalyzer 同样无生产调用方（仅单测）。注意任务目录里的 `oss.db` 是 SERVER_CLOUD 场景由 LinuxFilesAnalyzer 写入的，与阿里云 OSS 分析无关。
 - `src/analyzers/VisionAnalysis/`：编译进二进制但无任何调用方。
 - `src/integration/LLMIntegration/MCPIntegration.cpp`：MCP 服务器已编译但无生产调用方（没有任何地方启动它；`.env.example` 里的 `MCP_SERVER_PORT`/`MCP_ALLOWED_PATHS` 无代码读取，仅 `MCP_HOST` 被读）。
 - `src/integration/AndroidAdbExtractor/`：不在 CMake `LIB_SOURCES`，未编译（且头文件与实现已失配到无法编译）；Android 逻辑取证实际走 AndroidAnalyzer 的 `--android-source dir|zip|miui-backup`。
