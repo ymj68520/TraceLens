@@ -1,15 +1,19 @@
 # Python REST API 参考文档
 
+> 本文档基于 `python_service/httpserver/main.py::_register_routes` 及 `python_service/httpserver/routes/`、`python_service/server/` 源码重写，所有路径与字段均以代码为准。
+
 ## 概述
 
-Python HTTP 服务运行在端口 **8090**，提供知识图谱、LLM 分析和数据库导出功能。
+Python 服务分两部分：
 
-**服务器地址**：`http://localhost:8090`
+| 服务 | 端口 | 框架 | 认证 |
+|------|------|------|------|
+| **httpserver**（本地分析服务） | **8090**（`PYTHON_HTTP_PORT`，`httpserver/config.py:133`） | FastAPI | 无（本地服务） |
+| **分布式 C/S server** | **8091**（`PORT`，`server/config.py:39`；注释明确 8091 与 8090 区分） | FastAPI | **JWT Bearer**（客户端走 client credential） |
 
-**API 文档**：
-- Swagger UI: http://localhost:8090/docs
-- ReDoc: http://localhost:8090/redoc
-- OpenAPI JSON: http://localhost:8090/openapi.json
+- httpserver 交互式文档：`http://localhost:8090/docs`（Swagger）、`/redoc`、`/openapi.json`。
+- httpserver 的就绪检查中 **C++ 后端为硬依赖**；Neo4j / LLM / Redis 为可选依赖（不可用不阻塞 ready）。
+- 未捕获异常统一返回 `500 {success: false, message: "Internal server error", error: "...", timestamp}`；校验失败返回 `422 {success, message, errors, timestamp}`（main.py 全局 handler）。
 
 ---
 
@@ -18,1210 +22,452 @@ Python HTTP 服务运行在端口 **8090**，提供知识图谱、LLM 分析和�
 1. [健康检查 API](#1-健康检查-api)
 2. [Graphiti 知识图谱 API](#2-graphiti-知识图谱-api)
 3. [LLM 分析 API](#3-llm-分析-api)
-4. [数据库访问 API](#4-数据库访问-api)
-5. [Office 文档 API](#5-office-文档-api)
-6. [案例分析 API](#6-案例分析-api)
-7. [多镜像分析 API](#7-多镜像分析-api)
-8. [WeChat 关系图谱 API](#8-wechat-关系图谱-api)
-9. [事件关联 API](#9-事件关联-api)
-10. [OSS 分析 API](#10-oss-分析-api)
-11. [DLL 分析 API](#11-dll-分析-api)
-12. [Markitdown 文档转换 API](#12-markitdown-文档转换-api)
-13. [系统信息 API](#13-系统信息-api)
-14. [分布式 C/S 服务 — 产物上传契约 (Artifact upload contract)](#分布式-cs-服务--产物上传契约-artifact-upload-contract)
-
----
-
-## 分布式 C/S 服务 — 产物上传契约 (Artifact upload contract)
-
-> **适用范围**：本节仅适用于 **分布式 C/S 服务**（distributed server，默认端口
-> **8091**；客户端通过 `command_executor` 上报分析产物）。它**不**适用于本地模式
-> （local mode，C++ `:8080` 进程内）或 legacy `httpserver`（`:8090`）。
-
-### 核心不变量：按引用存储 (store by reference)
-
-分布式服务对 DB 产物（forensic SQLite 数据库等）**仅按引用**存储，永远不接收原始磁盘
-镜像字节。客户端完成 `analyze_disk` 后，只把下列引用/元数据上报到服务端：
-
-| 字段 | 位置 | 含义 |
-|------|------|------|
-| `file_path` | `AnalysisResult.file_path` | 客户端侧的产物路径（opaque 字符串，服务端不解析、不假定文件名） |
-| `storage_location` | `AnalysisResult.storage_location` | 客户端/存储层句柄（如 `client-host-42`、对象存储桶等），用于定位产物的物理位置 |
-| `result_metadata.base_name` | `AnalysisResult.result_metadata["base_name"]` | **规范的产物基名**（canonical artifact base name），由客户端发送 |
-
-`ResultAggregator.store_results` / `store_result` 会把 `result_metadata` **原样**
-（verbatim）写入数据库（见 `python_service/server/services/result_aggregator.py`），
-因此 `base_name` 被完整保留。
-
-### 不假定 PathManager 的固定文件名
-
-**关键约束**：分布式服务端**不得**假设产物使用 `PathManager::getTaskDbPaths`
-（C++，`src/core/PathManager/PathManager.cpp`）所定义的固定文件名：
-
-| 固定文件名 | 仅在何处有效 |
-|-----------|--------------|
-| `raw.db` | 本地模式（C++ `:8080` 进程内） |
-| `events.db` | 本地模式（C++ `:8080` 进程内） |
-| `files.db` | 本地模式（C++ `:8080` 进程内） |
-
-这些固定名是**本地模式的约定**，在分布式链路上**不成立**。原因如下（DB 产物命名在
-本仓库中存在三套并存约定）：
-
-- `PathManager::getTaskDbPaths` 期望固定名 `raw.db` / `events.db` / `files.db`
-  ——**仅本地模式**。
-- `AnalysisOrchestrator.cpp` 实际写出的是 `<baseName>_raw.db` 等。
-- 客户端 `command_executor.cpp` 用 glob `<baseName>*.db` 匹配产物，并把
-  `result_metadata.base_name` 随结果一起上报。
-
-因此分布式服务端只能依赖客户端上报的 `base_name`，而**不能**去硬找 `raw.db`。
-
-### 客户端义务
-
-客户端可以把自己的 DB 产物命名为 `<baseName>_<kind>.db`（例如
-`case7_files.db`、`case7_raw.db`），并**必须**在 `result_metadata` 中携带
-`base_name`：
-
-```json
-{
-  "result_type": "database",
-  "file_path": "/evidence/work/case7_files.db",
-  "file_size": 4096,
-  "storage_location": "client-host-42",
-  "result_metadata": {"base_name": "case7"}
-}
-```
-
-服务端会原样保存，不校验也不改写文件名。
-
-### 项目级不变量
-
-原始磁盘镜像字节（raw disk-image bytes）**永远不离开客户端**——只有引用与元数据跨越
-网络。这是 TraceLens 的项目级安全不变量，分布式产物上传契约是其具体体现之一。
-
-**回归守护**：`python_service/tests/test_result_aggregator.py::
-test_store_results_preserves_arbitrary_db_filename_and_base_name` 锁定此契约——
-任意文件名 + `base_name` 必须被原样保留。
+4. [案件分析 API](#4-案件分析-api)
+5. [多镜像/案件聚合 API](#5-多镜像案件聚合-api)
+6. [报告 API](#6-报告-api)
+7. [调查 API（/api/investigation）](#7-调查-apiapiinvestigation)
+8. [调查工作台 API（/api/investigation/workbench）](#8-调查工作台-apiapiinvestigationworkbench)
+9. [数据库访问 API](#9-数据库访问-api)
+10. [Office 文档 API](#10-office-文档-api)
+11. [Markitdown 转换 API](#11-markitdown-转换-api)
+12. [微信关系图谱 API](#12-微信关系图谱-api)
+13. [事件关联 API](#13-事件关联-api)
+14. [OSS AI 分析 API](#14-oss-ai-分析-api)
+15. [系统 API](#15-系统-api)
+16. [分布式 C/S 服务（8091，JWT）](#16-分布式-cs-服务8091jwt)
 
 ---
 
 ## 1. 健康检查 API
 
-### GET /health
+> 源码：`routes/health.py`（无前缀）
 
-**描述**：基础健康检查，检查服务是否运行。
+| 方法 | 路径 | 用途 | 响应要点 |
+|------|------|------|----------|
+| GET | `/health` | 基础健康 | `{status:"healthy", timestamp, version:"1.0.0", uptime_seconds}` |
+| GET | `/health/live` | 存活探针 | `{status:"alive", ...}` |
+| GET | `/health/ready` | 就绪探针 | `{ready: bool, checks{cpp_backend, neo4j, llm, redis}, timestamp}`；仅 `cpp_backend` 不可用会置 `ready=false`，其余为可选项 |
+| GET | `/api/system/redis/status` | Redis 状态 | `{connected, in_use, status, url(已脱敏), timestamp}`；Redis 不可用时任务管理器回退内存实现 |
+| GET | `/api/system/info` | 系统信息 | `{service, version, python_version, config{http_port, cpp_backend_url, neo4j_uri, llm_text_model, ...}, timestamp}` |
 
-**响应**：
-```json
-{
-  "status": "healthy",
-  "version": "1.0.0"
-}
-```
-
-### GET /health/live
-
-**描述**：Kubernetes 存活探针。
-
-**响应**：
-```json
-{
-  "status": "alive"
-}
-```
-
-### GET /health/ready
-
-**描述**：Kubernetes 就绪探针，检查依赖服务状态。
-
-**响应**：
-```json
-{
-  "status": "healthy",
-  "services": {
-    "cpp_backend": {
-      "status": "healthy",
-      "url": "http://localhost:8080"
-    },
-    "graphiti": {
-      "status": "healthy",
-      "neo4j_uri": "neo4j://localhost:7687"
-    },
-    "llm": {
-      "status": "healthy",
-      "llm_base_url": "http://localhost:1234"
-    }
-  }
-}
+```bash
+curl http://localhost:8090/health/ready
 ```
 
 ---
 
 ## 2. Graphiti 知识图谱 API
 
-### POST /api/graphiti/ingest
+> 源码：`routes/graphiti.py` 挂载 `routes/graphiti_endpoints/`（前缀 `/api/graphiti`）
 
-**描述**：将取证数据摄取到知识图谱（后台任务）。
+### 2.1 摄取
 
-**请求体**：
-```json
-{
-  "task_id": "task_abc123",
-  "mode": "full",
-  "include_llm_descriptions": true,
-  "batch_size": 50
-}
-```
+**POST /api/graphiti/ingest** —— 启动图谱摄取（后台任务）。请求体（`IngestRequest`，已验证）：
 
-**参数说明**：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `task_id` | string | ✅ | - | 任务 ID |
-| `mode` | string | ❌ | full | 摄取模式：`full`, `files_only`, `events_only`, `analyzed_only` |
-| `include_llm_descriptions` | boolean | ❌ | true | 是否包含 LLM 描述 |
-| `batch_size` | integer | ❌ | 50 | 批处理大小（1-500） |
-
-**摄取模式说明**：
-
-- **`full`**: 完整摄取模式
-  - 摄取所有文件、事件和平台数据
-  - 包含 Android、Windows、Linux 专项分析结果
-  - 适用于首次摄取或全面更新
-
-- **`files_only`**: 仅更新文件实体
-  - 仅更新文件实体信息
-  - 不处理事件和关系
-  - 适用于文件元数据变更后的快速同步
-
-- **`events_only`**: 同步事件到现有文件
-  - 将事件附加到已存在的文件实体
-  - 不创建新文件实体
-  - 适用于事件数据的增量更新
-
-- **`analyzed_only`**: **新增** - 仅重新摄取 AI 分析文件和事件集群
-  - 仅处理 `llm_analyzed_at IS NOT NULL` 的文件
-  - 仅为已分析文件附加事件
-  - 不会重新运行 LLM 分析
-  - 适用于 AI 分析完成后更新知识图谱
-
-**响应**：
-```json
-{
-  "success": true,
-  "job_id": "job_xyz789",
-  "status": "running",
-  "message": "知识图谱摄取已启动",
-  "estimated_time_seconds": 300
-}
-```
-
-### POST /api/graphiti/search
-
-**描述**：在知识图谱中搜索。
-
-**请求体**：
-```json
-{
-  "query": "malware documents",
-  "task_id": "task_abc123",
-  "limit": 50,
-  "include_relationships": true
-}
-```
-
-**参数说明**：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `query` | string | ✅ | - | 自然语言查询 |
-| `task_id` | string | ✅ | - | 任务 ID |
-| `limit` | integer | ❌ | 50 | 最大结果数 |
-| `include_relationships` | boolean | ❌ | true | 是否包含关系 |
-
-**响应**：
-```json
-{
-  "success": true,
-  "query": "malware documents",
-  "results": [
-    {
-      "entity": {
-        "name": "trojan.exe",
-        "type": "FILE",
-        "summary": "检测到可疑的可执行文件",
-        "attributes": {
-          "file_path": "/evidence/trojan.exe",
-          "size": 2048576
-        }
-      },
-      "relationships": [
-        {
-          "type": "LOCATED_IN",
-          "target": {
-            "name": "C:/Temp/trojan.exe",
-            "type": "LOCATION"
-          },
-          "weight": 0.95
-        }
-      ],
-      "score": 0.92
-    }
-  ],
-  "total_results": 1
-}
-```
-
-### GET /api/graphiti/entities
-
-**描述**：获取知识图谱中的实体列表。
-
-**查询参数**：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `task_id` | string | ✅ | - | 任务 ID |
-| `entity_type` | string | ❌ | - | 过滤实体类型 |
-| `limit` | integer | ❌ | 100 | 最大结果数 |
-| `offset` | integer | ❌ | 0 | 偏移量 |
-
-**响应**：
-```json
-{
-  "success": true,
-  "entities": [
-    {
-      "name": "document.pdf",
-      "type": "FILE",
-      "summary": "保密协议文档",
-      "created_at": "2024-01-16T10:00:00Z"
-    }
-  ],
-  "total_count": 150
-}
-```
-
-### GET /api/graphiti/relationships
-
-**描述**：获取知识图谱中的关系列表。
-
-**查询参数**：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `task_id` | string | ✅ | - | 任务 ID |
-| `relationship_type` | string | ❌ | - | 过滤关系类型 |
-| `limit` | integer | ❌ | 100 | 最大结果数 |
-
-**响应**：
-```json
-{
-  "success": true,
-  "relationships": [
-    {
-      "source": "document.pdf",
-      "target": "/evidence/document.pdf",
-      "type": "LOCATED_AT",
-      "weight": 1.0
-    }
-  ],
-  "total_count": 300
-}
-```
-
-### GET /api/graphiti/graph
-
-**描述**：获取图可视化数据（用于前端展示）。
-
-**查询参数**：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `task_id` | string | ✅ | - | 任务 ID |
-| `max_nodes` | integer | ❌ | 200 | 最大节点数 |
-
-**响应**：
-```json
-{
-  "success": true,
-  "nodes": [
-    {
-      "id": "node_1",
-      "label": "document.pdf",
-      "type": "FILE",
-      "size": 20
-    }
-  ],
-  "edges": [
-    {
-      "source": "node_1",
-      "target": "node_2",
-      "label": "LOCATED_AT",
-      "weight": 0.9
-    }
-  ],
-  "stats": {
-    "total_nodes": 150,
-    "total_edges": 300
-  }
-}
-```
-
-### DELETE /api/graphiti/task/{task_id}
-
-**描述**：删除任务的所有图谱数据。
-
-**路径参数**：
-
-| 参数 | 类型 | 必填 | 说明 |
+| 字段 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
+| `task_id` | string | **必填** | 任务 ID（同时作为图命名空间）；任务不存在返回 404 |
+| `mode` | string | `full` | `full / files_only / events_only / analyzed_only` |
+| `include_llm_descriptions` | bool | true | 含 LLM 描述 |
+| `batch_size` | int | 50 | 1–500 |
+| `max_episodes` | int | 100 | 0–10000，0 = 不限 |
 
-**响应**：
-```json
-{
-  "success": true,
-  "deleted_nodes": 150,
-  "deleted_edges": 300,
-  "message": "图谱数据已删除"
-}
+mode 语义：`full` 全量；`files_only` 仅文件实体；`events_only` 事件挂到既有文件；`analyzed_only` 仅重摄取 `llm_analyzed_at IS NOT NULL` 的文件与事件簇（不重跑 LLM）。
+
+响应（`IngestionResponse`）：`{job_id, status: "PENDING", message}`
+
+```bash
+curl -X POST http://localhost:8090/api/graphiti/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "task_xxx", "mode": "analyzed_only"}'
 ```
+
+- **POST /api/graphiti/ingest/file**：单文件摄取 `{file_id(int, 必填), task_id(必填), update_analysis=false}`。
+- **POST /api/graphiti/ingest/events**：事件同步 `{task_id, events: [<事件字典>]}`。
+
+### 2.2 任务（Job）
+
+- `GET /api/graphiti/jobs/{job_id}`：任务状态 `{job_id, status, progress, current_phase, created_at, started_at?, completed_at?, error?, result?}`。
+- `DELETE /api/graphiti/jobs/{job_id}`：取消任务。
+- `GET /api/graphiti/jobs`：任务列表。
+
+### 2.3 迁移
+
+- `POST /api/graphiti/migrate/task/{task_id}`：把任务数据迁移到 Graphiti 结构。
+- `POST /api/graphiti/migrate/deduplicate`：去重。
+- `GET /api/graphiti/migrate/status/{task_id}`：迁移状态。
+- `POST /api/graphiti/migrate/cleanup/{task_id}`：清理迁移产物。
+
+### 2.4 查询
+
+- `POST /api/graphiti/search`：图搜索（自然语言查询）。
+- `GET /api/graphiti/entities`：实体列表。
+- `GET /api/graphiti/relationships`：关系列表。
+
+### 2.5 管理
+
+- `GET /api/graphiti/status`：服务状态。
+- `GET /api/graphiti/tasks`：已建图任务列表。
+- `DELETE /api/graphiti/tasks/{task_id}`：删除任务的图谱数据。
+- `GET /api/graphiti/graph`：可视化图数据。
 
 ---
 
 ## 3. LLM 分析 API
 
+> 源码：`routes/llm.py` 挂载 `routes/llm_endpoints/`（前缀 `/api/llm`），另挂 `routes/dll.py`
+
 ### POST /api/llm/analyze
 
-**描述**：分析文本内容。
+分析文本或文件。请求体（`AnalyzeRequest`，已验证）：`task_id?`（持久化目标任务）、`file_path?` / `db_file_path?`（文件路径，二选一时与 content 互补）、`content?`（直接分析文本）、`model_type`（默认 `text`，可选 `vision`）、`prompt?`、`max_tokens?`（1–8192）、`temperature?`（0–2）、`files_db_path?`（结果持久化的 `_files.db` 路径）。
 
-**请求体**：
-```json
-{
-  "content": "这是一份保密协议...",
-  "max_tokens": 1000,
-  "model_type": "text"
-}
-```
+其余端点：
 
-**参数说明**：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `content` | string | ✅ | - | 要分析的文本 |
-| `max_tokens` | integer | ❌ | 1000 | 最大 token 数 |
-| `model_type` | string | ❌ | text | text 或 vision |
-
-**响应**：
-```json
-{
-  "success": true,
-  "summary": "保密协议文档",
-  "description": "这是一份甲方与乙方的保密协议...",
-  "keywords": ["保密", "协议", "合同"],
-  "model_used": "qwen2.5:7b",
-  "tokens_used": 500
-}
-```
-
-### POST /api/llm/analyze/file
-
-**描述**：上传文件并分析。
-
-**请求**：`multipart/form-data`
-
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `file` | file | ✅ | 要分析的文件 |
-| `model_type` | string | ❌ | text/vision |
-
-**响应**：
-```json
-{
-  "success": true,
-  "file_name": "document.pdf",
-  "summary": "法律文档",
-  "description": "包含合同条款...",
-  "keywords": ["法律", "合同"],
-  "model_used": "qwen2.5:7b"
-}
-```
-
-### POST /api/llm/batch-analyze
-
-**描述**：批量分析文件。
-
-**请求体**：
-```json
-{
-  "task_id": "task_abc123",
-  "file_types": ["documents", "images"],
-  "limit": 100,
-  "max_parallel": 5
-}
-```
-
-**响应**：
-```json
-{
-  "success": true,
-  "job_id": "batch_job_456",
-  "total_files": 100,
-  "status": "running",
-  "estimated_time_seconds": 600
-}
-```
-
-### GET /api/llm/jobs/{job_id}/status
-
-**描述**：查询批量分析任务状态。
-
-**路径参数**：
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `job_id` | string | ✅ | 任务 ID |
-
-**响应**：
-```json
-{
-  "success": true,
-  "job_id": "batch_job_456",
-  "status": "running",
-  "progress": 45,
-  "total": 100,
-  "completed": 45,
-  "failed": 2,
-  "started_at": "2024-01-16T10:00:00Z",
-  "estimated_completion": "2024-01-16T10:10:00Z"
-}
-```
-
-### GET /api/llm/models
-
-**描述**：获取可用的 LLM 模型列表。
-
-**响应**：
-```json
-{
-  "success": true,
-  "models": {
-    "text": [
-      {
-        "name": "qwen2.5:7b",
-        "type": "local",
-        "base_url": "http://localhost:1234",
-        "available": true
-      },
-      {
-        "name": "gpt-4",
-        "type": "openai",
-        "base_url": "https://api.openai.com/v1",
-        "available": true
-      }
-    ],
-    "vision": [
-      {
-        "name": "qwen-vl-plus",
-        "type": "local",
-        "base_url": "http://localhost:1234",
-        "available": true
-      }
-    ]
-  }
-}
-```
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| POST | `/api/llm/analyze-event-cluster` | LLM 分析事件簇 |
+| POST | `/api/llm/analyze/file` | 上传文件分析（multipart） |
+| POST | `/api/llm/batch` | 批量分析（后台 job） |
+| GET | `/api/llm/batch/{job_id}` | 批量分析进度 |
+| GET | `/api/llm/models` | 可用模型列表（text/vision） |
+| POST | `/api/llm/toggle-relevance` | 切换文件相关性标记 |
+| POST | `/api/llm/toggle-cluster-relevance` | 切换事件簇相关性标记 |
+| GET | `/api/llm/status` | LLM 服务状态 |
+| POST | `/api/llm/analyze/dll` | LLM 分析 DLL/共享库安全性（`routes/dll.py`） |
 
 ---
 
-## 4. 数据库访问 API
+## 4. 案件分析 API
 
-### GET /api/db/tasks
+> 源码：`routes/case_analysis.py` 挂载 `case_analysis_endpoints/_case.py`、`_windows.py` 与 `routes/intelligence_report.py`（前缀 `/api/llm`）
 
-**描述**：获取任务的数据库列表。
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| POST | `/api/llm/case-description` | 保存案情描述（转发持久化到 C++ 任务系统 tasks.json） |
+| POST | `/api/llm/case-analysis` | **已退役**：固定返回 `410`，detail 为 "legacy case analysis generation has been retired; use report generation" |
+| POST | `/api/llm/reanalyze-files` | 重跑文件分析 |
+| GET | `/api/llm/case-analysis/{job_id}` | 分析 job 状态 |
+| GET | `/api/llm/case-report/{task_id}` | 任务级案件报告 |
+| GET | `/api/llm/case-report-by-case/{case_id}` | 案件级报告 |
+| GET | `/api/llm/filtered-files/{task_id}` | AI 过滤后的文件列表 |
+| POST | `/api/llm/windows-analysis` | Windows 场景分析 |
+| GET | `/api/llm/windows-report/{task_id}` | Windows 报告 |
+| GET | `/api/llm/windows-export/{task_id}/toon` | Windows 报告 TOON 导出 |
 
-**查询参数**：
+情报报告（`intelligence_report.py`）：
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `task_id` | string | ✅ | - | 任务 ID |
-
-**响应**：
-```json
-{
-  "success": true,
-  "task_id": "task_abc123",
-  "databases": [
-    {
-      "type": "files",
-      "path": "/output/evidence_files.db",
-      "size_bytes": 10485760,
-      "table_count": 15
-    },
-    {
-      "type": "events",
-      "path": "/output/evidence_events.db",
-      "size_bytes": 5242880,
-      "table_count": 5
-    }
-  ]
-}
-```
-
-### POST /api/db/query
-
-**描述**：执行自定义 SQL 查询。
-
-**请求体**：
-```json
-{
-  "task_id": "task_abc123",
-  "database_type": "files",
-  "sql": "SELECT * FROM files WHERE size > 1048576 ORDER BY size DESC LIMIT 10",
-  "limit": 100
-}
-```
-
-**参数说明**：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `task_id` | string | ✅ | - | 任务 ID |
-| `database_type` | string | ✅ | - | 数据库类型（raw/events/files） |
-| `sql` | string | ❌ | - | SQL 查询 |
-| `limit` | integer | ❌ | 1000 | 最大行数 |
-
-**响应**：
-```json
-{
-  "success": true,
-  "columns": ["id", "name", "path", "size", "category"],
-  "rows": [
-    [1, "document.pdf", "/evidence/document.pdf", 2048576, "documents"],
-    [2, "database.db", "/evidence/database.db", 5242880, "databases"]
-  ],
-  "row_count": 2
-}
-```
-
-### GET /api/db/tasks/{task_id}/export/toon
-
-**描述**：导出任务数据为 TOON 格式。
-
-**路径参数**：
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
-
-**查询参数**：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `include_llm` | boolean | ❌ | true | 包含 LLM 分析字段 |
-| `filter` | string | ❌ | - | 过滤条件 |
-
-**响应**：
-```
-TOON.schema: name | path | category | size | llm_summary | llm_keywords
-# records[150]
-document.pdf | /evidence/document.pdf | documents | 2048576 | 保密协议文档 | 保密,协议,合同
-database.db | /evidence/database.db | databases | 5242880 | SQLite 数据库 | 数据库,SQLite
-...
-```
-
-### GET /api/db/tasks/{task_id}/export/json
-
-**描述**：导出任务数据为 JSON 格式。
-
-**路径参数**：
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `task_id` | string | ✅ | 任务 ID |
-
-**查询参数**：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `database_type` | string | ✅ | - | 数据库类型 |
-| `include_llm` | boolean | ❌ | true | 包含 LLM 分析 |
-| `limit` | integer | ❌ | 1000 | 最大记录数 |
-
-**响应**：
-```json
-{
-  "success": true,
-  "database_type": "files",
-  "data": [
-    {
-      "id": 1,
-      "name": "document.pdf",
-      "path": "/evidence/document.pdf",
-      "size": 2048576,
-      "category": "documents",
-      "llm_summary": "保密协议文档"
-    }
-  ],
-  "count": 1
-}
-```
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| GET | `/api/llm/intelligence-report/{task_id}` | 情报报告正文（分章节） |
+| GET | `/api/llm/intelligence-report/{task_id}/records` | 报告记录 |
+| GET | `/api/llm/intelligence-report/{task_id}/search` | 报告内检索 |
+| GET / PUT | `/api/llm/intelligence-report/{task_id}/metadata` | 读取/更新报告元数据 |
 
 ---
 
-## 5. Office 文档 API
+## 5. 多镜像/案件聚合 API
 
-### POST /api/office/extract
+> 源码：`routes/multi_analysis.py`（绝对路径，代理/编排 C++ 案件后端）
 
-**描述**：提取 Office 文档内容为 Markdown。
-
-**请求**：`multipart/form-data`
-
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `file` | file | ✅ | Office 文档 |
-| | | | | (.docx, .xlsx, .pptx) |
-
-**响应**：
-```json
-{
-  "success": true,
-  "file_name": "document.docx",
-  "file_type": "docx",
-  "markdown": "# Document\\n\\n这是一份 Word 文档...",
-  "metadata": {
-    "author": "John Doe",
-    "created": "2024-01-16T10:00:00Z",
-    "pages": 10
-  }
-}
-```
-
-### POST /api/office/batch-extract
-
-**描述**：批量提取 Office 文档。
-
-**请求体**：
-```json
-{
-  "task_id": "task_abc123",
-  "file_type": "documents",
-  "limit": 50
-}
-```
-
-**响应**：
-```json
-{
-  "success": true,
-  "job_id": "office_job_789",
-  "total_files": 50,
-  "status": "running"
-}
-```
+| 方法 | 路径 | 请求体要点 | 用途 |
+|------|------|------------|------|
+| POST | `/api/llm/cases`（201） | `{name, description="", task_ids?[]}` | 创建案件（`CreateCaseRequest`，已验证） |
+| GET | `/api/llm/cases` | - | 案件列表 |
+| GET / DELETE | `/api/llm/cases/{case_id}` | - | 案件详情 / 删除 |
+| POST | `/api/llm/cases/{case_id}/tasks` | `{task_ids: [...]}` | 添加任务 |
+| POST | `/api/llm/cases/{case_id}/associate-tasks` | `{task_ids: [...]}`（空数组 400） | 关联已完成分析的任务 |
+| POST | `/api/llm/multi-image-analysis` | `{case_id, task_ids, files_db_paths, case_description, max_filter_files=400}`（均已验证，前三项必填） | 多镜像关联分析 job |
+| GET | `/api/llm/multi-image-analysis/{job_id}` | - | 分析 job 状态 |
+| POST | `/api/llm/cases/smart-create`（201） | `{name, description}` | 智能建案 |
+| POST | `/api/llm/cases/{case_id}/tasks/incremental` | `{task_ids}` | 增量加任务 |
+| GET | `/api/llm/cases/{case_id}/analysis-status` | - | 聚合分析状态 |
+| POST | `/api/llm/cases/{case_id}/incremental-analysis` | - | 触发增量分析 |
 
 ---
 
-## 6. 案例分析 API
+## 6. 报告 API
 
-### POST /api/case/analyze
+> 源码：`forensic_reports.py`、`report_evidence.py`、`report_generation.py`、`report_narrative.py`（前缀 `/api/reports`）
 
-**描述**：执行完整的案例分析工作流。
+### 6.1 报告版本（forensic_reports.py）
 
-**请求体**：
-```json
-{
-  "task_id": "task_abc123",
-  "analysis_options": {
-    "include_llm_analysis": true,
-    "include_graphiti": true,
-    "include_timeline": true
-  }
-}
-```
+- `POST /api/reports`（**202**）：创建报告版本。请求体 `{scope_type, scope_id}`（`CreateReportRequest`，已验证；scope_type 不支持时 501，scope 不存在 404）。
+- `GET /api/reports?scope_type=&scope_id=`：按范围列报告版本。
+- `GET /api/reports/{report_id}/status`：报告状态。
+- `GET /api/reports/{report_id}/manifest`：报告清单。
+- `GET /api/reports/{report_id}/categories/{category_id}/pages/{page}`：分页读取章节内容。
+- `GET /api/reports/{report_id}/search`：报告内检索（`{total, offset, limit, ...}`）。
 
-**响应**：
-```json
-{
-  "success": true,
-  "analysis_id": "analysis_xyz",
-  "status": "running",
-  "steps": [
-    {
-      "name": "LLM Analysis",
-      "status": "pending"
-    },
-    {
-      "name": "Graphiti Ingestion",
-      "status": "pending"
-    },
-    {
-      "name": "Timeline Generation",
-      "status": "pending"
-    }
-  ]
-}
-```
+### 6.2 报告证据（report_evidence.py）
 
-### GET /api/case/analysis/{analysis_id}
+- `GET /api/reports/evidence`：证据列表。
+- `POST /api/reports/evidence`（200）：登记证据（重复 409，绑定冲突 409）。
+- `PUT /api/reports/evidence`（200）：更新证据（校验失败 422）。
 
-**描述**：获取分析结果。
+### 6.3 报告生成（report_generation.py）
 
-**路径参数**：
+- `POST /api/reports/generate`（**202**）：请求体 `{task_id, requested_by}`（`GenerateReportRequest`，`extra="forbid"`，已验证）；无报告证据 409。
+- `GET /api/reports/generations/{generation_id}`：生成状态。
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `analysis_id` | string | ✅ | 分析 ID |
+### 6.4 报告叙事（report_narrative.py）
 
-**响应**：
-```json
-{
-  "success": true,
-  "analysis_id": "analysis_xyz",
-  "status": "completed",
-  "results": {
-    "llm_analysis": {
-      "total_files": 100,
-      "analyzed_files": 80,
-      "suspicious_files": 5
-    },
-    "graphiti": {
-      "entities": 50,
-      "relationships": 100
-    },
-    "timeline": {
-      "events": 200,
-      "time_span": "30 days"
-    }
-  }
-}
-```
+- `GET /api/reports/narrative/versions/{report_id}`：叙事版本记录。
 
 ---
 
-## 14. AI 文件过滤增强配置
+## 7. 调查 API（/api/investigation）
 
-### 概述
+> 源码：`routes/investigation.py`。证据以不可变快照 + 二级分析 + 调查事件为核心。
 
-AI 文件过滤系统已增强，提供更强大的响应解析、智能重复处理和边缘情况恢复能力。
-
-### 新增组件
-
-#### LLMResponseParser
-
-**位置**: `services/case_analysis/llm_response_parser.py`
-
-处理各种 LLM 响应格式：
-- 带/不带 markdown 代码块的 JSON
-- 不同的字段名称（selected_files、filtered_files、files）
-- 数组或字典格式
-- 嵌入 JSON 的文本
-
-#### FileMatcher
-
-**位置**: `services/case_analysis/file_matcher.py`
-
-智能文件匹配与重复解析：
-- 复合评分（路径语义 + 新鲜度 + 大小 + 深度）
-- 可配置权重
-- 置信度评分
-
-**默认评分权重**:
-- 路径语义: 0.4
-- 新鲜度: 0.3
-- 大小: 0.2
-- 深度: 0.1
-
-#### FilterResultValidator
-
-**位置**: `services/case_analysis/filter_validator.py`
-
-验证和修复结果：
-- 处理无效响应
-- 修剪多余文件
-- 移除无效项
-- 低置信度检测
-
-#### FilterLockManager
-
-**位置**: `services/case_analysis/concurrent_filter.py`
-
-防止并发过滤冲突：
-- 任务级异步锁
-- 超时支持
-- 单例模式
-
-### 环境配置
-
-在 `.env` 文件中添加以下配置：
-
-```env
-# 启用增强解析器
-ENABLE_ENHANCED_PARSER=true
-
-# 配置评分权重
-SCORE_WEIGHT_PATH_SEMANTIC=0.4
-SCORE_WEIGHT_FRESHNESS=0.3
-SCORE_WEIGHT_SIZE=0.2
-SCORE_WEIGHT_DEPTH=0.1
-
-# 并发控制
-ENABLE_CONCURRENT_LOCK=true
-LOCK_TIMEOUT=300
-```
-
-### 使用说明
-
-增强组件自动启用，无需更改 API 调用。
-
-如需手动控制，可使用特性标志：
-```python
-from httpserver.config import LLMFilterConfig
-
-filter_config = LLMFilterConfig(
-    enable_enhanced_parser=True,
-    enable_smart_dedup=True,
-    score_weight_path_semantic=0.5,  # 自定义权重
-)
-```
-
-### 测试
-
-运行相关测试：
-```bash
-cd python_service
-.venv/bin/pytest tests/unit/test_concurrent_filter.py -v
-.venv/bin/pytest tests/unit/test_llm_response_parser.py -v
-.venv/bin/pytest tests/unit/test_file_matcher.py -v
-.venv/bin/pytest tests/unit/test_filter_validator.py -v
-.venv/bin/pytest tests/integration/test_file_filter_integration.py -v
-```
-
-### 迁移指南
-
-增强功能向后兼容。现有代码继续工作，并在需要时自动回退到传统解析。
-
-在自定义代码中启用新功能：
-```python
-from services.case_analysis.llm_response_parser import LLMResponseParser
-from services.case_analysis.file_matcher import FileMatcher
-from services.case_analysis.filter_validator import FilterResultValidator
-
-parser = LLMResponseParser(settings)
-matcher = FileMatcher(settings)
-validator = FilterResultValidator(settings)
-
-# 在过滤管道中使用
-parse_result = parser.parse_filter_response(llm_response, batch_files)
-validated = validator.validate_and_repair(parse_result, batch_files, max_files)
-matched = matcher.match_files(validated.items, batch_files, case_context)
-```
-
-### 相关文档
-
-- **[AI 过滤增强详细文档](../AI_FILTER_ENHANCEMENTS.md)** - 完整的组件文档
+| 方法 | 路径 | 状态码 | 用途 |
+|------|------|--------|------|
+| POST | `/snapshots` | 200 | 捕获证据快照；请求体严格限定 `{task_id, evidence_key}`（`extra="forbid"`，已验证） |
+| POST | `/analyses` | **202** | 对证据启动二级分析 |
+| POST | `/analyses/{analysis_id}/review` | 200 | 审阅分析结果（冲突 409） |
+| GET | `/analyses/{analysis_id}` | 200 | 分析详情 |
+| GET | `/analyses` | 200 | 分析列表（可按 evidence_key / status 过滤） |
+| GET | `/analyses/{analysis_id}/claims` | 200 | 分析声明（claims） |
+| POST | `/events` | **201** | 创建调查事件 |
+| GET | `/events` | 200 | 事件列表 |
+| GET | `/events/{event_id}` | 200 | 事件详情 |
+| GET | `/events/{event_id}/versions` | 200 | 事件版本历史 |
+| POST / GET | `/events/{event_id}/evidence` | 200 | 挂接/查询事件证据（重复挂接 409） |
+| POST | `/events/{event_id}/refresh` | **201** | 触发事件刷新 |
+| GET | `/events/{event_id}/refreshes` | 200 | 刷新历史 |
+| GET | `/evidence` | 200 | 证据列表 |
+| GET | `/evidence/snapshot` | 200 | 证据快照 |
+| GET | `/graph` | 200 | 调查图数据 |
 
 ---
 
-## 7. 多镜像分析 API
+## 8. 调查工作台 API（/api/investigation/workbench）
 
-多镜像分析 API 支持跨多个磁盘镜像的关联分析，通过案例（Case）组织多个任务。
+> 源码：`routes/investigation_workbench.py`。按任务聚合的本地调查工作台。
 
-### POST /api/llm/cases
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| GET | `/{task_id}` | 工作台总览 |
+| POST | `/{task_id}/bootstrap` | 引导初始化（生成事件/证据） |
+| GET | `/{task_id}/events` | 事件列表 |
+| GET | `/{task_id}/events/{event_id}` | 事件详情 |
+| POST | `/{task_id}/events/{event_id}/review` | **固定 409**：源码注明 review 不属于本地规范契约 |
+| GET | `/{task_id}/events/{event_id}/evidence` | 事件证据 |
+| POST | `/{task_id}/events/{event_id}/evidence/link` | 挂接证据 |
+| GET | `/{task_id}/evidence/detail` | 证据详情 |
+| POST | `/{task_id}/evidence/analyze` | 触发证据分析 job |
+| GET | `/{task_id}/analysis-jobs/{job_id}` | 分析 job 状态 |
+| GET | `/{task_id}/evidence/analysis` | 证据分析结果 |
+| POST | `/{task_id}/analysis/{analysis_id}/accept` / `reject` | 采纳/驳回分析 |
+| POST | `/{task_id}/events/{event_id}/refresh` | 刷新事件 |
+| GET | `/{task_id}/events/{event_id}/versions` | 版本历史 |
+| POST | `/{task_id}/events/{event_id}/versions/{version_id}/accept` | 采纳版本 |
+| POST | `/{task_id}/events/{event_id}/versions/{version_id}/reject` | **固定 409**：语义版本驳回不在本地契约内 |
+| GET | `/{task_id}/events/{event_id}/versions/{version_id}/claims` | 版本声明 |
+| GET | `/{task_id}/events/{event_id}/claims/effective` | 生效声明 |
+| POST | `/{task_id}/events/{event_id}/versions/{version_id}/claims/{claim_id}/accept` | 采纳声明 |
+| POST | `.../claims/{claim_id}/reject` | **固定 409**：声明驳回不在本地契约内 |
+| GET | `/{task_id}/claims/{claim_id}` | 声明溯源 |
+| POST / GET | `/{task_id}/notes` | POST **固定 409**（等待规范 schema 决策）；GET 可读 |
+| PUT / GET / POST | `/{task_id}/report-evidence`（+/remove） | 管理报告证据集 |
+| GET | `/{task_id}/graph/local` | 本地调查图 |
+| GET | `/{task_id}/final-reports` | 终版报告列表 |
+| GET | `/{task_id}/final-reports/{report_id}`（+/markdown、/html、/print、/publication） | 终版报告及各渲染形式 |
+| POST | `/{task_id}/final-reports/{report_id}/publish` | 发布终版报告 |
 
-**描述**：创建新案例。
-
-**请求体**：
-```json
-{
-  "name": "案件名称",
-  "description": "案件描述",
-  "task_ids": ["task_1", "task_2"]
-}
-```
-
-### GET /api/llm/cases
-
-**描述**：列出所有案例。
-
-### GET /api/llm/cases/{case_id}
-
-**描述**：获取案例详情。
-
-### DELETE /api/llm/cases/{case_id}
-
-**描述**：删除案例。
-
-### POST /api/llm/cases/{case_id}/tasks
-
-**描述**：向案例添加任务。
-
-**请求体**：
-```json
-{
-  "task_ids": ["task_3", "task_4"]
-}
-```
-
-### POST /api/llm/multi-image-analysis
-
-**描述**：启动多镜像分析任务。
-
-**请求体**：
-```json
-{
-  "case_id": "case_123",
-  "analysis_type": "full|quick",
-  "description": "分析目标描述"
-}
-```
-
-### GET /api/llm/multi-image-analysis/{job_id}
-
-**描述**：获取多镜像分析任务状态。
-
-### POST /api/llm/cases/smart-create
-
-**描述**：智能创建案例（自动关联相关任务）。
-
-### POST /api/llm/cases/{case_id}/tasks/incremental
-
-**描述**：增量添加任务到案例。
-
-### GET /api/llm/cases/{case_id}/analysis-status
-
-**描述**：获取案例分析状态。
-
-### POST /api/llm/cases/{case_id}/incremental-analysis
-
-**描述**：触发增量分析。
+> 上述标注"固定 409"的端点已注册但按设计拒绝执行，属于显式的契约边界，不是故障。
 
 ---
 
-## 8. WeChat 关系图谱 API
+## 9. 数据库访问 API
 
-WeChat 关系图谱 API 提供微信聊天记录的图分析能力，包括 PageRank 社交影响力分析、社区发现、聊天记录查询等。
+> 源码：`routes/database.py`（前缀 `/api/db`）——只读查询，无自定义 SQL 端点（旧文档的 `POST /api/db/query` 不存在）。
 
-### GET /api/wechat/graph
-
-**描述**：获取 WeChat 关系图谱数据。
-
-**查询参数**：
-- `task_id` (string, required)
-- `min_weight` (int, optional, default 1) - 最小边权重
-
-### GET /api/wechat/graph/timeline
-
-**描述**：获取 WeChat 通信时间线。
-
-**查询参数**：
-- `task_id` (string, required)
-- `start_time` (int, optional)
-- `end_time` (int, optional)
-
-### GET /api/wechat/graph/community
-
-**描述**：获取 WeChat 社区发现结果（Louvain 算法）。
-
-**查询参数**：`task_id` (string, required)
-
-### GET /api/wechat/graph/person/{username}
-
-**描述**：获取特定用户的社交网络详情。
-
-**路径参数**：`username` (string) - 微信用户名
-
-**查询参数**：`task_id` (string, required)
-
-### GET /api/wechat/chat
-
-**描述**：获取聊天记录。
-
-**查询参数**：
-- `task_id` (string, required)
-- `talker` (string, optional) - 对话者
-- `limit` (int, default 100)
-
-### GET /api/wechat/chat/group
-
-**描述**：获取群聊记录。
-
-**查询参数**：
-- `task_id` (string, required)
-- `chatroom_name` (string, required)
-
-### GET /api/wechat/owner
-
-**描述**：获取微信账号所有者信息。
-
-**查询参数**：`task_id` (string, required)
-
-### GET /api/wechat/contacts
-
-**描述**：获取微信联系人列表。
-
-**查询参数**：`task_id` (string, required)
-
-### POST /api/wechat/graph/invalidate
-
-**描述**：清除图谱缓存。
-
-**请求体**：
-```json
-{
-  "task_id": "string"
-}
-```
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| GET | `/api/db/tasks` | 任务列表（含数据库位置） |
+| GET | `/api/db/tasks/{task_id}` | 任务详情 |
+| GET | `/api/db/tasks/{task_id}/databases` | 任务数据库清单（`TaskDatabasesResponse`） |
+| GET | `/api/db/tasks/{task_id}/files` | 文件记录（分页） |
+| GET | `/api/db/tasks/{task_id}/events` | 事件记录（分页） |
+| GET | `/api/db/tasks/{task_id}/export/toon` | TOON 文本导出 |
+| GET | `/api/db/tasks/{task_id}/export/json` | JSON 导出 |
 
 ---
 
-## 9. 事件关联 API
+## 10. Office 文档 API
 
-事件关联 API 提供事件簇与文件之间的关联查询能力。
+> 源码：`routes/office.py`（前缀 `/api/office`）
 
-### POST /api/associations/cluster-files
-
-**描述**：获取事件簇关联的文件。
-
-**请求体**：
-```json
-{
-  "task_id": "string",
-  "cluster_id": "string",
-  "time_window_seconds": 300
-}
-```
-
-### POST /api/associations/file-clusters
-
-**描述**：获取文件关联的事件簇。
-
-**请求体**：
-```json
-{
-  "task_id": "string",
-  "file_path": "/path/to/file",
-  "time_window_seconds": 300
-}
-```
+- `POST /api/office/parse`：解析 Office 文档（docx/xlsx/pptx）为 Markdown；需 `task_id` 或 `workspace_root` 锚定工作区，文件必须在任务工作区内。
+- `GET /api/office/supported-types`：支持的文件类型列表。
 
 ---
 
-## 10. OSS 分析 API
+## 11. Markitdown 转换 API
 
-Python 侧 OSS 分析 API 提供 AI 驱动的 OSS 对象过滤和分析能力。
-
-### POST /api/forensics/oss/ai/filter
-
-**描述**：使用 LLM 过滤 OSS 对象。
-
-**请求体**：
-```json
-{
-  "task_id": "string",
-  "description": "查找与案件相关的文档",
-  "model": "qwen2.5:7b"
-}
-```
-
-### POST /api/forensics/oss/ai/analyze
-
-**描述**：使用 LLM 分析 OSS 对象内容。
-
-**请求体**：
-```json
-{
-  "task_id": "string",
-  "object_ids": [1, 2, 3],
-  "model": "qwen2.5:7b"
-}
-```
-
----
-
-## 11. DLL 分析 API
-
-### POST /api/llm/analyze/dll
-
-**描述**：使用 LLM 分析 DLL/共享库文件的安全性。
-
-**请求体**：
-```json
-{
-  "task_id": "string",
-  "dll_path": "/path/to/file.dll",
-  "model": "qwen2.5:7b"
-}
-```
-
----
-
-## 12. Markitdown 文档转换 API
-
-Markitdown API 提供将各种文档格式转换为 Markdown 的能力。
+> 源码：`routes/markitdown.py`（前缀 `/api/markitdown`）；读取受任务工作区/提取根/任务 files.db 三重边界约束（越界 400）
 
 ### POST /api/markitdown/convert
 
-**描述**：将文件转换为 Markdown 格式。
+单文件转 Markdown。请求体（`ConvertRequest`，已验证）：`{task_id? | workspace_root?(deprecated), file_path(必填)}`。响应（`ConvertResponse`）：`{success, content(Markdown 文本), title, processing_time_ms}`。
 
-**请求体**（multipart/form-data）：
-- `file` (file) - 要转换的文件
-
-**响应**：
-```json
-{
-  "success": true,
-  "data": {
-    "markdown": "# Document Title\n\nContent...",
-    "content_type": "application/pdf",
-    "filename": "document.pdf"
-  }
-}
+```bash
+curl -X POST http://localhost:8090/api/markitdown/convert \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "task_xxx", "file_path": "/ws/extract/report.docx"}'
 ```
 
-### GET /api/markitdown/status
-
-**描述**：检查 Markitdown 服务状态。
+- `GET /api/markitdown/status`：服务状态。
+- `POST /api/markitdown/convert-one`：`{task_id?|workspace_root?, input_root, input_file, output_root}`——在 input root 下转换单个文件。
+- `POST /api/markitdown/batch-convert`：`{task_id?|workspace_root?, input_dir(必填), output_dir(必填)}`——目录批量转换，响应 `{success, total_files, converted, ...}`。
 
 ---
 
-## 13. 系统信息 API
+## 12. 微信关系图谱 API
 
-所有 API 在出错时返回以下格式：
+> 源码：`routes/wechat_graph.py` 挂载 `wechat_graph_endpoints/`（前缀 `/api/wechat`）；所有 GET 均需 `task_id` 查询参数（必填）
 
-```json
-{
-  "success": false,
-  "error": "错误描述",
-  "detail": "详细错误信息（可选）",
-  "status": 400
-}
-```
-
-**常见 HTTP 状态码**：
-
-| 状态码 | 说明 |
-|--------|------|
-| 200 | 成功 |
-| 400 | 请求参数错误 |
-| 404 | 资源不存在 |
-| 500 | 服务器内部错误 |
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| GET | `/api/wechat/chat` | 聊天记录（可按 talker 过滤、limit） |
+| GET | `/api/wechat/chat/group` | 群聊记录（`chatroom_name`） |
+| GET | `/api/wechat/owner` | 账号所有者信息 |
+| GET | `/api/wechat/contacts` | 联系人列表 |
+| GET | `/api/wechat/graph` | 关系图谱数据 |
+| GET | `/api/wechat/graph/timeline` | 通信时间线（start_time/end_time） |
+| GET | `/api/wechat/graph/community` | 社区发现（Louvain） |
+| GET | `/api/wechat/graph/person/{username}` | 个人 ego 网络 |
+| POST | `/api/wechat/graph/invalidate` | 清除图谱缓存 |
 
 ---
 
-## 速率限制
+## 13. 事件关联 API
 
-当前版本未实施速率限制，建议在生产环境中通过反向代理（Nginx）添加。
+> 源码：`routes/associations.py`（前缀 `/api/associations`）
+
+- `POST /api/associations/cluster-files`：事件簇 → 关联文件（`{task_id, ...}`；无 files 数据库 400）。
+- `POST /api/associations/file-clusters`：文件 → 关联事件簇（无 events 数据库 400）。
+
+---
+
+## 14. OSS AI 分析 API
+
+> 源码：`routes/oss_analysis.py`（router 自带前缀 `/api/forensics/oss/ai`）——这是 Python 服务中唯一存在的 OSS 能力（C++ 侧 OSS 路由未注册，见 CPP_REST_API.md）
+
+### POST /api/forensics/oss/ai/filter
+
+LLM 过滤 OSS 对象。请求体（`OSSFilterRequest`，已验证）：`{task_id, oss_db_path, case_description, bucket?, max_objects}`（`max_objects` 默认 200，范围 1–2000）。
+
+### POST /api/forensics/oss/ai/analyze
+
+LLM 分析已过滤对象。请求体（`OSSAnalyzeRequest`，已验证）：`{task_id, object_ids: [int], oss_db_path, download_dir, model_type="text"（仅 text|vision）}`。
+
+---
+
+## 15. 系统 API
+
+> 源码：`routes/system.py`（前缀 `/api/system`）
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| GET | `/api/system/logs` | 读取服务日志 |
+| GET | `/api/system/logs/{service}` | 指定服务日志（找不到 404） |
+| GET | `/api/system/logs-stream/{service}` | **SSE** 日志流（StreamingResponse） |
+
+> `routes/system_logs.py` 中定义的 `/api/system/logs/stream` router **未在 main.py 注册**（死代码），运行时不存在。
+> Redis 状态与系统信息在 `health.py` 中注册：`/api/system/redis/status`、`/api/system/info`（见第 1 节）。
+
+---
+
+## 16. 分布式 C/S 服务（8091，JWT）
+
+> 源码：`python_service/server/`（`main.py` 挂载 api/ 下各 router）。**唯一带认证的服务**：用户走 JWT Bearer，客户端（agent）走 client credential。
+> 设计要点：磁盘镜像字节永不离开客户端，服务端只存产物引用（`file_path` + `storage_location` + `result_metadata.base_name`），详见仓库内产物上传契约文档。
+
+### 16.1 基础
+
+- `GET /health`：存活。
+- `GET /health/ready`：就绪（数据库等依赖）。
+- `GET /`：服务发现信息。
+
+### 16.2 认证（/api/auth）
+
+**POST /api/auth/login** —— OAuth2 密码流（`application/x-www-form-urlencoded`）：
+
+```bash
+curl -X POST http://localhost:8091/api/auth/login \
+  -d "username=admin&password=secret"
+```
+
+响应（`TokenResponse`，已验证）：`{access_token: "<JWT>", token_type: "bearer", expires_in: 3600}`。凭据错误返回 `401`（带 `WWW-Authenticate: Bearer`）。用户名可用 username 或 email。
+
+- `POST /api/auth/refresh`：刷新 token（需当前 token）。
+- `GET /api/auth/me`：当前用户信息 `{id, org_id, username, email, role, created_at, last_login}`。
+
+角色权限矩阵（`auth.py`）：`super_admin`（全量）、`org_admin`、`analyst`（create_tasks/view_results）、`auditor`（view_results）。
+
+### 16.3 组织（/api/organizations）
+
+- `POST /api/organizations`：创建组织。
+- `GET /api/organizations`：组织列表。
+- `GET /api/organizations/{org_id}`：组织详情。
+- `POST /api/organizations/{org_id}/registration-tokens`：签发客户端注册令牌。
+- `GET /api/organizations/{org_id}/registration-tokens`：令牌列表。
+- `DELETE /api/organizations/registration-tokens/{token_id}`：吊销令牌。
+
+### 16.4 客户端（/api/clients）
+
+- `POST /api/clients/register`：客户端凭注册令牌注册（返回 client credential）。
+- `GET /api/clients`：客户端列表。
+- `GET /api/clients/{client_id}`：客户端详情。
+- `DELETE /api/clients/{client_id}`：删除客户端。
+- `POST /api/clients/{client_id}/index-images`：登记客户端可见的磁盘镜像索引。
+- `GET /api/clients/{client_id}/images`：镜像列表（`DiskImageResponse[]`）。
+
+### 16.5 命令队列（/api/commands）
+
+| 方法 | 路径 | 认证方 | 用途 |
+|------|------|--------|------|
+| POST | `/api/commands` | 用户 | 下发命令 `{client_id, ...}`；跨组织 403，客户端不存在 404 |
+| GET | `/api/commands/poll` | **客户端** | 拉取待执行命令（同时刷新 `last_poll` 在线心跳） |
+| POST | `/api/commands/{command_id}/status` | **客户端** | 上报命令状态（仅能上报自己的命令；状态会传播到关联分析任务） |
+| GET | `/api/commands/{command_id}` | 用户 | 命令详情 |
+| GET | `/api/commands/client/{client_id}` | 用户 | 按客户端查命令历史 |
+| POST | `/api/commands/expire` | 用户 | 过期滞留命令 |
+
+**客户端轮询示例**：
+
+```bash
+curl http://localhost:8091/api/commands/poll \
+  -H "Authorization: Bearer <client-token>"
+```
+
+### 16.6 分析任务（/api/tasks）
+
+- `POST /api/tasks`：创建分析任务（`AnalysisTaskResponse`）。
+- `GET /api/tasks`：任务列表。
+- `GET /api/tasks/{task_id}`：任务详情。
+- `POST /api/tasks/{task_id}/cancel`：取消任务。
+
+### 16.7 结果上报（/api/tasks，results.py）
+
+- `POST /api/tasks/{task_id}/results`（**客户端**）：批量上传产物引用，请求体 `{artifacts: [ResultArtifact...]}`（`ResultUploadRequest`，已验证；artifact 含 `result_type / file_path / file_size / storage_location / result_metadata` 等，`result_metadata` 原样入库以保留 `base_name`）。
+- `GET /api/tasks/{task_id}/results`（用户）：任务结果列表。
+- `GET /api/tasks/{task_id}/llm-analyses`（用户）：任务 LLM 分析结果。
+
+---
+
+## 错误响应
+
+httpserver 未捕获异常：`500 {success: false, message: "Internal server error", error, timestamp}`；参数校验失败：`422 {success: false, message: "Validation error", errors, timestamp}`。各路由业务错误为 FastAPI 标准 `{"detail": "..."}` + 4xx。C/S 服务未授权返回 `401`（Bearer）。
 
 ---
 
 ## 相关文档
 
-- **[C++ REST API 参考](../api_reference/CPP_REST_API.md)** - C++ 服务 API
-- **[FastAPI 主程序](../modules/python/httpserver/Main.md)** - Python 服务架构
-- **[ServiceManager](../modules/python/httpserver/services/ServiceManager.md)** - 服务管理
-- **[CppBackendClient](../modules/python/httpserver/services/CppBackendClient.md)** - C++ 后端通信
+- [C++ REST API 参考](./CPP_REST_API.md)
+- FastAPI 交互文档：`http://localhost:8090/docs`
 
 ---
 
-**最后更新**: 2026-06-06
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（以代码为准重写）
