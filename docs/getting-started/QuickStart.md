@@ -2,428 +2,219 @@
 
 ## 概述
 
-本指南将帮助您在 30 分钟内完成 ForensicsProject 的安装、配置和第一次取证分析。
+本指南帮助你在 30 分钟内完成 TraceLens（仓库目录内历史名称为 ForensicsProject，GitHub: ymj68520/TraceLens）的安装、配置和第一次取证分析。
+
+TraceLens 由三个服务组成，`run.sh` 会一并启动：
+
+| 服务 | 说明 | 默认端口 |
+|------|------|---------|
+| C++ `forensic_analyzer --http-server` | 核心取证分析 + HTTP API + 托管 React 前端（SPA） | `.env` 中 `HTTP_SERVER_PORT`（run.sh 未设置时回退 **8666**） |
+| Python `python_service/.venv -m httpserver.main` | FastAPI：LLM 代理、Graphiti 知识图谱、markitdown、报告 | 8090 |
+| Python `-m server.main` | 分布式 C/S 服务端（客户端注册/命令下发/结果回收） | 8091（`PORT`） |
 
 **前置要求**：
-- Ubuntu 20.04+ 或其他 Linux 发行版
-- Python 3.10+
-- 至少 8GB RAM
-- 20GB 可用磁盘空间
+- Ubuntu 20.04+（推荐 22.04+），需要 `sudo` 权限
+- Python 3.10+（venv 由脚本创建）
+- 至少 8GB RAM、20GB 可用磁盘空间
+- 如需 LLM/知识图谱功能：可访问的 OpenAI 兼容端点（如 LM Studio）和 Neo4j（setup.sh 会装）
 
 ---
 
 ## 目录
 
-1. [安装依赖](#1-安装依赖)
-2. [编译项目](#2-编译项目)
-3. [运行第一次分析](#3-运行第一次分析)
-4. [启动 HTTP 服务](#4-启动-http-服务)
-5. [使用知识图谱](#5-使用知识图谱)
-6. [常见问题](#6-常见问题)
+1. [一键安装依赖](#1-一键安装依赖)
+2. [配置环境变量](#2-配置环境变量)
+3. [启动全部服务](#3-启动全部服务)
+4. [在浏览器创建第一个任务](#4-在浏览器创建第一个任务)
+5. [CLI 最小示例](#5-cli-最小示例)
+6. [常用 Makefile 命令](#6-常用-makefile-命令)
+7. [下一步](#7-下一步)
 
 ---
 
-## 1. 安装依赖
-
-### 1.1 系统包
+## 1. 一键安装依赖
 
 ```bash
-# 更新包列表
-sudo apt-get update
-
-# 安装编译依赖
-sudo apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    libsqlite3-dev \
-    libewf-dev \
-    libhivex-dev \
-    libevtx-dev \
-    libasio-dev \
-    nlohmann-json3-dev \
-    libboost-system-dev \
-    libboost-thread-dev \
-    libesedb-dev \
-    libolecf-dev \
-    libxapian-dev \
-    libpoppler-cpp-dev \
-    libzip-dev \
-    libpugixml-dev \
-    libgtest-dev \
-    libgmock-dev \
-    pkg-config \
-    libcurl4-openssl-dev
+sudo bash setup.sh
 ```
 
-### 1.2 The Sleuth Kit (TSK) 4.14.0
+`setup.sh` 是幂等的（已安装的依赖会跳过），按步骤完成：
+
+1. **NVM + Node.js 22 LTS**（构建 web 前端用）；
+2. **apt 系统包**：编译工具链（build-essential/cmake/pkg-config 等）+ 取证库（libhivex/libevtx/libesedb/libolecf/libbfio/libewf/libfsntfs）+ libxapian（全文搜索）+ libpoppler-cpp（PDF）+ 压缩库（zlib/lzma/bz2/zstd）+ libzip + libcurl + ffmpeg + redis-server + libpq/libmysqlclient + libsqlcipher + GTest 等；
+3. **Java 21 + Neo4j**：官方 apt 仓库安装，用 `NEO4J_PASSWORD` 环境变量（或 `.env` 中的同名值）设置初始密码并 `systemctl enable --now neo4j`；
+4. **The Sleuth Kit 4.14.0**：下载源码编译安装到 `/usr/local`；
+5. **Crow**（C++ HTTP 框架，源码安装）；
+6. **Google Test**（从 `/usr/src/googletest` 编译）；
+7. **阿里云 OSS C++ SDK**：源码编译 `libs/aliyun-oss-cpp-sdk`；
+8. **Python venv**：创建 `python_service/.venv`，安装 `httpserver/requirements.txt` + `requirements.txt`，并逐个核对安装大包（markitdown[all]、PyMuPDF==1.27.1、volatility3、graphiti-core、h5py、scipy 等）和 BitLocker FVEK volatility3 插件（源码在 `resources/volatility3-plugins/windows/bitlocker_fvek_scan.py`）；
+9. **CMake Release 构建** `build/forensic_analyzer`（并按需 `npm run build` 前端）。
+
+网络不稳定时可设 `PIP_PROXY=http://<代理>:<端口>`（环境变量或 `.env`），脚本会导出为 HTTP_PROXY/HTTPS_PROXY。
+
+完成后按提示验证：
 
 ```bash
-# 下载
-wget https://github.com/sleuthkit/sleuthkit/releases/download/sleuthkit-4.14.0.tar.gz
-tar -xzf sleuthkit-4.14.0.tar.gz && cd sleuthkit-4.14.0
-
-# 编译安装
-./configure
-make -j$(nproc)
-sudo make install
-sudo ldconfig
-
-# 验证
-tsk_loaddb -V  # 应显示 4.14.0
-```
-
-### 1.3 Crow 框架
-
-```bash
-# 克隆
-git clone https://github.com/CrowCpp/Crow.git
-cd Crow && mkdir build && cd build
-
-# 配置安装
-cmake .. \
-    -DCROW_BUILD_EXAMPLES=OFF \
-    -DCROW_BUILD_TESTS=OFF
-sudo make install
-```
-
-### 1.4 Python 依赖
-
-```bash
-# 创建虚拟环境
-python3 -m venv .venv
-source .venv/bin/activate
-
-# 安装依赖
-pip install --upgrade pip
-pip install -r python_service/httpserver/requirements.txt
+ls build/forensic_analyzer   # 应存在
+build/forensic_analyzer --version
 ```
 
 ---
 
-## 2. 编译项目
-
-### 2.1 创建构建目录
+## 2. 配置环境变量
 
 ```bash
-cd /path/to/ForensicsProject
-mkdir build && cd build
+cp .env.example .env
 ```
 
-### 2.2 配置和编译
+最小可用配置只需关心（完整变量表见 [Installation.md](Installation.md)）：
 
-```bash
-# Release 构建
-cmake .. -DCMAKE_BUILD_TYPE=Release
+```env
+# LLM 端点（LM Studio / OpenAI 兼容 API）
+LLM_BASE_URL=http://192.168.31.170:1234
+LLM_TEXT_MODEL=qwen/qwen3.6-35b-a3b
 
-# 编译（使用所有 CPU 核心）
-cmake --build . -j$(nproc)
+# Neo4j（知识图谱，setup.sh 安装时应设置过 NEO4J_PASSWORD）
+NEO4J_URI=neo4j://127.0.0.1:7687
+NEO4J_PASSWORD=<你设置的密码>
+
+# C++ 服务端口（run.sh 读它；不设置则 run.sh 用 8666）
+HTTP_SERVER_PORT=8666
 ```
 
-### 2.3 验证安装
+> 不配置 LLM/Neo4j 也能跑：分析任务加 `--no-ai` 跳过 AI，Graphiti 服务连接失败会自动降级（disabled），不阻断主流程。
+
+---
+
+## 3. 启动全部服务
 
 ```bash
-# 检查可执行文件
-./forensic_analyzer --version
+./run.sh
+```
 
-# 应显示版本信息
-# ForensicProject Digital Forensics Image Analyzer v1.0.0
+`run.sh` 流程：CMake 构建（`-DBUILD_WEB_FRONTEND=OFF`，前端由脚本单独 `npm run build` 并同步到 `build/web/dist`）→ 清理端口残留进程（lsof/kill）→ 前台启动三个服务 → 健康检查（**C++ 服务失败则退出**，Python/C/S 失败仅警告）→ Ctrl+C 一并停止（trap 清理）。
+
+常用参数：
+
+| 参数 | 说明 |
+|------|------|
+| `--build-only` | 只编译不启动 |
+| `--no-build` | 跳过编译直接启动（需已构建） |
+| `--no-web` / `--no-python` / `--no-cpp` | 跳过前端构建 / 不启动 Python 与 C/S / 不启动 C++ |
+| `--jobs N`（或 `-j N`） | 编译并行数，默认 4 |
+| `--clean` | 编译前清理 CMake 产物（保留 logs/data/db） |
+
+服务日志写入 `build/logs/`：
+
+```
+build/logs/cpp_server.log        # C++
+build/logs/python_service.log    # httpserver :8090
+build/logs/cs_server.log         # C/S :8091
+```
+
+启动成功后访问地址（以默认 8666 为例）：
+
+```
+Web 界面      http://localhost:8666/
+C++ API 文档  http://localhost:8666/api/docs
+健康检查      http://localhost:8666/api/system/health
+Python API   http://localhost:8090/docs
+C/S API      http://localhost:8091/docs
 ```
 
 ---
 
-## 3. 运行第一次分析
+## 4. 在浏览器创建第一个任务
 
-### 3.1 准备磁盘镜像
+1. 打开 `http://localhost:8666/`（**必须访问 C++ 端口**，React SPA 由 C++ 服务托管）。
+2. `/login` 为 mock 登录：任意用户名 + 密码即可。
+3. 进入任务创建页，填写：
+   - **镜像路径**：磁盘镜像（E01/raw/多分区）或 Android 数据源；
+   - **数据源类型**（Android 场景）：`tsk`（镜像，默认）/ `dir`（已解包 data/ 目录）/ `zip`（Image.zip）/ `miui-backup`（小米备份 .bak 目录）；
+   - **分析场景**（多选）：`android` / `windows` / `linux` / `server_cloud`；
+   - **过滤配置**：`config/filter_profiles/` 下的 profile（general_forensics / telecom_fraud / data_breach / virus_intrusion），默认 general_forensics。
+4. 提交后在任务列表/详情页查看进度与结果。
 
-```bash
-# 假设您有一个 E01 镜像文件
-ls -lh evidence.E01
-# -rw-r--r-- 1 user user 2.0G Jan 15 10:00 evidence.E01
-```
-
-### 3.2 执行分析
-
-```bash
-# 完整分析（推荐）
-./forensic_analyzer evidence.E01
-
-# 这将生成三个数据库：
-# - evidence_raw.db      (原始文件系统元数据)
-# - evidence_events.db   (时间线事件)
-# - evidence_files.db    (文件分类)
-```
-
-### 3.3 查看结果
+没有真实镜像时可先生成测试镜像（见 [CommonTasks.md](CommonTasks.md)）：
 
 ```bash
-# 查看生成的文件
-ls -lh evidence_*.db
-
-# 查看文件数量
-sqlite3 evidence_files.db "SELECT COUNT(*) FROM files;"
-
-# 查看分类统计
-sqlite3 evidence_files.db "
-    SELECT category, COUNT(*) as count
-    FROM files
-    GROUP BY category
-    ORDER BY count DESC;
-"
-```
-
-### 3.4 提取文件
-
-```bash
-# 提取所有文档
-./forensic_analyzer --database evidence_files.db \
-    --extract-ext ".doc,.docx,.pdf,.txt" \
-    --output-dir extracted_docs
-
-# 提取所有图片
-./forensic_analyzer --database evidence_files.db \
-    --extract-ext ".jpg,.png,.gif" \
-    --output-dir extracted_images
+bash scripts/create_test_image.sh
+bash scripts/create_ubuntu_real_image.sh   # 更真实的 Ubuntu 多分区镜像
 ```
 
 ---
 
-## 4. 启动 HTTP 服务
+## 5. CLI 最小示例
 
-### 4.1 启动 C++ 服务
-
-```bash
-# 终端 1：启动 C++ HTTP 服务器
-./forensic_analyzer --http-server 8080
-
-# 服务将在 http://localhost:8080 运行
-```
-
-### 4.2 启动 Python 服务
+全量分析一个镜像（在仓库根目录）：
 
 ```bash
-# 终端 2：启动 Python HTTP 服务器
-source .venv/bin/activate
-python -m python_service.httpserver.main
-
-# 服务将在 http://localhost:8090 运行
+./build/forensic_analyzer test_image.img
 ```
 
-### 4.3 验证服务
+产出三个 SQLite 数据库（与镜像同目录、以镜像名为前缀）：
+
+```
+test_image_raw.db      # 文件系统元数据
+test_image_events.db   # 时间线事件
+test_image_files.db    # 文件分类 + 平台工件（android/windows/linux 并入此库）
+```
+
+用 sqlite3 快速查看：
 
 ```bash
-# 检查 C++ 服务
-curl http://localhost:8080/api/health
-
-# 检查 Python 服务
-curl http://localhost:8090/health
+sqlite3 test_image_files.db "SELECT COUNT(*) FROM files;"
+sqlite3 test_image_raw.db ".tables"
 ```
 
-**预期响应**：
-```json
-{
-  "status": "healthy",
-  "version": "1.0.0"
-}
+其他最常用的 CLI 入口（完整参数见 `--help` 或 [CommonTasks.md](CommonTasks.md)）：
+
+```bash
+# 平台工件分析
+./build/forensic_analyzer <镜像> --android-analyze --android-source tsk
+./build/forensic_analyzer <镜像> --windows-analyze
+./build/forensic_analyzer <镜像> --linux-analyze
+
+# 从已生成的库中按名称提取文件
+./build/forensic_analyzer --database test_image_raw.db --extract-file "*.log" --output-dir extracted
+
+# 生成 Markdown 报告（无需 AI）
+./build/forensic_analyzer <镜像> --report --report-path report.md
 ```
+
+> 注意：CLI 分析直接在当前工作目录产出 `_raw.db/_events.db/_files.db`；通过 HTTP 任务创建的分析，数据库与结果在 `data/tasks/<task_id>/` 下（`data` 目录相对于可执行文件位置，通常即 `build/data`），可用 `GET /api/tasks/<id>/databases` 查询。
 
 ---
 
-## 5. 使用知识图谱
-
-### 5.1 配置 Neo4j
+## 6. 常用 Makefile 命令
 
 ```bash
-# 安装 Neo4j（如果未安装）
-wget -O - https://debian.neo4j.com/neotechnology/neoon-repo-pubkey.gpg.key | sudo apt-key add -
-echo 'deb https://debian.neo4j.com/debian/ stable main' | sudo tee /etc/apt/sources.list.d/neo4j.list
-sudo apt-get update
-sudo apt-get install -y neo4j
-
-# 启动 Neo4j
-sudo systemctl start neo4j
-sudo systemctl enable neo4j
-
-# 验证
-neo4j status
+make build          # 全量构建（cmake Release + --build -j$(nproc)）
+make web-frontend   # 只构建 web 前端（npm run build）
+make start          # scripts/start_all_services.sh：C++(默认8080) + Python(8090) + C/S(8091)
+make cpp            # 仅启动 C++：build/forensic_analyzer --http-server ${HTTP_SERVER_PORT:-8080}
+make python         # 仅启动 Python httpserver（8090）
+make web-dev        # vite 开发服务器（端口 3000，含 API 代理）
+make test           # C++ 测试（= test-cpp：cd build && ctest）
+make test-python    # Python 测试（pytest tests/）
+make test-all       # C++ + Python
+make setup          # setup-venv + setup-web
+make clean          # 清理 build/、web/dist 等
+make rebuild        # clean + build
+make docs           # 打印 API 文档 URL
 ```
 
-### 5.2 摄取数据到知识图谱
-
-```bash
-# 摄取证文件数据库到知识图谱
-curl -X POST http://localhost:8090/api/graphiti/ingest \
-  -H "Content-Type: application/json" \
-  -d '{
-    "task_id": "evidence",
-    "include_llm_descriptions": true,
-    "batch_size": 50
-  }'
-```
-
-**响应**：
-```json
-{
-  "success": true,
-  "job_id": "job_xyz789",
-  "status": "running",
-  "message": "知识图谱摄取已启动"
-}
-```
-
-### 5.3 搜索知识图谱
-
-```bash
-# 搜索关键词
-curl -X POST http://localhost:8090/api/graphiti/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "malware documents",
-    "task_id": "evidence",
-    "limit": 20
-  }'
-```
-
-**响应**：
-```json
-{
-  "success": true,
-  "results": [
-    {
-      "entity": {
-        "name": "trojan.exe",
-        "type": "FILE",
-        "summary": "可疑可执行文件"
-      },
-      "score": 0.95
-    }
-  ]
-}
-```
-
----
-
-## 6. 常见问题
-
-### 6.1 编译错误
-
-**问题**：`TSK not found`
-
-**解决**：
-```bash
-# 检查 TSK 是否安装
-pkg-config --modversion tsk
-
-# 如果未安装，重新安装 TSK
-```
-
-**问题**：`Crow not found`
-
-**解决**：
-```bash
-# 检查 Crow 是否安装
-pkg-config --modversion --cflags --libs crow
-
-# 如果未安装，重新安装 Crow
-```
-
-### 6.2 运行时错误
-
-**问题**：`libtsk.so: cannot open shared object file`
-
-**解决**：
-```bash
-# 添加库路径
-export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
-
-# 或更新 ldconfig
-sudo ldconfig
-```
-
-**问题**：`database is locked`
-
-**解决**：
-```bash
-# 检查是否有其他进程占用数据库
-lsof evidence_*.db
-
-# 关闭占用数据库的进程
-```
-
-### 6.3 HTTP 服务问题
-
-**问题**：C++ 服务无法启动
-
-**解决**：
-```bash
-# 检查端口占用
-netstat -tulpn | grep 8080
-
-# 终止占用端口的进程
-sudo kill -9 <PID>
-```
-
-**问题**：Python 服务连接 C++ 失败
-
-**解决**：
-```bash
-# 检查 C++ 服务是否运行
-curl http://localhost:8080/api/health
-
-# 检查配置
-cat .env | grep CPP_BACKEND_URL
-```
-
-### 6.4 知识图谱问题
-
-**问题**：Neo4j 连接失败
-
-**解决**：
-```bash
-# 检查 Neo4j 状态
-sudo systemctl status neo4j
-
-# 重启 Neo4j
-sudo systemctl restart neo4j
-
-# 检查连接
-neo4j-console
-# 连接字符串：bolt://localhost:7687
-# 用户名：neo4j
-# 密码：（安装时设置的密码）
-```
+> `./run.sh` 与 `make start` 都能起服务，区别：run.sh 会先构建、默认 C++ 端口 8666、日志集中到 `build/logs/`；make start 走 `scripts/start_all_services.sh`，C++ 端口默认 8080。
 
 ---
 
 ## 7. 下一步
 
-现在您已完成基础设置，可以探索更多功能：
-
-1. **读取完整文档**
-   - [架构总览](../architecture/overview.md)
-   - [C++ API 参考](../api_reference/CPP_REST_API.md)
-   - [Python API 参考](../api_reference/Python_REST_API.md)
-
-2. **高级功能**
-   - [Android 取证分析](../modules/cpp/analyzers/AndroidAnalyzer.md)
-   - [Windows 取证分析](../modules/cpp/analyzers/WindowsFilesAnalyzer.md)
-   - [LLM 集成](../modules/cpp/integration/LLMIntegration.md)
-   - [文件雕刻](../modules/cpp/analyzers/FileCarving.md)
-
-3. **开发指南**
-   - [添加新的分析器](../getting-started/development.md)
-   - [添加新的路由](../modules/cpp/network/HTTPServer.md#二次开发)
-   - [扩展 Python 服务](../modules/python/httpserver/Main.md#二次开发)
+- [安装指南](Installation.md) — 手动依赖、外部服务、`.env` 全量变量表
+- [开发指南](Development.md) — 目录结构、构建、测试、vite 代理
+- [常见任务](CommonTasks.md) — 提取、雕刻、全文搜索、Graphiti、C/S 分布式等工作流
+- [故障排查](Troubleshooting.md) — 健康检查、日志、端口、依赖降级
 
 ---
 
-**需要帮助？**
-
-- 查看 [故障排查](../getting-started/troubleshooting.md)
-- 查看 [常见问题](../getting-started/faq.md)
-- 提交 Issue：https://github.com/ymj68520/ForensicsProject/issues
-
----
-
-**最后更新**: 2026-06-06
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（以代码为准重写）

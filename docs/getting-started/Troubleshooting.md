@@ -1,813 +1,274 @@
 # 故障排查指南
 
-本文档提供 ForensicsProject 的常见问题诊断和解决方案。
+本文档按"症状 → 原因 → 命令"组织 TraceLens 的常见问题诊断。所有端点、路径、参数均与当前代码一致。
+
+端口速查：
+
+| 端口 | 服务 |
+|------|------|
+| 8666 | `./run.sh` 启动的 C++ 服务（`HTTP_SERVER_PORT` 未设置时的兜底默认） |
+| 8080 | C++ 服务默认端口（`.env.example` / `make cpp` / `--http-server` 无参时） |
+| 8090 | Python httpserver |
+| 8091 | 分布式 C/S server（`PORT`） |
+| 7687 / 7474 | Neo4j Bolt / 浏览器 |
+| 8890 | MCP server |
+| 3000 | vite 开发服务器 |
 
 ---
 
-## 1. 编译问题
-
-### 1.1 CMake 配置失败
-
-#### 问题：找不到 SQLite3
-
-```
-CMake Error: Could not find SQLite3
-```
-
-**原因**：SQLite3 开发库未安装
-
-**解决方案**：
+## 1. 健康检查
 
 ```bash
-# Ubuntu/Debian
-sudo apt-get install -y libsqlite3-dev
+# C++ 服务（8666 为例）
+curl http://localhost:8666/api/system/health      # 别名 /api/health
+curl http://localhost:8666/api/health/live
+curl http://localhost:8666/api/health/ready
+curl http://localhost:8666/api/health/dependencies
 
-# CentOS/RHEL
-sudo yum install -y sqlite-devel
+# Python httpserver
+curl http://localhost:8090/health
+curl http://localhost:8090/health/live
+curl http://localhost:8090/health/ready
+#   - C++ 后端是硬依赖：断开时 ready=false（checks.cpp_backend=disconnected）
+#   - Neo4j / LLM / Redis 为可选依赖：失败仅降级，不阻断启动
 
-# macOS
-brew install sqlite3
-
-# 验证安装
-pkg-config --modversion sqlite3
+# 分布式 C/S server
+curl http://localhost:8091/health           # database: available / degraded
+curl http://localhost:8091/health/ready     # 数据库不可用时返回 503
 ```
 
-#### 问题：找不到 The Sleuth Kit
+`./run.sh` 的启动健康检查行为：C++ 服务失败会**硬失败并退出**（打印日志尾部）；Python 与 C/S 失败只打警告，不阻断。
 
-```
-CMake Error: Could not find TSK library
-```
+---
 
-**原因**：TSK 未安装或不在库路径中
+## 2. 日志
 
-**解决方案**：
+| 来源 | 位置 / 获取方式 |
+|------|----------------|
+| run.sh 启动的三个服务 | `build/logs/cpp_server.log`、`build/logs/python_service.log`、`build/logs/cs_server.log` |
+| C++ 运行时 | `<DATA_DIR>/logs/`（默认 `data/logs/`，相对可执行文件，即 `build/data/logs/`），文件名由 `.env` 的 `LOG_FILE=forensics.log` 与 `DEBUG_LOG_FILE=debug.log` 决定 |
+| C++ 日志 API | `GET http://localhost:8666/api/system/logs` |
+| Python 日志 API | `GET http://localhost:8090/api/system/logs?lines=200&level=ERROR`（解析本服务日志）；`GET /api/system/logs/{service}`（cpp/python，读取 `build/logs/` 下对应文件）；`GET /api/system/logs-stream/{service}`（SSE 流式） |
 
 ```bash
-# 检查 TSK 是否安装
-ldconfig -p | grep libtsk
+tail -f build/logs/cpp_server.log
+tail -f build/logs/python_service.log
+tail -f build/data/logs/forensics.log      # C++ 应用日志（路径相对二进制）
 
-# 如果没有输出，重新安装 TSK
-cd sleuthkit-4.14.0
-sudo make install
-sudo ldconfig
-
-# 或手动指定 TSK 路径
-cmake .. -DTSK_ROOT=/usr/local
-```
-
-#### 问题：Boost 库找不到
-
-```
-error: boost/system/error_code.hpp: No such file or directory
-```
-
-**解决方案**：
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install -y libboost-all-dev
-
-# 或安装特定组件
-sudo apt-get install -y \
-    libboost-system-dev \
-    libboost-thread-dev \
-    libboost-filesystem-dev \
-    libboost-program-options-dev
-```
-
-### 1.2 编译错误
-
-#### 问题：C++20 特性不支持
-
-```
-error: 'ranges' is not a member of 'std'
-```
-
-**原因**：编译器版本过低或未启用 C++20
-
-**解决方案**：
-
-```bash
-# 检查 GCC 版本（需要 10+）
-gcc --version
-
-# 如果版本过低，升级 GCC
-sudo apt-get install gcc-12 g++-12
-
-# 设置为默认编译器
-sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
-sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
-
-# 或在 CMake 中指定
-cmake .. -DCMAKE_CXX_STANDARD=20
-```
-
-#### 问题：链接错误
-
-```
-undefined reference to `TSK functions'
-```
-
-**解决方案**：
-
-```bash
-# 确保链接了正确的库
-# 检查 CMakeLists.txt 中的 target_link_libraries
-
-# 手动指定库路径
-export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
-
-# 重新编译
-cd build
-make clean
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
+# 提高日志级别复现问题
+# .env: LOG_LEVEL=DEBUG  DEBUG_OUTPUT_MODE=stdout
 ```
 
 ---
 
-## 2. 运行时问题
+## 3. 端口被占用
 
-### 2.1 动态链接库错误
-
-#### 问题：找不到共享库
-
-```
-error while loading shared libraries: libtsk.so.13: cannot open shared object file
-```
-
-**解决方案**：
+**症状**：`Failed to bind` / 服务起不来 / 前端拿不到数据。
 
 ```bash
-# 方案 1：更新动态链接库缓存
-sudo ldconfig
-
-# 方案 2：添加库路径到 ld.so.conf
-echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/custom.conf
-sudo ldconfig
-
-# 方案 3：设置环境变量（临时）
-export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
-
-# 方案 4：添加到 ~/.bashrc（永久）
-echo 'export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
-source ~/.bashrc
+lsof -i :8666    # 或 8080/8090/8091
 ```
 
-### 2.2 权限问题
-
-#### 问题：无法挂载回环设备
-
-```
-Error: Failed to mount XFS filesystem: Operation not permitted
-```
-
-**原因**：挂载文件系统需要 root 权限
-
-**解决方案**：
+`./run.sh` 启动前会自动 `lsof -ti :<port>` 并 `kill -9` 残留进程；手动启动时需自行清理：
 
 ```bash
-# 使用 sudo 运行
-sudo ./build/forensic_analyzer image.dd --xfs-mode native
-
-# 或使用 pure 模式（不需要 root）
-./build/forensic_analyzer image.dd --xfs-mode pure
-```
-
-#### 问题：无法读取某些文件
-
-```
-Error: Permission denied when reading /path/to/file
-```
-
-**解决方案**：
-
-```bash
-# 检查文件权限
-ls -la /path/to/file
-
-# 如果是当前用户拥有的文件
-chmod 600 /path/to/file
-
-# 如果需要 root 访问
-sudo ./build/forensic_analyzer image.dd
-```
-
-### 2.3 内存不足
-
-#### 问题：分析大镜像时崩溃
-
-```
-Segmentation fault (core dumped)
-```
-
-**原因**：内存不足导致程序崩溃
-
-**解决方案**：
-
-```bash
-# 增加交换空间
-sudo fallocate -l 4G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-
-# 永久生效
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-
-# 或限制内存使用
-ulimit -v 8388608  # 限制为 8GB
-./build/forensic_analyzer large_image.dd
+kill -9 $(lsof -ti :8090)
+# 或换端口：.env 设 HTTP_SERVER_PORT，然后 ./run.sh
 ```
 
 ---
 
-## 3. 数据库问题
+## 4. Redis 未安装/未运行（摄取任务不持久化）
 
-### 3.1 数据库锁定
+**症状**：Python 日志出现 `Redis not available, using in-memory storage`；重启后 Graphiti 摄取任务状态丢失。
 
-#### 问题：数据库文件被锁定
-
-```
-Error: database is locked
-```
-
-**原因**：另一个进程正在访问数据库
-
-**解决方案**：
+**原因**：`IngestionJobManager` 优先用 Redis（`redis_url`），连不上自动退化为进程内存。
 
 ```bash
-# 查找占用进程
-lsof | grep ".db"
-
-# 或使用 fuser
-fuser output/*.db
-
-# 终止进程
-kill <PID>
-
-# 如果是 SQLite 内部锁定，删除锁文件
-rm output/*.db-shm output/*.db-wal
-```
-
-### 3.2 数据库损坏
-
-#### 问题：数据库无法打开
-
-```
-Error: database disk image is malformed
-```
-
-**解决方案**：
-
-```bash
-# 使用 SQLite 的恢复模式
-sqlite3 corrupted.db "PRAGMA integrity_check;"
-
-# 导出数据
-sqlite3 corrupted.db ".dump" > dump.sql
-
-# 创建新数据库并导入
-sqlite3 recovered.db < dump.sql
-
-# 或使用专门的修复工具
-python3 << EOF
-import sqlite3
-conn = sqlite3.connect("corrupted.db")
-conn.execute("PRAGMA journal_mode=WAL")
-conn.execute("VACUUM")
-conn.close()
-EOF
-```
-
-### 3.3 查询性能问题
-
-#### 问题：查询非常慢
-
-**解决方案**：
-
-```sql
--- 检查索引
-.schema files
-
--- 创建缺失的索引
-CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
-CREATE INDEX IF NOT EXISTS idx_files_extension ON files(extension);
-CREATE INDEX IF NOT EXISTS idx_files_size ON files(size);
-
--- 分析查询计划
-EXPLAIN QUERY PLAN SELECT * FROM files WHERE path LIKE '%.txt';
-
--- 运行 VACUUM 优化数据库
-VACUUM;
-
--- 更新统计信息
-ANALYZE;
+redis-cli ping                    # 非 PONG 即未运行
+sudo apt-get install -y redis-server redis-tools
+sudo systemctl enable --now redis-server
 ```
 
 ---
 
-## 4. HTTP 服务问题
+## 5. Neo4j 连接失败（Graphiti 降级）
 
-### 4.1 服务无法启动
+**症状**：`GET /api/graphiti/status` 显示 disabled；知识图谱相关接口不可用，但服务本身正常。
 
-#### 问题：端口已被占用
-
-```
-Error: Failed to bind to port 8080: Address already in use
-```
-
-**解决方案**：
+**原因**：Neo4j 未启动或 `NEO4J_PASSWORD` 不匹配。GraphitiService 连接失败会标记 disabled（降级，不阻断）。
 
 ```bash
-# 查找占用端口的进程
-sudo netstat -tulpn | grep 8080
-# 或
-sudo lsof -i :8080
-
-# 终止占用进程
-sudo kill <PID>
-
-# 或更换端口
-./forensic_analyzer --http-server 8081
-```
-
-#### 问题：C++ 服务启动失败
-
-```
-Error: HTTP server failed to start
-```
-
-**诊断步骤**：
-
-```bash
-# 1. 检查日志
-tail -f /var/log/forensics/debug.log
-
-# 2. 启用详细日志
-export LOG_LEVEL=DEBUG
-./forensic_analyzer --http-server 8080
-
-# 3. 检查防火墙
-sudo ufw status
-sudo ufw allow 8080/tcp
-
-# 4. 验证配置
-./forensic_analyzer --help
-```
-
-### 4.2 Python 服务问题
-
-#### 问题：FastAPI 服务无法连接 Neo4j
-
-```
-Failed to connect to Neo4j: Connection refused
-```
-
-**解决方案**：
-
-```bash
-# 1. 检查 Neo4j 是否运行
 sudo systemctl status neo4j
-# 或
-docker ps | grep neo4j
-
-# 2. 启动 Neo4j
-sudo systemctl start neo4j
-# 或
-docker start neo4j
-
-# 3. 验证连接
-export NEO4J_URI="bolt://localhost:7687"
-export NEO4J_USER="neo4j"
-export NEO4J_PASSWORD="your_password"
-
-python3 << EOF
-from neo4j import GraphDatabase
-driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "your_password"))
-driver.verify_connectivity()
-print("Connection successful!")
-driver.close()
-EOF
+sudo systemctl enable --now neo4j
+grep NEO4J_ .env                  # NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD
+# setup.sh 安装 Neo4j 时会用环境变量或 .env 中的 NEO4J_PASSWORD 设置初始密码：
+sudo -u neo4j neo4j-admin dbms set-initial-password '<密码>'   # 仅首次
 ```
 
-#### 问题：Python 依赖冲突
-
-```
-ModuleNotFoundError: No module named 'fastapi'
-```
-
-**解决方案**：
-
-```bash
-# 重新安装依赖
-pip install --force-reinstall -r python_service/httpserver/requirements.txt
-
-# 或使用虚拟环境
-python3 -m venv .venv-clean
-source .venv-clean/bin/activate
-pip install -r python_service/httpserver/requirements.txt
-
-# 检查依赖冲突
-pip check
-pip install pipdeptree
-pipdeptree
-```
+Graphiti 全功能还要求 LLM 端点同时加载 `openai/gpt-oss-20b` 与 `text-embedding-nomic-embed-text-v1.5`（`.env.example` 注释），缺嵌入模型会在摄取时报错。
 
 ---
 
-## 5. LLM 集成问题
+## 6. LLM 连不上 / 模型名不对
 
-### 5.1 LLM API 连接失败
-
-#### 问题：无法连接到 LLM 服务
-
-```
-Error: Failed to connect to LLM API at http://localhost:1234
-```
-
-**诊断步骤**：
+**症状**：AI 分析报 `LLMConnectionFailed`(200) 或超时；报告缺少 LLM 描述。
 
 ```bash
-# 1. 检查 LLM 服务是否运行
-curl http://localhost:1234/v1/models
+# 1. 端点可达性（.env.example 默认是局域网 LM Studio：192.168.31.170:1234）
+curl http://192.168.31.170:1234/v1/models
 
-# 2. 启动 LM Studio 或其他 LLM 服务
-# LM Studio: Start Server from the application
+# 2. 模型名必须与 LLM_TEXT_MODEL / LLM_VISION_MODEL 完全一致
+grep LLM_ .env
 
-# 3. 验证配置
-cat .env | grep LLM
-
-# 4. 测试连接
-curl -X POST http://localhost:1234/v1/chat/completions \
+# 3. 实测一次 chat
+curl -X POST http://192.168.31.170:1234/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "llama-3.2-3b",
-    "messages": [{"role": "user", "content": "Hello"}]
-  }'
+  -d '{"model": "<LLM_TEXT_MODEL 的值>", "messages": [{"role": "user", "content": "ping"}]}'
+
+# 无 LLM 环境先跳过 AI
+./build/forensic_analyzer image.dd --no-ai
 ```
 
-#### 问题：LLM 响应超时
+超时可调 `LLM_TIMEOUT_SECONDS`（默认 120）/ `LLM_MAX_RETRIES`（默认 3）。
 
-**解决方案**：
+---
 
-```cpp
-// 增加超时时间
-config_.timeout = 120;  // 秒
+## 7. 任务卡在 RUNNING
 
-// 或减少请求大小
-std::string truncatedContent = content.substr(0, 10000);
+**症状**：任务长时间 RUNNING 无进展。
+
+**原因与机制**：C++ `TaskWatchdog` 每 **60 秒**巡检一次：RUNNING 任务超过 `TASK_WATCHDOG_STALE_MINUTES`（默认 **30 分钟**）无进度更新会被标记 FAILED（错误详情写明 inactivity）；PENDING 超过 `TASK_WATCHDOG_PENDING_MINUTES`（默认 30 分钟）同样处理。任务持久化在 `data/tasks.json`。
+
+```bash
+curl http://localhost:8666/api/tasks/<task_id>/progress
+curl -X POST http://localhost:8666/api/tasks/cleanup      # 手动清理
+tail -f build/data/logs/forensics.log | grep -i watchdog
 ```
 
-### 5.2 模型兼容性问题
+若确属误杀（超大镜像单阶段超 30 分钟），可在 `.env`/配置中调大 `TASK_WATCHDOG_STALE_MINUTES` 后重启 C++ 服务。
 
-#### 问题：模型响应格式错误
+---
 
+## 8. 前端访问不了 / 请求 404
+
+**症状**：页面空白或 API 404。
+
+**要点**：生产模式 SPA 由 **C++ 服务托管**（从二进制相对路径 `web/dist` 读取，run.sh 会同步 `build/web/dist`），必须访问 C++ 端口：
+
+```bash
+# 正确：http://localhost:8666/（run.sh 默认）
+# 错误：访问 8090/8091 不会有前端页面
+
+# 若 run.sh --no-web 跳过了前端构建，dist 不存在 → 重新构建
+./run.sh            # 或 cd web && npm run build 后重跑
 ```
-Error: Failed to parse LLM response: Invalid JSON
-```
 
-**解决方案**：
+开发模式（`make web-dev`，端口 3000）出问题时查 `web/vite.config.js` 代理表：
 
-```python
-# 测试模型响应格式
-import requests
+- `/tasks` 与兜底 `/api` → C++（目标取 `VITE_CPP_PROXY_TARGET` 或 `http://localhost:${HTTP_SERVER_PORT || 8080}`，并向上读取仓库根 `.env`）；
+- `/api/{reports,graphiti,llm,office,db,wechat,investigation}` → `http://localhost:8090`；
+- `/csapi` → `http://localhost:8091`（重写去掉前缀）。
 
-response = requests.post(
-    "http://localhost:1234/v1/chat/completions",
-    json={
-        "model": "llama-3.2-3b",
-        "messages": [{"role": "user", "content": "Test"}],
-        "temperature": 0.7,
-        "max_tokens": 100
-    }
-)
+跨机访问 dev 模式时注意 C++ 实际端口与代理目标是否一致。
 
-print(response.json())
+---
+
+## 9. Python 服务启动慢/卡住（分层超时）
+
+**机制**：`PYTHON_STARTUP_TIMEOUT=30s` 是启动总预算；C++ 后端为硬依赖，Neo4j/LLM/Redis 等可选服务各受 `OPTIONAL_SERVICE_INIT_TIMEOUT=12s` 约束。超时会回滚已初始化的项，但服务仍以**降级模式**启动（不是启动失败）。
+
+```bash
+# 诊断顺序
+curl http://localhost:8090/health/ready            # 看 checks 各项
+curl http://localhost:8666/api/system/health       # 确认 C++ 正常
+tail -f build/logs/python_service.log
+
+# 回连地址错了（C++ 不在 8080）
+grep CPP_BACKEND_URL .env     # .env.example 默认 http://localhost:8080
+                              # run.sh 用 8666 时应改为 http://localhost:8666
 ```
 
 ---
 
-## 6. 文件分析问题
+## 10. 构建缺库 / CMake 找不到包
 
-### 6.1 镜像格式不支持
+**症状**：`cmake ..` 报 `Could not find HIVEX/LIBEVTX/...` 或链接失败。
 
-#### 问题：无法识别镜像格式
+**原因**：以下三项**不在 apt，必须源码安装**（setup.sh 已自动化）：
 
-```
-Error: Unsupported image format
-```
-
-**解决方案**：
+- The Sleuth Kit 4.14.0 → `/usr/local/lib/libtsk.so`
+- Crow → `/usr/local/include/crow.h`
+- 阿里云 OSS C++ SDK → `libs/aliyun-oss-cpp-sdk/build/lib/libalibabacloud-oss-cpp-sdk.a`
 
 ```bash
-# 检查文件类型
-file evidence.dd
-
-# 检查文件头
-xxd evidence.dd | head -n 5
-
-# 如果是 E01 格式，确保安装了 libewf
-sudo apt-get install -y libewf-dev
-
-# 重新编译
-cd build
-cmake .. -DENABLE_EWF=ON
-make -j$(nproc)
+sudo bash setup.sh                          # 最省事（幂等）
+ldconfig -p | grep -E "libtsk|libewf"       # 验证
+tail -100 build/cmake-configure.log         # setup.sh 留下的配置日志
+tail -100 build/forensic_analyzer-build.log # 构建日志
 ```
 
-### 6.2 文件系统解析错误
-
-#### 问题：无法解析 NTFS 文件系统
-
-```
-Error: Failed to parse NTFS filesystem
-```
-
-**诊断步骤**：
+运行时报 `libtsk.so: cannot open shared object file`：
 
 ```bash
-# 使用 TSK 工具验证
-fls -f ntfs evidence.dd
-
-# 检查镜像完整性
-tsk_loaddb evidence.dd test.db
-
-# 查看详细错误
-./forensic_analyzer evidence.dd --verbose
-```
-
-### 6.3 文件提取失败
-
-#### 问题：提取文件时出错
-
-```
-Error: Failed to extract file: /path/to/file
-```
-
-**解决方案**：
-
-```bash
-# 检查文件是否被删除
-./forensic_analyzer evidence.dd --list-deleted
-
-# 使用 icat 恢复文件
-icat -f ntfs evidence.dd <inode> > recovered_file
-
-# 检查磁盘空间
-df -h
+sudo ldconfig
+export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH   # 临时
 ```
 
 ---
 
-## 7. 性能问题
-
-### 7.1 分析速度慢
-
-#### 问题：大镜像分析耗时过长
-
-**优化方案**：
+## 11. 数据库锁 / 损坏
 
 ```bash
-# 1. 使用多线程
-./forensic_analyzer image.dd --threads 8
-
-# 2. 禁用不需要的分析模块
-./forensic_analyzer image.dd --skip-llm --skip-fulltext-search
-
-# 3. 分段分析
-./forensic_analyzer image.dd --partition 1
-
-# 4. 使用缓存
-./forensic_analyzer image.dd --cache-dir /tmp/forensics_cache
+lsof <镜像>_raw.db                    # 谁占着
+sqlite3 <db> "PRAGMA integrity_check;"
+sqlite3 corrupted.db ".dump" | sqlite3 recovered.db
 ```
 
-### 7.2 内存占用过高
-
-#### 问题：分析时内存占用超过 16GB
-
-**解决方案**：
-
-```bash
-# 1. 限制并发任务
-export MAX_CONCURRENT_TASKS=2
-
-# 2. 禁用 LLM 分析
-./forensic_analyzer image.dd --skip-llm
-
-# 3. 分批处理
-./forensic_analyzer image.dd --batch-size 1000
-
-# 4. 使用系统资源限制
-ulimit -v 16777216  # 限制为 16GB
-```
-
-### 7.3 数据库写入慢
-
-#### 问题：数据库写入成为瓶颈
-
-**优化方案**：
-
-```cpp
-// 使用事务
-db->beginTransaction();
-
-// 批量插入
-for (const auto& file : files) {
-    db->insertFile(file);
-}
-
-db->commitTransaction();
-
-// 或使用批量插入
-db->insertFiles(files);  // 一次性插入
-```
-
-```sql
--- 优化数据库设置
-PRAGMA synchronous = NORMAL;  -- 而不是 FULL
-PRAGMA journal_mode = WAL;
-PRAGMA cache_size = -64000;   -- 64MB 缓存
-PRAGMA temp_store = MEMORY;
-```
+`.env` 默认 `DB_JOURNAL_MODE=WAL`，残留 `-wal/-shm` 文件在持有进程退出后自动合并；异常退出后可用上述 dump 恢复。
 
 ---
 
-## 8. 调试技巧
+## 12. 错误码对照
 
-### 8.1 启用详细日志
+错误码定义在 `src/core/ErrorHandling/ErrorHandling.h`：
 
-```bash
-# C++ 服务
-export LOG_LEVEL=DEBUG
-export LOG_FILE=/tmp/forensics_debug.log
-./forensic_analyzer image.dd
-
-# Python 服务
-export LOG_LEVEL=DEBUG
-python -m python_service.httpserver.main
-```
-
-### 8.2 使用 GDB 调试
-
-```bash
-# 编译 Debug 版本
-cd build
-cmake .. -DCMAKE_BUILD_TYPE=Debug
-make -j$(nproc)
-
-# 使用 GDB 运行
-gdb --args ./forensic_analyzer image.dd
-
-# GDB 常用命令
-(gdb) run
-(gdb) backtrace  # 查看调用栈
-(gdb) print variable_name
-(gdb) info locals
-```
-
-### 8.3 内存泄漏检测
-
-```bash
-# 使用 Valgrind
-valgrind --leak-check=full \
-         --show-leak-kinds=all \
-         --track-origins=yes \
-         --log-file=valgrind-out.txt \
-         ./forensic_analyzer image.dd
-
-# 查看报告
-cat valgrind-out.txt | grep "definitely lost"
-```
-
-### 8.4 性能分析
-
-```bash
-# 使用 perf
-perf record -g ./forensic_analyzer image.dd
-perf report
-
-# 生成火焰图
-perf script | FlameGraph/stackcollapse-perf.pl | FlameGraph/flamegraph.pl > flamegraph.svg
-```
+| 区间 | 类别 | 示例 |
+|------|------|------|
+| 100-199 | 文件错误 | 100 FileNotFound、101 FileReadError、102 FileWriteError、103 FileAccessDenied、105 FileEmpty |
+| 200-299 | LLM 错误 | 200 LLMConnectionFailed、201 LLMRequestFailed、202 LLMResponseParseError、203 LLMTimeout、204 LLMRateLimited、205 LLMContextOverflow |
+| 300-399 | 模型错误 | 300 NoModelsAvailable、301 ModelNotFound、302 AllModelsFailed |
+| 400-499 | 配置错误 | 400 InvalidConfiguration、401 ConfigNotLoaded、402 MissingConfigKey |
+| 500-599 | 数据库错误 | 500 DatabaseOpenError、501 DatabaseQueryError、502 DatabaseWriteError、503 DatabaseNotInitialized |
+| 600-699 | 分析错误 | 600 AnalysisFailed、601 ContentTooLarge、602 UnsupportedFileType、603 ChunkingFailed |
+| 900-999 | 通用错误 | 900 Unknown、901 InternalError、902 NotImplemented、903 Cancelled |
 
 ---
 
-## 9. 常见错误代码
+## 13. 获取帮助
 
-| 错误代码 | 说明 | 解决方案 |
-|---------|------|---------|
-| `E01` | 无法打开镜像文件 | 检查文件路径和权限 |
-| `E02` | 无法识别镜像格式 | 确认文件格式，安装相应库 |
-| `E03` | 数据库创建失败 | 检查磁盘空间和权限 |
-| `E04` | 文件系统解析失败 | 使用 TSK 工具验证镜像 |
-| `E05` | 内存不足 | 增加交换空间或减少并发 |
-| `E06` | LLM API 调用失败 | 检查 LLM 服务状态 |
-| `E07` | HTTP 服务启动失败 | 检查端口占用 |
-
----
-
-## 10. 获取帮助
-
-### 10.1 日志收集
-
-提交 Bug 时，请提供：
+提交 Issue 前请收集：
 
 ```bash
-# 系统信息
-uname -a
-gcc --version
-cmake --version
-
-# 应用日志
-tar -czf logs.tar.gz /var/log/forensics/
-
-# 配置文件
-cat .env
-
-# 复现步骤
-echo "Steps to reproduce:"
-echo "1. ./forensic_analyzer image.dd"
-echo "2. ..."
+uname -a && gcc --version | head -1 && cmake --version | head -1
+./build/forensic_analyzer --version
+tail -100 build/logs/cpp_server.log
+tail -100 build/logs/python_service.log
+cat .env          # 注意抹去密码/key
 ```
 
-### 10.2 社区支持
-
-- **GitHub Issues**: https://github.com/ymj68520/ForensicsProject/issues
-- **Discussions**: https://github.com/ymj68520/ForensicsProject/discussions
-- **Wiki**: https://github.com/ymj68520/ForensicsProject/wiki
-
-### 10.3 专业支持
-
-如果需要商业支持，请联系：
-
-- Email: support@forensicsproject.com
-- Website: https://forensicsproject.com
-
----
-
-## 11. 预防性维护
-
-### 11.1 定期检查
-
-```bash
-#!/bin/bash
-# 健康检查脚本
-
-echo "=== ForensicsProject 健康检查 ==="
-
-# 检查磁盘空间
-echo "磁盘空间："
-df -h
-
-# 检查内存使用
-echo "内存使用："
-free -h
-
-# 检查数据库完整性
-echo "数据库完整性："
-for db in output/*.db; do
-    echo "检查 $db"
-    sqlite3 "$db" "PRAGMA integrity_check;"
-done
-
-# 检查服务状态
-echo "服务状态："
-systemctl status forensics-cpp || echo "C++ 服务未运行"
-systemctl status forensics-python || echo "Python 服务未运行"
-```
-
-### 11.2 备份策略
-
-```bash
-#!/bin/bash
-# 备份脚本
-
-BACKUP_DIR="/backup/forensics"
-DATE=$(date +%Y%m%d_%H%M%S)
-
-mkdir -p "$BACKUP_DIR"
-
-# 备份数据库
-tar -czf "$BACKUP_DIR/db_$DATE.tar.gz" output/*.db
-
-# 备份配置
-cp .env "$BACKUP_DIR/env_$DATE"
-
-# 清理旧备份（保留 30 天）
-find "$BACKUP_DIR" -name "*.tar.gz" -mtime +30 -delete
-```
+- GitHub Issues: https://github.com/ymj68520/TraceLens/issues
+- C++ API 文档：`http://localhost:<C++端口>/api/docs`（Swagger）
+- Python API 文档：`http://localhost:8090/docs`、`http://localhost:8091/docs`
 
 ---
 
 ## 相关文档
 
-- **[安装指南](Installation.md)** - 依赖和编译
-- **[开发环境配置](Development.md)** - 调试工具设置
-- **[常见任务](CommonTasks.md)** - 开发指南
-- **[架构总览](../architecture/Overview.md)** - 系统架构
+- **[安装指南](Installation.md)** - 依赖与 `.env`
+- **[快速入门](QuickStart.md)** - 一键路径
+- **[常见任务](CommonTasks.md)** - 工作流与 API 用法
 
 ---
 
-**最后更新**: 2026-03-11
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（以代码为准重写）

@@ -1,828 +1,343 @@
 # 安装指南
 
-本文档提供 ForensicsProject 的详细安装步骤，涵盖系统要求、依赖安装、编译配置和常见问题。
+本文档提供 TraceLens 的安装步骤：一键脚本（推荐）、手动依赖、外部服务与 `.env` 配置。所有命令均与仓库当前脚本一致。
 
 ---
 
 ## 1. 系统要求
 
-### 1.1 最低配置
-
-| 组件 | 最低要求 | 推荐配置 |
-|------|---------|---------|
-| **操作系统** | Ubuntu 20.04 LTS / Debian 11 | Ubuntu 22.04 LTS / Debian 12 |
-| **CPU** | 4 核 | 8 核以上 |
-| **内存** | 8 GB RAM | 16 GB RAM 以上 |
-| **磁盘空间** | 50 GB 可用空间 | 200 GB SSD 以上 |
-| **编译器** | GCC 10+ / Clang 12+ | GCC 12+ / Clang 15+ |
-
-### 1.2 支持的平台
-
-- ✅ **Linux**: Ubuntu 20.04+, Debian 11+, Rocky Linux 8+
-- ⚠️ **Windows**: 支持（需要 WSL2 或 MinGW，见 [Windows 安装](#12-windows-安装)）
-- ⚠️ **macOS**: 支持（需要 Homebrew，见 [macOS 安装](#13-macos-安装)）
+| 组件 | 最低要求 | 说明 |
+|------|---------|------|
+| 操作系统 | Ubuntu 20.04+ / Debian 11+ | setup.sh 基于 apt；其他发行版需手动移植依赖 |
+| 编译器 | GCC 10+（支持 C++20） | 项目强制 `CMAKE_CXX_STANDARD 20` |
+| CMake | ≥ 3.20 | `cmake_minimum_required(VERSION 3.20)` |
+| Python | 3.10+ | venv 由脚本创建于 `python_service/.venv` |
+| Node.js | 22 LTS（NVM 安装） | 仅构建 web 前端需要 |
+| 磁盘 | 20GB+ | TSK/OSS SDK 源码编译 + Python 大包 |
+| 权限 | sudo/root | 系统库、Neo4j、Redis 安装需要 |
 
 ---
 
-## 2. 依赖安装
-
-### 2.1 核心依赖
-
-| 库名称 | 版本 | 用途 | 许可证 |
-|--------|------|------|--------|
-| SQLite3 | 3.35+ | 数据库 | Public Domain |
-| The Sleuth Kit | 4.14.0 | 磁盘镜像分析 | CPL / IBM |
-| libewf | 20130412 | E01 格式支持 | LGPLv3 |
-| libhivex | 1.3.20 | Windows 注册表解析 | LGPLv2 |
-| libevtx | 20220109 | Windows 事件日志 | LGPLv3 |
-| Boost | 1.74+ | C++ 网络和系统库 | BSL-1.0 |
-| Crow | 1.0+ | HTTP 服务器框架 | BSD-3-Clause |
-| nlohmann/json | 3.11+ | JSON 处理 | MIT |
-| Xapian | 1.4.22 | 全文搜索引擎 | GPL-2 |
-| Poppler-cpp | 22.0+ | PDF 解析 | GPL-2 |
-| libolecf | 20210419 | Office 文档解析 | LGPLv3 |
-| libzip | 1.9.2 | ZIP 压缩支持 | BSD-3-Clause |
-| pugixml | 1.12+ | XML 解析 | MIT |
-
-### 2.2 Ubuntu/Debian 安装
-
-#### 自动安装脚本
+## 2. 一键安装（推荐）
 
 ```bash
-#!/bin/bash
-# install_deps_ubuntu.sh
+git clone https://github.com/ymj68520/TraceLens.git
+cd TraceLens
+sudo bash setup.sh
+```
 
-set -e
+`setup.sh`（幂等，可重复运行）依次执行：
 
-echo "=== 安装 ForensicsProject 依赖 ==="
+| 步骤 | 内容 |
+|------|------|
+| 0/8 | NVM 安装 + Node.js 22 LTS 激活 |
+| 1/8 | apt 安装全部系统依赖（见下文明细）并确保 redis-server 运行 |
+| 2/8 | Java 21（openjdk-21-jre-headless + jdk）+ Neo4j 官方 apt 仓库安装；用 `NEO4J_PASSWORD`（环境变量或 `.env`）设置初始密码，`systemctl enable --now neo4j` |
+| 3/8 | The Sleuth Kit **4.14.0** 源码编译安装到 `/usr/local/lib/libtsk.so` |
+| 4/8 | Crow 框架源码安装（`/usr/local/include/crow.h`） |
+| 5/8 | Google Test（优先从 `/usr/src/googletest` 编译） |
+| 6/8 | 阿里云 OSS C++ SDK：`libs/aliyun-oss-cpp-sdk` 下 cmake 构建 |
+| 7/8 | Python venv：`python_service/.venv`，安装 `httpserver/requirements.txt` + `requirements.txt`，逐个核对安装大包（markitdown[all]、PyMuPDF==1.27.1、volatility3、graphiti-core、h5py、scipy、plyvel、pillow-heif、rawpy、pydicom），并把 `resources/volatility3-plugins/windows/bitlocker_fvek_scan.py` 安装进 venv 的 volatility3 插件目录 |
+| 8/8 | OSS SDK 静态库 + CMake Release 构建 `build/forensic_analyzer`（ldd 检查缺失库）+ 可选 `npm run build` 前端 |
 
-# 更新包管理器
+apt 安装的取证/分析相关包（摘自 setup.sh）：
+
+```
+libsqlite3-dev libsqlcipher-dev libssl-dev
+libboost-dev libboost-system-dev libboost-thread-dev
+nlohmann-json3-dev libasio-dev
+libhivex-dev libevtx-dev libesedb-dev libolecf-dev libbfio-dev libewf-dev libfsntfs-dev
+libxapian-dev libpoppler-cpp-dev libpugixml-dev
+zlib1g-dev liblzma-dev libbz2-dev libzstd-dev
+libcurl4-openssl-dev libzip-dev antiword ffmpeg
+libgtest-dev libgmock-dev libmysqlclient-dev libpq-dev
+redis-server redis-tools
+```
+
+网络不稳定时：`export PIP_PROXY=http://<代理>:<端口>`（或写入 `.env`），脚本会导出为 HTTP_PROXY/HTTPS_PROXY 供 pip/git/curl 使用。
+
+安装完成标志：
+
+```bash
+ls build/forensic_analyzer && build/forensic_analyzer --version
+# Forensic Image Analyzer v1.0 / Using The Sleuth Kit 4.14.0
+```
+
+---
+
+## 3. 手动安装依赖
+
+仅在无法使用一键脚本时参考。以下三项**不在 apt 中，必须源码安装**：TSK 4.14.0、Crow、阿里云 OSS C++ SDK（vendored 在仓库 `libs/aliyun-oss-cpp-sdk`）。
+
+### 3.1 apt 依赖
+
+```bash
 sudo apt-get update
-
-# 安装基础编译工具
-sudo apt-get install -y build-essential cmake git pkg-config
-
-# 安装核心库
 sudo apt-get install -y \
-    libsqlite3-dev \
-    libssl-dev \
-    libewf-dev \
-    libbfio-dev \
-    libhivex-dev \
-    libevtx-dev \
-    libesedb-dev \
-    libolecf-dev \
-    libfsntfs-dev \
-    libasio-dev \
-    nlohmann-json3-dev
-
-# 安装 Boost 库
-sudo apt-get install -y \
-    libboost-system-dev \
-    libboost-thread-dev \
-    libboost-filesystem-dev \
-    libboost-program-options-dev
-
-# 安装搜索和分析库
-sudo apt-get install -y \
-    libxapian-dev \
-    libpoppler-cpp-dev \
-    libzip-dev \
-    libpugixml-dev
-
-# 安装测试框架
-sudo apt-get install -y \
-    libgtest-dev \
-    libgmock-dev
-
-# 安装压缩库（可选，用于多种压缩格式支持）
-sudo apt-get install -y \
-    zlib1g-dev \
-    liblzma-dev \
-    libbz2-dev \
-    libzstd-dev
-
-# 安装数据库连接器（可选，用于 MySQL/PostgreSQL 支持）
-sudo apt-get install -y \
-    libmysqlclient-dev \
-    libpq-dev
-
-# 安装加密数据库支持（可选，用于 SQLCipher 加密数据库）
-sudo apt-get install -y \
-    libsqlcipher-dev
-
-# 安装其他工具
-sudo apt-get install -y \
-    antiword \
-    libcurl4-openssl-dev \
-    python3 \
-    python3-pip
-
-echo "=== 依赖安装完成 ==="
+    build-essential cmake pkg-config git wget gnupg software-properties-common ca-certificates \
+    libsqlite3-dev libsqlcipher-dev libssl-dev \
+    libboost-dev libboost-system-dev libboost-thread-dev \
+    nlohmann-json3-dev libasio-dev \
+    libhivex-dev libevtx-dev libesedb-dev libolecf-dev libbfio-dev libewf-dev libfsntfs-dev \
+    libxapian-dev libpoppler-cpp-dev libpugixml-dev \
+    zlib1g-dev liblzma-dev libbz2-dev libzstd-dev \
+    libcurl4-openssl-dev libzip-dev antiword ffmpeg \
+    libgtest-dev libgmock-dev libmysqlclient-dev libpq-dev \
+    redis-server redis-tools
 ```
 
-保存并运行：
+其中 ffmpeg/redis-server/libsqlcipher 是可选功能（媒体提取 / 摄取任务持久化 / 加密数据库），缺失时相关功能降级但不影响构建。
+
+### 3.2 The Sleuth Kit 4.14.0（源码）
 
 ```bash
-chmod +x install_deps_ubuntu.sh
-./install_deps_ubuntu.sh
-```
-
-#### 手动分步安装
-
-```bash
-# 1. 更新系统
-sudo apt-get update && sudo apt-get upgrade -y
-
-# 2. 安装编译工具链
-sudo apt-get install -y build-essential cmake git pkg-config ccache
-
-# 3. 安装 SQLite3 和 OpenSSL
-sudo apt-get install -y libsqlite3-dev sqlite3 libssl-dev
-
-# 4. 安装 The Sleuth Kit (从源码编译，见下节)
-
-# 5. 安装 EWF (E01 格式支持) 和 libbfio
-sudo apt-get install -y libewf-dev libbfio-dev
-
-# 6. 安装 Windows 解析库
-sudo apt-get install -y libhivex-dev libevtx-dev
-
-# 7. 安装 Boost 和网络库
-sudo apt-get install -y \
-    libboost-system-dev \
-    libboost-thread-dev \
-    libboost-filesystem-dev \
-    libasio-dev \
-    nlohmann-json3-dev
-
-# 8. 安装全文搜索和文档解析
-sudo apt-get install -y libxapian-dev libpoppler-cpp-dev antiword
-
-# 9. 安装其他依赖
-sudo apt-get install -y libesedb-dev libolecf-dev libfsntfs-dev libzip-dev libpugixml-dev
-
-# 10. 安装测试框架
-sudo apt-get install -y libgtest-dev libgmock-dev
-
-# 11. 安装压缩库（可选）
-sudo apt-get install -y zlib1g-dev liblzma-dev libbz2-dev libzstd-dev
-
-# 12. 安装数据库连接器（可选）
-sudo apt-get install -y libsqlcipher-dev libmysqlclient-dev libpq-dev
-```
-
-### 2.3 The Sleuth Kit 编译安装
-
-The Sleuth Kit (TSK) 是核心依赖，必须从源码编译 4.14.0 版本：
-
-```bash
-#!/bin/bash
-# install_tsk.sh
-
-set -e
-
-TSK_VERSION="4.14.0"
-TSK_DIR="sleuthkit-${TSK_VERSION}"
-
-echo "=== 下载并编译 The Sleuth Kit ${TSK_VERSION} ==="
-
-# 下载源码
-if [ ! -d "$TSK_DIR" ]; then
-    wget https://github.com/sleuthkit/sleuthkit/releases/download/sleuthkit-${TSK_VERSION}/sleuthkit-${TSK_VERSION}.tar.gz
-    tar -xzf sleuthkit-${TSK_VERSION}.tar.gz
-    rm sleuthkit-${TSK_VERSION}.tar.gz
-fi
-
-cd "$TSK_DIR"
-
-# 配置编译选项
-./configure \
-    --prefix=/usr/local \
-    --enable-afflib=yes \
-    --enable-libewf=yes \
-    --disable-java
-
-# 编译（使用多核加速）
+wget https://github.com/sleuthkit/sleuthkit/releases/download/sleuthkit-4.14.0/sleuthkit-4.14.0.tar.gz
+tar -xzf sleuthkit-4.14.0.tar.gz && cd sleuthkit-4.14.0
+./configure
 make -j$(nproc)
-
-# 安装
-sudo make install
-
-# 更新动态链接库缓存
-sudo ldconfig
-
-echo "=== The Sleuth Kit 安装完成 ==="
-tsk_version=$(tsk_loaddb -V 2>&1 | head -n 1)
-echo "已安装版本: $tsk_version"
+sudo make install && sudo ldconfig
 ```
 
-验证安装：
+### 3.3 Crow（源码）
 
 ```bash
-tsk_loaddb -V
-# 输出应包含: The Sleuth Kit version 4.14.0
+git clone --depth 1 https://github.com/CrowCpp/Crow.git
+cd Crow && mkdir build && cd build
+cmake .. -DCROW_BUILD_EXAMPLES=OFF -DCROW_BUILD_TESTS=OFF
+make -j$(nproc) && sudo make install
 ```
 
-### 2.4 Crow 框架安装
-
-Crow 是 C++ HTTP 服务器框架：
+### 3.4 阿里云 OSS C++ SDK（仓库内置源码）
 
 ```bash
-#!/bin/bash
-# install_crow.sh
-
-set -e
-
-echo "=== 安装 Crow 框架 ==="
-
-# 克隆源码
-if [ ! -d "Crow" ]; then
-    git clone https://github.com/CrowCpp/Crow.git
-fi
-
-cd Crow
+cd libs/aliyun-oss-cpp-sdk
 mkdir -p build && cd build
-
-# 配置 CMake（禁用示例和测试以加快编译）
-cmake .. \
-    -DCROW_BUILD_EXAMPLES=OFF \
-    -DCROW_BUILD_TESTS=OFF
-
-# 编译并安装
+cmake .. -DBUILD_SHARED_LIBS=OFF -DBUILD_SAMPLE=OFF -DBUILD_TESTS=OFF
 make -j$(nproc)
-sudo make install
-
-echo "=== Crow 安装完成 ==="
+# 产物: libs/aliyun-oss-cpp-sdk/build/lib/libalibabacloud-oss-cpp-sdk.a
 ```
 
-### 2.5 Python 依赖
-
-Python 服务（FastAPI）的依赖：
+### 3.5 Python venv（两个 requirements 都要装）
 
 ```bash
-# 创建虚拟环境（推荐）
-python3 -m venv .venv
-source .venv/bin/activate
-
-# 安装依赖
-pip install --upgrade pip
-pip install -r python_service/httpserver/requirements.txt
+python3 -m venv python_service/.venv
+python_service/.venv/bin/pip install --upgrade pip
+python_service/.venv/bin/pip install \
+    -r python_service/httpserver/requirements.txt \
+    -r python_service/requirements.txt
+# 大包（可选功能，失败会警告不中断）
+python_service/.venv/bin/pip install "markitdown[all]" "PyMuPDF==1.27.1" volatility3 graphiti-core
 ```
 
-`requirements.txt` 内容：
+也可直接 `make setup`（= setup-venv + setup-web）。
 
-```txt
-# FastAPI 核心
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
-
-# HTTP 客户端
-httpx>=0.25.0
-aiohttp>=3.9.0
-
-# Neo4j 和 Graphiti
-neo4j>=5.14.0
-graphiti>=0.3.0
-
-# 工具库
-python-dotenv>=1.0.0
-python-multipart>=0.0.6
-
-# 可选：开发工具
-pytest>=7.4.0
-pytest-asyncio>=0.21.0
-black>=23.11.0
-```
-
-### 2.6 Neo4j 安装（可选）
-
-Neo4j 用于知识图谱功能：
+### 3.6 Node.js / web 前端
 
 ```bash
-#!/bin/bash
-# install_neo4j.sh
-
-set -e
-
-NEO4J_VERSION="5.14.0"
-NEO4J_DIR="neo4j-community-${NEO4J_VERSION}"
-
-echo "=== 安装 Neo4j Community Edition ==="
-
-# 下载
-if [ ! -d "$NEO4J_DIR" ]; then
-    wget https://dist.neo4j.org/neo4j-community-${NEO4J_VERSION}-unix.tar.gz
-    tar -xzf neo4j-community-${NEO4J_VERSION}-unix.tar.gz
-    rm neo4j-community-${NEO4J_VERSION}-unix.tar.gz
-fi
-
-cd "$NEO4J_DIR"
-
-# 配置
-sed -i 's/#dbms.default_listen_address=0.0.0.0/dbms.default_listen_address=0.0.0.0/' conf/neo4j.conf
-sed -i 's/#dbms.connector.bolt.listen_address=:7687/dbms.connector.bolt.listen_address=0.0.0.0:7687/' conf/neo4j.conf
-
-# 设置初始密码
-export NEO4J_AUTH=neo4j/your_password
-
-# 启动服务
-./bin/neo4j start
-
-echo "=== Neo4j 安装完成 ==="
-echo "访问 http://localhost:7474 进行初始配置"
+# NVM + Node 22
+curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+source ~/.nvm/nvm.sh && nvm install 22
+make setup-web        # cd web && npm install
 ```
 
-Docker 安装（更简单）：
+### 3.7 构建
 
 ```bash
-docker run -d \
-    --name neo4j \
-    -p 7474:7474 -p 7687:7687 \
-    -e NEO4J_AUTH=neo4j/your_password \
-    -v neo4j_data:/data \
-    neo4j:5.14-community
-```
-
----
-
-## 3. 编译项目
-
-### 3.1 克隆仓库
-
-```bash
-# 克隆主仓库
-git clone https://github.com/ymj68520/ForensicsProject.git
-cd ForensicsProject
-
-# 或克隆个人 Fork
-git clone https://github.com/your-username/ForensicsProject.git
-cd ForensicsProject
-```
-
-### 3.2 CMake 配置
-
-```bash
-# 创建构建目录
 mkdir -p build && cd build
-
-# 基础配置（Release 模式）
 cmake .. -DCMAKE_BUILD_TYPE=Release
-
-# 开发配置（包含调试符号和测试）
-cmake .. -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON
-
-# 自定义安装路径
-cmake .. -DCMAKE_INSTALL_PREFIX=/opt/forensics
-
-# 启用特定功能
-cmake .. \
-    -DENABLE_XAPIAN=ON \
-    -DENABLE_FILE_CARVING=ON \
-    -DENABLE_LLM_INTEGRATION=ON \
-    -DENABLE_MCP_SERVER=ON
+cmake --build . -j$(nproc)          # 或 make build
 ```
 
-**可用 CMake 选项**：
-
-| 选项 | 默认值 | 说明 |
-|------|--------|------|
-| `CMAKE_BUILD_TYPE` | `Release` | 编译类型：Release/Debug/RelWithDebInfo |
-| `BUILD_TESTS` | `OFF` | 是否编译测试 |
-| `ENABLE_XAPIAN` | `ON` | 启用全文搜索 |
-| `ENABLE_FILE_CARVING` | `ON` | 启用文件雕刻 |
-| `ENABLE_LLM_INTEGRATION` | `ON` | 启用 LLM 集成 |
-| `ENABLE_MCP_SERVER` | `ON` | 启用 MCP 服务器 |
-| `CMAKE_CXX_STANDARD` | `20` | C++ 标准 |
-
-### 3.3 编译
-
-```bash
-# 使用所有 CPU 核心编译
-cmake --build . -j$(nproc)
-
-# 或使用 make 直接编译
-make -j$(nproc)
-
-# 只编译特定目标
-make forensic_analyzer
-make test_file_classifier
-```
-
-**编译时间参考**：
-
-| 配置 | CPU 核心数 | 预计时间 |
-|------|-----------|---------|
-| Release + 所有模块 | 4 核 | 10-15 分钟 |
-| Release + 所有模块 | 8 核 | 5-8 分钟 |
-| Debug + 测试 | 8 核 | 15-20 分钟 |
-
-### 3.4 安装（可选）
-
-```bash
-# 安装到系统目录
-sudo cmake --install .
-
-# 或安装到自定义路径
-cmake --install . --prefix /opt/forensics
-```
+CMake 选项 `BUILD_WEB_FRONTEND`（默认 ON）控制是否在 ALL 目标里触发 npm 构建；`./run.sh` 显式传 `-DBUILD_WEB_FRONTEND=OFF` 并单独用 npm 构建，避免占满 CPU。
 
 ---
 
-## 4. 配置
+## 4. 外部服务
 
-### 4.1 环境变量
+### 4.1 Neo4j（Graphiti 知识图谱，可选但推荐）
 
-创建 `.env` 文件：
+setup.sh 自动安装并设置密码。手动安装：
 
 ```bash
-# 复制示例配置
+sudo apt-get install -y openjdk-21-jre-headless openjdk-21-jdk
+# 添加官方仓库（见 setup.sh Step 2 的 keyring/sources 写法）后：
+sudo apt-get install -y neo4j
+sudo -u neo4j neo4j-admin dbms set-initial-password '<密码>'
+sudo systemctl enable --now neo4j
+```
+
+连接失败时 GraphitiService 会标记 disabled（降级，不阻断服务）。浏览器管理界面 `http://localhost:7474`，Bolt 端口 7687。
+
+### 4.2 Redis（摄取任务持久化，可选）
+
+```bash
+sudo apt-get install -y redis-server redis-tools
+redis-cli ping    # PONG 即可
+```
+
+未运行时摄取任务队列自动退化为内存存储（日志出现 "Redis not available, using in-memory storage" 警告），重启后任务状态丢失。
+
+### 4.3 PostgreSQL（分布式 C/S 服务，仅 server.main 需要）
+
+`DATABASE_URL` 指向 PostgreSQL（默认 `postgresql://postgres:change-me@localhost:5432/tracelens`）。数据库不可用时 C/S 服务以降级模式启动（`/health` 返回 `"database": "degraded"`，`/health/ready` 返回 503）。不用分布式功能可忽略。
+
+### 4.4 LLM 端点（AI 分析，可选）
+
+- OpenAI 兼容 API（LM Studio / vLLM 等），`.env` 中配置 `LLM_BASE_URL` + `LLM_ENDPOINT=/v1/chat/completions`。
+- Graphiti 全功能要求同一端点**同时加载**两个模型（`.env.example` 注释）：`openai/gpt-oss-20b`（推理）与 `text-embedding-nomic-embed-text-v1.5`（嵌入）。
+- 模型名必须与 `LLM_TEXT_MODEL` / `LLM_VISION_MODEL` 完全一致。
+- 无 LLM 环境用 `--no-ai` 跳过 AI 分析。
+
+---
+
+## 5. .env 配置
+
+```bash
 cp .env.example .env
-
-# 编辑配置
-nano .env
 ```
 
-`.env` 配置示例：
+以下为 `.env.example` 中的全部真实变量（默认值取自该文件）：
 
-```env
-# LLM 配置
-LLM_BASE_URL=http://localhost:1234
-LLM_MODEL=llama-3.2-3b-instruct
-LLM_MAX_TOKENS=4096
-LLM_TIMEOUT=60
+### 5.1 路径
 
-# Neo4j 配置
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=your_password
-GRAPHITI_GROUP_ID=forensics_project
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PROJECT_ROOT` | 空（自动检测） | 项目根绝对路径；留空则按可执行文件位置推导 |
+| `DATA_DIR` | `data` | 运行时数据目录（相对可执行文件） |
 
-# 服务端口
-CPP_HTTP_PORT=8080
-PYTHON_HTTP_PORT=8090
-MCP_SERVER_PORT=8890
+### 5.2 LLM
 
-# 日志配置
-LOG_LEVEL=INFO
-LOG_FILE=/var/log/forensics/debug.log
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `LLM_BASE_URL` | `http://192.168.31.170:1234` | OpenAI 兼容端点（共享） |
+| `LLM_ENDPOINT` | `/v1/chat/completions` | chat completions 路径 |
+| `LLM_API_KEY` | 空 | API key（本地端点可为空） |
+| `LLM_TEXT_BASE_URL` | `http://192.168.31.170:1234` | 文本模型端点 |
+| `LLM_TEXT_MODEL` | `qwen/qwen3.6-35b-a3b` | 文本模型名 |
+| `LLM_TEXT_MAX_TOKENS` | `4096` | 文本模型 max tokens |
+| `LLM_TEXT_TEMPERATURE` | `0.7` | 文本模型温度 |
+| `LLM_VISION_BASE_URL` | `http://192.168.31.170:1234` | 视觉模型端点 |
+| `LLM_VISION_MODEL` | `qwen/qwen3.6-35b-a3b` | 视觉模型名 |
+| `LLM_VISION_MAX_TOKENS` | `4096` | 视觉模型 max tokens |
+| `LLM_VISION_TEMPERATURE` | `0.5` | 视觉模型温度 |
+| `LLM_TIMEOUT_SECONDS` | `120` | 请求超时 |
+| `LLM_MAX_RETRIES` | `3` | 重试次数 |
+| `LLM_MAX_EVENT_CLUSTERS` | `0` | 事件簇智能分析上限；0 = 不限 |
+| `LLM_CONTEXT_LENGTH` | `163840` | 上下文窗口 tokens |
+| `LLM_RESERVED_TOKENS` | `512` | 预留 tokens |
+| `LLM_CHARS_PER_TOKEN` | `4.0` | 字符/token 估算系数 |
 
-# 数据库路径
-DATABASE_DIR=./output
-```
+### 5.3 MCP / 文件分析 / 数据库
 
-### 4.2 初始化数据库
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `MCP_SERVER_PORT` | `8890` | MCP 服务端口 |
+| `MCP_SERVER_HOST` | `localhost` | MCP 绑定地址 |
+| `MCP_ALLOWED_PATHS` | 空 | MCP 文件访问白名单（逗号分隔，空 = 不限） |
+| `FILE_ANALYSIS_MAX_CONTENT` | `10000` | 送 LLM 的内容长度上限（字符） |
+| `FILE_ANALYSIS_MAX_KEYWORDS` | `10` | 关键词提取上限 |
+| `FILE_ANALYSIS_MAX_CONTENT_LIMIT` | `50000` | 绝对上限（字符） |
+| `DB_OUTPUT_DIR` | `./output` | 数据库输出目录 |
+| `DB_NAME` | `forensics.db` | 数据库文件名 |
 
-```bash
-# 创建输出目录
-mkdir -p output
+### 5.4 Neo4j / Graphiti
 
-# 设置权限
-chmod 755 output
-```
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `NEO4J_URI` | `neo4j://127.0.0.1:7687` | 连接串 |
+| `NEO4J_USER` | `neo4j` | 用户 |
+| `NEO4J_PASSWORD` | `change-me` | 密码（setup.sh 用它设置初始密码） |
+| `GRAPHITI_USE_LOCAL_LLM` | `true` | true = 用上面 LLM_TEXT_* 配置 |
+| `GRAPHITI_BATCH_SIZE` | `25` | 批大小（防 8096 token 溢出） |
+| `GRAPHITI_MAX_RETRIES` | `3` | 重试 |
+| `GRAPHITI_GROUP_ID` | `forensics_files` | Graphiti group |
+| `GRAPHITI_INCLUDE_FULL_DESC` | `true` | 是否带完整 LLM 描述 |
+| `GRAPHITI_MAX_EPISODE_TOKENS` | `3000` | 每集 token 上限 |
 
-### 4.3 验证安装
+### 5.5 Python httpserver（:8090）
 
-```bash
-# 运行可执行文件查看帮助
-./build/forensic_analyzer --help
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PYTHON_HTTP_PORT` | `8090` | 端口 |
+| `PYTHON_HTTP_HOST` | `0.0.0.0` | 绑定地址 |
+| `CPP_BACKEND_URL` | `http://localhost:8080` | 回连 C++ 的地址 |
+| `CPP_STARTUP_REQUEST_TIMEOUT` | `5` | 启动时探测 C++ 超时 |
+| `CPP_RECOVERY_TIMEOUT` | `8` | C++ 恢复探测超时 |
+| `NEO4J_CONNECT_TIMEOUT` | `5` | Neo4j 连接超时 |
+| `NEO4J_QUERY_TIMEOUT` | `5` | Neo4j 查询超时 |
+| `OPTIONAL_SERVICE_INIT_TIMEOUT` | `12` | 可选服务（Neo4j/LLM/Redis）初始化超时 |
+| `PYTHON_STARTUP_TIMEOUT` | `30` | 启动总预算（超时回滚已初始化项，服务仍以降级模式启动） |
+| `PYTHON_CORS_ORIGINS` | `["*"]` | CORS 白名单（JSON 数组） |
 
-# 运行单元测试
-cd build
-ctest --output-on-failure
+### 5.6 C++ HTTP 服务
 
-# 启动 HTTP 服务器测试
-./forensic_analyzer --http-server 8080
-```
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `HTTP_SERVER_PORT` | `8080` | 端口（`./run.sh` 未设置时用 8666 兜底） |
+| `HTTP_SERVER_HOST` | `0.0.0.0` | 绑定地址 |
 
-访问 http://localhost:8080/health 检查服务状态。
+### 5.7 日志 / 性能 / DLL / OSS
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `DEBUG_OUTPUT_MODE` | `stdout` | 调试输出：stdout / file / none |
+| `DEBUG_LOG_FILE` | `debug.log` | 调试日志文件名 |
+| `LOG_LEVEL` | `INFO` | 日志级别 |
+| `LOG_FILE` | `forensics.log` | 日志文件名 |
+| `THREAD_POOL_SIZE` | `4` | 线程池大小 |
+| `MAX_BATCH_SIZE` | `100` | 批处理文件数上限 |
+| `LOG_MAX_DISPLAY_FILES` | `20` | 日志展示文件数 |
+| `DB_JOURNAL_MODE` | `WAL` | SQLite journal 模式 |
+| `DLL_ANALYSIS_ENABLED` | `true` | DLL 分析开关 |
+| `DLL_CPP_BACKEND_URL` | `http://localhost:8080` | DLL 分析请求的 C++ 后端 |
+| `DLL_ANALYSIS_TIMEOUT` | `30` | DLL 分析超时（秒） |
+| `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 空 | OSS 凭证 |
+| `OSS_ENDPOINT` | 空 | 如 `oss-cn-hangzhou.aliyuncs.com` |
+| `OSS_REGION` | `cn-hangzhou` | OSS 区域 |
+
+### 5.8 分布式 C/S server（:8091）
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PORT` | `8091` | C/S 服务端口 |
+| `JWT_SECRET_KEY` | `change-me-generate-a-unique-secret` | JWT 签名密钥 |
+| `JWT_ALGORITHM` | `HS256` | JWT 算法 |
+| `DATABASE_URL` | `postgresql://postgres:change-me@localhost:5432/tracelens` | PostgreSQL 连接串 |
+| `DB_CONNECT_TIMEOUT` | `5` | 连接超时 |
+| `DB_POOL_TIMEOUT` | `5` | 连接池获取超时 |
+| `DB_STARTUP_TIMEOUT` | `30` | 启动等待数据库超时 |
 
 ---
 
-## 5. 常见安装问题
-
-### 5.1 依赖问题
-
-**问题**: `error: sqlite3.h: No such file or directory`
-
-**解决**:
-```bash
-sudo apt-get install -y libsqlite3-dev
-```
-
----
-
-**问题**: `error: TSK library not found`
-
-**解决**:
-```bash
-# 检查 TSK 是否安装
-ldconfig -p | grep libtsk
-
-# 如果没有，重新编译安装 TSK
-cd sleuthkit-4.14.0
-sudo make install
-sudo ldconfig
-```
-
----
-
-**问题**: `error: Cannot find -lboost_system`
-
-**解决**:
-```bash
-sudo apt-get install -y libboost-system-dev libboost-thread-dev
-
-# 或指定 Boost 路径
-cmake .. -DBOOST_ROOT=/usr/local
-```
-
----
-
-### 5.2 编译问题
-
-**问题**: `error: static_assert failed due to requirement 'is_same_v<int, int>'`
-
-**解决**:
-```bash
-# 确保使用 C++20
-cmake .. -DCMAKE_CXX_STANDARD=20
-cmake --build . --clean-first
-```
-
----
-
-**问题**: `fatal error: crow.h: No such file or directory`
-
-**解决**:
-```bash
-# 重新安装 Crow
-cd ../Crow/build
-sudo make install
-```
-
----
-
-### 5.3 运行时问题
-
-**问题**: `error while loading shared libraries: libtsk.so.13`
-
-**解决**:
-```bash
-# 添加库路径到 LD_LIBRARY_PATH
-export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
-
-# 或永久添加到 ~/.bashrc
-echo 'export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
-source ~/.bashrc
-
-# 更新动态链接库缓存
-sudo ldconfig
-```
-
----
-
-**问题**: HTTP 服务器无法启动，端口已被占用
-
-**解决**:
-```bash
-# 检查端口占用
-sudo netstat -tulpn | grep 8080
-
-# 终止占用进程
-sudo kill <PID>
-
-# 或更换端口
-./forensic_analyzer --http-server 8081
-```
-
----
-
-## 6. Docker 安装（推荐）
-
-### 6.1 使用 Docker Compose
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-
-services:
-  cpp-service:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.cpp
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./output:/output
-      - ./evidence:/evidence:ro
-    environment:
-      - LOG_LEVEL=INFO
-    depends_on:
-      - neo4j
-
-  python-service:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.python
-    ports:
-      - "8090:8090"
-    volumes:
-      - ./output:/output
-    environment:
-      - NEO4J_URI=bolt://neo4j:7687
-      - NEO4J_USER=neo4j
-      - NEO4J_PASSWORD=neo4j_password
-    depends_on:
-      - cpp-service
-      - neo4j
-
-  neo4j:
-    image: neo4j:5.14-community
-    ports:
-      - "7474:7474"
-      - "7687:7687"
-    environment:
-      - NEO4J_AUTH=neo4j/neo4j_password
-    volumes:
-      - neo4j_data:/data
-
-volumes:
-  neo4j_data:
-```
-
-启动服务：
+## 6. 验证安装
 
 ```bash
-docker-compose up -d
-```
-
-### 6.2 单独构建镜像
-
-```bash
-# 构建 C++ 服务镜像
-docker build -f docker/Dockerfile.cpp -t forensics/cpp-service:latest .
-
-# 构建 Python 服务镜像
-docker build -f docker/Dockerfile.python -t forensics/python-service:latest .
-
-# 运行容器
-docker run -d -p 8080:8080 forensics/cpp-service:latest
-```
-
----
-
-## 7. Windows 安装
-
-### 7.1 使用 WSL2（推荐）
-
-```powershell
-# 启用 WSL2
-wsl --install
-
-# 安装 Ubuntu
-wsl --install -d Ubuntu-22.04
-
-# 进入 WSL
-wsl
-
-# 在 WSL 内执行 Linux 安装步骤
-```
-
-### 7.2 原生 Windows 编译
-
-使用 MinGW-w64 或 Visual Studio 2022：
-
-```cmd
-# 安装 vcpkg
-git clone https://github.com/Microsoft/vcpkg.git
-cd vcpkg
-.\bootstrap-vcpkg.bat
-
-# 安装依赖
-.\vcpkg install sqlite3:x64-windows
-.\vcpkg install boost-asio:x64-windows
-.\vcpkg install nlohmann-json:x64-windows
-
-# 使用 Visual Studio 打开项目
-cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake
-cmake --build build --config Release
-```
-
----
-
-## 8. macOS 安装
-
-```bash
-# 安装 Homebrew（如果未安装）
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# 安装依赖
-brew install cmake git sqlite3 the-sleuth-kit boost
-brew install nlohmann-json xapian poppler
-
-# 安装 Crow（需要手动编译）
-git clone https://github.com/CrowCpp/Crow.git
-cd Crow
-mkdir build && cd build
-cmake ..
-make && sudo make install
-
-# 编译项目
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(sysctl -n hw.ncpu)
-```
-
----
-
-## 9. 验证安装
-
-### 9.1 功能测试
-
-```bash
-# 1. 版本检查
+# 1. 二进制与帮助
 ./build/forensic_analyzer --version
-
-# 2. 帮助信息
 ./build/forensic_analyzer --help
 
-# 3. 单元测试
-cd build
-ctest --output-on-failure
+# 2. C++ 单元测试（约 60 个 GTest 目标）
+cd build && ctest --output-on-failure
 
-# 4. 简单分析测试
-./forensic_analyzer tests/fixtures/test_image.dd
+# 3. 一键启动并做健康检查（C++ 失败会硬报错退出）
+cd .. && ./run.sh
+curl http://localhost:8666/api/system/health   # 端口以 .env HTTP_SERVER_PORT 为准
 
-# 5. HTTP 服务测试
-./forensic_analyzer --http-server 8080 &
-curl http://localhost:8080/health
-```
-
-### 9.2 集成测试
-
-```bash
-# 运行完整测试套件
-./tests/run_integration_tests.sh
-
-# 或单独测试
-./tests/test_e01_http.sh
+# 4. 生成测试镜像跑一次 CLI 分析
+bash scripts/create_test_image.sh
+./build/forensic_analyzer test_image.img
 ```
 
 ---
 
-## 10. 卸载
+## 7. 常见安装问题
 
-### 10.1 卸载二进制文件
+详细排查见 [Troubleshooting.md](Troubleshooting.md)。最常见的三类：
 
-```bash
-# 如果使用 make install
-sudo xargs rm < build/install_manifest.txt
-
-# 或手动删除
-sudo rm -rf /opt/forensics
-sudo rm /usr/local/bin/forensic_analyzer
-```
-
-### 10.2 卸载依赖
-
-```bash
-# Ubuntu/Debian
-sudo apt-get remove -y \
-    libsqlite3-dev libewf-dev libhivex-dev libevtx-dev \
-    libboost-system-dev libboost-thread-dev \
-    libxapian-dev libpoppler-cpp-dev
-
-# 卸载 TSK
-cd sleuthkit-4.14.0
-sudo make uninstall
-
-# 卸载 Neo4j
-docker stop neo4j && docker rm neo4j
-docker volume rm neo4j_data
-```
+- **构建缺库**：TSK / Crow / OSS SDK 是源码安装，不在 apt —— 对照 [第 3 节](#3-手动安装依赖) 补装后重跑 cmake。
+- **CMake 找不到包**：`build/cmake-configure.log`（setup.sh 生成）里有完整配置日志。
+- **Python 大包下载失败**：设 `PIP_PROXY` 后重跑 setup.sh（脚本对大包逐个重试且失败不中断）。
 
 ---
 
-## 11. 下一步
-
-安装完成后，请参阅：
-
-- **[快速入门指南](QuickStart.md)** - 第一次分析操作
-- **[开发环境配置](Development.md)** - 开发工具设置
-- **[常见任务](CommonTasks.md)** - 添加分析器、路由等
-
----
-
-## 相关文档
-
-- **[架构总览](../architecture/Overview.md)** - 系统架构
-- **[数据库架构](../architecture/DatabaseSchema.md)** - 数据库架构和依赖说明
-- **[故障排查](Troubleshooting.md)** - 常见问题解决
-
----
-
-**最后更新**: 2026-06-06
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（以代码为准重写）
