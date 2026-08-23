@@ -298,4 +298,83 @@ return response;
 - 要按模型并发：给 LLMClient 增加实例池，或在 ModelRouter 里对同一模型注册多个 entry。
 - 要更精细的错误分类：在 `chat()` 里区分可重试（网络、5xx、429）与不可重试（其余 4xx）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 方法全清单（二轮补全，含 §3.2 未列的）
+
+| 方法 | 行为细节 | 状态 |
+|---|---|---|
+| `LLMClient(const LLMConfig&)`（:90-92） | 全配置构造 → initHttpClient | **唯一被使用的构造**（ModelRouter.cpp:21） |
+| `LLMClient(const std::string& baseUrl)`（:94-97） | 只设 baseUrl，**其余走 LLMConfig 结构体默认**——timeoutSeconds=60（不是 env 的 120）、maxTokens=2048、model 为空 | 零调用方的便利构造；若被启用，超时口径会与主流不一致 |
+| `getConfig()`（:269-271） | 返回 `const LLMConfig&`——**不持锁**，调用方拿引用期间 setConfig 改写即是数据竞争 | 无生产调用方 |
+| `setModel/getModel/isReady/getLastError` | 均持 mutex_ | 调试/状态查询 |
+| 析构 `= default`（:99） | unique_ptr<Client> 自动释放 | 持有中的 chat 若并发进行，锁纪律保证析构安全的前提是外部先停止调用 |
+
+### 8.1 setConfig 的锁缺口（新发现）
+
+```cpp
+// LLMClient.cpp:264-267
+void LLMClient::setConfig(const LLMConfig& config) {
+    config_ = config;          // ← 无锁写入
+    initHttpClient();          // ← 内部才拿 mutex_
+}
+```
+
+`config_ = config` 在**没有持 mutex_** 的情况下整结构体赋值，而 getModel()/chat() 都在锁内读 config_（model 名、endpoint、apiKey）——并发的 setConfig 与 chat 是教科书式数据竞争（std::string 赋值非原子，撕裂读到悬垂指针都可能）。当前无生产调用方（热更新未接线），风险休眠；接热更新前必须把第一行也搬进锁内。同族问题：`chat()` 首行的 `ready_` 检查（:158）也在锁外读。
+
+### 8.2 "Client not ready" 的快速失败路径（新走读分支）
+
+```cpp
+// LLMClient.cpp:156-161
+LLMResponse response;
+if (!ready_ || !httpClient_) {
+    response.errorMessage = "Client not ready";
+    return response;
+}
+```
+
+initHttpClient 失败理论上会留下 httpClient_ 为空（如 make_unique 抛异常的极端情形），此时 chat **不走重试**——直接返回 "Client not ready"。与网络失败（重试 4 次）形成对照：客户端构造期的问题被视为永久性，传输期的问题被视为暂时性。实际代码里 make_unique 几乎不失败、ready_ 构造即置 true（:129），这条路径基本是防御性代码。
+
+## 9. 超时与重试矩阵（汇总表）
+
+| 维度 | 值 | 来源 | 说明 |
+|---|---|---|---|
+| 连接超时 | = LLM_TIMEOUT_SECONDS（默认 120s） | initHttpClient :126 | 三超时同源，无独立调参 |
+| 读超时 | 同上 | :127 | 单次尝试的最长等待 |
+| 写超时 | 同上 | :128 | 大 payload（视觉 base64）受它约束 |
+| 尝试次数 | 1 + LLM_MAX_RETRIES（默认 4） | chat :172 的 `retries <= maxRetries` | 首试不耗额度 |
+| 退避 | 500ms × 第 n 次重试（线性：0.5/1.0/1.5s） | :186、:200 | 无抖动（jitter），多实例同错时同步重试 |
+| 最坏单调用时长 | 4 × 3 × 120s + 3s ≈ **24 分钟** | 三超时可叠加 | 无绝对上限兜底；上层 TaskWatchdog 的 30 分钟 stale 阈值恰好罩住它（设计巧合还是有意，无注释） |
+| 4xx | 一律重试 | :197-201 | §6 已记 |
+| 解析失败 | 不重试 | parseResponse 在循环外 | §6 已记 |
+
+**锁的串行化效果**：每次尝试独立 `lock_guard`（:173），sleep 退避在锁外——并发 chat 的实际排队单位是"单次 HTTP 尝试"，而非"整个重试序列"。吞吐视角：单 client 的稳态吞吐 = 1/(单次尝试时长)，退避等待可以让下一个排队请求先上——比"整序列持锁"稍好，但与真正并发仍差 N 倍。
+
+## 10. 请求/响应字段级契约（OpenAI 兼容面的全集）
+
+**请求体**（buildRequestBody，:283-363）：
+
+| 字段 | 来源 | 缺省行为 |
+|---|---|---|
+| model | config_.model | **空则整个字段不写**（服务端自动选型，LM Studio 单模型时可行） |
+| max_tokens / temperature | config_ 直传 | 恒写 |
+| messages[].role/content | 逐消息 | content 过 sanitizeUtf8；带图时换数组形态（§3.4） |
+| messages[].name / tool_call_id | 可选 | 空不写 |
+| messages[].content[].image_url.url | base64 → data URL / 直传 URL | mimeType 缺省 image/jpeg |
+| messages[].content[].image_url.detail | 可选 | 空不写（服务端默认 auto） |
+| tools / tool_choice="auto" | toolsJson 参数 | **空串不写；非法 JSON 静默丢弃**（§3.4） |
+
+**响应体**（parseResponse，:365-437）提取的字段：choices[0].message.content（+ reasoning_content 回退 + `<think>` 剥离）、choices[0].message.tool_calls[].{id,function.name,function.arguments}（字符串/对象双态）、choices[0].finish_reason、usage.{prompt_tokens,completion_tokens}。**choices 缺失或空数组 → success 保持 false**（无 errorMessage——调用方看到的是"成功假象缺失"，要判 success 而非 content.empty()）。usage 段缺失时 tokens 为 0（不报错）。
+
+## 11. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 |
+|---|---|---|
+| 被构造 | ModelRouter::addModel（:21，make_unique） | 每注册模型一个实例——全仓唯一构造点 |
+| 被调 | ModelRouter::chat/testConnection/listModels | 唯一中转层 |
+| 依赖 | httplib（cpp-mcp 第三方）+ OpenSSL 宏 | https 能力 |
+| 依赖 | nlohmann::json | 序列化 |
+| 配置 | ConfigManager → LLMConfig（六个注册服务） | §2 env 表 |
+| 间接消费者 | LLMAnalysisService / Win/Linux/AndroidLLMAnalysisService / EventClusterAnalyzer / DLLAnalyzerLLMService / FileAnalyzer / MCPIntegration | 全部经 ModelRouter |
+| 平行出口 | LLMPythonProxy / MarkitdownProxy | 不经本类（打 Python 服务） |
+| 死位 | baseUrl-only 构造 / setConfig / getConfig / listModels | 零生产调用方 |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

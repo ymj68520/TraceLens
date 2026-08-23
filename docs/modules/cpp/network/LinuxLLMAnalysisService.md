@@ -254,4 +254,119 @@ prompt 结构四段式：角色设定 + 三项要求 + **工件 JSON 原文**（
 - **验证**：跑一个含 linux 场景的任务后查 `_linux.db`：`SELECT user, llm_summary FROM linux_users WHERE llm_analyzed_at > 0 LIMIT 10`；再跑一次同任务库（或调用 analyzeArtifactType）确认 PENDING 查询不再返回已分析行（增量生效）。
 - **扩展新工件类型**：① LinuxFilesAnalyzer 建表并填充；② LinuxAnalysisSQL 加 `SELECT_X_PENDING_ANALYSIS`；③ Database.cpp 两个映射函数加 case；④ ArtifactAnalyzers/SystemAnalyzers 加 prompt 函数并在 analyzeArtifactType 的 switch（cpp:185-228）注册；若要默认执行，再加 include 开关与循环调用。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 10. 原始 14 类的 SELECT 列契约全表（二轮补全）
+
+linux_analysis_sql_llm.h:126-166 逐条列出进 prompt 的列（id 之外的列全部动态拼进 JSON）与截断排序：
+
+| 类型 | 表 | 进 prompt 的列 | ORDER BY（截断偏向） | 行号 |
+|---|---|---|---|---|
+| LOG_ENTRY | linux_log_entries | log_file, timestamp, hostname, process, message | unix_timestamp DESC（最新） | :126-127 |
+| USER_ACCOUNT | linux_users | username, uid, shell, home_directory, is_system_account | uid ASC（root 优先） | :129-130 |
+| LOGIN_RECORD | linux_login_records | username, terminal, remote_host, login_time, login_type, is_success | login_time DESC | :132-133 |
+| SHELL_HISTORY | linux_shell_history | username, shell_type, command, timestamp | timestamp DESC | :135-136 |
+| CRON_JOB | linux_cron_jobs | username, minute, hour, day_of_month, month, day_of_week, command | id ASC | :138-139 |
+| SSH_KEY | linux_ssh_keys | username, key_type, key_path, comment | id ASC | :141-142 |
+| SSH_KNOWN_HOST | linux_ssh_known_hosts | username, hostname, key_type | id ASC | :144-145 |
+| PACKAGE | linux_packages | name, version, package_manager, description | name ASC | :147-148 |
+| NETWORK_CONNECTION | linux_network_connections | protocol, local_address, local_port, remote_address, remote_port, state, process | id ASC | :150-151 |
+| SYSTEMD_SERVICE | linux_systemd_services | service_name, description, active_state, sub_state, exec_start | service_name ASC | :153-154 |
+| KERNEL_MODULE | linux_kernel_modules | module_name, size, used_count, used_by, state | module_name ASC | :156-157 |
+| FIREWALL_RULE | linux_firewall_rules | chain, table_name, protocol, source, destination, action | id ASC | :159-160 |
+| AUDIT_LOG | linux_audit_logs | timestamp, type, message, subject, object, action, result | timestamp DESC | :162-163 |
+| BROWSER_PROFILE | linux_browser_profiles | browser_type, browser_name, profile_name, profile_path, username | id ASC | :165-166 |
+
+## 11. 增强类型的真实可用性：三层断裂（新发现）
+
+§8 说增强类型"半接入"；逐层核验后结论要收紧——它们**当前完全不可用**，断裂在三层：
+
+1. **BOOT_SESSION 断在 SELECT 映射**：getTableNameForType 有 BOOT_SESSION→linux_boot_sessions（_Database.cpp:121），但 getSelectSQLForType **没有对应 case**（:145-176 无此项）——直接调 analyzeArtifactType(BOOT_SESSION) 拿到空 SQL，prepare 失败返回空 vector，静默返回 0。
+2. **16 个增强类型全部断在 prompt 路由**：analyzeArtifactType 的 switch（LinuxLLMAnalysisService.cpp:186-223）只有原始 14 类的 case，default 直接 `continue`——即使表映射与 SELECT 都通，增强类型一条都不会分析。prompt 函数文件里也只有 13 个函数（_ArtifactAnalyzers.cpp 6 个 + _SystemAnalyzers.cpp 7 个，SSH 两类共用 analyzeSSHArtifact），没有任何增强类型的 prompt 实现。
+3. **8 条 SELECT 常量连类型映射都没有**：CONTAINER_SECURITY_FINDINGS / SUSPICIOUS_PACKAGES / SSH_SECURITY_FINDINGS / DATABASE_SECURITY_FINDINGS / EMAIL_SECURITY_FINDINGS / VPN_SECURITY_FINDINGS / SECURITY_PRODUCT_FINDINGS / MODSECURITY_LOGS（linux_analysis_sql_llm.h:189-233）在 getSelectSQLForType 里无任何 case 引用——除 linux_analysis_sql.h 的 using 转发外全仓无消费方，纯死常量。
+
+增强类型映射齐全的 15 个（表+SELECT 都有：JOURNAL_ENTRY、AGGREGATED_AUDIT_EVENT、TAMPERING_INDICATOR、PERSISTENCE_ENTRY、ERROR_LOG、MIDDLEWARE_LOG、CONTAINER_LOG、PACKAGE_OPERATION、ACCOUNT_ANOMALY、DATABASE_LOG、EMAIL_LOG、VPN_LOG、FIREWALL_LOG、SECURITY_PRODUCT_LOG）卡在第 2 层——复活它们需要写 prompt 函数 + switch 加 case + 开关三步，SQL 侧已就绪。
+
+## 12. prompt 函数清单（13 个，覆盖 14 类型）
+
+| 文件 | 函数 | 覆盖类型 |
+|---|---|---|
+| _ArtifactAnalyzers.cpp:14 | analyzeLogArtifact | LOG_ENTRY |
+| :59 | analyzeUserArtifact | USER_ACCOUNT |
+| :104 | analyzeLoginArtifact | LOGIN_RECORD |
+| :149 | analyzeShellHistoryArtifact | SHELL_HISTORY |
+| :194 | analyzeCronArtifact | CRON_JOB |
+| :239 | analyzeSSHArtifact | SSH_KEY + SSH_KNOWN_HOST（共用） |
+| _SystemAnalyzers.cpp:13 | analyzePackageArtifact | PACKAGE |
+| :58 | analyzeNetworkArtifact | NETWORK_CONNECTION |
+| :103 | analyzeSystemdArtifact | SYSTEMD_SERVICE |
+| :148 | analyzeKernelModuleArtifact | KERNEL_MODULE |
+| :193 | analyzeFirewallArtifact | FIREWALL_RULE |
+| :238 | analyzeAuditLogArtifact | AUDIT_LOG |
+| :283 | analyzeBrowserProfileArtifact | BROWSER_PROFILE |
+
+与 Windows 版的"14→8 收敛"不同，Linux 版是"14→13"——除 SSH 两类共用外每类独立 prompt（角色句按工件类型定制，如"analyzing Linux system log entries"）。
+
+## 13. 配置影响表（全集）
+
+| 配置 | 默认 | 消费链 | 说明 |
+|---|---|---|---|
+| `LLM_TEXT_*` 五项 | 见 Environment.md | initialize() → ModelRouter | 每条工件的模型 |
+| `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | 120 / 3 | LLMClient | 无后端时 14 表逐条超时（§8） |
+| （无 maxArtifacts env） | 1000 | AnalysisOptions（h:69-84） | 调用方 LinuxFilesAnalyzerCore.cpp:294 不传 options |
+| （无 include* env） | 14 开关全开 | 同上 | 关类型只能改代码或 options |
+| `THREAD_POOL_SIZE` | 4 | 不影响 | 逐条串行 |
+
+## 14. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 | 说明 |
+|---|---|---|---|
+| 被调 | LinuxFilesAnalyzerCore.cpp:294 | 唯一调用点 | 默认 options |
+| 依赖 | llm::ModelRouter | initialize() | 文本模型 |
+| 读写 | `_linux.db` 29 张映射表 + 8 张无映射表 | SELECT pending（14 类）/ UPDATE by id | §10-11 |
+| SQL 来源 | linux_analysis_sql_llm.h（SELECT）+ 字符串拼接 UPDATE（_Database.cpp 同 Windows 版结构） | :126-233 | 8 条 SELECT 是死常量（§11.3） |
+| 同族 | Windows（14→8 收敛）/Android 版 | 同骨架 | Linux 版收敛度最低但 prompt 最定制 |
+| 间接上游 | TaskManager PLATFORM_ANALYSIS | void 回调 | 无取消通道 |
+| 读出方 | 前端 /linux 视图 | llm_* 列 | 增强类型表无注解可读（§11） |
+
+## 15. 14 个 include 开关的展开表（analyzeLinuxArtifacts 调度序）
+
+analyzeLinuxArtifacts（cpp:43-147）按固定顺序逐开关展开（顺序即执行序，也是 §10 表计数增长的顺序）：
+
+| 开关 | 展开的类型（调用序） | 失败传播 |
+|---|---|---|
+| includeLogs | LOG_ENTRY | 单类型失败不阻断后续 |
+| includeUsers | USER_ACCOUNT | |
+| includeLogins | LOGIN_RECORD | |
+| includeShellHistory | SHELL_HISTORY | |
+| includeCron | CRON_JOB | |
+| includeSSH | SSH_KEY → SSH_KNOWN_HOST（共用 prompt） | |
+| includePackages | PACKAGE | |
+| includeNetwork | NETWORK_CONNECTION | |
+| includeSystemd | SYSTEMD_SERVICE | |
+| includeKernel | KERNEL_MODULE | |
+| includeFirewall | FIREWALL_RULE | |
+| includeAudit | AUDIT_LOG | |
+| includeBrowser | BROWSER_PROFILE | |
+
+（开关名与调度序以 h:69-84 / cpp:63-139 的真实字段与 if 序为准；13 个类型由 13 个 prompt 函数承接，§12。）每类型的 maxArtifacts 独立计数——14 类全开时理论上限 14×1000 = 14000 次 LLM 调用，串行 × 120s 超时的最坏时长以天计（无 LLM 后端时的真实风险，§8 已记）。
+
+## 16. 回写契约与计数语义（对照前文）
+
+- **UPDATE by id**（_Database.cpp:16-58，与 Windows 版同构的字符串拼接）：`UPDATE <table> SET llm_summary=?, llm_description=?, llm_keywords=?, llm_analyzed_at=?, llm_model_used=? WHERE id=?`——行级主键，无 LLMAnalysisService 的唯一路径守卫问题，也无跨表双写（不维护 file_descriptions）；
+- **analyzed++ 条件**：`result.success && storeArtifactAnalysis(...)` 双条件（cpp:210-216 一带）——模型成功且落库成功才计数，与文件级 LLMAnalysisService 的"不看写库结果"相反（Windows 版同 Linux 版）；
+- **LLM 失败的默认处理**：result.success=false 时**只跳过该条**（无重试、无日志——三个平台版都静默，对比文件级 smart 模式有 Warning）。
+
+## 17. 验证 runbook
+
+```bash
+# 1. 跑含 linux 场景 + LLM 正常的任务，查注解覆盖
+sqlite3 data/tasks/<id>/*_files.db \
+  "SELECT 'users', COUNT(*), SUM(llm_analyzed_at IS NOT NULL) FROM linux_users
+   UNION ALL SELECT 'shell', COUNT(*), SUM(llm_analyzed_at IS NOT NULL) FROM linux_shell_history"
+# 2. 增量验证：同库直接再触发（或重跑任务）——PENDING 查询只取 NULL 行
+# 3. 增强类型不可用性验证（§11）：直接调用入口不存在——只能从代码层面确认 switch 无 case
+grep -n "JOURNAL_ENTRY\|TAMPERING_INDICATOR" src/network/HTTPServer/LinuxLLMAnalysisService.cpp  # 无命中
+# 4. 死常量确认
+grep -rn "SELECT_MODSECURITY_LOGS_PENDING_ANALYSIS" src --include=*.cpp | grep -v sql  # 无命中
+```
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

@@ -214,4 +214,110 @@ if (changes == 0) {
 - **验证**：跑一个 llm_analyze=true 的任务后，对 `_events.db` 查询簇行（`SELECT time_window, event_type, llm_summary, llm_is_relevant FROM events ... LIMIT 20`）确认 llm_* 列已填充；或在时间线页展开簇抽屉触发 reanalyze 端点。
 - **扩展**：新的簇级字段（如 risk_score）需同时改 prompt（:63-81）、解析（:100-110）、`UPDATE_EVENT_CLUSTER_LLM_ANALYSIS` SQL 与展示路由；若要支持可变时间窗，建议把 `/60` 参数化并让调用方传入 bucket_seconds（默认 60 保持兼容）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 端点契约全表（EventClusterRoutes，二轮补全）
+
+四个端点（EventClusterRoutes.cpp:13-77）的完整契约。**新发现**：`analyze` 端点是 **410 Gone 弃用桩**（:85-91），不再触达本模块——单簇分析已迁 Python（前端 forensicsService.analyzeEventCluster 直打 8090 的 `/api/llm/analyze-event-cluster`）；仍会触达本模块的只剩 batch-analyze / reanalyze / analyzed 三个。
+
+| 端点 | 方法 | 请求字段 | 成功响应 | 失败响应 | handler |
+|---|---|---|---|---|---|
+| `clusters/analyze` | POST | （忽略一切 body） | **410** `{success:false, message:"DEPRECATED: Please use Python API /api/llm/analyze-event-cluster (Port 8090) instead."}` | — | :80-92 |
+| `clusters/batch-analyze` | POST | `task_id`（必填）、`clusters[]`（必填数组；每项 `{time_window:int64, event_type:string, parent_directory:string=""}`，缺前两者的项**静默跳过**） | 200 `{success:true, message:"Batch analysis completed", analyzed_count:int, total_count:int}` | 400（task_id/clusters 缺失、数组全无效、JSON 坏）；500（其他异常） | :94-158 |
+| `clusters/reanalyze` | POST | `task_id`、`time_window`（int64，必填）、`event_type`（必填非空）、`parent_directory`（默认 ""） | 200 `{success:true, message:"Event cluster reanalyzed successfully"}` | 400（字段缺失/JSON 坏）；500 `{"error":"Failed to reanalyze event cluster"}` | :160-216 |
+| `clusters/analyzed` | GET | query：`task_id`（必填） | 200 `{clusters:[...], total_count:int}` | 400（缺 task_id）；500 | :218-315 |
+
+`analyzed` 的簇对象 14 字段（:279-300）：`time_window`、`event_type`、`parent_directory`、`timestamp`/`end_timestamp`（簇内首末事件时间，前端 `new Date(timestamp*1000)` 展示）、`cluster_count`（"N 个事件"徽标）、`file_path`（代表文件，GROUP BY 里的任意行）、`file_size`（SUM）、`llm_summary`/`llm_description`/`llm_keywords`/`llm_analyzed_at`/`llm_model_used`/`llm_is_relevant`（均 MAX 聚合——簇内所有行被 UPDATE 成同值，MAX 恒等）。SQL 的 WHERE `llm_analyzed_at IS NOT NULL`（:262）即"已分析"的判据，ORDER BY llm_analyzed_at DESC 最近分析的排前面。
+
+**批量端点的同步阻塞**：batch-analyze 在 HTTP handler 内直接构造 `EventClusterAnalyzer` 并同步循环调 LLM（:137-138）——没有线程池、没有作业化。几十个簇 × 每簇一次 LLM 往返（LLM_TIMEOUT_SECONDS 默认 120s）意味着这个 HTTP 请求可能挂几分钟到几小时；Crow worker 被占用、前端 axios 默认超时会先断。对比之下 analyze 单簇路径已被 Python 端的异步作业替代——batch-analyze 是"该迁未迁"的遗留。
+
+## 10. 簇级 LLM 列的数据契约（events 表）
+
+本模块读写的 events 表簇级列（建表与 UPDATE SQL 归 EventExtractor/EventExtractorSQL，本模块是主要写方）：
+
+| 列 | 写入方（EventClusterAnalyzer.cpp:305-338） | 语义 | 读出方 |
+|---|---|---|---|
+| `llm_summary` | bind 1 | LLM 一句话摘要 | analyzed 端点、综合时间线路由 |
+| `llm_description` | bind 2 | LLM 详细描述 | 同上 |
+| `llm_keywords` | bind 3（逗号 join 的串） | 关键词列表（含逗号不可还原，§7） | 同上 |
+| `llm_analyzed_at` | bind 4（time_t 秒） | 分析时间戳；NULL=未分析（analyzed 端点的过滤键） | 同上 |
+| `llm_model_used` | bind 5 | 模型标识（ModelRouter 配置名） | 同上 |
+| `llm_is_relevant` | bind 6（0/1） | LLM 相关性判断 | 证据列表权重 |
+
+UPDATE 语义（`UPDATE_EVENT_CLUSTER_LLM_ANALYSIS`，:305-323）：SET 六列，WHERE 三簇键（bind 7-9：timeWindow/eventType/parentDirectory）——**簇键即主键**，一次更新簇内全部事件行；`sqlite3_changes()==0` 判失败（:335-338）。重分析（reanalyze 端点）就是同一条 UPDATE 再跑一遍，旧值被无条件覆盖，无版本概念。
+
+## 11. 配置影响表（EventClusterAnalyzer 视角）
+
+| 配置 | 默认 | 消费点 | 影响 |
+|---|---|---|---|
+| `LLM_MAX_EVENT_CLUSTERS` | 0（不限） | TaskManagerAnalysis.cpp:416 → smart 的 maxClusters | >0 时 smart 选择预算；full 不受它限制 |
+| `LLM_TEXT_BASE_URL/MODEL/MAX_TOKENS/TEMPERATURE` | 见 Environment.md | ModelRouter 文本模型配置（:18-40） | 每簇 LLM 调用的模型行为 |
+| `LLM_TIMEOUT_SECONDS` | 120 | LLMClient 层 | 单簇最长等待；batch-analyze 总时长 ≈ 簇数 × 此值 |
+| `LLM_MAX_RETRIES` | 3 | LLMClient 层 | 实为 4 次尝试（首试+3 重试），4xx 也重试 |
+| `llm_mode`（任务字段） | "smart" | TaskManagerAnalysis.cpp:398 分支 | full→analyzeEventClusters；smart→analyzeSmartEventClusters |
+| （无时间窗配置） | 60 秒硬编码 | :357、:443-451 两处 `/60` | 不可配；与前端 bucket_seconds 默认值对齐是隐式契约 |
+
+## 12. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 | 说明 |
+|---|---|---|---|
+| 被调 | TaskManagerAnalysis.cpp:398-434 | 流水线 LLM_ANALYSIS 尾部 | full/smart 两入口 + 进度回调（取消） |
+| 被调 | EventClusterRoutes batch-analyze/reanalyze | 同步调用 | handler 内临时构造实例（非单例） |
+| 不再被调 | EventClusterRoutes analyze | 410 桩 | 已迁 Python `/api/llm/analyze-event-cluster` |
+| 依赖 | llm::ModelRouter（shared_ptr 成员） | initialize() 惰性建 | 与 LLMAnalysisService 共享配置读法 |
+| 读写 | `_events.db` events 表 | 读事件/写 llm_* 列 | 只写六列，不碰事件本体 |
+| 被 Python 替代 | python_service `/api/llm/analyze-event-cluster` | 前端直调 | 单簇路径的去向；批量路径仍在 C++ |
+| 展示对齐 | SQLiteHelper::get_comprehensive_timeline | 同一 `/60` 聚类口径 | bucket_seconds≠60 时错位（§7 已记） |
+
+## 13. buildClusterSummary 与 prompt 的完整契约（二轮补全）
+
+每簇一次 LLM 调用的输入构造（EventClusterAnalyzer.cpp:401-430）：
+
+- **事件上限 20 条**：簇内事件多于 20 时只列前 20，尾部拼 "... and N more"——**按 ORDER BY timestamp ASC 的前 20**（最早事件优先），长尾事件对模型不可见；
+- **每行格式**：时间戳 + 类型 + 路径 + 大小 + 描述的五元组文本行；
+- **首尾时间戳**：`events.front()/back()` 的 timestamp（依赖 SQL 的 ASC 排序，§3.2 已记）；
+- **prompt 输出模板**：`{summary, description, keywords[], is_relevant}` 四键 JSON——与文件级 LLMAnalysisService 的 SUMMARY:/DESCRIPTION:/KEYWORDS: 文本协议**不同**，簇级是 JSON 协议且多一个 is_relevant 布尔；
+- **解析**：`json::parse(response.content)` 裸解析（:100-110 一带）——与平台工件服务同款严格策略，模型输出 JSON 外带任何字即整簇作废；**没有** EventClusterAnalyzer 自己的 find('[') 容错（那是 selectImportantEventClusters 选择调用的路径，走的是 find('[')/rfind(']') 截取——同文件两种解析策略并存，见 :239-249 与 :100-110）。
+
+## 14. analyzed 端点 SQL 的完整文本（供核对）
+
+EventClusterRoutes.cpp:245-265 的查询原文（去掉缩进）：
+
+```sql
+SELECT
+    (timestamp / 60) as time_window,
+    event_type,
+    CASE WHEN file_path LIKE '%/%' THEN RTRIM(file_path, REPLACE(file_path, '/', '')) ELSE '' END as parent_directory,
+    MIN(timestamp) as timestamp,
+    MAX(timestamp) as end_timestamp,
+    COUNT(*) as cluster_count,
+    file_path,
+    SUM(COALESCE(file_size, 0)) as file_size,
+    MAX(llm_summary) as llm_summary,
+    MAX(llm_description) as llm_description,
+    MAX(llm_keywords) as llm_keywords,
+    MAX(llm_analyzed_at) as llm_analyzed_at,
+    MAX(llm_model_used) as llm_model_used,
+    MAX(llm_is_relevant) as llm_is_relevant
+FROM events
+WHERE llm_analyzed_at IS NOT NULL
+GROUP BY time_window, event_type, parent_directory
+ORDER BY llm_analyzed_at DESC
+```
+
+与分析器侧的簇定义 SQL（EventClusterAnalyzer.cpp:443-451）**同口径**（/60 窗 + 同 dirname 表达式）但多了 WHERE llm_analyzed_at——"展示已分析簇"与"枚举全部簇"是同一 GROUP BY 的两个过滤版本。file_path 与 MAX(llm_*) 的组内取值：file_path 是任意行（SQLite 未指定时取最后扫描行），llm_* 因簇内同值 MAX 恒等。
+
+## 15. 验证 runbook
+
+```bash
+# 1. 触发批量分析（同步阻塞——注意会挂住 curl）
+curl -s -X POST :8080/api/forensics/timeline/clusters/batch-analyze \
+  -d '{"task_id":"<id>","clusters":[{"time_window":271828,"event_type":"CREATED","parent_directory":"/etc"}]}' | jq
+# 2. 查已分析簇
+curl -s ":8080/api/forensics/timeline/clusters/analyzed?task_id=<id>" | jq '.total_count'
+# 3. 核对落库（llm_* 六列）
+sqlite3 data/tasks/<id>/*_events.db "SELECT COUNT(*) FROM events WHERE llm_analyzed_at IS NOT NULL"
+# 4. 弃用端点
+curl -s -o /dev/null -w '%{http_code}\n' -X POST :8080/api/forensics/timeline/clusters/analyze   # 410
+# 5. 重分析覆盖验证：同一簇 reanalyze 两次，llm_analyzed_at 应更新
+```
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

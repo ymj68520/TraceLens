@@ -221,4 +221,135 @@ if (!fc.id.empty()) cases_[fc.id] = fc;
 - **验证**：`POST /api/cases` 建案 → `PUT /api/cases/{id}/tasks` 挂两个已完成任务 → `cat data/cases.json` 检查 task_analysis_states 序列化 → 重启服务确认案件仍在。
 - **扩展**：给案件加字段时同步改 save_cases_internal（CaseManager.cpp:100-145）与 load_cases（:147-189），load 用 value() 容错；若要实现"案件完成度 = 已分析任务占比"之类派生指标，建议加只读方法由路由层计算，不要把派生值落盘。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 端点契约全表（二轮补全）
+
+CaseCRUDRoutes 注册的 6 个端点（CaseCRUDRoutes.cpp:13-39）逐个列出请求/响应字段。**关键背景**：前端 web/src 里没有任何对 `/api/cases`（C++ 侧）的直接调用——前端案件 CRUD 全部走 Python 的 `/api/llm/cases*`（caseGroupService）；C++ 这组端点的**实际调用方是 Python 服务**（multi_analysis.py:109/127/137/150/172/270 经 `cpp_backend_url` 回环调用），Python 再把它包装成自己的案件 API。这条"前端→Python→C++"的双层结构是案件域最重要的调用链事实。
+
+| 端点 | 方法 | 请求字段（缺省） | 成功响应 | 失败响应 | 源码 |
+|---|---|---|---|---|---|
+| `/api/cases` | GET | 无 | 200 `{cases:[case...], total:N}`（恒 200，空列表也是） | 无失败路径 | :44-54 |
+| `/api/cases` | POST | `name`（默认 "Unnamed Case"）、`description`（""）、`task_ids[]`（[]，非数组忽略） | 201 case JSON | 400 `{"error":...}`（JSON 解析失败） | :56-77 |
+| `/api/cases/{id}` | GET | 路径参数 | 200 case JSON | 404 `{"error":"Case not found","case_id":...}` | :79-92 |
+| `/api/cases/{id}/tasks` | PUT | `task_ids[]`（必填数组） | 200 case JSON（追加后的完整案件） | 400（缺 task_ids 或 JSON 坏） | :94-114 |
+| `/api/cases/{id}` | DELETE | 无 | 200 `{"success":true,"message":"Case deleted"}` | 404 | :116-129 |
+| `/api/cases/{id}/status` | PUT | `status`（可选，"open"/"analysing"/"completed"/"failed"）、`cross_analysis_job_id`（可选） | 200 case JSON（**案件不存在时也是 200 空对象**，§4 已记） | 400（JSON 坏） | :131-154 |
+
+`case_to_json`（CaseCRUDRoutes.cpp:158-173）输出的 8 个字段：`id`、`name`、`description`、`task_ids[]`、`status`（小写串）、`cross_analysis_job_id`、`created_at`、`updated_at`（毫秒 epoch）。
+
+**契约缺口（新发现）**：`case_to_json` **不输出增量分析三字段**（case_db_path / total_files_analyzed / task_analysis_states）——它们只在 cases.json 落盘格式里存在（CaseManager.cpp:133-135），REST 层完全不可见。因此 Python 侧 multi_analysis.py:180-209 要预热 task_analysis_states 时，只能自己写（经 `_pipelines.py:546` 的 POST /api/cases 重建或直连路径），读不到 C++ 已存的状态——增量字段事实上是"只写不读的黑洞"。
+
+## 10. 新走读分支：三个边界路径
+
+### 10.1 PUT status 的"未知状态串重置为 open"缺陷
+
+```cpp
+// CaseCRUDRoutes.cpp:136-143
+if (body.contains("status")) {
+    std::string s = body["status"];
+    CaseStatus cs = CaseStatus::OPEN;
+    if (s == "analysing") cs = CaseStatus::ANALYSING;
+    else if (s == "completed") cs = CaseStatus::COMPLETED;
+    else if (s == "failed") cs = CaseStatus::FAILED;
+    case_manager_.update_status(case_id, cs);
+}
+```
+
+状态串没有白名单拒绝分支：传 `"COMPLETED"`（大写）、`"done"`、拼写错误等任何未识别值，`cs` 保持初始的 OPEN 并**照常落盘**——一个 COMPLETED 案件会被静默重置回 open。与 CaseManager::status_from_string（CaseManager.cpp:203-208）的"未知归 OPEN"行为一致（加载侧同款语义），两个方向都把坏输入当 open。调用方（multi_analysis.py:270/294/303 只发小写合法值）目前没踩坑，但任何新调用方传大写都会触发。
+
+### 10.2 PUT tasks 的逐条加锁与部分失败语义
+
+```cpp
+// CaseCRUDRoutes.cpp:104-108
+for (const auto& tid : body["task_ids"]) {
+    case_manager_.add_task(case_id, tid.get<std::string>());
+}
+res.write(case_to_json(case_manager_.get_case(case_id)).dump());
+```
+
+N 个 task_id = N 次"拿锁-查重-可能落盘"。两个后果：① 每个新增 task_id 触发一次全量 cases.json 重写（add_task 内部 save，CaseManager.cpp:44）——挂 10 个任务写 10 次盘，O(N×全量)；② 数组中途某元素类型不对（如传了数字）抛 type_error，**前面已加入的保留、后面的丢弃**，catch 返回 400 但部分写入已生效——不是原子操作。
+
+### 10.3 案件不存在时 PUT tasks 的"空成功"
+
+`add_task` 对不存在案件返回 false 且不写（CaseManager.cpp:38），但 handle_add_tasks **不检查返回值**，循环走完后照样 `get_case(空) → case_to_json(空对象)` 返回 200。响应体是 `{"id":"","name":"",...,"task_ids":[]}` 的全默认对象——前端如果只看 200 不看 id 是否为空，会把它当合法案件渲染。与 §4 记录的 PUT status 空成功同源（get_case 的空对象哨兵没有被 handler 消费）。
+
+## 11. 并发与持久化细节补充
+
+- **锁粒度**：单一 `mtx_` 保护 `cases_`（CaseManager.h），所有公开方法独立加锁——不存在跨方法事务。update_status 与 set_cross_analysis_job 分两次调用时（PUT status 的双职责），两个写之间有窗口，另一线程的读会看到"新状态+旧 job id"的中间态。当前调用方（Python 串行回调）无并发，风险休眠。
+- **锁内 I/O**：save_cases_internal 在 mtx_ 内 open/dump/write（CaseManager.cpp:138-141），与 TaskManager 同款权衡；案件数量通常个位数到十位数，dump(2) 的全量序列化在 KB 级，可接受。
+- **无删除防护**：delete_case 与并发 add_task 之间无版本号/CAS——极端时序下 add 可能复活已删案件（erase 后 add 的 count 检查失败返回 false，不会复活；但"add 拿锁前 erase、add 后写盘"的顺序在单锁下实际安全，此风险不存在）。真正无防护的是**悬空引用**（§7 已记）。
+- **cases.json 无备份**：写坏即全损（load 的 catch 只打日志，:186-188）；`create_directories`（:139）保证 data/ 存在，但不建临时文件。对比 tasks.json 有相同问题，两个文件都建议加 tmp+rename 原子化。
+
+## 12. 配置影响表（CaseManager 视角）
+
+| 配置 | 默认 | 作用 |
+|---|---|---|
+| `DATA_DIR` | `data` | cases.json 位于 `<DATA_DIR>/cases.json`（CaseManager.cpp:91-93，经 PathManager::getDataDir()） |
+| `CPP_BACKEND_URL` | `http://localhost:8080` | **Python 侧**回环调用本模块端点的基址（multi_analysis.py 各处）——Python 配置漂移时案件读写整体失效 |
+| `PYTHON_HTTP_PORT` / `PYTHON_SERVICE_URL` | 8090 | 反方向：前端→Python 的案件 API 与本模块无关，但排障时要区分两套 `/cases` |
+| 无专有 env | — | CaseManager 不读任何环境变量；案件状态机阈值、清理策略均不存在（没有 cleanup_completed_tasks 的对应物） |
+
+## 13. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 | 说明 |
+|---|---|---|---|
+| 被调（REST） | multi_analysis.py | 8 处回环调用（:109/127/137/150/172/270/294/303/380） | 建案/列表/详情/删除/挂任务/状态与 job 回写 |
+| 被调（REST） | case_aggregation_manager.py | 3 处（:162/226/287） | 聚合管理器挂任务/删案件 |
+| 被调（REST） | _pipelines.py:546 | POST /api/cases | 分析管线建案 |
+| 不被前端直调 | web/src/services | 无 `/api/cases` 引用 | 前端案件 UI 全在 Python `/api/llm/cases*` 上 |
+| 持久化 | data/cases.json | save/load（:100-189） | 顶层数组，毫秒 epoch |
+| 引用（无校验） | TaskManager 的 task_id | 仅字符串 | 悬空引用风险（§7） |
+| 同构 | TaskManager | 镜像设计（单例+map+全量 JSON） | 对照参考 |
+
+## 14. cases.json 磁盘契约全表（逐键）
+
+save_cases_internal（CaseManager.cpp:100-145）写出的顶层数组元素键集：
+
+| 键 | 类型 | from_json 行为 | 说明 |
+|---|---|---|---|
+| id | string | value 默认 "" | 空则整条丢弃（:184） |
+| name | string | value 默认 "" | |
+| description | string | value 默认 "" | |
+| task_ids | array of string | value 默认 [] | 悬空引用不清洗（§5.3） |
+| status | 小写串 | 未知值归 OPEN（:203-208） | open/analysing/completed/failed |
+| cross_analysis_job_id | string | value 默认 "" | Python 作业号 |
+| created_at / updated_at | **毫秒** epoch int64 | value 默认 0 | 注意与 tasks.json 的**秒**级不同 |
+| case_db_path | string | value 默认 "" | 增量字段：C++ 不写（§9 缺口） |
+| total_files_analyzed | int | value 默认 0 | 同上 |
+| task_analysis_states | object: task_id→小写串 | 未知串归 pending（:170-174） | 同上 |
+
+dump(2) 缩进、ofstream 直接覆写（无原子化）——与 tasks.json（dump(4)、秒级时间戳）在缩进与时间单位上都不一致，脚本同时处理两份文件时逐项确认。
+
+## 15. Python 侧 9 个调用点的请求体形态（multi_analysis.py 实测口径）
+
+从 multi_analysis.py 各调用点提取的 C++ 端点收到的真实 body（Python 是唯一线上客户端，这些就是事实契约）：
+
+| Python 位置 | C++ 端点 | body | 时机 |
+|---|---|---|---|
+| :109 | POST /api/cases | CreateCaseRequest.model_dump()：`{name, description, task_ids}` | 用户建案 |
+| :127 | GET /api/cases | — | 列案 |
+| :137 | GET /api/cases/{id} | — | 详情 |
+| :150 | DELETE /api/cases/{id} | — | 删案 |
+| :172 | PUT /api/cases/{id}/tasks | `{task_ids: [...]}` | 挂任务/associate 预热 |
+| :270 | PUT /api/cases/{id}/status | `{status:"analysing", cross_analysis_job_id}` | 跨镜像分析启动 |
+| :294 | PUT /api/cases/{id}/status | `{status:"completed", ...}` | 分析成功回写 |
+| :303 | PUT /api/cases/{id}/status | `{status:"failed", ...}` | 失败回写 |
+| :380 | PUT /api/cases/{id}/tasks | 同 :172 | 二次挂任务 |
+
+每次调用独立 `httpx.AsyncClient(timeout=10)`——C++ 锁内落盘超 10s 时 Python 报超时但 C++ 已写成功（§11 的语义分叉点）。
+
+## 16. 验证 runbook
+
+```bash
+# 1. 直接建案（绕过 Python 验证 C++ 层）
+curl -s -X POST :8080/api/cases -d '{"name":"案-001","task_ids":["<已完成任务id>"]}' | jq .
+# 2. 查落盘
+cat data/cases.json | jq '.[0]'
+# 3. 状态回写（注意小写）
+curl -s -X PUT :8080/api/cases/<id>/status -d '{"status":"analysing","cross_analysis_job_id":"job-42"}' | jq .
+# 4. 拼错状态名观察"重置为 open"缺陷（§10.1）
+curl -s -X PUT :8080/api/cases/<id>/status -d '{"status":"COMPLETED"}' | jq .status   # "open"
+# 5. 重启验证持久化
+# 6. 悬空引用：删除任务后 GET 案件，task_ids 仍含该 id
+```
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

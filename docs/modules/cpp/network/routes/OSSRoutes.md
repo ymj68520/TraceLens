@@ -152,4 +152,61 @@ crow::response OSSAnalysisRoutes::handle_ai_filter_start(const crow::request& re
 - **复活**：实现 OSSAnalysisRoutes 的真实作业（run_analysis_job 需改为持久的作业表 + 真实分析，产出写入任务 `_oss.db`，status 端点读真状态；子路由对象改为 HTTPServer 成员持有，修掉 §4.1 的悬空 `this`）→ 在 HTTPserver.cpp:63-75 初始化列表加 `oss_routes_(app_)` 一行；Swagger 注册已就绪。
 - **了断**：删除 OSSRoutes/OSSAnalysisRoutes/OSSQueryRoutes/OSSStatsRoutes/OSSRoutes_new 及前端 /oss 页入口，避免后来者反复踩坑；server/cloud 场景继续走 LinuxFilesAnalyzer 路径（本仓库已有文档口径：分析器在流水线中活跃）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 端点全表（12 个，假设已注册的完整契约，二轮补全）
+
+所有端点的请求/响应契约（从 handler 源码提取；**当前全部 404，此表是"复活时"或"对照前端"用的规格**）：
+
+| 端点 | 方法 | 请求 | 响应（占位实现下） | 源码 |
+|---|---|---|---|---|
+| oss/analyze | POST | body：`task_id`（必填） | 202 `{success:true, message:"OSS analysis job started", job_id:"oss-XXXXXXXX", status:"pending"}`；400 task_id 缺失/JSON 坏 | OSSAnalysisRoutes.cpp:118-171 |
+| oss/analyze/status | GET | query：`job_id`（必填） | 200 `{job_id, task_id, status:"completed", progress:100}`（**硬编码**）；404 Job not found；400 | :173-220 |
+| oss/ai/filter | POST | （不读 body） | **恒 503** `{success:false, error:"Python LLM service not available", message:...Tasks 8-11...}` | :231-249 |
+| oss/ai/analyze | POST | （不读 body） | 恒 503（同上文案） | :251-269 |
+| oss/ai/status | GET | query：`job_id`（必填） | 恒 503 | :296-319 |
+| oss/download | POST | body 设计含 bucket/key 等 | **恒 501** "not yet implemented" | :271-294 |
+| oss/objects | GET | query：task_id（必填）、bucket、prefix、limit（默认 100，stoi 无钳制） | 200 `{task_id, bucket, prefix, objects:[], count:0, limit}`（空数组占位） | OSSQueryRoutes.cpp:28-65 |
+| oss/logs | GET | query：task_id（必填）、start_time、end_time、operation | 200 `{task_id, start_time, end_time, operation, logs:[], count:0}` | :67-105 |
+| oss/summary | GET | query：task_id（必填） | 200 `{task_id, total_objects:0, total_size:0, total_buckets:0, analyzed_at:<now ms>}`（全零） | OSSStatsRoutes.cpp:60-89 |
+| oss/stats/storage-class | GET | task_id 必填 | 200 `stats:[]` 空数组 | :91+ |
+| oss/stats/extensions | GET | task_id 必填 | 同上 | |
+| oss/buckets | GET | task_id 必填 | 同上 | |
+
+前端 ossService（ossService.js）9 个方法与上表一一对应（analyze/analyze/status/objects/logs/summary/stats×2/buckets）——**全部 404**；Services.md 所说"startAnalysis/getAnalysisStatus 可用"仅指前端函数无语法错误、轮询逻辑本身能跑，网络层照样 404。pollAnalysisStatus（:73 附近）在 FAILED 分支读 `status.error_message`——而占位 status 响应根本没有这个字段（只有 error），复活时的字段命名要对齐。
+
+## 10. 新走读分支：占位实现的内存语义（假设已注册）
+
+### 10.1 job_ids_ map 的生命周期缺陷（悬空 this 的补充细节）
+
+analyze 的 202 响应真实可信地入表（job_ids_[job_id]=task_id，:138-142），后台线程 detach 跑 run_analysis_job。但如 §4.1 已记：三个子路由是聚合器构造函数的**栈对象**，构造结束即析构——`job_ids_`、`jobs_mutex_` 随之销毁。时间线上：析构发生在 HTTPServer 构造期（进程启动时），而 detach 的线程还要睡 100ms 再锁 mutex——**锁一个已析构的 mutex 是 UB**，即使进程没立刻崩，后续请求读 job_ids_ 也是悬空读。这比"拿不到真数据"更严重：是启动期的数据竞争，修复必须先把子路由改成成员（§8 复活步骤第一条）。
+
+### 10.2 analyze/status 的"查无此 job"分支是唯一诚实的路径
+
+handle_analyze_status（:173-220）是全组唯一有真实分支逻辑的 handler：job_id 缺失 400 → map 查不到 404 → 查到则硬编码 completed/100。也就是说若真注册，重启后所有 job 查询都会 404（map 是内存态），只有当次会话内提交的 job 能拿到假 completed——排障时"OSS 分析永远秒完成"是占位实现的直接证据。
+
+### 10.3 查询/统计组的参数回显模式
+
+objects/logs/summary 等查询端点把请求参数原样回显进响应（task_id/bucket/prefix/start_time...）再配空数组/零值——**响应形状是完整设计好的**（字段名、嵌套结构都定稿了），只差数据源。复活这些端点时不需要重新设计契约，把占位 JSON 换成从 `_oss.db` 查询的结果即可；前端 OSS.jsx 也已经按这套形状渲染。
+
+## 11. 配置影响表（OSSRoutes 视角）
+
+| 配置 | 默认 | 关系 | 说明 |
+|---|---|---|---|
+| `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` / `OSS_ENDPOINT` / `OSS_REGION` | 空/空/空/cn-hangzhou | **仅 Python 侧**（config.py:190-193） | C++ 这组路由不读任何 OSS 凭证——download 端点 501 的原因之一就是没有 OSSClient 接线；libs/aliyun-oss-cpp-sdk 已在仓库但未被路由引用 |
+| `CORS_ALLOW_ORIGIN` | `*` | RouteHelpers | 各 handler 都调 add_cors_headers |
+| （无 OSS 专有 C++ env） | — | — | C++ 侧 OSS 配置面为零 |
+
+## 12. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 | 说明 |
+|---|---|---|---|
+| 无被调（404） | 前端 ossService 9 方法 | 全部 404 | Services.md 的 OSS 条目 |
+| 无被调 | Swagger 注册 | **12 条注册永不执行**（子路由构造函数里的 RegisterEndpoint 随栈对象一起消失） | openapi.json 实际不含 OSS 路径——§5 的"可能出现"要修正：**一定不出现**，因为注册代码从未运行 |
+| 设计依赖 | python oss_analysis.py | TODO 注释点名 | 未实现 |
+| 设计依赖 | aliyun-oss-cpp-sdk | libs/ 已存在 | 未接线 |
+| 平行实现 | LinuxFilesAnalyzer::analyzeServerCloudArtifacts | `_oss.db` 真实生产者 | 与本组无代码关联 |
+| 遗留 | OSSRoutes_new.cpp/h | 14 行 | 另一层残骸 |
+| 遗留 | OSSRoutes::generate_job_id | oss- 前缀 | 聚合器里这份从未被调（子类有自己的副本） |
+
+**修正一条既有表述**：§5 说 openapi.json 里"可能出现这些路径"——按 §12 的推理链，子路由构造函数从未运行，RegisterEndpoint 从未执行，**openapi.json 实际不含任何 /api/forensics/oss/* 路径**（可用 `curl /api/docs/openapi.json | jq '.paths | keys | map(select(startswith("/api/forensics/oss")))'` 验证为空数组）。
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

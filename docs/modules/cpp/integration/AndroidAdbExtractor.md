@@ -278,4 +278,90 @@ if ((mode & 0xF000) == 0x4000) {          // S_IFDIR：建目录 + LIST + 递归
 4. 多设备枚举与用户选择、提取哈希校验（证据完整性）、进度回调对接 ThreadPool；
 5. 分区流式提取改用 `executeRaw` + 定长循环读并校验字节数，替代超时即返回的 `receiveData`。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 目录清单与方法全表（二轮补全）
+
+### 8.1 文件清单（共 1665 行，全部不在构建中）
+
+| 文件 | 行数 | 角色 |
+|---|---|---|
+| adbClient.h | 192 | ADBClient 声明（**旧代际成员名**：sock/current_serial/in_sync_mode） |
+| ADBClient_Init.cpp | 120 | 连接/收发原语（**新代际成员名**：socket_fd_/current_device_——与头失配） |
+| ADBClient_Devices.cpp | 60 | 设备枚举与选择 |
+| ADBClient_Shell.cpp | 138 | shell/sync/root/raw/降级五组方法 |
+| adbExtractor.h | 83 | AndroidDirectoryExtractor 声明 |
+| adbExtractor.cpp | 630 | 提取流程主体（目录递归/分区阶梯/root） |
+| AndroidAdbExtractorDataTypes.h | 25 | PartitionInfo |
+| adbTest.cpp | 318 | 独立试验程序（SAFE/DANGEROUS 名单在此） |
+| test_console_encoding.cpp | 47 | Windows 控制台编码试验 |
+| test_encoding_fix.bat | 52 | 同上的批处理 |
+
+### 8.2 ADBClient 公开方法全表（adbClient.h:88-191）
+
+| 方法 | 签名要点 | 通道 | 失败行为 |
+|---|---|---|---|
+| connect / disconnect | — | smart-socket | bool |
+| getDevices | → vector&lt;serial&gt; | HOST:devices | 空向量（只收 "device" 状态行） |
+| selectDevice(serial) | 两条命令序列 | HOST:transport + DEV | bool；成功后记 current_device_ |
+| executeShell(cmd) | → 文本输出（8KB 上限、\0 截断） | SHELL: | 空串（未选设备也空串） |
+| executeShellAsRoot(cmd) | root 前缀执行 | SHELL: | 同上（h:181） |
+| executeRaw(cmd, vector&lt;char&gt;&) | 无 PTY 二进制 | SHELL: | bool（h:184） |
+| syncConnect | 进入 SYNC 子协议 | SYNC: | bool |
+| statFile(path, mode&, size&, time&) | — | SYNC STAT | bool（失败触发 shell 降级） |
+| listDirectory(path) | → vector&lt;SyncEntry&gt; | SYNC LIST | 空向量 |
+| receiveFile(remote, local, total=0) | total 仅用于进度 | SYNC RECV | bool |
+| checkRootAccess | `id` 输出含 uid=0 判定 | SHELL: | bool |
+| acquireRoot | `adb root`（重启 adbd） | SHELL: | bool；成功后旧连接失效 |
+| statFileShell / listDirectoryShell / pullFileShell | 三件套降级 | SHELL:（ls -l/adb pull 解析） | 各自 bool/空 |
+
+### 8.3 AndroidDirectoryExtractor 公开方法全表（adbExtractor.h:62-86）
+
+| 方法 | 语义 | 私有支撑 |
+|---|---|---|
+| AndroidDirectoryExtractor(output="./extracted_data") | 构造建根目录 | — |
+| initialize(auto_root=true) | §3.4 的连接/root/sync 序列 | — |
+| extractDirectory(device_path) | 逻辑提取入口 | extractFileRecursive（§4.2） |
+| extractMultiple(paths) | 循环 extractDirectory | — |
+| extractPartition(name, output_filename="") | 物理提取入口（阶梯分派 :531-540） | extractPartitionDirectly/Streaming/UsingDD/UsingShell/Traditional + pullPartitionImage |
+| extractMultiplePartitions(names) | 循环 | — |
+| listAvailablePartitions() | 打印分区清单 | getPartitionList（by-name 解析 :406） |
+| getPartitionList() | → vector&lt;PartitionInfo&gt; | 同上 |
+| hasRootAccess() | 内联读 has_root | — |
+
+私有区还有 testPartitionReadAccess、createDirectory 等支撑（h:27-60）。
+
+## 9. SYNC 子协议的数据契约（设计规格）
+
+sync 通道进入后（`SYNC:` + OKAY），按 ADB 规范应是"4 字符命令 + 载荷"的请求-响应流。本实现的三个操作契约（以 adbClient.h:126-162 的声明与 ADBClient_Shell.cpp 的实现意图归纳）：
+
+| 操作 | 请求形态 | 响应形态 | 提取字段 |
+|---|---|---|---|
+| STAT | `STAT` + 路径长度 + 路径 | mode/size/time 三个 uint32 | SyncEntry 同款三元组 |
+| LIST | `DENT` 重复请求或 `LIST` + 路径 | 逐项 DENT（name/mode/size/time），以全零 mode 结束 | SyncEntry 向量 |
+| RECV | `RECV` + 路径 | `DATA` 块（4 字节长度 + 数据）循环，`DONE` 结束；`FAIL` 报错 | 写本地文件 |
+
+SyncEntry.mode 是设备侧 Linux 原生 st_mode——`mode & 0xF000` 判文件类型（0x4000=目录、0x8000=常规文件），低 12 位是权限位。**注意**：这套契约按 ADB 规范归纳，实现文件因长度前缀 bug（§3.2）从未对真实服务器验证过——复活时以规范为准重写，不要照抄现有字节序处理。
+
+## 10. 配置影响表（全集）
+
+| 配置 | 默认 | 状态 |
+|---|---|---|
+| adb 服务器地址 | 127.0.0.1（构造参数 h，adbClient.h:89） | 无 env；硬编码默认 |
+| adb 服务器端口 | 5037（构造参数 p） | 无 env |
+| 输出目录 | ./extracted_data（构造参数 output） | 无 env；**相对 CWD**——与 web/dist 同款工作目录耦合家族 |
+| auto_root | true（initialize 参数） | 无 env |
+| （无任何 ADB 相关 env） | — | 整个模块零环境变量——复活时建议补 ADB_SERVER_HOST/PORT/OUTPUT_DIR 三项 |
+
+对照：Environment.md 的 MCP/TRACELENS_* 系列都没有 ADB 条目，与"零 env"结论一致。
+
+## 11. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 | 状态 |
+|---|---|---|---|
+| 无被调 | 全仓库 | 零引用（§现状声明） | 死代码 |
+| 外部依赖（设计） | 本机 adb 服务器 TCP:5037 | smart-socket + sync | 协议实现有 bug |
+| 设计衔接 | AndroidAnalyzer --android-source dir/zip | 产物消费方 | 未衔接（§5） |
+| 设计衔接 | IFileExtractor（LogicalDir/ZipArchive/MiuiBackup） | 头注释点名的意图消费方 | 未衔接 |
+| 平行现实 | 外部工具/手工 adb pull → dir/zip | 实际采集路径 | 替代了本模块 |
+| 无关 | LLM 链路（FileAnalyzer 等） | 产物可走分析链（间接） | — |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

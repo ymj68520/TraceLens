@@ -233,4 +233,58 @@ switch (severity) {
 - **验证**：跑一个 linux 场景任务后 `forensic_analyzer <镜像> --linux-analyze --report --db-dir /tmp/r`，`grep '^## ' /tmp/r/<base>_report.md` 应列出 8 个章节；对同一库重跑应产出逐字节一致的报告（无 AI、无随机性——严格说除"Generated At"一行外逐字节一致）。
 - **扩展 Windows/Android 章节**：模式完全固定——加一个 `writeXxx(std::ofstream&)`，内部 open `_files.db` → tableExists 守卫 → SELECT → mdEscape 入表，然后在 writeMarkdown 的调用串（ReportGenerator.cpp:105-112）挂上。字段参考 WindowsAnalysisSQL / AndroidAnalysisSQL 的建表常量。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 章节契约全表（SQL/列/上限，二轮补全）
+
+九个章节的完整查询契约——每章自开连接、tableExists 守卫、mdEscape 全字段：
+
+| 章节 | 源表 | SELECT 列 | 排序/过滤 | 上限 | 源码 |
+|---|---|---|---|---|---|
+| Header | — | — | — | — | :120-135 |
+| Summary | sqlite_master GLOB 前缀枚举 | 表名 + COUNT(*) | 按 name | 无（每表一行） | :137-195 |
+| User Accounts | linux_users | username, uid, gid, shell, home_directory, is_locked, is_system_account | ORDER BY uid | 无 | :197-242 |
+| Shell History | linux_shell_history | 先 DISTINCT username，再逐用户 command, line_number | ORDER BY line_number | 无（**全量**，代码块不截断） | :244-303 |
+| Cron Jobs | linux_cron_jobs | （建表列全取） | — | — | :305+ |
+| Network Connections | linux_network_connections | — | — | — | :340+ |
+| Log Highlights | linux_log_entries | timestamp, hostname, process, pid, message, level, log_file | `level NOT IN ('INFO','DEBUG','')`（UPPER 容忍大小写）、ORDER BY unix_timestamp | 200 行；message 120 字符截断 | :401-455 |
+| Security Findings | linux_anomalies + linux_tampering_findings | 各自全列 | severity 降序 | — | :457-548 |
+| Timeline | events | events 全列 | ORDER BY timestamp | 100 行；路径 50 字符截尾 | :550-595 |
+
+**表格形态细节**：users 表的 Locked 列渲染成 "🔒 Yes"/"No"（:231-232）；shell history 用 ``` 代码块而非表格（命令含空格/引号时表格易碎），行号 >0 时前缀行号；摘要表空类别输出"—"占位（§3.3）。
+
+## 9. 新走读分支：shell history 的两段式查询（二轮）
+
+writeShellHistory（:244-303）是唯一做"分组嵌套输出"的章节：
+
+```cpp
+// ReportGenerator.cpp:253-265（第一段：枚举用户）
+"SELECT DISTINCT username FROM linux_shell_history ORDER BY username"
+// :275-277（第二段：逐用户取命令）
+"SELECT command, line_number FROM linux_shell_history WHERE username=? ORDER BY line_number"
+```
+
+每用户一个 `### 用户名 (N commands)` 小节 + 独立代码块。三个边界：用户集为空时整章缩为一行 "*No shell history found.*"（:267-271）；某用户命令为空（不可能出现，DISTINCT 已过滤）continue；**line_number ≤ 0 的行不印行号**（:293-296，非 bash 格式的历史可能无行号）。与 SQL 注入面：username 走 `?` 绑定（:279）——分组键也是用户可控数据，参数化纪律在此同样生效。
+
+## 10. 配置影响表（CLI 全集）
+
+| 配置 | 形态 | 默认 | 说明 |
+|---|---|---|---|
+| `--report` | CLI flag | 关 | CommandLineParser.cpp:230-233 |
+| `--report-path` | CLI 值 | `<镜像目录>/<stem>_report.md` | 附带置位 --report；相对路径按进程 CWD 解析 |
+| （无 env） | — | — | 模块不读 ConfigManager——构造仅两个路径串 |
+| 间接：`--linux-analyze` 等 | CLI flag | — | 决定 linux_* 表有没有数据（无则章节消失） |
+| 间接：时区 | 系统 TZ | 本地时区 | §3.4 的 localtime_r——同一库不同机器产出不同时间串；CI 比对报告时要固定 TZ env |
+
+## 11. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 |
+|---|---|---|
+| 被调 | AnalysisOrchestrator.cpp:380-391（Step 6） | 唯一调用方 |
+| 读 | `_files.db` 的 7 张 linux_* 表 + sqlite_master | 只读 |
+| 读 | `_events.db` events 表 | 只读 |
+| 间接上游 | LinuxFilesAnalyzer（表生产者） | 结构变更联动 |
+| 间接上游 | EventExtractor/EventCorrelationEngine | events 生产者 |
+| 入口 | CommandLineParser 两 flag | CLI-only |
+| 无关 | HTTPServer/TaskManager/Swagger/LLM 全家 | 零关联——网页报告走 Python intelligence report |
+| 无关 | ConfigManager | 不读任何 env |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

@@ -228,4 +228,123 @@ Swagger::instance().RegisterEndpoint(
 - **验证**：`curl -s localhost:8080/api/docs/openapi.json | jq '.paths | keys[]' | wc -l` 与 RouteReference.md 对比；抽查 `.paths."/api/search/fulltext".get.parameters` 应含 q（required=true）。
 - **扩展**：① 支持 requestBody——Operation 加 `nlohmann::json request_body` 字段并在渲染处输出，POST 路由逐步补；② 统一路径风格——新代码一律注册 `{name}` 字面量（向 FilterRoutes 看齐），旧 `<string>` 注册逐步迁移；③ 校验工具——写个小脚本 grep `CROW_ROUTE(` 与注册表比对，把"漏注册"变成 CI 可见。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 10. 注册清单全表与覆盖率审计（二轮补全）
+
+对全部 routes/*.cpp 做逐文件 `RegisterEndpoint` 统计（每处调用一条），并与该文件实际注册的 `CROW_ROUTE` 数对照，得到下面的覆盖率矩阵。**这是"openapi.json 里能看到什么"的权威答案**：
+
+### 10.1 运行时真正生效的注册（44 条）
+
+| 路由文件 | RegisterEndpoint 条数 / 路由条数 | 已注册端点 | 未注册（可调用但文档缺席） |
+|---|---|---|---|
+| TimelineRoutes.cpp | 7 / 11 | comprehensive、distribution、by-type、by-time-range、by-file、full、statistics-by-period | details、file-activity、suspicious-patterns、user-activity |
+| TaskCRUDRoutes.cpp | 7 / 12 | GET/POST `/tasks`、GET `/tasks/{id}`、GET `/tasks/{id}/results`、DELETE `/api/tasks/{id}`、POST `/api/tasks/cleanup`、GET `/api/tasks/{id}/databases` | GET/POST `/api/tasks`、GET `/api/tasks/list`、GET `/api/tasks/{id}`（含 PUT）、GET `/api/tasks/{id}/results` |
+| TaskBatchRoutes.cpp | 3 / 3 | batch-create、batch-status、batch-cancel | 无 |
+| TaskMonitoringRoutes.cpp | 2 / 4 | GET `/api/tasks/statistics`、PUT `/api/tasks/{id}/priority` | **GET progress、GET audit-log**（前端最核心的轮询端点不在文档里） |
+| AndroidForensicsRoutes.cpp | 7 / 14 | app-usage、miui-overview、miui-installed-apps、miui-db-inventory、llm-summary、miui-qqnt-overview、miui-wechat-overview | communication-summary、device-info、media-analysis、miui-qqnt-artifacts、miui-qqnt-records、miui-wechat-artifacts、miui-wechat-records |
+| FilterRoutes.cpp | 5 / 5 | profiles GET/POST、profiles/{name} GET/DELETE、apply POST | 无 |
+| EventClusterRoutes.cpp | 4 / 4 | clusters/{analyze,batch-analyze,reanalyze,analyzed} | 无 |
+| ExportRoutes.cpp | 3 / 4 | export/events/{json,csv,visualization} | **export/toon** |
+| SearchRoutes.cpp | 2 / 2 | fulltext、index | 无 |
+| SystemEventRoutes.cpp | 2 / 2 | system/{events,summary} | 无 |
+| FileAnalysisRoutes.cpp | 1 / 5 | files/largest | recent、suspicious、duplicates、extensions-analysis |
+| FileExtractionRoutes.cpp | 1 / 3 | POST extract | GET extract/{job_id}、GET extract/status（前端轮询靠它） |
+
+### 10.2 完全零注册的路由文件（活路由、零文档）
+
+以下 8 个文件的端点**全部不在 openapi.json 中**，但运行时可调用：
+
+| 路由文件 | 路由条数 | 缺席的端点族 |
+|---|---|---|
+| CaseCRUDRoutes.cpp | 6 | `/api/cases` 全族（前端 Cases 页在用） |
+| DLLAnalysisRoutes.cpp | 7 | `/api/forensics/dlls` 全族 |
+| MemoryForensicsRoutes.cpp | 5 | `/api/forensics/memory` 全族（Memory 页） |
+| StatisticsRoutes.cpp | 4 | `/api/forensics/statistics` 全族（Statistics 页） |
+| SceneQueryRoutes.cpp | 2 | `/api/tasks/{id}/{scene-stats,scene-artifacts}` |
+| SystemHealthRoutes.cpp | 5 | `/api/system/health`、`/api/health*` 全族（**连健康检查都没进文档**） |
+| SystemInfoRoutes.cpp | 5 | `/api/system/info`、`databases`、`database-schema/{name}`、`/api/export/{task_id}`、`logs` |
+| SystemDocsRoutes.cpp | 4 | `/api/docs` 全族（文档端点自身不自描述） |
+
+### 10.3 编写了注册但永不执行的 12 条（OSS 家族）
+
+OSSAnalysisRoutes（6）、OSSStatsRoutes（4）、OSSQueryRoutes（2）各自写了完整的 RegisterEndpoint 调用，但它们唯一的构造入口 `OSSRoutes` 从未被 HTTPServer 实例化（见 HTTPServer.md §8.4）——**这 12 条注册与 404 端点一起沉睡**。推论：openapi.json 的实际 path 数是 44 条 Operation 对应的路径去重数，用 `jq '.paths | length'` 核对应以 §10.1 为基线，而不是全仓 route 总数（约 110）。
+
+### 10.4 审计结论
+
+"注册靠自觉"（§8）的实际缺口比想象大：44 生效 / 约 110 运行时端点 ≈ **40% 覆盖率**。前端高频依赖的 progress、extract/status、cases 全族、health 全族都不在文档里。把 §10.1/10.2 的清单变成补注册的工单即可机械地提升到 100%。
+
+## 11. 渲染产物的字段级契约（数据契约细节）
+
+`GetSwaggerJSON()` 的输出形状（以 `/api/search/fulltext` 为例，逐字段对应 Swagger.cpp:35-108 的渲染代码）：
+
+| openapi.json 路径 | 来源字段 | 代码位置 | 备注 |
+|---|---|---|---|
+| `openapi` | 字面量 `"3.0.0"` | Swagger.cpp:39 | 恒定 |
+| `info.title` | 字面量 `"ForensicsProject C++ Service"` | :41 | 与 SystemInfoRoutes 的服务名常量独立维护 |
+| `info.version` | 字面量 `"1.0.0"` | :43 | 与构建版本无联动 |
+| `paths.{p}.{m}.summary` | `Operation.summary` | :68 | 空串也会输出 |
+| `paths.{p}.{m}.description` | `Operation.description` | :69 | 同上 |
+| `paths.{p}.{m}.tags` | `Operation.tags`（vector→array） | :70 | 空时输出 `[]` |
+| `paths.{p}.{m}.parameters[].{name,in,description,required}` | Parameter 四元组 | :75-78 | `in` 无枚举校验，写错值原样透传 |
+| `paths.{p}.{m}.parameters[].schema.type` | `Parameter.type`（默认 "string"） | :79 | 无默认值/枚举支持 |
+| `paths.{p}.{m}.responses.{code}.description` | `Response.description` | :86 | code 经 `std::to_string` 变字符串键 |
+| `paths.{p}.{m}.responses.{code}.content` | `Response.schema` 非空时 | :87-93 | 仅 `application/json` 一种 media type |
+
+缺失键（对照 OpenAPI 3.0 规范）：`servers`、`components`、`securitySchemes`、requestBody（模型层就没有）、`operationId`、`deprecated`。用 openapi-generator 之类的工具生成客户端时，这些缺失会导致生成的客户端没有鉴权与 body 类型。
+
+## 12. 并发细节补充
+
+- `mutex_` 是 `mutable std::mutex`（Swagger.h:73），`GetSwaggerJSON` 是 const 成员也要锁——读路径 `doc["paths"][openapi_path] = path_item`（Swagger.cpp:104）在锁内完成整棵 JSON 构造，44 条 Operation 的渲染是微秒级，锁不构成瓶颈。
+- 写入全部发生在 HTTPServer 构造期（主线程、聚合器构造函数里），运行期唯一读者是 `/api/docs/openapi.json` 的 Crow worker 线程——**先写后读、无交错**，锁实际是防御性的。
+- Meyers 单例（Swagger.cpp:6-9）保证跨翻译单元唯一；构造发生在第一个路由类构造时（TaskRoutes 最先），析构在 main 返回后、静态销毁阶段——与 Crow app 的生命周期无交叉。
+
+## 13. tags 分布与参数统计（44 条注册的画像）
+
+对 §10.1 的 44 条生效注册做标签统计（grep 各 RegisterEndpoint 的 tags 实参）：
+
+| tag | 端点数 | 说明 |
+|---|---|---|
+| Tasks | 12 | CRUD 7 + batch 3 + statistics/priority 2 |
+| Forensics, Timeline | 7 | 全部 TimelineRoutes |
+| Forensics, Timeline, AI | 4 | EventCluster 四件套 |
+| Forensics, Android | 7 | AndroidForensics 的已注册半 |
+| Forensics, Export | 3 | events/{json,csv,visualization} |
+| Filter | 5 | FilterRoutes 全量（唯一 100% 覆盖的路由组） |
+| Search | 2 | 全量 |
+| Forensics, OSS | 6+4+2=12 | **永不生效**（§10.3） |
+
+高频参数（注册表里声明最多的）：`task_id`（query，required，27 次）、`limit`（5 次，integer）、`id`（path，5 次）、`start_time`（2 次，注意描述串不一致——一个写 "ISO" 一个没写，注册质量参差的缩影）。
+
+**openapi.json 验证命令集**（可直接粘贴）：
+
+```bash
+curl -s localhost:8080/api/docs/openapi.json | jq '.openapi'                      # "3.0.0"
+curl -s localhost:8080/api/docs/openapi.json | jq '.paths | keys | length'        # 生效路径数（按 §10.1 去重口径核对）
+curl -s localhost:8080/api/docs/openapi.json | jq '[.paths | keys[] | select(startswith("/api/forensics/oss"))] | length'   # 0 —— OSS 永不出现（§12）
+curl -s localhost:8080/api/docs/openapi.json | jq '.paths."/api/search/fulltext".get.parameters'
+curl -s localhost:8080/api/docs/openapi.json | jq '[.paths[][].tags[]] | group_by(.) | map({tag: .[0], n: length}) | sort_by(-.n)'
+```
+
+## 14. 渲染输出的形状陷阱（消费方注意）
+
+用 openapi.json 做代码生成/校验时四个已知陷阱（均可从 §11 的字段表推出，这里给结论）：
+
+1. **路径参数名无意义**：`/api/tasks/{param}` 的参数名叫 {param}，与 parameters 里声明的 name（id/task_id）不一致——生成的客户端函数签名参数名会是 param；
+2. **POST 无 requestBody**：所有 POST 端点在文档里都是"无 body 定义"——生成器会产出无参或可选 body 的客户端，调用方要自己读源码确认字段（本文档各 routes 篇的契约表就是为此存在）；
+3. **responses 无 schema**：除了少数带 schema 的注册，绝大多数响应是纯 description——无法做响应类型校验；
+4. **同名路径双注册覆盖**：`path_item[method_lower] = operation` 是赋值——若同一 (path, method) 注册两次，后注册的胜出（§8 已记，当前代码无此情形，扩展时留意）。
+
+## 15. 补注册工单清单（按 §10 审计结论）
+
+把覆盖率从 40% 提到 100% 的机械工作量：
+
+| 优先级 | 目标 | 条数 | 理由 |
+|---|---|---|---|
+| P0 | TaskMonitoringRoutes 的 progress、audit-log | 2 | 前端最核心轮询端点不在文档 |
+| P0 | CaseCRUDRoutes 全族 | 6 | Python 代理依赖的契约 |
+| P1 | FileExtractionRoutes 的 status/{job_id}；ExportRoutes 的 toon | 2 | 轮询/导出 |
+| P1 | FileAnalysisRoutes 余 4；AndroidForensics 余 7 | 11 | 页面在用 |
+| P2 | DLL/Memory/Statistics/SceneQuery 四文件 | 18 | 页面在用 |
+| P2 | SystemHealth/Info/Docs 三文件 | 14 | 自描述完整性 |
+| （不做） | OSS 12 条 | — | 端点本身 404，注册无意义 |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

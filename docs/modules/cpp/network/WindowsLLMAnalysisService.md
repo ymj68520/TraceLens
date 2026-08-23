@@ -171,4 +171,83 @@ Respond in JSON format:
 - **验证**：跑含 windows 场景的任务后查 `_windows.db`：`SELECT path, llm_summary FROM prefetch_files WHERE llm_analyzed_at > 0 LIMIT 10`；确认 browser_history/browser_downloads 等四表都有注解（分组开关生效）；重跑同库确认 PENDING 增量。
 - **扩展新工件类型**：与 Linux 版步骤一致——WindowsFilesAnalyzer 建表填充 → windows_analysis_sql.h 加 PENDING 查询 → _Database.cpp 两映射函数加 case → _ArtifactAnalyzers.cpp 加 prompt 函数并在 analyzeArtifactType 的 switch 注册（如需默认执行再加分组和循环调用）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 14 表的 SELECT 列契约（二轮补全）
+
+windows_analysis_sql_llm.h:60-100 的 PENDING 查询决定**进 prompt 的 JSON 字段**（id 之外的列全部动态拼进 artifactJson，_Database.cpp:87-96）。完整清单：
+
+| ArtifactType | 表 | 进 prompt 的列（id 之后） | 源码 |
+|---|---|---|---|
+| REGISTRY | registry_values | hive_path, key_path, value_name, value_data | :60-61 |
+| EVENT_LOG | event_logs | record_id, event_id, level, source, message | :63-64 |
+| PREFETCH | prefetch_files | file_path, executable_name, executable_path, run_count | :66-67 |
+| LNK | lnk_files | lnk_path, target_path, working_directory, arguments | :69-70 |
+| JUMP_LIST | jump_list_entries | app_id, entry_path, entry_name, access_count | :72-73 |
+| BROWSER_HISTORY | browser_history | browser_name, url, title, visit_count | :75-76 |
+| BROWSER_DOWNLOAD | browser_downloads | browser_name, url, file_name, file_size | :78-79 |
+| BROWSER_BOOKMARK | browser_bookmarks | browser_name, url, title, folder_path | :81-82 |
+| BROWSER_LOGIN | browser_logins | browser_name, url, username | :84-85 |
+| MFT_ENTRY | mft_entries | file_path, file_name, is_directory, is_deleted | :87-88 |
+| WINDOWS_SERVICE | windows_services | service_name, display_name, image_path, start_type | :90-91 |
+| SCHEDULED_TASK | scheduled_tasks | task_name, task_path, action_type, action_path | :93-94 |
+| AMCACHE | amcache_entries | file_path, file_name, company_name, product_name | :96-97 |
+| SRUM | srum_entries | app_name, user_name, timestamp, bytes_received | :99-100 |
+
+所有查询统一形态：`WHERE llm_analyzed_at IS NULL ORDER BY id LIMIT ?`——**按 id 升序取未分析行**，截断即"最早的 N 条先分析"（§7 已记覆盖不全问题，这里补上截断顺序的确切答案）。数值列（run_count/file_size 等）经 `sqlite3_column_text` 统一转文本进 JSON——prompt 里没有类型区分，模型看到的全是字符串。
+
+**列名即 JSON 键**：`artifactJson[colName] = colValue`（_Database.cpp:93）用的是 prepare 出来的列名，prompt 里的工件 JSON 键与库列名严格一致——改列名会直接改变模型看到的字段名。
+
+## 10. 新发现的三处死代码（二轮核验）
+
+1. **14 条 `UPDATE_*_LLM_ANALYSIS` 常量从未被使用**（windows_analysis_sql_llm.h:14-54）。实际回写走 storeArtifactAnalysis 内的**字符串拼接通用 UPDATE**（_Database.cpp:35-37：`"UPDATE " + tableName + " SET llm_summary=?... WHERE id=?"`）——语义与常量等价（同样的五列六参），但常量版本是历史遗留。grep 全仓无引用。
+2. **`windows_analysis_progress` 进度表 SQL 三连（INSERT/UPDATE/COMPLETE）零调用方**（:126-134）。进度跟踪本可落库（表名都设计好了），实际只有内存里的 totalAnalyzed 计数。
+3. **`getUpdateSQLForType` 声明无定义**（WindowsLLMAnalysisService.h:164 声明，无任何 cpp 定义也无调用）——头文件死声明，链接期不炸只因无人调用。
+
+同族对照：DLL 专属的 `UPDATE_DLL_LLM_ANALYSIS`/`SELECT_DLL_PENDING_ANALYSIS`（:106-120，threat_score 过滤）属于 DLL 分析路径（dll_base_info 表），不经本模块的 14 类型路由——它们由 DLLAnalyzer 系消费。
+
+## 11. prompt 路由的真实收敛：14 类型 → 8 个 prompt 函数
+
+analyzeArtifactType 的 switch（WindowsLLMAnalysisService.cpp:175-208）把 14 类型收敛到 8 个分析函数：
+
+| prompt 函数 | 覆盖的类型 | 共享后果 |
+|---|---|---|
+| analyzeRegistryArtifact | REGISTRY | — |
+| analyzeEventLogArtifact | EVENT_LOG | — |
+| analyzePrefetchArtifact | PREFETCH | — |
+| analyzeLnkArtifact | LNK | — |
+| analyzeJumpListArtifact | JUMP_LIST | — |
+| analyzeBrowserArtifact | BROWSER_HISTORY/DOWNLOAD/BOOKMARK/LOGIN（4 类） | 四类共用"浏览器痕迹"prompt，角色句不区分是历史还是登录——浏览器登录凭证（username）与访问记录拿到相同的分析视角 |
+| analyzeSystemArtifact | WINDOWS_SERVICE/SCHEDULED_TASK/AMCACHE/SRUM（4 类） | 四类共用"系统工件"prompt |
+| analyzeMftArtifact | MFT_ENTRY | — |
+
+default 分支 `continue`（:206-207）——ALL 与未知类型静默跳过；ALL 枚举值实际不可经 analyzeArtifactType 使用（没有遍历逻辑）。
+
+## 12. 与 LLMAnalysisService 的回写语义差异
+
+两处值得注意的对比（此前未记录）：
+
+- **storeArtifactAnalysis 的返回值被消费**（WindowsLLMAnalysisService.cpp:210-216）：UPDATE 失败不计入 analyzed——与 LLMAnalysisService 文件级循环" analyzed++ 不看写库结果"相反，本模块的计数语义是"成功落库数"。
+- **UPDATE 以 id 为键**（_Database.cpp:37）而非 path——行级主键，没有 LLMAnalysisService 的"唯一路径守卫"问题，也没有跨表双写（不维护 file_descriptions 对应物）。平台工件的注解不进调查中心证据列表，只在 `_windows.db` 的 llm_* 列里。
+
+## 13. 配置影响表（全集）
+
+| 配置 | 默认 | 消费链 | 说明 |
+|---|---|---|---|
+| `LLM_TEXT_*` 五项 | 见 Environment.md | initialize() → ModelRouter 文本模型 | 每条工件的模型调用 |
+| `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | 120 / 3 | LLMClient | 无 LLM 后端时每条工件超时等待，14 表 × 1000 条上限的最坏情况极慢（§7 已记） |
+| （无 maxArtifacts 的 env） | 1000 硬编码 | AnalysisOptions 默认值（h:53） | 调用方 WindowsFilesAnalyzerCore.cpp:167 不传 options，改预算只能改代码 |
+| （无 include* 的 env） | 见 §3.1 | 同上 | includeMFT=true 也只能改代码 |
+| `THREAD_POOL_SIZE` | 4 | 不影响本模块 | 逐条串行，无内部并发 |
+
+## 14. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 | 说明 |
+|---|---|---|---|
+| 被调 | WindowsFilesAnalyzerCore.cpp:167 | 唯一调用点 | 提取→注解一条龙；不传 options（全默认） |
+| 依赖 | llm::ModelRouter | initialize() | 文本模型 |
+| 读写 | `_windows.db` 14 张工件表 | SELECT pending / UPDATE llm_* by id | 列契约见 §9 |
+| SQL 来源 | windows_analysis_sql_llm.h（SELECT）+ 字符串拼接（UPDATE） | :60-100 / _Database.cpp:35 | UPDATE 常量族是死代码（§10） |
+| 同族 | Linux/AndroidLLMAnalysisService | 同骨架 | prompt 收敛度不同（本模块 8 函数） |
+| 间接上游 | TaskManager PLATFORM_ANALYSIS | 进度 80-95% 区间 | void 回调无取消 |
+| 读出方 | 前端 Windows 视图/报告 | llm_* 列 | DLL 表除外（另一路径） |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

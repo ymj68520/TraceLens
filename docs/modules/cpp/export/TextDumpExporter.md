@@ -209,4 +209,67 @@ if (force && existingRegular) {
 - **验证**：`--dump-text --dump-text-max-size 1M` 跑小镜像 → stdout 出现 "N / M files processed" 与 "size: X / 1.0 MiB soft limit"（AnalysisOrchestrator.cpp:426-437）；再原样跑第二次，计数应大量走 reused（续跑生效）；`ls <base>_extracted_text` 确认目录结构与镜像同构。
 - **扩展**：换转换后端 → 实现一个新的 `ITextDumpConverter`（参考 MarkitdownTextDumpConverter 的 Reused/Skipped 语义，务必实现 force 删除旧件逻辑）；换文件来源（如只导出某分类）→ 实现 `ITextDumpFileSource`，在 orchestrator 装配点（:413-416）替换。引擎本身无需改动。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. TextDumpResult 汇总字段全表（二轮补全）
+
+run() 返回的 TextDumpResult（h:75-91）逐字段语义与两条路径的差异：
+
+| 字段 | 无上限路径 | 有上限路径 |
+|---|---|---|
+| stop_reason | Completed / ServiceUnavailable（batch.ok=false） | 四值全可达 |
+| candidate_files | = batch.total | = records.size()（有序清单总数） |
+| processed_files | **= batch.total（虚报**：批量路径没有逐文件概念，直接等于候选数） | 逐文件 ++（真实处理数） |
+| originals_extracted | = extractAll 返回数 | 逐文件计数 |
+| originals_reused / failed | **不统计**（批量抽取无 reuse 语义区分，恒 0） | 逐文件计数 |
+| markdown_converted/skipped/failed | = batch 三个计数 | 逐文件计数 |
+| markdown_reused | 恒 0 | 续跑快路径计数 |
+| initial_bytes = final_bytes | 事后 calculateUsage 一次（失败时双双保持 0） | 起始扫描 + 循环内逐次刷新 |
+| truncated | 恒 false（无上限无截断概念） | §4.3 的双条件判定 |
+
+汇报侧（AnalysisOrchestrator.cpp:426-437）消费 processed/candidate、final_bytes 与 formatBytes(max)。**processed_files 在批量路径的虚报**是两路径契约差异里最值得注意的——脚本报表时别把无上限跑的 processed 当真实文件数。
+
+## 9. formatBytes 的单位契约
+
+formatBytes（:111-123）二进制单位阶梯：B → KiB → MiB → GiB → TiB（1024 进制，封顶 TiB——PB 级用量会显示成大数字 TiB）。精度规则：B 档无小数（setprecision(0)），其余一档小数——"512 B"、"1.5 MiB"、"2.0 GiB"。CLI 汇报与软上限提示共用此格式。
+
+## 10. 新走读分支：三条提前退出的语义（二轮）
+
+有上限路径的四个 return 点里三个是提前退出，各自保留的现场不同：
+
+1. **ServiceUnavailable（:130-134）**：isAvailable() 为假——此时 **initial_bytes 保持 0**（calculateUsage 还没跑），原件一棵树都不动。与循环中途的 ServiceError 退出（:248-255）不同：后者已经抽取并记账了部分文件，final_bytes 反映真实占用。
+2. **起始即超限（:181-187）**：calculateUsage 成功但 initial_bytes ≥ max——**不做任何文件操作**，直接 truncated+SizeLimitReached。上一轮的产物原样保留（这正是"软限制保留已完成文件"的第一种形态：什么都不做也是一种保留）。
+3. **溢出/IO 异常（:272-277）**：applyDelta 抛 overflow_error 或文件系统异常——**保留最后一次 final_bytes**（注释明言 "Preserve the last computed final_bytes"），调用方能知道崩在多大的用量上。
+
+## 11. 适配器映射表（TextDumpAdapters.cpp）
+
+| 引擎接口方法 | FileExtractorTextDumpSource 实现 | MarkitdownTextDumpConverter 实现 |
+|---|---|---|
+| initialize(err) | extractor_.initialize（开镜像+raw.db） | —（构造时持 proxy 引用） |
+| listRegularFilesOrdered(err) | extractor_.listRegularFilesOrdered（**顺序由 FileExtractor 决定**，引擎不重排） | — |
+| extractOne(record, root) | extractRecordAtomically → 三态映射（Extracted/Reused/Failed；**UnsafePath 不可达**，:33-35 注释） | — |
+| extractAll(root, err) | extractor_.extractAll(root, false, false, nullptr)——两个 bool 是"跳过已存在/跳过失败"类的内部开关（全 false），**无进度回调** | — |
+| isAvailable() | — | proxy_.isServiceAvailable() |
+| convertOne(in, file, out, force) | — | §4 的续跑快路径 + proxy_.convertOneToMarkdown + force 删旧件 |
+| convertBatch(in, out) | — | proxy_ 批量端点 → BatchConversionResult |
+
+## 12. 配置影响表（CLI/env 全集）
+
+| 配置 | 形态 | 默认 | 说明 |
+|---|---|---|---|
+| `--dump-text` | CLI flag | 关 | 总开关（CommandLineParser.cpp:235-236） |
+| `--dump-text-max-size` | CLI 值（K/M/G/T 二进制乘数，正整数） | 无（=不设限） | 附带置位 --dump-text（:242-248）；parseBinarySize 拒绝小数/负数/无单位纯数字以外的形态 |
+| `PYTHON_SERVICE_URL` | env | http://localhost:8090 | MarkitdownProxy 单例的目标——服务在别的机器时导出也走它 |
+| `DATA_DIR` | env | data | 不直接影响（roots 在镜像目录下），但 raw.db 定位经它 |
+| （无 env 版上限） | — | — | 上限只能 CLI 传；run.sh/HTTP 路径无此功能（**CLI-only 模块**，HTTP 任务不触发文本转储） |
+
+## 13. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 |
+|---|---|---|
+| 被调 | AnalysisOrchestrator.cpp:396-445（Step 7） | 唯一装配点（CLI 磁盘流水线尾部） |
+| 依赖 | FileExtractor（原子抽取 API） | source 适配器 |
+| 依赖 | MarkitdownProxy → Python /api/markitdown/* | converter 适配器 |
+| 依赖 | CommandLineParser | flag/size 解析 |
+| 无关 | HTTPServer/TaskManager | 任务路径不触发；无 REST 端点 |
+| 无关 | Swagger | 零注册 |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

@@ -164,4 +164,57 @@ status 全小写字符串；created_at/updated_at 为毫秒 epoch——与 tasks
 - 冒烟（直接打 C++）：`curl -X POST :8080/api/cases -d '{"name":"t","task_ids":["<id>"]}'` → `curl :8080/api/cases` → `curl -X PUT :8080/api/cases/<id>/status -d '{"status":"analysing","cross_analysis_job_id":"job-1"}'` → `cat data/cases.json` 核对落盘 → `curl -X DELETE` 后确认任务本身仍在（不级联）。
 - 扩展：新案件字段改 CaseManager 的 save/load 与本文件 case_to_json（:158-173）三处同步（注意增量字段目前连 REST 都不回显，加了要考虑是否暴露）；新增端点沿用"handler → CaseManager 方法 → case_to_json"三段式；若要给案件加派生统计（如完成度），在路由层算，别把派生值落盘（与 CaseManager.md §8 建议一致）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 端点全表（6 个，二轮补全）
+
+| 端点 | 方法 | 请求 | 成功 | 失败 | 源码 |
+|---|---|---|---|---|---|
+| /api/cases | GET | — | 200 `{cases:[case...], total}`（恒 200） | 无 | CaseCRUDRoutes.cpp:44-54 |
+| /api/cases | POST | `{name="Unnamed Case", description="", task_ids[]（非数组则忽略）}` | 201 case JSON | 400 `{error}` | :56-77 |
+| /api/cases/{id} | GET | — | 200 case JSON | 404 `{error:"Case not found", case_id}` | :79-92 |
+| /api/cases/{id}/tasks | PUT | `{task_ids[]}`（必填数组） | 200 case JSON（追加后） | 400（缺数组/JSON 坏）；**案件不存在也是 200 空对象** | :94-114 |
+| /api/cases/{id} | DELETE | — | 200 `{success:true, message:"Case deleted"}` | 404 | :116-129 |
+| /api/cases/{id}/status | PUT | `{status?, cross_analysis_job_id?}`（至少其一有意义；都缺也 200 原样返回） | 200 case JSON | 400（JSON 坏） | :131-154 |
+
+case JSON 8 键（:158-173）：id、name、description、task_ids[]、status（小写）、cross_analysis_job_id、created_at、updated_at（毫秒）。**不含**增量三字段（case_db_path/total_files_analyzed/task_analysis_states——只落盘不出网，CaseManager.md §9 已记契约缺口）。
+
+## 9. 新走读分支：Python 代理的调用全景（谁在什么时候打这 6 个端点）
+
+grep `cpp_backend_url}/api/cases` 的全部命中（python_service），按业务流排列：
+
+| Python 端点/函数 | 调用的 C++ 端点 | 业务时机 | 源码 |
+|---|---|---|---|
+| POST /api/llm/cases | POST /api/cases | 前端建案 | multi_analysis.py:109 |
+| GET /api/llm/cases | GET /api/cases | 前端列案 | :127 |
+| GET /api/llm/cases/{id} | GET /api/cases/{id} | 前端案件详情 | :137 |
+| DELETE /api/llm/cases/{id} | DELETE /api/cases/{id} | 前端删案 | :150 |
+| PUT /api/llm/cases/{id}/tasks（含 associate 复用预热） | PUT /api/cases/{id}/tasks | 挂任务/预热分析态 | :172、:380 |
+| multi-image-analysis 启动 | PUT /api/cases/{id}/status（status=analysing + job_id） | 跨镜像分析开始 | :270 |
+| 分析完成/失败回写 | PUT /api/cases/{id}/status（completed/failed） | 作业终态 | :294、:303 |
+| CaseAggregationManager | PUT tasks ×2、DELETE、GET | 聚合流程 | case_aggregation_manager.py:162/226/287 |
+| 分析管线建案 | POST /api/cases | _pipelines | _pipelines.py:546 |
+
+三层结构的风险点：**每次代理调用都是独立 httpx.AsyncClient(timeout=10)**（:107 附近）——C++ 端 CaseManager 锁内做 JSON 落盘时若超过 10s（案件极多时），Python 侧超时报错但 C++ 侧实际已写成功，出现"Python 报错但重试发现已存在"的语义分叉。PUT tasks 的逐条加锁（CaseManager.md §10.2）让这个窗口随 task_ids 数量线性放大。
+
+## 10. 配置影响表（CaseRoutes 视角）
+
+| 配置 | 默认 | 消费点 | 说明 |
+|---|---|---|---|
+| `CPP_BACKEND_URL` | http://localhost:8080 | multi_analysis.py 的代理基址 | 配错时 Python 案件 API 整体失败（表现为前端 /cases 页报错） |
+| `DATA_DIR` | data | cases.json 路径 | CaseManager 侧 |
+| `HTTP_SERVER_PORT` | 8080（run.sh 回退 8666 漂移） | 代理目标的实际端口 | 与 CPP_BACKEND_URL 必须一致——run.sh 的 8666 漂移在这里咬人：CPP_BACKEND_URL 默认 8080 而 run.sh 起在 8666 时案件域全断 |
+| （本组无直接 env） | — | — | handler 不读任何环境变量 |
+
+## 11. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 |
+|---|---|---|
+| 被调 | multi_analysis.py（6 端点 9 处调用） | §9 全表 |
+| 被调 | case_aggregation_manager.py（3 处） | 聚合流程 |
+| 被调 | _pipelines.py:546 | 建案 |
+| 不被前端直调 | web/src | 零引用（§2 已记） |
+| 调用 | CaseManager::instance()（构造注入引用成员） | 全部 handler |
+| 挂载 | HTTPServer 构造列表第 5 位 | HTTPserver.cpp:71 |
+| Swagger 注册 | **0 条**（CaseCRUDRoutes 无 RegisterEndpoint） | openapi.json 盲区 |
+| 间接 | TaskManager | 无直接调用（task_id 纯字符串） |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

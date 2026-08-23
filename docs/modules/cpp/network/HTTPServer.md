@@ -239,4 +239,140 @@ nlohmann 的 `operator bool()` 是"是否可转为 bool"而非"是否有值"，�
 - **验证**：`curl http://localhost:8080/api/health` 确认存活；`curl -I http://localhost:8080/` 看 HTML 与 CORS 头；访问不存在的路径应返回 index.html（SPA fallback 生效标志）；`curl -I .../assets/<某js>` 应看到 `Cache-Control: public, max-age=31536000`。
 - **扩展新路由组**：模仿 `SystemRoutes`（构造函数三行组合子路由），在 HTTPserver.h:91-96 加成员、HTTPserver.cpp:63-75 初始化列表加一行。静态托管无需改动。记住成员声明顺序必须保持在 `app_` 之后（§3.2）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 全端点清单（注册表视角，二轮补全）
+
+下表是**运行时真正注册到 `crow::App` 的全部端点**，按聚合器 → 子路由文件组织（来源：各 routes/*.cpp 中的 `CROW_ROUTE` 宏逐文件统计）。这是排障"URL→代码"的权威索引，与 routes/RouteReference.md 互补（后者含参数与响应细节）。
+
+### 8.1 TaskRoutes（3 个子路由成员 + 16 个 OPTIONS 兜底）
+
+| 子路由文件 | 注册端点（方法见名） |
+|---|---|
+| TaskCRUDRoutes.cpp | POST/GET `/tasks`、GET/DELETE `/tasks/<string>`、GET `/tasks/<string>/results`、POST/GET `/api/tasks`、GET `/api/tasks/list`、GET/PUT/DELETE `/api/tasks/<string>`、GET `/api/tasks/<string>/results`、POST `/api/tasks/cleanup`、GET `/api/tasks/<string>/databases` |
+| TaskBatchRoutes.cpp | POST `/api/tasks/batch-create`、POST `/api/tasks/batch-status`、POST `/api/tasks/batch-cancel` |
+| TaskMonitoringRoutes.cpp | GET `/api/tasks/<string>/progress`、GET `/api/tasks/<string>/audit-log`、GET `/api/tasks/statistics`、PUT `/api/tasks/<string>/priority` |
+| TaskRoutes.cpp 自身 | 仅 16 个 OPTIONS 预检路由（`/tasks`、`/tasks/<string>`、`/tasks/<string>/results`、`/api/tasks`、`/api/tasks/list`、`/api/tasks/<string>`、`/api/tasks/<string>/{results,progress,audit-log,priority,databases}`、`/api/tasks/{statistics,cleanup,batch-create,batch-status,batch-cancel}`），全部 204 |
+
+注意 `/tasks`（无 `/api` 前缀）是 TaskCRUDRoutes 注册的**遗留别名**，前端 Services 层不再调用，但仍在伺服。SceneQueryRoutes 注册的 `/api/tasks/<string>/{scene-stats,scene-artifacts}` 虽然挂在 `/api/tasks/` 前缀下，却是由 **ForensicsRoutes** 的 `scene_query_routes_` 成员注册的（SceneQueryRoutes.cpp:8-9 附近）——按 URL 前缀找代码会找错聚合器。
+
+### 8.2 ForensicsRoutes（11 个子路由成员）
+
+| 子路由文件 | 注册端点 |
+|---|---|
+| TimelineRoutes.cpp | 11 个：`/api/forensics/timeline/{comprehensive,details,distribution,file-activity,suspicious-patterns,user-activity,by-type,by-time-range,by-file,full,statistics-by-period}` |
+| EventClusterRoutes.cpp | 4 个：`/api/forensics/timeline/clusters/{analyze,batch-analyze,reanalyze,analyzed}` |
+| ExportRoutes.cpp | 4 个：`/api/forensics/export/toon`、`/api/forensics/export/events/{json,csv,visualization}` |
+| FileAnalysisRoutes.cpp | 5 个：`/api/forensics/files/{largest,recent,suspicious,duplicates,extensions-analysis}` |
+| FileExtractionRoutes.cpp | 3 个：POST `/api/forensics/extract`、GET `/api/forensics/extract/<string>`、GET `/api/forensics/extract/status` |
+| StatisticsRoutes.cpp | 4 个：`/api/forensics/statistics/{overview,file-distribution,activity-patterns,deleted-files-analysis}` |
+| AndroidForensicsRoutes.cpp | 14 个：`/api/forensics/android/{communication-summary,app-usage,device-info,media-analysis,llm-summary}` + 9 个 `miui-*` |
+| MemoryForensicsRoutes.cpp | 5 个：`/api/forensics/memory/{summary,processes,network,bash-history,boot-info}` |
+| SystemEventRoutes.cpp | 2 个：`/api/forensics/system/{events,summary}` |
+| DLLAnalysisRoutes.cpp | 7 个：`/api/forensics/dlls`、`/api/forensics/dlls/<int>`、`/api/forensics/dlls/{suspicious,statistics,analyze,health}`、`/api/forensics/dlls/<int>/anomalies` |
+| SceneQueryRoutes.cpp | 2 个：`/api/tasks/<string>/{scene-stats,scene-artifacts}`（前缀例外，见上） |
+
+### 8.3 SystemRoutes / SearchRoutes / CaseCRUDRoutes / FilterRoutes
+
+| 聚合器 | 子路由文件 | 注册端点 |
+|---|---|---|
+| SystemRoutes | SystemHealthRoutes.cpp | 5 个：`/api/system/health`、`/api/health`、`/api/health/{live,ready,dependencies}` |
+| | SystemInfoRoutes.cpp | 5 个：`/api/system/info`、`/api/system/databases`、`/api/system/database-schema/<string>`、`/api/export/<string>`、`/api/system/logs` |
+| | SystemDocsRoutes.cpp | 4 个：`/api/docs/{endpoints,database-schema,openapi.json}`、`/api/docs` |
+| SearchRoutes | 自身 | 2 个：GET `/api/search/fulltext`、POST `/api/search/index` |
+| CaseCRUDRoutes | 自身 | 6 个：GET/POST `/api/cases`、GET/PUT/DELETE `/api/cases/<string>`、GET `/api/cases/<string>/tasks`、PUT `/api/cases/<string>/status` |
+| FilterRoutes | 自身 | 5 个：GET/POST `/api/filter/profiles`、GET/PUT/DELETE `/api/filter/profiles/<string>`、POST `/api/filter/apply` |
+
+### 8.4 从未注册的端点（死注册代码）
+
+OSS 家族 4 个路由文件共 12 个端点全部**编译进二进制但运行时 404**，因为唯一的组装点 `OSSRoutes` 构造函数（OSSRoutes.cpp:23-28）从未被调用：
+
+| 文件 | 端点 |
+|---|---|
+| OSSAnalysisRoutes.cpp | `/api/forensics/oss/{analyze,analyze/status,ai/filter,ai/analyze,download,ai/status}` |
+| OSSQueryRoutes.cpp | `/api/forensics/oss/{objects,logs}` |
+| OSSStatsRoutes.cpp | `/api/forensics/oss/{summary,stats/storage-class,stats/extensions,buckets}` |
+
+另一个细节：OSSRoutes.cpp:25-27 用**局部变量**构造三个子路由（而非像 ForensicsRoutes 那样用成员），即使将来有人补一行 `OSSRoutes oss_routes_(app_)`，子路由对象在构造函数结束即析构——好在 Crow 的 CROW_ROUTE 把 handler 拷进 app 的路由表，析构不影响已注册端点，但这份"局部变量组装"写法与 ForensicsRoutes.h:79 注释"must be members to avoid dangling pointers"的团队约定相悖，复活 OSS 时应顺手改掉。
+
+## 9. 新走读分支：静态托管的边界路径
+
+### 9.1 非 GET 方法打到静态路由
+
+`/<path>` 与 `/` 都只注册了 `"GET"_method`（HTTPserver.cpp:110、141）。Crow 对"路径匹配但方法不匹配"的请求返回 **405 Method Not Found**（Crow 内部即 404 路由表未命中 + 方法不匹配逻辑，实际返回 405 响应码），而不会落到 SPA fallback——因为 fallback 本身也是 GET-only。实测推论：
+
+- `POST /some/spa/path` → 405（不是 index.html，也不是 JSON 错误）；
+- `OPTIONS /` → 同样 405——静态路由**没有**像 API 路由那样配 OPTIONS 兜底，跨域预检只有打到 `/api/*` 才能拿到 204。前端与后端同源部署时这无碍；若把 SPA 与 API 拆到不同源，静态资源的预检会失败。
+
+### 9.2 目录穿越的天然防线与残余风险
+
+catch-all 拼路径是 `web_dir + "/" + path`（HTTPserver.cpp:121），没有显式防 `..`。实际防线来自 `serve_static_file` 的 `fs::is_regular_file` 检查（HTTPserver.cpp:163）：`web/dist/../src/main.cpp` 这类路径展开后仍是磁盘上的常规文件，**会**被读出来——`..` 并没有被过滤。也就是说，`GET /../src/main.cpp` 若 Crow 把 `<path>` 解码成 `../src/main.cpp`，理论上可读取 web/dist 之外的文件。Crow 的 `<path>` 参数以 `/` 分隔，`..` 段会原样进入 handler。这是一个低危但真实的信息泄露面（进程对工作目录的读权限即泄露边界），加固做法是在拼接后做 `fs::canonical` 前缀校验。
+
+### 9.3 `app_.loglevel(crow::LogLevel::Warning)` 的副作用
+
+`setup_static_routes` 的第一行（HTTPserver.cpp:88）把 Crow 日志级别压到 Warning——意思是每个请求的 access log（INFO 级）不再打印，只有路由注册冲突、异常等告警会出现在 stdout。排障"请求到底进没进后端"时不能依赖 Crow 日志，要用 `curl -v` 或抓包；这也解释了为什么运行期 stdout 相对安静。
+
+## 10. 配置影响表（HTTPServer 视角）
+
+HTTPServer 自身不读任何环境变量（`grep getenv HTTPserver.cpp` 为空），但它的行为被以下配置间接决定：
+
+| 配置 | 默认 | 作用点 | 与 HTTPServer 的关系 |
+|---|---|---|---|
+| `HTTP_SERVER_PORT` | 代码缺省 8080（HTTPserver.h:83）；**run.sh 缺省 8666** | main→AnalysisOrchestrator→`run(port)` | 传给 `app_.port(port)`。run.sh:79 `CPP_PORT="${HTTP_SERVER_PORT:-8666}"`——.env 不写该变量时 run.sh 起在 8666，而代码内缺省是 8080，两侧漂移 |
+| `HTTP_SERVER_HOST` | `0.0.0.0` | ConfigManager.cpp:141 | 仅被 `/api/system/info` 回显；**Crow 监听地址写死为全部接口**（`app_.port(port)` 未调 `.bind()`），该变量不影响实际绑定 |
+| `CORS_ALLOW_ORIGIN` | `*` | RouteHelpers.cpp:16-17 | 只作用于 API 路由响应头；静态路由的 `*` 是硬编码（HTTPserver.cpp:115），设白名单**收敛不了**静态侧 |
+| `DATA_DIR` | `data` | main.cpp:65 | 决定 `data/tasks/` 相对 CWD 的位置，间接决定静态路由之外所有任务数据寻址基准 |
+| `THREAD_POOL_SIZE` | `4` | TaskManager.cpp:23 | Crow worker 数量 = `std::thread::hardware_concurrency()`（Crow `multithreaded()` 默认），与分析线程池无关；两者是两套并发度 |
+
+## 11. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 | 说明 |
+|---|---|---|---|
+| 被调（构造） | AnalysisOrchestrator | AnalysisOrchestrator.cpp 的 runHTTPServer | 进程内唯一构造点，传 io_context 与端口 |
+| 被调（请求） | web/dist SPA | `GET /`、`GET /<path>` | 浏览器唯一入口；静态三级回退 |
+| 被调（请求） | taskService 等 24 个前端 service | `/api/tasks/*` 等 | 见 docs/modules/web/Services.md 的三向映射 |
+| 持有 | TaskManager 单例引用 | 构造函数 HTTPserver.cpp:65 | 引用而非拥有；析构顺序上 HTTPServer 先于 TaskManager 单例销毁即可 |
+| 持有 | 6 个路由聚合器（值成员） | HTTPserver.h:91-96 | 构造即注册；析构时 Crow app 仍在，路由表随 app_ 一起销毁 |
+| 持有 | asio::io_context 引用 | HTTPserver.h:88 | 仅保存不使用（协程预留） |
+| 不持有但同进程 | LLMPythonProxy | TaskManager 内部调用 | Graphiti 摄取不经 HTTP 回环，直接进程内 HTTP 客户端打到 8090 |
+| 不持有 | OSSRoutes | 无任何构造点 | §8.4；唯一一个编译存在但运行时缺席的聚合器 |
+
+## 12. MIME 表全量（get_mime_type 的 13 项）
+
+HTTPserver.cpp:194-212 的完整映射（未命中兜底 `application/octet-stream`）：
+
+| 扩展名 | Content-Type | 扩展名 | Content-Type |
+|---|---|---|---|
+| .html | text/html | .svg | image/svg+xml |
+| .css | text/css | .ico | image/x-icon |
+| .js | application/javascript | .woff | font/woff |
+| .json | application/json | .woff2 | font/woff2 |
+| .png | image/png | .ttf | font/ttf |
+| .jpg / .jpeg | image/jpeg | .eot | application/vnd.ms-fontobject |
+| .gif | image/gif | （其余） | application/octet-stream |
+
+两个值得注意的细节：`.json` 会以 `application/json` 伺服——若有人把敏感配置放进 web/dist，浏览器同源策略下任何页面都能 fetch 它；`.map`（source map）不在表内，落 octet-stream 走下载——前端构建带 map 文件时 DevTools 无法直接加载源码映射（排障小坑）。
+
+## 13. 请求处理管线：从 accept 到 handler
+
+一次请求在 Crow 内的完整路径（结合 HTTPserver.cpp 的配置点）：
+
+1. **accept**：`app_.port(port).multithreaded().run()`（:83）——Crow 按 `hardware_concurrency()` 起 worker 线程池，每个 worker 独立 epoll 循环接受连接；
+2. **日志**：`app_.loglevel(crow::LogLevel::Warning)`（:88）压掉 per-request 的 INFO access log——生产 stdout 只有警告；
+3. **路由匹配**：Crow 按注册顺序查路由表。**注册顺序**：六个聚合器（构造期）→ `/<path>` catch-all（run() 里 setup_static_routes 最先调用但 `/<path>` 是通配，具体 `/api/...` 仍优先匹配）→ `/` 根路由最后。路径参数路由（`/api/tasks/<string>`）在静态路由（`/api/tasks/list`）之后注册时，Crow 的 trie 匹配让静态段优先——这就是 list/statistics 不被 `<string>` 吞掉的机制保证（handler 层的保留字守卫是第二道防线）；
+4. **方法匹配**：路径命中但方法不在 `.methods(...)` 列表 → 405（routing.h:1490）；
+5. **handler 执行**：worker 线程内同步执行——handler 里做慢操作（如 batch-analyze 的同步 LLM 循环）直接占住该 worker；
+6. **响应**：handler 返回的 crow::response 由 worker 写回。没有全局后处理中间件——CORS 头必须每个 handler 自己加（RouteHelpers::add_cors_headers 或手写 set_header）。
+
+## 14. 排障速查表（HTTPServer 层）
+
+| 症状 | 首查 | 根因候选 |
+|---|---|---|
+| 前端 404（所有页面） | `ls web/dist` 与进程 CWD | web/dist 相对路径耦合（§6）；未构建前端 |
+| 静态资源 200 但 JS 报 MIME 错 | §12 表 | 自定义扩展名未进表 |
+| API 404 但代码里有 CROW_ROUTE | HTTPserver.cpp:63-75 初始化列表 | 聚合器未挂载（OSSRoutes 即此）；或保留字守卫（TaskRoutes） |
+| API 405 | handler 的 .methods(...) | 方法不匹配；静态路由 GET-only（§9.1） |
+| OPTIONS 预检失败 | TaskRoutes.cpp:20-134 的 16 条 | 新端点没补 OPTIONS；静态路由无 OPTIONS |
+| 请求到了但 stdout 无日志 | HTTPserver.cpp:88 | loglevel=Warning 压掉了 access log |
+| 跨域失败但 API 正常 | CORS_ALLOW_ORIGIN / RouteHelpers | 白名单不含前端 origin；静态路由硬编码 `*` 与 API 白名单不一致 |
+| 端口不是 8080 | run.sh:79 vs .env | run.sh 回退 8666 漂移（§10） |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

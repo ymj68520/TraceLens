@@ -240,4 +240,122 @@ if (task.scenarios.empty()) {
 - **验证**：提交一个不含 scenarios 的任务，查审计日志 `SELECT * FROM audit_logs WHERE action='SCENE_DETECTED'`（任务库/系统审计）看命中明细；再对 filtered.db 手工调 detectScenes 对比计数缩水，直观理解"必须过滤前跑"。
 - **扩展新场景/新标记**：在 MARKERS（SceneDetector.cpp:35-61）加 `{场景, LIKE 模式}` 一行即可，计数、排序、审计全部自动跟进；新增**场景枚举**则要动 ForensicScenario、PRIORITY_ORDER、dominant 的 switch（:134-144）以及下游分析器注册——成本主要在枚举联动，不在本模块。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 消费侧端点契约：scene-stats / scene-artifacts（二轮补全）
+
+探测结果回填 `task.scenarios` 后，场景相关数据有两个查询出口——SceneQueryRoutes 注册的 `/api/tasks/{id}/scene-stats` 与 `/api/tasks/{id}/scene-artifacts`（SceneQueryRoutes.cpp:10-24）。它们不是 SceneDetector 的一部分，但共享"场景"数据模型，是探测结论在 REST 层的最终呈现。
+
+### 9.1 GET /api/tasks/{id}/scene-stats（SceneQueryRoutes.cpp:26-134）
+
+无查询参数。响应字段（:121-124）：
+
+| 键 | 来源 | 说明 |
+|---|---|---|
+| `task_id` | 路径参数回显 | |
+| `scene_stats[]` | files 表按 scene_type 分组（:52-61） | 每项 `{scene_type, total_files, relevant_files, total_size, llm_analyzed_files}`；只含 scene_type 非 NULL 的行 |
+| `artifact_stats[]` | android/windows/linux_artifacts 三表 UNION ALL（:87-104） | 每项 `{scene_type, artifact_count, analyzed_count}`；**无 server_cloud**——oss.db 不在此查询里；三表任一不存在时整体为空数组（prepare 失败静默跳过，:117 注释） |
+
+两个边界：文件库打不开返回 500 `{"error": "Failed to open database: ..."}`（:42-47）；artifact SQL 的 UNION 只列三表，SERVER_CLOUD 场景的任务在此端点看不到工件统计。
+
+### 9.2 GET /api/tasks/{id}/scene-artifacts?scene_type=&limit=&offset=（SceneQueryRoutes.cpp:136-298）
+
+| 参数 | 默认 | 校验 |
+|---|---|---|
+| `scene_type` | 无（必填） | **白名单三选一：android/windows/linux**（:161-166）——server_cloud 不被接受，传了返回 400 "Invalid scene_type"；白名单同时是 SQL 注入防线（表名拼接前已验证，:180-181 注释） |
+| `limit` | 100 | `std::stoi` 直转，**非数字会抛异常落进 500**（:150，无 try 包裹 stoi 本身） |
+| `offset` | 0 | 同上 |
+
+响应：`{task_id, scene_type, artifacts[], total, limit, offset}`。artifacts 每项 13 字段（:233-263）：`id, file_id, artifact_type, artifact_data, extracted_at, llm_summary, llm_description, llm_keywords, llm_analyzed_at, llm_model_used, file_name, file_path, file_size`——后三字段来自 LEFT JOIN files（:212），file_id 悬空时为空串。表不存在时**不报错**，返回空 artifacts + total=0（:194-206），这让"场景没跑对应分析器"与"跑过但零工件"在响应上不可区分，前端只能靠空数组渲染。
+
+### 9.3 两个端点与 detectScenes 的数据链
+
+detectScenes 只写 task.scenarios（内存+tasks.json），**不写任何库**；scene-stats 读的 `files.scene_type` 列由 FileClassifier 按路径分类写入（FileClassifier.cpp:263-270），`*_artifacts` 表由各平台分析器写入——即两个端点反映的是"下游分析器的产出"，与探测命中数没有直接等式关系（探测命中 1000 个 android 路径 ≠ android_artifacts 有 1000 行）。排障"探测说有、统计说无"时按这条链查：scenarios（探测）→ FileClassifier/平台分析器（写入）→ 端点（读出）。
+
+## 10. 场景枚举双轨映射表
+
+本模块是两套场景枚举的转换点，完整对照（SceneDetector.cpp:134-144 的 switch + FileClassifier.h:46-52 + HTTPServerDataTypes.h）：
+
+| ForensicScenario（任务/请求层） | SceneType（分类/评分层） | 场景串（REST/JSON 层，scenario_to_string） | 写入库的 scene_type 值 |
+|---|---|---|---|
+| ANDROID | SceneType::ANDROID | "android" | "android" |
+| WINDOWS | SceneType::WINDOWS | "windows" | "windows" |
+| LINUX | SceneType::LINUX | "linux" | "linux" |
+| SERVER_CLOUD | SceneType::SERVER_CLOUD | "server_cloud" | "server_cloud" |
+| —（无对应） | SceneType::NONE | —（不出现在 detected） | NULL（files 行无场景） |
+
+NONE 只存在于 SceneType 一侧——探测无命中时 dominant 保持 NONE、scenarios 保持空，"无场景"在任务层用空列表表达、在文件层用 NULL 表达，两层语义对齐靠这份映射维持。
+
+## 11. 性能量化与关联矩阵补充
+
+- **18 次 COUNT 的成本结构**：每次 countMatches 是独立 prepare/step/finalize（SceneDetector.cpp:65-82），18 条模式 = 18 次语句编译 + 18 次扫描。前导 `%` 模式无法用 B-tree 索引，files 表 N 行时最坏 18N 行扫描；10M 文件级的 raw.db 在机械盘上可到分钟级——这段同步跑在流水线关键路径（FILE_CLASSIFICATION 2%），是"进度条卡在 2%"的可疑点之一。缓解手段（当前未做）：合并为一条 `CASE WHEN` 聚合 SQL（一次扫描 18 个模式）、或对 `substr(path, -30)` 之类的模式尾部建表达式索引。
+- **开库模式**：`SQLITE_OPEN_READONLY`（:94）无 busy_timeout 设置——若分析线程正在写 raw.db 且未开 WAL，探测的读会立刻 SQLITE_BUSY，表现为所有计数 0（countMatches 返回 0）但 `ok=true` 的**假阴性**。实际上 raw.db 在 IMAGE_ANALYSIS 结束后已无写者，此风险仅在流程被改动时需要警惕。
+
+**关联矩阵补充**（对 §6 的展开）：
+
+| 方向 | 对象 | 交互内容 |
+|---|---|---|
+| 被调 | TaskManagerAnalysis.cpp:236 | 唯一调用点；结果回填+审计 |
+| 数据源 | `<image>_raw.db` 的 files 表 | 18 条 LIKE COUNT，只读 |
+| 间接下游 | FileClassifier（scene_type/scene_priority/scene_relevant 列） | dominant 场景驱动场景感知评分 |
+| 间接下游 | 各平台分析器（android/windows/linux/oss） | detected 列表决定哪些分析器运行 |
+| 间接下游 | SceneQueryRoutes 两端点 | 场景数据的 REST 出口（§9） |
+| 无关 | SQLiteHelper | 不复用（自带 countMatches）；不复用 RouteHelpers |
+
+## 12. 18 标记的命中语义逐条注释（二轮补全）
+
+每个 LIKE 模式对应的"镜像里有什么"与误命中面（模式语义来自 SceneDetector.cpp:35-61 的分组注释）：
+
+| 标记 | 镜像特征 | 误命中面 |
+|---|---|---|
+| %/data/data/com.android.% | Android 应用私有数据（包名 com.android.* 系系统应用） | 无——com.android. 前缀很特定 |
+| %/data/system/% | 系统状态（设置、锁屏、包管理） | 无 |
+| %/data/media/% | 用户媒体（/sdcard 挂载点真身） | 无 |
+| %/data/misc/% | 杂项系统数据（WiFi、VPN、keystore） | 无 |
+| %/Windows/System32/config/% | 注册表 hive（SOFTWARE/SYSTEM/SAM） | 大小写变体 WinDows 不命中（LIKE 默认对 ASCII 大小写敏感） |
+| %/Windows/Prefetch/% | 预取文件（程序执行痕迹） | 同上 |
+| %/Windows/System32/Tasks/% | 计划任务文件 | 同上 |
+| %\Windows\System32\config\%（反斜杠） | 同 43 行但覆盖 hive 内存反斜杠路径 | 仅 Windows 侧 |
+| %\Windows\Prefetch\% | 同 44 行 | 同上 |
+| /var/log/%（**无前导 %**） | Linux 日志（锚定根） | 用户目录下嵌 /var/log/ 副本不命中（锚定的收益） |
+| %/etc/passwd | 账户文件 | 证据盘任意深度的 passwd 拷贝都点亮（§7 已记） |
+| %/etc/shadow | 口令哈希 | 同上 |
+| %/.bash_history | shell 历史 | 同上（任何用户的） |
+| %/etc/nginx/% | Nginx 配置 | 无 |
+| %/etc/apache2/% | Debian 系 Apache | 无 |
+| %/etc/httpd/% | RHEL 系 Apache | 无 |
+| %/var/lib/docker/% | Docker 运行时数据 | 与 LINUX 的 /var/log/% 常同时命中（§7） |
+| %/etc/kubernetes/% | K8s 配置 | 无 |
+
+**LIKE 大小写语义**：SQLite 的 LIKE 对 ASCII 默认大小写不敏感！——上表"大小写变体不命中"的直觉是**错的**：`%/Windows/%` 同样命中 `windows/system32`（SQLite 文档：LIKE is case-insensitive for ASCII）。修正前面的判断：Windows 五条标记无需大小写双份覆盖，反斜杠变体才是真正的第二份存在理由。这一条同时影响 §7 的"误命中面"评估——`windoWs/prefetch` 也能命中。
+
+## 13. 与 FileClassifier 场景评分的衔接（数据链下半段）
+
+dominant SceneType 传导到 FileClassifier 后的具体用途（FileClassifier.cpp:263-270 的三处消费）：
+
+| 消费点 | 列 | 语义 |
+|---|---|---|
+| calculateScenePriority(path, name, category) | scene_priority | 场景内工件的优先分（ScenePriority::CRITICAL=100 等常量，FileClassifier.h:55+） |
+| isSceneRelevant(path, name) | scene_relevant | 是否场景相关（scene-stats 端点的 relevant_files 计数来源） |
+| getSceneTypeName(sceneType_) | scene_type | 小写场景串写进 files 表 |
+
+即探测命中 → 场景列表 → dominant 单值 → FileClassifier 按它给每个文件打 scene_* 三列 → scene-stats 端点按 scene_type 分组统计——一条从"路径形态学"到"REST 统计"的完整数据链。中间任何一环断（scenarios 空、分类器没跑、表缺列）都表现为端点计数为 0。
+
+## 14. 验证 runbook（可直接执行的命令序列）
+
+```bash
+# 1. 建一个无 scenarios 的任务（触发自动探测）
+curl -s -X POST :8080/api/tasks -d '{"image_path":"/evidence/linux.dd"}' | jq .id
+# 2. 等任务过 FILE_CLASSIFICATION 2% 后查审计
+sqlite3 data/forensics_audit.db "SELECT action, details FROM audit_logs \
+  WHERE action='SCENE_DETECTED' ORDER BY timestamp DESC LIMIT 3"
+#    期望：Auto-detected scenarios: linux=N（N=四个 LINUX 标记命中数之和）
+# 3. 任务完成后核对 files 表的场景列
+sqlite3 data/tasks/<id>/*_files.db "SELECT scene_type, COUNT(*) FROM files \
+  WHERE scene_type IS NOT NULL GROUP BY scene_type"
+# 4. scene-stats 端点对照
+curl -s ":8080/api/tasks/<id>/scene-stats" | jq .scene_stats
+# 5. 单独验证某个标记的命中数（手工复算 countMatches）
+sqlite3 data/tasks/<id>/*_raw.db "SELECT COUNT(*) FROM files \
+  WHERE path LIKE '%/etc/passwd' AND is_deleted=0"
+```
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

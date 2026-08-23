@@ -167,4 +167,64 @@ openapi.json 端点就是一层薄转发（SystemDocsRoutes.cpp:115-130）：`Sw
 - 冒烟：`curl /api/health/live` 秒回 alive；`curl /api/system/health | jq .task_management`；`curl /api/docs/openapi.json | jq '.paths | keys | length'` 对比 RouteReference.md 的端点数；`curl /api/health/ready -i` 看正常时应为 200。
 - 扩展：健康维度（如磁盘水位、线程池队列长度）加在 SystemHealthRoutes 并考虑让 status 出现 degraded 档位——现有代码里 status 从未被赋过第二种植；新路由组照抄 SystemRoutes.cpp:8-13 的三行聚合模式。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 7. 端点全表（14 个，二轮补全）
+
+| 端点 | 方法 | 参数 | 响应要点 | 源码 |
+|---|---|---|---|---|
+| /api/system/health、/api/health | GET | — | status/version/timestamp/task_management{total_tasks,running_tasks,failed_tasks,system_load}/services（§3.2 语义） | SystemHealthRoutes.cpp:34-62 |
+| /api/health/live | GET | — | `{status:"alive",timestamp}` 恒 200 | :64-77 |
+| /api/health/ready | GET | — | `{ready:bool, checks{task_manager,database}}`；失败 503 | :83-106 |
+| /api/health/dependencies | GET | — | 依赖清单（配置态标记，无真实探测） | :118-148 |
+| /api/system/info | GET | — | 名称/版本/特性/镜像格式（硬编码） | SystemInfoRoutes.cpp:32-63 |
+| /api/system/databases | GET | query：task_id（可选） | 有 task_id 时 `[{type,path,size}]`（exists 过滤）；无 task_id 时全局库清单 | :65-100 |
+| /api/system/database-schema/{db_type} | GET | 路径：raw/files/events | 硬编码表结构；未知类型 400 | :118-160 |
+| /api/export/{task_id} | POST | body 可选 `format`（默认 json，**不校验取值**） | **应答式桩**（§8.1）：404 任务不存在 / 400 未完成 / 200 路径回显 | :168-224 |
+| /api/system/logs | GET | query：lines（默认 100，≤1000 钳制） | `{service:"cpp-backend", logs[{timestamp,level,message}], total_count}` | :226-305 |
+| /api/docs/endpoints | GET | — | 手写清单（会过时，§3.4） | SystemDocsRoutes.cpp:27-60 |
+| /api/docs/database-schema | GET | — | 第二份硬编码表结构 | :85-102 |
+| /api/docs/openapi.json | GET | — | Swagger 注册表渲染（dump(2)） | :115-130 |
+| /api/docs | GET | — | Swagger UI HTML（CDN 5.11.0） | :136-168 |
+
+前端调用方（Services.md）：systemService.getSystemHealth/getSystemInfo/getDatabases/getDatabaseSchema/getDocs*→Dashboard/Settings/Terminal；getExportStatus→`/api/export/{taskId}`；health/live、health/dependencies→Dashboard。
+
+## 8. 新走读分支（二轮）
+
+### 8.1 POST /api/export/{task_id} 是"应答式桩"（新发现）
+
+handle_export_task（SystemInfoRoutes.cpp:168-224）的完整行为：查任务 → 不存在 404 → **未完成 400**（带 `status` 字段但值是**枚举整数**而非字符串——`static_cast<int>(task.status)`，与其他端点的小写串风格不一致，前端要按数字解析）→ 完成则解析 body 的 `format`（默认 "json"，任意值透传不校验）→ 返回三库路径 + "Export available at specified database paths"。**没有任何导出动作发生**——不打包、不写文件、format 参数无消费者。前端 systemService 里对应的调用拿到的是路径清单而非导出产物；真正的导出走 ExportRoutes 的 `/api/forensics/export/events/*` 或 `/api/forensics/export/toon`。这个端点是"预留接口占位"的现状。
+
+### 8.2 /api/system/logs 的三级日志路径回退与格式解析
+
+handle_system_logs（:226-305）的路径回退链：`PathManager.getLogFilePath()`（规范的 logs 目录）→ `logs/forensic_analyzer.log`（相对 CWD）→ `forensic_analyzer.log`（CWD 根）——**后两级是相对路径**，与 HTTPServer 静态托管的 web/dist 同款工作目录耦合；三级都不存在时返回空 logs 数组（200，不是 404）。
+
+格式解析假设日志行形如 `[时间] LEVEL 消息`（:271-280）：首字符 `[` 且找到 `]` 才切出 timestamp；level 从 `] ` 后取到下一个空格；解析不出时整行作 message、level 归 INFO。**整个文件先全量读入内存**（:259-263 的 all_lines vector）再取尾部 N 行——大日志文件（数百 MB）时一次请求占等量内存；lines 钳制 `min(stoi, 1000)` 只限返回条数不限读取量。
+
+### 8.3 health 的 timestamp 用 steady_clock
+
+handle_system_health 的 timestamp 取 `steady_clock::now().time_since_epoch()`（:41-42）——steady 纪元通常是开机时间，**不是 Unix epoch**：这个字段对前端展示"当前时间"毫无意义，只能当单调递增序号用。对照 TaskProgress 的 phase_start_time 同用 steady_clock（那里是刻意的），此处更像笔误——若前端要显示时间应改 system_clock。
+
+## 9. 配置影响表（SystemRoutes 视角）
+
+| 配置 | 默认 | 消费点 | 说明 |
+|---|---|---|---|
+| `CORS_ALLOW_ORIGIN` | `*` | RouteHelpers | 全组响应头 |
+| `HTTP_SERVER_PORT` / `HTTP_SERVER_HOST` | 8080 / 0.0.0.0 | info 端点回显（经 ConfigManager） | host 变量不影响实际绑定（HTTPServer.md §10 已记） |
+| `PYTHON_SERVICE_URL` | http://localhost:8090 | dependencies 端点的 llm/python 服务条目 | 仅回显配置，不探测 |
+| `LLM_BASE_URL` 等 | 见 Environment.md | dependencies 端点 | 同上 |
+| `DATA_DIR` | data | databases/logs 端点的路径基 | PathManager 源 |
+| （version/features/schema 无 env） | 硬编码 | info、schema 两端点 | 改版本要改代码 |
+
+## 10. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 |
+|---|---|---|
+| 被调 | systemService（9 个方法） | Dashboard/Settings/Terminal 页 |
+| 被调 | 探针/编排层（推测的 K8s 用法） | live/ready |
+| 调用 | TaskManager::get_task_statistics | health/ready 的唯一动态数据 |
+| 调用 | PathManager | databases/logs 路径 |
+| 调用 | Swagger 单例 | openapi.json |
+| 无调用 | SQLite（业务表） | 本组不查业务库 |
+| 挂载 | HTTPServer 构造列表第 3 位 | HTTPserver.cpp:69 |
+| Swagger 注册 | **0 条**（本组自身不注册） | openapi.json 审计盲区（§5） |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

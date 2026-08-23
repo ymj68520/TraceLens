@@ -249,4 +249,162 @@ full 模式仅第 2 步不同（无选择，直接截断）。
 - **验证**：跑 llm_analyze=true + llm_mode=smart 的小镜像任务，检查 `_files.db`：`SELECT path, llm_summary, llm_model_used FROM files WHERE llm_analyzed_at > 0 LIMIT 10`，并确认 file_descriptions 有同批行；关掉 LLM 服务再跑，确认日志出现 "falling back to heuristic" 且任务仍完成（兜底生效）。
 - **扩展**：调整优先级规则改 `forensicPathPriority`（:501-567）的模式表即可，无需动选择管线；新增输出字段要同步 prompt、解析、UPDATE_FILE_LLM_ANALYSIS、file_descriptions UPSERT 四处与 Python 侧。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 写库契约细节（二轮补全）
+
+### 9.1 files.llm_* 列与"唯一路径守卫"（新发现）
+
+storeDescription 的 UPDATE 用的是 `FileClassifierSQL::UPDATE_FILE_LLM_ANALYSIS`（file_classifier_sql.h:85-93），完整 SQL：
+
+```sql
+UPDATE files SET
+    llm_summary = ?, llm_description = ?, llm_keywords = ?,
+    llm_analyzed_at = ?, llm_model_used = ?
+WHERE path = ?
+  AND (SELECT COUNT(*) FROM files AS candidate WHERE candidate.path = files.path) = 1;
+```
+
+末行的**唯一路径守卫**是此前未记录的关键语义：path 在 files 表中出现多于一次时（多分区镜像里两个分区各有 `/etc/passwd` 是常态），UPDATE 拒绝写入——子查询数出同名 path 的行数≠1 就一行都不改。后果链：`sqlite3_changes()==0` → storeDescription 返回 false（LLMAnalysisService.cpp:434-437）→ 该文件计入"分析失败"。也就是说**多分区镜像里路径重复的文件永远拿不到 LLM 描述**，且日志里表现为 "No rows updated" 而非抽取或模型错误。设计动机合理（无法决定写哪一行，索性不写），但调用方若把 analyzed 数当作覆盖指标会高估漏检。
+
+五个 llm_* 列的来源：`ALTER_FILES_ADD_LLM_COLUMNS`（file_classifier_sql.h:75-81，5 条 ALTER）由 FileClassifier 建库时补列——llm_summary / llm_description / llm_keywords / llm_analyzed_at / llm_model_used。`llm_is_relevant` **不是** files 表的列（那是 events 表簇级列与 file_descriptions 的字段）——file_descriptions 的 is_relevant 由本模块硬编码 1（§4.4）。
+
+### 9.2 每文件开关一次库连接
+
+storeDescription 每次 `sqlite3_open(dbPath)` → UPDATE → UPSERT → `sqlite3_close`（:345-439）。分析 500 个文件 = 500 次开关连接 + 500 次 `CREATE TABLE IF NOT EXISTS`（:394-402 每次都 exec）。SQLite 开关是微秒级、DDL 幂等，实测不是瓶颈，但与"复用单个 FileExtractor"（§4.3）的优化思路形成对比——后者优化的是真正昂贵的镜像重开。多线程批量改造时这里需要先收敛为单连接+事务。
+
+### 9.3 heuristic 打分全表
+
+`forensicPathPriority`（:501-567）瀑布式首匹配，完整分值表（自上而下取首个命中）：
+
+| 分值 | 匹配规则（全路径 tolower 后子串/后缀） | 代表场景 |
+|---|---|---|
+| 100 | credPatterns 子串：shadow、passwd、authorized_keys、known_hosts、id_rsa、id_ed25519、.bash_history、.zsh_history、sh_history、history.db、sudoers | 凭证与历史（:502-504） |
+| 90 | /home/、/users/、/root/ 子串或前缀；desktop、documents、downloads 子串 | 用户数据区（:519-524） |
+| 80 | /var/log/ 子串、journal 子串 | 系统日志（:526-528） |
+| 75 | .mozilla、chrome、wechat、telegram、mail 子串 | 浏览器/聊天/邮件（:530-534） |
+| 70 | 后缀 .db 或含 .sqlite | 数据库（:536-540） |
+| 60 | /etc/ 子串或前缀 | 系统配置（:542-544） |
+| 50 | /boot/ 子串、cron 子串 | 启动与调度（:546-548） |
+| 5 | /usr/share/、/usr/lib、fonts、ssl/certs、locale、icons、node_modules 子串 | 大路货（:550-557） |
+| 30 | highExt 后缀：.log/.db/.sqlite/.sqlite3/.md/.txt/.json/.xml/.csv/.conf/.cfg/.ini/.yaml/.yml/.sh/.py/.pdf/.docx/.xlsx/.pptx/.eml/.htm/.html | 可分析扩展名（:505-508、560-565） |
+| 10 | 兜底 | 其余一切（:566） |
+
+注意分值顺序不是单调的：5 分的大路货检查在 30 分的扩展名检查**之前**——`/usr/share/doc/readme.txt` 得 5 而不是 30（先命中 bulk 规则）。改优先级只需动这张表，排序/截断/回退管线全部不动。
+
+## 10. 新走读分支：两个分析循环的错误路径差异（二轮走读）
+
+full 与 smart 的循环体（:145-175、:199-234）**不完全同构**，差异值得记录。full 循环：
+
+```cpp
+// LLMAnalysisService.cpp:145-175（节选）
+for (size_t i = 0; i < files.size(); ++i) {
+    if (progressCallback) {
+        if (!progressCallback(i + 1, total, filePath)) {
+            std::cout << "LLM full-mode analysis stopped by callback after "
+                      << i << "/" << total << " files" << std::endl;
+            break;  // task cancelled
+        }
+    }
+    try {
+        std::string localPath = resolveFileForAnalysis(filePath);
+        if (localPath.empty()) { continue; }  // extraction failed
+
+        auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength);
+        if (result.success) {
+            storeDescription(filesDbPath, filePath, result.description,
+                             result.summary, result.keywords, result.modelUsed);
+            analyzed++;   // ← 不检查 storeDescription 返回值
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to analyze file " << filePath << ": " << e.what() << std::endl;
+    }
+}
+```
+
+三个此前未记录的细节：
+
+1. **full 模式对模型失败完全静默**——`result.success==false` 时没有任何日志（smart 模式 :225-230 才补了 Warning，注释自述"previously silent — the task summary under-reported"）。full 模式的失败文件无声消失。
+2. **analyzed 不看写库结果**——两个循环都在 `result.success` 后直接 `analyzed++`，storeDescription 返回 false（含 §9.1 唯一守卫拒绝）不影响计数。返回值是"模型成功的文件数"而非"成功落库的文件数"。
+3. **analyzeFile 收到 maxContentLength**——截断发生在 FileAnalyzer 内部（本模块不预截），`options.maxContentLength` 逐文件传入；而 smart 选择 prompt 的 48000 字符预算是另一个独立常量。
+
+## 11. 配置影响表（全集）
+
+| 配置 | 默认 | 消费链 | 说明 |
+|---|---|---|---|
+| `LLM_MAX_FILES` | 500 | ConfigManager.cpp:91 → TaskManagerAnalysis.cpp:345 → AnalysisOptions.maxFiles | smart/full 共同预算 |
+| `LLM_MAX_CONTENT_LENGTH` | 10000 | ConfigManager.cpp:96 → :346 → maxContentLength | 单文件截断；与 `FILE_ANALYSIS_MAX_CONTENT`（10000，FileAnalyzer 内部）是两个变量，都生效时取更紧 |
+| `LLM_SKIP_BINARY` | true | ConfigManager.cpp:97 → :347 → skipBinaryFiles | 排除 Executables/Unknown 分类 |
+| `LLM_TEXT_*` 五项 | 见 Environment.md | ModelRouter 文本模型 | 每文件 LLM 调用 |
+| `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | 120 / 3 | LLMClient | 串行化下总时长 ≈ min(文件数,500) × 单次调用时长 |
+| `FILE_ANALYSIS_MAX_KEYWORDS` | 10 | FileAnalyzer | 解析出的关键词数上限（keywords join 进 llm_keywords） |
+| `llm_mode`（任务字段） | "smart" | TaskManagerAnalysis.cpp:398 | 选 full 或 smart 入口 |
+| （无 48000 字符预算的 env） | 48000 硬编码 | :280 kMaxSummaryChars | 选择 prompt 上限不可配 |
+
+## 12. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 | 说明 |
+|---|---|---|---|
+| 被调 | TaskManagerAnalysis.cpp:334-391 | 流水线 LLM_ANALYSIS 阶段 | 唯一流水线调用方 |
+| 依赖 | llm::ModelRouter / llm::FileAnalyzer | initialize() | 文本模型 + 单文件分析 |
+| 依赖 | ::FileExtractor（TSK） | resolveFileForAnalysis 惰性建 | 镜像内抽取，复用单实例 |
+| 写 | `_files.db` files.llm_* 五列 | UPDATE 带唯一路径守卫（§9.1） | 多分区重名路径写不进 |
+| 写 | `_files.db` file_descriptions 表 | UPSERT，is_relevant=1 | 与 Python persist_to_files_db 同构 |
+| 临时目录 | llm_scratch（LLMScratch） | dirForTask(taskId) | 任务级隔离；析构+删除任务双清理 |
+| 平级 | EventClusterAnalyzer | 同阶段姊妹模块 | 事件簇侧；同一套回退哲学 |
+| 不相往来 | LLMPythonProxy | 无直接调用 | 文件描述未走 Python（§1 矛盾的另一面） |
+| 读出方 | 前端 Files 页/调查中心 | llm_* 列 + file_descriptions | Python 案件分析也读同表 |
+
+## 13. getFilesFromDatabase 的候选查询契约（新走读分支）
+
+full 模式的候选清单 SQL（:442-499）动态拼装，三个条件分支：
+
+```cpp
+// LLMAnalysisService.cpp:458-487（节选）
+std::string sql = "SELECT path FROM files";
+if (!options.fileTypes.empty()) {
+    // category IN ('type1','type2') —— 字符串拼接！
+}
+if (options.skipBinaryFiles) {
+    conditions.push_back("category NOT IN ('Executables', 'Unknown Files')");
+}
+sql += " LIMIT " + std::to_string(options.maxFiles);
+```
+
+四个此前未记录的事实：
+
+1. **fileTypes 是拼接进 SQL 的**（:463-470 单引号包裹直接拼）——当前流水线恒传空（无 env 映射到此字段），注入面休眠；**任何未来把用户输入接进 AnalysisOptions.fileTypes 的改动都会打开 SQL 注入**——接之前必须改参数化；
+2. **skipBinaryFiles 的排除集是精确两值**：'Executables' 与 'Unknown Files'（:475）——注意 'Unknown Files' 带空格，是 FileClassifier 的分类串原样；其他二进制类（如 Archive）**不被排除**；
+3. **无 ORDER BY**：候选按 rowid 自然序返回，LIMIT 截断等于"入库顺序的前 N 个"——与 smart 模式的取证优先级排序形成对照（full 的截断不偏向高价值文件）；
+4. 查询只取 path 一列——分类、大小等上下文在 analyzeFile 阶段经 detectFileType 重取，不依赖此查询。
+
+## 14. 双写一致性矩阵（files 行 × file_descriptions 行）
+
+storeDescription 两段写的四种结局（§9-10 的补充视角）：
+
+| files UPDATE | file_descriptions UPSERT | 返回值 | 后果 |
+|---|---|---|---|
+| 成功 | 成功 | true | 一致——正常路径 |
+| 成功 | prepare 失败（静默） | true | **半写**：files 有 llm_*，证据列表（读 file_descriptions 的消费方）看不到该文件 |
+| 守卫拒绝（重名 path） | 已执行 | **false** | 不一致的反向：file_descriptions 有行而 files 无注解（重跑后可能出现） |
+| prepare 失败 | — | false | 都没写 |
+
+第二种"半写"无任何日志（descStmt 的 prepare 失败分支什么都不打，:421-422 的 if 只在成功时执行）——排查"files 有描述但调查中心没有"时此处是首查点。前端调查中心读 file_descriptions（Python 侧同表），Files 页读 files.llm_*——两页数据不一致的根源多半在这。
+
+## 15. 验证 runbook
+
+```bash
+# 1. smart 兜底链验证：停掉 LLM 端点后跑 llm 任务
+#    日志应出现 "falling back to heuristic file selection"
+# 2. 唯一守卫验证：对多分区镜像（两个分区都有 /etc/passwd）跑完查
+sqlite3 data/tasks/<id>/*_files.db \
+  "SELECT path, COUNT(*) c FROM files GROUP BY path HAVING c > 1 LIMIT 5"
+#    这些 path 的 llm_analyzed_at 应为 NULL（§9.1 守卫拒绝）
+# 3. 双写核对
+sqlite3 data/tasks/<id>/*_files.db \
+  "SELECT (SELECT COUNT(*) FROM files WHERE llm_analyzed_at>0),
+          (SELECT COUNT(*) FROM file_descriptions)"
+#    两数不等 => §14 半写发生
+# 4. 临时目录清理
+ls /tmp/forensics_llm_extract/<task_id>/ 2>/dev/null   # 任务删除后应不存在
+```
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

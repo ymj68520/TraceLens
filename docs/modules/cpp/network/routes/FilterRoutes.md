@@ -153,4 +153,71 @@ struct ApiResponse {
 - 冒烟：`curl :8080/api/filter/profiles | jq .data.count`（应为 4+）；POST 一个自定义画像 → 确认 201 与文件落盘 → POST 同名再确认 200（update）→ DELETE 后 GET 应 404；`curl -X POST :8080/api/filter/apply -d '{"task_id":"<id>","profile_name":"telecom_fraud"}'` 核对计数与任务 output_raw_db 未变。
 - 扩展：新匹配维度（如 mtime）需 FileFilter 与本路由的 jsonToCondition/conditionToJson（:532-555）同步；修 exclude 降配只需把 §3.3 的 exclude 分支补齐四个字段；若 ApiResponse 要推广到其它路由组，注意 timestamp 的 ctime 问题先修再推。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 7. 端点全表（5 个，二轮补全）
+
+全部走 ApiResponse 封装（§4）；error_code 列出机器可读码：
+
+| 端点 | 方法 | 请求 | 成功响应 data | 失败（error_code → 状态码） | 源码 |
+|---|---|---|---|---|---|
+| /api/filter/profiles | GET | — | `{profiles:[{filename,name,description}], count}` | DIR_NOT_FOUND→500、LIST_ERROR→500 | FilterRoutes.cpp:98-133 |
+| /api/filter/profiles/{name} | GET | 路径参数 | `{name, description, version, include{...}, exclude{...}, combine_mode}` | VALIDATION_ERROR→400、DIR_NOT_FOUND→500、NOT_FOUND→404、PARSE_ERROR→500 | :139-180 |
+| /api/filter/profiles | POST | `{name(必填), description, include{...}, exclude{...}, combine_mode}` | `{name, filename}`；201 created / 200 updated | VALIDATION_ERROR→400、FORBIDDEN→403（内置画像）、WRITE_ERROR→500 | :245-312 |
+| /api/filter/profiles/{name} | DELETE | 路径参数 | `{name, filename}` + message deleted | FORBIDDEN→403（内置）、NOT_FOUND→404、VALIDATION_ERROR→400、DELETE_ERROR→500 | :365-379 |
+| /api/filter/apply | POST | `{task_id, profile_name}`（必填） | `{task_id, profile_name, filtered_db, total_files, included_files, excluded_files}` | NOT_FOUND→404（任务）、DB_NOT_FOUND→404（raw.db）、其余→500 | :398-440 |
+
+combine_mode 三值：`exclude_wins` / `include_wins` / `include_only`（GET 详情的枚举串，:178-180）。
+
+## 8. 画像 JSON 的磁盘契约（config/filter_profiles/*.json）
+
+以 general_forensics.json 实物为准的完整格式（GET 详情与 POST 重建都围绕它）：
+
+| 键 | 类型 | 说明 |
+|---|---|---|
+| profile_name | string | 与文件名同基名 |
+| description | string | 人读描述 |
+| version | string | "1.0.0" |
+| include.extensions / exclude.extensions | array of string（如 ".log"） | 扩展名白/黑名单 |
+| include.path_patterns / exclude.path_patterns | array of glob（如 "/proc/*"） | 路径模式（general_forensics 的 exclude 排除 /proc /sys /dev /run 四个虚拟目录） |
+| include.filename_patterns / exclude.filename_patterns | array of glob | 文件名模式 |
+| include.min_size / max_size | int（0=不限） | 尺寸界 |
+| include.include_deleted / include_allocated | bool（默认 true） | 已删除/已分配文件开关 |
+| combine_mode | "exclude_wins" 等三值 | include 与 exclude 同时命中时的裁决 |
+
+磁盘上 exclude **可以有** min_size 等七维（手工编辑），但 POST 重建会降配为三项（§3.3）——GET 详情读的是 loadProfile 后的条件对象（七维完整），所以"手工改文件→GET 能看到→POST 保存→字段消失"是这个 bug 的完整复现路径。
+
+## 9. 新走读分支（二轮）
+
+### 9.1 列表对坏画像的静默跳过
+
+FileFilter::listProfiles（FilterRoutes.cpp:118 调用）对解析失败的 .json 直接不进列表——目录里躺着五个文件、其中一个是坏 JSON 时，count=4 且无任何告警。运维排查"为什么我的画像不见了"时先 `ls config/filter_profiles/` 对比 count 差值，再逐个 `jq . <file>` 找坏文件。这与 CaseManager load 的容错（丢弃+stderr 日志）相比连日志都没有，是三处持久化读取里最安静的一个。
+
+### 9.2 getProfilesDirectory 的查找链
+
+getProfilesDirectory（:225-243 附近）按"绝对路径存在→相对 CWD 路径"的顺序找 config/filter_profiles——部署时若从别的目录启动进程，相对分支可能命中错误目录（或创建新目录，§5 已记创建侧的分裂）。与 HTTPServer 的 web/dist 相同的 CWD 耦合家族，排障口诀一致：`pwd` of the process matters。
+
+### 9.3 apply 的命名约定回退
+
+filtered_db 生成（:434-440）：raw 路径尾部 rfind("_raw.db") 命中则替换为 `_filtered.db`；**未命中**（逻辑 Android 任务的 output_files_db 是 android.db、或 db_output_dir 自定义命名）则直接追加 `.filtered` 后缀——产出形如 `android.db.filtered`。下游若按 `_filtered.db` 约定去找文件会找不到这类回退产物。与流水线的 `_filtered.db`（TaskManagerAnalysis.cpp:261-298）是同一约定，但 apply 不改 task 字段（§5），两份 filtered 产物可能并存。
+
+## 10. 配置影响表（FilterRoutes 视角）
+
+| 配置 | 默认 | 消费点 | 说明 |
+|---|---|---|---|
+| （无 filter 专有 env） | — | — | 画像选择走任务请求体的 filter_profile 字段（POST /api/tasks），不走 env |
+| `DATA_DIR` / `PROJECT_ROOT` | data / 自动 | getProfilesDirectory 的根 | config/filter_profiles 定位 |
+| `CORS_ALLOW_ORIGIN` | `*` | RouteHelpers | 响应头 |
+| `EXTRA_<CATEGORY>_EXTS` | 空 | FileClassifierMappings（FileFilter 上游分类） | 影响 include.extensions 语义的扩展名归类 |
+
+## 11. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 |
+|---|---|---|
+| 被调 | filterService 5 方法（fetchFilterProfiles/Detail/create/delete/apply） | filterSlice → FilterProfileSelector 等组件 |
+| 调用 | FileFilter::listProfiles/loadProfile/applyFilterByName | 全部数据操作 |
+| 调用 | TaskManager::instance().get_task | apply 的 raw.db 来源 |
+| 依赖 | ApiResponse（HTTPserver.h） | 全服务唯一消费者 |
+| 挂载 | HTTPServer 构造列表第 6 位 | HTTPserver.cpp:72 |
+| Swagger 注册 | 5 条全注册（覆盖率 100%——全服务唯一一组） | Swagger.md §10.1 |
+| 平行消费者 | AnalysisOrchestrator（CLI 默认 general_forensics） | 内置画像保护的根因 |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

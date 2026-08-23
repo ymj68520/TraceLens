@@ -266,4 +266,59 @@ const std::regex FileAnalyzer::KEYWORD_REGEX(
 - 打通分块：在 `analyzeFile()` 里按 `enableChunkedAnalysis && 内容超预算` 自动转 `analyzeFileChunked`；
 - 结构化输出升级：改用 LLM 的 tool-calling/JSON mode 强制格式，可去掉正则解析的容错复杂度（LLMClient 已支持 tools 参数）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 三级取内容的完整决策表（二轮补全）
+
+`analyzeFile` 的取内容路径按扩展名/类型穷举（门控 :148-163、回退链 :166-182）：
+
+| 输入 | 第一选择 | 失败回退 | 最终内容形态 |
+|---|---|---|---|
+| .pdf/.doc(x)/.xls(x)/.ppt(x)/.html/.htm/.ipynb/.rss | markitdown（白名单命中） | PDFAnalyzer/OfficeAnalyzer（本地库） | 提取文本 |
+| .jpg/.jpeg/.png/.gif/.bmp/.webp/.tiff/.tif | markitdown（EXIF+OCR） | 无专门回退（原始字节读入） | 占位/元数据文本 |
+| .mp3/.wav | markitdown（转写） | 同上 | 同上 |
+| .txt/.md/.markdown/.csv/.tsv/.json/.xml/.yaml/.yml/.rst/.log | markitdown | **原始读取**（这些格式本地读无损） | 原文 |
+| .pdf 且 markitdown 服务未起 | —（isServiceAvailable=false 跳过） | PDFAnalyzer | 提取文本 |
+| Archive/压缩类（detectFileType 判定） | 跳过 markitdown | 占位文本（"binary/archive, metadata only"语义） | 元数据分析 |
+| Database/Binary（含 .img/.exe/.evtx/.hiv） | 跳过 | 占位文本 | 同上 |
+| 其余文本类 | 跳过 | 原始字节读入 | 原文 |
+
+判定次序：**扩展名白名单 → 服务可用性 → 转换结果前缀**——三层任一不过都落本地链，本地链内部再按 detectFileType 分四支。观测点：`Successfully converted via markitdown` / `markitdown failed ... falling back` / `Skipping markitdown for unsupported extension` 三条日志分别对应三层的结局。
+
+## 9. analyzeBatch 的临时池细节（新走读分支）
+
+批量路径（:275-312）每次调用**现场构造一个 ThreadPool**（:284），批完即析构——与 TaskManager 的常驻池是两个独立实例，互不影响排队。三个此前未展开的细节：
+
+1. **future.get() 的顺序语义**：结果按提交顺序收集（:295-300），不是完成顺序——先提交的慢文件会阻塞后续已 finished 结果的回调触发，进度条呈现"卡在第 N 个"的假象，实际后续文件早已分析完。
+2. **progressCallback_ 无锁读**：回调在收集循环里裸读成员（:297），若另一线程并发 setProgressCallback 是数据竞争——当前无人用，休眠风险。
+3. **单文件退化**：`poolSize>1 && size>1` 不满足时走串行分支（:301-309）——单文件批量请求不起池，避免为 1 个任务付线程创建成本。THREAD_POOL_SIZE=1 的部署则永远串行。
+
+## 10. 配置影响表（全集，含三重截断的来源）
+
+| 配置 | 默认 | 消费点 | 效果 |
+|---|---|---|---|
+| `LLM_MAX_CONTENT_LENGTH` | 10000 | :199（configLimit） | 三重最小值之一（全局运维层） |
+| `LLM_CONTEXT_LENGTH` | C++ 4096 / .env.example 163840 | calculateMaxContentLength :433-451 | 模型窗口层；**代码缺省远小于示例值**——按默认算出的 6144 字符是最紧约束 |
+| `LLM_RESERVED_TOKENS` | 512（LLMConfig 结构体默认） | 同上 | **env 未接线**（Environment.md 已记）：只能靠结构体默认，改 env 不生效 |
+| `LLM_CHARS_PER_TOKEN` | 4.0（结构体默认） | 同上 | 同上未接线 |
+| 调用方传参 maxContentLength | LLMAnalysisService 传 LLM_MAX_CONTENT_LENGTH 的值 | analyzeFile 形参 | 与 configLimit 同源时实际是两层重复约束 |
+| `LLM_TEXT_MAX_TOKENS` | 2048 | 预算公式的 maxTokens 项 | 调大它会**缩小**内容预算（可用 token = ctx − reserved − maxTokens）——反直觉的联动 |
+| `THREAD_POOL_SIZE` | 4 | analyzeBatch :280 | 批量并发度（受 LLMClient 锁串行化，§6） |
+| `FILE_ANALYSIS_MAX_CONTENT` | 10000 | **Python 侧同位配置** | 不影响本模块；两组变量名近似易混（Environment.md §5） |
+| `PYTHON_SERVICE_URL` | http://localhost:8090 | MarkitdownProxy 单例 | markitdown 通道可达性 |
+
+**三重截断的生效次序实验**：默认 env 全缺省时 effectiveMaxLength = min(10000 传入, 6144 窗口推算, 10000 env) = **6144**——即默认最紧的是模型窗口；把 LLM_CONTEXT_LENGTH 提到 163840 后（.env.example 的写法）窗口层变 ~647 616 字符，env 的 10000 反过来成为约束。调优时先想清楚想让哪层说话。
+
+## 11. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 |
+|---|---|---|
+| 被调 | LLMAnalysisService.cpp:163/217 | analyzeFile（唯一生产入口） |
+| 被调（定制） | DLLAnalyzerLLMService.cpp:96-97 | setSummaryPrompt/setDescriptionPrompt |
+| 依赖（注入） | shared_ptr<ModelRouter> | chat/getConfig/getLastUsedModel |
+| 依赖 | MarkitdownProxy 单例 | 文档格式首选通道 |
+| 依赖 | FileContentExtractor/FileTextProcessor | 静态工具 |
+| 依赖（反向） | PDFAnalyzer/OfficeAnalyzer | 本地回退（层次交叉，§5） |
+| 依赖 | ThreadPool（临时实例） | 批量 |
+| 临时目录 | llm_scratch（上游管理） | 输入文件来源 |
+| 死位 | summarize/extractKeywords/analyzeBatch/analyzeFileChunked/进度回调/ChunkConfig | 零生产调用方 |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

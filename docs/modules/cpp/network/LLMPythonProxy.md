@@ -256,4 +256,70 @@ job_id 写进 AnalysisTask 并立即持久化——前端可凭它在 Python 侧
 - **验证**：起 Python 服务后跑完一个任务，stdout 应出现 "Triggered Graphiti ingestion ... job_id: ..."；`curl :8090/api/graphiti/jobs/<job_id>` 观察状态流转；停掉 Python 服务再跑任务，确认任务仍 COMPLETED 且日志只有 Warning。
 - **扩展**：新增 Python 侧能力时，按现有模式加一个"POST 返回 job_id"的方法 + 可选的 get_job_status 复用；若要引入重试，建议只在 async_ingest 一处加（幂等由 Python 侧按 task_id 保证）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 方法全清单与请求/响应契约（二轮补全）
+
+### 9.1 全部 8 个公开方法（含此前未列出的）
+
+| 方法 | HTTP 端点 | 请求体 | 成功判定 | 返回 |
+|---|---|---|---|---|
+| isServiceAvailable（cpp:12-23） | GET /health | — | 200 | bool |
+| deleteGraphitiData（:25-43） | DELETE /api/graphiti/tasks/{task_id} | `{"task_id": ...}`（**DELETE 带 body**） | 200 **或 404** | bool |
+| async_ingest（:49-86） | POST /api/graphiti/ingest | `{"task_id", "mode"}`（mode 四值小写串） | 200 且含 job_id | job_id / "" |
+| async_ingest_file（:88-122） | POST /api/graphiti/ingest/file | `{"file_id"(int64), "task_id", "update_analysis"(bool)}` | 同上 | 同上 |
+| async_ingest_events（:124-156） | POST /api/graphiti/ingest/events | `{"task_id", "events"(JSON 数组透传)}` | 同上 | 同上 |
+| get_job_status（:158-195） | GET /api/graphiti/jobs/{job_id} | — | 200 | JobStatus（8 字段逐项 value() 拷贝） |
+| cancel_job（:197-218） | DELETE /api/graphiti/jobs/{job_id} | — | 200 且响应 `success==true` | bool（404/异常 false） |
+| wait_for_job_completion（:220-253） | （轮询 get_job_status） | — | §5.3 | bool |
+
+### 9.2 死代码：三个私有 HTTP 助手从未实现
+
+头文件声明的 `nlohmann::json _post(...)` / `_get(...)` / `_delete(...)`（LLMPythonProxy.h:169-171）**全仓无定义**——每个公开方法各自手写 `httplib::Client` + 超时 + POST/GET/DELETE 八份重复代码。这是"想抽公共层但没抽成"的化石：若要统一重试/超时策略，从补齐这三个函数开始比改八处散装代码安全。
+
+### 9.3 超时矩阵（逐方法）
+
+| 方法 | 连接超时 | 读超时 | cpp 行号 |
+|---|---|---|---|
+| isServiceAvailable | 5s | 5s | :15-16 |
+| deleteGraphitiData | 5s | 10s | :28-29 |
+| async_ingest / _file / _events | 10s | 30s | :55-56 等 |
+| get_job_status | 5s | 10s | :167-168 |
+| cancel_job | 5s | 10s | :200-201 |
+| wait_for_job_completion（轮询间隔） | —（继承 get_job_status） | 默认 3s 间隔 / 3600s 总上限 | h:163-164 |
+
+无重试矩阵可列——**所有方法零重试**（§5.1 已记），失败一次即返回空值/false。调用频率上，主流水线只在任务完成/删除时各调一次，高频调用仅存在于假设的未来场景。
+
+### 9.4 JobStatus 字段级契约（Python 响应 → C++ 结构）
+
+| JobStatus 字段 | Python 响应键 | 缺省 | 本地哨兵 |
+|---|---|---|---|
+| status | `status`（"PENDING"/"RUNNING"/"COMPLETED"/"FAILED"/"CANCELLED"） | "unknown" | 非 200→"not_found"；异常→"error" |
+| progress | `progress`（int 0-100） | 0 | — |
+| current_phase | `current_phase` | "unknown"（初值；200 响应缺键则 ""） | — |
+| created_at / started_at / completed_at | 同名 | "" | — |
+| error | `error` | "" | 异常时填 e.what() |
+| result | `result`（任意 JSON） | null | — |
+| is_complete() | — | — | **不含** "unknown"/"not_found"/"error"——wait 循环另行把 not_found 视作终态（§5.3），is_complete() 与 wait 的终态集不一致，直接用 is_complete() 写新轮询逻辑要小心 |
+
+## 10. 配置影响表（全集）
+
+| 配置 | 默认 | 消费点 | 说明 |
+|---|---|---|---|
+| `PYTHON_SERVICE_URL` | 优先读它，否则 `http://localhost:<PYTHON_HTTP_PORT>` | ConfigManager.cpp:142 → 单例构造（h:69） | **单例构造时机锁定配置**：首次 instance() 调用后改 env 无效（构造参数已固化） |
+| `PYTHON_HTTP_PORT` | 8090 | 同上（URL 组装的回退端口） | 与 Python 侧 config.py:133 必须一致 |
+| `CPP_BACKEND_URL` | http://localhost:8080 | 反方向（Python→C++） | 不影响本模块，排障双向都要看 |
+| （无超时/重试 env） | 硬编码见 §9.3 | — | 调超时只能改代码 |
+
+## 11. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 | 说明 |
+|---|---|---|---|
+| 被调 | TaskManagerAnalysis.cpp:564-578 | async_ingest(FULL) | fire-and-forget；job_id 持久化 |
+| 被调 | TaskManager.cpp:340-341 | deleteGraphitiData | 删除任务清图；锁外调用 |
+| 单例依赖 | ConfigManager | instance() 构造参数 | URL 固化（§10） |
+| 目标服务 | Python FastAPI /api/graphiti/* | 8 端点 | 读路径（前端）不经此代理 |
+| 持久化 | AnalysisTask.graphiti_job_id | TaskSerialization | 最近一次 job_id |
+| 审计 | GRAPHITI_INGESTION / WARNING | add_audit_log | 提交成功/失败双记录 |
+| 无调用方 | wait_for_job_completion / cancel_job / async_ingest_file / async_ingest_events | — | 四个方法当前零调用方（预留 API）——grep 全仓仅头文件与自身 cpp 出现 |
+| 死代码 | _post/_get/_delete | h:169-171 | 声明无定义（§9.2） |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

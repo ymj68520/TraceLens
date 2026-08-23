@@ -216,4 +216,62 @@ if (!cached_result.empty()) {
 - curl 冒烟：`POST /api/tasks`（最小 body `{"image_path":"..."}`）→ 轮询 progress → completed 后 GET results → DELETE 后 GET 应 404。
 - 扩展：新任务字段在 handle_create_task 解析 → 传入 create_task（TaskManager.cpp:73-89 的参数表已很长，考虑改用 struct）；新只读监控端点放 TaskMonitoringRoutes 并在 TaskRoutes.cpp:20-134 补对应 OPTIONS 预检 + Swagger RegisterEndpoint（成对出现，见 Swagger.md §7）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 7. 端点全表（方法+请求+响应，二轮补全）
+
+本组 22 个业务端点（不含 16 个 OPTIONS）的完整契约；前端调用方对照 docs/modules/web/Services.md 的 taskService：
+
+| 端点 | 方法 | 请求 | 成功 | 失败 | handler 位置 |
+|---|---|---|---|---|---|
+| `/tasks`、`/api/tasks` | GET | query：status、priority（值 "all" 跳过过滤）、limit（默认 100）、offset（默认 0） | 200 `{tasks[], pagination{total,limit,offset,has_more}, filters{status,priority}}` | 400（stoi 异常） | TaskCRUDRoutes.cpp:394-461 |
+| `/tasks`、`/api/tasks` | POST | §3.2 全字段 | 201 任务摘要（id/status:"created"/priority/scenarios/llm_analyze/llm_mode/file_carving/filter_profile/android_source/dependencies_count） | 400 文本 "Invalid request: ..." | :127-262 |
+| `/api/tasks/list` | GET | 同列表 | 同列表 | 同 | :394（同 handler） |
+| `/tasks/{id}`、`/api/tasks/{id}` | GET/PUT | 路径参数 | 200 task_to_json 全量 | 404 `{error, task_id}`；保留字 404 | :264-292 |
+| `/tasks/{id}/results`、`/api/tasks/{id}/results` | GET | — | 202（未完成 `{status,message,task_id}`）/ 200 结果 JSON | 404；500 | :294-392 |
+| `/api/tasks/{id}` | DELETE | body 的 reason **被忽略**（§8.1） | 200 `{success:true,task_id,message:"Task deleted successfully"}` | 404 `{success:false,...}` | :463-494 |
+| `/api/tasks/cleanup` | POST | body 可选 `max_age_hours`（默认 24；body 空/坏也容忍——内层 catch 吞掉） | 200 `{success:true,removed_count,message}` | 500 | :496-525 |
+| `/api/tasks/{id}/databases` | GET | — | 200 `{task_id, databases[{type:raw/events/files, path, name}], count}`（**只有三库**，无 android/windows/linux/oss） | 404（含保留字守卫） | :527-585 |
+| `/api/tasks/batch-create` | POST | `image_paths[]`（必填）、`priority`（默认 normal；**不支持其余 15 个创建字段**） | 201 `{success,task_ids[],count}` | 400 | TaskBatchRoutes.cpp:50-91 |
+| `/api/tasks/batch-status` | POST | `task_ids[]` | 200 `{statuses[{task_id,status,progress:int} 或 {task_id,error:"Task not found"}], count}` | 400 | :93-132 |
+| `/api/tasks/batch-cancel` | POST | `task_ids[]`、`reason`（默认 "Batch cancel via API"） | 200 `{success,cancelled_task_ids[],cancelled_count}` | 400 | :134-163 |
+| `/api/tasks/{id}/progress` | GET | — | 200 `{task_id,status,progress{...}}` | 404 | TaskMonitoringRoutes.cpp:46-80 |
+| `/api/tasks/{id}/audit-log` | GET | query：limit、offset | 200 审计数组 | 404 | :98-139 |
+| `/api/tasks/statistics` | GET | — | 200 统计 JSON（TaskManager.md §14） | — | :82-96 |
+| `/api/tasks/{id}/priority` | PUT | `priority` | 200 `{success:true,task_id,new_priority}`（**no-op**，§3.3） | 400 | :141-157 |
+
+## 8. 新走读分支（二轮）
+
+### 8.1 "取消"的真相：DELETE 端点丢弃 reason
+
+前端 taskService 里 `cancelTask(taskId, reason)` 与 `deleteTask(taskId)` 打同一个 DELETE 端点，区别只在带不带 `{data:{reason}}`。但 handler（TaskCRUDRoutes.cpp:463-494）**从不读 req.body**——reason 静默丢弃，两条路径执行完全相同的 `delete_task`。后果：① 审计日志里 CANCELLED 条目没有前端给的取消原因；② "取消"与"删除"在服务端语义完全同义（删内存记录+删目录+清 Graphiti），不存在"保留结果的取消"。要实现真取消语义需改 handler：PENDING/RUNNING 走 cancel_task（保留记录），终态走 delete_task。
+
+### 8.2 列表过滤在内存做，分页在过滤后
+
+handle_list_tasks（:394-461）先 get_all_tasks 全量拷贝（含 result_cache），再逐个 task_to_json（每个任务 N 次 exists() 探测 scenario_databases，§4 已记），**过滤/分页都发生在这之后**（:419-436）——`?status=running&limit=10` 在 1000 个任务时也要先序列化 1000 个完整 JSON 再切片，浪费在未被返回的 990 个上。offset 越界时 `std::min(offset, total)` 夹逼（:434-435），不报错返回空页。stoi 对非数字 limit 抛异常走 400（§5 已记无钳制问题）。
+
+### 8.3 databases 端点的三库局限
+
+handle_get_task_databases（:527-585）只输出 raw/events/files 三库（AnalysisTask 的三个 output_*_db 字段），**不含** android/windows/linux/oss 平台库——即使任务跑了对应场景。平台库路径要靠 `scenario_databases`（task_to_json 里现场推导）或直接查任务目录。同样保留字守卫（:532-539）在此端点重复出现——`/api/tasks/{id}/databases` 本身是静态后缀路径，`{id}` 段仍可能是 "list" 等保留字，守卫防的是这一层。
+
+## 9. 配置影响表（TaskRoutes 视角）
+
+| 配置 | 默认 | 关系 | 说明 |
+|---|---|---|---|
+| `THREAD_POOL_SIZE` | 4 | create→start_analysis 的入池并发 | 间接影响创建后多快开始跑 |
+| `TASK_WATCHDOG_*` | 30/30 分钟 | 不直接相关 | progress 端点读到的 FAILED 可能来自看门狗（error_details 可辨） |
+| `LLM_MAX_EVENT_CLUSTERS` / `LLM_MAX_FILES` 等 | 见 Environment.md | results 响应的内容丰度 | 间接：流水线写了多少证据，results 才有多少 |
+| `DATA_DIR` | data | get_database_path 的根 | results/databases 端点的路径来源 |
+| （列表端点无任何 env 默认值可调） | limit=100 硬编码 | :400 | 改默认页大小需改代码 |
+
+## 10. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 |
+|---|---|---|
+| 被调 | taskService（fetchTasks/createTask/cancelTask/deleteTask/getTaskProgress/getTaskResults/getTaskStatistics/batch-*） | Services.md 的三向映射 |
+| 被调 | taskSlice thunks（fetchTasksSilent/createTask/cancelTask/deleteTask/fetchTaskProgress） | Redux 包装 |
+| 调用 | TaskManager（create/get/cancel/delete/batch/statistics/cleanup/cache_result/get_cached_result） | 唯一业务依赖 |
+| 调用 | SQLiteHelper::get_file_summary / get_llm_results | results 端点 |
+| 调用 | TaskHelpers::task_to_json 等序列化 | 所有响应组装 |
+| 注册 | Swagger 7 条（CRUD）+3 条（batch）+2 条（monitoring） | 覆盖缺口见 Swagger.md §10 |
+| 前端暂不用 | batch-* / audit-log / priority / cleanup | Services.md "死代码 service 方法"清单 |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

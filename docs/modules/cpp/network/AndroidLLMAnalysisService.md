@@ -180,4 +180,74 @@ try {
 - **验证**：跑 android 场景任务后查 `_android.db`：`SELECT address, llm_summary FROM sms_messages WHERE llm_analyzed_at > 0 LIMIT 10`；再触发一次同库任务确认 PENDING 查询增量生效；把 LLM_BASE_URL 清空重跑，审计日志应出现 `ANDROID_LLM_SKIPPED`（门控生效）而非逐条失败。
 - **扩展新工件类型**：① AndroidAnalyzer 建表填充；② android_analysis_sql_llm 加 `SELECT_X_PENDING_ANALYSIS`；③ Database.cpp 两个映射函数加 case；④ _ArtifactAnalyzers.cpp 加 prompt 函数（或复用泛型助手）并在 analyzeArtifactType 的 switch（AndroidLLMAnalysisService.cpp:146-191）注册；⑤ 要进默认执行集，还需在 analyzeAndroidArtifacts 的开关组（:63-104）加调用。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 14 表的 SELECT 列契约全表（二轮补全）
+
+android_analysis_sql_llm.h:20-77 逐表列出进 prompt 的 JSON 字段与截断排序：
+
+| 类型 | 表 | 进 prompt 的列 | ORDER BY（截断偏向） | 行号 |
+|---|---|---|---|---|
+| SMS | sms_messages | address, person, date, date_sent, type, body, service_center | date DESC | :20-22 |
+| WECHAT_MESSAGE | wechat_messages | sender, receiver, content, timestamp, media_type, msg_type, is_send, chatroom_name, sender_nickname, talker | timestamp DESC | :24-27 |
+| WHATSAPP | whatsapp_messages | sender, receiver, content, timestamp, media_type | timestamp DESC | :29-31 |
+| TELEGRAM | telegram_messages | sender, receiver, content, timestamp, media_type | timestamp DESC | :33-35 |
+| CONTACT | contacts | display_name, phone_number, email, account_type, account_name | display_name ASC | :37-39 |
+| CALL_LOG | call_logs | number, date, duration, type, name, geocoded_location | date DESC | :41-43 |
+| MIUI_MANIFEST | miui_backup_manifest | device, miui_version, backup_date, total_size, package_count, source_folder | backup_date DESC | :45-47 |
+| INSTALLED_APP | installed_apps | package_name, display_name, version_code, version_name, data_size, sd_size, bak_type, manifest_summary | **data_size DESC（占空间大的优先）** | :49-51 |
+| WECHAT_SQLITE_RECORD | wechat_sqlite_records | source_path, table_name, record_key, record_json, artifact_kind, is_sensitive | **is_sensitive DESC, id（敏感优先）** | :53-55 |
+| WECHAT_KV_RECORD | wechat_kv_records | source_path, namespace, key, value_type, value_text, is_sensitive, parse_status | is_sensitive DESC, id | :57-61 |
+| QQNT_SQLITE_RECORD | qqnt_sqlite_records | source_path, table_name, record_key, record_json, artifact_kind, is_sensitive | is_sensitive DESC, id | :62-64 |
+| SYSTEM_LOG | system_logs | timestamp, log_level, tag, process, pid, message, log_file, log_source | timestamp DESC | :66-68 |
+| DEVICE_IDENTIFIER | device_identifiers | identifier_type, value, package_name, source_path | id ASC | :70-72 |
+| WIFI_NETWORK | wifi_networks | ssid, **pre_shared_key**, key_mgmt, last_connected | last_connected DESC | :74-76 |
+
+三个取证语义值得点出：微信/QQ 结构化记录**敏感行优先**（is_sensitive DESC，注释明言"Prioritize sensitive tokens/identifiers (uin/imei/mac/device)"）——1000 条上限内先保住敏感证据；已装应用**按数据量降序**（大应用先分析）；WiFi 表把 **pre_shared_key（明文 WiFi 密码）直接放进 prompt**——这是全场证据密度最高的列之一，也是隐私敏感面（prompt 会离开本机去 LLM 端点）。
+
+## 10. prompt 函数清单（12 个 + 1 个共享助手）
+
+| 函数（h:149-162 声明） | 覆盖类型 | 备注 |
+|---|---|---|
+| analyzeSmsArtifact | SMS | 独立 |
+| analyzeWechatMessageArtifact | WECHAT_MESSAGE | 独立（列最多，10 列） |
+| analyzeGenericMessageArtifact(artifact, label) | WHATSAPP("WhatsApp") / TELEGRAM("Telegram") | 平台名参数化 |
+| analyzeContactArtifact | CONTACT | |
+| analyzeCallLogArtifact | CALL_LOG | |
+| analyzeMiuiManifestArtifact | MIUI_MANIFEST | |
+| analyzeInstalledAppArtifact | INSTALLED_APP | |
+| analyzeSqliteRecordArtifact(artifact, label) | WECHAT_SQLITE_RECORD("WeChat") / QQNT_SQLITE_RECORD("QQ") | 平台名参数化 |
+| analyzeWechatKvArtifact | WECHAT_KV_RECORD | |
+| analyzeSystemLogArtifact | SYSTEM_LOG | |
+| analyzeDeviceIdentifierArtifact | DEVICE_IDENTIFIER | |
+| analyzeWifiNetworkArtifact | WIFI_NETWORK | |
+| analyzeWithPrompt（共享助手，:169-171） | 全部 | 角色描述 + 工件 JSON + guidance 三参数——Android 版独有的收敛层，Linux/Windows 没有这层抽象 |
+
+14 类型 → 12 函数（两组参数化各省 1 个）。switch 的 default `continue` 同族（ALL 与未注册类型静默跳过）。
+
+## 11. 配置影响表（全集，含门控细节）
+
+| 配置 | 默认 | 消费链 | 说明 |
+|---|---|---|---|
+| `LLM_BASE_URL` | `http://192.168.31.170:1234` | AndroidAnalyzerCore.cpp:278 端点门控 | **默认非空**——门控"URL 都为空才跳过"在默认配置下恒不触发；要跳过得显式设空 |
+| `LLM_TEXT_BASE_URL` | 回退 LLM_BASE_URL | 同上第二条件 | 同上 |
+| `LLM_TEXT_*` 五项 | 见 Environment.md | initialize() → ModelRouter | 每条工件模型调用 |
+| `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | 120 / 3 | LLMClient | 端点配置了但不可达时仍逐条超时（门控不检测连通性，只查配置非空） |
+| `--no-ai`（CLI flag） | false | skipAI_ → analyzeWithLLM 第一道门 | HTTP 任务路径无此开关（skipAI_ 恒 false），只有 CLI 能触发 |
+| （无 maxArtifacts env） | 1000 | AnalysisOptions（h:57） | 调用方硬编码全开 |
+| `TRACELENS_MIUI_*` | 见源文件 | MIUI 解析侧（上游） | 影响 manifest 表的行数而非本模块行为 |
+
+注意 §3.2 门控的完整条件是 `getTextBaseUrl().empty() && getLLMBaseUrl().empty()`——**两个都空才跳过**；只清空 LLM_TEXT_BASE_URL 时回退逻辑（ConfigManager.cpp:100）会让它拿到 LLM_BASE_URL 的值，门控仍不触发。
+
+## 12. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 | 说明 |
+|---|---|---|---|
+| 被调 | AndroidAnalyzerCore.cpp:322 | 唯一调用点 | 两条上游（TSK/逻辑提取）汇合 |
+| 门控 | AndroidAnalyzerCore.cpp:260-290 | skipAI_ + 端点双检 | ANDROID_LLM_SKIPPED 审计 |
+| 依赖 | llm::ModelRouter | initialize() | 文本模型 |
+| 读写 | `_android.db` 14 张表 | SELECT pending / UPDATE by id | 列契约见 §9 |
+| SQL 来源 | android_analysis_sql_llm.h | :20-90 | **没有** Windows/Linux 那套 UPDATE_*_LLM_ANALYSIS 常量族——回写从一开始就是字符串拼接（_Database.cpp:17-56），只留 android_analysis_progress 进度表 SQL（:82-91，与 Windows 同样零调用方的死代码） |
+| 同族 | Linux/Windows 版 | 同骨架 | Android 独有 analyzeWithPrompt 收敛层与端点门控 |
+| 审计 | AuditLog | ANDROID_LLM_INIT_FAILED / ANDROID_LLM_ANALYSIS_COMPLETE / ANDROID_LLM_SKIPPED | 三类审计事件 |
+| 读出方 | 前端 /android 视图 | llm_* 列 | 微信/QQ 记录的敏感优先截断影响展示顺序 |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

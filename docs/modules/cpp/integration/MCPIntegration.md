@@ -269,4 +269,66 @@ return response.content;
 - 暴露平台真正的分析能力：注册 `analyze_windows_events`、`analyze_android_db` 之类调用现有分析器的工具，MCP 的价值才从"文件浏览器"升级为"取证助手"；
 - 修复 3.4 的暂存语义与第 6 节的前缀匹配问题。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 四工具的参数 Schema 全表（二轮补全）
+
+registerBuiltinTools（MCPIntegration.cpp:152-213）用 tool_builder 声明的完整 Schema——外部 AI 在 `tools/list` 里看到的就是这份：
+
+| 工具 | 参数 | 类型 | 必填 | Schema 默认语义 | handler 实际默认 |
+|---|---|---|---|---|---|
+| read_file | path | string | 是 | — | 缺失 → "Error: path parameter is required" |
+| | max_bytes | number | 否 | 0 = unlimited | `args.value("max_bytes", 0)`（:264）——**0 时全量读入**，与描述一致但无上限保护 |
+| analyze_file | path | string | 是 | — | 同上 |
+| | include_keywords | boolean | 否 | （Schema 未声明默认） | **handler 默认 true**（:280）——AI 不传参数时也抽关键词，prompt 多一段 |
+| list_files | path | string | 是 | — | — |
+| | recursive | boolean | 否 | — | 默认 false（:328） |
+| generate_description | paths | string（**逗号分隔多路径**，非数组） | 是 | — | 逐个 trim 空白后拆分（:383-393）；空串项丢弃 |
+
+Schema/handler 的两处错位值得记录：include_keywords 的默认值只存在于 handler（Schema 层 AI 看不到"默认开启"的事实）；paths 用逗号分隔字符串而非 JSON 数组是 MCP Schema 翻译层只支持标量（§3.4）的连带后果——外部 AI 传含逗号文件名的路径会被错误切分。
+
+**响应包装**：所有工具结果统一包成 MCP text 内容块 `[{"type":"text","text":<结果>}]`（:166 等）——list_files 的 JSON 数组也是 dump(2) 后塞进 text 字段的**字符串**，不是结构化 content 块；AI 侧拿到的是"看起来像 JSON 的文本"，自己再解析。
+
+## 9. 新走读分支：generate_description 的静默跳过与降级（二轮）
+
+handleGenerateDescription（:373-441）与其他工具的错误策略不同——**白名单外或不存在路径被静默 continue**（:402-405），不报错不出现在结果里：
+
+```cpp
+// MCPIntegration.cpp:401-409（节选）
+for (const auto& p : paths) {
+    if (!isPathAllowed(p)) {
+        continue;              // ← 静默跳过，与 read_file 的 "Error: Path not allowed" 不同
+    }
+    if (fs::exists(p)) {
+        fileInfo << "File: " << p << "\n";
+        // size/2KB 预览...
+    }
+}
+```
+
+后果：传十个路径、九个被白名单挡掉时，AI 拿到的是一份只描述一个文件的"整组描述"，**没有任何信号说明漏了九个**——对话里 AI 会自信地总结"这组文件是……"。对比 read_file/analyze_file 的显式 Error 约定，这是四件套里唯一"宽容失败"的工具，接线后是最容易产生误导性结论的路径。修复方向：跳过时在 prompt 或结果里注明 "skipped N paths (not allowed/missing)"。
+
+**整组全被跳过时**：fileInfo 为空串 → 仍会调 router_->chat（空内容 prompt）→ 拿回一个对"空"的描述。没有任何分支短路。
+
+## 10. 配置影响表（全集）
+
+| 配置 | 默认 | 消费点 | 状态 |
+|---|---|---|---|
+| `MCP_HOST` | `0.0.0.0` | ConfigManager.cpp:143 → start() :35 | **唯一被读的 MCP 配置**；不在 .env.example |
+| （端口） | 8890（构造参数默认，h:41） | 构造注入 | 无 env；.env.example 的 MCP_SERVER_PORT=8890 未接线 |
+| `MCP_SERVER_PORT/HOST`、`MCP_ALLOWED_PATHS` | — | 无读取点 | **未接线**（§6 已记） |
+| 白名单 | 空 = 全放行 | setAllowedPaths()（:131-133） | 程序化设置，无持久化 |
+| `LLM_TEXT_*`（经注入的 router） | 见 Environment.md | analyze_file/generate_description 的模型 | 与主链路共享配置 |
+| server_info | "ForensicsLLMServer"/"1.0.0" 硬编码 | :39 | 与服务版本无联动 |
+
+## 11. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 |
+|---|---|---|
+| 无被调 | 全仓库 | 零生产构造点（§2） |
+| 依赖（设计） | libs/cpp-mcp 的 mcp::server/tool_builder | HTTP+SSE JSON-RPC |
+| 依赖（注入） | shared_ptr<ModelRouter> | 两个 LLM 工具的出口 |
+| 依赖 | ConfigManager | 仅 getMCPHost |
+| 读 | 本地文件系统（白名单约束） | read_file/list_files/analyze_file/generate_description |
+| 平行实现 | FileAnalyzer | 独立的"文件→LLM"路径（§5）；prompt/截断策略互不相同（50KB vs FileAnalyzer 的 LLM_MAX_CONTENT_LENGTH） |
+| 死位 | registerTool 自定义工具（start 前暂存丢失） | 无调用方；整个类处于未接线状态 |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

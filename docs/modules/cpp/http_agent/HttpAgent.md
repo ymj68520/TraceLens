@@ -274,4 +274,90 @@ if (param_bool(cmd.parameters, "options", "file_carving")) {
 - **验证**：`cmake -S src/http_agent -B build/http_agent && cmake --build build/http_agent && ctest --test-dir build/http_agent --output-on-failure`；真机冒烟：起本地 8091 服务端注册客户端 → `tracelens_agent --config agent.conf --once` → 查服务端命令状态与 analysis_results；杀进程再启，确认孤儿命令被报 FAILED（recover 生效）。
 - **扩展新命令类型**：① models/command.h 的注释补类型名；② command_executor.cpp 加一个 Executor 或在 execute 里分支（argv 构造参考 build_analyzer_argv 的 fail-fast 模式）；③ 收集工件参考 collect_db_artifacts（stem 前缀 + 后缀白名单）；④ 测试补 FakeProcessRunner 用例（tests/test_http_agent.cpp 已有完整范式）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 线协议字段级契约（二轮补全）
+
+三个上传端点的 body 形状逐字段（从组件源码提取）：
+
+**POST /api/tasks/{task_id}/results**（result_uploader.cpp:5-28）：
+
+| 字段 | 类型 | 来源 | 约束 |
+|---|---|---|---|
+| artifacts[]（顶层数组外的唯一键） | array | 工件向量 | 空 task_id 直接拒绝（"no task link on this command"） |
+| artifacts[].result_type | string | 工件类型 | |
+| artifacts[].file_path | string | 本地 .db 路径 | **会离开客户机**（元数据级） |
+| artifacts[].file_size | int? | stat | 可选 |
+| artifacts[].storage_location | string | | |
+| artifacts[].result_metadata | object | | |
+
+**POST /api/clients/{cid}/index-images**（index_uploader.cpp:9-40）：**裸 JSON 数组**（无外层包装键）：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| path | string | 本地绝对路径（上报给服务端） |
+| size_bytes | int | st_size；**schema 要求 >0**（零字节文件会被服务端拒） |
+| format | "E01"\|"DD"\|"Directory" | 线上枚举串 |
+| image_metadata | object | 恒 `{}`（服务端默认） |
+| （md5_hash 刻意不上传） | — | brief D2；服务端把缺失当 None |
+
+**POST /api/commands/{id}/status**（status_reporter.cpp）：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| command_id | string | StatusReporter **强制补进 body**（path id 负责路由、body 字段过 schema 校验——漏了 422） |
+| status | "in_progress"\|"completed"\|"failed" | 客户端只发这三个 |
+| progress | int? | 可选 |
+| message | string? | 可选（FAILED 时带 stderr 尾部 500 字符） |
+
+**GET /api/commands/poll 响应**：`{commands: [...]}`，每条 `{id, command_type, parameters, priority}`——from_json 对 id/command_type 严格（at()）、parameters/priority 宽松（§3.1）。
+
+## 9. 镜像格式识别契约（image_indexer）
+
+detect_format（image_indexer.cpp:39-52）的判定表：
+
+| 输入 | 判定 | 线上串 |
+|---|---|---|
+| 目录 | Directory（无条件优先） | "Directory" |
+| 后缀 .dd/.img/.raw/.000（tolower 比较） | DD | "DD" |
+| 后缀 `.e` + 两位数字（.e00-.e99，EWF 分段） | E01 | "E01" |
+| 其余 | Unknown（**不上报**） | — |
+
+E01 多段去重（scan 内的 `std::map<std::string, DiskImageEntry> e01`）：同 base 名的多个分段只报**最小段号**一条（e01_base 剥掉后 4 字符取基名）——服务端不会收到同一镜像的 e00/e01/e02 三条重复记录。size_bytes 取 stat 的 st_size——**分段镜像只报了首段大小**（不是完整镜像大小），服务端按此值展示时注意口径。
+
+## 10. 新走读分支：上传端点的两类错误形态（二轮）
+
+result_uploader/index_uploader 的错误串区分传输层与 HTTP 层（result_uploader.cpp:23-27 同款）：
+
+- `result upload transport error: <err>`——httplib 返回空 result（连接失败/超时），**无状态码**；
+- `result upload failed: HTTP <status>`——服务端给了非 2xx。
+
+上层（§3.3 的改判 FAILED 逻辑）把两者都当失败，但运维排查时前缀直接指明方向：transport 查网络/TLS/服务进程，HTTP 查服务端日志与 schema。注意 `res.ok()` 的判定是 2xx 全收——服务端返回 201/202 也算成功（与 LLMClient 只认 200 的严格口径不同）。
+
+IndexUploader 的空清单短路（:16-19）：entries 为空直接 return true **不发请求**——"没有镜像"不占用一次服务端往返；只有 client_id 为空才是错误。
+
+## 11. 配置影响表（补全超时与 TLS 面）
+
+| 配置 | 默认 | 消费点 | 说明 |
+|---|---|---|---|
+| §3.6 的九项 | 见该表 | client_config | 全集 |
+| 连接/读/写超时 | 10s / 300s / 60s | http_client.cpp:29-31 | 硬编码无 env；300s 读为结果上传留量 |
+| TLS 下限 | TLS 1.3 | CMake `CPPHTTPLIB_ENFORCE_TLS1_3_MIN`（仅本目标） | 编译期锁定 |
+| 重定向 | 禁止 | :38 | 见 §3.2 |
+| token 权限 | 0600 | jwt_client.cpp:68-74 | group/other 任何位都硬错 |
+| `--once` | flag | main:44 | 单轮即退（测试/cron） |
+| `--config <path>` | flag | main | 配置文件路径 |
+
+## 12. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 |
+|---|---|---|
+| 调 | server GET /api/commands/poll | Poller |
+| 调 | server POST /api/commands/{id}/status | StatusReporter（三处调用点：in_progress/终态/recover 补报） |
+| 调 | server POST /api/tasks/{task_id}/results | ResultUploader |
+| 调 | server POST /api/clients/{cid}/index-images | IndexUploader |
+| fork | forensic_analyzer（--no-ai 不变量） | AnalyzeDiskExecutor |
+| 依赖 | vendored httplib/json（cpp-mcp common） | 传输与序列化 |
+| 状态 | tracelens_state.db in_flight_commands | 兼 outbox |
+| 测试 | test_http_agent.cpp 47 用例 | 含回环真传输 |
+| 不调 | Python httpserver:8090 / C++ HTTPServer:8080 | agent 世界只有 8091 |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

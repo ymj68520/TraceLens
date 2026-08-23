@@ -151,4 +151,79 @@ android 类型路径解析的三级回退（RouteHelpers.cpp:48-66）：任务 m
 - 冒烟：完成任务后依次 curl `timeline/comprehensive?task_id=...&cluster_events=true`（注意参数名实为 `cluster`）、`files/largest?task_id=...&limit=5`、`android/communication-summary?task_id=...`，与 `sqlite3 data/tasks/<id>/*.db` 的行数互相印证。
 - 扩展新查询端点：选好所属域 → 在 SQLiteHelper 对应 Queries 文件加方法 → 子路由文件注册端点（+Swagger RegisterEndpoint）→ 若是新域则建子路由类并在 ForensicsRoutes.cpp:31-45 挂载。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 7. 端点全表（62 个，按子路由，二轮补全）
+
+各子路由注册的全部端点（与 HTTPServer.md §8.2 同源、此处按查询域组织并标注参数）。除标注外均为 GET、必带 query 参数 `task_id`：
+
+| 子路由 | 端点（路径后缀省略 /api/forensics/） | 特有参数 |
+|---|---|---|
+| TimelineRoutes（11） | timeline/comprehensive | start_time、end_time、event_type、limit(1000)、offset、**cluster**（="true"）、**bucket**(60) |
+| | timeline/details | time_window 或 window/bucket_index（别名，冲突 400）、event_type、parent 或 parent_directory/dir（别名）、search、limit、offset、bucket(60) |
+| | timeline/distribution、timeline/full（limit/offset）、timeline/statistics-by-period（period=hour/day/week/month） | — |
+| | timeline/by-type（event_type 必填）、timeline/by-time-range（start_time/end_time 必填 int64）、timeline/by-file（file_path 必填） | — |
+| | timeline/file-activity（file_path/inode 可选）、timeline/suspicious-patterns、timeline/user-activity | — |
+| EventClusterRoutes（4） | timeline/clusters/analyze（POST，**410 弃用桩**）、clusters/batch-analyze（POST：task_id+clusters[]）、clusters/reanalyze（POST：task_id+time_window+event_type+parent_directory）、clusters/analyzed | 见 EventClusterAnalyzer.md §9 |
+| ExportRoutes（4） | export/toon（POST）、export/events/json、export/events/csv、export/events/visualization | query（只读 SELECT 校验）、output 路径 |
+| FileAnalysisRoutes（5） | files/largest（limit=50）、files/recent（hours="24"）、files/suspicious、files/duplicates、files/extensions-analysis | — |
+| FileExtractionRoutes（3） | extract（POST：task_id+file_ids[]+mode 等）、extract/{job_id}、extract/status?job_id= | 作业态内存 |
+| StatisticsRoutes（4） | statistics/overview、file-distribution、activity-patterns、deleted-files-analysis | — |
+| AndroidForensicsRoutes（14） | android/{communication-summary,app-usage,device-info,media-analysis,llm-summary} | — |
+| | android/miui-{overview,installed-apps,db-inventory} | — |
+| | android/miui-qqnt-{overview,artifacts,records}、android/miui-wechat-{overview,artifacts,records} | artifacts：category/status/query/limit(100,max≥1)/offset(max≥0)；records：kind/query/limit/offset/**reveal_sensitive**（="1" 才明文） |
+| MemoryForensicsRoutes（5） | memory/{summary,processes,network,bash-history,boot-info} | 读 `_memory.db` |
+| SystemEventRoutes（2） | system/events（start_time/end_time/limit/offset）、system/summary | — |
+| DLLAnalysisRoutes（7） | dlls、dlls/{int id}、dlls/suspicious、dlls/statistics、dlls/health、dlls/{int id}/anomalies、dlls/analyze（POST） | id 为 int 路径参数 |
+| SceneQueryRoutes（2） | /api/tasks/{id}/scene-stats、/api/tasks/{id}/scene-artifacts（scene_type 白名单三选一、limit=100、offset=0） | 前缀挂在 /api/tasks 下 |
+
+前端调用方对照（Services.md）：Timeline 页消费 9 个 timeline 端点 + clusters；Files 页消费 files 五件套 + extract 三件套；Statistics 四件套；Android 页消费 14 个 android 端点全量；Memory 五件套；systemService.exportToon 打 export/toon。
+
+## 8. 数据库路径解析契约（RouteHelpers::get_database_path 全分支）
+
+所有端点的第一步都经此函数（RouteHelpers.cpp:35-90），完整分支表（task_id 不存在抛 runtime_error→handler catch→500/400 视 handler 而定）：
+
+| db_type | 解析顺序 | 兜底 |
+|---|---|---|
+| raw | `task.output_raw_db` 直返 | 无（可能为空串） |
+| events | `task.output_events_db` 直返 | 无 |
+| files | `task.output_files_db` 直返 | 无 |
+| android | ① metadata["android_db"] 且存在 → ② output_files_db 同目录 `android.db` 且存在 → ③ raw 库去扩展名 + `_android.db` 且存在 → ④ output_files_db 本身（存在时）→ ⑤ ③的路径（**明知不存在也返回**，让查询层报错） | :48-66 |
+| dll | ① metadata["dll_db"] → ② raw 去扩展名 + `_dll.db`（**不查存在性**） | :67-71 |
+| memory | ① metadata["memory_db"] → ② raw 去扩展名再**剥 `_raw` 后缀** + `_memory.db`（不查存在性） | :72-86 |
+| 其他 | throw "Unknown database type" | :87-89 |
+
+三处不对称值得注意：android 走完整存在性探测链；dll/memory 只做命名推导**不查存在**（文件不存在时错误延迟到 sqlite3_open）；raw/events/files 直接返回任务字段——任务没跑到对应阶段时是空串，`sqlite3_open("")` 会**创建空库**（SQLite 语义：空路径或不存在均可打开，写时才落盘）——SQLiteHelper 的 open 失败分支通常不触发，查询返回空数组，表现为"端点 200 + 空结果"而非 404。这是排障"任务没完成却拿到空数据"的根源。
+
+## 9. 新走读分支：extract 作业生命周期（FileExtractionRoutes 自管）
+
+提取作业不走 TaskManager，是 handler 进程内的 map 态（重启即失，§5 已记）：
+
+1. **提交**（POST /api/forensics/extract）：body 含 task_id、file_ids[]、mode（"allocated"/"deleted" 决定 ExtractionMode）、输出目录等；生成 `ext-` + 8 hex 的 job id（RouteHelpers::generate_job_id，:22-33），作业入 map，状态 queued；
+2. **执行**：handler 内起后台工作（从 raw.db 找 inode → TSK 抽取 → 写输出目录），逐文件更新作业进度；
+3. **轮询**（GET /api/forensics/extract/status?job_id=）：前端 pollExtractionStatus（extractionService.js:50-111）以 2s 级间隔轮询，带 AbortSignal 与 15 分钟绝对 deadline；
+4. **终态**：completed（带 output_path）或 failed（带 error）。
+
+URL 溯源细节（FileExtractionRoutes.cpp 内）：`find("/api/forensics/extract/")` 的字符串操作用于从 referer/回调推断 job id——这类基于 URL 前缀的解析是历史遗留，直接以 status 端点为准即可。
+
+## 10. 配置影响表（ForensicsRoutes 视角）
+
+| 配置 | 默认 | 消费点 | 说明 |
+|---|---|---|---|
+| `CORS_ALLOW_ORIGIN` | `*` | RouteHelpers.cpp:16-17 | 所有 API 响应头的唯一来源；设白名单即全组收敛 |
+| `FTS_ALLOWED_ROOT` | 未设=不限制 | SearchRoutes.cpp:20（不在本组，对照用） | 检索白名单 |
+| `SEARCH_*` 四项 | 1000/50000/150/10 | FullTextSearch | 不经 SQLiteHelper，不适用本组 |
+| `DB_JOURNAL_MODE` 等 | WAL/5000 | 写侧建库 | 查询侧不受控（见 SQLiteHelper.md §10） |
+| （bucket/limit/reveal_sensitive 无 env） | 60/各默认/hardcode | 各 handler | 全部只能 URL 参数调 |
+
+## 11. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 |
+|---|---|---|
+| 被调 | forensicsService（timeline/files/android/statistics 族）、extractionService（extract 三件套）、memoryService（五件套）、systemService.exportToon | Services.md |
+| 调用 | RouteHelpers::get_database_path / add_cors_headers / generate_job_id | 每端点首步 |
+| 调用 | SQLiteHelper 六域查询 | 数据层 |
+| 调用 | EventClusterAnalyzer（clusters 写端点） | 唯一非 SELECT 主路径 |
+| 调用 | TaskManager::instance().get_task | 路径解析的 task 字段来源 |
+| 挂载 | HTTPServer 构造列表第 2 位 | HTTPserver.cpp:68 |
+| Swagger | 28 条注册（Timeline 7 + Android 7 + EventCluster 4 + Export 3 + SystemEvent 2 + FileAnalysis 1 + FileExtraction 1 + OSS 0） | 覆盖率见 Swagger.md §10 |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

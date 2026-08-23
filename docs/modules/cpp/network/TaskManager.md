@@ -247,4 +247,143 @@ struct TaskCleanup {
 - **验证**：建任务后 `cat data/tasks.json` 看持久化（状态为大写、无密码字段）；杀进程重启，原 RUNNING 任务应变为 FAILED"Interrupted by server restart"；删除运行中任务，确认 `data/tasks/<id>/` 目录稍后被清（TaskCleanup 兜底）。
 - **扩展新分析阶段**：在 TaskManagerAnalysis.cpp 流水线里插入阶段调用 + `update_progress(TaskPhase::X, ...)`，并在 `calculate_overall_percentage` 权重表（TaskManager.cpp:546-555）里配权重；新阶段若要持久化进度，需同时在 TaskSerialization.cpp:24-32 补枚举映射（注意 FILE_CARVING 目前就漏在映射外，见 TaskInfrastructure.md）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 10. 方法全清单（二轮补全，含 §4 未列出的方法）
+
+§4 列出了高频方法；下表补齐 TaskManager.h 中**全部**公开方法，标注调用方与行为细节（行号指 TaskManager.h）：
+
+| 方法（h 行号） | 语义 | 调用方 | 行为细节 |
+|---|---|---|---|
+| `set_result_db(id, db_path)`（:110） | 记录结果库路径 | TaskManagerAnalysis.cpp:586 收尾 | 锁内写 output_raw_db 等字段 |
+| `set_scenarios(id, scenarios)`（:117） | 覆写场景列表 | SceneDetector 自动探测回填 | **会覆盖请求体里的手选场景**（探测路径时） |
+| `set_llm_analyze_options(id, enable, mode)`（:125） | 改 LLM 开关/模式 | 无路由调用方 | 预留接口 |
+| `set_case_description(id, desc)`（:132） | 改案件描述 | 无路由调用方 | 预留接口 |
+| `cancel_multiple_tasks(ids, reason)`（:185） | 循环 cancel_task | batch-cancel 路由 | 逐个加锁（非批量锁） |
+| `create_batch_tasks(paths, priority)`（:193） | 循环 create_task（仅 2 参） | batch-create 路由 | **不接收 metadata/scenarios/llm 等参数**——批量任务永远是默认配置 |
+| `get_task_progress(id)`（:225） | 只拷贝 progress 子结构 | progress 端点 | 未命中返回零值结构（current_phase=INITIALIZING） |
+| `add_audit_log(id, action, details, user_id="")`（:250） | 写审计 | 全部状态变化点 | user_id 恒空——REST 层无用户概念 |
+| `get_audit_logs(id, limit=0, offset=0)`（:260） | 分页读审计 | audit-log 端点 | limit=0 表示不限 |
+| `save_tasks() / load_tasks()`（:270-271） | 持久化出入口 | 启动 load；各状态变化 save | 详见 TaskInfrastructure.md |
+| `clear_decryption_password(id)`（:287，私有） | 用后清除解密口令 | ImageAnalyzer 移交后 | 锁内 erase |
+| `clear_backup_password(id)`（:290，私有） | 用后清除备份口令 | AndroidAnalyzer 移交后 | 同上 |
+| `runLogicalAndroidAnalysis(task, baseName)`（:295，私有） | dir/zip/miui-backup 短路路径 | start_analysis 分叉 | 返回 bool，失败走统一 FAILED |
+
+## 11. 数据契约：POST /api/tasks 请求体 → AnalysisTask 完整映射
+
+`handle_create_task`（TaskCRUDRoutes.cpp:127-262）是唯一的创建入口。请求体字段与 create_task 实参的对应（全部经 `body.value(key, default)` 读取，**缺字段一律取默认**）：
+
+| 请求体键 | 类型/取值 | 缺省 | 落到 AnalysisTask/实参 | 源码 |
+|---|---|---|---|---|
+| `image_path` | string（必填） | 无（缺失抛异常→400） | `image_path` | :132 |
+| `priority` | "low"/"normal"/"high"/"critical" | "normal"（未知值也归 normal） | `priority` | :136-138 |
+| `metadata` | object（值须可转 string） | `{}` | `metadata` | :141-146 |
+| `dependencies` | `[{task_id, required=true}]` | `[]` | `dependencies` | :149-154 |
+| `scenarios` | `["android","windows","linux","server_cloud"]` | `[]` | `scenarios`；**非法场景名静默丢弃** | :157-165 |
+| `android_analyze` | bool | false | 兼容旧键：true 且未给 scenarios → scenarios=[ANDROID] | :166-169 |
+| `xfs_mode` | "native"/"pure" | "auto" | `xfs_mode` | :172-177 |
+| `db_output_dir` | string | "" | `db_output_dir` | :180 |
+| `llm_analyze` | bool | false | `llm_analyze` | :183 |
+| `llm_mode` | "full"/"smart" | "smart"（**无枚举校验**，任意串透传） | `llm_mode` | :184 |
+| `case_description` | string | "" | `case_description` | :185 |
+| `filter_profile` | string | ""（create_task 内再默认 general_forensics） | `filter_profile` | :188 |
+| `enable_decryption` | bool | false | `enable_decryption` | :192 |
+| `key_file_dir`（兼容旧拼写 `key_dir`） | string | "" | `key_file_dir` | :193 |
+| `decrypt_password` | string | "" | 运行期专用，不落盘 | :194 |
+| `android_source` | "tsk"/"dir"/"zip"/"miui-backup" | "tsk" | `android_source` | :199 |
+| `backup_password` | string | "" | 运行期专用，不落盘 | :201 |
+| `file_carving` | bool（或 `options.file_carving`，两者取或） | false | `file_carving`；注释明确"此前 documented but never executed" | :206-209 |
+
+**201 响应体**（:237-252）：`{id, status:"created", priority, scenarios[], llm_analyze, llm_mode, file_carving, filter_profile, android_source, dependencies_count}`。注意响应里的 `scenarios` 若靠自动探测回填，**不反映**探测结果（探测发生在流水线内，晚于响应）。
+
+**GET /api/tasks/{id} 响应体**（TaskHelpers::task_to_json，TaskHelpers.cpp:57-96）逐键：`id`、`image_path`、`status`（小写）、`priority`（小写）、`message`、`output_files_db`、`output_raw_db`、`output_events_db`、`progress.{current_phase,phase_percentage,overall_percentage,phase_description}`、`timestamps.{created,started,completed,execution_time_seconds}`（毫秒纪元；execution 仅终态非零）、`scenarios[]`（字符串）、`scenario_databases`（仅实际存在的库路径，按 PathManager 推导）、`android_analyze`（=scenarios 含 android 的兼容投影）、`android_source`、`llm_analyze`、`llm_mode`、`file_carving`、`filter_profile`、`case_description`、`xfs_mode`（"native"/"pure"/"auto"）、`db_output_dir`、`extraction_directory`（PathManager 推导，无论是否已提取）、`cancellation_requested`、`dependencies[{task_id,required}]`、`dependents_count`（恒 0）、`metadata`、`error_details`。**不出现在响应里**：decrypt_password、backup_password、result_cache、graphiti_job_id、progress 的时间戳字段（phase_start_time/estimated_completion 不序列化到 API，只在 tasks.json 内部格式里存在一部分）。
+
+## 12. 新走读分支：创建请求的三条异常路径
+
+### 12.1 JSON 解析失败（TaskCRUDRoutes.cpp:257-260）
+
+```cpp
+} catch (const std::exception& e) {
+    res.code = 400;
+    res.write("Invalid request: " + std::string(e.what()));
+}
+```
+
+`json::parse` 抛出的 parse_error、`body["image_path"]` 缺键抛出的 type_error（nlohmann 对缺失键的 operator[] 是 UB 安全但 get<string> 会抛）都被这一个 catch 兜住。注意**响应体不是 JSON**（纯文本 "Invalid request: ..."），前端 axios 的 JSON 解析会拿到字符串——排障时 400 + 文本响应即此路径。缺 `image_path` 是最常见的触发（type_error.302）。
+
+### 12.2 路径参数与保留字冲突（TaskCRUDRoutes.cpp:268-276）
+
+```cpp
+// CRITICAL: Prevent route collision with static paths like /api/tasks/list
+if (task_id == "list" || task_id == "statistics" || task_id == "cleanup" ||
+    task_id == "batch-create" || task_id == "batch-status" || task_id == "batch-cancel") {
+    json error = {{"error", "Task not found"}, {"task_id", task_id}};
+    res.code = 404;
+    ...
+```
+
+`/api/tasks/<string>` 会吞掉同前缀的静态路由（Crow 按注册顺序，`<string>` 在 list/statistics 等之前注册就会抢匹配）——这 6 个保留字的显式 404 是防"把 list 当 task_id 查"的守卫。新增 `/api/tasks/xxx` 静态端点时必须同步扩这个列表，否则会被 `<string>` 吞掉后查无此任务。
+
+### 12.3 创建成功但启动失败（依赖未满足）
+
+`can_start_task` 返回 false 时（:233），任务留在 PENDING，**没有任何后续自动唤醒机制**——依赖任务完成后不会重新调度等待者（没有"依赖完成→唤醒 dependents"的代码）。被依赖任务 COMPLETED 后，PENDING 任务仍要靠再次调用 start_analysis（当前无路由能触发）——依赖功能实际是"创建期一次性检查"，不是运行期调度。
+
+## 13. 配置影响表（TaskManager 视角）
+
+| 配置 | 默认 | 消费点 | 影响 |
+|---|---|---|---|
+| `THREAD_POOL_SIZE` | 4 | TaskManager.cpp:23（≤0 修正 2，>16 打 WARNING） | 分析流水线并发度；同一变量也喂给 FileAnalyzer 的临时池 |
+| `TASK_WATCHDOG_STALE_MINUTES` | 30 | TaskWatchdog.cpp:29 | RUNNING 无进度超时判 FAILED |
+| `TASK_WATCHDOG_PENDING_MINUTES` | 30 | TaskWatchdog.cpp:33 | PENDING 超时判 FAILED |
+| `LLM_MAX_EVENT_CLUSTERS` | 0（不限） | TaskManagerAnalysis.cpp:416 | 事件簇 LLM 分析的上限 |
+| `DATA_DIR` | `data` | main.cpp:65 | tasks.json 与 tasks/<id>/ 的根 |
+| `LLM_TEXT_*` / `LLM_VISION_*` | 见 Environment.md | LLM 阶段经 LLMAnalysisService | 开 llm_analyze 时的模型行为 |
+| `DB_JOURNAL_MODE` / `DB_BUSY_TIMEOUT_MS` | WAL / 5000 | 各产出库连接 | 写侧吞吐与锁等待 |
+
+## 14. 统计契约（get_task_statistics 响应字段）
+
+`/api/tasks/statistics` 的响应体即 `get_task_statistics()` 返回的 JSON（TaskManager.cpp:418-443）：`total_tasks`、`by_status.{pending,running,completed,failed,cancelled}`、`by_priority.{low,normal,high,critical}`（未出现的优先级键值为 0，四键恒存在）、`running_phases.{initializing,image_analysis,event_extraction,file_classification,platform_analysis,file_carving,finalizing}`（**缺 llm_analysis 键**，§8 已记）、`average_execution_time_seconds`（int 截断除法，仅 COMPLETED/FAILED 计入，无任务时为 0）。一个实现细节：:391 取了 `steady_clock::now()` 却从未使用（死变量），平均耗时实际用 system_clock 的 completed-started 差值（:412）——若任务跨 NTP 校时，秒数可能为负计入平均。
+
+## 15. 审计事件全表（add_audit_log 的动作串清单）
+
+TaskManager 侧经 add_audit_log（经 AuditLog 单例）写入的动作串全集（grep 全部调用点）：
+
+| 动作串 | 触发点 | details 内容 |
+|---|---|---|
+| CREATED | create_task | 建任务 |
+| CANCELLED | cancel_task | 取消原因 |
+| DELETED | delete_task | 删除 | 
+| CLEANUP | cleanup_completed_tasks | "Task cleaned up after completion" |
+| STATUS_CHANGE | update_status | 状态迁移 |
+| RESULT_SET | set_result_db | 结果库路径 |
+| CACHE_SET | cache_result | 结果缓存写入 |
+| SCENE_DETECTED | 场景探测回填（TaskManagerAnalysis.cpp:206-210） | "Auto-detected scenarios: android=123..." 或 "No platform markers found..." |
+| LLM_CONFIG | LLM 阶段开始 | LLM 配置快照 |
+| CASE_DESC | case_description 设置 | 描述文本 |
+| FILE_CARVING | 雕复阶段 | 雕复参数 |
+| GRAPHITI_INGESTION | Graphiti 提交成功（TaskManagerAnalysis.cpp:224-226） | "job_id: ..." |
+| WARNING | Graphiti 提交失败等 | 具体告警 |
+| ANDROID_ANALYSIS | Android 阶段 | 分析摘要 |
+
+分析器侧另有独立的 `AuditLog::instance().log("SYSTEM"/"LINUX"/..., action, ...)` 调用约 270 处（分析器自己的进度/成功/失败审计，category 前缀区分模块：SYSTEM 152、ERROR 30、SUCCESS 25、WARNING 16、INFO 13、LINUX 5），含 ANDROID_LLM_SKIPPED / WINDOWS_LLM_SKIPPED / LINUX_LLM_SKIPPED（平台 LLM 门控）、TIMELINE_BERGE 等。查询入口：`GET /api/tasks/{id}/audit-log`（TaskMonitoringRoutes.cpp:98-139，响应 `{task_id, logs[{timestamp(ms), action, details, user_id}], count}`，limit 默认 50、offset 默认 0，**stoi 无钳制无异常保护**——limit=abc 得 500）。
+
+## 16. 状态机迁移全表（谁在何处改状态）
+
+update_status 的全部语义调用点（转换触发矩阵）：
+
+| 迁移 | 触发者 | 位置 | 附带动作 |
+|---|---|---|---|
+| →PENDING | create_task | TaskManager.cpp:90-148 | UUID+落盘+CREATED 审计 |
+| PENDING→RUNNING | start_analysis 前置 | TaskManagerAnalysis.cpp:78-90 | execution_start_time=now |
+| →COMPLETED | 流水线收尾 | :586-591 | set_result_db 先行；FINALIZING 100% |
+| →FAILED | 异常 catch | :593-596 | error_details="Analysis error: ..." |
+| →FAILED | 依赖检查失败回 PENDING | :74-77 | message 说明 |
+| →FAILED | 镜像路径不存在 | :83-86 | 提前失败 |
+| →CANCELLED | cancel_task | TaskManager.cpp:291-311 | cancellation_requested 置位+清密码 |
+| →CANCELLED | 各阶段取消检查点 | TaskManagerAnalysis.cpp 各阶段开头 | "Task cancelled" |
+| RUNNING/PENDING→FAILED | 重启恢复 | TaskPersistence.cpp:54-62 | "Interrupted by server restart" |
+| PENDING→FAILED | 看门狗 Case A | TaskWatchdog.cpp:53-64 | "Pending timeout" |
+| RUNNING→FAILED | 看门狗 Case B | :70-81 | "Execution timeout" |
+| 终态→(消失) | delete_task/cleanup | TaskManager.cpp:350-357/449-467 | 内存移除 |
+
+**没有**的迁移：FAILED→RUNNING（无重启）、COMPLETED→任何（无重跑）——终态是吸收态，改主意只能删除重建。
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

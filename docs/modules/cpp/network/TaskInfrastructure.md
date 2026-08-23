@@ -231,4 +231,66 @@ if (changed && save_callback_) {
 - **验证看门狗**：把 `TASK_WATCHDOG_PENDING_MINUTES` 设为 1，创建一个依赖未完成任务的 PENDING 任务，等 1 分钟观察其变 FAILED。
 - **扩展**：新增 AnalysisTask 字段时，同步改 TaskSerialization 的 to_json/from_json（from_json 记得用 contains 容错）；新增阶段时补 TaskSerialization.cpp:24 的 Phase 映射与 TaskManager.cpp:546 的权重表；若想根治原子性问题，save_tasks 改为"写 tasks.json.tmp → fsync → rename"三步即可，签名无需变化。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. tasks.json 的完整键契约（二轮补全）
+
+to_json（TaskSerialization.cpp:66-104）写出的全部键——这是磁盘格式的权威清单（时间戳为**秒**级 epoch，注意与 REST 层 TaskHelpers 的毫秒不同）：
+
+| 键 | 类型 | 序列化行为 | from_json 容错 |
+|---|---|---|---|
+| id / image_path / status / message | string | 恒写 | **j.at() 硬取**（缺即抛异常，load catch 兜底全损） |
+| output_files_db / output_raw_db / output_events_db | string | 恒写 | j.at() 硬取 |
+| priority | enum→大写串 | 恒写 | j.at() 硬取 |
+| progress | object | 子序列化（current_phase 大写枚举/phase_percentage/overall_percentage/phase_description 四键） | j.at() 硬取；**phase_start_time/estimated_completion 不落盘**，from_json 重置 phase_start_time=now（:63） |
+| result_cache | string | 恒写（可能很大） | contains 可选 |
+| scenarios | array of 小写串 | 恒写（恒为串数组） | contains 可选；**兼容旧整数形态**（0-3 越界丢弃，:123-129） |
+| android_analyze | bool | 恒写（scenarios 的投影，向后兼容） | 仅在 scenarios 缺失且为 true 时回填 [ANDROID]（:135） |
+| xfs_mode | enum→首字母大写串（"Auto"/"Native"/"Pure"） | 恒写 | contains 可选 |
+| db_output_dir / error_details / metadata / llm_analyze / llm_mode | 混合 | 恒写 | contains 可选 |
+| output_descriptions_db / case_description / filter_profile / file_carving | 混合 | 恒写 | contains 可选 |
+| enable_decryption / key_file_dir | 混合 | 恒写 | contains 可选 |
+| android_source | string | 恒写（:97） | contains 可选（:151-153） |
+| extraction_directory | string | **写时推导**（PathManager::getTaskExtractDir，:99）——不读回 | from_json **不读此键**（加载后由 get_task 调用方重新推导） |
+| created_time / started_time / completed_time | 秒 epoch int64 | 恒写 | contains 可选（:156-167） |
+| **decrypt_password / backup_password** | — | **绝不写出**（:95-96 注释） | **显式 clear**（:148、:154） |
+| graphiti_job_id | — | **不写出**（重启丢失，作业号只活在内存） | — |
+| cancellation_requested | — | 不写出 | 显式 false（:170） |
+| execution_start_time | — | 不写出 | 重置 now（:169，steady_clock） |
+
+REST 层 task_to_json（毫秒、小写状态、含 extraction_directory 等 30 键）与这份磁盘契约是**两套独立序列化**——改字段要三处同步（TaskSerialization、TaskHelpers、create_task）。
+
+## 9. 新发现的三处接口死位
+
+1. **load_tasks 的 runningTaskIds 出参从未被填充**（TaskPersistence.cpp:31-34 签名带 `std::unordered_set<std::string>& runningTaskIds`，函数体全程不写它；TaskManager.cpp:66-68 传入局部变量后也无人读）。这是"恢复时收集 RUNNING 任务 ID"设计的残迹——实际恢复逻辑直接把 RUNNING 改写 FAILED，不再需要 ID 集合。参数纯死位。
+2. **TaskWatchdog::stop() 无调用方**（TaskWatchdog.h:36 声明、cpp:20-22 实现 notify_all）——析构路径走的是 shutdown_requested_ + wait_for 1s 自然退出，stop() 的唤醒加速从未被接线。无害但多余。
+3. **TaskWatchdog 的 wait_mutex_/wait_cv_ 每轮新建锁**（cpp:40-43）——run() 里 `std::unique_lock waitLock(wait_mutex_)` 与 `task_mutex_` 是两把锁，唤醒等待与任务扫描互不阻塞；但 wait_cv_ 从未被 notify（stop() 无人调），`wait_for(1s)` 实为固定 sleep。若想析构即时退出，正确接线是把 TaskManager 析构里的 `shutdown_requested_ = true` 后补一次 `watchdog.stop()`——当前实现靠 1 秒超时轮询发现关闭标志。
+
+## 10. 看门狗的时钟与锁细节补充
+
+- **双时钟快照在锁外取**（cpp:46-47 的 now_system/now_steady 在拿 task_mutex_ 之前），扫描循环里直接用——锁持有时间最短化；代价是单轮扫描内所有任务共用同一时刻，误差 ≤ 扫描时长（微秒级），远小于分钟阈值。
+- **巡检不写 audit log**——Case A/B 都只改任务字段 + stdout，不经 add_audit_log（对比：cancel/delete/重启恢复都有审计）。看门狗杀掉的任务在审计日志里查不到"谁杀的"，只有任务的 error_details 文本可查。
+- **changed 批量保存**（:85-87）：一轮杀 N 个任务只触发一次 save_callback_（= save_tasks_internal，在 task_mutex_ 已持有的状态下调用——save_tasks_internal 自身不加锁，依赖"调用方持锁"的纪律，TaskManager.cpp:53-61 的公开 save_tasks 才加锁。看门狗在 taskLock 存活期间回调，正是这个纪律的履约）。
+
+## 11. 配置影响表（TaskInfrastructure 视角）
+
+| 配置 | 默认 | 消费点 | 说明 |
+|---|---|---|---|
+| `TASK_WATCHDOG_STALE_MINUTES` | 30 | TaskWatchdog.cpp:29 | RUNNING 无心跳判 FAILED；≤0 回落 30 |
+| `TASK_WATCHDOG_PENDING_MINUTES` | 30 | :33 | PENDING 停滞判 FAILED；≤0 回落 30 |
+| `DATA_DIR` | `data` | PathManager → tasks.json 与 tasks/ 目录 | 孤儿清理的扫描根 |
+| `THREAD_POOL_SIZE` | 4 | TaskManager.cpp:23-31 | 影响流水线（TaskManagerAnalysis）而非本组件群其余部分 |
+| （无巡检周期 env） | 1 秒硬编码 | :42 | 注释写 60s（§6 已记不符项） |
+
+## 12. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 | 说明 |
+|---|---|---|---|
+| 被调 | TaskManager 构造/析构 | load_tasks / watchdog 线程 / join | 唯一装配点 |
+| 依赖 | PathManager | tasks.json、tasks/、extract 目录 | extraction_directory 写时推导 |
+| 依赖 | ConfigManager | 看门狗双阈值 | ≤0 回落 |
+| 产出 | data/tasks.json | save_tasks（全量覆写） | 键契约见 §8 |
+| 消费 | data/tasks.json | load_tasks（恢复改写） | RUNNING/PENDING→FAILED |
+| 副作用 | data/tasks/ 目录 | cleanup_orphan_directories | 任意非任务目录即删（§6） |
+| 死位 | runningTaskIds / TaskWatchdog::stop() | — | §9 |
+| 间接 | TaskManagerAnalysis（流水线） | phase_start_time 心跳 | Case B 的判定依据 |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

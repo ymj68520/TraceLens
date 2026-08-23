@@ -276,4 +276,52 @@ if (strategy_ == RoutingStrategy::Fallback) {
 - 修复 LoadBalance 计数：把"请求结束减载"从 Fallback 分支提炼到公共路径（让 chat() 在拿到 client 指针的同时拿到 entry 指针，finally 语义减载）。
 - 全局共享：若多个服务需要共用同一组模型与失败统计，可把 router 提为进程级单例；当前每服务独立意味着失败统计互不可见。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 策略 × 状态交互矩阵（二轮补全）
+
+五种策略对 ModelEntry 状态的读写差异全表（"选择器"指 §3.2 的四个 selectBy* + chat 内联的 Fallback 循环）：
+
+| 策略 | 读 available | 读 failureCount | 写 currentLoad | 写 lastUsedModel_ | 失败后换模型 |
+|---|---|---|---|---|---|
+| Fallback（默认） | 是（过滤） | 是（排序） | +1/-1 配对（:88-98） | 每次尝试前（:89） | **是**（循环到成功） |
+| Priority | 是 | 否 | 否 | 选中时（:245） | 否 |
+| Capability | 是（首选+回退两次查） | 否 | 否 | 选中时 | 否 |
+| RoundRobin | 是 | 否 | 否 | 选中时（:275） | 否 |
+| LoadBalance | 是 | 否 | **只 +1**（:297，§6 已记不减） | 选中时 | 否 |
+
+推论：只有 Fallback 让 failureCount 有意义（其它策略不读它，失败计数白攒）；只有 Fallback/LoadBalance 碰 currentLoad。混用策略时状态语义不一致是潜在坑。
+
+**RoundRobin 的 off-by-one（新发现）**：`roundRobinIndex_ = (roundRobinIndex_ + 1) % available.size()`（:273）——初始 0，首次调用直接跳到 1，**索引 0 的模型在第一轮永远排不到**；且 available.size() 变化时（注册/移除模型）游标语义漂移（模数变化）。单模型下 `(0+1)%1=0` 恰好无害——又一个"单模型现状掩盖了多模型 bug"的实例，与 LoadBalance 计数不减同族。
+
+## 9. 新走读分支：三个入口的失败形态（二轮）
+
+chat() 的三种"结构性失败"（非网络失败）各有独立响应形态，调用方判错时要分开处理：
+
+1. **空注册表**（:54-61）：锁内查 `models_.empty()` → `errorMessage = "No models registered"`、success=false。服务初始化时 addModel 抛异常（如 ConfigManager 返回非法配置导致 LLMClient 构造失败）就会进入这条路径——表现为所有 LLM 调用秒失败。
+2. **无合格模型**（:80-83 Fallback / :142-145 其他策略）：available 过滤后为空（能力不匹配或 available=false）→ "No suitable model available"。注意 available 初始恒 true 且无人刷新（§6），实际触发主要靠能力过滤——要求 Vision 却只注册了 TextGeneration 时。
+3. **全模型失败**（:112-114）：循环走完 → "All models failed. Last error: <最后一个模型的错误>"。中间模型的错误被丢弃。
+
+三者都是 `success=false` 的 LLMResponse——上层服务（如 Linux 系列的"逐条作废"循环）只看 success，不区分形态；排障时靠 errorMessage 前缀区分："No models registered"（初始化问题）/"No suitable"（能力声明问题）/"All models failed"（端点问题）。
+
+## 10. 配置影响表（ModelRouter 视角）
+
+| 配置 | 默认 | 消费链 | 说明 |
+|---|---|---|---|
+| `LLM_TEXT_BASE_URL` / `LLM_TEXT_MODEL` | 回落 LLM_BASE_URL / gpt-oss | ConfigManager.cpp:100-101 → getTextModelConfig → addModel | 六个服务共用同一工厂——所有 router 的"default"模型同配置 |
+| `LLM_TEXT_MAX_TOKENS` / `LLM_TEXT_TEMPERATURE` | 2048 / 0.7 | 同上 | C++ 侧默认（Python 侧 4096——Environment.md 已记漂移） |
+| `LLM_VISION_*` 五项 | 见 Environment.md | getVisionModelConfig | **已就绪零调用**——接视觉模型时的现成入口 |
+| `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | 120 / 3 | LLMConfig → LLMClient | N 模型 Fallback 最坏 N×4 次尝试 |
+| `LLM_CONTEXT_LENGTH` | 4096（.env.example 写 163840） | LLMConfig.contextLength → FileAnalyzer 预算 | router 的 getConfig() 转发（§4 第 5 步） |
+| （路由策略无 env） | Fallback 硬编码 | strategy_ 默认值 | 换策略只能改代码调 setStrategy |
+
+## 11. 关联矩阵（补全版）
+
+| 方向 | 对象 | 交互点 |
+|---|---|---|
+| 被 constructs | 六个服务的 initialize | 各自 make_shared + addModel("default"/"dll_analyzer") |
+| 被注入 | FileAnalyzer / MCPIntegration 构造参数 | 只调 chat/getConfig/getLastUsedModel |
+| 持有 | N × LLMClient（unique_ptr） | addModel 即建 |
+| 读 | ConfigManager 两个工厂 | 文本/视觉配置 |
+| 死位 | removeModel/setStrategy/setPreferredModel/refreshAvailability/hasAvailableModels/getModelNames/getModelInfo/getClient（私有，:131，无调用方）/selectByFallback | 零生产调用方 |
+| 不共享 | 各服务独立实例 | 失败统计互不可见（§7 扩展方向已记） |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

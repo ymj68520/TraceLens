@@ -257,4 +257,74 @@ if (cluster_events) {
 - **验证**：对任一完成任务 `sqlite3 data/tasks/<id>/*_events.db ".tables"` 确认表存在，再 curl 对应 /api/forensics/timeline/... 端点比对行数；构造 `?limit=-5` 与 `?limit=99999999` 观察钳制；对导出端点传 `query=DROP TABLE events` 应被拒、传 `query=SELECT * FROM events WHERE event_type LIKE '%DROP%'` 应放行（词边界不误伤）。
 - **扩展新查询**：在对应域文件加静态方法（新域则新建文件并加入 SQLiteHelper.cpp:10-15 的 include）；规则——用户输入一律走参数化 execute_query，limit/offset 必经 clamp，新表访问前先 table_exists 降级，时间串先 parse_timestamp。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 8. 公开方法全清单（二轮补全，按查询域）
+
+SQLiteHelper.h 声明的全部公开静态方法（35 个查询 + 4 个加固工具），逐一标注所属域文件：
+
+| 域 | 方法（h 行号） |
+|---|---|
+| 基础（Core） | get_file_summary（:11） |
+| Timeline 基础 | get_comprehensive_timeline（:29）、get_timeline_details（:40）、get_timeline_distribution（:53）、get_file_activity_timeline（:63）、get_suspicious_patterns（:72）、get_user_activity_analysis（:80）、get_system_events（:91）、get_system_event_summary（:98） |
+| Timeline 增强 | get_timeline_by_type（:273）、get_timeline_by_time_range（:283）、get_timeline_by_file（:292）、get_timeline_full（:301）、get_event_statistics_by_period（:309） |
+| FileAnalysis | get_largest_files（:108）、get_recent_files（:116）、get_suspicious_files（:124）、get_duplicate_files（:131）、get_extensions_analysis（:138）、get_llm_results（:145） |
+| Android | get_android_communication_summary（:154）、get_android_app_usage（:161）、get_android_device_info（:168）、get_android_media_analysis（:175）、get_android_llm_summary（:231） |
+| MIUI | get_miui_backup_overview（:183）、get_miui_installed_apps（:190）、get_miui_db_inventory（:197）、get_miui_qqnt_overview/artifacts/records（:200-210）、get_miui_wechat_overview/artifacts/records（:213-223） |
+| Statistics | get_overview_statistics（:242）、get_file_distribution_analysis（:249）、get_activity_patterns（:256）、get_deleted_files_analysis（:263） |
+| Export | export_events_to_json（:319）、export_events_to_csv（:328）、export_events_for_visualization（:336） |
+| 加固工具 | clamp_limit（:343）、clamp_offset（:345）、is_readonly_select（:351）、is_safe_filter_clause（:356） |
+
+私有基座（h:358-372）：open_database、execute_query ×2（无参/参数化重载）、table_exists、column_exists、format_timestamp、parse_timestamp、is_suspicious_extension、is_suspicious_path、get_total_event_count。
+
+## 9. 新走读分支：时间解析与格式化的时区不对称（新发现）
+
+`parse_timestamp`（SQLiteHelperCore.cpp:212-246）按序尝试三种格式，**全部用 `std::mktime`（本地时区）**：
+
+```cpp
+// SQLiteHelperCore.cpp:212-246（三级解析，节选）
+// 1. 首先尝试纯 Unix 秒数字（最常见路径，保持性能）
+try { return std::stoll(time_str); } catch (...) {}
+
+// 2. 尝试 ISO 8601 日期格式 "YYYY-MM-DD"
+if (time_str.size() == 10) {
+    // get_time + mktime（本地时区）
+}
+// 3. 尝试 ISO 8601 带时间 "YYYY-MM-DDTHH:MM:SS" 或 "YYYY-MM-DD HH:MM:SS"
+if (time_str.size() >= 19) {
+    std::string normalized = time_str.substr(0, 19);
+    if (normalized[10] == 'T') normalized[10] = ' ';
+    // get_time + mktime（本地时区）
+}
+```
+
+而 `format_timestamp`（:203-210）用 `std::gmtime`（**UTC**）输出 `"YYYY-MM-DD HH:MM:SS UTC"`。组合效果：**入口把本地时间串解释成本地 epoch，出口把 epoch 显示成 UTC**——一个 `2026-08-24 10:00:00` 的过滤串在 UTC+8 机器上会变成 02:00 UTC 显示，前后差一个时区。纯 Unix 秒输入（最常见路径）不受影响（stoll 不涉及时区）。三格式细节：长度恰 10 走日期、≥19 截前 19 字符并把 T 换空格、毫秒后缀（.123Z 或 +08:00）**被静默丢弃**（截断在 19 位）；无法识别的串打 stderr 后返回 0——0 是"无过滤"的哨兵（调用方判 0 跳过 WHERE），所以垃圾时间串的语义是"不过滤"而非报错。
+
+## 10. 连接行为的并发细节（新发现）
+
+`open_database`（Core.cpp:17-25）是**裸 `sqlite3_open`**：不设 busy_timeout、不开 READONLY 标志、不设 WAL。三个推论：
+
+1. **`DB_BUSY_TIMEOUT_MS` 不覆盖 HTTP 查询路径**——该配置只在 DatabaseManager（写侧）生效；查询侧遇写者持锁时 `sqlite3_step` 立即返回 SQLITE_BUSY，execute_query 的循环条件 `== SQLITE_ROW` 直接结束，返回**空数组**（不是错误）。实际被 WAL（写侧建库时已开）+ 每任务独立库的结构救场：多读者单写者在 WAL 下并存，BUSY 几乎不出现。但手工对产出库做非 WAL 写入（如用 sqlite3 CLI 改数据）期间查询会静默变空。
+2. **查询连接具备写权限**——ALTER 自愈（§4.1）正依赖这一点；反过来也意味着 is_readonly_select 的防线是唯一阻止自定义 query 参数写库的东西，它漏什么就写什么。
+3. 每方法自开自关（§6 已记）+ 无连接池；Crow 每 worker 并发查询时连接数 = 并发请求数，SQLite 文件锁页（POSIX advisory lock）在关闭时释放，无跨请求泄漏。
+
+## 11. 可疑判定的完整模式表
+
+`is_suspicious_extension`（:248-257）与 `is_suspicious_path`（:259-274）两个启发式列表，get_suspicious_files 的判定依据：
+
+| 函数 | 匹配规则 | 命中即"可疑" |
+|---|---|---|
+| is_suspicious_extension | 扩展名（tolower 后精确等值） | .bat .cmd .scr .vbs .js .jar .exe .com .pif |
+| is_suspicious_path | 路径（tolower 后子串） | /temp/ 、/tmp/ 、recycle 、$recycle 、system32 |
+
+注意子串匹配的宽窄：`system32` 命中任何含该串的路径（包括 SysWOW64 下的 system32 引用、文档里提到 system32 的文件名）；`recycle` 双拼写覆盖 Windows 回收站两种大小写形态。改列表只动这两个函数，无其他配置点。
+
+## 12. 配置影响表（SQLiteHelper 视角）
+
+| 配置 | 默认 | 关系 | 说明 |
+|---|---|---|---|
+| `DB_JOURNAL_MODE` / `DB_BUSY_TIMEOUT_MS` | WAL / 5000 | **仅写侧（DatabaseManager）** | 查询侧不读这两个变量（§10.1）——WAL 是建库时落盘的库属性，查询连接间接受益 |
+| `SEARCH_*` 四项 | 见 Environment.md | 不相关 | 全文检索走 Xapian（SearchRoutes），不经本模块 |
+| `CORS_ALLOW_ORIGIN` | `*` | 路由层 | RouteHelpers 在 handler 里加头，与本模块无耦合 |
+| （无 limit/offset 的 env） | 1000/100000 硬编码 | clamp_limit 参数 | 想改默认页大小只能改代码或各路由传参 |
+| `bucket_seconds`（请求参数） | 60，钳制 [1, 86400] | TimelineQueries | §4.1 的钳制区间；与 EventClusterAnalyzer 硬编码 60 的错位见 §6 |
+
+**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）
