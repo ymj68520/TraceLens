@@ -29,40 +29,179 @@ HTTP 客户端 ──► network/HTTPServer/LLMAnalysisService（及平台版 Li
 
 ## 3. 核心概念与设计
 
-### 3.1 三级取内容策略与 markitdown 白名单
+### 3.1 输入输出结构：AnalysisResult 与 ChunkConfig
+
+输出的核心契约是 `AnalysisResult`（`LLMDataTypes.h:150-164`）：
+
+```cpp
+// LLMDataTypes.h:150-164
+struct AnalysisResult {
+    std::string filePath;
+    std::string summary;
+    std::string description;
+    std::vector<std::string> keywords;
+    std::string fileType;
+    int64_t fileSize = 0;
+    bool success = false;
+    std::string errorMessage;
+
+    // Analysis metadata
+    std::string modelUsed;      // router_->getLastUsedModel() 的值
+    int tokensUsed = 0;         // promptTokens + completionTokens
+    double analysisTimeMs = 0;  // high_resolution_clock 差值
+};
+```
+
+三个 metadata 字段是服务层入库的记账依据：`modelUsed` 标识这次实际命中的模型（Fallback 场景下可能与"首选"不同），`tokensUsed` 供用量统计，`analysisTimeMs` 供慢文件排查。批量请求结构 `BatchAnalysisRequest`（`LLMDataTypes.h:169-175`）则带 `filePaths`、三个生成交错开关和 `maxContentLength = 10000`（每文件送 LLM 的默认字符上限）。分块参数集中在 `ChunkConfig`（`LLMDataTypes.h:35-40`）：`chunkSize = 2000` 字符、`overlapSize = 200`、`maxChunks = 5`、`smartBoundary = true`。
+
+### 3.2 公开接口清单（FileAnalyzer.h:42-138）
+
+| 方法（真实签名节选） | 语义 | 调用方 | 失败行为 |
+|---|---|---|---|
+| `AnalysisResult analyzeFile(const std::string& filePath, size_t maxContentLength = 10000)` | 单文件全管线 | LLMAnalysisService（唯一生产调用） | 文件不存在/读不到内容/router 缺失/LLM 失败 → `success=false` + errorMessage |
+| `std::vector<AnalysisResult> analyzeBatch(const BatchAnalysisRequest&)` | 线程池批量 | 无生产调用方 | 逐文件失败不拖垮整批 |
+| `std::string summarize(content, context = "")` | 纯文本摘要（用 summaryPrompt_） | 无生产调用方 | 返回 `"Error: ..."` 字符串 |
+| `std::string generateDescription(filePath)` / `generateDescription(vector<filePath>)` | 单/多文件描述 | 无生产调用方 | 同上；多文件版只看前 5 个（`:363-364`） |
+| `std::vector<std::string> extractKeywords(content, maxKeywords = 10)` | 关键词抽取 | 无生产调用方 | 失败返回空向量 |
+| `void setSummaryPrompt/` `setDescriptionPrompt/` `setKeywordPrompt(prompt)` | 替换默认 prompt | DLLAnalyzerLLMService（`:96-97`） | — |
+| `void setProgressCallback(ProgressCallback)` / `setChunkConfig(ChunkConfig)` | 批量进度回调 / 分块参数 | 无生产调用方 | — |
+| `static size_t estimateTokens(content, charsPerToken = 4.0)` | token 估算 | 内部 | — |
+| `size_t calculateMaxContentLength() const` | 按模型窗口算字符预算 | analyzeFile 内部 | 无 router 时回落 10000 |
+| `std::string truncateContent(content, maxLength) const` | 聪明截断（转调 FileTextProcessor） | 内部 | — |
+| `AnalysisResult analyzeFileChunked(filePath)` | 分块分析 + 合并 | 无生产调用方 | 见 4.3 |
+
+### 3.3 三级取内容策略与 markitdown 白名单
 
 `analyzeFile()` 的第一步是决定"怎么读"。首选 MarkitdownProxy（C++ 经 HTTP 调 Python 服务的 `/api/markitdown/convert`，把 PDF/Office/图片/音频转成 Markdown 文本），但 markitdown 只认文档类格式——把磁盘镜像、PE/ELF 二进制、注册表 hive、evtx 喂给它，Python 端会抛 UnsupportedFormatException 并以 HTTP 500 刷爆后端日志（源码注释在 `FileAnalyzer.cpp:35-53` 记录了这段事故）。因此引入了扩展名白名单：
 
 ```cpp
 // FileAnalyzer.cpp:59-71（节选）
 static const std::set<std::string> supported = {
-    ".pdf", ".docx", ".doc", ".xlsx", ".pptx",      // Office 文档
-    ".html", ".jpg", ".png", ".mp3", ".wav",         // 网页/图片/音频
-    ".txt", ".md", ".csv", ".json", ".xml", ".log"   // 纯文本与数据格式
+    // Office documents
+    ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt",
+    // Web / structured text
+    ".html", ".htm", ".ipynb", ".rss",
+    // Images (EXIF + OCR)
+    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif",
+    // Audio (transcription)
+    ".mp3", ".wav",
+    // Plain text / data formats markitdown reads directly
+    ".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".xml",
+    ".yaml", ".yml", ".rst", ".log"
 };
 ```
 
-只有扩展名命中白名单才尝试 markitdown；其余（.img/.exe/.evtx/.hiv/...）直接走本地回退链（`FileAnalyzer.cpp:166-182`）：`.pdf` 用 PDFAnalyzer、`.doc(x)` 用 OfficeAnalyzer、判定为 Archive/Binary/Database 的放占位文本只做元数据分析、其余原始字节读入。markitdown 失败（返回空或 `"Error:"` 前缀，这是 MarkitdownProxy 的错误约定）也落入同一回退链。**先白名单、再降级**是这条管线最重要的设计决策。
+只有扩展名命中白名单才尝试 markitdown；其余（.img/.exe/.evtx/.hiv/...）直接走本地回退链（`FileAnalyzer.cpp:166-182`）：`.pdf` 用 PDFAnalyzer、`.doc(x)` 用 OfficeAnalyzer、判定为 Archive/Binary/Database 的放占位文本只做元数据分析、其余原始字节读入。markitdown 失败（返回空或 `"Error:"` 前缀，这是 MarkitdownProxy 的错误约定）也落入同一回退链。**先白名单、再降级**是这条管线最重要的设计决策。门控与降级的真实代码（`FileAnalyzer.cpp:148-163`）：
 
-### 3.2 上下文窗口预算与"聪明截断"
+```cpp
+bool useMarkitdown = isMarkitdownSupportedExt(ext);
 
-三个上限取最小值作为生效长度（`FileAnalyzer.cpp:198-200`）：调用方传入的 `maxContentLength`、按模型窗口算出的 `calculateMaxContentLength()`、配置项 `getLLMMaxContentLength()`。预算公式（`FileAnalyzer.cpp:433-451`）：
-
+if (useMarkitdown) {
+    auto& markitdown = MarkitdownProxy::instance();
+    if (markitdown.isServiceAvailable()) {
+        content = markitdown.convertToMarkdown(filePath);
+        if (!content.empty() && content.find("Error:") != 0) {
+            LOG_DEBUG("Successfully converted via markitdown: " + filePath);
+        } else {
+            LOG_WARNING("markitdown failed for " + filePath + ", falling back to local parsers");
+            content.clear();          // 置空 → 落入下方本地回退链
+        }
+    }
+} else {
+    LOG_DEBUG("Skipping markitdown for unsupported extension " + ext + " (" + filePath + ")");
+}
 ```
-可用 token = contextLength − reservedTokens − maxTokens   （下限 100）
-最大字符   = 可用 token × charsPerToken                    （默认 4.0，中文约 1.5）
+
+### 3.4 上下文窗口预算与"聪明截断"
+
+三个上限取最小值作为生效长度（`FileAnalyzer.cpp:198-200`）：
+
+```cpp
+// FileAnalyzer.cpp:197-206（Issue 7）
+size_t calculatedMaxLength = calculateMaxContentLength();
+size_t configLimit = static_cast<size_t>(ConfigManager::instance().getLLMMaxContentLength());
+size_t effectiveMaxLength = std::min({maxContentLength, calculatedMaxLength, configLimit});
+
+if (content.size() > effectiveMaxLength) {
+    LOG_DEBUG("Content exceeds limit (" + std::to_string(content.size()) +
+              " > " + std::to_string(effectiveMaxLength) + "), applying smart truncation");
+    content = FileTextProcessor::truncateContent(content, effectiveMaxLength);
+}
 ```
 
-超长内容的截断不是简单砍尾，而是"头 70% + 截断标记 + 尾 30%"（`FileTextProcessor.cpp:41-80`）——保留结尾是因为日志、配置类证据的关键信息（报错、结论）常在文件末尾。切点由 `findSmartBoundary()`（`FileTextProcessor.cpp:82-138`）按优先级回退寻找：段落断点 > 句号/叹号/问号 > 换行 > 空格 > 硬切。
+三个来源各管一层：调用方传参（任务级）、模型窗口推算（模型级）、`LLM_MAX_CONTENT_LENGTH` env（全局运维级，默认 10000）。`calculateMaxContentLength()` 的预算公式（`FileAnalyzer.cpp:433-451`）：
 
-### 3.3 结构化输出协议与容错解析
+```cpp
+// FileAnalyzer.cpp:433-451（节选）
+const auto& config = router_->getConfig();   // 首选模型的 LLMConfig（无模型时是静态默认）
 
-prompt 要求模型**逐字**按 `SUMMARY: ... DESCRIPTION: ... KEYWORDS: ...` 格式回答（`FileAnalyzer.cpp:209-223`），解析侧用三个预编译的静态正则提取（`FileAnalyzer.cpp:28-33`，预编译避免每文件重复构造的开销）。容错：正则全部落空时，把整段回复同时当 summary 和 description 存（`FileAnalyzer.cpp:263-266`）——宁可存原始文本，不存空串。这个"格式约定 + 宽松解析"的组合代价是：模型不守格式时字段语义会退化，但没有数据丢失。
+// Available tokens = context length - reserved tokens - max output tokens
+int availableTokens = config.contextLength - config.reservedTokens - config.maxTokens;
+if (availableTokens < 100) {
+    availableTokens = 100; // Minimum
+}
 
-### 3.4 周边静态工具
+// Convert to characters
+size_t maxChars = static_cast<size_t>(availableTokens * config.charsPerToken);
+```
+
+即：`可用 token = contextLength − reservedTokens − maxTokens`（下限 100），`最大字符 = 可用 token × charsPerToken`（默认 4.0，中文约 1.5）。默认配置（4096−512−2048=1536 token × 4.0）算出 6144 字符——比 env 默认 10000 还小，说明**默认情况下模型窗口才是最紧的约束**。
+
+超长内容的截断不是简单砍尾，而是"头 70% + 截断标记 + 尾 30%"（`FileTextProcessor.cpp:41-80`）：
+
+```cpp
+// FileTextProcessor.cpp:50-77（节选）
+const std::string indicator = "\n\n[... Content truncated due to context window limit ...]\n\n";
+size_t effectiveMax = maxLength - indicator.size();   // 给标记留位
+
+// Split: 70% from beginning, 30% from end
+size_t headSize = static_cast<size_t>(effectiveMax * 0.7);
+size_t tailSize = effectiveMax - headSize;
+
+// Find smart boundaries
+size_t headEnd = findSmartBoundary(content, headSize);   // 头部向后找边界
+size_t tailStart = content.size() - tailSize;
+
+// Adjust tail start to a smart boundary (look forward)
+for (size_t i = tailStart; i < content.size() && i < tailStart + 200; ++i) {
+    char c = content[i];
+    if (c == '\n' || c == '.' || c == '!' || c == '?') {
+        tailStart = i + 1;
+        break;
+    }
+}
+
+std::string result;
+result.reserve(maxLength);
+result += content.substr(0, headEnd);
+result += indicator;
+if (tailStart < content.size()) {
+    result += content.substr(tailStart);   // 尾段从边界后开始
+}
+```
+
+保留结尾是因为日志、配置类证据的关键信息（报错、结论）常在文件末尾。头部切点由 `findSmartBoundary()`（`FileTextProcessor.cpp:82-138`）按优先级回退寻找：段落断点（`\n\n`）> 句号/叹号/问号（且后跟空格/换行/串尾）> 换行 > 空格 > 硬切，回看窗口 200 字符；尾部切点则**向前**找 200 字符内的首个边界。两个方向的搜索窗口都只有 200 字符——找不到就接受不完美切点，避免为边界扫描付出 O(n) 代价。
+
+### 3.5 结构化输出协议与容错解析
+
+prompt 要求模型**逐字**按 `SUMMARY: ... DESCRIPTION: ... KEYWORDS: ...` 格式回答（`FileAnalyzer.cpp:209-223`），三个解析正则在文件级静态预编译（`FileAnalyzer.cpp:28-33`）：
+
+```cpp
+// FileAnalyzer.cpp:28-33（Issue 9 - pre-compiled for performance）
+const std::regex FileAnalyzer::SUMMARY_REGEX(
+    "SUMMARY:\\s*(.+?)(?=DESCRIPTION:|$)", std::regex::icase);
+const std::regex FileAnalyzer::DESCRIPTION_REGEX(
+    "DESCRIPTION:\\s*(.+?)(?=KEYWORDS:|$)", std::regex::icase);
+const std::regex FileAnalyzer::KEYWORD_REGEX(
+    "KEYWORDS:\\s*(.+)$", std::regex::icase);
+```
+
+三段正则用**前瞻断言**（`(?=DESCRIPTION:|$)`）在无分隔符的连续文本里切字段：SUMMARY 段吃到下一个 `DESCRIPTION:` 或串尾为止；`icase` 容忍模型输出小写标签。容错：正则全部落空时，把整段回复同时当 summary 和 description 存（`FileAnalyzer.cpp:263-266`）——宁可存原始文本，不存空串。这个"格式约定 + 宽松解析"的组合代价是：模型不守格式时字段语义会退化，但没有数据丢失。
+
+### 3.6 周边静态工具
 
 - **FileContentExtractor**（`FileContentExtractor.cpp`）：`detectFileType()` 先查约 150 项扩展名→类型映射（`:49-200`），查不到再嗅探前 512 字节有无 `\0` 判二进制（`:202-220`）；`readFileContent()` 带上限的原始读取。类型字符串（"PDF"、"Archive"...）会进 prompt，帮助模型定向。
-- **FileTextProcessor**（`FileTextProcessor.cpp`）：无状态纯函数集——逗号分隔关键词解析（含 `- `/`*` 前缀清理，`:9-32`）、token 估算、截断、分块（`splitIntoChunks`，块间 200 字符重叠保上下文连续，`:140-175`）、宽松版 UTF-8 清洗（`:177-217`）。
+- **FileTextProcessor**（`FileTextProcessor.cpp`）：无状态纯函数集——逗号分隔关键词解析（含 `- `/`*` 前缀清理，`:9-32`）、token 估算（`content.size() / charsPerToken`，`:34-39`）、截断、分块（`splitIntoChunks`，块间 200 字符重叠保上下文连续，`:140-175`）、宽松版 UTF-8 清洗（`:177-217`）。
 - **MarkitdownProxy**（`MarkitdownProxy.h/.cpp`）：单例（`MarkitdownProxy.cpp:20-22`，URL 取自 `ConfigManager::getPythonServiceUrl()`），封装 `/api/markitdown/convert|batch-convert|status`。文件→LLM 之外的另一条"integration 层 HTTP 出口"。
 
 ## 4. 工作流程走读
@@ -78,7 +217,19 @@ prompt 要求模型**逐字**按 `SUMMARY: ... DESCRIPTION: ... KEYWORDS: ...` �
 
 批量路径（`analyzeBatch`，`:275-312`）：线程池大小取 `ConfigManager::getThreadPoolSize()`，大于 1 且文件数大于 1 时并发跑 `analyzeFile`，逐个 future 收集并回调进度。
 
-超大文件路径（`analyzeFileChunked`，`:465-554`）：把内容切成重叠块，逐块分析，最后 `mergeChunkResults()`（`:556-616`）——摘要拼接后再让 LLM 做一次"合并成连贯摘要"（`:573-583`），关键词做集合去重（`:587-593`）。
+超大文件路径（`analyzeFileChunked`，`:465-554`）：把内容切成重叠块，逐块分析（每块 prompt 自带 `(i+1)/N` 序号，`:506-512`），最后 `mergeChunkResults()`（`:556-616`）——摘要拼接后再让 LLM 做一次"合并成连贯摘要"（`:573-583`，合并失败则直接用拼接原文），关键词做集合去重（`:587-593`），token 与耗时跨块累加（`:604-612`）。
+
+**错误处理矩阵**：
+
+| 故障点 | 行为 |
+|---|---|
+| 文件不存在 | `errorMessage = "File not found: ..."`，立即返回（`:118-121`） |
+| markitdown 服务不可用/转换失败 | 降级本地解析链，不报错（`:150-159`） |
+| Archive/Binary/Database | 占位文本继续元数据分析，不算失败（`:175-177`） |
+| 内容为空（全部取内容手段失败） | `errorMessage = "Failed to read file content or content is empty"`（`:184-187`） |
+| router 未注入 | `errorMessage = "No LLM router configured"`（`:192-195`） |
+| LLM 调用失败 | `errorMessage = "LLM analysis failed: ..."`（`:228-231`）——继承 router/LLMClient 的重试与 Fallback |
+| 正则全落空 | 整段回复同时当 summary/description，`success` 仍为 true（`:263-266`） |
 
 ## 5. 与其他模块的协作
 
@@ -90,7 +241,7 @@ prompt 要求模型**逐字**按 `SUMMARY: ... DESCRIPTION: ... KEYWORDS: ...` �
 | MarkitdownProxy + Python 服务 | 文档类格式的首选文本化通道（HTTP 到 `/api/markitdown/*`） |
 | PDFAnalyzer / OfficeAnalyzer | markitdown 不可用时的本地回退（integration 层反向依赖 analyzers 层，属已知的层次交叉） |
 | ThreadPool（core） | 批量分析的并发执行器 |
-| ConfigManager | 线程池大小、`LLM_MAX_CONTENT_LENGTH` 等运行参数 |
+| ConfigManager | 线程池大小、`LLM_MAX_CONTENT_LENGTH`（默认 10000）等运行参数 |
 
 ## 6. 注意事项与已知问题
 
@@ -100,6 +251,7 @@ prompt 要求模型**逐字**按 `SUMMARY: ... DESCRIPTION: ... KEYWORDS: ...` �
 - **"Error:" 前缀协议脆弱**：用 `content.find("Error:") != 0` 判断 markitdown 失败（`FileAnalyzer.cpp:154`），若文件转换结果本身以 "Error:" 开头会被误判为失败（实际只是走了回退，损失的是 markitdown 质量，不致命）。
 - **多文件描述只看前 5 个**：`generateDescription(vector)` 用前 5 个文件的元数据当上下文（`FileAnalyzer.cpp:363-364`），其余只计数；大文件集的描述偏前部样本。
 - **UTF-8 清洗有两套实现**：本模块用 FileTextProcessor 的宽松版，LLMClient 内部还有严格版（见 LLMClient.md 第 6 节），规则不一致但方向一致（都是替换为 `?`）。
+- **预算公式依赖"首选模型"的配置**：`router_->getConfig()` 返回 preferred 模型的 LLMConfig；Fallback 切到备用模型后预算仍按首选算——两模型窗口差异大时会失准。
 
 ## 7. 如何验证与扩展
 
@@ -114,4 +266,4 @@ prompt 要求模型**逐字**按 `SUMMARY: ... DESCRIPTION: ... KEYWORDS: ...` �
 - 打通分块：在 `analyzeFile()` 里按 `enableChunkedAnalysis && 内容超预算` 自动转 `analyzeFileChunked`；
 - 结构化输出升级：改用 LLM 的 tool-calling/JSON mode 强制格式，可去掉正则解析的容错复杂度（LLMClient 已支持 tools 参数）。
 
-**最后更新**: 2026-08-23（解释式重写）
+**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
