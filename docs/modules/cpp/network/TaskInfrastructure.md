@@ -10,50 +10,38 @@ TaskManager 的功能由以下组件协作完成：
 
 | 组件 | 文件 | 职责 |
 |------|------|------|
-| TaskAnalysisRunner | `TaskAnalysisRunner.h` | 执行分析任务 |
+| TaskManager::start_analysis | `TaskManagerAnalysis.cpp` | 执行分析流水线（成员函数实现） |
 | TaskPersistence | `TaskPersistence.h` | JSON 持久化 |
 | TaskSerialization | `TaskSerialization.h` | JSON 序列化 |
 | TaskWatchdog | `TaskWatchdog.h` | 检测停滞任务 |
 
+> 注：`src/network/HTTPServer/TaskAnalysisRunner.h` 是一个**未被任何代码引用的遗留头文件**（无对应 .cpp、无 include），不要在其上开发；实际的阶段权重与进度计算在 `TaskManager.cpp::calculate_overall_percentage`。
+
 ---
 
-## 2. TaskAnalysisRunner
+## 2. 任务执行（TaskManagerAnalysis.cpp）
 
 ### 位置
 
-`src/network/HTTPServer/TaskAnalysisRunner.h`
+`src/network/HTTPServer/TaskManagerAnalysis.cpp`（`TaskManager::start_analysis`，在 ThreadPool 的工作线程中运行）
 
 ### 功能
 
-负责实际执行取证分析任务，包括进度跟踪和取消检查。
-
-```cpp
-class TaskAnalysisRunner {
-public:
-    explicit TaskAnalysisRunner(TaskManager& manager);
-
-    // 执行分析任务
-    void start_analysis(const std::string& task_id);
-
-    // 检查任务是否被取消
-    bool is_task_cancelled(const std::string& task_id) const;
-
-private:
-    // 根据阶段进度计算总体百分比
-    int calculate_overall_percentage(TaskPhase phase, int phase_percentage);
-};
-```
+执行完整取证分析流水线，包括进度跟踪和取消检查（`cancellation_requested` 原子标志）。
 
 ### 阶段权重
+
+`TaskManager.cpp::calculate_overall_percentage` 中的实际权重（总进度 = 已完成阶段权重之和 + 当前阶段 × 阶段内百分比）：
 
 | 阶段 | 权重 | 说明 |
 |------|------|------|
 | INITIALIZING | 5% | 初始化 |
-| IMAGE_ANALYSIS | 30% | 镜像分析 |
-| EVENT_EXTRACTION | 15% | 事件提取 |
-| FILE_CLASSIFICATION | 20% | 文件分类 |
-| LLM_ANALYSIS | 20% | LLM 分析 |
-| ANDROID_ANALYSIS | 8% | 平台分析 |
+| IMAGE_ANALYSIS | 25% | 镜像分析 |
+| EVENT_EXTRACTION | 10% | 事件提取 |
+| FILE_CLASSIFICATION | 15% | 文件分类 |
+| LLM_ANALYSIS | 20% | LLM 文件/事件簇分析 |
+| PLATFORM_ANALYSIS | 20% | 平台分析（Android/Windows/Linux/Server） |
+| FILE_CARVING | 3% | 签名雕刻 |
 | FINALIZING | 2% | 完成 |
 
 ---
@@ -178,7 +166,7 @@ public:
 
 1. 每 60 秒遍历所有任务
 2. 检查 RUNNING 状态的任务
-3. 如果 `execution_start_time` 距今超过阈值（默认 2 小时）
+3. 如果 RUNNING/PENDING 状态持续超过 `TASK_WATCHDOG_STALE_MINUTES`（默认 30 分钟）而无进度更新
 4. 且 `phase_percentage` 未变化
 5. 将任务标记为 FAILED
 6. 调用 `save_callback` 持久化状态
@@ -189,7 +177,7 @@ public:
 
 ```
 TaskManager
-    ├── TaskAnalysisRunner   (执行分析)
+    ├── TaskManagerAnalysis.cpp (start_analysis 执行分析流水线)
     ├── TaskPersistence      (持久化)
     ├── TaskSerialization    (序列化)
     └── TaskWatchdog         (监控)
@@ -199,4 +187,4 @@ TaskManager
 
 ---
 
-**最后更新**: 2026-05-19
+**最后更新**: 2026-08-23（以代码为准修正：TaskAnalysisRunner.h 为未引用遗留文件；阶段权重与阶段名对齐 TaskManager.cpp）

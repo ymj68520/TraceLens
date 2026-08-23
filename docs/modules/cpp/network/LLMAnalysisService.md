@@ -257,7 +257,7 @@ llmService.analyzeAllFiles(dbPath, options,
 | **单次分析文件数** | 默认 1000 | 可通过 `maxFiles` 调整 |
 | **文件内容长度** | 默认 10000 字符 | 超过截断，避免超出上下文窗口 |
 | **并发分析数** | 1 | 单线程顺序分析，避免 LLM API 限流 |
-| **支持文件类型** | 13 种 | 基于 FileClassifier 分类 |
+| **支持文件类型** | 24 种分类（files 表全量） | 基于 FileClassifier 分类 |
 | **二进制文件** | 默认跳过 | 可通过 `skipBinaryFiles=false` 包含 |
 | **SMART 模式选择** | 默认 100 个 | LLM 返回的重要文件列表 |
 

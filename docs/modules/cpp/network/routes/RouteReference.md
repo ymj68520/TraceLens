@@ -1,66 +1,63 @@
-# C++ REST API 路由参考
+# RouteReference - C++ 路由总览
 
-> 本文档列出 C++ Crow 服务器（端口 8080）的所有 REST API 端点。
-> 路由代码位于 `src/network/HTTPServer/routes/` 目录下。
+> **模块定位**: `src/network/HTTPServer/routes/` 下全部路由文件的端点索引（按已注册的 CROW_ROUTE 整理）。详细的请求/响应字段见 [API 参考](../../../../api_reference/CPP_REST_API.md) 与运行时 Swagger（`/api/docs`）。
+
+路由由 `HTTPServer` 构造的聚合器注册：`TaskRoutes`、`ForensicsRoutes`、`SystemRoutes`、`SearchRoutes`、`CaseCRUDRoutes`、`FilterRoutes`。另有静态路由 `GET /` 与 `GET /<path>` 托管 `web/dist` 的 React SPA。
 
 ---
 
 ## 任务管理
 
-### TaskCRUDRoutes (`TaskCRUDRoutes.cpp`)
+### TaskCRUDRoutes / TaskBatchRoutes / TaskMonitoringRoutes / TaskRoutes
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
-| GET | `/tasks` | 列出所有任务（兼容端点） |
-| POST | `/tasks` | 创建任务（兼容端点） |
-| GET | `/tasks/{task_id}` | 获取任务详情（兼容端点） |
-| GET | `/tasks/{task_id}/results` | 获取任务结果（兼容端点） |
+| GET/POST | `/tasks` | 简化任务接口（创建/列表） |
+| GET | `/tasks/{task_id}` | 任务详情（简化） |
+| GET | `/tasks/{task_id}/results` | 任务结果（简化） |
 | GET | `/api/tasks` | 列出所有任务 |
 | GET | `/api/tasks/list` | 列出所有任务（带筛选） |
 | POST | `/api/tasks` | 创建分析任务 |
-| GET | `/api/tasks/{task_id}` | 获取任务详情 |
-| PUT | `/api/tasks/{task_id}` | 更新任务 |
-| DELETE | `/api/tasks/{task_id}` | 取消/删除任务 |
+| GET/PUT | `/api/tasks/{task_id}` | 获取/更新任务 |
+| DELETE | `/api/tasks/{task_id}` | 删除任务 |
+| GET | `/api/tasks/{task_id}/results` | 任务结果 |
 | POST | `/api/tasks/cleanup` | 清理已完成任务 |
-| GET | `/api/tasks/{task_id}/databases` | 获取任务关联的数据库列表 |
-
-### TaskBatchRoutes (`TaskBatchRoutes.cpp`)
-
-| 方法 | 端点 | 说明 |
-|------|------|------|
+| GET | `/api/tasks/{task_id}/databases` | 任务关联数据库列表 |
 | POST | `/api/tasks/batch-create` | 批量创建任务 |
-| POST | `/api/tasks/batch-status` | 批量查询任务状态 |
+| POST | `/api/tasks/batch-status` | 批量查询状态 |
 | POST | `/api/tasks/batch-cancel` | 批量取消任务 |
+| GET | `/api/tasks/{task_id}/progress` | 任务进度 |
+| GET | `/api/tasks/{task_id}/audit-log` | 任务审计日志 |
+| GET | `/api/tasks/statistics` | 任务统计 |
+| PUT | `/api/tasks/{task_id}/priority` | 更新优先级 |
 
-### TaskMonitoringRoutes (`TaskMonitoringRoutes.cpp`)
+（TaskRoutes.cpp 另为上述路径注册 16 个 OPTIONS CORS 预检路由。）
+
+### SceneQueryRoutes
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
-| GET | `/api/tasks/{task_id}/progress` | 获取任务进度 |
-| GET | `/api/tasks/{task_id}/audit-log` | 获取任务审计日志 |
-| GET | `/api/tasks/statistics` | 获取任务统计信息 |
-| PUT | `/api/tasks/{task_id}/priority` | 更新任务优先级 |
+| GET | `/api/tasks/{task_id}/scene-stats` | 场景文件统计 |
+| GET | `/api/tasks/{task_id}/scene-artifacts` | 场景工件查询 |
 
 ---
 
 ## 案例管理
 
-### CaseCRUDRoutes (`CaseCRUDRoutes.cpp`)
+### CaseCRUDRoutes
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
-| GET | `/api/cases` | 列出所有案例 |
-| POST | `/api/cases` | 创建案例 |
-| GET | `/api/cases/{case_id}` | 获取案例详情 |
+| GET/POST | `/api/cases` | 列出/创建案例 |
+| GET/DELETE | `/api/cases/{case_id}` | 获取/删除案例 |
 | PUT | `/api/cases/{case_id}/tasks` | 添加任务到案例 |
-| DELETE | `/api/cases/{case_id}` | 删除案例 |
 | PUT | `/api/cases/{case_id}/status` | 更新案例状态 |
 
 ---
 
-## 时间线分析
+## 取证分析（ForensicsRoutes 聚合）
 
-### TimelineRoutes (`TimelineRoutes.cpp`)
+### TimelineRoutes
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
@@ -76,20 +73,16 @@
 | GET | `/api/forensics/timeline/full` | 完整时间线 |
 | GET | `/api/forensics/timeline/statistics-by-period` | 按时间段统计 |
 
-### EventClusterRoutes (`EventClusterRoutes.cpp`)
+### EventClusterRoutes
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
-| POST | `/api/forensics/timeline/clusters/analyze` | 分析事件簇 |
+| POST | `/api/forensics/timeline/clusters/analyze` | LLM 分析事件簇 |
 | POST | `/api/forensics/timeline/clusters/batch-analyze` | 批量分析事件簇 |
 | POST | `/api/forensics/timeline/clusters/reanalyze` | 重新分析事件簇 |
-| GET | `/api/forensics/timeline/clusters/analyzed` | 获取已分析的事件簇 |
+| GET | `/api/forensics/timeline/clusters/analyzed` | 已分析的事件簇 |
 
----
-
-## 文件分析
-
-### FileAnalysisRoutes (`FileAnalysisRoutes.cpp`)
+### FileAnalysisRoutes / FileExtractionRoutes
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
@@ -97,50 +90,33 @@
 | GET | `/api/forensics/files/recent` | 最近修改的文件 |
 | GET | `/api/forensics/files/suspicious` | 可疑文件 |
 | GET | `/api/forensics/files/duplicates` | 重复文件 |
-| GET | `/api/forensics/files/extensions-analysis` | 文件扩展名分析 |
-
-### FileExtractionRoutes (`FileExtractionRoutes.cpp`)
-
-| 方法 | 端点 | 说明 |
-|------|------|------|
+| GET | `/api/forensics/files/extensions-analysis` | 扩展名分析 |
 | POST | `/api/forensics/extract` | 启动文件提取任务 |
-| GET | `/api/forensics/extract/{job_id}` | 查询提取任务状态 |
-| GET | `/api/forensics/extract/status` | 查询所有提取任务状态 |
+| GET | `/api/forensics/extract/{job_id}` | 查询提取任务 |
+| GET | `/api/forensics/extract/status` | 全部提取任务状态 |
 
----
-
-## DLL 分析
-
-### DLLAnalysisRoutes (`DLLAnalysisRoutes.cpp`)
+### DLLAnalysisRoutes
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
-| GET | `/api/forensics/dlls` | 列出所有分析的 DLL |
-| GET | `/api/forensics/dlls/{dll_id}` | 获取 DLL 详情 |
-| GET | `/api/forensics/dlls/suspicious` | 获取可疑 DLL |
+| GET | `/api/forensics/dlls` | 列出分析的 DLL/可执行文件 |
+| GET | `/api/forensics/dlls/{dll_id}` | DLL 详情 |
+| GET | `/api/forensics/dlls/suspicious` | 可疑 DLL |
 | GET | `/api/forensics/dlls/statistics` | DLL 分析统计 |
-| GET | `/api/forensics/dlls/{dll_id}/anomalies` | 获取 DLL 异常 |
+| GET | `/api/forensics/dlls/{dll_id}/anomalies` | DLL 异常 |
 | POST | `/api/forensics/dlls/analyze` | 触发 DLL 分析 |
 | GET | `/api/forensics/dlls/health` | DLL 分析服务健康检查 |
 
----
-
-## 统计分析
-
-### StatisticsRoutes (`StatisticsRoutes.cpp`)
+### StatisticsRoutes
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
 | GET | `/api/forensics/statistics/overview` | 统计概览 |
-| GET | `/api/forensics/statistics/file-distribution` | 文件分布分析 |
-| GET | `/api/forensics/statistics/activity-patterns` | 活动模式分析 |
+| GET | `/api/forensics/statistics/file-distribution` | 文件分布 |
+| GET | `/api/forensics/statistics/activity-patterns` | 活动模式 |
 | GET | `/api/forensics/statistics/deleted-files-analysis` | 已删除文件分析 |
 
----
-
-## Android 取证
-
-### AndroidForensicsRoutes (`AndroidForensicsRoutes.cpp`)
+### AndroidForensicsRoutes
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
@@ -148,12 +124,35 @@
 | GET | `/api/forensics/android/app-usage` | 应用使用统计 |
 | GET | `/api/forensics/android/device-info` | 设备信息 |
 | GET | `/api/forensics/android/media-analysis` | 媒体文件分析 |
+| GET | `/api/forensics/android/miui-overview` | MIUI 备份概览 |
+| GET | `/api/forensics/android/miui-installed-apps` | MIUI 已装应用 |
+| GET | `/api/forensics/android/miui-db-inventory` | MIUI 数据库清单 |
+| GET | `/api/forensics/android/miui-qqnt-overview` | QQNT 概览 |
+| GET | `/api/forensics/android/miui-qqnt-artifacts` | QQNT 工件 |
+| GET | `/api/forensics/android/miui-qqnt-records` | QQNT 记录 |
+| GET | `/api/forensics/android/miui-wechat-overview` | 微信概览 |
+| GET | `/api/forensics/android/miui-wechat-artifacts` | 微信工件 |
+| GET | `/api/forensics/android/miui-wechat-records` | 微信记录 |
+| GET | `/api/forensics/android/llm-summary` | Android LLM 汇总 |
 
----
+### MemoryForensicsRoutes
 
-## 数据导出
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| GET | `/api/forensics/memory/summary` | 内存分析摘要 |
+| GET | `/api/forensics/memory/processes` | 进程列表 |
+| GET | `/api/forensics/memory/network` | 网络连接 |
+| GET | `/api/forensics/memory/bash-history` | Bash 历史 |
+| GET | `/api/forensics/memory/boot-info` | 启动信息 |
 
-### ExportRoutes (`ExportRoutes.cpp`)
+### SystemEventRoutes
+
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| GET | `/api/forensics/system/events` | 系统事件 |
+| GET | `/api/forensics/system/summary` | 系统事件摘要 |
+
+### ExportRoutes
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
@@ -162,68 +161,57 @@
 | GET | `/api/forensics/export/events/csv` | 事件导出（CSV） |
 | GET | `/api/forensics/export/events/visualization` | 事件导出（可视化格式） |
 
+### OSS 路由（未注册）
+
+`OSSRoutes/OSSAnalysisRoutes/OSSQueryRoutes/OSSStatsRoutes` 虽被编译（定义 `/api/forensics/oss/*` 系列端点），但 `HTTPServer` 从未实例化 `OSSRoutes`，**运行时这些端点不存在**。详见 [OSSRoutes.md](OSSRoutes.md)。
+
 ---
 
 ## 全文搜索
 
-### SearchRoutes (`SearchRoutes.cpp`)
+### SearchRoutes
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
-| POST | `/api/search/fulltext` | 全文搜索 |
-| POST | `/api/search/index` | 索引文件 |
-| GET | `/api/search/status` | 搜索服务状态 |
+| GET | `/api/search/fulltext` | 全文搜索 |
+| POST | `/api/search/index` | 建立索引 |
 
 ---
 
-## OSS 分析
+## 系统监控与文档
 
-### OSSRoutes (`OSSRoutes.cpp`, `OSSAnalysisRoutes.cpp`, `OSSQueryRoutes.cpp`, `OSSStatsRoutes.cpp`)
-
-| 方法 | 端点 | 说明 |
-|------|------|------|
-| POST | `/api/oss/analyze` | 启动 OSS 分析 |
-| GET | `/api/oss/status` | OSS 分析状态 |
-| GET | `/api/oss/results` | OSS 分析结果 |
-| GET | `/api/oss/query` | OSS 数据查询 |
-| GET | `/api/oss/statistics` | OSS 统计信息 |
-
----
-
-## 系统监控
-
-### SystemHealthRoutes (`SystemHealthRoutes.cpp`)
+### SystemHealthRoutes / SystemInfoRoutes / SystemDocsRoutes
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
 | GET | `/api/system/health` | 系统健康检查 |
 | GET | `/api/health` | 健康检查（别名） |
-| GET | `/api/health/live` | Kubernetes 存活探针 |
-| GET | `/api/health/ready` | Kubernetes 就绪探针 |
+| GET | `/api/health/live` | 存活探针 |
+| GET | `/api/health/ready` | 就绪探针 |
 | GET | `/api/health/dependencies` | 依赖服务状态 |
-
-### SystemInfoRoutes (`SystemInfoRoutes.cpp`)
-
-| 方法 | 端点 | 说明 |
-|------|------|------|
 | GET | `/api/system/info` | 系统信息 |
 | GET | `/api/system/databases` | 可用数据库列表 |
 | GET | `/api/system/database-schema/{db_type}` | 数据库 Schema |
 | POST | `/api/export/{task_id}` | 导出任务结果 |
 | GET | `/api/system/logs` | 系统日志 |
-
-### SystemDocsRoutes (`SystemDocsRoutes.cpp`)
-
-| 方法 | 端点 | 说明 |
-|------|------|------|
 | GET | `/api/docs/endpoints` | API 端点列表 |
+| GET | `/api/docs/database-schema` | 数据库 Schema 文档 |
+| GET | `/api/docs/openapi.json` | OpenAPI JSON |
+| GET | `/api/docs` | Swagger UI |
 
-### SystemEventRoutes (`SystemEventRoutes.cpp`)
+---
+
+## 文件过滤
+
+### FilterRoutes
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
-| GET | `/api/system/events` | 系统事件 |
-| GET | `/api/system/events/summary` | 系统事件摘要 |
+| GET | `/api/filter/profiles` | 过滤配置列表 |
+| GET | `/api/filter/profiles/{name}` | 过滤配置详情 |
+| POST | `/api/filter/profiles` | 创建过滤配置 |
+| DELETE | `/api/filter/profiles/{name}` | 删除过滤配置 |
+| POST | `/api/filter/apply` | 应用过滤配置 |
 
 ---
 
@@ -231,17 +219,11 @@
 
 ### RouteHelpers (`RouteHelpers.cpp`)
 
-路由辅助工具，提供：
-- 通用错误响应构建
-- 请求参数解析
-- 任务验证
+路由辅助工具：通用错误响应构建、请求参数解析、`get_database_path(task_id, kind)` 任务数据库路径解析。
 
 ### TaskHelpers (`TaskHelpers.cpp`)
 
-任务相关辅助工具，提供：
-- 任务 ID 生成
-- 任务状态转换
-- 进度计算
+任务相关辅助工具：任务 ID 生成、任务状态转换。
 
 ---
 
@@ -274,26 +256,20 @@ GET /api/forensics/timeline/comprehensive?task_id=task_123
 
 ## 响应格式
 
-### 成功响应
+各路由大多返回**裸领域 JSON**（任务对象、事件数组等）；失败时返回 `{"error": "..."}` 并携带 4xx/5xx 状态码（部分路由附 `error_code`，枚举见 `src/core/ErrorHandling/ErrorHandling.h`）。
+
+统一的 `ApiResponse` 封装（`HTTPServerDataTypes.h`：`success/message/data/timestamp/pagination/error_code`）**目前仅 FilterRoutes 使用**：
 
 ```json
 {
     "success": true,
+    "message": "...",
     "data": { ... },
-    "execution_time_ms": 45
-}
-```
-
-### 错误响应
-
-```json
-{
-    "success": false,
-    "error": "Error message",
-    "error_code": "TASK_NOT_FOUND"
+    "timestamp": "...",
+    "pagination": { "page": 1, "pageSize": 100, "total": 1234 }
 }
 ```
 
 ---
 
-**最后更新**: 2026-05-19
+**最后更新**: 2026-08-23（按 routes/ 源码重写：修正搜索路由方法、OSS 未注册说明、补齐 Android/Memory/Scene/Filter/Docs 端点）

@@ -172,28 +172,28 @@ enum class TaskPhase {
     INITIALIZING,       // 初始化：打开镜像、创建数据库
     IMAGE_ANALYSIS,     // 镜像分析：遍历文件系统、提取元数据
     EVENT_EXTRACTION,   // 事件提取：生成时间线事件
-    FILE_CLASSIFICATION,// 文件分类：13种文件类型分类
-    LLM_ANALYSIS,       // LLM分析：生成文件描述（可选）
-    ANDROID_ANALYSIS,   // Android分析：解析Android数据（可选）
-    FINALIZING          // 完成：生成最终报告
+    FILE_CLASSIFICATION,// 文件分类：写入 files 主表与 24 个分类表
+    LLM_ANALYSIS,       // LLM分析：生成文件描述与事件簇分析
+    PLATFORM_ANALYSIS,  // 平台分析：Android/Windows/Linux/Server 工件
+    FILE_CARVING,       // 签名雕刻：未分配空间恢复（可选）
+    FINALIZING          // 完成
 };
 ```
 
-**进度计算**：
+**进度计算**（`TaskManager.cpp::calculate_overall_percentage`，实际权重）：
 
 ```cpp
-// 每个阶段的权重
 int TaskManager::calculate_overall_percentage(TaskPhase phase, int phase_percentage) {
-    int phase_weight;
-    switch (phase) {
-        case TaskPhase::INITIALIZING:       phase_weight = 5;  break;   // 5%
-        case TaskPhase::IMAGE_ANALYSIS:     phase_weight = 40; break;   // 40%
-        case TaskPhase::EVENT_EXTRACTION:   phase_weight = 20; break;   // 20%
-        case TaskPhase::FILE_CLASSIFICATION: phase_weight = 15; break;  // 15%
-        case TaskPhase::LLM_ANALYSIS:       phase_weight = 10; break;   // 10% (可选)
-        case TaskPhase::ANDROID_ANALYSIS:   phase_weight = 5;  break;   // 5% (可选)
-        case TaskPhase::FINALIZING:         phase_weight = 5;  break;   // 5%
-    }
+    std::map<TaskPhase, int> phase_weights = {
+        {TaskPhase::INITIALIZING, 5},
+        {TaskPhase::IMAGE_ANALYSIS, 25},
+        {TaskPhase::EVENT_EXTRACTION, 10},
+        {TaskPhase::FILE_CLASSIFICATION, 15},
+        {TaskPhase::LLM_ANALYSIS, 20},
+        {TaskPhase::PLATFORM_ANALYSIS, 20},
+        {TaskPhase::FILE_CARVING, 3},
+        {TaskPhase::FINALIZING, 2}
+    };
     // 累加之前已完成的阶段权重
     int accumulated = 0;
     // ... 计算逻辑 ...
@@ -1225,34 +1225,36 @@ TaskManager 本身不直接提供 HTTP 接口，而是通过 TaskRoutes 路由�
 如果需要添加新的分析阶段（如 "MALWARE_ANALYSIS"）：
 
 ```cpp
-// 1. 在 HTTPServerDataTypes.h 中添加新阶段
+// 1. 在 HTTPServerDataTypes.h 中添加新阶段（在现有枚举基础上插入）
 enum class TaskPhase {
     INITIALIZING,
     IMAGE_ANALYSIS,
     EVENT_EXTRACTION,
     FILE_CLASSIFICATION,
-    MALWARE_ANALYSIS,  // 新增：恶意软件分析
     LLM_ANALYSIS,
-    ANDROID_ANALYSIS,
+    PLATFORM_ANALYSIS,
+    MALWARE_ANALYSIS,  // 新增：恶意软件分析
+    FILE_CARVING,
     FINALIZING
 };
 ```
 
 ```cpp
-// 2. 在 TaskManager.cpp 中更新进度计算
+// 2. 在 TaskManager.cpp 的 calculate_overall_percentage 相位权重表中注册
+//    （当前实现使用 std::map<TaskPhase, int> phase_weights，而非 switch）
 int TaskManager::calculate_overall_percentage(TaskPhase phase, int phase_percentage) {
-    int phase_weight;
-    switch (phase) {
-        case TaskPhase::INITIALIZING:       phase_weight = 5;  break;
-        case TaskPhase::IMAGE_ANALYSIS:     phase_weight = 35; break;  // 减少权重
-        case TaskPhase::EVENT_EXTRACTION:   phase_weight = 15; break;
-        case TaskPhase::FILE_CLASSIFICATION: phase_weight = 15; break;
-        case TaskPhase::MALWARE_ANALYSIS:    phase_weight = 10; break;  // 新增
-        case TaskPhase::LLM_ANALYSIS:       phase_weight = 10; break;
-        case TaskPhase::ANDROID_ANALYSIS:   phase_weight = 5;  break;
-        case TaskPhase::FINALIZING:         phase_weight = 5;  break;
-    }
-    // ... 累加权重 ...
+    std::map<TaskPhase, int> phase_weights = {
+        {TaskPhase::INITIALIZING, 5},
+        {TaskPhase::IMAGE_ANALYSIS, 25},
+        {TaskPhase::EVENT_EXTRACTION, 10},
+        {TaskPhase::FILE_CLASSIFICATION, 15},
+        {TaskPhase::LLM_ANALYSIS, 15},
+        {TaskPhase::PLATFORM_ANALYSIS, 15},
+        {TaskPhase::MALWARE_ANALYSIS, 10},   // 新增
+        {TaskPhase::FILE_CARVING, 3},
+        {TaskPhase::FINALIZING, 2}
+    };
+    // ... 按阶段顺序累加权重 ...
 }
 ```
 
@@ -1967,8 +1969,8 @@ bool cancelled = taskMgr.cancel_task(task_id, "User request");
 **问题4: 看门狗误杀正常任务**
 
 ```bash
-# 痋状
-# 任务在某个阶段运行超过 2 小时被标记为 FAILED
+# 症状
+# 任务在某个阶段长时间无进度更新，超过 TASK_WATCHDOG_STALE_MINUTES（默认 30 分钟）后被标记为 FAILED
 # Task stuck in phase 2 (IMAGE_ANALYSIS)
 ```
 

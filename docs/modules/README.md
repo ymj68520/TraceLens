@@ -1,436 +1,157 @@
-# 数字取证分析工具 - 模块化文档索引
+# TraceLens 模块文档索引
 
-## 文档导航
+## 说明
 
-欢迎使用 ForensicsProject 模块化技术文档。本文档集提供了项目所有 C++ 和 Python 模块的详细技术说明。
+- 模块文档按目录组织，与源码位置对应：`docs/modules/cpp/**` 对应 `src/**`，`docs/modules/python/**` 对应 `python_service/**`。
+- 本索引只链接实际存在的文档文件；每个文档的详细内容可能滞后于代码，**阅读时请以代码为准**。
+- 下表描述均依据当前代码核实编写；个别模块在代码中已处于过时/死代码状态，见下方"过时与死代码模块"标注。
 
-### 快速开始
+## 过时与死代码模块
 
-如果您是第一次接触本项目，建议按以下顺序阅读：
+以下模块文档保留供参考，但其对应源码在当前代码库中的状态需特别注意：
 
-1. **[项目概述](../CLAUDE.md)** - 了解项目整体架构和功能
-2. **[核心模块文档](#c-核心模块)** - 理解数据管理核心
-3. **[分析器模块文档](#c-分析器模块)** - 学习各种取证分析器
-4. **[网络模块文档](#c-网络通信模块)** - 了解 HTTP 服务器架构
-
----
-
-## C++ 模块文档
-
-### 核心基础设施
-
-| 模块 | 文档 | 状态 | 描述 |
-|------|------|------|------|
-| **DatabaseManager** | [📖](cpp/core/DatabaseManager.md) | ✅ 完成 | 数据库管理核心，三层数据库架构 |
-| **FileClassifier** | [📖](cpp/core/FileClassifier.md) | ✅ 完成 | 文件分类引擎，24+ 种文件类别 |
-| **EventExtractor** | [📖](cpp/core/EventExtractor.md) | ✅ 完成 | 时间线事件提取器 |
-| **FileExtractor** | [📖](cpp/core/FileExtractor.md) | ✅ 完成 | 文件内容提取器 |
-| **AuditLog** | [📖](cpp/core/AuditLog.md) | ✅ 完成 | 审计日志系统 |
-| **Logger** | [📖](cpp/core/Logger.md) | ✅ 完成 | 日志系统 |
-| **ConfigManager** | [📖](cpp/core/ConfigManager.md) | ✅ 完成 | 配置管理 |
-| **PathManager** | [📖](cpp/core/PathManager.md) | ✅ 完成 | 路径管理 |
-| **FullTextSearch** | [📖](cpp/core/FullTextSearch.md) | ✅ 完成 | 全文搜索引擎 |
-| **ThreadPool** | [📖](cpp/core/ThreadPool.md) | ✅ 完成 | 线程池 |
-| **TOONExporter** | [📖](cpp/core/TOONExporter.md) | ✅ 完成 | TOON 格式导出器 |
-
-### 分析器模块
-
-| 模块 | 文档 | 状态 | 描述 |
-|------|------|------|------|
-| **ImageAnalyzer** | [📖](cpp/analyzers/ImageAnalyzer.md) | ✅ 完成 | 磁盘镜像分析核心引擎 |
-| **AndroidAnalyzer** | [📖](cpp/analyzers/AndroidAnalyzer.md) | ✅ 完成 | Android 取证分析 |
-| **WindowsFilesAnalyzer** | [📖](cpp/analyzers/WindowsFilesAnalyzer.md) | ✅ 完成 | Windows 系统工件分析 |
-| **LinuxFilesAnalyzer** | [📖](cpp/analyzers/LinuxFilesAnalyzer.md) | ✅ 完成 | Linux 系统工件分析 |
-| **DatabaseAnalyzer** | [📖](cpp/analyzers/DatabaseAnalyzer.md) | ✅ 完成 | 数据库取证分析 |
-| **FileCarving** | [📖](cpp/analyzers/FileCarving.md) | ✅ 完成 | 文件恢复与雕刻 |
-| **PDFAnalyzer** | [📖](cpp/analyzers/PDFAnalyzer.md) | ✅ 完成 | PDF 元数据提取 |
-| **OfficeAnalyzer** | [📖](cpp/analyzers/OfficeAnalyzer.md) | ✅ 完成 | Office 文档解析 |
-| **VisionAnalysis** | [📖](cpp/analyzers/VisionAnalysis.md) | ✅ 完成 | 图像/视频视觉分析 |
-| **OSSAnalyzer** | [📖](cpp/analyzers/OSSAnalyzer.md) | ✅ 完成 | 阿里云 OSS 集成 |
-| **DLLAnalyzer** | [📖](cpp/analyzers/DLLAnalyzer.md) | ✅ 完成 | PE/ELF 文件分析、异常检测、威胁评分 |
-
-### 网络通信模块
-
-| 模块 | 文档 | 状态 | 描述 |
-|------|------|------|------|
-| **HTTPServer** | [📖](cpp/network/HTTPServer.md) | ✅ 完成 | C++ HTTP 服务器核心 |
-| **TaskManager** | [📖](cpp/network/TaskManager.md) | ✅ 完成 | 异步任务管理 |
-| **LLMAnalysisService** | [📖](cpp/network/LLMAnalysisService.md) | ✅ 完成 | LLM 分析服务 |
-| **TaskRoutes** | [📖](cpp/network/routes/TaskRoutes.md) | ✅ 完成 | 任务管理路由，异步任务生命周期管理 |
-| **ForensicsRoutes** | [📖](cpp/network/routes/ForensicsRoutes.md) | ✅ 完成 | 取证分析路由，时间线、文件、Android 分析 |
-| **SearchRoutes** | [📖](cpp/network/routes/SearchRoutes.md) | ✅ 完成 | 搜索路由，Xapian 全文搜索集成 |
-| **SystemRoutes** | [📖](cpp/network/routes/SystemRoutes.md) | ✅ 完成 | 系统路由，健康检查、系统监控、Kubernetes 集成 |
-| **OSSRoutes** | [📖](cpp/network/routes/OSSRoutes.md) | ✅ 完成 | 阿里云 OSS 分析路由，四种数据获取模式 |
-| **CaseCRUDRoutes** | [📖](cpp/network/routes/CaseCRUDRoutes.md) | ✅ 完成 | 案例管理路由 |
-| **DLLAnalysisRoutes** | - | ✅ 完成 | DLL 分析路由 |
-| **FilterRoutes** | - | ✅ 完成 | 文件过滤配置路由 |
-| **ExportRoutes** | - | ✅ 完成 | 数据导出路由（TOON/JSON/CSV） |
-| **SceneQueryRoutes** | - | ✅ 完成 | 场景查询路由 |
-
-### 集成模块
-
-| 模块 | 文档 | 状态 | 描述 |
-|------|------|------|------|
-| **ModelRouter** | [📖](cpp/integration/ModelRouter.md) | ✅ 完成 | 多模型路由，五种路由策略 |
-| **LLMClient** | [📖](cpp/integration/LLMClient.md) | ✅ 完成 | OpenAI 兼容 API 客户端 |
-| **FileAnalyzer** | [📖](cpp/integration/FileAnalyzer.md) | ✅ 完成 | LLM 驱动的文件分析器 |
-| **MCPIntegration** | [📖](cpp/integration/MCPIntegration.md) | ✅ 完成 | MCP 协议服务器 |
-| **AndroidAdbExtractor** | [📖](cpp/integration/AndroidAdbExtractor.md) | ✅ 完成 | ADB 数据提取 |
+| 文档 | 代码状态 |
+|------|----------|
+| [VisionAnalysis](cpp/analyzers/VisionAnalysis.md) | `src/analyzers/VisionAnalysis/VisionAnalyzer.cpp` 已编入 CMake，但项目中无任何调用方引用，属**死代码** |
+| [AndroidAdbExtractor](cpp/integration/AndroidAdbExtractor.md) | `src/integration/AndroidAdbExtractor` 仅作为 include 目录出现在 CMakeLists.txt，其源文件**未编入构建** |
+| [OSSRoutes](cpp/network/routes/OSSRoutes.md) | OSS 路由源码（`OSSRoutes.cpp` 等）已编译，但 `HTTPserver` 从未注册该路由，**运行时不可用** |
+| [LLMAnalysisService](cpp/network/LLMAnalysisService.md) | `LLMPythonProxy.h` 头注释将其标记为 deprecated，但任务流水线（`TaskManagerAnalysis.cpp`）仍调用它执行文件级 LLM 分析，**仍是活跃路径** |
+| [EventClusterAnalyzer](cpp/network/EventClusterAnalyzer.md) | 存在且活跃（`TaskManager` / `TaskManagerAnalysis` 中使用） |
 
 ---
 
-## Python 模块文档
+## C++ 模块文档（src/）
 
-### HTTP 服务
+### 分析器（cpp/analyzers/）
 
-| 模块 | 文档 | 状态 | 描述 |
-|------|------|------|------|
-| **FastAPI Main** | [📖](python/Main.md) | ✅ 完成 | FastAPI 主程序，中间件，路由注册 |
-| **ServiceManager** | [📖](python/ServiceManager.md) | ✅ 完成 | 服务生命周期管理，懒加载 |
-| **CppBackendClient** | [📖](python/CppBackendClient.md) | ✅ 完成 | C++ 后端通信，HTTP 客户端 |
-| **HealthRoutes** | [📖](python/httpserver/routes/Health.md) | ✅ 完成 | 健康检查路由，Kubernetes liveness/readiness probes |
-| **GraphitiRoutes** | [📖](python/httpserver/routes/Graphiti.md) | ✅ 完成 | 知识图谱路由，任务级图隔离，实体关系搜索 |
-| **LLMRoutes** | [📖](python/httpserver/routes/LLM.md) | ✅ 完成 | LLM 分析路由，多模态文件分析，批量处理 |
-| **DatabaseRoutes** | [📖](python/httpserver/routes/Database.md) | ✅ 完成 | 数据库路由，文件/事件查询，TOON/JSON 导出 |
+| 文档 | 描述 |
+|------|------|
+| [ImageAnalyzer](cpp/analyzers/ImageAnalyzer.md) | 磁盘镜像分析入口：TSK/原生文件系统遍历、加密镜像解密、XFS 支持 |
+| [AndroidAnalyzer](cpp/analyzers/AndroidAnalyzer.md) | Android 取证分析：QQNT/微信/MIUI 备份工件解析、SQLCipher 解密、逻辑提取（dir/zip/miui-backup） |
+| [WindowsFilesAnalyzer](cpp/analyzers/WindowsFilesAnalyzer.md) | Windows 系统工件分析 |
+| [LinuxFilesAnalyzer](cpp/analyzers/LinuxFilesAnalyzer.md) | Linux 工件分析：日志/journal/auditd/容器/云工件解析与篡改、持久化检测 |
+| [DatabaseAnalyzer](cpp/analyzers/DatabaseAnalyzer.md) | 数据库取证：SQLite/MySQL/PostgreSQL 分析，InnoDB/堆页与 binlog 解析 |
+| [DLLAnalyzer](cpp/analyzers/DLLAnalyzer.md) | PE/ELF 共享库分析：导入导出、依赖、异常检测、签名校验 |
+| [FileCarving](cpp/analyzers/FileCarving.md) | 基于文件签名的雕刻恢复（含已删除文件） |
+| [PDFAnalyzer](cpp/analyzers/PDFAnalyzer.md) | PDF 文档解析与元数据提取 |
+| [OfficeAnalyzer](cpp/analyzers/OfficeAnalyzer.md) | Office 文档解析 |
+| [OSSAnalyzer](cpp/analyzers/OSSAnalyzer.md) | 阿里云 OSS 数据分析集成 |
+| [VisionAnalysis](cpp/analyzers/VisionAnalysis.md) | 图像/视频视觉 LLM 分析（**死代码**，见上方标注） |
 
-### Graphiti 集成
+### 核心基础设施（cpp/core/）
 
-| 模块 | 文档 | 状态 | 描述 |
-|------|------|------|------|
-| **GraphitiIntegration** | [📖](python/graphiti/GraphitiIntegration.md) | ✅ 完成 | Graphiti 知识图谱集成综合文档 |
-| **GraphitiIngestor** | [📖](python/graphiti_integration/GraphitiIngestor.md) | ✅ 完成 | 数据摄取引擎 |
-| **TOONTransformer** | [📖](python/graphiti_integration/TOONTransformer.md) | ✅ 完成 | TOON 转换器 |
-| **DatabaseReader** | [📖](python/graphiti_integration/DatabaseReader.md) | ✅ 完成 | 数据库读取器 |
+| 文档 | 描述 |
+|------|------|
+| [AnalysisOrchestrator](cpp/core/AnalysisOrchestrator.md) | 分析编排器：调度镜像/内存/Android 逻辑提取等分析工作流（源码位于 `src/AnalysisOrchestrator.*`） |
+| [DatabaseManager](cpp/core/DatabaseManager.md) | 案例与任务 SQLite 数据库的创建/访问封装（`src/core/DatabaseManager/`，含 EventExtractor/FileClassifier/FileExtractor 子模块） |
+| [EventExtractor](cpp/core/EventExtractor.md) | 从镜像元数据提取时间线事件 |
+| [EventCorrelationEngine](cpp/core/EventCorrelationEngine.md) | 时间线事件关联分析引擎 |
+| [FileClassifier](cpp/core/FileClassifier.md) | 文件分类：24 个分类（`getCategoryName` 分类表）+ 场景规则 |
+| [FileExtractor](cpp/core/FileExtractor.md) | 按分类/过滤规则提取文件内容到输出目录 |
+| [FullTextSearch](cpp/core/FullTextSearch.md) | Xapian 全文搜索引擎封装 |
+| [TOONExporter](cpp/core/TOONExporter.md) | 取证结果导出为 TOON 格式 |
+| [ConfigManager](cpp/core/ConfigManager.md) | 运行配置加载（.env/环境变量） |
+| [PathManager](cpp/core/PathManager.md) | 输出目录与路径管理 |
+| [AuditLog](cpp/core/AuditLog.md) | 取证操作审计日志 |
+| [Logger](cpp/core/Logger.md) | 日志系统 |
+| [ThreadPool](cpp/core/ThreadPool.md) | 并行分析用线程池 |
+| [ErrorHandling](cpp/core/ErrorHandling.md) | 错误码与错误处理工具 |
 
-### 服务层
+### 集成模块（cpp/integration/）
 
-| 模块 | 文档 | 状态 | 描述 |
-|------|------|------|------|
-| **GraphitiService** | [📖](python/services/GraphitiService.md) | ✅ 完成 | Graphiti 服务封装 |
-| **LLMService** | [📖](python/services/LLMService.md) | ✅ 完成 | LLM 分析服务 |
+| 文档 | 描述 |
+|------|------|
+| [LLMClient](cpp/integration/LLMClient.md) | OpenAI 兼容 API 的 HTTP 客户端 |
+| [ModelRouter](cpp/integration/ModelRouter.md) | 多模型路由（文本/视觉等模型选择策略） |
+| [FileAnalyzer](cpp/integration/FileAnalyzer.md) | LLM 驱动的单文件分析器 |
+| [MCPIntegration](cpp/integration/MCPIntegration.md) | MCP（Model Context Protocol）协议集成 |
+| [AndroidAdbExtractor](cpp/integration/AndroidAdbExtractor.md) | ADB 在线数据提取（**未编入 CMake**，见上方标注） |
 
----
+### 网络与任务服务（cpp/network/）
 
-## 文档状态说明
+| 文档 | 描述 |
+|------|------|
+| [HTTPServer](cpp/network/HTTPServer.md) | Crow HTTP 服务器：路由注册、静态前端托管（`src/network/HTTPServer/`） |
+| [TaskManager](cpp/network/TaskManager.md) | 异步任务生命周期管理（创建/调度/取消/持久化/看门狗） |
+| [CaseManager](cpp/network/CaseManager.md) | 跨镜像案例管理 |
+| [EventClusterAnalyzer](cpp/network/EventClusterAnalyzer.md) | 事件簇分析器（活跃，供任务流水线生成事件簇） |
+| [LLMAnalysisService](cpp/network/LLMAnalysisService.md) | 文件级 LLM 分析服务：FULL/SMART 两种模式（deprecated 标注但仍活跃，见上方标注） |
+| [LinuxLLMAnalysisService](cpp/network/LinuxLLMAnalysisService.md) | Linux 工件的 LLM 批量分析服务 |
+| [WindowsLLMAnalysisService](cpp/network/WindowsLLMAnalysisService.md) | Windows 工件的 LLM 批量分析服务 |
+| [LLMPythonProxy](cpp/network/LLMPythonProxy.md) | 将 C++ 侧 LLM 请求代理给 Python 服务的过渡层 |
+| [SQLiteHelper](cpp/network/SQLiteHelper.md) | HTTP 层使用的 SQLite 查询助手 |
+| [TaskInfrastructure](cpp/network/TaskInfrastructure.md) | TaskManager 内部支撑组件：任务执行（`TaskManagerAnalysis.cpp`）、持久化、序列化、看门狗 |
 
-| 状态图标 | 状态名称 | 说明 |
-|---------|---------|------|
-| ✅ 完成 | 文档已编写完成，可供阅读 |
-| 🚧 待编写 | 文档计划中，尚未开始 |
-| 📝 草稿 | 文档正在编写中，内容可能不完整 |
-| 🔄 更新中 | 文档正在更新，添加新内容 |
+### HTTP 路由（cpp/network/routes/）
 
----
-
-## 架构总览
-
-### 系统架构图
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         数字取证分析工具                          │
-│                      Digital Forensics Analyzer                 │
-└─────────────────────────────────────────────────────────────────┘
-                                    │
-        ┌───────────────────────────┼───────────────────────────┐
-        │                           │                           │
-        ▼                           ▼                           ▼
-┌───────────────┐         ┌───────────────┐         ┌───────────────┐
-│  C++ 后端     │         │  Python 服务  │         │   外部服务    │
-│  (端口 8080)  │         │  (端口 8090)  │         │               │
-└───────────────┘         └───────────────┘         └───────────────┘
-        │                           │                           │
-        │                           │                           │
-        ▼                           ▼                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        分析引擎层                                │
-├─────────────┬─────────────┬─────────────┬─────────────┬────────┤
-│ImageAnalyzer│EventExtractor│FileClassifier│PlatformAnalyzer│ ... │
-└─────────────┴─────────────┴─────────────┴─────────────┴────────┘
-        │                           │
-        ▼                           ▼
-┌───────────────┐         ┌───────────────┐
-│   _raw.db     │────────▶│  _events.db   │
-│  (原始元数据) │         │  (时间线事件) │
-└───────────────┘         └───────────────┘
-        │                           │
-        ▼                           ▼
-┌───────────────┐         ┌───────────────┐
-│  _files.db    │         │ _platform.db  │
-│ (分类文件)    │         │ (平台数据)    │
-└───────────────┘         └───────────────┘
-```
-
-### 数据流图
-
-```
-磁盘镜像
-    │
-    ▼
-┌─────────────┐
-│ImageAnalyzer│──┐
-└─────────────┘  │
-                 │
-                 ▼
-            ┌─────────┐
-            │_raw.db  │
-            └─────────┘
-                 │
-        ┌────────┼────────┐
-        ▼        ▼        ▼
-    ┌──────┐ ┌──────┐ ┌──────┐
-    │Event │ │ File │ │File  │
-    │Extra │ │Class │ |Extra │
-    │ctor  │ │ifier │ |ctor  │
-    └──────┘ └──────┘ └──────┘
-        │        │        │
-        ▼        ▼        ▼
-    _events.db _files.db 提取文件
-        │        │
-        ▼        ▼
-    ┌────────────────────┐
-    │   HTTP API 层      │
-    │  (C++ + Python)    │
-    └────────────────────┘
-```
+| 文档 | 描述 |
+|------|------|
+| [TaskRoutes](cpp/network/routes/TaskRoutes.md) | 任务管理路由：任务 CRUD/批量/监控（由 Task/TaskCRUD/TaskBatch/TaskMonitoring 等路由文件组成） |
+| [ForensicsRoutes](cpp/network/routes/ForensicsRoutes.md) | 取证数据路由：时间线、文件列表、平台工件等查询 |
+| [SearchRoutes](cpp/network/routes/SearchRoutes.md) | 全文搜索路由（Xapian） |
+| [SystemRoutes](cpp/network/routes/SystemRoutes.md) | 系统路由：健康检查、系统信息/事件/文档等 |
+| [OSSRoutes](cpp/network/routes/OSSRoutes.md) | 阿里云 OSS 分析路由（**编译但从未注册，运行时不可用**，见上方标注） |
+| [RouteReference](cpp/network/routes/RouteReference.md) | C++ REST API 路由总览参考 |
 
 ---
 
-## 模块依赖关系
+## Python 模块文档（python_service/）
 
-### 核心依赖链
+### 顶层（python/）
 
-```
-ImageAnalyzer (分析镜像)
-    │
-    ▼
-DatabaseManager (存储元数据)
-    │
-    ├──▶ EventExtractor (生成时间线)
-    │
-    ├──▶ FileClassifier (分类文件)
-    │
-    ├──▶ FileExtractor (提取内容)
-    │
-    └──▶ PlatformAnalyzers (平台分析)
-            │
-            ├──▶ AndroidAnalyzer
-            ├──▶ WindowsFilesAnalyzer
-            └──▶ LinuxFilesAnalyzer
-```
+| 文档 | 描述 |
+|------|------|
+| [Main](python/Main.md) | `python_service/httpserver/main.py`：FastAPI 应用入口（中间件、路由注册、启动流程） |
+| [ServiceManager](python/ServiceManager.md) | 服务生命周期管理（懒加载初始化各服务） |
+| [CppBackendClient](python/CppBackendClient.md) | Python 侧调用 C++ 后端 REST API 的客户端封装 |
 
-### 服务依赖链
+### Graphiti 集成（python/graphiti/ 与 python/graphiti_integration/）
 
-```
-HTTPServer (C++)
-    │
-    ├──▶ TaskManager (任务管理)
-    │
-    ├──▶ LLMAnalysisService (LLM 分析)
-    │
-    └──▶ FullTextSearch (全文搜索)
+| 文档 | 描述 |
+|------|------|
+| [GraphitiIntegration](python/graphiti/GraphitiIntegration.md) | Graphiti 知识图谱集成综合文档（摄取流水线、Neo4j/Graphiti 配置） |
+| [GraphitiIngestor](python/graphiti_integration/GraphitiIngestor.md) | 将取证数据作为 Episode 摄入 Graphiti 图谱（`graphiti_ingestor.py` / `file_entity_ingestor.py`） |
+| [TOONTransformer](python/graphiti_integration/TOONTransformer.md) | 取证数据到 TOON/Episode 的转换（`toon_transformer.py` / `forensic_episode_transformer.py`） |
+| [DatabaseReader](python/graphiti_integration/DatabaseReader.md) | 从取证 SQLite 结果库读取文件/事件数据（`database_reader.py`） |
 
-Python HTTP Server
-    │
-    ├──▶ GraphitiService (知识图谱)
-    │
-    ├──▶ LLMService (LLM 集成)
-    │
-    └──▶ CppBackendClient (C++ 通信)
-```
+### HTTP 服务（python/httpserver/）
 
----
+| 文档 | 描述 |
+|------|------|
+| [Main](python/httpserver/Main.md) | FastAPI 主程序（`httpserver/main.py`） |
+| [HTTPRoutes](python/httpserver/HTTPRoutes.md) | `httpserver/routes/` 路由模块总览 |
 
-## 文档使用指南
+#### 路由（python/httpserver/routes/）
 
-### 按角色阅读
+| 文档 | 描述 |
+|------|------|
+| [Health](python/httpserver/routes/Health.md) | 健康检查路由（`routes/health.py`） |
+| [Graphiti](python/httpserver/routes/Graphiti.md) | 知识图谱路由（`routes/graphiti.py` 等：图搜索、实体关系） |
+| [LLM](python/httpserver/routes/LLM.md) | LLM 分析路由（`routes/llm.py` 等：文件/多模态分析） |
+| [Database](python/httpserver/routes/Database.md) | 数据库访问路由（`routes/database.py`：文件/事件查询与导出） |
 
-**全栈开发者**（推荐全部阅读）：
-1. C++ 核心模块（必读）
-2. Python 服务模块（必读）
-3. 网络通信模块（必读）
-4. 分析器模块（选读）
+#### 服务（python/httpserver/services/）
 
-**C++ 开发者**：
-1. DatabaseManager（必读）
-2. 核心基础设施（必读）
-3. 分析器模块（选读）
-4. 网络模块（选读）
+| 文档 | 描述 |
+|------|------|
+| [ServiceManager](python/httpserver/services/ServiceManager.md) | 服务管理器（`services/service_manager.py`） |
+| [CppBackendClient](python/httpserver/services/CppBackendClient.md) | C++ 后端客户端（`services/cpp_backend.py`） |
 
-**Python 开发者**：
-1. FastAPI 主程序（必读）
-2. 服务层模块（必读）
-3. Graphiti 集成（选读）
-4. C++ 后端通信（必读）
+### 服务层（python/services/）
 
-**取证分析师**：
-1. ImageAnalyzer（必读）
-2. 各类分析器（必读）
-3. REST API 文档（必读）
-
-### 按功能查找
-
-**磁盘镜像分析**：
-- [ImageAnalyzer](cpp/analyzers/ImageAnalyzer.md)
-
-**数据管理**：
-- [DatabaseManager](cpp/core/DatabaseManager.md)
-- [FileClassifier](cpp/core/FileClassifier.md)
-- [EventExtractor](cpp/core/EventExtractor.md)
-
-**文件提取**：
-- [FileExtractor](cpp/core/FileExtractor.md)
-- [FileCarving](cpp/analyzers/FileCarving.md)
-
-**平台分析**：
-- [AndroidAnalyzer](cpp/analyzers/AndroidAnalyzer.md)
-- [WindowsFilesAnalyzer](cpp/analyzers/WindowsFilesAnalyzer.md)
-- [LinuxFilesAnalyzer](cpp/analyzers/LinuxFilesAnalyzer.md)
-
-**HTTP 服务**：
-- [HTTPServer](cpp/network/HTTPServer.md)
-- [FastAPI Main](python/httpserver/Main.md)
-
-**LLM 集成**：
-- [LLMIntegration](cpp/integration/LLMIntegration.md)
-- [LLMAnalysisService](cpp/network/LLMAnalysisService.md)
+| 文档 | 描述 |
+|------|------|
+| [GraphitiService](python/services/GraphitiService.md) | Graphiti 服务封装（`services/graphiti_service.py`） |
+| [LLMService](python/services/LLMService.md) | LLM 服务（`services/llm_service.py`：文本/视觉模型调用） |
 
 ---
 
-## 编写规范
+## 阅读建议
 
-### 文档模板
-
-所有模块文档遵循统一的模板结构：
-
-```markdown
-# [模块名称] 模块文档
-
-## 1. 模块背景
-### 业务背景
-### 技术背景
-
-## 2. 模块功能
-### 核心功能
-### 边界与限制
-
-## 3. 模块使用的库
-### 依赖库清单
-### 依赖关系图
-
-## 4. 模块实现方式
-### 架构设计
-### 核心类说明
-### 关键流程
-### 数据结构
-
-## 5. API 调用
-### C++ API
-### 命令行 API
-### REST API
-
-## 6. 二次开发
-### 扩展点
-### 添加新功能的步骤
-### 代码示例
-
-## 7. 其他
-### 测试
-### 配置
-### 故障排查
-### 相关模块
-### 参考资源
-### 变更历史
-```
-
-### 文档风格
-
-- **语言**：中文为主，技术术语保留英文
-- **视角**：20年资深全栈工程师
-- **深度**：代码级详细说明
-- **图表**：使用 Mermaid/PlantUML
-- **示例**：完整的可运行代码
-
-### 质量标准
-
-- [ ] 所有章节完整
-- [ ] 代码示例可运行
-- [ ] Mermaid 图表正确
-- [ ] 交叉引用有效
-- [ ] API 签名准确
-- [ ] 版本信息完整
+- **C++ 后端**：从 [HTTPServer](cpp/network/HTTPServer.md)、[TaskManager](cpp/network/TaskManager.md)、[AnalysisOrchestrator](cpp/core/AnalysisOrchestrator.md) 入手，理解任务从 API 到分析流水线的路径。
+- **分析能力**：[ImageAnalyzer](cpp/analyzers/ImageAnalyzer.md) 及各平台/格式分析器。
+- **Python 服务**：从 [Main](python/httpserver/Main.md) 入手，再到 Graphiti 摄取与 LLM 服务。
 
 ---
 
-## 贡献指南
-
-### 如何贡献文档
-
-1. **选择模块**：从待编写列表中选择模块
-2. **阅读代码**：理解模块实现
-3. **编写文档**：遵循模板结构
-4. **代码示例**：提供可运行的示例
-5. **图表绘制**：使用 Mermaid/PlantUML
-6. **审核校对**：确保技术准确性
-
-### 文档提交
-
-```bash
-# 创建文档分支
-git checkout -b docs/module-name
-
-# 编写文档
-# docs/modules/cpp/analyzers/NewModule.md
-
-# 提交更改
-git add docs/modules/cpp/analyzers/NewModule.md
-git commit -m "docs: 添加 NewModule 模块文档"
-
-# 推送分支
-git push origin docs/module-name
-
-# 创建 Pull Request
-```
-
-### 文档审核
-
-提交的文档需要经过以下审核：
-
-1. **完整性检查**：所有章节是否齐全
-2. **技术审核**：内容是否准确
-3. **可读性测试**：目标读者是否易懂
-4. **链接验证**：所有链接是否有效
-
----
-
-## 更新日志
-
-### 2026-06-06
-
-- ✅ 添加 DLLAnalyzer 到分析器模块表
-- ✅ 添加 OSS 路由、Filter 路由、Export 路由、SceneQuery 路由到网络模块表
-- ✅ 修复重复的 SystemRoutes/OSSRoutes 条目
-- ✅ 更新模块总数和最后更新日期
-
-### 2026-03-11
-
-- ✅ 完成 ImageAnalyzer 模块文档
-- ✅ 完成 DatabaseManager 模块文档
-- ✅ 完成 FileClassifier 模块文档
-- ✅ 创建文档索引
-
----
-
-## 联系方式
-
-如有文档相关问题，请通过以下方式联系：
-
-- **GitHub Issues**: [项目问题跟踪](https://github.com/your-repo/issues)
-- **项目文档**: 见项目根目录 `CLAUDE.md`
-- **维护团队**: ymj68520
-
----
-
-**最后更新**: 2026-06-06
-**文档版本**: 1.0.0
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（以代码为准重写）

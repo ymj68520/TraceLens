@@ -81,7 +81,7 @@ private:
 
 1. **ImageAnalyzer**: 解析磁盘镜像，提取文件元数据 → `_raw.db`
 2. **EventExtractor**: 从元数据生成时间线事件 → `_events.db`
-3. **FileClassifier**: 按类型分类文件（13 类）→ `_files.db`
+3. **FileClassifier**: 按类型分类文件（24 类分类表 + 主 files 表）→ `_files.db`
 4. **平台分析**（可选）:
    - AndroidAnalyzer → `_android.db`
    - WindowsFilesAnalyzer → `_windows.db`

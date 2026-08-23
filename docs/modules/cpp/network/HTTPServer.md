@@ -158,13 +158,14 @@ struct TaskProgress {
 };
 
 enum class TaskPhase {
-    INITIALIZING,        // 初始化（5%）
-    IMAGE_ANALYSIS,      // 镜像分析（30%）
-    EVENT_EXTRACTION,    // 事件提取（15%）
-    FILE_CLASSIFICATION, // 文件分类（20%）
-    LLM_ANALYSIS,        // LLM 分析（20%）
-    ANDROID_ANALYSIS,    // Android 分析（8%）
-    FINALIZING           // 完成中（2%）
+    INITIALIZING,        // 初始化（权重 5%）
+    IMAGE_ANALYSIS,      // 镜像分析（权重 25%）
+    EVENT_EXTRACTION,    // 事件提取（权重 10%）
+    FILE_CLASSIFICATION, // 文件分类（权重 15%）
+    LLM_ANALYSIS,        // LLM 分析（权重 20%）
+    PLATFORM_ANALYSIS,   // 平台分析 Android/Windows/Linux/Server（权重 20%）
+    FILE_CARVING,        // 签名雕刻（权重 3%）
+    FINALIZING           // 完成中（权重 2%）
 };
 ```
 
@@ -178,9 +179,9 @@ TaskManager::instance().update_progress(
     "正在分析文件系统..."
 );
 
-// 计算总体进度
-// overall_percentage = (phase_progress * phase_weight) + previous_phases_weight
-// = (45 * 0.30) + 5 = 18.5%
+// 总体进度由 TaskManager::calculate_overall_percentage 计算（TaskManager.cpp）：
+// overall = 已完成阶段权重之和 + 当前阶段权重 × 阶段内百分比
+// 例：IMAGE_ANALYSIS 45% → 5 + 25×0.45 = 16%
 ```
 
 #### 4. LLM 分析服务集成

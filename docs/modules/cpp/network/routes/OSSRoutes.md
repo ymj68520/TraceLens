@@ -2,6 +2,8 @@
 
 > **模块定位**: 提供 HTTP API 接口用于分析阿里云 OSS（对象存储服务）数据，支持多种数据获取方式和取证分析
 
+> ⚠️ **当前状态（2026-08-23 核对代码）**：`OSSRoutes/OSSAnalysisRoutes/OSSQueryRoutes/OSSStatsRoutes` 虽被 CMake 编译（定义 `/api/forensics/oss/*` 系列端点），但 `HTTPServer` 从未实例化 `OSSRoutes`，**这些端点运行时未注册、不可调用**。OSSAnalyzer 分析器本身在任务流水线中活跃（写入任务目录 `oss.db`）。本文其余内容为该代码的设计说明，仅供改造时参考；下文如提及"调用本 API"均为未生效状态。
+
 ---
 
 ## 1. 模块背景
