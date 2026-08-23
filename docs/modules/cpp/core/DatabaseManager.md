@@ -216,7 +216,7 @@ bool DatabaseManager::insertFileRecord(const FileRecord& record) {
 	sqlite3_bind_text(stmt, 2, record.name.c_str(), -1, SQLITE_TRANSIENT);
 	sqlite3_bind_text(stmt, 3, record.path.c_str(), -1, SQLITE_TRANSIENT);
 	// ... 4-15 号绑定：size/四个时间戳/type/md5/isDeleted/isAllocated/permissions/uid/gid
-	sqlite3_bind_int64(stmt, 16, record.partitionNum);
+	sqlite3_bind_int(stmt, 16, record.partitionNum);
 
 	rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
