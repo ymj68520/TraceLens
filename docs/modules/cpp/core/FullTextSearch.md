@@ -40,6 +40,48 @@
 
 **TextExtractor 的白名单**（`TextExtractor.cpp:14-71`）：覆盖纯文本、配置、Web、几十种编程语言、Shell、文档标记、SQL/GraphQL、构建/IaC、VCS 元数据等约 130 个扩展名；`isTextFile` 大小写归一比较（`:99-103`）。注意 `.pdf`、`.docx` 等**不在**名单——它们会被 strings 兜底抽出乱码碎片而非真正文本；富文档转换实际由 Python 服务的 markitdown 承担（见 AnalysisOrchestrator.md 的 --dump-text 一节），二者是互补关系。
 
+### 3.1 核心数据结构（FullTextSearch.h:16-40）
+
+```cpp
+struct FileMetadata {
+    std::string path;
+    std::string extension;
+    int64_t size = 0;
+    int64_t mtime = 0;  // Modification time (Unix timestamp)
+};
+
+struct SearchResult {
+    std::string path;
+    double score;
+    std::string snippet;
+    int64_t fileSize = 0;
+    std::string extension;
+};
+
+struct ContentCacheEntry {
+    std::string content;
+    int64_t indexTime;
+};
+```
+
+逐个解释：`FileMetadata` 是索引输入的增强维度——两参版 `addDocument` 会现场 stat 补齐（size/mtime），四参版由调用方给全；extension 带 `.dot` 前缀且索引时会转小写。`SearchResult` 是查询输出——`score` 是 Xapian 的 `get_percent()`（0-100 的相对相关度，不是绝对分），`snippet` 是高亮后的上下文片段，fileSize/extension 从 data JSON 反解。`ContentCacheEntry` 的 `indexTime` 是**入缓存时刻**的 Unix 秒（不是文件 mtime），淘汰时扫全表找最小值——O(n) 淘汰换零额外内存，n≤1000 时合理。缓存放两个静态成员里（`contentCache_`/`cacheMutex_`，`:87-88`），被 Indexer 写、Searcher 读（friend 授权，`:93`）。
+
+### 3.2 核心接口清单
+
+| 签名（FullTextSearch.h） | 语义 | 主要调用方 | 失败行为 |
+|---|---|---|---|
+| `explicit XapianIndexer(dbPath)` | DB_CREATE_OR_OPEN 打开倒排库，挂 TermGenerator/english 词干器 | AnalysisOrchestrator.cpp:644、SearchRoutes 索路由 | Xapian 异常**重抛**（构造失败应立即可见） |
+| `void addDocument(filePath, content)` | 简化版：现场 stat 补元数据后转调四参版 | CLI 遍历循环 | 内部 catch Xapian::Error 打 stderr 吞掉 |
+| `void addDocument(filePath, content, metadata)` | 完整版：字段布局 + `Q<path>` replace_document + 入缓存 | 上一重载、http_agent | 同上 |
+| `void commit()` | 提交挂起更改 | 每批/收尾 | db_ 为空时静默跳过 |
+| `void setStemmerLanguage(language)` | 换词干语言 | 暂无生产调用方 | 非法语言打警告回退 english |
+| `size_t getDocumentCount() const` | 库内文档数 | 进度统计 | db_ 为空返回 0 |
+| `explicit XapianSearcher(dbPath)` | 只读打开 | SearchRoutes.cpp:106-107 | 异常被吞，isValid()==false |
+| `vector<SearchResult> search(queryStr, limit=10, offset=0)` | 解析查询→MSet→逐条组装（含摘要） | CLI --search、HTTP 查询 | 库无效/查询异常返回空数组 |
+| `void setSnippetLength(length)` | 调摘要窗长（默认 150） | SearchRoutes 读 `SEARCH_SNIPPET_LENGTH` 后注入 | 无 |
+| `bool isValid() const` / `size_t getTotalDocuments() const` | 诊断 | 路由层报错判断 | 无 |
+| `TextExtractor::extract(path, maxBytes=0)` | 文件→文本（白名单或 strings 兜底） | 索引与摘要两侧 | 读失败返回空串 |
+
 ## 4. 工作流程走读
 
 CLI 建索引（`AnalysisOrchestrator.cpp:650-667`）：
@@ -55,13 +97,145 @@ HTTP 查询（`SearchRoutes.cpp:68-130`）：
 2. `XapianSearcher(index_path)` 打开只读 Database；`search(q, limit, offset)` 走 QueryParser → Enquire → `get_mset(offset, limit)` 分页（`FullTextSearch.cpp:283-305`）。
 3. 每条命中解析 data、算 percent、生成高亮摘要（`:306-355`），组装 JSON 响应。
 
+### 4.1 代码走读：addDocument 的字段布局与 Q<path> 幂等（FullTextSearch.cpp:111-154）
+
+```cpp
+void XapianIndexer::addDocument(const std::string& filePath, const std::string& content, const FileMetadata& metadata) {
+    if (!db_) return;
+
+    try {
+        Xapian::Document doc;
+        termGenerator_.set_document(doc);
+
+        // Index specific fields with prefixes
+        termGenerator_.index_text(filePath, 1, "P");  // Prefix 'P' for path
+        termGenerator_.index_text(content);           // General content (no prefix)
+
+        // Index extension as a boolean term for filtering
+        if (!metadata.extension.empty()) {
+            std::string ext = metadata.extension;
+            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            doc.add_boolean_term("E" + ext);  // E prefix for extension
+            termGenerator_.index_text(ext, 1, "E");
+        }
+
+        // Store document data as JSON for retrieval
+        std::ostringstream dataStream;
+        dataStream << "{\"path\":\"" << filePath << "\""
+                   << ",\"size\":" << metadata.size
+                   << ",\"extension\":\"" << metadata.extension << "\""
+                   << ",\"mtime\":" << metadata.mtime << "}";
+        doc.set_data(dataStream.str());
+
+        // Store values for sorting and display
+        doc.add_value(0, Xapian::sortable_serialise(static_cast<double>(metadata.size)));
+        doc.add_value(1, Xapian::sortable_serialise(static_cast<double>(metadata.mtime)));
+
+        // Add unique ID based on path to avoid duplicates
+        std::string idterm = "Q" + filePath;
+        doc.add_boolean_term(idterm);
+
+        db_->replace_document(idterm, doc);
+
+        // Cache content for snippet generation
+        cacheContent(filePath, content);
+
+    } catch (const Xapian::Error& e) {
+        std::cerr << "Xapian Indexer AddDocument Error: " << e.get_msg() << std::endl;
+    }
+}
+```
+
+逐块解释：一个 Xapian 文档在这里被拆成**四个存储区**，各司其职——terms 区（`index_text` 生成，可检索：`P` 前缀管路径分词、无前缀管正文）、boolean terms 区（精确过滤：`E.pdf` 与 `Q<path>`）、data 区（整段取回：手拼 JSON 给查询侧解析）、values 区（`sortable_serialise` 编码的数值，专供按 size/mtime 排序——把 double 编成字节序可比较的串是 Xapian 的惯用法）。`Q` 前缀 + `replace_document(idterm, doc)` 的组合实现了**以路径为主键的 upsert**：重跑索引时同路径文档整篇替换，词频与位置索引同步重建，库不膨胀——这是"增量重建"语义的根基；换主键（如内容哈希）需要同时改 idterm 生成与查询侧。data 的手拼 JSON 是已知坑（见第 6 节）：字段顺序恰为 path/size/extension/mtime，查询侧的截取逻辑与之耦合。Xapian 异常在这里被吞——单文档失败不中断批量索引，代价是静默缺文档。
+
+### 4.2 代码走读：cacheContent 的全表淘汰（FullTextSearch.cpp:62-88）
+
+```cpp
+void XapianIndexer::cacheContent(const std::string& path, const std::string& content) {
+    std::lock_guard<std::mutex> lock(cacheMutex_);
+
+    // Enforce cache size limit
+    if (contentCache_.size() >= static_cast<size_t>(forensics::ConfigManager::instance().getSearchMaxCacheSize())) {
+        // Simple eviction: remove oldest entry
+        auto oldest = contentCache_.begin();
+        int64_t oldestTime = std::numeric_limits<int64_t>::max();
+        for (auto it = contentCache_.begin(); it != contentCache_.end(); ++it) {
+            if (it->second.indexTime < oldestTime) {
+                oldestTime = it->second.indexTime;
+                oldest = it;
+            }
+        }
+        if (oldest != contentCache_.end()) {
+            contentCache_.erase(oldest);
+        }
+    }
+
+    // Cache truncated content
+    ContentCacheEntry entry;
+    entry.content = content.substr(0, static_cast<size_t>(forensics::ConfigManager::instance().getSearchMaxContentLength()));
+    entry.indexTime = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+
+    contentCache_[path] = std::move(entry);
+}
+```
+
+逐块解释：淘汰是**先删后插**的容量守恒——容量满时先线性扫出 indexTime 最小的条目删掉，再插入新条目，保证 size 永不超过上限加一瞬。线性扫淘汰（O(n)）在 n≤1000（`SEARCH_MAX_CACHE_SIZE` 默认）时可接受；若调大配置应换成 LRU 链或时间堆。截断发生在**入缓存时**（`substr(0, SEARCH_MAX_CONTENT_LENGTH)`，默认 50000 字节）而非读取时——内存占用有了硬上界（1000 × 50KB ≈ 50MB），代价是超长文件的摘要只能出自前 50KB：命中词若只出现在文件尾部，摘要退化（generateSnippet 找不到命中会走占位分支）。`contentCache_[path] = ...` 对已存在的 path 是覆盖且刷新 indexTime——重复索引同文件不会重复占容量。两个容量参数都从 ConfigManager **每次现读**，运行期改 .env 不生效（ConfigManager 无 reload）但至少与配置源单点一致。
+
+### 4.3 代码走读：search 的查询解析与 data 手工反解（FullTextSearch.cpp:283-347）
+
+```cpp
+        Xapian::Enquire enquire(*db_);
+        Xapian::QueryParser parser;
+        Xapian::Stem stemmer("english");
+        parser.set_stemmer(stemmer);
+        parser.set_database(*db_);
+        parser.set_stemming_strategy(Xapian::QueryParser::STEM_SOME);
+
+        // Enable prefix matching
+        parser.add_prefix("path", "P");
+        parser.add_prefix("ext", "E");
+
+        Xapian::Query query = parser.parse_query(queryStr,
+            Xapian::QueryParser::FLAG_DEFAULT |
+            Xapian::QueryParser::FLAG_WILDCARD |
+            Xapian::QueryParser::FLAG_PHRASE |
+            Xapian::QueryParser::FLAG_BOOLEAN);
+
+        std::cout << "Parsed Query: " << query.get_description() << std::endl;
+
+        enquire.set_query(query);
+
+        Xapian::MSet mset = enquire.get_mset(offset, limit);
+
+        for (Xapian::MSetIterator i = mset.begin(); i != mset.end(); ++i) {
+            SearchResult res;
+
+            // Parse stored data (JSON format)
+            std::string data = i.get_document().get_data();
+
+            // Simple JSON parsing for path
+            size_t pathStart = data.find("\"path\":\"");
+            if (pathStart != std::string::npos) {
+                pathStart += 8;
+                size_t pathEnd = data.find("\"", pathStart);
+                if (pathEnd != std::string::npos) {
+                    res.path = data.substr(pathStart, pathEnd - pathStart);
+                }
+            }
+            // ... size/extension 同款截取与老格式回退见 :323-347
+```
+
+逐块解释：查询能力由三处配置合成——`add_prefix("path","P")/("ext","E")` 把用户语法 `path:src` 映射到索引侧前缀（两侧的字符串约定必须一致，改任何一边都断）；四个 FLAG 打开布尔（AND/OR/NOT）、通配（`tes*`）、短语（`"exact phrase"`）；`STEM_SOME` 只对未加前缀的自由词做词干化，路径/扩展名字段保持精确——否则 `path:src` 会被词干折成别的形式。`set_database` 让 `db*:` 之类的智能语法可用。分页由 `get_mset(offset, limit)` 在引擎内完成（不是取全量再切片），深翻页成本可控。**data 反解是全函数最脆的部分**：三段 find/substr 假设 JSON 无转义——路径含 `"` 或 `\` 时 pathEnd 找错位置，截出的 path 残缺且静默（`res.path` 默认空触发老格式回退 `res.path = data`，把整段 JSON 当路径用）；size 的 `std::stoll` 有 try/catch 兜底但字符串截取没有。`Parsed Query` 的 cout 是调试残留，生产上每次查询打一行 stdout。
+
 ## 5. 与其他模块的协作
 
-- **ConfigManager**：四个搜索参数的消费点（`ConfigManager.cpp:151-154`）——缓存容量、内容截断、摘要长度、默认 limit。
+- **ConfigManager**：四个搜索参数的消费点（`ConfigManager.cpp:151-154`）——`SEARCH_MAX_CACHE_SIZE`（缓存容量，默认 1000）、`SEARCH_MAX_CONTENT_LENGTH`（内容截断，默认 50000）、`SEARCH_SNIPPET_LENGTH`（摘要长度，默认 150）、`SEARCH_DEFAULT_LIMIT`（默认 limit，默认 10）。
 - **PathManager/SearchRoutes**：`FTS_ALLOWED_ROOT` 安全校验以 PathManager 的 data 目录为默认根（`SearchRoutes.cpp:17-35`），越界请求被 4xx 拒绝并提示设置该变量（`:159`）。
 - **TextExtractor ↔ 摘要回退**：索引时与查询时的文件内容抽取走同一实现，保证 token 一致性。
 - **http_agent**：分布式部署里索引构建在节点本地完成（`image_indexer.cpp`），产物由 `index_uploader.cpp` 回传，服务端只做查询——带宽友好。
 - 出错时行为：Xapian 异常全部捕获打 stderr 后吞掉（构造函数除外，它会重抛，`FullTextSearch.cpp:30-33`）； searcher 打不开库时 `isValid()` 为 false、search 返回空数组——路由层据此报错。
+- 存储契约：索引库是 Xapian 目录（默认 `search_index_xapian/`），不是 SQLite；文档 data 为四字段 JSON、value 0/1 为 size/mtime、`P`/`E`/`Q` 三组前缀 terms。
 
 ## 6. 注意事项与已知问题
 
@@ -71,6 +245,8 @@ HTTP 查询（`SearchRoutes.cpp:68-130`）：
 - `XapianIndexer` 每次构造都 `DB_CREATE_OR_OPEN`，两个进程同时索引同一库会锁冲突（Xapian 单写者）；http_agent 的"节点本地索引"模式正是为绕开它。
 - 大文件没有截断上限传入索引（`TextExtractor::extract(path)` 的无限制重载，`AnalysisOrchestrator.cpp:655` 用的是它），超大日志会全量入索引拖慢构建——可用 `extract(path, maxBytes)` 重载改善。
 - strings 兜底对 PDF/Office 只能抽碎片，评估"内容检索覆盖率"时不要把它算作完整支持。
+- 摘要窗口只有文件前 `SEARCH_MAX_CONTENT_LENGTH` 字节（截断发生在入缓存时），尾部命中词出不了上下文。
+- search 内 `std::cout << "Parsed Query: ..."`（`:303`）是调试残留，高频查询会刷日志。
 
 ## 7. 如何验证与扩展
 
@@ -78,4 +254,4 @@ HTTP 查询（`SearchRoutes.cpp:68-130`）：
 - 手工验证：`./forensic_analyzer --index <某目录> --search "test AND path:src"`，观察 CLI 打分的 `[NN%]` 行；再用 `curl 'localhost:8080/api/search/fulltext?q=test&index=<index_path>'` 对比 HTTP 行为。
 - 扩展方向：(1) data 换正规 JSON 序列化并加版本字段（改 `FullTextSearch.cpp:111-154` 与 `:309-347` 两处）；(2) 富文档抽取——在 TextExtractor 增加对 markitdown 代理的可选调用，注意失败回退 strings；(3) 排序支持——value 0/1 已存 size/mtime，给 search 加 `set_sort_by_value` 参数即可暴露给前端。
 
-**最后更新**: 2026-08-23（解释式重写）
+**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）

@@ -46,6 +46,42 @@ data/
 
 **临时路径生成**（`makeTempPath`，`PathManager.cpp:137-145`）用"pid + 线程 id 哈希 + 进程内原子计数器"三元组保证多线程、多进程下不碰撞，供挂载点、解密中间文件等场景使用。
 
+### 3.1 核心数据结构：TaskDbPaths（PathManager.h:84-104）
+
+```cpp
+    struct TaskDbPaths {
+        std::filesystem::path rawDb;
+        std::filesystem::path eventsDb;
+        std::filesystem::path filesDb;
+        std::filesystem::path androidDb;
+        std::filesystem::path ossDb;
+        std::filesystem::path windowsDb;
+        std::filesystem::path linuxDb;
+    };
+
+    TaskDbPaths getTaskDbPaths(const std::string& taskId,
+                               const std::string& imageName = "") const;
+```
+
+七个字段即任务全部产物库，逐个说明：`rawDb`（raw.db）是 ImageAnalyzer 的全量文件清单库，流水线第一阶段产物；`eventsDb`（events.db）是 EventExtractor 汇出的事件时间线；`filesDb`（files.db）是 FileClassifier 建的 24 分表分类库，也是各平台 Analyzer 工件的并入目标；`androidDb`/`windowsDb`/`linuxDb`/`ossDb` 是平台专属库，供平台深度分析单独落库。返回值语义是"一次性拿全套"——调用方解构后传给各阶段，避免各阶段各自拼路径产生漂移；配合头文件注释（`PathManager.h:96-101`）"filenames are fixed"的约定，文件名空间被完全冻结。
+
+私有状态极简（`PathManager.h:160-163`）：`initialized_`（是否已 initialize）、`exeDir_`、`projectRoot_`（均 `std::filesystem::path`）、`dataDirName_`（string，默认 `"data"`）。注意**没有缓存 dataDir_**——每次 `getDataDir()` 现算（`PathManager.cpp:60-66`），换来的是 `setDataDirName` 立即生效、无需失效逻辑。
+
+### 3.2 核心接口清单
+
+| 签名（PathManager.h） | 语义 | 主要调用方 | 失败行为 |
+|---|---|---|---|
+| `void initialize(const std::string& executablePath)` | 解析 exeDir、置 initialized | main.cpp:54 | 解析失败回退 CWD 并打警告，不抛 |
+| `void ensureDirectories() const` | 建 data/、tasks/、audit/、logs/ | main.cpp:66 | create_directories 抛 filesystem_error 由上层接 |
+| `std::filesystem::path getExeDir() / getProjectRoot() / getDataDir() const` | 三层根路径 | ConfigManager.load、路由层、分析器 | 未初始化时返回空/相对路径（见第 6 节） |
+| `std::filesystem::path getTaskDir(taskId) const` | data/tasks/<id> | TaskManager 系列、路由 | 纯拼接不创建 |
+| `void ensureTaskDir(taskId) const`（头文件内联 :110-113） | 建任务目录（幂等） | TaskManagerAnalysis | 抛 filesystem_error |
+| `TaskDbPaths getTaskDbPaths(taskId, imageName="") const` | 七库路径打包 | TaskManagerAnalysis、TaskPersistence | 纯拼接 |
+| `std::filesystem::path getTasksJsonPath() const` | data/tasks.json | TaskPersistence、TaskWatchdog | 纯拼接 |
+| `std::filesystem::path getAuditDbPath() / getLogFilePath() / getDebugLogPath() const` | 审计库/日志文件规范位置 | **无生产调用方**（未接线，见第 5 节） | 纯拼接 |
+| `void setDataDirName(name) / setProjectRoot(root)` | 覆盖 DATA_DIR/PROJECT_ROOT（空串被忽略） | main.cpp:61-65 | 静默忽略空串 |
+| `std::string makeTempPath(prefix, suffix="") const` | 生成系统临时目录下唯一路径 | 解密/挂载中间文件 | 无（getTempDir 抛时上抛） |
+
 ## 4. 工作流程走读
 
 以一次 HTTP 分析任务创建路径为例：
@@ -55,9 +91,75 @@ data/
 3. 流水线各阶段向这些路径写库；任务状态变化时 TaskPersistence 写 `getTasksJsonPath()`。
 4. 路由层收到查询请求，同样用 `getTaskDir(taskId)` 拼出库文件路径——写方和读方引用同一函数，天然一致。
 
+### 4.1 代码走读：initialize 的三级回退（PathManager.cpp:12-40）
+
+```cpp
+void PathManager::initialize(const std::string& executablePath) {
+    namespace fs = std::filesystem;
+
+    try {
+        // Resolve symlinks and get absolute path of the executable
+        fs::path exePath;
+
+        // Try /proc/self/exe first (Linux-specific, most reliable)
+#ifdef __linux__
+        if (fs::exists("/proc/self/exe")) {
+            exePath = fs::canonical("/proc/self/exe");
+        } else
+#endif
+        {
+            exePath = fs::canonical(executablePath);
+        }
+
+        exeDir_ = exePath.parent_path();
+    } catch (const fs::filesystem_error&) {
+        // Fallback: use current directory
+        exeDir_ = fs::current_path();
+        std::cerr << "[PathManager] Warning: could not resolve executable path, "
+                     "falling back to CWD: " << exeDir_ << std::endl;
+    }
+
+    // Default projectRoot_ to exeDir_ (overridden later if PROJECT_ROOT is set)
+    projectRoot_ = exeDir_;
+    initialized_ = true;
+}
+```
+
+逐块解释：`/proc/self/exe` 由内核维护、永远指向真实二进制（连符号链接启动也会解析到本体），比 argv[0] 可靠得多——argv[0] 可以被调用方任意伪造、也可能只是相对名。`#ifdef __linux__` 使这段在非 Linux 平台编译为 argv[0] 路径，可移植性靠条件编译而非抽象层解决。两级 canonical 都失败（如二进制已被删除）才退 CWD 并打警告——**注意退化后程序不停止**，所有数据将从 CWD 推导，这正是第 1 节要消灭的散乱场景，所以启动日志里的这条 Warning 值得监控。最后 `initialized_ = true` 无条件置位：即使走了回退分支，后续 `isInitialized()` 也为真——该标志只区分"从未初始化"与"初始化过"，不区分初始化质量。
+
+### 4.2 代码走读：getDataDir 的绝对/相对分流（PathManager.cpp:60-66）
+
+```cpp
+std::filesystem::path getDataDir() const {
+    const std::filesystem::path configured(dataDirName_);
+    if (configured.is_absolute()) {
+        return configured;
+    }
+    return projectRoot_ / configured;
+}
+```
+
+逐块解释：短短六行是部署形态的开关。`dataDirName_` 为相对名（默认 `"data"`、或 `.env` 里 `DATA_DIR=data`）时，数据落 `projectRoot_/data`——同机部署、根随 PROJECT_ROOT 走；为绝对路径（`DATA_DIR=/mnt/evidence`）时 `is_absolute()` 直接短路返回——projectRoot 完全不参与，适合容器挂载卷或 CI 隔离目录（`main.cpp:59` 注释的 isolated acceptance runs）。每次调用现拼现返（无缓存）意味着 `setDataDirName` 之后立即生效，但也意味着热路径上每条路径查询都过一遍 path 拼接——对这个频次（任务级而非文件级）完全无所谓，是正确的取舍。
+
+### 4.3 代码走读：makeTempPath 的三元唯一性（PathManager.cpp:137-145）
+
+```cpp
+std::string makeTempPath(const std::string& prefix,
+                                       const std::string& suffix) const {
+    static std::atomic<uint64_t> counter{0};
+    auto tid = std::hash<std::thread::id>{}(std::this_thread::get_id());
+    auto name = prefix + std::to_string(getpid()) + "_" +
+                std::to_string(tid) + "_" +
+                std::to_string(counter.fetch_add(1)) + suffix;
+    return (getTempDir() / name).string();
+}
+```
+
+逐块解释：唯一性由三个正交维度叠加——`getpid()` 隔离多进程（两台并发跑的实例）、线程 id 哈希隔离同进程多线程（解密与挂载常并发）、函数级 `static atomic` 计数器隔离同线程连续调用（`fetch_add` 返回旧值保证递增不重号）。返回的是**路径字符串而非已存在的文件**：调用方要自己 open/create，存在理论竞态（拿到路径到创建之间别人可能占用），但对前缀受控的内部使用场景足够；需要强保证的场合应换成 `mkdtemp` 一类的原子创建接口。`getTempDir()` 转发 `std::filesystem::temp_directory_path()`（读 TMPDIR/TMP 环境变量），运维可用环境变量把中间文件引到大盘。
+
 ## 5. 与其他模块的协作
 
-- **ConfigManager**：双向依赖的解法是"时序"——ConfigManager 找 `.env` 时调用 `PathManager::getExeDir()/getProjectRoot()`（`ConfigManager.cpp:26-31`，带 try/catch，因为此时 PathManager 可能未初始化）；反向地，main.cpp 把 ConfigManager 读到的 PROJECT_ROOT/DATA_DIR 回写给 PathManager。
+- **ConfigManager**：双向依赖的解法是"时序"——ConfigManager 找 `.env` 时调用 `PathManager::getExeDir()/getProjectRoot()`（`ConfigManager.cpp:26-31`，带 try/catch，因为此时 PathManager 可能未初始化）；反向地，main.cpp 把 ConfigManager 读到的 PROJECT_ROOT/DATA_DIR 回写给 PathManager。相关 .env 键：`PROJECT_ROOT`（getProjectRoot 的覆盖源，空则用 exeDir）、`DATA_DIR`（dataDirName_，默认 `"data"`，接受绝对或相对）。
 - **TaskManager/TaskPersistence/TaskWatchdog**：任务目录与 `data/tasks.json` 的唯一权威来源；Watchdog 判僵死、断点续跑都依赖这套稳定布局。
 - **AuditLog**：注意一个**未接线点**——PathManager 提供 `getAuditDbPath()`（`data/audit/forensics_audit.db`，`PathManager.cpp:88-90`），但 main.cpp 配置 AuditLog 时用的是 `AUDIT_LOG_DB` 环境变量、默认相对路径 `forensics_audit.db`（`main.cpp:70`），即审计库实际落在 CWD 而非 data/audit/。仓库根目录能看到 `forensics_audit.db` 就是这个原因（详见 AuditLog.md 第 6 节）。
 - **FullTextSearch/SearchRoutes**：`FTS_ALLOWED_ROOT` 未设置时以 `getDataDir()` 作为索引允许根（`SearchRoutes.cpp:17-24`），PathManager 由此参与安全边界。
@@ -70,6 +172,8 @@ data/
 - `setDataDirName`/`setProjectRoot` 忽略空串（`PathManager.cpp:119-129`），这是特性也是坑：想"清掉覆盖、回到默认"做不到，只能重启进程。
 - DATA_DIR 设为绝对路径时 projectRoot 完全不影响数据位置——容器/CI 场景常用（`main.cpp:59` 注释提到的 isolated acceptance runs 即此用法）。
 - 线程安全说明：getter 都是无状态读，但 `setProjectRoot`/`setDataDirName` 与并发读之间无锁；实践中它们只在 main 启动单线程阶段被调用，勿在运行期调用。
+- `makeTempPath` 的线程 id 哈希与计数器都是"碰撞概率极小"而非"保证唯一"（见 4.3），对安全敏感的临时文件不要依赖它。
+- 产物路径只做字符串拼接，**不检查磁盘空间/权限**；任务写到一半磁盘满的失败由 SQLite 层报出，PathManager 无感知。
 
 ## 7. 如何验证与扩展
 
@@ -77,4 +181,4 @@ data/
 - 快速实验：分别用 `DATA_DIR=/tmp/tl_data ./forensic_analyzer ...` 和默认配置各跑一次，对比数据落点，验证第 3 节的绝对路径规则。
 - 扩展场景入手点：(1) 接线审计库路径——改 `main.cpp:69-74` 用 `getAuditDbPath().string()` 作为默认值；(2) 新增任务级产物目录（如 carved_files）——在 `PathManager.h:120-122` 旁加一个 `getTaskDir(id) / "carved_files"` 的内联函数，并在使用方统一改调它，不要在业务代码里手拼字符串。
 
-**最后更新**: 2026-08-23（解释式重写）
+**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）

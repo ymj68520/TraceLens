@@ -45,6 +45,31 @@ tasks_.emplace([task]() { (*task)(); });
 
 **构造参数兜底**。`threads == 0` 时强制改成 1（`ThreadPool.cpp:6-8`），防止配置错误（比如 `.env` 里 `THREAD_POOL_SIZE=0`）把服务变成"提交任务但永远没人执行"的死锁状态。
 
+### 3.1 核心数据结构与状态（ThreadPool.h:66-73）
+
+```cpp
+private:
+    std::vector<std::thread> workers_;
+    std::queue<std::function<void()>> tasks_;
+
+    mutable std::mutex queueMutex_;
+    std::condition_variable condition_;
+    bool stop_ = false;
+```
+
+五个字段各司其职：`workers_` 构造时一次性建满、此后不再增减（"固定池"的含义），析构时逐个 join；`tasks_` 是 FIFO 无界队列，元素是类型擦除后的无参闭包——原始签名、参数、返回值在入队前已被 `packaged_task` 折叠；`queueMutex_` 唯一一柄锁，`mutable` 因为 `pendingTasks()` 是 const 方法也要加锁；`condition_` 用于 worker 的等待/唤醒；`stop_` 是普通 bool 而非 atomic——**它只在持有 queueMutex_ 时读写**（析构的 `:38-40`、worker 的 `:18-24`、enqueue 的 `:93`），锁已提供可见性与互斥，加 atomic 是多余的。公开的 `size()`/`isStopped()` 直接读成员（`:54, 64`），其中 `isStopped()` 无锁读 `stop_` 属于轻度数据竞争（bool 单字节，实践无害，但严格看是 UB）。
+
+### 3.2 核心接口清单
+
+| 签名（ThreadPool.h） | 语义 | 主要调用方 | 失败行为 |
+|---|---|---|---|
+| `explicit ThreadPool(size_t threads = hardware_concurrency())` | 建池并启动 N 个 worker（0 兜底为 1） | TaskManager/FileAnalyzer/DLLAnalyzer | 线程创建失败抛 system_error |
+| `~ThreadPool()` | 置 stop、排干队列、join 全部 worker | 自动（作用域结束） | join 无限期等待 |
+| `template<class F, class... Args> auto enqueue(F&&, Args&&...) -> std::future<invoke_result_t<F,Args...>>` | 提交任意可调用任务，返回 future | 三个调用方的批处理循环 | 池已停止抛 `runtime_error("enqueue on stopped ThreadPool")` |
+| `size_t size() const` | worker 数量 | 诊断 | 不会失败（无锁读） |
+| `size_t pendingTasks() const` | 队列中待执行任务数 | 进度估算 | 不会失败（持锁读） |
+| `bool isStopped() const` | 池是否已停止 | 诊断 | 不会失败（无锁读） |
+
 ## 4. 工作流程走读
 
 以 TaskManager 提交一个分析任务为例：
@@ -55,12 +80,96 @@ tasks_.emplace([task]() { (*task)(); });
 4. **收结果**。TaskManager 把 future 存起来，稍后在需要进度/状态的地方 `get()`。任务函数正常返回则拿到值；抛异常则在 `get()` 处重抛，由 TaskManager 的异常处理记入任务失败原因。
 5. **析构**。服务退出时池析构，先排干队列再 join 所有 worker（`ThreadPool.cpp:36-48`）。
 
+### 4.1 代码走读：worker 主循环（ThreadPool.cpp:11-32）
+
+```cpp
+        workers_.emplace_back([this] {
+            while (true) {
+                std::function<void()> task;
+
+                {
+                    std::unique_lock<std::mutex> lock(queueMutex_);
+                    condition_.wait(lock, [this] {
+                        return stop_ || !tasks_.empty();
+                    });
+
+                    if (stop_ && tasks_.empty()) {
+                        return;
+                    }
+
+                    task = std::move(tasks_.front());
+                    tasks_.pop();
+                }
+
+                task();
+            }
+        });
+```
+
+逐块解释：`while(true)` + 内层作用域是经典的"锁块最小化"结构——unique_lock 的作用域止于右花括号，`task()` 在锁外执行，**执行长任务不阻塞其他 worker 出队**，这是池能并行的全部秘密。`condition_.wait(lock, pred)` 带谓词重载，防虚假唤醒：醒来后必须再验"停止或非空"才算数。退出判断的顺序是精髓：`stop_ && tasks_.empty()` 意味着"要停但队列还有活"时**不退出**，继续 pop 执行——这实现了"排干再退"的语义；反过来 `stop_` 为假时哪怕被虚假唤醒也会回到 wait。`std::move` 出队 + 局部 `task` 变量，保证 `std::function` 的闭包资源（可能捕获了大对象）在锁释放前完成移动、在任务执行后立刻析构。异常边界值得注意：`task()` 若抛出，异常会穿透 lambda 逸出线程 → `std::terminate`——但本池的 task 都是 packaged_task 包装，异常被其吞进 future，所以这层防线实际总是干净的。
+
+### 4.2 代码走读：enqueue 的类型擦除流水线（ThreadPool.h:79-101）
+
+```cpp
+template<class F, class... Args>
+auto ThreadPool::enqueue(F&& f, Args&&... args) 
+    -> std::future<typename std::invoke_result<F, Args...>::type>
+{
+    using return_type = typename std::invoke_result<F, Args...>::type;
+    
+    auto task = std::make_shared<std::packaged_task<return_type()>>(
+        std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+    );
+    
+    std::future<return_type> res = task->get_future();
+    {
+        std::unique_lock<std::mutex> lock(queueMutex_);
+        
+        if (stop_) {
+            throw std::runtime_error("enqueue on stopped ThreadPool");
+        }
+        
+        tasks_.emplace([task]() { (*task)(); });
+    }
+    condition_.notify_one();
+    return res;
+}
+```
+
+逐块解释：四步流水每步都有存在理由。(1) `std::bind(forward...)` 把 `f(args...)` 的调用折叠成立即可调的无参对象——参数在**提交线程**完成拷贝/移动，worker 线程看到的是自包含闭包。(2) `packaged_task<return_type()>` 二次包装，类型擦除的同时建立 promise/future 通道，返回值与异常都从这条通道走。(3) 再套 `shared_ptr` 是因为 `packaged_task` 只能移动不能拷贝，而 `std::function` 要求其目标可拷贝——shared_ptr 让 lambda 按值捕获成为可能，这组成了 C++17 及以前的经典 workaround。(4) 锁内先查 `stop_` 再入队：保证"停止后再提交"要么整体失败（抛异常、future 无效）、要么整体成功，不会出现"入了队却没人执行"的悬挂任务。`notify_one` 放在锁外是微量优化（避免被唤醒的 worker 立刻撞锁），语义等价。返回类型推导用 `invoke_result`（C++17）而非弃用的 `result_of`，是现代写法。
+
+### 4.3 代码走读：析构的排干与收尾（ThreadPool.cpp:36-53）
+
+```cpp
+ThreadPool::~ThreadPool() {
+    {
+        std::unique_lock<std::mutex> lock(queueMutex_);
+        stop_ = true;
+    }
+    condition_.notify_all();
+    
+    for (std::thread& worker : workers_) {
+        if (worker.joinable()) {
+            worker.join();
+        }
+    }
+}
+
+size_t ThreadPool::pendingTasks() const {
+    std::unique_lock<std::mutex> lock(queueMutex_);
+    return tasks_.size();
+}
+```
+
+逐块解释：析构先在锁内置 `stop_`——顺序不能反，先 notify 后置位会让 worker 醒来看到旧值又睡回去。`notify_all` 唤醒**全部**等待中的 worker（区别于入队的 notify_one）：它们各自回到循环头，发现 `stop_ && tasks_.empty()` 后逐个 return，线程结束；若队列还有积压，worker 会先消费完再退出，因此 join 的等待时长 = 剩余任务的最长执行时间，**无上限**（见第 6 节）。`joinable()` 检查是防御：已 join 或从未启动的线程再 join 会抛 system_error，虽然本类的生命周期内不会发生，成本一次布尔判断。`pendingTasks` 是唯一的 const 加锁读接口，`mutable` 的 queueMutex_ 就是为它存在的；返回的是加锁瞬间的快照，做进度条时它只是近似值。
+
 ## 5. 与其他模块的协作
 
 - **ConfigManager** 给它线程数：`getThreadPoolSize()` 读 `THREAD_POOL_SIZE`，默认 4（`src/core/ConfigManager/ConfigManager.cpp:138`）。TaskManager 与 LLM FileAnalyzer 共用这一个配置项，意味着调大它会同时影响任务并发和 LLM 并发。
 - **TaskManager / TaskWatchdog**：池上的任务长时间不结束会表现为任务停在某个阶段，由 TaskWatchdog 的轮询（约每秒一跳）与 30 分钟僵死判定兜底（`src/network/HTTPServer/TaskWatchdog.cpp`）。ThreadPool 自身没有超时/取消能力。
 - **LLM FileAnalyzer**：每个文件的 LLM 调用作为一个任务提交，future 收集后汇总（`FileAnalyzer.cpp:282-289`）。LLM 服务慢时，future 的 `get()` 是无超时阻塞——上限由 LLM 请求自身的 timeout 控制（`LLM_TIMEOUT_SECONDS`）。
 - **AuditLog/Logger**：worker 里执行的代码大量调用这两个模块写日志；它们内部各自有锁，与池的队列锁无嵌套关系，不会死锁。
+- 相关 .env：`THREAD_POOL_SIZE`（worker 数，默认 4）；间接相关 `LLM_TIMEOUT_SECONDS`（任务内阻塞上限，默认 120 秒）。
 
 ## 6. 注意事项与已知问题
 
@@ -69,6 +178,8 @@ tasks_.emplace([task]() { (*task)(); });
 - **异常只在 `future.get()` 时可见**。如果调用方拿了 future 却从不 `get()`，任务里的异常会被静默吞掉（future 析构丢弃共享状态异常）。提交任务后务必消费 future。
 - **析构等待是无限期的**。某个任务死循环会让进程退出卡在 join 上；生产上依赖任务内部有超时（LLM 超时等）来避免。
 - 临时池模式（FileAnalyzer/DLLAnalyzer）每次用完即析构，会先排干所有已提交任务——确认这符合调用方预期再复用该模式。
+- `isStopped()`/`size()` 无锁读成员（`ThreadPool.h:54, 64`），严格意义上与写者存在数据竞争；诊断用途可接受，勿用于同步逻辑。
+- 析构期间在别的线程 enqueue 会抛 `runtime_error`——多线程共享池时，池的生命周期要长于所有使用它的线程。
 
 ## 7. 如何验证与扩展
 
@@ -76,4 +187,4 @@ tasks_.emplace([task]() { (*task)(); });
 - 手工验证：调大 `.env` 的 `THREAD_POOL_SIZE`，提交一个含大量文件的任务，观察 LLM 分析阶段日志的并发时间戳。
 - 想扩展的方向与切入点：(1) 有界队列 + 提交阻塞——在 `enqueue` 的锁内加 `cv_full_` 等待；(2) 优先级——把 `std::queue` 换成 `std::priority_queue`，任务附带序号；(3) 优雅取消——引入 `std::stop_token`（C++20）并在 worker 循环里检查。改动都集中在 `ThreadPool.h:66-72` 的状态字段和两个函数内，注意保持"锁内只做入队/出队"的现有纪律。
 
-**最后更新**: 2026-08-23（解释式重写）
+**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）

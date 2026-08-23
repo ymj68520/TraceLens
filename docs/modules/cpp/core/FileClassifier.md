@@ -40,6 +40,60 @@ raw.db files(type='REG') ──classifyFiles──> files.db
 
 **陈旧遗留**：`FileClassifierTypes.h:7-21` 定义了 `forensics` 命名空间下**另一套 13 值的 FileCategory**（IMAGES/VIDEOS…复数命名）。它与 `FileClassifier.h` 的 24 值枚举同名不同义，当前生产代码不使用——新代码一律用 `FileClassifier.h` 的版本，看到复数形式（IMAGES）即知是旧物。
 
+### 3.1 核心数据结构：24 值 FileCategory 枚举（FileClassifier.h:11-43）
+
+```cpp
+enum class FileCategory {
+	IMAGE,
+	VIDEO,
+	AUDIO,
+	DOCUMENT,
+	ARCHIVE,
+	EXECUTABLE,
+	DATABASE,
+	SOURCE_CODE,
+	WEB,
+	EMAIL,
+	SYSTEM,
+	ENCRYPTED,
+
+	// Operating System specific files
+	OS_CONFIG,      // OS configuration files (/etc/passwd, /etc/fstab)
+	OS_BOOT,        // Boot and kernel files (vmlinuz, initrd, grub.cfg)
+	OS_LIBRARY,     // System libraries (.so, .dylib, .a)
+
+	// Filesystem specific files
+	FS_JOURNAL,     // Filesystem journal files
+	FS_METADATA,    // Filesystem metadata
+
+	// Refined general categories
+	LOG_FILE,       // Log files
+	CACHE,          // Cache files
+	TEMP,           // Temporary files
+	BACKUP,         // Backup files
+	FONT,           // Font files
+	CERTIFICATE,    // Certificates and keys
+
+	UNKNOWN
+};
+```
+
+分组语义逐段看：前 12 个是**内容型通用类**——按"文件承载什么"划分（图片/文档/数据库/加密卷……），是 LLM 分析与人工翻看的主要对象。OS_* 三类按注释是**系统位置型**——`/etc/passwd`、vmlinuz、`.so` 这类"属于操作系统"的文件，取证价值在于重构系统状态而非内容本身。FS_* 两类是**文件系统自体**——$MFT/$LogFile/ext4 journal 是"关于文件系统的文件"，几乎永远是噪声，单独分表是为了能一条 WHERE 排除掉。精化七类是从 SYSTEM/UNKNOWN 里二次剥离的高频类别：LOG_FILE（时间线素材）、CACHE/TEMP（可排除）、BACKUP（旧版本证据）、FONT（噪声）、CERTIFICATE（密钥与证书——安全审计的入口）。UNKNOWN 兜底不解释。三套伴生字典把枚举值射到三个字符串空间：`getCategoryName`（人读名 "Databases"，`:423-451`）、`getCategoryTableName`（表名 "databases"，`:453-481`）、主表 category 列存的是前者——**前端看到的类别字符串是人读名**，写查询时别拿表名去匹配 category 列。
+
+同文件还有两个结构：`SceneType`（NONE/ANDROID/WINDOWS/LINUX/SERVER_CLOUD，`:46-52`）决定场景规则集；`ScenePriority` 常量结构（CRITICAL=100/HIGH=75/MEDIUM=50/LOW=25/IRRELEVANT=0，`:55-61`）是 priority 列的取值刻度，五档之间的语义间距（25 分一档）由场景规则函数内部解释。
+
+### 3.2 核心接口清单
+
+| 签名（FileClassifier.h） | 语义 | 主要调用方 | 失败行为 |
+|---|---|---|---|
+| `FileClassifier(sourceDbPath, fileDbPath)` | 构造并初始化全部模式表（扩展名/路径/文件名） | TaskManagerAnalysis.cpp:313、AnalysisOrchestrator.cpp:249-269 | 无（初始化是纯内存） |
+| `bool classifyAndExtract()` | 全流程：开库→建表→分类→审计 | 两个编排方 | 任一步失败返回 false；行级 INSERT 失败被忽略 |
+| `FileCategory determineCategory(filename, path)`（公开供测试） | 单文件判类（判定链入口） | classifyFiles 内部 + 单元测试 | 恒有返回值（UNKNOWN 兜底） |
+| `void setSceneType(SceneType)` / `SceneType getSceneType() const` | 设置/读取调查场景 | AnalysisOrchestrator.cpp:252-264 | 无 |
+| `int calculateScenePriority(path, filename, category)` | 算场景优先级（0-100） | classifyFiles 主表写入 | SceneType 为 NONE 时上层短路不调 |
+| `bool isSceneRelevant(path, filename)` | 场景相关性判定 | 同上 | 同上 |
+| `~FileClassifier()` | closeDatabases 释放双库句柄 | 编排方 reset/析构 | 无 |
+
 ## 4. 工作流程走读
 
 `classifyAndExtract()`（`FileClassifier.cpp:36-55`）四步：
@@ -51,14 +105,125 @@ raw.db files(type='REG') ──classifyFiles──> files.db
 
 注意每行的两条 INSERT 都是现场 prepare/finalize（`:246, 273`）——正确但慢，是大镜像分类的已知优化点（见第 6 节）。
 
+### 4.1 代码走读：openDatabases 的 PRAGMA 教训（FileClassifier.cpp:57-81）
+
+```cpp
+	// Apply write-performance pragmas to the output database. Without these,
+	// SQLite defaults to journal_mode=DELETE + synchronous=FULL, which forces
+	// an fsync (jbd2_log_wait_commit) on every transaction commit. On a real
+	// disk this manifests as the classifier stalling for minutes in D state;
+	// tmpfs hides it because tmpfs has no journal to wait on.
+	// Match the settings DatabaseManager applies: WAL + relaxed sync.
+	sqlite3_exec(fileDb_, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr);
+	sqlite3_exec(fileDb_, "PRAGMA synchronous=NORMAL;", nullptr, nullptr, nullptr);
+	sqlite3_busy_timeout(fileDb_, 5000);
+```
+
+逐块解释：注意 PRAGMA 只打在 `fileDb_`（输出库）上，`sourceDb_`（raw.db，只读）不需要。注释记录的是一次真实事故的根因链：DELETE journal + FULL sync 意味着**每个事务提交都等 fsync 返回**，ext4 上 fsync 又要等 jbd2 日志提交（`jbd2_log_wait_commit`），机械盘上就是分钟级 D 态卡顿；而 tmpfs 没有日志层，同一份代码在 /tmp 下测试永远复现不了——"测试环境掩盖性能问题"的教科书案例。WAL 把随机写转成 WAL 追加写，NORMAL 允许提交不等 fsync，两者叠加把每次提交成本降到内存操作级别。busy_timeout 固定 5000ms（硬编码，不走 ConfigManager 的 `DB_BUSY_TIMEOUT_MS`——与 DatabaseManager 的小差异）。三条 exec 的返回值都不检查：PRAGMA 失败只是回退默认性能，不值得中断分类。
+
+### 4.2 代码走读：classifyFiles 的单事务双写（FileClassifier.cpp:192-260）
+
+```cpp
+	const char* query = R"(
+        SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5,
+               COALESCE(partition_num, 0)
+        FROM files
+        WHERE type = 'REG';
+    )";
+    // ... prepare 检查见 :200-206
+	std::unordered_map<FileCategory, int> categoryCounts;
+
+	// Begin transaction for better performance
+	sqlite3_exec(fileDb_, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+
+	while (sqlite3_step(stmt) == SQLITE_ROW) {
+		// ... 10 列读入局部变量（:214-224）
+		FileCategory category = determineCategory(name, path);
+		categoryCounts[category]++;
+		// ... 扩展名提取（:232-237）
+		std::string tableName = getCategoryTableName(category);
+		std::string insertSql = "INSERT INTO " + tableName +
+			" (inode, name, path, size, extension, mtime, ctime, is_deleted, md5, partition_num) "
+			"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
+		sqlite3_stmt* insertStmt;
+		sqlite3_prepare_v2(fileDb_, insertSql.c_str(), -1, &insertStmt, nullptr);
+		// ... 10 个参数绑定（:248-257）
+		sqlite3_step(insertStmt);
+		sqlite3_finalize(insertStmt);
+```
+
+逐块解释：SELECT 用 `COALESCE(partition_num, 0)` 把旧库（无此列时由迁移补默认 0）与 NULL 行都归一成 0——读侧防御配合写侧迁移。`WHERE type='REG'` 是"只分类常规文件"的硬过滤（`:197`），目录/符号链接直接不进 files.db。整个 while 循环被**一个大事务**包裹（`:211` BEGIN / `:297` COMMIT）：几十万行若逐条自动提交，WAL 下也要付几十万次提交协议成本，事务化是本函数能跑完的前提；代价是中途失败整体回滚、redo 从头来。表名 `INSERT INTO " + tableName` 是字符串拼接——安全的前提是 tableName 来自 `getCategoryTableName` 的 switch 白名单而非用户输入，这是"拼接但可控"的边界案例。每行 prepare/finalize 两条语句（分表 + 主表），SQLite 每次 parse SQL 约 微秒级 × 双倍 × 几十万行，是最大的可优化点；语句缓存（24 张分表 + 主表各留一个常驻 stmt）可整段消除。
+
+### 4.3 代码走读：主表 INSERT 与场景标注（FileClassifier.cpp:262-291）
+
+```cpp
+		// Compute scene information
+		std::string sceneTypeStr = (sceneType_ != SceneType::NONE) ? getSceneTypeName(sceneType_) : "";
+		int priority = (sceneType_ != SceneType::NONE) ? calculateScenePriority(path, name, category) : 0;
+		bool relevant = (sceneType_ != SceneType::NONE) ? isSceneRelevant(path, name) : false;
+
+		// Also insert into main files table
+		std::string categoryName = getCategoryName(category);
+		std::string filesInsertSql = "INSERT INTO files "
+			"(inode, name, path, size, extension, category, type, mtime, ctime, is_deleted, md5, partition_num, scene_type, scene_priority, scene_relevant) "
+			"VALUES (?, ?, ?, ?, ?, ?, 'REG', ?, ?, ?, ?, ?, ?, ?, ?);";
+
+		sqlite3_prepare_v2(fileDb_, filesInsertSql.c_str(), -1, &insertStmt, nullptr);
+		// ... 14 个绑定（inode 到 relevant?1:0，:275-288）
+		sqlite3_step(insertStmt);
+		sqlite3_finalize(insertStmt);
+```
+
+逐块解释：三条三元表达式实现了"场景信息按需计算"——NONE 场景下连规则函数都不调用，priority 写 0、relevant 写 false、scene_type 写空串，列值本身就能区分"没开场景"与"开了但 IRRELEVANT"（后者 priority 为 0 但 scene_type 非空）。主表 INSERT 的 15 列里 `type` 直接内联字面量 `'REG'`（VALUES 段而非占位符）——因为 SELECT 已过滤，这是把不变量写进 SQL 的做法；category 存的是**人读名**（"Databases"），与分表表名（"databases"）是两个字符串空间，跨表对账时要做大小写与格式转换。`relevant ? 1 : 0` 是 SQLite 无布尔类型的惯用收纳。这一段与分表 INSERT 构成双写：两处 step 返回值都不检查，单行失败静默跳过——统计口径以主表为准的原因（见第 6 节）。
+
+### 4.4 代码走读：determineCategory 的判定链头部（FileClassifier.cpp:310-333, 377-386）
+
+```cpp
+	// Priority 0: Check for encryption (Magic Bytes & High Entropy)
+	// This overrides extension based check if meaningful encryption is detected
+	if (EncryptionUtils::isEncrypted(path)) {
+		return FileCategory::ENCRYPTED;
+	}
+
+	// Priority 1: Check filename patterns for known system files
+	if (isSystemConfigFile(filename)) {
+		return FileCategory::OS_CONFIG;
+	}
+
+	if (isBootFile(filename)) {
+		return FileCategory::OS_BOOT;
+	}
+
+	if (isLogFile(filename)) {
+		return FileCategory::LOG_FILE;
+	}
+
+	// ... NTFS/ext4 元数据规则见 :348-375
+
+	// A genuine database file keeps its category even when the name says
+	// "backup"/".bak" — e.g. chat-evidence exports like wechat_backup.db must
+	// stay visible to database parsers instead of hiding in Backup Files.
+	if (category == FileCategory::DATABASE) {
+		return FileCategory::DATABASE;
+	}
+
+	if (isBackupFile(filename)) {
+		return FileCategory::BACKUP;
+	}
+```
+
+逐块解释：函数开头（`:312-325`）先做扩展名提取与基础判类（结果暂存 `category`），随后才开始覆盖链——这个顺序意味着扩展名结果可以被任何高优先级规则推翻，但最终又作为 Priority 4 的回落值，一次计算两处使用。加密检测放在一切之前：一个 VeraCrypt 容器哪怕叫 `family_photos.jpg`，真实类型也只能是 ENCRYPTED——内容优先于名字是取证判类的基本价值观；代价是**每个文件都要读内容**（魔数+熵采样），这是判定链的主要 I/O 成本。数据库保护条款是判定链里唯一一条"阻止降级"的规则：它夹在"backup 检测"之前，让 `.db` 扩展名优先于 "backup" 名字模式——注释直接给出理由（wechat_backup.db 是聊天证据，埋进 Backup 分表会让数据库解析器看不见）。规则顺序即产品决策，调序前先想清楚证据可见性后果。
+
 ## 5. 与其他模块的协作
 
 - **上游 DatabaseManager/raw.db**：只读输入；FileFilter 若生效则输入是过滤库（CLI 流水线 `AnalysisOrchestrator.cpp:232-245`）。
-- **ConfigManager**：`EXTRA_<类别>_EXTS` 提供运行时扩展名增补（`ConfigManager.cpp:159-173`），初始化映射时合并。
+- **ConfigManager**：`EXTRA_<类别>_EXTS` 提供运行时扩展名增补（`ConfigManager.cpp:159-173`），初始化映射时合并（键名为大写类别名，如 `EXTRA_IMAGE_EXTS`）。
 - **EncryptionUtils**（同目录）：加密判定是判定链第一环；它直接读磁盘上的（解密后）内容，因此分类前若镜像仍加密，结果会偏向 ENCRYPTED。
 - **平台 Analyzer**（下游反向依赖）：AndroidAnalyzer 等写 files.db 的 artifacts 表时依赖主表已存在——所以 CLI 流水线在平台分析前 `classifier.reset()` 释放锁（`AnalysisOrchestrator.cpp:272-273`）。
 - **LLMAnalysisService / TOONExporter**：按主表 category/llm_* 列工作；TOON 默认导出字段含 category（TOONExporter.cpp:236-238）。
 - 出错时行为：建表失败返回 false 中止；逐行 INSERT 失败被忽略（未检查 step 返回值），表现为分表行数略少——统计对账时以主表为准。
+- 表契约：files.db = 主表 files（含 category/scene_type/scene_priority/scene_relevant/llm_*）+ 24 张 `<category>_files` 分表（无 llm 列，各带 path/extension/size 三索引）+ summary/extension 统计/deleted 三视图。
 
 ## 6. 注意事项与已知问题
 
@@ -67,6 +232,8 @@ raw.db files(type='REG') ──classifyFiles──> files.db
 - **性能**：逐行 prepare、每行两次 INSERT；几十万文件时分类阶段耗时可观。WAL PRAGMA 已是底线保障，进一步优化方向是语句复用 + 批量绑定。
 - `FileClassifier.cpp.backup` 是同一目录下的历史备份文件，不参与编译，勿引用。
 - 分类只在 `type='REG'` 上进行（`:197`），目录/符号链接不进 files.db——前端"文件总数"与 raw.db 行数的差额由此而来。
+- **单事务的内存/锁代价**：BEGIN 到 COMMIT 之间 files.db 持有写锁，分类期间其他进程只能读（WAL 下读不阻塞）——这也是编排方强调"分类完 reset 再让平台分析器写"的原因。
+- `EncryptionUtils::isEncrypted(path)` 按路径读的是**运行环境下的磁盘文件**（CLI 挂载目录或提取产物），不是镜像内偏移——镜像未先解密/挂载时判类会系统性偏向 ENCRYPTED。
 
 ## 7. 如何验证与扩展
 
@@ -74,4 +241,4 @@ raw.db files(type='REG') ──classifyFiles──> files.db
 - 手工验证：`sqlite3 <files.db> "SELECT category, COUNT(*) FROM files GROUP BY 1 ORDER BY 2 DESC"` 应与控制台打印的统计一致；抽查 `SELECT name FROM encrypted_files LIMIT 5` 验证判定链第一环。
 - 扩展新类别：(1) `FileClassifier.h` 枚举加值；(2) `getCategoryName`/`getCategoryTableName` 加分支；(3) `FileClassifier.cpp:103-128` 的类别向量加入新值（分表自动由模板生成）；(4) 视需要往判定链插入规则——注意插入位置即优先级，越靠前越强势；(5) 旧 files.db 不会自动长出新分表，重跑分类才生成。
 
-**最后更新**: 2026-08-23（解释式重写）
+**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
