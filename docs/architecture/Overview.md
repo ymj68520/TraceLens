@@ -1,150 +1,106 @@
-# 项目架构总览
+# 项目架构总览（TraceLens）
+
+> 本文档以代码为准重写。项目对外名称为 **TraceLens**（GitHub: ymj68520/TraceLens，MIT 协议），主 C++ 二进制名为 `forensic_analyzer`。
 
 ## 1. 系统概述
 
-ForensicsProject 是一个**数字取证磁盘镜像分析工具**，使用现代 C++20 构建，基于 The Sleuth Kit (TSK) 4.14.0，支持多种磁盘镜像格式和跨平台文件系统分析。
+TraceLens 是一个**数字取证磁盘镜像分析平台**，由 C++20 取证分析引擎 + Python FastAPI 智能分析服务 + React Web 前端组成，并可选部署分布式 C/S 模式（PostgreSQL 服务端 + 取证机代理）。
 
-### 核心价值
+### 核心能力
 
-- **全面取证能力**：支持 Android、Windows、Linux 平台取证分析
-- **高性能处理**：C++20 核心引擎 + 多线程并行处理
-- **智能分析**：LLM 驱动的文件分析和知识图谱集成
-- **灵活输出**：多种数据库格式 + TOON 导出优化 LLM 提示
-- **双服务架构**：C++ 高性能服务 + Python 可扩展服务
+- **镜像解析**：基于 The Sleuth Kit (TSK) 4.14.0 解析 E01/DD/RAW 等镜像，支持 NTFS/FAT/EXT/XFS 文件系统与多分区
+- **取证流水线**：镜像分析 → 场景检测 → 事件提取 → 文件分类 → LLM 描述 → 平台分析（Android/Windows/Linux/云）→ 可选文件雕刻
+- **智能分析**：OpenAI 兼容 LLM 文件/工件/事件簇分析，Graphiti 知识图谱（Neo4j 后端）摄取与查询
+- **双运行模式**：CLI 单次分析 + HTTP 异步任务（线程池、任务看护、持久化）
+- **报告与工作台**：Markdown 取证报告、调查工作台（investigation/workbench）、微信关系图、文档转换（markitdown）
 
 ### 技术栈
 
-**C++ 后端**：
-- C++20 标准、GCC 11.4.0+ / Clang 13+
-- The Sleuth Kit 4.14.0（磁盘镜像分析）
-- SQLite 3.x（元数据存储）
-- Xapian（全文搜索）
-- Crow 框架（HTTP 服务器）
+**C++ 后端**（`src/`）：
+- C++20、CMake ≥ 3.20（Release 构建）
+- The Sleuth Kit 4.14.0（源码编译安装，见 `setup.sh` Step 3）
+- Crow（HTTP 服务器，asio `io_context`，见 `src/main.cpp`）
+- SQLite3（可选 SQLCipher）、Xapian（全文搜索）、Poppler（PDF）、Boost
+- cpp-httplib（LLM HTTP 客户端）+ OpenSSL、cpp-mcp（MCP 服务器，`libs/cpp-mcp`）
 
-**Python 服务**：
-- Python 3.10+
-- FastAPI（HTTP 服务器）
-- Graphiti + Neo4j（知识图谱）
-- httpx（异步 HTTP 客户端）
-- OpenAI API 兼容客户端（LLM 集成）
+**Python 服务**（`python_service/`）：
+- Python 3.10+、FastAPI、httpx
+- graphiti-core + Neo4j 5（知识图谱）
+- markitdown（文档转 Markdown）、volatility3（内存取证）
 
-**数据库**：
-- SQLite 3.x（事务型元数据存储）
-- Neo4j 5.x（知识图谱后端）
-
-**外部集成**：
-- OpenAI 兼容 API（LM Studio、本地模型）
-- POPPLER（PDF 解析）
-- libolecf（Office 文档）
+**Web 前端**（`web/`）：
+- React 18 + Vite 5 + Redux Toolkit + Tailwind
+- 开发端口 3000（`web/vite.config.js`），生产构建产物 `web/dist` 由 C++ 服务静态托管
 
 ---
 
 ## 2. 整体架构
 
-### 系统分层架构
+### 三服务 + 代理架构
 
 ```mermaid
 graph TB
-    subgraph "前端层 Frontend Layer"
-        A[React Web UI]
-        B[CLI 命令行]
-        C[REST API 客户端]
+    subgraph "浏览器"
+        UI[React SPA<br/>web/dist 静态托管]
     end
 
-    subgraph "服务层 Service Layer"
-        D[C++ Crow Server<br/>:8080]
-        E[Python FastAPI<br/>:8090]
+    subgraph "本机服务栈"
+        CPP["forensic_analyzer<br/>C++ Crow :8080<br/>（run.sh 未设 HTTP_SERVER_PORT 时回退 8666）"]
+        PY["httpserver<br/>Python FastAPI :8090<br/>python -m httpserver.main"]
+        CS["server（分布式 C/S）<br/>Python FastAPI :8091<br/>python -m server.main"]
     end
 
-    subgraph "业务逻辑层 Business Logic"
-        F[任务管理<br/>TaskManager]
-        G[取证分析器<br/>Analyzers]
-        H[LLM 集成<br/>LLMIntegration]
-        I[知识图谱<br/>Graphiti]
+    subgraph "取证机"
+        AGENT["tracelens_agent<br/>src/http_agent/"]
+        FA["本地 forensic_analyzer"]
+        AGENT -->|"本地执行"| FA
     end
 
-    subgraph "数据访问层 Data Access"
-        J[数据库管理器<br/>DatabaseManager]
-        K[文件提取器<br/>FileExtractor]
-        L[全文搜索<br/>FullTextSearch]
+    subgraph "外部依赖"
+        NEO4J[("Neo4j<br/>neo4j://127.0.0.1:7687")]
+        REDIS[("Redis（可选）<br/>REDIS_URL")]
+        LLM["OpenAI 兼容 LLM<br/>LLM_BASE_URL<br/>默认 http://192.168.31.170:1234"]
+        PG[("PostgreSQL<br/>DATABASE_URL")]
+        MCP["MCP 服务器 :8890"]
     end
 
-    subgraph "存储层 Storage Layer"
-        M[(SQLite 数据库)]
-        N[Neo4j 图数据库]
-        O[原始磁盘镜像]
-        P[提取文件]
-    end
+    UI -->|"/tasks、/api/*（除代理前缀）"| CPP
+    UI -->|"/api/reports /api/graphiti /api/llm<br/>/api/office /api/db /api/wechat<br/>/api/investigation"| PY
+    UI -->|"/csapi"| CS
 
-    A --> D
-    A --> E
-    B --> F
-    C --> D
-    C --> E
+    CPP -->|"LLMPythonProxy<br/>/api/graphiti/*"| PY
+    PY -->|"CPP_BACKEND_URL<br/>硬依赖健康检查"| CPP
+    PY --> NEO4J
+    PY --> REDIS
+    PY --> LLM
+    CS --> PG
+    AGENT -->|"JWT + 轮询命令队列"| CS
 
-    D --> F
-    D --> G
-    E --> H
-    E --> I
-
-    F --> J
-    G --> J
-    G --> K
-    H --> L
-    I --> N
-
-    J --> M
-    K --> O
-    K --> P
-    L --> P
-
-    style D fill:#e1f5fe
-    style E fill:#fff3e0
-    style M fill:#c8e6c9
-    style N fill:#ffccbc
+    style CPP fill:#e1f5fe
+    style PY fill:#fff3e0
+    style CS fill:#f3e5f5
+    style AGENT fill:#e8f5e9
 ```
 
-### 核心管道架构
+要点（均有代码依据）：
 
-```mermaid
-flowchart LR
-    A[磁盘镜像<br/>E01/DD/RAW] --> B[ImageAnalyzer<br/>镜像分析]
-    B --> C[DatabaseManager<br/>元数据存储]
-    C --> D[_raw.db<br/>原始数据]
+| 组件 | 入口 | 端口 | 说明 |
+|------|------|------|------|
+| `forensic_analyzer` | `src/main.cpp` | 8080（`--http-server` 默认，`CommandLineParser.cpp:189`；`.env` `HTTP_SERVER_PORT=8080`） | 取证分析核心 + 任务管理 + 静态托管 `web/dist`（`HTTPserver.cpp:120`，相对二进制的 `web/dist`） |
+| `httpserver` | `python_service/httpserver/main.py` | 8090（`PYTHON_HTTP_PORT`） | LLM 分析、Graphiti 摄取/查询、报告生成、调查工作台、markitdown、微信关系图、Office 解析、案件多镜像分析 |
+| `server` | `python_service/server/main.py` | 8091（`PORT`） | 分布式 C/S：PostgreSQL + JWT（HS256），管理组织/客户端/命令队列/任务/结果 |
+| `tracelens_agent` | `src/http_agent/http_agent_main.cpp` | 出站连接 | 部署在取证机，JWT 认证轮询 8091 命令队列，本地执行 `forensic_analyzer` 并上传结果/索引 |
 
-    D --> E[EventExtractor<br/>事件提取]
-    E --> F[_events.db<br/>时间线]
+`httpserver` 启动有分层超时（`PYTHON_STARTUP_TIMEOUT=30s` 总预算；`CPP_STARTUP_REQUEST_TIMEOUT=5s`、`NEO4J_CONNECT_TIMEOUT=5s`、`OPTIONAL_SERVICE_INIT_TIMEOUT=12s`）。依赖健康分级：**C++ 为硬依赖，Neo4j/LLM/Redis 为可选**；C++ 不可达时 readiness=false 但服务仍启动（降级运行）。
 
-    D --> G[FileClassifier<br/>文件分类]
-    G --> H[_files.db<br/>分类文件]
+### 前端开发代理（`web/vite.config.js`）
 
-    H --> I[AndroidAnalyzer<br/>Android 分析]
-    H --> J[WindowsFilesAnalyzer<br/>Windows 分析]
-    H --> K[LinuxFilesAnalyzer<br/>Linux 分析]
-
-    I --> L[_android.db<br/>Android 工件]
-    J --> M[_windows.db<br/>Windows 工件]
-    K --> N[_linux.db<br/>Linux 工件]
-
-    H --> O[LLMIntegration<br/>智能分析]
-    L --> O
-    M --> O
-    N --> O
-
-    H --> R[DLLAnalyzer<br/>DLL 分析]
-    R --> S[_dll.db<br/>DLL 工件]
-
-    O --> P[Graphiti 集成<br/>知识图谱]
-    P --> Q[(Neo4j)]
-
-    style A fill:#ffebee
-    style D fill:#e8f5e9
-    style F fill:#e8f5e9
-    style H fill:#e8f5e9
-    style Q fill:#ffccbc
-    style R fill:#fff3e0
-    style S fill:#fff3e0
-```
+| 前缀 | 目标 |
+|------|------|
+| `/csapi` | http://localhost:8091（去前缀） |
+| `/tasks` | C++（`HTTP_SERVER_PORT` 或 8080） |
+| `/api/reports` `/api/graphiti` `/api/llm` `/api/office` `/api/db` `/api/wechat` `/api/investigation` | http://localhost:8090 |
+| 其余 `/api` | C++ |
 
 ---
 
@@ -154,980 +110,140 @@ flowchart LR
 
 ```mermaid
 graph TD
-    A[main.cpp<br/>主程序] --> AO[AnalysisOrchestrator<br/>编排器]
-    AO --> B[ImageAnalyzer<br/>镜像分析]
-    AO --> C[EventExtractor<br/>事件提取]
-    AO --> D[FileClassifier<br/>文件分类]
-    AO --> E[AndroidAnalyzer<br/>Android 分析]
-    AO --> F[WindowsFilesAnalyzer<br/>Windows 分析]
-    AO --> G[LinuxFilesAnalyzer<br/>Linux 分析]
-    AO --> DLL[DLLAnalyzer<br/>DLL 分析]
+    MAIN[main.cpp] --> CLI[CommandLineParser<br/>CLI 参数解析]
+    MAIN --> HTTP[HTTPServer<br/>Crow 路由 + 静态托管]
+    MAIN --> ORCH[AnalysisOrchestrator<br/>CLI 全量分析编排]
 
-    B --> H[DatabaseManager<br/>数据库管理]
-    C --> H
-    D --> H
-    E --> H
-    F --> H
-    G --> H
-    DLL --> H
+    HTTP --> TM[TaskManager<br/>+ TaskManagerAnalysis<br/>异步任务流水线]
+    HTTP --> ROUTES[routes/<br/>Task/Forensics/Search/Scene/<br/>DLL/Case/Memory 等 29+ 路由文件]
+    HTTP --> SQLITEH[SQLiteHelper<br/>数据库查询]
 
-    H --> I[SQLiteHelper<br/>SQLite 助手]
+    TM --> THREADS[ThreadPool<br/>THREAD_POOL_SIZE 默认 4]
+    TM --> WATCH[TaskWatchdog<br/>60s 循环标记僵死任务]
+    TM --> PERSIST[TaskPersistence<br/>data/tasks.json]
 
-    AO --> J[HTTPServer<br/>HTTP 服务器]
-    J --> K[TaskManager<br/>任务管理]
-    J --> CM[CaseManager<br/>案例管理]
-    J --> SH[SQLiteHelper<br/>数据查询]
-    J --> LP[LLMPythonProxy<br/>Python 代理]
-    J --> EC[EventClusterAnalyzer<br/>事件簇分析]
+    ORCH --> PIPE[分析流水线]
+    TM --> PIPE
 
-    J --> L[TaskRoutes<br/>任务路由]
-    J --> M[ForensicsRoutes<br/>取证路由]
-    J --> N[SearchRoutes<br/>搜索路由]
-    J --> O[SystemRoutes<br/>系统路由]
-    J --> DR[DLLAnalysisRoutes<br/>DLL 路由]
-    J --> CR[CaseCRUDRoutes<br/>案例路由]
+    PIPE --> IA[ImageAnalyzer<br/>TSK 镜像解析]
+    PIPE --> SD[SceneDetector<br/>从 raw.db 检测场景]
+    PIPE --> FF[FileFilter<br/>config/filter_profiles]
+    PIPE --> EE[EventExtractor]
+    PIPE --> FC[FileClassifier<br/>24 类分类表]
+    PIPE --> LAS[LLMAnalysisService<br/>文件级 LLM]
+    PIPE --> ECA[EventClusterAnalyzer<br/>LLM 事件簇]
+    PIPE --> PLAT[AndroidAnalyzer<br/>WindowsFilesAnalyzer<br/>LinuxFilesAnalyzer<br/>OSSAnalyzer]
+    PIPE --> CARVE[FileCarver 可选]
+    PIPE --> PROXY[LLMPythonProxy<br/>→ Python /api/graphiti]
 
-    AO --> P[FullTextSearch<br/>全文搜索]
-    AO --> Q[FileCarving<br/>文件雕刻]
-    AO --> R[LLMIntegration<br/>LLM 集成]
-    AO --> ECE[EventCorrelationEngine<br/>事件关联]
+    ROUTES --> AUDIT[AuditLog<br/>data/audit/forensics_audit.db]
 
-    style A fill:#37474f
-    style AO fill:#37474f
-    style H fill:#1976d2
-    style J fill:#388e3c
-    style DLL fill:#ff9800
-    style ECE fill:#9c27b0
+    style MAIN fill:#37474f
+    style HTTP fill:#388e3c
+    style TM fill:#388e3c
+    style PIPE fill:#1976d2
 ```
 
-### 模块职责划分
+### 模块职责表
 
-| 模块类别 | 模块名称 | 核心职责 | 依赖 |
-|---------|---------|---------|------|
-| **分析器** | ImageAnalyzer | 磁盘镜像解析、文件系统遍历 | TSK, DatabaseManager |
-| **分析器** | EventExtractor | 从元数据生成时间线事件 | DatabaseManager |
-| **分析器** | FileClassifier | 按类型分类文件（13 类） | DatabaseManager |
-| **分析器** | AndroidAnalyzer | Android 数据库解析 | DatabaseManager |
-| **分析器** | WindowsFilesAnalyzer | Windows 全面取证：注册表、事件日志、Prefetch、Amcache、LNK、Jump Lists、SRUM、浏览器（Chromium/Firefox）、MFT、服务、计划任务、WiFi、RDP、Shimcache、UserAssist、ShellBag | DatabaseManager |
-| **分析器** | LinuxFilesAnalyzer | Linux 全面取证：系统日志、用户账户、Shell 历史、审计日志、容器安全（Docker/Podman）、Web 服务器（Nginx/Apache）、防火墙、SELinux/AppArmor、持久化检测、攻击链分析（40+ 表） | DatabaseManager |
-| **分析器** | DLLAnalyzer | PE/ELF 文件分析、异常检测、威胁评分、依赖分析、数字签名验证 | DatabaseManager |
-| **分析器** | DatabaseAnalyzer | 数据库取证：SQLite/MySQL/PostgreSQL 数据目录分析、删除记录恢复、WAL/Binlog 解析 | DatabaseManager |
-| **分析器** | OSSAnalyzer | 阿里云 OSS 对象存储取证：API 实时分析、本地目录分析、Inventory CSV、访问日志分析 | DatabaseManager, OSSClient |
-| **分析器** | PDFAnalyzer | PDF 元数据和内容提取（Poppler） | - |
-| **分析器** | OfficeAnalyzer | Office 文档解析（DOCX/XLSX/PPTX → Markdown） | DuckX |
-| **分析器** | VisionAnalyzer | 图像/视频帧视觉分析（OCR、对比） | ModelRouter |
-| **分析器** | FileCarving | 从未分配空间恢复删除文件 | DatabaseManager |
-| **基础设施** | AnalysisOrchestrator | 顶层工作流编排器 | 所有分析器 |
-| **基础设施** | DatabaseManager | SQLite 数据库操作和模式管理 | SQLite3 |
-| **基础设施** | ErrorHandling | 统一错误处理（Result\<T\>） | - |
-| **基础设施** | EventCorrelationEngine | 事件关联分析和因果发现 | DatabaseManager |
-| **基础设施** | FullTextSearch | Xapian 全文索引和搜索 | Xapian |
-| **基础设施** | TOONExporter | TOON 格式导出（LLM 优化） | DatabaseManager |
-| **基础设施** | Logger | 日志系统 | - |
-| **基础设施** | ThreadPool | 线程池并行执行 | - |
-| **基础设施** | AuditLog | 审计日志 | DatabaseManager |
-| **基础设施** | FileFilter | 文件过滤配置管理 | DatabaseManager |
-| **基础设施** | ConfigManager | 环境变量和配置管理 | - |
-| **基础设施** | PathManager | 路径管理和解析 | - |
-| **网络** | HTTPServer | Crow HTTP 服务器核心 | Crow, TaskManager |
-| **网络** | TaskManager | 异步任务生命周期管理 | HTTPServer, ThreadPool |
-| **网络** | TaskWatchdog | 任务超时监控（60s 检查间隔） | TaskManager |
-| **网络** | TaskPersistence | 任务状态持久化（tasks.json） | TaskManager |
-| **网络** | TaskSerialization | 任务序列化/反序列化 | TaskManager |
-| **网络** | CaseManager | 案例管理（多任务组织） | TaskManager |
-| **网络** | SQLiteHelper | 数据库查询助手（30+ 方法） | DatabaseManager |
-| **网络** | LLMPythonProxy | Python LLM 服务代理 | Python FastAPI |
-| **网络** | EventClusterAnalyzer | LLM 事件簇分析 | ModelRouter |
-| **网络** | LLMAnalysisService | C++ LLM 文件分析（已弃用） | ModelRouter |
-| **网络** | LinuxLLMAnalysisService | Linux 工件 LLM 分析 | ModelRouter |
-| **网络** | WindowsLLMAnalysisService | Windows 工件 LLM 分析 | ModelRouter |
-| **网络** | TaskRoutes（29 个路由文件） | 任务管理 REST API | TaskManager |
-| **网络** | ForensicsRoutes | 取证分析 REST API | DatabaseManager |
-| **网络** | SearchRoutes | 全文搜索 REST API | FullTextSearch |
-| **网络** | SystemRoutes | 系统监控 REST API | TaskManager |
-| **网络** | DLLAnalysisRoutes | DLL 分析 REST API | DLLAnalyzer |
-| **网络** | CaseCRUDRoutes | 案例管理 REST API | CaseManager |
-| **网络** | EventClusterRoutes | 事件簇分析 REST API | EventClusterAnalyzer |
-| **网络** | OSSRoutes/OSSAnalysisRoutes/OSSQueryRoutes/OSSStatsRoutes | OSS 对象存储分析 REST API | OSSAnalyzer |
-| **网络** | FilterRoutes | 文件过滤配置 REST API | FileFilter |
-| **网络** | ExportRoutes | 数据导出 REST API（TOON/JSON/CSV） | TOONExporter |
-| **网络** | SceneQueryRoutes | 场景查询 REST API | DatabaseManager |
-| **集成** | LLMIntegration | OpenAI 兼容 API 客户端 | httpx (via MCP) |
-| **集成** | ModelRouter | 多模型路由和负载均衡 | LLMIntegration |
-| **集成** | MCPIntegration | Model Context Protocol 服务器 | LLMIntegration |
-| **集成** | AndroidAdbExtractor | ADB 设备数据提取 | - |
+| 类别 | 模块（代码位置） | 职责 | 状态 |
+|------|-----------------|------|------|
+| 编排 | `src/AnalysisOrchestrator.cpp` | CLI 模式全量分析编排（平台工件并入 `<image>_files.db`） | 活跃 |
+| 编排 | `src/network/HTTPServer/TaskManagerAnalysis.cpp` | HTTP 任务流水线（阶段见 DataFlow.md） | 活跃 |
+| 分析器 | `src/analyzers/ImageAnalyzer/` | TSK 镜像解析、文件系统遍历、XFS（auto/native/pure 模式）、加密镜像解密（`--key-dir/--key-password`） | 活跃 |
+| 分析器 | `src/core/EventExtractor/` | 从 raw.db 时间戳生成时间线事件 | 活跃 |
+| 分析器 | `src/core/DatabaseManager/FileClassifier/` | 文件分类（**24 张分类表**） | 活跃 |
+| 分析器 | `src/analyzers/AndroidAnalyzer/` | Android 工件（短信/联系人/通话/微信/QQNT/MIUI 备份等） | 活跃 |
+| 分析器 | `src/analyzers/WindowsFilesAnalyzer/` | 注册表/事件日志/Prefetch/Amcache/LNK/SRUM/浏览器/MFT/服务等 | 活跃 |
+| 分析器 | `src/analyzers/LinuxFilesAnalyzer/` | Linux 全面取证（73 张 linux_* 表） | 活跃 |
+| 分析器 | `src/analyzers/DLLAnalyzer/` | PE/ELF 分析、异常检测、依赖、威胁评分 | 活跃（表写入 windows.db） |
+| 分析器 | `src/analyzers/OSSAnalyzer/` | 阿里云 OSS 对象存储取证（oss.db） | 分析器活跃 |
+| 分析器 | `src/analyzers/DatabaseAnalyzer/` | 数据库取证（db_sessions 等表） | 活跃 |
+| 分析器 | `src/analyzers/FileCarving/FileCarver.cpp` | 未分配空间雕刻（carved_files 表） | 活跃（可选阶段） |
+| 分析器 | `src/analyzers/VisionAnalyzer`（`src/analyzers/VisionAnalysis/`） | 视觉分析 | **死代码**：已编译进二进制但无任何调用方 |
+| 分析器 | `src/integration/AndroidAdbExtractor` | ADB 设备提取 | **死代码**：不在 CMake `LIB_SOURCES`，未编译 |
+| 基础设施 | `src/core/DatabaseManager/` | SQLite 模式管理（SQL 头文件集中定义） | 活跃 |
+| 基础设施 | `src/core/PathManager/` | 任务目录/数据库路径管理 | 活跃 |
+| 基础设施 | `src/core/ConfigManager/` | .env 配置（cpp-dotenv） | 活跃 |
+| 基础设施 | `src/core/AuditLog/` | 审计日志（WAL、写缓冲、LRU 读缓存、轮转、JSON/CSV 导出） | 活跃 |
+| 基础设施 | `src/core/EventCorrelationEngine/` | 事件关联与因果链（event_chains 等） | 活跃 |
+| 基础设施 | `src/core/TOONExporter/` | TOON 格式导出 | 活跃 |
+| 基础设施 | 全文搜索（Xapian） | `--index/--search` 与搜索路由 | 活跃 |
+| LLM | `src/integration/LLMIntegration/LLMClient` | OpenAI 兼容 chat/listModels/tool-calling（cpp-httplib + OpenSSL） | 活跃 |
+| LLM | `src/integration/LLMIntegration/ModelRouter` | Priority/Capability/RoundRobin/LoadBalance/Fallback 路由 | 活跃 |
+| LLM | `LLMAnalysisService`（HTTPServer 目录） | 文件级 LLM 描述（标 deprecated 注释，但仍为 TaskManager 活跃路径，FULL/SMART 模式） | 活跃 |
+| LLM | `Linux/Windows/AndroidLLMAnalysisService` | 平台工件级 LLM 分析 | 活跃 |
+| LLM | `EventClusterAnalyzer` | LLM 事件簇分析 | 活跃 |
+| LLM | `LLMPythonProxy` | 调 Python `/api/graphiti/*`（Graphiti 摄取任务） | 活跃 |
+| LLM | `MarkitdownProxy` | 调 Python `/api/markitdown/*` | 活跃 |
+| LLM | `LLMScratch` | 每任务临时提取目录管理 | 活跃 |
+| 集成 | `src/integration/LLMIntegration/MCPIntegration` | MCP 服务器（端口 8890，`MCP_SERVER_PORT`） | 活跃 |
+| 代理 | `src/http_agent/`（独立 CMake 目标 `tracelens_agent`） | 轮询 C/S 命令、本地执行、结果/索引上传 | 活跃 |
+| 路由 | `src/network/HTTPServer/routes/OSS*.cpp` | OSS REST 端点 | **死代码**：编译但 `HTTPserver.cpp` 从未实例化/注册 OSSRoutes，运行时**不存在** `/api/forensics/oss/*` 端点；`OSSRoutes_new.cpp` 未编译。前端 OSS 页面调用会失败（OSSAnalyzer 本身在任务流水线中仍产出 oss.db） |
 
 ---
 
-## 4. 数据流架构
+## 4. 数据库分层概览
 
-### 取证分析数据流
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant CLI
-    participant ImageAnalyzer
-    participant EventExtractor
-    participant FileClassifier
-    participant PlatformAnalyzers
-    participant LLMIntegration
-    participant Graphiti
-    participant SQLite
-    participant Neo4j
-
-    User->>CLI: ./forensic_analyzer evidence.E01
-    CLI->>ImageAnalyzer: analyze(image_path)
-
-    ImageAnalyzer->>SQLite: 开始事务
-    ImageAnalyzer->>SQLite: 写入原始文件元数据
-    SQLite-->>ImageAnalyzer: files, partitions 表
-    ImageAnalyzer->>SQLite: 提交事务
-
-    ImageAnalyzer-->>CLI: _raw.db 生成完成
-
-    CLI->>EventExtractor: extract_events(raw_db)
-    EventExtractor->>SQLite: 读取原始元数据
-    EventExtractor->>SQLite: 写入时间线事件
-    SQLite-->>EventExtractor: events, specialized 表
-    EventExtractor-->>CLI: _events.db 生成完成
-
-    CLI->>FileClassifier: classify(raw_db)
-    FileClassifier->>SQLite: 读取文件列表
-    FileClassifier->>SQLite: 写入分类结果
-    SQLite-->>FileClassifier: 13 个类型表
-    FileClassifier-->>CLI: _files.db 生成完成
-
-    alt Android 分析启用
-        CLI->>PlatformAnalyzers: analyze_android(files_db)
-        PlatformAnalyzers->>SQLite: 解析 Android 数据库
-        SQLite-->>PlatformAnalyzers: _android.db
-    end
-
-    alt Windows 分析启用
-        CLI->>PlatformAnalyzers: analyze_windows(files_db)
-        PlatformAnalyzers->>SQLite: 解析 Windows 工件
-        SQLite-->>PlatformAnalyzers: _windows.db
-    end
-
-    alt LLM 分析启用
-        CLI->>LLMIntegration: batch_analyze(files_db)
-        LLMIntegration->>SQLite: 读取未分析文件
-        LLMIntegration->>LLMIntegration: 调用 LLM API
-        LLMIntegration->>SQLite: 更新 LLM 字段
-    end
-
-    alt Graphiti 集成启用
-        CLI->>Graphiti: ingest(files_db)
-        Graphiti->>SQLite: 读取文件元数据 + LLM 结果
-        Graphiti->>Neo4j: 写入实体和关系
-        Neo4j-->>Graphiti: 图谱构建完成
-    end
-
-    CLI-->>User: 分析完成，5 个数据库已生成
-```
-
-### HTTP 服务请求流
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant CppServer
-    participant TaskManager
-    participant ThreadPool
-    participant PythonServer
-    participant GraphitiService
-    participant Neo4j
-
-    Client->>CppServer: POST /tasks (创建任务)
-    CppServer->>TaskManager: create_task(image_path)
-    TaskManager->>ThreadPool: submit(analysis_job)
-    ThreadPool-->>TaskManager: task_id, status=PENDING
-    CppServer-->>Client: {"task_id": "task_123"}
-
-    Client->>CppServer: GET /api/tasks/task_123/progress
-    CppServer->>TaskManager: get_progress(task_123)
-    TaskManager-->>CppServer: progress=45%, phase=FILE_CLASSIFICATION
-    CppServer-->>Client: {"progress": 45, "phase": "FILE_CLASSIFICATION"}
-
-    par 并行查询
-        Client->>CppServer: GET /api/forensics/timeline/comprehensive
-        CppServer->>TaskManager: query_database(events_db)
-        CppServer-->>Client: timeline events
-    and
-        Client->>PythonServer: POST /api/graphiti/search
-        PythonServer->>GraphitiService: search("malware")
-        GraphitiService->>Neo4j: Cypher 查询
-        Neo4j-->>GraphitiService: 实体和关系
-        GraphitiService-->>PythonServer: search results
-        PythonServer-->>Client: {"results": [...]}
-    end
-
-    Client->>CppServer: GET /api/search?query=password
-    CppServer->>CppServer: Xapian.search("password")
-    CppServer-->>Client: {"matches": 150, "results": [...]}
-```
-
----
-
-## 5. 数据库架构
-
-### 三层数据库设计
+详细 schema 见 [DatabaseSchema.md](./DatabaseSchema.md)。每个 HTTP 任务在 `data/tasks/<task_id>/` 下产出独立数据库（`PathManager.cpp getTaskDbPaths`）：
 
 ```mermaid
 graph TB
-    subgraph "Layer 1: Raw Metadata"
-        A[_raw.db<br/>原始文件系统元数据]
-        A1[files<br/>文件元数据表]
-        A2[partitions<br/>分区表]
+    subgraph "data/tasks/<task_id>/"
+        RAW[(raw.db<br/>files + partitions)]
+        EVENTS[(events.db<br/>events + 专用事件表 + 视图)]
+        FILES[(files.db<br/>主 files 表 + 24 分类表<br/>+ 场景工件 + file_descriptions)]
+        AND[(android.db<br/>33 张表)]
+        WIN[(windows.db<br/>32 张表，含 dll_* 系列)]
+        LIN[(linux.db<br/>73 张 linux_* 表)]
+        OSS[(oss.db<br/>oss_objects/access_logs/buckets)]
+        EXT[extracted_files/<br/>carved_files/]
     end
 
-    subgraph "Layer 2: Timeline Events"
-        B[_events.db<br/>时间线事件]
-        B1[events<br/>统一事件表]
-        B2[creation_events<br/>创建事件]
-        B3[modification_events<br/>修改事件]
-        B4[access_events<br/>访问事件]
-        B5[change_events<br/>变更事件]
-        B6[deletion_events<br/>删除事件]
-        B7[Views<br/>聚合视图]
-    end
+    RAW --> EVENTS
+    RAW --> FILES
+    FILES --> AND
+    FILES --> WIN
+    FILES --> LIN
+    FILES --> OSS
 
-    subgraph "Layer 3: Classified Files"
-        C[_files.db<br/>分类文件]
-        C1[images<br/>图片]
-        C2[videos<br/>视频]
-        C3[audio_files<br/>音频]
-        C4[documents<br/>文档]
-        C5[archives<br/>压缩包]
-        C6[executables<br/>可执行文件]
-        C7[databases<br/>数据库]
-        C8[source_code<br/>源代码]
-        C9[web_files<br/>Web 文件]
-        C10[email_files<br/>邮件]
-        C11[system_files<br/>系统文件]
-        C12[encrypted_files<br/>加密文件]
-        C13[unknown_files<br/>未知文件]
-        C14[LLM 分析字段<br/>llm_summary/description/keywords]
-    end
+    AUD[(data/audit/forensics_audit.db<br/>审计日志，独立于任务)]
+    TASKS[(data/tasks.json<br/>任务持久化)]
+    MEM[(<image>_memory.db<br/>Volatility3 内存分析)]
+    DLL[(<image>_dll.db<br/>--analyze-dlls 输出)]
+    PG[(PostgreSQL<br/>C/S：10 张表)]
 
-    subgraph "Platform Specific"
-        D[_android.db<br/>Android 工件]
-        D1[sms<br/>短信]
-        D2[contacts<br/>联系人]
-        D3[call_logs<br/>通话记录]
-        D4[app_usage<br/>应用使用]
-        D5[device_info<br/>设备信息]
-
-        E[_windows.db<br/>Windows 工件 + DLL 分析]
-        E1[registry_values<br/>注册表]
-        E2[event_logs<br/>事件日志]
-        E3[browser_history<br/>浏览器历史]
-        E4[prefetch_files<br/>预读取]
-        E5[srum_entries<br/>SRUM 数据]
-        E6[amcache_entries<br/>Amcache]
-        E7[lnk_files<br/>LNK 快捷方式]
-        E8[jump_list_entries<br/>Jump Lists]
-        E9[dll_base_info<br/>DLL 分析]
-        E10[dll_anomalies<br/>DLL 异常]
-
-        F[_linux.db<br/>Linux 工件]
-        F1[linux_log_entries<br/>系统日志]
-        F2[linux_users<br/>用户账户]
-        F3[linux_shell_history<br/>Shell 历史]
-        F4[linux_audit_events<br/>审计事件]
-        F5[linux_docker_containers<br/>Docker 容器]
-        F6[linux_nginx_access_logs<br/>Nginx 日志]
-        F7[linux_persistence_entries<br/>持久化机制]
-        F8[linux_anomalies<br/>异常检测]
-    end
-
-    A1 --> B1
-    A1 --> C1
-    A1 --> C2
-    A1 --> C3
-    A1 --> C4
-    A1 --> C5
-    A1 --> C6
-    A1 --> C7
-    A1 --> C8
-    A1 --> C9
-    A1 --> C10
-    A1 --> C11
-    C4 --> D
-    C11 --> E
-    C11 --> F
-
-    style A fill:#e8f5e9
-    style B fill:#fff3e0
-    style C fill:#e3f2fd
-    style D fill:#fce4ec
-    style E fill:#f3e5f5
-    style F fill:#e0f2f1
+    style RAW fill:#e8f5e9
+    style EVENTS fill:#fff3e0
+    style FILES fill:#e3f2fd
+    style AUD fill:#ffebee
 ```
 
-### 数据库关系图
-
-```mermaid
-erDiagram
-    RAW_FILES ||--o{ EVENTS : generates
-    RAW_FILES ||--o{ CLASSIFIED_FILES : categorizes
-    RAW_FILES {
-        integer id PK
-        string path
-        string name
-        integer size
-        string type
-        boolean deleted
-        timestamp atime
-        timestamp mtime
-        timestamp ctime
-        timestamp crtime
-    }
-
-    EVENTS ||--|| EVENT_TYPES : has
-    EVENTS {
-        integer id PK
-        timestamp event_time
-        string event_type
-        integer file_id FK
-        string description
-    }
-
-    CLASSIFIED_FILES ||--o{ LLM_ANALYSIS : has
-    CLASSIFIED_FILES {
-        integer id PK
-        string name
-        string path
-        integer size
-        string category
-    }
-
-    LLM_ANALYSIS {
-        integer file_id FK
-        string summary
-        string description
-        string keywords
-        string model_used
-        timestamp analyzed_at
-    }
-
-    ANDROID_ARTIFACTS }o--|| CLASSIFIED_FILES : references
-    ANDROID_ARTIFACTS {
-        integer id PK
-        string artifact_type
-        json data
-    }
-
-    WINDOWS_ARTIFACTS }o--|| CLASSIFIED_FILES : references
-    WINDOWS_ARTIFACTS {
-        integer id PK
-        string artifact_type
-        json data
-    }
-
-    DLL_ANALYSIS }o--|| RAW_FILES : references
-    DLL_ANALYSIS {
-        integer id PK
-        string file_path
-        string md5_hash
-        string sha256_hash
-        string imp_hash
-        integer threat_score
-        string signature_status
-    }
-
-    DLL_ANOMALIES }o--|| DLL_ANALYSIS : has
-    DLL_ANOMALIES {
-        integer id PK
-        integer dll_id FK
-        string anomaly_type
-        string risk_level
-        integer risk_score
-    }
-```
+CLI 模式输出 `<image>_raw.db`、`<image>_events.db`、`<image>_files.db` 等（平台工件并入 `<image>_files.db`）；HTTP 任务模式输出到任务目录。另有 `<image>_dll.db`（`--analyze-dlls`）、`<image>_memory.db`（`--memory-analyze`）。
 
 ---
 
-## 6. 部署架构
+## 5. 扩展点
 
-### 单机部署
+**新增分析器**：在 `src/analyzers/` 实现后加入 `CMakeLists.txt` 的 `LIB_SOURCES`，在 `TaskManagerAnalysis.cpp`（HTTP 流水线）与 `AnalysisOrchestrator.cpp`（CLI 链）接入，并在 `src/core/DatabaseManager/SQL/` 添加建表 SQL。
 
-```mermaid
-graph TB
-    subgraph "Single Machine"
-        A[CLI 用户]
-        B[C++ Server<br/>:8080]
-        C[Python Server<br/>:8090]
-        D[(SQLite 数据库<br/>/output/*.db)]
-        E[(Neo4j<br/>:7687)]
-        F[磁盘镜像文件]
-        G[LM Studio<br/>:1234]
-    end
+**新增场景过滤配置**：`config/filter_profiles/` 下现有 4 个 JSON（`data_breach.json`、`general_forensics.json`、`telecom_fraud.json`、`virus_intrusion.json`），经 `FileFilter` 加载，`--filter-profile` 指定。
 
-    A --> B
-    A --> C
-    B --> D
-    C --> D
-    C --> E
-    B --> F
-    C --> G
+**新增 Python 能力**：`python_service/httpserver/routes/` 添加 FastAPI 路由模块并在 `main.py:_register_routes()` 注册；如需前端访问，同步在 `web/vite.config.js` 增加代理前缀。
 
-    style A fill:#e1f5fe
-    style B fill:#c8e6c9
-    style C fill:#ffccbc
-    style D fill:#fff9c4
-    style E fill:#f8bbd0
-```
+**LLM 多模型**：通过 `ModelRouter` 策略（Priority/Capability/RoundRobin/LoadBalance/Fallback）配置多个 OpenAI 兼容端点。
 
-### 分布式部署
-
-```mermaid
-graph TB
-    subgraph "负载均衡层"
-        LB[Nginx / HAProxy]
-    end
-
-    subgraph "应用层"
-        CPP1[C++ Server 1<br/>:8080]
-        CPP2[C++ Server 2<br/>:8081]
-        PY1[Python Server 1<br/>:8090]
-        PY2[Python Server 2<br/>:8091]
-    end
-
-    subgraph "数据层"
-        SQLITE[(SQLite 文件存储<br/>NFS)]
-        NEO4J[(Neo4j 集群)]
-        LLM[LLM 服务集群<br/>LM Studio]
-    end
-
-    subgraph "存储层"
-        FILES[磁盘镜像存储<br/>S3/MinIO]
-        EXTRACTED[提取文件存储<br/>NFS]
-    end
-
-    LB --> CPP1
-    LB --> CPP2
-    LB --> PY1
-    LB --> PY2
-
-    CPP1 --> SQLITE
-    CPP2 --> SQLITE
-    CPP1 --> FILES
-    CPP2 --> FILES
-
-    PY1 --> NEO4J
-    PY2 --> NEO4J
-    PY1 --> SQLITE
-    PY2 --> SQLITE
-
-    PY1 --> LLM
-    PY2 --> LLM
-
-    CPP1 --> EXTRACTED
-    CPP2 --> EXTRACTED
-
-    style LB fill:#37474f
-    style CPP1 fill:#c8e6c9
-    style CPP2 fill:#c8e6c9
-    style PY1 fill:#ffccbc
-    style PY2 fill:#ffccbc
-```
-
-### Kubernetes 部署
-
-```yaml
-# 典型的 Kubernetes 部署架构
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: forensics
-
----
-# C++ Server Deployment
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: cpp-server
-  namespace: forensics
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: cpp-server
-  template:
-    metadata:
-      labels:
-        app: cpp-server
-    spec:
-      containers:
-      - name: cpp-server
-        image: forensics/cpp-server:latest
-        ports:
-        - containerPort: 8080
-        env:
-        - name: LOG_LEVEL
-          value: "INFO"
-        volumeMounts:
-        - name: evidence-storage
-          mountPath: /evidence
-        - name: output-storage
-          mountPath: /output
-        livenessProbe:
-          httpGet:
-            path: /api/health/live
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /api/health/ready
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
-      volumes:
-      - name: evidence-storage
-        persistentVolumeClaim:
-          claimName: evidence-pvc
-      - name: output-storage
-        persistentVolumeClaim:
-          claimName: output-pvc
-
----
-# Python Server Deployment
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: python-server
-  namespace: forensics
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: python-server
-  template:
-    metadata:
-      labels:
-        app: python-server
-    spec:
-      containers:
-      - name: python-server
-        image: forensics/python-server:latest
-        ports:
-        - containerPort: 8090
-        env:
-        - name: CPP_BACKEND_URL
-          value: "http://cpp-server:8080"
-        - name: NEO4J_URI
-          valueFrom:
-            secretKeyRef:
-              name: neo4j-credentials
-              key: uri
-        readinessProbe:
-          httpGet:
-            path: /health/ready
-            port: 8090
-          initialDelaySeconds: 5
-          periodSeconds: 5
-
----
-# Neo4j StatefulSet
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: neo4j
-  namespace: forensics
-spec:
-  serviceName: neo4j
-  replicas: 1
-  selector:
-    matchLabels:
-      app: neo4j
-  template:
-    metadata:
-      labels:
-        app: neo4j
-    spec:
-      containers:
-      - name: neo4j
-        image: neo4j:5.15-enterprise
-        ports:
-        - containerPort: 7474
-        - containerPort: 7687
-        env:
-        - name: NEO4J_AUTH
-          value: "neo4j/password"
-        volumeMounts:
-        - name: neo4j-data
-          mountPath: /data
-  volumeClaimTemplates:
-  - metadata:
-      name: neo4j-data
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      resources:
-        requests:
-          storage: 10Gi
-
----
-# Services
-apiVersion: v1
-kind: Service
-metadata:
-  name: cpp-server
-  namespace: forensics
-spec:
-  selector:
-    app: cpp-server
-  ports:
-  - port: 8080
-    targetPort: 8080
-  type: ClusterIP
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: python-server
-  namespace: forensics
-spec:
-  selector:
-    app: python-server
-  ports:
-  - port: 8090
-    targetPort: 8090
-  type: ClusterIP
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: neo4j
-  namespace: forensics
-spec:
-  selector:
-    app: neo4j
-  ports:
-  - name: http
-    port: 7474
-    targetPort: 7474
-  - name: bolt
-    port: 7687
-    targetPort: 7687
-  clusterIP: None
-```
-
----
-
-## 7. 扩展性设计
-
-### 水平扩展
-
-**C++ 服务扩展**：
-- 无状态设计，可无限水平扩展
-- SQLite 数据库通过 NFS 共享
-- 负载均衡器分发请求
-
-**Python 服务扩展**：
-- 无状态设计，可水平扩展
-- Neo4j 通过 bolt:// 协议访问
-- 连接池管理数据库连接
-
-### 垂直扩展
-
-**资源优化**：
-- 线程池大小可配置（默认：硬件并发数）
-- 数据库连接池大小可配置
-- HTTP 服务器并发连接数可配置
-
-**性能调优参数**：
-```cpp
-// ThreadPool
-size_t thread_pool_size = std::thread::hardware_concurrency();
-
-// DatabaseManager
-size_t connection_pool_size = 4; // 每个 SQLite 连接池大小
-size_t max_connections = 16;     // 最大连接数
-
-// HTTPServer
-int server_threads = 8;          // Crow 服务器线程数
-```
-
-### 分析器扩展
-
-当前分析器通过 `AnalysisOrchestrator` 在 `main.cpp` 中直接调用，没有统一的插件接口。添加新分析器的步骤：
-
-1. 在 `src/analyzers/` 下创建模块目录
-2. 实现核心分析逻辑
-3. 在 `AnalysisOrchestrator` 中添加调度方法
-4. 在 `CommandLineParser` 中添加命令行参数
-5. 在 `main.cpp` 中添加调用分支
-
-参见 [Development Guide](../getting-started/Development.md) 了解详细步骤。
-
-**Python 服务扩展**：
-```python
-# 新服务接口
-class BaseService:
-    def initialize(self):
-        raise NotImplementedError
-
-    async def health_check(self) -> bool:
-        raise NotImplementedError
-
-    async def shutdown(self):
-        raise NotImplementedError
-
-# 注册新服务
-class CustomService(BaseService):
-    async def initialize(self):
-        # 初始化逻辑
-        pass
-
-# 在 service_manager.py 中注册
-# self._custom_service = CustomService(self.settings)
-```
-
----
-
-## 8. 安全架构
-
-### 数据完整性
-
-**校验和验证**：
-- 文件提取时计算 MD5/SHA256 哈希
-- 数据库事务保证 ACID 特性
-- 审计日志记录所有操作
-
-**证据链**：
-```json
-{
-  "chain_of_custody": {
-    "evidence_id": "EVID-001",
-    "acquired_at": "2024-01-15T10:00:00Z",
-    "acquired_by": "Officer Smith",
-    "hash": "a1b2c3d4...",
-    "analysis_started_at": "2024-01-15T11:00:00Z",
-    "analysis_completed_at": "2024-01-15T12:00:00Z",
-    "analyst": "Dr. Forensics",
-    "audit_log": "/output/audit.log"
-  }
-}
-```
-
-### 访问控制
-
-**认证机制（待实现）**：
-- JWT Token 认证
-- API Key 认证
-- OAuth 2.0 集成
-
-**授权模型**：
-```cpp
-enum class Permission {
-    READ_EVIDENCE,
-    WRITE_EVIDENCE,
-    DELETE_EVIDENCE,
-    ANALYZE_EVIDENCE,
-    EXPORT_RESULTS,
-    MANAGE_TASKS
-};
-
-struct User {
-    std::string username;
-    std::vector<Permission> permissions;
-};
-```
-
-### 审计日志
-
-**日志级别**：
-- `DEBUG` - 调试信息
-- `INFO` - 一般信息
-- `WARNING` - 警告信息
-- `ERROR` - 错误信息
-- `AUDIT` - 审计信息（所有关键操作）
-
-**审计事件**：
-```json
-{
-  "timestamp": "2024-01-16T10:00:00Z",
-  "user": "admin",
-  "action": "TASK_CREATED",
-  "resource": "task_abc123",
-  "details": {
-    "image_path": "/evidence/case001.E01",
-    "priority": "HIGH"
-  },
-  "ip_address": "192.168.1.100",
-  "user_agent": "Mozilla/5.0..."
-}
-```
-
----
-
-## 9. 性能优化
-
-### 并发处理
-
-**多线程架构**：
-- HTTP 服务器：多线程处理请求（Crow 框架）
-- 任务执行：线程池并行处理
-- 数据库操作：连接池 + 事务批处理
-
-**异步任务**：
-```cpp
-// TaskManager 使用 futures
-std::future<AnalysisResult> future =
-    task_manager.create_task_async(image_path);
-
-// 非阻塞获取状态
-if (future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-    auto result = future.get();
-}
-```
-
-### 数据库优化
-
-**批量插入**：
-```cpp
-// 使用事务批量插入
-sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
-
-for (const auto& file : files) {
-    insert_file(db, file);
-}
-
-sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr);
-```
-
-**索引优化**：
-```sql
--- _raw.db 索引
-CREATE INDEX idx_files_path ON files(path);
-CREATE INDEX idx_files_deleted ON files(deleted);
-
--- _events.db 索引
-CREATE INDEX idx_events_timestamp ON events(timestamp);
-CREATE INDEX idx_events_type ON events(event_type);
-
--- _files.db 索引
-CREATE INDEX idx_documents_name ON documents(name);
-CREATE INDEX idx_documents_size ON documents(size);
-```
-
-**WAL 模式**：
-```cpp
-// 启用 WAL 模式提高并发
-sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr);
-sqlite3_exec(db, "PRAGMA synchronous=NORMAL;", nullptr, nullptr, nullptr);
-```
-
-### 内存优化
-
-**流式处理**：
-```cpp
-// 使用回调处理大型结果集
-void process_files_callback(sqlite3_stmt* stmt,
-                            std::function<void(const File&)> callback) {
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        File file = parse_file(stmt);
-        callback(file);
-    }
-}
-```
-
-**分页查询**：
-```cpp
-// 限制查询结果大小
-std::string query =
-    "SELECT * FROM files "
-    "LIMIT " + std::to_string(limit) +
-    " OFFSET " + std::to_string(offset);
-```
-
----
-
-## 10. 监控与运维
-
-### 健康检查
-
-**服务健康**：
-- `/api/health` - 基础健康检查
-- `/api/health/live` - Kubernetes 存活探针
-- `/api/health/ready` - Kubernetes 就绪探针
-- `/api/health/dependencies` - 依赖服务状态
-
-**任务监控**：
-```json
-{
-  "active_tasks": 5,
-  "queued_tasks": 10,
-  "completed_tasks": 150,
-  "failed_tasks": 3,
-  "average_duration_seconds": 450
-}
-```
-
-### 日志聚合
-
-**结构化日志**：
-```json
-{
-  "timestamp": "2024-01-16T10:00:00Z",
-  "level": "INFO",
-  "logger": "TaskManager",
-  "message": "Task started",
-  "context": {
-    "task_id": "task_abc123",
-    "image_path": "/evidence/case001.E01"
-  }
-}
-```
-
-**日志轮转**：
-```cpp
-// 日志文件轮转配置
-struct LogConfig {
-    std::string log_dir = "/var/log/forensics";
-    size_t max_file_size = 100 * 1024 * 1024; // 100 MB
-    int max_files = 10; // 保留 10 个日志文件
-    int compression_level = 6; // gzip 压缩级别
-};
-```
-
-### 性能指标
-
-**关键指标**：
-- 任务吞吐量（任务/分钟）
-- 平均任务持续时间
-- 数据库查询延迟
-- HTTP 请求响应时间
-- 内存使用率
-- CPU 使用率
-- 磁盘 I/O
-
-**Prometheus 集成**（待实现）：
-```cpp
-// Prometheus metrics 导出
-#include <prometheus/registry.h>
-
-auto registry = std::make_shared<prometheus::Registry>();
-auto& task_counter = prometheus::BuildCounter()
-    .Name("forensics_tasks_total")
-    .Register(*registry);
-```
+**Graphiti 数据源**：`python_service/graphiti_integration/forensic_data_types.py` + `ForensicsDatabaseFactory.discover()` 自动发现 C++ 产出的 `*_raw/_files/_events/_windows/_linux/_android.db`，新增源可实现新 Transformer（参照 `TOONTransformer`/`ForensicEpisodeTransformer`/`OSSTransformer`）。
 
 ---
 
 ## 相关文档
 
-- **[数据流架构](./DataFlow.md)** - 详细的数据流分析
-- **[数据库模式](./DatabaseSchema.md)** - 完整数据库模式设计
-- **[部署架构](./Deployment.md)** - 部署选项和扩展性
-- **[安全设计](./Security.md)** - 安全架构和访问控制
+- **[数据流架构](./DataFlow.md)** - CLI/HTTP 两条数据流与 C/S 分布式数据流
+- **[数据库模式](./DatabaseSchema.md)** - 各库完整表清单
+- **[部署架构](./Deployment.md)** - 单机/开发/分布式部署
+- **[安全设计](./Security.md)** - 真实安全机制与边界
 
 ---
 
-**最后更新**: 2026-06-06
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（以代码为准重写）
