@@ -1,10 +1,21 @@
 # 数据库模式设计
 
-> 本文档以代码为准重写。所有表名均直接取自源码中的建表 SQL；每个库标注其 schema 定义位置。**注意：旧文档称文件分类为 13 类，实际代码为 24 张分类表**（`FileClassifier.cpp` 的 `FileCategory` 枚举）。
+> 本文档是**参考手册**：所有表名均直接取自源码中的建表 SQL，每个库标注其 schema 定义位置。想理解"为什么分这么多库、谁在什么时候写它们"，先读下面两节，再按需查表。**注意：旧文档称文件分类为 13 类，实际代码为 24 张分类表**（`FileClassifier.cpp` 的 `FileCategory` 枚举）。
 
-## 1. 概述
+## 1. 先讲道理：这套 schema 的三个设计决定
 
-TraceLens 以 **SQLite** 为主要分析结果存储（每任务/每镜像一组独立 .db 文件），C/S 模式使用 **PostgreSQL**，知识图谱使用 **Neo4j**。
+**决定一：SQLite，每任务一组文件，而不是一个中心库。** 取证分析天然是"一镜像一世界"：任务之间没有共享数据，删除任务应当干净利落，并发分析不该互相锁库。每任务一个目录、一组 .db 文件，让隔离、清理、拷贝归档都退化成文件系统操作。代价是跨任务查询要靠上层（Python 案件分析、Neo4j 图谱）聚合——这正是它们的职责。
+
+**决定二：库之间是派生关系，不是引用关系。** raw.db 是唯一事实来源；events.db / files.db / 各平台库都是从它（或它的下游）派生的"观点"。库与库之间**没有外键**，只靠 `inode`/`path`/`partition_num` 逻辑对齐——这让每层可以独立重建（重跑分类不必重新解析镜像），也让 schema 演进互不拖累。跨库查询用 `ATTACH DATABASE`（见第 10 节）。
+
+**决定三：schema 就是代码（SQL-as-headers）。** 所有建表语句集中在 `src/core/DatabaseManager/SQL/` 的头文件里，以常量形式被分析器引用。改表结构必须过编译，schema 与消费代码不会漂移；想知道任何库长什么样，直接去对应头文件读，本文档只是它的导航。
+
+理解这三条，下面的表清单就不是一盘散沙，而是一条派生链的分层快照：
+
+```
+raw.db（事实） ──► events.db（时间线观点）      ┐
+              └─► files.db（分拣+LLM 观点） ──► android/windows/linux/oss.db（平台语义观点）
+```
 
 ### 数据库产出位置
 
@@ -44,9 +55,11 @@ graph TB
 
 ---
 
-## 2. raw.db — 原始元数据
+## 2. raw.db — 原始元数据（事实层）
 
 定义位置：`src/core/DatabaseManager/DatabaseManager.cpp`
+
+设计意图：**忠实记录，不加观点**。ImageAnalyzer 把 TSK 看到的一切原样落库——它是唯一不可重建的库（重建等于重新解析镜像），也是所有下游阶段的输入和最终对质的依据。
 
 | 表 | 用途 |
 |----|------|
@@ -57,9 +70,11 @@ raw.db 是后续所有阶段的唯一输入源（事件提取、文件分类、�
 
 ---
 
-## 3. events.db — 时间线事件
+## 3. events.db — 时间线事件（叙事层）
 
 定义位置：`src/core/DatabaseManager/SQL/event_extractor_sql.h`
+
+设计意图：把"每文件四个时间戳"的矩阵翻译成"某时刻发生了某事"的事件流。主表 + 五张按类型分表是查询优化（时间线页常按类型过滤），视图（`timeline`/`hourly_activity` 等）把常用聚合固化在库里，让路由层查询保持简单。
 
 **表**：
 
@@ -68,15 +83,17 @@ raw.db 是后续所有阶段的唯一输入源（事件提取、文件分类、�
 | `events` | 统一时间线事件主表 |
 | `creation_events` / `modification_events` / `access_events` / `change_events` / `deletion_events` | 按事件类型分表 |
 | `system_events` | 系统事件 |
-| `event_correlations` | 事件关联（另见第 10 节 EventCorrelationEngine 的扩展表） |
+| `event_correlations` | 事件关联表。注意：关联由 `EventCorrelationEngine` 生成，而该引擎当前**未接入任务流水线**（`EventExtractor::analyzeEventCorrelations()` 无生产调用方），生产任务中此表通常为空 |
 
 **视图**：`timeline`、`event_statistics`、`hourly_activity`、`system_event_view`、`event_correlation_view`、`enhanced_timeline`、`enhanced_event_statistics`。
 
 ---
 
-## 4. files.db — 文件分类与场景
+## 4. files.db — 文件分类与场景（分拣层）
 
 定义位置：`src/core/DatabaseManager/SQL/file_classifier_sql.h`、`FileClassifier.cpp`、`LLMAnalysisService.cpp`
+
+设计意图：回答"几十万个文件里哪些值得看"。分类是手段，场景优先级和 LLM 结论才是目的——所以 LLM 列和场景列放在**每行都在**的主 `files` 表上，而 24 张分类表只是按类别物化的查询副本（由统一模板创建）。Python 侧重分析/报告/图谱也都落回这张主表。
 
 ### 4.1 主表与辅助表
 
@@ -163,7 +180,7 @@ DLL 分析表同时用于 CLI 独立输出 `<image>_dll.db`（`--analyze-dlls` �
 |-------|---------|------|
 | 内存分析库（`<image>_memory.db`）：`processes`、`network_connections`、`bash_history`、`boot_info`、`cmdline`、`analysis_meta` | `src/core/DatabaseManager/SQL/memory_analysis_sql_tables.h` | Volatility3 内存取证结果 |
 | `oss_objects`、`oss_access_logs`、`oss_buckets`（+ 视图 `oss_objects_summary`、`oss_access_timeline`） | `src/core/DatabaseManager/SQL/oss_sql.h` | 阿里云 OSS 对象存储取证 |
-| `event_chains`、`event_chain_nodes`、`causal_relationships` | `src/core/EventCorrelationEngine/Detail/EventCorrelationEngineCore.cpp` | 事件因果链分析（写入 events.db） |
+| `event_chains`、`event_chain_nodes`、`causal_relationships` | `src/core/EventCorrelationEngine/Detail/EventCorrelationEngineCore.cpp` | 事件因果链分析（写入 events.db）。同 `event_correlations`：引擎未接入生产流水线，任务产出中通常为空 |
 | `carved_files` | `src/analyzers/FileCarving/FileCarver.cpp:575` | 雕刻恢复文件记录 |
 | `db_sessions`、`db_tables`、`db_records`、`db_artifacts`、`db_users` | `src/analyzers/DatabaseAnalyzer/Database/DBAnalysisDatabase.cpp` | 数据库取证 |
 | 审计日志（`forensics_audit.db`） | `src/core/AuditLog/` | 见 Security.md |
@@ -225,4 +242,4 @@ Python 侧 `graphiti_integration/database_reader/` 以同样方式发现并读�
 
 ---
 
-**最后更新**: 2026-08-23（以代码为准重写）
+**最后更新**: 2026-08-23（解释式重写：开场补充三个设计决定，各库补设计意图；表清单以代码为准）

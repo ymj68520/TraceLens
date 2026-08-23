@@ -1,204 +1,103 @@
-# 数据流架构
+# 数据流：一个任务的一生
 
-> 本文档以代码为准重写。所有任务阶段、状态机、目录布局均对应 `src/network/HTTPServer/` 与 `src/core/PathManager/` 中的实现。
+> 这份文档不讲"有哪些端点/表"（那些在 [API 参考](../api_reference/CPP_REST_API.md) 和 [DatabaseSchema.md](./DatabaseSchema.md)），而是**跟着一个真实的 HTTP 任务从头走到尾**：每一步谁在做、为什么是这个顺序、产出给谁用。所有环节都标注了源码位置（`src/network/HTTPServer/TaskManagerAnalysis.cpp`，下称 `TMA`）。
 
-## 1. 概述
+## 第一幕：任务的诞生
 
-TraceLens 有两条核心分析数据流（CLI 模式与 HTTP 任务模式），以及两条增值数据流（LLM/Graphiti 智能分析、C/S 分布式执行）。两种模式共享同一套分析器组件，区别在于编排入口与数据库输出位置：
+一切从 `POST /api/tasks` 开始。请求体里的每个字段都在影响后面的路怎么走：
 
-| | CLI 模式 | HTTP 任务模式 |
-|---|---------|--------------|
-| 入口 | `src/main.cpp` → `AnalysisOrchestrator.cpp` | `HTTPserver` → `TaskManagerAnalysis.cpp` |
-| 输出位置 | 镜像同目录 `<image>_raw.db` 等 | `data/tasks/<task_id>/raw.db` 等（`PathManager.getTaskDbPaths`） |
-| 平台工件 | 并入 `<image>_files.db` | 独立 `android.db/windows.db/linux.db/oss.db` |
-| 状态管理 | 进程同步执行 | TaskStatus/TaskPhase 状态机 + `data/tasks.json` 持久化 |
+- `image_path` 是唯一的必经之路——分析师把证据镜像放在服务器可达的路径上（前端创建任务时浏览选择）；
+- `case_description` 会进入 LLM 提示词，让模型带着案情上下文去读文件（"这是一起电信诈骗案"和"这是一次入侵排查"会让同一批文件得到不同深度的描述）；
+- `scenarios` 可以不填——后面你会看到系统会自己猜；
+- `filter_profile`（如 `telecom_fraud`）决定几十万个文件里哪些值得进入后续分析；
+- `llm_mode`（full/smart）、`backup_password`、`android_source`、`xfs_mode` 等都是给特定阶段的"通行证"。
 
----
+路由层（`TaskCRUDRoutes.cpp`）校验后交给 `TaskManager::create_task`：任务获得 ID、状态 `pending`（HTTP 层全部小写），被塞进队列，工作线程从 `ThreadPool`（默认 4 线程）里把它取出来的那一刻，状态变 `running`，好戏开场（`TMA:26 start_analysis`）。从这一刻起到任务终结，`TaskPersistence` 会把每次状态变化节流写入 `data/tasks.json`——所以即使进程崩溃重启，任务列表也不会丢（重启时未完成任务被标记为 failed，这是诚实的处理：进度无法恢复，就不假装还在跑）。
 
-## 2. HTTP 任务模式（主数据流）
+## 第二幕：解析——建立唯一的事实来源
 
-### 2.1 任务状态机
+第一阶段 `IMAGE_ANALYSIS`（占整体进度 25%，最重的一环）由 [ImageAnalyzer](../modules/cpp/analyzers/ImageAnalyzer.md) 负责：它打开镜像（E01 或 DD）、枚举分区、对每个可识别的文件系统（NTFS/FAT/EXT2/3/4/XFS）逐文件读出元数据——路径、大小、四个时间戳、是否已删除——全部写入 `raw.db` 的 `files` 和 `partitions` 表（`TMA:203-225`）。
 
-`src/network/HTTPServer/HTTPServerDataTypes.h`：
+这一步的哲学是**忠实**：不做任何判断、不过滤、不翻译，文件系统说什么就记什么。raw.db 因此成为整个任务唯一的"事实来源"——后面所有层都是从它派生的观点，任何结论存疑时回到这里对质。
 
-- **TaskStatus**: `PENDING → RUNNING → COMPLETED / FAILED / CANCELLED`
-- **TaskPriority**: `LOW / NORMAL / HIGH / CRITICAL`
-- **TaskPhase**: `INITIALIZING → IMAGE_ANALYSIS → EVENT_EXTRACTION → FILE_CLASSIFICATION → LLM_ANALYSIS → PLATFORM_ANALYSIS → FILE_CARVING → FINALIZING`
-- **ForensicScenario**（一个任务可多场景顺序执行）: `ANDROID / WINDOWS / LINUX / SERVER_CLOUD`，由 `SceneDetector` 从 raw.db 自动检测
+紧接着是一个容易被忽略但顺序讲究的步骤：**场景自动检测**（`TMA:227-259`）。如果创建任务时没选 `scenarios`，`SceneDetector` 会扫一遍 raw.db 里的特征路径（比如 `/data/app` 意味着 Android，`Windows/System32/config` 意味着 Windows）。源码注释解释了为什么它必须跑在过滤**之前**：过滤配置的职责恰恰是丢弃"系统噪音"，而场景特征路径就是系统路径——先过滤再检测，证据就被自己人扔掉了。检测结果会写一条 `SCENE_DETECTED` 审计日志（包括每个场景命中了多少特征文件），保证"系统替你做了判断"这件事本身可追溯。
 
-任务由 `ThreadPool` 执行（`THREAD_POOL_SIZE`，默认 4，最小 1，`ConfigManager.cpp:138`）；`TaskWatchdog` 每 60 秒检查一次，把超过 `TASK_WATCHDOG_STALE_MINUTES`（默认 30 分钟）无进展的 RUNNING 任务标记失败；任务列表持久化到 `data/tasks.json`。
+## 第三幕：过滤与提炼——从"全部文件"到"值得看的文件"
 
-### 2.2 任务流水线时序
+如果任务指定了 `filter_profile`，`FileFilter`（`TMA:261-298`）按 `config/filter_profiles/` 下的画像（扩展名、路径模式、大小、是否已删除……）从 raw.db **复制**出一个 `<...>_filtered.db`——注意不是修改原库，raw.db 永远保持完整；过滤只是决定"下游用哪个视角"。之后的事件提取和分类都以这个过滤后的库为输入（任务对象上的 `output_raw_db` 字段被更新为过滤库路径，前端展示的也是它）。
 
-```mermaid
-sequenceDiagram
-    participant Client as 客户端/前端
-    participant HTTP as HTTPServer (Crow :8080)
-    participant TM as TaskManager
-    participant TP as ThreadPool
-    participant IA as ImageAnalyzer (TSK)
-    participant EE as EventExtractor
-    participant FC as FileClassifier
-    participant LAS as LLMAnalysisService
-    participant PLAT as 平台分析器
-    participant PY as httpserver (:8090)
+然后是两步"翻译"：
 
-    Client->>HTTP: 创建任务（镜像路径、场景、优先级）
-    HTTP->>TM: create task
-    TM->>TP: submit(analysis_job)
-    TM-->>Client: task_id（status=PENDING）
+- **事件提取**（`EVENT_EXTRACTION`，10%）：[EventExtractor](../modules/cpp/core/EventExtractor.md) 读出每个文件的 atime/mtime/ctime/crtime 四个时间戳，翻译成 CREATED/MODIFIED/ACCESSED/CHANGED/DELETED 五类事件，写入 `events.db`（`TMA:300-309`）。从此"文件系统的一堆数字"变成了"某时刻发生了某事"的时间线。
+- **文件分类**（`FILE_CLASSIFICATION`，15%）：[FileClassifier](../modules/cpp/core/FileClassifier.md) 把每个常规文件按扩展名/内容特征归入 24 个类别之一，写入 `files.db` 的主表和对应分类表；同时按场景标注 `scene_priority`——同一个 `hosts` 文件在入侵排查里优先级高、在电信诈骗里不重要，这就是"场景感知分类"（`TMA:311-332`，第一个场景被映射为分类器的 SceneType）。
 
-    TP->>TM: RUNNING / INITIALIZING
-    TP->>IA: IMAGE_ANALYSIS：解析镜像 → raw.db<br/>(files + partitions)
-    IA->>EE: EVENT_EXTRACTION：时间戳 → 事件 → events.db
-    EE->>FC: FILE_CLASSIFICATION：24 类分类 → files.db<br/>（FileFilter 按 filter_profiles 过滤）
-    FC->>LAS: LLM_ANALYSIS：文件级 LLM 描述<br/>（FULL/SMART 模式，写 files 表 llm_* 列 + file_descriptions）
-    LAS->>PLAT: PLATFORM_ANALYSIS（按场景）：<br/>AndroidAnalyzer / WindowsFilesAnalyzer /<br/>LinuxFilesAnalyzer / OSSAnalyzer<br/>→ android.db / windows.db / linux.db / oss.db
-    opt 启用雕刻
-        PLAT->>PLAT: FILE_CARVING：未分配空间 → carved_files/
-    end
-    PLAT->>TM: FINALIZING：更新进度 100%、status=COMPLETED
+## 第四幕：智能增强——LLM 什么时候进来
 
-    par 异步知识图谱摄取
-        TM->>PY: LLMPythonProxy → POST /api/graphiti/*<br/>（摄取任务 PENDING/RUNNING/COMPLETED/FAILED/CANCELLED）
-    and 轮询进度
-        Client->>HTTP: GET 任务进度
-        HTTP-->>Client: phase + progress + status
-    end
+只要 `llm_analyze` 为真（前端固定传 true），`LLM_ANALYSIS` 阶段（20%）开始，注意它其实是**先后两件事**：
+
+1. **文件级描述**（`TMA:334-386`）：[LLMAnalysisService](../modules/cpp/network/LLMAnalysisService.md) 把分类后的文件逐个（必要时先从镜像提取内容）送给 LLM，生成摘要/描述/关键词，写回 files.db 的 `llm_*` 列和 `file_descriptions` 表。full 模式全量分析；smart 模式先让模型粗选一批"值得深挖"的文件再精析——这是成本与覆盖的取舍旋钮。
+2. **事件簇分析**（`TMA:396-429`）：时间线事件先按时间邻近聚簇，`EventClusterAnalyzer` 让 LLM 对每个簇回答"这段时间发生了什么"。限额由 `LLM_MAX_EVENT_CLUSTERS` 控制（0 = 不限）。
+
+## 第五幕：平台语义化——把字节变成"一条聊天记录"
+
+`PLATFORM_ANALYSIS`（20%）是取证价值最密集的一步。按检测出的场景**依次**运行平台分析器（`TMA:440-526`，多场景任务按顺序执行，进度按场景数折算）：
+
+- [AndroidAnalyzer](../modules/cpp/analyzers/AndroidAnalyzer.md)：找到短信/联系人/通话/Chrome 历史/已装应用数据库逐表解析；微信库是 SQLCipher 加密的，用 `--backup-password` 提供的密钥解密；MIUI 备份走 manifest+tar 索引；QQNT 走专用工件解析。产出 `android.db`（33 张表）。
+- [WindowsFilesAnalyzer](../modules/cpp/analyzers/WindowsFilesAnalyzer.md)：注册表（hivex）、事件日志（libevtx）、Prefetch/LNK/JumpList/Amcache/SRUM/Shimcache/UserAssist/MFT/浏览器……产出 `windows.db`（32 张表）。
+- [LinuxFilesAnalyzer](../modules/cpp/analyzers/LinuxFilesAnalyzer.md)：syslog/journal/auditd、账户与登录、Shell 历史、13 种持久化机制检测、容器、Web 服务器、攻击链与异常分析，产出 `linux.db`（73 张表）。
+
+每个平台分析器内部还会调用自己的 LLM 服务（`Linux/Windows/AndroidLLMAnalysisService`）对工件做语义标注——注意这与第四幕的文件级 LLM 是两回事：那里读"文件"，这里读"已经解析成取证工件的记录"。
+
+如果任务开了雕刻（`file_carving`），`FILE_CARVING`（3%）用 29 种文件签名扫未分配空间，恢复的文件放进任务目录的 `carved_files/`（`TMA:533-550`）。
+
+## 第六幕：收尾——完成不等于结束
+
+`FINALIZING`（2%）做两件事（`TMA:170-196`）：把进度推到 100%、状态置 `completed`；以及**触发知识图谱摄取**——通过 `LLMPythonProxy::async_ingest(task_id, FULL)` 调 Python 的 `/api/graphiti/ingest`，拿到 job id 存在任务对象上（前端知识图谱页可以拿它查进度）。注意源码注释：这是 fire-and-forget——Python/Neo4j 不可用时**不影响任务成功**，图谱只是缺席。这个设计让"分析"和"图谱"的故障域彻底分离。
+
+## 任务之后：产出物给谁用
+
+任务完成后，`data/tasks/<task_id>/` 是一个自包含的证据包。理解"谁读什么"就理解了整个上层建筑：
+
+| 产出 | C++ 路由 | 前端页面 | Python 侧消费者 |
+|------|---------|---------|----------------|
+| `raw.db` | 文件/统计类查询（经 SQLiteHelper） | /files、/statistics | CppBackendService 回查、Graphiti DatabaseReader |
+| `events.db` | 时间线 11 个端点、事件导出 | /timeline | 案件多镜像分析读事件 |
+| `files.db` | 文件分析端点 | /files、/analysis-center | LLMService 持久化重分析结果（直接 UPDATE llm_* 列）、报告生成、Graphiti 摄取 |
+| `android.db` 等 | 平台端点（如 android 14 个） | /android、/wechat-graph | WeChatGraphService（直接 sqlite3 读 android.db）、Graphiti 平台 reader |
+| `extracted_files/` | 提取状态端点 | /files 提取下载 | markitdown 转换输入（task_store 精确匹配路径） |
+
+值得一提的是 Python 侧读任务库的方式：`task_store` 以任务 ID 解析出精确路径（fail-closed，拒绝任何不匹配的路径），这保证"服务间共享文件系统"不会变成越权读任意文件的漏洞——这是 2026 年加固的边界（docs/hardening/d2b）。
+
+## 失败、取消与看门狗
+
+流水线在每个阶段边界检查 `cancellation_requested` 原子标志（取消即置位，任务以 `cancelled` 终止，不再有后续写入——任务删除后写保护也依赖这个语义）。任何阶段返回失败，任务立即 `failed` 并记录原因；由于产出都在任务目录里，失败的垃圾不会污染其他任务。`TaskWatchdog` 后台线程持续轮询（注释写"每 60 秒"，实现实际每 1 秒醒一次，`TaskWatchdog.cpp:38-43`），把超过 `TASK_WATCHDOG_STALE_MINUTES`（RUNNING，默认 30 分钟）无进度更新或超过 `TASK_WATCHDOG_PENDING_MINUTES`（PENDING，默认 30 分钟）未被调度的任务标记失败——这是给"线程死了但没人知道"兜底。
+
+## CLI 模式：同一台发动机的另一个方向盘
+
+CLI（`./forensic_analyzer 镜像` → `AnalysisOrchestrator`）复用完全相同的分析器，差异只在编排层：同步执行、无进度/取消/看门狗、输出库放镜像旁边（`<镜像>_raw.db`...）、平台工件**并入** `<镜像>_files.db` 而不是独立库。为什么不同？HTTP 模式的任务目录隔离是给并发和多消费者准备的；CLI 面对的是"一个镜像一次跑完"的脚本场景，并入单库更顺手。这也意味着**给 CLI 写的消费工具不能假设平台工件在独立库里**——两个模式的库布局是 documented 行为，不是 bug。
+
+另有独立子命令绕过主流水线直达单点能力：`--carve`（只雕刻）、`--index/--search`（只建索引/搜索）、`--extract-*`（只提取）、`--analyze-dlls`、`--memory-analyze`（Volatility3 子进程 → `<镜像>_memory.db`）、`--report`（Markdown 报告）、`--dump-text`。
+
+## C/S 分布式：镜像不动，命令流动
+
+本地模式假设"镜像就在这台机器上"；当取证机分布在多地时，TraceLens 用**反过来**的思路：镜像不动，让计算去镜像那里。
+
+叙事是这样的：管理员在 `server`（:8091，PostgreSQL）上建组织、发注册令牌；取证机上的 `tracelens_agent`（`src/http_agent/`）凭令牌注册成客户端，拿到自己的 JWT，然后进入轮询循环——从 `/api/commands/poll` 领命令（如 `analyze_disk`），**在本地**调 `forensic_analyzer` 执行（复用上面讲的整条流水线），把产出的数据库和索引用 `result_uploader`/`index_uploader` 传回服务端（写入 `analysis_results`，镜像目录索引写入 `disk_images`），期间 `status_reporter` 持续汇报状态。服务端的表（organizations/clients/command_queue/analysis_tasks/analysis_results 等 10 张，`migrations/postgresql/`）就是这条故事线的角色表。
+
 ```
-
-### 2.3 任务阶段与数据库产出对应表
-
-| 阶段（TaskPhase） | 执行组件 | 数据库产出 |
-|------------------|---------|-----------|
-| INITIALIZING | TaskManager 环境/路径准备 | `data/tasks/<task_id>/` 目录 |
-| IMAGE_ANALYSIS | ImageAnalyzer（TSK，含 SceneDetector） | `raw.db`（files、partitions） |
-| EVENT_EXTRACTION | EventExtractor | `events.db`（events + 专用事件表 + 视图） |
-| FILE_CLASSIFICATION | FileFilter → FileClassifier | `files.db`（主 files 表 + 24 分类表 + 场景工件表） |
-| LLM_ANALYSIS | LLMAnalysisService（文件级，FULL/SMART） | `files.db` 的 llm_* 列 + `file_descriptions` 表 |
-| PLATFORM_ANALYSIS | Android/Windows/Linux/OSS 分析器（+ 各平台 LLM 服务、EventClusterAnalyzer 事件簇） | `android.db`（33 表）/ `windows.db`（32 表，含 dll_*）/ `linux.db`（73 表）/ `oss.db` |
-| FILE_CARVING | FileCarver（可选） | `carved_files/` + carved_files 记录 |
-| FINALIZING | TaskManager + LLMPythonProxy | 进度落盘、触发 Graphiti 摄取 |
-
-任务目录布局（`PathManager.cpp`）：`data/tasks/<task_id>/` 下为 `raw.db`、`events.db`、`files.db`、`android.db`、`oss.db`、`windows.db`、`linux.db`，另有 `extracted_files/`（LLMScratch 提取目录）与 `carved_files/`。
-
----
-
-## 3. CLI 模式数据流
-
-入口：`src/CommandLineParser.cpp` 解析参数，`src/AnalysisOrchestrator.cpp` 编排。全量分析默认链与 HTTP 模式相同，但**平台工件并入 `<image>_files.db`**（场景工件表），不生成独立平台库。
-
-```mermaid
-flowchart LR
-    A[./forensic_analyzer<br/>evidence.E01] --> B[ImageAnalyzer<br/>TSK 解析]
-    B --> C[<image>_raw.db]
-    C --> D[EventExtractor]
-    D --> E[<image>_events.db]
-    C --> F[FileClassifier]
-    F --> G[<image>_files.db<br/>+ 平台场景工件并入]
-
-    A -.->|独立子命令| S1[--index/--search<br/>Xapian 全文索引/搜索]
-    A -.-> S2[--carve 文件雕刻]
-    A -.-> S3[--extract-file/-ext/-all<br/>文件提取]
-    A -.-> S4[--analyze-dlls[-only]<br/>→ <image>_dll.db]
-    A -.-> S5[--android-analyze<br/>--android-source tsk|dir|zip|miui-backup]
-    A -.-> S6[--wechat-password<br/>--backup-password[-stdin|-fd]]
-    A -.-> S7[--windows-analyze]
-    A -.-> S8[--linux-analyze]
-    A -.-> S9[--memory-analyze --vol-symbols-dir<br/>Volatility3 → <image>_memory.db]
-    A -.-> S10[--report/--report-path<br/>Markdown 报告]
-    A -.-> S11[--dump-text/--dump-text-max-size<br/>文本导出]
-    A -.-> S12[--xfs-mode auto|native|pure]
-    A -.-> S13[--filter-profile 场景过滤]
-    A -.-> S14[--key-dir/--key-password<br/>加密镜像解密]
-
-    style C fill:#e8f5e9
-    style E fill:#fff3e0
-    style G fill:#e3f2fd
+运营方 ──建组织/发令牌──► server(:8091, PG)
+                            ▲   │ 命令(队列)          ┌────────── 取证机 ──────────┐
+                            │   ▼                    │ tracelens_agent（JWT 轮询） │
+                            └── 结果/索引/状态 ◄──────┤   └─本地─ forensic_analyzer │
+                                                   └────────────────────────────┘
 ```
-
-以上参数全部来自 `src/CommandLineParser.cpp` 的实际 `add_option` 列表。
-
----
-
-## 4. LLM / Graphiti 数据流
-
-### 4.1 C++ 侧 LLM 栈
-
-`src/integration/LLMIntegration/`：`LLMClient`（cpp-httplib + OpenSSL，OpenAI 兼容 chat/listModels/tool-calling）→ `ModelRouter`（Priority/Capability/RoundRobin/LoadBalance/Fallback）。消费方：
-
-- `LLMAnalysisService`：文件级描述（源码标 deprecated 注释，但仍为 TaskManager 活跃路径）
-- `LinuxLLMAnalysisService` / `WindowsLLMAnalysisService` / `AndroidLLMAnalysisService`：平台工件级
-- `DLLAnalyzerLLMService`：DLL 工件
-- `EventClusterAnalyzer`：事件簇
-- `MarkitdownProxy` → Python `/api/markitdown/*`
-
-### 4.2 Graphiti 摄取流（python_service/graphiti_integration/）
-
-```mermaid
-sequenceDiagram
-    participant CPP as forensic_analyzer
-    participant PY as httpserver /api/graphiti/*
-    participant FDF as ForensicsDatabaseFactory
-    participant TR as Transformer（TOON/ForensicEpisode/OSS）
-    participant GI as GraphitiIngestor
-    participant LLM as LLM 端点 (LLM_BASE_URL)
-    participant N4 as Neo4j (7687)
-
-    CPP->>PY: LLMPythonProxy 异步触发摄取（任务完成后）
-    PY->>FDF: discover() 发现 data/tasks/<id>/ 下<br/>*_raw/_files/_events/_windows/_linux/_android.db
-    FDF->>TR: FileRecord → EpisodeData
-    TR->>LLM: OpenAIGenericClient 摘要<br/>（llm_patch.py 清洗 qwen3/deepseek-r1 的 <think> 输出）
-    TR->>GI: EpisodeData
-    GI->>LLM: OpenAIEmbedder（nomic-embed, dim 768）+ reranker
-    GI->>N4: 写入实体/关系（Graphiti）
-    Note over GI: 摄取任务状态：PENDING/RUNNING/<br/>COMPLETED/FAILED/CANCELLED；<br/>Redis(REDIS_URL)持久化队列，不可用时内存回退
-    Note over N4: FileEntityIngestor 直接建 File 实体节点<br/>（SHA-256 路径 ID）；<br/>MigrationManager 负责图谱迁移/去重
-```
-
----
-
-## 5. C/S 分布式数据流
-
-`server`（:8091，PostgreSQL + JWT）→ `tracelens_agent`（取证机）→ 本地 `forensic_analyzer`。
-
-```mermaid
-sequenceDiagram
-    participant OP as 运营方/前端 (/csapi)
-    participant SRV as server :8091 (FastAPI + PostgreSQL)
-    participant AG as tracelens_agent（取证机）
-    participant FA as 本地 forensic_analyzer
-
-    OP->>SRV: 注册组织/用户、生成客户端注册令牌<br/>（/api/auth、/api/organizations）
-    AG->>SRV: 用注册令牌注册客户端（JWT HS256）
-    loop 轮询（poll_interval_seconds）
-        AG->>SRV: 拉取命令队列（/api/commands）
-        SRV-->>AG: 待执行命令（磁盘镜像分析等）
-        AG->>FA: 本地执行分析（进程运行）
-        FA-->>AG: 产出数据库/索引
-        AG->>SRV: 上传结果工件与镜像索引<br/>（analysis_tasks/analysis_results/task_history 更新）
-        AG->>SRV: 上报状态（status_reporter）
-    end
-```
-
-服务端数据模型（`migrations/postgresql/001_initial_schema.sql` 等 3 个迁移）：`organizations`、`users`、`clients`、`disk_images`、`command_queue`、`analysis_tasks`、`analysis_results`、`llm_analysis`、`task_history`、`registration_tokens`。API 前缀（`python_service/server/api/`）：`/api/auth`、`/api/organizations`、`/api/clients`、`/api/commands`、`/api/tasks`、以及 results 路由（与 tasks 同前缀 `/api/tasks`）。
-
----
-
-## 6. 前端请求流
-
-生产模式：React SPA 由 C++ 从 `web/dist` 托管，浏览器请求同一 8080 端口；`/api/reports`、`/api/graphiti`、`/api/llm`、`/api/office`、`/api/db`、`/api/wechat`、`/api/investigation` 等前缀在**开发模式**下由 Vite 代理到 8090（`web/vite.config.js`），`/csapi` 代理到 8091，其余 `/api` 与 `/tasks` 到 C++。
-
-注意：C++ HTTPServer **未注册 OSSRoutes**（见 Overview.md 死代码表），前端 OSS 页面对 `/api/forensics/oss/*` 的调用在当前代码下会失败。
-
----
 
 ## 相关文档
 
-- **[架构总览](./Overview.md)** - 三服务 + 代理整体架构
-- **[数据库模式](./DatabaseSchema.md)** - 各阶段产出的表结构
-- **[部署架构](./Deployment.md)** - 如何启动这些数据流
+- **[Overview.md](./Overview.md)** —— 心智模型与设计动机（建议先读）
+- **[DatabaseSchema.md](./DatabaseSchema.md)** —— 各库表清单
+- **[模块文档](../modules/README.md)** —— 流水线每个环节的深入讲解
 
 ---
 
-**最后更新**: 2026-08-23（以代码为准重写）
+**最后更新**: 2026-08-23（解释式重写：以任务生命周期为叙事主线）
