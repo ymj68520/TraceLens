@@ -1,1033 +1,117 @@
-# FileAnalyzer 模块文档
+# FileAnalyzer（src/integration/LLMIntegration/FileAnalyzer.{h,cpp}）
 
-## 1. 模块背景
+> **一句话**："文件到 LLM"的完整流水线——把一个宿主文件变成模型可消化的文本（markitdown/本地解析器/原始读取三级取内容）、按上下文窗口预算截断、用结构化 prompt 让模型输出 SUMMARY/DESCRIPTION/KEYWORDS、再用正则把结果拆回结构体。
 
-### 业务背景
+## 1. 为什么有这个模块
 
-在数字取证分析中，需要自动分析大量文件以理解其内容和作用：
+取证分析动辄面对成千上万个文件，人工逐一阅读不现实。这个模块回答三个问题：**文件内容怎么读出来**（PDF/Office/二进制/纯文本各不相同）、**读出来怎么塞进有限的上下文窗口**（截断策略与预算计算）、**模型输出怎么变成可入库的结构化字段**（summary/description/keywords）。
 
-**核心需求**：
-- **自动摘要生成**：为每个文件生成简洁的摘要
-- **关键词提取**：识别文件中的重要术语和概念
-- **描述生成**：生成自然的文件描述
-- **批量处理**：高效处理成千上万个文件
-- **大文件支持**：处理超出上下文窗口的文件
+它刻意做成一个不关心"文件从哪来"的进程内库：输入永远是一个**宿主文件系统路径**。至于"从磁盘镜像里把这个文件解出来"这件事，属于上层 network/LLMAnalysisService 的职责（见第 2 节）——分层让同一套分析管线既能服务镜像内文件，也能服务散落文件。
 
-**解决挑战**：
-- **上下文窗口限制**：LLM 有最大 token 限制
-- **内容截断**：如何在截断时保持语义完整
-- **分析质量**：确保摘要和关键词的质量
-- **并发处理**：利用多线程加速批量分析
-- **成本控制**：减少 API 调用次数和 token 使用
+## 2. 在系统中的位置
 
-### 技术背景
+```
+HTTP 客户端 ──► network/HTTPServer/LLMAnalysisService（及平台版 Linux/Windows/AndroidLLMAnalysisService）
+                  │  职责：路径解析（镜像内→宿主临时文件）、任务调度、结果入库
+                  │  resolveFileForAnalysis(): LLMAnalysisService.cpp:53-118
+                  ▼
+              FileAnalyzer（integration 层，进程内库）
+                  │  职责：取内容 → 清洗 → 截断 → prompt → 解析
+                  ├──► MarkitdownProxy（同目录，单例）──HTTP──► Python 服务 /api/markitdown/*
+                  ├──► FileContentExtractor / FileTextProcessor（同目录，纯静态工具）
+                  ├──► analyzers/PDFAnalyzer、OfficeAnalyzer（.pdf/.docx 的本地回退）
+                  └──► ModelRouter ──► LLMClient ──► LLM 端点
+```
 
-**LLM 集成模式**：
-- **直接调用**：直接使用 LLMClient API
-- **路由器集成**：通过 ModelRouter 选择最优模型
-- **能力匹配**：文本/视觉模型的自动选择
+分层口诀：**LLMAnalysisService 管"哪个文件、结果去哪"，FileAnalyzer 管"这个文件说了什么"**。生产代码里对 FileAnalyzer 的实际调用只有 `analyzeFile(localPath, options.maxContentLength)`（`LLMAnalysisService.cpp:163, 217`）和 DLLAnalyzerLLMService 的两个 `set*Prompt` 定制（`DLLAnalyzerLLMService.cpp:96-97`）；`summarize`/`extractKeywords`/`analyzeBatch`/`analyzeFileChunked` 目前没有生产调用方，是为批量与超大文件预留的能力。
 
-**文件处理策略**：
+与镜像的衔接值得一提：LLMAnalysisService 把镜像内路径经 FileExtractor 解到任务级临时目录（`llm_scratch::dirForTask(taskId)` = `<tempdir>/forensics_llm_extract/<task_id>/`，实现见 `src/network/HTTPServer/LLMScratch.cpp:11-13`；服务析构时 `cleanupTask` 清理，`LLMAnalysisService.cpp:16-20`），FileAnalyzer 拿到的已是普通文件。**刻意不走宿主机直读**——否则分析 `/etc/passwd` 时读到的是分析员自己机器的文件。
+
+## 3. 核心概念与设计
+
+### 3.1 三级取内容策略与 markitdown 白名单
+
+`analyzeFile()` 的第一步是决定"怎么读"。首选 MarkitdownProxy（C++ 经 HTTP 调 Python 服务的 `/api/markitdown/convert`，把 PDF/Office/图片/音频转成 Markdown 文本），但 markitdown 只认文档类格式——把磁盘镜像、PE/ELF 二进制、注册表 hive、evtx 喂给它，Python 端会抛 UnsupportedFormatException 并以 HTTP 500 刷爆后端日志（源码注释在 `FileAnalyzer.cpp:35-53` 记录了这段事故）。因此引入了扩展名白名单：
+
 ```cpp
-enum class ModelCapability {
-    TextGeneration,   // 文本生成
-    CodeGeneration,   // 代码生成
-    Summarization,    // 摘要生成
-    Analysis,         // 分析任务
-    Translation,      // 翻译
-    Vision,           // 图像理解
-    ImageAnalysis     // 图像分析
+// FileAnalyzer.cpp:59-71（节选）
+static const std::set<std::string> supported = {
+    ".pdf", ".docx", ".doc", ".xlsx", ".pptx",      // Office 文档
+    ".html", ".jpg", ".png", ".mp3", ".wav",         // 网页/图片/音频
+    ".txt", ".md", ".csv", ".json", ".xml", ".log"   // 纯文本与数据格式
 };
 ```
 
-## 2. 模块功能
+只有扩展名命中白名单才尝试 markitdown；其余（.img/.exe/.evtx/.hiv/...）直接走本地回退链（`FileAnalyzer.cpp:166-182`）：`.pdf` 用 PDFAnalyzer、`.doc(x)` 用 OfficeAnalyzer、判定为 Archive/Binary/Database 的放占位文本只做元数据分析、其余原始字节读入。markitdown 失败（返回空或 `"Error:"` 前缀，这是 MarkitdownProxy 的错误约定）也落入同一回退链。**先白名单、再降级**是这条管线最重要的设计决策。
 
-### 核心功能
+### 3.2 上下文窗口预算与"聪明截断"
 
-#### 1. 单文件分析
+三个上限取最小值作为生效长度（`FileAnalyzer.cpp:198-200`）：调用方传入的 `maxContentLength`、按模型窗口算出的 `calculateMaxContentLength()`、配置项 `getLLMMaxContentLength()`。预算公式（`FileAnalyzer.cpp:433-451`）：
 
-**基础分析**：
-```cpp
-FileAnalyzer analyzer(router);
-
-AnalysisResult result = analyzer.analyzeFile(
-    "/evidence/suspect.doc",
-    10000  // 最大内容长度
-);
-
-if (result.success) {
-    std::cout << "Summary: " << result.summary << std::endl;
-    std::cout << "Description: " << result.description << std::endl;
-    std::cout << "Keywords: ";
-    for (const auto& kw : result.keywords) {
-        std::cout << kw << ", ";
-    }
-    std::cout << std::endl;
-    std::cout << "Model: " << result.modelUsed << std::endl;
-    std::cout << "Time: " << result.analysisTimeMs << " ms" << std::endl;
-}
+```
+可用 token = contextLength − reservedTokens − maxTokens   （下限 100）
+最大字符   = 可用 token × charsPerToken                    （默认 4.0，中文约 1.5）
 ```
 
-**AnalysisResult 结构**：
-```cpp
-struct AnalysisResult {
-    std::string filePath;           // 文件路径
-    std::string summary;            // 摘要（2-3 句话）
-    std::string description;        // 描述（3-5 句话）
-    std::vector<std::string> keywords; // 关键词列表
-    std::string fileType;           // 文件类型
-    int64_t fileSize = 0;           // 文件大小
-    bool success = false;           // 分析是否成功
-    std::string errorMessage;       // 错误信息
+超长内容的截断不是简单砍尾，而是"头 70% + 截断标记 + 尾 30%"（`FileTextProcessor.cpp:41-80`）——保留结尾是因为日志、配置类证据的关键信息（报错、结论）常在文件末尾。切点由 `findSmartBoundary()`（`FileTextProcessor.cpp:82-138`）按优先级回退寻找：段落断点 > 句号/叹号/问号 > 换行 > 空格 > 硬切。
 
-    // 元数据
-    std::string modelUsed;         // 使用的模型
-    int tokensUsed = 0;             // 消耗的 token
-    double analysisTimeMs = 0;      // 分析耗时
-};
-```
+### 3.3 结构化输出协议与容错解析
 
-#### 2. 批量文件分析
+prompt 要求模型**逐字**按 `SUMMARY: ... DESCRIPTION: ... KEYWORDS: ...` 格式回答（`FileAnalyzer.cpp:209-223`），解析侧用三个预编译的静态正则提取（`FileAnalyzer.cpp:28-33`，预编译避免每文件重复构造的开销）。容错：正则全部落空时，把整段回复同时当 summary 和 description 存（`FileAnalyzer.cpp:263-266`）——宁可存原始文本，不存空串。这个"格式约定 + 宽松解析"的组合代价是：模型不守格式时字段语义会退化，但没有数据丢失。
 
-**并发批量处理**：
-```cpp
-FileAnalyzer analyzer(router);
+### 3.4 周边静态工具
 
-// 配置批量请求
-BatchAnalysisRequest request;
-request.filePaths = {
-    "/evidence/file1.txt",
-    "/evidence/file2.pdf",
-    "/evidence/file3.docx",
-    // ... 100+ 个文件
-};
-request.maxContentLength = 5000;  // 每个文件最多 5000 字符
+- **FileContentExtractor**（`FileContentExtractor.cpp`）：`detectFileType()` 先查约 150 项扩展名→类型映射（`:49-200`），查不到再嗅探前 512 字节有无 `\0` 判二进制（`:202-220`）；`readFileContent()` 带上限的原始读取。类型字符串（"PDF"、"Archive"...）会进 prompt，帮助模型定向。
+- **FileTextProcessor**（`FileTextProcessor.cpp`）：无状态纯函数集——逗号分隔关键词解析（含 `- `/`*` 前缀清理，`:9-32`）、token 估算、截断、分块（`splitIntoChunks`，块间 200 字符重叠保上下文连续，`:140-175`）、宽松版 UTF-8 清洗（`:177-217`）。
+- **MarkitdownProxy**（`MarkitdownProxy.h/.cpp`）：单例（`MarkitdownProxy.cpp:20-22`，URL 取自 `ConfigManager::getPythonServiceUrl()`），封装 `/api/markitdown/convert|batch-convert|status`。文件→LLM 之外的另一条"integration 层 HTTP 出口"。
 
-// 设置进度回调
-analyzer.setProgressCallback([](size_t current, size_t total, const std::string& file) {
-    double progress = 100.0 * current / total;
-    std::cout << "Progress: " << progress << "% - " << file << std::endl;
-});
+## 4. 工作流程走读
 
-// 执行批量分析
-std::vector<AnalysisResult> results = analyzer.analyzeBatch(request);
+以 LLMAnalysisService 处理一个镜像内 PDF 为例（`analyzeFile()`，`FileAnalyzer.cpp:110-273`）：
 
-// 统计结果
-int successCount = 0;
-int totalTokens = 0;
-for (const auto& result : results) {
-    if (result.success) successCount++;
-    totalTokens += result.tokensUsed;
-}
+1. **前置**：服务层已把 `grub/grub.cfg` 这类镜像相对路径解析成 `forensics_llm_extract/<task_id>/grub_grub.cfg` 宿主路径（`LLMAnalysisService.cpp:53-118`，路径分隔符拍平防穿越）。
+2. **元数据**：FileAnalyzer 确认存在、取大小、`detectFileType()` 定类型（`:118-125`）。
+3. **取内容**：`.pdf` 命中白名单 → `MarkitdownProxy::instance().isServiceAvailable()` 探活 → `convertToMarkdown()`；若 Python 服务没起或转换失败，回退 `PDFAnalyzer::extractText()`（`:148-169`）。二进制/压缩包类到此为止，直接用占位文本（`:175-177`）。
+4. **清洗与预算**：`FileTextProcessor::sanitizeUTF8` 去非法字节（`:190`）；三重最小值算出预算，超限则聪明截断并插入 `[... Content truncated ...]` 标记（`:198-206`）。
+5. **调用模型**：拼 combined prompt（含文件路径/类型/大小 + 内容），system prompt 锁定输出格式，`router_->chat()` 发出（`:225`）。
+6. **解析入库**：三个正则分别抽 SUMMARY/DESCRIPTION/KEYWORDS，关键词经 `parseKeywords` 拆成数组（`:239-260`）；`modelUsed` 取自 `router_->getLastUsedModel()`，token 用量与耗时写入 `AnalysisResult`（`:233-234, 268-270`）。
 
-std::cout << "Analyzed " << results.size() << " files" << std::endl;
-std::cout << "Success: " << successCount << std::endl;
-std::cout << "Total tokens: " << totalTokens << std::endl;
-```
+批量路径（`analyzeBatch`，`:275-312`）：线程池大小取 `ConfigManager::getThreadPoolSize()`，大于 1 且文件数大于 1 时并发跑 `analyzeFile`，逐个 future 收集并回调进度。
 
-**ThreadPool 集成**：
-```cpp
-// 从配置获取线程池大小
-int poolSize = ConfigManager::instance().getThreadPoolSize();  // 默认 4
+超大文件路径（`analyzeFileChunked`，`:465-554`）：把内容切成重叠块，逐块分析，最后 `mergeChunkResults()`（`:556-616`）——摘要拼接后再让 LLM 做一次"合并成连贯摘要"（`:573-583`），关键词做集合去重（`:587-593`）。
 
-ThreadPool pool(static_cast<size_t>(poolSize));
-std::vector<std::future<AnalysisResult>> futures;
+## 5. 与其他模块的协作
 
-for (const auto& path : request.filePaths) {
-    futures.push_back(pool.enqueue([&analyzer, &request, path]() {
-        return analyzer.analyzeFile(path, request.maxContentLength);
-    }));
-}
+| 协作方 | 关系 |
+|---|---|
+| network/LLMAnalysisService 及三个平台版 | 上层编排者：注入 router、把镜像内文件解到 LLMScratch 临时目录后调 `analyzeFile` |
+| llm_scratch（LLMScratch.h/.cpp） | 每任务独立临时目录 `<tempdir>/forensics_llm_extract/<task_id>/`，隔离并发任务的拍平文件名，服务析构时清理 |
+| ModelRouter/LLMClient | 所有模型调用出口；`router_->getConfig()` 提供上下文预算参数 |
+| MarkitdownProxy + Python 服务 | 文档类格式的首选文本化通道（HTTP 到 `/api/markitdown/*`） |
+| PDFAnalyzer / OfficeAnalyzer | markitdown 不可用时的本地回退（integration 层反向依赖 analyzers 层，属已知的层次交叉） |
+| ThreadPool（core） | 批量分析的并发执行器 |
+| ConfigManager | 线程池大小、`LLM_MAX_CONTENT_LENGTH` 等运行参数 |
 
-// 收集结果
-for (size_t i = 0; i < futures.size(); ++i) {
-    results[i] = futures[i].get();
-    // 触发进度回调
-    if (progressCallback_) {
-        progressCallback_(i + 1, futures.size(), request.filePaths[i]);
-    }
-}
-```
+## 6. 注意事项与已知问题
 
-#### 3. 上下文窗口管理
+- **批量并行的收益有限**：线程池并行的是"取内容/清洗"阶段；所有线程最终过同一个 router 的同一个 LLMClient，而 LLMClient 的重试循环持锁，HTTP 请求实际串行。想要真并发要么注册多模型，要么给 LLMClient 做实例池。
+- **`analyzeFileChunked` 与 `enableChunkedAnalysis` 没有联动**：`LLMConfig.enableChunkedAnalysis`（`LLMDataTypes.h:28`）看起来像开关，但 `analyzeFile()` 并不会据此自动转分块——分块路径必须显式调 `analyzeFileChunked`，而当前无人调用。配置项是"预订的接口"。
+- **白名单是静态副本**：`markitdownSupportedExtensions()` 注释说明它镜像 Python 侧 `extractor_mapping.json`，但两边靠人工同步；Python 侧新增格式不会自动生效。
+- **"Error:" 前缀协议脆弱**：用 `content.find("Error:") != 0` 判断 markitdown 失败（`FileAnalyzer.cpp:154`），若文件转换结果本身以 "Error:" 开头会被误判为失败（实际只是走了回退，损失的是 markitdown 质量，不致命）。
+- **多文件描述只看前 5 个**：`generateDescription(vector)` 用前 5 个文件的元数据当上下文（`FileAnalyzer.cpp:363-364`），其余只计数；大文件集的描述偏前部样本。
+- **UTF-8 清洗有两套实现**：本模块用 FileTextProcessor 的宽松版，LLMClient 内部还有严格版（见 LLMClient.md 第 6 节），规则不一致但方向一致（都是替换为 `?`）。
 
-**智能内容截断**：
-```cpp
-// FileAnalyzer 自动管理上下文窗口
-size_t maxLength = analyzer.calculateMaxContentLength();
+## 7. 如何验证与扩展
 
-std::string content = readFileContent(filePath, 0);  // 读取全部
+**验证**：
+1. 起本地 LLM 端点 + Python markitdown 服务，对一份 .pdf 与一份 .img 各跑一次平台 LLM 分析接口：日志应出现 "Successfully converted via markitdown"（pdf）与 "Skipping markitdown for unsupported extension .img"（`FileAnalyzer.cpp:155, 162` 的两条 DEBUG 日志就是这条管线的观测点）。
+2. 停掉 Python 服务再跑 pdf：日志应出现 "markitdown failed ... falling back to local parsers"，结果仍能出来（走 PDFAnalyzer）。
+3. 构造一个远超 `LLM_MAX_CONTENT_LENGTH` 的大文本，检查入库摘要对应的请求内容里有 `[... Content truncated due to context window limit ...]` 标记，且切点落在句/行边界。
+4. 单元测试可直接测纯函数：`findSmartBoundary` 的四级优先级、`splitIntoChunks` 的重叠与 maxChunks、`parseKeywords` 的前缀清理。
 
-if (content.size() > maxLength) {
-    // 智能截断：
-    // 1. 在段落边界截断
-    // 2. 在句子边界截断
-    // 3. 在单词边界截断
-    // 4. 添加截断指示器
-    content = analyzer.truncateContent(content, maxLength);
-}
-```
+**扩展方向**：
+- 新增格式支持：优先改 Python 侧 extractor 映射 + 同步 `markitdownSupportedExtensions()`；纯本地格式则在回退链（`:166-182`）加分支；
+- 打通分块：在 `analyzeFile()` 里按 `enableChunkedAnalysis && 内容超预算` 自动转 `analyzeFileChunked`；
+- 结构化输出升级：改用 LLM 的 tool-calling/JSON mode 强制格式，可去掉正则解析的容错复杂度（LLMClient 已支持 tools 参数）。
 
-**截断策略**：
-```
-原始内容 (5000 字符):
-[开始... 3500 字符 ... 截断点 ... 1500 字符 ...结束]
-
-智能截断后 (4000 字符):
-[开始... 3500 字符 ... 截断点]
-[... Content truncated due to context window limit ...]
-[1500 字符 ...结束]
-```
-
-**findSmartBoundary 算法**：
-```cpp
-size_t FileAnalyzer::findSmartBoundary(const std::string& content, size_t targetPos) const {
-    if (targetPos >= content.size()) {
-        return content.size();
-    }
-
-    // 搜索窗口：向前查找 200 字符
-    size_t searchStart = (targetPos > 200) ? targetPos - 200 : 0;
-
-    // 优先级 1: 段落边界（双换行）
-    size_t lastParagraph = std::string::npos;
-    for (size_t i = searchStart; i < targetPos - 1 && i < content.size() - 1; ++i) {
-        if (content[i] == '\n' && content[i + 1] == '\n') {
-            lastParagraph = i + 2;
-        }
-    }
-    if (lastParagraph != std::string::npos && lastParagraph > searchStart) {
-        return lastParagraph;
-    }
-
-    // 优先级 2: 句子结束（. ! ?）
-    size_t lastSentence = std::string::npos;
-    for (size_t i = searchStart; i < targetPos && i < content.size(); ++i) {
-        char c = content[i];
-        if ((c == '.' || c == '!' || c == '?') &&
-            (i + 1 >= content.size() || content[i + 1] == ' ' || content[i + 1] == '\n')) {
-            lastSentence = i + 1;
-        }
-    }
-    if (lastSentence != std::string::npos && lastSentence > searchStart) {
-        return lastSentence;
-    }
-
-    // 优先级 3: 换行符
-    // 优先级 4: 空格
-    // 优先级 5: 硬截断
-    return targetPos;
-}
-```
-
-#### 4. 分块分析（大文件）
-
-**分块配置**：
-```cpp
-ChunkConfig config;
-config.chunkSize = 2000;      // 每块 2000 字符
-config.overlapSize = 200;     // 重叠 200 字符
-config.maxChunks = 5;         // 最多 5 块
-config.smartBoundary = true;  // 智能边界
-
-analyzer.setChunkConfig(config);
-```
-
-**分块分析流程**：
-```cpp
-// 对大文件使用分块分析
-AnalysisResult result = analyzer.analyzeFileChunked("/large/file.txt");
-
-// 内部流程：
-// 1. 读取全部内容
-// 2. 计算最大内容长度
-// 3. 如果超出限制，分块处理：
-//    - 按 chunkSize 分割
-//    - 每块之间有 overlap 重叠
-//    - 使用 smartBoundary 在语义边界分割
-// 4. 分别分析每块
-// 5. 合并结果：
-//    - 合并摘要
-//    - 合并描述
-//    - 去重关键词
-//    - 累加 token 统计
-```
-
-**合并结果**：
-```cpp
-AnalysisResult FileAnalyzer::mergeChunkResults(
-    const std::vector<AnalysisResult>& results,
-    const std::string& filePath) const {
-
-    AnalysisResult merged;
-    merged.filePath = filePath;
-    merged.success = false;
-
-    // 合并摘要（空格分隔）
-    std::ostringstream summaryStream;
-    for (size_t i = 0; i < results.size(); ++i) {
-        if (!results[i].success) continue;
-        if (summaryStream.tellp() > 0) summaryStream << " ";
-        summaryStream << results[i].summary;
-    }
-    merged.summary = summaryStream.str();
-
-    // 合并关键词（去重）
-    std::set<std::string> allKeywords;
-    int totalTokens = 0;
-    for (const auto& r : results) {
-        if (!r.success) continue;
-        totalTokens += r.tokensUsed;
-        for (const auto& kw : r.keywords) {
-            allKeywords.insert(kw);
-        }
-    }
-    merged.keywords = std::vector<std::string>(allKeywords.begin(), allKeywords.end());
-    merged.tokensUsed = totalTokens;
-    merged.success = true;
-
-    return merged;
-}
-```
-
-#### 5. 文件类型检测
-
-**扩展名映射**：
-```cpp
-// FileAnalyzer 支持 100+ 种文件类型
-std::string FileAnalyzer::detectFileType(const std::string& path) {
-    std::string ext = fs::path(path).extension().string();
-
-    static const std::map<std::string, std::string> typeMap = {
-        // 文档
-        {".pdf", "PDF"},
-        {".doc", "Word Document"},
-        {".docx", "Word Document"},
-        {".txt", "Text"},
-        {".md", "Markdown"},
-
-        // 代码
-        {".cpp", "C++"},
-        {".py", "Python"},
-        {".js", "JavaScript"},
-        {".java", "Java"},
-
-        // 图像
-        {".jpg", "JPEG Image"},
-        {".png", "PNG Image"},
-
-        // 压缩
-        {".zip", "ZIP Archive"},
-        {".tar", "TAR Archive"},
-        {".7z", "7-Zip Archive"},
-
-        // 数据库
-        {".db", "Database"},
-        {".sqlite", "SQLite Database"},
-        {".mdb", "Access Database"},
-    };
-
-    auto it = typeMap.find(ext);
-    if (it != typeMap.end()) {
-        return it->second;
-    }
-
-    // 检测二进制文件
-    std::ifstream file(path, std::ios::binary);
-    if (file) {
-        char buffer[512];
-        file.read(buffer, sizeof(buffer));
-
-        // 检查 null 字节
-        for (size_t i = 0; i < file.gcount(); ++i) {
-            if (buffer[i] == '\0') {
-                return "Binary";
-            }
-        }
-    }
-
-    return ext.empty() ? "Unknown" : ext.substr(1) + " File";
-}
-```
-
-### 边界与限制
-
-**功能边界**：
-- ✅ 支持文本、PDF、Office 文档
-- ✅ 支持大文件分块分析
-- ✅ 支持批量并发处理
-- ❌ 不支持视频/音频直接分析（需提取内容）
-- ❌ 不支持加密文件分析
-
-**已知限制**：
-| 限制 | 影响 | 缓解方法 |
-|------|------|----------|
-| 上下文窗口 | 超大文件被截断 | 使用分块分析 |
-| UTF-8 验证 | 非UTF-8文件显示乱码 | 自动清理无效字节 |
-| 分析速度 | 依赖 LLM 响应时间 | 并发处理 |
-| Token 消耗 | 大文件消耗多 token | 智能截断 |
-
-**性能指标**：
-- **单文件分析**：~2-10 秒（取决于内容和模型）
-- **批量分析**：~4 个文件/秒（4 线程并发）
-- **Token 使用**：~1000-3000 tokens/文件
-
-## 3. 模块使用的库
-
-### 依赖库清单
-
-```cpp
-// 项目内部
-#include "LLMDataTypes.h"      // 数据结构
-#include "ModelRouter.h"       // 模型路由
-
-#include "core/Logger/Logger.h"           // 日志
-#include "core/ThreadPool/ThreadPool.h" // 线程池
-#include "analyzers/PDFAnalyzer/PDFAnalyzer.h"   // PDF
-#include "analyzers/OfficeAnalyzer/OfficeAnalyzer.h" // Office
-
-// 标准库
-#include <filesystem>
-#include <fstream>
-#include <sstream>
-#include <chrono>
-#include <algorithm>
-#include <regex>
-#include <set>
-```
-
-### 架构图
-
-```mermaid
-classDiagram
-    class FileAnalyzer {
-        -shared_ptr~ModelRouter~ router_
-        -string summaryPrompt_
-        -string descriptionPrompt_
-        -string keywordPrompt_
-        -ProgressCallback progressCallback_
-        -ChunkConfig chunkConfig_
-        +analyzeFile(filePath, maxLength)
-        +analyzeBatch(request)
-        +summarize(content, context)
-        +generateDescription(filePath)
-        +extractKeywords(content, maxKeywords)
-        +analyzeFileChunked(filePath)
-        -readFileContent(path, maxBytes)
-        -detectFileType(path)
-        -parseKeywords(llmResponse)
-        -splitIntoChunks(content)
-        -truncateContent(content, maxLength)
-        -findSmartBoundary(content, targetPos)
-        -mergeChunkResults(results, filePath)
-    }
-
-    class ModelRouter {
-        +chat(messages, capability)
-        +getLastUsedModel()
-    }
-
-    class ThreadPool {
-        +enqueue(func, args...)
-    }
-
-    FileAnalyzer --> ModelRouter: 使用
-    FileAnalyzer --> ThreadPool: 使用
-```
-
-### 分析流程图
-
-```mermaid
-flowchart TD
-    A[analyzeFile] --> B{文件存在?}
-    B -->|否| C[返回错误]
-    B -->|是| D[检测文件类型]
-    D --> E[读取文件内容]
-
-    E --> F{是特殊格式?}
-    F -->|PDF| G[PDFAnalyzer 提取文本]
-    F -->|Office| H[OfficeAnalyzer 提取]
-    F -->|其他| I[直接读取]
-
-    G --> J[合并到通用内容]
-    H --> J
-    I --> J
-
-    J --> K{内容超长?}
-    K -->|否| L[单次分析]
-    K -->|是| M[分块分析]
-
-    M --> N[splitIntoChunks]
-    N --> O[循环分析每块]
-    O --> P[mergeChunkResults]
-
-    L --> P
-    P --> Q[解析响应]
-    Q --> R[返回结果]
-```
-
-## 4. 模块实现方式
-
-### 核心类
-
-```cpp
-class FileAnalyzer {
-public:
-    explicit FileAnalyzer(std::shared_ptr<ModelRouter> router);
-    ~FileAnalyzer();
-
-    // 分析方法
-    AnalysisResult analyzeFile(const std::string& filePath,
-                              size_t maxContentLength = 10000);
-    std::vector<AnalysisResult> analyzeBatch(const BatchAnalysisRequest& request);
-    AnalysisResult analyzeFileChunked(const std::string& filePath);
-
-    // 辅助方法
-    std::string summarize(const std::string& content,
-                         const std::string& context = "");
-    std::string generateDescription(const std::string& filePath);
-    std::vector<std::string> extractKeywords(const std::string& content,
-                                             size_t maxKeywords = 10);
-
-    // 配置
-    void setSummaryPrompt(const std::string& prompt);
-    void setDescriptionPrompt(const std::string& prompt);
-    void setKeywordPrompt(const std::string& prompt);
-    void setChunkConfig(const ChunkConfig& config);
-    void setProgressCallback(ProgressCallback callback);
-
-    // 上下文管理
-    static size_t estimateTokens(const std::string& content, double charsPerToken = 4.0);
-    size_t calculateMaxContentLength() const;
-    std::string truncateContent(const std::string& content, size_t maxLength) const;
-
-private:
-    std::shared_ptr<ModelRouter> router_;
-    std::string summaryPrompt_;
-    std::string descriptionPrompt_;
-    std::string keywordPrompt_;
-    ProgressCallback progressCallback_;
-    ChunkConfig chunkConfig_;
-
-    // 静态正则表达式
-    static const std::regex SUMMARY_REGEX;
-    static const std::regex DESCRIPTION_REGEX;
-    static const std::regex KEYWORD_REGEX;
-
-    // 辅助方法
-    std::string readFileContent(const std::string& path, size_t maxBytes);
-    std::string detectFileType(const std::string& path);
-    std::vector<std::string> parseKeywords(const std::string& llmResponse);
-    void initDefaultPrompts();
-    std::vector<std::string> splitIntoChunks(const std::string& content) const;
-    size_t findSmartBoundary(const std::string& content, size_t targetPos) const;
-    AnalysisResult mergeChunkResults(const std::vector<AnalysisResult>& results,
-                                   const std::string& filePath) const;
-};
-```
-
-### 响应解析
-
-**预编译正则**（性能优化）：
-```cpp
-// 静态成员初始化
-const std::regex FileAnalyzer::SUMMARY_REGEX(
-    "SUMMARY:\\s*(.+?)(?=DESCRIPTION:|$)", std::regex::icase
-);
-const std::regex FileAnalyzer::DESCRIPTION_REGEX(
-    "DESCRIPTION:\\s*(.+?)(?=KEYWORDS:|$)", std::regex::icase
-);
-const std::regex FileAnalyzer::KEYWORD_REGEX(
-    "KEYWORDS:\\s*(.+)$", std::regex::icase
-);
-```
-
-**解析逻辑**：
-```cpp
-// 解析摘要
-std::smatch summaryMatch;
-if (std::regex_search(responseText, summaryMatch, SUMMARY_REGEX)) {
-    result.summary = summaryMatch[1].str();
-    result.summary.erase(0, result.summary.find_first_not_of(" \t\n\r"));
-    result.summary.erase(result.summary.find_last_not_of(" \t\n\r") + 1);
-}
-
-// 解析描述
-std::smatch descMatch;
-if (std::regex_search(responseText, descMatch, DESCRIPTION_REGEX)) {
-    result.description = descMatch[1].str();
-    // Trim whitespace...
-}
-
-// 解析关键词
-std::smatch keywordMatch;
-if (std::regex_search(responseText, keywordMatch, KEYWORD_REGEX)) {
-    result.keywords = parseKeywords(keywordMatch[1].str());
-}
-
-// 如果解析失败，使用整个响应
-if (result.summary.empty() && result.description.empty()) {
-    result.summary = responseText;
-    result.description = responseText;
-}
-```
-
-**关键词解析**：
-```cpp
-std::vector<std::string> FileAnalyzer::parseKeywords(const std::string& llmResponse) {
-    std::vector<std::string> keywords;
-    std::istringstream iss(llmResponse);
-    std::string keyword;
-
-    while (std::getline(iss, keyword, ',')) {
-        // Trim whitespace
-        keyword.erase(0, keyword.find_first_not_of(" \t\n\r"));
-        keyword.erase(keyword.find_last_not_of(" \t\n\r") + 1);
-
-        // Remove common prefixes
-        if (!keyword.empty() && (keyword[0] == '-' || keyword[0] == '*')) {
-            keyword = keyword.substr(1);
-            keyword.erase(0, keyword.find_first_not_of(" "));
-        }
-
-        if (!keyword.empty() && keyword.length() > 1) {
-            keywords.push_back(keyword);
-        }
-    }
-
-    return keywords;
-}
-```
-
-### 文件读取策略
-
-**类型感知读取**：
-```cpp
-std::string ext = fs::path(filePath).extension().string();
-std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-
-if (ext == ".pdf") {
-    // 使用 PDFAnalyzer
-    LOG_DEBUG("Using PDFAnalyzer");
-    content = forensics::analyzers::PDFAnalyzer::extractText(filePath);
-} else if (ext == ".docx" || ext == ".doc") {
-    // 使用 OfficeAnalyzer
-    LOG_DEBUG("Using OfficeAnalyzer");
-    OfficeAnalyzer officeAnalyzer;
-    content = officeAnalyzer.analyze(filePath);
-} else if (result.fileType == "Archive" || result.fileType == "Binary") {
-    // 跳过二进制内容
-    LOG_DEBUG("Binary/Archive detected. Skipping content read.");
-    content = "[Binary/Archive File Content Omitted. Analysis based on metadata only.]";
-} else {
-    // 直接读取
-    LOG_DEBUG("Using Raw Read");
-    content = readFileContent(filePath, maxContentLength);
-}
-```
-
-## 5. API 调用
-
-### C++ API
-
-#### 与 HTTPServer 集成
-
-```cpp
-// 在 HTTP 路由中使用 FileAnalyzer
-class LLMAnalysisService {
-public:
-    LLMAnalysisService() {
-        // 创建路由器并注册模型
-        router_ = std::make_shared<ModelRouter>();
-
-        // 配置模型...
-
-        analyzer_ = std::make_unique<FileAnalyzer>(router_);
-    }
-
-    AnalysisResult analyzeTaskFile(const std::string& taskId,
-                                   const std::string& filePath) {
-        LOG_INFO("Analyzing file: " + filePath);
-
-        // 分析文件
-        auto result = analyzer_->analyzeFile(filePath, 10000);
-
-        if (result.success) {
-            // 存储到数据库
-            persistToDatabase(taskId, filePath, result);
-            LOG_INFO("Analysis completed: " + result.summary);
-        } else {
-            LOG_ERROR("Analysis failed: " + result.errorMessage);
-        }
-
-        return result;
-    }
-
-private:
-    std::shared_ptr<ModelRouter> router_;
-    std::unique_ptr<FileAnalyzer> analyzer_;
-
-    void persistToDatabase(const std::string& taskId,
-                          const std::string& filePath,
-                          const AnalysisResult& result);
-};
-```
-
-#### 自定义提示词
-
-```cpp
-FileAnalyzer analyzer(router);
-
-// 设置自定义摘要提示词
-analyzer.setSummaryPrompt(
-    "You are a forensic analyst. Provide a technical summary "
-    "focusing on evidentiary value, artifacts, and investigative leads."
-);
-
-// 设置自定义描述提示词
-analyzer.setDescriptionPrompt(
-    "Generate a forensic file description including:\n"
-    "- File type and format\n"
-    "- Potential evidentiary value\n"
-    "- Investigation recommendations\n"
-    "Be concise and technical."
-);
-
-// 设置自定义关键词提示词
-analyzer.setKeywordPrompt(
-    "Extract forensic investigation keywords including:\n"
-    "- File types and formats\n"
-    "- Tools and software mentioned\n"
-    "- Investigative terms\n"
-    "- Technical keywords\n"
-    "Return comma-separated values only."
-);
-
-AnalysisResult result = analyzer.analyzeFile("/evidence/suspect.doc");
-```
-
-### 进度监控
-
-```cpp
-FileAnalyzer analyzer(router);
-
-// 设置进度回调
-analyzer.setProgressCallback([](size_t current, size_t total, const std::string& file) {
-    double progress = 100.0 * current / total;
-    std::cout << "[" << progress << "%] " << file << std::endl;
-
-    // 更新 UI 或日志
-    updateProgressUI(progress, file);
-});
-
-BatchAnalysisRequest request;
-request.filePaths = getAllFilePaths();  // 获取所有文件路径
-request.maxContentLength = 5000;
-
-auto start = std::chrono::high_resolution_clock::now();
-auto results = analyzer.analyzeBatch(request);
-auto end = std::chrono::high_resolution_clock::now();
-
-double duration = std::chrono::duration<double>(end - start).count();
-std::cout << "Analyzed " << results.size() << " files in "
-          << duration << " seconds" << std::endl;
-```
-
-### 大文件处理
-
-```cpp
-FileAnalyzer analyzer(router);
-
-// 配置分块参数
-ChunkConfig config;
-config.chunkSize = 3000;        // 每块 3000 字符
-config.overlapSize = 300;       // 重叠 300 字符
-config.maxChunks = 10;          // 最多 10 块
-config.smartBoundary = true;    // 智能边界
-
-analyzer.setChunkConfig(config);
-
-// 分析大文件
-AnalysisResult result = analyzer.analyzeFileChunked("/very/large/file.txt");
-
-std::cout << "Analyzed in chunks" << std::endl;
-std::cout << "Total tokens: " << result.tokensUsed << std::endl;
-std::cout << "Summary: " << result.summary << std::endl;
-std::cout << "Keywords: " << result.keywords.size() << " unique" << std::endl;
-```
-
-## 6. 二次开发
-
-### 添加新的文件类型支持
-
-```cpp
-class FileAnalyzer {
-private:
-    std::string detectFileType(const std::string& path) {
-        // ... 现有代码 ...
-
-        // 添加新的文件类型
-        static const std::map<std::string, std::string> extendedTypeMap = {
-            // ... 现有映射 ...
-
-            // 新增：电子邮件
-            {".eml", "Email Message"},
-            {".msg", "Outlook Email"},
-            {".pst", "Outlook PST"},
-
-            // 新增：聊天记录
-            {".whatsapp", "WhatsApp Chat"},
-            {".telegram", "Telegram Chat"},
-
-            // 新增：容器
-            {".dockerfile", "Dockerfile"},
-            {".yaml", "YAML Config"},
-            {".toml", "TOML Config"},
-        };
-
-        auto it = extendedTypeMap.find(ext);
-        if (it != extendedTypeMap.end()) {
-            return it->second;
-        }
-
-        // ... 现有二进制检测 ...
-    }
-};
-```
-
-### 添加并行提取器
-
-```cpp
-class EnhancedFileAnalyzer : public FileAnalyzer {
-public:
-    EnhancedFileAnalyzer(std::shared_ptr<ModelRouter> router)
-        : FileAnalyzer(router), extractPool_(4) {}
-
-    AnalysisResult analyzeFile(const std::string& filePath,
-                              size_t maxContentLength = 10000) override {
-        // 并行提取内容和类型
-        auto typeFuture = extractPool_.enqueue([this, filePath]() {
-            return detectFileType(filePath);
-        });
-
-        auto contentFuture = extractPool_.enqueue([this, filePath, maxContentLength]() {
-            return readFileContent(filePath, maxContentLength);
-        });
-
-        // 等待两个任务完成
-        std::string fileType = typeFuture.get();
-        std::string content = contentFuture.get();
-
-        // 继续分析...
-        return FileAnalyzer::analyzeFile(filePath, maxContentLength);
-    }
-
-private:
-    ThreadPool extractPool_;
-};
-```
-
-### 添加分析结果缓存
-
-```cpp
-class CachedFileAnalyzer : public FileAnalyzer {
-public:
-    CachedFileAnalyzer(std::shared_ptr<ModelRouter> router)
-        : FileAnalyzer(router), cacheSize_(100) {}
-
-    AnalysisResult analyzeFile(const std::string& filePath,
-                              size_t maxContentLength = 10000) override {
-        // 生成缓存键
-        std::string cacheKey = generateCacheKey(filePath, maxContentLength);
-
-        // 检查缓存
-        auto it = cache_.find(cacheKey);
-        if (it != cache_.end()) {
-            auto age = std::chrono::system_clock::now() - it->second.timestamp;
-            if (age < std::chrono::hours(24)) {  // 24 小时有效
-                LOG_DEBUG("Cache hit for: " + filePath);
-                return it->second.result;
-            }
-        }
-
-        // 调用父类方法
-        AnalysisResult result = FileAnalyzer::analyzeFile(filePath, maxContentLength);
-
-        // 缓存成功的分析
-        if (result.success) {
-            cache_[cacheKey] = {
-                result,
-                std::chrono::system_clock::now()
-            };
-        }
-
-        return result;
-    }
-
-    void clearCache() {
-        cache_.clear();
-    }
-
-private:
-    struct CacheEntry {
-        AnalysisResult result;
-        std::chrono::system_clock::time_point timestamp;
-    };
-
-    std::string generateCacheKey(const std::string& filePath, size_t maxLength) {
-        return filePath + ":" + std::to_string(maxLength);
-    }
-
-    size_t cacheSize_;
-    std::unordered_map<std::string, CacheEntry> cache_;
-};
-```
-
-## 7. 其他
-
-### 测试
-
-```cpp
-#include <gtest/gtest.h>
-
-class FileAnalyzerTest : public ::testing::Test {
-protected:
-    void SetUp() override {
-        // 创建测试路由器
-        router_ = std::make_shared<ModelRouter>();
-        // 配置测试模型...
-        analyzer_ = std::make_unique<FileAnalyzer>(router_);
-    }
-
-    std::shared_ptr<ModelRouter> router_;
-    std::unique_ptr<FileAnalyzer> analyzer_;
-};
-
-TEST_F(FileAnalyzerTest, AnalyzeTextFile) {
-    std::string testFile = createTestFile("test.txt", "Test content");
-
-    auto result = analyzer_->analyzeFile(testFile);
-
-    EXPECT_TRUE(result.success);
-    EXPECT_FALSE(result.summary.empty());
-    EXPECT_FALSE(result.keywords.empty());
-}
-
-TEST_F(FileAnalyzerTest, BatchAnalysis) {
-    std::vector<std::string> files = {
-        createTestFile("file1.txt", "Content 1"),
-        createTestFile("file2.txt", "Content 2"),
-        createTestFile("file3.txt", "Content 3"),
-    };
-
-    BatchAnalysisRequest request;
-    request.filePaths = files;
-    request.maxContentLength = 1000;
-
-    auto results = analyzer_->analyzeBatch(request);
-
-    EXPECT_EQ(results.size(), 3);
-    for (const auto& result : results) {
-        EXPECT_TRUE(result.success);
-    }
-}
-
-TEST_F(FileAnalyzerTest, ChunkedAnalysis) {
-    // 创建大文件（> context window）
-    std::string largeContent(10000, 'A');  // 10000 字符
-    std::string largeFile = createTestFile("large.txt", largeContent);
-
-    auto result = analyzer_->analyzeFileChunked(largeFile);
-
-    EXPECT_TRUE(result.success);
-    EXPECT_FALSE(result.summary.empty());
-}
-```
-
-### 配置
-
-**环境变量**：
-```env
-# LLM 分析配置
-LLM_BASE_URL=http://localhost:1234
-LLM_MODEL=llama3-8b-instruct
-LLM_MAX_TOKENS=2048
-LLM_TEMPERATURE=0.7
-
-# 文件分析配置
-FILE_ANALYSIS_MAX_CONTENT=10000
-FILE_ANALYSIS_MAX_KEYWORDS=10
-FILE_ANALYSIS_MAX_CONTENT_LIMIT=50000
-
-# 性能配置
-THREAD_POOL_SIZE=4
-MAX_BATCH_SIZE=100
-```
-
-### 故障排查
-
-| 问题 | 可能原因 | 解决方法 |
-|------|----------|----------|
-| 分析失败 | LLM 服务未运行 | 检查 LM Studio 或 API 端点 |
-| 乱码输出 | 非 UTF-8 文件 | 文件会自动清理，但可能不完美 |
-| 关键词为空 | LLM 格式错误 | 检查响应格式，调整提示词 |
-| 速度慢 | 单线程处理 | 增加 `THREAD_POOL_SIZE` |
-| Token 超限 | 文件太大 | 使用 `analyzeFileChunked` |
-
-### 最佳实践
-
-1. **使用合适的 maxContentLength**：
-   - 短文件：5000-10000
-   - 长文档：2000-5000
-   - 超长文件：使用 `analyzeFileChunked`
-
-2. **批量处理时设置回调**：
-   ```cpp
-   analyzer.setProgressCallback([](size_t c, size_t t, const std::string& f) {
-       LOG_INFO(fmt::format("[{}/{}] {}", c, t, f));
-   });
-   ```
-
-3. **针对文件类型优化提示词**：
-   ```cpp
-   if (fileType == "PDF") {
-       analyzer.setSummaryPrompt("Analyze this PDF document...");
-   } else if (fileType == "C++") {
-       analyzer.setSummaryPrompt("Analyze this C++ source code...");
-   }
-   ```
-
-4. **监控 Token 使用**：
-   ```cpp
-   int totalTokens = 0;
-   for (const auto& result : results) {
-       totalTokens += result.tokensUsed;
-       if (totalTokens > BUDGET) {
-           LOG_WARNING("Token budget exceeded");
-           break;
-       }
-   }
-   ```
-
-### 相关模块
-
-- **[ModelRouter](./ModelRouter.md)** - 多模型路由器
-- **[LLMClient](./LLMClient.md)** - LLM API 客户端
-- **[MCPIntegration](./MCPIntegration.md)** - MCP 协议集成
-
-### 参考资源
-
-- **LM Studio 文档**: https://lmstudio.ai/docs
-- **Context Window 最佳实践**: https://platform.openai.com/docs/guides/token-counting
-- **项目 Wiki**: [LLM 集成指南](../../wiki/LLM-Integration.md)
-
-### 变更历史
-
-| 版本 | 日期 | 变更内容 | 作者 |
-|------|------|----------|------|
-| 1.0.0 | 2026-05-19 | 初始版本 | ymj68520 |
-
----
-
-**最后更新**: 2026-05-19
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（解释式重写）

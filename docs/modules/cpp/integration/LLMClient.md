@@ -1,1161 +1,130 @@
-# LLMClient 模块文档
+# LLMClient（src/integration/LLMIntegration/LLMClient.{h,cpp}）
 
-## 1. 模块背景
+> **一句话**：一个极薄的 OpenAI 兼容 HTTP 客户端——把聊天消息拼成 `/v1/chat/completions` 请求、带上超时与重试发出去、再把 JSON 响应解析回 C++ 结构体，是整个系统访问大模型的唯一出口。
 
-### 业务背景
+## 1. 为什么有这个模块
 
-在数字取证分析系统中，需要与各种大语言模型（LLM）进行交互：
+TraceLens 的大量分析环节（文件摘要、事件聚类、DLL 威胁研判、平台取证报告）都需要"把文本丢给大模型拿结论"。如果每个分析器都自己拼 HTTP、自己处理超时和 JSON，会出现：超时口径不一、重试逻辑重复、换一个模型服务商就要改十处代码。
 
-**核心需求**：
-- **统一接口**：兼容不同 LLM 提供商的 API
-- **本地模型支持**：支持 LM Studio、Ollama 等本地推理
-- **云 API 集成**：支持 OpenAI、Anthropic 等云服务
-- **功能调用**：支持 Tool Calling 进行扩展功能
+LLMClient 把这些问题收敛到一个类里。它只有约 440 行实现，没有会话管理、没有流式输出、没有 token 计数器——刻意的"薄"。复杂的路由（多模型、故障转移）交给上层的 ModelRouter，内容预处理交给 FileTextProcessor。
 
-**解决挑战**：
-- **API 差异**：不同提供商的 API 格式略有差异
-- **网络可靠性**：处理超时、连接失败等网络问题
-- **重试策略**：临时故障的自动恢复
-- **视觉模型**：支持图像/视频分析的多模态请求
+**"OpenAI 兼容"意味着什么**：LLMClient 不绑定任何厂商 SDK，只实现 OpenAI 定义的两个 HTTP 约定——
 
-### 技术背景
+- `POST /v1/chat/completions`：请求体是 `{model, messages[], max_tokens, temperature, tools?}`，响应是 `{choices[0].message.content, tool_calls?}`；
+- `GET /v1/models`：返回服务端可用模型列表。
 
-**OpenAI 兼容 API 标准**：
-- 基于 OpenAI Chat Completions API 格式
-- 支持的本地服务：
-  - **LM Studio**：http://localhost:1234
-  - **Ollama**：http://localhost:11434
-  - **vLLM**：http://localhost:8000
-  - **text-generation-webui**：http://localhost:5000
+只要一个推理服务实现了这两个端点，就能接入。实践中包括：LM Studio（本项目默认，`.env` 中 `LLM_BASE_URL=http://192.168.31.170:1234`）、Ollama 与 vLLM 的 OpenAI 兼容层、以及任何云厂商的兼容网关——此时把 `LLM_API_KEY` 填上即可，客户端会附加 `Authorization: Bearer <key>` 头（本地服务忽略该头也无所谓，见 `LLMClient.cpp:29-35`）。
 
-**httplib 库选择**：
-- 轻量级 C++ HTTP 客户端
-- 仅头文件包含，易于集成
-- 支持 SSL/TLS 加密连接
-- 内置连接池和超时控制
+## 2. 在系统中的位置
 
-## 2. 模块功能
+```
+LLMAnalysisService / Windows/Linux/AndroidLLMAnalysisService / EventClusterAnalyzer
+        │  （各服务自建一个 ModelRouter，注册模型）
+        ▼
+ModelRouter ──每个注册模型持有一个──► LLMClient ──HTTP──► LM Studio / vLLM / 云端兼容端点
+        ▲
+DLLAnalyzerLLMService、FileAnalyzer、MCPIntegration（经由 router 间接使用）
+```
 
-### 核心功能
+- **谁创建它**：几乎只有 `ModelRouter::addModel()`（`ModelRouter.cpp:21`）会构造 LLMClient——每个注册模型一个实例。业务代码不直接持有 LLMClient。
+- **它调用谁**：cpp-httplib（取自第三方库 `libs/cpp-mcp/common/httplib.h`，CMake 在 `CMakeLists.txt:18` 打开 `CPPHTTPLIB_OPENSSL_SUPPORT`，因此 https 端点也可用）和 nlohmann::json。
+- **配置从哪来**：`.env` → `ConfigManager`。关键键与默认值（`src/core/ConfigManager/ConfigManager.cpp:86-90`）：`LLM_BASE_URL`（默认 `http://192.168.31.170:1234`）、`LLM_ENDPOINT`（默认 `/v1/chat/completions`）、`LLM_API_KEY`、`LLM_TIMEOUT_SECONDS`（默认 120）、`LLM_MAX_RETRIES`（默认 3）。
 
-#### 1. 连接管理
+## 3. 核心概念与设计
 
-**初始化 HTTP 客户端**：
+### 3.1 配置结构 LLMConfig
+
+定义在 `LLMDataTypes.h:14-30`。除了连接四要素（baseUrl/endpoint/apiKey/model），还带着**上下文窗口管理**字段：`contextLength`（默认 4096 token）、`reservedTokens`、`charsPerToken`（默认 4.0，中文约 1.5）、`enableChunkedAnalysis`/`maxChunks`。这些字段 LLMClient 自己不用，是留给 FileAnalyzer 做截断/分块预算的（见 FileAnalyzer.md）。一个结构体同时服务两层，省掉了在层间传递配置的样板代码。
+
+注意默认值的分层：`LLMDataTypes.h:21` 里 `timeoutSeconds = 60` 只是**结构体缺省值**；生产路径上所有服务都通过 `ConfigManager::getTextModelConfig()`（`ConfigManager.cpp:105-117`）构造配置，实际生效的是 `.env` 的 120 秒。
+
+### 3.2 URL 拆分：为什么不能把 baseUrl 直接喂给 httplib
+
+httplib 的字符串构造函数只接受 `scheme://host:port`；URL 里一旦带路径（例如反向代理 `https://gw.corp/step_plan`），其内部正则解析失败，会被静默当成 80 端口的主机名，表现为莫名的 "Could not establish connection"。因此 `initHttpClient()`（`LLMClient.cpp:101-130`）先把 baseUrl 手工拆成"可连接端点 + 路径前缀"：
+
 ```cpp
-void LLMClient::initHttpClient() {
-    std::lock_guard<std::mutex> lock(mutex_);
+auto pathPos = baseUrl.find('/', searchFrom);   // 跳过 scheme:// 之后找第一个 '/'
+if (pathPos != std::string::npos) {
+    basePath_ = baseUrl.substr(pathPos);       // 例："/step_plan"
+    schemeHostPort = baseUrl.substr(0, pathPos); // 例："https://gw.corp"
+}
+httpClient_ = std::make_unique<httplib::Client>(schemeHostPort);
+```
 
-    // 创建 httplib 客户端
-    httpClient_ = std::make_unique<httplib::Client>(config_.baseUrl);
+前缀 `basePath_` 存在成员里（`LLMClient.h:103-106`），之后每个请求路径都由 `joinEndpoint()`（`LLMClient.cpp:19-26`）拼接。该函数还处理一个边角：若前缀本身以 `/v1` 结尾，而端点又是 `/v1/chat/completions`，会去掉重复的 `/v1`，避免拼出 `/v1/v1/...`。
 
-    // 配置超时
-    httpClient_->set_connection_timeout(config_.timeoutSeconds);
-    httpClient_->set_read_timeout(config_.timeoutSeconds);
-    httpClient_->set_write_timeout(config_.timeoutSeconds);
+### 3.3 请求构造与视觉多模态
 
-    ready_ = true;
+`buildRequestBody()`（`LLMClient.cpp:283-363`）把 `ChatMessage` 数组序列化为 OpenAI 格式。有一个关键分支：当消息带图片（`msg.hasImages()`，图片由 `ImageContent` 结构承载，支持 base64 或 URL，`LLMDataTypes.h:69-77`）时，`content` 字段不再是字符串，而是 `[{type:"text"},{type:"image_url"}]` 数组——这正是 OpenAI 视觉模型的约定。base64 图片会被包装成 `data:image/jpeg;base64,...` 数据 URL（`LLMClient.cpp:320-323`）。也就是说，发文本还是发图，对调用方只是"消息里塞没塞 ImageContent"的差别。
+
+`toolsJson` 参数是可选的工具定义 JSON 字符串；非空时原样解析塞进 `tools` 字段并设 `tool_choice: "auto"`（`LLMClient.cpp:353-360`），解析失败则静默跳过（请求照发，只是不带工具）。
+
+### 3.4 响应解析：为推理模型做的三件事
+
+`parseResponse()`（`LLMClient.cpp:365-437`）除了提取 `choices[0].message.content` 和 `tool_calls`，还处理三类真实世界的问题：
+
+1. **reasoning_content 回退**（`LLMClient.cpp:384-388`）：qwen3 等推理模型可能把 token 预算耗在思维链上，`content` 为空、答案在 `reasoning_content` 里。客户端检测到空 content 时回退取后者，避免结果被静默存成空串。
+2. **剥离 `<think>` 块**（`LLMClient.cpp:392-403`）：有些模型把思维链直接内联在 content 里，解析时循环删除 `<think>...</think>` 片段，保证入库的描述干净。
+3. **tool_calls.arguments 兼容**（`LLMClient.cpp:412-415`）：规范里 arguments 是字符串化的 JSON，但有的服务端返回对象，两种形态都接受。
+
+### 3.5 UTF-8 清洗：取证数据的现实
+
+取证样本里的 wtmp、Cp1252 文本、二进制日志常常混有非法 UTF-8 字节，而 nlohmann::json 的 `dump()` 遇到这种输入会抛 `type_error.316`，历史上曾让整个分析阶段中断。`sanitizeUtf8()`（`LLMClient.cpp:41-88`）在序列化前逐字节校验 UTF-8 序列（含过长编码、代理区、超过 U+10FFFF 的拒绝），把非法序列替换为 `?`。这是一个"宁可丢一个字节，不可炸掉任务"的取舍。
+
+## 4. 工作流程走读
+
+以一次最典型的调用为例：`FileAnalyzer` 想让模型总结一个文件。
+
+1. **构造**：服务初始化时 `ModelRouter::addModel()` 用 `ConfigManager` 给出的 LLMConfig 构造 LLMClient，构造函数转调 `initHttpClient()`（`LLMClient.cpp:90-97, 101-130`），完成 URL 拆分、创建 httplib::Client、设置连接/读/写三个超时（都用同一个 `timeoutSeconds`）。
+2. **发起对话**：`chat(prompt, systemPrompt)` 便捷重载（`LLMClient.cpp:208-215`）把 system+user 两条消息组装后转给主 `chat()`。
+3. **构造请求体**：`buildRequestBody()` 填入 model/max_tokens/temperature/messages（以及可选的图片数组和 tools），全部文本先过 `sanitizeUtf8`。
+4. **发送与重试**（`LLMClient.cpp:171-202`）：
+
+```cpp
+int retries = 0;
+while (retries <= config_.maxRetries) {          // maxRetries=3 → 最多 4 次尝试
+    auto res = httpClient_->Post(joinEndpoint(basePath_, config_.endpoint), ...);
+    if (!res) { /* 网络层失败：计入重试 */ }
+    if (res->status == 200) return parseResponse(res->body);
+    lastError_ = "Server error: " + std::to_string(res->status) + " - " + res->body;
+    retries++;
+    if (retries <= config_.maxRetries)
+        std::this_thread::sleep_for(std::chrono::milliseconds(500 * retries)); // 线性退避
 }
 ```
 
-**配置选项**：
-```cpp
-struct LLMConfig {
-    std::string baseUrl = "http://localhost:1234";  // LM Studio 默认
-    std::string endpoint = "/v1/chat/completions";
-    std::string apiKey = "";                         // 可选，本地模型通常不需要
-    std::string model = "";                           // 模型名称，空则自动选择
-    int maxTokens = 2048;                             // 最大生成 token 数
-    double temperature = 0.7;                         // 温度参数（0-2）
-    int timeoutSeconds = 60;                          // 请求超时（秒）
-    int maxRetries = 3;                               // 最大重试次数
-};
-```
-
-#### 2. 聊天完成 API
-
-**基础聊天**：
-```cpp
-LLMClient client(config);
-LLMResponse response = client.chat("What is digital forensics?");
-
-if (response.success) {
-    std::cout << "Answer: " << response.content << std::endl;
-    std::cout << "Tokens: " << response.promptTokens
-              << " + " << response.completionTokens << std::endl;
-} else {
-    std::cerr << "Error: " << response.errorMessage << std::endl;
-}
-```
-
-**带系统提示**：
-```cpp
-std::vector<ChatMessage> messages = {
-    {"system", "You are a digital forensics expert."},
-    {"user", "Explain the importance of hash values in forensics."}
-};
-
-LLMResponse response = client.chat(messages);
-```
-
-**简化接口**：
-```cpp
-// 自动构建消息数组
-LLMResponse response = client.chat(
-    "What is file carving?",  // 用户提示
-    "Keep it concise."         // 系统提示（可选）
-);
-```
-
-#### 3. Tool Calling 支持
-
-**启用工具调用**：
-```cpp
-// 工具定义（JSON 格式）
-std::string toolsJson = R"([
-    {
-        "type": "function",
-        "function": {
-            "name": "read_file",
-            "description": "Read the contents of a file",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "File path to read"
-                    }
-                },
-                "required": ["path"]
-            }
-        }
-    }
-])";
-
-LLMResponse response = client.chat(messages, toolsJson);
-
-// 检查是否有工具调用
-if (!response.toolCalls.empty()) {
-    for (const auto& tc : response.toolCalls) {
-        std::cout << "Tool: " << tc.name << std::endl;
-        std::cout << "Args: " << tc.arguments << std::endl;
-
-        // 执行工具并返回结果
-        std::string result = executeTool(tc.name, tc.arguments);
-        // 将结果发送回 LLM
-    }
-}
-```
-
-#### 4. 视觉模型支持
-
-**图像分析请求**：
-```cpp
-// 创建图像内容
-ImageContent image;
-image.base64Data = base64EncodedImageData;
-image.mimeType = "image/jpeg";
-image.detail = "high";  // "low", "high", or "auto"
-
-// 创建带图像的消息
-ChatMessage msg("user", "What's in this image?", image);
-
-std::vector<ChatMessage> messages = {
-    {"system", "You are a forensic image analyst."},
-    msg
-};
-
-LLMResponse response = client.chat(messages);
-```
-
-**多图像分析**：
-```cpp
-std::vector<ImageContent> images = {
-    createImageFromFile("evidence1.jpg"),
-    createImageFromFile("evidence2.jpg"),
-    createImageFromFile("evidence3.jpg"),
-};
-
-ChatMessage msg("user", "Compare these images and find similarities.");
-msg.images = images;  // 添加多张图像
-
-LLMResponse response = client.chat(messages);
-```
-
-#### 5. 模型管理
-
-**列出可用模型**：
-```cpp
-LLMClient client(config);
-std::vector<ModelInfo> models = client.listModels();
-
-for (const auto& model : models) {
-    std::cout << "Model: " << model.name << std::endl;
-    std::cout << "  Description: " << model.description << std::endl;
-    std::cout << "  Capabilities: ";
-    for (const auto& cap : model.capabilities) {
-        std::cout << static_cast<int>(cap) << " ";
-    }
-    std::cout << std::endl;
-}
-```
-
-**切换模型**：
-```cpp
-LLMClient client(config);
-
-// 切换到不同的模型
-client.setModel("qwen2.5:14b");
-LLMResponse response1 = client.chat("Hello");
-
-// 再次切换
-client.setModel("llama3-70b");
-LLMResponse response2 = client.chat("Hello");
-```
-
-**运行时配置更新**：
-```cpp
-LLMClient client(initialConfig);
-
-// 更新配置
-LLMConfig newConfig;
-newConfig.baseUrl = "http://new-server:8000";
-newConfig.temperature = 0.5;
-newConfig.maxTokens = 4096;
-
-client.setConfig(newConfig);
-```
-
-### 边界与限制
-
-**功能边界**：
-- ✅ 支持 OpenAI 兼容 API
-- ✅ 支持文本和视觉模型
-- ✅ 支持 Tool Calling
-- ❌ 不支持流式响应（Streaming）
-- ❌ 不支持嵌入式模型
-- ❌ 不支持微调（Fine-tuning）
-
-**已知限制**：
-| 限制 | 影响 | 缓解方法 |
-|------|------|----------|
-| 同步阻塞调用 | 高并发时阻塞 | 使用线程池包装 |
-| 无流式响应 | 无法实时显示生成 | 分块请求或切换到异步 |
-| 单连接 | 无连接复用 | httplib 内部处理 |
-| JSON 解析失败 | 响应格式错误会崩溃 | 异常处理 |
-
-**性能指标**：
-- **请求延迟**：~50-500ms（取决于模型）
-- **重试开销**：每次失败等待 1 秒
-- **内存占用**：最小（仅 HTTP 客户端）
-
-## 3. 模块使用的库
-
-### 依赖库清单
-
-```cpp
-// 项目内部
-#include "LLMDataTypes.h"    // 数据结构定义
-
-// 第三方库
-#include "httplib.h"         // HTTP 客户端 (cpp-mcp)
-#include "json.hpp"          // JSON 解析 (nlohmann/json)
-
-// 标准库
-#include <memory>            // std::unique_ptr
-#include <mutex>             // std::mutex
-#include <chrono>            // std::this_thread::sleep_for
-#include <sstream>           // std::ostringstream
-```
-
-**外部依赖**：
-- **httplib** (来自 cpp-mcp)：HTTP 客户端
-- **nlohmann/json**：JSON 序列化/反序列化
-
-### 架构图
-
-```mermaid
-classDiagram
-    class LLMClient {
-        -LLMConfig config_
-        -unique_ptr~httplib::Client~ httpClient_
-        -string lastError_
-        -mutex mutex_
-        -bool ready_
-        +chat(messages, tools)
-        +chat(prompt, systemPrompt)
-        +testConnection()
-        +listModels()
-        +setModel(model)
-        -buildRequestBody(messages, tools)
-        -parseResponse(responseBody)
-    }
-
-    class LLMConfig {
-        +string baseUrl
-        +string endpoint
-        +string apiKey
-        +string model
-        +int maxTokens
-        +double temperature
-        +int timeoutSeconds
-        +int maxRetries
-    }
-
-    class ChatMessage {
-        +string role
-        +string content
-        +vector~ImageContent~ images
-        +string name
-        +string toolCallId
-        +hasImages()
-    }
-
-    class ImageContent {
-        +string url
-        +string base64Data
-        +string mimeType
-        +string detail
-        +isBase64()
-        +isUrl()
-    }
-
-    class LLMResponse {
-        +string content
-        +vector~ToolCall~ toolCalls
-        +string finishReason
-        +int promptTokens
-        +int completionTokens
-        +bool success
-        +string errorMessage
-    }
-
-    LLMClient --> LLMConfig: 使用
-    LLMClient --> ChatMessage: 构建
-    LLMClient --> LLMResponse: 返回
-    ChatMessage --> ImageContent: 包含
-```
-
-### 请求/响应流程
-
-```mermaid
-sequenceDiagram
-    participant App as 应用代码
-    participant Client as LLMClient
-    participant HTTP as httplib::Client
-    participant LLM as LLM服务
-
-    App->>Client: chat(messages)
-    Client->>Client: buildRequestBody()
-    Client->>HTTP: POST /v1/chat/completions
-    HTTP->>LLM: HTTP Request
-    LLM-->>HTTP: JSON Response
-    HTTP-->>Client: Raw Response
-    Client->>Client: parseResponse()
-    Client-->>App: LLMResponse
-```
-
-## 4. 模块实现方式
-
-### 核心类
-
-```cpp
-class LLMClient {
-public:
-    // 构造函数
-    explicit LLMClient(const LLMConfig& config);
-    explicit LLMClient(const std::string& baseUrl);
-    ~LLMClient();
-
-    // 禁止复制
-    LLMClient(const LLMClient&) = delete;
-    LLMClient& operator=(const LLMClient&) = delete;
-
-    // 连接测试
-    bool testConnection();
-
-    // 聊天 API
-    LLMResponse chat(const std::vector<ChatMessage>& messages,
-                     const std::string& toolsJson = "");
-    LLMResponse chat(const std::string& prompt,
-                     const std::string& systemPrompt = "");
-
-    // 模型管理
-    std::vector<ModelInfo> listModels();
-    void setModel(const std::string& model);
-    std::string getModel() const;
-
-    // 配置
-    void setConfig(const LLMConfig& config);
-    const LLMConfig& getConfig() const;
-
-    // 状态查询
-    bool isReady() const;
-    std::string getLastError() const;
-
-private:
-    LLMConfig config_;
-    std::unique_ptr<httplib::Client> httpClient_;
-    std::string lastError_;
-    mutable std::mutex mutex_;
-    bool ready_ = false;
-
-    void initHttpClient();
-    std::string buildRequestBody(const std::vector<ChatMessage>& messages,
-                                  const std::string& toolsJson);
-    LLMResponse parseResponse(const std::string& responseBody);
-};
-```
-
-### 请求构建
-
-```cpp
-std::string LLMClient::buildRequestBody(
-    const std::vector<ChatMessage>& messages,
-    const std::string& toolsJson) {
-
-    nlohmann::json body;
-
-    // 设置模型
-    if (!config_.model.empty()) {
-        body["model"] = config_.model;
-    }
-
-    // 设置生成参数
-    body["max_tokens"] = config_.maxTokens;
-    body["temperature"] = config_.temperature;
-
-    // 构建消息数组
-    nlohmann::json msgArray = nlohmann::json::array();
-    for (const auto& msg : messages) {
-        nlohmann::json msgObj;
-        msgObj["role"] = msg.role;
-
-        // 检查是否包含图像（视觉格式）
-        if (msg.hasImages()) {
-            // 使用数组内容格式
-            nlohmann::json contentArray = nlohmann::json::array();
-
-            // 添加文本内容
-            if (!msg.content.empty()) {
-                contentArray.push_back({
-                    {"type", "text"},
-                    {"text", msg.content}
-                });
-            }
-
-            // 添加图像内容
-            for (const auto& img : msg.images) {
-                nlohmann::json imageObj;
-                imageObj["type"] = "image_url";
-
-                nlohmann::json imageUrl;
-                if (img.isBase64()) {
-                    // Base64 格式: data:image/jpeg;base64,{data}
-                    std::string mimeType = img.mimeType.empty()
-                        ? "image/jpeg" : img.mimeType;
-                    imageUrl["url"] = "data:" + mimeType + ";base64,"
-                        + img.base64Data;
-                } else if (img.isUrl()) {
-                    imageUrl["url"] = img.url;
-                }
-
-                if (!img.detail.empty()) {
-                    imageUrl["detail"] = img.detail;
-                }
-
-                imageObj["image_url"] = imageUrl;
-                contentArray.push_back(imageObj);
-            }
-
-            msgObj["content"] = contentArray;
-        } else {
-            // 标准文本格式
-            msgObj["content"] = msg.content;
-        }
-
-        msgArray.push_back(msgObj);
-    }
-    body["messages"] = msgArray;
-
-    // 添加工具定义（如果有）
-    if (!toolsJson.empty()) {
-        try {
-            body["tools"] = nlohmann::json::parse(toolsJson);
-            body["tool_choice"] = "auto";
-        } catch (...) {
-            // 无效的 tools JSON，跳过
-        }
-    }
-
-    return body.dump();
-}
-```
-
-### 响应解析
-
-```cpp
-LLMResponse LLMClient::parseResponse(const std::string& responseBody) {
-    LLMResponse response;
-
-    try {
-        auto jsonData = nlohmann::json::parse(responseBody);
-
-        // 提取消息内容
-        if (jsonData.contains("choices") && !jsonData["choices"].empty()) {
-            const auto& choice = jsonData["choices"][0];
-            const auto& message = choice["message"];
-
-            // 提取文本内容
-            if (message.contains("content") && !message["content"].is_null()) {
-                response.content = message["content"].get<std::string>();
-            }
-
-            // 提取工具调用
-            if (message.contains("tool_calls") && message["tool_calls"].is_array()) {
-                for (const auto& tc : message["tool_calls"]) {
-                    ToolCall toolCall;
-                    toolCall.id = tc.value("id", "");
-                    if (tc.contains("function")) {
-                        toolCall.name = tc["function"].value("name", "");
-                        if (tc["function"]["arguments"].is_string()) {
-                            toolCall.arguments = tc["function"]["arguments"].get<std::string>();
-                        } else {
-                            toolCall.arguments = tc["function"]["arguments"].dump();
-                        }
-                    }
-                    response.toolCalls.push_back(toolCall);
-                }
-            }
-
-            response.finishReason = choice.value("finish_reason", "");
-            response.success = true;
-        }
-
-        // 提取 token 使用量
-        if (jsonData.contains("usage")) {
-            response.promptTokens = jsonData["usage"].value("prompt_tokens", 0);
-            response.completionTokens = jsonData["usage"].value("completion_tokens", 0);
-        }
-
-    } catch (const std::exception& e) {
-        response.errorMessage = "Failed to parse response: "
-            + std::string(e.what());
-    }
-
-    return response;
-}
-```
-
-### 重试逻辑
-
-```cpp
-LLMResponse LLMClient::chat(const std::vector<ChatMessage>& messages,
-                            const std::string& toolsJson) {
-    LLMResponse response;
-
-    if (!ready_ || !httpClient_) {
-        response.errorMessage = "Client not ready";
-        return response;
-    }
-
-    std::string requestBody = buildRequestBody(messages, toolsJson);
-
-    int retries = 0;
-    while (retries <= config_.maxRetries) {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        auto res = httpClient_->Post(
-            config_.endpoint,
-            requestBody,
-            "application/json"
-        );
-
-        if (!res) {
-            lastError_ = "Request failed: " + httplib::to_string(res.error());
-            retries++;
-            if (retries <= config_.maxRetries) {
-                // 指数退避
-                std::this_thread::sleep_for(
-                    std::chrono::milliseconds(500 * retries)
-                );
-                continue;
-            }
-            response.errorMessage = lastError_;
-            return response;
-        }
-
-        if (res->status == 200) {
-            return parseResponse(res->body);
-        }
-
-        lastError_ = "Server error: " + std::to_string(res->status)
-            + " - " + res->body;
-        retries++;
-        if (retries <= config_.maxRetries) {
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(500 * retries)
-            );
-        }
-    }
-
-    response.errorMessage = lastError_;
-    return response;
-}
-```
-
-## 5. API 调用
-
-### C++ API
-
-#### 基础使用
-
-```cpp
-#include "integration/LLMIntegration/LLMClient.h"
-#include "integration/LLMIntegration/LLMDataTypes.h"
-
-using namespace forensics::llm;
-
-// 1. 创建客户端
-LLMConfig config;
-config.baseUrl = "http://localhost:1234";  // LM Studio
-config.model = "llama3-8b-instruct";
-config.temperature = 0.7;
-config.maxTokens = 2048;
-
-LLMClient client(config);
-
-// 2. 测试连接
-if (!client.testConnection()) {
-    std::cerr << "Connection failed: " << client.getLastError() << std::endl;
-    return;
-}
-
-// 3. 发送聊天请求
-LLMResponse response = client.chat(
-    "Explain the importance of chain of custody in digital forensics."
-);
-
-if (response.success) {
-    std::cout << "Response: " << response.content << std::endl;
-    std::cout << "Tokens used: " << response.promptTokens
-              << " + " << response.completionTokens << std::endl;
-} else {
-    std::cerr << "Error: " << response.errorMessage << std::endl;
-}
-```
-
-#### 配置不同服务
-
-**LM Studio**：
-```cpp
-LLMConfig config;
-config.baseUrl = "http://localhost:1234";
-config.endpoint = "/v1/chat/completions";
-// LM Studio 通常不需要 API key
-```
-
-**Ollama**：
-```cpp
-LLMConfig config;
-config.baseUrl = "http://localhost:11434";
-config.endpoint = "/v1/chat/completions";
-config.model = "llama3:8b";
-```
-
-**OpenAI API**：
-```cpp
-LLMConfig config;
-config.baseUrl = "https://api.openai.com";
-config.endpoint = "/v1/chat/completions";
-config.apiKey = "sk-...";  // 需要 API key
-config.model = "gpt-4-turbo";
-```
-
-**自定义推理服务器**：
-```cpp
-LLMConfig config;
-config.baseUrl = "http://my-server:8000";
-config.endpoint = "/api/v1/chat";
-config.timeoutSeconds = 120;  // 更长的超时
-config.maxRetries = 5;         // 更多重试
-```
-
-#### 多轮对话
-
-```cpp
-// 构建对话历史
-std::vector<ChatMessage> conversation = {
-    {"system", "You are a forensic analyst assistant."},
-    {"user", "What is the first step in digital forensics?"}
-};
-
-LLMResponse response1 = client.chat(conversation);
-std::cout << "Assistant: " << response1.content << std::endl;
-
-// 添加助手回复和新的用户问题
-conversation.push_back({"assistant", response1.content});
-conversation.push_back({"user", "What about live analysis?"});
-
-LLMResponse response2 = client.chat(conversation);
-std::cout << "Assistant: " << response2.content << std::endl;
-```
-
-#### 视觉模型调用
-
-```cpp
-// Base64 编码图像
-std::string base64Image = readAndBase64Encode("evidence.jpg");
-
-// 创建图像内容
-ImageContent image;
-image.base64Data = base64Image;
-image.mimeType = "image/jpeg";
-image.detail = "high";  // 高分辨率分析
-
-// 创建带图像的消息
-ChatMessage msg("user", "Analyze this forensic evidence image.", image);
-
-std::vector<ChatMessage> messages = {
-    {"system", "You are a forensic image analyst."},
-    msg
-};
-
-// 使用支持视觉的模型
-client.setModel("qwen-vl-plus");
-LLMResponse response = client.chat(messages);
-
-std::cout << "Analysis: " << response.content << std::endl;
-```
-
-### 与 ModelRouter 集成
-
-```cpp
-#include "integration/LLMIntegration/ModelRouter.h"
-
-// 创建路由器并注册多个模型
-auto router = std::make_shared<ModelRouter>();
-
-// 注册本地模型
-LLMConfig localConfig;
-localConfig.baseUrl = "http://localhost:1234";
-localConfig.model = "llama3-8b";
-
-ModelInfo localInfo;
-localInfo.name = "llama3-8b";
-localInfo.priority = 10;
-localInfo.capabilities = {
-    ModelCapability::TextGeneration,
-    ModelCapability::Summarization
-};
-
-router->addModel("local", localConfig, localInfo);
-
-// 注册 GPT-4（支持视觉）
-LLMConfig gpt4Config;
-gpt4Config.baseUrl = "https://api.openai.com";
-gpt4Config.apiKey = "sk-...";
-gpt4Config.model = "gpt-4";
-
-ModelInfo gpt4Info;
-gpt4Info.name = "gpt-4";
-gpt4Info.priority = 5;
-gpt4Info.supportsVision = true;
-gpt4Info.capabilities = {
-    ModelCapability::TextGeneration,
-    ModelCapability::Vision
-};
-
-router->addModel("gpt4", gpt4Config, gpt4Info);
-
-// 设置降级策略
-router->setStrategy(RoutingStrategy::Fallback);
-
-// 使用路由器
-std::vector<ChatMessage> messages = {
-    {"user", "Analyze this image..."}  // 包含图像
-};
-
-// 自动路由到支持视觉的模型
-LLMResponse response = router->chat(messages, ModelCapability::Vision);
-```
-
-### 错误处理
-
-```cpp
-LLMClient client(config);
-
-// 检查客户端状态
-if (!client.isReady()) {
-    std::cerr << "Client not ready" << std::endl;
-    return;
-}
-
-// 测试连接
-if (!client.testConnection()) {
-    std::cerr << "Connection test failed" << std::endl;
-    return;
-}
-
-// 发送请求并处理响应
-LLMResponse response = client.chat("Hello");
-
-if (!response.success) {
-    // 处理错误
-    if (response.errorMessage.find("Connection refused") != std::string::npos) {
-        std::cerr << "Server not running" << std::endl;
-    } else if (response.errorMessage.find("timeout") != std::string::npos) {
-        std::cerr << "Request timeout" << std::endl;
-    } else {
-        std::cerr << "Error: " << response.errorMessage << std::endl;
-    }
-    return;
-}
-
-// 检查完成原因
-if (response.finishReason == "length") {
-    std::cerr << "Response truncated due to max_tokens" << std::endl;
-}
-```
-
-## 6. 二次开发
-
-### 添加流式响应支持
-
-```cpp
-class LLMClient {
-public:
-    // 流式回调类型
-    using StreamCallback = std::function<void(const std::string& chunk)>;
-
-    // 流式聊天方法
-    LLMResponse chatStream(
-        const std::vector<ChatMessage>& messages,
-        StreamCallback onChunk
-    );
-
-private:
-    // 流式响应处理
-    LLMResponse parseStreamResponse(
-        htttplib::Response& res,
-        StreamCallback onChunk
-    );
-};
-
-LLMResponse LLMClient::chatStream(
-    const std::vector<ChatMessage>& messages,
-    StreamCallback onChunk) {
-
-    // 发送请求时设置 stream: true
-    nlohmann::json body = buildRequestBody(messages);
-    body["stream"] = true;
-
-    std::string requestBody = body.dump();
-
-    auto res = httpClient_->Post(
-        config_.endpoint,
-        requestBody,
-        "application/json"
-    );
-
-    if (!res || res->status != 200) {
-        LLMResponse errorResponse;
-        errorResponse.success = false;
-        errorResponse.errorMessage = "Stream request failed";
-        return errorResponse;
-    }
-
-    // 处理流式响应
-    return parseStreamResponse(*res, onChunk);
-}
-```
-
-### 添加缓存层
-
-```cpp
-#include <unordered_map>
-#include <functional>
-
-class CachedLLMClient : public LLMClient {
-public:
-    CachedLLMClient(const LLMConfig& config) : LLMClient(config) {}
-
-    LLMResponse chat(const std::vector<ChatMessage>& messages) override {
-        // 生成缓存键
-        std::string cacheKey = generateCacheKey(messages);
-
-        // 检查缓存
-        auto it = cache_.find(cacheKey);
-        if (it != cache_.end()) {
-            std::cout << "Cache hit!" << std::endl;
-            return it->second;
-        }
-
-        // 调用父类方法
-        LLMResponse response = LLMClient::chat(messages);
-
-        // 缓存成功的响应
-        if (response.success) {
-            cache_[cacheKey] = response;
-        }
-
-        return response;
-    }
-
-    void clearCache() {
-        cache_.clear();
-    }
-
-private:
-    std::string generateCacheKey(const std::vector<ChatMessage>& messages) {
-        nlohmann::json key;
-        for (const auto& msg : messages) {
-            key.push_back({
-                {"role", msg.role},
-                {"content", msg.content}
-            });
-        }
-        return key.dump();
-    }
-
-    std::unordered_map<std::string, LLMResponse> cache_;
-};
-```
-
-### 添加异步支持
-
-```cpp
-#include <future>
-#include <mutex>
-
-class AsyncLLMClient {
-public:
-    AsyncLLMClient(const LLMConfig& config) : client_(config) {}
-
-    // 异步聊天
-    std::future<LLMResponse> chatAsync(
-        const std::vector<ChatMessage>& messages
-    ) {
-        return std::async(std::launch::async, [this, messages]() {
-            std::lock_guard<std::mutex> lock(mutex_);
-            return client_.chat(messages);
-        });
-    }
-
-    // 批量异步请求
-    std::vector<std::future<LLMResponse>> chatBatchAsync(
-        const std::vector<std::vector<ChatMessage>>& batch
-    ) {
-        std::vector<std::future<LLMResponse>> futures;
-        for (const auto& messages : batch) {
-            futures.push_back(chatAsync(messages));
-        }
-        return futures;
-    }
-
-private:
-    LLMClient client_;
-    std::mutex mutex_;
-};
-
-// 使用示例
-AsyncLLMClient asyncClient(config);
-
-std::vector<std::vector<ChatMessage>> prompts = {
-    {{"user", "Prompt 1"}},
-    {{"user", "Prompt 2"}},
-    {{"user", "Prompt 3"}}
-};
-
-auto futures = asyncClient.chatBatchAsync(prompts);
-
-// 等待所有请求完成
-for (auto& future : futures) {
-    LLMResponse response = future.get();
-    std::cout << response.content << std::endl;
-}
-```
-
-### 添加指标收集
-
-```cpp
-class MetricsLLMClient : public LLMClient {
-public:
-    MetricsLLMClient(const LLMConfig& config) : LLMClient(config) {}
-
-    LLMResponse chat(const std::vector<ChatMessage>& messages) override {
-        auto startTime = std::chrono::high_resolution_clock::now();
-
-        LLMResponse response = LLMClient::chat(messages);
-
-        auto endTime = std::chrono::high_resolution_clock::now();
-        double latencyMs = std::chrono::duration<double, std::milli>(
-            endTime - startTime).count();
-
-        // 记录指标
-        totalRequests_++;
-        totalLatencyMs_ += latencyMs;
-        if (response.success) {
-            successRequests_++;
-        } else {
-            failedRequests_++;
-        }
-
-        return response;
-    }
-
-    void printMetrics() const {
-        std::cout << "=== LLM Client Metrics ===" << std::endl;
-        std::cout << "Total requests: " << totalRequests_ << std::endl;
-        std::cout << "Success: " << successRequests_ << std::endl;
-        std::cout << "Failed: " << failedRequests_ << std::endl;
-        std::cout << "Success rate: "
-            << (100.0 * successRequests_ / totalRequests_) << "%" << std::endl;
-        std::cout << "Avg latency: "
-            << (totalLatencyMs_ / totalRequests_) << " ms" << std::endl;
-    }
-
-private:
-    int totalRequests_ = 0;
-    int successRequests_ = 0;
-    int failedRequests_ = 0;
-    double totalLatencyMs_ = 0.0;
-};
-```
-
-## 7. 其他
-
-### 测试
-
-```cpp
-#include <gtest/gtest.h>
-
-class LLMClientTest : public ::testing::Test {
-protected:
-    void SetUp() override {
-        config.baseUrl = "http://localhost:1234";
-        config.model = "llama3-8b";
-        client = std::make_unique<LLMClient>(config);
-    }
-
-    LLMConfig config;
-    std::unique_ptr<LLMClient> client;
-};
-
-TEST_F(LLMClientTest, ConnectionTest) {
-    EXPECT_TRUE(client->testConnection());
-}
-
-TEST_F(LLMClientTest, SimpleChat) {
-    LLMResponse response = client->chat("Say 'test'");
-    EXPECT_TRUE(response.success);
-    EXPECT_FALSE(response.content.empty());
-}
-
-TEST_F(LLMClientTest, MultiTurnConversation) {
-    std::vector<ChatMessage> messages = {
-        {"system", "You are a helpful assistant."},
-        {"user", "Remember the number 42."},
-        {"assistant", "I'll remember that."},
-        {"user", "What number did I tell you?"}
-    };
-
-    LLMResponse response = client->chat(messages);
-    EXPECT_TRUE(response.success);
-    EXPECT_TRUE(response.content.find("42") != std::string::npos);
-}
-```
-
-### 配置
-
-**环境变量** (`.env`)：
-```env
-# LLM Configuration
-LLM_BASE_URL=http://localhost:1234
-LLM_MODEL=llama3-8b-instruct
-LLM_MAX_TOKENS=2048
-LLM_TEMPERATURE=0.7
-LLM_TIMEOUT=60
-LLM_MAX_RETRIES=3
-
-# OpenAI API (可选)
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4-turbo
-```
-
-**代码加载**：
-```cpp
-#include "core/ConfigManager/ConfigManager.h"
-
-ConfigManager::instance().load(".env");
-
-LLMConfig config;
-config.baseUrl = ConfigManager::instance().getLLMBaseUrl();
-config.model = ConfigManager::instance().getLLMModel();
-config.apiKey = ConfigManager::instance().getLLMApiKey();
-config.maxTokens = ConfigManager::instance().getLLMMaxTokens();
-config.temperature = ConfigManager::instance().getLLMTemperature();
-```
-
-### 故障排查
-
-| 问题 | 可能原因 | 解决方法 |
-|------|----------|----------|
-| 连接被拒绝 | LM Studio 未运行 | 启动 LM Studio 或检查端口 |
-| 超时错误 | 模型加载时间过长 | 增加 `timeoutSeconds` |
-| JSON 解析失败 | 响应格式错误 | 检查 `baseUrl` 是否正确 |
-| 重复失败 | 模型崩溃 | 重启 LM Studio |
-| 视觉分析失败 | 模型不支持视觉 | 使用支持视觉的模型 |
-
-### 最佳实践
-
-1. **总是检查连接**：
-   ```cpp
-   if (!client.testConnection()) {
-       LOG_ERROR("Cannot connect to LLM service");
-       return;
-   }
-   ```
-
-2. **使用合适的温度参数**：
-   - `0.0-0.3`：需要精确输出（代码、分析）
-   - `0.7-1.0`：创意写作
-   - `1.0-2.0`：高随机性
-
-3. **限制 max_tokens**：
-   - 短回答：512-1024
-   - 中等：2048
-   - 长篇：4096-8192
-
-4. **处理 Tool Calling**：
-   - 检查 `finishReason == "tool_calls"`
-   - 验证工具参数
-   - 循环直到 `finishReason == "stop"`
-
-5. **视觉图像优化**：
-   - 使用适当的 `detail` 级别
-   - 压缩大图像（<20MB）
-   - JPEG 比 PNG 更高效
-
-### 相关模块
-
-- **[ModelRouter](./ModelRouter.md)** - 多模型路由器
-- **[FileAnalyzer](./FileAnalyzer.md)** - LLM 文件分析器
-- **[MCPIntegration](./MCPIntegration.md)** - MCP 协议集成
-
-### 参考资源
-
-- **OpenAI API 文档**: https://platform.openai.com/docs/api-reference
-- **LM Studio 文档**: https://lmstudio.ai/docs
-- **Ollama 文档**: https://ollama.com/docs
-- **httplib 文档**: https://github.com/yhirose/cpp-httplib
-
-### 变更历史
-
-| 版本 | 日期 | 变更内容 | 作者 |
-|------|------|----------|------|
-| 1.0.0 | 2026-05-19 | 初始版本 | ymj68520 |
-
----
-
-**最后更新**: 2026-05-19
-**维护者**: ymj68520
+   重试对"网络错误"和"非 200 状态码"一视同仁；退避是线性的（0.5s、1s、1.5s）。每次尝试都在 `mutex_` 保护下进行。
+5. **解析响应**：HTTP 200 后交给 `parseResponse()`，按 3.4 节的规则提取 content/tool_calls/usage，成功时置 `response.success = true`。
+6. **健康检查**：`testConnection()`（`LLMClient.cpp:132-152`）用 `GET /v1/models` 当探针，返回 200 视为可达。`listModels()`（`LLMClient.cpp:217-252`）复用同一端点把模型列表解析成 `ModelInfo`。
+
+## 5. 与其他模块的协作
+
+| 协作方 | 关系 |
+|---|---|
+| ModelRouter | 唯一的常规创建者；每个注册模型持有一个 LLMClient，路由策略决定这次请求用哪一个 |
+| FileAnalyzer / MCPIntegration | 经由 router 间接调用，从不直接 new LLMClient |
+| ConfigManager | 所有连接参数的来源（`.env`），`setConfig()` 可运行时热更新并重建 HTTP 客户端（`LLMClient.cpp:264-267`） |
+| cpp-mcp（第三方） | 提供 httplib 头文件与 TLS 宏开关，见 `CMakeLists.txt:15-18, 234-235` |
+| MarkitdownProxy（同目录） | 另一个方向的外部调用：C++ 调 Python 服务的 `/api/markitdown/*`，与 LLMClient 无直接代码依赖，但同属"integration 层的 HTTP 出口" |
+
+## 6. 注意事项与已知问题
+
+- **4xx 也重试**：`chat()` 对所有非 200 都重试，包括 400/401 这类重试不可能救活的错误。配置 `LLM_MAX_RETRIES=3` 时一次坏请求最多浪费 3 次退避等待。若要优化，可对 4xx（除 429）立即失败。
+- **单个客户端是串行的**：重试循环持有 `mutex_`，意味着同一个 LLMClient 的并发 chat 会在 HTTP 层排队。FileAnalyzer 的批量并行（线程池）只在"读文件/转换"阶段真正并行，LLM 调用最终仍串行过这把锁。要真正并发，需要每个 worker 一个 client（目前各服务只注册一个模型）。
+- **listModels 的能力信息是假的**：它给每个发现的模型统一贴上 TextGeneration/Summarization/Analysis 三个能力（`LLMClient.cpp:238-243`），并没有向服务端查询真实能力，`supportsVision` 恒为 false。基于 capability 的路由不要依赖它。
+- **`testConnection` 语义偏严**：要求 `/v1/models` 返回 200；个别兼容实现只实现 chat 端点时会被误判为不可达。
+- **两处 UTF-8 清洗实现不一致**：本文件的 `sanitizeUtf8`（严格，拒绝过长编码/代理区）与 `FileTextProcessor::sanitizeUTF8`（宽松，只查连续字节）规则不同，属历史并存，修改时注意两处都要改。
+
+## 7. 如何验证与扩展
+
+**验证**：
+1. 起一个 LM Studio（或任意兼容端点），`.env` 里指向它，跑任一 LLM 分析接口后看后端日志的 `Server error:`/`Request failed:` 前缀即可区分服务端错误与网络错误。
+2. 单元测试思路：构造 `LLMConfig` 指向本地 mock（例如用 python 起一个返回固定 JSON 的 /v1/chat/completions），分别断言：重试次数 = maxRetries+1；含 `<think>` 的响应被清洗；非法 UTF-8 输入不再让请求构造抛异常。
+3. `testConnection()` 可作为最小连通性冒烟（注意上一节的语义限制）。
+
+**扩展方向**：
+- 要支持流式输出：httplib 支持 chunked 响应回调，但需要改 `chat()` 的响应处理路径，并给 LLMResponse 增量语义——工作量在调用方协议，不在 HTTP 层。
+- 要按模型并发：给 LLMClient 增加实例池，或在 ModelRouter 里对同一模型注册多个 entry。
+- 要更精细的错误分类：在 `chat()` 里区分可重试（网络、5xx、429）与不可重试（其余 4xx）。
+
+**最后更新**: 2026-08-23（解释式重写）

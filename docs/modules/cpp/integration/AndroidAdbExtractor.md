@@ -1,898 +1,111 @@
-# Android ADB Extractor 模块文档
+# AndroidAdbExtractor（src/integration/AndroidAdbExtractor/）
 
-## 1. 模块背景
+> **一句话**：一个自研的 ADB 协议客户端（直连本机 adb 服务器 5037 端口，不依赖 adb 命令行），设计目标是直接从 Android 真机做逻辑提取（文件树拉取）和物理提取（root + dd 分区镜像）——**但它是死代码：未编入构建，且实现文件与头文件已失配到无法编译**。
 
-### 业务背景
+> **现状声明（先读这个）**：本目录代码**不在 `CMakeLists.txt` 的 `LIB_SOURCES` 里**——`CMakeLists.txt:210` 只把该目录加成了头文件搜索路径，没有任何 `.cpp` 参与编译；全仓库也没有任何代码引用 `ADBClient`/`AndroidDirectoryExtractor`。更进一步，`g++ -fsyntax-only ADBClient_Init.cpp` 直接报错：实现文件使用的成员 `socket_fd_`、`current_device_` 在 `adbClient.h`（声明的是 `sock`、`current_serial`）里根本不存在——头文件与拆分的实现文件来自不同代际，即使想把它加回构建也必须先修。目录里的 `adbTest.cpp`、`test_console_encoding.cpp`、`test_encoding_fix.bat` 同样不在构建里，是 Windows 时代的独立试验程序。本文其余部分讲的是这套代码**本来的设计**，供未来复活或重写时参考。
 
-在数字取证中，Android 设备是最常见的移动设备平台。当获得一部 Android 设备（无论是物理设备还是镜像文件）后，取证人员需要提取以下数据：
+## 1. 为什么有这个模块（设计意图）
 
-1. **文件系统数据**: 应用数据、用户文件、系统配置
-2. **分区镜像**: 直接提取分区用于深度分析
-3. **数据库**: SMS、通话记录、应用数据
-4. **日志文件**: 系统日志、应用崩溃日志
+Android 取证有两条经典路径：物理提取（分区/整机镜像，需要特殊模式或 root）和逻辑提取（应用数据、用户文件）。市面工具走 ADB 时通常 `popen()` 调 `adb pull` 命令行——进程开销大、输出解析脆弱、无法精细控制传输。
 
-**传统方法的局限**：
-- **物理提取**: 需要拆机，有损坏设备风险
-- **镜像提取**: 需要设备进入特定模式（如下载模式）
-- **ADB 提取**: 通常只能获取用户可访问的数据
+这个模块的思路是**直接实现 ADB 的 smart-socket 协议**：adb 守护进程常驻本机 5037 端口，客户端用 TCP 说一种很简单的文本协议就能枚举设备、执行 shell、传输文件。绕过命令行意味着：一个进程内连接、二进制安全的数据通道（sync 模式）、以及可以做"边 dd 边拉"的流式分区提取（不占用设备存储）。目录里 49KB 的 `README.md` 记录了完整的开发过程。
 
-**Android ADB Extractor 的优势**：
-- 通过 ADB 协议与设备通信
-- 支持直接提取分区（如果已 root）
-- 自动处理权限问题
-- 流式传输大文件
-- 适用于已获取 root 权限的设备
-
-### 技术背景
-
-**ADB（Android Debug Bridge）协议**：
+## 2. 在系统中的位置（如果它活着）
 
 ```
-ADB 客户端 ←→ ADB 服务器（设备）←→ adbd 守护进程
-     ↓
-  TCP 连接（通常端口 5037）
+（设计中的位置）
+AndroidDirectoryExtractor ──► ADBClient ──TCP:5037──► 本机 adb 服务器 ──USB──► Android 设备
+        │ 产出
+        ▼
+./extracted_data/<设备路径镜像> 或 <分区>.img
+        │ 作为输入
+        ▼
+AndroidAnalyzer（--android-source dir|zip 分析逻辑提取物；镜像则走 TSK）
 ```
 
-**协议特点**：
-1. **基于 TCP Socket**: 使用 TCP 协议通信
-2. **二进制协议**: 4字节长度前缀 + 命令字符串
-3. **同步协议**: 文件传输的专用协议
-4. **Shell 交互**: 执行 shell 命令的接口
+**实际现状**：Android 取证数据获取完全绕开了它——实际流程是取证人员用外部工具（或手工 `adb pull` / 手机备份）产出目录或 zip，再用命令行 `--android-source dir|zip|miui-backup` 喂给 AndroidAnalyzer（`src/CommandLineParser.cpp:112, 195`）。它本该是"采集端"，现在只剩"分析端"。
 
-**关键组件**：
+## 3. 核心概念与设计
 
-```mermaid
-graph TD
-    A[AndroidDirectoryExtractor] --> B[ADBClient]
-    A --> C[PartitionInfo]
-    B --> D[Socket 通信]
-    B --> E[命令发送]
-    B --> F[数据接收]
-    B --> G[Sync 协议]
-    A --> H[文件提取]
-    A --> I[分区提取]
-    A --> J[Root 权限]
-```
+### 3.1 ADB smart-socket 协议
 
----
-
-## 2. 模块功能
-
-### 核心功能
-
-| 功能 | 方法 | 描述 |
-|------|------|------|
-| **设备连接** | `connect()`, `disconnect()` | 连接/断开 ADB 服务器 |
-| **设备枚举** | `getDevices()` | 获取已连接设备列表 |
-| **设备选择** | `selectDevice()` | 选择目标设备 |
-| **Shell 执行** | `executeShell()`, `executeShellAsRoot()` | 执行命令 |
-| **文件提取** | `receiveFile()`, `extractDirectory()` | 提取文件/目录 |
-| **分区提取** | `extractPartition()` | 提取设备分区 |
-| **Root 权限** | `acquireRoot()`, `checkRootAccess()` | 获取 root 权限 |
-| **同步连接** | `syncConnect()` | 建立 sync 连接 |
-| **目录列表** | `listDirectory()` | 列出目录内容 |
-
-### 功能详解
-
-#### 1. ADB 连接管理
+adb 服务器协议极简：每条命令是 `4 位十六进制长度 + 命令文本`（如 `001chost:transport:serial`），服务端回 `OKAY`/`FAIL` 四字节状态。`adbClient.h:75-86` 声明的 `sendADBCommand`/`receiveADBStatus` 就是这层封装。命令分两类前缀：`HOST:` 打给 adb 服务器管理设备（`HOST:devices` 列设备、`HOST:transport:<serial>` 选中设备），选中后发 `SHELL:<cmd>` 执行命令、`SYNC:` 进入文件传输模式。
 
 ```cpp
-ADBClient client("127.0.0.1", 5037);
-if (client.connect()) {
-    LOG_INFO("Connected to ADB server");
+// ADBClient_Devices.cpp:4-38（节选）：枚举设备
+if (!sendADBCommand("HOST:devices")) return devices;
+if (!receiveADBStatus()) return devices;
+std::string response = receiveData(4096);
+// 响应按行解析："<serial>\t<status>"，只收集 status == "device" 的
+```
 
-    // 获取设备列表
-    auto devices = client.getDevices();
-    for (const auto& serial : devices) {
-        LOG_INFO("Found device: " + serial);
-    }
+连接目标写死为本机 adb 服务器：默认 `127.0.0.1:5037`（`adbClient.h:89`）——注意它**不直接连设备**，USB/网络设备的差异由 adb 守护进程屏蔽。
 
-    // 选择设备
-    if (!devices.empty()) {
-        client.selectDevice(devices[0]);
-        LOG_INFO("Selected device: " + devices[0]);
-    }
+### 3.2 双通道：shell vs sync
+
+- **shell 通道**（`ADBClient_Shell.cpp:5-22`）：`SHELL:` 后命令输出作为流返回，`executeShell` 读 8KB 后按 `\0` 截断——适合文本命令（`[ -d path ] && echo DIR`），不适合二进制（有独立的 `executeRaw`）。
+- **sync 通道**（`adbClient.h:126-162`）：`SYNC:` 后进入二进制子协议，支持 `STAT`（取 mode/size/mtime）、`LIST`（列目录）、`RECV`（拉文件）。文件提取首选 sync，因为它二进制安全且带元数据。
+
+设计上的关键决策是**逐级降级**：sync STAT 被权限拒绝时回退 `statFileShell`（shell `ls -l` 解析），LIST 为空时回退 `listDirectoryShell`，RECV 失败回退 `pullFileShell`（`adbClient.h:183-189`，使用处在 `adbExtractor.cpp:53-60, 72-77, 112-116`）——Android 各厂商 ROM 权限差异极大，这条路是踩坑踩出来的。
+
+### 3.3 root 与分区提取
+
+物理提取需要 root：`checkRootAccess()` 探测、`acquireRoot()` 执行 `adb root`（重启 adbd 为 root，连接需重建，`adbExtractor.cpp:154-168` 有重选设备的处理）。拿到 root 后分区提取有一条方法阶梯（`extractPartition`，`adbExtractor.cpp:255` 起，`531-540` 处的分派）：
+
+1. `extractPartitionDirectly`/`extractPartitionStreaming`（`:486, :544`）：设备端 `dd if=/dev/block/...` 直接流式回传——不占设备存储，首选；
+2. `extractPartitionUsingDD`（`:218-231`）：dd 到 `/data/local/tmp/<name>.img` 再 `pullFileShell` 拉回——设备要有足够空闲空间；
+3. 传统路径 `extractPartitionTraditional`（`:596`）。
+
+分区清单来自 `getPartitionList()`（`:406`）解析 `by-name` 符号链接；配套的 `PartitionInfo`（`AndroidAdbExtractorDataTypes.h:13-23`）记录 name/device_path/size/是否需要 root。试验程序 `adbTest.cpp:9-38` 还维护了 SAFE/DANGEROUS 分区白黑名单（efuse、frp、keymaster 等读取可能影响设备状态的分区被排除）——这是取证工具该有的保守性。
+
+## 4. 工作流程走读（设计中的典型用法）
+
+1. **初始化**（`adbExtractor.cpp:133-183`）：`adb.connect()` 连 5037 → `HOST:devices` 列设备（无设备即失败）→ 重连并 `selectDevice(devices[0])`（`HOST:transport:<serial>` + `DEV`，`ADBClient_Devices.cpp:40-63`）→ 默认 `auto_root=true` 尝试 `acquireRoot()` → `syncConnect()` 进入文件传输模式。
+2. **逻辑提取**：`extractDirectory("/data/data/com.foo")`（`:185-197`）把设备路径映射到本地 `./extracted_data/data/data/com.foo`（构造函数在 `adbExtractor.h:63-66` 内联，建根目录），核心是递归：
+
+```cpp
+// adbExtractor.cpp:42-130（extractFileRecursive 逻辑摘要）
+check = adb.executeShell("[ -d " + remote_path + " ] && echo DIR || echo FILE");
+stat_success = adb.statFile(remote_path, mode, size, time);   // sync STAT
+if (!stat_success && has_root) stat_success = adb.statFileShell(...);  // 降级
+if ((mode & 0xF000) == 0x4000) {          // S_IFDIR：建目录 + LIST + 递归
+    ...
+} else {
+    adb.receiveFile(remote_path, local_base, size);           // sync RECV
+    if (!pull_success) adb.pullFileShell(remote_path, local_base); // 降级
 }
 ```
 
-#### 2. Root 权限管理
-
-```cpp
-AndroidDirectoryExtractor extractor;
-
-// 初始化（自动尝试获取 root）
-if (extractor.initialize(true)) {
-    LOG_INFO("Root access acquired");
-
-    if (extractor.hasRootAccess()) {
-        // 使用 root 权限提取系统数据
-        extractor.extractPartition("data", "data_partition.img");
-    }
-}
-```
-
-#### 3. 分区提取
-
-```cpp
-// 列出可用分区
-extractor.listAvailablePartitions();
-
-// 提取单个分区
-extractor.extractPartition("userdata", "userdata.img");
-
-// 批量提取分区
-std::vector<std::string> partitions = {"boot", "data", "system"};
-extractor.extractMultiplePartitions(partitions);
-```
-
-#### 4. 文件系统提取
-
-```cpp
-// 提取整个目录
-extractor.extractDirectory("/sdcard/Documents");
-
-// 批量提取多个路径
-std::vector<std::string> paths = {
-    "/sdcard/DCIM",
-    "/data/data/com.android.providers.contacts/databases",
-    "/data/system"
-};
-extractor.extractMultiple(paths);
-```
-
-### 边界与限制
-
-| 限制 | 说明 | 缓解措施 |
-|------|------|----------|
-| **Root 依赖** | 分区提取需要 root 权限 | 尝试多种 root 获取方法 |
-| **设备兼容性** | 不同厂商实现可能不同 | 适配多种设备类型 |
-| **网络稳定性** | ADB 连接可能中断 | 实现重试机制 |
-| **存储空间** | 大分区需要大量存储 | 检查可用空间 |
-| **提取速度** | 串行传输较慢 | 使用流式传输优化 |
-
----
-
-## 3. 模块使用的库
-
-### 依赖库清单
-
-| 库名/平台 | 用途 |
-|---------|------|
-| **标准库 `<sys/socket.h>`** (Linux) | Socket 编程 |
-| **标准库 `<winsock2.h>`** (Windows) | Windows Socket |
-| **标准库 `<sys/stat.h>`** | 文件系统操作 |
-| **标准库 `<unistd.h>`** (Linux) | POSIX API |
-
-### 依赖关系图
-
-```mermaid
-graph TD
-    A[AndroidDirectoryExtractor] --> B[ADBClient]
-    B --> C[Socket 通信层]
-    C --> D[Windows Winsock]
-    C --> E[Linux BSD Sockets]
-
-    A --> F[PartitionInfo]
-    A --> G[文件系统操作]
-
-    B --> H[ADB 协议实现]
-    H --> I[命令通道]
-    H --> J[Sync 协议]
-```
-
-### 核心代码依赖
-
-**无外部依赖**，完全使用平台标准库实现。
-
----
-
-## 4. 模块实现方式
-
-### 架构设计
-
-```mermaid
-classDiagram
-    class AndroidDirectoryExtractor {
-        -ADBClient adb
-        -string output_dir
-        -bool has_root
-        +initialize(auto_root)
-        +extractDirectory(device_path)
-        +extractPartition(name, output)
-        +extractMultiple(paths)
-        +listAvailablePartitions()
-    }
-
-    class ADBClient {
-        -socket_t sock
-        -string host
-        -int port
-        -bool connected
-        +connect()
-        +disconnect()
-        +getDevices()
-        +selectDevice(serial)
-        +executeShell(command)
-        +syncConnect()
-        +receiveFile(remote, local)
-        +checkRootAccess()
-        +acquireRoot()
-    }
-```
-
-### 核心类说明
-
-#### 1. ADBClient 类
-
-**职责**: 管理 ADB 连接和协议通信
-
-```cpp
-class ADBClient {
-public:
-    ADBClient(const std::string& h = "127.0.0.1", int p = 5037);
-    ~ADBClient();
-
-    // 连接管理
-    bool connect();
-    bool disconnect();
-
-    // 设备管理
-    std::vector<std::string> getDevices();
-    bool selectDevice(const std::string& serial);
-
-    // 命令执行
-    std::string executeShell(const std::string& command);
-    std::string executeShellAsRoot(const std::string& command);
-
-    // 文件操作（sync 模式）
-    bool syncConnect();
-    bool receiveFile(const std::string& remote_path, const std::string& local_path);
-    std::vector<SyncEntry> listDirectory(const std::string& path);
-    bool statFile(const std::string& remote_path, uint32_t& mode, uint32_t& size, uint32_t& time);
-
-    // Root 权限
-    bool checkRootAccess();
-    bool acquireRoot();
-
-private:
-    socket_t sock;
-    std::string host;
-    int port;
-    bool connected;
-    std::string current_serial;
-    bool in_sync_mode;
-};
-```
-
-#### 2. AndroidDirectoryExtractor 类
-
-**职责**: 高级提取逻辑和分区管理
-
-```cpp
-class AndroidDirectoryExtractor {
-public:
-    AndroidDirectoryExtractor(const std::string& output = "./extracted_data");
-
-    // 初始化
-    bool initialize(bool auto_root = true);
-
-    // 文件提取
-    bool extractDirectory(const std::string& device_path);
-    void extractMultiple(const std::vector<std::string>& paths);
-
-    // 分区提取
-    bool extractPartition(const std::string& partition_name, const std::string& output_filename = "");
-    bool extractMultiplePartitions(const std::vector<std::string>& partition_names);
-    void listAvailablePartitions();
-    std::vector<PartitionInfo> getPartitionList();
-
-    // 状态查询
-    bool hasRootAccess() const { return has_root; }
-
-private:
-    ADBClient adb;
-    std::string output_dir;
-    bool has_root;
-    bool use_root_for_extraction;
-
-    // 辅助方法
-    void createDirectory(const std::string& path);
-    bool extractFileRecursive(const std::string& remote_path, const std::string& local_base);
-    bool testPartitionReadAccess(const std::string& device_path);
-};
-```
-
-### 关键流程
-
-#### ADB 协议通信流程
-
-```mermaid
-sequenceDiagram
-    participant Host as 主机
-    participant ADB as ADBClient
-    participant Device as Android设备
-
-    Host->>ADB: connect()
-    ADB->>Device: TCP 连接(端口 5037)
-    Device-->>ADB: 连接成功
-
-    Host->>ADB: sendCommand("host:version")
-    ADB->>Device: 发送长度(4字节) + 命令
-    Device-->>ADB: "OKAY"
-    Device-->>ADB: 版本信息
-
-    Host->>ADB: getDevices()
-    ADB->>Device: "host:devices-l"
-    Device-->>ADB: 设备列表
-
-    Host->>ADB: selectDevice(serial)
-    ADB->>Device: "host:transport:serial"
-    Device-->>ADB: "OKAY"
-
-    Host->>ADB: executeShell("ls /sdcard")
-    ADB->>Device: "shell:" + 命令
-    Device-->>ADB: 输出结果
-```
-
-#### 分区提取流程
-
-```mermaid
-flowchart TD
-    Start[extractPartition] --> CheckRoot{有 root 权限?}
-    CheckRoot -->|否| TryRoot[尝试获取 root]
-    TryRoot --> CheckRoot
-    CheckRoot -->|是| GetPartitions[获取分区列表]
-    GetPartitions --> Find[查找目标分区]
-    Find --> Select{选择提取方法}
-    Select -->|流式| Streaming[extractPartitionStreaming]
-    Select -->|传统| Traditional[extractPartitionTraditional]
-    Select -->|dd 命令| Shell[extractPartitionUsingDD]
-    Streaming --> Write[写入本地文件]
-    Traditional --> Write
-    Shell --> Write
-    Write --> Verify[验证完整性]
-    Verify --> End[返回结果]
-```
-
-### 数据结构
-
-#### PartitionInfo 结构
-
-```cpp
-struct PartitionInfo {
-    std::string name;           // 分区名称（"vbmeta", "boot", "data"等）
-    std::string device_path;     // 设备路径（"/dev/block/by-name/vbmeta"）
-    std::string block_device;    // 块设备路径（"/dev/block/sde12"）
-    uint64_t size;              // 分区大小（字节）
-    std::string type;           // 分区类型（"emmc", "ufs"）
-    bool is_readable;           // 是否可读
-    bool requires_root;         // 是否需要 root 权限
-};
-```
-
-#### SyncEntry 结构
-
-```cpp
-struct SyncEntry {
-    std::string name;   // 文件/目录名
-    uint32_t mode;      // 权限模式（st_mode）
-    uint32_t size;      // 文件大小
-    uint32_t time;      // 修改时间（mtime）
-};
-```
-
----
-
-## 5. API 调用
-
-### C++ API
-
-#### 基础使用
-
-```cpp
-#include "integration/AndroidAdbExtractor/adbExtractor.h"
-
-using namespace forensics;
-
-int main() {
-    // 1. 创建提取器
-    AndroidDirectoryExtractor extractor("/path/to/output");
-
-    // 2. 初始化并尝试获取 root
-    if (!extractor.initialize(true)) {
-        LOG_ERROR("Failed to initialize ADB extractor");
-        return 1;
-    }
-
-    // 3. 检查 root 权限
-    if (extractor.hasRootAccess()) {
-        LOG_INFO("Root access available - can extract system partitions");
-    } else {
-        LOG_WARNING("No root access - limited to user-accessible files");
-    }
-
-    // 4. 列出可用分区
-    extractor.listAvailablePartitions();
-
-    // 5. 提取用户数据分区
-    if (extractor.extractPartition("data", "data_partition.img")) {
-        LOG_INFO("Partition extracted successfully");
-    }
-
-    // 6. 提取特定目录
-    extractor.extractDirectory("/sdcard/DCIM");
-
-    return 0;
-}
-```
-
-#### 批量文件提取
-
-```cpp
-void batchExtract(const std::vector<std::string>& paths) {
-    AndroidDirectoryExtractor extractor("./extracted");
-
-    if (extractor.initialize()) {
-        for (const auto& path : paths) {
-            LOG_INFO("Extracting: " + path);
-
-            if (extractor.extractDirectory(path)) {
-                LOG_INFO("Successfully extracted: " + path);
-            } else {
-                LOG_ERROR("Failed to extract: " + path);
-            }
-        }
-    }
-}
-
-// 使用
-int main() {
-    std::vector<std::string> paths = {
-        "/sdcard/Documents",
-        "/sdcard/DCIM/Camera",
-        "/sdcard/Download"
-    };
-
-    batchExtract(paths);
-    return 0;
-}
-```
-
-#### 分区提取
-
-```cpp
-void extractAllPartitions() {
-    AndroidDirectoryExtractor extractor("./partitions");
-
-    if (extractor.initialize()) {
-        // 获取所有分区信息
-        auto partitions = extractor.getPartitionList();
-
-        LOG_INFO("Found " + std::to_string(partitions.size()) + " partitions");
-
-        // 提取所有可读分区
-        for (const auto& partition : partitions) {
-            if (partition.is_readable) {
-                LOG_INFO("Extracting partition: " + partition.name +
-                        " (size: " + formatSize(partition.size) + ")");
-
-                std::string output_name = partition.name + ".img";
-                extractor.extractPartition(partition.name, output_name);
-            } else {
-                LOG_WARNING("Partition not readable: " + partition.name);
-            }
-        }
-    }
-}
-```
-
----
-
-## 6. 二次开发
-
-### 扩展点
-
-#### 1. 添加进度回调
-
-**场景**: 大文件提取时报告进度
-
-```cpp
-class ProgressCallback {
-public:
-    virtual void onProgress(uint64_t bytes_transferred, uint64_t total_bytes) {
-        double progress = (double)bytes_transferred / total_bytes * 100.0;
-        std::cout << "\rProgress: " << std::fixed << std::setprecision(1)
-                  << progress << "%" << std::flush;
-    }
-};
-
-// 修改 ADBClient 添加回调
-class ADBClientWithProgress : public ADBClient {
-public:
-    void setProgressCallback(ProgressCallback* callback) {
-        progress_callback_ = callback;
-    }
-
-    bool receiveFile(const std::string& remote_path, const std::string& local_path,
-                     uint32_t total_file_size = 0) override {
-        // 在提取过程中调用回调
-        if (progress_callback_ && total_file_size > 0) {
-            progress_callback_->onProgress(bytes_transferred, total_file_size);
-        }
-        // ... 原有逻辑
-    }
-
-private:
-    ProgressCallback* progress_callback_ = nullptr;
-};
-```
-
-#### 2. 添加哈希校验
-
-**场景**: 验证提取数据的完整性
-
-```cpp
-class IntegrityVerifier {
-public:
-    bool calculateFileHash(const std::string& file_path, std::string& hash) {
-        // 计算 MD5 或 SHA256 哈希
-        // ...
-        return true;
-    }
-
-    bool verifyExtraction(const std::string& remote_path,
-                          const std::string& local_path) {
-        // 1. 在设备上计算哈希
-        std::string remote_hash;
-        adb.executeShell("md5sum " + remote_path, remote_hash);
-
-        // 2. 在本地计算哈希
-        std::string local_hash;
-        calculateFileHash(local_path, local_hash);
-
-        // 3. 比较
-        return remote_hash == local_hash;
-    }
-};
-```
-
-#### 3. 添加过滤提取
-
-**场景**: 只提取特定类型的文件
-
-```cpp
-class FilteredExtractor : public AndroidDirectoryExtractor {
-public:
-    using FilterFunc = std::function<bool(const std::string&)>;
-
-    void setFilter(FilterFunc filter) {
-        file_filter_ = filter;
-    }
-
-    bool extractDirectory(const std::string& device_path) override {
-        // 列出目录内容
-        auto entries = adb.listDirectory(device_path);
-
-        for (const auto& entry : entries) {
-            std::string full_path = device_path + "/" + entry.name;
-
-            // 应用过滤器
-            if (!file_filter_ || file_filter_(full_path)) {
-                // 如果是目录，递归提取
-                if (S_ISDIR(entry.mode)) {
-                    extractDirectory(full_path);
-                } else {
-                    // 提取文件
-                    adb.receiveFile(full_path, getLocalPath(full_path));
-                }
-            }
-        }
-        return true;
-    }
-
-private:
-    FilterFunc file_filter_;
-};
-
-// 使用
-int main() {
-    FilteredExtractor extractor("./output");
-
-    // 只提取图片文件
-    extractor.setFilter([](const std::string& path) {
-        std::string ext = path.substr(path.find_last_of('.'));
-        return ext == ".jpg" || ext == ".png" || ext == ".mp4";
-    });
-
-    extractor.extractDirectory("/sdcard/DCIM");
-    return 0;
-}
-```
-
-### 添加新功能的步骤
-
-#### 步骤 1: 扩展 ADB 协议支持
-
-```cpp
-class ADBClient {
-public:
-    // 新增：日志支持
-    bool logcat(const std::string& tag, const std::string& level = "*:I");
-
-    // 新增：端口转发
-    bool forwardPort(int local_port, int remote_port);
-
-    // 新增：安装应用
-    bool installApp(const std::string& apk_path);
-};
-
-// 实现
-bool ADBClient::logcat(const std::string& tag, const std::string& level) {
-    std::string cmd = "logcat -v " + level;
-    if (!tag.empty()) {
-        cmd += " -s " + tag;
-    }
-    cmd += " *:I";  // 仅包含 Info 级别
-
-    return sendADBCommand(cmd);
-}
-```
-
-#### 步骤 2: 添加自动化脚本支持
-
-```cpp
-class ForensicsScript {
-public:
-    void runFullExtraction() {
-        // 1. 初始化
-        extractor_.initialize();
-
-        // 2. 获取设备信息
-        std::string device_info = getDeviceInfo();
-        saveToFile("device_info.txt", device_info);
-
-        // 3. 提取关键分区
-        extractKeyPartitions();
-
-        // 4. 提取应用数据
-        extractAppData();
-
-        // 5. 提取日志
-        extractLogs();
-
-        // 6. 生成报告
-        generateReport();
-    }
-
-private:
-    AndroidDirectoryExtractor extractor_;
-
-    void extractKeyPartitions() {
-        std::vector<std::string> partitions = {"boot", "data", "system"};
-        extractor_.extractMultiplePartitions(partitions);
-    }
-
-    void extractAppData() {
-        // 提取常见应用数据
-        std::vector<std::string> app_data = {
-            "/data/data/com.android.providers.contacts/",
-            "/data/data/com.android.providers.telephony/"
-        };
-        extractor_.extractMultiple(app_data);
-    }
-};
-```
-
-### 代码示例
-
-#### 示例 1: 自动检测并提取
-
-```cpp
-class AutoExtractor {
-public:
-    void detectAndExtract() {
-        if (!extractor_.initialize()) {
-            LOG_ERROR("Cannot connect to device");
-            return;
-        }
-
-        // 自动检测最佳提取策略
-        if (extractor_.hasRootAccess()) {
-            LOG_INFO("Root access available - using partition extraction");
-            extractPartitions();
-        } else {
-            LOG_INFO("No root access - using directory extraction");
-            extractDirectories();
-        }
-    }
-
-private:
-    AndroidDirectoryExtractor extractor_{"./output"};
-
-    void extractPartitions() {
-        auto partitions = extractor_.getPartitionList();
-        for (const auto& p : partitions) {
-            if (p.is_readable && p.size < 10ULL * 1024 * 1024 * 1024) {  // < 10GB
-                extractor_.extractPartition(p.name);
-            }
-        }
-    }
-
-    void extractDirectories() {
-        std::vector<std::string> dirs = {
-            "/sdcard/Documents",
-            "/sdcard/DCIM",
-            "/sdcard/Download"
-        };
-        extractor_.extractMultiple(dirs);
-    }
-};
-```
-
----
-
-## 7. 其他
-
-### 测试
-
-#### 编译测试程序
-
-```bash
-cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . --target adbTest
-
-# 运行测试
-./adbTest
-```
-
-#### 测试连接
-
-```cpp
-// adbTest.cpp
-#include "integration/AndroidAdbExtractor/adbExtractor.h"
-
-int main() {
-    AndroidDirectoryExtractor extractor("./test_output");
-
-    // 测试连接
-    LOG_INFO("Testing ADB connection...");
-    if (!extractor.initialize(false)) {  // 不自动 root
-        LOG_ERROR("Failed to connect");
-        return 1;
-    }
-
-    LOG_INFO("Connected successfully");
-
-    // 测试目录列表
-    extractor.listAvailablePartitions();
-
-    // 测试文件提取
-    std::string test_file = "/sdcard/test.txt";
-    extractor.extractDirectory("/sdcard/Documents");
-
-    LOG_INFO("Test completed");
-    return 0;
-}
-```
-
-### 配置
-
-#### ADB 路径配置
-
-```bash
-# 确保 ADB 在 PATH 中
-export PATH=$PATH:/path/to/android-sdk/platform-tools
-
-# 验证 ADB 可用
-adb version
-adb devices
-```
-
-#### 设备准备
-
-```bash
-# 1. 启用 USB 调试模式
-# 设置 → 开发者选项 → USB 调试
-
-# 2. 授权计算机
-# 连接 USB 时会弹出授权对话框
-
-# 3. 验证连接
-adb devices
-# 应该看到设备序列号
-```
-
-#### Root 权限准备
-
-```bash
-# 1. 解锁 Bootloader（因设备而异）
-# 2. 安装自定义 Recovery（如 TWRP）
-# 3. 刷入 Magisk 获取 root
-# 4. 验证 root
-adb shell
-su
-```
-
-### 故障排查
-
-#### 常见问题
-
-| 问题 | 可能原因 | 解决方法 |
-|------|----------|----------|
-| **连接失败** | ADB 服务未启动 | 启动 ADB 服务器 `adb start-server` |
-| **设备未发现** | USB 调试未启用 | 在设备上启用 USB 调试模式 |
-| **权限拒绝** | 未授权计算机 | 在设备上授权 ADB 调试 |
-| **分区提取失败** | 无 root 权限 | 获取 root 权限后再试 |
-| **文件传输慢** | 网络带宽限制 | 使用有线连接，减少并发 |
-| **编码问题** | 文件名包含非ASCII | 使用 UTF-8 编码处理 |
-
-#### 调试技巧
-
-**1. 手动测试 ADB 连接**
-
-```bash
-# 测试 ADB 服务器
-adb start-server
-
-# 列出设备
-adb devices -l
-
-# 执行命令
-adb shell ls /sdcard
-
-# 提取文件
-adb pull /sdcard/file.txt ./
-```
-
-**2. 检查 root 权限**
-
-```bash
-adb shell
-su
-id
-# 应该显示 uid=0(root)
-```
-
-**3. 查看分区信息**
-
-```bash
-adb shell
-cat /proc/partitions
-ls -l /dev/block/by-name/
-```
-
-**4. 调试日志**
-
-```cpp
-// 启用详细日志
-Logger::instance().setLevel(LogLevel::DEBUG);
-
-// 在关键点添加日志
-LOG_DEBUG("Attempting to connect to ADB at " + host + ":" + std::to_string(port));
-LOG_DEBUG("Sending command: " + command);
-LOG_DEBUG("Received " + std::to_string(response.length()) + " bytes");
-```
-
-### 相关模块
-
-- **AndroidAnalyzer** (`docs/modules/cpp/analyzers/AndroidAnalyzer.md`) - Android 数据库分析
-- **DatabaseManager** (`docs/modules/cpp/core/DatabaseManager.md`) - 数据库存储
-
-### 参考资源
-
-- **ADB 协议文档**: https://android.googlesource.com/
-- **Android Debug Bridge**: https://developer.android.com/studio/command-line/adb
-- **Magisk Root**: https://github.com/topjohnwu/Magisk
-
-### 变更历史
-
-| 版本 | 日期 | 变更说明 | 作者 |
-|------|------|----------|------|
-| 1.0.0 | 2026-05-19 | 初始版本 | Claude Code |
-
----
-
-**文档完成日期**: 2026-05-19
-**文档版本**: 1.0.0
-**维护者**: ymj68520
+3. **物理提取**：`extractPartition("userdata")` → 读分区表拿块设备路径 → 测可读性（`testPartitionReadAccess`，`:212`）→ 按第 3.3 节的阶梯取镜像。
+
+## 5. 与其他模块的协作
+
+| 相关方 | 关系 |
+|---|---|
+| AndroidAnalyzer（`src/analyzers/AndroidAnalyzer/`） | **本该衔接而未衔接**：AdbExtractor 产出目录/zip，AndroidAnalyzer 的 `--android-source dir\|zip` 模式消费这类产物。`IFileExtractor.h` 的头注释明说了设计意图——"an ADB logical/file-system pull packaged as an Image.zip"，即 LogicalDirExtractor/ZipArchiveExtractor 消费的就是 ADB 逻辑提取的产物 |
+| AndroidAnalyzerCore.cpp:79-91 | sourceMode 分派：MiuiBackup/LogicalDir/Zip/TSK 四种后端；ADB 本该是第五种（或这三种的上游生产者） |
+| adb 服务器 | 唯一外部依赖（本机 5037）；不依赖 adb 命令行可执行文件 |
+| LLMIntegration 层 | 无直接关系；提取完成后产物可走 FileAnalyzer 等分析链路 |
+
+## 6. 注意事项与已知问题
+
+- **死代码三重确认**：不在 `LIB_SOURCES`（仅 `CMakeLists.txt:210` 的 include 路径）；无外部引用；`-fsyntax-only` 编译失败（成员名失配 + 缺 `<fcntl.h>` 等 include）。任何"复活"工作从修 `adbClient.h` 与三个 `ADBClient_*.cpp` 的一致性开始。
+- **头文件里的连接管理是旧版**：`adbClient.h:34-41` 声明的 `sock/current_serial/in_sync_mode` 与实现文件的 `socket_fd_/current_device_` 对不上；读头文件理解协议接口即可，别当实现真相。
+- **单设备假设**：`initialize()` 直接取 `devices[0]`（`adbExtractor.cpp:150`），多设备在线时无法选择目标——取证场景这是必须修的（设备选择直接影响证据链）。
+- **流式读取的阻塞风险**：`receiveData` 用 select + 30 秒超时（`ADBClient_Init.cpp:38-56`），但大分区流式传输若中途停滞，超时后返回半截数据可能被当成功处理。
+- **写操作无防护**：分区提取只做读，但 shell 通道本质可执行任意命令，若复活为服务暴露面需要严格白名单化（`adbTest.cpp` 的 SAFE/DANGEROUS 名单思路可扩展）。
+- **Windows 痕迹**：`test_console_encoding.cpp`、`test_encoding_fix.bat`、`initializeConsoleEncoding()`（非 Windows 下为空实现）都指向它曾在 Windows 上开发，跨平台宏（`adbClient.h:13-24` 的 socket_t 抽象）是认真的，但 Linux 侧从未进入构建。
+
+## 7. 如何验证与扩展
+
+**验证现状**：
+1. `grep -n adb CMakeLists.txt` 确认无源文件条目；`grep -rn ADBClient src/ --include=*.cpp -l` 确认无外部引用；`g++ -std=c++17 -fsyntax-only src/integration/AndroidAdbExtractor/ADBClient_Init.cpp` 复现编译失败。
+2. 当前 Android 逻辑取证的正确入口是命令行：`--android-source dir|zip|miui-backup`（`CommandLineParser.cpp:112`），产出目录或 zip 后由 `LogicalDirExtractor`/`ZipArchiveExtractor`/`MiuiBackupExtractor` 接管（`AndroidAnalyzerCore.cpp:79-91`）。
+
+**如果要在现代代码库里复活它**：
+1. 统一 `adbClient.h` 与三个实现文件的成员命名（或干脆按头重写实现），补 `#include <fcntl.h>`；
+2. 进程内保留一个 ADBClient 池（每设备一连接），把"提取到目录"实现为产出符合 `IFileExtractor` 约定的目录结构，与现有 `--android-source dir` 无缝对接——这是最小代价的整合方式；
+3. 多设备枚举与用户选择、提取哈希校验（证据完整性）、进度回调对接 ThreadPool；
+4. 分区流式提取改用 `executeRaw` + 定长循环读并校验字节数，替代超时即返回的 `receiveData`。
+
+**最后更新**: 2026-08-23（解释式重写）
