@@ -1,646 +1,68 @@
-# LinuxFilesAnalyzer 模块文档
+# LinuxFilesAnalyzer（src/analyzers/LinuxFilesAnalyzer/）
 
-## 1. 模块概述
+> **一句话**：Linux/服务器取证的总装车间——把 syslog/journald/auditd、账号与登录、shell 历史、持久化配置、容器与 Web 服务器、安全基线等几十类证据解析进 linux.db 的 70 多张表，再在其上跑关联、时间线、异常检测和 MITRE ATT&CK 规则引擎，产出"攻击链"级别的结论。
 
-LinuxFilesAnalyzer 是一个全面的 Linux 取证分析模块，从磁盘镜像中提取并分析 Linux 系统的各类日志、配置和安全数据。模块采用**解析器 + 分析引擎 + 数据库**三层架构，支持 30+ 种日志类型和 6 种高级分析能力。
+## 1. 为什么有这个模块
 
-**输出数据库**：`<image>_linux.db`
+Linux 取证的证据形态是"文本为主、散布极广"。一台被入侵的服务器，入侵痕迹可能藏在 `/var/log/auth.log` 的一次 SSH 登录、`~/.bash_history` 的一条命令、`/etc/cron.d` 的一个新任务、Docker 容器日志的一次异常 exec、auditd 记录的一次文件读取——每一处单看都不起眼，串起来才是完整的入侵故事。这个模块存在的第一理由就是**穷尽地收集**：它分 21 个 Phase（代码里就这么编号的）覆盖了从系统日志到 XDG 桌面痕迹的几十类工件。
 
-## 2. 模块结构
+第二个理由是**从"记录"到"结论"的提升**。单纯把日志入库只是搬运；真正值钱的是把异构证据放在一起推理。模块在解析层之上建了一组分析引擎：`LogCorrelationEngine` 跨日志源关联事件、`TimelineReconstructor` 重建统一时间线并找"无法解释的空档"、`AnomalyDetector` 按内置规则标异常、`LogTamperingDetector` 专查反取证（日志清空、轮转断号、时间倒流）、`RuleEngine` 用 Sigma 风格规则匹配并映射 MITRE ATT&CK 技术编号、组装攻击链。这些引擎都读 linux.db（而不是读原始文件），体现了"先物证入库、再推理"的架构分层。
 
-```
-src/analyzers/LinuxFilesAnalyzer/
-├── LinuxFilesAnalyzer.h              # 主入口头文件
-├── Common/
-│   ├── LinuxDataTypes.h              # 30+ 数据结构定义
-│   ├── LinuxAnalyzerDeclarations.h   # 前向声明
-│   └── LinuxAnalyzerErrors.h         # 错误码定义
-├── Core/
-│   └── LinuxFilesAnalyzerCore.cpp    # 核心分析流程
-├── Parsers/                          # 日志解析器
-│   ├── LinuxLogParser.h/cpp          # 系统日志 (syslog, auth.log, kern.log)
-│   ├── LinuxUserParser.h/cpp         # 用户账户 (/etc/passwd, /etc/shadow)
-│   ├── LinuxHistoryParser.h/cpp      # Shell 历史 (bash, zsh, fish)
-│   ├── ExtendedHistoryParser.h/cpp   # 扩展 Shell 历史
-│   ├── JournalParser.h/cpp           # systemd Journal 二进制日志
-│   ├── AuditdAggregator.h/cpp        # auditd 日志聚合
-│   ├── CompressedLogParser.h/cpp     # 压缩和轮转日志 (.gz, .bz2, .xz)
-│   ├── TimestampNormalizer.h/cpp     # 跨源时间戳标准化
-│   ├── USBMountParser.h/cpp          # USB 设备挂载记录
-│   ├── CloudParser.h/cpp             # 云元数据 (AWS, GCP, Azure)
-│   ├── Security/                     # 安全分析解析器
-│   │   ├── SetuidAnalyzer.h/cpp      # Setuid/Setgid 文件分析
-│   │   ├── CapabilityAnalyzer.h/cpp  # Linux Capabilities 分析
-│   │   ├── SELinuxAnalyzer.h/cpp     # SELinux 状态和 AVC 拒绝
-│   │   ├── AppArmorParser.h/cpp      # AppArmor 配置文件和违规
-│   │   └── SecurityBypassAnalyzer.h/cpp  # 安全绕过检测
-│   ├── Container/                    # 容器解析器
-│   │   ├── DockerContainerParser.h/cpp   # Docker 容器/镜像/卷
-│   │   ├── PodmanParser.h/cpp            # Podman 容器和 Pod
-│   │   └── ContainerRuntimeLogParser.h/cpp  # 容器运行时日志
-│   ├── WebServer/                    # Web 服务器解析器
-│   │   ├── ApacheParser.h/cpp        # Apache 访问日志和虚拟主机
-│   │   ├── NginxParser.h/cpp         # Nginx 访问日志和 Server Block
-│   │   └── MiddlewareLogParser.h/cpp # 中间件日志和 ModSecurity
-│   ├── Database/DatabaseLogParser.h/cpp      # 数据库服务日志
-│   ├── EmailVPN/EmailVPNLogParser.h/cpp      # 邮件和 VPN 日志
-│   ├── FirewallSecurity/FirewallSecurityLogParser.h/cpp  # 防火墙和安全产品日志
-│   ├── PackageManager/PackageManagerLogParser.h/cpp      # 包管理器日志
-│   └── Detail/                       # 解析器实现细节
-│       ├── LinuxLogParser.cpp
-│       ├── LinuxUserParser.cpp
-│       ├── LinuxNetworkParser.cpp
-│       └── LinuxSystemParser.cpp
-├── Analysis/                         # 高级分析引擎
-│   ├── LogCorrelationEngine.h/cpp    # 日志关联引擎
-│   ├── AnomalyDetector.h/cpp         # 异常行为检测
-│   ├── LogTamperingDetector.h/cpp    # 日志篡改检测
-│   ├── PersistenceDetector.h/cpp     # 持久化机制检测
-│   ├── RuleEngine.h/cpp              # 规则引擎 (Sigma/IOC/ATT&CK)
-│   ├── TimelineReconstructor.h/cpp   # 统一时间线重建
-│   └── AccountSSH/AccountSSHAnalyzer.h/cpp  # 账户和 SSH 安全分析
-└── Database/
-    ├── LinuxAnalysisDatabase.h/cpp   # 数据库操作 (40+ 实体类型)
-    ├── LinuxQueryBuilder.h           # 类型安全查询构建器
-    └── Detail/                       # 数据库操作实现 (18 个文件)
-```
+第三个理由是**对抗反取证**。攻击者删日志、压缩归档、篡改时间是常态。所以 Phase 1 特意先做压缩/轮转日志预处理（`.gz/.xz/.bz2/.zst` 解压入库），保证"历史日志"参与分析；日志防篡改检测（Phase 5.5）则专门识别轮转序列缺号（如 auth.log.2 消失）这类删除痕迹。
 
-## 3. 解析器详解
+## 2. 在流水线中的位置
 
-### 3.1 系统日志解析器 (LinuxLogParser)
+两个入口：
 
-**数据源**：
-| 日志文件 | 路径 | 说明 |
-|----------|------|------|
-| syslog | `/var/log/syslog` | 系统服务日志 |
-| auth.log / secure | `/var/log/auth.log` | 认证和安全日志 |
-| kern.log | `/var/log/kern.log` | 内核消息 |
-| messages | `/var/log/messages` | 通用系统消息 |
-| dpkg.log | `/var/log/dpkg.log` | 包管理日志 |
-| dmesg | `/var/log/dmesg` | 内核启动消息 |
+- **HTTP 模式**：LINUX 或 SERVER_CLOUD 场景。前者写 `data/tasks/<id>/<镜像名>_linux.db`（`TaskManagerAnalysis.cpp:486-501`）；后者复用同一个类，只是入口换成 `analyzeServerCloudArtifacts()`、输出写 `<镜像名>_oss.db`——它的实现就是一句 `analyzeLinuxData()`（`LinuxFilesAnalyzerCore.cpp:218-231`），即"服务器/云场景 = 完整 Linux 分析换了个输出库名"。
+- **CLI 模式**：`--linux-analyze`，工件并入 `<镜像名>_files.db`（`AnalysisOrchestrator.cpp:312-327`）。
 
-**提取数据结构** (`LinuxLogEntry`)：
-- `logFile` - 日志来源文件
-- `timestamp` / `unixTimestamp` - 原始时间戳和 Unix 时间戳
-- `hostname` - 主机名
-- `process` / `pid` - 进程名和 PID
-- `message` - 日志消息内容
-- `level` - 日志级别 (INFO, WARNING, ERROR, CRITICAL)
-- `facility` - Syslog 设施 (auth, daemon, kern, local0-7)
-- `normalizedTime` - 标准化时间戳
-- `provenance` - 证据溯源信息
+输入：镜像路径 + raw.db（`DatabaseManager`）。中间产物（解压的日志、提出的配置）落在输出库旁的 `<镜像名>_extracted_files/`（`LinuxFilesAnalyzerCore.cpp:55-68`）。输出：linux.db，73 张表左右（表清单在 `src/core/DatabaseManager/SQL/linux_analysis_sql_tables.h`），另有 `llm_*` 列由 `linux_analysis_sql_llm.h` 的语句维护。
 
-### 3.2 用户账户解析器 (LinuxUserParser)
+主流程 `analyzeLinuxData()`（`LinuxFilesAnalyzerCore.cpp:81-216`）是理解模块的地图：21 个 Phase 的 `analyzeXxx()` 各自独立 try 级容错（前几个显式 try/catch，其余靠外层），最后依次跑五个分析引擎，再跑 LLM。
 
-**数据源**：
-- `/etc/passwd` - 用户账户信息
-- `/etc/shadow` - 密码哈希和策略
-- `/etc/group` - 组信息
+## 3. 证据来源与覆盖范围
 
-**提取数据结构** (`LinuxUserInfo`)：
-- 用户名、UID、GID
-- GECOS 字段（全名/描述）
-- 主目录和登录 Shell
-- 密码哈希（从 shadow 文件）
-- 密码策略：最后更改日期、最大/最小有效期、警告天数、不活跃天数
-- 账户过期日期、锁定状态、系统账户标识
+证据按 Phase 分组，全部通过 `queryFilesByPattern` 在 raw.db 里按路径模式定位（与 Windows 侧同构）：
 
-**组信息** (`LinuxGroupInfo`)：组名、GID、成员列表
+| 证据组 | 代表性来源 | 落表（节选） |
+|-------|-----------|-------------|
+| 日志与压缩日志 | `/var/log/syslog|messages|auth.log|secure|kern.log` 及其 `.1/.gz/.xz` 轮转、systemd journal（`/var/log/journal/`）、auditd | linux_log_entries / linux_journal_entries / linux_audit_events |
+| 账号与认证 | `/etc/passwd`、`/etc/shadow`、`/etc/group`、wtmp/btmp、`~/.ssh/authorized_keys`、known_hosts | linux_users / linux_login_records / linux_ssh_keys |
+| 命令与扩展历史 | `~/.bash_history` 等 + Phase 13 的 `~/.python_history`、`~/.mysql_history`、`~/.gitconfig`、`~/.kube/config`、AWS/gcloud/az 凭证文件 | linux_shell_history / linux_extended_history |
+| 持久化与配置 | cron、systemd 单元与 timer、`/etc/rc.local`、init.d、shell profile、`/etc/ld.so.preload`、sudoers、udev/polkit/xinetd 规则、at 任务 | linux_cron_jobs / linux_systemd_services / linux_persistence_entries |
+| 容器与 Web | `var/lib/docker/containers/%/config.json`、docker 运行日志（`*-json.log`）、Podman、Apache/Nginx access log 与 vhost、modsecurity | linux_docker_* / linux_apache_* / linux_nginx_* / linux_modsecurity_logs |
+| 安全基线与网络 | setuid 文件、capabilities、SELinux AVC、AppArmor、防火墙规则、DNS 配置、USB/挂载事件 | linux_setuid_files / linux_selinux_avc_denials / linux_firewall_rules |
+| 行为痕迹 | 浏览器 profile（Chromium/Firefox）、XDG 最近文档/回收站、CUPS 打印、systemd-coredump、Snap/Flatpak 包 | linux_browser_* / linux_recent_documents / linux_trash_entries |
 
-### 3.3 登录历史解析器
+持久化检测单独说明：`PersistenceType` 枚举列出 14 种机制（`LinuxDataTypes.h:592-607`），`PersistenceDetector` 对每种都有独立检测方法（`PersistenceDetector.h:29-39`），带可疑模式判定（`isSuspiciousCommand/isSuspiciousSudoersRule/isSuspiciousUdevRule`）与三级风险评估。
 
-**数据源**：
-- `/var/log/wtmp` - 成功登录记录
-- `/var/log/btmp` - 失败登录尝试
-- `/var/log/lastlog` - 最后登录时间
+## 4. 解析机制走读
 
-**提取数据结构** (`LinuxLoginRecord`)：
-- 用户名、终端设备 (tty/pts)
-- 远程主机 IP
-- 登录/登出时间
-- 登录类型：login, ssh, console, reboot, shutdown
-- 认证状态（成功/失败）
-- PID
+**链路一：压缩轮转日志（Phase 1，必须最先跑）。** `analyzeCompressedLogs()` 用 `CompressedLogParser` 处理 `auth.log.2.gz` 这类文件。文件名先被拆成"基础名 + 轮转号 + 压缩扩展"（两种轮转风格 `base.N` 和 `base-日期` 都认，`CompressedLogParser.cpp:45-58`），按魔数识别压缩格式（zstd 魔数 `28 b5 2f fd` 见第 118 行），解压到临时文件后复用普通日志解析器入库。为什么必须最先跑？因为后续的日志防篡改检测要靠"完整轮转序列"判断缺号——历史日志不先入库，序列就是残缺的（`LinuxFilesAnalyzerCore.cpp:86-88` 的注释强调了这个顺序）。
 
-### 3.4 Shell 历史解析器 (LinuxHistoryParser + ExtendedHistoryParser)
+**链路二：journal 解析（Phase 2.5）。** `JournalParser` 是自研的 journald 二进制格式解析器：直接读 journal 文件的 header、entry array、data object 与 field hash table（`JournalParser.h:63-74` 的结构定义），把字段-值对还原成结构化事件，落 linux_journal_entries，并单独产出"启动会话"（boot session）划分。选择自研而不是调 `journalctl`，是因为取证环境里通常不能（也不该）在镜像上执行二进制——这也是整个项目"用户态解析优先"哲学的体现。
 
-**支持的 Shell**：
-| Shell | 历史文件 | 时间戳支持 |
-|-------|----------|------------|
-| Bash | `~/.bash_history` | HISTTIMEFORMAT |
-| Zsh | `~/.zsh_history` | 扩展格式 |
-| Fish | `~/.config/fish/fish_history` | 内置时间戳 |
-| Sh | `~/.sh_history` | 无 |
+**链路三：日志防篡改检测（Phase 5.5）。** `LogTamperingDetector` 定义了多种篡改类型：日志清空、轮转缺号（TIME_WINDOW_GAP、ROTATION_GAP 类）、时间倒流（time reversal）、journal 缺段、可疑的重复时间戳（`LogTamperingDetector.h:31-35` 的枚举）。每个检测方法扫描已入库的日志条目（输入是 linux.db，不是原始文件），产出带时间区间的 `TamperingFinding` 落 linux_tampering_findings。这是"解析层产物喂分析层"的典型例子。
 
-**提取数据结构** (`ShellHistoryEntry`)：
-- 用户名、Shell 类型
-- 执行的命令
-- 时间戳（如果可用）
-- 行号和来源文件路径
+**链路四：规则引擎与攻击链（最后的分析层）。** `analyzeWithRuleEngine()`（`LinuxFilesAnalyzerEnhanced.cpp:186-207`）构造 `RuleEngine(outputDbPath_)`：`evaluateAllRules()` 跑 Sigma 风格规则与 IOC 匹配，每个命中带 MITRE ATT&CK 技术编号（T1078/T1059/T1053…映射表在 `RuleEngine.cpp:38` 起）与置信度；`buildAttackChains(matches)` 把按战术（Initial Access→Execution→Persistence→…）排序的命中串成链。结果分别落 linux_rule_matches 和 linux_attack_chains。前面的 `correlateEvents/reconstructTimeline/detectAnomalies`（`LinuxFilesAnalyzerEnhanced.cpp:111-184`）同理都是"查库-推理-落表"的独立引擎。
 
-### 3.5 Journal 解析器 (JournalParser)
+## 5. 与 LLM 的协作
 
-解析 systemd Journal 二进制日志格式。
+`analyzeWithLLM()` 是主流程最后一步（`LinuxFilesAnalyzerCore.cpp:233-...`），跳过条件与 Windows/Android 一致：`--no-ai` 或无 `LLM_BASE_URL`。`LinuxLLMAnalysisService`（`src/network/HTTPServer/LinuxLLMAnalysisService.h`）是三个平台服务里覆盖类型最多的：25+ 种 ArtifactType，从原始 LOG_ENTRY 到 TAMPERING_INDICATOR、MIDDLEWARE_LOG、ACCOUNT_ANOMALY——也就是说它不只总结"原始记录"，还会对分析引擎产出的异常/篡改发现做二次解读。写回模式同前：5 个 `llm_*` 列原地 UPDATE。另有 `LinuxLLMAnalysisService_SystemAnalyzers.cpp` 存放按工件类型定制的分析器实现。
 
-**提取数据结构** (`JournalEntry`)：
-- 时间戳、主机名、进程名、PID
-- 消息内容、优先级
-- 设施、单元名称
-- Boot ID（用于关联同一启动会话）
+## 6. 与其他模块的协作 / 注意事项
 
-**附加结构**：
-- `BootSession` - 启动会话信息
-- `JournalAnomaly` - Journal 异常（缺失条目、时间跳跃等）
+- **命名陷阱（必读）**：`LinuxFilesAnalyzer/Analysis/LogCorrelationEngine` 与 `src/core/EventCorrelationEngine/` 是**两个无关模块**。前者只服务 Linux 日志（产出 linux_correlated_events）；后者是流水线级的事件关联（events.db 侧）。搜代码时别混。
+- **外部依赖**：zlib/xz/bzip2/zstd（压缩日志，`CompressedLogParser.cpp` 直接链库而非 popen 外部命令）；TSK/FileExtractor；其余解析全部自研（auditd、journal、wtmp 都是二进制手工解析，可单测）。
+- **SERVER_CLOUD 场景的输出库**叫 `oss.db` 但内容是 Linux 工件（PathManager 的 ossDb 路径，`TaskManagerAnalysis.cpp:509`）；真正的 OSS（阿里云对象存储）分析在独立的 OSSAnalyzer 模块，两者无关，只是历史命名撞车。
+- **容错设计**：主流程对每个 Phase 单独 catch，一个解析器崩溃不会拖垮整个分析（错误进审计日志）；这也是为什么有些表在某些镜像上会是空的——通常是"证据不存在"而非"解析失败"，排查时先查 `linux_analysis_progress` 表。
+- **auditd 聚合**：原始 auditd 一行一条（一个 syscall 拆多行），`AuditdAggregator::aggregate` 把它们按事件序号聚合成完整事件再入库（`AuditdAggregator.h:95-99`），否则没法按"一次文件操作"来分析。
 
-### 3.6 审计日志聚合器 (AuditdAggregator)
+## 7. 如何验证与扩展
 
-聚合多行 auditd 日志为完整事件。
+- 测试相当齐全：`test_linux_analyzer_gtest.cpp`（主流程）、`test_linux_enhanced_parsers_gtest.cpp`、`test_linux_security_parsers_gtest.cpp`、`test_compressed_log_parser.cpp`、`test_journal_parser.cpp`、`test_auditd_aggregator.cpp`、`test_log_tampering_detector.cpp`、`test_persistence_detector.cpp`、`test_timestamp_normalizer.cpp`、`test_container_runtime_log_parser.cpp`、`test_firewall_security_log_parser.cpp`、`test_package_manager_log_parser.cpp`、`test_email_vpn_log_parser.cpp`、`test_middleware_log_parser.cpp`、`test_database_log_parser.cpp`。每个测试基本对应一个 Parsers/ 子模块。
+- 加新证据类型：解析器放 `Parsers/`（输入用 `queryFilesByPattern` 定位 + `getExtractPath`/`extractFileToPath` 提取，复杂格式参考 `JournalParser` 的二进制解析或 `TimestampNormalizer` 的时间规整），落表加到 `linux_analysis_sql_tables.h`，然后在 `analyzeLinuxData()` 挂一个新 Phase；若要参与关联/规则分析，还需在 `LogCorrelationEngine`/`RuleEngine` 里加对应查询。
+- 加新检测规则：`RuleEngine.cpp` 的规则表内联在源码里，追加一条（含 ATT&CK 编号、severity、匹配谓词）即可被 `evaluateAllRules` 和攻击链组装自动使用。
 
-**提取数据结构** (`AggregatedAuditEvent`)：
-- 审计序列号
-- 事件类型 (SYSCALL, USER_AUTH, USER_CMD 等)
-- 主体（用户/进程）和客体
-- 执行的操作和结果
-- 原始消息
-
-### 3.7 压缩日志解析器 (CompressedLogParser)
-
-解析轮转和压缩的日志文件。
-
-**支持格式**：`.gz`, `.bz2`, `.xz`, `.zip`
-
-**检测内容**：
-- 轮转日志文件列表 (RotatedLogFile)
-- 轮转时间线和完整性
-
-### 3.8 USB 挂载解析器 (USBMountParser)
-
-从系统日志和 udev 规则中提取 USB 设备挂载记录。
-
-### 3.9 云元数据解析器 (CloudParser)
-
-检测云环境元数据：
-- AWS (EC2 实例元数据)
-- GCP (实例元数据)
-- Azure (实例元数据)
-
-### 3.10 时间戳标准化器 (TimestampNormalizer)
-
-将不同来源的时间戳统一转换为 UTC Unix 时间戳。
-
-**标准化时间戳结构** (`NormalizedTimestamp`)：
-- 原始时间戳字符串
-- 标准化 UTC Unix 时间戳
-- 时区来源 (file/system/inferred/utc)
-- 时间戳置信度 (0-100)
-- Boot ID（用于单调时间戳）
-- 推断年份（syslog 无年份时推断）
-- 时钟偏移标志
-
----
-
-## 4. 安全分析解析器
-
-### 4.1 Setuid/Setgid 分析器 (SetuidAnalyzer)
-
-扫描文件系统中的 Setuid/Setgid 文件。
-
-**提取数据结构** (`SetuidFileInfo`)：
-- 文件路径、所有者、组
-- 权限模式
-- Setuid/Setgid 标志
-- 文件大小、MD5/SHA256 哈希
-- 可疑标志和原因
-
-### 4.2 Capabilities 分析器 (CapabilityAnalyzer)
-
-分析 Linux 文件 Capabilities。
-
-**提取数据结构** (`FileCapability`)：
-- 文件路径
-- Capabilities 列表
-- Capability 集合
-- 继承标志
-- 可疑标志
-
-### 4.3 SELinux 分析器 (SELinuxAnalyzer)
-
-**提取内容**：
-- SELinux 状态 (`SELinuxStatus`)：启用状态、模式、策略名
-- AVC 拒绝记录 (`SELinuxAVCDenial`)：源/目标上下文、对象类、权限
-
-### 4.4 AppArmor 解析器 (AppArmorParser)
-
-**提取内容**：
-- AppArmor 配置 (`AppArmorProfile`)：配置名、模式、允许/拒绝路径
-- AppArmor 违规 (`AppArmorViolation`)：操作、目标路径、可执行文件
-
-### 4.5 安全绕过分析器 (SecurityBypassAnalyzer)
-
-检测安全机制绕过尝试。
-
----
-
-## 5. 容器解析器
-
-### 5.1 Docker 解析器 (DockerContainerParser)
-
-**提取数据结构**：
-| 结构 | 内容 |
-|------|------|
-| `DockerContainerInfo` | 容器 ID、镜像、命令、状态、挂载、端口、网络模式 |
-| `DockerImageInfo` | 镜像 ID、标签、大小、层 ID |
-| `DockerVolumeInfo` | 卷名、挂载点、驱动、关联容器 |
-
-### 5.2 Podman 解析器 (PodmanParser)
-
-**提取数据结构**：
-| 结构 | 内容 |
-|------|------|
-| `PodmanContainerInfo` | 容器 ID、镜像、Pod 名、Rootless 标志、状态 |
-| `PodmanPodInfo` | Pod 名、ID、关联容器、状态 |
-
-### 5.3 容器运行时日志解析器 (ContainerRuntimeLogParser)
-
-**提取数据结构**：
-- `DockerLogEntry` - Docker 守护进程日志
-- `CRILogEntry` - CRI (Container Runtime Interface) 日志
-- `KubernetesPodLogEntry` - Kubernetes Pod 日志
-- `ContainerSecurityFinding` - 容器安全发现
-
----
-
-## 6. Web 服务器解析器
-
-### 6.1 Apache 解析器 (ApacheParser)
-
-**提取数据结构**：
-| 结构 | 内容 |
-|------|------|
-| `ApacheAccessLogEntry` | 时间戳、远程 IP、方法、URL、状态码、响应大小、Referer、User-Agent、虚拟主机 |
-| `ApacheVHostConfig` | 服务器名、文档根、别名、SSL 证书路径 |
-
-### 6.2 Nginx 解析器 (NginxParser)
-
-**提取数据结构**：
-| 结构 | 内容 |
-|------|------|
-| `NginxAccessLogEntry` | 时间戳、远程 IP、方法、URL、状态码、响应大小、请求时间、上游地址 |
-| `NginxServerBlock` | 服务器名、根目录、Location、SSL 证书、上游配置 |
-
-### 6.3 中间件日志解析器 (MiddlewareLogParser)
-
-**提取数据结构**：
-- `WebErrorLogEntry` - Web 错误日志
-- `MiddlewareLogEntry` - 应用中间件日志
-- `ModSecurityAuditEntry` - ModSecurity WAF 审计日志
-
----
-
-## 7. 其他服务解析器
-
-### 7.1 数据库日志解析器 (DatabaseLogParser)
-
-**提取数据结构**：
-- `DatabaseLogEntry` - 数据库服务日志 (MySQL, PostgreSQL, MongoDB 等)
-- `DatabaseSecurityFinding` - 数据库安全发现
-
-### 7.2 邮件/VPN 日志解析器 (EmailVPNLogParser)
-
-**提取数据结构**：
-- `EmailLogEntry` - 邮件服务日志 (Postfix, Sendmail, Dovecot)
-- `VPNLogEntry` - VPN 服务日志 (OpenVPN, WireGuard)
-- `EmailSecurityFinding` / `VPNSecurityFinding` - 安全发现
-
-### 7.3 防火墙/安全产品日志解析器 (FirewallSecurityLogParser)
-
-**提取数据结构**：
-- `FirewallLogEntry` - 防火墙日志 (iptables/nftables)
-- `SecurityProductLogEntry` - 安全产品日志 (Fail2Ban, CrowdSec)
-- `SecurityProductFinding` - 安全产品发现
-
-### 7.4 包管理器日志解析器 (PackageManagerLogParser)
-
-**提取数据结构**：
-- `PackageLogEntry` - 包管理器操作日志 (apt, yum, dnf)
-- `SuspiciousPackageFinding` - 可疑包安装发现
-- `PackageInfo` - 已安装包信息
-
-### 7.5 网络配置解析器
-
-**提取数据结构** (`NetworkConnection`)：
-- 协议 (tcp/tcp6/udp/udp6)
-- 本地/远程地址和端口
-- 连接状态 (LISTEN, ESTABLISHED 等)
-- UID 和 Socket inode
-
-### 7.6 系统服务解析器
-
-**提取数据结构** (`SystemdServiceInfo`)：
-- 服务名、描述
-- 加载状态、活跃状态、子状态
-- 单元文件路径、ExecStart 命令
-- 运行用户、启用状态
-
-### 7.7 内核模块解析器
-
-**提取数据结构** (`KernelModuleInfo`)：
-- 模块名、大小、使用计数
-- 依赖模块列表
-- 模块文件路径
-
-### 7.8 防火墙规则解析器
-
-**提取数据结构** (`FirewallRule`)：
-- 链 (INPUT/OUTPUT/FORWARD)、表 (filter/nat/mangle)
-- 协议、源/目标地址和端口
-- 动作 (ACCEPT/DROP/REJECT)
-
-### 7.9 浏览器配置解析器
-
-**提取数据结构** (`LinuxBrowserProfile`)：
-- 浏览器类型 (Chrome/Chromium/Firefox/Opera/Brave)
-- 配置名和路径
-- 所属用户
-
----
-
-## 8. 高级分析引擎
-
-### 8.1 日志关联引擎 (LogCorrelationEngine)
-
-跨日志源关联事件，构建攻击链。
-
-**核心能力**：
-- `correlateEvents()` - 关联认证事件、命令执行、网络活动
-- `buildAttackChains()` - 构建攻击链（侦察 → 利用 → 提权 → 数据窃取）
-- `detectAnomalies()` - 检测异常模式
-
-**关联规则**：
-- 登录与后续命令关联
-- 网络连接与进程关联
-- 文件访问与用户活动关联
-
-**输出结构**：
-- `CorrelatedEvent` - 关联事件（时间范围、事件类型、发起用户/进程、严重度）
-- `AttackChain` - 攻击链（链 ID、攻击类型、事件序列、置信度）
-
-### 8.2 异常检测器 (AnomalyDetector)
-
-检测 6 类异常行为：
-
-| 异常类型 | 检测方法 |
-|----------|----------|
-| 暴力破解 (Brute Force) | 短时间内大量失败登录 |
-| 提权 (Privilege Escalation) | sudo/su 异常使用模式 |
-| 数据窃取 (Data Exfiltration) | 大量数据传输到外部 |
-| 持久化 (Persistence) | 异常的启动/定时任务 |
-| 异常登录 (Unusual Login) | 非工作时间/异常位置登录 |
-| 可疑进程 (Suspicious Process) | 异常进程行为模式 |
-
-**输出结构** (`Anomaly`)：
-- 异常类型和子类型
-- 描述和缓解建议
-- 严重度 (1-5) 和置信度 (0.0-1.0)
-- 证据 ID 列表
-
-### 8.3 日志篡改检测器 (LogTamperingDetector)
-
-检测 10 种日志篡改类型：
-
-| 篡改类型 | 枚举值 | 说明 |
-|----------|--------|------|
-| 日志清除 | `LOG_CLEARED` | 文件大小骤降或内容重置 |
-| 轮转缺失 | `ROTATION_GAP` | 缺少轮转日志文件 |
-| 时间倒退 | `TIME_REVERSAL` | 时间戳逆序 |
-| 时间窗口缺失 | `TIME_WINDOW_GAP` | 大段时间无日志 |
-| 跨日志矛盾 | `CROSS_LOG_INCONSISTENCY` | wtmp 与 auth.log 不一致 |
-| Journal 缺失 | `JOURNAL_MISSING` | Journal 条目缺失 |
-| 审计中断 | `AUDITD_INTERRUPTED` | 审计日志异常中断 |
-| 重复时间戳 | `DUPLICATE_TIMESTAMPS` | 大量条目共享同一时间戳 |
-| 时间戳异常 | `TIMESTAMP_ANOMALY` | 时间戳不符合预期模式 |
-| 格式突变 | `LOG_PATTERN_BREAK` | 日志格式突然改变 |
-
-**输出结构** (`TamperingFinding`)：
-- 篡改类型和严重度 (INFO/LOW/MEDIUM/HIGH/CRITICAL)
-- 描述和受影响时间段
-- 证据和关联文件
-
-### 8.4 持久化机制检测器 (PersistenceDetector)
-
-检测 13 种 Linux 持久化机制：
-
-| 持久化类型 | 枚举值 | 检测路径 |
-|------------|--------|----------|
-| rc.local | `RC_LOCAL` | `/etc/rc.local` |
-| init.d 脚本 | `INIT_D_SCRIPT` | `/etc/init.d/*` |
-| Shell 配置 | `SHELL_PROFILE` | `/etc/profile`, `~/.bashrc`, `~/.profile` |
-| SSH 授权密钥 | `AUTHORIZED_KEYS` | `~/.ssh/authorized_keys` |
-| LD_PRELOAD | `LD_SO_PRELOAD` | `/etc/ld.so.preload` |
-| Sudoers | `SUDOERS` | `/etc/sudoers`, `/etc/sudoers.d/*` |
-| udev 规则 | `UDEV_RULE` | `/etc/udev/rules.d/*.rules` |
-| Polkit 规则 | `POLKIT_RULE` | `/etc/polkit-1/rules.d/*.rules` |
-| xinetd 服务 | `XINETD_SERVICE` | `/etc/xinetd.d/*` |
-| Systemd 定时器 | `SYSTEMD_TIMER` | `*.timer` 单元 |
-| at 任务 | `AT_JOB` | `/var/spool/at/*` |
-| Cron 任务 | `CRON_JOB` | `/etc/crontab`, `/etc/cron.d/*` |
-| Systemd 服务 | `SYSTEMD_SERVICE` | systemd 单元文件 |
-
-**风险评估** (`PersistenceRisk`)：
-- `LOW` - 标准系统持久化
-- `MEDIUM` - 异常但可能合法
-- `HIGH` - 可疑模式
-- `CRITICAL` - 已知恶意模式
-
-**输出结构** (`PersistenceEntry`)：
-- 持久化类型和风险级别
-- 文件路径、条目名、命令、参数
-- 所有者、调度计划
-- 启用状态、可疑标志和原因
-
-### 8.5 规则引擎 (RuleEngine)
-
-基于规则的攻击链分析，支持 MITRE ATT&CK 映射。
-
-**规则类型**：
-| 类型 | 说明 |
-|------|------|
-| Sigma | 模式匹配日志事件 |
-| IOC | 妥协指标匹配 |
-| ATT&CK | MITRE ATT&CK 技术映射 |
-| Custom | 自定义规则 |
-
-**核心方法**：
-- `evaluateSigmaRules()` - 评估 Sigma 规则
-- `matchIOCs()` - 匹配 IOC
-- `mapAnomaliesToATTCK()` - 将异常映射到 ATT&CK 技术
-- `buildAttackChains()` - 从规则匹配构建攻击链
-
-**输出结构** (`RuleMatch`)：
-- 规则 ID、类型、名称
-- 匹配的事件 ID 列表
-- ATT&CK 技术 ID (如 T1059.004)
-- 攻击阶段（战术）
-- 严重度和置信度
-
-### 8.6 时间线重建器 (TimelineReconstructor)
-
-从多个 Linux 数据源重建统一时间线。
-
-**核心方法**：
-- `buildTimeline()` - 构建完整时间线
-- `mergeEvents()` - 合并并按时间排序事件
-- `identifyGaps()` - 识别可疑时间线间隙
-
-**输出结构**：
-- `Timeline` - 包含事件列表和间隙列表
-- `LinuxTimelineEvent` - 时间线事件（时间戳、来源类型、事件类型、描述、用户、IP）
-- `TimelineGap` - 时间线间隙（起止时间、持续时间、是否可疑）
-
-### 8.7 账户/SSH 安全分析器 (AccountSSHAnalyzer)
-
-分析账户和 SSH 配置的安全性。
-
-**输出结构**：
-- `AccountSecurityFinding` - 账户安全发现
-- `SSHSecurityFinding` - SSH 安全发现
-
----
-
-## 9. 数据库架构
-
-### LinuxAnalysisDatabase
-
-提供 40+ 实体类型的线程安全数据库操作，支持类型安全查询构建器 (`QueryBuilder`)。
-
-**核心实体操作**：
-
-| 实体类别 | 操作实体 |
-|----------|----------|
-| 日志 | LogEntry, JournalEntry, AuditLog, AuditEvent |
-| 用户 | UserInfo, GroupInfo, LoginRecord |
-| Shell | ShellHistory |
-| 定时任务 | CronJob |
-| SSH | SSHKey, SSHKnownHost |
-| 包管理 | PackageInfo, PackageLog |
-| 网络 | NetworkConnection |
-| 系统 | SystemdService, KernelModule, FirewallRule |
-| 安全 | SetuidFile, FileCapability, SELinuxStatus, SELinuxAVCDenial, AppArmorProfile, AppArmorViolation |
-| 容器 | DockerContainer, DockerImage, DockerVolume, PodmanContainer, PodmanPod, ContainerLog, CRILog |
-| Web | ApacheAccessLog, ApacheVHost, NginxAccessLog, NginxServerBlock, WebErrorLog, MiddlewareLog, ModSecurityLog |
-| 服务 | DatabaseLog, EmailLog, VPNLog, FirewallLog, SecurityProductLog |
-| 浏览器 | BrowserProfile |
-| 分析结果 | CorrelatedEvent, AttackChain, TimelineEvent, TimelineGap, Anomaly |
-| 持久化 | PersistenceEntry |
-| Journal | BootSession, JournalAnomaly |
-| 安全发现 | AccountSecurityFinding, SSHSecurityFinding, DatabaseSecurityFinding, EmailSecurityFinding, VPNSecurityFinding, ContainerSecurityFinding, SecurityProductFinding, SuspiciousPackageFinding |
-| 篡改检测 | TamperingFinding |
-
-**安全查询**：所有查询方法均提供 `Safe` 后缀版本，使用 `QueryBuilder` 防止 SQL 注入。旧版字符串查询方法已标记为 `[[deprecated]]`。
-
----
-
-## 10. 数据结构概览
-
-### 证据溯源 (EvidenceProvenance)
-
-所有解析结果均包含证据溯源信息：
-
-```cpp
-struct EvidenceProvenance {
-    std::string parserName;      // 解析器名称
-    std::string parserVersion;   // 解析器版本
-    std::string sourceFile;      // 源文件路径
-    int64_t sourceOffset;        // 源文件字节偏移
-    int64_t sourceLine;          // 源文件行号
-    int64_t sourceInode;         // 源文件 inode
-    std::string sourceHash;      // 源文件哈希
-    std::string parseError;      // 解析错误信息
-    std::string rawRecord;       // 原始记录
-    int confidence;              // 置信度 0-100
-};
-```
-
-### 关键数据结构一览
-
-| 结构体 | 用途 | 关键字段 |
-|--------|------|----------|
-| `LinuxLogEntry` | 系统日志 | logFile, timestamp, process, pid, level, facility |
-| `LinuxUserInfo` | 用户账户 | username, uid, gid, shell, passwordHash, accountExpires |
-| `LinuxLoginRecord` | 登录记录 | username, terminal, remoteHost, loginTime, loginType |
-| `ShellHistoryEntry` | Shell 历史 | username, shellType, command, timestamp |
-| `CronJobEntry` | Cron 任务 | username, schedule, command, cronType |
-| `SSHKeyInfo` | SSH 密钥 | username, keyType, publicKey, comment |
-| `PackageInfo` | 已安装包 | name, version, packageManager, installTime |
-| `NetworkConnection` | 网络连接 | protocol, localAddress, remoteAddress, state |
-| `SystemdServiceInfo` | Systemd 服务 | serviceName, activeState, execStart, isEnabled |
-| `KernelModuleInfo` | 内核模块 | moduleName, size, usedCount, state |
-| `FirewallRule` | 防火墙规则 | chain, protocol, source, destination, action |
-| `LinuxAuditLogEntry` | 审计日志 | type, subject, object, action, result |
-| `DockerContainerInfo` | Docker 容器 | containerId, imageName, state, mounts, ports |
-| `ApacheAccessLogEntry` | Apache 日志 | remoteIp, method, url, statusCode, userAgent |
-| `NginxAccessLogEntry` | Nginx 日志 | remoteIp, method, url, statusCode, requestTime |
-| `SetuidFileInfo` | Setuid 文件 | filePath, permissions, isSuspicious |
-| `SELinuxStatus` | SELinux 状态 | isEnabled, mode, policyName |
-| `AppArmorProfile` | AppArmor 配置 | profileName, mode, allowedPaths, deniedPaths |
-| `PersistenceEntry` | 持久化条目 | type, risk, command, isEnabled, isSuspicious |
-| `CorrelatedEvent` | 关联事件 | eventType, initiatingUser, severity |
-| `AttackChain` | 攻击链 | chainId, attackType, events, confidence |
-| `Anomaly` | 异常 | anomalyType, severity, confidence, evidenceIds |
-
----
-
-## 11. API 调用
-
-### C++ API
-
-```cpp
-#include "analyzers/LinuxFilesAnalyzer/LinuxFilesAnalyzer.h"
-
-auto dbManager = std::make_unique<DatabaseManager>("evidence_raw.db");
-LinuxFilesAnalyzer analyzer("linux_server.dd", dbManager.get());
-
-if (!analyzer.initialize()) {
-    std::cerr << "初始化失败" << std::endl;
-    return 1;
-}
-
-analyzer.analyzeLinuxData();
-```
-
-### 命令行
-
-```bash
-./forensic_analyzer linux_server.dd --linux-analyze
-# 输出：linux_server_linux.db
-```
-
-### REST API
-
-Linux 分析结果通过取证分析 API 端点查询，需要 `task_id` 参数。详见 [RouteReference.md](../network/routes/RouteReference.md)。
-
----
-
-## 12. 故障排查
-
-| 问题 | 可能原因 | 解决方法 |
-|------|----------|----------|
-| Journal 解析失败 | systemd 版本不兼容 | 检查镜像 systemd 版本 |
-| 容器数据缺失 | Docker/Podman 未安装 | 确认容器运行时 |
-| 时间戳不一致 | 时区配置差异 | 使用 TimestampNormalizer |
-| 权限被拒绝 | 需要 root 权限 | 使用 sudo 或镜像挂载 |
-| 压缩日志跳过 | 缺少解压库 | 安装 zlib/bzip2/xz |
-
----
-
-## 13. 相关模块
-
-- **[LinuxLLMAnalysisService](../network/LinuxLLMAnalysisService.md)** - Linux 取证 LLM 分析服务
-- **[EventCorrelationEngine](../core/EventCorrelationEngine.md)** - 通用事件关联引擎
-- **[WindowsFilesAnalyzer](./WindowsFilesAnalyzer.md)** - Windows 取证分析（类似架构）
-- **[AndroidAnalyzer](./AndroidAnalyzer.md)** - Android 取证分析
-
----
-
-**最后更新**: 2026-05-19
-**维护者**: ymj68520
+**最后更新**: 2026-08-23（解释式重写）
