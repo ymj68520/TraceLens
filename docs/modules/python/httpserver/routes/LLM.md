@@ -241,7 +241,7 @@ def normalize_threat_level(raw: str, numeric_score: int) -> str:
 
 本组路由经 LLMService 触碰三张表：
 
-**files 表（`<image>_files.db`，[FilesDB.md](../../../schema/FilesDB.md)）**——`persist_to_files_db` 的 UPDATE 目标列：
+**files 表（`<image>_files.db`，[FilesDB.md](../../../../schema/FilesDB.md)）**——`persist_to_files_db` 的 UPDATE 目标列：
 
 | 列 | 写入时机 | 值来源 |
 |---|---|---|
@@ -256,7 +256,7 @@ def normalize_threat_level(raw: str, numeric_score: int) -> str:
 
 **file_descriptions 表（Python 侧惰性建，FilesDB.md:196-199 有对应快照列）**——`_ensure_file_descriptions_schema`（llm_service.py:95-116）`CREATE TABLE IF NOT EXISTS` + PRAGMA 检查补 `is_relevant` 列；随后 `ON CONFLICT(file_path) DO UPDATE` upsert 8 列（id/file_path/description/summary/keywords/model_used/is_relevant/created_at）。身份键是 `normalize_evidence_path(file_path)`——与 Investigation 证据身份 `file:<normalized>` 同源。
 
-**events 表（`<image>_events.db`，[EventsDB.md](../../../schema/EventsDB.md)）**——簇分析/toggle 的 UPDATE 目标：llm_summary/llm_description/llm_keywords/llm_analyzed_at/llm_model_used/llm_is_relevant 六列，定位条件 `(timestamp / bucket_seconds) = time_window AND event_type = ?`（_analysis.py:97-106、_management.py:126-135）；EventsDB.md:290 指出 llm_* 默认 NULL、只有分析后才有值——本组路由就是那个"之后"。
+**events 表（`<image>_events.db`，[EventsDB.md](../../../../schema/EventsDB.md)）**——簇分析/toggle 的 UPDATE 目标：llm_summary/llm_description/llm_keywords/llm_analyzed_at/llm_model_used/llm_is_relevant 六列，定位条件 `(timestamp / bucket_seconds) = time_window AND event_type = ?`（_analysis.py:97-106、_management.py:126-135）；EventsDB.md:290 指出 llm_* 默认 NULL、只有分析后才有值——本组路由就是那个"之后"。
 
 ## 二轮深化 C：批量作业状态机（FileAnalyzer 内存态）
 

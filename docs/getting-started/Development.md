@@ -191,4 +191,52 @@ make acceptance-matrix           # Markitdown/Office/DLL 交接矩阵
 
 ---
 
-**最后更新**: 2026-08-23（以代码为准重写）
+## 贡献者工作流
+
+### 1. 分支与提交约定
+从 git log 归纳的实际风格（照抄即可）：
+- `fix(pipeline): resolve image-internal evidence paths and trust task-owned db discovery`
+- `feat: add phase f live acceptance harness`
+- `docs: freeze dev merge adapter contracts`
+- `chore: clean frontend production lint debt`
+- `test: align regression fakes with lifecycle boundaries`
+要点：conventional 前缀（fix/feat/docs/chore/test）+ 括号作用域可选 + 小写祈使句；修复类带上"症状+根因"两段式正文更受欢迎（参考 `447714a`）。
+分支：功能在 Dev 分支直接小步提交或短命特性分支合并；main 仅走 PR。
+
+### 2. 典型 PR 自查清单（按改动域）
+**改 C++ 分析器**
+- [ ] 新证据类型有 fixture 化的测试（WritingTests §1）
+- [ ] SQL 头文件三处同步（tables/crud/llm——列名逐字一致，7 个坏 SELECT 教训）
+- [ ] 对应模块文档的表清单/注意事项更新
+- [ ] 空输入/损坏输入路径不崩（模块文档"错误处理与边界"节对照）
+
+**改 HTTP 路由**
+- [ ] 四步齐全（实现/注册/Swagger/前端——HTTPServer 配方 A）
+- [ ] 参数防御三件套（参数化/clamp/只读判定）
+- [ ] API 参考示例与 EndpointsFlat 同步
+- [ ] 前端 service 测试（若前端受影响）
+
+**改 Python 服务**
+- [ ] 对应 pytest 子包测试通过（PythonTestCatalog 找落点）
+- [ ] 涉及任务路径的改动对照 task_store 契约（D2b）
+- [ ] 新 env 变量登记进 reference/Environment（含默认值与漂移标注）
+
+**改前端**
+- [ ] vitest 全绿；死代码不新增（Pages 文档的死页面清单引以为戒）
+- [ ] 三客户端选对（api/pythonApi/csApi——Services 文档）
+
+### 3. 文档触达矩阵（改代码后要动哪些文档）
+| 改动 | 必改 | 可能要改 |
+|------|------|---------|
+| 新表/改列 | docs/schema/ 对应库（表清单+字段表） | DatabaseSchema 表数、模块文档产出表 |
+| 新端点 | api_reference + EndpointsFlat | web/Services 映射、Swagger 对齐说明 |
+| 新 env/CLI | reference/Environment 或 CLI | Installation 变量表、CapacityPlanning（若性能相关） |
+| 修了已知缺陷 | 对应模块文档"注意事项"删标注 | FAQ/Troubleshooting 已知问题索引表 |
+| 新行为/机制 | DataFlow/Overview 对应幕/节 | Concurrency（并发语义）、DesignDecisions（若属新决策） |
+
+### 4. 大重构检查点
+1. 触碰 D2b/D4b 边界（任务删除/路径解析/资源关闭）→ 先读 docs/hardening/d2b、d4b 冻结约束；
+2. 验收 profile 当回归：smoke（进程边界）→ task（真实解析）→ analyst（调查全链）；
+3. 契约冻结类（evidence_key 语法、报告准入信封）改动必须走"新版本并行+旧版退役"路径（参考 /api/llm/case-analysis 的 410 退役先例）。
+
+**最后更新**: 2026-08-24（扩充：贡献者工作流）

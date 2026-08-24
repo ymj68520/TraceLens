@@ -455,4 +455,23 @@
 
 ---
 
-**最后更新**: 2026-08-24（新建：三服务全端点平面清单，端点逐条抄录自两篇 API 参考与 RouteReference，未增删）
+## 附录 A：超时与错误形态速查
+
+| 服务 | 请求超时 | 常见错误形态 | 说明 |
+|------|---------|-------------|------|
+| C++ :8080 | 无统一超时（Crow 默认）；同步端点（建索引）可能长阻塞 | `{"error":"..."}` + 4xx/5xx；部分带 error_code | ApiResponse 封装仅 FilterRoutes |
+| Python :8090 | httpx 60s（前端 pythonApi）；LLM 120s（LLM_TIMEOUT_SECONDS） | 固定文案 500 / 422 校验详情 / 202+轮询（生成类） | 降级态 501（Graphiti disabled） |
+| C/S :8091 | JWT 30 天（client token）；DB 池 5s | 401（token 缺/过期）/403（org 越权） | /health/ready 503=DB 不可用（启动快照） |
+
+## 附录 B：端点别名与易混对照
+
+| 易混项 | 实际情况 |
+|--------|---------|
+| /health vs /api/health vs /api/system/health（C++） | 三口径并存；run.sh 硬检查用 /api/system/health（SystemRoutes 文档） |
+| /tasks vs /api/tasks（C++） | 前者是简化接口（创建/列表/详情/结果四件），后者全功能 |
+| /api/graphiti/ingest-file | 实为 `/api/graphiti/ingest/file`（斜杠——契约目录勘误） |
+| 状态字面量 | API 小写（pending）/tasks.json 大写（PENDING）；Graphiti job 大写（COMPLETED）——三处三样，见 Glossary 对照 |
+| /api/llm/case-analysis | 410 退役；现行是 /api/llm/cases + /api/reports |
+| /api/markitdown（dev 前端） | 无 vite 专属前缀，dev 下会被 /api 兜底打到 C++——生产无碍（同源走 C++ 转发? 不，生产 markitdown 由 C++ MarkitdownProxy 服务端调用） |
+
+**最后更新**: 2026-08-24（扩充：超时与别名附录）

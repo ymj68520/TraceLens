@@ -168,7 +168,7 @@ else:
 | /api/wechat/owner | GET | task_id | username/nickname/uin/imei | 404 |
 | /api/wechat/contacts | GET | task_id、include_chatrooms=false | 联系人（可含群） | 404 |
 
-## 8. 二轮深化 B：android.db 四表读写列清单（与 [AndroidDB.md](../../../schema/AndroidDB.md) 交叉核对）
+## 8. 二轮深化 B：android.db 四表读写列清单（与 [AndroidDB.md](../../../../schema/AndroidDB.md) 交叉核对）
 
 本组**只读**以下列（写侧是 C++ Android 分析，AndroidDB.md:113 指出存的是 SQLCipher 解密后内容）：
 

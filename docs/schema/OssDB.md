@@ -171,4 +171,19 @@ SELECT remote_ip, COUNT(*) c FROM oss_access_logs
 GROUP BY remote_ip ORDER BY c DESC LIMIT 30;
 -- 注意：timestamp 列当前解析恒 0（parseAccessLogLine 未实现时间解析，源码自注 TODO）
 ```
+
+## 分析案例
+
+### 演练：接线后的对象外泄调查（当前库无生产数据）
+
+按"已知边界"：OSSAnalyzer 未接线，本库仅单测产出。以下为**接线后的演练剧本**（SQL 已按真实列名写好）：
+1. 时间分布（查询手册第 1 条）找异常写入峰；
+2. `oss_access_logs` 按 remote_ip 聚合（第 3 条）定位非授权来源——注意 timestamp 恒 0 的解析缺陷，改用行的插入顺序近似；
+3. `oss_objects` 的 storage_class 突变（标准→归档）与删除标记结合判断"隐藏式外泄"。
+接线前读 OSSAnalyzer 模块文档的"两条路"（复活路由 vs 清理）再动手。
+
+## 自检清单（当前仅单测产出）
+
+- [ ] 表存在即 DDL 正确；行数据只在手工调用分析器/单测时出现
+- [ ] 演练前重读"已知边界"与模块文档的两条路（复活/清理）
 **最后更新**: 2026-08-24（补：写入时序与查询手册）

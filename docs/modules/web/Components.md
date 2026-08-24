@@ -316,4 +316,25 @@ cd web && npx vitest run src/components/
 # 死组件组的测试仍会跑——通过不代表组件可达。
 ```
 
+
+## 常用组件速查（props 一行版）
+
+| 组件 | 关键 props | 用途 | 备注 |
+|------|-----------|------|------|
+| Button | variant(primary/secondary/danger/ghost)、size、loading | 统一按钮 | variant 查表实现（走读段） |
+| Card | title、actions、children | 面板容器 | |
+| Badge | tone(success/warning/danger/info) | 状态标 | 任务状态色映射在 utils/constants |
+| Modal | open、onClose、title、wide | 弹层 | ConfirmDialog 是它的确认特化 |
+| ProgressBar | value、label、indeterminate | 进度 | 阶段百分比直接喂 value |
+| Spinner | size | 加载 | |
+| TerminalOutput | enabled、taskId、channel | 实时日志 | WebSocket 因不传 taskId 而 disabled，实际走 SSE |
+| TaskSelector | value、onChange、relevantPaths | 跨页选任务 | URL↔store 双向同步（Overview 走读） |
+| ToastContext/useToast | — | 通知 | 注意别从 common/useToast 孤儿文件导入（analysis-center 事故） |
+| FileListTable/FileFilters | data、filters、onSelect | 文件页主体 | 虚拟化在 Files 页非组件内 |
+| FilterProfileSelector | value、onChange、profiles | 画像选择 | 编辑器同目录 |
+| GenerateReportPanel | taskId | 报告生成入口 | 202 轮询 hook 配套 |
+| ClusterInvestigationDrawer | cluster、task_id | 簇调查抽屉 | Timeline 页挂载 |
+| LLMTaskSelector/ReanalyzeModal | taskId、files | 重分析 | llm-descriptions 组件族（部分死代码页引用） |
+
+报告渲染器：registry 按 manifest 的 renderer 名分发；未注册回落 GenericTableRenderer；现有专用渲染器（KeyValue/AttachmentList/RecordBadges 等）见报告域文档。
 **最后更新**: 2026-08-24（二轮深化：补代码走读与契约对应）

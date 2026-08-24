@@ -258,4 +258,14 @@ curl -X POST http://localhost:8666/api/filter/profiles ... # 创建/更新自定
 
 ---
 
+
+## 练习与扩展实验
+
+- [ ] 练习 1：逐字段读一遍 general_forensics.json，标注每个条件的实际匹配语义（glob/子串）。
+- [ ] 练习 2：复制 telecom_fraud 为自定义画像，删掉三类扩展名，量化 included_files 变化。
+- [ ] 练习 3：构造一个 include 全灭的画像，验证"回退全量+警告"行为。
+- [ ] 扩展实验 A：写"内部泄密排查"画像（文档/源码/压缩包 + 排除系统目录），跑真实镜像验证。
+- [ ] 扩展实验 B：用 POST /api/filter/apply 对已完成任务的 raw.db 现场过滤，对比 REST 创建与 apply 两条路径的产物差异。
+- [ ] 思考题：为什么 SceneDetector 必须在画像之前？构造一个反例画像证明它。
+- [ ] 思考题：画像能过滤掉的时间线事件会消失吗？（提示：事件提取读的是 effectiveRawDb。）
 **最后更新**: 2026-08-24（新建）

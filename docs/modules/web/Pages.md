@@ -394,4 +394,18 @@ cd web && npm run dev
 cd web && npx vitest run src/routes.test.jsx   # 路由表断言
 ```
 
+
+### 其余六页状态流走读
+
+**Dashboard**：挂载即 `dispatch(fetchTasks())`+`fetchTaskStatistics()`（taskSlice），依赖健康卡逐服务 fetch（systemService/llmService/graphitiService 各自端点），无轮询——数据是"进页快照"；Toon 导出按钮直调 exportToon 后触发浏览器下载。
+
+**Cases**：caseSlice.fetchCases 拉列表；每案展开时逐任务读 progress（复用 tasks 数据）；"跨镜像分析"按钮 → pollMultiAnalysis(jobId)（llmService → Python /api/llm/multi-image-analysis + 轮询），期间按钮态由 job status 驱动；删除走 deleteCaseWithTasks（allSettled 并行删任务再删案——Store 文档走读段）。
+
+**Android**：依赖 TaskSelector 写 URL `task_id` → 五组端点（miui-overview/apps/inventory、qqnt、wechat）按 tab 懒拉；无全局轮询，切 tab 即切数据源。
+
+**Memory**：同 TaskSelector 模式；五端点（summary/processes/network/bash-history/boot-info）独立拉取；bash 关键词是前端过滤（后端支持 keyword 参数，二选一）。
+
+**Statistics**：单端点 /api/forensics/statistics/overview 渲染卡片/图；切任务即重拉。
+
+**Settings**：本地优先——settingsSlice 读写 localStorage（forensics_settings），LLM/Graphiti 状态卡进页拉一次（/api/llm/models、graphiti status）；语言/主题即时生效不落库。
 **最后更新**: 2026-08-24（二轮深化：补代码走读与契约对应）

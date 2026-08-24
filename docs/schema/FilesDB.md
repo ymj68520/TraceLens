@@ -425,4 +425,12 @@ ORDER BY r.size DESC LIMIT 100;
 
 **结论与下一步**：输出"已删除文件分级清单"（A 级=平台回收站在册、B 级=raw 未分配且哈希在、C 级=仅目录项残留），并对 A/B 级提交雕刻提取。注意本库 `android/windows/linux_artifacts` 三表只在 CLI 集成模式存在（已知边界），HTTP 任务查不到属正常。
 
+
+## 自检清单
+
+- [ ] 主表与 24 分类表行数对账（第 5 条）
+- [ ] llm_analyzed_at 覆盖率与限额设置一致（第 3 条）
+- [ ] scene_relevant 行数>0（场景检测生效）
+- [ ] file_descriptions 与主表不矛盾（第 4 条）
+- [ ] unknown_files 占比——分类器盲区信号（扩展名映射是否要补）
 **最后更新**: 2026-08-24（补：写入时序与查询手册；扩充：分析案例）

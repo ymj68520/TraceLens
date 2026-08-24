@@ -194,4 +194,23 @@ SELECT partition_num, inode, path, size FROM files
 WHERE name='passwd' OR path LIKE '%/passwd' ORDER BY partition_num;
 ```
 读法：inode 仅分区内唯一，多分区联查必须带 partition_num（决定二）。
+
+## 分析案例
+
+### 案例一：多分区镜像的分区排查
+
+**问题**：镜像有 4 个分区但任务产出异常少。第 1 步查 `partitions`（每分区 fs_type/长度）确认哪些分区被识别；第 2 步按 partition_num 聚合 files 行数（查询手册第 3 条）定位"空分区"——是文件系统不受支持（查 ImageAnalyzer 支持矩阵）还是遍历中断（重跑该镜像）；第 3 步对可疑分区单独看时间戳健全性（第 4 条）。结论落点：raw 是唯一事实源，分区级差异在这里看最干净。
+
+### 案例二：raw 与 filtered 的画像效果验证
+
+换用新过滤画像后：`ATTACH` 两个库对比"保留了哪些高价值类"（SqlCookbook 第 2 条变体，按 category 统计两侧差集）——差集里若出现 DOCUMENTS/DATABASES 大量流失，说明画像 include 写窄了（回 FilterProfiles 教程修画像而不是怪分析器）。
+
+## 自检清单（拿到一个新任务先核对）
+
+- [ ] partitions 行数 = 预期分区数（0 也合法：无分区表）
+- [ ] files 总行数与 REG 行数量级符合镜像规模（容量模型）
+- [ ] 时间戳健全性四指标非全 0（查询手册第 4 条）
+- [ ] md5 覆盖率（若配置了哈希）：NULL 比例是否异常
+- [ ] 多分区时抽一个同名文件验证 partition_num 消歧（第 6 条）
+- [ ] 与 files.db 主表对账差异可解释（过滤/类型）
 **最后更新**: 2026-08-24（补：写入时序与查询手册）

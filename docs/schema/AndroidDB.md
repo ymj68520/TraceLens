@@ -549,4 +549,47 @@ FROM encrypted_db_inventory
 ORDER BY CASE open_status WHEN 'locked' THEN 0 ELSE 1 END;
 -- open_status 取值以字段表为准；locked 的库需要人工供密码（--backup-password-stdin）
 ```
+
+## 分析案例
+
+### 案例一：涉诈账号行为画像
+
+**取证问题**：MIUI 备份，涉案微信账号涉嫌电信诈骗。要求还原案发窗口内的行为轨迹与关系网。
+
+**第 1 步：时间窗行为序列**
+```sql
+SELECT datetime(timestamp,'unixepoch') t, CASE is_send WHEN 1 THEN '发' ELSE '收' END dir,
+       CASE WHEN is_send=1 THEN receiver ELSE sender END peer, substr(content,1,40) preview
+FROM wechat_messages
+WHERE timestamp BETWEEN strftime('%s','2026-08-18 09:00') AND strftime('%s','2026-08-18 12:00')
+ORDER BY t;
+```
+读法：`is_send` 区分方向；群聊行看 `chatroom_name`/`sender_nickname`（字段表）还原群内发言。连续"发→秒收"脚本化模式是引流/诈骗群特征。
+
+**第 2 步：高频对手方与电话交叉**
+```sql
+SELECT CASE WHEN is_send=1 THEN receiver ELSE sender END peer, COUNT(*) c
+FROM wechat_messages GROUP BY peer ORDER BY c DESC LIMIT 15;
+SELECT number, name, type, duration, datetime(date,'unixepoch')
+FROM call_logs WHERE date BETWEEN :s AND :e ORDER BY date;
+```
+读法：消息 Top 对手方与通话记录里的号码对齐（联系人表补 display_name）；短时高频通话+特定号段强化"引流→话务"判断。
+
+**第 3 步：证据完备性自检**
+```sql
+SELECT package_name, db_path, open_status FROM encrypted_db_inventory WHERE open_status<>'ok';
+```
+读法：解密失败的库（key_hint 不足）意味着部分会话缺失——结论要注明覆盖边界；必要时人工供密码重跑（`--backup-password-stdin`）。
+
+### 案例二：应用安装与浏览侧写
+
+`installed_apps`/`installed_packages` 与 `chrome_history`（url/title/last_visit_time）交叉：涉案时段新装的应用 + 搜索/访问记录还原准备动作（如搜"接码平台"、装多开工具）。
+
+## 自检清单
+
+- [ ] wechat_messages 时间分布与案发窗吻合（无大面积缺失）
+- [ ] encrypted_db_inventory 无未处理的 locked 库（影响覆盖完整性）
+- [ ] call_logs/sms 与 wechat 的账号体系一致（同一机主）
+- [ ] MIUI 任务核对 manifest 的 package_count 与 installed_apps 行数
+- [ ] LLM5 列覆盖率（Android 有端点门控，无端点时全空属预期）
 **最后更新**: 2026-08-24（补：写入时序与查询手册）

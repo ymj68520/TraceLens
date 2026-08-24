@@ -257,4 +257,49 @@ AI 分析的开关/模式、事件簇、Graphiti 图谱栈与 token 优化格式
 
 ---
 
+## 补充术语（第二批）
+
+| 术语 | 代码名 | 定义 | 详见 |
+|------|--------|------|------|
+| 过滤画像 | filter_profile | 按案情收敛文件集的 JSON 规则集（include/exclude/combine_mode） | [FilterProfiles](../tutorials/FilterProfiles.md) |
+| 有效原始库 | effectiveRawDb | 过滤后下游实际读的库（raw.db 或 _filtered.db） | [FileFilter](../modules/cpp/core/FileFilter.md) |
+| 双阈值看门狗 | TASK_WATCHDOG_STALE/PENDING_MINUTES | RUNNING/PENDING 各 30 分钟无进展判死 | [Concurrency](../architecture/Concurrency.md) |
+| 提交-轮询 | submit-poll | C++ 触发 Python 长任务的模式（async_ingest 拿 job_id 再查） | [LLMPythonProxy](../modules/cpp/network/LLMPythonProxy.md) |
+| 降级启动 | degraded startup | 依赖缺失时服务仍启动、功能缺席（initialized-but-disabled） | [ServiceManager](../modules/python/httpserver/services/ServiceManager.md) |
+| 冻结准入信封 | admission envelope | 报告生成前对输入集做 input_hash 冻结，保证幂等 | [ForensicReportService](../modules/python/services/ForensicReportService.md) |
+| 证据键 | evidence_key | `file:`/`cluster:v1:<minute>:<type>` 的冻结语法 | [InvestigationService](../modules/python/services/InvestigationService.md) |
+| 终端写保护 | terminal write guard | 任务删除后拒绝新写入（existing-only） | [TaskInfrastructure](../modules/cpp/network/TaskInfrastructure.md) |
+| TOCTOU 防复活 | no-resurrection | 删除与写入竞态的防护（D4b） | docs/hardening/d4b |
+| SQL-as-headers | SQL/ 头文件 | 建表语句以常量集中在头文件、编译期校验 | [DatabaseManager](../modules/cpp/core/DatabaseManager.md) |
+| 场景工件表 | android/windows/linux_artifacts | CLI 模式并入 files.db 的平台工件表 | [FilesDB](../schema/FilesDB.md) |
+| 死列 | dead column | 建表带出但从不写的列（raw.db llm_*） | [RawDB](../schema/RawDB.md) |
+| 恒空表 | always-empty table | 解析器未接线导致生产恒空（shimcache 等） | [WindowsDB](../schema/WindowsDB.md) |
+| 探测+ALTER 自愈 | probe-and-alter | 打开库时探测缺列并补（无版本迁移） | [SQLiteHelper](../modules/cpp/network/SQLiteHelper.md) |
+| 幂等标准化 | idempotent normalization | EventExtractor 只扫 normalized_type IS NULL | [EventExtractor](../modules/cpp/core/EventExtractor.md) |
+| 原子替换 | atomic replace | 临时文件+rename 的取证级落盘模式 | [FileExtractor](../modules/cpp/core/FileExtractor.md) |
+| 围栏 | allowlist fence | FTS_ALLOWED_ROOT 限制可索引路径 | [SearchRoutes](../modules/cpp/network/routes/SearchRoutes.md) |
+| 表驱动四件套 | table-driven quad | 平台 LLM 的 Type↔表↔SELECT↔prompt 注册模式 | [LinuxLLM](../modules/cpp/network/LinuxLLMAnalysisService.md) |
+| 端点门控 | endpoint gating | Android LLM 无 LLM_BASE_URL 自动跳过 | [AndroidLLM](../modules/cpp/network/AndroidLLMAnalysisService.md) |
+| MANDATORY 工件 | mandatory artifacts | 不受 llm_analyze 开关约束的必析类型 | 同上 |
+| episode 渲染 | _render_episode_for_extraction | JSON→Field: value 文本以走宽松抽取 | [GraphitiIngestor](../modules/python/graphiti_integration/GraphitiIngestor.md) |
+| 抽取指令 | FORENSIC_EXTRACTION_INSTRUCTIONS | 覆盖 Graphiti 默认丢弃取证实体的补丁 | 同上 |
+| llm_patch 前置 | patch-before-import | 清洗 <think> 的 monkey-patch 必须先导入 | 同上 |
+| 任务隔离图谱 | group_id=task_id | 每任务独立 Graphiti 图、跨任务靠合并器 | [GraphitiService](../modules/python/services/GraphitiService.md) |
+| 混合检索回退 | hybrid→CONTAINS | RRF 检索失败退化为 Neo4j 文本包含 | 同上 |
+| Redis 回退 | memory fallback | 队列持久化缺失时内存模式（重启丢作业） | [IngestionJobManager](../modules/python/services/IngestionJobManager.md) |
+| 双端模型 | dual-model loading | 图谱要求聊天+嵌入模型同载 | [LLMOperations](../ops/LLMOperations.md) |
+| 三重最小值预算 | triple-min budget | 内容预算=min(窗口/上限/硬顶)≈6144 | [FileAnalyzer](../modules/cpp/integration/FileAnalyzer.md) |
+| 头尾截断 | 70/30 truncation | 头 70% 尾 30%+双向 200 字符边界窗 | 同上 |
+| 注册令牌 | registration token | 限时限量接纳 agent 的凭证 | [server/Services](../modules/python/server/Services.md) |
+| 命令队列领取 | case()-priority poll | 优先级领取置 assigned 的 SQL 模式 | 同上 |
+| JSONB 整体赋值 | whole-reassign | PG JSONB 局部更新丢失的坑 | 同上 |
+| 只读成员校验 | mode=ro member check | task_store 打开前的防御 | [TaskStore](../modules/python/services/TaskStore.md) |
+| 隔离工作区 | disposable workspace | 验收框架的临时目录契约 | [AcceptanceHarness](../testing/AcceptanceHarness.md) |
+| fake LLM 路由 | prompt routing | 验收假端点按 prompt 形态回放冻结契约 | 同上 |
+| 死链路由 | dead nav link | 侧栏指向不存在路由（/investigation-graph） | [web/Pages](../modules/web/Pages.md) |
+| 身份绑定轮询 | identity-bound polling | 按 taskId/generationId 丢弃过期响应 | [web/Hooks](../modules/web/Hooks.md) |
+| 静默 thunk | fetchTasksSilent | 不置 loading 的列表刷新（防闪屏） | [web/Store](../modules/web/Store.md) |
+| 大小写双轨 | case duality | API 小写/落盘大写/图谱大写三处三样 | [Glossary 对照] |
+| 三口径健康 | health trio | /health、/api/health、/api/system/health | [EndpointsFlat 附录](EndpointsFlat.md) |
+
 **最后更新**: 2026-08-24（新建，术语表）

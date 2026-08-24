@@ -167,7 +167,7 @@ if times and len(times) >= 2:
 | raw.db.files（ATTACH 别名 raw） | path、atime、crtime | 四时间戳补全 |
 | events.db.events | timestamp、event_type、llm_summary、llm_description、llm_keywords、llm_is_relevant | CTE 建簇（file→cluster 方向） |
 
-对照 [FilesDB.md](../../../schema/FilesDB.md)/[RawDB.md](../../../schema/RawDB.md)/[EventsDB.md](../../../schema/EventsDB.md)：raw 表的 atime/crtime 正是本模块**唯一**的消费者级读取点之一；files 表的 llm_* 列在此只读不写（写在 /api/llm）。
+对照 [FilesDB.md](../../../../schema/FilesDB.md)/[RawDB.md](../../../../schema/RawDB.md)/[EventsDB.md](../../../../schema/EventsDB.md)：raw 表的 atime/crtime 正是本模块**唯一**的消费者级读取点之一；files 表的 llm_* 列在此只读不写（写在 /api/llm）。
 
 ## 9. 二轮深化 C：异常规则 ↔ 前端展示映射
 

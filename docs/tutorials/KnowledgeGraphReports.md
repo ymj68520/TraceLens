@@ -249,4 +249,15 @@ curl -X POST $BASE/workbench/task_server/final-reports/<report_id>/publish
 
 ---
 
+
+## 练习与扩展实验
+
+- [ ] 练习 1：按本教程流程走一遍后，把关键中间结果（job_id/表行数/端点响应）记录成你自己的实验日志模板。
+- [ ] 练习 2：故意制造一次失败（如停掉 Neo4j/输错令牌），观察降级表现并对照 Concurrency/Security 文档的解释。
+- [ ] 练习 3：把教程中的 curl 换成你趁手的客户端（httpie/Postman），沉淀成集合。
+- [ ] 扩展实验 A：对比"成功路径"与"练习 2 的失败路径"在审计日志/服务日志里的痕迹差异。
+- [ ] 扩展实验 B：用最小 fixture（TestFixtures 里的生成脚本）替代真实证据复现全流程，估算耗时量级。
+- [ ] 扩展实验 C：将本教程产出接入报告链（/api/reports），完成"证据→报告"闭环一次。
+- [ ] 思考题：这条链路的哪一环是 fire-and-forget？失败了主流程会怎样？（对照 DataFlow 第六幕。）
+- [ ] 思考题：如果把本流程放进 C/S 模式（agent 执行），哪些步骤要换端点？（对照 ServiceContracts。）
 **最后更新**: 2026-08-24（新建，教程）

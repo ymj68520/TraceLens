@@ -1303,4 +1303,53 @@ SELECT datetime(timestamp,'unixepoch'), event_type, manufacturer, product,
        serial_number, mount_point, capacity_bytes
 FROM linux_usb_events ORDER BY timestamp;
 ```
+
+## 分析案例
+
+多查询串联的完整分析叙事；列名以本文档字段表为准，时间窗为示例值。
+
+### 案例一：疑似入侵三步验证
+
+**取证问题**：Web 服务器镜像，告警称 8 月 20 日有异常登录。要求验证"是否被入侵、做了什么、留了什么"。
+
+**第 1 步：入口验证（登录面）**
+```sql
+SELECT username, remote_host, terminal, datetime(login_time,'unixepoch') t
+FROM linux_login_records
+WHERE login_time BETWEEN strftime('%s','2026-08-20 00:00') AND strftime('%s','2026-08-21 00:00')
+ORDER BY login_time;
+```
+读法：先筛 `is_success=1 AND remote_host` 非空（SSH 成功外联登录）；再回看同账户此前的 `is_success=0` 聚集（爆破特征）。锁定可疑用户与首登时刻。
+
+**第 2 步：落脚点验证（持久化面）**
+```sql
+SELECT persistence_type, risk_level, file_path, command, suspicious_reason
+FROM linux_persistence_entries
+WHERE is_suspicious=1 OR risk_level IN ('CRITICAL','HIGH');
+```
+读法：与第 1 步的时间对齐——可疑持久化的 `raw_content`/溯源组（source_file）若创建于首登之后，因果链成立。cron/systemd 类重点看 `command` 里的下载器与反弹语句。
+
+**第 3 步：行为与后果（篡改/攻击链面）**
+```sql
+SELECT tampering_type, severity, log_source, datetime(timestamp_start,'unixepoch') ts
+FROM linux_tampering_findings ORDER BY timestamp_start;
+SELECT chain_id, attack_type, summary, confidence FROM linux_attack_chains;
+```
+读法：tampering 证明"日志被改/被清"（反取证）；attack_chains 的 events JSON 给出编排好的行为序列。三步合起来即"入口→落脚→后果"的完整证据链，配合 `linux_rule_matches` 的 ATT&CK 映射（`attck_technique` 列）标注战术阶段。
+
+### 案例二：数据外带量化（USB 路径）
+
+**问题**：怀疑涉案人拷贝资料。第 1 步 `linux_usb_events` 按时间排序看插拔与挂载（`mount_point`/`capacity_bytes` 判断设备类型）；第 2 步 ATTACH events.db 查挂载窗口内的大文件读取/外写事件；第 3 步 files.db 按窗口与扩展名收敛清单，量化外带规模（SUM(size)）。
+
+### 案例三：容器逃逸痕迹（服务器场景）
+
+第 1 步 `linux_docker_containers` 的 `state`/`host_config`（privileged 特征）；第 2 步 `linux_container_security_findings` 的 findings 类型；第 3 步 `linux_capabilities`/`linux_setuid_files` 交叉新出现的可疑项（crtime 靠 raw.db 时间戳）。
+
+## 自检清单
+
+- [ ] login_records 覆盖 auth.log 与 wtmp 双源（时间连续性）
+- [ ] persistence_entries 至少含系统基线项（全空=解析失败而非干净）
+- [ ] 73 表中"结论表"（攻击链/异常/关联）非空才可引用
+- [ ] 服务日志五表的 timestamp 与 timestamp_unix 双列一致性
+- [ ] LLM5 列：七类坏 SELECT 对应工件恒空属已知缺陷（5.1 节）
 **最后更新**: 2026-08-24（补：写入时序与查询手册）

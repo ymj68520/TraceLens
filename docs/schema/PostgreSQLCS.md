@@ -306,4 +306,25 @@ SELECT indexname FROM pg_indexes WHERE tablename='command_queue';
 -- 003 的证据：users 表种子邮箱应为 super_admin@example.com（.local 为未应用）
 SELECT email FROM users WHERE role='super_admin';
 ```
+
+## 分析案例
+
+### 案例一：一次"命令下发了没执行"的复盘
+
+**问题**：运营方称向某取证机下发了 analyze_disk，两小时无结果。psql 三步：
+1. `command_queue` 按 id 查该命令状态与 `expires_at`——卡在 assigned 说明 agent 领了没回（agent 侧日志）；
+2. `clients.last_seen` 判断代理是否离线（60 秒窗口外=离线，命令会悬着直到 TTL）；
+3. `analysis_tasks`+`task_history`（按 command_queue.task_id FK 关联）看任务是否创建过——没创建=agent 执行 CLI 前就失败（常见：镜像路径不可达）；创建了但 failed=看 error_message。
+结论模板：命令链四站（下发/领取/执行/回收）哪一站断的，本库全部可追溯。
+
+### 案例二：代理接入潮的容量核对
+
+registration_tokens 的 used_count/max_clients（表级 CHECK 约束保证不超发）与 clients 增速对比；analysis_results 的 size_bytes 按日聚合看回传洪峰——为 PG 磁盘与 result 存储扩容给依据（数据是登记行不是 blob 本体，注意区分）。
+
+## 自检清单
+
+- [ ] 002 索引存在 + 003 种子已修（查询手册第 6 条）
+- [ ] command_queue 无长期 pending 积压
+- [ ] clients.last_seen 在窗口内（代理在线）
+- [ ] registration_tokens 未超发（used≤max 由 CHECK 保证，仍要看趋势）
 **最后更新**: 2026-08-24（补：写入时序与查询手册）

@@ -414,6 +414,29 @@ RUNNING → Neo4j 慢或嵌入模型未加载（缺嵌入模型在摄取时直�
 
 ---
 
+| /analysis-center 整页崩溃 | 孤儿 useToast 导入 | web/Pages 已知问题 |
+| 侧栏 /investigation-graph 死链 | 路由不存在 | web/Pages |
+| 侧栏 nav 键显示原文 | en/zh 词表缺键 | web/I18nTheming |
+| useFileLLMAnalysis 参数形态错 | 对象当第一参 | web/Hooks（死 hook） |
+| TaskSelector 与侧栏清单不一致 | 两份清单不同步 | web/Overview |
+| Office 错误前缀误判为内容 | "Error parsing DOCX:"/"Warning:" 不匹配 | OfficeAnalyzer |
+| OSS AI filter 一调 500 | bucket 形参不匹配 | OssAnalysis |
+| OSS 路由补注册即悬垂 | 聚合器栈对象捕获 this | OSSRoutes |
+| wechat invalidate 无效 | 每请求新建实例 | WeChatGraphService |
+| 案例级图谱曾静默为空 | 缺 Path 导入（已修 447714a） | GraphitiService |
+| wait_for_job_completion 死等 | 终态不含 error/unknown | LLMPythonProxy |
+| PUT /api/cases/{id}/* 200 空对象 | update 静默 no-op | CaseManager |
+| 命令 TTL 无后台清扫 | 仅 expire 端点 | server/Services |
+| /health/ready 启动快照 | 中途宕库不变红 | server/Main |
+| GRAPHITI_BATCH_SIZE 三默认 | 50/10/25 | Environment |
+| --overwrite/--dll-threshold 死参数 | 解析后无消费者 | CLI |
+| --xfs-mode 非法仅警告 | 与 android-source 不一致 | CLI |
+| run_server reload/workers 不生效 | 传对象需字符串工厂 | httpserver/Main |
+| llm_files_test 等脱离 ctest | 独立 main 无 add_test | CppTestCatalog |
+| 孤儿 python 测试不被收录 | 根目录无 pytest 配置 | PythonTestCatalog |
+| create_pe_sample 旧路径已断 | 硬编码工程路径 | TestFixtures |
+| 审计轮转/保留未接线 | rotate/cleanup 无调用方 | AuditLog |
+
 ## 14. 获取帮助
 
 提交 Issue 前请收集：

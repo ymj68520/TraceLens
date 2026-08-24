@@ -141,7 +141,7 @@ def _get_oss_filter_service(service_manager):
 
 OSSFilterResponse 字段（:34-42）：filtered_objects（对象标识列表）、selected_count、total_objects、reasoning（LLM 推理文本）——不写库、不落盘。OSSAnalyzeRequest 的 `download_dir` 同样未过门控（与 oss_db_path 同一问题）。
 
-## 8. 二轮深化 B：oss_objects 读取列清单（与 [OssDB.md](../../../schema/OssDB.md) 交叉）
+## 8. 二轮深化 B：oss_objects 读取列清单（与 [OssDB.md](../../../../schema/OssDB.md) 交叉）
 
 `_get_objects_from_db`（oss_filter_service.py:236-252）只读 8 列：bucket、key、size、last_modified、storage_class、content_type、owner、（WHERE 谓词）is_deleted——对应 oss_objects 全 20 列（OssDB.md:23-47）的子集；`is_deleted = 0` 过滤删除标记对象，`ORDER BY bucket, key` 保证批处理顺序稳定（同桶相邻，LLM 上下文更聚焦）。注意查询**忽略** etag/version 等版本列——筛选粒度是"对象键"而非"对象版本"。
 

@@ -618,4 +618,46 @@ FROM dll_base_info b LEFT JOIN dll_anomalies a ON a.dll_id=b.id
 WHERE b.threat_score >= 30 ORDER BY b.threat_score DESC;
 -- 注意当前 dll 数据源是本机目录；列名以字段表为准
 ```
+
+## 分析案例
+
+### 案例一：自启动持久化审计
+
+**取证问题**：员工主机疑似被植入远控。要求穷举自启动面并定位可疑项。
+
+**第 1 步：三源交叉清单**
+```sql
+SELECT 'registry' src, key_path, value_name, substr(value_data,1,60) val
+FROM registry_values WHERE key_path LIKE '%\Run%' OR key_path LIKE '%\RunOnce%'
+UNION ALL
+SELECT 'service', service_name, image_path, start_type FROM windows_services
+UNION ALL
+SELECT 'task', task_name, action_path, arguments FROM scheduled_tasks
+ORDER BY 2;
+```
+读法：三个来源各查一遍后按"落地路径"归并——同一可疑 EXE 同时出现在 ≥2 个来源是强植入信号（攻击者做冗余保活）。
+
+**第 2 步：执行佐证（Prefetch）**
+```sql
+SELECT executable_name, run_count, file_path FROM prefetch_files
+WHERE executable_name IN (<第1步可疑EXE名列表>);
+```
+读法：run_count>0 证明"注册过且真跑过"；run_count 与注册时间（registry last_modified）配合估计植入时长。
+
+**第 3 步：外联与收敛**
+browser_history 的异常时段 + event_logs 的安全事件（登录/进程创建类 ID 按字段表）收尾；结论落到"删除建议+取证固证"（哪些键值要导出存档）。
+
+**边界提醒**：shimcache/user_assist/rdp/wifi 四表恒空（未接线）——不能作为"没有痕迹"的证据，见"已知边界"。
+
+### 案例二：DLL 威胁面速查（本机扫描的有限用法）
+
+dll_base_info（threat_score/imp_hash/signature_status）与 dll_anomalies 联查评估系统库完整性；注意当前数据源是分析机本机目录——结论只适用于"这台分析机自身被植入"的场景，不能外推到镜像。
+
+## 自检清单
+
+- [ ] registry_values 各 hive 都有行（缺 hive=提取失败）
+- [ ] prefetch_files 非空（系统盘应有）
+- [ ] 恒空四表（shimcache/user_assist/rdp/wifi）忽略——已知未接线
+- [ ] dll_* 有行仅当分析机自身被扫描过（数据源局限）
+- [ ] browser_history 各 browser_name 分布合理
 **最后更新**: 2026-08-24（补：写入时序与查询手册）

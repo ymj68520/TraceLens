@@ -456,4 +456,12 @@ ORDER BY event_time;
 
 **边界提醒**（承接"已知边界"）：串联过程不要使用 `event_correlations`/`event_chains` 等关联表——它们生产恒空，跨表因果须如上手工按时间窗拼接。另注意事件主表 `event_type` 的**实际写入字面量**是 `CREATED/MODIFIED/ACCESSED/CHANGED/DELETED`（`FileSystemEventExtractor.cpp:122-216`），与建表 SQL 注释里的 CREATION/DELETION 拼写不一致——过滤主表时以源码字面量为准（类型分表 `deletion_events` 等不受此影响）。
 
+
+## 自检清单
+
+- [ ] events 总量 ≈ 五类型表之和（对账第 5 条）
+- [ ] DELETED 占比异常高 → 触发痕迹清除案例
+- [ ] 按小时分布无"整段真空"（有时钟/清除嫌疑）
+- [ ] LLM 事件簇列（6 个自愈列）在需要簇分析前已补齐
+- [ ] event_correlations 为空属预期（引擎未接线，别当故障）
 **最后更新**: 2026-08-24（补：写入时序与查询手册；扩充：分析案例）

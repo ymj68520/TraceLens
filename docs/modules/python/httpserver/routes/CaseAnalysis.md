@@ -217,7 +217,7 @@ async def _run():
 ## 11. 二轮深化 D：intelligence_report 数据契约要点
 
 - `_connect_ro`（:194-198）：`file:<percent-encoded>?mode=ro` URI + timeout=10——路径含中文/空格也安全（quote(safe='/')）；对照 `_connect_rw` 仅 metadata 表使用。
-- 目录树统计的三个口径列：`is_deleted`（删除文件单独成组）、`scene_relevant`、`llm_is_relevant`——与 files 表的列名一一对应（[FilesDB.md](../../../schema/FilesDB.md)）。
+- 目录树统计的三个口径列：`is_deleted`（删除文件单独成组）、`scene_relevant`、`llm_is_relevant`——与 files 表的列名一一对应（[FilesDB.md](../../../../schema/FilesDB.md)）。
 - 五章节来源：`case_analysis.case_report` 的 Markdown 按已知标题切分（`_load_chapter_markdown`，:815-862）——章节标题集合是隐式契约，改名即切不出章节。
 - metadata 表：`_ensure_metadata_table` 建表后 upsert（:271-336），键为 task 维度；PUT 端点接受任意 JSON 值（无 Pydantic 深度校验）。
 

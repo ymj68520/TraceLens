@@ -378,7 +378,7 @@ curl -s ":8080/api/forensics/timeline/full?task_id=<id>" | jq '.events | length'
 4. 验证：对 fixture 库跑一遍 + 空/越界参数不炸。
 
 ### 配方 B：补索引的正确姿势
-对照 [schema 各库"索引缺口"](../../schema/AndroidDB.md) 清单：在**建表 SQL 头文件**补 `CREATE INDEX IF NOT EXISTS`（SQL-as-headers 纪律），而不是对存量库手工加——代码路径的"探测+ALTER"不覆盖索引。
+对照 [schema 各库"索引缺口"](../../../schema/AndroidDB.md) 清单：在**建表 SQL 头文件**补 `CREATE INDEX IF NOT EXISTS`（SQL-as-headers 纪律），而不是对存量库手工加——代码路径的"探测+ALTER"不覆盖索引。
 
 ### 配方 C：慢查询定位
 1. 打开库 `PRAGMA query_plan` 看扫描；2. 大表（files/events）优先查索引清单；3. 时间范围查询确认 timestamp 有索引（events 有 11 条单列索引，files 主表三索引）；4. 结果集大时分页（limit/offset 由 clamp 兜底）。

@@ -207,4 +207,36 @@ SELECT * FROM boot_info;
 SELECT * FROM analysis_meta;
 -- 插件失败/符号缺失会留痕；符号自愈流程见 MemoryAnalyzer 模块文档
 ```
+
+## 分析案例
+
+### 案例一：运行时外联确认
+
+**取证问题**：磁盘侧发现可疑脚本但无运行证据。有同期内存镜像，要求确认"当时是否在跑、连到哪"。
+
+**第 1 步：外联清单**
+```sql
+SELECT pid, comm, proto, local_port, remote_addr, remote_port, state
+FROM network_connections
+WHERE state='ESTABLISHED' ORDER BY pid;
+```
+读法：关注非常用端口/裸 IP 远端；`comm` 直接给出进程名。
+
+**第 2 步：进程归属与异常特征**
+```sql
+SELECT pid, ppid, comm, uid, euid, creation_time FROM processes
+WHERE pid IN (<第1步 pid 列表>) OR ppid IN (<第1步 pid 列表>);
+```
+读法：ppid=1/2（孤儿化）、euid≠uid（提权痕迹）、creation_time 晚于磁盘侧脚本落地时间——三点对上即"脚本落地→进程拉起"闭环。
+
+**第 3 步：命令历史交叉**
+`bash_history` 找启动命令原句；与 events.db（ATTACH）时间对齐（SqlCookbook 第 4 条）。
+边界：内存表六张全来自 vol3 插件，插件失败只留 analysis_meta——先查 meta 再下"没有"的结论。
+
+## 自检清单
+
+- [ ] analysis_meta 无插件级失败/符号缺失
+- [ ] processes 行数量级正常（几十~两百）
+- [ ] network_connections 的 state 分布（全空=sockstat 未跑）
+- [ ] 时间交叉前确认内存捕获时刻与磁盘镜像时刻的关系
 **最后更新**: 2026-08-24（补：写入时序与查询手册）

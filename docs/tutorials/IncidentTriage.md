@@ -87,4 +87,13 @@ curl -X POST http://localhost:8666/api/tasks -H 'Content-Type: application/json'
 
 ---
 
+
+## 练习与扩展实验
+
+- [ ] 练习 1：对 test_image.img 执行完整初筛流程，记录四问的答案与依据。
+- [ ] 练习 2：人为把 scenarios 选错（如给 Linux 镜像选 ANDROID），观察哪些表为空、哪些照常。
+- [ ] 练习 3：按四种案情各走一遍"推荐路径"的前两步，体会入口差异。
+- [ ] 扩展实验 A：用 create_multipartition_image.sh 造多分区镜像，练分区级排查（RawDB 案例）。
+- [ ] 扩展实验 B：初筛后选择正确画像重跑，对比两次任务的 files.db 规模与 LLM 覆盖。
+- [ ] 思考题：初筛任务要不要开 LLM？给出你的成本/收益判断及验证方法。
 **最后更新**: 2026-08-24（新建：未知镜像初筛决策树）
