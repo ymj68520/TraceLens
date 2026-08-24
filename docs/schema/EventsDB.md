@@ -348,4 +348,112 @@ SELECT file_path, COUNT(DISTINCT event_type) kinds, COUNT(*) c
 FROM events WHERE file_path LIKE '%/tmp/%' OR file_path LIKE '%/dev/shm/%'
 GROUP BY file_path HAVING kinds>=3 ORDER BY c DESC;
 ```
-**最后更新**: 2026-08-24（补：写入时序与查询手册）
+
+## 分析案例
+
+查询手册是单条"食谱"；本节把多条查询串成完整分析叙事：每个案例从取证问题出发，逐步给出中间结果的解读方式，最后落到结论与下一步动作。库路径约定：HTTP 任务模式 `data/tasks/<task_id>/events.db`，CLI 模式 `<镜像名>_events.db`；案例中的时间窗口均为示例值，按案情替换。
+
+### 案例一：痕迹清除时段定位
+
+**取证问题**：委托方称"服务器 8 月 20 日晚间被入侵，攻击者事后清除了工具与日志"。要求定位痕迹清除发生的具体时段，并评估哪些被删内容可恢复。
+
+**第 1 步：删除事件的时段分布**——先看删除行为本身集中在何时：
+
+```sql
+SELECT strftime('%Y-%m-%d %H:00', timestamp, 'unixepoch') AS hour,
+       COUNT(*) AS del_cnt, SUM(file_size) AS del_bytes
+FROM deletion_events
+GROUP BY hour ORDER BY del_cnt DESC LIMIT 10;
+```
+
+读法：`deletion_events.timestamp` 来自 raw.db 中 `is_deleted` 文件的 ctime（字段表），标记的是"目录项状态改变"时刻。某个小时桶的 `del_cnt` 与 `del_bytes` 同时显著高于背景（如背景每小时个位数、该桶三位数）即为重点时段。假设锁定 20:00–21:00。
+
+**第 2 步：验证该时段是"清除"而非"正常周转"**——清除动作的典型旁证是删除峰之后出现**活动静默**：
+
+```sql
+SELECT hour, event_type, event_count
+FROM hourly_activity
+WHERE hour BETWEEN '2026-08-20 19:00:00' AND '2026-08-20 23:00:00'
+ORDER BY hour;
+```
+
+读法：`hourly_activity` 是全类型小时桶（视图定义见前文）。重点看删除峰之后 `CREATED` 类计数是否骤降归零——若是，说明删除者随后未再产生写入，符合"清完即撤"；若峰后仍有持续 CREATION，则更像业务周期（构建目录临时文件周转），回第 1 步换桶。
+
+**第 3 步：拉出重点时段的删除明细**：
+
+```sql
+SELECT datetime(timestamp, 'unixepoch') AS t, file_path, file_size, file_type, inode
+FROM deletion_events
+WHERE timestamp BETWEEN strftime('%s','2026-08-20 20:00') AND strftime('%s','2026-08-20 21:00')
+ORDER BY timestamp;
+```
+
+读法：按路径前缀人工归类——`/tmp`、`/dev/shm`、`/var/tmp` 下的可执行/脚本是攻击工具残影；`/var/log` 前缀集中出现则直指日志清除。记下可疑 inode 备用。
+
+**第 4 步：与 files.db 对账（被删的是什么类东西）**。分类与 LLM 观点不在本库，ATTACH 分拣库（键 `inode`，见"跨表关联键"）：
+
+```sql
+ATTACH DATABASE 'data/tasks/<task_id>/files.db' AS f;
+SELECT d.file_path, f.category, f.extension, f.md5, f.is_deleted
+FROM deletion_events d
+LEFT JOIN f.files f ON f.inode = d.inode
+WHERE d.timestamp BETWEEN strftime('%s','2026-08-20 20:00') AND strftime('%s','2026-08-20 21:00')
+ORDER BY d.timestamp;
+```
+
+读法：files.db 主表对已删除文件同样有行（分类阶段不过滤 is_deleted），`category='EXECUTABLE'` 或 `'SOURCE_CODE'` 命中即工具落地强证据；`md5` 可直接投入威胁情报比对。JOIN 后 category 为 NULL 的丢行说明该 inode 被任务的 filter_profile 画像排除（见 [FilesDB.md](./FilesDB.md)），转第 5 步回事实层。
+
+**第 5 步：与 raw.db 对账（雕刻可行性评估）**：
+
+```sql
+ATTACH DATABASE 'data/tasks/<task_id>/raw.db' AS r;
+SELECT r.path, r.size, r.is_deleted, r.is_allocated, r.md5, r.partition_num
+FROM r.files r
+WHERE r.is_deleted = 1
+  AND r.path IN ( /* 第 3 步锁定的可疑路径 */ );
+```
+
+读法：`is_deleted=1`（未分配条目）意味着内容可能仍可雕刻，回收/覆写程度另行验证（见 [RawDB.md](./RawDB.md) 查询手册第 2 条）。多分区镜像必须连同 `partition_num` 一起记下——inode 仅分区内唯一。
+
+**结论与下一步**：若第 1~3 步命中、第 4/5 步拿到 EXECUTABLE 类条目，可出具"20:00–21:00 存在集中删除，对象含可执行文件与日志"的结论。下一步：(a) 对第 5 步路径提交雕刻/提取（Files 页 `mode=deleted`，端点见 [EndpointsFlat.md](../reference/EndpointsFlat.md) §1.6）；(b) 把时段交给事件簇 AI 研判（前端 Timeline 页或 `/api/llm/analyze-event-cluster`），回写 `llm_summary` 后即可按簇检索结论。
+
+### 案例二：系统事件锚点 + 文件事件回放
+
+**取证问题**：单独看文件事件流缺乏"谁在做"的锚点。本案例用 `system_events`（登录/服务/网络叙事）锚定会话，再回放会话窗口内的文件事件。
+
+**第 1 步：找登录锚点**：
+
+```sql
+SELECT datetime(timestamp,'unixepoch') AS t, event_type, user, ip_address, process, description
+FROM system_events
+WHERE event_type LIKE '%LOGIN%'
+ORDER BY timestamp DESC LIMIT 20;
+```
+
+读法：`user`/`ip_address` 回答"谁、从哪"；记下可疑登录时刻 t0（例如 2026-08-20 19:47）。注意 system_events 写入量远小于 events（写入时序表），若为空说明该镜像未抽到系统日志源——放弃锚点法，回案例一纯文件事件打法。
+
+**第 2 步：锚点后 30 分钟的文件事件回放**：
+
+```sql
+SELECT datetime(timestamp,'unixepoch') AS t, event_type, file_path, file_size
+FROM events
+WHERE timestamp BETWEEN strftime('%s','2026-08-20 19:47') AND strftime('%s','2026-08-20 20:17')
+ORDER BY timestamp;
+```
+
+读法：同一路径上 `CREATED`→`MODIFIED`→`DELETED` 的分钟级短促序列是"落地—使用—清除"的典型指纹；把它与案例一锁定的清除时段拼接即得完整入侵窗口。
+
+**第 3 步：归一视图导出（报告同屏呈现两侧证据）**：
+
+```sql
+SELECT event_time, event_type, file_path, description, system_context, event_source
+FROM enhanced_timeline
+WHERE event_time BETWEEN datetime('2026-08-20 19:47:00') AND datetime('2026-08-20 20:17:00')
+ORDER BY event_time;
+```
+
+读法：`enhanced_timeline` 把 events 与 system_events 归一成 8 列流（见视图表），`event_source` 列的 'file'/'system' 区分两侧证据——报告里可以写"19:47 SSH 登录（system）→ 19:52 落盘（file）→ 20:31 删除（file）"。
+
+**边界提醒**（承接"已知边界"）：串联过程不要使用 `event_correlations`/`event_chains` 等关联表——它们生产恒空，跨表因果须如上手工按时间窗拼接。另注意事件主表 `event_type` 的**实际写入字面量**是 `CREATED/MODIFIED/ACCESSED/CHANGED/DELETED`（`FileSystemEventExtractor.cpp:122-216`），与建表 SQL 注释里的 CREATION/DELETION 拼写不一致——过滤主表时以源码字面量为准（类型分表 `deletion_events` 等不受此影响）。
+
+**最后更新**: 2026-08-24（补：写入时序与查询手册；扩充：分析案例）

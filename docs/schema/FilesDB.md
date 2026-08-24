@@ -314,4 +314,115 @@ ORDER BY size DESC LIMIT 50;
 SELECT path, extension, mtime FROM databases ORDER BY size DESC LIMIT 50;
 -- 换表名即换类：images/documents/archives/...
 ```
-**最后更新**: 2026-08-24（补：写入时序与查询手册）
+
+## 分析案例
+
+查询手册是单条"食谱"；本节是多查询组合的叙事案例：从取证问题出发，串联主表/分类表/场景列/LLM 列与跨库对账，逐步解读中间结果。库路径约定：HTTP 任务 `data/tasks/<task_id>/files.db`，CLI `<镜像名>_files.db`。
+
+### 案例一：高价值文件收敛
+
+**取证问题**：一个 900G 镜像产出 300 万行文件记录，人工看不完。要求在 LLM 预算（LLM_MAX_FILES）有限的前提下，把"最值得人看/机器分析"的集合收敛到几百个文件以内。
+
+**第 1 步：分类分布体检**——先知道这座山是什么构成的：
+
+```sql
+SELECT category, COUNT(*) AS c, ROUND(AVG(size)) AS avg_size,
+       SUM(is_deleted) AS deleted_cnt
+FROM files GROUP BY category ORDER BY c DESC;
+```
+
+读法：`category` 是 24 类之一（枚举表见前文）。海量 `OS_LIBRARY`/`SYSTEM` 属于背景噪音；取证价值密度通常在 `DOCUMENT/ARCHIVE/ENCRYPTED/CERTIFICATE/EXECUTABLE/SOURCE_CODE` 这几类。同时记下 `deleted_cnt`——已删除的文档类文件往往是"当事人以为删掉了"的关键证据。
+
+**第 2 步：场景列初筛**——场景检测器（SceneDetector）已给每行打上场景观点，`scene_priority > 0` 才会入选 LLM 批（`SELECT_SCENE_FILES_FOR_LLM`）：
+
+```sql
+SELECT scene_type, scene_relevant, COUNT(*) AS c, SUM(size) AS bytes
+FROM files GROUP BY scene_type, scene_relevant ORDER BY c DESC;
+```
+
+读法：本表只统计全量分布；`scene_type` 为 NULL 说明该任务没触发场景检测（例如通用镜像）。此时收敛只能靠第 1 步分类 + 第 3 步手工构造候选集。
+
+**第 3 步：构造高价值候选集（分类 × 状态 × 体积三重过滤）**：
+
+```sql
+SELECT path, name, category, extension, size, is_deleted, mtime, partition_num
+FROM files
+WHERE category IN ('DOCUMENT','ARCHIVE','ENCRYPTED','CERTIFICATE','SOURCE_CODE')
+  AND is_deleted = 0
+  AND size BETWEEN 1024 AND 52428800
+ORDER BY CASE category WHEN 'ENCRYPTED' THEN 0 WHEN 'CERTIFICATE' THEN 1
+                       WHEN 'DOCUMENT' THEN 2 ELSE 3 END, mtime DESC
+LIMIT 300;
+```
+
+读法：`size BETWEEN 1K..50M` 剔除空壳与超大二进制（LLM 分析超时高发区）；ORDER BY 让加密容器与证书（数量少、单件价值高）排前。这一步产出的路径清单可直接喂给 Files 页"批量分析"（`/api/llm/batch` 的 `file_paths` 参数），绕开 smart 粗选。
+
+**第 4 步：核对 LLM 覆盖率与重分析痕迹**——分析跑完后验证有没有漏网：
+
+```sql
+SELECT COUNT(*) AS total,
+       SUM(llm_analyzed_at IS NOT NULL) AS analyzed,
+       SUM(scene_relevant) AS relevant
+FROM files;
+```
+
+```sql
+SELECT f.path, f.category, f.llm_summary, d.is_relevant, d.model_used
+FROM files f JOIN file_descriptions d ON d.path = f.path
+ORDER BY d.created_at DESC LIMIT 100;
+```
+
+读法：第一条算覆盖率（查询手册第 3 条的深化）；第二条把主表 LLM 结论与证据清单副本对齐——`d.created_at` 远晚于任务完成时间且 `model_used` 与主表 `llm_model_used` 不同，说明跑过二次分析（reanalyze），报告引用时注意版本口径。
+
+**第 5 步：与 events.db 交叉（把高价值文件放回时间线）**：
+
+```sql
+ATTACH DATABASE 'data/tasks/<task_id>/events.db' AS e;
+SELECT e.timestamp, e.event_type, f.path, f.category, f.llm_summary
+FROM e.events e JOIN files f ON f.path = e.file_path
+WHERE f.category IN ('DOCUMENT','ARCHIVE','ENCRYPTED')
+ORDER BY e.timestamp DESC LIMIT 200;
+```
+
+读法：高价值文件的最后修改/删除时刻与其他事件（见 [EventsDB.md](./EventsDB.md) 分析案例）对窗，即可回答"这份关键文件是什么时候被动过的"。
+
+**结论与下一步**：候选集 + LLM 结论 + 时间锚三者合并，即形成"高价值文件清单（含 AI 摘要与时间线位置）"的交付物。若第 4 步发现 `UPDATE_FILE_LLM_ANALYSIS` 因重名路径丢结论（已知边界第 2 条：path 不唯一即丢弃），应先排查多分区同名文件（用 `partition_num` 分组验证），再决定是否换路径维度重跑。
+
+### 案例二：已删除文件与回收链对账
+
+**取证问题**：委托方要求列举"镜像里已删除但仍可恢复的文件"，并区分"用户正常删除"与"批量清除"。
+
+**第 1 步：deleted_files 视图全景**（视图三件套之一，按类别物化）：
+
+```sql
+SELECT category, COUNT(*) AS c, SUM(size) AS bytes
+FROM deleted_files GROUP BY category ORDER BY bytes DESC;
+```
+
+读法：视图输出列是 (类别标签, name, path, size, extension)——类别标签来自 24 个 UNION 分支而非主表 `category` 列，两种口径理论上应一致；若某类主表计数与视图计数差很多，说明分类表与主表双写不一致（已知边界第 1 条），以主表为准。
+
+**第 2 步：主表口径复核 + 时间聚集**：
+
+```sql
+SELECT strftime('%Y-%m-%d %H:00', ctime, 'unixepoch') AS hour, COUNT(*) AS c
+FROM files WHERE is_deleted = 1
+GROUP BY hour ORDER BY c DESC LIMIT 10;
+```
+
+读法：files.db 的 `ctime` 承自 raw.db（删除时刻近似）。单小时桶出现千级计数=批量清除，对照 [EventsDB.md](./EventsDB.md) 案例一的删除时段验证；均匀小桶=日常回收。
+
+**第 3 步：回事实层确认可恢复性**（files.db 无 atime/crtime，也看不出分配状态细节）：
+
+```sql
+ATTACH DATABASE 'data/tasks/<task_id>/raw.db' AS r;
+SELECT r.path, r.size, r.is_allocated, r.md5, r.partition_num
+FROM r.files r
+WHERE r.is_deleted = 1 AND r.size > 1048576
+ORDER BY r.size DESC LIMIT 100;
+```
+
+读法：`is_allocated=0` 且有 `md5`（说明配置开了哈希计算）的大文件是雕刻优先对象。平台侧还有更精确的删除叙事源可交叉：Windows 回收站（[WindowsDB.md](./WindowsDB.md) `recycle_bin` 表，含 `deletion_time`/`original_path`/`user_sid`）与 Linux XDG 回收站（[LinuxDB.md](./LinuxDB.md) `linux_trash_entries` 表，含 `original_path`/`deletion_time`）——若平台库里有这些行，说明走了"图形界面回收站"路径，属于典型用户行为；反之大量直接删除更接近脚本/命令行操作。
+
+**结论与下一步**：输出"已删除文件分级清单"（A 级=平台回收站在册、B 级=raw 未分配且哈希在、C 级=仅目录项残留），并对 A/B 级提交雕刻提取。注意本库 `android/windows/linux_artifacts` 三表只在 CLI 集成模式存在（已知边界），HTTP 任务查不到属正常。
+
+**最后更新**: 2026-08-24（补：写入时序与查询手册；扩充：分析案例）
