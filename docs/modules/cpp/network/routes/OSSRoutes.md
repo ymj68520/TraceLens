@@ -209,4 +209,51 @@ objects/logs/summary 等查询端点把请求参数原样回显进响应（task_
 
 **修正一条既有表述**：§5 说 openapi.json 里"可能出现这些路径"——按 §12 的推理链，子路由构造函数从未运行，RegisterEndpoint 从未执行，**openapi.json 实际不含任何 /api/forensics/oss/* 路径**（可用 `curl /api/docs/openapi.json | jq '.paths | keys | map(select(startswith("/api/forensics/oss")))'` 验证为空数组）。
 
+## 13. OSSRoutes_new.cpp 全文（第二层残骸）
+
+14 行的完整内容（另一份等价聚合器，同样未使用）：
+
+```cpp
+#include "OSSRoutes_new.h"
+#include "OSSAnalysisRoutes.h"
+#include "OSSQueryRoutes.h"
+#include "OSSStatsRoutes.h"
+
+namespace forensics {
+OSSRoutes::OSSRoutes(crow::App<>& app) {
+    OSSAnalysisRoutes analysis(app);
+    OSSQueryRoutes query(app);
+    OSSStatsRoutes stats(app);
+}
+} // namespace forensics
+```
+
+与 OSSRoutes.cpp 的差异：无 generate_job_id、无 task_manager_ 引用——纯粹的"三个栈对象组装"。同样命中 §10.1 的栈析构问题。两份聚合器 + 四个子路由文件 + 前端 ossService + OSS.jsx 页面 = 这套死代码的总表面积约 1000 行。
+
+## 14. 前端 pollAnalysisStatus 与占位后端的协议错位（逐字段）
+
+ossService.js:65-83 的轮询器与 §9 占位实现的字段契约对不上号的点：
+
+| 前端读取 | 占位后端提供 | 错位后果 |
+|---|---|---|
+| `status.status === 'COMPLETED'`（大写） | `status: "completed"`（小写） | **永不 resolve**——即使端点活着也死循环轮询 |
+| `status.error_message`（FAILED 分支） | `error`（无 error_message 键） | 拒绝时错误消息恒 undefined → 兜底文案 |
+| onProgress(status) 透传整个响应 | `{job_id, task_id, status, progress}` | 页面若读 progress 可用（100），其余字段错位 |
+| 无超时上限 | — | 配合永不 COMPLETED → 无限轮询（无 AbortSignal） |
+
+也就是说：**就算把聚合器接回 HTTPServer，前端 OSS 页也用不了**——大小写与字段名两处协议错位需要同步修。这是"双层未完成"（§2）之外的第三层：前后端协议本身也没对齐过。
+
+## 15. 处置核对清单（复活前的完整工单）
+
+1. 删或并 OSSRoutes_new.cpp（与 OSSRoutes.cpp 二选一）；
+2. 子路由改成员持有（修 §4.1/§10.1 悬空 this）；
+3. run_analysis_job 换真实作业表（对接 `_oss.db` 或新建作业持久化）；
+4. status 端点读真状态（不硬编码 completed）；
+5. 前后端状态值大小写对齐（COMPLETED vs completed——建议跟全仓小写惯例）；
+6. error_message/error 字段对齐；
+7. HTTPServer 初始化列表加 oss_routes_；
+8. openapi.json 重新核验（§12 的 12 条注册将开始生效）。
+
+了断路径（删除）则对应删 5 个后端文件 + ossService.js + OSS.jsx + 路由注册（若有）+ 文档口径统一到 LinuxFilesAnalyzer 的 server_cloud 路径。
+
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

@@ -350,4 +350,53 @@ inline constexpr const char* SELECT_TAMPERING_FINDINGS_PENDING_ANALYSIS =
 - **并发**：单线程主流程；LLM 段由服务内部并发。linux.db 写入集中在本模块，无跨进程竞争（阶段串行）。
 - **可调参数影响**：无运行期参数；--skip-ai 省掉 LLM 段（25+ 类 × maxArtifacts 条的 HTTP 往返）是最大的时间开关。
 
-**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）
+## 13. 常见任务配方
+
+### 配方 13.1：新增一种日志/工件解析器（Parser → Analysis → 落表 → LLM 四步）
+
+**目标**：让一类新证据（如某国产 VPN 的日志）从镜像里被定位、解析、落 linux.db、并被 LLM 服务自动分析。
+
+**步骤**：
+
+1. **写 Parser**：在 `Parsers/` 下新建子目录与解析器（参照 `Parsers/EmailVPN/EmailVPNLogParser.h`——静态方法 `parseXxxAuto(content, sourcePath)` 返回强类型 entry vector，复杂格式参照 `JournalParser` 的二进制解析）。entry 结构体定义在 `Common/LinuxDataTypes.h`（与既有 `EmailLogEntry` 等同层）。
+2. **挂 Analysis Phase**：`Common/LinuxAnalyzerDeclarations.h:123-128` 一带声明 `void analyzeXxxLogs();`；实现放进 `Core/LinuxFilesAnalyzerServices.cpp`（参照 `analyzeEmailVPNLogs`，LinuxFilesAnalyzerServices.cpp:226-300 的固定骨架）：定义路径模式数组（`"var/log/xxx/%"`，注意不带前导 `/`）→ `queryFilesByPattern(pattern)` 在 raw.db 定位 → lambda 读 `extractDir_ + "/" + file.path` → 解析 → `linuxDb_->insertXxxLogs(entries)`；最后在 `Core/LinuxFilesAnalyzerCore.cpp:81-216` 主流程调用表里加一行（Phase 顺序只受一个硬约束：压缩日志必须仍是最先，Core.cpp:86-88 注释）。
+3. **落表**：`src/core/DatabaseManager/SQL/linux_analysis_sql_tables.h` 的 `CREATE_ALL_TABLES`（:10 起）里加 CREATE TABLE（列含 `parser_name/parser_version` 溯源双列 + 5 个 `llm_*` 列，照抄同族表）；`Database/LinuxAnalysisDatabase.{h,cpp}` 加 `insertXxxLogs`（参照 insertMiddlewareLog，LinuxAnalysisDatabase.h:516-517——参数化 INSERT）。
+4. **LLM 表驱动接线**（三处 switch 各加一个 case）：
+   - `LinuxLLMAnalysisService.h:31` 的 `ArtifactType` 枚举加值；
+   - `LinuxLLMAnalysisService_Database.cpp:104-137` `getTableNameForType` 加 `case ...: return "linux_xxx_logs";`；
+   - `:139-168` `getSelectSQLForType` 加 case 返回新 SELECT 常量；常量写在 `src/core/DatabaseManager/SQL/linux_analysis_sql_llm.h`（UPDATE 语句同文件已有模板）；
+   - 分析器实现在 `LinuxLLMAnalysisService_SystemAnalyzers.cpp`，主循环在 `LinuxLLMAnalysisService.cpp:64+` 逐类型调 `analyzeArtifactType`——新类型加一段同构调用。
+
+**注意（列名对齐陷阱，必读）**：`linux_analysis_sql_llm.h` 的 SELECT 列名必须与 `linux_analysis_sql_tables.h` 的建表列**逐字比对**——现有 7 条 SELECT 就因列名错位（`affected_log` vs `log_source`、`component` vs `logger`、`from_addr` vs `sender` 等）在运行时 prepare 失败，导致 7 类工件的 LLM 分析**静默空转**（不报错、进度表显示零待分析；完整清单见 docs/schema/LinuxDB.md"已知边界"与本文 §5.1）。新表建好后用 `sqlite3 <db> ".schema linux_xxx_logs"` 对照 SELECT 再提交。时间戳列建议同时给 TEXT `timestamp` 与 INTEGER `timestamp_unix` 双列（LinuxDB.md 已知边界：跨表 UNION 时间线必须挑对列）。
+
+**验证**：跑一次 LINUX 场景任务（或 `--linux-analyze`）后：`sqlite3 linux.db "SELECT COUNT(*) FROM linux_xxx_logs"` 非零；空表时按 §9 排查顺序查 `linux_analysis_progress` → 审计日志 → 路径模式是否命中；LLM 侧 `SELECT COUNT(*) WHERE llm_analyzed_at IS NOT NULL` 随分析增长。配套单测放 `tests/`（命名 `test_xxx_parser.cpp`，参照 test_email_vpn_log_parser.cpp）。
+
+### 配方 13.2：新增一条安全检测规则（RuleEngine 接入）
+
+**目标**：为一条新的可疑模式（如"web 目录下新出现的 setuid 文件"）加 Sigma 风格规则，命中后带 ATT&CK 编号落 `linux_rule_matches` 并参与攻击链组装。
+
+**步骤**：
+
+1. **定位插入点**：`Analysis/RuleEngine.cpp` 的 `evaluateSigmaRules`（规则以 SQL + 逐行组装 RuleMatch 的代码块内联，如 :186-243 的 "SIGMA-SETUID-TMP" 与 "SIGMA-PERSISTENCE-SUSPICIOUS" 两条即模板）。
+2. **照模板写规则块**：固定五件套——查询某张 linux_* 表的 SELECT（规则评估输入是 linux.db，不是原始文件）→ `sqlite3_prepare_v2/step` 循环 → 填 `RuleMatch`：`ruleId`（"SIGMA-XXX" 风格唯一串）、`ruleType`（"sigma" 或 "ioc"）、`attckTechnique`（如 "T1548"）、`attackStage`（战术名，见配方 13.3）、`severity`（1-5）、`confidence`（0-1）、`matchedEventIds`（源表行 id，回查原始事件的线索）、`description` → `matches.push_back`。`sqlite3_prepare_v2` 失败时静默跳过是既有风格，SQL 列名写错不会报错——发布前务必手工跑一遍该 SQL。
+3. **无需额外接线**：`evaluateAllRules`（RuleEngine.cpp:71-77）聚合全部规则命中，`buildAttackChains`（:375）自动按战术排序串链；主流程 `analyzeWithRuleEngine()`（LinuxFilesAnalyzerEnhanced.cpp:186-207）在每次分析时构造 `RuleEngine(outputDbPath_)` 调用它们，落表 `linux_rule_matches` / `linux_attack_chains`。
+
+**注意**：规则查询走全表扫描（§12），规则数量线性放大该阶段耗时；若新技术的编号不在 `TECHNIQUE_TO_TACTIC` 映射里（RuleEngine.cpp:37-59，现 20 项），`attackStage` 要在映射里补（见配方 13.3），否则攻击链组装会漏掉该命中。
+
+**验证**：对含该模式的目标库重跑 `analyzeWithRuleEngine`（或全量分析）；`sqlite3 linux.db "SELECT rule_id, attck_technique, description FROM linux_rule_matches WHERE rule_id='SIGMA-XXX'"` 出现命中行；`linux_attack_chains` 的 events 序列里能看到对应事件 id。
+
+### 配方 13.3：新增一个 ATT&CK 技术→战术映射
+
+**目标**：让一条规则/一类事件用上尚未映射的 ATT&CK 技术编号（如 T1190），并让攻击链按正确战术阶段排序。
+
+**步骤**：
+
+1. **扩映射表**：`Analysis/RuleEngine.cpp:37-59` 的 `TECHNIQUE_TO_TACTIC` 加 `{"T1190", "Initial Access"}`。查表函数在 :364-365（找不到时返回空串，命中就丢战术）。
+2. **确认战术名在 11 战术表内**：值必须取自 `ATTCK_STAGES`（RuleEngine.cpp:23-35 的 11 个标准战术：Initial Access / Execution / Persistence / Privilege Escalation / Defense Evasion / Credential Access / Discovery / Lateral Movement / Collection / Exfiltration / Command and Control）——这个列表同时是 `buildAttackChains`（:392 遍历 ATTCK_STAGES）的排序依据，自创战术名（如 "Reconnaissance"）会导致命中永远进不了任何链。
+3. **消费侧对齐**：若该技术还会出现在 `AnomalyDetector`/`LogCorrelationEngine` 的产出里，检查那两处是否有独立的 stage 字符串（分析层产物表 `attack_stage` 列是 TEXT，写什么全看生成方）。
+
+**注意**：一个技术编号只映射一个战术（map 单值）——ATT&CK 里部分技术跨战术，这里取主战术即可；改映射是全局的，已有规则命中的 attack_stage 会随之变化，重跑分析才会反映到表里（表数据不回填）。
+
+**验证**：`grep -n "T1190" RuleEngine.cpp` 确认映射存在；重跑后 `SELECT DISTINCT attck_technique, attack_stage FROM linux_rule_matches` 中该技术行出现且 stage 非空；含该命中的 `linux_attack_chains.timeline` 里它排在 Initial Access 位置。
+
+**最后更新**: 2026-08-24（补：常见任务配方）

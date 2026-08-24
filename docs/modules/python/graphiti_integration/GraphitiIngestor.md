@@ -202,4 +202,90 @@ httpserver 侧由 `_build_graphiti_config` 显式构造同名参数（Settings �
 - 调整抽取行为：改 `FORENSIC_EXTRACTION_INSTRUCTIONS`（:42）即可，无需动 Graphiti 版本；抽取效果验证用固定 episode + 小模型目检节点数。
 - 手工验证：构造 3 个含用户名/IP/路径的 EpisodeData → batch_ingest → Neo4j Browser 按 group_id 查 Entity 数量。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 11. 二轮深化 A：抽取指令的实体类型与关系谓词全表
+
+FORENSIC_EXTRACTION_INSTRUCTIONS（:42-72）点名 **11 类实体**与 **8 个关系谓词范例**：
+
+| 实体类别 | 示例（指令原文） |
+|---|---|
+| 账户 | usernames/account/group（Administrator、root、nobody） |
+| 主机 | hostname/computer/domain/workgroup |
+| 网络 | IP、MAC、SSID、share path |
+| 文件 | **全路径**与文件名（明示"full paths are meaningful identifiers"） |
+| 注册表/服务 | key path、service name、scheduled task |
+| 进程 | cmd.exe、powershell.exe、svchost.exe |
+| 通信 | URL、domain、email、phone |
+| 设备 | USB 名称、vendor/product ID、serial |
+| 标识 | **MD5/SHA 哈希与 inode 作 Identifier 实体** |
+| 软件 | 应用/包名与版本 |
+| 日志 | Event ID、log source（Security、Syslog） |
+
+| 关系谓词（SCREAMING_SNAKE） | 语义 |
+|---|---|
+| USER_ACCOUNT ACCESSED FILE | 账户↔文件 |
+| PROCESS EXECUTED_FILE | 进程↔文件 |
+| HOST CONNECTED_TO IP / DOMAIN | 主机↔网络 |
+| USER LOGGED_IN_FROM IP | 登录溯源 |
+| DEVICE_MOUNTED_AS DRIVE | 设备挂载 |
+| APPLICATION ACCESSED URL | 应用↔URL |
+| REGISTRY_KEY REFERENCES PATH | 注册表↔路径 |
+| HASH_IDENTIFIES FILE | 哈希↔文件（去重基础） |
+
+注意这 8 个谓词是**范例而非白名单**（"such as"）——LLM 可自造谓词；前端的关系类型过滤（`r.name = $rt`）因此是开放枚举。改指令只影响新摄取的 episode，已入库的旧边不会重抽。
+
+## 12. 二轮深化 B：EpisodeData 字段契约（toon_transformer.py:17-36）
+
+| 字段 | 类型 | 谁写 | 消费方 |
+|---|---|---|---|
+| name | str | transformer（episode 显示名） | add_episode(name)、失败记账 |
+| episode_body | str（**JSON 串**） | transformer | 渲染器 json.loads |
+| source_description | str | transformer | add_episode 溯源 |
+| reference_time | datetime | transformer | Graphiti 时间线 |
+| file_path / file_id | str/int | transformer（回溯锚） | IngestionResult.errors 定位回文件 |
+| category | Optional[str] | transformer（saga 分组） | 渲染标题回退（`data.get("category")`） |
+
+关键约束：`episode_body` 必须是 JSON 字符串——渲染器对非 dict JSON（list/标量）回退原文摄取（:234-237），语义降级但不失败；`file_path` 让"图稀疏"排查能从 errors 直接映射回 files.db 行。
+
+## 13. 二轮深化 C：新走读——close() 的自有/注入资源分治（:292-328）
+
+```python
+# graphiti_ingestor.py:292-328（骨架）
+errors = []
+for resource in (self._owned_llm_client, self._owned_embedder):
+    if resource is None:
+        continue
+    close = getattr(resource, "aclose", None) or getattr(resource, "close", None)
+    try:
+        result = close()
+        if asyncio.iscoroutine(result):
+            await result
+    except Exception as exc:
+        errors.append(exc)
+self._owned_llm_client = None
+self._owned_embedder = None
+if self._client:
+    try:
+        await self._client.close()
+    except Exception as exc:
+        errors.append(exc)
+    finally:
+        self._client = None
+        self._initialized = False
+if errors:
+    raise errors[0]
+```
+
+逐块解释：① **只关自有资源**——`_owned_*` 是 initialize() 里创建的客户端；调用方注入的 Graphiti 实例（若构造时传入）归调用方关，双关会 use-after-close；② `aclose or close` 双协议探测——httpx 系客户端用 aclose、部分 SDK 用同步 close，两种都兼容，同步 close 直接调用、异步的 await；③ **收集全部异常但只抛第一个**——一个资源关失败不阻断其余回收（对比 ServiceManager._rollback 的同款策略）；④ finally 里无论成败都置 `_client=None/_initialized=False`——半关状态的实例复用会显式失败而不是静默错用。
+
+## 14. 二轮深化 D：重试时间线与最坏耗时表
+
+| 尝试 | 前置退避（attempt 从 0 计） | 单次最坏（LLM 120s 超时传导） |
+|---|---|---|
+| 1（attempt 0） | 0 | 120s |
+| 2（attempt 1） | retry_delay×1（默认 1s） | 120s |
+| 3（attempt 2） | retry_delay×2（2s） | 120s |
+| 耗尽 | — | 抛 IngestionError |
+
+单 episode 最坏 ≈ 363s + 渲染/嵌入时间；N 条全失败的批次最坏 ≈ N×363s（顺序无并发）——这就是第 9 节"大批量耗时"的量化表达。退避是**线性**（×attempt）而非指数；想更激进可调小 `LLM_TIMEOUT_SECONDS`，但会同时影响 httpserver 的所有 LLM 调用（耦合点在 GraphitiService 复用同一 Settings 值——见 GraphitiService.md 第 5 节）。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

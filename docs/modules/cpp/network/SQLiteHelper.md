@@ -327,4 +327,45 @@ if (time_str.size() >= 19) {
 | （无 limit/offset 的 env） | 1000/100000 硬编码 | clamp_limit 参数 | 想改默认页大小只能改代码或各路由传参 |
 | `bucket_seconds`（请求参数） | 60，钳制 [1, 86400] | TimelineQueries | §4.1 的钳制区间；与 EventClusterAnalyzer 硬编码 60 的错位见 §6 |
 
+## 13. Queries 六文件的规模与承载（真实行数）
+
+| 文件 | 行数 | 公开方法数（§8 清单） | 密度说明 |
+|---|---|---|---|
+| AndroidQueries.cpp | 651 | 14 | 最大——MIUI/QQNT/微信三族的脱敏与分页逻辑集中于此 |
+| TimelineQueries.cpp | 444 | 13 | 聚簇 SQL + 自愈 ALTER 都在这 |
+| StatisticsQueries.cpp | 456 | 4 | 单方法最重（overview 跨三库） |
+| FileAnalysisQueries.cpp | 244 | 6 | |
+| EventExportQueries.cpp | 200 | 3 | query 校验 + 文件写出 |
+| SQLiteHelperCore.cpp | 288 | 基座 | 含 4 个加固函数 |
+
+合计 2283 行实现（全部被 SQLiteHelper.cpp include 成单翻译单元，§3.1）。改动的编译放大效应：动任何一行 Queries/*.cpp 都重编整个 SQLiteHelper.cpp 及其下游——增量构建粒度是"整个查询层"。
+
+## 14. 值序列化示例（execute_query 五分支的输入输出对照）
+
+| SQLite 存储类型 | JSON 输出 | 备注 |
+|---|---|---|
+| INTEGER（如 file_size=1024） | `"file_size": 1024`（int64） | 无精度损失 |
+| FLOAT（如 score=0.5） | `"score": 0.5`（double） | |
+| TEXT（如 path） | `"path": "/etc/passwd"` | 非 UTF-8 字节**原样透传**——json dump 时若含非法 UTF-8 会抛 type_error.316！Core 的 execute_query 没有 sanitize（对比 LLMClient 的 sanitizeUtf8）——病态文件名能让查询端点 500 |
+| BLOB | `"content": "<BLOB_DATA>"` | 恒占位串 |
+| NULL | `"mtime": null` | 前端要判 null |
+
+**TEXT 分支的 UTF-8 风险是本模块未设防的面**：产出库的 path/description 来自镜像文件系统，取证镜像里混入非 UTF-8 文件名是常态；一旦命中，json::array 的 dump() 在 handler 里抛异常 → 500。绕过手段是查询层加与 LLMClient 同款的清洗——目前两处实现（严格版/宽松版）都现成，只差接线。
+
+## 15. 验证 runbook
+
+```bash
+# 1. 钳制行为
+curl -s ":8080/api/forensics/timeline/comprehensive?task_id=<id>&limit=-5" | jq '.pagination // .limit'
+curl -s ":8080/api/forensics/timeline/comprehensive?task_id=<id>&limit=99999999" | jq '.events | length'  # ≤100000
+# 2. 注入防御（导出端点）
+curl -s ":8080/api/forensics/export/events/json?task_id=<id>&query=SELECT%201;DROP%20TABLE%20events" | jq .   # 拒绝
+curl -s ":8080/api/forensics/export/events/json?task_id=<id>&query=SELECT%20*%20FROM%20events%20WHERE%20event_type%20LIKE%20%27%25CREATED%25%27" | jq .  # 放行（词边界）
+# 3. 时区不对称复现（§9）
+TZ=Asia/Shanghai curl -s ":8080/api/forensics/timeline/comprehensive?task_id=<id>&start_time=2026-08-24%2010:00:00" | jq '.events[0].timestamp'
+# 4. BUSY 行为（§10）：sqlite3 CLI 写期间查询
+sqlite3 data/tasks/<id>/*_events.db "BEGIN; UPDATE events SET description='x' WHERE id=1;" &
+curl -s ":8080/api/forensics/timeline/full?task_id=<id>" | jq '.events | length'   # WAL 下通常仍正常
+```
+
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

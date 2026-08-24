@@ -227,4 +227,46 @@ handle_system_health 的 timestamp 取 `steady_clock::now().time_since_epoch()`�
 | 挂载 | HTTPServer 构造列表第 3 位 | HTTPserver.cpp:69 |
 | Swagger 注册 | **0 条**（本组自身不注册） | openapi.json 审计盲区（§5） |
 
+## 11. 手写 endpoints 清单与真实路由的差异样本（§3.4 的实证）
+
+SystemDocsRoutes.cpp:31-68 手写清单声称的组与实际偏差：
+
+| 手写清单的组 | 声称内容 | 实际偏差样本 |
+|---|---|---|
+| task_management | /api/tasks CRUD 等 | 基本准确但漏 progress/audit-log/priority/databases |
+| forensics | timeline/files 等 | 漏 memory/dlls/clusters/extract/statistics 大半 |
+| system | /api/system/* | 漏 /api/health 全族与 /api/export/{id} |
+| search | 两个端点 | 准确 |
+| （缺失） | — | cases/filter/scene-* 全部没出现 |
+
+占位风格还停留在 `<id>`（Crow 宏风格）而非 `{id}`（OpenAPI 风格）——两份"机器可读端点清单"（openapi.json 与此）在风格、覆盖、准确性上三重不一致。结论不变：**只信 openapi.json + 本文档族的端点全表**。
+
+## 12. 监控接线参考（live/ready 的消费建议）
+
+基于 §3.2 的语义，编排层的正确接法（运维建议，非代码事实）：
+
+- **livenessProbe → /api/health/live**：进程级存活（Crow worker 活着就 200），失败重启容器；
+- **readinessProbe → /api/health/ready**：503 时摘流量；注意 ready 里唯一真实检查是 TaskManager 大锁不死锁——**依赖（Python/Neo4j/LLM）不在检查面**，"ready"不代表全功能；
+- **不要**用 /api/system/health 做探针：它恒 200（除非统计抛异常），且响应体大；
+- **告警规则**若依赖 task_management.failed_tasks，注意它是实时内存统计（重启清零重算）。
+
+## 13. 验证 runbook
+
+```bash
+# 1. 三级健康
+curl -s :8080/api/health/live | jq .
+curl -s -o /dev/null -w '%{http_code}\n' :8080/api/health/ready        # 200
+curl -s :8080/api/health/dependencies | jq .
+# 2. timestamp 不是 Unix epoch 的直接证据
+curl -s :8080/api/system/health | jq .timestamp   # 值很小（开机以来的毫秒数）
+# 3. export 桩验证
+curl -s -X POST :8080/api/export/<已完成任务id> -d '{"format":"csv"}' | jq .   # 路径回显，无导出动作
+curl -s -X POST :8080/api/export/<运行中id> | jq .status                          # 数字枚举（§8.1）
+# 4. logs 端点
+curl -s ":8080/api/system/logs?lines=5" | jq '.logs | length'
+curl -s ":8080/api/system/logs?lines=99999" | jq '.total_count'   # ≤1000
+# 5. 两份 schema 的漂移观察
+diff <(curl -s :8080/api/docs/database-schema | jq -S .) <(curl -s ":8080/api/system/database-schema/raw" | jq -S .) | head
+```
+
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

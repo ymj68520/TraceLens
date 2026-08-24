@@ -322,4 +322,48 @@ job_id 写进 AnalysisTask 并立即持久化——前端可凭它在 Python 侧
 | 无调用方 | wait_for_job_completion / cancel_job / async_ingest_file / async_ingest_events | — | 四个方法当前零调用方（预留 API）——grep 全仓仅头文件与自身 cpp 出现 |
 | 死代码 | _post/_get/_delete | h:169-171 | 声明无定义（§9.2） |
 
+## 12. Graphiti 端点的 Python 侧对应（协议闭环表）
+
+C++ 代理打的 8 个端点在 Python 服务侧的实现归属（python_service/httpserver/routes/graphiti*，供排障双向核对）：
+
+| C++ 方法 | Python 端点 | Python 侧行为要点 |
+|---|---|---|
+| isServiceAvailable | GET /health | 服务总健康（不区分 Graphiti 子系统） |
+| async_ingest | POST /api/graphiti/ingest | 建后台作业（IngestionJobManager）；响应 `{job_id}` |
+| async_ingest_file | POST /api/graphiti/ingest/file | 单文件作业；body 的 update_analysis 控制 LLM 重分析 |
+| async_ingest_events | POST /api/graphiti/ingest/events | 事件批量作业 |
+| get_job_status | GET /api/graphiti/jobs/{id} | 响应 `{status, progress, current_phase, created_at, started_at, completed_at, error, result}`——与 JobStatus 八字段一一对应（§9.4） |
+| cancel_job | DELETE /api/graphiti/jobs/{id} | 非抢占取消（Concurrency.md 已记"RUNNING 完成时覆盖 CANCELLED"语义） |
+| deleteGraphitiData | DELETE /api/graphiti/tasks/{id} | 删该任务的图谱数据；**404=本来就没有**（C++ 视为成功） |
+| wait_for_job_completion | （轮询 get_job_status） | — |
+
+**DELETE-with-body 的边角**：deleteGraphitiData 发 `{"task_id":...}` body 给 DELETE（cpp:31-35）——HTTP 规范允许但部分中间件（老代理、某些网关）会剥 DELETE body；若部署链路上有此类组件且 Python 侧靠 body 取 task_id，会静默删错对象。Python 路径参数本身带 task_id（URL 里也有），body 大概率是冗余双保险。
+
+## 13. 观测与验证 runbook
+
+```bash
+# 1. 提交链路观测（任务完成后 stdout）
+journalctl -u tracelens | grep "Triggered Graphiti ingestion"
+# 2. 手工查作业（拿 tasks.json 里的 graphiti_job_id）
+jq '.[] | select(.id=="<task_id>") | .graphiti_job_id' data/tasks.json   # 注意：磁盘上没有此键（§8）——要经 API
+curl -s ":8080/api/tasks/<task_id>" | jq .  # 也无——task_to_json 不含它；只能看启动日志或 Python 侧
+curl -s ":8090/api/graphiti/jobs/<job_id>" | jq .
+# 3. 删除链路
+curl -s -X DELETE ":8090/api/graphiti/tasks/<task_id>" -o /dev/null -w '%{http_code}\n'
+# 4. Python 停机时任务仍成功的验证
+systemctl stop tracelens-python && 跑任务 → 任务 COMPLETED + 审计 WARNING "Failed to trigger Graphiti ingestion"
+```
+
+第 2 步暴露一个此前未明说的观测缺口：**graphiti_job_id 不出现在任何 REST 响应里**（task_to_json 无此键，§8 契约表已标"不写出"）——前端拿不到作业号，只能靠 Python 侧的作业列表端点反查。
+
+## 14. 故障模式矩阵（运维视角）
+
+| 症状 | C++ 侧表现 | 根因候选 |
+|---|---|---|
+| 任务完成但图谱空 | stdout 无 "Triggered" 行 + 审计 WARNING | Python 未起 / URL 配错（PYTHON_SERVICE_URL） |
+| 提交成功作业永 RUNNING | get_job_status 恒 RUNNING | Python 侧作业卡死（Neo4j 不可达是首选） |
+| 每次任务都重复摄取 | — | Python 侧未按 task_id 幂等去重（设计上应幂等，实际看 Graphiti group_id） |
+| 删除任务后图谱残留 | — | deleteGraphitiData 返回 false（网络/非 200+404）；无重试（§9.3） |
+| agent/前端查不到 job | REST 无暴露 | §13 的观测缺口——看 Python /api/graphiti/jobs 列表 |
+
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

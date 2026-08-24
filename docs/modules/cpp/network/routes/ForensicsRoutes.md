@@ -226,4 +226,41 @@ URL 溯源细节（FileExtractionRoutes.cpp 内）：`find("/api/forensics/extra
 | 挂载 | HTTPServer 构造列表第 2 位 | HTTPserver.cpp:68 |
 | Swagger | 28 条注册（Timeline 7 + Android 7 + EventCluster 4 + Export 3 + SystemEvent 2 + FileAnalysis 1 + FileExtraction 1 + OSS 0） | 覆盖率见 Swagger.md §10 |
 
+## 12. export/toon 的字段契约（新走读分支）
+
+`POST/GET /api/forensics/export/toon`（ExportRoutes.cpp:55-124）是唯一带**用户可控 SQL 片段**的导出端点，三层防御（:70-79）：
+
+| 参数 | 用途 | 防御 |
+|---|---|---|
+| task_id | 定位 files 库 | 缺失 400 |
+| fields | 逗号分隔的导出列（trim 后入 TOONExportConfig.fields） | 无白名单——列名进 SELECT 由 TOONExporter 拼接（未知列报 SQLite 错 → 500） |
+| filter | **原始 WHERE 片段**（config.whereClause） | `SQLiteHelper::is_safe_filter_clause`——拒分号/注释/DDL/DML/ATTACH/PRAGMA/**UNION/SELECT**（比 is_readonly_select 更严：连 SELECT 都不让出现，WHERE 里本来就不该有） |
+
+响应特殊：`Content-Type: text/toon; charset=utf-8` + `Content-Disposition: attachment; filename="files_export.toon"`——本组唯一的**文件下载型**响应（其余全 JSON）。前端 systemService.exportToON 直接触发浏览器下载。
+
+## 13. memory 五端点的数据来源（MemoryForensicsRoutes）
+
+五个 handler（:85-160+）全部读 `_memory.db`（路径经 RouteHelpers 的 memory 分支：metadata 优先，否则 raw 库名剥 `_raw` 加 `_memory.db`，§8 已记）。Volatility3 产出的表按 handler 对应：
+
+| 端点 | handler（:行号） | 典型源表 |
+|---|---|---|
+| memory/summary | :85 | 汇总（系统信息 + 各表计数） |
+| memory/processes | :115 | pslist/psscan 产物 |
+| memory/network | :132 | netscan/netstat 产物 |
+| memory/bash-history | :141 | bash 产物 |
+| memory/boot-info | :160+ | boottime/系统信息 |
+
+共同形态：task_id 必填 400 → sqlite3_open（失败 500）→ 内联 SQL（不走 SQLiteHelper，**各 handler 自带 prepare/step**——防御纪律与 SQLiteHelper 族不同，注入面取决于各自是否参数化）→ JSON 数组。
+
+## 14. 本组端点的响应类型谱系（速查）
+
+| 类型 | 端点 |
+|---|---|
+| JSON（绝大多数） | timeline/files/statistics/android/memory/dlls/clusters/scene-* |
+| 纯文本错误（400） | 无（本组都有 JSON 错误体） |
+| 文件下载 | export/toon（text/toon） |
+| 写文件后回 JSON 状态 | export/events/{json,csv,visualization}（输出路径在响应里） |
+| 410 弃用 | clusters/analyze |
+| 作业句柄 | extract（202+job_id） |
+
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

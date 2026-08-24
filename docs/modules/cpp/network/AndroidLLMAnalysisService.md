@@ -250,4 +250,46 @@ android_analysis_sql_llm.h:20-77 逐表列出进 prompt 的 JSON 字段与截断
 | 审计 | AuditLog | ANDROID_LLM_INIT_FAILED / ANDROID_LLM_ANALYSIS_COMPLETE / ANDROID_LLM_SKIPPED | 三类审计事件 |
 | 读出方 | 前端 /android 视图 | llm_* 列 | 微信/QQ 记录的敏感优先截断影响展示顺序 |
 
+## 13. analyzeWithPrompt 共享助手的契约（三参数收敛层）
+
+Android 版独有的抽象（h:169-171 声明）：所有 12 个 prompt 函数最终经它走完"拼 prompt → router chat → 解析 JSON"三步。参数表：
+
+| 参数 | 内容 | 示例（SMS） |
+|---|---|---|
+| roleDescription | 角色句（平台+工件类型） | "You are a digital forensics expert analyzing Android SMS messages." |
+| artifactJson | 工件行的 JSON dump（§9 的列集） | `{"address":"10086","body":"...","date":...}` |
+| guidance | 输出要求段 | summary/description/keywords 三项要求 + JSON 模板 |
+
+返回 AnalysisResult 五字段（success/summary/description/keywords/modelUsed）。**收敛的代价**：guidance 是共享模板，所有类型的三段式输出结构一致——没有类型特化的问题导向（对比 Linux 版每类的独立 prompt 可以问不同问题）。**解析是裸 json::parse**——同平台族严格策略（模型输出带额外文本即整条作废）。
+
+## 14. 5 组开关的调度展开表（analyzeAndroidArtifacts 执行序）
+
+| 开关 | 展开的类型（调用序） | 类型数 |
+|---|---|---|
+| includeMessages | SMS → WECHAT_MESSAGE → WHATSAPP → TELEGRAM | 4 |
+| includeContacts | CONTACT → CALL_LOG | 2 |
+| includeMiui | MIUI_MANIFEST → INSTALLED_APP | 2 |
+| includeWechatEvidence | WECHAT_SQLITE_RECORD → WECHAT_KV_RECORD → QQNT_SQLITE_RECORD | 3 |
+| includeSystem | SYSTEM_LOG → DEVICE_IDENTIFIER → WIFI_NETWORK | 3 |
+
+调用方硬编码全开（AndroidAnalyzerCore.cpp:312-317）——14 类全跑，理论上限 14×1000 次调用；但 §3.2 的端点门控先于本服务生效（URL 双空时根本不进来），实际风险面比 Linux/Windows 小。
+
+## 15. 验证 runbook
+
+```bash
+# 1. android 场景任务后查注解（敏感优先截断的直观验证）
+sqlite3 data/tasks/<id>/android.db \
+  "SELECT is_sensitive, COUNT(*), SUM(llm_analyzed_at IS NOT NULL)
+   FROM wechat_kv_records GROUP BY is_sensitive"
+#    期望：is_sensitive=1 的覆盖率高（它们排在 LIMIT 前）
+# 2. 门控验证
+#    .env 清空 LLM_BASE_URL 与 LLM_TEXT_BASE_URL → 跑 android 任务
+sqlite3 data/forensics_audit.db "SELECT action FROM audit_logs WHERE action='ANDROID_LLM_SKIPPED' ORDER BY timestamp DESC LIMIT 1"
+# 3. 脱敏端点（前置依赖：RouteHelpers 的 android 三级回退）
+curl -s ":8080/api/forensics/android/miui-wechat-records?task_id=<id>&kind=kv" | jq '.records[0].value_text' | head -c 100
+curl -s ":8080/api/forensics/android/miui-wechat-records?task_id=<id>&kind=kv&reveal_sensitive=1" | jq '.records[0].value_text' | head -c 100
+# 4. 覆盖率端点
+curl -s ":8080/api/forensics/android/llm-summary?task_id=<id>" | jq .totals
+```
+
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

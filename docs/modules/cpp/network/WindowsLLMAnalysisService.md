@@ -250,4 +250,49 @@ default 分支 `continue`（:206-207）——ALL 与未知类型静默跳过；A
 | 间接上游 | TaskManager PLATFORM_ANALYSIS | 进度 80-95% 区间 | void 回调无取消 |
 | 读出方 | 前端 Windows 视图/报告 | llm_* 列 | DLL 表除外（另一路径） |
 
+## 15. 9 个 include 开关的调度展开表（analyzeWindowsArtifacts 执行序）
+
+| 开关 | 展开的类型（调用序） | 类型数 |
+|---|---|---|
+| includeRegistry | REGISTRY | 1 |
+| includeEventLogs | EVENT_LOG | 1 |
+| includePrefetch | PREFETCH | 1 |
+| includeLnk | LNK | 1 |
+| includeJumpLists | JUMP_LIST | 1 |
+| includeBrowser | BROWSER_HISTORY → BROWSER_DOWNLOAD → BROWSER_BOOKMARK → BROWSER_LOGIN | 4 |
+| includeSystem | WINDOWS_SERVICE → SCHEDULED_TASK → AMCACHE → SRUM | 4 |
+| includeMFT（默认 false） | MFT_ENTRY | 1 |
+
+全开（除 MFT）时上限 13×1000 次 LLM 调用；MFT 显式打开后 14×1000。每类型独立计数、独立开关（与 Linux 版 13 个一一开关不同，Windows 用两个 4 合 1 开关收敛）。
+
+## 16. 三平台版逐点对照表（终版）
+
+| 维度 | Linux 版 | Windows 版 | Android 版 |
+|---|---|---|---|
+| 类型数（默认执行） | 14 | 13（MFT 默认关） | 14 |
+| prompt 函数数 | 13（SSH 共用） | 8（Browser/System 各 4 合 1） | 12 + analyzeWithPrompt 共享助手 |
+| 增强类型 | 16 个全断在 prompt 路由（§11） | 无增强类型 | 无增强类型 |
+| MANDATORY 标注 | 有 | 有 | **无** |
+| 端点门控 | 无（逐条超时） | 无 | 有（URL 双空才跳过） |
+| 跳过通道 | --no-ai（CLI） | 无 | --no-ai + 端点门控 |
+| 截断排序 | 各表时间/名称（§10） | 全部 ORDER BY id | 敏感优先/时间/大小（§9） |
+| UPDATE 常量死代码 | 有（linux_analysis_sql_llm.h 同款） | 有（14 条，§10.1） | **无**（从一开始就拼接） |
+| 进度表 SQL 死代码 | 有 | 有（§10.2） | 有（§12 附注） |
+
+## 17. 验证 runbook
+
+```bash
+# 1. 含 windows 场景任务后查注解
+sqlite3 data/tasks/<id>/*_windows.db \
+  "SELECT 'registry', COUNT(*), SUM(llm_analyzed_at IS NOT NULL) FROM registry_values
+   UNION ALL SELECT 'prefetch', COUNT(*), SUM(llm_analyzed_at IS NOT NULL) FROM prefetch_files"
+# 2. MFT 默认关闭验证
+sqlite3 data/tasks/<id>/*_windows.db \
+  "SELECT COUNT(*) FROM mft_entries WHERE llm_analyzed_at IS NOT NULL"   -- 0
+# 3. 死代码复核
+grep -rn "UPDATE_REGISTRY_LLM_ANALYSIS" src --include=*.cpp   # 无命中（§10.1）
+grep -rn "windows_analysis_progress" src --include=*.cpp      # 无命中（§10.2）
+# 4. id 排序截断验证：建 1500 条假数据后查 llm_analyzed_at 覆盖的 id 范围（应为最小 id 起的 1000 条）
+```
+
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

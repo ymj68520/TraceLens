@@ -293,4 +293,53 @@ REST 层 task_to_json（毫秒、小写状态、含 extraction_directory 等 30 
 | 死位 | runningTaskIds / TaskWatchdog::stop() | — | §9 |
 | 间接 | TaskManagerAnalysis（流水线） | phase_start_time 心跳 | Case B 的判定依据 |
 
+## 13. tasks.json 与 cases.json 的持久化对照表
+
+两份 JSON 文件是 C++ 侧仅有的两份"内存态镜像"持久化，逐维对照：
+
+| 维度 | tasks.json | cases.json |
+|---|---|---|
+| 路径 | PathManager::getTasksJsonPath（data/tasks.json） | getDataDir()/cases.json（CaseManager.cpp:91-93） |
+| 顶层结构 | 数组 | 数组 |
+| 缩进 | dump(4) | dump(2) |
+| 时间单位 | **秒** epoch | **毫秒** epoch |
+| 枚举大小写 | 大写（PENDING） | 小写（open） |
+| 写入时机 | 每次状态变化（锁内） | 每次 CRUD（锁内） |
+| 原子性 | 无（ofstream 覆写） | 无（同款） |
+| 损坏后果 | 全部任务丢失（catch 打日志） | 全部案件丢失 |
+| 恢复改写 | RUNNING/PENDING→FAILED | 无（案件无运行态） |
+| 孤儿清理 | data/tasks/ 目录级 | 无 |
+| 密码字段 | 显式不写+加载清空 | 无密码概念 |
+
+写跨两份文件的脚本时四个差异点（缩进/时间单位/大小写/恢复行为）都容易踩。
+
+## 14. 启动时序（TaskManager 构造的严格顺序）
+
+```
+TaskManager::TaskManager()                        TaskManager.cpp:21-38
+  1 读 THREAD_POOL_SIZE → 建池                    :23-31   （池先建——load 不需要它，但保证后续任何 start 可用）
+  2 load_tasks()                                  :34
+     2.1 mtx_ 加锁                                :64
+     2.2 TaskPersistence::load_tasks              读取+恢复改写+入 map
+     2.3 cleanup_orphan_directories               删不在 map 的目录
+  3 起 watchdog 线程                              :37      （共享 tasks_/mtx_/shutdown_——此时 map 已就绪）
+main 继续 → AnalysisOrchestrator → HTTPServer（TaskManager::instance() 首次调用在 HTTPServer 构造）
+```
+
+顺序保证：看门狗启动时 tasks_ 必已装载完毕（同一线程内顺序执行）——不存在"看门狗扫描半载 map"的窗口。反之，**析构顺序**是 shutdown → join 看门狗（:41-46）→ 成员逆序销毁（watchdog_thread_ 先于 tasks_）——引用悬垂被 join 语义挡住（§2 已记）。
+
+## 15. 验证 runbook（补充版）
+
+```bash
+# 1. 时间单位对照（一张表看两个文件的差异）
+jq '.[0] | {created: .created_time}' data/tasks.json          # 秒（10 位）
+jq '.[0] | {created: .created_at}' data/cases.json            # 毫秒（13 位）
+# 2. FILE_CARVING 缺席的枚举映射边界（§6）
+jq '[.[].progress.current_phase] | unique' data/tasks.json    # 不含 "FILE_CARVING"
+# 3. 孤子清理的白名单行为
+mkdir data/tasks/not-a-uuid && systemctl restart tracelens && ls data/tasks/   # 目录消失
+# 4. runningTaskIds 死位验证（§9.1）
+grep -n "runningTaskIds" src/network/HTTPServer/TaskPersistence.cpp   # 仅签名，无写入
+```
+
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

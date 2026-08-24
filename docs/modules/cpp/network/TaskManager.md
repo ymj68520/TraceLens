@@ -386,4 +386,81 @@ update_status 的全部语义调用点（转换触发矩阵）：
 
 **没有**的迁移：FAILED→RUNNING（无重启）、COMPLETED→任何（无重跑）——终态是吸收态，改主意只能删除重建。
 
-**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）
+## 17. 常见任务配方
+
+### 配方 17.1：新增一个任务字段并贯通全链（结构体 → 创建 API → 序列化 → 前端）
+
+**目标**：让请求体里一个新的配置项（例如 `my_option`）一路传到流水线内的分析器，且重启后不丢、GET 任务详情能看到。
+
+**步骤**：
+
+1. **结构体加字段**：`src/network/HTTPServer/HTTPServerDataTypes.h:99-165` 的 `AnalysisTask` 里加成员（带默认值，如 `bool my_option = false;`）。注意结构体因 `std::atomic` 成员手写了全部拷贝/移动构造（:168-301）——普通成员加进去无需改这些函数，但若新字段是容器/unique_ptr 则要逐一检查四个特殊成员。
+2. **创建 API 接参**：`TaskCRUDRoutes.cpp:127-262` 的 `handle_create_task` 里仿照 `llm_mode`（:184）用 `body.value("my_option", false)` 读取，并把它作为新实参传给 `create_task`。`create_task` 是 17 参数函数（TaskManager.h:68-84），尾部追加参数时给默认值可少改调用方（batch 路径 `create_batch_tasks` 就只传 2 参）。
+3. **序列化双向**：`TaskSerialization.cpp` 的 `to_json`（:66-104）加 `j["my_option"] = t.my_option;`；`from_json`（:106-171）**必须**用 `if (j.contains("my_option")) j.at("my_option").get_to(t.my_option);` 防御式读取——旧 tasks.json 里没有这个键，直接 `j.at()` 会在重启加载时抛异常导致全部任务丢失。
+4. **前端出口**：`routes/TaskHelpers.cpp:11` 的 `task_to_json` 加 `{"my_option", task.my_option}`（这是 GET /api/tasks/{id} 的唯一出口）；创建表单在 `web/src/components/tasks/CreateTaskModal.jsx`（默认值集中在 :42 附近的 form 初始化），提交经 `web/src/services/taskService.js` 的 createTask 直发 POST /api/tasks。
+5. **流水线消费**：在 `TaskManagerAnalysis.cpp` 对应阶段读 `task.my_option` 分叉。
+
+**注意**：
+
+- 敏感字段（口令类）绝不进 to_json——参照 `decrypt_password`/`backup_password` 的处理（TaskSerialization.cpp:95-96、148、154：不写盘、加载后强制 clear）。
+- tasks.json 里状态/优先级是大写枚举串，API 响应是小写（TaskHelpers 转换），新字段若涉及枚举记得两边各对齐一次。
+- 改 `create_task` 签名后要同步编译 TaskCRUDRoutes / TaskBatchRoutes 两个调用点。
+
+**验证**：POST /api/tasks 带 `my_option:true` 创建 → `cat data/tasks.json` 确认字段已持久化 → 重启服务、GET /api/tasks/{id} 确认字段仍在（证明 from_json 防御生效）→ 用旧格式 tasks.json（手工删掉该键）重启不崩溃。
+
+### 配方 17.2：调整阶段权重 / 新增一个进度阶段
+
+**目标**：让进度条更贴近真实耗时（改权重），或在流水线里插入一个新阶段并让进度、持久化、统计三处联动。
+
+**步骤**（只调权重：仅第 1 步）：
+
+1. **改权重表**：`TaskManager.cpp:545-566` `calculate_overall_percentage` 内的 `phase_weights` map（现值：INITIALIZING 5 / IMAGE_ANALYSIS 25 / EVENT_EXTRACTION 10 / FILE_CLASSIFICATION 15 / LLM_ANALYSIS 20 / PLATFORM_ANALYSIS 20 / FILE_CARVING 3 / FINALIZING 2）。改完不必动别处——总进度是按"当前阶段之前的权重全计 + 当前阶段按百分比折算"算的。
+2. **新增阶段（完整链）**：
+   - `HTTPServerDataTypes.h:41-50` 的 `TaskPhase` 枚举里按**流水线真实位置**插入新值——实现用 `p.first < phase` 的枚举序比较（TaskManager.cpp:558-565），枚举声明顺序就是进度坐标系，插错位置进度会回跳；
+   - 在 TaskSerialization.cpp:24-32 的 `NLOHMANN_JSON_SERIALIZE_ENUM(TaskPhase, {...})` 补映射（**FILE_CARVING 至今漏在这里**，新阶段不补则 tasks.json 里该阶段会被序列化成第一个枚举值 INITIALIZING）；
+   - `TaskHelpers.cpp:128-140` `phase_to_string` 补 case（前端进度条显示名）；
+   - `TaskManager.cpp:433-441` `get_task_statistics` 的 `running_phases` 补计数键（当前也漏了 llm_analysis）；
+   - 在 `TaskManagerAnalysis.cpp` 流水线相应位置调 `update_progress(TaskPhase::NEW_PHASE, pct, "desc")`，阶段开头照抄取消检查点 `if (is_task_cancelled(task_id)) {...return;}`；
+   - 回到第 1 步把新阶段加进权重表并调平总和（权重不必严格求和为 100，代码用 `std::min(total,100)` 封顶，但权重和偏离 100 会让进度永远到不了或提前到 100）。
+
+**注意**：插入阶段位置若在枚举中间，会让**已持久化的旧 tasks.json 里的枚举值错位**（序列化按字符串可 mitigate，但 from_json 对未知串会落到默认第一项）——安全做法是只在 FINALIZING 之前紧邻追加、不动既有顺序。跳过可选阶段时权重经 `< phase` 自动计入，总进度单调不减但有跳变，属预期。
+
+**验证**：建任务开对应开关，轮询 `GET /api/tasks/{id}/progress`：overall_percentage 单调不减、新阶段出现时 current_phase 变为新串；`GET /api/tasks/statistics` 的 running_phases 出现新键；重启后 tasks.json 里 current_phase 字符串正确。
+
+### 配方 17.3：排查"任务卡住不动"的标准动作
+
+**目标**：任务长时间停在某个状态，判断是"合法慢"、调度丢队还是线程挂死，并安全处置。
+
+**步骤**（按顺序）：
+
+1. **看进度与心跳语义**：`GET /api/tasks/{id}` 读 `progress.current_phase` + `phase_description` + `timestamps.started`。RUNNING 且 phase_description 在变 = 合法慢（LLM 阶段单文件描述可耗时数分钟），不必干预。
+2. **看审计链**：`GET /api/tasks/{id}/audit-log`（limit 默认 50）。SCENE_DETECTED / LLM_CONFIG / FILE_CARVING 等动作串标出流水线走到哪一步（动作串全表见 §15）；最后一跳的时间戳就是停滞起点。
+3. **区分两种卡死**：
+   - PENDING 卡死：状态 PENDING 且 created 距今超 30 分钟 → 调度问题。看依赖：`dependencies` 里有非 COMPLETED 的任务（can_start_task 不放行，TaskManager.cpp:474-483，且**无自动唤醒**，见 §12.3）；或线程池被长任务占满（见配方 17.4）。
+   - RUNNING 卡死：`phase_start_time` 距今超 30 分钟无 update_progress → 看门狗会自动判 FAILED"Execution timeout"（TaskWatchdog.cpp:70-81），messages 会写进 error_details。不想等 30 分钟可手动取消。
+4. **处置**：`DELETE /api/tasks/{id}`（等价取消+删除）或 batch-cancel；取消是协作式的（cancellation_requested 置位，TaskManager.cpp:302-303），工作线程走到下一个检查点才真正退出——LLM 单次调用慢时取消有延迟，属已知边界（§8）。
+5. **看服务端日志**：`[Watchdog]` 前缀的两行输出（TaskWatchdog.cpp:62、79）分别对应 Case A/Case B 判死记录。
+
+**注意**：不要用"重启服务"处置卡死任务——重启会把所有 RUNNING/PENDING 改成 FAILED"Interrupted by server restart"（TaskPersistence.cpp:54-62），伤及其他正常任务。`is_task_cancelled` 对不存在的任务也返回 true，所以删除后线程会自然退出，无需强杀。
+
+**验证**：处置后 `GET /api/tasks/{id}` 状态进入终态（CANCELLED/FAILED），`data/tasks/<id>/` 目录在运行中删除的情形下由 TaskCleanup 析构兜底清理（稍后消失）。
+
+### 配方 17.4：调整线程池大小并观察效果
+
+**目标**：提高/降低分析并发度（如同时分析多个镜像），并确认改动真实生效、不引发资源问题。
+
+**步骤**：
+
+1. **改配置**：在项目根 `.env`（ConfigManager 按多路径搜索加载，ConfigManager.cpp:17-36）设 `THREAD_POOL_SIZE=N`，默认 4（ConfigManager.cpp:138）。
+2. **边界行为确认**：值 ≤0 会被修正为 2；>16 打 WARNING 但仍生效（TaskManager.cpp:26-29）。
+3. **重启服务**：池在 TaskManager 构造时建一次（TaskManager.cpp:23-30），运行期改 .env 不生效。
+
+**注意**：
+
+- 这个值是**双刃**：`FileAnalyzer.cpp:280` 用同一个 `getThreadPoolSize()` 建文件描述 LLM 阶段的临时池——调大池会同时放大单任务内部的 LLM 并发，N 个并发任务 × 每任务 N 线程可能把本地 LLM 后端打爆；调小则两处同时变慢。
+- 并发 TSK 分析主要瓶颈在磁盘 IO 与内存（每个镜像的块缓存），CPU 核数不是第一约束。
+- task_queue_ 优先级队列目前无消费者（§8），调池大小不影响排队公平性。
+
+**验证**：同时创建 N+1 个任务，前 N 个变 RUNNING、第 N+1 个停留 PENDING（`GET /api/tasks/statistics` 的 by_status 对比）；观察服务端内存/IO；确认无 `[Watchdog] Failed stale pending task`（那说明 PENDING 排队超过 30 分钟被判死——排队中的任务同样受 pending 超时约束，TaskWatchdog.cpp:53-64，池小时要把 `TASK_WATCHDOG_PENDING_MINUTES` 一并调大）。
+
+**最后更新**: 2026-08-24（补：常见任务配方）

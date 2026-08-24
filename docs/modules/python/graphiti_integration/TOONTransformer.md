@@ -179,4 +179,66 @@ MultiSourcePipeline 拿到一批 FileRecord → `TOONTransformer(include_full_de
 - 手工验证：构造带 5000 字符 llm_description 的 FileRecord → `estimate_episode_tokens` / `truncate_if_needed` 观察截断点与 JSON 结构保持。
 - 新记录类型：效仿 ForensicEpisodeTransformer 建独立 transformer，产出同一个 EpisodeData，勿往本文件塞异构逻辑。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 10. 二轮深化 A：episode_body 字段全表（按开关分组）
+
+| 分组 | 键 | 来源（FileRecord） | 渲染后形态（GraphitiIngestor `Field: value` 行） |
+|---|---|---|---|
+| 基础（恒有） | file_name / file_path / category / file_extension | name/path/category/extension | 四行平铺 |
+| metadata（include_metadata=True） | size_bytes / md5_hash / is_deleted / file_type | size/md5/is_deleted/file_type | 各一行；md5_hash 正是 HASH_IDENTIFIES 边的种子 |
+| | modified_at（及 created/accessed 若有） | *_datetime.isoformat() | ISO 时间行 |
+| analysis（include_analysis 且 has_llm_analysis） | summary | llm_summary | 一行 |
+| | description（**仅 include_full_description=True**） | llm_description（可达 3000+ 字） | 一行超长文本 |
+| | keywords | keywords_list | JSON 数组二次 dumps 成一行 |
+
+恒有字段仅 4 个——关掉两个开关的 episode 是"骨架 episode"（只有路径与类别可抽），这正是"图谱实体偏少先查 GRAPHITI_INCLUDE_FULL_DESC"（第 8 节）的字段级解释。
+
+## 11. 二轮深化 B：transformer 家族对照表（三成员）
+
+| 维度 | TOONTransformer | ForensicEpisodeTransformer | OSSTransformer |
+|---|---|---|---|
+| 输入 | FileRecord（files.db） | EventRecord/EventClusterRecord/Windows/Linux artifact | OSSObjectRecord（oss.db） |
+| episode 命名 | `{category}:{name}` | `event:{type}:{path}`、`event_cluster:{type}:{path}`、`windows:{artifact}:{name}`、`linux:{artifact}:{name}`（forensic_episode_transformer.py:47/:88/:136/:208） | OSS 对象键派生 |
+| source_description 后缀 | 无 | :events / :event_clusters / :windows / :linux | OSS 语义 |
+| category 字段 | record.category | windows_{artifact}/linux_{artifact}（:142/:214） | — |
+| 时间源 | llm_analyzed_at 优先、否则 now | 事件时间 | last_modified |
+
+家族不变量：全部产出同一个 EpisodeData、全部 `json.dumps(ensure_ascii=False)`、全部可被同一 GraphitiIngestor.batch_ingest 消费——四类 episode 混进同一 group_id 图时靠 name 前缀（file:/event:/event_cluster:/windows:/linux:）区分来源。
+
+## 12. 二轮深化 C：TOON 文本转义规则全表（:241-254）
+
+| 条件 | 处理 |
+|---|---|
+| 值为空 | `""` |
+| 含 `|` `"` `\n` `\r` `,` 任一字符 | 触发引号包裹 |
+| 首或尾是空白字符 | 同上（防静默丢空白） |
+| 包裹时 | `"` → `""`（Excel 式双写）、`\n` → `\\n`、`\r` → `\\r`，整体加双引号 |
+| 其余 | 原样 |
+
+这组规则与 C++ TOONExporter 的导出端对称——同一条记录经 to_toon_format 与 C++ 导出行应逐字节一致（回归对照的口径）；分隔符是 ` | `（管道+空格）。
+
+## 13. 二轮深化 D：新走读——token 估算到截断的完整数值链（端到端）
+
+```
+episode_body(JSON 串，len = N 字符)
+  → estimate_episode_tokens: N/4 + N/20        （≈ 0.3N，即"4 字符/token+20% 缓冲"）
+  → 与 max_episode_tokens(默认 3000) 比较
+  → 超限则 truncate_if_needed:
+       max_chars = max_tokens × 3              （保守 3 字符/token）
+       递归把每个 >500 字符的字符串值截为 500+`... [truncated]`
+       重新 dumps
+  → GraphitiIngestor 不复查（直接摄取）
+```
+
+数值推演：N=15000 字符的 body 估 ≈4500 token > 3000 → 触发截断；截断目标 9000 字符，但**截断只作用于单值超 500 的字符串**——三个各 480 字符的字段合计 1440 不会被碰。因此截断后长度可能仍显著大于 9000（多字段场景），实际 token 可能仍超预算（第 8 节"截断后不复查"的量化形态）。中文场景两个系数（4 与 3 字符/token）都偏乐观，安全余量应按 2 字符/token 估算：想稳妥限制在 3000 token，把 GRAPHITI_MAX_EPISODE_TOKENS 调到 2000 即等效。
+
+## 14. 二轮深化 E：估算/截断参数速查
+
+| 参数 | 值 | 位置 | 说明 |
+|---|---|---|---|
+| 估算系数 | len/4 + len/20 | :270-272 | 英文启发式 |
+| 截断系数 | max_tokens×3 | :301-303 | 保守换算（注释自认不一致是刻意） |
+| 单值截断阈值 | 500 字符 | :297 | truncate_strings 的 max_chars |
+| 截断标记 | `... [truncated]` | :308 | 可 grep 的审计痕迹 |
+| 解析失败退化 | 整体字符串截断 | :312-317 | 非 JSON body 的兜底 |
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

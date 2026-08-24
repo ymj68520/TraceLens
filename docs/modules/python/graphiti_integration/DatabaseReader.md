@@ -196,4 +196,64 @@ while True:
 - 新增一种数据库：新建 reader（继承 `_BaseForensicsReader`）→ 在 `DB_SUFFIXES`（__init__.py:83）与 `create_readers` 注册 → 门面 `__all__` re-export → transformer 加变换分支。
 - 手工验证：`python -c "from graphiti_integration import ForensicsDatabaseFactory; print(ForensicsDatabaseFactory.discover(any_db_path='<task>/files.db').summary())"`。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 10. 二轮深化 A：artifact_type → reader 方法全清单（17 项，get_classified_files 的 method_map）
+
+| db_type | artifact_type | 方法 | 数据语义 |
+|---|---|---|---|
+| windows | registry_values | get_registry_values | 注册表值 |
+| windows | event_logs | get_event_logs | 事件日志行 |
+| windows | prefetch_files | get_prefetch_files | 预取文件 |
+| windows | user_accounts | get_user_accounts | 账户 |
+| windows | usb_devices | get_usb_devices | USB 设备 |
+| windows | browser_history | get_browser_history | 浏览历史 |
+| windows | services | get_services | 服务 |
+| linux | log_entries | get_log_entries | 日志行 |
+| linux | shell_history | get_shell_history | shell 历史 |
+| linux | login_records | get_login_records | 登录记录 |
+| linux | groups | get_groups | 用户组 |
+| android | contacts | get_contacts | 联系人 |
+| android | sms_messages | get_sms_messages | 短信 |
+| android | call_logs | get_call_logs | 通话记录 |
+| android | chrome_history | get_chrome_history | Chrome 历史 |
+| android | installed_packages | get_installed_packages | 已装应用 |
+| android | wifi_networks | get_wifi_networks | WiFi 记录 |
+
+17 个键是 ForensicEpisodeTransformer 侧 episode 命名（`windows:{artifact_type}:...`）的取值域；未知键抛 ValueError（__init__.py:234-236）。跨库错配（db_type=windows + artifact_type=contacts）会以"未知 artifact"失败——method_map 不按 db_type 分组校验，但 reader 实例只挂对应域方法，错配实际抛 AttributeError 而非返回空，属可接受的防御深度。
+
+## 11. 二轮深化 B：SELECT 白名单 ↔ files 表列对照（17 列）
+
+SELECT_FILES_SQL（raw_reader.py:85-96）的 17 列与 [FilesDB.md](../../../schema/FilesDB.md) 主表逐列对上：12 个核心（id/inode/name/path/size/extension/category/type/mtime/ctime/is_deleted/md5）+ 5 个 llm_*（summary/description/keywords/analyzed_at/model_used）。两处命名差异：DB 列 `type` → 字段 `file_type`（_row_to_record，:276-296）；atime/crtime **不在白名单**（它们在 raw.db，files 库没有——与 associations 路由的四时间戳分工一致）。llm_is_relevant 同样不读——摄取不按人工相关性过滤（GraphitiService.md 第 3 节的"is_relevant=0 仍是 episode 候选"在此有列级依据）。
+
+## 12. 二轮深化 C：events reader 读取面
+
+两条主查询（events_reader.py:30、:68）都以 `id, timestamp, event_type, file_path, inode` 起头——事件记录与簇记录共享定位五元组；簇聚合查询（:122）按 `(timestamp/60, event_type)` 分组（与 associations/LLM 路由的簇口径一致，bucket_seconds=60 硬编码）；`get_analysis_stats` 用 `GROUP BY event_type` 计数（:166）。与 files 侧一致的契约：iter_*_batched 分批生成器、表缺失安静空、OFFSET 翻页靠 ORDER BY 稳定。
+
+## 13. 二轮深化 D：新走读——connect() 的 GBK 兜底 text_factory（base_reader.py:22-43）
+
+```python
+# base_reader.py:24-42（骨架）
+conn = sqlite3.connect(str(self.db_path))
+conn.row_factory = sqlite3.Row
+def _text_factory(bytes_):
+    try:
+        return bytes_.decode('utf-8')
+    except UnicodeDecodeError:
+        return bytes_.decode('gbk', errors='replace')
+conn.text_factory = _text_factory
+yield conn
+```
+
+逐块解释：sqlite3 默认 text_factory 是 `str`（按 UTF-8 严格解码）——中文 Windows 镜像里 GBK 编码的文件名会让**任何** SELECT 直接抛 UnicodeDecodeError，整个摄取作业失败。这里换成自定义工厂：先试 UTF-8，失败退 GBK（errors='replace' 保不抛）。代价是坏字节变成 U+FFFD 替换字符——**同一文件名在"纯 UTF-8 库"与"GBK 兜底路径"下可能产生不同字符串**，进而影响 FileRecord.path 的一致性（FileEntityIngestor 的 SHA-256 实体 ID 以 path 为输入——同文件两次摄取理论上可能得到两个实体）。这是已知取舍：可用性优先于字节级幂等。同款兜底也出现在 httpserver 摄取 worker（_worker.py:476-485 附近，path-B 的 JOIN 处理）。
+
+## 14. 二轮深化 E：DiscoveredDatabases 字段表
+
+| 字段 | 类型 | 填充条件 |
+|---|---|---|
+| base_name / output_dir | str | 显式传入或 any_db_path 反推 |
+| raw_db / files_db / events_db | Optional[Path] | `<base>_<suffix>` 存在，或纯名 `raw.db/files.db/events.db` 兜底 |
+| windows_db / linux_db / android_db | Optional[Path] | 同上 |
+| available_types | list[str] | 以上非 None 者的名字（流水线据此选通道） |
+
+`summary()`（人读字符串）被 pipeline 打日志用；`create_readers` 对 raw_db **不建 reader**（:142-163）——raw 库的四时间戳数据在图谱链路无消费者，只被 associations 路由直连。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

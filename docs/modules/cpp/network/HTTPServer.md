@@ -375,4 +375,83 @@ HTTPserver.cpp:194-212 的完整映射（未命中兜底 `application/octet-stre
 | 跨域失败但 API 正常 | CORS_ALLOW_ORIGIN / RouteHelpers | 白名单不含前端 origin；静态路由硬编码 `*` 与 API 白名单不一致 |
 | 端口不是 8080 | run.sh:79 vs .env | run.sh 回退 8666 漂移（§10） |
 
-**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）
+## 15. 常见任务配方
+
+### 配方 15.1：注册一个新路由组（聚合器 → 构造 → Swagger → vite 前缀四步）
+
+**目标**：新增一组 `/api/xxx/*` 端点（一个聚合器类 + 若干 handler），Swagger 可见、前端 dev 模式可调。
+
+**步骤**：
+
+1. **写聚合器**：在 `src/network/HTTPServer/routes/` 新建 `XxxRoutes.{h,cpp}`，模仿 `SystemRoutes`（SystemRoutes.cpp:6-13——构造函数只做子路由组合）或直接写端点的 `FilterRoutes`（FilterRoutes.cpp:6-9 用 `CROW_ROUTE(app, "/api/filter/profiles").methods("GET"_method)(...)`）。构造签名统一 `XxxRoutes(crow::App<>& app)`，构造体内完成全部 CROW_ROUTE 注册。
+2. **构造挂载**：`HTTPserver.h:85-102` 私有区加成员 `XxxRoutes xxx_routes_;`（**必须声明在 `app_` 之后**，成员按声明序初始化，§3.2），`HTTPserver.cpp:63-75` 初始化列表追加 `xxx_routes_(app_)`。漏掉这步就是 OSSRoutes 的命运——编译通过、运行时 404（§8.4）。
+3. **补 Swagger**：每个端点后跟一个 `Swagger::instance().RegisterEndpoint("/api/xxx", "GET", 摘要, 描述, {"分类"}, {参数列表}, {响应码表})`（完整七参样例见 FilterRoutes.cpp:31-43；头文件 `#include "../../Swagger/Swagger.h"`）。不注册则 `/api/docs/openapi.json` 与 Swagger UI 看不到该端点。
+4. **vite 前缀**（仅开发模式需要）：若新前缀不是 `/api/tasks` 等已被代理的路径，在 `web/vite.config.js` 的 `server.proxy`（:22 起）加一项，如 C++ 后端写 `'/api/xxx': { target: cppTarget, changeOrigin: true }`；Python 侧（8090/8091）参照 `/api/reports`、`/csapi` 的写法（后者带 rewrite 去前缀）。生产模式不受影响（同源托管）。
+
+**注意**：新聚合器里的子路由对象要用**成员**而非构造函数局部变量（ForensicsRoutes.h:79 有 "must be members to avoid dangling pointers" 的团队约定；OSSRoutes.cpp:25-27 的局部变量写法是反面教材，虽因 CROW_ROUTE 拷贝 handler 而侥幸可用）；若 URL 前缀落在 `/api/tasks/` 下，记得扩 TaskCRUDRoutes.cpp:268-276 的保留字守卫列表，防止被 `/api/tasks/<string>` 吞掉。
+
+**验证**：重启后 `curl -i http://localhost:<port>/api/xxx` 通；`curl .../api/docs/endpoints` 列表里出现新端点；前端 dev server（3000 端口）里 fetch 同路径经代理可达；`curl -X OPTIONS -i` 返回 204（若按配方 15.3 补了预检）。
+
+### 配方 15.2：为现有路由加参数校验
+
+**目标**：给一个直接 `std::stoi` 裸读 query 参数的 handler（如 `/api/forensics/files/largest` 的 limit）加上缺省、范围钳制与非法值 400，避免 `stoi("abc")` 抛未捕获异常。
+
+**步骤**（以 FileAnalysisRoutes.cpp:41-57 为模板）：
+
+1. **读参与缺省**：`int limit = params.get("limit") ? std::stoi(params.get("limit")) : 50;`（:45）——先判空再 stoi，`nullptr` 转 string 是 UB。
+2. **把裸 stoi 包进校验**：stoi 对非数字串抛 `std::invalid_argument`，当前 handler 外层只有兜业务异常的 try（:53-61 会把它误报成 500）。校验的正确姿势是在读参处先过一层：
+   ```cpp
+   int limit = 50;
+   if (auto* s = params.get("limit")) {
+       try { limit = std::stoi(std::string(s)); } catch (...) { /* 400 */ }
+       if (limit < 1) limit = 1; if (limit > 500) limit = 500;  // clamp
+   }
+   ```
+3. **必填项走 400 早退**：task_id 为空时 `res.code = 400` + `{"error", "task_id parameter is required"}`（:47-52），这是全库统一错误形态。
+4. **同步 Swagger 参数表**：RegisterEndpoint 的第五参补 `{"limit", "query", "Number of files to return", false, "integer"}`（FileAnalysisRoutes.cpp:19 已有此写法），让文档与实际校验一致。
+
+**注意**：错误响应沿用各路由现状返回 `{"error": ...}` 裸 JSON（ApiResponse 外壳只有 FilterRoutes 用，§3.5），不要在个别路由引入新外壳造成不一致；`TaskMonitoringRoutes` 的 audit-log limit 参数至今无 stoi 保护（limit=abc 直接 500），排查类似问题时可对照。
+
+**验证**：`curl ".../largest?task_id=<id>&limit=abc"` 得 400 而非 500；`limit=99999` 被钳到上限且 SQL 正常返回；缺 task_id 时 400 文案正确。
+
+### 配方 15.3：为新端点加 CORS 预检（OPTIONS）
+
+**目标**：跨域前端（SPA 与 API 不同源部署时）对带自定义头/非简单方法的请求先发 OPTIONS 预检，Crow 不会自动应答，需要逐路径注册。
+
+**步骤**（固定模式，照抄 TaskRoutes.cpp:22-34）：
+
+```cpp
+CROW_ROUTE(app, "/api/xxx/<string>").methods("OPTIONS"_method)([](const crow::request& req, const std::string& id){
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+    res.code = 204;
+    return res;
+});
+```
+
+三要素缺一不可：`.methods("OPTIONS"_method)` 显式注册方法、`RouteHelpers::add_cors_headers(res)`（RouteHelpers.cpp:12-20，读 `CORS_ALLOW_ORIGIN` 环境变量，回 Allow-Origin/Methods/Headers 三头）、`res.code = 204`（No Content 是预检的标准应答）。路径必须与真实端点**完全同形**（`<string>` 占位符一致），否则 trie 匹配不上。
+
+**注意**：
+
+- 预检路由要与业务路由注册在同一聚合器构造期（注册顺序无碍，方法不同不冲突）；TaskRoutes.cpp:14-134 现存 16 条就是这个模式的手工展开——新端点忘补时症状是浏览器 console 报 CORS 但 curl 直调正常（排障表 §14 有此行）。
+- Allow-Headers 列表写死为 `Content-Type, Authorization, X-Requested-With`（RouteHelpers.cpp:19）——前端若发其他自定义头（如 X-Api-Key），预检仍会失败，需在 RouteHelpers 里扩，这是全局一处改动。
+- 静态路由（`/<path>`、`/`）没有 OPTIONS 兜底且 GET-only（§9.1），跨域预检打到非 /api 路径会得 405，属已知边界。
+
+**验证**：`curl -X OPTIONS -i -H "Origin: http://other.host" http://localhost:<port>/api/xxx/abc` 返回 204 且响应头含三个 Access-Control-*；浏览器 Network 面板预检请求绿色通过。
+
+### 配方 15.4：加一个静态资源路径/类型
+
+**目标**：让 web/dist 下新放的资源（新扩展名文件、或需要伺服的额外目录）被正确伺服——正确的 Content-Type 与缓存策略。
+
+**步骤**：
+
+1. **普通文件**：直接放进 `web/dist/`（经前端构建或手工），catch-all `/<path>`（HTTPserver.cpp:109-137）自动伺服，无需改代码。
+2. **新扩展名**：`get_mime_type`（HTTPserver.cpp:194-212）的 hand-written 表补一个分支（如 `.wasm → application/wasm`），否则落 `application/octet-stream` 浏览器走下载。
+3. **要长缓存的资源**：`serve_static_file`（HTTPserver.cpp:162-192）的扩展名白名单（:134-138，现含 js/css/png/jpg/jpeg/gif/svg/ico/woff/woff2/ttf）补上扩展名，命中即加 `Cache-Control: public, max-age=31536000`。前提是文件名带内容哈希（Vite 产物天然满足）；不带哈希的文件别加长缓存，否则更新不生效。
+4. **web/dist 之外的目录**：当前没有机制——`web_dir` 硬编码 `"web/dist"`（:120）且相对 CWD（§6）。要么把文件软链/拷贝进 web/dist，要么改 `setup_static_routes` 加第二前缀路由（改动时注意 §9.2 的目录穿越风险，拼接后应做 `fs::canonical` 前缀校验）。
+
+**注意**：`.json` 会以 `application/json` 同源伺服（§12），敏感配置别放 web/dist；`.map` 不在 MIME 表，DevTools 加载不了 source map（已知小坑，顺手可补 `application/json`）。`serve_static_file` 整文件读入内存（§6），大文件（演示视频等）会占等量内存。
+
+**验证**：`curl -I http://localhost:<port>/<新路径>` 看 200 + 正确 Content-Type；带缓存的扩展名应见 `Cache-Control: public, max-age=31536000`；`curl -I .../不存在的深层路径` 回落 index.html（SPA fallback 正常）。
+
+**最后更新**: 2026-08-24（补：常见任务配方）

@@ -226,4 +226,74 @@ db.commit()
 
 相关阅读：[Main.md](./Main.md)（应用装配/DB/中间件）、`docs/architecture/DatabaseSchema.md` 第 9 节（这四件套读写的 10 张表）、`src/http_agent/`（协议另一端）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 9. 二轮深化 A：命令状态机完整转移表
+
+command_queue.status 的合法状态与转移（CHECK 约束背书，源码核对）：
+
+| 转移 | 触发 | 伴随列 | 行 |
+|---|---|---|---|
+| → pending | create_command 入队 | created_at、ttl（critical 强制 1h） | :41-91 |
+| pending → assigned | get_pending_commands 领取（优先级排序） | assigned_at | :109-140 |
+| assigned → in_progress | 客户端上报开始 | （仅翻状态） | :144-204 |
+| assigned/in_progress → completed | 客户端上报完成 | completed_at、result_message | :191-192 |
+| assigned/in_progress → failed | 客户端上报失败 | completed_at、retry_count+=1、result_message | :193-195 |
+| pending/assigned → expired | expire_commands TTL 清扫（或领取时 ttl>now 兜底过滤） | — | :227-241 |
+
+三个边界：**没有 assigned→pending 的归还**——客户端领了不干只能等 TTL 过期；**expired 是终态**（清扫后不可再领）；`in_progress→failed` 的 retry_count 自增是唯一的"重试痕迹"，无自动重排（第 7 节已记录）。TTL 的两个判定点对称：领取时 `ttl > now`（:127）、清扫时 `ttl < now`（:231）——恰好等于 now 的一瞬间两边都不命中，语义无害。
+
+## 10. 二轮深化 B：任务状态机转移表（含终态幂等护栏）
+
+analysis_tasks.status 的状态流（task_orchestrator）：
+
+| 转移 | 触发 | 伴随 | 护栏 |
+|---|---|---|---|
+| → created | create_analysis_task 第一步 | task_history("created") | — |
+| created → queued | 同一事务内建命令后 | — | 命令与任务原子 |
+| created/queued → running | 首份 in_progress 上报（propagate） | started_at、progress、metadata.messages | 二份起只更新 progress |
+| running → completed / failed | complete_task | completed_at、history | **终态幂等**：completed/failed/cancelled 的任务无视后续上报（:324-325） |
+| 任意未终态 → cancelled | cancel_task（用户） | history；同时失败本任务 pending/assigned 命令 | 护栏防"迟到报告复活取消的任务" |
+
+## 11. 二轮深化 C：四服务方法全清单（24 个公共方法）
+
+| 服务 | 公开方法（计数） |
+|---|---|
+| auth_service（6） | create_user_token / create_client_token / verify_token / get_user_from_token / get_client_from_token / verify_password+hash_password（口令对） |
+| command_queue（7） | create_command / get_pending_commands / update_command_status / expire_commands / get_commands_for_client / propagate_command_status / get_command_by_id 族 |
+| task_orchestrator（6） | create_analysis_task / update_task_progress / complete_task / cancel_task / _record_history（内部）/ get_task 族 |
+| result_aggregator（5） | store_result / store_results / store_llm_analysis / get_results / _get_task_or_raise（内部防御） |
+
+全部遵循 owns_session 模式（可选 db 参数）；静态方法为主（无实例状态）——服务"类"只是命名空间。
+
+## 12. 二轮深化 D：result_type 契约与工件字段表
+
+`_VALID_RESULT_TYPES = ("database", "file", "metadata")`（result_aggregator.py:41）——**三值封闭枚举**，store_results 先全量校验后写（坏批次不落半行）。AnalysisResult 行字段：
+
+| 字段 | 来源 | 语义 |
+|---|---|---|
+| result_type | 请求（三值之一） | database=产出库、file=抽取文件、metadata=杂项 |
+| file_path / storage_location | 请求（不透明句柄） | 客户端路径约定，服务端不解析 |
+| file_size | 请求 | 字节数 |
+| client_id | **task.client_id（服务端取）** | 不信任上传者自报 |
+| result_metadata | 请求 JSONB 原样 | base_name 等工件命名 |
+| created_at | server_default | 服务层不设时间 |
+
+llm_analysis 侧的差异：`input_text_hash` 去重键（无唯一约束，幂等靠客户端）、`cost Numeric(10,4)`、`model/summary_json` 等回收字段。
+
+## 13. 二轮深化 E：新走读——update_command_status 的消息保留语义（:144-204）
+
+```python
+# command_queue.py:184-195（骨架）
+if command.status == status and not result_message and progress is None:
+    return command            # 无变化的重复上报：不产生任何写
+if status == "completed":
+    command.completed_at = now
+elif status == "failed":
+    command.completed_at = now
+    command.retry_count += 1
+if result_message is not None:
+    command.result_message = result_message    # 仅显式提供时覆写
+```
+
+逐块解释四条语义：① **重复上报短路**——同状态、无消息、无进度的轮询式心跳不产生 UPDATE（减少行版本 churn）；② completed 与 failed 都盖 completed_at（failed 复用同一列，没有 failed_at——审计时看 status 区分）；③ **result_message 只在显式提供时覆写**——进度上报（不带消息）不会把上一条的报错文本冲掉，客户端可以"先报错、再继续报进度"而不丢错误现场；④ retry_count 只在 failed 分支自增（in_progress/completed 不动）。配合 propagate 的 best-effort 桥（§4c），命令层的这组语义是"客户端可见的主操作"，任务层永远跟从而非相反。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

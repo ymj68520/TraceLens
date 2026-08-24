@@ -274,4 +274,58 @@ handle_get_task_databases（:527-585）只输出 raw/events/files 三库（Analy
 | 注册 | Swagger 7 条（CRUD）+3 条（batch）+2 条（monitoring） | 覆盖缺口见 Swagger.md §10 |
 | 前端暂不用 | batch-* / audit-log / priority / cleanup | Services.md "死代码 service 方法"清单 |
 
+## 11. progress / audit-log 的响应契约细节（二轮补全）
+
+progress（TaskMonitoringRoutes.cpp:46-80）：
+
+| 键 | 类型 | 说明 |
+|---|---|---|
+| task_id | string | 回显 |
+| status | 小写串 | 五态之一 |
+| progress.current_phase | 小写蛇形串 | initializing/image_analysis/event_extraction/file_classification/llm_analysis/platform_analysis/file_carving/finalizing（TaskHelpers::phase_to_string 全八值——**REST 层有 file_carving**，tasks.json 的枚举映射反而没有，§对照 TaskInfrastructure §6） |
+| progress.phase_percentage / overall_percentage | int 0-100 | |
+| progress.phase_description | string | 流水线写的自由文本 |
+
+404 形态 `{error:"Task not found", task_id}`；异常 500。**轮询方注意**：phase_description 是 last-write-wins——阶段切换瞬间可能看到新 phase + 旧描述。
+
+audit-log（:98-139）：`{task_id, logs[{timestamp(ms), action, details, user_id}], count}`；limit 默认 50、offset 默认 0；**count 是本页条数**不是总数（无 has_more）；`std::stoi` 无保护（limit=abc → 异常 → 500，与列表端点同款问题）。action 全集见 TaskManager.md §15。
+
+## 12. 前端消费矩阵（taskService ↔ 端点 ↔ Redux thunk ↔ 页面）
+
+| taskService 方法 | 端点 | Redux | 页面/Hook |
+|---|---|---|---|
+| fetchTasks / listTasks | GET /api/tasks | fetchTasks/fetchTasksSilent | Tasks 页、TaskSelector |
+| getTaskProgress | GET /{id}/progress | fetchTaskProgress | useTaskPolling |
+| getTaskResults | GET /{id}/results | — | AnalysisCenter |
+| cancelTask（DELETE+reason，§8.1） | DELETE /{id} | cancelTask | Tasks 页 |
+| deleteTask | DELETE /{id} | deleteTask | Tasks/Cases 页 |
+| getTaskStatistics | GET /statistics | — | Dashboard |
+| createTask | POST /api/tasks | createTask | 创建表单、caseSlice.createCaseWithTasks |
+| batchCreateTasks/batchGetTaskStatus/batchCancelTasks | batch-* | **无 thunk** | 无页面（死 service） |
+| getTaskAuditLog/updateTaskPriority/cleanupOldTasks | 三端点 | 无 | 无页面（死 service） |
+
+九个"死 service 方法"对应 §7 表里标注"前端暂不用"的三行——它们是本组端点里唯一没有 UI 入口的部分。
+
+## 13. 并发与锁的交互（本组端点视角）
+
+- 所有 handler 经 TaskManager 单锁——**读端点（progress/statistics/list）与写端点（create/delete）竞争同一把 mtx_**。锁内最重操作是 save_tasks_internal 的全量 JSON 落盘（§已知问题）：任务多时列表轮询可能被创建/状态变化拖慢，表现为前端 Tasks 页偶发慢查询；
+- **results 端点的缓存再校验每次开 SQLite**（§3.5）—— Crow worker 在锁外做（SQLiteHelper 不碰 TaskManager 锁），不与大锁竞争；但同一任务的并发 results 请求会开多个只读连接（WAL 下无害）；
+- **create 的"创建即启动"**：can_start_task + start_analysis 在 handler 里顺序调用——入池（ThreadPool::enqueue）本身非阻塞，创建请求不会等分析；但批量的 batch-create 循环里每个 start 都检查 can_start_task（锁一次）+ enqueue——N 个任务 N 次短暂锁竞争。
+
+## 14. 验证 runbook（补充）
+
+```bash
+# 1. 保留字守卫
+curl -s -o /dev/null -w '%{http_code}\n' ":8080/api/tasks/cleanup"            # 404（守卫）
+curl -s ":8080/api/tasks/list" | jq '.pagination.total'                        # 200（静态路由先匹配）
+# 2. PUT 的两种"假"
+curl -s -X PUT ":8080/api/tasks/<id>" -d '{"priority":"high"}' | jq .status    # 只读别名
+curl -s -X PUT ":8080/api/tasks/<id>/priority" -d '{"priority":"high"}' | jq . # success:true 但无变化
+# 3. DELETE body 被忽略
+curl -s -X DELETE ":8080/api/tasks/<id>" -d '{"reason":"手动清理"}' | jq .message  # "Task deleted successfully"（reason 无处安放）
+sqlite3 data/forensics_audit.db "SELECT details FROM audit_logs WHERE action='CANCELLED' ORDER BY timestamp DESC LIMIT 1"  # 无 reason
+# 4. 202 分支
+curl -s -o /dev/null -w '%{http_code}\n' ":8080/api/tasks/<运行中id>/results"  # 202
+```
+
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

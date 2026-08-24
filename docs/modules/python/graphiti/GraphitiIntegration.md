@@ -146,4 +146,79 @@ if fallback_messages and fallback_messages[0]['role'] == 'system':
 - httpserver 侧集成回归：`tests/unit/test_graphiti_integration_fixes.py`。
 - 新数据源：在 database_reader/ 加 reader → DB_SUFFIXES 注册后缀 → ForensicEpisodeTransformer 加变换 → MultiSourcePipeline 加处理分支。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 10. 二轮深化 A：包内文件全清单（26 个文件）
+
+| 文件 | 职责 | 消费方 |
+|---|---|---|
+| `__init__.py` | 第一行导入 llm_patch（导入顺序锚点） | 全部 |
+| `config.py` | GraphitiConfig + from_env + validate | 全部 |
+| `exceptions.py` | 4 个域异常 | 全部 |
+| `llm_patch.py` | SDK monkey-patch（清洗/二段重试/幂等） | graphiti_ingestor |
+| `toon_transformer.py` | FileRecord→EpisodeData | pipeline |
+| `forensic_episode_transformer.py` | 事件/平台 artifacts→EpisodeData | multi_source |
+| `oss_transformer.py` | OSS 对象→EpisodeData | OSS 链 |
+| `graphiti_ingestor.py` | add_episode 摄取内核 | 两条 pipeline |
+| `file_entity_ingestor.py` | File 实体直建（SHA-256 id） | JobManager path-B |
+| `entity_relation_builder.py` | MENTIONED_IN 回边/实体合并 | path-B |
+| `migration.py` | 旧结构迁移/MD5 去重/清理 | /migrate 端点 |
+| `pipeline.py` | files 单源编排 + CLI main | CLI |
+| `pipeline_multi_source.py` | 全库种编排 | GraphitiService 旧路径 |
+| `forensic_data_types.py` | FileRecord/EpisodeData 等数据类 | 全部 |
+| `database_reader/`（包，7 文件） | 各库种 reader | 两条 pipeline |
+| `database_reader.py`（同名文件） | **死代码**（包优先） | 无 |
+| `database_reader_original.py` | 拆分前遗留单体，仅参考 | 无 |
+| `tests/`（4 文件） | 包内测试（不在 pytest testpaths） | 手动跑 |
+
+## 11. 二轮深化 B：三处 batch_size 默认值（二轮新发现）
+
+同名参数在三条路径上各有一个默认，互不相同：
+
+| 路径 | 默认 | 位置 | 生效条件 |
+|---|---|---|---|
+| httpserver Settings | **50** | config.py:201（GRAPHITI_BATCH_SIZE） | 经 /api/graphiti/* 的摄取 |
+| GraphitiConfig.from_env | **10** | graphiti_integration/config.py:41 | CLI 未传 --batch-size 且 env 未设 |
+| pipeline.py CLI 旗标 | **50** | pipeline.py:288-292（--batch-size default=50） | 旗标显式缺省时**覆盖** from_env 的 10 |
+
+也就是说：`python -m graphiti_integration.pipeline --db-path ...` 不带 --batch-size 时实际跑 50（旗标默认），而任何直接构造 `GraphitiConfig.from_env()` 的代码拿到 10——"batch_size=10 防 token 溢出"的注释意图只在第三种路径外的一部分场景成立。加上 `GRAPHITI_INCLUDE_FULL_DESC` 的 Settings(True)/from_env(False) 分裂，本包是全仓默认值分歧最多的模块；对照实验必须显式设置这两个 env。
+
+## 12. 二轮深化 C：CLI 入口契约（pipeline.py main，258-320）
+
+| 旗标 | 默认 | 说明 |
+|---|---|---|
+| --db-path | 必填 | 输入 SQLite（files 库） |
+| --neo4j-uri / --neo4j-user / --neo4j-password | 本地默认/neo4j/"" | 连接（同 from_env） |
+| --batch-size | 50 | 见 11 节 |
+| --group-id | forensics_files | 图命名空间 |
+| --dry-run | false | **只变换不摄取**（验证 transformer 的工具） |
+| -v/--verbose | false | 调试日志 |
+| --analyzed-only | false | 只摄取已分析文件 |
+
+dry-run 是本包独有的验证口——httpserver 侧没有等价开关；验证"变换是否产出预期 episode"时优先用它（不碰 Neo4j）。
+
+## 13. 二轮深化 D：异常层次 × 消费方映射
+
+| 异常（exceptions.py） | 语义 | 主要抛出点 | 消费方处置 |
+|---|---|---|---|
+| GraphitiIntegrationError | 基类 | — | 兜底捕获 |
+| DatabaseError | 库不存在/坏库 | database_reader/* | pipeline 记 per-source 失败继续其他库 |
+| TransformationError | 记录→episode 失败 | transformers | 逐记录跳过计数 |
+| IngestionError | 摄取重试耗尽 | graphiti_ingestor | 逐 episode 失败计数（stats.failed） |
+
+三层失败全部**不中断流水线**——MultiSourceResult 汇总各库的 success/failed 计数后一次返回；这与 httpserver 侧 ingest_task_episodes 的"逐 episode 报错"语义（GraphitiService.md 4d）对齐。
+
+## 14. 二轮深化 E：新走读——pipeline_multi_source 的 finally 关闭（:185-190）
+
+```python
+# pipeline_multi_source.py:90-190 骨架
+async def run(self, ...):
+    try:
+        databases = ForensicsDatabaseFactory.discover(...)
+        # files → events → platform 顺序逐库处理
+        ...
+    finally:
+        await self.ingestor.close()
+```
+
+逐块解释：ingestor 的 Neo4j 驱动与 Graphiti 客户端在 finally 中无条件关闭——摄取中途抛异常（哪怕 KeyboardInterrupt）也不泄漏连接；代价是**该 pipeline 实例不可复用**（关了再用会失败），GraphitiService 的旧作业路径因此每次 start_ingestion 新建 pipeline。对比 GraphitiService._task_graphs 缓存的长寿 ingestor（新路径）：两者的生命周期模型不同，混用会踩"已关闭的 ingestor"。处理顺序 files→events→platform 也有讲究：File 实体先落图，事件 episode 引用文件名时实体已存在（抽取 LLM 能建立引用边）。
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

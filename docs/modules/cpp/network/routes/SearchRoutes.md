@@ -252,4 +252,44 @@ TextExtractor.cpp:14-71 的扩展名白名单约 90 项，按类分组：
 | 无关 | TaskManager / SQLiteHelper | 不经任务体系（§1 定位） |
 | 隐式耦合 | 文件提取（/api/forensics/extract） | 提取产物是典型索引对象（人为流程，无代码耦合） |
 
+## 13. 端到端时序（Search 页的一次检索）
+
+```
+用户输入关键词 → Search.jsx
+  → searchService.searchFulltext({q, index, limit, offset})
+  → GET /api/search/fulltext
+  → handler 解析 4 参数（缺 q/index → 400）
+  → XapianSearcher(index).search(q, limit, offset)
+      ├ QueryParser（布尔/短语/通配/前缀，§7）
+      ├ Enquire.get_mset(offset, limit) —— Xapian 侧分页（不是取全再切）
+      ├ 逐命中：解析 data JSON（§8）→ score=percent → generateSnippet 三级回退（§9）
+      └ stdout "Parsed Query: ..."（调试观测点）
+  → 响应 {query, results[{path,score,snippet}], count, limit, offset}
+  → 前端渲染（snippet 的 **高亮** 按 markdown 处理）
+```
+
+建索引时序（管理员动作）：输入 source/index 路径 → 围栏校验（403 带 allowed_root）→ recursive_directory_iterator 全量 → TextExtractor 逐文件 → addDocument（P/E/Q 三前缀 + values）→ commit → `{indexed_count}`。
+
+## 14. 缓存的并发与容量行为
+
+contentCache_ 的三个运行时特性（FullTextSearch.cpp:62-88）：
+
+1. **进程级共享**：静态成员——多个 HTTP worker 的建索引/查询共用一份；键是文件绝对路径，不同索引目录里的同名文件会互相覆盖缓存（snippet 可能取自另一个索引的版本——路径键无索引隔离）；
+2. **容量淘汰是 O(n) 扫描**：超上限时线性找 indexTime 最旧的逐出（:69-79）——逐条插入触发逐条 O(n)，批量建索引（10 万文件 × 1000 上限）时退化成 O(n²) 级别的比较开销（每条 1000 次比较，量级尚可但不优雅）；
+3. **缓存截断与 snippet 开窗不同宽**：缓存内容截到 SEARCH_MAX_CONTENT_LENGTH（50000），snippet 开窗 SEARCH_SNIPPET_LENGTH（150）——命中位置在 50000 之后的内容根本不进缓存，snippet 走文件回读或开头截取。
+
+## 15. 验证 runbook
+
+```bash
+# 1. 语法能力冒烟
+curl -s ":8080/api/search/fulltext?q=error%20AND%20failed&index=<idx>" | jq '.count'
+curl -s ":8080/api/search/fulltext?q=forens*&index=<idx>" | jq '.count'          # 通配
+curl -s ":8080/api/search/fulltext?q=path:etc&index=<idx>" | jq '.results[0].path' # 前缀
+curl -s ":8080/api/search/fulltext?q=ext:log&index=<idx>" | jq '.count'           # 扩展名过滤
+# 2. 围栏
+curl -s -X POST :8080/api/search/index -d '{"source_path":"/etc/passwd","index_path":"/tmp/x"}' | jq .
+# 3. snippet 三级回退对比：建索引后立刻查（缓存热，有 **高亮**）→ 重启服务再查（冷，开头 150 字符无高亮）
+# 4. 幂等更新：同目录建两次索引，getDocumentCount 不翻倍（Q 前缀 replace_document）
+```
+
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

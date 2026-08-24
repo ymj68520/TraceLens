@@ -217,4 +217,48 @@ grep `cpp_backend_url}/api/cases` 的全部命中（python_service），按业�
 | Swagger 注册 | **0 条**（CaseCRUDRoutes 无 RegisterEndpoint） | openapi.json 盲区 |
 | 间接 | TaskManager | 无直接调用（task_id 纯字符串） |
 
+## 12. 前端消费链的完整方法表（caseGroupService ↔ Python ↔ 本组）
+
+前端案件操作的真实路径（每行三跳）：
+
+| 前端方法（caseGroupService） | Python 端点 | C++ 端点（本组） | 页面 |
+|---|---|---|---|
+| createCase | POST /api/llm/cases | POST /api/cases | Cases 页建案 |
+| fetchCases/listCases | GET /api/llm/cases | GET /api/cases | Cases 列表 |
+| getCase | GET /api/llm/cases/{id} | GET /api/cases/{id} | 案件详情 |
+| deleteCase | DELETE /api/llm/cases/{id} | DELETE /api/cases/{id} | 删除按钮 |
+| addTasksToCase / associateTasksToCase | PUT /api/llm/cases/{id}/tasks | PUT /{id}/tasks | 挂任务（associate 带已分析复用） |
+| （无前端直接方法） | PUT /api/llm/cases/{id}/status | PUT /{id}/status | Python 内部回写（§9 表） |
+
+Python 层附加而 C++ 没有的能力（在同一条链上叠加）：multi-image-analysis 编排、associate 的分析态预热（写 task_analysis_states——恰好是 C++ REST 不回显的三个字段之一，§4 契约缺口的 Python 侧补全）。
+
+## 13. 双层 404 语义的排障树
+
+```
+前端案件操作报错
+ ├─ Python 8090 不通？           → /cases 页全功能挂（连列表都没有）
+ ├─ Python 通但转发失败？
+ │    ├─ HTTP 4xx/5xx 透传       → multi_analysis.py:110-111 HTTPException(detail=r.text)
+ │    │                            前端拿到的 error 里是 C++ 响应原文（字符串套字符串）
+ │    └─ 超时（10s）              → httpx.Timeout；C++ 侧可能已写成功（§11 分叉）
+ └─ 直连 C++ 8080 验证：curl :8080/api/cases
+      ├─ 200 → C++ 正常，问题在 Python 侧或网络
+      └─ 404/空 → tasks.json/cases.json 层问题
+```
+
+## 14. 验证 runbook（三跳全链路）
+
+```bash
+# 1. C++ 层（§11 runbook 的直接版）
+curl -s -X POST :8080/api/cases -d '{"name":"直连测试"}' | jq .id
+# 2. Python 层
+curl -s -X POST :8090/api/llm/cases -H 'Content-Type: application/json' -d '{"name":"代理测试"}' | jq .id
+# 3. 比对两层的响应形态（应一致——Python 透传 r.json()）
+# 4. 状态回写的双层验证
+curl -s -X PUT :8090/api/llm/cases/<id>/status -d '{"status":"analysing","cross_analysis_job_id":"j1"}' | jq .status
+cat data/cases.json | jq ".[] | select(.id==\"<id>\") | {status, cross_analysis_job_id}"
+# 5. 大小写缺陷在两层的表现（Python 原样转发，缺陷属于 C++）
+curl -s -X PUT :8080/api/cases/<id>/status -d '{"status":"Analyzing"}' | jq .status   # "open"
+```
+
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

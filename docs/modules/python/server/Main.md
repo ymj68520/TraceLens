@@ -218,4 +218,99 @@ uvicorn 监听后触发 lifespan：`initialize_database()` 在线程里执行 `i
 
 相关阅读：[Services.md](./Services.md)（services 四件套）、[httpserver/Main.md](../httpserver/Main.md)（本地栈对照）、`docs/architecture/DatabaseSchema.md` 第 9 节（C/S PostgreSQL ER 图）、`docs/superpowers/plans/2026-07-27-cs-integration-hardening.md`（双栈端口责任表）。
 
-**最后更新**: 2026-08-23（技术深化：叙事结构保留，补核心代码与逐段解释）
+## 10. 二轮深化 A：端点全表（28 个，源码核对，含认证类型）
+
+**auth（3 个）**
+
+| 方法 | 路径 | 认证 | 说明 |
+|---|---|---|---|
+| POST | /api/auth/login | 无（OAuth2PasswordRequestForm，**form-encoded**） | 用户名或邮箱登录 |
+| POST | /api/auth/refresh | user token | 滑移续期 |
+| GET | /api/auth/me | user token | 当前用户（EmailStr 序列化） |
+
+**organizations（6 个，全 user token）**：POST/GET `/api/organizations`、GET `/{org_id}`、POST/GET `/{org_id}/registration-tokens`、DELETE `/registration-tokens/{token_id}`。
+
+**clients（6 个）**
+
+| 方法 | 路径 | 认证 | 说明 |
+|---|---|---|---|
+| POST | /api/clients/register | 注册 token（body） | 机器注册、发 client JWT |
+| GET | /api/clients | user | super_admin 全组织、其余限本组织 |
+| GET | /api/clients/{client_id} | user | 详情 |
+| DELETE | /api/clients/{client_id} | user | 删除 |
+| POST | /api/clients/{client_id}/index-images | **client token** | 触发镜像索引命令 |
+| GET | /api/clients/{client_id}/images | user | 已上报镜像列表 |
+
+**commands（6 个）**
+
+| 方法 | 路径 | 认证 | 说明 |
+|---|---|---|---|
+| POST | /api/commands | user | 下发命令 |
+| GET | /api/commands/poll | **client token** | 客户端轮询认领（60s 在线窗口盖章） |
+| POST | /api/commands/{id}/status | **client token** | 回报执行状态 |
+| GET | /api/commands/{id} | user | 单条查询 |
+| GET | /api/commands/client/{client_id} | user | 按机器查队列 |
+| POST | /api/commands/expire | user | 手动过期清扫 |
+
+**tasks（4 个，全 user token）**：POST/GET `/api/tasks`、GET `/{task_id}`、POST `/{task_id}/cancel`。
+**results（3 个）**：POST `/api/tasks/{task_id}/results`（**client token**，上报）、GET 同路径（user）、GET `/{task_id}/llm-analyses`（user）。
+
+合计 3+6+6+6+4+3 = 28；外加 `/health`、`/health/ready`、`/` 三个框架端点。认证分布规律：**只有 poll/status/results 上报/index-images 四组走 client token（机器动作），其余全部 user token（人操作）**；类型错配一律 401（auth.py:59-64、:106-111 的严格互斥门）。
+
+## 11. 二轮深化 B：两类 JWT 的 payload 契约对照（auth_service.py:66-117）
+
+| claim | user token | client token |
+|---|---|---|
+| type | `"user"` | `"client"` |
+| sub | user id（str(UUID)） | client id |
+| exp | now + 1h（USER_TOKEN_EXPIRE_HOURS） | now + 30d（CLIENT_TOKEN_EXPIRE_DAYS） |
+| 签发函数 | create_access_token | create_client_token |
+| org 归属 | 不在 token（每次查库） | 同 |
+
+两处实现共享同一段"本地时间偏移"注释（:68-70、:102-104）：`expires.timestamp()` 若用 naive 本地时间会被 epoch 偏移坑——代码刻意用带时区的 now。verify_token 只验签与 exp，**不查吊销**——泄露的 client token 在 30 天内一直有效（无黑名单机制，已知的运维风险）。
+
+## 12. 二轮深化 C：ORM 10 表速查（models/database.py ↔ 001 迁移）
+
+| 表 | 关键约束 | 说明 |
+|---|---|---|
+| organizations | — | 租户根 |
+| users | role CHECK 白名单 | super_admin/admin/analyst/viewer 族 |
+| clients | UNIQUE(org_id,hostname)、status CHECK(online/offline/error) | 轮询机器 |
+| disk_images | image_metadata 保留名映射 | 镜像清单 |
+| command_queue | command_type/priority/status CHECK、task_id FK（002） | 命令队列 |
+| analysis_tasks | task_metadata | 任务聚合 |
+| analysis_results | result_metadata | 结果工件 |
+| llm_analysis | — | LLM 结论 |
+| task_history | — | 状态流水 |
+| registration_tokens | 一次性 | 机器注册凭据 |
+
+保留名映射三处（image_metadata/task_metadata/result_metadata）是"DB 列名 metadata 与 SQLAlchemy 声明类保留属性冲突"的统一解法；schemas.py 的字段名沿用属性名（不是 DB 列名）。
+
+## 13. 二轮深化 D：新走读——login 的双标识查找与 form-encoded 契约（auth.py:38-67）
+
+```python
+# api/auth.py:38-67（骨架）
+form_data: OAuth2PasswordRequestForm = Depends(),
+...
+user = session.query(User).filter(
+    (User.username == form_data.username) | (User.email == form_data.username)
+).first()
+if not user or not verify_password(form_data.password, user.password_hash):
+    raise HTTPException(status_code=401, detail="Incorrect username or password")
+```
+
+逐块解释：① **form-encoded 是硬契约**——OAuth2PasswordRequestForm 只解析 `application/x-www-form-urlencoded`，JSON body 会 422；前端 csAuthService.js:3-11 用 URLSearchParams 正是为此（axios 对其自动设 Content-Type）；② 用户名**或邮箱**都可登录（OR 谓词）——文档化行为，审计日志里 login 标识可能是任一形态；③ 用户不存在与口令错误返回**同一个** 401 文案（不泄露账号存在性）；④ bcrypt 校验在 auth_service.verify_password。前置依赖：003 迁移修好 super_admin 种子之前，这套登录对默认账号恒 401（第 4(e) 节已记录的坑）。
+
+## 14. 二轮深化 E：与 httpserver 入口的装配对照（速查）
+
+| 维度 | server/main.py（:8091） | httpserver/main.py（:8090） |
+|---|---|---|
+| lifespan 初始化 | init_db（30s 上限，失败降级不退出） | ServiceManager.initialize（30s 上限，同样降级） |
+| 降级观测 | /health 的 database 字段 + /health/ready 503 | /health/ready 的 ready 字段（200 语义） |
+| CORS | 固定三源 + credentials 恒真 | PYTHON_CORS_ORIGINS 可通配（通配时关 credentials） |
+| 500 处理器 | 固定文案（HTTPException/422 由内层先处理） | 同（含 422 结构化处理器） |
+| 路由挂载 | 六模块自带前缀 | 19 模块集中分配前缀 |
+| env 兼容 | case_sensitive=True + extra="ignore" | case_sensitive=False + extra="ignore" |
+| 模块级 app | `app = create_app()`（main.py:193，uvicorn 直引） | 惰性 get_app() 单例 |
+
+**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

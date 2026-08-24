@@ -294,4 +294,62 @@ std::string WindowsFilesAnalyzer::readUTF16LEString(const uint8_t* data, size_t 
 - 加新工件：四步——(1) 在某个 `analyzeXxx` 或新方法里 `queryFilesByPattern("<模式>")`；(2) `extractFileToPath(inode, getExtractPath(...), partitionNum)` 提出；(3) 写解析器（复杂格式优先找 libyal 系列库：libregf/libmsiecf/libolecf…）；(4) 在 `windows_analysis_sql_tables.h` 加表、`WindowsDBOperations_*.cpp` 加插入方法。参考 `analyzeAmcache()`（`WindowsArtifactsParsers_SystemAnalysis.cpp:369-411`）是最标准的样板。
 - 要 LLM 也分析新表：给表补 5 个 `llm_*` 列的迁移 + 在 `windows_analysis_sql_llm.h` 加 UPDATE、在 `WindowsLLMAnalysisService` 注册 ArtifactType。
 
+## 9. 方法全清单（Common/WindowsAnalyzerDeclarations.h:24-108 + Core）
+
+| 方法 | 定义 | 语义 | 调用方 |
+|---|---|---|---|
+| `initialize()` | Core:26-61 | 输出库+提取目录准备 | 两个入口 |
+| `analyzeWindowsData()` | Core:63-109 | 11 段主流程编排 | 同上 |
+| `setOutputDatabasePath/setSkipAI` | .h | 配置 | 入口 |
+| `analyzeWithLLM()` | Core:111-177 | 15 类工件 LLM（双闸门） | 主流程尾 |
+| `queryFilesByPattern(pattern)` | Core:191-235 | raw.db LIKE 定位（is_deleted=0） | 各 analyzeXxx |
+| `extractFileToPath(inode, out, partition=-1)` | Core | 按 inode 回镜像提取 | 同上 |
+| `getExtractPath(subdir, name)` | Core | 提取目录路径规划 | 同上 |
+| `analyzeRegistryHives/parseRegistryHive` | RegistryParser:28-165 | hivex DFS 全量+专项 | 主流程段 1 |
+| `analyzeEventLogs` | EventLogParser:198-361 | EVTX 双段（正常+恢复） | 段 2 |
+| `analyzePrefetchFiles` | ExecutionTraces:26-44 | MAM 版本分派 | 段 3 |
+| `analyzeLNKFiles/analyzeJumpLists` | ExecutionTraces | LNK/dest-ms 解析 | 段 4-5 |
+| `analyzeRecycleBin` | SystemAnalysis | $I/$R 解析 | 段 6 |
+| `analyzeNTFSMetadata` | SystemAnalysis:26+ | $MFT（10 万条上限） | 段 7 |
+| `analyzeUserProfiles/analyzeBrowsers` | BrowserAnalyzer:31-111 | Chrome/Edge/Firefox | 段 8-9 |
+| `analyzeScheduledTasks/analyzeAmcache/analyzeSRUM` | SystemAnalysis:369-411+ | XML/hive/ESE | 段 10-12 |
+| `parseShimcache/UserAssist/RDP/WiFiFromRegistry` | RegistryArtifacts:339-433+ | **无调用方**（第 7 节） | — |
+| `normalizeWindowsPath/readUTF16LEString/FILETIME 转换` | Core:317-404 | 基础设施 | 各解析器 |
+
+## 10. 关联矩阵
+
+| 对端 | 方向 | 交互点 | 数据形态 |
+|---|---|---|---|
+| TaskManagerAnalysis.cpp:470-485 / Orchestrator:295-310 | 上游 | WINDOWS 场景构造 | windows.db 或 files.db |
+| DatabaseManager（raw.db） | 输入 | queryFilesByPattern | FileRecord vector |
+| FileExtractor（经 dbManager） | 下游 | extractFileToPath | 提取目录文件 |
+| windows_analysis_sql_tables.h（32 表） | 输出 | CREATE_ALL_TABLES | DDL |
+| WindowsAnalysisDatabase（DBOperations_*） | 下游 | 批量 insert（事务） | 参数化 |
+| WindowsLLMAnalysisService（15 类） | 下游 | llm 语句族 pending→chat→回写 | JSON |
+| DLLAnalyzer | 平行 | dll_* 表只读关联 | SELECT |
+| hivex/libevtx/libesedb/libfsntfs | 下游 | 四个 libyal 系库 | C API |
+| EventExtractor.importWindowsArtifacts | 下游 | 时间线合并（11 类） | INSERT..SELECT |
+| AuditLog | 下游 | 43 处（WINDOWS_*/EVTX_*/AMCACHE_* 等） | 审计 |
+
+## 11. 配置影响表
+
+| 参数 | 默认 | 影响 | 备注 |
+|---|---|---|---|
+| `--windows-analyze` / scene=WINDOWS | false | 触发 | |
+| `--skip-ai` | false | LLM 段跳过 | Core:119-134 双闸门之一 |
+| `LLM_BASE_URL` | 192.168.31.170 | 无则 LLM 段跳过 | 闸门之二 |
+| MFT 上限 | 10 万条（硬编码） | mft_entries 覆盖范围 | 大盘只取前段 |
+| EVTX reserve 上限 | 10 万条 | 单日志文件内存 | |
+| includeMFT（LLM） | false | MFT 不进 LLM | 服务 options |
+| 无 .env 专有键 | — | — | |
+
+## 12. 性能与并发细节
+
+- **IO 大头**：工件的镜像提取（每个 hive/evtx/pf 一次 TSK 随机读）与 $MFT（可能数百 MB 单文件）。EVTX 的双段读把恢复记录也过一遍，大 Security.evtx（数百 MB）解析分钟级。
+- **CPU 大头**：注册表 DFS 全量遍历（SYSTEM hive 数十万值逐个转字符串）与 MFT 逐条枚举——两者都有 per-record 的 C API 调用与字符串构造；事务批插缓解写侧。
+- **内存**：EVTX reserve 上限 10 万条（约百 MB 级瞬时）；MFT 10 万条同量级；注册表 values vector 全量物化后批量落库——三个上限都靠硬编码 cap 而非流式，接线超大镜像时先调 cap。
+- **并发**：主流程单线程串行（11 段顺序）；LLM 段服务内部并发。无内部线程池。
+- **提取目录的磁盘占用**：全部工件先落 `<镜像>_extracted_files/` 再解析——大镜像上该目录 GB 级，任务结束不清理（供人工复核），磁盘预算要预留。
+- **可调参数影响**：MFT/EVTX 两个 cap 是覆盖度与资源的天平；--skip-ai 省下 15 类 × 10000 条的 LLM 往返。
+
 **最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）
