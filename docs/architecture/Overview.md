@@ -151,4 +151,13 @@ LLM 在系统里出现在**三个层级**，各有分工，理解这个分层就
 
 ---
 
+
+## 10. 新成员第一周路线图
+
+**Day 1**：跑通 QuickStart（setup→run→建任务）→ 读本文 §1-§3 → 用 SqlCookbook 第 16 条看懂自己的任务产出。
+**Day 2**：读 DataFlow 全文（一个任务的一生）→ 对着自己任务的 tasks.json 与审计日志把六幕走一遍。
+**Day 3**：按方向分叉——C++ 方向读 ImageAnalyzer+TaskManager+EventExtractor；Python 方向读 httpserver/Main+ServiceManager+GraphitiService；前端读 web/Overview+Pages。
+**Day 4**：跑一次验收（make acceptance-smoke）+ 读 AcceptanceHarness 理解隔离契约；跑ctest/pytest 各一轮。
+**Day 5**：挑一个小任务实操（模块文档"常见任务配方"任选其一）→ 提交前过 Development 的 PR 自查清单。
+随时翻：Glossary（术语）、FAQ（疑问）、DesignDecisions（为什么）、ThreatModel（边界）。
 **最后更新**: 2026-08-23（解释式重写：以心智模型和设计动机为主线）

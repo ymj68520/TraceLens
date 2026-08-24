@@ -199,4 +199,23 @@ CLI（`./forensic_analyzer 镜像` → `AnalysisOrchestrator`）复用完全相�
 
 ---
 
+
+## 第七幕（补）：失败路径走读——任务没能走到 COMPLETED 时发生了什么
+
+叙事主线讲的是happy path；这一节专门走三条失败分支，代码位置都在 `TMA` 与 `TaskManager.cpp`。
+
+### 分支一：阶段失败（FAILED）
+任何阶段返回 false（如 `extractEvents()` 失败、`classifyAndExtract()` 失败）→ 立即 `update_status(task_id, FAILED, "<原因>")` 并 return。已产出的部分库**保留在任务目录**（不回滚——部分证据仍有价值，且失败原因写进任务的 error_details 供前端展示）。注意：Graphiti 不会触发（它在最后），所以失败任务的图谱永远缺席，属预期。
+
+### 分支二：用户取消（CANCELLED）
+DELETE /api/tasks/{id} 或 batch-cancel → 置 `cancellation_requested`。流水线在**每个阶段边界**检查（TMA 各段开头的 `is_task_cancelled`）：当前阶段跑完后置 CANCELLED。两个推论：①阶段内不可打断——大 SQL/大提取中途取消要等它做完这一段；②删除任务与取消共享该标志，但删除还会走终端写保护（删除后线程再想写库会被 existing-only 守卫拒绝——D4b）。
+
+### 分支三：看门狗判死（FAILED+原因）
+后台线程发现 RUNNING 超 `TASK_WATCHDOG_STALE_MINUTES` 无进度变化（或 PENDING 超时）→ 直接改状态为 FAILED，错误详情写明 inactivity 分钟数。任务线程**并不知道**自己被判死——它会继续跑完当前阶段，然后在下一次 update 时发现状态已变（TaskManager 的状态机以先到者为准）。排障时看到"任务还在写库但状态已 FAILED"不要惊讶，这是该设计的已知表象（TaskInfrastructure §6）。
+
+### 重启恢复（第四条分支）
+进程崩溃 → 重启时 `TaskPersistence::load_tasks` 把 RUNNING/PENDING 一律标 FAILED（"宁可信其坏"——进度无法恢复就不假装在跑）。孤儿任务目录清理**不校验 UUID 形态**（会删 tasks/ 下任何不在字典里的目录——运维别往里放私人物品，TaskPersistence.cpp:85 注释与实现的偏差已记录）。
+
+### 失败后的"重跑"语义
+没有断点续跑。重跑=新任务（新目录）。已提取的大文件想复用的话，属人工操作范围（拷回 extracted_files/ 不受支持也不禁止——注意 LLMScratch 临时目录是另一回事，任务结束会清理）。
 **最后更新**: 2026-08-23（技术深化：叙事主线保留，补 4 段核心源码逐块走读）

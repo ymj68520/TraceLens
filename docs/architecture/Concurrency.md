@@ -94,4 +94,21 @@ httpserver 是标准 asyncio 单循环模型，关键在于**哪些操作被推�
 
 ---
 
+
+## 7. 并发问题排查剧本
+
+**剧本 A：进度条卡住**
+① GET progress 看阶段+百分比；②百分比在变→看该阶段模块文档"性能与并发"节（常见：LLM 串行队列、大 SQL）；③不变→日志找该 task_id 最后输出；④超 30 分钟看门狗会动。误杀申诉：任务确实在干活但阶段内部不汇报——代码层解法是在长循环里加 update_progress。
+
+**剧本 B：两个任务互相拖慢**
+同池竞争（THREAD_POOL_SIZE 饱和，PENDING 积压是信号）→ 降并发或错峰；磁盘 IO 型阶段（提取/雕刻）互相踩踏时，串行化这两个任务比加线程有效。
+
+**剧本 C：Python 全请求变慢**
+事件循环被阻塞的三大嫌疑：同步 SQLite 调用没走 to_thread、markitdown 批量超 Semaphore、大文件日志读取全量 readlines（System 路由文档已记）。`/health/live` 恒 200 但业务慢=循环忙，不是挂。
+
+**剧本 D：图谱摄取与查询抢 Neo4j**
+摄取是批量写、查询端 hybrid 检索——同实例下互相放大延迟。缓解：错峰摄取（任务完成后延迟触发）、检索回退路径本来就是 CONTAINS（慢但能出）。
+
+**剧本 E：C/S 命令重复执行怀疑**
+并发领取无 SKIP LOCKED（server/Services 已记）——单 agent 单 poller 下理论安全；多 poller 配置是自我找事，先别。真要查：command_queue 的 assigned 历史与 agent 侧 in_flight_commands 对账。
 **最后更新**: 2026-08-24（新建：并发模型专章）

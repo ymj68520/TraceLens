@@ -179,6 +179,24 @@ make acceptance-smoke
 
 Graphiti 全功能需 LLM 服务同时加载 `openai/gpt-oss-20b` 与 `text-embedding-nomic-embed-text-v1.5`。
 
+## 命令速查
+
+| 场景 | 命令 |
+|------|------|
+| 一键构建+起三服务 | `./run.sh`（端口回退 8666） |
+| 只构建 | `make build`（或 run.sh --build-only） |
+| 只起 C++ | `make cpp`（8080） |
+| 只起 Python | `make python`（8090） |
+| 前端 dev | `make web-dev`（3000，代理已配） |
+| C++ 测试 | `cd build && ctest --output-on-failure` |
+| Python 测试 | `make test-python` / `scripts/test.py fast` |
+| 前端测试 | `cd web && npm test` |
+| 验收冒烟 | `make acceptance-smoke` |
+| CLI 全量分析 | `./build/forensic_analyzer <镜像>` |
+| 内存取证 | `… --memory-analyze --vol-symbols-dir …` |
+| 生成测试镜像 | `scripts/create_test_image.sh` 等（见 testing/TestFixtures） |
+| 健康检查 | C++ `/api/system/health`；Python `/health/ready`；C/S `/health/ready` |
+
 ## 系统要求
 
 - Ubuntu/Debian（setup.sh 面向 Ubuntu 24.04）；GCC 11+/Clang 13+（C++20）、CMake ≥ 3.20

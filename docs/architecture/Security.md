@@ -113,4 +113,18 @@ graph TB
 
 ---
 
+
+## 附：部署安全检查单（可勾选）
+
+- [ ] JWT_SECRET_KEY 已改且 ≥32 字符随机值（server 与 agent 两侧一致）
+- [ ] NEO4J_PASSWORD 已改（驱动连接与 Neo4j 服务一致）
+- [ ] .env 权限 600、不含示例值（change-me/admin123 全清）
+- [ ] 8080/8090/8091/7687/5432 仅监听可信网段（或 127.0.0.1）
+- [ ] LLM_BASE_URL 指向内网端点（证据内容不出网红线）
+- [ ] 注册令牌按批签发、用后过期（registration_tokens 有 max/expiry）
+- [ ] PG 002/003 迁移已手工应用（super_admin 口令已轮换）
+- [ ] /api/system/logs 与 /api/docs 的暴露面已被网络层覆盖（本地无认证现状）
+- [ ] FTS_ALLOWED_ROOT 与 DATA_DIR 一致（未放宽）
+- [ ] 审计库纳入备份且路径已知（CWD 陷阱：run.sh 下在 build/）
+未勾项的影响与补偿措施见 [ThreatModel](./ThreatModel.md) 对应边界行。
 **最后更新**: 2026-08-23（以代码为准重写）

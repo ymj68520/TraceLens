@@ -170,6 +170,74 @@ LLMClient 内部互斥锁——本地单槽端点的自我保护。多槽端点�
 **Q50 想让任务跑快点，调哪个参数？**
 先 THREAD_POOL_SIZE（注意它同时放开任务并发与 LLM 并发两道闸）；确认 WAL 开启（不开会有 jbd2 卡顿教训）；大镜像先过滤画像减量。[详见](ops/PerformanceTuning.md)
 
+## 性能与容量
+
+**Q51 一块 1TB 镜像要分析多久？**
+没有固定答案——耗时随**文件个数**（不是字节数）与 LLM 限额变化。规划方法与两个实测基线见 [CapacityPlanning](ops/CapacityPlanning.md)。
+
+**Q52 怎么让任务跑快点？**
+优先级从高到低：过滤画像减量 → smart 模式 → LLM_MAX_FILES/CLUSTERS 限额 → THREAD_POOL_SIZE（注意它同时放开 LLM 并发闸，而 LLM 实际串行）。
+
+**Q53 THREAD_POOL_SIZE 调到 8 有什么副作用？**
+分析并发 8 个任务的同时，LLM 批量也按 8 并发提交（但被 LLMClient 互斥串行化）；磁盘随机 IO 压力上升。决策表见 [CapacityPlanning §5](ops/CapacityPlanning.md)。
+
+**Q54 Graphiti 摄取要多久？**
+每 episode 一次 LLM 抽取 + 嵌入，量级与文件数×批量参数相关（GRAPHITI_BATCH_SIZE）。job 详情有逐 episode 计数与错误。
+
+**Q55 建全文索引要多久？**
+与被索引文本总量线性；先 filter 后 index 的策略能砍掉大头（[教程](tutorials/FullTextSearch.md)）。
+
+## 开发与贡献
+
+**Q56 怎么只跑一个 C++ 测试？**
+`cd build && ctest -R <名字>`；61+1 个目标清单见 [CppTestCatalog](testing/CppTestCatalog.md)。
+
+**Q57 加一个 HTTP 端点要动几个文件？**
+四步：路由实现 → HTTPServer 注册 → Swagger 登记 →（前端要用的话）service+页面。完整配方见 [HTTPServer 模块文档](modules/cpp/network/HTTPServer.md)。
+
+**Q58 加一种新证据解析从哪下手？**
+对应平台分析器的"常见任务配方"章节（Linux/Windows/Android 各有四步法与样板函数）。
+
+**Q59 改了代码怎么知道哪些文档要同步？**
+"文档触达矩阵"在 [Development 的贡献者工作流](getting-started/Development.md)。
+
+**Q60 文档写的和代码不一样怎么办？**
+以代码为准（FAQ Q45）；模块文档"注意事项"里的缺陷标注在代码修复后应删除——这是双向约定。
+
+## 报告与导出
+
+**Q61 TOON 格式给谁用？**
+给 LLM 的紧凑表格编码（省 30-60% token）：导出端点、Python TOON 流解析、dump-text 都用它。人读请用各 UI/JSON 导出。
+
+**Q62 报告能改版式吗？**
+Markdown/HTML 呈现由前端渲染器决定（web 报告 registry 加渲染器）；生成内容结构（章节）在 ReportGenerator/ForensicReportService 侧改。
+
+**Q63 导出 JSON 的字段以哪为准？**
+以 handler 实际返回为准（API 参考的示例标注了"响应要点"）；schema 字段参考 [schema/](schema/FilesDB.md)。
+
+**Q64 多个任务的报告能合并吗？**
+走案件（case）路径：多镜像案件分析产出案件级报告（tutorials/KnowledgeGraphReports）。
+
+**Q65 终版报告发布后还能改吗？**
+不能——发布带完整性哈希，改动即失效（这正是设计）；要改就发新版本。
+
+## 故障复现
+
+**Q66 怎么复现某个任务的 LLM 结果？**
+同提示词重放不可保证（模型温度/端点状态），但可对比输入：files 的内容预算路径与 file_descriptions.model_used 记录了模型与时刻。
+
+**Q67 验收 harness 能用来复现线上问题吗？**
+能且推荐——隔离工作区+fake LLM，五个 profile 覆盖主要旅程；见 [AcceptanceHarness](testing/AcceptanceHarness.md)。
+
+**Q68 怎么做最小复现镜像？**
+scripts/create_test_image.sh（最小 ext4）或 create_multipartition_image.sh；生成脚本全景见 [TestFixtures](testing/TestFixtures.md)。
+
+**Q69 为什么改日志级别没反应？**
+LOG_LEVEL 未接线（FAQ Q5）；当前日志查看走 Monitoring 的三通道。
+
+**Q70 仓库有 CI 吗？**
+没有（test-profiles.md 记录）。回归靠本地 make test-all 与验收 profile——贡献者自查清单见 [WritingTests](testing/WritingTests.md)。
+
 ---
 
-**最后更新**: 2026-08-24（新建：50 问 FAQ）
+**最后更新**: 2026-08-24（50 问 + 扩充至 70 问）
