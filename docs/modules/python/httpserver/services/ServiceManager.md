@@ -342,4 +342,19 @@ async def _coordinate_shutdown(self) -> None:
 
 两种降级码的分工由此固定：**503 = 状态机拒绝或依赖服务未就绪（可等待重试）；501 = Graphiti 作业/迁移管理器启动期缺失（功能整体不可用）**。前端 Graphiti 页对 501 的处理是提示服务未启用，对 503 是提示稍后重试。
 
+
+## 8. 常见任务配方
+
+### 配方 A：新增一个受管服务（四件事）
+1. `initialize()` 幂等且可回滚（失败抛出——外层 30s 预算会回滚已初始化项）。
+2. 初始化顺序：插进 initialize 序列（可选服务记得 12s 上限 + 失败降级不抛）。
+3. 健康上报：health_check() 汇总加你的状态。
+4. shutdown() 幂等（重复调用安全）。
+范例：读本文件 §4 的五个真实服务初始化段。
+
+### 配方 B：调整启动预算
+`PYTHON_STARTUP_TIMEOUT`（30s 总）/`OPTIONAL_SERVICE_INIT_TIMEOUT`（12s/服务）。预算超时会回滚并降级启动——新服务初始化耗时超过 12s 就该挪线程或拆分。
+
+### 配方 C：定制降级行为
+参照 GraphitiService 的 initialized-but-disabled 模式：服务对象存在、方法返回降级结果、/health/ready 报 optional 异常。
 **最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

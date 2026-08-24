@@ -141,4 +141,34 @@ ORDER BY o.key, a.timestamp;
 
 ---
 
-**最后更新**: 2026-08-24（新建，字段级参考）
+
+## 附录：写入时序与查询手册
+
+### 写入时序（现状）
+
+| 表 | 写入方 | 现状 |
+|----|--------|------|
+| oss_objects / oss_buckets / oss_access_logs | OSSAnalyzerCore（API/本地目录/Inventory 三模式） | **无生产调用方**（消费路由未注册，仅单测）；表结构就绪 |
+| 视图 oss_objects_summary / oss_access_timeline | 建库即建 | 同上 |
+
+### 查询手册（预置：接线后可用；当前只对单测产出的库有意义）
+
+**1. 对象时间分布（数据何时写入）**
+```sql
+SELECT date(last_modified) d, COUNT(*), ROUND(SUM(size)/1048576.0,1) mb
+FROM oss_objects GROUP BY d ORDER BY d;
+```
+
+**2. 大对象清单**
+```sql
+SELECT object_key, size, storage_class FROM oss_objects
+ORDER BY size DESC LIMIT 50;
+```
+
+**3. 访问来源聚合（若导入了访问日志）**
+```sql
+SELECT remote_ip, COUNT(*) c FROM oss_access_logs
+GROUP BY remote_ip ORDER BY c DESC LIMIT 30;
+-- 注意：timestamp 列当前解析恒 0（parseAccessLogLine 未实现时间解析，源码自注 TODO）
+```
+**最后更新**: 2026-08-24（补：写入时序与查询手册）

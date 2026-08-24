@@ -267,4 +267,15 @@ if cur.rowcount != 1:
 
 逐块解释：claim 用**条件 UPDATE 的 rowcount**做原子抢占——同一 generation_id 的两个执行器实例（例如重启恢复与新提交竞态）只有一个能把 admitted 改成 running；输家拿到 rowcount=0 后**回滚并返回 None，不写任何失败**。这是"输家不惩罚"设计：输家无法区分"别人在跑"与"已经完成"，写 failed 都可能是误伤；调用方（_execute 开头）对 None 直接 return。与 trg_report_generation_status_transition 触发器配合：即使两个赢家并发 UPDATE，SQLite 的写锁 + 触发器保证第二个 UPDATE 要么 rowcount=0 要么 ABORT——状态机在数据库层无竞态窗口。对比 ServiceManager 的 initialize（shield 共享 task）与 Investigation 的 capture_if_absent（BEGIN IMMEDIATE + ON CONFLICT），这是本仓库第三种并发原语选型：**条件 UPDATE 抢占**，适合"一行一赢家、输家静默"的场景。
 
+
+## 8. 常见任务配方
+
+### 配方 A：新增报告分类/渲染器
+A 链：快照页按分类分片（manifest 登记）；前端渲染器在 web 报告 registry 注册（未注册回落 GenericTableRenderer）。新分类=快照侧生成逻辑 + 前端渲染器两处。
+
+### 配方 B：调整生成准入
+准入信封（input_hash 冻结）在 admit 处；想改输入集必须改信封组装——同信封重复请求幂等是 R2C 不变量，别绕开。
+
+### 配方 C：版本与快照运维
+版本只增不改（版本链完整性）；运维操作限于：读 manifest、触发新生成、（异常时）核对页分片 sha256。删除版本不在产品面。
 **最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

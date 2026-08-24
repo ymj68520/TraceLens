@@ -292,4 +292,60 @@ JOIN events e2 ON ec.event_id2 = e2.id;
 
 ---
 
-**最后更新**: 2026-08-24（新建，字段级参考）
+
+## 附录：写入时序与查询手册
+
+### 写入时序
+
+| 表 | 写入方 | 时机 | 量级 |
+|----|--------|------|------|
+| `events` + 5 张类型表 | EventExtractor::extractEvents | EVENT_EXTRACTION 阶段一次写入（读 effectiveRawDb） | 每文件最多 5 事件 |
+| `system_events` | EventExtractor（系统类） | 同上 | 少量 |
+| `event_correlations` | extractor 版 DDL 建表 | 引擎未接线→**生产为空** | 0 |
+| `event_chains/_nodes/causal_relationships` | EventCorrelationEngineCore | 引擎未接线→**生产为空** | 0 |
+| LLM 列（6 个 ALTER 自愈列） | TimelineQueries 打开库时探测补列 | comprehensive 路径首次查询时 | — |
+
+### 查询手册
+
+**1. 时间窗内的事件（初筛主力）**
+```sql
+SELECT datetime(timestamp,'unixepoch') t, event_type, file_path, file_size
+FROM events WHERE timestamp BETWEEN strftime('%s','2026-08-20 18:00') AND strftime('%s','2026-08-20 20:00')
+ORDER BY timestamp;
+```
+
+**2. 删除事件专项（痕迹清除排查）**
+```sql
+SELECT datetime(timestamp,'unixepoch'), file_path, file_size
+FROM deletion_events ORDER BY timestamp;
+-- 或主表： WHERE event_type='DELETED'
+```
+
+**3. 按小时分布（找爆发/静默段）**
+```sql
+SELECT strftime('%Y-%m-%d %H:00', timestamp,'unixepoch') h, COUNT(*) c
+FROM events GROUP BY h ORDER BY h;
+```
+
+**4. 目录活动热点**
+```sql
+SELECT rtrim(file_path, replace(file_path,'/','')) dir, COUNT(*) c
+FROM events GROUP BY dir ORDER BY c DESC LIMIT 30;
+```
+
+**5. 主表与类型表对账（抽取完整性自检）**
+```sql
+SELECT (SELECT COUNT(*) FROM events) total,
+       (SELECT COUNT(*) FROM creation_events) created,
+       (SELECT COUNT(*) FROM modification_events) modified,
+       (SELECT COUNT(*) FROM deletion_events) deleted;
+```
+读法：total ≈ 五表之和 + system_events；偏差大说明中途重跑/中断过（标准化幂等只扫 NULL 行）。
+
+**6. 疑似模式直查（服务端 suspicious-patterns 的 SQL 版）**
+```sql
+SELECT file_path, COUNT(DISTINCT event_type) kinds, COUNT(*) c
+FROM events WHERE file_path LIKE '%/tmp/%' OR file_path LIKE '%/dev/shm/%'
+GROUP BY file_path HAVING kinds>=3 ORDER BY c DESC;
+```
+**最后更新**: 2026-08-24（补：写入时序与查询手册）

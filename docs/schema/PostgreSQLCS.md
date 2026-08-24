@@ -252,4 +252,58 @@ ORDER BY q.created_at DESC;
 
 ---
 
-**最后更新**: 2026-08-24（新建，字段级参考）
+
+## 附录：写入时序与查询手册
+
+### 写入时序
+
+| 表 | 写入方 | 时机 |
+|----|--------|------|
+| organizations/users/registration_tokens | 管理员经 /api/auth、/api/organizations | 初始化/运维 |
+| clients | agent 凭注册令牌注册（/api/clients/register） | 首次接入 |
+| disk_images | agent 的 image_indexer 上报 | 首轮索引 |
+| command_queue | 运营方 /api/commands 下发；agent poll 领取置 assigned | 每次分析指令 |
+| analysis_tasks / task_history | task_orchestrator（创建即双写 FK+软链接） | 命令关联任务 |
+| analysis_results / llm_analysis | agent 的 result_uploader 回收 | 执行完成后 |
+
+### 查询手册（psql）
+
+**1. 命令队列健康（积压/卡死一眼看）**
+```sql
+SELECT status, COUNT(*), MIN(created_at) oldest
+FROM command_queue GROUP BY status ORDER BY 2 DESC;
+```
+
+**2. 代理在线状态（60 秒窗口）**
+```sql
+SELECT hostname, status, last_seen_at FROM clients
+WHERE last_seen_at > now() - interval '90 seconds' ORDER BY last_seen_at DESC;
+```
+
+**3. 任务成功率与耗时画像**
+```sql
+SELECT t.status, COUNT(*), ROUND(AVG(EXTRACT(EPOCH FROM (t.completed_at - t.created_at)))::numeric,0) avg_sec
+FROM analysis_tasks t GROUP BY t.status;
+```
+
+**4. 结果体量 Top（磁盘大户）**
+```sql
+SELECT task_id, COUNT(*) files, ROUND(SUM(size_bytes)/1048576.0,1) mb
+FROM analysis_results GROUP BY task_id ORDER BY mb DESC LIMIT 20;
+```
+
+**5. TTL 将过期命令（过期仅靠 expire 端点触发，先看有多少）**
+```sql
+SELECT id, command_type, status, expires_at FROM command_queue
+WHERE expires_at < now() + interval '1 hour' AND status NOT IN ('completed','failed','expired')
+ORDER BY expires_at;
+```
+
+**6. 迁移版本自检（002/003 是否已手工应用）**
+```sql
+-- 002 的证据：command_queue.task_id 列与 idx_command_queue_task 索引存在
+SELECT indexname FROM pg_indexes WHERE tablename='command_queue';
+-- 003 的证据：users 表种子邮箱应为 super_admin@example.com（.local 为未应用）
+SELECT email FROM users WHERE role='super_admin';
+```
+**最后更新**: 2026-08-24（补：写入时序与查询手册）

@@ -463,4 +463,24 @@ update_status 的全部语义调用点（转换触发矩阵）：
 
 **验证**：同时创建 N+1 个任务，前 N 个变 RUNNING、第 N+1 个停留 PENDING（`GET /api/tasks/statistics` 的 by_status 对比）；观察服务端内存/IO；确认无 `[Watchdog] Failed stale pending task`（那说明 PENDING 排队超过 30 分钟被判死——排队中的任务同样受 pending 超时约束，TaskWatchdog.cpp:53-64，池小时要把 `TASK_WATCHDOG_PENDING_MINUTES` 一并调大）。
 
+
+## 10. 常见任务配方
+
+### 配方 A：给任务新增一个字段并贯通全链
+1. **结构体**：`HTTPServerDataTypes.h` 的 `AnalysisTask` 加字段（含默认值）；同步 `TaskProgress` 若它是进度属性。
+2. **创建入口**：`TaskCRUDRoutes.cpp` 创建 handler 解析 JSON 键（小写字面量）赋值。
+3. **序列化**：`TaskSerialization.cpp` 的 to_json/from_json 成对补键（**别忘了**：FILE_CARVING 曾在 phase 映射里漏掉——同类事故高发区）。
+4. **前端**：`web/src/services/taskService.js` 请求体 + `taskSlice` 如需展示。
+5. **验证**：创建→GET 详情→重启服务（tasks.json 往返）三步都对；跑 `TaskRoutes` 相关前端测试。
+
+### 配方 B：调整阶段权重或新增阶段
+1. 权重：只改 `TaskManager.cpp:545` 的 map（保持总和 100）。
+2. 新阶段：枚举加值（顺序即权重遍历序）→ 序列化映射补行 → `TaskManagerAnalysis.cpp` 插入 `update_progress` 调用点 → 计算函数自动生效。
+3. 验证：跑一个任务观察进度单调不回跳；看门狗不受影响（它只看百分比变化）。
+
+### 配方 C：排查"任务卡住"的标准动作
+1. `GET /api/tasks/<id>/progress` 看阶段+百分比；2. 百分比在变→看该阶段模块文档的"性能与并发"；3. 不变→`build/logs/cpp_server.log` 找该 task_id 最后输出；4. 超 30 分钟看门狗会介入（别手动改 tasks.json——重启恢复语义会把它标 FAILED）。
+
+### 配方 D：调整并发并观察
+`THREAD_POOL_SIZE`（.env）→ 重启 → 同时提交 N 个任务观察 PENDING 积压与 CPU/磁盘。注意该值同时放开 LLM 并发闸（Concurrency §2.2）。
 **最后更新**: 2026-08-24（补：常见任务配方）

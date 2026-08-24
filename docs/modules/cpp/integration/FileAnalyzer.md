@@ -321,4 +321,15 @@ const std::regex FileAnalyzer::KEYWORD_REGEX(
 | 临时目录 | llm_scratch（上游管理） | 输入文件来源 |
 | 死位 | summarize/extractKeywords/analyzeBatch/analyzeFileChunked/进度回调/ChunkConfig | 零生产调用方 |
 
+
+## 8. 常见任务配方
+
+### 配方 A：调整内容预算与截断
+预算=三重最小值（模型窗口/内容上限/硬顶），默认实际生效约 6144 字符（推导见本文件 §3）。想放宽：优先 `LLM_CONTEXT_LENGTH`（同时影响 GRAPHITI 批量），再截断策略（头 70% 尾 30% 的双向 200 字符边界窗）。
+
+### 配方 B：扩展 markitdown 白名单
+白名单门控在文件头常量（.img/.dd 等会令 Python 端 500 的教训）；新增类型先确认 Python 端能稳定转换再加；本地回退链（三级）兜底。
+
+### 配方 C：新增文件类型的本地回退提取器
+实现 `FileContentExtractor` 接口 → 注册进分派表（markitdown 白名单外自动走这里）。
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

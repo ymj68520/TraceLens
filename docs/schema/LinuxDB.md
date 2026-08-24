@@ -1226,4 +1226,81 @@ ORDER BY h.timestamp;
 
 ---
 
-**最后更新**: 2026-08-24（新建，字段级参考）
+
+## 附录：写入时序与查询手册
+
+### 写入时序（按流水线 Phase）
+
+| 分组表 | 写入方 | 时机 | 备注 |
+|--------|--------|------|------|
+| 系统基础 12 表 | LinuxFilesAnalyzer P1-P5（日志/账户/SSH/包） | PLATFORM_ANALYSIS·LINUX | 压缩日志必须先行（Phase 顺序约束） |
+| 安全与合规 19 表 | 各安全分析器 + RuleEngine | P6-P10 | findings 族依赖前序证据表 |
+| 时间线与关联 6 表 | TimelineReconstructor/LogCorrelationEngine | 证据全入库后 | "先物证后推理"架构 |
+| LLM 5 列组 | LinuxLLMAnalysisService | 工件级 LLM（不受 llm_analyze 门控的 MANDATORY 类） | 7 类 SELECT 引用坏列→对应工件拿不到 LLM（已知缺陷，见 5.1） |
+
+### 查询手册（列名以本文档字段表为准）
+
+**1. 登录失败与来源（入侵第一问）**
+```sql
+SELECT username, remote_host, terminal, datetime(login_time,'unixepoch') t
+FROM linux_login_records WHERE is_success=0
+ORDER BY login_time DESC LIMIT 100;
+```
+
+**2. SSH 成功登录的非本机来源**
+```sql
+SELECT username, remote_host, datetime(login_time,'unixepoch')
+FROM linux_login_records
+WHERE is_success=1 AND remote_host IS NOT NULL AND remote_host NOT IN ('','localhost','0.0.0.0');
+```
+
+**3. 持久化机制清单（按风险排序）**
+```sql
+SELECT persistence_type, risk_level, file_path, entry_name, command, username, is_enabled, suspicious_reason
+FROM linux_persistence_entries
+ORDER BY CASE risk_level WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END;
+```
+
+**4. 可疑持久化直查**
+```sql
+SELECT persistence_type, file_path, command, suspicious_reason
+FROM linux_persistence_entries WHERE is_suspicious=1;
+```
+
+**5. 篡改发现（反取证证据）**
+```sql
+SELECT tampering_type, severity, description, log_source,
+       datetime(timestamp_start,'unixepoch') ts
+FROM linux_tampering_findings
+ORDER BY CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 ELSE 2 END;
+```
+
+**6. 攻击链（JSON 事件串在 events/timeline 列里）**
+```sql
+SELECT chain_id, attack_type, summary, confidence, timeline
+FROM linux_attack_chains ORDER BY chain_id;
+-- events/timeline 为 JSON 文本；细粒度时间展开用 json_each(events)
+```
+
+**7. 异常总览（多信号并读）**
+```sql
+SELECT 'tampering' src, COUNT(*) FROM linux_tampering_findings
+UNION ALL SELECT 'anomalies', COUNT(*) FROM linux_anomalies
+UNION ALL SELECT 'suspicious_packages', COUNT(*) FROM linux_suspicious_packages
+UNION ALL SELECT 'rule_matches', COUNT(*) FROM linux_rule_matches;
+```
+
+**8. 容器与 Web 交叉（服务器场景）**
+```sql
+SELECT container_id, image_name, state, created_at FROM linux_docker_containers;
+SELECT remote_ip, datetime(timestamp,'unixepoch'), method, url, status_code, response_size, request_time
+FROM linux_nginx_access_logs WHERE status_code>=400 ORDER BY timestamp DESC LIMIT 100;
+```
+
+**9. USB 插拔史（数据外带）**
+```sql
+SELECT datetime(timestamp,'unixepoch'), event_type, manufacturer, product,
+       serial_number, mount_point, capacity_bytes
+FROM linux_usb_events ORDER BY timestamp;
+```
+**最后更新**: 2026-08-24（补：写入时序与查询手册）

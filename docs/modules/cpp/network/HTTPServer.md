@@ -454,4 +454,22 @@ CROW_ROUTE(app, "/api/xxx/<string>").methods("OPTIONS"_method)([](const crow::re
 
 **验证**：`curl -I http://localhost:<port>/<新路径>` 看 200 + 正确 Content-Type；带缓存的扩展名应见 `Cache-Control: public, max-age=31536000`；`curl -I .../不存在的深层路径` 回落 index.html（SPA fallback 正常）。
 
+
+## 8. 常见任务配方
+
+### 配方 A：注册一个新路由组（四步）
+1. `routes/` 新建 `XxxRoutes.{h,cpp}`（抄 FilterRoutes 的骨架——含 ApiResponse 用法或裸 JSON 均可，跟现状走裸 JSON）。
+2. `HTTPserver.cpp` 构造函数加成员并在路由注册处调用 `registerRoutes(app_)`（加入六聚合器之列——**别学 OSSRoutes 只编译不注册**）。
+3. Swagger：handler 内 `Swagger::instance().registerEndpoint(...)`（路径写 `<param>` 形态）。
+4. 前端：dev 需要在 `web/vite.config.js` 加前缀（若应走 Python 则另说）；`web/src/services/` 加方法。
+验证：curl 打端点 + `/api/docs` 看注册表 + SystemDocsRoutes 手写清单是否也该补（两份清单的漂移教训见 SystemRoutes 文档）。
+
+### 配法 B：给现有路由加参数校验
+解析后 clamp/白名单（抄 `SQLiteHelper::clamp_limit` 与 `is_readonly_select` 的防御三件套：参数化/钳制/只读判定），错误统一 `{"error": "..."}` + 4xx。
+
+### 配方 C：加 OPTIONS 预检
+抄 `TaskRoutes.cpp:20-134` 的 16 个预检写法（路径一一对应 + `RouteHelpers::add_cors_headers`）。
+
+### 配方 D：加静态资源路径
+`serve_static_file`（HTTPserver.cpp catch-all 分支）前加显式前缀路由，避免落到 SPA 兜底。
 **最后更新**: 2026-08-24（补：常见任务配方）

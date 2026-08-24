@@ -399,4 +399,19 @@ inline constexpr const char* SELECT_TAMPERING_FINDINGS_PENDING_ANALYSIS =
 
 **验证**：`grep -n "T1190" RuleEngine.cpp` 确认映射存在；重跑后 `SELECT DISTINCT attck_technique, attack_stage FROM linux_rule_matches` 中该技术行出现且 stage 非空；含该命中的 `linux_attack_chains.timeline` 里它排在 Initial Access 位置。
 
+
+## 9. 常见任务配方
+
+### 配方 A：新增一种日志/工件解析器（四步）
+1. `Parsers/` 写解析器（或加进 LinuxLogParser 分派）；产出结构体放 `Common/LinuxDataTypes.h`。
+2. `Core/LinuxFilesAnalyzerCore.cpp` 的对应 Phase 调用（压缩日志必须最先跑——Phase 顺序约束）。
+3. 落表：`SQL/linux_analysis_sql_tables.h` 加 CREATE（73 表清单同步 +1）+ `_crud.h` 加 INSERT。
+4. LLM：`_llm.h` 加 PENDING SELECT/UPDATE——**列名必须与建表逐字一致**（本文件 5.1 记录的 7 个坏 SELECT 就是教训），并在 LinuxLLMAnalysisService 注册表驱动四件套。
+验证：fixture 日志→跑分析→表有行→（可选）LLM 列被更新。
+
+### 配方 B：新增安全检测规则（RuleEngine）
+`Analysis/RuleEngine` 规则表加条目（信号列引用真实表列）→ 跑 `linux_rule_matches` 有产出。ATT&CK 映射列名是 `attck_technique`（不是 technique_id——教程踩过的坑）。
+
+### 配法 C：把 EventCorrelationEngine 接进流水线（如果要）
+调用点应在"证据全入库后"（先物证后推理架构）；接 `EventExtractor::analyzeEventCorrelations()`（当前无调用方）；注意 engine 版 event_correlations 是 10 列而生产表 6 列——先统一 DDL（schema/EventsDB"已知边界"）。
 **最后更新**: 2026-08-24（补：常见任务配方）

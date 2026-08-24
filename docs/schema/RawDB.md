@@ -137,4 +137,61 @@ GROUP BY p.partition_num, p.fs_type;
 
 ---
 
-**最后更新**: 2026-08-24（新建，字段级参考）
+
+## 附录：写入时序与查询手册
+
+### 写入时序
+
+| 表 | 写入方 | 时机 | 量级 |
+|----|--------|------|------|
+| `files` | DatabaseManager::insertFileRecord（ImageAnalyzer 遍历回调） | IMAGE_ANALYSIS 阶段，每文件一行 | 大（900M 真实镜像实测约 3.5k 行/GB 级） |
+| `partitions` | ImageAnalyzer 分区枚举 | IMAGE_ANALYSIS 开始时 | 每分区一行 |
+| （`_filtered.db` 副本） | FileFilter::applyFilterByName | FILE_CLASSIFICATION 开头、SceneDetector 之后 | 按画像筛选后的行数 |
+
+注意：`files` 的 `llm_*` 5 列为死列（建表带出但从不写，LLM 结论只落 files.db 主表）；md5 按配置计算可能为 NULL。
+
+### 查询手册
+
+**1. 大文件 Top（先看什么占了空间）**
+```sql
+SELECT path, size, is_deleted, partition_num FROM files
+WHERE type='REG' ORDER BY size DESC LIMIT 50;
+```
+
+**2. 已删除但可观的大文件（雕刻前评估）**
+```sql
+SELECT path, size FROM files
+WHERE is_deleted=1 AND size > 1048576 ORDER BY size DESC LIMIT 50;
+```
+读法：is_deleted=1 是未分配条目——配合雕刻阶段（file_carving）产出实体文件。
+
+**3. 分区分布与各分区体量**
+```sql
+SELECT p.partition_num, p.fs_type, COUNT(f.id) files, ROUND(SUM(f.size)/1048576.0,1) mb
+FROM partitions p LEFT JOIN files f ON f.partition_num=p.partition_num
+GROUP BY p.partition_num ORDER BY mb DESC;
+```
+
+**4. 时间戳四元组健全性（哪些文件可做时间线）**
+```sql
+SELECT
+  SUM(crtime>0) has_crtime, SUM(mtime>0) has_mtime,
+  SUM(atime>0) has_atime, SUM(ctime>0) has_ctime, COUNT(*) total
+FROM files WHERE type='REG';
+```
+读法：crtime 覆盖率低是正常的（只有 NTFS/ext4 有意义）；全 0 说明镜像缺时间戳，时间线要换证据源。
+
+**5. raw 与下游对账基线**
+```sql
+SELECT COUNT(*) raw_regs FROM files WHERE type='REG';
+-- 与 files.db 主表行数比对：差值=被过滤画像排除+非 REG（正常）；
+-- 差值异常大时先查任务的 filter_profile 与 output_raw_db 指向。
+```
+
+**6. 同名文件跨分区消歧示例**
+```sql
+SELECT partition_num, inode, path, size FROM files
+WHERE name='passwd' OR path LIKE '%/passwd' ORDER BY partition_num;
+```
+读法：inode 仅分区内唯一，多分区联查必须带 partition_num（决定二）。
+**最后更新**: 2026-08-24（补：写入时序与查询手册）

@@ -244,4 +244,15 @@ finally:
 
 含义：**同一环境变量在两条代码路径上可以产生不同配置**——经 `/api/graphiti/ingest`（httpserver）与经 graphiti_integration CLI 直跑的结果（episode 丰满度、批次大小）可能不同；对比实验必须固定 `GRAPHITI_BATCH_SIZE` 与 `GRAPHITI_INCLUDE_FULL_DESC` 的显式值。
 
+
+## 8. 常见任务配方
+
+### 配方 A：新增摄取模式
+`IngestionMode` 枚举加值 → IngestionJobManager 的分发 switch 加分支 → 实现在 `_ingest.py`（单文件路径参照 SINGLE_FILE；批量参照 FILES_ONLY 的 JOIN files 高价值信号）→ C++ LLMPythonProxy 若要发起则补对应调用。
+
+### 配方 B：任务图生命周期管理
+删除任务时 C++ 会调 cleanup（TaskManager 删任务清图）；手工重建：删图（DELETE /api/graphiti/tasks/{id}）→ 重摄取（POST /api/graphiti/ingest）→ 对比 job 实体数。
+
+### 配方 C：检索调参
+默认 COMBINED_HYBRID_SEARCH_RRF（混合）；结果空先看回退路径是否触发（Neo4j CONTAINS）——回退触发=混合检索异常，查 llm_patch 与嵌入端点。
 **最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）

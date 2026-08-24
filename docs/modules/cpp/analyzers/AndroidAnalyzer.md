@@ -360,4 +360,18 @@ constexpr uint64_t kMaxBundleBytes = 768ull << 20; // bundle 768MB
 - **并发**：分析主流程单线程顺序解析（工件间有审计依赖无数据依赖，理论上可并行但未做）；LLM 段由 AndroidLLMAnalysisService 内部并发（走 ModelRouter）。
 - **可调参数影响**：maxArtifacts=1000/类是 LLM token 预算的旋钮（Core:311）；MIUI 限额收紧可把畸形备份的分析时间封顶。
 
+
+## 9. 常见任务配方
+
+### 配方 A：新增一个应用工件解析器
+1. `Parsers/` 或 `AndroidDataParsers.cpp` 加解析（经 `IFileExtractor` 取文件——九处取文件全走它，换后端零改动）。
+2. 落表：`SQL/android_analysis_sql.h` 加 CREATE + INSERT。
+3. 前端：`AndroidForensicsRoutes` 加端点 + web /android 页消费。
+4. LLM：`AndroidLLMAnalysisService` 表驱动四件套（注意它有端点可用性门控——无 LLM_BASE_URL 自动跳过）。
+
+### 配方 B：新增 MIUI 备份字段
+`MiuiBackupManifest.h` 结构体 + descript.xml 解析点 + manifest 表列（SQL 头文件三处同步）。
+
+### 配方 C：微信解密失败标准排查
+1. 密码来源确认（--backup-password-stdin 优先，避免 argv 泄漏）；2. IMEI 缺失时密钥推导用占位 1234567890ABCDEF——新设备大概率失败，需人工从镜像其他位置找 IMEI；3. 查 `encrypted_db_inventory` 的 key_hint/open_status 留痕；4. 版本矩阵重试日志（WeChatDecryptor 的 1-4 版本尝试）。
 **最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

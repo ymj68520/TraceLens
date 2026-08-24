@@ -352,4 +352,19 @@ std::string WindowsFilesAnalyzer::readUTF16LEString(const uint8_t* data, size_t 
 - **提取目录的磁盘占用**：全部工件先落 `<镜像>_extracted_files/` 再解析——大镜像上该目录 GB 级，任务结束不清理（供人工复核），磁盘预算要预留。
 - **可调参数影响**：MFT/EVTX 两个 cap 是覆盖度与资源的天平；--skip-ai 省下 15 类 × 10000 条的 LLM 往返。
 
+
+## 10. 常见任务配方
+
+### 配方 A：接线一个未接线解析器（以 Shimcache 为例）
+1. 确认 Parser 存在（Shimcache 解析已在 Parsers/）。
+2. `Core/WindowsFilesAnalyzerCore.cpp` 的 analyzeWindowsData 编排里加调用（参照 Amcache 段）。
+3. 落库走 `WindowsDBOperations_System.cpp:274` 的现成 INSERT 方法（无调用方但方法在）。
+4. 验证：跑 Windows 任务后 `shimcache_entries` 非恒空；schema/WindowsDB 的"恒空"标注同步删除。
+注意 user_assist/rdp/wifi 同法；shellbag 连 INSERT 方法都没有——先补 DB 操作。
+
+### 配方 B：新增注册表工件项
+`WindowsRegistryArtifacts.cpp` 加 hive/key 模式 → registry_values 落行（forensic_importance 评级顺手给）→ 需要则 LLM 四件套。
+
+### 配方 C：扩展浏览器解析器
+`WindowsBrowserParser*` 系列加引擎分支（现有 Chromium/Firefox 模板）；产出统一落 browser_history 六表。
 **最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

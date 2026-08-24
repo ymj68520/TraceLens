@@ -155,4 +155,56 @@ ORDER BY p.pid;
 
 ---
 
-**最后更新**: 2026-08-24（新建，字段级参考）
+
+## 附录：写入时序与查询手册
+
+### 写入时序
+
+| 表 | 写入方 | 时机 | 备注 |
+|----|--------|------|------|
+| processes | Volatility3Runner（linux.pslist/pstree）→ ProcessParser | `--memory-analyze`（**CLI 专用旁路**，HTTP 侧靠命名约定找库） | 列名对齐 vol 原字段 |
+| network_connections | linux.sockstat → NetworkParser | 同上 | |
+| bash_history / boot_info / cmdline / analysis_meta | 各解析器 | 同上 | 失败信息入 analysis_meta |
+
+### 查询手册（列名以本文档字段表为准）
+
+**1. 活动连接清单（ ESTABLISHED 优先）**
+```sql
+SELECT pid, comm, proto, local_addr, local_port, remote_addr, remote_port
+FROM network_connections
+ORDER BY CASE state WHEN 'ESTABLISHED' THEN 0 ELSE 1 END, pid;
+```
+
+**2. 可疑进程画像（无路径/父进程异常/用户异常）**
+```sql
+SELECT pid, ppid, comm, uid, euid, creation_time
+FROM processes
+WHERE uid=0 OR ppid=1 OR ppid=2
+ORDER BY creation_time;
+```
+
+**3. 进程↔连接对质（谁在连哪）**
+```sql
+SELECT p.pid, p.comm, n.remote_addr, n.remote_port, n.state
+FROM processes p JOIN network_connections n ON n.pid=p.pid
+WHERE n.remote_addr IS NOT NULL AND n.remote_addr NOT IN ('0.0.0.0','::');
+```
+
+**4. 与磁盘时间线交叉（bash 命令时刻对 events）**
+```sql
+-- memory.db：先取命令时刻
+SELECT command, timestamp FROM bash_history WHERE command LIKE '%curl%' OR command LIKE '%nc %';
+-- 再到 events.db：SELECT ... FROM events WHERE timestamp BETWEEN :t-5 AND :t+5;
+```
+
+**5. 会话环境（boot_info 单行读）**
+```sql
+SELECT * FROM boot_info;
+```
+
+**6. 分析自检（Volatility 是否有报错/降级）**
+```sql
+SELECT * FROM analysis_meta;
+-- 插件失败/符号缺失会留痕；符号自愈流程见 MemoryAnalyzer 模块文档
+```
+**最后更新**: 2026-08-24（补：写入时序与查询手册）

@@ -377,4 +377,15 @@ initHttpClient 失败理论上会留下 httpClient_ 为空（如 make_unique 抛
 | 平行出口 | LLMPythonProxy / MarkitdownProxy | 不经本类（打 Python 服务） |
 | 死位 | baseUrl-only 构造 / setConfig / getConfig / listModels | 零生产调用方 |
 
+
+## 8. 常见任务配方
+
+### 配方 A：更换/新增端点与模型
+`.env` 改 `LLM_BASE_URL/LLM_TEXT_MODEL`（名字与 `/v1/models` 逐字一致）→ 跑 `/api/llm/status` 冒烟 → 完整检查单见 [LLMOperations](../../../ops/LLMOperations.md)。
+
+### 配方 B：调整重试与超时
+`LLM_MAX_RETRIES`（实为 1+3 次尝试）/`LLM_TIMEOUT_SECONDS`（120）。注意重试只覆盖传输层——parseResponse 解析失败不重试（本文件 §6）。
+
+### 配方 C：对接新 OpenAI 兼容服务检查单
+① URL 带路径？→ 走 URL 拆分逻辑（httplib 不支持带路径 base）；② 思考型模型？→ 确认 reasoning_content 回退/<think> 剥离路径；③ 工具调用？→ arguments 双形态解析；④ 非 UTF-8 输出？→ sanitizeUtf8 会清洗。全部在 parseResponse 一处（本文件走读段）。
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

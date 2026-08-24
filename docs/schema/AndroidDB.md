@@ -485,4 +485,68 @@ ORDER BY m.timestamp DESC;
 
 ---
 
-**最后更新**: 2026-08-24（新建，字段级参考）
+
+## 附录：写入时序与查询手册
+
+### 写入时序
+
+| 分组表 | 写入方 | 时机 | 备注 |
+|--------|--------|------|------|
+| 通信 5 表（sms/contacts/call_logs/whatsapp/telegram） | AndroidAnalyzer 逻辑/物理两条路径 | PLATFORM_ANALYSIS·ANDROID | 物理路径从镜像提取 db 后解析 |
+| 微信增强组（messages/contacts/chatrooms/owner） | WeChatDecryptor 解密后 | 同上；SQLCipher 需密码（IMEI 缺失时占位推导可能失败） |
+| MIUI 组（manifest/installed_apps/db_inventory） | MiuiBackupExtractor+TarIndex | `--android-source miui-backup` 路径 | 限额 env：TRACELENS_MIUI_MAX_CANDIDATES 等 |
+| QQNT/微信 KV 工件组（inventory/kv/sqlite/log） | 各 ArtifactParsers | 同上 | |
+| LLM5 列组 | AndroidLLMAnalysisService（端点门控：无 LLM_BASE_URL 自动跳过） | 工件级 | |
+
+### 查询手册（列名以本文档字段表为准）
+
+**1. 时间窗内消息-通话行为序列**
+```sql
+SELECT datetime(timestamp,'unixepoch') t, sender, receiver, substr(content,1,50) preview, is_send
+FROM wechat_messages WHERE timestamp BETWEEN :s AND :e
+UNION ALL
+SELECT datetime(date,'unixepoch'), number, name, 'call_'||type, NULL
+FROM call_logs WHERE date BETWEEN :s AND :e
+ORDER BY t;
+```
+
+**2. 机主发出的消息（is_send=1）聚焦**
+```sql
+SELECT datetime(timestamp,'unixepoch'), receiver, substr(content,1,60)
+FROM wechat_messages WHERE is_send=1 ORDER BY timestamp DESC LIMIT 200;
+```
+
+**3. 高频联系人（消息量 Top）**
+```sql
+SELECT CASE WHEN is_send=1 THEN receiver ELSE sender END peer, COUNT(*) c
+FROM wechat_messages GROUP BY peer ORDER BY c DESC LIMIT 30;
+-- 与 contacts.display_name 关联补名（wxid 映射）
+```
+
+**4. 联系人-电话-邮件一页看**
+```sql
+SELECT display_name, phone_number, email, account_name FROM contacts
+WHERE display_name IS NOT NULL ORDER BY display_name;
+```
+
+**5. 浏览记录时间线**
+```sql
+SELECT datetime(last_visit_time,'unixepoch') t, url, title, visit_count
+FROM chrome_history ORDER BY last_visit_time DESC LIMIT 200;
+```
+
+**6. MIUI 备份头信息（设备/版本/规模）**
+```sql
+SELECT device, miui_version, backup_date, total_size, package_count, source_folder
+FROM miui_backup_manifest;
+-- 备份里有哪些 App 看 installed_apps / app_db_inventory 两表
+```
+
+**7. 加密库与密钥线索清单（还能解哪些）**
+```sql
+SELECT package_name, db_path, key_hint_type, key_hint_value, open_status
+FROM encrypted_db_inventory
+ORDER BY CASE open_status WHEN 'locked' THEN 0 ELSE 1 END;
+-- open_status 取值以字段表为准；locked 的库需要人工供密码（--backup-password-stdin）
+```
+**最后更新**: 2026-08-24（补：写入时序与查询手册）

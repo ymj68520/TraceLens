@@ -368,4 +368,18 @@ sqlite3 data/tasks/<id>/*_events.db "BEGIN; UPDATE events SET description='x' WH
 curl -s ":8080/api/forensics/timeline/full?task_id=<id>" | jq '.events | length'   # WAL 下通常仍正常
 ```
 
+
+## 8. 常见任务配方
+
+### 配方 A：新增一个查询域方法
+1. `Queries/` 对应域文件实现（或新建文件并在 `SQLiteHelper.cpp:10-15` 的 include 聚合里挂上——注意是 include 聚合不是独立编译单元）。
+2. 头文件声明；参数走防御三件套（`clamp_limit`、`is_readonly_select`、参数化绑定）。
+3. 路由接线：对应 Routes 调用。
+4. 验证：对 fixture 库跑一遍 + 空/越界参数不炸。
+
+### 配方 B：补索引的正确姿势
+对照 [schema 各库"索引缺口"](../../schema/AndroidDB.md) 清单：在**建表 SQL 头文件**补 `CREATE INDEX IF NOT EXISTS`（SQL-as-headers 纪律），而不是对存量库手工加——代码路径的"探测+ALTER"不覆盖索引。
+
+### 配方 C：慢查询定位
+1. 打开库 `PRAGMA query_plan` 看扫描；2. 大表（files/events）优先查索引清单；3. 时间范围查询确认 timestamp 有索引（events 有 11 条单列索引，files 主表三索引）；4. 结果集大时分页（limit/offset 由 clamp 兜底）。
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

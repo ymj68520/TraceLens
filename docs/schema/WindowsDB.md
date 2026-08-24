@@ -556,4 +556,66 @@ WHERE a.risk_level = 'high';
 
 ---
 
-**最后更新**: 2026-08-24（新建，字段级参考）
+
+## 附录：写入时序与查询手册
+
+### 写入时序
+
+| 分组表 | 写入方 | 时机 | 备注 |
+|--------|--------|------|------|
+| 注册表/账户 | WindowsRegistryParser（hivex） | PLATFORM_ANALYSIS·WINDOWS | |
+| 事件与痕迹（event_logs/prefetch/lnk/jump/amcache/mft） | 各解析器 | 同上 | shimcache/user_assist/rdp/wifi 四表**恒空**（解析器未接线） |
+| 浏览器 6 表 | Chromium/Firefox 解析器 | 同上 | |
+| 系统组件（services/scheduled_tasks/srum/usb/recycle） | 各解析器 | 同上 | |
+| dll_* 7 表 | DLLAnalyzer | `--analyze-dlls` 或任务内 | 当前扫描源是**分析机本机目录**（已知局限） |
+| LLM5 列组 | WindowsLLMAnalysisService | 工件级 | includeMFT 默认 false（成本控制） |
+
+### 查询手册（列名以本文档字段表为准）
+
+**1. 自启动三源交叉（持久化排查主力）**
+```sql
+SELECT 'registry' src, key_path item, value_name, value_data
+FROM registry_values WHERE key_path LIKE '%\\Run%'
+UNION ALL
+SELECT 'service', service_name, image_path, start_type
+FROM windows_services WHERE start_type LIKE 'AUTO%'
+UNION ALL
+SELECT 'task', task_name, action_path, arguments
+FROM scheduled_tasks
+ORDER BY item;
+```
+
+**2. 程序执行痕迹（Prefetch）**
+```sql
+SELECT executable_name, run_count, file_path
+FROM prefetch_files ORDER BY run_count DESC LIMIT 100;
+```
+
+**3. 浏览行为时间线**
+```sql
+SELECT datetime(visit_time,'unixepoch') t, browser_name, title, url
+FROM browser_history ORDER BY visit_time DESC LIMIT 200;
+```
+
+**4. 服务画像（第三方/自动启动）**
+```sql
+SELECT service_name, display_name, image_path, account_name
+FROM windows_services
+WHERE image_path NOT LIKE 'C:\\Windows\\%' OR account_name NOT IN ('LocalSystem');
+```
+
+**5. 注册表取证重要性排序（解析器已评级）**
+```sql
+SELECT hive_type, key_path, value_name, substr(value_data,1,60), forensic_importance
+FROM registry_values WHERE forensic_importance IS NOT NULL
+ORDER BY forensic_importance LIMIT 200;
+```
+
+**6. DLL 威胁面（dll_base_info + anomalies）**
+```sql
+SELECT b.path, b.name, b.threat_score, a.anomaly_type, a.risk_level
+FROM dll_base_info b LEFT JOIN dll_anomalies a ON a.dll_id=b.id
+WHERE b.threat_score >= 30 ORDER BY b.threat_score DESC;
+-- 注意当前 dll 数据源是本机目录；列名以字段表为准
+```
+**最后更新**: 2026-08-24（补：写入时序与查询手册）

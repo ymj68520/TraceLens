@@ -255,4 +255,63 @@ WHERE f.scene_relevant = 1;
 
 ---
 
-**最后更新**: 2026-08-24（新建，字段级参考）
+
+## 附录：写入时序与查询手册
+
+### 写入时序
+
+| 表 | 写入方 | 时机 | 量级 |
+|----|--------|------|------|
+| 主 `files`（含 category/scene_*） | FileClassifier::classifyAndExtract | FILE_CLASSIFICATION 阶段 | 每 REG 文件一行 |
+| 24 张分类表 | 同上（按类物化） | 同上（同事务） | 主表行数的按类分布 |
+| `llm_*` 5 列 + `file_descriptions` | LLMAnalysisService / Python LLMService | LLM_ANALYSIS 阶段或事后重分析 | 受 LLM_MAX_FILES/smart 粗选 |
+| `android/windows/linux_artifacts` | CLI 模式平台工件并入 | CLI 平台分析 | HTTP 模式不写（走独立库） |
+| `analysis_progress` | LLM 分析进度 | LLM 阶段节流更新 | 单行 |
+
+### 查询手册
+
+**1. 分类分布体检**
+```sql
+SELECT category, COUNT(*) c, ROUND(AVG(size)) avg_size FROM files
+GROUP BY category ORDER BY c DESC;
+```
+
+**2. 场景相关且已有 LLM 结论的文件（最值得先看的集合）**
+```sql
+SELECT path, category, llm_summary FROM files
+WHERE scene_relevant=1 AND llm_analyzed_at IS NOT NULL
+ORDER BY scene_priority DESC LIMIT 100;
+```
+
+**3. LLM 覆盖率（SMART 是否淘汰太多）**
+```sql
+SELECT COUNT(*) total, SUM(llm_analyzed_at IS NOT NULL) done, SUM(scene_relevant) relevant FROM files;
+```
+
+**4. file_descriptions 与主表交叉（重分析痕迹）**
+```sql
+SELECT f.path, f.llm_summary, d.is_relevant, d.model_used
+FROM files f JOIN file_descriptions d ON d.path=f.path
+ORDER BY d.analyzed_at DESC LIMIT 100;
+```
+
+**5. 主表 vs 分类表对账（双轨一致性）**
+```sql
+SELECT (SELECT COUNT(*) FROM files) main,
+       (SELECT COUNT(*) FROM documents) documents_rows;
+-- 主表 category='DOCUMENTS' 的行数应与 documents 表一致；不一致说明中途中断。
+```
+
+**6. 高价值加密/凭证类清单**
+```sql
+SELECT path, size, category FROM files
+WHERE category IN ('ENCRYPTED','CERTIFICATE') AND is_deleted=0
+ORDER BY size DESC LIMIT 50;
+```
+
+**7. 分类表直查（单表扫描的初衷）**
+```sql
+SELECT path, extension, mtime FROM databases ORDER BY size DESC LIMIT 50;
+-- 换表名即换类：images/documents/archives/...
+```
+**最后更新**: 2026-08-24（补：写入时序与查询手册）

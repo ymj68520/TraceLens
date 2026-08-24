@@ -326,4 +326,15 @@ void MemoryAnalyzer::analyzeMemoryData() {
 - **并发**：单线程编排；db mutex 串行化；无跨进程锁（CLI 独占运行）。
 - **可调参数影响**：符号目录预热（--vol-symbols-dir 指向已下载的 ISF）可省自愈的网络下载（CDN 秒到分钟级）与二次 pslist 重试的整轮开销。
 
+
+## 9. 常见任务配方
+
+### 配方 A：新增 Volatility3 插件产出
+VolatilityPlugins.h 加插件常量 → VolJson 解析字段 → 新表（memory SQL 头文件）→ MemoryForensicsRoutes 加端点。注意 HTTP 侧靠命名约定找库——新表也要走 `<base>_memory.db`。
+
+### 配法 B：换内核符号（ISF）
+`./scripts/build-vol3-isf.sh <版本>`（L1 社区仓库→L2 ddeb+dwarf2json→L3 手工）；runner 的 banner 流式扫描会自愈（全镜像找 kernel banner 自动拉 ISF 重试一次）。
+
+### 配方 C：内存↔磁盘结果对质
+memory.db 的 bash_history/进程连接 与 events.db 时间窗交叉（SqlCookbook 第 4/10 条）。
 **最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）

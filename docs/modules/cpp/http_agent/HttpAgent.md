@@ -360,4 +360,15 @@ IndexUploader 的空清单短路（:16-19）：entries 为空直接 return true 
 | 测试 | test_http_agent.cpp 47 用例 | 含回环真传输 |
 | 不调 | Python httpserver:8090 / C++ HTTPServer:8080 | agent 世界只有 8091 |
 
+
+## 8. 常见任务配方
+
+### 配方 A：新增可执行命令类型
+server 端 001 的 command_type CHECK 约束要先扩（ALTER/迁移）；agent 端 command_executor 加分支（**真正执行**，别学 extract_file 的"确认不执行"占位）；in_flight 去重表自动覆盖新类型。
+
+### 配方 B：调整轮询与重试
+agent.conf 的 poll_interval_seconds；失败重试矩阵见本文件 §6。注意 server 侧 retry_count 无消费——重试逻辑在 agent 自己手里。
+
+### 配方 C：排查"命令下发了没执行"
+1. server：command_queue 状态（assigned→?）；2. agent：本地日志 + in_flight_commands；3. 常见根因：非 analyze_disk 类型（当前只确认不执行）、镜像路径不可达、CLI 参数解析失败（agent 会报 FAILED 不重跑）。
 **最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）

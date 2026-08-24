@@ -288,4 +288,18 @@ if errors:
 
 单 episode 最坏 ≈ 363s + 渲染/嵌入时间；N 条全失败的批次最坏 ≈ N×363s（顺序无并发）——这就是第 9 节"大批量耗时"的量化表达。退避是**线性**（×attempt）而非指数；想更激进可调小 `LLM_TIMEOUT_SECONDS`，但会同时影响 httpserver 的所有 LLM 调用（耦合点在 GraphitiService 复用同一 Settings 值——见 GraphitiService.md 第 5 节）。
 
+
+## 8. 常见任务配方
+
+### 配方 A：调整抽取指令（FORENSIC_EXTRACTION_INSTRUCTIONS）
+修改原则：只增不减取证实体类型；改后必跑回归——用固定 episode 对比抽取前后实体数（graphiti_integration/tests 可单独跑）。这是图谱质量的灵魂补丁，改动要有消融依据。
+
+### 配方 B：换嵌入模型/维度
+`EMBEDDING_MODEL/EMBEDDING_DIM` 与 Neo4j 既有索引维度必须一致；换模型=图谱重建（wipe_neo4j.py + 逐任务重摄取）。
+
+### 配方 C：episode 截断调参
+`GRAPHITI_MAX_EPISODE_TOKENS`（3000）与端点窗口挂钩；估算是 ~4 字符/token+20% 缓冲（TOONTransformer.estimate）——中文偏低估，截断保守。
+
+### 配方 D：图谱质量排查顺序
+1. job 详情看 episode 级 errors（逐条报错不中断批量）；2. 实体少的三大要素（抽取指令/text 渲染/llm_patch）逐个验证；3. 嵌入/重排端点可用性（EMBEDDING_BASE_URL 可与聊天分离）。
 **最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）
