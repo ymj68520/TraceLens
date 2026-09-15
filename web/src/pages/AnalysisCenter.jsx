@@ -265,7 +265,7 @@ const AnalysisCenter = () => {
                 const poll = async () => {
                     const status = await getCaseAnalysisStatus(result.job_id);
                     if (status.status === 'completed') {
-                        setReanalyzeMessage(`✅ 研判完成`); setReanalyzing(false);
+                        setReanalyzeMessage(status.result?.partial ? '⚠️ 研判完成（部分轮次失败，详见服务日志）' : '✅ 研判完成'); setReanalyzing(false);
                         await fetchData(); setSelectedItems(new Set());
                         setTimeout(() => setShowReanalyzeModal(false), 1500);
                     } else if (status.status === 'failed') {

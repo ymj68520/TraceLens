@@ -261,9 +261,9 @@ Step5   报告（不变）
 
 **验收**：pytest——schema 幂等（重复 ensure 无副作用）、三写原子性（任一失败整体回滚）、判定切换（`file_descriptions` 有行但 `file_analyses` 无行时不再跳过；反之跳过）、归档幂等（二次覆盖不重复归档）、fail-closed 不回归。手工冒烟：Files 页 / 报告 / TOON 导出零变化（读方零迁移验证）。
 
-### Phase 3 —— 编排与并发（C2 + D10 + §5.3 + D14）
+### Phase 3 —— 编排与并发（C2 + D10 + §5.3 + D14）（✅ 已实施 2026-09-16）
 
-**范围**：Step3 重构（§5.1）；工件轮并入与 `result["steps"]["artifacts"]`；失败可见语义与 partial 终态（后端 + 前端任务详情）；`reanalyze_files` 并发化。
+**范围**：Step3 重构（§5.1）；工件轮并入与 `result["steps"]["artifacts"]`；失败可见语义与 partial 终态（后端 + 前端任务详情）；`reanalyze_files` 并发化。实施记录：编排逻辑收敛到 `CaseAnalysisPipelinesMixin._execute_analysis_rounds`（初析/复用两分支共用，可独立驱动测试）；partial 经 `AnalysisStatusResponse.result.partial` 自然透出，前端为三处轮询消息的 partial 分支（纯展示改动，无新增组件测试，以存量 200 项 vitest + 与 Dev 一致的 lint 基线验证）。
 
 **验收**：pytest——编排顺序（文件轮完成事件先于簇轮启动）、工件轮失败不阻断文件/簇轮但使任务 partial、reanalyze 并发上限为 `llm_max_concurrency`；vitest——任务详情 partial 展示。
 
