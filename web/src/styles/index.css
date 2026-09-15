@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -12,17 +10,24 @@
   body {
     @apply font-sans text-ink-900 dark:text-ink-100 bg-ink-50 dark:bg-ink-950;
     margin: 0;
+    /* Data-heavy UI: aligned digits in tables, stats and timestamps. */
+    font-variant-numeric: tabular-nums;
   }
 
   #root {
     min-height: 100vh;
   }
+
+  /* One consistent keyboard focus treatment across the whole app. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent-500/50 ring-offset-1 ring-offset-transparent;
+  }
 }
 
 @layer components {
-  /* Flat card: hairline border, small radius, single soft shadow. */
+  /* Card: xl radius, hairline border, layered soft shadow (Dub/Tremor-style). */
   .card {
-    @apply bg-white dark:bg-ink-925 border border-ink-200 dark:border-ink-800 rounded-lg shadow-card;
+    @apply bg-white dark:bg-ink-925 border border-ink-200/70 dark:border-ink-800 rounded-xl shadow-card;
   }
 
   .card-hover {
@@ -39,6 +44,11 @@
 
   .card-subtitle {
     @apply text-xs text-ink-500 dark:text-ink-400;
+  }
+
+  /* Micro section label (sidebar groups, table headers). */
+  .section-label {
+    @apply text-2xs font-semibold uppercase tracking-[0.08em] text-ink-400 dark:text-ink-500 select-none;
   }
 
   /* Forms */
@@ -63,19 +73,24 @@
   .btn {
     @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2
            text-sm font-medium select-none whitespace-nowrap
-           transition-colors duration-100
+           transition-all duration-100
            focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50
+           active:scale-[0.98]
            disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-primary {
-    @apply btn bg-accent-600 text-white hover:bg-accent-700 active:bg-accent-800 shadow-sm;
+    @apply btn text-white shadow-sm shadow-accent-600/25
+           bg-gradient-to-b from-accent-500 to-accent-600
+           hover:from-accent-500 hover:to-accent-700
+           active:from-accent-600 active:to-accent-800
+           ring-1 ring-inset ring-white/25;
   }
 
   .btn-secondary {
     @apply btn border border-ink-300 dark:border-ink-700
            bg-white dark:bg-ink-900 text-ink-700 dark:text-ink-200
-           hover:bg-ink-100 dark:hover:bg-ink-800;
+           hover:bg-ink-100 dark:hover:bg-ink-800 active:bg-ink-200/70 dark:active:bg-ink-800;
   }
 
   .btn-ghost {
@@ -95,6 +110,15 @@
     @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-medium leading-4;
   }
 
+  /* Keyboard shortcut hint */
+  .kbd {
+    @apply inline-flex items-center justify-center min-w-[18px] h-[18px] px-1
+           rounded border border-ink-300 dark:border-ink-700
+           bg-ink-50 dark:bg-ink-900
+           font-mono text-[10px] font-medium text-ink-500 dark:text-ink-400
+           shadow-[0_1px_0_rgba(16,24,28,0.08)];
+  }
+
   /* Data tables */
   .table-shell {
     @apply w-full text-sm;
@@ -111,6 +135,9 @@
   }
   .table-shell tbody tr {
     @apply hover:bg-ink-50 dark:hover:bg-ink-900/50 transition-colors;
+  }
+  .table-shell tbody tr:last-child td {
+    @apply border-b-0;
   }
 
   .code-block {
@@ -134,7 +161,7 @@
     @apply dot bg-ink-300 dark:bg-ink-600;
   }
   .dot-run {
-    @apply dot bg-accent-500 animate-pulse;
+    @apply dot bg-accent-500 animate-blink-soft;
   }
 }
 
@@ -144,26 +171,141 @@
   }
 }
 
+/* Respect users who opt out of motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Radix Dialog (Modal) enter/exit — opacity + 2px rise only. Functional
+ * motion: nothing bounces, nothing scales.
+ * ------------------------------------------------------------------------- */
+.dialog-overlay[data-state='open'] {
+  animation: fadeIn 0.15s ease-out;
+}
+.dialog-overlay[data-state='closed'] {
+  animation: fadeOut 0.12s ease-in;
+}
+.dialog-content[data-state='open'] {
+  animation: rise 0.18s ease-out;
+}
+.dialog-content[data-state='closed'] {
+  animation: fadeOut 0.12s ease-in;
+}
+
+/* Right-hand drawer slide-over */
+.drawer-content[data-state='open'] {
+  animation: drawerIn 0.22s cubic-bezier(0.32, 0.72, 0.24, 1);
+}
+.drawer-content[data-state='closed'] {
+  animation: drawerOut 0.15s ease-in;
+}
+@keyframes drawerIn {
+  from {
+    transform: translateX(64px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes drawerOut {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(48px);
+    opacity: 0;
+  }
+}
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Command palette (cmdk). Dark ink surface, keyboard-first layout.
+ * ------------------------------------------------------------------------- */
+.cmdk-overlay {
+  @apply fixed inset-0 z-[70] bg-ink-950/45;
+}
+
+.cmdk-container {
+  @apply fixed left-1/2 top-[12vh] z-[80] w-full max-w-lg -translate-x-1/2
+         card shadow-pop overflow-hidden outline-none;
+  animation: cmdkIn 0.18s cubic-bezier(0.32, 0.72, 0.24, 1);
+}
+
+@keyframes cmdkIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.cmdk-input {
+  @apply w-full border-0 border-b border-ink-200 dark:border-ink-800
+         bg-transparent px-4 py-3 text-sm text-ink-900 dark:text-ink-100
+         placeholder:text-ink-400 dark:placeholder:text-ink-600
+         focus:outline-none focus:ring-0;
+}
+
+/* cmdk renders group headings as [cmdk-group-heading] elements. */
+.cmdk-container [cmdk-group-heading] {
+  @apply section-label px-4 pt-3 pb-1;
+}
+
+.cmdk-item {
+  @apply mx-2 flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2
+         text-sm text-ink-700 dark:text-ink-300
+         data-[selected=true]:bg-accent-50 dark:data-[selected=true]:bg-accent-500/10
+         data-[selected=true]:text-accent-800 dark:data-[selected=true]:text-accent-200
+         data-[disabled=true]:opacity-50;
+}
+
+.cmdk-empty {
+  @apply px-4 py-8 text-center text-xs text-ink-400 dark:text-ink-500;
+}
+
+/* ---------------------------------------------------------------------------
+ * Scrollbars: thin, neutral, out of the way.
+ * ------------------------------------------------------------------------- */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(107, 127, 133, 0.35);
+  background: rgba(107, 127, 133, 0.3);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(107, 127, 133, 0.55);
+  background: rgba(107, 127, 133, 0.5);
   background-clip: content-box;
   border: 2px solid transparent;
 }
 .dark ::-webkit-scrollbar-thumb {
-  background: rgba(107, 127, 133, 0.25);
+  background: rgba(107, 127, 133, 0.22);
   background-clip: content-box;
   border: 2px solid transparent;
 }

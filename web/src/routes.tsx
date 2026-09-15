@@ -23,6 +23,7 @@ import NotFound from './pages/NotFound';
 import { LoadingBlock } from './components/ui/Spinner';
 
 const WeChatGraph = lazy(() => import('./pages/WeChatGraph'));
+const Tools = lazy(() => import('./pages/Tools'));
 
 const Suspended = ({ children }: { children: ReactNode }) => (
   <Suspense fallback={<LoadingBlock />}>{children}</Suspense>
@@ -77,6 +78,14 @@ export const appRoutes = [
       { path: 'search', element: <SearchPage /> },
       { path: 'statistics', element: <Statistics /> },
       { path: 'settings', element: <Settings /> },
+      {
+        path: 'tools',
+        element: (
+          <Suspended>
+            <Tools />
+          </Suspended>
+        ),
+      },
       { path: 'knowledge-graph', element: <KnowledgeGraph /> },
       { path: 'case-intelligence', element: <CaseIntelligence /> },
       { path: 'analysis-center', element: <AnalysisCenter /> },

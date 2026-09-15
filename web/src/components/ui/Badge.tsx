@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { cx } from '../../lib/utils';
+import { cn } from '../../lib/utils';
 
 type Tone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'info';
 
@@ -12,8 +12,30 @@ const toneClass: Record<Tone, string> = {
   info: 'bg-sky-50 text-sky-700 border border-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/20',
 };
 
-export function Badge({ tone = 'neutral', children, className }: { tone?: Tone; children: ReactNode; className?: string }) {
-  return <span className={cx('chip', toneClass[tone], className)}>{children}</span>;
+const dotClass: Record<Tone, string> = {
+  neutral: 'bg-ink-400 dark:bg-ink-500',
+  accent: 'bg-accent-500',
+  success: 'bg-emerald-500',
+  warning: 'bg-amber-400',
+  danger: 'bg-rose-500',
+  info: 'bg-sky-500',
+};
+
+interface BadgeProps {
+  tone?: Tone;
+  /** Prepends a status dot — for machine states where the pill alone is noise. */
+  dot?: boolean;
+  children: ReactNode;
+  className?: string;
+}
+
+export function Badge({ tone = 'neutral', dot = false, children, className }: BadgeProps) {
+  return (
+    <span className={cn('chip', toneClass[tone], className)}>
+      {dot && <span aria-hidden className={cn('h-1.5 w-1.5 rounded-full shrink-0', dotClass[tone])} />}
+      {children}
+    </span>
+  );
 }
 
 export default Badge;

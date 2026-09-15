@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { useAppSelector } from './store';
 import Layout from './components/layout/Layout';
 import ErrorBoundary from './components/ui/ErrorBoundary';
+import PageErrorBoundary from './components/common/PageErrorBoundary';
 
 export default function App() {
   const theme = useAppSelector((state) => state.settings.theme);
@@ -14,7 +15,9 @@ export default function App() {
   return (
     <ErrorBoundary>
       <Layout>
-        <Outlet />
+        <PageErrorBoundary>
+          <Outlet />
+        </PageErrorBoundary>
       </Layout>
     </ErrorBoundary>
   );

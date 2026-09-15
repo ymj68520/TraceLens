@@ -22,16 +22,35 @@ import type { FileRecord } from '../types/api';
 import { useToast } from '../components/ui/Toast';
 import EmptyState from '../components/ui/EmptyState';
 import Card from '../components/ui/Card';
+import { downloadCSV } from '../lib/exportUtils';
+import { emitAppEvent } from '../lib/appEvents';
+import { basename, errorMessage, formatBytes, formatDateTime } from '../lib/utils';
+import { useUrlState } from '../hooks/useUrlState';
+import { useTranslation } from '../hooks/useTranslation';
+import { FolderOpen } from 'lucide-react';
+import { PageHeader } from '../components/ui/PageScaffold';
 import FilesHeader from '../components/files/FilesHeader';
 import LargestFilesTab from '../components/files/LargestFilesTab';
 import ExtensionsTab from '../components/files/ExtensionsTab';
 import ExtractionPanel from '../components/files/ExtractionPanel';
 import OfficePreviewTab from '../components/files/OfficePreviewTab';
 import ReanalyzeModal from '../components/files/ReanalyzeModal';
-import { FolderOpen } from 'lucide-react';
-import { errorMessage } from '../lib/utils';
+import FileDetailDrawer from '../components/files/FileDetailDrawer';
+import {
+  formatSortSpec,
+  getFileExt,
+  getFileMtimeMs,
+  getFilePath,
+  getFileSize,
+  isDeletedFile,
+  parseSortSpec,
+  type FileDensity,
+  type FileSortKey,
+} from '../components/files/fileUtils';
 
 export type FilesTab = 'largest' | 'extensions' | 'office' | 'extract';
+
+const FILES_TABS: FilesTab[] = ['largest', 'extensions', 'office', 'extract'];
 
 export interface LlmDescription {
   summary?: string;
@@ -49,6 +68,7 @@ export default function Files() {
   const taskId = searchParams.get('task_id');
   const dispatch = useAppDispatch();
   const toast = useToast();
+  const { t } = useTranslation();
 
   const { tasks } = useAppSelector((state) => state.tasks);
   const { activeBatchJobs } = useAppSelector((state) => state.intelligence);
@@ -62,16 +82,28 @@ export default function Files() {
     }
   }, [taskId, tasks.length, dispatch]);
 
+  // View state persisted to the URL so table views survive reloads and
+  // can be shared as links (falling back to sensible defaults).
+  const [tabParam, setTabParam] = useUrlState('tab', 'largest');
+  const [sortParam, setSortParam] = useUrlState('sort', 'size-desc');
+  const [densityParam, setDensityParam] = useUrlState('density', 'comfortable');
+  const [filterExtension, setFilterExtension] = useUrlState('ext', '');
+  const [filterMinSize, setFilterMinSize] = useUrlState('min', '');
+  const [filterMaxSize, setFilterMaxSize] = useUrlState('max', '');
+
+  const activeTab: FilesTab = (FILES_TABS as string[]).includes(tabParam)
+    ? (tabParam as FilesTab)
+    : 'largest';
+  const { key: sortKey, dir: sortDir } = parseSortSpec(sortParam);
+  const density: FileDensity = densityParam === 'compact' ? 'compact' : 'comfortable';
+
   const [largestFiles, setLargestFiles] = useState<FileRecord[]>([]);
   const [extensionAnalysis, setExtensionAnalysis] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<FilesTab>('largest');
 
+  const [detailFile, setDetailFile] = useState<FileRecord | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [filterExtension, setFilterExtension] = useState('');
-  const [filterMinSize, setFilterMinSize] = useState('');
-  const [filterMaxSize, setFilterMaxSize] = useState('');
 
   const [llmStatus, setLlmStatus] = useState<LlmServiceStatus>(null);
   const [llmAnalyzingFiles, setLlmAnalyzingFiles] = useState<Set<string>>(new Set());
@@ -97,7 +129,7 @@ export default function Files() {
               updateBatchProgress({
                 taskId: taskId!,
                 progress: Math.round((processed / total) * 100),
-                message: (status.message as string) || `正在分析: ${processed}/${total}`,
+                message: (status.message as string) || t('files.batch.analyzing').replace('{processed}', String(processed)).replace('{total}', String(total)),
               }),
             );
           },
@@ -120,17 +152,22 @@ export default function Files() {
           dispatch(setRefreshFlag({ type: 'files' }));
         }
 
-        dispatch(updateBatchProgress({ taskId: taskId!, status: 'completed', message: '批量分析完成' }));
+        dispatch(updateBatchProgress({ taskId: taskId!, status: 'completed', message: t('files.batch.completed') }));
+        emitAppEvent({
+          kind: 'success',
+          title: t('files.batch.event_title'),
+          detail: t('files.batch.event_detail').replace('{n}', String(results?.length ?? 0)),
+        });
         setTimeout(() => dispatch(clearBatchJob({ taskId: taskId! })), 10000);
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
         console.error('Batch polling failed:', err);
         dispatch(
-          updateBatchProgress({ taskId: taskId!, status: 'failed', message: `失败: ${errorMessage(err)}` }),
+          updateBatchProgress({ taskId: taskId!, status: 'failed', message: t('files.batch.failed').replace('{error}', errorMessage(err)) }),
         );
       }
     },
-    [taskId, dispatch],
+    [taskId, dispatch, t],
   );
 
   // Auto-resume polling for a batch job already running when the page mounts.
@@ -191,10 +228,14 @@ export default function Files() {
         setLlmResults((prev) => ({ ...descMap, ...prev }));
       }
     } catch (err) {
-      setError(errorMessage(err));
+      const msg = errorMessage(err);
+      setError(msg);
+      toast.error(t('files.error.load_failed').replace('{error}', msg));
     } finally {
       setLoading(false);
     }
+    // toast identity is stable enough; keeping it out avoids reload loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
   useEffect(() => {
@@ -211,6 +252,85 @@ export default function Files() {
       return true;
     });
   }, [largestFiles, filterExtension, filterMinSize, filterMaxSize]);
+
+  const sortedFiles = useMemo(() => {
+    const rows = [...filteredFiles];
+    const dir = sortDir === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+      switch (sortKey) {
+        case 'name':
+          return (
+            dir *
+            basename(getFilePath(a)).localeCompare(basename(getFilePath(b)), undefined, {
+              numeric: true,
+              sensitivity: 'base',
+            })
+          );
+        case 'size':
+          return dir * (getFileSize(a) - getFileSize(b));
+        case 'mtime':
+          return dir * (getFileMtimeMs(a) - getFileMtimeMs(b));
+        default:
+          return 0;
+      }
+    });
+    return rows;
+  }, [filteredFiles, sortKey, sortDir]);
+
+  const handleSortChange = (key: FileSortKey) => {
+    if (key === sortKey) {
+      setSortParam(formatSortSpec(key, sortDir === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortParam(formatSortSpec(key, key === 'name' ? 'asc' : 'desc'));
+    }
+  };
+
+  const clearFilters = () => {
+    setFilterExtension('');
+    setFilterMinSize('');
+    setFilterMaxSize('');
+  };
+
+  const handleExportCsv = () => {
+    if (!taskId) return;
+    if (sortedFiles.length === 0) {
+      toast.info(t('files.export.empty'));
+      return;
+    }
+    const rows = sortedFiles.map((f) => {
+      const p = getFilePath(f);
+      const mtimeMs = getFileMtimeMs(f);
+      return {
+        name: basename(p),
+        path: p,
+        size_bytes: getFileSize(f),
+        size_human: formatBytes(getFileSize(f)),
+        extension: getFileExt(p),
+        type: (f.file_type as string) ?? '',
+        md5: (f.md5 as string) ?? '',
+        sha256: (f.sha256 as string) ?? '',
+        modified_time: mtimeMs ? formatDateTime(mtimeMs) : '',
+        deleted: isDeletedFile(f) ? t('common.yes') : t('common.no'),
+      };
+    });
+    downloadCSV(
+      rows,
+      `files-${taskId.slice(0, 8)}.csv`,
+      [
+        { key: 'name', label: t('files.csv.name') },
+        { key: 'path', label: t('files.csv.path') },
+        { key: 'size_bytes', label: t('files.csv.size_bytes') },
+        { key: 'size_human', label: t('files.csv.size_human') },
+        { key: 'extension', label: t('files.csv.extension') },
+        { key: 'type', label: t('files.csv.type') },
+        { key: 'md5', label: 'MD5' },
+        { key: 'sha256', label: 'SHA-256' },
+        { key: 'modified_time', label: t('files.csv.modified_time') },
+        { key: 'deleted', label: t('files.csv.deleted') },
+      ],
+    );
+    toast.success(t('files.export.success').replace('{n}', String(rows.length)));
+  };
 
   const toggleFile = (path: string) =>
     setSelectedFiles((prev) => {
@@ -241,10 +361,10 @@ export default function Files() {
           },
         }));
         dispatch(setRefreshFlag({ type: 'files' }));
-        toast.success('AI 分析完成');
+        toast.success(t('files.toast.analyze_done'));
       }
     } catch (err) {
-      toast.error(`分析失败：${errorMessage(err)}`);
+      toast.error(t('files.toast.analyze_failed').replace('{error}', errorMessage(err)));
     } finally {
       setLlmAnalyzingFiles((prev) => {
         const next = new Set(prev);
@@ -263,10 +383,10 @@ export default function Files() {
         filePath,
         filesDbPath: (currentTask as { output_files_db?: string })?.output_files_db ?? null,
       });
-      toast.success('二进制分析完成');
+      toast.success(t('files.toast.dll_done'));
       void loadFiles();
     } catch (err) {
-      toast.error(`二进制分析失败：${errorMessage(err)}`);
+      toast.error(t('files.toast.dll_failed').replace('{error}', errorMessage(err)));
     } finally {
       setDllAnalyzingFiles((prev) => {
         const next = new Set(prev);
@@ -284,10 +404,10 @@ export default function Files() {
         modelType: 'text',
       })) as { job_id: string };
       dispatch(setBatchJob({ taskId, jobId: result.job_id }));
-      toast.success(`已启动批量分析（${selectedFiles.size} 个文件）`);
+      toast.success(t('files.toast.batch_started').replace('{n}', String(selectedFiles.size)));
       void startBatchPolling(result.job_id);
     } catch (err) {
-      toast.error(`启动失败：${errorMessage(err)}`);
+      toast.error(t('files.toast.batch_start_failed').replace('{error}', errorMessage(err)));
     }
   };
 
@@ -296,9 +416,9 @@ export default function Files() {
     setGraphitiIngesting(true);
     try {
       await ingestTaskData(taskId);
-      toast.success('知识图谱导入已启动');
+      toast.success(t('files.toast.graphiti_started'));
     } catch (err) {
-      toast.error(`导入失败：${errorMessage(err)}`);
+      toast.error(t('files.toast.graphiti_failed').replace('{error}', errorMessage(err)));
     } finally {
       setGraphitiIngesting(false);
     }
@@ -315,10 +435,10 @@ export default function Files() {
         (currentTask as { output_files_db?: string })?.output_files_db ?? '',
         currentTask?.case_description ?? '',
       );
-      toast.success('二次分析已启动');
+      toast.success(t('files.toast.reanalyze_started'));
       setShowReanalyzeModal(false);
     } catch (err) {
-      toast.error(`二次分析失败：${errorMessage(err)}`);
+      toast.error(t('files.toast.reanalyze_failed').replace('{error}', errorMessage(err)));
     } finally {
       setReanalyzing(false);
     }
@@ -329,18 +449,24 @@ export default function Files() {
       <div className="card">
         <EmptyState
           icon={<FolderOpen size={36} />}
-          title="未选择任务"
-          description="请从页面顶部的任务选择器中选择一个已完成的分析任务。"
+          title={t('files.empty.no_task.title')}
+          description={t('files.empty.no_task.desc')}
         />
       </div>
     );
   }
 
+  const detailPath = detailFile ? ((detailFile.path as string) || detailFile.file_path) ?? '' : '';
+  const detailDesc = detailFile
+    ? llmResults[detailPath] ?? llmResults[detailPath.split('/').pop() ?? '']
+    : undefined;
+
   return (
     <div className="space-y-4 max-w-7xl">
+      <PageHeader icon={ FolderOpen } tone="emerald" title={t('nav.files')} subtitle={t('files.subtitle')} />
       <FilesHeader
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={setTabParam}
         selectedCount={selectedFiles.size}
         isBatchRunning={Boolean(isBatchRunning)}
         batchMessage={activeBatch?.message}
@@ -356,22 +482,32 @@ export default function Files() {
       {activeTab === 'largest' && (
         <Card padded={false}>
           <LargestFilesTab
-            files={filteredFiles}
+            files={sortedFiles}
+            allFiles={largestFiles}
             loading={loading}
             error={error}
+            density={density}
+            sortKey={sortKey}
+            sortDir={sortDir}
             selectedFiles={selectedFiles}
             llmResults={llmResults}
             llmAnalyzingFiles={llmAnalyzingFiles}
             dllAnalyzingFiles={dllAnalyzingFiles}
-            onToggleFile={toggleFile}
-            onAnalyzeFile={handleAnalyzeFile}
-            onAnalyzeDll={handleAnalyzeDll}
             filterExtension={filterExtension}
             filterMinSize={filterMinSize}
             filterMaxSize={filterMaxSize}
+            onSortChange={handleSortChange}
+            onDensityChange={setDensityParam}
             onFilterExtension={setFilterExtension}
             onFilterMinSize={setFilterMinSize}
             onFilterMaxSize={setFilterMaxSize}
+            onClearFilters={clearFilters}
+            onToggleFile={toggleFile}
+            onAnalyzeFile={handleAnalyzeFile}
+            onAnalyzeDll={handleAnalyzeDll}
+            onOpenFile={setDetailFile}
+            onRetry={() => void loadFiles()}
+            onExportCsv={handleExportCsv}
           />
         </Card>
       )}
@@ -390,6 +526,16 @@ export default function Files() {
           onClose={() => setShowReanalyzeModal(false)}
         />
       )}
+
+      <FileDetailDrawer
+        file={detailFile}
+        taskId={taskId}
+        llmResult={detailDesc}
+        llmAvailable={llmStatus?.status === 'available' || llmStatus?.status === 'healthy'}
+        analyzing={detailPath !== '' && llmAnalyzingFiles.has(detailPath)}
+        onAnalyze={handleAnalyzeFile}
+        onClose={() => setDetailFile(null)}
+      />
     </div>
   );
 }

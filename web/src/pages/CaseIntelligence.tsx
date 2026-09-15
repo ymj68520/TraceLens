@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import IntelligenceReportReader from '../components/case-intel/IntelligenceReportReader';
@@ -6,6 +6,9 @@ import ForensicReportPage from './ForensicReportPage';
 import Card from '../components/ui/Card';
 import EmptyState from '../components/ui/EmptyState';
 import { cx } from '../lib/utils';
+import { FileText } from 'lucide-react';
+import { PageHeader } from '../components/ui/PageScaffold';
+import { useUrlState } from '../hooks/useUrlState';
 
 /**
  * 证据研判 — report reader page. Two views:
@@ -18,9 +21,8 @@ export default function CaseIntelligence() {
   const urlTaskId = searchParams.get('task_id') || searchParams.get('taskId');
   const activeContextId = caseId || urlTaskId;
 
-  const [reportTab, setReportTab] = useState<'intelligence' | 'forensic'>(
-    () => (searchParams.get('tab') === 'intelligence' ? 'intelligence' : 'forensic'),
-  );
+  // Tab mirrors the URL so views survive reloads and stay shareable.
+  const [reportTab, setReportTab] = useUrlState('tab', 'forensic');
 
   const forensicScopeType = caseId ? ('case' as const) : ('task' as const);
   const forensicScopeId = caseId || urlTaskId;
@@ -38,6 +40,7 @@ export default function CaseIntelligence() {
 
   return (
     <div className="space-y-4 max-w-7xl">
+      <PageHeader icon={ FileText } tone="amber" title="证据研判" subtitle="智能研判结论与证据清单" />
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex rounded-md border border-ink-200 dark:border-ink-700 overflow-hidden">
           {(

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { Clock, Download, RotateCcw } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store';
 import { setRefreshFlag } from '../store/intelligenceSlice';
 import {
@@ -9,22 +10,26 @@ import {
   analyzeEventCluster,
 } from '../services/forensicsService';
 import type { EventCluster } from '../types/api';
-import { LoadingBlock } from '../components/ui/Spinner';
 import EmptyState from '../components/ui/EmptyState';
 import { useToast } from '../components/ui/Toast';
+import { PageHeader, StatStrip, type StatItem } from '../components/ui/PageScaffold';
+import { downloadCSV } from '../lib/exportUtils';
+import { emitAppEvent } from '../lib/appEvents';
+import { formatDateTime } from '../lib/utils';
+import { useUrlState } from '../hooks/useUrlState';
+import { useTranslation } from '../hooks/useTranslation';
 import TimelineFilterBar from '../components/timeline/TimelineFilterBar';
-import DistributionChart from '../components/timeline/DistributionChart';
+import DistributionChart, { type DistributionRow } from '../components/timeline/DistributionChart';
 import ClusterList from '../components/timeline/ClusterList';
-import ClusterDetailDrawer, { type ClusterDetailEvent } from '../components/timeline/ClusterDetailDrawer';
-import { Clock } from 'lucide-react';
-
-export interface DistributionRow {
-  date: string;
-  CREATED: number;
-  MODIFIED: number;
-  DELETED: number;
-  OTHER: number;
-}
+import EventDetailDrawer from '../components/timeline/EventDetailDrawer';
+import {
+  EVENT_TYPE_DOT,
+  clusterIdentity,
+  toUnixMs,
+  typeLabel,
+  type ClusterDetailEvent,
+  type TimelineEventType,
+} from '../components/timeline/eventTypes';
 
 export interface TimelineResponse {
   timeline: EventCluster[];
@@ -56,48 +61,50 @@ export const fromDatetimeLocal = (value: string): number | null => {
   return Number.isNaN(t) ? null : Math.floor(t / 1000);
 };
 
-const clusterIdentity = (cluster: EventCluster) =>
-  JSON.stringify(cluster?.group_descriptor || null);
-
 export default function Timeline() {
   const [searchParams, setSearchParams] = useSearchParams();
   const taskId = searchParams.get('task_id');
   const itemsPerPage = useAppSelector((state) => state.settings.itemsPerPage);
   const dispatch = useAppDispatch();
   const toast = useToast();
+  const { t } = useTranslation();
 
   const currentPage = parseInt(searchParams.get('page') || '1', 10) || 1;
   const pageSize = itemsPerPage || 50;
-  const eventType = searchParams.get('type') || '';
-  const selectedDate = searchParams.get('date') || '';
   const customStart = searchParams.get('start') || '';
   const customEnd = searchParams.get('end') || '';
   const isClustered = searchParams.get('cluster') !== 'false';
-  const bucketParam = searchParams.get('bucket') || '60';
+
+  // Type filter, single-day pick and bucket granularity persist in the URL.
+  const [eventType, setEventType] = useUrlState('type', '');
+  const [selectedDate, setSelectedDate] = useUrlState('date', '');
+  const [bucketParam, setBucketParam] = useUrlState('bucket', '60');
 
   const [timelineData, setTimelineData] = useState<TimelineResponse | null>(null);
   const [distributionData, setDistributionData] = useState<DistributionRow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [selectedCluster, setSelectedCluster] = useState<EventCluster | null>(null);
-  const [clusterDetails, setClusterDetails] = useState<ClusterDetailEvent[]>([]);
-  const [loadingDetails, setLoadingDetails] = useState(false);
-  const [drawerSearch, setDrawerSearch] = useState('');
+  const [selectedEvent, setSelectedEvent] = useState<ClusterDetailEvent | null>(null);
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+  const [eventsByCluster, setEventsByCluster] = useState<Record<string, ClusterDetailEvent[]>>({});
+  const [loadingClusterKeys, setLoadingClusterKeys] = useState<Set<string>>(new Set());
   const [analyzingClusters, setAnalyzingClusters] = useState<Set<string>>(new Set());
 
   const autoAnalyzedSignatureRef = useRef('');
 
   const updateParams = useCallback(
     (newParams: Record<string, string | undefined>) => {
-      const next = new URLSearchParams(searchParams);
-      Object.entries(newParams).forEach(([key, value]) => {
-        if (value === undefined || value === '' || value === null) next.delete(key);
-        else next.set(key, value);
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        Object.entries(newParams).forEach(([key, value]) => {
+          if (value === undefined || value === '') next.delete(key);
+          else next.set(key, value);
+        });
+        return next;
       });
-      setSearchParams(next);
     },
-    [searchParams, setSearchParams],
+    [setSearchParams],
   );
 
   const effectiveBucket = useMemo(() => {
@@ -143,10 +150,15 @@ export default function Timeline() {
       setTimelineData(data);
     } catch (err) {
       console.error('Failed to fetch timeline:', err);
-      setError((err as Error).message || '时间线加载失败');
+      const message = (err as Error).message || t('timeline.error.fallback');
+      setError(message);
+      toast.error(t('timeline.error.load_failed').replace('{error}', message));
     } finally {
       setLoading(false);
     }
+    // toast (a context value) is intentionally omitted: its unstable identity
+    // would recreate this callback and refetch on unrelated re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId, currentPage, pageSize, eventType, selectedDate, customStart, customEnd, isClustered, effectiveBucket]);
 
   useEffect(() => {
@@ -174,6 +186,14 @@ export default function Timeline() {
   useEffect(() => {
     void fetchTimeline();
   }, [fetchTimeline]);
+
+  // Collapse expanded clusters and drop cached member events whenever the
+  // query context changes (task, filters, granularity, page).
+  useEffect(() => {
+    setExpandedKeys(new Set());
+    setEventsByCluster({});
+    setLoadingClusterKeys(new Set());
+  }, [taskId, eventType, selectedDate, customStart, customEnd, isClustered, effectiveBucket, currentPage]);
 
   // Auto-analyze visible clusters once per unique query+cluster-set signature.
   // The signature survives post-analysis refreshes (llm_summary doesn't change
@@ -224,47 +244,58 @@ export default function Timeline() {
     return () => clearTimeout(timer);
   }, [taskId, timelineData, currentPage, eventType, selectedDate, customStart, customEnd, isClustered, effectiveBucket, fetchTimeline, dispatch]);
 
-  const fetchClusterDetails = useCallback(
-    async (cluster: EventCluster, search: string) => {
-      setLoadingDetails(true);
-      try {
-        const descriptor = cluster.group_descriptor;
-        if (!descriptor) throw new Error('Timeline group descriptor missing');
-        const data = (await getTimelineDetails(taskId!, {
-          bucket_index: descriptor.bucket_index,
-          type: descriptor.event_type,
-          dir: descriptor.parent_directory,
-          search: search || undefined,
-          bucket: descriptor.bucket_seconds,
-          limit: 5000,
-        })) as { events?: ClusterDetailEvent[] };
-        setClusterDetails(data.events || []);
-      } catch (err) {
-        console.error('Failed to fetch cluster details', err);
-      } finally {
-        setLoadingDetails(false);
+  const loadClusterEvents = async (cluster: EventCluster) => {
+    if (!taskId) return;
+    const descriptor = cluster.group_descriptor;
+    if (!descriptor) return;
+    const key = clusterIdentity(cluster);
+    setLoadingClusterKeys((prev) => new Set(prev).add(key));
+    try {
+      const data = (await getTimelineDetails(taskId, {
+        bucket_index: descriptor.bucket_index,
+        type: descriptor.event_type,
+        dir: descriptor.parent_directory,
+        bucket: descriptor.bucket_seconds,
+        limit: 5000,
+      })) as { events?: ClusterDetailEvent[] };
+      const events = data.events ?? [];
+      setEventsByCluster((prev) => ({ ...prev, [key]: events }));
+      if (events.length === 0) {
+        toast.info(t('timeline.cluster.empty_toast'));
       }
-    },
-    [taskId],
-  );
-
-  const handleOpenCluster = (cluster: EventCluster) => {
-    setSelectedCluster(cluster);
-    setDrawerSearch('');
-    void fetchClusterDetails(cluster, '');
+    } catch (err) {
+      console.error('Failed to fetch cluster details', err);
+      toast.error(t('timeline.cluster.load_failed'));
+      // Collapse so the next click retries instead of showing a stale spinner.
+      setExpandedKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    } finally {
+      setLoadingClusterKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
   };
 
-  useEffect(() => {
-    if (!selectedCluster) return;
-    const timer = setTimeout(() => {
-      void fetchClusterDetails(selectedCluster, drawerSearch);
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [drawerSearch, selectedCluster, fetchClusterDetails]);
+  const handleToggleCluster = (cluster: EventCluster) => {
+    const key = clusterIdentity(cluster);
+    const willExpand = !expandedKeys.has(key);
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    if (willExpand && !eventsByCluster[key]) void loadClusterEvents(cluster);
+  };
 
   const handleAnalyzeCluster = async (cluster: EventCluster) => {
     if (!taskId) {
-      toast.error('未选择任务');
+      toast.error(t('timeline.error.no_task'));
       return;
     }
     const key = clusterIdentity(cluster);
@@ -274,7 +305,7 @@ export default function Timeline() {
       void fetchTimeline();
       dispatch(setRefreshFlag({ type: 'clusters' }));
     } catch (e) {
-      toast.error(`分析失败：${(e as Error).message}`);
+      toast.error(t('timeline.error.analyze_failed').replace('{error}', (e as Error).message));
     } finally {
       setAnalyzingClusters((prev) => {
         const next = new Set(prev);
@@ -284,20 +315,142 @@ export default function Timeline() {
     }
   };
 
+  // ── Type facet counts (task-wide, from the distribution endpoint) ──────────
+  const typeCounts = useMemo(() => {
+    const counts: Record<TimelineEventType, number> = { CREATED: 0, MODIFIED: 0, DELETED: 0, OTHER: 0 };
+    (distributionData ?? []).forEach((row) => {
+      counts.CREATED += row.CREATED;
+      counts.MODIFIED += row.MODIFIED;
+      counts.DELETED += row.DELETED;
+      counts.OTHER += row.OTHER;
+    });
+    return counts;
+  }, [distributionData]);
+  const totalCount = typeCounts.CREATED + typeCounts.MODIFIED + typeCounts.DELETED + typeCounts.OTHER;
+
+  const toggleTypeFilter = (type: string) => {
+    setEventType(eventType === type ? '' : type);
+    updateParams({ page: '1' });
+  };
+
+  const typeStats: StatItem[] = [
+    {
+      label: t('common.all'),
+      value: totalCount,
+      active: !eventType,
+      onClick: () => toggleTypeFilter(''),
+    },
+    {
+      label: t('timeline.filter.created'),
+      value: typeCounts.CREATED,
+      dotClass: EVENT_TYPE_DOT.CREATED,
+      active: eventType === 'CREATED',
+      onClick: () => toggleTypeFilter('CREATED'),
+    },
+    {
+      label: t('timeline.filter.modified'),
+      value: typeCounts.MODIFIED,
+      dotClass: EVENT_TYPE_DOT.MODIFIED,
+      active: eventType === 'MODIFIED',
+      onClick: () => toggleTypeFilter('MODIFIED'),
+    },
+    {
+      label: t('timeline.filter.deleted'),
+      value: typeCounts.DELETED,
+      dotClass: EVENT_TYPE_DOT.DELETED,
+      active: eventType === 'DELETED',
+      onClick: () => toggleTypeFilter('DELETED'),
+    },
+    {
+      label: t('timeline.chip.other'),
+      value: typeCounts.OTHER,
+      dotClass: EVENT_TYPE_DOT.OTHER,
+      active: eventType === 'OTHER',
+      onClick: () => toggleTypeFilter('OTHER'),
+    },
+  ];
+
+  // ── CSV export of the current filtered clusters ────────────────────────────
+  const clusters = timelineData?.timeline ?? [];
+  const handleExportCsv = () => {
+    if (clusters.length === 0) {
+      toast.info(t('timeline.export.empty'));
+      return;
+    }
+    const rows = clusters.map((c) => ({
+      event_type: typeLabel(c.group_descriptor?.event_type),
+      count: c.cluster_count ?? c.event_count ?? 1,
+      first_seen: formatDateTime(toUnixMs(c.first_seen)),
+      last_seen: formatDateTime(toUnixMs(c.last_seen)),
+      directory: c.group_descriptor?.parent_directory ?? '',
+      sample_file: c.sample_files?.[0] ? String(c.sample_files[0]) : '',
+      summary: c.llm_summary ?? '',
+    }));
+    downloadCSV(rows, `timeline-${(taskId ?? '').slice(0, 8)}.csv`, [
+      { key: 'event_type', label: t('timeline.csv.event_type') },
+      { key: 'count', label: t('timeline.csv.count') },
+      { key: 'first_seen', label: t('timeline.csv.first_seen') },
+      { key: 'last_seen', label: t('timeline.csv.last_seen') },
+      { key: 'directory', label: t('timeline.csv.directory') },
+      { key: 'sample_file', label: t('timeline.csv.sample_file') },
+      { key: 'summary', label: t('timeline.csv.summary') },
+    ]);
+    toast.success(t('timeline.export.success').replace('{n}', String(rows.length)));
+    emitAppEvent({
+      kind: 'info',
+      title: t('timeline.export.event_title'),
+      detail: t('timeline.export.event_detail').replace('{n}', String(rows.length)),
+    });
+  };
+
+  const resetAllFilters = () => {
+    setEventType('');
+    setSelectedDate('');
+    setBucketParam('60');
+    updateParams({ start: '', end: '', cluster: undefined, page: '' });
+  };
+
   if (!taskId) {
     return (
-      <div className="card">
-        <EmptyState
-          icon={<Clock size={36} />}
-          title="未选择任务"
-          description="请从页面顶部的任务选择器中选择一个已完成的分析任务。"
-        />
+      <div className="space-y-4 max-w-7xl">
+        <PageHeader icon={Clock} tone="sky" title={t('nav.timeline')} subtitle={t('timeline.subtitle')} />
+        <div className="card">
+          <EmptyState
+            icon={<Clock size={36} />}
+            title={t('timeline.empty.no_task.title')}
+            description={t('timeline.empty.no_task.desc')}
+          />
+        </div>
       </div>
     );
   }
 
+  const hasActiveFilters = Boolean(eventType || selectedDate || customStart || customEnd);
+
   return (
     <div className="space-y-4 max-w-7xl">
+      <PageHeader
+        icon={Clock}
+        tone="sky"
+        title={t('nav.timeline')}
+        subtitle={t('timeline.subtitle')}
+        actions={
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            onClick={handleExportCsv}
+            disabled={loading || clusters.length === 0}
+          >
+            <Download size={14} />
+            {t('timeline.export_csv')}
+          </button>
+        }
+      />
+
+      {distributionData !== null && (
+        <StatStrip stats={typeStats} />
+      )}
+
       <TimelineFilterBar
         eventType={eventType}
         selectedDate={selectedDate}
@@ -306,43 +459,66 @@ export default function Timeline() {
         isClustered={isClustered}
         bucketParam={bucketParam}
         effectiveBucket={effectiveBucket}
-        onChange={updateParams}
+        onEventTypeChange={(v) => {
+          setEventType(v);
+          updateParams({ page: '1' });
+        }}
+        onDateChange={(v) => {
+          setSelectedDate(v);
+          updateParams({ start: '', end: '', page: '1' });
+        }}
+        onStartChange={(v) => {
+          updateParams({ start: fromDatetimeLocal(v)?.toString(), date: '', page: '1' });
+        }}
+        onEndChange={(v) => {
+          updateParams({ end: fromDatetimeLocal(v)?.toString(), date: '', page: '1' });
+        }}
+        onClusteredChange={(v) => updateParams({ cluster: v ? undefined : 'false', page: '1' })}
+        onBucketChange={(v) => {
+          setBucketParam(v);
+          updateParams({ page: '1' });
+        }}
+        onReset={resetAllFilters}
       />
 
       {distributionData && distributionData.length > 0 && (
         <DistributionChart data={distributionData} />
       )}
 
-      {loading && !timelineData ? (
+      {error ? (
         <div className="card">
-          <LoadingBlock text="正在获取取证证据…" />
-        </div>
-      ) : error ? (
-        <div className="card">
-          <EmptyState title="加载失败" description={error} />
+          <EmptyState
+            title={t('timeline.error.load_title')}
+            description={error}
+            action={
+              <button type="button" className="btn-secondary btn-sm" onClick={() => void fetchTimeline()}>
+                <RotateCcw size={13} />
+                {t('common.retry')}
+              </button>
+            }
+          />
         </div>
       ) : (
         <ClusterList
-          clusters={timelineData?.timeline ?? []}
+          clusters={clusters}
           total={timelineData?.total ?? 0}
           currentPage={currentPage}
           pageSize={pageSize}
           loading={loading}
           analyzingClusters={analyzingClusters}
+          hasActiveFilters={hasActiveFilters}
+          expandedKeys={expandedKeys}
+          eventsByCluster={eventsByCluster}
+          loadingClusterKeys={loadingClusterKeys}
           onPageChange={(page) => updateParams({ page: String(page) })}
-          onOpenCluster={handleOpenCluster}
+          onToggleCluster={handleToggleCluster}
+          onOpenEvent={setSelectedEvent}
           onAnalyzeCluster={handleAnalyzeCluster}
+          onResetFilters={resetAllFilters}
         />
       )}
 
-      <ClusterDetailDrawer
-        cluster={selectedCluster}
-        events={clusterDetails}
-        loading={loadingDetails}
-        search={drawerSearch}
-        onSearchChange={setDrawerSearch}
-        onClose={() => setSelectedCluster(null)}
-      />
+      <EventDetailDrawer event={selectedEvent} onClose={() => setSelectedEvent(null)} />
     </div>
   );
 }

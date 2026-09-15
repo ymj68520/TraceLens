@@ -5,20 +5,20 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Restrained forensic-teal accent. Used for links, active states and
+        // Bright forensic teal-cyan. Used for links, active states and
         // primary actions only — everything else stays neutral.
         accent: {
-          50: '#effaf9',
-          100: '#d7f2f0',
-          200: '#b3e5e2',
-          300: '#82d1cd',
-          400: '#4db6b1',
-          500: '#2e9b96',
-          600: '#227d7a',
-          700: '#1f6563',
-          800: '#1d5250',
-          900: '#1c4443',
-          950: '#0b2626',
+          50: '#effcfa',
+          100: '#d5f7f2',
+          200: '#aeede7',
+          300: '#79dfd8',
+          400: '#3cc7c4',
+          500: '#17aaa8',
+          600: '#0d8a89',
+          700: '#0f6f70',
+          800: '#11595b',
+          900: '#124a4c',
+          950: '#062a2c',
         },
         // Cool ink neutrals with a slight green cast to pair with the accent.
         ink: {
@@ -37,17 +37,32 @@ export default {
         },
       },
       fontFamily: {
+        // Inter Variable + JetBrains Mono are bundled locally via fontsource
+        // (see main.tsx) — no webfont fetches on air-gapped intranets.
+        // CJK text falls through to the platform's system fonts.
         sans: [
+          'Inter Variable',
           'Inter',
           'ui-sans-serif',
           'system-ui',
           '-apple-system',
           'Segoe UI',
           'PingFang SC',
+          'Hiragino Sans GB',
           'Microsoft YaHei',
+          'Noto Sans CJK SC',
           'sans-serif',
         ],
-        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+        mono: [
+          'JetBrains Mono',
+          'ui-monospace',
+          'SFMono-Regular',
+          'SF Mono',
+          'Menlo',
+          'Consolas',
+          'Liberation Mono',
+          'monospace',
+        ],
       },
       fontSize: {
         '2xs': ['0.6875rem', { lineHeight: '1rem' }],
@@ -60,9 +75,11 @@ export default {
       },
       animation: {
         'fade-in': 'fadeIn 0.18s ease-out',
-        rise: 'rise 0.22s ease-out',
+        rise: 'rise 0.26s ease-out both',
         'slide-in-right': 'slideInRight 0.24s cubic-bezier(0.32, 0.72, 0.24, 1)',
         shimmer: 'shimmer 1.8s linear infinite',
+        'scale-in': 'scaleIn 0.16s ease-out',
+        'blink-soft': 'blinkSoft 2.2s ease-in-out infinite',
       },
       keyframes: {
         fadeIn: {
@@ -70,7 +87,7 @@ export default {
           '100%': { opacity: '1' },
         },
         rise: {
-          '0%': { opacity: '0', transform: 'translateY(6px)' },
+          '0%': { opacity: '0', transform: 'translateY(8px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         slideInRight: {
@@ -80,6 +97,14 @@ export default {
         shimmer: {
           '0%': { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0' },
+        },
+        scaleIn: {
+          '0%': { opacity: '0', transform: 'translate(-50%, -50%) scale(0.97)' },
+          '100%': { opacity: '1', transform: 'translate(-50%, -50%) scale(1)' },
+        },
+        blinkSoft: {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.35' },
         },
       },
     },

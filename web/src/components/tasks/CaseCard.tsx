@@ -1,10 +1,12 @@
-import { Briefcase, Play, Plus, Trash2, FolderPlus, ExternalLink } from 'lucide-react';
+import { Briefcase, ChevronRight, Play, Plus, Trash2, FolderPlus, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import type { SyntheticEvent } from 'react';
 import type { ForensicCase, ForensicTask } from '../../types/api';
 import Badge from '../ui/Badge';
 import ProgressBar from '../ui/ProgressBar';
 import Button from '../ui/Button';
-import { formatDateTime, basename } from '../../lib/utils';
+import { formatDateTime, basename, cn } from '../../lib/utils';
+import { caseStatusLabel, caseStatusTone } from '../cases/caseUtils';
 
 export interface CasePollingState {
   jobId: string;
@@ -12,33 +14,28 @@ export interface CasePollingState {
   message: string;
 }
 
-const STATUS_TONE: Record<string, 'info' | 'warning' | 'success' | 'danger' | 'neutral'> = {
-  open: 'info',
-  analysing: 'warning',
-  completed: 'success',
-  failed: 'danger',
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  open: '待分析',
-  analysing: '分析中',
-  completed: '已完成',
-  failed: '失败',
-};
-
 interface CaseCardProps {
   forensicCase: ForensicCase;
   tasks: ForensicTask[];
   polling?: CasePollingState;
+  /** Opens the full-page detail view (?case=<id>); makes the card clickable. */
+  onOpenDetail?: (c: ForensicCase) => void;
   onStartAnalysis: (c: ForensicCase) => void;
   onAddTasks: (caseId: string) => void;
   onDelete: (c: ForensicCase) => void;
 }
 
+/** Wrap a card action so it does not trigger the card's own open-detail click. */
+const stopFor = (fn: () => void) => (e: SyntheticEvent) => {
+  e.stopPropagation();
+  fn();
+};
+
 export default function CaseCard({
   forensicCase: c,
   tasks,
   polling,
+  onOpenDetail,
   onStartAnalysis,
   onAddTasks,
   onDelete,
@@ -53,8 +50,30 @@ export default function CaseCard({
   const allDone = total > 0 && completed === total;
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
 
+  const openDetail = () => onOpenDetail?.(c);
+
   return (
-    <div className="card card-pad card-hover flex flex-col gap-3">
+    <div
+      role={onOpenDetail ? 'button' : undefined}
+      tabIndex={onOpenDetail ? 0 : undefined}
+      onClick={onOpenDetail ? openDetail : undefined}
+      onKeyDown={
+        onOpenDetail
+          ? (e) => {
+              // Only react when the card itself (not an inner control) is focused.
+              if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                e.preventDefault();
+                openDetail();
+              }
+            }
+          : undefined
+      }
+      className={cn(
+        'card card-pad flex flex-col gap-3 transition-all duration-150',
+        onOpenDetail &&
+          'cursor-pointer hover:-translate-y-0.5 hover:shadow-card-hover hover:border-ink-300 dark:hover:border-ink-700',
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="p-2 rounded-md bg-accent-50 dark:bg-accent-500/10 text-accent-600 dark:text-accent-400 shrink-0">
@@ -65,9 +84,14 @@ export default function CaseCard({
             <p className="text-2xs font-mono text-ink-400">{c.id.substring(0, 8)}…</p>
           </div>
         </div>
-        <Badge tone={STATUS_TONE[c.status ?? 'open'] ?? 'neutral'}>
-          {STATUS_LABEL[c.status ?? 'open'] ?? c.status}
-        </Badge>
+        <div className="flex items-center gap-1 shrink-0">
+          <Badge tone={caseStatusTone(c.status)} dot>
+            {caseStatusLabel(c.status)}
+          </Badge>
+          {onOpenDetail && (
+            <ChevronRight size={14} className="text-ink-300 dark:text-ink-600" aria-hidden />
+          )}
+        </div>
       </div>
 
       {c.description && (
@@ -116,19 +140,28 @@ export default function CaseCard({
 
       <div className="flex items-center gap-1.5 pt-1 border-t border-ink-100 dark:border-ink-800 mt-auto flex-wrap">
         {allDone && c.status !== 'completed' && !polling && (
-          <Button variant="primary" size="sm" onClick={() => onStartAnalysis(c)}>
+          <Button variant="primary" size="sm" onClick={stopFor(() => onStartAnalysis(c))}>
             <Play size={13} /> 跨镜像分析
           </Button>
         )}
         {c.status === 'completed' && (
-          <Link to={`/case-intelligence?case_id=${c.id}`} className="btn-primary btn-sm">
+          <Link
+            to={`/case-intelligence?case_id=${c.id}`}
+            className="btn-primary btn-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
             <ExternalLink size={13} /> 查看报告
           </Link>
         )}
-        <Button size="sm" onClick={() => onAddTasks(c.id)}>
+        <Button size="sm" onClick={stopFor(() => onAddTasks(c.id))}>
           <FolderPlus size={13} /> 关联任务
         </Button>
-        <Button size="sm" variant="ghost" className="ml-auto text-rose-600" onClick={() => onDelete(c)}>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="ml-auto text-rose-600"
+          onClick={stopFor(() => onDelete(c))}
+        >
           <Trash2 size={13} />
         </Button>
       </div>

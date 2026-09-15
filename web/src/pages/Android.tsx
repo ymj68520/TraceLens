@@ -1,27 +1,50 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Smartphone, Package, Database, MessageSquare, Sparkles } from 'lucide-react';
 import {
-  getMiuiOverview,
-  getMiuiInstalledApps,
-  getMiuiDbInventory,
-  getMiuiQqntOverview,
-  getMiuiQqntArtifacts,
-  getMiuiQqntRecords,
-  getMiuiWechatOverview,
-  getMiuiWechatArtifacts,
-  getMiuiWechatRecords,
+  Database,
+  MessageSquare,
+  Package,
+  RefreshCw,
+  Smartphone,
+  Sparkles,
+} from 'lucide-react';
+import {
   getAndroidLlmSummary,
+  getMiuiDbInventory,
+  getMiuiInstalledApps,
+  getMiuiOverview,
+  getMiuiQqntArtifacts,
+  getMiuiQqntOverview,
+  getMiuiQqntRecords,
+  getMiuiWechatArtifacts,
+  getMiuiWechatOverview,
+  getMiuiWechatRecords,
 } from '../services/forensicsService';
-import Card, { CardHeader } from '../components/ui/Card';
-import { LoadingBlock } from '../components/ui/Spinner';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
 import EmptyState from '../components/ui/EmptyState';
-import Badge from '../components/ui/Badge';
-import { cx, formatBytes } from '../lib/utils';
+import { PageHeader, Segmented } from '../components/ui/PageScaffold';
+import { useToast } from '../components/ui/Toast';
+import { useUrlState } from '../hooks/useUrlState';
+import { downloadCSV } from '../lib/exportUtils';
+import { errorMessage } from '../lib/utils';
+import {
+  cellText,
+  extractKv,
+  extractRows,
+  KeyValueGrid,
+  RecordTableSection,
+  type Row,
+} from './android/RecordTable';
+import { RecordDetailDrawer } from './android/RecordDetailDrawer';
+import { ANDROID_FIELD_LABELS } from './android/labels';
+import AppsTab from './android/AppsTab';
+import DbTab from './android/DbTab';
+import CommTab, { type CommBundle } from './android/CommTab';
 
 type AndroidTab = 'overview' | 'apps' | 'db' | 'qqnt' | 'wechat' | 'llm';
 
-const TABS: { key: AndroidTab; label: string; Icon: typeof Smartphone }[] = [
+const ANDROID_TABS: { key: AndroidTab; label: string; Icon: typeof Smartphone }[] = [
   { key: 'overview', label: '备份概览', Icon: Smartphone },
   { key: 'apps', label: '已安装应用', Icon: Package },
   { key: 'db', label: '数据库清单', Icon: Database },
@@ -30,77 +53,50 @@ const TABS: { key: AndroidTab; label: string; Icon: typeof Smartphone }[] = [
   { key: 'llm', label: 'AI 摘要', Icon: Sparkles },
 ];
 
-const fmtMs = (ms?: number | string | null) => {
-  if (!ms) return '—';
-  const d = new Date(Number(ms));
-  return Number.isNaN(d.getTime()) ? String(ms) : d.toLocaleString();
+const ANDROID_TAB_KEYS = ANDROID_TABS.map((t) => t.key);
+
+const EMPTY_COPY: Record<AndroidTab, { title: string; description: string }> = {
+  overview: {
+    title: '暂无备份概览数据',
+    description: '该任务尚未生成 MIUI 备份概览，请确认任务使用 MIUI 备份源并已完成分析。',
+  },
+  apps: {
+    title: '暂无应用数据',
+    description: '该 MIUI 备份中未解析到已安装应用列表，请确认备份包含应用数据。',
+  },
+  db: {
+    title: '暂无数据库清单',
+    description: '该 MIUI 备份中未发现应用数据库，请确认备份内容完整。',
+  },
+  qqnt: {
+    title: '暂无 QQ/NT 数据',
+    description: '该任务尚未解析到 QQ/NT 取证数据，请确认备份中包含 QQ/NT 应用数据。',
+  },
+  wechat: {
+    title: '暂无微信数据',
+    description: '该任务尚未解析到微信取证数据，请确认备份中包含微信应用数据。',
+  },
+  llm: {
+    title: '暂无 AI 摘要',
+    description: '该任务尚未生成安卓取证的 AI 分析摘要。',
+  },
 };
-
-const openStatusTone = (status?: string): { tone: 'success' | 'danger' | 'warning' | 'info' | 'neutral'; label: string } => {
-  switch (status) {
-    case 'decrypted':
-      return { tone: 'success', label: '已解密' };
-    case 'parsed':
-      return { tone: 'success', label: '已解析' };
-    case 'parse_error':
-      return { tone: 'danger', label: '解析失败' };
-    case 'incomplete_limit':
-    case 'limit_exceeded':
-      return { tone: 'warning', label: '截断(超限)' };
-    case 'recognized':
-      return { tone: 'info', label: '已识别' };
-    case 'encrypted_locked':
-      return { tone: 'warning', label: '已发现未解密' };
-    case 'not_found':
-      return { tone: 'neutral', label: '未发现主库' };
-    default:
-      return { tone: 'neutral', label: status || '未知' };
-  }
-};
-
-type Row = Record<string, unknown>;
-
-function SimpleTable({ rows, columns }: { rows: Row[]; columns: { key: string; label: string; render?: (r: Row) => React.ReactNode }[] }) {
-  if (rows.length === 0) return <EmptyState title="暂无数据" />;
-  return (
-    <div className="overflow-x-auto">
-      <table className="table-shell">
-        <thead>
-          <tr>
-            {columns.map((c) => (
-              <th key={c.key}>{c.label}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i}>
-              {columns.map((c) => (
-                <td key={c.key}>{c.render ? c.render(row) : String(row[c.key] ?? '—')}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 export default function Android() {
   const [searchParams] = useSearchParams();
   const taskId = searchParams.get('task_id');
+  const toast = useToast();
 
-  const [activeTab, setActiveTab] = useState<AndroidTab>('overview');
+  // Tab persisted to the URL so views survive reloads and are shareable.
+  const [tabParam, setTabParam] = useUrlState('tab', 'overview');
+  const activeTab: AndroidTab = (ANDROID_TAB_KEYS as string[]).includes(tabParam)
+    ? (tabParam as AndroidTab)
+    : 'overview';
+
+  const [bundles, setBundles] = useState<Partial<Record<AndroidTab, unknown>>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<Record<AndroidTab, unknown>>({
-    overview: null,
-    apps: null,
-    db: null,
-    qqnt: null,
-    wechat: null,
-    llm: null,
-  });
+  const [detailRow, setDetailRow] = useState<Row | null>(null);
 
   const load = useCallback(
     async (tab: AndroidTab) => {
@@ -111,17 +107,17 @@ export default function Android() {
         switch (tab) {
           case 'overview': {
             const ov = await getMiuiOverview(taskId);
-            setData((d) => ({ ...d, overview: ov }));
+            setBundles((d) => ({ ...d, overview: ov }));
             break;
           }
           case 'apps': {
             const apps = await getMiuiInstalledApps(taskId);
-            setData((d) => ({ ...d, apps }));
+            setBundles((d) => ({ ...d, apps }));
             break;
           }
           case 'db': {
             const db = await getMiuiDbInventory(taskId);
-            setData((d) => ({ ...d, db }));
+            setBundles((d) => ({ ...d, db }));
             break;
           }
           case 'qqnt': {
@@ -130,7 +126,7 @@ export default function Android() {
               getMiuiQqntArtifacts(taskId),
               getMiuiQqntRecords(taskId),
             ]);
-            setData((d) => ({ ...d, qqnt: { overview: ov, artifacts, records } }));
+            setBundles((d) => ({ ...d, qqnt: { overview: ov, artifacts, records } }));
             break;
           }
           case 'wechat': {
@@ -139,186 +135,190 @@ export default function Android() {
               getMiuiWechatArtifacts(taskId),
               getMiuiWechatRecords(taskId),
             ]);
-            setData((d) => ({ ...d, wechat: { overview: ov, artifacts, records } }));
+            setBundles((d) => ({ ...d, wechat: { overview: ov, artifacts, records } }));
             break;
           }
           case 'llm': {
             const llm = await getAndroidLlmSummary(taskId);
-            setData((d) => ({ ...d, llm }));
+            setBundles((d) => ({ ...d, llm }));
             break;
           }
         }
       } catch (err) {
-        setError((err as Error).message);
+        const msg = errorMessage(err);
+        setError(msg);
+        toast.error(`安卓取证数据加载失败：${msg}`);
       } finally {
         setLoading(false);
       }
-    },
-    [taskId],
+      },
+      // toast identity is stable enough; keeping it out avoids reload loops.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [taskId],
   );
 
   useEffect(() => {
     if (taskId) void load(activeTab);
   }, [taskId, activeTab, load]);
 
+  const handleRetry = () => {
+    if (taskId) void load(activeTab);
+  };
+
+  const activeBundle = bundles[activeTab];
+  // Cached data keeps rendering while a refresh is in flight; skeletons and
+  // error states only take over when there is nothing to show yet.
+  const showLoading = loading && activeBundle === undefined;
+  const showError = !showLoading && error !== null && activeBundle === undefined ? error : null;
+
+  const overviewEntries = useMemo(() => extractKv(bundles.overview), [bundles.overview]);
+  const apps = useMemo(() => extractRows(bundles.apps), [bundles.apps]);
+  const databases = useMemo(() => extractRows(bundles.db), [bundles.db]);
+  const llmEntries = useMemo(() => extractKv(bundles.llm), [bundles.llm]);
+
+  const exportKvCsv = (entries: [string, unknown][], tab: AndroidTab) => {
+    if (!taskId) return;
+    if (entries.length === 0) {
+      toast.info('当前没有可导出的数据');
+      return;
+    }
+    downloadCSV(
+      entries.map(([k, v]) => ({ key: k, value: cellText(v) })),
+      `android-${tab}-${taskId.slice(0, 8)}.csv`,
+      [
+        { key: 'key', label: '字段' },
+        { key: 'value', label: '值' },
+      ],
+    );
+    toast.success(`已导出 ${entries.length} 个字段到 CSV`);
+  };
+
   if (!taskId) {
     return (
       <div className="card">
-        <EmptyState icon={<Smartphone size={36} />} title="未选择任务" description="请选择一个 MIUI 备份分析任务。" />
+        <EmptyState
+          icon={<Smartphone size={36} />}
+          title="未选择任务"
+          description="请选择一个 MIUI 备份分析任务。"
+        />
       </div>
     );
   }
 
-  const tabContent = () => {
-    if (loading) return <LoadingBlock />;
-    if (error) return <EmptyState title="加载失败" description={error} />;
-
-    if (activeTab === 'overview') {
-      const ov = (data.overview ?? {}) as Row;
-      return (
-        <Card>
-          <CardHeader title="MIUI 备份概览" />
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {Object.entries(ov).map(([k, v]) => (
-              <div key={k} className="border border-ink-100 dark:border-ink-800 rounded-md px-3 py-2">
-                <p className="text-2xs text-ink-400">{k}</p>
-                <p className="text-sm font-medium text-ink-900 dark:text-ink-100 mt-0.5 break-all">
-                  {String(v ?? '—')}
-                </p>
-              </div>
-            ))}
-          </div>
-        </Card>
-      );
-    }
-
-    if (activeTab === 'apps') {
-      const rows = ((data.apps as { apps?: Row[] })?.apps ?? []) as Row[];
-      return (
-        <Card padded={false}>
-          <SimpleTable
-            rows={rows}
-            columns={[
-              { key: 'app_name', label: '应用', render: (r) => String(r.app_name ?? r.package_name ?? '—') },
-              { key: 'package_name', label: '包名', render: (r) => <span className="font-mono text-xs">{String(r.package_name ?? '—')}</span> },
-              { key: 'backup_type', label: '类型', render: (r) => (r.backup_type === 1 ? '系统应用' : r.backup_type === 2 ? '用户应用' : '未知') },
-              { key: 'size_bytes', label: '大小', render: (r) => formatBytes(Number(r.size_bytes ?? 0)) },
-            ]}
-          />
-        </Card>
-      );
-    }
-
-    if (activeTab === 'db') {
-      const rows = ((data.db as { databases?: Row[] })?.databases ?? []) as Row[];
-      return (
-        <Card padded={false}>
-          <SimpleTable
-            rows={rows}
-            columns={[
-              { key: 'db_path', label: '数据库路径', render: (r) => <span className="font-mono text-xs break-all">{String(r.db_path ?? '—')}</span> },
-              { key: 'app', label: '所属应用' },
-              { key: 'table_count', label: '表数量' },
-            ]}
-          />
-        </Card>
-      );
-    }
-
-    if (activeTab === 'qqnt' || activeTab === 'wechat') {
-      const bundle = (activeTab === 'qqnt' ? data.qqnt : data.wechat) as {
-        overview?: Row;
-        artifacts?: { artifacts?: Row[] };
-        records?: { records?: Row[] };
-      } | null;
-      const ov = bundle?.overview ?? {};
-      const st = openStatusTone(ov.open_status as string);
-      const artifacts = bundle?.artifacts?.artifacts ?? [];
-      const records = bundle?.records?.records ?? [];
-      return (
-        <div className="space-y-4">
-          <Card>
-            <CardHeader
-              title={activeTab === 'qqnt' ? 'QQ/NT 概览' : '微信概览'}
-              actions={<Badge tone={st.tone}>{st.label}</Badge>}
-            />
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {Object.entries(ov)
-                .filter(([k]) => k !== 'open_status')
-                .map(([k, v]) => (
-                  <div key={k} className="border border-ink-100 dark:border-ink-800 rounded-md px-3 py-2">
-                    <p className="text-2xs text-ink-400">{k}</p>
-                    <p className="text-sm font-medium text-ink-900 dark:text-ink-100 mt-0.5 break-all">{String(v ?? '—')}</p>
-                  </div>
-                ))}
-            </div>
-          </Card>
-
-          <Card padded={false}>
-            <div className="px-5 py-3 border-b border-ink-200 dark:border-ink-800">
-              <h4 className="card-title">工件（{artifacts.length}）</h4>
-            </div>
-            <SimpleTable
-              rows={artifacts.slice(0, 200)}
-              columns={[
-                { key: 'name', label: '名称', render: (r) => String(r.name ?? r.path ?? '—') },
-                { key: 'size', label: '大小', render: (r) => formatBytes(Number(r.size ?? 0)) },
-                { key: 'modified', label: '修改时间', render: (r) => fmtMs(r.modified as number) },
-              ]}
-            />
-          </Card>
-
-          <Card padded={false}>
-            <div className="px-5 py-3 border-b border-ink-200 dark:border-ink-800">
-              <h4 className="card-title">记录（{records.length}）</h4>
-            </div>
-            <SimpleTable
-              rows={records.slice(0, 200)}
-              columns={[
-                { key: 'title', label: '标题', render: (r) => String(r.title ?? r.name ?? '—') },
-                { key: 'timestamp', label: '时间', render: (r) => fmtMs(r.timestamp as number) },
-              ]}
-            />
-          </Card>
-        </div>
-      );
-    }
-
-    // llm tab
-    const llm = data.llm as { summary?: string } | null;
-    return (
-      <Card>
-        <CardHeader title="AI 分析摘要" />
-        {llm?.summary ? (
-          <p className="text-sm text-ink-700 dark:text-ink-300 leading-relaxed whitespace-pre-wrap">{llm.summary}</p>
-        ) : (
-          <EmptyState title="暂无 AI 摘要" />
-        )}
-      </Card>
-    );
-  };
-
   return (
     <div className="space-y-4 max-w-7xl">
-      <div className="flex rounded-md border border-ink-200 dark:border-ink-700 overflow-hidden w-fit flex-wrap">
-        {TABS.map(({ key, label, Icon }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setActiveTab(key)}
-            className={cx(
-              'px-3 py-1.5 text-xs font-medium inline-flex items-center gap-1.5 transition-colors',
-              activeTab === key
-                ? 'bg-accent-600 text-white'
-                : 'bg-white dark:bg-ink-900 text-ink-600 dark:text-ink-300 hover:bg-ink-50 dark:hover:bg-ink-800',
-            )}
+      <PageHeader
+        icon={Smartphone}
+        tone="emerald"
+        title="安卓取证"
+        subtitle="MIUI 备份解析与应用数据分析"
+        actions={
+          <Button variant="secondary" size="sm" onClick={handleRetry} disabled={loading}>
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> 刷新
+          </Button>
+        }
+      />
+
+      <Segmented
+        options={ANDROID_TABS.map(({ key, label, Icon }) => ({ value: key, label, icon: Icon }))}
+        value={activeTab}
+        onChange={setTabParam}
+      />
+
+      {activeTab === 'overview' && (
+        <Card padded={false}>
+          <RecordTableSection
+            loading={showLoading}
+            error={showError}
+            rows={[]}
+            totalCount={overviewEntries.length}
+            onClearFilter={() => undefined}
+            onExport={() => exportKvCsv(overviewEntries, 'overview')}
+            onRetry={handleRetry}
+            emptyTitle={EMPTY_COPY.overview.title}
+            emptyDescription={EMPTY_COPY.overview.description}
           >
-            <Icon size={13} />
-            {label}
-          </button>
-        ))}
-      </div>
-      {tabContent()}
+            <div className="p-5">
+              <KeyValueGrid
+                entries={overviewEntries}
+                labels={ANDROID_FIELD_LABELS}
+                onSelect={(key, value) => setDetailRow({ key, value })}
+              />
+            </div>
+          </RecordTableSection>
+        </Card>
+      )}
+
+      {activeTab === 'apps' && (
+        <AppsTab
+          apps={apps}
+          loading={showLoading}
+          error={showError}
+          taskId={taskId}
+          onRetry={handleRetry}
+        />
+      )}
+
+      {activeTab === 'db' && (
+        <DbTab
+          databases={databases}
+          loading={showLoading}
+          error={showError}
+          taskId={taskId}
+          onRetry={handleRetry}
+        />
+      )}
+
+      {(activeTab === 'qqnt' || activeTab === 'wechat') && (
+        <CommTab
+          kind={activeTab}
+          label={activeTab === 'qqnt' ? 'QQ/NT' : '微信'}
+          bundle={(activeBundle as CommBundle | undefined) ?? null}
+          taskId={taskId}
+          loading={showLoading}
+          error={showError}
+          onRetry={handleRetry}
+        />
+      )}
+
+      {activeTab === 'llm' && (
+        <Card padded={false}>
+          <RecordTableSection
+            loading={showLoading}
+            error={showError}
+            rows={[]}
+            totalCount={llmEntries.length}
+            onClearFilter={() => undefined}
+            onExport={() => exportKvCsv(llmEntries, 'llm')}
+            onRetry={handleRetry}
+            emptyTitle={EMPTY_COPY.llm.title}
+            emptyDescription={EMPTY_COPY.llm.description}
+          >
+            <div className="p-5 space-y-4">
+              {llmEntries.map(([key, value]) => (
+                <div key={key}>
+                  <p className="section-label mb-1.5">{ANDROID_FIELD_LABELS[key] ?? key}</p>
+                  <p className="text-sm text-ink-700 dark:text-ink-300 leading-relaxed whitespace-pre-wrap break-all">
+                    {cellText(value)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </RecordTableSection>
+        </Card>
+      )}
+
+      <RecordDetailDrawer
+        row={detailRow}
+        onClose={() => setDetailRow(null)}
+        title={
+          detailRow
+            ? `${ANDROID_FIELD_LABELS[String(detailRow.key)] ?? String(detailRow.key)} 字段值`
+            : ''
+        }
+        description={detailRow ? '概览字段详情' : undefined}
+        fieldLabels={ANDROID_FIELD_LABELS}
+      />
     </div>
   );
 }

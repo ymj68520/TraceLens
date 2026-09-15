@@ -5,8 +5,10 @@ import { fetchTasks } from '../../store/taskSlice';
 import { useToast } from '../ui/Toast';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
-import Badge from '../ui/Badge';
-import { basename, errorMessage } from '../../lib/utils';
+import FormField from '../ui/FormField';
+import TaskCheckList from '../cases/TaskCheckList';
+import { errorMessage } from '../../lib/utils';
+import { required, custom, validateForm, isValid, type FieldRules } from '../../lib/validation';
 
 interface AddTasksToCaseModalProps {
   /** Set when the user picked a case first and is choosing tasks for it. */
@@ -16,6 +18,14 @@ interface AddTasksToCaseModalProps {
   onClose: () => void;
 }
 
+/** Fields validated before submission; taskCount mirrors the selection size. */
+type AddValues = { caseId: string; taskCount: number };
+
+const ADD_RULES: FieldRules<AddValues> = {
+  caseId: [required('请选择目标案件')],
+  taskCount: [custom((v) => ((v as number) > 0 ? null : '请至少选择一个任务'))],
+};
+
 /**
  * Associate already-completed tasks to a case. The backend pre-populates the
  * reuse state so the next cross-image run skips re-analysis.
@@ -23,7 +33,7 @@ interface AddTasksToCaseModalProps {
 export default function AddTasksToCaseModal({ fixedCaseId, fixedTaskId, onClose }: AddTasksToCaseModalProps) {
   const dispatch = useAppDispatch();
   const { cases } = useAppSelector((state) => state.cases);
-  const { tasks } = useAppSelector((state) => state.tasks);
+  const { tasks, status: tasksStatus } = useAppSelector((state) => state.tasks);
   const toast = useToast();
 
   const [selectedCaseId, setSelectedCaseId] = useState(fixedCaseId || '');
@@ -31,7 +41,7 @@ export default function AddTasksToCaseModal({ fixedCaseId, fixedTaskId, onClose 
     fixedTaskId ? new Set([fixedTaskId]) : new Set(),
   );
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<Partial<Record<keyof AddValues, string>>>({});
 
   const candidateTasks = useMemo(() => {
     const completed = (tasks || []).filter(
@@ -51,12 +61,16 @@ export default function AddTasksToCaseModal({ fixedCaseId, fixedTaskId, onClose 
       return next;
     });
 
-  const canSubmit = Boolean(selectedCaseId) && selectedTaskIds.size > 0 && !submitting;
+  const tasksLoading = tasksStatus === 'loading' && tasks.length === 0;
 
   const handleSubmit = async () => {
-    if (!canSubmit) return;
+    const nextErrors = validateForm(ADD_RULES, {
+      caseId: selectedCaseId,
+      taskCount: selectedTaskIds.size,
+    });
+    setErrors(nextErrors);
+    if (!isValid(nextErrors)) return;
     setSubmitting(true);
-    setError('');
     try {
       const result = (await dispatch(
         associateTasks({ caseId: selectedCaseId, taskIds: [...selectedTaskIds] }),
@@ -64,10 +78,10 @@ export default function AddTasksToCaseModal({ fixedCaseId, fixedTaskId, onClose 
       const reused = result?.reused?.length ?? 0;
       toast.success(`已关联 ${selectedTaskIds.size} 个任务（复用分析 ${reused} 个）`);
       void dispatch(fetchCases());
-      void dispatch(fetchTasks({}));
+      void dispatch(fetchTasks({ status: 'all', priority: 'all' }));
       onClose();
     } catch (err) {
-      setError(errorMessage(err));
+      toast.error(`关联失败：${errorMessage(err)}`);
     } finally {
       setSubmitting(false);
     }
@@ -76,16 +90,16 @@ export default function AddTasksToCaseModal({ fixedCaseId, fixedTaskId, onClose 
   return (
     <Modal open onClose={onClose} title="关联任务到案件" width="lg">
       <div className="space-y-4">
-        {error && (
-          <p className="text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-3 py-2 rounded-md">
-            {error}
-          </p>
-        )}
-
         {!fixedCaseId && (
-          <div>
-            <label className="field-label">目标案件</label>
+          <FormField
+            label="目标案件"
+            htmlFor="add-tasks-case"
+            required
+            error={errors.caseId}
+            hint="任务将关联到所选案件，供跨镜像分析复用"
+          >
             <select
+              id="add-tasks-case"
               className="select"
               value={selectedCaseId}
               onChange={(e) => setSelectedCaseId(e.target.value)}
@@ -97,37 +111,24 @@ export default function AddTasksToCaseModal({ fixedCaseId, fixedTaskId, onClose 
                 </option>
               ))}
             </select>
-          </div>
+          </FormField>
         )}
 
-        <div>
-          <p className="field-label">选择已完成任务（{selectedTaskIds.size} 已选）</p>
-          {candidateTasks.length === 0 ? (
-            <p className="text-xs text-ink-400 py-4 text-center">没有可关联的已完成任务</p>
-          ) : (
-            <ul className="max-h-64 overflow-y-auto border border-ink-200 dark:border-ink-700 rounded-md divide-y divide-ink-100 dark:divide-ink-800">
-              {candidateTasks.map((task) => (
-                <li key={task.id}>
-                  <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-900/50">
-                    <input
-                      type="checkbox"
-                      className="rounded border-ink-300 text-accent-600 focus:ring-accent-500"
-                      checked={selectedTaskIds.has(task.id)}
-                      onChange={() => toggleTask(task.id)}
-                    />
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm text-ink-800 dark:text-ink-200 truncate">
-                        {basename(task.image_path)}
-                      </span>
-                      <span className="block text-2xs font-mono text-ink-400">{task.id}</span>
-                    </span>
-                    <Badge tone="success">已完成</Badge>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <FormField
+          label="选择已完成任务"
+          hint={`已选 ${selectedTaskIds.size} 个，仅列出未加入该案件的任务`}
+          error={errors.taskCount}
+        >
+          <TaskCheckList
+            tasks={candidateTasks}
+            selected={selectedTaskIds}
+            onToggle={toggleTask}
+            loading={tasksLoading}
+            maxHeightClass="max-h-64"
+            emptyTitle="没有可关联的已完成任务"
+            emptyDescription="仅已完成且生成文件库、尚未加入该案件的任务可以关联。"
+          />
+        </FormField>
 
         <p className="text-2xs text-ink-500 dark:text-ink-400 leading-relaxed">
           注意：任务的既有文件描述是在其原始案情上下文中生成的，跨镜像分析将原样复用。
@@ -135,7 +136,7 @@ export default function AddTasksToCaseModal({ fixedCaseId, fixedTaskId, onClose 
 
         <div className="flex justify-end gap-2 pt-2 border-t border-ink-100 dark:border-ink-800">
           <Button onClick={onClose} disabled={submitting}>取消</Button>
-          <Button variant="primary" onClick={handleSubmit} disabled={!canSubmit}>
+          <Button variant="primary" onClick={handleSubmit} disabled={submitting}>
             {submitting ? '关联中…' : `关联 ${selectedTaskIds.size} 个任务`}
           </Button>
         </div>

@@ -1,7 +1,11 @@
-import { Brain, Database, RefreshCcw, Layers, FileText, HardDriveDownload, FileSpreadsheet } from 'lucide-react';
+import { Brain, Database, RefreshCcw, Layers, FileText, HardDriveDownload, FileSpreadsheet, FileSearch } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { FilesTab } from '../../pages/Files';
+import { Segmented } from '../ui/PageScaffold';
 import Button from '../ui/Button';
 import ProgressBar from '../ui/ProgressBar';
+import { useTranslation } from '../../hooks/useTranslation';
+import type { TranslationKey } from '../../locales/keys';
 import { cx } from '../../lib/utils';
 
 interface FilesHeaderProps {
@@ -19,11 +23,11 @@ interface FilesHeaderProps {
   onOpenReanalyze: () => void;
 }
 
-const TABS: { key: FilesTab; label: string; Icon: typeof FileText }[] = [
-  { key: 'largest', label: '大文件', Icon: FileText },
-  { key: 'extensions', label: '扩展名分析', Icon: FileSpreadsheet },
-  { key: 'office', label: 'Office 预览', Icon: FileText },
-  { key: 'extract', label: '文件提取', Icon: HardDriveDownload },
+const TABS: { value: FilesTab; labelKey: TranslationKey; icon: LucideIcon }[] = [
+  { value: 'largest', labelKey: 'files.header.tab.largest', icon: FileSearch },
+  { value: 'extensions', labelKey: 'files.header.tab.extensions', icon: FileSpreadsheet },
+  { value: 'office', labelKey: 'files.header.tab.office', icon: FileText },
+  { value: 'extract', labelKey: 'files.header.tab.extract', icon: HardDriveDownload },
 ];
 
 export default function FilesHeader({
@@ -40,33 +44,24 @@ export default function FilesHeader({
   onIngestGraphiti,
   onOpenReanalyze,
 }: FilesHeaderProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="card card-pad space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-md border border-ink-200 dark:border-ink-700 overflow-hidden">
-          {TABS.map(({ key, label, Icon }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => onTabChange(key)}
-              className={cx(
-                'px-3 py-1.5 text-xs font-medium inline-flex items-center gap-1.5 transition-colors',
-                activeTab === key
-                  ? 'bg-accent-600 text-white'
-                  : 'bg-white dark:bg-ink-900 text-ink-600 dark:text-ink-300 hover:bg-ink-50 dark:hover:bg-ink-800',
-              )}
-            >
-              <Icon size={13} />
-              {label}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          options={TABS.map(({ value, labelKey, icon }) => ({ value, label: t(labelKey), icon }))}
+          value={activeTab}
+          onChange={onTabChange}
+        />
 
         <div className="ml-auto flex items-center gap-2 flex-wrap">
           <span
-            className={cx('chip', llmAvailable ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20' : 'bg-ink-100 text-ink-500 border border-ink-200 dark:bg-ink-800 dark:text-ink-400 dark:border-ink-700')}
+            className={cx('chip', llmAvailable
+              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20'
+              : 'bg-ink-100 text-ink-500 border border-ink-200 dark:bg-ink-800 dark:text-ink-400 dark:border-ink-700')}
           >
-            <Brain size={11} /> LLM {llmAvailable ? '可用' : '离线'}
+            <Brain size={11} /> LLM {llmAvailable ? t('files.header.llm_available') : t('files.header.llm_offline')}
           </span>
           <Button
             size="sm"
@@ -75,14 +70,16 @@ export default function FilesHeader({
             onClick={onStartBatch}
           >
             <Brain size={13} />
-            批量 AI 描述{selectedCount > 0 ? `（${selectedCount}）` : ''}
+            {selectedCount > 0
+              ? t('files.header.batch_analyze_count').replace('{n}', String(selectedCount))
+              : t('files.header.batch_analyze')}
           </Button>
           <Button
             size="sm"
             disabled={selectedCount === 0}
             onClick={onOpenReanalyze}
           >
-            <RefreshCcw size={13} /> 二次分析
+            <RefreshCcw size={13} /> {t('files.header.reanalyze')}
           </Button>
           <Button
             size="sm"
@@ -90,7 +87,7 @@ export default function FilesHeader({
             onClick={onIngestGraphiti}
           >
             <Database size={13} />
-            {graphitiIngesting ? '导入中…' : '导入知识图谱'}
+            {graphitiIngesting ? t('files.header.importing') : t('files.header.import_graph')}
           </Button>
         </div>
       </div>
@@ -102,7 +99,7 @@ export default function FilesHeader({
             <ProgressBar value={batchProgress ?? 0} />
           </div>
           <span className="text-2xs text-accent-700 dark:text-accent-300 whitespace-nowrap">
-            {batchMessage ?? '批量分析进行中…'}
+            {batchMessage ?? t('files.header.batch_running')}
           </span>
         </div>
       )}

@@ -24,13 +24,27 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 3000,
+      watch: {
+        // C++ build artifact trees (tests/, libs/, CMakeFiles, object files)
+        // hold tens of thousands of files that exhaust the inotify watch
+        // limit and crash the dev server.
+        ignored: [
+          '**/tests/**',
+          '**/libs/**',
+          '**/dist/**',
+          '**/build/**',
+          '**/CMakeFiles/**',
+          '**/*.{o,a,so}',
+        ],
+      },
       proxy: {
         '/csapi': {
           target: 'http://localhost:8091',
           changeOrigin: true,
           rewrite: (p) => p.replace(/^\/csapi/, ''),
         },
-        '/tasks': { target: cppTarget, changeOrigin: true },
+        // NOTE: no '/tasks' proxy entry — it would shadow the SPA route of the
+        // same name in dev. All frontend API calls go through '/api/tasks'.
         '/api/reports': { target: 'http://localhost:8090', changeOrigin: true },
         '/api/graphiti': { target: 'http://localhost:8090', changeOrigin: true },
         '/api/llm': { target: 'http://localhost:8090', changeOrigin: true },

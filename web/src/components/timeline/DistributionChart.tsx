@@ -1,12 +1,15 @@
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import type { DistributionRow } from '../../pages/Timeline';
+import { EVENT_TYPE_HEX } from './eventTypes';
 
-const COLORS = {
-  CREATED: '#2e9b96',
-  MODIFIED: '#4f83cc',
-  DELETED: '#d45b6a',
-  OTHER: '#8b9da2',
-};
+export interface DistributionRow {
+  date: string;
+  CREATED: number;
+  MODIFIED: number;
+  DELETED: number;
+  OTHER: number;
+}
+
+const AXIS_NEUTRAL = '#8b9da2';
 
 export default function DistributionChart({ data }: { data: DistributionRow[] }) {
   return (
@@ -17,24 +20,24 @@ export default function DistributionChart({ data }: { data: DistributionRow[] })
           <BarChart data={data} margin={{ top: 4, right: 8, left: -18, bottom: 0 }} barCategoryGap="20%">
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 10, fill: '#8b9da2' }}
+              tick={{ fontSize: 10, fill: AXIS_NEUTRAL }}
               tickLine={false}
-              axisLine={{ stroke: '#d6dddf' }}
+              axisLine={{ stroke: AXIS_NEUTRAL, strokeOpacity: 0.35 }}
               tickFormatter={(d: string) => d.slice(5)}
             />
             <Tooltip
               contentStyle={{
                 fontSize: 12,
                 borderRadius: 6,
-                border: '1px solid #d6dddf',
+                border: '1px solid rgba(139,157,162,0.4)',
                 boxShadow: '0 4px 10px rgba(16,24,28,0.08)',
               }}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} iconSize={8} />
-            <Bar dataKey="CREATED" stackId="a" fill={COLORS.CREATED} name="创建" />
-            <Bar dataKey="MODIFIED" stackId="a" fill={COLORS.MODIFIED} name="修改" />
-            <Bar dataKey="DELETED" stackId="a" fill={COLORS.DELETED} name="删除" />
-            <Bar dataKey="OTHER" stackId="a" fill={COLORS.OTHER} name="其他" />
+            <Bar dataKey="CREATED" stackId="a" fill={EVENT_TYPE_HEX.CREATED} name="创建" />
+            <Bar dataKey="MODIFIED" stackId="a" fill={EVENT_TYPE_HEX.MODIFIED} name="修改" />
+            <Bar dataKey="DELETED" stackId="a" fill={EVENT_TYPE_HEX.DELETED} name="删除" />
+            <Bar dataKey="OTHER" stackId="a" fill={EVENT_TYPE_HEX.OTHER} name="其他" />
           </BarChart>
         </ResponsiveContainer>
       </div>

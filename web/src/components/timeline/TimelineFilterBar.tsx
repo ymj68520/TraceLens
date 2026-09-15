@@ -1,6 +1,7 @@
 import { Filter, RotateCcw } from 'lucide-react';
 import { useTranslation } from '../../hooks/useTranslation';
-import { fromDatetimeLocal, toDatetimeLocal } from '../../pages/Timeline';
+import type { TranslationKey } from '../../locales/keys';
+import { toDatetimeLocal } from '../../pages/Timeline';
 
 interface TimelineFilterBarProps {
   eventType: string;
@@ -10,16 +11,22 @@ interface TimelineFilterBarProps {
   isClustered: boolean;
   bucketParam: string;
   effectiveBucket: number;
-  onChange: (params: Record<string, string | undefined>) => void;
+  onEventTypeChange: (value: string) => void;
+  onDateChange: (value: string) => void;
+  onStartChange: (value: string) => void;
+  onEndChange: (value: string) => void;
+  onClusteredChange: (value: boolean) => void;
+  onBucketChange: (value: string) => void;
+  onReset: () => void;
 }
 
-const BUCKET_OPTIONS = [
-  { value: 'auto', label: '自动' },
-  { value: '60', label: '1 分钟' },
-  { value: '300', label: '5 分钟' },
-  { value: '900', label: '15 分钟' },
-  { value: '3600', label: '1 小时' },
-  { value: '21600', label: '6 小时' },
+const BUCKET_OPTIONS: { value: string; labelKey: TranslationKey }[] = [
+  { value: 'auto', labelKey: 'timeline.filter.bucket.auto' },
+  { value: '60', labelKey: 'timeline.filter.bucket.1m' },
+  { value: '300', labelKey: 'timeline.filter.bucket.5m' },
+  { value: '900', labelKey: 'timeline.filter.bucket.15m' },
+  { value: '3600', labelKey: 'timeline.filter.bucket.1h' },
+  { value: '21600', labelKey: 'timeline.filter.bucket.6h' },
 ];
 
 export default function TimelineFilterBar({
@@ -30,12 +37,15 @@ export default function TimelineFilterBar({
   isClustered,
   bucketParam,
   effectiveBucket,
-  onChange,
+  onEventTypeChange,
+  onDateChange,
+  onStartChange,
+  onEndChange,
+  onClusteredChange,
+  onBucketChange,
+  onReset,
 }: TimelineFilterBarProps) {
   const { t } = useTranslation();
-
-  const reset = () =>
-    onChange({ type: '', date: '', start: '', end: '', page: '', bucket: '', cluster: undefined });
 
   return (
     <div className="card card-pad">
@@ -45,24 +55,23 @@ export default function TimelineFilterBar({
           <select
             className="select w-32 text-xs"
             value={eventType}
-            onChange={(e) => onChange({ type: e.target.value || undefined, page: '1' })}
+            onChange={(e) => onEventTypeChange(e.target.value)}
           >
             <option value="">{t('timeline.filter.all')}</option>
             <option value="CREATED">{t('timeline.filter.created')}</option>
             <option value="MODIFIED">{t('timeline.filter.modified')}</option>
             <option value="DELETED">{t('timeline.filter.deleted')}</option>
+            <option value="OTHER">{t('timeline.chip.other')}</option>
           </select>
         </div>
 
         <div>
-          <label className="field-label">按日期</label>
+          <label className="field-label">{t('timeline.filter.date')}</label>
           <input
             type="date"
             className="input w-40 text-xs"
             value={selectedDate}
-            onChange={(e) =>
-              onChange({ date: e.target.value || undefined, start: '', end: '', page: '1' })
-            }
+            onChange={(e) => onDateChange(e.target.value)}
           />
         </div>
 
@@ -72,13 +81,7 @@ export default function TimelineFilterBar({
             type="datetime-local"
             className="input w-48 text-xs"
             value={toDatetimeLocal(customStart ? Number(customStart) : null)}
-            onChange={(e) =>
-              onChange({
-                start: fromDatetimeLocal(e.target.value)?.toString() ?? undefined,
-                date: '',
-                page: '1',
-              })
-            }
+            onChange={(e) => onStartChange(e.target.value)}
           />
         </div>
         <div>
@@ -87,13 +90,7 @@ export default function TimelineFilterBar({
             type="datetime-local"
             className="input w-48 text-xs"
             value={toDatetimeLocal(customEnd ? Number(customEnd) : null)}
-            onChange={(e) =>
-              onChange({
-                end: fromDatetimeLocal(e.target.value)?.toString() ?? undefined,
-                date: '',
-                page: '1',
-              })
-            }
+            onChange={(e) => onEndChange(e.target.value)}
           />
         </div>
 
@@ -102,11 +99,11 @@ export default function TimelineFilterBar({
           <select
             className="select w-28 text-xs"
             value={bucketParam}
-            onChange={(e) => onChange({ bucket: e.target.value, page: '1' })}
+            onChange={(e) => onBucketChange(e.target.value)}
           >
             {BUCKET_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
-                {o.label}
+                {t(o.labelKey)}
               </option>
             ))}
           </select>
@@ -117,7 +114,7 @@ export default function TimelineFilterBar({
             type="checkbox"
             className="rounded border-ink-300 text-accent-600 focus:ring-accent-500"
             checked={isClustered}
-            onChange={(e) => onChange({ cluster: e.target.checked ? undefined : 'false', page: '1' })}
+            onChange={(e) => onClusteredChange(e.target.checked)}
           />
           {t('timeline.filter.cluster')}
         </label>
@@ -128,12 +125,7 @@ export default function TimelineFilterBar({
               {t('timeline.filter.bucket.resolved')}: {effectiveBucket}s
             </span>
           )}
-          <button
-            type="button"
-            onClick={reset}
-            className="btn-ghost btn-sm"
-            title={t('timeline.filter.reset')}
-          >
+          <button type="button" onClick={onReset} className="btn-ghost btn-sm" title={t('timeline.filter.reset')}>
             <RotateCcw size={13} />
             {t('timeline.filter.reset')}
           </button>
@@ -143,7 +135,7 @@ export default function TimelineFilterBar({
       {(eventType || selectedDate || customStart || customEnd) && (
         <p className="mt-2 text-2xs text-ink-400 flex items-center gap-1">
           <Filter size={11} />
-          筛选已生效
+          {t('timeline.filter.active')}
         </p>
       )}
     </div>

@@ -5,12 +5,36 @@ import { fetchTasks } from '../../store/taskSlice';
 import { useToast } from '../ui/Toast';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
-import { basename, errorMessage } from '../../lib/utils';
+import FormField from '../ui/FormField';
+import TaskCheckList from '../cases/TaskCheckList';
+import { errorMessage } from '../../lib/utils';
+import {
+  required,
+  minLength,
+  maxLength,
+  custom,
+  validateForm,
+  isValid,
+  type FieldRules,
+} from '../../lib/validation';
 
 interface ComposeCaseModalProps {
   preselectedTaskIds?: string[];
   onClose: () => void;
 }
+
+/** Fields validated before submission; taskCount mirrors the selection size. */
+type ComposeValues = { name: string; description: string; taskCount: number };
+
+const COMPOSE_RULES: FieldRules<ComposeValues> = {
+  name: [
+    required('请输入案件名称'),
+    minLength(2, '案件名称至少 2 个字符'),
+    maxLength(60, '案件名称最多 60 个字符'),
+  ],
+  description: [maxLength(500, '案情描述最多 500 个字符')],
+  taskCount: [custom((v) => ((v as number) > 0 ? null : '请至少选择一个已完成的镜像任务'))],
+};
 
 /**
  * Compose a case from one or more already-analyzed tasks. No new scans are
@@ -19,14 +43,14 @@ interface ComposeCaseModalProps {
  */
 export default function ComposeCaseModal({ preselectedTaskIds = [], onClose }: ComposeCaseModalProps) {
   const dispatch = useAppDispatch();
-  const { tasks } = useAppSelector((state) => state.tasks);
+  const { tasks, status: tasksStatus } = useAppSelector((state) => state.tasks);
   const toast = useToast();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set(preselectedTaskIds));
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<Partial<Record<keyof ComposeValues, string>>>({});
 
   const candidateTasks = useMemo(
     () =>
@@ -44,15 +68,20 @@ export default function ComposeCaseModal({ preselectedTaskIds = [], onClose }: C
       return next;
     });
 
-  const canSubmit = name.trim() && description.trim() && selectedTaskIds.size > 0 && !submitting;
+  const selectAll = () => setSelectedTaskIds(new Set(candidateTasks.map((t) => t.id)));
+  const clearAll = () => setSelectedTaskIds(new Set());
+
+  const tasksLoading = tasksStatus === 'loading' && tasks.length === 0;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError('');
-    if (!canSubmit) {
-      if (selectedTaskIds.size === 0) setError('请至少选择一个已完成的镜像任务');
-      return;
-    }
+    const nextErrors = validateForm(COMPOSE_RULES, {
+      name,
+      description,
+      taskCount: selectedTaskIds.size,
+    });
+    setErrors(nextErrors);
+    if (!isValid(nextErrors)) return;
     setSubmitting(true);
     try {
       await dispatch(
@@ -68,7 +97,7 @@ export default function ComposeCaseModal({ preselectedTaskIds = [], onClose }: C
       void dispatch(fetchTasks({ status: 'all', priority: 'all' }));
       onClose();
     } catch (err) {
-      setError(errorMessage(err) || '组案失败');
+      toast.error(`组案失败：${errorMessage(err)}`);
     } finally {
       setSubmitting(false);
     }
@@ -77,14 +106,13 @@ export default function ComposeCaseModal({ preselectedTaskIds = [], onClose }: C
   return (
     <Modal open onClose={onClose} title="从已有任务组建案件" width="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
-        {error && (
-          <p className="text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-3 py-2 rounded-md">
-            {error}
-          </p>
-        )}
-
-        <div>
-          <label className="field-label" htmlFor="compose-name">案件名称 *</label>
+        <FormField
+          label="案件名称"
+          htmlFor="compose-name"
+          required
+          error={errors.name}
+          hint="2–60 个字符"
+        >
           <input
             id="compose-name"
             type="text"
@@ -92,12 +120,16 @@ export default function ComposeCaseModal({ preselectedTaskIds = [], onClose }: C
             onChange={(e) => setName(e.target.value)}
             className="input"
             placeholder="例如：XX 专案"
-            required
+            autoComplete="off"
           />
-        </div>
+        </FormField>
 
-        <div>
-          <label className="field-label" htmlFor="compose-desc">案情描述 *</label>
+        <FormField
+          label="案情描述"
+          htmlFor="compose-desc"
+          error={errors.description}
+          hint="可选，将作为跨镜像关联分析的上下文"
+        >
           <textarea
             id="compose-desc"
             rows={3}
@@ -105,9 +137,8 @@ export default function ComposeCaseModal({ preselectedTaskIds = [], onClose }: C
             onChange={(e) => setDescription(e.target.value)}
             className="input resize-y"
             placeholder="案件背景说明…"
-            required
           />
-        </div>
+        </FormField>
 
         <div>
           <div className="flex items-center justify-between mb-1.5">
@@ -116,48 +147,29 @@ export default function ComposeCaseModal({ preselectedTaskIds = [], onClose }: C
               <button
                 type="button"
                 className="text-accent-600 dark:text-accent-400 hover:underline"
-                onClick={() => setSelectedTaskIds(new Set(candidateTasks.map((t) => t.id)))}
+                onClick={selectAll}
               >
                 全选
               </button>
-              <button
-                type="button"
-                className="text-ink-500 hover:underline"
-                onClick={() => setSelectedTaskIds(new Set())}
-              >
+              <button type="button" className="text-ink-500 hover:underline" onClick={clearAll}>
                 清空
               </button>
             </span>
           </div>
-          {candidateTasks.length === 0 ? (
-            <p className="text-xs text-ink-400 py-4 text-center">没有已完成且含文件库的任务</p>
-          ) : (
-            <ul className="max-h-56 overflow-y-auto border border-ink-200 dark:border-ink-700 rounded-md divide-y divide-ink-100 dark:divide-ink-800">
-              {candidateTasks.map((task) => (
-                <li key={task.id}>
-                  <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-900/50">
-                    <input
-                      type="checkbox"
-                      className="rounded border-ink-300 text-accent-600 focus:ring-accent-500"
-                      checked={selectedTaskIds.has(task.id)}
-                      onChange={() => toggleTask(task.id)}
-                    />
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm text-ink-800 dark:text-ink-200 truncate">
-                        {basename(task.image_path)}
-                      </span>
-                      <span className="block text-2xs font-mono text-ink-400">{task.id}</span>
-                    </span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
+          <TaskCheckList
+            tasks={candidateTasks}
+            selected={selectedTaskIds}
+            onToggle={toggleTask}
+            loading={tasksLoading}
+            maxHeightClass="max-h-56"
+            emptyTitle="没有已完成且含文件库的任务"
+            emptyDescription="仅已完成并生成 files.db 的任务可以组建案件。"
+          />
         </div>
 
         <div className="flex justify-end gap-2 pt-2 border-t border-ink-100 dark:border-ink-800">
           <Button onClick={onClose} disabled={submitting}>取消</Button>
-          <Button variant="primary" type="submit" disabled={!canSubmit}>
+          <Button variant="primary" type="submit" disabled={submitting}>
             {submitting ? '创建中…' : '创建案件'}
           </Button>
         </div>

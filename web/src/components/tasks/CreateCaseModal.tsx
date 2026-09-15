@@ -2,9 +2,19 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
+import FormField from '../ui/FormField';
+import StepIndicator from '../cases/StepIndicator';
+import TaskCheckList from '../cases/TaskCheckList';
 import type { ForensicTask } from '../../types/api';
 import type { CreateCaseWithTasksArgs } from '../../store/caseSlice';
-import { basename } from '../../lib/utils';
+import {
+  required,
+  minLength,
+  maxLength,
+  validateForm,
+  isValid,
+  type FieldRules,
+} from '../../lib/validation';
 
 interface CreateCaseModalProps {
   onSubmit: (data: CreateCaseWithTasksArgs) => Promise<void>;
@@ -12,13 +22,25 @@ interface CreateCaseModalProps {
   existingTasks?: ForensicTask[];
 }
 
-interface FormState {
+type FormState = {
   name: string;
   description: string;
   imagePaths: string[];
   priority: string;
   androidAnalyze: boolean;
-}
+};
+
+/** Fields validated at wizard step 1. */
+type BasicValues = Pick<FormState, 'name' | 'description'>;
+
+const BASIC_RULES: FieldRules<BasicValues> = {
+  name: [
+    required('请输入案件名称'),
+    minLength(2, '案件名称至少 2 个字符'),
+    maxLength(60, '案件名称最多 60 个字符'),
+  ],
+  description: [maxLength(500, '案情描述最多 500 个字符')],
+};
 
 const INIT: FormState = {
   name: '',
@@ -28,11 +50,20 @@ const INIT: FormState = {
   androidAnalyze: false,
 };
 
-/** Create a multi-image case: N new image paths and/or M existing completed tasks. */
+const STEPS = ['基本信息', '选择关联任务'];
+
+/**
+ * Two-step case-creation wizard:
+ * 1. Basic info (name required, optional description) — validated inline.
+ * 2. Task association: new image paths (one task each) and/or existing
+ *    completed tasks whose analysis will be reused.
+ */
 export default function CreateCaseModal({ onSubmit, onClose, existingTasks = [] }: CreateCaseModalProps) {
+  const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(INIT);
+  const [basicErrors, setBasicErrors] = useState<Partial<Record<keyof BasicValues, string>>>({});
+  const [stepError, setStepError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  const [error, setError] = useState('');
   const [associateTaskIds, setAssociateTaskIds] = useState<Set<string>>(new Set());
 
   const set = <K extends keyof FormState>(key: K, val: FormState[K]) =>
@@ -80,15 +111,35 @@ export default function CreateCaseModal({ onSubmit, onClose, existingTasks = [] 
 
   const totalImages = validImagePaths.length + associateTaskIds.size;
 
+  const validateBasics = () => {
+    const errors = validateForm(BASIC_RULES, { name: form.name, description: form.description });
+    setBasicErrors(errors);
+    return isValid(errors);
+  };
+
+  const goNext = () => {
+    setStepError('');
+    if (validateBasics()) setStep(1);
+  };
+
+  const goBack = () => {
+    setStepError('');
+    setStep(0);
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError('');
-    if (totalImages === 0) {
-      setError('请至少填写一个镜像路径，或勾选一个已完成的任务');
+    if (step !== 1) {
+      goNext();
       return;
     }
-    if (!form.name.trim() || !form.description.trim()) {
-      setError('请填写案件名称与案情描述');
+    setStepError('');
+    if (totalImages === 0) {
+      setStepError('请至少填写一个新镜像路径，或勾选一个已完成的任务');
+      return;
+    }
+    if (!validateBasics()) {
+      setStep(0);
       return;
     }
     setIsCreating(true);
@@ -102,7 +153,7 @@ export default function CreateCaseModal({ onSubmit, onClose, existingTasks = [] 
         associateTaskIds: [...associateTaskIds],
       });
     } catch (err) {
-      setError((err as Error)?.message || String(err));
+      setStepError((err as Error)?.message || String(err));
     } finally {
       setIsCreating(false);
     }
@@ -111,129 +162,147 @@ export default function CreateCaseModal({ onSubmit, onClose, existingTasks = [] 
   return (
     <Modal open onClose={onClose} title="新建案件" width="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
-        {error && (
-          <p className="text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-3 py-2 rounded-md">
-            {error}
+        <StepIndicator steps={STEPS} current={step} />
+
+        {stepError && (
+          <p
+            className="text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-3 py-2 rounded-md"
+            role="alert"
+          >
+            {stepError}
           </p>
         )}
 
-        <div>
-          <label className="field-label" htmlFor="case-name">案件名称 *</label>
-          <input
-            id="case-name"
-            type="text"
-            value={form.name}
-            onChange={(e) => set('name', e.target.value)}
-            className="input"
-            placeholder="例如：XX 专案"
-          />
-        </div>
-
-        <div>
-          <label className="field-label" htmlFor="case-desc">案情描述 *</label>
-          <textarea
-            id="case-desc"
-            rows={3}
-            value={form.description}
-            onChange={(e) => set('description', e.target.value)}
-            className="input resize-y"
-            placeholder="案件背景说明，将作为跨镜像分析的上下文…"
-          />
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="field-label mb-0">新镜像路径（每个镜像创建一个任务）</span>
-            <button
-              type="button"
-              onClick={addImage}
-              className="text-2xs text-accent-600 dark:text-accent-400 hover:underline inline-flex items-center gap-0.5"
+        {step === 0 ? (
+          <div className="space-y-4">
+            <FormField
+              label="案件名称"
+              htmlFor="case-name"
+              required
+              error={basicErrors.name}
+              hint="2–60 个字符，用于案件列表与报告展示"
             >
-              <Plus size={12} /> 添加镜像
-            </button>
-          </div>
-          <div className="space-y-2">
-            {form.imagePaths.map((path, idx) => (
-              <div key={idx} className="flex gap-2">
-                <input
-                  type="text"
-                  value={path}
-                  onChange={(e) => setImagePath(idx, e.target.value)}
-                  className="input font-mono text-xs flex-1"
-                  placeholder="/path/to/image.dd"
-                />
-                {form.imagePaths.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeImage(idx)}
-                    className="p-2 text-ink-400 hover:text-rose-500 transition-colors"
-                    aria-label="移除该镜像"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+              <input
+                id="case-name"
+                type="text"
+                value={form.name}
+                onChange={(e) => set('name', e.target.value)}
+                className="input"
+                placeholder="例如：XX 专案"
+                autoComplete="off"
+              />
+            </FormField>
 
-        {associableTasks.length > 0 && (
-          <div>
-            <p className="field-label">或关联已完成任务（复用既有分析，{associateTaskIds.size} 已选）</p>
-            <ul className="max-h-40 overflow-y-auto border border-ink-200 dark:border-ink-700 rounded-md divide-y divide-ink-100 dark:divide-ink-800">
-              {associableTasks.map((task) => (
-                <li key={task.id}>
-                  <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-900/50">
+            <FormField
+              label="案情描述"
+              htmlFor="case-desc"
+              error={basicErrors.description}
+              hint="可选，将作为跨镜像关联分析的上下文"
+            >
+              <textarea
+                id="case-desc"
+                rows={3}
+                value={form.description}
+                onChange={(e) => set('description', e.target.value)}
+                className="input resize-y"
+                placeholder="案件背景说明…"
+              />
+            </FormField>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="field-label mb-0">新镜像路径（每个镜像创建一个任务）</span>
+                <button
+                  type="button"
+                  onClick={addImage}
+                  className="text-2xs text-accent-600 dark:text-accent-400 hover:underline inline-flex items-center gap-0.5"
+                >
+                  <Plus size={12} /> 添加镜像
+                </button>
+              </div>
+              <div className="space-y-2">
+                {form.imagePaths.map((path, idx) => (
+                  <div key={idx} className="flex gap-2">
                     <input
-                      type="checkbox"
-                      className="rounded border-ink-300 text-accent-600 focus:ring-accent-500"
-                      checked={associateTaskIds.has(task.id)}
-                      onChange={() => toggleAssociate(task.id)}
+                      type="text"
+                      value={path}
+                      onChange={(e) => setImagePath(idx, e.target.value)}
+                      className="input font-mono text-xs flex-1"
+                      placeholder="/path/to/image.dd"
                     />
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm text-ink-800 dark:text-ink-200 truncate">
-                        {basename(task.image_path)}
-                      </span>
-                      <span className="block text-2xs font-mono text-ink-400">{task.id}</span>
-                    </span>
-                  </label>
-                </li>
-              ))}
-            </ul>
+                    {form.imagePaths.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeImage(idx)}
+                        className="p-2 text-ink-400 hover:text-rose-500 transition-colors"
+                        aria-label="移除该镜像"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <FormField
+              label="关联已完成任务"
+              hint={`复用既有分析，已选 ${associateTaskIds.size} 个`}
+            >
+              <TaskCheckList
+                tasks={associableTasks}
+                selected={associateTaskIds}
+                onToggle={toggleAssociate}
+                maxHeightClass="max-h-40"
+                showStatusBadge={false}
+                emptyTitle="暂无可关联的已完成任务"
+                emptyDescription="已完成且生成文件库的任务会出现在这里。"
+              />
+            </FormField>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="任务优先级" htmlFor="case-priority">
+                <select
+                  id="case-priority"
+                  value={form.priority}
+                  onChange={(e) => set('priority', e.target.value)}
+                  className="select"
+                >
+                  <option value="low">低</option>
+                  <option value="normal">普通</option>
+                  <option value="high">高</option>
+                  <option value="critical">紧急</option>
+                </select>
+              </FormField>
+              <label className="flex items-center gap-2 pt-6 text-sm text-ink-700 dark:text-ink-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="rounded border-ink-300 text-accent-600 focus:ring-accent-500"
+                  checked={form.androidAnalyze}
+                  onChange={(e) => set('androidAnalyze', e.target.checked)}
+                />
+                执行安卓专项分析
+              </label>
+            </div>
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="field-label" htmlFor="case-priority">任务优先级</label>
-            <select
-              id="case-priority"
-              value={form.priority}
-              onChange={(e) => set('priority', e.target.value)}
-              className="select"
-            >
-              <option value="low">低</option>
-              <option value="normal">普通</option>
-              <option value="high">高</option>
-              <option value="critical">紧急</option>
-            </select>
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-ink-100 dark:border-ink-800">
+          <div>{step === 1 && <Button onClick={goBack} disabled={isCreating}>上一步</Button>}</div>
+          <div className="flex gap-2">
+            <Button onClick={onClose} disabled={isCreating}>取消</Button>
+            {step === 0 ? (
+              <Button variant="primary" onClick={goNext}>
+                下一步
+              </Button>
+            ) : (
+              <Button variant="primary" type="submit" disabled={isCreating || totalImages === 0}>
+                {isCreating ? '创建中…' : `创建案件（${totalImages} 个镜像）`}
+              </Button>
+            )}
           </div>
-          <label className="flex items-center gap-2 pt-6 text-sm text-ink-700 dark:text-ink-300">
-            <input
-              type="checkbox"
-              className="rounded border-ink-300 text-accent-600 focus:ring-accent-500"
-              checked={form.androidAnalyze}
-              onChange={(e) => set('androidAnalyze', e.target.checked)}
-            />
-            执行安卓专项分析
-          </label>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-2 border-t border-ink-100 dark:border-ink-800">
-          <Button onClick={onClose} disabled={isCreating}>取消</Button>
-          <Button variant="primary" type="submit" disabled={isCreating || totalImages === 0}>
-            {isCreating ? '创建中…' : `创建案件（${totalImages} 个镜像）`}
-          </Button>
         </div>
       </form>
     </Modal>

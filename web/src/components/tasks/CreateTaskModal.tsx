@@ -1,10 +1,16 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import { useAppDispatch } from '../../store';
 import { createTask, fetchTasks } from '../../store/taskSlice';
 import { useToast } from '../ui/Toast';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
-import { errorMessage } from '../../lib/utils';
+import FormField from '../ui/FormField';
+import { emitAppEvent } from '../../lib/appEvents';
+import { basename, errorMessage } from '../../lib/utils';
+import { required, custom, validateForm, isValid, type FieldRules } from '../../lib/validation';
+import { useTranslation } from '../../hooks/useTranslation';
+import type { TranslationKey } from '../../locales/keys';
 
 /**
  * Task creation form. LLM analysis is always on (not a user toggle); a
@@ -12,20 +18,65 @@ import { errorMessage } from '../../lib/utils';
  * and bypasses the TSK disk pipeline entirely.
  */
 const DATA_SOURCES = [
-  { value: 'tsk', label: '磁盘镜像', desc: '.dd / .E01 / raw 镜像（TSK 文件系统解析）' },
-  { value: 'dir', label: 'Android 目录', desc: '已解压的逻辑提取目录树' },
-  { value: 'zip', label: 'Android ZIP', desc: '逻辑提取打包成的单个 .zip' },
-  { value: 'miui-backup', label: 'MIUI 备份', desc: '小米 MIUI 离线备份目录（descript.xml + .bak）' },
-] as const;
+  {
+    value: 'tsk',
+    labelKey: 'task.create.source.tsk',
+    descKey: 'task.create.source.tsk_desc',
+  },
+  {
+    value: 'dir',
+    labelKey: 'task.create.source.dir',
+    descKey: 'task.create.source.dir_desc',
+  },
+  {
+    value: 'zip',
+    labelKey: 'task.create.source.zip',
+    descKey: 'task.create.source.zip_desc',
+  },
+  {
+    value: 'miui-backup',
+    labelKey: 'task.create.source.miui',
+    descKey: 'task.create.source.miui_desc',
+  },
+] as const satisfies ReadonlyArray<{
+  value: FormState['android_source'];
+  labelKey: TranslationKey;
+  descKey: TranslationKey;
+}>;
 
-interface FormState {
+const PATH_LABEL_KEY: Record<FormState['android_source'], TranslationKey> = {
+  tsk: 'task.create.path_label.tsk',
+  dir: 'task.create.path_label.dir',
+  zip: 'task.create.path_label.zip',
+  'miui-backup': 'task.create.path_label.miui',
+};
+
+const PATH_PLACEHOLDER_KEY: Record<FormState['android_source'], TranslationKey> = {
+  tsk: 'task.create.path_placeholder.tsk',
+  dir: 'task.create.path_placeholder.dir',
+  zip: 'task.create.path_placeholder.zip',
+  'miui-backup': 'task.create.path_placeholder.miui',
+};
+
+/** Absolute POSIX path per line: something after a leading "/". */
+const ABSOLUTE_PATH_RE = /^\/.+/;
+
+const splitPaths = (value: string): string[] =>
+  value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+// Type alias (not interface) so FormState carries an implicit index signature
+// and satisfies validateForm's `T extends Record<string, unknown>` bound.
+type FormState = {
   image_path: string;
   android_source: string;
   backup_password: string;
   priority: string;
   case_description: string;
   xfs_mode: string;
-}
+};
 
 const INITIAL_FORM: FormState = {
   image_path: '',
@@ -36,38 +87,64 @@ const INITIAL_FORM: FormState = {
   xfs_mode: 'auto',
 };
 
+/** Validation order doubles as the focus order for the first failing field. */
+const VALIDATED_FIELD_ORDER = ['image_path', 'case_description'] as const;
+
 export default function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const dispatch = useAppDispatch();
   const toast = useToast();
+  const { t } = useTranslation();
 
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  // Field errors only surface after a submit attempt; editing then re-validates live.
+  const [submitted, setSubmitted] = useState(false);
+
+  const pathRef = useRef<HTMLTextAreaElement>(null);
+  const descRef = useRef<HTMLTextAreaElement>(null);
+  const fieldRefs: Partial<Record<keyof FormState, RefObject<HTMLTextAreaElement>>> = {
+    image_path: pathRef,
+    case_description: descRef,
+  };
 
   const set = <K extends keyof FormState>(key: K, val: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: val }));
 
+  // Closing the modal clears the validation state; the form itself resets on success.
+  useEffect(() => {
+    if (!open) setSubmitted(false);
+  }, [open]);
+
+  const rules: FieldRules<FormState> = {
+    image_path: [
+      required(t('task.create.error.path_required')),
+      custom((v) =>
+        splitPaths(String(v ?? '')).every((line) => ABSOLUTE_PATH_RE.test(line))
+          ? null
+          : t('task.create.error.path_format'),
+      ),
+    ],
+    case_description: [required(t('task.create.error.desc_required'))],
+  };
+
+  const errors = validateForm(rules, form);
+  const errorCount = Object.values(errors).filter(Boolean).length;
+  const fieldError = (key: keyof FormState): string | undefined =>
+    submitted ? errors[key] : undefined;
+
   const isLogical = form.android_source !== 'tsk';
   const isMiui = form.android_source === 'miui-backup';
 
-  const pathLabel = isMiui
-    ? 'MIUI 备份目录 *'
-    : form.android_source === 'dir'
-      ? 'Android 提取目录 *'
-      : form.android_source === 'zip'
-        ? 'Android ZIP 文件 *'
-        : '镜像路径 *';
-  const pathPlaceholder = isMiui
-    ? '/path/to/MIUI备份目录（含 descript.xml + .bak）'
-    : form.android_source === 'dir'
-      ? '/path/to/android_logical_extraction/'
-      : form.android_source === 'zip'
-        ? '/path/to/android_extraction.zip'
-        : '/path/to/disk_image.dd 或 /path/to/image.E01';
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setSubmitted(true);
+    if (!isValid(errors)) {
+      const first = VALIDATED_FIELD_ORDER.find((key) => errors[key]);
+      if (first) fieldRefs[first]?.current?.focus();
+      return;
+    }
     setError('');
     setIsCreating(true);
     try {
@@ -81,8 +158,14 @@ export default function CreateTaskModal({ open, onClose }: { open: boolean; onCl
       await dispatch(createTask(payload as never)).unwrap();
       onClose();
       setForm(INITIAL_FORM);
+      setSubmitted(false);
       void dispatch(fetchTasks({}));
-      toast.success('任务创建成功');
+      toast.success(t('task.create.toast_success'));
+      emitAppEvent({
+        kind: 'success',
+        title: t('task.create.event_title'),
+        detail: basename(splitPaths(form.image_path)[0]),
+      });
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -91,16 +174,27 @@ export default function CreateTaskModal({ open, onClose }: { open: boolean; onCl
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="新建分析任务" width="lg">
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal open={open} onClose={onClose} title={t('task.create.title')} width="lg">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+        {/* Request-level error (backend failure) */}
         {error && (
           <p className="text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-3 py-2 rounded-md">
             {error}
           </p>
         )}
 
-        <div>
-          <span className="field-label">数据源类型</span>
+        {/* Validation summary bar */}
+        {submitted && errorCount > 0 && (
+          <div
+            role="alert"
+            className="flex items-center gap-2 rounded-md border border-rose-200 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-600 dark:text-rose-400"
+          >
+            <AlertCircle size={14} className="shrink-0" />
+            {t('task.create.error.summary').replace('{n}', String(errorCount))}
+          </div>
+        )}
+
+        <FormField label={t('task.create.source_type')}>
           <div className="grid grid-cols-2 gap-2">
             {DATA_SOURCES.map((ds) => (
               <label
@@ -119,67 +213,81 @@ export default function CreateTaskModal({ open, onClose }: { open: boolean; onCl
                   onChange={(e) => set('android_source', e.target.value)}
                   className="sr-only"
                 />
-                <span className="text-sm font-medium text-ink-800 dark:text-ink-100">{ds.label}</span>
-                <span className="text-2xs text-ink-500 dark:text-ink-400">{ds.desc}</span>
+                <span className="text-sm font-medium text-ink-800 dark:text-ink-100">
+                  {t(ds.labelKey)}
+                </span>
+                <span className="text-2xs text-ink-500 dark:text-ink-400">{t(ds.descKey)}</span>
               </label>
             ))}
           </div>
-        </div>
+        </FormField>
 
-        <div>
-          <label className="field-label" htmlFor="task-path">{pathLabel}</label>
-          <input
+        <FormField
+          label={t(PATH_LABEL_KEY[form.android_source])}
+          htmlFor="task-path"
+          required
+          error={fieldError('image_path')}
+          hint={t('task.create.path_hint')}
+        >
+          <textarea
             id="task-path"
-            type="text"
-            required
+            ref={pathRef}
+            rows={3}
             value={form.image_path}
             onChange={(e) => set('image_path', e.target.value)}
-            className="input font-mono text-xs"
-            placeholder={pathPlaceholder}
+            className="input font-mono text-xs resize-y"
+            aria-invalid={Boolean(fieldError('image_path'))}
+            placeholder={t(PATH_PLACEHOLDER_KEY[form.android_source])}
           />
-        </div>
+        </FormField>
 
-        <div>
-          <label className="field-label" htmlFor="task-desc">案情描述 *</label>
+        <FormField
+          label={t('task.create.desc_label')}
+          htmlFor="task-desc"
+          required
+          error={fieldError('case_description')}
+        >
           <textarea
             id="task-desc"
-            required
+            ref={descRef}
             rows={3}
             value={form.case_description}
             onChange={(e) => set('case_description', e.target.value)}
             className="input resize-y"
-            placeholder="简要描述案情背景，LLM 分析将以此为导向…"
+            aria-invalid={Boolean(fieldError('case_description'))}
+            placeholder={t('task.create.desc_placeholder')}
           />
-        </div>
+        </FormField>
 
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="field-label" htmlFor="task-priority">优先级</label>
+          <FormField label={t('task.create.priority_label')} htmlFor="task-priority">
             <select
               id="task-priority"
               value={form.priority}
               onChange={(e) => set('priority', e.target.value)}
               className="select"
             >
-              <option value="low">低</option>
-              <option value="normal">普通</option>
-              <option value="high">高</option>
-              <option value="critical">紧急</option>
+              <option value="low">{t('task.priority.low')}</option>
+              <option value="normal">{t('task.priority.normal')}</option>
+              <option value="high">{t('task.priority.high')}</option>
+              <option value="critical">{t('task.priority.critical')}</option>
             </select>
-          </div>
+          </FormField>
           {isMiui && (
-            <div>
-              <label className="field-label" htmlFor="task-backup-pw">备份密码（可选）</label>
+            <FormField
+              label={t('task.create.backup_pw_label')}
+              htmlFor="task-backup-pw"
+            >
               <input
                 id="task-backup-pw"
                 type="password"
                 value={form.backup_password}
                 onChange={(e) => set('backup_password', e.target.value)}
                 className="input"
-                placeholder="MIUI 备份加密密码"
+                placeholder={t('task.create.backup_pw_placeholder')}
                 autoComplete="off"
               />
-            </div>
+            </FormField>
           )}
         </div>
 
@@ -188,29 +296,37 @@ export default function CreateTaskModal({ open, onClose }: { open: boolean; onCl
           onClick={() => setShowAdvanced(!showAdvanced)}
           className="text-xs text-accent-600 dark:text-accent-400 hover:underline"
         >
-          {showAdvanced ? '收起高级选项 ▴' : '高级选项 ▾'}
+          {showAdvanced ? t('task.create.advanced_collapse') : t('task.create.advanced')}
         </button>
 
         {showAdvanced && !isLogical && (
-          <div>
-            <label className="field-label" htmlFor="task-xfs">XFS 时间戳模式</label>
+          <FormField label={t('task.create.xfs_label')} htmlFor="task-xfs">
             <select
               id="task-xfs"
               value={form.xfs_mode}
               onChange={(e) => set('xfs_mode', e.target.value)}
               className="select"
             >
-              <option value="auto">自动</option>
-              <option value="v4">XFS v4</option>
-              <option value="v5">XFS v5</option>
+              <option value="auto">{t('task.create.xfs.auto')}</option>
+              <option value="v4">{t('task.create.xfs.v4')}</option>
+              <option value="v5">{t('task.create.xfs.v5')}</option>
             </select>
-          </div>
+          </FormField>
         )}
 
         <div className="flex justify-end gap-2 pt-2 border-t border-ink-100 dark:border-ink-800">
-          <Button onClick={onClose} disabled={isCreating}>取消</Button>
+          <Button onClick={onClose} disabled={isCreating}>
+            {t('common.cancel')}
+          </Button>
           <Button variant="primary" type="submit" disabled={isCreating}>
-            {isCreating ? '创建中…' : '创建任务'}
+            {isCreating ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                {t('task.create.submitting')}
+              </>
+            ) : (
+              t('task.create.submit')
+            )}
           </Button>
         </div>
       </form>

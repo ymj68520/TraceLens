@@ -7,15 +7,19 @@ import Card, { CardHeader } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { useToast } from '../components/ui/Toast';
+import { useTranslation } from '../hooks/useTranslation';
 import EmptyState from '../components/ui/EmptyState';
-import { LoadingBlock } from '../components/ui/Spinner';
+import { SkeletonTable } from '../components/ui/PageScaffold';
 import TasksTable from '../components/tasks/TasksTable';
 import CreateTaskModal from '../components/tasks/CreateTaskModal';
 import AddTasksToCaseModal from '../components/tasks/AddTasksToCaseModal';
 import ComposeCaseModal from '../components/tasks/ComposeCaseModal';
 import { useTaskAutoTrigger } from '../hooks/useTaskAutoTrigger';
 import { errorMessage } from '../lib/utils';
+import { emitAppEvent } from '../lib/appEvents';
 import type { ForensicCase } from '../types/api';
+import { ListTodo } from 'lucide-react';
+import { PageHeader } from '../components/ui/PageScaffold';
 
 type ConfirmState =
   | { kind: 'cancel' | 'delete'; taskId: string }
@@ -26,6 +30,7 @@ export default function Tasks() {
   const { tasks, status, filters } = useAppSelector((state) => state.tasks);
   const { cases } = useAppSelector((state) => state.cases);
   const toast = useToast();
+  const { t } = useTranslation();
 
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [joinTaskId, setJoinTaskId] = useState<string | null>(null);
@@ -70,11 +75,13 @@ export default function Tasks() {
     if (!confirm) return;
     try {
       if (confirm.kind === 'cancel') {
-        await dispatch(cancelTask({ taskId: confirm.taskId, reason: '用户取消' })).unwrap();
-        toast.success('任务已取消');
+        await dispatch(cancelTask({ taskId: confirm.taskId, reason: t('tasks.cancel_reason') })).unwrap();
+        toast.success(t('tasks.toast.cancelled'));
+        emitAppEvent({ kind: 'info', title: t('tasks.toast.cancelled'), detail: confirm.taskId });
       } else {
         await dispatch(deleteTask(confirm.taskId)).unwrap();
-        toast.success('任务已删除');
+        toast.success(t('tasks.toast.deleted'));
+        emitAppEvent({ kind: 'success', title: t('tasks.toast.deleted'), detail: confirm.taskId });
       }
     } catch (err) {
       toast.error(errorMessage(err));
@@ -85,60 +92,61 @@ export default function Tasks() {
 
   return (
     <div className="space-y-4 max-w-7xl">
+      <PageHeader icon={ListTodo} tone="accent" title={t('nav.tasks')} subtitle={t('tasks.subtitle')} />
       <Card padded={false}>
         <div className="px-5 pt-4 flex flex-wrap items-center justify-between gap-3">
           <CardHeader
-            title="分析任务"
-            subtitle={`共 ${tasks.length} 个任务`}
+            title={t('tasks.title')}
+            subtitle={t('tasks.count').replace('{n}', String(tasks.length))}
           />
           <div className="flex items-center gap-2 pb-4">
             <select
               className="select w-32 py-1.5 text-xs"
               value={filters.status}
               onChange={(e) => dispatch(setFilters({ status: e.target.value }))}
-              aria-label="按状态筛选"
+              aria-label={t('tasks.filter.status_aria')}
             >
-              <option value="all">全部状态</option>
-              <option value="pending">排队中</option>
-              <option value="running">运行中</option>
-              <option value="completed">已完成</option>
-              <option value="failed">失败</option>
-              <option value="cancelled">已取消</option>
+              <option value="all">{t('tasks.filter.all_status')}</option>
+              <option value="pending">{t('task.status.pending')}</option>
+              <option value="running">{t('task.status.running')}</option>
+              <option value="completed">{t('task.status.completed')}</option>
+              <option value="failed">{t('task.status.failed')}</option>
+              <option value="cancelled">{t('task.status.cancelled')}</option>
             </select>
             <select
               className="select w-28 py-1.5 text-xs"
               value={filters.priority}
               onChange={(e) => dispatch(setFilters({ priority: e.target.value }))}
-              aria-label="按优先级筛选"
+              aria-label={t('tasks.filter.priority_aria')}
             >
-              <option value="all">全部优先级</option>
-              <option value="low">低</option>
-              <option value="normal">普通</option>
-              <option value="high">高</option>
-              <option value="critical">紧急</option>
+              <option value="all">{t('tasks.filter.all_priority')}</option>
+              <option value="low">{t('task.priority.low')}</option>
+              <option value="normal">{t('task.priority.normal')}</option>
+              <option value="high">{t('task.priority.high')}</option>
+              <option value="critical">{t('task.priority.critical')}</option>
             </select>
             <Button
               size="sm"
               disabled={selectedTaskIds.size === 0}
               onClick={() => setShowCompose(true)}
             >
-              <Layers size={14} /> 组建案件{selectedTaskIds.size > 0 ? `（${selectedTaskIds.size}）` : ''}
+              <Layers size={14} /> {selectedTaskIds.size > 0 ? t('tasks.compose_count').replace('{n}', String(selectedTaskIds.size)) : t('tasks.compose')}
             </Button>
             <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
-              <Plus size={14} /> 新建任务
+              <Plus size={14} /> {t('tasks.new')}
             </Button>
           </div>
         </div>
 
         {status === 'loading' && tasks.length === 0 ? (
-          <LoadingBlock text="正在加载任务…" />
+          <SkeletonTable rows={6} cols={5} />
         ) : tasks.length === 0 ? (
           <EmptyState
-            title="暂无任务"
-            description="点击「新建任务」创建第一个取证分析任务。"
+            title={t('tasks.empty.title')}
+            description={t('tasks.empty.desc')}
             action={
               <Button variant="primary" size="sm" onClick={() => setShowCreate(true)}>
-                <Plus size={14} /> 新建任务
+                <Plus size={14} /> {t('tasks.new')}
               </Button>
             }
           />
@@ -158,14 +166,14 @@ export default function Tasks() {
 
       <ConfirmDialog
         open={confirm !== null}
-        title={confirm?.kind === 'cancel' ? '取消任务' : '删除任务'}
+        title={confirm?.kind === 'cancel' ? t('tasks.confirm.cancel_title') : t('tasks.confirm.delete_title')}
         message={
           confirm?.kind === 'cancel'
-            ? '确定要取消该任务吗？正在进行的分析将被中止。'
-            : '确定要删除该任务吗？任务记录及其产出数据将被移除。'
+            ? t('tasks.confirm.cancel_message')
+            : t('tasks.confirm.delete_message')
         }
         danger={confirm?.kind === 'delete'}
-        confirmText={confirm?.kind === 'cancel' ? '取消任务' : '删除'}
+        confirmText={confirm?.kind === 'cancel' ? t('tasks.confirm.cancel_confirm') : t('tasks.confirm.delete_confirm')}
         onConfirm={handleConfirm}
         onCancel={() => setConfirm(null)}
       />

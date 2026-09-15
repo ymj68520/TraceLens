@@ -1,6 +1,12 @@
 import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+import { formatDistanceToNowStrict, parseISO } from 'date-fns';
+import { zhCN } from 'date-fns/locale';
 
 export const cx = (...inputs: ClassValue[]) => clsx(...inputs);
+
+/** clsx + tailwind-merge — later classes win on conflicts. */
+export const cn = (...inputs: ClassValue[]) => twMerge(clsx(...inputs));
 
 export const formatBytes = (bytes?: number | null): string => {
   if (bytes === null || bytes === undefined || Number.isNaN(bytes)) return '—';
@@ -17,6 +23,34 @@ export const formatDateTime = (value?: string | number | null): string => {
   if (Number.isNaN(d.getTime())) return String(value);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
+/** 「3 分钟前」style relative time; falls back to absolute for anything odd. */
+export const formatRelativeTime = (value?: string | number | null): string => {
+  if (!value) return '—';
+  try {
+    const d = typeof value === 'number' ? new Date(value) : parseISO(value);
+    if (Number.isNaN(d.getTime())) return formatDateTime(value);
+    return formatDistanceToNowStrict(d, { addSuffix: true, locale: zhCN });
+  } catch {
+    return formatDateTime(value);
+  }
+};
+
+/**
+ * Task creation epoch (ms). The C++ API exposes it under `timestamps.created`;
+ * `created_at` is kept as a fallback for older payloads.
+ */
+export const getTaskCreatedMs = (task: unknown): number | null => {
+  const t = task as { timestamps?: { created?: unknown }; created_at?: unknown };
+  if (typeof t?.timestamps?.created === 'number' && t.timestamps.created > 0) {
+    return t.timestamps.created;
+  }
+  if (typeof t?.created_at === 'string' && t.created_at) {
+    const ms = new Date(t.created_at).getTime();
+    if (!Number.isNaN(ms)) return ms;
+  }
+  return null;
 };
 
 export const formatDuration = (ms?: number | null): string => {
