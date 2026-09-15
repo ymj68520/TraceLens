@@ -9,6 +9,7 @@ accessors in this module — never a third ad-hoc SQL variant.
 
 import logging
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -76,6 +77,33 @@ LATEST_ANALYSIS_JOIN = (
     "LEFT JOIN file_analyses fa ON fa.id = ("
     " SELECT MAX(id) FROM file_analyses WHERE file_path = fa.file_path)"
 )
+
+
+def file_forensic_time(db_path: str, file_path: str) -> Optional[datetime]:
+    """The file's forensic time (mtime, fallback ctime) as naive datetime.
+
+    Feeds episode reference_time (SPEC D12). None when the file row is
+    absent or its timestamps are unusable — callers fall back to now().
+    """
+    if not db_path or not Path(db_path).exists():
+        return None
+    norm = normalize_evidence_path(file_path)
+    try:
+        with sqlite3.connect(db_path, timeout=10) as conn:
+            row = conn.execute(
+                "SELECT mtime, ctime FROM files WHERE path = ? LIMIT 1", (norm,)
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    ts = row[0] or row[1]
+    if not ts:
+        return None
+    try:
+        return datetime.fromtimestamp(int(ts))
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 def analysis_stats(db_path: str) -> Dict[str, Any]:

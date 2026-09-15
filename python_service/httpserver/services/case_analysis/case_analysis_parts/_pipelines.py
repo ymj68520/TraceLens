@@ -167,7 +167,8 @@ class CaseAnalysisPipelinesMixin:
                     try:
                         logger.info(f"[CASE_ANALYSIS] Task {task_id}: Starting KG ingestion with {len(descriptions)} file descriptions")
                         kg_ok = await self.ingest_to_knowledge_graph(
-                            task_id, case_description, descriptions
+                            task_id, case_description, descriptions,
+                            files_db_path=files_db_path,
                         )
                         logger.info(f"[CASE_ANALYSIS] Task {task_id}: KG ingestion completed, result: {kg_ok}")
                         result["steps"]["knowledge_graph"] = {
@@ -234,7 +235,8 @@ class CaseAnalysisPipelinesMixin:
                     try:
                         logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] Starting KG ingestion with {len(descriptions)} file descriptions")
                         kg_ok = await self.ingest_to_knowledge_graph(
-                            task_id, case_description, descriptions
+                            task_id, case_description, descriptions,
+                            files_db_path=files_db_path,
                         )
                         logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] KG ingestion completed, result: {kg_ok}")
                         result["steps"]["knowledge_graph"] = {

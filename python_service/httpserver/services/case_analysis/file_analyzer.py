@@ -9,11 +9,12 @@ import json
 import logging
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ...config import Settings
-from .file_schema import latest_analysis
+from .file_schema import file_forensic_time, latest_analysis
 
 logger = logging.getLogger(__name__)
 
@@ -328,7 +329,7 @@ class FileAnalyzer:
         if self._graphiti_service and any(r.get("success") for r in results):
             logger.info(f"Task {task_id}: Triggering incremental Graphiti sync for re-analyzed files...")
             asyncio.create_task(self.ingest_to_knowledge_graph(
-                task_id, case_description, results
+                task_id, case_description, results, files_db_path=files_db_path
             ))
 
         logger.info(f"Re-analysis completed: {sum(1 for r in results if r.get('success'))}/{len(results)} files successful")
@@ -501,6 +502,7 @@ class FileAnalyzer:
         task_id: str,
         case_description: str,
         file_descriptions: List[Dict[str, Any]],
+        files_db_path: str = "",
     ) -> bool:
         """
         Ingest case description and file descriptions into Graphiti.
@@ -516,6 +518,8 @@ class FileAnalyzer:
             task_id: Task identifier (used as graph group_id).
             case_description: Full case description text.
             file_descriptions: List of per-file analysis results.
+            files_db_path: Task files db — supplies each file's forensic time
+                for the episode reference_time (D12) when available.
 
         Returns:
             True if ingestion succeeded, False otherwise.
@@ -555,7 +559,7 @@ class FileAnalyzer:
             episodes = []
 
             # 1. Ingest case description (chunk long descriptions)
-            desc_chunks = self._chunk_text(case_description, max_chars=3000)
+            desc_chunks = self._chunk_text(case_description)
             for i, chunk in enumerate(desc_chunks):
                 episodes.append(EpisodeData(
                     name=f"案情描述 (第{i+1}部分)" if len(desc_chunks) > 1 else "案情描述",
@@ -573,8 +577,14 @@ class FileAnalyzer:
                 file_path = desc.get("file_path", "")
                 description = desc.get("description", "")
                 if description:
+                    # D12: episode reference_time is the file's forensic time
+                    # (mtime, fallback ctime), not the ingestion instant.
+                    file_time = (
+                        file_forensic_time(files_db_path, file_path)
+                        if files_db_path else None
+                    ) or datetime.now()
                     # Chunk long descriptions
-                    chunks = self._chunk_text(description, max_chars=3000)
+                    chunks = self._chunk_text(description)
                     for j, chunk in enumerate(chunks):
                         ep_name = f"文件分析: {file_path}"
                         if len(chunks) > 1:
@@ -583,7 +593,7 @@ class FileAnalyzer:
                             name=ep_name,
                             episode_body=json.dumps({"file_path": file_path, "analysis": chunk}, ensure_ascii=False),
                             source_description=f"LLM分析结果 - {file_path}",
-                            reference_time=datetime.now(),
+                            reference_time=file_time,
                             file_path=file_path,
                             file_id=0,
                             category="file_description"
@@ -618,8 +628,11 @@ class FileAnalyzer:
             return False
 
     @staticmethod
-    def _chunk_text(text: str, max_chars: int = 3000) -> List[str]:
-        """Split text into chunks, breaking at paragraph boundaries."""
+    def _chunk_text(text: str, max_chars: Optional[int] = None) -> List[str]:
+        """Split text into chunks (shared episode budget by default, D11)."""
+        if max_chars is None:
+            from ..graphiti_parts.episode_budget import episode_chunk_chars
+            max_chars = episode_chunk_chars()
         if len(text) <= max_chars:
             return [text]
 

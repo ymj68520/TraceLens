@@ -677,8 +677,8 @@ class ClusterAnalyzer:
             raise
 
     @staticmethod
-    def _chunk_text(text: str, max_chars: int = 3000) -> List[str]:
-        """Split text into chunks, breaking at paragraph boundaries."""
+    def _chunk_text(text: str, max_chars: Optional[int] = None) -> List[str]:
+        """Split text into chunks (shared episode budget by default, D11)."""
         return chunk_text(text, max_chars)
 
     async def ingest_clusters_to_graphiti(
@@ -760,8 +760,15 @@ class ClusterAnalyzer:
             return False
 
 
-def chunk_text(text: str, max_chars: int = 3000) -> List[str]:
-    """Split text into chunks, breaking at paragraph boundaries."""
+def chunk_text(text: str, max_chars: Optional[int] = None) -> List[str]:
+    """Split text into chunks, breaking at paragraph boundaries.
+
+    ``max_chars`` defaults to the shared episode budget (SPEC file-analysis
+    D11): floor(effective GRAPHITI_MAX_EPISODE_TOKENS × 3).
+    """
+    if max_chars is None:
+        from ..graphiti_parts.episode_budget import episode_chunk_chars
+        max_chars = episode_chunk_chars()
     if len(text) <= max_chars:
         return [text]
 
@@ -795,10 +802,18 @@ def build_analysis_episodes(analysis: Dict[str, Any]) -> List[Any]:
     event_type = analysis.get("event_type", "UNKNOWN")
     bucket_seconds = analysis.get("bucket_seconds", PIPELINE_BUCKET_SECONDS)
     bucket_index = analysis.get("time_window", analysis.get("bucket_index", 0))
+    bucket_offset = int(analysis.get("bucket_epoch_offset") or 0)
     parent_directory = analysis.get("parent_directory", "")
     cluster_count = analysis.get("cluster_count", 0)
 
-    chunks = chunk_text(description, max_chars=3000)
+    # D12: the episode carries the cluster's forensic time — the window
+    # start under the task's local alignment — not the ingestion instant.
+    try:
+        reference_time = datetime.fromtimestamp(bucket_index * bucket_seconds + bucket_offset)
+    except (OverflowError, OSError, ValueError):
+        reference_time = datetime.now()
+
+    chunks = chunk_text(description)
     episodes = []
     for j, chunk in enumerate(chunks):
         ep_name = (
@@ -819,7 +834,7 @@ def build_analysis_episodes(analysis: Dict[str, Any]) -> List[Any]:
                 "analysis": chunk,
             }, ensure_ascii=False),
             source_description=f"事件簇LLM分析 - {event_type} (count={cluster_count})",
-            reference_time=datetime.now(),
+            reference_time=reference_time,
             file_path="",
             file_id=0,
             category="event_cluster_description",

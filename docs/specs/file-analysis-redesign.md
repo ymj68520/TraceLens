@@ -1,6 +1,6 @@
 # SPEC：文件分析重构（File Analysis Redesign）
 
-> **状态**：已评审锁定（2026-09-15）；Phase 1-2 已实施（2026-09-16），Phase 3-7 待实施。
+> **状态**：已评审锁定（2026-09-15）；Phase 1-4 已实施（2026-09-16），Phase 5-7 待实施。
 > **范围**：Web 拓扑下文件 LLM 分析的生成、存储、已分析判定、下游消费（事件簇分析 / Graphiti / 报告 / 调查证据）、知识图谱摄入与主流水线编排全链路。CLI 拓扑不在本 SPEC 范围内（§2 D2）。
 > **性质**：与 [event-cluster-analysis-redesign.md](event-cluster-analysis-redesign.md) 同属过程规范文档，不随代码同步更新。
 > **测试口径**：阶段验收使用 `make test-python-focused`；仓库级全量测试按惯例在全部阶段完成后统一执行。
@@ -267,9 +267,9 @@ Step5   报告（不变）
 
 **验收**：pytest——编排顺序（文件轮完成事件先于簇轮启动）、工件轮失败不阻断文件/簇轮但使任务 partial、reanalyze 并发上限为 `llm_max_concurrency`；vitest——任务详情 partial 展示。
 
-### Phase 4 —— Graphiti 预算与时间（D11 + D12 + D13）
+### Phase 4 —— Graphiti 预算与时间（D11 + D12 + D13）（✅ 已实施 2026-09-16）
 
-**范围**：§6.2 / §6.3 全项；三处 3000 字面量清除。
+**范围**：§6.2 / §6.3 全项；三处 3000 字面量清除。实施记录：预算模块 `services/graphiti_parts/episode_budget.py`（一次探测 + 进程内缓存，`GraphitiService.initialize` 挂接，失败静默回退配置值）；簇 episode reference_time = `bucket_index × bucket_seconds + bucket_epoch_offset`（worker 补摄 SELECT 已补 offset 字段）；文件 episode reference_time = `files.mtime/ctime`（`ingest_to_knowledge_graph` 新增 `files_db_path` 参数，管线与重析两条调用链已接线）。
 
 **验收**：pytest——reference_time 断言（文件 episode = mtime、簇 episode = cluster_start）、chunk 常量推导公式、探测 mock（成功缩限/失败回退/超时回退）；grep 断言仓库内无新增 3000 分块字面量（CI 可选）。
 

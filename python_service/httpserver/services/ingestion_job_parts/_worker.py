@@ -51,7 +51,7 @@ def fetch_pending_cluster_analyses(events_db: Optional[str]) -> list:
             conn.row_factory = sqlite3.Row
             conn.text_factory = _sqlite_text_factory
             cur = conn.execute(
-                "SELECT id, event_type, bucket_seconds, bucket_index, "
+                "SELECT id, event_type, bucket_seconds, bucket_index, bucket_epoch_offset, "
                 "parent_directory, member_count AS cluster_count, description "
                 "FROM event_cluster_analyses "
                 "WHERE ingested_at IS NULL AND description IS NOT NULL AND description != '' "
