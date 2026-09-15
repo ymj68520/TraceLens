@@ -5,12 +5,15 @@ import pytest
 
 from httpserver.services.investigation_evidence import (
     EvidenceResolver,
+    PARENT_DIRECTORY_SQL,
     compute_analysis_input_hash,
     expand_timeline_group_rows,
     make_cluster_key,
     make_file_evidence_key,
+    parent_directory_of,
     parse_cluster_key,
     read_timeline_group_members,
+    trunc_div,
     validate_timeline_group_descriptor,
 )
 
@@ -137,6 +140,7 @@ def test_timeline_descriptor_expands_trusted_rows_deterministically_and_rejects_
         "bucket_seconds": 300,
         "event_type": "MODIFIED",
         "parent_directory": "/evidence/",
+        "bucket_epoch_offset": 0,
         "bucket_start_timestamp": 3000,
     }
     rows = [
@@ -154,6 +158,100 @@ def test_timeline_descriptor_expands_trusted_rows_deterministically_and_rejects_
         expand_timeline_group_rows(descriptor, [{"timestamp": -1, "event_type": "MODIFIED"}])
     with pytest.raises(ValueError, match="bucket_start"):
         validate_timeline_group_descriptor({**descriptor, "bucket_start_timestamp": 1})
+
+
+def test_timeline_descriptor_accepts_optional_offset_and_validates_start():
+    descriptor = {
+        "bucket_index": 2,
+        "bucket_seconds": 3600,
+        "event_type": "MODIFIED",
+        "parent_directory": "/evidence/",
+        "bucket_epoch_offset": 57600,
+    }
+    canonical = validate_timeline_group_descriptor(descriptor)
+    # Window start includes the alignment offset (SPEC §4.2).
+    assert canonical["bucket_start_timestamp"] == 2 * 3600 + 57600
+    assert (
+        validate_timeline_group_descriptor({**descriptor, "bucket_start_timestamp": 64800})
+        == canonical
+    )
+    with pytest.raises(ValueError, match="bucket_start"):
+        validate_timeline_group_descriptor({**descriptor, "bucket_start_timestamp": 7200})
+    with pytest.raises(ValueError, match="offset"):
+        validate_timeline_group_descriptor({**descriptor, "bucket_epoch_offset": -1})
+    with pytest.raises(ValueError, match="offset"):
+        validate_timeline_group_descriptor({**descriptor, "bucket_epoch_offset": 86400})
+    with pytest.raises(ValueError, match="offset"):
+        validate_timeline_group_descriptor({**descriptor, "bucket_epoch_offset": "soon"})
+
+
+def test_read_timeline_group_members_honors_descriptor_offset(tmp_path):
+    events_db = tmp_path / "events.db"
+    with sqlite3.connect(events_db) as conn:
+        conn.execute(
+            "CREATE TABLE events (id INTEGER PRIMARY KEY, timestamp INTEGER, "
+            "event_type TEXT, file_path TEXT, description TEXT, inode INTEGER)"
+        )
+        # With offset 57600: 57605-57600=5 -> bucket 0; 57599-57600=-1 -> bucket 0
+        # too (SQLite truncates toward zero); 57660-57600=60 -> bucket 1.
+        # Member rows come back in (timestamp, id) order.
+        conn.executemany(
+            "INSERT INTO events VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (1, 57605, "MODIFIED", "/foo/a.txt", "in", 1),
+                (2, 57599, "MODIFIED", "/foo/b.txt", "trunc-in", 2),
+                (3, 57660, "MODIFIED", "/foo/c.txt", "next", 3),
+            ],
+        )
+        conn.commit()
+    rows = read_timeline_group_members(
+        str(events_db),
+        {
+            "bucket_index": 0,
+            "bucket_seconds": 60,
+            "event_type": "MODIFIED",
+            "parent_directory": "/foo/",
+            "bucket_epoch_offset": 57600,
+        },
+    )
+    assert [row["id"] for row in rows] == [2, 1]
+
+
+def test_trunc_div_matches_sqlite_integer_division(tmp_path):
+    import sqlite3
+
+    cases = [(0, 60), (30, 60), (59, 60), (60, 60), (-1, 60), (-59, 60), (-60, 60),
+             (-61, 60), (57600, 3600), (-57599, 3600), (86399, 86400), (-86401, 86400),
+             (7, -60), (-7, -60)]
+    with sqlite3.connect(":memory:") as conn:
+        for numerator, denominator in cases:
+            sql_quotient = conn.execute(
+                "SELECT (?) / (?)", (numerator, denominator)
+            ).fetchone()[0]
+            assert trunc_div(numerator, denominator) == sql_quotient, (numerator, denominator)
+
+
+def test_parent_directory_of_matches_sql_expression(tmp_path):
+    paths = [
+        "/etc/ssh/sshd_config",
+        "/etc/ssh/sub/deep.conf",
+        "no-leading-slash.txt",
+        "C:/Users/x/y.dll",
+        "",
+        "/root-level",
+        "/trailing/",
+    ]
+    with sqlite3.connect(":memory:") as conn:
+        conn.execute("CREATE TABLE events (file_path TEXT)")
+        for path in paths:
+            conn.execute("INSERT INTO events VALUES (?)", (path,))
+        sql_results = [
+            row[0]
+            for row in conn.execute(
+                f"SELECT {PARENT_DIRECTORY_SQL} FROM events ORDER BY rowid"
+            )
+        ]
+    assert [parent_directory_of(path) for path in paths] == sql_results
 
 
 @pytest.mark.asyncio

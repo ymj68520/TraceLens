@@ -17,57 +17,12 @@ export const saveCaseDescription = async (taskId, caseDescription) => {
 };
 
 /**
- * 启动完整案情分析
- * @param {Object} options
- * @param {string} options.taskId - 任务 ID
- * @param {string} options.filesDbPath - _files.db 路径
- * @param {string} options.caseDescription - 案情描述
- * @param {number} options.maxFilterFiles - 最大筛选文件数
- * @param {boolean} options.run_filtering - 是否执行 AI 筛选
- * @param {boolean} options.report_only - 仅重新生成报告，跳过文件提取/分析
- */
-export const startCaseAnalysis = async () => {
-    throw new Error('legacy case analysis generation has been retired; use report generation');
-};
-
-/**
  * 获取案情分析任务状态
+ * （用于 reanalyze-files / windows 等后台任务轮询；legacy 一键案情分析已退役）
  * @param {string} jobId - 任务 ID
  */
 export const getCaseAnalysisStatus = async (jobId) => {
     return await pythonApi.get(`/api/llm/case-analysis/${jobId}`);
-};
-
-/**
- * 轮询案情分析状态直到完成
- * @param {string} jobId
- * @param {Function} onProgress - 进度回调
- * @param {number} interval - 轮询间隔 (ms)
- */
-export const pollCaseAnalysis = async (jobId, onProgress, interval = 3000) => {
-    return new Promise((resolve, reject) => {
-        const poll = async () => {
-            try {
-                const status = await getCaseAnalysisStatus(jobId);
-
-                if (onProgress) {
-                    onProgress(status);
-                }
-
-                if (status.status === 'completed') {
-                    resolve(status);
-                } else if (status.status === 'failed') {
-                    reject(new Error(status.detail || '案情分析失败'));
-                } else {
-                    setTimeout(poll, interval);
-                }
-            } catch (error) {
-                reject(error);
-            }
-        };
-
-        poll();
-    });
 };
 
 /**
@@ -106,9 +61,7 @@ export const reanalyzeFiles = async (taskId, filePaths, userHint, filesDbPath, c
 
 export default {
     saveCaseDescription,
-    startCaseAnalysis,
     getCaseAnalysisStatus,
-    pollCaseAnalysis,
     getCaseReport,
     getFilteredFiles,
     reanalyzeFiles,

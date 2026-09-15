@@ -1,9 +1,12 @@
 #include "DatabaseManager/EventExtractor/EventExtractor.h"
 #include "HTTPServer/SQLiteHelper.h"
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <sstream>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -264,6 +267,182 @@ TEST_F(EventTimelineTest, EventConsistency) {
     sqlite3_finalize(stmt);
     
     sqlite3_close(db);
+}
+
+// ============================================================================
+// Cluster golden tests (SPEC event-cluster-analysis-redesign §4.4)
+//
+// The Python side of this contract lives in
+// python_service/tests/unit/test_cluster_golden.py. The fixture rows below are
+// the same truth: both implementations must produce identical coordinates.
+// ============================================================================
+
+namespace {
+struct GoldenRow { int id; long long ts; const char* type; const char* path; };
+
+// Same rows as the Python golden fixture (keep in sync).
+const GoldenRow kGoldenRows[] = {
+    {1, 0,     "MODIFIED", "/etc/a.conf"},
+    {2, 30,    "MODIFIED", "/etc/b.conf"},
+    {3, 59,    "CREATED",  "/etc/c.conf"},
+    {4, 60,    "MODIFIED", "/etc/d.conf"},
+    {5, -1,    "MODIFIED", "/var/log/w.log"},
+    {6, 86399, "DELETED",  "/tmp/x"},
+    {7, 86405, "DELETED",  "/tmp/y"},
+    {8, 57600, "MODIFIED", "/opt/z"},
+};
+
+// Expected coordinates at bucket=60s, offset=0: (bucket_index, type, dir) -> member count.
+// id 5 (ts=-1) truncates toward zero into bucket 0 (SQLite `/` semantics).
+// Parts are lexicographically sorted — the comparison sorts the actual side.
+const char* kExpectedOffset0 =
+    "0|CREATED|/etc/|1,"       // id 3
+    "0|MODIFIED|/etc/|2,"      // ids 1,2
+    "0|MODIFIED|/var/log/|1,"  // id 5
+    "1439|DELETED|/tmp/|1,"    // id 6
+    "1440|DELETED|/tmp/|1,"    // id 7
+    "1|MODIFIED|/etc/|1,"      // id 4
+    "960|MODIFIED|/opt/|1";    // id 8
+
+// Expected coordinates at bucket=60s, offset=57600 (matches the Python test).
+const char* kExpectedOffset57600 =
+    "-959|CREATED|/etc/|1,"      // id 3 ((59-57600)/60 = -959.016 -> -959)
+    "-959|MODIFIED|/etc/|2,"     // ids 2,4 (-959.5 -> -959; -959)
+    "-960|MODIFIED|/etc/|1,"     // id 1 (0-57600)/60 = -960
+    "-960|MODIFIED|/var/log/|1," // id 5
+    "0|MODIFIED|/opt/|1"         // id 8
+    ",479|DELETED|/tmp/|1,"      // id 6
+    "480|DELETED|/tmp/|1";       // id 7
+
+std::string actualCoordinateString(const nlohmann::json& timeline) {
+    std::vector<std::string> parts;
+    for (const auto& item : timeline) {
+        std::ostringstream oss;
+        oss << item.value("bucket_index", (long long)0)
+            << "|" << item.value("event_type", std::string{})
+            << "|" << item.value("parent_directory", std::string{})
+            << "|" << item.value("cluster_count", (long long)0);
+        parts.push_back(oss.str());
+    }
+    std::sort(parts.begin(), parts.end());
+    std::string joined;
+    for (size_t i = 0; i < parts.size(); ++i) {
+        if (i) joined += ",";
+        joined += parts[i];
+    }
+    return joined;
+}
+
+void execOrDie(sqlite3* db, const char* sql) {
+    char* err = nullptr;
+    if (sqlite3_exec(db, sql, nullptr, nullptr, &err) != SQLITE_OK) {
+        FAIL() << "SQL failed: " << (err ? err : "?") << " for " << sql;
+    }
+}
+} // namespace
+
+class ClusterGoldenTest : public ::testing::Test {
+protected:
+    std::string testDir = "test_cluster_golden_data";
+    std::string rawDbPath;
+    std::string eventsDbPath;
+
+    void SetUp() override {
+        fs::create_directories(testDir);
+        rawDbPath = testDir + "/raw.db";
+        eventsDbPath = testDir + "/events.db";
+
+        sqlite3* db = nullptr;
+        ASSERT_EQ(sqlite3_open(eventsDbPath.c_str(), &db), SQLITE_OK);
+        execOrDie(db,
+            "CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER, "
+            "event_type TEXT, file_path TEXT, inode INTEGER, description TEXT, file_size INTEGER, file_type TEXT)");
+        for (const auto& row : kGoldenRows) {
+            std::ostringstream oss;
+            oss << "INSERT INTO events (id, timestamp, event_type, file_path) VALUES ("
+                << row.id << ", " << row.ts << ", '" << row.type << "', '" << row.path << "');";
+            execOrDie(db, oss.str().c_str());
+        }
+        sqlite3_close(db);
+
+        // get_comprehensive_timeline opens the raw db too; an empty file works.
+        sqlite3* raw = nullptr;
+        ASSERT_EQ(sqlite3_open(rawDbPath.c_str(), &raw), SQLITE_OK);
+        sqlite3_close(raw);
+    }
+
+    void TearDown() override {
+        if (fs::exists(testDir)) fs::remove_all(testDir);
+    }
+
+    nlohmann::json fetchTimeline(int bucket_seconds) {
+        return SQLiteHelper::get_comprehensive_timeline(
+            rawDbPath, eventsDbPath, "", "", 1000, 0, "", true, bucket_seconds);
+    }
+};
+
+TEST_F(ClusterGoldenTest, CoordinatesMatchPythonFixtureAtOffsetZero) {
+    auto result = fetchTimeline(60);
+    ASSERT_TRUE(result.contains("timeline"));
+    EXPECT_EQ(actualCoordinateString(result["timeline"]), std::string(kExpectedOffset0));
+}
+
+TEST_F(ClusterGoldenTest, CoordinatesMatchPythonFixtureAtLocalOffset) {
+    {
+        sqlite3* db = nullptr;
+        ASSERT_EQ(sqlite3_open(eventsDbPath.c_str(), &db), SQLITE_OK);
+        execOrDie(db,
+            "CREATE TABLE IF NOT EXISTS analysis_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+            "INSERT INTO analysis_meta VALUES ('bucket_epoch_offset', '57600');");
+        sqlite3_close(db);
+    }
+    auto result = fetchTimeline(60);
+    ASSERT_TRUE(result.contains("timeline"));
+    EXPECT_EQ(actualCoordinateString(result["timeline"]), std::string(kExpectedOffset57600));
+    // The offset travels with the response metadata for downstream consumers.
+    EXPECT_EQ(result["metadata"].value("bucket_epoch_offset", (long long)-1), 57600);
+}
+
+TEST_F(ClusterGoldenTest, LatestAnalysisRecordAttachesWithStaleness) {
+    {
+        sqlite3* db = nullptr;
+        ASSERT_EQ(sqlite3_open(eventsDbPath.c_str(), &db), SQLITE_OK);
+        // Minimal analysis-record surface (same shape as the Python DDL).
+        execOrDie(db,
+            "CREATE TABLE event_cluster_analyses ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, "
+            "bucket_epoch_offset INTEGER NOT NULL DEFAULT 0, bucket_seconds INTEGER NOT NULL, "
+            "bucket_index INTEGER NOT NULL, event_type TEXT NOT NULL, parent_directory TEXT NOT NULL, "
+            "member_count INTEGER NOT NULL, member_min_id INTEGER NOT NULL, member_max_id INTEGER NOT NULL, "
+            "members_hash TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', "
+            "keywords TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', trigger_source TEXT NOT NULL, "
+            "analysis_id_upstream INTEGER, created_at INTEGER NOT NULL, ingested_at INTEGER);"
+            "INSERT INTO event_cluster_analyses (task_id, bucket_seconds, bucket_index, event_type, "
+            "parent_directory, member_count, member_min_id, member_max_id, members_hash, summary, "
+            "trigger_source, created_at) VALUES "
+            "('t1', 60, 0, 'MODIFIED', '/etc/', 2, 1, 2, 'hash', 'cached summary', 'pipeline', 7);");
+        sqlite3_close(db);
+    }
+
+    auto result = fetchTimeline(60);
+    const nlohmann::json* etc = nullptr;
+    for (const auto& item : result["timeline"]) {
+        if (item.value("event_type", std::string{}) == "MODIFIED" &&
+            item.value("parent_directory", std::string{}) == "/etc/") {
+            // Two /etc/ MODIFIED groups exist (bucket 0 and 1); bucket 0 holds ids 1,2.
+            if (item.value("bucket_index", (long long)-1) == 0) { etc = &item; break; }
+        }
+    }
+    ASSERT_NE(etc, nullptr);
+    EXPECT_EQ(etc->value("analysis_id", (long long)0), 1);
+    EXPECT_EQ(etc->value("llm_summary", std::string{}), std::string("cached summary"));
+    EXPECT_EQ(etc->value("is_stale", (long long)-1), 0);
+    EXPECT_EQ(etc->value("analyzed_at", (long long)0), 7);
+}
+
+TEST_F(ClusterGoldenTest, BucketSecondsClampsToProtocolMax) {
+    auto result = fetchTimeline(99999999);
+    EXPECT_EQ(result["metadata"].value("bucket_seconds", (long long)0), 2592000);
 }
 
 int main(int argc, char** argv) {

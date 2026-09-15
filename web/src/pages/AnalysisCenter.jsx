@@ -20,6 +20,7 @@ import {
     getAnomalySeverity,
     getAnomalyColorClass
 } from '../services/associationService';
+import { availableBucketSeconds } from '../services/clusterAnalysisMapper';
 import { Layers } from 'lucide-react';
 
 // Case-intelligence subcomponents (split for maintainability)
@@ -57,6 +58,9 @@ const AnalysisCenter = () => {
     const [expandedItems, setExpandedItems] = useState({});
     const [selectedItems, setSelectedItems] = useState(new Set());
     const [viewMode, setViewMode] = useState('all'); // 'all', 'files', 'clusters'
+    // Cluster analysis records (SPEC Phase D): bucket filter + history toggle.
+    const [clusterBucketFilter, setClusterBucketFilter] = useState('');
+    const [clusterHistory, setClusterHistory] = useState(false);
 
     // --- State: Re-analysis Modal ---
     const [showReanalyzeModal, setShowReanalyzeModal] = useState(false);
@@ -120,16 +124,16 @@ const AnalysisCenter = () => {
             // Report generation is retired from this evidence workspace. Current
             // reports are generated explicitly from the R2 forensic report page.
 
-            // 获取事件簇分析结果
+            // 获取事件簇分析结果。数据源是 Python 侧 analyses 记录表（真相源，
+            // append-only 多版本）；旧 C++ 60s 聚合端点不再作为数据源（SPEC Phase D）。
             try {
-                const { getAnalyzedEventClusters } = await import('../services/forensicsService');
-                const clusterData = await getAnalyzedEventClusters(activeContextId);
-                if (clusterData && clusterData.clusters && clusterData.clusters.length > 0) {
-                    console.log('Event cluster analysis results:', clusterData.clusters);
-                    setEventClusters(clusterData.clusters);
-                } else {
-                    setEventClusters([]);
-                }
+                const { getEventClusterAnalyses } = await import('../services/forensicsService');
+                const { mapClusterAnalysisRecords } = await import('../services/clusterAnalysisMapper');
+                const clusterData = await getEventClusterAnalyses(activeContextId, {
+                    latest_only: clusterHistory ? 'false' : 'true',
+                    limit: 500,
+                });
+                setEventClusters(mapClusterAnalysisRecords(clusterData?.records));
             } catch (err) {
                 console.error('Failed to fetch cluster analysis results:', err);
                 setEventClusters([]);
@@ -139,7 +143,7 @@ const AnalysisCenter = () => {
             // 确保即使出错也设置空的结果
             setLlmResults({ descriptions: [] });
         }
-    }, [activeContextId]);
+    }, [activeContextId, clusterHistory]);
 
     // 初始加载数据
     useEffect(() => {
@@ -183,15 +187,19 @@ const AnalysisCenter = () => {
     }, [llmResults, searchQuery]);
 
     const filteredClusters = useMemo(() => {
-        if (!searchQuery) return eventClusters;
+        let items = eventClusters;
+        if (clusterBucketFilter) {
+            items = items.filter(cluster => String(cluster.bucket_seconds) === clusterBucketFilter);
+        }
+        if (!searchQuery) return items;
         const query = searchQuery.toLowerCase();
-        return eventClusters.filter(cluster =>
+        return items.filter(cluster =>
             (cluster.event_type && cluster.event_type.toLowerCase().includes(query)) ||
             (cluster.parent_directory && cluster.parent_directory.toLowerCase().includes(query)) ||
             (cluster.llm_summary && cluster.llm_summary.toLowerCase().includes(query)) ||
             (cluster.file_path && cluster.file_path.toLowerCase().includes(query))
         );
-    }, [eventClusters, searchQuery]);
+    }, [eventClusters, searchQuery, clusterBucketFilter]);
 
     // 根据视图模式过滤显示内容
     const displayFiles = viewMode === 'clusters' ? [] : filteredDescriptions;
@@ -438,6 +446,27 @@ const AnalysisCenter = () => {
                                 <button onClick={() => setViewMode('files')} className={`px-3 py-1 text-xs font-bold rounded-full transition-all ${viewMode === 'files' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>文件</button>
                                 <button onClick={() => setViewMode('clusters')} className={`px-3 py-1 text-xs font-bold rounded-full transition-all ${viewMode === 'clusters' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>事件簇</button>
                             </div>
+                            {viewMode !== 'files' && (
+                                <>
+                                    <select
+                                        value={clusterBucketFilter}
+                                        onChange={(e) => setClusterBucketFilter(e.target.value)}
+                                        className="text-xs border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1.5 dark:bg-slate-800"
+                                        title="按聚簇时间窗过滤"
+                                    >
+                                        <option value="">全部聚簇窗</option>
+                                        {availableBucketSeconds(eventClusters).map((seconds) => (
+                                            <option key={seconds} value={String(seconds)}>
+                                                {seconds % 86400 === 0 ? `${seconds / 86400} 天` : seconds % 3600 === 0 ? `${seconds / 3600} 小时` : `${seconds / 60} 分钟`}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer" title="包含被新版本替代的历史分析">
+                                        <input type="checkbox" checked={clusterHistory} onChange={(e) => setClusterHistory(e.target.checked)} className="rounded" />
+                                        历史版本
+                                    </label>
+                                </>
+                            )}
                             <Button variant="outline" size="sm" disabled={selectedItems.size === 0} onClick={() => openReanalyzeModal([...selectedItems].map(idx => displayFiles[idx].file_path).map(toAbsolutePath))}>🔄 批量研判 ({selectedItems.size})</Button>
                         </div>
 
@@ -519,6 +548,13 @@ const AnalysisCenter = () => {
                                                                     ✓ 相关
                                                                 </Badge>
                                                             )}
+                                                            <Badge
+                                                                variant={cluster.is_latest ? 'gray' : 'yellow'}
+                                                                className="text-[9px] px-2 py-0.5 font-bold"
+                                                                title={`analysis #${cluster.analysis_id}${cluster.llm_model_used ? ' · ' + cluster.llm_model_used : ''}${cluster.ingested_at ? ' · 已入图谱' : ''}`}
+                                                            >
+                                                                {cluster.is_latest ? `#${cluster.analysis_id}` : `历史 #${cluster.analysis_id}`}{cluster.versions > 1 ? ` · ${cluster.versions} 版` : ''}
+                                                            </Badge>
                                                         </div>
                                                         <p className="font-mono text-[10px] text-slate-500 mb-1">
                                                             ⏰ {timestamp}

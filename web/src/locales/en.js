@@ -97,6 +97,8 @@ export default {
     'timeline.node.items': 'Events',
     'timeline.node.sample': 'Sample File',
     'timeline.node.total': 'Total',
+    'timeline.cluster.stale': 'Members changed',
+    'timeline.cluster.staleTip': 'New events fell into this window after the last analysis. Run a manual re-analysis to refresh it.',
 
     // Terminal
     'terminal.title': 'System Terminal',

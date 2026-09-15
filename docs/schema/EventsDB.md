@@ -26,6 +26,9 @@
 | `event_chains` | 因果链（未接线） | 事件链头（chain_id + 起止时间 + 置信度） | 6 |
 | `event_chain_nodes` | 因果链（未接线） | 链内节点及父子关系 | 5 |
 | `causal_relationships` | 因果链（未接线） | 因果对（cause→effect + 时延 + 机制） | 7 |
+| `event_cluster_analyses` | 簇分析（Python） | 簇 LLM 分析记录（append-only 真相源，含版本链） | 19 |
+| `cluster_analysis_runs` | 簇分析（Python） | 一次批量簇分析运行的预算与统计 | 15 |
+| `analysis_meta` | 簇分析（Python） | 任务级分析元数据（窗对齐偏移） | 2 |
 
 ## 逐表字段说明
 
@@ -201,6 +204,63 @@ engine 版多出的 4 列（写入方 `insertCorrelation`，`EventCorrelationEng
 | mechanism | TEXT | — | 因果机制描述 |
 
 索引：`idx_causal_relationships_cause(cause_event_id)`、`idx_causal_relationships_effect(effect_event_id)`（`EventCorrelationEngineCore.cpp:214-215`）。
+
+### 事件簇分析三表（Python 追加写入，2026-09 起）
+
+规范来源：`docs/specs/event-cluster-analysis-redesign.md` §3；DDL 权威定义在 `python_service/httpserver/services/case_analysis/schema.py`（`CLUSTER_ANALYSIS_DDL`），由 `ensure_cluster_analysis_schema` 幂等创建（簇分析入口、`analyze-event-cluster` 路由、回填脚本调用）。**append-only**：只允许 INSERT，唯一允许的 UPDATE 是把 `ingested_at` 从 NULL 改为时间戳。
+
+#### event_cluster_analyses（簇分析记录，真相源）
+
+一次 LLM 簇分析 = 一行。聚簇坐标五元组 `(bucket_epoch_offset, bucket_seconds, bucket_index, event_type, parent_directory)`；同坐标多次分析 = 多版本（`analysis_id_upstream` 指向被替代的旧版），最新版本 = 同坐标 `MAX(id)`。
+
+| 列 | 类型 | 约束/默认 | 含义 |
+|----|------|-----------|------|
+| id | INTEGER | PRIMARY KEY AUTOINCREMENT | 分析记录 ID（Graphiti episode 名引用它） |
+| task_id | TEXT | NOT NULL | 所属任务 |
+| bucket_epoch_offset | INTEGER | NOT NULL DEFAULT 0 | 时间窗对齐偏移（UTC=0）；与 analysis_meta 一致 |
+| bucket_seconds | INTEGER | NOT NULL | 聚簇窗宽（秒） |
+| bucket_index | INTEGER | NOT NULL | `(timestamp − offset) / bucket_seconds`（向零截断） |
+| event_type | TEXT | NOT NULL | 簇事件类型 |
+| parent_directory | TEXT | NOT NULL | 簇父目录（含尾斜杠） |
+| member_count / member_min_id / member_max_id | INTEGER | NOT NULL | 成员指纹三件套（SQL 可算，供 C++ 判 stale） |
+| members_hash | TEXT | NOT NULL | 排序成员 id 串的 sha256（Python 侧强校验） |
+| summary / description / keywords | TEXT | NOT NULL DEFAULT '' | LLM 分析结果 |
+| model | TEXT | NOT NULL DEFAULT '' | 生成模型 |
+| trigger_source | TEXT | NOT NULL | `pipeline` / `timeline_auto` / `timeline_manual` / `task_run` / `migrated` |
+| analysis_id_upstream | INTEGER | — | 重析时指向被替代版本（版本链） |
+| created_at | INTEGER | NOT NULL | 分析时刻（unix 秒） |
+| ingested_at | INTEGER | — | Graphiti 摄入完成时刻；NULL=未摄入 |
+
+索引：`idx_eca_coord(task_id, bucket_epoch_offset, bucket_seconds, bucket_index, event_type, parent_directory)`、`idx_eca_task_time(task_id, created_at DESC)`。
+
+#### cluster_analysis_runs（簇分析运行）
+
+一次批量分析执行（管线或任务级入口）的统计与预算记录。
+
+| 列 | 类型 | 约束/默认 | 含义 |
+|----|------|-----------|------|
+| id | INTEGER | PRIMARY KEY AUTOINCREMENT | 运行 ID |
+| task_id | TEXT | NOT NULL | 所属任务 |
+| trigger_source | TEXT | NOT NULL | 同上枚举 |
+| bucket_seconds | INTEGER | — | 本次使用的窗宽（自适应选择结果；NULL=未完成） |
+| bucket_epoch_offset | INTEGER | NOT NULL DEFAULT 0 | 本次窗对齐偏移 |
+| budget | INTEGER | — | 簇数预算（Settings `llm_max_event_clusters`） |
+| status | TEXT | NOT NULL DEFAULT 'running' | `running` / `completed` / `failed` |
+| cluster_total / cluster_failed / map_calls / reduce_calls | INTEGER | — | 运行统计 |
+| model | TEXT | — | 使用的模型 |
+| started_at / finished_at | INTEGER | NOT NULL / — | 起止时刻 |
+| detail | TEXT | NOT NULL DEFAULT '{}' | JSON 明细（失败簇清单等） |
+
+索引：`idx_car_task(task_id, started_at DESC)`。
+
+#### analysis_meta（任务级分析元数据）
+
+| 列 | 类型 | 约束/默认 | 含义 |
+|----|------|-----------|------|
+| key | TEXT | PRIMARY KEY | 目前仅 `bucket_epoch_offset` |
+| value | TEXT | NOT NULL | 值（十进制整数字符串） |
+
+`bucket_epoch_offset` 由 C++ 在 events 库创建时写入（Phase C），Python 只读；缺表/缺键 = 0（UTC 对齐，兼容存量库）。
 
 ## 视图（SELECT 语义）
 

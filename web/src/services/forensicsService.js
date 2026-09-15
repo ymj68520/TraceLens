@@ -30,7 +30,7 @@ const getClusterDescriptor = (cluster) => {
   };
 };
 
-export const analyzeEventCluster = async (taskId, cluster) => {
+export const analyzeEventCluster = async (taskId, cluster, options = {}) => {
   if (!cluster || typeof cluster !== 'object') {
     throw new Error('Invalid cluster: cluster object is required');
   }
@@ -39,6 +39,9 @@ export const analyzeEventCluster = async (taskId, cluster) => {
   return await pythonApi.post('/api/llm/analyze-event-cluster', {
     task_id: taskId,
     group_descriptor: groupDescriptor,
+    // Caller context persisted on the analysis record ('timeline_auto' from
+    // the auto-analyze effect, 'timeline_manual' from explicit buttons).
+    ...(options.trigger ? { trigger: options.trigger } : {}),
   });
 };
 
@@ -62,13 +65,44 @@ export const reanalyzeEventCluster = async (taskId, cluster) => {
   return await pythonApi.post('/api/llm/analyze-event-cluster', {
     task_id: taskId,
     group_descriptor: groupDescriptor,
+    trigger: 'timeline_manual',
     prompt: "请重新审视该事件簇，深度挖掘潜在威胁。",
   });
 };
 
+/**
+ * @deprecated Phase D：已分析簇视图改用 getEventClusterAnalyses（分析记录真相源）。
+ * 此端点为 C++ 旧 60s 聚合实现，保留一个版本周期后评估移除。
+ */
 export const getAnalyzedEventClusters = async (taskId) => {
   return await api.get('/api/forensics/timeline/clusters/analyzed', {
     params: { task_id: taskId },
+  });
+};
+
+/**
+ * 事件簇分析运行（SPEC Phase C，任务级入口）
+ */
+export const estimateEventClusterAnalysis = async (taskId) => {
+  return await pythonApi.post('/api/llm/event-cluster-analysis/estimate', {
+    task_id: taskId,
+  });
+};
+
+export const runEventClusterAnalysis = async (taskId, bucketSeconds = null) => {
+  return await pythonApi.post('/api/llm/event-cluster-analysis/run', {
+    task_id: taskId,
+    ...(bucketSeconds ? { bucket_seconds: bucketSeconds } : {}),
+  });
+};
+
+export const getEventClusterRunStatus = async (jobId) => {
+  return await pythonApi.get(`/api/llm/event-cluster-analysis/run/${jobId}`);
+};
+
+export const getEventClusterAnalyses = async (taskId, params = {}) => {
+  return await pythonApi.get('/api/llm/event-cluster-analyses', {
+    params: { task_id: taskId, ...params },
   });
 };
 

@@ -252,8 +252,9 @@ const Timeline = () => {
     if (!taskId || !timelineData?.timeline?.length) return;
 
     // 签名 = 查询参数 + 当前可见簇的键集合。后端分析成功会给同一批簇补上
-    // llm_summary，但 timestamp/event_type/parent_directory 不变，所以刷新
-    // 后签名一致，effect 早早 return。
+    // analysis_id（来自簇分析记录表，确定性判定），但
+    // timestamp/event_type/parent_directory 不变，所以刷新后签名一致，effect
+    // 早早 return。
     const visibleKeys = timelineData.timeline
       .map(ev => clusterIdentity(ev))
       .sort()
@@ -264,11 +265,14 @@ const Timeline = () => {
     autoAnalyzedSignatureRef.current = signature;
 
     const autoAnalyzeClusters = async () => {
-      // 筛选还没有 AI 摘要的簇。当开启聚合视图时，每个分组项（哪怕只有 1 个
-      // 事件）都是一个有意义的簇，都应纳入自动分析（不再用 cluster_count > 1
-      // 门槛，否则单事件簇永远不被分析）。仍按 cluster_count 降序、每次最多
+      // 筛选还没有分析记录的簇（analysis_id 由后端按聚簇坐标精确 JOIN 得
+      // 出）。stale（成员已变化）不进自动队列——按约定只标记，由人工决定
+      // 是否重析。当开启聚合视图时，每个分组项（哪怕只有 1 个事件）都是一
+      // 个有意义的簇，都应纳入自动分析。仍按 cluster_count 降序、每次最多
       // 5 个限流，避免请求量激增。
-      const unanalyzedClusters = timelineData.timeline.filter(event => !event.llm_summary);
+      const unanalyzedClusters = timelineData.timeline.filter(
+        event => !event.analysis_id && !event.is_stale
+      );
       if (unanalyzedClusters.length === 0) return;
 
       unanalyzedClusters.sort((a, b) => (b.cluster_count || 0) - (a.cluster_count || 0));
@@ -283,7 +287,7 @@ const Timeline = () => {
         }
 
         try {
-          await analyzeEventCluster(taskId, cluster);
+          await analyzeEventCluster(taskId, cluster, { trigger: 'timeline_auto' });
           analyzedAny = true;
         } catch (error) {
           console.error('Auto-analyze failed for cluster:', clusterKey, error);
@@ -757,10 +761,19 @@ const Timeline = () => {
                                     AI Analyzed
                                   </Badge>
                                 )}
+                                {isCluster && event.is_stale && (
+                                  <Badge variant="yellow" className="text-[9px] px-1.5 py-0 font-bold" title={t('timeline.cluster.staleTip')}>
+                                    {t('timeline.cluster.stale')}
+                                  </Badge>
+                                )}
                               </div>
                               {isCluster && (
                                 <div className="flex items-center gap-2">
-                                  {!event.llm_summary ? (
+                                  {/* Manual actions key off the analysis record
+                                      (analysis_id), never on the display cache.
+                                      Stale clusters keep the manual re-analysis
+                                      path — auto-analyze skips them by design. */}
+                                  {!event.analysis_id ? (
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();

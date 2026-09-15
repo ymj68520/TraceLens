@@ -389,12 +389,12 @@ curl "http://localhost:8080/api/forensics/timeline/user-activity?task_id=task_xx
 
 | 方法 | 路径 | 请求体（已验证） | 用途 |
 |------|------|------------------|------|
-| POST | `/api/forensics/timeline/clusters/analyze` | `{task_id, time_window, event_type, parent_directory?}` | LLM 分析一个事件簇（`time_window`+`event_type` 唯一标识簇） |
-| POST | `/api/forensics/timeline/clusters/batch-analyze` | `{task_id, clusters: [{time_window, event_type, parent_directory?}, ...]}` | 批量分析（clusters 为空数组返回 400） |
-| POST | `/api/forensics/timeline/clusters/reanalyze` | `{task_id, time_window, event_type, parent_directory?}` | 重新分析已有簇 |
-| GET | `/api/forensics/timeline/clusters/analyzed` | 查询参数 `task_id`（必填） | 已分析簇列表 |
+| POST | `/api/forensics/timeline/clusters/analyze` | `{task_id, time_window, event_type, parent_directory?}` | **已退役**（源码 `#if 0` 保留，未注册）：单簇 LLM 分析请走 Python `POST /api/llm/analyze-event-cluster` |
+| POST | `/api/forensics/timeline/clusters/batch-analyze` | `{task_id, clusters: [...]}` | **已退役**（同上，曾为绕过 Python 护栏的 C++ LLM 路径） |
+| POST | `/api/forensics/timeline/clusters/reanalyze` | `{task_id, time_window, event_type, parent_directory?}` | **已退役**（同上） |
+| GET | `/api/forensics/timeline/clusters/analyzed` | 查询参数 `task_id`（必填） | **已弃用**（Phase D）：AnalysisCenter 已改用 Python `GET /api/llm/event-cluster-analyses`（分析记录真相源，多版本）；本端点为旧 60s 聚合实现，保留一个版本周期后移除 |
 
-三个 POST 均另注册 OPTIONS 预检。
+三个 POST 均另注册 OPTIONS 预检（现已随端点一并注释）。
 
 **示例——单簇 LLM 分析**：
 

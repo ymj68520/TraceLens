@@ -12,13 +12,149 @@ import asyncio
 import json
 import logging
 import sqlite3
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ...config import Settings
+from ..investigation_evidence import PARENT_DIRECTORY_SQL, TIMELINE_MAX_BUCKET_SECONDS
+from .adaptive import choose_bucket, estimate_bucket_ladder
+from .schema import (
+    create_analysis_run,
+    ensure_cluster_analysis_schema,
+    finalize_analysis_run,
+    find_latest_analysis,
+    mark_analysis_ingested,
+    members_fingerprint,
+)
 
 logger = logging.getLogger(__name__)
+
+# Initial-analysis clustering window. Phase C replaces this constant with the
+# budget-driven adaptive selection (SPEC §5); until then the pipeline keeps the
+# historical 60-second behavior.
+PIPELINE_BUCKET_SECONDS = 60
+
+# Map-reduce input bounds (SPEC §6): a chunk is bounded by BOTH the configured
+# event count and a character budget, so no chunk can trip the LLM layer's
+# own context guard (which would silently drop evidence lines).
+CLUSTER_CHUNK_MAX_CHARS = 6000
+
+MAP_CHUNK_PROMPT = (
+    "以下是同一个事件簇的一份分片事件清单。请提炼本片的关键行为特征、"
+    "值得注意的文件路径与时间规律，输出简洁的要点列表（纯文本，不要 Markdown）。"
+)
+
+
+def lines_from_paths_descs(paths: List[str], descs: List[str]) -> List[str]:
+    """Evidence lines for pipeline clusters (paths/descs come from GROUP_CONCAT)."""
+    return [f"- {path}: {desc}" for path, desc in zip(paths, descs)]
+
+
+def lines_from_members(members: List[Dict[str, Any]]) -> List[str]:
+    """Evidence lines for descriptor-resolved member rows (route path)."""
+    return [
+        f"- {member.get('timestamp')}: {member.get('event_type')} | "
+        f"{member.get('file_path') or ''} | {member.get('description') or ''}"
+        for member in members
+    ]
+
+
+def chunk_member_lines(
+    lines: List[str],
+    chunk_size: int,
+    max_chars: int = CLUSTER_CHUNK_MAX_CHARS,
+) -> List[str]:
+    """Split evidence lines into chunks bounded by line count and char budget.
+
+    Every line enters exactly one chunk — no sampling. A single line longer
+    than ``max_chars`` gets a dedicated chunk rather than being cut.
+    """
+    chunks: List[str] = []
+    current: List[str] = []
+    current_len = 0
+    for line in lines:
+        line_len = len(line) + 1
+        if current and (len(current) >= chunk_size or current_len + line_len > max_chars):
+            chunks.append("\n".join(current))
+            current, current_len = [], 0
+        current.append(line)
+        current_len += line_len
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
+async def analyze_cluster_members(
+    llm_service,
+    *,
+    event_type: str,
+    time_window: int,
+    member_lines: List[str],
+    chunk_size: int,
+    prompt: Optional[str] = None,
+    concurrency: int = 3,
+) -> Dict[str, Any]:
+    """Analyze every member line of a cluster (map-reduce, no sampling).
+
+    Single chunk → one direct call. Multiple chunks → concurrent per-chunk
+    point extraction (map), then one merge call producing the final four-part
+    conclusion (reduce). A failed chunk fails the whole analysis: silently
+    skipping evidence is never acceptable.
+    """
+    total = len(member_lines)
+    chunks = chunk_member_lines(member_lines, chunk_size)
+
+    if len(chunks) == 1:
+        content = f"### 事件清单（共 {total} 条）\n{chunks[0]}"
+        return await llm_service.analyze_event_cluster(
+            event_data={
+                "event_type": event_type,
+                "description": content,
+                "time_window": time_window,
+            },
+            prompt=prompt,
+        )
+
+    sem = asyncio.Semaphore(max(1, concurrency))
+
+    async def map_chunk(index: int, chunk: str) -> str:
+        async with sem:
+            content = (
+                f"### 事件清单（全簇共 {total} 条，本片为第 {index}/{len(chunks)} 片）\n{chunk}"
+            )
+            result = await llm_service.analyze_event_cluster(
+                event_data={
+                    "event_type": event_type,
+                    "description": content,
+                    "time_window": time_window,
+                },
+                prompt=MAP_CHUNK_PROMPT,
+            )
+            analysis = result.get("analysis", {})
+            return analysis.get("description") or analysis.get("summary") or ""
+
+    points = await asyncio.gather(
+        *(map_chunk(i + 1, chunk) for i, chunk in enumerate(chunks))
+    )
+    usable_points = [point.strip() for point in points if point and point.strip()]
+    joined = "\n".join(f"- {point}" for point in usable_points)
+    content = (
+        f"### 全簇概况\n共 {total} 条事件，已分 {len(chunks)} 片逐片分析，"
+        f"以下为各片要点：\n{joined}"
+    )
+    result = await llm_service.analyze_event_cluster(
+        event_data={
+            "event_type": event_type,
+            "description": content,
+            "time_window": time_window,
+        },
+        prompt=prompt,
+    )
+    result["map_calls"] = len(chunks)
+    result["reduce_calls"] = 1
+    return result
 
 
 class ClusterAnalyzer:
@@ -53,7 +189,12 @@ class ClusterAnalyzer:
         progress_callback=None,
     ) -> List[Dict[str, Any]]:
         """
-        Complete pipeline: fetch, analyze, persist, and ingest event clusters.
+        Complete pipeline: select window, fetch, analyze, persist, and ingest.
+
+        The clustering window is chosen by the budget-driven adaptive
+        algorithm (SPEC §5); the run is recorded in ``cluster_analysis_runs``.
+        The D9 skip filter (``llm_analyzed_at IS NULL``) is preserved — failed
+        clusters stay re-runnable on the next pass.
 
         Args:
             events_db: Path to _events.db database
@@ -68,10 +209,25 @@ class ClusterAnalyzer:
             logger.warning(f"Events database not found: {events_db}")
             return []
 
+        # Append-only analysis tables must exist before the first persist (SPEC §3.2).
+        ensure_cluster_analysis_schema(events_db)
+
+        # Step 0: adaptive window selection + run bookkeeping (SPEC §5).
+        budget = getattr(self.settings, "llm_max_event_clusters", 200)
+        scan = estimate_bucket_ladder(events_db, include_analyzed=False)
+        choice = choose_bucket(scan["estimates"], budget)
+        bucket_seconds = choice["recommended_bucket_seconds"]
+        if choice["warning"]:
+            logger.warning(f"Task {task_id}: adaptive bucket budget overshoot - {choice['warning']}")
+        run_id = create_analysis_run(
+            events_db, task_id, "pipeline", bucket_seconds, scan["bucket_epoch_offset"], budget
+        )
+
         # Step 1: Fetch event clusters
-        clusters = await self.fetch_event_clusters(events_db)
+        clusters = await self.fetch_event_clusters(events_db, bucket_seconds=bucket_seconds)
         if not clusters:
             logger.info(f"Task {task_id}: No event clusters to analyze")
+            finalize_analysis_run(events_db, run_id, "completed", 0, 0, 0, 0)
             return []
 
         if progress_callback:
@@ -79,7 +235,7 @@ class ClusterAnalyzer:
 
         # Step 2: Analyze each cluster (with concurrency control)
         results = await self._analyze_clusters_concurrent(
-            clusters, case_description, events_db, progress_callback
+            clusters, case_description, events_db, progress_callback, task_id
         )
 
         # Step 3: Ingest to Graphiti
@@ -87,62 +243,192 @@ class ClusterAnalyzer:
             if progress_callback:
                 await progress_callback("ingesting_clusters", "正在将事件簇摄入知识图谱...")
             await self.ingest_clusters_to_graphiti(
-                task_id, case_description, results
+                task_id, case_description, results, events_db=events_db
             )
 
+        self._finalize_run_from_results(events_db, run_id, len(clusters), results)
         return results
+
+    async def run_analysis(
+        self,
+        task_id: str,
+        events_db: str,
+        case_description: str = "",
+        bucket_seconds: Optional[int] = None,
+        progress_callback=None,
+    ) -> Dict[str, Any]:
+        """
+        Task-level cluster analysis entry (SPEC §8.1 ``run`` endpoint backend).
+
+        Covers every cluster at the chosen window: already-fresh coordinates
+        (same member fingerprint) are skipped idempotently, stale or missing
+        ones are analyzed. Records the run and returns a summary.
+        """
+        if not Path(events_db).exists():
+            raise FileNotFoundError(f"Events database not found: {events_db}")
+
+        ensure_cluster_analysis_schema(events_db)
+
+        budget = getattr(self.settings, "llm_max_event_clusters", 200)
+        scan = estimate_bucket_ladder(events_db, include_analyzed=True)
+        warning = None
+        if bucket_seconds:
+            chosen = int(bucket_seconds)
+            if chosen < 1 or chosen > TIMELINE_MAX_BUCKET_SECONDS:
+                raise ValueError(f"bucket_seconds out of range: {chosen}")
+        else:
+            choice = choose_bucket(scan["estimates"], budget)
+            chosen = choice["recommended_bucket_seconds"]
+            warning = choice["warning"]
+            if warning:
+                logger.warning(f"Task {task_id}: adaptive bucket budget overshoot - {warning}")
+
+        offset = scan["bucket_epoch_offset"]
+        run_id = create_analysis_run(events_db, task_id, "task_run", chosen, offset, budget)
+
+        clusters = await self.fetch_event_clusters(
+            events_db, bucket_seconds=chosen, include_analyzed=True
+        )
+
+        pending: List[Dict[str, Any]] = []
+        skipped_fresh = 0
+        for cluster in clusters:
+            latest = find_latest_analysis(
+                events_db,
+                cluster["bucket_epoch_offset"],
+                cluster["bucket_seconds"],
+                cluster["time_window"],
+                cluster["event_type"],
+                cluster["parent_directory"],
+            )
+            fresh = (
+                latest is not None
+                and latest["member_count"] == cluster["cluster_count"]
+                and latest["member_min_id"] == cluster["first_event_id"]
+                and latest["member_max_id"] == cluster["last_event_id"]
+            )
+            if fresh:
+                skipped_fresh += 1
+            else:
+                pending.append(cluster)
+
+        results = await self._analyze_clusters_concurrent(
+            pending, case_description, events_db, progress_callback, task_id,
+            trigger_source="task_run",
+        )
+
+        if self._graphiti_service and any(r.get("analysis_id") for r in results):
+            await self.ingest_clusters_to_graphiti(
+                task_id, case_description, results, events_db=events_db
+            )
+
+        self._finalize_run_from_results(events_db, run_id, len(clusters), results)
+        return {
+            "run_id": run_id,
+            "task_id": task_id,
+            "bucket_seconds": chosen,
+            "bucket_epoch_offset": offset,
+            "cluster_total": len(clusters),
+            "analyzed": len(pending),
+            "skipped_fresh": skipped_fresh,
+            "failed": sum(1 for r in results if not r.get("success")),
+            "warning": warning,
+            "results": results,
+        }
+
+    def _finalize_run_from_results(
+        self, events_db: str, run_id: int, cluster_total: int, results: List[Dict[str, Any]]
+    ) -> None:
+        """Fold per-cluster results into the run row's final statistics."""
+        successes = [r for r in results if r.get("success")]
+        failed = len(results) - len(successes)
+        map_calls = sum(r.get("map_calls", 1) for r in successes)
+        reduce_calls = sum(r.get("reduce_calls", 1) for r in successes)
+        model = next((r.get("model", "") for r in successes if r.get("model")), "")
+        failures = [
+            {"event_type": r.get("event_type"), "time_window": r.get("time_window"), "error": r.get("error")}
+            for r in results
+            if not r.get("success")
+        ]
+        detail = json.dumps({"failures": failures}, ensure_ascii=False)
+        try:
+            finalize_analysis_run(
+                events_db, run_id, "completed", cluster_total, failed,
+                map_calls, reduce_calls, model, detail,
+            )
+        except sqlite3.Error as e:
+            logger.error(f"Failed to finalize analysis run #{run_id}: {e}")
 
     async def fetch_event_clusters(
         self,
         events_db: str,
         limit: Optional[int] = None,
+        bucket_seconds: Optional[int] = None,
+        include_analyzed: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Fetch event clusters from the events database.
 
-        Clusters are grouped by (time_window, event_type, parent_directory).
-        Only fetches clusters that haven't been analyzed yet (llm_analyzed_at IS NULL).
+        Clusters are grouped by (time_window, event_type, parent_directory)
+        using the canonical bucket expression with the task's window-alignment
+        offset (SPEC §4).
 
         Args:
             events_db: Path to _events.db database
             limit: Maximum number of clusters to fetch (None = no limit)
+            bucket_seconds: Window width; defaults to the historical 60 s
+            include_analyzed: False (pipeline, D9) keeps the
+                ``llm_analyzed_at IS NULL`` skip filter; True groups every
+                event — the task-level run uses this for full coverage
 
         Returns:
             List of cluster dictionaries.
         """
+        window = int(bucket_seconds or PIPELINE_BUCKET_SECONDS)
         try:
+            from .schema import read_bucket_epoch_offset
+
+            offset = read_bucket_epoch_offset(events_db)
             with sqlite3.connect(events_db, timeout=10) as conn:
                 conn.row_factory = sqlite3.Row
 
                 # Build SQL query
                 limit_clause = f"LIMIT {limit}" if limit else ""
+                analyzed_filter = "" if include_analyzed else "WHERE llm_analyzed_at IS NULL"
                 sql = f"""
                     SELECT
-                        (timestamp / 60) as time_window,
+                        ((timestamp - ?) / {window}) as time_window,
                         event_type,
                         COUNT(*) as cluster_count,
                         MIN(timestamp) as cluster_start,
                         MAX(timestamp) as cluster_end,
-                        CASE
-                            WHEN file_path LIKE '%/%' THEN RTRIM(file_path, REPLACE(file_path, '/', ''))
-                            ELSE ''
-                        END as parent_directory,
+                        MIN(id) as first_event_id,
+                        MAX(id) as last_event_id,
+                        {PARENT_DIRECTORY_SQL} as parent_directory,
                         GROUP_CONCAT(COALESCE(description, ''), '\n') as group_desc,
                         GROUP_CONCAT(COALESCE(file_path, ''), '\n') as group_paths,
-                        GROUP_CONCAT(id) as member_ids,
-                        MIN(id) as first_event_id
+                        GROUP_CONCAT(id) as member_ids
                     FROM events
-                    WHERE llm_analyzed_at IS NULL
+                    {analyzed_filter}
                     GROUP BY time_window, event_type, parent_directory
                     ORDER BY cluster_count DESC
                     {limit_clause}
                 """
 
-                cur = conn.execute(sql)
+                cur = conn.execute(sql, (offset,))
                 rows = cur.fetchall()
-                clusters = [dict(row) for row in rows]
+                clusters = []
+                for row in rows:
+                    cluster = dict(row)
+                    # Coordinates carried through to the analysis record.
+                    cluster["bucket_seconds"] = window
+                    cluster["bucket_epoch_offset"] = offset
+                    clusters.append(cluster)
 
-                logger.info(f"Fetched {len(clusters)} event clusters from {events_db}")
+                logger.info(
+                    f"Fetched {len(clusters)} event clusters (bucket={window}s, "
+                    f"include_analyzed={include_analyzed}) from {events_db}"
+                )
                 return clusters
 
         except sqlite3.Error as e:
@@ -155,6 +441,8 @@ class ClusterAnalyzer:
         case_description: str,
         events_db: str,
         progress_callback=None,
+        task_id: str = "",
+        trigger_source: str = "pipeline",
     ) -> List[Dict[str, Any]]:
         """
         Analyze clusters concurrently with semaphore control.
@@ -164,6 +452,8 @@ class ClusterAnalyzer:
             case_description: Case description for LLM context
             events_db: Path to _events.db for persistence
             progress_callback: Optional progress callback
+            task_id: Task identifier recorded on each analysis row
+            trigger_source: Recorded on each analysis row
 
         Returns:
             List of analysis results.
@@ -172,18 +462,18 @@ class ClusterAnalyzer:
         processed = 0
 
         # Concurrency control
-        sem = asyncio.Semaphore(
-            self.settings.llm_max_concurrency if hasattr(self.settings, "llm_max_concurrency") else 3
-        )
+        sem = asyncio.Semaphore(self.settings.llm_max_concurrency)
 
         async def analyze_one(cluster: Dict[str, Any]) -> Dict[str, Any]:
             nonlocal processed
             async with sem:
                 try:
                     result = await self.analyze_cluster(cluster, case_description)
-                    # Persist result
-                    self.persist_cluster_analysis(events_db, cluster, result)
-
+                    # Persist result (append analysis record + dual-write events)
+                    result["analysis_id"] = self.persist_cluster_analysis(
+                        events_db, cluster, result, task_id=task_id,
+                        trigger_source=trigger_source,
+                    )
                     processed += 1
                     if progress_callback:
                         await progress_callback(
@@ -223,26 +513,22 @@ class ClusterAnalyzer:
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
 
-        # Prepare cluster context for LLM
-        content = f"### 事件簇信息\n"
-        content += f"- 类型: {cluster['event_type']}\n"
-        content += f"- 时间窗口: {cluster['time_window']} (timestamp / 60)\n"
-        content += f"- 事件数量: {cluster['cluster_count']}\n"
-        content += f"- 目录: {cluster['parent_directory'] or '/'}\n"
-        content += f"- 时间范围: {cluster['cluster_start']} ~ {cluster['cluster_end']}\n"
-        content += f"\n### 事件详情 (样本)\n"
-
-        paths = cluster['group_paths'].split('\n')[:10]
-        descs = cluster['group_desc'].split('\n')[:10]
-        for p, d in zip(paths, descs):
-            content += f"- {p}: {d}\n"
-
-        # Build LLM prompt
+        # Full member list — no sampling (SPEC §6). The evidence lines flow to
+        # the LLM via event_data.description, chunked map-reduce when needed.
+        lines = lines_from_paths_descs(
+            cluster['group_paths'].split('\n'),
+            cluster['group_desc'].split('\n'),
+        )
         prompt = f"""案情背景：{case_description}
 
 请针对以上案情背景，分析这个事件簇在取证上的意义，并给出研判结论。
 
-{content}
+### 事件簇信息
+- 类型: {cluster['event_type']}
+- 时间窗口: {cluster['time_window']} (timestamp / {cluster.get('bucket_seconds', 60)})
+- 事件数量: {cluster['cluster_count']}
+- 目录: {cluster['parent_directory'] or '/'}
+- 时间范围: {cluster['cluster_start']} ~ {cluster['cluster_end']}
 
 请提供：
 1. 简要总结（1-2句话概括事件簇的核心特征）
@@ -252,13 +538,14 @@ class ClusterAnalyzer:
 
         # Call LLM
         try:
-            result = await self._llm_service.analyze_event_cluster(
-                event_data={
-                    "event_type": cluster['event_type'],
-                    "description": content,
-                    "time_window": cluster['time_window']
-                },
-                prompt=prompt
+            result = await analyze_cluster_members(
+                self._llm_service,
+                event_type=cluster['event_type'],
+                time_window=cluster['time_window'],
+                member_lines=lines,
+                chunk_size=getattr(self.settings, "cluster_analysis_chunk_size", 200),
+                prompt=prompt,
+                concurrency=getattr(self.settings, "llm_max_concurrency", 3),
             )
 
             # Enhance result with cluster metadata
@@ -284,16 +571,28 @@ class ClusterAnalyzer:
         events_db: str,
         cluster: Dict[str, Any],
         analysis_result: Dict[str, Any],
+        task_id: str = "",
+        trigger_source: str = "pipeline",
     ):
         """
-        Persist cluster analysis to the events database.
+        Persist cluster analysis atomically (SPEC §3.2).
 
-        Updates all events in the cluster with LLM analysis results.
+        Appends one row to ``event_cluster_analyses`` (the truth source) and
+        dual-writes the denormalized ``llm_*`` cache onto every member event
+        row, inside a single transaction: the member-rowcount check raising
+        rolls back the analysis record too, so the two stores can never
+        disagree.
 
         Args:
             events_db: Path to _events.db
-            cluster: Original cluster data
+            cluster: Original cluster data (needs member_ids and coordinates)
             analysis_result: LLM analysis result
+            task_id: Task identifier recorded on the analysis row
+            trigger_source: pipeline / timeline_auto / timeline_manual / task_run / migrated
+
+        Returns:
+            The new analysis record id. Raises on failure — callers treat the
+            cluster as failed (SPEC D9: failed clusters stay re-runnable).
         """
         try:
             analysis = analysis_result.get("analysis", {})
@@ -306,51 +605,94 @@ class ClusterAnalyzer:
             if not member_ids:
                 raise sqlite3.DatabaseError("cluster has no trusted member IDs")
 
+            fingerprint = members_fingerprint(member_ids)
+            bucket_seconds = int(cluster.get("bucket_seconds") or PIPELINE_BUCKET_SECONDS)
+            bucket_offset = int(cluster.get("bucket_epoch_offset") or 0)
+            bucket_index = int(cluster.get("time_window") or 0)
+            event_type = cluster.get("event_type") or "UNKNOWN"
+            parent_directory = cluster.get("parent_directory") or ""
+            is_relevant = 1 if bool(analysis.get("is_relevant", True)) else 0
+
+            ensure_cluster_analysis_schema(events_db)
+
             with sqlite3.connect(events_db, timeout=10) as conn:
+                cur = conn.execute(
+                    """
+                    INSERT INTO event_cluster_analyses (
+                        task_id, bucket_epoch_offset, bucket_seconds, bucket_index,
+                        event_type, parent_directory, member_count, member_min_id,
+                        member_max_id, members_hash, summary, description, keywords,
+                        model, trigger_source, analysis_id_upstream, created_at, ingested_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL)
+                    """,
+                    (
+                        task_id,
+                        bucket_offset,
+                        bucket_seconds,
+                        bucket_index,
+                        event_type,
+                        parent_directory,
+                        fingerprint["member_count"],
+                        fingerprint["member_min_id"],
+                        fingerprint["member_max_id"],
+                        fingerprint["members_hash"],
+                        summary,
+                        description,
+                        keywords_str,
+                        model_used,
+                        trigger_source,
+                        int(time.time()),
+                    ),
+                )
+                analysis_id = cur.lastrowid
+
                 placeholders = ", ".join("?" for _ in member_ids)
                 sql = f"""
                     UPDATE events
                     SET llm_summary = ?,
                         llm_description = ?,
                         llm_keywords = ?,
-                        llm_is_relevant = 1,
+                        llm_is_relevant = ?,
                         llm_analyzed_at = ?,
                         llm_model_used = ?
                     WHERE id IN ({placeholders})
                 """
-                import time
                 now = int(time.time())
-                cur = conn.execute(sql, (
-                    summary, description, keywords_str, now, model_used, *member_ids
+                cur_events = conn.execute(sql, (
+                    summary, description, keywords_str, is_relevant, now, model_used, *member_ids
                 ))
-                if cur.rowcount != len(member_ids):
+                if cur_events.rowcount != len(member_ids):
                     raise sqlite3.DatabaseError(
-                        f"cluster member update incomplete: expected {len(member_ids)}, got {cur.rowcount}"
+                        f"cluster member update incomplete: expected {len(member_ids)}, got {cur_events.rowcount}"
                     )
                 conn.commit()
 
-            logger.debug(f"Persisted cluster analysis: {cluster['event_type']} @ {cluster['time_window']}")
+            logger.debug(
+                f"Persisted cluster analysis #{analysis_id}: {event_type} @ {bucket_index}"
+            )
+            return analysis_id
 
         except sqlite3.Error as e:
             logger.error(f"Failed to persist cluster analysis: {e}")
             raise
+
+    @staticmethod
+    def _chunk_text(text: str, max_chars: int = 3000) -> List[str]:
+        """Split text into chunks, breaking at paragraph boundaries."""
+        return chunk_text(text, max_chars)
 
     async def ingest_clusters_to_graphiti(
         self,
         task_id: str,
         case_description: str,
         cluster_results: List[Dict[str, Any]],
+        events_db: str = "",
     ) -> bool:
         """
-        Ingest cluster analysis results into Graphiti knowledge graph.
+        Ingest cluster analysis results into the Graphiti knowledge graph.
 
-        Args:
-            task_id: Task identifier (used as group_id)
-            case_description: Case description
-            cluster_results: List of cluster analysis results
-
-        Returns:
-            True if ingestion succeeded, False otherwise.
+        Marks the corresponding analysis rows as ingested only when every
+        episode of a record made it (partial batches stay NULL for retry).
         """
         if not self._graphiti_service:
             logger.info("Graphiti service not available, skipping cluster ingestion")
@@ -359,10 +701,8 @@ class ClusterAnalyzer:
         try:
             from graphiti_integration.toon_transformer import EpisodeData
 
-            # Ensure graphiti is initialized
             await self._graphiti_service.initialize()
 
-            # Get or create task graph
             graph_entry = await self._graphiti_service._get_task_graph(task_id)
             if not graph_entry or not isinstance(graph_entry, dict):
                 logger.warning(f"Could not get task graph for {task_id}")
@@ -374,53 +714,43 @@ class ClusterAnalyzer:
                 return False
 
             episodes = []
+            ingested_ids: List[int] = []
 
-            # Only ingest successful analyses
-            successful = [c for c in cluster_results if c.get("success")]
-            for cluster in successful:
-                analysis = cluster.get("analysis", {})
-                description = analysis.get("description", "")
-                event_type = cluster.get("event_type", "UNKNOWN")
-                time_window = cluster.get("time_window", 0)
-                cluster_count = cluster.get("cluster_count", 0)
-
-                if description:
-                    # Chunk long descriptions
-                    chunks = self._chunk_text(description, max_chars=3000)
-                    for j, chunk in enumerate(chunks):
-                        ep_name = f"事件簇分析: {event_type} @ {time_window}"
-                        if len(chunks) > 1:
-                            ep_name += f" (第{j+1}部分)"
-
-                        episodes.append(EpisodeData(
-                            name=ep_name,
-                            episode_body=json.dumps({
-                                "event_type": event_type,
-                                "time_window": time_window,
-                                "cluster_count": cluster_count,
-                                "analysis": chunk
-                            }, ensure_ascii=False),
-                            source_description=f"事件簇LLM分析 - {event_type} (count={cluster_count})",
-                            reference_time=datetime.now(),
-                            file_path="",
-                            file_id=0,
-                            category="event_cluster_description"
-                        ))
+            # Only ingest successful analyses that carry a persisted record id.
+            for cluster in [c for c in cluster_results if c.get("success")]:
+                analysis_id = cluster.get("analysis_id")
+                if not analysis_id:
+                    continue
+                record_episodes = build_analysis_episodes({
+                    "id": analysis_id,
+                    "event_type": cluster.get("event_type", "UNKNOWN"),
+                    "bucket_seconds": cluster.get("bucket_seconds", PIPELINE_BUCKET_SECONDS),
+                    "time_window": cluster.get("time_window", 0),
+                    "parent_directory": cluster.get("parent_directory", ""),
+                    "cluster_count": cluster.get("cluster_count", 0),
+                    "description": (cluster.get("analysis") or {}).get("description", ""),
+                })
+                if record_episodes:
+                    episodes.extend(record_episodes)
+                    ingested_ids.append(analysis_id)
 
             if not episodes:
                 logger.info("No cluster episodes to ingest")
                 return True
 
-            # Batch ingest
             logger.info(f"Ingesting {len(episodes)} cluster episodes into Graphiti for task {task_id}")
             result = await ingestor.batch_ingest(
                 episodes=episodes,
                 group_id=task_id,
             )
-            logger.info(
-                f"Cluster Graphiti ingestion complete: {getattr(result, 'successful', 0)}/{getattr(result, 'total_episodes', len(episodes))} successful"
-            )
-            return getattr(result, 'successful', 0) > 0
+            successful = getattr(result, 'successful', 0)
+            total = getattr(result, 'total_episodes', len(episodes))
+            logger.info(f"Cluster Graphiti ingestion complete: {successful}/{total} successful")
+
+            fully_ingested = total and successful == total
+            if fully_ingested and events_db and ingested_ids:
+                mark_analysis_ingested(events_db, ingested_ids)
+            return successful > 0
 
         except ImportError:
             logger.warning("graphiti_integration not available, skipping cluster ingestion")
@@ -429,21 +759,113 @@ class ClusterAnalyzer:
             logger.error(f"Cluster Graphiti ingestion failed: {e}", exc_info=True)
             return False
 
-    @staticmethod
-    def _chunk_text(text: str, max_chars: int = 3000) -> List[str]:
-        """Split text into chunks, breaking at paragraph boundaries."""
-        if len(text) <= max_chars:
-            return [text]
 
-        chunks = []
-        paragraphs = text.split("\n\n")
-        current = ""
-        for para in paragraphs:
-            if len(current) + len(para) + 2 > max_chars and current:
-                chunks.append(current.strip())
-                current = para
-            else:
-                current = current + "\n\n" + para if current else para
-        if current.strip():
+def chunk_text(text: str, max_chars: int = 3000) -> List[str]:
+    """Split text into chunks, breaking at paragraph boundaries."""
+    if len(text) <= max_chars:
+        return [text]
+
+    chunks = []
+    paragraphs = text.split("\n\n")
+    current = ""
+    for para in paragraphs:
+        if len(current) + len(para) + 2 > max_chars and current:
             chunks.append(current.strip())
-        return chunks if chunks else [text]
+            current = para
+        else:
+            current = current + "\n\n" + para if current else para
+    if current.strip():
+        chunks.append(current.strip())
+    return chunks if chunks else [text]
+
+
+def build_analysis_episodes(analysis: Dict[str, Any]) -> List[Any]:
+    """Build Graphiti episodes for one persisted analysis record (SPEC §9).
+
+    The episode name embeds the full cluster coordinate and the record id so
+    re-analyses produce distinct, citable episodes instead of overwriting.
+    """
+    from graphiti_integration.toon_transformer import EpisodeData
+
+    description = analysis.get("description") or ""
+    if not description:
+        return []
+
+    analysis_id = analysis["id"]
+    event_type = analysis.get("event_type", "UNKNOWN")
+    bucket_seconds = analysis.get("bucket_seconds", PIPELINE_BUCKET_SECONDS)
+    bucket_index = analysis.get("time_window", analysis.get("bucket_index", 0))
+    parent_directory = analysis.get("parent_directory", "")
+    cluster_count = analysis.get("cluster_count", 0)
+
+    chunks = chunk_text(description, max_chars=3000)
+    episodes = []
+    for j, chunk in enumerate(chunks):
+        ep_name = (
+            f"事件簇分析: {event_type} @ {bucket_seconds}s/{bucket_index}"
+            f" @ {parent_directory} #a{analysis_id}"
+        )
+        if len(chunks) > 1:
+            ep_name += f" (第{j + 1}部分)"
+        episodes.append(EpisodeData(
+            name=ep_name,
+            episode_body=json.dumps({
+                "event_type": event_type,
+                "bucket_epoch_seconds": bucket_seconds,
+                "bucket_index": bucket_index,
+                "parent_directory": parent_directory,
+                "cluster_count": cluster_count,
+                "analysis_id": analysis_id,
+                "analysis": chunk,
+            }, ensure_ascii=False),
+            source_description=f"事件簇LLM分析 - {event_type} (count={cluster_count})",
+            reference_time=datetime.now(),
+            file_path="",
+            file_id=0,
+            category="event_cluster_description",
+        ))
+    return episodes
+
+
+async def ingest_analysis_record_to_graphiti(
+    graphiti_service,
+    task_id: str,
+    analysis: Dict[str, Any],
+    events_db: str = "",
+) -> bool:
+    """Ingest one persisted analysis record (route path, SPEC §7/D10).
+
+    Failure is non-fatal by contract: the analysis is already persisted and
+    only ``ingested_at`` stays NULL for a later retry.
+    """
+    if not graphiti_service:
+        logger.info("Graphiti service not available, skipping cluster ingestion")
+        return False
+    try:
+        await graphiti_service.initialize()
+        graph_entry = await graphiti_service._get_task_graph(task_id)
+        if not graph_entry or not isinstance(graph_entry, dict):
+            logger.warning(f"Could not get task graph for {task_id}")
+            return False
+        ingestor = graph_entry.get("ingestor")
+        if not ingestor:
+            logger.warning(f"No ingestor available for task {task_id}")
+            return False
+
+        episodes = build_analysis_episodes(analysis)
+        if not episodes:
+            return True
+
+        logger.info(f"Ingesting {len(episodes)} episode(s) for analysis #{analysis.get('id')}")
+        result = await ingestor.batch_ingest(episodes=episodes, group_id=task_id)
+        total = getattr(result, "total_episodes", len(episodes))
+        successful = getattr(result, "successful", 0)
+        if total and successful == total and events_db:
+            mark_analysis_ingested(events_db, [analysis["id"]])
+        return successful > 0
+    except ImportError:
+        logger.warning("graphiti_integration not available, skipping cluster ingestion")
+        return False
+    except Exception as e:
+        logger.error(f"Cluster Graphiti ingestion failed: {e}", exc_info=True)
+        return False

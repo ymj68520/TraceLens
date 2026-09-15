@@ -12,6 +12,44 @@ using json = nlohmann::json;
 // TIMELINE ANALYSIS IMPLEMENTATION
 // ============================================================================
 
+// Window-alignment offset recorded by the analysis pipeline (SPEC
+// event-cluster-analysis-redesign §4.2). Legacy databases lack analysis_meta
+// and resolve to 0 (UTC-aligned). Must mirror the Python
+// schema.read_bucket_epoch_offset.
+static int64_t read_bucket_epoch_offset(sqlite3* events) {
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(events,
+            "SELECT value FROM analysis_meta WHERE key='bucket_epoch_offset'",
+            -1, &stmt, nullptr) != SQLITE_OK) {
+        return 0;
+    }
+    int64_t offset = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const unsigned char* text = sqlite3_column_text(stmt, 0);
+        if (text) {
+            offset = std::strtoll(reinterpret_cast<const char*>(text), nullptr, 10);
+        }
+    }
+    sqlite3_finalize(stmt);
+    if (offset < 0 || offset >= 86400) offset = 0;
+    return offset;
+}
+
+// True when the named table exists in the database. Keeps read paths working
+// on legacy events databases that never gained the cluster-analysis tables.
+static bool table_exists(sqlite3* db, const char* name) {
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db,
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    sqlite3_bind_text(stmt, 1, name, -1, SQLITE_TRANSIENT);
+    const bool exists = sqlite3_step(stmt) == SQLITE_ROW;
+    sqlite3_finalize(stmt);
+    return exists;
+}
+
 json SQLiteHelper::get_timeline_details(const std::string& events_db,
                                        int64_t time_window,
                                        const std::string& event_type,
@@ -26,6 +64,8 @@ json SQLiteHelper::get_timeline_details(const std::string& events_db,
     limit = clamp_limit(limit);
     offset = clamp_offset(offset);
     if (bucket_seconds < 1) bucket_seconds = 60;
+    if (bucket_seconds > 2592000) bucket_seconds = 2592000;
+    const int64_t bucket_epoch_offset = read_bucket_epoch_offset(events);
 
     // Use the same derived parent expression as comprehensive grouping. This
     // keeps root and prefix-collision groups exact instead of using LIKE.
@@ -43,7 +83,8 @@ json SQLiteHelper::get_timeline_details(const std::string& events_db,
             file_size,
             file_type
         FROM events
-        WHERE (timestamp / )" + std::to_string(bucket_seconds) + R"() = )" + std::to_string(time_window) + R"(
+        WHERE ((timestamp - )" + std::to_string(bucket_epoch_offset) + R"() / )"
+        + std::to_string(bucket_seconds) + R"() = )" + std::to_string(time_window) + R"(
         AND event_type = ?
         AND )" + parent_dir_expr + R"( = ?)";
     bind.push_back(event_type);
@@ -61,9 +102,10 @@ json SQLiteHelper::get_timeline_details(const std::string& events_db,
     result["descriptor"] = {
         {"bucket_index", time_window},
         {"bucket_seconds", bucket_seconds},
+        {"bucket_epoch_offset", bucket_epoch_offset},
         {"event_type", event_type},
         {"parent_directory", parent_dir},
-        {"bucket_start_timestamp", time_window * static_cast<int64_t>(bucket_seconds)},
+        {"bucket_start_timestamp", time_window * static_cast<int64_t>(bucket_seconds) + bucket_epoch_offset},
     };
 
     sqlite3_close(events);
@@ -94,11 +136,14 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
 
     limit = clamp_limit(limit);
     offset = clamp_offset(offset);
-    // Clamp bucket_seconds to a sane range. It is an integer derived from the
-    // query string and used directly in SQL via std::to_string (safe), but we
-    // guard against 0/negative to avoid divide-by-zero and absurd windows.
+    // Clamp bucket_seconds to the protocol range (SPEC D4): an integer derived
+    // from the query string and used directly in SQL via std::to_string (safe),
+    // but we guard against 0/negative to avoid divide-by-zero. The upper bound
+    // allows analysis runs to use windows up to 30 days.
     if (bucket_seconds < 1) bucket_seconds = 60;
-    if (bucket_seconds > 86400) bucket_seconds = 86400;
+    if (bucket_seconds > 2592000) bucket_seconds = 2592000;
+    // Local-midnight window alignment (SPEC §4.2); 0 on legacy databases.
+    const int64_t bucket_epoch_offset = read_bucket_epoch_offset(events);
 
     // Build WHERE clause for filters. start/end are parsed to integers (safe);
     // event_type is user-supplied text, so it is bound (never concatenated).
@@ -135,7 +180,9 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
     std::string count_sql;
     if (cluster_events) {
         count_sql = "SELECT COUNT(*) FROM (SELECT 1 FROM events" + where_clause +
-                    " GROUP BY " + parent_dir_expr + ", (timestamp / " + std::to_string(bucket_seconds) + "), event_type)";
+                    " GROUP BY " + parent_dir_expr + ", ((timestamp - " +
+                    std::to_string(bucket_epoch_offset) + ") / " + std::to_string(bucket_seconds) +
+                    "), event_type)";
     } else {
         count_sql = "SELECT COUNT(*) FROM events" + where_clause;
     }
@@ -162,7 +209,8 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
             SELECT
                 MIN(timestamp) as timestamp,
                 MAX(timestamp) as end_timestamp,
-                (timestamp / )" + std::to_string(bucket_seconds) + R"() as bucket_index,
+                ((timestamp - )" + std::to_string(bucket_epoch_offset) + R"() / )" +
+                std::to_string(bucket_seconds) + R"() as bucket_index,
                 event_type,
                 COUNT(*) as cluster_count,
                 file_path, -- Representative file path
@@ -171,18 +219,19 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
                 description,
                 SUM(COALESCE(file_size, 0)) as file_size,
                 file_type,
-                llm_summary,
-                llm_description,
-                llm_keywords,
-                llm_is_relevant
+                MIN(id) as member_min_id,
+                MAX(id) as member_max_id
             FROM events
         )";
         sql += where_clause;
-        // Group by parent directory first, then time window and event type
-        // This creates separate clusters for different directories.
-        // bucket_seconds is a clamped integer (validated above), so std::to_string
-        // is safe here — no injection risk.
-        sql += " GROUP BY parent_directory, (timestamp / " + std::to_string(bucket_seconds) + "), event_type";
+        // Group by parent directory first, then time window and event type.
+        // This creates separate clusters for different directories. The window
+        // expression carries the alignment offset so the grouping matches the
+        // analysis pipeline's coordinates exactly (SPEC §4). bucket_seconds and
+        // bucket_epoch_offset are clamped integers (validated above), so
+        // std::to_string is safe here — no injection risk.
+        sql += " GROUP BY parent_directory, ((timestamp - " + std::to_string(bucket_epoch_offset) +
+               ") / " + std::to_string(bucket_seconds) + "), event_type";
     } else {
         sql = R"(
             SELECT
@@ -214,10 +263,63 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
             item["group_descriptor"] = {
                 {"bucket_index", bucket_index},
                 {"bucket_seconds", bucket_seconds},
+                {"bucket_epoch_offset", bucket_epoch_offset},
                 {"event_type", row_event_type},
                 {"parent_directory", row_parent},
-                {"bucket_start_timestamp", bucket_index * static_cast<int64_t>(bucket_seconds)},
+                {"bucket_start_timestamp", bucket_index * static_cast<int64_t>(bucket_seconds) + bucket_epoch_offset},
             };
+        }
+    }
+
+    // Attach the latest persisted cluster analysis per row (SPEC
+    // event-cluster-analysis-redesign §7). The analysis record is the truth
+    // source: llm_* fields now come from it instead of an arbitrary member's
+    // cache columns, and is_stale compares its member fingerprint against this
+    // group's actual member set. Legacy databases without the table (and rows
+    // without any analysis) degrade gracefully to analysis_id = null.
+    if (cluster_events && events_data.is_array() && table_exists(events, "event_cluster_analyses")) {
+        sqlite3_stmt* analysis_stmt = nullptr;
+        if (sqlite3_prepare_v2(events,
+                "SELECT id, created_at, model, summary, description, keywords, "
+                "member_count, member_min_id, member_max_id "
+                "FROM event_cluster_analyses "
+                "WHERE bucket_epoch_offset=? AND bucket_seconds=? AND bucket_index=? "
+                "AND event_type=? AND parent_directory=? "
+                "ORDER BY id DESC LIMIT 1",
+                -1, &analysis_stmt, nullptr) == SQLITE_OK) {
+            for (auto& item : events_data) {
+                const int64_t bucket_index = item.value("bucket_index", int64_t{0});
+                const std::string row_event_type = item.value("event_type", std::string{});
+                const std::string row_parent = item.value("parent_directory", std::string{});
+                sqlite3_reset(analysis_stmt);
+                sqlite3_bind_int64(analysis_stmt, 1, bucket_epoch_offset);
+                sqlite3_bind_int64(analysis_stmt, 2, static_cast<int64_t>(bucket_seconds));
+                sqlite3_bind_int64(analysis_stmt, 3, bucket_index);
+                sqlite3_bind_text(analysis_stmt, 4, row_event_type.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(analysis_stmt, 5, row_parent.c_str(), -1, SQLITE_TRANSIENT);
+                if (sqlite3_step(analysis_stmt) == SQLITE_ROW) {
+                    const auto column_text = [](sqlite3_stmt* stmt, int col) {
+                        const unsigned char* text = sqlite3_column_text(stmt, col);
+                        return text ? std::string(reinterpret_cast<const char*>(text))
+                                    : std::string{};
+                    };
+                    item["analysis_id"] = sqlite3_column_int64(analysis_stmt, 0);
+                    item["analyzed_at"] = sqlite3_column_int64(analysis_stmt, 1);
+                    item["analysis_model"] = column_text(analysis_stmt, 2);
+                    item["llm_summary"] = column_text(analysis_stmt, 3);
+                    item["llm_description"] = column_text(analysis_stmt, 4);
+                    item["llm_keywords"] = column_text(analysis_stmt, 5);
+                    const bool stale =
+                        sqlite3_column_int64(analysis_stmt, 6) != item.value("cluster_count", int64_t{0}) ||
+                        sqlite3_column_int64(analysis_stmt, 7) != item.value("member_min_id", int64_t{0}) ||
+                        sqlite3_column_int64(analysis_stmt, 8) != item.value("member_max_id", int64_t{0});
+                    item["is_stale"] = stale ? 1 : 0;
+                } else {
+                    item["analysis_id"] = nullptr;
+                    item["is_stale"] = 0;
+                }
+            }
+            sqlite3_finalize(analysis_stmt);
         }
     }
 
@@ -233,6 +335,7 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
     metadata["event_type_filter"] = event_type.empty() ? "all" : event_type;
     metadata["clustered"] = cluster_events;
     metadata["bucket_seconds"] = cluster_events ? bucket_seconds : 0;
+    if (cluster_events) metadata["bucket_epoch_offset"] = bucket_epoch_offset;
 
     result["metadata"] = metadata;
     result["timeline"] = events_data;

@@ -7,7 +7,7 @@ can import the same types without circular imports.
 
 import logging
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Literal, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, UploadFile, File
 from pydantic import BaseModel, Field
@@ -109,6 +109,10 @@ class EventClusterAnalyzeRequest(BaseModel):
     )
     prompt: Optional[str] = Field(None, description="Custom prompt")
     bucket_seconds: int = Field(60, description="Legacy clustering window in seconds")
+    trigger: Literal["timeline_auto", "timeline_manual"] = Field(
+        "timeline_manual",
+        description="Caller context recorded on the appended analysis record",
+    )
 
 
 class ToggleClusterRelevanceRequest(BaseModel):

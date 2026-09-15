@@ -5,6 +5,8 @@
 #include <sstream>
 #include <sqlite3.h>
 #include <algorithm>
+#include <cstdio>
+#include <ctime>
 
 EventExtractor::EventExtractor(const std::string& sourceDbPath,
 	const std::string& eventDbPath)
@@ -70,6 +72,41 @@ bool EventExtractor::createEventTables() {
     using namespace EventExtractorSQL;
 
     char* errMsg = nullptr;
+
+    // Cluster-analysis window-alignment metadata (SPEC
+    // event-cluster-analysis-redesign §4.2): record the local-midnight offset
+    // ONCE, at database birth, so every later bucket expression groups
+    // identically. Fixed offset — DST is intentionally not modeled.
+    {
+        std::time_t now = std::time(nullptr);
+        std::tm utc_tm{};
+        std::tm local_tm{};
+#ifdef _WIN32
+        gmtime_s(&utc_tm, &now);
+        localtime_s(&local_tm, &now);
+#else
+        gmtime_r(&now, &utc_tm);
+        localtime_r(&now, &local_tm);
+#endif
+        // mktime interprets a broken-down time as LOCAL; the delta of the two
+        // mktime results is therefore the UTC offset in seconds (UTC+8 → +28800).
+        std::time_t as_utc = std::mktime(&utc_tm);
+        std::time_t as_local = std::mktime(&local_tm);
+        long long tz_offset = static_cast<long long>(difftime(as_local, as_utc));
+        long long bucket_offset = (86400LL - (tz_offset % 86400LL)) % 86400LL;
+        if (bucket_offset < 0) bucket_offset += 86400LL;
+
+        sqlite3_exec(eventDb_,
+            "CREATE TABLE IF NOT EXISTS analysis_meta ("
+            "key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+            nullptr, nullptr, nullptr);
+        char meta_sql[128];
+        std::snprintf(meta_sql, sizeof(meta_sql),
+            "INSERT OR IGNORE INTO analysis_meta (key, value) "
+            "VALUES ('bucket_epoch_offset', '%lld');",
+            bucket_offset);
+        sqlite3_exec(eventDb_, meta_sql, nullptr, nullptr, nullptr);
+    }
 
     // Create main events table
     int rc = sqlite3_exec(eventDb_, CREATE_EVENTS_TABLE, nullptr, nullptr, &errMsg);

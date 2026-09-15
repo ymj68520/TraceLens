@@ -38,61 +38,6 @@ def get_case_analysis_service(service_manager):
     return service_manager._case_analysis_service
 
 
-async def run_case_analysis_background(
-    job_id: str,
-    case_service,
-    task_id: str,
-    files_db_path: str,
-    case_description: str,
-    max_filter_files: int,
-    run_filtering: bool = True,
-    report_only: bool = False,
-):
-    """Run the full case analysis pipeline in the background."""
-    try:
-        async def progress_cb(step, detail=None, extra=None):
-            # Handle variable arguments from different pipeline steps
-            if extra is not None:
-                # Step 3 (describing) sends: current, total, file_path
-                current, total, file_path = step, detail, extra
-                percentage = int((current / total) * 100) if total > 0 else 0
-                _analysis_jobs[job_id]["current_step"] = "分析文件"
-                _analysis_jobs[job_id]["detail"] = f"正在分析第 {current}/{total} 个文件: {file_path}"
-                _analysis_jobs[job_id]["progress"] = percentage
-            else:
-                # Other steps send: step_name, detail_text
-                _analysis_jobs[job_id]["current_step"] = step
-                _analysis_jobs[job_id]["detail"] = detail or ""
-                # Default progress
-                if step == "filtering": _analysis_jobs[job_id]["progress"] = 10
-                if step == "extracting": _analysis_jobs[job_id]["progress"] = 20
-                if step == "reporting": _analysis_jobs[job_id]["progress"] = 90
-
-        result = await case_service.run_full_analysis(
-            task_id=task_id,
-            files_db_path=files_db_path,
-            case_description=case_description,
-            max_filter_files=max_filter_files,
-            run_filtering=run_filtering,
-            report_only=report_only,
-            progress_callback=progress_cb,
-        )
-
-        _analysis_jobs[job_id]["status"] = "completed"
-        _analysis_jobs[job_id]["current_step"] = "完成"
-        _analysis_jobs[job_id]["detail"] = "案情分析已完成"
-        _analysis_jobs[job_id]["result"] = {
-            "files_filtered": result.get("steps", {}).get("filter", {}).get("selected_count", 0),
-            "files_analyzed": result.get("steps", {}).get("report", {}).get("files_analyzed", 0),
-            "report_generated": bool(result.get("steps", {}).get("report", {}).get("report")),
-        }
-    except Exception as e:
-        logger.error(f"Background case analysis failed: {e}", exc_info=True)
-        _analysis_jobs[job_id]["status"] = "failed"
-        _analysis_jobs[job_id]["current_step"] = "错误"
-        _analysis_jobs[job_id]["detail"] = "case analysis job failed"
-
-
 async def run_reanalyze_background(
     job_id: str,
     case_service,

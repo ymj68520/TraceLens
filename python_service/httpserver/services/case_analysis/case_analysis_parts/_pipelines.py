@@ -165,6 +165,14 @@ class CaseAnalysisPipelinesMixin:
                     cluster_task = asyncio.create_task(self._cluster_analyzer.analyze_and_ingest_clusters(
                         events_db, case_description, task_id, progress_callback
                     ))
+                else:
+                    # Skip must stay visible: a silently missing cluster-analysis
+                    # step would look like "nothing to analyze" downstream (SPEC §0).
+                    logger.warning(f"[CASE_ANALYSIS] Task {task_id}: Event cluster analysis skipped - events db unavailable")
+                    result["steps"]["event_clusters"] = {
+                        "skipped": True,
+                        "reason": "events_db missing or not found",
+                    }
 
                 # Wait for file analysis
                 try:
@@ -263,6 +271,12 @@ class CaseAnalysisPipelinesMixin:
                     cluster_task = asyncio.create_task(self._cluster_analyzer.analyze_and_ingest_clusters(
                         events_db, case_description, task_id, progress_callback
                     ))
+                else:
+                    logger.warning(f"[CASE_ANALYSIS] Task {task_id}: Event cluster analysis skipped - events db unavailable")
+                    result["steps"]["event_clusters"] = {
+                        "skipped": True,
+                        "reason": "events_db missing or not found",
+                    }
 
                 # Wait for file analysis
                 try:

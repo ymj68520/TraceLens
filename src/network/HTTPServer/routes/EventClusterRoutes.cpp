@@ -1,7 +1,10 @@
 #include "EventClusterRoutes.h"
 #include "RouteHelpers.h"
 #include "../SQLiteHelper.h"
-#include "../EventClusterAnalyzer.h"
+// The legacy C++ LLM cluster analyzer below was replaced by the Python API
+// (/api/llm/analyze-event-cluster, port 8090) and is retired — see the #if 0
+// blocks further down (SPEC event-cluster-analysis-redesign §8.3/D11).
+// #include "../EventClusterAnalyzer.h"
 #include "../../Swagger/Swagger.h"
 #include <sqlite3.h>
 
@@ -9,7 +12,17 @@ namespace forensics {
 
 using json = nlohmann::json;
 
+// Spec note (D11): the C++ cluster analysis endpoints
+//   POST /api/forensics/timeline/clusters/analyze     (410 placeholder)
+//   POST /api/forensics/timeline/clusters/batch-analyze (legacy C++ LLM path)
+//   POST /api/forensics/timeline/clusters/reanalyze    (legacy C++ LLM path)
+// are retired: they bypass the Python-side guardrails (descriptor validation,
+// server-side trusted member resolution, strict rowcount checks). The source
+// is kept below inside `#if 0` for reference. The live C++ surface for
+// clusters is the read-only GET /clusters/analyzed (data source migrates to
+// the analysis-record table in Phase D).
 EventClusterRoutes::EventClusterRoutes(crow::App<>& app) {
+#if 0
     CROW_ROUTE(app, "/api/forensics/timeline/clusters/analyze").methods("POST"_method, "OPTIONS"_method)([this](const crow::request& req) {
         if (req.method == "OPTIONS"_method) {
             crow::response res;
@@ -63,7 +76,12 @@ EventClusterRoutes::EventClusterRoutes(crow::App<>& app) {
         {},
         {{200, "Cluster reanalyzed successfully"}, {400, "Invalid request"}}
     );
+#endif
 
+    // DEPRECATED (SPEC Phase D): the AnalysisCenter now reads analysis records
+    // from the Python API GET /api/llm/event-cluster-analyses (append-only
+    // truth source, version-aware). This legacy 60s-aggregate listing stays
+    // for one release cycle and is then removed.
     CROW_ROUTE(app, "/api/forensics/timeline/clusters/analyzed").methods("GET"_method)([this](const crow::request& req) {
         return handle_get_analyzed_clusters(req);
     });
@@ -77,6 +95,12 @@ EventClusterRoutes::EventClusterRoutes(crow::App<>& app) {
     );
 }
 
+// ---- Retired handlers (SPEC D11) ----------------------------------------
+// The definitions below stay for reference only; none of them is registered
+// or callable. /clusters/analyze already answered 410; /clusters/batch-analyze
+// and /clusters/reanalyze still reached the legacy C++ LLM stack
+// (EventClusterAnalyzer) with none of the Python-side guardrails.
+#if 0
 crow::response EventClusterRoutes::handle_analyze_event_cluster(const crow::request& req) {
     crow::response res;
     RouteHelpers::add_cors_headers(res);
@@ -214,6 +238,8 @@ crow::response EventClusterRoutes::handle_reanalyze_event_cluster(const crow::re
 
     return res;
 }
+
+#endif // retired handlers
 
 crow::response EventClusterRoutes::handle_get_analyzed_clusters(const crow::request& req) {
     crow::response res;

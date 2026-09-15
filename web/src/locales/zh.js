@@ -97,6 +97,8 @@ export default {
     'timeline.node.items': '个事件',
     'timeline.node.sample': '示例文件',
     'timeline.node.total': '总计',
+    'timeline.cluster.stale': '成员已变化',
+    'timeline.cluster.staleTip': '上次分析后此时间窗落入了新事件，建议人工重新分析。',
 
     // Terminal
     'terminal.title': '系统终端',

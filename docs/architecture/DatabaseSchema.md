@@ -84,6 +84,7 @@ raw.db 是后续所有阶段的唯一输入源（事件提取、文件分类、�
 | `creation_events` / `modification_events` / `access_events` / `change_events` / `deletion_events` | 按事件类型分表 |
 | `system_events` | 系统事件 |
 | `event_correlations` | 事件关联表。注意：关联由 `EventCorrelationEngine` 生成，而该引擎当前**未接入任务流水线**（`EventExtractor::analyzeEventCorrelations()` 无生产调用方），生产任务中此表通常为空 |
+| `event_cluster_analyses` / `cluster_analysis_runs` / `analysis_meta` | 事件簇 LLM 分析三表（Python 侧 `case_analysis/schema.py` 幂等创建并追加写入；分析记录真相源 + 运行统计 + 窗对齐元数据）。逐列见 [schema/EventsDB.md](../schema/EventsDB.md)，设计规范见 `docs/specs/event-cluster-analysis-redesign.md` |
 
 **视图**：`timeline`、`event_statistics`、`hourly_activity`、`system_event_view`、`event_correlation_view`、`enhanced_timeline`、`enhanced_event_statistics`。
 

@@ -277,6 +277,32 @@ curl -X POST http://localhost:8090/api/llm/analyze/dll \
 
 响应要点（`DLLAnalysisResponse`）：`{success, analysis{}, model_used, tokens_used, processing_time_ms, timestamp}`——内部先调 C++ `/api/forensics/dlls/analyze` 解析 PE/ELF，再做 LLM 安全评估。
 
+### 事件簇分析运行（event_cluster_analysis.py，2026-09 Phase C）
+
+> 源码：`routes/event_cluster_analysis.py`（前缀 `/api/llm`）。设计规范见 `docs/specs/event-cluster-analysis-redesign.md`；簇分析结果落在任务 events 库的 `event_cluster_analyses`/`cluster_analysis_runs` 表（见 [schema/EventsDB.md](../schema/EventsDB.md)）。
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| POST | `/api/llm/event-cluster-analysis/estimate` | 干跑估算：纯 SQL 扫描候选聚簇窗阶梯（60s→30d），返回各窗的簇数/最大成员数与推荐窗（预算=Settings `llm_max_event_clusters`，默认 200） |
+| POST | `/api/llm/event-cluster-analysis/run` | 启动任务级后台全量簇分析（自适应选窗或 `bucket_seconds` 显式指定，范围 1..2592000）；同一聚簇坐标且成员指纹未变的簇自动跳过（幂等） |
+| GET | `/api/llm/event-cluster-analysis/run/{job_id}` | 运行进度与统计（内存 job 注册表，单进程） |
+| GET | `/api/llm/event-cluster-analyses` | 查询分析记录（真相源，append-only 多版本）；`latest_only=true`（默认）每坐标仅返回最新版本，支持 `bucket_seconds/bucket_index/event_type/parent_directory` 过滤 |
+
+estimate 请求/响应：
+
+```bash
+curl -X POST http://localhost:8090/api/llm/event-cluster-analysis/estimate \
+  -H "Content-Type: application/json" -d '{"task_id": "task_xxx"}'
+```
+
+响应要点：`{task_id, budget, bucket_epoch_offset, estimates: [{bucket_seconds, cluster_count, max_members}], recommended_bucket_seconds, warning}`——全超预算时推荐最大窗并给出 `warning`。
+
+run 请求：`{task_id, bucket_seconds?}`；响应 `{success, job_id, task_id, bucket_seconds, message}`。完成后 `GET run/{job_id}` 的 `summary` 含 `{run_id, bucket_seconds, cluster_total, analyzed, skipped_fresh, failed}` 与 `failures` 清单。
+
+分析行为约定：每个事件的清单行都会进入至少一个 LLM 分片（map-reduce，**不采样**）；分析成功 = 追加一条 `event_cluster_analyses` 记录 + 单事务双写成员事件的 `llm_*` 缓存；Graphiti 摄入为尽力而为（episode 名含 `#a{analysis_id}`，批次全成才标记 `ingested_at`）。
+
+单簇分析 `POST /api/llm/analyze-event-cluster` 自 Phase B 起的行为：请求可选 `trigger`（`timeline_auto`/`timeline_manual`，默认 manual）；响应新增 `analysis_id`；时间线 comprehensive 簇行新增 `analysis_id/analyzed_at/analysis_model/is_stale`，`llm_*` 字段改由最新分析记录填充。
+
 ---
 
 ## 4. 案件分析 API

@@ -49,10 +49,15 @@ async def analyze_event_cluster(
         if not events_db:
             raise HTTPException(status_code=400, detail="No events database for this task")
 
+        # Cluster-analysis tables must exist before this path starts writing
+        # analysis records (SPEC event-cluster-analysis-redesign §3.2).
+        from ...services.case_analysis.schema import ensure_cluster_analysis_schema
+
+        ensure_cluster_analysis_schema(events_db)
+
         # 2. Extract event data for the cluster. The descriptor is optional for
         # legacy callers, but when present it is validated and resolved solely
         # from this task's source database; client rows are never accepted.
-        import sqlite3
         from ...services.investigation_evidence import (
             read_timeline_group_members,
             validate_timeline_group_descriptor,
@@ -75,61 +80,73 @@ async def analyze_event_cluster(
         event_type = descriptor["event_type"]
         time_window = descriptor["bucket_index"]
         bucket_seconds = descriptor["bucket_seconds"]
-        events_summary = "\n".join(
-            f"- {r['timestamp']}: {r['event_type']} | {r.get('file_path') or ''} | {r.get('description') or ''}"
-            for r in members[:50]
+
+        # 3. LLM analysis over the FULL member list (map-reduce, no sampling —
+        # SPEC event-cluster-analysis-redesign §6).
+        from ...services.case_analysis.cluster_analyzer import (
+            ClusterAnalyzer,
+            analyze_cluster_members,
+            ingest_analysis_record_to_graphiti,
+            lines_from_members,
         )
 
-        # 3. Call LLM for analysis
-        result = await service_manager.llm_service.analyze_event_cluster(
-            event_data={
-                "event_type": event_type,
-                "description": events_summary,
-                "time_window": time_window,
-            },
+        result = await analyze_cluster_members(
+            service_manager.llm_service,
+            event_type=event_type,
+            time_window=time_window,
+            member_lines=lines_from_members(members),
+            chunk_size=settings.cluster_analysis_chunk_size,
             prompt=request.prompt,
+            concurrency=settings.llm_max_concurrency,
         )
-
         analysis = result.get("analysis", {})
 
-        # 4. Persist only the trusted member IDs selected above. The browser
-        # never supplies IDs, and a partial update is treated as a failed
-        # transaction.
-        # Use full summary/description without truncation for database storage
-        summary_value = analysis.get("summary") or analysis.get("description", "")
-        placeholders = ", ".join("?" for _ in member_ids)
-        sql_update = f"""
-            UPDATE events SET
-                llm_summary = ?,
-                llm_description = ?,
-                llm_keywords = ?,
-                llm_analyzed_at = ?,
-                llm_model_used = ?,
-                llm_is_relevant = ?
-            WHERE id IN ({placeholders})
-        """
-        update_params = [
-            summary_value,
-            analysis.get("description", ""),
-            ", ".join(analysis.get("keywords", [])) if isinstance(analysis.get("keywords"), list) else "",
-            int(datetime.now().timestamp()),
-            result.get("model", "unknown"),
-            1 if analysis.get("is_relevant", True) else 0,
-            *member_ids,
-        ]
+        # 4. Append one analysis record and dual-write the member cache inside
+        # a single transaction (SPEC §3.2). The browser never supplies IDs.
+        analyzer = ClusterAnalyzer(
+            settings,
+            service_manager.llm_service,
+            getattr(service_manager, "graphiti_service", None),
+        )
+        cluster_dict = {
+            "time_window": time_window,
+            "bucket_seconds": bucket_seconds,
+            "bucket_epoch_offset": descriptor["bucket_epoch_offset"],
+            "event_type": event_type,
+            "parent_directory": descriptor["parent_directory"],
+            "member_ids": ",".join(str(member_id) for member_id in member_ids),
+        }
+        analysis_id = analyzer.persist_cluster_analysis(
+            events_db,
+            cluster_dict,
+            result,
+            task_id=request.task_id,
+            trigger_source=request.trigger,
+        )
+        logger.info("Appended analysis #%s for cluster %s (%s events)", analysis_id, time_window, len(member_ids))
 
-        with sqlite3.connect(events_db) as conn:
-            cur = conn.execute(sql_update, update_params)
-            if cur.rowcount != len(member_ids):
-                raise sqlite3.DatabaseError(
-                    f"cluster member update incomplete: expected {len(member_ids)}, got {cur.rowcount}"
-                )
-            conn.commit()
-        logger.info("Updated %s exact events in cluster %s", len(member_ids), time_window)
+        # 5. Knowledge-graph ingestion is best-effort (SPEC D10): failure keeps
+        # ingested_at NULL for a later retry and never fails the request.
+        graphiti_service = getattr(service_manager, "graphiti_service", None)
+        if graphiti_service is not None:
+            await ingest_analysis_record_to_graphiti(
+                graphiti_service,
+                request.task_id,
+                {
+                    "id": analysis_id,
+                    "event_type": event_type,
+                    "bucket_seconds": bucket_seconds,
+                    "time_window": time_window,
+                    "parent_directory": descriptor["parent_directory"],
+                    "description": analysis.get("description", ""),
+                },
+                events_db=events_db,
+            )
 
         return {
             "success": True,
             "analysis": analysis,
+            "analysis_id": analysis_id,
             "model_used": result.get("model"),
             "timestamp": datetime.now().isoformat()
         }

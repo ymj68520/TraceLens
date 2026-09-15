@@ -169,3 +169,46 @@ def test_missing_descriptor_and_flat_fields_rejected(client):
 
     assert response.status_code == 422
     assert response.json()["detail"] == "cluster descriptor is required"
+
+
+def test_route_appends_analysis_record_and_reports_id(client):
+    tc, manager = client
+
+    response = tc.post(
+        "/api/llm/analyze-event-cluster",
+        json={
+            "task_id": "task-1",
+            "group_descriptor": DESCRIPTOR,
+            "trigger": "timeline_auto",
+        },
+    )
+
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert isinstance(body["analysis_id"], int)
+    assert body["analysis_id"] > 0
+
+    with sqlite3.connect(manager._events_db) as conn:
+        conn.row_factory = sqlite3.Row
+        record = conn.execute("SELECT * FROM event_cluster_analyses").fetchone()
+    assert record["task_id"] == "task-1"
+    assert record["trigger_source"] == "timeline_auto"
+    assert record["bucket_seconds"] == 60
+    assert record["bucket_index"] == 2
+    assert record["member_count"] == 2
+    assert record["ingested_at"] is None  # no graphiti service in this fixture
+
+
+def test_route_rejects_unknown_trigger(client):
+    tc, _ = client
+
+    response = tc.post(
+        "/api/llm/analyze-event-cluster",
+        json={
+            "task_id": "task-1",
+            "group_descriptor": DESCRIPTOR,
+            "trigger": "not_a_trigger",
+        },
+    )
+
+    assert response.status_code == 422

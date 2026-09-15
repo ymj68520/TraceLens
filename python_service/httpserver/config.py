@@ -191,6 +191,8 @@ class Settings(BaseSettings):
     llm_timeout_seconds: int = Field(default=120, alias="LLM_TIMEOUT_SECONDS")
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
     llm_context_length: int = Field(default=4096, alias="LLM_CONTEXT_LENGTH")
+    # Concurrent LLM calls per analysis pipeline (event clusters, files, artifacts).
+    llm_max_concurrency: int = Field(default=3, ge=1, le=64, alias="LLM_MAX_CONCURRENCY")
 
     # Redis Settings (optional; IngestionJobManager falls back to in-memory)
     redis_url: str = Field(default="redis://localhost:6379", alias="REDIS_URL")
@@ -231,7 +233,14 @@ class Settings(BaseSettings):
     # declared bounds; an omitted value never means unlimited.
     llm_max_files: int = Field(default=500, ge=1, le=100000, alias="LLM_MAX_FILES")
     llm_smart_candidate_files: int = Field(default=1000, ge=1, le=100000, alias="LLM_SMART_CANDIDATE_FILES")
+    # Event-cluster analysis budget (SPEC event-cluster-analysis-redesign §5):
+    # the maximum number of clusters one analysis run may produce. Phase C
+    # adaptive bucketing targets this value; deployments raise it via config
+    # (e.g. LLM_MAX_EVENT_CLUSTERS=1500) at the cost of LLM calls.
     llm_max_event_clusters: int = Field(default=200, ge=1, le=100000, alias="LLM_MAX_EVENT_CLUSTERS")
+    # Map-reduce chunk size for event-cluster analysis: events per LLM call.
+    # Every event enters at least one chunk — no sampling (SPEC §6).
+    cluster_analysis_chunk_size: int = Field(default=200, ge=1, le=10000, alias="CLUSTER_ANALYSIS_CHUNK_SIZE")
     llm_max_artifacts: int = Field(default=500, ge=1, le=100000, alias="LLM_MAX_ARTIFACTS")
     investigation_max_nodes: int = Field(default=200, ge=1, le=10000, alias="INVESTIGATION_MAX_NODES")
     multi_image_max_filter_files: int = Field(default=400, ge=1, le=20000, alias="MULTI_IMAGE_MAX_FILTER_FILES")

@@ -14,9 +14,11 @@ public:
     explicit EventClusterRoutes(crow::App<>& app);
     
 private:
-    crow::response handle_analyze_event_cluster(const crow::request& req);
-    crow::response handle_batch_analyze_event_clusters(const crow::request& req);
-    crow::response handle_reanalyze_event_cluster(const crow::request& req);
+    // Retired with the legacy C++ LLM cluster stack (SPEC D11); the route
+    // registrations and handler bodies are kept under `#if 0` in the .cpp.
+    // crow::response handle_analyze_event_cluster(const crow::request& req);
+    // crow::response handle_batch_analyze_event_clusters(const crow::request& req);
+    // crow::response handle_reanalyze_event_cluster(const crow::request& req);
     crow::response handle_get_analyzed_clusters(const crow::request& req);
 };
 

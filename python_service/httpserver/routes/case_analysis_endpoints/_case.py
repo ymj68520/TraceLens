@@ -28,7 +28,6 @@ from ..case_analysis_models import (
 from ._helpers import (
     _analysis_jobs,
     get_case_analysis_service as _get_case_analysis_service,
-    run_case_analysis_background as _run_case_analysis_background,
     run_reanalyze_background as _run_reanalyze_background,
 )
 

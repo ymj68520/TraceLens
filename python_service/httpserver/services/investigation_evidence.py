@@ -21,7 +21,39 @@ MAX_CLUSTER_EVENTS_FOR_LLM = 50
 MAX_RELATED_EVIDENCE = 20
 MAX_CONTENT_CHARS = 8000
 TIMELINE_DEFAULT_BUCKET_SECONDS = 60
-TIMELINE_MAX_BUCKET_SECONDS = 86400
+# Protocol-wide cap (SPEC D4): analysis runs may pick windows up to 30 days so
+# huge images stay inside the cluster budget; the Timeline UI self-limits its
+# ladder to 6 h. Must match the C++ clamp in TimelineQueries.cpp.
+TIMELINE_MAX_BUCKET_SECONDS = 2592000
+
+# Canonical parent-directory expression (SPEC event-cluster-analysis-redesign
+# §4.1). The C++ timeline queries keep a native copy whose semantics are locked
+# to this one by golden tests — do not edit one side without the other.
+PARENT_DIRECTORY_SQL = (
+    "(CASE WHEN file_path LIKE '%/%' "
+    "THEN RTRIM(file_path, REPLACE(file_path, '/', '')) ELSE '' END)"
+)
+
+
+def trunc_div(numerator: int, denominator: int) -> int:
+    """Integer division truncating toward zero — SQLite's ``/`` semantics.
+
+    Python's ``//`` floors, which diverges for negative numerators (pre-1970
+    forensic timestamps). Python-side grouping must mirror the SQL expressions.
+    """
+    if denominator == 0:
+        raise ZeroDivisionError("integer division or modulo by zero")
+    quotient = numerator // denominator
+    if quotient < 0 and quotient * denominator != numerator:
+        quotient += 1
+    return quotient
+
+
+def parent_directory_of(file_path: str) -> str:
+    """Python mirror of :data:`PARENT_DIRECTORY_SQL` — everything up to and
+    including the last ``/``, or the empty string."""
+    slash = (file_path or "").rfind("/")
+    return file_path[: slash + 1] if slash != -1 else ""
 
 
 def normalize_forensic_path(path: str) -> str:
@@ -90,12 +122,23 @@ def validate_timeline_group_descriptor(descriptor: Dict[str, Any]) -> Dict[str, 
     parent_directory = descriptor.get("parent_directory", "")
     if not isinstance(parent_directory, str):
         raise ValueError("timeline descriptor parent_directory must be a string")
+    # Window-alignment offset (SPEC §4.2). Optional for backward compatibility:
+    # descriptors without one are UTC-aligned (offset 0), which is exactly how
+    # every pre-offset caller behaves.
+    raw_offset = descriptor.get("bucket_epoch_offset", 0)
+    try:
+        bucket_epoch_offset = int(raw_offset)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("timeline descriptor bucket_epoch_offset must be an integer") from exc
+    if not 0 <= bucket_epoch_offset < 86400:
+        raise ValueError("timeline descriptor bucket_epoch_offset is out of range")
     canonical = {
         "bucket_index": bucket_index,
         "bucket_seconds": bucket_seconds,
         "event_type": event_type,
         "parent_directory": parent_directory,
-        "bucket_start_timestamp": bucket_index * bucket_seconds,
+        "bucket_epoch_offset": bucket_epoch_offset,
+        "bucket_start_timestamp": bucket_index * bucket_seconds + bucket_epoch_offset,
     }
     supplied_start = descriptor.get("bucket_start_timestamp")
     if supplied_start is not None and int(supplied_start) != canonical["bucket_start_timestamp"]:
@@ -110,17 +153,14 @@ def read_timeline_group_members(
     canonical = validate_timeline_group_descriptor(descriptor)
     if not events_db or not os.path.exists(events_db):
         return []
-    parent_dir_expr = (
-        "(CASE WHEN file_path LIKE '%/%' "
-        "THEN RTRIM(file_path, REPLACE(file_path, '/', '')) ELSE '' END)"
-    )
     with EvidenceResolver._connect_readonly(events_db) as conn:
         rows = conn.execute(
             "SELECT id, timestamp, event_type, file_path, description, inode FROM events "
-            "WHERE (timestamp / ?) = ? AND event_type = ? "
-            f"AND {parent_dir_expr} = ? "
+            "WHERE ((timestamp - ?) / ?) = ? AND event_type = ? "
+            f"AND {PARENT_DIRECTORY_SQL} = ? "
             "ORDER BY timestamp ASC, id ASC",
             (
+                canonical["bucket_epoch_offset"],
                 canonical["bucket_seconds"],
                 canonical["bucket_index"],
                 canonical["event_type"],

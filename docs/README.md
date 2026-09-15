@@ -38,6 +38,10 @@
 ### 📖 分析师教程（docs/tutorials/）
 端到端实操主线（命令全部核实）：[Linux 入侵排查](tutorials/LinuxIntrusion.md) · [Windows 取证](tutorials/WindowsCase.md) · [Android/微信取证](tutorials/AndroidWechat.md) · [内存取证](tutorials/MemoryForensics.md) · [知识图谱与报告](tutorials/KnowledgeGraphReports.md) · [分布式 C/S 实操](tutorials/DistributedCS.md) · [过滤画像](tutorials/FilterProfiles.md) · [全文搜索](tutorials/FullTextSearch.md) · [未知镜像分流](tutorials/IncidentTriage.md)
 
+### 📋 实施 SPEC（docs/specs/）
+进行中的重构规范指南（评审锁定后作为实施唯一依据，完成后决策移交 schema/API 文档）：
+- **[事件簇分析重构](specs/event-cluster-analysis-redesign.md)** — 聚簇时间自适应（预算驱动）、分析记录一等实体（append-only 版本链）、"是否已分析"精确判定、时间窗本地对齐、全量 map-reduce（不采样）、Graphiti 统一摄入、C++ 遗留端点退役；含 Phase B1→B2→C→D 阶段划分与验收标准
+
 ### 🛠️ 运维手册（docs/ops/）
 [服务启停 Runbook](ops/ServiceRunbook.md) · [数据与备份](ops/DataAndBackup.md) · [外部服务（Neo4j/Redis/PG/LLM）](ops/ExternalServices.md) · [升级与迁移](ops/UpgradeMigration.md) · [性能调优](ops/PerformanceTuning.md) · [容量规划](ops/CapacityPlanning.md) · [监控](ops/Monitoring.md) · [应急 Runbook](ops/IncidentRunbook.md) · [LLM 运维](ops/LLMOperations.md) · [故障证据矩阵](ops/FailureEvidenceMatrix.md) · [发布前清单](ops/ReleaseChecklist.md) · [Schema 一致性](reference/SchemaConsistency.md) · [安全加固清单](ops/SecurityHardening.md)
 
