@@ -8,6 +8,12 @@ vi.mock('./components/LocalKnowledgeGraph', () => ({
   default: ({ graph }) => <div>{graph?.nodes?.map((node) => node.label).join(',')}</div>,
 }));
 
+vi.mock('../../components/investigation/InvestigationGraphView', () => ({
+  default: ({ taskId, refreshSignal }) => (
+    <div data-testid="graph-view-mock" data-refresh-signal={refreshSignal}>{taskId}</div>
+  ),
+}));
+
 vi.mock('../../services/investigationService', () => ({
   getOverview: vi.fn(),
   bootstrapInvestigation: vi.fn(),
@@ -61,6 +67,35 @@ test('shows a task-selection placeholder without task context', () => {
   renderPage('/investigation');
   expect(screen.getByText('请先从顶部任务选择器选择一个已完成初次自动分析的任务。')).toBeInTheDocument();
   expect(service.getOverview).not.toHaveBeenCalled();
+});
+
+test('defaults to the timeline tab in a three-column layout', async () => {
+  const { container } = renderPage();
+  await screen.findByText('事件一');
+  expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('时间线');
+  expect(screen.queryByTestId('graph-view-mock')).not.toBeInTheDocument();
+  const columns = container.querySelector('main').className;
+  expect(columns).toContain('grid-cols-[minmax(250px,0.8fr)_minmax(300px,0.9fr)_minmax(440px,1.45fr)]');
+  expect(container.querySelector('[data-testid="analysis-workspace-column"]').className.split(/\s+/)).not.toContain('hidden');
+});
+
+test('graph tab activates the two-column layout and yields the right column', async () => {
+  const { container } = renderPage();
+  await screen.findByText('事件一');
+  fireEvent.click(screen.getByTestId('tab-graph'));
+  expect(screen.getByTestId('graph-view-mock')).toHaveTextContent('t1');
+  expect(container.querySelector('main').className).toContain('grid-cols-[minmax(250px,0.8fr)_minmax(640px,2.45fr)]');
+  expect(container.querySelector('[data-testid="analysis-workspace-column"]').className).toContain('hidden');
+});
+
+test('switching back to the timeline tab restores the right column', async () => {
+  const { container } = renderPage();
+  await screen.findByText('事件一');
+  fireEvent.click(screen.getByTestId('tab-graph'));
+  expect(screen.getByTestId('graph-view-mock')).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId('tab-timeline'));
+  expect(screen.queryByTestId('graph-view-mock')).not.toBeInTheDocument();
+  expect(container.querySelector('[data-testid="analysis-workspace-column"]').className.split(/\s+/)).not.toContain('hidden');
 });
 
 test('uses overview-gated bootstrap', async () => {

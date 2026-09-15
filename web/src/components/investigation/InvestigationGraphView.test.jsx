@@ -1,23 +1,22 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('react-force-graph-2d', () => ({
   default: vi.fn(() => <div data-testid="force-graph-mock" />),
 }));
 
-vi.mock('../hooks/useInvestigationGraph', () => ({
+vi.mock('../../hooks/useInvestigationGraph', () => ({
   useInvestigationGraph: vi.fn(),
 }));
 
-vi.mock('../hooks/useTranslation', () => ({
+vi.mock('../../hooks/useTranslation', () => ({
   useTranslation: () => ({ t: (key) => key, language: 'en' }),
 }));
 
 import ForceGraph2D from 'react-force-graph-2d';
-import { useInvestigationGraph } from '../hooks/useInvestigationGraph';
-import InvestigationGraph from './InvestigationGraph';
+import { useInvestigationGraph } from '../../hooks/useInvestigationGraph';
+import InvestigationGraphView from './InvestigationGraphView';
 
 const EVIDENCE_ID = 'evidence:file:/case/a';
 
@@ -54,20 +53,12 @@ const lastCanvasProps = () => {
 
 const refresh = vi.fn();
 
-function renderPage({ route = '/investigation-graph?task_id=t1' } = {}) {
-  let navigate;
-  function Harness() {
-    navigate = useNavigate();
-    return <InvestigationGraph />;
-  }
-  const view = render(
-    <MemoryRouter initialEntries={[route]}>
-      <Harness />
-    </MemoryRouter>,
-  );
+function renderView({ taskId = 't1', refreshSignal = 0, onNodeClick } = {}) {
+  const props = { taskId, refreshSignal, onNodeClick };
+  const view = render(<InvestigationGraphView {...props} />);
   return {
     ...view,
-    navigateTo: (next) => act(async () => navigate(next)),
+    rerenderView: (next) => view.rerender(<InvestigationGraphView {...{ ...props, ...next }} />),
     clickNode: (node) => act(() => lastCanvasProps().onNodeClick(node)),
   };
 }
@@ -76,7 +67,7 @@ const setGraphState = ({ graph, loading = false, error = null }) => {
   useInvestigationGraph.mockReturnValue({ graph, loading, error, refresh });
 };
 
-describe('InvestigationGraph page', () => {
+describe('InvestigationGraphView', () => {
   beforeEach(() => {
     ForceGraph2D.mockClear();
     refresh.mockClear();
@@ -85,9 +76,9 @@ describe('InvestigationGraph page', () => {
   });
 
   test('renders base and overlay nodes side by side with namespace counts', () => {
-    renderPage();
-    expect(screen.getByText('investigation_graph.base_nodes: 2')).toBeInTheDocument();
-    expect(screen.getByText('investigation_graph.overlay_nodes: 4')).toBeInTheDocument();
+    renderView();
+    expect(screen.getByTestId('base-node-count')).toHaveTextContent('investigation_graph.base_nodes: 2');
+    expect(screen.getByTestId('overlay-node-count')).toHaveTextContent('investigation_graph.overlay_nodes: 4');
     expect(lastCanvasProps().graphData.nodes).toHaveLength(6);
     expect(lastCanvasProps().graphData.links).toHaveLength(5);
     // namespace legend shows the four investigation entries plus Base KG
@@ -99,7 +90,7 @@ describe('InvestigationGraph page', () => {
     setGraphState({
       graph: mixedGraph({ base_graph_available: false, warnings: ['base_graph_unavailable'] }),
     });
-    renderPage();
+    renderView();
     expect(screen.getByTestId('base-unavailable-warning')).toHaveTextContent(
       'investigation_graph.base_unavailable_warning',
     );
@@ -113,7 +104,7 @@ describe('InvestigationGraph page', () => {
       graph: { nodes: [], links: [], warnings: [] },
       error: { message: 'unavailable', status: 503, data: { detail: 'investigation store is unavailable' } },
     });
-    renderPage();
+    renderView();
     expect(screen.getByTestId('graph-error')).toHaveTextContent('HTTP 503');
     expect(screen.getByText('investigation store is unavailable')).toBeInTheDocument();
     expect(ForceGraph2D.mock.calls.length).toBe(0);
@@ -125,30 +116,34 @@ describe('InvestigationGraph page', () => {
 
   test('a fully empty graph shows the dedicated empty state', () => {
     setGraphState({ graph: mixedGraph({ nodes: [], links: [] }) });
-    renderPage();
+    renderView();
     expect(screen.getByTestId('graph-empty')).toHaveTextContent('investigation_graph.empty');
     expect(screen.queryByTestId('base-unavailable-warning')).not.toBeInTheDocument();
   });
 
   test('asks for a task when none is selected and disables refresh', () => {
-    renderPage({ route: '/investigation-graph' });
+    renderView({ taskId: null });
     expect(screen.getByText('investigation_graph.no_task')).toBeInTheDocument();
     expect(screen.getByTestId('refresh-graph')).toBeDisabled();
   });
 
-  test('evidence node click selects the exact deterministic evidence id', async () => {
-    renderPage();
-    await clickEvidenceNode();
+  test('evidence node click selects the exact deterministic evidence id and notifies the page', async () => {
+    const onNodeClick = vi.fn();
+    renderView({ onNodeClick });
+    const nodes = lastCanvasProps().graphData.nodes;
+    await act(async () => lastCanvasProps().onNodeClick(nodes.find((n) => n.id === EVIDENCE_ID)));
     const panel = screen.getByTestId('node-detail-panel');
     expect(within(panel).getByText(EVIDENCE_ID)).toBeInTheDocument();
     expect(within(panel).getByText('evidence')).toBeInTheDocument();
     expect(within(panel).getAllByText('file:/case/a').length).toBeGreaterThan(0);
     // evidence never shows an unconfirmed badge even when confirmed is falsy
     expect(within(panel).queryByText('investigation_graph.unconfirmed')).not.toBeInTheDocument();
+    // the workbench receives the raw node for its own selection mapping
+    expect(onNodeClick).toHaveBeenCalledWith(nodes.find((n) => n.id === EVIDENCE_ID));
   });
 
   test('event and analysis node clicks surface their frozen provenance fields', async () => {
-    renderPage();
+    renderView();
     const nodes = lastCanvasProps().graphData.nodes;
     act(() => lastCanvasProps().onNodeClick(nodes.find((n) => n.id === 'event:e1')));
     const eventPanel = screen.getByTestId('node-detail-panel');
@@ -164,7 +159,7 @@ describe('InvestigationGraph page', () => {
   });
 
   test('an unconfirmed claim is flagged while base nodes are not', async () => {
-    renderPage();
+    renderView();
     const nodes = lastCanvasProps().graphData.nodes;
     act(() => lastCanvasProps().onNodeClick(nodes.find((n) => n.id === 'claim:c1')));
     const claimPanel = screen.getByTestId('node-detail-panel');
@@ -180,24 +175,32 @@ describe('InvestigationGraph page', () => {
   });
 
   test('switching the task clears the selected graph node', async () => {
-    const { navigateTo } = renderPage();
-    await clickEvidenceNode();
+    const { rerenderView } = renderView();
+    const nodes = lastCanvasProps().graphData.nodes;
+    act(() => lastCanvasProps().onNodeClick(nodes.find((n) => n.id === EVIDENCE_ID)));
     expect(screen.getByText(EVIDENCE_ID)).toBeInTheDocument();
 
-    await navigateTo('/investigation-graph?task_id=t2');
+    setGraphState({ graph: mixedGraph({ task_id: 't2' }) });
+    rerenderView({ taskId: 't2' });
     expect(screen.getByText('investigation_graph.select_hint')).toBeInTheDocument();
     expect(screen.queryByText(EVIDENCE_ID)).not.toBeInTheDocument();
   });
 
   test('the base node limit selector reloads with the new bound', async () => {
-    renderPage();
+    renderView();
     expect(useInvestigationGraph).toHaveBeenLastCalledWith({ taskId: 't1', maxBaseNodes: 200 });
     await userEvent.selectOptions(screen.getByTestId('max-base-nodes'), '500');
     expect(useInvestigationGraph).toHaveBeenLastCalledWith({ taskId: 't1', maxBaseNodes: 500 });
   });
-});
 
-async function clickEvidenceNode() {
-  const nodes = lastCanvasProps().graphData.nodes;
-  act(() => lastCanvasProps().onNodeClick(nodes.find((n) => n.id === EVIDENCE_ID)));
-}
+  test('a refreshSignal bump rereads the server graph after the initial mount', async () => {
+    const { rerenderView } = renderView({ refreshSignal: 0 });
+    expect(refresh).not.toHaveBeenCalled();
+
+    rerenderView({ refreshSignal: 1 });
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+
+    rerenderView({ refreshSignal: 1 });
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+});

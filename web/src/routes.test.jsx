@@ -1,5 +1,6 @@
-import { matchRoutes } from 'react-router-dom';
+import { MemoryRouter, matchRoutes, useLocation } from 'react-router-dom';
 import { expect, test, vi } from 'vitest';
+import { render, waitFor } from '@testing-library/react';
 
 vi.mock('./pages/CaseIntelligence', () => ({
   default: function CaseIntelligence() { return null; },
@@ -47,5 +48,25 @@ test('redirects legacy report routes to the intelligence page', () => {
 
   expect(taskRoute.element.type).toBe(TaskReportRedirect);
   expect(caseRoute.element.type).toBe(CaseReportRedirect);
+});
+
+test('merged investigation-graph route redirects to the workbench with task context', async () => {
+  const childRoutes = appRoutes.find((route) => route.path === '/').children;
+  const graphRoute = childRoutes.find((route) => route.path === 'investigation-graph');
+
+  let location;
+  function Probe() {
+    location = useLocation();
+    return null;
+  }
+  render(
+    <MemoryRouter initialEntries={['/investigation-graph?task_id=t1']}>
+      {graphRoute.element}
+      <Probe />
+    </MemoryRouter>,
+  );
+
+  await waitFor(() => expect(location.pathname).toBe('/investigation'));
+  expect(location.search).toContain('task_id=t1');
 });
 

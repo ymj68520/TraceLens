@@ -15,7 +15,7 @@ import KnowledgeGraph from './pages/KnowledgeGraph';
 import CaseIntelligence from './pages/CaseIntelligence';
 import AnalysisCenter from './pages/AnalysisCenter';
 import Investigation from './pages/Investigation/Investigation';
-import InvestigationGraph from './pages/InvestigationGraph';
+import InvestigationGraphRedirect from './pages/InvestigationGraphRedirect';
 import FinalReportViewer from './pages/Investigation/FinalReportViewer';
 import LegacyReportRedirect, { TaskReportRedirect, CaseReportRedirect } from './pages/LegacyReportRedirect';
 import OSS from './pages/OSS';
@@ -126,7 +126,7 @@ export const appRoutes = [
       },
       {
         path: 'investigation-graph',
-        element: <InvestigationGraph />,
+        element: <InvestigationGraphRedirect />,
       },
       {
         path: 'investigation/report',
