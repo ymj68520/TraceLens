@@ -196,16 +196,17 @@ class CaseAnalysisPipelinesMixin:
                     except Exception as e:
                         logger.error(f"[CASE_ANALYSIS] Task {task_id}: Event cluster analysis failed: {e}", exc_info=True)
 
-                # Step 4: Ingest to knowledge graph (files + clusters)
+                # Step 4: Ingest to knowledge graph (file episodes; cluster
+                # episodes are ingested inside the cluster analyzer)
                 logger.info(f"[CASE_ANALYSIS] Task {task_id}: Checking graphiti_service for ingestion...")
                 logger.info(f"[CASE_ANALYSIS] Task {task_id}: _graphiti_service is None: {self._graphiti_service is None}")
                 if self._graphiti_service:
                     if progress_callback:
                         await progress_callback("ingesting", "正在将分析结果摄入知识图谱...")
                     try:
-                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: Starting KG ingestion with {len(descriptions)} file descriptions and {len(cluster_results)} cluster descriptions")
+                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: Starting KG ingestion with {len(descriptions)} file descriptions")
                         kg_ok = await self.ingest_to_knowledge_graph(
-                            task_id, case_description, descriptions, cluster_descriptions=cluster_results
+                            task_id, case_description, descriptions
                         )
                         logger.info(f"[CASE_ANALYSIS] Task {task_id}: KG ingestion completed, result: {kg_ok}")
                         result["steps"]["knowledge_graph"] = {
@@ -298,15 +299,16 @@ class CaseAnalysisPipelinesMixin:
                     except Exception as e:
                         logger.error(f"Event cluster analysis failed: {e}", exc_info=True)
 
-                # Step 4: Ingest to knowledge graph (files + clusters)
+                # Step 4: Ingest to knowledge graph (file episodes; cluster
+                # episodes are ingested inside the cluster analyzer)
                 logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] Checking graphiti_service for ingestion...")
                 if self._graphiti_service:
                     if progress_callback:
                         await progress_callback("ingesting", "正在将分析结果摄入知识图谱...")
                     try:
-                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] Starting KG ingestion with {len(descriptions)} file descriptions and {len(cluster_results)} cluster descriptions")
+                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] Starting KG ingestion with {len(descriptions)} file descriptions")
                         kg_ok = await self.ingest_to_knowledge_graph(
-                            task_id, case_description, descriptions, cluster_descriptions=cluster_results
+                            task_id, case_description, descriptions
                         )
                         logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] KG ingestion completed, result: {kg_ok}")
                         result["steps"]["knowledge_graph"] = {

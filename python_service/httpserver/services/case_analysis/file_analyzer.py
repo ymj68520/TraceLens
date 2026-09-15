@@ -462,10 +462,13 @@ class FileAnalyzer:
         task_id: str,
         case_description: str,
         file_descriptions: List[Dict[str, Any]],
-        cluster_descriptions: Optional[List[Dict[str, Any]]] = None,
     ) -> bool:
         """
-        Ingest case description, file descriptions, and event clusters into Graphiti.
+        Ingest case description and file descriptions into Graphiti.
+
+        Event-cluster episodes are owned exclusively by ClusterAnalyzer's
+        SPEC-format ingestor (analysis_id naming + ingested_at state) and are
+        never rebuilt here (file-analysis SPEC D7).
 
         This enables semantic retrieval during report generation,
         overcoming LLM context length limitations.
@@ -474,7 +477,6 @@ class FileAnalyzer:
             task_id: Task identifier (used as graph group_id).
             case_description: Full case description text.
             file_descriptions: List of per-file analysis results.
-            cluster_descriptions: Optional list of event cluster analysis results.
 
         Returns:
             True if ingestion succeeded, False otherwise.
@@ -547,36 +549,6 @@ class FileAnalyzer:
                             file_id=0,
                             category="file_description"
                         ))
-
-            # 3. Ingest event cluster descriptions (if provided)
-            if cluster_descriptions:
-                successful_clusters = [c for c in cluster_descriptions if c.get("success") or c.get("analysis")]
-                for cluster in successful_clusters:
-                    analysis = cluster.get("analysis", {})
-                    description = analysis.get("description", "")
-                    event_type = cluster.get("event_type", "UNKNOWN")
-                    time_window = cluster.get("time_window", 0)
-
-                    if description:
-                        # Chunk long descriptions
-                        chunks = self._chunk_text(description, max_chars=3000)
-                        for j, chunk in enumerate(chunks):
-                            ep_name = f"事件簇分析: {event_type} @ {time_window}"
-                            if len(chunks) > 1:
-                                ep_name += f" (第{j+1}部分)"
-                            episodes.append(EpisodeData(
-                                name=ep_name,
-                                episode_body=json.dumps({
-                                    "event_type": event_type,
-                                    "time_window": time_window,
-                                    "analysis": chunk
-                                }, ensure_ascii=False),
-                                source_description=f"事件簇LLM分析 - {event_type} @ time_window={time_window}",
-                                reference_time=datetime.now(),
-                                file_path="",
-                                file_id=0,
-                                category="event_cluster_description"
-                            ))
 
             if not episodes:
                 logger.info("No episodes to ingest")

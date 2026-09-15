@@ -212,7 +212,6 @@ class GraphitiIngestMixin:
         self,
         task_id: str,
         file_descriptions: List[Dict[str, Any]],
-        cluster_descriptions: Optional[List[Dict[str, Any]]] = None,
         case_description: Optional[str] = None,
         progress_callback=None,
     ) -> Dict[str, Any]:
@@ -232,8 +231,9 @@ class GraphitiIngestMixin:
             task_id: Used as the graph group_id.
             file_descriptions: Per-file (or per-artifact) dicts with at least
                 ``file_path``/``description``/``success``. Extra keys are passed
-                through into the episode body for richer extraction.
-            cluster_descriptions: Optional event-cluster dicts.
+                through into the episode body for richer extraction. Event
+                clusters are NOT ingested here — cluster episodes are owned by
+                ClusterAnalyzer's SPEC-format ingestor (file-analysis SPEC D7).
             case_description: Optional case-level context text.
             progress_callback: Optional async callback(stage, message).
 
@@ -318,31 +318,6 @@ class GraphitiIngestMixin:
                         file_path=file_path,
                         file_id=0,
                         category=desc.get("category", "file_description"),
-                    ))
-
-            # 3. One episode per event cluster
-            for cluster in (cluster_descriptions or []):
-                analysis = cluster.get("analysis", {}) if isinstance(cluster.get("analysis"), dict) else {}
-                description = analysis.get("description") or cluster.get("description") or ""
-                if not description:
-                    continue
-                event_type = cluster.get("event_type", "UNKNOWN")
-                time_window = cluster.get("time_window", 0)
-                chunks = self._chunk_text_for_graph(description, max_chars=3000)
-                for j, chunk in enumerate(chunks):
-                    ep_name = f"事件簇分析: {event_type} @ {time_window}"
-                    if len(chunks) > 1:
-                        ep_name += f" (第{j+1}部分)"
-                    episodes.append(EpisodeData(
-                        name=ep_name,
-                        episode_body=json.dumps({
-                            "event_type": event_type, "time_window": time_window, "analysis": chunk,
-                        }, ensure_ascii=False),
-                        source_description=f"事件簇LLM分析 - {event_type} @ time_window={time_window}",
-                        reference_time=datetime.now(),
-                        file_path="",
-                        file_id=0,
-                        category="event_cluster_description",
                     ))
 
             if not episodes:

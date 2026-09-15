@@ -123,13 +123,12 @@ class CaseAnalysisCoreMixin:
         task_id: str,
         case_description: str,
         file_descriptions: List[Dict[str, Any]],
-        cluster_descriptions: Optional[List[Dict[str, Any]]] = None,
     ) -> bool:
-        """Ingest case description, file descriptions, and event clusters into Graphiti."""
+        """Ingest case description and file descriptions into Graphiti."""
         if not self._file_analyzer:
             raise RuntimeError("FileAnalyzer module not initialized. Ensure all dependencies are injected.")
         return await self._file_analyzer.ingest_to_knowledge_graph(
-            task_id, case_description, file_descriptions, cluster_descriptions
+            task_id, case_description, file_descriptions
         )
 
     async def generate_case_report(

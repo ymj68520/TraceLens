@@ -413,7 +413,6 @@ class WindowsArtifactAnalyzer:
         task_id: str,
         case_description: str,
         artifact_descriptions: List[Dict[str, Any]],
-        cluster_descriptions: Optional[List[Dict[str, Any]]] = None,
     ) -> bool:
         """Ingest Windows artifact descriptions into Graphiti knowledge graph.
 
@@ -444,7 +443,6 @@ class WindowsArtifactAnalyzer:
             result = await self._graphiti_service.ingest_task_episodes(
                 task_id=task_id,
                 file_descriptions=normalized,
-                cluster_descriptions=cluster_descriptions,
                 case_description=case_description,
             )
             logger.info(
