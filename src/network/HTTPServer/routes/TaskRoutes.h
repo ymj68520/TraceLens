@@ -23,9 +23,12 @@ public:
 
 private:
     TaskManager& task_manager_;
-    TaskCRUDRoutes crud_routes_;
-    TaskBatchRoutes batch_routes_;
+    // Registration order == match order in this Crow build: static routes
+    // (/tasks/statistics, /tasks/list, /tasks/batch-*) MUST be registered
+    // before the parameterized /tasks/<string> catch-all or they 404.
     TaskMonitoringRoutes monitoring_routes_;
+    TaskBatchRoutes batch_routes_;
+    TaskCRUDRoutes crud_routes_;
 
     /**
      * @brief Register CORS OPTIONS handlers for all task routes
