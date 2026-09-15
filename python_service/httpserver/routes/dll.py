@@ -174,6 +174,8 @@ async def analyze_dll(
                     summary=summary,
                     keywords=keywords_str,
                     model_used=llm_result.get("model", "unknown"),
+                    task_id=request.task_id,
+                    trigger_source="interactive",
                 )
                 logger.info(f"Persisted LLM analysis to task files database for task {request.task_id}")
             except Exception as e:

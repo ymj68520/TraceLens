@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ...config import Settings
+from .file_schema import latest_analysis
 
 logger = logging.getLogger(__name__)
 
@@ -40,35 +41,33 @@ class FileAnalyzer:
         case_description: str,
         extraction_dir: Optional[str] = None,
         progress_callback=None,
+        task_id: str = "",
     ) -> List[Dict[str, Any]]:
         """
         Generate LLM description for each file in the list using concurrency.
-        Skips files that already have descriptions in the database.
+        Skips files that already have analysis records in the database
+        (``file_analyses`` — SPEC file-analysis D4).
         """
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
 
-        # Pre-check: find files that already have descriptions
+        # Pre-check (SPEC file-analysis D4): a file counts as analyzed iff an
+        # append-only ``file_analyses`` record exists. ``file_descriptions``
+        # rows without a truth record (pre-Phase-2 or external writers) are
+        # re-analyzed once — honest behavior, one-time cost.
         already_described = set()
         existing_descriptions = {}
         if files_db_path:
-            try:
-                import sqlite3
-                with sqlite3.connect(files_db_path, timeout=10) as conn:
-                    conn.row_factory = sqlite3.Row
-                    cur = conn.execute(
-                        "SELECT file_path, description, summary, keywords, model_used FROM file_descriptions WHERE description IS NOT NULL AND description != ''"
-                    )
-                    for row in cur.fetchall():
-                        already_described.add(row["file_path"])
-                        existing_descriptions[row["file_path"]] = {
-                            "file_path": row["file_path"],
-                            "description": row["description"],
-                            "model_used": row["model_used"] or "",
-                            "success": True,
-                        }
-            except Exception as e:
-                logger.warning(f"Failed to check existing descriptions: {e}")
+            for fp in file_paths:
+                record = latest_analysis(files_db_path, fp)
+                if record and record.get("description"):
+                    already_described.add(fp)
+                    existing_descriptions[fp] = {
+                        "file_path": fp,
+                        "description": record["description"],
+                        "model_used": record.get("model") or "",
+                        "success": True,
+                    }
 
         files_to_analyze = [fp for fp in file_paths if fp not in already_described]
         skipped_count = len(file_paths) - len(files_to_analyze)
@@ -109,6 +108,7 @@ class FileAnalyzer:
                         return {"file_path": file_path, "description": "", "error": f"File not found: {full_path}", "success": False}
 
                     result = None
+                    extraction_method = ""
 
                     # Try document extractor first (markitdown handles images, docs, etc.)
                     from ..document_extractor import get_document_extractor_locator
@@ -118,7 +118,7 @@ class FileAnalyzer:
 
                     if extractor:
                         try:
-                            content = await extractor.extract_to_markdown(full_path)
+                            content, extraction_method = await extractor.extract_to_markdown_detailed(full_path)
                             custom_prompt = CASE_FILE_ANALYSIS_TEMPLATE.format(
                                 case_description=case_description,
                                 file_path=file_path,
@@ -132,8 +132,10 @@ class FileAnalyzer:
                             )
                         except Exception as e:
                             logger.warning(f"Extractor failed for {full_path}: {e}, falling back to vision/raw")
+                            extraction_method = ""
 
                     if not result and is_image:
+                        extraction_method = "vision"
                         with open(full_path, 'rb') as f:
                             image_data = f.read()
 
@@ -156,6 +158,7 @@ class FileAnalyzer:
 
                     if not result:
                         # Fallback or normal text analysis
+                        extraction_method = "raw_text"
                         content = await self._llm_service.read_file_content(full_path)
 
                         from ...prompts import CASE_FILE_ANALYSIS_TEMPLATE
@@ -183,7 +186,7 @@ class FileAnalyzer:
                     if found_entities:
                         keywords = ", ".join(list(set(found_entities))[:5])
 
-                    # Persist to _files.db (this will update both 'files' and 'file_descriptions' tables)
+                    # Persist to _files.db (append-only truth row + both caches)
                     if files_db_path and description:
                         try:
                             self._llm_service.persist_to_files_db(
@@ -193,6 +196,9 @@ class FileAnalyzer:
                                 summary=summary,
                                 keywords=keywords,
                                 model_used=result.get("model", ""),
+                                task_id=task_id,
+                                trigger_source="pipeline",
+                                extraction_method=extraction_method,
                             )
                         except Exception as e:
                             logger.warning(f"Failed to persist {file_path} analysis: {e}")
@@ -310,6 +316,8 @@ class FileAnalyzer:
                 file_ext = Path(file_path).suffix.lower()
                 is_image = file_ext in IMAGE_EXTENSIONS
 
+                extraction_method = ""
+
                 # Try document extractor first (markitdown handles images, docs, etc.)
                 from ..document_extractor import get_document_extractor_locator
                 doc_locator = get_document_extractor_locator()
@@ -317,7 +325,7 @@ class FileAnalyzer:
 
                 if extractor:
                     try:
-                        content = await extractor.extract_to_markdown(file_path)
+                        content, extraction_method = await extractor.extract_to_markdown_detailed(file_path)
                         logger.info(f"Extractor converted {file_path}: {len(content)} chars")
                     except Exception as e:
                         logger.warning(f"Extractor failed for {file_path}: {e}, falling back")
@@ -325,6 +333,7 @@ class FileAnalyzer:
 
                 if not extractor:
                     if is_image:
+                        extraction_method = "vision"
                         # Use vision model for images with custom prompt
                         logger.info(f"Using vision model for image re-analysis: {file_path}")
 
@@ -363,6 +372,7 @@ class FileAnalyzer:
                             continue
                     else:
                         # Use text model for text files
+                        extraction_method = "raw_text"
                         content = await self._llm_service.read_file_content(file_path)
                         logger.info(f"Read {len(content)} characters from {file_path}")
 
@@ -421,6 +431,9 @@ class FileAnalyzer:
                         summary=description[:200],
                         keywords="",
                         model_used=result.get("model", ""),
+                        task_id=task_id,
+                        trigger_source="reanalyze",
+                        extraction_method=extraction_method,
                     )
                     if persisted:
                         logger.info(f"Successfully persisted re-analysis for {file_path}")

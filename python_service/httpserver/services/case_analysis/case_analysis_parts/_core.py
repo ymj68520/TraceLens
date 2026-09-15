@@ -95,12 +95,14 @@ class CaseAnalysisCoreMixin:
         case_description: str,
         extraction_dir: Optional[str] = None,
         progress_callback=None,
+        task_id: str = "",
     ) -> List[Dict[str, Any]]:
         """Generate LLM description for each file in the list using concurrency."""
         if not self._file_analyzer:
             raise RuntimeError("FileAnalyzer module not initialized. Ensure all dependencies are injected.")
         return await self._file_analyzer.analyze_files(
-            files_db_path, file_paths, case_description, extraction_dir, progress_callback
+            files_db_path, file_paths, case_description, extraction_dir, progress_callback,
+            task_id=task_id,
         )
 
     async def reanalyze_files(

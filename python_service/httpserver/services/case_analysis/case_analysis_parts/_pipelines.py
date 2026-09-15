@@ -152,7 +152,7 @@ class CaseAnalysisPipelinesMixin:
                 # Prepare parallel tasks
                 file_task = asyncio.create_task(self.generate_file_descriptions(
                     files_db_path, filtered_files, case_description, extraction_dir=extraction_dir,
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback, task_id=task_id
                 ))
 
                 # Get events_db path for cluster analysis
@@ -260,7 +260,7 @@ class CaseAnalysisPipelinesMixin:
                 # Prepare parallel tasks
                 file_task = asyncio.create_task(self.generate_file_descriptions(
                     files_db_path, filtered_files, case_description, extraction_dir=extraction_dir,
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback, task_id=task_id
                 ))
 
                 # Get events_db path for cluster analysis

@@ -1,6 +1,6 @@
 # SPEC：文件分析重构（File Analysis Redesign）
 
-> **状态**：已评审锁定（2026-09-15）；Phase 1 已实施（2026-09-16），Phase 2-7 待实施。
+> **状态**：已评审锁定（2026-09-15）；Phase 1-2 已实施（2026-09-16），Phase 3-7 待实施。
 > **范围**：Web 拓扑下文件 LLM 分析的生成、存储、已分析判定、下游消费（事件簇分析 / Graphiti / 报告 / 调查证据）、知识图谱摄入与主流水线编排全链路。CLI 拓扑不在本 SPEC 范围内（§2 D2）。
 > **性质**：与 [event-cluster-analysis-redesign.md](event-cluster-analysis-redesign.md) 同属过程规范文档，不随代码同步更新。
 > **测试口径**：阶段验收使用 `make test-python-focused`；仓库级全量测试按惯例在全部阶段完成后统一执行。
@@ -255,9 +255,9 @@ Step5   报告（不变）
 
 **验收**：pytest——签名回归（四处公开摄入函数不再含 `cluster_descriptions`）；file 分析摄入只产 `文件分析` episode；worker 补摄只读 `event_cluster_analyses`（遗留 `llm_*` 缓存行被忽略）且成功后 `ingested_at` 落值；完整管线后 Graphiti mock 收到的簇 episode 全部为 `#a{id}` 格式且数量等于簇数（无旧格式重复）。`make test-python-focused` 全绿。
 
-### Phase 2 —— 数据地基（B1 + D17 + D19）
+### Phase 2 —— 数据地基（B1 + D17 + D19）（✅ 已实施 2026-09-16）
 
-**范围**：§3 全部（新表 + ensure-schema + 统一访问器 + 原子写路径改造 + 判定切换 + 内联归档）；`extraction_method` 全链路（提取层 → 结果 → 落库 → 前端徽标）。
+**范围**：§3 全部（新表 + ensure-schema + 统一访问器 + 原子写路径改造 + 判定切换 + 内联归档）；`extraction_method` 后端全链路（提取层 → 结果 → 落库）。实施记录：前端徽标推迟至 Phase 7——LLMDescriptions 页与 Files 页均经 C++ HTTPServer 取数（`getTaskResults` / `/api/files`），Python 侧先行暴露会在无消费方的情况下跨语言改 C++ API，违背"读方零迁移"原则；与 §10 徽标行标注的 "2 / 7" 中 "7" 一致。
 
 **验收**：pytest——schema 幂等（重复 ensure 无副作用）、三写原子性（任一失败整体回滚）、判定切换（`file_descriptions` 有行但 `file_analyses` 无行时不再跳过；反之跳过）、归档幂等（二次覆盖不重复归档）、fail-closed 不回归。手工冒烟：Files 页 / 报告 / TOON 导出零变化（读方零迁移验证）。
 

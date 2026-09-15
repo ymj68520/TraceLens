@@ -28,6 +28,9 @@ def _stub_extractor(monkeypatch):
         async def extract_to_markdown(self, path):
             return "fake content"
 
+        async def extract_to_markdown_detailed(self, path):
+            return "fake content", "FakeExtractor"
+
     class FakeLocator:
         def get_extractor(self, path):
             return FakeExtractor()
