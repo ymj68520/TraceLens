@@ -1,6 +1,6 @@
 # SPEC：文件分析重构（File Analysis Redesign）
 
-> **状态**：已评审锁定（2026-09-15）；Phase 1-4 已实施（2026-09-16），Phase 5-7 待实施。
+> **状态**：已评审锁定（2026-09-15）；Phase 1-5 已实施（2026-09-16），Phase 6-7 待实施。
 > **范围**：Web 拓扑下文件 LLM 分析的生成、存储、已分析判定、下游消费（事件簇分析 / Graphiti / 报告 / 调查证据）、知识图谱摄入与主流水线编排全链路。CLI 拓扑不在本 SPEC 范围内（§2 D2）。
 > **性质**：与 [event-cluster-analysis-redesign.md](event-cluster-analysis-redesign.md) 同属过程规范文档，不随代码同步更新。
 > **测试口径**：阶段验收使用 `make test-python-focused`；仓库级全量测试按惯例在全部阶段完成后统一执行。
@@ -273,9 +273,9 @@ Step5   报告（不变）
 
 **验收**：pytest——reference_time 断言（文件 episode = mtime、簇 episode = cluster_start）、chunk 常量推导公式、探测 mock（成功缩限/失败回退/超时回退）；grep 断言仓库内无新增 3000 分块字面量（CI 可选）。
 
-### Phase 5 —— 簇上下文 v0（C3-v0）
+### Phase 5 —— 簇上下文 v0（C3-v0）（✅ 已实施 2026-09-16）
 
-**范围**：簇分析记录元数据 `related_file_summaries`（去重、≤20、仅 summary，来自 `file_analyses` 最新版本）；事件簇详情前端展示。
+**范围**：簇分析记录元数据 `related_file_summaries`（去重、≤20、仅 summary，来自 `file_analyses` 最新版本）；事件簇详情前端展示。实施记录：元数据改为**端点层实时计算**（`GET /api/llm/event-cluster-analyses?include_file_summaries=true`，cluster_analyzer.related_file_summaries）而非落库存档——事件库 schema 由事件簇 SPEC 管辖（红线"只增表/索引"），实时计算 L1 自动新鲜且零 schema 侵入；AnalysisCenter 簇卡片渲染"相关文件 AI 摘要"，mapper 透传字段。v1 决策仍按 D9 待 A/B 评测。
 
 **验收**：pytest——元数据生成（去重/截断/空描述容忍）；A/B 评测准备：对 test_image.img 真实簇留存 v0 结论样本，作为 D9-v1 决策依据。
 

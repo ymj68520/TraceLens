@@ -67,6 +67,9 @@ export const mapClusterAnalysisRecords = (records) => {
         // Legacy per-event relevance cache is not part of the record; the
         // card treats clusters as relevant unless a flag says otherwise.
         llm_is_relevant: 1,
+        // C3-v0 (SPEC file-analysis D9): latest AI summaries of the cluster's
+        // member files, populated server-side on request.
+        related_file_summaries: record.related_file_summaries || [],
         // Kept so the legacy relevance toggle keeps addressing the same
         // window when callers still pass it through.
         time_window: record.bucket_index,

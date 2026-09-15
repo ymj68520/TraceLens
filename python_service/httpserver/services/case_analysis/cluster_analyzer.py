@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from ...config import Settings
 from ..investigation_evidence import PARENT_DIRECTORY_SQL, TIMELINE_MAX_BUCKET_SECONDS
 from .adaptive import choose_bucket, estimate_bucket_ladder
+from .file_schema import latest_analysis
 from .schema import (
     create_analysis_run,
     ensure_cluster_analysis_schema,
@@ -840,6 +841,58 @@ def build_analysis_episodes(analysis: Dict[str, Any]) -> List[Any]:
             category="event_cluster_description",
         ))
     return episodes
+
+
+def related_file_summaries(
+    events_db: str,
+    files_db: str,
+    *,
+    bucket_epoch_offset: int,
+    bucket_seconds: int,
+    bucket_index: int,
+    event_type: str,
+    parent_directory: str,
+    limit: int = 20,
+) -> List[Dict[str, Any]]:
+    """C3-v0 (SPEC file-analysis D9): distinct member files of one cluster
+    with their latest AI summaries.
+
+    Computed live from the current analysis state — nothing is denormalized
+    into the events db (L1 auto-fresh). Ordered by member-event count,
+    capped at ``limit``, summary-only to bound payload size. Files without
+    an analysis record are skipped.
+    """
+    import sqlite3
+
+    if not events_db or not Path(events_db).exists():
+        return []
+    start = int(bucket_index) * int(bucket_seconds) + int(bucket_epoch_offset or 0)
+    end = start + int(bucket_seconds)
+    try:
+        with sqlite3.connect(events_db, timeout=10) as conn:
+            rows = conn.execute(
+                f"SELECT file_path, COUNT(*) AS c FROM events "
+                f"WHERE timestamp >= ? AND timestamp < ? AND event_type = ? "
+                f"AND ({PARENT_DIRECTORY_SQL}) = ? "
+                f"AND file_path IS NOT NULL AND file_path != '' "
+                f"GROUP BY file_path ORDER BY c DESC LIMIT ?",
+                (start, end, event_type, parent_directory, limit),
+            ).fetchall()
+    except sqlite3.Error:
+        return []
+
+    summaries: List[Dict[str, Any]] = []
+    for file_path, _count in rows:
+        record = latest_analysis(files_db, file_path) if files_db else None
+        if not record or not (record.get("summary") or record.get("description")):
+            continue
+        summaries.append({
+            "file_path": file_path,
+            "summary": record.get("summary") or (record.get("description") or "")[:200],
+            "model": record.get("model") or "",
+            "analyzed_at": record.get("created_at"),
+        })
+    return summaries
 
 
 async def ingest_analysis_record_to_graphiti(

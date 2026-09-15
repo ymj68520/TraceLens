@@ -176,6 +176,9 @@ async def list_event_cluster_analyses(
     event_type: Optional[str] = Query(None),
     parent_directory: Optional[str] = Query(None),
     latest_only: bool = Query(True, description="Only the newest version per coordinate"),
+    include_file_summaries: bool = Query(
+        False, description="C3-v0: attach related_file_summaries per record"
+    ),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
@@ -221,10 +224,26 @@ async def list_event_cluster_analyses(
             (*params, limit, offset),
         ).fetchall()
 
+    records = [dict(row) for row in rows]
+    if include_file_summaries:
+        from ..services.case_analysis.cluster_analyzer import related_file_summaries
+
+        task_info = await service_manager.cpp_backend.get_task(task_id)
+        files_db = (task_info or {}).get("output_files_db") or ""
+        for record in records:
+            record["related_file_summaries"] = related_file_summaries(
+                events_db, files_db,
+                bucket_epoch_offset=record.get("bucket_epoch_offset") or 0,
+                bucket_seconds=record.get("bucket_seconds") or 60,
+                bucket_index=record.get("bucket_index") or 0,
+                event_type=record.get("event_type") or "",
+                parent_directory=record.get("parent_directory") or "",
+            )
+
     return {
         "task_id": task_id,
         "total": int(total),
         "limit": limit,
         "offset": offset,
-        "records": [dict(row) for row in rows],
+        "records": records,
     }
