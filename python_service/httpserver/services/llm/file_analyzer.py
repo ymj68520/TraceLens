@@ -23,6 +23,7 @@ from ...prompts import (
     TEXT_ANALYSIS_USER_WITH_INSTRUCTION_TEMPLATE,
     VISION_ANALYSIS_SYSTEM,
     VISION_ANALYSIS_USER_DEFAULT,
+    parse_structured_analysis,
 )
 
 logger = logging.getLogger(__name__)
@@ -214,9 +215,15 @@ class FileAnalyzer:
             analysis_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             tokens_used = result.get("usage", {}).get("total_tokens", 0)
 
+            # D15: extract the four-part structure when present; the full
+            # text always stays in description (never dropped).
+            parsed = parse_structured_analysis(analysis_text)
             return {
                 "analysis": {
                     "description": analysis_text,
+                    "summary": parsed["summary"],
+                    "keywords": parsed["keywords"],
+                    "value": parsed["value"],
                     "model_type": model_type,
                 },
                 "model": model,
@@ -313,9 +320,13 @@ class FileAnalyzer:
 
             logger.info(f"Vision analysis completed, tokens used: {tokens_used}")
 
+            parsed = parse_structured_analysis(analysis_text)
             return {
                 "analysis": {
                     "description": analysis_text,
+                    "summary": parsed["summary"],
+                    "keywords": parsed["keywords"],
+                    "value": parsed["value"],
                     "model_type": "vision",
                 },
                 "model": self.settings.llm_vision_model,

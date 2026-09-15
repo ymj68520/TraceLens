@@ -1,6 +1,6 @@
 # SPEC：文件分析重构（File Analysis Redesign）
 
-> **状态**：已评审锁定（2026-09-15）；Phase 1-5 已实施（2026-09-16），Phase 6-7 待实施。
+> **状态**：已评审锁定（2026-09-15）；Phase 1-6 已实施（2026-09-16），Phase 7 待实施。
 > **范围**：Web 拓扑下文件 LLM 分析的生成、存储、已分析判定、下游消费（事件簇分析 / Graphiti / 报告 / 调查证据）、知识图谱摄入与主流水线编排全链路。CLI 拓扑不在本 SPEC 范围内（§2 D2）。
 > **性质**：与 [event-cluster-analysis-redesign.md](event-cluster-analysis-redesign.md) 同属过程规范文档，不随代码同步更新。
 > **测试口径**：阶段验收使用 `make test-python-focused`；仓库级全量测试按惯例在全部阶段完成后统一执行。
@@ -279,9 +279,9 @@ Step5   报告（不变）
 
 **验收**：pytest——元数据生成（去重/截断/空描述容忍）；A/B 评测准备：对 test_image.img 真实簇留存 v0 结论样本，作为 D9-v1 决策依据。
 
-### Phase 6 —— 结构化输出与任务级端点（D15 + D18）
+### Phase 6 —— 结构化输出与任务级端点（D15 + D18）（✅ 已实施 2026-09-16）
 
-**范围**：§7.1 五组 prompt + lenient parser；§8.1 四端点；§8.2 响应字段。
+**范围**：§7.1 五组 prompt + lenient parser；§8.1 四端点；§8.2 响应字段。实施记录：`parse_structured_analysis` 落在 `prompts.py`（description 恒为全文，summary/keywords/value 抽取，未服从格式时降级为旧行为）；案情轮 summary/keywords 优先取解析段、正则仅作回退；estimate 的 pending 按筛选列表 × 真源记录精确计算。
 
 **验收**：pytest——parser 对标准/缺段/纯文本输入的降级行为（永不抛错）、estimate 只读性、run 的跳过判定与 job 生命周期；vitest——服务封装。
 

@@ -180,14 +180,19 @@ class FileAnalyzer:
                     analysis = result.get("analysis", {})
                     description = analysis.get("description", "")
 
-                    # Extract metadata for better persistence
-                    summary = description[:200].split('\n')[0]
-
+                    # D15: prefer the structured summary/keywords; fall back to
+                    # the legacy heuristics when the model ignored the format.
+                    parsed_summary = analysis.get("summary") or ""
+                    parsed_keywords = analysis.get("keywords") or []
+                    summary = parsed_summary or description[:200].split('\n')[0]
                     keywords = ""
-                    # re is now global
-                    found_entities = re.findall(r'[\u4e00-\u9fa5]{2,6}', description[:500])
-                    if found_entities:
-                        keywords = ", ".join(list(set(found_entities))[:5])
+                    if parsed_keywords:
+                        keywords = ", ".join(parsed_keywords)
+                    else:
+                        # re is now global
+                        found_entities = re.findall(r'[\u4e00-\u9fa5]{2,6}', description[:500])
+                        if found_entities:
+                            keywords = ", ".join(list(set(found_entities))[:5])
 
                     # Persist to _files.db (append-only truth row + both caches)
                     if files_db_path and description:
@@ -475,7 +480,7 @@ class FileAnalyzer:
                 db_path=files_db_path,
                 file_path=file_path,
                 description=description,
-                summary=description[:200],
+                summary=(result.get("analysis", {}) or {}).get("summary") or description[:200],
                 keywords="",
                 model_used=result.get("model", ""),
                 task_id=task_id,

@@ -79,6 +79,35 @@ LATEST_ANALYSIS_JOIN = (
 )
 
 
+def list_analyses(
+    db_path: str,
+    task_id: str,
+    file_path: Optional[str] = None,
+    limit: int = 200,
+) -> list:
+    """Version chain for a file (or all records of a task), newest first."""
+    if not db_path or not Path(db_path).exists():
+        return []
+    try:
+        with sqlite3.connect(db_path, timeout=10) as conn:
+            conn.row_factory = sqlite3.Row
+            if file_path:
+                rows = conn.execute(
+                    "SELECT * FROM file_analyses WHERE task_id = ? AND file_path = ? "
+                    "ORDER BY id DESC LIMIT ?",
+                    (task_id, normalize_evidence_path(file_path), limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM file_analyses WHERE task_id = ? "
+                    "ORDER BY id DESC LIMIT ?",
+                    (task_id, limit),
+                ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [dict(row) for row in rows]
+
+
 def file_forensic_time(db_path: str, file_path: str) -> Optional[datetime]:
     """The file's forensic time (mtime, fallback ctime) as naive datetime.
 
