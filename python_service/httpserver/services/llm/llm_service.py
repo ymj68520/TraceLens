@@ -183,7 +183,7 @@ class LLMService:
                 task_id, file_path, md5, summary, description,
                 keywords, model, extraction_method, trigger_source,
                 analysis_id_upstream, created_at, ingested_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
         """
         try:
             # Schema ensure is idempotent and runs outside the write
@@ -211,26 +211,29 @@ class LLMService:
                 (file_md5, old_summary, old_description, old_keywords,
                  old_analyzed_at, old_model) = row
 
-                # D19: archive a foreign cache (CLI round) exactly once before
-                # overwriting it, so the general-purpose description survives
-                # with provenance instead of being silently lost.
-                if old_analyzed_at is not None:
-                    cur.execute(
-                        "SELECT 1 FROM file_analyses "
-                        "WHERE file_path = ? AND trigger_source = 'migrated' LIMIT 1",
-                        (norm_path,),
+                # D8/D19: chain state — the previous latest truth record (if
+                # any) both gates the legacy archival (a cache backed by its
+                # own truth record is OURS, never archived) and becomes the
+                # new record's analysis_id_upstream.
+                cur.execute(
+                    "SELECT MAX(id) FROM file_analyses WHERE file_path = ?",
+                    (norm_path,),
+                )
+                previous_row = cur.fetchone()
+                previous_id = previous_row[0] if previous_row else None
+
+                if old_analyzed_at is not None and previous_id is None:
+                    cur.execute(insert_analysis_sql, (
+                        task_id, norm_path, file_md5 or "",
+                        old_summary or "", old_description or "",
+                        old_keywords or "", old_model or "",
+                        "", "migrated", None, int(old_analyzed_at),
+                    ))
+                    previous_id = cur.lastrowid
+                    logger.info(
+                        f"Archived pre-existing (CLI) description for "
+                        f"{norm_path!r} as trigger_source='migrated'"
                     )
-                    if cur.fetchone() is None:
-                        cur.execute(insert_analysis_sql, (
-                            task_id, norm_path, file_md5 or "",
-                            old_summary or "", old_description or "",
-                            old_keywords or "", old_model or "",
-                            "", "migrated", int(old_analyzed_at),
-                        ))
-                        logger.info(
-                            f"Archived pre-existing (CLI) description for "
-                            f"{norm_path!r} as trigger_source='migrated'"
-                        )
 
                 # 1) Display cache: files.llm_* — exact identity required.
                 cur.execute(update_files_sql, (
@@ -248,7 +251,8 @@ class LLMService:
                     )
                     return False
 
-                # 2) Truth: append the analysis record.
+                # 2) Truth: append the analysis record, chained to the
+                #    previous latest version via analysis_id_upstream (D8).
                 cur.execute(insert_analysis_sql, (
                     task_id, norm_path, file_md5 or "",
                     summary or description[:200],
@@ -257,6 +261,7 @@ class LLMService:
                     model_used,
                     extraction_method,
                     trigger_source,
+                    previous_id,
                     int(time.time()),
                 ))
 

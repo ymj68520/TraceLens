@@ -1,6 +1,7 @@
 # SPEC：文件分析重构（File Analysis Redesign）
 
-> **状态**：已评审锁定（2026-09-15）；Phase 1-6 已实施（2026-09-16），Phase 7 待实施。
+> **状态**：已评审锁定并实施完毕（2026-09-15 锁定；Phase 1-7 于 2026-09-16 全部落地）。锁定决策已由实现代码与 schema/API 文档接管；本文档转为过程存档。
+> **分支**：`feature/file-analysis-redesign`（worktree，未合入 Dev）。
 > **范围**：Web 拓扑下文件 LLM 分析的生成、存储、已分析判定、下游消费（事件簇分析 / Graphiti / 报告 / 调查证据）、知识图谱摄入与主流水线编排全链路。CLI 拓扑不在本 SPEC 范围内（§2 D2）。
 > **性质**：与 [event-cluster-analysis-redesign.md](event-cluster-analysis-redesign.md) 同属过程规范文档，不随代码同步更新。
 > **测试口径**：阶段验收使用 `make test-python-focused`；仓库级全量测试按惯例在全部阶段完成后统一执行。
@@ -285,9 +286,9 @@ Step5   报告（不变）
 
 **验收**：pytest——parser 对标准/缺段/纯文本输入的降级行为（永不抛错）、estimate 只读性、run 的跳过判定与 job 生命周期；vitest——服务封装。
 
-### Phase 7 —— stale 传播与图谱状态机（B4-L2/L3；若 v1 已决则含 L4）
+### Phase 7 —— stale 传播与图谱状态机（B4-L2/L3；若 v1 已决则含 L4）（✅ 已实施 2026-09-16）
 
-**范围**：§9-L2 证据 stale 比对与徽标；§9-L3 `superseded_by` + `#fa{id}` 命名 + `ingested_at` 补摄状态机 + 文件 episode body 归一（§6.1 尾项）；v1 决策：若实施，`related_file_summaries` 进 reduce prompt + L4 同步。
+**范围**：§9-L2 证据 stale 比对与徽标；§9-L3 `superseded_by` + `#fa{id}` 命名 + `ingested_at` 补摄状态机 + 文件 episode body 归一（§6.1 尾项）；case 级簇段归一（§6.1）。实施记录：① L4 未实施（v1 未决，符合 D9）；② `superseded_by` 列未建——前向链可由 `analysis_id_upstream` 反向推导，为保持 append-only 纯度（红线：唯一允许的 UPDATE 是 ingested_at）未加该列，属对 SPEC §9-L3 的有意简化；③ L2 以 `source_stale` 字段出现在 `list_event_evidence` 与 `evidence_detail`（`investigation_service._file_stale`，比对快照 `source_updated_at` 与当前 `llm_analyzed_at`），前端徽标随消费组件后续接入；④ D19 归档门控修正为"仅无任何真源记录的外来缓存"，避免把自身上一版误归档（实施中发现）；⑤ case 级两段（ingest_case_data / incremental）切换 `build_analysis_episodes`，case 级标签经 `extra_body` 合并。
 
 **验收**：pytest——stale 比对（重析后旧证据行 is_stale、未重析不受影响）、补摄幂等（ingested_at 状态机）、superseded 链完整；手工验收——重析一文件后图谱出现新 episode 且旧 episode 保留。
 

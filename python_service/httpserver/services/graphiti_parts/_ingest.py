@@ -125,54 +125,38 @@ class GraphitiIngestMixin:
                 except Exception as e:
                     logger.warning(f"[{case_id}] Failed to aggregate files from image {idx+1}: {e}")
 
-            # Aggregate event clusters from all images
+            # Aggregate event clusters from all images — via the shared
+            # SPEC-format builder (file-analysis SPEC D7/Phase 7): the legacy
+            # per-event /60 pseudo-cluster rebuild is retired; case-level
+            # provenance (source_image/task_id) rides in the episode body.
             for idx, (task_id, events_db) in enumerate(zip(task_ids, events_db_paths)):
                 try:
                     if not events_db or not Path(events_db).exists():
                         continue
 
+                    from ..case_analysis.cluster_analyzer import build_analysis_episodes
+                    import sqlite3
+
                     with sqlite3.connect(events_db, timeout=10) as conn:
                         conn.row_factory = sqlite3.Row
-
-                        # Get event clusters with LLM analysis
-                        cur = conn.execute("""
-                            SELECT DISTINCT event_type, llm_description, llm_summary,
-                                   (timestamp / 60) as time_window
-                            FROM events
-                            WHERE llm_description IS NOT NULL
-                            GROUP BY event_type, time_window
-                        """)
-                        rows = cur.fetchall()
-
-                        for row in rows:
-                            description = row["llm_description"] or row["llm_summary"] or ""
-                            event_type = row["event_type"]
-                            time_window = row["time_window"]
-
-                            if description:
-                                # Chunk long descriptions
-                                chunks = self._chunk_text_for_graph(description, max_chars=3000)
-                                for j, chunk in enumerate(chunks):
-                                    ep_name = f"事件簇分析: 镜像{idx+1} - {event_type} @ {time_window}"
-                                    if len(chunks) > 1:
-                                        ep_name += f" (第{j+1}部分)"
-
-                                    episodes.append(EpisodeData(
-                                        name=ep_name,
-                                        episode_body=json.dumps({
-                                            "event_type": event_type,
-                                            "time_window": time_window,
-                                            "source_image": f"IMG{idx+1}",
-                                            "task_id": task_id,
-                                            "analysis": chunk
-                                        }, ensure_ascii=False),
-                                        source_description=f"事件簇LLM分析 - 镜像{idx+1} - {event_type}",
-                                        reference_time=datetime.now(),
-                                        file_path="",
-                                        file_id=0,
-                                        category="event_cluster_description"
-                                    ))
-                                    total_clusters += 1
+                        try:
+                            rows = conn.execute(
+                                "SELECT * FROM event_cluster_analyses "
+                                "WHERE description IS NOT NULL AND description != '' "
+                                "ORDER BY id"
+                            ).fetchall()
+                        except sqlite3.OperationalError:
+                            continue  # analyses table absent (pre-SPEC db)
+                    for row in rows:
+                        for episode in build_analysis_episodes(
+                            dict(row),
+                            extra_body={
+                                "source_image": f"IMG{idx + 1}",
+                                "task_id": task_id,
+                            },
+                        ):
+                            episodes.append(episode)
+                            total_clusters += 1
 
                     if progress_callback:
                         await progress_callback("aggregating_clusters", f"已聚合镜像{idx+1}的事件簇分析结果")
@@ -494,7 +478,8 @@ class GraphitiIngestMixin:
                 except Exception as e:
                     logger.warning(f"[{case_id}] Failed to aggregate files from new task {task_id[:8]}: {e}")
 
-            # Aggregate event clusters from new tasks only
+            # Aggregate event clusters from new tasks only — shared SPEC-format
+            # builder (file-analysis SPEC D7/Phase 7), case-level tags kept.
             for idx, task_id in enumerate(new_task_ids):
                 if idx >= len(events_db_paths):
                     break
@@ -505,49 +490,30 @@ class GraphitiIngestMixin:
                     if not events_db or not Path(events_db).exists():
                         continue
 
+                    from ..case_analysis.cluster_analyzer import build_analysis_episodes
+                    import sqlite3
+
                     with sqlite3.connect(events_db, timeout=10) as conn:
                         conn.row_factory = sqlite3.Row
-
-                        # Get event clusters with LLM analysis
-                        cur = conn.execute("""
-                            SELECT DISTINCT event_type, llm_description, llm_summary,
-                                   (timestamp / 60) as time_window
-                            FROM events
-                            WHERE llm_description IS NOT NULL
-                            GROUP BY event_type, time_window
-                        """)
-                        rows = cur.fetchall()
-
-                        for row in rows:
-                            description = row["llm_description"] or row["llm_summary"] or ""
-                            event_type = row["event_type"]
-                            time_window = row["time_window"]
-
-                            if description:
-                                # Chunk long descriptions
-                                chunks = self._chunk_text_for_graph(description, max_chars=3000)
-                                for j, chunk in enumerate(chunks):
-                                    ep_name = f"事件簇分析: 新任务 {task_id[:8]} - {event_type} @ {time_window}"
-                                    if len(chunks) > 1:
-                                        ep_name += f" (第{j+1}部分)"
-
-                                    episodes.append(EpisodeData(
-                                        name=ep_name,
-                                        episode_body=json.dumps({
-                                            "event_type": event_type,
-                                            "time_window": time_window,
-                                            "task_id": task_id,
-                                            "source_image": "NEW",
-                                            "related_tasks": existing_task_ids,
-                                            "analysis": chunk
-                                        }, ensure_ascii=False),
-                                        source_description=f"事件簇LLM分析 - 新任务 {task_id[:8]} - {event_type}",
-                                        reference_time=datetime.now(),
-                                        file_path="",
-                                        file_id=0,
-                                        category="event_cluster_description"
-                                    ))
-                                    total_clusters += 1
+                        try:
+                            rows = conn.execute(
+                                "SELECT * FROM event_cluster_analyses "
+                                "WHERE description IS NOT NULL AND description != '' "
+                                "ORDER BY id"
+                            ).fetchall()
+                        except sqlite3.OperationalError:
+                            continue  # analyses table absent (pre-SPEC db)
+                    for row in rows:
+                        for episode in build_analysis_episodes(
+                            dict(row),
+                            extra_body={
+                                "source_image": "NEW",
+                                "task_id": task_id,
+                                "related_tasks": existing_task_ids,
+                            },
+                        ):
+                            episodes.append(episode)
+                            total_clusters += 1
 
                     if progress_callback:
                         await progress_callback("aggregating_clusters_new", f"已聚合新任务{idx+1}的事件簇分析结果")

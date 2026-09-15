@@ -9,9 +9,10 @@ accessors in this module — never a third ad-hoc SQL variant.
 
 import logging
 import sqlite3
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ...path_utils import normalize_evidence_path
 
@@ -77,6 +78,26 @@ LATEST_ANALYSIS_JOIN = (
     "LEFT JOIN file_analyses fa ON fa.id = ("
     " SELECT MAX(id) FROM file_analyses WHERE file_path = fa.file_path)"
 )
+
+
+def mark_analyses_ingested(db_path: str, analysis_ids: List[int]) -> int:
+    """Graphiti ingestion state machine (SPEC §9-L3): the ONLY allowed UPDATE
+    on the append-only table — ``ingested_at`` NULL → timestamp, idempotent
+    (already-marked rows are skipped). Returns the rows marked."""
+    if not db_path or not Path(db_path).exists() or not analysis_ids:
+        return 0
+    try:
+        with sqlite3.connect(db_path, timeout=10) as conn:
+            placeholders = ",".join("?" for _ in analysis_ids)
+            cur = conn.execute(
+                f"UPDATE file_analyses SET ingested_at = ? "
+                f"WHERE ingested_at IS NULL AND id IN ({placeholders})",
+                (int(time.time()), *analysis_ids),
+            )
+            conn.commit()
+            return cur.rowcount
+    except sqlite3.OperationalError:
+        return 0
 
 
 def list_analyses(

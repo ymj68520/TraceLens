@@ -286,6 +286,26 @@ class InvestigationService:
                 ).fetchone()
             return dict(row) if row else None
 
+    def _file_stale(
+        self, snapshot: Dict[str, Any], files_db: str, evidence_key: str
+    ) -> bool:
+        """L2 (SPEC file-analysis §9): file evidence is stale when its
+        analysis was refreshed after the snapshot was taken — the current
+        ``files.llm_analyzed_at`` is newer than the snapshot's archived
+        ``source_updated_at``. Cluster evidence staleness is owned by the
+        event-cluster SPEC (member fingerprints)."""
+        if not evidence_key.startswith("file:"):
+            return False
+        stored = (snapshot or {}).get("source_updated_at")
+        if not stored:
+            return False
+        row = self._load_file_row(files_db, evidence_key[len("file:"):]) or {}
+        current = row.get("llm_analyzed_at")
+        try:
+            return bool(current and int(current) > int(stored))
+        except (TypeError, ValueError):
+            return False
+
     async def resolve_evidence(
         self, task_id: str, evidence_key: str
     ) -> Optional[Dict[str, Any]]:
@@ -531,6 +551,7 @@ class InvestigationService:
     ) -> List[Dict[str, Any]]:
         persistence = await self._persistence(task_id)
         links = persistence.event_evidence_for_task(task_id, event_id, limit=limit, offset=offset)
+        paths = await self._paths(task_id)
         results = []
         for link in links:
             resolved = await self.resolve_evidence(task_id, link["evidence_key"])
@@ -547,6 +568,9 @@ class InvestigationService:
                 "has_secondary_analysis": effective is not None,
                 "analysis_status": (effective or {}).get("status"),
                 "report_usage": (report or {}).get("usage"),
+                "source_stale": self._file_stale(
+                    snapshot or {}, paths.get("files_db", ""), link["evidence_key"]
+                ),
             })
         return results
 
@@ -593,6 +617,7 @@ class InvestigationService:
         report = persistence.get_report_evidence(task_id, evidence_key)
         note = persistence.get_note(task_id, "evidence", evidence_key)
         related_events = persistence.events_for_evidence(task_id, evidence_key)
+        paths = await self._paths(task_id)
         return {
             **{k: v for k, v in resolved.items() if k != "metadata"},
             "metadata": resolved.get("metadata"),
@@ -603,6 +628,9 @@ class InvestigationService:
             "report_evidence": report,
             "analyst_note": note,
             "related_event_ids": related_events,
+            "source_stale": self._file_stale(
+                snapshot or {}, paths.get("files_db", ""), evidence_key
+            ),
         }
 
     # ------------------------------------------------------------------

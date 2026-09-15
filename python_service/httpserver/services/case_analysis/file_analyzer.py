@@ -578,6 +578,7 @@ class FileAnalyzer:
 
             # 2. Ingest each file description
             successful = [f for f in file_descriptions if f.get("success") and f.get("description")]
+            ingested_ids: List[int] = []
             for desc in successful:
                 file_path = desc.get("file_path", "")
                 description = desc.get("description", "")
@@ -588,21 +589,45 @@ class FileAnalyzer:
                         file_forensic_time(files_db_path, file_path)
                         if files_db_path else None
                     ) or datetime.now()
+                    # §9-L3: episodes cite the truth record (#fa{id}) and get
+                    # the enriched body; the id feeds the ingested_at state
+                    # machine after a fully successful batch.
+                    record = (
+                        latest_analysis(files_db_path, file_path)
+                        if files_db_path else None
+                    )
+                    analysis_id = record.get("id") if record else None
+                    ep_name = f"文件分析: {file_path}"
+                    if analysis_id:
+                        ep_name += f" #fa{analysis_id}"
                     # Chunk long descriptions
                     chunks = self._chunk_text(description)
                     for j, chunk in enumerate(chunks):
-                        ep_name = f"文件分析: {file_path}"
                         if len(chunks) > 1:
-                            ep_name += f" (第{j+1}部分)"
+                            ep_name_j = f"{ep_name} (第{j+1}部分)"
+                        else:
+                            ep_name_j = ep_name
+                        body = {"file_path": file_path, "analysis": chunk}
+                        if record:
+                            if record.get("summary"):
+                                body["summary"] = record["summary"]
+                            if record.get("keywords"):
+                                body["keywords"] = record["keywords"]
+                            if record.get("md5"):
+                                body["md5"] = record["md5"]
+                            if analysis_id:
+                                body["analysis_id"] = analysis_id
                         episodes.append(EpisodeData(
-                            name=ep_name,
-                            episode_body=json.dumps({"file_path": file_path, "analysis": chunk}, ensure_ascii=False),
+                            name=ep_name_j,
+                            episode_body=json.dumps(body, ensure_ascii=False),
                             source_description=f"LLM分析结果 - {file_path}",
                             reference_time=file_time,
                             file_path=file_path,
                             file_id=0,
                             category="file_description"
                         ))
+                    if analysis_id:
+                        ingested_ids.append(analysis_id)
 
             if not episodes:
                 logger.info("No episodes to ingest")
@@ -623,6 +648,11 @@ class FileAnalyzer:
             # cause of a sparse graph) are visible instead of silently swallowed.
             for err in errors[:5]:
                 logger.warning(f"[{task_id}] Episode ingestion failure: {err}")
+            # §9-L3 state machine: mark rows ingested only when EVERY episode
+            # made it — partial batches stay NULL for the next gap-fill.
+            if ingested_ids and files_db_path and total and successful == total:
+                from .file_schema import mark_analyses_ingested
+                mark_analyses_ingested(files_db_path, ingested_ids)
             return successful > 0
 
         except ImportError:

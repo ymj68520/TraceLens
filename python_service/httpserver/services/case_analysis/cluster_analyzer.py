@@ -787,11 +787,16 @@ def chunk_text(text: str, max_chars: Optional[int] = None) -> List[str]:
     return chunks if chunks else [text]
 
 
-def build_analysis_episodes(analysis: Dict[str, Any]) -> List[Any]:
+def build_analysis_episodes(
+    analysis: Dict[str, Any],
+    extra_body: Optional[Dict[str, Any]] = None,
+) -> List[Any]:
     """Build Graphiti episodes for one persisted analysis record (SPEC §9).
 
     The episode name embeds the full cluster coordinate and the record id so
     re-analyses produce distinct, citable episodes instead of overwriting.
+    ``extra_body`` merges caller context (e.g. case-level source_image /
+    task_id tags) into the episode body.
     """
     from graphiti_integration.toon_transformer import EpisodeData
 
@@ -833,6 +838,7 @@ def build_analysis_episodes(analysis: Dict[str, Any]) -> List[Any]:
                 "cluster_count": cluster_count,
                 "analysis_id": analysis_id,
                 "analysis": chunk,
+                **(extra_body or {}),
             }, ensure_ascii=False),
             source_description=f"事件簇LLM分析 - {event_type} (count={cluster_count})",
             reference_time=reference_time,
