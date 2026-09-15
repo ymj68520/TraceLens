@@ -1291,11 +1291,13 @@ add_test(NAME MemoryParsersGTests COMMAND test_memory_parsers_gtest)
 add_executable(
   test_command_line_parser
   UnitTest/test_command_line_parser.cpp
-  ../src/CommandLineParser.cpp)
+  ../src/CommandLineParser.cpp
+  ../src/core/ConfigManager/ConfigManager.cpp
+  ../src/core/PathManager/PathManager.cpp)
 
 target_include_directories(test_command_line_parser PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_command_line_parser ${GTEST_LIBRARIES}
-                      ${GMOCK_LIBRARIES} gtest_main pthread)
+                      ${GMOCK_LIBRARIES} gtest_main cpp_dotenv pthread)
 
 add_executable(
   test_markitdown_proxy
