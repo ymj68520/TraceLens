@@ -59,17 +59,18 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 class（暗色主题开关，Tailwind `darkMode: 'class'`），以及用 `ErrorBoundary` 包住
 `Layout + <Outlet/>`——任何页面渲染抛错都只会落到兜底 UI 而不是白屏。
 
-路由树（`web/src/routes.jsx:27-134`）分两层：`/login` 独立成页（无侧栏），其余 23 个
-子路由项（含 index 重定向与 `/reports/task|case` 两条迁移路由）全部挂在 `path: '/'`
+路由树（`web/src/routes.jsx:31-155`）分两层：`/login` 独立成页（无侧栏），其余 27 个
+子路由项（含 index 重定向、`/wechat-forensics` 等三条旧路由重定向与
+`/reports/task|case` 两条迁移路由）全部挂在 `path: '/'`
 的 `App` 下；`index: true` 用 `<Navigate to="/dashboard" replace/>`
-重定向。唯一懒加载的页面是微信关系图：
+重定向。唯一懒加载的页面是即时通讯取证（含关系图谱）：
 
 ```jsx
-const WeChatGraph = React.lazy(() => import('./pages/WeChatGraph/WeChatGraph'));
+const IMForensics = React.lazy(() => import('./pages/IMForensics/IMForensics'));
 ```
 
-（`web/src/routes.jsx:25`），对应路由 `wechat-graph` 包了 `<React.Suspense fallback={...}>`
-（`routes.jsx:69-75`）。构建产物里能看到独立的 `WeChatGraph-*.js` chunk。
+（`web/src/routes.jsx:29`），对应路由 `im-forensics` 包了 `<React.Suspense fallback={...}>`
+（`routes.jsx:72-79`）。构建产物里能看到独立的 `IMForensics-*.js` chunk。
 
 ### 构建（vite.config.js）
 
@@ -222,8 +223,8 @@ const isActive = (path) =>
 
 const getLinkUrl = (href) => {
   const taskContextPages = ['/timeline', '/files', '/case-intelligence', '/analysis-center',
-    '/knowledge-graph', '/investigation-graph', '/investigation', '/android', '/memory',
-    '/wechat-graph', '/oss', '/search', '/statistics'];
+    '/knowledge-graph', '/investigation', '/android', '/memory',
+    '/im-forensics', '/oss', '/search', '/statistics'];
   if (currentTaskId && taskContextPages.includes(href)) {
     return `${href}?task_id=${currentTaskId}`;
   }
@@ -232,10 +233,10 @@ const getLinkUrl = (href) => {
 ```
 
 - `currentTaskId` 取自 `searchParams.get('task_id')`（18 行），即"本页 URL 上的任务"；
-- `getLinkUrl` 只在跳向 13 个任务上下文页时追加 `?task_id=`，跳 Dashboard 等全局页则
+- `getLinkUrl` 只在跳向 12 个任务上下文页时追加 `?task_id=`，跳 Dashboard 等全局页则
   保持干净 URL——于是"任务选择"可以一路跟着用户在分析页之间跳转；
 - 两份列表并不一致：TaskSelector 的 `relevantPaths` 有 `/statistics`、`/llm-descriptions`
-  （死路由）、`/case-report`，而 `taskContextPages` 多了 `/memory`、`/wechat-graph`。
+  （死路由）、`/case-report`，而 `taskContextPages` 多了 `/memory`、`/search`、`/im-forensics`。
   后果是：在 `/statistics` 上选任务会写 URL，但侧栏跳走时不透传——两处清单需要人工保持
   同步，是这条机制最脆的点。
 

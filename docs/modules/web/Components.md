@@ -4,14 +4,17 @@
 
 `web/src/components/` 有 12 个子目录、60+ 组件。它们不是均质的"UI 库"：common/ 是真
 正的通用件，reports/ 与 case-intelligence/ 是面向数据契约的渲染器族，investigation/
-workbench/ 整组只被一个死页面引用，timeline/ 只有一只抽屉。本文按组说明职责与复用
-关系，并标出"看似通用实则无人使用"的成员（ThemeProvider、bare toastContext）。
+是调查图谱的自绘族（由 /investigation 中栏 Graph Tab 消费），timeline/ 只有一只抽屉。
+本文按组说明职责与复用关系，并标出"看似通用实则无人使用"的成员（ThemeProvider、
+bare toastContext）。
 
 ## 代码位置
 
 `web/src/components/`：common/、Layout/、reports/、renderers/（在 reports/ 内）、
-case-intelligence/、investigation/（含 workbench/）、timeline/、files/、tasks/、
+case-intelligence/、investigation/、timeline/、files/、tasks/、
 filters/、knowledge-graph/、llm-descriptions/。
+（原 investigation/workbench/ 12 个组件只被死页 `pages/Investigation.jsx` 引用，
+已随 2026-09 清理删除。）
 
 ## 核心概念
 
@@ -122,19 +125,23 @@ metadataFields/reportSectionUtils 工具）。另外两个抽屉：`ClusterFiles
 `FileClustersDrawer`（Cluster↔File 双向关联，消费 associationService，被
 AnalysisCenter 使用）。`markdownRenderer.jsx` 提供 Markdown 渲染。
 
-### investigation/ — 调查图谱与 workbench
+### investigation/ — 调查图谱自绘族
 
 - `InvestigationGraphCanvas.jsx`（95 行）：ForceGraph2D 的 canvas 自绘封装。
   按 `node.label` 取半径（InvestigationEvent 7 / Evidence 6 / Analysis 6 / Claim 4，
   `InvestigationGraphCanvas.jsx:14-19`），选中画光环 + 白描边，`isUnconfirmed`
   （review_pending 回落态）画虚线圈，缩放 ≥1.2 才画标签（24-70 行）。
 - `investigationGraphConstants.js`：颜色/tooltip/unconfirmed 判定，独立成模块并配测试。
-- `workbench/`（12 文件）：EvidenceListPanel、EventTimelinePanel、GraphTabPanel、
-  DetailPanel（609 行主面板）+ 7 个表单（CaptureEvidence/CreateEvent/LinkEvidence/
-  RefreshNarrative/ReportEvidence/ReviewDecision/SubmitAnalysis）。
-  **该目录只被死页面 `pages/Investigation.jsx` 引用**；GraphTabPanel 头注释
-  （1-6 行）说明它复用 Canvas + useInvestigationGraph，"前端从不增删节点，一切以
-  服务端 selection 为准"。`refreshSignal` 递增即重读服务端图谱（19-26 行）。
+- `InvestigationGraphView.jsx`（200 行）：图谱 Tab 的容器——数据经
+  `useInvestigationGraph` 拉取后交给 Canvas，叠加 count/截断徽标、Base 节点上限
+  选择器、命名空间图例；`refreshSignal` 递增即重读服务端 C8b 投影（review/submit/
+  evidence 变化后由工作台页面触发）。
+- `InvestigationNodeDetailPanel.jsx`（128 行）：选中节点的溯源 aside，按
+  `parseNodeId`/`getNodeColor`/`isUnconfirmed` 渲染确认态与出处。
+
+（原 `workbench/` 12 个组件——EvidenceListPanel、EventTimelinePanel、GraphTabPanel、
+DetailPanel + 7 个表单——只被死页 `pages/Investigation.jsx` 引用，已随 2026-09 清理
+删除；其"前端从不增删节点，一切以服务端 selection 为准"原则由 View 族继承。）
 
 ### timeline/ — 簇调查抽屉
 
@@ -169,8 +176,8 @@ App.jsx ─ ErrorBoundary ─ Layout(common+TaskSelector) ┤
        Timeline        → timeline/ClusterInvestigationDrawer
        Files           → files/*
        Tasks/Cases     → tasks/* + ConfirmDialog + Modal
-       (死) pages/Investigation.jsx → investigation/workbench/* → InvestigationGraphCanvas
-       (死) pages/InvestigationGraph.jsx → InvestigationGraphCanvas
+       /investigation 工作台 → investigation/InvestigationGraphView
+         → InvestigationGraphCanvas + InvestigationNodeDetailPanel
 ```
 
 ## 二轮补充走读：两个代表性组件的关键代码
@@ -294,7 +301,8 @@ const classes = clsx(base, variants[variant] || variants.primary, sizes[size], c
 3. **InvestigationGraphCanvas ↔ 调查图只读契约**：节点只有
    `InvestigationEvent/Evidence/Analysis/Claim` 四类（半径表），`isUnconfirmed` 的
    review_pending 回落语义来自 `/api/investigation` 域的审阅模型；canvas 组件不发起
-   任何请求，图结构完全由服务端 `selection` 决定（GraphTabPanel 头注释）。
+   任何请求，数据经 InvestigationGraphView（useInvestigationGraph）流入，图结构完全
+   由服务端 C8b 投影决定。
 
 ## 注意
 
@@ -302,8 +310,8 @@ const classes = clsx(base, variants[variant] || variants.primary, sizes[size], c
    `common/ToastContext` 导入；AnalysisCenter 的崩溃即由此而来（Pages.md）。
 2. **`ThemeProvider` 是死组件**：App.jsx 内联了同样逻辑，二者并存会让人误以为有两
    套主题机制；实际只有 `settings.theme` 一份生效状态。
-3. **`investigation/workbench/` 与 `llm-descriptions/` 是死组件组**，除非先恢复对应
-   路由，否则不要在其上叠加新功能。
+3. **`llm-descriptions/` 是死组件组**（原 investigation/workbench/ 死组已随 2026-09
+   清理删除），除非先恢复对应路由，否则不要在其上叠加新功能。
 4. Modal 打开时会锁 `document.body.style.overflow`（`Modal.jsx:13-23`），嵌套弹窗
    关闭顺序异常时可能出现滚动锁残留（unmount 时统一 `unset` 兜底）。
 
@@ -312,8 +320,7 @@ const classes = clsx(base, variants[variant] || variants.primary, sizes[size], c
 ```bash
 cd web && npx vitest run src/components/
 # 覆盖：Layout、TaskSelector、reports 族（含 registry/GenericTableRenderer）、
-# InvestigationGraphCanvas、workbench/ReportEvidenceForm、reader sections。
-# 死组件组的测试仍会跑——通过不代表组件可达。
+# InvestigationGraphCanvas、InvestigationGraphView、reader sections。
 ```
 
 

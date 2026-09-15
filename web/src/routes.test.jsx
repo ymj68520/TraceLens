@@ -20,6 +20,9 @@ import AnalysisCenter from './pages/AnalysisCenter';
 import Investigation from './pages/Investigation/Investigation';
 import FinalReportViewer from './pages/Investigation/FinalReportViewer';
 import LegacyReportRedirect, { TaskReportRedirect, CaseReportRedirect } from './pages/LegacyReportRedirect';
+import {
+  WeChatForensicsRedirect, QQForensicsRedirect, WeChatGraphRedirect,
+} from './pages/IMForensicsRedirect';
 import { appRoutes } from './routes';
 
 test('exposes report migration routes without replacing the legacy redirect', () => {
@@ -68,5 +71,67 @@ test('merged investigation-graph route redirects to the workbench with task cont
 
   await waitFor(() => expect(location.pathname).toBe('/investigation'));
   expect(location.search).toContain('task_id=t1');
+});
+
+test('merged im-forensics routes keep the legacy paths redirecting', async () => {
+  const childRoutes = appRoutes.find((route) => route.path === '/').children;
+  const wechatRoute = childRoutes.find((route) => route.path === 'wechat-forensics');
+  const qqRoute = childRoutes.find((route) => route.path === 'qq-forensics');
+  const graphRoute = childRoutes.find((route) => route.path === 'wechat-graph');
+
+  expect(wechatRoute.element.type).toBe(WeChatForensicsRedirect);
+  expect(qqRoute.element.type).toBe(QQForensicsRedirect);
+  expect(graphRoute.element.type).toBe(WeChatGraphRedirect);
+  expect(matchRoutes(appRoutes, '/im-forensics')).not.toBeNull();
+  expect(matchRoutes(appRoutes, '/wechat-forensics')).not.toBeNull();
+  expect(matchRoutes(appRoutes, '/qq-forensics')).not.toBeNull();
+  expect(matchRoutes(appRoutes, '/wechat-graph?task_id=t1')).not.toBeNull();
+
+  let location;
+  function Probe() {
+    location = useLocation();
+    return null;
+  }
+
+  const { unmount } = render(
+    <MemoryRouter initialEntries={['/wechat-forensics']}>
+      {wechatRoute.element}
+      <Probe />
+    </MemoryRouter>,
+  );
+  await waitFor(() => expect(location.pathname).toBe('/im-forensics'));
+  expect(location.search).toBe('?platform=wechat');
+  unmount();
+
+  render(
+    <MemoryRouter initialEntries={['/qq-forensics']}>
+      {qqRoute.element}
+      <Probe />
+    </MemoryRouter>,
+  );
+  await waitFor(() => expect(location.pathname).toBe('/im-forensics'));
+  expect(location.search).toBe('?platform=qq');
+  unmount();
+
+  // wx_/qq_ 前缀映射为平台 + 导入选择，原始 task_id 透传为图谱数据源覆盖
+  render(
+    <MemoryRouter initialEntries={['/wechat-graph?task_id=wx_imp-1']}>
+      {graphRoute.element}
+      <Probe />
+    </MemoryRouter>,
+  );
+  await waitFor(() => expect(location.pathname).toBe('/im-forensics'));
+  expect(location.search).toBe('?platform=wechat&import_id=imp-1&tab=graph');
+  unmount();
+
+  render(
+    <MemoryRouter initialEntries={['/wechat-graph?task_id=task-9']}>
+      {graphRoute.element}
+      <Probe />
+    </MemoryRouter>,
+  );
+  await waitFor(() => expect(location.pathname).toBe('/im-forensics'));
+  expect(location.search).toContain('tab=graph');
+  expect(location.search).toContain('task_id=task-9');
 });
 

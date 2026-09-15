@@ -6,7 +6,7 @@ import {
     getWeChatChat,
     getWeChatGroupChat,
     invalidateWeChatCache,
-} from '../../../services/wechatService';
+} from '../../../../services/wechatService';
 
 const normalizeCommunityId = (value, fallback) => {
     if (value === undefined || value === null) return fallback;
@@ -68,10 +68,12 @@ export const normalizeWeChatTimeline = (result = {}) => (
 /**
  * WeChat 聊天关系图谱 Hook
  * 管理图谱数据获取、聊天记录加载、节点/边交互等状态
+ * @param {string|null} [explicitTaskId] 显式指定图谱数据源（IMForensics 合并页按
+ *   平台前缀+导入 ID 拼出）；传 null 视为无数据源。缺省时回退到 URL ?task_id=。
  */
-export default function useWeChatGraph() {
+export default function useWeChatGraph(explicitTaskId) {
     const [searchParams] = useSearchParams();
-    const taskId = searchParams.get('task_id');
+    const taskId = explicitTaskId !== undefined ? explicitTaskId : searchParams.get('task_id');
 
     // Graph state
     const [graphData, setGraphData] = useState({ nodes: [], edges: [], communities: [] });

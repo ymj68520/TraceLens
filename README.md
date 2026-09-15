@@ -85,7 +85,7 @@ make build && make start
 | `/files` | 文件浏览/提取/Office 预览/LLM 分析与重分析/Graphiti 摄取/相关性标记 |
 | `/android` | MIUI 概览/已装应用/DB 清单、QQNT/微信工件与记录、LLM 汇总 |
 | `/memory` | 内存取证结果（进程/网络/Bash 历史/启动信息） |
-| `/wechat-graph` | 微信关系力导向图（社区/时间线/人物详情/会话） |
+| `/im-forensics` | 即时通讯取证（微信/QQ 数据库导入：概览/会话/消息/联系人/群聊）+ 聊天关系图谱（社区/时间线/人物详情/会话） |
 | `/oss` | OSS 对象存储分析 |
 | `/search` | Xapian 全文搜索与建索引 |
 | `/statistics` | 任务数据库统计 |

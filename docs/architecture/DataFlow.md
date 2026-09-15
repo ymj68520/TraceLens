@@ -162,7 +162,7 @@ try {
 | `raw.db` | 文件/统计类查询（经 SQLiteHelper） | /files、/statistics | CppBackendService 回查、Graphiti DatabaseReader |
 | `events.db` | 时间线 11 个端点、事件导出 | /timeline | 案件多镜像分析读事件 |
 | `files.db` | 文件分析端点 | /files、/analysis-center | LLMService 持久化重分析结果（直接 UPDATE llm_* 列）、报告生成、Graphiti 摄取 |
-| `android.db` 等 | 平台端点（如 android 14 个） | /android、/wechat-graph | WeChatGraphService（直接 sqlite3 读 android.db）、Graphiti 平台 reader |
+| `android.db` 等 | 平台端点（如 android 14 个） | /android、/im-forensics | WeChatGraphService（直接 sqlite3 读 android.db）、Graphiti 平台 reader |
 | `extracted_files/` | 提取状态端点 | /files 提取下载 | markitdown 转换输入（task_store 精确匹配路径） |
 
 值得一提的是 Python 侧读任务库的方式：`task_store` 以任务 ID 解析出精确路径（fail-closed，拒绝任何不匹配的路径），这保证"服务间共享文件系统"不会变成越权读任意文件的漏洞——这是 2026 年加固的边界（docs/hardening/d2b）。

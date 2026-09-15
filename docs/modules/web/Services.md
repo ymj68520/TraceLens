@@ -178,22 +178,23 @@ bucket_seconds/event_type` 三个整数/字符串字段，非法直接抛错，�
 - `graphitiService`：10 个方法（ingest/search/entities/relationships/status/tasks/delete/
   job/graph）→ `/api/graphiti/*` → KnowledgeGraph、Files 页导入按钮。
 
-### investigationService.js — 调查域全集（`pythonApi`，420 行）
+### investigationService.js — 调查域全集（`pythonApi`，197 行）
 
 最大的 service，两组 API：
 
-**冻结契约组（C3~R1 阶段）**——方法名与端点一一对应，注释里写明契约编号：
+**冻结契约组（C3~R1 阶段）**——只读端点，方法名与端点一一对应，注释里写明契约编号
+（原 C3/C9b/C9c 的 mutation 封装已随死页 `pages/Investigation.jsx` 删除；端点本身仍在
+后端，见 [Python_REST_API](../../api_reference/Python_REST_API.md) §7）：
 
 | 方法 | 端点 |
 |---|---|
-| `captureInvestigationSnapshot` | POST `/api/investigation/snapshots` |
 | `getInvestigationGraph` | GET `/api/investigation/graph?max_base_nodes=` |
-| `listInvestigationEvidence` / `getInvestigationSnapshot` | GET `/api/investigation/evidence(+/snapshot)` |
-| `listInvestigationAnalyses` / `getInvestigationAnalysis` / `createSecondaryAnalysis` / `reviewSecondaryAnalysis` / `listInvestigationAnalysisClaims` | GET/POST `/api/investigation/analyses*` |
-| `listInvestigationEvents` 及 6 个 Event 读方法 / `createInvestigationEvent` / `linkInvestigationEventEvidence` / `startInvestigationEventRefresh` | `/api/investigation/events*` |
-| `listReportEvidence` / `addReportEvidence` / `updateReportEvidence` | GET/POST/PUT `/api/reports/evidence` |
+| `getInvestigationSnapshot` | GET `/api/investigation/evidence/snapshot` |
+| `getInvestigationAnalysis` / `listInvestigationAnalysisClaims` | GET `/api/investigation/analyses*` |
+| `getInvestigationEvent` | GET `/api/investigation/events/{event_id}` |
+| `listReportEvidence` | GET `/api/reports/evidence` |
 
-**Workbench 组**（283-361 行）——统一前缀函数 + 30 余个端点：
+**Workbench 组**（75-197 行）——统一前缀函数 + 30 余个端点：
 
 ```js
 const workbenchBase = (taskId) => `/api/investigation/workbench/${encodeURIComponent(taskId)}`;
@@ -203,12 +204,12 @@ export const bootstrapInvestigation = (taskId, options = {}) =>
     pythonApi.post(`${workbenchBase(taskId)}/bootstrap`, { mode: 'cluster_seed', ...options });
 ```
 
-（`investigationService.js:283-287`）。涵盖 events/evidence/notes/analysis-jobs/
+（`investigationService.js:75-79`）。涵盖 events/evidence/notes/analysis-jobs/
 analysis accept+reject/versions+claims/refresh/report-evidence/final-reports×6/
 claims provenance，以及 `pollAnalysisJob`（1.5s 间隔，completed/failed/invalid 终止）。
-消费者：`/investigation` 与 `/investigation/report` 两个路由页 + 一组轮询 hooks
-（Hooks.md）。**冻结契约组目前只被死代码页面 `pages/Investigation.jsx` 使用**，
-在线页面走 workbench 组。
+消费者：`/investigation` 与 `/investigation/report` 两个路由页（页面局部 hooks 直调）
++ `InvestigationGraphView`（/investigation 中栏 Graph Tab）；冻结契约组的读端点由
+CitationTracebackPanel / GenerateReportPanel / 图谱链路消费。
 
 ### 报告三件套 — `reportDataSource` / `reportService` / `reportGenerationService`
 
@@ -243,7 +244,7 @@ export class FixtureReportDataSource extends ReportDataSource { ... }
 - `associationService`：POST `/api/associations/{cluster-files,file-clusters}` +
   5 个纯前端异常分级工具函数（`formatAnomalyType` 等，76-140 行）→ AnalysisCenter
   双抽屉。
-- `wechatService`：9 个方法 → `/api/wechat/*` → useWeChatGraph。
+- `wechatService`：9 个方法 → `/api/wechat/*` → IMForensics 关系分析 Tab（`pages/IMForensics/graph/hooks/useWeChatGraph`）。
 - `officeService`：`parseFile`（POST `/api/office/parse`）、`getSupportedFormats` →
   Files 页 Office 预览 Tab。
 

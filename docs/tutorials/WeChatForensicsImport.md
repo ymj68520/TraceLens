@@ -1,18 +1,18 @@
 # 微信取证：解密并导入微信账号数据库（EnMicroMsg.db）
 
-本页说明 TraceLens 「微信取证」（`/wechat-forensics`）功能：把安卓微信的
+本页说明 TraceLens 「即时通讯取证」（`/im-forensics`，微信平台）功能：把安卓微信的
 `EnMicroMsg.db`（支持 SQLCipher 加密原件或已解密明文库）导入系统，自动解密、
 解析为人类可读的取证证据（会话 / 消息 / 联系人 / 群聊 / 媒体缩略图），并与
-现有「微信关系分析」（`/wechat-graph`）无缝对接。
+同页「关系分析」Tab 无缝对接。
 
 ## 快速开始
 
-1. 打开侧边栏 **微信取证**，点击 **导入数据库**。
+1. 打开侧边栏 **即时通讯取证**，确认顶部平台切换在 **微信**，点击 **导入数据库**。
 2. 填写 `EnMicroMsg.db` 的绝对路径（加密或明文均可；同名 `-wal` 自动探测）。
 3. 提供密钥材料（可自动推导口令，见下）或直接填口令，点击 **开始导入**。
 4. 导入成功后即可在页面浏览：取证概览、会话列表、聊天记录（可按会话 /
    类型 / 关键词 / 时间过滤）、联系人、群聊。
-5. 点击 **打开微信关系分析**，用 `wx_<导入ID>` 作为 task_id 直接生成关系图谱。
+5. 切换到 **关系分析** Tab，页面自动以 `wx_<导入ID>` 作为 task_id 生成关系图谱。
 
 ## 密钥推导（与手动破解流程一致）
 
@@ -55,7 +55,7 @@ WAL 一并解密：逐帧解密后按 SQLite 校验和算法（魔数 `0x377f068
 - 解密：`python_service/httpserver/services/wechat_decrypt.py`
 - 导入 / 解析：`python_service/httpserver/services/wechat_import_service.py`
 - API：`python_service/httpserver/routes/wechat_forensics.py`（`/api/wechat/forensics/*`）
-- 前端：`web/src/pages/WeChatForensics.jsx`
+- 前端：`web/src/pages/IMForensics/IMForensics.jsx`（微信面板 `WeChatPanels.jsx`）
 - 与关系分析对接：`/api/wechat/*` 支持 `task_id=wx_<导入ID>`
   （`wechat_graph_models._resolve_android_db_path`）
 

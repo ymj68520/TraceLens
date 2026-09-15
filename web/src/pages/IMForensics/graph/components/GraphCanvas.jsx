@@ -14,6 +14,8 @@ const COMMUNITY_COLORS = [
 
 export default function GraphCanvas({
     data,
+    width,
+    height,
     onNodeClick,
     onEdgeClick,
     onBackgroundClick,
@@ -72,6 +74,8 @@ export default function GraphCanvas({
     return (
         <ForceGraph2D
             ref={graphRef}
+            width={width}
+            height={height}
             graphData={{ nodes: data?.nodes || [], links: data?.links || data?.edges || [] }}
             nodeCanvasObject={nodeCanvasObject}
             nodePointerAreaPaint={(node, color, ctx) => {

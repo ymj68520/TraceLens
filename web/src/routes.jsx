@@ -18,14 +18,15 @@ import Investigation from './pages/Investigation/Investigation';
 import InvestigationGraphRedirect from './pages/InvestigationGraphRedirect';
 import FinalReportViewer from './pages/Investigation/FinalReportViewer';
 import LegacyReportRedirect, { TaskReportRedirect, CaseReportRedirect } from './pages/LegacyReportRedirect';
+import {
+  WeChatForensicsRedirect, QQForensicsRedirect, WeChatGraphRedirect,
+} from './pages/IMForensicsRedirect';
 import OSS from './pages/OSS';
 import Login from './pages/Login';
 import Terminal from './pages/Terminal';
 import Distributed from './pages/Distributed';
 
-const WeChatGraph = React.lazy(() => import('./pages/WeChatGraph/WeChatGraph'));
-const WeChatForensics = React.lazy(() => import('./pages/WeChatForensics'));
-const QQForensics = React.lazy(() => import('./pages/QQForensics'));
+const IMForensics = React.lazy(() => import('./pages/IMForensics/IMForensics'));
 
 export const appRoutes = [
   {
@@ -69,28 +70,25 @@ export const appRoutes = [
         element: <Memory />,
       },
       {
-        path: 'wechat-graph',
+        path: 'im-forensics',
         element: (
           <React.Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-slate-400">Loading...</div></div>}>
-            <WeChatGraph />
+            <IMForensics />
           </React.Suspense>
         ),
       },
       {
+        // 微信取证 / QQ 取证 / 微信关系分析 已合并为 /im-forensics（IMForensicsRedirect）
         path: 'wechat-forensics',
-        element: (
-          <React.Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-slate-400">Loading...</div></div>}>
-            <WeChatForensics />
-          </React.Suspense>
-        ),
+        element: <WeChatForensicsRedirect />,
       },
       {
         path: 'qq-forensics',
-        element: (
-          <React.Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-slate-400">Loading...</div></div>}>
-            <QQForensics />
-          </React.Suspense>
-        ),
+        element: <QQForensicsRedirect />,
+      },
+      {
+        path: 'wechat-graph',
+        element: <WeChatGraphRedirect />,
       },
       {
         path: 'oss',

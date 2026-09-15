@@ -38,7 +38,7 @@ router.include_router(_management.router)
 | 前端 `/case-intelligence`（intelligenceReportService.js:13-49、caseGroupService.js:12-89） | `/api/llm/intelligence-report/*`、`/api/llm/cases*`、`/api/reports/*` |
 | 前端 `/investigation` 与调查工作台（investigationService.js:19-349） | `/api/investigation/*`、`/api/reports/evidence*` |
 | 前端 `/logs` 页（web/src/pages/Logs.jsx:20,37） | `/api/system/logs/{service}`（SSE 变体同前缀） |
-| 前端 `/wechat-graph` 页（wechatService.js:12-89） | `/api/wechat/*` |
+| 前端 `/im-forensics` 关系分析 Tab（wechatService.js:12-89） | `/api/wechat/*` |
 | 前端 `/oss` 页（ossService.js:9-60，用 `api` C++ 基座） | 名义上 `/api/forensics/oss/*`（实际 404，见 [routes/OssAnalysis.md](./routes/OssAnalysis.md)） |
 | C++ `LLMPythonProxy`（src/network/HTTPServer/LLMPythonProxy.cpp:63-138） | `POST /api/graphiti/ingest`、`/ingest/file`、`/ingest/events`（服务间调用） |
 | C++ `MarkitdownProxy`（src/integration/LLMIntegration/MarkitdownProxy.cpp:89-214） | `POST /api/markitdown/convert-one`、`/convert`、`GET /status` |

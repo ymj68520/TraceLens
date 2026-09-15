@@ -45,7 +45,7 @@ export default function FilterProfileSelector({ value, onChange, disabled }) {
           <option value="">不使用过滤（分析全部文件）</option>
           {profiles.map((p) => (
             <option key={p.name} value={p.name}>
-              {p.name} — {p.description}
+              {optionLabel(p)}
             </option>
           ))}
         </select>
@@ -211,3 +211,22 @@ function formatSize(bytes) {
 
 const inputCls =
   'flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-100 dark:disabled:bg-slate-700 dark:bg-slate-700 dark:text-white text-sm';
+
+// A native <select> popup sizes itself to the longest option, so long profile
+// descriptions blow the dropdown past the modal. Keep each option within a
+// bounded width (CJK chars count ~2× latin) — the full description still shows
+// in the detail summary below once a profile is selected.
+const OPTION_MAX_WIDTH = 56;
+
+function optionLabel({ name, description }) {
+  const head = (description || '').split(/\s+[-—]\s+/)[0].trim();
+  const label = head ? `${name} — ${head}` : name;
+  let width = 0;
+  let out = '';
+  for (const ch of label) {
+    width += ch.codePointAt(0) > 0x2e80 ? 2 : 1;
+    if (width > OPTION_MAX_WIDTH) return `${out}…`;
+    out += ch;
+  }
+  return label;
+}

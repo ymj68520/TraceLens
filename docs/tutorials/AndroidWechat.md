@@ -153,9 +153,9 @@ curl "http://localhost:8666/api/forensics/android/miui-qqnt-overview?task_id=<ta
 
 ---
 
-## 5. /wechat-graph 关系图分析
+## 5. /im-forensics 关系图分析
 
-前端 `http://localhost:8666/wechat-graph`（Python 侧服务，前缀 `/api/wechat`，所有 GET 需 `task_id`，见 [Python REST API](../api_reference/Python_REST_API.md) 第 12 节）：
+前端入口为即时通讯取证页的「关系分析」Tab：`http://localhost:8666/im-forensics?tab=graph&task_id=<task_id>`（Python 侧服务，前缀 `/api/wechat`，所有 GET 需 `task_id`，见 [Python REST API](../api_reference/Python_REST_API.md) 第 12 节）：
 
 ```bash
 # 全图 + 中心性指标（PageRank / 介数）

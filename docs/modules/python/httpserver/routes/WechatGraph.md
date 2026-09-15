@@ -1,6 +1,6 @@
 # WechatGraph 路由（python_service/httpserver/routes/wechat_graph.py + wechat_graph_endpoints/，前缀 /api/wechat）
 
-> **一句话**：微信取证分析读端——从任务产物 `<image>_android.db` 构建联系人关系图（networkx 指标 + 可选 Louvain 社区发现）、时间线滑块数据、人物 ego 网络与聊天记录/机主/联系人查询，供前端 /wechat-graph 页使用。
+> **一句话**：微信取证分析读端——从任务产物 `<image>_android.db` 构建联系人关系图（networkx 指标 + 可选 Louvain 社区发现）、时间线滑块数据、人物 ego 网络与聊天记录/机主/联系人查询，供前端 /im-forensics 页「关系分析」Tab 使用。
 
 ## 1. 这组路由承担什么职责（为什么存在）
 
@@ -8,7 +8,7 @@ C++ 的 Android 分析把微信数据规范化进 `<image>_android.db`（wechat_
 
 ## 2. 典型调用方（前端哪个页面/组件）
 
-前端 `/wechat-graph` 页（web/src/routes.jsx:69-72 → `pages/WeChatGraph/WeChatGraph.jsx`），全部经 **web/src/services/wechatService.js**：`/graph` :12、`/graph/timeline` :21、`/graph/community` :29、`/graph/person/{username}` :38、`/chat` :50、`/chat/group` :63、`/owner` :73、`/contacts` :81、`/graph/invalidate` :89。服务端无其他调用方。
+前端 `/im-forensics` 页「关系分析」Tab（web/src/routes.jsx:72-79 → `pages/IMForensics/GraphTab.jsx`，逻辑在 `pages/IMForensics/graph/hooks/useWeChatGraph.js`），全部经 **web/src/services/wechatService.js**：`/graph` :12、`/graph/timeline` :21、`/graph/community` :29、`/graph/person/{username}` :38、`/chat` :50、`/chat/group` :63、`/owner` :73、`/contacts` :81、`/graph/invalidate` :89。服务端无其他调用方。
 
 ## 3. 端点语义分组（散文）
 

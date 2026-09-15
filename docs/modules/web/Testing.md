@@ -88,16 +88,16 @@ Provider 与 ToastProvider**——需要 store 的组件测试（Layout、TaskSe
 `configureStore` 一个最小 store；需要 toast 的组件需自带 Provider 或 mock。更完整的
 路由断言则绕开渲染，直接用 `matchRoutes`（见下）。
 
-### 48 个测试文件的分布
+### 43 个测试文件的分布
 
 | 目录 | 数量 | 代表文件 |
 |---|---|---|
-| src/pages/（根） | 7 | routes.test.jsx、CaseIntelligence.test.jsx、ForensicReportPage.generation.test.jsx、LegacyReportRedirect.test.jsx、（死页面）InvestigationGraph.test.jsx、Investigation.test.jsx |
+| src/pages/（根） | 5 | routes.test.jsx（src/ 根）、CaseIntelligence.test.jsx、ForensicReportPage.test.jsx（+.generation）、LegacyReportRedirect.test.jsx |
 | src/pages/Investigation/ | 7 | Investigation.test.jsx、FinalReportViewer.test.jsx、finalReportIntegrity.test.js、hooks/×4 |
-| src/hooks/ | 9 | useReportGenerationPolling.test.js、useTaskAutoTrigger.test.js、useStaleResource.test.js 等 |
+| src/hooks/ | 3 | useReportGenerationPolling.test.js、useTaskAutoTrigger.test.js、useInvestigationGraph.test.js |
 | src/services/ | 7 | llmService(.polling).test.js、investigationService、reportDataSource、reportService、ossService、forensicsService |
-| src/components/ | 16 | Layout、TaskSelector、reports 族×7、InvestigationGraphCanvas、workbench/ReportEvidenceForm |
-| src/pages/WeChatGraph/hooks | 1 | useWeChatGraph.test.js |
+| src/components/ | 16 | Layout、TaskSelector、reports 族×7、InvestigationGraphCanvas、InvestigationGraphView |
+| src/pages/IMForensics/graph/hooks | 1 | useWeChatGraph.test.js |
 | src/test/ | 1 | smoke.test.jsx |
 
 ### 代表性测试 1：routes.test.jsx — 不渲染的路由表断言

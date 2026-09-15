@@ -1,20 +1,20 @@
 # QQ 取证：解密并导入 QQ 账号数据库（NTQQ nt_msg.db）
 
-本页说明 TraceLens 「QQ 取证」（`/qq-forensics`）功能：把安卓 QQ 9.x（NT 架构，
+本页说明 TraceLens 「即时通讯取证」（`/im-forensics`，QQ 平台）功能：把安卓 QQ 9.x（NT 架构，
 NTQQ）的 `nt_msg.db`（支持 SQLCipher 加密原件或已解密明文库）导入系统，自动
 离线推导密钥并解密、解析为人类可读的取证证据（会话 / 消息 / 联系人 / 群聊），
-并与现有「微信关系分析」（`/wechat-graph`）无缝对接——关系图、社区检测、
+并与同页「关系分析」Tab 无缝对接——关系图、社区检测、
 时间线、聊天记录下钻等能力全部复用。
 
 ## 快速开始
 
-1. 打开侧边栏 **QQ 取证**，点击 **导入数据库**。
+1. 打开侧边栏 **即时通讯取证**，顶部切换到 **QQ** 平台，点击 **导入数据库**。
 2. 填写 `nt_msg.db` 的绝对路径（加密或明文均可；同目录的 `profile_info.db`、
    `group_info.db` 与 `-wal` 会自动一并处理）。
 3. 提供 `nt_uid`（形如 `u_xxx`）用于自动推导密钥，或直接粘贴已知 32 位密钥。
 4. 导入成功后即可在页面浏览：取证概览、会话列表、聊天记录（可按会话 /
    类型 / 关键词 / 时间过滤）、联系人、群聊。
-5. 点击 **打开关系分析**，用 `qq_<导入ID>` 作为 task_id 直接生成关系图谱。
+5. 切换到 **关系分析** Tab，页面自动以 `qq_<导入ID>` 作为 task_id 生成关系图谱。
 
 ## 密钥推导（全部离线）
 
@@ -68,7 +68,7 @@ QQ NT 消息表列名为数字编码，导入时按逆向文档（QQBackup/nt_ms
 - 解密：`python_service/httpserver/services/qq_decrypt.py`
 - 导入 / 解析：`python_service/httpserver/services/qq_import_service.py`
 - API：`python_service/httpserver/routes/qq_forensics.py`（`/api/qq/forensics/*`）
-- 前端：`web/src/pages/QQForensics.jsx`
+- 前端：`web/src/pages/IMForensics/IMForensics.jsx`（QQ 面板 `QQPanels.jsx`）
 - 与关系分析对接：`/api/wechat/*` 支持 `task_id=qq_<导入ID>`
   （`wechat_graph_models._resolve_android_db_path`），导入时构建与微信同构的
   `graph.db`（wechat_messages / wechat_contacts / wechat_chatrooms /

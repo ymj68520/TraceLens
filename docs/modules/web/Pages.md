@@ -3,25 +3,28 @@
 ## 为什么要有这篇文档
 
 `web/src/routes.jsx` 注册了 23 条路径路由（外加 `/` 的 index 重定向，共 24 个路由项），
-`web/src/pages/` 下却有更多页面文件——其中四个
-（InvestigationGraph、Logs、LLMDescriptions、根目录的 Investigation.jsx）**没有任何路由
-指向它们**，属于死代码；而侧栏又挂着一条指向不存在路由的链接。只看目录树无法判断
+`web/src/pages/` 下却有更多页面文件——其中两个
+（Logs、LLMDescriptions）**没有任何路由指向它们**，属于死代码。原独立图谱页
+`InvestigationGraph.jsx` 已并入 `/investigation` 的中栏 Graph Tab，路由保留为重定向
+（`pages/InvestigationGraphRedirect.jsx`）；旧版根目录 `Investigation.jsx` 及其
+workbench 组件组已随 2026-09 清理删除。只看目录树无法判断
 "哪个页面真的可达、数据从哪来"，因此本文按路由表逐页走读，并如实标注已知问题。
 
 ## 代码位置
 
-- 路由表：`web/src/routes.jsx`（`appRoutes` 数组，27-134 行）
-- 页面：`web/src/pages/`（含 `Investigation/`、`WeChatGraph/` 两个子目录）
-- 侧栏导航：`web/src/components/Layout/Layout.jsx:23-46`
+- 路由表：`web/src/routes.jsx`（`appRoutes` 数组，31-155 行）
+- 页面：`web/src/pages/`（含 `Investigation/`、`IMForensics/` 两个子目录）
+- 侧栏导航：`web/src/components/Layout/Layout.jsx:23-45`
 - 全局任务选择器：`web/src/components/common/TaskSelector.jsx`
 
 ## 核心概念
 
 - **任务上下文靠 query 参数传播**：顶部 `TaskSelector` 把当前镜像任务写进 URL
-  （`task_id` 或 `taskId`），`Layout.getLinkUrl()`（`Layout.jsx:51-57`）在 13 个
+  （`task_id` 或 `taskId`），`Layout.getLinkUrl()`（`Layout.jsx:50-55`）在 12 个
   task-context 页面之间跳转时自动透传该参数。页面自身再用 `useSearchParams` 读回。
 - **两类数据获取模式**：任务/案件页走 Redux thunk（`fetchTasks` 等）；分析页大多
-  "页面本地 state + service 直调"，配 `useStaleResource` / requestId 防陈旧模式（Hooks.md）。
+  "页面本地 state + service 直调"，配 `useInvestigationGraph` 等 requestId 防陈旧模式
+  （Hooks.md）。
 - **登录态是假的**：`/login` 是 mock（见下文），路由层没有任何守卫——直接访问
   `/dashboard` 不需要登录。
 
@@ -111,12 +114,23 @@ const handleSubmit = async (e) => {
 - 子组件拆在 `components/files/`（Header/Filters/ExtractionControls/FileListTable/
   ExtensionAnalysisTab/OfficePreviewTab/ReanalyzeModal）。
 
-### /wechat-graph — `pages/WeChatGraph/WeChatGraph.jsx`（懒加载）
+### /im-forensics — `pages/IMForensics/IMForensics.jsx`（懒加载）
 
-唯一 `React.lazy` 的路由（见 Overview.md）。壳组件把全部逻辑委托给
-`pages/WeChatGraph/hooks/useWeChatGraph.js`，布局 = SearchBar + ForceGraph2D 画布 +
-右侧面板（选中边→ChatPanel 聊天记录分页；选中节点→PersonDetail；默认→CommunityLegend）+
-底部 TimelineSlider。数据全部来自 `wechatService`（pythonApi `/api/wechat/*`）。
+2026-09-15 由 微信取证 / QQ 取证 / 微信关系分析 三页合并而来（旧路由
+`/wechat-forensics`、`/qq-forensics`、`/wechat-graph` 经 `IMForensicsRedirect.jsx`
+带参重定向）。页面 = 顶部微信/QQ 平台切换 + 六个 Tab（取证概览 / 会话列表 /
+聊天记录 / 联系人 / 群聊 / 关系分析）；`platform`、`tab`、`import_id`、`task_id`
+全部落在 URL 上。两个平台的导入弹窗与五个数据面板分居
+`IMForensics/WeChatPanels.jsx`、`IMForensics/QQPanels.jsx`，分别走
+`wechatForensicsService` / `qqForensicsService`（pythonApi
+`/api/wechat/forensics/*`、`/api/qq/forensics/*`）。
+关系分析 Tab（`IMForensics/GraphTab.jsx`）把逻辑委托给
+`IMForensics/graph/hooks/useWeChatGraph.js`：数据源按当前平台拼
+`wx_<导入ID>` / `qq_<导入ID>`；URL 带原始扫描任务 `task_id` 时
+（全局任务上下文或旧 /wechat-graph 链接）优先使用并显示来源提示条。
+布局 = SearchBar + ForceGraph2D 画布 + 右侧面板（选中边→ChatPanel 聊天记录分页；
+选中节点→PersonDetail；默认→CommunityLegend）+ 底部 TimelineSlider，
+数据来自 `wechatService`（pythonApi `/api/wechat/*`）。
 
 ### /oss — `pages/OSS.jsx`（376 行）
 
@@ -184,14 +198,16 @@ context 实例。于是 `AnalysisCenter.jsx:43` 的 `const toast = useToast()` �
 **/analysis-center 整页表现为错误兜底 UI**（其余页面都从 `ToastContext.jsx` 导入，
 不受影响）。
 
-### /investigation — `pages/Investigation/Investigation.jsx`（74 行）
+### /investigation — `pages/Investigation/Investigation.jsx`（129 行）
 
-二次调查三栏工作台（左 Event+Evidence 面板 / 中 InvestigationTimeline / 右
-AnalysisWorkspace）。数据链：`useInvestigationEvents(taskId)` 先 `getOverview`，若
+二次调查三栏工作台（左 Event+Evidence 面板 / 中 InvestigationTimeline 或 Graph Tab /
+右 AnalysisWorkspace；Graph 激活时右栏让位、切两栏全宽，图谱容器为
+`investigation/InvestigationGraphView`，节点点击同步 event 命名空间的选择）。
+数据链：`useInvestigationEvents(taskId)` 先 `getOverview`，若
 `!initialized` 则 `bootstrapInvestigation`（`mode:'cluster_seed'`），再
 `getInvestigationEvents`（`pages/Investigation/hooks/useInvestigationEvents.js:14-31`）。
 全部端点在 `/api/investigation/workbench/{taskId}/...`（pythonApi）。claim 可溯源：
-`traceClaim` 展开引用的 evidence_keys（`Investigation.jsx:38-42`）。
+`traceClaim` 展开引用的 evidence_keys（`Investigation.jsx:47`）。
 
 ### /investigation/report — `pages/Investigation/FinalReportViewer.jsx`（325 行）
 
@@ -364,24 +380,21 @@ URL ?task_id= ──▶ useInvestigationEvents(taskId)
 
 | 文件 | 行数 | 说明 |
 |---|---|---|
-| `pages/InvestigationGraph.jsx` | 307 | C8c 独立图谱页；侧栏 `/investigation-graph` 链接指向它但路由不存在（见下） |
-| `pages/Investigation.jsx` | 580 | C9b/C9c/C10/R1 的旧版三栏 Workbench 壳；`components/investigation/workbench/*` 12 个组件**只**被它引用 |
 | `pages/Logs.jsx` | 176 | 旧日志页，功能已被 `/terminal` 的 TerminalOutput 取代 |
 | `pages/LLMDescriptions.jsx` | 507 | 旧 AI 描述页，功能并入 `/files` 与 `/analysis-center` |
 
-它们各自仍保留测试（`InvestigationGraph.test.jsx`、`Investigation.test.jsx` 等），
-测试通过不代表页面可达。
+（原 `pages/InvestigationGraph.jsx` 已并入 `/investigation` 中栏 Graph Tab——路由保留为
+重定向；原根目录 `pages/Investigation.jsx` 与 `components/investigation/workbench/*`
+已随 2026-09 清理删除。）
 
 ## 已知问题清单
 
-1. **侧栏死链 `/investigation-graph`**：`Layout.jsx:32` 生成该链接，`routes.jsx` 无此路由。
-   点击后 createBrowserRouter 找不到匹配，整页落到默认错误页。
-2. **侧栏缺 i18n 键**：`Layout.jsx:32-33` 用的 `nav.investigation_graph` /
-   `nav.investigation_workbench` 在 `locales/en.js`、`locales/zh.js` 中都不存在，
-   `t()` 回退为原样返回 key，中文界面侧栏会直接显示英文键名字符串。
-3. **mock 登录**（上文）。
-4. **/oss 读端点后端未实现**（上文）。
-5. **/analysis-center 渲染即抛错**（上文 useToast 导入错误）。
+1. **mock 登录**（上文）。
+2. **/oss 读端点后端未实现**（上文）。
+3. **/analysis-center 渲染即抛错**（上文 useToast 导入错误）。
+
+（原问题 1"侧栏死链 /investigation-graph"与 2"侧栏缺 i18n 键"已解决：链接移除、
+路由改为重定向，`nav.investigation_workbench` 键已补入 locales。）
 
 ## 验证
 
@@ -389,9 +402,10 @@ URL ?task_id= ──▶ useInvestigationEvents(taskId)
 cd web && npm run dev
 # 逐条访问：/dashboard /tasks /cases /timeline?task_id=<id> /files?task_id=<id>
 # /knowledge-graph /case-intelligence?task_id=<id> /investigation?task_id=<id>
-# 预期失败的：/investigation-graph（无路由）、/analysis-center（ErrorBoundary）、
+# /investigation-graph → 客户端重定向到 /investigation（透传 task_id，非失败）
+# 预期失败的：/analysis-center（ErrorBoundary）、
 # /oss 各数据 Tab（后端 404）
-cd web && npx vitest run src/routes.test.jsx   # 路由表断言
+cd web && npx vitest run src/routes.test.jsx   # 路由表断言（含重定向用例）
 ```
 
 

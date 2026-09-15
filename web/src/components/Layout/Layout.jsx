@@ -32,9 +32,7 @@ const Layout = ({ children }) => {
     { name: t('nav.investigation_workbench'), href: '/investigation', icon: FileSearch },
     { name: t('nav.android'), href: '/android', icon: Smartphone },
     { name: t('nav.memory'), href: '/memory', icon: Cpu },
-    { name: t('nav.wechat_forensics'), href: '/wechat-forensics', icon: MessageCircle },
-    { name: t('nav.qq_forensics'), href: '/qq-forensics', icon: MessageCircle },
-    { name: t('nav.wechat_graph'), href: '/wechat-graph', icon: MessageCircle },
+    { name: t('nav.im_forensics'), href: '/im-forensics', icon: MessageCircle },
     { name: t('nav.oss_analysis'), href: '/oss', icon: Cloud },
     { name: t('nav.search'), href: '/search', icon: Search },
     { name: t('nav.statistics'), href: '/statistics', icon: BarChart3 },
@@ -50,7 +48,7 @@ const Layout = ({ children }) => {
     location.pathname === path || (location.pathname.startsWith('/reports/') && path.startsWith('/reports/'));
 
   const getLinkUrl = (href) => {
-    const taskContextPages = ['/timeline', '/files', '/case-intelligence', '/analysis-center', '/knowledge-graph', '/investigation', '/android', '/memory', '/wechat-graph', '/oss', '/search', '/statistics'];
+    const taskContextPages = ['/timeline', '/files', '/case-intelligence', '/analysis-center', '/knowledge-graph', '/investigation', '/android', '/memory', '/im-forensics', '/oss', '/search', '/statistics'];
     if (currentTaskId && taskContextPages.includes(href)) {
       return `${href}?task_id=${currentTaskId}`;
     }
