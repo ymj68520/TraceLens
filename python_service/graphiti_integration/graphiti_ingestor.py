@@ -393,6 +393,19 @@ class GraphitiIngestor:
                     f"Ingestion attempt {attempt + 1}/{self.config.max_retries} "
                     f"failed for {episode.name}: {e}"
                 )
+                # A closed driver / None client means the ingestor was closed
+                # (or raced with a concurrent close) mid-ingestion. Rebuild the
+                # connection before the next attempt instead of burning the
+                # remaining retries on a dead client.
+                message = str(e)
+                if self._client is None or 'Driver closed' in message or "'NoneType' object" in message:
+                    self._client = None
+                    self._initialized = False
+                    try:
+                        await self.initialize()
+                        logger.info("Graphiti connection rebuilt before next ingestion attempt")
+                    except Exception as reconnect_error:
+                        logger.warning("Graphiti reconnect failed: %s", reconnect_error)
                 if attempt < self.config.max_retries - 1:
                     await asyncio.sleep(self.config.retry_delay * (attempt + 1))
         
