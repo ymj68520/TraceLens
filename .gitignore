@@ -450,3 +450,13 @@ src/http_agent/tests/test_http_agent.cpp.pre-gtest
 .env
 .env.*
 !.env.example
+
+# 误在 web/ 源码目录内运行 cmake 产生的 in-source 构建残留（曾以旧机器
+# 的 ForensicsProject 绝对路径生成并被误提交，跨机器必然失效）
+/web/**/CMakeFiles/
+/web/**/CMakeCache.txt
+/web/**/cmake_install.cmake
+/web/**/CTestTestfile.cmake
+/web/**/Makefile
+/web/**/*.o
+/web/**/*.o.d

@@ -1,2 +1,0 @@
-/usr/bin/ar qc libstructures.a CMakeFiles/structures.dir/ReferencesTable.cpp.o CMakeFiles/structures.dir/ReplaceStack.cpp.o CMakeFiles/structures.dir/SymbolsTable.cpp.o CMakeFiles/structures.dir/TreeDecorations.cpp.o
-/usr/bin/ranlib libstructures.a

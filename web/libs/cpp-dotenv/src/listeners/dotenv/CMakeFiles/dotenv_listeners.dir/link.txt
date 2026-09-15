@@ -1,2 +1,0 @@
-/usr/bin/ar qc libdotenv_listeners.a CMakeFiles/dotenv_listeners.dir/CheckerListener.cpp.o CMakeFiles/dotenv_listeners.dir/SymbolsListener.cpp.o
-/usr/bin/ranlib libdotenv_listeners.a
