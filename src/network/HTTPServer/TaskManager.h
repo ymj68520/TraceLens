@@ -32,6 +32,9 @@
 #include "TaskPersistence.h"
 #include "TaskWatchdog.h"
 
+class LinuxFilesAnalyzer;
+class WindowsFilesAnalyzer;
+
 class TaskManager {
 public:
     static TaskManager& instance() {
@@ -104,6 +107,18 @@ public:
     static void set_thread_heartbeat_task(const std::string& task_id);
     static const std::string& thread_heartbeat_task();
     void touch_heartbeat(const std::string& id);
+
+    // Wire a platform analyzer's artifact progress into PLATFORM_ANALYSIS
+    // phase progress. The per-artifact LLM enrichment is the longest stretch
+    // of the whole pipeline (hours on real images) and previously emitted no
+    // task progress at all, so overall_percentage sat frozen at the phase
+    // boundary for the entire duration.
+    void attachPlatformProgressCallback(LinuxFilesAnalyzer& analyzer, const std::string& task_id,
+                                        int base_progress, int per_scenario_progress,
+                                        const std::string& scenario_name);
+    void attachPlatformProgressCallback(WindowsFilesAnalyzer& analyzer, const std::string& task_id,
+                                        int base_progress, int per_scenario_progress,
+                                        const std::string& scenario_name);
 
     /**
      * @brief Update task progress

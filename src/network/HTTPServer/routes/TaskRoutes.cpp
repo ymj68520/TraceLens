@@ -8,9 +8,9 @@ namespace forensics {
 
 TaskRoutes::TaskRoutes(crow::App<>& app)
     : task_manager_(TaskManager::instance()),
+      monitoring_routes_(app),
       crud_routes_(app),
-      batch_routes_(app),
-      monitoring_routes_(app) {
+      batch_routes_(app) {
     // Register CORS OPTIONS handlers for all task routes
     register_cors_handlers(app);
 

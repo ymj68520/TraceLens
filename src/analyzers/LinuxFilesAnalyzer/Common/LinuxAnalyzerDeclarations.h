@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <functional>
+#include <cstddef>
 #include "LinuxDataTypes.h"
 
 // Forward declarations
@@ -36,6 +38,14 @@ public:
     void setOutputDatabasePath(const std::string& path) { outputDbPath_ = path; }
     void setExtractDirectory(const std::string& path) { extractDir_ = path; }
     void setSkipAI(bool skip) { skipAI_ = skip; }
+
+    // Artifact-level progress from the (very long) LLM enrichment phase.
+    // artifacts_done is cumulative across artifact tables; artifact_type is
+    // the table currently being enriched. Consumed by TaskManager to drive
+    // the PLATFORM_ANALYSIS phase percentage.
+    void setProgressCallback(std::function<void(size_t, const std::string&)> cb) {
+        progressCallback_ = std::move(cb);
+    }
 
     /**
      * @brief Main analysis entry point
@@ -227,6 +237,7 @@ private:
     std::string outputDbPath_;
     std::string extractDir_;
     bool skipAI_ = false;
+    std::function<void(size_t, const std::string&)> progressCallback_;
     DatabaseManager* dbManager_;
     std::unique_ptr<FileExtractor> fileExtractor_;
     std::unique_ptr<LinuxAnalysisDatabase> linuxDb_;

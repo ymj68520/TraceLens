@@ -291,9 +291,16 @@ void LinuxFilesAnalyzer::analyzeWithLLM() {
         options.includeAudit = true;
         options.includeBrowser = true;
 
-        // Progress callback for monitoring
-        auto progressCallback = [](const std::string& artifactType, int current, int total, const std::string& details) {
+        // Progress callback for monitoring: keeps the console trace and, when
+        // a task-level observer is attached (HTTP server mode), forwards the
+        // cumulative count so PLATFORM_ANALYSIS progress can advance.
+        size_t cumulativeArtifacts = 0;
+        auto progressCallback = [this, &cumulativeArtifacts](const std::string& artifactType, int current, int total, const std::string& details) {
             std::cout << "  [" << artifactType << "] " << current << "/" << total << " - " << details << std::endl;
+            if (progressCallback_) {
+                ++cumulativeArtifacts;
+                progressCallback_(cumulativeArtifacts, artifactType);
+            }
         };
 
         int analyzed = llmService.analyzeLinuxArtifacts(outputDbPath_, options, progressCallback);

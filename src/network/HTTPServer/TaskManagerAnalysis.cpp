@@ -24,6 +24,45 @@ using forensics::TaskPersistence;
 using forensics::TaskWatchdog;
 using forensics::FileFilter;
 
+// Platform-artifact progress → task progress. The artifact walks stream
+// rows whose total is unknown upfront (per-table caps, many tables), so the
+// phase percentage approaches its scenario ceiling asymptotically; the phase
+// description carries the concrete counter. Throttled to one update per 5
+// artifacts (~1-2 minutes at real LLM pacing).
+void TaskManager::attachPlatformProgressCallback(LinuxFilesAnalyzer& analyzer, const std::string& task_id,
+                                                 int base_progress, int per_scenario_progress,
+                                                 const std::string& scenario_name) {
+    analyzer.setProgressCallback(
+        [this, task_id, base_progress, per_scenario_progress, scenario_name](
+            size_t artifacts_done, const std::string& artifact_type) {
+            if (artifacts_done == 0 || artifacts_done % 5 != 0) return;
+            const double inner = 99.0 * (1.0 - 1.0 / (1.0 + static_cast<double>(artifacts_done) / 800.0));
+            int pct = base_progress + static_cast<int>(inner * per_scenario_progress / 100.0);
+            const int ceiling = base_progress + per_scenario_progress - 1;
+            if (pct > ceiling) pct = ceiling;
+            update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, pct,
+                            "Analyzing " + scenario_name + " artifacts (" +
+                                std::to_string(artifacts_done) + " done, current: " + artifact_type + ")...");
+        });
+}
+
+void TaskManager::attachPlatformProgressCallback(WindowsFilesAnalyzer& analyzer, const std::string& task_id,
+                                                 int base_progress, int per_scenario_progress,
+                                                 const std::string& scenario_name) {
+    analyzer.setProgressCallback(
+        [this, task_id, base_progress, per_scenario_progress, scenario_name](
+            size_t artifacts_done, const std::string& artifact_type) {
+            if (artifacts_done == 0 || artifacts_done % 5 != 0) return;
+            const double inner = 99.0 * (1.0 - 1.0 / (1.0 + static_cast<double>(artifacts_done) / 800.0));
+            int pct = base_progress + static_cast<int>(inner * per_scenario_progress / 100.0);
+            const int ceiling = base_progress + per_scenario_progress - 1;
+            if (pct > ceiling) pct = ceiling;
+            update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, pct,
+                            "Analyzing " + scenario_name + " artifacts (" +
+                                std::to_string(artifacts_done) + " done, current: " + artifact_type + ")...");
+        });
+}
+
 void TaskManager::start_analysis(const std::string& task_id) {
     if (!analysis_pool_) {
         std::cerr << "CRITICAL: ThreadPool not initialized in TaskManager" << std::endl;
@@ -518,6 +557,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     if (is_task_cancelled(task_id)) { return; }
 
                     int base_progress = (scenario_index * 100) / total_scenarios;
+                    int per_scenario_progress = std::max(1, 100 / total_scenarios);
                     std::string scenario_name = scenario_to_string(scenario);
                     update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, base_progress,
                         "Analyzing " + scenario_name + " artifacts...");
@@ -549,6 +589,8 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 auto windowsAnalyzer = std::make_unique<WindowsFilesAnalyzer>(imagePath, dbManager.get());
                                 std::string windowsDbPath = pm.getTaskDbPaths(task_id, baseName).windowsDb.string();
                                 windowsAnalyzer->setOutputDatabasePath(windowsDbPath);
+                                attachPlatformProgressCallback(*windowsAnalyzer, task_id, base_progress,
+                                                               per_scenario_progress, scenario_name);
                                 if (windowsAnalyzer->initialize()) {
                                     windowsAnalyzer->analyzeWindowsData();
                                 } else {
@@ -565,6 +607,8 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 auto linuxAnalyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
                                 std::string linuxDbPath = pm.getTaskDbPaths(task_id, baseName).linuxDb.string();
                                 linuxAnalyzer->setOutputDatabasePath(linuxDbPath);
+                                attachPlatformProgressCallback(*linuxAnalyzer, task_id, base_progress,
+                                                               per_scenario_progress, scenario_name);
                                 if (linuxAnalyzer->initialize()) {
                                     linuxAnalyzer->analyzeLinuxData();
                                 } else {
@@ -581,6 +625,8 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 auto serverAnalyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
                                 std::string serverDbPath = pm.getTaskDbPaths(task_id, baseName).ossDb.string();
                                 serverAnalyzer->setOutputDatabasePath(serverDbPath);
+                                attachPlatformProgressCallback(*serverAnalyzer, task_id, base_progress,
+                                                               per_scenario_progress, scenario_name);
                                 if (serverAnalyzer->initialize()) {
                                     serverAnalyzer->analyzeServerCloudArtifacts();
                                 } else {
