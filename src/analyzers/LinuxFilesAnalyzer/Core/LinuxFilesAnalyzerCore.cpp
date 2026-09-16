@@ -117,6 +117,12 @@ void LinuxFilesAnalyzer::analyzeLinuxData() {
     analyzeCronJobs();
     analyzeSystemdServices();
     analyzeInstalledPackages();
+    // analyzeInstalledPackages() only reads the dpkg status file, so RHEL-family
+    // images produce nothing. analyzeRpmPackages() was written but never wired.
+    // NOTE: it only parses the modern SQLite RPM database (rpmdb.sqlite, RPM
+    // 4.16+). The legacy BerkeleyDB (/var/lib/rpm/Packages) is detected and
+    // logged but yields no rows — parsing it needs libdb and is out of scope.
+    analyzeRpmPackages();
     analyzeNetworkConfiguration();
 
     // Phase 5: Security artifacts
@@ -175,6 +181,9 @@ void LinuxFilesAnalyzer::analyzeLinuxData() {
 
     // Phase 16: DNS configuration
     analyzeDNSConfiguration();
+
+    // Phase 16b: Host identity — feeds the report's 设备基本信息 section.
+    analyzeHostInformation();
 
     // Phase 17: CUPS logs
     analyzeCUPSLogs();

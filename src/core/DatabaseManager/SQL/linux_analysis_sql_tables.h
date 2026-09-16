@@ -780,6 +780,29 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
     CREATE INDEX IF NOT EXISTS idx_anomalies_type ON linux_anomalies(anomaly_type);
     CREATE INDEX IF NOT EXISTS idx_anomalies_severity ON linux_anomalies(severity);
     CREATE INDEX IF NOT EXISTS idx_anomalies_detected_at ON linux_anomalies(detected_at);
+
+    -- Host Information (one row per analysed image)
+    -- Identity only the guest OS knows. No other table carries it: hostname was
+    -- previously only LOG_INFO'd from /etc/hostname, and distro / kernel /
+    -- architecture were not persisted anywhere at all. Sources are the guest's
+    -- own files (/etc/os-release, /etc/hostname, /etc/machine-id, and the kernel
+    -- banner in /var/log/dmesg — a disk image has no live /proc to read).
+    CREATE TABLE IF NOT EXISTS linux_host_info (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        hostname TEXT,
+        distro TEXT,
+        distro_version TEXT,
+        kernel_version TEXT,
+        architecture TEXT,
+        timezone TEXT,
+        machine_id TEXT,
+        -- Modules INSTALLED on disk (counted under /usr/lib/modules/<release>/),
+        -- which is NOT the same as the modules loaded in the running kernel:
+        -- a disk image has no /proc/modules to consult. Named explicitly so the
+        -- two are never confused.
+        kernel_modules_installed INTEGER,
+        collected_at INTEGER
+    );
 )";
 
 inline constexpr const char* CREATE_LINUX_ANALYSIS_PROGRESS_TABLE = R"(

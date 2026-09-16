@@ -145,6 +145,9 @@ public:
     // Phase 16: DNS configuration
     void analyzeDNSConfiguration();
 
+    // Phase 16b: Host identity (hostname / distro / kernel / architecture)
+    void analyzeHostInformation();
+
     // Phase 17: CUPS logs
     void analyzeCUPSLogs();
 

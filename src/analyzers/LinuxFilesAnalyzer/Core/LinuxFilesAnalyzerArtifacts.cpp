@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iterator>
 #include <sstream>
+#include <ctime>
 
 #include <sqlite3.h>
 #include <pugixml.hpp>
@@ -338,6 +339,186 @@ void LinuxFilesAnalyzer::analyzeDNSConfiguration() {
 
     AuditLog::instance().log("SYSTEM", "DNS_ANALYSIS_COMPLETE",
         "DNS analysis completed: " + std::to_string(processedCount) + " entries");
+}
+
+// ============================================================================
+// Host identity (hostname / distro / kernel / architecture / timezone)
+// ============================================================================
+
+namespace {
+
+/// Trim surrounding whitespace and the quotes /etc/os-release values carry.
+std::string trimHostValue(const std::string& value) {
+    const auto begin = value.find_first_not_of(" \t\r\n\"'");
+    if (begin == std::string::npos) return "";
+    const auto end = value.find_last_not_of(" \t\r\n\"'");
+    return value.substr(begin, end - begin + 1);
+}
+
+/// First line of an extracted guest file ("" when it cannot be read).
+std::string readFirstLine(const std::string& path) {
+    std::ifstream in(path);
+    if (!in.is_open()) return "";
+    std::string line;
+    std::getline(in, line);
+    return trimHostValue(line);
+}
+
+/// Suffixes a kernel release is built with, e.g. "...elrepo.x86_64".
+const char* const kArchSuffixes[] = {
+    "x86_64", "aarch64", "armv7l", "armv6l", "i686", "i586",
+    "ppc64le", "ppc64", "s390x", "riscv64", "mips64", "mips",
+};
+
+/// Architecture embedded in a kernel release string, "" when unrecognised.
+std::string archFromKernelRelease(const std::string& release) {
+    for (const char* suffix : kArchSuffixes) {
+        const std::string s(suffix);
+        if (release.size() <= s.size()) continue;
+        const auto at = release.size() - s.size();
+        if (release.compare(at, s.size(), s) != 0) continue;
+        const char separator = release[at - 1];
+        if (separator == '.' || separator == '-' || separator == '_') return s;
+    }
+    return "";
+}
+
+} // namespace
+
+// Collects the identity of the analysed host from the guest's own files.
+// Everything here is read-only evidence: a disk image has no live /proc, so the
+// running kernel is identified from the dmesg banner rather than uname.
+void LinuxFilesAnalyzer::analyzeHostInformation() {
+    LinuxHostInfo host;
+    host.collectedAt = static_cast<int64_t>(std::time(nullptr));
+
+    // /etc/hostname is authoritative for the node name.
+    for (const auto& file : queryFilesByPattern("etc/hostname")) {
+        const std::string extractPath = getExtractPath("host/hostname");
+        if (!extractFileToPath(file.inode, extractPath, file.partitionNum)) continue;
+        host.hostname = readFirstLine(extractPath);
+        if (!host.hostname.empty()) break;
+    }
+
+    // /etc/os-release is the modern standard; distro-specific files are fallbacks.
+    for (const auto& file : queryFilesByPattern("etc/os-release")) {
+        const std::string extractPath = getExtractPath("host/os-release");
+        if (!extractFileToPath(file.inode, extractPath, file.partitionNum)) continue;
+        std::ifstream in(extractPath);
+        if (!in.is_open()) continue;
+        std::string line, name, pretty, versionId;
+        while (std::getline(in, line)) {
+            if (line.rfind("PRETTY_NAME=", 0) == 0) {
+                pretty = trimHostValue(line.substr(12));
+            } else if (line.rfind("NAME=", 0) == 0) {
+                name = trimHostValue(line.substr(5));
+            } else if (line.rfind("VERSION_ID=", 0) == 0) {
+                versionId = trimHostValue(line.substr(11));
+            }
+        }
+        host.distro = !pretty.empty() ? pretty : name;
+        host.distroVersion = versionId;
+        if (!host.distro.empty()) break;
+    }
+    if (host.distro.empty()) {
+        for (const char* candidate : {"etc/redhat-release", "etc/centos-release",
+                                      "etc/fedora-release", "etc/debian_version"}) {
+            for (const auto& file : queryFilesByPattern(candidate)) {
+                const std::string extractPath = getExtractPath("host/" + file.name);
+                if (!extractFileToPath(file.inode, extractPath, file.partitionNum)) continue;
+                host.distro = readFirstLine(extractPath);
+                if (!host.distro.empty()) break;
+            }
+            if (!host.distro.empty()) break;
+        }
+    }
+
+    // dmesg opens with the running kernel: "Linux version <release> (<builder>)".
+    for (const auto& file : queryFilesByPattern("var/log/dmesg")) {
+        const std::string extractPath = getExtractPath("host/dmesg");
+        if (!extractFileToPath(file.inode, extractPath, file.partitionNum)) continue;
+        std::ifstream in(extractPath);
+        if (!in.is_open()) continue;
+        std::string line;
+        while (std::getline(in, line)) {
+            const auto at = line.find("Linux version ");
+            if (at == std::string::npos) continue;
+            std::istringstream iss(line.substr(at + 14));
+            std::string release;
+            iss >> release;
+            host.kernelVersion = release;
+            host.architecture = archFromKernelRelease(release);
+            break;
+        }
+        if (!host.kernelVersion.empty()) break;
+    }
+    // Fallback: the installed modules tree is named for its kernel release.
+    if (host.kernelVersion.empty()) {
+        for (const auto& file : queryFilesByPattern("%/lib/modules/%")) {
+            const auto marker = file.path.find("/lib/modules/");
+            if (marker == std::string::npos) continue;
+            const std::string rest = file.path.substr(marker + 13);
+            const auto slash = rest.find('/');
+            if (slash == std::string::npos || slash == 0) continue;
+            host.kernelVersion = rest.substr(0, slash);
+            host.architecture = archFromKernelRelease(host.kernelVersion);
+            break;
+        }
+    }
+
+    // Timezone: RHEL/CentOS keep it in sysconfig, Debian in /etc/timezone.
+    for (const auto& file : queryFilesByPattern("etc/sysconfig/clock")) {
+        const std::string extractPath = getExtractPath("host/clock");
+        if (!extractFileToPath(file.inode, extractPath, file.partitionNum)) continue;
+        std::ifstream in(extractPath);
+        if (!in.is_open()) continue;
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.rfind("ZONE=", 0) == 0) {
+                host.timezone = trimHostValue(line.substr(5));
+                break;
+            }
+        }
+        if (!host.timezone.empty()) break;
+    }
+    if (host.timezone.empty()) {
+        for (const auto& file : queryFilesByPattern("etc/timezone")) {
+            const std::string extractPath = getExtractPath("host/timezone");
+            if (!extractFileToPath(file.inode, extractPath, file.partitionNum)) continue;
+            host.timezone = readFirstLine(extractPath);
+            if (!host.timezone.empty()) break;
+        }
+    }
+
+    for (const auto& file : queryFilesByPattern("etc/machine-id")) {
+        const std::string extractPath = getExtractPath("host/machine-id");
+        if (!extractFileToPath(file.inode, extractPath, file.partitionNum)) continue;
+        host.machineId = readFirstLine(extractPath);
+        if (!host.machineId.empty()) break;
+    }
+
+    // Modules installed on disk. Deliberately NOT reported as "loaded": a disk
+    // image has no /proc/modules, so the running kernel's set is unknowable.
+    // Built-ins are linked into the kernel image and are not .ko files either.
+    for (const auto& file : queryFilesByPattern("%/lib/modules/%")) {
+        const std::string& path = file.path;
+        const auto dot = path.rfind(".ko");
+        if (dot == std::string::npos) continue;
+        const std::string suffix = path.substr(dot);
+        if (suffix != ".ko" && suffix != ".ko.xz" && suffix != ".ko.gz" &&
+            suffix != ".ko.zst") {
+            continue;
+        }
+        ++host.kernelModulesInstalled;
+    }
+
+    if (linuxDb_) {
+        linuxDb_->insertHostInfo(host);
+    }
+    AuditLog::instance().log("SYSTEM", "LINUX_HOST_INFO",
+        "Host identity: " + host.hostname + " / " + host.distro + " " +
+        host.distroVersion + " / kernel " + host.kernelVersion + " " + host.architecture +
+        " / " + std::to_string(host.kernelModulesInstalled) + " modules installed");
 }
 
 // ============================================================================

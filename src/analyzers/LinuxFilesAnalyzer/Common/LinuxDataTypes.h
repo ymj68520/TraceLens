@@ -84,6 +84,26 @@ struct LinuxGroupInfo {
     EvidenceProvenance provenance;   // Evidence provenance
 };
 
+// Host identity of the analysed system — one row per image.
+//
+// Read from the guest's own files: /etc/hostname, /etc/os-release (plus the
+// /etc/*-release fallbacks), /etc/machine-id, /etc/sysconfig/clock, and the
+// kernel banner in /var/log/dmesg. A disk image has no live /proc, so the
+// running kernel is identified from dmesg rather than uname.
+struct LinuxHostInfo {
+    std::string hostname;            // /etc/hostname
+    std::string distro;              // DISTRO name (PRETTY_NAME / NAME, or /etc/*-release)
+    std::string distroVersion;       // VERSION_ID
+    std::string kernelVersion;       // Kernel release from the dmesg banner
+    std::string architecture;        // e.g. x86_64, from the same banner
+    std::string timezone;            // /etc/sysconfig/clock ZONE= (best effort)
+    std::string machineId;           // /etc/machine-id
+    // Modules installed under /usr/lib/modules/<release>/ — NOT the modules the
+    // running kernel had loaded, which a disk image cannot show (no /proc).
+    int kernelModulesInstalled = 0;
+    int64_t collectedAt = 0;         // Collection time (unix seconds)
+};
+
 // Login record (wtmp/btmp/lastlog)
 struct LinuxLoginRecord {
     std::string username;            // Username

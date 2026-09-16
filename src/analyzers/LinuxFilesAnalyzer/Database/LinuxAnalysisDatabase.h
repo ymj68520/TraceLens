@@ -105,11 +105,16 @@ public:
     // Group operations
     // ========================================================================
     bool insertGroupInfo(const LinuxGroupInfo& group);
-    
+
     std::vector<LinuxGroupInfo> queryGroupsSafe(const LinuxAnalysis::QueryBuilder& qb);
-    
+
     [[deprecated("Use queryGroupsSafe with QueryBuilder for SQL injection protection")]]
     std::vector<LinuxGroupInfo> queryGroups(const std::string& whereClause = "");
+
+    // ========================================================================
+    // Host information (one row per analysed image)
+    // ========================================================================
+    bool insertHostInfo(const LinuxHostInfo& host);
 
     // ========================================================================
     // Login record operations
