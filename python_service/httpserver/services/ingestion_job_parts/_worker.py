@@ -23,6 +23,107 @@ from ..ingestion_job_models import (
 logger = logging.getLogger(__name__)
 
 
+
+def _read_episode_source_rows(
+    files_db: str,
+    events_db: Optional[str],
+    analyzed_only: bool,
+) -> tuple[list, list, Optional[str]]:
+    """Read episode source rows from the task SQLite databases.
+
+    Runs in a worker thread (see ``_ingest_episodes_path_a``): these are
+    whole-table reads, and while the C++ pipeline holds write locks on the
+    same databases each connect can busy-wait for the full busy_timeout.
+    Running that on the event loop froze every HTTP endpoint for the wait
+    duration (observed as a 46 s KG page load during the 2026-09-15 GUI
+    test), so the busy_timeout is kept small (2 s) and the reads are moved
+    off-loop (SPEC docs/specs/kg-ingestion-hardening.md §A1).
+
+    Returns (file_descs, cluster_descs, error) — error is non-fatal detail.
+    """
+    import sqlite3
+
+    def _text_factory(bytes_):
+        if bytes_ is None:
+            return None
+        if isinstance(bytes_, str):
+            return bytes_
+        try:
+            return bytes_.decode('utf-8')
+        except UnicodeDecodeError:
+            return bytes_.decode('gbk', errors='replace')
+
+    error: Optional[str] = None
+    file_descs: list = []
+    with sqlite3.connect(files_db, timeout=2) as conn:
+        conn.row_factory = sqlite3.Row
+        # Handle non-UTF-8 filenames (e.g. GBK filenames on Chinese Windows)
+        conn.text_factory = _text_factory
+        # Ensure schema has the description columns (added lazily by analysis pipeline)
+        # We JOIN against the files table to also surface category/md5/name/size
+        # which are high-value extraction signals (hashes and category names
+        # are exactly what the default JSON prompt throws away).
+        where = (
+            "WHERE fd.description IS NOT NULL AND fd.description != ''"
+            if analyzed_only else ""
+        )
+        try:
+            cur = conn.execute(
+                f"""
+                SELECT fd.file_path, fd.description, fd.summary,
+                       fd.keywords, fd.is_relevant,
+                       f.category, f.md5, f.name, f.size, f.extension,
+                       f.type AS file_type
+                FROM file_descriptions fd
+                LEFT JOIN files f ON f.path = fd.file_path
+                {where}
+                """
+            )
+            for row in cur.fetchall():
+                desc = row["description"] or row["summary"] or ""
+                if desc:
+                    file_descs.append({
+                        "file_path": row["file_path"],
+                        "description": desc,
+                        "summary": row["summary"],
+                        "keywords": row["keywords"],
+                        "category": row["category"],
+                        "md5": row["md5"],
+                        "name": row["name"],
+                        "file_type": row["file_type"],
+                        "is_relevant": row["is_relevant"],
+                        "success": True,
+                    })
+        except sqlite3.OperationalError:
+            # file_descriptions table may not exist yet for this task
+            error = "file_descriptions table missing"
+
+    # Event cluster analyses (optional)
+    cluster_descs: list = []
+    if events_db and Path(events_db).exists():
+        with sqlite3.connect(events_db, timeout=2) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.text_factory = _text_factory
+            try:
+                cur = conn.execute(
+                    "SELECT DISTINCT event_type, llm_description, llm_summary, "
+                    "(timestamp / 60) as time_window FROM events "
+                    "WHERE llm_description IS NOT NULL GROUP BY event_type, time_window"
+                )
+                for row in cur.fetchall():
+                    desc = row["llm_description"] or row["llm_summary"] or ""
+                    if desc:
+                        cluster_descs.append({
+                            "event_type": row["event_type"],
+                            "time_window": row["time_window"],
+                            "analysis": {"description": desc},
+                        })
+            except sqlite3.OperationalError:
+                pass  # events table may be absent
+
+    return file_descs, cluster_descs, error
+
+
 class IngestionJobWorkerMixin:
     """Auto-extracted method group; see module docstring."""
 
@@ -468,84 +569,14 @@ class IngestionJobWorkerMixin:
                 stats["error"] = f"files_db not found: {files_db}"
                 return stats
 
-            import sqlite3
-            file_descs: list = []
-            with sqlite3.connect(files_db, timeout=10) as conn:
-                conn.row_factory = sqlite3.Row
-                # Handle non-UTF-8 filenames (e.g. GBK filenames on Chinese Windows)
-                def _text_factory(bytes_):
-                    if bytes_ is None:
-                        return None
-                    if isinstance(bytes_, str):
-                        return bytes_
-                    try:
-                        return bytes_.decode('utf-8')
-                    except UnicodeDecodeError:
-                        return bytes_.decode('gbk', errors='replace')
-                conn.text_factory = _text_factory
-                # Ensure schema has the description columns (added lazily by analysis pipeline)
-                # We JOIN against the files table to also surface category/md5/name/size
-                # which are high-value extraction signals (hashes and category names
-                # are exactly what the default JSON prompt throws away).
-                where = (
-                    "WHERE fd.description IS NOT NULL AND fd.description != ''"
-                    if analyzed_only else ""
-                )
-                try:
-                    cur = conn.execute(
-                        f"""
-                        SELECT fd.file_path, fd.description, fd.summary,
-                               fd.keywords, fd.is_relevant,
-                               f.category, f.md5, f.name, f.size, f.extension,
-                               f.type AS file_type
-                        FROM file_descriptions fd
-                        LEFT JOIN files f ON f.path = fd.file_path
-                        {where}
-                        """
-                    )
-                    for row in cur.fetchall():
-                        desc = row["description"] or row["summary"] or ""
-                        if desc:
-                            file_descs.append({
-                                "file_path": row["file_path"],
-                                "description": desc,
-                                "summary": row["summary"],
-                                "keywords": row["keywords"],
-                                "category": row["category"],
-                                "md5": row["md5"],
-                                "name": row["name"],
-                                "file_type": row["file_type"],
-                                "is_relevant": row["is_relevant"],
-                                "success": True,
-                            })
-                except sqlite3.OperationalError:
-                    # file_descriptions table may not exist yet for this task
-                    stats["error"] = "file_descriptions table missing"
-
-            # Event cluster analyses (optional)
-            cluster_descs: list = []
-            if events_db and Path(events_db).exists():
-                import sqlite3
-                with sqlite3.connect(events_db, timeout=10) as conn:
-                    conn.row_factory = sqlite3.Row
-                    # Handle non-UTF-8 filenames
-                    conn.text_factory = _text_factory
-                    try:
-                        cur = conn.execute(
-                            "SELECT DISTINCT event_type, llm_description, llm_summary, "
-                            "(timestamp / 60) as time_window FROM events "
-                            "WHERE llm_description IS NOT NULL GROUP BY event_type, time_window"
-                        )
-                        for row in cur.fetchall():
-                            desc = row["llm_description"] or row["llm_summary"] or ""
-                            if desc:
-                                cluster_descs.append({
-                                    "event_type": row["event_type"],
-                                    "time_window": row["time_window"],
-                                    "analysis": {"description": desc},
-                                })
-                    except sqlite3.OperationalError:
-                        pass  # events table may be absent
+            # Whole-table SQLite reads run in a thread: under C++ write
+            # contention each connect can busy-wait the full busy_timeout,
+            # and that wait must not freeze the event loop (SPEC §A1).
+            file_descs, cluster_descs, read_error = await asyncio.to_thread(
+                _read_episode_source_rows, files_db, events_db, analyzed_only
+            )
+            if read_error:
+                stats["error"] = read_error
 
             if not file_descs and not cluster_descs:
                 stats["error"] = stats.get("error") or "no analyzed descriptions to ingest"
