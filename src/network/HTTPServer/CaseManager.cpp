@@ -1,5 +1,6 @@
 #include "CaseManager.h"
 #include "PathManager/PathManager.h"
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 
@@ -66,6 +67,22 @@ bool CaseManager::delete_case(const std::string& case_id) {
     cases_.erase(case_id);
     save_cases_internal();
     return true;
+}
+
+bool CaseManager::remove_task_from_all_cases(const std::string& task_id) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    bool changed = false;
+    for (auto& [id, fc] : cases_) {
+        auto& ids = fc.task_ids;
+        if (std::find(ids.begin(), ids.end(), task_id) != ids.end()) {
+            ids.erase(std::remove(ids.begin(), ids.end(), task_id), ids.end());
+            fc.task_analysis_states.erase(task_id);
+            fc.updated_at = std::chrono::system_clock::now();
+            changed = true;
+        }
+    }
+    if (changed) save_cases_internal();
+    return changed;
 }
 
 // ── Status ────────────────────────────────────────────────────────────────────

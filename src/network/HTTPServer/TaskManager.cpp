@@ -3,6 +3,7 @@
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
 #include "LLMPythonProxy.h"
+#include "CaseManager.h"
 #include "network/HTTPServer/LLMScratch.h"
 #include "EventClusterAnalyzer.h"
 #include "ConfigManager/ConfigManager.h"
@@ -362,6 +363,10 @@ bool TaskManager::delete_task(const std::string& id) {
         save_tasks_internal();
     }
 
+    // Detach the deleted task from every case that still references it so
+    // cases don't accumulate dead task IDs and stale analysis states.
+    CaseManager::instance().remove_task_from_all_cases(id);
+
     // Attempt to delete Graphiti data in Neo4j via Python API
     auto& proxy = forensics::LLMPythonProxy::instance();
     proxy.deleteGraphitiData(id);
@@ -473,20 +478,28 @@ nlohmann::json TaskManager::get_task_statistics() {
 
 // Cleanup operations
 int TaskManager::cleanup_completed_tasks(int max_age_hours) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    auto cutoff_time = std::chrono::system_clock::now() - std::chrono::hours(max_age_hours);
+    // Collect victims first, then route each through delete_task so cleanup
+    // performs the SAME full deletion as the UI: task dir, Neo4j graph via
+    // the Python proxy, LLM scratch and case references. The previous
+    // memory-only erase left orphan directories and ghost graphs behind.
+    std::vector<std::string> victims;
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        auto cutoff_time = std::chrono::system_clock::now() - std::chrono::hours(max_age_hours);
 
-    auto it = tasks_.begin();
+        for (const auto& [id, task] : tasks_) {
+            if ((task.status == TaskStatus::COMPLETED || task.status == TaskStatus::FAILED || task.status == TaskStatus::CANCELLED) &&
+                task.completed_time < cutoff_time) {
+                victims.push_back(id);
+            }
+        }
+    }
+
     int removed = 0;
-    while (it != tasks_.end()) {
-        const auto& task = it->second;
-        if ((task.status == TaskStatus::COMPLETED || task.status == TaskStatus::FAILED || task.status == TaskStatus::CANCELLED) &&
-            task.completed_time < cutoff_time) {
-            add_audit_log(task.id, "CLEANUP", "Task cleaned up after completion");
-            it = tasks_.erase(it);
+    for (const auto& id : victims) {
+        add_audit_log(id, "CLEANUP", "Task cleaned up after completion");
+        if (delete_task(id)) {
             removed++;
-        } else {
-            ++it;
         }
     }
     return removed;

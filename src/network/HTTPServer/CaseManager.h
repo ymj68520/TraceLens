@@ -47,6 +47,9 @@ public:
     /** Delete a case record (does NOT delete contained tasks). */
     bool delete_case(const std::string& case_id);
 
+    /** Drop every reference to a task from all cases (task was deleted). */
+    bool remove_task_from_all_cases(const std::string& task_id);
+
     // ── Status ──────────────────────────────────────────────────────────────
 
     /** Update the case status (e.g., ANALYSING → COMPLETED). */
