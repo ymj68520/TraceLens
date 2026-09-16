@@ -21,6 +21,7 @@ test('forwards only the backend Timeline descriptor for cluster analysis', async
     event_type: 'MODIFIED',
     parent_directory: '/foo/',
     bucket_start_timestamp: 36900,
+    bucket_epoch_offset: 28800,
   };
   pythonApi.post.mockResolvedValue({ success: true });
 
@@ -34,6 +35,7 @@ test('forwards only the backend Timeline descriptor for cluster analysis', async
       bucket_seconds: 300,
       event_type: 'MODIFIED',
       parent_directory: '/foo/',
+      bucket_epoch_offset: 28800,
     },
   });
   expect(pythonApi.post).toHaveBeenNthCalledWith(2, '/api/llm/analyze-event-cluster', {
@@ -43,6 +45,7 @@ test('forwards only the backend Timeline descriptor for cluster analysis', async
       bucket_seconds: 300,
       event_type: 'MODIFIED',
       parent_directory: '/foo/',
+      bucket_epoch_offset: 28800,
     },
     trigger: 'timeline_manual',
     prompt: '请重新审视该事件簇，深度挖掘潜在威胁。',

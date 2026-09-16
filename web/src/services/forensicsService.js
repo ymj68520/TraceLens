@@ -22,12 +22,22 @@ const getClusterDescriptor = (cluster) => {
   if (!descriptor.event_type || typeof descriptor.event_type !== 'string') {
     throw new Error('Invalid cluster: backend group descriptor event_type is required');
   }
-  return {
+  // bucket_epoch_offset MUST be forwarded: the backend aggregates cluster
+  // members with local-midnight window alignment (SPEC §4.2). Dropping it
+  // made the validator fall back to UTC (offset 0), so the member query
+  // matched nothing and every analysis request died with 404 "No events
+  // found in this cluster".
+  const result = {
     bucket_index: Number(descriptor.bucket_index),
     bucket_seconds: Number(descriptor.bucket_seconds),
     event_type: descriptor.event_type,
     parent_directory: descriptor.parent_directory || '',
   };
+  if (descriptor.bucket_epoch_offset !== undefined && descriptor.bucket_epoch_offset !== null) {
+    const offset = Number(descriptor.bucket_epoch_offset);
+    if (Number.isInteger(offset)) result.bucket_epoch_offset = offset;
+  }
+  return result;
 };
 
 export const analyzeEventCluster = async (taskId, cluster, options = {}) => {

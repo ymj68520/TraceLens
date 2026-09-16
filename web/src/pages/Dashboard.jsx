@@ -16,7 +16,7 @@ const fadeUp = { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, tra
 
 const Dashboard = () => {
   const dispatch = useDispatch();
-  const { tasks, status, statistics } = useSelector((state) => state.tasks);
+  const { tasks, status, statistics, pagination } = useSelector((state) => state.tasks);
   const { autoRefresh, refreshInterval } = useSelector((state) => state.settings);
 
   const [systemHealth, setSystemHealth] = useState({ status: 'checking', message: 'Checking...' });
@@ -100,14 +100,16 @@ const Dashboard = () => {
         failed: byStatus.failed ?? 0,
       };
     }
-    // Fallback until the statistics request resolves.
+    // Fallback until the statistics request resolves. The `tasks` array is a
+    // shared cache that races between limit-10 and limit-1000 fetches, so its
+    // length is not trustworthy as a total — prefer pagination.total.
     return {
-      total: tasks.length,
+      total: pagination?.total ?? tasks.length,
       running: tasks.filter((t) => t.status === 'running').length,
       completed: tasks.filter((t) => t.status === 'completed').length,
       failed: tasks.filter((t) => t.status === 'failed').length,
     };
-  }, [tasks, statistics]);
+  }, [tasks, statistics, pagination]);
 
   const statCards = [
     { label: 'Total Tasks', value: stats.total, Icon: ListTodo, gradient: 'from-primary-500/20 to-primary-600/10 dark:from-primary-500/10 dark:to-primary-600/5', iconColor: 'text-primary-500' },
