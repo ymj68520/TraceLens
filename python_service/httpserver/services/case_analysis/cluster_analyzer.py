@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from ...config import Settings
 from ..investigation_evidence import PARENT_DIRECTORY_SQL, TIMELINE_MAX_BUCKET_SECONDS
 from .adaptive import choose_bucket, estimate_bucket_ladder
+from .file_schema import latest_analysis
 from .schema import (
     create_analysis_run,
     ensure_cluster_analysis_schema,
@@ -677,8 +678,8 @@ class ClusterAnalyzer:
             raise
 
     @staticmethod
-    def _chunk_text(text: str, max_chars: int = 3000) -> List[str]:
-        """Split text into chunks, breaking at paragraph boundaries."""
+    def _chunk_text(text: str, max_chars: Optional[int] = None) -> List[str]:
+        """Split text into chunks (shared episode budget by default, D11)."""
         return chunk_text(text, max_chars)
 
     async def ingest_clusters_to_graphiti(
@@ -739,10 +740,13 @@ class ClusterAnalyzer:
                 return True
 
             logger.info(f"Ingesting {len(episodes)} cluster episodes into Graphiti for task {task_id}")
-            result = await ingestor.batch_ingest(
-                episodes=episodes,
-                group_id=task_id,
-            )
+            # §B1 (kg-ingestion-hardening): serialize with every other writer
+            # on this group (file-episode dispatch, worker gap-fill, route path).
+            async with self._graphiti_service.lock_for_group(task_id):
+                result = await ingestor.batch_ingest(
+                    episodes=episodes,
+                    group_id=task_id,
+                )
             successful = getattr(result, 'successful', 0)
             total = getattr(result, 'total_episodes', len(episodes))
             logger.info(f"Cluster Graphiti ingestion complete: {successful}/{total} successful")
@@ -760,8 +764,15 @@ class ClusterAnalyzer:
             return False
 
 
-def chunk_text(text: str, max_chars: int = 3000) -> List[str]:
-    """Split text into chunks, breaking at paragraph boundaries."""
+def chunk_text(text: str, max_chars: Optional[int] = None) -> List[str]:
+    """Split text into chunks, breaking at paragraph boundaries.
+
+    ``max_chars`` defaults to the shared episode budget (SPEC file-analysis
+    D11): floor(effective GRAPHITI_MAX_EPISODE_TOKENS × 3).
+    """
+    if max_chars is None:
+        from ..graphiti_parts.episode_budget import episode_chunk_chars
+        max_chars = episode_chunk_chars()
     if len(text) <= max_chars:
         return [text]
 
@@ -779,11 +790,16 @@ def chunk_text(text: str, max_chars: int = 3000) -> List[str]:
     return chunks if chunks else [text]
 
 
-def build_analysis_episodes(analysis: Dict[str, Any]) -> List[Any]:
+def build_analysis_episodes(
+    analysis: Dict[str, Any],
+    extra_body: Optional[Dict[str, Any]] = None,
+) -> List[Any]:
     """Build Graphiti episodes for one persisted analysis record (SPEC §9).
 
     The episode name embeds the full cluster coordinate and the record id so
     re-analyses produce distinct, citable episodes instead of overwriting.
+    ``extra_body`` merges caller context (e.g. case-level source_image /
+    task_id tags) into the episode body.
     """
     from graphiti_integration.toon_transformer import EpisodeData
 
@@ -795,10 +811,18 @@ def build_analysis_episodes(analysis: Dict[str, Any]) -> List[Any]:
     event_type = analysis.get("event_type", "UNKNOWN")
     bucket_seconds = analysis.get("bucket_seconds", PIPELINE_BUCKET_SECONDS)
     bucket_index = analysis.get("time_window", analysis.get("bucket_index", 0))
+    bucket_offset = int(analysis.get("bucket_epoch_offset") or 0)
     parent_directory = analysis.get("parent_directory", "")
     cluster_count = analysis.get("cluster_count", 0)
 
-    chunks = chunk_text(description, max_chars=3000)
+    # D12: the episode carries the cluster's forensic time — the window
+    # start under the task's local alignment — not the ingestion instant.
+    try:
+        reference_time = datetime.fromtimestamp(bucket_index * bucket_seconds + bucket_offset)
+    except (OverflowError, OSError, ValueError):
+        reference_time = datetime.now()
+
+    chunks = chunk_text(description)
     episodes = []
     for j, chunk in enumerate(chunks):
         ep_name = (
@@ -817,14 +841,67 @@ def build_analysis_episodes(analysis: Dict[str, Any]) -> List[Any]:
                 "cluster_count": cluster_count,
                 "analysis_id": analysis_id,
                 "analysis": chunk,
+                **(extra_body or {}),
             }, ensure_ascii=False),
             source_description=f"事件簇LLM分析 - {event_type} (count={cluster_count})",
-            reference_time=datetime.now(),
+            reference_time=reference_time,
             file_path="",
             file_id=0,
             category="event_cluster_description",
         ))
     return episodes
+
+
+def related_file_summaries(
+    events_db: str,
+    files_db: str,
+    *,
+    bucket_epoch_offset: int,
+    bucket_seconds: int,
+    bucket_index: int,
+    event_type: str,
+    parent_directory: str,
+    limit: int = 20,
+) -> List[Dict[str, Any]]:
+    """C3-v0 (SPEC file-analysis D9): distinct member files of one cluster
+    with their latest AI summaries.
+
+    Computed live from the current analysis state — nothing is denormalized
+    into the events db (L1 auto-fresh). Ordered by member-event count,
+    capped at ``limit``, summary-only to bound payload size. Files without
+    an analysis record are skipped.
+    """
+    import sqlite3
+
+    if not events_db or not Path(events_db).exists():
+        return []
+    start = int(bucket_index) * int(bucket_seconds) + int(bucket_epoch_offset or 0)
+    end = start + int(bucket_seconds)
+    try:
+        with sqlite3.connect(events_db, timeout=10) as conn:
+            rows = conn.execute(
+                f"SELECT file_path, COUNT(*) AS c FROM events "
+                f"WHERE timestamp >= ? AND timestamp < ? AND event_type = ? "
+                f"AND ({PARENT_DIRECTORY_SQL}) = ? "
+                f"AND file_path IS NOT NULL AND file_path != '' "
+                f"GROUP BY file_path ORDER BY c DESC LIMIT ?",
+                (start, end, event_type, parent_directory, limit),
+            ).fetchall()
+    except sqlite3.Error:
+        return []
+
+    summaries: List[Dict[str, Any]] = []
+    for file_path, _count in rows:
+        record = latest_analysis(files_db, file_path) if files_db else None
+        if not record or not (record.get("summary") or record.get("description")):
+            continue
+        summaries.append({
+            "file_path": file_path,
+            "summary": record.get("summary") or (record.get("description") or "")[:200],
+            "model": record.get("model") or "",
+            "analyzed_at": record.get("created_at"),
+        })
+    return summaries
 
 
 async def ingest_analysis_record_to_graphiti(
@@ -857,7 +934,11 @@ async def ingest_analysis_record_to_graphiti(
             return True
 
         logger.info(f"Ingesting {len(episodes)} episode(s) for analysis #{analysis.get('id')}")
-        result = await ingestor.batch_ingest(episodes=episodes, group_id=task_id)
+        # §B1 (kg-ingestion-hardening): every writer on one group — including
+        # this SPEC ingestor — must hold the single-flight group lock, or
+        # concurrent pipeline/gap-fill ingests interleave Graphiti writes.
+        async with graphiti_service.lock_for_group(task_id):
+            result = await ingestor.batch_ingest(episodes=episodes, group_id=task_id)
         total = getattr(result, "total_episodes", len(episodes))
         successful = getattr(result, "successful", 0)
         if total and successful == total and events_db:

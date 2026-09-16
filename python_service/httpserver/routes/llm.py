@@ -15,6 +15,7 @@ import logging
 from fastapi import APIRouter
 
 from .llm_endpoints import _analysis, _management
+from . import file_analysis
 from .llm_models import (  # noqa: F401
     AnalyzeRequest,
     AnalyzeResponse,
@@ -33,3 +34,4 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(_analysis.router)
 router.include_router(_management.router)
+router.include_router(file_analysis.router)

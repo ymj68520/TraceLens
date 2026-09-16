@@ -232,9 +232,12 @@ async def analyze_content(
             file_ext = Path(request.file_path).suffix.lower()
             is_image = file_ext in IMAGE_EXTENSIONS
 
+            extraction_method = ""
+
             if is_image:
                 # Read as binary and use vision model
                 logger.info(f"Auto-detected image file: {request.file_path}, using vision model")
+                extraction_method = "vision"
                 try:
                     with open(request.file_path, 'rb') as f:
                         image_data = f.read()
@@ -255,7 +258,7 @@ async def analyze_content(
                 if extractor:
                     logger.info(f"Auto-detected document file: {request.file_path}, using document extractor")
                     try:
-                        content = await extractor.extract_to_markdown(request.file_path)
+                        content, extraction_method = await extractor.extract_to_markdown_detailed(request.file_path)
                         result = await service_manager.llm_service.analyze(
                             content=content,
                             model_type=request.model_type or "text",
@@ -271,6 +274,7 @@ async def analyze_content(
                         )
                 else:
                     # Read as text
+                    extraction_method = "raw_text"
                     content = await service_manager.llm_service.read_file_content(request.file_path)
                     result = await service_manager.llm_service.analyze(
                         content=content,
@@ -328,7 +332,10 @@ async def analyze_content(
                 description=description,
                 summary=analysis.get("summary") or description[:200],
                 keywords=keywords_str,
-                model_used=result.get("model", "unknown")
+                model_used=result.get("model", "unknown"),
+                task_id=request.task_id,
+                trigger_source="interactive",
+                extraction_method=extraction_method,
             )
 
         return AnalyzeResponse(

@@ -23,6 +23,7 @@ from ...prompts import (
     TEXT_ANALYSIS_USER_WITH_INSTRUCTION_TEMPLATE,
     VISION_ANALYSIS_SYSTEM,
     VISION_ANALYSIS_USER_DEFAULT,
+    parse_structured_analysis,
 )
 
 logger = logging.getLogger(__name__)
@@ -214,9 +215,15 @@ class FileAnalyzer:
             analysis_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             tokens_used = result.get("usage", {}).get("total_tokens", 0)
 
+            # D15: extract the four-part structure when present; the full
+            # text always stays in description (never dropped).
+            parsed = parse_structured_analysis(analysis_text)
             return {
                 "analysis": {
                     "description": analysis_text,
+                    "summary": parsed["summary"],
+                    "keywords": parsed["keywords"],
+                    "value": parsed["value"],
                     "model_type": model_type,
                 },
                 "model": model,
@@ -313,9 +320,13 @@ class FileAnalyzer:
 
             logger.info(f"Vision analysis completed, tokens used: {tokens_used}")
 
+            parsed = parse_structured_analysis(analysis_text)
             return {
                 "analysis": {
                     "description": analysis_text,
+                    "summary": parsed["summary"],
+                    "keywords": parsed["keywords"],
+                    "value": parsed["value"],
                     "model_type": "vision",
                 },
                 "model": self.settings.llm_vision_model,
@@ -472,14 +483,17 @@ class FileAnalyzer:
 
                     # Try document extractor first (markitdown handles images, docs, etc.)
                     extractor = doc_locator.get_extractor(actual_path)
+                    extraction_method = ""
                     if extractor:
                         try:
-                            content = await extractor.extract_to_markdown(actual_path)
+                            content, extraction_method = await extractor.extract_to_markdown_detailed(actual_path)
                             result = await self.analyze_file(content, text_client, vision_client, "text")
                         except Exception as e:
                             logger.warning(f"Extractor failed for {actual_path}: {e}, falling back")
+                            extraction_method = ""
                             # Fallback: images -> vision model, others -> raw read
                             if is_image:
+                                extraction_method = "vision"
                                 try:
                                     with open(actual_path, 'rb') as f:
                                         image_data = f.read()
@@ -491,6 +505,7 @@ class FileAnalyzer:
                                     )
                                     continue
                             else:
+                                extraction_method = "raw_text"
                                 try:
                                     content = await self.read_file_content(actual_path)
                                 except ValueError as ve:
@@ -500,16 +515,19 @@ class FileAnalyzer:
                     elif is_image:
                         # No extractor but is an image -> vision model
                         logger.info(f"No extractor for image: {actual_path}, using vision model")
+                        extraction_method = "vision"
                         try:
                             with open(actual_path, 'rb') as f:
                                 image_data = f.read()
                             result = await self.analyze_image(image_data, vision_client)
                         except Exception as e:
                             logger.warning(f"Failed to analyze {actual_path} as image: {e}, falling back to text")
+                            extraction_method = "raw_text"
                             content = await self.read_file_content(actual_path)
                             result = await self.analyze_file(content, text_client, vision_client, model_type)
                     else:
                         # No extractor, not an image -> raw text read
+                        extraction_method = "raw_text"
                         try:
                             content = await self.read_file_content(actual_path)
                         except ValueError as ve:
@@ -533,6 +551,7 @@ class FileAnalyzer:
                             summary=analysis.get("summary") or description[:200],
                             keywords=", ".join(analysis.get("keywords", [])),
                             model_used=result.get("model", ""),
+                            extraction_method=extraction_method,
                         )
                         if not persisted:
                             raise RuntimeError(

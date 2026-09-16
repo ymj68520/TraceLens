@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Union
+from typing import List, Tuple, Union
 
 class BaseExtractor(ABC):
     """
@@ -16,6 +16,21 @@ class BaseExtractor(ABC):
             A string (Markdown preferably).
         """
         pass
+
+    async def extract_to_markdown_detailed(self, file_path: str) -> Tuple[str, str]:
+        """
+        Extract and report which extractor produced the content (SPEC
+        file-analysis D17 provenance chain).
+
+        Args:
+            file_path: Valid absolute path to the file to process.
+        Returns:
+            ``(markdown, extraction_method)`` — the default method is this
+            extractor's class name: it was routed to directly, without any
+            markitdown involvement.
+        """
+        return await self.extract_to_markdown(file_path), type(self).__name__
+
 
 def register_extractor(cls):
     """

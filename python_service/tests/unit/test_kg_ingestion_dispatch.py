@@ -221,13 +221,12 @@ class TestDispatchKgIngestion:
         ):
             step = await svc.dispatch_kg_ingestion(
                 "task-1", "case", _descriptions(3),
-                cluster_descriptions=[{"event_type": "CREATE", "analysis": {}}],
+                files_db_path="/data/tasks/task-1/files.db",
             )
 
         assert step["queued"] is True
         assert step["job_id"] in real_mgr._jobs
         assert step["file_episodes"] == 3
-        assert step["cluster_episodes"] == 1
         # runner deferred the actual ingestion — not called inline yet
         svc.ingest_to_knowledge_graph.assert_not_called()
 
@@ -239,6 +238,8 @@ class TestDispatchKgIngestion:
         assert job.status == JobStatus.COMPLETED
         assert job.result["ingested"] is True
         svc.ingest_to_knowledge_graph.assert_awaited_once()
+        _, kwargs = svc.ingest_to_knowledge_graph.await_args
+        assert kwargs.get("files_db_path") == "/data/tasks/task-1/files.db"
 
     @pytest.mark.asyncio
     async def test_falls_back_to_inline_without_manager(self):
@@ -255,7 +256,7 @@ class TestDispatchKgIngestion:
             )
 
         assert step == {
-            "ingested": True, "file_episodes": 2, "cluster_episodes": 0,
+            "ingested": True, "file_episodes": 2,
         }
         svc.ingest_to_knowledge_graph.assert_awaited_once()
 

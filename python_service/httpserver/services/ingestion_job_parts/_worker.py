@@ -24,12 +24,23 @@ logger = logging.getLogger(__name__)
 
 
 
+def _sqlite_text_factory(bytes_):
+    """Handle non-UTF-8 filenames (e.g. GBK filenames on Chinese Windows)."""
+    if bytes_ is None:
+        return None
+    if isinstance(bytes_, str):
+        return bytes_
+    try:
+        return bytes_.decode("utf-8")
+    except UnicodeDecodeError:
+        return bytes_.decode("gbk", errors="replace")
+
+
 def _read_episode_source_rows(
     files_db: str,
-    events_db: Optional[str],
     analyzed_only: bool,
-) -> tuple[list, list, Optional[str]]:
-    """Read episode source rows from the task SQLite databases.
+) -> tuple[list, Optional[str]]:
+    """Read analyzed file rows from the task files SQLite database.
 
     Runs in a worker thread (see ``_ingest_episodes_path_a``): these are
     whole-table reads, and while the C++ pipeline holds write locks on the
@@ -39,26 +50,21 @@ def _read_episode_source_rows(
     test), so the busy_timeout is kept small (2 s) and the reads are moved
     off-loop (SPEC docs/specs/kg-ingestion-hardening.md §A1).
 
-    Returns (file_descs, cluster_descs, error) — error is non-fatal detail.
+    Event-cluster episodes are NOT read here: per file-analysis SPEC D7 they
+    are owned by ClusterAnalyzer's SPEC-format ingestor and sourced from the
+    append-only ``event_cluster_analyses`` table (see
+    ``fetch_pending_cluster_analyses``) — legacy per-event ``llm_*`` cache
+    rows must never be rebuilt into pseudo-clusters.
+
+    Returns (file_descs, error) — error is non-fatal detail.
     """
     import sqlite3
-
-    def _text_factory(bytes_):
-        if bytes_ is None:
-            return None
-        if isinstance(bytes_, str):
-            return bytes_
-        try:
-            return bytes_.decode('utf-8')
-        except UnicodeDecodeError:
-            return bytes_.decode('gbk', errors='replace')
 
     error: Optional[str] = None
     file_descs: list = []
     with sqlite3.connect(files_db, timeout=2) as conn:
         conn.row_factory = sqlite3.Row
-        # Handle non-UTF-8 filenames (e.g. GBK filenames on Chinese Windows)
-        conn.text_factory = _text_factory
+        conn.text_factory = _sqlite_text_factory
         # Ensure schema has the description columns (added lazily by analysis pipeline)
         # We JOIN against the files table to also surface category/md5/name/size
         # which are high-value extraction signals (hashes and category names
@@ -98,30 +104,54 @@ def _read_episode_source_rows(
             # file_descriptions table may not exist yet for this task
             error = "file_descriptions table missing"
 
-    # Event cluster analyses (optional)
-    cluster_descs: list = []
-    if events_db and Path(events_db).exists():
-        with sqlite3.connect(events_db, timeout=2) as conn:
-            conn.row_factory = sqlite3.Row
-            conn.text_factory = _text_factory
-            try:
-                cur = conn.execute(
-                    "SELECT DISTINCT event_type, llm_description, llm_summary, "
-                    "(timestamp / 60) as time_window FROM events "
-                    "WHERE llm_description IS NOT NULL GROUP BY event_type, time_window"
-                )
-                for row in cur.fetchall():
-                    desc = row["llm_description"] or row["llm_summary"] or ""
-                    if desc:
-                        cluster_descs.append({
-                            "event_type": row["event_type"],
-                            "time_window": row["time_window"],
-                            "analysis": {"description": desc},
-                        })
-            except sqlite3.OperationalError:
-                pass  # events table may be absent
+    return file_descs, error
 
-    return file_descs, cluster_descs, error
+
+def fetch_pending_cluster_analyses(events_db: Optional[str]) -> list:
+    """Cluster analysis rows awaiting Graphiti ingestion (``ingested_at`` NULL).
+
+    Reads ONLY the append-only ``event_cluster_analyses`` table (SPEC
+    file-analysis-redesign D7) — legacy per-event ``llm_*`` cache rows are
+    never rebuilt into pseudo-clusters here.
+    """
+    import sqlite3
+
+    if not events_db or not Path(events_db).exists():
+        return []
+    try:
+        with sqlite3.connect(events_db, timeout=10) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.text_factory = _sqlite_text_factory
+            cur = conn.execute(
+                "SELECT id, event_type, bucket_seconds, bucket_index, bucket_epoch_offset, "
+                "parent_directory, member_count AS cluster_count, description "
+                "FROM event_cluster_analyses "
+                "WHERE ingested_at IS NULL AND description IS NOT NULL AND description != '' "
+                "ORDER BY id"
+            )
+            return [dict(row) for row in cur.fetchall()]
+    except sqlite3.OperationalError:
+        return []  # analyses table absent (pre-SPEC events db)
+
+
+async def ingest_pending_cluster_analyses(
+    graphiti_service, task_id: str, pending_rows: list, events_db: str = ""
+) -> int:
+    """Ingest pending cluster analysis rows via the shared SPEC-format
+    ingestor. Each row is marked ``ingested_at`` only when every episode made
+    it, so failures stay pending for the next gap-fill. Returns the number of
+    rows ingested."""
+    if not pending_rows:
+        return 0
+    from ..case_analysis.cluster_analyzer import ingest_analysis_record_to_graphiti
+
+    ingested = 0
+    for analysis_row in pending_rows:
+        if await ingest_analysis_record_to_graphiti(
+            graphiti_service, task_id, analysis_row, events_db=events_db
+        ):
+            ingested += 1
+    return ingested
 
 
 class IngestionJobWorkerMixin:
@@ -549,8 +579,9 @@ class IngestionJobWorkerMixin:
         The manual "Ingest" button must ALSO produce the Episodic → Entity →
         RELATES_TO graph the frontend visualises, otherwise users see an empty
         graph after ingesting. This reads the LLM-analyzed file_descriptions
-        (and event cluster analyses) from SQLite and feeds them to
-        ``GraphitiService.ingest_task_episodes`` so the extractor can build
+        from SQLite and feeds them to ``GraphitiService.ingest_task_episodes``,
+        then gap-fills event-cluster analyses (``ingested_at`` NULL) through
+        the shared cluster_analyzer ingestor, so the extractor can build
         entities/relationships.
 
         Failures here are non-fatal: the path-B :File entities are still valid.
@@ -572,13 +603,23 @@ class IngestionJobWorkerMixin:
             # Whole-table SQLite reads run in a thread: under C++ write
             # contention each connect can busy-wait the full busy_timeout,
             # and that wait must not freeze the event loop (SPEC §A1).
-            file_descs, cluster_descs, read_error = await asyncio.to_thread(
-                _read_episode_source_rows, files_db, events_db, analyzed_only
+            file_descs, read_error = await asyncio.to_thread(
+                _read_episode_source_rows, files_db, analyzed_only
             )
             if read_error:
                 stats["error"] = read_error
 
-            if not file_descs and not cluster_descs:
+            # Event cluster gap-fill candidates: analysis records the
+            # analyzers have not ingested yet (append-only
+            # ``event_cluster_analyses`` rows with ``ingested_at`` NULL).
+            # Episode format/ownership lives exclusively in cluster_analyzer
+            # (SPEC file-analysis-redesign D7) — this path must never rebuild
+            # legacy per-event pseudo-clusters from the llm_* cache.
+            pending_cluster_rows = await asyncio.to_thread(
+                fetch_pending_cluster_analyses, events_db
+            )
+
+            if not file_descs and not pending_cluster_rows:
                 stats["error"] = stats.get("error") or "no analyzed descriptions to ingest"
                 return stats
 
@@ -589,7 +630,7 @@ class IngestionJobWorkerMixin:
             # Wrap the (stage, message) progress_callback so the job status
             # progresses smoothly through the 92-95 % range as episodes are
             # processed one-by-one by Graphiti's batch_ingest.
-            total_eps = len(file_descs) + len(cluster_descs)
+            total_eps = len(file_descs) + len(pending_cluster_rows)
             if total_eps > 0:
                 async def _ep_progress(stage: str, message: str):
                     # Map stage to a rough progress slice: 92 % → 95 %
@@ -614,7 +655,6 @@ class IngestionJobWorkerMixin:
             result = await graphiti_service.ingest_task_episodes(
                 task_id=task_id,
                 file_descriptions=file_descs,
-                cluster_descriptions=cluster_descs,
                 progress_callback=_progress_callback,
             )
             stats["episodes_successful"] = result.get("successful", 0)
@@ -626,6 +666,20 @@ class IngestionJobWorkerMixin:
                 f"[{task_id}] Path-A episode ingestion: "
                 f"{stats['episodes_successful']}/{stats['episodes_total']} successful"
             )
+
+            # Gap-fill cluster episodes via the shared SPEC-format ingestor:
+            # each record is marked ingested_at only when every episode made
+            # it, so failed rows stay pending for the next manual ingest.
+            if pending_cluster_rows:
+                gapfilled = await ingest_pending_cluster_analyses(
+                    graphiti_service, task_id, pending_cluster_rows, events_db=events_db
+                )
+                stats["episodes_failed"] += len(pending_cluster_rows) - gapfilled
+                stats["clusters_gapfilled"] = gapfilled
+                logger.info(
+                    f"[{task_id}] Cluster gap-fill: "
+                    f"{gapfilled}/{len(pending_cluster_rows)} analysis rows ingested"
+                )
         except Exception as e:
             logger.warning(f"[{task_id}] Path-A episode ingestion failed (non-fatal): {e}")
             stats["error"] = str(e)

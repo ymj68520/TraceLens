@@ -131,6 +131,7 @@ const AnalysisCenter = () => {
                 const { mapClusterAnalysisRecords } = await import('../services/clusterAnalysisMapper');
                 const clusterData = await getEventClusterAnalyses(activeContextId, {
                     latest_only: clusterHistory ? 'false' : 'true',
+                    include_file_summaries: 'true',
                     limit: 500,
                 });
                 setEventClusters(mapClusterAnalysisRecords(clusterData?.records));
@@ -265,7 +266,7 @@ const AnalysisCenter = () => {
                 const poll = async () => {
                     const status = await getCaseAnalysisStatus(result.job_id);
                     if (status.status === 'completed') {
-                        setReanalyzeMessage(`✅ 研判完成`); setReanalyzing(false);
+                        setReanalyzeMessage(status.result?.partial ? '⚠️ 研判完成（部分轮次失败，详见服务日志）' : '✅ 研判完成'); setReanalyzing(false);
                         await fetchData(); setSelectedItems(new Set());
                         setTimeout(() => setShowReanalyzeModal(false), 1500);
                     } else if (status.status === 'failed') {
@@ -605,6 +606,23 @@ const AnalysisCenter = () => {
                                                                 ))}
                                                             </div>
                                                         )}
+                                                    </div>
+                                                )}
+
+                                                {cluster.related_file_summaries?.length > 0 && (
+                                                    <div className="bg-white dark:bg-slate-900 rounded-xl p-3 border border-indigo-200 dark:border-indigo-800">
+                                                        <div className="flex items-start gap-2 mb-2">
+                                                            <span className="text-sm">📎</span>
+                                                            <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300">相关文件 AI 摘要（{cluster.related_file_summaries.length}）</h4>
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            {cluster.related_file_summaries.map((f) => (
+                                                                <div key={f.file_path} className="text-[10px] text-slate-600 dark:text-slate-400">
+                                                                    <span className="font-mono font-bold text-slate-500 mr-1">{f.file_path}</span>
+                                                                    <span>{f.summary}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
                                                     </div>
                                                 )}
 

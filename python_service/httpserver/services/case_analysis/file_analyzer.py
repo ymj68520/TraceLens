@@ -9,12 +9,20 @@ import json
 import logging
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ...config import Settings
+from .file_schema import file_forensic_time, latest_analysis
 
 logger = logging.getLogger(__name__)
+
+# Image suffixes routed to the vision model (shared by analyze/reanalyze).
+IMAGE_EXTENSIONS = frozenset({
+    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif',
+    '.svg', '.ico', '.heic', '.heif', '.raw', '.cr2', '.nef', '.arw',
+})
 
 
 class FileAnalyzer:
@@ -40,35 +48,33 @@ class FileAnalyzer:
         case_description: str,
         extraction_dir: Optional[str] = None,
         progress_callback=None,
+        task_id: str = "",
     ) -> List[Dict[str, Any]]:
         """
         Generate LLM description for each file in the list using concurrency.
-        Skips files that already have descriptions in the database.
+        Skips files that already have analysis records in the database
+        (``file_analyses`` — SPEC file-analysis D4).
         """
         if not self._llm_service:
             raise RuntimeError("LLM service not initialized")
 
-        # Pre-check: find files that already have descriptions
+        # Pre-check (SPEC file-analysis D4): a file counts as analyzed iff an
+        # append-only ``file_analyses`` record exists. ``file_descriptions``
+        # rows without a truth record (pre-Phase-2 or external writers) are
+        # re-analyzed once — honest behavior, one-time cost.
         already_described = set()
         existing_descriptions = {}
         if files_db_path:
-            try:
-                import sqlite3
-                with sqlite3.connect(files_db_path, timeout=10) as conn:
-                    conn.row_factory = sqlite3.Row
-                    cur = conn.execute(
-                        "SELECT file_path, description, summary, keywords, model_used FROM file_descriptions WHERE description IS NOT NULL AND description != ''"
-                    )
-                    for row in cur.fetchall():
-                        already_described.add(row["file_path"])
-                        existing_descriptions[row["file_path"]] = {
-                            "file_path": row["file_path"],
-                            "description": row["description"],
-                            "model_used": row["model_used"] or "",
-                            "success": True,
-                        }
-            except Exception as e:
-                logger.warning(f"Failed to check existing descriptions: {e}")
+            for fp in file_paths:
+                record = latest_analysis(files_db_path, fp)
+                if record and record.get("description"):
+                    already_described.add(fp)
+                    existing_descriptions[fp] = {
+                        "file_path": fp,
+                        "description": record["description"],
+                        "model_used": record.get("model") or "",
+                        "success": True,
+                    }
 
         files_to_analyze = [fp for fp in file_paths if fp not in already_described]
         skipped_count = len(file_paths) - len(files_to_analyze)
@@ -81,10 +87,6 @@ class FileAnalyzer:
             return [existing_descriptions.get(fp, {"file_path": fp, "description": "", "success": False}) for fp in file_paths]
 
         total = len(files_to_analyze)
-        IMAGE_EXTENSIONS = {
-            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif',
-            '.svg', '.ico', '.heic', '.heif', '.raw', '.cr2', '.nef', '.arw'
-        }
 
         # Concurrency control (semaphore)
         sem = asyncio.Semaphore(self.settings.llm_max_concurrency if hasattr(self.settings, "llm_max_concurrency") else 5)
@@ -109,6 +111,7 @@ class FileAnalyzer:
                         return {"file_path": file_path, "description": "", "error": f"File not found: {full_path}", "success": False}
 
                     result = None
+                    extraction_method = ""
 
                     # Try document extractor first (markitdown handles images, docs, etc.)
                     from ..document_extractor import get_document_extractor_locator
@@ -118,7 +121,7 @@ class FileAnalyzer:
 
                     if extractor:
                         try:
-                            content = await extractor.extract_to_markdown(full_path)
+                            content, extraction_method = await extractor.extract_to_markdown_detailed(full_path)
                             custom_prompt = CASE_FILE_ANALYSIS_TEMPLATE.format(
                                 case_description=case_description,
                                 file_path=file_path,
@@ -132,8 +135,10 @@ class FileAnalyzer:
                             )
                         except Exception as e:
                             logger.warning(f"Extractor failed for {full_path}: {e}, falling back to vision/raw")
+                            extraction_method = ""
 
                     if not result and is_image:
+                        extraction_method = "vision"
                         with open(full_path, 'rb') as f:
                             image_data = f.read()
 
@@ -156,6 +161,7 @@ class FileAnalyzer:
 
                     if not result:
                         # Fallback or normal text analysis
+                        extraction_method = "raw_text"
                         content = await self._llm_service.read_file_content(full_path)
 
                         from ...prompts import CASE_FILE_ANALYSIS_TEMPLATE
@@ -174,16 +180,21 @@ class FileAnalyzer:
                     analysis = result.get("analysis", {})
                     description = analysis.get("description", "")
 
-                    # Extract metadata for better persistence
-                    summary = description[:200].split('\n')[0]
-
+                    # D15: prefer the structured summary/keywords; fall back to
+                    # the legacy heuristics when the model ignored the format.
+                    parsed_summary = analysis.get("summary") or ""
+                    parsed_keywords = analysis.get("keywords") or []
+                    summary = parsed_summary or description[:200].split('\n')[0]
                     keywords = ""
-                    # re is now global
-                    found_entities = re.findall(r'[\u4e00-\u9fa5]{2,6}', description[:500])
-                    if found_entities:
-                        keywords = ", ".join(list(set(found_entities))[:5])
+                    if parsed_keywords:
+                        keywords = ", ".join(parsed_keywords)
+                    else:
+                        # re is now global
+                        found_entities = re.findall(r'[\u4e00-\u9fa5]{2,6}', description[:500])
+                        if found_entities:
+                            keywords = ", ".join(list(set(found_entities))[:5])
 
-                    # Persist to _files.db (this will update both 'files' and 'file_descriptions' tables)
+                    # Persist to _files.db (append-only truth row + both caches)
                     if files_db_path and description:
                         try:
                             self._llm_service.persist_to_files_db(
@@ -193,6 +204,9 @@ class FileAnalyzer:
                                 summary=summary,
                                 keywords=keywords,
                                 model_used=result.get("model", ""),
+                                task_id=task_id,
+                                trigger_source="pipeline",
+                                extraction_method=extraction_method,
                             )
                         except Exception as e:
                             logger.warning(f"Failed to persist {file_path} analysis: {e}")
@@ -282,191 +296,226 @@ class FileAnalyzer:
             except Exception as e:
                 logger.warning(f"KG search for re-analysis failed: {e}")
 
-        results = []
         total = len(file_paths)
+        results: List[Any] = [None] * total
 
-        # Image file extensions for auto-detection
-        IMAGE_EXTENSIONS = {
-            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif',
-            '.svg', '.ico', '.heic', '.heif', '.raw', '.cr2', '.nef', '.arw'
-        }
+        # Order-preserving concurrent fan-out (SPEC file-analysis D14): the
+        # same llm_max_concurrency budget as analyze_files.
+        sem = asyncio.Semaphore(max(1, getattr(self.settings, "llm_max_concurrency", 3)))
+        processed = 0
 
-        for i, file_path in enumerate(file_paths):
-            try:
-                logger.info(f"Starting re-analysis for file {i+1}/{total}: {file_path}")
-
-                # Check if file exists
-                if not Path(file_path).exists():
-                    logger.error(f"File not found: {file_path}")
-                    results.append({
+        async def reanalyze_one(index: int, file_path: str) -> None:
+            nonlocal processed
+            async with sem:
+                try:
+                    logger.info(f"Starting re-analysis for file {index + 1}/{total}: {file_path}")
+                    results[index] = await self._reanalyze_single_file(
+                        file_path=file_path,
+                        user_hint=user_hint,
+                        kg_context=kg_context,
+                        case_description=case_description,
+                        files_db_path=files_db_path,
+                        task_id=task_id,
+                    )
+                except Exception as e:
+                    logger.error(f"Re-analysis failed for {file_path}: {e}", exc_info=True)
+                    results[index] = {
                         "file_path": file_path,
                         "description": "",
-                        "error": f"File not found: {file_path}",
+                        "error": str(e),
                         "success": False,
                         "reanalysis": True,
-                    })
-                    continue
+                    }
+                processed += 1
 
-                file_ext = Path(file_path).suffix.lower()
-                is_image = file_ext in IMAGE_EXTENSIONS
-
-                # Try document extractor first (markitdown handles images, docs, etc.)
-                from ..document_extractor import get_document_extractor_locator
-                doc_locator = get_document_extractor_locator()
-                extractor = doc_locator.get_extractor(file_path)
-
-                if extractor:
-                    try:
-                        content = await extractor.extract_to_markdown(file_path)
-                        logger.info(f"Extractor converted {file_path}: {len(content)} chars")
-                    except Exception as e:
-                        logger.warning(f"Extractor failed for {file_path}: {e}, falling back")
-                        extractor = None  # Trigger fallback below
-
-                if not extractor:
-                    if is_image:
-                        # Use vision model for images with custom prompt
-                        logger.info(f"Using vision model for image re-analysis: {file_path}")
-
-                        # Build vision prompt with case context
-                        from ...prompts import CASE_VISION_REANALYSIS_TEMPLATE
-                        vision_prompt_parts = []
-                        if case_description:
-                            vision_prompt_parts.append(f"案情背景：{case_description}")
-                        if user_hint:
-                            vision_prompt_parts.append(f"调查人员补充说明：{user_hint}")
-                        if kg_context:
-                            vision_prompt_parts.append(f"相关上下文：{kg_context}")
-
-                        vision_prompt = CASE_VISION_REANALYSIS_TEMPLATE.format(
-                            context_parts="\n".join(vision_prompt_parts)
-                        )
-
-                        try:
-                            with open(file_path, 'rb') as f:
-                                image_data = f.read()
-
-                            logger.info(f"Read {len(image_data)} bytes from {file_path}, sending to vision model")
-                            result = await self._llm_service.analyze_image(
-                                image_data=image_data,
-                                prompt=vision_prompt,
-                            )
-                        except Exception as e:
-                            logger.error(f"Failed to analyze {file_path} as image: {e}", exc_info=True)
-                            results.append({
-                                "file_path": file_path,
-                                "description": "",
-                                "error": f"Vision analysis failed: {str(e)}",
-                                "success": False,
-                                "reanalysis": True,
-                            })
-                            continue
-                    else:
-                        # Use text model for text files
-                        content = await self._llm_service.read_file_content(file_path)
-                        logger.info(f"Read {len(content)} characters from {file_path}")
-
-                if extractor or not is_image:
-                    # Text analysis path (extractor content or raw text)
-                    from ...prompts import (
-                        FILE_REANALYSIS_HEADER,
-                        FILE_REANALYSIS_CONTEXT_CASE,
-                        FILE_REANALYSIS_CONTEXT_KG,
-                        FILE_REANALYSIS_CONTEXT_HINT,
-                        FILE_REANALYSIS_CONTEXT_FILE,
-                        FILE_REANALYSIS_INSTRUCTION,
-                    )
-
-                    prompt_parts = [FILE_REANALYSIS_HEADER]
-
-                    if case_description:
-                        prompt_parts.append(FILE_REANALYSIS_CONTEXT_CASE.format(
-                            case_description=case_description
-                        ))
-
-                    if kg_context:
-                        prompt_parts.append(FILE_REANALYSIS_CONTEXT_KG.format(
-                            kg_context=kg_context
-                        ))
-
-                    prompt_parts.append(FILE_REANALYSIS_CONTEXT_HINT.format(
-                        user_hint=user_hint
-                    ))
-                    prompt_parts.append(FILE_REANALYSIS_CONTEXT_FILE.format(
-                        file_path=file_path,
-                        content=content,
-                    ))
-                    prompt_parts.append(FILE_REANALYSIS_INSTRUCTION)
-
-                    custom_prompt = "\n".join(prompt_parts)
-                    logger.info(f"Sending re-analysis request to LLM for {file_path}")
-
-                    result = await self._llm_service.analyze(
-                        content=content,
-                        model_type="text",
-                        prompt=custom_prompt,
-                    )
-
-                analysis = result.get("analysis", {})
-                description = analysis.get("description", "")
-
-                logger.info(f"Received LLM response for {file_path}: {len(description)} characters")
-
-                # Persist updated description to _files.db
-                if files_db_path and description:
-                    persisted = self._llm_service.persist_to_files_db(
-                        db_path=files_db_path,
-                        file_path=file_path,
-                        description=description,
-                        summary=description[:200],
-                        keywords="",
-                        model_used=result.get("model", ""),
-                    )
-                    if persisted:
-                        logger.info(f"Successfully persisted re-analysis for {file_path}")
-                    else:
-                        logger.warning(f"Failed to persist re-analysis for {file_path} (no matching row)")
-                elif not files_db_path:
-                    logger.warning(f"No files_db_path provided - re-analysis result for {file_path} will NOT be saved to database")
-
-                results.append({
-                    "file_path": file_path,
-                    "description": description,
-                    "model_used": result.get("model", ""),
-                    "success": True,
-                    "reanalysis": True,
-                })
-
-            except Exception as e:
-                logger.error(f"Re-analysis failed for {file_path}: {e}", exc_info=True)
-                results.append({
-                    "file_path": file_path,
-                    "description": "",
-                    "error": str(e),
-                    "success": False,
-                    "reanalysis": True,
-                })
+        await asyncio.gather(*(reanalyze_one(i, fp) for i, fp in enumerate(file_paths)))
 
         # KG INCREMENTAL SYNC: Trigger ingestion for newly analyzed files
         if self._graphiti_service and any(r.get("success") for r in results):
             logger.info(f"Task {task_id}: Triggering incremental Graphiti sync for re-analyzed files...")
             asyncio.create_task(self.ingest_to_knowledge_graph(
-                task_id, case_description, results
+                task_id, case_description, results, files_db_path=files_db_path
             ))
 
         logger.info(f"Re-analysis completed: {sum(1 for r in results if r.get('success'))}/{len(results)} files successful")
         return results
+
+    async def _reanalyze_single_file(
+        self,
+        *,
+        file_path: str,
+        user_hint: str,
+        kg_context: str,
+        case_description: str,
+        files_db_path: str,
+        task_id: str,
+    ) -> Dict[str, Any]:
+        """Re-analyze one file with case + KG + user context (D14 unit).
+
+        Content routing: document extractor → vision (images) → raw text;
+        persists with trigger_source='reanalyze'.
+        """
+        if not Path(file_path).exists():
+            logger.error(f"File not found: {file_path}")
+            return {
+                "file_path": file_path,
+                "description": "",
+                "error": f"File not found: {file_path}",
+                "success": False,
+                "reanalysis": True,
+            }
+
+        file_ext = Path(file_path).suffix.lower()
+        is_image = file_ext in IMAGE_EXTENSIONS
+
+        extraction_method = ""
+
+        # Try document extractor first (markitdown handles images, docs, etc.)
+        from ..document_extractor import get_document_extractor_locator
+        doc_locator = get_document_extractor_locator()
+        extractor = doc_locator.get_extractor(file_path)
+
+        if extractor:
+            try:
+                content, extraction_method = await extractor.extract_to_markdown_detailed(file_path)
+                logger.info(f"Extractor converted {file_path}: {len(content)} chars")
+            except Exception as e:
+                logger.warning(f"Extractor failed for {file_path}: {e}, falling back")
+                extractor = None  # Trigger fallback below
+
+        result: Dict[str, Any] = {}
+        if not extractor:
+            if is_image:
+                # Use vision model for images with custom prompt
+                logger.info(f"Using vision model for image re-analysis: {file_path}")
+                extraction_method = "vision"
+
+                # Build vision prompt with case context
+                from ...prompts import CASE_VISION_REANALYSIS_TEMPLATE
+                vision_prompt_parts = []
+                if case_description:
+                    vision_prompt_parts.append(f"案情背景：{case_description}")
+                if user_hint:
+                    vision_prompt_parts.append(f"调查人员补充说明：{user_hint}")
+                if kg_context:
+                    vision_prompt_parts.append(f"相关上下文：{kg_context}")
+
+                vision_prompt = CASE_VISION_REANALYSIS_TEMPLATE.format(
+                    context_parts="\n".join(vision_prompt_parts)
+                )
+
+                try:
+                    with open(file_path, 'rb') as f:
+                        image_data = f.read()
+
+                    logger.info(f"Read {len(image_data)} bytes from {file_path}, sending to vision model")
+                    result = await self._llm_service.analyze_image(
+                        image_data=image_data,
+                        prompt=vision_prompt,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to analyze {file_path} as image: {e}", exc_info=True)
+                    return {
+                        "file_path": file_path,
+                        "description": "",
+                        "error": f"Vision analysis failed: {str(e)}",
+                        "success": False,
+                        "reanalysis": True,
+                    }
+            else:
+                # Use text model for text files
+                extraction_method = "raw_text"
+                content = await self._llm_service.read_file_content(file_path)
+                logger.info(f"Read {len(content)} characters from {file_path}")
+
+        if extractor or not is_image:
+            # Text analysis path (extractor content or raw text)
+            from ...prompts import (
+                FILE_REANALYSIS_HEADER,
+                FILE_REANALYSIS_CONTEXT_CASE,
+                FILE_REANALYSIS_CONTEXT_KG,
+                FILE_REANALYSIS_CONTEXT_HINT,
+                FILE_REANALYSIS_CONTEXT_FILE,
+                FILE_REANALYSIS_INSTRUCTION,
+            )
+
+            prompt_parts = [FILE_REANALYSIS_HEADER]
+
+            if case_description:
+                prompt_parts.append(FILE_REANALYSIS_CONTEXT_CASE.format(
+                    case_description=case_description
+                ))
+
+            if kg_context:
+                prompt_parts.append(FILE_REANALYSIS_CONTEXT_KG.format(
+                    kg_context=kg_context
+                ))
+
+            prompt_parts.append(FILE_REANALYSIS_CONTEXT_HINT.format(
+                user_hint=user_hint
+            ))
+            prompt_parts.append(FILE_REANALYSIS_CONTEXT_FILE.format(
+                file_path=file_path,
+                content=content,
+            ))
+            prompt_parts.append(FILE_REANALYSIS_INSTRUCTION)
+
+            custom_prompt = "\n".join(prompt_parts)
+            logger.info(f"Sending re-analysis request to LLM for {file_path}")
+
+            result = await self._llm_service.analyze(
+                content=content,
+                model_type="text",
+                prompt=custom_prompt,
+            )
+
+        analysis = result.get("analysis", {})
+        description = analysis.get("description", "")
+
+        logger.info(f"Received LLM response for {file_path}: {len(description)} characters")
+
+        # Persist updated description to _files.db
+        if files_db_path and description:
+            persisted = self._llm_service.persist_to_files_db(
+                db_path=files_db_path,
+                file_path=file_path,
+                description=description,
+                summary=(result.get("analysis", {}) or {}).get("summary") or description[:200],
+                keywords="",
+                model_used=result.get("model", ""),
+                task_id=task_id,
+                trigger_source="reanalyze",
+                extraction_method=extraction_method,
+            )
+            if persisted:
+                logger.info(f"Successfully persisted re-analysis for {file_path}")
+            else:
+                logger.warning(f"Failed to persist re-analysis for {file_path} (no matching row)")
+        elif not files_db_path:
+            logger.warning(f"No files_db_path provided - re-analysis result for {file_path} will NOT be saved to database")
+
+        return {
+            "file_path": file_path,
+            "description": description,
+            "model_used": result.get("model", ""),
+            "success": True,
+            "reanalysis": True,
+        }
 
     async def ingest_to_knowledge_graph(
         self,
         task_id: str,
         case_description: str,
         file_descriptions: List[Dict[str, Any]],
-        cluster_descriptions: Optional[List[Dict[str, Any]]] = None,
+        files_db_path: str = "",
         progress_callback=None,
     ) -> bool:
         """
-        Ingest case description, file descriptions, and event clusters into Graphiti.
+        Ingest case description and file descriptions into Graphiti.
+
+        Event-cluster episodes are owned exclusively by ClusterAnalyzer's
+        SPEC-format ingestor (analysis_id naming + ingested_at state) and are
+        never rebuilt here (file-analysis SPEC D7).
 
         This enables semantic retrieval during report generation,
         overcoming LLM context length limitations.
@@ -475,7 +524,8 @@ class FileAnalyzer:
             task_id: Task identifier (used as graph group_id).
             case_description: Full case description text.
             file_descriptions: List of per-file analysis results.
-            cluster_descriptions: Optional list of event cluster analysis results.
+            files_db_path: Task files db — supplies each file's forensic time
+                for the episode reference_time (D12) when available.
             progress_callback: Optional async callback(stage, message) for
                 job-level progress reporting (SPEC kg-ingestion-hardening §B2).
 
@@ -517,7 +567,7 @@ class FileAnalyzer:
             episodes = []
 
             # 1. Ingest case description (chunk long descriptions)
-            desc_chunks = self._chunk_text(case_description, max_chars=3000)
+            desc_chunks = self._chunk_text(case_description)
             for i, chunk in enumerate(desc_chunks):
                 episodes.append(EpisodeData(
                     name=f"案情描述 (第{i+1}部分)" if len(desc_chunks) > 1 else "案情描述",
@@ -531,55 +581,56 @@ class FileAnalyzer:
 
             # 2. Ingest each file description
             successful = [f for f in file_descriptions if f.get("success") and f.get("description")]
+            ingested_ids: List[int] = []
             for desc in successful:
                 file_path = desc.get("file_path", "")
                 description = desc.get("description", "")
                 if description:
+                    # D12: episode reference_time is the file's forensic time
+                    # (mtime, fallback ctime), not the ingestion instant.
+                    file_time = (
+                        file_forensic_time(files_db_path, file_path)
+                        if files_db_path else None
+                    ) or datetime.now()
+                    # §9-L3: episodes cite the truth record (#fa{id}) and get
+                    # the enriched body; the id feeds the ingested_at state
+                    # machine after a fully successful batch.
+                    record = (
+                        latest_analysis(files_db_path, file_path)
+                        if files_db_path else None
+                    )
+                    analysis_id = record.get("id") if record else None
+                    ep_name = f"文件分析: {file_path}"
+                    if analysis_id:
+                        ep_name += f" #fa{analysis_id}"
                     # Chunk long descriptions
-                    chunks = self._chunk_text(description, max_chars=3000)
+                    chunks = self._chunk_text(description)
                     for j, chunk in enumerate(chunks):
-                        ep_name = f"文件分析: {file_path}"
                         if len(chunks) > 1:
-                            ep_name += f" (第{j+1}部分)"
+                            ep_name_j = f"{ep_name} (第{j+1}部分)"
+                        else:
+                            ep_name_j = ep_name
+                        body = {"file_path": file_path, "analysis": chunk}
+                        if record:
+                            if record.get("summary"):
+                                body["summary"] = record["summary"]
+                            if record.get("keywords"):
+                                body["keywords"] = record["keywords"]
+                            if record.get("md5"):
+                                body["md5"] = record["md5"]
+                            if analysis_id:
+                                body["analysis_id"] = analysis_id
                         episodes.append(EpisodeData(
-                            name=ep_name,
-                            episode_body=json.dumps({"file_path": file_path, "analysis": chunk}, ensure_ascii=False),
+                            name=ep_name_j,
+                            episode_body=json.dumps(body, ensure_ascii=False),
                             source_description=f"LLM分析结果 - {file_path}",
-                            reference_time=datetime.now(),
+                            reference_time=file_time,
                             file_path=file_path,
                             file_id=0,
                             category="file_description"
                         ))
-
-            # 3. Ingest event cluster descriptions (if provided)
-            if cluster_descriptions:
-                successful_clusters = [c for c in cluster_descriptions if c.get("success") or c.get("analysis")]
-                for cluster in successful_clusters:
-                    analysis = cluster.get("analysis", {})
-                    description = analysis.get("description", "")
-                    event_type = cluster.get("event_type", "UNKNOWN")
-                    time_window = cluster.get("time_window", 0)
-
-                    if description:
-                        # Chunk long descriptions
-                        chunks = self._chunk_text(description, max_chars=3000)
-                        for j, chunk in enumerate(chunks):
-                            ep_name = f"事件簇分析: {event_type} @ {time_window}"
-                            if len(chunks) > 1:
-                                ep_name += f" (第{j+1}部分)"
-                            episodes.append(EpisodeData(
-                                name=ep_name,
-                                episode_body=json.dumps({
-                                    "event_type": event_type,
-                                    "time_window": time_window,
-                                    "analysis": chunk
-                                }, ensure_ascii=False),
-                                source_description=f"事件簇LLM分析 - {event_type} @ time_window={time_window}",
-                                reference_time=datetime.now(),
-                                file_path="",
-                                file_id=0,
-                                category="event_cluster_description"
-                            ))
+                    if analysis_id:
+                        ingested_ids.append(analysis_id)
 
             if not episodes:
                 logger.info("No episodes to ingest")
@@ -608,6 +659,11 @@ class FileAnalyzer:
             # cause of a sparse graph) are visible instead of silently swallowed.
             for err in errors[:5]:
                 logger.warning(f"[{task_id}] Episode ingestion failure: {err}")
+            # §9-L3 state machine: mark rows ingested only when EVERY episode
+            # made it — partial batches stay NULL for the next gap-fill.
+            if ingested_ids and files_db_path and total and successful == total:
+                from .file_schema import mark_analyses_ingested
+                mark_analyses_ingested(files_db_path, ingested_ids)
             return successful > 0
 
         except ImportError:
@@ -618,8 +674,11 @@ class FileAnalyzer:
             return False
 
     @staticmethod
-    def _chunk_text(text: str, max_chars: int = 3000) -> List[str]:
-        """Split text into chunks, breaking at paragraph boundaries."""
+    def _chunk_text(text: str, max_chars: Optional[int] = None) -> List[str]:
+        """Split text into chunks (shared episode budget by default, D11)."""
+        if max_chars is None:
+            from ..graphiti_parts.episode_budget import episode_chunk_chars
+            max_chars = episode_chunk_chars()
         if len(text) <= max_chars:
             return [text]
 

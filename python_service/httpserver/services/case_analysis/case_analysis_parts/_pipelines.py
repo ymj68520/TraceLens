@@ -144,70 +144,31 @@ class CaseAnalysisPipelinesMixin:
                     result["steps"]["extraction"] = {"success": False, "error": str(e), "extracted_count": 0}
                     extraction_dir = ""
 
-                # Step 3: Parallel execution of file analysis and event cluster analysis
-                if progress_callback:
-                    await progress_callback("analyzing", "正在并行分析文件和事件簇...")
+                # Step 3: analysis rounds (SPEC file-analysis D8/D10): the
+                # artifact round and the file round run concurrently; the
+                # cluster round starts only after the file round persisted.
+                rounds = await self._execute_analysis_rounds(
+                    task_id, files_db_path, filtered_files, case_description,
+                    extraction_dir, progress_callback,
+                )
+                descriptions = rounds["descriptions"]
+                cluster_results = rounds["cluster_results"]
+                result["steps"].update(rounds["steps"])
+                result["partial"] = rounds["partial"]
+                logger.info(f"[CASE_ANALYSIS] Task {task_id}: File descriptions completed - {len(descriptions)} files analyzed")
 
-                logger.info(f"[CASE_ANALYSIS] Task {task_id}: Starting file description generation...")
-                # Prepare parallel tasks
-                file_task = asyncio.create_task(self.generate_file_descriptions(
-                    files_db_path, filtered_files, case_description, extraction_dir=extraction_dir,
-                    progress_callback=progress_callback
-                ))
-
-                # Get events_db path for cluster analysis
-                task_info = await self._cpp_backend.get_task(task_id)
-                events_db = task_info.get("output_events_db") or ""
-
-                cluster_task = None
-                if events_db and os.path.exists(events_db):
-                    logger.info(f"[CASE_ANALYSIS] Task {task_id}: Starting event cluster analysis...")
-                    cluster_task = asyncio.create_task(self._cluster_analyzer.analyze_and_ingest_clusters(
-                        events_db, case_description, task_id, progress_callback
-                    ))
-                else:
-                    # Skip must stay visible: a silently missing cluster-analysis
-                    # step would look like "nothing to analyze" downstream (SPEC §0).
-                    logger.warning(f"[CASE_ANALYSIS] Task {task_id}: Event cluster analysis skipped - events db unavailable")
-                    result["steps"]["event_clusters"] = {
-                        "skipped": True,
-                        "reason": "events_db missing or not found",
-                    }
-
-                # Wait for file analysis
-                try:
-                    descriptions = await file_task
-                    result["steps"]["descriptions"] = descriptions
-                    logger.info(f"[CASE_ANALYSIS] Task {task_id}: File descriptions completed - {len(descriptions)} files analyzed")
-                except Exception as e:
-                    logger.error(f"[CASE_ANALYSIS] Task {task_id}: Description step failure: {e}", exc_info=True)
-                    descriptions = []
-
-                # Wait for cluster analysis (if started)
-                cluster_results = []
-                if cluster_task:
-                    try:
-                        cluster_results = await cluster_task
-                        result["steps"]["event_clusters"] = {
-                            "analyzed_count": len(cluster_results),
-                            "success": True
-                        }
-                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: Event cluster analysis completed - {len(cluster_results)} clusters")
-                    except Exception as e:
-                        logger.error(f"[CASE_ANALYSIS] Task {task_id}: Event cluster analysis failed: {e}", exc_info=True)
-
-                # Step 4: Ingest to knowledge graph (files + clusters).
-                # Dispatches to a background kg_sync job when available so the
-                # pipeline no longer blocks for the whole ingest (SPEC §B2).
+                # Step 4: Ingest to knowledge graph (file episodes; cluster
+                # episodes are ingested inside the cluster analyzer)
                 logger.info(f"[CASE_ANALYSIS] Task {task_id}: Checking graphiti_service for ingestion...")
                 logger.info(f"[CASE_ANALYSIS] Task {task_id}: _graphiti_service is None: {self._graphiti_service is None}")
                 if self._graphiti_service:
                     if progress_callback:
                         await progress_callback("ingesting", "正在将分析结果摄入知识图谱...")
                     try:
-                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: Dispatching KG ingestion with {len(descriptions)} file descriptions and {len(cluster_results)} cluster descriptions")
+                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: Dispatching KG ingestion with {len(descriptions)} file descriptions")
                         kg_step = await self.dispatch_kg_ingestion(
-                            task_id, case_description, descriptions, cluster_descriptions=cluster_results
+                            task_id, case_description, descriptions,
+                            files_db_path=files_db_path,
                         )
                         logger.info(f"[CASE_ANALYSIS] Task {task_id}: KG ingestion dispatched: {kg_step}")
                         result["steps"]["knowledge_graph"] = kg_step
@@ -250,63 +211,28 @@ class CaseAnalysisPipelinesMixin:
                     logger.error(f"Extraction step critical failure: {e}", exc_info=True)
                     result["steps"]["extraction"] = {"success": False, "error": str(e), "extracted_count": 0}
 
-                # Step 3: File analysis and event cluster analysis
-                if progress_callback:
-                    await progress_callback("analyzing", "正在并行分析文件和事件簇...")
+                # Step 3: analysis rounds (same orchestration as the initial
+                # run — see _execute_analysis_rounds).
+                rounds = await self._execute_analysis_rounds(
+                    task_id, files_db_path, filtered_files, case_description,
+                    extraction_dir, progress_callback,
+                )
+                descriptions = rounds["descriptions"]
+                cluster_results = rounds["cluster_results"]
+                result["steps"].update(rounds["steps"])
+                result["partial"] = rounds["partial"]
 
-                # Prepare parallel tasks
-                file_task = asyncio.create_task(self.generate_file_descriptions(
-                    files_db_path, filtered_files, case_description, extraction_dir=extraction_dir,
-                    progress_callback=progress_callback
-                ))
-
-                # Get events_db path for cluster analysis
-                task_info = await self._cpp_backend.get_task(task_id)
-                events_db = task_info.get("output_events_db") or ""
-
-                cluster_task = None
-                if events_db and os.path.exists(events_db):
-                    cluster_task = asyncio.create_task(self._cluster_analyzer.analyze_and_ingest_clusters(
-                        events_db, case_description, task_id, progress_callback
-                    ))
-                else:
-                    logger.warning(f"[CASE_ANALYSIS] Task {task_id}: Event cluster analysis skipped - events db unavailable")
-                    result["steps"]["event_clusters"] = {
-                        "skipped": True,
-                        "reason": "events_db missing or not found",
-                    }
-
-                # Wait for file analysis
-                try:
-                    descriptions = await file_task
-                    result["steps"]["descriptions"] = descriptions
-                except Exception as e:
-                    logger.error(f"Description step failure: {e}", exc_info=True)
-                    descriptions = []
-
-                # Wait for cluster analysis (if started)
-                cluster_results = []
-                if cluster_task:
-                    try:
-                        cluster_results = await cluster_task
-                        result["steps"]["event_clusters"] = {
-                            "analyzed_count": len(cluster_results),
-                            "success": True
-                        }
-                    except Exception as e:
-                        logger.error(f"Event cluster analysis failed: {e}", exc_info=True)
-
-                # Step 4: Ingest to knowledge graph (files + clusters).
-                # Dispatches to a background kg_sync job when available so the
-                # pipeline no longer blocks for the whole ingest (SPEC §B2).
+                # Step 4: Ingest to knowledge graph (file episodes; cluster
+                # episodes are ingested inside the cluster analyzer)
                 logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] Checking graphiti_service for ingestion...")
                 if self._graphiti_service:
                     if progress_callback:
                         await progress_callback("ingesting", "正在将分析结果摄入知识图谱...")
                     try:
-                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] Dispatching KG ingestion with {len(descriptions)} file descriptions and {len(cluster_results)} cluster descriptions")
+                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] Dispatching KG ingestion with {len(descriptions)} file descriptions")
                         kg_step = await self.dispatch_kg_ingestion(
-                            task_id, case_description, descriptions, cluster_descriptions=cluster_results
+                            task_id, case_description, descriptions,
+                            files_db_path=files_db_path,
                         )
                         logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] KG ingestion dispatched: {kg_step}")
                         result["steps"]["knowledge_graph"] = kg_step
@@ -362,6 +288,121 @@ class CaseAnalysisPipelinesMixin:
             logger.info(f"  - KG ingestion: {result['steps'].get('knowledge_graph', {}).get('ingested', False)}")
 
         return result
+
+    async def _execute_analysis_rounds(
+        self,
+        task_id: str,
+        files_db_path: str,
+        filtered_files: List[str],
+        case_description: str,
+        extraction_dir: str,
+        progress_callback=None,
+    ) -> Dict[str, Any]:
+        """Step 3 rounds (SPEC file-analysis D8/D10).
+
+        The Windows-artifact round (mandatory when a windows db exists) and
+        the file-description round run concurrently; the event-cluster round
+        starts only after the file round has fully persisted, so it sees this
+        run's descriptions. Every applicable round records a visible outcome;
+        failures mark the task partial (§5.3) without blocking other rounds.
+
+        Returns:
+            {"descriptions": [...], "cluster_results": [...],
+             "steps": {...}, "partial": bool}
+        """
+        steps: Dict[str, Any] = {}
+        partial = False
+
+        task_info = await self._cpp_backend.get_task(task_id)
+        events_db = task_info.get("output_events_db") or ""
+        windows_db = task_info.get("output_windows_db") or ""
+
+        if progress_callback:
+            await progress_callback("analyzing", "正在并行分析文件与 Windows 工件...")
+
+        # Round A: Windows artifacts (D1/D10)
+        artifact_task = None
+        if windows_db and os.path.exists(windows_db):
+            if self._windows_service:
+                logger.info(f"[CASE_ANALYSIS] Task {task_id}: Starting Windows artifact analysis...")
+                artifact_task = asyncio.create_task(self.analyze_windows_artifacts(
+                    task_id=task_id,
+                    windows_db_path=windows_db,
+                    case_description=case_description,
+                    progress_callback=progress_callback,
+                ))
+            else:
+                steps["artifacts"] = {
+                    "failed": True,
+                    "reason": "windows artifacts service not initialized",
+                }
+                partial = True
+        else:
+            # Not applicable: non-Windows image or no artifact db extracted.
+            steps["artifacts"] = {
+                "skipped": True,
+                "reason": "windows artifacts db not available",
+            }
+
+        # Round B: file descriptions
+        try:
+            descriptions = await self.generate_file_descriptions(
+                files_db_path, filtered_files, case_description,
+                extraction_dir=extraction_dir, progress_callback=progress_callback,
+                task_id=task_id,
+            )
+            steps["descriptions"] = descriptions
+            steps["file_round"] = {"analyzed": len(descriptions)}
+        except Exception as e:
+            logger.error(f"[CASE_ANALYSIS] Task {task_id}: Description step failure: {e}", exc_info=True)
+            descriptions = []
+            steps["descriptions"] = []
+            steps["file_round"] = {"failed": True, "reason": str(e)}
+            partial = True
+
+        # Round C: event clusters — only after the file round persisted (D8)
+        cluster_results: List[Dict[str, Any]] = []
+        if events_db and os.path.exists(events_db):
+            try:
+                cluster_results = await self._cluster_analyzer.analyze_and_ingest_clusters(
+                    events_db, case_description, task_id, progress_callback
+                )
+                steps["event_clusters"] = {
+                    "analyzed_count": len(cluster_results),
+                    "success": True,
+                }
+            except Exception as e:
+                logger.error(f"[CASE_ANALYSIS] Task {task_id}: Event cluster analysis failed: {e}", exc_info=True)
+                steps["event_clusters"] = {"failed": True, "reason": str(e)}
+                partial = True
+        else:
+            # Skip must stay visible: a silently missing cluster-analysis
+            # step would look like "nothing to analyze" downstream (SPEC §0).
+            logger.warning(f"[CASE_ANALYSIS] Task {task_id}: Event cluster analysis skipped - events db unavailable")
+            steps["event_clusters"] = {
+                "skipped": True,
+                "reason": "events_db missing or not found",
+            }
+
+        # Round A outcome (ran concurrently with file → cluster)
+        if artifact_task:
+            try:
+                artifact_result = await artifact_task
+                steps["artifacts"] = {"success": True, "summary": {
+                    k: v for k, v in (artifact_result or {}).items()
+                    if k in ("filter", "analysis")
+                }}
+            except Exception as e:
+                logger.error(f"[CASE_ANALYSIS] Task {task_id}: Windows artifact analysis failed: {e}", exc_info=True)
+                steps["artifacts"] = {"failed": True, "reason": str(e)}
+                partial = True
+
+        return {
+            "descriptions": descriptions,
+            "cluster_results": cluster_results,
+            "steps": steps,
+            "partial": partial,
+        }
 
     async def run_multi_image_analysis(
         self,

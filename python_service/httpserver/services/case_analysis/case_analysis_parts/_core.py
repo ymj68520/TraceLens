@@ -95,12 +95,14 @@ class CaseAnalysisCoreMixin:
         case_description: str,
         extraction_dir: Optional[str] = None,
         progress_callback=None,
+        task_id: str = "",
     ) -> List[Dict[str, Any]]:
         """Generate LLM description for each file in the list using concurrency."""
         if not self._file_analyzer:
             raise RuntimeError("FileAnalyzer module not initialized. Ensure all dependencies are injected.")
         return await self._file_analyzer.analyze_files(
-            files_db_path, file_paths, case_description, extraction_dir, progress_callback
+            files_db_path, file_paths, case_description, extraction_dir, progress_callback,
+            task_id=task_id,
         )
 
     async def reanalyze_files(
@@ -123,14 +125,15 @@ class CaseAnalysisCoreMixin:
         task_id: str,
         case_description: str,
         file_descriptions: List[Dict[str, Any]],
-        cluster_descriptions: Optional[List[Dict[str, Any]]] = None,
+        files_db_path: str = "",
         progress_callback=None,
     ) -> bool:
-        """Ingest case description, file descriptions, and event clusters into Graphiti."""
+        """Ingest case description and file descriptions into Graphiti."""
         if not self._file_analyzer:
             raise RuntimeError("FileAnalyzer module not initialized. Ensure all dependencies are injected.")
         return await self._file_analyzer.ingest_to_knowledge_graph(
-            task_id, case_description, file_descriptions, cluster_descriptions, progress_callback
+            task_id, case_description, file_descriptions,
+            files_db_path=files_db_path, progress_callback=progress_callback,
         )
 
     async def dispatch_kg_ingestion(
@@ -138,7 +141,7 @@ class CaseAnalysisCoreMixin:
         task_id: str,
         case_description: str,
         file_descriptions: List[Dict[str, Any]],
-        cluster_descriptions: Optional[List[Dict[str, Any]]] = None,
+        files_db_path: str = "",
     ) -> Dict[str, Any]:
         """Hand KG ingestion to the job system and return immediately (SPEC §B2).
 
@@ -149,11 +152,14 @@ class CaseAnalysisCoreMixin:
         a kg_sync job reportable via GET /api/graphiti/jobs/{id}; otherwise
         the historical inline behaviour is the fallback.
 
+        Event-cluster episodes are NOT dispatched here: per file-analysis
+        SPEC D7 they are owned exclusively by ClusterAnalyzer's SPEC-format
+        ingestor and self-ingest during cluster analysis.
+
         Returns the ``knowledge_graph`` step dict for the pipeline result.
         """
         episode_counts = {
             "file_episodes": len(file_descriptions or []),
-            "cluster_episodes": len(cluster_descriptions or []),
         }
 
         manager = None
@@ -167,7 +173,7 @@ class CaseAnalysisCoreMixin:
             async def _runner(job_progress):
                 ingested = await self.ingest_to_knowledge_graph(
                     task_id, case_description, file_descriptions,
-                    cluster_descriptions=cluster_descriptions,
+                    files_db_path=files_db_path,
                     progress_callback=job_progress,
                 )
                 return {"ingested": ingested, **episode_counts}
@@ -179,7 +185,7 @@ class CaseAnalysisCoreMixin:
         logger.info(f"[KG_DISPATCH] Task {task_id}: falling back to inline KG ingestion")
         ingested = await self.ingest_to_knowledge_graph(
             task_id, case_description, file_descriptions,
-            cluster_descriptions=cluster_descriptions,
+            files_db_path=files_db_path,
         )
         return {"ingested": ingested, **episode_counts}
 

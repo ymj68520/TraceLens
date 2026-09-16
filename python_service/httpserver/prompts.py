@@ -10,6 +10,82 @@ LLM 提示词集中管理模块
 - 使用 {变量名} 作为占位符，由调用方通过 .format() 填充
 """
 
+import re
+from typing import Any, Dict
+
+
+# =====================================================================
+# 结构化输出段（SPEC file-analysis D15）
+# 追加到各分析 prompt 末尾，要求四段式输出，供 parse_structured_analysis
+# 宽松解析。解析永不失败：模型不服从格式时回退为整段 description。
+# =====================================================================
+
+STRUCTURED_OUTPUT_INSTRUCTION = """
+
+请严格按以下四段格式输出（各段以"数字. 段名"开头，纯文本，不要 Markdown）：
+1. 简要总结
+（1-2句话概括核心内容）
+2. 详细分析
+（详细分析内容，可多段）
+3. 关键词
+（3-5个关键词，用逗号分隔）
+4. 取证价值
+（高/中/低，并简述理由）"""
+
+
+def parse_structured_analysis(text: str) -> Dict[str, Any]:
+    """Lenient four-part parser for analysis output (SPEC file-analysis D15).
+
+    Extracts 简要总结/详细分析/关键词/取证价值 when the model followed the
+    format; NEVER fails or drops content — ``description`` always carries
+    the full original text, and unstructured output degrades to the legacy
+    heuristics on the caller side.
+    """
+    result: Dict[str, Any] = {
+        "summary": "",
+        "description": text or "",
+        "keywords": [],
+        "value": "",
+        "structured": False,
+    }
+    if not text:
+        return result
+
+    lines = text.splitlines()
+    headers: Dict[str, tuple] = {}
+    for i, line in enumerate(lines):
+        m = re.match(r"^\s*([1234])[.、）\)]\s*(简要总结|详细分析|关键词|取证价值)", line)
+        if m:
+            headers.setdefault(m.group(1), (i, m.group(2)))
+
+    if "1" not in headers:
+        for line in lines:
+            if line.strip():
+                result["summary"] = line.strip()[:200]
+                break
+        return result
+
+    order = sorted(headers.items(), key=lambda kv: kv[1][0])
+    bounds = [(int(num), start) for num, (start, _name) in order]
+
+    def section(num: int) -> str:
+        for j, (n, start) in enumerate(bounds):
+            if n == num:
+                end = bounds[j + 1][1] if j + 1 < len(bounds) else len(lines)
+                return "\n".join(lines[start + 1:end]).strip()
+        return ""
+
+    keywords_raw = section(3)
+    keywords = [k.strip() for k in re.split(r"[,，、;；]", keywords_raw) if k.strip()][:5]
+
+    result.update({
+        "summary": section(1)[:200],
+        "keywords": keywords,
+        "value": section(4),
+        "structured": True,
+    })
+    return result
+
 
 # =====================================================================
 # 区块一：通用文本分析
@@ -37,8 +113,8 @@ TEXT_ANALYSIS_SYSTEM = """你是一名资深数字取证分析师，正在对电
 请使用纯文本格式输出，不要使用任何 Markdown 标记（如标题符号#、加粗**、列表-等）。
 所有内容使用中文。"""
 
-TEXT_ANALYSIS_USER_TEMPLATE = "请分析以下文件内容：\n\n{content}"
-TEXT_ANALYSIS_USER_WITH_INSTRUCTION_TEMPLATE = "请分析以下文件内容：\n\n{content}\n\n调查人员补充要求：\n{instruction}"
+TEXT_ANALYSIS_USER_TEMPLATE = "请分析以下文件内容：\n\n{content}" + STRUCTURED_OUTPUT_INSTRUCTION
+TEXT_ANALYSIS_USER_WITH_INSTRUCTION_TEMPLATE = "请分析以下文件内容：\n\n{content}\n\n调查人员补充要求：\n{instruction}" + STRUCTURED_OUTPUT_INSTRUCTION
 
 
 # =====================================================================
@@ -170,7 +246,7 @@ CASE_FILE_ANALYSIS_TEMPLATE = """作为资深取证专家，请对以下文件�
 3. 任何可疑的活动痕迹或异常点
 4. 综合评估该证据的效力
 
-请输出纯文本，不要使用 Markdown。"""
+请输出纯文本，不要使用 Markdown。""" + STRUCTURED_OUTPUT_INSTRUCTION
 
 
 # =====================================================================
@@ -183,7 +259,7 @@ CASE_FILE_ANALYSIS_TEMPLATE = """作为资深取证专家，请对以下文件�
 CASE_VISION_ANALYSIS_TEMPLATE = """请结合案情背景对这张图像进行深度取证分析。
 案情背景：{case_description}
 
-要求：提取文字信息、识别人物/账号、发现时间线索，并评估取证价值。"""
+要求：提取文字信息、识别人物/账号、发现时间线索，并评估取证价值。""" + STRUCTURED_OUTPUT_INSTRUCTION
 
 
 CASE_VISION_REANALYSIS_TEMPLATE = """请根据以上信息重新分析这张图像的取证价值。
@@ -243,7 +319,7 @@ FILE_REANALYSIS_INSTRUCTION = """
 注意事项：
 - 请使用纯文本格式输出，不要使用任何 Markdown 标记
 - 所有内容使用中文
-- 保持客观专业的取证分析语气"""
+- 保持客观专业的取证分析语气""" + STRUCTURED_OUTPUT_INSTRUCTION
 
 
 # =====================================================================

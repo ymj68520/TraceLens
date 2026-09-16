@@ -13,6 +13,7 @@ This module provides the main LLMService class that orchestrates:
 import logging
 import sqlite3
 import time
+from functools import partial
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -20,6 +21,7 @@ import httpx
 
 from ...config import Settings
 from ...path_utils import normalize_evidence_path
+from ..case_analysis.file_schema import ensure_file_analysis_schema
 from .file_analyzer import FileAnalyzer
 from .model_manager import ModelManager
 from .event_analyzer import EventAnalyzer
@@ -123,9 +125,20 @@ class LLMService:
         summary: str,
         keywords: str,
         model_used: str = "",
+        task_id: str = "",
+        trigger_source: str = "interactive",
+        extraction_method: str = "",
     ) -> bool:
         """
         Persist LLM analysis result to C++ _files.db SQLite database.
+
+        Single-transaction three-write (file-analysis SPEC §3.2): the
+        append-only ``file_analyses`` truth row, the ``files.llm_*`` display
+        cache, and the ``file_descriptions`` current-state row (the
+        user-controlled ``is_relevant`` flag is deliberately untouched, D16).
+        A pre-existing cache written outside this path (CLI round, no
+        ``file_analyses`` row) is archived exactly once with
+        ``trigger_source='migrated'`` (D19) before being overwritten.
 
         Args:
             db_path: Absolute path to the _files.db SQLite file.
@@ -134,6 +147,9 @@ class LLMService:
             summary: Short summary.
             keywords: Comma-separated keyword string.
             model_used: Model identifier.
+            task_id: Owning task (provenance; empty when unavailable).
+            trigger_source: pipeline / interactive / batch / reanalyze / migrated.
+            extraction_method: markitdown / legacy:{Name} / vision / raw_text.
 
         Returns:
             True if a row was updated, False otherwise.
@@ -162,12 +178,64 @@ class LLMService:
                 llm_model_used = ?
             WHERE path = ?
         """
+        insert_analysis_sql = """
+            INSERT INTO file_analyses (
+                task_id, file_path, md5, summary, description,
+                keywords, model, extraction_method, trigger_source,
+                analysis_id_upstream, created_at, ingested_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+        """
         try:
+            # Schema ensure is idempotent and runs outside the write
+            # transaction; the truth table must exist before the first row.
+            ensure_file_analysis_schema(db_path)
+
             with sqlite3.connect(db_path, timeout=10) as conn:
                 cur = conn.cursor()
 
-                # 1) Update the main files table FIRST and require an exact match on
-                #    the canonical path. Only proceed if the Evidence row really exists.
+                # 0) Identity gate + snapshot: the Evidence row must really
+                #    exist, and its pre-existing llm_* values (if any) are the
+                #    D19 archival source.
+                cur.execute(
+                    "SELECT md5, llm_summary, llm_description, llm_keywords, "
+                    "llm_analyzed_at, llm_model_used FROM files WHERE path = ?",
+                    (norm_path,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    logger.warning(
+                        f"Path match failed for {file_path!r} "
+                        f"(normalized: {norm_path!r}) in {db_path!r}"
+                    )
+                    return False
+                (file_md5, old_summary, old_description, old_keywords,
+                 old_analyzed_at, old_model) = row
+
+                # D8/D19: chain state — the previous latest truth record (if
+                # any) both gates the legacy archival (a cache backed by its
+                # own truth record is OURS, never archived) and becomes the
+                # new record's analysis_id_upstream.
+                cur.execute(
+                    "SELECT MAX(id) FROM file_analyses WHERE file_path = ?",
+                    (norm_path,),
+                )
+                previous_row = cur.fetchone()
+                previous_id = previous_row[0] if previous_row else None
+
+                if old_analyzed_at is not None and previous_id is None:
+                    cur.execute(insert_analysis_sql, (
+                        task_id, norm_path, file_md5 or "",
+                        old_summary or "", old_description or "",
+                        old_keywords or "", old_model or "",
+                        "", "migrated", None, int(old_analyzed_at),
+                    ))
+                    previous_id = cur.lastrowid
+                    logger.info(
+                        f"Archived pre-existing (CLI) description for "
+                        f"{norm_path!r} as trigger_source='migrated'"
+                    )
+
+                # 1) Display cache: files.llm_* — exact identity required.
                 cur.execute(update_files_sql, (
                     summary or description[:200],
                     description,
@@ -176,17 +244,30 @@ class LLMService:
                     model_used,
                     norm_path,
                 ))
-
-                if cur.rowcount <= 0:
+                if cur.rowcount <= 0:  # pragma: no cover — gated by the SELECT
                     logger.warning(
                         f"Path match failed for {file_path!r} "
                         f"(normalized: {norm_path!r}) in {db_path!r}"
                     )
                     return False
 
-                # 2) Only after the Evidence row is confirmed, upsert the description.
-                #    Using the normalized path as the conflict key keeps file_descriptions
-                #    consistent with files.path identity.
+                # 2) Truth: append the analysis record, chained to the
+                #    previous latest version via analysis_id_upstream (D8).
+                cur.execute(insert_analysis_sql, (
+                    task_id, norm_path, file_md5 or "",
+                    summary or description[:200],
+                    description,
+                    keywords,
+                    model_used,
+                    extraction_method,
+                    trigger_source,
+                    previous_id,
+                    int(time.time()),
+                ))
+
+                # 3) Current state: upsert the description. Using the
+                #    normalized path as the conflict key keeps
+                #    file_descriptions consistent with files.path identity.
                 self._ensure_file_descriptions_schema(conn)
                 cur.execute("""
                     INSERT INTO file_descriptions
@@ -445,7 +526,9 @@ class LLMService:
         return await self.file_analyzer.start_batch_analysis(
             files, self._text_client, self._vision_client,
             model_type, files_db_path, extraction_dir,
-            persist_callback=self.persist_to_files_db
+            persist_callback=partial(
+                self.persist_to_files_db, trigger_source="batch"
+            ),
         )
 
     async def get_batch_status(self, job_id: str) -> Optional[Dict[str, Any]]:

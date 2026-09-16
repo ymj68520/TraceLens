@@ -3,9 +3,11 @@
 The worker's episode-source reads used to run as whole-table ``fetchall()``
 directly on the event loop with ``timeout=10``; under C++ write contention
 each connect could busy-wait the full timeout, freezing every HTTP endpoint
-(observed as a 46 s KG page load, 2026-09-15). These tests pin the new
-contract: the reads live in a module-level sync helper with a 2 s
-busy_timeout and are invoked via ``asyncio.to_thread``.
+(observed as a 46 s KG page load, 2026-09-15). These tests pin the merged
+contract: the file-row read lives in a module-level sync helper with a 2 s
+busy_timeout and is invoked via ``asyncio.to_thread``; the cluster gap-fill
+candidates (append-only ``event_cluster_analyses`` rows, file-analysis SPEC
+D7) are read off-loop through the same mechanism.
 """
 
 import asyncio
@@ -53,6 +55,13 @@ def _make_files_db(path: Path, rows: int = 2, with_descriptions: bool = True):
 
 
 def _make_events_db(path: Path):
+    """Legacy-shape events db: per-event llm_* cache rows only.
+
+    Since file-analysis SPEC D7 these rows must never surface as cluster
+    episodes (see test_file_analysis_phase1_ingestion.py for the worker-side
+    pin); they exist here only to show the file-row helper ignores events db
+    shapes entirely.
+    """
     conn = sqlite3.connect(path)
     conn.execute(
         "CREATE TABLE events (id INTEGER PRIMARY KEY, file_path TEXT,"
@@ -69,14 +78,12 @@ def _make_events_db(path: Path):
 
 
 class TestReadEpisodeSourceRows:
-    def test_parses_file_and_cluster_rows(self, tmp_path):
+    def test_parses_file_rows_only(self, tmp_path):
         files_db = tmp_path / "files.db"
-        events_db = tmp_path / "events.db"
         _make_files_db(files_db)
-        _make_events_db(events_db)
 
-        file_descs, cluster_descs, error = worker_mod._read_episode_source_rows(
-            str(files_db), str(events_db), analyzed_only=True
+        file_descs, error = worker_mod._read_episode_source_rows(
+            str(files_db), analyzed_only=True
         )
 
         assert error is None
@@ -85,20 +92,16 @@ class TestReadEpisodeSourceRows:
         assert file_descs[0]["description"] == "desc-0"
         assert file_descs[0]["category"] == "document"
         assert file_descs[0]["success"] is True
-        assert len(cluster_descs) == 1
-        assert cluster_descs[0]["event_type"] == "CREATE"
-        assert cluster_descs[0]["analysis"]["description"] == "cluster desc"
 
     def test_missing_descriptions_table_is_nonfatal(self, tmp_path):
         files_db = tmp_path / "files.db"
         _make_files_db(files_db, with_descriptions=False)
 
-        file_descs, cluster_descs, error = worker_mod._read_episode_source_rows(
-            str(files_db), None, analyzed_only=True
+        file_descs, error = worker_mod._read_episode_source_rows(
+            str(files_db), analyzed_only=True
         )
 
         assert file_descs == []
-        assert cluster_descs == []
         assert error == "file_descriptions table missing"
 
     def test_analyzed_only_filters_empty_descriptions(self, tmp_path):
@@ -112,8 +115,8 @@ class TestReadEpisodeSourceRows:
         conn.commit()
         conn.close()
 
-        file_descs, _, _ = worker_mod._read_episode_source_rows(
-            str(files_db), None, analyzed_only=True
+        file_descs, _ = worker_mod._read_episode_source_rows(
+            str(files_db), analyzed_only=True
         )
 
         assert len(file_descs) == 3
@@ -123,14 +126,14 @@ class TestPathAUsesThread:
     @pytest.mark.asyncio
     async def test_reads_run_via_to_thread(self, tmp_path):
         files_db = tmp_path / "files.db"
-        files_db.write_bytes(b"")  # existence check only; helper is mocked
+        files_db.write_bytes(b"")  # existence check only; helpers are mocked
         events_db = tmp_path / "events.db"
         events_db.write_bytes(b"")
 
         manager = IngestionJobManager(settings=mock.Mock())
         manager._update_job_status = mock.AsyncMock()
 
-        sentinel = ([{"file_path": "/x", "description": "d", "success": True}], [], None)
+        sentinel = ([{"file_path": "/x", "description": "d", "success": True}], None)
         to_thread_calls = []
 
         real_to_thread = asyncio.to_thread
@@ -151,6 +154,8 @@ class TestPathAUsesThread:
         with mock.patch.object(
             worker_mod, "_read_episode_source_rows", return_value=sentinel
         ) as read_spy, mock.patch.object(
+            worker_mod, "fetch_pending_cluster_analyses", return_value=[]
+        ), mock.patch.object(
             asyncio, "to_thread", side_effect=spying_to_thread
         ), mock.patch(
             "httpserver.dependencies.get_service_manager", return_value=svc_mgr
@@ -159,8 +164,13 @@ class TestPathAUsesThread:
                 "job-1", "task-1", str(files_db), str(events_db), analyzed_only=True
             )
 
-        assert to_thread_calls == ["_read_episode_source_rows"]
-        read_spy.assert_called_once_with(str(files_db), str(events_db), True)
+        # Both SQLite reads — file rows and pending cluster analyses — must
+        # run off the event loop (§A1), in this order.
+        assert to_thread_calls == [
+            "_read_episode_source_rows",
+            "fetch_pending_cluster_analyses",
+        ]
+        read_spy.assert_called_once_with(str(files_db), True)
         assert stats["episodes_successful"] == 1
         assert stats["error"] is None
 
@@ -172,7 +182,7 @@ class TestPathAUsesThread:
         manager = IngestionJobManager(settings=mock.Mock())
         manager._update_job_status = mock.AsyncMock()
 
-        sentinel = ([], [], "file_descriptions table missing")
+        sentinel = ([], "file_descriptions table missing")
 
         async def fake_ingest(**kwargs):
             return {"successful": 1, "total": 1, "failed": 0}
@@ -184,6 +194,8 @@ class TestPathAUsesThread:
 
         with mock.patch.object(
             worker_mod, "_read_episode_source_rows", return_value=sentinel
+        ), mock.patch.object(
+            worker_mod, "fetch_pending_cluster_analyses", return_value=[]
         ), mock.patch(
             "httpserver.dependencies.get_service_manager", return_value=svc_mgr
         ):

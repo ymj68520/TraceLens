@@ -87,6 +87,13 @@ class GraphitiCoreMixin:
 
             self._graphiti_class = GraphitiIngestor
             self._initialized = True
+            # One-shot LM Studio context probe for the episode chunk budget
+            # (SPEC file-analysis D13); failure keeps the configured budget.
+            try:
+                from .episode_budget import resolve_and_cache
+                await resolve_and_cache(self.settings)
+            except Exception as probe_error:
+                logger.debug(f"Episode budget probe skipped: {probe_error}")
             logger.info("Graphiti service initialized successfully")
         except ImportError as e:
             logger.warning(f"Graphiti integration not available: {e}")

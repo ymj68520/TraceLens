@@ -177,7 +177,7 @@ const LLMDescriptions = () => {
                     try {
                         const status = await getCaseAnalysisStatus(result.job_id);
                         if (status.status === 'completed') {
-                            setReanalyzeMessage(`✅ 重新分析完成`);
+                            setReanalyzeMessage(status.result?.partial ? '⚠️ 重新分析完成（部分轮次失败，详见服务日志）' : '✅ 重新分析完成');
                             setReanalyzing(false);
                             // Refresh results
                             await fetchResults();

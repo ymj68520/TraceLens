@@ -55,8 +55,15 @@ class MarkitdownExtractor(BaseExtractor):
         return self._fallback_map.get(ext)
 
     async def extract_to_markdown(self, file_path: str) -> str:
+        """Convert a file to markdown (method-agnostic wrapper around
+        :meth:`extract_to_markdown_detailed`)."""
+        content, _ = await self.extract_to_markdown_detailed(file_path)
+        return content
+
+    async def extract_to_markdown_detailed(self, file_path: str) -> "tuple[str, str]":
         """
-        Convert a file to markdown using markitdown.
+        Convert a file to markdown and report which extractor produced it
+        (SPEC file-analysis D17 provenance).
 
         If markitdown is unavailable or fails, falls back to the legacy
         extractor configured in _fallback_map (e.g., PDFExtractor for .pdf).
@@ -65,7 +72,9 @@ class MarkitdownExtractor(BaseExtractor):
             file_path: Absolute path to the file to convert.
 
         Returns:
-            Markdown string representation of the file content.
+            ``(markdown, extraction_method)`` — ``"markitdown"`` on success,
+            ``"legacy:{ClassName}"`` when a fallback extractor produced the
+            content (including nested fallback methods).
 
         Raises:
             RuntimeError: If markitdown is not installed and no fallback is available.
@@ -76,7 +85,8 @@ class MarkitdownExtractor(BaseExtractor):
             fallback = self._get_fallback(file_path)
             if fallback:
                 logger.warning(f"markitdown not installed, falling back to {fallback.__class__.__name__} for {file_path}")
-                return await fallback.extract_to_markdown(file_path)
+                content, method = await fallback.extract_to_markdown_detailed(file_path)
+                return content, f"legacy:{method}"
             raise RuntimeError(
                 "markitdown library is not installed and no fallback available. "
                 "Install with: pip install 'markitdown[all]'"
@@ -110,14 +120,15 @@ class MarkitdownExtractor(BaseExtractor):
                 fallback = self._get_fallback(file_path)
                 if fallback:
                     logger.info(f"Falling back to {fallback.__class__.__name__} for {file_path}")
-                    return await fallback.extract_to_markdown(file_path)
-                return f"[No content extracted from {file_path}]"
+                    content, method = await fallback.extract_to_markdown_detailed(file_path)
+                    return content, f"legacy:{method}"
+                return f"[No content extracted from {file_path}]", "markitdown"
 
             logger.info(
                 f"markitdown converted {file_path}: "
                 f"{len(markdown)} chars"
             )
-            return markdown
+            return markdown, "markitdown"
 
         except FileNotFoundError:
             logger.error(f"File not found: {file_path}")
@@ -129,7 +140,8 @@ class MarkitdownExtractor(BaseExtractor):
             if fallback:
                 logger.warning(f"Falling back to {fallback.__class__.__name__} for {file_path}: {e}")
                 try:
-                    return await fallback.extract_to_markdown(file_path)
+                    content, method = await fallback.extract_to_markdown_detailed(file_path)
+                    return content, f"legacy:{method}"
                 except Exception as fallback_error:
                     logger.error(f"Fallback also failed for {file_path}: {fallback_error}")
                     raise fallback_error
