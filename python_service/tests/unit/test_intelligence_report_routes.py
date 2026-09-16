@@ -200,8 +200,10 @@ def test_directory_sections_present_even_without_tables(client):
     assert "apps" not in ids
     assert "win_users" not in ids
     assert "linux_users" not in ids
-    # generic sections still present
-    assert {"overview", "case", "evidence_info", "device_info", "evidence.files", "timeline"} <= ids
+    # generic sections still present. The device-info placeholder uses its own id
+    # so the reader cannot label an undetermined platform "Android".
+    assert {"overview", "case", "evidence_info", "device_info_generic",
+            "evidence.files", "timeline"} <= ids
     # no platform claimed
     assert res.json()["metadata"]["platforms"] == []
 
@@ -304,9 +306,12 @@ def _seed_windows_tables(db_path: Path) -> None:
                 id INTEGER PRIMARY KEY, hive_path TEXT, hive_type TEXT, key_path TEXT,
                 value_name TEXT, value_type TEXT, value_data TEXT, last_modified INTEGER
             );
-            INSERT INTO registry_values (value_name, value_data) VALUES
-                ('ProductName', 'Windows Server 2019'),
-                ('ComputerName', 'SRV-DC01');
+            -- Host identity is located by value_name AND the key it lives under;
+            -- a bare value_name also matches application rows in a real hive.
+            INSERT INTO registry_values (hive_type, key_path, value_name, value_data) VALUES
+                ('SOFTWARE', 'Microsoft\Windows NT\CurrentVersion', 'ProductName', 'Windows Server 2019'),
+                ('SOFTWARE', 'Microsoft\Windows NT\CurrentVersion', 'CurrentBuild', '17763'),
+                ('SYSTEM', 'ControlSet001\Control\ComputerName\ComputerName', 'ComputerName', 'SRV-DC01');
             """
         )
 
@@ -427,6 +432,7 @@ def test_windows_device_info_synthesized(windows_client):
     assert page["total"] == 1
     record = page["records"][0]
     assert record["操作系统"] == "Windows Server 2019"
+    assert record["内部版本号"] == "17763"
     assert record["计算机名"] == "SRV-DC01"
 
 
@@ -462,15 +468,23 @@ def test_linux_device_info_synthesized(linux_client):
 # ── report metadata (case info + evidence info) ──
 
 
-def test_metadata_get_returns_all_fields_empty_initially(client):
+def test_metadata_get_seeds_derived_fields_and_leaves_the_rest_empty(client):
     res = client.get("/api/llm/intelligence-report/task-1/metadata")
     assert res.status_code == 200
-    meta = res.json()["metadata"]
-    # every whitelisted field present, empty until edited
+    body = res.json()
+    meta = body["metadata"]
+    # every whitelisted field present
     for field in ("case_name", "case_number", "collector_name", "evidence_name",
                   "holder", "phone1"):
         assert field in meta
-        assert meta[field] == ""
+    # Values the analysis itself supports are derived on first read and flagged...
+    assert meta["evidence_name"] == "phone.E01"
+    assert meta["evidence_number"] == "task-1"
+    assert {"evidence_name", "evidence_number"} <= set(body["auto_fields"])
+    # ...while fields with no source stay empty for the analyst to fill in.
+    assert meta["collector_name"] == ""
+    assert meta["holder"] == ""
+    assert "collector_name" not in body["auto_fields"]
 
 
 def test_metadata_put_then_get_roundtrip(android_client):

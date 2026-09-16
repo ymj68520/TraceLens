@@ -97,7 +97,7 @@ function RecordsTable({ pageData }) {
 }
 
 export default function ReportReaderContent({
-  node, report, pageData, loading, taskId, metadata, onEditMetadata,
+  node, report, pageData, loading, taskId, metadata, autoFields, onEditMetadata,
 }) {
   const markdownCtx = useMemo(() => ({ activeContextId: taskId, navigate: () => {}, scrollToFile: () => {} }), [taskId]);
 
@@ -123,15 +123,15 @@ export default function ReportReaderContent({
   }
 
   if (node.kind === 'case') {
-    return <CaseInfoSection metadata={metadata} onEdit={onEditMetadata} />;
+    return <CaseInfoSection metadata={metadata} onEdit={onEditMetadata} autoFields={autoFields} />;
   }
 
   if (node.kind === 'evidence_info') {
-    return <EvidenceInfoSection metadata={metadata} onEdit={onEditMetadata} />;
+    return <EvidenceInfoSection metadata={metadata} onEdit={onEditMetadata} autoFields={autoFields} />;
   }
 
   if (node.kind === 'device_info') {
-    return <DeviceInfoSection pageData={pageData} />;
+    return <DeviceInfoSection pageData={pageData} title={node.title} />;
   }
 
   if (node.kind === 'chapter') {

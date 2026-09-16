@@ -68,10 +68,17 @@ export function smsTypeLabel(type) {
 }
 
 /** A definition-list pair (label → value), always rendered even when empty. */
-export function Field({ label, children, mono = false }) {
+export function Field({ label, children, badge = null, mono = false }) {
   return (
     <div className="min-w-0">
-      <dt className="text-xs text-slate-500 dark:text-slate-400">{label}</dt>
+      <dt className="text-xs text-slate-500 dark:text-slate-400">
+        {label}
+        {badge && (
+          <Badge className="ml-1.5 align-middle bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
+            {badge}
+          </Badge>
+        )}
+      </dt>
       <dd className={`break-words text-slate-800 dark:text-slate-100 ${mono ? 'font-mono text-[12px]' : 'text-sm'}`}>
         {children}
       </dd>

@@ -266,6 +266,23 @@ public:
      */
     void start_analysis(const std::string& task_id);
 
+    /**
+     * @brief Re-run ONLY the platform-artifact phase of an existing task (async).
+     *
+     * Rebuilds <task>/android.db, windows.db, linux.db or oss.db from the task's
+     * already-produced _raw.db, without re-parsing the image. This backfills
+     * tasks whose platform databases are missing or were written by an older
+     * build, which is invisible to a reader that only opens the artifacts.
+     *
+     * Requires: the task exists, declared at least one scenario, and both its
+     * image and its _raw.db are still on disk. The task's status is restored
+     * afterwards, so a COMPLETED task stays COMPLETED.
+     *
+     * @param task_id Task ID
+     * @return true if the re-analysis was queued, false if it was rejected.
+     */
+    bool reanalyze_platform_artifacts(const std::string& task_id);
+
     // Persistence
     void save_tasks();
     void load_tasks();

@@ -17,6 +17,68 @@
 #include "../../analyzers/LinuxFilesAnalyzer/Common/LinuxAnalyzerDeclarations.h"
 #include <fstream>
 #include <filesystem>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <thread>
+#include <utility>
+
+namespace {
+
+/**
+ * Keeps a task's watchdog timer alive while a long-running phase runs.
+ *
+ * The platform analyzers can spend tens of minutes inside artifact-level LLM
+ * calls while reporting nothing back to the TaskManager. TaskWatchdog fails any
+ * RUNNING task that has not called update_progress() for
+ * TASK_WATCHDOG_STALE_MINUTES (default 30), so a phase that is working but
+ * silent is killed exactly as if it had hung — which is what happened to full
+ * Linux analyses, whose artifact pass only ever printed to stdout.
+ *
+ * update_progress() stamps progress.phase_start_time, so ticking it on a timer
+ * keeps the watchdog satisfied while the phase is genuinely still running.
+ */
+class PhaseKeepAlive {
+public:
+    PhaseKeepAlive(std::function<void()> tick, std::chrono::seconds period)
+        : tick_(std::move(tick)) {
+        thread_ = std::thread([this, period]() {
+            const auto step = std::chrono::seconds(1);
+            while (!stop_.load()) {
+                for (auto waited = std::chrono::seconds(0);
+                     waited < period && !stop_.load();
+                     waited += step) {
+                    std::this_thread::sleep_for(step);
+                }
+                if (!stop_.load()) {
+                    try {
+                        tick_();
+                    } catch (...) {
+                        // A heartbeat must never take the phase down with it.
+                    }
+                }
+            }
+        });
+    }
+
+    ~PhaseKeepAlive() {
+        stop_.store(true);
+        if (thread_.joinable()) thread_.join();
+    }
+
+    PhaseKeepAlive(const PhaseKeepAlive&) = delete;
+    PhaseKeepAlive& operator=(const PhaseKeepAlive&) = delete;
+
+private:
+    std::function<void()> tick_;
+    std::atomic<bool> stop_{false};
+    std::thread thread_;
+};
+
+/// How often a long-running phase refreshes its watchdog timer.
+constexpr std::chrono::seconds kPhaseHeartbeatPeriod{60};
+
+} // namespace
 
 
 using forensics::TaskPersistence;
@@ -213,6 +275,18 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
                 update_progress(task_id, TaskPhase::FINALIZING, 100, "Analysis completed successfully");
                 update_status(task_id, TaskStatus::COMPLETED, "Android logical analysis completed");
+
+                // Seed the evidence report's case/evidence metadata now that
+                // android.db exists. Best-effort: the Python reader seeds on
+                // first read too, so a failure here is not fatal.
+                try {
+                    if (forensics::LLMPythonProxy::instance().seedReportMetadata(task_id)) {
+                        add_audit_log(task_id, "REPORT_METADATA",
+                            "Seeded evidence report case/evidence metadata");
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "Warning: report metadata seed failed: " << e.what() << std::endl;
+                }
                 return;
             }
 
@@ -470,6 +544,14 @@ void TaskManager::start_analysis(const std::string& task_id) {
                         "Analyzing " + scenario_name + " artifacts...");
 
                     try {
+                        // The artifact-level LLM pass inside these analyzers can
+                        // run for tens of minutes without reporting anything;
+                        // hold the watchdog off while it does.
+                        PhaseKeepAlive keep_alive([this, task_id, base_progress, scenario_name]() {
+                            update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, base_progress,
+                                            "Analyzing " + scenario_name + " artifacts...");
+                        }, kPhaseHeartbeatPeriod);
+
                         switch (scenario) {
                             case ForensicScenario::ANDROID: {
                                 auto dbManager = std::make_unique<DatabaseManager>(effectiveRawDb);
@@ -610,11 +692,162 @@ void TaskManager::start_analysis(const std::string& task_id) {
             update_progress(task_id, TaskPhase::FINALIZING, 100, "Analysis completed successfully");
             update_status(task_id, TaskStatus::COMPLETED, "Analysis completed successfully");
 
+            // Seed the evidence report's case/evidence metadata now that every
+            // artifact database exists. Best-effort: the Python reader also
+            // seeds on first read, so a failure here is not fatal.
+            try {
+                if (forensics::LLMPythonProxy::instance().seedReportMetadata(task_id)) {
+                    add_audit_log(task_id, "REPORT_METADATA",
+                        "Seeded evidence report case/evidence metadata");
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Warning: report metadata seed failed: " << e.what() << std::endl;
+            }
+
         } catch (const std::exception& e) {
             update_status(task_id, TaskStatus::FAILED, std::string("Analysis error: ") + e.what());
             add_audit_log(task_id, "ERROR", "Analysis failed: " + std::string(e.what()));
         }
     });
+}
+
+bool TaskManager::reanalyze_platform_artifacts(const std::string& task_id) {
+    if (!analysis_pool_) {
+        std::cerr << "CRITICAL: ThreadPool not initialized in TaskManager" << std::endl;
+        return false;
+    }
+
+    AnalysisTask task = get_task(task_id);
+    if (task.id.empty() || task.scenarios.empty()) {
+        return false;
+    }
+
+    // The platform analyzers read the file listing from _raw.db and extract
+    // artifacts out of the image, so both must still be present. Re-running just
+    // this phase is what makes repairing an old task cheap: the image parse,
+    // event extraction and file classification are all reused.
+    const std::string imagePath = task.image_path;
+    const std::string rawDb = task.output_raw_db;
+    if (!std::filesystem::exists(imagePath) || !std::filesystem::exists(rawDb)) {
+        return false;
+    }
+
+    const std::string baseName = std::filesystem::path(imagePath).stem().string();
+    const std::vector<ForensicScenario> scenarios = task.scenarios;
+    const TaskStatus previous_status = task.status;
+
+    analysis_pool_->enqueue([this, task_id, imagePath, rawDb, baseName, scenarios, previous_status]() {
+        try {
+            auto& pm = forensics::PathManager::instance();
+            pm.ensureTaskDir(task_id);
+
+            update_status(task_id, TaskStatus::RUNNING, "Re-analyzing platform artifacts...");
+            add_audit_log(task_id, "PLATFORM_REANALYSIS",
+                          "Re-running platform artifact analysis from " + rawDb);
+
+            const int total = static_cast<int>(scenarios.size());
+            int index = 0;
+            int written = 0;
+
+            for (auto scenario : scenarios) {
+                if (is_task_cancelled(task_id)) {
+                    update_status(task_id, previous_status, "Platform re-analysis cancelled");
+                    return;
+                }
+                const std::string scenario_name = scenario_to_string(scenario);
+                const int base_progress = (index * 100) / total;
+                update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, base_progress,
+                                "Analyzing " + scenario_name + " artifacts...");
+
+                try {
+                    // Same watchdog hazard as the main pipeline's platform phase:
+                    // hold the heartbeat while the analyzer runs.
+                    PhaseKeepAlive keep_alive([this, task_id, base_progress, scenario_name]() {
+                        update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, base_progress,
+                                        "Analyzing " + scenario_name + " artifacts...");
+                    }, kPhaseHeartbeatPeriod);
+
+                    const auto dbPaths = pm.getTaskDbPaths(task_id, baseName);
+                    std::unique_ptr<DatabaseManager> dbManager =
+                        std::make_unique<DatabaseManager>(rawDb);
+                    if (!dbManager->initialize()) {
+                        std::cerr << "Warning: failed to initialize DatabaseManager for "
+                                  << scenario_name << " re-analysis" << std::endl;
+                        index++;
+                        continue;
+                    }
+
+                    switch (scenario) {
+                        case ForensicScenario::ANDROID: {
+                            auto analyzer = std::make_unique<AndroidAnalyzer>(imagePath, dbManager.get());
+                            analyzer->setOutputDatabasePath(dbPaths.androidDb.string());
+                            if (analyzer->initialize()) {
+                                analyzer->analyzeAndroidData();
+                                written++;
+                            }
+                            break;
+                        }
+                        case ForensicScenario::WINDOWS: {
+                            auto analyzer = std::make_unique<WindowsFilesAnalyzer>(imagePath, dbManager.get());
+                            analyzer->setOutputDatabasePath(dbPaths.windowsDb.string());
+                            if (analyzer->initialize()) {
+                                analyzer->analyzeWindowsData();
+                                written++;
+                            }
+                            break;
+                        }
+                        case ForensicScenario::LINUX: {
+                            auto analyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
+                            analyzer->setOutputDatabasePath(dbPaths.linuxDb.string());
+                            if (analyzer->initialize()) {
+                                analyzer->analyzeLinuxData();
+                                written++;
+                            }
+                            break;
+                        }
+                        case ForensicScenario::SERVER_CLOUD: {
+                            auto analyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
+                            analyzer->setOutputDatabasePath(dbPaths.ossDb.string());
+                            if (analyzer->initialize()) {
+                                analyzer->analyzeServerCloudArtifacts();
+                                written++;
+                            }
+                            break;
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "Warning: " << scenario_name << " re-analysis failed: "
+                              << e.what() << std::endl;
+                    add_audit_log(task_id, "WARNING",
+                                  scenario_name + " re-analysis failed: " + std::string(e.what()));
+                }
+
+                index++;
+                update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, (index * 100) / total,
+                                scenario_name + " analysis completed");
+            }
+
+            add_audit_log(task_id, "PLATFORM_REANALYSIS",
+                          "Platform artifact re-analysis finished (" +
+                          std::to_string(written) + "/" + std::to_string(total) + " scenarios)");
+            // Restore the original status: this pass only refreshed artifacts and
+            // must not downgrade a COMPLETED task's result databases.
+            update_status(task_id, previous_status, "Platform artifacts re-analyzed");
+
+            // Refresh the report's derived case/evidence metadata against the
+            // newly written artifacts.
+            try {
+                forensics::LLMPythonProxy::instance().seedReportMetadata(task_id);
+            } catch (const std::exception& e) {
+                std::cerr << "Warning: report metadata seed failed: " << e.what() << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error: platform re-analysis failed: " << e.what() << std::endl;
+            update_status(task_id, previous_status,
+                          std::string("Platform re-analysis error: ") + e.what());
+        }
+    });
+    return true;
 }
 
 bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,

@@ -32,8 +32,9 @@ export default function IntelligenceReportReader({ taskId }) {
   const [loadingPage, setLoadingPage] = useState(false);
   const [error, setError] = useState(null);
 
-  // case/evidence metadata (案件信息 / 证据信息)
+  // case/evidence metadata (案件信息 / 证据信息) + which fields are auto-derived
   const [metadata, setMetadata] = useState(null);
+  const [autoFields, setAutoFields] = useState([]);
   const [editorOpen, setEditorOpen] = useState(false);
 
   // search state
@@ -60,6 +61,7 @@ export default function IntelligenceReportReader({ taskId }) {
         if (cancelled) return;
         setReport(data);
         if (meta?.metadata) setMetadata(meta.metadata);
+        setAutoFields(meta?.auto_fields || []);
         setSelectedNodeId('overview');
         setPage(1);
       })
@@ -193,6 +195,7 @@ export default function IntelligenceReportReader({ taskId }) {
           loading={loadingPage}
           taskId={taskId}
           metadata={metadata}
+          autoFields={autoFields}
           onEditMetadata={() => setEditorOpen(true)}
         />
 
@@ -209,7 +212,10 @@ export default function IntelligenceReportReader({ taskId }) {
         taskId={taskId}
         isOpen={editorOpen}
         onClose={() => setEditorOpen(false)}
-        onSaved={(saved) => setMetadata(saved)}
+        onSaved={(saved) => {
+          if (saved?.metadata) setMetadata(saved.metadata);
+          setAutoFields(saved?.auto_fields || []);
+        }}
       />
     </div>
   );

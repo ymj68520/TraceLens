@@ -46,10 +46,26 @@ TaskCRUDRoutes::TaskCRUDRoutes(crow::App<>& app) : task_manager_(TaskManager::in
         {{201, "Task created"}, {400, "Invalid request"}}
     );
 
-    CROW_ROUTE(app, "/api/tasks/<string>/results").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
-        return handle_get_task_results(req, task_id);
+    // Re-run only the platform-artifact phase, reusing the task's existing
+    // _raw.db. Backfills tasks whose android.db/windows.db/linux.db are missing
+    // or were written by an older build, without re-parsing the image.
+    CROW_ROUTE(app, "/api/tasks/<string>/platform-analysis").methods("POST"_method)([this](const crow::request& req, const std::string& task_id) {
+        return handle_reanalyze_platform(req, task_id);
     });
     Swagger::instance().RegisterEndpoint(
+        "/api/tasks/{id}/platform-analysis", "POST",
+        "Re-run platform artifact analysis",
+        "Rebuild the task's platform databases (android.db / windows.db / "
+        "linux.db / oss.db) from its existing _raw.db, without re-parsing the "
+        "image. Useful for tasks analysed before the platform artifacts existed.",
+        {"Tasks"},
+        {{"id", "path", "Task ID", true}},
+        {{202, "Re-analysis queued"}, {404, "Task not found"}, {409, "Not re-analysable"}}
+    );
+
+    CROW_ROUTE(app, "/api/tasks/<string>/results").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
+        return handle_get_task_results(req, task_id);
+    });    Swagger::instance().RegisterEndpoint(
         "/api/tasks/{id}/results", "GET",
         "Get task results",
         "Retrieve the results of a completed task.",
@@ -275,8 +291,46 @@ crow::response TaskCRUDRoutes::handle_get_task(const crow::request& req, const s
     return res;
 }
 
-crow::response TaskCRUDRoutes::handle_get_task_results(const crow::request& req, const std::string& task_id) {
+crow::response TaskCRUDRoutes::handle_reanalyze_platform(const crow::request& req, const std::string& task_id) {
     crow::response res;
+    RouteHelpers::add_cors_headers(res);
+    res.set_header("Content-Type", "application/json");
+
+    auto& task_manager = TaskManager::instance();
+    AnalysisTask task = task_manager.get_task(task_id);
+    if (task.id.empty()) {
+        res.code = 404;
+        res.write(json{{"error", "Task not found"}, {"task_id", task_id}}.dump());
+        return res;
+    }
+    if (task.scenarios.empty()) {
+        res.code = 409;
+        res.write(json{
+            {"error", "Task has no platform scenario to re-analyse"},
+            {"task_id", task_id}
+        }.dump());
+        return res;
+    }
+
+    if (!task_manager.reanalyze_platform_artifacts(task_id)) {
+        res.code = 409;
+        res.write(json{
+            {"error", "Cannot re-analyse: the image or _raw.db is no longer available"},
+            {"task_id", task_id}
+        }.dump());
+        return res;
+    }
+
+    res.code = 202;
+    res.write(json{
+        {"task_id", task_id},
+        {"status", "queued"},
+        {"message", "Platform artifact re-analysis queued"}
+    }.dump());
+    return res;
+}
+
+crow::response TaskCRUDRoutes::handle_get_task_results(const crow::request& req, const std::string& task_id) {    crow::response res;
     RouteHelpers::add_cors_headers(res);
     AnalysisTask task = task_manager_.get_task(task_id);
 
