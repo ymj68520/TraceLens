@@ -24,7 +24,7 @@ def _make_task_files_db(path: Path, rows) -> Path:
     conn = sqlite3.connect(path)
     conn.execute(
         """CREATE TABLE files (
-            id INTEGER PRIMARY KEY, path TEXT, name TEXT,
+            id INTEGER PRIMARY KEY, path TEXT, name TEXT, md5 TEXT,
             llm_summary TEXT, llm_description TEXT, llm_keywords TEXT,
             llm_analyzed_at INTEGER, llm_model_used TEXT)"""
     )

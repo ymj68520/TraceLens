@@ -20,6 +20,31 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 # =============================================================================
+# Fast SQLite for tests (process-wide)
+# =============================================================================
+# Unit tests write thousands of tiny transactions through the production
+# persistence layers. With the default ``synchronous=FULL`` every commit
+# fsyncs, which costs ~250 ms per commit on some filesystems — a single
+# bootstrap test spent 12 s purely in commit fsyncs. Durability is
+# meaningless for throwaway temp DBs, so every connection opened in the
+# test process runs with the in-memory journal and no fsync.
+_orig_sqlite_connect = sqlite3.connect
+
+
+def _fast_sqlite_connect(*args, **kwargs):
+    conn = _orig_sqlite_connect(*args, **kwargs)
+    try:
+        conn.execute("PRAGMA journal_mode=MEMORY")
+        conn.execute("PRAGMA synchronous=OFF")
+    except sqlite3.Error:
+        pass
+    return conn
+
+
+sqlite3.connect = _fast_sqlite_connect
+
+
+# =============================================================================
 # Database Fixtures
 # =============================================================================
 

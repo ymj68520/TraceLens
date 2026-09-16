@@ -24,6 +24,7 @@ def _make_files_db(db_path: str, file_rows, with_descriptions: bool = True):
         """
         CREATE TABLE files (
             path TEXT,
+            md5 TEXT,
             llm_summary TEXT,
             llm_description TEXT,
             llm_keywords TEXT,
