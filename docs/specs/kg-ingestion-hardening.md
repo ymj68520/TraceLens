@@ -69,4 +69,27 @@ uvicorn 单事件循环上的同步阻塞段。已定位的阻塞点：
 
 ## 4. 实施记录
 
-（随各阶段提交更新）
+- **Phase A**（已提交）：`_worker.py` 新增模块级 `_read_episode_source_rows`（busy_timeout=2），
+  `_ingest_episodes_path_a` 经 `asyncio.to_thread` 调用；测试
+  `tests/unit/test_worker_episode_rows_offloop.py`（6 用例）。
+- **Phase B**（已提交）：`GraphitiService` 增加共享 driver（`_get_shared_driver`）与
+  `_run_read_query`（全读路径 `asyncio.wait_for` 超时）；`_query_neo4j_counts` 改索引直查；
+  `list_task_graphs` 5s 缓存（delete 失效）；`shutdown` 关闭共享 driver；测试
+  `tests/unit/test_graphiti_read_path_hardening.py`（8 用例）。
+- **Phase C**（已提交）：单飞锁 `lock_for_group`（4 个 add_episode 入口全部包裹：
+  `_ingest.py` 三处 batch、`file_analyzer.ingest_to_knowledge_graph` 直调处）；新增
+  `IngestionMode.KG_SYNC` + `IngestionJobManager.queue_kg_sync_job`（自运行 job，
+  RUNNING 起步避免被 worker 扫描误接）；管线两处 KG 步骤改
+  `dispatch_kg_ingestion`（job manager 缺席时回退内联）；KG 页轮询 `/jobs` 显示
+  摄取进度横幅，job 结束自动刷新计数与图；测试
+  `tests/unit/test_kg_ingestion_dispatch.py`（8 用例）；web lint 无新增（8 项均为
+  Dev 存量基线）、vite build 通过。
+- 合计 92 用例（新增 22 + graphiti 回归 70）全绿。
+
+### 已知余留
+
+- 小型同步 SQLite 写（`persist_to_files_db` 等，WAL 毫秒级）仍在事件循环上（A1 明确不动）。
+- 单 episode 约 5 分钟的摄取量级由模型速度决定，本 SPEC 只保证其可见与可控
+  （进度横幅、单飞、管线不阻塞）。若需根治，另行评估给 graphiti 抽取单独配小模型。
+- 事件库簇源仍读 events.llm_description 旧缓存列（事件簇 SPEC 的
+  event_cluster_analyses 真源接入由文件分析 SPEC P1 在其分支上完成，合并后即覆盖）。
