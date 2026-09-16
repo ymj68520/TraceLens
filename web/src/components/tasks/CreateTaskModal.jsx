@@ -97,7 +97,14 @@ export default function CreateTaskModal() {
       dispatch(fetchTasks({}));
       toast.success('Task created successfully!');
     } catch (err) {
-      setError(err?.message || err?.toString() || 'Failed to create task.');
+      // rejectWithValue payloads arrive either as the raw axios data object
+      // ({error: "..."} from the backend's 4xx JSON) or as a plain string.
+      const msg = typeof err === 'string'
+        ? err
+        : err?.error || err?.message || err?.detail
+          ? String(err.error || err.message || err.detail)
+          : (err ? JSON.stringify(err) : 'Failed to create task.');
+      setError(msg);
     } finally {
       setIsCreating(false);
     }

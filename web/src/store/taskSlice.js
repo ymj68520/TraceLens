@@ -9,7 +9,16 @@ export const createTask = createAsyncThunk(
     try {
       return await taskService.createTask(taskData);
     } catch (error) {
-      return rejectWithValue(error.response?.data || error.message);
+      // The axios interceptor rejects with { message, data, ... } (no
+      // `response`), so surface the backend's JSON body (e.g. a 400
+      // {"error": "Data source path invalid: ..."}) as a readable string.
+      const payload = error?.data ?? error?.response?.data;
+      const detail = payload && typeof payload === 'object'
+        ? (payload.error || payload.message || payload.detail)
+        : payload;
+      return rejectWithValue(
+        detail || (typeof error?.message === 'string' ? error.message : 'Failed to create task.')
+      );
     }
   }
 );

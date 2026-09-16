@@ -117,8 +117,16 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
           {tasks.map((task) => {
             const forensicCase = taskCaseMap[task.id];
             const isCompleted = task.status?.toLowerCase() === 'completed';
+            const isFailed = task.status?.toLowerCase() === 'failed';
+            const failureLog = isFailed
+              ? [
+                  `[${formatDate(task.timestamps?.completed)}] [FAILED] ${task.message || 'Task failed'}`,
+                  task.error_details ? `  └─ ${task.error_details}` : null,
+                ].filter(Boolean).join('\n')
+              : null;
             const selected = isSel(task.id);
             return (
+            <>
             <tr key={task.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors ${selected ? 'bg-primary-50/60 dark:bg-primary-900/20' : ''}`}>
               {selectable && (
                 <td className="px-4 py-4 whitespace-nowrap">
@@ -173,6 +181,16 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
                 <ActionsCell task={task} onCancel={onCancel} onDelete={onDelete} onJoinCase={onJoinCase} />
               </td>
             </tr>
+            {failureLog && (
+              <tr key={`${task.id}-error`} className="bg-rose-50/60 dark:bg-rose-950/20 hover:bg-rose-50/60">
+                <td colSpan={(selectable ? 1 : 0) + 7} className="px-4 py-2">
+                  <pre className="font-mono text-[11px] leading-5 whitespace-pre-wrap break-all text-rose-700 dark:text-rose-300">
+{failureLog}
+                  </pre>
+                </td>
+              </tr>
+            )}
+            </>
             );
           })}
         </tbody>

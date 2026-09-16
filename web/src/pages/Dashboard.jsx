@@ -16,7 +16,7 @@ const fadeUp = { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, tra
 
 const Dashboard = () => {
   const dispatch = useDispatch();
-  const { tasks, status } = useSelector((state) => state.tasks);
+  const { tasks, status, statistics } = useSelector((state) => state.tasks);
   const { autoRefresh, refreshInterval } = useSelector((state) => state.settings);
 
   const [systemHealth, setSystemHealth] = useState({ status: 'checking', message: 'Checking...' });
@@ -78,16 +78,36 @@ const Dashboard = () => {
     if (!autoRefresh) return;
     const hasRunningTasks = tasks.some((t) => t.status === 'running');
     if (!hasRunningTasks) return;
-    const interval = setInterval(() => { dispatch(fetchTasks({ limit: 10 })); }, refreshInterval || 5000);
+    const interval = setInterval(() => {
+      dispatch(fetchTasks({ limit: 10 }));
+      // Keep the stat cards consistent with the real totals while tasks run
+      // (the cards must not be derived from the limit-10 recent list).
+      dispatch(fetchTaskStatistics());
+    }, refreshInterval || 5000);
     return () => clearInterval(interval);
   }, [autoRefresh, refreshInterval, tasks, dispatch]);
 
-  const stats = useMemo(() => ({
-    total: tasks.length,
-    running: tasks.filter((t) => t.status === 'running').length,
-    completed: tasks.filter((t) => t.status === 'completed').length,
-    failed: tasks.filter((t) => t.status === 'failed').length,
-  }), [tasks]);
+  // Stat cards reflect ALL tasks via /api/tasks/statistics. Counting the
+  // limit-10 recent-tasks array here silently under-reported once the system
+  // held more than 10 tasks (Total/Completed/Failed all wrong).
+  const stats = useMemo(() => {
+    const byStatus = statistics?.by_status;
+    if (byStatus) {
+      return {
+        total: statistics?.total_tasks ?? 0,
+        running: byStatus.running ?? 0,
+        completed: byStatus.completed ?? 0,
+        failed: byStatus.failed ?? 0,
+      };
+    }
+    // Fallback until the statistics request resolves.
+    return {
+      total: tasks.length,
+      running: tasks.filter((t) => t.status === 'running').length,
+      completed: tasks.filter((t) => t.status === 'completed').length,
+      failed: tasks.filter((t) => t.status === 'failed').length,
+    };
+  }, [tasks, statistics]);
 
   const statCards = [
     { label: 'Total Tasks', value: stats.total, Icon: ListTodo, gradient: 'from-primary-500/20 to-primary-600/10 dark:from-primary-500/10 dark:to-primary-600/5', iconColor: 'text-primary-500' },

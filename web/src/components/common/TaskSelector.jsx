@@ -7,7 +7,7 @@ const TaskSelector = () => {
     const dispatch = useDispatch();
     const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
-    const { tasks, currentTask, status } = useSelector((state) => state.tasks);
+    const { tasks, currentTask } = useSelector((state) => state.tasks);
 
     // 研判页面统一通过 query 参数（task_id/taskId）携带当前镜像
     const currentTaskId = searchParams.get('taskId') || searchParams.get('task_id') || currentTask?.id;
@@ -16,10 +16,12 @@ const TaskSelector = () => {
     const isRelevantPage = relevantPaths.some(path => location.pathname.startsWith(path));
 
     useEffect(() => {
-        if (status === 'idle') {
-            dispatch(fetchTasks());
-        }
-    }, [dispatch, status]);
+        // Always fetch a complete list when this selector mounts (the selector
+        // is only rendered on task-scoped pages). Reusing whatever limit-ed
+        // slice other pages left in the shared cache silently hid older tasks
+        // from the dropdown.
+        dispatch(fetchTasks({ limit: 1000 }));
+    }, [dispatch]);
 
     useEffect(() => {
         const urlTaskId = searchParams.get('taskId') || searchParams.get('task_id');
