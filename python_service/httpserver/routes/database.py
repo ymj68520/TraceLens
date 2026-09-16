@@ -50,12 +50,32 @@ class FileListResponse(BaseModel):
 
 
 class EventRecord(BaseModel):
-    """Event record from database."""
+    """Event record from database.
+
+    ``timestamp`` is unix seconds (the C++ comprehensive timeline and the
+    frontend ``Timeline`` page both use epoch seconds, not ISO strings).
+    """
     id: int
     event_type: str
     file_path: str
-    timestamp: str
+    timestamp: int
     details: Optional[Dict[str, Any]] = None
+
+
+def _coerce_epoch_seconds(value: Any) -> int:
+    """Normalize a task-event timestamp to unix seconds.
+
+    The C++ backend produces ints; tolerate numeric strings from legacy
+    producers and fail soft to 0 rather than rejecting the whole listing.
+    """
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, (int, float)):
+        return int(value)
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return 0
 
 
 class EventListResponse(BaseModel):
@@ -299,7 +319,7 @@ async def get_task_events(
                 id=e.get("id", 0),
                 event_type=e.get("event_type", ""),
                 file_path=e.get("file_path", ""),
-                timestamp=e.get("timestamp", ""),
+                timestamp=_coerce_epoch_seconds(e.get("timestamp")),
                 details=e.get("details"),
             )
             for e in result.get("events", [])

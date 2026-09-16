@@ -48,6 +48,7 @@ class ServiceManager:
         self._migration_manager: Optional["MigrationManager"] = None
         self._forensic_report_service = None
         self._investigation_service = None
+        self._investigation_seed_service = None
         self._investigation_review_service = None
         self._investigation_event_service = None
         self._investigation_graph_service = None
@@ -352,6 +353,7 @@ class ServiceManager:
     def _clear_services(self) -> None:
         self._forensic_report_service = None
         self._investigation_service = None
+        self._investigation_seed_service = None
         self._investigation_review_service = None
         self._investigation_event_service = None
         self._investigation_graph_service = None
@@ -484,6 +486,21 @@ class ServiceManager:
         if self._investigation_event_service is None:
             self._investigation_event_service = self._create_investigation_event_service()
         return self._investigation_event_service
+
+    def _create_investigation_seed_service(self):
+        from .investigation_service import InvestigationService
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        return InvestigationService(cpp_backend=self._cpp_backend)
+
+    @property
+    def investigation_seed_service(self):
+        """Get the workbench cluster-seed service bound to the ready backend."""
+        self._require_service_access()
+        if self._investigation_seed_service is None:
+            self._investigation_seed_service = self._create_investigation_seed_service()
+        return self._investigation_seed_service
 
     def _create_investigation_graph_service(self):
         from .investigation.graph import InvestigationGraphService

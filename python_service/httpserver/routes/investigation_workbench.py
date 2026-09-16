@@ -222,8 +222,11 @@ async def workbench_overview(task_id: str, manager=Depends(_manager)):
 
 @router.post("/{task_id}/bootstrap")
 async def workbench_bootstrap(task_id: str, request: BootstrapRequest, manager=Depends(_manager)):
+    # cluster_seed is the only supported mode; generate_llm_summaries is
+    # reserved (seed titles reuse the clusters' existing LLM analysis).
     del request
     try:
+        await manager.investigation_seed_service.bootstrap(task_id)
         return await _overview(task_id, manager)
     except Exception as exc:
         raise _error(exc) from exc
