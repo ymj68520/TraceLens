@@ -45,7 +45,10 @@ const Layout = ({ children }) => {
   }
 
   const isActive = (path) =>
-    location.pathname === path || (location.pathname.startsWith('/reports/') && path.startsWith('/reports/'));
+    location.pathname === path ||
+    (location.pathname.startsWith('/reports/') && path.startsWith('/reports/')) ||
+    // 子路由页（如 /investigation/report）高亮所属导航并保持顶栏标题正确
+    (path === '/investigation' && location.pathname.startsWith('/investigation'));
 
   const getLinkUrl = (href) => {
     const taskContextPages = ['/timeline', '/files', '/case-intelligence', '/analysis-center', '/knowledge-graph', '/investigation', '/android', '/memory', '/im-forensics', '/oss', '/search', '/statistics'];

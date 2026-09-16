@@ -2,7 +2,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 import { render, screen } from '@testing-library/react';
-import { vi } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import Layout from './Layout';
 
 vi.mock('../common/TaskSelector', () => ({ default: () => null }));
@@ -62,5 +62,17 @@ test('keeps the analysis center navigation active', () => {
   expect(reportNav).toHaveClass('bg-primary-500/20');
   expect(reportNav.querySelector('.bg-primary-400')).not.toBeNull();
   expect(screen.getByRole('heading', { name: '研判中心' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: '仪表盘' })).not.toBeInTheDocument();
+});
+
+test('keeps the investigation workbench navigation active on its report subroute', () => {
+  renderLayout('/investigation/report?task_id=task-1');
+
+  const investigationNav = screen.getByRole('link', { name: '调查工作台' });
+  // task 上下文随导航保留
+  expect(investigationNav).toHaveAttribute('href', '/investigation?task_id=task-1');
+  expect(investigationNav).toHaveClass('bg-primary-500/20');
+  // 顶栏标题必须跟随所属导航，而不是回退成“仪表盘”
+  expect(screen.getByRole('heading', { name: '调查工作台' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: '仪表盘' })).not.toBeInTheDocument();
 });
