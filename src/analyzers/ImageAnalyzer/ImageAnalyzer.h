@@ -99,10 +99,27 @@ public:
 		cancellationCallback_ = callback;
 	}
 
+	/**
+	 * @brief Set a progress heartbeat for the streaming metadata extraction.
+	 *
+	 * The TSK/native walks stream files whose total count is unknown upfront,
+	 * so no percentage can be computed here; the callback carries the
+	 * cumulative inserted-file count instead. TaskManager maps it onto an
+	 * asymptotic phase percentage and refreshes the watchdog heartbeat.
+	 * Fired roughly every kProgressHeartbeat inserted files (per analyzer).
+	 */
+	void setProgressCallback(std::function<void(int files_extracted)> callback) {
+		progressCallback_ = callback;
+	}
+
 private:
 	bool isCancelled() const {
 		return cancellationCallback_ && cancellationCallback_();
 	}
+
+	// Counts one more inserted file and fires progressCallback_ on the
+	// heartbeat interval. Monotonically increasing across all partitions.
+	void tickFileProgress();
 
 	bool openImage();
 	bool openFileSystem();
@@ -146,4 +163,8 @@ private:
 	std::unique_ptr<TskFilesystemWalker> tskWalker_;
 
 	std::function<bool()> cancellationCallback_;
+	std::function<void(int files_extracted)> progressCallback_;
+	int progressFileCount_ = 0;   // cumulative inserted-file heartbeat counter
+
+	static constexpr int kProgressHeartbeat = 200;  // files between callbacks
 };

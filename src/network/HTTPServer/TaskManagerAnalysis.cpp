@@ -7,6 +7,7 @@
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
 #include "LLMPythonProxy.h"
+#include "../../integration/LLMIntegration/LLMClient.h"
 #include "EventClusterAnalyzer.h"
 #include "SceneDetector.h"
 #include "ConfigManager/ConfigManager.h"
@@ -30,6 +31,26 @@ void TaskManager::start_analysis(const std::string& task_id) {
     }
 
     analysis_pool_->enqueue([this, task_id]() {
+        // Attribute any LLM attempt on this thread to this task so the
+        // LLMClient attempt hook can refresh the watchdog heartbeat while a
+        // single LLM call/retry chain runs (it can legitimately occupy the
+        // thread for tens of minutes without a per-file callback).
+        TaskManager::set_thread_heartbeat_task(task_id);
+        struct HeartbeatGuard {
+            ~HeartbeatGuard() { TaskManager::set_thread_heartbeat_task(std::string()); }
+        } heartbeat_guard;
+
+        // Install the process-wide LLM attempt hook exactly once. It resolves
+        // the task from the calling thread (see t_heartbeat_task_id), so one
+        // hook serves every concurrently running task.
+        static std::once_flag llm_attempt_hook_once;
+        std::call_once(llm_attempt_hook_once, [this]() {
+            forensics::llm::LLMClient::set_attempt_hook([this]() {
+                const std::string& tid = TaskManager::thread_heartbeat_task();
+                if (!tid.empty()) touch_heartbeat(tid);
+            });
+        });
+
         // RAII cleanup handler for deleted tasks
         struct TaskCleanup {
             TaskManager& tm;
@@ -81,7 +102,9 @@ void TaskManager::start_analysis(const std::string& task_id) {
             update_progress(task_id, TaskPhase::INITIALIZING, 10, "Initializing analysis environment...");
 
             if (!std::filesystem::exists(imagePath)) {
-                update_status(task_id, TaskStatus::FAILED, "Image file not found");
+                update_status(task_id, TaskStatus::FAILED, "Image file not found",
+                              "Image file not found on disk: '" + imagePath +
+                              "'. Verify the path exists and is readable by the server process.");
                 return;
             }
 
@@ -161,7 +184,11 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
                 if (!ok) {
                     update_status(task_id, TaskStatus::FAILED,
-                                  "Android logical analysis failed for source: " + task.android_source);
+                                  "Android logical analysis failed for source: " + task.android_source,
+                                  "Android logical analysis failed for source '" + task.android_source +
+                                      "' at path '" + task.image_path +
+                                      "'. Verify the source layout (dir tree / zip / MIUI backup) and "
+                                      "see cpp_server.log for the analyzer error.");
                     return;
                 }
 
@@ -222,6 +249,20 @@ void TaskManager::start_analysis(const std::string& task_id) {
             auto analyzer = std::make_unique<ImageAnalyzer>(imagePath);
             analyzer->setXFSMode(task.xfs_mode);
             analyzer->setCancellationCallback([this, task_id]() { return is_task_cancelled(task_id); });
+            // Metadata-extraction heartbeat: the TSK walk streams files whose
+            // total is unknown, so ImageAnalyzer reports the cumulative count
+            // and we map it onto an asymptotic 50→99% phase percentage. Each
+            // update refreshes progress.phase_start_time, which is what the
+            // TaskWatchdog uses as the liveness signal — without this, any
+            // image whose walk outlasts TASK_WATCHDOG_STALE_MINUTES is killed
+            // as "hung" while still actively processing.
+            analyzer->setProgressCallback([this, task_id](int files_extracted) {
+                const int pct = 50 + static_cast<int>(
+                    49.0 * (1.0 - 1.0 / (1.0 + files_extracted / 2000.0)));
+                update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, pct,
+                                "Extracting metadata... (" + std::to_string(files_extracted) +
+                                " files)");
+            });
             if (task.enable_decryption) {
                 analyzer->setEnableDecryption(true);
                 if (!task.key_file_dir.empty()) analyzer->setKeyFileDir(task.key_file_dir);
@@ -231,13 +272,21 @@ void TaskManager::start_analysis(const std::string& task_id) {
             clear_decryption_password(task_id);
 
             if (!analyzer->analyze()) {
-                update_status(task_id, TaskStatus::FAILED, "Failed to analyze image");
+                update_status(task_id, TaskStatus::FAILED, "Failed to analyze image",
+                              "ImageAnalyzer::analyze() returned false for '" + imagePath +
+                              "'. The image format could not be opened or no filesystem was "
+                              "recognized. See the cpp_server.log segment for this task for "
+                              "detailed TSK/EWF errors.");
                 return;
             }
             update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 50, "Image analysis completed, extracting metadata...");
 
             if (!analyzer->extractToDatabase(rawDbPath)) {
-                update_status(task_id, TaskStatus::FAILED, "Failed to create raw database");
+                update_status(task_id, TaskStatus::FAILED, "Failed to create raw database",
+                              "extractToDatabase produced no files for '" + imagePath +
+                              "' (raw DB: " + rawDbPath +
+                              "). Either the image contains no walkable filesystem or the "
+                              "filesystem walker failed. See cpp_server.log for this task.");
                 return;
             }
             update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 100, "Image analysis and metadata extraction completed");
@@ -321,7 +370,9 @@ void TaskManager::start_analysis(const std::string& task_id) {
             auto eventExtractor = std::make_unique<EventExtractor>(effectiveRawDb, eventDbPath);
             if (!eventExtractor->extractEvents()) {
                 std::cerr << "Error: Failed to extract events from " << effectiveRawDb << std::endl;
-                update_status(task_id, TaskStatus::FAILED, "Failed to extract timeline events");
+                update_status(task_id, TaskStatus::FAILED, "Failed to extract timeline events",
+                              "EventExtractor::extractEvents() failed on raw DB '" + effectiveRawDb +
+                                  "' (events DB: " + eventDbPath + "). See cpp_server.log.");
                 return;
             }
             update_progress(task_id, TaskPhase::EVENT_EXTRACTION, 100, "Timeline events extraction completed");
@@ -344,7 +395,9 @@ void TaskManager::start_analysis(const std::string& task_id) {
             fileClassifier->setSceneType(sceneType);
 
             if (!fileClassifier->classifyAndExtract()) {
-                update_status(task_id, TaskStatus::FAILED, "Failed to classify files");
+                update_status(task_id, TaskStatus::FAILED, "Failed to classify files",
+                              "FileClassifier::classifyAndExtract() failed (raw DB: " + effectiveRawDb +
+                                  ", files DB: " + fileDbPath + "). See cpp_server.log.");
                 return;
             }
             update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 100, "File classification completed");
@@ -611,7 +664,8 @@ void TaskManager::start_analysis(const std::string& task_id) {
             update_status(task_id, TaskStatus::COMPLETED, "Analysis completed successfully");
 
         } catch (const std::exception& e) {
-            update_status(task_id, TaskStatus::FAILED, std::string("Analysis error: ") + e.what());
+            update_status(task_id, TaskStatus::FAILED, std::string("Analysis error: ") + e.what(),
+                          std::string("Unhandled exception in analysis pipeline: ") + e.what());
             add_audit_log(task_id, "ERROR", "Analysis failed: " + std::string(e.what()));
         }
     });

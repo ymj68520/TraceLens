@@ -149,11 +149,13 @@ std::string TaskManager::create_task(const std::string& path,
 }
 
 // Task status management
-void TaskManager::update_status(const std::string& id, TaskStatus status, const std::string& msg) {
+void TaskManager::update_status(const std::string& id, TaskStatus status, const std::string& msg,
+                                const std::string& error_details) {
     std::lock_guard<std::mutex> lock(mtx_);
     if (tasks_.count(id)) {
         tasks_[id].status = status;
         if (!msg.empty()) tasks_[id].message = msg;
+        if (!error_details.empty()) tasks_[id].error_details = error_details;
 
         auto now_steady = std::chrono::steady_clock::now();
         auto now_system = std::chrono::system_clock::now();
@@ -170,6 +172,30 @@ void TaskManager::update_status(const std::string& id, TaskStatus status, const 
         add_audit_log(id, "STATUS_CHANGE", "Status changed to " + std::to_string(static_cast<int>(status)));
         
         save_tasks_internal(); // Persist changes
+    }
+}
+
+namespace {
+// Task id of the analysis currently running on THIS thread. LLM calls happen
+// synchronously on the task's worker thread, so the LLMClient attempt hook
+// can attribute its heartbeat to the right task even with several tasks
+// running concurrently.
+thread_local std::string t_heartbeat_task_id;
+}
+
+void TaskManager::set_thread_heartbeat_task(const std::string& task_id) {
+    t_heartbeat_task_id = task_id;
+}
+
+const std::string& TaskManager::thread_heartbeat_task() {
+    return t_heartbeat_task_id;
+}
+
+void TaskManager::touch_heartbeat(const std::string& id) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = tasks_.find(id);
+    if (it != tasks_.end()) {
+        it->second.progress.phase_start_time = std::chrono::steady_clock::now();
     }
 }
 

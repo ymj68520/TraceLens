@@ -58,8 +58,20 @@ public:
      * @param systemPrompt Optional system prompt
      * @return Response content or error
      */
-    LLMResponse chat(const std::string& prompt, 
+    LLMResponse chat(const std::string& prompt,
                      const std::string& systemPrompt = "");
+
+    /**
+     * @brief Process-wide hook fired before EVERY chat() retry attempt.
+     *
+     * One LLM call can legitimately sit in connect/read/retry for tens of
+     * minutes (LLM_TIMEOUT_SECONDS × LLM_MAX_RETRIES), which is exactly the
+     * blind spot the task watchdog shoots at. The hook lets the task layer
+     * refresh its liveness heartbeat on every attempt. It runs on the CALLING
+     * thread, so a thread-local task identity resolves correctly for
+     * concurrent tasks.
+     */
+    static void set_attempt_hook(std::function<void()> hook);
     
     /**
      * @brief List available models from the server

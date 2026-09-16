@@ -344,8 +344,18 @@ bool ImageAnalyzer::extractToDatabase(const std::string& dbPath) {
 	return false;
 }
 
-bool ImageAnalyzer::extractPartition(const PartitionEntry& part) {
-	// XFS/Native fallback helpers read the member partitionOffset_. Point it at
+// Progress heartbeat for the streaming walks: the total file count is unknown
+// until the walk finishes, so we report the cumulative inserted count on a
+// fixed interval and let the caller derive a percentage.
+void ImageAnalyzer::tickFileProgress() {
+	if (!progressCallback_) return;
+	++progressFileCount_;
+	if (progressFileCount_ % kProgressHeartbeat == 0) {
+		progressCallback_(progressFileCount_);
+	}
+}
+
+bool ImageAnalyzer::extractPartition(const PartitionEntry& part) {	// XFS/Native fallback helpers read the member partitionOffset_. Point it at
 	// THIS partition so multi-image XFS extraction targets the right partition.
 	partitionOffset_ = part.offset;
 
@@ -407,6 +417,7 @@ bool ImageAnalyzer::extractPartition(const PartitionEntry& part) {
 		r.partitionNum = static_cast<int>(part.num);
 		if (dbManager_->insertFileRecord(r)) {
 			fileCount++;
+			tickFileProgress();
 			if (fileCount <= maxLog) {
 				std::cout << "  [" << fileCount << "] " << r.path << std::endl;
 			} else if (fileCount % (maxLog * 5) == 0) {
@@ -566,6 +577,7 @@ bool ImageAnalyzer::extractDecryptedPartition(const PartitionEntry& part) {
 			r.partitionNum = static_cast<int>(part.num);
 			if (dbManager_->insertFileRecord(r)) {
 				fileCount++;
+				tickFileProgress();
 				if (fileCount <= maxLog) {
 					std::cout << "  [" << fileCount << "] " << r.path << std::endl;
 				} else if (fileCount % (maxLog * 5) == 0) {
@@ -620,6 +632,7 @@ bool ImageAnalyzer::extractDecryptedPartition(const PartitionEntry& part) {
 			r.gid = nf.gid;
 			r.partitionNum = static_cast<int>(part.num);
 			if (dbManager_->insertFileRecord(r)) fileCount++;
+			tickFileProgress();
 			return true;
 		});
 		if (success && fileCount > 0) {
@@ -727,6 +740,7 @@ bool ImageAnalyzer::extractWithXFS(const std::string& dbPath) {
 		// Insert into database
 		if (dbManager_->insertFileRecord(record)) {
 			fileCount++;
+			tickFileProgress();
 			int max_log = forensics::ConfigManager::instance().getMaxLogDisplayFiles();
 			if (fileCount <= max_log) {
 			    // For XFS/Native we might be using different struct names, but they both have .name and .size
@@ -806,6 +820,7 @@ bool ImageAnalyzer::extractWithNativeMount(const std::string& dbPath) {
 		// Insert into database
 		if (dbManager_->insertFileRecord(record)) {
 			fileCount++;
+			tickFileProgress();
 			int max_log = forensics::ConfigManager::instance().getMaxLogDisplayFiles();
 			if (fileCount <= max_log) {
 			    // For XFS/Native we might be using different struct names, but they both have .name and .size

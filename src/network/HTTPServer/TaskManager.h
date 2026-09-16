@@ -89,8 +89,21 @@ public:
      * @param id Task ID
      * @param status New status enum
      * @param msg Optional status message
+     * @param error_details Optional failure diagnostics (surfaced via the API's
+     *        error_details field so the UI can show why a task failed). Only
+     *        written when non-empty.
      */
-    void update_status(const std::string& id, TaskStatus status, const std::string& msg = "");
+    void update_status(const std::string& id, TaskStatus status, const std::string& msg = "",
+                       const std::string& error_details = "");
+
+    // LLM-attempt liveness wiring. LLMClient fires a process-wide hook before
+    // every chat() attempt; the hook resolves the calling thread's task via
+    // set_thread_heartbeat_task() (analysis runs synchronously on the task's
+    // worker thread) and refreshes only phase_start_time — the watchdog's
+    // liveness signal — without rewriting progress text.
+    static void set_thread_heartbeat_task(const std::string& task_id);
+    static const std::string& thread_heartbeat_task();
+    void touch_heartbeat(const std::string& id);
 
     /**
      * @brief Update task progress

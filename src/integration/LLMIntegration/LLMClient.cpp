@@ -13,6 +13,28 @@ using json = nlohmann::json;
 namespace forensics {
 namespace llm {
 
+namespace {
+// Process-wide attempt hook (see set_attempt_hook). Guarded because chat()
+// runs concurrently from multiple task threads.
+std::mutex g_attempt_hook_mutex;
+std::function<void()> g_attempt_hook;
+}
+
+void LLMClient::set_attempt_hook(std::function<void()> hook) {
+    std::lock_guard<std::mutex> lock(g_attempt_hook_mutex);
+    g_attempt_hook = std::move(hook);
+}
+
+static void fire_attempt_hook() {
+    // Copy the callable out so the hook itself may replace/clear it safely.
+    std::function<void()> hook;
+    {
+        std::lock_guard<std::mutex> lock(g_attempt_hook_mutex);
+        hook = g_attempt_hook;
+    }
+    if (hook) hook();
+}
+
 // Join a base-path prefix (e.g. "/step_plan/v1") with an endpoint path
 // (e.g. "/v1/chat/completions"). Endpoints that already carry the "/v1"
 // prefix must not duplicate it when the base path ends in "/v1".
@@ -126,6 +148,11 @@ void LLMClient::initHttpClient() {
     httpClient_->set_connection_timeout(config_.timeoutSeconds);
     httpClient_->set_read_timeout(config_.timeoutSeconds);
     httpClient_->set_write_timeout(config_.timeoutSeconds);
+    // LLM requests are minutes apart per client; a pooled connection that the
+    // server silently closed between calls surfaced as bursts of
+    // "Failed to read connection" (and each stale-connection failure still
+    // burned a retry). A fresh connection per call is cheap at this rate.
+    httpClient_->set_keep_alive(false);
     // 护栏：endpoint 是 API 路径。误填模型名/URL 会让每个请求打到无效路径，
     // 兼容服务器常以直接断连代替 404，表象是 "Failed to read connection"。
     if (!config_.endpoint.empty() && config_.endpoint[0] != '/') {
@@ -177,6 +204,11 @@ LLMResponse LLMClient::chat(const std::vector<ChatMessage>& messages,
 
     int retries = 0;
     while (retries <= config_.maxRetries) {
+        // Liveness heartbeat before each attempt: a single attempt can block
+        // up to the full read timeout, and back-to-back failed attempts with
+        // retries made the whole chain look hung to the task watchdog.
+        fire_attempt_hook();
+
         std::lock_guard<std::mutex> lock(mutex_);
 
         auto res = httpClient_->Post(
