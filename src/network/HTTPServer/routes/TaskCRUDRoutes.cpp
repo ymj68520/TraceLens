@@ -5,6 +5,8 @@
 #include "../../Swagger/Swagger.h"
 #include "PathManager/PathManager.h"
 #include <ctime>
+#include <filesystem>
+#include <algorithm>
 
 namespace forensics {
 
@@ -114,6 +116,45 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
     try {
         auto body = json::parse(req.body);
         std::string image_path = body["image_path"];
+
+        // Validate the data-source path up front. Previously a nonexistent path
+        // was accepted (201) and the task only failed once the analyzer started,
+        // leaving the user to dig through server logs for the reason.
+        if (image_path.empty()) {
+            json error = {{"error", "image_path is required"}, {"status", "rejected"}};
+            res.code = 400;
+            res.set_header("Content-Type", "application/json");
+            res.write(error.dump());
+            return res;
+        }
+        {
+            const std::string source_kind = body.value("android_source", "tsk");
+            const bool wants_directory = (source_kind == "dir" || source_kind == "miui-backup");
+            std::error_code ec;
+            const bool exists = std::filesystem::exists(image_path, ec);
+            bool type_ok = true;
+            std::string expect;
+            if (exists) {
+                type_ok = wants_directory
+                    ? std::filesystem::is_directory(image_path, ec)
+                    : std::filesystem::is_regular_file(image_path, ec);
+                expect = wants_directory ? "a directory" : "a regular file";
+            }
+            if (ec || !exists || !type_ok) {
+                std::string reason = ec
+                    ? ("filesystem error: " + ec.message())
+                    : (!exists ? "path does not exist"
+                               : "path exists but is not " + expect);
+                json error = {
+                    {"error", "Data source path invalid: " + image_path + " (" + reason + ")"},
+                    {"status", "rejected"}
+                };
+                res.code = 400;
+                res.set_header("Content-Type", "application/json");
+                res.write(error.dump());
+                return res;
+            }
+        }
 
         // Task priority
         TaskPriority priority = TaskPriority::NORMAL;
@@ -398,6 +439,13 @@ crow::response TaskCRUDRoutes::handle_list_tasks(const crow::request& req) {
         }
 
         auto all_tasks = task_manager_.get_all_tasks();
+        // Newest first: tasks_ is an unordered map, so without an explicit sort
+        // any limit/offset slice (Recent Tasks lists, task selectors) would be
+        // an arbitrary subset. created_time desc == stable "most recent" pages.
+        std::sort(all_tasks.begin(), all_tasks.end(),
+                  [](const AnalysisTask& a, const AnalysisTask& b) {
+                      return a.created_time > b.created_time;
+                  });
         std::vector<json> filtered_tasks;
 
         for (const auto& task : all_tasks) {
