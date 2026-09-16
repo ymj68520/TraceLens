@@ -87,12 +87,23 @@ async def delete_task_graph(
     try:
         from ...services import get_service_manager
         service_manager = get_service_manager()
-        
+
+        # Kill any ingestion still writing to this group first, or a running
+        # kg_sync/queued job would resurrect the graph right after the purge.
+        cancelled_jobs = 0
+        job_manager = getattr(service_manager, "ingestion_job_manager", None)
+        if job_manager is not None:
+            try:
+                cancelled_jobs = await job_manager.cancel_jobs_for_task(task_id)
+            except Exception as e:
+                logger.warning(f"Could not cancel ingestion jobs for {task_id}: {e}")
+
         deleted = await service_manager.graphiti_service.delete_task_graph(task_id)
-        
+
         return {
             "success": deleted,
             "task_id": task_id,
+            "cancelled_jobs": cancelled_jobs,
             "message": f"Graph {'deleted' if deleted else 'not found'}",
             "timestamp": datetime.now().isoformat(),
         }

@@ -12,15 +12,18 @@ API:
 
 import asyncio
 import logging
+import re
+import shutil
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, ValidationError
 
-from ..config import Settings, get_settings
+from ..config import Settings, get_settings, get_data_root
 from ..dependencies import get_case_analysis_service
 
 logger = logging.getLogger(__name__)
@@ -144,7 +147,13 @@ async def get_case(case_id: str, settings: Settings = Depends(get_settings)):
 
 @router.delete("/api/llm/cases/{case_id}")
 async def delete_case(case_id: str, settings: Settings = Depends(get_settings)):
-    """Delete a ForensicCase via C++ backend. Does NOT delete associated tasks."""
+    """Delete a ForensicCase via C++ backend. Does NOT delete associated tasks.
+
+    After the C++ case record is gone, python-side case artifacts are purged
+    too (best-effort, reported per item): the case-level Neo4j graph
+    (cross-image analysis ingests with group_id == case_id) and the case
+    analysis database directory ``<data>/cases/<case_id>/``.
+    """
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.delete(f"{settings.cpp_backend_url}/api/cases/{case_id}")
@@ -152,12 +161,59 @@ async def delete_case(case_id: str, settings: Settings = Depends(get_settings)):
             raise HTTPException(status_code=404, detail="Case not found")
         if r.status_code not in (200, 204):
             raise HTTPException(status_code=r.status_code, detail=r.text)
-        return r.json()
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"[DELETE_CASE] Unexpected error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="case deletion failed")
+
+    graph_deleted = False
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+
+        # Stop any ingestion still writing to this group before the purge,
+        # mirroring the task-graph deletion path.
+        job_manager = getattr(service_manager, "ingestion_job_manager", None)
+        if job_manager is not None:
+            try:
+                await job_manager.cancel_jobs_for_task(case_id)
+            except Exception as e:
+                logger.warning(f"[DELETE_CASE] cancel jobs for {case_id}: {e}")
+
+        graph_deleted = await service_manager.graphiti_service.delete_task_graph(case_id)
+    except Exception as e:
+        logger.warning(f"[DELETE_CASE] case graph purge failed for {case_id}: {e}")
+
+    data_removed = _purge_case_data_dir(case_id)
+
+    body = r.json() if r.status_code == 200 else {"success": True}
+    body["graph_deleted"] = graph_deleted
+    body["case_data_removed"] = data_removed
+    return body
+
+
+def _purge_case_data_dir(case_id: str) -> bool:
+    """Remove ``<data>/cases/<case_id>/`` (cross-image case analysis DB).
+
+    Guards: the id must be hex/dashes only and the resolved path must stay
+    inside the case data root, so a hostile id cannot escape the directory.
+    """
+    if not case_id or not re.fullmatch(r"[0-9a-fA-F-]{8,64}", case_id):
+        return False
+    base = (get_data_root() / "cases").resolve()
+    target = (base / case_id).resolve()
+    if target != base and base not in target.parents:
+        return False
+    if not target.is_dir():
+        return False
+    try:
+        shutil.rmtree(target)
+        logger.info(f"[DELETE_CASE] Removed case data dir: {target}")
+        return True
+    except OSError as e:
+        logger.warning(f"[DELETE_CASE] Failed to remove case data dir {target}: {e}")
+        return False
 
 
 @router.post("/api/llm/cases/{case_id}/tasks")

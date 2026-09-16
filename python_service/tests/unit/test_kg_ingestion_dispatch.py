@@ -258,3 +258,76 @@ class TestDispatchKgIngestion:
             "ingested": True, "file_episodes": 2, "cluster_episodes": 0,
         }
         svc.ingest_to_knowledge_graph.assert_awaited_once()
+
+
+class TestCancelJobsForTask:
+    """Graph deletion must stop live ingestions for the group (F4)."""
+
+    @pytest.mark.asyncio
+    async def test_cancels_running_kg_sync_job_and_interrupts_runner(self):
+        mgr = IngestionJobManager(settings=mock.Mock())
+        mgr._use_redis = False
+
+        started = asyncio.Event()
+        interrupted = {"hit": False}
+
+        async def runner(progress):
+            started.set()
+            try:
+                await asyncio.sleep(30)
+                return {}
+            except asyncio.CancelledError:
+                interrupted["hit"] = True
+                raise
+
+        job_id = await mgr.queue_kg_sync_job("task-1", runner)
+        await asyncio.wait_for(started.wait(), timeout=2)
+
+        cancelled = await mgr.cancel_jobs_for_task("task-1")
+
+        assert cancelled == 1
+        job = mgr._jobs[job_id]
+        for _ in range(200):
+            if job.status == JobStatus.CANCELLED:
+                break
+            await asyncio.sleep(0.01)
+        assert job.status == JobStatus.CANCELLED
+        for _ in range(200):
+            if interrupted["hit"]:
+                break
+            await asyncio.sleep(0.01)
+        assert interrupted["hit"] is True  # runner actually interrupted
+
+    @pytest.mark.asyncio
+    async def test_skips_terminal_jobs_and_other_tasks(self):
+        mgr = IngestionJobManager(settings=mock.Mock())
+        mgr._use_redis = False
+
+        async def instant(progress):
+            return {"ok": True}
+
+        async def slow(progress):
+            await asyncio.sleep(30)
+            return {}
+
+        done_id = await mgr.queue_kg_sync_job("task-1", instant)
+        done = mgr._jobs[done_id]
+        for _ in range(200):
+            if done.status == JobStatus.COMPLETED:
+                break
+            await asyncio.sleep(0.01)
+
+        other_id = await mgr.queue_kg_sync_job("task-2", slow)
+
+        assert await mgr.cancel_jobs_for_task("task-1") == 0
+        assert mgr._jobs[other_id].status == JobStatus.RUNNING
+
+        # teardown: stop the slow job
+        await mgr.cancel_jobs_for_task("task-2")
+
+    @pytest.mark.asyncio
+    async def test_unknown_task_cancels_nothing(self):
+        mgr = IngestionJobManager(settings=mock.Mock())
+        mgr._use_redis = False
+
+        assert await mgr.cancel_jobs_for_task("no-such-task") == 0

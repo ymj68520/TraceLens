@@ -20,9 +20,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from httpserver.services.graphiti_service import GraphitiService
 
 
+class _FakeSummaryCounters:
+    def __init__(self, nodes_deleted):
+        self.nodes_deleted = nodes_deleted
+
+
+class _FakeSummary:
+    def __init__(self, nodes_deleted):
+        self.counters = _FakeSummaryCounters(nodes_deleted)
+
+
 class FakeResult:
-    def __init__(self, rows):
+    def __init__(self, rows, nodes_deleted=0):
         self._rows = list(rows)
+        self._nodes_deleted = nodes_deleted
         self.consumed = False
 
     def __aiter__(self):
@@ -34,6 +45,7 @@ class FakeResult:
 
     async def consume(self):
         self.consumed = True
+        return _FakeSummary(self._nodes_deleted)
 
 
 class FakeSession:
@@ -49,15 +61,23 @@ class FakeSession:
 
     async def run(self, query, **params):
         self._driver.queries.append((query, params))
+        if self._driver.fail_on_run:
+            raise RuntimeError("neo4j unavailable")
         if self._driver.hang_forever:
             await asyncio.sleep(3600)
-        return FakeResult(self._driver.rows_by_query.get(query, [{"cnt": 0}]))
+        return FakeResult(
+            self._driver.rows_by_query.get(query, [{"cnt": 0}]),
+            nodes_deleted=self._driver.nodes_deleted,
+        )
 
 
 class FakeDriver:
-    def __init__(self, rows_by_query=None, hang_forever=False):
+    def __init__(self, rows_by_query=None, hang_forever=False,
+                 fail_on_run=False, nodes_deleted=0):
         self.rows_by_query = rows_by_query or {}
         self.hang_forever = hang_forever
+        self.fail_on_run = fail_on_run
+        self.nodes_deleted = nodes_deleted
         self.sessions_opened = 0
         self.queries = []
         self.closed = False
@@ -175,10 +195,13 @@ class TestTaskGraphsCache:
 
     @pytest.mark.asyncio
     async def test_delete_invalidates_cache(self):
-        driver = FakeDriver(rows_by_query={
-            "MATCH (e:Episodic) WHERE e.group_id IS NOT NULL "
-            "RETURN DISTINCT e.group_id AS gid LIMIT 1000": [{"gid": "a"}],
-        })
+        driver = FakeDriver(
+            nodes_deleted=2,
+            rows_by_query={
+                "MATCH (e:Episodic) WHERE e.group_id IS NOT NULL "
+                "RETURN DISTINCT e.group_id AS gid LIMIT 1000": [{"gid": "a"}],
+            },
+        )
         svc = _service(None)
         with _patch_driver(svc, driver):
             await svc.list_task_graphs()
@@ -204,3 +227,47 @@ class TestTaskGraphsCache:
             await svc.list_task_graphs()
 
         assert len(driver.queries) == 2
+
+
+class TestDeleteTaskGraph:
+    """Deletion reports what actually happened (deletion-cleanup hardening)."""
+
+    @pytest.mark.asyncio
+    async def test_true_only_when_nodes_deleted(self):
+        driver = FakeDriver(nodes_deleted=3)
+        svc = _service(None)
+        with _patch_driver(svc, driver):
+            assert await svc.delete_task_graph("t1") is True
+
+    @pytest.mark.asyncio
+    async def test_zero_nodes_reports_false_but_still_invalidates_cache(self):
+        list_query = (
+            "MATCH (e:Episodic) WHERE e.group_id IS NOT NULL "
+            "RETURN DISTINCT e.group_id AS gid LIMIT 1000"
+        )
+        driver = FakeDriver(nodes_deleted=0, rows_by_query={list_query: [{"gid": "a"}]})
+        svc = _service(None)
+        with _patch_driver(svc, driver):
+            await svc.list_task_graphs()          # warms the cache
+            assert await svc.delete_task_graph("ghost") is False
+            await svc.list_task_graphs()          # must requery, not serve cache
+
+        assert sum(1 for q, _ in driver.queries if q == list_query) == 2
+
+    @pytest.mark.asyncio
+    async def test_query_failure_returns_false(self):
+        driver = FakeDriver(fail_on_run=True)
+        svc = _service(None)
+        with _patch_driver(svc, driver):
+            assert await svc.delete_task_graph("t1") is False
+
+    @pytest.mark.asyncio
+    async def test_delete_targets_group_id(self):
+        driver = FakeDriver(nodes_deleted=1)
+        svc = _service(None)
+        with _patch_driver(svc, driver):
+            await svc.delete_task_graph("t1")
+
+        delete_query, params = driver.queries[0]
+        assert "DETACH DELETE" in delete_query
+        assert params == {"gid": "t1"}

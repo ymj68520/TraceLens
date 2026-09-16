@@ -176,19 +176,30 @@ class GraphitiStatusMixin:
             return list(self._task_graphs.keys())
 
     async def delete_task_graph(self, task_id: str) -> bool:
-        """Delete a task-specific graph and its data from Neo4j and cache."""
-        deleted = False
+        """Delete a task-specific graph and its data from Neo4j and cache.
+
+        Returns True only when at least one node was actually removed; a
+        group with no Neo4j data reports False ("not found") instead of a
+        misleading blanket success.
+        """
+        deleted_nodes = 0
         try:
             # DETACH DELETE of a whole task graph can outlast the default
             # read timeout; give it a bounded-but-generous ceiling.
-            await self._run_read_query(
-                "MATCH (n {group_id: $gid}) DETACH DELETE n",
-                {"gid": task_id},
-                timeout=60.0,
-            )
+            driver = await self._get_shared_driver()
+
+            async def _run() -> int:
+                async with driver.session() as session:
+                    result = await session.run(
+                        "MATCH (n {group_id: $gid}) DETACH DELETE n", gid=task_id
+                    )
+                    summary = await result.consume()
+                    return summary.counters.nodes_deleted
+
+            deleted_nodes = await asyncio.wait_for(_run(), timeout=60.0)
             self._task_graphs_cache = None  # list changed; drop the cache
-            deleted = True
-            logger.info(f"Deleted Neo4j data for task: {task_id}")
+            logger.info(f"Deleted Neo4j data for task: {task_id} "
+                        f"({deleted_nodes} nodes)")
         except Exception as e:
             logger.error(f"Failed to delete Neo4j data for task {task_id}: {e}")
 
@@ -203,5 +214,5 @@ class GraphitiStatusMixin:
             except Exception as e:
                 logger.warning(f"Error closing cached graph for {task_id}: {e}")
 
-        return deleted
+        return deleted_nodes > 0
 

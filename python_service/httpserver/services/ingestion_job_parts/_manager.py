@@ -55,6 +55,11 @@ class IngestionJobManagerMixin:
         self._worker_task: Optional[asyncio.Task] = None
         self._running = False
 
+        # Live asyncio handles for kg_sync jobs (self-run coroutines). Needed
+        # so cancel_job can actually interrupt a RUNNING kg_sync ingestion
+        # instead of only flipping the recorded status.
+        self._kg_sync_tasks: dict[str, asyncio.Task] = {}
+
         # Database readers (imported later to avoid module-level import issues)
         self._ForensicsDatabase = None
         self._EventsDatabase = None
@@ -456,7 +461,8 @@ class IngestionJobManagerMixin:
         job.started_at = datetime.utcnow().isoformat()
         await self._save_job(job)
 
-        asyncio.create_task(self._run_kg_sync_job(job_id, runner))
+        task = asyncio.create_task(self._run_kg_sync_job(job_id, runner))
+        self._kg_sync_tasks[job_id] = task
 
         logger.info(f"Queued kg_sync job {job_id} for task {task_id}")
         return job_id
@@ -481,6 +487,8 @@ class IngestionJobManagerMixin:
             await self._update_job_status(
                 job_id, JobStatus.FAILED, "failed", error=str(e)
             )
+        finally:
+            self._kg_sync_tasks.pop(job_id, None)
 
     async def get_job_status(self, job_id: str) -> Optional[dict]:
         """
@@ -527,9 +535,46 @@ class IngestionJobManagerMixin:
         if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
             return False
 
+        # A RUNNING kg_sync job owns its own asyncio task — cancelling the
+        # status alone would leave the ingestion writing to Neo4j long after
+        # the caller (e.g. task/graph deletion) considered it gone.
+        pending_task = self._kg_sync_tasks.get(job_id)
         await self._update_job_status(job_id, JobStatus.CANCELLED)
+        if pending_task is not None:
+            pending_task.cancel()
         logger.info(f"Cancelled job {job_id}")
         return True
+
+    async def cancel_jobs_for_task(self, task_id: str) -> int:
+        """
+        Cancel every pending/running ingestion job of one task.
+
+        Used by graph deletion so a still-running ingestion cannot resurrect
+        the graph right after it was purged.
+
+        Args:
+            task_id: Task (or case) ID whose jobs should be cancelled.
+
+        Returns:
+            Number of jobs transitioned to CANCELLED.
+        """
+        try:
+            jobs = await self.list_jobs(task_id=task_id, limit=100)
+        except Exception as e:
+            logger.warning(f"cancel_jobs_for_task({task_id}): list_jobs failed: {e}")
+            return 0
+
+        cancelled = 0
+        for entry in jobs:
+            if entry.get("status") not in (JobStatus.PENDING.value, JobStatus.RUNNING.value):
+                continue
+            try:
+                if await self.cancel_job(entry.get("job_id", "")):
+                    cancelled += 1
+            except Exception as e:
+                logger.warning(f"cancel_jobs_for_task({task_id}): cancel failed for "
+                               f"{entry.get('job_id')}: {e}")
+        return cancelled
 
     async def list_jobs(
         self,
