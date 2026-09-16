@@ -136,34 +136,24 @@ class GraphitiQueryMixin:
     ) -> List[Dict[str, Any]]:
         """Fallback text search using Neo4j CONTAINS through Episodic nodes."""
         try:
-            from neo4j import AsyncGraphDatabase
-            driver = AsyncGraphDatabase.driver(
-                self.settings.neo4j_uri,
-                auth=(self.settings.neo4j_user, self.settings.neo4j_password),
+            rows = await self._run_read_query(
+                "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) "
+                "WHERE toLower(n.name) CONTAINS toLower($q) "
+                "   OR toLower(coalesce(n.summary, '')) CONTAINS toLower($q) "
+                "RETURN DISTINCT n.uuid AS id, n.name AS name, labels(n)[0] AS type "
+                "LIMIT $lim",
+                {"gid": task_id, "q": query, "lim": limit},
             )
-            try:
-                async with driver.session() as session:
-                    result = await session.run(
-                        "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) "
-                        "WHERE toLower(n.name) CONTAINS toLower($q) "
-                        "   OR toLower(coalesce(n.summary, '')) CONTAINS toLower($q) "
-                        "RETURN DISTINCT n.uuid AS id, n.name AS name, labels(n)[0] AS type "
-                        "LIMIT $lim",
-                        gid=task_id, q=query, lim=limit,
-                    )
-                    rows = [dict(r) async for r in result]
-                return [
-                    {
-                        "id": r.get("id", ""),
-                        "name": r.get("name", ""),
-                        "type": r.get("type", "unknown"),
-                        "properties": {},
-                        "score": 0.8,
-                    }
-                    for r in rows
-                ]
-            finally:
-                await driver.close()
+            return [
+                {
+                    "id": r.get("id", ""),
+                    "name": r.get("name", ""),
+                    "type": r.get("type", "unknown"),
+                    "properties": {},
+                    "score": 0.8,
+                }
+                for r in rows
+            ]
         except Exception as e:
             logger.error(f"Neo4j text search failed: {e}")
             return []
@@ -179,44 +169,33 @@ class GraphitiQueryMixin:
         List entities in the knowledge graph for a specific task.
         """
         try:
-            from neo4j import AsyncGraphDatabase
-            driver = AsyncGraphDatabase.driver(
-                self.settings.neo4j_uri,
-                auth=(self.settings.neo4j_user, self.settings.neo4j_password),
-            )
-            try:
-                async with driver.session() as session:
-                    skip = (page - 1) * page_size
-                    if entity_type:
-                        count_res = await session.run(
-                            "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) WHERE $et IN labels(n) "
-                            "RETURN count(DISTINCT n) AS cnt",
-                            gid=task_id, et=entity_type,
-                        )
-                        data_res = await session.run(
-                            "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) WHERE $et IN labels(n) "
-                            "RETURN DISTINCT n.uuid AS id, n.name AS name, labels(n) AS type "
-                            "SKIP $skip LIMIT $lim",
-                            gid=task_id, et=entity_type, skip=skip, lim=page_size,
-                        )
-                    else:
-                        count_res = await session.run(
-                            "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) "
-                            "RETURN count(DISTINCT n) AS cnt",
-                            gid=task_id,
-                        )
-                        data_res = await session.run(
-                            "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) "
-                            "RETURN DISTINCT n.uuid AS id, n.name AS name, labels(n) AS type "
-                            "SKIP $skip LIMIT $lim",
-                            gid=task_id, skip=skip, lim=page_size,
-                        )
-                    count_row = await count_res.single()
-                    total = count_row["cnt"] if count_row else 0
-                    entities = [dict(record) async for record in data_res]
-                return entities, total
-            finally:
-                await driver.close()
+            skip = (page - 1) * page_size
+            if entity_type:
+                count_rows = await self._run_read_query(
+                    "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) WHERE $et IN labels(n) "
+                    "RETURN count(DISTINCT n) AS cnt",
+                    {"gid": task_id, "et": entity_type},
+                )
+                entities = await self._run_read_query(
+                    "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) WHERE $et IN labels(n) "
+                    "RETURN DISTINCT n.uuid AS id, n.name AS name, labels(n) AS type "
+                    "SKIP $skip LIMIT $lim",
+                    {"gid": task_id, "et": entity_type, "skip": skip, "lim": page_size},
+                )
+            else:
+                count_rows = await self._run_read_query(
+                    "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) "
+                    "RETURN count(DISTINCT n) AS cnt",
+                    {"gid": task_id},
+                )
+                entities = await self._run_read_query(
+                    "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) "
+                    "RETURN DISTINCT n.uuid AS id, n.name AS name, labels(n) AS type "
+                    "SKIP $skip LIMIT $lim",
+                    {"gid": task_id, "skip": skip, "lim": page_size},
+                )
+            total = count_rows[0]["cnt"] if count_rows else 0
+            return entities, total
         except Exception as e:
             logger.error(f"List entities failed for task {task_id}: {e}")
             return [], 0
@@ -235,57 +214,46 @@ class GraphitiQueryMixin:
         In Graphiti, relationships are between entities mentioned in episodes of the task.
         """
         try:
-            from neo4j import AsyncGraphDatabase
-            driver = AsyncGraphDatabase.driver(
-                self.settings.neo4j_uri,
-                auth=(self.settings.neo4j_user, self.settings.neo4j_password),
+            skip = (page - 1) * page_size
+
+            # Build match clause - relationships between entities mentioned in task's episodes
+            match_clause = "MATCH (e:Episodic {group_id: $gid})-[m1:MENTIONS]->(s:Entity)-[r:RELATES_TO]->(t:Entity)"
+
+            # Build where conditions - ensure target entity is also mentioned in task's episodes
+            where_clauses = ["(e)-[:MENTIONS]->(t)"]
+
+            params = {"gid": task_id, "skip": skip, "lim": page_size}
+
+            if relationship_type:
+                where_clauses.append("r.name = $rt")
+                params["rt"] = relationship_type
+            if source_id:
+                where_clauses.append("s.uuid = $sid")
+                params["sid"] = source_id
+            if target_id:
+                where_clauses.append("t.uuid = $tid")
+                params["tid"] = target_id
+
+            where_str = " WHERE " + " AND ".join(where_clauses)
+
+            # Count query
+            count_rows = await self._run_read_query(
+                f"{match_clause} {where_str} RETURN count(DISTINCT r) AS cnt",
+                params,
             )
-            try:
-                async with driver.session() as session:
-                    skip = (page - 1) * page_size
 
-                    # Build match clause - relationships between entities mentioned in task's episodes
-                    match_clause = "MATCH (e:Episodic {group_id: $gid})-[m1:MENTIONS]->(s:Entity)-[r:RELATES_TO]->(t:Entity)"
+            # Data query
+            rels = await self._run_read_query(
+                f"{match_clause} {where_str} "
+                "RETURN DISTINCT s.uuid AS source_id, s.name AS source_name, "
+                "       t.uuid AS target_id, t.name AS target_name, r.name AS type, "
+                "       r.uuid AS id "
+                "SKIP $skip LIMIT $lim",
+                params,
+            )
 
-                    # Build where conditions - ensure target entity is also mentioned in task's episodes
-                    where_clauses = ["(e)-[:MENTIONS]->(t)"]
-
-                    params = {"gid": task_id, "skip": skip, "lim": page_size}
-
-                    if relationship_type:
-                        where_clauses.append("r.name = $rt")
-                        params["rt"] = relationship_type
-                    if source_id:
-                        where_clauses.append("s.uuid = $sid")
-                        params["sid"] = source_id
-                    if target_id:
-                        where_clauses.append("t.uuid = $tid")
-                        params["tid"] = target_id
-
-                    where_str = " WHERE " + " AND ".join(where_clauses)
-
-                    # Count query
-                    count_res = await session.run(
-                        f"{match_clause} {where_str} RETURN count(DISTINCT r) AS cnt",
-                        **params
-                    )
-
-                    # Data query
-                    data_res = await session.run(
-                        f"{match_clause} {where_str} "
-                        "RETURN DISTINCT s.uuid AS source_id, s.name AS source_name, "
-                        "       t.uuid AS target_id, t.name AS target_name, r.name AS type, "
-                        "       r.uuid AS id "
-                        "SKIP $skip LIMIT $lim",
-                        **params
-                    )
-
-                    count_row = await count_res.single()
-                    total = count_row["cnt"] if count_row else 0
-                    rels = [dict(record) async for record in data_res]
-                return rels, total
-            finally:
-                await driver.close()
+            total = count_rows[0]["cnt"] if count_rows else 0
+            return rels, total
         except Exception as e:
             logger.error(f"List relationships failed for task {task_id}: {e}")
             return [], 0
@@ -298,58 +266,46 @@ class GraphitiQueryMixin:
         """
         Get graph data for visualization filtered by task_id.
         """
-        from neo4j import AsyncGraphDatabase
-        driver = AsyncGraphDatabase.driver(
-            self.settings.neo4j_uri,
-            auth=(self.settings.neo4j_user, self.settings.neo4j_password),
+        node_rows = await self._run_read_query(
+            "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) "
+            "RETURN DISTINCT n.uuid AS id, n.name AS name, "
+            "       labels(n) AS labels, n.summary AS summary "
+            "LIMIT $lim",
+            {"gid": task_id, "lim": max_nodes},
         )
-        try:
-            async with driver.session() as session:
-                # Fetch entities linked to episodes of this task
-                node_result = await session.run(
-                    "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(n:Entity) "
-                    "RETURN DISTINCT n.uuid AS id, n.name AS name, "
-                    "       labels(n) AS labels, n.summary AS summary "
-                    "LIMIT $lim",
-                    gid=task_id, lim=max_nodes,
-                )
-                node_rows = [dict(r) async for r in node_result]
 
-                node_ids = {r["id"] for r in node_rows}
+        node_ids = {r["id"] for r in node_rows}
 
-                # Fetch relationships between those nodes
-                rel_result = await session.run(
-                    "MATCH (s:Entity)-[r:RELATES_TO]->(t:Entity) "
-                    "WHERE s.uuid IN $ids AND t.uuid IN $ids "
-                    "RETURN s.uuid AS source, t.uuid AS target, "
-                    "       r.name AS label "
-                    "LIMIT $lim",
-                    ids=list(node_ids), lim=max_nodes * 3,
-                )
-                rel_rows = [dict(r) async for r in rel_result]
+        # Fetch relationships between those nodes
+        rel_rows = await self._run_read_query(
+            "MATCH (s:Entity)-[r:RELATES_TO]->(t:Entity) "
+            "WHERE s.uuid IN $ids AND t.uuid IN $ids "
+            "RETURN s.uuid AS source, t.uuid AS target, "
+            "       r.name AS label "
+            "LIMIT $lim",
+            {"ids": list(node_ids), "lim": max_nodes * 3},
+        )
 
-            nodes = [
-                {
-                    "id": r["id"],
-                    "name": r["name"] or r["id"],
-                    "label": (r["labels"][0] if isinstance(r.get("labels"), list) and r["labels"] else "Entity"),
-                    "summary": r.get("summary") or "",
-                }
-                for r in node_rows
-                if r.get("id")
-            ]
+        nodes = [
+            {
+                "id": r["id"],
+                "name": r["name"] or r["id"],
+                "label": (r["labels"][0] if isinstance(r.get("labels"), list) and r["labels"] else "Entity"),
+                "summary": r.get("summary") or "",
+            }
+            for r in node_rows
+            if r.get("id")
+        ]
 
-            links = [
-                {
-                    "source": r["source"],
-                    "target": r["target"],
-                    "label": r.get("label", "RELATES_TO"),
-                }
-                for r in rel_rows
-                if r.get("source") and r.get("target")
-            ]
+        links = [
+            {
+                "source": r["source"],
+                "target": r["target"],
+                "label": r.get("label", "RELATES_TO"),
+            }
+            for r in rel_rows
+            if r.get("source") and r.get("target")
+        ]
 
-            return nodes, links
-        finally:
-            await driver.close()
+        return nodes, links
 

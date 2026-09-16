@@ -18,6 +18,41 @@ logger = logging.getLogger(__name__)
 class GraphitiCoreMixin:
     """Auto-extracted method group; see module docstring."""
 
+    async def _get_shared_driver(self):
+        """Lazily create the pooled read-path Neo4j driver (SPEC §A2).
+
+        Every read endpoint previously built a fresh driver per request;
+        a single shared driver reuses the connection pool and applies the
+        connect timeout consistently.
+        """
+        if self._neo_driver is None:
+            from neo4j import AsyncGraphDatabase
+            self._neo_driver = AsyncGraphDatabase.driver(
+                self.settings.neo4j_uri,
+                auth=(self.settings.neo4j_user, self.settings.neo4j_password),
+                connection_timeout=getattr(self.settings, "neo4j_connect_timeout", 5.0),
+            )
+        return self._neo_driver
+
+    async def _run_read_query(self, query: str, params: Optional[Dict[str, Any]] = None, timeout: Optional[float] = None) -> List[Any]:
+        """Run one read query on the shared driver with a hard timeout.
+
+        No read path may wait on Neo4j without a ceiling: a stalled query
+        must surface as an error (HTTP 5xx / degraded status) rather than
+        hang the page's spinner forever.
+        """
+        driver = await self._get_shared_driver()
+
+        async def _run() -> List[Any]:
+            async with driver.session() as session:
+                result = await session.run(query, **(params or {}))
+                return [record async for record in result]
+
+        effective_timeout = timeout if timeout is not None else getattr(
+            self.settings, "neo4j_query_timeout", 5.0
+        )
+        return await asyncio.wait_for(_run(), timeout=effective_timeout)
+
     async def initialize(self):
         """Initialize the Graphiti service with graceful fallback."""
         if self._initialized:
@@ -145,6 +180,15 @@ class GraphitiCoreMixin:
             except Exception as e:
                 logger.warning(f"Error closing graph for task {task_id}: {e}")
         self._task_graphs.clear()
+
+        if self._neo_driver is not None:
+            try:
+                await self._neo_driver.close()
+            except Exception as e:
+                logger.warning(f"Error closing shared Neo4j driver: {e}")
+            finally:
+                self._neo_driver = None
+
         self._initialized = False
 
     async def health_check(self, task_id: Optional[str] = None) -> bool:

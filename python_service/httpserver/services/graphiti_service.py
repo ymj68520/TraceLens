@@ -63,3 +63,13 @@ class GraphitiService(
         
         # Cache for task-specific graph instances
         self._task_graphs: Dict[str, Any] = {}
+
+        # Shared read-path Neo4j driver (SPEC kg-ingestion-hardening §A2):
+        # one pooled driver instead of a fresh driver per request, created
+        # lazily by _get_shared_driver() and closed in shutdown().
+        self._neo_driver: Any = None
+
+        # Short-lived cache for list_task_graphs (full Episodic scan today;
+        # a 5 s TTL keeps page loads off Neo4j without going stale).
+        self._task_graphs_cache: Optional[List[str]] = None
+        self._task_graphs_cache_at: float = 0.0

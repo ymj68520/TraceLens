@@ -93,69 +93,52 @@ class GraphitiStatusMixin:
     async def _query_neo4j_counts(
         self, task_id: Optional[str] = None
     ) -> tuple:
-        """Query Neo4j directly for entity and relationship counts with correct grouping."""
-        from neo4j import AsyncGraphDatabase
-        uri = self.settings.neo4j_uri
-        user = self.settings.neo4j_user
-        password = self.settings.neo4j_password
-        driver = AsyncGraphDatabase.driver(uri, auth=(user, password))
-        try:
-            async with driver.session() as session:
-                if task_id:
-                    # Entities are linked to Episodic nodes which have the group_id
-                    entity_res = await session.run(
-                        "MATCH (e:Episodic {group_id: $gid})-[r:MENTIONS]->(n:Entity) "
-                        "RETURN count(DISTINCT n) AS cnt",
-                        gid=task_id,
-                    )
-                    rel_res = await session.run(
-                        "MATCH (e:Episodic {group_id: $gid})-[m:MENTIONS]->(s:Entity)-[r:RELATES_TO]->(t:Entity) "
-                        "WHERE (e)-[:MENTIONS]->(t) "
-                        "RETURN count(DISTINCT r) AS cnt",
-                        gid=task_id,
-                    )
-                    
-                    entity_row = await entity_res.single()
-                    rel_row = await rel_res.single()
-                    entity_count = entity_row["cnt"] if entity_row else 0
-                    rel_count = rel_row["cnt"] if rel_row else 0
-                    
-                    logger.info(f"Neo4j counts for task {task_id}: {entity_count} entities, {rel_count} relationships")
-                else:
-                    entity_res = await session.run("MATCH (n:Entity) RETURN count(n) AS cnt")
-                    rel_res = await session.run("MATCH ()-[r:RELATES_TO]->() RETURN count(r) AS cnt")
-                    entity_row = await entity_res.single()
-                    rel_row = await rel_res.single()
-                    entity_count = entity_row["cnt"] if entity_row else 0
-                    rel_count = rel_row["cnt"] if rel_row else 0
-            return entity_count, rel_count
-        finally:
-            await driver.close()
+        """Query Neo4j for entity and relationship counts of a graph scope.
+
+        Counts are index-direct on ``group_id`` (SPEC §A2): the previous
+        MENTIONS-walk with a per-row existence probe grew with the number
+        of episodes and ran on every page load. The direct count reports
+        the graph scope's own nodes/edges (slightly broader: it includes
+        entities shared across groups), which is the more accurate "size
+        of this task's graph".
+        """
+        if task_id:
+            entity_rows = await self._run_read_query(
+                "MATCH (n:Entity {group_id: $gid}) RETURN count(n) AS cnt",
+                {"gid": task_id},
+            )
+            rel_rows = await self._run_read_query(
+                "MATCH ()-[r:RELATES_TO {group_id: $gid}]->() RETURN count(r) AS cnt",
+                {"gid": task_id},
+            )
+        else:
+            entity_rows = await self._run_read_query(
+                "MATCH (n:Entity) RETURN count(n) AS cnt"
+            )
+            rel_rows = await self._run_read_query(
+                "MATCH ()-[r:RELATES_TO]->() RETURN count(r) AS cnt"
+            )
+        entity_count = entity_rows[0]["cnt"] if entity_rows else 0
+        rel_count = rel_rows[0]["cnt"] if rel_rows else 0
+        logger.info(
+            f"Neo4j counts for task {task_id}: {entity_count} entities, {rel_count} relationships"
+        )
+        return entity_count, rel_count
 
     async def _check_neo4j_connection(self) -> bool:
-        """Check Neo4j connectivity without initializing graphiti."""
+        """Check Neo4j connectivity using the shared pooled driver."""
         try:
-            from neo4j import AsyncGraphDatabase
-            uri = self.settings.neo4j_uri
-            user = self.settings.neo4j_user
-            password = self.settings.neo4j_password
-            driver = AsyncGraphDatabase.driver(
-                uri,
-                auth=(user, password),
-                connection_timeout=getattr(self.settings, "neo4j_connect_timeout", 5.0),
-            )
-            try:
+            driver = await self._get_shared_driver()
+
+            async def _probe() -> None:
                 async with driver.session() as session:
-                    result = await asyncio.wait_for(
-                        session.run("RETURN 1"),
-                        timeout=getattr(self.settings, "neo4j_query_timeout", 5.0),
-                    )
-                    await asyncio.wait_for(
-                        result.consume(),
-                        timeout=getattr(self.settings, "neo4j_query_timeout", 5.0),
-                    )
-            finally:
-                await driver.close()
+                    result = await session.run("RETURN 1")
+                    await result.consume()
+
+            await asyncio.wait_for(
+                _probe(),
+                timeout=getattr(self.settings, "neo4j_query_timeout", 5.0),
+            )
             return True
         except Exception as e:
             logger.debug(f"Neo4j connection check failed: {e}")
@@ -165,24 +148,29 @@ class GraphitiStatusMixin:
         """
         List all task IDs that have knowledge graph data.
         Queries Neo4j Episodic nodes to find distinct group_ids.
+
+        Results are cached for 5 s (SPEC §A3): the DISTINCT scan ran on
+        every KG page load; a short TTL keeps the list fresh enough for
+        UI purposes while shielding Neo4j from burst traffic.
         """
+        import time
+
+        now = time.monotonic()
+        if (
+            self._task_graphs_cache is not None
+            and now - self._task_graphs_cache_at < 5.0
+        ):
+            return list(self._task_graphs_cache)
+
         try:
-            from neo4j import AsyncGraphDatabase
-            driver = AsyncGraphDatabase.driver(
-                self.settings.neo4j_uri,
-                auth=(self.settings.neo4j_user, self.settings.neo4j_password),
+            rows = await self._run_read_query(
+                "MATCH (e:Episodic) WHERE e.group_id IS NOT NULL "
+                "RETURN DISTINCT e.group_id AS gid LIMIT 1000"
             )
-            try:
-                async with driver.session() as session:
-                    # Query Episodic nodes which contain the group_id
-                    result = await session.run(
-                        "MATCH (e:Episodic) WHERE e.group_id IS NOT NULL "
-                        "RETURN DISTINCT e.group_id AS gid"
-                    )
-                    task_ids = [record["gid"] async for record in result]
-                return task_ids
-            finally:
-                await driver.close()
+            task_ids = [row["gid"] for row in rows if row.get("gid")]
+            self._task_graphs_cache = task_ids
+            self._task_graphs_cache_at = now
+            return list(task_ids)
         except Exception as e:
             logger.debug(f"list_task_graphs Neo4j query failed: {e}")
             return list(self._task_graphs.keys())
@@ -191,17 +179,14 @@ class GraphitiStatusMixin:
         """Delete a task-specific graph and its data from Neo4j and cache."""
         deleted = False
         try:
-            from neo4j import AsyncGraphDatabase
-            driver = AsyncGraphDatabase.driver(
-                self.settings.neo4j_uri,
-                auth=(self.settings.neo4j_user, self.settings.neo4j_password),
+            # DETACH DELETE of a whole task graph can outlast the default
+            # read timeout; give it a bounded-but-generous ceiling.
+            await self._run_read_query(
+                "MATCH (n {group_id: $gid}) DETACH DELETE n",
+                {"gid": task_id},
+                timeout=60.0,
             )
-            async with driver.session() as session:
-                await session.run(
-                    "MATCH (n {group_id: $gid}) DETACH DELETE n",
-                    gid=task_id,
-                )
-            await driver.close()
+            self._task_graphs_cache = None  # list changed; drop the cache
             deleted = True
             logger.info(f"Deleted Neo4j data for task: {task_id}")
         except Exception as e:
