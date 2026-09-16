@@ -422,6 +422,66 @@ class IngestionJobManagerMixin:
         logger.info(f"Queued event sync job {job_id} for {len(events)} events")
         return job_id
 
+    async def queue_kg_sync_job(
+        self,
+        task_id: str,
+        runner,
+    ) -> str:
+        """
+        Queue a KG-sync job that runs its own coroutine (SPEC §B2).
+
+        Unlike the queue-fed modes, ``runner`` (an async callable receiving a
+        ``progress(stage, message)`` callback) is started here as its own
+        task and the job transitions straight to RUNNING: the in-memory
+        worker loop scans PENDING jobs and would fail on this mode, and the
+        runner closes over fresh analysis results that must not be re-read
+        from databases.
+
+        Args:
+            task_id: Task ID the ingestion belongs to.
+            runner: async callable(progress) -> dict-like result.
+
+        Returns:
+            Job ID for tracking via GET /api/graphiti/jobs/{id}.
+        """
+        job_id = self._generate_job_id()
+
+        job = IngestionJob(
+            job_id=job_id,
+            task_id=task_id,
+            mode=IngestionMode.KG_SYNC,
+        )
+        job.status = JobStatus.RUNNING
+        job.current_phase = "queued"
+        job.started_at = datetime.utcnow().isoformat()
+        await self._save_job(job)
+
+        asyncio.create_task(self._run_kg_sync_job(job_id, runner))
+
+        logger.info(f"Queued kg_sync job {job_id} for task {task_id}")
+        return job_id
+
+    async def _run_kg_sync_job(self, job_id: str, runner):
+        """Drive a kg_sync job through RUNNING -> COMPLETED/FAILED/CANCELLED."""
+        async def progress(stage: str, message: str):
+            await self._update_job_status(job_id, JobStatus.RUNNING, stage)
+
+        try:
+            result = await runner(progress)
+            await self._update_job_status(
+                job_id, JobStatus.COMPLETED, "completed", progress=100,
+                result=result if isinstance(result, dict) else None,
+            )
+            logger.info(f"kg_sync job {job_id} completed")
+        except asyncio.CancelledError:
+            await self._update_job_status(job_id, JobStatus.CANCELLED, "cancelled")
+            raise
+        except Exception as e:
+            logger.error(f"kg_sync job {job_id} failed: {e}", exc_info=True)
+            await self._update_job_status(
+                job_id, JobStatus.FAILED, "failed", error=str(e)
+            )
+
     async def get_job_status(self, job_id: str) -> Optional[dict]:
         """
         Get the status of an ingestion job.

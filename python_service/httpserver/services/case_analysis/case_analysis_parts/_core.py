@@ -124,13 +124,64 @@ class CaseAnalysisCoreMixin:
         case_description: str,
         file_descriptions: List[Dict[str, Any]],
         cluster_descriptions: Optional[List[Dict[str, Any]]] = None,
+        progress_callback=None,
     ) -> bool:
         """Ingest case description, file descriptions, and event clusters into Graphiti."""
         if not self._file_analyzer:
             raise RuntimeError("FileAnalyzer module not initialized. Ensure all dependencies are injected.")
         return await self._file_analyzer.ingest_to_knowledge_graph(
-            task_id, case_description, file_descriptions, cluster_descriptions
+            task_id, case_description, file_descriptions, cluster_descriptions, progress_callback
         )
+
+    async def dispatch_kg_ingestion(
+        self,
+        task_id: str,
+        case_description: str,
+        file_descriptions: List[Dict[str, Any]],
+        cluster_descriptions: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Hand KG ingestion to the job system and return immediately (SPEC §B2).
+
+        Ingestion with a local LLM takes minutes to hours per batch; awaiting
+        it inline used to hold the analysis pipeline for the whole duration
+        with no progress surface. When the ingestion job manager is
+        available, the (fresh, in-hand) analysis results are ingested inside
+        a kg_sync job reportable via GET /api/graphiti/jobs/{id}; otherwise
+        the historical inline behaviour is the fallback.
+
+        Returns the ``knowledge_graph`` step dict for the pipeline result.
+        """
+        episode_counts = {
+            "file_episodes": len(file_descriptions or []),
+            "cluster_episodes": len(cluster_descriptions or []),
+        }
+
+        manager = None
+        try:
+            from ....dependencies import get_service_manager
+            manager = getattr(get_service_manager(), "ingestion_job_manager", None)
+        except Exception as e:
+            logger.warning(f"[KG_DISPATCH] Task {task_id}: job manager unavailable ({e})")
+
+        if manager is not None:
+            async def _runner(job_progress):
+                ingested = await self.ingest_to_knowledge_graph(
+                    task_id, case_description, file_descriptions,
+                    cluster_descriptions=cluster_descriptions,
+                    progress_callback=job_progress,
+                )
+                return {"ingested": ingested, **episode_counts}
+
+            job_id = await manager.queue_kg_sync_job(task_id, _runner)
+            logger.info(f"[KG_DISPATCH] Task {task_id}: KG ingestion queued as job {job_id}")
+            return {"queued": True, "job_id": job_id, **episode_counts}
+
+        logger.info(f"[KG_DISPATCH] Task {task_id}: falling back to inline KG ingestion")
+        ingested = await self.ingest_to_knowledge_graph(
+            task_id, case_description, file_descriptions,
+            cluster_descriptions=cluster_descriptions,
+        )
+        return {"ingested": ingested, **episode_counts}
 
     async def generate_case_report(
         self,

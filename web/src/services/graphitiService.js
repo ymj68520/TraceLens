@@ -103,6 +103,17 @@ export const getJobStatus = async (jobId) => {
 };
 
 /**
+ * 列出任务的摄取作业 (用于显示 KG 摄取进行中的进度)
+ * @param {string} taskId - 任务 ID
+ * @param {number} limit - 最多返回数量
+ */
+export const listIngestionJobs = async (taskId, limit = 5) => {
+    return await pythonApi.get('/api/graphiti/jobs', {
+        params: { task_id: taskId, limit },
+    });
+};
+
+/**
  * 重新摄入已分析的文件和事件簇
  * @param {string} taskId - 任务 ID
  */
@@ -134,6 +145,7 @@ export default {
     listTaskGraphs,
     deleteTaskGraph,
     getJobStatus,
+    listIngestionJobs,
     reingestAnalyzedData,
     getGraphData,
 };

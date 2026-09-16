@@ -17,6 +17,7 @@ import {
     deleteTaskGraph,
     getGraphData,
     getJobStatus,
+    listIngestionJobs,
     reingestAnalyzedData,
 } from '../services/graphitiService';
 
@@ -169,6 +170,44 @@ export default function KnowledgeGraph() {
             clearInterval(interval);
         };
     }, [reingestJobId, fetchStatus, fetchTaskGraphs]);
+
+    // ── Background KG ingestion job (pipeline-dispatched kg_sync job) ────────
+    // The analysis pipeline queues KG ingestion as a background job; surface
+    // its progress here instead of an empty spinner (SPEC §B3).
+    const [kgJob, setKgJob] = useState(null);
+    const hadKgJobRef = useRef(false);
+
+    const fetchKgJob = useCallback(async () => {
+        if (!taskId) { setKgJob(null); return; }
+        try {
+            const res = await listIngestionJobs(taskId, 5);
+            const jobs = res.jobs || [];
+            const active = jobs.find((j) =>
+                ['PENDING', 'RUNNING'].includes(String(j.status || '').toUpperCase())
+            );
+            setKgJob(active || null);
+        } catch { /* jobs endpoint unavailable — banner simply stays hidden */ }
+    }, [taskId]);
+
+    useEffect(() => {
+        fetchKgJob();
+        const iv = setInterval(fetchKgJob, 3000);
+        return () => clearInterval(iv);
+    }, [fetchKgJob]);
+
+    // Refresh counts while the job runs; reload data once it finishes
+    // (the active job disappears from the poll result).
+    useEffect(() => {
+        if (kgJob) {
+            hadKgJobRef.current = true;
+            fetchStatus();
+        } else if (hadKgJobRef.current) {
+            hadKgJobRef.current = false;
+            fetchStatus();
+            fetchTaskGraphs();
+            setGraphData({ nodes: [], links: [] }); // trigger graph reload
+        }
+    }, [kgJob, fetchStatus, fetchTaskGraphs]);
 
     // ── Graph visualization ──────────────────────────────────────────────────────
     const fetchGraphData = useCallback(async () => {
@@ -474,6 +513,20 @@ export default function KnowledgeGraph() {
                     </div>
                     <div className="w-full bg-slate-200 dark:bg-gray-600 rounded-full h-2">
                         <div className="bg-primary-600 h-2 rounded-full transition-all" style={{ width: `${ingestProgress}%` }} />
+                    </div>
+                </div>
+            )}
+            {kgJob && (
+                <div className="mt-4">
+                    <div className="flex justify-between text-sm mb-1">
+                        <span className="text-slate-600 dark:text-slate-300">
+                            🔄 知识图谱摄取进行中（分析已完成，后台建图，可先浏览其他页面）…
+                        </span>
+                        <span className="text-purple-600">{parseInt(kgJob.progress, 10) || 0}%</span>
+                    </div>
+                    <div className="w-full bg-slate-200 dark:bg-gray-600 rounded-full h-2">
+                        <div className="bg-purple-600 h-2 rounded-full transition-all"
+                             style={{ width: `${parseInt(kgJob.progress, 10) || 2}%` }} />
                     </div>
                 </div>
             )}

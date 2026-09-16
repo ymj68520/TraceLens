@@ -463,6 +463,7 @@ class FileAnalyzer:
         case_description: str,
         file_descriptions: List[Dict[str, Any]],
         cluster_descriptions: Optional[List[Dict[str, Any]]] = None,
+        progress_callback=None,
     ) -> bool:
         """
         Ingest case description, file descriptions, and event clusters into Graphiti.
@@ -475,6 +476,8 @@ class FileAnalyzer:
             case_description: Full case description text.
             file_descriptions: List of per-file analysis results.
             cluster_descriptions: Optional list of event cluster analysis results.
+            progress_callback: Optional async callback(stage, message) for
+                job-level progress reporting (SPEC kg-ingestion-hardening §B2).
 
         Returns:
             True if ingestion succeeded, False otherwise.
@@ -584,10 +587,18 @@ class FileAnalyzer:
 
             # Batch ingest
             logger.info(f"Ingesting {len(episodes)} episodes into Graphiti for task {task_id}")
-            result = await ingestor.batch_ingest(
-                episodes=episodes,
-                group_id=task_id,
-            )
+            # batch_ingest invokes its callback synchronously; bridge to the
+            # async job-progress callback without blocking the ingest loop.
+            ingest_progress = None
+            if progress_callback is not None:
+                def ingest_progress(cur, total):
+                    asyncio.create_task(progress_callback("ingesting", f"正在摄入 {cur}/{total} 个分析结果"))
+            async with self._graphiti_service.lock_for_group(task_id):
+                result = await ingestor.batch_ingest(
+                    episodes=episodes,
+                    group_id=task_id,
+                    progress_callback=ingest_progress,
+                )
             successful = getattr(result, 'successful', 0)
             total = getattr(result, 'total_episodes', len(episodes))
             failed = getattr(result, 'failed', 0)

@@ -73,3 +73,7 @@ class GraphitiService(
         # a 5 s TTL keeps page loads off Neo4j without going stale).
         self._task_graphs_cache: Optional[List[str]] = None
         self._task_graphs_cache_at: float = 0.0
+
+        # Single-flight locks per graph group (SPEC kg-ingestion-hardening
+        # §B1): add_episode must be sequential within a group.
+        self._ingest_locks: Dict[str, asyncio.Lock] = {}

@@ -196,23 +196,21 @@ class CaseAnalysisPipelinesMixin:
                     except Exception as e:
                         logger.error(f"[CASE_ANALYSIS] Task {task_id}: Event cluster analysis failed: {e}", exc_info=True)
 
-                # Step 4: Ingest to knowledge graph (files + clusters)
+                # Step 4: Ingest to knowledge graph (files + clusters).
+                # Dispatches to a background kg_sync job when available so the
+                # pipeline no longer blocks for the whole ingest (SPEC §B2).
                 logger.info(f"[CASE_ANALYSIS] Task {task_id}: Checking graphiti_service for ingestion...")
                 logger.info(f"[CASE_ANALYSIS] Task {task_id}: _graphiti_service is None: {self._graphiti_service is None}")
                 if self._graphiti_service:
                     if progress_callback:
                         await progress_callback("ingesting", "正在将分析结果摄入知识图谱...")
                     try:
-                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: Starting KG ingestion with {len(descriptions)} file descriptions and {len(cluster_results)} cluster descriptions")
-                        kg_ok = await self.ingest_to_knowledge_graph(
+                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: Dispatching KG ingestion with {len(descriptions)} file descriptions and {len(cluster_results)} cluster descriptions")
+                        kg_step = await self.dispatch_kg_ingestion(
                             task_id, case_description, descriptions, cluster_descriptions=cluster_results
                         )
-                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: KG ingestion completed, result: {kg_ok}")
-                        result["steps"]["knowledge_graph"] = {
-                            "ingested": kg_ok,
-                            "file_episodes": len(descriptions),
-                            "cluster_episodes": len(cluster_results)
-                        }
+                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: KG ingestion dispatched: {kg_step}")
+                        result["steps"]["knowledge_graph"] = kg_step
                     except Exception as e:
                         logger.error(f"[CASE_ANALYSIS] Task {task_id}: KG ingestion failed (non-fatal): {e}", exc_info=True)
                         result["steps"]["knowledge_graph"] = {
@@ -298,22 +296,20 @@ class CaseAnalysisPipelinesMixin:
                     except Exception as e:
                         logger.error(f"Event cluster analysis failed: {e}", exc_info=True)
 
-                # Step 4: Ingest to knowledge graph (files + clusters)
+                # Step 4: Ingest to knowledge graph (files + clusters).
+                # Dispatches to a background kg_sync job when available so the
+                # pipeline no longer blocks for the whole ingest (SPEC §B2).
                 logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] Checking graphiti_service for ingestion...")
                 if self._graphiti_service:
                     if progress_callback:
                         await progress_callback("ingesting", "正在将分析结果摄入知识图谱...")
                     try:
-                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] Starting KG ingestion with {len(descriptions)} file descriptions and {len(cluster_results)} cluster descriptions")
-                        kg_ok = await self.ingest_to_knowledge_graph(
+                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] Dispatching KG ingestion with {len(descriptions)} file descriptions and {len(cluster_results)} cluster descriptions")
+                        kg_step = await self.dispatch_kg_ingestion(
                             task_id, case_description, descriptions, cluster_descriptions=cluster_results
                         )
-                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] KG ingestion completed, result: {kg_ok}")
-                        result["steps"]["knowledge_graph"] = {
-                            "ingested": kg_ok,
-                            "file_episodes": len(descriptions),
-                            "cluster_episodes": len(cluster_results)
-                        }
+                        logger.info(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] KG ingestion dispatched: {kg_step}")
+                        result["steps"]["knowledge_graph"] = kg_step
                     except Exception as e:
                         logger.error(f"[CASE_ANALYSIS] Task {task_id}: [REUSE MODE] KG ingestion failed (non-fatal): {e}", exc_info=True)
                         result["steps"]["knowledge_graph"] = {

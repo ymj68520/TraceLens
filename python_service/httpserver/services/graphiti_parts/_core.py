@@ -53,6 +53,22 @@ class GraphitiCoreMixin:
         )
         return await asyncio.wait_for(_run(), timeout=effective_timeout)
 
+    def lock_for_group(self, group_id: str) -> asyncio.Lock:
+        """Single-flight lock for one graph group (SPEC §B1).
+
+        Graphiti assumes sequential ``add_episode`` within a group. Three
+        ingestion streams exist (pipeline KG phase, job worker, re-analysis
+        fire-and-forget) and used to overlap on the same group — racing the
+        dedup layer into duplicate entities and piling up on the single-slot
+        LLM. Every add_episode entry point wraps its batch region with this
+        lock keyed by group_id.
+        """
+        lock = self._ingest_locks.get(group_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._ingest_locks[group_id] = lock
+        return lock
+
     async def initialize(self):
         """Initialize the Graphiti service with graceful fallback."""
         if self._initialized:

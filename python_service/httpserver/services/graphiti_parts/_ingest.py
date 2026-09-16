@@ -189,10 +189,11 @@ class GraphitiIngestMixin:
             if progress_callback:
                 await progress_callback("ingesting", f"正在摄入 {len(episodes)} 个分析结果到知识图谱...")
 
-            result = await ingestor.batch_ingest(
-                episodes=episodes,
-                group_id=case_id,
-            )
+            async with self.lock_for_group(case_id):
+                result = await ingestor.batch_ingest(
+                    episodes=episodes,
+                    group_id=case_id,
+                )
 
             success_count = getattr(result, 'successful', 0)
             total_count = getattr(result, 'total_episodes', len(episodes))
@@ -353,7 +354,8 @@ class GraphitiIngestMixin:
                 await progress_callback("ingesting", f"正在摄入 {len(episodes)} 个分析结果到知识图谱...")
 
             logger.info(f"[{task_id}] Ingesting {len(episodes)} episodes via add_episode")
-            result = await ingestor.batch_ingest(episodes=episodes, group_id=task_id)
+            async with self.lock_for_group(task_id):
+                result = await ingestor.batch_ingest(episodes=episodes, group_id=task_id)
 
             successful = getattr(result, 'successful', 0)
             total = getattr(result, 'total_episodes', len(episodes))
@@ -595,10 +597,11 @@ class GraphitiIngestMixin:
             if progress_callback:
                 await progress_callback("ingesting", f"正在摄入 {len(episodes)} 个新分析结果到知识图谱...")
 
-            result = await ingestor.batch_ingest(
-                episodes=episodes,
-                group_id=case_id,
-            )
+            async with self.lock_for_group(case_id):
+                result = await ingestor.batch_ingest(
+                    episodes=episodes,
+                    group_id=case_id,
+                )
 
             success_count = getattr(result, 'successful', 0)
             total_count = getattr(result, 'total_episodes', len(episodes))

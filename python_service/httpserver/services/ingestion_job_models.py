@@ -17,6 +17,10 @@ class IngestionMode(str, Enum):
     EVENTS_ONLY = "events_only"
     SINGLE_FILE = "single_file"
     ANALYZED_ONLY = "analyzed_only"  # Only AI-analyzed files
+    # Self-running job spawned by the analysis pipeline with fresh analysis
+    # results in hand (SPEC kg-ingestion-hardening §B2). Never pushed to the
+    # worker queue: queue_kg_sync_job starts it immediately.
+    KG_SYNC = "kg_sync"
 
 
 class JobStatus(str, Enum):
