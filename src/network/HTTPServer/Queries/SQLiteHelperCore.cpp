@@ -7,6 +7,7 @@
 #include <sstream>
 #include <iomanip>
 #include <vector>
+#include <filesystem>
 
 using json = nlohmann::json;
 
@@ -15,12 +16,23 @@ using json = nlohmann::json;
 // ============================================================================
 
 sqlite3* SQLiteHelper::open_database(const std::string& db_path, json& error_result) {
+    // Read-helper contract: never CREATE a database. sqlite3_open happily
+    // creates an empty file for a missing/typo'd path, after which every
+    // query silently returns zero rows. Report the missing file instead.
+    if (db_path.empty() || !std::filesystem::exists(db_path)) {
+        error_result["error"] = "Database file not found: " + db_path;
+        return nullptr;
+    }
     sqlite3* db;
     if (sqlite3_open(db_path.c_str(), &db) != SQLITE_OK) {
         error_result["error"] = "Cannot open database: " + db_path;
         if (db) sqlite3_close(db);
         return nullptr;
     }
+    // Wait instead of failing silently when a writer (task pipeline) holds the
+    // write lock; without this a transient SQLITE_BUSY would truncate query
+    // results to a partial/empty set that callers mistake for "no data".
+    sqlite3_busy_timeout(db, 5000);
     return db;
 }
 

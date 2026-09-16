@@ -105,6 +105,8 @@ const Timeline = () => {
   const [analyzingClusters, setAnalyzingClusters] = useState(new Set());
 
   const virtuosoRef = useRef();
+  const emptyRetryKeyRef = useRef('');
+  const emptyRetriedRef = useRef(false);
   const dispatch = useDispatch();
   const currentTask = tasks.find((t) => t.id === taskId);
 
@@ -145,6 +147,15 @@ const Timeline = () => {
     setLoading(true);
     setError(null);
 
+    // A transient SQLite writer lock on the backend can legally (but wrongly)
+    // surface as an empty timeline. Retry an empty result exactly once per
+    // parameter combination before believing it.
+    const requestKey = JSON.stringify([taskId, currentPage, pageSize, eventType, selectedDate, customStart, customEnd, isClustered, effectiveBucket]);
+    if (emptyRetryKeyRef.current !== requestKey) {
+      emptyRetryKeyRef.current = requestKey;
+      emptyRetriedRef.current = false;
+    }
+
     try {
       const offset = (currentPage - 1) * pageSize;
       const params = {
@@ -184,6 +195,12 @@ const Timeline = () => {
       
       if (!data.timeline || data.timeline.length === 0) {
         console.warn('Timeline is empty, no events found');
+        if (!emptyRetriedRef.current) {
+          emptyRetriedRef.current = true;
+          console.warn('Empty timeline — retrying once (possible transient DB lock)');
+          setTimeout(() => { fetchTimeline(); }, 800);
+          return;
+        }
         setTimelineData(data);
         return;
       }

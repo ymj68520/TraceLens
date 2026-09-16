@@ -126,12 +126,20 @@ json SQLiteHelper::get_comprehensive_timeline(const std::string& raw_db, const s
         return result;
     }
 
-    // Ensure events table has AI columns (Self-healing)
-    const char* ai_cols[] = {"llm_summary", "llm_description", "llm_keywords", "llm_analyzed_at", "llm_model_used", "llm_is_relevant"};
-    for (const char* col : ai_cols) {
-        std::string type = (std::string(col).find("_at") != std::string::npos || std::string(col).find("_is_") != std::string::npos) ? "INTEGER" : "TEXT";
-        std::string alter_sql = "ALTER TABLE events ADD COLUMN " + std::string(col) + " " + type + ";";
-        sqlite3_exec(events, alter_sql.c_str(), nullptr, nullptr, nullptr);
+    // Ensure events table has AI columns (Self-healing). Only issue the ALTER
+    // when the column is actually missing: ALTER is a WRITE, and issuing six
+    // write statements on every read request made this read path contend with
+    // the task pipeline's writer lock (symptom: transient empty timelines
+    // while a task is running, "database is locked" in the server log).
+    if (table_exists(events, "events")) {
+        const char* ai_cols[] = {"llm_summary", "llm_description", "llm_keywords", "llm_analyzed_at", "llm_model_used", "llm_is_relevant"};
+        for (const char* col : ai_cols) {
+            std::string type = (std::string(col).find("_at") != std::string::npos || std::string(col).find("_is_") != std::string::npos) ? "INTEGER" : "TEXT";
+            if (!column_exists(events, "events", col)) {
+                std::string alter_sql = "ALTER TABLE events ADD COLUMN " + std::string(col) + " " + type + ";";
+                sqlite3_exec(events, alter_sql.c_str(), nullptr, nullptr, nullptr);
+            }
+        }
     }
 
     limit = clamp_limit(limit);
