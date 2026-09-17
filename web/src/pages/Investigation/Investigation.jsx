@@ -9,6 +9,7 @@ import useEventEvidence from './hooks/useEventEvidence';
 import InvestigationTimeline from './components/InvestigationTimeline';
 import EventEvidencePanel from './components/EventEvidencePanel';
 import AnalysisWorkspace from './components/AnalysisWorkspace';
+import { useFeatures } from '../../hooks/useFeatures';
 
 const MIDDLE_TABS = [
   { id: 'timeline', label: '时间线' },
@@ -17,6 +18,10 @@ const MIDDLE_TABS = [
 
 export default function Investigation() {
   const [searchParams] = useSearchParams();
+  // MVP (mvp-phase1-acceptance §4.4): the graph tab and the LLM workspace
+  // actions are trimmed; read-only browsing and file evidence binding stay.
+  const { workbench_llm_enabled: workbenchLlmEnabled } = useFeatures();
+  const middleTabs = workbenchLlmEnabled ? MIDDLE_TABS : MIDDLE_TABS.filter((tab) => tab.id !== 'graph');
   const taskId = searchParams.get('task_id') || searchParams.get('taskId');
   const requestedEvent = searchParams.get('event');
   const [selectedEventId, setSelectedEventId] = useState(requestedEvent);
@@ -100,7 +105,7 @@ export default function Investigation() {
         <section className="min-h-0 overflow-hidden rounded-2xl glass"><EventEvidencePanel taskId={taskId} eventId={selectedEventId} event={selectedEvent} evidence={evidence} loading={evidenceLoading} error={evidenceError} selectedEvidenceKey={selectedEvidenceKey} claimEvidenceScope={claimEvidenceScope} onClearClaimScope={clearClaimScope} onSelect={(key) => { setClaimEvidenceScope(null); setSelectedEvidenceKey(key); }} onRefresh={refreshEvidence} /></section>
         <section className="min-h-0 overflow-hidden rounded-2xl glass flex flex-col">
           <div className="flex items-center gap-1 px-3 pt-2 border-b border-slate-200/60 dark:border-slate-700/50 shrink-0" role="tablist">
-            {MIDDLE_TABS.map((tab) => (
+            {middleTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"

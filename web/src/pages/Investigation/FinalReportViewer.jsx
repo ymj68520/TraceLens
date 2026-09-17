@@ -19,6 +19,7 @@ import useFinalReportViewer from './hooks/useFinalReportViewer';
 import useReportTraceback from './hooks/useReportTraceback';
 import useFinalReportPublication from './hooks/useFinalReportPublication';
 import useFinalReportPresentation from './hooks/useFinalReportPresentation';
+import FileTimestampTimeline from './components/FileTimestampTimeline';
 import { checkFinalReportIntegrity } from './finalReportIntegrity';
 
 function shortHash(value) {
@@ -305,6 +306,9 @@ export default function FinalReportViewer() {
           <Link to={`/investigation?task_id=${encodeURIComponent(taskId)}`} className="text-sm font-semibold text-primary-600 hover:text-primary-500 dark:text-primary-300">Back to Investigation</Link>
         </div>
       </header>
+      {/* MVP (mvp-phase1-acceptance §6.1): file timeline over the filtered
+          files' four forensic timestamps — events are not part of the report. */}
+      <FileTimestampTimeline taskId={taskId} />
       {viewer.listLoading && <div className="flex justify-center py-10"><Spinner size="lg" /></div>}
       {viewer.listError && !viewer.listLoading && <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-950/20 dark:text-rose-200"><div>{viewer.listError}</div><Button className="mt-3" size="sm" variant="secondary" icon={RefreshCw} onClick={viewer.retryList}>Retry</Button></div>}
       {!viewer.listLoading && !viewer.listError && viewer.reports.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">No final report versions have been assembled for this task.</div>}

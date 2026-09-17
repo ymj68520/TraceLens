@@ -4,7 +4,9 @@
  * contacts / sms / call_logs / locations / apps / records / chapter。
  */
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { renderCaseMarkdown } from '../markdownRenderer.jsx';
+import FileEventsDrawer from '../FileEventsDrawer';
 import CaseInfoSection from './sections/CaseInfoSection';
 import EvidenceInfoSection from './sections/EvidenceInfoSection';
 import DeviceInfoSection from './sections/DeviceInfoSection';
@@ -99,8 +101,40 @@ function RecordsTable({ pageData }) {
 export default function ReportReaderContent({
   node, report, pageData, loading, taskId, metadata, onEditMetadata,
 }) {
-  const markdownCtx = useMemo(() => ({ activeContextId: taskId, navigate: () => {}, scrollToFile: () => {} }), [taskId]);
+  const navigate = useNavigate();
+  // MVP (mvp-phase1-acceptance §6.2): clicking a [[file:...]] badge opens the
+  // file + related-events drawer (raw timeline events, no LLM); [[event:...]]
+  // badges keep jumping to the timeline page.
+  const [eventsFilePath, setEventsFilePath] = useState(null);
+  const markdownCtx = useMemo(() => ({
+    activeContextId: taskId,
+    navigate,
+    scrollToFile: (path) => setEventsFilePath(path),
+  }), [taskId, navigate]);
 
+  return (
+    <>
+      <ReportReaderContentBody
+        node={node}
+        report={report}
+        pageData={pageData}
+        loading={loading}
+        metadata={metadata}
+        onEditMetadata={onEditMetadata}
+        markdownCtx={markdownCtx}
+      />
+      <FileEventsDrawer
+        taskId={taskId}
+        filePath={eventsFilePath}
+        onClose={() => setEventsFilePath(null)}
+      />
+    </>
+  );
+}
+
+function ReportReaderContentBody({
+  node, report, pageData, loading, metadata, onEditMetadata, markdownCtx,
+}) {
   if (!node) return null;
 
   if (node.kind === 'overview') {

@@ -68,6 +68,25 @@ export const getFileRelatedClusters = async (taskId, file, limit = 100) => {
 };
 
 /**
+ * Get raw timeline events referencing one file — no LLM involved.
+ *
+ * The related-events source for the report page's file tag in the MVP
+ * (event cluster LLM analysis is disabled, so cluster associations are
+ * empty by design; mvp-phase1-acceptance SPEC §6.2).
+ *
+ * @param {string} taskId - Task ID
+ * @param {string} filePath - Full file path
+ * @param {number} limit - Maximum events (default 200)
+ * @returns {Promise<Object>} { success, events, total_count, matched_by, ... }
+ */
+export const getFileEvents = async (taskId, filePath, limit = 200) => {
+  const response = await pythonApi.get('/api/associations/file-events', {
+    params: { task_id: taskId, path: filePath, limit },
+  });
+  return response;
+};
+
+/**
  * Format anomaly type to human-readable message
  *
  * @param {string} anomalyType - Anomaly type code
@@ -142,6 +161,7 @@ export const getHighestAnomalySeverity = (file) => {
 export default {
   getClusterRelatedFiles,
   getFileRelatedClusters,
+  getFileEvents,
   formatAnomalyType,
   getAnomalySeverity,
   getAnomalyColorClass,

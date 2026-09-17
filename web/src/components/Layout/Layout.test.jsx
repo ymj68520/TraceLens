@@ -1,11 +1,31 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import Layout from './Layout';
 
 vi.mock('../common/TaskSelector', () => ({ default: () => null }));
+
+// Feature switches drive the MVP nav trims (mvp-phase1-acceptance §4.3).
+// Tests default to the trimmed MVP form; nav-contract tests flip
+// combined_case_enabled back on via featuresState.
+const featuresState = vi.hoisted(() => ({ value: null }));
+vi.mock('../../services/featuresService', () => ({
+  FEATURE_DEFAULTS: {
+    event_llm_analysis_enabled: false,
+    combined_case_enabled: false,
+    workbench_llm_enabled: false,
+  },
+  fetchFeatures: () =>
+    Promise.resolve(
+      featuresState.value ?? {
+        event_llm_analysis_enabled: false,
+        combined_case_enabled: false,
+        workbench_llm_enabled: false,
+      },
+    ),
+}));
 
 function renderLayout(route) {
   const store = configureStore({
@@ -33,18 +53,22 @@ test('links to evidence analysis with the current task query contract', () => {
   );
 });
 
-test('links to the analysis center with the current task query contract', () => {
+test('links to the analysis center with the current task query contract', async () => {
+  featuresState.value = { event_llm_analysis_enabled: true, combined_case_enabled: true, workbench_llm_enabled: true };
   renderLayout('/files?task_id=task-1');
 
-  expect(screen.getByRole('link', { name: '研判中心' })).toHaveAttribute(
+  expect(await screen.findByRole('link', { name: '研判中心' })).toHaveAttribute(
     'href',
     '/analysis-center?task_id=task-1',
   );
 });
 
-test('renders 证据研判 before 研判中心 in the sidebar', () => {
+test('renders 证据研判 before 研判中心 in the sidebar', async () => {
+  featuresState.value = { event_llm_analysis_enabled: true, combined_case_enabled: true, workbench_llm_enabled: true };
   renderLayout('/dashboard');
 
+  // wait for the async feature fetch to un-hide the combined-case entries
+  await screen.findByRole('link', { name: '研判中心' });
   const links = screen.getAllByRole('link');
   const evidenceIdx = links.findIndex((l) => l.textContent === '证据研判');
   const centerIdx = links.findIndex((l) => l.textContent === '研判中心');
@@ -54,15 +78,27 @@ test('renders 证据研判 before 研判中心 in the sidebar', () => {
   expect(evidenceIdx).toBeLessThan(centerIdx);
 });
 
-test('keeps the analysis center navigation active', () => {
+test('keeps the analysis center navigation active', async () => {
+  featuresState.value = { event_llm_analysis_enabled: true, combined_case_enabled: true, workbench_llm_enabled: true };
   renderLayout('/analysis-center');
 
-  const reportNav = screen.getByRole('link', { name: '研判中心' });
+  const reportNav = await screen.findByRole('link', { name: '研判中心' });
   expect(reportNav).toHaveAttribute('href', '/analysis-center');
   expect(reportNav).toHaveClass('bg-primary-500/20');
   expect(reportNav.querySelector('.bg-primary-400')).not.toBeNull();
   expect(screen.getByRole('heading', { name: '研判中心' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: '仪表盘' })).not.toBeInTheDocument();
+});
+
+test('MVP default hides the combined-case nav entries (mvp-phase1-acceptance §4.3)', async () => {
+  featuresState.value = null;
+  renderLayout('/dashboard');
+
+  await waitFor(() => {
+    expect(screen.getByRole('link', { name: '证据研判' })).toBeInTheDocument();
+  });
+  expect(screen.queryByRole('link', { name: '案件组合' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: '研判中心' })).not.toBeInTheDocument();
 });
 
 test('keeps the investigation workbench navigation active on its report subroute', () => {

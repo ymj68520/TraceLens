@@ -8,6 +8,13 @@ vi.mock('./components/LocalKnowledgeGraph', () => ({
   default: ({ graph }) => <div>{graph?.nodes?.map((node) => node.label).join(',')}</div>,
 }));
 
+// MVP (mvp-phase1-acceptance §4.4): workbench_llm_enabled drives the graph
+// tab trim. These tests exercise the full layout, so default it on.
+const featuresState = vi.hoisted(() => ({ workbench_llm_enabled: true }));
+vi.mock('../../hooks/useFeatures', () => ({
+  useFeatures: () => featuresState,
+}));
+
 vi.mock('../../components/investigation/InvestigationGraphView', () => ({
   default: ({ taskId, refreshSignal }) => (
     <div data-testid="graph-view-mock" data-refresh-signal={refreshSignal}>{taskId}</div>
@@ -86,6 +93,18 @@ test('graph tab activates the two-column layout and yields the right column', as
   expect(screen.getByTestId('graph-view-mock')).toHaveTextContent('t1');
   expect(container.querySelector('main').className).toContain('grid-cols-[minmax(250px,0.8fr)_minmax(640px,2.45fr)]');
   expect(container.querySelector('[data-testid="analysis-workspace-column"]').className).toContain('hidden');
+});
+
+test('MVP default hides the graph tab (mvp-phase1-acceptance §4.4)', async () => {
+  featuresState.workbench_llm_enabled = false;
+  try {
+    renderPage();
+    await screen.findByText('事件一');
+    expect(screen.queryByTestId('tab-graph')).not.toBeInTheDocument();
+    expect(screen.getByTestId('tab-timeline')).toBeInTheDocument();
+  } finally {
+    featuresState.workbench_llm_enabled = true;
+  }
 });
 
 test('switching back to the timeline tab restores the right column', async () => {

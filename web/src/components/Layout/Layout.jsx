@@ -4,6 +4,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { toggleSidebar } from '../../store/uiSlice';
 import TaskSelector from '../common/TaskSelector';
 import { useTranslation } from '../../hooks/useTranslation';
+import { useFeatures } from '../../hooks/useFeatures';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, ListTodo, Clock, FolderOpen, Network, FileSearch,
@@ -19,6 +20,7 @@ const Layout = ({ children }) => {
   const { showTerminal } = useSelector((state) => state.settings);
   const { sidebarOpen } = useSelector((state) => state.ui);
   const { t } = useTranslation();
+  const { combined_case_enabled: combinedCaseEnabled } = useFeatures();
 
   const navigation = [
     { name: t('nav.dashboard'), href: '/dashboard', icon: LayoutDashboard },
@@ -37,7 +39,7 @@ const Layout = ({ children }) => {
     { name: t('nav.search'), href: '/search', icon: Search },
     { name: t('nav.statistics'), href: '/statistics', icon: BarChart3 },
     { name: t('nav.settings'), href: '/settings', icon: Settings },
-  ];
+  ].filter((item) => combinedCaseEnabled || !['/cases', '/analysis-center'].includes(item.href));
 
   // Add Terminal if enabled in settings
   if (showTerminal) {

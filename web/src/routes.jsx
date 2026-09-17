@@ -25,6 +25,7 @@ import OSS from './pages/OSS';
 import Login from './pages/Login';
 import Terminal from './pages/Terminal';
 import Distributed from './pages/Distributed';
+import FeatureGate from './components/common/FeatureGate';
 
 const IMForensics = React.lazy(() => import('./pages/IMForensics/IMForensics'));
 
@@ -50,8 +51,14 @@ export const appRoutes = [
         element: <Tasks />,
       },
       {
+        // MVP (mvp-phase1-acceptance §4.3): combined-case module is gated off;
+        // the route stays registered so deep links render a notice.
         path: 'cases',
-        element: <Cases />,
+        element: (
+          <FeatureGate flag="combined_case_enabled">
+            <Cases />
+          </FeatureGate>
+        ),
       },
       {
         path: 'timeline',
@@ -115,8 +122,13 @@ export const appRoutes = [
         element: <CaseIntelligence />,
       },
       {
+        // MVP (mvp-phase1-acceptance §4.3): gated with combined-case module.
         path: 'analysis-center',
-        element: <AnalysisCenter />,
+        element: (
+          <FeatureGate flag="combined_case_enabled">
+            <AnalysisCenter />
+          </FeatureGate>
+        ),
       },
       {
         path: 'investigation',

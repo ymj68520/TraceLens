@@ -35,7 +35,10 @@ test('exposes report migration routes without replacing the legacy redirect', ()
 
   expect(legacyRoute.element.type).toBe(LegacyReportRedirect);
   expect(intelligenceRoute.element.type).toBe(CaseIntelligence);
-  expect(analysisRoute.element.type).toBe(AnalysisCenter);
+  // MVP (mvp-phase1-acceptance §4.3): the analysis-center page is mounted
+  // behind a FeatureGate; the route itself must stay registered.
+  expect(analysisRoute.element.type.displayName || analysisRoute.element.type.name).toBe('FeatureGate');
+  expect(analysisRoute.element.props.children.type).toBe(AnalysisCenter);
   expect(investigationRoute.element.type).toBe(Investigation);
   expect(finalReportRoute.element.type).toBe(FinalReportViewer);
   expect(matchRoutes(appRoutes, '/case-intelligence?taskId=t1')).not.toBeNull();

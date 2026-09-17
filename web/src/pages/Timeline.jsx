@@ -14,6 +14,7 @@ import { Calendar, Filter, X, ChevronLeft, ChevronRight, FileText, Clock, Layers
 
 // Cluster investigation drawer (split for maintainability)
 import ClusterInvestigationDrawer from '../components/timeline/ClusterInvestigationDrawer';
+import { useFeatures } from '../hooks/useFeatures';
 
 // --- Helper Functions ---
 const formatTimestamp = (timestamp) => {
@@ -72,6 +73,7 @@ const autoBucketForSpan = (spanDays) => {
 
 const Timeline = () => {
   const { t } = useTranslation();
+  const { event_llm_analysis_enabled: eventLlmEnabled } = useFeatures();
   const [searchParams, setSearchParams] = useSearchParams();
   const taskId = searchParams.get('task_id');
   const { tasks } = useSelector((state) => state.tasks);
@@ -266,6 +268,9 @@ const Timeline = () => {
   const autoAnalyzedSignatureRef = useRef('');
 
   useEffect(() => {
+    // MVP (mvp-phase1-acceptance §4.1): event LLM analysis is disabled —
+    // no automatic cluster analysis, ever.
+    if (!eventLlmEnabled) return;
     if (!taskId || !timelineData?.timeline?.length) return;
 
     // 签名 = 查询参数 + 当前可见簇的键集合。后端分析成功会给同一批簇补上
@@ -331,7 +336,7 @@ const Timeline = () => {
     // 延迟执行自动分析，确保数据已加载
     const timer = setTimeout(autoAnalyzeClusters, 1000);
     return () => clearTimeout(timer);
-  }, [taskId, timelineData, currentPage, eventType, selectedDate, customStart, customEnd, isClustered, effectiveBucket, fetchTimeline, dispatch, clusterIdentity]);
+  }, [taskId, timelineData, currentPage, eventType, selectedDate, customStart, customEnd, isClustered, effectiveBucket, fetchTimeline, dispatch, clusterIdentity, eventLlmEnabled]);
 
   // Cluster Detail Fetching with Search Support
   const fetchClusterDetails = useCallback(async (cluster, search) => {
@@ -533,6 +538,7 @@ const Timeline = () => {
         onAnalyze={handleAnalyzeCluster}
         onReanalyze={handleReanalyzeCluster}
         analyzingClusters={analyzingClusters}
+        showAiPanel={eventLlmEnabled}
         clusterDetails={clusterDetails}
         loadingDetails={loadingDetails}
         drawerSearch={drawerSearch}
@@ -784,7 +790,7 @@ const Timeline = () => {
                                   </Badge>
                                 )}
                               </div>
-                              {isCluster && (
+                              {isCluster && eventLlmEnabled && (
                                 <div className="flex items-center gap-2">
                                   {/* Manual actions key off the analysis record
                                       (analysis_id), never on the display cache.

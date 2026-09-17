@@ -37,6 +37,9 @@ const ClusterInvestigationDrawer = ({
     onAnalyze,
     onReanalyze,
     analyzingClusters,
+    // MVP (mvp-phase1-acceptance §4.1): hide the AI actions when event LLM
+    // analysis is disabled — legacy summaries stay readable.
+    showAiPanel = true,
     // cluster detail list
     clusterDetails,
     loadingDetails,
@@ -66,7 +69,7 @@ const ClusterInvestigationDrawer = ({
                                 <p className="text-[10px] text-slate-500 font-mono mt-0.5">{selectedCluster.event_type} @ {formatTimeOnly(selectedCluster.timestamp)}</p>
                             </div>
                             <div className="flex items-center space-x-2">
-                                {selectedCluster.llm_summary ? (
+                                {showAiPanel && (selectedCluster.llm_summary ? (
                                     <Button
                                         variant="ghost"
                                         size="sm"
@@ -86,7 +89,7 @@ const ClusterInvestigationDrawer = ({
                                     >
                                         {analyzingClusters.has(clusterKey(selectedCluster)) ? 'Analyzing...' : 'AI Analyze'}
                                     </Button>
-                                )}
+                                ))}
                                 <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={18} /></button>
                             </div>
                         </div>

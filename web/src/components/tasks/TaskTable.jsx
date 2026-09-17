@@ -60,9 +60,11 @@ function ActionsCell({ task, onCancel, onDelete, onJoinCase }) {
           <Link to={`/timeline?task_id=${task.id}`} className="text-primary-600 hover:underline">Timeline</Link>
           <Link to={`/files?task_id=${task.id}`} className="text-green-600 hover:underline ml-1">Files</Link>
           <Link to={`/reports/task/${task.id}`} className="text-teal-600 hover:underline ml-1">Report</Link>
-          <button onClick={() => onJoinCase(task.id)} className="text-indigo-600 hover:underline ml-1" title="将此任务加入多镜像案件">
-            加入案件
-          </button>
+          {onJoinCase && (
+            <button onClick={() => onJoinCase(task.id)} className="text-indigo-600 hover:underline ml-1" title="将此任务加入多镜像案件">
+              加入案件
+            </button>
+          )}
         </>
       )}
       {finished && (
