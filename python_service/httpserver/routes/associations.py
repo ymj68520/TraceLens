@@ -541,3 +541,166 @@ async def get_file_related_clusters(
     except Exception as e:
         logger.error(f"Failed to get file related clusters: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="association query failed")
+
+
+# ── MVP report-page surfaces (mvp-phase1-acceptance SPEC §6) ─────────────────
+
+@router.get("/file-events")
+async def get_file_events(
+    task_id: str = Query(..., min_length=1, description="Task ID"),
+    path: str = Query(..., min_length=1, description="Full file path"),
+    limit: int = Query(default=200, ge=1, le=1000),
+):
+    """Raw timeline events referencing one file — no LLM involved.
+
+    The related-events drawer behind the report page's file tag is driven by
+    this endpoint: with event LLM analysis disabled in the MVP, the LLM-derived
+    cluster associations are empty by design, so related events come straight
+    from the events table (exact path match first, basename fallback second)."""
+    import sqlite3
+
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+        task_info = await service_manager.cpp_backend.get_task(task_id)
+        if not task_info:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        events_db = task_info.get("output_events_db") or ""
+        if not events_db or not os.path.exists(events_db):
+            raise HTTPException(status_code=400, detail="No events database for this task")
+
+        file_path = normalize_evidence_path(path)
+        query = (
+            "SELECT id, timestamp, event_type, description, file_path, "
+            "priority, severity, event_source, event_category "
+            "FROM events WHERE file_path = ? ORDER BY timestamp LIMIT ?"
+        )
+        events = []
+        matched_by = "exact_path"
+        with sqlite3.connect(events_db, timeout=10) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(query, [file_path, limit]).fetchall()
+            if not rows:
+                basename = file_path.rstrip("/").rsplit("/", 1)[-1]
+                if basename:
+                    matched_by = "basename"
+                    rows = conn.execute(
+                        "SELECT id, timestamp, event_type, description, file_path, "
+                        "priority, severity, event_source, event_category "
+                        "FROM events WHERE file_path LIKE ? ORDER BY timestamp LIMIT ?",
+                        [f"%/{basename}", limit],
+                    ).fetchall()
+            events = [dict(row) for row in rows]
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "file_path": file_path,
+            "matched_by": matched_by,
+            "events": events,
+            "total_count": len(events),
+        }
+    except HTTPException:
+        raise
+    except sqlite3.Error as e:
+        logger.error(f"Database error querying file events: {e}")
+        raise HTTPException(status_code=500, detail="database query failed")
+    except Exception as e:
+        logger.error(f"Failed to get file events: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="association query failed")
+
+
+@router.get("/file-timeline")
+async def get_file_timeline(
+    task_id: str = Query(..., min_length=1, description="Task ID"),
+    limit: int = Query(default=2000, ge=1, le=10000),
+):
+    """Filtered-scope files with all four forensic timestamps for the report
+    page timeline (mvp-phase1-acceptance SPEC §6.1).
+
+    Scope = case_analysis.filtered_files (empty → all files). Timestamps come
+    from output_raw_db (filtered.db when a filter profile applied, else raw.db),
+    the only per-task store carrying crtime/mtime/atime/ctime."""
+    import json
+    import sqlite3
+
+    try:
+        from ..services import get_service_manager
+        service_manager = get_service_manager()
+        task_info = await service_manager.cpp_backend.get_task(task_id)
+        if not task_info:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        files_db = task_info.get("output_files_db") or ""
+        raw_db = task_info.get("output_raw_db") or (
+            files_db.replace("_files.db", "_raw.db") if files_db else ""
+        )
+        if not raw_db or not os.path.exists(raw_db):
+            raise HTTPException(status_code=400, detail="No raw database for this task")
+
+        scope: List[str] = []
+        if files_db and os.path.exists(files_db):
+            try:
+                with sqlite3.connect(files_db, timeout=10) as conn:
+                    row = conn.execute(
+                        "SELECT filtered_files FROM case_analysis WHERE task_id = ?",
+                        [task_id],
+                    ).fetchone()
+                scope = json.loads(row[0]) if row and row[0] else []
+            except sqlite3.Error:
+                scope = []
+
+        placeholders = ",".join("?" * min(len(scope), 500)) if scope else ""
+        with sqlite3.connect(raw_db, timeout=10) as conn:
+            conn.row_factory = sqlite3.Row
+            if scope:
+                files = []
+                for start in range(0, len(scope), 500):
+                    chunk = scope[start : start + 500]
+                    marks = ",".join("?" * len(chunk))
+                    rows = conn.execute(
+                        "SELECT path, name, size, crtime, mtime, atime, ctime "
+                        f"FROM files WHERE path IN ({marks})",
+                        chunk,
+                    ).fetchall()
+                    files.extend(dict(row) for row in rows)
+            else:
+                rows = conn.execute(
+                    "SELECT path, name, size, crtime, mtime, atime, ctime "
+                    "FROM files LIMIT ?",
+                    [limit],
+                ).fetchall()
+                files = [dict(row) for row in rows]
+
+        result = []
+        for item in files:
+            times = {
+                key: item.get(key)
+                for key in ("crtime", "mtime", "atime", "ctime")
+                if item.get(key)
+            }
+            if not times:
+                continue
+            item["earliest"] = min(times.values())
+            item["latest"] = max(times.values())
+            result.append(item)
+        result.sort(key=lambda item: item["earliest"])
+        result = result[:limit]
+
+        axis_start = result[0]["earliest"] if result else None
+        axis_end = max(item["latest"] for item in result) if result else None
+        return {
+            "success": True,
+            "task_id": task_id,
+            "scope_size": len(scope) if scope else None,
+            "files": result,
+            "total_count": len(result),
+            "axis": {"start": axis_start, "end": axis_end},
+        }
+    except HTTPException:
+        raise
+    except sqlite3.Error as e:
+        logger.error(f"Database error querying file timeline: {e}")
+        raise HTTPException(status_code=500, detail="database query failed")
+    except Exception as e:
+        logger.error(f"Failed to get file timeline: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="association query failed")
