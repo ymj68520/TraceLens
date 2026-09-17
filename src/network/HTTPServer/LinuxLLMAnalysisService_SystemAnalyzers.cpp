@@ -25,7 +25,7 @@ Analyze this package and provide:
 3. Keywords: 3-5 relevant keywords
 
 Package:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -70,7 +70,7 @@ Analyze this network connection and provide:
 3. Keywords: 3-5 relevant keywords
 
 Network Connection:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -115,7 +115,7 @@ Analyze this systemd service and provide:
 3. Keywords: 3-5 relevant keywords
 
 Systemd Service:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -160,7 +160,7 @@ Analyze this kernel module and provide:
 3. Keywords: 3-5 relevant keywords
 
 Kernel Module:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -205,7 +205,7 @@ Analyze this firewall rule and provide:
 3. Keywords: 3-5 relevant keywords
 
 Firewall Rule:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -250,7 +250,7 @@ Analyze this audit log entry and provide:
 3. Keywords: 3-5 relevant keywords
 
 Audit Log:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -295,7 +295,7 @@ Analyze this browser profile and provide:
 3. Keywords: 3-5 relevant keywords
 
 Browser Profile:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {

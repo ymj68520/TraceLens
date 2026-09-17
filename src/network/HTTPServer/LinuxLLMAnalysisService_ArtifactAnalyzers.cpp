@@ -26,7 +26,7 @@ Analyze this log entry and provide:
 3. Keywords: 3-5 relevant keywords for categorization
 
 Log Entry:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -71,7 +71,7 @@ Analyze this user account and provide:
 3. Keywords: 3-5 relevant keywords
 
 User Account:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -116,7 +116,7 @@ Analyze this login record and provide:
 3. Keywords: 3-5 relevant keywords
 
 Login Record:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -161,7 +161,7 @@ Analyze this shell command and provide:
 3. Keywords: 3-5 relevant keywords
 
 Shell History Entry:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -206,7 +206,7 @@ Analyze this cron job and provide:
 3. Keywords: 3-5 relevant keywords
 
 Cron Job:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -251,7 +251,7 @@ Analyze this SSH artifact and provide:
 3. Keywords: 3-5 relevant keywords
 
 SSH Artifact:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {

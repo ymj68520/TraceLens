@@ -94,7 +94,7 @@ LinuxLLMAnalysisService::getArtifactsFromDatabase(sqlite3* db,
                 artifactJson[colName] = colValue;
             }
         }
-        record.data = artifactJson.dump();
+        record.data = artifactJson.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
         artifacts.push_back(record);
     }
 

@@ -26,7 +26,7 @@ Analyze this registry entry and provide:
 3. Keywords: 3-5 relevant keywords for search and categorization
 
 Registry Entry:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -71,7 +71,7 @@ Analyze this event log entry and provide:
 3. Keywords: 3-5 relevant keywords for categorization
 
 Event Log Entry:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -116,7 +116,7 @@ Analyze this prefetch file and provide:
 3. Keywords: 3-5 relevant keywords
 
 Prefetch Data:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -161,7 +161,7 @@ Analyze this LNK file and provide:
 3. Keywords: 3-5 relevant keywords
 
 LNK Data:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -206,7 +206,7 @@ Analyze this Jump List entry and provide:
 3. Keywords: 3-5 relevant keywords
 
 Jump List Data:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -251,7 +251,7 @@ Analyze this browser artifact and provide:
 3. Keywords: 3-5 relevant keywords
 
 Browser Artifact:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -296,7 +296,7 @@ Analyze this system artifact and provide:
 3. Keywords: 3-5 relevant keywords
 
 System Artifact:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
@@ -341,7 +341,7 @@ Analyze this MFT entry and provide:
 3. Keywords: 3-5 relevant keywords
 
 MFT Entry:
-)" + data.dump() + R"(
+)" + data.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + R"(
 
 Respond in JSON format:
 {
