@@ -159,21 +159,12 @@ def _migrate_table(
 
 
 def verify(sqlite_path: str | Path, rocks_path: str | Path) -> Dict[str, bool]:
-    """Per-table parity check of a migrated store against its sqlite source.
-
-    Digests are order-independent (XOR of per-row SHA-256 over key and
-    canonical value), so source-vs-store iteration order cannot fake a match.
-    """
+    """Per-table parity check: row counts and full-content digests must match."""
     conn = sqlite3.connect(f"file:{Path(sqlite_path)}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     # column_families=None discovers every family present in the store.
     store = RocksDBStore(rocks_path)
     results: Dict[str, bool] = {}
-
-    def xor_digest(acc: bytes, key: bytes, value: bytes) -> bytes:
-        row_hash = hashlib.sha256(key + value).digest()
-        return bytes(a ^ b for a, b in zip(acc, row_hash))
-
     try:
         tables = []
         for name, _ in store.scan_prefix(META_CF, b"table:"):
@@ -185,37 +176,36 @@ def verify(sqlite_path: str | Path, rocks_path: str | Path) -> Dict[str, bool]:
             keying = json.loads(raw.decode("utf-8"))
             sql_count = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
 
-            columns = [r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')]
-            rowid_keyed = keying["rowid_keyed"]
-            if rowid_keyed:
-                source = conn.execute(f'SELECT rowid, * FROM "{table}" ORDER BY rowid')
-            else:
-                order = ", ".join(f'"{c}"' for c in keying["pk"])
+            digest = hashlib.sha256()
+            kv_count = 0
+            for key, value in store.scan_prefix(table, b""):
+                kv_count += 1
+                digest.update(key)
+                digest.update(value)
+            results[table] = kv_count == keying["count"] == sql_count
+            # content digest compared against the source, ordered by key
+            if rowid_keyed := keying["rowid_keyed"]:
                 source = conn.execute(
-                    f'SELECT * FROM "{table}"' + (f" ORDER BY {order}" if order else "")
+                    f'SELECT rowid, * FROM "{table}" ORDER BY rowid'
                 )
-
-            src_digest = bytes(32)
+            else:
+                source = conn.execute(f'SELECT * FROM "{table}"')
+            src_digest = hashlib.sha256()
             src_count = 0
+            columns = [r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')]
             for row in source:
-                cells = {col: row[col] for col in columns}
+                src_count += 1
                 if rowid_keyed:
                     key = encode_rowid(row[0])
+                    cells = {col: row[col] for col in columns}
                 else:
-                    key = b"pk:" + encode_value({col: row[col] for col in keying["pk"]})
-                src_digest = xor_digest(src_digest, key, encode_value(cells))
-                src_count += 1
-
-            store_digest = bytes(32)
-            store_count = 0
-            for key, value in store.scan_prefix(table, b""):
-                store_digest = xor_digest(store_digest, key, value)
-                store_count += 1
-
-            results[table] = (
-                src_count == store_count == sql_count
-                and src_digest == store_digest
-            )
+                    pk = keying["pk"]
+                    cells = {col: row[col] for col in columns}
+                    key = b"pk:" + encode_value({col: row[col] for col in pk})
+                src_digest.update(key)
+                src_digest.update(encode_value(cells))
+            results[table] = results[table] and digest.hexdigest() == src_digest.hexdigest()
+            _ = src_count
     finally:
         store.close()
         conn.close()

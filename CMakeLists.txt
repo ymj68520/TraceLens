@@ -581,29 +581,12 @@ else()
   list(APPEND LIB_SOURCES src/analyzers/ImageAnalyzer/DecryptionModuleStub.cpp)
 endif()
 
-# RocksDB storage seam (mvp-phase1-acceptance SPEC §8). RowCodec is
-# dependency-free; the mirror requires the rocksdb library and falls back to
-# a throwing stub so machines without it still build the full binary.
-list(APPEND LIB_SOURCES src/core/KVStore/RowCodec.cpp)
-find_path(ROCKSDB_INCLUDE_DIR rocksdb/db.h)
-find_library(ROCKSDB_LIBRARY NAMES rocksdb)
-if(ROCKSDB_INCLUDE_DIR AND ROCKSDB_LIBRARY)
-  list(APPEND LIB_SOURCES src/core/KVStore/RocksKVStore.cpp
-                          src/core/KVStore/SqliteRocksMirror.cpp)
-  add_compile_definitions(TRACELENS_WITH_ROCKSDB)
-  include_directories(${ROCKSDB_INCLUDE_DIR})
-  set(ROCKSDB_LINK_LIBS ${ROCKSDB_LIBRARY})
-else()
-  list(APPEND LIB_SOURCES src/core/KVStore/SqliteRocksMirrorStub.cpp)
-  message(STATUS "rocksdb not found - building without RocksDB mirror")
-endif()
-
 add_executable(forensic_analyzer src/main.cpp ${LIB_SOURCES})
 
 # Link libraries
 if(WIN32)
   target_link_libraries(forensic_analyzer ${TSK_LIBRARIES} sqlite3.lib
-                        ${Boost_LIBRARIES} ${PLATFORM_LIBRARIES} ${ROCKSDB_LINK_LIBS})
+                        ${Boost_LIBRARIES} ${PLATFORM_LIBRARIES})
 else()
   target_link_libraries(
     forensic_analyzer
@@ -632,8 +615,7 @@ else()
     ${BZIP2_LIBRARIES}
     ${ZSTD_LIBRARIES}
     ${LIBZIP_LIBRARIES}
-    ${PLATFORM_LIBRARIES}
-    ${ROCKSDB_LINK_LIBS})
+    ${PLATFORM_LIBRARIES})
 endif()
 
 # Installation

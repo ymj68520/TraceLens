@@ -194,26 +194,12 @@ COMPLETED，不等 Graphiti）：
     count_prefix + `encode_rowid`）+ `RocksKVStore`（ListColumnFamilies 合并重开、父目录
     自建、异常传播 Status）；gtest 6 例（tests/CMakeLists.txt 按 rocksdb 是否存在条件注册，
     缺库机器跳过不阻塞）。
-- ✅ **R2 写入面试点（raw.db 双运行窗口）**：
-  - `src/core/KVStore/RowCodec.h/.cpp`：跨语言行编码（与 Python `encode_value` 字节级
-    一致：sort_keys + compact + `\uXXXX` 转义 + BLOB `{"__blob_b64__":...}`），golden 测试
-    双侧互锁；
-  - `src/core/KVStore/SqliteRocksMirror.h/.cpp`：**整库镜像**策略——不逐个 hook 各 analyzer
-    的 INSERT（TSK/native XFS/OSS 各有写入点），SQLite 落盘后一次性镜像到旁路 `.rocks`，
-    幂等、源只读、SQLite 仍是真源；C++ `verify()` 用 XOR-SHA256 顺序无关校验，
-    Python `verify` 已改为同一算法；
-  - 主管线接线：`TaskManagerAnalysis.cpp` IMAGE_ANALYSIS 完成后镜像 `files`+`partitions`
-    到 `<raw>.rocks`（`ROCKSDB_MIRROR_RAW=0` 关闭；任何镜像故障只记 WARNING 不失败流水线）；
-  - 无 rocksdb 库的机器编译 throwing stub，二进制完整可构建；
-  - gtest 9 例（含 Python 黄金字节互锁、篡改检出、幂等、WITHOUT ROWID）。
-  - **引擎口径**：rocksdict 绑定固定 comparator 名 "rocksdict"，与标准 librocksdb
-    （BytewiseComparator）写的库**互不兼容**——两侧存储引擎不互通是既定事实；跨语言
-    契约 = 行字节格式（RowCodec==encode_value，双侧 golden 测试锁定）+ 键编码 + `_meta`
-    约定。C++ 写的库用 C++ verify 验，Python 写的库用 Python verify 验。
+- 🔜 R2 建表/写入面全迁（files/events/平台库 analyzer 写入改走 KVStore；含 SQLite 与
+  RocksDB 双写过渡窗口）；
 - 🔜 R3 查询面迁移（Queries/*.cpp、SQLiteHelper、视图/统计重写为索引 CF + 预聚合）；
 - 🔜 R4 Python 读侧迁移（database_reader、file_schema、_worker、报告适配器）；
 - 🔜 R5 案件/调查/报告库迁移；
-- 🔜 R6 移除 SQLite 依赖（迁移工具已就绪；届时需选定单一引擎口径统一两侧）。
+- 🔜 R6 移除 SQLite 依赖（迁移工具已就绪）。
 
 **风险**：SQL 语义（JOIN/GROUP BY/LIKE 搜索）需应用层重写，统计与搜索面工作量最大；
 sqlite3 CLI 排障工具链失效（迁移工具的 `_meta` + 后续 dump 工具缓解）；R2-R4 期间双写
