@@ -13,6 +13,9 @@ try:
 except ImportError:
     _HAS_DOTENV = False
 
+# Phase-1 acceptance MVP pin (docs/specs/mvp-phase1-acceptance.md §3).
+PINNED_GRAPHITI_MODEL = "microsoft/phi-4"
+
 
 @dataclass
 class GraphitiConfig:
@@ -25,7 +28,7 @@ class GraphitiConfig:
     
     # LLM settings (supports local OpenAI-compatible servers like LM Studio)
     llm_base_url: str = "http://192.168.31.170:1234/v1"
-    llm_model: str = "openai/gpt-oss-20b"
+    llm_model: str = "microsoft/phi-4"
     llm_api_key: str = "local"  # Placeholder for local servers
     
     # Embedder settings (can use local or OpenAI)
@@ -85,14 +88,16 @@ class GraphitiConfig:
         if not llm_base_url.endswith("/v1"):
             llm_base_url += "/v1"
         
-        # Graphiti extraction model (llm-throughput-hardening SPEC B): a
-        # reasoning host model wastes half of every generation on thinking and
-        # starves small max_tokens budgets, so Graphiti may use a dedicated
-        # non-reasoning instruct model. Empty/unset falls back to the pipeline
-        # analysis model — byte-for-byte the pre-SPEC behavior.
+        # Graphiti ingestion model is PINNED to phi-4 for the phase-1
+        # acceptance MVP (docs/specs/mvp-phase1-acceptance.md §3): a reasoning
+        # host model wastes half of every generation on thinking and starves
+        # small max_tokens budgets. GRAPHITI_LLM_MODEL may override the pin;
+        # empty/unset/whitespace falls back to the pin itself, so the pipeline
+        # analysis model (LLM_TEXT_MODEL) can change without ever affecting
+        # ingestion.
         llm_model = (
             (os.getenv("GRAPHITI_LLM_MODEL") or "").strip()
-            or os.getenv("LLM_TEXT_MODEL", "openai/gpt-oss-20b")
+            or PINNED_GRAPHITI_MODEL
         )
 
         return cls(

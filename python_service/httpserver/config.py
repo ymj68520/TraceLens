@@ -217,6 +217,22 @@ class Settings(BaseSettings):
     # the cost of tokens. Mirrors graphiti_integration.GraphitiConfig default.
     graphiti_include_full_desc: bool = Field(default=True, alias="GRAPHITI_INCLUDE_FULL_DESC")
     graphiti_max_episode_tokens: int = Field(default=3000, alias="GRAPHITI_MAX_EPISODE_TOKENS")
+
+    # llm-throughput-hardening SPEC A: pause episode ingestion while a
+    # pipeline analysis (LLM_ANALYSIS / PLATFORM_ANALYSIS) is using the LLM
+    # server, and cap runaway jobs with a time budget (0 disables the cap).
+    graphiti_foreground_gate: bool = Field(default=True, alias="GRAPHITI_FOREGROUND_GATE")
+    graphiti_gate_poll_seconds: int = Field(default=30, ge=1, le=600, alias="GRAPHITI_GATE_POLL_SECONDS")
+    graphiti_job_timeout_hours: int = Field(default=12, ge=0, le=168, alias="GRAPHITI_JOB_TIMEOUT_HOURS")
+    # mvp-phase1-acceptance SPEC §3: ingestion model pinned to phi-4; the env
+    # var may override, empty/unset falls back to the pin (never LLM_TEXT_MODEL).
+    graphiti_llm_model: str = Field(default="microsoft/phi-4", alias="GRAPHITI_LLM_MODEL")
+
+    # mvp-phase1-acceptance SPEC §4: MVP scope switches. Defaults are the
+    # acceptance form; set the env var to "true" to restore full behaviour.
+    event_llm_analysis_enabled: bool = Field(default=False, alias="EVENT_LLM_ANALYSIS_ENABLED")
+    combined_case_enabled: bool = Field(default=False, alias="COMBINED_CASE_ENABLED")
+    workbench_llm_enabled: bool = Field(default=False, alias="WORKBENCH_LLM_ENABLED")
     
     # Database Settings
     db_output_dir: str = Field(default="./output", alias="DB_OUTPUT_DIR")
