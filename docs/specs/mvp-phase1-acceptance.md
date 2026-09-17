@@ -164,33 +164,24 @@ COMPLETED，不等 Graphiti）：
 - [ ] 最终报告页出现文件时间线（四时间戳、min→max 轴）；点击报告内文件标签弹出文件+相关事件抽屉
 - [ ] python 单测 / web 测试 / C++ 构建全绿
 
-## 8. RocksDB 替换 SQLite（设计与分阶段交付）
+## 8. RocksDB 替换 SQLite——已评估并撤销（决策记录，2026-09-18）
 
-**范围**：每任务分析库（raw.db、events.db、files.db、filtered.db、平台库 android/windows/linux/oss）、
-审计库、案件库、investigation.db、reports.db。分布式 C/S 的 PostgreSQL 栈不在范围内。
+> **决定**：不替换数据库，全系统恢复并保留 SQLite。本节仅保留决策要点，
+> 原 R0–R6 分阶段设计与试点实现（提交 `d3ff1de`/`53987e8`/`6c18d20`）已于
+> `26870fe`/`5c87813`/`a0541bc` 整体回退。
 
-**接缝**（现状无统一仓储层）：
-- C++：`DatabaseManager`（唯一连接封装）、`SQL/*.h`（schema 即代码）、`SQLiteHelper + Queries/*.cpp`（路由查询）、各 analyzer `Database/*` 写入类；
-- Python：`case_analysis/file_schema.py`、`schema.py`、`db_utils.py`、`llm_service.persist_to_files_db`、`ingestion_job_parts/_worker.py`、`investigation/repository.py`、`graphiti_integration/database_reader/*`、`forensic_report/adapters/sqlite_task.py`。
+**评估过程中确立的事实**（如未来重提此方向，直接引用，勿重复试点）：
+- 每任务一组 SQLite 库（raw/events/files/filtered/平台库）+ 审计/案件/调查/报告库；
+  任务库为 C++/Python 两侧共写，其余各库单语言独占（案件/调查/报告=仅 Python，审计=仅 C++）。
+- rocksdict（Python 绑定）固定 comparator 名 "rocksdict"，与标准 librocksdb
+  （BytewiseComparator）的库文件互不兼容——两侧无法打开彼此的存储。
+- RocksDB 为单进程写锁；多进程只能一写多读（C API `open_for_read_only` + WAL 重放，
+  快照隔离与新鲜度语义已用 ctypes 探针实测验证）。
+- 可行的终态设计是"单写者委托式"：C++ 唯一持写、Python 读走 ctypes C API、
+  写走 HTTP 委托端点（对称于既有 `recordFileAnalysisResult`）。
 
-**映射设计**：每库 → 一个 RocksDB 实例（目录同名去 `.db`），表 → Column Family；
-主键/rowid → key（大端定长编码保证有序扫描），行 → MessagePack/FlatBuffers value；
-外键/索引（`files.path`、`events.timestamp`、`file_path UNIQUE` 等）→ 独立索引 CF
-（key=索引列值+rowid）支撑点查与范围扫；视图/统计（`file_summary`、`event_statistics`、
-`timeline`、hourly_activity）→ 写入时同步维护的预聚合 CF；事务 → WriteBatch；
-`ingested_at IS NULL` 类扫描 → 专门的 pending 索引 CF。
-
-**分阶段**：
-- R0 依赖验证：C++ rocksdb（vcpkg/源码）与 Python rocksdict 可用性、性能基线；
-- R1 C++ `KVStore` 接口 + `raw.db` 试点（TSK 写入 + Files 查询最小面）；
-- R2 建表/写入面全迁（files/events/平台库 analyzer 写入）；
-- R3 查询面迁移（Queries/*.cpp、SQLiteHelper、视图/统计重写）；
-- R4 Python 读侧迁移（database_reader、file_schema、_worker、报告适配器）；
-- R5 案件/调查/报告库迁移；
-- R6 移除 SQLite 依赖与迁移工具（sqlite→rocksdb 一次性导入器）。
-
-**风险**：SQL 语义（JOIN/GROUP BY/LIKE 搜索）需应用层重写，统计与搜索面工作量最大；
-sqlite3 CLI 排障工具链失效（需配套 dump 工具）；R3/R4 期间双读兼容窗口的回归成本。
+**撤销原因**：甲方决定不更换数据库，保留 SQLite 终态。依赖清理：
+rocksdict（venv）与 librocksdb-dev/librocksdb8.9（系统）均已卸载。
 
 ## 9. 开放问题（不阻塞本节点）
 
