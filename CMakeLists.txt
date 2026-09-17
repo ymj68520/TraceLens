@@ -589,12 +589,14 @@ find_path(ROCKSDB_INCLUDE_DIR rocksdb/db.h)
 find_library(ROCKSDB_LIBRARY NAMES rocksdb)
 if(ROCKSDB_INCLUDE_DIR AND ROCKSDB_LIBRARY)
   list(APPEND LIB_SOURCES src/core/KVStore/RocksKVStore.cpp
-                          src/core/KVStore/SqliteRocksMirror.cpp)
+                          src/core/KVStore/SqliteRocksMirror.cpp
+                          src/core/KVStore/RocksRawReader.cpp)
   add_compile_definitions(TRACELENS_WITH_ROCKSDB)
   include_directories(${ROCKSDB_INCLUDE_DIR})
   set(ROCKSDB_LINK_LIBS ${ROCKSDB_LIBRARY})
 else()
-  list(APPEND LIB_SOURCES src/core/KVStore/SqliteRocksMirrorStub.cpp)
+  list(APPEND LIB_SOURCES src/core/KVStore/SqliteRocksMirrorStub.cpp
+                          src/core/KVStore/RocksRawReaderStub.cpp)
   message(STATUS "rocksdb not found - building without RocksDB mirror")
 endif()
 
