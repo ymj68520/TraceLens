@@ -180,30 +180,17 @@ COMPLETED，不等 Graphiti）：
 `timeline`、hourly_activity）→ 写入时同步维护的预聚合 CF；事务 → WriteBatch；
 `ingested_at IS NULL` 类扫描 → 专门的 pending 索引 CF。
 
-**分阶段**（✅ 已交付 / 🔜 待做）：
-- ✅ **R0 依赖验证**：Python `rocksdict 0.3.29`（已入 `python_service/requirements.txt` 与 venv）；
-  C++ `librocksdb-dev 8.9.1`（apt，含 librocksdb8.9 运行库）——两端 API 冒烟通过。
-- ✅ **R1 存储基石 + 试点**：
-  - Python：`python_service/storage/rocksdb_store.py`（CF 声明式打开/重开发现、字节进出、
-    WriteBatch、前缀有序扫、`_meta` 记账；测试 9 例）；
-  - Python 迁移工具：`storage/sqlite_migrate.py` + `scripts/migrate_sqlite_to_rocksdb.py`
-    （表→CF、rowid 大端键/WITHOUT ROWID 走 `pk:` JSON 键、BLOB base64 编解码、DDL/列/键控
-    元数据入 `_meta`、`--verify` 全量 parity；测试 7 例 + 仓库真实 `forensics_audit.db`
-    583 行迁移校验演练通过）；
-  - C++：`src/core/KVStore/KVStore.h`（接口：put/erase/get/write_batch/scan_prefix/
-    count_prefix + `encode_rowid`）+ `RocksKVStore`（ListColumnFamilies 合并重开、父目录
-    自建、异常传播 Status）；gtest 6 例（tests/CMakeLists.txt 按 rocksdb 是否存在条件注册，
-    缺库机器跳过不阻塞）。
-- 🔜 R2 建表/写入面全迁（files/events/平台库 analyzer 写入改走 KVStore；含 SQLite 与
-  RocksDB 双写过渡窗口）；
-- 🔜 R3 查询面迁移（Queries/*.cpp、SQLiteHelper、视图/统计重写为索引 CF + 预聚合）；
-- 🔜 R4 Python 读侧迁移（database_reader、file_schema、_worker、报告适配器）；
-- 🔜 R5 案件/调查/报告库迁移；
-- 🔜 R6 移除 SQLite 依赖（迁移工具已就绪）。
+**分阶段**：
+- R0 依赖验证：C++ rocksdb（vcpkg/源码）与 Python rocksdict 可用性、性能基线；
+- R1 C++ `KVStore` 接口 + `raw.db` 试点（TSK 写入 + Files 查询最小面）；
+- R2 建表/写入面全迁（files/events/平台库 analyzer 写入）；
+- R3 查询面迁移（Queries/*.cpp、SQLiteHelper、视图/统计重写）；
+- R4 Python 读侧迁移（database_reader、file_schema、_worker、报告适配器）；
+- R5 案件/调查/报告库迁移；
+- R6 移除 SQLite 依赖与迁移工具（sqlite→rocksdb 一次性导入器）。
 
 **风险**：SQL 语义（JOIN/GROUP BY/LIKE 搜索）需应用层重写，统计与搜索面工作量最大；
-sqlite3 CLI 排障工具链失效（迁移工具的 `_meta` + 后续 dump 工具缓解）；R2-R4 期间双写
-兼容窗口的回归成本。键/值编解码与 CF 命名已在 R1 定型（两端口径一致），后续阶段不再变动。
+sqlite3 CLI 排障工具链失效（需配套 dump 工具）；R3/R4 期间双读兼容窗口的回归成本。
 
 ## 9. 开放问题（不阻塞本节点）
 
