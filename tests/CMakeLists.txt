@@ -491,6 +491,7 @@ add_executable(
   ../src/core/PathManager/PathManager.cpp
   ../src/core/Logger/Logger.cpp
   ../src/network/HTTPServer/LLMAnalysisService.cpp
+  ../src/network/HTTPServer/LLMPythonProxy.cpp
   ../src/network/HTTPServer/LLMScratch.cpp
   ../src/integration/LLMIntegration/ModelRouter.cpp
   ../src/integration/LLMIntegration/FileAnalyzer.cpp
@@ -1367,3 +1368,22 @@ add_executable(
 target_include_directories(test_llm_scratch_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_llm_scratch_gtest ${GTEST_LIBRARIES} gtest_main)
 add_test(NAME LLMScratchTests COMMAND test_llm_scratch_gtest)
+
+# RocksDB-backed KVStore tests (mvp-phase1-acceptance SPEC §8 R1).
+# Registered only when the rocksdb development library is present, so
+# machines without it keep building the full suite.
+find_path(ROCKSDB_INCLUDE_DIR rocksdb/db.h)
+find_library(ROCKSDB_LIBRARY NAMES rocksdb)
+if(ROCKSDB_INCLUDE_DIR AND ROCKSDB_LIBRARY)
+  add_executable(
+    test_kvstore_rocksdb_gtest
+    UnitTest/test_kvstore_rocksdb_gtest.cpp
+    ../src/core/KVStore/RocksKVStore.cpp)
+  target_include_directories(test_kvstore_rocksdb_gtest PRIVATE
+    ${CMAKE_SOURCE_DIR}/src ${ROCKSDB_INCLUDE_DIR})
+  target_link_libraries(test_kvstore_rocksdb_gtest ${GTEST_LIBRARIES} gtest_main
+    ${ROCKSDB_LIBRARY} pthread)
+  add_test(NAME RocksKVStoreTests COMMAND test_kvstore_rocksdb_gtest)
+else()
+  message(STATUS "rocksdb not found — KVStore tests skipped")
+endif()

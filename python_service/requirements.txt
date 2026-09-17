@@ -34,3 +34,7 @@ python-louvain>=0.16
 
 # QQ NT (NTQQ) database decryption (SQLCipher). Uses the prebuilt binary wheel.
 sqlcipher3-binary>=0.5.4
+
+# RocksDB bindings for the SQLite -> RocksDB migration (mvp-phase1-acceptance
+# SPEC §8). Used by storage/rocksdb_store.py and the migration tooling.
+rocksdict>=0.3.29
