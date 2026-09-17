@@ -51,6 +51,14 @@ class IngestionJob:
     file_id: Optional[int] = None  # For SINGLE_FILE mode
     events_count: int = 0  # For EVENTS_ONLY mode
 
+    # llm-throughput-hardening SPEC A: the service boot epoch that last moved
+    # this job to RUNNING. On startup the stale sweep marks RUNNING jobs whose
+    # epoch differs from the current process as stale (the owning process died
+    # mid-run; nothing will ever update them again).
+    runner_epoch: str = ""
+    #: Bypass the foreground gate (manual escape hatch, POST /ingest force).
+    force: bool = False
+
 
 @dataclass
 class JobSummary:

@@ -85,12 +85,22 @@ class GraphitiConfig:
         if not llm_base_url.endswith("/v1"):
             llm_base_url += "/v1"
         
+        # Graphiti extraction model (llm-throughput-hardening SPEC B): a
+        # reasoning host model wastes half of every generation on thinking and
+        # starves small max_tokens budgets, so Graphiti may use a dedicated
+        # non-reasoning instruct model. Empty/unset falls back to the pipeline
+        # analysis model — byte-for-byte the pre-SPEC behavior.
+        llm_model = (
+            (os.getenv("GRAPHITI_LLM_MODEL") or "").strip()
+            or os.getenv("LLM_TEXT_MODEL", "openai/gpt-oss-20b")
+        )
+
         return cls(
             neo4j_uri=os.getenv("NEO4J_URI", "neo4j://127.0.0.1:7687"),
             neo4j_user=os.getenv("NEO4J_USER", "neo4j"),
             neo4j_password=os.getenv("NEO4J_PASSWORD", ""),
             llm_base_url=llm_base_url,
-            llm_model=os.getenv("LLM_TEXT_MODEL", "openai/gpt-oss-20b"),
+            llm_model=llm_model,
             llm_api_key=os.getenv("LLM_API_KEY", "local"),
             # Embedder can point at a different provider than the chat LLM
             # (e.g. cloud chat model + local nomic embeddings). Falls back to

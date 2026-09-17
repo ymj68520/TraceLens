@@ -19,6 +19,7 @@ from graphiti_core.llm_client.openai_generic_client import OpenAIGenericClient
 from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
 
+from . import episode_gate
 from .config import GraphitiConfig
 from .exceptions import IngestionError
 from .toon_transformer import EpisodeData, TOONTransformer
@@ -419,15 +420,39 @@ class GraphitiIngestor:
         """
         if not self._initialized:
             await self.initialize()
-        
+
         result = IngestionResult(total_episodes=len(episodes))
-        
+
         for i, episode in enumerate(episodes):
+            # Before-episode gate (llm-throughput-hardening SPEC A): the upper
+            # layer may pause between episodes (foreground LLM busy) or abort
+            # (job timeout). Aborted episodes are reported, never skipped.
+            try:
+                await episode_gate.run_before_episode({
+                    "index": i,
+                    "total": len(episodes),
+                    "group_id": group_id,
+                    "episode": episode.name,
+                })
+            except episode_gate.GateAborted as e:
+                remaining = len(episodes) - i
+                result.failed += remaining
+                result.errors.append({
+                    "episode": episode.name,
+                    "file_path": episode.file_path,
+                    "error": f"aborted by episode gate after {i} episode(s): {e}; "
+                             f"{remaining} episode(s) not attempted",
+                })
+                logger.warning(
+                    f"Batch ingestion aborted at episode {i + 1}/{len(episodes)}: {e}"
+                )
+                break
+
             try:
                 await self.ingest_episode(episode, group_id)
                 result.successful += 1
                 logger.debug(f"Ingested episode: {episode.name}")
-            
+
             except IngestionError as e:
                 result.failed += 1
                 result.errors.append({

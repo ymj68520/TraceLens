@@ -60,6 +60,11 @@ class IngestionJobManagerMixin:
         # instead of only flipping the recorded status.
         self._kg_sync_tasks: dict[str, asyncio.Task] = {}
 
+        # llm-throughput-hardening SPEC A: this process's boot epoch, stamped
+        # on every job it moves to RUNNING so the next startup can identify
+        # jobs orphaned by a restart mid-run (stale sweep).
+        self._runner_epoch: str = uuid.uuid4().hex
+
         # Database readers (imported later to avoid module-level import issues)
         self._ForensicsDatabase = None
         self._EventsDatabase = None
@@ -155,9 +160,45 @@ class IngestionJobManagerMixin:
 
         # Start background worker (even if Neo4j is unavailable)
         self._running = True
+        await self._sweep_stale_jobs()
         self._worker_task = asyncio.create_task(self._background_worker())
 
         logger.info("IngestionJobManager initialized")
+
+    async def _sweep_stale_jobs(self) -> int:
+        """Mark RUNNING jobs from a previous process as stale (SPEC A5).
+
+        A service restart orphans any RUNNING job: nothing will ever update
+        it again, so it would sit as a zombie forever (2026-09-16 live state:
+        4 jobs from August + 4 from the same day stuck in "running"). Runs
+        before the worker starts, so every RUNNING job found belongs to a
+        dead process by construction.
+        """
+        try:
+            entries = await self.list_jobs(status=JobStatus.RUNNING.value, limit=1000)
+        except Exception as e:
+            logger.warning(f"Stale sweep: could not list RUNNING jobs: {e}")
+            return 0
+
+        swept = 0
+        for entry in entries:
+            job_id = str(entry.get("job_id", ""))
+            if not job_id:
+                continue
+            job = await self._load_job(job_id)
+            if job is None or job.status != JobStatus.RUNNING:
+                continue
+            if job.runner_epoch == self._runner_epoch:
+                continue  # defensive: never sweep our own jobs
+            job.status = JobStatus.FAILED
+            job.current_phase = "stale"
+            job.error = "stale: service restarted mid-run"
+            job.completed_at = datetime.utcnow().isoformat()
+            await self._save_job(job)
+            swept += 1
+        if swept:
+            logger.warning(f"Stale sweep: marked {swept} orphaned RUNNING job(s) as stale")
+        return swept
 
     async def shutdown(self):
         """Shutdown the job manager and cleanup resources."""
@@ -214,6 +255,12 @@ class IngestionJobManagerMixin:
 
     async def _save_job(self, job: IngestionJob):
         """Save job state to storage."""
+        # SPEC A5: stamp the current boot epoch whenever this process moves a
+        # job to RUNNING — the next startup's stale sweep uses it to tell
+        # "running here" from "orphaned by a restart".
+        if job.status == JobStatus.RUNNING:
+            job.runner_epoch = self._runner_epoch
+
         job_dict = {
             "job_id": job.job_id,
             "task_id": job.task_id,
@@ -228,6 +275,8 @@ class IngestionJobManagerMixin:
             "result": job.result,
             "file_id": job.file_id,
             "events_count": job.events_count,
+            "runner_epoch": job.runner_epoch,
+            "force": int(job.force),
         }
 
         # Redis HSET mapping does not accept None values — strip them
@@ -269,6 +318,10 @@ class IngestionJobManagerMixin:
                     data["result"] = json.loads(data["result"])
                 except (json.JSONDecodeError, TypeError):
                     data["result"] = None
+            # Redis stores bools as "0"/"1" strings; a bare "0" is truthy in
+            # Python, so coerce explicitly.
+            if "force" in data:
+                data["force"] = str(data["force"]) in ("1", "true", "True")
             return IngestionJob(**data)
         else:
             return self._jobs.get(job_id)
@@ -313,6 +366,7 @@ class IngestionJobManagerMixin:
         self,
         task_id: str,
         mode: IngestionMode = IngestionMode.FULL,
+        force: bool = False,
     ) -> str:
         """
         Queue a background ingestion job for a task.
@@ -320,6 +374,7 @@ class IngestionJobManagerMixin:
         Args:
             task_id: Task ID to ingest.
             mode: Ingestion mode.
+            force: Bypass the foreground gate (SPEC A3 escape hatch).
 
         Returns:
             Job ID for tracking.
@@ -330,6 +385,7 @@ class IngestionJobManagerMixin:
             job_id=job_id,
             task_id=task_id,
             mode=mode,
+            force=force,
         )
 
         await self._save_job(job)
@@ -340,6 +396,7 @@ class IngestionJobManagerMixin:
                 "job_id": job_id,
                 "task_id": task_id,
                 "mode": mode.value,
+                "force": bool(force),
             }))
 
         logger.info(f"Queued ingestion job {job_id} for task {task_id} (mode: {mode.value})")
@@ -461,16 +518,33 @@ class IngestionJobManagerMixin:
         job.started_at = datetime.utcnow().isoformat()
         await self._save_job(job)
 
-        task = asyncio.create_task(self._run_kg_sync_job(job_id, runner))
+        task = asyncio.create_task(self._run_kg_sync_job(job_id, runner, task_id))
         self._kg_sync_tasks[job_id] = task
 
         logger.info(f"Queued kg_sync job {job_id} for task {task_id}")
         return job_id
 
-    async def _run_kg_sync_job(self, job_id: str, runner):
+    async def _run_kg_sync_job(self, job_id: str, runner, task_id: str = ""):
         """Drive a kg_sync job through RUNNING -> COMPLETED/FAILED/CANCELLED."""
         async def progress(stage: str, message: str):
             await self._update_job_status(job_id, JobStatus.RUNNING, stage)
+
+        # SPEC A: kg_sync ingestion goes through the same episode gate — the
+        # timeout applies; the gate pause applies (no force flag on this path).
+        from ..ingestion_gate import gate_context, make_job_context
+
+        async def _set_gate_phase(phase: Optional[str]):
+            target = phase or "ingesting_episodes"
+            await self._update_job_status(job_id, JobStatus.RUNNING, target)
+
+        job_ctx = make_job_context(
+            self.settings,
+            job_id=job_id,
+            label=task_id or job_id,
+            force=False,
+            set_phase=_set_gate_phase,
+        )
+        gate_token = gate_context.set(job_ctx)
 
         try:
             result = await runner(progress)
@@ -483,11 +557,14 @@ class IngestionJobManagerMixin:
             await self._update_job_status(job_id, JobStatus.CANCELLED, "cancelled")
             raise
         except Exception as e:
+            # Includes GateAborted on timeout — the job ends FAILED with the
+            # gate's timeout message.
             logger.error(f"kg_sync job {job_id} failed: {e}", exc_info=True)
             await self._update_job_status(
                 job_id, JobStatus.FAILED, "failed", error=str(e)
             )
         finally:
+            gate_context.reset(gate_token)
             self._kg_sync_tasks.pop(job_id, None)
 
     async def get_job_status(self, job_id: str) -> Optional[dict]:
