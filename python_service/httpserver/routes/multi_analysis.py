@@ -101,7 +101,7 @@ class CaseAnalysisStatusResponse(BaseModel):
 async def require_combined_case(settings: Settings = Depends(get_settings)) -> None:
     """MVP gate (mvp-phase1-acceptance SPEC §4.3): combined-case create/analysis
     endpoints are disabled; set COMBINED_CASE_ENABLED=true to restore them.
-    Read-only GETs stay reachable."""
+    Read-only GETs and DELETE (data cleanup stays available) are exempt."""
     if not settings.combined_case_enabled:
         raise HTTPException(
             status_code=503,
@@ -156,7 +156,7 @@ async def get_case(case_id: str, settings: Settings = Depends(get_settings)):
     return r.json()
 
 
-@router.delete("/api/llm/cases/{case_id}", dependencies=[Depends(require_combined_case)])
+@router.delete("/api/llm/cases/{case_id}")
 async def delete_case(case_id: str, settings: Settings = Depends(get_settings)):
     """Delete a ForensicCase via C++ backend. Does NOT delete associated tasks.
 

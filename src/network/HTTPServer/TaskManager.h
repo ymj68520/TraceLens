@@ -121,6 +121,25 @@ public:
                                         const std::string& scenario_name);
 
     /**
+     * @brief Drive a Graphiti ingestion job to a terminal state (MVP).
+     *
+     * mvp-phase1-acceptance SPEC §5: the analysis phase counts as complete
+     * only once knowledge-graph ingestion has finished. Polls the Python
+     * ingestion job, keeps the watchdog heartbeat alive while waiting, and
+     * re-triggers the job after FAILED/CANCELLED, up to
+     * GRAPHITI_INGEST_RETRIES times. The wait budget is
+     * GRAPHITI_INGEST_WAIT_TIMEOUT_MIN minutes (0 restores the legacy
+     * fire-and-forget behaviour by returning true immediately).
+     *
+     * @param task_id Owning task (heartbeat + progress + cancellation).
+     * @param job_id Job id from async_ingest; may be empty when the initial
+     *               trigger failed, in which case the helper re-triggers.
+     * @return true when a job COMPLETED (or the wait is disabled); false on
+     *         timeout, cancellation, or exhausted retries.
+     */
+    bool wait_for_graphiti_ingestion(const std::string& task_id, const std::string& job_id);
+
+    /**
      * @brief Update task progress
      * @param id Task ID
      * @param phase Current processing phase

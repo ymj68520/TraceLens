@@ -34,7 +34,7 @@ Feature flags（`python_service/httpserver/config.py`，pydantic-settings，env 
 | `COMBINED_CASE_ENABLED` | `false` | 组合案件（跨镜像）功能开关 |
 | `WORKBENCH_LLM_ENABLED` | `false` | 工作台 LLM 二次分析/事件重摘要开关 |
 | `GRAPHITI_LLM_MODEL` | `microsoft/phi-4` | Graphiti 摄入 LLM（空值也回落 phi-4，即"固定"） |
-| `GRAPHITI_INGEST_WAIT_TIMEOUT_MIN` | `240`（C++ ConfigManager） | FINALIZING 等待摄入上限，0 = 恢复旧"不等待"行为 |
+| `GRAPHITI_INGEST_WAIT_TIMEOUT_MIN` | `720`（C++ ConfigManager） | FINALIZING 等待摄入上限（与 Python 端 `GRAPHITI_JOB_TIMEOUT_HOURS=12` 对齐），0 = 恢复旧"不等待"行为 |
 
 前端通过 `GET /api/system/features` 读取前三个开关（模块级缓存 + `useFeatures()` hook）。
 
@@ -120,8 +120,9 @@ COMPLETED，不等 Graphiti）：
    - 轮询期间每轮刷新 `progress.phase_start_time` + `phase_description="等待知识图谱摄入"`（看门狗心跳，防误杀）；
    - `COMPLETED` → 任务 `COMPLETED`；`FAILED` → 重试 `async_ingest` 至多 2 次，仍失败 → 任务
      `FAILED`（error_details 注明 graphiti ingestion failed）；
-   - 超时（`GRAPHITI_INGEST_WAIT_TIMEOUT_MIN`，默认 240）→ 任务 `FAILED`（可重跑摄入后续 complete）；
-     设为 0 恢复旧"不等待"行为（逃生舱）。
+   - 超时（`GRAPHITI_INGEST_WAIT_TIMEOUT_MIN`，默认 720，与 Python 端作业上限对齐）→ 任务 `FAILED`；
+     设为 0 恢复旧"不等待"行为（逃生舱）。重试次数 `GRAPHITI_INGEST_RETRIES`（默认 2）、
+     轮询间隔 `GRAPHITI_INGEST_POLL_SECONDS`（默认 10）。
 3. 门控回环保持：`ingestion_gate.py:40-43` FINALIZING 自触发不自阻塞语义不变（gate 仅在
    LLM_ANALYSIS/PLATFORM_ANALYSIS 期间暂停摄入）。
 4. 逻辑 Android 短路路径（:261-276）同样适用等待逻辑。

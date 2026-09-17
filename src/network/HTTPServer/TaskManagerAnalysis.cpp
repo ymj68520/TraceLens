@@ -18,6 +18,7 @@
 #include "../../analyzers/LinuxFilesAnalyzer/Common/LinuxAnalyzerDeclarations.h"
 #include <fstream>
 #include <filesystem>
+#include <thread>
 
 
 using forensics::TaskPersistence;
@@ -61,6 +62,67 @@ void TaskManager::attachPlatformProgressCallback(WindowsFilesAnalyzer& analyzer,
                             "Analyzing " + scenario_name + " artifacts (" +
                                 std::to_string(artifacts_done) + " done, current: " + artifact_type + ")...");
         });
+}
+
+// mvp-phase1-acceptance SPEC §5: completion requires Graphiti ingestion.
+// Runs its own poll loop (instead of LLMPythonProxy::wait_for_job_completion)
+// so a cancelled task never blocks until the timeout and the watchdog
+// heartbeat stays fresh during hours-long ingestion waits.
+bool TaskManager::wait_for_graphiti_ingestion(const std::string& task_id, const std::string& job_id) {
+    auto& config = forensics::ConfigManager::instance();
+    // Aligned with the Python side's GRAPHITI_JOB_TIMEOUT_HOURS default (12h).
+    const int timeout_minutes = config.getInt("GRAPHITI_INGEST_WAIT_TIMEOUT_MIN", 720);
+    if (timeout_minutes <= 0) {
+        // Escape hatch: restore the legacy fire-and-forget completion.
+        return true;
+    }
+
+    auto& proxy = forensics::LLMPythonProxy::instance();
+    const int max_attempts = 1 + config.getInt("GRAPHITI_INGEST_RETRIES", 2);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(timeout_minutes);
+    std::string active_job = job_id;
+
+    for (int attempt = 1; attempt <= max_attempts; ++attempt) {
+        if (active_job.empty()) {
+            update_progress(task_id, TaskPhase::FINALIZING, 50,
+                            "Triggering knowledge graph ingestion (attempt " + std::to_string(attempt) + ")...");
+            active_job = proxy.async_ingest(task_id, forensics::IngestionMode::FULL);
+            if (!active_job.empty()) {
+                std::lock_guard<std::mutex> lock(mtx_);
+                if (tasks_.count(task_id)) tasks_[task_id].graphiti_job_id = active_job;
+                save_tasks_internal();
+            }
+        }
+        if (active_job.empty()) {
+            add_audit_log(task_id, "WARNING",
+                          "Graphiti ingestion trigger failed (attempt " + std::to_string(attempt) + ")");
+            continue;
+        }
+
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (is_task_cancelled(task_id)) return false;
+            // Watchdog liveness: refresh only phase_start_time.
+            touch_heartbeat(task_id);
+            const auto status = proxy.get_job_status(active_job);
+            if (status.status == "COMPLETED") {
+                add_audit_log(task_id, "GRAPHITI_INGESTION", "Ingestion job completed");
+                return true;
+            }
+            if (status.status == "FAILED" || status.status == "CANCELLED") {
+                add_audit_log(task_id, "WARNING",
+                              "Graphiti ingestion job " + status.status +
+                                  (status.error.empty() ? "" : ": " + status.error));
+                break;  // leave the poll loop; retry below
+            }
+            // Unknown/empty status (Python restarting) keeps waiting.
+            std::this_thread::sleep_for(std::chrono::seconds(
+                config.getInt("GRAPHITI_INGEST_POLL_SECONDS", 10)));
+        }
+        if (std::chrono::steady_clock::now() >= deadline) break;
+        active_job.clear();
+    }
+
+    return false;
 }
 
 void TaskManager::start_analysis(const std::string& task_id) {
@@ -255,28 +317,38 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                     "Android artifact LLM analysis completed (per-artifact)");
                 }
 
-                // Graphiti ingestion (best-effort, fire-and-forget) — same as the
-                // TSK pipeline tail so logical tasks join the knowledge graph too.
+                // Graphiti ingestion — same as the TSK pipeline tail so logical
+                // tasks join the knowledge graph too. MVP (SPEC §5): completion
+                // waits for the ingestion job.
                 if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
                 update_progress(task_id, TaskPhase::FINALIZING, 10, "Triggering knowledge graph ingestion...");
+                std::string graphiti_job_id;
                 try {
                     auto& proxy = forensics::LLMPythonProxy::instance();
-                    std::string graphiti_job_id = proxy.async_ingest(task_id, forensics::IngestionMode::FULL);
+                    graphiti_job_id = proxy.async_ingest(task_id, forensics::IngestionMode::FULL);
                     if (!graphiti_job_id.empty()) {
                         add_audit_log(task_id, "GRAPHITI_INGESTION",
                             "Triggered Graphiti knowledge graph ingestion (job_id: " + graphiti_job_id + ")");
-                        {
-                            std::lock_guard<std::mutex> lock(mtx_);
-                            if (tasks_.count(task_id)) tasks_[task_id].graphiti_job_id = graphiti_job_id;
-                        }
-                        save_tasks_internal();
                     }
                 } catch (const std::exception& e) {
                     std::cerr << "Warning: Exception triggering Graphiti ingestion: " << e.what() << std::endl;
                 }
+                if (!graphiti_job_id.empty()) {
+                    std::lock_guard<std::mutex> lock(mtx_);
+                    if (tasks_.count(task_id)) tasks_[task_id].graphiti_job_id = graphiti_job_id;
+                    save_tasks_internal();
+                }
 
                 // Finalize — android.db is the result database for logical tasks.
+                const bool ingestion_ok = wait_for_graphiti_ingestion(task_id, graphiti_job_id);
                 if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+                if (!ingestion_ok) {
+                    update_status(task_id, TaskStatus::FAILED,
+                                  "Knowledge graph ingestion did not complete",
+                                  "Graphiti ingestion failed or timed out (budget: GRAPHITI_INGEST_WAIT_TIMEOUT_MIN minutes). Analysis artifacts remain available for browsing.");
+                    add_audit_log(task_id, "ERROR", "Analysis failed at the Graphiti ingestion gate");
+                    return;
+                }
                 update_progress(task_id, TaskPhase::FINALIZING, 100, "Analysis completed successfully");
                 update_status(task_id, TaskStatus::COMPLETED, "Android logical analysis completed");
                 return;
@@ -674,38 +746,40 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 }
             }
 
-            // 8. Graphiti Knowledge Graph Ingestion (Async, Fire-and-Forget)
+            // 8. Graphiti Knowledge Graph Ingestion — MVP completion gate.
+            // mvp-phase1-acceptance SPEC §5: the task is COMPLETED only once
+            // ingestion has finished; failure after retries fails the task.
             if (is_task_cancelled(task_id)) { return; }
             update_progress(task_id, TaskPhase::FINALIZING, 10, "Triggering knowledge graph ingestion...");
 
-            // Trigger Graphiti ingestion in the background (non-blocking)
-            // This will create File entities, link episodes, and build entity relationships
+            std::string graphiti_job_id;
             try {
                 auto& proxy = forensics::LLMPythonProxy::instance();
-                std::string graphiti_job_id = proxy.async_ingest(task_id, forensics::IngestionMode::FULL);
-
-                if (!graphiti_job_id.empty()) {
-                    add_audit_log(task_id, "GRAPHITI_INGESTION",
-                        "Triggered Graphiti knowledge graph ingestion (job_id: " + graphiti_job_id + ")");
-
-                    // Store the Graphiti job ID for potential status tracking
-                    task.graphiti_job_id = graphiti_job_id;
-                    save_tasks_internal();
-                } else {
-                    std::cerr << "Warning: Failed to trigger Graphiti ingestion for task " << task_id << std::endl;
-                    add_audit_log(task_id, "WARNING", "Failed to trigger Graphiti ingestion");
-                }
+                graphiti_job_id = proxy.async_ingest(task_id, forensics::IngestionMode::FULL);
             } catch (const std::exception& e) {
-                // Don't fail the entire task if Graphiti ingestion fails
                 std::cerr << "Warning: Exception triggering Graphiti ingestion: " << e.what() << std::endl;
                 add_audit_log(task_id, "WARNING", "Graphiti ingestion failed: " + std::string(e.what()));
             }
+            if (!graphiti_job_id.empty()) {
+                add_audit_log(task_id, "GRAPHITI_INGESTION",
+                    "Triggered Graphiti knowledge graph ingestion (job_id: " + graphiti_job_id + ")");
+                task.graphiti_job_id = graphiti_job_id;
+                save_tasks_internal();
+            }
 
-            // Finalization
+            // Finalization — gated on ingestion (budget: GRAPHITI_INGEST_WAIT_TIMEOUT_MIN,
+            // 0 restores the legacy fire-and-forget completion).
+            const bool ingestion_ok = wait_for_graphiti_ingestion(task_id, graphiti_job_id);
             if (is_task_cancelled(task_id)) { return; }
-            update_progress(task_id, TaskPhase::FINALIZING, 50, "Finalizing analysis results...");
 
             set_result_db(task_id, fileDbPath);
+            if (!ingestion_ok) {
+                update_status(task_id, TaskStatus::FAILED,
+                              "Knowledge graph ingestion did not complete",
+                              "Graphiti ingestion failed or timed out (budget: GRAPHITI_INGEST_WAIT_TIMEOUT_MIN minutes). Analysis artifacts remain available for browsing.");
+                add_audit_log(task_id, "ERROR", "Analysis failed at the Graphiti ingestion gate");
+                return;
+            }
             update_progress(task_id, TaskPhase::FINALIZING, 100, "Analysis completed successfully");
             update_status(task_id, TaskStatus::COMPLETED, "Analysis completed successfully");
 

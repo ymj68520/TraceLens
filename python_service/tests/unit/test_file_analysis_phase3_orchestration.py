@@ -21,7 +21,9 @@ from httpserver.services.case_analysis.file_analyzer import FileAnalyzer
 def _svc(tmp_path, *, with_windows=True, windows_service_ok=True):
     """Pipelines-mixin instance with mocked rounds dependencies."""
     svc = CaseAnalysisPipelinesMixin.__new__(CaseAnalysisPipelinesMixin)
-    svc.settings = SimpleNamespace(llm_max_concurrency=3)
+    # These tests exercise the Round C cluster pipeline itself; the MVP gate
+    # (mvp-phase1-acceptance §4.1) is covered in test_mvp_feature_gates.py.
+    svc.settings = SimpleNamespace(llm_max_concurrency=3, event_llm_analysis_enabled=True)
     events_db = _touch(tmp_path, "events.db")
     windows_db = _touch(tmp_path, "windows.db") if with_windows else ""
     svc._cpp_backend = MagicMock()
