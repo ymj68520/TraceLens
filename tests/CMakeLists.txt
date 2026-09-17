@@ -1384,6 +1384,20 @@ if(ROCKSDB_INCLUDE_DIR AND ROCKSDB_LIBRARY)
   target_link_libraries(test_kvstore_rocksdb_gtest ${GTEST_LIBRARIES} gtest_main
     ${ROCKSDB_LIBRARY} pthread)
   add_test(NAME RocksKVStoreTests COMMAND test_kvstore_rocksdb_gtest)
+
+  # Mirror + codec tests (mvp-phase1-acceptance SPEC §8 R2)
+  add_executable(
+    test_rocksdb_mirror_gtest
+    UnitTest/test_rocksdb_mirror_gtest.cpp
+    ../src/core/KVStore/RowCodec.cpp
+    ../src/core/KVStore/RocksKVStore.cpp
+    ../src/core/KVStore/SqliteRocksMirror.cpp)
+  target_include_directories(test_rocksdb_mirror_gtest PRIVATE
+    ${CMAKE_SOURCE_DIR}/src ${ROCKSDB_INCLUDE_DIR})
+  target_link_libraries(test_rocksdb_mirror_gtest ${GTEST_LIBRARIES} gtest_main
+    ${ROCKSDB_LIBRARY} nlohmann_json::nlohmann_json ${SQLITE_LINK_LIBRARIES}
+    OpenSSL::Crypto pthread)
+  add_test(NAME RocksMirrorTests COMMAND test_rocksdb_mirror_gtest)
 else()
   message(STATUS "rocksdb not found — KVStore tests skipped")
 endif()

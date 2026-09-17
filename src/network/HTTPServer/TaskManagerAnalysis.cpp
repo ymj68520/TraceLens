@@ -11,6 +11,7 @@
 #include "EventClusterAnalyzer.h"
 #include "SceneDetector.h"
 #include "ConfigManager/ConfigManager.h"
+#include "KVStore/SqliteRocksMirror.h"
 #include "PathManager/PathManager.h"
 #include "FileFilter/FileFilter.h"
 #include "FileCarving/FileCarver.h"
@@ -401,6 +402,37 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 return;
             }
             update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 100, "Image analysis and metadata extraction completed");
+
+            // 1.4a. RocksDB mirror of the finished raw database (mvp
+            // SPEC §8 R2 dual-run window). SQLite stays the source of truth;
+            // this is an idempotent whole-file mirror so the native-mount/XFS
+            // writers are covered without touching their insert paths. Never
+            // fails the pipeline: problems degrade to an audit warning.
+            if (forensics::ConfigManager::instance().getInt("ROCKSDB_MIRROR_RAW", 1) != 0) {
+                try {
+                    std::string rocksPath = rawDbPath;
+                    const std::string dbSuffix = ".db";
+                    if (rocksPath.size() > dbSuffix.size() &&
+                        rocksPath.compare(rocksPath.size() - dbSuffix.size(), dbSuffix.size(), dbSuffix) == 0) {
+                        rocksPath.replace(rocksPath.size() - dbSuffix.size(), dbSuffix.size(), ".rocks");
+                    } else {
+                        rocksPath += ".rocks";
+                    }
+                    forensics::kv::SqliteRocksMirror mirror;
+                    const auto mirrored = mirror.run(rawDbPath, rocksPath, {"files", "partitions"});
+                    std::string summary;
+                    for (const auto& m : mirrored) {
+                        if (!summary.empty()) summary += ", ";
+                        summary += m.table + "=" + std::to_string(m.count);
+                    }
+                    add_audit_log(task_id, "ROCKSDB_MIRROR",
+                                  "raw.db mirrored to " + rocksPath + " (" + summary + ")");
+                } catch (const std::exception& mirrorError) {
+                    std::cerr << "Warning: RocksDB mirror skipped: " << mirrorError.what() << std::endl;
+                    add_audit_log(task_id, "WARNING",
+                                  std::string("RocksDB mirror skipped: ") + mirrorError.what());
+                }
+            }
 
             // 1.4b. Auto-detect platform scenarios when the user did not pick any.
             // Probes the *un-filtered* raw DB for tell-tale artifact paths and
