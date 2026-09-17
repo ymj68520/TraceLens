@@ -83,7 +83,15 @@ async def run_event_cluster_analysis(
     request: RunRequest,
     settings: Settings = Depends(get_settings),
 ):
-    """Start a background full-coverage cluster analysis for one task."""
+    """Start a background full-coverage cluster analysis for one task.
+
+    Disabled in the phase-1 acceptance MVP (mvp-phase1-acceptance SPEC §4.1).
+    """
+    if not settings.event_llm_analysis_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Event LLM analysis is disabled in this build (MVP)",
+        )
     if request.bucket_seconds is not None and not (
         1 <= request.bucket_seconds <= TIMELINE_MAX_BUCKET_SECONDS
     ):

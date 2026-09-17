@@ -121,6 +121,10 @@ class ReportGenerationInputBuilder:
                 if status is ReportEvidenceStatus.excluded:
                     # Excluded is an audit state, never generation input.
                     continue
+                # MVP (mvp-phase1-acceptance SPEC §4.2): events are never
+                # report evidence; legacy cluster rows are skipped, not fatal.
+                if row["evidence_key"].startswith("cluster:"):
+                    continue
                 item = self._item_with_conn(conn, row)
                 if status is ReportEvidenceStatus.main:
                     main.append(item)

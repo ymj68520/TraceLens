@@ -182,3 +182,62 @@ async def list_file_analyses(
         "total": len(records),
         "records": records,
     }
+
+
+class FileAnalysisRecordRequest(BaseModel):
+    """One pipeline file-analysis result, persisted through the SPEC three-write.
+
+    llm-throughput-hardening SPEC E: the C++ pipeline previously maintained a
+    hand-synced copy of the display-cache writes and skipped the append-only
+    ``file_analyses`` truth row entirely. It now POSTs each result here so the
+    tested Python three-write path stays the single writer.
+    """
+
+    task_id: str
+    file_path: str
+    description: str
+    summary: str = ""
+    keywords: str = ""  # comma-separated
+    model_used: str = ""
+    extraction_method: str = ""  # markitdown / raw_text / vision / metadata_only
+
+
+@router.post("/file-analysis/record")
+async def record_file_analysis(request: FileAnalysisRecordRequest):
+    """Persist one pipeline analysis via the atomic three-write (SPEC E).
+
+    ``files_db_path`` is resolved from the task record (D2b trust source), so
+    the caller cannot redirect writes at an arbitrary database.
+    """
+    from ..services import get_service_manager
+
+    service_manager = get_service_manager()
+    _task_info, files_db = await _resolve_task_files(service_manager, request.task_id)
+
+    llm_service = getattr(service_manager, "llm_service", None)
+    if llm_service is None:
+        raise HTTPException(status_code=503, detail="LLM service unavailable")
+
+    persisted = await asyncio.to_thread(
+        llm_service.persist_to_files_db,
+        files_db,
+        request.file_path,
+        request.description,
+        request.summary,
+        request.keywords,
+        request.model_used,
+        request.task_id,
+        "pipeline",
+        request.extraction_method,
+    )
+    if not persisted:
+        raise HTTPException(
+            status_code=500,
+            detail=f"persist_to_files_db failed for {request.file_path!r}",
+        )
+    return {
+        "persisted": True,
+        "task_id": request.task_id,
+        "file_path": request.file_path,
+        "trigger_source": "pipeline",
+    }

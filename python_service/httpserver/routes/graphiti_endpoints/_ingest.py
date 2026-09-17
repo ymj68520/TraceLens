@@ -61,6 +61,7 @@ async def ingest_data(
             job_id = await service_manager.ingestion_job_manager.queue_ingestion(
                 task_id=request.task_id,
                 mode=request.mode,
+                force=request.force,
             )
             return IngestionResponse(
                 job_id=job_id,

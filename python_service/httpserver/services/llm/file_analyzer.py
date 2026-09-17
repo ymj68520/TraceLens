@@ -194,6 +194,8 @@ class FileAnalyzer:
 
         # Make API request
         try:
+            import time as _time
+            _t0 = _time.monotonic()
             response = await client.post(
                 self.settings.llm_endpoint,
                 json={
@@ -214,6 +216,10 @@ class FileAnalyzer:
             # Extract response
             analysis_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             tokens_used = result.get("usage", {}).get("total_tokens", 0)
+            logger.info(
+                f"LLM call dur={_time.monotonic() - _t0:.1f}s model={model} "
+                f"in={len(user_prompt)}ch out={len(analysis_text)}ch tokens={tokens_used}"
+            )
 
             # D15: extract the four-part structure when present; the full
             # text always stays in description (never dropped).
@@ -287,6 +293,8 @@ class FileAnalyzer:
             raise ValueError(f"Image too large even after compression ({encoded_size_kb:.2f} KB)")
 
         try:
+            import time as _time
+            _t0 = _time.monotonic()
             response = await vision_client.post(
                 self.settings.llm_endpoint,
                 json={
@@ -318,6 +326,10 @@ class FileAnalyzer:
             analysis_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             tokens_used = result.get("usage", {}).get("total_tokens", 0)
 
+            logger.info(
+                f"LLM call dur={_time.monotonic() - _t0:.1f}s model={self.settings.llm_vision_model} "
+                f"in={len(image_b64)}b64ch out={len(analysis_text)}ch tokens={tokens_used}"
+            )
             logger.info(f"Vision analysis completed, tokens used: {tokens_used}")
 
             parsed = parse_structured_analysis(analysis_text)

@@ -62,6 +62,16 @@ class _FakeManager:
         self.llm_service = _LLM(self)
 
 
+@pytest.fixture(autouse=True)
+def _enable_event_llm(monkeypatch):
+    """These tests exercise the analyze path's own behavior; the MVP gate
+    (mvp-phase1-acceptance §4.1, default off) is covered in
+    test_mvp_feature_gates.py."""
+    from httpserver.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "event_llm_analysis_enabled", True)
+
+
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     events_db = _events_db(tmp_path)

@@ -32,10 +32,18 @@ async def analyze_event_cluster(
 ):
     """
     Analyze an event cluster using LLM.
-    
+
     This endpoint replaces the legacy C++ EventClusterAnalyzer LLM logic.
     It aggregates events for the given cluster and generates an AI summary.
+
+    Disabled in the phase-1 acceptance MVP (events stay raw data, no LLM):
+    mvp-phase1-acceptance SPEC §4.1.
     """
+    if not settings.event_llm_analysis_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Event LLM analysis is disabled in this build (MVP)",
+        )
     try:
         from ...services import get_service_manager
         service_manager = get_service_manager()

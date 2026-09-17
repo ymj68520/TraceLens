@@ -289,7 +289,18 @@ async def workbench_evidence_detail(task_id: str, evidence_key: str = Query(...)
 
 
 @router.post("/{task_id}/evidence/analyze")
-async def workbench_start_analysis(task_id: str, request: WorkbenchAnalysisRequest, manager=Depends(_manager)):
+async def workbench_start_analysis(
+    task_id: str,
+    request: WorkbenchAnalysisRequest,
+    manager=Depends(_manager),
+    settings=Depends(get_settings),
+):
+    """LLM secondary analysis — disabled in the MVP (SPEC §4.4)."""
+    if not settings.workbench_llm_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Workbench LLM analysis is disabled in this build (MVP)",
+        )
     try:
         analysis = await manager.secondary_analysis_executor.submit(
             task_id, request.evidence_key,
@@ -352,7 +363,19 @@ async def workbench_reject_analysis(task_id: str, analysis_id: str, manager=Depe
 
 
 @router.post("/{task_id}/events/{event_id}/refresh")
-async def workbench_refresh_event(task_id: str, event_id: str, payload: dict[str, Any], manager=Depends(_manager)):
+async def workbench_refresh_event(
+    task_id: str,
+    event_id: str,
+    payload: dict[str, Any],
+    manager=Depends(_manager),
+    settings=Depends(get_settings),
+):
+    """LLM event re-summary — disabled in the MVP (SPEC §4.4)."""
+    if not settings.workbench_llm_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Workbench LLM analysis is disabled in this build (MVP)",
+        )
     try:
         refresh = await manager.event_refresh_executor.submit(task_id, event_id, requested_by=payload.get("requested_by") or "workbench")
         return {"success": True, "job_id": refresh.refresh_id, "refresh_id": refresh.refresh_id, "refresh": _dump(refresh)}

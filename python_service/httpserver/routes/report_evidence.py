@@ -45,9 +45,16 @@ def get_report_evidence_service() -> ReportEvidenceService:
 
 def _canonical_key(evidence_key: str) -> str:
     try:
-        return parse_evidence_key(evidence_key).canonical_key
+        parsed = parse_evidence_key(evidence_key)
     except InvalidEvidenceKeyError as exc:
         raise HTTPException(status_code=400, detail="invalid evidence key") from exc
+    # MVP (mvp-phase1-acceptance SPEC §4.2): events are never report evidence.
+    if parsed.canonical_key.startswith("cluster:"):
+        raise HTTPException(
+            status_code=422,
+            detail="event cluster evidence is not allowed in this build (MVP)",
+        )
+    return parsed.canonical_key
 
 
 @router.get("/evidence", response_model=list[ReportEvidenceItem])

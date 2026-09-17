@@ -247,8 +247,14 @@ class ReportGenerator(ReportGeneratorHelpersMixin):
         else:
             evidence_list_str += "（无显式证据文件，基于全局图谱分析）"
 
-        # Include analyzed event clusters as evidence
-        event_evidence = self._load_event_cluster_evidence(task_id, files_db_path)
+        # Include analyzed event clusters as evidence. MVP
+        # (mvp-phase1-acceptance §4.2): events are never report evidence and
+        # get no LLM analysis, so this stays empty unless the flag is flipped.
+        event_evidence = (
+            self._load_event_cluster_evidence(task_id, files_db_path)
+            if getattr(self.settings, "event_llm_analysis_enabled", False)
+            else []
+        )
         if event_evidence:
             evidence_list_str += "\n本案关键事件簇证据清单：\n"
             for ev in event_evidence:

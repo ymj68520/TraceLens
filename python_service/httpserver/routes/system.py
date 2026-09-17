@@ -13,6 +13,20 @@ from ..config import Settings, get_settings
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+
+@router.get("/features")
+async def get_feature_flags(settings: Settings = Depends(get_settings)):
+    """Feature switches for the web frontend (mvp-phase1-acceptance SPEC §2).
+
+    Single source of truth so the UI trims (hidden nav entries, removed LLM
+    actions) follow the backend flags instead of a build-time constant."""
+    return {
+        "event_llm_analysis_enabled": settings.event_llm_analysis_enabled,
+        "combined_case_enabled": settings.combined_case_enabled,
+        "workbench_llm_enabled": settings.workbench_llm_enabled,
+    }
+
+
 @router.get("/logs")
 async def get_all_logs(
     lines: int = Query(default=100, ge=1, le=2000),

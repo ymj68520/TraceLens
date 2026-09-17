@@ -98,7 +98,18 @@ class CaseAnalysisStatusResponse(BaseModel):
 
 # ── Case CRUD (proxy to C++ backend) ─────────────────────────────────────────
 
-@router.post("/api/llm/cases", status_code=201)
+async def require_combined_case(settings: Settings = Depends(get_settings)) -> None:
+    """MVP gate (mvp-phase1-acceptance SPEC §4.3): combined-case create/analysis
+    endpoints are disabled; set COMBINED_CASE_ENABLED=true to restore them.
+    Read-only GETs stay reachable."""
+    if not settings.combined_case_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Combined-case features are disabled in this build (MVP)",
+        )
+
+
+@router.post("/api/llm/cases", status_code=201, dependencies=[Depends(require_combined_case)])
 async def create_case(
     req: CreateCaseRequest,
     settings: Settings = Depends(get_settings),
@@ -145,7 +156,7 @@ async def get_case(case_id: str, settings: Settings = Depends(get_settings)):
     return r.json()
 
 
-@router.delete("/api/llm/cases/{case_id}")
+@router.delete("/api/llm/cases/{case_id}", dependencies=[Depends(require_combined_case)])
 async def delete_case(case_id: str, settings: Settings = Depends(get_settings)):
     """Delete a ForensicCase via C++ backend. Does NOT delete associated tasks.
 
@@ -216,7 +227,7 @@ def _purge_case_data_dir(case_id: str) -> bool:
         return False
 
 
-@router.post("/api/llm/cases/{case_id}/tasks")
+@router.post("/api/llm/cases/{case_id}/tasks", dependencies=[Depends(require_combined_case)])
 async def add_tasks_to_case(
     case_id: str,
     req: AddTasksRequest,
@@ -233,7 +244,7 @@ async def add_tasks_to_case(
     return r.json()
 
 
-@router.post("/api/llm/cases/{case_id}/associate-tasks")
+@router.post("/api/llm/cases/{case_id}/associate-tasks", dependencies=[Depends(require_combined_case)])
 async def associate_tasks_to_case(
     case_id: str,
     req: AssociateTasksRequest,
@@ -273,7 +284,7 @@ async def associate_tasks_to_case(
 
 # ── Multi-Image Analysis ──────────────────────────────────────────────────────
 
-@router.post("/api/llm/multi-image-analysis")
+@router.post("/api/llm/multi-image-analysis", dependencies=[Depends(require_combined_case)])
 async def start_multi_image_analysis(
     req: MultiImageAnalysisRequest,
     settings: Settings = Depends(get_settings),
@@ -375,7 +386,7 @@ async def get_multi_analysis_status(job_id: str):
 
 # ── Incremental Analysis Endpoints ────────────────────────────────────────────────
 
-@router.post("/api/llm/cases/smart-create", status_code=201)
+@router.post("/api/llm/cases/smart-create", status_code=201, dependencies=[Depends(require_combined_case)])
 async def smart_create_case(
     req: SmartCreateCaseRequest,
     settings: Settings = Depends(get_settings),
@@ -413,7 +424,7 @@ async def smart_create_case(
     }
 
 
-@router.post("/api/llm/cases/{case_id}/tasks/incremental")
+@router.post("/api/llm/cases/{case_id}/tasks/incremental", dependencies=[Depends(require_combined_case)])
 async def incremental_add_tasks(
     case_id: str,
     req: IncrementalAddTasksRequest,
@@ -471,7 +482,7 @@ async def get_case_analysis_status(
     return status
 
 
-@router.post("/api/llm/cases/{case_id}/incremental-analysis")
+@router.post("/api/llm/cases/{case_id}/incremental-analysis", dependencies=[Depends(require_combined_case)])
 async def trigger_incremental_analysis(
     case_id: str,
     req: IncrementalAnalysisRequest,

@@ -360,9 +360,17 @@ class CaseAnalysisPipelinesMixin:
             steps["file_round"] = {"failed": True, "reason": str(e)}
             partial = True
 
-        # Round C: event clusters — only after the file round persisted (D8)
+        # Round C: event clusters — only after the file round persisted (D8).
+        # MVP (mvp-phase1-acceptance §4.1): event LLM analysis is disabled and
+        # this round never runs; the skip stays visible like the missing-db path.
         cluster_results: List[Dict[str, Any]] = []
-        if events_db and os.path.exists(events_db):
+        if not getattr(self.settings, "event_llm_analysis_enabled", False):
+            logger.info(f"[CASE_ANALYSIS] Task {task_id}: Event cluster analysis skipped - disabled in MVP build")
+            steps["event_clusters"] = {
+                "skipped": True,
+                "reason": "event_llm_analysis_enabled=false",
+            }
+        elif events_db and os.path.exists(events_db):
             try:
                 cluster_results = await self._cluster_analyzer.analyze_and_ingest_clusters(
                     events_db, case_description, task_id, progress_callback

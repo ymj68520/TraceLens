@@ -56,9 +56,13 @@ async def lifespan(app: FastAPI):
         # Initialize dependency injection system
         from .dependencies import init_dependencies
         init_dependencies(service_manager)
+        # Register the episode gate hook (llm-throughput-hardening SPEC A):
+        # ingestion pauses between episodes while the pipeline hammers the LLM.
+        from .services.ingestion_gate import install_episode_gate
+        install_episode_gate(settings, service_manager.cpp_backend.list_tasks)
     except Exception as e:
         logger.warning(f"Some services failed to initialize: {e}")
-    
+
     yield
     
     # Shutdown: Cleanup services

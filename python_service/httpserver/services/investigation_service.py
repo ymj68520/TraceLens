@@ -427,7 +427,21 @@ class InvestigationService:
         return keys
 
     async def bootstrap(self, task_id: str) -> Dict[str, Any]:
-        """Create seed investigation events from analyzed clusters (idempotent)."""
+        """Create seed investigation events from analyzed clusters (idempotent).
+
+        MVP (mvp-phase1-acceptance SPEC §4.2): events carry no LLM analysis and
+        never become report evidence, so cluster seeding is skipped entirely
+        unless event LLM analysis is re-enabled via env."""
+        from ..config import get_settings
+
+        if not getattr(get_settings(), "event_llm_analysis_enabled", False):
+            persistence = await self._persistence(task_id)
+            persistence.set_meta("bootstrap_version", str(BOOTSTRAP_VERSION))
+            overview = persistence.overview(task_id)
+            overview["seeded_clusters"] = 0
+            overview["new_events"] = 0
+            return overview
+
         persistence = await self._persistence(task_id)
         paths = await self._paths(task_id)
         clusters = self._load_analyzed_clusters(paths["events_db"])

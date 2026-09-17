@@ -91,6 +91,16 @@ def _service(tmp_path, files_db, events_db):
     return InvestigationService(cpp_backend=backend)
 
 
+@pytest.fixture(autouse=True)
+def _enable_event_llm(monkeypatch):
+    """These tests exercise cluster seeding itself; the MVP skip
+    (mvp-phase1-acceptance §4.2, default) is covered in
+    test_mvp_feature_gates.py."""
+    from httpserver.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "event_llm_analysis_enabled", True)
+
+
 @pytest.fixture
 async def seeded(tmp_path):
     files_db, events_db = _make_task_dbs(tmp_path)

@@ -209,6 +209,29 @@ class IngestionJobWorkerMixin:
         job_id = queue_data["job_id"]
         task_id = queue_data["task_id"]
         mode = IngestionMode(queue_data["mode"])
+        force = bool(queue_data.get("force")) or await self._job_force_flag(job_id)
+
+        # llm-throughput-hardening SPEC A: the episode gate (foreground pause +
+        # timeout) reads its per-job context from this ContextVar inside the
+        # before-episode hook registered at app startup.
+        from ..ingestion_gate import gate_context, make_job_context
+
+        async def _set_gate_phase(phase: Optional[str]):
+            if phase is None:
+                await self._update_job_status(
+                    job_id, JobStatus.RUNNING, "ingesting_episodes"
+                )
+            else:
+                await self._update_job_status(job_id, JobStatus.RUNNING, phase)
+
+        job_ctx = make_job_context(
+            self.settings,
+            job_id=job_id,
+            label=task_id,
+            force=force,
+            set_phase=_set_gate_phase,
+        )
+        gate_token = gate_context.set(job_ctx)
 
         try:
             await self._update_job_status(job_id, JobStatus.RUNNING, "starting")
@@ -225,7 +248,13 @@ class IngestionJobWorkerMixin:
             elif mode == IngestionMode.ANALYZED_ONLY:
                 await self._process_analyzed_only(job_id, task_id)
 
-            await self._update_job_status(job_id, JobStatus.COMPLETED, progress=100)
+            if job_ctx.timed_out:
+                await self._update_job_status(
+                    job_id, JobStatus.FAILED, "failed",
+                    error="job timeout exceeded (GRAPHITI_JOB_TIMEOUT_HOURS)",
+                )
+            else:
+                await self._update_job_status(job_id, JobStatus.COMPLETED, progress=100)
 
         except Exception as e:
             import traceback
@@ -236,6 +265,16 @@ class IngestionJobWorkerMixin:
                 JobStatus.FAILED,
                 error=str(e)
             )
+        finally:
+            gate_context.reset(gate_token)
+
+    async def _job_force_flag(self, job_id: str) -> bool:
+        """Read the persisted force flag (in-memory queue payload omits it)."""
+        try:
+            job = await self._load_job(job_id)
+            return bool(job.force) if job is not None else False
+        except Exception:
+            return False
 
     async def _process_full_ingestion(self, job_id: str, task_id: str):
         """Process full ingestion: files, events, entities."""

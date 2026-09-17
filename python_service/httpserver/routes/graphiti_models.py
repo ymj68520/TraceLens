@@ -38,6 +38,7 @@ class IngestRequest(BaseModel):
     include_llm_descriptions: bool = Field(default=True, description="Include LLM-generated descriptions")
     batch_size: int = Field(default=50, ge=1, le=500, description="Batch size for processing")
     max_episodes: int = Field(default=100, ge=0, le=10000, description="Maximum episodes to process (0 = unlimited)")
+    force: bool = Field(default=False, description="Bypass the foreground gate (SPEC A escape hatch)")
 
 
 class FileIngestRequest(BaseModel):
