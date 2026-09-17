@@ -1,5 +1,4 @@
 #include "../SQLiteHelper.h"
-#include "KVStore/RocksRawReader.h"
 #include <iostream>
 #include <algorithm>
 #include <ctime>
@@ -46,53 +45,10 @@ json SQLiteHelper::get_file_summary(const std::string& db_path) {
 
 json SQLiteHelper::get_largest_files(const std::string& files_db, int limit) {
     json result;
-
-    limit = clamp_limit(limit, 50);
-
-    // RocksDB-first read (mvp SPEC §8 R3 dual-run window): the mirror lives
-    // next to the sqlite file as <name>.rocks. Only the raw-db mirror carries
-    // the full files row set — the classified files.db mirror is not wired
-    // until its size-index CF lands, so a ".rocks" lookup only applies to
-    // paths that actually end in "_raw.db"/"raw.db".
-    const std::string base = files_db.substr(0, files_db.find_last_of('.'));
-    const std::string rocks_path = base + ".rocks";
-    try {
-        forensics::kv::RocksRawReader reader(rocks_path);
-        if (reader.has_table("files")) {
-            struct SizeRow {
-                std::int64_t size;
-                nlohmann::json row;
-            };
-            std::vector<SizeRow> candidates;
-            for (const auto& rocks_row : reader.scan_table("files")) {
-                if (!rocks_row.value.is_object()) continue;
-                const auto& row = rocks_row.value;
-                const auto size_it = row.find("size");
-                const std::int64_t size =
-                    size_it != row.end() && size_it->is_number()
-                        ? size_it->get<std::int64_t>()
-                        : 0;
-                if (size > 0) candidates.push_back({size, row});
-            }
-            std::sort(candidates.begin(), candidates.end(),
-                      [](const SizeRow& a, const SizeRow& b) { return a.size > b.size; });
-            if (candidates.size() > static_cast<size_t>(limit)) {
-                candidates.resize(static_cast<size_t>(limit));
-            }
-            json rows = json::array();
-            for (auto& candidate : candidates) rows.push_back(std::move(candidate.row));
-            result["largest_files"] = std::move(rows);
-            result["limit"] = limit;
-            result["source"] = "rocksdb_mirror";
-            return result;
-        }
-    } catch (const std::exception&) {
-        // No mirror (or unreadable): fall through to the SQLite read path.
-    }
-
     sqlite3* db = open_database(files_db, result);
     if (!db) return result;
 
+    limit = clamp_limit(limit, 50);
     std::string sql = "SELECT * FROM files WHERE size > 0 ORDER BY size DESC LIMIT " + std::to_string(limit);
     result["largest_files"] = execute_query(db, sql);
     result["limit"] = limit;

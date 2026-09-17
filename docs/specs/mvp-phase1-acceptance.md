@@ -210,18 +210,8 @@ COMPLETED，不等 Graphiti）：
     （BytewiseComparator）写的库**互不兼容**——两侧存储引擎不互通是既定事实；跨语言
     契约 = 行字节格式（RowCodec==encode_value，双侧 golden 测试锁定）+ 键编码 + `_meta`
     约定。C++ 写的库用 C++ verify 验，Python 写的库用 Python verify 验。
-- ✅ **R3 查询面（首段：镜像读路径）**：
-  - `src/core/KVStore/RocksRawReader.h/.cpp`：镜像只读访问器（keying 元数据、rowid 点查、
-    有序全表扫、行数），路径无 `CURRENT` 标记即抛异常——这是查询层回退 SQLite 的触发器；
-    无 rocksdb 库机器编译 stub（同样抛异常，走回退）；
-  - 首个接线：`SQLiteHelper::get_largest_files`（`/api/forensics/files/largest`）改为
-    **RocksDB 优先回退 SQLite**——旁路 `.rocks` 存在且带 files keying 时内存过滤
-    `size > 0` + 降序 + limit（响应带 `source: "rocksdb_mirror"`），否则原 SQL 路径不变；
-    gtest 4 例（keying/点查/有序扫/largest 语义/缺库抛错）；
-  - 聚合类查询（statistics/timeline JOIN）继续走 SQLite，待各自索引 CF 重写后迁移。
-- ✅ **R4 Python 读侧（首段）**：`storage/rocks_mirror_reader.py`——C++ RocksRawReader
-  对应物（`open_mirror_or_none` 语义、`list_cf` 全家声明打开、rowid 点查/有序扫/内存
-  WHERE）；测试 4 例。r4 后续：graphiti database_reader/file_schema 接入该开关。
+- 🔜 R3 查询面迁移（Queries/*.cpp、SQLiteHelper、视图/统计重写为索引 CF + 预聚合）；
+- 🔜 R4 Python 读侧迁移（database_reader、file_schema、_worker、报告适配器）；
 - 🔜 R5 案件/调查/报告库迁移；
 - 🔜 R6 移除 SQLite 依赖（迁移工具已就绪；届时需选定单一引擎口径统一两侧）。
 

@@ -1056,10 +1056,6 @@ add_executable(
   ../src/core/DatabaseManager/DatabaseManager.cpp
   ../src/core/AuditLog/AuditLog.cpp
   ../src/network/HTTPServer/SQLiteHelper.cpp
-  ../src/core/KVStore/RocksRawReader.cpp
-  ../src/core/KVStore/RocksKVStore.cpp
-  ../src/core/KVStore/RowCodec.cpp
-  ../src/core/KVStore/SqliteRocksMirror.cpp
   ../src/core/EventCorrelationEngine/Detail/EventCorrelationEngineCore.cpp
   ../src/core/EventCorrelationEngine/Detail/EventCorrelationAnalyzer.cpp
   ../src/core/EventCorrelationEngine/Detail/EventChainBuilder.cpp
@@ -1080,8 +1076,7 @@ target_include_directories(
           ${CMAKE_SOURCE_DIR}/src/core/PathManager)
 
 target_link_libraries(test_event_timeline ${GTEST_LIBRARIES}
-                      ${GMOCK_LIBRARIES} sqlite3 pthread cpp_dotenv nlohmann_json::nlohmann_json
-                      OpenSSL::Crypto ${ROCKSDB_LINK_LIBS})
+                      ${GMOCK_LIBRARIES} sqlite3 pthread cpp_dotenv nlohmann_json::nlohmann_json)
 
 add_test(NAME EventTimelineTests COMMAND test_event_timeline)
 
@@ -1396,7 +1391,6 @@ if(ROCKSDB_INCLUDE_DIR AND ROCKSDB_LIBRARY)
     UnitTest/test_rocksdb_mirror_gtest.cpp
     ../src/core/KVStore/RowCodec.cpp
     ../src/core/KVStore/RocksKVStore.cpp
-    ../src/core/KVStore/RocksRawReader.cpp
     ../src/core/KVStore/SqliteRocksMirror.cpp)
   target_include_directories(test_rocksdb_mirror_gtest PRIVATE
     ${CMAKE_SOURCE_DIR}/src ${ROCKSDB_INCLUDE_DIR})
@@ -1404,21 +1398,6 @@ if(ROCKSDB_INCLUDE_DIR AND ROCKSDB_LIBRARY)
     ${ROCKSDB_LIBRARY} nlohmann_json::nlohmann_json ${SQLITE_LINK_LIBRARIES}
     OpenSSL::Crypto pthread)
   add_test(NAME RocksMirrorTests COMMAND test_rocksdb_mirror_gtest)
-
-  # Read-side tests (mvp-phase1-acceptance SPEC §8 R3)
-  add_executable(
-    test_rocksdb_reader_gtest
-    UnitTest/test_rocksdb_reader_gtest.cpp
-    ../src/core/KVStore/RowCodec.cpp
-    ../src/core/KVStore/RocksKVStore.cpp
-    ../src/core/KVStore/RocksRawReader.cpp
-    ../src/core/KVStore/SqliteRocksMirror.cpp)
-  target_include_directories(test_rocksdb_reader_gtest PRIVATE
-    ${CMAKE_SOURCE_DIR}/src ${ROCKSDB_INCLUDE_DIR})
-  target_link_libraries(test_rocksdb_reader_gtest ${GTEST_LIBRARIES} gtest_main
-    ${ROCKSDB_LIBRARY} nlohmann_json::nlohmann_json ${SQLITE_LINK_LIBRARIES}
-    OpenSSL::Crypto pthread)
-  add_test(NAME RocksReaderTests COMMAND test_rocksdb_reader_gtest)
 else()
   message(STATUS "rocksdb not found — KVStore tests skipped")
 endif()
