@@ -338,6 +338,74 @@ TEST(AnalysisTaskTest, MovePreservesDecryptionConfiguration) {
     EXPECT_EQ(assigned.decrypt_password, "assigned-secret");
 }
 
+TEST(AnalysisTaskTest, PlatformAnalysisSerializationRoundTrip) {
+    AnalysisTask source;
+    source.id = "platform-analysis-opt-out";
+    source.image_path = "/test/image.dd";
+    source.status = TaskStatus::PENDING;
+    source.priority = TaskPriority::NORMAL;
+    source.progress = {TaskPhase::INITIALIZING, 0, 0, "", {}, {}};
+    source.scenarios = {ForensicScenario::WINDOWS};
+    source.platform_analysis = false;
+
+    nlohmann::json j;
+    to_json(j, source);
+    EXPECT_FALSE(j.at("platform_analysis").get<bool>());
+
+    AnalysisTask restored;
+    from_json(j, restored);
+    EXPECT_FALSE(restored.platform_analysis);
+}
+
+TEST(AnalysisTaskTest, PlatformAnalysisDefaultsTrueForLegacyJson) {
+    // tasks.json written before the option existed has no platform_analysis
+    // key; from_json must keep the struct default so those tasks still run
+    // the platform stage.
+    nlohmann::json j = {
+        {"id", "legacy-no-platform-key"},
+        {"image_path", "/test/image.dd"},
+        {"status", "PENDING"},
+        {"message", ""},
+        {"output_files_db", ""},
+        {"output_raw_db", ""},
+        {"output_events_db", ""},
+        {"priority", "NORMAL"},
+        {"progress", {
+            {"current_phase", "INITIALIZING"},
+            {"phase_percentage", 0},
+            {"overall_percentage", 0},
+            {"phase_description", ""}
+        }},
+        {"scenarios", {"windows"}}
+    };
+
+    AnalysisTask task;
+    ASSERT_TRUE(task.platform_analysis);
+    from_json(j, task);
+    EXPECT_TRUE(task.platform_analysis);
+}
+
+TEST(AnalysisTaskTest, CopyAndMovePreservePlatformAnalysis) {
+    AnalysisTask original;
+    original.platform_analysis = false;
+
+    AnalysisTask constructed(original);
+    EXPECT_FALSE(constructed.platform_analysis);
+
+    AnalysisTask assigned;
+    assigned = original;
+    EXPECT_FALSE(assigned.platform_analysis);
+
+    AnalysisTask moveConstructed(std::move(original));
+    EXPECT_FALSE(moveConstructed.platform_analysis);
+
+    AnalysisTask moveAssignedSource;
+    moveAssignedSource.platform_analysis = false;
+    AnalysisTask moveAssigned;
+    moveAssigned = std::move(moveAssignedSource);
+    EXPECT_FALSE(moveAssigned.platform_analysis);
+}
+
 } // namespace
 } // namespace forensics
 

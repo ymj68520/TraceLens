@@ -249,6 +249,10 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             file_carving = file_carving || body["options"].value("file_carving", false);
         }
 
+        // Platform-specific artifact analysis at the pipeline tail. Defaults to
+        // true so callers that omit the field keep the historical behavior.
+        bool platform_analysis = body.value("platform_analysis", true);
+
         // ATOMIC TASK CREATION: All options in one go to prevent lock contention and redundant disk I/O
         std::string task_id = task_manager_.create_task(
             image_path,
@@ -267,7 +271,8 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             decrypt_password,
             android_source,
             backup_password,
-            file_carving
+            file_carving,
+            platform_analysis
         );
 
         // Check if task can start immediately
@@ -287,6 +292,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             {"llm_analyze", llm_analyze},
             {"llm_mode", llm_mode},
             {"file_carving", file_carving},
+            {"platform_analysis", platform_analysis},
             {"filter_profile", filter_profile},
             {"android_source", android_source},
             {"dependencies_count", dependencies.size()}

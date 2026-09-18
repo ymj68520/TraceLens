@@ -91,6 +91,7 @@ void to_json(nlohmann::json& j, const AnalysisTask& t) {
     j["case_description"] = t.case_description;
     j["filter_profile"] = t.filter_profile;
     j["file_carving"] = t.file_carving;
+    j["platform_analysis"] = t.platform_analysis;
     j["enable_decryption"] = t.enable_decryption;
     j["key_file_dir"] = t.key_file_dir;
     // decrypt_password is intentionally runtime-only and must never be persisted.
@@ -145,6 +146,9 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     if(j.contains("case_description")) j.at("case_description").get_to(t.case_description);
     if(j.contains("filter_profile")) j.at("filter_profile").get_to(t.filter_profile);
     if(j.contains("file_carving")) j.at("file_carving").get_to(t.file_carving);
+    // Absent in tasks.json written before the option existed: keep the struct
+    // default (true) so historical tasks still run the platform stage.
+    if(j.contains("platform_analysis")) j.at("platform_analysis").get_to(t.platform_analysis);
     if(j.contains("enable_decryption")) j.at("enable_decryption").get_to(t.enable_decryption);
     if(j.contains("key_file_dir")) j.at("key_file_dir").get_to(t.key_file_dir);
     t.decrypt_password.clear();

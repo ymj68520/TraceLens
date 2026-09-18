@@ -151,6 +151,12 @@ struct AnalysisTask {
     // Signature-based file carving of unallocated space (optional stage)
     bool file_carving = false;
 
+    // Platform-specific artifact analysis (Android/Windows/Linux/Server) at the
+    // tail of the TSK pipeline. Defaults to true so tasks persisted before this
+    // option existed (from_json leaves the default when the key is absent)
+    // keep running the stage; the manual re-run endpoint is not gated by it.
+    bool platform_analysis = true;
+
     // Decryption options (encrypted partitions are auto-detected & unlocked)
     bool enable_decryption = false;     // Auto-decrypt encrypted partitions
     std::string key_file_dir;           // Override dir for sibling .key files
@@ -188,6 +194,7 @@ struct AnalysisTask {
           graphiti_job_id(other.graphiti_job_id),
           filter_profile(other.filter_profile),
           file_carving(other.file_carving),
+          platform_analysis(other.platform_analysis),
           enable_decryption(other.enable_decryption),
           key_file_dir(other.key_file_dir),
           decrypt_password(other.decrypt_password),
@@ -227,6 +234,7 @@ struct AnalysisTask {
             graphiti_job_id = other.graphiti_job_id;
             filter_profile = other.filter_profile;
             file_carving = other.file_carving;
+            platform_analysis = other.platform_analysis;
             enable_decryption = other.enable_decryption;
             key_file_dir = other.key_file_dir;
             decrypt_password = other.decrypt_password;
@@ -257,6 +265,7 @@ struct AnalysisTask {
           graphiti_job_id(std::move(other.graphiti_job_id)),
           filter_profile(std::move(other.filter_profile)),
           file_carving(other.file_carving),
+          platform_analysis(other.platform_analysis),
           enable_decryption(other.enable_decryption),
           key_file_dir(std::move(other.key_file_dir)),
           decrypt_password(std::move(other.decrypt_password)),
@@ -296,6 +305,7 @@ struct AnalysisTask {
             graphiti_job_id = std::move(other.graphiti_job_id);
             filter_profile = std::move(other.filter_profile);
             file_carving = other.file_carving;
+            platform_analysis = other.platform_analysis;
             enable_decryption = other.enable_decryption;
             key_file_dir = std::move(other.key_file_dir);
             decrypt_password = std::move(other.decrypt_password);

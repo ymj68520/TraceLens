@@ -87,6 +87,7 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
         {"llm_analyze", task.llm_analyze},
         {"llm_mode", task.llm_mode},
         {"file_carving", task.file_carving},
+        {"platform_analysis", task.platform_analysis},
         {"filter_profile", task.filter_profile},
         {"case_description", task.case_description},
         {"xfs_mode", task.xfs_mode == XFSMode::Native ? "native" :

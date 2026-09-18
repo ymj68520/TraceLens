@@ -66,6 +66,8 @@ public:
      *                       "miui-backup" (the latter three short-circuit the
      *                       TSK pipeline and run the Android analyzer directly).
      * @param backup_password Runtime-only MIUI/Android backup AES-256 password.
+     * @param platform_analysis Run the platform-specific artifact stage at the
+     *                        tail of the TSK pipeline (default: true).
      * @return The unique ID of the created task
      */
     std::string create_task(const std::string& path,
@@ -84,7 +86,8 @@ public:
                            const std::string& decrypt_password = "",
                            const std::string& android_source = "tsk",
                            const std::string& backup_password = "",
-                           bool file_carving = false);
+                           bool file_carving = false,
+                           bool platform_analysis = true);
 
     // Task status management
     /**

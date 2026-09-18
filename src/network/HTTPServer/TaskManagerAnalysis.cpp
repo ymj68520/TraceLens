@@ -619,8 +619,9 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 }
             }
 
-            // 6. Platform-Specific Analysis (Unified)
-            if (!task.scenarios.empty()) {
+            // 6. Platform-Specific Analysis (Unified). Opt-out switch chosen at
+            // task creation; scenarios still select which analyzers would run.
+            if (task.platform_analysis && !task.scenarios.empty()) {
                 if (is_task_cancelled(task_id)) { return; }
                 int total_scenarios = static_cast<int>(task.scenarios.size());
                 update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 0,

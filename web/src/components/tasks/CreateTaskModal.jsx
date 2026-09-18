@@ -9,6 +9,9 @@
  *    by the backend by default; a multi-select override lives under "Advanced"
  *  - XFS mode hidden inside collapsible "Advanced" section
  *  - Filter profile selection for scenario-based file filtering
+ *  - Platform artifact analysis (pipeline tail) is an explicit on/off toggle,
+ *    default on; only shown for TSK image sources (logical sources are their
+ *    own platform pass)
  *  - Data source type selects the analysis backend: a disk image (TSK) or a
  *    logical Android source (dir / zip / MIUI backup). Logical sources bypass
  *    the TSK pipeline entirely.
@@ -40,6 +43,7 @@ const INITIAL_FORM = {
   scenarios: [],
   xfs_mode: 'auto',
   filter_profile: 'general_forensics',
+  platform_analysis: true,
   // llm_analyze is always true — NOT a user setting
 };
 
@@ -185,6 +189,27 @@ export default function CreateTaskModal() {
               ))}
             </select>
           </Field>
+
+          {/* Platform analysis toggle — explicit opt-out for the pipeline's
+              tail stage. Logical sources skip the whole TSK pipeline (their
+              Android pass IS the analysis), so the toggle does not apply. */}
+          {!isLogical && (
+            <Field label="平台分析" hint="关闭后跳过流水管线末端的平台专用取证（联系人/通话记录/注册表/系统日志等 artifact 提取），事后可通过补跑接口单独执行">
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.platform_analysis}
+                  disabled={isCreating}
+                  onChange={(e) => set('platform_analysis', e.target.checked)}
+                  className="mt-1 rounded border-slate-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
+                />
+                <div>
+                  <span className="text-sm text-slate-700 dark:text-slate-300">分析平台专用数据（Android / Windows / Linux / 服务器）</span>
+                  <p className="text-xs text-slate-400">默认开启；具体平台由镜像自动检测或高级选项中的场景覆盖决定</p>
+                </div>
+              </label>
+            </Field>
+          )}
 
           {/* Analysis Scenario (deterministic classifier profile) */}
           {/* The filter profile drives the TSK-pipeline FileFilter; it is not
