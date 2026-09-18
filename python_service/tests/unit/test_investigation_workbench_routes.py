@@ -178,3 +178,91 @@ def test_bootstrap_unknown_task_maps_to_400():
         json={"mode": "cluster_seed"},
     )
     assert response.status_code == 400
+
+
+def _manager_with_store(tmp_path):
+    manager = _manager()
+    task_dir = tmp_path / "task-dir"
+    task_dir.mkdir(exist_ok=True)
+    manager.investigation_event_service.get_event = AsyncMock(
+        return_value=_FakeEvent(event_id="ev-1", title="cluster title")
+    )
+    manager.cpp_backend = Mock(
+        get_task=AsyncMock(
+            return_value={
+                "id": "T1",
+                "status": "completed",
+                "output_files_db": str(task_dir / "files.db"),
+            }
+        )
+    )
+    return manager
+
+
+def test_event_review_roundtrip_projects_into_event_views(tmp_path):
+    manager = _manager_with_store(tmp_path)
+    client = _client(manager)
+    response = client.post(
+        "/api/investigation/workbench/T1/events/ev-1/review",
+        json={"status": "confirmed"},
+    )
+    assert response.status_code == 200
+    assert response.json()["event"]["review_status"] == "confirmed"
+
+    listed = client.get("/api/investigation/workbench/T1/events")
+    assert listed.json()["events"][0]["review_status"] == "confirmed"
+
+    single = client.get("/api/investigation/workbench/T1/events/ev-1")
+    assert single.json()["event"]["review_status"] == "confirmed"
+
+
+def test_event_review_invalid_status_maps_to_400(tmp_path):
+    manager = _manager_with_store(tmp_path)
+    response = _client(manager).post(
+        "/api/investigation/workbench/T1/events/ev-1/review",
+        json={"status": "bogus"},
+    )
+    assert response.status_code == 400
+
+
+def test_event_review_unknown_event_maps_to_404(tmp_path):
+    from httpserver.services.evidence.exceptions import EvidenceNotFoundError
+
+    manager = _manager_with_store(tmp_path)
+    manager.investigation_event_service.get_event = AsyncMock(
+        side_effect=EvidenceNotFoundError("event not found")
+    )
+    response = _client(manager).post(
+        "/api/investigation/workbench/T1/events/missing/review",
+        json={"status": "confirmed"},
+    )
+    assert response.status_code == 404
+
+
+def test_analyst_note_roundtrip(tmp_path):
+    manager = _manager_with_store(tmp_path)
+    client = _client(manager)
+    saved = client.post(
+        "/api/investigation/workbench/T1/notes",
+        json={
+            "target_type": "evidence",
+            "target_key": "cluster:v1:1:CREATED",
+            "content": "调查上下文笔记",
+        },
+    )
+    assert saved.status_code == 200
+    assert saved.json()["note"]["content"] == "调查上下文笔记"
+
+    read = client.get(
+        "/api/investigation/workbench/T1/notes",
+        params={"target_type": "evidence", "target_key": "cluster:v1:1:CREATED"},
+    )
+    assert read.status_code == 200
+    assert read.json()["note"]["content"] == "调查上下文笔记"
+
+    missing = client.get(
+        "/api/investigation/workbench/T1/notes",
+        params={"target_type": "evidence", "target_key": "cluster:v1:404:CREATED"},
+    )
+    assert missing.status_code == 200
+    assert missing.json()["note"] is None

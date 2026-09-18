@@ -27,6 +27,9 @@ from ..services.evidence.resolver import EvidenceResolver
 from ..services.forensic_report.models import ScopeType
 from ..services.forensic_report.narrative_reader import read_narrative_version_strict
 from ..services.investigation import AnalysisReviewDecision
+from ..services.investigation.paths import investigation_db_path_for_task
+from ..services.investigation import workbench_state
+from ..services.investigation.repository import ReportEvidenceConflictError
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +62,12 @@ class WorkbenchReviewRequest(BaseModel):
     reviewer: str = "workbench"
     reason: str | None = None
     acknowledge_warnings: bool = False
+
+
+class WorkbenchEventReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str = Field(min_length=1)
 
 
 class WorkbenchReportEvidenceRequest(BaseModel):
@@ -105,14 +114,16 @@ def _error(exc: Exception, not_found: str = "investigation resource not found") 
     return HTTPException(status_code=500, detail="investigation operation failed")
 
 
-def _event_view(event: Any, presentation: dict[str, Any] | None) -> dict[str, Any]:
+def _event_view(event: Any, presentation: dict[str, Any] | None, review_status: str | None = None) -> dict[str, Any]:
     """Workbench event payload: frozen v7 truth + presentation projection.
 
     The UI renders legacy field names (start_time/end_time, source,
     evidence_count) that the v7 Event model deliberately does not carry;
     the values come from the read-only presentation pass over immutable
     rows (see InvestigationGraphReader.event_presentation) and are never
-    fabricated store state.
+    fabricated store state. ``review_status`` comes from the additive
+    Workbench side table (workbench_state); absent row -> None -> the UI
+    renders the draft badge.
     """
     value = {**_dump(event), "id": event.event_id}
     row = presentation or {}
@@ -120,7 +131,19 @@ def _event_view(event: Any, presentation: dict[str, Any] | None) -> dict[str, An
     value["end_time"] = row.get("end_time")
     value["evidence_count"] = row.get("evidence_count", 0)
     value["source"] = "cluster_seed" if row.get("cluster_seed") else "analyst"
+    value["review_status"] = review_status
     return value
+
+
+async def _event_review_statuses(task_id: str, manager) -> dict[str, str]:
+    # Presentation-only enhancement: a task whose trusted db path cannot be
+    # resolved (yet) simply has no recorded review statuses; never fail the
+    # event payload because of the side table.
+    try:
+        db_path = investigation_db_path_for_task(await manager.cpp_backend.get_task(task_id))
+        return await workbench_state.event_review_statuses(db_path, task_id)
+    except Exception:
+        return {}
 
 
 async def _event_presentation(task_id: str, manager) -> dict[str, Any]:
@@ -141,6 +164,7 @@ async def _overview(task_id: str, manager) -> dict[str, Any]:
         task_id
     )
     presentation = await _event_presentation(task_id, manager)
+    review_statuses = await _event_review_statuses(task_id, manager)
     return {
         "task": await manager.cpp_backend.get_task(task_id),
         "initialized": bool(evidence or events or report_evidence),
@@ -148,7 +172,10 @@ async def _overview(task_id: str, manager) -> dict[str, Any]:
         "analysis_count": len(analyses),
         "report_evidence_count": len(report_evidence),
         "evidence": [_dump(item) for item in evidence],
-        "events": [_event_view(item, presentation.get(item.event_id)) for item in events],
+        "events": [
+            _event_view(item, presentation.get(item.event_id), review_statuses.get(item.event_id))
+            for item in events
+        ],
         "analyses": [{**_dump(item), "id": item.analysis_id} for item in analyses],
         "report_evidence": [_dump(item) for item in report_evidence],
         "graph": _dump(graph),
@@ -164,7 +191,7 @@ def _analysis_view(analysis: Any) -> dict[str, Any]:
     return value
 
 
-def _evidence_detail(resolved: Any, snapshot: Any, analyses: list[Any], report_item: Any) -> dict[str, Any]:
+def _evidence_detail(resolved: Any, snapshot: Any, analyses: list[Any], report_item: Any, analyst_note: Any = None) -> dict[str, Any]:
     detail = _dump(resolved)
     detail["evidence_key"] = resolved.evidence_key
     detail["evidence_type"] = "event_cluster" if resolved.evidence_type == "cluster" else "file"
@@ -180,6 +207,7 @@ def _evidence_detail(resolved: Any, snapshot: Any, analyses: list[Any], report_i
     detail["snapshot"] = _dump(snapshot) if snapshot is not None else None
     detail["analyses"] = [_analysis_view(item) for item in analyses]
     detail["report_evidence"] = _dump(report_item) if report_item is not None else None
+    detail["analyst_note"] = _dump(analyst_note) if analyst_note is not None else None
     detail["analysis_status"] = analyses[0].status.value if analyses else None
     return detail
 
@@ -268,9 +296,13 @@ async def workbench_events(task_id: str, manager=Depends(_manager)):
     try:
         events = await manager.investigation_event_service.list_events(task_id)
         presentation = await _event_presentation(task_id, manager)
+        review_statuses = await _event_review_statuses(task_id, manager)
         return {
             "success": True,
-            "events": [_event_view(item, presentation.get(item.event_id)) for item in events],
+            "events": [
+                _event_view(item, presentation.get(item.event_id), review_statuses.get(item.event_id))
+                for item in events
+            ],
             "total": len(events),
         }
     except Exception as exc:
@@ -282,17 +314,28 @@ async def workbench_event(task_id: str, event_id: str, manager=Depends(_manager)
     try:
         event = await manager.investigation_event_service.get_event(task_id, event_id)
         presentation = await _event_presentation(task_id, manager)
+        review_statuses = await _event_review_statuses(task_id, manager)
         return {
             "success": True,
-            "event": _event_view(event, presentation.get(event.event_id)),
+            "event": _event_view(event, presentation.get(event.event_id), review_statuses.get(event.event_id)),
         }
     except Exception as exc:
         raise _error(exc) from exc
 
 
 @router.post("/{task_id}/events/{event_id}/review")
-async def workbench_event_review(task_id: str, event_id: str):
-    raise HTTPException(status_code=409, detail="event review is not part of the canonical local contract")
+async def workbench_event_review(task_id: str, event_id: str, request: WorkbenchEventReviewRequest, manager=Depends(_manager)):
+    try:
+        # The event must exist in the frozen v7 store; the review status
+        # itself is Workbench presentation state in the additive side table.
+        await manager.investigation_event_service.get_event(task_id, event_id)
+        db_path = investigation_db_path_for_task(await manager.cpp_backend.get_task(task_id))
+        review = await workbench_state.set_event_review_status(
+            db_path, task_id, event_id, request.status
+        )
+        return {"success": True, "event": {"id": event_id, "review_status": review["review_status"]}}
+    except Exception as exc:
+        raise _error(exc, "event not found") from exc
 
 
 @router.get("/{task_id}/events/{event_id}/evidence")
@@ -336,7 +379,17 @@ async def workbench_evidence_detail(task_id: str, evidence_key: str = Query(...)
         analyses = await manager.secondary_analysis_executor.list_analyses(task_id, resolved.evidence_key)
         report_items = await manager.report_evidence_service.list(task_id)
         report_item = next((item for item in report_items if item.evidence_key == resolved.evidence_key), None)
-        return {"success": True, "evidence": _evidence_detail(resolved, snapshot, analyses, report_item)}
+        note_db = investigation_db_path_for_task(await manager.cpp_backend.get_task(task_id))
+        analyst_note = await workbench_state.get_note(note_db, task_id, "evidence", resolved.evidence_key)
+        report_note = None
+        if report_item is not None:
+            report_note = await workbench_state.get_note(
+                note_db, task_id, "report_evidence", resolved.evidence_key
+            )
+        detail = _evidence_detail(resolved, snapshot, analyses, report_item, analyst_note)
+        if detail["report_evidence"] is not None:
+            detail["report_evidence"]["report_note"] = report_note["content"] if report_note else None
+        return {"success": True, "evidence": detail}
     except Exception as exc:
         raise _error(exc, "evidence not found") from exc
 
@@ -425,12 +478,16 @@ async def workbench_event_versions(task_id: str, event_id: str, manager=Depends(
 @router.post("/{task_id}/events/{event_id}/versions/{version_id}/accept")
 @router.post("/{task_id}/events/{event_id}/versions/{version_id}/reject")
 async def workbench_event_version_review(task_id: str, event_id: str, version_id: str):
+    # v7 refreshes produce effective versions directly; there is no pending
+    # review step in the local contract yet.
     raise HTTPException(status_code=409, detail="event semantic version review is not part of the canonical local contract")
 
 
 @router.get("/{task_id}/events/{event_id}/versions/{version_id}/claims")
 @router.get("/{task_id}/events/{event_id}/claims/effective")
 async def workbench_event_claims(task_id: str, event_id: str, version_id: str | None = None):
+    # v7 stores carry no event-level claims; the analysis-bound claims are
+    # served with each evidence analysis version instead.
     del task_id, event_id, version_id
     return {"success": True, "claims": []}
 
@@ -447,15 +504,26 @@ async def workbench_claim_provenance(task_id: str, claim_id: str):
 
 
 @router.post("/{task_id}/notes")
-async def workbench_save_note(task_id: str, request: WorkbenchNoteRequest):
-    del task_id, request
-    raise HTTPException(status_code=409, detail="analyst notes require an explicit canonical schema decision")
+async def workbench_save_note(task_id: str, request: WorkbenchNoteRequest, manager=Depends(_manager)):
+    try:
+        db_path = investigation_db_path_for_task(await manager.cpp_backend.get_task(task_id))
+        note = await workbench_state.upsert_note(
+            db_path, task_id, request.target_type, request.target_key,
+            request.content, request.author,
+        )
+        return {"success": True, "note": note}
+    except Exception as exc:
+        raise _error(exc) from exc
 
 
 @router.get("/{task_id}/notes")
-async def workbench_get_note(task_id: str, target_type: str = Query(...), target_key: str = Query(...)):
-    del task_id, target_type, target_key
-    return {"success": True, "note": None}
+async def workbench_get_note(task_id: str, target_type: str = Query(...), target_key: str = Query(...), manager=Depends(_manager)):
+    try:
+        db_path = investigation_db_path_for_task(await manager.cpp_backend.get_task(task_id))
+        note = await workbench_state.get_note(db_path, task_id, target_type, target_key)
+        return {"success": True, "note": note}
+    except Exception as exc:
+        raise _error(exc) from exc
 
 
 @router.put("/{task_id}/report-evidence")
@@ -466,11 +534,33 @@ async def workbench_set_report_evidence(task_id: str, request: WorkbenchReportEv
                 task_id, request.evidence_key, report_status="excluded", updated_by=request.added_by
             )
         else:
-            item = await manager.report_evidence_service.add(
-                task_id, request.evidence_key, report_status=request.usage,
-                analysis_id=request.analysis_id, added_by=request.added_by
+            try:
+                item = await manager.report_evidence_service.add(
+                    task_id, request.evidence_key, report_status=request.usage,
+                    analysis_id=request.analysis_id, added_by=request.added_by
+                )
+            except ReportEvidenceConflictError:
+                # Set semantics: flipping an already-bound evidence between
+                # main/appendix must switch usage, not raise.
+                item = await manager.report_evidence_service.update(
+                    task_id, request.evidence_key, report_status=request.usage,
+                    analysis_id=request.analysis_id,
+                    bind_analysis=request.analysis_id is not None,
+                    updated_by=request.added_by
+                )
+        report_note = None
+        if request.report_note is not None:
+            # The frozen v7 report_evidence table has no note column; the
+            # free-text justification lives in the additive side table.
+            note_db = investigation_db_path_for_task(await manager.cpp_backend.get_task(task_id))
+            note = await workbench_state.upsert_note(
+                note_db, task_id, "report_evidence", request.evidence_key,
+                request.report_note, request.added_by
             )
-        return {"success": True, "report_evidence": _dump(item)}
+            report_note = note["content"]
+        payload = _dump(item)
+        payload["report_note"] = report_note
+        return {"success": True, "report_evidence": payload}
     except Exception as exc:
         raise _error(exc, "report evidence not found") from exc
 

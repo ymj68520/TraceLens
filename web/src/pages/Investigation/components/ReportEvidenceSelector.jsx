@@ -4,12 +4,15 @@ import Button from '../../../components/common/Button';
 import { removeReportEvidence, setReportEvidence } from '../../../services/investigationService';
 
 export default function ReportEvidenceSelector({ taskId, evidenceKey, value, onChange }) {
-  const [usage, setUsage] = useState(value?.usage || 'excluded');
+  // The backend payload carries the frozen store field `report_status`
+  // (main/appendix/excluded); `usage` kept as legacy fallback.
+  const usageOf = (v) => v?.report_status || v?.usage || 'excluded';
+  const [usage, setUsage] = useState(usageOf(value));
   const [note, setNote] = useState(value?.report_note || '');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setUsage(value?.usage || 'excluded');
+    setUsage(usageOf(value));
     setNote(value?.report_note || '');
   }, [value, evidenceKey]);
 

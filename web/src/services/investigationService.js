@@ -96,7 +96,7 @@ export const getAnalysisJob = (taskId, jobId) =>
 export const getAnalysisVersions = (taskId, evidenceKey) =>
     pythonApi.get(`${workbenchBase(taskId)}/evidence/analysis`, { params: { evidence_key: evidenceKey } });
 export const acceptAnalysis = (taskId, analysisId, acknowledgeWarnings = false) =>
-    pythonApi.post(`${workbenchBase(taskId)}/analysis/${encodeURIComponent(analysisId)}/accept`, { acknowledge_warnings: acknowledgeWarnings });
+    pythonApi.post(`${workbenchBase(taskId)}/analysis/${encodeURIComponent(analysisId)}/accept`, { decision: 'accepted', acknowledge_warnings: acknowledgeWarnings });
 export const rejectAnalysis = (taskId, analysisId) =>
     pythonApi.post(`${workbenchBase(taskId)}/analysis/${encodeURIComponent(analysisId)}/reject`);
 export const refreshInvestigationEvent = (taskId, eventId, payload = {}) =>
@@ -144,7 +144,9 @@ export const pollAnalysisJob = async (taskId, jobId, onProgress, interval = 1500
         const response = await getAnalysisJob(taskId, jobId);
         const job = response.job;
         onProgress?.(job);
-        if (job.status === 'completed') return job;
+        // `review_pending` is the normal terminal state of a successful
+        // secondary analysis: it now waits for the analyst's review.
+        if (job.status === 'completed' || job.status === 'review_pending') return job;
         if (['failed', 'invalid'].includes(job.status)) throw new Error(job.error || '二次分析失败');
         await new Promise((resolve) => setTimeout(resolve, interval));
         return poll();
