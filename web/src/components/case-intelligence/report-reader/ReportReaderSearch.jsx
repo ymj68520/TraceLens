@@ -20,7 +20,7 @@ export default function ReportReaderSearch({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={handleKey}
-          placeholder="搜索文件/事件…"
+          placeholder="搜索报告内容…"
           className="flex-1 min-w-0 px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 dark:text-white"
         />
         <button
@@ -46,10 +46,13 @@ export default function ReportReaderSearch({
               type="button"
               key={`${hit.category}-${hit.record_id}-${i}`}
               onClick={() => onHit(hit)}
-              className="block w-full text-left truncate hover:text-primary-600"
+              className="flex w-full items-center gap-1 text-left hover:text-primary-600"
               title={hit.title}
             >
-              · {hit.title}
+              <span className="min-w-0 flex-1 truncate">· {hit.title}</span>
+              <span className="shrink-0 rounded bg-slate-100 px-1 text-[9px] text-slate-500 dark:bg-slate-700 dark:text-slate-300">
+                第{hit.page || 1}页
+              </span>
             </button>
           ))}
         </div>

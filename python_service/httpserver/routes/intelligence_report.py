@@ -1868,56 +1868,134 @@ async def search_intelligence_report(
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
 ) -> SearchResponse:
+    """Search evidence files, timeline events, and every detected platform
+    artifact section. Each hit carries the reader page that holds the record
+    so the UI can deep-link instead of landing on the section's first page."""
     _ctx = await _resolve_task(task_id)
-    files_db, events_db = _ctx.files_db, _ctx.events_db
-    hits: list[SearchHit] = []
+    files_db = _ctx.files_db
     pattern = f"%{q}%"
 
-    if files_db and Path(files_db).is_file():
-        try:
-            with _connect_ro(Path(files_db)) as conn:
-                if _table_exists(conn, "files"):
-                    cols = _table_columns(conn, "files")
-                    searchable = [c for c in ("name", "path", "category", "md5") if c in cols]
-                    if searchable:
-                        where = " OR ".join(f'"{c}" LIKE ?' for c in searchable)
-                        rows = conn.execute(
-                            f'SELECT id, path, name FROM "files" WHERE {where} LIMIT ? OFFSET ?',
-                            (*[pattern] * len(searchable), limit, offset),
-                        ).fetchall()
-                        for rid, path, name in rows:
-                            hits.append(SearchHit(
-                                category="evidence.files",
-                                page=1,
-                                record_id=str(rid),
-                                title=path or name or str(rid),
-                            ))
-        except sqlite3.Error as exc:
-            logger.warning("intelligence-report search files failed: %s", exc)
+    per_table: list[tuple[int, list[SearchHit]]] = [
+        _table_search_hits(
+            files_db, "files", "evidence.files",
+            searchable=["name", "path", "category", "md5"],
+            title_cols=["path", "name"],
+            order_by="id",
+            pattern=pattern,
+        ),
+        _table_search_hits(
+            _ctx.events_db, "events", "timeline",
+            searchable=["file_path", "description", "event_type"],
+            title_cols=["file_path"],
+            order_by="timestamp", order_desc=True,
+            pattern=pattern,
+        ),
+    ]
+    for sec in _platform_sections_for(_ctx.platforms, files_db, _ctx.platform_dbs):
+        _platform, section_id, _title, _table, fields, order_by = sec
+        db = _section_db(sec, files_db, _ctx.platform_dbs)
+        per_table.append(_table_search_hits(
+            db, _section_table(sec, db), section_id,
+            searchable=list(fields),
+            title_cols=list(fields),
+            order_by=order_by or "",
+            pattern=pattern,
+        ))
 
-    if events_db and Path(events_db).is_file():
-        try:
-            with _connect_ro(Path(events_db)) as conn:
-                if _table_exists(conn, "events"):
-                    cols = _table_columns(conn, "events")
-                    searchable = [c for c in ("file_path", "description", "event_type") if c in cols]
-                    if searchable:
-                        where = " OR ".join(f'"{c}" LIKE ?' for c in searchable)
-                        rows = conn.execute(
-                            f'SELECT id, file_path FROM "events" WHERE {where} LIMIT ? OFFSET ?',
-                            (*[pattern] * len(searchable), limit, offset),
-                        ).fetchall()
-                        for rid, path in rows:
-                            hits.append(SearchHit(
-                                category="timeline",
-                                page=1,
-                                record_id=str(rid),
-                                title=path or str(rid),
-                            ))
-        except sqlite3.Error as exc:
-            logger.warning("intelligence-report search events failed: %s", exc)
+    merged: list[SearchHit] = []
+    total = 0
+    for count, hits in per_table:
+        total += count
+        merged.extend(hits)
+    return SearchResponse(
+        total=total, offset=offset, limit=limit,
+        hits=merged[offset:offset + limit],
+    )
 
-    return SearchResponse(total=len(hits), offset=offset, limit=limit, hits=hits)
+
+# The reader paginates records at a fixed 50 rows/page; hit pages are computed
+# against that so a hit can deep-link to the page holding its record.
+_SEARCH_PAGE_SIZE = 50
+# Hits materialized per table; the match count (total) stays exact regardless.
+# The merged result is sliced to the requested offset/limit afterwards.
+_SEARCH_HIT_CAP = 1000
+
+
+# Hit title preference: identity-bearing columns beat whatever happens to be
+# first in a section's field order (e.g. win_browser rows should preview the
+# URL, not the browser name every row shares).
+_TITLE_PREFERRED_COLS = (
+    "path", "file_path", "url", "title", "message", "command", "value_data",
+    "decoded_path", "original_path", "target_path", "task_name",
+    "service_name", "package_name", "display_name", "username", "number",
+    "friendly_name", "device_description", "file_name", "name", "description",
+)
+
+
+def _hit_title(values: dict[str, Any], record_id: str) -> str:
+    for col in _TITLE_PREFERRED_COLS:
+        v = values.get(col)
+        if v not in (None, ""):
+            return str(v)[:200]
+    for v in values.values():
+        if v not in (None, ""):
+            return str(v)[:200]
+    return record_id
+
+
+def _table_search_hits(
+    db: str | None,
+    table: str,
+    category: str,
+    searchable: list[str],
+    title_cols: list[str],
+    order_by: str,
+    pattern: str,
+    order_desc: bool = False,
+) -> tuple[int, list[SearchHit]]:
+    """Scan `table` for LIKE matches in one ordered pass.
+
+    The ordering replicates the records endpoint's (order_by, or natural order
+    when the column is absent), so a match's enumeration index maps directly
+    onto reader pagination: page = index // page_size + 1.
+    """
+    if not db or not Path(db).is_file() or not table or not searchable:
+        return 0, []
+    try:
+        with _connect_ro(Path(db)) as conn:
+            if not _table_exists(conn, table):
+                return 0, []
+            available = _table_columns(conn, table)
+            use = [c for c in searchable if c in available]
+            if not use:
+                return 0, []
+            # Title columns first so the hit title prefers them in order.
+            fetch_cols = list(dict.fromkeys(
+                [*(c for c in title_cols if c in available), *use]))
+            col_sql = ", ".join(f'"{c}"' for c in fetch_cols)
+            where = " OR ".join(f'"{c}" LIKE ?' for c in use)
+            order_sql = (
+                f' ORDER BY "{order_by}"{" DESC" if order_desc else ""}'
+                if order_by and order_by in available else ""
+            )
+            rows = conn.execute(
+                f'SELECT rowid, {col_sql} FROM "{table}" WHERE {where}{order_sql}',
+                (*[pattern] * len(use),),
+            ).fetchall()
+    except sqlite3.Error as exc:
+        logger.warning("intelligence-report search %s failed: %s", category, exc)
+        return 0, []
+    total = len(rows)
+    hits = [
+        SearchHit(
+            category=category,
+            page=idx // _SEARCH_PAGE_SIZE + 1,
+            record_id=str(row[0]),
+            title=_hit_title(dict(zip(fetch_cols, row[1:])), str(row[0])),
+        )
+        for idx, row in enumerate(rows[:_SEARCH_HIT_CAP])
+    ]
+    return total, hits
 
 
 # ── report metadata (case info + evidence info) ──────────────────────────────

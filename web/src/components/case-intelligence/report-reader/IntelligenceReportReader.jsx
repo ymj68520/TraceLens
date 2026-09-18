@@ -95,9 +95,9 @@ export default function IntelligenceReportReader({ taskId }) {
     return () => {};
   }, [report, currentNode, taskId, page, pageSize]);
 
-  const selectNode = useCallback((nodeId) => {
+  const selectNode = useCallback((nodeId, targetPage = 1) => {
     setSelectedNodeId(nodeId);
-    setPage(1);
+    setPage(targetPage);
     setDirOpen(false);
   }, []);
 
@@ -160,7 +160,7 @@ export default function IntelligenceReportReader({ taskId }) {
           onClear={clearSearch}
           searching={searching}
           result={searchResult}
-          onHit={(hit) => selectNode(hit.category)}
+          onHit={(hit) => selectNode(hit.category, hit.page || 1)}
           submitted={searchSubmitted}
         />
         <ReportReaderDirectory

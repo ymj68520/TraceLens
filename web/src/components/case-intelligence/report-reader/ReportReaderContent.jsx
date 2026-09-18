@@ -10,6 +10,8 @@ import EvidenceInfoSection from './sections/EvidenceInfoSection';
 import DeviceInfoSection from './sections/DeviceInfoSection';
 import SmsThreads from './sections/SmsThreads';
 import GenericArtifactTable from './sections/GenericArtifactTable';
+import { ARTIFACT_COLUMNS } from './sections/artifactColumns';
+import { fmtTime } from './sections/shared';
 
 function Badge({ children, className = '' }) {
   return <span className={`inline-block px-1.5 py-0.5 text-[10px] font-semibold rounded ${className}`}>{children}</span>;
@@ -23,10 +25,49 @@ function fileSize(n) {
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
+// Key → Chinese label for detail rows. Registry labels come first (they cover
+// every artifact column); timeline/file-only keys are supplemented below.
+// Unknown keys fall back to their raw name, so new backend fields stay visible.
+const FIELD_LABELS = (() => {
+  const labels = {};
+  for (const cols of Object.values(ARTIFACT_COLUMNS)) {
+    for (const c of cols) if (!labels[c.key]) labels[c.key] = c.label;
+  }
+  return Object.assign(labels, {
+    timestamp: '时间',
+    description: '描述',
+    severity: '级别',
+    event_source: '事件来源',
+    event_category: '事件分类',
+    normalized_type: '归一化类型',
+    llm_summary: 'AI 摘要',
+    file_type: '文件类型',
+    scene_type: '场景类型',
+    scene_priority: '场景优先级',
+    scene_relevant: '场景相关',
+    extension: '扩展名',
+    type: '类型',
+  });
+})();
+
+// Epoch-carrying keys render through fmtTime; size keys through fileSize.
+const TIME_KEY_RE = /(?:time|timestamp|_at|_ts|date|login|connected|modified|install|update|_set|expires|created|change)$/i;
+const SIZE_KEY_RE = /(?:size|bytes)$/i;
+
+function formatDetailValue(key, value) {
+  const n = Number(value);
+  if (value !== '' && Number.isFinite(n)) {
+    if (TIME_KEY_RE.test(key)) return fmtTime(n);
+    if (SIZE_KEY_RE.test(key)) return fileSize(n);
+  }
+  return String(value);
+}
+
 function RowDetail({ record }) {
   const [open, setOpen] = useState(false);
+  // keys already shown as table columns are not repeated in the detail grid
   const extra = Object.entries(record)
-    .filter(([k]) => !['_category', 'name', 'path', 'category', 'size', 'is_deleted', 'md5'].includes(k))
+    .filter(([k]) => !['_category', 'name', 'path', 'category', 'size', 'is_deleted', 'md5', 'file_path', 'event_type'].includes(k))
     .filter(([, v]) => v !== null && v !== undefined && v !== '');
   if (!extra.length) return null;
   return (
@@ -38,8 +79,8 @@ function RowDetail({ record }) {
         <dl className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
           {extra.map(([k, v]) => (
             <div key={k} className="min-w-0">
-              <dt className="text-slate-400">{k}</dt>
-              <dd className="break-words text-slate-700 dark:text-slate-200">{String(v)}</dd>
+              <dt className="text-slate-400">{FIELD_LABELS[k] || k}</dt>
+              <dd className="break-words text-slate-700 dark:text-slate-200">{formatDetailValue(k, v)}</dd>
             </div>
           ))}
         </dl>

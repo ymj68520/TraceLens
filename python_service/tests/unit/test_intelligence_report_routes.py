@@ -107,6 +107,120 @@ def test_search_returns_hits(client):
     assert any(h["category"] == "evidence.files" for h in data["hits"])
 
 
+def _make_client(db_path: Path, events_path: Path | None = None):
+    """Client over caller-seeded dbs (mirrors the fixtures' patching)."""
+    from httpserver.main import create_app
+
+    app = create_app()
+    backend = AsyncMock()
+    backend.get_task = AsyncMock(return_value={
+        "id": "task-1",
+        "image_path": "/evidence/phone.E01",
+        "output_files_db": str(db_path),
+        "output_events_db": str(events_path or db_path.parent / "events.db"),
+    })
+    with patch("httpserver.services.service_manager.ServiceManager.cpp_backend", backend, create=True):
+        from httpserver.services import get_service_manager
+
+        sm = get_service_manager()
+        sm._cpp_backend = backend
+        sm._lifecycle_state = "running"
+        sm._cpp_backend_ready = True
+        return TestClient(app)
+
+
+_FILES_SCHEMA = """
+    CREATE TABLE files (
+        id INTEGER PRIMARY KEY, name TEXT, path TEXT, size INTEGER,
+        extension TEXT, category TEXT, type TEXT, mtime INTEGER,
+        ctime INTEGER, is_deleted INTEGER, md5 TEXT, scene_type TEXT,
+        scene_priority INTEGER, scene_relevant INTEGER
+    );
+"""
+
+
+def test_search_true_total_and_reader_page(tmp_path: Path):
+    """total counts every match (not just the returned slice) and each hit's
+    page points at the reader page holding the record at 50 rows/page."""
+    db_path = tmp_path / "files.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(_FILES_SCHEMA)
+        conn.executemany(
+            "INSERT INTO files (name, path) VALUES (?, ?)",
+            [(f"needle_{i:03}.txt", f"/evidence/needle_{i:03}.txt") for i in range(120)],
+        )
+    client = _make_client(db_path)
+
+    res = client.get(
+        "/api/llm/intelligence-report/task-1/search",
+        params={"q": "needle", "limit": 100},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total"] == 120
+    assert len(data["hits"]) == 100  # limit slices the merged result
+    assert data["hits"][0]["page"] == 1
+    assert data["hits"][59]["page"] == 2  # 0-based index 59 → second page
+    assert data["hits"][59]["title"] == "/evidence/needle_059.txt"
+
+
+def test_search_events_ordered_like_timeline(tmp_path: Path):
+    """timeline hits are ordered by timestamp DESC, matching the reader's
+    pagination, so hit pages line up with what the reader shows."""
+    db_path = tmp_path / "files.db"
+    events_path = tmp_path / "events.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(_FILES_SCHEMA)
+    with sqlite3.connect(events_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE events (
+                id INTEGER PRIMARY KEY, timestamp INTEGER, event_type TEXT,
+                file_path TEXT, description TEXT, file_size INTEGER,
+                file_type TEXT, severity TEXT, event_source TEXT,
+                event_category TEXT, normalized_type TEXT
+            );
+            """
+        )
+        conn.executemany(
+            "INSERT INTO events (timestamp, event_type, file_path, description) "
+            "VALUES (?, 'MODIFIED', ?, 'clue')",
+            [(1000 - i, f"/log/clue_{i:03}.etl") for i in range(55)],
+        )
+    client = _make_client(db_path, events_path)
+
+    res = client.get(
+        "/api/llm/intelligence-report/task-1/search",
+        params={"q": "clue", "limit": 100},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total"] == 55
+    assert data["hits"][0]["title"] == "/log/clue_000.etl"  # newest timestamp first
+    assert data["hits"][50]["page"] == 2
+
+
+def test_search_covers_platform_sections(windows_client):
+    """Platform artifact categories are searchable, not just files/events."""
+    suspect_hits = windows_client.get(
+        "/api/llm/intelligence-report/task-1/search", params={"q": "suspect"}).json()["hits"]
+    assert any(h["category"] == "win_users" for h in suspect_hits)
+    usb_hits = windows_client.get(
+        "/api/llm/intelligence-report/task-1/search", params={"q": "Flash Disk"}).json()["hits"]
+    assert any(h["category"] == "win_usb" for h in usb_hits)
+
+
+def test_search_platform_hit_carries_page(android_client):
+    """A platform-section hit carries the page its record sits on."""
+    res = android_client.get(
+        "/api/llm/intelligence-report/task-1/search", params={"q": "13800000001"})
+    assert res.status_code == 200
+    hits = [h for h in res.json()["hits"] if h["category"] == "call_logs"]
+    assert len(hits) == 1
+    assert hits[0]["page"] == 1
+    assert hits[0]["title"] == "13800000001"
+
+
 # ── structured artifact sections (contacts / sms / call_logs / apps / device_info) ──
 
 
