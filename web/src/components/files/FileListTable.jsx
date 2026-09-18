@@ -56,11 +56,12 @@ const FileListTable = ({
   handleStartExtraction,
   setExtractionMode,
   setExtractionPattern,
+  titleCount,
 }) => {
   const llmUnavailable = llmStatus?.status !== 'healthy' && llmStatus?.status !== 'available';
 
   return (
-    <Card title={`文件列表 (${filteredFiles.length})`}>
+    <Card title={`文件列表 (${titleCount != null ? titleCount.toLocaleString() : filteredFiles.length})`}>
       {filteredFiles.length === 0 ? (
         <div className="text-center py-12 text-slate-500 dark:text-slate-400">无文件</div>
       ) : (

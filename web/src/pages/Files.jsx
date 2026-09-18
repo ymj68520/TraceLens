@@ -6,7 +6,7 @@ import { fetchTasks } from '../store/taskSlice';
 import { setBatchJob, updateBatchProgress, clearBatchJob, setRefreshFlag } from '../store/intelligenceSlice';
 import Card from '../components/common/Card';
 import Spinner from '../components/common/Spinner';
-import { getLargestFiles, getExtensionAnalysis } from '../services/forensicsService';
+import { getLargestFiles, getFilesPaged, getExtensionAnalysis } from '../services/forensicsService';
 import { startExtraction, pollExtractionStatus } from '../services/extractionService';
 import { analyzeContent, analyzeDLL, startBatchAnalysis, pollBatchStatus, getLLMStatus } from '../services/llmService';
 import { reanalyzeFiles, getCaseAnalysisStatus } from '../services/caseAnalysisService';
@@ -19,6 +19,16 @@ import FileListTable from '../components/files/FileListTable';
 import ExtensionAnalysisTab from '../components/files/ExtensionAnalysisTab';
 import OfficePreviewTab from '../components/files/OfficePreviewTab';
 import ReanalyzeModal from '../components/files/ReanalyzeModal';
+import FilePagination from '../components/files/FilePagination';
+
+// 子页签：文件列表视图的过滤口径（服务端分页）
+const FILE_SUBTABS = [
+  { id: 'all', label: '所有文件' },
+  { id: 'analyzed', label: '查看已分析' },
+  { id: 'documents', label: '查看文档' },
+  { id: 'media', label: '查看媒体文件' },
+];
+const FILE_PAGE_SIZE = 100;
 
 const Files = () => {
   const [searchParams] = useSearchParams();
@@ -63,6 +73,15 @@ const Files = () => {
   const [existingLlmDescriptions, setExistingLlmDescriptions] = useState({});
   const [expandedDescriptions, setExpandedDescriptions] = useState(new Set());
 
+  // 文件列表子页签 + 服务端分页状态
+  const [fileSubTab, setFileSubTab] = useState('all');
+  const [pagedFiles, setPagedFiles] = useState([]);
+  const [pagedTotal, setPagedTotal] = useState(0);
+  const [pagedPage, setPagedPage] = useState(1);
+  const [pagedTotalPages, setPagedTotalPages] = useState(1);
+  const [pagedLoading, setPagedLoading] = useState(false);
+  const [pagedRefreshKey, setPagedRefreshKey] = useState(0);
+
   // AUTO-RESUME: Detect active batch job on mount
   useEffect(() => {
     if (activeBatch && activeBatch.status === 'running' && activeBatch.jobId) {
@@ -100,6 +119,7 @@ const Files = () => {
 
         // Set refresh flag to notify CaseIntelligence to refresh
         dispatch(setRefreshFlag({ type: 'files' }));
+        setPagedRefreshKey(k => k + 1);
       }
 
       dispatch(updateBatchProgress({ taskId, status: 'completed', message: '✅ 批量分析完成' }));
@@ -205,6 +225,90 @@ const Files = () => {
     extractDescriptions();
   }, [taskId, largestFiles]);
 
+  // 文件列表子页签：服务端分页拉取（所有文件/已分析/文档/媒体）
+  useEffect(() => {
+    if (!taskId || activeTab !== 'largest') return;
+    let cancelled = false;
+
+    const fetchPaged = async () => {
+      setPagedLoading(true);
+      try {
+        const data = await getFilesPaged(taskId, {
+          page: pagedPage,
+          pageSize: FILE_PAGE_SIZE,
+          view: fileSubTab,
+          extension: filterExtension,
+          minSize: filterMinSize,
+          maxSize: filterMaxSize,
+        });
+        if (cancelled) return;
+        const rows = data.files || [];
+        setPagedFiles(rows);
+        setPagedTotal(data.total || 0);
+        const tp = Math.max(data.total_pages || 1, 1);
+        setPagedTotalPages(tp);
+        // 过滤/刷新后当前页可能越界，回退到最后一页（触发一次重取）
+        if ((data.page || pagedPage) > tp && rows.length === 0 && (data.total || 0) > 0) {
+          setPagedPage(tp);
+        }
+
+        // 把当前页的 LLM 描述并入全局描述表（按路径 + 文件名双键，便于行内展示）
+        const descMap = {};
+        rows.forEach((file) => {
+          const filePath = file.path || file.file_path;
+          if (filePath && (file.llm_summary || file.llm_description || file.llm_keywords)) {
+            const descData = {
+              summary: file.llm_summary,
+              description: file.llm_description,
+              keywords: file.llm_keywords ? (
+                typeof file.llm_keywords === 'string'
+                  ? file.llm_keywords.split(',').map(k => k.trim())
+                  : file.llm_keywords
+              ) : [],
+              model: file.llm_model_used,
+              timestamp: file.llm_analyzed_at,
+            };
+            descMap[filePath] = descData;
+            const basename = filePath.split('/').pop();
+            if (basename && basename !== filePath) descMap[basename] = descData;
+          }
+        });
+        if (Object.keys(descMap).length > 0) {
+          setExistingLlmDescriptions(prev => ({ ...prev, ...descMap }));
+        }
+      } catch (err) {
+        console.error('Failed to fetch paged files:', err);
+        if (!cancelled) {
+          setPagedFiles([]);
+          setPagedTotal(0);
+          setPagedTotalPages(1);
+        }
+      } finally {
+        if (!cancelled) setPagedLoading(false);
+      }
+    };
+
+    fetchPaged();
+    return () => { cancelled = true; };
+  }, [taskId, activeTab, fileSubTab, pagedPage, pagedRefreshKey, filterExtension, filterMinSize, filterMaxSize]);
+
+  // 子页签/翻页时清空选择与展开态，避免索引错位到另一页的文件
+  const handleSubTabChange = (id) => {
+    if (id === fileSubTab) return;
+    setFileSubTab(id);
+    setPagedPage(1);
+    setSelectedFiles(new Set());
+    setSelectAll(false);
+    setExpandedDescriptions(new Set());
+  };
+
+  const handlePageChange = (page) => {
+    setPagedPage(page);
+    setSelectedFiles(new Set());
+    setSelectAll(false);
+    setExpandedDescriptions(new Set());
+  };
+
   // Apply filters to files
   const getFilteredFiles = useCallback(() => {
     let filtered = [...largestFiles];
@@ -232,11 +336,17 @@ const Files = () => {
 
   const filteredFiles = getFilteredFiles();
 
+  // 文件列表 Tab 展示服务端分页数据；其他 Tab 沿用 largest 列表（客户端过滤）
+  const displayFiles = activeTab === 'largest' ? pagedFiles : filteredFiles;
+
+  // 描述映射表按"全路径 + 文件名"双键存同一对象引用，按引用去重得到唯一文件数
+  const describedUniqueCount = new Set(Object.values(existingLlmDescriptions)).size;
+
   // Handle select all
   const handleSelectAll = (checked) => {
     setSelectAll(checked);
     if (checked) {
-      setSelectedFiles(new Set(filteredFiles.map((f, idx) => idx)));
+      setSelectedFiles(new Set(displayFiles.map((f, idx) => idx)));
     } else {
       setSelectedFiles(new Set());
     }
@@ -251,7 +361,7 @@ const Files = () => {
       newSelected.add(index);
     }
     setSelectedFiles(newSelected);
-    setSelectAll(newSelected.size === filteredFiles.length);
+    setSelectAll(newSelected.size === displayFiles.length);
   };
 
   // DLL file analysis via Python service
@@ -410,6 +520,11 @@ const Files = () => {
             i === index ? { ...f, llm_summary: descData.summary, llm_description: descData.description, llm_keywords: descData.keywords } : f
           ));
 
+          // 当前页行内同步最新描述（子页签切换时会自动重取列表）
+          setPagedFiles(prev => prev.map((f, i) =>
+            i === index ? { ...f, llm_summary: descData.summary, llm_description: descData.description, llm_keywords: descData.keywords } : f
+          ));
+
           // Set refresh flag to notify CaseIntelligence to refresh
           dispatch(setRefreshFlag({ type: 'files' }));
         } else {
@@ -464,8 +579,8 @@ ${detail}
     let filesToAnalyze = [];
 
     if (selectedFiles.size === 0) {
-      // No files selected - analyze all filtered files
-      filesToAnalyze = filteredFiles.map(f => f.path || f.file_path).filter(Boolean);
+      // No files selected - analyze all files on the current page
+      filesToAnalyze = displayFiles.map(f => f.path || f.file_path).filter(Boolean);
 
       if (filesToAnalyze.length === 0) {
         alert('当前筛选结果中没有可分析的文件');
@@ -478,7 +593,7 @@ ${detail}
     } else {
       // Files selected - analyze only selected files
       filesToAnalyze = [...selectedFiles]
-        .map(idx => filteredFiles[idx])
+        .map(idx => displayFiles[idx])
         .filter(Boolean)
         .map(f => f.path || f.file_path)
         .filter(Boolean);
@@ -611,6 +726,7 @@ ${detail}
                 try {
                   const refreshedData = await getLargestFiles(taskId, 100);
                   setLargestFiles(refreshedData.largest_files || refreshedData.files || refreshedData || []);
+                  setPagedRefreshKey(k => k + 1);
                 } catch (err) {
                   console.error('Failed to refresh file data:', err);
                 }
@@ -910,16 +1026,20 @@ ${detail}
               </div>
               <div className="text-slate-600 dark:text-slate-300">
                 已选: <span className="font-bold text-purple-600">{selectedFiles.size}</span>
-                {Object.keys(existingLlmDescriptions).length > 0 && (
+                {describedUniqueCount > 0 && (
                   <span className="ml-3 opacity-75">
-                    (含描述: <span className="text-green-600">{Object.keys(existingLlmDescriptions).length}</span>)
+                    (含描述: <span className="text-green-600">{describedUniqueCount}</span>)
                   </span>
                 )}
               </div>
             </div>
 
             <div className="flex gap-2 text-xs text-slate-500 dark:text-slate-400">
-              <span>显示 {filteredFiles.length} / {largestFiles.length} 个文件</span>
+              {activeTab === 'largest' ? (
+                <span>共 {pagedTotal.toLocaleString()} 个文件 · 每页 {FILE_PAGE_SIZE} 条</span>
+              ) : (
+                <span>显示 {filteredFiles.length} / {largestFiles.length} 个文件</span>
+              )}
             </div>
           </div>
 
@@ -927,11 +1047,11 @@ ${detail}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <FileFilters
               filterExtension={filterExtension}
-              setFilterExtension={setFilterExtension}
+              setFilterExtension={(v) => { setFilterExtension(v); setPagedPage(1); }}
               filterMinSize={filterMinSize}
-              setFilterMinSize={setFilterMinSize}
+              setFilterMinSize={(v) => { setFilterMinSize(v); setPagedPage(1); }}
               filterMaxSize={filterMaxSize}
-              setFilterMaxSize={setFilterMaxSize}
+              setFilterMaxSize={(v) => { setFilterMaxSize(v); setPagedPage(1); }}
             />
             <ExtractionControls
               extractionMode={extractionMode}
@@ -987,27 +1107,63 @@ ${detail}
         </nav>
       </div>
 
-      {/* File List Tab */}
+      {/* File List Tab — 子页签（所有文件/查看已分析/查看文档/查看媒体文件）+ 服务端分页 */}
       {activeTab === 'largest' && (
-        <FileListTable
-          filteredFiles={filteredFiles}
-          selectAll={selectAll}
-          handleSelectAll={handleSelectAll}
-          selectedFiles={selectedFiles}
-          handleFileSelect={handleFileSelect}
-          llmAnalyzingFiles={llmAnalyzingFiles}
-          dllAnalyzingFiles={dllAnalyzingFiles}
-          expandedDescriptions={expandedDescriptions}
-          toggleDescription={toggleDescription}
-          getLLMDescription={getLLMDescription}
-          handleAnalyzeSingleFile={handleAnalyzeSingleFile}
-          openReanalyzeModal={openReanalyzeModal}
-          llmStatus={llmStatus}
-          extractionStatus={extractionStatus}
-          handleStartExtraction={handleStartExtraction}
-          setExtractionMode={setExtractionMode}
-          setExtractionPattern={setExtractionPattern}
-        />
+        <>
+          <div className="flex items-center gap-2 mt-4 mb-4 flex-wrap">
+            {FILE_SUBTABS.map((st) => (
+              <button
+                key={st.id}
+                onClick={() => handleSubTabChange(st.id)}
+                className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  fileSubTab === st.id
+                    ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
+                    : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                }`}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
+
+          {pagedLoading && pagedFiles.length === 0 ? (
+            <Card title="文件列表">
+              <div className="flex justify-center py-12">
+                <Spinner size="lg" />
+              </div>
+            </Card>
+          ) : (
+            <>
+              <FileListTable
+                filteredFiles={pagedFiles}
+                titleCount={pagedTotal}
+                selectAll={selectAll}
+                handleSelectAll={handleSelectAll}
+                selectedFiles={selectedFiles}
+                handleFileSelect={handleFileSelect}
+                llmAnalyzingFiles={llmAnalyzingFiles}
+                dllAnalyzingFiles={dllAnalyzingFiles}
+                expandedDescriptions={expandedDescriptions}
+                toggleDescription={toggleDescription}
+                getLLMDescription={getLLMDescription}
+                handleAnalyzeSingleFile={handleAnalyzeSingleFile}
+                openReanalyzeModal={openReanalyzeModal}
+                llmStatus={llmStatus}
+                extractionStatus={extractionStatus}
+                handleStartExtraction={handleStartExtraction}
+                setExtractionMode={setExtractionMode}
+                setExtractionPattern={setExtractionPattern}
+              />
+              <FilePagination
+                page={pagedPage}
+                totalPages={pagedTotalPages}
+                total={pagedTotal}
+                pageSize={FILE_PAGE_SIZE}
+                onChange={handlePageChange}
+              />
+            </>
+          )}
+        </>
       )}
 
       {/* Extension Analysis Tab */}

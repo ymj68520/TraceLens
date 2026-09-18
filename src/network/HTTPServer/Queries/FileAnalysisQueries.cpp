@@ -1,6 +1,7 @@
 #include "../SQLiteHelper.h"
 #include <iostream>
 #include <algorithm>
+#include <cctype>
 #include <ctime>
 #include <regex>
 #include <sstream>
@@ -52,6 +53,73 @@ json SQLiteHelper::get_largest_files(const std::string& files_db, int limit) {
     std::string sql = "SELECT * FROM files WHERE size > 0 ORDER BY size DESC LIMIT " + std::to_string(limit);
     result["largest_files"] = execute_query(db, sql);
     result["limit"] = limit;
+
+    sqlite3_close(db);
+    return result;
+}
+
+json SQLiteHelper::get_files_paged(const std::string& files_db, int page, int page_size,
+                                   const std::string& view, const std::string& extension,
+                                   int64_t min_size, int64_t max_size) {
+    json result;
+    sqlite3* db = open_database(files_db, result);
+    if (!db) return result;
+
+    if (page < 1) page = 1;
+    if (page_size < 1) page_size = 100;
+    if (page_size > 200) page_size = 200;
+
+    std::string where = "1=1";
+    if (view == "analyzed") {
+        where = "llm_description IS NOT NULL AND TRIM(llm_description) != ''";
+    } else if (view == "documents") {
+        where = "category = 'Documents'";
+    } else if (view == "media") {
+        where = "category IN ('Images','Videos','Audio Files')";
+    }
+
+    // Extension whitelist: keep only alphanumeric tokens, drop everything else
+    std::string sanitized;
+    for (char c : extension) {
+        if (std::isalnum(static_cast<unsigned char>(c))) {
+            sanitized += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        } else if (c == ',' || c == ' ') {
+            sanitized += ',';
+        }
+    }
+    std::vector<std::string> ext_tokens;
+    std::stringstream ext_ss(sanitized);
+    std::string token;
+    while (std::getline(ext_ss, token, ',')) {
+        if (!token.empty()) ext_tokens.push_back(token);
+    }
+    if (!ext_tokens.empty()) {
+        where += " AND lower(extension) IN (";
+        for (size_t i = 0; i < ext_tokens.size(); i++) {
+            if (i > 0) where += ",";
+            where += "'" + ext_tokens[i] + "'";
+        }
+        where += ")";
+    }
+    if (min_size > 0) where += " AND size >= " + std::to_string(min_size);
+    if (max_size > 0) where += " AND size <= " + std::to_string(max_size);
+
+    int64_t total = 0;
+    json count_rows = execute_query(db, "SELECT COUNT(*) AS cnt FROM files WHERE " + where);
+    if (count_rows.is_array() && !count_rows.empty()) {
+        total = count_rows[0].value("cnt", static_cast<int64_t>(0));
+    }
+
+    int64_t offset = static_cast<int64_t>(page - 1) * page_size;
+    std::string sql = "SELECT * FROM files WHERE " + where +
+                      " ORDER BY size DESC, id ASC LIMIT " + std::to_string(page_size) +
+                      " OFFSET " + std::to_string(offset);
+    result["files"] = execute_query(db, sql);
+    result["total"] = total;
+    result["page"] = page;
+    result["page_size"] = page_size;
+    result["total_pages"] = static_cast<int64_t>((total + page_size - 1) / page_size);
+    result["view"] = view;
 
     sqlite3_close(db);
     return result;

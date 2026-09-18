@@ -108,6 +108,21 @@ public:
     static nlohmann::json get_largest_files(const std::string& files_db, int limit = 50);
 
     /**
+     * @brief Get files with server-side pagination and view filtering
+     * @param files_db Path to files database
+     * @param page 1-based page number
+     * @param page_size Rows per page (clamped to 1..200)
+     * @param view One of: all, analyzed (has LLM description), documents, media
+     * @param extension Comma-separated extension whitelist (alphanumeric tokens)
+     * @param min_size Minimum file size in bytes (0 = no bound)
+     * @param max_size Maximum file size in bytes (0 = no bound)
+     * @return JSON object: files, total, page, page_size, total_pages, view
+     */
+    static nlohmann::json get_files_paged(const std::string& files_db, int page = 1, int page_size = 100,
+                                          const std::string& view = "all", const std::string& extension = "",
+                                          int64_t min_size = 0, int64_t max_size = 0);
+
+    /**
      * @brief Get recently modified/accessed files
      * @param files_db Path to files database
      * @param hours Time window in hours (string)

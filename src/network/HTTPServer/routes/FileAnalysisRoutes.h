@@ -11,6 +11,7 @@ public:
     
 private:
     crow::response handle_files_largest(const crow::request& req);
+    crow::response handle_files_paged(const crow::request& req);
     crow::response handle_files_recent(const crow::request& req);
     crow::response handle_files_suspicious(const crow::request& req);
     crow::response handle_files_duplicates(const crow::request& req);
