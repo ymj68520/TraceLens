@@ -27,7 +27,10 @@ import {
 const fmtTime = (ts) => {
   if (!ts) return '-';
   try {
-    return new Date(ts).toLocaleString('zh-CN', { hour12: false });
+    // Datasets vary: timestamps may be seconds or milliseconds. Values below
+    // 1e12 are unambiguously seconds.
+    const ms = ts < 1e12 ? ts * 1000 : ts;
+    return new Date(ms).toLocaleString('zh-CN', { hour12: false });
   } catch {
     return String(ts);
   }
@@ -215,7 +218,7 @@ export const QQOverviewTab = ({ overview }) => {
         <Card title="🔓 解密参数" animate={false}>
           {kv('方案', decryption.scheme)}
           {kv('页大小', decryption.params?.cipher_page_size)}
-          {kv('KDF', decryption.params ? `${decryption.params.cipher_kdf_algorithm} × ${decryption.params.kdf_iter}` : '')}
+          {kv('KDF', decryption.params?.kdf_iter ? `${decryption.params.cipher_kdf_algorithm} × ${decryption.params.kdf_iter}` : '')}
           {kv('HMAC', decryption.params?.cipher_hmac_algorithm)}
           {kv('WAL', decryption.wal?.present ? '已回放' : '无')}
           {kv('时间范围', stats.first_ts_ms ? `${fmtTime(stats.first_ts_ms)} ~ ${fmtTime(stats.last_ts_ms)}` : '')}

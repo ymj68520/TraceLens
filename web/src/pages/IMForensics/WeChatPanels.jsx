@@ -27,7 +27,10 @@ import {
 const fmtTime = (ts) => {
   if (!ts) return '-';
   try {
-    return new Date(ts).toLocaleString('zh-CN', { hour12: false });
+    // Datasets vary: createTime may be seconds (WeChat convention) or
+    // milliseconds. Values below 1e12 are unambiguously seconds.
+    const ms = ts < 1e12 ? ts * 1000 : ts;
+    return new Date(ms).toLocaleString('zh-CN', { hour12: false });
   } catch {
     return String(ts);
   }
@@ -247,7 +250,7 @@ export const WeChatOverviewTab = ({ overview }) => {
           {kv('方案', decryption.scheme)}
           {decryption.formula && kv('推导公式', decryption.formula)}
           {kv('页大小', decryption.params?.page)}
-          {kv('KDF', decryption.params ? `PBKDF2-HMAC-${(decryption.params.kdf_hash || '').toUpperCase()} × ${decryption.params.kdf_iter}` : '')}
+          {kv('KDF', decryption.params?.kdf_iter ? `PBKDF2-HMAC-${(decryption.params.kdf_hash || '').toUpperCase()} × ${decryption.params.kdf_iter}` : '')}
           {kv('保留区', decryption.params?.reserve)}
           {kv('WAL 回放', decryption.wal ? `${decryption.wal.kept}/${decryption.wal.total} 帧` : '—')}
           {kv('时间范围', stats.first_msg_ts ? `${fmtTime(stats.first_msg_ts)} ~ ${fmtTime(stats.last_msg_ts)}` : '')}

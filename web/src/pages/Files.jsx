@@ -255,8 +255,9 @@ const Files = () => {
   };
 
   // DLL file analysis via Python service
-  const analyzeDLLFile = async ({ filePath, filesDbPath }) => {
+  const analyzeDLLFile = async ({ taskId: analysisTaskId, filePath, filesDbPath }) => {
     return await analyzeDLL({
+      taskId: analysisTaskId,
       filePath,
       filesDbPath,
     });
@@ -305,6 +306,7 @@ const Files = () => {
 
         try {
           result = await analyzeDLLFile({
+            taskId: taskId,
             filePath: filePath,
             filesDbPath: currentTask?.output_files_db || null
           });
@@ -380,6 +382,7 @@ const Files = () => {
         console.log('Analyzing file:', filePath, `(${extension}, ${(fileSize / 1024).toFixed(1)} KB, model: ${modelType})`);
 
         const result = await analyzeContent({
+          taskId: taskId,
           filePath: filePath,
           dbFilePath: file.path || file.file_path,
           modelType: modelType,

@@ -307,8 +307,9 @@ class WeChatImportService:
             row = con.execute(
                 "SELECT MIN(createTime), MAX(createTime) FROM message"
             ).fetchone()
-            stats["first_msg_ts"] = row[0]
-            stats["last_msg_ts"] = row[1]
+            # Store in milliseconds for consistency with the read paths.
+            stats["first_msg_ts"] = _to_ms(row[0])
+            stats["last_msg_ts"] = _to_ms(row[1])
             stats["private_msgs"] = con.execute(
                 "SELECT COUNT(*) FROM message WHERE talker NOT LIKE '%@chatroom'"
             ).fetchone()[0]
@@ -569,7 +570,12 @@ class WeChatImportService:
             day_stats = [
                 {"date": r[0], "count": r[1]}
                 for r in con.execute(
-                    "SELECT date(createTime/1000, 'unixepoch', '+8 hours') d, COUNT(*) "
+                    # createTime units vary across sources (seconds per the
+                    # WeChat convention vs milliseconds from some backups);
+                    # normalize to seconds before the unixepoch conversion.
+                    "SELECT date(CASE WHEN createTime > 10000000000 "
+                    "THEN createTime/1000 ELSE createTime END, "
+                    "'unixepoch', '+8 hours') d, COUNT(*) "
                     "FROM message GROUP BY d ORDER BY d"
                 )
             ]
@@ -585,12 +591,17 @@ class WeChatImportService:
                     "first_ts": _to_ms(r[2]),
                     "last_ts": _to_ms(r[3]),
                 })
+            stats = dict(meta.get("stats") or {})
+            # Older metas may hold raw seconds; normalize like the rest of the
+            # read paths so the overview card renders the intended dates.
+            stats["first_msg_ts"] = _to_ms(stats.get("first_msg_ts"))
+            stats["last_msg_ts"] = _to_ms(stats.get("last_msg_ts"))
             return {
                 "meta": _meta_summary(meta),
                 "owner": meta.get("owner") or {},
                 "key_material": meta.get("key_material") or {},
                 "decryption": meta.get("decryption") or {},
-                "stats": meta.get("stats") or {},
+                "stats": stats,
                 "type_stats": type_stats,
                 "day_stats": day_stats,
                 "top_sessions": top_sessions,

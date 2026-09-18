@@ -104,10 +104,29 @@ async def analyze_dll(
         service_manager = get_service_manager()
         cpp_backend_url = getattr(settings, 'cpp_backend_url', 'http://localhost:8080')
 
+        # The C++ parser reads host paths directly, so resolve image-internal
+        # paths ("/pagefile.sys") to the extracted host copy first. Persistence
+        # below keeps the original evidence path so it matches the files table.
+        analyzable_path = request.file_path
+        if request.task_id:
+            try:
+                task_info = await service_manager.cpp_backend.get_task(request.task_id)
+            except Exception:
+                task_info = None
+            if task_info:
+                from ..services.llm.file_analyzer import resolve_evidence_path
+
+                resolved = resolve_evidence_path(
+                    request.file_path,
+                    task_info.get("extraction_directory") or "",
+                )
+                if resolved:
+                    analyzable_path = resolved
+
         # Step 1: Analyze DLL via C++ backend
-        logger.info(f"Analyzing DLL file: {request.file_path}")
+        logger.info(f"Analyzing DLL file: {request.file_path} (host: {analyzable_path})")
         async with DLLAnalyzerClient(cpp_backend_url) as dll_client:
-            dll_data = await dll_client.analyze_dll(request.file_path)
+            dll_data = await dll_client.analyze_dll(analyzable_path)
 
         # Step 2: Generate Markdown report
         markdown_report = DLLMarkdownGenerator().generate(dll_data)

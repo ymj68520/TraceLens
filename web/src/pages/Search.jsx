@@ -44,7 +44,10 @@ const Search = () => {
       const data = await searchFulltext(query, index);
       setResults(data);
     } catch (err) {
-      setError(err.message || 'Search failed');
+      // api.js interceptors re-wrap rejections as {message, status, data, ...}
+      // (no `response` property), so read the backend error from err.data.
+      const detail = err.data?.error || err.data?.detail || err.message;
+      setError(detail || 'Search failed');
       setResults(null);
     } finally {
       setLoading(false);

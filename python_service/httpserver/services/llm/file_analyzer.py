@@ -58,6 +58,44 @@ def resolve_analysis_path(file_path: str, extraction_dir: Optional[str]) -> Opti
         return None
 
 
+def extraction_candidate_roots(extraction_dir: Optional[str]) -> list:
+    """Host directories that may hold extracted copies of evidence paths.
+
+    The serialized task ``extraction_directory`` is the canonical UI-extraction
+    dir (``<task>/extracted_files``), but platform analyzers extract recognized
+    files to ``<task>/<db-stem>_extracted_files`` siblings (the name is derived
+    from each platform database, e.g. ``windows.db`` -> ``windows_extracted_files``).
+    Evidence resolution must try the canonical dir and every discovered
+    platform dir, otherwise AI analysis of platform-extracted files fails with
+    "File not found" even though extraction succeeded.
+    """
+    if not extraction_dir:
+        return []
+    roots = [extraction_dir]
+    try:
+        task_dir = Path(extraction_dir).parent
+        roots.extend(
+            str(p) for p in sorted(task_dir.glob("*_extracted_files")) if p.is_dir()
+        )
+    except OSError:
+        pass
+    return roots
+
+
+def resolve_evidence_path(file_path: str, extraction_dir: Optional[str]) -> Optional[str]:
+    """Resolve an evidence path against every candidate extraction root."""
+    if not file_path:
+        return None
+    if not extraction_dir:
+        # Legacy passthrough: no task extraction dir to resolve against.
+        return file_path
+    for root in extraction_candidate_roots(extraction_dir):
+        resolved = resolve_analysis_path(file_path, root)
+        if resolved is not None:
+            return resolved
+    return None
+
+
 class FileAnalyzer:
     """
     Handles file analysis operations for LLM service.
@@ -470,8 +508,9 @@ class FileAnalyzer:
                         continue
 
                     # Resolve the evidence path to a host file. Image-internal
-                    # absolute paths ("/etc/motd") live under extraction_dir.
-                    actual_path = resolve_analysis_path(file_path, extraction_dir)
+                    # absolute paths ("/etc/motd") live under extraction_dir
+                    # or a platform analyzer's sibling extraction dir.
+                    actual_path = resolve_evidence_path(file_path, extraction_dir)
                     if actual_path is None:
                         raise FileNotFoundError(
                             f"evidence file not available on host: {file_path}"

@@ -25,8 +25,12 @@ XapianIndexer::XapianIndexer(const std::string& dbPath) : dbPath_(dbPath) {
         db_ = std::make_unique<Xapian::WritableDatabase>(dbPath, Xapian::DB_CREATE_OR_OPEN);
         termGenerator_.set_database(*db_);  // Required for spell correction features
         termGenerator_.set_stemmer(Xapian::Stem(stemmerLanguage_));
-        // Note: FLAG_SPELLING requires set_database() to be called first
-        termGenerator_.set_flags(Xapian::TermGenerator::FLAG_SPELLING);
+        // Note: FLAG_SPELLING requires set_database() to be called first.
+        // FLAG_CJK_NGRAM indexes CJK text as bigrams so Chinese/Japanese/
+        // Korean content becomes searchable; the query parser must enable
+        // the matching flag (see XapianSearcher::search).
+        termGenerator_.set_flags(Xapian::TermGenerator::FLAG_SPELLING |
+                                 Xapian::TermGenerator::FLAG_CJK_NGRAM);
     } catch (const Xapian::Error& e) {
         std::cerr << "Xapian Indexer Error: " << e.get_msg() << std::endl;
         throw;
@@ -117,6 +121,9 @@ void XapianIndexer::addDocument(const std::string& filePath, const std::string& 
 
         // Index specific fields with prefixes
         termGenerator_.index_text(filePath, 1, "P");  // Prefix 'P' for path
+        // Also index the path into the general content so filenames —
+        // including CJK names — are findable without the path: prefix.
+        termGenerator_.index_text(filePath);
         termGenerator_.index_text(content);           // General content (no prefix)
         
         // Index extension as a boolean term for filtering
@@ -291,11 +298,12 @@ std::vector<SearchResult> XapianSearcher::search(const std::string& queryStr, si
         parser.add_prefix("path", "P");
         parser.add_prefix("ext", "E");
 
-        Xapian::Query query = parser.parse_query(queryStr, 
-            Xapian::QueryParser::FLAG_DEFAULT | 
+        Xapian::Query query = parser.parse_query(queryStr,
+            Xapian::QueryParser::FLAG_DEFAULT |
             Xapian::QueryParser::FLAG_WILDCARD |
             Xapian::QueryParser::FLAG_PHRASE |
-            Xapian::QueryParser::FLAG_BOOLEAN);
+            Xapian::QueryParser::FLAG_BOOLEAN |
+            Xapian::QueryParser::FLAG_CJK_NGRAM);
 
         std::cout << "Parsed Query: " << query.get_description() << std::endl;
 

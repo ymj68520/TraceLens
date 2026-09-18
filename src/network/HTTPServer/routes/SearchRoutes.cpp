@@ -34,6 +34,18 @@ static bool fts_path_within_allowed_root(const std::string& p, std::string& allo
     return !rel.empty() && (*rel.begin()) != "..";
 }
 
+// Resolve a bare index name (e.g. "search_index_<id8>", auto-populated by the
+// Search page) against the data dir instead of the server CWD. Without this
+// the name resolves to <cwd>/<name>, which lives outside the allowed root for
+// indexing and simply does not exist for searching.
+static std::string fts_resolve_index_path(const std::string& index_path) {
+    if (index_path.empty() || index_path.find('/') != std::string::npos) {
+        return index_path;
+    }
+    namespace fs = std::filesystem;
+    return (PathManager::instance().getDataDir() / index_path).string();
+}
+
 SearchRoutes::SearchRoutes(crow::App<>& app) {
     CROW_ROUTE(app, "/api/search/fulltext").methods("GET"_method)([this](const crow::request& req) {
         return handle_fulltext_search(req);
@@ -103,7 +115,23 @@ crow::response SearchRoutes::handle_fulltext_search(const crow::request& req) {
             return res;
         }
 
-        XapianSearcher searcher(index_path);
+        XapianSearcher searcher(fts_resolve_index_path(index_path));
+        if (!searcher.isValid()) {
+            // Xapian silently yields zero results for a missing/unreadable
+            // database; surface it as an error instead so users can tell an
+            // un-built index apart from a genuinely empty result set.
+            json error = {
+                {"error", "Index not found or unreadable: " + index_path},
+                {"hint", "Create the index first (Search page 'Create Index' tab, or POST /api/search/index)"},
+                {"index", index_path},
+                {"code", "INDEX_NOT_FOUND"}
+            };
+            res.code = 404;
+            res.set_header("Content-Type", "application/json");
+            res.write(error.dump());
+            return res;
+        }
+
         auto results = searcher.search(query, limit, offset);
 
         json response = {
@@ -111,7 +139,8 @@ crow::response SearchRoutes::handle_fulltext_search(const crow::request& req) {
             {"results", json::array()},
             {"count", results.size()},
             {"limit", limit},
-            {"offset", offset}
+            {"offset", offset},
+            {"total_documents", searcher.getTotalDocuments()}
         };
 
         for (const auto& result : results) {
@@ -140,7 +169,7 @@ crow::response SearchRoutes::handle_fulltext_index(const crow::request& req) {
         auto body = json::parse(req.body);
 
         std::string source_path = body.value("source_path", "");
-        std::string index_path = body.value("index_path", "");
+        std::string index_path = fts_resolve_index_path(body.value("index_path", ""));
         bool recursive = body.value("recursive", true);
 
         if (source_path.empty() || index_path.empty()) {
