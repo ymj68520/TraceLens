@@ -221,6 +221,15 @@ class FileAnalyzer:
             default_temperature = self.settings.llm_vision_temperature
             logger.info(f"Using vision model: {model} at {self.settings.llm_vision_base_url}")
 
+        # Bound the prompt no matter where the content came from. The plain
+        # file path truncates in read_file_content, but document-extractor
+        # output (e.g. converted PDFs) reaches this method unbounded and made
+        # the LLM call run past LLM_TIMEOUT_SECONDS.
+        max_len = self.settings.file_analysis_max_content_limit
+        if len(content) > max_len:
+            logger.info(f"Analysis content truncated from {len(content)} to {max_len} chars")
+            content = content[:max_len] + "\n... [truncated]"
+
         # Build prompt
         system_prompt = TEXT_ANALYSIS_SYSTEM
         if prompt:

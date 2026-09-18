@@ -256,7 +256,11 @@ class Settings(BaseSettings):
     # File Analysis Settings
     file_analysis_max_content: int = Field(default=10000, ge=1, le=1000000, alias="FILE_ANALYSIS_MAX_CONTENT")
     file_analysis_max_keywords: int = Field(default=10, ge=1, le=1000, alias="FILE_ANALYSIS_MAX_KEYWORDS")
-    file_analysis_max_content_limit: int = Field(default=50000, ge=1, le=1000000, alias="FILE_ANALYSIS_MAX_CONTENT_LIMIT")
+    # Upper bound on the text handed to the LLM for one file analysis. A
+    # 50k-char prompt could not finish within LLM_TIMEOUT_SECONDS on the
+    # reference local model, so the default keeps the whole call well inside
+    # the timeout budget.
+    file_analysis_max_content_limit: int = Field(default=20000, ge=1, le=1000000, alias="FILE_ANALYSIS_MAX_CONTENT_LIMIT")
     
     # Logging Settings
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")

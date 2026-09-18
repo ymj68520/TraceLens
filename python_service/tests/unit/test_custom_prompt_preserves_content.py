@@ -39,6 +39,7 @@ def _make_analyzer() -> FileAnalyzer:
         llm_text_base_url="http://x",
         llm_endpoint="/x",
         llm_api_key=None,
+        file_analysis_max_content_limit=20000,
     )
     return FileAnalyzer(settings)
 
