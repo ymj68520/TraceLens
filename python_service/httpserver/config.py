@@ -233,6 +233,10 @@ class Settings(BaseSettings):
     event_llm_analysis_enabled: bool = Field(default=False, alias="EVENT_LLM_ANALYSIS_ENABLED")
     combined_case_enabled: bool = Field(default=False, alias="COMBINED_CASE_ENABLED")
     workbench_llm_enabled: bool = Field(default=False, alias="WORKBENCH_LLM_ENABLED")
+    # SPEC §4.6/§4.7 (2026-09-18 second trim): memory forensics and OSS
+    # analysis are cut from the phase-1 acceptance scope entirely.
+    memory_forensics_enabled: bool = Field(default=False, alias="MEMORY_FORENSICS_ENABLED")
+    oss_analysis_enabled: bool = Field(default=False, alias="OSS_ANALYSIS_ENABLED")
     
     # Database Settings
     db_output_dir: str = Field(default="./output", alias="DB_OUTPUT_DIR")

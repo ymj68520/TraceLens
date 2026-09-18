@@ -51,10 +51,20 @@ class OSSAnalyzeResponse(BaseModel):
     timestamp: str
 
 
+async def require_oss_analysis(settings: Settings = Depends(get_settings)) -> None:
+    """MVP gate (mvp-phase1-acceptance SPEC §4.7): OSS analysis is cut from
+    the phase-1 acceptance scope; set OSS_ANALYSIS_ENABLED=true to restore."""
+    if not settings.oss_analysis_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="OSS analysis is disabled in this build (MVP)",
+        )
+
+
 @router.post("/filter", response_model=OSSFilterResponse, responses={
     200: {"description": "OSS objects filtered successfully"},
     500: {"description": "Internal server error"},
-})
+}, dependencies=[Depends(require_oss_analysis)])
 async def filter_oss_objects(
     request: OSSFilterRequest,
     settings: Settings = Depends(get_settings)
@@ -91,7 +101,7 @@ async def filter_oss_objects(
 @router.post("/analyze", response_model=OSSAnalyzeResponse, responses={
     200: {"description": "OSS analysis started successfully"},
     500: {"description": "Internal server error"},
-})
+}, dependencies=[Depends(require_oss_analysis)])
 async def analyze_oss_objects(
     request: OSSAnalyzeRequest,
     settings: Settings = Depends(get_settings)

@@ -20,7 +20,11 @@ const Layout = ({ children }) => {
   const { showTerminal } = useSelector((state) => state.settings);
   const { sidebarOpen } = useSelector((state) => state.ui);
   const { t } = useTranslation();
-  const { combined_case_enabled: combinedCaseEnabled } = useFeatures();
+  const {
+    combined_case_enabled: combinedCaseEnabled,
+    memory_forensics_enabled: memoryForensicsEnabled,
+    oss_analysis_enabled: ossAnalysisEnabled,
+  } = useFeatures();
 
   const navigation = [
     { name: t('nav.dashboard'), href: '/dashboard', icon: LayoutDashboard },
@@ -39,7 +43,14 @@ const Layout = ({ children }) => {
     { name: t('nav.search'), href: '/search', icon: Search },
     { name: t('nav.statistics'), href: '/statistics', icon: BarChart3 },
     { name: t('nav.settings'), href: '/settings', icon: Settings },
-  ].filter((item) => combinedCaseEnabled || !['/cases', '/analysis-center'].includes(item.href));
+  ].filter((item) => {
+    // mvp-phase1-acceptance §4.6/§4.7: memory forensics and OSS analysis are
+    // trimmed from the MVP; §4.3 hides the combined-case module the same way.
+    if (['/memory', '/oss'].includes(item.href)) {
+      return item.href === '/memory' ? memoryForensicsEnabled : ossAnalysisEnabled;
+    }
+    return combinedCaseEnabled || !['/cases', '/analysis-center'].includes(item.href);
+  });
 
   // Add Terminal if enabled in settings
   if (showTerminal) {

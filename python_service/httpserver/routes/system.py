@@ -24,6 +24,8 @@ async def get_feature_flags(settings: Settings = Depends(get_settings)):
         "event_llm_analysis_enabled": settings.event_llm_analysis_enabled,
         "combined_case_enabled": settings.combined_case_enabled,
         "workbench_llm_enabled": settings.workbench_llm_enabled,
+        "memory_forensics_enabled": settings.memory_forensics_enabled,
+        "oss_analysis_enabled": settings.oss_analysis_enabled,
     }
 
 

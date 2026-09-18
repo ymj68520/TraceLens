@@ -39,6 +39,16 @@ test('exposes report migration routes without replacing the legacy redirect', ()
   // behind a FeatureGate; the route itself must stay registered.
   expect(analysisRoute.element.type.displayName || analysisRoute.element.type.name).toBe('FeatureGate');
   expect(analysisRoute.element.props.children.type).toBe(AnalysisCenter);
+  // MVP (mvp-phase1-acceptance §4.6/§4.7): memory forensics and OSS analysis
+  // are trimmed behind their feature gates the same way.
+  const memoryRoute = childRoutes.find((route) => route.path === 'memory');
+  const ossRoute = childRoutes.find((route) => route.path === 'oss');
+  expect(memoryRoute.element.type.name).toBe('FeatureGate');
+  expect(memoryRoute.element.props.flag).toBe('memory_forensics_enabled');
+  expect(memoryRoute.element.props.children.type.name).toBe('Memory');
+  expect(ossRoute.element.type.name).toBe('FeatureGate');
+  expect(ossRoute.element.props.flag).toBe('oss_analysis_enabled');
+  expect(ossRoute.element.props.children.type.name).toBe('OSS');
   expect(investigationRoute.element.type).toBe(Investigation);
   expect(finalReportRoute.element.type).toBe(FinalReportViewer);
   expect(matchRoutes(appRoutes, '/case-intelligence?taskId=t1')).not.toBeNull();

@@ -12,6 +12,10 @@
 削减"组合案件"与"调查工作台"两个模块的内部功能，取消事件的 LLM 分析并使其不作为证据；
 作为补偿，报告页面增加"文件时间线"与"文件标签→相关事件"两项能力，保持整体功能总量不变。
 
+**2026-09-18 追加（第二次范围决策）**：甲方再裁剪**内存取证**与 **OSS 分析**两个模块——
+此两模块整体移出 MVP 验收面（导航入口隐藏、页面不可达、分析端点 503），不受上述
+"入口面不减"原则约束；机制沿用 §4.3 的开关-门控模式（§4.6/§4.7）。
+
 ## 2. 范围决策总表
 
 | 模块 | 决策 | 实现机制 |
@@ -24,6 +28,8 @@
 | 报告页面 | **整体功能保留**，新增文件时间线 + 文件标签→相关事件 | §6 |
 | 组合案件（/cases、/analysis-center、跨镜像分析） | **削减**：入口隐藏，创建/分析类端点停用 | §4.3 |
 | 调查工作台 | **削减**：LLM 二次分析/事件重摘要停用，Graph Tab 隐藏，事件证据不播种；只读浏览与文件证据绑定保留 | §4.4 |
+| 内存取证 | **裁剪（2026-09-18 追加）**：导航/页面移出验收面；CLI 旁路与 C++ 只读端点保留但不在验收范围 | §4.6 |
+| OSS 分析 | **裁剪（2026-09-18 追加）**：导航/页面移出验收面，Python AI 端点 503；C++ OSS 端点本就未挂载（运行时 404），不动 | §4.7 |
 | Graphiti 摄入大模型 | **固定 phi-4**（microsoft/phi-4，非推理 instruct 模型） | §3 |
 
 Feature flags（`python_service/httpserver/config.py`，pydantic-settings，env 可覆盖；MVP 分支默认值即验收形态）：
@@ -33,6 +39,8 @@ Feature flags（`python_service/httpserver/config.py`，pydantic-settings，env 
 | `EVENT_LLM_ANALYSIS_ENABLED` | `false` | 事件（簇）LLM 分析总开关 |
 | `COMBINED_CASE_ENABLED` | `false` | 组合案件（跨镜像）功能开关 |
 | `WORKBENCH_LLM_ENABLED` | `false` | 工作台 LLM 二次分析/事件重摘要开关 |
+| `MEMORY_FORENSICS_ENABLED` | `false` | 内存取证模块开关（§4.6，裁剪恢复逃生舱） |
+| `OSS_ANALYSIS_ENABLED` | `false` | OSS 分析模块开关（§4.7，裁剪恢复逃生舱） |
 | `GRAPHITI_LLM_MODEL` | `microsoft/phi-4` | Graphiti 摄入 LLM（空值也回落 phi-4，即"固定"） |
 | `GRAPHITI_INGEST_WAIT_TIMEOUT_MIN` | `720`（C++ ConfigManager） | FINALIZING 等待摄入上限（与 Python 端 `GRAPHITI_JOB_TIMEOUT_HOURS=12` 对齐），0 = 恢复旧"不等待"行为 |
 
@@ -103,6 +111,47 @@ Feature flags（`python_service/httpserver/config.py`，pydantic-settings，env 
   - `AnalysisWorkspace` 的 LLM 按钮（二次分析/事件重摘要）隐藏；
   - 报告证据选择器（文件证据）保留。
 
+### 4.6 内存取证裁剪（MEMORY_FORENSICS_ENABLED=false，2026-09-18 追加）
+
+足迹事实（恢复时直接引用）：内存取证是 **CLI 旁路子命令**（`--memory-analyze` /
+`--vol-symbols-dir`，`AnalysisOrchestrator.cpp:179-181` 分流至 `runMemoryAnalysis`），
+产物为镜像旁库 `<image>_memory.db`（6 表，`memory_analysis_sql_tables.h`）；
+HTTP 侧仅有 5 个只读端点 `/api/forensics/memory/{summary,processes,network,bash-history,boot-info}`
+（`MemoryForensicsRoutes.cpp`，经 `ForensicsRoutes` 挂载，无库时 404）；
+前端为 `/memory` 页 + 导航"内存取证"。**不在任务流水线上**：任务创建/分析管线零引用，
+无 SceneType、无自动触发、无库迁移。
+
+裁剪机制：
+
+- 后端：`MEMORY_FORENSICS_ENABLED=false`（默认），经 `GET /api/system/features` 下发
+  `memory_forensics_enabled`；Python 侧无内存取证端点，无需 503 门。
+  C++ 只读端点与 CLI 子命令**保留不动**（§4.3 先例：C++ 数据面保留；无副作用，
+  无 `_memory.db` 时自然 404）。volatility3 依赖、插件资源、`--memory-analyze` 帮助文本不动。
+- 前端：`Layout.jsx` 导航"内存取证"按开关过滤；`routes.jsx` `/memory` 套
+  `<FeatureGate flag="memory_forensics_enabled">`（路由保留，深链渲染停用告示，
+  同 §4.3 /cases 模式）。
+- 恢复：设 `MEMORY_FORENSICS_ENABLED=true` 重启 python 服务即整模块回归（导航/页面/CLI）。
+
+### 4.7 OSS 分析裁剪（OSS_ANALYSIS_ENABLED=false，2026-09-18 追加）
+
+足迹事实（恢复时直接引用）：OSS = 阿里云对象存储取证（C++ `OSSAnalyzer` + `oss.db` 三表 +
+Python LLM 过滤/分析）。**C++ OSS 路由从未挂载**（`HTTPserver.h:91-96` 未实例化，
+运行时 404——编译但不服务），前端 `/oss` 页调用的即是这批死端点；Python
+`/api/forensics/oss/ai/{filter,analyze}` 活但无前端调用方。**不在任务流水线上**：
+独立手动入口，`platform_analyze` 开关不涉及。
+
+裁剪机制：
+
+- 后端：`OSS_ANALYSIS_ENABLED=false`（默认），`routes/oss_analysis.py` 两个 POST
+  （`/api/forensics/oss/ai/filter`、`/api/forensics/oss/ai/analyze`）→ 503
+  （`require_oss_analysis` 门，同 §4.3 `require_combined_case` 模式）；
+  `GET /api/system/features` 下发 `oss_analysis_enabled`。C++ 侧不动（本就 404）。
+- 前端：`Layout.jsx` 导航"OSS 分析"按开关过滤；`routes.jsx` `/oss` 套
+  `<FeatureGate flag="oss_analysis_enabled">`。
+- 恢复：设 `OSS_ANALYSIS_ENABLED=true` 重启 python 服务即恢复 AI 端点与入口
+  （注意：C++ 数据面端点要真正可用是另一个量级的接线工作，见
+  `docs/modules/cpp/network/HTTPServer.md` 对 12 个未挂载端点的记录）。
+
 ## 5. 分析流水管线重定义（以文件为核心 + 完成判定）
 
 流水：`镜像进入 → 取证阶段（不变）→ [存储引擎 RocksDB，见 §8] → 文件分析 → Graphiti 摄入 → 完成`。
@@ -160,6 +209,8 @@ COMPLETED，不等 Graphiti）：
 - [ ] 时间线页无任何自动/手动事件 AI 分析动作；`events.llm_analyzed_at` 恒 NULL
 - [ ] 报告证据列表无任何 `event_cluster`/`cluster:` 项；`POST /api/reports/evidence` 提交 cluster 键 → 422
 - [ ] 导航无"案件组合/研判中心"入口；对应创建/分析 API → 503
+- [ ] 导航无"内存取证/OSS 分析"入口；`/memory`、`/oss` 深链渲染停用告示；
+      `POST /api/forensics/oss/ai/*` → 503
 - [ ] 工作台无图谱 Tab、无 LLM 二次分析按钮；文件证据绑定与报告生成正常
 - [ ] 最终报告页出现文件时间线（四时间戳、min→max 轴）；点击报告内文件标签弹出文件+相关事件抽屉
 - [ ] python 单测 / web 测试 / C++ 构建全绿
@@ -201,8 +252,6 @@ rocksdict（venv）与 librocksdb-dev/librocksdb8.9（系统）均已卸载。
 
 `bootstrap` / file 证据绑定（200）/ cluster 键拒绝（422）/ notes 守卫（409）
 已在活体 v7 库上复测通过。
-
-## 9. 开放问题（不阻塞本节点）
 
 ## 9. 开放问题（不阻塞本节点）
 

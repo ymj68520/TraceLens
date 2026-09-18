@@ -16,6 +16,8 @@ vi.mock('../../services/featuresService', () => ({
     event_llm_analysis_enabled: false,
     combined_case_enabled: false,
     workbench_llm_enabled: false,
+    memory_forensics_enabled: false,
+    oss_analysis_enabled: false,
   },
   fetchFeatures: () =>
     Promise.resolve(
@@ -23,6 +25,8 @@ vi.mock('../../services/featuresService', () => ({
         event_llm_analysis_enabled: false,
         combined_case_enabled: false,
         workbench_llm_enabled: false,
+        memory_forensics_enabled: false,
+        oss_analysis_enabled: false,
       },
     ),
 }));
@@ -99,6 +103,31 @@ test('MVP default hides the combined-case nav entries (mvp-phase1-acceptance §4
   });
   expect(screen.queryByRole('link', { name: '案件组合' })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: '研判中心' })).not.toBeInTheDocument();
+});
+
+test('MVP default hides the memory and OSS nav entries (mvp-phase1-acceptance §4.6/§4.7)', async () => {
+  featuresState.value = null;
+  renderLayout('/dashboard');
+
+  await waitFor(() => {
+    expect(screen.getByRole('link', { name: '证据研判' })).toBeInTheDocument();
+  });
+  expect(screen.queryByRole('link', { name: '内存取证' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'OSS 分析' })).not.toBeInTheDocument();
+});
+
+test('re-enabled flags restore the memory and OSS nav entries (§4.6/§4.7 escape hatch)', async () => {
+  featuresState.value = {
+    event_llm_analysis_enabled: true,
+    combined_case_enabled: true,
+    workbench_llm_enabled: true,
+    memory_forensics_enabled: true,
+    oss_analysis_enabled: true,
+  };
+  renderLayout('/dashboard');
+
+  expect(await screen.findByRole('link', { name: '内存取证' })).toHaveAttribute('href', '/memory');
+  expect(screen.getByRole('link', { name: 'OSS 分析' })).toHaveAttribute('href', '/oss');
 });
 
 test('keeps the investigation workbench navigation active on its report subroute', () => {

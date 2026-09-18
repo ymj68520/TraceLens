@@ -73,8 +73,14 @@ export const appRoutes = [
         element: <Android />,
       },
       {
+        // MVP (mvp-phase1-acceptance §4.6): memory forensics is trimmed;
+        // the route stays registered so deep links render a notice.
         path: 'memory',
-        element: <Memory />,
+        element: (
+          <FeatureGate flag="memory_forensics_enabled">
+            <Memory />
+          </FeatureGate>
+        ),
       },
       {
         path: 'im-forensics',
@@ -98,8 +104,14 @@ export const appRoutes = [
         element: <WeChatGraphRedirect />,
       },
       {
+        // MVP (mvp-phase1-acceptance §4.7): OSS analysis is trimmed;
+        // the route stays registered so deep links render a notice.
         path: 'oss',
-        element: <OSS />,
+        element: (
+          <FeatureGate flag="oss_analysis_enabled">
+            <OSS />
+          </FeatureGate>
+        ),
       },
       {
         path: 'search',

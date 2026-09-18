@@ -13,6 +13,8 @@ export const FEATURE_DEFAULTS = Object.freeze({
   event_llm_analysis_enabled: false,
   combined_case_enabled: false,
   workbench_llm_enabled: false,
+  memory_forensics_enabled: false,
+  oss_analysis_enabled: false,
 });
 
 let cache = null;

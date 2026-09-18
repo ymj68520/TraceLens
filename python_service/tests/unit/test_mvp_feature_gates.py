@@ -15,8 +15,10 @@ from fastapi.testclient import TestClient
 from httpserver.config import get_settings
 from httpserver.routes import event_cluster_analysis as eca_routes
 from httpserver.routes import investigation_workbench
+from httpserver.routes import oss_analysis as oss_routes
 from httpserver.routes.event_cluster_analysis import router as eca_router
 from httpserver.routes.multi_analysis import router as multi_router
+from httpserver.routes.oss_analysis import router as oss_router
 from httpserver.routes.system import router as system_router
 from httpserver.routes.investigation_workbench import (
     _manager,
@@ -31,6 +33,8 @@ def _mvp_defaults(monkeypatch):
     monkeypatch.setattr(settings, "event_llm_analysis_enabled", False, raising=False)
     monkeypatch.setattr(settings, "combined_case_enabled", False, raising=False)
     monkeypatch.setattr(settings, "workbench_llm_enabled", False, raising=False)
+    monkeypatch.setattr(settings, "memory_forensics_enabled", False, raising=False)
+    monkeypatch.setattr(settings, "oss_analysis_enabled", False, raising=False)
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +200,71 @@ def test_bootstrap_skips_cluster_seeding_in_mvp(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# memory forensics / OSS analysis trimmed (SPEC §4.6/§4.7, 2026-09-18)
+# ---------------------------------------------------------------------------
+
+def test_oss_ai_filter_returns_503():
+    app = FastAPI()
+    app.include_router(oss_router)
+    client = TestClient(app)
+    resp = client.post(
+        "/api/forensics/oss/ai/filter",
+        json={
+            "task_id": "t1",
+            "oss_db_path": "/tmp/oss.db",
+            "case_description": "d",
+        },
+    )
+    assert resp.status_code == 503
+    assert "MVP" in resp.json()["detail"]
+
+
+def test_oss_ai_analyze_returns_503():
+    app = FastAPI()
+    app.include_router(oss_router)
+    client = TestClient(app)
+    resp = client.post(
+        "/api/forensics/oss/ai/analyze",
+        json={
+            "task_id": "t1",
+            "object_ids": [1],
+            "oss_db_path": "/tmp/oss.db",
+            "download_dir": "/tmp/dl",
+        },
+    )
+    assert resp.status_code == 503
+
+
+def test_oss_ai_endpoints_restored_when_enabled(monkeypatch):
+    """Escape hatch: the env flag reopens the endpoints (no LLM call is made —
+    the request still fails later on the missing service wiring, not at the
+    gate)."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "oss_analysis_enabled", True, raising=False)
+    app = FastAPI()
+    app.include_router(oss_router)
+    client = TestClient(app)
+    resp = client.post(
+        "/api/forensics/oss/ai/filter",
+        json={
+            "task_id": "t1",
+            "oss_db_path": "/tmp/oss.db",
+            "case_description": "d",
+        },
+    )
+    assert resp.status_code != 503
+
+
+def test_oss_router_exposes_no_read_surface_beyond_ai():
+    """The trimmed module must not grow new unprefixed endpoints silently."""
+    paths = {route.path for route in oss_router.routes}
+    assert paths == {
+        "/api/forensics/oss/ai/filter",
+        "/api/forensics/oss/ai/analyze",
+    }
+
+
+# ---------------------------------------------------------------------------
 # feature flag surface
 # ---------------------------------------------------------------------------
 
@@ -210,4 +279,6 @@ def test_system_features_endpoint_reports_defaults():
         "event_llm_analysis_enabled": False,
         "combined_case_enabled": False,
         "workbench_llm_enabled": False,
+        "memory_forensics_enabled": False,
+        "oss_analysis_enabled": False,
     }
