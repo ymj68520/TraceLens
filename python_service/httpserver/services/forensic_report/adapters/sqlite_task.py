@@ -17,6 +17,9 @@ class SqliteTaskReportAdapter:
     _file_fields = (
         "name", "path", "size", "extension", "category", "type", "mtime", "ctime",
         "is_deleted", "md5", "scene_type", "scene_priority", "scene_relevant",
+        # LLM analysis results are part of the report's core value (MVP
+        # acceptance §7): the snapshot must carry them when the columns exist.
+        "llm_summary", "llm_analyzed_at", "llm_model_used",
     )
     _fallback_limit = 500
 

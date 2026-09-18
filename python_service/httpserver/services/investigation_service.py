@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from pydantic import BaseModel, Field, field_validator
 
 from .claim_provenance_reader import ClaimProvenanceReader
+from .evidence.exceptions import EvidenceStoreError
 from .investigation_errors import ClaimProvenanceNotFound, PublicationReadError
 from .investigation_evidence import (
     CLUSTER_KEY_PREFIX,
@@ -241,6 +242,94 @@ class InvestigationService:
                 events_db = files_db[: -len("files.db")] + "events.db"
         return {"files_db": files_db, "events_db": events_db, "raw_db": raw_db}
 
+    def _ensure_v7_store(self, db_path, task_id: str) -> None:
+        """Guarantee a repository-v7 investigation store (mvp SPEC §4).
+
+        bootstrap used to create a legacy v3-structured store, which the
+        workbench read side (repository, supported version 7) fails closed on
+        — every fresh task hit 503 on its first evidence binding. Empty legacy
+        stores carry no user data (bootstrap never got far enough to write
+        any), so they are replaced by a repository-built v7 store; a v3 store
+        that somehow holds data fails closed for manual migration instead of
+        being destroyed.
+        """
+        import os
+        from .investigation.repository import InvestigationRepository
+
+        if not os.path.exists(db_path):
+            InvestigationRepository(db_path, task_id)  # builds v7 atomically
+            return
+        conn = sqlite3.connect(db_path)
+        try:
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+        finally:
+            conn.close()
+        if version == 7:
+            self._create_recovery_aux_table(db_path)
+            return
+        if version != 3:
+            raise EvidenceStoreError(
+                f"investigation store schema {version} requires manual migration"
+            )
+        data_tables = [
+            "investigation_events", "investigation_event_versions",
+            "investigation_event_evidence", "evidence_snapshots",
+            "evidence_analysis_versions", "report_evidence", "analyst_notes",
+        ]
+        conn = sqlite3.connect(db_path)
+        try:
+            for table in data_tables:
+                count = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+                if count:
+                    raise EvidenceStoreError(
+                        f"legacy investigation store holds {count} rows in {table}; "
+                        "manual migration required"
+                    )
+        finally:
+            conn.close()
+        os.remove(db_path)
+        InvestigationRepository(db_path, task_id)
+        self._create_recovery_aux_table(db_path)
+
+    def _create_recovery_aux_table(self, db_path) -> None:
+        """The v7 schema has no evidence_analysis_versions table, but the
+        persistence recovery query (UPDATE ... WHERE status IN
+        ('queued','running')) still targets it. Create it standalone —
+        columns per the legacy DDL minus the analyst_notes foreign key."""
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS evidence_analysis_versions (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    evidence_key TEXT NOT NULL,
+                    evidence_type TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    analysis_type TEXT NOT NULL,
+                    analyst_note_id TEXT,
+                    analyst_note_snapshot TEXT,
+                    description TEXT,
+                    summary TEXT,
+                    status TEXT NOT NULL DEFAULT 'queued',
+                    grounding_status TEXT,
+                    grounding_warnings TEXT,
+                    error_message TEXT,
+                    completed_at INTEGER,
+                    model TEXT,
+                    prompt_version TEXT,
+                    input_hash TEXT,
+                    input_evidence_refs TEXT,
+                    created_at INTEGER NOT NULL,
+                    UNIQUE(task_id, evidence_key, version)
+                )
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
     async def _persistence(self, task_id: str) -> InvestigationPersistence:
         if task_id in self._persistence_cache:
             return self._persistence_cache[task_id]
@@ -435,12 +524,30 @@ class InvestigationService:
         from ..config import get_settings
 
         if not getattr(get_settings(), "event_llm_analysis_enabled", False):
-            persistence = await self._persistence(task_id)
-            persistence.set_meta("bootstrap_version", str(BOOTSTRAP_VERSION))
-            overview = persistence.overview(task_id)
-            overview["seeded_clusters"] = 0
-            overview["new_events"] = 0
-            return overview
+            # MVP (§4.2): no cluster seeding, and the legacy persistence
+            # module is bypassed entirely — its v3-era table layout conflicts
+            # with the repository v7 schema on same-named tables. The store
+            # is ensured in v7 form and bootstrap_version recorded directly.
+            from .investigation.repository import InvestigationRepository
+
+            paths = await self._paths(task_id)
+            db_path = get_investigation_db_path(paths["files_db"])
+            self._ensure_v7_store(db_path, task_id)
+            with sqlite3.connect(db_path) as conn:
+                event_count = conn.execute(
+                    "SELECT COUNT(*) FROM investigation_events"
+                ).fetchone()[0]
+                report_evidence_count = conn.execute(
+                    "SELECT COUNT(*) FROM report_evidence"
+                ).fetchone()[0]
+            return {
+                "initialized": True,
+                "event_count": event_count,
+                "analysis_count": 0,
+                "report_evidence_count": report_evidence_count,
+                "seeded_clusters": 0,
+                "new_events": 0,
+            }
 
         persistence = await self._persistence(task_id)
         paths = await self._paths(task_id)

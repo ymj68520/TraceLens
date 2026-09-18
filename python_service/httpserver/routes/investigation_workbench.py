@@ -15,6 +15,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,6 +27,8 @@ from ..services.evidence.resolver import EvidenceResolver
 from ..services.forensic_report.models import ScopeType
 from ..services.forensic_report.narrative_reader import read_narrative_version_strict
 from ..services.investigation import AnalysisReviewDecision
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -89,6 +93,7 @@ def _dump(value: Any) -> Any:
 
 
 def _error(exc: Exception, not_found: str = "investigation resource not found") -> HTTPException:
+    logger.error("investigation request failed: %s", exc, exc_info=exc)
     if isinstance(exc, EvidenceNotFoundError):
         return HTTPException(status_code=404, detail=not_found)
     if isinstance(exc, (ValueError, KeyError)):
