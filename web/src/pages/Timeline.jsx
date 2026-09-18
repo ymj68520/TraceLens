@@ -300,7 +300,10 @@ const Timeline = () => {
         const clusterKey = clusterIdentity(cluster);
         const descriptor = cluster.group_descriptor;
         if (!descriptor) {
-          throw new Error('Timeline group descriptor missing');
+          // 缺描述符的簇无法构成分析请求；跳过而不是让整个自动分析循环
+          // 崩掉，把其余可分析的簇也一起放弃。
+          console.warn('Auto-analyze skipped cluster without group descriptor:', clusterKey);
+          continue;
         }
 
         try {
