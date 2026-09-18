@@ -87,7 +87,8 @@ std::string TaskManager::create_task(const std::string& path,
                            const std::string& decrypt_password,
                            const std::string& android_source,
                            const std::string& backup_password,
-                           bool file_carving) {
+                           bool file_carving,
+                           bool platform_analyze) {
     std::lock_guard<std::mutex> lock(mtx_);
     boost::uuids::uuid uuid = boost::uuids::random_generator()();
     std::string id = boost::uuids::to_string(uuid);
@@ -130,6 +131,7 @@ std::string TaskManager::create_task(const std::string& path,
     new_task.android_source = android_source.empty() ? "tsk" : android_source;
     new_task.backup_password = backup_password;
     new_task.file_carving = file_carving;
+    new_task.platform_analyze = platform_analyze;
     new_task.cancellation_requested = false;
     new_task.error_details = "";
     new_task.metadata = metadata;

@@ -84,7 +84,8 @@ public:
                            const std::string& decrypt_password = "",
                            const std::string& android_source = "tsk",
                            const std::string& backup_password = "",
-                           bool file_carving = false);
+                           bool file_carving = false,
+                           bool platform_analyze = true);
 
     // Task status management
     /**

@@ -225,6 +225,10 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         // MIUI / Android backup AES-256 password (runtime-only, never persisted).
         std::string backup_password = body.value("backup_password", "");
 
+        // Platform artifact analysis (Android/Windows/Linux/ServerCloud stage).
+        // Task-level switch, selected by the user at creation; on by default.
+        bool platform_analyze = body.value("platform_analyze", true);
+
         // File carving option: accepts both a top-level flag and the documented
         // options.file_carving spelling. Previously this option was silently
         // ignored — documented but never executed by the task pipeline.
@@ -251,7 +255,8 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             decrypt_password,
             android_source,
             backup_password,
-            file_carving
+            file_carving,
+            platform_analyze
         );
 
         // Check if task can start immediately

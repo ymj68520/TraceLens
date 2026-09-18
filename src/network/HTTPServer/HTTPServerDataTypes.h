@@ -151,6 +151,10 @@ struct AnalysisTask {
     // Signature-based file carving of unallocated space (optional stage)
     bool file_carving = false;
 
+    // Platform artifact analysis (Android/Windows/Linux/ServerCloud stage).
+    // Task-level switch selected at creation time; on by default.
+    bool platform_analyze = true;
+
     // Decryption options (encrypted partitions are auto-detected & unlocked)
     bool enable_decryption = false;     // Auto-decrypt encrypted partitions
     std::string key_file_dir;           // Override dir for sibling .key files
@@ -188,6 +192,7 @@ struct AnalysisTask {
           graphiti_job_id(other.graphiti_job_id),
           filter_profile(other.filter_profile),
           file_carving(other.file_carving),
+          platform_analyze(other.platform_analyze),
           enable_decryption(other.enable_decryption),
           key_file_dir(other.key_file_dir),
           decrypt_password(other.decrypt_password),
@@ -227,6 +232,7 @@ struct AnalysisTask {
             graphiti_job_id = other.graphiti_job_id;
             filter_profile = other.filter_profile;
             file_carving = other.file_carving;
+            platform_analyze = other.platform_analyze;
             enable_decryption = other.enable_decryption;
             key_file_dir = other.key_file_dir;
             decrypt_password = other.decrypt_password;
@@ -257,6 +263,7 @@ struct AnalysisTask {
           graphiti_job_id(std::move(other.graphiti_job_id)),
           filter_profile(std::move(other.filter_profile)),
           file_carving(other.file_carving),
+          platform_analyze(other.platform_analyze),
           enable_decryption(other.enable_decryption),
           key_file_dir(std::move(other.key_file_dir)),
           decrypt_password(std::move(other.decrypt_password)),
@@ -296,6 +303,7 @@ struct AnalysisTask {
             graphiti_job_id = std::move(other.graphiti_job_id);
             filter_profile = std::move(other.filter_profile);
             file_carving = other.file_carving;
+            platform_analyze = other.platform_analyze;
             enable_decryption = other.enable_decryption;
             key_file_dir = std::move(other.key_file_dir);
             decrypt_password = std::move(other.decrypt_password);

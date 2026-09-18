@@ -86,6 +86,7 @@ void to_json(nlohmann::json& j, const AnalysisTask& t) {
     j["interrupted_by_restart"] = t.interrupted_by_restart;
     j["metadata"] = t.metadata;
     j["llm_analyze"] = t.llm_analyze;
+    j["platform_analyze"] = t.platform_analyze;
     j["llm_mode"] = t.llm_mode;
     j["output_descriptions_db"] = t.output_descriptions_db;
     j["case_description"] = t.case_description;
@@ -140,6 +141,7 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     if(j.contains("interrupted_by_restart")) j.at("interrupted_by_restart").get_to(t.interrupted_by_restart);
     if(j.contains("metadata")) j.at("metadata").get_to(t.metadata);
     if(j.contains("llm_analyze")) j.at("llm_analyze").get_to(t.llm_analyze);
+    if(j.contains("platform_analyze")) j.at("platform_analyze").get_to(t.platform_analyze);
     if(j.contains("llm_mode")) j.at("llm_mode").get_to(t.llm_mode);
     if(j.contains("output_descriptions_db")) j.at("output_descriptions_db").get_to(t.output_descriptions_db);
     if(j.contains("case_description")) j.at("case_description").get_to(t.case_description);

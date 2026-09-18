@@ -40,6 +40,7 @@ const INITIAL_FORM = {
   scenarios: [],
   xfs_mode: 'auto',
   filter_profile: 'general_forensics',
+  platform_analyze: true,
   // llm_analyze is always true — NOT a user setting
 };
 
@@ -88,6 +89,8 @@ export default function CreateTaskModal() {
         scenarios: isLogical ? ['android'] : form.scenarios,
         llm_analyze: true,
         llm_mode: 'smart',
+        // 平台分析任务级开关（创建时选择；默认开启）
+        platform_analyze: form.platform_analyze !== false,
       };
       // Only send backup_password when non-empty (keeps it runtime-only / sparse).
       if (!payload.backup_password) delete payload.backup_password;
@@ -217,6 +220,15 @@ export default function CreateTaskModal() {
             </button>
             {showAdvanced && (
               <div className="mt-2 space-y-4">
+                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={form.platform_analyze !== false}
+                    onChange={(e) => set('platform_analyze', e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300"
+                  />
+                  平台分析（Android / Windows / Linux 工件级分析，默认开启）
+                </label>
                 {isLogical ? (
                   // Logical Android source → platform is fixed to Android; the
                   // TSK pipeline (and thus XFS mode / scene auto-detect) does

@@ -617,8 +617,13 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 }
             }
 
-            // 6. Platform-Specific Analysis (Unified)
-            if (!task.scenarios.empty()) {
+            // 6. Platform-Specific Analysis (Unified) — task-level switch
+            // (mvp: selected by the user at creation time, default on).
+            if (!task.platform_analyze) {
+                add_audit_log(task_id, "SKIPPED", "Platform analysis disabled for this task");
+                update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 100,
+                                "Platform analysis skipped (disabled for this task)");
+            } else if (!task.scenarios.empty()) {
                 if (is_task_cancelled(task_id)) { return; }
                 int total_scenarios = static_cast<int>(task.scenarios.size());
                 update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 0,
@@ -839,7 +844,11 @@ bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
             add_audit_log(task_id, "ERROR", "Failed to initialize Android analyzer (logical)");
             return false;
         }
-        androidAnalyzer->analyzeAndroidData();
+        if (!task.platform_analyze) {
+            add_audit_log(task_id, "SKIPPED", "Platform analysis disabled for this task");
+        } else {
+            androidAnalyzer->analyzeAndroidData();
+        }
 
         // Record the produced database on the task so downstream result
         // retrieval and the MIUI query routes find it.
