@@ -30,3 +30,14 @@ test('warns only for persisted section and manifest inconsistencies', () => {
     'REPORT_CITATION_MANIFEST_MISMATCH',
   ]));
 });
+
+test('applies no structural expectation to llm_generation free-section reports', () => {
+  const warnings = checkFinalReportIntegrity(report({
+    report_kind: 'llm_generation',
+    sections: [
+      { section_id: '01 Cluster Modification', order: 1, paragraphs: [{ text: 'text', claim_ids: ['claim-1'], citation_ids: ['CIT-001'] }] },
+      { section_id: '02 Appendix', order: 2, paragraphs: [] },
+    ],
+  }));
+  expect(warnings).toEqual([]);
+});

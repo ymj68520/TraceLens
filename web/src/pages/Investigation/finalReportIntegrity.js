@@ -15,23 +15,29 @@ export function checkFinalReportIntegrity(report) {
   const sections = Array.isArray(report?.sections) ? report.sections : [];
   const sectionIds = sections.map((section) => section?.section_id);
 
-  if (
+  // R2 narrative versions follow a free-section contract; the canonical
+  // five-section expectation only applies to deterministic report versions.
+  const structuralExpectation = report?.report_kind !== 'llm_generation';
+
+  if (structuralExpectation && (
     sectionIds.length !== EXPECTED_SECTION_IDS.length
     || sectionIds.some((id, index) => id !== EXPECTED_SECTION_IDS[index])
     || sections.some((section, index) => Number(section?.order) !== index + 1)
-  ) {
+  )) {
     warnings.push({
       code: 'REPORT_SECTION_ORDER_INVALID',
       message: 'Persisted report sections do not match the canonical five-section structure.',
     });
   }
 
-  duplicate(sectionIds).forEach((sectionId) => {
-    warnings.push({
-      code: 'REPORT_DUPLICATE_SECTION',
-      message: `Persisted report contains duplicate section ${sectionId}.`,
+  if (structuralExpectation) {
+    duplicate(sectionIds).forEach((sectionId) => {
+      warnings.push({
+        code: 'REPORT_DUPLICATE_SECTION',
+        message: `Persisted report contains duplicate section ${sectionId}.`,
+      });
     });
-  });
+  }
 
   const paragraphClaimIds = sections.flatMap((section) => (
     Array.isArray(section?.paragraphs)

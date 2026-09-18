@@ -186,6 +186,15 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
       return null;
     }
 
+    // R2d: narrative (llm_generation) versions never enter the deterministic
+    // category/page workspace and have no frozen manifest.json — the
+    // deterministic read-side fails closed for them. Their content is served
+    // by the narrative read-side instead.
+    if (version.report_kind === 'llm_generation') {
+      if (isActive(scopeKey, intent)) setManifest(null);
+      return null;
+    }
+
     try {
       const nextManifest = await dataSourceRef.current.getManifest(version.report_id);
       if (isActive(scopeKey, intent)) {
