@@ -334,76 +334,139 @@ def _save_metadata(files_db: str, task_id: str, payload: dict[str, Any]) -> dict
 # ── platform detection ──────────────────────────────────────────────────────
 
 
-def _detect_platforms(files_db: str | None) -> list[str]:
-    """Detect which platform artifact tables exist in _files.db."""
+_ANDROID_MARKERS = ("contacts", "sms_messages", "call_logs", "installed_packages",
+                    "system_build_properties", "device_identifiers")
+_WINDOWS_MARKERS = ("windows_services", "registry_values", "user_accounts",
+                    "mft_entries", "amcache_entries", "scheduled_tasks")
+_LINUX_MARKERS = ("linux_users", "linux_packages", "linux_login_records",
+                  "linux_shell_history", "linux_systemd_services")
+
+
+def _detect_platforms(candidate_dbs: list[str]) -> list[str]:
+    """Detect platform artifact tables across ALL task libraries.
+
+    The C++ analyzer writes platform artifacts into scenario DBs
+    (scenario_databases.windows/linux/...), not into the classifier files.db —
+    detection must scan every candidate library.
+    """
     platforms: list[str] = []
-    if not files_db or not Path(files_db).is_file():
-        return platforms
-    android_markers = ("contacts", "sms_messages", "call_logs", "installed_packages",
-                       "system_build_properties", "device_identifiers")
-    windows_markers = ("windows_services", "registry_values", "user_accounts",
-                       "mft_entries", "amcache_entries", "scheduled_tasks")
-    linux_markers = ("linux_users", "linux_packages", "linux_login_records",
-                     "linux_shell_history", "linux_systemd_services")
-    try:
-        with _connect_ro(Path(files_db)) as conn:
-            tables = {row[0] for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
-            ).fetchall()}
-            if any(t in tables for t in android_markers):
+    for db_path in candidate_dbs:
+        if not db_path or not Path(db_path).is_file():
+            continue
+        try:
+            with _connect_ro(Path(db_path)) as conn:
+                tables = {row[0] for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                ).fetchall()}
+            if any(t in tables for t in _ANDROID_MARKERS) and "android" not in platforms:
                 platforms.append("android")
-            if any(t in tables for t in windows_markers):
+            if any(t in tables for t in _WINDOWS_MARKERS) and "windows" not in platforms:
                 platforms.append("windows")
-            if any(t in tables for t in linux_markers):
+            if any(t in tables for t in _LINUX_MARKERS) and "linux" not in platforms:
                 platforms.append("linux")
-    except sqlite3.Error as exc:
-        logger.warning("platform detect failed: %s", exc)
+        except sqlite3.Error as exc:
+            logger.warning("platform detect failed for %s: %s", db_path, exc)
     return platforms
 
 
 # ── per-category data readers (table-presence-aware, never 404) ──────────────
 
 
-def _device_info_records(files_db: str | None) -> list[dict[str, Any]]:
+def _registry_os_props(conn: sqlite3.Connection, names: tuple[str, ...]) -> dict[str, str]:
+    """value_name → value_data for OS identification registry values.
+
+    Prefers rows under the canonical `Windows NT\\CurrentVersion` key: without
+    ranking, application-installer `ProductName` rows (Classes\\Installer\\Products,
+    e.g. "Xshell 7") win by row order and masquerade as the OS name.
+    """
+    if not _table_exists(conn, "registry_values"):
+        return {}
+    cols = _table_columns(conn, "registry_values")
+    if "value_name" not in cols:
+        return {}
+    data_col = "value_data" if "value_data" in cols else (
+        "data" if "data" in cols else None)
+    if not data_col:
+        return {}
+    has_key_path = "key_path" in cols
+    placeholders = ",".join("?" for _ in names)
+    select = (f'SELECT value_name, "{data_col}"{", key_path" if has_key_path else ""} '
+              f'FROM "registry_values" WHERE value_name IN ({placeholders})')
+    try:
+        rows = conn.execute(select, names).fetchall()
+    except sqlite3.Error:
+        return {}
+
+    def rank(key_path: str | None) -> int:
+        path = (key_path or "").lower()
+        if "windows nt" in path and "currentversion" in path:
+            return 0
+        if "installer\\products" in path or "classes\\installer" in path:
+            return 2
+        if "internet explorer" in path:
+            return 3
+        return 1
+
+    best: dict[str, tuple[int, str]] = {}
+    for row in rows:
+        name, data = row[0], row[1]
+        key_path = row[2] if has_key_path else None
+        if data is None:
+            continue
+        order = rank(key_path)
+        if order == 3:
+            # IE hive same-name values (OSVersion etc.) are IE versions, not OS
+            # values — displaying them under an OS label misleads; leave empty.
+            continue
+        if name not in best or order < best[name][0]:
+            best[name] = (order, str(data))
+    return {name: value for name, (_order, value) in best.items()}
+
+
+def _device_info_records(candidate_dbs: list[str]) -> list[dict[str, Any]]:
     """Read device basic info from build properties / identifiers / OS tables.
 
     Returns ONE synthesized record: the 39 reference-report items, each value
     resolved (first hit wins) from available property/identifier sources. Missing
     values stay empty to preserve display parity.
     """
-    if not files_db or not Path(files_db).is_file():
-        return []
     props: dict[str, str] = {}
-    try:
-        with _connect_ro(Path(files_db)) as conn:
-            # Android: system_build_properties (key/value) + device_identifiers
-            if _table_exists(conn, "system_build_properties"):
-                for key, value in conn.execute(
-                    'SELECT property_key, property_value FROM "system_build_properties"'
-                ).fetchall():
-                    if value is not None and key not in props:
-                        props[key] = str(value)
-            if _table_exists(conn, "device_identifiers"):
-                for itype, value in conn.execute(
-                    'SELECT identifier_type, value FROM "device_identifiers"'
-                ).fetchall():
-                    if value is not None:
-                        props.setdefault(str(itype), str(value))
-            # Windows: registry_values holds OS build info under known value names.
-            if _table_exists(conn, "registry_values"):
-                for row in conn.execute(
-                    'SELECT value_name, data FROM "registry_values" '
-                    'WHERE value_name IN ("ProductName","OSVersion","ProductModel",'
-                    '"Manufacturer","DeviceId","BuildLab")'
-                ).fetchall():
-                    name, data = row[0], row[1]
-                    if data is not None:
-                        props.setdefault(str(name), str(data))
-            # Linux: os_config_files may carry version lines; best-effort.
-            if _table_exists(conn, "os_config_files") and "file_path" in _table_columns(conn, "os_config_files"):
-                pass  # no structured OS fields; left to build props if present
-    except sqlite3.Error as exc:
-        logger.warning("device_info read failed: %s", exc)
+    for db_path in candidate_dbs:
+        if not db_path or not Path(db_path).is_file():
+            continue
+        try:
+            with _connect_ro(Path(db_path)) as conn:
+                # Android: system_build_properties (key/value) + device_identifiers
+                if _table_exists(conn, "system_build_properties"):
+                    for key, value in conn.execute(
+                        'SELECT property_key, property_value FROM "system_build_properties"'
+                    ).fetchall():
+                        if value is not None and key not in props:
+                            props[key] = str(value)
+                if _table_exists(conn, "device_identifiers"):
+                    for itype, value in conn.execute(
+                        'SELECT identifier_type, value FROM "device_identifiers"'
+                    ).fetchall():
+                        if value is not None:
+                            props.setdefault(str(itype), str(value))
+                # Windows: registry_values holds OS build info under known value
+                # names (canonical CurrentVersion rows preferred). Scenario
+                # windows.db names the data column `value_data`, older/side
+                # copies may use `data` — _registry_os_props picks what exists.
+                os_props = _registry_os_props(
+                    conn,
+                    ("ProductName", "OSVersion", "ProductModel",
+                     "Manufacturer", "DeviceId", "BuildLab"),
+                )
+                for name, data in os_props.items():
+                    props.setdefault(name, data)
+                # Linux: os_config_files may carry version lines; best-effort.
+                if _table_exists(conn, "os_config_files") and "file_path" in _table_columns(conn, "os_config_files"):
+                    pass  # no structured OS fields; left to build props if present
+        except sqlite3.Error as exc:
+            logger.warning("device_info read failed for %s: %s", db_path, exc)
+            continue
+    if not props and not candidate_dbs:
         return []
     record: dict[str, Any] = {}
     for label, *keys in _DEVICE_INFO_ITEMS:
@@ -454,20 +517,21 @@ def _category_total(files_db: str | None, table: str) -> int:
         return 0
 
 
-def _resolve_apps_table(files_db: str | None) -> str:
-    if not files_db or not Path(files_db).is_file():
-        return ""
-    try:
-        with _connect_ro(Path(files_db)) as conn:
-            for t in ("installed_packages", "system_apps"):
-                if _table_exists(conn, t):
-                    return t
-    except sqlite3.Error:
-        pass
+def _resolve_apps_table(candidate_dbs: list[str]) -> str:
+    for db_path in candidate_dbs:
+        if not db_path or not Path(db_path).is_file():
+            continue
+        try:
+            with _connect_ro(Path(db_path)) as conn:
+                for t in ("installed_packages", "system_apps"):
+                    if _table_exists(conn, t):
+                        return t
+        except sqlite3.Error:
+            continue
     return ""
 
 
-def _resolve_locations_table(files_db: str | None) -> str:
+def _resolve_locations_table(candidate_dbs: list[str]) -> str:
     """Resolve a real GPS-bearing locations table, if any.
 
     NOTE: the generic `images` table is intentionally NOT used — it is a file
@@ -477,19 +541,20 @@ def _resolve_locations_table(files_db: str | None) -> str:
     section renders a placeholder (total 0) rather than mislabeling plain
     image file rows as location data.
     """
-    if not files_db or not Path(files_db).is_file():
-        return ""
-    try:
-        with _connect_ro(Path(files_db)) as conn:
-            for t in ("image_locations", "locations", "geo_locations",
-                      "exif_locations", "wifi_networks"):
-                if _table_exists(conn, t):
-                    # verify it actually carries coordinate columns
-                    cols = _table_columns(conn, t)
-                    if {"latitude", "longitude"} & cols or t == "wifi_networks":
-                        return t
-    except sqlite3.Error:
-        pass
+    for db_path in candidate_dbs:
+        if not db_path or not Path(db_path).is_file():
+            continue
+        try:
+            with _connect_ro(Path(db_path)) as conn:
+                for t in ("image_locations", "locations", "geo_locations",
+                          "exif_locations", "wifi_networks"):
+                    if _table_exists(conn, t):
+                        # verify it actually carries coordinate columns
+                        cols = _table_columns(conn, t)
+                        if {"latitude", "longitude"} & cols or t == "wifi_networks":
+                            return t
+        except sqlite3.Error:
+            continue
     return ""
 
 
@@ -627,15 +692,15 @@ _PLATFORM_SECTIONS: list[_PlatformSection] = [
 ]
 
 
-def _section_table(section: _PlatformSection, files_db: str | None) -> str:
+def _section_table(section: _PlatformSection, candidate_dbs: list[str]) -> str:
     """Resolve the source table for a section (handles callable fallbacks)."""
     table = section[3]
     if callable(table):
-        return table(files_db)
+        return table(candidate_dbs)
     return table
 
 
-def _platform_sections_for(platforms: list[str], files_db: str | None) -> list[_PlatformSection]:
+def _platform_sections_for(platforms: list[str]) -> list[_PlatformSection]:
     """Sections to show for the detected platforms (deduped by section_id)."""
     seen: set[str] = set()
     out: list[_PlatformSection] = []
@@ -649,39 +714,52 @@ def _platform_sections_for(platforms: list[str], files_db: str | None) -> list[_
     return out
 
 
-def _section_total(section: _PlatformSection, files_db: str | None) -> int:
-    return _category_total(files_db, _section_table(section, files_db))
+def _find_db_with_table(candidate_dbs: list[str], table: str) -> str | None:
+    """First task library that actually carries `table` (files.db wins ties)."""
+    if not table:
+        return None
+    for db_path in candidate_dbs:
+        if not db_path or not Path(db_path).is_file():
+            continue
+        try:
+            with _connect_ro(Path(db_path)) as conn:
+                if _table_exists(conn, table):
+                    return db_path
+        except sqlite3.Error:
+            continue
+    return None
+
+
+def _section_total(section: _PlatformSection, candidate_dbs: list[str]) -> int:
+    table = _section_table(section, candidate_dbs)
+    return _category_total(_find_db_with_table(candidate_dbs, table), table)
 
 
 # ── device info per platform (synthesized records) ──────────────────────────
 
 
-def _win_device_info_records(files_db: str | None) -> list[dict[str, Any]]:
+def _win_device_info_records(candidate_dbs: list[str]) -> list[dict[str, Any]]:
     """Windows 设备/系统信息: OS build info from registry + machine account."""
-    if not files_db or not Path(files_db).is_file():
-        return [{}]
     props: dict[str, str] = {}
-    try:
-        with _connect_ro(Path(files_db)) as conn:
-            if _table_exists(conn, "registry_values"):
-                # Pull the canonical OS identification values.
-                names = ("ProductName", "OSVersion", "CurrentBuild", "ReleaseId",
-                         "InstallDate", "RegisteredOrganization",
-                         "RegisteredOwner", "ComputerName", "DigitalProductId")
-                placeholders = ",".join("?" for _ in names)
-                for row in conn.execute(
-                    f'SELECT value_name, value_data FROM "registry_values" '
-                    f'WHERE value_name IN ({placeholders})', names,
-                ).fetchall():
-                    name, data = row[0], row[1]
-                    if data is not None:
-                        props.setdefault(str(name), str(data))
-            if _table_exists(conn, "user_accounts"):
-                cnt = _count(conn, "user_accounts")
-                if cnt:
-                    props.setdefault("用户账户数", str(cnt))
-    except sqlite3.Error as exc:
-        logger.warning("win_device_info read failed: %s", exc)
+    for db_path in candidate_dbs:
+        if not db_path or not Path(db_path).is_file():
+            continue
+        try:
+            with _connect_ro(Path(db_path)) as conn:
+                for name, data in _registry_os_props(
+                    conn,
+                    ("ProductName", "OSVersion", "CurrentBuild", "ReleaseId",
+                     "InstallDate", "RegisteredOrganization",
+                     "RegisteredOwner", "ComputerName", "DigitalProductId"),
+                ).items():
+                    props.setdefault(name, data)
+                if _table_exists(conn, "user_accounts"):
+                    cnt = _count(conn, "user_accounts")
+                    if cnt:
+                        props.setdefault("用户账户数", str(cnt))
+        except sqlite3.Error as exc:
+            logger.warning("win_device_info read failed for %s: %s", db_path, exc)
+            continue
     labels = [
         ("操作系统", "ProductName"),
         ("系统版本", "OSVersion"),
@@ -696,36 +774,38 @@ def _win_device_info_records(files_db: str | None) -> list[dict[str, Any]]:
     return [{label: props.get(key, "") for label, key in labels}]
 
 
-def _linux_device_info_records(files_db: str | None) -> list[dict[str, Any]]:
+def _linux_device_info_records(candidate_dbs: list[str]) -> list[dict[str, Any]]:
     """Linux 系统/主机信息: best-effort from os_config_files + user count."""
-    if not files_db or not Path(files_db).is_file():
-        return [{}]
     props: dict[str, str] = {}
-    try:
-        with _connect_ro(Path(files_db)) as conn:
-            # os_config_files: file_path/file_content-style rows; look for release files.
-            if _table_exists(conn, "os_config_files"):
-                cols = _table_columns(conn, "os_config_files")
-                # Different schemas name columns differently; try common ones.
-                path_col = "file_path" if "file_path" in cols else (
-                    "name" if "name" in cols else None)
-                content_col = "content" if "content" in cols else (
-                    "value" if "value" in cols else None)
-                if path_col and content_col:
-                    for p, c in conn.execute(
-                        f'SELECT "{path_col}", "{content_col}" FROM "os_config_files" '
-                        f'WHERE "{path_col}" LIKE "%release%" OR '
-                        f'"{path_col}" LIKE "%os-release%" OR '
-                        f'"{path_col}" LIKE "%issue%" LIMIT 20',
-                    ).fetchall():
-                        if c:
-                            props.setdefault(str(Path(str(p)).name), str(c))
-            if _table_exists(conn, "linux_users"):
-                cnt = _count(conn, "linux_users")
-                if cnt:
-                    props.setdefault("用户账户数", str(cnt))
-    except sqlite3.Error as exc:
-        logger.warning("linux_device_info read failed: %s", exc)
+    for db_path in candidate_dbs:
+        if not db_path or not Path(db_path).is_file():
+            continue
+        try:
+            with _connect_ro(Path(db_path)) as conn:
+                # os_config_files: file_path/file_content-style rows; look for release files.
+                if _table_exists(conn, "os_config_files"):
+                    cols = _table_columns(conn, "os_config_files")
+                    # Different schemas name columns differently; try common ones.
+                    path_col = "file_path" if "file_path" in cols else (
+                        "name" if "name" in cols else None)
+                    content_col = "content" if "content" in cols else (
+                        "value" if "value" in cols else None)
+                    if path_col and content_col:
+                        for p, c in conn.execute(
+                            f'SELECT "{path_col}", "{content_col}" FROM "os_config_files" '
+                            f'WHERE "{path_col}" LIKE "%release%" OR '
+                            f'"{path_col}" LIKE "%os-release%" OR '
+                            f'"{path_col}" LIKE "%issue%" LIMIT 20',
+                        ).fetchall():
+                            if c:
+                                props.setdefault(str(Path(str(p)).name), str(c))
+                if _table_exists(conn, "linux_users"):
+                    cnt = _count(conn, "linux_users")
+                    if cnt:
+                        props.setdefault("用户账户数", str(cnt))
+        except sqlite3.Error as exc:
+            logger.warning("linux_device_info read failed for %s: %s", db_path, exc)
+            continue
     record = {
         "主机名": props.get("hostname", ""),
         "发行版": props.get("os-release", props.get("release", "")),
@@ -753,6 +833,21 @@ async def _resolve_task(task_id: str) -> tuple[dict[str, Any], str | None, str |
     files_db = task.get("output_files_db") or None
     events_db = task.get("output_events_db") or None
     return task, files_db, events_db
+
+
+def _candidate_dbs(task: dict[str, Any], files_db: str | None) -> list[str]:
+    """All task libraries worth scanning, files.db first.
+
+    Platform artifacts (Windows/Linux/Android) live in the scenario DBs the
+    C++ analyzer writes (task.scenario_databases), NOT in the classifier
+    files.db — every reader below must consider the full candidate list.
+    """
+    candidates = [files_db, *dict(task.get("scenario_databases") or {}).values()]
+    dbs: list[str] = []
+    for candidate in candidates:
+        if candidate and candidate not in dbs and Path(candidate).is_file():
+            dbs.append(candidate)
+    return dbs
 
 
 def _title(task: dict[str, Any], task_id: str) -> str:
@@ -898,8 +993,9 @@ def _generated_at(files_db: str | None) -> str | None:
 )
 async def get_intelligence_report(task_id: str) -> IntelligenceReportResponse:
     task, files_db, events_db = await _resolve_task(task_id)
+    candidate_dbs = _candidate_dbs(task, files_db)
     chapters = _load_chapter_markdown(files_db)
-    platforms = _detect_platforms(files_db)
+    platforms = _detect_platforms(candidate_dbs)
 
     directory: list[DirectoryNode] = [
         DirectoryNode(id="overview", title="报告概览", kind="overview"),
@@ -920,11 +1016,11 @@ async def get_intelligence_report(task_id: str) -> IntelligenceReportResponse:
         directory.append(DirectoryNode(id="device_info", title="设备基本信息", kind="device_info"))
 
     # Platform-specific artifact sections (only the detected platform's set).
-    for sec in _platform_sections_for(platforms, files_db):
+    for sec in _platform_sections_for(platforms):
         _, section_id, title, _table, _fields, _order = sec
         directory.append(DirectoryNode(
             id=section_id, title=title, kind="records",
-            stats=DirectoryNodeStats(total=_section_total(sec, files_db)),
+            stats=DirectoryNodeStats(total=_section_total(sec, candidate_dbs)),
         ))
 
     directory.extend([
@@ -973,7 +1069,8 @@ async def get_intelligence_records(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
 ) -> RecordPage:
-    _task, files_db, events_db = await _resolve_task(task_id)
+    task, files_db, events_db = await _resolve_task(task_id)
+    candidate_dbs = _candidate_dbs(task, files_db)
 
     if category == "evidence.files":
         return await _files_records(files_db, page, page_size)
@@ -986,20 +1083,21 @@ async def get_intelligence_records(
     if category == "device_info":
         return RecordPage(category="device_info", page=1, page_size=page_size,
                           total=1, total_pages=1,
-                          records=_device_info_records(files_db))
+                          records=_device_info_records(candidate_dbs))
     if category == "win_device_info":
         return RecordPage(category="win_device_info", page=1, page_size=page_size,
                           total=1, total_pages=1,
-                          records=_win_device_info_records(files_db))
+                          records=_win_device_info_records(candidate_dbs))
     if category == "linux_device_info":
         return RecordPage(category="linux_device_info", page=1, page_size=page_size,
                           total=1, total_pages=1,
-                          records=_linux_device_info_records(files_db))
+                          records=_linux_device_info_records(candidate_dbs))
 
     # ── SMS keeps its specialized thread view ──
     if category == "sms":
+        sms_db = _find_db_with_table(candidate_dbs, "sms_messages")
         return _generic_table_records(
-            files_db, "sms_messages",
+            sms_db, "sms_messages",
             ("thread_id", "address", "person", "date", "date_sent",
              "type", "body", "status", "service_center"),
             "date", page, page_size, "sms")
@@ -1008,9 +1106,10 @@ async def get_intelligence_records(
     for sec in _PLATFORM_SECTIONS:
         if sec[1] == category:
             _platform, section_id, title, table, fields, order_by = sec
-            resolved = _section_table(sec, files_db)
+            resolved = _section_table(sec, candidate_dbs)
+            section_db = _find_db_with_table(candidate_dbs, resolved)
             return _generic_table_records(
-                files_db, resolved, fields, order_by, page, page_size, section_id)
+                section_db, resolved, fields, order_by, page, page_size, section_id)
 
     raise HTTPException(status_code=404, detail=f"unknown category: {category}")
 

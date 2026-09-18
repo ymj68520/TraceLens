@@ -518,3 +518,91 @@ def test_metadata_table_created_lazily(android_client):
     res2 = android_client.get("/api/llm/intelligence-report/task-1/metadata")
     assert res2.json()["metadata"]["case_name"] == "after"
 
+
+
+# ── scenario DBs (mvp store governance): platform artifacts live in the C++
+#    scenario libraries (scenario_databases.windows/linux), NOT in files.db ──
+
+
+def _seed_scenario_windows_db(db_path: Path) -> None:
+    """Windows artifacts in a SEPARATE scenario db — registry carries an
+    application-installer ProductName decoy that must not win over the
+    canonical CurrentVersion OS value."""
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE user_accounts (
+                id INTEGER PRIMARY KEY, rid INTEGER, username TEXT, full_name TEXT,
+                comment TEXT, last_login INTEGER, password_last_set INTEGER,
+                account_expires INTEGER, password_expires INTEGER, account_flags TEXT,
+                is_admin INTEGER, home_directory TEXT, profile_path TEXT
+            );
+            INSERT INTO user_accounts (username, full_name, is_admin) VALUES
+                ('Administrator', '管理员', 1),
+                ('suspect', '嫌疑人', 0);
+            CREATE TABLE registry_values (
+                id INTEGER PRIMARY KEY, hive_path TEXT, hive_type TEXT, key_path TEXT,
+                value_name TEXT, value_type TEXT, value_data TEXT, last_modified INTEGER
+            );
+            INSERT INTO registry_values (key_path, value_name, value_data) VALUES
+                ('CMI-CreateHive{GID}\\Classes\\Installer\\Products\\X7', 'ProductName', 'Xshell 7'),
+                ('CMI-CreateHive{GID}\\Microsoft\\Windows NT\\CurrentVersion', 'ProductName', 'Windows 7 Ultimate'),
+                ('CMI-CreateHive{GID}\\ControlSet001\\Control\\ComputerName', 'ComputerName', 'LAB-PC');
+            """
+        )
+
+
+@pytest.fixture()
+def scenario_db_client(tmp_path: Path):
+    """Task whose files.db carries NO platform tables; windows artifacts sit in
+    a scenario library referenced via task.scenario_databases."""
+    files_db = tmp_path / "files.db"
+    scenario_db = tmp_path / "windows.db"
+    _seed_task_db(files_db)
+    _seed_scenario_windows_db(scenario_db)
+    from httpserver.main import create_app
+
+    app = create_app()
+    backend = AsyncMock()
+    backend.get_task = AsyncMock(return_value={
+        "id": "task-1", "image_path": "/evidence/pc.E01",
+        "output_files_db": str(files_db),
+        "output_events_db": str(tmp_path / "events.db"),
+        "scenario_databases": {"windows": str(scenario_db)},
+    })
+    with patch("httpserver.services.service_manager.ServiceManager.cpp_backend", backend, create=True):
+        from httpserver.services import get_service_manager
+        sm = get_service_manager()
+        sm._cpp_backend = backend
+        sm._lifecycle_state = "running"
+        sm._cpp_backend_ready = True
+        yield TestClient(app)
+
+
+def test_scenario_db_platform_detected_and_directory_populated(scenario_db_client):
+    res = scenario_db_client.get("/api/llm/intelligence-report/task-1")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["metadata"]["platforms"] == ["windows"]
+    ids = {n["id"]: (n.get("stats") or {}).get("total", 0) for n in data["directory"]}
+    assert "win_device_info" in ids
+    assert ids["win_users"] == 2
+
+
+def test_scenario_db_records_served(scenario_db_client):
+    res = scenario_db_client.get("/api/llm/intelligence-report/task-1/records",
+                                 params={"category": "win_users"})
+    assert res.status_code == 200
+    page = res.json()
+    assert page["total"] == 2
+    assert {r["username"] for r in page["records"]} == {"Administrator", "suspect"}
+
+
+def test_win_device_info_prefers_currentversion_product_name(scenario_db_client):
+    res = scenario_db_client.get("/api/llm/intelligence-report/task-1/records",
+                                 params={"category": "win_device_info"})
+    assert res.status_code == 200
+    record = res.json()["records"][0]
+    # installer decoy ("Xshell 7") must not masquerade as the OS name
+    assert record["操作系统"] == "Windows 7 Ultimate"
+    assert record["计算机名"] == "LAB-PC"
