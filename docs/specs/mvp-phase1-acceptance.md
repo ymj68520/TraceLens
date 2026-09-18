@@ -183,6 +183,27 @@ COMPLETED，不等 Graphiti）：
 **撤销原因**：甲方决定不更换数据库，保留 SQLite 终态。依赖清理：
 rocksdict（venv）与 librocksdb-dev/librocksdb8.9（系统）均已卸载。
 
+### 4.5 补遗：workbench investigation 库 v3/v7 双模块治理（已完成）
+
+活体验证暴露的历史欠账：`investigation_persistence.py`（v3 结构）与
+`investigation/repository.py`（v7 结构）曾对同一 investigation.db 各自建表，
+同名表列集不同，导致新任务首次证据绑定必 503。治理结果（`36c151e`）：
+
+- **v7 是唯一 schema**：`_ensure_v7_store` 保证新任务建库即 v7；空的 v3 遗留库
+  自动重建为 v7；含数据的 v3 库 fail-closed（提示人工迁移，现场无此类库）；
+- **persistence 不再污染 v7**：`_ensure_schema` 对 v7 库直接返回，永不降级
+  `user_version`；
+- **recover 查询容错**：v7 库上缺失的 v3 表使 recovery 变为 no-op；
+- **辅助表供给**：`analyst_notes` 与 `evidence_analysis_versions`（v3 独有、
+  无同名冲突）由 `_ensure_v7_store` 按需补建，分析员笔记与 recovery 查询可用；
+- **事件类 notes**：被上游 canonical-schema 守卫挡下（409，R1 设计即如此），
+  与本治理无关。
+
+`bootstrap` / file 证据绑定（200）/ cluster 键拒绝（422）/ notes 守卫（409）
+已在活体 v7 库上复测通过。
+
+## 9. 开放问题（不阻塞本节点）
+
 ## 9. 开放问题（不阻塞本节点）
 
 1. RocksDB 是否必须覆盖 C++ 取证库（raw.db 等）——本 SPEC 按全量设计、按 §8 分阶段交付；
