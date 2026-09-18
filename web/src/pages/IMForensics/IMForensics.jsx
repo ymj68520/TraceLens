@@ -151,13 +151,18 @@ export default function IMForensics() {
   }, [imports, loadingList, urlImportId, updateParams]);
 
   useEffect(() => {
-    if (!urlImportId) { setOverview(null); return; }
+    // 切平台瞬间自动纠偏可能把上一平台的导入 ID 短暂写进 URL（旧列表闭包）；
+    // 只对当前平台列表里真实存在的 ID 发起请求，避免跨平台 404。
+    if (!urlImportId || !imports.some((i) => i.import_id === urlImportId)) {
+      setOverview(null);
+      return;
+    }
     let alive = true;
     platform.getOverview(urlImportId)
       .then((res) => alive && setOverview(res))
       .catch(() => alive && setOverview(null));
     return () => { alive = false; };
-  }, [urlImportId, platform]);
+  }, [urlImportId, platform, imports]);
 
   const current = imports.find((i) => i.import_id === urlImportId);
 
