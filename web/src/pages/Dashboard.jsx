@@ -9,6 +9,7 @@ import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
 import { motion } from 'framer-motion';
+import { useToast } from '../components/common/useToast';
 import { ListTodo, Play, CheckCircle2, XCircle, Plus, ClipboardList, Search, Upload, Zap, Server, Database, Brain, HardDrive } from 'lucide-react';
 
 const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.08 } } };
@@ -118,11 +119,26 @@ const Dashboard = () => {
     { label: 'Failed', value: stats.failed, Icon: XCircle, gradient: 'from-rose-500/20 to-rose-600/10 dark:from-rose-500/10 dark:to-rose-600/5', iconColor: 'text-rose-500' },
   ];
 
+  const toast = useToast();
+
   const handleToonExport = async () => {
     const completedTask = tasks.find((t) => t.status === 'completed');
     if (!completedTask) return;
     setExporting(true);
-    try { await exportToon(completedTask.id); } catch { } finally { setExporting(false); }
+    try {
+      const blob = await exportToon(completedTask.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `files_export_${completedTask.id.slice(0, 8)}.toon`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast.success(`TOON 导出完成:任务 ${completedTask.id.slice(0, 8)}`);
+    } catch (err) {
+      toast.error(`TOON 导出失败:${err?.message || '未知错误'}`);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (

@@ -47,8 +47,11 @@ export const getRedisStatus = async () => {
   return await pythonApi.get('/api/system/redis/status');
 };
 
-/** TOON data export */
+/** TOON data export (C++ route serves a text/toon attachment via GET) */
 export const exportToon = async (taskId) => {
-  return await api.post('/api/forensics/export/toon', { task_id: taskId });
+  return await api.get('/api/forensics/export/toon', {
+    params: { task_id: taskId },
+    responseType: 'blob',
+  });
 };
 
