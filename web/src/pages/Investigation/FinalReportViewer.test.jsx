@@ -2,7 +2,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import FinalReportViewer from './FinalReportViewer';
-import { getClaimProvenance, getFinalReport, getFinalReportPublication, getFinalReports, publishFinalReport } from '../../services/investigationService';
+import { getClaimProvenance, getFinalReport, getFinalReportPublication, getFinalReports } from '../../services/investigationService';
 
 vi.mock('../../services/investigationService', () => ({
   getFinalReports: vi.fn(),
@@ -41,7 +41,6 @@ beforeEach(() => {
   getFinalReports.mockResolvedValue({ reports: [{ report_id: 'r3', report_version: 3, status: 'assembled', final_report_hash: 'final-hash-1234567890', created_at: 1710000000 }] });
   getFinalReport.mockResolvedValue({ report: report() });
   getFinalReportPublication.mockResolvedValue({ publication: null });
-  publishFinalReport.mockResolvedValue({ publication: { report_id: 'r3', status: 'published', published_at: 1710000100 } });
   getClaimProvenance.mockResolvedValue({ claim: {
     claim_id: 'claim-1',
     claim_type: 'fact',
@@ -63,17 +62,9 @@ test('shows an explicit no-publication fact state without calling it Unpublished
 
   await waitFor(() => expect(screen.getByText('No publication fact for this report version.')).toBeInTheDocument());
   expect(screen.queryByText('Unpublished')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Publish this report version' })).toBeInTheDocument();
-});
-
-test('publishes the selected report version and re-reads the same publication', async () => {
-  render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
-
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Publish this report version' })).toBeInTheDocument());
-  fireEvent.click(screen.getByRole('button', { name: 'Publish this report version' }));
-
-  await waitFor(() => expect(publishFinalReport).toHaveBeenCalledWith('task-a', 'r3'));
-  expect(getFinalReportPublication).toHaveBeenLastCalledWith('task-a', 'r3');
+  // Publication is owned by the R2 generation workflow; the viewer must not
+  // offer a manual publish action against the frozen 409 stub.
+  expect(screen.queryByRole('button', { name: 'Publish this report version' })).not.toBeInTheDocument();
 });
 
 test('renders selected report, sections, paragraph metadata, and only Assembled status', async () => {

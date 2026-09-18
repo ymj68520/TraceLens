@@ -36,7 +36,7 @@ function reportLabel(report) {
   return `Report v${report?.report_version ?? '—'}`;
 }
 
-function PublicationState({ publication, loading, ready, error, publishLoading, publishError, publishSuccess, onPublish }) {
+function PublicationState({ publication, loading, ready, error }) {
   if (!ready || loading) return <span className="text-xs text-slate-500">Reading publication fact…</span>;
   if (error) return <span role="alert" className="text-xs text-rose-700 dark:text-rose-300">{error}</span>;
   if (publication) {
@@ -48,20 +48,12 @@ function PublicationState({ publication, loading, ready, error, publishLoading, 
       </div>
     );
   }
+  // Publication is owned by the R2 generation workflow (R2C5 auto-publishes a
+  // version on success); the workbench publish endpoint is a frozen 409 stub,
+  // so there is deliberately no manual publish action on this read-only page.
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
       <span>No publication fact for this report version.</span>
-      <Button
-        size="sm"
-        variant="secondary"
-        loading={publishLoading}
-        disabled={publishLoading}
-        onClick={onPublish}
-      >
-        Publish this report version
-      </Button>
-      {publishSuccess && <span className="text-emerald-700 dark:text-emerald-300">Publication recorded.</span>}
-      {publishError && <span role="alert" className="text-rose-700 dark:text-rose-300">{publishError}</span>}
     </div>
   );
 }
