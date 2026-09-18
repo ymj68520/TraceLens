@@ -45,7 +45,7 @@ Respond in JSON format:
                     result.keywords.push_back(kw.get<std::string>());
                 }
             }
-            result.modelUsed = router_->getLastUsedModel();
+            result.modelUsed = router_->getConfig().model; // real model name, not router key (SPEC E4)
             result.success = true;
         }
     } catch (const std::exception& e) {
@@ -90,7 +90,7 @@ Respond in JSON format:
                     result.keywords.push_back(kw.get<std::string>());
                 }
             }
-            result.modelUsed = router_->getLastUsedModel();
+            result.modelUsed = router_->getConfig().model; // real model name, not router key (SPEC E4)
             result.success = true;
         }
     } catch (const std::exception& e) {
@@ -135,7 +135,7 @@ Respond in JSON format:
                     result.keywords.push_back(kw.get<std::string>());
                 }
             }
-            result.modelUsed = router_->getLastUsedModel();
+            result.modelUsed = router_->getConfig().model; // real model name, not router key (SPEC E4)
             result.success = true;
         }
     } catch (const std::exception& e) {
@@ -180,7 +180,7 @@ Respond in JSON format:
                     result.keywords.push_back(kw.get<std::string>());
                 }
             }
-            result.modelUsed = router_->getLastUsedModel();
+            result.modelUsed = router_->getConfig().model; // real model name, not router key (SPEC E4)
             result.success = true;
         }
     } catch (const std::exception& e) {
@@ -225,7 +225,7 @@ Respond in JSON format:
                     result.keywords.push_back(kw.get<std::string>());
                 }
             }
-            result.modelUsed = router_->getLastUsedModel();
+            result.modelUsed = router_->getConfig().model; // real model name, not router key (SPEC E4)
             result.success = true;
         }
     } catch (const std::exception& e) {
@@ -270,7 +270,7 @@ Respond in JSON format:
                     result.keywords.push_back(kw.get<std::string>());
                 }
             }
-            result.modelUsed = router_->getLastUsedModel();
+            result.modelUsed = router_->getConfig().model; // real model name, not router key (SPEC E4)
             result.success = true;
         }
     } catch (const std::exception& e) {

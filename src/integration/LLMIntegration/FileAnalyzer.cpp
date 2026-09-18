@@ -11,6 +11,8 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <iterator>
 #include <sstream>
 #include <chrono>
 #include <algorithm>
@@ -76,6 +78,60 @@ bool isMarkitdownSupportedExt(const std::string& ext) {
     if (ext.empty()) return false;
     return markitdownSupportedExtensions().count(ext) > 0;
 }
+
+// Image extensions routed to the multimodal model (llm-throughput-hardening
+// SPEC D). Everything the vision branch handles is exempted from the
+// markitdown/raw-read text flow, which previously fed binary pixels to the
+// LLM as replacement-character garbage.
+const std::set<std::string>& imageExtensions() {
+    static const std::set<std::string> exts = {
+        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif"
+    };
+    return exts;
+}
+
+bool isImageExtension(const std::string& ext) {
+    if (ext.empty()) return false;
+    return imageExtensions().count(ext) > 0;
+}
+
+std::string mimeTypeForExtension(const std::string& ext) {
+    if (ext == ".png") return "image/png";
+    if (ext == ".gif") return "image/gif";
+    if (ext == ".bmp") return "image/bmp";
+    if (ext == ".webp") return "image/webp";
+    if (ext == ".tiff" || ext == ".tif") return "image/tiff";
+    return "image/jpeg";
+}
+
+std::string base64EncodeBytes(const unsigned char* data, size_t len) {
+    static const char table[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve(((len + 2) / 3) * 4);
+    size_t i = 0;
+    while (i + 2 < len) {
+        unsigned n = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+        out += table[(n >> 18) & 0x3F];
+        out += table[(n >> 12) & 0x3F];
+        out += table[(n >> 6) & 0x3F];
+        out += table[n & 0x3F];
+        i += 3;
+    }
+    if (i + 1 == len) {
+        unsigned n = data[i] << 16;
+        out += table[(n >> 18) & 0x3F];
+        out += table[(n >> 12) & 0x3F];
+        out += "==";
+    } else if (i + 2 == len) {
+        unsigned n = (data[i] << 16) | (data[i + 1] << 8);
+        out += table[(n >> 18) & 0x3F];
+        out += table[(n >> 12) & 0x3F];
+        out += table[(n >> 6) & 0x3F];
+        out += "=";
+    }
+    return out;
+}
 } // namespace
 
 FileAnalyzer::FileAnalyzer(std::shared_ptr<ModelRouter> router)
@@ -131,6 +187,12 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
 
     LOG_DEBUG("File: " + filePath + ", Ext: " + ext);
 
+    // Images go straight to the multimodal model (llm-throughput-hardening
+    // SPEC D) — never through the markitdown/raw-read text flow below.
+    if (isImageExtension(ext)) {
+        return analyzeImageFile(filePath, maxContentLength);
+    }
+
     // Try markitdown proxy first (converts via Python service).
     //
     // IMPORTANT: markitdown only knows how to convert document/image/audio/text
@@ -181,9 +243,23 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
         }
     }
 
+    if (!finishTextAnalysis(result, content, maxContentLength)) {
+        return result;
+    }
+
+    auto endTime = std::chrono::high_resolution_clock::now();
+    result.analysisTimeMs = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+    result.success = true;
+
+    return result;
+}
+
+bool FileAnalyzer::finishTextAnalysis(AnalysisResult& result,
+                                      std::string content,
+                                      size_t maxContentLength) {
     if (content.empty()) {
         result.errorMessage = "Failed to read file content or content is empty";
-        return result;
+        return false;
     }
 
     // Sanitize UTF-8 using FileTextProcessor
@@ -191,7 +267,7 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
 
     if (!router_) {
         result.errorMessage = "No LLM router configured";
-        return result;
+        return false;
     }
 
     // Apply smart content truncation based on context window (Issue 7)
@@ -199,11 +275,13 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
     size_t configLimit = static_cast<size_t>(ConfigManager::instance().getLLMMaxContentLength());
     size_t effectiveMaxLength = std::min({maxContentLength, calculatedMaxLength, configLimit});
 
-    if (content.size() > effectiveMaxLength) {
-        LOG_DEBUG("Content exceeds limit (" + std::to_string(content.size()) +
+    std::string truncated = content;
+    if (truncated.size() > effectiveMaxLength) {
+        LOG_DEBUG("Content exceeds limit (" + std::to_string(truncated.size()) +
                   " > " + std::to_string(effectiveMaxLength) + "), applying smart truncation");
-        content = FileTextProcessor::truncateContent(content, effectiveMaxLength);
+        truncated = FileTextProcessor::truncateContent(truncated, effectiveMaxLength);
     }
+
 
     // Build combined analysis prompt
     std::string combinedPrompt =
@@ -211,10 +289,10 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
         "1. SUMMARY: A concise 2-3 sentence summary\n"
         "2. DESCRIPTION: A brief description of the file's purpose\n"
         "3. KEYWORDS: Important keywords (comma-separated)\n\n"
-        "File: " + filePath + "\n"
+        "File: " + result.filePath + "\n"
         "Type: " + result.fileType + "\n"
         "Size: " + std::to_string(result.fileSize) + " bytes\n\n"
-        "Content:\n" + content;
+        "Content:\n" + truncated;
 
     std::string systemPrompt =
         "You are a forensic file analyst. Provide structured analysis in this exact format:\n"
@@ -222,20 +300,32 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
         "DESCRIPTION: [description here]\n"
         "KEYWORDS: [comma-separated keywords]";
 
+    auto t0 = std::chrono::high_resolution_clock::now();
     auto response = router_->chat(combinedPrompt, systemPrompt);
-
+    auto t1 = std::chrono::high_resolution_clock::now();
+    // Single-line duration log (llm-throughput-hardening SPEC F2).
+    std::cout << "[LLMClient] dur="
+              << std::chrono::duration<double>(t1 - t0).count()
+              << "s model=" << router_->getConfig().model
+              << " file=" << result.filePath << std::endl;
 
     if (!response.success) {
         result.errorMessage = "LLM analysis failed: " + response.errorMessage;
-        return result;
+        return false;
     }
 
-    result.modelUsed = router_->getLastUsedModel();
+    // The router key ("default") is meaningless to downstream consumers —
+    // record the real model name (llm-throughput-hardening SPEC E4).
+    result.modelUsed = router_->getConfig().model;
     result.tokensUsed = response.promptTokens + response.completionTokens;
 
-    // Parse response using pre-compiled static regex (Issue 9)
-    std::string responseText = response.content;
+    parseAnalysisResponse(response.content, result);
+    return true;
+}
 
+void FileAnalyzer::parseAnalysisResponse(const std::string& responseText,
+                                         AnalysisResult& result) {
+    // Parse response using pre-compiled static regex (Issue 9)
     // Extract summary
     std::smatch summaryMatch;
     if (std::regex_search(responseText, summaryMatch, SUMMARY_REGEX)) {
@@ -264,12 +354,126 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
         result.summary = responseText;
         result.description = responseText;
     }
+}
 
-    auto endTime = std::chrono::high_resolution_clock::now();
-    result.analysisTimeMs = std::chrono::duration<double, std::milli>(endTime - startTime).count();
-    result.success = true;
+AnalysisResult FileAnalyzer::analyzeImageFile(const std::string& filePath,
+                                              size_t maxContentLength) {
+    AnalysisResult result;
+    result.filePath = filePath;
 
-    return result;
+    auto startTime = std::chrono::high_resolution_clock::now();
+    auto finish = [&](bool success) {
+        auto endTime = std::chrono::high_resolution_clock::now();
+        result.analysisTimeMs =
+            std::chrono::duration<double, std::milli>(endTime - startTime).count();
+        result.success = success;
+        return result;
+    };
+
+    if (!fs::exists(filePath)) {
+        result.errorMessage = "File not found: " + filePath;
+        return finish(false);
+    }
+    result.fileSize = static_cast<int64_t>(fs::file_size(filePath));
+    result.fileType = FileContentExtractor::detectFileType(filePath);
+
+    // Metadata-only fallback text (SPEC D2): oversize or rejected images are
+    // still described through the regular text flow — analysis based on
+    // metadata only, never on raw pixel bytes masquerading as text.
+    auto metadataContent = [&]() {
+        std::ostringstream meta;
+        meta << "File: " << filePath << "\n"
+             << "Type: " << result.fileType << "\n"
+             << "Size: " << result.fileSize << " bytes\n\n"
+             << "[Image content not sent to the model; analysis based on "
+                "metadata only.]";
+        return meta.str();
+    };
+
+    const auto maxBytes = static_cast<uint64_t>(
+        ConfigManager::instance().getLLMImageMaxBytes());
+    if (result.fileSize > maxBytes) {
+        LOG_WARNING("Image " + filePath + " (" + std::to_string(result.fileSize) +
+                    " bytes) exceeds LLM_IMAGE_MAX_BYTES — metadata-only analysis");
+        if (!finishTextAnalysis(result, metadataContent(), maxContentLength)) {
+            return finish(false);
+        }
+        return finish(true);
+    }
+
+    // Read + base64-encode the image for the multimodal request.
+    std::vector<unsigned char> bytes;
+    bytes.reserve(static_cast<size_t>(result.fileSize));
+    try {
+        std::ifstream file(filePath, std::ios::binary);
+        if (!file) {
+            result.errorMessage = "Cannot open image file: " + filePath;
+            return finish(false);
+        }
+        bytes.assign(std::istreambuf_iterator<char>(file),
+                     std::istreambuf_iterator<char>());
+    } catch (const std::exception& e) {
+        result.errorMessage = std::string("Image read failed: ") + e.what();
+        return finish(false);
+    }
+
+    std::string ext = fs::path(filePath).extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+    ImageContent img;
+    img.base64Data = base64EncodeBytes(bytes.data(), bytes.size());
+    img.mimeType = mimeTypeForExtension(ext);
+    img.detail = ConfigManager::instance().getLLMImageDetail();
+
+    if (!router_) {
+        result.errorMessage = "No LLM router configured";
+        return finish(false);
+    }
+
+    std::vector<ChatMessage> messages;
+    messages.emplace_back(
+        "system",
+        "You are a forensic image analyst. Provide structured analysis in this "
+        "exact format:\n"
+        "SUMMARY: [2-3 sentence summary of what the image shows]\n"
+        "DESCRIPTION: [forensically relevant details: subjects, text/OCR-able "
+        "content, timestamps, location cues, devices, documents, screenshots]\n"
+        "KEYWORDS: [comma-separated keywords]");
+    std::string userText =
+        "Analyze this image from a forensic disk image and provide:\n"
+        "1. SUMMARY: A concise 2-3 sentence summary\n"
+        "2. DESCRIPTION: Forensically relevant visual details\n"
+        "3. KEYWORDS: Important keywords (comma-separated)";
+    messages.emplace_back("user", userText, img);
+
+    auto t0 = std::chrono::high_resolution_clock::now();
+    auto response = router_->chat(messages);
+    auto t1 = std::chrono::high_resolution_clock::now();
+    // Single-line duration log (llm-throughput-hardening SPEC F2).
+    std::cout << "[LLMClient] vision dur="
+              << std::chrono::duration<double>(t1 - t0).count()
+              << "s model=" << router_->getConfig().model
+              << " image=" << filePath
+              << " bytes=" << result.fileSize << std::endl;
+
+    if (!response.success || response.content.empty()) {
+        LOG_WARNING("Vision analysis failed for " + filePath +
+                    " — falling back to metadata-only analysis");
+        if (!finishTextAnalysis(result, metadataContent(), maxContentLength)) {
+            result.errorMessage = response.errorMessage.empty()
+                                      ? "Vision analysis returned no content"
+                                      : response.errorMessage;
+            return finish(false);
+        }
+        return finish(true);
+    }
+
+    // The router key ("default") is meaningless to downstream consumers —
+    // record the real model name (llm-throughput-hardening SPEC E4).
+    result.modelUsed = router_->getConfig().model;
+    result.tokensUsed = response.promptTokens + response.completionTokens;
+    parseAnalysisResponse(response.content, result);
+    return finish(true);
 }
 
 std::vector<AnalysisResult> FileAnalyzer::analyzeBatch(const BatchAnalysisRequest& request) {

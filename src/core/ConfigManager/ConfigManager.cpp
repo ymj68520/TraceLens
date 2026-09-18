@@ -107,6 +107,16 @@ int ConfigManager::getLLMMaxEventClusters() const { return bounded_limit(*this, 
 int ConfigManager::getLLMSmartCandidateFiles() const { return bounded_limit(*this, "LLM_SMART_CANDIDATE_FILES", 1000, 100000); }
 int ConfigManager::getLLMMaxArtifacts() const { return bounded_limit(*this, "LLM_MAX_ARTIFACTS", 500, 100000); }
 int ConfigManager::getLLMMaxContentLength() const { return bounded_limit(*this, "LLM_MAX_CONTENT_LENGTH", 10000, 1000000); }
+// SPEC D: images go straight to the multimodal model; oversized ones fall
+// back to metadata-only instead of shipping a huge base64 payload.
+int ConfigManager::getLLMImageMaxBytes() const { return bounded_limit(*this, "LLM_IMAGE_MAX_BYTES", 8388608, 104857600); }
+std::string ConfigManager::getLLMImageDetail() const {
+    std::string detail = get("LLM_IMAGE_DETAIL", "low");
+    return detail.empty() ? "low" : detail;
+}
+// SPEC C: artifacts are packed N per request (1 = legacy per-row calls).
+int ConfigManager::getLLMArtifactBatchSize() const { return bounded_limit(*this, "LLM_ARTIFACT_BATCH_SIZE", 1, 64); }
+int ConfigManager::getLLMArtifactBatchRetries() const { return bounded_limit(*this, "LLM_ARTIFACT_BATCH_RETRIES", 1, 5); }
 bool ConfigManager::getLLMSkipBinary() const { return getBool("LLM_SKIP_BINARY", true); }
 
 // Text Model Settings

@@ -25,6 +25,19 @@ PROJECT_ROOT="$SCRIPT_DIR"
 BUILD_DIR="$PROJECT_ROOT/build"
 WEB_DIR="$PROJECT_ROOT/web"
 LOG_DIR="$BUILD_DIR/logs"
+
+# Rotate a log before (re)starting its service: keep LOG_KEEP_BACKUPS prior
+# files instead of truncating on every start (llm-throughput-hardening SPEC F1
+# — a 2026-09-16 investigation lost its evidence to the truncate-on-restart).
+rotate_log() {
+    local log_file="$1"
+    local keep=${LOG_KEEP_BACKUPS:-5}
+    [ -f "$log_file" ] || return 0
+    for i in $(seq $((keep - 1)) -1 1); do
+        [ -f "$log_file.$i" ] && mv -f "$log_file.$i" "$log_file.$((i + 1))"
+    done
+    mv -f "$log_file" "$log_file.1"
+}
 mkdir -p "$LOG_DIR"
 
 JOBS=4
@@ -186,6 +199,7 @@ trap cleanup EXIT INT TERM
 if [ "$RUN_CPP" = "1" ]; then
     echo -e "${BLUE}➤ 启动 C++ HTTP 服务（端口 ${CPP_PORT}）${NC}"
     cd "$BUILD_DIR"
+    rotate_log "$LOG_DIR/cpp_server.log"
     ./forensic_analyzer --http-server "$CPP_PORT" > "$LOG_DIR/cpp_server.log" 2>&1 &
     CPP_PID=$!
     echo -e "  ${GREEN}✓ PID ${CPP_PID}${NC}  日志: $LOG_DIR/cpp_server.log"
@@ -219,6 +233,7 @@ if [ "$RUN_PYTHON" = "1" ]; then
     echo -e "${BLUE}➤ 启动 Python FastAPI 服务（端口 ${PYTHON_PORT}）${NC}"
     cd "$PY_DIR"
     PYTHONPATH="$PY_DIR:$PYTHONPATH" \
+        rotate_log "$LOG_DIR/python_service.log"
         "$PY_EXEC" -m httpserver.main > "$LOG_DIR/python_service.log" 2>&1 &
     PYTHON_PID=$!
     echo -e "  ${GREEN}✓ PID ${PYTHON_PID}${NC}  日志: $LOG_DIR/python_service.log"
@@ -229,6 +244,7 @@ if [ "$RUN_PYTHON" = "1" ]; then
     echo -e "${BLUE}➤ 启动分布式 C/S 服务（端口 ${CS_PORT}）${NC}"
     ( cd "$PY_DIR" && PORT="$CS_PORT" \
         PYTHONPATH="$PY_DIR:$PYTHONPATH" \
+        rotate_log "$LOG_DIR/cs_server.log"
         exec "$PY_EXEC" -m server.main ) > "$LOG_DIR/cs_server.log" 2>&1 &
     CS_PID=$!
     echo -e "  ${GREEN}✓ PID ${CS_PID}${NC}  日志: $LOG_DIR/cs_server.log"

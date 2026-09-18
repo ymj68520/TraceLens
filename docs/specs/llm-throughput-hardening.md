@@ -178,4 +178,42 @@
 
 ## 6. 实施记录
 
-（待填：各 Phase 提交号、测试文件、实测数字）
+- **Phase 2B（B）**：`graphiti_integration/config.py` 空值回退 + `.env` `GRAPHITI_LLM_MODEL=microsoft/phi-4`；
+  测试 `tests/unit/test_graphiti_model_config.py`（5 用例）。
+- **Phase 1（A）**：新增 `graphiti_integration/episode_gate.py`（底层钩子注册表 +
+  GateAborted）、`httpserver/services/ingestion_gate.py`（忙判定/ContextVar 作业上下文/超时/轮询
+  失败降级/install+uninstall）；`batch_ingest` episode 间调用钩子（中止的 episode 计入
+  failed 并留错误明细）；worker `_process_job`/kg_sync runner 设置作业上下文，超时收敛为
+  FAILED；`IngestionJob` 增 `runner_epoch`/`force`；启动 stale sweep（Redis 模式有效）；
+  `/ingest` 增 `force`；main.py lifespan 装载并在退出时卸载（防进程级单例泄漏进测试）。
+  测试 `tests/unit/test_ingestion_gate.py`（14 用例）。
+- **Phase 1（F）**：`run.sh` `rotate_log()` 三服务日志保留 5 份轮转；Python
+  `file_analyzer` 文本/视觉两条路径单行耗时日志；C++ `LLMClient` 路径在
+  `FileAnalyzer::finishTextAnalysis`/`analyzeImageFile` 输出 `[LLMClient] dur=…`。
+- **Phase 4（E）**：Python `POST /api/file-analysis/record`（服务端按任务记录解析
+  files_db，`asyncio.to_thread` 跑三写，`trigger_source="pipeline"`）；C++
+  `LLMPythonProxy::recordFileAnalysisResult`；`LLMAnalysisService::storeDescription`
+  代理优先、Python 不可用回退直写；`model_used` 全部改记真实模型名
+  （`router_->getConfig().model`，修复 "default"）；`tests/CMakeLists.txt` 给
+  test_scene_classifier_gtest 补链 LLMPythonProxy.cpp。测试
+  `tests/unit/test_file_analysis_record.py`（4 用例）。
+- **Phase 3（D）**：`FileAnalyzer` 图片扩展（jpg/jpeg/png/gif/bmp/webp/tiff/tif）改走
+  `analyzeImageFile`：base64+`detail=LLM_IMAGE_DETAIL`（默认 low）直喂多模态模型；超
+  `LLM_IMAGE_MAX_BYTES`（默认 8MB）/vision 失败 → metadata-only 文本分析降级；公共尾部抽取为
+  `finishTextAnalysis`/`parseAnalysisResponse`。ConfigManager 新增
+  `getLLMImageMaxBytes`/`getLLMImageDetail`/`getLLMArtifactBatchSize`/`getLLMArtifactBatchRetries`。
+- **Phase 5（C）**：新增 header-only `src/network/HTTPServer/LLMBatchAnalysis.h`
+  （打包 prompt/响应解析/失败阶梯：整批重试 1 次→拆半递归→单条留给调用方兜底）；
+  Linux/Windows/Android 三个 `analyzeArtifactType` 重构为共享 lambda
+  （analyzeSingle/reportProgress/storeOne）+ `LLM_ARTIFACT_BATCH_SIZE>1` 批量路径；
+  默认 1 = 现状逐行调用。
+- **构建**：全量 `cmake --build` 100% 通过（含 web_frontend）。
+- **全量测试（2026-09-17）**：Python 全套 **1691 passed / 12 failed / 4 errors / 9
+  skipped** ——12 failed + 4 errors 经 `git stash` 对照证实为**存量/并行改动**（干净树同批
+  测试同样失败；e2e 的 502 为真实 C++ 服务被占用）。C++ ctest **54/62 通过**；8 个
+  Timeout（120s 线）经串行复核为环境负载（完全未触碰的 EventTimelineTests 串行 131.5s
+  16/16 通过；Android/Miui 测试二进制根本不链接本 SPEC 改动的文件；MiuiBackupHeaderTests
+  处 D 状态 IO 挂起）。新增 23 个 Python 用例全绿。
+- **注意**：实施期间发现并行会话在同一工作区活动（分支 `mvp/phase1-acceptance`，提交
+  1072421 将本 SPEC 的进行中改动打包带走、a776272 自行 pin phi-4），工作区存在两拨未提交
+  改动的叠加，提交切分需人工确认归属。

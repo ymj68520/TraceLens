@@ -2,6 +2,8 @@
 // Implementation of Windows artifact LLM analysis service - Core functionality
 
 #include "WindowsLLMAnalysisService.h"
+#include "LLMBatchAnalysis.h"
+#include "ConfigManager/ConfigManager.h"
 #include "DatabaseManager/SQL/windows_analysis_sql.h"
 #include <sqlite3.h>
 #include <iostream>
@@ -160,52 +162,114 @@ int WindowsLLMAnalysisService::analyzeArtifactType(const std::string& windowsDbP
     int analyzed = 0;
     int total = artifacts.size();
 
+    // Per-item analysis — the legacy floor (llm-throughput-hardening SPEC C3).
+    auto analyzeSingle = [&](const ArtifactRecord& artifact) -> AnalysisResult {
+        switch (artifactType) {
+            case ArtifactType::REGISTRY:
+                return analyzeRegistryArtifact(artifact);
+            case ArtifactType::EVENT_LOG:
+                return analyzeEventLogArtifact(artifact);
+            case ArtifactType::PREFETCH:
+                return analyzePrefetchArtifact(artifact);
+            case ArtifactType::LNK:
+                return analyzeLnkArtifact(artifact);
+            case ArtifactType::JUMP_LIST:
+                return analyzeJumpListArtifact(artifact);
+            case ArtifactType::BROWSER_HISTORY:
+            case ArtifactType::BROWSER_DOWNLOAD:
+            case ArtifactType::BROWSER_BOOKMARK:
+            case ArtifactType::BROWSER_LOGIN:
+                return analyzeBrowserArtifact(artifact);
+            case ArtifactType::WINDOWS_SERVICE:
+            case ArtifactType::SCHEDULED_TASK:
+            case ArtifactType::AMCACHE:
+            case ArtifactType::SRUM:
+                return analyzeSystemArtifact(artifact);
+            case ArtifactType::MFT_ENTRY:
+                return analyzeMftArtifact(artifact);
+            default:
+                return AnalysisResult{};
+        }
+    };
+
+    auto reportProgress = [&](size_t zeroBasedIndex, const ArtifactRecord& artifact) {
+        if (progressCallback) {
+            std::string details = "Artifact ID: " + std::to_string(artifact.id);
+            progressCallback(tableName, static_cast<int>(zeroBasedIndex) + 1,
+                             static_cast<int>(total), details);
+        }
+    };
+
+    auto storeOne = [&](const ArtifactRecord& artifact, const AnalysisResult& result) {
+        if (result.success) {
+            if (storeArtifactAnalysis(db, tableName, artifact.id,
+                                      result.summary, result.description,
+                                      result.keywords, result.modelUsed)) {
+                analyzed++;
+            }
+        }
+    };
+
+    const int batchSize = ConfigManager::instance().getLLMArtifactBatchSize();
+    if (batchSize > 1) {
+        // SPEC C: pack N records per request; unresolved items fall back to
+        // analyzeSingle so coverage never drops below the legacy floor.
+        std::vector<llmbatch::Item> chunk;
+        chunk.reserve(static_cast<size_t>(batchSize));
+        size_t chunkStart = 0;
+        for (size_t i = 0; i < artifacts.size(); ++i) {
+            const auto& artifact = artifacts[i];
+            chunk.push_back({std::to_string(artifact.id), artifact.data});
+
+            const bool last = (i + 1 == artifacts.size());
+            if (chunk.size() < static_cast<size_t>(batchSize) && !last) {
+                continue;
+            }
+
+            llmbatch::Outcome outcome;
+            llmbatch::analyzeWithLadder(*router_, tableName, chunk,
+                                        ConfigManager::instance().getLLMArtifactBatchRetries(),
+                                        outcome);
+
+            for (size_t j = 0; j < chunk.size(); ++j) {
+                reportProgress(chunkStart + j, artifacts[chunkStart + j]);
+                const auto& record = artifacts[chunkStart + j];
+                auto it = outcome.results.find(std::to_string(record.id));
+                if (it != outcome.results.end()) {
+                    AnalysisResult r{};
+                    r.success = true;
+                    const auto& entry = it->second;
+                    r.summary = entry.value("summary", "");
+                    r.description = entry.value("description", "");
+                    if (entry.contains("keywords") && entry["keywords"].is_array()) {
+                        for (const auto& kw : entry["keywords"]) {
+                            if (kw.is_string()) r.keywords.push_back(kw.get<std::string>());
+                        }
+                    }
+                    if (r.summary.empty() && r.description.empty()) {
+                        storeOne(record, analyzeSingle(record));
+                        continue;
+                    }
+                    r.modelUsed = router_->getConfig().model;
+                    storeOne(record, r);
+                } else {
+                    storeOne(record, analyzeSingle(record));
+                }
+            }
+            chunkStart = i + 1;
+            chunk.clear();
+        }
+        sqlite3_close(db);
+        return analyzed;
+    }
+
     for (size_t i = 0; i < artifacts.size(); ++i) {
         const auto& artifact = artifacts[i];
 
-        if (progressCallback) {
-            std::string details = "Artifact ID: " + std::to_string(artifact.id);
-            progressCallback(tableName, i + 1, total, details);
-        }
+        reportProgress(i, artifact);
 
         try {
-            AnalysisResult result;
-
-            // Route to appropriate analysis function
-            switch (artifactType) {
-                case ArtifactType::REGISTRY:
-                    result = analyzeRegistryArtifact(artifact);
-                    break;
-                case ArtifactType::EVENT_LOG:
-                    result = analyzeEventLogArtifact(artifact);
-                    break;
-                case ArtifactType::PREFETCH:
-                    result = analyzePrefetchArtifact(artifact);
-                    break;
-                case ArtifactType::LNK:
-                    result = analyzeLnkArtifact(artifact);
-                    break;
-                case ArtifactType::JUMP_LIST:
-                    result = analyzeJumpListArtifact(artifact);
-                    break;
-                case ArtifactType::BROWSER_HISTORY:
-                case ArtifactType::BROWSER_DOWNLOAD:
-                case ArtifactType::BROWSER_BOOKMARK:
-                case ArtifactType::BROWSER_LOGIN:
-                    result = analyzeBrowserArtifact(artifact);
-                    break;
-                case ArtifactType::WINDOWS_SERVICE:
-                case ArtifactType::SCHEDULED_TASK:
-                case ArtifactType::AMCACHE:
-                case ArtifactType::SRUM:
-                    result = analyzeSystemArtifact(artifact);
-                    break;
-                case ArtifactType::MFT_ENTRY:
-                    result = analyzeMftArtifact(artifact);
-                    break;
-                default:
-                    continue;
-            }
+            AnalysisResult result = analyzeSingle(artifact);
 
             if (result.success) {
                 if (storeArtifactAnalysis(db, tableName, artifact.id,

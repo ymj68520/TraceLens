@@ -87,6 +87,28 @@ public:
      */
     bool deleteGraphitiData(const std::string& task_id);
 
+    /**
+     * @brief Record one pipeline file-analysis result through the Python
+     *        atomic three-write (files display cache + file_analyses truth
+     *        row + file_descriptions) — llm-throughput-hardening SPEC E.
+     * @param task_id Owning task (provenance).
+     * @param files_db_path Task-owned files database (server-side trusted).
+     * @param file_path Evidence path inside the files database.
+     * @param description Full LLM description text.
+     * @param summary Short summary.
+     * @param keywords Comma-separated keyword string.
+     * @param model_used Real model name (not the router key).
+     * @return true when the Python service persisted the analysis.
+     */
+    bool recordFileAnalysisResult(
+        const std::string& task_id,
+        const std::string& files_db_path,
+        const std::string& file_path,
+        const std::string& description,
+        const std::string& summary,
+        const std::string& keywords,
+        const std::string& model_used);
+
     // ========================================================================
     // Graphiti Integration Methods
     // ========================================================================

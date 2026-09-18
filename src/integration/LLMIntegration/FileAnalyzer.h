@@ -39,8 +39,18 @@ public:
      * @param maxContentLength Maximum content length to send to LLM
      * @return Analysis result with summary, keywords, description
      */
-    AnalysisResult analyzeFile(const std::string& filePath, 
+    AnalysisResult analyzeFile(const std::string& filePath,
                                size_t maxContentLength = 10000);
+
+    /**
+     * @brief Analyze an image via the multimodal model (SPEC D).
+     *
+     * Images are sent as base64 image_url content instead of being raw-read
+     * into truncated text garbage. Oversized (LLM_IMAGE_MAX_BYTES) or
+     * rejected/corrupt images degrade to a metadata-only text analysis.
+     */
+    AnalysisResult analyzeImageFile(const std::string& filePath,
+                                    size_t maxContentLength = 10000);
     
     /**
      * @brief Analyze multiple files
@@ -138,6 +148,17 @@ public:
     AnalysisResult analyzeFileChunked(const std::string& filePath);
 
 private:
+    // Shared tail of the text-analysis flow: sanitize, truncate, prompt,
+    // chat, parse. Returns false and sets errorMessage on failure (SPEC D).
+    // `content` is by value: the flow mutates its own copy.
+    bool finishTextAnalysis(AnalysisResult& result,
+                            std::string content,
+                            size_t maxContentLength);
+
+    // Structured SUMMARY/DESCRIPTION/KEYWORDS extraction (SPEC D).
+    void parseAnalysisResponse(const std::string& responseText,
+                               AnalysisResult& result);
+
     std::shared_ptr<ModelRouter> router_;
     std::string summaryPrompt_;
     std::string descriptionPrompt_;

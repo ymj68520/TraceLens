@@ -59,11 +59,14 @@ def api(monkeypatch, files_db):
     )
     app = FastAPI()
     app.include_router(router, prefix="/api")
-    with TestClient(app) as client:
-        # Expose the fakes for per-test assertions.
-        client.fake_llm = fake_llm
-        client.fake_services = fake_services
-        yield client
+    # No `with`: entering the TestClient context runs the app lifespan, which
+    # initializes real services and installs the process-global episode gate —
+    # none of which this route contract needs.
+    client = TestClient(app)
+    # Expose the fakes for per-test assertions.
+    client.fake_llm = fake_llm
+    client.fake_services = fake_services
+    yield client
 
 
 def _payload(**overrides):

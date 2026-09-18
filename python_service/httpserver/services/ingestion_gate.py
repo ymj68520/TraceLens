@@ -185,16 +185,27 @@ async def before_episode_hook(meta: dict) -> None:
 
 
 def install_episode_gate(settings: Settings, list_tasks: Callable[..., Awaitable[dict]]) -> ForegroundGate:
-    """Create the gate and register the before-episode hook. Idempotent."""
+    """Create the gate and register the before-episode hook."""
     global _gate
-    if _gate is None:
-        _gate = ForegroundGate(settings, list_tasks)
+    _gate = ForegroundGate(settings, list_tasks)
     episode_gate.set_before_episode_hook(before_episode_hook)
     logger.info(
         f"Episode gate installed (enabled={_gate.enabled}, "
         f"poll={_gate.poll_seconds:.0f}s)"
     )
     return _gate
+
+
+def uninstall_episode_gate() -> None:
+    """Drop the gate and hook (app shutdown / test isolation).
+
+    The registry is process-global; without this, a shut-down app's gate —
+    holding its dead cpp_backend — keeps answering episode hooks in whatever
+    runs next in the same process.
+    """
+    global _gate
+    _gate = None
+    episode_gate.set_before_episode_hook(None)
 
 
 def get_gate() -> Optional[ForegroundGate]:

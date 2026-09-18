@@ -1,4 +1,5 @@
 #include "LLMAnalysisService.h"
+#include "network/HTTPServer/LLMPythonProxy.h"
 #include "DatabaseManager/SQL/file_classifier_sql.h"
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
 #include "core/PathManager/PathManager.h"
@@ -360,6 +361,26 @@ bool LLMAnalysisService::storeDescription(const std::string& dbPath,
                                            const std::string& summary,
                                            const std::vector<std::string>& keywords,
                                            const std::string& modelUsed) {
+    // llm-throughput-hardening SPEC E: the Python three-write
+    // (files display cache + file_analyses truth row + file_descriptions) is
+    // the single writer. The legacy direct writes below remain only as the
+    // fallback for when the Python service is unreachable — the pipeline must
+    // never lose an analysis just because persistence moved.
+    if (!scratchTaskId_.empty()) {
+        std::string keywordsStr;
+        for (size_t i = 0; i < keywords.size(); ++i) {
+            if (i > 0) keywordsStr += ",";
+            keywordsStr += keywords[i];
+        }
+        if (forensics::LLMPythonProxy::instance().recordFileAnalysisResult(
+                scratchTaskId_, dbPath, filePath, description, summary,
+                keywordsStr, modelUsed)) {
+            return true;
+        }
+        std::cerr << "Python record endpoint unavailable for " << filePath
+                  << " — falling back to direct file-db write" << std::endl;
+    }
+
     sqlite3* db = nullptr;
     int rc = sqlite3_open(dbPath.c_str(), &db);
     if (rc != SQLITE_OK) {

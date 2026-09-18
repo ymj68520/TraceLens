@@ -64,9 +64,16 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Some services failed to initialize: {e}")
 
     yield
-    
+
     # Shutdown: Cleanup services
     logger.info("Shutting down Python HTTP Service")
+    try:
+        # Release the process-global gate first so nothing in shutdown (or a
+        # subsequent app in the same process, e.g. tests) uses a dead backend.
+        from .services.ingestion_gate import uninstall_episode_gate
+        uninstall_episode_gate()
+    except Exception as e:
+        logger.warning(f"Error releasing episode gate: {e}")
     try:
         from .services import get_service_manager
         service_manager = get_service_manager()

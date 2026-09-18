@@ -22,6 +22,50 @@ bool LLMPythonProxy::isServiceAvailable() {
     }
 }
 
+bool LLMPythonProxy::recordFileAnalysisResult(
+    const std::string& task_id,
+    const std::string& files_db_path,
+    const std::string& file_path,
+    const std::string& description,
+    const std::string& summary,
+    const std::string& keywords,
+    const std::string& model_used) {
+    try {
+        httplib::Client cli(python_service_url_);
+        cli.set_connection_timeout(5);
+        // Descriptions can be long; the server-side write itself is a local
+        // SQLite three-write (WAL, milliseconds).
+        cli.set_read_timeout(30);
+
+        nlohmann::json body = {
+            {"task_id", task_id},
+            {"file_path", file_path},
+            {"description", description},
+            {"summary", summary},
+            {"keywords", keywords},
+            {"model_used", model_used},
+        };
+
+        auto res = cli.Post("/api/file-analysis/record", body.dump(), "application/json");
+        if (res && res->status == 200) {
+            try {
+                auto response = nlohmann::json::parse(res->body);
+                return response.value("persisted", false);
+            } catch (const std::exception&) {
+                return false;
+            }
+        }
+        if (res) {
+            std::cerr << "LLMPythonProxy::recordFileAnalysisResult failed: HTTP "
+                      << res->status << " - " << res->body << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "LLMPythonProxy::recordFileAnalysisResult exception: "
+                  << e.what() << std::endl;
+    }
+    return false;
+}
+
 bool LLMPythonProxy::deleteGraphitiData(const std::string& task_id) {
     try {
         httplib::Client cli(python_service_url_);
@@ -177,7 +221,13 @@ JobStatus LLMPythonProxy::get_job_status(const std::string& job_id) {
             status.created_at = response.value("created_at", "");
             status.started_at = response.value("started_at", "");
             status.completed_at = response.value("completed_at", "");
-            status.error = response.value("error", "");
+            // The python job endpoint returns "error": null on success;
+            // value("error", "") would throw type_error.302 on null and lose
+            // the whole status (surfaced live by the FINALIZING wait loop).
+            if (response.contains("error") && !response["error"].is_null()
+                && response["error"].is_string()) {
+                status.error = response["error"].get<std::string>();
+            }
 
             if (response.contains("result")) {
                 status.result = response["result"];

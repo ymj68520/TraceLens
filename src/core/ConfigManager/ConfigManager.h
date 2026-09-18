@@ -43,6 +43,11 @@ public:
     int getLLMSmartCandidateFiles() const;  // LLM_SMART_CANDIDATE_FILES：smart 选择阶段的候选文件扫描上限
     int getLLMMaxArtifacts() const;         // LLM_MAX_ARTIFACTS：平台工件（Android/Linux/Windows）分析上限
     int getLLMMaxContentLength() const;
+    // llm-throughput-hardening SPEC D: image vision-analysis bounds.
+    int getLLMImageMaxBytes() const;
+    std::string getLLMImageDetail() const;
+    int getLLMArtifactBatchSize() const;
+    int getLLMArtifactBatchRetries() const;
     bool getLLMSkipBinary() const;
     
     // Text Model Settings
