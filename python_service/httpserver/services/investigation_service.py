@@ -292,10 +292,14 @@ class InvestigationService:
         self._create_recovery_aux_table(db_path)
 
     def _create_recovery_aux_table(self, db_path) -> None:
-        """The v7 schema has no evidence_analysis_versions table, but the
-        persistence recovery query (UPDATE ... WHERE status IN
-        ('queued','running')) still targets it. Create it standalone —
-        columns per the legacy DDL minus the analyst_notes foreign key."""
+        """Create the legacy tables a v7 store still needs (mvp governance).
+
+        - ``evidence_analysis_versions``: the persistence recovery query
+          (UPDATE ... WHERE status IN ('queued','running')) targets it.
+        - ``analyst_notes``: v3-only table, no v7 counterpart — the analyst
+          note feature reads/writes it directly. Columns per the legacy DDL
+          minus cross-table foreign keys.
+        """
         conn = sqlite3.connect(db_path)
         try:
             conn.execute("BEGIN IMMEDIATE")
@@ -323,6 +327,21 @@ class InvestigationService:
                     input_evidence_refs TEXT,
                     created_at INTEGER NOT NULL,
                     UNIQUE(task_id, evidence_key, version)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS analyst_notes (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    target_type TEXT NOT NULL,
+                    target_key TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    author TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER,
+                    UNIQUE(task_id, target_type, target_key)
                 )
                 """
             )

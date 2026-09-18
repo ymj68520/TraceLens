@@ -1136,7 +1136,20 @@ class InvestigationPersistence:
             )
 
     def recover_interrupted_jobs(self) -> int:
-        """Fail analysis versions left in queued/running after a restart."""
+        """Fail analysis versions left in queued/running after a restart.
+
+        On a repository-v7 store the legacy ``evidence_analysis_versions``
+        table does not exist (mvp governance: v7 is the single schema); the
+        recovery is then a no-op instead of a hard failure.
+        """
+        try:
+            return self._recover_interrupted_jobs_impl()
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc):
+                return 0
+            raise
+
+    def _recover_interrupted_jobs_impl(self) -> int:
         with self._connect() as conn:
             cur = conn.execute(
                 """UPDATE evidence_analysis_versions
@@ -1819,9 +1832,18 @@ class InvestigationPersistence:
         return (dict(accepted) if accepted else None, dict(pending) if pending else None)
 
     def recover_interrupted_event_versions(self) -> int:
-        with self._connect() as conn:
-            cur = conn.execute("UPDATE investigation_event_versions SET status = ?, error_message = 'Event refresh interrupted by service restart', completed_at = ? WHERE status IN (?, ?)", (EVENT_VERSION_FAILED, _now(), EVENT_VERSION_QUEUED, EVENT_VERSION_RUNNING))
-            return cur.rowcount
+        """Fail event refreshes left queued/running after a restart.
+
+        No-op on a repository-v7 store (the v7 ``investigation_event_versions``
+        table has a different column set and its own lifecycle there)."""
+        try:
+            with self._connect() as conn:
+                cur = conn.execute("UPDATE investigation_event_versions SET status = ?, error_message = 'Event refresh interrupted by service restart', completed_at = ? WHERE status IN (?, ?)", (EVENT_VERSION_FAILED, _now(), EVENT_VERSION_QUEUED, EVENT_VERSION_RUNNING))
+                return cur.rowcount
+        except sqlite3.OperationalError as exc:
+            if "no such column" in str(exc):
+                return 0
+            raise
 
     def invalidate_event_semantics(self, task_id: str, event_id: str) -> None:
         with self._connect() as conn:
