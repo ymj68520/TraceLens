@@ -690,12 +690,21 @@ class WeChatImportService:
         con = self._connect(import_id)
         try:
             names = self._name_map(con, owner_username)
-            room_names = {
-                r[0]: (r[1] or r[2] or r[0])
-                for r in con.execute(
-                    "SELECT chatroomname, displayname, chatroomnick FROM chatroom"
-                )
-            }
+            # Schema-tolerant room names: imported datasets vary (the demo
+            # EnMicroMsg chatroom table has no displayname/chatroomnick), so
+            # use SELECT * + _col instead of naming columns that may not exist.
+            room_names = {}
+            try:
+                for row in con.execute("SELECT * FROM chatroom"):
+                    name = self._col(row, "chatroomname", "")
+                    if name:
+                        room_names[name] = (
+                            self._col(row, "displayname", "")
+                            or self._col(row, "chatroomnick", "")
+                            or name
+                        )
+            except sqlite3.OperationalError:
+                pass
             where, params = [], []
             if talker:
                 where.append("talker = ?")
@@ -717,9 +726,17 @@ class WeChatImportService:
                 f"SELECT COUNT(*) FROM message {clause}", params
             ).fetchone()[0]
 
+            # Column sets vary across EnMicroMsg versions (the demo dataset
+            # has only talker/content/createTime/type/isSend): select what
+            # actually exists and fall back to rowid for the message id.
+            msg_cols = {r[1] for r in con.execute("PRAGMA table_info(message)")}
+            select_fields = ["rowid AS msgId" if c == "msgId" else c
+                             for c in ("msgId", "talker", "content", "createTime", "type", "isSend", "imgPath")
+                             if c in msg_cols or c == "msgId"]
+            field_names = [f.split(" AS ")[-1] for f in select_fields]
             rows = con.execute(
                 f"""
-                SELECT msgId, talker, content, createTime, type, isSend, imgPath
+                SELECT {', '.join(select_fields)}
                 FROM message {clause}
                 ORDER BY createTime ASC LIMIT ? OFFSET ?
                 """,
@@ -729,9 +746,14 @@ class WeChatImportService:
             available = set(meta.get("thumbs") or [])
             messages = []
             for row in rows:
-                msg_id, tk, content, ts, mtype, is_send, img_path = (
-                    row[0], row[1], row[2] or "", row[3], row[4], row[5], row[6],
-                )
+                values = dict(zip(field_names, row))
+                msg_id = values.get("msgId")
+                tk = values.get("talker") or ""
+                content = values.get("content") or ""
+                ts = values.get("createTime")
+                mtype = values.get("type")
+                is_send = values.get("isSend")
+                img_path = values.get("imgPath") or ""
                 sender, text = _strip_group_prefix(content, tk)
                 is_group = "@chatroom" in tk
                 if is_group and not sender:

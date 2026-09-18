@@ -300,6 +300,50 @@ class TestImportPipeline:
         assert result["status"] == "ready"
         assert result["decryption"]["scheme"] == "plaintext"
 
+    def test_minimal_chatroom_schema_messages_query(self, import_workspace, tmp_path):
+        """Datasets whose chatroom table lacks displayname/chatroomnick (demo
+        EnMicroMsg) must not break the messages query with a 500."""
+        svc, _enc, km = import_workspace
+        plain = str(tmp_path / "minimal_chatroom.db")
+        con = sqlite3.connect(plain)
+        con.executescript(
+            """
+            CREATE TABLE userinfo (id INTEGER PRIMARY KEY, type INTEGER, value TEXT);
+            CREATE TABLE rcontact (
+                username TEXT PRIMARY KEY, alias TEXT, conRemark TEXT, nickname TEXT,
+                type INTEGER, chatroomFlag INTEGER DEFAULT 0
+            );
+            CREATE TABLE chatroom (
+                chatroomname TEXT PRIMARY KEY, roomowner TEXT, memberlist TEXT,
+                membercount INTEGER, addtime INTEGER
+            );
+            CREATE TABLE message (
+                talker TEXT, content TEXT,
+                createTime INTEGER, type INTEGER, isSend INTEGER DEFAULT 0
+            );
+            """
+        )
+        con.execute("INSERT INTO userinfo (id, value) VALUES (2, ?)", (OWNER_WXID,))
+        con.execute(
+            "INSERT INTO chatroom VALUES (?,?,?,?,?)",
+            ("99@chatroom", OWNER_WXID, OWNER_WXID, 1, 1780000000000),
+        )
+        con.execute(
+            "INSERT INTO message (talker, content, createTime, type, isSend) VALUES (?,?,?,?,?)",
+            ("99@chatroom", "wxid_ownertest22:\n最小schema群消息", 1780000000000, 1, 0),
+        )
+        con.commit()
+        con.close()
+
+        result = svc._create_import_sync(plain, "最小schema导入", "", None, None, km, "unit-test")
+        assert result["status"] == "ready", result
+
+        msgs = svc._messages_sync(result["import_id"], "99@chatroom", None, None, None, None, 50, 0)
+        assert msgs["total"] == 1
+        msg = msgs["messages"][0]
+        assert msg["session_name"] == "99@chatroom"
+        assert msg["id"] is not None  # rowid fallback for missing msgId
+
     def test_wrong_key_material_fails(self, import_workspace):
         svc, enc, km = import_workspace
         bad_km = {**km, "uin": "9999999999"}  # derives a wrong password
