@@ -210,10 +210,12 @@ const Files = () => {
     let filtered = [...largestFiles];
 
     if (filterExtension) {
-      const exts = filterExtension.toLowerCase().split(',').map(e => e.trim());
+      // Accept both ".jpg" (as the placeholder suggests) and "jpg": stored
+      // file extensions never carry the leading dot.
+      const exts = filterExtension.toLowerCase().split(',').map(e => e.trim().replace(/^\.+/, ''));
       filtered = filtered.filter(f => {
         const ext = (f.extension || '').toLowerCase();
-        return exts.some(e => ext.includes(e) || ext === e);
+        return exts.some(e => e && (ext.includes(e) || ext === e));
       });
     }
 
