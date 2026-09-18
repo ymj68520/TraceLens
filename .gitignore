@@ -460,3 +460,6 @@ src/http_agent/tests/test_http_agent.cpp.pre-gtest
 /web/**/Makefile
 /web/**/*.o
 /web/**/*.o.d
+
+# Runtime data written by services (IM import datasets etc.)
+/data/
