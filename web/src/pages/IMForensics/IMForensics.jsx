@@ -96,12 +96,15 @@ export default function IMForensics() {
   const [loadingList, setLoadingList] = useState(true);
   const { show } = useToast();
 
+  // 用户主动的导航（切 Tab / 切平台 / 换导入 / 跳聊天记录）默认 push 历史条目，
+  // 浏览器"返回"才能回到上一个功能页；自动纠偏类调用显式传 { replace: true }，
+  // 避免参数自动修正塞满历史记录。（之前统一 replace 导致页内切换后无法返回）
   const updateParams = useCallback((mutate, options = {}) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       mutate(next);
       return next;
-    }, { replace: true, ...options });
+    }, { replace: false, ...options });
   }, [setSearchParams]);
 
   // setSearchParams 每次 search 变化都会换新引用；经 ref 取用，避免加载列表的
@@ -114,7 +117,7 @@ export default function IMForensics() {
       const res = await platform.listImports();
       setImports(res.imports || []);
       if (selectId) {
-        updateParamsRef.current((p) => { p.set('import_id', selectId); p.delete('task_id'); });
+        updateParamsRef.current((p) => { p.set('import_id', selectId); p.delete('task_id'); }, { replace: true });
       }
     } catch (e) {
       show(`加载导入列表失败：${e.data?.detail || e.message}`, 'error');
@@ -143,7 +146,7 @@ export default function IMForensics() {
     if (target !== urlImportId) {
       // 注意：不清理 task_id 覆盖 —— 旧 /wechat-graph 链接可能只带原始任务 ID，
       // 自动选中导入不应吞掉它；只有用户主动切换平台/导入时才清除
-      updateParams((p) => p.set('import_id', target));
+      updateParams((p) => p.set('import_id', target), { replace: true });
     }
   }, [imports, loadingList, urlImportId, updateParams]);
 

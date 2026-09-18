@@ -11,9 +11,11 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Any
+
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,6 +27,8 @@ from ..services.evidence.resolver import EvidenceResolver
 from ..services.forensic_report.models import ScopeType
 from ..services.forensic_report.narrative_reader import read_narrative_version_strict
 from ..services.investigation import AnalysisReviewDecision
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -89,6 +93,9 @@ def _dump(value: Any) -> Any:
 
 
 def _error(exc: Exception, not_found: str = "investigation resource not found") -> HTTPException:
+    # Log the original exception: mapping to 4xx/5xx without recording the
+    # cause made store-level failures (e.g. EvidenceStoreError) undiagnosable.
+    logger.error("Investigation request failed: %s: %s", type(exc).__name__, exc, exc_info=exc)
     if isinstance(exc, EvidenceNotFoundError):
         return HTTPException(status_code=404, detail=not_found)
     if isinstance(exc, (ValueError, KeyError)):
@@ -98,18 +105,42 @@ def _error(exc: Exception, not_found: str = "investigation resource not found") 
     return HTTPException(status_code=500, detail="investigation operation failed")
 
 
+def _event_view(event: Any, presentation: dict[str, Any] | None) -> dict[str, Any]:
+    """Workbench event payload: frozen v7 truth + presentation projection.
+
+    The UI renders legacy field names (start_time/end_time, source,
+    evidence_count) that the v7 Event model deliberately does not carry;
+    the values come from the read-only presentation pass over immutable
+    rows (see InvestigationGraphReader.event_presentation) and are never
+    fabricated store state.
+    """
+    value = {**_dump(event), "id": event.event_id}
+    row = presentation or {}
+    value["start_time"] = row.get("start_time")
+    value["end_time"] = row.get("end_time")
+    value["evidence_count"] = row.get("evidence_count", 0)
+    value["source"] = "cluster_seed" if row.get("cluster_seed") else "analyst"
+    return value
+
+
+async def _event_presentation(task_id: str, manager) -> dict[str, Any]:
+    try:
+        return await manager.investigation_event_service.event_presentation(task_id)
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
 async def _overview(task_id: str, manager) -> dict[str, Any]:
     evidence = await manager.investigation_read_service.list_evidence(task_id)
     events = await manager.investigation_event_service.list_events(task_id)
     report_evidence = await manager.report_evidence_service.list(task_id)
     graph = await manager.investigation_graph_service.get_graph(task_id)
-    analyses: list[Any] = []
-    for item in evidence:
-        analyses.extend(
-            await manager.secondary_analysis_executor.list_analyses(
-                task_id, item.evidence_key
-            )
-        )
+    # One strict read for the whole task: the previous per-evidence
+    # list_analyses loop re-resolved the task (cpp get_task) on every item.
+    analyses: list[Any] = await manager.secondary_analysis_executor.list_task_analyses(
+        task_id
+    )
+    presentation = await _event_presentation(task_id, manager)
     return {
         "task": await manager.cpp_backend.get_task(task_id),
         "initialized": bool(evidence or events or report_evidence),
@@ -117,7 +148,7 @@ async def _overview(task_id: str, manager) -> dict[str, Any]:
         "analysis_count": len(analyses),
         "report_evidence_count": len(report_evidence),
         "evidence": [_dump(item) for item in evidence],
-        "events": [{**_dump(item), "id": item.event_id} for item in events],
+        "events": [_event_view(item, presentation.get(item.event_id)) for item in events],
         "analyses": [{**_dump(item), "id": item.analysis_id} for item in analyses],
         "report_evidence": [_dump(item) for item in report_evidence],
         "graph": _dump(graph),
@@ -236,7 +267,12 @@ async def workbench_bootstrap(task_id: str, request: BootstrapRequest, manager=D
 async def workbench_events(task_id: str, manager=Depends(_manager)):
     try:
         events = await manager.investigation_event_service.list_events(task_id)
-        return {"success": True, "events": [{**_dump(item), "id": item.event_id} for item in events], "total": len(events)}
+        presentation = await _event_presentation(task_id, manager)
+        return {
+            "success": True,
+            "events": [_event_view(item, presentation.get(item.event_id)) for item in events],
+            "total": len(events),
+        }
     except Exception as exc:
         raise _error(exc) from exc
 
@@ -245,7 +281,11 @@ async def workbench_events(task_id: str, manager=Depends(_manager)):
 async def workbench_event(task_id: str, event_id: str, manager=Depends(_manager)):
     try:
         event = await manager.investigation_event_service.get_event(task_id, event_id)
-        return {"success": True, "event": {**_dump(event), "id": event.event_id}}
+        presentation = await _event_presentation(task_id, manager)
+        return {
+            "success": True,
+            "event": _event_view(event, presentation.get(event.event_id)),
+        }
     except Exception as exc:
         raise _error(exc) from exc
 
@@ -259,7 +299,20 @@ async def workbench_event_review(task_id: str, event_id: str):
 async def workbench_event_evidence(task_id: str, event_id: str, manager=Depends(_manager)):
     try:
         evidence = await manager.investigation_event_service.list_event_evidence(task_id, event_id)
-        return {"success": True, "evidence": [_dump(item) for item in evidence], "total": len(evidence)}
+        # Legacy-vocabulary display fields (title/type/timestamp/summary plus
+        # the G3/G5 analysis selection state) come from the same strict
+        # read-only presentation pass; raw links carry none of them.
+        presentation = await _event_presentation(task_id, manager)
+        link_rows = (presentation or {}).get(event_id, {}).get("links", [])
+        by_key = {row["evidence_key"]: row for row in link_rows}
+        return {
+            "success": True,
+            "evidence": [
+                {**_dump(item), **by_key.get(item.evidence_key, {})}
+                for item in evidence
+            ],
+            "total": len(evidence),
+        }
     except Exception as exc:
         raise _error(exc) from exc
 

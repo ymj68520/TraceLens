@@ -89,6 +89,7 @@ class IngestionJobManagerMixin:
             await self._redis.ping()
             self._use_redis = True
             logger.info(f"IngestionJobManager using Redis at {self.settings.redis_url}")
+            await self._recover_stale_jobs()
         except Exception as e:
             logger.warning(f"Redis not available, using in-memory storage: {e}")
             self._use_redis = False
@@ -211,6 +212,37 @@ class IngestionJobManagerMixin:
                 "status": "error",
                 "error": str(e),
             }
+
+    async def _recover_stale_jobs(self):
+        """Mark persisted queued/running jobs as failed at startup.
+
+        Jobs survive in Redis across restarts, but this manager is the only
+        worker: a queued/running job observed at boot has no live coroutine
+        behind it, and without reconciliation the task graphs page shows
+        "ingestion in progress" forever (observed: a job stuck at 93% for
+        days).
+        """
+        if not self._use_redis or self._redis is None:
+            return
+        recovered = 0
+        try:
+            async for key in self._redis.scan_iter(match="job:*"):
+                data = await self._redis.hgetall(key)
+                if not data:
+                    continue
+                if data.get("status") not in (JobStatus.PENDING.value, JobStatus.RUNNING.value):
+                    continue
+                await self._redis.hset(key, mapping={
+                    "status": JobStatus.FAILED.value,
+                    "error": "Interrupted by service restart",
+                    "completed_at": datetime.now().isoformat(),
+                })
+                recovered += 1
+        except Exception as e:
+            logger.warning(f"Stale ingestion job recovery failed: {e}")
+            return
+        if recovered:
+            logger.info(f"Recovered {recovered} stale ingestion job(s) left over from a previous run")
 
     async def _save_job(self, job: IngestionJob):
         """Save job state to storage."""

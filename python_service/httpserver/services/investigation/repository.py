@@ -2276,6 +2276,69 @@ class InvestigationRepository:
             conn.commit()
         return self._row_to_event(row)
 
+    def create_seed_event(
+        self,
+        *,
+        title: str,
+        summary: Optional[str] = None,
+        evidence_key: str,
+        created_by: Optional[str] = None,
+        linked_by: Optional[str] = None,
+    ) -> tuple[InvestigationEvent, bool]:
+        """Idempotently create the one seed Event anchored to an Evidence key.
+
+        Bootstrap must be safely re-runnable, so the identity anchor is the
+        Event→Evidence link itself: if any Event already links ``evidence_key``,
+        that Event is returned unchanged (created=False). Otherwise Event +
+        immutable v1 narrative + link are inserted in ONE transaction, so a
+        crash can never leave an unlinked seed Event behind (which the next
+        bootstrap run would silently duplicate). The Evidence snapshot must
+        already be captured (the composite FK is the DB-level backstop).
+        """
+        if not title:
+            raise ValueError("event title must be a non-empty string")
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            existing = conn.execute(
+                "SELECT event_id FROM investigation_event_evidence "
+                "WHERE task_id = ? AND evidence_key = ? "
+                "ORDER BY event_id LIMIT 1",
+                [self.task_id, evidence_key],
+            ).fetchone()
+            if existing is not None:
+                row = conn.execute(
+                    self._EVENT_READ_SQL + " AND e.event_id = ?",
+                    [self.task_id, existing["event_id"]],
+                ).fetchone()
+                conn.commit()
+                return self._row_to_event(row), False
+            event_id = _new_event_id()
+            conn.execute(
+                "INSERT INTO investigation_events "
+                "(event_id, task_id, needs_refresh, created_at, updated_at) "
+                "VALUES (?, ?, 0, ?, ?)",
+                [event_id, self.task_id, now, now],
+            )
+            conn.execute(
+                "INSERT INTO investigation_event_versions "
+                "(task_id, event_id, version, title, summary, created_at, created_by) "
+                "VALUES (?, ?, 1, ?, ?, ?, ?)",
+                [self.task_id, event_id, title, summary, now, created_by],
+            )
+            conn.execute(
+                "INSERT INTO investigation_event_evidence "
+                "(task_id, event_id, evidence_key, linked_at, linked_by) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [self.task_id, event_id, evidence_key, now, linked_by],
+            )
+            row = conn.execute(
+                self._EVENT_READ_SQL + " AND e.event_id = ?",
+                [self.task_id, event_id],
+            ).fetchone()
+            conn.commit()
+        return self._row_to_event(row), True
+
     def get_event(self, event_id: str) -> Optional[InvestigationEvent]:
         with self._connect() as conn:
             row = conn.execute(

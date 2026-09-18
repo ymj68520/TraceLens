@@ -101,6 +101,18 @@ class TestBuildGraphitiConfig:
         config = svc._build_graphiti_config(group_id="t1")
         assert config.llm_base_url == "http://localhost:1234/v1"
 
+    def test_ingestion_model_pinned_to_phi4(self, service, settings):
+        """Pipeline model must not leak into Graphiti ingestion."""
+        settings.llm_text_model = "nvidia/nemotron-3-nano-omni"
+        settings.graphiti_llm_model = ""
+        config = service._build_graphiti_config(group_id="t1")
+        assert config.llm_model == "microsoft/phi-4"
+
+    def test_ingestion_model_env_override_wins(self, service, settings):
+        settings.graphiti_llm_model = " other/model "
+        config = service._build_graphiti_config(group_id="t1")
+        assert config.llm_model == "other/model"
+
 
 # ---------------------------------------------------------------------------
 # ingest_task_episodes

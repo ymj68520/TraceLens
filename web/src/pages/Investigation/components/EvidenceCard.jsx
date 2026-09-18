@@ -22,7 +22,7 @@ export default function EvidenceCard({ evidence, selected, onClick }) {
           </div>
           <div className="mt-1 text-[11px] text-slate-500">{evidence.evidence_type === 'event_cluster' ? 'Event Cluster' : 'File'} · {formatTimestamp(evidence.timestamp)}</div>
           <div className="mt-2 flex flex-wrap gap-1">
-            <Badge size="sm" variant={evidence.role === 'contradicting' ? 'red' : 'blue'}>{ROLE_LABELS[evidence.role] || evidence.role}</Badge>
+            {evidence.role && <Badge size="sm" variant={evidence.role === 'contradicting' ? 'red' : 'blue'}>{ROLE_LABELS[evidence.role] || evidence.role}</Badge>}
             {analysis && <Badge size="sm" variant={analysis.variant}>{analysis.label}</Badge>}
             {evidence.report_usage && <Badge size="sm" variant="yellow">{REPORT_LABELS[evidence.report_usage]}</Badge>}
           </div>

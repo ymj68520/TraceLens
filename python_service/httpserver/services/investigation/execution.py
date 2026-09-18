@@ -234,6 +234,19 @@ class SecondaryAnalysisExecutor:
         reader = InvestigationGraphReader(db_path, task_id)
         return await asyncio.to_thread(reader.list_analyses, canonical_evidence_key)
 
+    async def list_task_analyses(self, task_id: str) -> list[SecondaryAnalysis]:
+        """Query ALL analyses of one task in a single strict read (overview).
+
+        The overview used to call ``list_analyses`` once per evidence item;
+        each call re-resolved the task (a C++ ``get_task`` round trip), which
+        made every Workbench page load an N+1 storm against the backend.
+        """
+        db_path = await self._resolve_db_path(task_id)
+        if db_path is None or not db_path.exists():
+            return []
+        reader = InvestigationGraphReader(db_path, task_id)
+        return await asyncio.to_thread(reader.list_task_analyses)
+
     # =====================================================================
     # background execution (E2-E7, E11)
     # =====================================================================

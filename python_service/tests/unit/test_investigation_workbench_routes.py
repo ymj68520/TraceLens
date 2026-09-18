@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from httpserver.routes import investigation_workbench
+from httpserver.services.investigation.models import EventEvidenceLink
 
 
 class _FakeEvent(BaseModel):
@@ -35,14 +36,37 @@ def _manager():
     manager.investigation_event_service = Mock(
         list_events=AsyncMock(
             return_value=[_FakeEvent(event_id="ev-1", title="cluster title")]
-        )
+        ),
+        event_presentation=AsyncMock(
+            return_value={
+                "ev-1": {
+                    "start_time": 1700000000,
+                    "end_time": 1700000120,
+                    "evidence_count": 1,
+                    "cluster_seed": True,
+                    "links": [
+                        {
+                            "evidence_key": "cluster:v1:28333333:CREATED",
+                            "evidence_type": "event_cluster",
+                            "title": "CREATED 聚类（2 个事件）",
+                            "timestamp": 1700000000,
+                            "start_time": 1700000000,
+                            "end_time": 1700000120,
+                            "initial_summary": None,
+                            "analysis_status": None,
+                        }
+                    ],
+                }
+            }
+        ),
     )
     manager.report_evidence_service = Mock(list=AsyncMock(return_value=[]))
     manager.investigation_graph_service = Mock(
         get_graph=AsyncMock(return_value={"nodes": [], "links": []})
     )
     manager.secondary_analysis_executor = Mock(
-        list_analyses=AsyncMock(return_value=[])
+        list_analyses=AsyncMock(return_value=[]),
+        list_task_analyses=AsyncMock(return_value=[]),
     )
     manager.cpp_backend = Mock(
         get_task=AsyncMock(return_value={"id": "T1", "status": "completed"})
@@ -69,9 +93,49 @@ def test_bootstrap_seeds_then_returns_overview():
     body = response.json()
     manager.investigation_seed_service.bootstrap.assert_awaited_once_with("T1")
     assert body["event_count"] == 1
-    assert body["events"][0]["id"] == "ev-1"
+    event = body["events"][0]
+    assert event["id"] == "ev-1"
+    # Legacy-vocabulary presentation fields are projected from the strict
+    # read-only pass (never fabricated store state).
+    assert event["start_time"] == 1700000000
+    assert event["end_time"] == 1700000120
+    assert event["evidence_count"] == 1
+    assert event["source"] == "cluster_seed"
     assert body["initialized"] is True
     assert body["task"]["id"] == "T1"
+
+
+def test_overview_reads_analyses_in_one_task_scoped_call():
+    """The overview must not call the per-evidence analyses read per item:
+    each call re-resolved the task (a C++ get_task round trip), which made
+    every page load an N+1 storm against the backend."""
+    manager = _manager()
+    response = _client(manager).get("/api/investigation/workbench/T1")
+    assert response.status_code == 200
+    manager.secondary_analysis_executor.list_task_analyses.assert_awaited_once_with("T1")
+    manager.secondary_analysis_executor.list_analyses.assert_not_awaited()
+
+
+def test_event_evidence_links_carry_display_fields():
+    manager = _manager()
+    link = EventEvidenceLink(
+        task_id="T1",
+        event_id="ev-1",
+        evidence_key="cluster:v1:28333333:CREATED",
+        linked_at="2026-09-18T00:00:00",
+        linked_by="cluster_seed",
+    )
+    manager.investigation_event_service.list_event_evidence = AsyncMock(
+        return_value=[link]
+    )
+    response = _client(manager).get(
+        "/api/investigation/workbench/T1/events/ev-1/evidence"
+    )
+    assert response.status_code == 200
+    item = response.json()["evidence"][0]
+    assert item["evidence_type"] == "event_cluster"
+    assert item["title"] == "CREATED 聚类（2 个事件）"
+    assert item["timestamp"] == 1700000000
 
 
 def test_bootstrap_rejects_unknown_request_fields():

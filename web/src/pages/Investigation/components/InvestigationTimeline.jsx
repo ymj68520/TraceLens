@@ -3,8 +3,6 @@ import Badge from '../../../components/common/Badge';
 import Spinner from '../../../components/common/Spinner';
 import { REVIEW_STATUS, formatTimestamp } from '../utils/investigationConstants';
 
-const count = (event, key) => event.evidence_counts?.[key] || 0;
-
 export default function InvestigationTimeline({ events, selectedEventId, onSelect, loading }) {
   if (loading) return <div className="h-full flex items-center justify-center"><Spinner /></div>;
   if (!events.length) {
@@ -33,9 +31,7 @@ export default function InvestigationTimeline({ events, selectedEventId, onSelec
             <h3 className="mt-2 font-semibold text-slate-900 dark:text-slate-100">{event.title}</h3>
             {event.summary && <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 line-clamp-3">{event.summary}</p>}
             <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
-              <span className="inline-flex items-center gap-1"><Database size={12} />Primary {count(event, 'primary')}</span>
-              <span>Supporting {count(event, 'supporting')}</span>
-              <span>Contradicting {count(event, 'contradicting')}</span>
+              <span className="inline-flex items-center gap-1"><Database size={12} />Evidence {event.evidence_count || 0}</span>
               <span className="inline-flex items-center gap-1"><FileCheck2 size={12} />Report {event.report_evidence_count || 0}</span>
             </div>
             <div className="mt-2 text-[11px] uppercase tracking-wide text-slate-400">{event.source === 'cluster_seed' ? 'Cluster Seed' : event.source}</div>

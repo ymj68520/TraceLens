@@ -217,6 +217,14 @@ class Settings(BaseSettings):
     # the cost of tokens. Mirrors graphiti_integration.GraphitiConfig default.
     graphiti_include_full_desc: bool = Field(default=True, alias="GRAPHITI_INCLUDE_FULL_DESC")
     graphiti_max_episode_tokens: int = Field(default=3000, alias="GRAPHITI_MAX_EPISODE_TOKENS")
+    # Ingestion model is pinned to a non-reasoning instruct model; the env var
+    # may override, empty/unset falls back to the pin (never LLM_TEXT_MODEL).
+    graphiti_llm_model: str = Field(default="microsoft/phi-4", alias="GRAPHITI_LLM_MODEL")
+
+    # Event (cluster) LLM analysis gate. When False (default), workbench
+    # bootstrap skips cluster seeding — events stay raw data and never become
+    # evidence; set EVENT_LLM_ANALYSIS_ENABLED=true to restore seeding.
+    event_llm_analysis_enabled: bool = Field(default=False, alias="EVENT_LLM_ANALYSIS_ENABLED")
     
     # Database Settings
     db_output_dir: str = Field(default="./output", alias="DB_OUTPUT_DIR")

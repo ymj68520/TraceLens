@@ -280,6 +280,142 @@ class InvestigationGraphReader:
 
         return self._run(read)
 
+    def list_task_analyses(self) -> list[SecondaryAnalysis]:
+        """Every Secondary Analysis of THIS task in one strict read.
+
+        The Workbench overview previously called the per-evidence read once
+        per evidence item, re-resolving the task (a C++ ``get_task`` round
+        trip) each time — an N+1 that dominated every page load. One task-
+        scoped read replaces the loop.
+        """
+        def read(conn: sqlite3.Connection) -> list[SecondaryAnalysis]:
+            rows = conn.execute(
+                "SELECT * FROM secondary_analyses "
+                "WHERE task_id = ? ORDER BY evidence_key, version DESC",
+                [self._task_id],
+            ).fetchall()
+            return [InvestigationRepository._row_to_analysis(r) for r in rows]
+
+        return self._run(read)
+
+    def event_presentation(self) -> dict[str, dict]:
+        """Per-event Workbench presentation facts in ONE strict read.
+
+        The frozen v7 Event model deliberately carries no timeline fields,
+        but the Workbench UI renders legacy-vocabulary fields (start/end
+        time, evidence count, seed origin, per-link display summaries).
+        Everything here is derived at read time from the immutable overlay
+        rows (links + snapshots + v1 narratives + the G3/G5 analysis
+        selection) — it is a projection, never new write-side state.
+        Missing or corrupt snapshot payloads degrade that link's display
+        fields to ``None`` instead of failing the whole projection.
+        """
+
+        def read(conn: sqlite3.Connection) -> dict[str, dict]:
+            link_rows = conn.execute(
+                """
+                SELECT l.event_id AS event_id, l.evidence_key AS evidence_key,
+                       s.evidence_type AS evidence_type,
+                       s.snapshot_json AS snapshot_json
+                FROM investigation_event_evidence l
+                LEFT JOIN evidence_snapshots s
+                    ON s.task_id = l.task_id AND s.evidence_key = l.evidence_key
+                WHERE l.task_id = ?
+                ORDER BY l.event_id, l.evidence_key
+                """,
+                [self._task_id],
+            ).fetchall()
+            seed_events = {
+                row["event_id"]
+                for row in conn.execute(
+                    "SELECT event_id FROM investigation_event_versions "
+                    "WHERE task_id = ? AND version = 1 AND created_by = 'cluster_seed'",
+                    [self._task_id],
+                )
+            }
+            analysis_states = {
+                row["evidence_key"]: row["status"]
+                for row in conn.execute(_SELECTED_ROWS_SQL, [self._task_id])
+            }
+
+            result: dict[str, dict] = {}
+            for row in link_rows:
+                item = result.setdefault(
+                    row["event_id"],
+                    {
+                        "start_time": None,
+                        "end_time": None,
+                        "evidence_count": 0,
+                        "cluster_seed": row["event_id"] in seed_events,
+                        "links": [],
+                    },
+                )
+                item["evidence_count"] += 1
+                link = self._link_display(
+                    row["evidence_key"], row["evidence_type"], row["snapshot_json"]
+                )
+                link["analysis_status"] = analysis_states.get(row["evidence_key"])
+                item["links"].append(link)
+                if link["start_time"] is not None:
+                    item["start_time"] = (
+                        link["start_time"]
+                        if item["start_time"] is None
+                        else min(item["start_time"], link["start_time"])
+                    )
+                if link["end_time"] is not None:
+                    item["end_time"] = (
+                        link["end_time"]
+                        if item["end_time"] is None
+                        else max(item["end_time"], link["end_time"])
+                    )
+            return result
+
+        return self._run(read)
+
+    @staticmethod
+    def _link_display(
+        evidence_key: str,
+        evidence_type: str | None,
+        snapshot_json: str | None,
+    ) -> dict:
+        """Legacy-vocabulary display fields for one Event→Evidence link."""
+        display = {
+            "evidence_key": evidence_key,
+            "evidence_type": "event_cluster" if evidence_type == "cluster" else "file",
+            "title": None,
+            "timestamp": None,
+            "start_time": None,
+            "end_time": None,
+            "initial_summary": None,
+        }
+        if not snapshot_json:
+            if evidence_type == "cluster":
+                display["title"] = evidence_key
+            return display
+        try:
+            payload = json.loads(snapshot_json)
+        except (TypeError, ValueError):
+            return display
+        if not isinstance(payload, dict):
+            return display
+        if evidence_type == "cluster":
+            event_type = payload.get("event_type")
+            event_count = payload.get("event_count")
+            display["title"] = (
+                f"{event_type} 聚类（{event_count} 个事件）"
+                if event_type
+                else evidence_key
+            )
+            display["timestamp"] = payload.get("representative_timestamp")
+            display["start_time"] = payload.get("cluster_start")
+            display["end_time"] = payload.get("cluster_end")
+        else:
+            name = payload.get("name") or payload.get("normalized_path")
+            display["title"] = name or evidence_key
+            display["timestamp"] = payload.get("mtime") or payload.get("ctime")
+            display["initial_summary"] = payload.get("initial_summary")
+        return display
+
     # -- Report Evidence reads (Phase R1) ------------------------------------
     # Exact frozen bindings only: the bound analysis is joined from the
     # immutable secondary_analyses row of the PERSISTED analysis_id -- never

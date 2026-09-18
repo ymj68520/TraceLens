@@ -231,6 +231,14 @@ class InvestigationPersistence:
     def _ensure_schema(self) -> None:
         with self._connect() as conn:
             current_version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+            # A v7 store is owned by investigation.repository (workbench chain):
+            # same-named tables differ in columns, so the legacy DDL must NOT
+            # run against it, and user_version must stay 7 (writing 3 made the
+            # read side fail closed on every fresh task). The one legacy table
+            # the recovery queries need is created by
+            # InvestigationService._ensure_v7_store.
+            if current_version == 7:
+                return
             if current_version > SCHEMA_VERSION:
                 raise UnsupportedSchemaVersion(
                     f"investigation database schema {current_version} is newer than supported {SCHEMA_VERSION}"

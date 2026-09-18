@@ -112,17 +112,24 @@ class GraphitiCoreMixin:
         max_episode_tokens, which were previously dropped (leaving episodes
         without the llm_description the entity-extraction LLM needs).
         """
-        from graphiti_integration.config import GraphitiConfig
+        from graphiti_integration.config import PINNED_GRAPHITI_MODEL, GraphitiConfig
 
         base = self.settings.llm_text_base_url.rstrip("/")
         llm_base_url = base if base.endswith("/v1") else base + "/v1"
+
+        # Ingestion model is pinned (settings default); never fall through to
+        # llm_text_model.
+        llm_model = (
+            (getattr(self.settings, "graphiti_llm_model", "") or "").strip()
+            or PINNED_GRAPHITI_MODEL
+        )
 
         return GraphitiConfig(
             neo4j_uri=self.settings.neo4j_uri,
             neo4j_user=self.settings.neo4j_user,
             neo4j_password=self.settings.neo4j_password,
             llm_base_url=llm_base_url,
-            llm_model=self.settings.llm_text_model,
+            llm_model=llm_model,
             llm_api_key=self.settings.llm_api_key or "local",
             batch_size=self.settings.graphiti_batch_size,
             max_retries=self.settings.graphiti_max_retries,

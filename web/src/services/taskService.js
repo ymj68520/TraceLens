@@ -21,7 +21,14 @@ export const getTaskResults = async (taskId) => {
 };
 
 export const cancelTask = async (taskId, reason = '') => {
-  return await api.delete(`/api/tasks/${taskId}`, { data: { reason } });
+  // Cancel must NOT destroy the task. DELETE /api/tasks/{id} maps to
+  // TaskManager::delete_task (cancel + remove task dir, databases, graph),
+  // while batch-cancel routes to the non-destructive cancel_task, which
+  // flags cancellation and keeps the task visible with status "cancelled".
+  return await api.post('/api/tasks/batch-cancel', {
+    task_ids: [taskId],
+    reason: reason || 'Cancelled by user',
+  });
 };
 
 export const deleteTask = async (taskId) => {

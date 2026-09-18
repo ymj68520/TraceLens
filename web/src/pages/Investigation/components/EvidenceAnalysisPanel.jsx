@@ -92,7 +92,7 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
             <dt className="text-slate-500">Event Type</dt><dd>{detail.metadata?.event_type || '—'}</dd>
             <dt className="text-slate-500">Event Count</dt><dd>{detail.metadata?.event_count ?? '—'}</dd>
             <dt className="text-slate-500">Sampled</dt><dd>{detail.metadata?.sampled_event_count ?? '—'}</dd>
-            <dt className="text-slate-500">Time Window</dt><dd>{detail.metadata?.time_window ?? '—'}</dd>
+            <dt className="text-slate-500">Time Window</dt><dd>{Array.isArray(detail.metadata?.time_window) ? detail.metadata.time_window.map((ts) => formatTimestamp(ts)).join(' – ') : (detail.metadata?.time_window ?? '—')}</dd>
             <dt className="text-slate-500">Cluster Snapshot Digest (SHA-256)</dt><dd className="break-all">{detail.snapshot?.source_hash || '—'}</dd>
           </> : <>
             <dt className="text-slate-500">MD5</dt><dd className="break-all">{detail.md5 || '—'}</dd>

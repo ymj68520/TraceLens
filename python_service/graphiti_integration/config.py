@@ -13,6 +13,12 @@ try:
 except ImportError:
     _HAS_DOTENV = False
 
+# Graphiti ingestion model is pinned to a non-reasoning instruct model: a
+# reasoning host model wastes half of every generation on thinking and starves
+# small max_tokens budgets. GRAPHITI_LLM_MODEL may override the pin; empty/
+# unset falls back to the pin itself, so LLM_TEXT_MODEL never leaks in.
+PINNED_GRAPHITI_MODEL = "microsoft/phi-4"
+
 
 @dataclass
 class GraphitiConfig:
@@ -25,7 +31,7 @@ class GraphitiConfig:
     
     # LLM settings (supports local OpenAI-compatible servers like LM Studio)
     llm_base_url: str = "http://192.168.31.170:1234/v1"
-    llm_model: str = "openai/gpt-oss-20b"
+    llm_model: str = PINNED_GRAPHITI_MODEL
     llm_api_key: str = "local"  # Placeholder for local servers
     
     # Embedder settings (can use local or OpenAI)
@@ -90,7 +96,7 @@ class GraphitiConfig:
             neo4j_user=os.getenv("NEO4J_USER", "neo4j"),
             neo4j_password=os.getenv("NEO4J_PASSWORD", ""),
             llm_base_url=llm_base_url,
-            llm_model=os.getenv("LLM_TEXT_MODEL", "openai/gpt-oss-20b"),
+            llm_model=(os.getenv("GRAPHITI_LLM_MODEL") or "").strip() or PINNED_GRAPHITI_MODEL,
             llm_api_key=os.getenv("LLM_API_KEY", "local"),
             # Embedder can point at a different provider than the chat LLM
             # (e.g. cloud chat model + local nomic embeddings). Falls back to

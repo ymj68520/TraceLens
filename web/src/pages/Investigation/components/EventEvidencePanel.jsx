@@ -6,8 +6,7 @@ import EvidenceCard from './EvidenceCard';
 import EvidencePicker from './EvidencePicker';
 
 const filters = [
-  ['all', '全部'], ['primary', 'Primary'], ['supporting', 'Supporting'],
-  ['contradicting', 'Contradicting'], ['report', 'Report'], ['unreviewed', 'Unreviewed'],
+  ['all', '全部'], ['report', 'Report'], ['unreviewed', 'Unreviewed'],
 ];
 
 export default function EventEvidencePanel({ taskId, eventId, event, evidence, loading, error, selectedEvidenceKey, claimEvidenceScope, onClearClaimScope, onSelect, onRefresh }) {
@@ -18,7 +17,7 @@ export default function EventEvidencePanel({ taskId, eventId, event, evidence, l
     if (filter === 'all') return true;
     if (filter === 'report') return Boolean(item.report_usage);
     if (filter === 'unreviewed') return !item.analysis_status || item.analysis_status === 'review_pending';
-    return item.role === filter;
+    return true;
   }), [evidence, filter, claimEvidenceScope]);
   const historicalKeys = useMemo(() => claimEvidenceScope?.keys?.filter((key) => !evidence.some((item) => item.evidence_key === key)) || [], [claimEvidenceScope, evidence]);
   const historicalKeySignature = historicalKeys.join('|');

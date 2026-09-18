@@ -16,10 +16,14 @@ inside one BEGIN IMMEDIATE transaction that performs the R1 §7 triple check
 from __future__ import annotations
 
 import asyncio
+import json
+import time
 import sqlite3
 from pathlib import Path
 
 from ..evidence.exceptions import EvidenceNotFoundError, EvidenceStoreError
+from ..evidence.resolver import EvidenceResolver
+from ..investigation_persistence import InvestigationPersistence
 from .graph_reader import InvestigationGraphReader
 from .models import ReportEvidenceItem
 from .paths import investigation_db_path_for_task
@@ -65,8 +69,78 @@ class ReportEvidenceService:
         added_by: str,
     ) -> ReportEvidenceItem:
         """Add one captured evidence to the report (main/appendix, optional
-        explicit accepted-analysis binding)."""
+        explicit accepted-analysis binding).
+
+        MVP (mvp-phase1-acceptance §6): with event seeding disabled there is
+        no workbench event chain to capture the snapshot through, so a plain
+        ``file:`` evidence is snapshotted here on first sight — the capture
+        stays immutable (first-write-wins), exactly as on the event path.
+        """
         db_path = await self._resolve_task_db(task_id)
+        if evidence_key.startswith("file:"):
+            try:
+                resolved = await EvidenceResolver(self._cpp_backend).resolve_evidence(
+                    task_id, evidence_key
+                )
+                path = resolved.normalized_path or ""
+                with sqlite3.connect(
+                    f"file:{resolved.source_db}?mode=ro", uri=True
+                ) as conn:
+                    conn.row_factory = sqlite3.Row
+                    row = conn.execute(
+                        "SELECT * FROM files WHERE path = ?", (path,)
+                    ).fetchone()
+                row_dict = dict(row) if row is not None else {}
+                snapshot_json = json.dumps(
+                    {
+                        "evidence_type": "file",
+                        "normalized_path": path,
+                        "name": row_dict.get("name"),
+                        "extension": row_dict.get("extension"),
+                        "category": row_dict.get("category"),
+                        "type": row_dict.get("type"),
+                        "size": row_dict.get("size"),
+                        "md5": row_dict.get("md5"),
+                        "mtime": row_dict.get("mtime"),
+                        "ctime": row_dict.get("ctime"),
+                        "is_deleted": row_dict.get("is_deleted"),
+                        "initial_summary": row_dict.get("llm_summary"),
+                        "initial_description": row_dict.get("llm_description"),
+                        "initial_keywords": row_dict.get("llm_keywords"),
+                        "initial_model": row_dict.get("llm_model_used"),
+                        "initial_analyzed_at": row_dict.get("llm_analyzed_at"),
+                        "scene_type": row_dict.get("scene_type"),
+                        "scene_priority": row_dict.get("scene_priority"),
+                        "scene_relevant": row_dict.get("scene_relevant"),
+                    },
+                    ensure_ascii=False,
+                )
+                # Insert straight into the repository-v7 evidence_snapshots
+                # table (columns: id, task_id, evidence_key, evidence_type,
+                # normalized_path, snapshot_json, captured_at) — first write
+                # wins, immutable afterwards.
+                with sqlite3.connect(str(db_path), timeout=30) as conn:
+                    conn.execute("BEGIN IMMEDIATE")
+                    conn.execute(
+                        "INSERT OR IGNORE INTO evidence_snapshots "
+                        "(task_id, evidence_key, evidence_type, "
+                        " normalized_path, snapshot_json, captured_at) "
+                        "VALUES (?, ?, 'file', ?, ?, ?)",
+                        (
+                            task_id,
+                            resolved.evidence_key,
+                            path,
+                            snapshot_json,
+                            int(time.time()),
+                        ),
+                    )
+                    conn.commit()
+            except EvidenceNotFoundError:
+                raise
+            except Exception as exc:
+                raise EvidenceStoreError(
+                    f"cannot capture evidence snapshot: {exc}"
+                ) from exc
         if not db_path.exists():
             raise EvidenceNotFoundError(
                 "evidence snapshot not captured for this task"

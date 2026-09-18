@@ -88,6 +88,25 @@ class InvestigationEventService:
                 "investigation event store is unavailable"
             ) from exc
 
+    async def event_presentation(self, task_id: str) -> dict[str, dict]:
+        """Presentation projection for Workbench event/event-evidence lists.
+
+        One strict read-only pass over the immutable overlay; see
+        ``InvestigationGraphReader.event_presentation``. An absent store
+        means there are no events to present.
+        """
+        reader = await self._reader_for(task_id)
+        if reader is None:
+            return {}
+        try:
+            return await asyncio.to_thread(reader.event_presentation)
+        except EvidenceStoreError:
+            raise
+        except sqlite3.DatabaseError as exc:
+            raise EvidenceStoreError(
+                "investigation event store is unavailable"
+            ) from exc
+
     async def get_event(self, task_id: str, event_id: str) -> InvestigationEvent:
         reader = await self._reader_for(task_id)
         if reader is None:

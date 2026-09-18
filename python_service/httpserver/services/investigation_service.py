@@ -28,6 +28,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from pydantic import BaseModel, Field, field_validator
 
 from .claim_provenance_reader import ClaimProvenanceReader
+from .evidence.exceptions import EvidenceStoreError
+from .evidence.resolver import EvidenceResolver as V7EvidenceResolver
 from .investigation_errors import ClaimProvenanceNotFound, PublicationReadError
 from .investigation_evidence import (
     CLUSTER_KEY_PREFIX,
@@ -52,7 +54,6 @@ from .investigation_persistence import (
     ANALYSIS_ACCEPTED,
     ANALYSIS_INVALID,
     ANALYSIS_REVIEW_PENDING,
-    BOOTSTRAP_VERSION,
     EVENT_VERSION_INVALID,
     EVENT_VERSION_REVIEW_PENDING,
     GROUNDING_INVALID,
@@ -204,6 +205,10 @@ class InvestigationService:
         self._evidence_resolver = EvidenceResolver(
             self._get_task_info, content_reader=self._extract_file_text
         )
+        # Workbench-v7 evidence chain (services/evidence): resolves canonical
+        # file:/cluster:v1: keys into the pydantic ResolvedEvidence that
+        # InvestigationRepository.capture_if_absent consumes.
+        self._v7_evidence_resolver = V7EvidenceResolver(self._cpp_backend)
         self._report_dataset_builder = ReportDatasetBuilder(
             self._get_task_info, self._evidence_resolver
         )
@@ -240,6 +245,94 @@ class InvestigationService:
             elif files_db.endswith("files.db"):
                 events_db = files_db[: -len("files.db")] + "events.db"
         return {"files_db": files_db, "events_db": events_db, "raw_db": raw_db}
+
+    def _ensure_v7_store(self, db_path, task_id: str) -> None:
+        """Guarantee a repository-v7 investigation store (mvp SPEC §4).
+
+        bootstrap used to create a legacy v3-structured store, which the
+        workbench read side (repository, supported version 7) fails closed on
+        — every fresh task hit 503 on its first evidence binding. Empty legacy
+        stores carry no user data (bootstrap never got far enough to write
+        any), so they are replaced by a repository-built v7 store; a v3 store
+        that somehow holds data fails closed for manual migration instead of
+        being destroyed.
+        """
+        import os
+        from .investigation.repository import InvestigationRepository
+
+        if not os.path.exists(db_path):
+            InvestigationRepository(db_path, task_id)  # builds v7 atomically
+            return
+        conn = sqlite3.connect(db_path)
+        try:
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+        finally:
+            conn.close()
+        if version == 7:
+            self._create_recovery_aux_table(db_path)
+            return
+        if version != 3:
+            raise EvidenceStoreError(
+                f"investigation store schema {version} requires manual migration"
+            )
+        data_tables = [
+            "investigation_events", "investigation_event_versions",
+            "investigation_event_evidence", "evidence_snapshots",
+            "evidence_analysis_versions", "report_evidence", "analyst_notes",
+        ]
+        conn = sqlite3.connect(db_path)
+        try:
+            for table in data_tables:
+                count = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+                if count:
+                    raise EvidenceStoreError(
+                        f"legacy investigation store holds {count} rows in {table}; "
+                        "manual migration required"
+                    )
+        finally:
+            conn.close()
+        os.remove(db_path)
+        InvestigationRepository(db_path, task_id)
+        self._create_recovery_aux_table(db_path)
+
+    def _create_recovery_aux_table(self, db_path) -> None:
+        """The v7 schema has no evidence_analysis_versions table, but the
+        persistence recovery query (UPDATE ... WHERE status IN
+        ('queued','running')) still targets it. Create it standalone —
+        columns per the legacy DDL minus the analyst_notes foreign key."""
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS evidence_analysis_versions (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    evidence_key TEXT NOT NULL,
+                    evidence_type TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    analysis_type TEXT NOT NULL,
+                    analyst_note_id TEXT,
+                    analyst_note_snapshot TEXT,
+                    description TEXT,
+                    summary TEXT,
+                    status TEXT NOT NULL DEFAULT 'queued',
+                    grounding_status TEXT,
+                    grounding_warnings TEXT,
+                    error_message TEXT,
+                    completed_at INTEGER,
+                    model TEXT,
+                    prompt_version TEXT,
+                    input_hash TEXT,
+                    input_evidence_refs TEXT,
+                    created_at INTEGER NOT NULL,
+                    UNIQUE(task_id, evidence_key, version)
+                )
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
     async def _persistence(self, task_id: str) -> InvestigationPersistence:
         if task_id in self._persistence_cache:
@@ -427,66 +520,104 @@ class InvestigationService:
         return keys
 
     async def bootstrap(self, task_id: str) -> Dict[str, Any]:
-        """Create seed investigation events from analyzed clusters (idempotent)."""
-        persistence = await self._persistence(task_id)
-        paths = await self._paths(task_id)
-        clusters = self._load_analyzed_clusters(paths["events_db"])
+        """Create seed investigation events from analyzed clusters (idempotent).
 
+        MVP (mvp-phase1-acceptance SPEC §4.2): events carry no LLM analysis and
+        never become report evidence, so cluster seeding is skipped entirely
+        unless event LLM analysis is re-enabled via env.
+
+        The store is always ensured in repository-v7 form first: seeding used
+        to build a legacy v3-structured store via InvestigationPersistence,
+        which the workbench read side (supported schema 7) fails closed on —
+        every freshly seeded task hit 503 on all workbench APIs. Seeding now
+        writes through the same v7 repository API the workbench reads:
+        snapshot capture plus one atomic seed Event per cluster Evidence key
+        (create_seed_event). Related files are not linked here; cluster
+        Evidence expands to its members server-side on the read path
+        (Phase 6B).
+        """
+        from ..config import get_settings
+
+        seed_enabled = getattr(
+            get_settings(), "event_llm_analysis_enabled", False
+        )
+        paths = await self._paths(task_id)
+        if not paths["files_db"]:
+            raise RuntimeError(f"Task {task_id} has no files database")
+        db_path = get_investigation_db_path(paths["files_db"])
+        self._ensure_v7_store(db_path, task_id)
+
+        from .investigation.repository import InvestigationRepository
+
+        repository = InvestigationRepository.open_existing(db_path, task_id)
+
+        clusters = (
+            self._load_analyzed_clusters(paths["events_db"])
+            if seed_enabled
+            else []
+        )
         created = 0
         for cluster in clusters:
-            cluster_key = make_cluster_key(cluster["time_window"], cluster["event_type"])
+            cluster_key = make_cluster_key(
+                cluster["time_window"], cluster["event_type"]
+            )
+            resolved = await self._v7_evidence_resolver.resolve_evidence(
+                task_id, cluster_key
+            )
             title = (
                 cluster.get("llm_summary")
                 or f"{cluster['event_type']} 活动聚类（{cluster['event_count']} 个事件）"
             )
-            summary = cluster.get("llm_description") or ""
-            event_id, was_created = persistence.upsert_seed_event(
-                task_id=task_id,
-                source_cluster_key=cluster_key,
-                title=title[:200],
-                summary=summary,
-                start_time=cluster.get("cluster_start"),
-                end_time=cluster.get("cluster_end"),
-                category=cluster.get("event_type"),
+            was_created = await asyncio.to_thread(
+                self._seed_cluster,
+                repository,
+                resolved,
+                title[:200],
+                cluster.get("llm_description") or "",
             )
             if was_created:
                 created += 1
-            # The cluster itself is primary evidence; correlated files remain supporting.
-            persistence.link_evidence(
-                task_id, event_id, cluster_key, "event_cluster",
-                role="primary", source="cluster_seed", relation_type="source_cluster",
-            )
-            await self.capture_snapshot(task_id, cluster_key)
-            resolved_cluster = await self.resolve_evidence(task_id, cluster_key)
-            for evidence_key in (resolved_cluster or {}).get("related_evidence_keys", []):
-                persistence.link_evidence(
-                    task_id, event_id, evidence_key, "file",
-                    role="supporting", source="cluster_seed",
-                    relation_type="cluster_member_path",
-                )
-                await self.capture_snapshot(task_id, evidence_key)
 
-        # Update evidence time bounds from linked file timestamps
-        events = persistence.list_events(task_id, limit=1000)
-        for event in events:
-            links = persistence.list_event_evidence(event["id"], limit=500)
-            timestamps: List[int] = []
-            for link in links:
-                resolved = await self.resolve_evidence(task_id, link["evidence_key"])
-                if resolved:
-                    await self.capture_snapshot(task_id, link["evidence_key"])
-                    if resolved.get("timestamp"):
-                        timestamps.append(resolved["timestamp"])
-            if timestamps:
-                persistence.update_event_times_from_evidence(
-                    task_id, event["id"], min(timestamps), max(timestamps)
-                )
+        with sqlite3.connect(db_path) as conn:
+            event_count = conn.execute(
+                "SELECT COUNT(*) FROM investigation_events"
+            ).fetchone()[0]
+            analysis_count = conn.execute(
+                "SELECT COUNT(*) FROM secondary_analyses"
+            ).fetchone()[0]
+            report_evidence_count = conn.execute(
+                "SELECT COUNT(*) FROM report_evidence"
+            ).fetchone()[0]
+        return {
+            "initialized": True,
+            "event_count": event_count,
+            "analysis_count": analysis_count,
+            "report_evidence_count": report_evidence_count,
+            "seeded_clusters": len(clusters),
+            "new_events": created,
+        }
 
-        persistence.set_meta("bootstrap_version", str(BOOTSTRAP_VERSION))
-        overview = persistence.overview(task_id)
-        overview["seeded_clusters"] = len(clusters)
-        overview["new_events"] = created
-        return overview
+    @staticmethod
+    def _seed_cluster(
+        repository: Any,
+        resolved: Any,
+        title: str,
+        summary: Optional[str],
+    ) -> bool:
+        """Capture one cluster snapshot, then create its seed Event once.
+
+        Runs in a worker thread (sync sqlite); returns True when a new Event
+        was created, False when the cluster was already seeded.
+        """
+        repository.capture_if_absent(resolved)
+        _, was_created = repository.create_seed_event(
+            title=title,
+            summary=summary,
+            evidence_key=resolved.evidence_key,
+            created_by="cluster_seed",
+            linked_by="cluster_seed",
+        )
+        return was_created
 
     # ------------------------------------------------------------------
     # events & evidence listing
