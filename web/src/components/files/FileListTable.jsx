@@ -211,7 +211,9 @@ const FileListTable = ({
                           onClick={() => {
                             setExtractionMode('name');
                             setExtractionPattern(fileName);
-                            handleStartExtraction();
+                            // Pass explicit overrides: the setState calls above are
+                            // async, so the closure still holds the previous mode.
+                            handleStartExtraction({ mode: 'name', pattern: fileName });
                           }}
                           disabled={extractionStatus === 'running'}
                           className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
