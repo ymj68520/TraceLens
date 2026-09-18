@@ -87,6 +87,19 @@ public:
      */
     bool deleteGraphitiData(const std::string& task_id);
 
+    /**
+     * @brief Seed the evidence report's case/evidence metadata from the
+     *        completed analysis (fire-and-forget).
+     *
+     * Asks the Python service to derive 案件信息 / 证据信息 from the task and its
+     * artifacts and persist them once. Idempotent, and never overwrites a field
+     * the analyst has edited. Call after a task reaches COMPLETED.
+     *
+     * @param task_id Task identifier
+     * @return true if the seed request succeeded
+     */
+    bool seedReportMetadata(const std::string& task_id);
+
     // ========================================================================
     // Graphiti Integration Methods
     // ========================================================================

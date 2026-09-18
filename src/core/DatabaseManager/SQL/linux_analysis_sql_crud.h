@@ -26,6 +26,12 @@ inline constexpr const char* INSERT_USER_INFO =
 inline constexpr const char* INSERT_GROUP_INFO =
     "INSERT OR REPLACE INTO linux_groups (group_name, gid, members) VALUES (?, ?, ?);";
 
+inline constexpr const char* INSERT_HOST_INFO =
+    "INSERT INTO linux_host_info "
+    "(hostname, distro, distro_version, kernel_version, architecture, "
+    "timezone, machine_id, kernel_modules_installed, collected_at) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
 inline constexpr const char* INSERT_LOGIN_RECORD =
     "INSERT INTO linux_login_records "
     "(username, terminal, remote_host, login_time, logout_time, login_type, is_success, pid) "

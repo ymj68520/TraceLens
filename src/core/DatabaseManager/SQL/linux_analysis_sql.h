@@ -19,6 +19,7 @@ using linux_analysis_sql_tables::CREATE_LINUX_ANALYSIS_PROGRESS_TABLE;
 using linux_analysis_sql_crud::INSERT_LOG_ENTRY;
 using linux_analysis_sql_crud::INSERT_USER_INFO;
 using linux_analysis_sql_crud::INSERT_GROUP_INFO;
+using linux_analysis_sql_crud::INSERT_HOST_INFO;
 using linux_analysis_sql_crud::INSERT_LOGIN_RECORD;
 using linux_analysis_sql_crud::INSERT_SHELL_HISTORY;
 using linux_analysis_sql_crud::INSERT_CRON_JOB;

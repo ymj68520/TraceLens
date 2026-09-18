@@ -28,6 +28,7 @@
 #include "Detail/LinuxDatabaseLogOperations.cpp"
 #include "Detail/LinuxEmailVPNOperations.cpp"
 #include "Detail/LinuxFirewallSecurityOperations.cpp"
+#include "Detail/LinuxHostInfoOperations.cpp"
 
 using namespace LinuxAnalysis;
 

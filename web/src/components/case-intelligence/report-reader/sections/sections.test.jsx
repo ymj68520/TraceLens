@@ -29,6 +29,23 @@ describe('CaseInfoSection', () => {
     expect(screen.getByText('警情编码')).toBeInTheDocument();
     expect(screen.getByText('备注')).toBeInTheDocument();
   });
+
+  test('badges only the fields that hold an auto-derived value', () => {
+    renderWithRouter(
+      <CaseInfoSection
+        metadata={{ case_name: '服务器镜像案', collector_name: '王警官' }}
+        autoFields={['case_name']}
+      />,
+    );
+    // exactly one badge, on the auto-derived field
+    expect(screen.getAllByText('自动')).toHaveLength(1);
+    expect(screen.getByText('自动').closest('dt')).toHaveTextContent('案件名称');
+  });
+
+  test('renders no badge when autoFields is absent', () => {
+    renderWithRouter(<CaseInfoSection metadata={{ case_name: '电信诈骗案' }} />);
+    expect(screen.queryByText('自动')).not.toBeInTheDocument();
+  });
 });
 
 describe('EvidenceInfoSection', () => {
@@ -40,6 +57,16 @@ describe('EvidenceInfoSection', () => {
     expect(screen.getByText('张洋')).toBeInTheDocument();
     expect(screen.getByText('持有人类型')).toBeInTheDocument();
     expect(screen.getByText('证件失效日期')).toBeInTheDocument();
+  });
+
+  test('badges auto-derived evidence fields', () => {
+    renderWithRouter(
+      <EvidenceInfoSection
+        metadata={{ evidence_name: '服务器镜像.E01', evidence_number: '08a92dd8' }}
+        autoFields={['evidence_name', 'evidence_number']}
+      />,
+    );
+    expect(screen.getAllByText('自动')).toHaveLength(2);
   });
 });
 
@@ -58,6 +85,36 @@ describe('DeviceInfoSection', () => {
   test('shows placeholder text when no device info at all', () => {
     renderWithRouter(<DeviceInfoSection pageData={{ records: [] }} />);
     expect(screen.getByText(/未检测到设备基本信息/)).toBeInTheDocument();
+  });
+
+  test('labels the platform from the section category, using the backend title', () => {
+    const cases = [
+      ['device_info', '设备基本信息（Android）', 'Android'],
+      ['win_device_info', '设备基本信息（Windows）', 'Windows'],
+      ['linux_device_info', '设备基本信息（Linux）', 'Linux'],
+    ];
+    for (const [category, title, platform] of cases) {
+      const { unmount } = renderWithRouter(
+        <DeviceInfoSection
+          pageData={{ category, records: [{ 主机名: 'srv-01' }] }}
+          title={title}
+        />,
+      );
+      expect(screen.getByText(title)).toBeInTheDocument();
+      expect(screen.getByText(platform)).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  test('shows no platform chip for the undetermined-platform fallback', () => {
+    renderWithRouter(
+      <DeviceInfoSection
+        pageData={{ category: 'device_info_generic', records: [] }}
+        title="设备基本信息"
+      />,
+    );
+    expect(screen.getByText('设备基本信息')).toBeInTheDocument();
+    expect(screen.queryByText('Android')).not.toBeInTheDocument();
   });
 });
 

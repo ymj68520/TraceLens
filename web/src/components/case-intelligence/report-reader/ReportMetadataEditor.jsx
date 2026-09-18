@@ -63,7 +63,9 @@ export default function ReportMetadataEditor({ taskId, isOpen, onClose, onSaved 
     try {
       const stored = await saveReportMetadata(taskId, values);
       toast.success('案件/证据信息已保存');
-      onSaved?.(stored.metadata);
+      // Pass the whole response: the parent needs auto_fields too, so a field
+      // the analyst just edited loses its "自动" badge immediately.
+      onSaved?.(stored);
       onClose();
     } catch (err) {
       setError(err?.data?.detail || err?.message || '保存失败');

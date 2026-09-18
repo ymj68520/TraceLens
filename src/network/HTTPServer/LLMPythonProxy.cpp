@@ -42,6 +42,25 @@ bool LLMPythonProxy::deleteGraphitiData(const std::string& task_id) {
     return false;
 }
 
+bool LLMPythonProxy::seedReportMetadata(const std::string& task_id) {
+    try {
+        httplib::Client cli(python_service_url_);
+        cli.set_connection_timeout(5);
+        cli.set_read_timeout(15);
+
+        // Idempotent: the Python side derives the case/evidence metadata from the
+        // task and its artifacts exactly once, and never overwrites fields a
+        // human has edited. A second call for the same task is a no-op.
+        auto res = cli.Post(
+            ("/api/llm/intelligence-report/" + task_id + "/metadata/seed").c_str(),
+            "", "application/json");
+        return res && res->status == 200;
+    } catch (...) {
+        // A failure here must never fail the analysis that just completed.
+    }
+    return false;
+}
+
 // ========================================================================
 // Graphiti Integration Methods
 // ========================================================================
