@@ -601,12 +601,15 @@ bool FileExtractor::extractFileByInode(int64_t inode, const std::string& outputP
 }
 
 bool FileExtractor::extractFileByPath(const std::string& filePath, const std::string& outputPath) {
-    // Use parameterized query to prevent SQL injection
+    // Use parameterized query to prevent SQL injection.
+    // Callers pass either raw.db-style paths ("/data/...") or source-relative
+    // paths ("data/...", e.g. AndroidAnalyzer in TSK mode); raw.db stores a
+    // leading slash, so match both forms.
     std::vector<FileRecord> results;
 
     std::string sql = "SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5, "
                       "COALESCE(partition_num, 0) "
-                      "FROM files WHERE path = ?";
+                      "FROM files WHERE path = ? OR path = ?";
 
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(dbManager_->getDb(), sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
@@ -614,7 +617,10 @@ bool FileExtractor::extractFileByPath(const std::string& filePath, const std::st
         return false;
     }
 
-    sqlite3_bind_text(stmt, 1, filePath.c_str(), -1, SQLITE_STATIC);
+    const std::string withSlash = filePath.empty() ? filePath : (filePath.front() == '/' ? filePath : "/" + filePath);
+    const std::string withoutSlash = filePath.empty() ? filePath : (filePath.front() == '/' ? filePath.substr(1) : filePath);
+    sqlite3_bind_text(stmt, 1, withSlash.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, withoutSlash.c_str(), -1, SQLITE_TRANSIENT);
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         FileRecord record;

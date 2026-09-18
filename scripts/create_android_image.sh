@@ -30,18 +30,43 @@ sqlite3 "$CONTACTS_DB" "CREATE TABLE raw_contacts (_id INTEGER PRIMARY KEY, disp
 sqlite3 "$CONTACTS_DB" "INSERT INTO mimetypes (_id, mimetype) VALUES (1, 'vnd.android.cursor.item/phone_v2');"
 sqlite3 "$CONTACTS_DB" "INSERT INTO raw_contacts (_id, display_name) VALUES (1, 'John Doe');"
 sqlite3 "$CONTACTS_DB" "INSERT INTO data (raw_contact_id, mimetype_id, data1) VALUES (1, 1, '+1234567890');"
+# AndroidAnalyzer.parseContacts reads view_contacts(display_name, data1, mimetype)
+sqlite3 "$CONTACTS_DB" "CREATE VIEW view_contacts AS SELECT rc.display_name AS display_name, d.data1 AS data1, m.mimetype AS mimetype FROM data d JOIN raw_contacts rc ON rc._id = d.raw_contact_id JOIN mimetypes m ON m._id = d.mimetype_id;"
+sqlite3 "$CONTACTS_DB" "INSERT INTO raw_contacts (_id, display_name) VALUES (2, '张伟');"
+sqlite3 "$CONTACTS_DB" "INSERT INTO data (raw_contact_id, mimetype_id, data1) VALUES (2, 1, '+8613800138000');"
 
 # CallLog DB
 sqlite3 "$CALLLOG_DB" "CREATE TABLE calls (_id INTEGER PRIMARY KEY, number TEXT, date INTEGER, duration INTEGER, type INTEGER); INSERT INTO calls (_id, number, date, duration, type) VALUES (1, '+9876543210', 1609462800000, 60, 1);"
 
-# WhatsApp DB
-sqlite3 "$WA_DB" "CREATE TABLE messages (_id INTEGER PRIMARY KEY, key_remote_jid TEXT, data TEXT, timestamp INTEGER); INSERT INTO messages (_id, key_remote_jid, data, timestamp) VALUES (1, '12345-67890@g.us', 'Hello from WhatsApp', 1609459201000);"
+# WhatsApp DB (AndroidAnalyzer.parseWhatsApp reads messages(sender, receiver, content, timestamp))
+sqlite3 "$WA_DB" "CREATE TABLE messages (_id INTEGER PRIMARY KEY, key_remote_jid TEXT, sender TEXT, receiver TEXT, content TEXT, timestamp INTEGER); INSERT INTO messages (_id, key_remote_jid, sender, receiver, content, timestamp) VALUES (1, '12345-67890@g.us', 'Alice', 'Bob', 'Hello from WhatsApp', 1609459201000);"
 
-# Telegram DB (Simplified Simulation)
-sqlite3 "$TG_DB" "CREATE TABLE messages (_id INTEGER PRIMARY KEY, uid INTEGER, data TEXT, date INTEGER); INSERT INTO messages (_id, uid, data, date) VALUES (1, 1001, 'Hello from Telegram', 1609459202000);"
+# Telegram DB (AndroidAnalyzer.parseTelegram reads messages(sender, receiver, content, date))
+sqlite3 "$TG_DB" "CREATE TABLE messages (_id INTEGER PRIMARY KEY, uid INTEGER, sender TEXT, receiver TEXT, content TEXT, date INTEGER); INSERT INTO messages (_id, uid, sender, receiver, content, date) VALUES (1, 1001, 'Alice', 'Bob', 'Hello from Telegram', 1609459202000);"
 
-# WeChat DB (Simplified Simulation - normally encrypted)
-sqlite3 "$WC_DB" "CREATE TABLE message (msgId INTEGER PRIMARY KEY, content TEXT, createTime INTEGER, talker TEXT); INSERT INTO message (msgId, content, createTime, talker) VALUES (1, 'Hello from WeChat', 1609459203000, 'wxid_123456');"
+# WeChat DB (Simplified Simulation - normally SQLCipher-encrypted)
+# Schemas mirror what AndroidAnalyzer.parseWeChatEnhanced reads:
+#   message(talker, content, createTime, type, isSend)
+#   rcontact(username, nickname, conRemark, type, chatroomFlag)
+#   chatroom(chatroomname, roomowner, memberlist, membercount, addtime)
+#   userinfo(id, value) with id=2 username, id=4 nickname
+sqlite3 "$WC_DB" "CREATE TABLE message (msgId INTEGER PRIMARY KEY, content TEXT, createTime INTEGER, talker TEXT, type INTEGER, isSend INTEGER);
+INSERT INTO message (msgId, content, createTime, talker, type, isSend) VALUES
+ (1, '你好,最近怎么样?', 1609459203000, 'wxid_123456', 1, 0),
+ (2, '挺好的,周末一起吃饭?', 1609459263000, 'wxid_123456', 1, 1),
+ (3, '[图片]', 1609459323000, 'wxid_123456', 3, 0),
+ (4, '明天下午三点在老地方碰头。', 1609545600000, 'wxid_654321', 1, 0),
+ (5, '收到,准时到。', 1609545660000, 'wxid_654321', 1, 1);"
+sqlite3 "$WC_DB" "CREATE TABLE rcontact (username TEXT PRIMARY KEY, nickname TEXT, conRemark TEXT, type INTEGER, chatroomFlag INTEGER);
+INSERT INTO rcontact (username, nickname, conRemark, type, chatroomFlag) VALUES
+ ('wxid_123456', '王小明', '老王', 1, 0),
+ ('wxid_654321', '李华', '华仔', 1, 0),
+ ('12345678@chatroom', '家庭群', NULL, 1, 1);"
+sqlite3 "$WC_DB" "CREATE TABLE chatroom (chatroomname TEXT PRIMARY KEY, roomowner TEXT, memberlist TEXT, membercount INTEGER, addtime INTEGER);
+INSERT INTO chatroom (chatroomname, roomowner, memberlist, membercount, addtime) VALUES
+ ('12345678@chatroom', 'wxid_123456', 'wxid_123456;wxid_654321;wxid_owner', 3, 1609459200);"
+sqlite3 "$WC_DB" "CREATE TABLE userinfo (id INTEGER PRIMARY KEY, value TEXT);
+INSERT INTO userinfo (id, value) VALUES (2, 'wxid_owner'), (4, '机主');"
 
 # Chrome History DB
 sqlite3 "$CHROME_DB" "CREATE TABLE urls (id INTEGER PRIMARY KEY, url TEXT, title TEXT, visit_count INTEGER, last_visit_time INTEGER); INSERT INTO urls (url, title, visit_count, last_visit_time) VALUES ('https://www.google.com', 'Google', 10, 13254000000000000);"

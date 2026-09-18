@@ -19,18 +19,46 @@ WeChatDecryptor::~WeChatDecryptor() {
 
 void WeChatDecryptor::close() {
     cipher_.close();
+    if (plainDb_) {
+        sqlite3_close(plainDb_);
+        plainDb_ = nullptr;
+    }
 }
 
 sqlite3* WeChatDecryptor::getDb() const {
-    return cipher_.get();
+    return plainDb_ ? plainDb_ : cipher_.get();
 }
 
 bool WeChatDecryptor::openDatabase(const std::string& dbPath, const std::string& password) {
     close();
     lastError_.clear();
 
+    // Plaintext fallback: already-decrypted exports and test fixtures are valid
+    // SQLite files that must open without a password (and must still open when
+    // a password was supplied but every SQLCipher attempt failed).
+    auto tryPlaintext = [&]() -> bool {
+        sqlite3* db = nullptr;
+        if (sqlite3_open_v2(dbPath.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+            if (db) sqlite3_close(db);
+            return false;
+        }
+        sqlite3_stmt* stmt = nullptr;
+        const bool readable = sqlite3_prepare_v2(db, "SELECT count(*) FROM sqlite_master;", -1, &stmt, nullptr) == SQLITE_OK &&
+                              sqlite3_step(stmt) == SQLITE_ROW;
+        if (stmt) sqlite3_finalize(stmt);
+        if (!readable) {
+            sqlite3_close(db);
+            return false;
+        }
+        plainDb_ = db;
+        return true;
+    };
+
     if (password.empty()) {
-        lastError_ = "Password is empty";
+        if (tryPlaintext()) {
+            return true;
+        }
+        lastError_ = "Password is empty and database is not plaintext SQLite";
         return false;
     }
 
@@ -52,6 +80,10 @@ bool WeChatDecryptor::openDatabase(const std::string& dbPath, const std::string&
 
     // Broad auto-retry across SQLCipher v1-v4 presets.
     if (cipher_.openWithPassphrase(dbPath, password)) {
+        return true;
+    }
+
+    if (tryPlaintext()) {
         return true;
     }
 

@@ -35,6 +35,7 @@ public:
 
 private:
     SqlCipherDatabase cipher_;
+    sqlite3* plainDb_ = nullptr;  // set when the file was opened without SQLCipher
     std::string lastError_;
 
     static std::string md5(const std::string& input);

@@ -29,13 +29,14 @@ json SQLiteHelper::get_android_communication_summary(const std::string& android_
     // WhatsApp summary
     if (table_exists(db, "whatsapp_messages")) {
         result["whatsapp_summary"] = execute_query(db, "SELECT COUNT(*) as total_messages FROM whatsapp_messages");
+        // The persisted schema (sender/receiver/content/timestamp) has no
+        // from-me flag, so the distribution is per sender rather than
+        // sent/received direction.
         result["whatsapp_by_type"] = execute_query(db, R"(
-            SELECT CASE
-                WHEN message_from_me = 1 THEN 'sent'
-                ELSE 'received'
-            END as direction, COUNT(*) as count
+            SELECT sender, COUNT(*) as count
             FROM whatsapp_messages
-            GROUP BY message_from_me
+            GROUP BY sender
+            ORDER BY count DESC
         )");
     } else {
         result["whatsapp_summary"] = json::array();
@@ -70,7 +71,7 @@ json SQLiteHelper::get_android_app_usage(const std::string& android_db) {
     // Installed apps
     if (table_exists(db, "installed_packages")) {
         result["installed_apps"] = execute_query(db, R"(
-            SELECT package_name, app_name, version_code, version_name,
+            SELECT package_name, version, installer, code_path,
                    first_install_time, last_update_time
             FROM installed_packages
             ORDER BY last_update_time DESC
@@ -82,11 +83,11 @@ json SQLiteHelper::get_android_app_usage(const std::string& android_db) {
     // Usage stats
     if (table_exists(db, "usage_stats")) {
         result["usage_statistics"] = execute_query(db, R"(
-            SELECT package_name, total_time_in_foreground, last_time_used,
-                   total_time_in_foreground / 1000 as seconds_used
+            SELECT package_name, total_time_foreground, last_time_used,
+                   total_time_foreground / 1000 as seconds_used
             FROM usage_stats
-            WHERE total_time_in_foreground > 0
-            ORDER BY total_time_in_foreground DESC
+            WHERE total_time_foreground > 0
+            ORDER BY total_time_foreground DESC
             LIMIT 100
         )");
     } else {
@@ -122,17 +123,19 @@ json SQLiteHelper::get_android_device_info(const std::string& android_db) {
 
     // Build properties
     if (table_exists(db, "system_build_properties")) {
-        result["build_properties"] = execute_query(db, "SELECT property_name, property_value FROM system_build_properties");
+        result["build_properties"] = execute_query(db, "SELECT property_key, property_value FROM system_build_properties");
     } else {
         result["build_properties"] = json::array();
     }
 
-    // WiFi networks
+    // WiFi networks: saved-network rows written by the Android analyzer
+    // (ssid / pre_shared_key / key_mgmt / last_connected); there is no
+    // scan-result style bssid/frequency/level data in this schema.
     if (table_exists(db, "wifi_networks")) {
         result["wifi_networks"] = execute_query(db, R"(
-            SELECT ssid, bssid, frequency, level, capabilities
+            SELECT ssid, pre_shared_key, key_mgmt, last_connected
             FROM wifi_networks
-            ORDER BY level DESC
+            ORDER BY last_connected DESC
         )");
     } else {
         result["wifi_networks"] = json::array();

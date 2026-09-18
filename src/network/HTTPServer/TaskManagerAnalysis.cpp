@@ -656,6 +656,9 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(imagePath, dbManager.get());
                                 std::string androidDbPath = pm.getTaskDbPaths(task_id, baseName).androidDb.string();
                                 androidAnalyzer->setOutputDatabasePath(androidDbPath);
+                                // 任务级 llm_analyze 开关同时约束平台工件的 LLM 逐条分析,
+                                // 否则配置了 LLM 端点时每个任务都要磨完 LLM_MAX_ARTIFACTS 条。
+                                androidAnalyzer->setSkipAI(!task.llm_analyze);
                                 if (androidAnalyzer->initialize()) {
                                     androidAnalyzer->analyzeAndroidData();
                                 } else {
@@ -672,6 +675,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 auto windowsAnalyzer = std::make_unique<WindowsFilesAnalyzer>(imagePath, dbManager.get());
                                 std::string windowsDbPath = pm.getTaskDbPaths(task_id, baseName).windowsDb.string();
                                 windowsAnalyzer->setOutputDatabasePath(windowsDbPath);
+                                windowsAnalyzer->setSkipAI(!task.llm_analyze);
                                 attachPlatformProgressCallback(*windowsAnalyzer, task_id, base_progress,
                                                                per_scenario_progress, scenario_name);
                                 if (windowsAnalyzer->initialize()) {
@@ -690,6 +694,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 auto linuxAnalyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
                                 std::string linuxDbPath = pm.getTaskDbPaths(task_id, baseName).linuxDb.string();
                                 linuxAnalyzer->setOutputDatabasePath(linuxDbPath);
+                                linuxAnalyzer->setSkipAI(!task.llm_analyze);
                                 attachPlatformProgressCallback(*linuxAnalyzer, task_id, base_progress,
                                                                per_scenario_progress, scenario_name);
                                 if (linuxAnalyzer->initialize()) {
@@ -708,6 +713,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 auto serverAnalyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
                                 std::string serverDbPath = pm.getTaskDbPaths(task_id, baseName).ossDb.string();
                                 serverAnalyzer->setOutputDatabasePath(serverDbPath);
+                                serverAnalyzer->setSkipAI(!task.llm_analyze);
                                 attachPlatformProgressCallback(*serverAnalyzer, task_id, base_progress,
                                                                per_scenario_progress, scenario_name);
                                 if (serverAnalyzer->initialize()) {
