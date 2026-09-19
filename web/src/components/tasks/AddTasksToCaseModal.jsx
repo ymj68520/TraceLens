@@ -187,7 +187,7 @@ export default function AddTasksToCaseModal({ fixedCaseId, fixedTaskId, onClose 
         <div className="flex justify-end space-x-3 px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
           <Button type="button" variant="secondary" onClick={onClose} disabled={submitting}>取消</Button>
           <Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
-            {submitting ? '添加中...' : `添加 ${selectedTaskIds.size || ''} 个任务`.trim()}
+            {submitting ? '添加中...' : selectedTaskIds.size ? `添加 ${selectedTaskIds.size} 个任务` : '添加任务'}
           </Button>
         </div>
       </div>

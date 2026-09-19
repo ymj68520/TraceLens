@@ -4,7 +4,7 @@
  * Communicates with Python service (/api/llm/cases*) and
  * multi-image analysis endpoints (/api/llm/multi-image-analysis*).
  */
-import { pythonApi } from './api';
+import api, { pythonApi } from './api';
 
 // ── Case CRUD ─────────────────────────────────────────────────────────────────
 
@@ -87,6 +87,16 @@ export const pollMultiAnalysis = (jobId, onProgress, interval = 5000) =>
 
 export const deleteCase = (caseId) =>
   pythonApi.delete(`/api/llm/cases/${caseId}`);
+
+/**
+ * Persist a case status transition to the C++ record (single source of truth
+ * for the card state). Used to reconcile cases stuck in ANALYSING when the
+ * cross-image job is lost (e.g. Python service restart dropped the registry).
+ * @param {string} caseId
+ * @param {'open'|'analysing'|'completed'|'failed'} status
+ */
+export const persistCaseStatus = (caseId, status) =>
+  api.put(`/api/cases/${caseId}/status`, { status });
 
 export default {
   createCase, listCases, getCase, addTasksToCase, associateTasksToCase, deleteCase,

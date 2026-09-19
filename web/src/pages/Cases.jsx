@@ -15,7 +15,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
 import { fetchCases, createCaseWithTasks, startCrossAnalysis, updateCaseStatus, deleteCase, deleteCaseWithTasks } from '../store/caseSlice';
 import { fetchTasks, fetchTasksSilent } from '../store/taskSlice';
-import { pollMultiAnalysis } from '../services/caseGroupService';
+import { pollMultiAnalysis, persistCaseStatus } from '../services/caseGroupService';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
@@ -47,6 +47,8 @@ export default function Cases() {
   // Keep a ref so poll callbacks always see fresh state
   const pollingRef = useRef(polling);
   pollingRef.current = polling;
+  // Job ids already being polled in this session (guards re-attach on refetch)
+  const attachedJobsRef = useRef(new Set());
 
   // Add-tasks-to-case modal: null when closed, else the target case id
   const [addTasksToCaseId, setAddTasksToCaseId] = useState(null);
@@ -66,6 +68,80 @@ export default function Cases() {
     dispatch(fetchCases());
     dispatch(fetchTasks({ status: 'all', priority: 'all' }));
   }, [dispatch]);
+
+  // Shared polling lifecycle for one case's cross-image analysis job.
+  const attachPolling = useCallback((forensicCase, jobId) => {
+    attachedJobsRef.current.add(jobId);
+    pollMultiAnalysis(
+      jobId,
+      (s) => {
+        const prog = s.progress || {};
+        // Live-update the stage/message for this case
+        setPolling((p) => ({
+          ...p,
+          [forensicCase.id]: {
+            jobId,
+            stage: prog.stage || (s.status === 'completed' ? '完成' : '分析中'),
+            message: prog.message || '',
+          },
+        }));
+      },
+      5000
+    ).then(() => {
+      dispatch(updateCaseStatus({ caseId: forensicCase.id, status: 'completed' }));
+      setPolling((p) => { const n = { ...p }; delete n[forensicCase.id]; return n; });
+      toast.success('跨镜像分析完成！');
+      // Refresh both lists so progress bars + status stay accurate
+      dispatch(fetchCases());
+      dispatch(fetchTasksSilent({ status: 'all', priority: 'all' }));
+    }).catch(async (e) => {
+      setPolling((p) => { const n = { ...p }; delete n[forensicCase.id]; return n; });
+      // Allow a later fetchCases to re-attach polling while the case is still
+      // ANALYSING — without this, one transient failure freezes the card.
+      attachedJobsRef.current.delete(jobId);
+      // 404 = the in-memory job is gone (service restart / dropped registry):
+      // the persisted C++ record would stay ANALYSING forever, so converge it.
+      if (e?.response?.status === 404) {
+        try {
+          await persistCaseStatus(forensicCase.id, 'failed');
+          toast.error('分析作业已丢失（服务可能重启过），案件已标记为失败，可重新启动案情研判');
+        } catch {
+          toast.error('分析作业已丢失，且状态更新失败，请稍后刷新重试');
+        }
+        dispatch(updateCaseStatus({ caseId: forensicCase.id, status: 'failed' }));
+        dispatch(fetchCases());
+      } else if (e?.response) {
+        // Terminal failure reported by the poll endpoint itself.
+        toast.error('跨镜像分析失败：' + (e?.message || e));
+        dispatch(fetchCases());
+      } else {
+        // Transient network error (service restarting): retry quietly via the
+        // re-attach effect instead of killing the lifecycle with a toast.
+        dispatch(fetchCases());
+      }
+    });
+  }, [dispatch, toast]);
+
+  // Re-attach polling for cases already ANALYSING when the page (re)loads —
+  // without this, a refresh mid-analysis leaves the card frozen on the
+  // default stage text with no way to observe completion. Retried on an
+  // interval so a transient failure (e.g. Python service restart) recovers
+  // on its own instead of freezing the card until a manual reload.
+  const casesRef = useRef(cases);
+  casesRef.current = cases;
+  useEffect(() => {
+    const tryAttach = () => {
+      for (const fc of casesRef.current) {
+        if (fc.status !== 'analysing' || !fc.cross_analysis_job_id) continue;
+        if (attachedJobsRef.current.has(fc.cross_analysis_job_id)) continue;
+        if (pollingRef.current[fc.id]) continue; // live-polled by this session
+        attachPolling(fc, fc.cross_analysis_job_id);
+      }
+    };
+    tryAttach();
+    const iv = setInterval(tryAttach, 10000);
+    return () => clearInterval(iv);
+  }, [attachPolling]);
 
   const handleCreate = useCallback(async (formData) => {
     try {
@@ -110,39 +186,11 @@ export default function Cases() {
         ...p,
         [forensicCase.id]: { jobId: result.job_id, stage: '初始化', message: '正在启动跨镜像分析...' },
       }));
-
-      pollMultiAnalysis(
-        result.job_id,
-        (s) => {
-          const prog = s.progress || {};
-          // Live-update the stage/message for this case
-          setPolling((p) => ({
-            ...p,
-            [forensicCase.id]: {
-              jobId: result.job_id,
-              stage: prog.stage || (s.status === 'completed' ? '完成' : '分析中'),
-              message: prog.message || '',
-            },
-          }));
-          if (s.status === 'completed') {
-            dispatch(updateCaseStatus({ caseId: forensicCase.id, status: 'completed' }));
-            setPolling((p) => { const n = { ...p }; delete n[forensicCase.id]; return n; });
-            toast.success('跨镜像分析完成！');
-            // Refresh both lists so progress bars + status stay accurate
-            dispatch(fetchCases());
-            dispatch(fetchTasksSilent({ status: 'all', priority: 'all' }));
-          }
-        },
-        5000
-      ).catch((e) => {
-        setPolling((p) => { const n = { ...p }; delete n[forensicCase.id]; return n; });
-        toast.error('跨镜像分析失败：' + e.message);
-        dispatch(fetchCases());
-      });
+      attachPolling(forensicCase, result.job_id);
     } catch (err) {
       toast.error('启动失败：' + (err?.message || err));
     }
-  }, [dispatch, tasks, toast]);
+  }, [dispatch, tasks, toast, attachPolling]);
 
   // --- Delete case flow ---
   const handleDeleteCase = useCallback((fc) => {
@@ -304,7 +352,7 @@ function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, onAddTas
           </div>
         </div>
         <div className="flex-shrink-0 flex flex-col gap-2 items-end">
-          {fc.status === 'open' && allTasksCount > 0 && (
+          {(fc.status === 'open' || fc.status === 'failed') && allTasksCount > 0 && (
             <Button
               size="sm"
               onClick={() => onStartAnalysis(fc)}
@@ -313,7 +361,7 @@ function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, onAddTas
               {isPolling ? '分析中...' : (
                 !allTasksCompleted
                   ? (failedTasks.length > 0 ? `⚠️ 跳过 ${failedTasks.length} 失败任务启动` : '等待子任务完成')
-                  : '🔍 启动案情研判'
+                  : (fc.status === 'failed' ? '🔄 重新启动案情研判' : '🔍 启动案情研判')
               )}
             </Button>
           )}

@@ -384,6 +384,46 @@ async def get_multi_analysis_status(job_id: str):
     return job
 
 
+async def reconcile_orphan_analysis(settings: Settings) -> int:
+    """Mark cases stuck in ANALYSING as failed when their cross-image job is
+    gone from the in-memory registry (_jobs lives only for this process, so a
+    service restart orphans the persisted C++ case state). Returns the number
+    of reconciled cases."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(f"{settings.cpp_backend_url}/api/cases")
+            resp.raise_for_status()
+            cases = (resp.json() or {}).get("cases", [])
+    except Exception as exc:
+        logger.warning(f"[MULTI_ANALYSIS] orphan-case reconciliation skipped: {exc}")
+        return 0
+
+    reconciled = 0
+    for case in cases:
+        if case.get("status") != "analysing":
+            continue
+        job_id = case.get("cross_analysis_job_id") or ""
+        job = _jobs.get(job_id)
+        if job and job.get("status") == "running":
+            continue  # live job owned by this process
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                await client.put(
+                    f"{settings.cpp_backend_url}/api/cases/{case['id']}/status",
+                    json={"status": "failed"},
+                )
+            reconciled += 1
+            logger.warning(
+                f"[MULTI_ANALYSIS] case '{case.get('name')}' ({case.get('id')}) stuck in "
+                f"analysing with job {job_id or '<missing>'} no longer tracked; marked failed"
+            )
+        except Exception as exc:
+            logger.warning(f"[MULTI_ANALYSIS] failed to reconcile case {case.get('id')}: {exc}")
+    if reconciled:
+        logger.warning(f"[MULTI_ANALYSIS] reconciled {reconciled} orphaned analysing case(s) to failed")
+    return reconciled
+
+
 # ── Incremental Analysis Endpoints ────────────────────────────────────────────────
 
 @router.post("/api/llm/cases/smart-create", status_code=201, dependencies=[Depends(require_combined_case)])

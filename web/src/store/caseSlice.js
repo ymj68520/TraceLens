@@ -168,6 +168,7 @@ const caseSlice = createSlice({
       .addCase(fetchCases.fulfilled,  (state, action) => {
         state.status = 'succeeded';
         state.cases  = action.payload.cases || [];
+        state.error  = null;  // a stale network-error banner must not outlive recovery
       })
       .addCase(fetchCases.rejected,   (state, action) => { state.status = 'failed'; state.error = action.payload; })
 
