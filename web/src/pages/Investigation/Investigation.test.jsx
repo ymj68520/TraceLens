@@ -71,7 +71,7 @@ test('shows a task-selection placeholder without task context', () => {
 
 test('defaults to the timeline tab in a three-column layout', async () => {
   const { container } = renderPage();
-  await screen.findByText('事件一');
+  await screen.findByTestId('event-e1');
   expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('时间线');
   expect(screen.queryByTestId('graph-view-mock')).not.toBeInTheDocument();
   const columns = container.querySelector('main').className;
@@ -81,7 +81,7 @@ test('defaults to the timeline tab in a three-column layout', async () => {
 
 test('graph tab activates the two-column layout and yields the right column', async () => {
   const { container } = renderPage();
-  await screen.findByText('事件一');
+  await screen.findByTestId('event-e1');
   fireEvent.click(screen.getByTestId('tab-graph'));
   expect(screen.getByTestId('graph-view-mock')).toHaveTextContent('t1');
   expect(container.querySelector('main').className).toContain('grid-cols-[minmax(250px,0.8fr)_minmax(640px,2.45fr)]');
@@ -90,7 +90,7 @@ test('graph tab activates the two-column layout and yields the right column', as
 
 test('switching back to the timeline tab restores the right column', async () => {
   const { container } = renderPage();
-  await screen.findByText('事件一');
+  await screen.findByTestId('event-e1');
   fireEvent.click(screen.getByTestId('tab-graph'));
   expect(screen.getByTestId('graph-view-mock')).toBeInTheDocument();
   fireEvent.click(screen.getByTestId('tab-timeline'));
@@ -108,7 +108,7 @@ test('uses overview-gated bootstrap', async () => {
 
 test('does not bootstrap an initialized investigation', async () => {
   renderPage();
-  await screen.findByText('事件一');
+  await screen.findByTestId('event-e1');
   expect(service.bootstrapInvestigation).not.toHaveBeenCalled();
 });
 
@@ -118,6 +118,25 @@ test('selecting an event refreshes its evidence panel', async () => {
   fireEvent.click(screen.getByTestId('event-e2'));
   await screen.findByText('b.txt');
   expect(service.getEventEvidence).toHaveBeenCalledWith('t1', 'e2');
+});
+
+test('timeline axis shows end times and expands only the selected event card', async () => {
+  const fmt = (v) => new Date(v * 1000).toLocaleString('zh-CN', {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  renderPage();
+  await screen.findByTestId('event-e1');
+  // 轴体两端刻度 = 最早 / 最新事件的起始时间
+  expect(screen.getByTestId('timeline-axis-start')).toHaveTextContent(fmt(100));
+  expect(screen.getByTestId('timeline-axis-end')).toHaveTextContent(fmt(200));
+  // 只有选中（默认自动选中的第一个）事件展开卡片
+  expect(screen.getByTestId('event-e1')).toHaveTextContent('summary 1');
+  expect(screen.getByTestId('event-e2')).not.toHaveTextContent('summary 2');
+  // 点击事件节点 = 选中并展开其卡片，同时联动证据面板
+  fireEvent.click(screen.getByTestId('event-e2'));
+  await screen.findByText('b.txt');
+  expect(screen.getByTestId('event-e2')).toHaveTextContent('summary 2');
+  expect(screen.getByTestId('event-e1')).not.toHaveTextContent('summary 1');
 });
 
 test('selecting evidence opens the evidence analysis workspace', async () => {
