@@ -499,6 +499,17 @@ class FileAnalyzer:
                     if extractor:
                         try:
                             content, extraction_method = await extractor.extract_to_markdown_detailed(actual_path)
+                            # 嵌入媒体增强：截图型 doc/docx 文本层近空时，
+                            # 转写嵌入图片内容并入分析输入
+                            from .doc_media_enhancer import enhance_document_text
+
+                            content, enhanced_images = await enhance_document_text(
+                                actual_path,
+                                content,
+                                vision_fn=lambda data: self.analyze_image(data, vision_client),
+                            )
+                            if enhanced_images:
+                                extraction_method = f"{extraction_method}+media_vision({enhanced_images})"
                             result = await self.analyze_file(content, text_client, vision_client, "text")
                         except Exception as e:
                             logger.warning(f"Extractor failed for {actual_path}: {e}, falling back")

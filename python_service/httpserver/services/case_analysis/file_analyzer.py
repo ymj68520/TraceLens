@@ -122,6 +122,17 @@ class FileAnalyzer:
                     if extractor:
                         try:
                             content, extraction_method = await extractor.extract_to_markdown_detailed(full_path)
+                            # 嵌入媒体增强：截图型 doc/docx 文本层近空时，
+                            # 转写嵌入图片内容并入分析输入
+                            from ..llm.doc_media_enhancer import enhance_document_text
+
+                            content, enhanced_images = await enhance_document_text(
+                                full_path,
+                                content,
+                                vision_fn=lambda data: self._llm_service.analyze_image(image_data=data),
+                            )
+                            if enhanced_images:
+                                extraction_method = f"{extraction_method}+media_vision({enhanced_images})"
                             custom_prompt = CASE_FILE_ANALYSIS_TEMPLATE.format(
                                 case_description=case_description,
                                 file_path=file_path,
@@ -378,6 +389,17 @@ class FileAnalyzer:
         if extractor:
             try:
                 content, extraction_method = await extractor.extract_to_markdown_detailed(file_path)
+                # 嵌入媒体增强：截图型 doc/docx 文本层近空时，
+                # 转写嵌入图片内容并入分析输入
+                from ..llm.doc_media_enhancer import enhance_document_text
+
+                content, enhanced_images = await enhance_document_text(
+                    file_path,
+                    content,
+                    vision_fn=lambda data: self._llm_service.analyze_image(image_data=data),
+                )
+                if enhanced_images:
+                    extraction_method = f"{extraction_method}+media_vision({enhanced_images})"
                 logger.info(f"Extractor converted {file_path}: {len(content)} chars")
             except Exception as e:
                 logger.warning(f"Extractor failed for {file_path}: {e}, falling back")

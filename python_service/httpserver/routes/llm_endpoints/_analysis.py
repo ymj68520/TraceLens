@@ -267,6 +267,19 @@ async def analyze_content(
                     logger.info(f"Auto-detected document file: {request.file_path}, using document extractor")
                     try:
                         content, extraction_method = await extractor.extract_to_markdown_detailed(request.file_path)
+                        # 嵌入媒体增强：截图型 doc/docx 文本层近空时，
+                        # 转写嵌入图片内容并入分析输入
+                        from ...services.llm.doc_media_enhancer import enhance_document_text
+
+                        content, enhanced_images = await enhance_document_text(
+                            request.file_path,
+                            content,
+                            vision_fn=lambda data: service_manager.llm_service.analyze_image(
+                                image_data=data, prompt=request.prompt
+                            ),
+                        )
+                        if enhanced_images:
+                            extraction_method = f"{extraction_method}+media_vision({enhanced_images})"
                         result = await service_manager.llm_service.analyze(
                             content=content,
                             model_type=request.model_type or "text",
