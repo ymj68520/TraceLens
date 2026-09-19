@@ -223,6 +223,19 @@ async def list_event_cluster_analyses(
 
     with sqlite3.connect(events_db, timeout=10) as conn:
         conn.row_factory = sqlite3.Row
+        # 旧任务（MVP §4.1 跳过 Round C）可能从未建过记录表——按空列表处理，
+        # 不能让缺表 500 打断研判中心/工作台的页面加载。
+        table_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='event_cluster_analyses'"
+        ).fetchone()
+        if not table_exists:
+            return {
+                "task_id": task_id,
+                "records": [],
+                "total": 0,
+                "limit": limit,
+                "offset": offset,
+            }
         total = conn.execute(
             f"SELECT COUNT(*) FROM event_cluster_analyses WHERE {where_sql}", params
         ).fetchone()[0]

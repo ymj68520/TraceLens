@@ -496,11 +496,25 @@ class FileAnalyzer:
 
         logger.info(f"Received LLM response for {file_path}: {len(description)} characters")
 
+        # Persist identity: files/file_descriptions rows are keyed by the
+        # image-relative path ("/Program Files/..."), while the reanalyze
+        # request carries the on-disk absolute path (extraction root prefixed).
+        # Derive the stored key by stripping the extraction root; the
+        # fail-closed path matching in persist_to_files_db stays intact for
+        # paths outside the extraction tree.
+        storage_key = file_path
+        if files_db_path:
+            extracted_root = Path(files_db_path).parent / "extracted_files"
+            try:
+                storage_key = "/" + Path(file_path).relative_to(extracted_root).as_posix()
+            except ValueError:
+                pass
+
         # Persist updated description to _files.db
         if files_db_path and description:
             persisted = self._llm_service.persist_to_files_db(
                 db_path=files_db_path,
-                file_path=file_path,
+                file_path=storage_key,
                 description=description,
                 summary=(result.get("analysis", {}) or {}).get("summary") or description[:200],
                 keywords="",

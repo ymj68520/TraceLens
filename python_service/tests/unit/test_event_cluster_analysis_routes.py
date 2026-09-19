@@ -140,6 +140,20 @@ def test_run_status_unknown_job_is_404(client):
     assert tc.get("/api/llm/event-cluster-analysis/run/nope").status_code == 404
 
 
+def test_analyses_missing_table_returns_empty(client):
+    """旧任务（MVP §4.1 跳过 Round C，pipeline 从未建表）查询记录表时必须
+    得到空列表而不是 500——研判中心/工作台的页面加载依赖此端点。"""
+    tc, _, _ = client
+    response = tc.get(
+        "/api/llm/event-cluster-analyses",
+        params={"task_id": "task-1", "latest_only": "true"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["records"] == []
+    assert body["total"] == 0
+
+
 def test_analyses_query_filters_and_latest_only(client):
     tc, _, events_db = client
     ensure_cluster_analysis_schema(events_db)

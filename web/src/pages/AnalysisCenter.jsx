@@ -243,9 +243,17 @@ const AnalysisCenter = () => {
 
     const toAbsolutePath = (filePath) => {
         if (!filePath) return filePath;
-        if (filePath.startsWith('/') || filePath.includes(':')) return filePath;
-        if (currentTask?.extraction_directory) return `${currentTask.extraction_directory}/${filePath}`;
-        return `../build/data/tasks/${activeContextId}/extracted_files/${filePath}`;
+        // Windows 盘符路径本身是绝对路径；镜像内 POSIX 路径（"/" 开头）与相对
+        // 路径必须拼上提取目录——否则后端按字面路径找不到文件，研判直接失败。
+        // 幂等：已带提取目录前缀的路径原样返回（onClick/modal 双入口都安全）。
+        if (/^[a-zA-Z]:[\\/]/.test(filePath)) return filePath;
+        if (currentTask?.extraction_directory) {
+            const root = currentTask.extraction_directory;
+            if (filePath === root || filePath.startsWith(root + '/')) return filePath;
+            const rel = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+            return `${root}/${rel}`;
+        }
+        return filePath;
     };
 
     const openReanalyzeModal = (filePaths) => {
@@ -468,7 +476,14 @@ const AnalysisCenter = () => {
                                     </label>
                                 </>
                             )}
-                            <Button variant="outline" size="sm" disabled={selectedItems.size === 0} onClick={() => openReanalyzeModal([...selectedItems].map(idx => displayFiles[idx].file_path).map(toAbsolutePath))}>🔄 批量研判 ({selectedItems.size})</Button>
+                            {/* selectedItems 存的是 "file-<index>" 键；这里必须拆出
+                                数字下标再取 displayFiles，否则整卡 undefined 使弹窗
+                                静默打不开（78d1109 起的存量缺陷，2026-09-19 修复）。
+                                路径转绝对由 openReanalyzeModal 内部统一处理，这里不再
+                                重复 map（否则提取目录被拼两次）。 */}
+                            <Button variant="outline" size="sm" disabled={selectedItems.size === 0} onClick={() => openReanalyzeModal([...selectedItems]
+                                .map((key) => displayFiles[Number(String(key).split('-')[1])]?.file_path)
+                                .filter(Boolean))}>🔄 批量研判 ({selectedItems.size})</Button>
                         </div>
 
                         <div className="space-y-3 h-[calc(100vh-320px)] overflow-y-auto pr-2 custom-scrollbar">
