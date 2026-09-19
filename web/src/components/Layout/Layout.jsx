@@ -46,10 +46,11 @@ const Layout = ({ children }) => {
   ].filter((item) => {
     // mvp-phase1-acceptance §4.6/§4.7: memory forensics and OSS analysis are
     // trimmed from the MVP; §4.3 hides the combined-case module the same way.
+    // 研判中心页面入口已恢复（2026-09-19 甲方恢复流程第一步），仅 /cases 仍随开关隐藏。
     if (['/memory', '/oss'].includes(item.href)) {
       return item.href === '/memory' ? memoryForensicsEnabled : ossAnalysisEnabled;
     }
-    return combinedCaseEnabled || !['/cases', '/analysis-center'].includes(item.href);
+    return combinedCaseEnabled || item.href !== '/cases';
   });
 
   // Add Terminal if enabled in settings

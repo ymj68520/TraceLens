@@ -35,10 +35,9 @@ test('exposes report migration routes without replacing the legacy redirect', ()
 
   expect(legacyRoute.element.type).toBe(LegacyReportRedirect);
   expect(intelligenceRoute.element.type).toBe(CaseIntelligence);
-  // MVP (mvp-phase1-acceptance §4.3): the analysis-center page is mounted
-  // behind a FeatureGate; the route itself must stay registered.
-  expect(analysisRoute.element.type.displayName || analysisRoute.element.type.name).toBe('FeatureGate');
-  expect(analysisRoute.element.props.children.type).toBe(AnalysisCenter);
+  // 研判中心页面入口已恢复（2026-09-19）：路由直挂页面，不再套 FeatureGate；
+  // 后端分析类端点仍按 mvp SPEC §4.3 随 COMBINED_CASE_ENABLED 门控。
+  expect(analysisRoute.element.type).toBe(AnalysisCenter);
   // MVP (mvp-phase1-acceptance §4.6/§4.7): memory forensics and OSS analysis
   // are trimmed behind their feature gates the same way.
   const memoryRoute = childRoutes.find((route) => route.path === 'memory');

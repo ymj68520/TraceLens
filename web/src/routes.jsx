@@ -134,13 +134,11 @@ export const appRoutes = [
         element: <CaseIntelligence />,
       },
       {
-        // MVP (mvp-phase1-acceptance §4.3): gated with combined-case module.
+        // 研判中心页面入口已恢复（2026-09-19 甲方恢复流程第一步：先恢复页面）；
+        // 后端分析类端点仍按 mvp SPEC §4.3 随 COMBINED_CASE_ENABLED 门控，
+        // 页面加载只依赖 GET 读端点，不受影响。
         path: 'analysis-center',
-        element: (
-          <FeatureGate flag="combined_case_enabled">
-            <AnalysisCenter />
-          </FeatureGate>
-        ),
+        element: <AnalysisCenter />,
       },
       {
         path: 'investigation',

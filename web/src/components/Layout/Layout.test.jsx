@@ -94,15 +94,16 @@ test('keeps the analysis center navigation active', async () => {
   expect(screen.queryByRole('heading', { name: '仪表盘' })).not.toBeInTheDocument();
 });
 
-test('MVP default hides the combined-case nav entries (mvp-phase1-acceptance §4.3)', async () => {
+test('MVP default hides 案件管理 but keeps the restored 研判中心 entry (mvp §4.3)', async () => {
   featuresState.value = null;
   renderLayout('/dashboard');
 
   await waitFor(() => {
     expect(screen.getByRole('link', { name: '证据研判' })).toBeInTheDocument();
   });
-  expect(screen.queryByRole('link', { name: '案件组合' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: '研判中心' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: '案件管理' })).not.toBeInTheDocument();
+  // 研判中心页面入口已恢复（2026-09-19 甲方恢复流程第一步），不再随开关隐藏。
+  expect(screen.getByRole('link', { name: '研判中心' })).toHaveAttribute('href', '/analysis-center');
 });
 
 test('MVP default hides the memory and OSS nav entries (mvp-phase1-acceptance §4.6/§4.7)', async () => {
