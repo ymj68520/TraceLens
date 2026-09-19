@@ -134,7 +134,7 @@ test('does not bootstrap an initialized investigation', async () => {
 test('selecting an event refreshes its evidence panel', async () => {
   renderPage();
   await screen.findByText('a.txt');
-  fireEvent.click(screen.getByTestId('event-e2'));
+  fireEvent.click(screen.getByTestId('event-node-e2'));
   await screen.findByText('b.txt');
   expect(service.getEventEvidence).toHaveBeenCalledWith('t1', 'e2');
 });
@@ -142,7 +142,7 @@ test('selecting an event refreshes its evidence panel', async () => {
 test('selecting evidence opens the evidence analysis workspace', async () => {
   renderPage();
   await screen.findByText('a.txt');
-  fireEvent.click(screen.getByTestId('event-e2'));
+  fireEvent.click(screen.getByTestId('event-node-e2'));
   await screen.findByText('b.txt');
   fireEvent.click(screen.getByTestId('evidence-file:/b.txt'));
   await screen.findByTestId('evidence-analysis-panel');
@@ -221,7 +221,7 @@ test('ignores every late response from a previously selected evidence item', asy
   renderPage();
   await screen.findByText('a.txt');
   fireEvent.click(screen.getByTestId('evidence-file:/a.txt'));
-  fireEvent.click(screen.getByTestId('event-e2'));
+  fireEvent.click(screen.getByTestId('event-node-e2'));
   await screen.findByText('b.txt');
   fireEvent.click(screen.getByTestId('evidence-file:/b.txt'));
   await screen.findByText('B analysis');
