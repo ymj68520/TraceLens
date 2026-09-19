@@ -28,6 +28,10 @@ from ...prompts import (
 
 logger = logging.getLogger(__name__)
 
+# 单次文本分析的内容字符预算：超出即截断。CJK 下字符数≈token 数，128k 上下文
+# 需为系统提示与输出（max_tokens 默认 2000）留足余量，90k 字符是安全的经验值。
+MAX_ANALYSIS_CONTENT_CHARS = 90_000
+
 
 def resolve_analysis_path(file_path: str, extraction_dir: Optional[str]) -> Optional[str]:
     """Resolve an evidence path to a readable host file.
@@ -185,6 +189,18 @@ class FileAnalyzer:
 
         # Build prompt
         system_prompt = TEXT_ANALYSIS_SYSTEM
+        # 上下文溢出守卫：LM Studio 引擎对超出上下文窗口的请求直接报
+        # exceed_context_size_error（案例3.docx 16.9 万字符 → 146k tokens > 128k
+        # ctx），在交互路径表现为难以理解的 "document content extraction failed"。
+        # 超长文档按预算截断并注明。
+        if len(content) > MAX_ANALYSIS_CONTENT_CHARS:
+            logger.warning(
+                "content length %d chars exceeds analysis budget %d, truncating",
+                len(content), MAX_ANALYSIS_CONTENT_CHARS,
+            )
+            content = content[:MAX_ANALYSIS_CONTENT_CHARS] + (
+                f"\n\n[NOTE: 原始内容过长（已截断），以上仅为前 {MAX_ANALYSIS_CONTENT_CHARS} 字符]"
+            )
         if prompt:
             user_prompt = TEXT_ANALYSIS_USER_WITH_INSTRUCTION_TEMPLATE.format(
                 content=content, instruction=prompt
@@ -196,26 +212,37 @@ class FileAnalyzer:
         try:
             import time as _time
             _t0 = _time.monotonic()
-            response = await client.post(
-                self.settings.llm_endpoint,
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "max_tokens": max_tokens or default_max_tokens,
-                    "temperature": temperature or default_temperature,
-                },
-                headers={"Authorization": f"Bearer {self.settings.llm_api_key}"} if self.settings.llm_api_key else {},
-            )
-            response.raise_for_status()
+            # nemotron 偶发把全部输出写进 reasoning（HTTP 200 但 content 为空，
+            # out=0ch），重试一次通常即可获得正常输出。
+            analysis_text = ""
+            tokens_used = 0
+            result: Dict[str, Any] = {}
+            for attempt in (1, 2):
+                response = await client.post(
+                    self.settings.llm_endpoint,
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "max_tokens": max_tokens or default_max_tokens,
+                        "temperature": temperature or default_temperature,
+                    },
+                    headers={"Authorization": f"Bearer {self.settings.llm_api_key}"} if self.settings.llm_api_key else {},
+                )
+                response.raise_for_status()
 
-            result = response.json()
+                result = response.json()
 
-            # Extract response
-            analysis_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-            tokens_used = result.get("usage", {}).get("total_tokens", 0)
+                # Extract response
+                analysis_text = result.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
+                tokens_used = result.get("usage", {}).get("total_tokens", 0)
+                if analysis_text.strip():
+                    break
+                logger.warning(
+                    f"LLM returned empty content (attempt {attempt}/2), retrying"
+                )
             logger.info(
                 f"LLM call dur={_time.monotonic() - _t0:.1f}s model={model} "
                 f"in={len(user_prompt)}ch out={len(analysis_text)}ch tokens={tokens_used}"
