@@ -11,6 +11,7 @@ The architecture is designed for extensibility:
 - Communication protocols can be extended (HTTP, gRPC, WebSocket)
 """
 
+import asyncio
 import logging
 import sys
 import time
@@ -62,6 +63,14 @@ async def lifespan(app: FastAPI):
         install_episode_gate(settings, service_manager.cpp_backend.list_tasks)
     except Exception as e:
         logger.warning(f"Some services failed to initialize: {e}")
+
+    # Reconcile combined-case records left in ANALYSING by a previous process
+    # (the cross-image job registry is in-memory; SPEC §4.3 robustness).
+    try:
+        from .routes.multi_analysis import reconcile_orphan_analysis
+        asyncio.create_task(reconcile_orphan_analysis(settings))
+    except Exception as e:
+        logger.warning(f"Case analysis reconciliation failed to start: {e}")
 
     yield
 
@@ -207,7 +216,7 @@ with the C++ backend for task management and file system operations.
 
 def _register_routes(app: FastAPI):
     """Register all route modules."""
-    from .routes import health, graphiti, llm, database, office, case_analysis, system, associations, oss_analysis, multi_analysis, dll, markitdown, wechat_graph, qq_forensics, forensic_reports, investigation, investigation_workbench, report_evidence, report_generation, report_narrative, event_cluster_analysis
+    from .routes import health, graphiti, llm, database, office, case_analysis, system, associations, oss_analysis, multi_analysis, dll, markitdown, wechat_graph, qq_forensics, forensic_reports, investigation, investigation_workbench, report_evidence, report_generation, report_narrative, event_cluster_analysis, video_analysis
 
     # Health routes (no prefix)
     app.include_router(health.router, tags=["Health"])
@@ -255,6 +264,7 @@ def _register_routes(app: FastAPI):
     app.include_router(system.router, prefix="/api/system", tags=["System"])
     app.include_router(dll.router, prefix="/api/llm", tags=["DLL"])
     app.include_router(markitdown.router, prefix="/api/markitdown", tags=["Markitdown"])
+    app.include_router(video_analysis.router, prefix="/api/video-analysis", tags=["Video Analysis"])
     app.include_router(wechat_graph.router, prefix="/api/wechat", tags=["WeChat Analysis"])
     app.include_router(qq_forensics.router, prefix="/api/qq", tags=["QQ Forensics"])
 

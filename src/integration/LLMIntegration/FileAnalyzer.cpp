@@ -2,6 +2,7 @@
 #include "FileContentExtractor.h"
 #include "FileTextProcessor.h"
 #include "MarkitdownProxy.h"
+#include "VideoAnalysisProxy.h"
 #include "json.hpp"
 #include "ConfigManager/ConfigManager.h"
 #include "../../core/Logger/Logger.h"
@@ -93,6 +94,22 @@ const std::set<std::string>& imageExtensions() {
 bool isImageExtension(const std::string& ext) {
     if (ext.empty()) return false;
     return imageExtensions().count(ext) > 0;
+}
+
+// Video extensions routed to the Python segment-vision service. Mirrors the
+// extension list common to the classifier and the Python VideoExtractor;
+// exotic containers stay on the metadata-only path.
+const std::set<std::string>& videoExtensions() {
+    static const std::set<std::string> exts = {
+        ".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv", ".webm",
+        ".m4v", ".mpg", ".mpeg", ".3gp", ".ts"
+    };
+    return exts;
+}
+
+bool isVideoExtension(const std::string& ext) {
+    if (ext.empty()) return false;
+    return videoExtensions().count(ext) > 0;
 }
 
 std::string mimeTypeForExtension(const std::string& ext) {
@@ -191,6 +208,14 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
     // SPEC D) — never through the markitdown/raw-read text flow below.
     if (isImageExtension(ext)) {
         return analyzeImageFile(filePath, maxContentLength);
+    }
+
+    // Videos go to the Python segment-vision service — the previous
+    // fall-through fed raw video bytes to the text model as
+    // replacement-character garbage ("MP4 Video" never matched the
+    // Archive/Binary/Database guard below).
+    if (isVideoExtension(ext)) {
+        return analyzeVideoFile(filePath, maxContentLength);
     }
 
     // Try markitdown proxy first (converts via Python service).
@@ -473,6 +498,66 @@ AnalysisResult FileAnalyzer::analyzeImageFile(const std::string& filePath,
     result.modelUsed = router_->getConfig().model;
     result.tokensUsed = response.promptTokens + response.completionTokens;
     parseAnalysisResponse(response.content, result);
+    return finish(true);
+}
+
+AnalysisResult FileAnalyzer::analyzeVideoFile(const std::string& filePath,
+                                              size_t maxContentLength) {
+    AnalysisResult result;
+    result.filePath = filePath;
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+    auto finish = [&](bool success) {
+        auto endTime = std::chrono::high_resolution_clock::now();
+        result.analysisTimeMs =
+            std::chrono::duration<double, std::milli>(endTime - startTime).count();
+        result.success = success;
+        return result;
+    };
+
+    if (!fs::exists(filePath)) {
+        result.errorMessage = "File not found: " + filePath;
+        return finish(false);
+    }
+    result.fileSize = static_cast<int64_t>(fs::file_size(filePath));
+    result.fileType = FileContentExtractor::detectFileType(filePath);
+
+    // Metadata-only fallback (mirrors the SPEC D2 image fallback): when the
+    // video service is unreachable or fails, the description is based on file
+    // metadata only — never on raw video bytes masquerading as text.
+    auto metadataContent = [&]() {
+        std::ostringstream meta;
+        meta << "File: " << filePath << "\n"
+             << "Type: " << result.fileType << "\n"
+             << "Size: " << result.fileSize << " bytes\n\n"
+             << "[Video content analysis unavailable; analysis based on "
+                "metadata only.]";
+        return meta.str();
+    };
+
+    auto& proxy = VideoAnalysisProxy::instance();
+    VideoDescriptionResult described = proxy.describeVideo(filePath);
+    if (!described.ok || described.description.empty()) {
+        LOG_WARNING("Video analysis failed for " + filePath +
+                    " (" + described.error + ") — falling back to metadata-only analysis");
+        if (!finishTextAnalysis(result, metadataContent(), maxContentLength)) {
+            result.errorMessage = described.error.empty()
+                                      ? "Video analysis returned no description"
+                                      : described.error;
+            return finish(false);
+        }
+        return finish(true);
+    }
+
+    // The Python synthesis already returns SUMMARY/DESCRIPTION/KEYWORDS
+    // structured text — reuse the shared parser.
+    parseAnalysisResponse(described.description, result);
+    if (result.description.empty()) {
+        result.description = described.description;
+    }
+    result.modelUsed = described.model.empty() ? "video-segment-vision" : described.model;
+    LOG_INFO("Video described " + filePath + " via " + described.extraction_method +
+             " model=" + result.modelUsed);
     return finish(true);
 }
 

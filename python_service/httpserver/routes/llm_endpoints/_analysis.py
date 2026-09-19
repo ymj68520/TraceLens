@@ -285,26 +285,57 @@ async def analyze_content(
                         detail="image analysis failed"
                     )
             else:
-                doc_locator = get_document_extractor_locator()
-                extractor = doc_locator.get_extractor(request.file_path)
-                
-                if extractor:
-                    logger.info(f"Auto-detected document file: {request.file_path}, using document extractor")
-                    try:
-                        content, extraction_method = await extractor.extract_to_markdown_detailed(request.file_path)
-                        # 嵌入媒体增强：截图型 doc/docx 文本层近空时，
-                        # 转写嵌入图片内容并入分析输入
-                        from ...services.llm.doc_media_enhancer import enhance_document_text
+                from ...services.llm.video_analyzer import VIDEO_EXTENSIONS, analyze_video_file
 
-                        content, enhanced_images = await enhance_document_text(
-                            request.file_path,
-                            content,
-                            vision_fn=lambda data: service_manager.llm_service.analyze_image(
-                                image_data=data, prompt=request.prompt
-                            ),
-                        )
-                        if enhanced_images:
-                            extraction_method = f"{extraction_method}+media_vision({enhanced_images})"
+                if file_ext in VIDEO_EXTENSIONS:
+                    # Video content analysis: segment-sampled multi-image
+                    # vision + synthesis. Raw video bytes never reach a text
+                    # model (2026-09-19 design).
+                    logger.info(f"Auto-detected video file: {request.file_path}, using segment vision analysis")
+                    result, extraction_method = await analyze_video_file(
+                        request.file_path,
+                        llm_service=service_manager.llm_service,
+                        settings=settings,
+                        user_prompt=request.prompt or "",
+                    )
+                else:
+                    doc_locator = get_document_extractor_locator()
+                    extractor = doc_locator.get_extractor(request.file_path)
+
+                    if extractor:
+                        logger.info(f"Auto-detected document file: {request.file_path}, using document extractor")
+                        try:
+                            content, extraction_method = await extractor.extract_to_markdown_detailed(request.file_path)
+                            # 嵌入媒体增强：截图型 doc/docx 文本层近空时，
+                            # 转写嵌入图片内容并入分析输入
+                            from ...services.llm.doc_media_enhancer import enhance_document_text
+
+                            content, enhanced_images = await enhance_document_text(
+                                request.file_path,
+                                content,
+                                vision_fn=lambda data: service_manager.llm_service.analyze_image(
+                                    image_data=data, prompt=request.prompt
+                                ),
+                            )
+                            if enhanced_images:
+                                extraction_method = f"{extraction_method}+media_vision({enhanced_images})"
+                            result = await service_manager.llm_service.analyze(
+                                content=content,
+                                model_type=request.model_type or "text",
+                                prompt=request.prompt,
+                                max_tokens=request.max_tokens,
+                                temperature=request.temperature,
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to extract document {request.file_path}: {e}")
+                            raise HTTPException(
+                                status_code=400,
+                                detail="document content extraction failed"
+                            )
+                    else:
+                        # Read as text
+                        extraction_method = "raw_text"
+                        content = await service_manager.llm_service.read_file_content(request.file_path)
                         result = await service_manager.llm_service.analyze(
                             content=content,
                             model_type=request.model_type or "text",
@@ -312,23 +343,6 @@ async def analyze_content(
                             max_tokens=request.max_tokens,
                             temperature=request.temperature,
                         )
-                    except Exception as e:
-                        logger.warning(f"Failed to extract document {request.file_path}: {e}")
-                        raise HTTPException(
-                            status_code=400,
-                            detail="document content extraction failed"
-                        )
-                else:
-                    # Read as text
-                    extraction_method = "raw_text"
-                    content = await service_manager.llm_service.read_file_content(request.file_path)
-                    result = await service_manager.llm_service.analyze(
-                        content=content,
-                        model_type=request.model_type or "text",
-                        prompt=request.prompt,
-                        max_tokens=request.max_tokens,
-                        temperature=request.temperature,
-                    )
         else:
             # Direct content analysis (text only)
             result = await service_manager.llm_service.analyze(

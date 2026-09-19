@@ -51,6 +51,19 @@ public:
      */
     AnalysisResult analyzeImageFile(const std::string& filePath,
                                     size_t maxContentLength = 10000);
+
+    /**
+     * @brief Analyze a video via the Python segment-vision service.
+     *
+     * The Python side samples frames at a fixed density, describes each
+     * segment with one multi-image vision call, and synthesizes a final
+     * description; videos over the configured duration cap come back as a
+     * metadata-only description marked for backfill. On service failure this
+     * degrades to a local metadata-only text analysis — raw video bytes are
+     * never fed to any text model (2026-09-19 video analysis design).
+     */
+    AnalysisResult analyzeVideoFile(const std::string& filePath,
+                                    size_t maxContentLength = 10000);
     
     /**
      * @brief Analyze multiple files

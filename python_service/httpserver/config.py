@@ -194,6 +194,16 @@ class Settings(BaseSettings):
     # Concurrent LLM calls per analysis pipeline (event clusters, files, artifacts).
     llm_max_concurrency: int = Field(default=3, ge=1, le=64, alias="LLM_MAX_CONCURRENCY")
 
+    # Video content analysis (2026-09-19): the video is covered end-to-end by
+    # sampling frames at a fixed density (LLM_VIDEO_FPS) and describing each
+    # LLM_VIDEO_SEGMENT_SECONDS window with ONE multi-image call (serial), then
+    # synthesizing a final description. The density knob is a budget dial, not
+    # an evidence cut: the whole duration below the cap is always covered.
+    llm_video_fps: int = Field(default=1, ge=1, le=10, alias="LLM_VIDEO_FPS")
+    llm_video_segment_seconds: int = Field(default=15, ge=5, le=120, alias="LLM_VIDEO_SEGMENT_SECONDS")
+    # Videos longer than this get metadata-only descriptions ("待补析"); 0 = no cap.
+    llm_video_max_duration: int = Field(default=1800, ge=0, alias="LLM_VIDEO_MAX_DURATION_SEC")
+
     # Redis Settings (optional; IngestionJobManager falls back to in-memory)
     redis_url: str = Field(default="redis://localhost:6379", alias="REDIS_URL")
 

@@ -100,6 +100,7 @@ class FileAnalyzer:
                 try:
                     file_ext = Path(file_path).suffix.lower()
                     is_image = file_ext in IMAGE_EXTENSIONS
+                    from ..llm.video_analyzer import VIDEO_EXTENSIONS
 
                     # Resolve full file path
                     full_path = file_path
@@ -119,7 +120,18 @@ class FileAnalyzer:
                     doc_locator = get_document_extractor_locator()
                     extractor = doc_locator.get_extractor(full_path)
 
-                    if extractor:
+                    if file_ext in VIDEO_EXTENSIONS:
+                        # 视频内容分析：分段抽帧多图视觉 + 合成，串行；
+                        # 原始视频字节不进文本模型（2026-09-19 设计）。
+                        from ..llm.video_analyzer import analyze_video_file
+
+                        result, extraction_method = await analyze_video_file(
+                            full_path,
+                            llm_service=self._llm_service,
+                            settings=self.settings,
+                            case_context=case_description,
+                        )
+                    elif extractor:
                         try:
                             content, extraction_method = await extractor.extract_to_markdown_detailed(full_path)
                             # 嵌入媒体增强：截图型 doc/docx 文本层近空时，
@@ -378,6 +390,8 @@ class FileAnalyzer:
 
         file_ext = Path(file_path).suffix.lower()
         is_image = file_ext in IMAGE_EXTENSIONS
+        from ..llm.video_analyzer import VIDEO_EXTENSIONS
+        is_video = file_ext in VIDEO_EXTENSIONS
 
         extraction_method = ""
 
@@ -386,7 +400,7 @@ class FileAnalyzer:
         doc_locator = get_document_extractor_locator()
         extractor = doc_locator.get_extractor(file_path)
 
-        if extractor:
+        if extractor and not is_video:
             try:
                 content, extraction_method = await extractor.extract_to_markdown_detailed(file_path)
                 # 嵌入媒体增强：截图型 doc/docx 文本层近空时，
@@ -406,7 +420,22 @@ class FileAnalyzer:
                 extractor = None  # Trigger fallback below
 
         result: Dict[str, Any] = {}
-        if not extractor:
+        if is_video:
+            # 视频内容分析：分段抽帧多图视觉 + 合成，串行；
+            # 原始视频字节不进文本模型（2026-09-19 设计）。
+            from ..llm.video_analyzer import analyze_video_file
+
+            video_prompt = user_hint
+            if kg_context:
+                video_prompt = f"{video_prompt}\n相关上下文: {kg_context}" if video_prompt else f"相关上下文: {kg_context}"
+            result, extraction_method = await analyze_video_file(
+                file_path,
+                llm_service=self._llm_service,
+                settings=self.settings,
+                case_context=case_description,
+                user_prompt=video_prompt,
+            )
+        elif not extractor:
             if is_image:
                 # Use vision model for images with custom prompt
                 logger.info(f"Using vision model for image re-analysis: {file_path}")
@@ -450,7 +479,7 @@ class FileAnalyzer:
                 content = await self._llm_service.read_file_content(file_path)
                 logger.info(f"Read {len(content)} characters from {file_path}")
 
-        if extractor or not is_image:
+        if (extractor or not is_image) and not is_video:
             # Text analysis path (extractor content or raw text)
             from ...prompts import (
                 FILE_REANALYSIS_HEADER,
