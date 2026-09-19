@@ -8,6 +8,7 @@ import { getGraphitiStatus } from '../services/graphitiService';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
+import { useToast } from '../components/common/ToastContext';
 import { motion } from 'framer-motion';
 import { ListTodo, Play, CheckCircle2, XCircle, Plus, ClipboardList, Search, Upload, Zap, Server, Database, Brain, HardDrive } from 'lucide-react';
 
@@ -28,6 +29,7 @@ const Dashboard = () => {
     llm: { status: 'checking', label: 'LLM 服务', Icon: Brain, latency: null },
   });
   const [exporting, setExporting] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     dispatch(fetchTasks({ limit: 10 }));
@@ -122,7 +124,14 @@ const Dashboard = () => {
     const completedTask = tasks.find((t) => t.status === 'completed');
     if (!completedTask) return;
     setExporting(true);
-    try { await exportToon(completedTask.id); } catch { } finally { setExporting(false); }
+    try {
+      await exportToon(completedTask.id);
+      toast.success(`已导出任务 ${completedTask.id.slice(0, 8)} 的 TOON 数据`);
+    } catch (err) {
+      toast.error('TOON 导出失败: ' + (err?.response?.status ? `HTTP ${err.response.status}` : (err?.message || '未知错误')));
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (

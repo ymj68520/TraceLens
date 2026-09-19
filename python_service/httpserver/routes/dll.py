@@ -1,6 +1,7 @@
 """DLL analysis route for LLM-powered security assessment."""
 
 import logging
+import os
 import time
 from datetime import datetime
 from typing import Any, Dict
@@ -104,10 +105,30 @@ async def analyze_dll(
         service_manager = get_service_manager()
         cpp_backend_url = getattr(settings, 'cpp_backend_url', 'http://localhost:8080')
 
+        # Resolve the path: the raw image-internal path usually does not exist
+        # on the host; fall back to the copy materialized by the extraction
+        # pipeline under the task's extraction directory (same D2b contract
+        # as the office parse route).
+        host_path = request.file_path
+        if request.task_id and not os.path.exists(host_path):
+            from ..services import task_store
+
+            try:
+                task = await task_store.get_task_record(request.task_id)
+                extraction_dir = (task or {}).get("extraction_directory")
+                if extraction_dir:
+                    candidate = os.path.join(
+                        extraction_dir, request.file_path.lstrip("/").replace("/", os.sep)
+                    )
+                    if os.path.exists(candidate):
+                        host_path = candidate
+            except task_store.TaskStoreError:
+                pass  # keep raw path; the C++ side will report not-found
+
         # Step 1: Analyze DLL via C++ backend
-        logger.info(f"Analyzing DLL file: {request.file_path}")
+        logger.info(f"Analyzing DLL file: {request.file_path} (host: {host_path})")
         async with DLLAnalyzerClient(cpp_backend_url) as dll_client:
-            dll_data = await dll_client.analyze_dll(request.file_path)
+            dll_data = await dll_client.analyze_dll(host_path)
 
         # Step 2: Generate Markdown report
         markdown_report = DLLMarkdownGenerator().generate(dll_data)

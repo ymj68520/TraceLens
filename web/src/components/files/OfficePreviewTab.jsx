@@ -1,17 +1,19 @@
 // OfficePreviewTab.jsx
 // "Office 预览" tab: pick an Office file (.pptx/.xlsx/.docx) and render parsed
 // slides / sheets / raw text. Parsing state is owned by the parent.
+// 文件列表由本组件自取（paged 端点 + 扩展名过滤），不依赖父级的文件列表页数据。
 
+import { useEffect, useState } from 'react';
 import Card from '../common/Card';
 import Badge from '../common/Badge';
 import Spinner from '../common/Spinner';
 import { parseFile } from '../../services/officeService';
+import api from '../../services/api';
 
 const OFFICE_EXTENSIONS = ['.pptx', '.ppt', '.xlsx', '.xls'];
 
 const OfficePreviewTab = ({
   taskId,
-  filteredFiles,
   officePreview,
   setOfficePreview,
   officeParsing,
@@ -19,9 +21,42 @@ const OfficePreviewTab = ({
   officeError,
   setOfficeError,
 }) => {
-  const officeFiles = filteredFiles.filter((f) =>
-    OFFICE_EXTENSIONS.includes((f.extension || '').toLowerCase())
-  );
+  const [officeFiles, setOfficeFiles] = useState([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [listError, setListError] = useState(null);
+
+  // 挂载/换任务时拉取该任务的全部 Office 文档（documents 视图 + 扩展名白名单）
+  useEffect(() => {
+    if (!taskId) return;
+    let cancelled = false;
+    setLoadingFiles(true);
+    setListError(null);
+    api
+      // 逗号分隔的 extension 必须保持原样（crow 不解码 %2C），因此手动拼 query
+      .get(`/api/forensics/files/paged?task_id=${encodeURIComponent(taskId)}&view=documents&extension=${OFFICE_EXTENSIONS.join(',')}&page=1&page_size=200`)
+      .then((res) => {
+        if (cancelled) return;
+        // api 拦截器已剥掉 axios response，这里 res 就是 {files: [...]} 本体
+        const rows = res?.files || res?.items || [];
+        const seen = new Set();
+        const unique = rows.filter((f) => {
+          const key = f.path || f.file_path || f.name;
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setOfficeFiles(unique);
+      })
+      .catch((err) => {
+        if (!cancelled) setListError(err?.response?.data?.error || err.message || '加载文件列表失败');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingFiles(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [taskId]);
 
   const handlePick = async (file, filePath) => {
     setOfficeParsing(true);
@@ -46,6 +81,14 @@ const OfficePreviewTab = ({
         {/* File selector for Office files */}
         <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
           <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">选择文件</h4>
+          {loadingFiles && (
+            <div className="flex items-center justify-center gap-2 py-4 text-slate-400 text-sm">
+              <Spinner size="sm" /> 加载文件列表...
+            </div>
+          )}
+          {listError && (
+            <p className="text-red-500 text-sm py-2">❌ {listError}</p>
+          )}
           <div className="space-y-2 max-h-48 overflow-y-auto">
             {officeFiles.map((file, idx) => {
               const filePath = file.path || file.file_path;
@@ -61,7 +104,7 @@ const OfficePreviewTab = ({
                 </button>
               );
             })}
-            {officeFiles.length === 0 && (
+            {!loadingFiles && officeFiles.length === 0 && !listError && (
               <p className="text-slate-400 text-sm py-4 text-center">无 Office 文件</p>
             )}
           </div>

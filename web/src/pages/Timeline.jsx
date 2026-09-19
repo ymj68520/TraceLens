@@ -124,6 +124,29 @@ const Timeline = () => {
     setSearchParams(next);
   }, [searchParams, setSearchParams]);
 
+  // 分布图展示用：跨度极大时（数百天）把相邻日聚合成 ≤MAX_DIST_BARS 个展示桶，
+  // 避免按 20px/根撑出数千像素宽的图表（只能靠隐藏滚动条横向摸黑浏览）。
+  // 聚合桶记录首尾日期，点击映射为 start/end 区间（见 handleBarClick）。
+  const MAX_DIST_BARS = 48;
+  const displayDistribution = useMemo(() => {
+    if (!distributionData || distributionData.length <= MAX_DIST_BARS) return distributionData;
+    const groupSize = Math.ceil(distributionData.length / MAX_DIST_BARS);
+    const sum = (group, key) => group.reduce((acc, d) => acc + (d[key] || 0), 0);
+    const out = [];
+    for (let i = 0; i < distributionData.length; i += groupSize) {
+      const group = distributionData.slice(i, i + groupSize);
+      out.push({
+        date: group[0].date,
+        endDate: group[group.length - 1].date,
+        days: group.length,
+        CREATED: sum(group, 'CREATED'),
+        MODIFIED: sum(group, 'MODIFIED'),
+        DELETED: sum(group, 'DELETED'),
+      });
+    }
+    return out;
+  }, [distributionData]);
+
   // Resolve the actual clustering window (seconds) to send to the backend.
   // 'auto' derives a window from the overall event span (distributionData spans
   // the full task timeline, independent of the current page/time filter), so
@@ -472,12 +495,35 @@ const Timeline = () => {
     }
   };
 
+  const lastBarClickRef = useRef(0);
   const handleBarClick = (data) => {
-    if (data && data.activePayload && data.activePayload[0]) {
-      const date = data.activePayload[0].payload.date;
-      // Day pick is mutually exclusive with custom start/end time range.
-      updateParams({ date: date === selectedDate ? '' : date, start: '', end: '', page: 1 });
+    // recharts v3 单次点击会连续触发两次 onClick，去重避免单日选中被立即反转
+    const now = Date.now();
+    if (now - lastBarClickRef.current < 400) return;
+    lastBarClickRef.current = now;
+    // recharts v3 onClick 载荷：{activeIndex: "6", activeLabel, ...}（无 activePayload，
+    // 且 activeIndex 是字符串）；兼容 v2 的 activePayload 形状。
+    let payload = null;
+    if (data && Array.isArray(data.activePayload) && data.activePayload[0]) {
+      payload = data.activePayload[0].payload;
+    } else if (data) {
+      const idx = Number.parseInt(data.activeIndex, 10);
+      if (Number.isInteger(idx) && displayDistribution?.[idx]) payload = displayDistribution[idx];
+      else if (data.activeLabel && Array.isArray(displayDistribution)) {
+        payload = displayDistribution.find((d) => d.date === data.activeLabel);
+      }
     }
+    if (!payload) return;
+    // 聚合桶（横跨多天）映射为 start/end 区间；单日桶保持原有 date 语义
+    if (payload.days > 1 && payload.endDate) {
+      const startSec = Math.floor(new Date(payload.date).getTime() / 1000);
+      const endSec = Math.floor(new Date(payload.endDate).getTime() / 1000) + 86400;
+      updateParams({ start: String(startSec), end: String(endSec), date: '', page: 1 });
+      return;
+    }
+    const date = payload.date;
+    // Day pick is mutually exclusive with custom start/end time range.
+    updateParams({ date: date === selectedDate ? '' : date, start: '', end: '', page: 1 });
   };
 
   const resetFilters = () => {
@@ -566,13 +612,17 @@ const Timeline = () => {
                 <span className="text-[11px] font-bold text-slate-600 flex items-center uppercase tracking-wider"><Calendar className="w-3.5 h-3.5 mr-1.5 text-primary-500"/> {t('timeline.stats.distribution')}</span>
                 {selectedDate && <button onClick={() => updateParams({date: ''})} className="text-[10px] bg-primary-50 text-primary-600 px-2 py-0.5 rounded-full font-bold hover:bg-primary-100 transition-colors">{selectedDate} ×</button>}
             </div>
-            <div className="p-2 overflow-x-auto scrollbar-hide">
-              <div className="h-32" style={{ minWidth: (distributionData?.length * 20 || 300) + 'px' }}>
-                {distributionData ? (
+            <div className="p-2">
+              <div className="h-32">
+                {displayDistribution ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={distributionData} onClick={handleBarClick} margin={{top: 5, right: 5, left: -25, bottom: 0}}>
+                    <BarChart data={displayDistribution} onClick={handleBarClick} margin={{top: 5, right: 5, left: -25, bottom: 0}}>
                       <XAxis dataKey="date" hide />
-                      <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', fontSize: '10px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                      <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', fontSize: '10px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                        labelFormatter={(label, payload) => {
+                          const p = payload?.[0]?.payload;
+                          return (p && p.days > 1) ? `${p.date} ~ ${p.endDate}（${p.days} 天）` : label;
+                        }} />
                       <Bar dataKey="CREATED" stackId="a" fill="#10b981" radius={[2, 2, 0, 0]} />
                       <Bar dataKey="MODIFIED" stackId="a" fill="#3b82f6" />
                       <Bar dataKey="DELETED" stackId="a" fill="#ef4444" />

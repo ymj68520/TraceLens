@@ -49,6 +49,21 @@ export const getRedisStatus = async () => {
 
 /** TOON data export */
 export const exportToon = async (taskId) => {
-  return await api.post('/api/forensics/export/toon', { task_id: taskId });
+  // 服务端只注册了 GET（ExportRoutes.cpp），必须用 query 传 task_id。
+  // 注意：api 实例的响应拦截器直接返回 response.data，这里拿到的就是 blob 本体。
+  const data = await api.get('/api/forensics/export/toon', {
+    params: { task_id: taskId },
+    responseType: 'blob',
+  });
+  const blob = data instanceof Blob ? data : new Blob([data], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `task_${taskId.slice(0, 8)}.toon`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return data;
 };
 

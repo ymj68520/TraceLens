@@ -106,4 +106,8 @@ export default {
     'terminal.status.disconnected': '后端连接已断开',
     'terminal.placeholder': '正在等待实时日志...',
     'terminal.clear': '清空控制台',
+
+    // Feature gate / common（FeatureDisabledNotice）
+    'feature.disabled': '该功能在当前验收版本中未启用',
+    'common.back': '返回首页',
 };

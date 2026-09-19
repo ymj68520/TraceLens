@@ -106,4 +106,8 @@ export default {
     'terminal.status.disconnected': 'Backend connection lost',
     'terminal.placeholder': 'Waiting for live logs...',
     'terminal.clear': 'Clear Console',
+
+    // Feature gate / common (FeatureDisabledNotice)
+    'feature.disabled': 'This feature is not available in the current acceptance build',
+    'common.back': 'Back to Home',
 };

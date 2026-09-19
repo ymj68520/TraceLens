@@ -212,7 +212,9 @@ const FileListTable = ({
                           onClick={() => {
                             setExtractionMode('name');
                             setExtractionPattern(fileName);
-                            handleStartExtraction();
+                            // setState 异步生效，必须直传 overrides，
+                            // 否则 handleStartExtraction 读到旧 state（mode='all'）会整盘提取
+                            handleStartExtraction({ mode: 'name', pattern: fileName });
                           }}
                           disabled={extractionStatus === 'running'}
                           className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"

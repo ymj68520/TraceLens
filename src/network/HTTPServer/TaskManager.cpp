@@ -156,6 +156,13 @@ void TaskManager::update_status(const std::string& id, TaskStatus status, const 
                                 const std::string& error_details) {
     std::lock_guard<std::mutex> lock(mtx_);
     if (tasks_.count(id)) {
+        // Sticky cancellation: once the user requested cancellation, the worker
+        // thread's subsequent failure (abort mid-step) must not overwrite the
+        // CANCELLED terminal state with FAILED — otherwise a cancelled task
+        // shows up as "failed" and pollutes the failure statistics.
+        if (status == TaskStatus::FAILED && tasks_[id].cancellation_requested) {
+            status = TaskStatus::CANCELLED;
+        }
         tasks_[id].status = status;
         if (!msg.empty()) tasks_[id].message = msg;
         if (!error_details.empty()) tasks_[id].error_details = error_details;

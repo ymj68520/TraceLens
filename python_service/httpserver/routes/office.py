@@ -104,8 +104,14 @@ async def parse_office_file(request: ParseRequest) -> ParseResponse:
             status_code=404, detail="file is not part of the current task"
         )
 
-    # Validate file exists
+    # Validate file exists. The raw image-internal path usually does not exist
+    # on the host; fall back to the copy materialized by the extraction pipeline
+    # under the task's extraction directory.
     path = Path(file_path)
+    if not path.exists() and task.get("extraction_directory"):
+        candidate = Path(task["extraction_directory"]) / file_path.lstrip("/")
+        if candidate.exists():
+            path = candidate
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
 
@@ -121,7 +127,7 @@ async def parse_office_file(request: ParseRequest) -> ParseResponse:
 
     try:
         service = get_office_service()
-        content = await service.parse_file(file_path)
+        content = await service.parse_file(str(path))
 
         return ParseResponse(
             success=True,

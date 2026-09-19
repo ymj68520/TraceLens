@@ -369,6 +369,8 @@ const Files = () => {
     return await analyzeDLL({
       filePath,
       filesDbPath,
+      // 服务端用 task_id 做归属校验与结果持久化（缺失直接 400）
+      taskId,
     });
   };
 
@@ -490,6 +492,7 @@ const Files = () => {
         console.log('Analyzing file:', filePath, `(${extension}, ${(fileSize / 1024).toFixed(1)} KB, model: ${modelType})`);
 
         const result = await analyzeContent({
+          taskId: taskId,
           filePath: filePath,
           dbFilePath: file.path || file.file_path,
           modelType: modelType,
@@ -1174,7 +1177,6 @@ ${detail}
       {/* Office Preview Tab */}
       {activeTab === 'office' && (
         <OfficePreviewTab
-          filteredFiles={filteredFiles}
           taskId={taskId}
           officePreview={officePreview}
           setOfficePreview={setOfficePreview}

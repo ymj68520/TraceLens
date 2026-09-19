@@ -21,7 +21,12 @@ export const getTaskResults = async (taskId) => {
 };
 
 export const cancelTask = async (taskId, reason = '') => {
-  return await api.delete(`/api/tasks/${taskId}`, { data: { reason } });
+  // 走 batch-cancel（TaskManager::cancel_task，置 status=cancelled 并保留任务），
+  // 不能用 DELETE /api/tasks/{id} —— 那是永久删除（会抹掉任务目录与图谱数据）
+  return await api.post('/api/tasks/batch-cancel', {
+    task_ids: [taskId],
+    reason: reason || 'Cancelled by user',
+  });
 };
 
 export const deleteTask = async (taskId) => {
