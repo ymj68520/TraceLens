@@ -391,6 +391,107 @@ class FileAnalyzer:
             logger.error(f"Vision analysis failed: {e}", exc_info=True)
             raise
 
+    async def analyze_images(
+        self,
+        image_data_list: List[bytes],
+        vision_client: httpx.AsyncClient,
+        prompt: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Describe several frames with ONE multimodal call (video segments).
+
+        Same request shape as ``analyze_image`` but the user message carries
+        multiple ``image_url`` parts, in timeline order. Frames are small
+        (video samples at ``scale=320``), so per-image compression is skipped;
+        an oversized payload is rejected with ``ValueError`` like in
+        ``analyze_image``.
+
+        Args:
+            image_data_list: Frame bytes in timeline order (non-empty).
+            vision_client: HTTP client for vision model.
+            prompt: User prompt describing what to extract.
+
+        Returns:
+            Same shape as ``analyze_image``.
+        """
+        if not image_data_list:
+            raise ValueError("analyze_images requires at least one frame")
+
+        max_b64_total = 10 * 1024 * 1024  # same ceiling as analyze_image
+        encoded = [base64.b64encode(data).decode("utf-8") for data in image_data_list]
+        if sum(len(b) for b in encoded) > max_b64_total:
+            raise ValueError(
+                f"video frames payload too large ({sum(len(b) for b in encoded)} b64 chars)"
+            )
+
+        content: List[Dict[str, Any]] = [
+            {"type": "text", "text": prompt or VISION_ANALYSIS_USER_DEFAULT}
+        ]
+        for image_b64 in encoded:
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{image_b64}",
+                        "detail": "low",
+                    },
+                }
+            )
+
+        try:
+            import time as _time
+            _t0 = _time.monotonic()
+            response = await vision_client.post(
+                self.settings.llm_endpoint,
+                json={
+                    "model": self.settings.llm_vision_model,
+                    "messages": [
+                        {"role": "system", "content": VISION_ANALYSIS_SYSTEM},
+                        {"role": "user", "content": content},
+                    ],
+                    "max_tokens": 2048,
+                    "temperature": self.settings.llm_vision_temperature,
+                },
+                headers={"Authorization": f"Bearer {self.settings.llm_api_key}"} if self.settings.llm_api_key else {},
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            analysis_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            tokens_used = result.get("usage", {}).get("total_tokens", 0)
+
+            logger.info(
+                f"LLM multi-image call dur={_time.monotonic() - _t0:.1f}s "
+                f"model={self.settings.llm_vision_model} frames={len(encoded)} "
+                f"out={len(analysis_text)}ch tokens={tokens_used}"
+            )
+
+            parsed = parse_structured_analysis(analysis_text)
+            return {
+                "analysis": {
+                    "description": analysis_text,
+                    "summary": parsed["summary"],
+                    "keywords": parsed["keywords"],
+                    "value": parsed["value"],
+                    "model_type": "vision",
+                },
+                "model": self.settings.llm_vision_model,
+                "tokens_used": tokens_used,
+            }
+        except httpx.HTTPStatusError as e:
+            if "context" in e.response.text.lower() and "overflow" in e.response.text.lower():
+                raise ValueError("video segment too large for context window") from e
+            logger.error(f"LLM HTTP error: {e.response.status_code} - {e.response.text}")
+            raise RuntimeError(f"LLM request failed with status {e.response.status_code}: {e.response.text}") from e
+        except httpx.ReadTimeout as e:
+            raise RuntimeError(
+                f"LLM request timed out after {self.settings.llm_timeout_seconds}s "
+                "(video segment). Consider LLM_VIDEO_SEGMENT_SECONDS smaller."
+            ) from e
+        except Exception as e:
+            logger.error(f"Vision multi-image analysis failed: {e}", exc_info=True)
+            raise
+
     @staticmethod
     def _compress_image(image_data: bytes, max_size: int = 3 * 1024 * 1024) -> bytes:
         """

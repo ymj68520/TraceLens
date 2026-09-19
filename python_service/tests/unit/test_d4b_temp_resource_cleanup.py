@@ -48,7 +48,7 @@ async def test_video_frame_samples_removed_on_success(video_file, tmp_path):
         "httpserver.services.extractors.media_metadata.subprocess.run",
         return_value=OkRun(),
     ), patch(
-        "httpserver.services.extractors.media_metadata._run_ffprobe",
+        "httpserver.services.extractors.media_metadata.run_ffprobe",
         return_value={"format": {"duration": "2.0"}},
     ):
         extractor = VideoExtractor(sample_frames=1)
@@ -81,7 +81,7 @@ async def test_video_frame_samples_removed_on_ffmpeg_failure(video_file, tmp_pat
         "httpserver.services.extractors.media_metadata.subprocess.run",
         return_value=FailingRun(),
     ), patch(
-        "httpserver.services.extractors.media_metadata._run_ffprobe",
+        "httpserver.services.extractors.media_metadata.run_ffprobe",
         return_value={"format": {"duration": "2.0"}},
     ):
         extractor = VideoExtractor(sample_frames=1)
@@ -112,7 +112,7 @@ async def test_video_frame_samples_removed_on_subprocess_error(video_file, tmp_p
         "httpserver.services.extractors.media_metadata.subprocess.run",
         side_effect=raising_run,
     ), patch(
-        "httpserver.services.extractors.media_metadata._run_ffprobe",
+        "httpserver.services.extractors.media_metadata.run_ffprobe",
         return_value={"format": {"duration": "2.0"}},
     ):
         extractor = VideoExtractor(sample_frames=1)
@@ -127,7 +127,7 @@ async def test_video_no_duration_skips_sampling_entirely(video_file):
     with patch(
         "httpserver.services.extractors.media_metadata.tempfile.mkdtemp",
     ) as fake_mkdtemp, patch(
-        "httpserver.services.extractors.media_metadata._run_ffprobe",
+        "httpserver.services.extractors.media_metadata.run_ffprobe",
         return_value={"format": {}},
     ):
         extractor = VideoExtractor(sample_frames=3)

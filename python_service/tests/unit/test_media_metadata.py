@@ -17,7 +17,7 @@ def video_file(tmp_path):
 
 @pytest.mark.asyncio
 async def test_video_extractor_formats_ffprobe_metadata(video_file, monkeypatch):
-    monkeypatch.setattr(media_metadata, "_run_ffprobe", lambda _: {
+    monkeypatch.setattr(media_metadata, "run_ffprobe", lambda _: {
         "format": {"duration": "10.5", "bit_rate": "123456", "tags": {"title": "Evidence"}},
         "streams": [
             {
@@ -49,7 +49,7 @@ async def test_video_extractor_formats_ffprobe_metadata(video_file, monkeypatch)
 
 @pytest.mark.asyncio
 async def test_video_extractor_handles_unknown_ffprobe_values(video_file, monkeypatch):
-    monkeypatch.setattr(media_metadata, "_run_ffprobe", lambda _: {
+    monkeypatch.setattr(media_metadata, "run_ffprobe", lambda _: {
         "format": {"duration": "N/A", "bit_rate": "N/A"},
         "streams": [
             {
@@ -72,7 +72,7 @@ async def test_video_extractor_handles_unknown_ffprobe_values(video_file, monkey
 
 @pytest.mark.asyncio
 async def test_video_extractor_reports_ffmpeg_sample_failure(video_file, monkeypatch):
-    monkeypatch.setattr(media_metadata, "_run_ffprobe", lambda _: {
+    monkeypatch.setattr(media_metadata, "run_ffprobe", lambda _: {
         "format": {"duration": "10"},
         "streams": [],
     })

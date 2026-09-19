@@ -60,7 +60,7 @@ def _format_frame_rate(value) -> str:
         return str(value)
 
 
-def _run_ffprobe(file_path: str) -> dict:
+def run_ffprobe(file_path: str) -> dict:
     """Run ffprobe and return its JSON output when available."""
     try:
         completed = subprocess.run(
@@ -107,7 +107,7 @@ class VideoExtractor(BaseExtractor):
         if not os.path.isfile(file_path):
             return f"Error: Video file not found: {file_path}"
 
-        ffprobe_data = _run_ffprobe(file_path)
+        ffprobe_data = run_ffprobe(file_path)
         result = [f"# Video File: `{os.path.basename(file_path)}`"]
         result.append(f"**File Size:** {_format_size(os.path.getsize(file_path))}")
         result.append(f"**Format:** {ext.upper()[1:]}")
@@ -257,7 +257,7 @@ class AudioExtractor(BaseExtractor):
             result.append("")
             result.append(f"*Error reading audio metadata: {error}*")
 
-        ffprobe_data = _run_ffprobe(file_path)
+        ffprobe_data = run_ffprobe(file_path)
         if ffprobe_data and result[-1].startswith("*"):
             fmt = ffprobe_data.get("format") or {}
             tags = fmt.get("tags") or {}

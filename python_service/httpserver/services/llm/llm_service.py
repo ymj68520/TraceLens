@@ -444,6 +444,30 @@ class LLMService:
 
         return await self.file_analyzer.analyze_image(image_data, self._vision_client, prompt)
 
+    async def analyze_images(
+        self,
+        image_data_list: list,
+        prompt: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Describe several frames (timeline order) with ONE multimodal call.
+
+        Used by the video analyzer for per-segment descriptions.
+
+        Args:
+            image_data_list: Frame bytes in timeline order.
+            prompt: Custom prompt (optional).
+
+        Returns:
+            Same shape as ``analyze_image``.
+        """
+        if not self._vision_client:
+            await self.initialize()
+
+        return await self.file_analyzer.analyze_images(
+            image_data_list, self._vision_client, prompt
+        )
+
     async def chat_completion(
         self,
         system_prompt: str,
