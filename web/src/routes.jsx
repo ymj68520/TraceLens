@@ -51,14 +51,10 @@ export const appRoutes = [
         element: <Tasks />,
       },
       {
-        // MVP (mvp-phase1-acceptance §4.3): combined-case module is gated off;
-        // the route stays registered so deep links render a notice.
+        // 案件管理入口已恢复（2026-09-19 甲方确认，SPEC §4.3 修订），
+        // 与 /analysis-center 同批解除 FeatureGate。
         path: 'cases',
-        element: (
-          <FeatureGate flag="combined_case_enabled">
-            <Cases />
-          </FeatureGate>
-        ),
+        element: <Cases />,
       },
       {
         path: 'timeline',

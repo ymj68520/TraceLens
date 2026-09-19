@@ -1,9 +1,11 @@
 """MVP feature-gate tests (docs/specs/mvp-phase1-acceptance.md §4).
 
-The phase-1 acceptance build ships with events carrying no LLM analysis,
-events excluded from report evidence, and combined-case / workbench-LLM
-features disabled. These tests pin the gates in their default (MVP) state;
-per-feature behavior tests enable the flags in their own fixtures.
+The phase-1 acceptance build ships with events carrying no LLM analysis and
+events excluded from report evidence. Combined-case gating was restored to
+its pre-MVP default (enabled) on 2026-09-19 after 甲方 confirmation; the
+tests below still pin the gate mechanism itself by pinning the flag off
+explicitly (the env var remains the escape hatch in both directions).
+Per-feature behavior tests enable the flags in their own fixtures.
 """
 
 import sqlite3
@@ -28,10 +30,11 @@ from httpserver.routes.investigation_workbench import (
 
 @pytest.fixture(autouse=True)
 def _mvp_defaults(monkeypatch):
-    """Pin all MVP switches to their shipping (disabled) defaults."""
+    """Pin all switches to their shipping defaults (combined case restored
+    2026-09-19, everything else stays disabled)."""
     settings = get_settings()
     monkeypatch.setattr(settings, "event_llm_analysis_enabled", False, raising=False)
-    monkeypatch.setattr(settings, "combined_case_enabled", False, raising=False)
+    monkeypatch.setattr(settings, "combined_case_enabled", True, raising=False)
     monkeypatch.setattr(settings, "workbench_llm_enabled", False, raising=False)
     monkeypatch.setattr(settings, "memory_forensics_enabled", False, raising=False)
     monkeypatch.setattr(settings, "oss_analysis_enabled", False, raising=False)
@@ -97,34 +100,54 @@ def test_event_cluster_analysis_estimate_stays_available(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# combined case disabled
+# combined case: gate mechanism (flag explicitly pinned off; the shipping
+# default has been enabled since the 2026-09-19 restoration)
 # ---------------------------------------------------------------------------
 
-def test_create_case_returns_503():
+def test_combined_case_gate_blocks_when_disabled():
+    settings = get_settings()
     app = FastAPI()
     app.include_router(multi_router)
     client = TestClient(app)
-    resp = client.post(
-        "/api/llm/cases", json={"name": "case", "task_ids": []}
-    )
-    assert resp.status_code == 503
-    assert "MVP" in resp.json()["detail"]
+
+    settings.combined_case_enabled = False
+    try:
+        resp = client.post(
+            "/api/llm/cases", json={"name": "case", "task_ids": []}
+        )
+        assert resp.status_code == 503
+        assert "MVP" in resp.json()["detail"]
+
+        resp = client.post(
+            "/api/llm/multi-image-analysis",
+            json={
+                "case_id": "c1",
+                "task_ids": ["t1"],
+                "files_db_paths": ["/tmp/files.db"],
+                "case_description": "d",
+            },
+        )
+        assert resp.status_code == 503
+    finally:
+        settings.combined_case_enabled = True
 
 
-def test_multi_image_analysis_returns_503():
+def test_combined_case_gate_open_by_default():
+    """With the shipping default (enabled) the gate no longer answers 503;
+    the request proceeds past admission and fails later on the (unreachable,
+    monkeypatched) C++ proxy target, not at the gate."""
+    settings = get_settings()
+    assert settings.combined_case_enabled is True
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(settings, "cpp_backend_url", "http://127.0.0.1:1", raising=False)
     app = FastAPI()
     app.include_router(multi_router)
     client = TestClient(app)
-    resp = client.post(
-        "/api/llm/multi-image-analysis",
-        json={
-            "case_id": "c1",
-            "task_ids": ["t1"],
-            "files_db_paths": ["/tmp/files.db"],
-            "case_description": "d",
-        },
-    )
-    assert resp.status_code == 503
+    try:
+        resp = client.post("/api/llm/cases", json={"name": "case", "task_ids": []})
+        assert resp.status_code != 503
+    finally:
+        monkeypatch.undo()
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +323,7 @@ def test_system_features_endpoint_reports_defaults():
     body = resp.json()
     assert body == {
         "event_llm_analysis_enabled": False,
-        "combined_case_enabled": False,
+        "combined_case_enabled": True,
         "workbench_llm_enabled": False,
         "memory_forensics_enabled": False,
         "oss_analysis_enabled": False,

@@ -21,7 +21,6 @@ const Layout = ({ children }) => {
   const { sidebarOpen } = useSelector((state) => state.ui);
   const { t } = useTranslation();
   const {
-    combined_case_enabled: combinedCaseEnabled,
     memory_forensics_enabled: memoryForensicsEnabled,
     oss_analysis_enabled: ossAnalysisEnabled,
   } = useFeatures();
@@ -44,13 +43,13 @@ const Layout = ({ children }) => {
     { name: t('nav.statistics'), href: '/statistics', icon: BarChart3 },
     { name: t('nav.settings'), href: '/settings', icon: Settings },
   ].filter((item) => {
-    // mvp-phase1-acceptance §4.6/§4.7: memory forensics and OSS analysis are
-    // trimmed from the MVP; §4.3 hides the combined-case module the same way.
-    // 研判中心页面入口已恢复（2026-09-19 甲方恢复流程第一步），仅 /cases 仍随开关隐藏。
+    // mvp-phase1-acceptance §4.6/§4.7: memory forensics and OSS analysis stay
+    // trimmed from the MVP. 组合案件入口（/cases、/analysis-center）已于
+    // 2026-09-19 经甲方确认整体恢复（SPEC §4.3 修订），不再随开关隐藏。
     if (['/memory', '/oss'].includes(item.href)) {
       return item.href === '/memory' ? memoryForensicsEnabled : ossAnalysisEnabled;
     }
-    return combinedCaseEnabled || item.href !== '/cases';
+    return true;
   });
 
   // Add Terminal if enabled in settings

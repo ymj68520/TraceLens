@@ -94,16 +94,19 @@ test('keeps the analysis center navigation active', async () => {
   expect(screen.queryByRole('heading', { name: '仪表盘' })).not.toBeInTheDocument();
 });
 
-test('MVP default hides 案件管理 but keeps the restored 研判中心 entry (mvp §4.3)', async () => {
+test('restored combined-case entries (案件管理/研判中心) are visible by default (mvp §4.3 修订)', async () => {
   featuresState.value = null;
   renderLayout('/dashboard');
 
   await waitFor(() => {
     expect(screen.getByRole('link', { name: '证据研判' })).toBeInTheDocument();
   });
-  expect(screen.queryByRole('link', { name: '案件管理' })).not.toBeInTheDocument();
-  // 研判中心页面入口已恢复（2026-09-19 甲方恢复流程第一步），不再随开关隐藏。
+  // 2026-09-19 甲方确认恢复组合案件模块：两个入口不再随开关隐藏。
+  expect(screen.getByRole('link', { name: '案件管理' })).toHaveAttribute('href', '/cases');
   expect(screen.getByRole('link', { name: '研判中心' })).toHaveAttribute('href', '/analysis-center');
+  // 内存取证 / OSS 仍保持裁剪态。
+  expect(screen.queryByRole('link', { name: '内存取证' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'OSS 分析' })).not.toBeInTheDocument();
 });
 
 test('MVP default hides the memory and OSS nav entries (mvp-phase1-acceptance §4.6/§4.7)', async () => {

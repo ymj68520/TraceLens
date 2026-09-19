@@ -26,7 +26,7 @@
 | 事件 LLM 分析 | **取消**（事件保留原始数据与展示，`events.llm_*` 恒为 NULL） | §4.1 |
 | 事件作为报告证据 | **排除**（文件仍可为证据） | §4.2 |
 | 报告页面 | **整体功能保留**，新增文件时间线 + 文件标签→相关事件 | §6 |
-| 组合案件（/cases、/analysis-center、跨镜像分析） | **削减**：入口隐藏，创建/分析类端点停用 | §4.3 |
+| 组合案件（/cases、/analysis-center、跨镜像分析） | **恢复（2026-09-19 修订）**：甲方确认恢复研判中心页面与功能；`COMBINED_CASE_ENABLED` 默认改回 `true`，创建/分析端点解除 503，前端 `/cases`、`/analysis-center` 导航与路由恢复 | §4.3 |
 | 调查工作台 | **削减**：LLM 二次分析/事件重摘要停用，Graph Tab 隐藏；cluster 事件播种保留（v7，2026-09-19 修订），事件仍不入报告证据；只读浏览与文件证据绑定保留 | §4.4 |
 | 内存取证 | **裁剪（2026-09-18 追加）**：导航/页面移出验收面；CLI 旁路与 C++ 只读端点保留但不在验收范围 | §4.6 |
 | OSS 分析 | **裁剪（2026-09-18 追加）**：导航/页面移出验收面，Python AI 端点 503；C++ OSS 端点本就未挂载（运行时 404），不动 | §4.7 |
@@ -37,7 +37,7 @@ Feature flags（`python_service/httpserver/config.py`，pydantic-settings，env 
 | 环境变量 | 默认 | 含义 |
 | --- | --- | --- |
 | `EVENT_LLM_ANALYSIS_ENABLED` | `false` | 事件（簇）LLM 分析总开关 |
-| `COMBINED_CASE_ENABLED` | `false` | 组合案件（跨镜像）功能开关 |
+| `COMBINED_CASE_ENABLED` | `true`（2026-09-19 恢复，原 `false`） | 组合案件（跨镜像）功能开关 |
 | `WORKBENCH_LLM_ENABLED` | `false` | 工作台 LLM 二次分析/事件重摘要开关 |
 | `MEMORY_FORENSICS_ENABLED` | `false` | 内存取证模块开关（§4.6，裁剪恢复逃生舱） |
 | `OSS_ANALYSIS_ENABLED` | `false` | OSS 分析模块开关（§4.7，裁剪恢复逃生舱） |
@@ -94,6 +94,12 @@ Feature flags（`python_service/httpserver/config.py`，pydantic-settings，env 
 文件证据（`file:<path>`）不受影响：证据绑定、report_evidence 选择器、报告生成全部照常。
 
 ### 4.3 组合案件削减（COMBINED_CASE_ENABLED=false）
+
+> **2026-09-19 修订：本节削减已整体恢复。** 甲方确认恢复"研判中心"页面与功能，
+> `COMBINED_CASE_ENABLED` 默认值改回 `true`：7 个创建/分析端点解除 503 门控，
+> 前端 `/cases`、`/analysis-center` 的导航与 FeatureGate 全部移除（第一步只恢复
+> 页面入口，确认后再恢复功能，两步分别为 d79c074 与本次提交）。env 仍可显式置
+> `false` 作为再裁剪逃生舱；下文为历史削减形态存档。
 
 - 后端 `routes/multi_analysis.py`：`POST /api/llm/cases`、`/{id}/tasks`、`/{id}/associate-tasks`、
   `/multi-image-analysis`、`/cases/smart-create`、`/{id}/incremental-analysis`、`DELETE` → 503；

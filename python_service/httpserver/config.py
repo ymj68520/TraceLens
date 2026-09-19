@@ -230,8 +230,10 @@ class Settings(BaseSettings):
 
     # mvp-phase1-acceptance SPEC §4: MVP scope switches. Defaults are the
     # acceptance form; set the env var to "true" to restore full behaviour.
+    # 2026-09-19 修订：甲方确认恢复组合案件模块，combined_case 默认改回开启
+    # （SPEC §4.3）；env 仍可显式关闭作为逃生舱。
     event_llm_analysis_enabled: bool = Field(default=False, alias="EVENT_LLM_ANALYSIS_ENABLED")
-    combined_case_enabled: bool = Field(default=False, alias="COMBINED_CASE_ENABLED")
+    combined_case_enabled: bool = Field(default=True, alias="COMBINED_CASE_ENABLED")
     workbench_llm_enabled: bool = Field(default=False, alias="WORKBENCH_LLM_ENABLED")
     # SPEC §4.6/§4.7 (2026-09-18 second trim): memory forensics and OSS
     # analysis are cut from the phase-1 acceptance scope entirely.

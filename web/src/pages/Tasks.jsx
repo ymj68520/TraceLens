@@ -15,7 +15,6 @@ import CreateTaskModal from '../components/tasks/CreateTaskModal';
 import AddTasksToCaseModal from '../components/tasks/AddTasksToCaseModal';
 import ComposeCaseModal from '../components/tasks/ComposeCaseModal';
 import { useTaskAutoTrigger } from '../hooks/useTaskAutoTrigger';
-import { useFeatures } from '../hooks/useFeatures';
 
 const Tasks = () => {
   const dispatch = useDispatch();
@@ -23,8 +22,8 @@ const Tasks = () => {
   const { cases } = useSelector((state) => state.cases);
   const { modal } = useSelector((state) => state.ui);
   const toast = useToast();
-  // MVP (mvp-phase1-acceptance §4.3): combined-case entry points are hidden.
-  const { combined_case_enabled: combinedCaseEnabled } = useFeatures();
+  // 组合案件入口已恢复（2026-09-19 甲方确认，SPEC §4.3 修订），
+  // 不再经 useFeatures 门控（:8666 的 /api/system/features 代理缺口另行处理）。
 
   // Confirmation dialog state
   const [confirmState, setConfirmState] = useState({ open: false, type: null, taskId: null, loading: false });
@@ -131,11 +130,9 @@ const Tasks = () => {
           <p className="mt-2 text-slate-600 dark:text-slate-300">Manage and monitor analysis tasks</p>
         </div>
         <div className="flex items-center gap-2">
-          {combinedCaseEnabled && (
-            <Button variant="outline" onClick={() => setShowCompose(true)} disabled={selectedTaskIds.size === 0}>
-              📂 组建案件（{selectedTaskIds.size}）
-            </Button>
-          )}
+          <Button variant="outline" onClick={() => setShowCompose(true)} disabled={selectedTaskIds.size === 0}>
+            📂 组建案件（{selectedTaskIds.size}）
+          </Button>
           <Button onClick={() => dispatch(openModal({ type: 'createTask' }))}>➕ Create Task</Button>
         </div>
       </div>
@@ -165,7 +162,7 @@ const Tasks = () => {
           tasks={filteredTasks}
           onCancel={handleCancel}
           onDelete={handleDelete}
-          onJoinCase={combinedCaseEnabled ? setJoinTaskId : undefined}
+          onJoinCase={setJoinTaskId}
           taskCaseMap={taskCaseMap}
           selectedTaskIds={selectedTaskIds}
           onToggleSelect={toggleSelect}
