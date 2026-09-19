@@ -317,38 +317,15 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                     "Android artifact LLM analysis completed (per-artifact)");
                 }
 
-                // Graphiti ingestion — same as the TSK pipeline tail so logical
-                // tasks join the knowledge graph too. MVP (SPEC §5): completion
-                // waits for the ingestion job.
+                // No Graphiti gate for logical sources: android.db carries no
+                // `files`/`events` tables, so a FULL ingestion job (raw_reader)
+                // can never succeed — every dir/zip/miui-backup task failed at
+                // 99% under the SPEC §5 gate. Skip ingestion until a reader for
+                // android.db exists and finalize on the analysis result itself.
                 if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
-                update_progress(task_id, TaskPhase::FINALIZING, 10, "Triggering knowledge graph ingestion...");
-                std::string graphiti_job_id;
-                try {
-                    auto& proxy = forensics::LLMPythonProxy::instance();
-                    graphiti_job_id = proxy.async_ingest(task_id, forensics::IngestionMode::FULL);
-                    if (!graphiti_job_id.empty()) {
-                        add_audit_log(task_id, "GRAPHITI_INGESTION",
-                            "Triggered Graphiti knowledge graph ingestion (job_id: " + graphiti_job_id + ")");
-                    }
-                } catch (const std::exception& e) {
-                    std::cerr << "Warning: Exception triggering Graphiti ingestion: " << e.what() << std::endl;
-                }
-                if (!graphiti_job_id.empty()) {
-                    std::lock_guard<std::mutex> lock(mtx_);
-                    if (tasks_.count(task_id)) tasks_[task_id].graphiti_job_id = graphiti_job_id;
-                    save_tasks_internal();
-                }
-
-                // Finalize — android.db is the result database for logical tasks.
-                const bool ingestion_ok = wait_for_graphiti_ingestion(task_id, graphiti_job_id);
-                if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
-                if (!ingestion_ok) {
-                    update_status(task_id, TaskStatus::FAILED,
-                                  "Knowledge graph ingestion did not complete",
-                                  "Graphiti ingestion failed or timed out (budget: GRAPHITI_INGEST_WAIT_TIMEOUT_MIN minutes). Analysis artifacts remain available for browsing.");
-                    add_audit_log(task_id, "ERROR", "Analysis failed at the Graphiti ingestion gate");
-                    return;
-                }
+                add_audit_log(task_id, "GRAPHITI_INGESTION",
+                              "Skipped: no Graphiti reader for android.db (source: " +
+                                  task.android_source + ")");
                 update_progress(task_id, TaskPhase::FINALIZING, 100, "Analysis completed successfully");
                 update_status(task_id, TaskStatus::COMPLETED, "Android logical analysis completed");
                 return;
