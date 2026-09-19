@@ -9,8 +9,15 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from httpserver.services.forensic_report.generation_writer import (
+    GenerationReportWriter,
+)
 from httpserver.services.forensic_report.ids import safe_segment
-from httpserver.services.forensic_report.models import ReportStatus, ScopeType
+from httpserver.services.forensic_report.models import (
+    GenerationReportManifest,
+    ReportStatus,
+    ScopeType,
+)
 from httpserver.services.forensic_report.repository import ReportRepository
 from httpserver.services.forensic_report.service import ForensicReportService
 from httpserver.services.forensic_report.snapshot_writer import SnapshotWriter
@@ -438,3 +445,77 @@ def test_report_access_distinguishes_unknown_from_not_ready(tmp_path: Path):
         service.get_manifest_path("missing")
     with pytest.raises(RuntimeError, match="not ready"):
         service.get_manifest_path(version.report_id)
+
+
+def test_published_narrative_version_has_no_deterministic_resources(
+    tmp_path: Path,
+):
+    """R2d: a ready llm_generation version owns no snapshot resources.
+
+    manifest/page/search reads must fail with KeyError (route 404, "no such
+    resource"), never the corruption-signalling integrity error a ValueError
+    would produce.
+    """
+    service = _service(tmp_path)
+    writer = GenerationReportWriter(service.writer.report_root)
+
+    deterministic = service.repository.create_version(
+        ScopeType.TASK, "task-1", "Task", ["task-1"]
+    )
+    deterministic_dir = (
+        service.writer.report_root
+        / deterministic.scope_type.value
+        / safe_segment(deterministic.scope_id)
+        / deterministic.report_id
+    )
+    deterministic_dir.mkdir(parents=True)
+    (deterministic_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    service.repository.mark_ready(
+        deterministic.report_id,
+        str((deterministic_dir / "manifest.json").relative_to(service.writer.report_root)),
+        [],
+    )
+
+    admitted = service.repository.create_generation_input(
+        "task-1",
+        requested_by="analyst",
+        input_schema_version=1,
+        prompt_version="final-report:v1",
+        input_envelope_json="{}",
+        input_hash="h" * 64,
+    )
+    report_id = "22222222-2222-4222-8222-222222222222"
+    final_dir = writer.publish(
+        task_id="task-1",
+        report_id=report_id,
+        manifest=GenerationReportManifest(
+            report_id=report_id,
+            scope_type=ScopeType.TASK,
+            scope_id="task-1",
+            task_id="task-1",
+            generation_id=admitted.generation_id,
+            title="Narrative Report",
+            prompt_version="final-report:v1",
+            input_hash="h" * 64,
+            model="test-model",
+            generated_at="2026-09-19T00:00:00+00:00",
+            sections=(),
+            citations=(),
+        ),
+    )
+    service.repository.claim_generation(admitted.generation_id)
+    service.repository.complete_generation_publication(
+        admitted.generation_id,
+        report_id=report_id,
+        title="Narrative Report",
+        manifest_path=str(final_dir.relative_to(service.writer.report_root)),
+        model="test-model",
+    )
+
+    assert service.get_manifest_path(deterministic.report_id).name == "manifest.json"
+    with pytest.raises(KeyError):
+        service.get_manifest_path(report_id)
+    with pytest.raises(KeyError):
+        service.get_page_path(report_id, "any", 1)
+    with pytest.raises(KeyError):
+        service.search(report_id, "query", 0, 10)

@@ -186,6 +186,14 @@ export function useReportVersion({ scopeType, scopeId, dataSource, pollInterval 
       return null;
     }
 
+    // R2d: a published narrative version has no deterministic manifest and
+    // renders through the narrative reader — never fetch it (the manifest
+    // endpoint 404s for these versions), and never trip the error path.
+    if (version.report_kind === 'llm_generation') {
+      if (isActive(scopeKey, intent)) setManifest(null);
+      return null;
+    }
+
     try {
       const nextManifest = await dataSourceRef.current.getManifest(version.report_id);
       if (isActive(scopeKey, intent)) {

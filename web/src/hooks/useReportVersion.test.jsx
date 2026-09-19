@@ -480,3 +480,24 @@ test('keeps create guards and results isolated by scope', async () => {
   expect(result.current.selectedVersion).toEqual(createdB);
   expect(result.current.loading).toBe(false);
 });
+
+test('never fetches a manifest for a ready narrative version and sets no error', async () => {
+  const narrative = { report_id: 'rn', version: 3, status: 'ready', report_kind: 'llm_generation' };
+  const source = {
+    listVersions: vi.fn().mockResolvedValue([narrative]),
+    getStatus: vi.fn(),
+    getManifest: vi.fn().mockRejectedValue(new Error('manifest must not be requested')),
+  };
+  const { result } = renderHook(() => useReportVersion({
+    scopeType: 'task', scopeId: 't1', dataSource: source, pollInterval: 5,
+  }));
+
+  await waitFor(() => expect(result.current.selectedVersion?.report_id).toBe('rn'));
+  expect(source.getManifest).not.toHaveBeenCalled();
+  expect(result.current.manifest).toBeNull();
+  expect(result.current.error).toBeNull();
+
+  await act(async () => { await result.current.selectByReportId('rn'); });
+  expect(source.getManifest).not.toHaveBeenCalled();
+  expect(result.current.error).toBeNull();
+});

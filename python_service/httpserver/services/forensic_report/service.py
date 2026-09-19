@@ -271,6 +271,11 @@ class ForensicReportService:
             raise KeyError(report_id)
         if version.status is not ReportStatus.READY:
             raise RuntimeError(f"report is not ready: {version.status.value}")
+        if version.report_kind == "llm_generation":
+            # Published narrative versions carry no deterministic snapshot
+            # resources (manifest/pages/search); they are read through the
+            # strict narrative API. Missing resource, not corruption.
+            raise KeyError(report_id)
         if not version.manifest_path:
             raise ValueError("ready report has no manifest path")
         report_dir = self._expected_ready_dir(version)
