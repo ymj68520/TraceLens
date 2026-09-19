@@ -29,10 +29,31 @@ export default function Investigation() {
   const { evidence, loading: evidenceLoading, error: evidenceError, refresh: refreshEvidence } = useEventEvidence(taskId, selectedEventId);
   const selectedEvent = useMemo(() => events.find((event) => event.id === selectedEventId) || null, [events, selectedEventId]);
 
+  // 任务切换的渲染期同步重置（React derive-state-from-props 模式）：必须在
+  // 任何 effect 提交前清掉上一任务的选中态，否则新任务的 events 未返回时，
+  // 旧 eventId 会被带进 evidence/versions 请求而 404。
+  const [prevTaskId, setPrevTaskId] = useState(taskId);
+  if (prevTaskId !== taskId) {
+    setPrevTaskId(taskId);
+    setSelectedEventId(requestedEvent || null);
+    setSelectedEvidenceKey(null);
+    setClaimEvidenceScope(null);
+  }
+
+  // 任务切换瞬间同步清空选中态：新任务的 events 尚未返回时，旧 eventId
+  // 会被带进 evidence/versions 请求而 404。
+  useEffect(() => {
+    setSelectedEventId(requestedEvent || null);
+    setSelectedEvidenceKey(null);
+    setClaimEvidenceScope(null);
+  }, [taskId, requestedEvent]);
+
   useEffect(() => {
     if (!selectedEventId && events.length) setSelectedEventId(events[0].id);
-    if (selectedEventId && events.length && !events.some((event) => event.id === selectedEventId)) {
-      setSelectedEventId(events[0].id);
+    // 任务切换后事件列表为空（或选中项不属于当前任务）时必须清空选中态，
+    // 否则上一任务的 eventId 会被带进新任务的 evidence/versions 请求里 404。
+    if (selectedEventId && (!events.length || !events.some((event) => event.id === selectedEventId))) {
+      setSelectedEventId(events.length ? events[0].id : null);
       setSelectedEvidenceKey(null);
       setClaimEvidenceScope(null);
     }
