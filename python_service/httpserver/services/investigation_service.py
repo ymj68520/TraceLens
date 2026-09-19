@@ -570,6 +570,23 @@ class InvestigationService:
 
         persistence = await self._persistence(task_id)
         paths = await self._paths(task_id)
+        db_path = get_investigation_db_path(paths["files_db"])
+        # 双模块守卫：seed 路径写的是 legacy persistence schema（id 主键 +
+        # seed 列），在 repository-v7 存储（event_id 主键）上必然以
+        # "no such column: id" 崩溃。这里 fail closed 给出可诊断的错误，
+        # 而不是写一半失败。seed 迁移到 repository 是待还的双模块欠账。
+        import sqlite3 as _sqlite3
+
+        _conn = _sqlite3.connect(db_path)
+        try:
+            store_version = int(_conn.execute("PRAGMA user_version").fetchone()[0])
+        finally:
+            _conn.close()
+        if store_version == 7:
+            raise EvidenceStoreError(
+                "cluster_seed bootstrap is not supported on a repository-v7 "
+                "investigation store (seed-path migration pending)"
+            )
         clusters = self._load_analyzed_clusters(paths["events_db"])
 
         created = 0

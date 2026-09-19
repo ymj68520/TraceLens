@@ -99,7 +99,10 @@ def _error(exc: Exception, not_found: str = "investigation resource not found") 
     if isinstance(exc, (ValueError, KeyError)):
         return HTTPException(status_code=400, detail="invalid investigation request")
     if isinstance(exc, EvidenceStoreError):
-        return HTTPException(status_code=503, detail="investigation store unavailable")
+        return HTTPException(
+            status_code=503,
+            detail=f"investigation store unavailable: {exc}",
+        )
     return HTTPException(status_code=500, detail="investigation operation failed")
 
 
