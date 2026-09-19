@@ -620,6 +620,9 @@ fi
 # ------------------------------------------------------------------------
 info "Installing large/optional Python packages (check-first, one at a time)..."
 ensure_large_python_package "markitdown[all]"    markitdown
+# Document image OCR (legacy .doc/.docx screenshots). Ships its Chinese/English
+# models inside the wheel, so extraction keeps working fully offline.
+ensure_large_python_package "rapidocr-onnxruntime" rapidocr_onnxruntime
 ensure_large_python_package "PyMuPDF==1.27.1"    fitz
 ensure_large_python_package "volatility3"        volatility3
 ensure_large_python_package "graphiti-core"      graphiti_core
