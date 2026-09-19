@@ -181,9 +181,12 @@ def test_report_evidence_accepts_file_key():
     assert _canonical_key("file:/case/a.txt").startswith("file:")
 
 
-def test_bootstrap_skips_cluster_seeding_in_mvp(tmp_path):
-    """With the default flags, bootstrap initializes the overview but seeds
-    nothing — even when legacy analyzed clusters exist in events.db."""
+def test_bootstrap_seeds_clusters_with_default_flags(tmp_path):
+    """With the default MVP flags, bootstrap still seeds cluster events (it
+    reuses the clusters' existing LLM analysis, never calls an LLM) so the
+    workbench is not blank; the report-evidence exclusion is enforced
+    downstream (cluster keys rejected at report_evidence, filtered at
+    report assembly)."""
     import asyncio
 
     from httpserver.services.investigation_service import InvestigationService
@@ -195,8 +198,9 @@ def test_bootstrap_skips_cluster_seeding_in_mvp(tmp_path):
     files_db, events_db = _make_task_dbs(tmp_path)
     service = _service(tmp_path, files_db, events_db)
     overview = asyncio.run(service.bootstrap("T1"))
-    assert overview["seeded_clusters"] == 0
-    assert overview["new_events"] == 0
+    assert overview["seeded_clusters"] == 2
+    assert overview["new_events"] == 2
+    assert overview["event_count"] == 2
 
 
 # ---------------------------------------------------------------------------

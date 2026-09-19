@@ -122,6 +122,41 @@ class InvestigationEventService:
             raise EvidenceNotFoundError("investigation event not found")
         return repository
 
+    async def event_time_bounds(self, task_id: str) -> dict:
+        """Per-event derived [start_time, end_time] from linked evidence.
+
+        Empty dict when the task has no investigation.db (GET never creates
+        one); events without derivable timestamps are simply absent.
+        """
+        reader = await self._reader_for(task_id)
+        if reader is None:
+            return {}
+        try:
+            return await asyncio.to_thread(reader.event_time_bounds)
+        except EvidenceStoreError:
+            raise
+        except sqlite3.DatabaseError as exc:
+            raise EvidenceStoreError(
+                "investigation event store is unavailable"
+            ) from exc
+
+    async def describe_event_evidence(
+        self, task_id: str, event_id: str
+    ) -> list[dict]:
+        """Card-view projection of the event's linked evidence (titles,
+        timestamps, roles derived from the frozen evidence snapshots)."""
+        reader = await self._require_event_reader(task_id, event_id)
+        try:
+            return await asyncio.to_thread(
+                reader.describe_event_evidence, event_id
+            )
+        except EvidenceStoreError:
+            raise
+        except sqlite3.DatabaseError as exc:
+            raise EvidenceStoreError(
+                "investigation event store is unavailable"
+            ) from exc
+
     async def list_event_versions(
         self, task_id: str, event_id: str
     ) -> list[InvestigationEventVersion]:

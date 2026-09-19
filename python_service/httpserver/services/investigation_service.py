@@ -53,7 +53,6 @@ from .investigation_persistence import (
     ANALYSIS_ACCEPTED,
     ANALYSIS_INVALID,
     ANALYSIS_REVIEW_PENDING,
-    BOOTSTRAP_VERSION,
     EVENT_VERSION_INVALID,
     EVENT_VERSION_REVIEW_PENDING,
     GROUNDING_INVALID,
@@ -202,6 +201,7 @@ class InvestigationService:
         self._jobs: Dict[str, Dict[str, Any]] = {}
         self._persistence_cache: Dict[str, InvestigationPersistence] = {}
         self._recoveries: set[str] = set()
+        self._bootstrap_locks: Dict[str, asyncio.Lock] = {}
         self._evidence_resolver = EvidenceResolver(
             self._get_task_info, content_reader=self._extract_file_text
         )
@@ -535,115 +535,111 @@ class InvestigationService:
         return keys
 
     async def bootstrap(self, task_id: str) -> Dict[str, Any]:
-        """Create seed investigation events from analyzed clusters (idempotent).
+        """Seed one Investigation Event per analyzed cluster (idempotent).
 
-        MVP (mvp-phase1-acceptance SPEC §4.2): events carry no LLM analysis and
-        never become report evidence, so cluster seeding is skipped entirely
-        unless event LLM analysis is re-enabled via env."""
-        from ..config import get_settings
+        Seeding writes exclusively through the repository-v7 module — the same
+        store the workbench read side consumes — so the legacy persistence
+        seed path (and its v3/v7 same-table conflict, previously guarded
+        fail-closed) is gone entirely. Seed titles/summaries reuse each
+        cluster's existing LLM analysis from events.db; no LLM call happens
+        here. Events still never become report evidence: report_evidence
+        admission rejects cluster keys and report assembly filters them.
 
-        if not getattr(get_settings(), "event_llm_analysis_enabled", False):
-            # MVP (§4.2): no cluster seeding, and the legacy persistence
-            # module is bypassed entirely — its v3-era table layout conflicts
-            # with the repository v7 schema on same-named tables. The store
-            # is ensured in v7 form and bootstrap_version recorded directly.
-            from .investigation.repository import InvestigationRepository
+        Idempotency: provenance recorded as ``cluster_seed:<cluster_key>``
+        on the v1 event version is the dedup key, and a per-task lock keeps
+        concurrent bootstrap requests (the workbench front end fires one per
+        overview read while ``initialized`` is false) from double-seeding.
+        A seed plus its snapshots and links commits as ONE transaction, so
+        an existing marker always implies a completed seed.
+        """
+        from .evidence.exceptions import EvidenceNotFoundError
+        from .evidence.resolver import EvidenceResolver as SourceEvidenceResolver
+        from .investigation.acquisition import build_snapshot_candidate
+        from .investigation.graph_reader import InvestigationGraphReader
+        from .investigation.repository import InvestigationRepository
 
-            paths = await self._paths(task_id)
-            db_path = get_investigation_db_path(paths["files_db"])
-            self._ensure_v7_store(db_path, task_id)
-            with sqlite3.connect(db_path) as conn:
-                event_count = conn.execute(
-                    "SELECT COUNT(*) FROM investigation_events"
-                ).fetchone()[0]
-                report_evidence_count = conn.execute(
-                    "SELECT COUNT(*) FROM report_evidence"
-                ).fetchone()[0]
-            return {
-                "initialized": True,
-                "event_count": event_count,
-                "analysis_count": 0,
-                "report_evidence_count": report_evidence_count,
-                "seeded_clusters": 0,
-                "new_events": 0,
-            }
-
-        persistence = await self._persistence(task_id)
         paths = await self._paths(task_id)
         db_path = get_investigation_db_path(paths["files_db"])
-        # 双模块守卫：seed 路径写的是 legacy persistence schema（id 主键 +
-        # seed 列），在 repository-v7 存储（event_id 主键）上必然以
-        # "no such column: id" 崩溃。这里 fail closed 给出可诊断的错误，
-        # 而不是写一半失败。seed 迁移到 repository 是待还的双模块欠账。
-        import sqlite3 as _sqlite3
+        self._ensure_v7_store(db_path, task_id)
 
-        _conn = _sqlite3.connect(db_path)
-        try:
-            store_version = int(_conn.execute("PRAGMA user_version").fetchone()[0])
-        finally:
-            _conn.close()
-        if store_version == 7:
-            raise EvidenceStoreError(
-                "cluster_seed bootstrap is not supported on a repository-v7 "
-                "investigation store (seed-path migration pending)"
-            )
-        clusters = self._load_analyzed_clusters(paths["events_db"])
-
-        created = 0
-        for cluster in clusters:
-            cluster_key = make_cluster_key(cluster["time_window"], cluster["event_type"])
-            title = (
-                cluster.get("llm_summary")
-                or f"{cluster['event_type']} 活动聚类（{cluster['event_count']} 个事件）"
-            )
-            summary = cluster.get("llm_description") or ""
-            event_id, was_created = persistence.upsert_seed_event(
-                task_id=task_id,
-                source_cluster_key=cluster_key,
-                title=title[:200],
-                summary=summary,
-                start_time=cluster.get("cluster_start"),
-                end_time=cluster.get("cluster_end"),
-                category=cluster.get("event_type"),
-            )
-            if was_created:
-                created += 1
-            # The cluster itself is primary evidence; correlated files remain supporting.
-            persistence.link_evidence(
-                task_id, event_id, cluster_key, "event_cluster",
-                role="primary", source="cluster_seed", relation_type="source_cluster",
-            )
-            await self.capture_snapshot(task_id, cluster_key)
-            resolved_cluster = await self.resolve_evidence(task_id, cluster_key)
-            for evidence_key in (resolved_cluster or {}).get("related_evidence_keys", []):
-                persistence.link_evidence(
-                    task_id, event_id, evidence_key, "file",
-                    role="supporting", source="cluster_seed",
-                    relation_type="cluster_member_path",
+        lock = self._bootstrap_locks.setdefault(task_id, asyncio.Lock())
+        async with lock:
+            repository = InvestigationRepository(db_path, task_id)
+            clusters = self._load_analyzed_clusters(paths["events_db"])
+            seeded_markers = await asyncio.to_thread(repository.list_seed_markers)
+            plans = []
+            for cluster in clusters:
+                cluster_key = make_cluster_key(
+                    cluster["time_window"], cluster["event_type"]
                 )
-                await self.capture_snapshot(task_id, evidence_key)
+                seed_marker = f"cluster_seed:{cluster_key}"
+                if seed_marker in seeded_markers:
+                    continue
+                title = (
+                    cluster.get("llm_summary")
+                    or f"{cluster['event_type']} 活动聚类（{cluster['event_count']} 个事件）"
+                )
+                evidence_keys = [cluster_key]
+                if cluster.get("cluster_start") is not None:
+                    evidence_keys.extend(
+                        key for key, _path in self._cluster_related_file_keys(
+                            paths["files_db"], paths["raw_db"],
+                            cluster["cluster_start"],
+                        )
+                    )
+                plans.append({
+                    "seed_marker": seed_marker,
+                    "title": title[:200],
+                    "summary": cluster.get("llm_description") or "",
+                    "evidence_keys": evidence_keys,
+                })
 
-        # Update evidence time bounds from linked file timestamps
-        events = persistence.list_events(task_id, limit=1000)
-        for event in events:
-            links = persistence.list_event_evidence(event["id"], limit=500)
-            timestamps: List[int] = []
-            for link in links:
-                resolved = await self.resolve_evidence(task_id, link["evidence_key"])
-                if resolved:
-                    await self.capture_snapshot(task_id, link["evidence_key"])
-                    if resolved.get("timestamp"):
-                        timestamps.append(resolved["timestamp"])
-            if timestamps:
-                persistence.update_event_times_from_evidence(
-                    task_id, event["id"], min(timestamps), max(timestamps)
+            if plans:
+                # S5: resolve + acquire every snapshot candidate OUTSIDE the
+                # write transaction, then commit all rows in one txn. Keys
+                # that fail to resolve (source row vanished) are skipped.
+                resolver = SourceEvidenceResolver(self._cpp_backend)
+                needed = sorted({k for p in plans for k in p["evidence_keys"]})
+                semaphore = asyncio.Semaphore(8)
+
+                async def resolve_one(key: str):
+                    async with semaphore:
+                        return await resolver.resolve_evidence(task_id, key)
+
+                results = await asyncio.gather(
+                    *(resolve_one(key) for key in needed),
+                    return_exceptions=True,
+                )
+                candidates = {}
+                for key, resolved in zip(needed, results):
+                    if isinstance(resolved, Exception):
+                        if isinstance(resolved, EvidenceNotFoundError):
+                            continue
+                        raise resolved
+                    candidates[key] = await asyncio.to_thread(
+                        build_snapshot_candidate, resolved
+                    )
+                for plan in plans:
+                    plan["evidence_keys"] = [
+                        key for key in plan["evidence_keys"] if key in candidates
+                    ]
+                await asyncio.to_thread(
+                    repository.bulk_seed_cluster_events, plans, candidates
                 )
 
-        persistence.set_meta("bootstrap_version", str(BOOTSTRAP_VERSION))
-        overview = persistence.overview(task_id)
-        overview["seeded_clusters"] = len(clusters)
-        overview["new_events"] = created
-        return overview
+            events = await asyncio.to_thread(repository.list_events)
+            reader = InvestigationGraphReader(db_path, task_id)
+            report_items = await asyncio.to_thread(reader.list_report_evidence)
+            return {
+                "initialized": bool(events),
+                "event_count": len(events),
+                # MVP (§4.4): secondary analyses are LLM-side and stay
+                # disabled; seeding itself never produces analyses.
+                "analysis_count": 0,
+                "report_evidence_count": len(report_items),
+                "seeded_clusters": len(clusters),
+                "new_events": len(plans),
+            }
 
     # ------------------------------------------------------------------
     # events & evidence listing

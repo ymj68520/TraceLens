@@ -27,7 +27,7 @@
 | 事件作为报告证据 | **排除**（文件仍可为证据） | §4.2 |
 | 报告页面 | **整体功能保留**，新增文件时间线 + 文件标签→相关事件 | §6 |
 | 组合案件（/cases、/analysis-center、跨镜像分析） | **削减**：入口隐藏，创建/分析类端点停用 | §4.3 |
-| 调查工作台 | **削减**：LLM 二次分析/事件重摘要停用，Graph Tab 隐藏，事件证据不播种；只读浏览与文件证据绑定保留 | §4.4 |
+| 调查工作台 | **削减**：LLM 二次分析/事件重摘要停用，Graph Tab 隐藏；cluster 事件播种保留（v7，2026-09-19 修订），事件仍不入报告证据；只读浏览与文件证据绑定保留 | §4.4 |
 | 内存取证 | **裁剪（2026-09-18 追加）**：导航/页面移出验收面；CLI 旁路与 C++ 只读端点保留但不在验收范围 | §4.6 |
 | OSS 分析 | **裁剪（2026-09-18 追加）**：导航/页面移出验收面，Python AI 端点 503；C++ OSS 端点本就未挂载（运行时 404），不动 | §4.7 |
 | Graphiti 摄入大模型 | **固定 phi-4**（microsoft/phi-4，非推理 instruct 模型） | §3 |
@@ -79,10 +79,12 @@ Feature flags（`python_service/httpserver/config.py`，pydantic-settings，env 
 
 ### 4.2 事件不作为报告证据
 
-事件作为证据的唯一自动来源是工作台 bootstrap 的 cluster_seed
-（`services/investigation_service.py:454-467` `link_evidence(..., "event_cluster", ...)`）。MVP：
+事件作为报告证据的唯一自动来源是工作台 bootstrap 的 cluster_seed。MVP：
 
-1. bootstrap 保留（工作台 overview 初始化），但**跳过 cluster 证据播种与快照**；
+1. bootstrap **保留 cluster 播种**（2026-09-19 修订：迁移到 repository-v7 单一写路径，
+   `services/investigation_service.py` `bootstrap()`；否则工作台时间线永远为空、
+   前端在 `initialized=false` 上无限重试 bootstrap）。播种复用集群既有 LLM 摘要，
+   不发起任何 LLM 调用；事件→报告证据的排除由下述 2/3/4 兜底；
 2. `routes/report_evidence.py` `_canonical_key`（:46-50）拒绝 `cluster:` 前缀键 → 422；
 3. 报告装配兜底过滤：`services/forensic_report/generation.py` admission（:113-146）与快照装载
    （:269-274）跳过 `evidence_type == "cluster"`；
@@ -104,7 +106,7 @@ Feature flags（`python_service/httpserver/config.py`，pydantic-settings，env 
 
 - 后端 `routes/investigation_workbench.py`：
   - `POST /{task}/evidence/analyze`（:291）与 `POST /{task}/events/{id}/refresh`（:354）→ 503；
-  - bootstrap cluster_seed 跳过证据播种（见 §4.2）；
+  - bootstrap cluster_seed 经 repository-v7 播种集群事件（见 §4.2 2026-09-19 修订）；
   - 只读端点（overview/events/evidence/graph/final-reports）保留。
 - 前端 `pages/Investigation/Investigation.jsx`：
   - `MIDDLE_TABS`（:13-16）在开关关闭时移除图谱 Tab，仅保留时间线；

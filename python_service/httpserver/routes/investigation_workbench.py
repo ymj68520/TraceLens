@@ -106,9 +106,24 @@ def _error(exc: Exception, not_found: str = "investigation resource not found") 
     return HTTPException(status_code=500, detail="investigation operation failed")
 
 
+async def _events_view(manager, task_id: str) -> list[dict[str, Any]]:
+    """Event list merged with derived time bounds.
+
+    The v7 event model has no time columns; start/end are projected from the
+    linked evidence snapshots (see InvestigationGraphReader.event_time_bounds)
+    so the timeline badge shows real event times instead of 时间未知.
+    """
+    events = await manager.investigation_event_service.list_events(task_id)
+    bounds = await manager.investigation_event_service.event_time_bounds(task_id)
+    return [
+        {**_dump(item), "id": item.event_id, **bounds.get(item.event_id, {})}
+        for item in events
+    ]
+
+
 async def _overview(task_id: str, manager) -> dict[str, Any]:
     evidence = await manager.investigation_read_service.list_evidence(task_id)
-    events = await manager.investigation_event_service.list_events(task_id)
+    events = await _events_view(manager, task_id)
     report_evidence = await manager.report_evidence_service.list(task_id)
     graph = await manager.investigation_graph_service.get_graph(task_id)
     analyses: list[Any] = []
@@ -125,7 +140,7 @@ async def _overview(task_id: str, manager) -> dict[str, Any]:
         "analysis_count": len(analyses),
         "report_evidence_count": len(report_evidence),
         "evidence": [_dump(item) for item in evidence],
-        "events": [{**_dump(item), "id": item.event_id} for item in events],
+        "events": events,
         "analyses": [{**_dump(item), "id": item.analysis_id} for item in analyses],
         "report_evidence": [_dump(item) for item in report_evidence],
         "graph": _dump(graph),
@@ -243,8 +258,8 @@ async def workbench_bootstrap(task_id: str, request: BootstrapRequest, manager=D
 @router.get("/{task_id}/events")
 async def workbench_events(task_id: str, manager=Depends(_manager)):
     try:
-        events = await manager.investigation_event_service.list_events(task_id)
-        return {"success": True, "events": [{**_dump(item), "id": item.event_id} for item in events], "total": len(events)}
+        events = await _events_view(manager, task_id)
+        return {"success": True, "events": events, "total": len(events)}
     except Exception as exc:
         raise _error(exc) from exc
 
@@ -253,7 +268,11 @@ async def workbench_events(task_id: str, manager=Depends(_manager)):
 async def workbench_event(task_id: str, event_id: str, manager=Depends(_manager)):
     try:
         event = await manager.investigation_event_service.get_event(task_id, event_id)
-        return {"success": True, "event": {**_dump(event), "id": event.event_id}}
+        bounds = await manager.investigation_event_service.event_time_bounds(task_id)
+        return {
+            "success": True,
+            "event": {**_dump(event), "id": event.event_id, **bounds.get(event.event_id, {})},
+        }
     except Exception as exc:
         raise _error(exc) from exc
 
@@ -266,8 +285,10 @@ async def workbench_event_review(task_id: str, event_id: str):
 @router.get("/{task_id}/events/{event_id}/evidence")
 async def workbench_event_evidence(task_id: str, event_id: str, manager=Depends(_manager)):
     try:
-        evidence = await manager.investigation_event_service.list_event_evidence(task_id, event_id)
-        return {"success": True, "evidence": [_dump(item) for item in evidence], "total": len(evidence)}
+        evidence = await manager.investigation_event_service.describe_event_evidence(
+            task_id, event_id
+        )
+        return {"success": True, "evidence": evidence, "total": len(evidence)}
     except Exception as exc:
         raise _error(exc) from exc
 

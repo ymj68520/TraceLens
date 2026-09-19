@@ -316,6 +316,119 @@ class InvestigationGraphReader:
 
         return self._run(read)
 
+    # =====================================================================
+    # event time / evidence projection (derived, read-only)
+    # =====================================================================
+
+    _EVENT_EVIDENCE_SNAPSHOT_SQL = """
+        SELECT l.event_id AS event_id, l.evidence_key AS evidence_key,
+               l.linked_at AS linked_at, l.linked_by AS linked_by,
+               s.snapshot_json AS snapshot_json
+        FROM investigation_event_evidence l
+        JOIN evidence_snapshots s
+            ON s.task_id = l.task_id AND s.evidence_key = l.evidence_key
+        WHERE l.task_id = ?
+    """
+
+    def event_time_bounds(self) -> dict[str, dict[str, int | None]]:
+        """Derive per-event start/end from the linked evidence snapshots.
+
+        The v7 event model has no time columns; the workbench timeline badge
+        derives its clock from the frozen source timestamps of the linked
+        Evidence instead: a cluster spans [cluster_start, cluster_end] (falling
+        back to its representative timestamp), a file points at [mtime, ctime].
+        Events without any linked timestamp are absent from the result.
+        """
+        def read(conn: sqlite3.Connection) -> dict[str, dict[str, int | None]]:
+            rows = conn.execute(
+                self._EVENT_EVIDENCE_SNAPSHOT_SQL, [self._task_id]
+            ).fetchall()
+            points_by_event: dict[str, list[int]] = {}
+            for row in rows:
+                points = self._snapshot_time_points(
+                    row["evidence_key"], row["snapshot_json"]
+                )
+                if points:
+                    points_by_event.setdefault(row["event_id"], []).extend(points)
+            return {
+                event_id: {"start_time": min(points), "end_time": max(points)}
+                for event_id, points in points_by_event.items()
+            }
+
+        return self._run(read)
+
+    def describe_event_evidence(self, event_id: str) -> list[dict]:
+        """Project each linked Evidence onto its Workbench card view.
+
+        Same derivation source as ``event_time_bounds``: titles, timestamps,
+        and frozen initial summaries all come from the evidence snapshot, so
+        the panel never needs a separate evidence-resolution round trip.
+        ``role`` is only asserted for rows the cluster seed linked (the seed
+        knows the cluster is primary and its files supporting); manually
+        linked rows carry no role claim.
+        """
+        def read(conn: sqlite3.Connection) -> list[dict]:
+            rows = conn.execute(
+                self._EVENT_EVIDENCE_SNAPSHOT_SQL
+                + " AND l.event_id = ? ORDER BY l.linked_at, l.evidence_key",
+                [self._task_id, event_id],
+            ).fetchall()
+            views = []
+            for row in rows:
+                payload = json.loads(row["snapshot_json"] or "{}")
+                is_cluster = row["evidence_key"].startswith("cluster:")
+                seeded = row["linked_by"] == "cluster_seed"
+                if is_cluster:
+                    timestamp = (
+                        payload.get("representative_timestamp")
+                        if payload.get("representative_timestamp") is not None
+                        else payload.get("cluster_start")
+                    )
+                    views.append({
+                        "evidence_key": row["evidence_key"],
+                        "evidence_type": "event_cluster",
+                        "title": payload.get("event_type") or row["evidence_key"],
+                        "timestamp": timestamp,
+                        "initial_summary": payload.get("initial_summary"),
+                        "role": "primary" if seeded else None,
+                        "linked_at": row["linked_at"],
+                        "linked_by": row["linked_by"],
+                    })
+                else:
+                    timestamp = (
+                        payload.get("mtime")
+                        if payload.get("mtime") is not None
+                        else payload.get("ctime")
+                    )
+                    views.append({
+                        "evidence_key": row["evidence_key"],
+                        "evidence_type": "file",
+                        "title": payload.get("normalized_path") or row["evidence_key"],
+                        "timestamp": timestamp,
+                        "initial_summary": payload.get("initial_summary"),
+                        "role": "supporting" if seeded else None,
+                        "linked_at": row["linked_at"],
+                        "linked_by": row["linked_by"],
+                    })
+            return views
+
+        return self._run(read)
+
+    @staticmethod
+    def _snapshot_time_points(evidence_key: str, snapshot_json: str | None) -> list[int]:
+        try:
+            payload = json.loads(snapshot_json or "{}")
+        except (TypeError, ValueError):
+            return []
+        if evidence_key.startswith("cluster:"):
+            candidates = (
+                payload.get("cluster_start"), payload.get("cluster_end"),
+                payload.get("representative_timestamp"),
+            )
+        else:
+            candidates = (payload.get("mtime"), payload.get("ctime"))
+        return [int(ts) for ts in candidates if ts is not None]
+
     def get_report_evidence(self, evidence_key: str) -> ReportEvidenceItem | None:
         def read(conn: sqlite3.Connection) -> ReportEvidenceItem | None:
             if not self._report_evidence_table_exists(conn):

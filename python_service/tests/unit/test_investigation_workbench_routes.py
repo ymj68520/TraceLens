@@ -35,7 +35,24 @@ def _manager():
     manager.investigation_event_service = Mock(
         list_events=AsyncMock(
             return_value=[_FakeEvent(event_id="ev-1", title="cluster title")]
-        )
+        ),
+        event_time_bounds=AsyncMock(
+            return_value={"ev-1": {"start_time": 100, "end_time": 200}}
+        ),
+        describe_event_evidence=AsyncMock(
+            return_value=[
+                {
+                    "evidence_key": "cluster:v1:28333333:MODIFIED",
+                    "evidence_type": "event_cluster",
+                    "title": "MODIFIED",
+                    "timestamp": 1700000000,
+                    "initial_summary": None,
+                    "role": "primary",
+                    "linked_at": "2026-09-19T00:00:00",
+                    "linked_by": "cluster_seed",
+                }
+            ]
+        ),
     )
     manager.report_evidence_service = Mock(list=AsyncMock(return_value=[]))
     manager.investigation_graph_service = Mock(
@@ -106,6 +123,9 @@ def test_bootstrap_seed_failure_maps_to_500():
 
 def test_bootstrap_unknown_task_maps_to_400():
     manager = _manager()
+    manager.investigation_event_service.list_events = AsyncMock(
+        side_effect=KeyError("Task T1 not found")
+    )
     manager.investigation_seed_service.bootstrap = AsyncMock(
         side_effect=KeyError("Task T1 not found")
     )
@@ -114,3 +134,53 @@ def test_bootstrap_unknown_task_maps_to_400():
         json={"mode": "cluster_seed"},
     )
     assert response.status_code == 400
+
+
+def test_events_response_merges_derived_time_bounds():
+    manager = _manager()
+    response = _client(manager).get("/api/investigation/workbench/T1/events")
+    assert response.status_code == 200
+    event = response.json()["events"][0]
+    manager.investigation_event_service.event_time_bounds.assert_awaited_once_with("T1")
+    assert event["start_time"] == 100
+    assert event["end_time"] == 200
+
+
+def test_event_without_derived_bounds_omits_time_fields():
+    manager = _manager()
+    manager.investigation_event_service.event_time_bounds = AsyncMock(
+        return_value={}
+    )
+    response = _client(manager).get("/api/investigation/workbench/T1/events")
+    assert response.status_code == 200
+    event = response.json()["events"][0]
+    assert "start_time" not in event
+    assert "end_time" not in event
+
+
+def test_single_event_merges_derived_time_bounds():
+    manager = _manager()
+    manager.investigation_event_service.get_event = AsyncMock(
+        return_value=_FakeEvent(event_id="ev-1", title="cluster title")
+    )
+    response = _client(manager).get("/api/investigation/workbench/T1/events/ev-1")
+    assert response.status_code == 200
+    event = response.json()["event"]
+    assert event["start_time"] == 100
+    assert event["end_time"] == 200
+
+
+def test_event_evidence_returns_derived_card_views():
+    manager = _manager()
+    response = _client(manager).get(
+        "/api/investigation/workbench/T1/events/ev-1/evidence"
+    )
+    assert response.status_code == 200
+    body = response.json()
+    manager.investigation_event_service.describe_event_evidence.assert_awaited_once_with(
+        "T1", "ev-1"
+    )
+    assert body["total"] == 1
+    assert body["evidence"][0]["evidence_type"] == "event_cluster"
+    assert body["evidence"][0]["timestamp"] == 1700000000
+    assert body["evidence"][0]["role"] == "primary"

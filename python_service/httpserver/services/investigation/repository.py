@@ -2393,6 +2393,99 @@ class InvestigationRepository:
             for row in rows
         ]
 
+    def list_seed_markers(self) -> set[str]:
+        """All seed provenance markers (v1 ``created_by``) recorded for the task."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT created_by FROM investigation_event_versions "
+                "WHERE task_id = ? AND version = 1 AND created_by IS NOT NULL",
+                [self.task_id],
+            ).fetchall()
+        return {row["created_by"] for row in rows}
+
+    def bulk_seed_cluster_events(self, seeds: list[dict], candidates: dict) -> dict:
+        """Single-transaction cluster seed — the bootstrap fast path.
+
+        ``seeds``: ``[{seed_marker, title, summary, evidence_keys}]``; a seed
+        whose ``seed_marker`` (v1 ``created_by``) already exists is skipped,
+        and an existing marker implies a completed seed because this method
+        commits events, snapshots, and links atomically.
+        ``candidates``: pre-built ``SnapshotCandidate`` map keyed by canonical
+        evidence_key (S5: built outside the write transaction via
+        ``build_snapshot_candidate``). Replaces the per-row transactions that
+        made first-time seeding fsync-bound (~9600 commits for a 95-cluster
+        task, 8.5 minutes wall clock).
+
+        Seed-time links never mark events dirty: P5/P10 need accepted
+        analyses, which cannot exist for a brand-new seed event.
+        """
+        now = _now_iso()
+        created_events = 0
+        new_snapshots = 0
+        new_links = 0
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            for candidate in candidates.values():
+                cursor = conn.execute(
+                    """
+                    INSERT INTO evidence_snapshots
+                        (task_id, evidence_key, evidence_type, normalized_path,
+                         unix_minute, event_type, snapshot_json, captured_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(task_id, evidence_key) DO NOTHING
+                    """,
+                    (
+                        candidate.task_id,
+                        candidate.evidence_key,
+                        candidate.evidence_type,
+                        candidate.normalized_path,
+                        candidate.unix_minute,
+                        candidate.event_type,
+                        canonical_json(candidate.payload),
+                        candidate.captured_at,
+                    ),
+                )
+                new_snapshots += max(cursor.rowcount, 0)
+            existing_markers = {
+                row["created_by"]
+                for row in conn.execute(
+                    "SELECT created_by FROM investigation_event_versions "
+                    "WHERE task_id = ? AND version = 1 AND created_by IS NOT NULL",
+                    [self.task_id],
+                ).fetchall()
+            }
+            for seed in seeds:
+                if seed["seed_marker"] in existing_markers:
+                    continue
+                event_id = _new_event_id()
+                conn.execute(
+                    "INSERT INTO investigation_events "
+                    "(event_id, task_id, needs_refresh, created_at, updated_at) "
+                    "VALUES (?, ?, 0, ?, ?)",
+                    [event_id, self.task_id, now, now],
+                )
+                conn.execute(
+                    "INSERT INTO investigation_event_versions "
+                    "(task_id, event_id, version, title, summary, created_at, created_by) "
+                    "VALUES (?, ?, 1, ?, ?, ?, ?)",
+                    [self.task_id, event_id, seed["title"], seed.get("summary"), now, seed["seed_marker"]],
+                )
+                created_events += 1
+                for evidence_key in seed["evidence_keys"]:
+                    cursor = conn.execute(
+                        "INSERT OR IGNORE INTO investigation_event_evidence "
+                        "(task_id, event_id, evidence_key, linked_at, linked_by) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        [self.task_id, event_id, evidence_key, now, "cluster_seed"],
+                    )
+                    new_links += max(cursor.rowcount, 0)
+            conn.commit()
+        return {
+            "created_events": created_events,
+            "new_snapshots": new_snapshots,
+            "new_links": new_links,
+        }
+
     def list_events_for_evidence(self, evidence_key: str) -> list[InvestigationEvent]:
         """Reverse lookup: events explicitly referencing this canonical key.
 
