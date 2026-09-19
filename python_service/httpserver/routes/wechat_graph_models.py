@@ -12,6 +12,7 @@ Provides REST API endpoints for WeChat forensic analysis:
 - Cache invalidation
 """
 
+import asyncio
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -159,7 +160,10 @@ async def _resolve_android_db_path(task_id: str) -> str:
         from ..services.wechat_import_service import get_wechat_import_service
         service = get_wechat_import_service()
         try:
-            db_path = service._graph_db_path(task_id[3:])
+            # ensure_graph_db rebuilds a missing/empty graph.db from the
+            # decrypted source, so imports whose graph build failed heal on
+            # first graph-tab visit instead of serving a zero-node graph.
+            db_path = await asyncio.to_thread(service.ensure_graph_db, task_id[3:])
         except ValueError:
             db_path = ""
         if db_path and os.path.exists(db_path):
@@ -175,7 +179,7 @@ async def _resolve_android_db_path(task_id: str) -> str:
         from ..services.qq_import_service import get_qq_import_service
         service = get_qq_import_service()
         try:
-            db_path = service._graph_db_path(task_id[3:])
+            db_path = await asyncio.to_thread(service.ensure_graph_db, task_id[3:])
         except ValueError:
             db_path = ""
         if db_path and os.path.exists(db_path):

@@ -117,6 +117,35 @@ def list_imports() -> List[Dict[str, Any]]:
     return result
 
 
+def _count_rows(db_path: str, table: str) -> Optional[int]:
+    """Row count of ``table``; None when the file or the table is unusable."""
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            return con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return None
+
+
+def _table_names(db_path: str) -> set:
+    """Table names in a SQLite file; empty set when unreadable."""
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            return {
+                row[0]
+                for row in con.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return set()
+
+
 def _meta_summary(meta: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "import_id": meta.get("import_id", ""),
@@ -540,8 +569,21 @@ class QQImportService:
         graph_db: str,
         meta: Dict[str, Any],
     ) -> None:
-        if os.path.exists(graph_db):
-            os.remove(graph_db)
+        """Build the normalized graph.db.
+
+        The file is assembled under a temp name and moved into place only on
+        success: a failed build must never leave an empty graph.db behind,
+        or the graph routes would serve a silent zero-node graph.
+        """
+        nt_db = decrypted.get("nt_msg.db")
+        if not nt_db or not os.path.isfile(nt_db):
+            raise sqlite3.OperationalError("decrypted nt_msg.db is missing")
+        if not {"c2c_msg_table", "group_msg_table"} & _table_names(nt_db):
+            raise sqlite3.OperationalError(
+                "nt_msg.db missing required message tables "
+                "(c2c_msg_table/group_msg_table)"
+            )
+        tmp_db = f"{graph_db}.{uuid.uuid4().hex}.building"
         owner = meta.get("owner") or {}
         owner_uin = owner.get("username", "")
         maps = self._name_maps(decrypted)
@@ -560,7 +602,7 @@ class QQImportService:
                 or str(uin or uid or "")
             )
 
-        dst = sqlite3.connect(graph_db)
+        dst = sqlite3.connect(tmp_db)
         try:
             dst.executescript(
                 """
@@ -728,8 +770,15 @@ class QQImportService:
                 dst.commit()
             finally:
                 con.close()
-        finally:
+        except BaseException:
             dst.close()
+            try:
+                os.remove(tmp_db)
+            except OSError:
+                pass
+            raise
+        dst.close()
+        os.replace(tmp_db, graph_db)
 
     # ------------------------------------------------------------------ #
     # connections & lookups
@@ -748,6 +797,42 @@ class QQImportService:
         if not re.fullmatch(r"[0-9a-f]{12}", import_id):
             raise ValueError("invalid import id")
         return path
+
+    def ensure_graph_db(self, import_id: str) -> str:
+        """Return graph.db for the import, rebuilding it when absent or empty.
+
+        Same self-heal as the WeChat pipeline: a leftover empty graph.db made
+        the relationship tab answer zero nodes even though messages existed.
+        """
+        path = self._graph_db_path(import_id)
+        wdir = _import_dir(import_id)
+        nt_db = os.path.join(wdir, "nt_msg.db")
+        if os.path.exists(path) and not self._graph_db_stale(path, nt_db):
+            return path
+        decrypted = {
+            base: os.path.join(wdir, base)
+            for base in ("nt_msg.db", "profile_info.db", "group_info.db")
+            if os.path.isfile(os.path.join(wdir, base))
+        }
+        if "nt_msg.db" not in decrypted:
+            return path
+        try:
+            self._build_graph_db(import_id, decrypted, path, _read_meta(import_id))
+            logger.info("qq graph.db rebuilt for import %s", import_id)
+        except Exception as e:
+            logger.warning("qq graph.db rebuild failed for %s: %s", import_id, e)
+        return path
+
+    @staticmethod
+    def _graph_db_stale(graph_db: str, nt_db: str) -> bool:
+        """True when graph.db exists but carries no messages while nt_msg.db does."""
+        if _count_rows(graph_db, "wechat_messages"):
+            return False
+        have = _table_names(nt_db)
+        return any(
+            _count_rows(nt_db, table) for table in ("c2c_msg_table", "group_msg_table")
+            if table in have
+        )
 
     # ------------------------------------------------------------------ #
     # queries (mirrors the WeChat forensics endpoints)

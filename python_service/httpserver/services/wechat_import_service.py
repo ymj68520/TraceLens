@@ -118,6 +118,35 @@ def list_imports() -> List[Dict[str, Any]]:
     return items
 
 
+def _count_rows(db_path: str, table: str) -> Optional[int]:
+    """Row count of ``table``; None when the file or the table is unusable."""
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            return con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return None
+
+
+def _table_names(db_path: str) -> set:
+    """Table names in a SQLite file; empty set when unreadable."""
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            return {
+                row[0]
+                for row in con.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return set()
+
+
 def _meta_summary(meta: Dict[str, Any]) -> Dict[str, Any]:
     owner = meta.get("owner") or {}
     stats = meta.get("stats") or {}
@@ -351,11 +380,18 @@ class WeChatImportService:
 
         The existing WeChat relationship-analysis service reads these exact
         tables, so the imported dataset plugs into /wechat-graph unchanged.
+        The file is assembled under a temp name and moved into place only on
+        success: a failed build must never leave an empty graph.db behind,
+        or the graph routes would serve a silent zero-node graph.
         """
-        if os.path.exists(graph_db):
-            os.remove(graph_db)
+        missing = {"rcontact", "message"} - _table_names(src_db)
+        if missing:
+            raise sqlite3.OperationalError(
+                f"source database missing required tables: {', '.join(sorted(missing))}"
+            )
+        tmp_db = f"{graph_db}.{uuid.uuid4().hex}.building"
         src = self._connect_path(src_db)
-        dst = sqlite3.connect(graph_db)
+        dst = sqlite3.connect(tmp_db)
         try:
             dst.executescript(
                 """
@@ -459,9 +495,17 @@ class WeChatImportService:
                     ),
                 )
             dst.commit()
-        finally:
-            src.close()
+        except BaseException:
             dst.close()
+            src.close()
+            try:
+                os.remove(tmp_db)
+            except OSError:
+                pass
+            raise
+        dst.close()
+        src.close()
+        os.replace(tmp_db, graph_db)
 
     # ------------------------------------------------------------------ #
     # connections & lookups
@@ -486,6 +530,35 @@ class WeChatImportService:
     def _graph_db_path(self, import_id: str) -> str:
         """Normalized wechat_* database consumed by the analysis pipeline."""
         return os.path.join(_import_dir(import_id), "graph.db")
+
+    def ensure_graph_db(self, import_id: str) -> str:
+        """Return graph.db for the import, rebuilding it when absent or empty.
+
+        Imports whose graph build failed before builds became atomic could
+        keep an empty graph.db; the analysis routes then answered 200 with
+        zero nodes ("未发现聊天记录关系数据") even though messages existed.
+        Rebuild once from the decrypted database so the relationship tab
+        self-heals; failures fall through to the caller's 404 handling.
+        """
+        path = self._graph_db_path(import_id)
+        src_db = os.path.join(_import_dir(import_id), "EnMicroMsg.db")
+        if os.path.exists(path) and not self._graph_db_stale(path, src_db):
+            return path
+        if not os.path.isfile(src_db):
+            return path
+        try:
+            self._build_graph_db(import_id, src_db, path, _read_meta(import_id))
+            logger.info("graph.db rebuilt for import %s", import_id)
+        except Exception as e:
+            logger.warning("graph.db rebuild failed for %s: %s", import_id, e)
+        return path
+
+    @staticmethod
+    def _graph_db_stale(graph_db: str, src_db: str) -> bool:
+        """True when graph.db exists but carries no messages while the source does."""
+        if _count_rows(graph_db, "wechat_messages"):
+            return False
+        return bool(_count_rows(src_db, "message"))
 
     @staticmethod
     def _connect_path(db_path: str) -> sqlite3.Connection:

@@ -390,3 +390,58 @@ async def test_import_plaintext_db(import_env, monkeypatch, tmp_path):
     assert result["status"] == "ready", result
     msgs = await svc.messages(result["import_id"])
     assert msgs["total"] == 5
+
+
+# ---------------------------------------------------------------------------
+# graph.db atomic build + read-path self-heal
+# ---------------------------------------------------------------------------
+
+
+def test_qq_failed_build_leaves_no_graph_db(tmp_path):
+    """Missing nt_msg.db must fail before any graph.db file is created."""
+    svc = QQImportService()
+    graph_db = str(tmp_path / "graph.db")
+    with pytest.raises(sqlite3.OperationalError, match="nt_msg.db is missing"):
+        svc._build_graph_db("deadbeefdead", {}, graph_db, {"owner": {}})
+    assert not os.path.exists(graph_db)
+
+
+@pytest.mark.asyncio
+async def test_qq_graph_db_heal(import_env):
+    """Empty/missing graph.db rebuilds from the decrypted source; intact is kept.
+
+    An empty leftover used to reach the graph routes as 200 + zero nodes
+    (「未发现聊天记录关系数据」) even though messages existed.
+    """
+    svc = QQImportService()
+    result = await svc.create_import({
+        "db_path": str(import_env / "nt_msg.db"),
+        "name": "heal 测试",
+        "key_material": {"nt_uid": NT_UID, "uin": OWNER_UIN},
+    })
+    assert result["status"] == "ready", result
+    import_id = result["import_id"]
+    graph_db = svc._graph_db_path(import_id)
+
+    def _count(path):
+        con = sqlite3.connect(path)
+        n = con.execute("SELECT COUNT(*) FROM wechat_messages").fetchone()[0]
+        con.close()
+        return n
+
+    # 空残留 → 重建
+    con = sqlite3.connect(graph_db)
+    con.execute("DELETE FROM wechat_messages")
+    con.commit()
+    con.close()
+    assert _count(svc.ensure_graph_db(import_id)) == 5
+
+    # 缺失 → 重建
+    os.remove(graph_db)
+    assert svc.ensure_graph_db(import_id) == graph_db
+    assert _count(graph_db) == 5
+
+    # 完好 → 原样返回，不触发重建
+    before = os.path.getmtime(graph_db)
+    assert svc.ensure_graph_db(import_id) == graph_db
+    assert os.path.getmtime(graph_db) == before

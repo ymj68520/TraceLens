@@ -685,10 +685,13 @@ if(BUILD_WEB_FRONTEND)
         COMMENT "Installing frontend dependencies")
 
       # Single custom target that always runs (letting Vite handle caching) This
-      # builds the frontend and copies it to the build directory
+      # builds the frontend and copies it to the build directory. The output
+      # dir is wiped first: copy_directory merges into what is already there,
+      # which accumulates stale hashed chunks from previous builds.
       add_custom_target(
         web_frontend ALL
         COMMAND ${NPM_EXECUTABLE} run build
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${WEB_OUTPUT_DIR}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${WEB_OUTPUT_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${WEB_SOURCE_DIR}/dist
                 ${WEB_OUTPUT_DIR}

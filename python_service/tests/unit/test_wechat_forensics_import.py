@@ -306,3 +306,79 @@ class TestImportPipeline:
         result = svc._create_import_sync(enc, "错误密钥", "", None, None, bad_km, "unit-test")
         assert result["status"] == "failed"
         assert "decryption failed" in (result["error"] or "")
+
+
+class TestGraphDbAtomicAndHeal:
+    """graph.db 构建失败不得留下空文件；缺失/空残留须能在读取路径自愈。
+
+    背景：构建中断曾留下空 graph.db，图谱路由把它当有效数据返回 200 + 零节点
+    （前端显示「未发现聊天记录关系数据」），而会话/消息 Tab 一切正常。
+    """
+
+    def test_failed_build_leaves_no_graph_db(self, tmp_path):
+        svc = WeChatImportService()
+        src = str(tmp_path / "bad.db")
+        con = sqlite3.connect(src)
+        con.execute("CREATE TABLE rcontact (username TEXT)")  # 缺 message 表
+        con.commit()
+        con.close()
+        graph_db = str(tmp_path / "graph.db")
+        with pytest.raises(sqlite3.OperationalError, match="missing required tables"):
+            svc._build_graph_db("deadbeefdead", src, graph_db, {"owner": {}})
+        assert not os.path.exists(graph_db)
+
+    def test_failed_build_removes_temp_file(self, tmp_path, monkeypatch):
+        import httpserver.services.wechat_import_service as wis
+
+        svc = WeChatImportService()
+        src = str(tmp_path / "plain.db")
+        _build_plain_db(src)
+        monkeypatch.setattr(
+            wis, "decode_message_content",
+            lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+        graph_db = str(tmp_path / "graph.db")
+        with pytest.raises(RuntimeError, match="boom"):
+            svc._build_graph_db(
+                "deadbeefdead", src, graph_db, {"owner": {"username": OWNER_WXID}},
+            )
+        assert not os.path.exists(graph_db)
+        assert not [p for p in os.listdir(tmp_path) if ".building" in p]
+
+    def test_ensure_graph_db_heals_and_keeps(self, import_workspace):
+        svc, enc, km = import_workspace
+        result = svc._create_import_sync(enc, "演示导入", "", None, None, km, "unit-test")
+        assert result["status"] == "ready"
+        graph_db = svc._graph_db_path(result["import_id"])
+
+        # 空残留（旧缺陷现场）→ 重建回全部消息
+        con = sqlite3.connect(graph_db)
+        con.execute("DELETE FROM wechat_messages")
+        con.commit()
+        con.close()
+        healed = svc.ensure_graph_db(result["import_id"])
+        con = sqlite3.connect(healed)
+        assert con.execute("SELECT COUNT(*) FROM wechat_messages").fetchone()[0] == 8
+        con.close()
+
+        # 缺失 → 重建
+        os.remove(graph_db)
+        assert svc.ensure_graph_db(result["import_id"]) == graph_db
+        con = sqlite3.connect(graph_db)
+        assert con.execute("SELECT COUNT(*) FROM wechat_messages").fetchone()[0] == 8
+        con.close()
+
+        # 完好 → 原样返回，不触发重建
+        before = os.path.getmtime(graph_db)
+        assert svc.ensure_graph_db(result["import_id"]) == graph_db
+        assert os.path.getmtime(graph_db) == before
+
+    def test_ensure_without_decrypted_source_is_noop(self, import_workspace):
+        svc, enc, km = import_workspace
+        result = svc._create_import_sync(enc, "无源导入", "", None, None, km, "unit-test")
+        graph_db = svc._graph_db_path(result["import_id"])
+        wdir = os.path.dirname(graph_db)
+        os.remove(graph_db)
+        os.remove(os.path.join(wdir, "EnMicroMsg.db"))
+        assert svc.ensure_graph_db(result["import_id"]) == graph_db
+        assert not os.path.exists(graph_db)
