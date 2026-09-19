@@ -226,11 +226,36 @@ async def analyze_content(
             file_path_obj = FilePath(request.file_path)
 
             if not file_path_obj.exists():
+                # Not extracted yet: run the single-file extraction job now and
+                # wait, so the interactive analyze button works without a prior
+                # manual extraction (same chain as the case-analysis pipeline).
+                if request.task_id and task_info_for_path:
+                    extraction_dir = task_info_for_path.get("extraction_directory") or ""
+                    if extraction_dir:
+                        from ...services.llm.auto_extractor import (
+                            AutoExtractionError,
+                            ensure_extracted_for_analysis,
+                        )
+
+                        try:
+                            request.file_path = await ensure_extracted_for_analysis(
+                                service_manager.cpp_backend,
+                                task_id=request.task_id,
+                                file_path=request.file_path,
+                                extraction_dir=extraction_dir,
+                                db_file_path=request.db_file_path,
+                            )
+                            file_path_obj = FilePath(request.file_path)
+                        except AutoExtractionError as exc:
+                            logger.warning(f"Auto-extraction before analysis failed: {exc}")
+
+            if not file_path_obj.exists():
                 error_msg = (
                     f"File not found: {request.file_path}\n\n"
-                    f"Files must be extracted from the disk image before AI analysis.\n"
-                    f"Suggestion: Use the file extraction feature first via the Files page, "
-                    f"or ensure the extraction directory is correctly configured."
+                    f"The file must be extracted from the disk image before AI analysis. "
+                    f"Automatic extraction was attempted but did not produce the file — "
+                    f"it may not exist in the image (e.g. deleted), or extraction failed. "
+                    f"Try the file extraction feature on the Files page for details."
                 )
                 raise HTTPException(
                     status_code=404,

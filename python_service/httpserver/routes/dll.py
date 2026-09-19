@@ -108,7 +108,8 @@ async def analyze_dll(
         # Resolve the path: the raw image-internal path usually does not exist
         # on the host; fall back to the copy materialized by the extraction
         # pipeline under the task's extraction directory (same D2b contract
-        # as the office parse route).
+        # as the office parse route). If it was never extracted, run the
+        # single-file extraction now and wait, mirroring /api/llm/analyze.
         host_path = request.file_path
         if request.task_id and not os.path.exists(host_path):
             from ..services import task_store
@@ -122,6 +123,28 @@ async def analyze_dll(
                     )
                     if os.path.exists(candidate):
                         host_path = candidate
+                    else:
+                        from ..services.llm.auto_extractor import (
+                            AutoExtractionError,
+                            ensure_extracted_for_analysis,
+                        )
+
+                        try:
+                            host_path = await ensure_extracted_for_analysis(
+                                get_service_manager().cpp_backend,
+                                task_id=request.task_id,
+                                file_path=request.file_path,
+                                extraction_dir=extraction_dir,
+                            )
+                        except AutoExtractionError as exc:
+                            logger.warning(f"Auto-extraction before DLL analysis failed: {exc}")
+                            raise HTTPException(
+                                status_code=404,
+                                detail=(
+                                    f"File not found: {request.file_path}. "
+                                    f"Automatic extraction was attempted but failed: {exc}"
+                                ),
+                            ) from exc
             except task_store.TaskStoreError:
                 pass  # keep raw path; the C++ side will report not-found
 
