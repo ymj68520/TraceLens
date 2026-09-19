@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock3, Database, FileCheck2 } from 'lucide-react';
+import { Clock3, Database, FileCheck2, Filter } from 'lucide-react';
 import Badge from '../../../components/common/Badge';
 import Spinner from '../../../components/common/Spinner';
 import { REVIEW_STATUS, formatTimestamp } from '../utils/investigationConstants';
@@ -53,18 +53,45 @@ const displayTime = (event) => {
   return start === null ? '时间未知' : formatTimestamp(start);
 };
 
+// 时间过滤：datetime-local 本地时间串 → unix 秒；空串/非法输入返回 null（不设界）。
+const fromDatetimeLocalValue = (value) => {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? null : Math.floor(time / 1000);
+};
+
 export default function InvestigationTimeline({ events, selectedEventId, onSelect, loading }) {
   const [expandedId, setExpandedId] = useState(null);
+  const [filterStart, setFilterStart] = useState('');
+  const [filterEnd, setFilterEnd] = useState('');
   const nodeRefs = useRef({});
 
   const ordered = useMemo(() => orderEvents(events), [events]);
-  const axis = useMemo(() => axisBounds(events), [events]);
+
+  // 时间过滤：事件发生时间（start_time，即节点在轴上的位置）落在区间内才命中；
+  // 无时间的事件无法匹配，过滤时隐藏。
+  const filterStartUnix = fromDatetimeLocalValue(filterStart);
+  const filterEndUnix = fromDatetimeLocalValue(filterEnd);
+  const filterActive = filterStartUnix !== null || filterEndUnix !== null;
+  const visible = useMemo(() => {
+    if (!filterActive) return ordered;
+    return ordered.filter((event) => {
+      const start = toUnix(event.start_time);
+      if (start === null) return false;
+      if (filterStartUnix !== null && start < filterStartUnix) return false;
+      if (filterEndUnix !== null && start > filterEndUnix) return false;
+      return true;
+    });
+  }, [ordered, filterActive, filterStartUnix, filterEndUnix]);
+
+  // 轴体两端的时间帽跟随过滤结果收敛。
+  const axis = useMemo(() => axisBounds(visible), [visible]);
 
   // 外部选择（URL ?event=、图谱节点点击）滚动定位；卡片只靠点击展开。
   useEffect(() => {
     if (!selectedEventId) return;
     nodeRefs.current[selectedEventId]?.scrollIntoView?.({ block: 'nearest' });
-  }, [selectedEventId, ordered]);
+  }, [selectedEventId, visible]);
 
   if (loading) return <div className="h-full flex items-center justify-center"><Spinner /></div>;
   if (!events.length) {
@@ -76,8 +103,63 @@ export default function InvestigationTimeline({ events, selectedEventId, onSelec
     onSelect(event.id);
   };
 
+  const clearFilter = () => {
+    setFilterStart('');
+    setFilterEnd('');
+  };
+
   return (
     <div className="h-full overflow-y-auto px-3 py-4" data-testid="investigation-timeline">
+      {/* 时间过滤栏（吸顶） */}
+      <div
+        className="sticky -top-4 z-20 -mx-3 mb-3 flex flex-wrap items-center gap-1.5 border-b border-slate-100 bg-white/90 px-3 py-2 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90"
+        data-testid="timeline-filter"
+      >
+        <Filter size={12} className="shrink-0 text-slate-400" />
+        <input
+          type="datetime-local"
+          step="1"
+          aria-label="起始时间"
+          data-testid="timeline-filter-start"
+          value={filterStart}
+          onChange={(e) => setFilterStart(e.target.value)}
+          className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+        />
+        <span className="text-[11px] text-slate-400">→</span>
+        <input
+          type="datetime-local"
+          step="1"
+          aria-label="结束时间"
+          data-testid="timeline-filter-end"
+          value={filterEnd}
+          onChange={(e) => setFilterEnd(e.target.value)}
+          className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+        />
+        {filterActive && (
+          <>
+            <span className="text-[11px] text-slate-400" data-testid="timeline-filter-count">
+              {visible.length}/{events.length}
+            </span>
+            <button
+              type="button"
+              onClick={clearFilter}
+              data-testid="timeline-filter-clear"
+              className="rounded-lg border border-slate-200 px-1.5 py-1 text-[11px] text-slate-500 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+            >
+              清除
+            </button>
+          </>
+        )}
+      </div>
+
+      {visible.length === 0 ? (
+        <div
+          className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400"
+          data-testid="timeline-filter-empty"
+        >
+          该时间范围内没有事件，请调整或清除过滤条件。
+        </div>
+      ) : (
       <div className="relative" data-testid="timeline-axis">
         <span aria-hidden className="absolute bottom-4 left-1/2 top-4 w-px -translate-x-1/2 bg-slate-300 dark:bg-slate-600" />
 
@@ -91,7 +173,7 @@ export default function InvestigationTimeline({ events, selectedEventId, onSelec
           <span aria-hidden className="h-px flex-1 bg-gradient-to-l from-transparent to-slate-300 dark:to-slate-600" />
         </div>
 
-        {ordered.map((event, index) => {
+        {visible.map((event, index) => {
           const status = REVIEW_STATUS[statusKeyOf(event)];
           const selected = selectedEventId === event.id;
           const expanded = expandedId === event.id;
@@ -187,6 +269,7 @@ export default function InvestigationTimeline({ events, selectedEventId, onSelec
           <span aria-hidden className="h-px flex-1 bg-gradient-to-l from-transparent to-slate-300 dark:to-slate-600" />
         </div>
       </div>
+      )}
     </div>
   );
 }

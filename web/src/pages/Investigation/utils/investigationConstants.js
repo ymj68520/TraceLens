@@ -33,6 +33,16 @@ export const formatTimestamp = (value) => {
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN');
 };
 
+// unix 秒 → datetime-local 本地时间串（秒级精度）；非法输入返回空串。
+export const formatDatetimeLocal = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  const date = new Date(n * 1000);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 export const parseJson = (value, fallback = []) => {
   if (!value) return fallback;
   if (typeof value !== 'string') return value;

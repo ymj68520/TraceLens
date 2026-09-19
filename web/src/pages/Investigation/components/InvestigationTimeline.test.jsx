@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import InvestigationTimeline from './InvestigationTimeline';
+import { formatDatetimeLocal } from '../utils/investigationConstants';
 
 const T0 = 1_700_000_000;
 
@@ -90,6 +91,42 @@ test('无时间的事件垫底并显示 时间未知', () => {
   // 两条无时间节点 + 轴体两端均为可解析时间：恰好 2 处 时间未知
   expect(screen.getAllByText('时间未知')).toHaveLength(2);
   expect(screen.getByTestId('timeline-axis-start')).toHaveTextContent(fmt(T0));
+});
+
+test('时间过滤：start_time 落在区间内的事件命中，轴端收敛，可清除', () => {
+  const events = [mk('a', T0), mk('b', T0 + 600), mk('c', T0 + 1200), mk('x', null)];
+  render(<InvestigationTimeline events={events} selectedEventId={null} onSelect={vi.fn()} loading={false} />);
+
+  // 起始时间收敛到 T0+590：命中 b、c；无时间的 x 被隐藏
+  fireEvent.change(screen.getByTestId('timeline-filter-start'), { target: { value: formatDatetimeLocal(T0 + 590) } });
+
+  let chips = screen.getAllByTestId(/^event-chip-/).map((el) => el.dataset.testid);
+  expect(chips).toEqual(['event-chip-b', 'event-chip-c']);
+  expect(screen.getByTestId('timeline-filter-count')).toHaveTextContent('2/4');
+  expect(screen.getByTestId('timeline-axis-start')).toHaveTextContent(fmt(T0 + 600));
+
+  // 结束时间收敛到 T0+700：只剩 b
+  fireEvent.change(screen.getByTestId('timeline-filter-end'), { target: { value: formatDatetimeLocal(T0 + 700) } });
+  chips = screen.getAllByTestId(/^event-chip-/).map((el) => el.dataset.testid);
+  expect(chips).toEqual(['event-chip-b']);
+  expect(screen.getByTestId('timeline-axis-end')).toHaveTextContent(fmt(T0 + 660));
+
+  // 清除恢复全部（含无时间的 x），轴端回到全量范围
+  fireEvent.click(screen.getByTestId('timeline-filter-clear'));
+  chips = screen.getAllByTestId(/^event-chip-/).map((el) => el.dataset.testid);
+  expect(chips).toEqual(['event-chip-a', 'event-chip-b', 'event-chip-c', 'event-chip-x']);
+  expect(screen.queryByTestId('timeline-filter-count')).not.toBeInTheDocument();
+  expect(screen.getByTestId('timeline-axis-end')).toHaveTextContent(fmt(T0 + 1260));
+});
+
+test('时间过滤无命中时显示空提示并隐藏轴体', () => {
+  const events = [mk('a', T0)];
+  render(<InvestigationTimeline events={events} selectedEventId={null} onSelect={vi.fn()} loading={false} />);
+
+  fireEvent.change(screen.getByTestId('timeline-filter-end'), { target: { value: formatDatetimeLocal(T0 - 100) } });
+
+  expect(screen.getByTestId('timeline-filter-empty')).toBeInTheDocument();
+  expect(screen.queryByTestId('timeline-axis')).not.toBeInTheDocument();
 });
 
 test('空列表与加载态保持原语义', () => {
