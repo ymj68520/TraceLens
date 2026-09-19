@@ -253,8 +253,9 @@ class Settings(BaseSettings):
 
     # Finite analysis limits. Explicit values may raise these within the
     # declared bounds; an omitted value never means unlimited.
-    llm_max_files: int = Field(default=500, ge=1, le=100000, alias="LLM_MAX_FILES")
-    llm_smart_candidate_files: int = Field(default=1000, ge=1, le=100000, alias="LLM_SMART_CANDIDATE_FILES")
+    # LLM_MAX_FILES / LLM_SMART_CANDIDATE_FILES are owned by the C++ side
+    # (ConfigManager::getLLMMaxFiles / getLLMSmartCandidateFiles); the Python
+    # service never reads them, so they are intentionally not mirrored here.
     # Event-cluster analysis budget (SPEC event-cluster-analysis-redesign §5):
     # the maximum number of clusters one analysis run may produce. Phase C
     # adaptive bucketing targets this value; deployments raise it via config
