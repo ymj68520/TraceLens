@@ -46,7 +46,10 @@ bool LLMPythonProxy::recordFileAnalysisResult(
             {"model_used", model_used},
         };
 
-        auto res = cli.Post("/api/file-analysis/record", body.dump(), "application/json");
+        // The file-analysis endpoint family lives under the /api/llm router
+        // (routes/llm.py includes file_analysis.router); /api/file-analysis/record
+        // has never existed and 404s into the direct-file-db fallback.
+        auto res = cli.Post("/api/llm/file-analysis/record", body.dump(), "application/json");
         if (res && res->status == 200) {
             try {
                 auto response = nlohmann::json::parse(res->body);
