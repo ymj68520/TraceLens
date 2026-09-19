@@ -344,3 +344,31 @@ def test_workbench_reads_fail_closed_on_corrupt_store(tmp_path):
     reader = InvestigationGraphReader(corrupt, "A")
     with pytest.raises(EvidenceStoreError):
         reader.list_evidence()
+
+
+def test_read_service_side_table_only_store_is_empty(tmp_path):
+    """Regression: the pre-bootstrap artifact (a user_version=0 file holding
+    only workbench side tables) used to fail the strict reader closed with
+    503, wedging the workbench before bootstrap could heal it. Reads must
+    classify it as "no findings"."""
+    poisoned = tmp_path / "poisoned"
+    poisoned.mkdir()
+    _make_files_db(str(poisoned / "files.db"), [])
+    inv_db = poisoned / "investigation.db"
+    conn = sqlite3.connect(inv_db)
+    conn.executescript(
+        """
+        CREATE TABLE workbench_event_review (
+            task_id TEXT NOT NULL, event_id TEXT NOT NULL,
+            review_status TEXT NOT NULL, updated_by TEXT,
+            updated_at TEXT NOT NULL, PRIMARY KEY (task_id, event_id)
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    service = InvestigationReadService(_Backend(poisoned))
+    assert asyncio.run(service.list_evidence("A")) == []
+    assert asyncio.run(service.get_snapshot("A", KEY_A)) is None
+    assert asyncio.run(service.list_analysis_claims("A", "sa_1")) is None

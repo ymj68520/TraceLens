@@ -24,6 +24,7 @@ from pathlib import Path
 from ..evidence.exceptions import EvidenceNotFoundError, EvidenceStoreError
 from ..evidence.resolver import EvidenceResolver
 from ..investigation_persistence import InvestigationPersistence
+from . import workbench_state
 from .graph_reader import InvestigationGraphReader
 from .models import ReportEvidenceItem
 from .paths import investigation_db_path_for_task
@@ -55,6 +56,10 @@ class ReportEvidenceService:
         if not db_path.exists():
             # A task without an investigation.db has no report evidence; the
             # GET never creates or migrates the store (C10 §14).
+            return []
+        if workbench_state.store_is_uninitialized(db_path):
+            # Side-table-only artifact (see workbench_state): no bindings;
+            # the next bootstrap initializes the store in place.
             return []
         reader = InvestigationGraphReader(db_path, task_id)
         return await asyncio.to_thread(reader.list_report_evidence)

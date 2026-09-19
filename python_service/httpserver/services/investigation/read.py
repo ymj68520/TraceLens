@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 
 from ..evidence.exceptions import EvidenceNotFoundError
+from . import workbench_state
 from .graph_reader import InvestigationGraphReader
 from .models import AnalysisClaim, EvidenceSnapshot, EvidenceSummary
 from .paths import investigation_db_path_for_task
@@ -37,6 +38,10 @@ class InvestigationReadService:
         if not db_path.exists():
             # A task without an investigation.db yet has no findings; the GET
             # never creates or migrates the store (B2).
+            return None
+        if workbench_state.store_is_uninitialized(db_path):
+            # Side-table-only artifact (see workbench_state): no findings;
+            # the next bootstrap initializes the store in place.
             return None
         return InvestigationGraphReader(db_path, task_id)
 

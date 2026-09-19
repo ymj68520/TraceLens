@@ -30,6 +30,7 @@ from ..evidence.exceptions import EvidenceNotFoundError, EvidenceStoreError
 from ..evidence.keys import parse_evidence_key
 from .models import SecondaryAnalysis, SecondaryAnalysisStatus, parse_analysis_input_envelope
 from .paths import investigation_db_path_for_task
+from . import workbench_state
 from .prompts import (
     CURRENT_PROMPT_VERSION,
     ENVELOPE_PROMPT_COMPAT,
@@ -221,6 +222,10 @@ class SecondaryAnalysisExecutor:
         db_path = await self._resolve_db_path(task_id)
         if db_path is None or not db_path.exists():
             return None
+        if workbench_state.store_is_uninitialized(db_path):
+            # Side-table-only artifact (see workbench_state): nothing here
+            # yet; the next bootstrap initializes the store in place.
+            return None
         reader = InvestigationGraphReader(db_path, task_id)
         return await asyncio.to_thread(reader.get_analysis, analysis_id)
 
@@ -230,6 +235,10 @@ class SecondaryAnalysisExecutor:
         """Query analyses for an evidence from SQLite (strict reader)."""
         db_path = await self._resolve_db_path(task_id)
         if db_path is None or not db_path.exists():
+            return []
+        if workbench_state.store_is_uninitialized(db_path):
+            # Side-table-only artifact (see workbench_state): nothing here
+            # yet; the next bootstrap initializes the store in place.
             return []
         reader = InvestigationGraphReader(db_path, task_id)
         return await asyncio.to_thread(reader.list_analyses, canonical_evidence_key)
@@ -243,6 +252,10 @@ class SecondaryAnalysisExecutor:
         """
         db_path = await self._resolve_db_path(task_id)
         if db_path is None or not db_path.exists():
+            return []
+        if workbench_state.store_is_uninitialized(db_path):
+            # Side-table-only artifact (see workbench_state): nothing here
+            # yet; the next bootstrap initializes the store in place.
             return []
         reader = InvestigationGraphReader(db_path, task_id)
         return await asyncio.to_thread(reader.list_task_analyses)

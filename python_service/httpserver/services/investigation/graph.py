@@ -17,6 +17,7 @@ import asyncio
 from typing import Callable
 
 from ..evidence.exceptions import EvidenceNotFoundError
+from . import workbench_state
 from .graph_reader import InvestigationGraphReader, OverlayReadResult
 from .models import (
     InvestigationGraphLink,
@@ -240,8 +241,10 @@ class InvestigationGraphService:
         db_path = investigation_db_path_for_task(task)
 
         # B1/B2: a task without an investigation.db yet yields an empty
-        # overlay; the GET never creates or migrates the store.
-        if db_path.exists():
+        # overlay; the GET never creates or migrates the store. A file
+        # holding only the pre-bootstrap workbench side tables (see
+        # workbench_state) is equally empty for read purposes.
+        if db_path.exists() and not workbench_state.store_is_uninitialized(db_path):
             overlay = await asyncio.to_thread(
                 InvestigationGraphReader(db_path, task_id).read
             )

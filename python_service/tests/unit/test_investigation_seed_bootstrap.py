@@ -255,3 +255,77 @@ async def test_reader_rejects_v3_store(tmp_path):
     reader = InvestigationGraphReader(str(legacy), "T1")
     with pytest.raises(EvidenceStoreError):
         reader.list_events()
+
+
+def _poison_side_store(inv_db):
+    """Recreate the legacy artifact: workbench side tables inside a
+    user_version=0 file the v7 store was never built into (workbench reads
+    used to materialize exactly this shape before bootstrap ran)."""
+    conn = sqlite3.connect(inv_db)
+    conn.executescript(
+        """
+        CREATE TABLE workbench_event_review (
+            task_id TEXT NOT NULL,
+            event_id TEXT NOT NULL,
+            review_status TEXT NOT NULL,
+            updated_by TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (task_id, event_id)
+        );
+        CREATE TABLE workbench_analyst_notes (
+            task_id TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            target_key TEXT NOT NULL,
+            content TEXT NOT NULL,
+            author TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (task_id, target_type, target_key)
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO workbench_event_review VALUES"
+        " ('T1', 'ev-1', 'confirmed', 'workbench', '2026-09-19T00:00:00+00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+
+async def test_bootstrap_heals_side_table_only_zero_version_store(tmp_path):
+    """Regression: a user_version=0 file holding only workbench side tables
+    made bootstrap raise "schema 0 requires manual migration" (503) even
+    though no investigation data exists. Bootstrap must heal it into a v7
+    store the workbench reader accepts, preserving the side rows."""
+    files_db, events_db = _make_task_dbs(tmp_path)
+    inv_db = tmp_path / "investigation.db"
+    _poison_side_store(inv_db)
+    service = _service(tmp_path, files_db, events_db)
+
+    overview = await service.bootstrap("T1")
+
+    assert overview["initialized"] is True
+    assert _store_version(inv_db) == 7
+    with sqlite3.connect(inv_db) as conn:
+        status = conn.execute(
+            "SELECT review_status FROM workbench_event_review"
+        ).fetchone()[0]
+    assert status == "confirmed"
+    # The strict workbench reader accepts the healed store (seeding ran:
+    # two analyzed clusters), and the side row survived the rebuild.
+    reader = InvestigationGraphReader(str(inv_db), "T1")
+    assert len(reader.list_events()) == 2
+
+
+async def test_bootstrap_still_fails_closed_on_unknown_zero_version_store(tmp_path):
+    """A version-0 file with non-side-table content is unknown provenance:
+    keep failing closed instead of initializing over it."""
+    conn = sqlite3.connect(tmp_path / "investigation.db")
+    conn.execute("CREATE TABLE mystery (id TEXT PRIMARY KEY)")
+    conn.commit()
+    conn.close()
+
+    files_db, events_db = _make_task_dbs(tmp_path)
+    service = _service(tmp_path, files_db, events_db)
+    with pytest.raises(EvidenceStoreError):
+        await service.bootstrap("T1")

@@ -18,6 +18,8 @@ from typing import Any, Dict, Optional
 
 ALLOWED_EVENT_REVIEW_STATUSES = ("draft", "review_pending", "confirmed", "rejected")
 
+_SIDE_TABLE_NAMES = {"workbench_event_review", "workbench_analyst_notes"}
+
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS workbench_event_review (
     task_id TEXT NOT NULL,
@@ -40,11 +42,49 @@ CREATE TABLE IF NOT EXISTS workbench_analyst_notes (
 """
 
 
+def store_is_uninitialized(db_path: Path) -> bool:
+    """True for the known pre-bootstrap artifact: a user_version=0 file that
+    holds nothing beyond (at most) the side tables — i.e. no investigation
+    schema ever landed there. Workbench reads used to materialize exactly
+    this shape before bootstrap ran; reads must classify it as "no
+    findings" (the next bootstrap initializes the v7 store in place) rather
+    than fail closed on the unsupported schema and wedge the workbench.
+    """
+    path = Path(db_path)
+    if not path.exists():
+        return False
+    conn = sqlite3.connect(path)
+    try:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if version != 0:
+            return False
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+    except sqlite3.DatabaseError:
+        # Not even readable as SQLite (corrupt/foreign file): not the known
+        # artifact; the caller's strict reader keeps failing closed.
+        return False
+    finally:
+        conn.close()
+    return tables <= _SIDE_TABLE_NAMES
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
+    if not Path(db_path).exists():
+        # Opening a missing file would materialize an empty user_version=0
+        # store next to a v7 store bootstrap never built; every later
+        # bootstrap then fails closed on "schema 0 requires manual
+        # migration" and the workbench never initializes for that task. The
+        # side tables only ever augment an existing investigation store.
+        raise FileNotFoundError(f"workbench side store does not exist: {db_path}")
     conn = sqlite3.connect(db_path, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA_SQL)

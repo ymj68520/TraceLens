@@ -15,6 +15,7 @@ import sqlite3
 from pathlib import Path
 
 from ..evidence.exceptions import EvidenceNotFoundError, EvidenceStoreError
+from . import workbench_state
 from .graph_reader import InvestigationGraphReader
 from .models import (
     EventEvidenceLink,
@@ -48,6 +49,10 @@ class InvestigationEventService:
         """
         db_path = await self._resolve_db_path(task_id)
         if not db_path.exists():
+            return None
+        if workbench_state.store_is_uninitialized(db_path):
+            # Side-table-only artifact (see workbench_state): no events; the
+            # next bootstrap initializes the store in place.
             return None
         return InvestigationGraphReader(db_path, task_id)
 

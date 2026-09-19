@@ -107,6 +107,13 @@ def _error(exc: Exception, not_found: str = "investigation resource not found") 
     logger.error("Investigation request failed: %s: %s", type(exc).__name__, exc, exc_info=exc)
     if isinstance(exc, EvidenceNotFoundError):
         return HTTPException(status_code=404, detail=not_found)
+    if isinstance(exc, FileNotFoundError):
+        # Workbench side tables only exist next to an initialized
+        # investigation store; writing one before bootstrap is a state
+        # conflict the client resolves by bootstrapping first (we must not
+        # let sqlite materialize an empty user_version=0 store here — that
+        # used to wedge bootstrap on "schema 0 requires manual migration").
+        return HTTPException(status_code=409, detail="investigation store not initialized")
     if isinstance(exc, (ValueError, KeyError)):
         return HTTPException(status_code=400, detail="invalid investigation request")
     if isinstance(exc, EvidenceStoreError):

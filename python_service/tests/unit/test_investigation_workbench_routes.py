@@ -184,6 +184,11 @@ def _manager_with_store(tmp_path):
     manager = _manager()
     task_dir = tmp_path / "task-dir"
     task_dir.mkdir(exist_ok=True)
+    # Side-table reads/writes require an initialized investigation store;
+    # the workbench only reaches them after bootstrap.
+    from httpserver.services.investigation.repository import InvestigationRepository
+
+    InvestigationRepository(task_dir / "investigation.db", "T1")
     manager.investigation_event_service.get_event = AsyncMock(
         return_value=_FakeEvent(event_id="ev-1", title="cluster title")
     )
@@ -266,3 +271,44 @@ def test_analyst_note_roundtrip(tmp_path):
     )
     assert missing.status_code == 200
     assert missing.json()["note"] is None
+
+
+def test_workbench_reads_never_materialize_the_side_store(tmp_path):
+    """Regression: a workbench read used to create an empty user_version=0
+    investigation.db through the side-table connection; the next bootstrap
+    then failed closed on "schema 0 requires manual migration" and the
+    workbench rendered an error for that task forever."""
+    manager = _manager()
+    task_dir = tmp_path / "task-dir"
+    manager.investigation_event_service = Mock(
+        list_events=AsyncMock(return_value=[]),
+        event_presentation=AsyncMock(return_value={}),
+    )
+    manager.cpp_backend = Mock(
+        get_task=AsyncMock(
+            return_value={
+                "id": "T1",
+                "status": "completed",
+                "output_files_db": str(task_dir / "files.db"),
+            }
+        )
+    )
+    response = _client(manager).get("/api/investigation/workbench/T1/events")
+    assert response.status_code == 200
+    assert not (task_dir / "investigation.db").exists()
+
+
+def test_side_table_write_before_bootstrap_maps_to_409(tmp_path):
+    """Writing side state with no initialized store is a state conflict,
+    not a crash — and it must not create the store file either."""
+    manager = _manager_with_store(tmp_path)
+    task_dir = tmp_path / "task-dir"
+    (task_dir / "investigation.db").unlink()
+
+    response = _client(manager).post(
+        "/api/investigation/workbench/T1/notes",
+        json={"target_type": "evidence", "target_key": "k", "content": "x"},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "investigation store not initialized"
+    assert not (task_dir / "investigation.db").exists()

@@ -31,6 +31,7 @@ from .claim_provenance_reader import ClaimProvenanceReader
 from .evidence.exceptions import EvidenceStoreError
 from .evidence.resolver import EvidenceResolver as V7EvidenceResolver
 from .investigation_errors import ClaimProvenanceNotFound, PublicationReadError
+from .investigation import workbench_state
 from .investigation_evidence import (
     CLUSTER_KEY_PREFIX,
     FILE_KEY_PREFIX,
@@ -269,6 +270,18 @@ class InvestigationService:
         finally:
             conn.close()
         if version == 7:
+            self._create_recovery_aux_table(db_path)
+            return
+        if version == 0 and workbench_state.store_is_uninitialized(db_path):
+            # Known artifact: a workbench read used to materialize its side
+            # tables in an empty file (sqlite3.connect creates the path)
+            # before bootstrap ever built the v7 store, and every later
+            # bootstrap then failed closed on schema 0 — the workbench
+            # rendered an error for those tasks. Such a file provably holds
+            # no investigation data, so the repository initializes v7 in
+            # place alongside the side tables (rows included); any other
+            # version-0 shape still fails closed below.
+            InvestigationRepository(db_path, task_id)
             self._create_recovery_aux_table(db_path)
             return
         if version != 3:
