@@ -116,11 +116,13 @@ public:
      * @param extension Comma-separated extension whitelist (alphanumeric tokens)
      * @param min_size Minimum file size in bytes (0 = no bound)
      * @param max_size Maximum file size in bytes (0 = no bound)
+     * @param exclude_extension Comma-separated extension blacklist (alphanumeric tokens)
      * @return JSON object: files, total, page, page_size, total_pages, view
      */
     static nlohmann::json get_files_paged(const std::string& files_db, int page = 1, int page_size = 100,
                                           const std::string& view = "all", const std::string& extension = "",
-                                          int64_t min_size = 0, int64_t max_size = 0);
+                                          int64_t min_size = 0, int64_t max_size = 0,
+                                          const std::string& exclude_extension = "");
 
     /**
      * @brief Get recently modified/accessed files

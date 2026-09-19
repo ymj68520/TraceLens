@@ -82,6 +82,10 @@ const Files = () => {
   const [pagedLoading, setPagedLoading] = useState(false);
   const [pagedRefreshKey, setPagedRefreshKey] = useState(0);
 
+  // 隐藏扩展名过滤（半持久：仅组件内存态，翻页/切子页签保留，刷新页面即失效）
+  const [hiddenExtensions, setHiddenExtensions] = useState('');
+  const [hiddenExtInput, setHiddenExtInput] = useState('');
+
   // AUTO-RESUME: Detect active batch job on mount
   useEffect(() => {
     if (activeBatch && activeBatch.status === 'running' && activeBatch.jobId) {
@@ -238,6 +242,7 @@ const Files = () => {
           pageSize: FILE_PAGE_SIZE,
           view: fileSubTab,
           extension: filterExtension,
+          excludeExtension: hiddenExtensions,
           minSize: filterMinSize,
           maxSize: filterMaxSize,
         });
@@ -290,7 +295,7 @@ const Files = () => {
 
     fetchPaged();
     return () => { cancelled = true; };
-  }, [taskId, activeTab, fileSubTab, pagedPage, pagedRefreshKey, filterExtension, filterMinSize, filterMaxSize]);
+  }, [taskId, activeTab, fileSubTab, pagedPage, pagedRefreshKey, filterExtension, filterMinSize, filterMaxSize, hiddenExtensions]);
 
   // 子页签/翻页时清空选择与展开态，避免索引错位到另一页的文件
   const handleSubTabChange = (id) => {
@@ -308,6 +313,42 @@ const Files = () => {
     setSelectAll(false);
     setExpandedDescriptions(new Set());
   };
+
+  // 隐藏扩展名：归一化（中英文逗号/分号/空白分隔、去前导点、小写、去重）
+  const normalizeExtensionList = (raw) => {
+    const tokens = String(raw || '')
+      .split(/[,，;；\s]+/)
+      .map((t) => t.trim().replace(/^\.+/, '').toLowerCase())
+      .filter(Boolean);
+    return [...new Set(tokens)].join(',');
+  };
+
+  const resetPagedSelection = () => {
+    setPagedPage(1);
+    setSelectedFiles(new Set());
+    setSelectAll(false);
+    setExpandedDescriptions(new Set());
+  };
+
+  // 提交隐藏过滤（回车/失焦时生效；值未变化则只回写归一化展示）
+  const commitHiddenExtensions = () => {
+    const normalized = normalizeExtensionList(hiddenExtInput);
+    setHiddenExtInput(normalized);
+    if (normalized !== hiddenExtensions) {
+      setHiddenExtensions(normalized);
+      resetPagedSelection();
+    }
+  };
+
+  const clearHiddenExtensions = () => {
+    if (!hiddenExtensions && !hiddenExtInput) return;
+    setHiddenExtensions('');
+    setHiddenExtInput('');
+    resetPagedSelection();
+  };
+
+  const hiddenExtCount = hiddenExtensions ? hiddenExtensions.split(',').length : 0;
+  const hiddenExtPending = hiddenExtInput !== hiddenExtensions;
 
   // Apply filters to files
   const getFilteredFiles = useCallback(() => {
@@ -475,7 +516,9 @@ const Files = () => {
           } else if (dllErr.response?.status === 400 || dllErr.response?.status === 404) {
             const detail = dllErr.response?.data?.detail || '';
             if (detail.includes('File not found') || detail.includes('not found')) {
-              errorMsg = `❌ DLL文件未找到\n\n${detail}\n\n建议：使用"批量提取"功能先提取文件`;
+              errorMsg = `❌ DLL文件未找到（已尝试自动提取但失败）
+
+${detail}`;
             }
           }
 
@@ -549,13 +592,13 @@ const Files = () => {
       else if (err.response?.status === 400 || err.response?.status === 404) {
         const detail = err.response?.data?.detail || err.message || '';
         if (detail.includes('No such file or directory') || detail.includes('[Errno 2]') || detail.includes('not found')) {
-          errorMsg = `❌ 文件未找到
+          errorMsg = `❌ 文件未找到（已尝试自动提取但失败）
 
 ${detail}
 
-建议操作：
-1. 使用"批量提取"功能先提取所有文件
-2. 或使用案情分析功能（会自动提取和分析文件）
+可能原因：
+1. 文件在镜像中不存在（如已被删除且未恢复）
+2. 自动提取任务失败（可在提取控制台查看详情）
 
 当前路径：${filePath}`;
         } else if (err.response?.status === 400) {
@@ -1127,6 +1170,39 @@ ${detail}
                 {st.label}
               </button>
             ))}
+
+            {/* 半持久隐藏过滤：内存态，刷新页面即失效 */}
+            <div className="ml-auto flex items-center gap-2">
+              <label htmlFor="hidden-extensions-input" className="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                隐藏扩展名
+              </label>
+              <input
+                id="hidden-extensions-input"
+                type="text"
+                value={hiddenExtInput}
+                onChange={(e) => setHiddenExtInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitHiddenExtensions();
+                  if (e.key === 'Escape') setHiddenExtInput(hiddenExtensions);
+                }}
+                onBlur={commitHiddenExtensions}
+                placeholder="如 exe,dll,tmp，回车生效"
+                className={`w-60 px-3 py-2 text-sm rounded-lg border bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
+                  hiddenExtPending
+                    ? 'border-amber-400 dark:border-amber-500 focus:ring-amber-400/50'
+                    : 'border-slate-300 dark:border-slate-600 focus:ring-primary-500/50 focus:border-primary-500'
+                }`}
+              />
+              {hiddenExtCount > 0 && (
+                <button
+                  onClick={clearHiddenExtensions}
+                  title="清除隐藏过滤"
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-full border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors whitespace-nowrap"
+                >
+                  已隐藏 {hiddenExtCount} 类 ✕
+                </button>
+              )}
+            </div>
           </div>
 
           {pagedLoading && pagedFiles.length === 0 ? (

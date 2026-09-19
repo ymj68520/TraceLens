@@ -154,9 +154,10 @@ export const getLargestFiles = async (taskId, limit = 50) => {
 };
 
 // Server-side paginated file list with view filters (all/analyzed/documents/media)
-export const getFilesPaged = async (taskId, { page = 1, pageSize = 100, view = 'all', extension = '', minSize = '', maxSize = '' } = {}) => {
+export const getFilesPaged = async (taskId, { page = 1, pageSize = 100, view = 'all', extension = '', minSize = '', maxSize = '', excludeExtension = '' } = {}) => {
   const params = { task_id: taskId, page, page_size: pageSize, view };
   if (extension) params.extension = extension;
+  if (excludeExtension) params.exclude_extension = excludeExtension;
   if (minSize) params.min_size = Math.round(parseFloat(minSize) * 1024);
   if (maxSize) params.max_size = Math.round(parseFloat(maxSize) * 1024);
   return await api.get('/api/forensics/files/paged', { params });

@@ -13,6 +13,26 @@ using json = nlohmann::json;
 // FILE ANALYSIS IMPLEMENTATION
 // ============================================================================
 
+// Split a comma-separated extension list into lowercase alphanumeric tokens
+// (shared by the IN-whitelist and NOT IN-blacklist filters)
+static std::vector<std::string> sanitize_extension_tokens(const std::string& raw) {
+    std::string sanitized;
+    for (char c : raw) {
+        if (std::isalnum(static_cast<unsigned char>(c))) {
+            sanitized += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        } else if (c == ',' || c == ' ') {
+            sanitized += ',';
+        }
+    }
+    std::vector<std::string> tokens;
+    std::stringstream ss(sanitized);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        if (!token.empty()) tokens.push_back(token);
+    }
+    return tokens;
+}
+
 json SQLiteHelper::get_file_summary(const std::string& db_path) {
     sqlite3* db;
     json result;
@@ -60,7 +80,8 @@ json SQLiteHelper::get_largest_files(const std::string& files_db, int limit) {
 
 json SQLiteHelper::get_files_paged(const std::string& files_db, int page, int page_size,
                                    const std::string& view, const std::string& extension,
-                                   int64_t min_size, int64_t max_size) {
+                                   int64_t min_size, int64_t max_size,
+                                   const std::string& exclude_extension) {
     json result;
     sqlite3* db = open_database(files_db, result);
     if (!db) return result;
@@ -79,20 +100,7 @@ json SQLiteHelper::get_files_paged(const std::string& files_db, int page, int pa
     }
 
     // Extension whitelist: keep only alphanumeric tokens, drop everything else
-    std::string sanitized;
-    for (char c : extension) {
-        if (std::isalnum(static_cast<unsigned char>(c))) {
-            sanitized += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        } else if (c == ',' || c == ' ') {
-            sanitized += ',';
-        }
-    }
-    std::vector<std::string> ext_tokens;
-    std::stringstream ext_ss(sanitized);
-    std::string token;
-    while (std::getline(ext_ss, token, ',')) {
-        if (!token.empty()) ext_tokens.push_back(token);
-    }
+    std::vector<std::string> ext_tokens = sanitize_extension_tokens(extension);
     if (!ext_tokens.empty()) {
         where += " AND lower(extension) IN (";
         for (size_t i = 0; i < ext_tokens.size(); i++) {
@@ -100,6 +108,16 @@ json SQLiteHelper::get_files_paged(const std::string& files_db, int page, int pa
             where += "'" + ext_tokens[i] + "'";
         }
         where += ")";
+    }
+    // Extension blacklist: same token sanitization, inverted match
+    std::vector<std::string> exclude_tokens = sanitize_extension_tokens(exclude_extension);
+    if (!exclude_tokens.empty()) {
+        where += " AND (extension IS NULL OR lower(extension) NOT IN (";
+        for (size_t i = 0; i < exclude_tokens.size(); i++) {
+            if (i > 0) where += ",";
+            where += "'" + exclude_tokens[i] + "'";
+        }
+        where += "))";
     }
     if (min_size > 0) where += " AND size >= " + std::to_string(min_size);
     if (max_size > 0) where += " AND size <= " + std::to_string(max_size);

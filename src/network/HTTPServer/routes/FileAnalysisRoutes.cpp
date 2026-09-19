@@ -33,6 +33,7 @@ FileAnalysisRoutes::FileAnalysisRoutes(crow::App<>& app) {
          {"page_size", "query", "Rows per page (1-200, default 100)", false, "integer"},
          {"view", "query", "all | analyzed | documents | media", false, "string"},
          {"extension", "query", "Comma-separated extension whitelist", false, "string"},
+         {"exclude_extension", "query", "Comma-separated extension blacklist (hidden)", false, "string"},
          {"min_size", "query", "Minimum size in bytes", false, "integer"},
          {"max_size", "query", "Maximum size in bytes", false, "integer"}},
         {{200, "Paged file list with total count"}}
@@ -104,6 +105,7 @@ crow::response FileAnalysisRoutes::handle_files_paged(const crow::request& req) 
     try { if (params.get("page_size")) page_size = std::stoi(params.get("page_size")); } catch (...) { page_size = 100; }
     std::string view = params.get("view") ? params.get("view") : "all";
     std::string extension = params.get("extension") ? params.get("extension") : "";
+    std::string exclude_extension = params.get("exclude_extension") ? params.get("exclude_extension") : "";
     int64_t min_size = 0;
     int64_t max_size = 0;
     try { if (params.get("min_size")) min_size = std::stoll(params.get("min_size")); } catch (...) { min_size = 0; }
@@ -111,7 +113,7 @@ crow::response FileAnalysisRoutes::handle_files_paged(const crow::request& req) 
 
     try {
         std::string files_db = RouteHelpers::get_database_path(task_id, "files");
-        json result = SQLiteHelper::get_files_paged(files_db, page, page_size, view, extension, min_size, max_size);
+        json result = SQLiteHelper::get_files_paged(files_db, page, page_size, view, extension, min_size, max_size, exclude_extension);
         res.set_header("Content-Type", "application/json");
         res.write(result.dump());
     } catch (const std::exception& e) {
