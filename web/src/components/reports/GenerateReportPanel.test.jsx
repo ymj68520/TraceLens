@@ -105,10 +105,27 @@ describe('GenerateReportPanel', () => {
             />,
         );
         await submit();
-        expect(await screen.findByTestId('generate-admission-error')).toHaveTextContent('HTTP admission failure');
-        expect(screen.getByText(/task has no report evidence/)).toBeInTheDocument();
+        const alert = await screen.findByTestId('generate-admission-error');
+        expect(alert).toHaveTextContent('HTTP 409');
+        // 409 映射成可操作指引，而不是裸英文 detail
+        expect(alert).toHaveTextContent(/调查工作台/);
+        expect(alert).toHaveTextContent(/正文证据/);
         // durable 状态区不出现（admission 从未成功）
         expect(screen.queryByTestId('generate-status')).not.toBeInTheDocument();
+    });
+
+    test('unmapped admission detail is passed through verbatim', async () => {
+        const generate = vi.fn().mockRejectedValue({ status: 404, data: { detail: 'task not found' } });
+        render(
+            <GenerateReportPanel
+                taskId="t1"
+                evidenceLoader={vi.fn().mockResolvedValue([])}
+                generate={generate}
+                fetchGeneration={vi.fn()}
+            />,
+        );
+        await submit();
+        expect(await screen.findByTestId('generate-admission-error')).toHaveTextContent('task not found');
     });
 
     test('empty source set shows explicit guidance instead of "all case information"', async () => {

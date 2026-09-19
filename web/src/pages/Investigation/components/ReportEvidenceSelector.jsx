@@ -8,6 +8,10 @@ export default function ReportEvidenceSelector({ taskId, evidenceKey, value, onC
   const [note, setNote] = useState(value?.report_note || '');
   const [saving, setSaving] = useState(false);
 
+  // MVP (§4.2)：事件/簇证据不作为报告证据，服务端会 422 拒绝——
+  // 不再渲染可点击的加入按钮，避免"加入成功但生成永远 409"的陷阱。
+  const isClusterKey = typeof evidenceKey === 'string' && evidenceKey.startsWith('cluster:');
+
   useEffect(() => {
     setUsage(value?.usage || 'excluded');
     setNote(value?.report_note || '');
@@ -34,6 +38,14 @@ export default function ReportEvidenceSelector({ taskId, evidenceKey, value, onC
       setSaving(false);
     }
   };
+
+  if (isClusterKey) {
+    return (
+      <div data-testid="report-evidence-cluster-note" className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-3 text-xs text-slate-500 dark:text-slate-400">
+        事件簇证据不作为报告证据（MVP 剪裁）。生成叙事报告前，请将<strong className="mx-1">文件证据</strong>标记为正文/附件证据。
+      </div>
+    );
+  }
 
   return (
     <div>

@@ -461,15 +461,27 @@ async def workbench_get_note(task_id: str, target_type: str = Query(...), target
 async def workbench_set_report_evidence(task_id: str, request: WorkbenchReportEvidenceRequest, manager=Depends(_manager)):
     try:
         if request.usage == "excluded":
+            # Excluded stays available for cluster keys too: it is the cleanup
+            # path for legacy rows the generator skips anyway.
             item = await manager.report_evidence_service.update(
                 task_id, request.evidence_key, report_status="excluded", updated_by=request.added_by
             )
         else:
+            # MVP (mvp-phase1-acceptance SPEC §4.2): events are never report
+            # evidence. Mirrors the 422 on POST /api/reports/evidence — a
+            # cluster row here would silently 409 every generation attempt.
+            if request.evidence_key.startswith("cluster:"):
+                raise HTTPException(
+                    status_code=422,
+                    detail="event cluster evidence is not allowed in this build (MVP)",
+                )
             item = await manager.report_evidence_service.add(
                 task_id, request.evidence_key, report_status=request.usage,
                 analysis_id=request.analysis_id, added_by=request.added_by
             )
         return {"success": True, "report_evidence": _dump(item)}
+    except HTTPException:
+        raise
     except Exception as exc:
         raise _error(exc, "report evidence not found") from exc
 

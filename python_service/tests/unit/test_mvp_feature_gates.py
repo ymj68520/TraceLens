@@ -181,6 +181,25 @@ def test_report_evidence_accepts_file_key():
     assert _canonical_key("file:/case/a.txt").startswith("file:")
 
 
+def test_workbench_report_evidence_rejects_cluster_key():
+    """SPEC §4.2: the workbench PUT must mirror the 422 on
+    POST /api/reports/evidence -- a stored cluster row would silently 409
+    every generation attempt (admission skips cluster keys)."""
+    app = FastAPI()
+    app.include_router(workbench_router, prefix="/api/investigation/workbench")
+    app.dependency_overrides[_manager] = lambda: object()
+    try:
+        client = TestClient(app)
+        resp = client.put(
+            "/api/investigation/workbench/t1/report-evidence",
+            json={"evidence_key": "cluster:v1:28331457:CREATED", "usage": "main"},
+        )
+        assert resp.status_code == 422
+        assert "cluster" in resp.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_bootstrap_seeds_clusters_with_default_flags(tmp_path):
     """With the default MVP flags, bootstrap still seeds cluster events (it
     reuses the clusters' existing LLM analysis, never calls an LLM) so the

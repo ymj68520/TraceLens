@@ -25,6 +25,12 @@ const ERROR_HINTS = {
     execution_error: '生成执行失败，可重新发起生成。',
 };
 
+// admission 阶段的 HTTP 错误（409/404 等）没有 error_code，按 detail 映射成
+// 可操作的指引；未命中的 detail 原样透出。
+const ADMISSION_HINTS = {
+    'task has no report evidence': '当前任务没有可生成的报告证据：请先在调查工作台打开某个证据，将其标记为"正文证据"或"附件证据"（事件簇证据不参与报告），再回到本页生成。',
+};
+
 const STATUS_TEXT = {
     admitted: '排队中',
     running: '生成中',
@@ -199,8 +205,11 @@ const GenerateReportPanel = ({
 
             {admissionError && (
                 <div role="alert" className="text-xs text-rose-600 dark:text-rose-400" data-testid="generate-admission-error">
-                    生成请求失败（HTTP admission failure，HTTP {admissionError?.status || '错误'}）：
-                    {admissionError?.data?.detail || admissionError?.message || '请稍后重试'}
+                    生成请求失败（HTTP {admissionError?.status || '错误'}）：
+                    {ADMISSION_HINTS[admissionError?.data?.detail]
+                        || admissionError?.data?.detail
+                        || admissionError?.message
+                        || '请稍后重试'}
                 </div>
             )}
 
