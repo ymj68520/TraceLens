@@ -204,6 +204,13 @@ class Settings(BaseSettings):
     # Videos longer than this get metadata-only descriptions ("待补析"); 0 = no cap.
     llm_video_max_duration: int = Field(default=1800, ge=0, alias="LLM_VIDEO_MAX_DURATION_SEC")
 
+    # Audio transcription (2026-09-19): SenseVoice-small via sherpa-onnx on CPU.
+    # Audio longer than the cap gets a pending_backfill transcript row and a
+    # metadata-only description; 0 = no cap. Model dir holds the SenseVoice
+    # ONNX model + silero VAD; empty = <python_service>/models/audio.
+    llm_audio_max_duration: int = Field(default=3600, ge=0, alias="LLM_AUDIO_MAX_DURATION_SEC")
+    audio_stt_model_dir: str = Field(default="", alias="AUDIO_STT_MODEL_DIR")
+
     # Redis Settings (optional; IngestionJobManager falls back to in-memory)
     redis_url: str = Field(default="redis://localhost:6379", alias="REDIS_URL")
 

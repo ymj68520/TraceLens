@@ -286,17 +286,42 @@ async def analyze_content(
                     )
             else:
                 from ...services.llm.video_analyzer import VIDEO_EXTENSIONS, analyze_video_file
+                from ...services.llm.audio_analyzer import AUDIO_EXTENSIONS, analyze_audio_file
+
+                media_files_db = ""
+                if request.task_id:
+                    try:
+                        from ...services import task_store
+
+                        media_files_db = str(await task_store.resolve_task_files_db(request.task_id))
+                    except Exception as exc:
+                        logger.warning(f"media analysis: files db resolve failed: {exc}")
 
                 if file_ext in VIDEO_EXTENSIONS:
                     # Video content analysis: segment-sampled multi-image
-                    # vision + synthesis. Raw video bytes never reach a text
-                    # model (2026-09-19 design).
+                    # vision + soundtrack transcription + synthesis. Raw video
+                    # bytes never reach a text model (2026-09-19 design).
                     logger.info(f"Auto-detected video file: {request.file_path}, using segment vision analysis")
                     result, extraction_method = await analyze_video_file(
                         request.file_path,
                         llm_service=service_manager.llm_service,
                         settings=settings,
                         user_prompt=request.prompt or "",
+                        files_db_path=media_files_db,
+                        task_id=request.task_id or "",
+                        trigger_source="interactive",
+                    )
+                elif file_ext in AUDIO_EXTENSIONS:
+                    # Audio content analysis: SenseVoice STT + synthesis.
+                    logger.info(f"Auto-detected audio file: {request.file_path}, using STT analysis")
+                    result, extraction_method = await analyze_audio_file(
+                        request.file_path,
+                        llm_service=service_manager.llm_service,
+                        settings=settings,
+                        user_prompt=request.prompt or "",
+                        files_db_path=media_files_db,
+                        task_id=request.task_id or "",
+                        trigger_source="interactive",
                     )
                 else:
                     doc_locator = get_document_extractor_locator()

@@ -2,7 +2,7 @@
 #include "FileContentExtractor.h"
 #include "FileTextProcessor.h"
 #include "MarkitdownProxy.h"
-#include "VideoAnalysisProxy.h"
+#include "MediaAnalysisProxy.h"
 #include "json.hpp"
 #include "ConfigManager/ConfigManager.h"
 #include "../../core/Logger/Logger.h"
@@ -112,6 +112,23 @@ bool isVideoExtension(const std::string& ext) {
     return videoExtensions().count(ext) > 0;
 }
 
+// Audio extensions routed to the Python SenseVoice STT service. Mirrors the
+// classifier's audio list (common containers); exotics stay metadata-only.
+// This also closes the raw-read hole for non-markitdown audio (.m4a/.amr/…)
+// and upgrades .mp3/.wav from metadata-only markitdown to real transcription.
+const std::set<std::string>& audioExtensions() {
+    static const std::set<std::string> exts = {
+        ".mp3", ".wav", ".flac", ".aac", ".ogg", ".wma", ".m4a",
+        ".opus", ".ape", ".alac", ".aiff", ".aif", ".amr", ".ac3"
+    };
+    return exts;
+}
+
+bool isAudioExtension(const std::string& ext) {
+    if (ext.empty()) return false;
+    return audioExtensions().count(ext) > 0;
+}
+
 std::string mimeTypeForExtension(const std::string& ext) {
     if (ext == ".png") return "image/png";
     if (ext == ".gif") return "image/gif";
@@ -216,6 +233,13 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
     // Archive/Binary/Database guard below).
     if (isVideoExtension(ext)) {
         return analyzeVideoFile(filePath, maxContentLength);
+    }
+
+    // Audio goes to the Python SenseVoice STT service — closes the raw-read
+    // hole for non-markitdown containers and upgrades .mp3/.wav from
+    // metadata-only markitdown to real transcription.
+    if (isAudioExtension(ext)) {
+        return analyzeAudioFile(filePath, maxContentLength);
     }
 
     // Try markitdown proxy first (converts via Python service).
@@ -535,8 +559,8 @@ AnalysisResult FileAnalyzer::analyzeVideoFile(const std::string& filePath,
         return meta.str();
     };
 
-    auto& proxy = VideoAnalysisProxy::instance();
-    VideoDescriptionResult described = proxy.describeVideo(filePath);
+    auto& proxy = MediaAnalysisProxy::instance();
+    MediaDescriptionResult described = proxy.describeVideo(filePath);
     if (!described.ok || described.description.empty()) {
         LOG_WARNING("Video analysis failed for " + filePath +
                     " (" + described.error + ") — falling back to metadata-only analysis");
@@ -557,6 +581,64 @@ AnalysisResult FileAnalyzer::analyzeVideoFile(const std::string& filePath,
     }
     result.modelUsed = described.model.empty() ? "video-segment-vision" : described.model;
     LOG_INFO("Video described " + filePath + " via " + described.extraction_method +
+             " model=" + result.modelUsed);
+    return finish(true);
+}
+
+AnalysisResult FileAnalyzer::analyzeAudioFile(const std::string& filePath,
+                                              size_t maxContentLength) {
+    AnalysisResult result;
+    result.filePath = filePath;
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+    auto finish = [&](bool success) {
+        auto endTime = std::chrono::high_resolution_clock::now();
+        result.analysisTimeMs =
+            std::chrono::duration<double, std::milli>(endTime - startTime).count();
+        result.success = success;
+        return result;
+    };
+
+    if (!fs::exists(filePath)) {
+        result.errorMessage = "File not found: " + filePath;
+        return finish(false);
+    }
+    result.fileSize = static_cast<int64_t>(fs::file_size(filePath));
+    result.fileType = FileContentExtractor::detectFileType(filePath);
+
+    // Metadata-only fallback (mirrors the SPEC D2 image fallback): when the
+    // STT service is unreachable or fails, the description is based on file
+    // metadata only — never on raw audio bytes masquerading as text.
+    auto metadataContent = [&]() {
+        std::ostringstream meta;
+        meta << "File: " << filePath << "\n"
+             << "Type: " << result.fileType << "\n"
+             << "Size: " << result.fileSize << " bytes\n\n"
+             << "[Audio transcription unavailable; analysis based on "
+                "metadata only.]";
+        return meta.str();
+    };
+
+    auto& proxy = MediaAnalysisProxy::instance();
+    MediaDescriptionResult described = proxy.describeAudio(filePath);
+    if (!described.ok || described.description.empty()) {
+        LOG_WARNING("Audio analysis failed for " + filePath +
+                    " (" + described.error + ") — falling back to metadata-only analysis");
+        if (!finishTextAnalysis(result, metadataContent(), maxContentLength)) {
+            result.errorMessage = described.error.empty()
+                                      ? "Audio analysis returned no description"
+                                      : described.error;
+            return finish(false);
+        }
+        return finish(true);
+    }
+
+    parseAnalysisResponse(described.description, result);
+    if (result.description.empty()) {
+        result.description = described.description;
+    }
+    result.modelUsed = described.model.empty() ? "audio-transcript" : described.model;
+    LOG_INFO("Audio described " + filePath + " via " + described.extraction_method +
              " model=" + result.modelUsed);
     return finish(true);
 }

@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from httpserver.services.llm import video_analyzer
+from httpserver.services.llm import audio_analyzer
 from httpserver.services.llm.video_analyzer import plan_segments
 
 
@@ -120,6 +121,14 @@ class _Settings:
     llm_video_fps = 1
     llm_video_segment_seconds = 15
     llm_video_max_duration = 1800
+    llm_audio_max_duration = 3600
+    audio_stt_model_dir = ""
+
+
+def _no_transcript(*a, **k):
+    """Stub: video tests below exercise the frames path with STT unavailable."""
+    from httpserver.services.llm.audio_analyzer import TranscriptionOutcome
+    return TranscriptionOutcome(unavailable_reason="stub: no STT in unit test")
 
 
 @pytest.fixture
@@ -205,6 +214,7 @@ def test_zero_cap_disables_too_long_skip(fake_probe, monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_segment_loop_calls_vision_then_synthesis(fake_probe, monkeypatch, tmp_path):
+    monkeypatch.setattr(audio_analyzer, "transcribe_source", _no_transcript)
     fake_probe["install"](40)  # 15+15+10s → 3 segments
     monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/ffmpeg" if name == "ffmpeg" else None)
 
@@ -247,6 +257,7 @@ def test_segment_loop_calls_vision_then_synthesis(fake_probe, monkeypatch, tmp_p
 
 
 def test_empty_segment_answer_is_retried(fake_probe, monkeypatch, tmp_path):
+    monkeypatch.setattr(audio_analyzer, "transcribe_source", _no_transcript)
     fake_probe["install"](15)
     monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/ffmpeg" if name == "ffmpeg" else None)
     monkeypatch.setattr(
@@ -276,6 +287,7 @@ def test_empty_segment_answer_is_retried(fake_probe, monkeypatch, tmp_path):
 
 
 def test_failing_segment_degrades_to_marker(fake_probe, monkeypatch, tmp_path):
+    monkeypatch.setattr(audio_analyzer, "transcribe_source", _no_transcript)
     fake_probe["install"](30)
     monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/ffmpeg" if name == "ffmpeg" else None)
 

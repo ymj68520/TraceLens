@@ -64,6 +64,18 @@ public:
      */
     AnalysisResult analyzeVideoFile(const std::string& filePath,
                                     size_t maxContentLength = 10000);
+
+    /**
+     * @brief Transcribe + describe an audio file via the Python STT service.
+     *
+     * SenseVoice transcription with silero VAD chunking; the transcript is
+     * stored in the task files DB and the description carries the analysis
+     * plus duration-banded key excerpts. On service failure this degrades to
+     * a local metadata-only text analysis — raw audio bytes are never fed to
+     * any text model (2026-09-19 audio analysis design).
+     */
+    AnalysisResult analyzeAudioFile(const std::string& filePath,
+                                    size_t maxContentLength = 10000);
     
     /**
      * @brief Analyze multiple files

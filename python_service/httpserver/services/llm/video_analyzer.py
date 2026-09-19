@@ -119,9 +119,15 @@ def _segment_prompt(index: int, total: int, plan: SegmentPlan, fps: int, case_co
     )
 
 
-def _synthesis_prompt(video_name: str, case_context: str, user_prompt: str) -> str:
+def _synthesis_prompt(video_name: str, case_context: str, user_prompt: str,
+                      has_audio_transcript: bool = False) -> str:
     ctx = f"\n案情背景: {case_context}\n" if case_context else ""
     extra = f"\n分析人员补充要求: {user_prompt}\n" if user_prompt else ""
+    audio_note = (
+        "请按时间线整合画面描述与音轨转写,交叉印证时间点与事件。\n\n"
+        if has_audio_transcript else
+        "注意:音频轨道未做分析,描述中不要臆造任何声音信息。\n\n"
+    )
     return (
         f"你是资深数字取证分析师。以下是对视频“{video_name}”的逐段时间线描述与文件元数据。"
         f"{ctx}{extra}"
@@ -130,7 +136,7 @@ def _synthesis_prompt(video_name: str, case_context: str, user_prompt: str) -> s
         "DESCRIPTION: 结构化最终描述——先整体叙述，再按时间线归纳各段要点，"
         "列出画面中出现的文字、账号、设备、位置等关键证据线索\n"
         "KEYWORDS: 逗号分隔的关键词\n\n"
-        "注意：音频轨道未做分析，描述中不要臆造任何声音信息。"
+        f"{audio_note}"
     )
 
 
@@ -251,6 +257,9 @@ async def analyze_video_file(
     max_duration: Optional[int] = None,
     case_context: str = "",
     user_prompt: str = "",
+    files_db_path: str = "",
+    task_id: str = "",
+    trigger_source: str = "pipeline",
 ) -> Tuple[Dict[str, Any], str]:
     """Analyze one video end-to-end. Returns ``(result, extraction_method)``.
 
@@ -258,7 +267,8 @@ async def analyze_video_file(
     wiring points (interactive /api/llm/analyze and the case-analysis batch)
     can persist it unchanged. ``extraction_method`` records provenance, e.g.
     ``video_segment_vision(fps=1,segs=4,frames=52)``; the metadata-only skip
-    path returns ``video_metadata_only``.
+    path returns ``video_metadata_only``. The soundtrack is transcribed via
+    the audio analyzer and woven into the synthesis input when available.
     """
     if settings is None:
         from ...config import get_settings
@@ -295,6 +305,17 @@ async def analyze_video_file(
             file_path, ffprobe_data, "*无法读取视频时长,未做内容级分析。*"
         )
 
+    # Soundtrack transcription (same STT path as standalone audio); when the
+    # engine is unavailable the description keeps the explicit "未分析" note.
+    from .audio_analyzer import transcribe_source
+
+    outcome = await asyncio.to_thread(
+        transcribe_source, file_path,
+        settings=settings, source="video-track",
+        files_db_path=files_db_path, task_id=task_id,
+        trigger_source=trigger_source,
+    )
+
     # Serial segment loop (agreed design): one multi-image call per segment,
     # ffmpeg decoding off-loaded to a worker thread, LLM calls on the loop.
     segment_notes: List[str] = []
@@ -317,16 +338,35 @@ async def analyze_video_file(
 
     metadata_text = _metadata_markdown(file_path, ffprobe_data)
     timeline = "\n\n".join(segment_notes)
+    if outcome.record is not None:
+        from .audio_analyzer import _disclosure, _timeline_block
+
+        audio_block = (
+            f"{_disclosure(outcome.record, outcome.reused)}\n\n"
+            f"=== 音轨转写(带时间戳)===\n{_timeline_block(outcome.record)}"
+        )
+        audio_method = (
+            f"+audio_transcript(coverage={float(outcome.record.get('coverage', 0.0)):.2f})"
+        )
+    else:
+        audio_block = "音频轨道未分析。"
+        audio_method = ""
     content = (
         f"{metadata_text}\n\n"
-        f"抽帧密度: {fps} 帧/秒,共 {len(plans)} 段。音频轨道未分析。\n\n"
+        f"抽帧密度: {fps} 帧/秒,共 {len(plans)} 段。{audio_block}\n\n"
         f"=== 各段画面时间线描述 ===\n{timeline}"
     )
     result = await llm_service.analyze(
         content=content,
         model_type="text",
-        prompt=_synthesis_prompt(os.path.basename(file_path), case_context, user_prompt),
+        prompt=_synthesis_prompt(
+            os.path.basename(file_path), case_context, user_prompt,
+            has_audio_transcript=outcome.record is not None,
+        ),
     )
 
-    method = f"video_segment_vision(fps={fps},segs={len(plans)},frames={frames_used})"
+    method = (
+        f"video_segment_vision(fps={fps},segs={len(plans)},frames={frames_used})"
+        f"{audio_method}"
+    )
     return result, method

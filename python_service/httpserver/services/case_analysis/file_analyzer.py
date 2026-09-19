@@ -101,6 +101,7 @@ class FileAnalyzer:
                     file_ext = Path(file_path).suffix.lower()
                     is_image = file_ext in IMAGE_EXTENSIONS
                     from ..llm.video_analyzer import VIDEO_EXTENSIONS
+                    from ..llm.audio_analyzer import AUDIO_EXTENSIONS
 
                     # Resolve full file path
                     full_path = file_path
@@ -121,7 +122,7 @@ class FileAnalyzer:
                     extractor = doc_locator.get_extractor(full_path)
 
                     if file_ext in VIDEO_EXTENSIONS:
-                        # 视频内容分析：分段抽帧多图视觉 + 合成，串行；
+                        # 视频内容分析：分段抽帧多图视觉 + 音轨转写 + 合成，串行；
                         # 原始视频字节不进文本模型（2026-09-19 设计）。
                         from ..llm.video_analyzer import analyze_video_file
 
@@ -130,6 +131,21 @@ class FileAnalyzer:
                             llm_service=self._llm_service,
                             settings=self.settings,
                             case_context=case_description,
+                            files_db_path=files_db_path,
+                            task_id=task_id,
+                        )
+                    elif file_ext in AUDIO_EXTENSIONS:
+                        # 音频内容分析：SenseVoice 转写 + 合成；转写全文入
+                        # audio_transcripts 表（2026-09-19 设计）。
+                        from ..llm.audio_analyzer import analyze_audio_file
+
+                        result, extraction_method = await analyze_audio_file(
+                            full_path,
+                            llm_service=self._llm_service,
+                            settings=self.settings,
+                            case_context=case_description,
+                            files_db_path=files_db_path,
+                            task_id=task_id,
                         )
                     elif extractor:
                         try:
@@ -391,7 +407,9 @@ class FileAnalyzer:
         file_ext = Path(file_path).suffix.lower()
         is_image = file_ext in IMAGE_EXTENSIONS
         from ..llm.video_analyzer import VIDEO_EXTENSIONS
+        from ..llm.audio_analyzer import AUDIO_EXTENSIONS
         is_video = file_ext in VIDEO_EXTENSIONS
+        is_audio = file_ext in AUDIO_EXTENSIONS
 
         extraction_method = ""
 
@@ -400,7 +418,7 @@ class FileAnalyzer:
         doc_locator = get_document_extractor_locator()
         extractor = doc_locator.get_extractor(file_path)
 
-        if extractor and not is_video:
+        if extractor and not (is_video or is_audio):
             try:
                 content, extraction_method = await extractor.extract_to_markdown_detailed(file_path)
                 # 嵌入媒体增强：截图型 doc/docx 文本层近空时，
@@ -421,7 +439,7 @@ class FileAnalyzer:
 
         result: Dict[str, Any] = {}
         if is_video:
-            # 视频内容分析：分段抽帧多图视觉 + 合成，串行；
+            # 视频内容分析：分段抽帧多图视觉 + 音轨转写 + 合成，串行；
             # 原始视频字节不进文本模型（2026-09-19 设计）。
             from ..llm.video_analyzer import analyze_video_file
 
@@ -434,6 +452,26 @@ class FileAnalyzer:
                 settings=self.settings,
                 case_context=case_description,
                 user_prompt=video_prompt,
+                files_db_path=files_db_path,
+                task_id=task_id,
+                trigger_source="reanalyze",
+            )
+        elif is_audio:
+            # 音频内容分析：SenseVoice 转写 + 合成（2026-09-19 设计）。
+            from ..llm.audio_analyzer import analyze_audio_file
+
+            audio_prompt = user_hint
+            if kg_context:
+                audio_prompt = f"{audio_prompt}\n相关上下文: {kg_context}" if audio_prompt else f"相关上下文: {kg_context}"
+            result, extraction_method = await analyze_audio_file(
+                file_path,
+                llm_service=self._llm_service,
+                settings=self.settings,
+                case_context=case_description,
+                user_prompt=audio_prompt,
+                files_db_path=files_db_path,
+                task_id=task_id,
+                trigger_source="reanalyze",
             )
         elif not extractor:
             if is_image:
@@ -479,7 +517,7 @@ class FileAnalyzer:
                 content = await self._llm_service.read_file_content(file_path)
                 logger.info(f"Read {len(content)} characters from {file_path}")
 
-        if (extractor or not is_image) and not is_video:
+        if (extractor or not is_image) and not (is_video or is_audio):
             # Text analysis path (extractor content or raw text)
             from ...prompts import (
                 FILE_REANALYSIS_HEADER,

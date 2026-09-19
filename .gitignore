@@ -460,3 +460,6 @@ src/http_agent/tests/test_http_agent.cpp.pre-gtest
 /web/**/Makefile
 /web/**/*.o
 /web/**/*.o.d
+
+# Local STT models (SenseVoice/VAD) — downloaded, never committed
+python_service/models/

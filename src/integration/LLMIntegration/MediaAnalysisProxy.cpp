@@ -1,4 +1,4 @@
-#include "VideoAnalysisProxy.h"
+#include "MediaAnalysisProxy.h"
 #include "../../core/Logger/Logger.h"
 #include "ConfigManager/ConfigManager.h"
 #include <httplib.h>
@@ -10,19 +10,20 @@ namespace fs = std::filesystem;
 namespace forensics {
 namespace llm {
 
-VideoAnalysisProxy::VideoAnalysisProxy(std::string pythonServiceUrl, HttpPoster poster)
+MediaAnalysisProxy::MediaAnalysisProxy(std::string pythonServiceUrl, HttpPoster poster)
     : pythonServiceUrl_(std::move(pythonServiceUrl)),
       http_poster_(std::move(poster)) {}
 
-VideoAnalysisProxy& VideoAnalysisProxy::instance() {
-    static VideoAnalysisProxy instance(
+MediaAnalysisProxy& MediaAnalysisProxy::instance() {
+    static MediaAnalysisProxy instance(
         ConfigManager::instance().getPythonServiceUrl()
     );
     return instance;
 }
 
-VideoDescriptionResult VideoAnalysisProxy::describeVideo(const std::string& filePath) {
-    VideoDescriptionResult result;
+MediaDescriptionResult MediaAnalysisProxy::describe(
+    const std::string& endpoint, const std::string& filePath) {
+    MediaDescriptionResult result;
     try {
         const auto file = fs::weakly_canonical(fs::path(filePath));
         // Same workspace anchor discipline as markitdown's single-file
@@ -35,15 +36,15 @@ VideoDescriptionResult VideoAnalysisProxy::describeVideo(const std::string& file
 
         httplib::Result res;
         if (http_poster_) {
-            res = http_poster_("/api/video-analysis/describe", payload, "application/json");
+            res = http_poster_(endpoint, payload, "application/json");
         } else {
             httplib::Client cli(pythonServiceUrl_);
             cli.set_connection_timeout(10);
-            // A sub-30min video at the default sampling density takes minutes
-            // to tens of minutes of serial segment calls; allow one hour.
+            // Media analysis runs serial segment/segment-chunk LLM calls; a
+            // sub-cap file takes minutes to tens of minutes. Allow one hour.
             cli.set_read_timeout(3600);
 
-            res = cli.Post("/api/video-analysis/describe", payload, "application/json");
+            res = cli.Post(endpoint, payload, "application/json");
         }
 
         if (!res) {
@@ -61,11 +62,12 @@ VideoDescriptionResult VideoAnalysisProxy::describeVideo(const std::string& file
 
         const auto response = nlohmann::json::parse(res->body);
         result.ok = response.value("success", false);
-        result.analyzed = response.value("extraction_method", "") != "video_metadata_only";
+        const auto method = response.value("extraction_method", "");
+        result.extraction_method = method;
+        result.analyzed = method.find("metadata_only") == std::string::npos;
         result.description = response.value("description", "");
         result.summary = response.value("summary", "");
         result.model = response.value("model", "");
-        result.extraction_method = response.value("extraction_method", "");
         if (!result.ok && result.error.empty()) {
             result.error = "service reported success=false";
         }
@@ -74,6 +76,14 @@ VideoDescriptionResult VideoAnalysisProxy::describeVideo(const std::string& file
         result.error = ex.what();
         return result;
     }
+}
+
+MediaDescriptionResult MediaAnalysisProxy::describeVideo(const std::string& filePath) {
+    return describe("/api/video-analysis/describe", filePath);
+}
+
+MediaDescriptionResult MediaAnalysisProxy::describeAudio(const std::string& filePath) {
+    return describe("/api/audio-analysis/transcribe", filePath);
 }
 
 } // namespace llm
