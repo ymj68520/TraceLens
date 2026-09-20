@@ -89,6 +89,10 @@ class ParseResponse(BaseModel):
     error: Optional[str] = Field(default=None, description="Error message if failed")
     slides: Optional[list[Slide]] = Field(default=None, description="PPTX slides")
     sheets: Optional[list[Sheet]] = Field(default=None, description="Excel sheets")
+    images: Optional[list[str]] = Field(
+        default=None,
+        description="Embedded pictures (e.g. legacy .doc), in document order",
+    )
 
 
 @router.post("/parse", response_model=ParseResponse)
@@ -121,11 +125,14 @@ async def parse_office_file(request: ParseRequest) -> ParseResponse:
         content = await service.parse_file(str(path))
         slides: Optional[list[Slide]] = None
         sheets: Optional[list[Sheet]] = None
+        images: Optional[list[str]] = None
 
         if suffix == ".pptx":
             slides = [Slide(**s) for s in await service.extract_slides(str(path))]
         elif suffix in (".xlsx", ".xls"):
             sheets = [Sheet(**s) for s in await service.extract_sheets(str(path))]
+        elif suffix == ".doc":
+            images = await service.extract_doc_images(str(path)) or None
 
         return ParseResponse(
             success=True,
@@ -134,6 +141,7 @@ async def parse_office_file(request: ParseRequest) -> ParseResponse:
             error=None,
             slides=slides,
             sheets=sheets,
+            images=images,
         )
 
     except FileNotFoundError as e:

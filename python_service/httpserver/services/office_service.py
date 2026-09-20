@@ -51,6 +51,15 @@ class OfficeService:
     _SHEET_MAX_ROWS = 500
     _SHEET_MAX_COLS = 64
 
+    # Legacy .doc files are often pure screenshot collections (the text is
+    # inside the images), so extract more images and tolerate a bigger
+    # payload than the per-slide budget.
+    _DOC_MAX_IMAGES = 50
+    _DOC_IMAGE_MAX_DIM = 1100
+    _DOC_IMAGE_JPEG_QUALITY = 72
+    _DOC_IMAGES_BUDGET_BYTES = 12 * 1024 * 1024
+    _DOC_MIN_IMAGE_BYTES = 2048
+
     def __init__(self):
         """Initialize the Office parsing service."""
         pass
@@ -123,6 +132,128 @@ class OfficeService:
         if suffix == ".xls":
             return await asyncio.to_thread(self._sheets_xls, file_path)
         return []
+
+    async def extract_doc_images(self, file_path: str) -> list[str]:
+        """Embedded pictures of a legacy .doc as data URIs, in stream order."""
+        if Path(file_path).suffix.lower() != ".doc":
+            return []
+        return await asyncio.to_thread(self._doc_images, file_path)
+
+    def _doc_images(self, file_path: str) -> list[str]:
+        """Carve PNG/JPEG blips out of the .doc OLE streams.
+
+        antiword renders embedded pictures as [PIC] markers in document
+        order; the carved images follow the same Data-stream order, so the
+        web preview can interleave them back into the text.
+        """
+        try:
+            import olefile
+
+            with olefile.OleFileIO(file_path) as ole:
+                images: list[str] = []
+                budget = self._DOC_IMAGES_BUDGET_BYTES
+                for entry in ole.listdir():
+                    stream = "/".join(entry)
+                    try:
+                        raw = ole.openstream(entry).read()
+                    except Exception:
+                        continue
+                    for blob in self._carve_images(raw):
+                        uri = self._blob_data_uri(blob)
+                        if uri is None:
+                            continue
+                        images.append(uri)
+                        budget -= len(uri)
+                        if (
+                            len(images) >= self._DOC_MAX_IMAGES
+                            or budget <= 0
+                        ):
+                            return images
+                return images
+        except Exception as e:
+            logger.error(f"Error extracting images from {file_path}: {e}")
+            return []
+
+    @staticmethod
+    def _carve_images(raw: bytes) -> list[bytes]:
+        """Extract verified, deduplicated PNG/JPEG blobs from raw bytes."""
+        import hashlib
+        import io as _io
+
+        from PIL import Image
+
+        starts: list[tuple[str, int]] = []
+        i = 0
+        png_sig = b"\x89PNG\r\n\x1a\n"
+        while i < len(raw) - 8:
+            if raw[i : i + 3] == b"\xff\xd8\xff":
+                starts.append(("jpeg", i))
+                i += 3
+            elif raw[i : i + 8] == png_sig:
+                starts.append(("png", i))
+                i += 8
+            else:
+                i += 1
+
+        blobs: list[bytes] = []
+        seen: set[str] = set()
+        for kind, start in starts:
+            if kind == "png":
+                end = raw.find(b"IEND", start)
+                if end == -1:
+                    continue
+                blob = raw[start : end + 8]
+            else:
+                # JPEGs may contain inner FFD9 markers (EXIF thumbnails);
+                # accept the first end position that yields a parseable image.
+                end = start
+                while True:
+                    end = raw.find(b"\xff\xd9", end + 3)
+                    if end == -1:
+                        break
+                    blob = raw[start : end + 2]
+                    try:
+                        Image.open(_io.BytesIO(blob)).verify()
+                        break
+                    except Exception:
+                        continue
+                else:
+                    continue
+            if len(blob) < 2048:
+                continue
+            digest = hashlib.md5(blob).hexdigest()
+            if digest in seen:
+                continue
+            try:
+                Image.open(_io.BytesIO(blob)).verify()
+            except Exception:
+                continue
+            seen.add(digest)
+            blobs.append(blob)
+        return blobs
+
+    def _blob_data_uri(self, blob: bytes) -> Optional[str]:
+        """Downscale when oversized and encode an image blob as a data URI."""
+        from PIL import Image
+
+        try:
+            with Image.open(io.BytesIO(blob)) as img:
+                img.load()
+                needs_resize = max(img.size) > self._DOC_IMAGE_MAX_DIM
+                if len(blob) <= self._SLIDE_IMAGE_KEEP_BYTES and not needs_resize:
+                    encoded = base64.b64encode(blob).decode("ascii")
+                    mime = Image.MIME.get(img.format, "image/png")
+                    return f"data:{mime};base64,{encoded}"
+                if img.mode not in ("RGB", "L"):
+                    img = img.convert("RGB")
+                if needs_resize:
+                    img.thumbnail((self._DOC_IMAGE_MAX_DIM, self._DOC_IMAGE_MAX_DIM))
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=self._DOC_IMAGE_JPEG_QUALITY)
+        except Exception:
+            return None
+        encoded = base64.b64encode(buf.getvalue()).decode("ascii")
+        return f"data:image/jpeg;base64,{encoded}"
 
     def _slides_pptx(self, file_path: str) -> list[dict]:
         """Walk PPTX shapes into plain dicts consumable by the web preview."""

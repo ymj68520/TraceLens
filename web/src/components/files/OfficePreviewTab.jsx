@@ -211,7 +211,35 @@ const OfficePreviewTab = ({
                     })}
                   </div>
                 )}
-                {officePreview.content && !officePreview.slides && !officePreview.sheets && !officePreview.text && (
+                {/* Legacy .doc: interleave extracted images back into the
+                    text at their [图片] marker positions. */}
+                {officePreview.images?.length > 0 &&
+                  (() => {
+                    const segments = (officePreview.content || '').split(/(\[图片\])/gi);
+                    let imgIdx = 0;
+                    const rendered = segments.map((seg, i) => {
+                      if (/^\[图片\]$/i.test(seg)) {
+                        const src = officePreview.images[imgIdx++];
+                        if (src) {
+                          return (
+                            <img key={i} src={src} alt={`文档插图 ${imgIdx}`} className="max-w-full rounded border border-slate-200 dark:border-slate-700 my-2" />
+                          );
+                        }
+                        return <span key={i}>[图片]</span>;
+                      }
+                      return seg.trim() ? (
+                        <pre key={i} className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap font-sans">{seg}</pre>
+                      ) : null;
+                    });
+                    // Any images beyond markers still deserve display.
+                    for (; imgIdx < officePreview.images.length; imgIdx++) {
+                      rendered.push(
+                        <img key={`extra-${imgIdx}`} src={officePreview.images[imgIdx]} alt={`文档插图 ${imgIdx + 1}`} className="max-w-full rounded border border-slate-200 dark:border-slate-700 my-2" />
+                      );
+                    }
+                    return <div>{rendered}</div>;
+                  })()}
+                {officePreview.content && !officePreview.images?.length && !officePreview.slides && !officePreview.sheets && !officePreview.text && (
                   <pre className="text-sm text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-900 p-4 rounded overflow-auto max-h-96 whitespace-pre-wrap">
                     {officePreview.content}
                   </pre>

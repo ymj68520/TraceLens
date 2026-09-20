@@ -157,6 +157,46 @@ def test_sheets_xlsx_structured(service, tmp_path):
     assert sheets[0]["data"][1] == ["张三", "30"]
 
 
+def test_carve_images_extracts_and_dedups(service):
+    import io
+
+    from PIL import Image
+
+    def png_blob(seed):
+        buf = io.BytesIO()
+        Image.effect_noise((300, 200), seed).convert("RGB").save(buf, format="PNG")
+        return buf.getvalue()
+
+    def jpeg_blob(seed):
+        buf = io.BytesIO()
+        Image.effect_noise((300, 200), seed).convert("RGB").save(buf, format="JPEG")
+        return buf.getvalue()
+
+    junk = b"\xab\xcd" * 4096
+    dup = png_blob(30)
+    raw = junk + png_blob(10) + junk + dup + junk + dup + junk + jpeg_blob(20) + junk
+
+    blobs = service._carve_images(raw)
+    # png_blob(10), the twice-embedded dup (deduped to one), jpeg_blob(20)
+    assert len(blobs) == 3
+    formats = {Image.open(io.BytesIO(b)).format for b in blobs}
+    assert formats == {"PNG", "JPEG"}
+
+
+def test_doc_images_data_uri(service, tmp_path):
+    import io
+
+    from PIL import Image
+
+    # .doc extraction needs a real OLE container which olefile cannot write;
+    # test the pipeline pieces instead: carve -> data URI encoding.
+    buf = io.BytesIO()
+    Image.effect_noise((600, 400), 40).convert("RGB").save(buf, format="PNG")
+    uris = [service._blob_data_uri(b) for b in service._carve_images(buf.getvalue())]
+    assert len(uris) == 1
+    assert uris[0].startswith("data:image/")
+
+
 def test_parse_ppt_ole_extracts_text(service, monkeypatch):
     """The pure-Python PPT text walk parses TextChars/TextBytes atoms."""
     import struct
