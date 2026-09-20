@@ -350,3 +350,134 @@ class TestImportPipeline:
         result = svc._create_import_sync(enc, "错误密钥", "", None, None, bad_km, "unit-test")
         assert result["status"] == "failed"
         assert "decryption failed" in (result["error"] or "")
+
+
+class TestGraphDbSelfHeal:
+    """读侧兜底：导入期 graph.db 建空（schema-only）时从解密源库重建。"""
+
+    def _import(self, import_workspace):
+        svc, enc, km = import_workspace
+        result = svc._create_import_sync(enc, "自愈测试", "", None, None, km, "unit-test")
+        assert result["status"] == "ready", result
+        return svc, result["import_id"]
+
+    @staticmethod
+    def _counts(graph_db):
+        con = sqlite3.connect(graph_db)
+        try:
+            return (
+                con.execute("SELECT COUNT(*) FROM wechat_messages").fetchone()[0],
+                con.execute("SELECT COUNT(*) FROM wechat_contacts").fetchone()[0],
+                con.execute("SELECT COUNT(*) FROM wechat_chatrooms").fetchone()[0],
+            )
+        finally:
+            con.close()
+
+    def test_rebuilds_empty_graph_db_from_source(self, import_workspace):
+        svc, import_id = self._import(import_workspace)
+        graph_db = svc._graph_db_path(import_id)
+
+        # 模拟导入期建图失败：只剩 schema 的空表
+        con = sqlite3.connect(graph_db)
+        con.executescript(
+            "DELETE FROM wechat_messages; DELETE FROM wechat_contacts; "
+            "DELETE FROM wechat_chatrooms; DELETE FROM wechat_owner_info;"
+        )
+        con.commit()
+        con.close()
+        assert self._counts(graph_db) == (0, 0, 0)
+
+        svc._ensure_graph_db_sync(import_id)
+        assert self._counts(graph_db) == (8, 3, 1)
+
+    def test_healthy_graph_db_is_left_alone(self, import_workspace):
+        svc, import_id = self._import(import_workspace)
+        graph_db = svc._graph_db_path(import_id)
+        assert self._counts(graph_db) == (8, 3, 1)
+
+        svc._ensure_graph_db_sync(import_id)
+        assert self._counts(graph_db) == (8, 3, 1)
+
+    def test_second_call_is_a_noop_even_when_emptied_again(self, import_workspace):
+        svc, import_id = self._import(import_workspace)
+        graph_db = svc._graph_db_path(import_id)
+
+        con = sqlite3.connect(graph_db)
+        con.execute("DELETE FROM wechat_messages")
+        con.commit()
+        con.close()
+        svc._ensure_graph_db_sync(import_id)
+        assert self._counts(graph_db)[0] == 8
+
+        # 同进程内只尝试一次：再次清空后不再重建（防请求风暴）
+        con = sqlite3.connect(graph_db)
+        con.execute("DELETE FROM wechat_messages")
+        con.commit()
+        con.close()
+        svc._ensure_graph_db_sync(import_id)
+        assert self._counts(graph_db)[0] == 0
+
+    def test_source_without_messages_never_rebuilds(self, import_workspace):
+        svc, import_id = self._import(import_workspace)
+        src = os.path.join(
+            os.path.dirname(svc._graph_db_path(import_id)), "EnMicroMsg.db"
+        )
+        con = sqlite3.connect(src)
+        con.execute("DELETE FROM message")
+        con.commit()
+        con.close()
+
+        graph_db = svc._graph_db_path(import_id)
+        con = sqlite3.connect(graph_db)
+        con.execute("DELETE FROM wechat_messages")
+        con.commit()
+        con.close()
+
+        svc._ensure_graph_db_sync(import_id)
+        assert self._counts(graph_db)[0] == 0
+
+    def test_graph_build_tolerates_missing_msgid_column(self, import_workspace, tmp_path):
+        """演示库的 message 表没有 msgId 列：建图按 rowid 兜底，不再整库落空。"""
+        svc, _enc, km = import_workspace
+        plain = str(tmp_path / "no_msgid.db")
+        con = sqlite3.connect(plain)
+        con.executescript(
+            """
+            CREATE TABLE userinfo (id INTEGER PRIMARY KEY, type INTEGER, value TEXT);
+            CREATE TABLE rcontact (
+                username TEXT PRIMARY KEY, alias TEXT, conRemark TEXT, nickname TEXT,
+                type INTEGER, chatroomFlag INTEGER DEFAULT 0
+            );
+            CREATE TABLE chatroom (
+                chatroomname TEXT PRIMARY KEY, roomowner TEXT, memberlist TEXT,
+                membercount INTEGER, addtime INTEGER
+            );
+            CREATE TABLE message (
+                talker TEXT, content TEXT, createTime INTEGER,
+                type INTEGER, isSend INTEGER DEFAULT 0
+            );
+            """
+        )
+        con.execute("INSERT INTO userinfo (id, value) VALUES (2, ?)", (OWNER_WXID,))
+        con.execute(
+            "INSERT INTO rcontact (username, alias, conRemark, nickname, type) "
+            "VALUES ('wxid_a', '', '好友甲', '甲昵称', 3)"
+        )
+        con.execute(
+            "INSERT INTO message (talker, content, createTime, type, isSend) "
+            "VALUES ('wxid_a', '你好', 1780000000000, 1, 0)"
+        )
+        con.commit()
+        con.close()
+
+        result = svc._create_import_sync(plain, "缺msgId导入", "", None, None, km, "unit-test")
+        assert result["status"] == "ready", result
+        graph_db = svc._graph_db_path(result["import_id"])
+        con = sqlite3.connect(graph_db)
+        n = con.execute("SELECT COUNT(*) FROM wechat_messages").fetchone()[0]
+        owner = con.execute("SELECT username FROM wechat_owner_info").fetchone()
+        con.close()
+        assert n == 1
+        assert owner == (OWNER_WXID,)
+
+

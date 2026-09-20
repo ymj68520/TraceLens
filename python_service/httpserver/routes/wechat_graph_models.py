@@ -162,6 +162,9 @@ async def _resolve_android_db_path(task_id: str) -> str:
             db_path = service._graph_db_path(task_id[3:])
         except ValueError:
             db_path = ""
+        if db_path:
+            # 导入期建图失败（graph.db 空表）时读侧兜底重建
+            await service.ensure_graph_db(task_id[3:])
         if db_path and os.path.exists(db_path):
             return db_path
         raise HTTPException(
@@ -178,6 +181,9 @@ async def _resolve_android_db_path(task_id: str) -> str:
             db_path = service._graph_db_path(task_id[3:])
         except ValueError:
             db_path = ""
+        if db_path:
+            # 导入期建图失败（graph.db 空表）时读侧兜底重建
+            await service.ensure_graph_db(task_id[3:])
         if db_path and os.path.exists(db_path):
             return db_path
         raise HTTPException(

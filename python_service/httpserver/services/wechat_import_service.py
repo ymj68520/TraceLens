@@ -25,6 +25,7 @@ import os
 import re
 import shutil
 import sqlite3
+import threading
 import time
 import uuid
 import xml.etree.ElementTree as ET
@@ -144,6 +145,11 @@ def _meta_summary(meta: Dict[str, Any]) -> Dict[str, Any]:
 
 class WeChatImportService:
     """Import + query pipeline for WeChat account databases."""
+
+    def __init__(self) -> None:
+        # graph.db 自愈重建的并发防护（进程内一次）
+        self._graph_locks: Dict[str, threading.Lock] = {}
+        self._graph_healed: set = set()
 
     async def create_import(
         self,
@@ -428,10 +434,23 @@ class WeChatImportService:
                     ),
                 )
 
+            # Column sets vary across EnMicroMsg versions (the demo dataset
+            # has only talker/content/createTime/type/isSend): select what
+            # actually exists and fall back to rowid for the message id.
+            msg_cols = {r[1] for r in src.execute("PRAGMA table_info(message)")}
+            select_fields = ["rowid AS msgId" if c == "msgId" else c
+                             for c in ("msgId", "talker", "content", "createTime", "type", "isSend")
+                             if c in msg_cols or c == "msgId"]
+            field_names = [f.split(" AS ")[-1] for f in select_fields]
             for row in src.execute(
-                "SELECT msgId, talker, content, createTime, type, isSend FROM message"
+                f"SELECT {', '.join(select_fields)} FROM message"
             ):
-                msg_id, talker, content, ts, mtype, is_send = row
+                values = dict(zip(field_names, row))
+                talker = values.get("talker") or ""
+                content = values.get("content") or ""
+                ts = values.get("createTime")
+                mtype = values.get("type")
+                is_send = values.get("isSend") or 0
                 content = content or ""
                 sender, chatroom, text = "", "", content
                 if "@chatroom" in talker:
@@ -463,6 +482,82 @@ class WeChatImportService:
         finally:
             src.close()
             dst.close()
+
+    # ------------------------------------------------------------------ #
+    # graph.db self-heal（导入期建图失败时读侧兜底重建）
+    # ------------------------------------------------------------------ #
+
+    async def ensure_graph_db(self, import_id: str) -> None:
+        """Read-time self-heal: rebuild graph.db when it carries no messages.
+
+        Import-time graph.db construction is best-effort（失败仅记日志）, so an
+        import can end up with schema-only tables and a permanently empty
+        relationship tab. The decrypted EnMicroMsg.db is the source of truth
+        and graph.db is derived data, so regenerate it lazily; at most one
+        attempt per import per process keeps a permanently failing rebuild
+        from turning into a per-request storm.
+        """
+        await asyncio.to_thread(self._ensure_graph_db_sync, import_id)
+
+    def _ensure_graph_db_sync(self, import_id: str) -> None:
+        if import_id in self._graph_healed:
+            return
+        try:
+            graph_db = self._graph_db_path(import_id)
+            src_db = os.path.join(_import_dir(import_id), "EnMicroMsg.db")
+            if not os.path.isfile(src_db):
+                return
+            if self._graph_db_nonempty(graph_db):
+                return
+            lock = self._graph_locks.setdefault(import_id, threading.Lock())
+            with lock:
+                if self._graph_db_nonempty(graph_db):
+                    return
+                if not self._source_has_messages(src_db):
+                    return
+                logger.warning(
+                    "graph.db empty for import %s; rebuilding from decrypted source",
+                    import_id,
+                )
+                self._build_graph_db(import_id, src_db, graph_db, _read_meta(import_id))
+        except Exception as e:
+            logger.warning("graph.db self-heal failed for import %s: %s", import_id, e)
+        finally:
+            self._graph_healed.add(import_id)
+
+    @staticmethod
+    def _graph_db_nonempty(graph_db: str) -> bool:
+        """True when graph.db exists and already carries at least one message."""
+        if not os.path.isfile(graph_db):
+            return False
+        try:
+            con = sqlite3.connect(f"file:{graph_db}?mode=ro", uri=True)
+        except sqlite3.Error:
+            return False
+        try:
+            table = con.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='wechat_messages'"
+            ).fetchone()
+            return bool(table) and bool(
+                con.execute("SELECT 1 FROM wechat_messages LIMIT 1").fetchone()
+            )
+        except sqlite3.Error:
+            return False
+        finally:
+            con.close()
+
+    @staticmethod
+    def _source_has_messages(src_db: str) -> bool:
+        try:
+            con = sqlite3.connect(f"file:{src_db}?mode=ro", uri=True)
+        except sqlite3.Error:
+            return False
+        try:
+            return bool(con.execute("SELECT 1 FROM message LIMIT 1").fetchone())
+        except sqlite3.Error:
+            return False
+        finally:
+            con.close()
 
     # ------------------------------------------------------------------ #
     # connections & lookups
