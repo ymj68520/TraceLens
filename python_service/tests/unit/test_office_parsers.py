@@ -102,6 +102,61 @@ async def test_parse_file_real_docx_still_dispatches(service, tmp_path):
     assert "真实文档内容" in content
 
 
+def _make_pptx(path):
+    """Build a one-slide PPTX with a title, a textbox and an embedded image."""
+    import io
+
+    from pptx import Presentation
+    from pptx.util import Inches
+    from PIL import Image
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[1])  # title + content
+    slide.shapes.title.text = "测试标题"
+
+    body = slide.placeholders[1]
+    body.text = "测试正文"
+
+    img = Image.new("RGB", (320, 200), color=(200, 80, 40))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    slide.shapes.add_picture(buf, Inches(1), Inches(3), Inches(2), Inches(1.25))
+    prs.save(str(path))
+
+
+def test_slides_pptx_structured(service, tmp_path):
+    pptx_path = tmp_path / "sample.pptx"
+    _make_pptx(pptx_path)
+
+    slides = service._slides_pptx(str(pptx_path))
+    assert len(slides) == 1
+    slide = slides[0]
+    assert "测试标题" in slide["title"]
+    assert any("测试正文" in t for t in slide["texts"])
+    assert len(slide["images"]) == 1
+    assert slide["images"][0].startswith("data:image/png;base64,")
+
+
+def test_sheets_xlsx_structured(service, tmp_path):
+    from openpyxl import Workbook
+
+    path = tmp_path / "sample.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "名单"
+    ws.append(["姓名", "年龄"])
+    ws.append(["张三", 30])
+    ws.append([None, None])
+    wb.save(str(path))
+
+    sheets = service._sheets_xlsx(str(path))
+    assert len(sheets) == 1
+    assert sheets[0]["name"] == "名单"
+    assert sheets[0]["data"][0] == ["姓名", "年龄"]
+    assert sheets[0]["data"][1] == ["张三", "30"]
+
+
 def test_parse_ppt_ole_extracts_text(service, monkeypatch):
     """The pure-Python PPT text walk parses TextChars/TextBytes atoms."""
     import struct

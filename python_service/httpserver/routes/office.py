@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from ..services.office_service import get_office_service
@@ -63,6 +63,23 @@ class ParseRequest(BaseModel):
     file_path: str = Field(..., description="Absolute path to the Office file")
 
 
+class Slide(BaseModel):
+    """One PPTX slide for the rich web preview."""
+
+    title: str = ""
+    texts: list[str] = Field(default_factory=list)
+    images: list[str] = Field(default_factory=list, description="base64 data URIs")
+    table: Optional[list[list[str]]] = None
+
+
+class Sheet(BaseModel):
+    """One worksheet for the rich web preview."""
+
+    name: str = ""
+    data: list[list[str]] = Field(default_factory=list)
+    total_rows: int = 0
+
+
 class ParseResponse(BaseModel):
     """Response model for parsed Office content."""
 
@@ -70,6 +87,8 @@ class ParseResponse(BaseModel):
     content: str = Field(default="", description="Extracted content in Markdown format")
     file_type: str = Field(default="", description="Detected file type")
     error: Optional[str] = Field(default=None, description="Error message if failed")
+    slides: Optional[list[Slide]] = Field(default=None, description="PPTX slides")
+    sheets: Optional[list[Sheet]] = Field(default=None, description="Excel sheets")
 
 
 @router.post("/parse", response_model=ParseResponse)
@@ -92,20 +111,106 @@ async def parse_office_file(request: ParseRequest) -> ParseResponse:
         ParseResponse with extracted content or error message.
     """
     file_path = request.file_path
+    path = await _resolve_task_file(request.task_id, request.workspace_root, file_path)
 
+    # Get file type
+    suffix = path.suffix.lower()
+
+    try:
+        service = get_office_service()
+        content = await service.parse_file(str(path))
+        slides: Optional[list[Slide]] = None
+        sheets: Optional[list[Sheet]] = None
+
+        if suffix == ".pptx":
+            slides = [Slide(**s) for s in await service.extract_slides(str(path))]
+        elif suffix in (".xlsx", ".xls"):
+            sheets = [Sheet(**s) for s in await service.extract_sheets(str(path))]
+
+        return ParseResponse(
+            success=True,
+            content=content,
+            file_type=suffix[1:].upper(),  # Remove dot, uppercase
+            error=None,
+            slides=slides,
+            sheets=sheets,
+        )
+
+    except FileNotFoundError as e:
+        logger.error(f"File not found: {e}")
+        raise HTTPException(status_code=404, detail="file not found")
+
+    except ValueError as e:
+        logger.error(f"Invalid file type: {e}")
+        raise HTTPException(status_code=400, detail="unsupported file type")
+
+    except Exception as e:
+        logger.error(f"Error parsing file {file_path}: {e}")
+        return ParseResponse(
+            success=False,
+            content="",
+            file_type=suffix[1:].upper(),
+            error="office parse failed"
+        )
+
+
+@router.get("/file")
+async def get_office_file(
+    file_path: str = "",
+    task_id: Optional[str] = None,
+    workspace_root: Optional[str] = None,
+):
+    """Serve the (on-demand materialized) Office file bytes for client-side
+    rendering, e.g. the full-fidelity docx viewer in the web preview."""
+    if not file_path:
+        raise HTTPException(status_code=400, detail="file_path is required")
+    path = await _resolve_task_file(task_id, workspace_root, file_path)
+
+    media_types = {
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".doc": "application/msword",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xls": "application/vnd.ms-excel",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".ppt": "application/vnd.ms-powerpoint",
+    }
+    media_type = media_types.get(path.suffix.lower(), "application/octet-stream")
+
+    # HTTP headers are latin-1; non-ASCII filenames need RFC 5987 encoding.
+    name = path.name
+    try:
+        name.encode("latin-1")
+        disposition = f'inline; filename="{name}"'
+    except UnicodeEncodeError:
+        from urllib.parse import quote
+
+        disposition = f"inline; filename*=UTF-8''{quote(name)}"
+
+    return Response(
+        content=path.read_bytes(),
+        media_type=media_type,
+        headers={"Content-Disposition": disposition},
+    )
+
+
+async def _resolve_task_file(
+    task_id: Optional[str], workspace_root: Optional[str], file_path: str
+) -> Path:
+    """Apply the task-membership gate and resolve to a host path, extracting
+    the file from the image on demand. Shared by /parse and /file."""
     # Task ownership gate (D2b): the file must be a known record of this
     # task (exact files.path match) or live in the C++ pipeline's shared
     # internal extraction scratch root. Never a bare host-existence check.
     from ..services import task_store
 
     try:
-        if request.task_id:
-            task = await task_store.get_task_record(request.task_id)
+        if task_id:
+            task = await task_store.get_task_record(task_id)
             workspace = task_store.workspace_from_record(task)
             files_db = task_store.files_db_from_record(task)
-        elif request.workspace_root:
+        elif workspace_root:
             task = {}
-            workspace = Path(request.workspace_root).resolve(strict=False)
+            workspace = Path(workspace_root).resolve(strict=False)
             files_db = None
         else:
             raise HTTPException(
@@ -129,7 +234,7 @@ async def parse_office_file(request: ParseRequest) -> ParseResponse:
                     extraction_dir, Path(file_path)
                 )
                 known = True
-            elif request.workspace_root:
+            elif workspace_root:
                 task_store.resolved_within(workspace, Path(file_path))
                 known = True
     except task_store.TaskStoreError as exc:
@@ -155,13 +260,13 @@ async def parse_office_file(request: ParseRequest) -> ParseResponse:
         scratch_candidate = (
             Path(tempfile.gettempdir())
             / "forensics_llm_extract"
-            / (request.task_id or "")
+            / (task_id or "")
             / file_path.replace("/", "_").replace("\\", "_")
         )
-        if request.task_id and scratch_candidate.exists():
+        if task_id and scratch_candidate.exists():
             path = scratch_candidate
     if not path.exists():
-        path = await _materialize_from_image(request.task_id, file_path)
+        path = await _materialize_from_image(task_id, file_path)
 
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
@@ -175,34 +280,7 @@ async def parse_office_file(request: ParseRequest) -> ParseResponse:
             status_code=400,
             detail=f"Unsupported file type: {suffix}. Supported: {supported_types}"
         )
-
-    try:
-        service = get_office_service()
-        content = await service.parse_file(str(path))
-
-        return ParseResponse(
-            success=True,
-            content=content,
-            file_type=suffix[1:].upper(),  # Remove dot, uppercase
-            error=None
-        )
-
-    except FileNotFoundError as e:
-        logger.error(f"File not found: {e}")
-        raise HTTPException(status_code=404, detail="file not found")
-
-    except ValueError as e:
-        logger.error(f"Invalid file type: {e}")
-        raise HTTPException(status_code=400, detail="unsupported file type")
-
-    except Exception as e:
-        logger.error(f"Error parsing file {file_path}: {e}")
-        return ParseResponse(
-            success=False,
-            content="",
-            file_type=suffix[1:].upper(),
-            error="office parse failed"
-        )
+    return path
 
 
 @router.get("/supported-types")

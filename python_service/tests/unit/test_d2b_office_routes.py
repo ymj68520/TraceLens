@@ -50,6 +50,12 @@ async def test_office_known_task_file_passes_membership_gate(tmp_path, monkeypat
         async def parse_file(self, path):
             return "# parsed"
 
+        async def extract_slides(self, path):
+            return []
+
+        async def extract_sheets(self, path):
+            return []
+
     monkeypatch.setattr(office, "get_office_service", lambda: Service())
     response = await office.parse_office_file(
         office.ParseRequest(task_id="task-1", file_path=str(known))

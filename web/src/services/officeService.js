@@ -12,9 +12,19 @@ export const parseFile = async (taskId, filePath) => {
     });
 };
 
+/** 获取物化后的 Office 文件字节 (供 docx-preview 等客户端渲染) */
+export const fetchOfficeFile = async (taskId, filePath) => {
+    const params = new URLSearchParams();
+    params.set('task_id', taskId || '');
+    params.set('file_path', filePath || '');
+    return await pythonApi.get(`/api/office/file?${params.toString()}`, {
+        responseType: 'blob',
+    });
+};
+
 /** 获取支持的文件格式 */
 export const getSupportedFormats = async () => {
     return await pythonApi.get('/api/office/supported-types');
 };
 
-export default { parseFile, getSupportedFormats };
+export default { parseFile, fetchOfficeFile, getSupportedFormats };

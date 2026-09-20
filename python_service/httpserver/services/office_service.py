@@ -6,11 +6,15 @@ Provides parsing capabilities for Office documents:
 - XLSX/XLS (Excel)
 - PPTX/PPT (PowerPoint)
 
-Returns content as Markdown text for forensic analysis.
+Returns content as Markdown text for forensic analysis, plus structured
+slide/sheet data for richer client-side previews.
 """
 
 import asyncio
+import base64
+import io
 import logging
+import re
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -36,6 +40,16 @@ class OfficeService:
     # Cap for the text fallback: recovered files can be huge; a preview does
     # not need more than the first megabyte.
     _TEXT_FALLBACK_LIMIT = 1024 * 1024
+
+    # Limits for the structured slide/sheet extraction used by the rich
+    # preview: base64 images inflate quickly and the response must stay
+    # servable for preview-sized requests.
+    _SLIDE_MAX_IMAGES = 12
+    _SLIDE_MAX_IMAGE_BYTES = 5 * 1024 * 1024
+    _SLIDE_IMAGE_MAX_DIM = 1600
+    _SLIDE_IMAGE_KEEP_BYTES = 400 * 1024
+    _SHEET_MAX_ROWS = 500
+    _SHEET_MAX_COLS = 64
 
     def __init__(self):
         """Initialize the Office parsing service."""
@@ -93,6 +107,147 @@ class OfficeService:
             return await asyncio.to_thread(self._parse_ppt, file_path)
         else:
             raise ValueError(f"Unsupported file type: {suffix}")
+
+    async def extract_slides(self, file_path: str) -> list[dict]:
+        """Structured slide data (title/texts/images/table) for PPTX."""
+        suffix = Path(file_path).suffix.lower()
+        if suffix != ".pptx":
+            return []
+        return await asyncio.to_thread(self._slides_pptx, file_path)
+
+    async def extract_sheets(self, file_path: str) -> list[dict]:
+        """Structured sheet data (name + cell rows) for XLSX/XLS."""
+        suffix = Path(file_path).suffix.lower()
+        if suffix == ".xlsx":
+            return await asyncio.to_thread(self._sheets_xlsx, file_path)
+        if suffix == ".xls":
+            return await asyncio.to_thread(self._sheets_xls, file_path)
+        return []
+
+    def _slides_pptx(self, file_path: str) -> list[dict]:
+        """Walk PPTX shapes into plain dicts consumable by the web preview."""
+        try:
+            from pptx import Presentation
+            from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+            prs = Presentation(file_path)
+            slides: list[dict] = []
+            for slide_doc in prs.slides:
+                slide: dict = {"title": "", "texts": [], "images": [], "table": None}
+                try:
+                    title_shape = slide_doc.shapes.title
+                    if title_shape is not None and title_shape.has_text_frame:
+                        slide["title"] = title_shape.text.strip()
+                except Exception:
+                    pass
+
+                def walk(shapes) -> None:
+                    for shape in shapes:
+                        try:
+                            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+                                walk(shape.shapes)
+                                continue
+                            # Pictures hide behind several shape kinds: real
+                            # Picture shapes but also OBJECT placeholders
+                            # holding an image (PlaceholderPicture exposes
+                            # .image the same way).
+                            if hasattr(shape, "image"):
+                                uri = self._picture_data_uri(shape)
+                                if uri and len(slide["images"]) < self._SLIDE_MAX_IMAGES:
+                                    slide["images"].append(uri)
+                                continue
+                            if getattr(shape, "has_table", False) and slide["table"] is None:
+                                slide["table"] = [
+                                    [cell.text.replace("\n", " ") for cell in row.cells]
+                                    for row in shape.table.rows
+                                ]
+                                continue
+                            if shape.has_text_frame:
+                                text = shape.text.strip()
+                                if text and text != slide["title"]:
+                                    slide["texts"].append(text)
+                        except Exception:
+                            continue
+
+                walk(slide_doc.shapes)
+                slides.append(slide)
+            return slides
+        except Exception as e:
+            logger.error(f"Error extracting slides from {file_path}: {e}")
+            return []
+
+    def _picture_data_uri(self, picture) -> Optional[str]:
+        """Base64 data URI for an embedded picture, downscaled when huge."""
+        image = picture.image
+        blob = image.blob
+        if len(blob) > self._SLIDE_MAX_IMAGE_BYTES:
+            return None
+
+        content_type = image.content_type or "image/png"
+        if len(blob) <= self._SLIDE_IMAGE_KEEP_BYTES:
+            encoded = base64.b64encode(blob).decode("ascii")
+            return f"data:{content_type};base64,{encoded}"
+
+        # Oversized: downscale and re-encode as JPEG to keep responses small.
+        from PIL import Image
+
+        with Image.open(io.BytesIO(blob)) as img:
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+            if max(img.size) > self._SLIDE_IMAGE_MAX_DIM:
+                img.thumbnail((self._SLIDE_IMAGE_MAX_DIM, self._SLIDE_IMAGE_MAX_DIM))
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=80)
+        encoded = base64.b64encode(buf.getvalue()).decode("ascii")
+        return f"data:image/jpeg;base64,{encoded}"
+
+    def _sheets_xlsx(self, file_path: str) -> list[dict]:
+        try:
+            from openpyxl import load_workbook
+
+            wb = load_workbook(file_path, read_only=True, data_only=True)
+            sheets = []
+            for name in wb.sheetnames:
+                ws = wb[name]
+                rows = []
+                for row in ws.iter_rows(
+                    max_row=self._SHEET_MAX_ROWS,
+                    max_col=self._SHEET_MAX_COLS,
+                    values_only=True,
+                ):
+                    cells = ["" if v is None else str(v) for v in row]
+                    # read_only mode pads rows to max_col; drop the padding.
+                    while cells and cells[-1] == "":
+                        cells.pop()
+                    rows.append(cells)
+                sheets.append({"name": name, "data": rows, "total_rows": len(rows)})
+            wb.close()
+            return sheets
+        except Exception as e:
+            logger.error(f"Error extracting sheets from {file_path}: {e}")
+            return []
+
+    def _sheets_xls(self, file_path: str) -> list[dict]:
+        try:
+            import xlrd
+
+            wb = xlrd.open_workbook(file_path)
+            sheets = []
+            for idx in range(wb.nsheets):
+                sheet = wb.sheet_by_index(idx)
+                rows = []
+                for r in range(min(sheet.nrows, self._SHEET_MAX_ROWS)):
+                    rows.append(
+                        [
+                            str(sheet.cell_value(r, c))
+                            for c in range(min(sheet.ncols, self._SHEET_MAX_COLS))
+                        ]
+                    )
+                sheets.append({"name": sheet.name, "data": rows, "total_rows": sheet.nrows})
+            return sheets
+        except Exception as e:
+            logger.error(f"Error extracting sheets from {file_path}: {e}")
+            return []
 
     def _parse_mismatched_content(self, file_path: str, suffix: str) -> str:
         """Fallback for files whose content does not match their extension.
@@ -242,7 +397,10 @@ class OfficeService:
                 logger.warning(f"antiword error: {stderr}")
                 return f"Error parsing DOC: {stderr}"
 
-            return result.stdout.decode("utf-8", errors="replace").strip()
+            # antiword marks embedded pictures with a literal [PIC]; present
+            # them in Chinese so previews read consistently.
+            text = result.stdout.decode("utf-8", errors="replace").strip()
+            return re.sub(r"\[PIC\]", "[图片]", text, flags=re.IGNORECASE)
 
         except FileNotFoundError:
             logger.error("antiword not found. Install the antiword package.")

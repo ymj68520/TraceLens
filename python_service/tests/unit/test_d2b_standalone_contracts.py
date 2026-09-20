@@ -70,6 +70,12 @@ async def test_office_standalone_workspace_adapter_is_contained(tmp_path, monkey
         async def parse_file(self, path):
             return "parsed"
 
+        async def extract_slides(self, path):
+            return []
+
+        async def extract_sheets(self, path):
+            return []
+
     monkeypatch.setattr(office, "get_office_service", lambda: Service())
     response = await office.parse_office_file(
         office.ParseRequest(workspace_root=str(workspace), file_path=str(source))
