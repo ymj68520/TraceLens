@@ -67,19 +67,18 @@ test('links to the evidence review page with the current task query contract', a
   );
 });
 
-test('renders 证据研判 before 证据判定 in the sidebar', async () => {
+test('renders sidebar in the canonical order after 文件管理', async () => {
   featuresState.value = { event_llm_analysis_enabled: true, combined_case_enabled: true, workbench_llm_enabled: true };
   renderLayout('/dashboard');
 
   // wait for the async feature fetch to un-hide the combined-case entries
   await screen.findByRole('link', { name: '证据判定' });
-  const links = screen.getAllByRole('link');
-  const evidenceIdx = links.findIndex((l) => l.textContent === '证据研判');
-  const centerIdx = links.findIndex((l) => l.textContent === '证据判定');
+  const labels = screen.getAllByRole('link').map((l) => l.textContent);
+  const order = ['文件管理', '证据判定', '证据研判', '调查工作台', '知识图谱', '安卓取证']
+    .map((name) => labels.indexOf(name));
 
-  expect(evidenceIdx).toBeGreaterThanOrEqual(0);
-  expect(centerIdx).toBeGreaterThanOrEqual(0);
-  expect(evidenceIdx).toBeLessThan(centerIdx);
+  order.forEach((idx, i) => expect(idx).toBeGreaterThanOrEqual(0));
+  expect(order).toEqual([...order].sort((a, b) => a - b));
 });
 
 test('keeps the analysis center navigation active', async () => {
