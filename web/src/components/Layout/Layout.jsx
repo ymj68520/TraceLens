@@ -8,7 +8,7 @@ import { useFeatures } from '../../hooks/useFeatures';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, ListTodo, Clock, FolderOpen, Network, FileSearch,
-  Smartphone, Cloud, Search, BarChart3, Settings, Menu, X, ChevronLeft, ChevronRight, FileText, Briefcase, MessageCircle, Cpu
+  Smartphone, Cloud, Search, BarChart3, Settings, Menu, X, ChevronLeft, ChevronRight, FileText, Briefcase, MessageCircle, Cpu, ClipboardCheck
 } from 'lucide-react';
 
 const Layout = ({ children }) => {
@@ -32,7 +32,7 @@ const Layout = ({ children }) => {
     { name: t('nav.timeline'), href: '/timeline', icon: Clock },
     { name: t('nav.files'), href: '/files', icon: FolderOpen },
     { name: t('nav.case_intelligence'), href: '/case-intelligence', icon: FileText },
-    { name: t('nav.case_center'), href: '/analysis-center', icon: FileText },
+    { name: t('nav.evidence_review'), href: '/analysis-center', icon: ClipboardCheck },
     { name: t('nav.knowledge_graph'), href: '/knowledge-graph', icon: Network },
     { name: t('nav.investigation_workbench'), href: '/investigation', icon: FileSearch },
     { name: t('nav.android'), href: '/android', icon: Smartphone },

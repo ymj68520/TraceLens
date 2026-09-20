@@ -6,7 +6,7 @@ export default {
     'nav.timeline': '时间线',
     'nav.files': '文件管理',
     'nav.ai_descriptions': 'AI 描述',
-    'nav.case_center': '研判中心',
+    'nav.evidence_review': '证据判定',
     'nav.case_intelligence': '证据研判',
     'nav.investigation': '二次调查分析',
     'nav.investigation_workbench': '调查工作台',

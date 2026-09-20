@@ -6,7 +6,7 @@ export default {
     'nav.timeline': 'Timeline',
     'nav.files': 'Files',
     'nav.ai_descriptions': 'AI Descriptions',
-    'nav.case_center': 'Case Center',
+    'nav.evidence_review': 'Evidence Review',
     'nav.case_intelligence': 'Case Intelligence',
     'nav.investigation': 'Investigation',
     'nav.investigation_workbench': 'Investigation Workbench',

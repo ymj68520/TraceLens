@@ -75,6 +75,35 @@ async def list_report_evidence(
         raise HTTPException(status_code=503, detail="report evidence store unavailable") from exc
 
 
+@router.get("/evidence/file-candidates")
+async def list_report_evidence_file_candidates(
+    task_id: str = Query(..., min_length=1),
+    search: str = Query("", max_length=512, description="path substring filter"),
+    status: str = Query(
+        "all",
+        pattern="^(all|main|appendix|excluded|unjudged)$",
+        description="current judgment filter (unjudged = no report_evidence row)",
+    ),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    service: ReportEvidenceService = Depends(get_report_evidence_service),
+) -> dict:
+    """Read model for the evidence review page: the task's files joined with
+    their current report-evidence judgment (null = never judged).
+
+    Purely read-side; the judgment itself stays an explicit analyst action on
+    POST/PUT /api/reports/evidence.
+    """
+    try:
+        return await service.list_file_candidates(
+            task_id, search=search, status=status, page=page, page_size=page_size
+        )
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="task not found") from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="report evidence store unavailable") from exc
+
+
 class AddReportEvidenceRequest(BaseModel):
     """Strict boundary for adding one captured evidence to the report.
 

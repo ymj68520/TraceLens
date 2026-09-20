@@ -202,5 +202,146 @@ class ReportEvidenceService:
                 "investigation database is unavailable"
             ) from exc
 
+    async def list_file_candidates(
+        self,
+        task_id: str,
+        *,
+        search: str = "",
+        status: str = "all",
+        page: int = 1,
+        page_size: int = 50,
+    ) -> dict:
+        """File-centric adjudication read model for the evidence review page.
+
+        One read-only pass over the task's ``files`` table LEFT JOINed (via
+        ATTACH) with this task's ``report_evidence`` rows, so each file row
+        carries its current judgment: ``report_status`` is ``null`` for files
+        never judged and main/appendix/excluded mirror R1 exactly. The report
+        evidence row for a ``file:<path>`` key uses the same canonical path
+        space as ``files.path`` (the R1 resolver reads that column directly).
+        Read-only: a missing investigation.db simply means nothing is judged.
+        """
+        db_path = await self._resolve_task_db(task_id)
+        task = await self._cpp_backend.get_task(task_id)
+        files_db = (task or {}).get("output_files_db") or ""
+        empty = {
+            "total": 0,
+            "page": page,
+            "page_size": page_size,
+            "status_counts": {"main": 0, "appendix": 0, "excluded": 0, "unjudged": 0},
+            "items": [],
+        }
+        if not files_db or not Path(files_db).exists():
+            return empty
+
+        def _read() -> dict:
+            conn = sqlite3.connect(f"file:{files_db}?mode=ro", uri=True)
+            conn.row_factory = sqlite3.Row
+            try:
+                has_re_table = False
+                if db_path.exists():
+                    try:
+                        conn.execute(
+                            "ATTACH DATABASE ? AS inv", (f"file:{db_path}?mode=ro",)
+                        )
+                        has_re_table = conn.execute(
+                            "SELECT 1 FROM inv.sqlite_master "
+                            "WHERE type='table' AND name='report_evidence'"
+                        ).fetchone() is not None
+                    except sqlite3.Error:
+                        has_re_table = False
+
+                join_sql = ""
+                if has_re_table:
+                    join_sql = (
+                        "LEFT JOIN inv.report_evidence re ON re.task_id = ? "
+                        "AND re.evidence_key = 'file:' || f.path "
+                        "AND re.evidence_key LIKE 'file:%'"
+                    )
+
+                # Global judgment counts (independent of the search filter).
+                counts = {"main": 0, "appendix": 0, "excluded": 0, "unjudged": 0}
+                if has_re_table:
+                    for row in conn.execute(
+                        f"SELECT COALESCE(re.report_status, 'unjudged') AS s, "
+                        f"COUNT(*) AS c FROM files f {join_sql} GROUP BY s",
+                        (task_id,),
+                    ):
+                        if row["s"] in counts:
+                            counts[row["s"]] = int(row["c"])
+                else:
+                    counts["unjudged"] = int(
+                        conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+                    )
+
+                where_status = ""
+                join_params: list = []
+                if has_re_table:
+                    join_params.append(task_id)
+                filter_params: list = []
+                if search:
+                    where_status += " AND f.path LIKE ?"
+                    filter_params.append(f"%{search}%")
+                if status != "all":
+                    where_status += (
+                        " AND COALESCE(re.report_status, 'unjudged') = ?"
+                    )
+                    filter_params.append(status)
+
+                total = int(
+                    conn.execute(
+                        f"SELECT COUNT(*) FROM files f {join_sql} "
+                        f"WHERE 1=1 {where_status}",
+                        [*join_params, *filter_params],
+                    ).fetchone()[0]
+                )
+                rows = conn.execute(
+                    f"SELECT f.path, f.name, f.extension, f.category, f.size, "
+                    f"f.mtime, f.ctime, f.md5, f.is_deleted, f.llm_summary, "
+                    f"f.llm_analyzed_at, f.scene_relevant, "
+                    f"re.report_status AS re_status, re.analysis_id AS re_analysis, "
+                    f"re.updated_at AS re_updated "
+                    f"FROM files f {join_sql} WHERE 1=1 {where_status} "
+                    f"ORDER BY f.path LIMIT ? OFFSET ?",
+                    [
+                        *join_params,
+                        *filter_params,
+                        page_size,
+                        (page - 1) * page_size,
+                    ],
+                ).fetchall()
+                items = []
+                for row in rows:
+                    report_status = row["re_status"] if has_re_table else None
+                    items.append({
+                        "path": row["path"],
+                        "name": row["name"],
+                        "extension": row["extension"],
+                        "category": row["category"],
+                        "size": row["size"],
+                        "mtime": row["mtime"],
+                        "ctime": row["ctime"],
+                        "md5": row["md5"],
+                        "is_deleted": row["is_deleted"],
+                        "llm_summary": row["llm_summary"],
+                        "llm_analyzed_at": row["llm_analyzed_at"],
+                        "scene_relevant": row["scene_relevant"],
+                        "evidence_key": f"file:{row['path']}",
+                        "report_status": report_status,
+                        "analysis_id": row["re_analysis"] if has_re_table else None,
+                        "updated_at": row["re_updated"] if has_re_table else None,
+                    })
+                return {
+                    "total": total,
+                    "page": page,
+                    "page_size": page_size,
+                    "status_counts": counts,
+                    "items": items,
+                }
+            finally:
+                conn.close()
+
+        return await asyncio.to_thread(_read)
+
 
 __all__ = ["ReportEvidenceService"]

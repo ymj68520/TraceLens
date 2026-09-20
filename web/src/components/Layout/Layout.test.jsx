@@ -57,25 +57,25 @@ test('links to evidence analysis with the current task query contract', () => {
   );
 });
 
-test('links to the analysis center with the current task query contract', async () => {
+test('links to the evidence review page with the current task query contract', async () => {
   featuresState.value = { event_llm_analysis_enabled: true, combined_case_enabled: true, workbench_llm_enabled: true };
   renderLayout('/files?task_id=task-1');
 
-  expect(await screen.findByRole('link', { name: '研判中心' })).toHaveAttribute(
+  expect(await screen.findByRole('link', { name: '证据判定' })).toHaveAttribute(
     'href',
     '/analysis-center?task_id=task-1',
   );
 });
 
-test('renders 证据研判 before 研判中心 in the sidebar', async () => {
+test('renders 证据研判 before 证据判定 in the sidebar', async () => {
   featuresState.value = { event_llm_analysis_enabled: true, combined_case_enabled: true, workbench_llm_enabled: true };
   renderLayout('/dashboard');
 
   // wait for the async feature fetch to un-hide the combined-case entries
-  await screen.findByRole('link', { name: '研判中心' });
+  await screen.findByRole('link', { name: '证据判定' });
   const links = screen.getAllByRole('link');
   const evidenceIdx = links.findIndex((l) => l.textContent === '证据研判');
-  const centerIdx = links.findIndex((l) => l.textContent === '研判中心');
+  const centerIdx = links.findIndex((l) => l.textContent === '证据判定');
 
   expect(evidenceIdx).toBeGreaterThanOrEqual(0);
   expect(centerIdx).toBeGreaterThanOrEqual(0);
@@ -86,15 +86,15 @@ test('keeps the analysis center navigation active', async () => {
   featuresState.value = { event_llm_analysis_enabled: true, combined_case_enabled: true, workbench_llm_enabled: true };
   renderLayout('/analysis-center');
 
-  const reportNav = await screen.findByRole('link', { name: '研判中心' });
+  const reportNav = await screen.findByRole('link', { name: '证据判定' });
   expect(reportNav).toHaveAttribute('href', '/analysis-center');
   expect(reportNav).toHaveClass('bg-primary-500/20');
   expect(reportNav.querySelector('.bg-primary-400')).not.toBeNull();
-  expect(screen.getByRole('heading', { name: '研判中心' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: '证据判定' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: '仪表盘' })).not.toBeInTheDocument();
 });
 
-test('restored combined-case entries (案件管理/研判中心) are visible by default (mvp §4.3 修订)', async () => {
+test('restored combined-case entries (案件管理/证据判定) are visible by default (mvp §4.3 修订)', async () => {
   featuresState.value = null;
   renderLayout('/dashboard');
 
@@ -103,7 +103,7 @@ test('restored combined-case entries (案件管理/研判中心) are visible by 
   });
   // 2026-09-19 甲方确认恢复组合案件模块：两个入口不再随开关隐藏。
   expect(screen.getByRole('link', { name: '案件管理' })).toHaveAttribute('href', '/cases');
-  expect(screen.getByRole('link', { name: '研判中心' })).toHaveAttribute('href', '/analysis-center');
+  expect(screen.getByRole('link', { name: '证据判定' })).toHaveAttribute('href', '/analysis-center');
   // 内存取证 / OSS 仍保持裁剪态。
   expect(screen.queryByRole('link', { name: '内存取证' })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'OSS 分析' })).not.toBeInTheDocument();
