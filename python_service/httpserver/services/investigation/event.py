@@ -15,6 +15,7 @@ import sqlite3
 from pathlib import Path
 
 from ..evidence.exceptions import EvidenceNotFoundError, EvidenceStoreError
+from .file_timeline import collect_file_timeline, empty_file_timeline
 from .graph_reader import InvestigationGraphReader
 from .models import (
     EventEvidenceLink,
@@ -202,6 +203,30 @@ class InvestigationEventService:
             return await asyncio.to_thread(reader.list_event_evidence, event_id)
         except EvidenceStoreError:
             raise
+        except sqlite3.DatabaseError as exc:
+            raise EvidenceStoreError(
+                "investigation event store is unavailable"
+            ) from exc
+
+    async def file_timeline(self, task_id: str, *, limit: int = 500) -> dict:
+        """File-centric timeline projection (workbench middle axis).
+
+        Nodes are the files this Investigation covers — direct ``file:``
+        evidence links plus the raw member paths of every linked cluster —
+        each positioned at the latest of its MACB timestamps. Read-only:
+        a missing investigation.db returns the empty projection and never
+        materializes the store.
+        """
+        task = await self._cpp_backend.get_task(task_id)
+        if not isinstance(task, dict) or task.get("id") != task_id:
+            raise EvidenceNotFoundError("task not found")
+        db_path = investigation_db_path_for_task(task)
+        if not db_path.exists():
+            return empty_file_timeline(task_id)
+        try:
+            return await asyncio.to_thread(
+                collect_file_timeline, db_path, task_id, task, limit=limit
+            )
         except sqlite3.DatabaseError as exc:
             raise EvidenceStoreError(
                 "investigation event store is unavailable"

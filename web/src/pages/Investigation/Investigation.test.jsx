@@ -25,6 +25,7 @@ vi.mock('../../services/investigationService', () => ({
   getOverview: vi.fn(),
   bootstrapInvestigation: vi.fn(),
   getInvestigationEvents: vi.fn(),
+  getInvestigationFileTimeline: vi.fn(),
   getEventEvidence: vi.fn(),
   getEvidenceDetail: vi.fn(),
   getAnalysisVersions: vi.fn(),
@@ -47,13 +48,18 @@ vi.mock('../../services/investigationService', () => ({
   removeReportEvidence: vi.fn(),
 }));
 
+// 时间线 = 已分析文件节点；事件经文件关联展示在左栏并驱动右栏工作台。
 const events = [
   { id: 'e1', title: '事件一', summary: 'summary 1', source: 'cluster_seed', review_status: 'draft', start_time: 100, evidence_counts: { total: 1, primary: 1, supporting: 0, context: 0, contradicting: 0 } },
   { id: 'e2', title: '事件二', summary: 'summary 2', source: 'cluster_seed', review_status: 'draft', start_time: 200, evidence_counts: { total: 1, primary: 0, supporting: 1, context: 0, contradicting: 0 } },
 ];
+const files = [
+  { path: '/case/a.txt', name: 'a.txt', latest_time: 150, mtime: 150, crtime: 100, atime: 140, ctime: 120, event_ids: ['e1'] },
+  { path: '/case/b.txt', name: 'b.txt', latest_time: 250, mtime: 250, event_ids: ['e2'] },
+];
 const evidenceByEvent = {
-  e1: [{ evidence_key: 'file:/a.txt', title: 'a.txt', role: 'primary', evidence_type: 'file', initial_summary: 'A' }],
-  e2: [{ evidence_key: 'file:/b.txt', title: 'b.txt', role: 'supporting', evidence_type: 'file', initial_summary: 'B' }],
+  e1: [{ evidence_key: 'file:/case/a.txt', title: 'a.txt', role: 'primary', evidence_type: 'file', initial_summary: 'A' }],
+  e2: [{ evidence_key: 'file:/case/b.txt', title: 'b.txt', role: 'supporting', evidence_type: 'file', initial_summary: 'B' }],
 };
 
 function renderPage(route = '/investigation?task_id=t1') {
@@ -64,8 +70,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   service.getOverview.mockResolvedValue({ initialized: true, event_count: 2, analysis_count: 0, report_evidence_count: 0 });
   service.getInvestigationEvents.mockResolvedValue({ events });
+  service.getInvestigationFileTimeline.mockResolvedValue({ files, total_count: 2, axis: { start: 150, end: 250 } });
   service.getEventEvidence.mockImplementation((taskId, eventId) => Promise.resolve({ evidence: evidenceByEvent[eventId] || [] }));
-  service.getEvidenceDetail.mockResolvedValue({ evidence: { evidence_key: 'file:/b.txt', title: 'b.txt', file_path: '/b.txt', snapshot: { initial_description: 'Initial B' }, metadata: {}, related_event_ids: [] } });
+  service.getEvidenceDetail.mockResolvedValue({ evidence: { evidence_key: 'file:/case/b.txt', title: 'b.txt', file_path: '/case/b.txt', snapshot: { initial_description: 'Initial B' }, metadata: {}, related_event_ids: [] } });
   service.getAnalysisVersions.mockResolvedValue({ versions: [] });
   service.getLocalGraph.mockResolvedValue({ nodes: [], links: [], base_available: false });
 });
@@ -78,7 +85,7 @@ test('shows a task-selection placeholder without task context', () => {
 
 test('defaults to the timeline tab in a three-column layout', async () => {
   const { container } = renderPage();
-  await screen.findByText('事件一');
+  await screen.findByTestId('file-node-/case/a.txt');
   expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('时间线');
   expect(screen.queryByTestId('graph-view-mock')).not.toBeInTheDocument();
   const columns = container.querySelector('main').className;
@@ -88,7 +95,7 @@ test('defaults to the timeline tab in a three-column layout', async () => {
 
 test('graph tab activates the two-column layout and yields the right column', async () => {
   const { container } = renderPage();
-  await screen.findByText('事件一');
+  await screen.findByTestId('file-node-/case/a.txt');
   fireEvent.click(screen.getByTestId('tab-graph'));
   expect(screen.getByTestId('graph-view-mock')).toHaveTextContent('t1');
   expect(container.querySelector('main').className).toContain('grid-cols-[minmax(250px,0.8fr)_minmax(640px,2.45fr)]');
@@ -99,7 +106,7 @@ test('MVP default hides the graph tab (mvp-phase1-acceptance §4.4)', async () =
   featuresState.workbench_llm_enabled = false;
   try {
     renderPage();
-    await screen.findByText('事件一');
+    await screen.findByTestId('file-node-/case/a.txt');
     expect(screen.queryByTestId('tab-graph')).not.toBeInTheDocument();
     expect(screen.getByTestId('tab-timeline')).toBeInTheDocument();
   } finally {
@@ -109,7 +116,7 @@ test('MVP default hides the graph tab (mvp-phase1-acceptance §4.4)', async () =
 
 test('switching back to the timeline tab restores the right column', async () => {
   const { container } = renderPage();
-  await screen.findByText('事件一');
+  await screen.findByTestId('file-node-/case/a.txt');
   fireEvent.click(screen.getByTestId('tab-graph'));
   expect(screen.getByTestId('graph-view-mock')).toBeInTheDocument();
   fireEvent.click(screen.getByTestId('tab-timeline'));
@@ -127,32 +134,47 @@ test('uses overview-gated bootstrap', async () => {
 
 test('does not bootstrap an initialized investigation', async () => {
   renderPage();
-  await screen.findByText('事件一');
+  await screen.findByTestId('file-node-/case/a.txt');
   expect(service.bootstrapInvestigation).not.toHaveBeenCalled();
 });
 
-test('selecting an event refreshes its evidence panel', async () => {
+test('timeline nodes are files sorted by latest MACB time; first file auto-selected', async () => {
   renderPage();
-  await screen.findByText('a.txt');
-  fireEvent.click(screen.getByTestId('event-node-e2'));
-  await screen.findByText('b.txt');
+  await screen.findByTestId('file-node-/case/a.txt');
+  expect(service.getInvestigationFileTimeline).toHaveBeenCalledWith('t1');
+  // 左栏展示选中文件（首个文件）及其关联事件
+  expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('a.txt');
+  expect(screen.getByTestId('file-event-e1')).toBeInTheDocument();
+  expect(screen.queryByTestId('file-event-e2')).not.toBeInTheDocument();
+  // 首个文件的首个事件自动选中，驱动证据面板
+  await waitFor(() => expect(service.getEventEvidence).toHaveBeenCalledWith('t1', 'e1'));
+});
+
+test('selecting a file node shows its events and refreshes the evidence panel', async () => {
+  renderPage();
+  await screen.findByTestId('file-node-/case/a.txt');
+  await screen.findByTestId('evidence-file:/case/a.txt');
+  fireEvent.click(screen.getByTestId('file-node-/case/b.txt'));
+  expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('b.txt');
+  await screen.findByTestId('file-event-e2');
   expect(service.getEventEvidence).toHaveBeenCalledWith('t1', 'e2');
 });
 
 test('selecting evidence opens the evidence analysis workspace', async () => {
   renderPage();
-  await screen.findByText('a.txt');
-  fireEvent.click(screen.getByTestId('event-node-e2'));
-  await screen.findByText('b.txt');
-  fireEvent.click(screen.getByTestId('evidence-file:/b.txt'));
+  await screen.findByTestId('file-node-/case/a.txt');
+  await screen.findByTestId('evidence-file:/case/a.txt');
+  fireEvent.click(screen.getByTestId('file-node-/case/b.txt'));
+  await screen.findByTestId('evidence-file:/case/b.txt');
+  fireEvent.click(screen.getByTestId('evidence-file:/case/b.txt'));
   await screen.findByTestId('evidence-analysis-panel');
   expect(screen.getByText('Initial B')).toBeInTheDocument();
-  expect(service.getEvidenceDetail).toHaveBeenCalledWith('t1', 'file:/b.txt');
+  expect(service.getEvidenceDetail).toHaveBeenCalledWith('t1', 'file:/case/b.txt');
 });
 
 test('displays accepted evidence analysis ahead of newer pending history', async () => {
   service.getEvidenceDetail.mockResolvedValue({ evidence: {
-    evidence_key: 'file:/a.txt', title: 'a.txt', file_path: '/a.txt', snapshot: { initial_description: 'Initial A' }, metadata: {}, related_event_ids: [],
+    evidence_key: 'file:/case/a.txt', title: 'a.txt', file_path: '/case/a.txt', snapshot: { initial_description: 'Initial A' }, metadata: {}, related_event_ids: [],
     accepted_analysis: { id: 'accepted', version: 1, status: 'accepted', description: 'Accepted analysis' },
     pending_analysis: { id: 'pending', version: 2, status: 'review_pending', description: 'Pending analysis' },
     latest_analysis: { id: 'pending', version: 2, status: 'review_pending', description: 'Pending analysis' },
@@ -162,13 +184,14 @@ test('displays accepted evidence analysis ahead of newer pending history', async
     { id: 'accepted', version: 1, status: 'accepted', description: 'Accepted analysis' },
   ] });
   renderPage();
-  await screen.findByText('a.txt');
-  fireEvent.click(screen.getByTestId('evidence-file:/a.txt'));
+  await screen.findByTestId('file-node-/case/a.txt');
+  await screen.findByTestId('evidence-file:/case/a.txt');
+  fireEvent.click(screen.getByTestId('evidence-file:/case/a.txt'));
   await screen.findByTestId('evidence-analysis-panel');
   expect(screen.getByText('Accepted analysis')).toBeInTheDocument();
 });
 
-test('marks stale pending semantic content without replacing the timeline title', async () => {
+test('marks stale pending semantic content without replacing the event title', async () => {
   service.getInvestigationEvents.mockResolvedValue({ events: [{
     ...events[0], title: 'Seed title', effective_title: 'Seed title', effective_summary: 'Seed summary', semantic_revision: 2,
     pending_semantic_stale: true,
@@ -177,7 +200,8 @@ test('marks stale pending semantic content without replacing the timeline title'
     id: 'stale', version: 1, status: 'review_pending', source_revision: 1, title: 'Stale candidate', summary: 'stale', input_evidence_refs: '[]',
   }] });
   renderPage();
-  expect(await screen.findByTestId('event-e1')).toHaveTextContent('Seed title');
+  // 事件标题在左栏文件关联事件列表中以 seed 标题呈现
+  expect(await screen.findByTestId('file-event-e1')).toHaveTextContent('Seed title');
   await screen.findByText('已过期待审核');
   expect(screen.getByText('Stale candidate')).toBeInTheDocument();
 });
@@ -185,8 +209,8 @@ test('marks stale pending semantic content without replacing the timeline title'
 test('renders historical claim citation and preserves provenance scope', async () => {
   service.getInvestigationEvents.mockResolvedValue({ events: [{ ...events[0], semantic_source: 'accepted', semantic_version_id: 'ev1', effective_semantic_valid: true }] });
   service.getEventSemanticVersions.mockResolvedValue({ versions: [] });
-  service.getEffectiveEventClaims.mockResolvedValue({ claims: [{ id: 'c1', claim_text: 'Claim A', type: 'fact', status: 'review_pending', grounding_status: 'grounded', evidence_refs: [{ evidence_key: 'file:/a.txt' }, { evidence_key: 'file:/historical.txt' }] }] });
-  service.getEventEvidence.mockResolvedValue({ evidence: [{ ...evidenceByEvent.e1[0], evidence_key: 'file:/a.txt' }] });
+  service.getEffectiveEventClaims.mockResolvedValue({ claims: [{ id: 'c1', claim_text: 'Claim A', type: 'fact', status: 'review_pending', grounding_status: 'grounded', evidence_refs: [{ evidence_key: 'file:/case/a.txt' }, { evidence_key: 'file:/historical.txt' }] }] });
+  service.getEventEvidence.mockResolvedValue({ evidence: [{ ...evidenceByEvent.e1[0], evidence_key: 'file:/case/a.txt' }] });
   service.getEvidenceDetail.mockImplementation((_, key) => Promise.resolve({ evidence: { evidence_key: key, title: key.includes('historical') ? 'Historical evidence' : 'a.txt', file_path: key, snapshot: { initial_description: 'detail' }, metadata: {}, related_event_ids: [] } }));
   renderPage();
   await screen.findByText('Claim A');
@@ -215,22 +239,31 @@ test('ignores every late response from a previously selected evidence item', asy
     return { promise, resolve };
   };
   const a = { detail: deferred(), versions: deferred(), graph: deferred() };
-  service.getEvidenceDetail.mockImplementation((_, key) => key === 'file:/a.txt' ? a.detail.promise : Promise.resolve({ evidence: { evidence_key: 'file:/b.txt', title: 'b.txt', file_path: '/b.txt', snapshot: { initial_description: 'Initial B' }, metadata: {}, related_event_ids: [] } }));
-  service.getAnalysisVersions.mockImplementation((_, key) => key === 'file:/a.txt' ? a.versions.promise : Promise.resolve({ versions: [{ id: 'b', version: 1, status: 'accepted', description: 'B analysis' }] }));
-  service.getLocalGraph.mockImplementation((_, payload) => payload.evidence_key === 'file:/a.txt' ? a.graph.promise : Promise.resolve({ nodes: [{ id: 'b-node', label: 'B graph' }], links: [], base_available: false }));
+  service.getEvidenceDetail.mockImplementation((_, key) => key === 'file:/case/a.txt' ? a.detail.promise : Promise.resolve({ evidence: { evidence_key: 'file:/case/b.txt', title: 'b.txt', file_path: '/case/b.txt', snapshot: { initial_description: 'Initial B' }, metadata: {}, related_event_ids: [] } }));
+  service.getAnalysisVersions.mockImplementation((_, key) => key === 'file:/case/a.txt' ? a.versions.promise : Promise.resolve({ versions: [{ id: 'b', version: 1, status: 'accepted', description: 'B analysis' }] }));
+  service.getLocalGraph.mockImplementation((_, payload) => payload.evidence_key === 'file:/case/a.txt' ? a.graph.promise : Promise.resolve({ nodes: [{ id: 'b-node', label: 'B graph' }], links: [], base_available: false }));
   renderPage();
-  await screen.findByText('a.txt');
-  fireEvent.click(screen.getByTestId('evidence-file:/a.txt'));
-  fireEvent.click(screen.getByTestId('event-node-e2'));
-  await screen.findByText('b.txt');
-  fireEvent.click(screen.getByTestId('evidence-file:/b.txt'));
+  await screen.findByTestId('file-node-/case/a.txt');
+  await screen.findByTestId('evidence-file:/case/a.txt');
+  fireEvent.click(screen.getByTestId('evidence-file:/case/a.txt'));
+  fireEvent.click(screen.getByTestId('file-node-/case/b.txt'));
+  await screen.findByTestId('evidence-file:/case/b.txt');
+  fireEvent.click(screen.getByTestId('evidence-file:/case/b.txt'));
   await screen.findByText('B analysis');
   await act(async () => {
-    a.detail.resolve({ evidence: { evidence_key: 'file:/a.txt', title: 'a.txt', file_path: '/a.txt', snapshot: { initial_description: 'Late A' }, metadata: {}, related_event_ids: [] } });
+    a.detail.resolve({ evidence: { evidence_key: 'file:/case/a.txt', title: 'a.txt', file_path: '/case/a.txt', snapshot: { initial_description: 'Late A' }, metadata: {}, related_event_ids: [] } });
     a.versions.resolve({ versions: [{ id: 'a', version: 1, status: 'accepted', description: 'A analysis' }] });
     a.graph.resolve({ nodes: [{ id: 'a-node', label: 'A graph' }], links: [], base_available: false });
   });
   expect(screen.getByText('B analysis')).toBeInTheDocument();
   expect(screen.queryByText('A analysis')).not.toBeInTheDocument();
   expect(screen.queryByText('Late A')).not.toBeInTheDocument();
+});
+
+test('deep link ?event= switches to the file hosting that event', async () => {
+  renderPage('/investigation?task_id=t1&event=e2');
+  await screen.findByTestId('file-node-/case/b.txt');
+  await waitFor(() => expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('b.txt'));
+  await screen.findByTestId('file-event-e2');
+  expect(service.getEventEvidence).toHaveBeenCalledWith('t1', 'e2');
 });

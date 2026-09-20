@@ -264,6 +264,17 @@ async def workbench_events(task_id: str, manager=Depends(_manager)):
         raise _error(exc) from exc
 
 
+@router.get("/{task_id}/file-timeline")
+async def workbench_file_timeline(task_id: str, manager=Depends(_manager)):
+    """File-centric timeline: analyzed files as nodes at their latest MACB
+    time, with the associated Investigation Events as corroborating refs."""
+    try:
+        timeline = await manager.investigation_event_service.file_timeline(task_id)
+        return {"success": True, **timeline}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
 @router.get("/{task_id}/events/{event_id}")
 async def workbench_event(task_id: str, event_id: str, manager=Depends(_manager)):
     try:

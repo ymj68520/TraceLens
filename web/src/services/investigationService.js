@@ -72,6 +72,42 @@ export const listReportEvidence = async (taskId) => {
     });
 };
 
+/**
+ * 证据判定页读模型：任务文件清单 LEFT JOIN 当前报告证据判定
+ * （report_status: null=未判定 / main / appendix / excluded）
+ * @param {string} taskId
+ * @param {Object} params - { search, status: all|main|appendix|excluded|unjudged, page, page_size }
+ */
+export const listReportEvidenceFileCandidates = async (taskId, params = {}) => {
+    return await pythonApi.get('/api/reports/evidence/file-candidates', {
+        params: { task_id: taskId, ...params },
+    });
+};
+
+/**
+ * 新增一条报告证据判定（未判定文件首次入报；file: 证据由后端自动捕获快照）
+ * @param {string} reportStatus - 'main' | 'appendix'
+ */
+export const addReportEvidence = (taskId, evidenceKey, reportStatus, addedBy = 'analysis-center') =>
+    pythonApi.post('/api/reports/evidence', {
+        task_id: taskId,
+        evidence_key: evidenceKey,
+        report_status: reportStatus,
+        added_by: addedBy,
+    });
+
+/**
+ * 显式更新一条报告证据的判定（main/appendix 切换、移出报告=excluded；
+ * 绑定不随版本自动漂移，永远是一次显式判定动作）
+ */
+export const updateReportEvidenceStatus = (taskId, evidenceKey, reportStatus, updatedBy = 'analysis-center') =>
+    pythonApi.put('/api/reports/evidence', {
+        task_id: taskId,
+        evidence_key: evidenceKey,
+        report_status: reportStatus,
+        updated_by: updatedBy,
+    });
+
 const workbenchBase = (taskId) => `/api/investigation/workbench/${encodeURIComponent(taskId)}`;
 
 export const getOverview = (taskId) => pythonApi.get(workbenchBase(taskId));
@@ -79,6 +115,12 @@ export const bootstrapInvestigation = (taskId, options = {}) =>
     pythonApi.post(`${workbenchBase(taskId)}/bootstrap`, { mode: 'cluster_seed', ...options });
 export const getInvestigationEvents = (taskId, params = {}) =>
     pythonApi.get(`${workbenchBase(taskId)}/events`, { params });
+/**
+ * 文件中心时间线：判定为已分析的文件按 MACB 最新时间为节点，
+ * 每个文件附带其关联的 Investigation Events（佐证引用）。
+ */
+export const getInvestigationFileTimeline = (taskId) =>
+    pythonApi.get(`${workbenchBase(taskId)}/file-timeline`);
 export const getEventEvidence = (taskId, eventId, params = {}) =>
     pythonApi.get(`${workbenchBase(taskId)}/events/${encodeURIComponent(eventId)}/evidence`, { params });
 export const linkEventEvidence = (taskId, eventId, payload) =>
@@ -159,6 +201,9 @@ export default {
     listInvestigationAnalysisClaims,
     getInvestigationEvent,
     listReportEvidence,
+    listReportEvidenceFileCandidates,
+    addReportEvidence,
+    updateReportEvidenceStatus,
     getOverview,
     bootstrapInvestigation,
     getInvestigationEvents,

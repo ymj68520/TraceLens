@@ -226,6 +226,28 @@ class InvestigationGraphReader:
 
         return self._run(read)
 
+    def list_event_evidence_links(self) -> list[EventEvidenceLink]:
+        """Every Event→Evidence link of the task (file-timeline projection)."""
+        def read(conn: sqlite3.Connection) -> list[EventEvidenceLink]:
+            rows = conn.execute(
+                "SELECT task_id, event_id, evidence_key, linked_at, linked_by "
+                "FROM investigation_event_evidence "
+                "WHERE task_id = ? ORDER BY linked_at, evidence_key",
+                [self._task_id],
+            ).fetchall()
+            return [
+                EventEvidenceLink(
+                    task_id=r["task_id"],
+                    event_id=r["event_id"],
+                    evidence_key=r["evidence_key"],
+                    linked_at=r["linked_at"],
+                    linked_by=r["linked_by"],
+                )
+                for r in rows
+            ]
+
+        return self._run(read)
+
     def get_event_refresh(self, refresh_id: str) -> EventRefresh | None:
         def read(conn: sqlite3.Connection) -> EventRefresh | None:
             row = conn.execute(
