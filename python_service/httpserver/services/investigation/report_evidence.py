@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 import sqlite3
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ..evidence.exceptions import EvidenceNotFoundError, EvidenceStoreError
@@ -259,19 +260,28 @@ class ReportEvidenceService:
                         "AND re.evidence_key LIKE 'file:%'"
                     )
 
+                # 真实镜像的 files 表可能含重复 path（多分区/多副本）；证据身份
+                # 是 path 级的（file:<path>），因此每个 path 只取 id 最小的一行，
+                # 否则 LEFT JOIN 会让判定计数与分页行成倍膨胀。
+                files_source = (
+                    "FROM (SELECT * FROM (SELECT f0.*, ROW_NUMBER() OVER "
+                    "(PARTITION BY f0.path ORDER BY f0.id) AS __rn "
+                    "FROM files f0) WHERE __rn = 1) f"
+                )
+
                 # Global judgment counts (independent of the search filter).
                 counts = {"main": 0, "appendix": 0, "excluded": 0, "unjudged": 0}
                 if has_re_table:
                     for row in conn.execute(
                         f"SELECT COALESCE(re.report_status, 'unjudged') AS s, "
-                        f"COUNT(*) AS c FROM files f {join_sql} GROUP BY s",
+                        f"COUNT(*) AS c {files_source} {join_sql} GROUP BY s",
                         (task_id,),
                     ):
                         if row["s"] in counts:
                             counts[row["s"]] = int(row["c"])
                 else:
                     counts["unjudged"] = int(
-                        conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+                        conn.execute(f"SELECT COUNT(*) {files_source}").fetchone()[0]
                     )
 
                 where_status = ""
@@ -290,7 +300,7 @@ class ReportEvidenceService:
 
                 total = int(
                     conn.execute(
-                        f"SELECT COUNT(*) FROM files f {join_sql} "
+                        f"SELECT COUNT(*) {files_source} {join_sql} "
                         f"WHERE 1=1 {where_status}",
                         [*join_params, *filter_params],
                     ).fetchone()[0]
@@ -301,7 +311,7 @@ class ReportEvidenceService:
                     f"f.llm_analyzed_at, f.scene_relevant, "
                     f"re.report_status AS re_status, re.analysis_id AS re_analysis, "
                     f"re.updated_at AS re_updated "
-                    f"FROM files f {join_sql} WHERE 1=1 {where_status} "
+                    f"{files_source} {join_sql} WHERE 1=1 {where_status} "
                     f"ORDER BY f.path LIMIT ? OFFSET ?",
                     [
                         *join_params,
@@ -342,6 +352,135 @@ class ReportEvidenceService:
                 conn.close()
 
         return await asyncio.to_thread(_read)
+
+    async def seed_analyzed_files(self, task_id: str, *, added_by: str) -> dict:
+        """初管全量入报：把初次流水线覆盖的每个"已分析文件"判为正文证据。
+
+        口径与文件时间线完全一致（covered_file_event_map：直接 ``file:``
+        证据链 + 关联簇成员路径）。任何已有判定（含 excluded）一律跳过——
+        取证人员的事后取消永不回退；任务文件表中缺行的簇成员路径同样跳过。
+        单事务幂等：重复调用只补新增的未判定文件。
+        """
+        db_path = await self._resolve_task_db(task_id)
+        task = await self._cpp_backend.get_task(task_id)
+        files_db = (task or {}).get("output_files_db") or ""
+        if not files_db or not Path(files_db).exists():
+            raise EvidenceStoreError("task has no files database")
+
+        def _covered():
+            from .file_timeline import covered_file_event_map
+
+            mapping, _diagnostics = covered_file_event_map(db_path, task_id, task)
+            return sorted(mapping)
+
+        paths = await asyncio.to_thread(_covered)
+
+        def _seed() -> dict:
+            now = datetime.now(timezone.utc).isoformat()
+            # Repository construction ensures the v7 schema (report_evidence
+            # is an optional extension; the first write materializes it).
+            InvestigationRepository(db_path, task_id)
+            conn = sqlite3.connect(str(db_path), timeout=60)
+            files_conn = sqlite3.connect(f"file:{files_db}?mode=ro", uri=True)
+            files_conn.row_factory = sqlite3.Row
+            seeded = skipped_judged = missing_files = 0
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                judged = {
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT evidence_key FROM report_evidence "
+                        "WHERE task_id = ? AND evidence_key LIKE 'file:%'",
+                        (task_id,),
+                    )
+                }
+                captured = {
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT evidence_key FROM evidence_snapshots "
+                        "WHERE task_id = ? AND evidence_key LIKE 'file:%'",
+                        (task_id,),
+                    )
+                }
+                for path in paths:
+                    key = f"file:{path}"
+                    if key in judged:
+                        skipped_judged += 1
+                        continue
+                    row = files_conn.execute(
+                        "SELECT * FROM files WHERE path = ?", (path,)
+                    ).fetchone()
+                    if row is None:
+                        missing_files += 1
+                        continue
+                    if key not in captured:
+                        row_dict = dict(row)
+                        conn.execute(
+                            "INSERT OR IGNORE INTO evidence_snapshots "
+                            "(task_id, evidence_key, evidence_type, "
+                            " normalized_path, snapshot_json, captured_at) "
+                            "VALUES (?, ?, 'file', ?, ?, ?)",
+                            (
+                                task_id,
+                                key,
+                                path,
+                                json.dumps(
+                                    {
+                                        "evidence_type": "file",
+                                        "normalized_path": path,
+                                        "name": row_dict.get("name"),
+                                        "extension": row_dict.get("extension"),
+                                        "category": row_dict.get("category"),
+                                        "type": row_dict.get("type"),
+                                        "size": row_dict.get("size"),
+                                        "md5": row_dict.get("md5"),
+                                        "mtime": row_dict.get("mtime"),
+                                        "ctime": row_dict.get("ctime"),
+                                        "is_deleted": row_dict.get("is_deleted"),
+                                        "initial_summary": row_dict.get("llm_summary"),
+                                        "initial_description": row_dict.get("llm_description"),
+                                        "initial_keywords": row_dict.get("llm_keywords"),
+                                        "initial_model": row_dict.get("llm_model_used"),
+                                        "initial_analyzed_at": row_dict.get("llm_analyzed_at"),
+                                        "scene_type": row_dict.get("scene_type"),
+                                        "scene_priority": row_dict.get("scene_priority"),
+                                        "scene_relevant": row_dict.get("scene_relevant"),
+                                    },
+                                    ensure_ascii=False,
+                                ),
+                                int(time.time()),
+                            ),
+                        )
+                        captured.add(key)
+                    conn.execute(
+                        "INSERT OR IGNORE INTO report_evidence "
+                        "(task_id, evidence_key, report_status, analysis_id, "
+                        " added_by, created_at, updated_at, updated_by) "
+                        "VALUES (?, ?, 'main', NULL, ?, ?, ?, NULL)",
+                        (task_id, key, added_by, now, now),
+                    )
+                    seeded += 1
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+                files_conn.close()
+            return {
+                "task_id": task_id,
+                "covered_files": len(paths),
+                "seeded": seeded,
+                "skipped_judged": skipped_judged,
+                "missing_in_files_table": missing_files,
+            }
+
+        try:
+            return await asyncio.to_thread(_seed)
+        except sqlite3.DatabaseError as exc:
+            raise EvidenceStoreError(
+                "investigation database is unavailable"
+            ) from exc
 
 
 __all__ = ["ReportEvidenceService"]

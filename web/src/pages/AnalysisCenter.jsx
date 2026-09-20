@@ -10,7 +10,7 @@ import { fetchCases } from '../store/caseSlice';
 import { useToast } from '../components/common/useToast';
 import { fetchTaskById } from '../services/taskService';
 import { saveCaseDescription } from '../services/caseAnalysisService';
-import { listReportEvidenceFileCandidates } from '../services/investigationService';
+import { listReportEvidenceFileCandidates, seedAnalyzedReportEvidence } from '../services/investigationService';
 
 /**
  * 证据判定 (Evidence Review) — /analysis-center
@@ -68,6 +68,7 @@ const EvidenceReviewPage = () => {
     const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(false);
+    const [seeding, setSeeding] = useState(false);
     const searchTimer = useRef(null);
 
     useEffect(() => {
@@ -140,6 +141,24 @@ const EvidenceReviewPage = () => {
             toast.error('保存案情描述失败: ' + (err?.message || err));
         } finally {
             setSavingDescription(false);
+        }
+    };
+
+    // 初管全量入报：初次流水线覆盖的全部"已分析文件"默认判为正文证据，
+    // 取证人员随后逐个取消。已有判定（含排除）一律跳过，幂等可重复执行。
+    const handleSeedAnalyzed = async () => {
+        if (!activeContextId || activeContextId === caseId || seeding) return;
+        setSeeding(true);
+        try {
+            const result = await seedAnalyzedReportEvidence(activeContextId, 'analysis-center');
+            const { seeded = 0, skipped_judged = 0, missing_in_files_table = 0 } = result || {};
+            toast.success(`初管全量入报完成：新列入 ${seeded} 个，保留已有判定 ${skipped_judged} 个${missing_in_files_table ? `，缺文件行跳过 ${missing_in_files_table} 个` : ''}`);
+            await loadCandidates();
+        } catch (err) {
+            console.error('Seed analyzed files failed:', err);
+            toast.error('初管全量入报失败: ' + (err?.response?.data?.detail || err?.message || err));
+        } finally {
+            setSeeding(false);
         }
     };
 
@@ -254,15 +273,27 @@ const EvidenceReviewPage = () => {
                                 <p className="text-xl font-bold text-slate-500">{statusCounts.excluded}</p>
                             </div>
                         </div>
-                        <div className="relative lg:w-80">
-                            <span className="absolute left-3 top-2.5 text-slate-400"><SearchIcon size={15} /></span>
-                            <input
-                                type="text"
-                                value={searchInput}
-                                onChange={(e) => handleSearchInput(e.target.value)}
-                                placeholder="按路径搜索文件..."
-                                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-xl dark:bg-slate-800 focus:ring-2 focus:ring-purple-500"
-                            />
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                loading={seeding}
+                                disabled={seeding || loading || statusCounts.unjudged === 0}
+                                onClick={handleSeedAnalyzed}
+                                title="初次流水线覆盖的全部已分析文件默认列为正文证据；已有判定（含排除）不受影响，可重复执行"
+                            >
+                                📥 列入全部已分析文件
+                            </Button>
+                            <div className="relative lg:w-72">
+                                <span className="absolute left-3 top-2.5 text-slate-400"><SearchIcon size={15} /></span>
+                                <input
+                                    type="text"
+                                    value={searchInput}
+                                    onChange={(e) => handleSearchInput(e.target.value)}
+                                    placeholder="按路径搜索文件..."
+                                    className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-xl dark:bg-slate-800 focus:ring-2 focus:ring-purple-500"
+                                />
+                            </div>
                         </div>
                     </div>
 

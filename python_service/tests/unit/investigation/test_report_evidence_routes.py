@@ -376,3 +376,104 @@ def test_file_candidates_joins_files_with_report_rows(tmp_path) -> None:
     main_only = asyncio.run(service.list_file_candidates("A", status="main"))
     assert main_only["total"] == 1
     assert main_only["items"][0]["path"] == "/case/a.log"
+
+
+def test_seed_analyzed_files_covers_pipeline_and_never_overrides(tmp_path):
+    """初管全量入报：覆盖口径与时间线一致；已有判定（含 excluded）永不覆盖。"""
+    import asyncio
+    import sqlite3
+
+    from httpserver.services.evidence import ResolvedEvidence
+    from httpserver.services.investigation import InvestigationRepository
+    from httpserver.services.investigation.report_evidence import (
+        ReportEvidenceService,
+    )
+
+    events_db = tmp_path / "events.db"
+    files_db = tmp_path / "files.db"
+    conn = sqlite3.connect(events_db)
+    conn.execute(
+        "CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER, "
+        "event_type TEXT, file_path TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO events (timestamp, event_type, file_path) VALUES (?,?,?)",
+        [(6005, "CREATED", "/case/a.txt"), (6010, "CREATED", "/case/c.txt"),
+         (6015, "CREATED", "/case/ghost.txt")],
+    )
+    conn.commit()
+    conn.close()
+    fconn = sqlite3.connect(files_db)
+    fconn.execute(
+        "CREATE TABLE files (path TEXT, name TEXT, extension TEXT, category TEXT, "
+        "type TEXT, size INTEGER, mtime INTEGER, ctime INTEGER, is_deleted INTEGER, "
+        "md5 TEXT, llm_summary TEXT, llm_description TEXT, llm_keywords TEXT, "
+        "llm_analyzed_at INTEGER, llm_model_used TEXT, scene_type TEXT, "
+        "scene_priority INTEGER, scene_relevant INTEGER)"
+    )
+    fconn.executemany(
+        "INSERT INTO files (path, name, size, mtime) VALUES (?,?,?,?)",
+        [("/case/a.txt", "a.txt", 10, 6005), ("/case/c.txt", "c.txt", 30, 6010)],
+    )
+    fconn.commit()
+    fconn.close()
+
+    task = {
+        "id": "A",
+        "output_files_db": str(files_db),
+        "output_events_db": str(events_db),
+    }
+    repo = InvestigationRepository(tmp_path / "investigation.db", "A")
+    repo.capture_if_absent(
+        ResolvedEvidence(
+            task_id="A", evidence_key="cluster:v1:100:CREATED", evidence_type="cluster",
+            version="v1", unix_minute=100, event_type="CREATED", cluster_start=6000,
+            cluster_end=6059, event_count=3, representative_timestamp=6005,
+            source_db=str(events_db),
+        )
+    )
+    repo.capture_if_absent(
+        ResolvedEvidence(
+            task_id="A", evidence_key="file:/case/c.txt", evidence_type="file",
+            normalized_path="/case/c.txt", source_db=str(files_db),
+        )
+    )
+    event_id = repo.create_event("聚类事件", summary="s").event_id
+    repo.link_event_evidence(event_id, "cluster:v1:100:CREATED", linked_by="cluster_seed")
+
+    # 取证人员预先把 c.txt 排除出报告（add 仅允许 main/appendix，excluded 走 update）
+    repo.add_report_evidence("file:/case/c.txt", report_status="main", added_by="analyst")
+    repo.update_report_evidence("file:/case/c.txt", report_status="excluded", updated_by="analyst")
+
+    class FakeBackend:
+        async def get_task(self, task_id):
+            return task
+
+    service = ReportEvidenceService(FakeBackend())
+    result = asyncio.run(service.seed_analyzed_files("A", added_by="pipeline"))
+
+    # 覆盖集 = {a.txt, c.txt, ghost.txt}；c.txt 已判定跳过；ghost 缺行跳过
+    assert result["covered_files"] == 3
+    assert result["seeded"] == 1
+    assert result["skipped_judged"] == 1
+    assert result["missing_in_files_table"] == 1
+
+    conn = sqlite3.connect(tmp_path / "investigation.db")
+    a_status = conn.execute(
+        "SELECT report_status FROM report_evidence WHERE evidence_key='file:/case/a.txt'"
+    ).fetchone()[0]
+    c_status = conn.execute(
+        "SELECT report_status FROM report_evidence WHERE evidence_key='file:/case/c.txt'"
+    ).fetchone()[0]
+    snap = conn.execute(
+        "SELECT snapshot_json FROM evidence_snapshots WHERE evidence_key='file:/case/a.txt'"
+    ).fetchone()[0]
+    conn.close()
+    assert a_status == "main"
+    assert c_status == "excluded"  # 取证人员的取消不被回退
+    assert '"normalized_path": "/case/a.txt"' in snap
+
+    # 幂等：重复调用只补新增（0 个）
+    again = asyncio.run(service.seed_analyzed_files("A", added_by="pipeline"))
+    assert again["seeded"] == 0
+    assert again["skipped_judged"] == 2

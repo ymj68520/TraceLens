@@ -97,6 +97,17 @@ export const addReportEvidence = (taskId, evidenceKey, reportStatus, addedBy = '
     });
 
 /**
+ * 初管全量入报：把初次流水线覆盖的全部"已分析文件"判为正文证据。
+ * 已有任何判定（含取证人员事后排除的 excluded）一律跳过、永不回退；幂等。
+ * @returns {{covered_files, seeded, skipped_judged, missing_in_files_table}}
+ */
+export const seedAnalyzedReportEvidence = (taskId, addedBy = 'analysis-center') =>
+    pythonApi.post('/api/reports/evidence/seed-analyzed', {
+        task_id: taskId,
+        added_by: addedBy,
+    });
+
+/**
  * 显式更新一条报告证据的判定（main/appendix 切换、移出报告=excluded；
  * 绑定不随版本自动漂移，永远是一次显式判定动作）
  */
@@ -204,6 +215,7 @@ export default {
     listReportEvidenceFileCandidates,
     addReportEvidence,
     updateReportEvidenceStatus,
+    seedAnalyzedReportEvidence,
     getOverview,
     bootstrapInvestigation,
     getInvestigationEvents,

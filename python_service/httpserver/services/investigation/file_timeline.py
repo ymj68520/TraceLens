@@ -171,28 +171,21 @@ def _load_file_metadata(
     return merged
 
 
-def collect_file_timeline(
+def covered_file_event_map(
     db_path: Path,
     task_id: str,
     task: dict,
-    *,
-    limit: int = 500,
-) -> dict[str, Any]:
-    """Build the file-centric timeline projection (sync; run via to_thread).
+) -> tuple[dict[str, set[str]], dict[str, int]]:
+    """初管覆盖口径：任务调查实际覆盖的文件 → 关联事件 id 集合。
 
-    ``task`` is the trusted server-side task record — its DB paths are the only
-    forensic sources consulted; client input never reaches a path. Nodes are
-    ordered newest-first by MACB latest time so the timeline surfaces the most
-    recent file activity; time-less files trail at the bottom.
+    直接 ``file:`` 证据链 + 关联簇按 ``MAX_RELATED_EVIDENCE`` 截断的成员
+    路径。时间线投影与"全量列入证据"的种子端点共用，保证两侧对"已分析
+    文件"的判定口径永远一致。返回 (映射, 诊断计数)。
     """
     reader = InvestigationGraphReader(db_path, task_id)
-    events = reader.list_events()
     links = reader.list_event_evidence_links()
 
     events_db = task.get("output_events_db") or ""
-    files_db = task.get("output_files_db") or ""
-    raw_db = task.get("output_raw_db") or _fallback_db(task, "raw.db")
-
     cluster_keys = sorted(
         {
             link.evidence_key
@@ -215,6 +208,31 @@ def collect_file_timeline(
         else:
             for path in cluster_members.get(key, ()):
                 file_events.setdefault(path, set()).add(link.event_id)
+    return file_events, {"link_count": len(links), "cluster_count": len(cluster_keys)}
+
+
+def collect_file_timeline(
+    db_path: Path,
+    task_id: str,
+    task: dict,
+    *,
+    limit: int = 500,
+) -> dict[str, Any]:
+    """Build the file-centric timeline projection (sync; run via to_thread).
+
+    ``task`` is the trusted server-side task record — its DB paths are the only
+    forensic sources consulted; client input never reaches a path. Nodes are
+    ordered newest-first by MACB latest time so the timeline surfaces the most
+    recent file activity; time-less files trail at the bottom.
+    """
+    reader = InvestigationGraphReader(db_path, task_id)
+    events = reader.list_events()
+
+    files_db = task.get("output_files_db") or ""
+    raw_db = task.get("output_raw_db") or _fallback_db(task, "raw.db")
+
+    file_events, diagnostics = covered_file_event_map(db_path, task_id, task)
+    cluster_count = diagnostics["cluster_count"]
 
     known_event_ids = {event.event_id for event in events}
     metadata = _load_file_metadata(files_db, raw_db, set(file_events))
@@ -273,8 +291,8 @@ def collect_file_timeline(
         },
         "scope": {
             "event_count": len(events),
-            "link_count": len(links),
-            "cluster_count": len(cluster_keys),
+            "link_count": diagnostics["link_count"],
+            "cluster_count": cluster_count,
             "undated_file_count": len(undated),
             "limited": total > limit,
         },

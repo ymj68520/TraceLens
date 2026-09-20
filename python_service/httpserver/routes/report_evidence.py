@@ -104,6 +104,35 @@ async def list_report_evidence_file_candidates(
         raise HTTPException(status_code=503, detail="report evidence store unavailable") from exc
 
 
+class SeedAnalyzedFilesRequest(BaseModel):
+    """Bulk admission of the initial pipeline's analyzed files as main evidence."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str = Field(min_length=1)
+    added_by: str = Field(min_length=1, max_length=256)
+
+
+@router.post("/evidence/seed-analyzed")
+async def seed_analyzed_files(
+    request: SeedAnalyzedFilesRequest,
+    service: ReportEvidenceService = Depends(get_report_evidence_service),
+) -> dict:
+    """初管全量入报：把初次流水线覆盖的全部"已分析文件"判为正文证据。
+
+    口径与文件时间线一致（直接 file: 证据链 + 关联簇成员路径）；任何已有
+    判定（含取证人员事后排除的 excluded）一律跳过、永不回退。幂等。
+    """
+    try:
+        return await service.seed_analyzed_files(
+            request.task_id, added_by=request.added_by
+        )
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="task not found") from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="report evidence store unavailable") from exc
+
+
 class AddReportEvidenceRequest(BaseModel):
     """Strict boundary for adding one captured evidence to the report.
 
