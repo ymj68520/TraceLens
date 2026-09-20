@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { BrainCircuit, CheckCircle2, CircleX, RotateCw } from 'lucide-react';
+import { BrainCircuit, CheckCircle2, CircleX, Clock3, FileText, RotateCw } from 'lucide-react';
 import Badge from '../../../components/common/Badge';
 import Button from '../../../components/common/Button';
 import Spinner from '../../../components/common/Spinner';
@@ -22,7 +22,76 @@ function Section({ title, children }) {
   return <section className="rounded-xl border border-slate-200/60 dark:border-slate-700/60 p-4"><h3 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h3>{children}</section>;
 }
 
-export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, onEvidenceChanged }) {
+// 文件上下文头（点击时间线文件节点时展示）：MACB 四时间与身份信息，
+// 与证据详情数据无关，loading 期间也可见。
+function FileContextHeader({ file }) {
+  const MACB_CHIPS = [
+    { key: 'crtime', label: '创建' },
+    { key: 'mtime', label: '修改' },
+    { key: 'atime', label: '访问' },
+    { key: 'ctime', label: '变更' },
+  ];
+  return (
+    <div className="rounded-xl border border-primary-200/60 dark:border-primary-900/40 bg-primary-50/40 dark:bg-slate-900/40 p-4" data-testid="file-context-header">
+      <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
+        <FileText size={14} className="shrink-0 text-primary-500" />
+        <span className="truncate">{file.name || file.path}</span>
+      </div>
+      <div className="mt-0.5 break-all font-mono text-[10px] text-slate-400">{file.path}</div>
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+        {MACB_CHIPS.map(({ key, label }) => {
+          const value = Number(file[key]);
+          if (!Number.isFinite(value) || value <= 0) return null;
+          return <span key={key}><Clock3 size={10} className="mr-0.5 -mt-0.5 inline" />{label} {formatTimestamp(value)}</span>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+// 佐证事件 section（文件上下文）：文件关联的调查事件，点击进入事件面板。
+function CorroboratingEventsSection({ file, events = [], onSelectEvent }) {
+  const fileEvents = useMemo(() => {
+    if (!file) return [];
+    const byId = new Map(events.map((event) => [event.id, event]));
+    const resolved = (file.event_ids || []).map((id) => byId.get(id)).filter(Boolean);
+    return resolved.sort((a, b) => (a.start_time ?? Infinity) - (b.start_time ?? Infinity));
+  }, [file, events]);
+  return (
+    <Section title={`佐证事件 · ${fileEvents.length}`}>
+      <p className="mb-2 text-[10px] text-slate-400">点击进入事件面板查看语义总结与 Claim。</p>
+      {fileEvents.length ? (
+        <div className="space-y-1">
+          {fileEvents.map((event) => (
+            <button
+              key={event.id}
+              type="button"
+              onClick={() => onSelectEvent?.(event.id)}
+              data-testid={`workbench-event-${event.id}`}
+              className="flex w-full items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left text-xs transition-colors hover:border-slate-200 hover:bg-slate-100/70 dark:hover:border-slate-700 dark:hover:bg-slate-800/60"
+            >
+              <Clock3 size={11} className="shrink-0 text-slate-400" />
+              <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">{event.effective_title || event.title}</span>
+              <span className="shrink-0 text-[10px] text-slate-400">{formatTimestamp(event.start_time)}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-slate-400">该文件暂无关联事件。</p>
+      )}
+    </Section>
+  );
+}
+
+/**
+ * 证据分析工作台：任务内任意已捕获证据（file: / cluster:）的完整详情与操作。
+ *
+ * 传 `fileContext`（点击时间线文件节点的入口）时，顶部追加文件身份头、
+ * 末尾追加佐证事件 section——功能与关联证据入口完全一致，只是多了文件
+ * 上下文。判定（第 7 节）复用全局唯一的 ReportEvidenceJudgment。
+ */
+export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, onEvidenceChanged, fileContext }) {
+  const file = fileContext?.file || null;
   const { detail, versions, graph, loading, error, refresh } = useEvidenceAnalysis(taskId, evidenceKey);
   // MVP (mvp-phase1-acceptance §4.4): the secondary-analysis action is trimmed;
   // metadata/notes/report-evidence/history stay.
@@ -84,6 +153,7 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
 
   return (
     <div className="h-full overflow-y-auto p-5 space-y-4" data-testid="evidence-analysis-panel">
+      {file && <FileContextHeader file={file} />}
       <div>
         <div className="text-xs uppercase tracking-wide text-slate-400">{detail.evidence_type === 'event_cluster' ? 'Event Cluster Evidence' : 'File Evidence'}</div>
         <h2 className="mt-1 text-xl font-bold text-slate-900 dark:text-white">{detail.title}</h2>
@@ -133,6 +203,13 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
       <Section title="6. Local Investigation Graph"><LocalKnowledgeGraph graph={graph} /></Section>
       <Section title="7. Report Evidence"><ReportEvidenceJudgment taskId={taskId} evidenceKey={evidenceKey} status={detail.report_evidence?.report_status || null} onChanged={async () => { await refresh(); onEvidenceChanged?.(); }} /></Section>
       <Section title="8. Analysis History"><AnalysisVersionList versions={versions} selectedId={version?.id} onSelect={setSelectedVersionId} /></Section>
+      {file && (
+        <CorroboratingEventsSection
+          file={file}
+          events={fileContext.events}
+          onSelectEvent={fileContext.onSelectEvent}
+        />
+      )}
       <Button size="sm" variant="ghost" icon={RotateCw} onClick={refresh}>刷新详情</Button>
     </div>
   );

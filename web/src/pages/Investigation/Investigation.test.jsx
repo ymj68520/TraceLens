@@ -147,7 +147,7 @@ test('does not bootstrap an initialized investigation', async () => {
   expect(service.bootstrapInvestigation).not.toHaveBeenCalled();
 });
 
-test('timeline nodes are files sorted by latest MACB time; first file selected with the file workbench', async () => {
+test('timeline nodes are files sorted by latest MACB time; first file opens the evidence analysis workspace', async () => {
   renderPage();
   await screen.findByTestId('file-node-/case/a.txt');
   expect(service.getInvestigationFileTimeline).toHaveBeenCalledWith('t1');
@@ -155,12 +155,13 @@ test('timeline nodes are files sorted by latest MACB time; first file selected w
   expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('a.txt');
   expect(screen.getByTestId('file-event-e1')).toBeInTheDocument();
   expect(screen.queryByTestId('file-event-e2')).not.toBeInTheDocument();
-  // 右栏默认文件工作台；不再自动选中事件驱动证据面板
-  await screen.findByTestId('file-workbench-panel');
+  // 右栏默认文件上下文的证据分析工作台；不再自动选中事件驱动证据面板
+  await screen.findByTestId('evidence-analysis-panel');
+  expect(screen.getByTestId('file-context-header')).toBeInTheDocument();
   expect(service.getEventEvidence).not.toHaveBeenCalled();
 });
 
-test('selecting a file node shows its events and opens the file workbench', async () => {
+test('selecting a file node shows its events and opens the file workspace', async () => {
   renderPage();
   await screen.findByTestId('file-node-/case/a.txt');
   fireEvent.click(screen.getByTestId('file-node-/case/b.txt'));
@@ -169,9 +170,9 @@ test('selecting a file node shows its events and opens the file workbench', asyn
   expect(service.getEventEvidence).not.toHaveBeenCalled();
 });
 
-test('file workbench exposes the report judgment bound to the file evidence key', async () => {
+test('file node exposes the report judgment bound to the file evidence key', async () => {
   renderPage();
-  await screen.findByTestId('file-workbench-panel');
+  await screen.findByTestId('evidence-analysis-panel');
   fireEvent.click(screen.getByTitle('作为报告正文证据'));
   await waitFor(() => expect(service.addReportEvidence).toHaveBeenCalledWith('t1', 'file:/case/a.txt', 'main'));
 });
@@ -187,7 +188,7 @@ test('selecting an event opens the event panel; disabled review actions stay hid
   expect(screen.queryByText('排除事件')).not.toBeInTheDocument();
   expect(screen.getByTestId('back-to-file-workbench')).toBeInTheDocument();
   fireEvent.click(screen.getByTestId('back-to-file-workbench'));
-  await screen.findByTestId('file-workbench-panel');
+  await screen.findByTestId('evidence-analysis-panel');
 });
 
 test('selecting evidence opens the evidence analysis workspace', async () => {
