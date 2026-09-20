@@ -32,6 +32,7 @@ import os
 import re
 import shutil
 import sqlite3
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -245,6 +246,11 @@ def decode_message_body(blob: bytes) -> Dict[str, Any]:
 
 class QQImportService:
     """Import + query pipeline for QQ NT account databases."""
+
+    def __init__(self) -> None:
+        # graph.db 自愈重建的并发防护（进程内一次）
+        self._graph_locks: Dict[str, threading.Lock] = {}
+        self._graph_healed: set = set()
 
     async def create_import(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         return await asyncio.to_thread(self._create_import_sync, payload)
@@ -730,6 +736,90 @@ class QQImportService:
                 con.close()
         finally:
             dst.close()
+
+    # ------------------------------------------------------------------ #
+    # graph.db self-heal（导入期建图失败时读侧兜底重建）
+    # ------------------------------------------------------------------ #
+
+    async def ensure_graph_db(self, import_id: str) -> None:
+        """Read-time self-heal: rebuild graph.db when it carries no messages.
+
+        Import-time graph.db construction is best-effort（失败仅记日志）. The
+        decrypted nt_msg.db is the source of truth and graph.db is derived
+        data, so regenerate it lazily; at most one attempt per import per
+        process keeps a permanently failing rebuild from turning into a
+        per-request storm.
+        """
+        await asyncio.to_thread(self._ensure_graph_db_sync, import_id)
+
+    def _ensure_graph_db_sync(self, import_id: str) -> None:
+        if import_id in self._graph_healed:
+            return
+        try:
+            graph_db = self._graph_db_path(import_id)
+            wdir = _import_dir(import_id)
+            decrypted = {
+                base: os.path.join(wdir, base)
+                for base in ("nt_msg.db", "profile_info.db", "group_info.db")
+                if os.path.isfile(os.path.join(wdir, base))
+            }
+            if "nt_msg.db" not in decrypted:
+                return
+            if self._graph_db_nonempty(graph_db):
+                return
+            lock = self._graph_locks.setdefault(import_id, threading.Lock())
+            with lock:
+                if self._graph_db_nonempty(graph_db):
+                    return
+                if not self._source_has_messages(decrypted["nt_msg.db"]):
+                    return
+                logger.warning(
+                    "graph.db empty for import %s; rebuilding from decrypted source",
+                    import_id,
+                )
+                self._build_graph_db(import_id, decrypted, graph_db, _read_meta(import_id))
+        except Exception as e:
+            logger.warning("graph.db self-heal failed for import %s: %s", import_id, e)
+        finally:
+            self._graph_healed.add(import_id)
+
+    @staticmethod
+    def _graph_db_nonempty(graph_db: str) -> bool:
+        """True when graph.db exists and already carries at least one message."""
+        if not os.path.isfile(graph_db):
+            return False
+        try:
+            con = sqlite3.connect(f"file:{graph_db}?mode=ro", uri=True)
+        except sqlite3.Error:
+            return False
+        try:
+            table = con.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='wechat_messages'"
+            ).fetchone()
+            return bool(table) and bool(
+                con.execute("SELECT 1 FROM wechat_messages LIMIT 1").fetchone()
+            )
+        except sqlite3.Error:
+            return False
+        finally:
+            con.close()
+
+    @staticmethod
+    def _source_has_messages(msg_db: str) -> bool:
+        try:
+            con = sqlite3.connect(f"file:{msg_db}?mode=ro", uri=True)
+        except sqlite3.Error:
+            return False
+        try:
+            for table in ("c2c_msg_table", "group_msg_table"):
+                try:
+                    if con.execute(f'SELECT 1 FROM "{table}" LIMIT 1').fetchone():
+                        return True
+                except sqlite3.Error:
+                    continue
+            return False
+        finally:
+            con.close()
 
     # ------------------------------------------------------------------ #
     # connections & lookups

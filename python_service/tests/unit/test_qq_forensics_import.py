@@ -354,6 +354,35 @@ async def test_import_creates_readable_data(import_env):
 
 
 @pytest.mark.asyncio
+async def test_graph_db_self_heal_rebuilds_empty(import_env):
+    """导入期建图失败留下的 schema-only graph.db 在读侧被兜底重建。"""
+    svc = QQImportService()
+    result = await svc.create_import({
+        "db_path": str(import_env / "nt_msg.db"),
+        "name": "自愈测试",
+        "key_material": {"nt_uid": NT_UID, "uin": OWNER_UIN},
+    })
+    assert result["status"] == "ready", result
+    import_id = result["import_id"]
+    graph_db = svc._graph_db_path(import_id)
+
+    con = sqlite3.connect(graph_db)
+    con.executescript(
+        "DELETE FROM wechat_messages; DELETE FROM wechat_contacts; "
+        "DELETE FROM wechat_chatrooms; DELETE FROM wechat_owner_info;"
+    )
+    con.commit()
+    con.close()
+
+    await svc.ensure_graph_db(import_id)
+    con = sqlite3.connect(graph_db)
+    msgs_n = con.execute("SELECT COUNT(*) FROM wechat_messages").fetchone()[0]
+    rooms_n = con.execute("SELECT COUNT(*) FROM wechat_chatrooms").fetchone()[0]
+    con.close()
+    assert (msgs_n, rooms_n) == (5, 1)
+
+
+@pytest.mark.asyncio
 async def test_import_without_nt_uid_fails(import_env):
     svc = QQImportService()
     result = await svc.create_import({
