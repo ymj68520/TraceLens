@@ -45,6 +45,25 @@ FileExtractionRoutes::FileExtractionRoutes(crow::App<>& app) {
     CROW_ROUTE(app, "/api/forensics/extract/status").methods("GET"_method)([this](const crow::request& req) {
         return handle_extraction_status(req);
     });
+
+    CROW_ROUTE(app, "/api/forensics/files/materialize").methods("POST"_method, "OPTIONS"_method)([this](const crow::request& req) {
+        if (req.method == "OPTIONS"_method) {
+            crow::response res;
+            RouteHelpers::add_cors_headers(res);
+            res.code = 204;
+            return res;
+        }
+        return handle_materialize_file(req);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/forensics/files/materialize", "POST",
+        "Materialize one file",
+        "Extract a single known file from the image into the task's "
+        "extracted_files directory (used by preview/analysis read paths).",
+        {"Forensics", "Extraction"},
+        {},
+        {{200, "File materialized"}, {400, "Invalid request"}, {404, "File not in image"}}
+    );
 }
 
 crow::response FileExtractionRoutes::handle_extract_files(const crow::request& req) {
@@ -187,6 +206,108 @@ crow::response FileExtractionRoutes::handle_extract_files(const crow::request& r
             {"status", "pending"}
         };
         res.code = 202;
+        res.write(response.dump());
+
+    } catch (const json::exception& e) {
+        json error = {{"error", std::string("Invalid JSON: ") + e.what()}};
+        res.code = 400;
+        res.write(error.dump());
+    } catch (const std::exception& e) {
+        json error = {{"error", e.what()}};
+        res.code = 500;
+        res.write(error.dump());
+    }
+
+    return res;
+}
+
+crow::response FileExtractionRoutes::handle_materialize_file(const crow::request& req) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+    res.set_header("Content-Type", "application/json");
+
+    try {
+        json body = json::parse(req.body);
+
+        const std::string task_id = body.value("task_id", std::string());
+        std::string evidence_path = body.value("path", std::string());
+        if (task_id.empty() || evidence_path.empty()) {
+            json error = {{"error", "task_id and path are required"}};
+            res.code = 400;
+            res.write(error.dump());
+            return res;
+        }
+
+        std::string image_path;
+        std::string raw_db;
+        try {
+            image_path = RouteHelpers::get_image_path_for_task(task_id);
+            raw_db = RouteHelpers::get_database_path(task_id, "raw");
+        } catch (const std::exception&) {
+            json error = {{"error", "task not found"}};
+            res.code = 404;
+            res.write(error.dump());
+            return res;
+        }
+        if (image_path.empty() || raw_db.empty()) {
+            json error = {{"error", "task extraction inputs are not ready"}};
+            res.code = 409;
+            res.write(error.dump());
+            return res;
+        }
+
+        // Contain the output under the task extract dir: strip image-root
+        // anchoring and reject any ".." traversal so image contents can never
+        // be written outside extracted_files.
+        while (!evidence_path.empty() && evidence_path.front() == '/') {
+            evidence_path.erase(0, 1);
+        }
+        namespace fs = std::filesystem;
+        const fs::path rel(evidence_path);
+        bool has_dotdot = false;
+        for (const auto& part : rel) {
+            if (part == "..") has_dotdot = true;
+        }
+        if (evidence_path.empty() || has_dotdot) {
+            json error = {{"error", "path must be an image-relative file path without '..'"}};
+            res.code = 400;
+            res.write(error.dump());
+            return res;
+        }
+
+        const fs::path out_path = PathManager::instance().getTaskExtractDir(task_id) / rel;
+        std::error_code ec;
+        fs::create_directories(out_path.parent_path(), ec);
+
+        // extractFileByPath only resolves paths that are known file records in
+        // the raw database, which doubles as the membership gate. Image paths
+        // are usually stored with a leading slash; try both anchorings.
+        FileExtractor extractor(image_path, raw_db);
+        if (!extractor.initialize()) {
+            json error = {{"error", "failed to open forensic image"}};
+            res.code = 500;
+            res.write(error.dump());
+            return res;
+        }
+        bool ok = extractor.extractFileByPath("/" + evidence_path, out_path.string());
+        if (!ok) {
+            ok = extractor.extractFileByPath(evidence_path, out_path.string());
+        }
+        if (!ok) {
+            json error = {{"error", "file could not be extracted from the image"}};
+            res.code = 404;
+            res.write(error.dump());
+            return res;
+        }
+
+        std::error_code size_ec;
+        const uintmax_t bytes = fs::file_size(out_path, size_ec);
+        json response = {
+            {"success", true},
+            {"materialized_path", out_path.string()},
+            {"bytes", size_ec ? 0 : bytes}
+        };
+        res.code = 200;
         res.write(response.dump());
 
     } catch (const json::exception& e) {

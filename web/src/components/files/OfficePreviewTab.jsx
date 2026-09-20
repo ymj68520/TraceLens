@@ -1,6 +1,6 @@
 // OfficePreviewTab.jsx
-// "Office 预览" tab: pick an Office file (.pptx/.xlsx/.docx) and render parsed
-// slides / sheets / raw text. Parsing state is owned by the parent.
+// "Office 预览" tab: pick an Office file (.docx/.doc/.pptx/.xlsx/...) and render
+// parsed text content. Parsing state is owned by the parent.
 // 文件列表由本组件自取（paged 端点 + 扩展名过滤），不依赖父级的文件列表页数据。
 
 import { useEffect, useState } from 'react';
@@ -10,7 +10,7 @@ import Spinner from '../common/Spinner';
 import { parseFile } from '../../services/officeService';
 import api from '../../services/api';
 
-const OFFICE_EXTENSIONS = ['.pptx', '.ppt', '.xlsx', '.xls'];
+const OFFICE_EXTENSIONS = ['.docx', '.doc', '.pptx', '.ppt', '.xlsx', '.xls'];
 
 const OfficePreviewTab = ({
   taskId,
@@ -64,9 +64,14 @@ const OfficePreviewTab = ({
     setOfficePreview(null);
     try {
       const result = await parseFile(taskId, filePath);
-      setOfficePreview({ file, ...result });
+      // 解析器返回 200 但 success=false 时（如文件损坏），把 error 提为失败。
+      if (result && result.success === false) {
+        setOfficeError(result.error || '解析失败');
+      } else {
+        setOfficePreview({ file, ...result });
+      }
     } catch (err) {
-      setOfficeError(err.message || '解析失败');
+      setOfficeError(err?.response?.data?.detail || err.message || '解析失败');
     } finally {
       setOfficeParsing(false);
     }
@@ -76,7 +81,7 @@ const OfficePreviewTab = ({
     <Card title="📄 Office 文档预览">
       <div className="space-y-4">
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          选择一个 Office 文件 (PPT, Excel) 解析并预览内容。支持 .pptx, .xlsx, .xls 格式。
+          选择一个 Office 文件 (Word, PPT, Excel) 解析并预览文本内容。支持 .docx, .doc, .pptx, .ppt, .xlsx, .xls 格式。
         </p>
         {/* File selector for Office files */}
         <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">

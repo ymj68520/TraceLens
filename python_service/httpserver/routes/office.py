@@ -6,6 +6,7 @@ Provides API endpoints for parsing Office documents:
 """
 
 import logging
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +18,41 @@ from ..services.office_service import get_office_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _materialize_from_image(task_id: str | None, file_path: str) -> Path:
+    """Ask the C++ backend to extract one image file into the task's
+    extracted_files directory. Returns the (possibly nonexistent) candidate
+    path so callers can fall through to their own error handling."""
+    candidate = Path(file_path)
+    if not task_id:
+        return candidate
+    try:
+        from ..services import get_service_manager
+
+        service = get_service_manager().cpp_backend
+        await service.initialize()
+        response = await service.client.post(
+            "/api/forensics/files/materialize",
+            json={"task_id": task_id, "path": file_path},
+            timeout=120.0,
+        )
+        if response.status_code == 200:
+            data = response.json()
+            materialized = data.get("materialized_path")
+            if materialized:
+                candidate = Path(materialized)
+        else:
+            logger.info(
+                "materialize failed for %s (task %s): HTTP %s %s",
+                file_path,
+                task_id,
+                response.status_code,
+                response.text[:200],
+            )
+    except Exception as exc:  # noqa: BLE001 - preview must degrade gracefully
+        logger.warning("materialize request failed for %s: %s", file_path, exc)
+    return candidate
 
 
 class ParseRequest(BaseModel):
@@ -42,6 +78,8 @@ async def parse_office_file(request: ParseRequest) -> ParseResponse:
     Parse an Office file and return its content as Markdown.
 
     Supports:
+    - .docx (Word 2007+)
+    - .doc (Word 97-2003)
     - .xlsx (Excel 2007+)
     - .xls (Excel 97-2003)
     - .pptx (PowerPoint 2007+)
@@ -106,18 +144,31 @@ async def parse_office_file(request: ParseRequest) -> ParseResponse:
 
     # Validate file exists. The raw image-internal path usually does not exist
     # on the host; fall back to the copy materialized by the extraction pipeline
-    # under the task's extraction directory.
+    # under the task's extraction directory, the LLM analysis scratch copy, or
+    # ask the C++ backend to extract the file from the image on demand.
     path = Path(file_path)
     if not path.exists() and task.get("extraction_directory"):
         candidate = Path(task["extraction_directory"]) / file_path.lstrip("/")
         if candidate.exists():
             path = candidate
     if not path.exists():
+        scratch_candidate = (
+            Path(tempfile.gettempdir())
+            / "forensics_llm_extract"
+            / (request.task_id or "")
+            / file_path.replace("/", "_").replace("\\", "_")
+        )
+        if request.task_id and scratch_candidate.exists():
+            path = scratch_candidate
+    if not path.exists():
+        path = await _materialize_from_image(request.task_id, file_path)
+
+    if not path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
 
     # Get file type
     suffix = path.suffix.lower()
-    supported_types = [".xlsx", ".xls", ".pptx", ".ppt"]
+    supported_types = [".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt"]
 
     if suffix not in supported_types:
         raise HTTPException(
@@ -159,6 +210,8 @@ async def get_supported_types():
     """Get list of supported Office file types."""
     return {
         "supported_types": [
+            {"extension": ".docx", "description": "Word 2007+ Document"},
+            {"extension": ".doc", "description": "Word 97-2003 Document"},
             {"extension": ".xlsx", "description": "Excel 2007+ Workbook"},
             {"extension": ".xls", "description": "Excel 97-2003 Workbook"},
             {"extension": ".pptx", "description": "PowerPoint 2007+ Presentation"},

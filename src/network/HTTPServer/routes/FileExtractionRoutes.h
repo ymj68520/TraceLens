@@ -25,6 +25,7 @@ private:
     
     crow::response handle_extract_files(const crow::request& req);
     crow::response handle_extraction_status(const crow::request& req);
+    crow::response handle_materialize_file(const crow::request& req);
     void run_extraction_job(const std::string& job_id);
 };
 

@@ -2,6 +2,7 @@
 Office Document Parsing Service.
 
 Provides parsing capabilities for Office documents:
+- DOCX/DOC (Word)
 - XLSX/XLS (Excel)
 - PPTX/PPT (PowerPoint)
 
@@ -45,10 +46,15 @@ class OfficeService:
 
         suffix = path.suffix.lower()
 
-        # The concrete parsers (openpyxl / python-pptx / subprocess) are
-        # synchronous and can take seconds on large files; offload them to a
-        # worker thread so the async event loop is not blocked.
-        if suffix == ".xlsx":
+        # The concrete parsers (python-docx / openpyxl / python-pptx /
+        # subprocess) are synchronous and can take seconds on large files;
+        # offload them to a worker thread so the async event loop is not
+        # blocked.
+        if suffix == ".docx":
+            return await asyncio.to_thread(self._parse_docx, file_path)
+        elif suffix == ".doc":
+            return await asyncio.to_thread(self._parse_doc, file_path)
+        elif suffix == ".xlsx":
             return await asyncio.to_thread(self._parse_xlsx, file_path)
         elif suffix == ".xls":
             return await asyncio.to_thread(self._parse_xls, file_path)
@@ -58,6 +64,94 @@ class OfficeService:
             return await asyncio.to_thread(self._parse_ppt, file_path)
         else:
             raise ValueError(f"Unsupported file type: {suffix}")
+
+    def _parse_docx(self, file_path: str) -> str:
+        """Parse DOCX file using python-docx (paragraphs + tables)."""
+        try:
+            from docx import Document
+            from docx.oxml.ns import qn
+            from docx.table import Table
+            from docx.text.paragraph import Paragraph
+
+            document = Document(file_path)
+            result: list[str] = []
+
+            def render_table(table: Table) -> None:
+                table_rows = []
+                for row in table.rows:
+                    cells = [
+                        cell.text.replace("|", "\\|").replace("\n", " ")
+                        for cell in row.cells
+                    ]
+                    table_rows.append(cells)
+                if table_rows:
+                    result.append("| " + " | ".join(table_rows[0]) + " |")
+                    result.append("|" + "|".join(["---"] * len(table_rows[0])) + "|")
+                    for row in table_rows[1:]:
+                        while len(row) < len(table_rows[0]):
+                            row.append("")
+                        result.append("| " + " | ".join(row[: len(table_rows[0])]) + " |")
+                    result.append("")
+
+            def heading_prefix(paragraph: Paragraph) -> str:
+                # Style resolution can fail on documents with exotic or
+                # missing style definitions; treat those as plain text.
+                try:
+                    style = (paragraph.style.name or "").lower()
+                except Exception:
+                    return ""
+                if style.startswith("title"):
+                    return "# "
+                if style.startswith("heading"):
+                    digits = "".join(ch for ch in style if ch.isdigit())
+                    depth = min(int(digits) if digits else 1, 6)
+                    return "#" * depth + " "
+                return ""
+
+            # Iterate the document body in order so tables stay in place
+            # relative to the surrounding paragraphs.
+            for element in document.element.body.iterchildren():
+                if element.tag == qn("w:p"):
+                    paragraph = Paragraph(element, document)
+                    text = (paragraph.text or "").strip()
+                    if text:
+                        result.append(f"{heading_prefix(paragraph)}{text}\n")
+                elif element.tag == qn("w:tbl"):
+                    render_table(Table(element, document))
+
+            return "\n".join(result)
+
+        except Exception as e:
+            logger.error(f"Error parsing DOCX {file_path}: {e}")
+            return f"Error parsing DOCX file: {e}"
+
+    def _parse_doc(self, file_path: str) -> str:
+        """Parse legacy DOC file using antiword (text extraction)."""
+        try:
+            # Capture bytes: antiword output on legacy docs can contain bytes
+            # that are not valid UTF-8 even with the UTF-8 mapping.
+            result = subprocess.run(
+                ["antiword", "-m", "UTF-8", file_path],
+                capture_output=True,
+                timeout=60,
+            )
+
+            if result.returncode != 0:
+                stderr = result.stderr.decode("utf-8", errors="replace").strip()
+                logger.warning(f"antiword error: {stderr}")
+                return f"Error parsing DOC: {stderr}"
+
+            return result.stdout.decode("utf-8", errors="replace").strip()
+
+        except FileNotFoundError:
+            logger.error("antiword not found. Install the antiword package.")
+            return "Error: antiword not found. Please install the antiword package."
+        except subprocess.TimeoutExpired:
+            logger.error(f"Timeout parsing DOC {file_path}")
+            return "Error: Timeout parsing DOC file."
+        except Exception as e:
+            logger.error(f"Error parsing DOC {file_path}: {e}")
+            return f"Error parsing DOC file: {e}"
 
     def _parse_xlsx(self, file_path: str) -> str:
         """Parse XLSX file using openpyxl."""
@@ -192,7 +286,8 @@ class OfficeService:
             return f"Error parsing PPTX file: {e}"
 
     def _parse_ppt(self, file_path: str) -> str:
-        """Parse PPT file using catppt (from catdoc package)."""
+        """Parse PPT file: catppt (catdoc package) if available, otherwise a
+        pure-Python text-atom walk of the PowerPoint 97 stream."""
         try:
             result = subprocess.run(
                 ["catppt", file_path],
@@ -203,7 +298,9 @@ class OfficeService:
 
             if result.returncode != 0:
                 logger.warning(f"catppt error: {result.stderr}")
-                return f"Error parsing PPT: {result.stderr}"
+                if result.stderr:
+                    return f"Error parsing PPT: {result.stderr}"
+                return self._parse_ppt_ole(file_path)
 
             # Format output as markdown
             lines = result.stdout.strip().split("\n")
@@ -220,11 +317,71 @@ class OfficeService:
             return "\n".join(md_lines) if md_lines else result.stdout
 
         except FileNotFoundError:
-            logger.error("catppt not found. Install catdoc package.")
-            return "Error: catppt not found. Please install catdoc package."
+            # catppt not installed — fall back to the built-in OLE extractor.
+            return self._parse_ppt_ole(file_path)
         except subprocess.TimeoutExpired:
             logger.error(f"Timeout parsing PPT {file_path}")
             return "Error: Timeout parsing PPT file."
+        except Exception as e:
+            logger.error(f"Error parsing PPT {file_path}: {e}")
+            return f"Error parsing PPT file: {e}"
+
+    # PowerPoint binary record atom types carrying text.
+    _PPT_TEXT_CHARS_ATOM = 0x0FA0  # TextCharsAtom, UTF-16LE
+    _PPT_TEXT_BYTES_ATOM = 0x0FA8  # TextBytesAtom, 8-bit codepage text
+
+    def _parse_ppt_ole(self, file_path: str) -> str:
+        """Extract text from a PowerPoint 97-2003 stream via olefile.
+
+        Walks the record tree of the "PowerPoint Document" stream and
+        concatenates every TextCharsAtom/TextBytesAtom in document order.
+        """
+        try:
+            import olefile
+            import struct
+
+            with olefile.OleFileIO(file_path) as ole:
+                if not ole.exists("PowerPoint Document"):
+                    return "Error parsing PPT: no PowerPoint Document stream found."
+                stream = ole.openstream("PowerPoint Document").read()
+
+            texts: list[str] = []
+
+            def walk_records(data: bytes, start: int, end: int, depth: int) -> None:
+                pos = start
+                while pos + 8 <= end:
+                    ver_instance, rec_type, rec_len = struct.unpack_from("<HHI", data, pos)
+                    body_start = pos + 8
+                    body_end = min(body_start + rec_len, end)
+                    if ver_instance & 0xF == 0xF and depth < 10:
+                        # Container record: recurse into children.
+                        walk_records(data, body_start, body_end, depth + 1)
+                    elif rec_type == self._PPT_TEXT_CHARS_ATOM:
+                        raw = data[body_start:body_end]
+                        texts.append(raw.decode("utf-16-le", errors="replace"))
+                    elif rec_type == self._PPT_TEXT_BYTES_ATOM:
+                        raw = data[body_start:body_end]
+                        for encoding in ("gbk", "cp1252"):
+                            try:
+                                texts.append(raw.decode(encoding))
+                                break
+                            except UnicodeDecodeError:
+                                continue
+                        else:
+                            texts.append(raw.decode("utf-8", errors="replace"))
+                    pos = body_end
+
+            walk_records(stream, 0, len(stream), 0)
+            paragraphs = []
+            for text in texts:
+                for line in text.replace("\x0b", "\n").split("\r"):
+                    line = line.strip()
+                    if line:
+                        paragraphs.append(line)
+            if not paragraphs:
+                return "Error parsing PPT: no text found."
+            return "\n\n".join(paragraphs)
+
         except Exception as e:
             logger.error(f"Error parsing PPT {file_path}: {e}")
             return f"Error parsing PPT file: {e}"
