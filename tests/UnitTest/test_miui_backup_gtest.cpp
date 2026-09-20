@@ -555,6 +555,61 @@ TEST(MiuiBackupExtractorTest, ExtractFailsWithoutCreatingOutputForMissingMember)
 
 }
 
+TEST(MiuiBackupExtractorTest, SameMemberNameAcrossBakFilesStaysReachablePerBak) {
+    // 联系人/通话记录/通讯录与拨号 all back up under packageName
+    // com.android.contacts, so apps/com.android.contacts/miui_bak/_tmp_bak
+    // collides across .bak files. Per-bak access must keep every copy usable.
+    fs::path dir = uniqueTempPath("miui_ext_same_member_test");
+    fs::create_directories(dir);
+
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages>"
+           "<package><packageName>com.android.contacts</packageName>"
+           "<bakFile>Contacts(com.android.contacts).bak</bakFile></package>"
+           "<package><packageName>com.android.contacts</packageName>"
+           "<bakFile>CallLog(com.android.contacts).bak</bakFile></package>"
+           "</packages></MIUI-backup>";
+
+    const std::string member = "apps/com.android.contacts/miui_bak/_tmp_bak";
+    auto writeBak = [&](const std::string& name, const char* payload) {
+        auto tar = makeUstarTar({{member, payload}});
+        std::ifstream in(tar, std::ios::binary);
+        std::string tarBytes((std::istreambuf_iterator<char>(in)),
+                             std::istreambuf_iterator<char>());
+        std::ofstream(dir / name, std::ios::binary)
+            << "ANDROID BACKUP\n5\n0\nnone\n" << tarBytes;
+    };
+    writeBak("Contacts(com.android.contacts).bak", "CONTACTS-PROTO");
+    writeBak("CallLog(com.android.contacts).bak", "CALLLOG-PROTO");
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+
+    std::vector<std::pair<std::string, std::string>> visited;
+    extractor.enumerateBakMembers([&](const std::string& bakFile, const std::string& memberName,
+                                      const TarEntry&) {
+        if (memberName == member) visited.emplace_back(bakFile, memberName);
+    });
+    ASSERT_EQ(visited.size(), 2u);
+    EXPECT_EQ(visited[0].first, "Contacts(com.android.contacts).bak");
+    EXPECT_EQ(visited[1].first, "CallLog(com.android.contacts).bak");
+
+    fs::path callOut = dir / "output" / "calllog.bin";
+    ASSERT_TRUE(extractor.extractBakMember("CallLog(com.android.contacts).bak", member,
+                                           callOut.string()));
+    EXPECT_EQ(readFile(callOut), "CALLLOG-PROTO");
+
+    fs::path contactsOut = dir / "output" / "contacts.bin";
+    ASSERT_TRUE(extractor.extractBakMember("Contacts(com.android.contacts).bak", member,
+                                           contactsOut.string()));
+    EXPECT_EQ(readFile(contactsOut), "CONTACTS-PROTO");
+
+    fs::path missingOut = dir / "output" / "missing.bin";
+    EXPECT_FALSE(extractor.extractBakMember("Missing(com.android.contacts).bak", member,
+                                            missingOut.string()));
+    EXPECT_FALSE(fs::exists(missingOut));
+}
+
 TEST(MiuiBackupExtractorTest, EncryptedOnlyManifestInitializesAndRetainsFailure) {
     fs::path dir = uniqueTempPath("miui_ext_encrypted_test");
     fs::create_directories(dir);

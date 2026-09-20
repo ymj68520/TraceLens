@@ -162,6 +162,25 @@
 
 ## 5. 接口与集成说明 (API & Integration)
 
+### MIUI 离线备份源 (miui-backup)
+
+`--android-source miui-backup` 直接解析小米本地备份目录(descript.xml + *.bak)。备份内部的
+联系人 / 通话记录 / 短信来源因备份形态而异:
+
+- **标准形态**(勾选系统数据的完整备份):`com.android.providers.telephony` /
+  `com.android.providers.contacts` 的 .bak 内含 `db/mmssms.db`、`db/contacts2.db`、
+  `db/calllog.db`,经由 `MiuiPathMap` 的 `apps/<pkg>/db/...` 映射走通用 SQLite 解析。
+- **应用数据形态**(真实设备常见,如 MIUI 12):*.bak 内没有 provider 数据库,联系人与通话
+  记录改以自定义 protobuf 存放在 `apps/com.android.contacts/miui_bak/_tmp_bak` 成员中
+  (联系人/通话记录/通讯录与拨号三个 .bak 同包名、成员名互相冲突,提取器按 .bak 文件逐一
+  枚举)。`MiuiBakProtoParsers` 按 wire-format 解析:`f1{f2{f5{f1 姓名},f6{f1 号码,f2 类型}}}`
+  为联系人(号码去除 MIUI 分组空格后写入 `contacts`),`f2{repeated f1{f3 号码,f4 时间戳ms,
+  f6 类型}}` 为通话记录(写入 `call_logs`);JSON 形态的设置(短信设置、日历、骚扰拦截等)
+  自动跳过。短信正文仅在标准形态存在,应用数据形态的备份不含短信内容。
+
+两种形态最终都落入同一组 `sms_messages` / `contacts` / `call_logs` 表,下游
+`communication-summary` API 与智能报告无需区分来源。
+
 ### 命令行接口(CLI)
 
 ```bash

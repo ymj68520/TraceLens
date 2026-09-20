@@ -31,6 +31,7 @@ bool MiuiBackupExtractor::initialize() {
     initialized_ = false;
     entryOwner_.clear();
     indexes_.clear();
+    indexBakFiles_.clear();
     if (!temporaryRoot_.empty()) {
         std::error_code error;
         fs::remove_all(temporaryRoot_, error);
@@ -151,6 +152,7 @@ bool MiuiBackupExtractor::initialize() {
                 entryOwner_.emplace(entry.first, owner);
             }
         }
+        indexBakFiles_.push_back(package.bakFile);
         indexes_.push_back(std::move(index));
     }
 
@@ -285,4 +287,44 @@ bool MiuiBackupExtractor::entrySize(const std::string& memberName, uint64_t& siz
     }
     size = entry.size;
     return true;
+}
+
+void MiuiBackupExtractor::enumerateBakMembers(const BakMemberVisitor& visitor) const {
+    if (!initialized_ || !visitor) {
+        return;
+    }
+    for (size_t indexPos = 0; indexPos < indexes_.size(); ++indexPos) {
+        const std::string& bakFile = indexBakFiles_[indexPos];
+        for (const auto& [memberName, entry] : indexes_[indexPos]->entries()) {
+            visitor(bakFile, memberName, entry);
+        }
+    }
+}
+
+bool MiuiBackupExtractor::extractBakMember(const std::string& bakFile,
+                                           const std::string& memberName,
+                                           const std::string& outPath) const {
+    if (!initialized_) {
+        return false;
+    }
+    for (size_t indexPos = 0; indexPos < indexes_.size(); ++indexPos) {
+        if (indexBakFiles_[indexPos] != bakFile) continue;
+        TarEntry entry;
+        if (!indexes_[indexPos]->find(memberName, entry)) {
+            return false;
+        }
+        try {
+            const fs::path output(outPath);
+            const fs::path parent = output.parent_path();
+            if (!parent.empty()) {
+                fs::create_directories(parent);
+            }
+        } catch (const fs::filesystem_error& error) {
+            std::cerr << "MiuiBackupExtractor: cannot create output parent for "
+                      << outPath << ": " << error.what() << std::endl;
+            return false;
+        }
+        return indexes_[indexPos]->readEntry(entry, outPath);
+    }
+    return false;
 }

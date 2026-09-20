@@ -416,6 +416,7 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/AndroidBackupHeader.cpp
     src/analyzers/AndroidAnalyzer/TarIndex.cpp
     src/analyzers/AndroidAnalyzer/MiuiBackupExtractor.cpp
+    src/analyzers/AndroidAnalyzer/MiuiBakProtoParsers.cpp
     src/analyzers/AndroidAnalyzer/MiuiArtifactParsers.cpp
     src/analyzers/AndroidAnalyzer/QqntArtifactParsers.cpp
     src/analyzers/AndroidAnalyzer/WechatArtifactParsers.cpp

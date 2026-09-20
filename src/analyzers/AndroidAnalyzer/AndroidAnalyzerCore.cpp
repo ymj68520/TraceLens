@@ -7,6 +7,7 @@
 #include "MiuiBackupExtractor.h"
 #include "MiuiBackupManifest.h"
 #include "MiuiArtifactParsers.h"
+#include "MiuiBakProtoParsers.h"
 #include "MiuiSecureTemp.h"
 #include "AndroidLLMAnalysisService.h"
 #include "ConfigManager/ConfigManager.h"
@@ -175,6 +176,15 @@ void AndroidAnalyzer::analyzeAndroidData() {
     // Analyze Call Logs
     extractAndParseDB("data/data/com.android.providers.contacts/databases/calllog.db", "parseCallLog");
 
+    // MIUI offline backups do not include the system provider databases under
+    // data/data/com.android.providers.*; contacts and call logs ride along as
+    // custom protobuf records inside apps/com.android.contacts/miui_bak/_tmp_bak
+    // (one such member per 联系人/通话记录/通讯录与拨号 .bak). SMS content,
+    // when the backup includes it, stays on the standard telephony path above.
+    if (sourceMode_ == AndroidSourceMode::MiuiBackup) {
+        parseMiuiProtoBakArtifacts();
+    }
+
     // Analyze WhatsApp
     extractAndParseDB("data/data/com.whatsapp/databases/msgstore.db", "parseWhatsApp");
 
@@ -255,6 +265,80 @@ void AndroidAnalyzer::analyzeAndroidData() {
 
     std::cout << "Android data analysis completed." << std::endl;
     AuditLog::instance().log("SYSTEM", "ANDROID_ANALYSIS_COMPLETE", "Android data analysis completed for: " + imagePath_);
+}
+
+void AndroidAnalyzer::parseMiuiProtoBakArtifacts() {
+    auto* miui = dynamic_cast<MiuiBackupExtractor*>(fileExtractor_.get());
+    if (!miui || !androidDb_) return;
+
+    static const std::string kTmpBakSuffix = "miui_bak/_tmp_bak";
+    std::vector<std::pair<std::string, std::string>> members;
+    miui->enumerateBakMembers([&](const std::string& bakFile, const std::string& memberName,
+                                  const TarEntry&) {
+        if (memberName.size() >= kTmpBakSuffix.size() &&
+            memberName.compare(memberName.size() - kTmpBakSuffix.size(),
+                               kTmpBakSuffix.size(), kTmpBakSuffix) == 0) {
+            members.emplace_back(bakFile, memberName);
+        }
+    });
+    if (members.empty()) return;
+    std::sort(members.begin(), members.end());
+
+    std::set<std::pair<std::string, std::string>> seenContacts;
+    std::set<std::tuple<std::string, uint64_t, int>> seenCalls;
+    size_t contactRows = 0, callRows = 0;
+
+    for (const auto& [bakFile, memberName] : members) {
+        const std::string tempPath = makeAnalysisTempPath(memberName);
+        if (!miui->extractBakMember(bakFile, memberName, tempPath)) {
+            std::cout << "Failed to extract MIUI state member: " << bakFile
+                      << " -> " << memberName << std::endl;
+            continue;
+        }
+        std::ifstream in(tempPath, std::ios::binary);
+        const std::string bytes((std::istreambuf_iterator<char>(in)),
+                                std::istreambuf_iterator<char>());
+        std::error_code removeError;
+        fs::remove(tempPath, removeError);
+
+        const MiuiBakKind kind = classifyMiuiBakContent(bytes);
+        if (kind == MiuiBakKind::Json || kind == MiuiBakKind::Unknown) continue;
+
+        if (kind == MiuiBakKind::Contacts) {
+            std::vector<MiuiProtoContactRow> rows;
+            if (!parseMiuiContactsBak(bytes, rows)) continue;
+            for (const auto& row : rows) {
+                // MIUI renders numbers with grouping spaces ("158 0964 9804");
+                // store the plain digit string so contacts join against call logs.
+                std::string number = row.number;
+                number.erase(std::remove(number.begin(), number.end(), ' '), number.end());
+                number.erase(std::remove(number.begin(), number.end(), '-'), number.end());
+                if (row.displayName.empty() && number.empty()) continue;
+                if (!seenContacts.emplace(row.displayName, number).second) continue;
+                std::map<std::string, std::string> record;
+                record["display_name"] = row.displayName;
+                record["phone"] = number;
+                if (androidDb_->insertContact(record)) ++contactRows;
+            }
+        } else if (kind == MiuiBakKind::CallLog) {
+            std::vector<MiuiProtoCallRow> rows;
+            if (!parseMiuiCallLogBak(bytes, rows)) continue;
+            for (const auto& row : rows) {
+                if (!seenCalls.emplace(row.number, row.dateMs, row.type).second) continue;
+                std::map<std::string, std::string> record;
+                record["number"] = row.number;
+                record["date"] = std::to_string(row.dateMs);
+                record["duration"] = std::to_string(row.duration);
+                record["type"] = std::to_string(row.type);
+                if (androidDb_->insertCallLog(record)) ++callRows;
+            }
+        }
+    }
+
+    if (contactRows > 0 || callRows > 0) {
+        std::cout << "MIUI backup protobuf records: contacts=" << contactRows
+                  << ", callLogs=" << callRows << std::endl;
+    }
 }
 
 void AndroidAnalyzer::analyzeWithLLM() {

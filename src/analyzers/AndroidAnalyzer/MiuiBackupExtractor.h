@@ -50,6 +50,18 @@ public:
     bool getEntry(const std::string& memberName, TarEntry& entry) const;
     bool extractTarMember(const std::string& memberName,
                           const std::string& outPath) const;
+
+    // Member names are namespaced apps/<package>/..., so different .bak files
+    // backing the same package (e.g. 联系人/通话记录/通讯录与拨号 all under
+    // com.android.contacts) collide on identical member names. enumerateBakMembers
+    // visits every member of every indexed .bak without the first-wins dedup,
+    // and extractBakMember addresses a member through its owning .bak file.
+    using BakMemberVisitor =
+        std::function<void(const std::string& bakFile, const std::string& memberName,
+                           const TarEntry& entry)>;
+    void enumerateBakMembers(const BakMemberVisitor& visitor) const;
+    bool extractBakMember(const std::string& bakFile, const std::string& memberName,
+                          const std::string& outPath) const;
     bool entrySize(const std::string& memberName, uint64_t& size) const;
     const std::vector<PackageFailure>& packageFailures() const { return packageFailures_; }
     // Only later manifest entries that repeat a .bak name are excluded from
@@ -64,6 +76,8 @@ private:
     std::string password_;
     BackupMeta manifest_;
     std::vector<std::unique_ptr<TarIndex>> indexes_;
+    // Manifest-declared .bak file owning the TarIndex at the same position.
+    std::vector<std::string> indexBakFiles_;
     std::unordered_map<std::string, TarIndex*> entryOwner_;
     std::vector<PackageFailure> packageFailures_;
     std::vector<bool> uniqueManifestBakFiles_;

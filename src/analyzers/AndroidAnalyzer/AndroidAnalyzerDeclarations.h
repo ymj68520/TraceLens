@@ -153,6 +153,10 @@ private:
     void parseContacts(const std::string& dbPath);
     void parseCallLog(const std::string& dbPath);
     void parseGenericAppData(const std::string& packageName, const std::string& dbPath);
+    // MIUI offline backups ship contacts / call logs as custom protobuf
+    // records under apps/<pkg>/miui_bak/_tmp_bak instead of provider
+    // databases; parse those into the contacts / call_logs tables.
+    void parseMiuiProtoBakArtifacts();
 
     // System analysis methods
     void scanSystemApps(const std::string& appDirPath);

@@ -283,6 +283,7 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
                 if (!args.wechat_password.empty()) {
                     androidAnalyzer->setWeChatPassword(args.wechat_password);
                 }
+                androidAnalyzer->setSkipAI(args.skip_ai);
                 // Write Android artifacts into files.db for unified scene database
                 androidAnalyzer->setOutputDatabasePath(fileDbPath);
                 if (androidAnalyzer->initialize()) {
@@ -511,6 +512,7 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
         if (!args.wechat_password.empty()) {
             androidAnalyzer->setWeChatPassword(args.wechat_password);
         }
+        androidAnalyzer->setSkipAI(args.skip_ai);
         androidAnalyzer->setOutputDatabasePath(fileDbPath);
 
         std::cout << "[Android] Analyzing logical extraction..." << std::endl;

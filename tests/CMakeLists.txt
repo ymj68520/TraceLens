@@ -86,6 +86,18 @@ target_link_libraries(test_miui_backup_gtest ${GTEST_LIBRARIES}
                       ${GMOCK_LIBRARIES} sqlite3 pthread ${ZLIB_LIBRARIES} duckx OpenSSL::Crypto)
 add_test(NAME MiuiBackupHeaderTests COMMAND test_miui_backup_gtest)
 
+# MIUI miui_bak/_tmp_bak protobuf record tests (contacts / call logs)
+add_executable(
+  test_miui_proto_bak_gtest
+  UnitTest/test_miui_proto_bak_gtest.cpp
+  ../src/analyzers/AndroidAnalyzer/MiuiBakProtoParsers.cpp)
+target_include_directories(
+  test_miui_proto_bak_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer)
+target_link_libraries(test_miui_proto_bak_gtest ${GTEST_LIBRARIES} pthread)
+add_test(NAME MiuiProtoBakTests COMMAND test_miui_proto_bak_gtest)
+
 # Android LLM analysis persistence tests
 add_executable(
   test_android_llm_gtest
