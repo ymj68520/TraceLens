@@ -9,6 +9,7 @@ This module handles the complete event cluster data flow:
 """
 
 import asyncio
+import bisect
 import json
 import logging
 import sqlite3
@@ -18,9 +19,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ...config import Settings
-from ..investigation_evidence import PARENT_DIRECTORY_SQL, TIMELINE_MAX_BUCKET_SECONDS
+from ...path_utils import normalize_evidence_path
+from ..investigation_evidence import (
+    PARENT_DIRECTORY_SQL,
+    TIMELINE_MAX_BUCKET_SECONDS,
+    parent_directory_of,
+)
 from .adaptive import choose_bucket, estimate_bucket_ladder
-from .file_schema import latest_analysis
+from .file_schema import latest_analysis, latest_analyses_batch
 from .schema import (
     create_analysis_run,
     ensure_cluster_analysis_schema,
@@ -31,6 +37,19 @@ from .schema import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _connect_events(events_db: str) -> sqlite3.Connection:
+    """Open the events db tolerating non-UTF-8 bytes stored by the pipeline.
+
+    Disk images routinely contain filenames in legacy encodings; sqlite3's
+    default strict UTF-8 decode turns any GROUP_CONCAT over such paths into a
+    fetch-wide failure, so undecodable bytes are replaced instead.
+    """
+    conn = sqlite3.connect(events_db, timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.text_factory = lambda b: b.decode("utf-8", "replace")
+    return conn
 
 # Initial-analysis clustering window. Phase C replaces this constant with the
 # budget-driven adaptive selection (SPEC §5); until then the pipeline keeps the
@@ -313,6 +332,31 @@ class ClusterAnalyzer:
             else:
                 pending.append(cluster)
 
+        # The adaptive window only steers bucket choice; a timeline that
+        # overshoots the budget at every candidate window would otherwise send
+        # tens of thousands of clusters to the LLM. Enforce the budget by
+        # keeping the most active clusters deterministically.
+        skipped_over_budget = 0
+        if len(pending) > budget:
+            pending.sort(
+                key=lambda c: (
+                    -c["cluster_count"],
+                    c["time_window"],
+                    c["event_type"],
+                    c["parent_directory"] or "",
+                )
+            )
+            skipped_over_budget = len(pending) - budget
+            pending = pending[:budget]
+            logger.warning(
+                f"Task {task_id}: cluster budget {budget} enforced, "
+                f"{skipped_over_budget} clusters skipped (kept the most active ones)"
+            )
+            warning = warning or (
+                f"cluster count exceeds the budget ({budget}); "
+                f"analyzed only the {budget} most active clusters"
+            )
+
         results = await self._analyze_clusters_concurrent(
             pending, case_description, events_db, progress_callback, task_id,
             trigger_source="task_run",
@@ -332,6 +376,7 @@ class ClusterAnalyzer:
             "cluster_total": len(clusters),
             "analyzed": len(pending),
             "skipped_fresh": skipped_fresh,
+            "skipped_over_budget": skipped_over_budget,
             "failed": sum(1 for r in results if not r.get("success")),
             "warning": warning,
             "results": results,
@@ -390,8 +435,7 @@ class ClusterAnalyzer:
             from .schema import read_bucket_epoch_offset
 
             offset = read_bucket_epoch_offset(events_db)
-            with sqlite3.connect(events_db, timeout=10) as conn:
-                conn.row_factory = sqlite3.Row
+            with _connect_events(events_db) as conn:
 
                 # Build SQL query
                 limit_clause = f"LIMIT {limit}" if limit else ""
@@ -616,7 +660,7 @@ class ClusterAnalyzer:
 
             ensure_cluster_analysis_schema(events_db)
 
-            with sqlite3.connect(events_db, timeout=10) as conn:
+            with _connect_events(events_db) as conn:
                 cur = conn.execute(
                     """
                     INSERT INTO event_cluster_analyses (
@@ -878,7 +922,7 @@ def related_file_summaries(
     start = int(bucket_index) * int(bucket_seconds) + int(bucket_epoch_offset or 0)
     end = start + int(bucket_seconds)
     try:
-        with sqlite3.connect(events_db, timeout=10) as conn:
+        with _connect_events(events_db) as conn:
             rows = conn.execute(
                 f"SELECT file_path, COUNT(*) AS c FROM events "
                 f"WHERE timestamp >= ? AND timestamp < ? AND event_type = ? "
@@ -902,6 +946,155 @@ def related_file_summaries(
             "analyzed_at": record.get("created_at"),
         })
     return summaries
+
+
+def related_file_summaries_batch(
+    events_db: str,
+    files_db: str,
+    records: List[Dict[str, Any]],
+    *,
+    limit: int = 20,
+) -> List[List[Dict[str, Any]]]:
+    """Batched :func:`related_file_summaries` — one result per input record.
+
+    Per-record output is identical to calling ``related_file_summaries()``
+    on that record; the difference is purely mechanical. Records on one page
+    share heavily-overlapping time windows, so per-record GROUP BY scans made
+    a 200-record page take >40s (plus one files-db connection per member
+    file) and the evidence workspace rendered as an empty page while the
+    request was in flight. Here: ONE events scan bucketed in memory by
+    (event_type, parent) with bisected time windows, and ONE files-db
+    connection for all latest-analysis lookups. Very large events tables
+    fall back to per-record SQL under one connection.
+    """
+    empty: List[List[Dict[str, Any]]] = [[] for _ in records]
+    if not records or not events_db or not Path(events_db).exists():
+        return empty
+
+    try:
+        member_paths = _cluster_member_paths_batched(events_db, records, limit=limit)
+    except sqlite3.Error:
+        return empty
+
+    # Newest analysis per member file (single files-db connection).
+    wanted: set = set()
+    for paths in member_paths:
+        wanted.update(
+            normalized for normalized in (
+                normalize_evidence_path(p) for p in paths
+            ) if normalized
+        )
+    latest = latest_analyses_batch(files_db, sorted(wanted))
+
+    # Assemble per record, same fields/semantics as the single variant.
+    all_summaries: List[List[Dict[str, Any]]] = []
+    for paths in member_paths:
+        summaries: List[Dict[str, Any]] = []
+        for file_path in paths:
+            record = latest.get(normalize_evidence_path(file_path))
+            if not record or not (record.get("summary") or record.get("description")):
+                continue
+            summaries.append({
+                "file_path": file_path,
+                "summary": record.get("summary") or (record.get("description") or "")[:200],
+                "model": record.get("model") or "",
+                "analyzed_at": record.get("created_at"),
+            })
+        all_summaries.append(summaries)
+    return all_summaries
+
+
+# Events tables above this row count fall back to per-record SQL instead of
+# materializing every (timestamp, event_type, file_path) row in memory.
+_MEMBER_SCAN_MAX_EVENTS = 1_000_000
+
+
+def _cluster_member_paths_batched(
+    events_db: str,
+    records: List[Dict[str, Any]],
+    *,
+    limit: int,
+) -> List[List[str]]:
+    """Distinct member files (count-ordered, capped at ``limit``) per record."""
+    with _connect_events(events_db) as conn:
+        total = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        if total > _MEMBER_SCAN_MAX_EVENTS:
+            return _cluster_member_paths_per_record(conn, records, limit=limit)
+
+        # One scan, grouped by the cluster coordinate; windows on a page
+        # overlap heavily, so this replaces N index-range scans.
+        groups: Dict[Any, List] = {}
+        for ts, event_type, file_path in conn.execute(
+            "SELECT timestamp, event_type, file_path FROM events "
+            "WHERE file_path IS NOT NULL AND file_path != ''"
+        ):
+            groups.setdefault(
+                (event_type or "", parent_directory_of(file_path)), []
+            ).append((ts, file_path))
+
+        member_paths: List[List[str]] = []
+        for record in records:
+            bucket_seconds = int(record.get("bucket_seconds") or 60)
+            start = (
+                int(record.get("bucket_index") or 0) * bucket_seconds
+                + int(record.get("bucket_epoch_offset") or 0)
+            )
+            end = start + bucket_seconds
+            times_paths = groups.get(
+                (record.get("event_type") or "",
+                 record.get("parent_directory") or ""),
+                [],
+            )
+            if not times_paths:
+                member_paths.append([])
+                continue
+            times_paths.sort(key=lambda item: item[0])
+            times = [ts for ts, _ in times_paths]
+            lo = bisect.bisect_left(times, start)
+            hi = bisect.bisect_left(times, end)
+            counts: Dict[str, int] = {}
+            for _, file_path in times_paths[lo:hi]:
+                counts[file_path] = counts.get(file_path, 0) + 1
+            member_paths.append([
+                file_path
+                for file_path, _count in sorted(
+                    counts.items(), key=lambda kv: (-kv[1], kv[0])
+                )[:limit]
+            ])
+        return member_paths
+
+
+def _cluster_member_paths_per_record(
+    conn: sqlite3.Connection,
+    records: List[Dict[str, Any]],
+    *,
+    limit: int,
+) -> List[List[str]]:
+    """Per-record member query (oversized events tables), one shared connection."""
+    member_paths: List[List[str]] = []
+    for record in records:
+        bucket_seconds = int(record.get("bucket_seconds") or 60)
+        start = (
+            int(record.get("bucket_index") or 0) * bucket_seconds
+            + int(record.get("bucket_epoch_offset") or 0)
+        )
+        end = start + bucket_seconds
+        rows = conn.execute(
+            f"SELECT file_path, COUNT(*) AS c FROM events "
+            f"WHERE timestamp >= ? AND timestamp < ? AND event_type = ? "
+            f"AND ({PARENT_DIRECTORY_SQL}) = ? "
+            f"AND file_path IS NOT NULL AND file_path != '' "
+            f"GROUP BY file_path ORDER BY c DESC LIMIT ?",
+            (
+                start,
+                end,
+                record.get("event_type") or "",
+                record.get("parent_directory") or "",
+                limit,
+            ),
+        ).fetchall()
+        member_paths.append([row[0] for row in rows])
+    return member_paths
 
 
 async def ingest_analysis_record_to_graphiti(

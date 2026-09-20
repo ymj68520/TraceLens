@@ -74,6 +74,40 @@ def latest_analysis(db_path: str, file_path: str) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
+def latest_analyses_batch(db_path: str, file_paths: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Batched :func:`latest_analysis`: {canonical_path: newest record}.
+
+    One connection for the whole batch (chunked IN clauses) instead of one
+    connect per path — the analysis-record list endpoint pays this once per
+    page, not once per member file. A missing table (pre-Phase-2 database)
+    yields {} like the single-path variant.
+    """
+    if not db_path or not Path(db_path).exists() or not file_paths:
+        return {}
+    wanted = [p for p in (normalize_evidence_path(p) for p in file_paths) if p]
+    latest: Dict[str, Dict[str, Any]] = {}
+    if not wanted:
+        return latest
+    try:
+        with sqlite3.connect(db_path, timeout=10) as conn:
+            conn.row_factory = sqlite3.Row
+            for i in range(0, len(wanted), 400):
+                chunk = wanted[i:i + 400]
+                placeholders = ",".join("?" for _ in chunk)
+                rows = conn.execute(
+                    f"SELECT * FROM file_analyses WHERE file_path IN ({placeholders}) "
+                    "ORDER BY id DESC",
+                    chunk,
+                ).fetchall()
+                # Rows arrive newest-first, so the first row seen per path wins.
+                for row in rows:
+                    record = dict(row)
+                    latest.setdefault(record.get("file_path") or "", record)
+    except sqlite3.OperationalError:
+        return {}
+    return latest
+
+
 LATEST_ANALYSIS_JOIN = (
     "LEFT JOIN file_analyses fa ON fa.id = ("
     " SELECT MAX(id) FROM file_analyses WHERE file_path = fa.file_path)"

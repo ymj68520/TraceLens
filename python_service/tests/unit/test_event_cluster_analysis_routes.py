@@ -194,3 +194,65 @@ def test_analyses_query_filters_and_latest_only(client):
     ).json()
     assert filtered["total"] == 1
     assert filtered["records"][0]["summary"] == "other"
+
+
+def test_related_file_summaries_batch_matches_single(tmp_path):
+    """Batch attach equals per-record calls (newest-record + empty-summary skip)."""
+    from httpserver.services.case_analysis.cluster_analyzer import (
+        related_file_summaries,
+        related_file_summaries_batch,
+    )
+    from httpserver.services.case_analysis.file_schema import ensure_file_analysis_schema
+
+    events_db = _events_db(tmp_path)
+    files_db = str(tmp_path / "files.db")
+    ensure_file_analysis_schema(files_db)
+    with sqlite3.connect(files_db) as conn:
+        conn.executemany(
+            "INSERT INTO file_analyses (task_id, file_path, summary, trigger_source, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [
+                ("task-1", "/foo/a.txt", "alpha", "pipeline", 10),
+                ("task-1", "/foo/a.txt", "alpha-new", "pipeline", 20),
+                ("task-1", "/foo/c.txt", "", "pipeline", 30),
+            ],
+        )
+        conn.commit()
+
+    records = [
+        {"bucket_epoch_offset": 0, "bucket_seconds": 60, "bucket_index": 2,
+         "event_type": "MODIFIED", "parent_directory": "/foo/"},
+        {"bucket_epoch_offset": 0, "bucket_seconds": 60, "bucket_index": 83,
+         "event_type": "CREATED", "parent_directory": "/foo/"},
+    ]
+    batch = related_file_summaries_batch(events_db, files_db, records)
+    single = [
+        related_file_summaries(
+            events_db, files_db,
+            bucket_epoch_offset=r["bucket_epoch_offset"],
+            bucket_seconds=r["bucket_seconds"],
+            bucket_index=r["bucket_index"],
+            event_type=r["event_type"],
+            parent_directory=r["parent_directory"],
+        )
+        for r in records
+    ]
+    assert batch == single
+    assert batch[0] == [
+        {"file_path": "/foo/a.txt", "summary": "alpha-new", "model": "", "analyzed_at": 20}
+    ]
+    assert batch[1] == []
+
+
+def test_related_file_summaries_batch_degenerate_inputs(tmp_path):
+    """Missing dbs / empty records degrade to empty lists, never raise."""
+    from httpserver.services.case_analysis.cluster_analyzer import related_file_summaries_batch
+
+    events_db = _events_db(tmp_path)
+    missing = str(tmp_path / "nope.db")
+    records = [{"bucket_epoch_offset": 0, "bucket_seconds": 60, "bucket_index": 2,
+                "event_type": "MODIFIED", "parent_directory": "/foo/"}]
+    assert related_file_summaries_batch(events_db, missing, records) == [[]]
+    assert related_file_summaries_batch(missing, "", records) == [[]]
+    assert related_file_summaries_batch(events_db, "", records) == [[]]
+    assert related_file_summaries_batch(events_db, "", []) == []

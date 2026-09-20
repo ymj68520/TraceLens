@@ -247,19 +247,17 @@ async def list_event_cluster_analyses(
 
     records = [dict(row) for row in rows]
     if include_file_summaries:
-        from ..services.case_analysis.cluster_analyzer import related_file_summaries
+        from ..services.case_analysis.cluster_analyzer import related_file_summaries_batch
 
         task_info = await service_manager.cpp_backend.get_task(task_id)
         files_db = (task_info or {}).get("output_files_db") or ""
-        for record in records:
-            record["related_file_summaries"] = related_file_summaries(
-                events_db, files_db,
-                bucket_epoch_offset=record.get("bucket_epoch_offset") or 0,
-                bucket_seconds=record.get("bucket_seconds") or 60,
-                bucket_index=record.get("bucket_index") or 0,
-                event_type=record.get("event_type") or "",
-                parent_directory=record.get("parent_directory") or "",
-            )
+        # Batched attach: one connection per db for the whole page (the
+        # per-record variant opens one files-db connection per member file,
+        # which is a >40s N+1 on a 200-record page).
+        for record, item_summaries in zip(
+            records, related_file_summaries_batch(events_db, files_db, records)
+        ):
+            record["related_file_summaries"] = item_summaries
 
     return {
         "task_id": task_id,
