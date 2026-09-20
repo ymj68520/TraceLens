@@ -873,3 +873,76 @@ class TestDicomExtractor:
         )
         # Either pydicom is missing (returns "Error: pydicom...") or file not found
         assert 'Error' in result
+
+
+# ---------------------------------------------------------------------------
+# DocExtractorProxy (office.py) - legacy .doc extraction robustness.
+# Regression: error strings used to be returned as document content, so the
+# LLM analyzed antiword/decode failure messages as if they were evidence.
+# ---------------------------------------------------------------------------
+
+class TestDocExtractorProxy:
+    @pytest.fixture(autouse=True)
+    def _extractor(self):
+        from httpserver.services.extractors.office import DocExtractorProxy
+        self.extractor = DocExtractorProxy()
+
+    def _write_doc(self, tmp_path, data, name="sample.doc"):
+        p = tmp_path / name
+        p.write_bytes(data)
+        return str(p)
+
+    def test_non_ole_garbage_raises_unavailable(self, tmp_path):
+        """Overwritten deleted-file clusters (binary garbage) must raise, not analyze."""
+        from httpserver.services.extractors.base import DocumentContentUnavailableError
+
+        raw = bytes(range(256)) * 16 + b"\x00\x01\x02"
+        path = self._write_doc(tmp_path, raw)
+        with pytest.raises(DocumentContentUnavailableError):
+            asyncio.run(self.extractor.extract_to_markdown(path))
+
+    def test_non_ole_readable_carved_text_is_returned(self, tmp_path):
+        """Readable text carved into a .doc record stays analyzable (preview parity)."""
+        path = self._write_doc(tmp_path, "聊天记录：今天转入资金。".encode("gb18030") + b"\r\n")
+        text = asyncio.run(self.extractor.extract_to_markdown(path))
+        assert "聊天记录" in text
+
+    def test_empty_file_raises(self, tmp_path):
+        from httpserver.services.extractors.base import DocumentContentUnavailableError
+
+        path = self._write_doc(tmp_path, b"")
+        with pytest.raises(DocumentContentUnavailableError):
+            asyncio.run(self.extractor.extract_to_markdown(path))
+
+    def test_ole_doc_with_invalid_utf8_output_decodes(self, tmp_path):
+        """antiword stdout with Latin-1 fallback bytes must not crash extraction.
+
+        This is the exact production failure: subprocess(text=True) raised
+        UnicodeDecodeError and the error message became the LLM's input.
+        """
+        import types
+
+        class _FakeResult:
+            returncode = 0
+            stdout = "第一段正常中文".encode("utf-8") + b"\xed\xba\xad" + "第二段中文".encode("utf-8")
+            stderr = b""
+
+        fake_subprocess = types.SimpleNamespace(run=lambda *a, **k: _FakeResult())
+        path = self._write_doc(tmp_path, self.extractor.OLE2_MAGIC + b"\x00" * 16)
+        text = self.extractor._extract_ole2_doc(path, fake_subprocess)
+        assert "第一段正常中文" in text
+        assert "Error" not in text
+
+    def test_ole_doc_antiword_failure_raises(self, tmp_path):
+        import types
+        from httpserver.services.extractors.base import DocumentContentUnavailableError
+
+        class _FakeResult:
+            returncode = 1
+            stdout = b""
+            stderr = b"is not a Word document"
+
+        fake_subprocess = types.SimpleNamespace(run=lambda *a, **k: _FakeResult())
+        path = self._write_doc(tmp_path, self.extractor.OLE2_MAGIC + b"\x00" * 16)
+        with pytest.raises(DocumentContentUnavailableError):
+            asyncio.run(self.extractor._extract_ole2_doc(path, fake_subprocess))

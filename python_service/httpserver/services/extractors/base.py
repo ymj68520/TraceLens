@@ -1,6 +1,18 @@
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Union
 
+
+class DocumentContentUnavailableError(Exception):
+    """The document's real content cannot be extracted for analysis.
+
+    Raised instead of returning error text as document content: an error
+    string that reaches the LLM reads like evidence and produces a confident
+    but meaningless analysis. Causes include overwritten deleted-file
+    clusters, unsupported/corrupt containers, and missing external tools.
+    Messages are user-facing (they surface through the analyze routes).
+    """
+
+
 class BaseExtractor(ABC):
     """
     Abstract base class for all offline document extractors.

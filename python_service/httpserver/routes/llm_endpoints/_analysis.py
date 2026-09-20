@@ -11,6 +11,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Path, BackgroundTasks
 
 from ...config import Settings, get_settings
+from ...services.extractors.base import DocumentContentUnavailableError
 
 from ..llm_models import (
     AnalyzeRequest,
@@ -350,6 +351,16 @@ async def analyze_content(
                                 prompt=request.prompt,
                                 max_tokens=request.max_tokens,
                                 temperature=request.temperature,
+                            )
+                        except DocumentContentUnavailableError as e:
+                            # Real content is gone (overwritten deleted file,
+                            # corrupt container, missing tool). A 400 with a
+                            # stable marker beats feeding error text to the
+                            # LLM and calling the nonsense an analysis.
+                            logger.warning(f"Document content unavailable {request.file_path}: {e}")
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"doc-content-unavailable: {e}",
                             )
                         except Exception as e:
                             logger.warning(f"Failed to extract document {request.file_path}: {e}")

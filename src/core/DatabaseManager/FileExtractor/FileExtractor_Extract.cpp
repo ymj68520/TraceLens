@@ -461,12 +461,22 @@ int FileExtractor::extractByName(const std::string& pattern, const std::string& 
         return 0;
     }
 
-    auto files = searchFiles("type='REG' AND is_allocated=1");
+    // Deleted files stay extractable by exact path: the interactive
+    // "extract, then analyze" chain targets records straight from files.db,
+    // and deleted-but-recoverable entries (resident data, intact runlists)
+    // are exactly the ones worth analyzing. Wildcard patterns keep the
+    // allocated-only scope so bulk requests don't sweep in unrecoverable
+    // deleted entries; bulk deleted recovery has its own DELETED mode.
+    auto files = searchFiles("type='REG' AND (is_allocated=1 OR is_deleted=1)");
     std::vector<FileRecord> matches;
     for (const auto& file : files) {
         bool matched = false;
         for (const auto& p : patterns) {
-            if (file.path == p || matchWildcard(file.name, p)) {
+            if (file.path == p) {
+                matched = true;
+                break;
+            }
+            if (!file.isDeleted && matchWildcard(file.name, p)) {
                 matched = true;
                 break;
             }

@@ -581,17 +581,22 @@ ${detail}`;
     } catch (err) {
       console.error('Failed to analyze file:', err);
 
-      // Better error messages
-      let errorMsg = err.response?.data?.detail || err.message || '未知错误';
+      // Better error messages.
+      // pythonApi/api 的响应拦截器 reject 的是普通对象 { message, status, data }，
+      // 原始 axios 错误才有 err.response；两种形态都要兼容，否则下方分支全部失效。
+      const errStatus = err.response?.status ?? err.status;
+      const detail = String(err.response?.data?.detail ?? err.data?.detail ?? '') || err.message || '';
+      let errorMsg = detail || '未知错误';
 
       // Check for Python service not available
-      if (!err.response && err.code === 'ERR_NETWORK') {
+      if (errStatus == null && (err.code === 'ERR_NETWORK' || /network/i.test(err.message || ''))) {
         errorMsg = `Python LLM 服务未运行\n\n提示：\n1. 请启动 Python 服务：python -m python_service.httpserver.main\n2. 或使用启动脚本：./scripts/start_services.sh`;
       }
       // Check for file not found error
-      else if (err.response?.status === 400 || err.response?.status === 404) {
-        const detail = err.response?.data?.detail || err.message || '';
-        if (detail.includes('No such file or directory') || detail.includes('[Errno 2]') || detail.includes('not found')) {
+      else if (errStatus === 400 || errStatus === 404) {
+        if (detail.startsWith('doc-content-unavailable:')) {
+          errorMsg = `❌ ${detail.slice('doc-content-unavailable:'.length).trim()}`;
+        } else if (detail.includes('No such file or directory') || detail.includes('[Errno 2]') || detail.includes('not found')) {
           errorMsg = `❌ 文件未找到（已尝试自动提取但失败）
 
 ${detail}
@@ -601,12 +606,12 @@ ${detail}
 2. 自动提取任务失败（可在提取控制台查看详情）
 
 当前路径：${filePath}`;
-        } else if (err.response?.status === 400) {
+        } else if (errStatus === 400) {
           errorMsg = '文件内容不兼容（可能是二进制文件或编码问题）';
-        } else if (err.response?.status === 404) {
+        } else {
           errorMsg = 'LLM API 端点未找到，请检查 Python 服务是否正常运行';
         }
-      } else if (err.response?.status === 500) {
+      } else if (errStatus === 500) {
         errorMsg = '服务器处理失败（文件可能过大或格式不支持）';
       }
 
