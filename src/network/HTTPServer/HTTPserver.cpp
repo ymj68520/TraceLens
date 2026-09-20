@@ -184,6 +184,12 @@ namespace forensics {
             ext == ".svg" || ext == ".ico" || ext == ".woff" ||
             ext == ".woff2" || ext == ".ttf") {
             res.set_header("Cache-Control", "public, max-age=31536000"); // 1 year
+        } else if (ext == ".html" || ext == ".htm") {
+            // SPA entry point: hashed assets are content-addressed and safe to
+            // cache for a year, but index.html itself must always be
+            // revalidated so browsers never keep serving a stale frontend
+            // bundle after a redeploy.
+            res.set_header("Cache-Control", "no-cache");
         }
 
         res.code = 200;

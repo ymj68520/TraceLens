@@ -105,6 +105,7 @@ const OfficePreviewTab = ({
                   className="w-full text-left px-3 py-2 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 text-sm text-slate-700 dark:text-slate-300 flex items-center gap-2"
                 >
                   <Badge variant="blue">{file.extension}</Badge>
+                  {file.is_deleted ? <Badge variant="red">已删除</Badge> : null}
                   <span className="truncate">{file.name || filePath?.split('/').pop()}</span>
                 </button>
               );

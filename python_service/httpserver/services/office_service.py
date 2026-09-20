@@ -21,6 +21,22 @@ logger = logging.getLogger(__name__)
 class OfficeService:
     """Service for parsing Office documents."""
 
+    # Content signatures the dedicated parsers require. Recovered/deleted
+    # files frequently carry data that does not match their recorded
+    # extension, so parse_file sniffs before dispatching.
+    _MAGIC_BY_SUFFIX = {
+        ".docx": b"PK\x03\x04",
+        ".xlsx": b"PK\x03\x04",
+        ".pptx": b"PK\x03\x04",
+        ".doc": b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",
+        ".xls": b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",
+        ".ppt": b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",
+    }
+
+    # Cap for the text fallback: recovered files can be huge; a preview does
+    # not need more than the first megabyte.
+    _TEXT_FALLBACK_LIMIT = 1024 * 1024
+
     def __init__(self):
         """Initialize the Office parsing service."""
         pass
@@ -46,6 +62,19 @@ class OfficeService:
 
         suffix = path.suffix.lower()
 
+        # Content sniffing: when the leading bytes do not match the expected
+        # container format the dedicated parsers would just fail (e.g.
+        # antiword: "not a Word Document"). Show recovered text instead when
+        # the bytes are decodable, or explain that the content does not match.
+        expected_magic = self._MAGIC_BY_SUFFIX.get(suffix)
+        if expected_magic is not None:
+            with open(file_path, "rb") as handle:
+                head = handle.read(len(expected_magic))
+            if head and not head.startswith(expected_magic):
+                return await asyncio.to_thread(
+                    self._parse_mismatched_content, file_path, suffix
+                )
+
         # The concrete parsers (python-docx / openpyxl / python-pptx /
         # subprocess) are synchronous and can take seconds on large files;
         # offload them to a worker thread so the async event loop is not
@@ -64,6 +93,78 @@ class OfficeService:
             return await asyncio.to_thread(self._parse_ppt, file_path)
         else:
             raise ValueError(f"Unsupported file type: {suffix}")
+
+    def _parse_mismatched_content(self, file_path: str, suffix: str) -> str:
+        """Fallback for files whose content does not match their extension.
+
+        Typical for deleted files recovered from unallocated space: the
+        carved bytes can be anything, often a readable fragment followed by
+        overwritten garbage. Show the readable part when there is one and
+        explain otherwise.
+        """
+        with open(file_path, "rb") as handle:
+            raw = handle.read(self._TEXT_FALLBACK_LIMIT)
+
+        if not raw.strip():
+            return (
+                f"文件扩展名为 {suffix},但内容为空或全为空白"
+                "(可能为已删除文件的残留数据),无法预览。"
+            )
+
+        note = f"[注意] 文件内容与 {suffix} 格式不符(可能为已删除/残留数据)。"
+
+        # 1. Whole buffer decodes cleanly in a common encoding.
+        for encoding in ("utf-8", "gbk", "cp1252"):
+            try:
+                text = raw.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+            if text.count("\ufffd") <= len(text) * 0.1 and self._is_mostly_printable(text):
+                return f"{note}以下为按文本提取的内容:\n\n{text}"
+
+        # 2. Mostly textual with a few stray bytes: show the whole thing.
+        text = raw.decode("utf-8", errors="replace")
+        if (
+            text.count("\ufffd") <= len(text) * 0.1
+            and self._is_mostly_printable(text)
+        ):
+            return f"{note}以下为按文本提取的内容:\n\n{text}"
+
+        # 3. Readable prefix followed by garbage: preview the prefix.
+        encoding, usable = self._longest_decodable_prefix(raw)
+        if usable >= 32:
+            prefix = raw[:usable].decode(encoding, errors="replace")
+            if self._is_mostly_printable(prefix):
+                truncation = (
+                    f"仅前 {usable} 字节可读,其余部分已损坏或被覆盖:"
+                    if usable < len(raw)
+                    else "以下为按文本提取的内容:"
+                )
+                return f"{note}{truncation}\n\n{prefix}"
+
+        return (
+            f"文件扩展名为 {suffix},但内容与该格式不符"
+            "(可能为已删除文件的残留数据),无法提取可读文本。"
+        )
+
+    @staticmethod
+    def _is_mostly_printable(text: str) -> bool:
+        printable = sum(1 for ch in text if ch.isprintable() or ch in "\r\n\t")
+        return printable >= len(text) * 0.7
+
+    @staticmethod
+    def _longest_decodable_prefix(raw: bytes) -> tuple[str, int]:
+        """Longest byte prefix that decodes cleanly in a common encoding."""
+        best: tuple[str, int] = ("utf-8", 0)
+        for encoding in ("utf-8", "gbk", "cp1252"):
+            try:
+                raw.decode(encoding)
+            except UnicodeDecodeError as exc:
+                if exc.start > best[1]:
+                    best = (encoding, exc.start)
+            else:
+                return encoding, len(raw)
+        return best
 
     def _parse_docx(self, file_path: str) -> str:
         """Parse DOCX file using python-docx (paragraphs + tables)."""

@@ -63,6 +63,45 @@ def test_parse_doc_missing_file_reports_error(service, tmp_path):
     assert content.startswith("Error parsing DOC:")
 
 
+@pytest.mark.asyncio
+async def test_parse_file_text_content_with_doc_extension(service, tmp_path):
+    """Deleted-file carving often yields text in a .doc record: preview it."""
+    fake = tmp_path / "carved.doc"
+    fake.write_text("Const ERROR_SUCCESS=0\r\nConst ERROR_CANNOT_COPY=266\r\n", encoding="ascii")
+    content = await service.parse_file(str(fake))
+    assert content.startswith("[注意]")
+    assert "ERROR_SUCCESS" in content
+
+
+@pytest.mark.asyncio
+async def test_parse_file_partial_carved_text_previews_prefix(service, tmp_path):
+    """A readable fragment followed by overwritten garbage shows the fragment."""
+    import os
+
+    fake = tmp_path / "carved.doc"
+    raw = b"Const ERROR_SUCCESS=0\r\n" * 40 + os.urandom(4096)
+    fake.write_bytes(raw)
+    content = await service.parse_file(str(fake))
+    assert "仅前" in content
+    assert "ERROR_SUCCESS" in content
+
+
+@pytest.mark.asyncio
+async def test_parse_file_binary_mismatch_reports_unpreviewable(service, tmp_path):
+    fake = tmp_path / "carved.docx"
+    fake.write_bytes(b"\x00\x01\x02\x03" * 2000)
+    content = await service.parse_file(str(fake))
+    assert "无法提取可读文本" in content
+
+
+@pytest.mark.asyncio
+async def test_parse_file_real_docx_still_dispatches(service, tmp_path):
+    docx_path = tmp_path / "real.docx"
+    _make_docx(docx_path, paragraphs=["真实文档内容"])
+    content = await service.parse_file(str(docx_path))
+    assert "真实文档内容" in content
+
+
 def test_parse_ppt_ole_extracts_text(service, monkeypatch):
     """The pure-Python PPT text walk parses TextChars/TextBytes atoms."""
     import struct
