@@ -38,8 +38,9 @@ export default function Investigation() {
   const selectedEvent = useMemo(() => events.find((event) => event.id === selectedEventId) || null, [events, selectedEventId]);
 
   // ---- 文件中心选择模型 -------------------------------------------------
-  // 时间线节点 = 已分析文件；左栏展示该文件关联的全部事件；
-  // selectedEventId 仍驱动右栏分析工作台与证据面板。
+  // 时间线节点 = 已分析文件；右栏默认 = 文件工作台（判定 + 分析评审）。
+  // selectedEventId 仅在用户显式点选事件（佐证事件/关联事件/claim 追溯/
+  // 深链 ?event=）时设置，右栏随之切换到事件面板。
   const files = useMemo(() => fileTimeline?.files || [], [fileTimeline]);
   const filesSignature = useMemo(() => files.map((file) => file.path).join('\n'), [files]);
   const [selectedFileKey, setSelectedFileKey] = useState(null);
@@ -75,7 +76,7 @@ export default function Investigation() {
     }
   }, [files, requestedEvent]);
 
-  // 事件有效性：刷新后事件已不存在则清空选择（右栏回落到提示态）。
+  // 事件有效性：刷新后事件已不存在则清空选择（右栏回落到文件工作台）。
   useEffect(() => {
     if (selectedEventId && events.length && !events.some((event) => event.id === selectedEventId)) {
       setSelectedEventId(null);
@@ -84,31 +85,26 @@ export default function Investigation() {
     }
   }, [events, selectedEventId]);
 
-  // 默认事件：当前文件有关联事件而未选中任何事件时选中第一个；
-  // 无文件可用（时间线为空/失败）时退回全局第一个事件。
-  useEffect(() => {
-    if (selectedEventId) return;
-    if (fileEvents.length) setSelectedEventId(fileEvents[0].id);
-    else if (!selectedFile && events.length) setSelectedEventId(events[0].id);
-  }, [fileEvents, selectedFile, events, selectedEventId]);
-
   const selectFile = (file) => {
     if (!file) return;
     setSelectedFileKey(file.path);
-    const byId = new Map(events.map((event) => [event.id, event]));
-    const known = (file.event_ids || []).map((id) => byId.get(id)).filter(Boolean);
-    if (!selectedEventId || !known.some((event) => event.id === selectedEventId)) {
-      setSelectedEventId(known.length ? known[0].id : null);
-      setSelectedEvidenceKey(null);
-      setClaimEvidenceScope(null);
-    }
+    // 回到文件工作台：判定是文件级动作，点文件不再自动跳转事件面板。
+    setSelectedEventId(null);
+    setSelectedEvidenceKey(null);
+    setClaimEvidenceScope(null);
   };
 
   const selectEvent = (eventId) => {
-    // 图谱/卡片联动：事件不在当前文件时自动切换到承载它的文件。
+    // 事件面板：事件不在当前文件时自动切换到承载它的文件。
     const host = files.find((file) => (file.event_ids || []).includes(eventId));
     if (host && host.path !== selectedFileKey) setSelectedFileKey(host.path);
     setSelectedEventId(eventId);
+    setSelectedEvidenceKey(null);
+    setClaimEvidenceScope(null);
+  };
+
+  const backToFile = () => {
+    setSelectedEventId(null);
     setSelectedEvidenceKey(null);
     setClaimEvidenceScope(null);
   };
@@ -174,7 +170,9 @@ export default function Investigation() {
             selectedEventId={selectedEventId}
             onSelectEvent={selectEvent}
             evidencePanel={
-              <EventEvidencePanel taskId={taskId} eventId={selectedEventId} event={selectedEvent} evidence={evidence} loading={evidenceLoading} error={evidenceError} selectedEvidenceKey={selectedEvidenceKey} claimEvidenceScope={claimEvidenceScope} onClearClaimScope={clearClaimScope} onSelect={(key) => { setClaimEvidenceScope(null); setSelectedEvidenceKey(key); }} onRefresh={refreshEvidence} />
+              selectedEventId ? (
+                <EventEvidencePanel taskId={taskId} eventId={selectedEventId} event={selectedEvent} evidence={evidence} loading={evidenceLoading} error={evidenceError} selectedEvidenceKey={selectedEvidenceKey} claimEvidenceScope={claimEvidenceScope} onClearClaimScope={clearClaimScope} onSelect={(key) => { setClaimEvidenceScope(null); setSelectedEvidenceKey(key); }} onRefresh={refreshEvidence} />
+              ) : null
             }
           />
         </section>
@@ -202,7 +200,23 @@ export default function Investigation() {
             )}
           </div>
         </section>
-        <section className={`min-h-0 overflow-hidden rounded-2xl glass ${graphActive ? 'hidden' : ''}`} data-testid="analysis-workspace-column"><AnalysisWorkspace taskId={taskId} event={selectedEvent} eventId={selectedEventId} evidenceKey={selectedEvidenceKey} onRefreshEvents={refreshEventsAndGraph} onTraceClaim={traceClaim} onTraceEvidence={traceEvidence} onEvidenceChanged={handleEvidenceChanged} /></section>
+        <section className={`min-h-0 overflow-hidden rounded-2xl glass ${graphActive ? 'hidden' : ''}`} data-testid="analysis-workspace-column">
+          <AnalysisWorkspace
+            taskId={taskId}
+            file={selectedFile}
+            events={events}
+            event={selectedEvent}
+            eventId={selectedEventId}
+            evidenceKey={selectedEvidenceKey}
+            rightPane={selectedEventId ? 'event' : 'file'}
+            onRefreshEvents={refreshEventsAndGraph}
+            onTraceClaim={traceClaim}
+            onTraceEvidence={traceEvidence}
+            onSelectEvent={selectEvent}
+            onBackToFile={backToFile}
+            onEvidenceChanged={handleEvidenceChanged}
+          />
+        </section>
       </main>
     </div>
   );

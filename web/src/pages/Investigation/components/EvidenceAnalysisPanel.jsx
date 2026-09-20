@@ -16,7 +16,7 @@ import AnalystNoteEditor from './AnalystNoteEditor';
 import AnalysisVersionList from './AnalysisVersionList';
 import ClaimList from './ClaimList';
 import LocalKnowledgeGraph from './LocalKnowledgeGraph';
-import ReportEvidenceSelector from './ReportEvidenceSelector';
+import ReportEvidenceJudgment from '../../../components/investigation/ReportEvidenceJudgment';
 
 function Section({ title, children }) {
   return <section className="rounded-xl border border-slate-200/60 dark:border-slate-700/60 p-4"><h3 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h3>{children}</section>;
@@ -131,7 +131,7 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
 
       <Section title="5. Claims"><ClaimList claims={version?.claims || []} /></Section>
       <Section title="6. Local Investigation Graph"><LocalKnowledgeGraph graph={graph} /></Section>
-      <Section title="7. Report Evidence"><ReportEvidenceSelector taskId={taskId} evidenceKey={evidenceKey} value={detail.report_evidence} onChange={async () => { await refresh(); onEvidenceChanged?.(); }} /></Section>
+      <Section title="7. Report Evidence"><ReportEvidenceJudgment taskId={taskId} evidenceKey={evidenceKey} status={detail.report_evidence?.report_status || null} onChanged={async () => { await refresh(); onEvidenceChanged?.(); }} /></Section>
       <Section title="8. Analysis History"><AnalysisVersionList versions={versions} selectedId={version?.id} onSelect={setSelectedVersionId} /></Section>
       <Button size="sm" variant="ghost" icon={RotateCw} onClick={refresh}>刷新详情</Button>
     </div>

@@ -91,7 +91,13 @@ export default function FileEventPanel({ file, events, selectedEventId, onSelect
           </div>
         )}
       </div>
-      <div className="min-h-0 flex-1">{evidencePanel}</div>
+      <div className="min-h-0 flex-1">
+        {evidencePanel || (
+          <div className="h-full flex items-center justify-center p-4 text-center text-xs text-slate-400">
+            在上方选择一个关联事件，查看它的佐证证据与 Claim 引用。
+          </div>
+        )}
+      </div>
     </div>
   );
 }

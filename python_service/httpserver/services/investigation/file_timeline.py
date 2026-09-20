@@ -219,6 +219,20 @@ def collect_file_timeline(
     known_event_ids = {event.event_id for event in events}
     metadata = _load_file_metadata(files_db, raw_db, set(file_events))
 
+    # 判定状态（R1 report_evidence）：文件节点的报告证据三态直接随投影下发，
+    # 前端节点/卡片无需再逐文件回查 evidence detail。从未判定 → None。
+    report_status_by_path: dict[str, str] = {}
+    for item in reader.list_report_evidence():
+        key = item.evidence_key
+        if not key.startswith(FILE_KEY_PREFIX):
+            continue
+        try:
+            judged_path = normalize_forensic_path(parse_file_evidence_key(key))
+        except InvalidEvidenceKey:
+            continue
+        if judged_path:
+            report_status_by_path[judged_path] = item.report_status
+
     files: list[dict[str, Any]] = []
     for path in sorted(file_events):
         event_ids = sorted(
@@ -232,6 +246,7 @@ def collect_file_timeline(
             name=entry.get("name") or path.rstrip("/").rsplit("/", 1)[-1],
             event_ids=event_ids,
             event_count=len(event_ids),
+            report_status=report_status_by_path.get(path),
         )
         times = {key: entry[key] for key in MACB_KEYS if entry.get(key)}
         entry["latest_time"] = max(times.values()) if times else None

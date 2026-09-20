@@ -12,15 +12,23 @@ const DOT_COLOR = {
   rejected: 'bg-rose-500',
 };
 
-// 文件节点的圆点取其关联事件评审状态的汇合：
-// 有已确认事件 → 绿；有待复核 → 黄；全被排除 → 红；其余 → 草稿灰。
-const dotKeyOf = (events) => {
-  if (!events.length) return 'draft';
-  if (events.some((event) => event.review_status === 'confirmed')) return 'confirmed';
-  if (events.some((event) => event.review_status === 'review_pending')) return 'review_pending';
-  if (events.every((event) => event.review_status === 'rejected')) return 'rejected';
-  return 'draft';
+// 文件节点的判定状态（R1 报告证据三态，随 file-timeline 下发）→ 圆点颜色：
+// 正文证据 → 紫；附件证据 → 蓝；已排除 → 灰；未判定 → 琥珀。
+const JUDGE_DOT = {
+  main: 'bg-purple-500',
+  appendix: 'bg-sky-500',
+  excluded: 'bg-slate-400 dark:bg-slate-500',
+  unjudged: 'bg-amber-400',
 };
+
+const JUDGE_LABEL = {
+  main: '正文证据',
+  appendix: '附件证据',
+  excluded: '已排除',
+  unjudged: '未判定',
+};
+
+const judgeKeyOf = (file) => (file?.report_status ? file.report_status : 'unjudged');
 
 const toUnix = (value) => {
   const n = Number(value);
@@ -211,7 +219,7 @@ export default function InvestigationTimeline({ files, events, selectedFileKey, 
 
         {visible.map((file, index) => {
           const fileEvents = resolveEvents(file);
-          const status = REVIEW_STATUS[dotKeyOf(fileEvents)];
+          const judgeKey = judgeKeyOf(file);
           const selected = selectedFileKey === file.path;
           const expanded = expandedKey === file.path;
           const sideIsLeft = index % 2 === 0;
@@ -257,9 +265,9 @@ export default function InvestigationTimeline({ files, events, selectedFileKey, 
                     aria-expanded={expanded}
                     aria-current={selected ? 'true' : undefined}
                     aria-label={`${displayTime(file)} ${file.name || file.path}`}
-                    title={`${status.label} · ${displayTime(file)}`}
+                    title={`判定：${JUDGE_LABEL[judgeKey]} · ${displayTime(file)}`}
                     data-testid={`file-node-${file.path}`}
-                    className={`h-3.5 w-3.5 cursor-pointer rounded-full border-2 shadow transition-all hover:scale-125 border-white dark:border-slate-900 ${DOT_COLOR[dotKeyOf(fileEvents)]} ${expanded
+                    className={`h-3.5 w-3.5 cursor-pointer rounded-full border-2 shadow transition-all hover:scale-125 border-white dark:border-slate-900 ${JUDGE_DOT[judgeKey]} ${expanded
                       ? 'ring-2 ring-primary-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900'
                       : selected ? 'ring-2 ring-primary-300 dark:ring-primary-600' : ''}`}
                   />
@@ -274,13 +282,16 @@ export default function InvestigationTimeline({ files, events, selectedFileKey, 
                   data-testid={`file-card-${file.path}`}
                 >
                   <span aria-hidden className="absolute -top-1.5 left-1/2 h-1.5 w-px -translate-x-1/2 bg-slate-300 dark:bg-slate-600" />
-                  {/* 文件为核心：身份 → MACB 时间 → 自身摘要 → 事件佐证 */}
+                  {/* 文件为核心：身份 → 判定 → MACB 时间 → 自身摘要 → 事件佐证 */}
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
                       <FileText size={14} className="shrink-0 text-primary-500" />
                       <span className="truncate">{file.name || file.path}</span>
                     </span>
-                    <span className="flex shrink-0 items-center gap-1 text-xs text-slate-500">
+                    <span className="flex shrink-0 items-center gap-2 text-xs text-slate-500">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold text-white ${JUDGE_DOT[judgeKey]}`} data-testid={`file-judge-${file.path}`}>
+                        {JUDGE_LABEL[judgeKey]}
+                      </span>
                       <Clock3 size={12} /> {displayTime(file)}
                     </span>
                   </div>
@@ -317,7 +328,7 @@ export default function InvestigationTimeline({ files, events, selectedFileKey, 
                               data-testid={`file-card-event-${event.id}`}
                               className="flex w-full items-center gap-2 rounded-lg border border-transparent px-1.5 py-1 text-left text-xs transition-colors hover:border-slate-200 hover:bg-slate-100/70 dark:hover:border-slate-700 dark:hover:bg-slate-800/60"
                             >
-                              <span className={`h-2 w-2 shrink-0 rounded-full ${DOT_COLOR[dotKeyOf([event])]}`} />
+                              <span className={`h-2 w-2 shrink-0 rounded-full ${DOT_COLOR[event.review_status] || DOT_COLOR.draft}`} />
                               <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">{event.title}</span>
                               <span className="shrink-0 text-[10px] text-slate-400">{formatTimestamp(toUnix(event.start_time))}</span>
                               <Badge variant={eventStatus.variant} size="sm">{eventStatus.label}</Badge>

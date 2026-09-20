@@ -359,3 +359,18 @@ def test_file_timeline_route_maps_unknown_task_to_404():
         "/api/investigation/workbench/T1/file-timeline"
     )
     assert response.status_code == 404
+
+
+def test_file_nodes_carry_report_evidence_status(tmp_path):
+    """判定三态随投影下发：已判定文件带 report_status，未判定为 None。"""
+    store = _store(tmp_path)
+    seeded = _seed(store)
+    task, repo, _files_db, _events_db = store
+
+    repo.add_report_evidence("file:/case/c.txt", report_status="main", added_by="test")
+    projection = _collect(store, limit=10)
+    by_path = {item["path"]: item for item in projection["files"]}
+
+    assert by_path["/case/c.txt"]["report_status"] == "main"
+    assert by_path["/case/a.txt"]["report_status"] is None
+    assert seeded["file_event"]  # sanity: 关联事件仍在

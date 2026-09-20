@@ -90,22 +90,19 @@ test('节点以文件为核心：名称在标签上，展开卡片展示 MACB �
   expect(screen.queryByTestId('file-card-/case/report.doc')).not.toBeInTheDocument();
 });
 
-test('文件圆点颜色随关联事件评审状态汇合：有已确认事件为绿', () => {
+test('文件圆点颜色随报告证据判定状态：正文紫、附件蓝、已排除灰、未判定琥珀', () => {
   const files = [
-    mkFile('/case/a.txt', T0, { event_ids: ['e1'] }),
-    mkFile('/case/b.txt', T0 + 600, { event_ids: ['e2'] }),
-    mkFile('/case/c.txt', T0 + 1200, { event_ids: ['e3'] }),
+    mkFile('/case/a.txt', T0, { report_status: 'main' }),
+    mkFile('/case/b.txt', T0 + 600, { report_status: 'appendix' }),
+    mkFile('/case/c.txt', T0 + 1200, { report_status: 'excluded' }),
+    mkFile('/case/d.txt', T0 + 1800),
   ];
-  const events = [
-    mkEvent('e1', T0, { review_status: 'confirmed' }),
-    mkEvent('e2', T0, { review_status: 'review_pending' }),
-    mkEvent('e3', T0, { review_status: 'rejected' }),
-  ];
-  render(<InvestigationTimeline files={files} events={events} selectedFileKey="/case/a.txt" onSelectFile={vi.fn()} onSelectEvent={vi.fn()} loading={false} />);
+  render(<InvestigationTimeline files={files} events={[]} selectedFileKey="/case/a.txt" onSelectFile={vi.fn()} onSelectEvent={vi.fn()} loading={false} />);
 
-  expect(screen.getByTestId('file-node-/case/a.txt').className).toContain('bg-emerald-500');
-  expect(screen.getByTestId('file-node-/case/b.txt').className).toContain('bg-amber-400');
-  expect(screen.getByTestId('file-node-/case/c.txt').className).toContain('bg-rose-500');
+  expect(screen.getByTestId('file-node-/case/a.txt').className).toContain('bg-purple-500');
+  expect(screen.getByTestId('file-node-/case/b.txt').className).toContain('bg-sky-500');
+  expect(screen.getByTestId('file-node-/case/c.txt').className).toContain('bg-slate-400');
+  expect(screen.getByTestId('file-node-/case/d.txt').className).toContain('bg-amber-400');
   expect(screen.getByTestId('file-node-/case/a.txt')).toHaveAttribute('aria-current', 'true');
 });
 

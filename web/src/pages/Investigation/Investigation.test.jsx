@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
 import Investigation from './Investigation';
+import { ToastProvider } from '../../components/common/ToastContext';
 import * as service from '../../services/investigationService';
 
 vi.mock('./components/LocalKnowledgeGraph', () => ({
@@ -46,6 +47,8 @@ vi.mock('../../services/investigationService', () => ({
   rejectEventSemanticVersion: vi.fn(),
   setReportEvidence: vi.fn(),
   removeReportEvidence: vi.fn(),
+  addReportEvidence: vi.fn().mockResolvedValue({}),
+  updateReportEvidenceStatus: vi.fn().mockResolvedValue({}),
 }));
 
 // 时间线 = 已分析文件节点；事件经文件关联展示在左栏并驱动右栏工作台。
@@ -63,7 +66,13 @@ const evidenceByEvent = {
 };
 
 function renderPage(route = '/investigation?task_id=t1') {
-  return render(<MemoryRouter initialEntries={[route]}><Investigation /></MemoryRouter>);
+  return render(
+    <MemoryRouter initialEntries={[route]}>
+      <ToastProvider>
+        <Investigation />
+      </ToastProvider>
+    </MemoryRouter>
+  );
 }
 
 beforeEach(() => {
@@ -138,7 +147,7 @@ test('does not bootstrap an initialized investigation', async () => {
   expect(service.bootstrapInvestigation).not.toHaveBeenCalled();
 });
 
-test('timeline nodes are files sorted by latest MACB time; first file auto-selected', async () => {
+test('timeline nodes are files sorted by latest MACB time; first file selected with the file workbench', async () => {
   renderPage();
   await screen.findByTestId('file-node-/case/a.txt');
   expect(service.getInvestigationFileTimeline).toHaveBeenCalledWith('t1');
@@ -146,30 +155,49 @@ test('timeline nodes are files sorted by latest MACB time; first file auto-selec
   expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('a.txt');
   expect(screen.getByTestId('file-event-e1')).toBeInTheDocument();
   expect(screen.queryByTestId('file-event-e2')).not.toBeInTheDocument();
-  // 首个文件的首个事件自动选中，驱动证据面板
-  await waitFor(() => expect(service.getEventEvidence).toHaveBeenCalledWith('t1', 'e1'));
+  // 右栏默认文件工作台；不再自动选中事件驱动证据面板
+  await screen.findByTestId('file-workbench-panel');
+  expect(service.getEventEvidence).not.toHaveBeenCalled();
 });
 
-test('selecting a file node shows its events and refreshes the evidence panel', async () => {
+test('selecting a file node shows its events and opens the file workbench', async () => {
   renderPage();
   await screen.findByTestId('file-node-/case/a.txt');
-  await screen.findByTestId('evidence-file:/case/a.txt');
   fireEvent.click(screen.getByTestId('file-node-/case/b.txt'));
   expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('b.txt');
   await screen.findByTestId('file-event-e2');
-  expect(service.getEventEvidence).toHaveBeenCalledWith('t1', 'e2');
+  expect(service.getEventEvidence).not.toHaveBeenCalled();
+});
+
+test('file workbench exposes the report judgment bound to the file evidence key', async () => {
+  renderPage();
+  await screen.findByTestId('file-workbench-panel');
+  fireEvent.click(screen.getByTitle('作为报告正文证据'));
+  await waitFor(() => expect(service.addReportEvidence).toHaveBeenCalledWith('t1', 'file:/case/a.txt', 'main'));
+});
+
+test('selecting an event opens the event panel; disabled review actions stay hidden', async () => {
+  renderPage();
+  await screen.findByTestId('file-node-/case/a.txt');
+  fireEvent.click(screen.getByTestId('file-event-e1'));
+  await screen.findByRole('heading', { name: '事件一' });
+  // 事件向判定是 409 桩：按钮隐藏（保留待契约解禁）
+  expect(screen.queryByText('确认事件')).not.toBeInTheDocument();
+  expect(screen.queryByText('标记待复核')).not.toBeInTheDocument();
+  expect(screen.queryByText('排除事件')).not.toBeInTheDocument();
+  expect(screen.getByTestId('back-to-file-workbench')).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId('back-to-file-workbench'));
+  await screen.findByTestId('file-workbench-panel');
 });
 
 test('selecting evidence opens the evidence analysis workspace', async () => {
   renderPage();
   await screen.findByTestId('file-node-/case/a.txt');
+  fireEvent.click(screen.getByTestId('file-event-e1'));
   await screen.findByTestId('evidence-file:/case/a.txt');
-  fireEvent.click(screen.getByTestId('file-node-/case/b.txt'));
-  await screen.findByTestId('evidence-file:/case/b.txt');
-  fireEvent.click(screen.getByTestId('evidence-file:/case/b.txt'));
+  fireEvent.click(screen.getByTestId('evidence-file:/case/a.txt'));
   await screen.findByTestId('evidence-analysis-panel');
-  expect(screen.getByText('Initial B')).toBeInTheDocument();
-  expect(service.getEvidenceDetail).toHaveBeenCalledWith('t1', 'file:/case/b.txt');
+  expect(service.getEvidenceDetail).toHaveBeenCalledWith('t1', 'file:/case/a.txt');
 });
 
 test('displays accepted evidence analysis ahead of newer pending history', async () => {
@@ -185,6 +213,7 @@ test('displays accepted evidence analysis ahead of newer pending history', async
   ] });
   renderPage();
   await screen.findByTestId('file-node-/case/a.txt');
+  fireEvent.click(screen.getByTestId('file-event-e1'));
   await screen.findByTestId('evidence-file:/case/a.txt');
   fireEvent.click(screen.getByTestId('evidence-file:/case/a.txt'));
   await screen.findByTestId('evidence-analysis-panel');
@@ -200,10 +229,13 @@ test('marks stale pending semantic content without replacing the event title', a
     id: 'stale', version: 1, status: 'review_pending', source_revision: 1, title: 'Stale candidate', summary: 'stale', input_evidence_refs: '[]',
   }] });
   renderPage();
-  // 事件标题在左栏文件关联事件列表中以 seed 标题呈现
-  expect(await screen.findByTestId('file-event-e1')).toHaveTextContent('Seed title');
+  // 事件标题在左栏文件关联事件列表中以 seed 标题呈现；点进事件面板查看语义版本
+  await screen.findByTestId('file-event-e1');
+  fireEvent.click(screen.getByTestId('file-event-e1'));
   await screen.findByText('已过期待审核');
   expect(screen.getByText('Stale candidate')).toBeInTheDocument();
+  // 语义版本评审按钮同样是 409 桩：隐藏
+  expect(screen.queryByText('接受语义版本')).not.toBeInTheDocument();
 });
 
 test('renders historical claim citation and preserves provenance scope', async () => {
@@ -213,6 +245,8 @@ test('renders historical claim citation and preserves provenance scope', async (
   service.getEventEvidence.mockResolvedValue({ evidence: [{ ...evidenceByEvent.e1[0], evidence_key: 'file:/case/a.txt' }] });
   service.getEvidenceDetail.mockImplementation((_, key) => Promise.resolve({ evidence: { evidence_key: key, title: key.includes('historical') ? 'Historical evidence' : 'a.txt', file_path: key, snapshot: { initial_description: 'detail' }, metadata: {}, related_event_ids: [] } }));
   renderPage();
+  await screen.findByTestId('file-event-e1');
+  fireEvent.click(screen.getByTestId('file-event-e1'));
   await screen.findByText('Claim A');
   fireEvent.click(screen.getByText('Claim A'));
   await screen.findByText('Claim 历史引用 / 已不属于当前 Event');
@@ -225,6 +259,8 @@ test('shows unavailable historical citation instead of silently dropping it', as
   service.getEventEvidence.mockResolvedValue({ evidence: [] });
   service.getEvidenceDetail.mockRejectedValue(new Error('not found'));
   renderPage();
+  await screen.findByTestId('file-event-e1');
+  fireEvent.click(screen.getByTestId('file-event-e1'));
   await screen.findByText('Claim unavailable');
   fireEvent.click(screen.getByText('Claim unavailable'));
   await screen.findByText('Claim 历史引用 / 已不属于当前 Event');
@@ -244,9 +280,12 @@ test('ignores every late response from a previously selected evidence item', asy
   service.getLocalGraph.mockImplementation((_, payload) => payload.evidence_key === 'file:/case/a.txt' ? a.graph.promise : Promise.resolve({ nodes: [{ id: 'b-node', label: 'B graph' }], links: [], base_available: false }));
   renderPage();
   await screen.findByTestId('file-node-/case/a.txt');
+  fireEvent.click(screen.getByTestId('file-event-e1'));
   await screen.findByTestId('evidence-file:/case/a.txt');
   fireEvent.click(screen.getByTestId('evidence-file:/case/a.txt'));
+  // 切换文件（选择模型回落文件工作台）再点 e2 的证据，比较竞态覆盖
   fireEvent.click(screen.getByTestId('file-node-/case/b.txt'));
+  fireEvent.click(screen.getByTestId('file-event-e2'));
   await screen.findByTestId('evidence-file:/case/b.txt');
   fireEvent.click(screen.getByTestId('evidence-file:/case/b.txt'));
   await screen.findByText('B analysis');
