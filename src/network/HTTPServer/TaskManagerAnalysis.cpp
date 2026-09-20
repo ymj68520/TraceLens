@@ -490,6 +490,12 @@ void TaskManager::start_analysis(const std::string& task_id) {
             }
             update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 100, "File classification completed");
 
+            // Publish the files DB path as soon as it exists: SPEC E record
+            // calls arrive during LLM analysis and resolve the write target
+            // from this task field — setting it only at finalization left it
+            // empty for the whole LLM phase (HTTP 400 on every record call).
+            set_result_db(task_id, fileDbPath);
+
             // 4. LLM Analysis (Optional) - Stores descriptions directly in _files.db
             if (task.llm_analyze) {
                 if (is_task_cancelled(task_id)) { return; }
