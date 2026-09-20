@@ -95,6 +95,17 @@ async def test_parse_file_binary_mismatch_reports_unpreviewable(service, tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_parse_file_zeroed_recovery_reports_unrecoverable(service, tmp_path):
+    """Overwritten deleted files carve back mostly zeroed: say so."""
+    fake = tmp_path / "carved.doc"
+    fake.write_bytes(b"\x00" * 8000 + bytes(range(256)) * 4)
+    content = await service.parse_file(str(fake))
+    assert "无法恢复" in content
+    assert "空字节" in content
+    assert "9024" in content  # recovered size reported
+
+
+@pytest.mark.asyncio
 async def test_parse_file_real_docx_still_dispatches(service, tmp_path):
     docx_path = tmp_path / "real.docx"
     _make_docx(docx_path, paragraphs=["真实文档内容"])

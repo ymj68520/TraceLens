@@ -428,6 +428,16 @@ class OfficeService:
                 )
                 return f"{note}{truncation}\n\n{prefix}"
 
+        # 4. Nothing readable. Deleted files frequently carve back as
+        # mostly-zeroed clusters (the data was overwritten before recovery);
+        # say so with the numbers instead of a bare failure.
+        zero_ratio = raw.count(0) / len(raw)
+        if zero_ratio >= 0.3:
+            return (
+                f"该已删除文件仅恢复出 {len(raw)} 字节,其中 {zero_ratio:.0%} 为空字节,"
+                "其余为覆盖后的无结构数据,原始内容已无法恢复,故无法预览。"
+            )
+
         return (
             f"文件扩展名为 {suffix},但内容与该格式不符"
             "(可能为已删除文件的残留数据),无法提取可读文本。"
