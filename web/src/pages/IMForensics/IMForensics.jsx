@@ -95,6 +95,9 @@ export default function IMForensics() {
   const [showImport, setShowImport] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const { show } = useToast();
+  // 导入列表请求序号：平台切换或发起更新请求时递增，晚到的旧平台响应据此丢弃，
+  // 避免把微信/QQ 另一侧的导入列表渲染到当前平台（会导致 wx_<QQ导入> 图谱 404）
+  const listReqRef = useRef(0);
 
   const updateParams = useCallback((mutate, options = {}) => {
     setSearchParams((prev) => {
@@ -110,21 +113,25 @@ export default function IMForensics() {
   useEffect(() => { updateParamsRef.current = updateParams; });
 
   const refreshImports = useCallback(async (selectId) => {
+    const req = ++listReqRef.current;
     try {
       const res = await platform.listImports();
+      if (req !== listReqRef.current) return;
       setImports(res.imports || []);
       if (selectId) {
         updateParamsRef.current((p) => { p.set('import_id', selectId); p.delete('task_id'); });
       }
     } catch (e) {
+      if (req !== listReqRef.current) return;
       show(`加载导入列表失败：${e.data?.detail || e.message}`, 'error');
     } finally {
-      setLoadingList(false);
+      if (req === listReqRef.current) setLoadingList(false);
     }
   }, [platform, show]);
 
   // 切平台立即丢弃上一平台的列表，避免加载间隙误选到别的平台的导入
   useEffect(() => {
+    listReqRef.current += 1;
     setImports([]);
     setLoadingList(true);
     setOverview(null);
@@ -147,16 +154,19 @@ export default function IMForensics() {
     }
   }, [imports, loadingList, urlImportId, updateParams]);
 
+  // 仅当 urlImportId 命中当前平台列表时才非空；后续请求以此为准
+  const current = imports.find((i) => i.import_id === urlImportId);
+
   useEffect(() => {
-    if (!urlImportId) { setOverview(null); return; }
+    // current 未命中（列表未加载 / import_id 跨平台残留 / 已删除）时不发请求，
+    // 避免对后端打 wx_<QQ导入> 这类必 404 的调用；纠偏 effect 随后会把 URL 修正
+    if (!current) { setOverview(null); return; }
     let alive = true;
-    platform.getOverview(urlImportId)
+    platform.getOverview(current.import_id)
       .then((res) => alive && setOverview(res))
       .catch(() => alive && setOverview(null));
     return () => { alive = false; };
-  }, [urlImportId, platform]);
-
-  const current = imports.find((i) => i.import_id === urlImportId);
+  }, [current, platform]);
 
   const removeImport = async () => {
     if (!urlImportId) return;
@@ -181,8 +191,10 @@ export default function IMForensics() {
     updateParams((p) => p.set('tab', 'messages'));
   };
 
+  // 图谱数据源必须落在已验证属于当前平台的导入上（current 命中），否则宁可空一帧
+  // 也不发必 404 的请求；task_id 覆盖（旧链接 / 任务上下文）不受此约束
   const graphTaskId = graphTaskOverride
-    || (urlImportId ? `${platform.taskPrefix}${urlImportId}` : null);
+    || (urlImportId && current ? `${platform.taskPrefix}${urlImportId}` : null);
 
   if (loadingList) return <div className="flex items-center justify-center h-full"><Spinner /></div>;
 

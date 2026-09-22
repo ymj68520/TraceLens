@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
     getWeChatGraph,
@@ -65,6 +65,11 @@ export const normalizeWeChatTimeline = (result = {}) => (
     Array.isArray(result) ? result : result.intervals || result.timeline || []
 );
 
+const describeError = (err) => {
+    const detail = err?.data?.detail || err?.message || '未知错误';
+    return typeof detail === 'string' ? detail : JSON.stringify(detail);
+};
+
 /**
  * WeChat 聊天关系图谱 Hook
  * 管理图谱数据获取、聊天记录加载、节点/边交互等状态
@@ -95,11 +100,17 @@ export default function useWeChatGraph(explicitTaskId) {
     const [selectedCommunity, setSelectedCommunity] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
 
+    // 请求序号：taskId 快速变化（如 URL 纠偏）时可能同时在途多个请求，晚到的旧
+    // 响应（尤其 404）不得覆盖新响应——否则错误横幅会卡在已成功的图谱上
+    const fetchSeqRef = useRef(0);
+    const chatSeqRef = useRef(0);
+
     /**
      * 获取图谱数据和时间线
      */
     const fetchGraph = useCallback(async () => {
         if (!taskId) return;
+        const seq = ++fetchSeqRef.current;
         setLoading(true);
         setError(null);
         try {
@@ -107,12 +118,14 @@ export default function useWeChatGraph(explicitTaskId) {
                 getWeChatGraph(taskId),
                 getWeChatTimeline(taskId),
             ]);
+            if (seq !== fetchSeqRef.current) return;
             setGraphData(normalizeWeChatGraph(graphResult));
             setTimelineData(normalizeWeChatTimeline(timelineResult));
         } catch (err) {
-            setError('获取微信图谱数据失败: ' + (err.message || '未知错误'));
+            if (seq !== fetchSeqRef.current) return;
+            setError(`获取图谱数据失败: ${describeError(err)}`);
         } finally {
-            setLoading(false);
+            if (seq === fetchSeqRef.current) setLoading(false);
         }
     }, [taskId]);
 
@@ -125,9 +138,11 @@ export default function useWeChatGraph(explicitTaskId) {
      */
     const loadChatHistory = useCallback(async (user1, user2, offset = 0, limit = 50) => {
         if (!taskId) return;
+        const seq = ++chatSeqRef.current;
         setChatLoading(true);
         try {
             const result = await getWeChatChat(taskId, user1, user2, offset, limit);
+            if (seq !== chatSeqRef.current) return;
             if (offset === 0) {
                 setChatMessages(result.messages || []);
             } else {
@@ -135,9 +150,10 @@ export default function useWeChatGraph(explicitTaskId) {
             }
             setChatTotal(result.total || 0);
         } catch (err) {
-            setError('加载聊天记录失败: ' + (err.message || '未知错误'));
+            if (seq !== chatSeqRef.current) return;
+            setError(`加载聊天记录失败: ${describeError(err)}`);
         } finally {
-            setChatLoading(false);
+            if (seq === chatSeqRef.current) setChatLoading(false);
         }
     }, [taskId]);
 
@@ -149,9 +165,11 @@ export default function useWeChatGraph(explicitTaskId) {
      */
     const loadGroupChat = useCallback(async (chatroom, offset = 0, limit = 50) => {
         if (!taskId) return;
+        const seq = ++chatSeqRef.current;
         setChatLoading(true);
         try {
             const result = await getWeChatGroupChat(taskId, chatroom, offset, limit);
+            if (seq !== chatSeqRef.current) return;
             if (offset === 0) {
                 setChatMessages(result.messages || []);
             } else {
@@ -159,9 +177,10 @@ export default function useWeChatGraph(explicitTaskId) {
             }
             setChatTotal(result.total || 0);
         } catch (err) {
-            setError('加载群聊记录失败: ' + (err.message || '未知错误'));
+            if (seq !== chatSeqRef.current) return;
+            setError(`加载群聊记录失败: ${describeError(err)}`);
         } finally {
-            setChatLoading(false);
+            if (seq === chatSeqRef.current) setChatLoading(false);
         }
     }, [taskId]);
 
@@ -219,7 +238,7 @@ export default function useWeChatGraph(explicitTaskId) {
             await invalidateWeChatCache(taskId);
             await fetchGraph();
         } catch (err) {
-            setError('刷新图谱失败: ' + (err.message || '未知错误'));
+            setError(`刷新图谱失败: ${describeError(err)}`);
             setLoading(false);
         }
     }, [taskId, fetchGraph]);
