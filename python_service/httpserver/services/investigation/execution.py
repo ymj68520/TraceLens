@@ -234,6 +234,19 @@ class SecondaryAnalysisExecutor:
         reader = InvestigationGraphReader(db_path, task_id)
         return await asyncio.to_thread(reader.list_analyses, canonical_evidence_key)
 
+    async def list_all_analyses(
+        self, task_id: str
+    ) -> dict[str, list[SecondaryAnalysis]]:
+        """Bulk variant of :meth:`list_analyses`: every analysis of the task
+        in a single SQLite pass, grouped by evidence key (version-desc within
+        key). Overview-shaped aggregates must not open one connection per
+        evidence item."""
+        db_path = await self._resolve_db_path(task_id)
+        if db_path is None or not db_path.exists():
+            return {}
+        reader = InvestigationGraphReader(db_path, task_id)
+        return await asyncio.to_thread(reader.list_all_analyses)
+
     # =====================================================================
     # background execution (E2-E7, E11)
     # =====================================================================

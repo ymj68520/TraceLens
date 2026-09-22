@@ -126,13 +126,14 @@ async def _overview(task_id: str, manager) -> dict[str, Any]:
     events = await _events_view(manager, task_id)
     report_evidence = await manager.report_evidence_service.list(task_id)
     graph = await manager.investigation_graph_service.get_graph(task_id)
+    # 单次批量读取按 evidence_key 分组，取代逐 evidence 打开一次
+    # SQLite 连接的 N+1（大任务上曾把 overview 拖到 90s+）。
+    analyses_by_key = await manager.secondary_analysis_executor.list_all_analyses(
+        task_id
+    )
     analyses: list[Any] = []
     for item in evidence:
-        analyses.extend(
-            await manager.secondary_analysis_executor.list_analyses(
-                task_id, item.evidence_key
-            )
-        )
+        analyses.extend(analyses_by_key.get(item.evidence_key, []))
     return {
         "task": await manager.cpp_backend.get_task(task_id),
         "initialized": bool(evidence or events or report_evidence),

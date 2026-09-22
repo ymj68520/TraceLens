@@ -59,7 +59,8 @@ def _manager():
         get_graph=AsyncMock(return_value={"nodes": [], "links": []})
     )
     manager.secondary_analysis_executor = Mock(
-        list_analyses=AsyncMock(return_value=[])
+        list_analyses=AsyncMock(return_value=[]),
+        list_all_analyses=AsyncMock(return_value={}),
     )
     manager.cpp_backend = Mock(
         get_task=AsyncMock(return_value={"id": "T1", "status": "completed"})
@@ -106,6 +107,38 @@ def test_get_overview_never_seeds():
     response = _client(manager).get("/api/investigation/workbench/T1")
     assert response.status_code == 200
     manager.investigation_seed_service.bootstrap.assert_not_awaited()
+
+
+def test_overview_uses_single_bulk_analysis_read():
+    """overview 的 analyses 聚合走一次批量读取（按 evidence_key 分组），
+    绝不退回每条 evidence 一次 SQLite 连接的 N+1。"""
+    manager = _manager()
+    manager.investigation_read_service = Mock(
+        list_evidence=AsyncMock(
+            return_value=[
+                Mock(evidence_key="file:/case/a.txt", model_dump=lambda mode="json": {}),
+                Mock(evidence_key="file:/case/b.txt", model_dump=lambda mode="json": {}),
+            ]
+        )
+    )
+    manager.secondary_analysis_executor = Mock(
+        list_all_analyses=AsyncMock(
+            return_value={
+                "file:/case/a.txt": [Mock(analysis_id="a1", model_dump=lambda mode="json": {})],
+                "file:/case/b.txt": [
+                    Mock(analysis_id="b2", model_dump=lambda mode="json": {}),
+                    Mock(analysis_id="b1", model_dump=lambda mode="json": {}),
+                ],
+            }
+        )
+    )
+    response = _client(manager).get("/api/investigation/workbench/T1")
+    assert response.status_code == 200
+    body = response.json()
+    # analyses 跟随 evidence 顺序；同 key 内保持 version-desc 批量读给的顺序
+    assert [item["id"] for item in body["analyses"]] == ["a1", "b2", "b1"]
+    manager.secondary_analysis_executor.list_all_analyses.assert_awaited_once_with("T1")
+    manager.secondary_analysis_executor.list_analyses.assert_not_called()
 
 
 def test_bootstrap_seed_failure_maps_to_500():

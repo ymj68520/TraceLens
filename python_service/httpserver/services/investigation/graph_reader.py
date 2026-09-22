@@ -302,6 +302,28 @@ class InvestigationGraphReader:
 
         return self._run(read)
 
+    def list_all_analyses(self) -> dict[str, list[SecondaryAnalysis]]:
+        """Every analysis of THIS task in one pass, grouped by evidence key
+        (version-descending within each key). Bulk read-side variant of
+        :meth:`list_analyses` for overview-shaped aggregates — one SQLite
+        connection instead of one per evidence item."""
+
+        def read(
+            conn: sqlite3.Connection,
+        ) -> dict[str, list[SecondaryAnalysis]]:
+            grouped: dict[str, list[SecondaryAnalysis]] = {}
+            rows = conn.execute(
+                "SELECT * FROM secondary_analyses "
+                "WHERE task_id = ? ORDER BY evidence_key, version DESC",
+                [self._task_id],
+            ).fetchall()
+            for row in rows:
+                analysis = InvestigationRepository._row_to_analysis(row)
+                grouped.setdefault(row["evidence_key"], []).append(analysis)
+            return grouped
+
+        return self._run(read)
+
     # -- Report Evidence reads (Phase R1) ------------------------------------
     # Exact frozen bindings only: the bound analysis is joined from the
     # immutable secondary_analyses row of the PERSISTED analysis_id -- never
