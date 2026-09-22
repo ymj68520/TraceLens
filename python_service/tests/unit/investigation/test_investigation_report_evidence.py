@@ -420,10 +420,11 @@ def test_v7_store_keeps_version_and_report_write_path_works(tmp_path):
     db_path = tmp_path / "A" / "investigation.db"
     _strip_report_extension(db_path)
 
-    # Reopening a v7 store keeps user_version=7 and every pre-existing row.
+    # Reopening a pre-extension store heals the extension and keeps every
+    # pre-existing row at the current schema version.
     reopened = InvestigationRepository(db_path, "A")
     with sqlite3.connect(db_path) as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
     assert reopened.get_analysis(accepted.analysis_id).analysis_id == accepted.analysis_id
 
     # The first explicit Report write builds the extension and works.
@@ -438,14 +439,14 @@ def test_v7_store_keeps_version_and_report_write_path_works(tmp_path):
     assert item.bound_analysis.version == accepted.version
 
 
-def test_fresh_store_initializes_at_v7_with_extension(tmp_path):
+def test_fresh_store_initializes_at_current_version_with_extension(tmp_path):
     _repo_with_evidence(tmp_path)
     with sqlite3.connect(tmp_path / "A" / "investigation.db") as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
         assert conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_evidence'"
         ).fetchone() is not None
-    assert SUPPORTED_SCHEMA_VERSION == 7
+    assert SUPPORTED_SCHEMA_VERSION == 8
 
 
 # ---------------------------------------------------------------------------

@@ -77,7 +77,7 @@ def test_v5_to_v7_migration_and_new_db_v7(tmp_path):
     conn.commit(); conn.close()
 
     reopened = InvestigationRepository(repo.db_path, "A")
-    assert sqlite3.connect(repo.db_path).execute("PRAGMA user_version").fetchone()[0] == 7
+    assert sqlite3.connect(repo.db_path).execute("PRAGMA user_version").fetchone()[0] == 8
     assert reopened.get_event(event.event_id).title == "event"
     assert len(reopened.list_event_evidence(event.event_id)) == 1
 

@@ -22,7 +22,7 @@ def investigation_v7_baseline(tmp_path_factory: pytest.TempPathFactory) -> Path:
     assert not Path(f"{path}-shm").exists()
     with sqlite3.connect(path) as conn:
         assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION == 7
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION == 8
     return path
 
 def _copy_investigation_v7_baseline(

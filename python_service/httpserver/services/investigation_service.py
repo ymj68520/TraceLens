@@ -257,7 +257,7 @@ class InvestigationService:
         from .investigation.repository import InvestigationRepository
 
         if not os.path.exists(db_path):
-            InvestigationRepository(db_path, task_id)  # builds v7 atomically
+            InvestigationRepository(db_path, task_id)  # builds current schema atomically
             return
         conn = sqlite3.connect(db_path)
         try:
@@ -265,6 +265,10 @@ class InvestigationService:
         finally:
             conn.close()
         if version == 7:
+            # Additive v8 agent-runtime migration, then re-check below.
+            InvestigationRepository(db_path, task_id)
+            version = 8
+        if version == 8:
             self._create_recovery_aux_table(db_path)
             return
         if version != 3:

@@ -642,16 +642,19 @@ def test_fk_definition_validated_at_init(tmp_path):
 # New DB + future version
 # ---------------------------------------------------------------------------
 
-def test_new_db_is_v7_with_report_extension(tmp_path):
+def test_new_db_is_current_version_with_report_extension(tmp_path):
     idb = str(tmp_path / "investigation.db")
     InvestigationRepository(idb, "A")
-    assert SUPPORTED_SCHEMA_VERSION == 7
+    assert SUPPORTED_SCHEMA_VERSION == 8
     conn = sqlite3.connect(idb)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     for table in (
         "evidence_snapshots", "secondary_analyses", "analysis_claims", "claim_evidence_refs",
         "investigation_events", "investigation_event_versions", "investigation_event_evidence",
         "investigation_event_refreshes", "report_evidence",
+        "agent_investigations", "agent_runs", "agent_delegations",
+        "agent_working_state_revisions", "agent_trajectory_events",
+        "agent_tool_observations",
     ):
         assert conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", [table]
