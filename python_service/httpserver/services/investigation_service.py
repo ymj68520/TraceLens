@@ -254,7 +254,10 @@ class InvestigationService:
         being destroyed.
         """
         import os
-        from .investigation.repository import InvestigationRepository
+        from .investigation.repository import (
+            SUPPORTED_SCHEMA_VERSION,
+            InvestigationRepository,
+        )
 
         if not os.path.exists(db_path):
             InvestigationRepository(db_path, task_id)  # builds current schema atomically
@@ -264,11 +267,11 @@ class InvestigationService:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         finally:
             conn.close()
-        if version == 7:
-            # Additive v8 agent-runtime migration, then re-check below.
+        if version in (7, 8):
+            # Additive repository migration (v7/v8 -> current), then re-check.
             InvestigationRepository(db_path, task_id)
-            version = 8
-        if version == 8:
+            version = SUPPORTED_SCHEMA_VERSION
+        if version == SUPPORTED_SCHEMA_VERSION:
             self._create_recovery_aux_table(db_path)
             return
         if version != 3:

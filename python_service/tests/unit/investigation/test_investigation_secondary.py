@@ -645,7 +645,7 @@ def test_fk_definition_validated_at_init(tmp_path):
 def test_new_db_is_current_version_with_report_extension(tmp_path):
     idb = str(tmp_path / "investigation.db")
     InvestigationRepository(idb, "A")
-    assert SUPPORTED_SCHEMA_VERSION == 8
+    assert SUPPORTED_SCHEMA_VERSION == 9
     conn = sqlite3.connect(idb)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     for table in (
@@ -682,7 +682,7 @@ def test_future_version_fail_closed(tmp_path):
     idb = str(tmp_path / "investigation.db")
     InvestigationRepository(idb, "A")
     conn = sqlite3.connect(idb)
-    conn.execute("PRAGMA user_version = 9")
+    conn.execute("PRAGMA user_version = 10")
     conn.commit()
     conn.close()
     with pytest.raises(Exception, match="unsupported"):

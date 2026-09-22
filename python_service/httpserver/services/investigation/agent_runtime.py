@@ -82,6 +82,7 @@ class DelegationStatus(str, Enum):
 class InvestigationPauseReason(str, Enum):
     user_paused = "user_paused"
     runtime_restart = "runtime_restart"
+    finalization_review_unavailable = "finalization_review_unavailable"
 
 
 class AgentTrajectoryEventType(str, Enum):
@@ -102,6 +103,16 @@ class AgentTrajectoryEventType(str, Enum):
     investigation_paused = "investigation_paused"
     investigation_completed = "investigation_completed"
     investigation_cancelled = "investigation_cancelled"
+    # P2 deterministic control plane
+    attention_compiled = "attention_compiled"
+    transition_decision_validated = "transition_decision_validated"
+    transition_decision_rejected = "transition_decision_rejected"
+    working_state_integrated = "working_state_integrated"
+    no_progress_detected = "no_progress_detected"
+    finalization_requested = "finalization_requested"
+    finalization_denied = "finalization_denied"
+    finalization_stale = "finalization_stale"
+    finalization_completed = "finalization_completed"
 
 
 # Application-side transition tables; the identically-shaped DB triggers are
@@ -194,6 +205,14 @@ _DELEGATION_TRAJECTORY_EVENT = {
     DelegationStatus.failed: AgentTrajectoryEventType.delegation_failed,
     DelegationStatus.cancelled: AgentTrajectoryEventType.delegation_cancelled,
     DelegationStatus.stale: AgentTrajectoryEventType.delegation_stale,
+}
+
+# Pause reasons without a direct RunStopReason counterpart cancel the active
+# run with the generic ``cancelled`` stop reason (the frozen stop-reason list
+# has no finalization-specific value).
+_PAUSE_RUN_STOP_REASON = {
+    InvestigationPauseReason.user_paused: RunStopReason.user_paused,
+    InvestigationPauseReason.runtime_restart: RunStopReason.runtime_restart,
 }
 
 
@@ -348,6 +367,31 @@ class ToolObservation(BaseModel):
     result_count: int
     truncated: bool
     created_at: str
+
+
+class FinalizationRecord(BaseModel):
+    """Immutable successful-finalization record (P2 §36)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    finalization_id: str
+    task_id: str
+    investigation_id: str
+    run_id: Optional[str]
+    state_revision: int
+    state_hash: str
+    completion_mode: str
+    question_dispositions: dict
+    coverage_dispositions: dict
+    unresolved_contradictions: list
+    limitations: list
+    remaining_nonblocking_questions: list
+    pending_analyst_review_refs: list
+    final_verification_status: str
+    verifier_result_ref: Optional[str]
+    finalization_policy_version: str
+    input_hash: str
+    completed_at: str
 
 
 class AgentRuntimeRepository:
@@ -703,7 +747,7 @@ class AgentRuntimeRepository:
                 )
             self._cancel_active_run_with_conn(
                 conn, investigation_id,
-                stop_reason=RunStopReason(reason.value),
+                stop_reason=_PAUSE_RUN_STOP_REASON.get(reason, RunStopReason.cancelled),
                 now=now,
             )
             conn.execute(
@@ -1613,6 +1657,195 @@ class AgentRuntimeRepository:
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
         return [self._row_to_observation(r) for r in rows]
+
+    # =====================================================================
+    # atomic finalization commit (P2 §37)
+    # =====================================================================
+
+    def record_finalization(
+        self,
+        investigation_id: str,
+        *,
+        state_revision: int,
+        state_hash: str,
+        completion_mode: str,
+        question_dispositions: dict,
+        coverage_dispositions: dict,
+        unresolved_contradictions: list,
+        limitations: list,
+        remaining_nonblocking_questions: list,
+        pending_analyst_review_refs: list,
+        final_verification_status: str,
+        finalization_policy_version: str,
+        input_hash: str,
+        run_id: Optional[str] = None,
+        verifier_result_ref: Optional[str] = None,
+    ) -> FinalizationRecord:
+        """Atomic Finalization Commit (single BEGIN IMMEDIATE transaction).
+
+        Revalidates the mechanical preconditions (active investigation,
+        current state revision + hash, active-run binding), inserts the
+        immutable FinalizationRecord, completes the run
+        (``stop_reason=finalized``) and the investigation, and appends the
+        ``finalization_completed`` trace event.  Any failure rolls the whole
+        finalization back — an investigation can never be left ``completed``
+        without its record.
+        """
+        if completion_mode not in ("complete", "complete_with_limitations"):
+            raise ValueError(f"invalid completion_mode: {completion_mode!r}")
+        if final_verification_status not in ("passed", "unavailable"):
+            raise ValueError(
+                f"invalid final_verification_status: {final_verification_status!r}"
+            )
+        now = _now_iso()
+        finalization_id = f"fz_{uuid.uuid4().hex}"
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            investigation = self._require_investigation_with_conn(
+                conn, investigation_id
+            )
+            if investigation["status"] != AgentInvestigationStatus.active.value:
+                raise AgentRuntimeConflictError(
+                    "finalization requires an active investigation "
+                    f"(current: {investigation['status']!r})"
+                )
+            revision_row = conn.execute(
+                "SELECT revision, state_hash FROM agent_working_state_revisions "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "ORDER BY revision DESC LIMIT 1",
+                [self.task_id, investigation_id],
+            ).fetchone()
+            if revision_row is None or revision_row["revision"] != state_revision:
+                raise WorkingStateRevisionConflictError(
+                    f"stale finalization: expected revision {state_revision}, "
+                    f"current is {revision_row['revision'] if revision_row else None}"
+                )
+            if revision_row["state_hash"] != state_hash:
+                raise WorkingStateRevisionConflictError(
+                    "finalization state_hash does not match the committed revision"
+                )
+            if run_id is not None:
+                run_row = conn.execute(
+                    "SELECT * FROM agent_runs WHERE task_id = ? AND run_id = ?",
+                    [self.task_id, run_id],
+                ).fetchone()
+                if run_row is None or run_row["investigation_id"] != investigation_id:
+                    raise ValueError(f"run not found: {run_id!r}")
+                if run_row["status"] not in ("queued", "running"):
+                    raise AgentRuntimeConflictError(
+                        f"finalization run is not active ({run_row['status']!r})"
+                    )
+                self._transition_run_with_conn(
+                    conn, run_row, AgentRunStatus.completed,
+                    stop_reason=RunStopReason.finalized, now=now,
+                )
+            else:
+                stranded = conn.execute(
+                    "SELECT 1 FROM agent_runs "
+                    "WHERE task_id = ? AND investigation_id = ? "
+                    "AND status IN ('queued','running')",
+                    [self.task_id, investigation_id],
+                ).fetchone()
+                if stranded is not None:
+                    raise AgentRuntimeConflictError(
+                        "investigation still has an active run; pass run_id or "
+                        "settle it first"
+                    )
+            conn.execute(
+                "INSERT INTO agent_finalizations "
+                "(finalization_id, task_id, investigation_id, run_id, "
+                " state_revision, state_hash, completion_mode, "
+                " question_dispositions_json, coverage_dispositions_json, "
+                " unresolved_contradictions_json, limitations_json, "
+                " remaining_nonblocking_questions_json, "
+                " pending_analyst_review_refs_json, final_verification_status, "
+                " verifier_result_ref, finalization_policy_version, input_hash, "
+                " completed_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    finalization_id, self.task_id, investigation_id, run_id,
+                    state_revision, state_hash, completion_mode,
+                    canonical_state_json(dict(question_dispositions)),
+                    canonical_state_json(dict(coverage_dispositions)),
+                    canonical_state_json(list(unresolved_contradictions)),
+                    canonical_state_json(list(limitations)),
+                    canonical_state_json(list(remaining_nonblocking_questions)),
+                    canonical_state_json(list(pending_analyst_review_refs)),
+                    final_verification_status, verifier_result_ref,
+                    finalization_policy_version, input_hash, now,
+                ],
+            )
+            conn.execute(
+                "UPDATE agent_investigations "
+                "SET status = 'completed', completed_at = ?, updated_at = ? "
+                "WHERE task_id = ? AND investigation_id = ?",
+                [now, now, self.task_id, investigation_id],
+            )
+            self._append_trajectory_with_conn(
+                conn, investigation_id,
+                AgentTrajectoryEventType.finalization_completed,
+                run_id=run_id,
+                payload={
+                    "finalization_id": finalization_id,
+                    "completion_mode": completion_mode,
+                    "state_revision": state_revision,
+                },
+                now=now,
+            )
+            row = conn.execute(
+                "SELECT * FROM agent_finalizations "
+                "WHERE task_id = ? AND finalization_id = ?",
+                [self.task_id, finalization_id],
+            ).fetchone()
+            record = self._row_to_finalization(row)
+            conn.commit()
+        return record
+
+    def get_finalization(
+        self, investigation_id: str
+    ) -> Optional[FinalizationRecord]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_finalizations "
+                "WHERE task_id = ? AND investigation_id = ?",
+                [self.task_id, investigation_id],
+            ).fetchone()
+        return self._row_to_finalization(row) if row is not None else None
+
+    @staticmethod
+    def _row_to_finalization(row: sqlite3.Row) -> FinalizationRecord:
+        def _load_json(value: str, fallback):
+            try:
+                return json.loads(value)
+            except (TypeError, ValueError):
+                return fallback
+
+        return FinalizationRecord(
+            finalization_id=row["finalization_id"],
+            task_id=row["task_id"],
+            investigation_id=row["investigation_id"],
+            run_id=row["run_id"],
+            state_revision=row["state_revision"],
+            state_hash=row["state_hash"],
+            completion_mode=row["completion_mode"],
+            question_dispositions=_load_json(row["question_dispositions_json"], {}),
+            coverage_dispositions=_load_json(row["coverage_dispositions_json"], {}),
+            unresolved_contradictions=_load_json(
+                row["unresolved_contradictions_json"], []
+            ),
+            limitations=_load_json(row["limitations_json"], []),
+            remaining_nonblocking_questions=_load_json(
+                row["remaining_nonblocking_questions_json"], []
+            ),
+            pending_analyst_review_refs=_load_json(
+                row["pending_analyst_review_refs_json"], []
+            ),
+            final_verification_status=row["final_verification_status"],
+            verifier_result_ref=row["verifier_result_ref"],
+            finalization_policy_version=row["finalization_policy_version"],
+            input_hash=row["input_hash"],
+            completed_at=row["completed_at"],
+        )
 
     # =====================================================================
     # restart recovery

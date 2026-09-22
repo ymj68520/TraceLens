@@ -100,7 +100,7 @@ class AnalysisBindingConflictError(RuntimeError):
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 8
+SUPPORTED_SCHEMA_VERSION = 9
 
 # ---------------------------------------------------------------------------
 # DDL: evidence_snapshots (v1, unchanged)
@@ -669,7 +669,7 @@ CREATE TABLE IF NOT EXISTS agent_investigations (
     status TEXT NOT NULL CHECK(status IN
         ('ready','active','paused','completed','cancelled')),
     pause_reason TEXT CHECK(pause_reason IS NULL OR pause_reason IN
-        ('user_paused','runtime_restart')),
+        ('user_paused','runtime_restart','finalization_review_unavailable')),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     completed_at TEXT,
@@ -773,7 +773,11 @@ CREATE TABLE IF NOT EXISTS agent_trajectory_events (
         'run_failed','run_cancelled','delegation_admitted','delegation_started',
         'delegation_completed','delegation_failed','delegation_cancelled',
         'delegation_stale','working_state_committed','runtime_recovered',
-        'investigation_paused','investigation_completed','investigation_cancelled')),
+        'investigation_paused','investigation_completed','investigation_cancelled',
+        'attention_compiled','transition_decision_validated',
+        'transition_decision_rejected','working_state_integrated',
+        'no_progress_detected','finalization_requested','finalization_denied',
+        'finalization_stale','finalization_completed')),
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
     UNIQUE(task_id, event_id),
@@ -1217,6 +1221,124 @@ BEGIN
 END
 """
 
+# ---------------------------------------------------------------------------
+# DDL: agent_finalizations (v9 addition, P2 FinalizationRecord)
+# ---------------------------------------------------------------------------
+#
+# FZ1: exactly one successful FinalizationRecord per Investigation
+#      (UNIQUE(task_id, investigation_id)) -- a completed investigation can
+#      never finalize again.
+# FZ2: immutable (no UPDATE / no DELETE triggers).
+# FZ3: composite FKs bind the record to the investigation, the finalized run
+#      and the exact committed Working State revision (state_revision +
+#      state_hash must match that revision; verified in-transaction by
+#      record_finalization).
+
+_CREATE_AGENT_FINALIZATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_finalizations (
+    finalization_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    state_revision INTEGER NOT NULL,
+    state_hash TEXT NOT NULL,
+    completion_mode TEXT NOT NULL CHECK(completion_mode IN
+        ('complete','complete_with_limitations')),
+    question_dispositions_json TEXT NOT NULL,
+    coverage_dispositions_json TEXT NOT NULL,
+    unresolved_contradictions_json TEXT NOT NULL,
+    limitations_json TEXT NOT NULL,
+    remaining_nonblocking_questions_json TEXT NOT NULL,
+    pending_analyst_review_refs_json TEXT NOT NULL,
+    final_verification_status TEXT NOT NULL CHECK(final_verification_status IN
+        ('passed','unavailable')),
+    verifier_result_ref TEXT,
+    finalization_policy_version TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    UNIQUE(task_id, finalization_id),
+    UNIQUE(task_id, investigation_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, investigation_id, state_revision)
+        REFERENCES agent_working_state_revisions(task_id, investigation_id, revision)
+        ON DELETE RESTRICT
+)
+"""
+_TRIGGER_AGENT_FINALIZATION_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_finalization_no_update
+BEFORE UPDATE ON agent_finalizations
+BEGIN
+    SELECT RAISE(ABORT, 'finalization records are immutable');
+END
+"""
+_TRIGGER_AGENT_FINALIZATION_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_finalization_no_delete
+BEFORE DELETE ON agent_finalizations
+BEGIN
+    SELECT RAISE(ABORT, 'finalization records are immutable');
+END
+"""
+
+_REQUIRED_AGENT_FINALIZATION_COLUMNS = {
+    "finalization_id", "task_id", "investigation_id", "run_id",
+    "state_revision", "state_hash", "completion_mode",
+    "question_dispositions_json", "coverage_dispositions_json",
+    "unresolved_contradictions_json", "limitations_json",
+    "remaining_nonblocking_questions_json", "pending_analyst_review_refs_json",
+    "final_verification_status", "verifier_result_ref",
+    "finalization_policy_version", "input_hash", "completed_at",
+}
+
+# v9 table rebuilds (SQLite CHECK constraints can only be changed by
+# rebuilding the table; run with PRAGMA foreign_keys=OFF inside one tx).
+_CREATE_AGENT_INVESTIGATIONS_V9_REBUILD_SQL = """
+CREATE TABLE agent_investigations_v9_rebuild (
+    investigation_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN
+        ('ready','active','paused','completed','cancelled')),
+    pause_reason TEXT CHECK(pause_reason IS NULL OR pause_reason IN
+        ('user_paused','runtime_restart','finalization_review_unavailable')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT,
+    cancelled_at TEXT,
+    UNIQUE(task_id, investigation_id)
+)
+"""
+_CREATE_AGENT_TRAJECTORY_EVENTS_V9_REBUILD_SQL = """
+CREATE TABLE agent_trajectory_events_v9_rebuild (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    delegation_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'investigation_created','run_admitted','run_started','run_completed',
+        'run_failed','run_cancelled','delegation_admitted','delegation_started',
+        'delegation_completed','delegation_failed','delegation_cancelled',
+        'delegation_stale','working_state_committed','runtime_recovered',
+        'investigation_paused','investigation_completed','investigation_cancelled',
+        'attention_compiled','transition_decision_validated',
+        'transition_decision_rejected','working_state_integrated',
+        'no_progress_detected','finalization_requested','finalization_denied',
+        'finalization_stale','finalization_completed')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, event_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
 _REQUIRED_AGENT_INVESTIGATION_COLUMNS = {
     "investigation_id", "task_id", "status", "pause_reason", "created_at",
     "updated_at", "completed_at", "cancelled_at",
@@ -1346,7 +1468,7 @@ class InvestigationRepository:
                 f"(supported: {SUPPORTED_SCHEMA_VERSION})"
             )
         try:
-            repo._validate_v8_schema()
+            repo._validate_v9_schema()
         except (sqlite3.DatabaseError, ValueError, EvidenceStoreError) as exc:
             raise EvidenceStoreError("investigation store schema is invalid") from exc
         return repo
@@ -1371,50 +1493,60 @@ class InvestigationRepository:
         with self._connect() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
-            self._initialize_v8_atomically()
-            self._validate_v8_schema()
+            self._initialize_v9_atomically()
+            self._validate_v9_schema()
         elif version == 1:
             self._migrate_v1_to_v4()
             self._migrate_v4_to_v5()
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
             self._migrate_v7_to_v8()
-            self._validate_v8_schema()
+            self._migrate_v8_to_v9()
+            self._validate_v9_schema()
         elif version == 2:
             self._migrate_v2_to_v4()
             self._migrate_v4_to_v5()
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
             self._migrate_v7_to_v8()
-            self._validate_v8_schema()
+            self._migrate_v8_to_v9()
+            self._validate_v9_schema()
         elif version == 3:
             self._migrate_v3_to_v4()
             self._migrate_v4_to_v5()
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
             self._migrate_v7_to_v8()
-            self._validate_v8_schema()
+            self._migrate_v8_to_v9()
+            self._validate_v9_schema()
         elif version == 4:
             self._migrate_v4_to_v5()
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
             self._migrate_v7_to_v8()
-            self._validate_v8_schema()
+            self._migrate_v8_to_v9()
+            self._validate_v9_schema()
         elif version == 5:
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
             self._migrate_v7_to_v8()
-            self._validate_v8_schema()
+            self._migrate_v8_to_v9()
+            self._validate_v9_schema()
         elif version == 6:
             self._migrate_v6_to_v7()
             self._migrate_v7_to_v8()
-            self._validate_v8_schema()
+            self._migrate_v8_to_v9()
+            self._validate_v9_schema()
         elif version == 7:
             self._migrate_v7_to_v8()
-            self._validate_v8_schema()
+            self._migrate_v8_to_v9()
+            self._validate_v9_schema()
+        elif version == 8:
+            self._migrate_v8_to_v9()
+            self._validate_v9_schema()
         elif version == SUPPORTED_SCHEMA_VERSION:
-            self._validate_v8_schema()
-            self._ensure_v8_auxiliary_objects()
+            self._validate_v9_schema()
+            self._ensure_v9_auxiliary_objects()
         else:
             raise EvidenceStoreError(
                 f"unsupported investigation.db schema version: {version} "
@@ -1479,7 +1611,7 @@ class InvestigationRepository:
         conn.execute(_TRIGGER_REPORT_EVIDENCE_NO_DELETE_SQL)
 
     def _build_all_agent_runtime_objects(self, conn: sqlite3.Connection) -> None:
-        """Create all agent runtime tables, indexes, and triggers (v8)."""
+        """Create all agent runtime tables, indexes, and triggers (v8/v9)."""
         conn.execute(_CREATE_AGENT_INVESTIGATIONS_SQL)
         conn.execute(_CREATE_AGENT_RUNS_SQL)
         conn.execute(_INDEX_AGENT_RUN_ONE_ACTIVE_SQL)
@@ -1487,6 +1619,7 @@ class InvestigationRepository:
         conn.execute(_CREATE_AGENT_DELEGATIONS_SQL)
         conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_SQL)
         conn.execute(_CREATE_AGENT_TOOL_OBSERVATIONS_SQL)
+        self._build_all_agent_finalization_objects(conn)
         conn.execute(_TRIGGER_AGENT_INVESTIGATION_STATE_FIELDS_SQL)
         conn.execute(_TRIGGER_AGENT_INVESTIGATION_STATE_FIELDS_INSERT_SQL)
         conn.execute(_TRIGGER_AGENT_INVESTIGATION_LEGAL_TRANSITION_SQL)
@@ -1512,8 +1645,14 @@ class InvestigationRepository:
         conn.execute(_TRIGGER_AGENT_OBSERVATION_NO_UPDATE_SQL)
         conn.execute(_TRIGGER_AGENT_OBSERVATION_NO_DELETE_SQL)
 
-    def _initialize_v8_atomically(self) -> None:
-        """New database: build everything + version=8 in one tx."""
+    def _build_all_agent_finalization_objects(self, conn: sqlite3.Connection) -> None:
+        """Create the agent_finalizations table and its triggers (v9)."""
+        conn.execute(_CREATE_AGENT_FINALIZATIONS_SQL)
+        conn.execute(_TRIGGER_AGENT_FINALIZATION_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_FINALIZATION_NO_DELETE_SQL)
+
+    def _initialize_v9_atomically(self) -> None:
+        """New database: build everything + version=9 in one tx."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(_CREATE_EVIDENCE_SNAPSHOTS_SQL)
@@ -1628,12 +1767,101 @@ class InvestigationRepository:
         """v7 database: add agent runtime objects -> v8 (Phase 1, additive)."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            self._build_all_agent_runtime_objects(conn)
+            self._build_all_agent_runtime_objects_v8(conn)
             conn.execute("PRAGMA user_version = 8")
             conn.commit()
 
-    def _ensure_v8_auxiliary_objects(self) -> None:
-        """Self-heal v8 refresh/report/agent indexes and triggers."""
+    def _migrate_v8_to_v9(self) -> None:
+        """v8 database: finalization record + trajectory/pause CHECK extension.
+
+        CHECK constraints can only change via table rebuild: both extended
+        tables are rebuilt preserving every row, inside ONE transaction on a
+        connection with ``PRAGMA foreign_keys=OFF`` (the documented SQLite
+        procedure for schema changes; FK clauses resolve again after the
+        rename and every guard trigger is recreated).
+        """
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            # agent_investigations: pause_reason += finalization_review_unavailable
+            conn.execute(_CREATE_AGENT_INVESTIGATIONS_V9_REBUILD_SQL)
+            conn.execute(
+                "INSERT INTO agent_investigations_v9_rebuild "
+                "(investigation_id, task_id, status, pause_reason, created_at, "
+                " updated_at, completed_at, cancelled_at) "
+                "SELECT investigation_id, task_id, status, pause_reason, "
+                "created_at, updated_at, completed_at, cancelled_at "
+                "FROM agent_investigations"
+            )
+            conn.execute("DROP TABLE agent_investigations")
+            conn.execute(
+                "ALTER TABLE agent_investigations_v9_rebuild "
+                "RENAME TO agent_investigations"
+            )
+            conn.execute(_TRIGGER_AGENT_INVESTIGATION_STATE_FIELDS_SQL)
+            conn.execute(_TRIGGER_AGENT_INVESTIGATION_STATE_FIELDS_INSERT_SQL)
+            conn.execute(_TRIGGER_AGENT_INVESTIGATION_LEGAL_TRANSITION_SQL)
+            conn.execute(_TRIGGER_AGENT_INVESTIGATION_NO_IDENTITY_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_INVESTIGATION_NO_DELETE_SQL)
+            # agent_trajectory_events: event_type += P2 control-plane events
+            conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_V9_REBUILD_SQL)
+            conn.execute(
+                "INSERT INTO agent_trajectory_events_v9_rebuild "
+                "(seq, event_id, task_id, investigation_id, run_id, "
+                " delegation_id, event_type, payload_json, created_at) "
+                "SELECT seq, event_id, task_id, investigation_id, run_id, "
+                "delegation_id, event_type, payload_json, created_at "
+                "FROM agent_trajectory_events"
+            )
+            conn.execute("DROP TABLE agent_trajectory_events")
+            conn.execute(
+                "ALTER TABLE agent_trajectory_events_v9_rebuild "
+                "RENAME TO agent_trajectory_events"
+            )
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+            # finalization record storage (additive)
+            self._build_all_agent_finalization_objects(conn)
+            conn.execute("PRAGMA user_version = 9")
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    def _build_all_agent_runtime_objects_v8(self, conn: sqlite3.Connection) -> None:
+        """v8-era builder (kept for the v7->v8 step of the frozen chain)."""
+        conn.execute(_CREATE_AGENT_INVESTIGATIONS_SQL)
+        conn.execute(_CREATE_AGENT_RUNS_SQL)
+        conn.execute(_INDEX_AGENT_RUN_ONE_ACTIVE_SQL)
+        conn.execute(_CREATE_AGENT_WORKING_STATE_REVISIONS_SQL)
+        conn.execute(_CREATE_AGENT_DELEGATIONS_SQL)
+        conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_SQL)
+        conn.execute(_CREATE_AGENT_TOOL_OBSERVATIONS_SQL)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_STATE_FIELDS_SQL)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_STATE_FIELDS_INSERT_SQL)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_LEGAL_TRANSITION_SQL)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_NO_IDENTITY_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_STATE_FIELDS_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_STATE_FIELDS_INSERT_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_LEGAL_TRANSITION_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_NO_IDENTITY_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_STATE_FIELDS_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_STATE_FIELDS_INSERT_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_LEGAL_TRANSITION_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_NO_IDENTITY_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_NO_TERMINAL_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_WSR_SEQUENTIAL_SQL)
+        conn.execute(_TRIGGER_AGENT_WSR_CHAIN_SQL)
+        conn.execute(_TRIGGER_AGENT_WSR_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_WSR_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_OBSERVATION_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_OBSERVATION_NO_DELETE_SQL)
+
+    def _ensure_v9_auxiliary_objects(self) -> None:
+        """Self-heal v9 refresh/report/agent indexes and triggers."""
         self._ensure_v5_auxiliary_objects()
         with self._connect() as conn:
             columns = {
@@ -1649,7 +1877,7 @@ class InvestigationRepository:
             self._build_all_agent_runtime_objects(conn)
             conn.commit()
 
-    def _validate_v8_schema(self) -> None:
+    def _validate_v9_schema(self) -> None:
         with self._connect() as conn:
             self._validate_evidence_snapshots(conn)
             self._validate_secondary_analyses(conn)
@@ -1670,6 +1898,63 @@ class InvestigationRepository:
                 self._repair_report_evidence_foreign_keys(conn)
                 self._validate_report_evidence_table(conn)
             self._validate_agent_runtime_tables(conn)
+            self._validate_agent_finalizations_table(conn)
+
+    def _validate_agent_finalizations_table(self, conn: sqlite3.Connection) -> None:
+        """Validate the v9 FinalizationRecord extension (P2)."""
+        cols = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(agent_finalizations)")
+        }
+        missing = _REQUIRED_AGENT_FINALIZATION_COLUMNS - cols
+        if missing:
+            raise EvidenceStoreError(
+                f"agent_finalizations missing required columns: {sorted(missing)}"
+            )
+        found_investigation_unique = False
+        for idx in conn.execute("PRAGMA index_list(agent_finalizations)"):
+            if not idx["unique"]:
+                continue
+            idx_cols = {
+                r["name"]
+                for r in conn.execute(f'PRAGMA index_info("{idx["name"]}")')
+            }
+            if idx_cols == {"task_id", "investigation_id"}:
+                found_investigation_unique = True
+                break
+        if not found_investigation_unique:
+            raise EvidenceStoreError(
+                "agent_finalizations missing UNIQUE(task_id, investigation_id)"
+            )
+        investigation_fk = (
+            ("task_id", "task_id"), ("investigation_id", "investigation_id"),
+        )
+        run_fk = (("task_id", "task_id"), ("run_id", "run_id"))
+        revision_fk = (
+            ("task_id", "task_id"),
+            ("investigation_id", "investigation_id"),
+            ("state_revision", "revision"),
+        )
+        for parent, mapping in (
+            ("agent_investigations", investigation_fk),
+            ("agent_runs", run_fk),
+            ("agent_working_state_revisions", revision_fk),
+        ):
+            if not self._has_composite_fk(conn, "agent_finalizations", parent, mapping):
+                raise EvidenceStoreError(
+                    "agent_finalizations missing composite FK"
+                    f"{mapping} REFERENCES {parent}"
+                )
+        for trig_name in (
+            "trg_agent_finalization_no_update",
+            "trg_agent_finalization_no_delete",
+        ):
+            trig = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?",
+                [trig_name],
+            ).fetchone()
+            if trig is None:
+                raise EvidenceStoreError(f"missing {trig_name} trigger")
 
     def _repair_report_evidence_foreign_keys(self, conn: sqlite3.Connection) -> None:
         """Repair SQLite's renamed-parent FK after legacy table-rewrite migrations.

@@ -90,6 +90,7 @@ from .agent_runtime import (
     AgentTrajectoryEventType,
     DelegationSpec,
     DelegationStatus,
+    FinalizationRecord,
     InvestigationPauseReason,
     RunStopReason,
     ToolObservation,
@@ -225,4 +226,5 @@ __all__ = [
     "AgentRuntimeConflictError",
     "canonical_state_json",
     "state_hash_of",
+    "FinalizationRecord",
 ]
