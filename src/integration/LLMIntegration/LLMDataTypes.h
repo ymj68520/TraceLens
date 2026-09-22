@@ -16,6 +16,9 @@ struct LLMConfig {
     std::string endpoint = "/v1/chat/completions";
     std::string apiKey = "";  // Optional for local LM Studio
     std::string model = "";   // Model name, empty for auto-select
+    // DeepSeek-style top-level "thinking" switch ("enabled"/"disabled");
+    // empty = don't send (body stays pure OpenAI for providers without it)
+    std::string thinkingMode = "";
     int maxTokens = 2048;
     double temperature = 0.7;
     int timeoutSeconds = 60;

@@ -177,7 +177,27 @@ class Settings(BaseSettings):
         if not endpoint or endpoint.split("/", 1)[0] not in {"http:", "https:"} and not endpoint.startswith("/"):
             return "/v1/chat/completions"
         return endpoint
-    
+
+    # DeepSeek 式思考开关（"thinking": {"type": ...} 顶层请求字段）。空/缺省不注入，
+    # 请求体保持纯 OpenAI 标准字段；仅当所选模型默认强制思考（如 deepseek-flash）
+    # 且需要省掉推理 token / 恢复 temperature 生效时设为 disabled。
+    llm_thinking_mode: str = Field(default="", alias="LLM_THINKING_MODE")
+
+    @field_validator("llm_thinking_mode", mode="before")
+    @classmethod
+    def normalize_llm_thinking_mode(cls, value: str) -> str:
+        mode = str(value or "").strip().lower()
+        if mode and mode not in {"enabled", "disabled"}:
+            raise ValueError(f"LLM_THINKING_MODE must be 'enabled' or 'disabled', got {value!r}")
+        return mode
+
+    @property
+    def llm_thinking_body(self) -> dict:
+        """Request-body fragment for the thinking switch; empty dict = don't send."""
+        if not self.llm_thinking_mode:
+            return {}
+        return {"thinking": {"type": self.llm_thinking_mode}}
+
     llm_text_base_url: str = Field(default="http://192.168.31.170:1234", alias="LLM_TEXT_BASE_URL")
     llm_text_model: str = Field(default="openai/gpt-oss-20b", alias="LLM_TEXT_MODEL")
     llm_text_max_tokens: int = Field(default=4096, alias="LLM_TEXT_MAX_TOKENS")

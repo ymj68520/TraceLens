@@ -86,6 +86,10 @@ bool ConfigManager::getBool(const std::string& key, bool defaultValue) const {
 std::string ConfigManager::getLLMBaseUrl() const { return get("LLM_BASE_URL", "http://192.168.31.170:1234"); }
 std::string ConfigManager::getLLMEndpoint() const { return get("LLM_ENDPOINT", "/v1/chat/completions"); }
 std::string ConfigManager::getLLMApiKey() const { return get("LLM_API_KEY", ""); }
+std::string ConfigManager::getLLMThinkingMode() const {
+    std::string mode = get("LLM_THINKING_MODE", "");
+    return (mode == "enabled" || mode == "disabled") ? mode : std::string();
+}
 int ConfigManager::getLLMTimeoutSeconds() const { return getInt("LLM_TIMEOUT_SECONDS", 120); }
 int ConfigManager::getLLMMaxRetries() const { return getInt("LLM_MAX_RETRIES", 3); }
 namespace {
@@ -133,6 +137,7 @@ llm::LLMConfig ConfigManager::getTextModelConfig() const {
     config.model = getTextModel();
     config.maxTokens = getTextMaxTokens();
     config.temperature = getTextTemperature();
+    config.thinkingMode = getLLMThinkingMode();
     config.timeoutSeconds = getLLMTimeoutSeconds();
     config.maxRetries = getLLMMaxRetries();
     return config;
@@ -152,6 +157,7 @@ llm::LLMConfig ConfigManager::getVisionModelConfig() const {
     config.model = getVisionModel();
     config.maxTokens = getVisionMaxTokens();
     config.temperature = getVisionTemperature();
+    config.thinkingMode = getLLMThinkingMode();
     config.timeoutSeconds = getLLMTimeoutSeconds();
     config.maxRetries = getLLMMaxRetries();
     return config;

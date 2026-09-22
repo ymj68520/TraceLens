@@ -39,6 +39,8 @@ def _make_analyzer() -> FileAnalyzer:
         llm_text_base_url="http://x",
         llm_endpoint="/x",
         llm_api_key=None,
+        # thinking-mode request body (DeepSeek migration)
+        llm_thinking_body={},
     )
     return FileAnalyzer(settings)
 

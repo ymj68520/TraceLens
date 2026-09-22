@@ -56,6 +56,7 @@ public:
     std::string getTextModel() const;
     int getTextMaxTokens() const;
     double getTextTemperature() const;
+    std::string getLLMThinkingMode() const;
     
     // Vision Model Settings
     llm::LLMConfig getVisionModelConfig() const;

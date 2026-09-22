@@ -54,14 +54,21 @@ class ModelManager:
             True if model is available.
         """
         try:
+            # 云端 OpenAI 兼容服务商对 /v1/models 同样要求 Bearer 鉴权，
+            # 缺头会在健康面板上把可用的云模型误报为离线
+            auth_headers = (
+                {"Authorization": f"Bearer {self.settings.llm_api_key}"}
+                if self.settings.llm_api_key
+                else {}
+            )
             if model_type == "text":
                 if text_client:
-                    response = await text_client.get("/v1/models")
+                    response = await text_client.get("/v1/models", headers=auth_headers)
                     return response.status_code == 200
                 base_url = self.settings.llm_text_base_url
             else:
                 if vision_client:
-                    response = await vision_client.get("/v1/models")
+                    response = await vision_client.get("/v1/models", headers=auth_headers)
                     return response.status_code == 200
                 base_url = self.settings.llm_vision_base_url
 
@@ -70,7 +77,7 @@ class ModelManager:
                 base_url=base_url,
                 timeout=httpx.Timeout(10.0),
             ) as tmp_client:
-                response = await tmp_client.get("/v1/models")
+                response = await tmp_client.get("/v1/models", headers=auth_headers)
                 return response.status_code == 200
         except Exception as e:
             logger.warning(f"Model status check failed for {model_type}: {e}")
@@ -155,7 +162,14 @@ class ModelManager:
                 default_model = self.settings.llm_vision_model
 
             if client:
-                response = await client.get("/v1/models")
+                response = await client.get(
+                    "/v1/models",
+                    headers=(
+                        {"Authorization": f"Bearer {self.settings.llm_api_key}"}
+                        if self.settings.llm_api_key
+                        else {}
+                    ),
+                )
                 response.raise_for_status()
                 data = response.json()
                 return {

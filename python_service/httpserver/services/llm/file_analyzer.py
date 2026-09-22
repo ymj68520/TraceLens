@@ -228,6 +228,7 @@ class FileAnalyzer:
                         ],
                         "max_tokens": max_tokens or default_max_tokens,
                         "temperature": temperature or default_temperature,
+                        **self.settings.llm_thinking_body,
                     },
                     headers={"Authorization": f"Bearer {self.settings.llm_api_key}"} if self.settings.llm_api_key else {},
                 )
@@ -344,6 +345,7 @@ class FileAnalyzer:
                     ],
                     "max_tokens": 2048,
                     "temperature": self.settings.llm_vision_temperature,
+                    **self.settings.llm_thinking_body,
                 },
                 headers={"Authorization": f"Bearer {self.settings.llm_api_key}"} if self.settings.llm_api_key else {},
             )
@@ -451,6 +453,7 @@ class FileAnalyzer:
                     ],
                     "max_tokens": 2048,
                     "temperature": self.settings.llm_vision_temperature,
+                    **self.settings.llm_thinking_body,
                 },
                 headers={"Authorization": f"Bearer {self.settings.llm_api_key}"} if self.settings.llm_api_key else {},
             )

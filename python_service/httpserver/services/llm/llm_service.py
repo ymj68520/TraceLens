@@ -510,6 +510,7 @@ class LLMService:
                 ],
                 "max_tokens": default_max if max_tokens is None else max_tokens,
                 "temperature": default_temp if temperature is None else temperature,
+                **self.settings.llm_thinking_body,
             },
             headers=(
                 {"Authorization": f"Bearer {self.settings.llm_api_key}"}

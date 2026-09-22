@@ -335,6 +335,11 @@ std::string LLMClient::buildRequestBody(const std::vector<ChatMessage>& messages
     
     body["max_tokens"] = config_.maxTokens;
     body["temperature"] = config_.temperature;
+
+    // DeepSeek-style thinking switch; empty mode keeps the body pure OpenAI
+    if (!config_.thinkingMode.empty()) {
+        body["thinking"] = json{{"type", config_.thinkingMode}};
+    }
     
     // Build messages array
     json msgArray = json::array();
