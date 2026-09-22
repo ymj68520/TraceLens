@@ -11,6 +11,7 @@ import InvestigationTimeline from './components/InvestigationTimeline';
 import FileEventPanel from './components/FileEventPanel';
 import EventEvidencePanel from './components/EventEvidencePanel';
 import AnalysisWorkspace from './components/AnalysisWorkspace';
+import { normalizeEvidencePath, stripFileKeyPrefix } from '../../utils/evidenceKey';
 import { useFeatures } from '../../hooks/useFeatures';
 
 const MIDDLE_TABS = [
@@ -26,6 +27,12 @@ export default function Investigation() {
   const middleTabs = workbenchLlmEnabled ? MIDDLE_TABS : MIDDLE_TABS.filter((tab) => tab.id !== 'graph');
   const taskId = searchParams.get('task_id') || searchParams.get('taskId');
   const requestedEvent = searchParams.get('event');
+  // 报告引用深链 ?file=：接受裸路径或完整 file: 证据键，统一按冻结规则归一化。
+  const requestedFileParam = searchParams.get('file');
+  const requestedFileKey = useMemo(() => {
+    const raw = stripFileKeyPrefix(requestedFileParam) ?? requestedFileParam;
+    return raw ? normalizeEvidencePath(raw) : null;
+  }, [requestedFileParam]);
   const [selectedEventId, setSelectedEventId] = useState(requestedEvent);
   const [selectedEvidenceKey, setSelectedEvidenceKey] = useState(null);
   const [claimEvidenceScope, setClaimEvidenceScope] = useState(null);
@@ -33,7 +40,7 @@ export default function Investigation() {
   const [middleTab, setMiddleTab] = useState('timeline');
   const [graphRefreshSignal, setGraphRefreshSignal] = useState(0);
   const { overview, events, loading, error, refresh: refreshEvents } = useInvestigationEvents(taskId);
-  const { fileTimeline, loading: fileTimelineLoading, refresh: refreshFileTimeline } = useInvestigationFileTimeline(taskId);
+  const { fileTimeline, loading: fileTimelineLoading, refresh: refreshFileTimeline } = useInvestigationFileTimeline(taskId, requestedFileKey);
   const { evidence, loading: evidenceLoading, error: evidenceError, refresh: refreshEvidence } = useEventEvidence(taskId, selectedEventId);
   const selectedEvent = useMemo(() => events.find((event) => event.id === selectedEventId) || null, [events, selectedEventId]);
 
@@ -65,16 +72,25 @@ export default function Investigation() {
     }
   }, [filesSignature, selectedFileKey]);
 
-  // 深链 ?event=：文件时间线首次到达时切换到承载该事件的文件。
+  // 深链定位：文件时间线首次到达时落到目标文件。
+  // ?event= 切到承载该事件的文件；?file=（裸路径或 file: 证据键）直接定位
+  // 该文件。目标不存在时静默回落到默认第一个文件（与未知 ?event= 一致）。
   const deepLinkApplied = useRef(false);
   useEffect(() => {
     if (deepLinkApplied.current || !files.length) return;
     deepLinkApplied.current = true;
+    let targetPath = null;
     if (requestedEvent) {
       const host = files.find((file) => (file.event_ids || []).includes(requestedEvent));
-      if (host) setSelectedFileKey(host.path);
+      if (host) targetPath = host.path;
     }
-  }, [files, requestedEvent]);
+    if (!targetPath && requestedFileKey) {
+      const match = files.find((file) => file.path === requestedFileKey)
+        || files.find((file) => normalizeEvidencePath(file.path) === requestedFileKey);
+      if (match) targetPath = match.path;
+    }
+    if (targetPath) setSelectedFileKey(targetPath);
+  }, [files, requestedEvent, requestedFileKey]);
 
   // 事件有效性：刷新后事件已不存在则清空选择（右栏回落到文件工作台）。
   useEffect(() => {

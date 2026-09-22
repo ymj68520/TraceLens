@@ -257,10 +257,10 @@ def test_file_candidates_passes_params_and_returns_payload() -> None:
             }
 
         async def list_file_candidates(self, task_id, *, search="", status="all",
-                                       page=1, page_size=50) -> dict:
+                                       analyzed=False, page=1, page_size=50) -> dict:
             self.calls.append({
                 "task_id": task_id, "search": search, "status": status,
-                "page": page, "page_size": page_size,
+                "analyzed": analyzed, "page": page, "page_size": page_size,
             })
             if isinstance(self.candidates_result, Exception):
                 raise self.candidates_result
@@ -270,12 +270,12 @@ def test_file_candidates_passes_params_and_returns_payload() -> None:
     response = make_client(service).get(
         "/api/reports/evidence/file-candidates",
         params={"task_id": "A", "search": "log", "status": "main",
-                "page": 2, "page_size": 25},
+                "analyzed": True, "page": 2, "page_size": 25},
     )
     assert response.status_code == 200
     assert response.json()["total"] == 0
     assert service.calls == [{
-        "task_id": "A", "search": "log", "status": "main",
+        "task_id": "A", "search": "log", "status": "main", "analyzed": True,
         "page": 2, "page_size": 25,
     }]
 
@@ -379,7 +379,8 @@ def test_file_candidates_joins_files_with_report_rows(tmp_path) -> None:
 
 
 def test_seed_analyzed_files_covers_pipeline_and_never_overrides(tmp_path):
-    """初管全量入报：覆盖口径与时间线一致；已有判定（含 excluded）永不覆盖。"""
+    """初管全量入报(文件中心口径):覆盖集=files.db 中 llm_analyzed_at 非空
+    的去重 path;已有判定(含 excluded)永不覆盖;与工作台事件关联无关。"""
     import asyncio
     import sqlite3
 
@@ -389,20 +390,7 @@ def test_seed_analyzed_files_covers_pipeline_and_never_overrides(tmp_path):
         ReportEvidenceService,
     )
 
-    events_db = tmp_path / "events.db"
     files_db = tmp_path / "files.db"
-    conn = sqlite3.connect(events_db)
-    conn.execute(
-        "CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER, "
-        "event_type TEXT, file_path TEXT)"
-    )
-    conn.executemany(
-        "INSERT INTO events (timestamp, event_type, file_path) VALUES (?,?,?)",
-        [(6005, "CREATED", "/case/a.txt"), (6010, "CREATED", "/case/c.txt"),
-         (6015, "CREATED", "/case/ghost.txt")],
-    )
-    conn.commit()
-    conn.close()
     fconn = sqlite3.connect(files_db)
     fconn.execute(
         "CREATE TABLE files (path TEXT, name TEXT, extension TEXT, category TEXT, "
@@ -412,8 +400,10 @@ def test_seed_analyzed_files_covers_pipeline_and_never_overrides(tmp_path):
         "scene_priority INTEGER, scene_relevant INTEGER)"
     )
     fconn.executemany(
-        "INSERT INTO files (path, name, size, mtime) VALUES (?,?,?,?)",
-        [("/case/a.txt", "a.txt", 10, 6005), ("/case/c.txt", "c.txt", 30, 6010)],
+        "INSERT INTO files (path, name, size, mtime, llm_analyzed_at) VALUES (?,?,?,?,?)",
+        [("/case/a.txt", "a.txt", 10, 6005, 1700000000),
+         ("/case/c.txt", "c.txt", 30, 6010, 1700000001),
+         ("/case/b.txt", "b.txt", 20, 6007, None)],
     )
     fconn.commit()
     fconn.close()
@@ -421,27 +411,17 @@ def test_seed_analyzed_files_covers_pipeline_and_never_overrides(tmp_path):
     task = {
         "id": "A",
         "output_files_db": str(files_db),
-        "output_events_db": str(events_db),
+        "output_events_db": str(tmp_path / "events.db"),
     }
     repo = InvestigationRepository(tmp_path / "investigation.db", "A")
-    repo.capture_if_absent(
-        ResolvedEvidence(
-            task_id="A", evidence_key="cluster:v1:100:CREATED", evidence_type="cluster",
-            version="v1", unix_minute=100, event_type="CREATED", cluster_start=6000,
-            cluster_end=6059, event_count=3, representative_timestamp=6005,
-            source_db=str(events_db),
-        )
-    )
     repo.capture_if_absent(
         ResolvedEvidence(
             task_id="A", evidence_key="file:/case/c.txt", evidence_type="file",
             normalized_path="/case/c.txt", source_db=str(files_db),
         )
     )
-    event_id = repo.create_event("聚类事件", summary="s").event_id
-    repo.link_event_evidence(event_id, "cluster:v1:100:CREATED", linked_by="cluster_seed")
 
-    # 取证人员预先把 c.txt 排除出报告（add 仅允许 main/appendix，excluded 走 update）
+    # 取证人员预先把 c.txt 排除出报告(add 仅允许 main/appendix,excluded 走 update)
     repo.add_report_evidence("file:/case/c.txt", report_status="main", added_by="analyst")
     repo.update_report_evidence("file:/case/c.txt", report_status="excluded", updated_by="analyst")
 
@@ -452,11 +432,11 @@ def test_seed_analyzed_files_covers_pipeline_and_never_overrides(tmp_path):
     service = ReportEvidenceService(FakeBackend())
     result = asyncio.run(service.seed_analyzed_files("A", added_by="pipeline"))
 
-    # 覆盖集 = {a.txt, c.txt, ghost.txt}；c.txt 已判定跳过；ghost 缺行跳过
-    assert result["covered_files"] == 3
+    # 覆盖集 = {a.txt, c.txt}(b.txt 无分析产物不入);c.txt 已判定跳过
+    assert result["covered_files"] == 2
     assert result["seeded"] == 1
     assert result["skipped_judged"] == 1
-    assert result["missing_in_files_table"] == 1
+    assert result["missing_in_files_table"] == 0
 
     conn = sqlite3.connect(tmp_path / "investigation.db")
     a_status = conn.execute(
@@ -473,7 +453,62 @@ def test_seed_analyzed_files_covers_pipeline_and_never_overrides(tmp_path):
     assert c_status == "excluded"  # 取证人员的取消不被回退
     assert '"normalized_path": "/case/a.txt"' in snap
 
-    # 幂等：重复调用只补新增（0 个）
+    # 幂等:重复调用只补新增(0 个)
     again = asyncio.run(service.seed_analyzed_files("A", added_by="pipeline"))
     assert again["seeded"] == 0
     assert again["skipped_judged"] == 2
+
+
+def test_seed_analyzed_files_materializes_store_in_minimal_mode(tmp_path):
+    """最小模式(零工作台事件关联、investigation.db 不存在):seed 直接物化
+    库并把已分析文件全量入报 —— 报告链不再前置依赖事件簇。"""
+    import asyncio
+    import sqlite3
+
+    from httpserver.services.investigation.report_evidence import (
+        ReportEvidenceService,
+    )
+
+    files_db = tmp_path / "files.db"
+    fconn = sqlite3.connect(files_db)
+    fconn.execute(
+        "CREATE TABLE files (path TEXT, name TEXT, llm_analyzed_at INTEGER)"
+    )
+    fconn.executemany(
+        "INSERT INTO files (path, name, llm_analyzed_at) VALUES (?,?,?)",
+        [("/case/x.txt", "x.txt", 1700000000),
+         ("/case/y.txt", "y.txt", 1700000001)],
+    )
+    fconn.commit()
+    fconn.close()
+
+    task = {
+        "id": "A",
+        "output_files_db": str(files_db),
+        "output_events_db": str(tmp_path / "events.db"),
+    }
+
+    class FakeBackend:
+        async def get_task(self, task_id):
+            return task
+
+    assert not (tmp_path / "investigation.db").exists()
+    service = ReportEvidenceService(FakeBackend())
+    result = asyncio.run(service.seed_analyzed_files("A", added_by="pipeline"))
+
+    assert result == {
+        "task_id": "A",
+        "covered_files": 2,
+        "seeded": 2,
+        "skipped_judged": 0,
+        "missing_in_files_table": 0,
+    }
+    conn = sqlite3.connect(tmp_path / "investigation.db")
+    statuses = conn.execute(
+        "SELECT evidence_key, report_status FROM report_evidence ORDER BY evidence_key"
+    ).fetchall()
+    conn.close()
+    assert statuses == [
+        ("file:/case/x.txt", "main"),
+        ("file:/case/y.txt", "main"),
+    ]

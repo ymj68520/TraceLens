@@ -6,12 +6,13 @@
 // Graph Entity / Event / Timeline Cluster 作为来源（§24），也绝不因
 // current 库变化而改写 frozen identity（§16）。
 import { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { ExternalLink, X } from 'lucide-react';
 import {
     getInvestigationAnalysis,
     getInvestigationSnapshot,
     listInvestigationAnalysisClaims,
 } from '../../services/investigationService';
+import { investigationFileUrl } from '../../utils/evidenceKey';
 
 const Layer = ({ title, tone, children, testId }) => (
     <div
@@ -29,6 +30,26 @@ const Field = ({ label, value, mono = true }) => (
         <span className={mono ? 'font-mono' : ''}>{value}</span>
     </p>
 );
+
+// file: 证据键 → 调查工作台深链（新标签页，时间线定位该文件）；
+// cluster: 等其他命名空间没有文件时间线落点，保持纯文本。
+const EvidenceKeyLink = ({ value, taskId }) => {
+    const href = investigationFileUrl(taskId, value);
+    if (!href) return <span className="font-mono">{value}</span>;
+    return (
+        <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="evidence-key-link"
+            title="在新标签页打开调查工作台，时间线定位该文件"
+            className="font-mono text-primary-600 underline decoration-dotted underline-offset-2 transition-colors hover:text-primary-500 dark:text-primary-300 dark:hover:text-primary-200"
+        >
+            {value}
+            <ExternalLink size={10} className="ml-0.5 inline" aria-hidden />
+        </a>
+    );
+};
 
 const CitationTracebackPanel = ({
     taskId,
@@ -126,7 +147,10 @@ const CitationTracebackPanel = ({
                 tone="border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-900/20"
                 testId="traceback-evidence-layer"
             >
-                <Field label="evidence_key" value={citation.evidence_key} />
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 break-all">
+                    <span className="text-slate-400">evidence_key: </span>
+                    <EvidenceKeyLink value={citation.evidence_key} taskId={taskId} />
+                </p>
                 <Field label="captured_at" value={citation.evidence_captured_at ?? '—'} />
                 {snapshot && (
                     <>
@@ -176,10 +200,19 @@ const CitationTracebackPanel = ({
                         <>
                             <Field label="claim text" value={claim.claim_text || '—'} mono={false} />
                             <Field label="grounding" value={claim.grounding_status || '—'} />
-                            <Field
-                                label="evidence_refs"
-                                value={(claim.evidence_refs || []).join(', ') || '—'}
-                            />
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300 break-all">
+                                <span className="text-slate-400">evidence_refs: </span>
+                                {(claim.evidence_refs || []).length ? (
+                                    claim.evidence_refs.map((ref, index) => (
+                                        <span key={ref}>
+                                            {index > 0 && <span className="text-slate-400">, </span>}
+                                            <EvidenceKeyLink value={ref} taskId={taskId} />
+                                        </span>
+                                    ))
+                                ) : (
+                                    <span>—</span>
+                                )}
+                            </p>
                         </>
                     )}
                 </Layer>

@@ -265,11 +265,22 @@ async def workbench_events(task_id: str, manager=Depends(_manager)):
 
 
 @router.get("/{task_id}/file-timeline")
-async def workbench_file_timeline(task_id: str, manager=Depends(_manager)):
+async def workbench_file_timeline(
+    task_id: str,
+    ensure_path: str | None = None,
+    manager=Depends(_manager),
+):
     """File-centric timeline: analyzed files as nodes at their latest MACB
-    time, with the associated Investigation Events as corroborating refs."""
+    time, with the associated Investigation Events as corroborating refs.
+
+    ``ensure_path`` (optional, report-citation deep link): guarantee the named
+    covered file is present even when the display-limit cut would drop it.
+    """
     try:
-        timeline = await manager.investigation_event_service.file_timeline(task_id)
+        timeline = await manager.investigation_event_service.file_timeline(
+            task_id,
+            ensure_paths=(ensure_path,) if ensure_path else (),
+        )
         return {"success": True, **timeline}
     except Exception as exc:
         raise _error(exc) from exc

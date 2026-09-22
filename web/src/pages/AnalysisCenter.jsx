@@ -65,6 +65,7 @@ const EvidenceReviewPage = () => {
     const [statusCounts, setStatusCounts] = useState({ main: 0, appendix: 0, excluded: 0, unjudged: 0 });
     const [page, setPage] = useState(1);
     const [statusFilter, setStatusFilter] = useState('all');
+    const [analyzedOnly, setAnalyzedOnly] = useState(false);
     const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(false);
@@ -101,6 +102,7 @@ const EvidenceReviewPage = () => {
             const data = await listReportEvidenceFileCandidates(activeContextId, {
                 search,
                 status: statusFilter,
+                analyzed: analyzedOnly,
                 page,
                 page_size: PAGE_SIZE,
             });
@@ -115,7 +117,7 @@ const EvidenceReviewPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [activeContextId, caseId, search, statusFilter, page, toast]);
+    }, [activeContextId, caseId, search, statusFilter, analyzedOnly, page, toast]);
 
     useEffect(() => {
         loadCandidates();
@@ -284,6 +286,18 @@ const EvidenceReviewPage = () => {
                             >
                                 📥 列入全部已分析文件
                             </Button>
+                            <button
+                                type="button"
+                                onClick={() => { setAnalyzedOnly(v => !v); setPage(1); }}
+                                className={`px-3 py-2 text-xs font-bold rounded-xl border transition-all whitespace-nowrap ${
+                                    analyzedOnly
+                                        ? 'bg-green-50 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700'
+                                        : 'bg-white text-slate-500 border-slate-200 hover:border-green-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                                }`}
+                                title="只显示有 AI 分析产物的文件（与「列入全部已分析文件」同口径）"
+                            >
+                                仅看 AI 已分析
+                            </button>
                             <div className="relative lg:w-72">
                                 <span className="absolute left-3 top-2.5 text-slate-400"><SearchIcon size={15} /></span>
                                 <input

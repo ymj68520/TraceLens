@@ -167,4 +167,58 @@ describe('CitationTracebackPanel', () => {
         expect(screen.getByText(/analyst-accepted derived finding/i)).toBeInTheDocument();
         expect(screen.getByText(/derived claim/i)).toBeInTheDocument();
     });
+
+    test('file evidence keys open the investigation workbench in a new tab at that file', async () => {
+        const loaders = makeLoaders({
+            claims: vi.fn().mockResolvedValue([
+                { claim_id: 'C1', claim_text: 'Claim text.', grounding_status: 'grounded', evidence_refs: ['file:/case/a.txt', 'cluster:v1:1000:login'] },
+            ]),
+        });
+        render(
+            <CitationTracebackPanel
+                taskId="t1"
+                reportId="rep-1"
+                citation={CLAIM_CITATION}
+                onClose={() => {}}
+                loaders={loaders}
+            />,
+        );
+        expect(await screen.findByTestId('traceback-claim-layer')).toBeInTheDocument();
+        const links = screen.getAllByTestId('evidence-key-link');
+        // evidence_key + claim 里的 file: 引用可点；cluster: 引用保持纯文本。
+        expect(links).toHaveLength(2);
+        expect(links[0]).toHaveAttribute(
+            'href',
+            `/investigation?task_id=t1&file=${encodeURIComponent('/case/a.txt')}`,
+        );
+        expect(links[0]).toHaveAttribute('target', '_blank');
+        expect(links[0]).toHaveAttribute('rel', 'noopener noreferrer');
+        expect(links[1]).toHaveAttribute(
+            'href',
+            `/investigation?task_id=t1&file=${encodeURIComponent('/case/a.txt')}`,
+        );
+    });
+
+    test('non-file evidence keys (cluster:) stay plain text without a workbench link', async () => {
+        const loaders = makeLoaders({
+            snapshot: vi.fn().mockResolvedValue({
+                evidence_key: 'cluster:v1:1000:login',
+                captured_at: 1000,
+                evidence_type: 'cluster',
+                payload: { initial_summary: 'Cluster snapshot.' },
+            }),
+        });
+        render(
+            <CitationTracebackPanel
+                taskId="t1"
+                reportId="rep-1"
+                citation={{ ...CLAIM_CITATION, evidence_key: 'cluster:v1:1000:login' }}
+                onClose={() => {}}
+                loaders={loaders}
+            />,
+        );
+        expect(await screen.findByTestId('traceback-evidence-layer')).toBeInTheDocument();
+        expect(screen.getByText('cluster:v1:1000:login')).toBeInTheDocument();
+        expect(screen.queryByTestId('evidence-key-link')).not.toBeInTheDocument();
+    });
 });

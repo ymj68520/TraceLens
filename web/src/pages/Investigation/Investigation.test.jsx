@@ -150,7 +150,7 @@ test('does not bootstrap an initialized investigation', async () => {
 test('timeline nodes are files sorted by latest MACB time; first file opens the evidence analysis workspace', async () => {
   renderPage();
   await screen.findByTestId('file-node-/case/a.txt');
-  expect(service.getInvestigationFileTimeline).toHaveBeenCalledWith('t1');
+  expect(service.getInvestigationFileTimeline).toHaveBeenCalledWith('t1', {});
   // 左栏展示选中文件（首个文件）及其关联事件
   expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('a.txt');
   expect(screen.getByTestId('file-event-e1')).toBeInTheDocument();
@@ -306,4 +306,24 @@ test('deep link ?event= switches to the file hosting that event', async () => {
   await waitFor(() => expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('b.txt'));
   await screen.findByTestId('file-event-e2');
   expect(service.getEventEvidence).toHaveBeenCalledWith('t1', 'e2');
+});
+
+test('deep link ?file= (evidence key form) parks the timeline on that file', async () => {
+  renderPage('/investigation?task_id=t1&file=file:/case/b.txt');
+  // 深链目标经 ensure_path 透传，超出显示截断也能落在时间线上。
+  await waitFor(() => expect(service.getInvestigationFileTimeline).toHaveBeenCalledWith('t1', { ensure_path: '/case/b.txt' }));
+  await screen.findByTestId('file-node-/case/b.txt');
+  // 选中文件即左栏文件工作台 + 关联事件，时间线滚动定位由选中态驱动。
+  await waitFor(() => expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('b.txt'));
+  expect(screen.getByTestId('file-event-e2')).toBeInTheDocument();
+  expect(screen.getByTestId('file-node-/case/b.txt')).toHaveAttribute('aria-current', 'true');
+});
+
+test('deep link ?file= accepts a bare path and falls back to the first file when unknown', async () => {
+  const first = renderPage('/investigation?task_id=t1&file=/case/b.txt');
+  await waitFor(() => expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('b.txt'));
+  first.unmount();
+
+  renderPage('/investigation?task_id=t1&file=/case/missing.txt');
+  await waitFor(() => expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('a.txt'));
 });

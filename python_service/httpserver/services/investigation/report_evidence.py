@@ -209,6 +209,7 @@ class ReportEvidenceService:
         *,
         search: str = "",
         status: str = "all",
+        analyzed: bool = False,
         page: int = 1,
         page_size: int = 50,
     ) -> dict:
@@ -221,6 +222,10 @@ class ReportEvidenceService:
         evidence row for a ``file:<path>`` key uses the same canonical path
         space as ``files.path`` (the R1 resolver reads that column directly).
         Read-only: a missing investigation.db simply means nothing is judged.
+
+        ``analyzed=True`` 把范围收窄到有 AI 分析产物的文件
+        (``llm_analyzed_at IS NOT NULL``,与 seed-analyzed 同口径),计数与
+        行同时收窄 —— 现场演示里"候选数 = 可入报数"由此对齐。
         """
         db_path = await self._resolve_task_db(task_id)
         task = await self._cpp_backend.get_task(task_id)
@@ -269,19 +274,27 @@ class ReportEvidenceService:
                     "FROM files f0) WHERE __rn = 1) f"
                 )
 
-                # Global judgment counts (independent of the search filter).
+                # Global judgment counts (independent of the search filter;
+                # the analyzed scope is a narrowing, so it applies here too).
+                analyzed_where = (
+                    " AND f.llm_analyzed_at IS NOT NULL" if analyzed else ""
+                )
                 counts = {"main": 0, "appendix": 0, "excluded": 0, "unjudged": 0}
                 if has_re_table:
                     for row in conn.execute(
                         f"SELECT COALESCE(re.report_status, 'unjudged') AS s, "
-                        f"COUNT(*) AS c {files_source} {join_sql} GROUP BY s",
+                        f"COUNT(*) AS c {files_source} {join_sql} "
+                        f"WHERE 1=1 {analyzed_where} GROUP BY s",
                         (task_id,),
                     ):
                         if row["s"] in counts:
                             counts[row["s"]] = int(row["c"])
                 else:
                     counts["unjudged"] = int(
-                        conn.execute(f"SELECT COUNT(*) {files_source}").fetchone()[0]
+                        conn.execute(
+                            f"SELECT COUNT(*) {files_source} "
+                            f"WHERE 1=1 {analyzed_where}"
+                        ).fetchone()[0]
                     )
 
                 where_status = ""
@@ -301,17 +314,23 @@ class ReportEvidenceService:
                 total = int(
                     conn.execute(
                         f"SELECT COUNT(*) {files_source} {join_sql} "
-                        f"WHERE 1=1 {where_status}",
+                        f"WHERE 1=1 {analyzed_where} {where_status}",
                         [*join_params, *filter_params],
                     ).fetchone()[0]
+                )
+                # re.* 列仅在 join 存在(任务已有 investigation.db)时可选;
+                # 缺库时以 NULL 占位,保证纯 files 侧读取同样可用。
+                re_select = (
+                    ", re.report_status AS re_status, "
+                    "re.analysis_id AS re_analysis, re.updated_at AS re_updated"
+                    if has_re_table
+                    else ", NULL AS re_status, NULL AS re_analysis, NULL AS re_updated"
                 )
                 rows = conn.execute(
                     f"SELECT f.path, f.name, f.extension, f.category, f.size, "
                     f"f.mtime, f.ctime, f.md5, f.is_deleted, f.llm_summary, "
-                    f"f.llm_analyzed_at, f.scene_relevant, "
-                    f"re.report_status AS re_status, re.analysis_id AS re_analysis, "
-                    f"re.updated_at AS re_updated "
-                    f"{files_source} {join_sql} WHERE 1=1 {where_status} "
+                    f"f.llm_analyzed_at, f.scene_relevant{re_select} "
+                    f"{files_source} {join_sql} WHERE 1=1 {analyzed_where} {where_status} "
                     f"ORDER BY f.path LIMIT ? OFFSET ?",
                     [
                         *join_params,
@@ -354,12 +373,14 @@ class ReportEvidenceService:
         return await asyncio.to_thread(_read)
 
     async def seed_analyzed_files(self, task_id: str, *, added_by: str) -> dict:
-        """初管全量入报：把初次流水线覆盖的每个"已分析文件"判为正文证据。
+        """初管全量入报:把初次流水线产出分析产物的每个文件判为正文证据。
 
-        口径与文件时间线完全一致（covered_file_event_map：直接 ``file:``
-        证据链 + 关联簇成员路径）。任何已有判定（含 excluded）一律跳过——
-        取证人员的事后取消永不回退；任务文件表中缺行的簇成员路径同样跳过。
-        单事务幂等：重复调用只补新增的未判定文件。
+        口径(文件中心):files.db 中 ``llm_analyzed_at IS NOT NULL`` 的去重
+        path —— 与判定页 file-candidates 读模型同一 files 表、同一 path
+        空间,与任务是否经过工作台事件关联无关(最小模式下零事件关联也能
+        全量入报)。任何已有判定(含取证人员事后排除的 excluded)一律跳过
+        ——取证人员的事后取消永不回退;任务文件表中缺行的路径同样跳过。
+        单事务幂等:重复调用只补新增的未判定文件。
         """
         db_path = await self._resolve_task_db(task_id)
         task = await self._cpp_backend.get_task(task_id)
@@ -368,10 +389,9 @@ class ReportEvidenceService:
             raise EvidenceStoreError("task has no files database")
 
         def _covered():
-            from .file_timeline import covered_file_event_map
+            from .file_timeline import load_analyzed_paths
 
-            mapping, _diagnostics = covered_file_event_map(db_path, task_id, task)
-            return sorted(mapping)
+            return sorted(load_analyzed_paths(files_db))
 
         paths = await asyncio.to_thread(_covered)
 

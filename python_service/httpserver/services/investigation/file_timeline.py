@@ -171,6 +171,30 @@ def _load_file_metadata(
     return merged
 
 
+def load_analyzed_paths(files_db: str) -> set[str]:
+    """已分析文件集:files.db 中 ``llm_analyzed_at`` 非空的 path(去重)。
+
+    文件中心口径的单一来源 —— 初管全量入报(seed-analyzed)与文件时间线
+    投影共用。与判定页 file-candidates 读模型同一 files 表、同一 path
+    空间;真实镜像可能携带重复 path 行(多分区/多副本),按 path 去重。
+    只读:库不存在或无该表时返回空集,绝不发明文件。
+    """
+    if not files_db or not os.path.exists(files_db):
+        return set()
+    analyzed: set[str] = set()
+    try:
+        with contextlib.closing(_connect_ro(files_db)) as conn:
+            for row in conn.execute(
+                "SELECT path FROM files WHERE llm_analyzed_at IS NOT NULL"
+            ):
+                path = row["path"]
+                if path:
+                    analyzed.add(path)
+    except sqlite3.DatabaseError:
+        return set()
+    return analyzed
+
+
 def covered_file_event_map(
     db_path: Path,
     task_id: str,
@@ -217,6 +241,7 @@ def collect_file_timeline(
     task: dict,
     *,
     limit: int = 500,
+    ensure_paths: "list[str] | tuple[str, ...] | set[str]" = (),
 ) -> dict[str, Any]:
     """Build the file-centric timeline projection (sync; run via to_thread).
 
@@ -224,38 +249,69 @@ def collect_file_timeline(
     forensic sources consulted; client input never reaches a path. Nodes are
     ordered newest-first by MACB latest time so the timeline surfaces the most
     recent file activity; time-less files trail at the bottom.
+
+    节点集(文件中心口径):调查覆盖的文件(直接 ``file:`` 关联 + 关联簇成员)
+    ∪ **已分析文件**(``llm_analyzed_at IS NOT NULL``,与 file-candidates /
+    seed-analyzed 同口径)。后者是工作台在最小模式(事件簇 LLM 关闭、零事件
+    关联)下的兜底节点源;前端的节点契约本就是"时间线节点 = 已分析文件"。
+
+    ``ensure_paths``: deep-link support (report citation → workbench). Paths
+    the limit cut would drop are appended so the caller can always position
+    on the requested file. Covered files are always rescued; paths that are
+    merely analyzed (present in the task's file stores, e.g. report evidence
+    with no event link) are rescued too, as undated/event-less nodes; unknown
+    paths are ignored — the projection never invents files.
+
+    只读:investigation.db 缺失时退化为纯"已分析文件"投影(事件关联与判定
+    三态为空),绝不物化该库。
     """
+    store_exists = db_path.exists()
     reader = InvestigationGraphReader(db_path, task_id)
-    events = reader.list_events()
+    events = reader.list_events() if store_exists else []
 
     files_db = task.get("output_files_db") or ""
     raw_db = task.get("output_raw_db") or _fallback_db(task, "raw.db")
 
-    file_events, diagnostics = covered_file_event_map(db_path, task_id, task)
-    cluster_count = diagnostics["cluster_count"]
+    if store_exists:
+        file_events, diagnostics = covered_file_event_map(db_path, task_id, task)
+        cluster_count = diagnostics["cluster_count"]
+    else:
+        file_events = {}
+        diagnostics = {"link_count": 0, "cluster_count": 0}
+        cluster_count = 0
+    analyzed_paths = {_normalize_fast(p) for p in load_analyzed_paths(files_db)}
 
     known_event_ids = {event.event_id for event in events}
-    metadata = _load_file_metadata(files_db, raw_db, set(file_events))
+    ensure_normalized = [
+        path
+        for path in (_normalize_fast(raw) for raw in ensure_paths)
+        if path
+    ]
+    metadata = _load_file_metadata(
+        files_db, raw_db, set(file_events) | analyzed_paths | set(ensure_normalized)
+    )
 
     # 判定状态（R1 report_evidence）：文件节点的报告证据三态直接随投影下发，
     # 前端节点/卡片无需再逐文件回查 evidence detail。从未判定 → None。
     report_status_by_path: dict[str, str] = {}
-    for item in reader.list_report_evidence():
-        key = item.evidence_key
-        if not key.startswith(FILE_KEY_PREFIX):
-            continue
-        try:
-            judged_path = normalize_forensic_path(parse_file_evidence_key(key))
-        except InvalidEvidenceKey:
-            continue
-        if judged_path:
-            report_status_by_path[judged_path] = item.report_status
+    if store_exists:
+        for item in reader.list_report_evidence():
+            key = item.evidence_key
+            if not key.startswith(FILE_KEY_PREFIX):
+                continue
+            try:
+                judged_path = normalize_forensic_path(parse_file_evidence_key(key))
+            except InvalidEvidenceKey:
+                continue
+            if judged_path:
+                report_status_by_path[judged_path] = item.report_status
 
+    node_paths = set(file_events) | analyzed_paths
     files: list[dict[str, Any]] = []
-    for path in sorted(file_events):
+    for path in sorted(node_paths):
         event_ids = sorted(
             event_id
-            for event_id in file_events[path]
+            for event_id in file_events.get(path, ())
             if event_id in known_event_ids
         )
         entry = dict(metadata.get(path) or {})
@@ -264,6 +320,23 @@ def collect_file_timeline(
             name=entry.get("name") or path.rstrip("/").rsplit("/", 1)[-1],
             event_ids=event_ids,
             event_count=len(event_ids),
+            report_status=report_status_by_path.get(path),
+        )
+        times = {key: entry[key] for key in MACB_KEYS if entry.get(key)}
+        entry["latest_time"] = max(times.values()) if times else None
+        files.append(entry)
+
+    # 深链目标若"已分析但未挂任何事件"（典型：报告证据文件），以无事件
+    # 节点补入投影；文件库中不存在的路径绝不发明。
+    for path in ensure_normalized:
+        if path in node_paths or not metadata.get(path):
+            continue
+        entry = dict(metadata[path])
+        entry.update(
+            path=path,
+            name=entry.get("name") or path.rstrip("/").rsplit("/", 1)[-1],
+            event_ids=[],
+            event_count=0,
             report_status=report_status_by_path.get(path),
         )
         times = {key: entry[key] for key in MACB_KEYS if entry.get(key)}
@@ -281,6 +354,23 @@ def collect_file_timeline(
     ordered = (dated + undated)[:limit]
     total = len(dated) + len(undated)
 
+    # 深链保障：limit 截断会丢掉时间轴尾部之外的文件，而报告引用深链必须
+    # 能落到目标节点。覆盖文件与"已分析未挂事件"的文件都可补回，投影外
+    # 的未知路径忽略。
+    ensured_paths: list[str] = []
+    if ensure_paths:
+        included = {item["path"] for item in ordered}
+        by_path = {item["path"]: item for item in files}
+        for raw in ensure_paths:
+            path = _normalize_fast(raw)
+            if not path or path in included:
+                continue
+            entry = by_path.get(path)
+            if entry is not None:
+                ordered.append(entry)
+                included.add(path)
+                ensured_paths.append(path)
+
     return {
         "task_id": task_id,
         "files": ordered,
@@ -295,6 +385,7 @@ def collect_file_timeline(
             "cluster_count": cluster_count,
             "undated_file_count": len(undated),
             "limited": total > limit,
+            "ensured_paths": ensured_paths,
         },
     }
 
@@ -312,5 +403,6 @@ def empty_file_timeline(task_id: str) -> dict[str, Any]:
             "cluster_count": 0,
             "undated_file_count": 0,
             "limited": False,
+            "ensured_paths": [],
         },
     }

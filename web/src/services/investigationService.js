@@ -129,9 +129,11 @@ export const getInvestigationEvents = (taskId, params = {}) =>
 /**
  * 文件中心时间线：判定为已分析的文件按 MACB 最新时间为节点，
  * 每个文件附带其关联的 Investigation Events（佐证引用）。
+ * @param {string} taskId
+ * @param {Object} params - { ensure_path } 报告引用深链：保证截断外文件仍在投影里
  */
-export const getInvestigationFileTimeline = (taskId) =>
-    pythonApi.get(`${workbenchBase(taskId)}/file-timeline`);
+export const getInvestigationFileTimeline = (taskId, params = {}) =>
+    pythonApi.get(`${workbenchBase(taskId)}/file-timeline`, { params });
 export const getEventEvidence = (taskId, eventId, params = {}) =>
     pythonApi.get(`${workbenchBase(taskId)}/events/${encodeURIComponent(eventId)}/evidence`, { params });
 export const linkEventEvidence = (taskId, eventId, payload) =>

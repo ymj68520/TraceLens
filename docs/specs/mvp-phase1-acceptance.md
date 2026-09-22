@@ -100,6 +100,29 @@ Feature flags（`python_service/httpserver/config.py`，pydantic-settings，env 
 
 文件证据（`file:<path>`）不受影响：证据绑定、report_evidence 选择器、报告生成全部照常。
 
+### 4.2.1 报告链文件中心化口径（2026-09-20 修订）
+
+现场演示要求报告链在最小模式（事件簇 LLM 关闭、零事件关联）下完整可用，事件簇不再是
+报告链的前置依赖。三个口径自本修订起冻结：
+
+1. **初管全量入报 `POST /api/reports/evidence/seed-analyzed`**：覆盖集 = 任务 files.db 中
+   `llm_analyzed_at IS NOT NULL` 的去重 path（`file_timeline.load_analyzed_paths`，与
+   file-candidates 同一表、同一 path 空间），不再经由工作台事件关联
+   （原 `covered_file_event_map` 口径废止）。幂等/单事务/已判定（含 excluded）永不回退
+   语义不变；investigation.db 缺失时由该端点首次物化 v7 store。
+2. **工作台文件时间线 `GET /api/investigation/workbench/{id}/file-timeline`**：节点集 =
+   调查覆盖文件（`file:` 关联 + 关联簇成员）∪ 已分析文件。已分析但无事件的文件以
+   无事件节点出现（`event_ids=[]`、`event_count=0`），investigation.db 缺失时退化为
+   纯"已分析文件"投影且绝不物化该库。前端契约本来就是"时间线节点 = 已分析文件"
+   （`useInvestigationFileTimeline`），此修订使后端与之对齐。
+3. **判定页候选 `GET /api/reports/evidence/file-candidates`**：新增 `analyzed=true`
+   查询参数把候选与计数收窄到已分析文件（与 seed 同口径），演示中"候选数 = 可入报数"。
+   缺 investigation.db 时 `re.*` 列以 NULL 占位（修复缺库 500）。
+
+报告侧不受影响：4A 数据集校验、4F 装配、生成 prompt 本就只消费显式 Report Evidence
+快照，无事件前置条件。工作台 bootstrap 的 cluster 播种保留（§4.2 条目 1），降级为
+工作台浏览功能，不再承担报告链前置角色。
+
 ### 4.3 组合案件削减（COMBINED_CASE_ENABLED=false）
 
 > **2026-09-19 修订：本节削减已整体恢复。** 甲方确认恢复"研判中心"页面与功能，

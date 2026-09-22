@@ -84,6 +84,11 @@ async def list_report_evidence_file_candidates(
         pattern="^(all|main|appendix|excluded|unjudged)$",
         description="current judgment filter (unjudged = no report_evidence row)",
     ),
+    analyzed: bool = Query(
+        False,
+        description="scope to files with AI analysis products "
+        "(llm_analyzed_at IS NOT NULL; same universe as seed-analyzed)",
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     service: ReportEvidenceService = Depends(get_report_evidence_service),
@@ -96,7 +101,12 @@ async def list_report_evidence_file_candidates(
     """
     try:
         return await service.list_file_candidates(
-            task_id, search=search, status=status, page=page, page_size=page_size
+            task_id,
+            search=search,
+            status=status,
+            analyzed=analyzed,
+            page=page,
+            page_size=page_size,
         )
     except EvidenceNotFoundError as exc:
         raise HTTPException(status_code=404, detail="task not found") from exc
