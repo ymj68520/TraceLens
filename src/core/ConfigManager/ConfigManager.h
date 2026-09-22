@@ -49,6 +49,9 @@ public:
     int getLLMArtifactBatchSize() const;
     int getLLMArtifactBatchRetries() const;
     bool getLLMSkipBinary() const;
+    // MVP 裁剪（mvp-phase1-acceptance §4.8）：Windows/Linux 工件 LLM 分析管线
+    // 逃生舱开关，默认关闭；置 true 恢复。Android 分析不受影响。
+    bool getWinLinuxArtifactLlmEnabled() const;
     
     // Text Model Settings
     llm::LLMConfig getTextModelConfig() const;

@@ -204,8 +204,10 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         // DB output directory
         std::string db_output_dir = body.value("db_output_dir", "");
 
-        // LLM analysis options (new)
-        bool llm_analyze = body.value("llm_analyze", false);
+        // LLM analysis options. File description generation is on by default;
+        // task-time event cluster analysis has its own switch (off by default).
+        bool llm_analyze = body.value("llm_analyze", true);
+        bool llm_event_analyze = body.value("llm_event_analyze", false);
         std::string llm_mode = body.value("llm_mode", "smart"); // "full" or "smart"
         std::string case_description = body.value("case_description", "");
 
@@ -247,6 +249,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             xfs_mode,
             db_output_dir,
             llm_analyze,
+            llm_event_analyze,
             llm_mode,
             case_description,
             filter_profile,
@@ -274,6 +277,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
                 return arr;
             }()},
             {"llm_analyze", llm_analyze},
+            {"llm_event_analyze", llm_event_analyze},
             {"llm_mode", llm_mode},
             {"file_carving", file_carving},
             {"filter_profile", filter_profile},

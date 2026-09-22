@@ -79,6 +79,7 @@ std::string TaskManager::create_task(const std::string& path,
                                    XFSMode xfs_mode,
                                    const std::string& db_output_dir,
                                    bool llm_analyze,
+                                   bool llm_event_analyze,
                                    const std::string& llm_mode,
                                    const std::string& case_description,
                            const std::string& filter_profile,
@@ -116,6 +117,7 @@ std::string TaskManager::create_task(const std::string& path,
     new_task.xfs_mode = xfs_mode;
     new_task.db_output_dir = db_output_dir;
     new_task.llm_analyze = llm_analyze;
+    new_task.llm_event_analyze = llm_event_analyze;
     new_task.llm_mode = llm_mode;
     new_task.case_description = case_description;
     new_task.filter_profile = filter_profile;

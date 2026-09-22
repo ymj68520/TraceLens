@@ -122,6 +122,10 @@ std::string ConfigManager::getLLMImageDetail() const {
 int ConfigManager::getLLMArtifactBatchSize() const { return bounded_limit(*this, "LLM_ARTIFACT_BATCH_SIZE", 1, 64); }
 int ConfigManager::getLLMArtifactBatchRetries() const { return bounded_limit(*this, "LLM_ARTIFACT_BATCH_RETRIES", 1, 5); }
 bool ConfigManager::getLLMSkipBinary() const { return getBool("LLM_SKIP_BINARY", true); }
+// MVP trim (mvp-phase1-acceptance §4.8): the post-extraction Windows/Linux
+// artifact LLM pipeline is cut from the acceptance scope; structured
+// extraction is unaffected and Android keeps its own analysis.
+bool ConfigManager::getWinLinuxArtifactLlmEnabled() const { return getBool("WIN_LINUX_ARTIFACT_LLM_ENABLED", false); }
 
 // Text Model Settings
 std::string ConfigManager::getTextBaseUrl() const { return get("LLM_TEXT_BASE_URL", getLLMBaseUrl()); }

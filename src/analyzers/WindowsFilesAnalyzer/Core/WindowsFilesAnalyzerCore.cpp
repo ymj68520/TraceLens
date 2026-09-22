@@ -125,6 +125,16 @@ void WindowsFilesAnalyzer::analyzeWithLLM() {
         if (!configManager.isLoaded()) {
             configManager.load();
         }
+        // MVP trim (mvp-phase1-acceptance §4.8): the Windows/Linux artifact LLM
+        // pipeline is out of the acceptance scope; windows_* structured data and
+        // display are unaffected.
+        if (!configManager.getWinLinuxArtifactLlmEnabled()) {
+            std::cout << "AI analysis skipped (WIN_LINUX_ARTIFACT_LLM_ENABLED=false, MVP trim). "
+                      << "Structured analysis results in windows_* tables are unaffected." << std::endl;
+            AuditLog::instance().log("SYSTEM", "WINDOWS_LLM_SKIPPED",
+                "Disabled by MVP trim (WIN_LINUX_ARTIFACT_LLM_ENABLED=false)");
+            return;
+        }
         if (configManager.getTextBaseUrl().empty() && configManager.getLLMBaseUrl().empty()) {
             std::cout << "AI analysis skipped (no LLM_BASE_URL configured). "
                       << "Structured analysis results in windows_* tables are unaffected." << std::endl;

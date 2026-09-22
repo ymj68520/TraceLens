@@ -16,6 +16,11 @@
 此两模块整体移出 MVP 验收面（导航入口隐藏、页面不可达、分析端点 503），不受上述
 "入口面不减"原则约束；机制沿用 §4.3 的开关-门控模式（§4.6/§4.7）。
 
+**2026-09-20 追加（第三次范围决策）**：甲方裁剪 **Windows/Linux 工件 LLM 分析管线**
+（主流水线之后、摄入尾段 `analyzeWithLLM` 的平台工件逐行 LLM 分析）——结构化提取与
+展示不变，工件表 `llm_*` 保持 NULL；机制为 C++ ConfigManager 开关门控（§4.8），
+Android 工件分析不受影响。
+
 ## 2. 范围决策总表
 
 | 模块 | 决策 | 实现机制 |
@@ -30,6 +35,7 @@
 | 调查工作台 | **削减**：LLM 二次分析/事件重摘要停用，Graph Tab 隐藏；cluster 事件播种保留（v7，2026-09-19 修订），事件仍不入报告证据；只读浏览与文件证据绑定保留 | §4.4 |
 | 内存取证 | **裁剪（2026-09-18 追加）**：导航/页面移出验收面；CLI 旁路与 C++ 只读端点保留但不在验收范围 | §4.6 |
 | OSS 分析 | **裁剪（2026-09-18 追加）**：导航/页面移出验收面，Python AI 端点 503；C++ OSS 端点本就未挂载（运行时 404），不动 | §4.7 |
+| Windows/Linux 工件 LLM 分析 | **裁剪（2026-09-20 追加）**：摄入尾段 `analyzeWithLLM` 默认关闭，`windows_*`/`linux_*` 工件表 `llm_*` 恒为 NULL；结构化提取不变；Android 不受影响 | §4.8 |
 | Graphiti 摄入大模型 | **固定 phi-4**（microsoft/phi-4，非推理 instruct 模型） | §3 |
 
 Feature flags（`python_service/httpserver/config.py`，pydantic-settings，env 可覆盖；MVP 分支默认值即验收形态）：
@@ -41,6 +47,7 @@ Feature flags（`python_service/httpserver/config.py`，pydantic-settings，env 
 | `WORKBENCH_LLM_ENABLED` | `false` | 工作台 LLM 二次分析/事件重摘要开关 |
 | `MEMORY_FORENSICS_ENABLED` | `false` | 内存取证模块开关（§4.6，裁剪恢复逃生舱） |
 | `OSS_ANALYSIS_ENABLED` | `false` | OSS 分析模块开关（§4.7，裁剪恢复逃生舱） |
+| `WIN_LINUX_ARTIFACT_LLM_ENABLED` | `false`（C++ ConfigManager） | Windows/Linux 工件 LLM 分析管线开关（§4.8，裁剪恢复逃生舱） |
 | `GRAPHITI_LLM_MODEL` | `microsoft/phi-4` | Graphiti 摄入 LLM（空值也回落 phi-4，即"固定"） |
 | `GRAPHITI_INGEST_WAIT_TIMEOUT_MIN` | `720`（C++ ConfigManager） | FINALIZING 等待摄入上限（与 Python 端 `GRAPHITI_JOB_TIMEOUT_HOURS=12` 对齐），0 = 恢复旧"不等待"行为 |
 
@@ -159,6 +166,31 @@ Python LLM 过滤/分析）。**C++ OSS 路由从未挂载**（`HTTPserver.h:91-
 - 恢复：设 `OSS_ANALYSIS_ENABLED=true` 重启 python 服务即恢复 AI 端点与入口
   （注意：C++ 数据面端点要真正可用是另一个量级的接线工作，见
   `docs/modules/cpp/network/HTTPServer.md` 对 12 个未挂载端点的记录）。
+
+### 4.8 Windows/Linux 工件 LLM 分析裁剪（WIN_LINUX_ARTIFACT_LLM_ENABLED=false，2026-09-20 追加）
+
+足迹事实（恢复时直接引用）：Windows/Linux 分析器主流水线（结构化提取，Windows 步骤
+1–10 / Linux 对应链路）之后的尾段 `analyzeWithLLM()`
+（`WindowsFilesAnalyzerCore.cpp` / `LinuxFilesAnalyzerCore.cpp`）经
+`WindowsLLMAnalysisService` / `LinuxLLMAnalysisService` 对 13/14 类工件逐类型
+（每类 ≤ `LLM_MAX_ARTIFACTS`，当前默认 500 行/类/轮，`*_PENDING_ANALYSIS` 只取
+`llm_analyzed_at IS NULL` 的行）做逐行 LLM 分析，结果写回各表 `llm_*` 五列，由
+Python 侧 intelligence_report / investigation / associations 消费。两个服务仅被
+各自 analyzer core 调用，无 HTTP 路由、无独立前端页面。**在任务流水线上**（摄入
+同步执行），与 §4.6 的"CLI 旁路"不同，门控必须落在 C++ 侧。另：Linux 增强日志类
+（journal / web error / middleware / persistence / tampering 等 15 个 enum 类型）
+本就未接入该编排（SQL 与表映射齐备但无调用方、无 analyzer case），裁剪不改变其状态。
+
+裁剪机制：
+
+- C++：`ConfigManager::getWinLinuxArtifactLlmEnabled()`（默认 `false`，
+  `WIN_LINUX_ARTIFACT_LLM_ENABLED`）；两个 `analyzeWithLLM()` 在既有 try 块首位
+  检查，关闭时打 skip 日志并记 `WINDOWS_LLM_SKIPPED` / `LINUX_LLM_SKIPPED`
+  （MVP trim）。`--no-ai` 与无端点 auto-skip 逻辑不动。
+- Python/前端：无端点、无页面可裁，不动。工件表 `llm_*` 保持 NULL（同 §4.1
+  事件取消后的形态），下游报告相应章节自然缺省。
+- 恢复：`.env` 设 `WIN_LINUX_ARTIFACT_LLM_ENABLED=true` 后重新摄入（或重跑分析器）
+  即恢复；`LLM_MAX_ARTIFACTS` 的"每类每轮、0=全量"语义不变。
 
 ## 5. 分析流水管线重定义（以文件为核心 + 完成判定）
 

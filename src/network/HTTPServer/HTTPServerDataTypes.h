@@ -138,8 +138,11 @@ struct AnalysisTask {
     bool interrupted_by_restart = false;
     std::map<std::string, std::string> metadata;
 
-    // LLM analysis options
-    bool llm_analyze = false;           // Enable LLM file description generation
+    // LLM analysis options. llm_analyze covers only file description
+    // generation; task-time event cluster analysis is a separate switch
+    // (llm_event_analyze) so the two can be toggled independently.
+    bool llm_analyze = true;            // Enable LLM file description generation
+    bool llm_event_analyze = false;     // Enable task-time LLM event cluster analysis
     std::string llm_mode = "smart";     // "full" or "smart"
     std::string output_descriptions_db; // Database for LLM-generated descriptions
     std::string case_description;       // Case description for LLM analysis
@@ -186,7 +189,7 @@ struct AnalysisTask {
           db_output_dir(other.db_output_dir),
           cancellation_requested(other.cancellation_requested.load()),
           error_details(other.error_details), interrupted_by_restart(other.interrupted_by_restart), metadata(other.metadata),
-          llm_analyze(other.llm_analyze), llm_mode(other.llm_mode),
+          llm_analyze(other.llm_analyze), llm_event_analyze(other.llm_event_analyze), llm_mode(other.llm_mode),
           output_descriptions_db(other.output_descriptions_db),
           case_description(other.case_description),
           graphiti_job_id(other.graphiti_job_id),
@@ -226,6 +229,7 @@ struct AnalysisTask {
             interrupted_by_restart = other.interrupted_by_restart;
             metadata = other.metadata;
             llm_analyze = other.llm_analyze;
+            llm_event_analyze = other.llm_event_analyze;
             llm_mode = other.llm_mode;
             output_descriptions_db = other.output_descriptions_db;
             case_description = other.case_description;
@@ -257,7 +261,7 @@ struct AnalysisTask {
           db_output_dir(std::move(other.db_output_dir)),
           cancellation_requested(other.cancellation_requested.load()),
           error_details(std::move(other.error_details)), interrupted_by_restart(other.interrupted_by_restart), metadata(std::move(other.metadata)),
-          llm_analyze(other.llm_analyze), llm_mode(std::move(other.llm_mode)),
+          llm_analyze(other.llm_analyze), llm_event_analyze(other.llm_event_analyze), llm_mode(std::move(other.llm_mode)),
           output_descriptions_db(std::move(other.output_descriptions_db)),
           case_description(std::move(other.case_description)),
           graphiti_job_id(std::move(other.graphiti_job_id)),
@@ -297,6 +301,7 @@ struct AnalysisTask {
             interrupted_by_restart = other.interrupted_by_restart;
             metadata = std::move(other.metadata);
             llm_analyze = other.llm_analyze;
+            llm_event_analyze = other.llm_event_analyze;
             llm_mode = std::move(other.llm_mode);
             output_descriptions_db = std::move(other.output_descriptions_db);
             case_description = std::move(other.case_description);

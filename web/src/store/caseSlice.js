@@ -36,6 +36,7 @@ export const createCaseWithTasks = createAsyncThunk(
             priority,
             case_description: description,
             llm_analyze:     true,
+            llm_event_analyze: false,
             llm_mode:        'smart',
             android_analyze: androidAnalyze,
           })

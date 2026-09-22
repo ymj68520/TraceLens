@@ -85,6 +85,7 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
         {"android_analyze", task.get_android_analyze()},  // Backward compat
         {"android_source", task.android_source},
         {"llm_analyze", task.llm_analyze},
+        {"llm_event_analyze", task.llm_event_analyze},
         {"llm_mode", task.llm_mode},
         {"file_carving", task.file_carving},
         {"filter_profile", task.filter_profile},

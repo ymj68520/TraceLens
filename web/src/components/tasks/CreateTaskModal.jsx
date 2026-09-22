@@ -41,7 +41,8 @@ const INITIAL_FORM = {
   xfs_mode: 'auto',
   filter_profile: 'general_forensics',
   platform_analyze: true,
-  // llm_analyze is always true — NOT a user setting
+  // llm_analyze (file descriptions) is always true and llm_event_analyze
+  // (task-time event cluster analysis) always false — NOT user settings.
 };
 
 export default function CreateTaskModal() {
@@ -88,6 +89,7 @@ export default function CreateTaskModal() {
         ...form,
         scenarios: isLogical ? ['android'] : form.scenarios,
         llm_analyze: true,
+        llm_event_analyze: false,
         llm_mode: 'smart',
         // 平台分析任务级开关（创建时选择；默认开启）
         platform_analyze: form.platform_analyze !== false,

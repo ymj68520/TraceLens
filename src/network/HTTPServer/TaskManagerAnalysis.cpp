@@ -557,8 +557,9 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 }
             }
 
-            // 5. Event Cluster Analysis (Optional) - Similar to LLM analysis for files
-            if (task.llm_analyze) {
+            // 5. Event Cluster Analysis (Optional) — independent of the file
+            // description switch: llm_event_analyze alone controls this stage.
+            if (task.llm_event_analyze) {
                 if (is_task_cancelled(task_id)) { return; }
                 update_progress(task_id, TaskPhase::LLM_ANALYSIS, 90, "Starting event cluster analysis...");
                 
