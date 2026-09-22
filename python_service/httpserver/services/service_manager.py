@@ -220,6 +220,12 @@ class ServiceManager:
                 self._ingestion_job_manager.initialize(),
                 timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
             )
+            # Pipeline tail: the initial analysis flow ends with an
+            # auto-generated final report once ingestion completes. Optional
+            # services may be missing — the callback degrades to a warning.
+            self._ingestion_job_manager.on_ingestion_completed = (
+                self._auto_generate_report_after_ingestion
+            )
         except Exception as error:
             logger.warning(f"IngestionJobManager initialization failed: {error}")
 
@@ -586,6 +592,49 @@ class ServiceManager:
                 self._create_report_generation_service()
             )
         return self._report_generation_service
+
+    async def _auto_generate_report_after_ingestion(self, task_id: str) -> None:
+        """Pipeline tail: produce the final report when analysis finishes.
+
+        Invoked by the ingestion manager after a successful kg_sync job (the
+        last stage of the initial analysis flow). Best-effort by contract:
+        every failure is logged and never surfaces into the analysis result
+        — the analyst can always generate a report manually afterwards.
+        """
+        if not getattr(self.settings, "report_auto_generate_enabled", True):
+            logger.info(
+                "Auto report generation disabled; skipping task %s", task_id
+            )
+            return
+        try:
+            evidence_service = self.report_evidence_service
+            admission = self.report_generation_service
+            executor = self.report_generation_executor
+        except RuntimeError as exc:
+            logger.warning(
+                "Auto report unavailable for task %s: %s", task_id, exc
+            )
+            return
+        try:
+            from .forensic_report.auto_report import (
+                auto_generate_pipeline_report,
+            )
+
+            summary = await auto_generate_pipeline_report(
+                task_id,
+                evidence_service=evidence_service,
+                admission=admission,
+                executor=executor,
+            )
+            logger.info(
+                "Pipeline report tail finished for task %s: %s",
+                task_id,
+                summary,
+            )
+        except Exception:
+            logger.exception(
+                "Pipeline report tail failed for task %s", task_id
+            )
 
     def _create_report_generation_executor(self):
         from pathlib import Path

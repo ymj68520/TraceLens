@@ -287,6 +287,13 @@ class Settings(BaseSettings):
     report_generator_version: str = Field(
         default="1.0.0", alias="FORENSIC_REPORT_GENERATOR_VERSION"
     )
+    # Pipeline tail: generate the final report automatically when a task's
+    # initial analysis flow finishes (kg_sync ingestion completed). The
+    # seeding is idempotent and an existing report version suppresses a
+    # second run, so the flag only controls whether the tail exists at all.
+    report_auto_generate_enabled: bool = Field(
+        default=True, alias="REPORT_AUTO_GENERATE_ENABLED"
+    )
 
     # Finite analysis limits. Explicit values may raise these within the
     # declared bounds; an omitted value never means unlimited.

@@ -69,6 +69,14 @@ class IngestionJobManagerMixin:
         self._ForensicsDatabase = None
         self._EventsDatabase = None
 
+        # Pipeline tail hook (optional): set by the ServiceManager to an
+        # async callable(task_id) that generates the final report after a
+        # successful FULL ingestion — the last step of the initial analysis
+        # flow (kg_sync completions fire it too, for symmetric coverage).
+        # The callback owns all of its error handling; the job path never
+        # depends on it.
+        self.on_ingestion_completed = None
+
     async def initialize(self):
         """Initialize the job manager and background worker."""
         if self._running:
@@ -553,6 +561,11 @@ class IngestionJobManagerMixin:
                 result=result if isinstance(result, dict) else None,
             )
             logger.info(f"kg_sync job {job_id} completed")
+            if task_id and self.on_ingestion_completed is not None:
+                # Initial-analysis-flow tail: fire the report-tail callback
+                # as an independent task so a slow/failing report generation
+                # can never hold or fail the ingestion job itself.
+                asyncio.create_task(self._notify_report_tail(task_id))
         except asyncio.CancelledError:
             await self._update_job_status(job_id, JobStatus.CANCELLED, "cancelled")
             raise
@@ -566,6 +579,17 @@ class IngestionJobManagerMixin:
         finally:
             gate_context.reset(gate_token)
             self._kg_sync_tasks.pop(job_id, None)
+
+    async def _notify_report_tail(self, task_id: str) -> None:
+        """Run the pipeline-tail report callback, isolating every failure."""
+        try:
+            await self.on_ingestion_completed(task_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                "Report tail callback failed for task %s", task_id
+            )
 
     async def get_job_status(self, job_id: str) -> Optional[dict]:
         """

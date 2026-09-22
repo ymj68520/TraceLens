@@ -255,6 +255,15 @@ class IngestionJobWorkerMixin:
                 )
             else:
                 await self._update_job_status(job_id, JobStatus.COMPLETED, progress=100)
+                if (
+                    mode == IngestionMode.FULL
+                    and task_id
+                    and self.on_ingestion_completed is not None
+                ):
+                    # Initial-analysis-flow tail: a finished FULL ingestion
+                    # is the pipeline's last stage — fire the report-tail
+                    # callback independently of the job result.
+                    asyncio.create_task(self._notify_report_tail(task_id))
 
         except Exception as e:
             import traceback
