@@ -17,8 +17,10 @@ const Search = () => {
   const currentTask = tasks.find((t) => t.id === taskId);
 
   const [query, setQuery] = useState('');
-  // Auto-populate paths based on task
-  const [index, setIndex] = useState(taskId ? `search_index_${taskId.substring(0, 8)}` : 'search_index');
+  // Auto-populate paths based on task. The index must live under the search
+  // service's data dir: a bare name resolves against the server CWD (build/)
+  // and silently returns 0 results, while create-index rejects it (403).
+  const [index, setIndex] = useState(taskId ? `data/search_index_${taskId.substring(0, 8)}` : 'data/search_index');
   const [sourcePath, setSourcePath] = useState(taskId ? (currentTask?.extraction_directory || `../build/data/tasks/${taskId}/extracted_files`) : 'extracted_files');
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -29,7 +31,7 @@ const Search = () => {
   // Update paths when task changes
   useEffect(() => {
     if (taskId) {
-      setIndex(`search_index_${taskId.substring(0, 8)}`);
+      setIndex(`data/search_index_${taskId.substring(0, 8)}`);
       setSourcePath(currentTask?.extraction_directory || `../build/data/tasks/${taskId}/extracted_files`);
     }
   }, [taskId, currentTask]);

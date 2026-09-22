@@ -518,17 +518,27 @@ def _category_total(files_db: str | None, table: str) -> int:
 
 
 def _resolve_apps_table(candidate_dbs: list[str]) -> str:
+    # installed_apps: MIUI backup app manifest (package/display/version only —
+    # the reader drops absent columns, so the partial schema still renders).
+    # MIUI android.db carries an EMPTY legacy installed_packages alongside a
+    # populated installed_apps, so prefer the first table that actually has
+    # rows and only fall back to the first existing one.
+    fallback = ""
     for db_path in candidate_dbs:
         if not db_path or not Path(db_path).is_file():
             continue
         try:
             with _connect_ro(Path(db_path)) as conn:
-                for t in ("installed_packages", "system_apps"):
-                    if _table_exists(conn, t):
+                for t in ("installed_packages", "system_apps", "installed_apps"):
+                    if not _table_exists(conn, t):
+                        continue
+                    if not fallback:
+                        fallback = t
+                    if _count(conn, t) > 0:
                         return t
         except sqlite3.Error:
             continue
-    return ""
+    return fallback
 
 
 def _resolve_locations_table(candidate_dbs: list[str]) -> str:

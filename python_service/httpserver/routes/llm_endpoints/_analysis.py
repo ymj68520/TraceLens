@@ -381,6 +381,7 @@ async def analyze_content(
                         )
         else:
             # Direct content analysis (text only)
+            extraction_method = "direct_content"
             result = await service_manager.llm_service.analyze(
                 content=request.content,
                 model_type=request.model_type or "text",

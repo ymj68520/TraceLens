@@ -1,0 +1,94 @@
+{
+    "profile_name": "诈骗平台服务器专项",
+    "description": "涉网诈骗投资平台服务器(jijin.com/hxfund.xyz,宝塔+ThinkPHP+MySQL)定向过滤:保留站点源码与用户上传、面板配置/站点备份、MySQL 数据文件、Web/SSH/登录日志、计划任务与回收站整站备份;剥离系统包缓存、面板 pyenv、MySQL 测试套件等噪声。适配『服务器镜像.E01』。",
+    "version": "1.0.0",
+    "combine_mode": "exclude_wins",
+
+    "include": {
+        "extensions": [
+            ".php", ".php3", ".php5", ".phtml", ".inc",
+            ".py", ".sh", ".pl", ".bat",
+            ".conf", ".cnf", ".ini", ".env", ".cfg", ".yaml", ".yml",
+            ".sql", ".db", ".db3", ".sqlite", ".sqlite3",
+            ".ibd", ".frm", ".myd", ".myi", ".rdb",
+            ".log", ".txt", ".csv", ".json", ".xml",
+            ".html", ".htm", ".js", ".css",
+            ".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".txz",
+            ".pem", ".key", ".crt", ".csr",
+            ".xls", ".xlsx", ".doc", ".docx", ".pdf",
+            ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp",
+            ".bak"
+        ],
+        "path_patterns": [
+            "/www/wwwroot*",
+            "/www/backup*",
+            "/www/server/panel/vhost*",
+            "/www/server/panel/data*",
+            "/www/server/panel/config*",
+            "/www/server/panel/logs*",
+            "/www/server/panel/ssl*",
+            "/www/server/panel/cron*",
+            "/www/server/data*",
+            "/www/server/nginx/conf*",
+            "/www/server/redis*",
+            "/www/server/cron*",
+            "/root*",
+            "/home*",
+            "/etc/*",
+            "/var/log/*",
+            "/var/spool/cron*",
+            "/tmp/*",
+            "/.Recycle_bin*",
+            "/patch*",
+            "/opt/*",
+            "/srv/*"
+        ],
+        "filename_patterns": [
+            ".bash_history", ".bashrc", ".profile", ".mysql_history",
+            "crontab*", "authorized_keys", "known_hosts", "id_rsa*", "id_ed25519*",
+            "*.sql", "*.env", "*.conf", "*.cnf"
+        ],
+        "min_size": 0,
+        "max_size": 0,
+        "include_deleted": true,
+        "include_allocated": true
+    },
+
+    "exclude": {
+        "extensions": [
+            ".so", ".o", ".ko", ".pyc", ".pyo", ".whl",
+            ".rpm", ".deb", ".list", ".idx"
+        ],
+        "path_patterns": [
+            "/usr/*",
+            "/var/cache/*",
+            "/var/lib/yum*",
+            "/var/lib/rpm*",
+            "/var/lib/dnf*",
+            "/var/log/anaconda*",
+            "/www/server/panel/pyenv*",
+            "/www/server/panel/BTPanel/static*",
+            "/www/server/panel/class*",
+            "/www/server/panel/script*",
+            "/www/server/panel/plugin*",
+            "/www/server/mysql/mysql-test*",
+            "/www/server/mysql/share*",
+            "/www/server/mysql/include*",
+            "/www/server/mysql/lib*",
+            "/www/server/mysql/bin*",
+            "/www/server/mysql/support-files*",
+            "/www/server/php*",
+            "/www/server/nginx/html*",
+            "/www/server/apache*",
+            "/www/server/pure-ftpd*",
+            "/www/server/supervisor*",
+            "/grub2*",
+            "/grub*",
+            "/proc/*",
+            "/sys/*",
+            "/dev/*",
+            "/run/*"
+        ],
+        "filename_patterns": []
+    }
+}

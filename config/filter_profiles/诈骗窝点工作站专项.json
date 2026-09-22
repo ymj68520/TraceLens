@@ -1,0 +1,102 @@
+{
+    "profile_name": "诈骗窝点工作站专项",
+    "description": "诈骗窝点嫌疑人 Windows 工作站定向过滤:保留话术培训资料、受害目标/客资清单、账本与密码备忘、加密币教程与钱包证据、TrueCrypt 加密容器与粉碎工具、Xshell/浏览器/最近使用痕迹、注册表与预取执行痕迹、回收站与孤儿文件(已删除可恢复);剥离 WinSxS/驱动库/WPS 缓存等系统噪声。适配『窝点嫌疑人计算机镜像.E01』。",
+    "version": "1.0.0",
+    "combine_mode": "exclude_wins",
+
+    "include": {
+        "extensions": [
+            ".doc", ".docx", ".xls", ".xlsx", ".xlsm", ".ppt", ".pptx",
+            ".pdf", ".rtf", ".txt", ".csv", ".wps", ".et",
+            ".psd", ".jpg", ".jpeg", ".png", ".gif", ".bmp",
+            ".zip", ".rar", ".7z", ".tar", ".gz", ".txz",
+            ".apk", ".ipa",
+            ".db", ".db3", ".sqlite", ".sqlite3",
+            ".lnk", ".pf", ".url",
+            ".vcf", ".eml", ".msg",
+            ".ini", ".conf", ".cfg", ".log", ".json", ".xml",
+            ".mp4", ".avi", ".mov", ".mkv", ".amr", ".mp3", ".wav"
+        ],
+        "path_patterns": [
+            "/话术*",
+            "/soft*",
+            "/Q3JU6CPH.85PB*",
+            "/DTL8Folder*",
+            "/Users/Administrator/Desktop*",
+            "/Users/Administrator/Documents*",
+            "/Users/Administrator/Downloads*",
+            "/Users/Administrator/Pictures*",
+            "/Users/Administrator/Videos*",
+            "/Users/Administrator/Music*",
+            "/Users/Administrator/Favorites*",
+            "/Users/Administrator/AppData/Roaming/Microsoft/Windows/Recent*",
+            "/Users/Administrator/AppData/Local/Google/Chrome/User Data*",
+            "/Users/Administrator/AppData/Local/Microsoft/Internet Explorer*",
+            "/Users/Administrator/AppData/Roaming/Microsoft/Internet Explorer*",
+            "/Users/Administrator/AppData/Local/Microsoft/Windows/UsrClass.dat*",
+            "/Users/Administrator/AppData/Local/Temp*",
+            "/Users/Administrator/AppData/Roaming/DriveTheLifeUI*",
+            "/Users/Administrator/AppData/Roaming/Microsoft/Windows/Cookies*",
+            "/Windows/Prefetch*",
+            "/Windows/System32/config/*",
+            "/$Recycle.Bin*",
+            "/$RECYCLE.BIN*",
+            "/System Volume Information*",
+            "/$OrphanFiles*"
+        ],
+        "filename_patterns": [
+            "NTUSER.DAT*", "UsrClass.dat*",
+            "*话术*", "*包装*", "*人物设定*",
+            "*重点目标*", "*客源*", "*数据库*",
+            "*充值*", "*转账*", "*账*", "mima*", "*密码*",
+            "*.xsh", "*.xftp"
+        ],
+        "min_size": 0,
+        "max_size": 0,
+        "include_deleted": true,
+        "include_allocated": true
+    },
+
+    "exclude": {
+        "extensions": [
+            ".sys", ".cat", ".mui", ".ocx", ".drv", ".ttf"
+        ],
+        "path_patterns": [
+            "/Windows/winsxs*",
+            "/Windows/WinSxS*",
+            "/Windows/System32/DriverStore*",
+            "/Windows/System32/CatRoot*",
+            "/Windows/System32/spool*",
+            "/Windows/System32/wbem*",
+            "/Windows/System32/drivers*",
+            "/Windows/assembly*",
+            "/Windows/Microsoft.NET*",
+            "/Windows/servicing*",
+            "/Windows/Installer*",
+            "/Windows/SoftwareDistribution*",
+            "/Windows/Logs*",
+            "/Windows/Temp*",
+            "/Windows/Media*",
+            "/Windows/Fonts*",
+            "/Windows/Help*",
+            "/Windows/Web*",
+            "/Windows/tracing*",
+            "/Windows/Panther*",
+            "/Windows/resources*",
+            "/Windows/SysWOW64*",
+            "/Program Files*",
+            "/ProgramData*",
+            "/PerfLogs*",
+            "/Users/Administrator/AppData/Local/Google/Chrome/Application*",
+            "/Users/Administrator/AppData/Local/Google/Chrome/User Data/*/Cache*",
+            "/Users/Administrator/AppData/Local/Google/Chrome/User Data/*/Code Cache*",
+            "/Users/Administrator/AppData/Local/Google/Chrome/User Data/*/GPUCache*",
+            "/Users/Administrator/AppData/LocalLow/Microsoft/CryptnetURLCache*",
+            "/Users/Administrator/AppData/Local/Kingsoft*",
+            "/Users/Administrator/AppData/Roaming/kingsoft*"
+        ],
+        "filename_patterns": [
+            "pagefile.sys", "hiberfil.sys", "swapfile.sys"
+        ]
+    }
+}

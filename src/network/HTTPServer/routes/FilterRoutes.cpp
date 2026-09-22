@@ -23,6 +23,29 @@ static bool isValidProfileName(const std::string& name) {
     return true;
 }
 
+// Crow delivers <string> path params percent-encoded; profile names may be
+// non-ASCII (e.g. Chinese), so decode before filesystem lookup.
+static std::string urlDecodeProfileName(const std::string& in) {
+    auto hexVal = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    std::string out;
+    out.reserve(in.size());
+    for (size_t i = 0; i < in.size(); ++i) {
+        if (in[i] == '%' && i + 2 < in.size() &&
+            hexVal(in[i + 1]) >= 0 && hexVal(in[i + 2]) >= 0) {
+            out += static_cast<char>(hexVal(in[i + 1]) * 16 + hexVal(in[i + 2]));
+            i += 2;
+        } else {
+            out += in[i];
+        }
+    }
+    return out;
+}
+
 FilterRoutes::FilterRoutes(crow::App<>& app) {
     // GET /api/filter/profiles - List all available filter profiles
     CROW_ROUTE(app, "/api/filter/profiles").methods("GET"_method)([this](const crow::request& req) {
@@ -140,7 +163,8 @@ crow::response FilterRoutes::handle_get_profile(const crow::request& req, const 
     crow::response res;
     RouteHelpers::add_cors_headers(res);
 
-    if (!isValidProfileName(name)) {
+    const std::string decodedName = urlDecodeProfileName(name);
+    if (!isValidProfileName(decodedName)) {
         auto resp = ApiResponse::create_error("Invalid profile name", "VALIDATION_ERROR");
         res.code = 400;
         res.set_header("Content-Type", "application/json");
@@ -158,9 +182,9 @@ crow::response FilterRoutes::handle_get_profile(const crow::request& req, const 
             return res;
         }
 
-        std::string profilePath = profilesDir + "/" + name + ".json";
+        std::string profilePath = profilesDir + "/" + decodedName + ".json";
         if (!fs::exists(profilePath)) {
-            auto resp = ApiResponse::create_error("Profile not found: " + name, "NOT_FOUND");
+            auto resp = ApiResponse::create_error("Profile not found: " + decodedName, "NOT_FOUND");
             res.code = 404;
             res.set_header("Content-Type", "application/json");
             res.write(resp.to_json().dump());
@@ -334,7 +358,8 @@ crow::response FilterRoutes::handle_delete_profile(const crow::request& req, con
     crow::response res;
     RouteHelpers::add_cors_headers(res);
 
-    if (!isValidProfileName(name)) {
+    const std::string decodedName = urlDecodeProfileName(name);
+    if (!isValidProfileName(decodedName)) {
         auto resp = ApiResponse::create_error("Invalid profile name", "VALIDATION_ERROR");
         res.code = 400;
         res.set_header("Content-Type", "application/json");
@@ -352,9 +377,9 @@ crow::response FilterRoutes::handle_delete_profile(const crow::request& req, con
             return res;
         }
 
-        std::string profilePath = profilesDir + "/" + name + ".json";
+        std::string profilePath = profilesDir + "/" + decodedName + ".json";
         if (!fs::exists(profilePath)) {
-            auto resp = ApiResponse::create_error("Profile not found: " + name, "NOT_FOUND");
+            auto resp = ApiResponse::create_error("Profile not found: " + decodedName, "NOT_FOUND");
             res.code = 404;
             res.set_header("Content-Type", "application/json");
             res.write(resp.to_json().dump());
@@ -366,8 +391,8 @@ crow::response FilterRoutes::handle_delete_profile(const crow::request& req, con
             "general_forensics", "telecom_fraud", "data_breach", "virus_intrusion"
         };
         for (const auto& builtin : builtins) {
-            if (name == builtin) {
-                auto resp = ApiResponse::create_error("Cannot delete built-in profile: " + name, "FORBIDDEN");
+            if (decodedName == builtin) {
+                auto resp = ApiResponse::create_error("Cannot delete built-in profile: " + decodedName, "FORBIDDEN");
                 res.code = 403;
                 res.set_header("Content-Type", "application/json");
                 res.write(resp.to_json().dump());
@@ -377,7 +402,7 @@ crow::response FilterRoutes::handle_delete_profile(const crow::request& req, con
 
         fs::remove(profilePath);
 
-        auto resp = ApiResponse::create_success("Profile deleted: " + name);
+        auto resp = ApiResponse::create_success("Profile deleted: " + decodedName);
         res.code = 200;
         res.set_header("Content-Type", "application/json");
         res.write(resp.to_json().dump());

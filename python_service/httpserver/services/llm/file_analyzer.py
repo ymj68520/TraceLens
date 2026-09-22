@@ -50,8 +50,13 @@ def resolve_analysis_path(file_path: str, extraction_dir: Optional[str]) -> Opti
         # Legacy passthrough: no task extraction dir to resolve against.
         return file_path
     candidate = Path(file_path)
-    if candidate.exists():
-        return file_path
+    try:
+        if candidate.exists():
+            return file_path
+    except OSError:
+        # Unstatable host paths (e.g. /root/* as non-root) must fall through
+        # to the extraction-dir resolution instead of failing the analysis.
+        pass
     relative = file_path.lstrip("/")
     if not relative or ".." in Path(relative).parts:
         return None
