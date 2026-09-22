@@ -216,12 +216,30 @@ cd python_service
 - Working State `state_json` is an opaque canonical-JSON dict in P1; the
   versioned Pydantic Working State schema arrives with the control plane.
 
-## Deferred to Phase 2 (control plane)
+## Deferred beyond P1
+
+Implementation phases follow the frozen eight-phase plan
+(`docs/specs/agent-architecture-v0.md` §29): P1 Runtime Persistence
+Foundation, P2 Deterministic Control Plane, P3 PydanticAI + Read-only
+Tool/Skill Substrate, P4 Agent Investigation Loop, P5 Correlation +
+Grounding + Verification, P6 Selective Investigation Context Graph,
+P7 Agent-aware Report Runtime, P8 Benchmark + Acceptance + Calibration.
+
+Deferred to P2 (deterministic control plane):
 
 - `ServiceManager` wiring of agent runtime recovery into an
   `AgentOrchestrator` executor (`initialize()`/`shutdown()` pattern), and the
   `mvp/agent-v0-phase2-control-plane` branch.
-- Orchestrator main loop (PLAN/EXECUTE/INTEGRATE/EVALUATE), real Delegation
-  executors, continuation provenance (`continues_from`) columns if/when
-  frozen.
+- Orchestrator deterministic control-plane shell
+  (PLAN/EXECUTE/INTEGRATE/EVALUATE state-machine scaffolding);
+  P2 must not execute PydanticAI/Supervisor/Specialist agents.
+- Continuation provenance (`continues_from`) columns if/when frozen.
+
+Deferred to P3/P4:
+
+- Real agent-backed Delegation execution is deferred to P4, after the
+  P3 PydanticAI/read-only Tool/Skill substrate exists.
+
+Not in any near phase:
+
 - Any HTTP surface (P1 added none) and any frontend change (none).

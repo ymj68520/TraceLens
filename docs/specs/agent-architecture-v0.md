@@ -2590,9 +2590,44 @@ existing service facades to expose safe internal adapters
 
 ---
 
-## 29. Proposed Implementation Sequencing — NOT YET FROZEN
+## 29. Implementation Sequencing — FROZEN (v0 eight-phase plan)
 
-以下是根据 frozen architecture 推导出的**建议实施顺序**，不是已经冻结的 Phase contract；真正实施前要先调查当前仓库。
+以下八阶段实施计划已**正式冻结**，是 Agent v0 的唯一实施切分依据（本文档其余章节冻结的是架构 contract，本节冻结的是实施阶段边界）。
+
+```text
+P1 Runtime Persistence Foundation
+P2 Deterministic Control Plane
+P3 PydanticAI + Read-only Tool/Skill Substrate
+P4 Agent Investigation Loop
+P5 Correlation + Grounding + Verification
+P6 Selective Investigation Context Graph
+P7 Agent-aware Report Runtime
+P8 Benchmark + Acceptance + Calibration
+```
+
+### 29.0 冻结的阶段边界（hard phase boundaries）
+
+```text
+PydanticAI cannot enter P2.
+Real Agent execution cannot enter P2.
+Graph cannot enter P2–P5 except existing read-side reuse where explicitly needed.
+Report Agent work cannot enter before P7.
+```
+
+各阶段范围：
+
+- **P1 Runtime Persistence Foundation** — Investigation/Run/Delegation 持久化、Working State revision + Trajectory、admission/idempotency、restart recovery。
+- **P2 Deterministic Control Plane** — StateTransitionPolicy、AttentionBuilder、FinalizationGate、NoProgressDetector、deterministic Orchestrator shell、ServiceManager recovery wiring。第一条硬约束：只实现 deterministic control plane；不安装/调用 PydanticAI，不运行 Supervisor/Specialist/Correlation/Verifier Agent。
+- **P3 PydanticAI + Read-only Tool/Skill Substrate** — PydanticAI thin adapter、ToolDefinition/ToolRegistry、initial canonical read-only tools、SourceCapabilityManifest、SourceSpecialist profiles、SkillResolver、ContextAssembler。仍不允许 Agent propose/mutate canonical Investigation objects。
+- **P4 Agent Investigation Loop** — Supervisor、Specialist、real agent-backed Delegation execution、bounded parallelism、Question/Coverage/Hypothesis/Contradiction transitions、Integration mode。
+- **P5 Correlation + Grounding + Verification** — EntityOccurrence/IdentityPolicy、DeterministicCorrelationEngine、CorrelationAgent、ProposedClaim pipeline、Grounding Validator、SemanticVerifier、AssertionPolicy。
+- **P6 Selective Investigation Context Graph** — GraphCandidate、GraphAdmissionPolicy、frozen episode、materialization manifest、Graph Reader filtering/provenance、investigation/report retrieval modes。
+- **P7 Agent-aware Report Runtime** — ReportOutlinePlan、ChapterSpec、Retrieval Planner、ReportContextPack、Chapter Writer、Assertion Ledger、Consistency Review。
+- **P8 Benchmark + Acceptance + Calibration** — Truth Manifest、baseline + ablation harness、negative cases、large-case performance、failure-layer attribution；完成后再校准 Attention Window、Graph budget、tool limits 等数值参数。
+
+### 29.1 历史：原 A–G 建议切分（已被八阶段计划取代，仅存档）
+
+以下 A–G 内容是八阶段计划冻结之前生成的**建议顺序**，仅作历史对照，不得作为实施依据；实际阶段边界一律以上文 P1–P8 为准。
 
 ### Phase A — Runtime skeleton without autonomous investigation
 
