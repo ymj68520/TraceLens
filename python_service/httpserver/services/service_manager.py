@@ -58,12 +58,14 @@ class ServiceManager:
         self._report_generation_executor = None
         self._secondary_analysis_executor = None
         self._event_refresh_executor = None
+        self._agent_orchestrator = None
         self._initialized = False
         self._cpp_backend_ready = False
         self._forensic_report_ready = False
         self._report_generation_ready = False
         self._secondary_analysis_ready = False
         self._event_refresh_ready = False
+        self._agent_orchestrator_ready = False
         self._lifecycle_state = "new"
         self._lifecycle_lock = asyncio.Lock()
         self._initialization_task: Optional[asyncio.Task[None]] = None
@@ -191,6 +193,22 @@ class ServiceManager:
                     f"EventRefreshExecutor initialization failed: {error}"
                 )
 
+            # Agent control plane (P2): deterministic orchestrator shell whose
+            # initialize() runs the trusted task-owned runtime recovery sweep
+            # before the runtime becomes usable. No LLM / agent execution.
+            try:
+                orchestrator = self._create_agent_orchestrator()
+                await asyncio.wait_for(
+                    orchestrator.initialize(),
+                    timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
+                )
+                self._agent_orchestrator = orchestrator
+                self._agent_orchestrator_ready = True
+            except Exception as error:
+                logger.warning(
+                    f"AgentOrchestrator initialization failed: {error}"
+                )
+
             # Initialize Report Generation Executor (after forensic report
             # service + LLM). LLM may be None: recovery must still run and
             # real submissions fail durably with llm_unavailable. The
@@ -260,6 +278,7 @@ class ServiceManager:
         rollback_plan = (
             (self._migration_manager, "close"),
             (self._ingestion_job_manager, "shutdown"),
+            (self._agent_orchestrator, "shutdown"),
             (self._event_refresh_executor, "shutdown"),
             (self._report_generation_executor, "shutdown"),
             (self._secondary_analysis_executor, "shutdown"),
@@ -345,6 +364,7 @@ class ServiceManager:
 
     def _service_cleanup_plan(self) -> tuple[tuple[object | None, str], ...]:
         return (
+            (self._agent_orchestrator, "shutdown"),
             (self._event_refresh_executor, "shutdown"),
             (self._report_generation_executor, "shutdown"),
             (self._secondary_analysis_executor, "shutdown"),
@@ -366,6 +386,7 @@ class ServiceManager:
         self._investigation_read_service = None
         self._report_evidence_service = None
         self._report_generation_service = None
+        self._agent_orchestrator = None
         self._event_refresh_executor = None
         self._report_generation_executor = None
         self._secondary_analysis_executor = None
@@ -379,6 +400,7 @@ class ServiceManager:
         self._report_generation_ready = False
         self._secondary_analysis_ready = False
         self._event_refresh_ready = False
+        self._agent_orchestrator_ready = False
 
     def _require_service_access(self) -> None:
         if self._lifecycle_state == "initializing":
@@ -685,6 +707,21 @@ class ServiceManager:
         if self._event_refresh_executor is None or not self._event_refresh_ready:
             raise RuntimeError("event refresh executor is unavailable")
         return self._event_refresh_executor
+
+    def _create_agent_orchestrator(self):
+        from .investigation.agent_orchestrator import AgentOrchestrator
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        return AgentOrchestrator(self._cpp_backend)
+
+    @property
+    def agent_orchestrator(self):
+        """Deterministic agent control plane (P2)."""
+        self._require_service_access()
+        if self._agent_orchestrator is None or not self._agent_orchestrator_ready:
+            raise RuntimeError("agent orchestrator is unavailable")
+        return self._agent_orchestrator
 
     def _create_secondary_analysis_executor(self):
         from .investigation.execution import SecondaryAnalysisExecutor

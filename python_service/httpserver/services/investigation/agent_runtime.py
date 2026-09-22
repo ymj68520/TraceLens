@@ -1516,6 +1516,17 @@ class AgentRuntimeRepository:
             ).fetchone()
         return self._row_to_revision(row) if row is not None else None
 
+    def find_revision_by_operation_key(
+        self, investigation_id: str, operation_key: str
+    ) -> Optional[WorkingStateRevision]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_working_state_revisions "
+                "WHERE task_id = ? AND investigation_id = ? AND operation_key = ?",
+                [self.task_id, investigation_id, operation_key],
+            ).fetchone()
+        return self._row_to_revision(row) if row is not None else None
+
     def commit_working_state(
         self,
         investigation_id: str,
@@ -1735,6 +1746,16 @@ class AgentRuntimeRepository:
                     raise AgentRuntimeConflictError(
                         f"finalization run is not active ({run_row['status']!r})"
                     )
+                if run_row["status"] == "queued":
+                    # legal two-step within this transaction: a queued
+                    # requesting run is marked started, then finalized
+                    self._transition_run_with_conn(
+                        conn, run_row, AgentRunStatus.running, now=now,
+                    )
+                    run_row = conn.execute(
+                        "SELECT * FROM agent_runs WHERE task_id = ? AND run_id = ?",
+                        [self.task_id, run_id],
+                    ).fetchone()
                 self._transition_run_with_conn(
                     conn, run_row, AgentRunStatus.completed,
                     stop_reason=RunStopReason.finalized, now=now,
