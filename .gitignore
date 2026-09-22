@@ -463,3 +463,11 @@ src/http_agent/tests/test_http_agent.cpp.pre-gtest
 
 # Local STT models (SenseVoice/VAD) — downloaded, never committed
 python_service/models/
+
+# 演示/巡检产物，均不入库：
+# data/ 运行时案件与 IM 导入数据；reports/ 生成的调查报告；
+# testimg/ 非 sqlite 库导出快照（约 1.2G）；web/.audit-pages*.cjs 临时巡检脚本
+/data/
+/reports/
+/testimg/
+/web/.audit-pages*.cjs
