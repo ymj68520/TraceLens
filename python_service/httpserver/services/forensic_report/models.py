@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from enum import Enum
 from pathlib import Path
 from typing import Any, Iterator, Literal, Protocol, Sequence
@@ -343,34 +344,110 @@ class ReportGenerationEnvelopeV1(BaseModel):
 
     @model_validator(mode="after")
     def _validate_determinism(self):
-        items = (*self.main_evidence, *self.appendix_evidence)
-        for name, keys in (
-            ("main_evidence", [i.evidence_key for i in self.main_evidence]),
-            ("appendix_evidence", [i.evidence_key for i in self.appendix_evidence]),
-        ):
-            if keys != sorted(keys):
-                raise ValueError(f"{name} must be sorted by evidence_key")
-            if len(set(keys)) != len(keys):
-                raise ValueError(f"{name} contains a duplicate evidence_key")
-        if list(self.allowed_report_evidence_ids) != sorted(set(self.allowed_report_evidence_ids)):
-            raise ValueError("allowed_report_evidence_ids must be sorted and unique")
-        if set(self.allowed_report_evidence_ids) != {i.evidence_key for i in items}:
-            raise ValueError(
-                "allowed_report_evidence_ids must equal the main+appendix keys"
-            )
-        for item in items:
-            if item.snapshot.task_id != self.task_id:
-                raise ValueError("envelope snapshot task mismatch")
-            bound = item.bound_analysis
-            if bound is None:
-                continue
-            claim_ids = [claim.claim_id for claim in bound.claims]
-            if claim_ids != sorted(claim_ids):
-                raise ValueError("claims must be sorted by claim_id")
-            for claim in bound.claims:
-                if list(claim.evidence_refs) != sorted(claim.evidence_refs):
-                    raise ValueError("claim evidence_refs must be sorted")
+        _validate_envelope_determinism(
+            task_id=self.task_id,
+            main_evidence=self.main_evidence,
+            appendix_evidence=self.appendix_evidence,
+            allowed_report_evidence_ids=self.allowed_report_evidence_ids,
+        )
         return self
+
+
+CASE_DESCRIPTION_MAX_CHARS = 8000
+
+
+class ReportGenerationEnvelopeV2(BaseModel):
+    """V2: adds the frozen case description to the generation input.
+
+    The case background is part of the hash-verified persisted input (not
+    the system prompt) so "what background did the model see" stays exactly
+    auditable per generation. Admission truncates deterministically at
+    ``CASE_DESCRIPTION_MAX_CHARS``; the narrative contract that consumes it
+    lives in the prompt version, not here.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: Literal[2] = 2
+    prompt_version: str
+    task_id: str
+    case_description: str = Field(max_length=CASE_DESCRIPTION_MAX_CHARS)
+    main_evidence: tuple[EnvelopeEvidenceItemV1, ...] = ()
+    appendix_evidence: tuple[EnvelopeEvidenceItemV1, ...] = ()
+    allowed_report_evidence_ids: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_determinism(self):
+        _validate_envelope_determinism(
+            task_id=self.task_id,
+            main_evidence=self.main_evidence,
+            appendix_evidence=self.appendix_evidence,
+            allowed_report_evidence_ids=self.allowed_report_evidence_ids,
+        )
+        return self
+
+
+def _validate_envelope_determinism(
+    *,
+    task_id: str,
+    main_evidence: tuple[EnvelopeEvidenceItemV1, ...],
+    appendix_evidence: tuple[EnvelopeEvidenceItemV1, ...],
+    allowed_report_evidence_ids: tuple[str, ...],
+) -> None:
+    items = (*main_evidence, *appendix_evidence)
+    for name, keys in (
+        ("main_evidence", [i.evidence_key for i in main_evidence]),
+        ("appendix_evidence", [i.evidence_key for i in appendix_evidence]),
+    ):
+        if keys != sorted(keys):
+            raise ValueError(f"{name} must be sorted by evidence_key")
+        if len(set(keys)) != len(keys):
+            raise ValueError(f"{name} contains a duplicate evidence_key")
+    if list(allowed_report_evidence_ids) != sorted(set(allowed_report_evidence_ids)):
+        raise ValueError("allowed_report_evidence_ids must be sorted and unique")
+    if set(allowed_report_evidence_ids) != {i.evidence_key for i in items}:
+        raise ValueError(
+            "allowed_report_evidence_ids must equal the main+appendix keys"
+        )
+    for item in items:
+        if item.snapshot.task_id != task_id:
+            raise ValueError("envelope snapshot task mismatch")
+        bound = item.bound_analysis
+        if bound is None:
+            continue
+        claim_ids = [claim.claim_id for claim in bound.claims]
+        if claim_ids != sorted(claim_ids):
+            raise ValueError("claims must be sorted by claim_id")
+        for claim in bound.claims:
+            if list(claim.evidence_refs) != sorted(claim.evidence_refs):
+                raise ValueError("claim evidence_refs must be sorted")
+
+
+def parse_generation_envelope(raw: str) -> "ReportGenerationEnvelopeV1 | ReportGenerationEnvelopeV2":
+    """Parse a persisted generation envelope, dispatching on schema_version.
+
+    A stored row's bytes are version-tagged; strict pydantic validation for
+    the matching model, ValueError for anything else (unknown/missing
+    version, shape drift) -- the executor turns that into
+    ``input_integrity_error`` exactly like a ValidationError today.
+    """
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("envelope is not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("envelope must be a JSON object")
+    version = payload.get("schema_version")
+    model = {
+        1: ReportGenerationEnvelopeV1,
+        2: ReportGenerationEnvelopeV2,
+    }.get(version)
+    if model is None:
+        raise ValueError(f"unsupported envelope schema_version: {version!r}")
+    try:
+        return model.model_validate(payload)
+    except ValidationError as exc:
+        raise ValueError("envelope failed schema validation") from exc
 
 
 class ReportGenerationInput(BaseModel):
@@ -457,6 +534,50 @@ class StructuredReportResponse(BaseModel):
             if unknown:
                 raise ValueError("section references an unknown citation_id")
         return self
+
+
+class StructuredOutlineSection(BaseModel):
+    """One planned section of the v2 outline.
+
+    ``group_ids`` names the deterministic evidence groups this section must
+    cover (membership semantics enforced by the executor against the real
+    grouping, not here -- the model only ever sees group ids and names).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    heading: str = Field(min_length=1, max_length=500)
+    brief: str = Field(min_length=1, max_length=2000)
+    group_ids: tuple[str, ...] = ()
+
+
+class StructuredOutlineResponse(BaseModel):
+    """Strict structured LLM output for the v2 outline stage.
+
+    Lower bound is 3 so small evidence sets (a handful of files) still map
+    to a legal outline; the prompt asks the model to scale the count to the
+    evidence at hand instead of padding filler chapters.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    title: str = Field(min_length=1, max_length=500)
+    sections: tuple[StructuredOutlineSection, ...] = Field(min_length=3, max_length=15)
+
+
+class StructuredSectionResponse(BaseModel):
+    """Strict structured LLM output for one v2 section.
+
+    ``analysis_id``/``claim_id`` stay structurally possible (same citation
+    identity as the assembled report) but the v2 section prompts never
+    provide frozen analyses, and the executor rejects any non-null value.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    heading: str = Field(min_length=1, max_length=500)
+    content: str = Field(min_length=1, max_length=100_000)
+    citations: tuple[StructuredReportCitation, ...] = ()
 
 
 class CitationManifestEntry(BaseModel):

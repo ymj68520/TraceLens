@@ -35,12 +35,14 @@ from ..investigation.models import (
 from ..investigation.paths import investigation_db_path_for_task
 from ..investigation.repository import SUPPORTED_SCHEMA_VERSION
 from .models import (
+    CASE_DESCRIPTION_MAX_CHARS,
     EnvelopeBoundAnalysisReviewV1,
     EnvelopeBoundAnalysisV1,
     EnvelopeClaimV1,
     EnvelopeEvidenceItemV1,
     EnvelopeSnapshotV1,
     ReportGenerationEnvelopeV1,
+    ReportGenerationEnvelopeV2,
     ReportGenerationInput,
 )
 from .repository import ReportRepository
@@ -48,7 +50,12 @@ from .repository import ReportRepository
 # Prompt version identity only (R2b): the version string is frozen into the
 # envelope hash now so R2c's executor prompt can never invalidate an admitted
 # input_hash contract. The prompt itself is R2c scope.
-REPORT_GENERATION_PROMPT_VERSION = "final-report:v1"
+REPORT_GENERATION_PROMPT_VERSION = "final-report:v2"
+
+# Legacy single-shot contract (schema v1). Kept executable per the R2c
+# compatibility map; admission no longer produces it by default. The literal
+# lives here because generation_prompts imports this module's version.
+REPORT_GENERATION_PROMPT_V1_LEGACY = "final-report:v1"
 
 
 class ReportGenerationInputError(RuntimeError):
@@ -80,8 +87,11 @@ class ReportGenerationInputBuilder:
         self._task_id = task_id
 
     def assemble(
-        self, prompt_version: str = REPORT_GENERATION_PROMPT_VERSION
-    ) -> ReportGenerationEnvelopeV1:
+        self,
+        prompt_version: str = REPORT_GENERATION_PROMPT_VERSION,
+        *,
+        case_description: str = "",
+    ) -> ReportGenerationEnvelopeV2:
         try:
             with contextlib.closing(self._connect()) as conn:
                 version = conn.execute("PRAGMA user_version").fetchone()[0]
@@ -91,7 +101,9 @@ class ReportGenerationInputBuilder:
                     )
                 conn.execute("BEGIN")
                 try:
-                    return self._assemble_with_conn(conn, prompt_version)
+                    return self._assemble_with_conn(
+                        conn, prompt_version, case_description=case_description
+                    )
                 finally:
                     conn.execute("ROLLBACK")
         except sqlite3.DatabaseError as exc:
@@ -106,8 +118,12 @@ class ReportGenerationInputBuilder:
         return conn
 
     def _assemble_with_conn(
-        self, conn: sqlite3.Connection, prompt_version: str
-    ) -> ReportGenerationEnvelopeV1:
+        self,
+        conn: sqlite3.Connection,
+        prompt_version: str,
+        *,
+        case_description: str = "",
+    ) -> ReportGenerationEnvelopeV1 | ReportGenerationEnvelopeV2:
         main: list[EnvelopeEvidenceItemV1] = []
         appendix: list[EnvelopeEvidenceItemV1] = []
         if self._report_evidence_table_exists(conn):
@@ -130,7 +146,7 @@ class ReportGenerationInputBuilder:
                     main.append(item)
                 else:
                     appendix.append(item)
-        return ReportGenerationEnvelopeV1(
+        common = dict(
             prompt_version=prompt_version,
             task_id=self._task_id,
             main_evidence=tuple(main),
@@ -138,6 +154,13 @@ class ReportGenerationInputBuilder:
             allowed_report_evidence_ids=tuple(
                 sorted({item.evidence_key for item in (*main, *appendix)})
             ),
+        )
+        if prompt_version == REPORT_GENERATION_PROMPT_V1_LEGACY:
+            # Legacy single-shot contract: no case description in the input.
+            return ReportGenerationEnvelopeV1(**common)
+        return ReportGenerationEnvelopeV2(
+            case_description=case_description[:CASE_DESCRIPTION_MAX_CHARS],
+            **common,
         )
 
     def _item_with_conn(
@@ -327,7 +350,13 @@ class ReportGenerationAdmissionService:
                 "no_report_evidence", "task has no report evidence"
             )
         builder = ReportGenerationInputBuilder(db_path, task_id)
-        envelope = await asyncio.to_thread(builder.assemble, prompt_version)
+        envelope = await asyncio.to_thread(
+            builder.assemble,
+            prompt_version,
+            # The task lookup above is the trusted server-side source; the
+            # background text freezes into the hash-covered envelope here.
+            case_description=str(task.get("case_description") or ""),
+        )
         if not envelope.main_evidence and not envelope.appendix_evidence:
             raise ReportGenerationInputError(
                 "no_report_evidence", "task has no report evidence"

@@ -15,7 +15,11 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from .models import StructuredReportResponse
+from .models import (
+    StructuredOutlineResponse,
+    StructuredReportResponse,
+    StructuredSectionResponse,
+)
 
 
 class StructuredReportOutputError(ValueError):
@@ -39,11 +43,7 @@ def parse_structured_report_response(content: str) -> StructuredReportResponse:
     if not isinstance(content, str) or not content:
         raise StructuredReportOutputError("report response must be non-empty")
     try:
-        payload = json.loads(
-            content,
-            object_pairs_hook=_reject_duplicate_keys,
-            parse_constant=_reject_constant,
-        )
+        payload = _loads_strict(content)
     except StructuredReportOutputError:
         raise
     except (json.JSONDecodeError, TypeError, ValueError) as exc:
@@ -56,4 +56,42 @@ def parse_structured_report_response(content: str) -> StructuredReportResponse:
         raise StructuredReportOutputError("report response schema is invalid") from exc
 
 
-__all__ = ["StructuredReportOutputError", "parse_structured_report_response"]
+def _loads_strict(content: str) -> Any:
+    return json.loads(
+        content,
+        object_pairs_hook=_reject_duplicate_keys,
+        parse_constant=_reject_constant,
+    )
+
+
+def _parse_strict_model(content: str, model, label: str):
+    if not isinstance(content, str) or not content:
+        raise StructuredReportOutputError(f"{label} response must be non-empty")
+    try:
+        payload = _loads_strict(content)
+    except StructuredReportOutputError:
+        raise
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise StructuredReportOutputError(f"invalid {label} JSON") from exc
+    if not isinstance(payload, dict):
+        raise StructuredReportOutputError(f"{label} response must be a JSON object")
+    try:
+        return model.model_validate(payload)
+    except ValidationError as exc:
+        raise StructuredReportOutputError(f"{label} response schema is invalid") from exc
+
+
+def parse_structured_outline_response(content: str) -> StructuredOutlineResponse:
+    return _parse_strict_model(content, StructuredOutlineResponse, "outline")
+
+
+def parse_structured_section_response(content: str) -> StructuredSectionResponse:
+    return _parse_strict_model(content, StructuredSectionResponse, "section")
+
+
+__all__ = [
+    "StructuredReportOutputError",
+    "parse_structured_outline_response",
+    "parse_structured_report_response",
+    "parse_structured_section_response",
+]

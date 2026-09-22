@@ -20,7 +20,6 @@ import pytest
 
 from httpserver.services.evidence import ResolvedEvidence
 from httpserver.services.forensic_report.generation import (
-    REPORT_GENERATION_PROMPT_VERSION,
     ReportGenerationInputBuilder,
 )
 from httpserver.services.forensic_report.generation_execution import (
@@ -30,6 +29,7 @@ from httpserver.services.forensic_report.generation_execution import (
     validate_report_citations,
 )
 from httpserver.services.forensic_report.generation_prompts import (
+    REPORT_GENERATION_PROMPT_V1,
     build_report_generation_user_prompt,
     get_report_generation_prompt,
 )
@@ -141,7 +141,9 @@ def _repo_with_binding(tmp_path: Path, task_id: str = "A"):
 
 def _admit(
     repository: ReportRepository, root: Path, task_id: str = "A",
-    *, prompt_version: str = REPORT_GENERATION_PROMPT_VERSION,
+    # v1 is the single-shot contract these original tests exercise; the
+    # sectioned v2 pipeline has its own tests with scripted stage outputs.
+    *, prompt_version: str = REPORT_GENERATION_PROMPT_V1,
     input_hash: str | None = None,
 ):
     import hashlib
@@ -407,7 +409,7 @@ def test_user_prompt_is_exactly_the_persisted_envelope(tmp_path):
 
     llm, row = asyncio.run(scenario())
     system_prompt, user_template = get_report_generation_prompt(
-        REPORT_GENERATION_PROMPT_VERSION
+        REPORT_GENERATION_PROMPT_V1
     )
     expected = build_report_generation_user_prompt(
         user_template,
@@ -556,7 +558,7 @@ def _bound(analysis_id: str, claims: tuple[EnvelopeClaimV1, ...]) -> EnvelopeBou
 def _envelope(items, allowed=None) -> ReportGenerationEnvelopeV1:
     keys = sorted({item.evidence_key for item in items})
     return ReportGenerationEnvelopeV1(
-        prompt_version=REPORT_GENERATION_PROMPT_VERSION, task_id="A",
+        prompt_version=REPORT_GENERATION_PROMPT_V1, task_id="A",
         main_evidence=tuple(items),
         allowed_report_evidence_ids=tuple(allowed if allowed is not None else keys),
     )
@@ -808,7 +810,7 @@ def test_state_machine_triggers(tmp_path):
     repository = ReportRepository(tmp_path / "reports.db")
     row = repository.create_generation_input(
         "T", requested_by="x", input_schema_version=1,
-        prompt_version=REPORT_GENERATION_PROMPT_VERSION,
+        prompt_version=REPORT_GENERATION_PROMPT_V1,
         input_envelope_json="{}", input_hash="h",
     )
     conn = sqlite3.connect(repository.db_path)
