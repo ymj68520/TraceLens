@@ -1028,10 +1028,12 @@ WHEN
         OR NEW.failure_code IS NOT NULL
     ))
  OR (NEW.status = 'stale' AND (
-        NEW.stale_at IS NULL OR NEW.completed_at IS NOT NULL
+        NEW.stale_at IS NULL
         OR NEW.failed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
         OR NEW.integrated_at IS NOT NULL OR NEW.integrated_revision IS NOT NULL
         OR NEW.failure_code IS NOT NULL
+        OR (OLD.status = 'completed' AND NEW.completed_at IS NULL)
+        OR (OLD.status <> 'completed' AND NEW.completed_at IS NOT NULL)
     ))
 BEGIN
     SELECT RAISE(ABORT, 'invalid agent delegation state fields');
@@ -1088,7 +1090,8 @@ WHEN (OLD.status = 'queued' AND NEW.status NOT IN
         ('running', 'failed', 'cancelled', 'stale'))
   OR (OLD.status = 'running' AND NEW.status NOT IN
         ('completed', 'failed', 'cancelled', 'stale'))
-  OR OLD.status IN ('completed', 'failed', 'cancelled', 'stale')
+  OR (OLD.status IN ('completed', 'failed', 'cancelled', 'stale')
+      AND NOT (OLD.status = 'completed' AND NEW.status = 'stale'))
 BEGIN
     SELECT RAISE(ABORT, 'illegal agent delegation status transition');
 END
@@ -1137,6 +1140,28 @@ WHEN OLD.status IN ('completed', 'failed', 'cancelled', 'stale')
         AND NEW.failed_at IS OLD.failed_at
         AND NEW.cancelled_at IS OLD.cancelled_at
         AND NEW.stale_at IS OLD.stale_at
+  )
+    AND NOT (
+        OLD.status = 'completed' AND NEW.status = 'stale'
+        AND OLD.integrated_at IS NULL AND NEW.integrated_at IS NULL
+        AND OLD.integrated_revision IS NULL AND NEW.integrated_revision IS NULL
+        AND NEW.stale_at IS NOT NULL
+        AND NEW.delegation_id IS OLD.delegation_id
+        AND NEW.task_id IS OLD.task_id
+        AND NEW.investigation_id IS OLD.investigation_id
+        AND NEW.run_id IS OLD.run_id
+        AND NEW.question_ref IS OLD.question_ref
+        AND NEW.based_on_state_revision IS OLD.based_on_state_revision
+        AND NEW.context_hash IS OLD.context_hash
+        AND NEW.cancel_requested_at IS OLD.cancel_requested_at
+        AND NEW.failure_code IS OLD.failure_code
+        AND NEW.failure_message IS OLD.failure_message
+        AND NEW.idempotency_key IS OLD.idempotency_key
+        AND NEW.created_at IS OLD.created_at
+        AND NEW.started_at IS OLD.started_at
+        AND NEW.completed_at IS OLD.completed_at
+        AND NEW.failed_at IS OLD.failed_at
+        AND NEW.cancelled_at IS OLD.cancelled_at
   )
 BEGIN
     SELECT RAISE(ABORT, 'terminal agent delegation is immutable');
@@ -2081,6 +2106,17 @@ class InvestigationRepository:
             )
             conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
             conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+            # P4B §10.3: replace the delegation guards with the widened
+            # definitions (single sanctioned completed->stale edge;
+            # unintegrated rows only, other columns pinned to OLD).
+            # CREATE TRIGGER IF NOT EXISTS is a no-op on live triggers,
+            # so the v11-era definitions are dropped first.
+            conn.execute("DROP TRIGGER IF EXISTS trg_agent_delegation_no_terminal_update")
+            conn.execute("DROP TRIGGER IF EXISTS trg_agent_delegation_state_fields")
+            conn.execute("DROP TRIGGER IF EXISTS trg_agent_delegation_legal_transition")
+            conn.execute(_TRIGGER_AGENT_DELEGATION_NO_TERMINAL_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_DELEGATION_STATE_FIELDS_SQL)
+            conn.execute(_TRIGGER_AGENT_DELEGATION_LEGAL_TRANSITION_SQL)
             conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
             conn.commit()
             conn.execute("PRAGMA foreign_keys = ON")

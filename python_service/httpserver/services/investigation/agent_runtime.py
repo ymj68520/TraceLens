@@ -376,6 +376,18 @@ class ToolObservation(BaseModel):
     created_at: str
 
 
+class AgentIntegrationCommit(BaseModel):
+    """Outcome of one atomic semantic integration commit (P4B §19/§22)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: str  # "committed" | "replayed"
+    state_revision: int
+    operation_key: str
+    decision_hash: str
+    integrated_delegation_ids: list[str] = []
+
+
 class DelegationResult(BaseModel):
     """Immutable terminal result of one delegation (P4A §17)."""
 
@@ -1280,6 +1292,242 @@ class AgentRuntimeRepository:
             ).fetchone()
             results.append(self._row_to_delegation(row))
         return results
+
+    def mark_completed_delegation_stale(
+        self,
+        delegation_id: str,
+        *,
+        expected_result_hash: str,
+        reason_codes: Sequence[str] = (),
+    ) -> AgentDelegation:
+        """Guarded ``completed -> stale`` (P4B §10.3): the P2 transition
+        table has no such edge, so this primitive is the ONLY path — it
+        requires an exact completed delegation, no prior integration, and a
+        matching result hash. The stale result keeps its full audit row but
+        can never enter semantic integration."""
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = self._require_delegation_row_with_conn(conn, delegation_id)
+            if row["status"] != DelegationStatus.completed.value:
+                raise AgentRuntimeConflictError(
+                    "only a completed delegation can be marked stale"
+                )
+            if row["integrated_at"] is not None:
+                raise AgentRuntimeConflictError(
+                    "delegation is already integrated; stale is not possible"
+                )
+            stored = self.get_delegation_result(delegation_id)
+            if stored is None or stored.result_hash != expected_result_hash:
+                raise AgentRuntimeConflictError(
+                    "result hash does not match the persisted result"
+                )
+            conn.execute(
+                "UPDATE agent_delegations SET status = 'stale', stale_at = ? "
+                "WHERE task_id = ? AND delegation_id = ?",
+                [now, self.task_id, delegation_id],
+            )
+            self._append_trajectory_with_conn(
+                conn, row["investigation_id"],
+                AgentTrajectoryEventType.delegation_stale,
+                run_id=row["run_id"], delegation_id=delegation_id,
+                payload={
+                    "result_hash": expected_result_hash,
+                    "reason_codes": list(reason_codes),
+                },
+                now=now,
+            )
+            conn.commit()
+            delegation = self.get_delegation(delegation_id)
+        assert delegation is not None
+        return delegation
+
+    def commit_agent_integration(
+        self,
+        investigation_id: str,
+        *,
+        expected_revision: int,
+        expected_state_hash: str,
+        operation_key: str,
+        integration_policy_version: str,
+        decision_payload: Mapping[str, Any],
+        decision_hash: str,
+        delegation_integrations: Sequence[Mapping[str, str]] = (),
+        new_state: Optional[Mapping[str, Any]] = None,
+        run_id: Optional[str] = None,
+    ) -> "AgentIntegrationCommit":
+        """THE atomic semantic integration commit (P4B §19).
+
+        One BEGIN IMMEDIATE transaction revalidates the working state head,
+        revalidates every source delegation (completed, unintegrated, exact
+        result hash), persists the integration decision audit, inserts the
+        new Working State revision (revision += exactly 1, only when the
+        policy changed the state), and marks the consumed delegations
+        integrated. Any failure rolls back everything — no partial state,
+        no partial integrated_at, no half audit.
+
+        Idempotent replay (P4B §22): an operation_key already committed
+        returns the original outcome; for noop integrations (no revision
+        row) the already-integrated delegations themselves prove the prior
+        commit, and replay returns the current head unchanged.
+        """
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            investigation = self._require_investigation_with_conn(
+                conn, investigation_id
+            )
+            if investigation["status"] not in ("ready", "active"):
+                raise AgentRuntimeConflictError(
+                    "integration requires an active investigation "
+                    f"(current: {investigation['status']!r})"
+                )
+            latest = conn.execute(
+                "SELECT * FROM agent_working_state_revisions "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "ORDER BY revision DESC LIMIT 1",
+                [self.task_id, investigation_id],
+            ).fetchone()
+            if latest is None:
+                raise AgentRuntimeConflictError(
+                    "investigation has no committed working state"
+                )
+            head_revision = int(latest["revision"])
+            head_hash = latest["state_hash"]
+
+            # replay: semantic path (operation_key committed)
+            replayed = conn.execute(
+                "SELECT * FROM agent_working_state_revisions "
+                "WHERE task_id = ? AND investigation_id = ? AND operation_key = ?",
+                [self.task_id, investigation_id, operation_key],
+            ).fetchone()
+            integrated_rows = []
+            for binding in delegation_integrations:
+                delegation_id = binding["delegation_id"]
+                row = self._require_delegation_row_with_conn(
+                    conn, delegation_id
+                )
+                if row["investigation_id"] != investigation_id:
+                    raise AgentRuntimeConflictError(
+                        "delegation belongs to a different investigation"
+                    )
+                if row["status"] == DelegationStatus.completed.value and (
+                    row["integrated_at"] is not None
+                ):
+                    integrated_rows.append(row)
+                    continue
+                if row["status"] != DelegationStatus.completed.value:
+                    raise AgentRuntimeConflictError(
+                        f"delegation {delegation_id!r} is not completed"
+                    )
+                stored = conn.execute(
+                    "SELECT result_hash FROM agent_delegation_results "
+                    "WHERE task_id = ? AND delegation_id = ?",
+                    [self.task_id, delegation_id],
+                ).fetchone()
+                if stored is None or stored["result_hash"] != binding.get(
+                    "result_hash"
+                ):
+                    raise AgentRuntimeConflictError(
+                        f"result hash mismatch for {delegation_id!r}"
+                    )
+                integrated_rows.append(row)
+
+            if replayed is not None:
+                conn.commit()
+                return AgentIntegrationCommit(
+                    status="replayed",
+                    state_revision=int(replayed["revision"]),
+                    operation_key=operation_key,
+                    decision_hash=decision_hash,
+                    integrated_delegation_ids=[
+                        row["delegation_id"] for row in integrated_rows
+                    ],
+                )
+            if all(
+                row["integrated_at"] is not None
+                for row in integrated_rows
+            ) and integrated_rows:
+                # noop replay: no revision row exists, but every source
+                # delegation is already integrated — the prior commit is
+                # proven; return the current head without re-consuming
+                conn.commit()
+                return AgentIntegrationCommit(
+                    status="replayed",
+                    state_revision=head_revision,
+                    operation_key=operation_key,
+                    decision_hash=decision_hash,
+                    integrated_delegation_ids=[
+                        row["delegation_id"] for row in integrated_rows
+                    ],
+                )
+
+            if head_revision != expected_revision or head_hash != expected_state_hash:
+                raise AgentRuntimeConflictError(
+                    "working state head moved during integration "
+                    f"(expected {expected_revision}/{expected_state_hash[:8]}, "
+                    f"current {head_revision}/{head_hash[:8]})"
+                )
+
+            semantic_changed = new_state is not None
+            new_revision: Optional[int] = None
+            if semantic_changed:
+                conn.execute(
+                    "INSERT INTO agent_working_state_revisions "
+                    "(task_id, investigation_id, revision, state_json, "
+                    " state_hash, previous_state_hash, operation_key, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        self.task_id, investigation_id, head_revision + 1,
+                        canonical_state_json(dict(new_state)),
+                        state_hash_of(dict(new_state)), head_hash,
+                        operation_key, now,
+                    ],
+                )
+                new_revision = head_revision + 1
+
+            audit_payload = {
+                "operation_key": operation_key,
+                "integration_policy_version": integration_policy_version,
+                "decision_hash": decision_hash,
+                "decision": dict(decision_payload),
+                "based_on_revision": expected_revision,
+                "based_on_state_hash": expected_state_hash,
+                "result_revision": new_revision,
+                "source_results": [
+                    dict(binding) for binding in delegation_integrations
+                ],
+                "semantic_changed": semantic_changed,
+            }
+            self._append_trajectory_with_conn(
+                conn, investigation_id,
+                AgentTrajectoryEventType.supervisor_integration_committed,
+                run_id=run_id, payload=audit_payload, now=now,
+            )
+            for row in integrated_rows:
+                conn.execute(
+                    "UPDATE agent_delegations SET integrated_at = ?, "
+                    "integrated_revision = ? "
+                    "WHERE task_id = ? AND delegation_id = ? "
+                    "AND integrated_at IS NULL",
+                    [
+                        now,
+                        new_revision if new_revision is not None else head_revision,
+                        self.task_id, row["delegation_id"],
+                    ],
+                )
+            conn.commit()
+        return AgentIntegrationCommit(
+            status="committed",
+            state_revision=(
+                new_revision if new_revision is not None else head_revision
+            ),
+            operation_key=operation_key,
+            decision_hash=decision_hash,
+            integrated_delegation_ids=[
+                row["delegation_id"] for row in integrated_rows
+            ],
+        )
 
     def commit_supervisor_plan(
         self,
