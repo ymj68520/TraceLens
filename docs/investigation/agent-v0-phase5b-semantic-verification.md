@@ -5,7 +5,8 @@
 ```text
 baseline: 7c6bebf1  (P5A frozen HEAD)
 branch:   mvp/agent-v0-phase5-correlation-grounding-verification  (same branch)
-schema:   investigation.db v13 -> v14 (additive)
+schema:   investigation.db v13 -> v14 (additive; F1 追加
+          agent_verification_obligations 状态机表于 v14 内，无 v15)
 ```
 
 | Commit | Content |
@@ -14,7 +15,9 @@ schema:   investigation.db v13 -> v14 (additive)
 | `b894576b` | P5B-2 bounded CorrelationAgent + proposal→claim seam |
 | `e3724f57` | P5B-3 deterministic AssertionPolicy + starter registry + ClaimDisposition |
 | `b72de4d2` | P5B-4 review-pending Findings + Analyst Review handoff + AddFindingReference |
-| (P5B-5) | question_closure + finalization_review + E2E pipeline + docs + freeze gate |
+| `90320211` | P5B-5 question_closure + finalization_review + E2E pipeline + docs |
+| `a0a9c700` | follow-up F1 mandatory verification durable lifecycle |
+| `52dfd693` | follow-up F2 final semantic review production wiring |
 
 ## 1. Repository findings
 
@@ -114,11 +117,40 @@ HYPOTHESIS 类；`causal_confirmed` 在输出词汇中不可构造。§24 seam
 
 ## 7. Orchestrator seam（§77/§78）
 
-无自动接线：`process_claim_verification(...)`（agent_verification.py）是显式
-入口——policy preflight 决定是否跑 verifier（§54），Supervisor/调用方请求、
-Orchestrator 准入、Verifier 执行、Integration 消费。静态测试钉死
-orchestrator/ServiceManager 不 import 任何 P5B 模块；FinalizationGate 不变，
-verifier pass 永不绕过 hard blocker（§68）。
+三层语义必须区分（勿再混述为"完全无接线"）：
+
+1. **Claim verification**：显式准入/执行（`process_claim_verification`）——
+   不是每个 proposal 自动后台跑 verifier（§54：policy preflight 决定是否
+   需要；调用方显式发起）。
+2. **Mandatory verification（F1）**：semantic_required 的 preflight 产出
+   durable `agent_verification_obligations` 行（状态机 pending→running→
+   satisfied/failed/unavailable/safely_downgraded，确定性 obligation id，
+   replay 不重复）。P5 永不直接写 Working State；control plane 把 durable
+   行**确定性投影**进传给 AttentionBuilder 与 FinalizationGate 的 state
+   视图（既有 pending_verifications schema）：pending/running→pending、
+   satisfied/safely_downgraded→passed、failed/unavailable 原样。blocking
+   的 mandatory verification = P1 CORRECTNESS BLOCKER（unavailable 也阻
+   塞，provider 失败永不静默降级）；required+pending/failed/unavailable →
+   Finalization DENY。restart：running → failed(runtime_restart)（并入既
+   有 recovery sweep），obligation 本身不消失。
+3. **Final semantic review（F2）**：已接入 RequestFinalization 生产路径——
+   Supervisor 请求 → 确定性 preflight → 有效 FinalizationPolicy 模式
+   （best_effort/required 由 config 拥有，Supervisor/LLM 无权改）→ 纯数据
+   冻结 payload（state/finding digests + mandatory verification
+   statuses）→ 注入的 `FinalSemanticReviewRunner`（orchestrator 只依赖
+   dict 协议，任何作用域都不 import PydanticAI/P5B 模块；ServiceManager
+   的 adapter 在真正跑 review 时才 lazy load）→ 响应验证 → 既有
+   FinalizationGate → 原子 finalize。stale 保护：payload 绑定 expected
+   revision/hash，review 期间 state 漂移则结果作废、显式 stale 警告、
+   绝不以旧 review 完成新 revision。best_effort+unavailable 在存在
+   mandatory blocker 时仍 DENY；required+unavailable 恒 DENY（402 永不
+   complete_with_limitations）。审计：review 的 result_ref（verification
+   id+input hash）写入既有 FinalizationRecord.verifier_result_ref /
+   final_verification_status——无新表。
+
+Orchestrator/ServiceManager 在任何作用域都不 import P5B 重模块（静态测试
+钉死的是这一点，而非"P5 语义状态不可见"——它已通过接口/投影真实可见）。
+FinalizationGate 仍是唯一完成权威；verifier pass 永不绕过 hard blocker。
 
 ## 8. Schema v14
 
