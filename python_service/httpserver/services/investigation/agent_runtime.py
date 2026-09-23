@@ -124,6 +124,7 @@ class AgentTrajectoryEventType(str, Enum):
     entity_occurrences_recorded = "entity_occurrences_recorded"
     correlation_candidates_recorded = "correlation_candidates_recorded"
     claim_grounding_recorded = "claim_grounding_recorded"
+    claim_proposals_recorded = "claim_proposals_recorded"
 
 
 # Application-side transition tables; the identically-shaped DB triggers are
@@ -2389,11 +2390,12 @@ class AgentRuntimeRepository:
     ) -> dict:
         """Append-only CorrelationCandidate recording, idempotent by
         correlation_id. Counts-only trajectory payload."""
-        required = (
+        required_nonempty = (
             "correlation_id", "relation_family", "subject_ref", "object_ref",
-            "derivation", "assertion_hint", "evidence_refs", "support_types",
-            "limitations", "causal_status", "input_hash",
+            "derivation", "assertion_hint", "evidence_refs", "causal_status",
+            "input_hash",
         )
+        required_present = ("support_types", "limitations")
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             self._require_investigation_with_conn(conn, investigation_id)
@@ -2406,9 +2408,11 @@ class AgentRuntimeRepository:
             inserted = 0
             for row in rows:
                 missing = sorted(
-                    key for key in required
+                    key for key in required_nonempty
                     if row.get(key) is None or row.get(key) == ()
                     or row.get(key) == ""
+                ) + sorted(
+                    key for key in required_present if key not in row
                 )
                 if missing:
                     raise ValueError(
@@ -2501,6 +2505,166 @@ class AgentRuntimeRepository:
                 "created_at": row["created_at"],
             })
         return candidates
+
+    def record_claim_proposals(
+        self,
+        investigation_id: str,
+        rows: Sequence[Mapping[str, Any]],
+        *,
+        run_id: Optional[str] = None,
+        delegation_id: Optional[str] = None,
+        append_trajectory: bool = True,
+    ) -> dict:
+        """Append-only ProposedClaim recording, idempotent by proposal_id."""
+        required_nonempty = (
+            "proposal_id", "text", "assertion_class", "normalizer_version",
+            "input_hash",
+        )
+        required_present = (
+            "evidence_refs", "source_question_ids", "relationship_refs",
+            "limitations", "normalization_warnings",
+        )
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            if run_id is not None:
+                self._require_run_with_conn(conn, run_id, investigation_id)
+            if delegation_id is not None:
+                self._require_delegation_with_conn(
+                    conn, delegation_id, investigation_id
+                )
+            inserted = 0
+            for row in rows:
+                missing = sorted(
+                    key for key in required_nonempty
+                    if row.get(key) is None or row.get(key) == ()
+                    or row.get(key) == ""
+                ) + sorted(
+                    key for key in required_present if key not in row
+                )
+                if missing:
+                    raise ValueError(
+                        "claim proposal missing required fields: " f"{missing}"
+                    )
+                cursor = conn.execute(
+                    "INSERT OR IGNORE INTO agent_claim_proposals "
+                    "(proposal_id, task_id, investigation_id, "
+                    " source_question_ids_json, source_delegation_id, "
+                    " source_result_hash, source_candidate_id, text, "
+                    " assertion_class, evidence_refs_json, "
+                    " relationship_refs_json, temporal_scope_json, "
+                    " limitations_json, normalization_warnings_json, "
+                    " normalizer_version, input_hash, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        row["proposal_id"], self.task_id, investigation_id,
+                        canonical_state_json(
+                            {"ids": list(row["source_question_ids"])}
+                        ),
+                        row.get("source_delegation_id"),
+                        row.get("source_result_hash"),
+                        row.get("source_candidate_id"),
+                        row["text"], row["assertion_class"],
+                        canonical_state_json(
+                            {"refs": list(row["evidence_refs"])}
+                        ),
+                        canonical_state_json(
+                            {"refs": list(row["relationship_refs"])}
+                        ),
+                        canonical_state_json(dict(row["temporal_scope"]))
+                        if row.get("temporal_scope") is not None else None,
+                        canonical_state_json(
+                            {"limitations": list(row["limitations"])}
+                        ),
+                        canonical_state_json(
+                            {"warnings": list(row["normalization_warnings"])}
+                        ),
+                        row["normalizer_version"], row["input_hash"],
+                        _now_iso(),
+                    ],
+                )
+                if cursor.rowcount and cursor.rowcount > 0:
+                    inserted += cursor.rowcount
+            if append_trajectory:
+                self._append_trajectory_with_conn(
+                    conn, investigation_id,
+                    AgentTrajectoryEventType.claim_proposals_recorded,
+                    run_id=run_id, delegation_id=delegation_id,
+                    payload={
+                        "proposal_count": len(rows),
+                        "inserted_count": inserted,
+                        "duplicate_count": len(rows) - inserted,
+                    },
+                )
+            conn.commit()
+        return {
+            "proposal_count": len(rows),
+            "inserted_count": inserted,
+            "duplicate_count": len(rows) - inserted,
+        }
+
+    def get_claim_proposal(
+        self, investigation_id: str, proposal_id: str
+    ) -> Optional[dict]:
+        """The §45 proposal-ref resolver seam: a proposal_ref must resolve to
+        a durably persisted proposal of the SAME task/investigation."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_claim_proposals "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND proposal_id = ?",
+                [self.task_id, investigation_id, proposal_id],
+            ).fetchone()
+        return self._claim_proposal_row_to_dict(row) if row else None
+
+    def list_claim_proposals(self, investigation_id: str) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM agent_claim_proposals "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "ORDER BY proposal_row_id",
+                [self.task_id, investigation_id],
+            ).fetchall()
+        return [
+            self._claim_proposal_row_to_dict(row) for row in rows
+        ]
+
+    @staticmethod
+    def _claim_proposal_row_to_dict(row: sqlite3.Row) -> dict:
+        temporal = row["temporal_scope_json"]
+        return {
+            "proposal_id": row["proposal_id"],
+            "task_id": row["task_id"],
+            "investigation_id": row["investigation_id"],
+            "source_question_ids": tuple(
+                json.loads(row["source_question_ids_json"]).get("ids", [])
+            ),
+            "source_delegation_id": row["source_delegation_id"],
+            "source_result_hash": row["source_result_hash"],
+            "source_candidate_id": row["source_candidate_id"],
+            "text": row["text"],
+            "assertion_class": row["assertion_class"],
+            "evidence_refs": tuple(
+                json.loads(row["evidence_refs_json"]).get("refs", [])
+            ),
+            "relationship_refs": tuple(
+                json.loads(row["relationship_refs_json"]).get("refs", [])
+            ),
+            "temporal_scope": (
+                json.loads(temporal) if temporal else None
+            ),
+            "limitations": tuple(
+                json.loads(row["limitations_json"]).get("limitations", [])
+            ),
+            "normalization_warnings": tuple(
+                json.loads(row["normalization_warnings_json"]).get(
+                    "warnings", []
+                )
+            ),
+            "normalizer_version": row["normalizer_version"],
+            "input_hash": row["input_hash"],
+            "created_at": row["created_at"],
+        }
 
     def record_delegation_result(
         self,

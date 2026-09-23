@@ -781,7 +781,7 @@ CREATE TABLE IF NOT EXISTS agent_trajectory_events (
         'tool_observation_recorded',
         'supervisor_plan_decided','supervisor_integration_committed',
         'entity_occurrences_recorded','correlation_candidates_recorded',
-        'claim_grounding_recorded')),
+        'claim_grounding_recorded','claim_proposals_recorded')),
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
     UNIQUE(task_id, event_id),
@@ -1685,7 +1685,7 @@ CREATE TABLE agent_trajectory_events_v13_rebuild (
         'tool_observation_recorded',
         'supervisor_plan_decided','supervisor_integration_committed',
         'entity_occurrences_recorded','correlation_candidates_recorded',
-        'claim_grounding_recorded')),
+        'claim_grounding_recorded','claim_proposals_recorded')),
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
     UNIQUE(task_id, event_id),
@@ -2483,6 +2483,7 @@ class InvestigationRepository:
             "entity_occurrences_recorded",
             "correlation_candidates_recorded",
             "claim_grounding_recorded",
+            "claim_proposals_recorded",
         ):
             if value not in (sql or ""):
                 raise EvidenceStoreError(

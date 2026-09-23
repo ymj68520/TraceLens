@@ -1434,7 +1434,14 @@ class AgentOrchestrator:
         integration_validator = IntegrationDecisionValidator(
             evidence_ref_validator=getattr(
                 self, "_integration_evidence_validator", None
-            )
+            ),
+            # P5A §45: pending proposal refs must resolve to durable
+            # proposal rows of this task/investigation (the production path
+            # is always strict).
+            proposal_ref_resolver=(
+                lambda ref, _rid=investigation_id, _runtime=runtime:
+                _runtime.get_claim_proposal(_rid, ref) is not None
+            ),
         )
         iv = integration_validator.validate(integration_context, integration_decision)
         if not iv.valid:

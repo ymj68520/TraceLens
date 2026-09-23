@@ -346,6 +346,9 @@ class IntegrationViolationCode(str, enum.Enum):
     INTEGRATION_TRANSITION_TYPE_NOT_ALLOWED = "INTEGRATION_TRANSITION_TYPE_NOT_ALLOWED"
     INTEGRATION_BASIS_REF_UNKNOWN = "INTEGRATION_BASIS_REF_UNKNOWN"
     INTEGRATION_EVIDENCE_REF_INVALID = "INTEGRATION_EVIDENCE_REF_INVALID"
+    # P5A §45: AddPendingProposalReference must resolve to a durably
+    # persisted proposal of the same task/investigation.
+    INTEGRATION_PROPOSAL_REF_UNRESOLVED = "INTEGRATION_PROPOSAL_REF_UNRESOLVED"
     INTEGRATION_SCOPE_MUTATION_FORBIDDEN = "INTEGRATION_SCOPE_MUTATION_FORBIDDEN"
     INTEGRATION_REVIEW_MUTATION_FORBIDDEN = "INTEGRATION_REVIEW_MUTATION_FORBIDDEN"
     INTEGRATION_GRAPH_MUTATION_FORBIDDEN = "INTEGRATION_GRAPH_MUTATION_FORBIDDEN"
@@ -382,8 +385,14 @@ class IntegrationDecisionValidator:
         self,
         *,
         evidence_ref_validator: Optional[Callable[[str], None]] = None,
+        proposal_ref_resolver: Optional[Callable[[str], bool]] = None,
     ):
         self._evidence_ref_validator = evidence_ref_validator
+        # P5A §45 seam: when provided, every AddPendingProposalReference's
+        # proposal_ref must resolve (same task/investigation, durable row).
+        # Production wiring (AgentOrchestrator) always provides it; direct
+        # P2/P4B-module users keep the pre-P5A behaviour when None.
+        self._proposal_ref_resolver = proposal_ref_resolver
 
     def validate(
         self,
@@ -510,6 +519,25 @@ class IntegrationDecisionValidator:
                             "proposal evidence reference failed task scoping",
                             location,
                         ))
+            # P5A §45: pending proposal refs must resolve to a durable
+            # proposal row of the same task/investigation (never an
+            # ephemeral object, LLM text or candidate array index).
+            if (type_name == "AddPendingProposalReference"
+                    and self._proposal_ref_resolver is not None):
+                try:
+                    resolved = bool(
+                        self._proposal_ref_resolver(proposal.proposal_ref)
+                    )
+                except Exception:
+                    resolved = False
+                if not resolved:
+                    violations.append((
+                        IntegrationViolationCode.INTEGRATION_PROPOSAL_REF_UNRESOLVED,
+                        "pending proposal reference does not resolve to "
+                        "a durably persisted proposal of this "
+                        "task/investigation",
+                        location,
+                    ))
             # question-binding refs must belong to the context state
             for question_ref in _transition_question_refs(proposal):
                 if question_ref and question_ref not in state_questions:
