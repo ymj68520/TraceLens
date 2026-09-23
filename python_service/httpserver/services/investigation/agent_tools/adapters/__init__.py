@@ -5,7 +5,14 @@ from typing import Any, Callable
 from ..registry import ForensicToolRegistry
 from .base import ToolCatalogConfig
 from .services import ForensicToolServices
-from . import evidence, files, investigation_reads, task_context, timeline
+from . import (
+    evidence,
+    files,
+    investigation_reads,
+    platform_artifacts,
+    task_context,
+    timeline,
+)
 
 ToolBuildFunc = Callable[[ForensicToolServices, ToolCatalogConfig], tuple]
 
@@ -13,6 +20,7 @@ ToolBuildFunc = Callable[[ForensicToolServices, ToolCatalogConfig], tuple]
 def read_only_catalog_builders() -> list[ToolBuildFunc]:
     return [
         task_context.build_task_context_tool,
+        platform_artifacts.build_query_platform_artifacts_tool,
         evidence.build_search_evidence_tool,
         evidence.build_get_evidence_tool,
         evidence.build_find_related_evidence_tool,
@@ -31,15 +39,24 @@ def build_read_only_registry(
     observation_sink: Any = None,
     evidence_ref_validator=None,
     builders: list[ToolBuildFunc] | None = None,
+    family_registry: "ArtifactFamilyRegistry | None" = None,
 ) -> ForensicToolRegistry:
     """Assemble the P3 read-only registry over trusted service facades."""
+    from ...agent_capabilities import ArtifactFamilyRegistry
+
     config = config or ToolCatalogConfig()
     registry = ForensicToolRegistry(
         observation_sink=observation_sink,
         evidence_ref_validator=evidence_ref_validator,
     )
+    family_registry = family_registry or ArtifactFamilyRegistry.with_defaults()
     for builder in builders or read_only_catalog_builders():
-        definition, adapter = builder(services, config)
+        if builder is platform_artifacts.build_query_platform_artifacts_tool:
+            definition, adapter = builder(
+                services, config, family_registry=family_registry
+            )
+        else:
+            definition, adapter = builder(services, config)
         registry.register(definition, adapter)
     return registry
 
