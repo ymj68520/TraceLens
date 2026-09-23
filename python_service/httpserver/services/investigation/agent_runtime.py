@@ -2378,6 +2378,130 @@ class AgentRuntimeRepository:
             created_at=row["created_at"],
         )
 
+    def record_correlation_candidates(
+        self,
+        investigation_id: str,
+        rows: Sequence[Mapping[str, Any]],
+        *,
+        run_id: Optional[str] = None,
+        delegation_id: Optional[str] = None,
+        append_trajectory: bool = True,
+    ) -> dict:
+        """Append-only CorrelationCandidate recording, idempotent by
+        correlation_id. Counts-only trajectory payload."""
+        required = (
+            "correlation_id", "relation_family", "subject_ref", "object_ref",
+            "derivation", "assertion_hint", "evidence_refs", "support_types",
+            "limitations", "causal_status", "input_hash",
+        )
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            if run_id is not None:
+                self._require_run_with_conn(conn, run_id, investigation_id)
+            if delegation_id is not None:
+                self._require_delegation_with_conn(
+                    conn, delegation_id, investigation_id
+                )
+            inserted = 0
+            for row in rows:
+                missing = sorted(
+                    key for key in required
+                    if row.get(key) is None or row.get(key) == ()
+                    or row.get(key) == ""
+                )
+                if missing:
+                    raise ValueError(
+                        "correlation candidate missing required fields: "
+                        f"{missing}"
+                    )
+                temporal = row.get("temporal_relation")
+                cursor = conn.execute(
+                    "INSERT OR IGNORE INTO agent_correlation_candidates "
+                    "(correlation_id, task_id, investigation_id, "
+                    " relation_family, subject_ref, object_ref, derivation, "
+                    " assertion_hint, evidence_refs_json, support_types_json, "
+                    " temporal_relation_json, limitations_json, "
+                    " causal_status, input_hash, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        row["correlation_id"], self.task_id, investigation_id,
+                        row["relation_family"], row["subject_ref"],
+                        row["object_ref"], row["derivation"],
+                        row["assertion_hint"],
+                        canonical_state_json(
+                            {"refs": list(row["evidence_refs"])}
+                        ),
+                        canonical_state_json(
+                            {"types": list(row["support_types"])}
+                        ),
+                        canonical_state_json(dict(temporal))
+                        if temporal is not None else None,
+                        canonical_state_json(
+                            {"limitations": list(row["limitations"])}
+                        ),
+                        row["causal_status"], row["input_hash"], _now_iso(),
+                    ],
+                )
+                if cursor.rowcount and cursor.rowcount > 0:
+                    inserted += cursor.rowcount
+            if append_trajectory:
+                self._append_trajectory_with_conn(
+                    conn, investigation_id,
+                    AgentTrajectoryEventType.correlation_candidates_recorded,
+                    run_id=run_id, delegation_id=delegation_id,
+                    payload={
+                        "candidate_count": len(rows),
+                        "inserted_count": inserted,
+                        "duplicate_count": len(rows) - inserted,
+                    },
+                )
+            conn.commit()
+        return {
+            "candidate_count": len(rows),
+            "inserted_count": inserted,
+            "duplicate_count": len(rows) - inserted,
+        }
+
+    def list_correlation_candidates(self, investigation_id: str) -> list[dict]:
+        """All durable correlation candidates of one investigation."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM agent_correlation_candidates "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "ORDER BY correlation_row_id",
+                [self.task_id, investigation_id],
+            ).fetchall()
+        candidates: list[dict] = []
+        for row in rows:
+            candidates.append({
+                "correlation_id": row["correlation_id"],
+                "relation_family": row["relation_family"],
+                "subject_ref": row["subject_ref"],
+                "object_ref": row["object_ref"],
+                "derivation": row["derivation"],
+                "assertion_hint": row["assertion_hint"],
+                "evidence_refs": tuple(
+                    json.loads(row["evidence_refs_json"]).get("refs", [])
+                ),
+                "support_types": tuple(
+                    json.loads(row["support_types_json"]).get("types", [])
+                ),
+                "temporal_relation": (
+                    json.loads(row["temporal_relation_json"])
+                    if row["temporal_relation_json"] else None
+                ),
+                "limitations": tuple(
+                    json.loads(row["limitations_json"]).get(
+                        "limitations", []
+                    )
+                ),
+                "causal_status": row["causal_status"],
+                "input_hash": row["input_hash"],
+                "created_at": row["created_at"],
+            })
+        return candidates
+
     def record_delegation_result(
         self,
         delegation_id: str,
