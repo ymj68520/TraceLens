@@ -64,12 +64,12 @@ Failure mapping (§13): 402→`agent_billing_unavailable` (never recorded as an 
 
 ## 12. Tests
 
-`test_agent_specialist_result.py` (18), `test_agent_specialist_executor.py` (15, incl. §49 offline e2e through a REAL pydantic_ai TestModel agent: ContextPack → Agent → registry tool call → Observation+Trajectory → structured result → validator → completed → persisted, Working State revision unchanged), `test_agent_schema_v11_migration.py` (5). All offline (TestModel / duck-typed offline agents over the real registry); no default-gate test touches a real provider (§48/§56).
+`test_agent_specialist_result.py` (18), `test_agent_specialist_executor.py` (23, incl. §49 offline e2e through a REAL pydantic_ai TestModel agent and the F1 binding matrix), `test_agent_schema_v11_migration.py` (5). All offline (TestModel / duck-typed offline agents over the real registry); no default-gate test touches a real provider (§48/§56).
 
 ## 13. Known limitations / P4B deferred
 
 - Cancellation cannot interrupt a provider call mid-flight (§27's "if feasible" clause); the run finishes and the late output is discarded. No mid-run cancel polling between tool calls.
-- Skill-version binding compares the resolved skill-id set + registry hash; per-skill version pinning lands with P4B MergeGuard stale classification.
+- (resolved by the P4A freeze follow-up) Skill bindings are exact id+version pairs everywhere — see §7b.
 - Executor does not yet attach to the AgentOrchestrator loop — dispatch is explicit (P4B boundary).
 - Live provider smoke stays opt-in and is not a freeze gate; the DeepSeek account billing state is unchanged.
 - P4B owns: AttentionSet→Supervisor→SupervisorDecision→DecisionValidator→admission loop, MergeGuard, IntegrationContextPack, integration mode, Typed TransitionProposal → StateTransitionPolicy → Working State revisions, progress evaluation, re-plan/finalization.

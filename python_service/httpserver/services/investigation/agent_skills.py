@@ -244,6 +244,24 @@ def default_skill_catalog() -> dict[str, SkillDefinition]:
     return {skill.skill_id: skill for skill in skills}
 
 
+class FrozenSkillBinding(BaseModel):
+    """Exact versioned skill binding frozen into a ContextPack / execution
+    envelope (P4A freeze follow-up F1). The single binding contract — the
+    tool registry hash never substitutes for a skill version."""
+
+    model_config = ConfigDict(frozen=True)
+
+    skill_id: str
+    version: str
+
+    @field_validator("skill_id", "version")
+    @classmethod
+    def _non_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("skill binding fields must be non-blank")
+        return value
+
+
 class SkillRegistry(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -274,6 +292,7 @@ class SkillRegistry(BaseModel):
 
 __all__ = [
     "SKILL_REGISTRY_VERSION",
+    "FrozenSkillBinding",
     "SkillDefinition",
     "SkillRegistry",
     "default_skill_catalog",

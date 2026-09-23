@@ -975,3 +975,280 @@ async def test_offline_e2e_real_agent_through_pydantic_ai(runtime_env):
     assert trajectory[0].payload["observation_id"] == observations[0].observation_id
     # P4A-E17: no working state revision from agent completion
     assert repo.get_latest_working_state(investigation.investigation_id).revision == 1
+
+
+# ---------------------------------------------------------------------------
+# freeze follow-up F1: exact per-skill version binding (§8 matrix)
+# ---------------------------------------------------------------------------
+
+
+def _call_counting_executor(runtime_env, counter):
+    executor = _executor(runtime_env, agent_runner=None)
+
+    class CountingAgent:
+        async def run(self, prompt, *, deps, usage_limits=None):
+            counter["agent_calls"] += 1
+            await deps.tool_registry.execute(
+                deps.tool_context, "search_evidence", {"query": "logon"}
+            )
+            return SimpleNamespace(
+                output=_good_result(
+                    deps.tool_context.delegation_id,
+                    question_id=deps.tool_context.question_id,
+                ),
+                usage=lambda: None,
+                response=None,
+            )
+
+    executor._build_agent = lambda pack, registry: CountingAgent()
+    return executor
+
+
+async def _dispatch_with_envelope(runtime_env, envelope, executor):
+    return await executor.dispatch_delegation(envelope)
+
+
+def test_envelope_rejects_duplicate_and_empty_skill_bindings():
+    pack = _build_pack()
+    payload = {
+        "task_id": pack.task_id,
+        "investigation_id": pack.investigation_id,
+        "run_id": pack.run_id,
+        "delegation_id": "deleg-A",
+        "profile_id": pack.profile.profile_id,
+        "profile_version": pack.profile.version,
+        "tool_registry_hash": "h",
+        "context_pack": pack,
+        "context_hash": pack.input_hash(),
+        "allowed_tool_ids": frozenset({"search_evidence"}),
+        "model_config_digest": "d",
+    }
+    with pytest.raises(ValueError):
+        DelegationExecutionEnvelope(
+            **payload,
+            skill_bindings=[
+                SkillBinding(skill_id="windows.authentication", version="1"),
+                SkillBinding(skill_id="windows.authentication", version="1"),
+            ],
+        )
+    with pytest.raises(ValueError):
+        DelegationExecutionEnvelope(
+            **payload,
+            skill_bindings=[SkillBinding(skill_id="windows.authentication", version=" ")],
+        )
+
+
+def test_envelope_canonicalizes_skill_binding_order():
+    pack = _build_pack()
+    payload = {
+        "task_id": pack.task_id,
+        "investigation_id": pack.investigation_id,
+        "run_id": pack.run_id,
+        "delegation_id": "deleg-A",
+        "profile_id": pack.profile.profile_id,
+        "profile_version": pack.profile.version,
+        "tool_registry_hash": "h",
+        "context_pack": pack,
+        "context_hash": pack.input_hash(),
+        "allowed_tool_ids": frozenset({"search_evidence"}),
+        "model_config_digest": "d",
+    }
+    first = DelegationExecutionEnvelope(
+        **payload,
+        skill_bindings=[
+            SkillBinding(skill_id="b.skill", version="1"),
+            SkillBinding(skill_id="a.skill", version="2"),
+        ],
+    )
+    second = DelegationExecutionEnvelope(
+        **payload,
+        skill_bindings=[
+            SkillBinding(skill_id="a.skill", version="2"),
+            SkillBinding(skill_id="b.skill", version="1"),
+        ],
+    )
+    assert first.skill_bindings == second.skill_bindings
+    assert first.execution_input_hash() == second.execution_input_hash()
+
+
+def test_execution_input_hash_is_version_aware(runtime_env):
+    repo, _db, _inv, _run, _rev = runtime_env
+    registry = _registry_builder(repo)
+    pack = _build_pack()
+    envelope = build_execution_envelope(
+        pack, registry, question_text="q?", model_config_digest="d"
+    )
+    drifted = envelope.model_copy(
+        update={
+            "skill_bindings": tuple(
+                SkillBinding(skill_id=b.skill_id, version="9" if b.version == "1" else "1")
+                for b in envelope.skill_bindings
+            )
+        }
+    )
+    assert drifted.skill_bindings != envelope.skill_bindings
+    assert drifted.execution_input_hash() != envelope.execution_input_hash()
+
+
+def test_explicit_bindings_must_match_pack_at_freeze_time():
+    pack = _build_pack()
+    registry = _registry_builder(_make_bare_repo())
+    with pytest.raises(ValueError, match="frozen skill bindings"):
+        build_execution_envelope(
+            pack, registry, question_text="q?",
+            skill_bindings=(SkillBinding(skill_id="windows.authentication", version="2"),),
+            model_config_digest="d",
+        )
+
+
+def _make_bare_repo():
+    import tempfile
+
+    from httpserver.services.investigation.repository import (
+        InvestigationRepository,
+    )
+
+    tmp = tempfile.mkdtemp()
+    store = InvestigationRepository(f"{tmp}/investigation.db", "task-A")
+    return AgentRuntimeRepository(store)
+
+
+async def test_skill_version_changed_fails_before_agent_call(runtime_env):
+    repo, db_path, investigation, run, _rev = runtime_env
+    registry = _registry_builder(repo)
+    delegation_id = _admit_delegation(repo, run, question_ref="q-ver")
+    pack = _build_pack(question_id="q-ver").model_copy(
+        update={
+            "investigation_id": investigation.investigation_id,
+            "run_id": run.run_id,
+            "delegation_id": delegation_id,
+        }
+    )
+    envelope = build_execution_envelope(
+        pack, registry, question_text="q?", model_config_digest="d"
+    )
+    drifted = envelope.model_copy(
+        update={
+            "skill_bindings": tuple(
+                SkillBinding(skill_id=b.skill_id, version="9")
+                for b in envelope.skill_bindings
+            ),
+        }
+    )
+    counter = {"agent_calls": 0}
+    executor = _call_counting_executor(runtime_env, counter)
+    outcome = await _dispatch_with_envelope(runtime_env, drifted, executor)
+    assert outcome.status is DispatchStatus.FAILED
+    assert outcome.failure_code == DelegationFailureCode.INPUT_CONTRACT_CHANGED.value
+    assert "skill version binding changed" in (outcome.failure_message or "")
+    # fail closed BEFORE execution
+    assert counter["agent_calls"] == 0
+    assert repo.list_tool_observations(investigation.investigation_id) == []
+    assert repo.get_delegation(delegation_id).status is DelegationStatus.failed
+    assert repo.get_latest_working_state(investigation.investigation_id).revision == 1
+
+
+async def test_skill_removed_or_added_fails_before_agent_call(runtime_env):
+    repo, _db, investigation, run, _rev = runtime_env
+    registry = _registry_builder(repo)
+
+    for mutate in ("remove", "add"):
+        delegation_id = _admit_delegation(
+            repo, run, question_ref=f"q-{mutate}"
+        )
+        pack = _build_pack(question_id=f"q-{mutate}").model_copy(
+            update={
+                "investigation_id": investigation.investigation_id,
+                "run_id": run.run_id,
+                "delegation_id": delegation_id,
+            }
+        )
+        envelope = build_execution_envelope(
+            pack, registry, question_text="q?", model_config_digest="d"
+        )
+        if mutate == "remove":
+            bindings = envelope.skill_bindings[:-1] or ()
+        else:
+            bindings = tuple(envelope.skill_bindings) + (
+                SkillBinding(skill_id="ghost.skill", version="1"),
+            )
+        drifted = envelope.model_copy(update={"skill_bindings": bindings})
+        counter = {"agent_calls": 0}
+        executor = _call_counting_executor(runtime_env, counter)
+        outcome = await _dispatch_with_envelope(runtime_env, drifted, executor)
+        assert outcome.status is DispatchStatus.FAILED, mutate
+        assert outcome.failure_code == "input_contract_changed", mutate
+        assert counter["agent_calls"] == 0, mutate
+        assert repo.list_tool_observations(investigation.investigation_id) == [], mutate
+
+
+async def test_profile_version_changed_still_fails_closed(runtime_env):
+    repo, _db, investigation, run, _rev = runtime_env
+    registry = _registry_builder(repo)
+    delegation_id = _admit_delegation(repo, run, question_ref="q-prof")
+    pack = _build_pack(question_id="q-prof").model_copy(
+        update={
+            "investigation_id": investigation.investigation_id,
+            "run_id": run.run_id,
+            "delegation_id": delegation_id,
+        }
+    )
+    envelope = build_execution_envelope(
+        pack, registry, question_text="q?", model_config_digest="d"
+    )
+    drifted_pack = envelope.context_pack.model_copy(
+        update={
+            "profile": pack.profile.model_copy(update={"version": "2"}),
+        }
+    )
+    drifted_envelope = envelope.model_copy(
+        update={"profile_version": "1"}  # envelope still claims v1
+    )
+    counter = {"agent_calls": 0}
+    executor = _call_counting_executor(runtime_env, counter)
+    # execute against the drifted pack: profile version mismatch with envelope
+    drifted_envelope = drifted_envelope.model_copy(
+        update={"context_pack": drifted_pack}
+    )
+    outcome = await _dispatch_with_envelope(runtime_env, drifted_envelope, executor)
+    assert outcome.status is DispatchStatus.FAILED
+    assert outcome.failure_code == "input_contract_changed"
+    assert counter["agent_calls"] == 0
+
+
+async def test_exact_binding_match_executes_and_audits_provenance(runtime_env):
+    repo, _db, investigation, run, _rev = runtime_env
+    registry = _registry_builder(repo)
+    delegation_id = _admit_delegation(repo, run, question_ref="q-exact")
+    pack = _build_pack(question_id="q-exact").model_copy(
+        update={
+            "investigation_id": investigation.investigation_id,
+            "run_id": run.run_id,
+            "delegation_id": delegation_id,
+        }
+    )
+    assert pack.skill_bindings, "assembler must freeze versioned bindings"
+    envelope = build_execution_envelope(
+        pack, registry, question_text="q?", model_config_digest="d-exact"
+    )
+    assert envelope.skill_bindings == pack.skill_bindings
+    counter = {"agent_calls": 0}
+    executor = _call_counting_executor(runtime_env, counter)
+    outcome = await _dispatch_with_envelope(runtime_env, envelope, executor)
+    assert outcome.status is DispatchStatus.COMPLETED, outcome.failure_message
+    assert counter["agent_calls"] == 1
+    # §7 provenance chain recoverable from the durable trajectory payload
+    events = [
+        t
+        for t in repo.list_trajectory(investigation.investigation_id)
+        if t.event_type.value == "delegation_completed"
+    ]
+    payload = events[-1].payload
+    assert payload["execution_input_hash"] == envelope.execution_input_hash()
+    assert payload["context_hash"] == envelope.context_hash
+    assert payload["profile_id"] == envelope.profile_id
+    assert payload["profile_version"] == envelope.profile_version
+    assert [tuple(b) for b in payload["skill_bindings"]] == [
+        (b.skill_id, b.version) for b in envelope.skill_bindings
+    ]
+    assert payload["tool_registry_hash"] == envelope.tool_registry_hash

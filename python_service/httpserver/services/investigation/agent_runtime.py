@@ -1879,11 +1879,18 @@ class AgentRuntimeRepository:
         model_name: Optional[str] = None,
         model_config_hash: Optional[str] = None,
         usage: Optional[Mapping[str, Any]] = None,
+        trajectory_payload: Optional[Mapping[str, Any]] = None,
     ) -> tuple[DelegationResult, AgentDelegation]:
         """Atomic terminal success (P4A): the result row and the delegation's
         ``completed`` transition land in one transaction — a completed
         delegation always has exactly one valid result row, and a failed
-        insert never terminalizes the delegation."""
+        insert never terminalizes the delegation.
+
+        ``trajectory_payload`` extends the completion Action Trace with the
+        execution provenance chain (execution input hash, frozen profile /
+        skill bindings, registry hash) — durable audit without a schema
+        change; the payload never carries result data or evidence bodies.
+        """
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             stored = self._insert_delegation_result_with_conn(
@@ -1899,11 +1906,13 @@ class AgentRuntimeRepository:
             delegation = self._transition_delegation_with_conn(
                 conn, row, DelegationStatus.completed, now=now,
             )
+            payload = dict(trajectory_payload or {})
+            payload.setdefault("result_hash", result_hash)
             self._append_trajectory_with_conn(
                 conn, delegation.investigation_id,
                 _DELEGATION_TRAJECTORY_EVENT[DelegationStatus.completed],
                 run_id=delegation.run_id, delegation_id=delegation_id,
-                payload={"result_hash": result_hash}, now=now,
+                payload=payload, now=now,
             )
             conn.commit()
         return stored, delegation

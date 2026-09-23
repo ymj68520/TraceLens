@@ -17,10 +17,11 @@ import asyncio
 from enum import Enum
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .agent_context import SpecialistContextPack
 from .agent_runtime import AgentRuntimeRepository, canonical_state_json, state_hash_of
+from .agent_skills import FrozenSkillBinding
 from .agent_specialist_result import (
     SPECIALIST_RESULT_VERSION,
     ExecutionDigest,
@@ -129,11 +130,9 @@ def safe_failure_message(exc: Exception, code: DelegationFailureCode) -> str:
 # ---------------------------------------------------------------------------
 
 
-class SkillBinding(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    skill_id: str
-    version: str
+# single versioned binding contract (P4A freeze follow-up F1); the executor
+# never defines a second one
+SkillBinding = FrozenSkillBinding
 
 
 class DelegationExecutionEnvelope(BaseModel):
@@ -193,6 +192,33 @@ class DelegationExecutionEnvelope(BaseModel):
             )
         return value
 
+    @model_validator(mode="before")
+    @classmethod
+    def _canonicalize_skill_bindings(cls, data):
+        """Deterministic binding order (canonical sort by skill_id)."""
+        if isinstance(data, dict) and data.get("skill_bindings"):
+            def _sort_key(binding):
+                if isinstance(binding, dict):
+                    return binding.get("skill_id") or ""
+                return getattr(binding, "skill_id", "") or ""
+
+            data["skill_bindings"] = sorted(
+                data["skill_bindings"], key=_sort_key
+            )
+        return data
+
+    @model_validator(mode="after")
+    def _check_skill_bindings(self):
+        ids = [binding.skill_id for binding in self.skill_bindings]
+        if len(ids) != len(set(ids)):
+            raise ValueError("duplicate skill_id in frozen skill bindings")
+        for binding in self.skill_bindings:
+            if not binding.version.strip():
+                raise ValueError(
+                    "frozen skill bindings require a non-empty version"
+                )
+        return self
+
     def execution_input_hash(self) -> str:
         """Deterministic hash over the full frozen execution input (§42)."""
         payload = {
@@ -233,16 +259,39 @@ def build_execution_envelope(
     question_text: str = "",
     based_on_state_revision: Optional[int] = None,
     based_on_state_hash: Optional[str] = None,
-    skill_bindings: Sequence[SkillBinding] = (),
+    skill_bindings: Optional[Sequence[SkillBinding]] = None,
     model_config_digest: str,
     budget: Optional[ToolBudgetPolicy] = None,
     created_at: Optional[str] = None,
 ) -> DelegationExecutionEnvelope:
     """Freeze one delegation's execution input from a ContextPack.
 
-    Fails closed when the pack and the live registry disagree (the run would
-    otherwise execute against a different tool surface than the one hashed).
+    Skill bindings are derived from the pack's frozen bindings by default;
+    an explicit list must match the pack exactly (fail closed at freeze
+    time — never execute against a different skill surface than hashed).
     """
+    frozen_bindings = tuple(
+        sorted(pack.skill_bindings, key=lambda b: b.skill_id)
+    )
+    if skill_bindings is not None:
+        explicit = tuple(
+            sorted(
+                (
+                    FrozenSkillBinding(
+                        skill_id=b.skill_id, version=b.version
+                    )
+                    for b in skill_bindings
+                ),
+                key=lambda b: b.skill_id,
+            )
+        )
+        if explicit != frozen_bindings:
+            raise ValueError(
+                "explicit skill bindings do not match the ContextPack's "
+                "frozen skill bindings"
+            )
+    else:
+        explicit = frozen_bindings
     context = pack.tool_context()
     envelope = DelegationExecutionEnvelope(
         task_id=context.task_id,
@@ -259,7 +308,7 @@ def build_execution_envelope(
         time_scope=context.time_scope,
         profile_id=pack.profile.profile_id,
         profile_version=pack.profile.version,
-        skill_bindings=tuple(skill_bindings),
+        skill_bindings=explicit,
         tool_registry_hash=registry.schema_hash(),
         context_pack=pack,
         context_hash=pack.input_hash(),
@@ -288,17 +337,25 @@ def verify_envelope_bindings(
         or pack.profile.version != envelope.profile_version
     ):
         return "profile binding changed"
-    live_skill_ids = tuple(
+    # exact id + version binding match (P4A freeze follow-up F1): missing
+    # skill, extra skill, and same-id-version-change all fail closed here —
+    # BEFORE any agent call, never via a post-hoc stale verdict
+    frozen_bindings = tuple(
+        sorted(pack.skill_bindings, key=lambda b: b.skill_id)
+    )
+    envelope_binding_pairs = tuple(
         sorted(
-            pack.resolved_skills.primary_skills
-            + pack.resolved_skills.supporting_skills
+            (binding.skill_id, binding.version)
+            for binding in envelope.skill_bindings
         )
     )
-    envelope_skill_ids = tuple(
-        sorted(binding.skill_id for binding in envelope.skill_bindings)
+    pack_binding_pairs = tuple(
+        (binding.skill_id, binding.version) for binding in frozen_bindings
     )
-    if envelope_skill_ids and live_skill_ids != envelope_skill_ids:
-        return "skill binding changed"
+    if pack_binding_pairs != envelope_binding_pairs:
+        # covers missing skills, extra skills, version drift and
+        # empty-vs-frozen disagreements alike
+        return "skill version binding changed"
     if registry.schema_hash() != envelope.tool_registry_hash:
         return "tool registry hash changed"
     # §34 three-way source scope agreement
@@ -666,6 +723,18 @@ class SpecialistDelegationExecutor:
             model_name=execution_digest.model_name,
             model_config_hash=envelope.model_config_digest,
             usage=self._usage_payload(usage),
+            trajectory_payload={
+                "execution_input_hash": envelope.execution_input_hash(),
+                "context_hash": envelope.context_hash,
+                "profile_id": envelope.profile_id,
+                "profile_version": envelope.profile_version,
+                "skill_bindings": [
+                    [binding.skill_id, binding.version]
+                    for binding in envelope.skill_bindings
+                ],
+                "tool_registry_hash": envelope.tool_registry_hash,
+                "model_config_hash": envelope.model_config_digest,
+            },
         )
         return DispatchOutcome(
             delegation_id=delegation_id,

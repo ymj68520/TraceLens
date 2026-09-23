@@ -28,7 +28,7 @@ from .agent_capabilities import (
 from .agent_profiles import SourceSpecialistProfile
 from .agent_runtime import canonical_state_json, state_hash_of
 from .agent_skill_resolver import SkillResolution, SkillResolutionInput, resolve_skills
-from .agent_skills import SkillRegistry
+from .agent_skills import FrozenSkillBinding, SkillRegistry
 from .agent_tools.context import AgentTimeScope, ForensicToolContext
 
 CONTEXT_VERSION = "specialist-context-pack:v1"
@@ -99,6 +99,10 @@ class SpecialistContextPack(BaseModel):
     profile: ProfileDigest
     resolved_skills: SkillResolution
 
+    # exact frozen skill bindings (id + version), canonical order by skill_id
+    # (P4A freeze follow-up F1)
+    skill_bindings: tuple[FrozenSkillBinding, ...] = ()
+
     constraints: tuple[str, ...] = ()
 
     relevant_case_context: tuple[ContextCaseNote, ...] = ()
@@ -145,6 +149,10 @@ class SpecialistContextPack(BaseModel):
                 "supporting": sorted(self.resolved_skills.supporting_skills),
                 "content_hash": self.resolved_skills.content_hash(),
             },
+            "skill_bindings": sorted(
+                (binding.skill_id, binding.version)
+                for binding in self.skill_bindings
+            ),
             "constraints": sorted(self.constraints),
             "case_context_digests": sorted(
                 state_hash_of(canonical_state_json(note.model_dump()))
@@ -315,6 +323,25 @@ class ContextAssembler:
             allowed_tool_ids=profile.default_tool_ids,
         )
 
+        resolved_ids = tuple(
+            sorted(
+                resolution.primary_skills + resolution.supporting_skills
+            )
+        )
+        skill_bindings: list[FrozenSkillBinding] = []
+        for skill_id in resolved_ids:
+            skill = self._skills.resolve(skill_id)
+            if skill is None:
+                raise KeyError(
+                    f"resolved skill {skill_id!r} is not in the skill registry"
+                )
+            skill_bindings.append(
+                FrozenSkillBinding(
+                    skill_id=skill.skill_id, version=skill.version
+                )
+            )
+        skill_bindings.sort(key=lambda binding: binding.skill_id)
+
         # allowed tools: profile baseline minus tools whose capability vanished
         available_families = {
             cap.family_id
@@ -347,6 +374,7 @@ class ContextAssembler:
                 limitations=profile.limitations,
             ),
             resolved_skills=resolution,
+            skill_bindings=tuple(skill_bindings),
             constraints=tuple(constraints),
             relevant_case_context=tuple(case_context),
             relevant_finding_refs=tuple(finding_refs),
