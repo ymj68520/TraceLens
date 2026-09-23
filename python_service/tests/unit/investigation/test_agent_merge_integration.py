@@ -349,13 +349,20 @@ def test_valid_typed_transitions_accepted():
 
 def test_generic_or_unknown_payload_rejected():
     context = _integration_context()
-    # a JSON-patch style dict is not a typed P2 transition: the decision
-    # tuple is typed `tuple[Any, ...]` only because PydanticAI serialises
-    # arbitrary structured values, so the validator is the structural gate
-    decision = _integration_decision(context, proposals=({"patch": True},))
+    # a JSON-patch style dict is not a typed P2 transition: the typed union
+    # on the decision contract rejects it structurally at construction
+    with pytest.raises(ValidationError):
+        _integration_decision(context, proposals=({"patch": True},))
+    # a typed transition referencing an unknown question passes construction
+    # but fails the deterministic validator
+    decision = _integration_decision(
+        context,
+        proposals=(QuestionTransition(question_id="q-unknown",
+                                      to_status=QuestionStatus.in_progress),),
+    )
     validation = IntegrationDecisionValidator().validate(context, decision)
     assert not validation.valid
-    assert "INTEGRATION_TRANSITION_TYPE_NOT_ALLOWED" in validation.codes
+    assert "INTEGRATION_BASIS_REF_UNKNOWN" in validation.codes
     decision = _integration_decision(
         context,
         proposals=(QuestionTransition(question_id="q-unknown",
@@ -367,29 +374,23 @@ def test_generic_or_unknown_payload_rejected():
 
 
 def test_forbidden_p5_transitions_rejected():
+    """AddEntityReference / AddFindingReference / ModifyScope are NOT in the
+    P4B typed proposal union: they are structurally impossible to even
+    construct on the decision contract (strongest rejection), and the P2
+    transition models they name stay untouched for P5."""
     context = _integration_context()
-    decision = _integration_decision(
-        context,
-        proposals=(AddEntityReference(entity_ref="entity:x"),),
-    )
-    validation = IntegrationDecisionValidator().validate(context, decision)
-    assert not validation.valid
-    assert "INTEGRATION_TRANSITION_TYPE_NOT_ALLOWED" in validation.codes
-
-    decision2 = _integration_decision(
-        context,
-        proposals=(AddFindingReference(finding_ref="finding:1"),),
-    )
-    validation2 = IntegrationDecisionValidator().validate(context, decision2)
-    assert not validation2.valid
-
-    decision3 = _integration_decision(
-        context,
-        proposals=(ModifyScope(scope_patch={"scopes": ["*"]}),),
-    )
-    validation3 = IntegrationDecisionValidator().validate(context, decision3)
-    assert not validation3.valid
-    assert "INTEGRATION_SCOPE_MUTATION_FORBIDDEN" in validation3.codes
+    with pytest.raises(ValidationError):
+        _integration_decision(
+            context, proposals=(AddEntityReference(entity_ref="entity:x"),)
+        )
+    with pytest.raises(ValidationError):
+        _integration_decision(
+            context, proposals=(AddFindingReference(finding_ref="finding:1"),)
+        )
+    with pytest.raises(ValidationError):
+        _integration_decision(
+            context, proposals=(ModifyScope(scope_patch={"scopes": ["*"]}),)
+        )
 
 
 def test_stale_state_binding_and_hash_mismatch_rejected():

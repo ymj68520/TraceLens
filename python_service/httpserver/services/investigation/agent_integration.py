@@ -18,13 +18,39 @@ no review mutation, no Graph/Report write.
 """
 
 import enum
-from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from .agent_runtime import canonical_state_json, state_hash_of
 from .agent_specialist_result import SpecialistResultV1
 from .agent_supervisor import QuestionIndexEntry, SupervisorPlanningContextPack
+from .agent_transitions import (
+    ContradictionTransition,
+    CoverageTransition,
+    CreateContradiction,
+    CreateHypothesis,
+    CreateQuestion,
+    EvidenceRelevanceTransition,
+    HypothesisTransition,
+    QuestionTransition,
+    AddPendingProposalReference,
+)
+
+# P4B typed proposal union: the exact P2 transition models the supervisor may
+# propose (P4B §15). AddEntityReference / AddFindingReference / ModifyScope
+# are deliberately absent — the validator rejects them by name.
+P4BTransitionProposal = Union[
+    QuestionTransition,
+    CreateQuestion,
+    EvidenceRelevanceTransition,
+    CreateHypothesis,
+    HypothesisTransition,
+    CreateContradiction,
+    ContradictionTransition,
+    CoverageTransition,
+    AddPendingProposalReference,
+]
 
 INTEGRATION_CONTEXT_VERSION = "integration-context:v1"
 INTEGRATION_POLICY_VERSION = "supervisor-integration-policy:v1"
@@ -255,6 +281,7 @@ class IntegrationContextPack(BaseModel):
     stale_result_digests: tuple[StaleResultDigest, ...] = ()
     failure_digests: tuple[FailureDigest, ...] = ()
 
+    source_result_ids: tuple[str, ...] = ()
     source_result_hashes: tuple[str, ...] = ()
     relevant_evidence_refs: tuple[str, ...] = ()
     attention_refs: tuple[str, ...] = ()
@@ -268,12 +295,6 @@ class IntegrationContextPack(BaseModel):
 
     def input_hash(self) -> str:
         return state_hash_of(canonical_state_json(self.model_dump()))
-
-    def source_result_ids(self) -> tuple[str, ...]:
-        return tuple(env.delegation_id for env in self.fresh_results)
-
-    def source_result_hashes(self) -> tuple[str, ...]:
-        return tuple(env.result_hash for env in self.fresh_results)
 
 
 # ---------------------------------------------------------------------------
@@ -297,9 +318,10 @@ class SupervisorIntegrationDecisionV1(BaseModel):
     based_on_state_hash: str
 
     source_result_ids: tuple[str, ...] = ()
+    source_result_ids: tuple[str, ...] = ()
     source_result_hashes: tuple[str, ...] = ()
 
-    transition_proposals: tuple[Any, ...] = ()  # typed P2 transition models
+    transition_proposals: tuple[P4BTransitionProposal, ...] = ()
 
     integration_summary: str = ""
     limitations: tuple[str, ...] = ()
@@ -601,6 +623,11 @@ def build_integration_context(
         ),
         failure_digests=tuple(
             sorted(failure_digests, key=lambda d: d.delegation_id)
+        ),
+        source_result_ids=tuple(
+            env.delegation_id for env in sorted(
+                fresh_results, key=lambda env: env.delegation_id
+            )
         ),
         source_result_hashes=tuple(env.result_hash for env in sorted(
             fresh_results, key=lambda env: env.delegation_id

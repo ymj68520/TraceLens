@@ -27,7 +27,7 @@ import logging
 from enum import Enum
 from typing import Any, Optional, Sequence
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..evidence.keys import parse_evidence_key
 from .agent_attention import (
@@ -61,11 +61,14 @@ from .agent_runtime import (
     AgentRuntimeConflictError,
     AgentRuntimeRepository,
     AgentTrajectoryEventType,
+    DelegationSpec as _P4BDelegationSpec,
     DelegationStatus,
     FinalizationRecord,
     InvestigationPauseReason,
     RunStopReason,
     WorkingStateRevisionConflictError,
+    canonical_state_json,
+    state_hash_of,
 )
 from .agent_transitions import (
     STATE_REVISION_CONFLICT,
@@ -180,6 +183,73 @@ _DELEGATION_ACTION_TYPES = frozenset(
 _ALLOWED_CONTROL_ACTIONS = frozenset(ControlActionType)
 
 
+class SupervisorCyclePolicy(BaseModel):
+    """Provisional cycle/loop bounds — config, never architecture-frozen
+    (P4B §26; P8 calibrates the numbers)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    max_cycles_per_invocation: int = Field(default=1, ge=1)
+    max_cycles_per_run: int = Field(default=20, ge=1)
+    final_review_mode: str = "best_effort"  # P4B §31: no verifier exists yet
+
+
+class DelegationExecutionSummary(BaseModel):
+    """Terminal summary of one dispatched delegation (dispatcher contract)."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    delegation_id: str
+    question_id: Optional[str] = None
+    source_scope_id: Optional[str] = None
+    status: str  # completed / failed / cancelled
+    result: Optional[Any] = None  # SpecialistResultV1 when completed
+    result_hash: Optional[str] = None
+    context_hash: Optional[str] = None
+    failure_code: Optional[str] = None
+    failure_summary: Optional[str] = None
+
+
+class CycleOutcome(BaseModel):
+    """Typed result of one PLAN→EXECUTE→INTEGRATE→EVALUATE cycle (P4B §27).
+
+    Audit/reporting data only — never a second canonical Working State."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    cycle_id: str
+    investigation_id: str
+    run_id: Optional[str] = None
+
+    starting_revision: int
+    ending_revision: Optional[int] = None
+    attention_hash: Optional[str] = None
+
+    plan_decision_hash: Optional[str] = None
+    plan_rejected_codes: tuple[str, ...] = ()
+
+    delegation_ids: tuple[str, ...] = ()
+    delegation_terminal_statuses: tuple[str, ...] = ()
+
+    integration_status: str = "skipped"  # committed/replayed/rejected/skipped
+    integration_revision: Optional[int] = None
+    integration_violation_codes: tuple[str, ...] = ()
+    stale_delegation_ids: tuple[str, ...] = ()
+    failure_delegation_ids: tuple[str, ...] = ()
+
+    progress: Optional[Any] = None
+    finalization: Optional[Any] = None
+
+    run_stop_reason: Optional[str] = None
+    warnings: tuple[str, ...] = ()
+    limitations: tuple[str, ...] = ()
+
+
+def pack_hash_key(pack) -> str:
+    """Short stable key of a planning context (admission idempotency)."""
+    return pack.input_hash()[:16]
+
+
 class AgentOrchestrator:
     """Deterministic control plane over the P1 agent runtime store."""
 
@@ -189,6 +259,11 @@ class AgentOrchestrator:
         *,
         attention_config: Optional[AttentionPolicyConfig] = None,
         no_progress_config: Optional[NoProgressPolicyConfig] = None,
+        supervisor=None,
+        delegation_dispatcher=None,
+        source_scope_provider=None,
+        directive_digest_provider=None,
+        cycle_policy=None,
     ):
         self._cpp_backend = cpp_backend
         self._attention_config = attention_config or AttentionPolicyConfig()
@@ -205,6 +280,21 @@ class AgentOrchestrator:
         # recovered across restarts; every no-progress cycle is audited in
         # the trajectory payload.
         self._no_progress_streaks: dict[tuple[str, str, str], int] = {}
+        # P4B investigation loop wiring (all optional; P2 behaviour is
+        # unchanged when absent):
+        self._supervisor = supervisor          # InvestigationSupervisor
+        self._delegation_dispatcher = delegation_dispatcher  # async callable
+        self._source_scope_provider = source_scope_provider  # callable
+        self._directive_digest_provider = directive_digest_provider  # callable
+        self._cycle_policy = cycle_policy or SupervisorCyclePolicy()
+        # run-level directive baseline (directive re-plan seam, P4B §23) and
+        # cycle bookkeeping — in-memory only, restart restarts the run
+        self._run_directive_baselines: dict[tuple[str, str, str], dict[str, str]] = {}
+        self._run_cycle_counts: dict[tuple[str, str, str], int] = {}
+        # unresolved integration conflicts (§21): recorded when the
+        # StateTransitionPolicy rejects a batch; blocks finalization until
+        # an integration resolves them
+        self._transition_conflicts: dict[str, set[str]] = {}
 
     # =====================================================================
     # lifecycle (ServiceManager startup hook, P2 §44/§45)
@@ -931,6 +1021,570 @@ class AgentOrchestrator:
         return await asyncio.to_thread(
             lambda: runtime.start_run(investigation_id, idempotency_key=idempotency_key)
         )
+
+
+    # =====================================================================
+    # P4B: the real agent investigation loop (PLAN→EXECUTE→INTEGRATE→EVALUATE)
+    # =====================================================================
+
+    def _source_scopes(self, task_id: str) -> tuple[str, ...]:
+        if self._source_scope_provider is not None:
+            return tuple(self._source_scope_provider(task_id))
+        return ()
+
+    def _directive_digests(self) -> dict[str, str]:
+        if self._directive_digest_provider is not None:
+            return dict(self._directive_digest_provider())
+        return {}
+
+    def _failure_digest(self, summary: DelegationExecutionSummary):
+        from .agent_integration import FailureDigest
+
+        return FailureDigest(
+            delegation_id=summary.delegation_id,
+            question_id=summary.question_id,
+            source_scope_id=summary.source_scope_id,
+            terminal_status=summary.status,
+            failure_code=summary.failure_code,
+            failure_summary=summary.failure_summary,
+            context_hash=summary.context_hash,
+            result_hash=summary.result_hash,
+        )
+
+    async def execute_cycle(
+        self,
+        task_id: str,
+        investigation_id: str,
+        *,
+        source_scope_ids: Sequence[str] = (),
+        attention_config: Optional[AttentionPolicyConfig] = None,
+    ) -> CycleOutcome:
+        """One full PLAN→EXECUTE→INTEGRATE→EVALUATE cycle (P4B §25).
+
+        The supervisor proposes; deterministic validators and the P2
+        StateTransitionPolicy dispose. PLAN/EXECUTE/EVALUATE bookkeeping
+        never consumes a Working State revision — only an accepted semantic
+        integration does (exactly +1)."""
+        import hashlib
+        import uuid
+
+        # deferred: keeps the pydantic_ai import off the ServiceManager
+        # initialization path (P4A/P4B freeze lessons)
+        from .agent_integration import (
+            FailureDigest,
+            FreshResultEnvelope,
+            FrozenDelegationDependencies,
+            IntegrationContextPack,
+            IntegrationDecisionValidator,
+            INTEGRATION_POLICY_VERSION,
+            MergeGuard,
+            StaleResultDigest,
+            build_integration_context,
+        )
+        from .agent_supervisor import build_supervisor_planning_context
+
+        cycle_id = f"cycle_{uuid.uuid4().hex[:12]}"
+        runtime = await self._open_runtime(task_id)
+        preparation = await self.prepare_cycle(
+            task_id, investigation_id, attention_config=attention_config
+        )
+        starting_revision = preparation.state_revision
+        run_id = preparation.active_run_id
+        if run_id is None:
+            run = await self.admit_run(task_id, investigation_id)
+            run_id = run.run_id
+        run_key = (task_id, investigation_id, run_id)
+        warnings: list[str] = []
+        limitations: list[str] = []
+
+        def _outcome(**fields) -> CycleOutcome:
+            latest = runtime.get_latest_working_state(investigation_id)
+            fields.setdefault("ending_revision", latest.revision)
+            return CycleOutcome(
+                cycle_id=cycle_id,
+                investigation_id=investigation_id,
+                run_id=run_id,
+                starting_revision=starting_revision,
+                **fields,
+            )
+
+        # ---- directive re-plan boundary (P4B §23) --------------------
+        digests_now = self._directive_digests()
+        baseline = self._run_directive_baselines.get(run_key)
+        if baseline is None:
+            self._run_directive_baselines[run_key] = digests_now
+        elif digests_now != baseline:
+            for delegation in runtime.list_delegations(run_id):
+                if delegation.status in (
+                    DelegationStatus.queued, DelegationStatus.running
+                ):
+                    runtime.request_delegation_cancel(delegation.delegation_id)
+            runtime.fail_run(
+                run_id,
+                stop_reason=RunStopReason.directive_replan,
+                error_code=RunStopReason.directive_replan.value,
+                error_message="directive digests changed during the run",
+            )
+            return _outcome(
+                run_stop_reason=RunStopReason.directive_replan.value,
+                warnings=("directive digests changed; cooperative re-plan",),
+            )
+
+        # ---- cycle budget (deterministic, P4B §26/§29) ---------------
+        cycles_done = self._run_cycle_counts.get(run_key, 0)
+        if cycles_done >= self._cycle_policy.max_cycles_per_run:
+            runtime.fail_run(
+                run_id,
+                stop_reason=RunStopReason.budget_exhausted,
+                error_code=RunStopReason.budget_exhausted.value,
+                error_message="run cycle budget exhausted",
+            )
+            return _outcome(
+                run_stop_reason=RunStopReason.budget_exhausted.value,
+                warnings=("run cycle budget exhausted",),
+            )
+
+        # ---- PLAN -----------------------------------------------------
+        if self._supervisor is None:
+            return _outcome(
+                warnings=("no supervisor wired; cycle skipped",),
+            )
+        state = preparation.state
+        delegations = runtime.list_delegations(run_id)
+        active_digests = [
+            {
+                "delegation_id": d.delegation_id,
+                "question_ref": d.question_ref,
+                "status": d.status.value,
+            }
+            for d in delegations
+            if d.status in (DelegationStatus.queued, DelegationStatus.running)
+        ]
+        terminal_digests = [
+            {
+                "delegation_id": d.delegation_id,
+                "question_ref": d.question_ref,
+                "status": d.status.value,
+                "failure_code": d.failure_code,
+            }
+            for d in delegations
+            if d.status in (DelegationStatus.completed, DelegationStatus.failed,
+                            DelegationStatus.cancelled, DelegationStatus.stale)
+        ]
+        planning_context = build_supervisor_planning_context(
+            state,
+            state_revision=preparation.state_revision,
+            state_hash=self._state_hash(runtime, investigation_id),
+            attention_set=preparation.attention_set,
+            task_id=task_id,
+            run_id=run_id,
+            source_scope_ids=source_scope_ids or self._source_scopes(task_id),
+            active_delegations=active_digests,
+            recent_terminal_delegations=terminal_digests,
+        )
+        try:
+            decision = await self._supervisor.plan(planning_context)
+        except Exception as exc:  # noqa: BLE001 - supervisor failure is a
+            # first-class cycle outcome; never an empty decision
+            from .agent_specialist_executor import (
+                map_provider_exception as _map,
+                safe_failure_message as _safe,
+            )
+
+            code = _map(exc)
+            runtime.append_trajectory(
+                investigation_id,
+                AgentTrajectoryEventType.transition_decision_rejected,
+                run_id=run_id,
+                payload={
+                    "supervisor_failure": code.value,
+                    "message": _safe(exc, code),
+                },
+            )
+            return _outcome(
+                warnings=(f"supervisor plan failed: {code.value}",),
+            )
+        from .agent_supervisor import SupervisorPlanDecisionValidator
+
+        validation = SupervisorPlanDecisionValidator().validate(
+            planning_context, decision
+        )
+        if not validation.valid:
+            runtime.append_trajectory(
+                investigation_id,
+                AgentTrajectoryEventType.transition_decision_rejected,
+                run_id=run_id,
+                payload={
+                    "violation_codes": list(validation.codes),
+                    "decision_hash": decision.decision_hash(),
+                },
+            )
+            return _outcome(
+                plan_decision_hash=decision.decision_hash(),
+                plan_rejected_codes=validation.codes,
+                warnings=("supervisor plan rejected by validator",),
+            )
+
+        # ---- finalization request path (P4B §30/§31) ------------------
+        finalize_actions = [
+            action
+            for action in decision.actions
+            if getattr(action, "action_kind", "") == "request_finalization"
+        ]
+        delegate_actions = decision.delegate_actions()
+        if finalize_actions and not delegate_actions:
+            from .agent_finalization import (
+                FinalReviewMode,
+                FinalSemanticReview,
+                FinalSemanticReviewStatus,
+                FinalizationRequest,
+            )
+
+            if self._cycle_policy.final_review_mode == "required":
+                review = FinalSemanticReview(status=FinalSemanticReviewStatus.unavailable)
+                mode = FinalReviewMode.required
+            else:
+                review = FinalSemanticReview(
+                    status=FinalSemanticReviewStatus.unavailable,
+                    result_ref="semantic verifier not available in P4B",
+                )
+                mode = FinalReviewMode.best_effort
+            request = FinalizationRequest(
+                investigation_id=investigation_id,
+                expected_state_revision=preparation.state_revision,
+                review_mode=mode,
+                final_semantic_review=review,
+                run_id=run_id,
+                requested_by="supervisor",
+            )
+            conflict = bool(self._transition_conflicts.get(investigation_id))
+            result = await self.finalize(
+                task_id, request, transition_conflict_unresolved=conflict
+            )
+            stop = None
+            if result.finalized:
+                stop = RunStopReason.finalized.value
+            return _outcome(
+                finalization=result,
+                run_stop_reason=stop,
+                warnings=(
+                    tuple()
+                    if result.finalized
+                    else (
+                        "finalization denied by the P2 gate; blockers recorded "
+                        "for the next PLAN",
+                    )
+                ),
+            )
+
+        if not delegate_actions:
+            return _outcome(
+                plan_decision_hash=decision.decision_hash(),
+                warnings=("supervisor proposed no delegations",),
+            )
+
+        # ---- atomic admission (decision + queued intents, ONE commit) --
+        scopes = source_scope_ids or self._source_scopes(task_id)
+        specs = []
+        for action in delegate_actions:
+            idem_source = (
+                f"{investigation_id}:{pack_hash_key(planning_context)}:"
+                f"{action.question_id}:{action.source_scope_id}"
+            )
+            specs.append(
+                _P4BDelegationSpec(
+                    question_ref=action.question_id,
+                    based_on_state_revision=preparation.state_revision,
+                    idempotency_key="plan:" + hashlib.sha256(
+                        idem_source.encode("utf-8")
+                    ).hexdigest()[:24],
+                )
+            )
+        _event, admitted = await asyncio.to_thread(
+            runtime.commit_supervisor_plan,
+            run_id,
+            decision_payload=decision.model_dump(),
+            decision_hash=decision.decision_hash(),
+            model_name=getattr(self._supervisor, "model_name", None),
+            model_config_hash=getattr(self._supervisor, "model_config_hash", None),
+            prompt_version="supervisor-plan-decision:v1",
+            specs=specs,
+        )
+        # executor dispatch only AFTER the admission commit (P4B-E8)
+
+        # ---- EXECUTE (P4A executor; all_terminal, not all_successful) --
+        summaries: list[DelegationExecutionSummary] = []
+        if self._delegation_dispatcher is not None:
+            dispatched = await self._delegation_dispatcher(
+                planning_context, decision, admitted
+            )
+            summaries = list(dispatched)
+        else:
+            warnings.append("no delegation dispatcher wired; delegations stay queued")
+
+        # ---- MergeGuard (P4B §10) --------------------------------------
+        latest = runtime.get_latest_working_state(investigation_id)
+        current_state = working_state_from_json(
+            task_id, investigation_id, latest.state
+        )
+        current_directives = {
+            f"directive-{index}": digest
+            for index, digest in enumerate(
+                sorted(
+                    state_hash_of(canonical_state_json(d.model_dump()))
+                    for d in current_state.directive_refs
+                )
+            )
+        }
+        granted = scopes
+        guard = MergeGuard(
+            evidence_invalidation_checker=getattr(
+                self, "_evidence_invalidation_checker", None
+            )
+        )
+        fresh_envelopes = []
+        stale_digests = []
+        stale_ids = []
+        failure_ids = []
+        for summary in summaries:
+            if summary.status == "completed" and summary.result is not None:
+                deps = FrozenDelegationDependencies(
+                    delegation_id=summary.delegation_id,
+                    question_id=summary.question_id,
+                    source_scope_ids=(
+                        (summary.source_scope_id,) if summary.source_scope_id else ()
+                    ),
+                    based_on_state_revision=preparation.state_revision,
+                    directive_digests=tuple(current_directives.values()),
+                    evidence_refs=tuple(summary.result.iter_evidence_refs()),
+                )
+                verdict = guard.evaluate(
+                    deps,
+                    current_state=current_state,
+                    current_state_revision=latest.revision,
+                    current_directive_digests=current_directives,
+                    granted_scope_ids=granted,
+                )
+                if verdict.fresh:
+                    fresh_envelopes.append(
+                        FreshResultEnvelope(
+                            delegation_id=summary.delegation_id,
+                            question_id=summary.question_id,
+                            source_scope_id=summary.source_scope_id,
+                            result=summary.result,
+                            result_hash=summary.result_hash or "",
+                            context_hash=summary.context_hash,
+                        )
+                    )
+                else:
+                    runtime.mark_completed_delegation_stale(
+                        summary.delegation_id,
+                        expected_result_hash=summary.result_hash or "",
+                        reason_codes=verdict.reason_codes,
+                    )
+                    stale_digests.append(
+                        StaleResultDigest(
+                            delegation_id=summary.delegation_id,
+                            result_hash=summary.result_hash,
+                            reason_codes=verdict.reason_codes,
+                        )
+                    )
+                    stale_ids.append(summary.delegation_id)
+            else:
+                failure_ids.append(summary.delegation_id)
+
+        if not fresh_envelopes:
+            return _outcome(
+                plan_decision_hash=decision.decision_hash(),
+                delegation_ids=tuple(s.delegation_id for s in summaries),
+                delegation_terminal_statuses=tuple(s.status for s in summaries),
+                stale_delegation_ids=tuple(stale_ids),
+                failure_delegation_ids=tuple(failure_ids),
+                integration_status="skipped",
+                warnings=(
+                    "no fresh results survived the MergeGuard; failure "
+                    "digests recorded for the next PLAN",
+                )
+                + (tuple(warnings)),
+            )
+
+        # ---- INTEGRATE (supervisor proposes, policy disposes) ----------
+        integration_context = build_integration_context(
+            task_id=task_id,
+            investigation_id=investigation_id,
+            run_id=run_id,
+            state=current_state,
+            state_revision=latest.revision,
+            state_hash=latest.state_hash,
+            fresh_results=fresh_envelopes,
+            stale_result_digests=stale_digests,
+            failure_digests=[
+                self._failure_digest(s)
+                for s in summaries
+                if s.status != "completed"
+            ],
+            attention_refs=tuple(
+                action.attention_item_id for action in delegate_actions
+            ),
+            current_directive_digests=current_directives,
+        )
+        integration_decision = await self._supervisor.integrate(
+            integration_context
+        )
+        integration_validator = IntegrationDecisionValidator(
+            evidence_ref_validator=getattr(
+                self, "_integration_evidence_validator", None
+            )
+        )
+        iv = integration_validator.validate(integration_context, integration_decision)
+        if not iv.valid:
+            runtime.append_trajectory(
+                investigation_id,
+                AgentTrajectoryEventType.transition_decision_rejected,
+                run_id=run_id,
+                payload={
+                    "violation_codes": list(iv.codes),
+                    "decision_hash": integration_decision.decision_hash(),
+                },
+            )
+            return _outcome(
+                plan_decision_hash=decision.decision_hash(),
+                delegation_ids=tuple(s.delegation_id for s in summaries),
+                delegation_terminal_statuses=tuple(s.status for s in summaries),
+                stale_delegation_ids=tuple(stale_ids),
+                failure_delegation_ids=tuple(failure_ids),
+                integration_status="rejected",
+                integration_violation_codes=iv.codes,
+                warnings=("integration decision rejected by validator",),
+            )
+
+        batch = TransitionBatch(transitions=integration_decision.transition_proposals)
+        policy_result = await asyncio.to_thread(
+            self._policy.evaluate_batch,
+            current_state,
+            batch,
+            TransitionPolicyContext(
+                task_id=task_id,
+                investigation_id=investigation_id,
+                evidence_ref_resolver=self._evidence_ref_resolver(runtime),
+                finding_ref_validator=self._finding_ref_validator(runtime),
+                verification_checker=lambda question_id: any(
+                    verification.target_ref == question_id
+                    and verification.status.value == "passed"
+                    for verification in current_state.pending_verifications
+                ),
+            ),
+        )
+        if policy_result.status is TransitionDecisionStatus.rejected:
+            # §21: results remain unintegrated; the conflict is explicit
+            self._transition_conflicts.setdefault(investigation_id, set()).update(
+                violation.code for violation in policy_result.violations
+            )
+            runtime.append_trajectory(
+                investigation_id,
+                AgentTrajectoryEventType.transition_decision_rejected,
+                run_id=run_id,
+                payload={
+                    "violation_codes": [
+                        v.code for v in policy_result.violations
+                    ],
+                    "stage": "state_transition_policy",
+                },
+            )
+            return _outcome(
+                plan_decision_hash=decision.decision_hash(),
+                delegation_ids=tuple(s.delegation_id for s in summaries),
+                delegation_terminal_statuses=tuple(s.status for s in summaries),
+                stale_delegation_ids=tuple(stale_ids),
+                failure_delegation_ids=tuple(failure_ids),
+                integration_status="rejected",
+                integration_violation_codes=tuple(
+                    v.code for v in policy_result.violations
+                ),
+                warnings=("StateTransitionPolicy rejected the batch",),
+            )
+
+        operation_key = "integ:" + hashlib.sha256(
+            (
+                f"{investigation_id}:{latest.revision}:"
+                + ",".join(sorted(env.result_hash for env in fresh_envelopes))
+                + f":{INTEGRATION_POLICY_VERSION}"
+            ).encode("utf-8")
+        ).hexdigest()[:32]
+        commit = await asyncio.to_thread(
+            runtime.commit_agent_integration,
+            investigation_id,
+            expected_revision=latest.revision,
+            expected_state_hash=latest.state_hash,
+            operation_key=operation_key,
+            integration_policy_version=INTEGRATION_POLICY_VERSION,
+            decision_payload=integration_decision.model_dump(
+                mode="json", exclude={"transition_proposals"}
+            ),
+            decision_hash=integration_decision.decision_hash(),
+            delegation_integrations=[
+                {
+                    "delegation_id": env.delegation_id,
+                    "result_hash": env.result_hash,
+                }
+                for env in fresh_envelopes
+            ],
+            new_state=(
+                working_state_to_json(policy_result.new_state)
+                if policy_result.status is TransitionDecisionStatus.accepted
+                else None
+            ),
+            run_id=run_id,
+        )
+
+        # ---- EVALUATE (deterministic; never consumes a revision) -------
+        progress = await self.evaluate_progress(task_id, investigation_id)
+        self._run_cycle_counts[run_key] = cycles_done + 1
+
+        return _outcome(
+            plan_decision_hash=decision.decision_hash(),
+            delegation_ids=tuple(s.delegation_id for s in summaries),
+            delegation_terminal_statuses=tuple(s.status for s in summaries),
+            stale_delegation_ids=tuple(stale_ids),
+            failure_delegation_ids=tuple(failure_ids),
+            integration_status=(
+                "committed"
+                if commit.status == "committed"
+                and policy_result.status is TransitionDecisionStatus.accepted
+                else "noop"
+            ),
+            integration_revision=commit.state_revision,
+            progress=progress,
+        )
+
+    def _state_hash(self, runtime, investigation_id: str) -> str:
+        latest = runtime.get_latest_working_state(investigation_id)
+        return latest.state_hash if latest is not None else ""
+
+    async def run_loop(
+        self,
+        task_id: str,
+        investigation_id: str,
+        *,
+        source_scope_ids: Sequence[str] = (),
+        max_cycles: Optional[int] = None,
+    ) -> list[CycleOutcome]:
+        """Bounded autonomous loop (P4B §26). Never `while True`: the cycle
+        count is configurable and stops on terminal runs."""
+        outcomes: list[CycleOutcome] = []
+        budget = max_cycles or self._cycle_policy.max_cycles_per_invocation
+        for _ in range(budget):
+            outcome = await self.execute_cycle(
+                task_id,
+                investigation_id,
+                source_scope_ids=source_scope_ids,
+            )
+            outcomes.append(outcome)
+            if outcome.run_stop_reason is not None:
+                break
+            if outcome.finalization is not None and outcome.finalization.finalized:
+                break
+        return outcomes
 
     # =====================================================================
     # helpers

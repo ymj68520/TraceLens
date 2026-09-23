@@ -574,6 +574,35 @@ class SupervisorAgentFactory:
             instructions=[_planning_instructions(planning_context)],
         )
 
+    def build_integration_agent(self, integration_context) -> Any:
+        """Integration mode: same logical supervisor, Tools = none, typed
+        SupervisorIntegrationDecisionV1 output (P4B §13)."""
+        from pydantic_ai import Agent
+
+        from .agent_integration import SupervisorIntegrationDecisionV1
+
+        return Agent(
+            self._model,
+            output_type=SupervisorIntegrationDecisionV1,
+            instructions=[_integration_instructions(integration_context)],
+        )
+
+
+def _integration_instructions(context) -> str:
+    from .agent_integration import INTEGRATION_POLICY_VERSION
+
+    return (
+        "You are the investigation supervisor in INTEGRATION mode. You have "
+        "NO tools. Read the frozen integration context (fresh validated "
+        "specialist results, stale digests, failure digests) and return one "
+        "structured integration decision with typed transition proposals "
+        "only.\n\n"
+        f"{canonical_state_json(context.model_dump())}\n\n"
+        "Rules: never emit a complete working state, JSON patch, SQL, "
+        "canonical claim, review decision, graph or report mutation. Bind "
+        "every proposal to the current state revision."
+    )
+
 
 def _planning_instructions(pack: SupervisorPlanningContextPack) -> str:
     return (
@@ -614,6 +643,15 @@ class InvestigationSupervisor:
             planning_context
         )
         result = await agent.run(planning_context.objective_digest or "plan")
+        return result.output
+
+    async def integrate(self, context):
+        agent = SupervisorAgentFactory(model=self._model).build_integration_agent(
+            context
+        )
+        result = await agent.run(
+            f"integrate at state revision {context.state_revision}"
+        )
         return result.output
 
     def validate(
