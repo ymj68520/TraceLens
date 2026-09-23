@@ -4756,6 +4756,32 @@ class AgentRuntimeRepository:
             "status": to_status,
         }
 
+    def bind_supersedes(
+        self,
+        investigation_id: str,
+        *,
+        materialization_id: str,
+        supersedes_materialization_id: str,
+    ) -> dict:
+        """One-shot supersedes pointer binding on a NEW manifest (§36);
+        COALESCE keeps an already-bound pointer immutable."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            conn.execute(
+                "UPDATE agent_graph_materializations "
+                "SET supersedes_materialization_id = COALESCE(?, "
+                " supersedes_materialization_id), updated_at = ? "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND materialization_id = ?",
+                [
+                    supersedes_materialization_id, _now_iso(),
+                    self.task_id, investigation_id, materialization_id,
+                ],
+            )
+            conn.commit()
+        return {"materialization_id": materialization_id}
+
     def get_graph_materialization(
         self, investigation_id: str, materialization_id: str
     ) -> Optional[dict]:

@@ -209,6 +209,126 @@ class ManifestStateMachine:
             )
 
 
+# ---------------------------------------------------------------------------
+# §33/§34 logical invalidation foundation: SQLite manifest state is the
+# retrieval-validity authority; Graphiti physical cleanup is P6B+ and may
+# lag arbitrarily - filtering is logical, never physical.
+# ---------------------------------------------------------------------------
+
+REVIEW_STATUS_CHANGE = "REVIEW_STATUS_CHANGED"
+FINDING_REJECTED = "FINDING_REJECTED"
+FINDING_MISSING = "FINDING_MISSING"
+EVIDENCE_MISSING = "EVIDENCE_MISSING"
+
+
+def evaluate_graph_invalidation(
+    runtime: AgentRuntimeRepository,
+    investigation_id: str,
+    *,
+    finding_resolver: Optional[Callable[[str], Optional[Mapping]]] = None,
+    evidence_resolver: Optional[Callable[[str], bool]] = None,
+) -> list[dict]:
+    """Deterministic invalidation sweep over all live (queued/running/
+    active) materializations of one investigation:
+
+    - a backing Finding that is now rejected -> ``invalidated``
+      (the materialized unit is no longer legal, §33)
+    - a backing Finding that disappeared -> ``invalidated``
+    - a review_pending Finding that became accepted -> the old
+      materialization is ``stale`` (kept, but not trusted retrieval);
+      the accepted semantic unit requires a NEW candidate/episode (§36)
+    - Evidence refs that no longer resolve -> ``invalidated``
+
+    Unrelated findings changing has no effect. No physical Graphiti
+    deletion happens here or anywhere in P6A (§34)."""
+    changes: list[dict] = []
+    for manifest in runtime.list_graph_materializations(investigation_id):
+        if manifest["status"] not in ("queued", "running", "active"):
+            continue
+        episode = runtime.get_graph_episode(
+            investigation_id, manifest["episode_id"]
+        )
+        if episode is None:
+            continue
+        target = None
+        reason = None
+
+        for finding_ref in episode["finding_refs"]:
+            finding = (
+                finding_resolver(finding_ref) if finding_resolver else None
+            )
+            if finding is None:
+                target, reason = "invalidated", FINDING_MISSING
+            else:
+                status = finding["status"]
+                if status == "rejected":
+                    target, reason = "invalidated", FINDING_REJECTED
+                elif (
+                    status == "accepted"
+                    and episode["review_statuses"].get(
+                        _unit_for_finding(episode, finding_ref)
+                    ) == "review_pending"
+                ):
+                    target, reason = "stale", REVIEW_STATUS_CHANGE
+            if target:
+                break
+
+        if target is None and evidence_resolver is not None:
+            for evidence_ref in episode["evidence_refs"]:
+                try:
+                    ok = evidence_resolver(evidence_ref)
+                except Exception:
+                    ok = False
+                if not ok:
+                    target, reason = "invalidated", EVIDENCE_MISSING
+                    break
+
+        if target is not None:
+            runtime.advance_graph_materialization(
+                investigation_id,
+                manifest["materialization_id"],
+                to_status=target,
+                failure_code=reason if target == "invalidated" else None,
+                failure_summary=reason,
+            )
+            changes.append({
+                "materialization_id": manifest["materialization_id"],
+                "from_status": manifest["status"],
+                "to_status": target,
+                "reason": reason,
+            })
+    return changes
+
+
+def _unit_for_finding(episode: Mapping, finding_ref: str) -> Optional[str]:
+    for unit in episode["semantic_units"]:
+        if finding_ref in (unit.get("finding_refs") or []):
+            return unit.get("unit_id")
+    return None
+
+
+def supersede_graph_materialization(
+    runtime: AgentRuntimeRepository,
+    investigation_id: str,
+    *,
+    old_materialization_id: str,
+    new_materialization_id: str,
+) -> dict:
+    """§36: a new materialization explicitly replaces its exact semantic
+    predecessor - the old active slice is marked superseded and the new
+    manifest carries the supersedes pointer."""
+    runtime.bind_supersedes(
+        investigation_id,
+        materialization_id=new_materialization_id,
+        supersedes_materialization_id=old_materialization_id,
+    )
+    return runtime.advance_graph_materialization(
+        investigation_id,
+        old_materialization_id,
+        to_status="superseded",
+    )
+
+
 __all__ = [
     "DEFAULT_BACKEND_KIND",
     "MANIFEST_STATE_MACHINE_VERSION",
@@ -217,4 +337,6 @@ __all__ = [
     "admit_graph_candidate",
     "manifest_status_recorded",
     "propose_graph_candidate",
+    "evaluate_graph_invalidation",
+    "supersede_graph_materialization",
 ]

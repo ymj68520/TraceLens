@@ -2154,18 +2154,18 @@ CREATE TABLE IF NOT EXISTS agent_graph_materializations (
 _TRIGGER_GRAPH_MANIFEST_LEGAL_TRANSITION_SQL = """
 CREATE TRIGGER IF NOT EXISTS trg_agent_graph_manifest_legal_transition
 BEFORE UPDATE ON agent_graph_materializations
-WHEN (OLD.status = 'queued'
-      AND NEW.status NOT IN ('running','invalidated'))
-  OR (OLD.status = 'running'
-      AND NEW.status NOT IN ('active','failed','invalidated'))
-  OR (OLD.status = 'active'
-      AND NEW.status NOT IN ('stale','invalidated','superseded'))
-  OR (OLD.status = 'failed'
-      AND NEW.status NOT IN ('superseded'))
-  OR (OLD.status = 'stale'
-      AND NEW.status NOT IN ('superseded'))
-  OR (OLD.status IN ('invalidated','superseded')
-      AND NEW.status IS NOT OLD.status)
+WHEN NEW.status IS NOT OLD.status
+ AND ((OLD.status = 'queued'
+       AND NEW.status NOT IN ('running','invalidated'))
+   OR (OLD.status = 'running'
+       AND NEW.status NOT IN ('active','failed','invalidated'))
+   OR (OLD.status = 'active'
+       AND NEW.status NOT IN ('stale','invalidated','superseded'))
+   OR (OLD.status = 'failed'
+       AND NEW.status NOT IN ('superseded'))
+   OR (OLD.status = 'stale'
+       AND NEW.status NOT IN ('superseded'))
+   OR (OLD.status IN ('invalidated','superseded')))
 BEGIN
     SELECT RAISE(ABORT,
         'agent_graph_materializations: illegal manifest transition');
