@@ -3212,6 +3212,149 @@ class AgentRuntimeRepository:
             for row in rows
         ]
 
+    def record_claim_dispositions(
+        self,
+        investigation_id: str,
+        rows: Sequence[Mapping[str, Any]],
+        *,
+        run_id: Optional[str] = None,
+        append_trajectory: bool = True,
+    ) -> dict:
+        """Append-only ClaimDisposition recording, idempotent by
+        disposition_id. Trajectory payload: ids/hashes/status only."""
+        required_nonempty = (
+            "disposition_id", "proposal_id", "proposal_hash", "grounding_id",
+            "requested_assertion_class", "effective_assertion_class",
+            "semantic_type", "decision", "policy_registry_hash",
+            "policy_version", "rule_id", "input_hash",
+        )
+        required_present = ("reasons", "limitations")
+        inserted = 0
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            if run_id is not None:
+                self._require_run_with_conn(conn, run_id, investigation_id)
+            for row in rows:
+                missing = sorted(
+                    key for key in required_nonempty
+                    if row.get(key) is None or row.get(key) == ""
+                ) + sorted(
+                    key for key in required_present if key not in row
+                )
+                if missing:
+                    raise ValueError(
+                        "claim disposition missing required fields: "
+                        f"{missing}"
+                    )
+                inserted += 1 if self._insert_or_replay(
+                    lambda row=row: conn.execute(
+                        "INSERT INTO agent_claim_dispositions "
+                        "(disposition_id, task_id, investigation_id, "
+                        " proposal_id, proposal_hash, grounding_id, "
+                        " grounding_hash, verification_id, verification_hash, "
+                        " requested_assertion_class, effective_assertion_class, "
+                        " semantic_type, decision, reasons_json, "
+                        " limitations_json, policy_registry_hash, "
+                        " policy_version, rule_id, input_hash, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            row["disposition_id"], self.task_id,
+                            investigation_id, row["proposal_id"],
+                            row["proposal_hash"], row["grounding_id"],
+                            row.get("grounding_hash"),
+                            row.get("verification_id"),
+                            row.get("verification_hash"),
+                            row["requested_assertion_class"],
+                            row["effective_assertion_class"],
+                            row["semantic_type"], row["decision"],
+                            canonical_state_json({"reasons": list(
+                                row["reasons"]
+                            )}),
+                            canonical_state_json({"limitations": list(
+                                row["limitations"]
+                            )}),
+                            row["policy_registry_hash"],
+                            row["policy_version"], row["rule_id"],
+                            row["input_hash"], _now_iso(),
+                        ],
+                    )
+                ) else 0
+            if append_trajectory and rows:
+                self._append_trajectory_with_conn(
+                    conn, investigation_id,
+                    AgentTrajectoryEventType.claim_disposition_recorded,
+                    run_id=run_id,
+                    payload={
+                        "disposition_count": len(rows),
+                        "inserted_count": inserted,
+                        "duplicate_count": len(rows) - inserted,
+                    },
+                )
+            conn.commit()
+        return {
+            "disposition_count": len(rows),
+            "inserted_count": inserted,
+            "duplicate_count": len(rows) - inserted,
+        }
+
+    def get_claim_disposition(
+        self, investigation_id: str, disposition_id: str
+    ) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_claim_dispositions "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND disposition_id = ?",
+                [self.task_id, investigation_id, disposition_id],
+            ).fetchone()
+        return self._disposition_row_to_dict(row) if row else None
+
+    def list_claim_dispositions(
+        self, investigation_id: str, *, proposal_id: Optional[str] = None
+    ) -> list[dict]:
+        sql = (
+            "SELECT * FROM agent_claim_dispositions "
+            "WHERE task_id = ? AND investigation_id = ?"
+        )
+        params: list = [self.task_id, investigation_id]
+        if proposal_id is not None:
+            sql += " AND proposal_id = ?"
+            params.append(proposal_id)
+        sql += " ORDER BY disposition_row_id"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._disposition_row_to_dict(row) for row in rows]
+
+    @staticmethod
+    def _disposition_row_to_dict(row: sqlite3.Row) -> dict:
+        return {
+            "disposition_id": row["disposition_id"],
+            "task_id": row["task_id"],
+            "investigation_id": row["investigation_id"],
+            "proposal_id": row["proposal_id"],
+            "proposal_hash": row["proposal_hash"],
+            "grounding_id": row["grounding_id"],
+            "grounding_hash": row["grounding_hash"],
+            "verification_id": row["verification_id"],
+            "verification_hash": row["verification_hash"],
+            "requested_assertion_class": row["requested_assertion_class"],
+            "effective_assertion_class": row["effective_assertion_class"],
+            "semantic_type": row["semantic_type"],
+            "decision": row["decision"],
+            "reasons": tuple(
+                json.loads(row["reasons_json"]).get("reasons", [])
+            ),
+            "limitations": tuple(
+                json.loads(row["limitations_json"]).get("limitations", [])
+            ),
+            "policy_registry_hash": row["policy_registry_hash"],
+            "policy_version": row["policy_version"],
+            "rule_id": row["rule_id"],
+            "input_hash": row["input_hash"],
+            "created_at": row["created_at"],
+        }
+
     def record_delegation_result(
         self,
         delegation_id: str,
