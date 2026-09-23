@@ -4341,6 +4341,179 @@ class AgentRuntimeRepository:
             "created_at": row["created_at"],
         }
 
+    def record_graph_episodes(
+        self,
+        investigation_id: str,
+        rows: Sequence[Mapping[str, Any]],
+        *,
+        run_id: Optional[str] = None,
+    ) -> dict:
+        """Append-only frozen episode recording, idempotent by episode_id
+        (content-hash bound; canonical state changes create NEW episodes,
+        never updates)."""
+        required_nonempty = (
+            "episode_id", "episode_version", "candidate_ids",
+            "admission_decision_ids", "semantic_units", "policy_version",
+            "policy_hash", "input_hash",
+        )
+        required_present = (
+            "evidence_refs", "finding_refs", "correlation_refs",
+            "occurrence_refs", "review_statuses", "provenance_manifest",
+        )
+        inserted = 0
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            if run_id is not None:
+                self._require_run_with_conn(conn, run_id, investigation_id)
+            for row in rows:
+                missing = sorted(
+                    key for key in required_nonempty
+                    if row.get(key) is None or row.get(key) == ()
+                    or row.get(key) == ""
+                ) + sorted(
+                    key for key in required_present if key not in row
+                )
+                if missing:
+                    raise ValueError(
+                        f"graph episode missing required fields: {missing}"
+                    )
+                inserted += 1 if self._insert_or_replay(
+                    lambda row=row: conn.execute(
+                        "INSERT INTO agent_graph_episodes "
+                        "(episode_id, task_id, investigation_id, "
+                        " episode_version, candidate_ids_json, "
+                        " admission_decision_ids_json, semantic_units_json, "
+                        " evidence_refs_json, finding_refs_json, "
+                        " correlation_refs_json, occurrence_refs_json, "
+                        " review_statuses_json, provenance_manifest_json, "
+                        " source_revision, source_state_hash, "
+                        " policy_version, policy_hash, input_hash, "
+                        " created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            row["episode_id"], self.task_id,
+                            investigation_id, row["episode_version"],
+                            canonical_state_json({"ids": list(
+                                row["candidate_ids"]
+                            )}),
+                            canonical_state_json({"ids": list(
+                                row["admission_decision_ids"]
+                            )}),
+                            canonical_state_json({"units": list(
+                                row["semantic_units"]
+                            )}),
+                            canonical_state_json({"refs": list(
+                                row["evidence_refs"]
+                            )}),
+                            canonical_state_json({"refs": list(
+                                row["finding_refs"]
+                            )}),
+                            canonical_state_json({"refs": list(
+                                row["correlation_refs"]
+                            )}),
+                            canonical_state_json({"refs": list(
+                                row["occurrence_refs"]
+                            )}),
+                            canonical_state_json(dict(
+                                row["review_statuses"]
+                            )),
+                            canonical_state_json({"manifest": list(
+                                row["provenance_manifest"]
+                            )}),
+                            row.get("source_revision"),
+                            row.get("source_state_hash"),
+                            row["policy_version"], row["policy_hash"],
+                            row["input_hash"], _now_iso(),
+                        ],
+                    )
+                ) else 0
+            if rows and inserted:
+                self._append_trajectory_with_conn(
+                    conn, investigation_id,
+                    AgentTrajectoryEventType.graph_episode_frozen,
+                    run_id=run_id,
+                    payload={
+                        "episode_count": len(rows),
+                        "inserted_count": inserted,
+                        "duplicate_count": len(rows) - inserted,
+                    },
+                )
+            conn.commit()
+        return {
+            "episode_count": len(rows),
+            "inserted_count": inserted,
+            "duplicate_count": len(rows) - inserted,
+        }
+
+    def get_graph_episode(
+        self, investigation_id: str, episode_id: str
+    ) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_graph_episodes "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND episode_id = ?",
+                [self.task_id, investigation_id, episode_id],
+            ).fetchone()
+        return self._episode_row_to_dict(row) if row else None
+
+    def list_graph_episodes(self, investigation_id: str) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM agent_graph_episodes "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "ORDER BY episode_row_id",
+                [self.task_id, investigation_id],
+            ).fetchall()
+        return [self._episode_row_to_dict(r) for r in rows]
+
+    @staticmethod
+    def _episode_row_to_dict(row: sqlite3.Row) -> dict:
+        return {
+            "episode_id": row["episode_id"],
+            "task_id": row["task_id"],
+            "investigation_id": row["investigation_id"],
+            "episode_version": row["episode_version"],
+            "candidate_ids": tuple(
+                json.loads(row["candidate_ids_json"]).get("ids", [])
+            ),
+            "admission_decision_ids": tuple(
+                json.loads(
+                    row["admission_decision_ids_json"]
+                ).get("ids", [])
+            ),
+            "semantic_units": list(
+                json.loads(row["semantic_units_json"]).get("units", [])
+            ),
+            "evidence_refs": tuple(
+                json.loads(row["evidence_refs_json"]).get("refs", [])
+            ),
+            "finding_refs": tuple(
+                json.loads(row["finding_refs_json"]).get("refs", [])
+            ),
+            "correlation_refs": tuple(
+                json.loads(row["correlation_refs_json"]).get("refs", [])
+            ),
+            "occurrence_refs": tuple(
+                json.loads(row["occurrence_refs_json"]).get("refs", [])
+            ),
+            "review_statuses": dict(
+                json.loads(row["review_statuses_json"])
+            ),
+            "provenance_manifest": list(
+                json.loads(row["provenance_manifest_json"]).get(
+                    "manifest", []
+                )
+            ),
+            "source_revision": row["source_revision"],
+            "source_state_hash": row["source_state_hash"],
+            "policy_version": row["policy_version"],
+            "policy_hash": row["policy_hash"],
+            "input_hash": row["input_hash"],
+            "created_at": row["created_at"],
+        }
+
     def record_delegation_result(
         self,
         delegation_id: str,
