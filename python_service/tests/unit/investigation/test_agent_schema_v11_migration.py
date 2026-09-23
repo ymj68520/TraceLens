@@ -63,7 +63,7 @@ def _downgrade_to_v10(db_path):
 def test_fresh_db_initializes_v11(tmp_path):
     db = tmp_path / "investigation.db"
     InvestigationRepository(db, "A")
-    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 14
+    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 15
     conn = sqlite3.connect(db)
     tables = {
         row[0]

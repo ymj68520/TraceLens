@@ -267,8 +267,8 @@ class InvestigationService:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         finally:
             conn.close()
-        if version in (7, 8, 9, 10, 11, 12, 13):
-            # Additive repository migration (v7..v13 -> current), then re-check.
+        if version in (7, 8, 9, 10, 11, 12, 13, 14):
+            # Additive repository migration (v7..v14 -> current), then re-check.
             InvestigationRepository(db_path, task_id)
             version = SUPPORTED_SCHEMA_VERSION
         if version == SUPPORTED_SCHEMA_VERSION:

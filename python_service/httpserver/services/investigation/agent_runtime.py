@@ -142,6 +142,12 @@ class AgentTrajectoryEventType(str, Enum):
     claim_disposition_recorded = "claim_disposition_recorded"
     finding_review_pending_created = "finding_review_pending_created"
     final_semantic_review_recorded = "final_semantic_review_recorded"
+    # P6A (minimal v15): graph admission/materialization audit events.
+    graph_candidate_recorded = "graph_candidate_recorded"
+    graph_admission_decided = "graph_admission_decided"
+    graph_episode_frozen = "graph_episode_frozen"
+    graph_materialization_queued = "graph_materialization_queued"
+    graph_materialization_invalidated = "graph_materialization_invalidated"
 
 
 # Application-side transition tables; the identically-shaped DB triggers are
@@ -4060,6 +4066,280 @@ class AgentRuntimeRepository:
             [_now_iso(), self.task_id],
         )
         return cursor.rowcount or 0
+
+    # -------------------------------------------------------------------
+    # P6A graph-admission persistence. Candidates/decisions/episodes are
+    # INSERT-only frozen rows; the manifest is the only state machine.
+    # -------------------------------------------------------------------
+
+    def record_graph_candidates(
+        self,
+        investigation_id: str,
+        rows: Sequence[Mapping[str, Any]],
+        *,
+        run_id: Optional[str] = None,
+    ) -> dict:
+        """Append-only GraphCandidate recording, idempotent by candidate_id."""
+        required_nonempty = (
+            "candidate_id", "candidate_version", "candidate_kind",
+            "semantic_summary", "review_status", "input_hash",
+        )
+        required_present = (
+            "subject_refs", "relation_refs", "object_refs", "evidence_refs",
+            "finding_refs", "correlation_refs", "entity_occurrence_refs",
+            "verification_refs", "limitations",
+        )
+        inserted = 0
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            if run_id is not None:
+                self._require_run_with_conn(conn, run_id, investigation_id)
+            for row in rows:
+                missing = sorted(
+                    key for key in required_nonempty
+                    if row.get(key) is None or row.get(key) == ""
+                ) + sorted(
+                    key for key in required_present if key not in row
+                )
+                if missing:
+                    raise ValueError(
+                        f"graph candidate missing required fields: {missing}"
+                    )
+                inserted += 1 if self._insert_or_replay(
+                    lambda row=row: conn.execute(
+                        "INSERT INTO agent_graph_candidates "
+                        "(candidate_id, task_id, investigation_id, "
+                        " candidate_version, candidate_kind, "
+                        " subject_refs_json, relation_refs_json, "
+                        " object_refs_json, evidence_refs_json, "
+                        " finding_refs_json, correlation_refs_json, "
+                        " occurrence_refs_json, semantic_summary, "
+                        " review_status, verification_refs_json, "
+                        " source_reason, source_component, limitations_json, "
+                        " input_hash, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        self._graph_candidate_row_params(
+                            investigation_id, row
+                        ),
+                    )
+                ) else 0
+            if rows and inserted:
+                self._append_trajectory_with_conn(
+                    conn, investigation_id,
+                    AgentTrajectoryEventType.graph_candidate_recorded,
+                    run_id=run_id,
+                    payload={
+                        "candidate_count": len(rows),
+                        "inserted_count": inserted,
+                        "duplicate_count": len(rows) - inserted,
+                    },
+                )
+            conn.commit()
+        return {
+            "candidate_count": len(rows),
+            "inserted_count": inserted,
+            "duplicate_count": len(rows) - inserted,
+        }
+
+    def _graph_candidate_row_params(
+        self, investigation_id: str, row: Mapping[str, Any]
+    ) -> list:
+        def _refs(key: str) -> str:
+            return canonical_state_json({"refs": list(row[key])})
+
+        return [
+            row["candidate_id"], self.task_id, investigation_id,
+            row["candidate_version"], row["candidate_kind"],
+            _refs("subject_refs"), _refs("relation_refs"),
+            _refs("object_refs"), _refs("evidence_refs"),
+            _refs("finding_refs"), _refs("correlation_refs"),
+            _refs("entity_occurrence_refs"), row["semantic_summary"],
+            row["review_status"], _refs("verification_refs"),
+            row.get("source_reason"), row.get("source_component"),
+            canonical_state_json({"limitations": list(row["limitations"])}),
+            row["input_hash"], _now_iso(),
+        ]
+
+    def get_graph_candidate(
+        self, investigation_id: str, candidate_id: str
+    ) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_graph_candidates "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND candidate_id = ?",
+                [self.task_id, investigation_id, candidate_id],
+            ).fetchone()
+        return self._graph_candidate_row_to_dict(row) if row else None
+
+    def list_graph_candidates(self, investigation_id: str) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM agent_graph_candidates "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "ORDER BY candidate_row_id",
+                [self.task_id, investigation_id],
+            ).fetchall()
+        return [self._graph_candidate_row_to_dict(r) for r in rows]
+
+    @staticmethod
+    def _graph_candidate_row_to_dict(row: sqlite3.Row) -> dict:
+        def _refs(name: str) -> tuple:
+            return tuple(json.loads(row[name]).get("refs", []))
+
+        return {
+            "candidate_id": row["candidate_id"],
+            "task_id": row["task_id"],
+            "investigation_id": row["investigation_id"],
+            "candidate_version": row["candidate_version"],
+            "candidate_kind": row["candidate_kind"],
+            "subject_refs": _refs("subject_refs_json"),
+            "relation_refs": _refs("relation_refs_json"),
+            "object_refs": _refs("object_refs_json"),
+            "evidence_refs": _refs("evidence_refs_json"),
+            "finding_refs": _refs("finding_refs_json"),
+            "correlation_refs": _refs("correlation_refs_json"),
+            "entity_occurrence_refs": _refs("occurrence_refs_json"),
+            "semantic_summary": row["semantic_summary"],
+            "review_status": row["review_status"],
+            "verification_refs": _refs("verification_refs_json"),
+            "source_reason": row["source_reason"],
+            "source_component": row["source_component"],
+            "limitations": tuple(
+                json.loads(row["limitations_json"]).get("limitations", [])
+            ),
+            "input_hash": row["input_hash"],
+            "created_at": row["created_at"],
+        }
+
+    def record_graph_admission_decisions(
+        self,
+        investigation_id: str,
+        rows: Sequence[Mapping[str, Any]],
+        *,
+        run_id: Optional[str] = None,
+    ) -> dict:
+        """Append-only admission-decision recording (immutable per §15)."""
+        required_nonempty = (
+            "decision_id", "candidate_id", "candidate_hash", "decision",
+            "policy_version", "policy_hash", "input_hash",
+        )
+        required_present = ("reason_codes", "limitations")
+        inserted = 0
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            if run_id is not None:
+                self._require_run_with_conn(conn, run_id, investigation_id)
+            for row in rows:
+                missing = sorted(
+                    key for key in required_nonempty
+                    if row.get(key) is None or row.get(key) == ""
+                ) + sorted(
+                    key for key in required_present if key not in row
+                )
+                if missing:
+                    raise ValueError(
+                        f"admission decision missing required fields: "
+                        f"{missing}"
+                    )
+                inserted += 1 if self._insert_or_replay(
+                    lambda row=row: conn.execute(
+                        "INSERT INTO agent_graph_admission_decisions "
+                        "(decision_id, task_id, investigation_id, "
+                        " candidate_id, candidate_hash, decision, "
+                        " reason_codes_json, limitations_json, "
+                        " policy_version, policy_hash, "
+                        " resolved_provenance_json, input_hash, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            row["decision_id"], self.task_id,
+                            investigation_id, row["candidate_id"],
+                            row["candidate_hash"], row["decision"],
+                            canonical_state_json({"codes": list(
+                                row["reason_codes"]
+                            )}),
+                            canonical_state_json({"limitations": list(
+                                row["limitations"]
+                            )}),
+                            row["policy_version"], row["policy_hash"],
+                            canonical_state_json(dict(
+                                row["resolved_provenance"]
+                            )),
+                            row["input_hash"], _now_iso(),
+                        ],
+                    )
+                ) else 0
+            if rows and inserted:
+                self._append_trajectory_with_conn(
+                    conn, investigation_id,
+                    AgentTrajectoryEventType.graph_admission_decided,
+                    run_id=run_id,
+                    payload={
+                        "decision_count": len(rows),
+                        "inserted_count": inserted,
+                        "duplicate_count": len(rows) - inserted,
+                    },
+                )
+            conn.commit()
+        return {
+            "decision_count": len(rows),
+            "inserted_count": inserted,
+            "duplicate_count": len(rows) - inserted,
+        }
+
+    def get_graph_admission_decision(
+        self, investigation_id: str, decision_id: str
+    ) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_graph_admission_decisions "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND decision_id = ?",
+                [self.task_id, investigation_id, decision_id],
+            ).fetchone()
+        return self._admission_row_to_dict(row) if row else None
+
+    def list_graph_admission_decisions(
+        self, investigation_id: str, *, candidate_id: Optional[str] = None
+    ) -> list[dict]:
+        sql = (
+            "SELECT * FROM agent_graph_admission_decisions "
+            "WHERE task_id = ? AND investigation_id = ?"
+        )
+        params: list = [self.task_id, investigation_id]
+        if candidate_id is not None:
+            sql += " AND candidate_id = ?"
+            params.append(candidate_id)
+        sql += " ORDER BY decision_row_id"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._admission_row_to_dict(r) for r in rows]
+
+    @staticmethod
+    def _admission_row_to_dict(row: sqlite3.Row) -> dict:
+        return {
+            "decision_id": row["decision_id"],
+            "task_id": row["task_id"],
+            "investigation_id": row["investigation_id"],
+            "candidate_id": row["candidate_id"],
+            "candidate_hash": row["candidate_hash"],
+            "decision": row["decision"],
+            "reason_codes": tuple(
+                json.loads(row["reason_codes_json"]).get("codes", [])
+            ),
+            "limitations": tuple(
+                json.loads(row["limitations_json"]).get("limitations", [])
+            ),
+            "policy_version": row["policy_version"],
+            "policy_hash": row["policy_hash"],
+            "resolved_provenance": json.loads(
+                row["resolved_provenance_json"]
+            ),
+            "input_hash": row["input_hash"],
+            "created_at": row["created_at"],
+        }
 
     def record_delegation_result(
         self,

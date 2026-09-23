@@ -18,10 +18,13 @@ _PRODUCTION_DIR = (
 # §62: these P5B constructs must not be DEFINED anywhere in production code.
 # (Docstring *mentions* of the boundary are fine and intentional; only
 # class/function definitions are violations.)
+# P6A legitimately introduces GraphCandidate/GraphAdmissionPolicy/
+# ForensicGraphEpisode; the remaining forbidden set covers the P6B/P7
+# execution boundary (no backend materializer, no report runtime).
 _FORBIDDEN_DEFINITIONS = re.compile(
     r"^\s*(?:class|def)\s+("
-    r"GraphAdmissionPolicy|GraphCandidate|ForensicGraphEpisode|"
-    r"GraphMaterializer|ReportRuntime"
+    r"GraphMaterializationExecutor|GraphitiMaterializer|"
+    r"Neo4jWriter|ReportRuntime"
     r")\b",
     re.MULTILINE,
 )
@@ -91,3 +94,15 @@ def test_service_manager_gains_no_p5a_lifecycle_service():
     # P5A components are stateless objects (§64): no new executor service
     assert "grounding_executor" not in service_manager
     assert "verification_executor" not in service_manager
+
+
+def test_p6a_modules_never_call_graph_backends():
+    """P6A §63: production graph-admission modules contain zero Graphiti /
+    Neo4j write calls - SQLite manifest is the only thing they touch."""
+    for name in (
+        "agent_graph_candidate.py",
+        "agent_graph_admission.py",
+    ):
+        source = (_PRODUCTION_DIR / name).read_text(encoding="utf-8")
+        for token in ("add_episode", "cypher", "neo4j", "Graphiti("):
+            assert token not in source.lower(), (name, token)
