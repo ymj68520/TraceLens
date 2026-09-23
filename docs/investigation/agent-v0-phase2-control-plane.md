@@ -118,18 +118,20 @@ after  : user_version = 9    (SUPPORTED_SCHEMA_VERSION = 9)
   `integrate_transitions` (INTEGRATE: policy -> optimistic
   `commit_working_state` -> `transition_decision_validated` +
   `working_state_integrated`; fail-closed rejection trajectory),
-  `evaluate_progress` (bookkeeping revision + `no_progress_detected` +
-  run stop `no_progress` at threshold), `evaluate_finalization`/`finalize`
+  `evaluate_progress` (deterministic snapshot + `no_progress_detected`
+  trajectory audit + run stop `no_progress` at threshold; never touches the
+  Working State revision), `evaluate_finalization`/`finalize`
   (gate + atomic commit; `pause_on_required_review_unavailable`),
   `pause`/`cancel`. Trusted task lookup only; `open_existing` for every
   control write; investigation creation may establish the store (E1
   pattern) from the trusted path.
 - `AgentRuntimeRepository.record_finalization` / `get_finalization` —
   atomic Finalization Commit (P2 §37): one BEGIN IMMEDIATE revalidates
-  active investigation + revision/hash, inserts the immutable record,
-  completes the run (queued runs take the legal queued->running->completed
-  two-step; `stop_reason=finalized`), completes the investigation, appends
-  `finalization_completed`; any failure rolls everything back. P1's
+  active investigation + revision/hash + run status, inserts the immutable
+  record, completes the RUNNING run (`stop_reason=finalized`), completes
+  the investigation, appends `finalization_completed`; any failure rolls
+  everything back. A queued run is never implicitly promoted to running
+  during finalization (freeze follow-up F2). P1's
   `complete_investigation()` remains a low-level primitive and is never a
   finalization pathway (§38 option A).
 - Tests: `test_agent_control_plane.py` (39), `test_agent_finalization.py`
@@ -220,8 +222,32 @@ cd python_service
 - Working State v1 still carries no Charter/Question provenance objects
   beyond refs; Charter/Directive canonical persistence remains Architecture
   TBD.
-- Progress bookkeeping consumes one revision per evaluation cycle (by
-  design; the detector excludes it from progress semantics).
+- The no-progress streak is run-level runtime bookkeeping audited through
+  trajectory events; it is intentionally not recovered across restarts
+  (a restarted run terminalises as `failed(runtime_restart)`).
+
+## Freeze follow-up: state semantics tightening
+
+Working State revisions are semantic, not cycle bookkeeping:
+
+- A revision grows only through semantic state mutation (Question, Coverage,
+  Evidence Working Set, Hypothesis, Finding ref, Contradiction,
+  directive/scope semantic state). Progress counters, no-progress streaks,
+  cycle numbers, attention compilation, tool/operation noise, runtime
+  bookkeeping and budget observations never consume a revision.
+- Progress/no-progress bookkeeping does not consume revisions:
+  `evaluate_progress` compares committed revisions deterministically, emits
+  `ProgressSnapshot` facts into the trajectory
+  (`no_progress_detected` payloads carry the streak, threshold and state
+  revision) and keeps the streak in run-level runtime bookkeeping.
+  `AgentWorkingStateV1.progress_state` remains for schema compatibility but
+  is never updated without another semantic mutation.
+- Finalization requires a running Agent Run: `running ->
+  completed(stop_reason=finalized)` is the only finalization path. A queued
+  run (admission only, no started investigation loop) is DENYed by the gate
+  (`FINALIZATION_RUN_NOT_RUNNING`) and refused by the atomic commit;
+  failed/cancelled/completed runs cannot finalize. No schema change was
+  required for either tightening (no v10).
 
 ## Deferred to P3/P4
 

@@ -78,7 +78,6 @@ from .agent_transitions import (
 )
 from .agent_working_state import (
     AgentWorkingStateV1,
-    ProgressState,
     STATE_TRANSITION_POLICY_VERSION,
     working_state_from_json,
     working_state_to_json,
@@ -199,6 +198,13 @@ class AgentOrchestrator:
         self._detector = NoProgressDetector()
         self._gate = FinalizationGate()
         self._accepting = True
+        # Run-level no-progress streak bookkeeping (P2 freeze follow-up F1):
+        # the streak never touches the Working State — revisions grow only
+        # through semantic mutations.  A restart terminalises the run
+        # (failed/runtime_restart), so the streak is intentionally not
+        # recovered across restarts; every no-progress cycle is audited in
+        # the trajectory payload.
+        self._no_progress_streaks: dict[tuple[str, str, str], int] = {}
 
     # =====================================================================
     # lifecycle (ServiceManager startup hook, P2 §44/§45)
@@ -658,30 +664,25 @@ class AgentOrchestrator:
             previous_revision=previous.revision if previous else None,
             current_revision=latest.revision,
         )
+        active_run = self._active_run(runtime, investigation_id)
+        # F1: the no-progress streak lives in run-level bookkeeping and is
+        # audited through trajectory events — the Working State revision is
+        # never consumed by progress bookkeeping.
+        streak_key = (
+            runtime.task_id, investigation_id,
+            active_run.run_id if active_run else "-",
+        )
         verdict = self._detector.verdict(
             snapshot,
             self._no_progress_config,
-            consecutive_no_progress_cycles=(
-                state.progress_state.consecutive_no_progress_cycles
-            ),
+            consecutive_no_progress_cycles=self._no_progress_streaks.get(streak_key, 0),
         )
-        # bookkeeping commit (excluded from progress semantics by the detector)
-        updated_state = state.model_copy(
-            update={
-                "progress_state": ProgressState(
-                    completed_cycles=state.progress_state.completed_cycles + 1,
-                    consecutive_no_progress_cycles=(
-                        verdict.consecutive_no_progress_cycles
-                    ),
-                )
-            }
-        )
-        revision = runtime.commit_working_state(
-            investigation_id,
-            working_state_to_json(updated_state),
-            expected_revision=latest.revision,
-        )
-        active_run = self._active_run(runtime, investigation_id)
+        if snapshot.productive or active_run is None:
+            self._no_progress_streaks.pop(streak_key, None)
+        else:
+            self._no_progress_streaks[streak_key] = (
+                verdict.consecutive_no_progress_cycles
+            )
         run_stopped = False
         if verdict.no_progress_detected:
             runtime.append_trajectory(
@@ -693,17 +694,35 @@ class AgentOrchestrator:
                         verdict.consecutive_no_progress_cycles
                     ),
                     "threshold": verdict.threshold,
+                    "productive": snapshot.productive,
+                    "state_revision": latest.revision,
                 },
             )
             if active_run is not None:
                 runtime.cancel_run(active_run.run_id, stop_reason=RunStopReason.no_progress)
+                self._no_progress_streaks.pop(streak_key, None)
                 run_stopped = True
+        elif not snapshot.productive:
+            # audit every no-progress cycle (not only the detecting one)
+            runtime.append_trajectory(
+                investigation_id,
+                AgentTrajectoryEventType.no_progress_detected,
+                run_id=active_run.run_id if active_run else None,
+                payload={
+                    "consecutive_no_progress_cycles": (
+                        verdict.consecutive_no_progress_cycles
+                    ),
+                    "threshold": verdict.threshold,
+                    "productive": snapshot.productive,
+                    "state_revision": latest.revision,
+                },
+            )
         return ProgressEvaluation(
             productive=snapshot.productive,
             reason_codes=snapshot.reason_codes,
             consecutive_no_progress_cycles=verdict.consecutive_no_progress_cycles,
             no_progress_detected=verdict.no_progress_detected,
-            state_revision=revision.revision,
+            state_revision=latest.revision,
             run_stopped=run_stopped,
         )
 
@@ -750,6 +769,9 @@ class AgentOrchestrator:
             ),
             store_ok=True,
             active_run_id=active_run.run_id if active_run else None,
+            active_run_status=(
+                active_run.status.value if active_run else None
+            ),
             active_delegation_ids=active_ids,
             completed_unintegrated_delegation_ids=unintegrated,
         )

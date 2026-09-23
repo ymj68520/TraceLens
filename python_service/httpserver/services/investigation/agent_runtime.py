@@ -1742,20 +1742,14 @@ class AgentRuntimeRepository:
                 ).fetchone()
                 if run_row is None or run_row["investigation_id"] != investigation_id:
                     raise ValueError(f"run not found: {run_id!r}")
-                if run_row["status"] not in ("queued", "running"):
+                if run_row["status"] != AgentRunStatus.running.value:
+                    # Finalization never fabricates run_started semantics: a
+                    # queued run only holds an admission, and terminal runs
+                    # cannot finalize.
                     raise AgentRuntimeConflictError(
-                        f"finalization run is not active ({run_row['status']!r})"
+                        f"finalization requires a running run "
+                        f"(current: {run_row['status']!r})"
                     )
-                if run_row["status"] == "queued":
-                    # legal two-step within this transaction: a queued
-                    # requesting run is marked started, then finalized
-                    self._transition_run_with_conn(
-                        conn, run_row, AgentRunStatus.running, now=now,
-                    )
-                    run_row = conn.execute(
-                        "SELECT * FROM agent_runs WHERE task_id = ? AND run_id = ?",
-                        [self.task_id, run_id],
-                    ).fetchone()
                 self._transition_run_with_conn(
                     conn, run_row, AgentRunStatus.completed,
                     stop_reason=RunStopReason.finalized, now=now,

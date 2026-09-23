@@ -15,6 +15,7 @@ import pytest
 from httpserver.services.investigation import (
     AgentInvestigationStatus,
     AgentRunStatus,
+    AgentRuntimeConflictError,
     AgentRuntimeRepository,
     DelegationSpec,
     DelegationStatus,
@@ -343,13 +344,16 @@ async def test_progress_bookkeeping_and_no_progress_stop(runtime):
     )
     investigation, revision, run = await _seed_typable_investigation(orchestrator)
 
+    # F1: progress bookkeeping never consumes a Working State revision
     first = await orchestrator.evaluate_progress("A", investigation.investigation_id)
     assert not first.no_progress_detected
-    assert first.state_revision == revision.revision + 1
+    assert first.state_revision == revision.revision
+    assert first.consecutive_no_progress_cycles == 1
     second = await orchestrator.evaluate_progress("A", investigation.investigation_id)
     assert second.no_progress_detected
     assert second.run_stopped
     assert second.consecutive_no_progress_cycles == 2
+    assert second.state_revision == revision.revision
 
     store = AgentRuntimeRepository(
         InvestigationRepository(
@@ -358,13 +362,18 @@ async def test_progress_bookkeeping_and_no_progress_stop(runtime):
             "A",
         )
     )
+    # the working state head never moved
+    assert store.get_latest_working_state(
+        investigation.investigation_id
+    ).revision == revision.revision
     assert store.get_run(run.run_id).status is AgentRunStatus.cancelled
     assert store.get_run(run.run_id).stop_reason is RunStopReason.no_progress
     events = [
         e.event_type.value
         for e in store.list_trajectory(investigation.investigation_id)
     ]
-    assert events.count("no_progress_detected") == 1
+    # every no-progress cycle is audited in the trajectory
+    assert events.count("no_progress_detected") == 2
 
 
 @pytest.mark.asyncio
@@ -468,6 +477,15 @@ async def test_finalize_commits_record_on_pass(runtime):
     )
     investigation, revision = await orchestrator.create_investigation("A", state)
     run = await orchestrator.admit_run("A", investigation.investigation_id)
+    # F2: finalization requires a RUNNING run
+    store = AgentRuntimeRepository(
+        InvestigationRepository(
+            Path(backend.tasks["A"]["output_files_db"]).parent
+            / "investigation.db",
+            "A",
+        )
+    )
+    store.mark_run_running(run.run_id)
 
     commit = await orchestrator.finalize(
         "A", _request(investigation, revision.revision)
@@ -689,3 +707,200 @@ async def test_service_manager_wires_orchestrator_and_recovery(tmp_path, monkeyp
     assert events[-1] == "orchestrator.shutdown"
     assert manager._agent_orchestrator is None
     assert not manager._agent_orchestrator_ready
+
+
+# ---------- freeze follow-up F1: revision semantics ----------
+
+@pytest.mark.asyncio
+async def test_progress_and_attention_never_move_revision(runtime):
+    """Working State revisions grow only through semantic mutations:
+    repeated evaluate_progress cycles and attention compilation leave the
+    head revision untouched while the trajectory grows."""
+    backend, _ = runtime
+    orchestrator = AgentOrchestrator(backend)
+    investigation, revision, run = await _seed_typable_investigation(orchestrator)
+
+    before_events = len(orchestrator is not None and [])  # placeholder no-op
+    for _ in range(3):
+        evaluation = await orchestrator.evaluate_progress(
+            "A", investigation.investigation_id
+        )
+        assert evaluation.state_revision == revision.revision
+    preparation = await orchestrator.prepare_cycle("A", investigation.investigation_id)
+    assert preparation.state_revision == revision.revision
+
+    store = AgentRuntimeRepository(
+        InvestigationRepository(
+            Path(backend.tasks["A"]["output_files_db"]).parent
+            / "investigation.db",
+            "A",
+        )
+    )
+    assert store.get_latest_working_state(
+        investigation.investigation_id
+    ).revision == revision.revision
+    # trajectory grew (attention_compiled + no_progress audits) while the
+    # semantic state stayed identical
+    events = store.list_trajectory(investigation.investigation_id)
+    types = [e.event_type.value for e in events]
+    assert types.count("attention_compiled") >= 1
+    assert types.count("no_progress_detected") >= 1
+
+
+@pytest.mark.asyncio
+async def test_semantic_transition_increases_revision_exactly_once(runtime):
+    backend, _ = runtime
+    orchestrator = AgentOrchestrator(backend)
+    investigation, revision, run = await _seed_typable_investigation(orchestrator)
+    batch = TransitionBatch(transitions=(
+        CreateQuestion(question=WorkingQuestion(
+            question_id="Q2", text="exfil path?",
+            source=QuestionSource.supervisor_discovery,
+            priority=QuestionPriority.high,
+        )),
+    ))
+    result = await orchestrator.integrate_transitions(
+        "A", investigation.investigation_id, batch,
+        expected_revision=revision.revision,
+    )
+    assert result.status is TransitionDecisionStatus.accepted
+    store = AgentRuntimeRepository(
+        InvestigationRepository(
+            Path(backend.tasks["A"]["output_files_db"]).parent
+            / "investigation.db",
+            "A",
+        )
+    )
+    assert store.get_latest_working_state(
+        investigation.investigation_id
+    ).revision == revision.revision + 1
+    committed = [
+        e.event_type.value
+        for e in store.list_trajectory(investigation.investigation_id)
+    ]
+    assert committed.count("working_state_committed") == 1
+
+
+# ---------- freeze follow-up F2: finalization run state ----------
+
+@pytest.mark.asyncio
+async def test_queued_run_cannot_be_finalized(runtime):
+    """A queued run only holds an admission: the gate DENYs and the atomic
+    commit refuses — no record, investigation unchanged, run stays queued."""
+    from httpserver.services.investigation.agent_finalization import (
+        FINALIZATION_RUN_NOT_RUNNING,
+    )
+
+    backend, _ = runtime
+    orchestrator = AgentOrchestrator(backend)
+    state = AgentWorkingStateV1(
+        task_id="A",
+        investigation_id="inv_queued",
+        questions=(WorkingQuestion(
+            question_id="Q1", text="persistence?",
+            source=QuestionSource.charter,
+            priority=QuestionPriority.required,
+            status=QuestionStatus.answered,
+            disposition=QuestionDisposition.not_supported,
+            basis_refs=("file:/a.txt",),
+        ),),
+        coverage=(CoverageDimension(
+            dimension_id="usb", required=True,
+            status=CoverageStatus.covered,
+            basis_refs=("file:/a.txt",),
+        ),),
+    )
+    investigation, revision = await orchestrator.create_investigation("A", state)
+    run = await orchestrator.admit_run("A", investigation.investigation_id)
+
+    decision = await orchestrator.evaluate_finalization(
+        "A", _request(investigation, revision.revision)
+    )
+    assert decision.outcome is FinalizationOutcome.deny
+    assert FINALIZATION_RUN_NOT_RUNNING in decision.violation_codes
+
+    commit = await orchestrator.finalize(
+        "A", _request(investigation, revision.revision)
+    )
+    assert not commit.finalized
+
+    store = AgentRuntimeRepository(
+        InvestigationRepository(
+            Path(backend.tasks["A"]["output_files_db"]).parent
+            / "investigation.db",
+            "A",
+        )
+    )
+    with pytest.raises(AgentRuntimeConflictError):
+        store.record_finalization(
+            investigation.investigation_id,
+            run_id=run.run_id,
+            state_revision=revision.revision,
+            state_hash=revision.state_hash,
+            completion_mode="complete",
+            question_dispositions={}, coverage_dispositions={},
+            unresolved_contradictions=[], limitations=[],
+            remaining_nonblocking_questions=[], pending_analyst_review_refs=[],
+            final_verification_status="passed",
+            finalization_policy_version="finalization-policy:v1",
+            input_hash="h",
+        )
+    # nothing moved
+    assert store.get_finalization(investigation.investigation_id) is None
+    assert store.get_investigation(
+        investigation.investigation_id
+    ).status is AgentInvestigationStatus.active
+    assert store.get_run(run.run_id).status is AgentRunStatus.queued
+
+
+@pytest.mark.asyncio
+async def test_terminal_runs_cannot_finalize(runtime):
+    backend, _ = runtime
+    orchestrator = AgentOrchestrator(backend)
+    state = AgentWorkingStateV1(
+        task_id="A",
+        investigation_id="inv_term",
+    )
+    investigation, revision = await orchestrator.create_investigation("A", state)
+    run = await orchestrator.admit_run("A", investigation.investigation_id)
+    store = AgentRuntimeRepository(
+        InvestigationRepository(
+            Path(backend.tasks["A"]["output_files_db"]).parent
+            / "investigation.db",
+            "A",
+        )
+    )
+    store.mark_run_running(run.run_id)
+    store.fail_run(run.run_id, error_code="x", error_message="y")
+    with pytest.raises(AgentRuntimeConflictError):
+        store.record_finalization(
+            investigation.investigation_id,
+            run_id=run.run_id,
+            state_revision=revision.revision,
+            state_hash=revision.state_hash,
+            completion_mode="complete",
+            question_dispositions={}, coverage_dispositions={},
+            unresolved_contradictions=[], limitations=[],
+            remaining_nonblocking_questions=[], pending_analyst_review_refs=[],
+            final_verification_status="passed",
+            finalization_policy_version="finalization-policy:v1",
+            input_hash="h",
+        )
+    second_run = await orchestrator.admit_run("A", investigation.investigation_id)
+    cancelled = store.cancel_run(
+        second_run.run_id, stop_reason=RunStopReason.cancelled
+    )
+    with pytest.raises(AgentRuntimeConflictError):
+        store.record_finalization(
+            investigation.investigation_id,
+            run_id=cancelled.run_id,
+            state_revision=revision.revision,
+            state_hash=revision.state_hash,
+            completion_mode="complete",
+            question_dispositions={}, coverage_dispositions={},
+            unresolved_contradictions=[], limitations=[],
+            remaining_nonblocking_questions=[], pending_analyst_review_refs=[],
+            final_verification_status="passed",
+            finalization_policy_version="finalization-policy:v1",
+            input_hash="h",
+        )

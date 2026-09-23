@@ -108,6 +108,7 @@ class RuntimeFinalizationView(BaseModel):
     store_ok: bool = True
     transition_conflict_unresolved: bool = False
     active_run_id: Optional[str] = None
+    active_run_status: Optional[str] = None
     active_delegation_ids: tuple[str, ...] = ()
     completed_unintegrated_delegation_ids: tuple[str, ...] = ()
 
@@ -131,6 +132,7 @@ TRANSITION_CONFLICT_UNRESOLVED = "TRANSITION_CONFLICT_UNRESOLVED"
 UNAPPLIED_DIRECTIVE_PRESENT = "UNAPPLIED_DIRECTIVE_PRESENT"
 ACTIVE_DELEGATION_PRESENT = "ACTIVE_DELEGATION_PRESENT"
 UNINTEGRATED_COMPLETED_DELEGATION = "UNINTEGRATED_COMPLETED_DELEGATION"
+FINALIZATION_RUN_NOT_RUNNING = "FINALIZATION_RUN_NOT_RUNNING"
 MANDATORY_VERIFICATION_BLOCKING = "MANDATORY_VERIFICATION_BLOCKING"
 REQUIRED_QUESTION_OPEN = "REQUIRED_QUESTION_OPEN"
 REQUIRED_QUESTION_IN_PROGRESS = "REQUIRED_QUESTION_IN_PROGRESS"
@@ -192,6 +194,10 @@ class FinalizationGate:
             violations.append(ACTIVE_DELEGATION_PRESENT)
         if runtime.completed_unintegrated_delegation_ids:
             violations.append(UNINTEGRATED_COMPLETED_DELEGATION)
+        if runtime.active_run_id is not None and runtime.active_run_status != "running":
+            # A queued run only holds an admission — finalization never
+            # fabricates run_started semantics.
+            violations.append(FINALIZATION_RUN_NOT_RUNNING)
         if any(not directive.applied for directive in state.directive_refs):
             violations.append(UNAPPLIED_DIRECTIVE_PRESENT)
 
