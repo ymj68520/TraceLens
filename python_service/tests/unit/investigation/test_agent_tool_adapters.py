@@ -201,9 +201,11 @@ def make_context() -> ForensicToolContext:
         task_id="task-A",
         investigation_id="inv-A",
         run_id="run-A",
+        source_scope_ids=("windows",),
         allowed_tool_ids=frozenset(
             {
                 "get_task_context",
+                "query_platform_artifacts",
                 "search_evidence",
                 "get_evidence",
                 "find_related_evidence",
@@ -224,7 +226,7 @@ def make_context() -> ForensicToolContext:
 
 def test_catalog_registers_only_read_tools():
     registry = build_read_only_registry(make_services())
-    assert len(registry) == 9
+    assert len(registry) == 10
     assert all(d.access == ToolAccess.READ for d in registry.iter_definitions())
 
 

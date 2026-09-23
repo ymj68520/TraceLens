@@ -16,7 +16,7 @@ from typing import Any, Iterable, Mapping, Protocol, runtime_checkable
 from pydantic import TypeAdapter
 from pydantic_core import SchemaValidator
 
-from pydantic_ai import InlineDefsJsonSchemaTransformer
+from pydantic_ai import Agent, InlineDefsJsonSchemaTransformer
 from pydantic_ai.tools import RunContext, ToolDefinition
 from pydantic_ai.toolsets.abstract import AbstractToolset, ToolsetTool
 
@@ -129,8 +129,46 @@ def build_pydantic_toolset(
     return ForensicToolset(registry, context)
 
 
+def build_specialist_agent(
+    pack,
+    registry: ForensicToolRegistryProtocol,
+    *,
+    model=None,
+):
+    """Complete the bridge: ContextPack + registry -> PydanticAI Agent.
+
+    The agent is constructed but never run by P3 wiring; production runs
+    start in P4. Instructions come from the pack's frozen layers — never
+    from chat history.
+    """
+    from ..agent_deps import ForensicAgentDeps
+
+    if model is None:
+        raise ModelRequiredError(
+            "build_specialist_agent requires a model (PydanticAI Model); "
+            "P3 never constructs a live provider model implicitly"
+        )
+    context = pack.tool_context()
+    instructions = [
+        f"{layer_name}: {content}"
+        for layer_name, content in pack.layered_view()
+    ]
+    return Agent(
+        model,
+        deps_type=ForensicAgentDeps,
+        toolsets=[ForensicToolset(registry, context)],
+        instructions=instructions,
+    )
+
+
+class ModelRequiredError(Exception):
+    """Raised when a specialist agent would be built without an explicit model."""
+
+
 __all__ = [
     "ForensicToolRegistryProtocol",
     "ForensicToolset",
+    "ModelRequiredError",
     "build_pydantic_toolset",
+    "build_specialist_agent",
 ]
