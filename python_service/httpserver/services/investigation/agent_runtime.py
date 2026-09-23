@@ -2818,6 +2818,45 @@ class AgentRuntimeRepository:
             row["validator_version"], row["input_hash"], _now_iso(),
         ]
 
+    def record_grounding_results(
+        self,
+        investigation_id: str,
+        rows: Sequence[Mapping[str, Any]],
+        *,
+        run_id: Optional[str] = None,
+    ) -> dict:
+        """Standalone append-only grounding recording (\u00a742 staged path:
+        the proposal row is already immutable; grounding rows are versioned
+        by deterministic grounding_id and never overwrite history)."""
+        inserted = 0
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            if run_id is not None:
+                self._require_run_with_conn(conn, run_id, investigation_id)
+            for row in rows:
+                inserted += 1 if self._insert_or_replay(
+                    lambda row=row: conn.execute(
+                        "INSERT INTO agent_grounding_results "
+                        "(grounding_id, task_id, investigation_id, proposal_id, "
+                        " grounding_version, input_assertion_class, "
+                        " effective_assertion_class, status, "
+                        " valid_evidence_refs_json, invalid_evidence_refs_json, "
+                        " invisible_evidence_refs_json, "
+                        " disallowed_ref_types_json, warnings_json, "
+                        " limitations_json, validator_version, input_hash, "
+                        " created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        self._grounding_row_params(investigation_id, row),
+                    )
+                ) else 0
+            conn.commit()
+        return {
+            "grounding_count": len(rows),
+            "inserted_count": inserted,
+            "duplicate_count": len(rows) - inserted,
+        }
+
     def list_grounding_results(
         self, investigation_id: str, proposal_id: Optional[str] = None
     ) -> list[dict]:
@@ -3354,6 +3393,422 @@ class AgentRuntimeRepository:
             "input_hash": row["input_hash"],
             "created_at": row["created_at"],
         }
+
+    def record_investigation_findings(
+        self,
+        investigation_id: str,
+        rows: Sequence[Mapping[str, Any]],
+        *,
+        run_id: Optional[str] = None,
+    ) -> dict:
+        """Append-only review_pending Finding recording, idempotent by
+        finding_id (crash+retry cannot duplicate: the id binds
+        investigation/proposal/disposition/class)."""
+        required_nonempty = (
+            "finding_id", "proposal_id", "disposition_id", "text",
+            "assertion_class", "grounding_id", "input_hash",
+        )
+        required_present = (
+            "evidence_refs", "relationship_refs", "limitations", "status",
+        )
+        inserted = 0
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            if run_id is not None:
+                self._require_run_with_conn(conn, run_id, investigation_id)
+            for row in rows:
+                if row.get("status") != "review_pending":
+                    raise ValueError(
+                        "agent pipeline findings are always review_pending"
+                    )
+                missing = sorted(
+                    key for key in required_nonempty
+                    if row.get(key) is None or row.get(key) == ""
+                ) + sorted(
+                    key for key in required_present if key not in row
+                )
+                if missing:
+                    raise ValueError(
+                        f"finding missing required fields: {missing}"
+                    )
+                inserted += 1 if self._insert_or_replay(
+                    lambda row=row: conn.execute(
+                        "INSERT INTO investigation_findings "
+                        "(finding_id, task_id, investigation_id, "
+                        " proposal_id, disposition_id, text, "
+                        " assertion_class, evidence_refs_json, "
+                        " relationship_refs_json, temporal_scope_json, "
+                        " grounding_id, semantic_verification_id, "
+                        " limitations_json, status, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            row["finding_id"], self.task_id,
+                            investigation_id, row["proposal_id"],
+                            row["disposition_id"], row["text"],
+                            row["assertion_class"],
+                            canonical_state_json({"refs": list(
+                                row["evidence_refs"]
+                            )}),
+                            canonical_state_json({"refs": list(
+                                row["relationship_refs"]
+                            )}),
+                            canonical_state_json(dict(row["temporal_scope"]))
+                            if row.get("temporal_scope") is not None
+                            else None,
+                            row["grounding_id"],
+                            row.get("semantic_verification_id"),
+                            canonical_state_json({"limitations": list(
+                                row["limitations"]
+                            )}),
+                            row["status"], _now_iso(),
+                        ],
+                    )
+                ) else 0
+            if rows and inserted:
+                self._append_trajectory_with_conn(
+                    conn, investigation_id,
+                    AgentTrajectoryEventType.finding_review_pending_created,
+                    run_id=run_id,
+                    payload={
+                        "finding_count": len(rows),
+                        "inserted_count": inserted,
+                        "duplicate_count": len(rows) - inserted,
+                    },
+                )
+            conn.commit()
+        return {
+            "finding_count": len(rows),
+            "inserted_count": inserted,
+            "duplicate_count": len(rows) - inserted,
+        }
+
+    def get_investigation_finding(
+        self, investigation_id: str, finding_id: str
+    ) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM investigation_findings "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND finding_id = ?",
+                [self.task_id, investigation_id, finding_id],
+            ).fetchone()
+        return self._finding_row_to_dict(row) if row else None
+
+    def list_investigation_findings(
+        self, investigation_id: str, *, status: Optional[str] = None
+    ) -> list[dict]:
+        sql = (
+            "SELECT * FROM investigation_findings "
+            "WHERE task_id = ? AND investigation_id = ?"
+        )
+        params: list = [self.task_id, investigation_id]
+        if status is not None:
+            sql += " AND status = ?"
+            params.append(status)
+        sql += " ORDER BY finding_row_id"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._finding_row_to_dict(row) for row in rows]
+
+    @staticmethod
+    def _finding_row_to_dict(row: sqlite3.Row) -> dict:
+        temporal = row["temporal_scope_json"]
+        return {
+            "finding_id": row["finding_id"],
+            "task_id": row["task_id"],
+            "investigation_id": row["investigation_id"],
+            "proposal_id": row["proposal_id"],
+            "disposition_id": row["disposition_id"],
+            "text": row["text"],
+            "assertion_class": row["assertion_class"],
+            "evidence_refs": tuple(
+                json.loads(row["evidence_refs_json"]).get("refs", [])
+            ),
+            "relationship_refs": tuple(
+                json.loads(row["relationship_refs_json"]).get("refs", [])
+            ),
+            "temporal_scope": json.loads(temporal) if temporal else None,
+            "grounding_id": row["grounding_id"],
+            "semantic_verification_id": row["semantic_verification_id"],
+            "limitations": tuple(
+                json.loads(row["limitations_json"]).get("limitations", [])
+            ),
+            "status": row["status"],
+            "created_at": row["created_at"],
+            "reviewed_at": row["reviewed_at"],
+            "reviewer": row["reviewer"],
+            "review_note": row["review_note"],
+            "review_id": row["review_id"],
+        }
+
+    def commit_claim_disposition(
+        self,
+        investigation_id: str,
+        *,
+        disposition_row: Mapping[str, Any],
+        finding_row: Optional[Mapping[str, Any]] = None,
+        run_id: Optional[str] = None,
+    ) -> dict:
+        """\u00a744 atomic disposition(+finding) commit.
+
+        ONE transaction: revalidate the exact provenance bindings
+        (proposal hash, grounding existence, optional verification id),
+        INSERT the immutable disposition, INSERT the review_pending
+        Finding when the decision is canonicalizable, append trajectory.
+        Any failure rolls the WHOLE unit back - a Finding without its
+        disposition (or vice versa) is structurally impossible."""
+        decision = disposition_row["decision"]
+        if decision not in (
+            "eligible_review_pending", "downgrade_to_hypothesis",
+            "insufficient", "contradicted",
+            "blocked_verification_required", "invalid",
+        ):
+            raise ValueError(f"illegal disposition decision {decision!r}")
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            if run_id is not None:
+                self._require_run_with_conn(conn, run_id, investigation_id)
+            try:
+                # revalidate bindings inside the transaction
+                proposal = conn.execute(
+                    "SELECT input_hash AS proposal_hash FROM agent_claim_proposals "
+                    "WHERE task_id = ? AND investigation_id = ? "
+                    "AND proposal_id = ?",
+                    [self.task_id, investigation_id,
+                     disposition_row["proposal_id"]],
+                ).fetchone()
+                if proposal is None:
+                    raise ValueError(
+                        "disposition references an unknown proposal"
+                )
+                if proposal["proposal_hash"] != disposition_row[
+                    "proposal_hash"
+                ]:
+                    raise ValueError(
+                        "disposition proposal hash mismatch"
+                    )
+                grounding = conn.execute(
+                    "SELECT grounding_id FROM agent_grounding_results "
+                    "WHERE task_id = ? AND investigation_id = ? "
+                    "AND grounding_id = ?",
+                    [self.task_id, investigation_id,
+                     disposition_row["grounding_id"]],
+                ).fetchone()
+                if grounding is None:
+                    raise ValueError(
+                        "disposition references an unknown grounding"
+                    )
+                verification_id = disposition_row.get("verification_id")
+                if verification_id:
+                    verified = conn.execute(
+                        "SELECT verification_id "
+                        "FROM agent_semantic_verifications "
+                        "WHERE task_id = ? AND investigation_id = ? "
+                        "AND verification_id = ?",
+                        [self.task_id, investigation_id, verification_id],
+                    ).fetchone()
+                    if verified is None:
+                        raise ValueError(
+                            "disposition references an unknown semantic "
+                            "verification"
+                        )
+                disposition_inserted = self._insert_or_replay(
+                    lambda: conn.execute(
+                        "INSERT INTO agent_claim_dispositions "
+                        "(disposition_id, task_id, investigation_id, "
+                        " proposal_id, proposal_hash, grounding_id, "
+                        " grounding_hash, verification_id, verification_hash, "
+                        " requested_assertion_class, "
+                        " effective_assertion_class, semantic_type, decision, "
+                        " reasons_json, limitations_json, "
+                        " policy_registry_hash, policy_version, rule_id, "
+                        " input_hash, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            disposition_row["disposition_id"], self.task_id,
+                            investigation_id,
+                            disposition_row["proposal_id"],
+                            disposition_row["proposal_hash"],
+                            disposition_row["grounding_id"],
+                            disposition_row.get("grounding_hash"),
+                            disposition_row.get("verification_id"),
+                            disposition_row.get("verification_hash"),
+                            disposition_row["requested_assertion_class"],
+                            disposition_row["effective_assertion_class"],
+                            disposition_row["semantic_type"],
+                            decision,
+                            canonical_state_json({"reasons": list(
+                                disposition_row["reasons"]
+                            )}),
+                            canonical_state_json({"limitations": list(
+                                disposition_row["limitations"]
+                            )}),
+                            disposition_row["policy_registry_hash"],
+                            disposition_row["policy_version"],
+                            disposition_row["rule_id"],
+                            disposition_row["input_hash"], _now_iso(),
+                        ],
+                    )
+                )
+                finding_inserted = False
+                if finding_row is not None:
+                    if decision not in (
+                        "eligible_review_pending",
+                        "downgrade_to_hypothesis",
+                    ):
+                        raise ValueError(
+                            f"decision {decision!r} may not create a Finding"
+                        )
+                    if finding_row.get("status") != "review_pending":
+                        raise ValueError(
+                            "agent pipeline findings are always "
+                            "review_pending"
+                        )
+                    finding_inserted = self._insert_or_replay(
+                        lambda: conn.execute(
+                            "INSERT INTO investigation_findings "
+                            "(finding_id, task_id, investigation_id, "
+                            " proposal_id, disposition_id, text, "
+                            " assertion_class, evidence_refs_json, "
+                            " relationship_refs_json, temporal_scope_json, "
+                            " grounding_id, semantic_verification_id, "
+                            " limitations_json, status, created_at) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            [
+                                finding_row["finding_id"], self.task_id,
+                                investigation_id,
+                                finding_row["proposal_id"],
+                                finding_row["disposition_id"],
+                                finding_row["text"],
+                                finding_row["assertion_class"],
+                                canonical_state_json({"refs": list(
+                                    finding_row["evidence_refs"]
+                                )}),
+                                canonical_state_json({"refs": list(
+                                    finding_row["relationship_refs"]
+                                )}),
+                                canonical_state_json(
+                                    dict(finding_row["temporal_scope"])
+                                )
+                                if finding_row.get("temporal_scope")
+                                is not None else None,
+                                finding_row["grounding_id"],
+                                finding_row.get("semantic_verification_id"),
+                                canonical_state_json({"limitations": list(
+                                    finding_row["limitations"]
+                                )}),
+                                "review_pending", _now_iso(),
+                            ],
+                        )
+                    )
+                    if finding_inserted:
+                        self._append_trajectory_with_conn(
+                            conn, investigation_id,
+                            AgentTrajectoryEventType.
+                            finding_review_pending_created,
+                            run_id=run_id,
+                            payload={
+                                "finding_id": finding_row["finding_id"],
+                                "disposition_id":
+                                    disposition_row["disposition_id"],
+                                "inserted": finding_inserted,
+                            },
+                        )
+                self._append_trajectory_with_conn(
+                    conn, investigation_id,
+                    AgentTrajectoryEventType.claim_disposition_recorded,
+                    run_id=run_id,
+                    payload={
+                        "disposition_id": disposition_row["disposition_id"],
+                        "proposal_id": disposition_row["proposal_id"],
+                        "decision": decision,
+                        "finding_id": (
+                            finding_row["finding_id"]
+                            if finding_row is not None else None
+                        ),
+                        "inserted": disposition_inserted,
+                    },
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return {
+            "disposition_inserted": disposition_inserted,
+            "finding_inserted": finding_inserted,
+        }
+
+    def commit_finding_review(
+        self,
+        investigation_id: str,
+        *,
+        finding_id: str,
+        decision: str,
+        reviewer: str,
+        note: Optional[str] = None,
+    ) -> dict:
+        """Human-only Analyst Review primitive (\u00a738/\u00a739/\u00a766).
+
+        ONE transaction: the Finding must exist in THIS task/investigation
+        and be review_pending; the append-only review history row is
+        written and the state machine moves to accepted/rejected with full
+        provenance (reviewed_at, reviewer, review_id). Agent components
+        have no import path to this method's owner."""
+        import uuid as _uuid
+
+        if decision not in ("accepted", "rejected"):
+            raise ValueError(
+                f"review decision must be accepted/rejected, got {decision!r}"
+            )
+        if not reviewer or not reviewer.strip():
+            raise ValueError("finding review requires an explicit reviewer")
+        review_id = "freview:" + _uuid.uuid4().hex[:20]
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            try:
+                finding = conn.execute(
+                    "SELECT status FROM investigation_findings "
+                    "WHERE task_id = ? AND investigation_id = ? "
+                    "AND finding_id = ?",
+                    [self.task_id, investigation_id, finding_id],
+                ).fetchone()
+                if finding is None:
+                    raise ValueError(
+                        f"unknown finding for this task: {finding_id!r}"
+                    )
+                if finding["status"] != "review_pending":
+                    raise ValueError(
+                        f"finding {finding_id!r} is not review_pending"
+                )
+                conn.execute(
+                    "INSERT INTO investigation_finding_reviews "
+                    "(review_id, task_id, investigation_id, finding_id, "
+                    " decision, reviewer, note, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        review_id, self.task_id, investigation_id,
+                        finding_id, decision, reviewer.strip(), note,
+                        _now_iso(),
+                    ],
+                )
+                conn.execute(
+                    "UPDATE investigation_findings "
+                    "SET status = ?, reviewed_at = ?, reviewer = ?, "
+                    " review_note = ?, review_id = ? "
+                    "WHERE finding_id = ?",
+                    [
+                        decision, _now_iso(), reviewer.strip(), note,
+                        review_id, finding_id,
+                    ],
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return {"review_id": review_id, "decision": decision}
 
     def record_delegation_result(
         self,

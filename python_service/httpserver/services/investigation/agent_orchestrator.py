@@ -632,7 +632,9 @@ class AgentOrchestrator:
             task_id=runtime.task_id,
             investigation_id=investigation_id,
             evidence_ref_resolver=self._evidence_ref_resolver(runtime),
-            finding_ref_validator=self._finding_ref_validator(runtime),
+            finding_ref_validator=self._finding_ref_validator(
+                runtime, investigation_id
+            ),
             verification_checker=lambda question_id: any(
                 verification.target_ref == question_id
                 and verification.status.value == "passed"
@@ -1442,6 +1444,14 @@ class AgentOrchestrator:
                 lambda ref, _rid=investigation_id, _runtime=runtime:
                 _runtime.get_claim_proposal(_rid, ref) is not None
             ),
+            # P5B §67: findings must be persisted, same-task and reviewable
+            finding_ref_resolver=(
+                lambda ref, _rid=investigation_id, _runtime=runtime:
+                (
+                    lambda finding: finding is not None
+                    and finding["status"] in ("review_pending", "accepted")
+                )(_runtime.get_investigation_finding(_rid, ref))
+            ),
         )
         iv = integration_validator.validate(integration_context, integration_decision)
         if not iv.valid:
@@ -1474,7 +1484,9 @@ class AgentOrchestrator:
                 task_id=task_id,
                 investigation_id=investigation_id,
                 evidence_ref_resolver=self._evidence_ref_resolver(runtime),
-                finding_ref_validator=self._finding_ref_validator(runtime),
+                finding_ref_validator=self._finding_ref_validator(
+                runtime, investigation_id
+            ),
                 verification_checker=lambda question_id: any(
                     verification.target_ref == question_id
                     and verification.status.value == "passed"
@@ -1630,10 +1642,24 @@ class AgentOrchestrator:
         return resolve
 
     @staticmethod
-    def _finding_ref_validator(runtime: AgentRuntimeRepository):
+    def _finding_ref_validator(
+        runtime: AgentRuntimeRepository, investigation_id: str
+    ):
         """W6/W10 seam over existing canonical object reads."""
 
         def validate(ref: str) -> FindingRefCheck:
+            if ref.startswith("finding:"):
+                # P5B canonical Findings: review_pending/accepted are
+                # referenceable; rejected findings are not referenceable
+                # (the row itself is never deleted, §42)
+                finding = runtime.get_investigation_finding(
+                    investigation_id, ref
+                )
+                return FindingRefCheck(
+                    found=finding is not None
+                    and finding["status"] in ("review_pending", "accepted"),
+                    kind="finding",
+                )
             if ref.startswith("review:"):
                 return FindingRefCheck(found=False, kind="review")
             if ref.startswith("ie_"):

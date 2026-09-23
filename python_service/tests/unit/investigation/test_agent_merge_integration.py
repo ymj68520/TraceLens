@@ -374,10 +374,9 @@ def test_generic_or_unknown_payload_rejected():
 
 
 def test_forbidden_p5_transitions_rejected():
-    """AddEntityReference / AddFindingReference / ModifyScope are NOT in the
-    P4B typed proposal union: they are structurally impossible to even
-    construct on the decision contract (strongest rejection), and the P2
-    transition models they name stay untouched for P5."""
+    """P5B §40 opened AddFindingReference (canonical findings exist now);
+    AddEntityReference and ModifyScope remain structurally impossible on
+    the decision contract, and the validator still names them forbidden."""
     context = _integration_context()
     with pytest.raises(ValidationError):
         _integration_decision(
@@ -385,12 +384,16 @@ def test_forbidden_p5_transitions_rejected():
         )
     with pytest.raises(ValidationError):
         _integration_decision(
-            context, proposals=(AddFindingReference(finding_ref="finding:1"),)
-        )
-    with pytest.raises(ValidationError):
-        _integration_decision(
             context, proposals=(ModifyScope(scope_patch={"scopes": ["*"]}),)
         )
+    # AddFindingReference constructs and passes structural validation
+    # without a resolver wired (direct module use); the production
+    # orchestrator always wires the resolver (tested in the P5B suite).
+    decision = _integration_decision(
+        context, proposals=(AddFindingReference(finding_ref="finding:1"),)
+    )
+    validation = IntegrationDecisionValidator().validate(context, decision)
+    assert validation.valid, validation.codes
 
 
 def test_stale_state_binding_and_hash_mismatch_rejected():

@@ -35,11 +35,13 @@ from .agent_transitions import (
     HypothesisTransition,
     QuestionTransition,
     AddPendingProposalReference,
+    AddFindingReference,
 )
 
-# P4B typed proposal union: the exact P2 transition models the supervisor may
-# propose (P4B §15). AddEntityReference / AddFindingReference / ModifyScope
-# are deliberately absent — the validator rejects them by name.
+# P4B/P5B typed proposal union: the exact P2 transition models the
+# supervisor may propose. P5B §40 opens AddFindingReference (canonical
+# findings now exist); AddEntityReference / ModifyScope stay absent — the
+# validator rejects them by name.
 P4BTransitionProposal = Union[
     QuestionTransition,
     CreateQuestion,
@@ -50,6 +52,7 @@ P4BTransitionProposal = Union[
     ContradictionTransition,
     CoverageTransition,
     AddPendingProposalReference,
+    AddFindingReference,
 ]
 
 INTEGRATION_CONTEXT_VERSION = "integration-context:v1"
@@ -349,6 +352,8 @@ class IntegrationViolationCode(str, enum.Enum):
     # P5A §45: AddPendingProposalReference must resolve to a durably
     # persisted proposal of the same task/investigation.
     INTEGRATION_PROPOSAL_REF_UNRESOLVED = "INTEGRATION_PROPOSAL_REF_UNRESOLVED"
+    # P5B §67: AddFindingReference resolution failures
+    INTEGRATION_FINDING_REF_UNRESOLVED = "INTEGRATION_FINDING_REF_UNRESOLVED"
     INTEGRATION_SCOPE_MUTATION_FORBIDDEN = "INTEGRATION_SCOPE_MUTATION_FORBIDDEN"
     INTEGRATION_REVIEW_MUTATION_FORBIDDEN = "INTEGRATION_REVIEW_MUTATION_FORBIDDEN"
     INTEGRATION_GRAPH_MUTATION_FORBIDDEN = "INTEGRATION_GRAPH_MUTATION_FORBIDDEN"
@@ -368,10 +373,12 @@ P4B_ALLOWED_TRANSITION_TYPES: tuple[str, ...] = (
     "ContradictionTransition",
     "CoverageTransition",
     "AddPendingProposalReference",
+    "AddFindingReference",
 )
 _FORBIDDEN_TRANSITION_TYPES = {
-    "AddEntityReference": "graph/identity pipeline arrives in P5",
-    "AddFindingReference": "canonical findings arrive in P5",
+    "AddEntityReference": (
+        "no canonical entity store exists; P6 owns the graph boundary"
+    ),
     "ModifyScope": "hard scope mutation is never agent-reachable",
 }
 
@@ -386,6 +393,7 @@ class IntegrationDecisionValidator:
         *,
         evidence_ref_validator: Optional[Callable[[str], None]] = None,
         proposal_ref_resolver: Optional[Callable[[str], bool]] = None,
+        finding_ref_resolver: Optional[Callable[[str], bool]] = None,
     ):
         self._evidence_ref_validator = evidence_ref_validator
         # P5A §45 seam: when provided, every AddPendingProposalReference's
@@ -393,6 +401,10 @@ class IntegrationDecisionValidator:
         # Production wiring (AgentOrchestrator) always provides it; direct
         # P2/P4B-module users keep the pre-P5A behaviour when None.
         self._proposal_ref_resolver = proposal_ref_resolver
+        # P5B §67 seam: AddFindingReference must resolve to a durably
+        # persisted, reviewable Finding of the same task/investigation
+        # (review_pending or accepted - never rejected/unknown).
+        self._finding_ref_resolver = finding_ref_resolver
 
     def validate(
         self,
@@ -465,7 +477,11 @@ class IntegrationDecisionValidator:
             AddPendingProposalReference as _APP,
         )
 
-        typed_members = (_QT, _CQ, _ERT, _CH, _HT, _CC, _CT, _CVT, _APP)
+        from .agent_transitions import AddFindingReference as _AFR
+
+        typed_members = (
+            _QT, _CQ, _ERT, _CH, _HT, _CC, _CT, _CVT, _APP, _AFR,
+        )
         for index, proposal in enumerate(decision.transition_proposals):
             location = f"transition_proposals[{index}]"
             type_name = type(proposal).__name__
@@ -536,6 +552,24 @@ class IntegrationDecisionValidator:
                         "pending proposal reference does not resolve to "
                         "a durably persisted proposal of this "
                         "task/investigation",
+                        location,
+                    ))
+            # P5B §67: finding refs must resolve to a durably persisted
+            # Finding of this task/investigation; StateTransitionPolicy
+            # (with its own validator) stays the final authority.
+            if (type_name == "AddFindingReference"
+                    and self._finding_ref_resolver is not None):
+                try:
+                    finding_ok = bool(
+                        self._finding_ref_resolver(proposal.finding_ref)
+                    )
+                except Exception:
+                    finding_ok = False
+                if not finding_ok:
+                    violations.append((
+                        IntegrationViolationCode.INTEGRATION_FINDING_REF_UNRESOLVED,
+                        "finding reference does not resolve to a persisted "
+                        "reviewable Finding of this task/investigation",
                         location,
                     ))
             # question-binding refs must belong to the context state
