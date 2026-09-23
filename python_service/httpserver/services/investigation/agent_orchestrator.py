@@ -25,7 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from enum import Enum
-from typing import Any, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -264,6 +264,7 @@ class AgentOrchestrator:
         source_scope_provider=None,
         directive_digest_provider=None,
         cycle_policy=None,
+        final_review_runner=None,
     ):
         self._cpp_backend = cpp_backend
         self._attention_config = attention_config or AttentionPolicyConfig()
@@ -284,6 +285,10 @@ class AgentOrchestrator:
         # unchanged when absent):
         self._supervisor = supervisor          # InvestigationSupervisor
         self._delegation_dispatcher = delegation_dispatcher  # async callable
+        # F2 §15: injected FinalSemanticReviewRunner (pure-data protocol).
+        # The orchestrator never imports PydanticAI or P5B modules; the
+        # adapter lazy-loads them only when a review actually runs.
+        self._final_review_runner = final_review_runner
         self._source_scope_provider = source_scope_provider  # callable
         self._directive_digest_provider = directive_digest_provider  # callable
         self._cycle_policy = cycle_policy or SupervisorCyclePolicy()
@@ -1113,6 +1118,13 @@ class AgentOrchestrator:
         if run_id is None:
             run = await self.admit_run(task_id, investigation_id)
             run_id = run.run_id
+        if run_id is not None:
+            run_now = runtime.get_run(run_id)
+            if run_now is not None and run_now.status.value == "queued":
+                # F2: a cycle actually executes the plan, so the run moves
+                # queued -> running through the frozen P2 primitive (the
+                # FinalizationGate refuses queued runs by design).
+                await asyncio.to_thread(runtime.mark_run_running, run_id)
         run_key = (task_id, investigation_id, run_id)
         warnings: list[str] = []
         limitations: list[str] = []
@@ -1260,15 +1272,25 @@ class AgentOrchestrator:
                 FinalizationRequest,
             )
 
-            if self._cycle_policy.final_review_mode == "required":
-                review = FinalSemanticReview(status=FinalSemanticReviewStatus.unavailable)
-                mode = FinalReviewMode.required
-            else:
-                review = FinalSemanticReview(
-                    status=FinalSemanticReviewStatus.unavailable,
-                    result_ref="semantic verifier not available in P4B",
+            mode = (
+                FinalReviewMode.required
+                if self._cycle_policy.final_review_mode == "required"
+                else FinalReviewMode.best_effort
+            )
+            review, review_stale = await self._run_final_semantic_review(
+                runtime, task_id, investigation_id,
+                state_revision=preparation.state_revision,
+            )
+            if review_stale:
+                # F2 §20: the final state changed while the review ran -
+                # the stale review must never complete a NEW revision. The
+                # next cycle re-runs the review against fresh state.
+                return _outcome(
+                    warnings=(
+                        "final semantic review went stale (state changed "
+                        "during review); re-running against fresh state",
+                    ),
                 )
-                mode = FinalReviewMode.best_effort
             request = FinalizationRequest(
                 investigation_id=investigation_id,
                 expected_state_revision=preparation.state_revision,
@@ -1658,6 +1680,124 @@ class AgentOrchestrator:
             )
 
         return resolve
+
+    async def _run_final_semantic_review(
+        self,
+        runtime: AgentRuntimeRepository,
+        task_id: str,
+        investigation_id: str,
+        *,
+        state_revision: int,
+    ) -> tuple["FinalSemanticReview", bool]:
+        """F2: production final semantic review over the injected runner.
+
+        Builds a pure-data frozen payload (state + finding DIGESTS, never
+        the raw case), calls the runner, validates the response, and
+        reports staleness when the final state moved during the review.
+        Returns (FinalSemanticReview, stale_flag)."""
+        from .agent_finalization import (
+            FinalSemanticReview,
+            FinalSemanticReviewStatus,
+        )
+
+        def _unavailable(reason: str) -> FinalSemanticReview:
+            return FinalSemanticReview(
+                status=FinalSemanticReviewStatus.unavailable,
+                result_ref=f"final_review_unavailable:{reason}"[:200],
+            )
+
+        if self._final_review_runner is None:
+            return _unavailable("runner_not_wired"), False
+
+        latest = runtime.get_latest_working_state(investigation_id)
+        if latest is None:
+            return _unavailable("no_state"), False
+        state = working_state_from_json(
+            runtime.task_id, investigation_id, latest.state
+        )
+        # F1 projection: mandatory verification statuses as of THIS state
+        state = runtime.project_verification_obligations(
+            investigation_id, state
+        )
+        payload = {
+            "task_id": task_id,
+            "investigation_id": investigation_id,
+            "final_state_digest": latest.state_hash,
+            "final_state_revision": latest.revision,
+            "expected_state_revision": state_revision,
+            "expected_state_hash": latest.state_hash,
+            "required_question_digests": sorted(
+                f"question:{q.question_id}:{q.status.value}:"
+                + (
+                    q.disposition.value
+                    if getattr(q, "disposition", None) is not None
+                    else "none"
+                )
+                for q in state.questions
+                if q.priority.value == "required"
+            ),
+            "coverage_digests": sorted(
+                f"coverage:{d.dimension_id or index}:{d.status.value}"
+                for index, d in enumerate(state.coverage)
+            ),
+            "contradiction_digests": sorted(
+                f"contradiction:{c.contradiction_id}:{c.status.value}"
+                for c in state.contradictions
+            ),
+            "finding_digests": sorted(
+                f"finding:{row['finding_id']}:{row['status']}:"
+                f"{row['assertion_class']}"
+                for row in runtime.list_investigation_findings(
+                    investigation_id
+                )
+            ),
+            "mandatory_verification_statuses": sorted(
+                f"{v.verification_id}:{v.status.value}"
+                for v in state.pending_verifications
+                if v.required
+            ),
+            "limitations": [],
+            "evidence_provenance_digests": [],
+        }
+        try:
+            response = await self._final_review_runner(payload)
+        except Exception as exc:  # provider/runtime failure: explicit
+            return _unavailable(f"runner_error:{type(exc).__name__}"), False
+        if not isinstance(response, Mapping):
+            return _unavailable("runner_response_invalid"), False
+
+        status = response.get("status")
+        if status not in ("pass", "issues_found", "unavailable"):
+            return _unavailable("runner_status_invalid"), False
+        # §20 staleness: the review binds the revision it ran against; if
+        # the state moved while it ran, the result is discarded (the next
+        # cycle re-runs it) and can never complete a newer revision.
+        if runtime.get_latest_working_state(
+            investigation_id
+        ).revision != state_revision:
+            return _unavailable("stale"), True
+        result_ref = (
+            str(response.get("result_ref"))
+            if response.get("result_ref")
+            else (
+                f"review:{status}:{state_revision}:"
+                f"{str(response.get('input_hash') or latest.state_hash)[:24]}"
+            )
+        )
+        review_status = (
+            FinalSemanticReviewStatus.passed
+            if status == "pass"
+            else FinalSemanticReviewStatus.issues_found
+            if status == "issues_found"
+            else FinalSemanticReviewStatus.unavailable
+        )
+        return (
+            FinalSemanticReview(
+                status=review_status,
+                result_ref=result_ref,
+            ),
+            False,
+        )
 
     @staticmethod
     def _finding_ref_validator(

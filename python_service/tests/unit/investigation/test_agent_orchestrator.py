@@ -602,7 +602,9 @@ async def test_service_manager_wires_orchestrator_and_recovery(tmp_path, monkeyp
     events: list[str] = []
 
     class FakeOrchestrator:
-        def __init__(self, cpp_backend):
+        def __init__(self, cpp_backend, **kwargs):
+            # F2: the ServiceManager may inject a final_review_runner
+            self.final_review_runner = kwargs.get("final_review_runner")
             self.cpp_backend = cpp_backend
             self.initialize_calls = 0
             self.shutdown_calls = 0

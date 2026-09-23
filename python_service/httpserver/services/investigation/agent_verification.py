@@ -1074,6 +1074,41 @@ class FinalSemanticReviewValidator:
         return tuple(violations)
 
 
+def build_final_review_context(payload: Mapping) -> FinalSemanticReviewContextV1:
+    """Adapter seam (F2 §15): project the orchestrator's pure-data payload
+    onto the frozen FinalSemanticReviewContextV1. Unknown payload keys are
+    ignored; required identity keys must be present (fail closed)."""
+    return FinalSemanticReviewContextV1(
+        task_id=payload["task_id"],
+        investigation_id=payload["investigation_id"],
+        final_state_digest=str(
+            payload.get("final_state_digest")
+            or payload.get("expected_state_hash")
+            or ""
+        ),
+        final_state_revision=int(
+            payload.get("final_state_revision")
+            or payload.get("expected_state_revision")
+            or 0
+        ),
+        required_question_digests=tuple(
+            payload.get("required_question_digests") or ()
+        ),
+        coverage_digests=tuple(payload.get("coverage_digests") or ()),
+        contradiction_digests=tuple(
+            payload.get("contradiction_digests") or ()
+        ),
+        finding_digests=tuple(payload.get("finding_digests") or ()),
+        mandatory_verification_statuses=tuple(
+            payload.get("mandatory_verification_statuses") or ()
+        ),
+        limitations=tuple(payload.get("limitations") or ()),
+        evidence_provenance_digests=tuple(
+            payload.get("evidence_provenance_digests") or ()
+        ),
+    )
+
+
 __all__ = [
     "SEMANTIC_VERIFICATION_CONTEXT_VERSION",
     "SEMANTIC_VERIFICATION_RESULT_VERSION",
@@ -1096,4 +1131,5 @@ __all__ = [
     "QuestionClosureContextV1",
     "QuestionClosureReviewV1",
     "QUESTION_CLOSURE_REVIEW_VERSION",
+    "build_final_review_context",
 ]

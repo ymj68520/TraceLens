@@ -736,7 +736,75 @@ class ServiceManager:
 
         if not self._cpp_backend_ready or self._cpp_backend is None:
             raise RuntimeError("C++ backend is not initialized")
-        return AgentOrchestrator(self._cpp_backend)
+        def _final_review_runner(payload):
+            """F2 §15 lazy FinalSemanticReviewRunner adapter.
+
+            Resolves the P5B verifier (and the shared LLM config) only when
+            a final semantic review actually runs - never at import or
+            ServiceManager initialization time."""
+            from .investigation.agent_model_adapter import build_chat_model
+            from .investigation.agent_verification import (
+                FinalSemanticReviewContextV1,
+                SemanticVerificationMode,
+                SemanticVerifierAgent,
+                VerifierFailure,
+                build_final_review_context,
+            )
+
+            try:
+                context = build_final_review_context(payload)
+                settings = self.settings
+                model = build_chat_model(settings)
+            except Exception as exc:
+                return {
+                    "status": "unavailable",
+                    "failure_code": "runtime_unavailable",
+                    "detail": f"{type(exc).__name__}: {exc}"[:300],
+                }
+
+            agent = SemanticVerifierAgent(
+                mode=SemanticVerificationMode.finalization_review,
+                model=model,
+                model_name=getattr(model, "model_name", None),
+            )
+
+            async def _run():
+                outcome = await agent.run(context)
+                if isinstance(outcome, VerifierFailure):
+                    return {
+                        "status": "unavailable",
+                        "failure_code": outcome.failure_code.value,
+                        "detail": outcome.detail[:300],
+                        "input_hash": context.input_hash,
+                    }
+                validator = __import__(
+                    "httpserver.services.investigation.agent_verification",
+                    fromlist=["FinalSemanticReviewValidator"],
+                ).FinalSemanticReviewValidator()
+                violations = validator.validate(outcome, context=context)
+                if violations:
+                    return {
+                        "status": "unavailable",
+                        "failure_code": "output_invalid",
+                        "detail": ",".join(violations)[:300],
+                        "input_hash": context.input_hash,
+                    }
+                return {
+                    "status": outcome.status,
+                    "issues": list(outcome.issues),
+                    "affected_refs": list(outcome.affected_refs),
+                    "result_ref": (
+                        f"{outcome.verification_id}:{outcome.input_hash[:24]}"
+                    ),
+                    "input_hash": context.input_hash,
+                }
+
+            return _run()
+
+        return AgentOrchestrator(
+            self._cpp_backend,
+            final_review_runner=_final_review_runner,
+        )
 
     @property
     def agent_orchestrator(self):

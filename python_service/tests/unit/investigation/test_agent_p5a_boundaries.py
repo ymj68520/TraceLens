@@ -60,6 +60,11 @@ def test_orchestrator_never_invokes_the_p5a_pipeline():
 
 
 def test_service_manager_gains_no_p5a_lifecycle_service():
+    """F2 §15/§23: the ServiceManager may reference the P5B final-review
+    adapter ONLY as a function-scoped lazy import (never a module-level
+    import, never an eager lifecycle service)."""
+    import re as _re
+
     service_manager = (
         _PRODUCTION_DIR.parent / "service_manager.py"
     ).read_text(encoding="utf-8")
@@ -69,11 +74,20 @@ def test_service_manager_gains_no_p5a_lifecycle_service():
         "agent_claims",
         "agent_correlation",
         "agent_support_bundle",
-        "agent_verification",
         "agent_assertion_policy",
         "agent_correlation_agent",
         "agent_findings",
     ):
         assert module not in service_manager, module
+    # P5B modules: function-scoped lazy references only
+    top_level = _re.compile(
+        r"^(from\s+\S*(agent_verification|agent_grounding|agent_entities|"
+        r"agent_claims|agent_correlation|agent_support_bundle|"
+        r"agent_assertion_policy|agent_correlation_agent|agent_findings)"
+        r"|import\s+\S*(agent_verification|agent_grounding))",
+        _re.MULTILINE,
+    )
+    assert top_level.search(service_manager) is None
     # P5A components are stateless objects (§64): no new executor service
     assert "grounding_executor" not in service_manager
+    assert "verification_executor" not in service_manager
