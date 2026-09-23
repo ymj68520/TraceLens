@@ -499,8 +499,8 @@ class IntegrationDecisionValidator:
                 continue
             # basis/evidence refs must be task-scoped
             for ref in _transition_evidence_refs(proposal):
-                from .evidence.exceptions import InvalidEvidenceKeyError
-                from .evidence.keys import parse_evidence_key
+                from ..evidence.exceptions import InvalidEvidenceKeyError
+                from ..evidence.keys import parse_evidence_key
 
                 try:
                     parse_evidence_key(ref)

@@ -2666,6 +2666,320 @@ class AgentRuntimeRepository:
             "created_at": row["created_at"],
         }
 
+    @staticmethod
+    def _insert_or_replay(insert) -> bool:
+        """Execute one INSERT; UNIQUE natural-id conflicts mean an idempotent
+        replay (return False), while any other constraint violation (CHECK,
+        FK, NOT NULL) fails the transaction loudly (§60)."""
+        try:
+            cursor = insert()
+        except sqlite3.IntegrityError as exc:
+            if "UNIQUE constraint failed" in str(exc):
+                return False
+            raise
+        return bool(cursor.rowcount and cursor.rowcount > 0)
+
+    def record_grounded_proposal(
+        self,
+        investigation_id: str,
+        *,
+        proposal_row: Mapping[str, Any],
+        grounding_row: Mapping[str, Any],
+        bundle_row: Optional[Mapping[str, Any]] = None,
+        run_id: Optional[str] = None,
+        delegation_id: Optional[str] = None,
+    ) -> dict:
+        """§42 atomic pipeline primitive: proposal + grounding result
+        (+ optional support bundle) + trajectory append in ONE transaction.
+
+        Crash semantics: any failure rolls the whole unit back — a dangling
+        grounding without its proposal is structurally impossible. Replay is
+        idempotent (INSERT OR IGNORE on both natural ids)."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            if run_id is not None:
+                self._require_run_with_conn(conn, run_id, investigation_id)
+            if delegation_id is not None:
+                self._require_delegation_with_conn(
+                    conn, delegation_id, investigation_id
+                )
+            try:
+                proposal_inserted = self._insert_or_replay(
+                    lambda: conn.execute(
+                        "INSERT INTO agent_claim_proposals "
+                        "(proposal_id, task_id, investigation_id, "
+                        " source_question_ids_json, source_delegation_id, "
+                        " source_result_hash, source_candidate_id, text, "
+                        " assertion_class, evidence_refs_json, "
+                        " relationship_refs_json, temporal_scope_json, "
+                        " limitations_json, normalization_warnings_json, "
+                        " normalizer_version, input_hash, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        self._claim_proposal_row_params(
+                            investigation_id, proposal_row
+                        ),
+                    )
+                )
+                grounding_inserted = self._insert_or_replay(
+                    lambda: conn.execute(
+                        "INSERT INTO agent_grounding_results "
+                        "(grounding_id, task_id, investigation_id, proposal_id, "
+                        " grounding_version, input_assertion_class, "
+                        " effective_assertion_class, status, "
+                        " valid_evidence_refs_json, invalid_evidence_refs_json, "
+                        " invisible_evidence_refs_json, "
+                        " disallowed_ref_types_json, warnings_json, "
+                        " limitations_json, validator_version, input_hash, "
+                        " created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        self._grounding_row_params(
+                            investigation_id, grounding_row
+                        ),
+                    )
+                )
+                bundle_inserted = False
+                if bundle_row is not None:
+                    bundle_inserted = self._insert_or_replay(
+                        lambda: self._insert_support_bundle_with_conn(
+                            conn, investigation_id, bundle_row
+                        )
+                    )
+                self._append_trajectory_with_conn(
+                    conn, investigation_id,
+                    AgentTrajectoryEventType.claim_grounding_recorded,
+                    run_id=run_id, delegation_id=delegation_id,
+                    payload={
+                        "proposal_id": grounding_row["proposal_id"],
+                        "grounding_id": grounding_row["grounding_id"],
+                        "grounding_status": grounding_row["status"],
+                        "grounding_inserted": grounding_inserted,
+                    },
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return {
+            "proposal_inserted": proposal_inserted,
+            "grounding_inserted": grounding_inserted,
+            "bundle_inserted": bundle_inserted,
+        }
+
+    def _claim_proposal_row_params(
+        self, investigation_id: str, row: Mapping[str, Any]
+    ) -> list:
+        """Column order: proposal_id, task_id, investigation_id, ...;
+        task_id comes from the task-bound repository."""
+        return [
+            row["proposal_id"], self.task_id, investigation_id,
+            canonical_state_json({"ids": list(row["source_question_ids"])}),
+            row.get("source_delegation_id"),
+            row.get("source_result_hash"),
+            row.get("source_candidate_id"),
+            row["text"], row["assertion_class"],
+            canonical_state_json({"refs": list(row["evidence_refs"])}),
+            canonical_state_json({"refs": list(row["relationship_refs"])}),
+            canonical_state_json(dict(row["temporal_scope"]))
+            if row.get("temporal_scope") is not None else None,
+            canonical_state_json({"limitations": list(row["limitations"])}),
+            canonical_state_json(
+                {"warnings": list(row["normalization_warnings"])}
+            ),
+            row["normalizer_version"], row["input_hash"], _now_iso(),
+        ]
+
+    def _grounding_row_params(
+        self, investigation_id: str, row: Mapping[str, Any]
+    ) -> list:
+        return [
+            row["grounding_id"], self.task_id, investigation_id,
+            row["proposal_id"], row["grounding_policy_version"],
+            row["input_assertion_class"], row["effective_assertion_class"],
+            row["status"],
+            canonical_state_json({"refs": list(row["valid_evidence_refs"])}),
+            canonical_state_json({"refs": list(
+                row["invalid_evidence_refs"]
+            )}),
+            canonical_state_json({"refs": list(
+                row["invisible_evidence_refs"]
+            )}),
+            canonical_state_json({"refs": list(
+                row["disallowed_ref_types"]
+            )}),
+            canonical_state_json({"warnings": list(row["warnings"])}),
+            canonical_state_json({"limitations": list(row["limitations"])}),
+            row["validator_version"], row["input_hash"], _now_iso(),
+        ]
+
+    def list_grounding_results(
+        self, investigation_id: str, proposal_id: Optional[str] = None
+    ) -> list[dict]:
+        """Durable grounding results (optionally of one proposal), ordered."""
+        sql = (
+            "SELECT * FROM agent_grounding_results "
+            "WHERE task_id = ? AND investigation_id = ?"
+        )
+        params: list = [self.task_id, investigation_id]
+        if proposal_id is not None:
+            sql += " AND proposal_id = ?"
+            params.append(proposal_id)
+        sql += " ORDER BY grounding_row_id"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        results: list[dict] = []
+        for row in rows:
+            results.append({
+                "grounding_id": row["grounding_id"],
+                "task_id": row["task_id"],
+                "investigation_id": row["investigation_id"],
+                "proposal_id": row["proposal_id"],
+                "grounding_policy_version": row["grounding_version"],
+                "input_assertion_class": row["input_assertion_class"],
+                "effective_assertion_class": row["effective_assertion_class"],
+                "status": row["status"],
+                "valid_evidence_refs": tuple(
+                    json.loads(row["valid_evidence_refs_json"]).get("refs", [])
+                ),
+                "invalid_evidence_refs": tuple(
+                    json.loads(row["invalid_evidence_refs_json"]).get(
+                        "refs", []
+                    )
+                ),
+                "invisible_evidence_refs": tuple(
+                    json.loads(row["invisible_evidence_refs_json"]).get(
+                        "refs", []
+                    )
+                ),
+                "disallowed_ref_types": tuple(
+                    json.loads(row["disallowed_ref_types_json"]).get(
+                        "refs", []
+                    )
+                ),
+                "warnings": tuple(
+                    json.loads(row["warnings_json"]).get("warnings", [])
+                ),
+                "limitations": tuple(
+                    json.loads(row["limitations_json"]).get(
+                        "limitations", []
+                    )
+                ),
+                "validator_version": row["validator_version"],
+                "input_hash": row["input_hash"],
+                "created_at": row["created_at"],
+            })
+        return results
+
+    def _insert_support_bundle_with_conn(
+        self,
+        conn: sqlite3.Connection,
+        investigation_id: str,
+        row: Mapping[str, Any],
+    ) -> sqlite3.Cursor:
+        return conn.execute(
+            "INSERT INTO agent_evidence_support_bundles "
+            "(bundle_id, task_id, investigation_id, proposal_id, "
+            " grounding_id, grounding_status, effective_assertion_class, "
+            " claim_text, evidence_items_json, relationship_refs_json, "
+            " temporal_scope_json, limitations_json, warnings_json, "
+            " source_question_ids_json, hydration_policy, input_hash, "
+            " created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                row["bundle_id"], self.task_id, investigation_id,
+                row["proposal_id"], row["grounding_id"],
+                row["grounding_status"], row["effective_assertion_class"],
+                row["claim_text"],
+                canonical_state_json({"items": list(row["evidence_items"])}),
+                canonical_state_json({"refs": list(
+                    row["relationship_refs"]
+                )}),
+                canonical_state_json(dict(row["temporal_scope"]))
+                if row.get("temporal_scope") is not None else None,
+                canonical_state_json({"limitations": list(
+                    row["limitations"]
+                )}),
+                canonical_state_json({"warnings": list(row["warnings"])}),
+                canonical_state_json({"ids": list(
+                    row["source_question_ids"]
+                )}),
+                row["hydration_policy"], row["input_hash"], _now_iso(),
+            ],
+        )
+
+    def record_support_bundles(
+        self,
+        investigation_id: str,
+        rows: Sequence[Mapping[str, Any]],
+        *,
+        run_id: Optional[str] = None,
+    ) -> dict:
+        inserted = 0
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            if run_id is not None:
+                self._require_run_with_conn(conn, run_id, investigation_id)
+            for row in rows:
+                if self._insert_or_replay(
+                    lambda row=row: self._insert_support_bundle_with_conn(
+                        conn, investigation_id, row
+                    )
+                ):
+                    inserted += 1
+            conn.commit()
+        return {
+            "bundle_count": len(rows),
+            "inserted_count": inserted,
+            "duplicate_count": len(rows) - inserted,
+        }
+
+    def list_support_bundles(self, investigation_id: str) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM agent_evidence_support_bundles "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "ORDER BY bundle_row_id",
+                [self.task_id, investigation_id],
+            ).fetchall()
+        bundles: list[dict] = []
+        for row in rows:
+            temporal = row["temporal_scope_json"]
+            bundles.append({
+                "bundle_id": row["bundle_id"],
+                "task_id": row["task_id"],
+                "investigation_id": row["investigation_id"],
+                "proposal_id": row["proposal_id"],
+                "grounding_id": row["grounding_id"],
+                "grounding_status": row["grounding_status"],
+                "effective_assertion_class": row["effective_assertion_class"],
+                "claim_text": row["claim_text"],
+                "evidence_items": list(
+                    json.loads(row["evidence_items_json"]).get("items", [])
+                ),
+                "relationship_refs": tuple(
+                    json.loads(row["relationship_refs_json"]).get("refs", [])
+                ),
+                "temporal_scope": json.loads(temporal) if temporal else None,
+                "limitations": tuple(
+                    json.loads(row["limitations_json"]).get(
+                        "limitations", []
+                    )
+                ),
+                "warnings": tuple(
+                    json.loads(row["warnings_json"]).get("warnings", [])
+                ),
+                "source_question_ids": tuple(
+                    json.loads(row["source_question_ids_json"]).get(
+                        "ids", []
+                    )
+                ),
+                "hydration_policy": row["hydration_policy"],
+                "input_hash": row["input_hash"],
+                "created_at": row["created_at"],
+            })
+        return bundles
+
     def record_delegation_result(
         self,
         delegation_id: str,
