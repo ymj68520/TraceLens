@@ -878,3 +878,100 @@ async def test_restart_does_not_resume_running_delegation(runtime_env):
     assert outcome.status is DispatchStatus.SKIPPED
     assert outcome.skipped_reason.startswith("already_terminal")
     assert repo.get_latest_working_state(investigation.investigation_id).revision == 1
+
+
+# ---------------------------------------------------------------------------
+# §49 offline E2E through a REAL pydantic_ai Agent + §55 audit chain
+# ---------------------------------------------------------------------------
+
+
+async def test_offline_e2e_real_agent_through_pydantic_ai(runtime_env):
+    """ContextPack -> real PydanticAI Agent (TestModel) -> tool call through
+    the frozen registry -> Observation + Trajectory -> structured
+    SpecialistResultV1 -> validator -> delegation completed -> result
+    persisted, with the Working State revision untouched."""
+    from pydantic_ai.models.test import TestModel
+
+    repo, _db, investigation, run, _rev = runtime_env
+    registry = _registry_builder(repo)
+    delegation_id = _admit_delegation(repo, run, question_ref="q-e2e")
+    pack = _build_pack(question_id="q-e2e").model_copy(
+        update={
+            "investigation_id": investigation.investigation_id,
+            "run_id": run.run_id,
+            "delegation_id": delegation_id,
+        }
+    )
+    envelope = build_execution_envelope(
+        pack, registry, question_text="unusual logons?",
+        based_on_state_revision=1,
+        skill_bindings=(SkillBinding(skill_id="windows.authentication", version="1"),),
+        model_config_digest="digest-e2e",
+    )
+
+    result_args = {
+        "result_version": "specialist-result:v1",
+        "delegation_id": delegation_id,
+        "question_id": "q-e2e",
+        "summary": "e2e specialist summary",
+        "claim_candidates": [
+            {
+                "candidate_id": "c-1",
+                "text": "logon cluster observed",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": ["file:C/logon_4624.doc"],
+                "limitations": [],
+            }
+        ],
+        "evidence_refs": ["file:C/logon_4624.doc"],
+        "execution_digest": {"tool_call_count": 0, "observation_count": 0},
+    }
+    model = TestModel(
+        call_tools=["search_evidence"],
+        custom_output_args=result_args,
+    )
+
+    def build_real_agent(pack_arg, registry_arg):
+        from httpserver.services.investigation.agent_tools.pydantic_bridge import (
+            build_specialist_agent,
+        )
+
+        return build_specialist_agent(
+            pack_arg,
+            registry_arg,
+            model=model,
+            output_type=SpecialistResultV1,
+            retries=1,
+        )
+
+    executor = _executor(runtime_env, agent_runner=None)
+    executor._build_agent = build_real_agent
+    outcome = await executor.dispatch_delegation(envelope)
+    assert outcome.status is DispatchStatus.COMPLETED, (
+        outcome.failure_message,
+        outcome.validation_codes,
+    )
+
+    stored = repo.get_delegation_result(delegation_id)
+    assert stored is not None
+    assert stored.validation_status == "valid"
+    assert stored.result["summary"] == "e2e specialist summary"
+    observations = repo.list_tool_observations(investigation.investigation_id)
+    assert observations, "tool observation must exist"
+    assert observations[0].evidence_refs == ("file:C/logon_4624.doc",)
+    # §55 audit chain: delegation -> result -> context hash -> registry hash
+    # -> observation -> trajectory -> model digest all recoverable
+    delegation = repo.get_delegation(delegation_id)
+    assert delegation.status is DelegationStatus.completed
+    assert stored.context_hash == envelope.context_hash
+    assert stored.tool_registry_hash == envelope.tool_registry_hash
+    assert stored.model_config_hash == envelope.model_config_digest
+    trajectory = [
+        t
+        for t in repo.list_trajectory(investigation.investigation_id)
+        if t.event_type == AgentTrajectoryEventType.tool_observation_recorded
+    ]
+    assert trajectory
+    assert trajectory[0].payload["observation_id"] == observations[0].observation_id
+    # P4A-E17: no working state revision from agent completion
+    assert repo.get_latest_working_state(investigation.investigation_id).revision == 1

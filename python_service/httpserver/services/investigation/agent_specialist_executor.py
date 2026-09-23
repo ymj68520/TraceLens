@@ -20,8 +20,6 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .agent_context import SpecialistContextPack
-from .agent_deps import ForensicAgentDeps
-from .agent_model_adapter import build_chat_model
 from .agent_runtime import AgentRuntimeRepository, canonical_state_json, state_hash_of
 from .agent_specialist_result import (
     SPECIALIST_RESULT_VERSION,
@@ -30,7 +28,12 @@ from .agent_specialist_result import (
     SpecialistResultV1,
 )
 from .agent_tools.context import ForensicToolContext, ToolBudgetPolicy
-from .agent_tools.pydantic_bridge import ForensicToolRegistryProtocol
+
+if True:  # typing-only import; keeps pydantic_ai off the module import path
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:  # pragma: no cover
+        from .agent_tools.pydantic_bridge import ForensicToolRegistryProtocol
 
 ENVELOPE_VERSION = "delegation-execution-envelope:v1"
 
@@ -225,7 +228,7 @@ def model_config_digest_from_adapter_config(config) -> str:
 
 def build_execution_envelope(
     pack: SpecialistContextPack,
-    registry: ForensicToolRegistryProtocol,
+    registry,  # ForensicToolRegistryProtocol
     *,
     question_text: str = "",
     based_on_state_revision: Optional[int] = None,
@@ -271,7 +274,7 @@ def build_execution_envelope(
 def verify_envelope_bindings(
     envelope: DelegationExecutionEnvelope,
     pack: SpecialistContextPack,
-    registry: ForensicToolRegistryProtocol,
+    registry,  # ForensicToolRegistryProtocol
 ) -> Optional[str]:
     """Pre-execution binding check (P4A §34-37).
 
@@ -398,6 +401,10 @@ class SpecialistDelegationExecutor:
 
     def _get_model(self):
         if self._model is None:
+            # deferred: pulls pydantic_ai at first dispatch, never during
+            # service initialization
+            from .agent_model_adapter import build_chat_model
+
             self._model = build_chat_model(self._settings)
         return self._model
 
@@ -500,10 +507,10 @@ class SpecialistDelegationExecutor:
         runtime: AgentRuntimeRepository,
         delegation_id: str,
     ) -> DispatchOutcome:
-        from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
+        from pydantic_ai.exceptions import UnexpectedModelBehavior
         from pydantic_ai.usage import UsageLimits
 
-        from .agent_tools.pydantic_bridge import ForensicToolset
+        from .agent_deps import ForensicAgentDeps
 
         context = pack.tool_context()
         deps = ForensicAgentDeps(
@@ -544,7 +551,7 @@ class SpecialistDelegationExecutor:
                     prompt, deps=deps, usage_limits=usage_limits
                 )
                 break
-            except (ModelHTTPError, Exception) as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 - provider/tool/output all mapped
                 code = map_provider_exception(exc)
                 last_exc = exc
                 if (
@@ -601,7 +608,10 @@ class SpecialistDelegationExecutor:
         validator = SpecialistResultValidator()
         validation = validator.validate(pack, result, observations)
 
-        usage = agent_result.usage()
+        raw_usage = agent_result.usage
+        # pydantic-ai exposes usage as a property on this version; tolerate
+        # both shapes so the executor tracks the installed runtime
+        usage = raw_usage() if callable(raw_usage) else raw_usage
         tool_call_count = sum(
             1 for o in observations if o.delegation_id == envelope.delegation_id
         )

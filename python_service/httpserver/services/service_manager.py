@@ -59,6 +59,7 @@ class ServiceManager:
         self._secondary_analysis_executor = None
         self._event_refresh_executor = None
         self._agent_orchestrator = None
+        self._specialist_delegation_executor = None
         self._initialized = False
         self._cpp_backend_ready = False
         self._forensic_report_ready = False
@@ -66,6 +67,7 @@ class ServiceManager:
         self._secondary_analysis_ready = False
         self._event_refresh_ready = False
         self._agent_orchestrator_ready = False
+        self._specialist_delegation_executor_ready = False
         self._lifecycle_state = "new"
         self._lifecycle_lock = asyncio.Lock()
         self._initialization_task: Optional[asyncio.Task[None]] = None
@@ -209,6 +211,23 @@ class ServiceManager:
                     f"AgentOrchestrator initialization failed: {error}"
                 )
 
+            # Specialist delegation executor (P4A): real PydanticAI agent
+            # execution over the P3 tool substrate. initialize() is lifecycle
+            # setup only — queued delegations are consumed exclusively by
+            # explicit dispatch calls, never automatically.
+            try:
+                executor = self._create_specialist_delegation_executor()
+                await asyncio.wait_for(
+                    executor.initialize(),
+                    timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
+                )
+                self._specialist_delegation_executor = executor
+                self._specialist_delegation_executor_ready = True
+            except Exception as error:
+                logger.warning(
+                    f"SpecialistDelegationExecutor initialization failed: {error}"
+                )
+
             # Initialize Report Generation Executor (after forensic report
             # service + LLM). LLM may be None: recovery must still run and
             # real submissions fail durably with llm_unavailable. The
@@ -278,6 +297,7 @@ class ServiceManager:
         rollback_plan = (
             (self._migration_manager, "close"),
             (self._ingestion_job_manager, "shutdown"),
+            (self._specialist_delegation_executor, "shutdown"),
             (self._agent_orchestrator, "shutdown"),
             (self._event_refresh_executor, "shutdown"),
             (self._report_generation_executor, "shutdown"),
@@ -364,6 +384,7 @@ class ServiceManager:
 
     def _service_cleanup_plan(self) -> tuple[tuple[object | None, str], ...]:
         return (
+            (self._specialist_delegation_executor, "shutdown"),
             (self._agent_orchestrator, "shutdown"),
             (self._event_refresh_executor, "shutdown"),
             (self._report_generation_executor, "shutdown"),
@@ -387,6 +408,7 @@ class ServiceManager:
         self._report_evidence_service = None
         self._report_generation_service = None
         self._agent_orchestrator = None
+        self._specialist_delegation_executor = None
         self._event_refresh_executor = None
         self._report_generation_executor = None
         self._secondary_analysis_executor = None
@@ -401,6 +423,7 @@ class ServiceManager:
         self._secondary_analysis_ready = False
         self._event_refresh_ready = False
         self._agent_orchestrator_ready = False
+        self._specialist_delegation_executor_ready = False
 
     def _require_service_access(self) -> None:
         if self._lifecycle_state == "initializing":
@@ -722,6 +745,65 @@ class ServiceManager:
         if self._agent_orchestrator is None or not self._agent_orchestrator_ready:
             raise RuntimeError("agent orchestrator is unavailable")
         return self._agent_orchestrator
+
+    def _create_specialist_delegation_executor(self):
+        """P4A specialist delegation executor over the P3 tool substrate.
+
+        The tool registry is rebuilt per dispatch (stateless catalog +
+        per-run budget bookkeeping) against lazily-resolved ServiceManager
+        facades, and observations persist through the task-owned runtime
+        repository with the frozen observation+trajectory atomic pair.
+        """
+        from types import SimpleNamespace
+
+        from .investigation.agent_specialist_executor import (
+            SpecialistDelegationExecutor,
+        )
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        manager = self
+
+        class _LazyToolServices:
+            """Resolves ServiceManager facades on first attribute access."""
+
+            def __getattr__(self, name):
+                return getattr(manager, name)
+
+        def registry_builder(runtime, observation_sink=None):
+            # deferred: pulls the P3 catalog (and pydantic_ai) at first
+            # dispatch, never during service initialization
+            from .investigation.agent_tools.adapters import (
+                build_read_only_registry,
+            )
+            from .investigation.agent_tools.observations import (
+                AgentObservationSink,
+            )
+
+            return build_read_only_registry(
+                _LazyToolServices(),
+                observation_sink=observation_sink
+                or AgentObservationSink(runtime),
+            )
+
+        return SpecialistDelegationExecutor(
+            cpp_backend=self._cpp_backend,
+            settings=self.settings,
+            tool_services=_LazyToolServices(),
+            registry_builder=registry_builder,
+            investigation_db_path_for_task=None,  # trusted default from .paths
+        )
+
+    @property
+    def specialist_delegation_executor(self):
+        """P4A specialist delegation executor (explicit dispatch only)."""
+        self._require_service_access()
+        if (
+            self._specialist_delegation_executor is None
+            or not self._specialist_delegation_executor_ready
+        ):
+            raise RuntimeError("specialist delegation executor is unavailable")
+        return self._specialist_delegation_executor
 
     def _create_secondary_analysis_executor(self):
         from .investigation.execution import SecondaryAnalysisExecutor
