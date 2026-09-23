@@ -59,7 +59,7 @@ def _seed_agent_data(db_path):
 def test_fresh_db_initializes_v10(tmp_path):
     db = tmp_path / "investigation.db"
     InvestigationRepository(db, "A")
-    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 13
+    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 14
 
 
 def _downgrade_trajectory_table_to_v9(db_path):

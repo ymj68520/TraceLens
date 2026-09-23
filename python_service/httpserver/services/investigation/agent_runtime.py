@@ -125,6 +125,12 @@ class AgentTrajectoryEventType(str, Enum):
     correlation_candidates_recorded = "correlation_candidates_recorded"
     claim_grounding_recorded = "claim_grounding_recorded"
     claim_proposals_recorded = "claim_proposals_recorded"
+    # P5B (minimal v14): semantic verification / disposition / finding audit.
+    correlation_semantic_verified = "correlation_semantic_verified"
+    claim_semantic_verified = "claim_semantic_verified"
+    claim_disposition_recorded = "claim_disposition_recorded"
+    finding_review_pending_created = "finding_review_pending_created"
+    final_semantic_review_recorded = "final_semantic_review_recorded"
 
 
 # Application-side transition tables; the identically-shaped DB triggers are
@@ -2979,6 +2985,232 @@ class AgentRuntimeRepository:
                 "created_at": row["created_at"],
             })
         return bundles
+
+    def record_semantic_verification(
+        self,
+        investigation_id: str,
+        *,
+        verification_row: Mapping[str, Any],
+        grounding_id: Optional[str] = None,
+        trajectory_event: "AgentTrajectoryEventType" = None,
+        run_id: Optional[str] = None,
+        delegation_id: Optional[str] = None,
+    ) -> dict:
+        """\u00a743 atomic primitive: one semantic verification row + its
+        trajectory event in ONE transaction. Invalid provider output never
+        reaches here (failures go to record_semantic_verification_failure)."""
+        required_nonempty = (
+            "verification_id", "mode", "proposal_id", "proposal_hash",
+            "status", "result", "input_hash",
+        )
+        missing = sorted(
+            key for key in required_nonempty
+            if verification_row.get(key) is None
+            or verification_row.get(key) == ""
+        )
+        if missing:
+            raise ValueError(
+                f"semantic verification missing required fields: {missing}"
+            )
+        if trajectory_event is None:
+            trajectory_event = (
+                AgentTrajectoryEventType.claim_semantic_verified
+            )
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            if run_id is not None:
+                self._require_run_with_conn(conn, run_id, investigation_id)
+            if delegation_id is not None:
+                self._require_delegation_with_conn(
+                    conn, delegation_id, investigation_id
+                )
+            try:
+                inserted = self._insert_or_replay(
+                    lambda: conn.execute(
+                        "INSERT INTO agent_semantic_verifications "
+                        "(verification_id, task_id, investigation_id, mode, "
+                        " proposal_id, proposal_hash, grounding_id, "
+                        " support_bundle_id, support_bundle_hash, status, "
+                        " result_json, result_hash, "
+                        " recommended_assertion_class, model, prompt_version, "
+                        " model_config_hash, input_hash, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            verification_row["verification_id"], self.task_id,
+                            investigation_id, verification_row["mode"],
+                            verification_row["proposal_id"],
+                            verification_row["proposal_hash"],
+                            grounding_id
+                            or verification_row.get("grounding_id"),
+                            verification_row.get("support_bundle_id"),
+                            verification_row.get("support_bundle_hash"),
+                            verification_row["status"],
+                            canonical_state_json(dict(
+                                verification_row["result"]
+                            )),
+                            verification_row.get("result_hash")
+                            or state_hash_of(verification_row["result"]),
+                            verification_row.get(
+                                "recommended_assertion_class"
+                            ),
+                            verification_row.get("model"),
+                            verification_row.get("prompt_version"),
+                            verification_row.get("model_config_hash"),
+                            verification_row["input_hash"], _now_iso(),
+                        ],
+                    )
+                )
+                self._append_trajectory_with_conn(
+                    conn, investigation_id, trajectory_event,
+                    run_id=run_id, delegation_id=delegation_id,
+                    payload={
+                        "verification_id": verification_row[
+                            "verification_id"
+                        ],
+                        "proposal_id": verification_row["proposal_id"],
+                        "status": verification_row["status"],
+                        "inserted": inserted,
+                    },
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return {"inserted": inserted}
+
+    def get_semantic_verification(
+        self, investigation_id: str, verification_id: str
+    ) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_semantic_verifications "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND verification_id = ?",
+                [self.task_id, investigation_id, verification_id],
+            ).fetchone()
+        return (
+            self._semantic_verification_row_to_dict(row) if row else None
+        )
+
+    def list_semantic_verifications(
+        self,
+        investigation_id: str,
+        *,
+        proposal_id: Optional[str] = None,
+        mode: Optional[str] = None,
+    ) -> list[dict]:
+        sql = (
+            "SELECT * FROM agent_semantic_verifications "
+            "WHERE task_id = ? AND investigation_id = ?"
+        )
+        params: list = [self.task_id, investigation_id]
+        if proposal_id is not None:
+            sql += " AND proposal_id = ?"
+            params.append(proposal_id)
+        if mode is not None:
+            sql += " AND mode = ?"
+            params.append(mode)
+        sql += " ORDER BY verification_row_id"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [
+            self._semantic_verification_row_to_dict(row) for row in rows
+        ]
+
+    @staticmethod
+    def _semantic_verification_row_to_dict(row: sqlite3.Row) -> dict:
+        return {
+            "verification_id": row["verification_id"],
+            "task_id": row["task_id"],
+            "investigation_id": row["investigation_id"],
+            "mode": row["mode"],
+            "proposal_id": row["proposal_id"],
+            "proposal_hash": row["proposal_hash"],
+            "grounding_id": row["grounding_id"],
+            "support_bundle_id": row["support_bundle_id"],
+            "support_bundle_hash": row["support_bundle_hash"],
+            "status": row["status"],
+            "result": json.loads(row["result_json"]),
+            "result_hash": row["result_hash"],
+            "recommended_assertion_class": row["recommended_assertion_class"],
+            "model": row["model"],
+            "prompt_version": row["prompt_version"],
+            "model_config_hash": row["model_config_hash"],
+            "input_hash": row["input_hash"],
+            "created_at": row["created_at"],
+        }
+
+    def record_semantic_verification_failure(
+        self,
+        investigation_id: str,
+        *,
+        failure_row: Mapping[str, Any],
+    ) -> dict:
+        """\u00a719: runtime failures are explicit durable audit rows.
+        SQLite is the source of truth; no row must never mean 'fine'."""
+        required_nonempty = (
+            "failure_id", "mode", "failure_code", "input_hash",
+        )
+        missing = sorted(
+            key for key in required_nonempty
+            if failure_row.get(key) is None or failure_row.get(key) == ""
+        )
+        if missing:
+            raise ValueError(
+                f"verification failure missing required fields: {missing}"
+            )
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            inserted = self._insert_or_replay(
+                lambda: conn.execute(
+                    "INSERT INTO agent_semantic_verification_failures "
+                    "(failure_id, task_id, investigation_id, mode, "
+                    " proposal_id, failure_code, detail, model, input_hash, "
+                    " created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        failure_row["failure_id"], self.task_id,
+                        investigation_id, failure_row["mode"],
+                        failure_row.get("proposal_id"),
+                        failure_row["failure_code"],
+                        failure_row.get("detail"),
+                        failure_row.get("model"),
+                        failure_row["input_hash"], _now_iso(),
+                    ],
+                )
+            )
+            conn.commit()
+        return {"inserted": inserted}
+
+    def list_semantic_verification_failures(
+        self, investigation_id: str, *, proposal_id: Optional[str] = None
+    ) -> list[dict]:
+        sql = (
+            "SELECT * FROM agent_semantic_verification_failures "
+            "WHERE task_id = ? AND investigation_id = ?"
+        )
+        params: list = [self.task_id, investigation_id]
+        if proposal_id is not None:
+            sql += " AND proposal_id = ?"
+            params.append(proposal_id)
+        sql += " ORDER BY failure_row_id"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [
+            {
+                "failure_id": row["failure_id"],
+                "mode": row["mode"],
+                "proposal_id": row["proposal_id"],
+                "failure_code": row["failure_code"],
+                "detail": row["detail"],
+                "model": row["model"],
+                "input_hash": row["input_hash"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
 
     def record_delegation_result(
         self,

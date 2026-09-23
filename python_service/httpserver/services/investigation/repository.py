@@ -100,7 +100,7 @@ class AnalysisBindingConflictError(RuntimeError):
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 13
+SUPPORTED_SCHEMA_VERSION = 14
 
 # ---------------------------------------------------------------------------
 # DDL: evidence_snapshots (v1, unchanged)
@@ -781,7 +781,10 @@ CREATE TABLE IF NOT EXISTS agent_trajectory_events (
         'tool_observation_recorded',
         'supervisor_plan_decided','supervisor_integration_committed',
         'entity_occurrences_recorded','correlation_candidates_recorded',
-        'claim_grounding_recorded','claim_proposals_recorded')),
+        'claim_grounding_recorded','claim_proposals_recorded',
+        'correlation_semantic_verified','claim_semantic_verified',
+        'claim_disposition_recorded','finding_review_pending_created',
+        'final_semantic_review_recorded')),
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
     UNIQUE(task_id, event_id),
@@ -1698,6 +1701,260 @@ CREATE TABLE agent_trajectory_events_v13_rebuild (
 )
 """
 
+# -------------------------------------------------------------------------
+# DDL: P5B semantic-verification persistence (v14).
+#
+# Hard boundaries: verifier/disposition rows are INSERT-only with full
+# provenance; the canonical Finding is the ONLY state-machine table
+# (review_pending -> accepted/rejected, human-only outgoing edges); review
+# history is append-only. NO Graph tables, NO report tables.
+# -------------------------------------------------------------------------
+
+_CREATE_AGENT_SEMANTIC_VERIFICATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_semantic_verifications (
+    verification_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    verification_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK(mode IN
+        ('claim_sufficiency','correlation_sufficiency',
+         'question_closure','finalization_review')),
+    proposal_id TEXT NOT NULL,
+    proposal_hash TEXT NOT NULL,
+    grounding_id TEXT,
+    support_bundle_id TEXT,
+    support_bundle_hash TEXT,
+    status TEXT NOT NULL CHECK(status IN
+        ('sufficient','partially_sufficient','insufficient',
+         'contradicted','indeterminate')),
+    result_json TEXT NOT NULL,
+    result_hash TEXT NOT NULL,
+    recommended_assertion_class TEXT CHECK(recommended_assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    model TEXT,
+    prompt_version TEXT,
+    model_config_hash TEXT,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, verification_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_SEMANTIC_VERIFICATION_FAILURES_SQL = """
+CREATE TABLE IF NOT EXISTS agent_semantic_verification_failures (
+    failure_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    failure_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK(mode IN
+        ('claim_sufficiency','correlation_sufficiency',
+         'question_closure','finalization_review')),
+    proposal_id TEXT,
+    failure_code TEXT NOT NULL CHECK(failure_code IN
+        ('provider_unavailable','auth_failed','billing_unavailable',
+         'rate_limited','timeout','output_invalid','input_stale',
+         'internal_failure','runtime_restart')),
+    detail TEXT,
+    model TEXT,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, failure_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_CLAIM_DISPOSITIONS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_claim_dispositions (
+    disposition_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    disposition_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    proposal_id TEXT NOT NULL,
+    proposal_hash TEXT NOT NULL,
+    grounding_id TEXT NOT NULL,
+    grounding_hash TEXT,
+    verification_id TEXT,
+    verification_hash TEXT,
+    requested_assertion_class TEXT NOT NULL CHECK(requested_assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    effective_assertion_class TEXT NOT NULL CHECK(effective_assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    semantic_type TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK(decision IN
+        ('eligible_review_pending','downgrade_to_hypothesis',
+         'insufficient','contradicted','blocked_verification_required',
+         'invalid')),
+    reasons_json TEXT NOT NULL,
+    limitations_json TEXT NOT NULL,
+    policy_registry_hash TEXT NOT NULL,
+    policy_version TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, disposition_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_INVESTIGATION_FINDINGS_SQL = """
+CREATE TABLE IF NOT EXISTS investigation_findings (
+    finding_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    finding_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    proposal_id TEXT NOT NULL,
+    disposition_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    assertion_class TEXT NOT NULL CHECK(assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    evidence_refs_json TEXT NOT NULL,
+    relationship_refs_json TEXT NOT NULL,
+    temporal_scope_json TEXT,
+    grounding_id TEXT NOT NULL,
+    semantic_verification_id TEXT,
+    limitations_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN
+        ('review_pending','accepted','rejected')),
+    created_at TEXT NOT NULL,
+    reviewed_at TEXT,
+    reviewer TEXT,
+    review_note TEXT,
+    review_id TEXT,
+    UNIQUE(task_id, investigation_id, finding_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_TRIGGER_FINDING_NO_IDENTITY_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_investigation_finding_no_identity_update
+BEFORE UPDATE ON investigation_findings
+WHEN OLD.finding_id IS NOT NEW.finding_id
+  OR OLD.task_id IS NOT NEW.task_id
+  OR OLD.investigation_id IS NOT NEW.investigation_id
+  OR OLD.proposal_id IS NOT NEW.proposal_id
+  OR OLD.disposition_id IS NOT NEW.disposition_id
+  OR OLD.text IS NOT NEW.text
+  OR OLD.assertion_class IS NOT NEW.assertion_class
+  OR OLD.evidence_refs_json IS NOT NEW.evidence_refs_json
+  OR OLD.relationship_refs_json IS NOT NEW.relationship_refs_json
+  OR OLD.grounding_id IS NOT NEW.grounding_id
+  OR OLD.semantic_verification_id IS NOT NEW.semantic_verification_id
+  OR OLD.created_at IS NOT NEW.created_at
+BEGIN
+    SELECT RAISE(ABORT, 'investigation_findings identity is immutable');
+END
+"""
+
+_TRIGGER_FINDING_LEGAL_TRANSITION_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_investigation_finding_legal_transition
+BEFORE UPDATE ON investigation_findings
+WHEN (OLD.status = 'review_pending'
+      AND NEW.status NOT IN ('accepted','rejected'))
+  OR (OLD.status IN ('accepted','rejected')
+      AND NEW.status IS NOT OLD.status)
+BEGIN
+    SELECT RAISE(ABORT,
+        'investigation_findings: only review_pending -> accepted/rejected');
+END
+"""
+
+_TRIGGER_FINDING_REVIEW_PROVENANCE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_investigation_finding_review_provenance
+BEFORE UPDATE ON investigation_findings
+WHEN OLD.status = 'review_pending'
+ AND NEW.status IN ('accepted','rejected')
+ AND (NEW.reviewed_at IS NULL OR NEW.reviewer IS NULL
+      OR NEW.review_id IS NULL)
+BEGIN
+    SELECT RAISE(ABORT, 'investigation_findings: review provenance required');
+END
+"""
+
+_CREATE_INVESTIGATION_FINDING_REVIEWS_SQL = """
+CREATE TABLE IF NOT EXISTS investigation_finding_reviews (
+    review_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    review_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    finding_id TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK(decision IN ('accepted','rejected')),
+    reviewer TEXT NOT NULL,
+    note TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, review_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, investigation_id, finding_id)
+        REFERENCES investigation_findings(task_id, investigation_id, finding_id)
+        ON DELETE RESTRICT
+)
+"""
+
+_TRIGGER_FINDING_REVIEW_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_investigation_finding_review_no_update
+BEFORE UPDATE ON investigation_finding_reviews
+BEGIN
+    SELECT RAISE(ABORT, 'investigation_finding_reviews is append-only');
+END
+"""
+
+_TRIGGER_FINDING_REVIEW_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_investigation_finding_review_no_delete
+BEFORE DELETE ON investigation_finding_reviews
+BEGIN
+    SELECT RAISE(ABORT, 'investigation_finding_reviews is append-only');
+END
+"""
+
+_P5B_APPEND_ONLY_TABLES = (
+    "agent_semantic_verifications",
+    "agent_semantic_verification_failures",
+    "agent_claim_dispositions",
+    "investigation_finding_reviews",
+)
+
+_CREATE_AGENT_TRAJECTORY_EVENTS_V14_REBUILD_SQL = """
+CREATE TABLE agent_trajectory_events_v14_rebuild (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    delegation_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'investigation_created','run_admitted','run_started','run_completed',
+        'run_failed','run_cancelled','delegation_admitted','delegation_started',
+        'delegation_completed','delegation_failed','delegation_cancelled',
+        'delegation_stale','working_state_committed','runtime_recovered',
+        'investigation_paused','investigation_completed','investigation_cancelled',
+        'attention_compiled','transition_decision_validated',
+        'transition_decision_rejected','working_state_integrated',
+        'no_progress_detected','finalization_requested','finalization_denied',
+        'finalization_stale','finalization_completed',
+        'tool_observation_recorded',
+        'supervisor_plan_decided','supervisor_integration_committed',
+        'entity_occurrences_recorded','correlation_candidates_recorded',
+        'claim_grounding_recorded','claim_proposals_recorded',
+        'correlation_semantic_verified','claim_semantic_verified',
+        'claim_disposition_recorded','finding_review_pending_created',
+        'final_semantic_review_recorded')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, event_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
 _REQUIRED_AGENT_INVESTIGATION_COLUMNS = {
     "investigation_id", "task_id", "status", "pause_reason", "created_at",
     "updated_at", "completed_at", "cancelled_at",
@@ -1783,6 +2040,42 @@ _REQUIRED_AGENT_EVIDENCE_SCOPE_COLUMNS = {
     "scope_row_id", "task_id", "investigation_id", "delegation_id",
     "initial_evidence_refs_json", "allowed_refs_hash", "input_hash",
     "created_at",
+}
+
+_REQUIRED_AGENT_SEMANTIC_VERIFICATION_COLUMNS = {
+    "verification_row_id", "verification_id", "task_id", "investigation_id",
+    "mode", "proposal_id", "proposal_hash", "grounding_id",
+    "support_bundle_id", "support_bundle_hash", "status", "result_json",
+    "result_hash", "recommended_assertion_class", "model", "prompt_version",
+    "model_config_hash", "input_hash", "created_at",
+}
+
+_REQUIRED_AGENT_VERIFICATION_FAILURE_COLUMNS = {
+    "failure_row_id", "failure_id", "task_id", "investigation_id", "mode",
+    "proposal_id", "failure_code", "detail", "model", "input_hash",
+    "created_at",
+}
+
+_REQUIRED_AGENT_CLAIM_DISPOSITION_COLUMNS = {
+    "disposition_row_id", "disposition_id", "task_id", "investigation_id",
+    "proposal_id", "proposal_hash", "grounding_id", "grounding_hash",
+    "verification_id", "verification_hash", "requested_assertion_class",
+    "effective_assertion_class", "semantic_type", "decision", "reasons_json",
+    "limitations_json", "policy_registry_hash", "policy_version", "rule_id",
+    "input_hash", "created_at",
+}
+
+_REQUIRED_INVESTIGATION_FINDING_COLUMNS = {
+    "finding_row_id", "finding_id", "task_id", "investigation_id",
+    "proposal_id", "disposition_id", "text", "assertion_class",
+    "evidence_refs_json", "relationship_refs_json", "temporal_scope_json",
+    "grounding_id", "semantic_verification_id", "limitations_json", "status",
+    "created_at", "reviewed_at", "reviewer", "review_note", "review_id",
+}
+
+_REQUIRED_INVESTIGATION_FINDING_REVIEW_COLUMNS = {
+    "review_row_id", "review_id", "task_id", "investigation_id",
+    "finding_id", "decision", "reviewer", "note", "created_at",
 }
 
 _REQUIRED_SECONDARY_COLUMNS = {
@@ -1883,7 +2176,7 @@ class InvestigationRepository:
                 f"(supported: {SUPPORTED_SCHEMA_VERSION})"
             )
         try:
-            repo._validate_v13_schema()
+            repo._validate_v14_schema()
         except (sqlite3.DatabaseError, ValueError, EvidenceStoreError) as exc:
             raise EvidenceStoreError("investigation store schema is invalid") from exc
         return repo
@@ -1909,7 +2202,7 @@ class InvestigationRepository:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
             self._initialize_current_atomically()
-            self._validate_v13_schema()
+            self._validate_v14_schema()
         elif version == 1:
             self._migrate_v1_to_v4()
             self._migrate_v4_to_v5()
@@ -1921,7 +2214,8 @@ class InvestigationRepository:
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
             self._migrate_v12_to_v13()
-            self._validate_v13_schema()
+            self._migrate_v13_to_v14()
+            self._validate_v14_schema()
         elif version == 2:
             self._migrate_v2_to_v4()
             self._migrate_v4_to_v5()
@@ -1933,7 +2227,8 @@ class InvestigationRepository:
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
             self._migrate_v12_to_v13()
-            self._validate_v13_schema()
+            self._migrate_v13_to_v14()
+            self._validate_v14_schema()
         elif version == 3:
             self._migrate_v3_to_v4()
             self._migrate_v4_to_v5()
@@ -1945,7 +2240,8 @@ class InvestigationRepository:
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
             self._migrate_v12_to_v13()
-            self._validate_v13_schema()
+            self._migrate_v13_to_v14()
+            self._validate_v14_schema()
         elif version == 4:
             self._migrate_v4_to_v5()
             self._migrate_v5_to_v6()
@@ -1956,7 +2252,8 @@ class InvestigationRepository:
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
             self._migrate_v12_to_v13()
-            self._validate_v13_schema()
+            self._migrate_v13_to_v14()
+            self._validate_v14_schema()
         elif version == 5:
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
@@ -1966,7 +2263,8 @@ class InvestigationRepository:
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
             self._migrate_v12_to_v13()
-            self._validate_v13_schema()
+            self._migrate_v13_to_v14()
+            self._validate_v14_schema()
         elif version == 6:
             self._migrate_v6_to_v7()
             self._migrate_v7_to_v8()
@@ -1975,7 +2273,8 @@ class InvestigationRepository:
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
             self._migrate_v12_to_v13()
-            self._validate_v13_schema()
+            self._migrate_v13_to_v14()
+            self._validate_v14_schema()
         elif version == 7:
             self._migrate_v7_to_v8()
             self._migrate_v8_to_v9()
@@ -1983,34 +2282,43 @@ class InvestigationRepository:
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
             self._migrate_v12_to_v13()
-            self._validate_v13_schema()
+            self._migrate_v13_to_v14()
+            self._validate_v14_schema()
         elif version == 8:
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
             self._migrate_v12_to_v13()
-            self._validate_v13_schema()
+            self._migrate_v13_to_v14()
+            self._validate_v14_schema()
         elif version == 9:
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
             self._migrate_v12_to_v13()
-            self._validate_v13_schema()
+            self._migrate_v13_to_v14()
+            self._validate_v14_schema()
         elif version == 10:
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
             self._migrate_v12_to_v13()
-            self._validate_v13_schema()
+            self._migrate_v13_to_v14()
+            self._validate_v14_schema()
         elif version == 11:
             self._migrate_v11_to_v12()
             self._migrate_v12_to_v13()
-            self._validate_v13_schema()
+            self._migrate_v13_to_v14()
+            self._validate_v14_schema()
         elif version == 12:
             self._migrate_v12_to_v13()
-            self._validate_v13_schema()
+            self._migrate_v13_to_v14()
+            self._validate_v14_schema()
+        elif version == 13:
+            self._migrate_v13_to_v14()
+            self._validate_v14_schema()
         elif version == SUPPORTED_SCHEMA_VERSION:
-            self._validate_v13_schema()
+            self._validate_v14_schema()
             self._ensure_v11_auxiliary_objects()
         else:
             raise EvidenceStoreError(
@@ -2132,6 +2440,7 @@ class InvestigationRepository:
             self._build_all_agent_runtime_objects(conn)
             self._build_all_agent_delegation_result_objects(conn)
             self._build_all_p5a_persistence_objects(conn)
+            self._build_all_p5b_persistence_objects(conn)
             conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
             conn.commit()
 
@@ -2537,6 +2846,140 @@ class InvestigationRepository:
             self._validate_trajectory_event_type_v13(conn)
             self._validate_p5a_persistence_tables(conn)
 
+    # -------------------------------------------------------------------
+    # P5B semantic-verification persistence (v14)
+    # -------------------------------------------------------------------
+
+    def _build_all_p5b_persistence_objects(self, conn: sqlite3.Connection) -> None:
+        """Create the five P5B tables + their guards."""
+        conn.execute(_CREATE_AGENT_SEMANTIC_VERIFICATIONS_SQL)
+        conn.execute(_CREATE_AGENT_SEMANTIC_VERIFICATION_FAILURES_SQL)
+        conn.execute(_CREATE_AGENT_CLAIM_DISPOSITIONS_SQL)
+        conn.execute(_CREATE_INVESTIGATION_FINDINGS_SQL)
+        for statement in (
+            _TRIGGER_FINDING_NO_IDENTITY_UPDATE_SQL,
+            _TRIGGER_FINDING_LEGAL_TRANSITION_SQL,
+            _TRIGGER_FINDING_REVIEW_PROVENANCE_SQL,
+        ):
+            conn.execute(statement)
+        conn.execute(_CREATE_INVESTIGATION_FINDING_REVIEWS_SQL)
+        conn.execute(_TRIGGER_FINDING_REVIEW_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_FINDING_REVIEW_NO_DELETE_SQL)
+        for table in _P5B_APPEND_ONLY_TABLES:
+            for statement in _append_only_trigger_sql(table):
+                conn.execute(statement)
+
+    def _migrate_v13_to_v14(self) -> None:
+        """v13 database: P5B semantic verification (minimal v14).
+
+        Two changes only: the trajectory event_type enum grows the five
+        P5B audit events, and the five P5B tables (+ the canonical Finding
+        state-machine guards) are added. P1-P5A rows are copied verbatim
+        by the rebuild; nothing else is rewritten."""
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_V14_REBUILD_SQL)
+            conn.execute(
+                "INSERT INTO agent_trajectory_events_v14_rebuild "
+                "(seq, event_id, task_id, investigation_id, run_id, "
+                " delegation_id, event_type, payload_json, created_at) "
+                "SELECT seq, event_id, task_id, investigation_id, run_id, "
+                "delegation_id, event_type, payload_json, created_at "
+                "FROM agent_trajectory_events"
+            )
+            conn.execute("DROP TABLE agent_trajectory_events")
+            conn.execute(
+                "ALTER TABLE agent_trajectory_events_v14_rebuild "
+                "RENAME TO agent_trajectory_events"
+            )
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+            self._build_all_p5b_persistence_objects(conn)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    def _validate_trajectory_event_type_v14(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type='table' AND name='agent_trajectory_events'"
+        ).fetchone()
+        sql = row["sql"] if row is not None else ""
+        for value in (
+            "correlation_semantic_verified",
+            "claim_semantic_verified",
+            "claim_disposition_recorded",
+            "finding_review_pending_created",
+            "final_semantic_review_recorded",
+        ):
+            if value not in (sql or ""):
+                raise EvidenceStoreError(
+                    f"agent_trajectory_events is missing the v14 {value!r} "
+                    "event type"
+                )
+
+    def _validate_p5b_persistence_tables(self, conn: sqlite3.Connection) -> None:
+        """Validate the five P5B tables: columns, guards, Finding status
+        machine and review provenance triggers. Fail closed."""
+        column_specs = (
+            ("agent_semantic_verifications",
+             _REQUIRED_AGENT_SEMANTIC_VERIFICATION_COLUMNS),
+            ("agent_semantic_verification_failures",
+             _REQUIRED_AGENT_VERIFICATION_FAILURE_COLUMNS),
+            ("agent_claim_dispositions",
+             _REQUIRED_AGENT_CLAIM_DISPOSITION_COLUMNS),
+            ("investigation_findings",
+             _REQUIRED_INVESTIGATION_FINDING_COLUMNS),
+            ("investigation_finding_reviews",
+             _REQUIRED_INVESTIGATION_FINDING_REVIEW_COLUMNS),
+        )
+        for table, required in column_specs:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                [table],
+            ).fetchone()
+            if exists is None:
+                raise EvidenceStoreError(
+                    f"missing P5B persistence table: {table}"
+                )
+            cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            missing = required - cols
+            if missing:
+                raise EvidenceStoreError(
+                    f"{table} missing required columns: {sorted(missing)}"
+                )
+        for table in _P5B_APPEND_ONLY_TABLES:
+            for suffix in ("no_update", "no_delete"):
+                trigger = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?",
+                    [f"trg_{table}_{suffix}"],
+                ).fetchone()
+                if trigger is None:
+                    raise EvidenceStoreError(
+                        f"{table} missing append-only guard "
+                        f"trg_{table}_{suffix}"
+                    )
+        for trigger in (
+            "trg_investigation_finding_no_identity_update",
+            "trg_investigation_finding_legal_transition",
+            "trg_investigation_finding_review_provenance",
+        ):
+            found = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?",
+                [trigger],
+            ).fetchone()
+            if found is None:
+                raise EvidenceStoreError(
+                    f"investigation_findings missing guard {trigger}"
+                )
+
+    def _validate_v14_schema(self) -> None:
+        self._validate_v13_schema()
+        with self._connect() as conn:
+            self._validate_trajectory_event_type_v14(conn)
+            self._validate_p5b_persistence_tables(conn)
+
 
     def _build_all_agent_runtime_objects_v8(self, conn: sqlite3.Connection) -> None:
         """v8-era builder (kept for the v7->v8 step of the frozen chain)."""
@@ -2589,6 +3032,7 @@ class InvestigationRepository:
             self._build_all_report_evidence_objects(conn)
             self._build_all_agent_runtime_objects(conn)
             self._build_all_p5a_persistence_objects(conn)
+            self._build_all_p5b_persistence_objects(conn)
             conn.commit()
 
     def _validate_v12_schema(self) -> None:

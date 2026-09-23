@@ -1,6 +1,11 @@
-"""P5A boundary tests: §62 no verifier/correlation-agent execution in
-production modules, and §65 the P5A pipeline is never auto-wired into the
-P4 cycle."""
+"""P5A/P5B boundary tests.
+
+P5A §62 originally forbade any SemanticVerifierAgent / CorrelationAgent /
+AssertionPolicy / ClaimDisposition definition; P5B legitimately introduces
+those (one multi-mode verifier, deterministic policy), so the forbidden set
+now covers the P6 graph boundary. What stays permanently forbidden is
+auto-wiring: neither the P4 orchestrator nor the ServiceManager may pull
+the P5A pipeline or the P5B verifier/policy into automatic execution."""
 
 import re
 from pathlib import Path
@@ -15,9 +20,8 @@ _PRODUCTION_DIR = (
 # class/function definitions are violations.)
 _FORBIDDEN_DEFINITIONS = re.compile(
     r"^\s*(?:class|def)\s+("
-    r"SemanticVerifierAgent|CorrelationAgent|AssertionPolicy|"
-    r"SemanticVerificationResult|ClaimDisposition|"
-    r"claim_sufficiency|correlation_sufficiency|finalization_review"
+    r"GraphAdmissionPolicy|GraphCandidate|ForensicGraphEpisode|"
+    r"GraphMaterializer|ReportRuntime"
     r")\b",
     re.MULTILINE,
 )
@@ -46,6 +50,10 @@ def test_orchestrator_never_invokes_the_p5a_pipeline():
         "agent_correlation",
         "agent_support_bundle",
         "agent_identity",
+        "agent_verification",
+        "agent_assertion_policy",
+        "agent_correlation_agent",
+        "agent_findings",
     ):
         assert f"from .{module}" not in source, module
         assert f"import {module}" not in source, module
@@ -61,6 +69,10 @@ def test_service_manager_gains_no_p5a_lifecycle_service():
         "agent_claims",
         "agent_correlation",
         "agent_support_bundle",
+        "agent_verification",
+        "agent_assertion_policy",
+        "agent_correlation_agent",
+        "agent_findings",
     ):
         assert module not in service_manager, module
     # P5A components are stateless objects (§64): no new executor service

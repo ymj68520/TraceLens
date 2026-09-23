@@ -448,7 +448,7 @@ def test_fresh_store_initializes_at_current_version_with_extension(tmp_path):
         assert conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_evidence'"
         ).fetchone() is not None
-    assert SUPPORTED_SCHEMA_VERSION == 13
+    assert SUPPORTED_SCHEMA_VERSION == 14
 
 
 # ---------------------------------------------------------------------------

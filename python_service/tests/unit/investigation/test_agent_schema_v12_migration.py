@@ -24,7 +24,7 @@ def _user_version(path) -> int:
 def test_fresh_db_initializes_v12(tmp_path):
     db = tmp_path / "investigation.db"
     InvestigationRepository(db, "A")
-    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 13
+    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 14
 
 
 def _seed(tmp_path):
