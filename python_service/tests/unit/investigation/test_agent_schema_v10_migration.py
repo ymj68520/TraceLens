@@ -59,7 +59,7 @@ def _seed_agent_data(db_path):
 def test_fresh_db_initializes_v10(tmp_path):
     db = tmp_path / "investigation.db"
     InvestigationRepository(db, "A")
-    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 10
+    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 11
 
 
 def _downgrade_trajectory_table_to_v9(db_path):
@@ -152,11 +152,11 @@ def test_migration_is_idempotent_on_reopen(tmp_path):
         assert reopened.get_investigation(investigation_id) is not None
 
 
-def test_future_v11_fails_closed(tmp_path):
+def test_future_version_fails_closed(tmp_path):
     db = tmp_path / "investigation.db"
     InvestigationRepository(db, "A")
     conn = sqlite3.connect(db)
-    conn.execute("PRAGMA user_version = 11")
+    conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION + 1}")
     conn.commit()
     conn.close()
     with pytest.raises(Exception, match="unsupported"):

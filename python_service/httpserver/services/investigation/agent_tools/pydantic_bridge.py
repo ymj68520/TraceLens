@@ -134,12 +134,15 @@ def build_specialist_agent(
     registry: ForensicToolRegistryProtocol,
     *,
     model=None,
+    output_type: Any = str,
+    retries: int | None = None,
 ):
     """Complete the bridge: ContextPack + registry -> PydanticAI Agent.
 
-    The agent is constructed but never run by P3 wiring; production runs
-    start in P4. Instructions come from the pack's frozen layers — never
-    from chat history.
+    P4A runs this agent in production with
+    ``output_type=SpecialistResultV1``; instructions come from the pack's
+    frozen layers — never from chat history. The model must always be
+    explicit; no live provider model is ever constructed implicitly.
     """
     from ..agent_deps import ForensicAgentDeps
 
@@ -158,6 +161,8 @@ def build_specialist_agent(
         deps_type=ForensicAgentDeps,
         toolsets=[ForensicToolset(registry, context)],
         instructions=instructions,
+        output_type=output_type,
+        retries=retries,
     )
 
 

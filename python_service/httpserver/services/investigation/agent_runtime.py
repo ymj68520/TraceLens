@@ -373,6 +373,28 @@ class ToolObservation(BaseModel):
     created_at: str
 
 
+class DelegationResult(BaseModel):
+    """Immutable terminal result of one delegation (P4A §17)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    result_id: int
+    task_id: str
+    investigation_id: str
+    run_id: str
+    delegation_id: str
+    result_version: str
+    result: dict
+    result_hash: str
+    context_hash: Optional[str]
+    tool_registry_hash: Optional[str]
+    model_name: Optional[str]
+    model_config_hash: Optional[str]
+    usage: Optional[dict]
+    validation_status: str
+    created_at: str
+
+
 class FinalizationRecord(BaseModel):
     """Immutable successful-finalization record (P2 §36)."""
 
@@ -1736,6 +1758,155 @@ class AgentRuntimeRepository:
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
         return [self._row_to_observation(r) for r in rows]
+
+    def _insert_delegation_result_with_conn(
+        self,
+        conn: sqlite3.Connection,
+        delegation_id: str,
+        *,
+        result_version: str,
+        result: Mapping[str, Any],
+        result_hash: str,
+        context_hash: Optional[str] = None,
+        tool_registry_hash: Optional[str] = None,
+        model_name: Optional[str] = None,
+        model_config_hash: Optional[str] = None,
+        usage: Optional[Mapping[str, Any]] = None,
+        validation_status: str = "valid",
+    ) -> DelegationResult:
+        row = self._require_delegation_row_with_conn(conn, delegation_id)
+        now = _now_iso()
+        conn.execute(
+            "INSERT INTO agent_delegation_results "
+            "(task_id, investigation_id, run_id, delegation_id, result_version, "
+            " result_json, result_hash, context_hash, tool_registry_hash, "
+            " model_name, model_config_hash, usage_json, validation_status, "
+            " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                self.task_id, row["investigation_id"], row["run_id"],
+                delegation_id, result_version,
+                canonical_state_json(dict(result)), result_hash,
+                context_hash, tool_registry_hash, model_name,
+                model_config_hash,
+                canonical_state_json(dict(usage)) if usage is not None else None,
+                validation_status, now,
+            ],
+        )
+        stored = conn.execute(
+            "SELECT * FROM agent_delegation_results "
+            "WHERE task_id = ? AND delegation_id = ?",
+            [self.task_id, delegation_id],
+        ).fetchone()
+        return self._row_to_delegation_result(stored)
+
+    def _row_to_delegation_result(self, row: sqlite3.Row) -> DelegationResult:
+        import json as _json
+
+        usage = None
+        if row["usage_json"]:
+            usage = _json.loads(row["usage_json"])
+        return DelegationResult(
+            result_id=int(row["result_id"]),
+            task_id=row["task_id"],
+            investigation_id=row["investigation_id"],
+            run_id=row["run_id"],
+            delegation_id=row["delegation_id"],
+            result_version=row["result_version"],
+            result=_json.loads(row["result_json"]),
+            result_hash=row["result_hash"],
+            context_hash=row["context_hash"],
+            tool_registry_hash=row["tool_registry_hash"],
+            model_name=row["model_name"],
+            model_config_hash=row["model_config_hash"],
+            usage=usage,
+            validation_status=row["validation_status"],
+            created_at=row["created_at"],
+        )
+
+    def get_delegation_result(
+        self, delegation_id: str
+    ) -> Optional[DelegationResult]:
+        with self._connect() as conn:
+            stored = conn.execute(
+                "SELECT * FROM agent_delegation_results "
+                "WHERE task_id = ? AND delegation_id = ?",
+                [self.task_id, delegation_id],
+            ).fetchone()
+        return self._row_to_delegation_result(stored) if stored else None
+
+    def record_delegation_result(
+        self,
+        delegation_id: str,
+        *,
+        result_version: str,
+        result: Mapping[str, Any],
+        result_hash: str,
+        context_hash: Optional[str] = None,
+        tool_registry_hash: Optional[str] = None,
+        model_name: Optional[str] = None,
+        model_config_hash: Optional[str] = None,
+        usage: Optional[Mapping[str, Any]] = None,
+        validation_status: str = "valid",
+    ) -> DelegationResult:
+        """Persist one immutable result row (invalid-result audit path).
+
+        For the successful path use :meth:`complete_delegation_with_result`,
+        which makes the result row and the delegation's ``completed``
+        transition one atomic transaction.
+        """
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            stored = self._insert_delegation_result_with_conn(
+                conn, delegation_id,
+                result_version=result_version, result=result,
+                result_hash=result_hash, context_hash=context_hash,
+                tool_registry_hash=tool_registry_hash,
+                model_name=model_name, model_config_hash=model_config_hash,
+                usage=usage, validation_status=validation_status,
+            )
+            conn.commit()
+        return stored
+
+    def complete_delegation_with_result(
+        self,
+        delegation_id: str,
+        *,
+        result_version: str,
+        result: Mapping[str, Any],
+        result_hash: str,
+        context_hash: Optional[str] = None,
+        tool_registry_hash: Optional[str] = None,
+        model_name: Optional[str] = None,
+        model_config_hash: Optional[str] = None,
+        usage: Optional[Mapping[str, Any]] = None,
+    ) -> tuple[DelegationResult, AgentDelegation]:
+        """Atomic terminal success (P4A): the result row and the delegation's
+        ``completed`` transition land in one transaction — a completed
+        delegation always has exactly one valid result row, and a failed
+        insert never terminalizes the delegation."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            stored = self._insert_delegation_result_with_conn(
+                conn, delegation_id,
+                result_version=result_version, result=result,
+                result_hash=result_hash, context_hash=context_hash,
+                tool_registry_hash=tool_registry_hash,
+                model_name=model_name, model_config_hash=model_config_hash,
+                usage=usage, validation_status="valid",
+            )
+            row = self._require_delegation_row_with_conn(conn, delegation_id)
+            now = _now_iso()
+            delegation = self._transition_delegation_with_conn(
+                conn, row, DelegationStatus.completed, now=now,
+            )
+            self._append_trajectory_with_conn(
+                conn, delegation.investigation_id,
+                _DELEGATION_TRAJECTORY_EVENT[DelegationStatus.completed],
+                run_id=delegation.run_id, delegation_id=delegation_id,
+                payload={"result_hash": result_hash}, now=now,
+            )
+            conn.commit()
+        return stored, delegation
 
     # =====================================================================
     # atomic finalization commit (P2 §37)

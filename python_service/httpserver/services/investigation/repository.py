@@ -100,7 +100,7 @@ class AnalysisBindingConflictError(RuntimeError):
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 10
+SUPPORTED_SCHEMA_VERSION = 11
 
 # ---------------------------------------------------------------------------
 # DDL: evidence_snapshots (v1, unchanged)
@@ -1371,6 +1371,48 @@ CREATE TABLE agent_trajectory_events_v10_rebuild (
 )
 """
 
+_CREATE_AGENT_DELEGATION_RESULTS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_delegation_results (
+    result_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    delegation_id TEXT NOT NULL,
+    result_version TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    result_hash TEXT NOT NULL,
+    context_hash TEXT,
+    tool_registry_hash TEXT,
+    model_name TEXT,
+    model_config_hash TEXT,
+    usage_json TEXT,
+    validation_status TEXT NOT NULL CHECK(validation_status IN ('valid','invalid')),
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, delegation_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT)
+"""
+
+_TRIGGER_AGENT_RESULT_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_delegation_result_no_update
+BEFORE UPDATE ON agent_delegation_results
+BEGIN
+    SELECT RAISE(ABORT, 'agent_delegation_results is append-only');
+END
+"""
+
+_TRIGGER_AGENT_RESULT_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_delegation_result_no_delete
+BEFORE DELETE ON agent_delegation_results
+BEGIN
+    SELECT RAISE(ABORT, 'agent_delegation_results is append-only');
+END
+"""
+
 _REQUIRED_AGENT_INVESTIGATION_COLUMNS = {
     "investigation_id", "task_id", "status", "pause_reason", "created_at",
     "updated_at", "completed_at", "cancelled_at",
@@ -1396,6 +1438,13 @@ _REQUIRED_AGENT_TRAJECTORY_COLUMNS = {
     "seq", "event_id", "task_id", "investigation_id", "run_id",
     "delegation_id", "event_type", "payload_json", "created_at",
 }
+_REQUIRED_AGENT_DELEGATION_RESULT_COLUMNS = {
+    "result_id", "task_id", "investigation_id", "run_id", "delegation_id",
+    "result_version", "result_json", "result_hash", "context_hash",
+    "tool_registry_hash", "model_name", "model_config_hash", "usage_json",
+    "validation_status", "created_at",
+}
+
 _REQUIRED_AGENT_OBSERVATION_COLUMNS = {
     "observation_id", "task_id", "investigation_id", "run_id",
     "delegation_id", "tool_id", "summary", "result_json",
@@ -1500,7 +1549,7 @@ class InvestigationRepository:
                 f"(supported: {SUPPORTED_SCHEMA_VERSION})"
             )
         try:
-            repo._validate_v10_schema()
+            repo._validate_v11_schema()
         except (sqlite3.DatabaseError, ValueError, EvidenceStoreError) as exc:
             raise EvidenceStoreError("investigation store schema is invalid") from exc
         return repo
@@ -1525,8 +1574,8 @@ class InvestigationRepository:
         with self._connect() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
-            self._initialize_v10_atomically()
-            self._validate_v10_schema()
+            self._initialize_current_atomically()
+            self._validate_v11_schema()
         elif version == 1:
             self._migrate_v1_to_v4()
             self._migrate_v4_to_v5()
@@ -1535,7 +1584,8 @@ class InvestigationRepository:
             self._migrate_v7_to_v8()
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
-            self._validate_v10_schema()
+            self._migrate_v10_to_v11()
+            self._validate_v11_schema()
         elif version == 2:
             self._migrate_v2_to_v4()
             self._migrate_v4_to_v5()
@@ -1544,7 +1594,8 @@ class InvestigationRepository:
             self._migrate_v7_to_v8()
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
-            self._validate_v10_schema()
+            self._migrate_v10_to_v11()
+            self._validate_v11_schema()
         elif version == 3:
             self._migrate_v3_to_v4()
             self._migrate_v4_to_v5()
@@ -1553,7 +1604,8 @@ class InvestigationRepository:
             self._migrate_v7_to_v8()
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
-            self._validate_v10_schema()
+            self._migrate_v10_to_v11()
+            self._validate_v11_schema()
         elif version == 4:
             self._migrate_v4_to_v5()
             self._migrate_v5_to_v6()
@@ -1561,35 +1613,44 @@ class InvestigationRepository:
             self._migrate_v7_to_v8()
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
-            self._validate_v10_schema()
+            self._migrate_v10_to_v11()
+            self._validate_v11_schema()
         elif version == 5:
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
             self._migrate_v7_to_v8()
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
-            self._validate_v10_schema()
+            self._migrate_v10_to_v11()
+            self._validate_v11_schema()
         elif version == 6:
             self._migrate_v6_to_v7()
             self._migrate_v7_to_v8()
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
-            self._validate_v10_schema()
+            self._migrate_v10_to_v11()
+            self._validate_v11_schema()
         elif version == 7:
             self._migrate_v7_to_v8()
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
-            self._validate_v10_schema()
+            self._migrate_v10_to_v11()
+            self._validate_v11_schema()
         elif version == 8:
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
-            self._validate_v10_schema()
+            self._migrate_v10_to_v11()
+            self._validate_v11_schema()
         elif version == 9:
             self._migrate_v9_to_v10()
-            self._validate_v10_schema()
+            self._migrate_v10_to_v11()
+            self._validate_v11_schema()
+        elif version == 10:
+            self._migrate_v10_to_v11()
+            self._validate_v11_schema()
         elif version == SUPPORTED_SCHEMA_VERSION:
-            self._validate_v10_schema()
-            self._ensure_v10_auxiliary_objects()
+            self._validate_v11_schema()
+            self._ensure_v11_auxiliary_objects()
         else:
             raise EvidenceStoreError(
                 f"unsupported investigation.db schema version: {version} "
@@ -1694,8 +1755,8 @@ class InvestigationRepository:
         conn.execute(_TRIGGER_AGENT_FINALIZATION_NO_UPDATE_SQL)
         conn.execute(_TRIGGER_AGENT_FINALIZATION_NO_DELETE_SQL)
 
-    def _initialize_v10_atomically(self) -> None:
-        """New database: build everything + version=SUPPORTED (v10) in one tx."""
+    def _initialize_current_atomically(self) -> None:
+        """New database: build everything at SUPPORTED_SCHEMA_VERSION in one tx."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(_CREATE_EVIDENCE_SNAPSHOTS_SQL)
@@ -1708,6 +1769,7 @@ class InvestigationRepository:
             self._build_all_refresh_objects(conn)
             self._build_all_report_evidence_objects(conn)
             self._build_all_agent_runtime_objects(conn)
+            self._build_all_agent_delegation_result_objects(conn)
             conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
             conn.commit()
 
@@ -1899,6 +1961,55 @@ class InvestigationRepository:
             conn.commit()
             conn.execute("PRAGMA foreign_keys = ON")
 
+    def _migrate_v10_to_v11(self) -> None:
+        """v10 database: agent_delegation_results (P4A §17, additive).
+
+        One terminal result per delegation: UNIQUE(task_id, delegation_id),
+        INSERT-only (no UPDATE / no DELETE), composite FKs into the agent
+        runtime tables. No existing table changes.
+        """
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._build_all_agent_delegation_result_objects(conn)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+
+    def _build_all_agent_delegation_result_objects(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        conn.execute(_CREATE_AGENT_DELEGATION_RESULTS_SQL)
+        conn.execute(_TRIGGER_AGENT_RESULT_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_RESULT_NO_DELETE_SQL)
+
+    def _validate_agent_delegation_results_table(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        cols = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(agent_delegation_results)")
+        }
+        missing = _REQUIRED_AGENT_DELEGATION_RESULT_COLUMNS - cols
+        if missing:
+            raise EvidenceStoreError(
+                "agent_delegation_results missing required columns: "
+                f"{sorted(missing)}"
+            )
+        found_unique = False
+        for idx in conn.execute("PRAGMA index_list(agent_delegation_results)"):
+            if not idx["unique"]:
+                continue
+            idx_cols = {
+                r["name"]
+                for r in conn.execute(f'PRAGMA index_info("{idx["name"]}")')
+            }
+            if idx_cols == {"task_id", "delegation_id"}:
+                found_unique = True
+                break
+        if not found_unique:
+            raise EvidenceStoreError(
+                "agent_delegation_results missing UNIQUE(task_id, delegation_id)"
+            )
+
     def _build_all_agent_runtime_objects_v8(self, conn: sqlite3.Connection) -> None:
         """v8-era builder (kept for the v7->v8 step of the frozen chain)."""
         conn.execute(_CREATE_AGENT_INVESTIGATIONS_SQL)
@@ -1933,10 +2044,11 @@ class InvestigationRepository:
         conn.execute(_TRIGGER_AGENT_OBSERVATION_NO_UPDATE_SQL)
         conn.execute(_TRIGGER_AGENT_OBSERVATION_NO_DELETE_SQL)
 
-    def _ensure_v10_auxiliary_objects(self) -> None:
+    def _ensure_v11_auxiliary_objects(self) -> None:
         """Self-heal current refresh/report/agent indexes and triggers."""
         self._ensure_v5_auxiliary_objects()
         with self._connect() as conn:
+            self._build_all_agent_delegation_result_objects(conn)
             columns = {
                 row["name"]
                 for row in conn.execute("PRAGMA table_info(investigation_event_refreshes)")
@@ -1950,7 +2062,7 @@ class InvestigationRepository:
             self._build_all_agent_runtime_objects(conn)
             conn.commit()
 
-    def _validate_v10_schema(self) -> None:
+    def _validate_v11_schema(self) -> None:
         with self._connect() as conn:
             self._validate_evidence_snapshots(conn)
             self._validate_secondary_analyses(conn)
@@ -1973,6 +2085,7 @@ class InvestigationRepository:
             self._validate_agent_runtime_tables(conn)
             self._validate_agent_finalizations_table(conn)
             self._validate_trajectory_event_type_v10(conn)
+            self._validate_agent_delegation_results_table(conn)
 
     def _validate_trajectory_event_type_v10(self, conn: sqlite3.Connection) -> None:
         """The trajectory CHECK enum must carry the P3 tool action event."""
