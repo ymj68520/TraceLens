@@ -117,6 +117,9 @@ class AgentTrajectoryEventType(str, Enum):
     # Observation = what the tool returned; this event = that the runtime
     # performed the action. One atomic INSERT pair per successful call.
     tool_observation_recorded = "tool_observation_recorded"
+    # P4B (§35 minimal v12): supervisor decision audit events.
+    supervisor_plan_decided = "supervisor_plan_decided"
+    supervisor_integration_committed = "supervisor_integration_committed"
 
 
 # Application-side transition tables; the identically-shaped DB triggers are
@@ -1204,63 +1207,141 @@ class AgentRuntimeRepository:
             ).fetchone()
             if run_row is None:
                 raise ValueError(f"run not found: {run_id!r}")
-            run_status = AgentRunStatus(run_row["status"])
-            if run_status not in (AgentRunStatus.queued, AgentRunStatus.running):
-                raise AgentRuntimeConflictError(
-                    f"delegations require an active run (current: {run_status.value!r})"
-                )
-            investigation_id = run_row["investigation_id"]
-            results: list[AgentDelegation] = []
-            for spec in specs:
-                if spec.idempotency_key is not None:
-                    existing = conn.execute(
-                        "SELECT * FROM agent_delegations "
-                        "WHERE task_id = ? AND idempotency_key = ?",
-                        [self.task_id, spec.idempotency_key],
-                    ).fetchone()
-                    if existing is not None:
-                        # Replay of a committed admission must match the
-                        # original content; a same-key different-request
-                        # collision fails closed.
-                        if existing["question_ref"] != spec.question_ref:
-                            raise AgentRuntimeConflictError(
-                                "idempotency key is bound to a different "
-                                "delegation request"
-                            )
-                        results.append(self._row_to_delegation(existing))
-                        continue
-                delegation_id = _new_delegation_id()
-                try:
-                    conn.execute(
-                        "INSERT INTO agent_delegations "
-                        "(delegation_id, task_id, investigation_id, run_id, status, "
-                        " question_ref, based_on_state_revision, context_hash, "
-                        " idempotency_key, created_at) "
-                        "VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)",
-                        [
-                            delegation_id, self.task_id, investigation_id, run_id,
-                            spec.question_ref, spec.based_on_state_revision,
-                            spec.context_hash, spec.idempotency_key, now,
-                        ],
-                    )
-                except sqlite3.IntegrityError as exc:
-                    raise AgentRuntimeConflictError(
-                        "delegation admission conflicts with an existing row"
-                    ) from exc
-                self._append_trajectory_with_conn(
-                    conn, investigation_id,
-                    AgentTrajectoryEventType.delegation_admitted,
-                    run_id=run_id, delegation_id=delegation_id,
-                    payload={"question_ref": spec.question_ref}, now=now,
-                )
-                row = conn.execute(
-                    "SELECT * FROM agent_delegations "
-                    "WHERE task_id = ? AND delegation_id = ?",
-                    [self.task_id, delegation_id],
-                ).fetchone()
-                results.append(self._row_to_delegation(row))
+            results = self._admit_delegation_specs_with_conn(
+                conn, run_row, specs, now=now
+            )
             conn.commit()
         return results
+
+    def _admit_delegation_specs_with_conn(
+        self,
+        conn: sqlite3.Connection,
+        run_row: sqlite3.Row,
+        specs: Sequence[DelegationSpec],
+        *,
+        now: str,
+    ) -> list[AgentDelegation]:
+        """Conn-level admission body (P2 semantics), reused by
+        ``admit_delegations`` and the P4B atomic supervisor-plan commit so
+        the decision audit and the queued intents share ONE transaction."""
+        run_id = run_row["run_id"]
+        run_status = AgentRunStatus(run_row["status"])
+        if run_status not in (AgentRunStatus.queued, AgentRunStatus.running):
+            raise AgentRuntimeConflictError(
+                f"delegations require an active run (current: {run_status.value!r})"
+            )
+        investigation_id = run_row["investigation_id"]
+        results: list[AgentDelegation] = []
+        for spec in specs:
+            if spec.idempotency_key is not None:
+                existing = conn.execute(
+                    "SELECT * FROM agent_delegations "
+                    "WHERE task_id = ? AND idempotency_key = ?",
+                    [self.task_id, spec.idempotency_key],
+                ).fetchone()
+                if existing is not None:
+                    # Replay of a committed admission must match the original
+                    # content; a same-key different-request collision fails.
+                    if existing["question_ref"] != spec.question_ref:
+                        raise AgentRuntimeConflictError(
+                            "idempotency key is bound to a different "
+                            "delegation request"
+                        )
+                    results.append(self._row_to_delegation(existing))
+                    continue
+            delegation_id = _new_delegation_id()
+            try:
+                conn.execute(
+                    "INSERT INTO agent_delegations "
+                    "(delegation_id, task_id, investigation_id, run_id, status, "
+                    " question_ref, based_on_state_revision, context_hash, "
+                    " idempotency_key, created_at) "
+                    "VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)",
+                    [
+                        delegation_id, self.task_id, investigation_id, run_id,
+                        spec.question_ref, spec.based_on_state_revision,
+                        spec.context_hash, spec.idempotency_key, now,
+                    ],
+                )
+            except sqlite3.IntegrityError as exc:
+                raise AgentRuntimeConflictError(
+                    "delegation admission conflicts with an existing row"
+                ) from exc
+            self._append_trajectory_with_conn(
+                conn, investigation_id,
+                AgentTrajectoryEventType.delegation_admitted,
+                run_id=run_id, delegation_id=delegation_id,
+                payload={"question_ref": spec.question_ref}, now=now,
+            )
+            row = conn.execute(
+                "SELECT * FROM agent_delegations "
+                "WHERE task_id = ? AND delegation_id = ?",
+                [self.task_id, delegation_id],
+            ).fetchone()
+            results.append(self._row_to_delegation(row))
+        return results
+
+    def commit_supervisor_plan(
+        self,
+        run_id: str,
+        *,
+        decision_payload: Mapping[str, Any],
+        decision_hash: str,
+        model_name: Optional[str] = None,
+        model_config_hash: Optional[str] = None,
+        prompt_version: Optional[str] = None,
+        usage: Optional[Mapping[str, Any]] = None,
+        specs: Sequence[DelegationSpec] = (),
+    ) -> tuple[TrajectoryEvent, list[AgentDelegation]]:
+        """Atomic PLAN admission (P4B §7): the structured decision audit and
+        the queued delegation(s) land in ONE transaction. The executor may
+        only see the delegations after this commits. Replay-safe: a decision
+        hash already on the trace is not duplicated, and per-spec
+        idempotency keys keep delegation admission replay-identical."""
+        import json as _json
+
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            run_row = conn.execute(
+                "SELECT * FROM agent_runs WHERE task_id = ? AND run_id = ?",
+                [self.task_id, run_id],
+            ).fetchone()
+            if run_row is None:
+                raise ValueError(f"run not found: {run_id!r}")
+            investigation_id = run_row["investigation_id"]
+            replayed = conn.execute(
+                "SELECT * FROM agent_trajectory_events "
+                "WHERE task_id = ? AND event_type = ? "
+                "AND json_extract(payload_json, '$.decision_hash') = ? "
+                "ORDER BY seq LIMIT 1",
+                [
+                    self.task_id,
+                    AgentTrajectoryEventType.supervisor_plan_decided.value,
+                    decision_hash,
+                ],
+            ).fetchone()
+            audit_payload = {
+                "decision_hash": decision_hash,
+                "decision": dict(decision_payload),
+                "model_name": model_name,
+                "model_config_hash": model_config_hash,
+                "prompt_version": prompt_version,
+                "usage": dict(usage) if usage is not None else None,
+            }
+            if replayed is None:
+                event = self._append_trajectory_with_conn(
+                    conn, investigation_id,
+                    AgentTrajectoryEventType.supervisor_plan_decided,
+                    run_id=run_id, payload=audit_payload, now=now,
+                )
+            else:
+                event = self._row_to_trajectory(replayed)
+            delegations = self._admit_delegation_specs_with_conn(
+                conn, run_row, specs, now=now
+            )
+            conn.commit()
+        return event, delegations
 
     def get_delegation(self, delegation_id: str) -> Optional[AgentDelegation]:
         with self._connect() as conn:

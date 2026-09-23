@@ -100,7 +100,7 @@ class AnalysisBindingConflictError(RuntimeError):
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 11
+SUPPORTED_SCHEMA_VERSION = 12
 
 # ---------------------------------------------------------------------------
 # DDL: evidence_snapshots (v1, unchanged)
@@ -778,7 +778,8 @@ CREATE TABLE IF NOT EXISTS agent_trajectory_events (
         'transition_decision_rejected','working_state_integrated',
         'no_progress_detected','finalization_requested','finalization_denied',
         'finalization_stale','finalization_completed',
-        'tool_observation_recorded')),
+        'tool_observation_recorded',
+        'supervisor_plan_decided','supervisor_integration_committed')),
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
     UNIQUE(task_id, event_id),
@@ -1413,6 +1414,38 @@ BEGIN
 END
 """
 
+_CREATE_AGENT_TRAJECTORY_EVENTS_V12_REBUILD_SQL = """
+CREATE TABLE agent_trajectory_events_v12_rebuild (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    delegation_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'investigation_created','run_admitted','run_started','run_completed',
+        'run_failed','run_cancelled','delegation_admitted','delegation_started',
+        'delegation_completed','delegation_failed','delegation_cancelled',
+        'delegation_stale','working_state_committed','runtime_recovered',
+        'investigation_paused','investigation_completed','investigation_cancelled',
+        'attention_compiled','transition_decision_validated',
+        'transition_decision_rejected','working_state_integrated',
+        'no_progress_detected','finalization_requested','finalization_denied',
+        'finalization_stale','finalization_completed',
+        'tool_observation_recorded',
+        'supervisor_plan_decided','supervisor_integration_committed')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, event_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
 _REQUIRED_AGENT_INVESTIGATION_COLUMNS = {
     "investigation_id", "task_id", "status", "pause_reason", "created_at",
     "updated_at", "completed_at", "cancelled_at",
@@ -1549,7 +1582,7 @@ class InvestigationRepository:
                 f"(supported: {SUPPORTED_SCHEMA_VERSION})"
             )
         try:
-            repo._validate_v11_schema()
+            repo._validate_v12_schema()
         except (sqlite3.DatabaseError, ValueError, EvidenceStoreError) as exc:
             raise EvidenceStoreError("investigation store schema is invalid") from exc
         return repo
@@ -1575,7 +1608,7 @@ class InvestigationRepository:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
             self._initialize_current_atomically()
-            self._validate_v11_schema()
+            self._validate_v12_schema()
         elif version == 1:
             self._migrate_v1_to_v4()
             self._migrate_v4_to_v5()
@@ -1585,7 +1618,8 @@ class InvestigationRepository:
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
-            self._validate_v11_schema()
+            self._migrate_v11_to_v12()
+            self._validate_v12_schema()
         elif version == 2:
             self._migrate_v2_to_v4()
             self._migrate_v4_to_v5()
@@ -1595,7 +1629,8 @@ class InvestigationRepository:
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
-            self._validate_v11_schema()
+            self._migrate_v11_to_v12()
+            self._validate_v12_schema()
         elif version == 3:
             self._migrate_v3_to_v4()
             self._migrate_v4_to_v5()
@@ -1605,7 +1640,8 @@ class InvestigationRepository:
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
-            self._validate_v11_schema()
+            self._migrate_v11_to_v12()
+            self._validate_v12_schema()
         elif version == 4:
             self._migrate_v4_to_v5()
             self._migrate_v5_to_v6()
@@ -1614,7 +1650,8 @@ class InvestigationRepository:
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
-            self._validate_v11_schema()
+            self._migrate_v11_to_v12()
+            self._validate_v12_schema()
         elif version == 5:
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
@@ -1622,34 +1659,43 @@ class InvestigationRepository:
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
-            self._validate_v11_schema()
+            self._migrate_v11_to_v12()
+            self._validate_v12_schema()
         elif version == 6:
             self._migrate_v6_to_v7()
             self._migrate_v7_to_v8()
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
-            self._validate_v11_schema()
+            self._migrate_v11_to_v12()
+            self._validate_v12_schema()
         elif version == 7:
             self._migrate_v7_to_v8()
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
-            self._validate_v11_schema()
+            self._migrate_v11_to_v12()
+            self._validate_v12_schema()
         elif version == 8:
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
-            self._validate_v11_schema()
+            self._migrate_v11_to_v12()
+            self._validate_v12_schema()
         elif version == 9:
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
-            self._validate_v11_schema()
+            self._migrate_v11_to_v12()
+            self._validate_v12_schema()
         elif version == 10:
             self._migrate_v10_to_v11()
-            self._validate_v11_schema()
+            self._migrate_v11_to_v12()
+            self._validate_v12_schema()
+        elif version == 11:
+            self._migrate_v11_to_v12()
+            self._validate_v12_schema()
         elif version == SUPPORTED_SCHEMA_VERSION:
-            self._validate_v11_schema()
+            self._validate_v12_schema()
             self._ensure_v11_auxiliary_objects()
         else:
             raise EvidenceStoreError(
@@ -2010,6 +2056,48 @@ class InvestigationRepository:
                 "agent_delegation_results missing UNIQUE(task_id, delegation_id)"
             )
 
+    def _migrate_v11_to_v12(self) -> None:
+        """v11 database: trajectory event_type += supervisor audit events
+        (P4B §35 minimal v12). Only two values are added —
+        ``supervisor_plan_decided`` and ``supervisor_integration_committed`` —
+        so PLAN decisions and integration decisions have their own immutable
+        Action Trace events. Nothing else changes."""
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_V12_REBUILD_SQL)
+            conn.execute(
+                "INSERT INTO agent_trajectory_events_v12_rebuild "
+                "(seq, event_id, task_id, investigation_id, run_id, "
+                " delegation_id, event_type, payload_json, created_at) "
+                "SELECT seq, event_id, task_id, investigation_id, run_id, "
+                "delegation_id, event_type, payload_json, created_at "
+                "FROM agent_trajectory_events"
+            )
+            conn.execute("DROP TABLE agent_trajectory_events")
+            conn.execute(
+                "ALTER TABLE agent_trajectory_events_v12_rebuild "
+                "RENAME TO agent_trajectory_events"
+            )
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    def _validate_trajectory_event_type_v12(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type='table' AND name='agent_trajectory_events'"
+        ).fetchone()
+        sql = row["sql"] if row is not None else ""
+        for value in ("supervisor_plan_decided", "supervisor_integration_committed"):
+            if value not in (sql or ""):
+                raise EvidenceStoreError(
+                    f"agent_trajectory_events is missing the v12 {value!r} "
+                    "event type"
+                )
+
     def _build_all_agent_runtime_objects_v8(self, conn: sqlite3.Connection) -> None:
         """v8-era builder (kept for the v7->v8 step of the frozen chain)."""
         conn.execute(_CREATE_AGENT_INVESTIGATIONS_SQL)
@@ -2062,7 +2150,7 @@ class InvestigationRepository:
             self._build_all_agent_runtime_objects(conn)
             conn.commit()
 
-    def _validate_v11_schema(self) -> None:
+    def _validate_v12_schema(self) -> None:
         with self._connect() as conn:
             self._validate_evidence_snapshots(conn)
             self._validate_secondary_analyses(conn)
@@ -2086,6 +2174,7 @@ class InvestigationRepository:
             self._validate_agent_finalizations_table(conn)
             self._validate_trajectory_event_type_v10(conn)
             self._validate_agent_delegation_results_table(conn)
+            self._validate_trajectory_event_type_v12(conn)
 
     def _validate_trajectory_event_type_v10(self, conn: sqlite3.Connection) -> None:
         """The trajectory CHECK enum must carry the P3 tool action event."""

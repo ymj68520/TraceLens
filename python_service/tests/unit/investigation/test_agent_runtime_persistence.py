@@ -77,7 +77,7 @@ def _expect_integrity_error(agent: AgentRuntimeRepository, sql: str, params: lis
 def test_fresh_db_initializes_current_version_with_agent_tables(tmp_path):
     db = tmp_path / "investigation.db"
     InvestigationRepository(db, "A")
-    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 11
+    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 12
     conn = sqlite3.connect(db)
     for table in (
         "agent_investigations", "agent_runs", "agent_working_state_revisions",

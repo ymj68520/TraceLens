@@ -166,7 +166,7 @@ def _commit(runtime, investigation, revision, run=None, decision=None, state=Non
 def test_fresh_db_initializes_v9_with_finalizations(tmp_path):
     db = tmp_path / "investigation.db"
     InvestigationRepository(db, "A")
-    assert SUPPORTED_SCHEMA_VERSION == 11
+    assert SUPPORTED_SCHEMA_VERSION == 12
     conn = sqlite3.connect(db)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     assert conn.execute(
