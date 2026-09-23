@@ -49,7 +49,7 @@ def _seed(tmp_path):
 def test_fresh_db_initializes_v15_with_graph_tables(tmp_path):
     db = tmp_path / "investigation.db"
     InvestigationRepository(db, "A")
-    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 15
+    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 16
     conn = sqlite3.connect(db)
     try:
         tables = {
@@ -213,7 +213,7 @@ def test_v14_store_migrates_to_v15_preserving_p1_p5_data(tmp_path):
     conn.close()
 
     reopened = AgentRuntimeRepository(InvestigationRepository(db, "task-A"))
-    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 15
+    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 16
     assert reopened.get_working_state_revision(investigation_id, 1) is not None
     assert reopened.list_trajectory(investigation_id) == events_before
 

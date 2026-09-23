@@ -100,7 +100,7 @@ class AnalysisBindingConflictError(RuntimeError):
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 15
+SUPPORTED_SCHEMA_VERSION = 16
 
 # ---------------------------------------------------------------------------
 # DDL: evidence_snapshots (v1, unchanged)
@@ -787,7 +787,9 @@ CREATE TABLE IF NOT EXISTS agent_trajectory_events (
         'final_semantic_review_recorded',
         'graph_candidate_recorded','graph_admission_decided',
         'graph_episode_frozen','graph_materialization_queued',
-        'graph_materialization_invalidated')),
+        'graph_materialization_invalidated',
+        'graph_materialization_started','graph_materialization_activated',
+        'graph_materialization_failed','graph_materialization_retry_queued')),
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
     UNIQUE(task_id, event_id),
@@ -2235,6 +2237,97 @@ CREATE TABLE agent_trajectory_events_v15_rebuild (
 )
 """
 
+# ---------------------------------------------------------------------
+# DDL: P6B materialization-execution persistence (v16).
+#
+# Retry attempts: a manifest id is deterministic from episode+backend, so
+# a RETRY is a NEW row (attempt_no increments, retry_of binds the failed
+# predecessor; first attempt keeps attempt_no=1/retry_of NULL so the
+# replay idempotency is untouched). Backend bindings are the append-only
+# sidecar mapping backend objects to materialization provenance -
+# backend object ids are NEVER canonical identity.
+# ---------------------------------------------------------------------
+
+_CREATE_AGENT_GRAPH_BACKEND_BINDINGS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_graph_backend_bindings (
+    binding_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    binding_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    materialization_id TEXT NOT NULL,
+    backend_kind TEXT NOT NULL,
+    backend_group_ref TEXT,
+    backend_episode_ref TEXT,
+    backend_episode_name TEXT,
+    backend_object_kind TEXT,
+    backend_object_ref TEXT,
+    semantic_unit_id TEXT,
+    provenance_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, binding_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_TRIGGER_GRAPH_BINDING_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_graph_binding_no_update
+BEFORE UPDATE ON agent_graph_backend_bindings
+BEGIN
+    SELECT RAISE(ABORT, 'agent_graph_backend_bindings is append-only');
+END
+"""
+
+_TRIGGER_GRAPH_BINDING_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_graph_binding_no_delete
+BEFORE DELETE ON agent_graph_backend_bindings
+BEGIN
+    SELECT RAISE(ABORT, 'agent_graph_backend_bindings is append-only');
+END
+"""
+
+_CREATE_AGENT_TRAJECTORY_EVENTS_V16_REBUILD_SQL = """
+CREATE TABLE agent_trajectory_events_v16_rebuild (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    delegation_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'investigation_created','run_admitted','run_started','run_completed',
+        'run_failed','run_cancelled','delegation_admitted','delegation_started',
+        'delegation_completed','delegation_failed','delegation_cancelled',
+        'delegation_stale','working_state_committed','runtime_recovered',
+        'investigation_paused','investigation_completed','investigation_cancelled',
+        'attention_compiled','transition_decision_validated',
+        'transition_decision_rejected','working_state_integrated',
+        'no_progress_detected','finalization_requested','finalization_denied',
+        'finalization_stale','finalization_completed',
+        'tool_observation_recorded',
+        'supervisor_plan_decided','supervisor_integration_committed',
+        'entity_occurrences_recorded','correlation_candidates_recorded',
+        'claim_grounding_recorded','claim_proposals_recorded',
+        'correlation_semantic_verified','claim_semantic_verified',
+        'claim_disposition_recorded','finding_review_pending_created',
+        'final_semantic_review_recorded',
+        'graph_candidate_recorded','graph_admission_decided',
+        'graph_episode_frozen','graph_materialization_queued',
+        'graph_materialization_invalidated',
+        'graph_materialization_started','graph_materialization_activated',
+        'graph_materialization_failed','graph_materialization_retry_queued')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, event_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
 _REQUIRED_AGENT_INVESTIGATION_COLUMNS = {
     "investigation_id", "task_id", "status", "pause_reason", "created_at",
     "updated_at", "completed_at", "cancelled_at",
@@ -2392,6 +2485,14 @@ _REQUIRED_AGENT_GRAPH_MATERIALIZATION_COLUMNS = {
     "activated_at", "terminal_at", "input_hash", "created_at", "updated_at",
 }
 
+_REQUIRED_AGENT_GRAPH_BACKEND_BINDING_COLUMNS = {
+    "binding_row_id", "binding_id", "task_id", "investigation_id",
+    "materialization_id", "backend_kind", "backend_group_ref",
+    "backend_episode_ref", "backend_episode_name", "backend_object_kind",
+    "backend_object_ref", "semantic_unit_id", "provenance_json",
+    "created_at",
+}
+
 _REQUIRED_SECONDARY_COLUMNS = {
     "analysis_id", "task_id", "evidence_key", "snapshot_id", "version", "status",
     "input_hash", "input_envelope_json", "prompt_version", "description", "summary",
@@ -2490,7 +2591,7 @@ class InvestigationRepository:
                 f"(supported: {SUPPORTED_SCHEMA_VERSION})"
             )
         try:
-            repo._validate_v15_schema()
+            repo._validate_v16_schema()
         except (sqlite3.DatabaseError, ValueError, EvidenceStoreError) as exc:
             raise EvidenceStoreError("investigation store schema is invalid") from exc
         return repo
@@ -2516,7 +2617,7 @@ class InvestigationRepository:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
             self._initialize_current_atomically()
-            self._validate_v15_schema()
+            self._validate_v16_schema()
         elif version == 1:
             self._migrate_v1_to_v4()
             self._migrate_v4_to_v5()
@@ -2530,7 +2631,8 @@ class InvestigationRepository:
             self._migrate_v12_to_v13()
             self._migrate_v13_to_v14()
             self._migrate_v14_to_v15()
-            self._validate_v15_schema()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 2:
             self._migrate_v2_to_v4()
             self._migrate_v4_to_v5()
@@ -2544,7 +2646,8 @@ class InvestigationRepository:
             self._migrate_v12_to_v13()
             self._migrate_v13_to_v14()
             self._migrate_v14_to_v15()
-            self._validate_v15_schema()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 3:
             self._migrate_v3_to_v4()
             self._migrate_v4_to_v5()
@@ -2558,7 +2661,8 @@ class InvestigationRepository:
             self._migrate_v12_to_v13()
             self._migrate_v13_to_v14()
             self._migrate_v14_to_v15()
-            self._validate_v15_schema()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 4:
             self._migrate_v4_to_v5()
             self._migrate_v5_to_v6()
@@ -2571,7 +2675,8 @@ class InvestigationRepository:
             self._migrate_v12_to_v13()
             self._migrate_v13_to_v14()
             self._migrate_v14_to_v15()
-            self._validate_v15_schema()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 5:
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
@@ -2583,7 +2688,8 @@ class InvestigationRepository:
             self._migrate_v12_to_v13()
             self._migrate_v13_to_v14()
             self._migrate_v14_to_v15()
-            self._validate_v15_schema()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 6:
             self._migrate_v6_to_v7()
             self._migrate_v7_to_v8()
@@ -2594,7 +2700,8 @@ class InvestigationRepository:
             self._migrate_v12_to_v13()
             self._migrate_v13_to_v14()
             self._migrate_v14_to_v15()
-            self._validate_v15_schema()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 7:
             self._migrate_v7_to_v8()
             self._migrate_v8_to_v9()
@@ -2604,7 +2711,8 @@ class InvestigationRepository:
             self._migrate_v12_to_v13()
             self._migrate_v13_to_v14()
             self._migrate_v14_to_v15()
-            self._validate_v15_schema()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 8:
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
@@ -2613,7 +2721,8 @@ class InvestigationRepository:
             self._migrate_v12_to_v13()
             self._migrate_v13_to_v14()
             self._migrate_v14_to_v15()
-            self._validate_v15_schema()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 9:
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
@@ -2621,34 +2730,43 @@ class InvestigationRepository:
             self._migrate_v12_to_v13()
             self._migrate_v13_to_v14()
             self._migrate_v14_to_v15()
-            self._validate_v15_schema()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 10:
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
             self._migrate_v12_to_v13()
             self._migrate_v13_to_v14()
             self._migrate_v14_to_v15()
-            self._validate_v15_schema()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 11:
             self._migrate_v11_to_v12()
             self._migrate_v12_to_v13()
             self._migrate_v13_to_v14()
             self._migrate_v14_to_v15()
-            self._validate_v15_schema()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 12:
             self._migrate_v12_to_v13()
             self._migrate_v13_to_v14()
             self._migrate_v14_to_v15()
-            self._validate_v15_schema()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 13:
             self._migrate_v13_to_v14()
             self._migrate_v14_to_v15()
-            self._validate_v15_schema()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 14:
             self._migrate_v14_to_v15()
-            self._validate_v15_schema()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
+        elif version == 15:
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == SUPPORTED_SCHEMA_VERSION:
-            self._validate_v15_schema()
+            self._validate_v16_schema()
             self._ensure_v11_auxiliary_objects()
         else:
             raise EvidenceStoreError(
@@ -2772,6 +2890,7 @@ class InvestigationRepository:
             self._build_all_p5a_persistence_objects(conn)
             self._build_all_p5b_persistence_objects(conn)
             self._build_all_p6a_persistence_objects(conn)
+            self._build_all_p6b_persistence_objects(conn)
             conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
             conn.commit()
 
@@ -3454,6 +3573,104 @@ class InvestigationRepository:
             self._validate_trajectory_event_type_v15(conn)
             self._validate_p6a_persistence_tables(conn)
 
+    # -------------------------------------------------------------------
+    # P6B materialization-execution persistence (v16)
+    # -------------------------------------------------------------------
+
+    def _build_all_p6b_persistence_objects(self, conn: sqlite3.Connection) -> None:
+        """Create the backend-binding sidecar table + guards."""
+        conn.execute(_CREATE_AGENT_GRAPH_BACKEND_BINDINGS_SQL)
+        conn.execute(_TRIGGER_GRAPH_BINDING_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_GRAPH_BINDING_NO_DELETE_SQL)
+
+    def _migrate_v15_to_v16(self) -> None:
+        """v15 database: P6B execution persistence (minimal v16).
+
+        Adds the append-only backend-binding sidecar and grows the
+        trajectory enum by the four materialization lifecycle events.
+        P1-P6A rows are preserved verbatim; the v15 manifest state
+        machine is untouched."""
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_V16_REBUILD_SQL)
+            conn.execute(
+                "INSERT INTO agent_trajectory_events_v16_rebuild "
+                "(seq, event_id, task_id, investigation_id, run_id, "
+                " delegation_id, event_type, payload_json, created_at) "
+                "SELECT seq, event_id, task_id, investigation_id, run_id, "
+                "delegation_id, event_type, payload_json, created_at "
+                "FROM agent_trajectory_events"
+            )
+            conn.execute("DROP TABLE agent_trajectory_events")
+            conn.execute(
+                "ALTER TABLE agent_trajectory_events_v16_rebuild "
+                "RENAME TO agent_trajectory_events"
+            )
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+            self._build_all_p6b_persistence_objects(conn)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    def _validate_trajectory_event_type_v16(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type='table' AND name='agent_trajectory_events'"
+        ).fetchone()
+        sql = row["sql"] if row is not None else ""
+        for value in (
+            "graph_materialization_started",
+            "graph_materialization_activated",
+            "graph_materialization_failed",
+            "graph_materialization_retry_queued",
+        ):
+            if value not in (sql or ""):
+                raise EvidenceStoreError(
+                    f"agent_trajectory_events is missing the v16 {value!r} "
+                    "event type"
+                )
+
+    def _validate_p6b_persistence_tables(self, conn: sqlite3.Connection) -> None:
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='agent_graph_backend_bindings'"
+        ).fetchone()
+        if exists is None:
+            raise EvidenceStoreError(
+                "missing P6B persistence table: "
+                "agent_graph_backend_bindings"
+            )
+        cols = {
+            row["name"]
+            for row in conn.execute(
+                "PRAGMA table_info(agent_graph_backend_bindings)"
+            )
+        }
+        missing = _REQUIRED_AGENT_GRAPH_BACKEND_BINDING_COLUMNS - cols
+        if missing:
+            raise EvidenceStoreError(
+                "agent_graph_backend_bindings missing required columns: "
+                f"{sorted(missing)}"
+            )
+        for suffix in ("no_update", "no_delete"):
+            trigger = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?",
+                [f"trg_agent_graph_binding_{suffix}"],
+            ).fetchone()
+            if trigger is None:
+                raise EvidenceStoreError(
+                    "agent_graph_backend_bindings missing guard "
+                    f"trg_agent_graph_binding_{suffix}"
+                )
+
+    def _validate_v16_schema(self) -> None:
+        self._validate_v15_schema()
+        with self._connect() as conn:
+            self._validate_trajectory_event_type_v16(conn)
+            self._validate_p6b_persistence_tables(conn)
+
 
     def _build_all_agent_runtime_objects_v8(self, conn: sqlite3.Connection) -> None:
         """v8-era builder (kept for the v7->v8 step of the frozen chain)."""
@@ -3508,6 +3725,7 @@ class InvestigationRepository:
             self._build_all_p5a_persistence_objects(conn)
             self._build_all_p5b_persistence_objects(conn)
             self._build_all_p6a_persistence_objects(conn)
+            self._build_all_p6b_persistence_objects(conn)
             conn.commit()
 
     def _validate_v12_schema(self) -> None:

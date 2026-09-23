@@ -148,6 +148,11 @@ class AgentTrajectoryEventType(str, Enum):
     graph_episode_frozen = "graph_episode_frozen"
     graph_materialization_queued = "graph_materialization_queued"
     graph_materialization_invalidated = "graph_materialization_invalidated"
+    # P6B (minimal v16): materialization execution lifecycle events.
+    graph_materialization_started = "graph_materialization_started"
+    graph_materialization_activated = "graph_materialization_activated"
+    graph_materialization_failed = "graph_materialization_failed"
+    graph_materialization_retry_queued = "graph_materialization_retry_queued"
 
 
 # Application-side transition tables; the identically-shaped DB triggers are
