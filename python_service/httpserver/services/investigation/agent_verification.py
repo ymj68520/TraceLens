@@ -26,7 +26,11 @@ from typing import Any, Mapping, Optional
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from .agent_runtime import AgentRuntimeRepository, canonical_state_json
+from .agent_runtime import (
+    AgentRuntimeRepository,
+    AgentTrajectoryEventType,
+    canonical_state_json,
+)
 from .agent_specialist_result import AssertionClass
 
 SEMANTIC_VERIFICATION_CONTEXT_VERSION = "semantic-verification-context:v1"
@@ -614,6 +618,352 @@ def build_claim_verification_context(
     )
 
 
+async def process_claim_verification(
+    runtime: AgentRuntimeRepository,
+    *,
+    task_id: str,
+    investigation_id: str,
+    proposal,
+    grounding,
+    bundle_row: Optional[Mapping[str, Any]] = None,
+    relation_family: Optional[str] = None,
+    semantic_type: Optional["AssertionSemanticType"] = None,
+    verifier: Optional[SemanticVerifierAgent] = None,
+    policy: Optional["AssertionPolicy"] = None,
+    run_id: Optional[str] = None,
+) -> dict:
+    """§77 explicit verification pipeline entry - NEVER called by the P4
+    cycle. The policy decides whether the verifier runs (§54/§55); the
+    verifier executes only when provided and required/optional; results or
+    explicit failures persist; the disposition (+ optional review_pending
+    Finding) commits atomically."""
+    from .agent_assertion_policy import (
+        AssertionPolicy,
+        ClaimDecision,
+        VerificationAvailability,
+        VerificationRequirement,
+    )
+    from .agent_findings import finding_from_disposition
+
+    policy = policy or AssertionPolicy()
+    resolved_type = policy.classify(
+        relation_family=relation_family, explicit_type=semantic_type
+    )
+    requirement = policy.preflight(resolved_type)
+
+    verification = None
+    availability = VerificationAvailability.UNAVAILABLE
+    if requirement is not VerificationRequirement.NOT_REQUIRED:
+        if verifier is None:
+            # policy demanded verification but no verifier runtime was
+            # provided: explicit unavailable (§48), never fabricated
+            availability = VerificationAvailability.UNAVAILABLE
+        else:
+            context = build_claim_verification_context(
+                task_id=task_id,
+                investigation_id=investigation_id,
+                proposal=proposal,
+                grounding=grounding,
+                support_bundle_row=bundle_row,
+            )
+            outcome = await verifier.run(context)
+            if isinstance(outcome, VerifierFailure):
+                runtime.record_semantic_verification_failure(
+                    investigation_id,
+                    failure_row={
+                        "failure_id": "sverfail:" + context.verification_id,
+                        "mode": context.mode.value,
+                        "proposal_id": context.proposal_id,
+                        "failure_code": outcome.failure_code.value,
+                        "detail": outcome.detail,
+                        "model": outcome.model,
+                        "input_hash": context.input_hash,
+                    },
+                )
+            else:
+                verification = outcome
+                availability = VerificationAvailability.AVAILABLE
+                trajectory_event = (
+                    AgentTrajectoryEventType.correlation_semantic_verified
+                    if resolved_type is not None
+                    and context.mode is SemanticVerificationMode.correlation_sufficiency
+                    else AgentTrajectoryEventType.claim_semantic_verified
+                )
+                runtime.record_semantic_verification(
+                    investigation_id,
+                    verification_row=verification.to_row(),
+                    grounding_id=context.grounding_id,
+                    trajectory_event=trajectory_event,
+                    run_id=run_id,
+                )
+    elif verification is None:
+        availability = VerificationAvailability.UNAVAILABLE
+
+    disposition = policy.finalize(
+        proposal, grounding,
+        semantic_type=resolved_type,
+        verification=verification,
+        verification_availability=availability,
+    )
+
+    finding_row = None
+    finding = None
+    if disposition.decision in (
+        ClaimDecision.ELIGIBLE_REVIEW_PENDING,
+        ClaimDecision.DOWNGRADE_TO_HYPOTHESIS,
+    ):
+        grounding_id = (
+            grounding.grounding_id
+            if hasattr(grounding, "grounding_id")
+            else grounding["grounding_id"]
+        )
+        finding = finding_from_disposition(
+            disposition, proposal=proposal, grounding_id=grounding_id,
+            semantic_verification_id=(
+                verification.verification_id if verification else None
+            ),
+            effective_assertion_class=disposition.effective_assertion_class,
+        )
+        finding_row = finding.to_row()
+
+    outcome = runtime.commit_claim_disposition(
+        investigation_id,
+        disposition_row=disposition.to_row(),
+        finding_row=finding_row,
+        run_id=run_id,
+    )
+    return {
+        "semantic_type": resolved_type.value
+        if hasattr(resolved_type, "value") else str(resolved_type),
+        "verification_requirement": requirement.value,
+        "verification_available": availability
+        is VerificationAvailability.AVAILABLE,
+        "disposition": disposition,
+        "finding": finding,
+        "commit": outcome,
+    }
+
+
+# ---------------------------------------------------------------------------
+# §50/§52: question_closure + finalization_review frozen contexts/outputs.
+# The verifier never transitions a Question and never completes an
+# Investigation - it only emits QC review input (§49/§52).
+# ---------------------------------------------------------------------------
+
+QUESTION_CLOSURE_REVIEW_VERSION = "question-closure-review:v1"
+FINAL_SEMANTIC_REVIEW_VERSION = "final-semantic-review:v1"
+
+
+class QuestionClosureContextV1(BaseModel):
+    """Frozen question-closure QC input: recorded digests only."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    context_version: str = SEMANTIC_VERIFICATION_CONTEXT_VERSION
+    task_id: str
+    investigation_id: str
+    question_refs: tuple[str, ...] = ()
+    question_text: str = ""
+    evidence_allowlist: tuple[str, ...] = ()
+    limitations: tuple[str, ...] = ()
+    verification_id: str = ""
+    input_hash: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive(cls, data):
+        if not isinstance(data, dict):
+            return data
+        payload = {
+            "context_version": SEMANTIC_VERIFICATION_CONTEXT_VERSION,
+            "task_id": data.get("task_id"),
+            "investigation_id": data.get("investigation_id"),
+            "question_refs": sorted(
+                {str(ref) for ref in (data.get("question_refs") or ())
+                 if ref}
+            ),
+            "question_text": _canonical_text(
+                str(data.get("question_text") or "")
+            ),
+            "evidence_allowlist": sorted(
+                {str(ref) for ref in (data.get("evidence_allowlist") or ())
+                 if ref}
+            ),
+        }
+        input_hash = hashlib.sha256(
+            canonical_state_json(payload).encode("utf-8")
+        ).hexdigest()
+        data["question_text"] = payload["question_text"]
+        data["evidence_allowlist"] = tuple(payload["evidence_allowlist"])
+        data["question_refs"] = tuple(payload["question_refs"])
+        data["input_hash"] = input_hash
+        data["verification_id"] = "sver:" + hashlib.sha256(
+            canonical_state_json({**payload, "input_hash": input_hash})
+            .encode("utf-8")
+        ).hexdigest()[:24]
+        return data
+
+
+class QuestionClosureReviewV1(BaseModel):
+    """§52: QC output only - closure_supported is a RECOMMENDATION; the
+    real Question transition happens solely through Supervisor
+    Integration -> StateTransitionPolicy."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    result_version: str = QUESTION_CLOSURE_REVIEW_VERSION
+    verification_id: str
+    mode: SemanticVerificationMode
+    task_id: str
+    investigation_id: str
+    question_refs: tuple[str, ...] = ()
+    closure_supported: bool
+    issues: tuple[str, ...] = ()
+    missing_evidence: tuple[str, ...] = ()
+    limitations: tuple[str, ...] = ()
+    model: Optional[str] = None
+    prompt_version: str = SEMANTIC_VERIFIER_PROMPT_VERSION
+    input_hash: str = ""
+
+
+class FinalSemanticReviewContextV1(BaseModel):
+    """§50 frozen final-review input: state + finding DIGESTS, never the
+    whole case evidence set."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    context_version: str = SEMANTIC_VERIFICATION_CONTEXT_VERSION
+    task_id: str
+    investigation_id: str
+
+    final_state_digest: str
+    final_state_revision: int = 0
+
+    required_question_digests: tuple[str, ...] = ()
+    coverage_digests: tuple[str, ...] = ()
+    contradiction_digests: tuple[str, ...] = ()
+    finding_digests: tuple[str, ...] = ()
+    mandatory_verification_statuses: tuple[str, ...] = ()
+
+    limitations: tuple[str, ...] = ()
+    evidence_provenance_digests: tuple[str, ...] = ()
+
+    verification_id: str = ""
+    input_hash: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive(cls, data):
+        if not isinstance(data, dict):
+            return data
+        payload = {
+            "context_version": SEMANTIC_VERIFICATION_CONTEXT_VERSION,
+            "task_id": data.get("task_id"),
+            "investigation_id": data.get("investigation_id"),
+            "final_state_digest": data.get("final_state_digest"),
+            "final_state_revision": data.get("final_state_revision"),
+            "required_question_digests": sorted(
+                {str(item) for item in
+                 (data.get("required_question_digests") or ()) if item}
+            ),
+            "coverage_digests": sorted(
+                {str(item) for item in
+                 (data.get("coverage_digests") or ()) if item}
+            ),
+            "contradiction_digests": sorted(
+                {str(item) for item in
+                 (data.get("contradiction_digests") or ()) if item}
+            ),
+            "finding_digests": sorted(
+                {str(item) for item in
+                 (data.get("finding_digests") or ()) if item}
+            ),
+            "mandatory_verification_statuses": sorted(
+                {str(item) for item in
+                 (data.get("mandatory_verification_statuses") or ())
+                 if item}
+            ),
+            "limitations": sorted(
+                {str(item) for item in (data.get("limitations") or ())
+                 if item}
+            ),
+            "evidence_provenance_digests": sorted(
+                {str(item) for item in
+                 (data.get("evidence_provenance_digests") or ()) if item}
+            ),
+        }
+        input_hash = hashlib.sha256(
+            canonical_state_json(payload).encode("utf-8")
+        ).hexdigest()
+        for key, value in payload.items():
+            if key.endswith("digests") or key.endswith("statuses"):
+                data[key] = tuple(value)
+            elif key == "limitations":
+                data[key] = tuple(value)
+        data["input_hash"] = input_hash
+        data["verification_id"] = "sver:" + hashlib.sha256(
+            canonical_state_json({**payload, "input_hash": input_hash})
+            .encode("utf-8")
+        ).hexdigest()[:24]
+        return data
+
+
+class FinalSemanticReviewOutputV1(BaseModel):
+    """§51: pass / issues_found only. Never 'investigation completed'."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    result_version: str = FINAL_SEMANTIC_REVIEW_VERSION
+    verification_id: str
+    mode: SemanticVerificationMode
+    task_id: str
+    investigation_id: str
+    status: str  # 'pass' | 'issues_found'
+    issues: tuple[str, ...] = ()
+    affected_refs: tuple[str, ...] = ()
+    limitations: tuple[str, ...] = ()
+    model: Optional[str] = None
+    prompt_version: str = SEMANTIC_VERIFIER_PROMPT_VERSION
+    input_hash: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _check(cls, data):
+        if isinstance(data, dict) and data.get("status") not in (
+            "pass", "issues_found"
+        ):
+            raise ValueError(
+                "final semantic review status must be pass/issues_found"
+            )
+        return data
+
+
+class FinalSemanticReviewValidator:
+    """§51 gate: issues_found requires issues; runtime callers never
+    fabricate a pass row when the verifier is unavailable (§68)."""
+
+    def validate(
+        self,
+        output: FinalSemanticReviewOutputV1,
+        *,
+        context: FinalSemanticReviewContextV1,
+    ) -> tuple[str, ...]:
+        violations: list[str] = []
+        if output.result_version != FINAL_SEMANTIC_REVIEW_VERSION:
+            violations.append("FINAL_REVIEW_VERSION_UNSUPPORTED")
+        if (
+            output.verification_id != context.verification_id
+            or output.task_id != context.task_id
+            or output.investigation_id != context.investigation_id
+        ):
+            violations.append("FINAL_REVIEW_IDENTITY_MISMATCH")
+        if output.status == "issues_found" and not output.issues:
+            violations.append("FINAL_REVIEW_ISSUES_REQUIRED")
+        if output.input_hash != context.input_hash:
+            violations.append("FINAL_REVIEW_INPUT_HASH_MISMATCH")
+        return tuple(violations)
+
+
 __all__ = [
     "SEMANTIC_VERIFICATION_CONTEXT_VERSION",
     "SEMANTIC_VERIFICATION_RESULT_VERSION",
@@ -629,4 +979,11 @@ __all__ = [
     "VerifierFailureCode",
     "VerificationViolationCode",
     "build_claim_verification_context",
+    "FinalSemanticReviewContextV1",
+    "FinalSemanticReviewOutputV1",
+    "FinalSemanticReviewValidator",
+    "FINAL_SEMANTIC_REVIEW_VERSION",
+    "QuestionClosureContextV1",
+    "QuestionClosureReviewV1",
+    "QUESTION_CLOSURE_REVIEW_VERSION",
 ]
