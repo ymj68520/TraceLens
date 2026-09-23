@@ -4,10 +4,11 @@ A ToolObservation is a normalized, immutable record of one successful tool
 execution. It is NOT Evidence: `summary`/`data` are model-facing projections,
 only `evidence_refs` carry canonical Evidence identity.
 
-P3 storage decision: the P1 `agent_tool_observations` table (INSERT-only,
-canonical JSON payload) is sufficient and is the durable tool action-trace.
-The frozen trajectory CHECK enum has no tool event type, and P3 does not bump
-the investigation.db schema — so no trajectory row is emitted for tool calls.
+Audit contract (P3 freeze follow-up F2): each successful tool execution
+persists BOTH the observation row AND a ``tool_observation_recorded``
+trajectory action event, in one atomic repository transaction. They are not
+interchangeable — the trajectory never copies observation data and never
+becomes an Evidence-visibility source.
 """
 
 from typing import Any, Mapping, Optional, Protocol
@@ -65,10 +66,13 @@ class ObservationSink(Protocol):
 
 
 class AgentObservationSink:
-    """Persists observations through P1 ``append_tool_observation``.
+    """Persists the audit pair through the P3-F2.3 atomic primitive.
 
-    Both the observation row and the run/delegation linkage live in the same
-    INSERT — a failed append leaves no partial record (single statement).
+    One ``BEGIN IMMEDIATE`` transaction writes the immutable observation row
+    AND the ``tool_observation_recorded`` trajectory event. The observation
+    answers "what did the tool return"; the trajectory event answers "the
+    runtime performed this action" — it carries pointers and counts only,
+    never a copy of the observation payload or Evidence bodies.
     """
 
     def __init__(self, repository: AgentRuntimeRepository):
@@ -82,7 +86,7 @@ class AgentObservationSink:
         *,
         context,
     ) -> ToolObservation:
-        return self._repository.append_tool_observation(
+        observation, _event = self._repository.record_tool_observation(
             context.investigation_id,
             tool_id=record.tool_id,
             summary=record.summary,
@@ -91,7 +95,22 @@ class AgentObservationSink:
             run_id=context.run_id,
             delegation_id=context.delegation_id,
             truncated=record.truncated,
+            trajectory_payload={
+                "tool_id": record.tool_id,
+                "tool_version": record.tool_version,
+                "tool_schema_hash": record.schema_hash,
+                "run_id": context.run_id,
+                "delegation_id": context.delegation_id,
+                "input_fingerprint": record.input_fingerprint,
+                "context_hash": record.context_hash,
+                "evidence_ref_count": len(evidence_refs),
+                "result_count": record.result_count,
+                "truncated": record.truncated,
+                "warning_count": len(record.warnings),
+                "limitation_count": len(record.limitations),
+            },
         )
+        return observation
 
 
 def build_observation_record(

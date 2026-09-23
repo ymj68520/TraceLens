@@ -77,7 +77,7 @@ def _expect_integrity_error(agent: AgentRuntimeRepository, sql: str, params: lis
 def test_fresh_db_initializes_current_version_with_agent_tables(tmp_path):
     db = tmp_path / "investigation.db"
     InvestigationRepository(db, "A")
-    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 9
+    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION == 10
     conn = sqlite3.connect(db)
     for table in (
         "agent_investigations", "agent_runs", "agent_working_state_revisions",
@@ -107,7 +107,7 @@ def test_v7_store_migrates_additively_and_preserves_canonical_data(tmp_path):
     conn.close()
 
     reopened = InvestigationRepository(db, "A")
-    assert _user_version(db) == 9
+    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION
     assert reopened.get_event(event.event_id).title == "narrative"
     agent = AgentRuntimeRepository(reopened)
     investigation, revision = agent.create_investigation({"objective": "post-migration"})
@@ -122,7 +122,7 @@ def test_migration_is_idempotent_on_reopen(tmp_path):
 
     InvestigationRepository(db, "A")          # version == current branch
     again = InvestigationRepository(db, "A")  # reopen twice
-    assert _user_version(db) == 9
+    assert _user_version(db) == SUPPORTED_SCHEMA_VERSION
     assert AgentRuntimeRepository(again).get_investigation(
         investigation.investigation_id
     ) is not None

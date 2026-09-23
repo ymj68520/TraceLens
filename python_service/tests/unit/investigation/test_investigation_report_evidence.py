@@ -15,6 +15,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from httpserver.services.investigation.repository import SUPPORTED_SCHEMA_VERSION
+
 from httpserver.services.evidence import (
     EvidenceNotFoundError,
     EvidenceStoreError,
@@ -424,7 +426,7 @@ def test_v7_store_keeps_version_and_report_write_path_works(tmp_path):
     # pre-existing row at the current schema version.
     reopened = InvestigationRepository(db_path, "A")
     with sqlite3.connect(db_path) as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     assert reopened.get_analysis(accepted.analysis_id).analysis_id == accepted.analysis_id
 
     # The first explicit Report write builds the extension and works.
@@ -442,11 +444,11 @@ def test_v7_store_keeps_version_and_report_write_path_works(tmp_path):
 def test_fresh_store_initializes_at_current_version_with_extension(tmp_path):
     _repo_with_evidence(tmp_path)
     with sqlite3.connect(tmp_path / "A" / "investigation.db") as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
         assert conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_evidence'"
         ).fetchone() is not None
-    assert SUPPORTED_SCHEMA_VERSION == 9
+    assert SUPPORTED_SCHEMA_VERSION == 10
 
 
 # ---------------------------------------------------------------------------

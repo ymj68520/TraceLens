@@ -144,6 +144,17 @@ def test_manifest_unsupported_family_never_exposed():
     assert "linux.shell_history" not in ids
 
 
+def test_family_catalog_count_and_platform_breakdown():
+    """D1: the documented catalog numbers are read from the real registry."""
+    registry = ArtifactFamilyRegistry.with_defaults()
+    ids = [family.family_id for family in registry.families]
+    assert len(ids) == len(set(ids)) == 20
+    breakdown = {"windows": 0, "android": 0, "linux": 0}
+    for family in registry.families:
+        breakdown[family.platform] += 1
+    assert breakdown == {"windows": 7, "android": 9, "linux": 4}
+
+
 def test_family_registry_hash_stable():
     assert FAMILY_REGISTRY.registry_hash() == ArtifactFamilyRegistry.with_defaults().registry_hash()
 

@@ -241,6 +241,8 @@ async def test_v2_migration_adds_grounding_column(tmp_path):
     conn.execute("INSERT INTO secondary_analyses SELECT analysis_id,task_id,evidence_key,snapshot_id,version,status,input_hash,input_envelope_json,prompt_version,description,summary,model,created_at,started_at,review_pending_at,decided_at,decided_by,decision_reason,failed_at,error_code,error_message FROM secondary_analyses_v4")
     conn.execute("DROP TABLE secondary_analyses_v4")
     from httpserver.services.investigation.repository import (
+    SUPPORTED_SCHEMA_VERSION,
+    InvestigationRepository as _InvestigationRepository,  # noqa: F401 (
         _TRIGGER_SECONDARY_LEGAL_TRANSITION_SQL,
         _TRIGGER_SECONDARY_NO_TERMINAL_UPDATE_SQL,
     )
@@ -252,7 +254,7 @@ async def test_v2_migration_adds_grounding_column(tmp_path):
     conn = sqlite3.connect(idb)
     cols = {row[1] for row in conn.execute("PRAGMA table_info(secondary_analyses)")}
     assert "grounding_status" in cols
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     conn.close()
 
 

@@ -113,6 +113,10 @@ class AgentTrajectoryEventType(str, Enum):
     finalization_denied = "finalization_denied"
     finalization_stale = "finalization_stale"
     finalization_completed = "finalization_completed"
+    # P3 freeze follow-up (F2): tool action audit event (schema v10).
+    # Observation = what the tool returned; this event = that the runtime
+    # performed the action. One atomic INSERT pair per successful call.
+    tool_observation_recorded = "tool_observation_recorded"
 
 
 # Application-side transition tables; the identically-shaped DB triggers are
@@ -1617,41 +1621,105 @@ class AgentRuntimeRepository:
         truncated: bool = False,
     ) -> ToolObservation:
         """Persist one immutable Tool Observation row (storage boundary only;
-        P1 defines no Tool Registry)."""
+        P1 defines no Tool Registry). For the registry path use
+        :meth:`record_tool_observation` — a successful tool action must write
+        the observation and its trajectory event atomically."""
         if not tool_id:
             raise ValueError("tool observation requires tool_id")
-        observation_id = _new_observation_id()
-        now = _now_iso()
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            self._require_investigation_with_conn(conn, investigation_id)
-            if run_id is not None:
-                self._require_run_with_conn(conn, run_id, investigation_id)
-            if delegation_id is not None:
-                self._require_delegation_with_conn(
-                    conn, delegation_id, investigation_id
-                )
-            conn.execute(
-                "INSERT INTO agent_tool_observations "
-                "(observation_id, task_id, investigation_id, run_id, delegation_id, "
-                " tool_id, summary, result_json, evidence_refs_json, result_count, "
-                " truncated, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    observation_id, self.task_id, investigation_id, run_id,
-                    delegation_id, tool_id, summary,
-                    canonical_state_json(dict(result)),
-                    canonical_state_json(list(evidence_refs)),
-                    len(evidence_refs), 1 if truncated else 0, now,
-                ],
+            observation = self._insert_observation_with_conn(
+                conn, investigation_id,
+                tool_id=tool_id, summary=summary, result=result,
+                evidence_refs=evidence_refs, run_id=run_id,
+                delegation_id=delegation_id, truncated=truncated,
             )
-            row = conn.execute(
-                "SELECT * FROM agent_tool_observations "
-                "WHERE task_id = ? AND observation_id = ?",
-                [self.task_id, observation_id],
-            ).fetchone()
             conn.commit()
+        return observation
+
+    def _insert_observation_with_conn(
+        self,
+        conn: sqlite3.Connection,
+        investigation_id: str,
+        *,
+        tool_id: str,
+        summary: str,
+        result: Mapping[str, Any],
+        evidence_refs: Sequence[str] = (),
+        run_id: Optional[str] = None,
+        delegation_id: Optional[str] = None,
+        truncated: bool = False,
+    ) -> ToolObservation:
+        observation_id = _new_observation_id()
+        now = _now_iso()
+        self._require_investigation_with_conn(conn, investigation_id)
+        if run_id is not None:
+            self._require_run_with_conn(conn, run_id, investigation_id)
+        if delegation_id is not None:
+            self._require_delegation_with_conn(
+                conn, delegation_id, investigation_id
+            )
+        conn.execute(
+            "INSERT INTO agent_tool_observations "
+            "(observation_id, task_id, investigation_id, run_id, delegation_id, "
+            " tool_id, summary, result_json, evidence_refs_json, result_count, "
+            " truncated, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                observation_id, self.task_id, investigation_id, run_id,
+                delegation_id, tool_id, summary,
+                canonical_state_json(dict(result)),
+                canonical_state_json(list(evidence_refs)),
+                len(evidence_refs), 1 if truncated else 0, now,
+            ],
+        )
+        row = conn.execute(
+            "SELECT * FROM agent_tool_observations "
+            "WHERE task_id = ? AND observation_id = ?",
+            [self.task_id, observation_id],
+        ).fetchone()
         return self._row_to_observation(row)
+
+    def record_tool_observation(
+        self,
+        investigation_id: str,
+        *,
+        tool_id: str,
+        summary: str,
+        result: Mapping[str, Any],
+        evidence_refs: Sequence[str] = (),
+        run_id: Optional[str] = None,
+        delegation_id: Optional[str] = None,
+        truncated: bool = False,
+        trajectory_payload: Optional[Mapping[str, Any]] = None,
+    ) -> tuple[ToolObservation, TrajectoryEvent]:
+        """Atomic tool-action audit pair (P3 F2.3).
+
+        One ``BEGIN IMMEDIATE`` transaction inserts the immutable
+        ToolObservation AND the ``tool_observation_recorded`` trajectory
+        event. Either both exist afterwards or neither does — a failed
+        trajectory insert rolls the observation back, so the registry can
+        never report success with only half the audit record.
+        """
+        if not tool_id:
+            raise ValueError("tool observation requires tool_id")
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            observation = self._insert_observation_with_conn(
+                conn, investigation_id,
+                tool_id=tool_id, summary=summary, result=result,
+                evidence_refs=evidence_refs, run_id=run_id,
+                delegation_id=delegation_id, truncated=truncated,
+            )
+            payload = dict(trajectory_payload or {})
+            payload.setdefault("observation_id", observation.observation_id)
+            event = self._append_trajectory_with_conn(
+                conn, investigation_id,
+                AgentTrajectoryEventType.tool_observation_recorded,
+                run_id=run_id, delegation_id=delegation_id, payload=payload,
+            )
+            conn.commit()
+        return observation, event
 
     def list_tool_observations(
         self, investigation_id: str, *, run_id: Optional[str] = None

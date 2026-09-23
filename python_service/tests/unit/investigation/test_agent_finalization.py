@@ -9,6 +9,8 @@ import sqlite3
 
 import pytest
 
+from httpserver.services.investigation.repository import SUPPORTED_SCHEMA_VERSION
+
 from httpserver.services.evidence import EvidenceStoreError
 from httpserver.services.investigation import (
     AgentInvestigationStatus,
@@ -164,9 +166,9 @@ def _commit(runtime, investigation, revision, run=None, decision=None, state=Non
 def test_fresh_db_initializes_v9_with_finalizations(tmp_path):
     db = tmp_path / "investigation.db"
     InvestigationRepository(db, "A")
-    assert SUPPORTED_SCHEMA_VERSION == 9
+    assert SUPPORTED_SCHEMA_VERSION == 10
     conn = sqlite3.connect(db)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     assert conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_finalizations'"
     ).fetchone() is not None
@@ -196,7 +198,7 @@ def test_v8_to_v9_migration_rebuilds_enums_and_preserves_rows(tmp_path):
 
     reopened = InvestigationRepository(db, "A")
     conn = sqlite3.connect(db)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     assert conn.execute(
         "SELECT COUNT(*) FROM agent_trajectory_events"
     ).fetchone()[0] == trajectory_count
@@ -228,7 +230,7 @@ def test_migration_chain_from_v5_reaches_v9(tmp_path):
     conn.close()
     InvestigationRepository(db, "A")
     conn = sqlite3.connect(db)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     conn.close()
 
 
@@ -647,7 +649,7 @@ def test_legacy_v3_guard_still_skips_repository_owned_v9(tmp_path):
     # constructing the legacy layer on a repository-owned v9 store is a no-op
     persistence = InvestigationPersistence(db)
     conn = sqlite3.connect(db)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     tables = {
         row[0]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")

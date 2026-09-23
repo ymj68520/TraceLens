@@ -178,14 +178,49 @@ class ForensicToolRegistry:
         tool_id: str,
         args: Mapping[str, Any],
     ) -> dict[str, Any]:
-        definition = self._tools.get(tool_id)
-        if definition is None:
-            raise ToolExecutionError(
-                ToolErrorCode.TOOL_NOT_FOUND,
-                f"tool {tool_id!r} is not registered",
-            )
+        """Frozen execution pipeline (P3 freeze follow-up F1 order):
 
-        # permission (registry re-check even if the bridge hid the tool)
+            1 resolve -> 2 permission (read/allowed/agent-types)
+            -> 3 scope validation -> 4 input schema validation
+            -> 5 budget/duplicate policy -> 6 domain adapter
+            -> 7 output normalization -> 8 Evidence-ref validation
+            -> 9+10 ToolObservation persistence + Trajectory append
+               (one atomic repository transaction)
+            -> 11 compact model-facing result
+
+        Each step is a private method so the order is directly testable;
+        a rejected step consumes no downstream state (no budget, no
+        duplicate fingerprint, no adapter call, no persistence).
+        """
+        definition = self._step_resolve(tool_id)                      # 1
+        self._step_check_permission(definition, context, tool_id)     # 2
+        self._step_check_scope(args, context)                         # 3
+        validated = self._step_validate_input(definition, args)       # 4
+        run_key = self._run_key(context)
+        self._step_check_budget(run_key, context)                     # 5a
+        fingerprint = self._step_check_duplicate(                     # 5b
+            definition, validated, run_key, context
+        )
+        outcome = await self._step_run_adapter(definition, context, validated)  # 6
+        outcome = self._step_normalize_output(definition, outcome)    # 7
+        evidence_refs = self._step_validate_evidence_refs(outcome, context)     # 8
+        record = build_observation_record(                            # 9+10
+            definition, outcome, input_fingerprint=fingerprint, context=context,
+        )
+        self._step_persist(definition, record, evidence_refs, context, run_key)
+        return self._step_compact_result(definition, outcome, record)  # 11
+
+    # -- pipeline steps (order = frozen contract) -----------------------
+
+    def _run_key(self, context: ForensicToolContext) -> tuple[str, str, str]:
+        return (context.task_id, context.investigation_id, context.run_id)
+
+    def _step_resolve(self, tool_id: str) -> ForensicToolDefinition:  # 1
+        return self.resolve_definition(tool_id)
+
+    def _step_check_permission(                                      # 2
+        self, definition: ForensicToolDefinition, context, tool_id: str
+    ) -> None:
         if definition.access != ToolAccess.READ:
             raise ToolExecutionError(
                 ToolErrorCode.TOOL_NOT_ALLOWED,
@@ -196,8 +231,6 @@ class ForensicToolRegistry:
                 ToolErrorCode.TOOL_NOT_ALLOWED,
                 f"tool {tool_id!r} is not allowed for this run",
             )
-
-        # agent type restriction
         if definition.allowed_agent_types:
             if context.agent_type not in definition.allowed_agent_types:
                 raise ToolExecutionError(
@@ -206,18 +239,29 @@ class ForensicToolRegistry:
                     f"{context.agent_type!r}",
                 )
 
-        # budget: observation cap per run
-        run_key = (context.task_id, context.investigation_id, context.run_id)
-        budget_cap = context.budget.max_observations_per_run
-        if self._run_observation_counts.get(run_key, 0) >= budget_cap:
+    def _step_check_scope(self, args: Mapping[str, Any], context) -> None:  # 3
+        """Scope authorization BEFORE full domain input acceptance.
+
+        Minimal deterministic pre-check on the raw mapping: extract only the
+        declared scope discriminator field and validate it against the run's
+        source-scope grant. Type/format errors are left to schema validation.
+        """
+        if not isinstance(args, Mapping):
+            return
+        raw_scope = args.get("source_scope_id")
+        if not isinstance(raw_scope, str):
+            return
+        if context.source_scope_ids and raw_scope not in context.source_scope_ids:
             raise ToolExecutionError(
-                ToolErrorCode.TOOL_BUDGET_EXCEEDED,
-                "run reached its tool observation budget",
+                ToolErrorCode.TOOL_SCOPE_DENIED,
+                "requested source scope is outside this run's grant",
             )
 
-        # input validation (before any adapter work)
+    def _step_validate_input(                                        # 4
+        self, definition: ForensicToolDefinition, args: Mapping[str, Any]
+    ):
         try:
-            validated = definition.input_model.model_validate(dict(args))
+            return definition.input_model.model_validate(dict(args))
         except ValidationError as exc:
             raise ToolExecutionError(
                 ToolErrorCode.TOOL_INPUT_INVALID,
@@ -225,21 +269,22 @@ class ForensicToolRegistry:
                 details={"errors": exc.errors(include_url=False)[:5]},
             ) from None
 
-        # scope enforcement: tools that accept a source_scope_id may only
-        # target source scopes granted to this run (checked before the adapter)
-        requested_scope = getattr(validated, "source_scope_id", None)
+    def _step_check_budget(self, run_key, context) -> None:          # 5a
         if (
-            requested_scope is not None
-            and context.source_scope_ids
-            and requested_scope not in context.source_scope_ids
+            self._run_observation_counts.get(run_key, 0)
+            >= context.budget.max_observations_per_run
         ):
             raise ToolExecutionError(
-                ToolErrorCode.TOOL_SCOPE_DENIED,
-                "requested source scope is outside this run's grant",
+                ToolErrorCode.TOOL_BUDGET_EXCEEDED,
+                "run reached its tool observation budget",
             )
 
-        # duplicate guard (deterministic fingerprint, policy-controlled)
-        fingerprint = fingerprint_input(definition, dict(validated.model_dump()), context=context)
+    def _step_check_duplicate(                                       # 5b
+        self, definition, validated, run_key, context
+    ) -> str:
+        fingerprint = fingerprint_input(
+            definition, dict(validated.model_dump()), context=context
+        )
         fingerprints = self._run_fingerprints.setdefault(run_key, {})
         duplicate_limit = (
             self._duplicate_call_policy(context)
@@ -249,54 +294,58 @@ class ForensicToolRegistry:
         if fingerprints.get(fingerprint, 0) >= duplicate_limit:
             raise ToolExecutionError(
                 ToolErrorCode.TOOL_DUPLICATE_CALL,
-                f"tool {tool_id!r} was already called with identical arguments",
+                f"tool {definition.tool_id!r} was already called with "
+                "identical arguments",
             )
         fingerprints[fingerprint] = fingerprints.get(fingerprint, 0) + 1
+        return fingerprint
 
-        # domain adapter
+    async def _step_run_adapter(self, definition, context, validated):   # 6
         invocation = ToolInvocation(
             context=context, definition=definition, args=validated
         )
         try:
-            outcome = await self._adapters[tool_id](invocation)
+            return await self._adapters[definition.tool_id](invocation)
         except ToolExecutionError:
             raise
         except Exception as exc:  # noqa: BLE001 - normalized for the model
             raise ToolExecutionError(
                 ToolErrorCode.TOOL_ADAPTER_FAILED,
-                f"tool {tool_id!r} failed inside its domain adapter",
+                f"tool {definition.tool_id!r} failed inside its domain adapter",
                 details={"exception_type": type(exc).__name__},
             ) from None
 
-        # output normalization
+    def _step_normalize_output(self, definition, outcome):           # 7
         if not isinstance(outcome, ToolExecutionOutcome):
             raise ToolExecutionError(
                 ToolErrorCode.TOOL_RESULT_INVALID,
-                f"tool {tool_id!r} returned a non-normalized result",
+                f"tool {definition.tool_id!r} returned a non-normalized result",
             )
         if not isinstance(outcome.result, definition.output_model):
             raise ToolExecutionError(
                 ToolErrorCode.TOOL_RESULT_INVALID,
-                f"tool {tool_id!r} result does not match its output contract",
+                f"tool {definition.tool_id!r} result does not match its "
+                "output contract",
             )
+        return outcome
 
-        # Evidence-ref validation (fail closed, nothing persisted on failure)
+    def _step_validate_evidence_refs(self, outcome, context):        # 8
+        """Fail closed: nothing is persisted when any ref is invalid."""
         evidence_refs = tuple(outcome.evidence_refs)
         for ref in evidence_refs:
             self._validate_evidence_ref(ref, context)
+        return evidence_refs
 
-        # observation persistence (durable tool action-trace, P3 decision)
-        record = build_observation_record(
-            definition,
-            outcome,
-            input_fingerprint=fingerprint,
-            context=context,
-        )
+    def _step_persist(                                               # 9+10
+        self, definition, record, evidence_refs, context, run_key
+    ) -> None:
+        """ToolObservation + trajectory append (one atomic transaction)."""
         self._sink.record(definition, record, evidence_refs, context=context)
         self._run_observation_counts[run_key] = (
             self._run_observation_counts.get(run_key, 0) + 1
         )
 
+    def _step_compact_result(self, definition, outcome, record):     # 11
         return self._compact_result(definition, outcome, record)
 
     # -- helpers --------------------------------------------------------

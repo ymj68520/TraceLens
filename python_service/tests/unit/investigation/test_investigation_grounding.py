@@ -11,6 +11,8 @@ import sqlite3
 
 import pytest
 
+from httpserver.services.investigation.repository import SUPPORTED_SCHEMA_VERSION
+
 from httpserver.services.evidence import ResolvedEvidence
 from httpserver.services.investigation import (
     AnalysisGroundingStatus,
@@ -394,7 +396,7 @@ def test_v4_migration_from_v3(tmp_path):
     # Reopen → triggers v3→v4→v5→v6→v7→v8 migration chain
     InvestigationRepository(idb, "A")
     conn = sqlite3.connect(idb)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     assert conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='analysis_claims'"
     ).fetchone() is not None

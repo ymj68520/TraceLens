@@ -10,7 +10,8 @@ Status: implemented on `mvp/agent-v0-phase3-tool-skill-substrate`.
   - `b0933cb3` — `feat: add pydantic agent runtime adapter` (P3-1)
   - `c5d585a9` — `feat: add forensic read-only tool registry` (P3-2)
   - `3a26e174` — `feat: add agent capability and skill resolution` (P3-3)
-  - (P3-4) — `feat: add specialist context assembly` (context pack, bridge completion, docs, regression gate)
+  - `815398b3` — `feat: add specialist context assembly` (context pack, bridge completion, docs, regression gate)
+  - (freeze follow-up) — `fix: align agent tool audit pipeline with frozen contract` (F1 pipeline order, F2 observation+trajectory atomic pair + schema v10, D1/D2 doc corrections)
 
 ## 2. PydanticAI dependency decision
 
@@ -18,14 +19,14 @@ Status: implemented on `mvp/agent-v0-phase3-tool-skill-substrate`.
 - Version selection: 2.30.0 is the newest release whose `[openai]` extra accepts the already-installed `openai 2.46.0` and whose core accepts installed `pydantic 2.13.4` / `httpx 0.28.1`. 2.35.x forces `openai>=3.0.0`; 2.40.0+ makes `httpx2` a hard core dependency — both would force upgrades of the existing runtime (§61 forbids). Python 3.12.3.
 - Transitive additions (all additive, none replace existing pins): `pydantic-graph==2.30.0` (hard internal pin of pydantic-ai-slim itself — unavoidable, not a workflow-ecosystem adoption), `opentelemetry-api`, `genai-prices`, `griffelib`, `logfire-api` (API-only shim, not the Logfire service), `tiktoken`, `httpx2`/`httpcore2`, `truststore`, `regex`.
 - `pip check`: green after install. FastAPI/Pydantic/httpx/OpenAI SDK versions unchanged.
-- Opt-in provider smoke (`TRACELENS_AGENT_PROVIDER_SMOKE=1`, excluded from the default gate): adapter reached the configured DeepSeek endpoint and completed a live request round-trip; provider answered `402 Insufficient Balance` (cloud account billing state, not an adapter defect — base_url derivation, auth and model name were all accepted).
+- Opt-in provider smoke (`TRACELENS_AGENT_PROVIDER_SMOKE=1`, excluded from the default gate): the opt-in request reached the configured DeepSeek provider and received a provider-level `402 Insufficient Balance` response. This confirms that the adapter reached the configured endpoint and the request progressed to provider-side handling. It does NOT validate successful generation — billing prevented completion. Model semantics, structured output and tool calling on the real provider remain unverified until the account regains balance and the opt-in smoke is rerun. The default freeze gate does not depend on any real provider.
 
 ## 3. Repository facts the design rests on
 
 - LLM config: `httpserver/config.py` `Settings` — `LLM_ENDPOINT` is stored as a *path* (`/v1/chat/completions`), resolved against `LLM_TEXT_BASE_URL`/`LLM_VISION_BASE_URL`; `LLM_THINKING_MODE` produces the DeepSeek `thinking` body quirk (`Settings.llm_thinking_body`). httpserver calls raw httpx (OpenAI-compatible Chat Completions); the OpenAI SDK 2.x exists for Graphiti.
 - Evidence reads: canonical task-scoped resolver `services/evidence/` (`parse_evidence_key`, `file:`/`cluster:v1:` key grammar); legacy richer resolver facade `InvestigationService.resolve_evidence` (read-only, bounded content previews); `InvestigationReadService.list_evidence`; `SecondaryAnalysisExecutor.list_analyses/list_all_analyses`; `effective_event_claims` on the legacy facade. `evidence_detail()` is NOT used by tools because it triggers first-write-wins snapshot capture (a write).
 - Platform identity: task metadata `scenarios` (`android|windows|linux|server_cloud`) and `scenario_databases` (platform → trusted DB path); platform artifact tables are deterministic content (sqlite_master) — same pattern as `intelligence_report._detect_platforms`. Platform readers `graphiti_integration/database_reader/{windows,linux,android}_reader.py` are safe typed facades (fixed per-artifact methods, limit/offset pagination, typed records).
-- P1 `agent_tool_observations` (INSERT-only, canonical JSON payload) is sufficient for normalized observations — **no investigation.db schema bump in P3** (schema stays v9).
+- P1 `agent_tool_observations` (INSERT-only, canonical JSON payload) is sufficient for normalized observation payloads. The P3 freeze follow-up added the **minimal v9 → v10 migration**: `agent_trajectory_events.event_type` CHECK gains exactly one value (`tool_observation_recorded`) so the tool action lands in the Action Trace as the frozen architecture requires. `SUPPORTED_SCHEMA_VERSION = 10`; nothing else in the schema changes.
 
 ## 4. Added (modules)
 
@@ -49,11 +50,15 @@ httpserver/services/investigation/
         adapters/                 10 read-only tools over trusted facades
 ```
 
-Tests: `tests/unit/investigation/test_agent_pydantic_adapter.py` (19), `test_agent_tool_registry.py` (16), `test_agent_tool_adapters.py` (16), `test_agent_tool_visibility.py` (7), `test_agent_capabilities_skills.py` (22), `test_agent_context_assembly.py` (14), `test_agent_provider_smoke.py` (opt-in only).
+Tests: `tests/unit/investigation/test_agent_pydantic_adapter.py` (19), `test_agent_tool_registry.py` (16), `test_agent_tool_adapters.py` (16), `test_agent_tool_visibility.py` (7), `test_agent_tool_pipeline_order.py` (5), `test_agent_tool_audit_atomicity.py` (7), `test_agent_schema_v10_migration.py` (6), `test_agent_capabilities_skills.py` (23), `test_agent_context_assembly.py` (14), `test_agent_provider_smoke.py` (opt-in only).
 
 ## 5. Modified
 
 - `python_service/requirements.txt` — pinned dependency block (only existing-file change; no P1/P2 code was touched).
+
+## 5b. Calibration status of numeric knobs (freeze follow-up)
+
+All numeric thresholds are **provisional runtime defaults, configurable, not architecture-frozen, subject to P8 benchmark calibration**: `ToolBudgetPolicy.max_duplicate_calls` (default 2), `ToolBudgetPolicy.max_observations_per_run` (default 200), `ToolCatalogConfig` page sizes/bounds, `SkillResolverPolicy` breadth limits. None of these numbers is a normative Agent Architecture v0 limit; inject an explicit policy/config where a deployment needs different values.
 
 ## 6. Reused (no reimplementation)
 
@@ -69,7 +74,21 @@ Tests: `tests/unit/investigation/test_agent_pydantic_adapter.py` (19), `test_age
 
 ## 8. Tool Registry contract
 
-Execution pipeline (frozen order, `registry.py`): resolve → permission (registry re-checks `read` + run allow-list on every call; bridge visibility is never the boundary) → agent-type restriction → budget (per-run observation cap) → input validation (`extra="forbid"` input models) → source-scope enforcement (`source_scope_id` args must be inside the run grant, pre-adapter) → duplicate guard (deterministic fingerprint over tool identity + canonical args + source scope + context hash; threshold from `ToolBudgetPolicy`, default 2, configurable) → domain adapter → output normalization (must be `ToolExecutionOutcome` with the declared output model) → Evidence-ref validation (parse fail = `EVIDENCE_REF_INVALID`; injected validator fail = `EVIDENCE_REF_CROSS_TASK`; failures persist nothing) → observation persistence → compact model-facing result (large payloads elided; full payload stays in the observation).
+Execution pipeline (frozen contract order, pinned by `test_agent_tool_pipeline_order.py` via a spy subclass — not inferred from error codes):
+
+1. resolve tool
+2. permission — `access=read`, `allowed_tool_ids`, `allowed_agent_types` (the registry re-checks on every call; bridge visibility is never the boundary)
+3. scope validation — minimal deterministic pre-check on the raw mapping: extract the declared `source_scope_id` discriminator and validate against the run's source-scope grant, BEFORE full domain input acceptance
+4. input schema validation (`extra="forbid"` input models)
+5. budget / duplicate policy — per-run observation cap, then the duplicate fingerprint guard
+6. domain adapter
+7. output normalization (must be `ToolExecutionOutcome` with the declared output model)
+8. Evidence-ref validation (parse fail = `EVIDENCE_REF_INVALID`; injected validator fail = `EVIDENCE_REF_CROSS_TASK`; failures persist nothing)
+9. ToolObservation persistence
+10. Trajectory append (`tool_observation_recorded`) — steps 9+10 run as ONE atomic repository transaction
+11. compact model-facing result (large payloads elided; full payload stays in the observation)
+
+A rejected step consumes no downstream state: no budget, no duplicate fingerprint, no adapter call, no persistence.
 
 Structured error codes: `TOOL_NOT_FOUND, TOOL_NOT_ALLOWED, TOOL_AGENT_NOT_ALLOWED, TOOL_SCOPE_DENIED, TOOL_INPUT_INVALID, TOOL_BUDGET_EXCEEDED, TOOL_DUPLICATE_CALL, TOOL_ADAPTER_FAILED, EVIDENCE_REF_INVALID, EVIDENCE_REF_CROSS_TASK, TOOL_RESULT_INVALID`. Messages never contain DB paths, stack traces or secrets (adapter exceptions are normalized to `TOOL_ADAPTER_FAILED` with only the exception type). `ForensicToolRegistry.schema_hash()` is deterministic over the whole catalog (tool_id/version/per-tool schema_hash); `REGISTRY_VERSION = "forensic-tool-registry:v1"`.
 
@@ -79,13 +98,19 @@ Structured error codes: `TOOL_NOT_FOUND, TOOL_NOT_ALLOWED, TOOL_AGENT_NOT_ALLOWE
 
 ## 10. Tool Observation / Evidence visibility
 
-Normalized `ToolObservationRecord` (`tool-observation:v1`): tool id/version/schema hash, summary, data, entity_refs (empty in P3 — canonical entities are P5), warnings, limitations, result_count, truncated, continuation, pagination, input fingerprint, context hash. Storage: P1 `agent_tool_observations` via `AgentObservationSink` (single INSERT = observation + run/delegation linkage). **P3 storage decision:** the observation row is the durable tool action-trace; the frozen trajectory CHECK enum has no tool event type and P3 does not migrate the schema, so no trajectory row is emitted for tool calls (lifecycle events only).
+Normalized `ToolObservationRecord` (`tool-observation:v1`): tool id/version/schema hash, summary, data, entity_refs (empty in P3 — canonical entities are P5), warnings, limitations, result_count, truncated, continuation, pagination, input fingerprint, context hash. Storage: `agent_tool_observations` via `AgentObservationSink`, which calls the new atomic repository primitive `AgentRuntimeRepository.record_tool_observation(...)` — one `BEGIN IMMEDIATE` transaction inserting the observation row AND the `tool_observation_recorded` trajectory action event. The invariant: a successful tool action leaves both records or neither (a failed trajectory insert rolls the observation back, and vice versa; failure-injection tests cover both directions).
+
+Observation and trajectory have distinct duties and never substitute for each other:
+- ToolObservation = what the tool returned (summary, data, evidence refs)
+- Trajectory = what the investigation runtime did (action audit)
+
+The trajectory payload carries pointers and counts only — `observation_id, tool_id, tool_version, tool_schema_hash, run_id, delegation_id, input_fingerprint, context_hash, evidence_ref_count, result_count, truncated, warning_count, limitation_count` — never a copy of the observation `data`, Evidence bodies, secrets, DB paths or model-private reasoning.
 
 Visibility (`visibility.py`): `reconstruct_allowed_evidence_ids(initial_context_refs, observations, *, delegation_id|run_id)` rebuilds one delegation's `allowed_evidence_ids` purely from durable records — ContextPack initial refs ∪ successful observation refs. Failed executions persist nothing and add no visibility; invalid refs are rejected pre-persistence; summary/data text never enters the set; Case Context stays `context_only`. Reconstruction is restart-safe (fresh repository objects re-derive identical sets).
 
 ## 11. ArtifactFamily registry
 
-`ArtifactFamilyRegistry` (`artifact-family-registry:v1`) — 20 families bound 1:1 to real reader coverage (7 windows, 10 android incl. wechat/qq/telegram message exports, 4 linux; exact list in `agent_capabilities.default_family_catalog`). Each family carries `required_tables` (parser-output presence), `reader_method`/`reader_kwargs` (typed facade binding), `supported_filters` (`text_contains` server-side), and first-class `limitations`. No family is invented beyond existing parser/reader coverage.
+`ArtifactFamilyRegistry` (`artifact-family-registry:v1`) — 20 families bound 1:1 to real reader coverage (7 windows, 9 android incl. wechat/qq/telegram message exports, 4 linux; counted directly from `agent_capabilities.default_family_catalog` and pinned by `test_family_catalog_count_and_platform_breakdown`). Each family carries `required_tables` (parser-output presence), `reader_method`/`reader_kwargs` (typed facade binding), `supported_filters` (`text_contains` server-side), and first-class `limitations`. No family is invented beyond existing parser/reader coverage.
 
 ## 12. SourceCapabilityManifest
 
@@ -120,12 +145,12 @@ Frozen pack (`specialist-context-pack:v1`): identity quad, objective digest, que
   tests/unit/investigation/test_agent_tool_visibility.py \
   tests/unit/investigation/test_agent_capabilities_skills.py \
   tests/unit/investigation/test_agent_context_assembly.py
-  -> 94 passed
+  -> see freeze-gate counts in the final report (follow-up included)
 
 .venv/bin/python -m pytest tests/unit/investigation/            -> 582 passed (full investigation suite incl. P1/P2)
 pip check                                                        -> No broken requirements found
 py_compile (all new modules)                                     -> OK
-TRACELENS_AGENT_PROVIDER_SMOKE=1 (opt-in, outside gate)          -> reached provider; 402 Insufficient Balance (billing state of the configured cloud key, not an adapter failure)
+TRACELENS_AGENT_PROVIDER_SMOKE=1 (opt-in, outside gate)          -> request reached the provider, provider-level 402 Insufficient Balance; connectivity/configuration diagnostic only — NOT successful generation (see §2)
 ```
 
 (Exact final counts re-verified at the freeze gate; see final report.)
@@ -134,11 +159,11 @@ TRACELENS_AGENT_PROVIDER_SMOKE=1 (opt-in, outside gate)          -> reached prov
 
 - `file -> related clusters` has no read facade (route-level ±300s matching only); the tool returns an explicit limitation instead of faking results.
 - Platform-artifact filters are limited to server-side `text_contains`; column-level typed filters wait for family schema declarations.
+- Real-provider generation/structured-output/tool-calling validation is pending the DeepSeek account balance recovery (opt-in smoke only; see §2).
 - `search_files` pagination rides the C++ facade's client-side pagination semantics.
-- No trajectory event type for tool calls (see §10 decision); a lifecycle-visible tool event would need a schema v10 migration.
 - Memory/`server_cloud`-as-own-profile are deliberately unregistered/limited.
 - The P2 orchestrator does not consume any of this substrate yet (P4 boundary).
 
 ## 20. P4 deferred work
 
-SupervisorAgent production execution; agent-backed Delegation execution consuming P2-admitted actions; SpecialistResult output contract (replacing the placeholder ref); Integration mode → StateTransitionPolicy → Working State revisions from agent results; bounded parallelism; wiring `AgentRuntimeAdapter`/orchestrator EXECUTE to PydanticAI; column-level typed artifact filters; optional trajectory tool-event type (schema v10 if ever justified).
+SupervisorAgent production execution; agent-backed Delegation execution consuming P2-admitted actions; SpecialistResult output contract (replacing the placeholder ref); Integration mode → StateTransitionPolicy → Working State revisions from agent results; bounded parallelism; wiring `AgentRuntimeAdapter`/orchestrator EXECUTE to PydanticAI; column-level typed artifact filters; rerun the opt-in provider smoke once the cloud account regains balance.

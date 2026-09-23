@@ -330,17 +330,34 @@ async def test_observation_budget_exhaustion(runtime):
     assert excinfo.value.code == ToolErrorCode.TOOL_BUDGET_EXCEEDED
 
 
-async def test_tool_trace_is_the_observation_row_not_trajectory(runtime):
-    """P3 storage decision: agent_tool_observations is the durable tool
-    action-trace; no trajectory event type exists (schema stays v9)."""
+async def test_tool_call_writes_observation_and_trajectory_pair(runtime):
+    """P3 freeze follow-up (F2): one successful call = one observation + one
+    ``tool_observation_recorded`` trajectory event, payload pointing at the
+    exact observation_id."""
     repo, investigation_id, run_id = runtime
     context = make_context(investigation_id=investigation_id, run_id=run_id)
     registry = make_registry(sink=AgentObservationSink(repo))
     await registry.execute(context, "echo_tool", {"query": "x"})
-    trajectory = repo.list_trajectory(investigation_id)
-    # lifecycle events only; tool trace lives in observations
-    assert all(t.event_type.value != "tool_observation" for t in trajectory)
-    assert len(repo.list_tool_observations(investigation_id)) == 1
+
+    observations = repo.list_tool_observations(investigation_id)
+    assert len(observations) == 1
+    events = [
+        t for t in repo.list_trajectory(investigation_id)
+        if t.event_type.value == "tool_observation_recorded"
+    ]
+    assert len(events) == 1
+    payload = events[0].payload
+    assert payload["observation_id"] == observations[0].observation_id
+    assert payload["tool_id"] == "echo_tool"
+    assert payload["tool_version"] == "1"
+    assert payload["tool_schema_hash"]
+    assert payload["evidence_ref_count"] == 1
+    assert payload["result_count"] == 1
+    assert payload["truncated"] is False
+    # action trace, not a second observation store: no payload data copy
+    assert "data" not in payload
+    assert "summary" not in payload
+    assert "evidence_refs" not in payload
 
 
 async def test_idempotent_replay_deterministic_after_guard_reset(runtime):
