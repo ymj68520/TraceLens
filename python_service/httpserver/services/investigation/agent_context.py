@@ -33,8 +33,8 @@ from .agent_tools.context import AgentTimeScope, ForensicToolContext
 
 CONTEXT_VERSION = "specialist-context-pack:v1"
 
-# L7 placeholder: the real SpecialistResult output contract is frozen in P4.
-P4_OUTPUT_CONTRACT_REF = "specialist-result:P4-placeholder"
+# L7 output contract: frozen by P4A (agent_specialist_result.py).
+OUTPUT_CONTRACT_REF = "specialist-result:v1"
 
 L0_SYSTEM_INVARIANTS: tuple[str, ...] = (
     "read-only: you cannot mutate investigation state",
@@ -87,6 +87,7 @@ class SpecialistContextPack(BaseModel):
     investigation_id: str
     run_id: str
     delegation_id: Optional[str] = None
+    question_id: Optional[str] = None
 
     objective_digest: str = ""
     question: str
@@ -110,7 +111,7 @@ class SpecialistContextPack(BaseModel):
 
     allowed_tool_ids: tuple[str, ...] = ()
 
-    output_contract_ref: str = P4_OUTPUT_CONTRACT_REF
+    output_contract_ref: str = OUTPUT_CONTRACT_REF
 
     # immutable anchors of the working state this pack was built from
     working_state_revision: Optional[int] = None
@@ -126,6 +127,7 @@ class SpecialistContextPack(BaseModel):
             "investigation_id": self.investigation_id,
             "run_id": self.run_id,
             "delegation_id": self.delegation_id,
+            "question_id": self.question_id,
             "objective_digest": self.objective_digest,
             "question": self.question,
             "source_scope_id": self.source_scope_id,
@@ -259,6 +261,7 @@ class ContextAssembler:
         run_identity: Mapping[str, str],
         question: str,
         source_scope_id: str,
+        question_id: Optional[str] = None,
         source_scope_ids: Iterable[str] = (),
         time_scope: Optional[AgentTimeScope] = None,
         objective_digest: str = "",
@@ -329,6 +332,7 @@ class ContextAssembler:
             investigation_id=str(run_identity["investigation_id"]),
             run_id=str(run_identity["run_id"]),
             delegation_id=delegation_id,
+            question_id=question_id,
             objective_digest=objective_digest,
             question=question,
             source_scope_id=source_scope_id,
@@ -362,7 +366,7 @@ __all__ = [
     "ContextCaseNote",
     "EvidenceDigestItem",
     "L0_SYSTEM_INVARIANTS",
-    "P4_OUTPUT_CONTRACT_REF",
+    "OUTPUT_CONTRACT_REF",
     "ProfileDigest",
     "SpecialistContextPack",
 ]

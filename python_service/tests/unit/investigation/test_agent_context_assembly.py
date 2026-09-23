@@ -11,7 +11,7 @@ from httpserver.services.investigation.agent_capabilities import (
     ArtifactFamilyRegistry,
 )
 from httpserver.services.investigation.agent_context import (
-    P4_OUTPUT_CONTRACT_REF,
+    OUTPUT_CONTRACT_REF,
     ContextAssembler,
     ContextCaseNote,
     EvidenceDigestItem,
@@ -209,7 +209,7 @@ def test_graph_context_absent_and_no_chat_history():
 def test_output_contract_ref_is_p4_placeholder():
     assembler = _assembler()
     pack = _build_pack(assembler)
-    assert pack.output_contract_ref == P4_OUTPUT_CONTRACT_REF
+    assert pack.output_contract_ref == OUTPUT_CONTRACT_REF
 
 
 def test_unknown_scope_profile_fails_deterministically():
