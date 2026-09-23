@@ -61,6 +61,9 @@ class ForensicToolContext(BaseModel):
     source_scope_ids: tuple[str, ...] = ()
     time_scope: Optional[AgentTimeScope] = None
 
+    # runtime-set agent type (supervisor/specialist/...); None in P3 smoke runs
+    agent_type: Optional[str] = None
+
     allowed_tool_ids: frozenset[str]
 
     budget: ToolBudgetPolicy = ToolBudgetPolicy()
