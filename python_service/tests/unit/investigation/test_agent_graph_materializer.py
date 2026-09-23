@@ -84,8 +84,13 @@ def _queue_verified_finding(repo, finding=None, resolver=None):
 
 def _executor(repo, backend=None, finding_resolver=None,
               evidence_resolver=None):
+    async def provider(task_id):
+        if task_id != TASK_ID:
+            raise RuntimeError("unknown task store")
+        return repo
+
     return GraphMaterializationExecutor(
-        runtime=repo,
+        runtime_provider=provider,
         backend=backend or FakeGraphBackend(),
         finding_resolver=finding_resolver,
         evidence_resolver=evidence_resolver,
@@ -98,7 +103,7 @@ async def test_execute_happy_path_active_with_bindings(tmp_path):
     backend = FakeGraphBackend()
     executor = _executor(repo, backend)
     outcome = await executor.execute_materialization(
-        INVESTIGATION_ID, materialization_id
+        TASK_ID, INVESTIGATION_ID, materialization_id
     )
     assert outcome["outcome"] == "active"
     manifest = repo.get_graph_materialization(
@@ -120,12 +125,12 @@ async def test_double_dispatch_claim_is_atomic(tmp_path):
     _queued, materialization_id, _f = _queue_verified_finding(repo)
     executor = _executor(repo)
     first = await executor.execute_materialization(
-        INVESTIGATION_ID, materialization_id
+        TASK_ID, INVESTIGATION_ID, materialization_id
     )
     assert first["outcome"] == "active"
     # a late second dispatch conflicts instead of re-ingesting
     second = await executor.execute_materialization(
-        INVESTIGATION_ID, materialization_id
+        TASK_ID, INVESTIGATION_ID, materialization_id
     )
     assert second["outcome"] == "conflict"
 
@@ -135,7 +140,7 @@ async def test_backend_failure_marks_failed(tmp_path):
     _queued, materialization_id, _f = _queue_verified_finding(repo)
     outcome = await _executor(
         repo, FakeGraphBackend(fail_ingest=True)
-    ).execute_materialization(INVESTIGATION_ID, materialization_id)
+    ).execute_materialization(TASK_ID, INVESTIGATION_ID, materialization_id)
     assert outcome["outcome"] == "failed"
     assert outcome["failure_code"] == "GRAPH_BACKEND_INGEST_FAILED"
     stored = repo.get_graph_materialization(
@@ -149,7 +154,7 @@ async def test_provenance_unresolvable_fails_closed(tmp_path):
     _queued, materialization_id, _f = _queue_verified_finding(repo)
     outcome = await _executor(
         repo, FakeGraphBackend(fail_lookup=True)
-    ).execute_materialization(INVESTIGATION_ID, materialization_id)
+    ).execute_materialization(TASK_ID, INVESTIGATION_ID, materialization_id)
     assert outcome["outcome"] == "failed"
     assert outcome["failure_code"] == "GRAPH_PROVENANCE_UNRESOLVED"
     # never active, even though ingest "succeeded"
@@ -166,7 +171,7 @@ async def test_finding_rejected_during_ingest_invalidates(tmp_path):
         repo, finding_resolver=lambda ref: rejected
     )
     outcome = await executor.execute_materialization(
-        INVESTIGATION_ID, materialization_id
+        TASK_ID, INVESTIGATION_ID, materialization_id
     )
     assert outcome["outcome"] == "invalidated"
     assert repo.get_graph_materialization(
@@ -180,7 +185,7 @@ async def test_finding_accepted_during_ingest_makes_stale(tmp_path):
     accepted = dict(finding, status="accepted")
     executor = _executor(repo, finding_resolver=lambda ref: accepted)
     outcome = await executor.execute_materialization(
-        INVESTIGATION_ID, materialization_id
+        TASK_ID, INVESTIGATION_ID, materialization_id
     )
     assert outcome["outcome"] == "stale"
     assert repo.get_graph_materialization(
@@ -195,7 +200,7 @@ async def test_evidence_invalid_during_ingest_invalidates(tmp_path):
         repo, evidence_resolver=lambda task_id, ref: False
     )
     outcome = await executor.execute_materialization(
-        INVESTIGATION_ID, materialization_id
+        TASK_ID, INVESTIGATION_ID, materialization_id
     )
     assert outcome["outcome"] == "invalidated"
 
@@ -205,7 +210,7 @@ async def test_retry_creates_new_attempt_never_reuses_row(tmp_path):
     _queued, materialization_id, _f = _queue_verified_finding(repo)
     executor = _executor(repo, FakeGraphBackend(fail_ingest=True))
     outcome = await executor.execute_materialization(
-        INVESTIGATION_ID, materialization_id
+        TASK_ID, INVESTIGATION_ID, materialization_id
     )
     assert outcome["outcome"] == "failed"
     retry = repo.retry_graph_materialization(
@@ -249,7 +254,7 @@ async def test_restart_fails_running_keeps_queued(tmp_path):
     executor = _executor(repo, backend)
     # simulate a running execution at restart
     repo.claim_graph_materialization(INVESTIGATION_ID, materialization_id)
-    recovery = executor.initialize()
+    recovery = await executor.initialize([TASK_ID])
     assert recovery["running_failed"] == 1
     assert recovery["ingested"] == 0
     stored = repo.get_graph_materialization(
@@ -276,13 +281,13 @@ async def test_restart_fails_running_keeps_queued(tmp_path):
     )
     second_id = admitted["materialization_id"]
     assert second_id != materialization_id
-    executor.initialize()
+    await executor.initialize([TASK_ID])
     assert repo.get_graph_materialization(
         INVESTIGATION_ID, second_id
     )["status"] == "queued"
     # explicit dispatch still works after recovery
     outcome = await executor.execute_materialization(
-        INVESTIGATION_ID, second_id
+        TASK_ID, INVESTIGATION_ID, second_id
     )
     assert outcome["outcome"] == "active"
 
@@ -291,7 +296,7 @@ async def test_execution_consumes_zero_working_state_revision(tmp_path):
     repo = _repo(tmp_path)
     _queued, materialization_id, _f = _queue_verified_finding(repo)
     await _executor(repo).execute_materialization(
-        INVESTIGATION_ID, materialization_id
+        TASK_ID, INVESTIGATION_ID, materialization_id
     )
     assert repo.get_working_state_revision(INVESTIGATION_ID, 1) is not None
     assert repo.get_working_state_revision(INVESTIGATION_ID, 2) is None

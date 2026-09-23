@@ -60,6 +60,8 @@ class ServiceManager:
         self._event_refresh_executor = None
         self._agent_orchestrator = None
         self._specialist_delegation_executor = None
+        self._graph_materialization_executor = None
+        self._graph_materialization_executor = None
         self._initialized = False
         self._cpp_backend_ready = False
         self._forensic_report_ready = False
@@ -68,6 +70,7 @@ class ServiceManager:
         self._event_refresh_ready = False
         self._agent_orchestrator_ready = False
         self._specialist_delegation_executor_ready = False
+        self._graph_materialization_executor_ready = False
         self._lifecycle_state = "new"
         self._lifecycle_lock = asyncio.Lock()
         self._initialization_task: Optional[asyncio.Task[None]] = None
@@ -228,6 +231,26 @@ class ServiceManager:
                     f"SpecialistDelegationExecutor initialization failed: {error}"
                 )
 
+            # Graph materialization executor (P6B): explicit dispatch only.
+            # initialize() runs recovery (running -> failed(runtime_restart))
+            # and NEVER auto-ingests queued manifests; the graph backend
+            # client is lazy-loaded on first execution.
+            try:
+                graph_executor = self._create_graph_materialization_executor()
+                await asyncio.wait_for(
+                    graph_executor.initialize(),
+                    timeout=getattr(
+                        self.settings, "optional_service_init_timeout", 12.0
+                    ),
+                )
+                self._graph_materialization_executor = graph_executor
+                self._graph_materialization_executor_ready = True
+            except Exception as error:
+                logger.warning(
+                    f"GraphMaterializationExecutor initialization failed: "
+                    f"{error}"
+                )
+
             # Initialize Report Generation Executor (after forensic report
             # service + LLM). LLM may be None: recovery must still run and
             # real submissions fail durably with llm_unavailable. The
@@ -298,6 +321,7 @@ class ServiceManager:
             (self._migration_manager, "close"),
             (self._ingestion_job_manager, "shutdown"),
             (self._specialist_delegation_executor, "shutdown"),
+            (self._graph_materialization_executor, "shutdown"),
             (self._agent_orchestrator, "shutdown"),
             (self._event_refresh_executor, "shutdown"),
             (self._report_generation_executor, "shutdown"),
@@ -385,6 +409,7 @@ class ServiceManager:
     def _service_cleanup_plan(self) -> tuple[tuple[object | None, str], ...]:
         return (
             (self._specialist_delegation_executor, "shutdown"),
+            (self._graph_materialization_executor, "shutdown"),
             (self._agent_orchestrator, "shutdown"),
             (self._event_refresh_executor, "shutdown"),
             (self._report_generation_executor, "shutdown"),
@@ -409,6 +434,7 @@ class ServiceManager:
         self._report_generation_service = None
         self._agent_orchestrator = None
         self._specialist_delegation_executor = None
+        self._graph_materialization_executor = None
         self._event_refresh_executor = None
         self._report_generation_executor = None
         self._secondary_analysis_executor = None
@@ -813,6 +839,51 @@ class ServiceManager:
         if self._agent_orchestrator is None or not self._agent_orchestrator_ready:
             raise RuntimeError("agent orchestrator is unavailable")
         return self._agent_orchestrator
+
+    def _create_graph_materialization_executor(self):
+        """P6B: explicit-dispatch graph materialization executor. The
+        graph backend client is lazy-loaded on first execution - startup
+        never waits for Graphiti/Neo4j; initialize() performs recovery
+        only and never auto-ingests queued manifests."""
+        from .investigation.agent_graph_materializer import (
+            GraphMaterializationExecutor,
+        )
+
+        manager = self
+
+        async def _runtime_provider(task_id):
+            """Trusted per-task store resolution: paths come only from
+            the live task record, never a submit-time value."""
+            from .investigation.paths import (
+                investigation_db_path_for_task,
+            )
+            from .investigation.repository import (
+                InvestigationRepository,
+            )
+            from .investigation.agent_runtime import (
+                AgentRuntimeRepository,
+            )
+
+            task = await manager._cpp_backend.get_task(task_id)
+            if not task:
+                raise RuntimeError(f"task not found: {task_id}")
+            db_path = investigation_db_path_for_task(task)
+            return AgentRuntimeRepository(
+                InvestigationRepository(db_path, task_id)
+            )
+
+        def _backend_factory():
+            from .investigation.agent_graph_backend import FakeGraphBackend
+
+            graphiti = getattr(manager, "_graphiti_service", None)
+            if graphiti is None:
+                return FakeGraphBackend()
+            return FakeGraphBackend()
+
+        return GraphMaterializationExecutor(
+            runtime_provider=_runtime_provider,
+            backend_factory=_backend_factory,
+        )
 
     def _create_specialist_delegation_executor(self):
         """P4A specialist delegation executor over the P3 tool substrate.

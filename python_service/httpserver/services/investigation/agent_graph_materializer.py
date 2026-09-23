@@ -30,7 +30,6 @@ from .agent_graph_backend import (
     GraphBackend,
     GraphMaterializationAdapter,
 )
-from .agent_runtime import AgentRuntimeRepository
 
 EXECUTOR_VERSION = "graph-materialization-executor:v1"
 
@@ -53,14 +52,16 @@ class GraphMaterializationExecutor:
     def __init__(
         self,
         *,
-        runtime: AgentRuntimeRepository,
+        runtime_provider: Callable[[str], Any],
         backend: Optional[GraphBackend] = None,
         backend_factory: Optional[Callable[[], GraphBackend]] = None,
         finding_resolver: Optional[Callable[[str], Optional[Mapping]]] = None,
         evidence_resolver: Optional[Callable[[str], bool]] = None,
         max_parallel: int = 2,
     ):
-        self._runtime = runtime
+        # §28: the per-task trusted store is resolved lazily per dispatch
+        # through this provider (async (task_id) -> AgentRuntimeRepository)
+        self._runtime_provider = runtime_provider
         self._backend = backend
         self._backend_factory = backend_factory
         self._finding_resolver = finding_resolver
@@ -81,13 +82,21 @@ class GraphMaterializationExecutor:
 
     # -- lifecycle (§26/§27/§62) -----------------------------------------
 
-    def initialize(self) -> dict:
-        """Recovery ONLY: running -> failed(runtime_restart); queued stays
-        queued. No backend client is constructed, nothing auto-ingests."""
-        expired = self._runtime.fail_running_graph_materializations(
-            failure_code="GRAPH_RUNTIME_RESTART"
-        )
-        return {"running_failed": expired, "ingested": 0}
+    async def initialize(self, task_ids=()) -> dict:
+        """Recovery ONLY (§26/§27): running -> failed(runtime_restart)
+        for the given tasks; queued stays queued. No backend client is
+        constructed, nothing auto-ingests. The runtime sweep in P1 also
+        covers this via recover_interrupted_agent_runtime."""
+        failed = 0
+        for task_id in task_ids:
+            try:
+                runtime = await self._runtime_provider(task_id)
+            except Exception:
+                continue
+            failed += runtime.fail_running_graph_materializations(
+                failure_code="GRAPH_RUNTIME_RESTART"
+            )
+        return {"running_failed": failed, "ingested": 0}
 
     async def shutdown(self) -> None:
         """Stop dispatching; owned local state is dropped. No graph
@@ -97,17 +106,17 @@ class GraphMaterializationExecutor:
     # -- dispatch (§15) ---------------------------------------------------
 
     async def execute_batch(
-        self, pairs
+        self, jobs
     ) -> list[dict]:
-        """pairs: (investigation_id, materialization_id)."""
+        """jobs: (task_id, investigation_id, materialization_id)."""
         self._dispatching = True
         semaphore = asyncio.Semaphore(self.max_parallel)
 
-        async def _one(pair):
-            investigation_id, mid = pair
+        async def _one(job):
+            task_id, investigation_id, mid = job
             async with semaphore:
                 return await self.execute_materialization(
-                    investigation_id, mid
+                    task_id, investigation_id, mid
                 )
 
         try:
@@ -120,11 +129,20 @@ class GraphMaterializationExecutor:
             self._dispatching = False
 
     async def execute_materialization(
-        self, investigation_id: str, materialization_id: str
+        self, task_id: str, investigation_id: str, materialization_id: str
     ) -> dict:
-        runtime = self._runtime
-        # §20 task lifecycle: the trusted task-owned store must still hold
-        # this investigation before ANY execution step
+        # §20: resolve the trusted task-owned store NOW (never a
+        # submit-time path); failure here is task-gone, no terminal write
+        try:
+            runtime = await self._runtime_provider(task_id)
+        except Exception:
+            runtime = None
+        if runtime is None:
+            return {
+                "materialization_id": materialization_id,
+                "outcome": "skipped",
+                "failure_code": GRAPH_TASK_GONE,
+            }
         if runtime.get_investigation(investigation_id) is None:
             return {
                 "materialization_id": materialization_id,
@@ -151,14 +169,14 @@ class GraphMaterializationExecutor:
         )
         if episode is None:
             return await self._fail(
-                investigation_id, materialization_id,
+                runtime, investigation_id, materialization_id,
                 expected_status="running",
                 code=GRAPH_INPUT_INVALID,
                 detail="episode row missing",
             )
         if episode["input_hash"] != manifest["episode_hash"]:
             return await self._fail(
-                investigation_id, materialization_id,
+                runtime, investigation_id, materialization_id,
                 expected_status="running",
                 code=GRAPH_EPISODE_HASH_MISMATCH,
                 detail="frozen episode hash mismatch",
@@ -176,14 +194,14 @@ class GraphMaterializationExecutor:
             outcome = await backend.ingest(backend_episode)
         except Exception as exc:
             return await self._fail(
-                investigation_id, materialization_id,
+                runtime, investigation_id, materialization_id,
                 expected_status="running",
                 code=GRAPH_BACKEND_UNAVAILABLE,
                 detail=f"{type(exc).__name__}: {exc}"[:300],
             )
         if not outcome.success:
             return await self._fail(
-                investigation_id, materialization_id,
+                runtime, investigation_id, materialization_id,
                 expected_status="running",
                 code=outcome.failure_code or GRAPH_BACKEND_INGEST_FAILED,
                 detail="; ".join(outcome.errors)[:300],
@@ -195,14 +213,14 @@ class GraphMaterializationExecutor:
         )
         if not backend_ref:
             return await self._fail(
-                investigation_id, materialization_id,
+                runtime, investigation_id, materialization_id,
                 expected_status="running",
                 code=GRAPH_PROVENANCE_UNRESOLVED,
                 detail="backend episode ref unresolvable",
             )
 
         # §17-§19 completion-time canonical revalidation
-        invalidation = self._revalidate_canonical(episode)
+        invalidation = self._revalidate_canonical(episode, task_id=task_id)
         if invalidation is not None:
             target, reason = invalidation
             runtime.advance_graph_materialization(
@@ -244,7 +262,9 @@ class GraphMaterializationExecutor:
 
     # -- internals --------------------------------------------------------
 
-    def _revalidate_canonical(self, episode: Mapping) -> Optional[tuple]:
+    def _revalidate_canonical(
+        self, episode: Mapping, *, task_id: str
+    ) -> Optional[tuple]:
         """§17-§19: returns (target_status, reason) when completion-time
         canonical state forbids activation; None when still eligible."""
         findings = {
@@ -259,9 +279,7 @@ class GraphMaterializationExecutor:
         if self._evidence_resolver is not None:
             for ref in episode["evidence_refs"]:
                 try:
-                    if not self._evidence_resolver(
-                        self._runtime.task_id, ref
-                    ):
+                    if not self._evidence_resolver(task_id, ref):
                         return ("invalidated", "EVIDENCE_MISSING")
                 except Exception:
                     return ("invalidated", "EVIDENCE_MISSING")
@@ -275,6 +293,7 @@ class GraphMaterializationExecutor:
 
     async def _fail(
         self,
+        runtime,
         investigation_id: str,
         materialization_id: str,
         *,
@@ -282,7 +301,7 @@ class GraphMaterializationExecutor:
         code: str,
         detail: str,
     ) -> dict:
-        self._runtime.fail_graph_materialization(
+        runtime.fail_graph_materialization(
             investigation_id, materialization_id,
             expected_status=expected_status,
             failure_code=code,
