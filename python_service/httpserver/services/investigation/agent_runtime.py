@@ -4521,7 +4521,7 @@ class AgentRuntimeRepository:
 
     _MANIFEST_TRANSITIONS = {
         "queued": {"running", "invalidated"},
-        "running": {"active", "failed", "invalidated"},
+        "running": {"active", "failed", "invalidated", "stale"},
         "active": {"stale", "invalidated", "superseded"},
         "failed": {"superseded"},
         "stale": {"superseded"},
@@ -4839,6 +4839,365 @@ class AgentRuntimeRepository:
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
         }
+
+    # -------------------------------------------------------------------
+    # P6B graph materialization execution. Graph is a derived state plane:
+    # none of these primitives touch the Working State.
+    # -------------------------------------------------------------------
+
+    def claim_graph_materialization(
+        self, investigation_id: str, materialization_id: str
+    ) -> bool:
+        """\u00a759 atomic queued->running claim (CAS on status). A second
+        worker gets False and must not ingest."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            cursor = conn.execute(
+                "UPDATE agent_graph_materializations "
+                "SET status = 'running', started_at = ?, updated_at = ? "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND materialization_id = ? AND status = 'queued'",
+                [_now_iso(), _now_iso(), self.task_id, investigation_id,
+                 materialization_id],
+            )
+            claimed = bool(cursor.rowcount)
+            conn.commit()
+        if claimed:
+            self.append_trajectory(
+                investigation_id,
+                AgentTrajectoryEventType.graph_materialization_started,
+                payload={"materialization_id": materialization_id},
+            )
+        return claimed
+
+    def record_graph_backend_bindings(
+        self, investigation_id: str, rows, *, materialization_id: str
+    ) -> dict:
+        """\u00a731 append-only backend provenance bindings. backend object
+        refs are navigation identity only - never canonical ids."""
+        inserted = 0
+        import uuid as _uuid
+
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            for row in rows:
+                binding_id = row.get("binding_id") or (
+                    "gbind:" + _uuid.uuid4().hex[:20]
+                )
+                inserted += 1 if self._insert_or_replay(
+                    lambda row=row, binding_id=binding_id: conn.execute(
+                        "INSERT INTO agent_graph_backend_bindings "
+                        "(binding_id, task_id, investigation_id, "
+                        " materialization_id, backend_kind, "
+                        " backend_group_ref, backend_episode_ref, "
+                        " backend_episode_name, backend_object_kind, "
+                        " backend_object_ref, semantic_unit_id, "
+                        " provenance_json, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            binding_id, self.task_id, investigation_id,
+                            materialization_id,
+                            row.get("backend_kind", "graphiti"),
+                            row.get("backend_group_ref"),
+                            row.get("backend_episode_ref"),
+                            row.get("backend_episode_name"),
+                            row.get("backend_object_kind"),
+                            row.get("backend_object_ref"),
+                            row.get("semantic_unit_id"),
+                            canonical_state_json(dict(
+                                row.get("provenance", {})
+                            )),
+                            _now_iso(),
+                        ],
+                    )
+                ) else 0
+            conn.commit()
+        return {"binding_count": len(rows), "inserted_count": inserted}
+
+    def list_graph_backend_bindings(
+        self, investigation_id: str, *, materialization_id: Optional[str] = None
+    ) -> list[dict]:
+        sql = (
+            "SELECT * FROM agent_graph_backend_bindings "
+            "WHERE task_id = ? AND investigation_id = ?"
+        )
+        params: list = [self.task_id, investigation_id]
+        if materialization_id is not None:
+            sql += " AND materialization_id = ?"
+            params.append(materialization_id)
+        sql += " ORDER BY binding_row_id"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        bindings = []
+        for row in rows:
+            bindings.append({
+                "binding_id": row["binding_id"],
+                "materialization_id": row["materialization_id"],
+                "backend_kind": row["backend_kind"],
+                "backend_group_ref": row["backend_group_ref"],
+                "backend_episode_ref": row["backend_episode_ref"],
+                "backend_episode_name": row["backend_episode_name"],
+                "backend_object_kind": row["backend_object_kind"],
+                "backend_object_ref": row["backend_object_ref"],
+                "semantic_unit_id": row["semantic_unit_id"],
+                "provenance": json.loads(row["provenance_json"]),
+                "created_at": row["created_at"],
+            })
+        return bindings
+
+    def activate_graph_materialization(
+        self,
+        investigation_id: str,
+        materialization_id: str,
+        *,
+        expected_episode_hash: str,
+        bindings,
+        backend_episode_ref: Optional[str] = None,
+    ) -> dict:
+        """\u00a781 atomic activation: revalidate running + episode hash +
+        canonical eligibility, INSERT bindings, manifest -> active, and
+        trajectory in ONE transaction. Bindings exist before active or
+        the unit rolls back."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            try:
+                row = conn.execute(
+                    "SELECT status, episode_hash "
+                    "FROM agent_graph_materializations "
+                    "WHERE task_id = ? AND investigation_id = ? "
+                    "AND materialization_id = ?",
+                    [self.task_id, investigation_id, materialization_id],
+                ).fetchone()
+                if row is None:
+                    raise ValueError("unknown materialization")
+                if row["status"] != "running":
+                    raise AgentRuntimeConflictError(
+                        f"manifest is {row['status']!r}, expected running"
+                    )
+                if row["episode_hash"] != expected_episode_hash:
+                    raise AgentRuntimeConflictError(
+                        "episode hash mismatch at activation"
+                    )
+                for index, binding in enumerate(bindings):
+                    conn.execute(
+                        "INSERT OR IGNORE INTO agent_graph_backend_bindings "
+                        "(binding_id, task_id, investigation_id, "
+                        " materialization_id, backend_kind, "
+                        " backend_group_ref, backend_episode_ref, "
+                        " backend_episode_name, backend_object_kind, "
+                        " backend_object_ref, semantic_unit_id, "
+                        " provenance_json, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            binding.get("binding_id")
+                            or f"gbind:{materialization_id}:{index}",
+                            self.task_id, investigation_id,
+                            materialization_id,
+                            binding.get("backend_kind", "graphiti"),
+                            binding.get("backend_group_ref"),
+                            binding.get("backend_episode_ref"),
+                            binding.get("backend_episode_name"),
+                            binding.get("backend_object_kind"),
+                            binding.get("backend_object_ref"),
+                            binding.get("semantic_unit_id"),
+                            canonical_state_json(dict(
+                                binding.get("provenance", {})
+                            )),
+                            _now_iso(),
+                        ],
+                    )
+                cursor = conn.execute(
+                    "UPDATE agent_graph_materializations "
+                    "SET status = 'active', activated_at = ?, updated_at = ?"
+                    " WHERE materialization_id = ? AND status = 'running'",
+                    [_now_iso(), _now_iso(), materialization_id],
+                )
+                if not cursor.rowcount:
+                    raise AgentRuntimeConflictError(
+                        "manifest left running before activation"
+                    )
+                self._append_trajectory_with_conn(
+                    conn, investigation_id,
+                    AgentTrajectoryEventType.
+                    graph_materialization_activated,
+                    payload={"materialization_id": materialization_id},
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return {"materialization_id": materialization_id, "status": "active"}
+
+    def fail_graph_materialization(
+        self,
+        investigation_id: str,
+        materialization_id: str,
+        *,
+        expected_status: str,
+        expected_episode_hash: Optional[str] = None,
+        failure_code: str,
+        failure_summary: str = "",
+    ) -> dict:
+        """\u00a782/\u00a783 guarded failure: compare expected current state
+        (and episode hash) so a late worker can never overwrite a newer
+        logical state (invalidated/stale/superseded stay untouched)."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            row = conn.execute(
+                "SELECT status, episode_hash "
+                "FROM agent_graph_materializations "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND materialization_id = ?",
+                [self.task_id, investigation_id, materialization_id],
+            ).fetchone()
+            if row is None:
+                raise ValueError("unknown materialization")
+            if row["status"] != expected_status:
+                raise AgentRuntimeConflictError(
+                    f"manifest moved: {row['status']!r} != expected "
+                    f"{expected_status!r}"
+                )
+            if (
+                expected_episode_hash is not None
+                and row["episode_hash"] != expected_episode_hash
+            ):
+                raise AgentRuntimeConflictError("episode hash mismatch")
+            cursor = conn.execute(
+                "UPDATE agent_graph_materializations "
+                "SET status = 'failed', failure_code = ?, "
+                " failure_summary = ?, terminal_at = ?, updated_at = ? "
+                "WHERE materialization_id = ? AND status = ?",
+                [
+                    failure_code, failure_summary[:300], _now_iso(),
+                    _now_iso(), materialization_id, expected_status,
+                ],
+            )
+            if not cursor.rowcount:
+                raise AgentRuntimeConflictError("failure claim lost")
+            self._append_trajectory_with_conn(
+                conn, investigation_id,
+                AgentTrajectoryEventType.graph_materialization_failed,
+                payload={
+                    "materialization_id": materialization_id,
+                    "failure_code": failure_code,
+                },
+            )
+            conn.commit()
+        return {"materialization_id": materialization_id,
+                "status": "failed"}
+
+    def retry_graph_materialization(
+        self,
+        investigation_id: str,
+        old_materialization_id: str,
+        *,
+        transient_only: bool = True,
+    ) -> dict:
+        """\u00a722-\u00a725: retry creates a NEW attempt row; the failed row
+        never returns to running. Only transient backend failures on
+        failed manifests retry; invalidated/stale/superseded and
+        provenance failures need a new semantic episode instead."""
+        transient = {
+            "GRAPH_BACKEND_UNAVAILABLE", "GRAPH_BACKEND_AUTH_FAILED",
+            "GRAPH_BACKEND_TIMEOUT", "GRAPH_BACKEND_RATE_LIMITED",
+            "GRAPH_BACKEND_INGEST_FAILED", "GRAPH_RUNTIME_RESTART",
+        }
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            old = conn.execute(
+                "SELECT * FROM agent_graph_materializations "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND materialization_id = ?",
+                [self.task_id, investigation_id, old_materialization_id],
+            ).fetchone()
+            if old is None:
+                raise ValueError("unknown materialization")
+            if old["status"] != "failed":
+                raise AgentRuntimeConflictError(
+                    f"only failed manifests retry, got {old['status']!r}"
+                )
+            if transient_only and old["failure_code"] not in transient:
+                raise AgentRuntimeConflictError(
+                    f"failure {old['failure_code']!r} is not retryable"
+                )
+            existing = conn.execute(
+                "SELECT materialization_id, attempt_no "
+                "FROM agent_graph_materializations "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND retry_of_materialization_id = ?",
+                [self.task_id, investigation_id, old_materialization_id],
+            ).fetchone()
+            if existing is not None:
+                # §24: identical retry replay returns the SAME attempt
+                conn.commit()
+                return {
+                    "materialization_id": existing["materialization_id"],
+                    "attempt_no": int(existing["attempt_no"]),
+                    "retry_of": old_materialization_id,
+                }
+            cursor = conn.execute(
+                "SELECT COALESCE(MAX(attempt_no), 0) AS max_attempt "
+                "FROM agent_graph_materializations "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND episode_id = ?",
+                [self.task_id, investigation_id, old["episode_id"]],
+            ).fetchone()
+            attempt_no = int(cursor["max_attempt"]) + 1
+            retry_id = old["materialization_id"] + f":r{attempt_no}"
+            conn.execute(
+                "INSERT INTO agent_graph_materializations "
+                "(materialization_id, task_id, investigation_id, "
+                " episode_id, episode_hash, backend_kind, status, "
+                " attempt_no, retry_of_materialization_id, queued_at, "
+                " input_hash, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?)",
+                [
+                    retry_id, self.task_id, investigation_id,
+                    old["episode_id"], old["episode_hash"],
+                    old["backend_kind"], attempt_no,
+                    old_materialization_id, _now_iso(),
+                    old["input_hash"], _now_iso(), _now_iso(),
+                ],
+            )
+            self._append_trajectory_with_conn(
+                conn, investigation_id,
+                AgentTrajectoryEventType.graph_materialization_retry_queued,
+                payload={
+                    "materialization_id": retry_id,
+                    "retry_of": old_materialization_id,
+                    "attempt_no": attempt_no,
+                },
+            )
+            conn.commit()
+        return {
+            "materialization_id": retry_id,
+            "attempt_no": attempt_no,
+            "retry_of": old_materialization_id,
+        }
+
+    def fail_running_graph_materializations(
+        self, *, failure_code: str = "GRAPH_RUNTIME_RESTART"
+    ) -> int:
+        """\u00a726 restart: running materializations fail explicitly
+        (runtime_restart); queued stay queued for explicit dispatch."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            cursor = conn.execute(
+                "UPDATE agent_graph_materializations "
+                "SET status = 'failed', failure_code = ?, "
+                " failure_summary = 'service restart', terminal_at = ?, "
+                " updated_at = ? "
+                "WHERE task_id = ? AND status = 'running'",
+                [failure_code, _now_iso(), _now_iso(), self.task_id],
+            )
+            changed = cursor.rowcount or 0
+            conn.commit()
+        return changed
 
     def record_delegation_result(
         self,

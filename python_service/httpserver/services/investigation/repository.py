@@ -2140,6 +2140,8 @@ CREATE TABLE IF NOT EXISTS agent_graph_materializations (
     failure_code TEXT,
     failure_summary TEXT,
     supersedes_materialization_id TEXT,
+    attempt_no INTEGER NOT NULL DEFAULT 1,
+    retry_of_materialization_id TEXT,
     queued_at TEXT NOT NULL,
     started_at TEXT,
     activated_at TEXT,
@@ -2160,7 +2162,7 @@ WHEN NEW.status IS NOT OLD.status
  AND ((OLD.status = 'queued'
        AND NEW.status NOT IN ('running','invalidated'))
    OR (OLD.status = 'running'
-       AND NEW.status NOT IN ('active','failed','invalidated'))
+       AND NEW.status NOT IN ('active','failed','invalidated','stale'))
    OR (OLD.status = 'active'
        AND NEW.status NOT IN ('stale','invalidated','superseded'))
    OR (OLD.status = 'failed'
@@ -2483,6 +2485,7 @@ _REQUIRED_AGENT_GRAPH_MATERIALIZATION_COLUMNS = {
     "backend_target_digest", "status", "failure_code", "failure_summary",
     "supersedes_materialization_id", "queued_at", "started_at",
     "activated_at", "terminal_at", "input_hash", "created_at", "updated_at",
+    "attempt_no", "retry_of_materialization_id",
 }
 
 _REQUIRED_AGENT_GRAPH_BACKEND_BINDING_COLUMNS = {

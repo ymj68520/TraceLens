@@ -21,10 +21,11 @@ _PRODUCTION_DIR = (
 # P6A legitimately introduces GraphCandidate/GraphAdmissionPolicy/
 # ForensicGraphEpisode; the remaining forbidden set covers the P6B/P7
 # execution boundary (no backend materializer, no report runtime).
+# P6B legitimately introduces the GraphMaterializationExecutor; the
+# remaining forbidden set covers the P7 report runtime boundary.
 _FORBIDDEN_DEFINITIONS = re.compile(
     r"^\s*(?:class|def)\s+("
-    r"GraphMaterializationExecutor|GraphitiMaterializer|"
-    r"Neo4jWriter|ReportRuntime"
+    r"ReportRuntime|ReportWriter|ChapterPlanner|ReportOutlinePlan"
     r")\b",
     re.MULTILINE,
 )
