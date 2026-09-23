@@ -120,6 +120,10 @@ class AgentTrajectoryEventType(str, Enum):
     # P4B (§35 minimal v12): supervisor decision audit events.
     supervisor_plan_decided = "supervisor_plan_decided"
     supervisor_integration_committed = "supervisor_integration_committed"
+    # P5A (§48 minimal v13): deterministic grounding-foundation audit events.
+    entity_occurrences_recorded = "entity_occurrences_recorded"
+    correlation_candidates_recorded = "correlation_candidates_recorded"
+    claim_grounding_recorded = "claim_grounding_recorded"
 
 
 # Application-side transition tables; the identically-shaped DB triggers are
@@ -407,6 +411,26 @@ class DelegationResult(BaseModel):
     model_config_hash: Optional[str]
     usage: Optional[dict]
     validation_status: str
+    created_at: str
+
+
+class DelegationEvidenceScope(BaseModel):
+    """Durable ContextPack initial-evidence scope of one delegation (P5A §33).
+
+    The visibility authority is ContextPack initial refs ∪ successful
+    ToolObservation refs. Observations were always durable; from v13 the
+    initial refs are durable too, so grounding visibility can be rebuilt
+    identically after a restart."""
+
+    model_config = ConfigDict(frozen=True)
+
+    scope_row_id: int
+    task_id: str
+    investigation_id: str
+    delegation_id: str
+    initial_evidence_refs: tuple[str, ...]
+    allowed_refs_hash: str
+    input_hash: str
     created_at: str
 
 
@@ -2162,6 +2186,197 @@ class AgentRuntimeRepository:
                 [self.task_id, delegation_id],
             ).fetchone()
         return self._row_to_delegation_result(stored) if stored else None
+
+    # -------------------------------------------------------------------
+    # P5A grounding-foundation persistence (schema v13). Append-only domain
+    # rows; every primitive accepts repository-shaped mappings so the
+    # persistence layer stays deterministic and import-cycle free.
+    # -------------------------------------------------------------------
+
+    def record_entity_occurrences(
+        self,
+        investigation_id: str,
+        rows: Sequence[Mapping[str, Any]],
+        *,
+        run_id: Optional[str] = None,
+        delegation_id: Optional[str] = None,
+        append_trajectory: bool = True,
+    ) -> dict:
+        """Append-only EntityOccurrence recording, idempotent by occurrence_id.
+
+        `rows` are ``EntityOccurrenceV1.to_row()`` mappings. The first insert
+        of an occurrence_id wins; replaying identical content is a no-op.
+        ``verification_status`` is enforced to 'verified' by the table CHECK.
+        The trajectory event carries counts only — never entity values."""
+        required = (
+            "occurrence_id", "source_scope_id", "evidence_ref", "entity_type",
+            "raw_value", "normalized_value", "match_key", "namespace", "role",
+            "source_field", "extraction_method", "input_hash",
+        )
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            if run_id is not None:
+                self._require_run_with_conn(conn, run_id, investigation_id)
+            if delegation_id is not None:
+                self._require_delegation_with_conn(
+                    conn, delegation_id, investigation_id
+                )
+            inserted = 0
+            for row in rows:
+                missing = sorted(
+                    key for key in required if not str(row.get(key) or "").strip()
+                )
+                if missing:
+                    raise ValueError(
+                        "entity occurrence missing required fields: " f"{missing}"
+                    )
+                temporal = row.get("temporal")
+                provenance = row.get("provenance")
+                cursor = conn.execute(
+                    "INSERT OR IGNORE INTO agent_entity_occurrences "
+                    "(occurrence_id, task_id, investigation_id, source_scope_id, "
+                    " evidence_ref, entity_type, raw_value, normalized_value, "
+                    " match_key, namespace, role, temporal_json, source_field, "
+                    " extraction_method, verification_status, provenance_json, "
+                    " input_hash, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        row["occurrence_id"], self.task_id, investigation_id,
+                        row["source_scope_id"], row["evidence_ref"],
+                        row["entity_type"], row["raw_value"],
+                        row["normalized_value"], row["match_key"],
+                        row["namespace"], row["role"],
+                        canonical_state_json(dict(temporal))
+                        if temporal is not None else None,
+                        row["source_field"], row["extraction_method"],
+                        row.get("verification_status") or "verified",
+                        canonical_state_json(dict(provenance))
+                        if provenance else None,
+                        row["input_hash"], _now_iso(),
+                    ],
+                )
+                if cursor.rowcount and cursor.rowcount > 0:
+                    inserted += cursor.rowcount
+            if append_trajectory:
+                self._append_trajectory_with_conn(
+                    conn, investigation_id,
+                    AgentTrajectoryEventType.entity_occurrences_recorded,
+                    run_id=run_id, delegation_id=delegation_id,
+                    payload={
+                        "occurrence_count": len(rows),
+                        "inserted_count": inserted,
+                        "duplicate_count": len(rows) - inserted,
+                    },
+                )
+            conn.commit()
+        return {
+            "occurrence_count": len(rows),
+            "inserted_count": inserted,
+            "duplicate_count": len(rows) - inserted,
+        }
+
+    def list_entity_occurrences(self, investigation_id: str) -> list[dict]:
+        """All durable occurrences of one investigation, insertion order."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM agent_entity_occurrences "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "ORDER BY occurrence_row_id",
+                [self.task_id, investigation_id],
+            ).fetchall()
+        occurrences: list[dict] = []
+        for row in rows:
+            occurrence = dict(row)
+            occurrence["temporal"] = (
+                json.loads(row["temporal_json"])
+                if row["temporal_json"] else None
+            )
+            occurrence["provenance"] = (
+                json.loads(row["provenance_json"])
+                if row["provenance_json"] else {}
+            )
+            occurrences.append(occurrence)
+        return occurrences
+
+    def record_delegation_evidence_scope(
+        self,
+        investigation_id: str,
+        delegation_id: str,
+        *,
+        initial_evidence_refs: Sequence[str],
+        input_hash: str,
+    ) -> DelegationEvidenceScope:
+        """Freeze one delegation's ContextPack initial evidence scope.
+
+        INSERT-once per (task, investigation, delegation): replaying identical
+        content returns the durable row; replaying under a different
+        ``input_hash`` is a fail-closed conflict."""
+        ordered = tuple(sorted({ref for ref in initial_evidence_refs if ref}))
+        allowed_refs_hash = state_hash_of(
+            {"initial_evidence_refs": list(ordered)}
+        )
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            self._require_delegation_with_conn(conn, delegation_id, investigation_id)
+            stored = conn.execute(
+                "SELECT * FROM agent_delegation_evidence_scopes "
+                "WHERE task_id = ? AND investigation_id = ? AND delegation_id = ?",
+                [self.task_id, investigation_id, delegation_id],
+            ).fetchone()
+            if stored is not None:
+                scope = self._row_to_evidence_scope(stored)
+                if scope.input_hash != input_hash:
+                    raise AgentRuntimeConflictError(
+                        "delegation evidence scope replay mismatch for "
+                        f"{delegation_id!r}"
+                    )
+                conn.commit()
+                return scope
+            conn.execute(
+                "INSERT INTO agent_delegation_evidence_scopes "
+                "(task_id, investigation_id, delegation_id, "
+                " initial_evidence_refs_json, allowed_refs_hash, input_hash, "
+                " created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    self.task_id, investigation_id, delegation_id,
+                    canonical_state_json({"refs": list(ordered)}),
+                    allowed_refs_hash, input_hash, _now_iso(),
+                ],
+            )
+            stored = conn.execute(
+                "SELECT * FROM agent_delegation_evidence_scopes "
+                "WHERE task_id = ? AND investigation_id = ? AND delegation_id = ?",
+                [self.task_id, investigation_id, delegation_id],
+            ).fetchone()
+            conn.commit()
+        return self._row_to_evidence_scope(stored)
+
+    def get_delegation_evidence_scope(
+        self, delegation_id: str
+    ) -> Optional[DelegationEvidenceScope]:
+        with self._connect() as conn:
+            stored = conn.execute(
+                "SELECT * FROM agent_delegation_evidence_scopes "
+                "WHERE task_id = ? AND delegation_id = ?",
+                [self.task_id, delegation_id],
+            ).fetchone()
+        return self._row_to_evidence_scope(stored) if stored else None
+
+    @staticmethod
+    def _row_to_evidence_scope(row: sqlite3.Row) -> DelegationEvidenceScope:
+        refs = json.loads(row["initial_evidence_refs_json"]).get("refs", [])
+        return DelegationEvidenceScope(
+            scope_row_id=int(row["scope_row_id"]),
+            task_id=row["task_id"],
+            investigation_id=row["investigation_id"],
+            delegation_id=row["delegation_id"],
+            initial_evidence_refs=tuple(str(ref) for ref in refs),
+            allowed_refs_hash=row["allowed_refs_hash"],
+            input_hash=row["input_hash"],
+            created_at=row["created_at"],
+        )
 
     def record_delegation_result(
         self,

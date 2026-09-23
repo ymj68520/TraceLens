@@ -100,7 +100,7 @@ class AnalysisBindingConflictError(RuntimeError):
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 12
+SUPPORTED_SCHEMA_VERSION = 13
 
 # ---------------------------------------------------------------------------
 # DDL: evidence_snapshots (v1, unchanged)
@@ -779,7 +779,9 @@ CREATE TABLE IF NOT EXISTS agent_trajectory_events (
         'no_progress_detected','finalization_requested','finalization_denied',
         'finalization_stale','finalization_completed',
         'tool_observation_recorded',
-        'supervisor_plan_decided','supervisor_integration_committed')),
+        'supervisor_plan_decided','supervisor_integration_committed',
+        'entity_occurrences_recorded','correlation_candidates_recorded',
+        'claim_grounding_recorded')),
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
     UNIQUE(task_id, event_id),
@@ -1471,6 +1473,231 @@ CREATE TABLE agent_trajectory_events_v12_rebuild (
 )
 """
 
+# -------------------------------------------------------------------------
+# DDL: P5A grounding-foundation persistence (v13, append-only domain rows).
+#
+# Hard schema constraints (P5A §49): NO verifier result table, NO assertion
+# disposition table, NO review_pending Finding table, NO Graph table. Every
+# table below is INSERT-only with a composite FK back to agent_investigations
+# and a deterministic content-addressed natural id.
+# -------------------------------------------------------------------------
+
+_CREATE_AGENT_ENTITY_OCCURRENCES_SQL = """
+CREATE TABLE IF NOT EXISTS agent_entity_occurrences (
+    occurrence_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    occurrence_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    source_scope_id TEXT NOT NULL,
+    evidence_ref TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    raw_value TEXT NOT NULL,
+    normalized_value TEXT NOT NULL,
+    match_key TEXT NOT NULL,
+    namespace TEXT NOT NULL,
+    role TEXT NOT NULL,
+    temporal_json TEXT,
+    source_field TEXT NOT NULL,
+    extraction_method TEXT NOT NULL,
+    verification_status TEXT NOT NULL CHECK(verification_status IN ('verified')),
+    provenance_json TEXT,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, occurrence_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_CORRELATION_CANDIDATES_SQL = """
+CREATE TABLE IF NOT EXISTS agent_correlation_candidates (
+    correlation_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    correlation_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    relation_family TEXT NOT NULL,
+    subject_ref TEXT NOT NULL,
+    object_ref TEXT NOT NULL,
+    derivation TEXT NOT NULL CHECK(derivation IN
+        ('artifact_explicit','deterministic_match')),
+    assertion_hint TEXT NOT NULL CHECK(assertion_hint IN
+        ('observed','inference','hypothesis')),
+    evidence_refs_json TEXT NOT NULL,
+    support_types_json TEXT NOT NULL,
+    temporal_relation_json TEXT,
+    limitations_json TEXT NOT NULL,
+    causal_status TEXT NOT NULL CHECK(causal_status IN
+        ('not_assessed','non_causal','causal_hypothesis')),
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, correlation_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_CLAIM_PROPOSALS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_claim_proposals (
+    proposal_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proposal_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    source_question_ids_json TEXT NOT NULL,
+    source_delegation_id TEXT,
+    source_result_hash TEXT,
+    source_candidate_id TEXT,
+    text TEXT NOT NULL,
+    assertion_class TEXT NOT NULL CHECK(assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    evidence_refs_json TEXT NOT NULL,
+    relationship_refs_json TEXT NOT NULL,
+    temporal_scope_json TEXT,
+    limitations_json TEXT NOT NULL,
+    normalization_warnings_json TEXT NOT NULL,
+    normalizer_version TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, proposal_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_GROUNDING_RESULTS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_grounding_results (
+    grounding_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    grounding_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    proposal_id TEXT NOT NULL,
+    grounding_version INTEGER NOT NULL,
+    input_assertion_class TEXT NOT NULL CHECK(input_assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    effective_assertion_class TEXT NOT NULL CHECK(effective_assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    status TEXT NOT NULL CHECK(status IN
+        ('grounded','partially_grounded','ungrounded','invalid')),
+    valid_evidence_refs_json TEXT NOT NULL,
+    invalid_evidence_refs_json TEXT NOT NULL,
+    invisible_evidence_refs_json TEXT NOT NULL,
+    disallowed_ref_types_json TEXT NOT NULL,
+    warnings_json TEXT NOT NULL,
+    limitations_json TEXT NOT NULL,
+    validator_version TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, grounding_id),
+    UNIQUE(task_id, investigation_id, proposal_id, grounding_version),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_EVIDENCE_SUPPORT_BUNDLES_SQL = """
+CREATE TABLE IF NOT EXISTS agent_evidence_support_bundles (
+    bundle_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bundle_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    proposal_id TEXT NOT NULL,
+    grounding_id TEXT NOT NULL,
+    grounding_status TEXT NOT NULL CHECK(grounding_status IN
+        ('grounded','partially_grounded','ungrounded','invalid')),
+    effective_assertion_class TEXT NOT NULL CHECK(effective_assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    claim_text TEXT NOT NULL,
+    evidence_items_json TEXT NOT NULL,
+    relationship_refs_json TEXT NOT NULL,
+    temporal_scope_json TEXT,
+    limitations_json TEXT NOT NULL,
+    warnings_json TEXT NOT NULL,
+    source_question_ids_json TEXT NOT NULL,
+    hydration_policy TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, bundle_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+# P5A §33: ContextPack initial evidence refs are part of the visibility
+# authority, so they must survive restarts. Only context_hash was durable
+# before v13; this row freezes one delegation's initial evidence scope once.
+_CREATE_AGENT_DELEGATION_EVIDENCE_SCOPES_SQL = """
+CREATE TABLE IF NOT EXISTS agent_delegation_evidence_scopes (
+    scope_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    delegation_id TEXT NOT NULL,
+    initial_evidence_refs_json TEXT NOT NULL,
+    allowed_refs_hash TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, delegation_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
+_P5A_APPEND_ONLY_TABLES = (
+    "agent_entity_occurrences",
+    "agent_correlation_candidates",
+    "agent_claim_proposals",
+    "agent_grounding_results",
+    "agent_evidence_support_bundles",
+    "agent_delegation_evidence_scopes",
+)
+
+
+def _append_only_trigger_sql(table: str) -> tuple[str, str]:
+    """Frozen append-only guard pair for one P5A domain table."""
+    return (
+        f"CREATE TRIGGER IF NOT EXISTS trg_{table}_no_update "
+        f"BEFORE UPDATE ON {table} "
+        f"BEGIN SELECT RAISE(ABORT, '{table} is append-only'); END",
+        f"CREATE TRIGGER IF NOT EXISTS trg_{table}_no_delete "
+        f"BEFORE DELETE ON {table} "
+        f"BEGIN SELECT RAISE(ABORT, '{table} is append-only'); END",
+    )
+
+
+_CREATE_AGENT_TRAJECTORY_EVENTS_V13_REBUILD_SQL = """
+CREATE TABLE agent_trajectory_events_v13_rebuild (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    delegation_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'investigation_created','run_admitted','run_started','run_completed',
+        'run_failed','run_cancelled','delegation_admitted','delegation_started',
+        'delegation_completed','delegation_failed','delegation_cancelled',
+        'delegation_stale','working_state_committed','runtime_recovered',
+        'investigation_paused','investigation_completed','investigation_cancelled',
+        'attention_compiled','transition_decision_validated',
+        'transition_decision_rejected','working_state_integrated',
+        'no_progress_detected','finalization_requested','finalization_denied',
+        'finalization_stale','finalization_completed',
+        'tool_observation_recorded',
+        'supervisor_plan_decided','supervisor_integration_committed',
+        'entity_occurrences_recorded','correlation_candidates_recorded',
+        'claim_grounding_recorded')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, event_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
 _REQUIRED_AGENT_INVESTIGATION_COLUMNS = {
     "investigation_id", "task_id", "status", "pause_reason", "created_at",
     "updated_at", "completed_at", "cancelled_at",
@@ -1507,6 +1734,55 @@ _REQUIRED_AGENT_OBSERVATION_COLUMNS = {
     "observation_id", "task_id", "investigation_id", "run_id",
     "delegation_id", "tool_id", "summary", "result_json",
     "evidence_refs_json", "result_count", "truncated", "created_at",
+}
+
+_REQUIRED_AGENT_ENTITY_OCCURRENCE_COLUMNS = {
+    "occurrence_row_id", "occurrence_id", "task_id", "investigation_id",
+    "source_scope_id", "evidence_ref", "entity_type", "raw_value",
+    "normalized_value", "match_key", "namespace", "role", "temporal_json",
+    "source_field", "extraction_method", "verification_status",
+    "provenance_json", "input_hash", "created_at",
+}
+
+_REQUIRED_AGENT_CORRELATION_CANDIDATE_COLUMNS = {
+    "correlation_row_id", "correlation_id", "task_id", "investigation_id",
+    "relation_family", "subject_ref", "object_ref", "derivation",
+    "assertion_hint", "evidence_refs_json", "support_types_json",
+    "temporal_relation_json", "limitations_json", "causal_status",
+    "input_hash", "created_at",
+}
+
+_REQUIRED_AGENT_CLAIM_PROPOSAL_COLUMNS = {
+    "proposal_row_id", "proposal_id", "task_id", "investigation_id",
+    "source_question_ids_json", "source_delegation_id", "source_result_hash",
+    "source_candidate_id", "text", "assertion_class", "evidence_refs_json",
+    "relationship_refs_json", "temporal_scope_json", "limitations_json",
+    "normalization_warnings_json", "normalizer_version", "input_hash",
+    "created_at",
+}
+
+_REQUIRED_AGENT_GROUNDING_RESULT_COLUMNS = {
+    "grounding_row_id", "grounding_id", "task_id", "investigation_id",
+    "proposal_id", "grounding_version", "input_assertion_class",
+    "effective_assertion_class", "status", "valid_evidence_refs_json",
+    "invalid_evidence_refs_json", "invisible_evidence_refs_json",
+    "disallowed_ref_types_json", "warnings_json", "limitations_json",
+    "validator_version", "input_hash", "created_at",
+}
+
+_REQUIRED_AGENT_SUPPORT_BUNDLE_COLUMNS = {
+    "bundle_row_id", "bundle_id", "task_id", "investigation_id",
+    "proposal_id", "grounding_id", "grounding_status",
+    "effective_assertion_class", "claim_text", "evidence_items_json",
+    "relationship_refs_json", "temporal_scope_json", "limitations_json",
+    "warnings_json", "source_question_ids_json", "hydration_policy",
+    "input_hash", "created_at",
+}
+
+_REQUIRED_AGENT_EVIDENCE_SCOPE_COLUMNS = {
+    "scope_row_id", "task_id", "investigation_id", "delegation_id",
+    "initial_evidence_refs_json", "allowed_refs_hash", "input_hash",
+    "created_at",
 }
 
 _REQUIRED_SECONDARY_COLUMNS = {
@@ -1607,7 +1883,7 @@ class InvestigationRepository:
                 f"(supported: {SUPPORTED_SCHEMA_VERSION})"
             )
         try:
-            repo._validate_v12_schema()
+            repo._validate_v13_schema()
         except (sqlite3.DatabaseError, ValueError, EvidenceStoreError) as exc:
             raise EvidenceStoreError("investigation store schema is invalid") from exc
         return repo
@@ -1633,7 +1909,7 @@ class InvestigationRepository:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
             self._initialize_current_atomically()
-            self._validate_v12_schema()
+            self._validate_v13_schema()
         elif version == 1:
             self._migrate_v1_to_v4()
             self._migrate_v4_to_v5()
@@ -1644,7 +1920,8 @@ class InvestigationRepository:
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
-            self._validate_v12_schema()
+            self._migrate_v12_to_v13()
+            self._validate_v13_schema()
         elif version == 2:
             self._migrate_v2_to_v4()
             self._migrate_v4_to_v5()
@@ -1655,7 +1932,8 @@ class InvestigationRepository:
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
-            self._validate_v12_schema()
+            self._migrate_v12_to_v13()
+            self._validate_v13_schema()
         elif version == 3:
             self._migrate_v3_to_v4()
             self._migrate_v4_to_v5()
@@ -1666,7 +1944,8 @@ class InvestigationRepository:
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
-            self._validate_v12_schema()
+            self._migrate_v12_to_v13()
+            self._validate_v13_schema()
         elif version == 4:
             self._migrate_v4_to_v5()
             self._migrate_v5_to_v6()
@@ -1676,7 +1955,8 @@ class InvestigationRepository:
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
-            self._validate_v12_schema()
+            self._migrate_v12_to_v13()
+            self._validate_v13_schema()
         elif version == 5:
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
@@ -1685,7 +1965,8 @@ class InvestigationRepository:
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
-            self._validate_v12_schema()
+            self._migrate_v12_to_v13()
+            self._validate_v13_schema()
         elif version == 6:
             self._migrate_v6_to_v7()
             self._migrate_v7_to_v8()
@@ -1693,34 +1974,43 @@ class InvestigationRepository:
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
-            self._validate_v12_schema()
+            self._migrate_v12_to_v13()
+            self._validate_v13_schema()
         elif version == 7:
             self._migrate_v7_to_v8()
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
-            self._validate_v12_schema()
+            self._migrate_v12_to_v13()
+            self._validate_v13_schema()
         elif version == 8:
             self._migrate_v8_to_v9()
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
-            self._validate_v12_schema()
+            self._migrate_v12_to_v13()
+            self._validate_v13_schema()
         elif version == 9:
             self._migrate_v9_to_v10()
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
-            self._validate_v12_schema()
+            self._migrate_v12_to_v13()
+            self._validate_v13_schema()
         elif version == 10:
             self._migrate_v10_to_v11()
             self._migrate_v11_to_v12()
-            self._validate_v12_schema()
+            self._migrate_v12_to_v13()
+            self._validate_v13_schema()
         elif version == 11:
             self._migrate_v11_to_v12()
-            self._validate_v12_schema()
+            self._migrate_v12_to_v13()
+            self._validate_v13_schema()
+        elif version == 12:
+            self._migrate_v12_to_v13()
+            self._validate_v13_schema()
         elif version == SUPPORTED_SCHEMA_VERSION:
-            self._validate_v12_schema()
+            self._validate_v13_schema()
             self._ensure_v11_auxiliary_objects()
         else:
             raise EvidenceStoreError(
@@ -1841,6 +2131,7 @@ class InvestigationRepository:
             self._build_all_report_evidence_objects(conn)
             self._build_all_agent_runtime_objects(conn)
             self._build_all_agent_delegation_result_objects(conn)
+            self._build_all_p5a_persistence_objects(conn)
             conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
             conn.commit()
 
@@ -2134,6 +2425,118 @@ class InvestigationRepository:
                     "event type"
                 )
 
+    # -------------------------------------------------------------------
+    # P5A grounding-foundation persistence (v13)
+    # -------------------------------------------------------------------
+
+    def _build_all_p5a_persistence_objects(self, conn: sqlite3.Connection) -> None:
+        """Create the six P5A append-only domain tables + their guards."""
+        conn.execute(_CREATE_AGENT_ENTITY_OCCURRENCES_SQL)
+        conn.execute(_CREATE_AGENT_CORRELATION_CANDIDATES_SQL)
+        conn.execute(_CREATE_AGENT_CLAIM_PROPOSALS_SQL)
+        conn.execute(_CREATE_AGENT_GROUNDING_RESULTS_SQL)
+        conn.execute(_CREATE_AGENT_EVIDENCE_SUPPORT_BUNDLES_SQL)
+        conn.execute(_CREATE_AGENT_DELEGATION_EVIDENCE_SCOPES_SQL)
+        for table in _P5A_APPEND_ONLY_TABLES:
+            for statement in _append_only_trigger_sql(table):
+                conn.execute(statement)
+
+    def _migrate_v12_to_v13(self) -> None:
+        """v12 database: P5A grounding foundation (§49 minimal v13).
+
+        Two changes only: the trajectory event_type enum grows the three
+        P5A audit events (entity_occurrences_recorded,
+        correlation_candidates_recorded, claim_grounding_recorded), and the
+        six append-only P5A domain tables are added. No P4 table or guard is
+        rewritten; existing rows are copied verbatim by the rebuild."""
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_V13_REBUILD_SQL)
+            conn.execute(
+                "INSERT INTO agent_trajectory_events_v13_rebuild "
+                "(seq, event_id, task_id, investigation_id, run_id, "
+                " delegation_id, event_type, payload_json, created_at) "
+                "SELECT seq, event_id, task_id, investigation_id, run_id, "
+                "delegation_id, event_type, payload_json, created_at "
+                "FROM agent_trajectory_events"
+            )
+            conn.execute("DROP TABLE agent_trajectory_events")
+            conn.execute(
+                "ALTER TABLE agent_trajectory_events_v13_rebuild "
+                "RENAME TO agent_trajectory_events"
+            )
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+            self._build_all_p5a_persistence_objects(conn)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    def _validate_trajectory_event_type_v13(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type='table' AND name='agent_trajectory_events'"
+        ).fetchone()
+        sql = row["sql"] if row is not None else ""
+        for value in (
+            "entity_occurrences_recorded",
+            "correlation_candidates_recorded",
+            "claim_grounding_recorded",
+        ):
+            if value not in (sql or ""):
+                raise EvidenceStoreError(
+                    f"agent_trajectory_events is missing the v13 {value!r} "
+                    "event type"
+                )
+
+    def _validate_p5a_persistence_tables(self, conn: sqlite3.Connection) -> None:
+        """Validate the six P5A tables: columns, UNIQUE keys, append-only
+        guards. Fail closed on any missing piece."""
+        column_specs = (
+            ("agent_entity_occurrences", _REQUIRED_AGENT_ENTITY_OCCURRENCE_COLUMNS),
+            ("agent_correlation_candidates",
+             _REQUIRED_AGENT_CORRELATION_CANDIDATE_COLUMNS),
+            ("agent_claim_proposals", _REQUIRED_AGENT_CLAIM_PROPOSAL_COLUMNS),
+            ("agent_grounding_results", _REQUIRED_AGENT_GROUNDING_RESULT_COLUMNS),
+            ("agent_evidence_support_bundles",
+             _REQUIRED_AGENT_SUPPORT_BUNDLE_COLUMNS),
+            ("agent_delegation_evidence_scopes",
+             _REQUIRED_AGENT_EVIDENCE_SCOPE_COLUMNS),
+        )
+        for table, required in column_specs:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                [table],
+            ).fetchone()
+            if exists is None:
+                raise EvidenceStoreError(
+                    f"missing P5A persistence table: {table}"
+                )
+            cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            missing = required - cols
+            if missing:
+                raise EvidenceStoreError(
+                    f"{table} missing required columns: {sorted(missing)}"
+                )
+        for table in _P5A_APPEND_ONLY_TABLES:
+            for suffix in ("no_update", "no_delete"):
+                trigger = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?",
+                    [f"trg_{table}_{suffix}"],
+                ).fetchone()
+                if trigger is None:
+                    raise EvidenceStoreError(
+                        f"{table} missing append-only guard trg_{table}_{suffix}"
+                    )
+
+    def _validate_v13_schema(self) -> None:
+        self._validate_v12_schema()
+        with self._connect() as conn:
+            self._validate_trajectory_event_type_v13(conn)
+            self._validate_p5a_persistence_tables(conn)
+
+
     def _build_all_agent_runtime_objects_v8(self, conn: sqlite3.Connection) -> None:
         """v8-era builder (kept for the v7->v8 step of the frozen chain)."""
         conn.execute(_CREATE_AGENT_INVESTIGATIONS_SQL)
@@ -2184,6 +2587,7 @@ class InvestigationRepository:
             self._build_all_refresh_objects(conn)
             self._build_all_report_evidence_objects(conn)
             self._build_all_agent_runtime_objects(conn)
+            self._build_all_p5a_persistence_objects(conn)
             conn.commit()
 
     def _validate_v12_schema(self) -> None:
