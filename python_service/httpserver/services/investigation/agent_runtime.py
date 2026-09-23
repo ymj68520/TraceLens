@@ -4514,6 +4514,301 @@ class AgentRuntimeRepository:
             "created_at": row["created_at"],
         }
 
+    _MANIFEST_TRANSITIONS = {
+        "queued": {"running", "invalidated"},
+        "running": {"active", "failed", "invalidated"},
+        "active": {"stale", "invalidated", "superseded"},
+        "failed": {"superseded"},
+        "stale": {"superseded"},
+        "invalidated": set(),
+        "superseded": set(),
+    }
+
+    _MANIFEST_ENTER_TIMESTAMPS = {
+        "running": "started_at",
+        "active": "activated_at",
+        "failed": "terminal_at",
+        "stale": "terminal_at",
+        "invalidated": "terminal_at",
+        "superseded": "terminal_at",
+    }
+
+    def commit_graph_admission(
+        self,
+        investigation_id: str,
+        *,
+        decision_row: Mapping[str, Any],
+        episode_row: Optional[Mapping[str, Any]] = None,
+        manifest: Optional[Mapping[str, Any]] = None,
+        run_id: Optional[str] = None,
+    ) -> dict:
+        """\u00a726 atomic admission unit: immutable decision + (admit only)
+        frozen episode + queued manifest + trajectory in ONE transaction.
+        Replays are idempotent on all three natural ids; defer /
+        not_admitted persist only the decision."""
+        if (episode_row is None) != (manifest is None):
+            raise ValueError(
+                "admission unit requires episode and manifest together"
+            )
+        if episode_row is not None and manifest is not None:
+            if manifest["episode_id"] != episode_row["episode_id"]:
+                raise ValueError(
+                    "manifest does not match the frozen episode"
+                )
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            if run_id is not None:
+                self._require_run_with_conn(conn, run_id, investigation_id)
+            try:
+                decision_inserted = self._insert_or_replay(
+                    lambda: conn.execute(
+                        "INSERT INTO agent_graph_admission_decisions "
+                        "(decision_id, task_id, investigation_id, "
+                        " candidate_id, candidate_hash, decision, "
+                        " reason_codes_json, limitations_json, "
+                        " policy_version, policy_hash, "
+                        " resolved_provenance_json, input_hash, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            decision_row["decision_id"], self.task_id,
+                            investigation_id, decision_row["candidate_id"],
+                            decision_row["candidate_hash"],
+                            decision_row["decision"],
+                            canonical_state_json({"codes": list(
+                                decision_row["reason_codes"]
+                            )}),
+                            canonical_state_json({"limitations": list(
+                                decision_row["limitations"]
+                            )}),
+                            decision_row["policy_version"],
+                            decision_row["policy_hash"],
+                            canonical_state_json(dict(
+                                decision_row["resolved_provenance"]
+                            )),
+                            decision_row["input_hash"], _now_iso(),
+                        ],
+                    )
+                )
+                episode_inserted = False
+                manifest_inserted = False
+                if episode_row is not None:
+                    episode_inserted = self._insert_or_replay(
+                        lambda: conn.execute(
+                            "INSERT INTO agent_graph_episodes "
+                            "(episode_id, task_id, investigation_id, "
+                            " episode_version, candidate_ids_json, "
+                            " admission_decision_ids_json, "
+                            " semantic_units_json, evidence_refs_json, "
+                            " finding_refs_json, correlation_refs_json, "
+                            " occurrence_refs_json, review_statuses_json, "
+                            " provenance_manifest_json, source_revision, "
+                            " source_state_hash, policy_version, "
+                            " policy_hash, input_hash, created_at) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            self._graph_episode_row_params(
+                                investigation_id, episode_row
+                            ),
+                        )
+                    )
+                    manifest_inserted = self._insert_or_replay(
+                        lambda: conn.execute(
+                            "INSERT INTO agent_graph_materializations "
+                            "(materialization_id, task_id, "
+                            " investigation_id, episode_id, episode_hash, "
+                            " backend_kind, status, queued_at, input_hash, "
+                            " created_at, updated_at) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            [
+                                manifest["materialization_id"],
+                                self.task_id, investigation_id,
+                                manifest["episode_id"],
+                                manifest["episode_hash"],
+                                manifest["backend_kind"], "queued",
+                                _now_iso(), manifest["input_hash"],
+                                _now_iso(), _now_iso(),
+                            ],
+                        )
+                    )
+                    self._append_trajectory_with_conn(
+                        conn, investigation_id,
+                        AgentTrajectoryEventType.graph_episode_frozen,
+                        run_id=run_id,
+                        payload={
+                            "episode_id": episode_row["episode_id"],
+                            "decision_id": decision_row["decision_id"],
+                            "inserted": episode_inserted,
+                        },
+                    )
+                    self._append_trajectory_with_conn(
+                        conn, investigation_id,
+                        AgentTrajectoryEventType.
+                        graph_materialization_queued,
+                        run_id=run_id,
+                        payload={
+                            "materialization_id": manifest[
+                                "materialization_id"
+                            ],
+                            "episode_id": manifest["episode_id"],
+                            "inserted": manifest_inserted,
+                        },
+                    )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return {
+            "decision_inserted": decision_inserted,
+            "episode_inserted": episode_inserted,
+            "manifest_inserted": manifest_inserted,
+        }
+
+    def _graph_episode_row_params(
+        self, investigation_id: str, row: Mapping[str, Any]
+    ) -> list:
+        return [
+            row["episode_id"], self.task_id, investigation_id,
+            row["episode_version"],
+            canonical_state_json({"ids": list(row["candidate_ids"])}),
+            canonical_state_json({"ids": list(row["admission_decision_ids"])}),
+            canonical_state_json({"units": list(row["semantic_units"])}),
+            canonical_state_json({"refs": list(row["evidence_refs"])}),
+            canonical_state_json({"refs": list(row["finding_refs"])}),
+            canonical_state_json({"refs": list(row["correlation_refs"])}),
+            canonical_state_json({"refs": list(row["occurrence_refs"])}),
+            canonical_state_json(dict(row["review_statuses"])),
+            canonical_state_json({"manifest": list(row["provenance_manifest"])}),
+            row.get("source_revision"), row.get("source_state_hash"),
+            row["policy_version"], row["policy_hash"], row["input_hash"],
+            _now_iso(),
+        ]
+
+    def advance_graph_materialization(
+        self,
+        investigation_id: str,
+        materialization_id: str,
+        *,
+        to_status: str,
+        failure_code: Optional[str] = None,
+        failure_summary: Optional[str] = None,
+        supersedes_materialization_id: Optional[str] = None,
+    ) -> dict:
+        """Guarded manifest lifecycle advance (P6A \u00a729; the DB trigger is
+        the enforcing backstop). Terminal states never leave; retries are
+        NEW materialization attempts, not state loops."""
+        legal = self._MANIFEST_TRANSITIONS
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            row = conn.execute(
+                "SELECT status FROM agent_graph_materializations "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND materialization_id = ?",
+                [self.task_id, investigation_id, materialization_id],
+            ).fetchone()
+            if row is None:
+                raise ValueError(
+                    f"unknown graph materialization: {materialization_id!r}"
+                )
+            current = row["status"]
+            if to_status not in legal.get(current, set()):
+                raise ValueError(
+                    f"illegal manifest transition {current!r} -> "
+                    f"{to_status!r}"
+                )
+            stamp_column = self._MANIFEST_ENTER_TIMESTAMPS[to_status]
+            stamps = {
+                "started_at": None, "activated_at": None,
+                "terminal_at": None,
+            }
+            stamps[stamp_column] = _now_iso()
+            conn.execute(
+                "UPDATE agent_graph_materializations "
+                "SET status = ?, started_at = COALESCE(started_at, ?), "
+                " activated_at = COALESCE(activated_at, ?), "
+                " terminal_at = COALESCE(terminal_at, ?), "
+                " failure_code = ?, failure_summary = ?, "
+                " supersedes_materialization_id = COALESCE(?, "
+                " supersedes_materialization_id), updated_at = ? "
+                "WHERE materialization_id = ?",
+                [
+                    to_status,
+                    stamps["started_at"], stamps["activated_at"],
+                    stamps["terminal_at"],
+                    failure_code, failure_summary,
+                    supersedes_materialization_id, _now_iso(),
+                    materialization_id,
+                ],
+            )
+            if to_status == "invalidated":
+                self._append_trajectory_with_conn(
+                    conn, investigation_id,
+                    AgentTrajectoryEventType.
+                    graph_materialization_invalidated,
+                    payload={
+                        "materialization_id": materialization_id,
+                        "failure_code": failure_code,
+                    },
+                )
+            conn.commit()
+        return {
+            "materialization_id": materialization_id,
+            "status": to_status,
+        }
+
+    def get_graph_materialization(
+        self, investigation_id: str, materialization_id: str
+    ) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_graph_materializations "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND materialization_id = ?",
+                [self.task_id, investigation_id, materialization_id],
+            ).fetchone()
+        return self._manifest_row_to_dict(row) if row else None
+
+    def list_graph_materializations(
+        self, investigation_id: str, *, status: Optional[str] = None
+    ) -> list[dict]:
+        sql = (
+            "SELECT * FROM agent_graph_materializations "
+            "WHERE task_id = ? AND investigation_id = ?"
+        )
+        params: list = [self.task_id, investigation_id]
+        if status is not None:
+            sql += " AND status = ?"
+            params.append(status)
+        sql += " ORDER BY materialization_row_id"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._manifest_row_to_dict(r) for r in rows]
+
+    @staticmethod
+    def _manifest_row_to_dict(row: sqlite3.Row) -> dict:
+        return {
+            "materialization_id": row["materialization_id"],
+            "task_id": row["task_id"],
+            "investigation_id": row["investigation_id"],
+            "episode_id": row["episode_id"],
+            "episode_hash": row["episode_hash"],
+            "backend_kind": row["backend_kind"],
+            "backend_target_digest": row["backend_target_digest"],
+            "status": row["status"],
+            "failure_code": row["failure_code"],
+            "failure_summary": row["failure_summary"],
+            "supersedes_materialization_id": row[
+                "supersedes_materialization_id"
+            ],
+            "queued_at": row["queued_at"],
+            "started_at": row["started_at"],
+            "activated_at": row["activated_at"],
+            "terminal_at": row["terminal_at"],
+            "input_hash": row["input_hash"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
     def record_delegation_result(
         self,
         delegation_id: str,
