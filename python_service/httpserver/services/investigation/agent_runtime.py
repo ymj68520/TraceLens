@@ -85,6 +85,17 @@ class InvestigationPauseReason(str, Enum):
     finalization_review_unavailable = "finalization_review_unavailable"
 
 
+class VerificationObligationStatus(str, Enum):
+    """F1 durable mandatory-verification obligation lifecycle."""
+
+    pending = "pending"
+    running = "running"
+    satisfied = "satisfied"
+    failed = "failed"
+    unavailable = "unavailable"
+    safely_downgraded = "safely_downgraded"
+
+
 class AgentTrajectoryEventType(str, Enum):
     investigation_created = "investigation_created"
     run_admitted = "run_admitted"
@@ -3810,6 +3821,246 @@ class AgentRuntimeRepository:
                 raise
         return {"review_id": review_id, "decision": decision}
 
+    # -------------------------------------------------------------------
+    # F1: durable mandatory-verification obligations. The Working State's
+    # pending_verifications is NEVER written directly by P5; the control
+    # plane projects these durable rows into the state VIEW that
+    # AttentionBuilder and FinalizationGate read.
+    # -------------------------------------------------------------------
+
+    _OBLIGATION_TRANSITIONS = {
+        "pending": {"running", "satisfied", "failed", "unavailable",
+                    "safely_downgraded"},
+        "running": {"satisfied", "failed", "unavailable"},
+        "failed": {"running"},
+        # §8: a safe policy resolution explicitly terminates an
+        # unavailable/failed obligation (the retriable edges stay)
+        "unavailable": {"running", "safely_downgraded"},
+        "satisfied": set(),
+        "safely_downgraded": set(),
+    }
+
+    def record_verification_obligation(
+        self,
+        investigation_id: str,
+        *,
+        obligation_row: Mapping[str, Any],
+    ) -> dict:
+        """Idempotent obligation creation (same mandatory verification ->
+        same deterministic obligation_id -> no duplicate per cycle)."""
+        required_nonempty = (
+            "obligation_id", "proposal_id", "proposal_hash", "semantic_type",
+            "assertion_policy_version", "rule_id", "verification_mode",
+            "input_hash",
+        )
+        missing = sorted(
+            key for key in required_nonempty
+            if obligation_row.get(key) is None
+            or obligation_row.get(key) == ""
+        )
+        if missing:
+            raise ValueError(
+                f"verification obligation missing required fields: {missing}"
+            )
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            inserted = self._insert_or_replay(
+                lambda: conn.execute(
+                    "INSERT INTO agent_verification_obligations "
+                    "(obligation_id, task_id, investigation_id, "
+                    " proposal_id, proposal_hash, grounding_id, "
+                    " semantic_type, assertion_policy_version, rule_id, "
+                    " verification_mode, question_refs_json, status, "
+                    " input_hash, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        obligation_row["obligation_id"], self.task_id,
+                        investigation_id, obligation_row["proposal_id"],
+                        obligation_row["proposal_hash"],
+                        obligation_row.get("grounding_id"),
+                        obligation_row["semantic_type"],
+                        obligation_row["assertion_policy_version"],
+                        obligation_row["rule_id"],
+                        obligation_row["verification_mode"],
+                        canonical_state_json({"refs": list(
+                            obligation_row.get("question_refs", ())
+                        )}),
+                        obligation_row.get("status") or "pending",
+                        obligation_row["input_hash"], _now_iso(),
+                        _now_iso(),
+                    ],
+                )
+            )
+            conn.commit()
+        return {"inserted": inserted}
+
+    def advance_verification_obligation(
+        self,
+        investigation_id: str,
+        obligation_id: str,
+        *,
+        to_status: "VerificationObligationStatus",
+        verification_id: Optional[str] = None,
+        disposition_id: Optional[str] = None,
+        failure_code: Optional[str] = None,
+    ) -> dict:
+        """Guarded deterministic state advance; illegal transitions raise
+        (the DB trigger is the enforcing backstop)."""
+        target = (
+            to_status.value if hasattr(to_status, "value")
+            else str(to_status)
+        )
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_investigation_with_conn(conn, investigation_id)
+            row = conn.execute(
+                "SELECT status FROM agent_verification_obligations "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND obligation_id = ?",
+                [self.task_id, investigation_id, obligation_id],
+            ).fetchone()
+            if row is None:
+                raise ValueError(
+                    f"unknown verification obligation: {obligation_id!r}"
+                )
+            allowed = self._OBLIGATION_TRANSITIONS.get(row["status"], set())
+            if target not in allowed:
+                raise AgentRuntimeConflictError(
+                    f"illegal obligation transition "
+                    f"{row['status']!r} -> {target!r} for {obligation_id!r}"
+                )
+            conn.execute(
+                "UPDATE agent_verification_obligations "
+                "SET status = ?, verification_id = COALESCE(?, "
+                " verification_id), disposition_id = COALESCE(?, "
+                " disposition_id), failure_code = ?, updated_at = ? "
+                "WHERE obligation_id = ?",
+                [
+                    target, verification_id, disposition_id, failure_code,
+                    _now_iso(), obligation_id,
+                ],
+            )
+            conn.commit()
+        return {"obligation_id": obligation_id, "status": target}
+
+    def get_verification_obligation(
+        self, investigation_id: str, obligation_id: str
+    ) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_verification_obligations "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND obligation_id = ?",
+                [self.task_id, investigation_id, obligation_id],
+            ).fetchone()
+        return self._obligation_row_to_dict(row) if row else None
+
+    def list_verification_obligations(
+        self, investigation_id: str, *, status: Optional[str] = None
+    ) -> list[dict]:
+        sql = (
+            "SELECT * FROM agent_verification_obligations "
+            "WHERE task_id = ? AND investigation_id = ?"
+        )
+        params: list = [self.task_id, investigation_id]
+        if status is not None:
+            sql += " AND status = ?"
+            params.append(status)
+        sql += " ORDER BY obligation_row_id"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._obligation_row_to_dict(row) for row in rows]
+
+    @staticmethod
+    def _obligation_row_to_dict(row: sqlite3.Row) -> dict:
+        return {
+            "obligation_id": row["obligation_id"],
+            "task_id": row["task_id"],
+            "investigation_id": row["investigation_id"],
+            "proposal_id": row["proposal_id"],
+            "proposal_hash": row["proposal_hash"],
+            "grounding_id": row["grounding_id"],
+            "semantic_type": row["semantic_type"],
+            "assertion_policy_version": row["assertion_policy_version"],
+            "rule_id": row["rule_id"],
+            "verification_mode": row["verification_mode"],
+            "question_refs": tuple(
+                json.loads(row["question_refs_json"]).get("refs", [])
+            ),
+            "status": row["status"],
+            "verification_id": row["verification_id"],
+            "disposition_id": row["disposition_id"],
+            "failure_code": row["failure_code"],
+            "input_hash": row["input_hash"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def project_verification_obligations(
+        self, investigation_id: str, state
+    ):
+        """F1 §6 deterministic projection: merge the durable mandatory
+        verification state into a state VIEW (never committed) so
+        AttentionBuilder and FinalizationGate read real object-level
+        facts. Existing same-id entries are replaced; new obligations are
+        appended; ordering is deterministic (by verification_id)."""
+        from .agent_working_state import PendingVerification, VerificationStatus
+
+        obligations = self.list_verification_obligations(investigation_id)
+        if not obligations:
+            return state
+        by_id = {
+            verification.verification_id: verification
+            for verification in state.pending_verifications
+        }
+        for obligation in obligations:
+            if obligation["status"] == "safely_downgraded":
+                projected_status = VerificationStatus.passed
+            elif obligation["status"] == "satisfied":
+                projected_status = VerificationStatus.passed
+            elif obligation["status"] == "running":
+                projected_status = VerificationStatus.pending
+            else:
+                projected_status = VerificationStatus(obligation["status"])
+            by_id[obligation["obligation_id"]] = PendingVerification(
+                verification_id=obligation["obligation_id"],
+                target_ref=(
+                    obligation["question_refs"][0]
+                    if obligation["question_refs"]
+                    else obligation["proposal_id"]
+                ),
+                required=True,
+                blocking=projected_status
+                in (VerificationStatus.pending, VerificationStatus.failed,
+                    VerificationStatus.unavailable),
+                status=projected_status,
+            )
+        merged = tuple(
+            sorted(by_id.values(), key=lambda item: item.verification_id)
+        )
+        return state.model_copy(update={"pending_verifications": merged})
+
+    def expire_running_verification_obligations(self) -> int:
+        """F1 §10 restart: a running verification execution never survives
+        a restart (existing recovery pattern: runtime_restart), but the
+        obligation itself MUST NOT disappear."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            changed = self._expire_running_obligations_with_conn(conn)
+            conn.commit()
+        return changed
+
+    def _expire_running_obligations_with_conn(self, conn) -> int:
+        cursor = conn.execute(
+            "UPDATE agent_verification_obligations "
+            "SET status = 'failed', failure_code = 'runtime_restart', "
+            " updated_at = ? "
+            "WHERE task_id = ? AND status = 'running'",
+            [_now_iso(), self.task_id],
+        )
+        return cursor.rowcount or 0
+
     def record_delegation_result(
         self,
         delegation_id: str,
@@ -4194,6 +4445,13 @@ class AgentRuntimeRepository:
                     },
                     now=now,
                 )
+            # F1 §10: a running verification execution never survives a
+            # restart, but the obligation itself stays (failed with the
+            # runtime_restart code) so the mandatory blocker remains
+            # visible to Attention/Finalization after recovery.
+            obligations_expired = (
+                self._expire_running_obligations_with_conn(conn)
+            )
             conn.commit()
         if runs_failed or delegations_failed or investigations_paused:
             logger.info(
@@ -4209,4 +4467,5 @@ class AgentRuntimeRepository:
             "runs_failed": runs_failed,
             "delegations_failed": delegations_failed,
             "investigations_paused": investigations_paused,
+            "obligations_expired": obligations_expired,
         }

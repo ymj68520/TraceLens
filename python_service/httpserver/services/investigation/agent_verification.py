@@ -643,6 +643,7 @@ async def process_claim_verification(
         VerificationAvailability,
         VerificationRequirement,
     )
+    from .agent_runtime import VerificationObligationStatus
     from .agent_findings import finding_from_disposition
 
     policy = policy or AssertionPolicy()
@@ -650,13 +651,69 @@ async def process_claim_verification(
         relation_family=relation_family, explicit_type=semantic_type
     )
     requirement = policy.preflight(resolved_type)
+    rule = policy.registry.rule_for(resolved_type)
+
+    # F1 §3/§4/§5: a semantic_required preflight must produce a durable,
+    # replay-idempotent Verification Obligation (never just a Python
+    # return value). The obligation row - not process memory - is what
+    # Attention and Finalization read (via the deterministic projection).
+    import hashlib as _hashlib
+
+    question_refs = tuple(
+        proposal.source_question_ids
+        if hasattr(proposal, "source_question_ids") else ()
+    )
+    obligation_payload = {
+        "task_id": task_id,
+        "investigation_id": investigation_id,
+        "proposal_id": proposal.proposal_id,
+        "proposal_hash": proposal.input_hash,
+        "grounding_id": getattr(grounding, "grounding_id", None)
+        or grounding.get("grounding_id"),
+        "semantic_type": resolved_type.value,
+        "assertion_policy_version": policy.VERSION,
+        "rule_id": rule.rule_id,
+        "verification_mode": rule.verification_mode.value,
+        "question_refs": list(question_refs),
+    }
+    obligation_id = "vob:" + _hashlib.sha256(
+        canonical_state_json(obligation_payload).encode("utf-8")
+    ).hexdigest()[:24]
+    obligation_known = (
+        runtime.get_verification_obligation(
+            investigation_id, obligation_id
+        )
+        is not None
+    )
+    if requirement is VerificationRequirement.REQUIRED and not obligation_known:
+        # F1 §5 creation boundary: exactly once per mandatory verification
+        runtime.record_verification_obligation(
+            investigation_id,
+            obligation_row={
+                **obligation_payload,
+                "obligation_id": obligation_id,
+                "input_hash": canonical_state_json(obligation_payload),
+                "status": "pending",
+            },
+        )
+        obligation_known = True
+    if requirement is VerificationRequirement.REQUIRED:
+        existing = runtime.get_verification_obligation(
+            investigation_id, obligation_id
+        )
+        if existing["status"] == "pending":
+            runtime.advance_verification_obligation(
+                investigation_id, obligation_id,
+                to_status=VerificationObligationStatus.running,
+            )
 
     verification = None
     availability = VerificationAvailability.UNAVAILABLE
     if requirement is not VerificationRequirement.NOT_REQUIRED:
         if verifier is None:
             # policy demanded verification but no verifier runtime was
-            # provided: explicit unavailable (§48), never fabricated
+            # provided: explicit unavailable (§48), never fabricated.
+            # Obligation resolution happens in the unified tail below.
             availability = VerificationAvailability.UNAVAILABLE
         else:
             context = build_claim_verification_context(
@@ -680,9 +737,35 @@ async def process_claim_verification(
                         "input_hash": context.input_hash,
                     },
                 )
+                if obligation_known:
+                    # F1 §8: pending -> failed/unavailable; provider-type
+                    # failures are unavailable, structural ones failed
+                    obligation_status = (
+                        VerificationObligationStatus.UNAVAILABLE
+                        if outcome.failure_code in (
+                            VerifierFailureCode.PROVIDER_UNAVAILABLE,
+                            VerifierFailureCode.AUTH_FAILED,
+                            VerifierFailureCode.BILLING_UNAVAILABLE,
+                            VerifierFailureCode.RATE_LIMITED,
+                            VerifierFailureCode.TIMEOUT,
+                        )
+                        else VerificationObligationStatus.FAILED
+                    )
+                    runtime.advance_verification_obligation(
+                        investigation_id, obligation_id,
+                        to_status=obligation_status,
+                        verification_id=context.verification_id,
+                        failure_code=outcome.failure_code.value,
+                    )
             else:
                 verification = outcome
                 availability = VerificationAvailability.AVAILABLE
+                if obligation_known:
+                    runtime.advance_verification_obligation(
+                        investigation_id, obligation_id,
+                        to_status=VerificationObligationStatus.satisfied,
+                        verification_id=context.verification_id,
+                    )
                 trajectory_event = (
                     AgentTrajectoryEventType.correlation_semantic_verified
                     if resolved_type is not None
@@ -725,6 +808,33 @@ async def process_claim_verification(
             effective_assertion_class=disposition.effective_assertion_class,
         )
         finding_row = finding.to_row()
+
+    # F1 §8 resolution: every unfinished obligation of THIS proposal is
+    # resolved deterministically by the disposition - blocked leaves the
+    # blockers blocking; a safe (non-blocked) policy resolution terminates
+    # them as explicitly safely_downgraded (never deleted).
+    open_obligations = [
+        row for row in runtime.list_verification_obligations(
+            investigation_id
+        )
+        if row["proposal_id"] == proposal.proposal_id
+        and row["status"] in ("pending", "running", "unavailable", "failed")
+    ]
+    if disposition.decision is ClaimDecision.BLOCKED_VERIFICATION_REQUIRED:
+        for row in open_obligations:
+            if row["status"] in ("pending", "running"):
+                runtime.advance_verification_obligation(
+                    investigation_id, row["obligation_id"],
+                    to_status=VerificationObligationStatus.unavailable,
+                    failure_code="semantic_verification_blocked",
+                )
+    elif availability is VerificationAvailability.UNAVAILABLE:
+        for row in open_obligations:
+            runtime.advance_verification_obligation(
+                investigation_id, row["obligation_id"],
+                to_status=VerificationObligationStatus.safely_downgraded,
+                disposition_id=disposition.disposition_id,
+            )
 
     outcome = runtime.commit_claim_disposition(
         investigation_id,

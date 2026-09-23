@@ -645,6 +645,7 @@ def test_runtime_restart_recovery_reaches_deterministic_states(agent):
     summary = agent.recover_interrupted_agent_runtime()
     assert summary == {
         "runs_failed": 2, "delegations_failed": 1, "investigations_paused": 2,
+        "obligations_expired": 0,
     }
 
     failed_run = agent.get_run(run1.run_id)
@@ -678,6 +679,7 @@ def test_runtime_restart_recovery_reaches_deterministic_states(agent):
     # recovery is idempotent
     assert agent.recover_interrupted_agent_runtime() == {
         "runs_failed": 0, "delegations_failed": 0, "investigations_paused": 0,
+        "obligations_expired": 0,
     }
 
     # trajectory records the recovery action trace deterministically

@@ -466,6 +466,12 @@ class AgentOrchestrator:
                 if delegation.status in (DelegationStatus.queued, DelegationStatus.running)
                 and delegation.question_ref
             )
+        # F1 §7: mandatory verification obligations are durably tracked and
+        # deterministically projected into the state VIEW the attention
+        # builder reads - blocking obligations surface as P1 blockers.
+        state = runtime.project_verification_obligations(
+            investigation_id, state
+        )
         attention = self._attention_builder.build_full_set(
             state,
             state_revision=latest.revision,
@@ -902,6 +908,12 @@ class AgentOrchestrator:
         state = working_state_from_json(
             runtime.task_id, request.investigation_id, latest.state
         )
+        # F1 §9: the gate must see real object-level verification state,
+        # projected from durable obligation rows (never process memory,
+        # never a direct Working State write).
+        state = runtime.project_verification_obligations(
+            request.investigation_id, state
+        )
         view = self._runtime_view(runtime, request.investigation_id)
         view = view.model_copy(
             update={"transition_conflict_unresolved": transition_conflict_unresolved}
@@ -955,6 +967,12 @@ class AgentOrchestrator:
         latest = runtime.get_latest_working_state(request.investigation_id)
         state = working_state_from_json(
             runtime.task_id, request.investigation_id, latest.state
+        )
+        # F1 §9: the gate must see real object-level verification state,
+        # projected from durable obligation rows (never process memory,
+        # never a direct Working State write).
+        state = runtime.project_verification_obligations(
+            request.investigation_id, state
         )
         view = self._runtime_view(runtime, request.investigation_id)
         record = runtime.record_finalization(

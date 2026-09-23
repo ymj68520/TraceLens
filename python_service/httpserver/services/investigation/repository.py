@@ -1911,6 +1911,81 @@ BEGIN
 END
 """
 
+# F1: durable mandatory-verification obligations. A STATE MACHINE (unlike
+# the append-only tables above): pending -> running -> satisfied /
+# failed / unavailable / safely_downgraded, with retriable edges back to
+# running. The Working State's pending_verifications stays the frozen P2
+# projection target; these rows are the durable source of truth that the
+# control plane projects from (never the reverse).
+_CREATE_AGENT_VERIFICATION_OBLIGATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_verification_obligations (
+    obligation_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    obligation_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    proposal_id TEXT NOT NULL,
+    proposal_hash TEXT NOT NULL,
+    grounding_id TEXT,
+    semantic_type TEXT NOT NULL,
+    assertion_policy_version TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    verification_mode TEXT NOT NULL CHECK(verification_mode IN
+        ('deterministic_only','semantic_required','semantic_on_demand')),
+    question_refs_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN
+        ('pending','running','satisfied','failed','unavailable',
+         'safely_downgraded')),
+    verification_id TEXT,
+    disposition_id TEXT,
+    failure_code TEXT,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, obligation_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_TRIGGER_OBLIGATION_LEGAL_TRANSITION_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_verification_obligation_legal_transition
+BEFORE UPDATE ON agent_verification_obligations
+WHEN (OLD.status = 'pending'
+      AND NEW.status NOT IN ('running','satisfied','failed','unavailable',
+                             'safely_downgraded'))
+  OR (OLD.status = 'running'
+      AND NEW.status NOT IN ('satisfied','failed','unavailable'))
+  OR (OLD.status = 'failed' AND NEW.status NOT IN ('running'))
+  OR (OLD.status = 'unavailable'
+      AND NEW.status NOT IN ('running','safely_downgraded'))
+  OR (OLD.status IN ('satisfied','safely_downgraded')
+      AND NEW.status IS NOT OLD.status)
+BEGIN
+    SELECT RAISE(ABORT,
+        'agent_verification_obligations: illegal status transition');
+END
+"""
+
+_TRIGGER_OBLIGATION_NO_IDENTITY_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_verification_obligation_no_identity_update
+BEFORE UPDATE ON agent_verification_obligations
+WHEN OLD.obligation_id IS NOT NEW.obligation_id
+  OR OLD.task_id IS NOT NEW.task_id
+  OR OLD.investigation_id IS NOT NEW.investigation_id
+  OR OLD.proposal_id IS NOT NEW.proposal_id
+  OR OLD.proposal_hash IS NOT NEW.proposal_hash
+  OR OLD.grounding_id IS NOT NEW.grounding_id
+  OR OLD.semantic_type IS NOT NEW.semantic_type
+  OR OLD.assertion_policy_version IS NOT NEW.assertion_policy_version
+  OR OLD.rule_id IS NOT NEW.rule_id
+  OR OLD.verification_mode IS NOT NEW.verification_mode
+  OR OLD.created_at IS NOT NEW.created_at
+BEGIN
+    SELECT RAISE(ABORT,
+        'agent_verification_obligations identity is immutable');
+END
+"""
+
 _P5B_APPEND_ONLY_TABLES = (
     "agent_semantic_verifications",
     "agent_semantic_verification_failures",
@@ -2865,6 +2940,9 @@ class InvestigationRepository:
         conn.execute(_CREATE_INVESTIGATION_FINDING_REVIEWS_SQL)
         conn.execute(_TRIGGER_FINDING_REVIEW_NO_UPDATE_SQL)
         conn.execute(_TRIGGER_FINDING_REVIEW_NO_DELETE_SQL)
+        conn.execute(_CREATE_AGENT_VERIFICATION_OBLIGATIONS_SQL)
+        conn.execute(_TRIGGER_OBLIGATION_LEGAL_TRANSITION_SQL)
+        conn.execute(_TRIGGER_OBLIGATION_NO_IDENTITY_UPDATE_SQL)
         for table in _P5B_APPEND_ONLY_TABLES:
             for statement in _append_only_trigger_sql(table):
                 conn.execute(statement)
@@ -2972,6 +3050,27 @@ class InvestigationRepository:
             if found is None:
                 raise EvidenceStoreError(
                     f"investigation_findings missing guard {trigger}"
+                )
+        obligations_ok = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='agent_verification_obligations'"
+        ).fetchone()
+        if obligations_ok is None:
+            raise EvidenceStoreError(
+                "missing P5B persistence table: "
+                "agent_verification_obligations"
+            )
+        for trigger in (
+            "trg_agent_verification_obligation_legal_transition",
+            "trg_agent_verification_obligation_no_identity_update",
+        ):
+            found = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?",
+                [trigger],
+            ).fetchone()
+            if found is None:
+                raise EvidenceStoreError(
+                    "agent_verification_obligations missing guard " + trigger
                 )
 
     def _validate_v14_schema(self) -> None:

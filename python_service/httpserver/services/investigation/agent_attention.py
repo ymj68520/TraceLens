@@ -327,13 +327,19 @@ class AttentionBuilder:
                 verification.required
                 and verification.blocking
                 and verification.status
-                in (VerificationStatus.pending, VerificationStatus.failed)
+                in (VerificationStatus.pending, VerificationStatus.failed,
+                    VerificationStatus.unavailable)
             )
             if not blocking_now:
                 continue
+            # F1 §7: a provider/runtime failure on a still-mandatory
+            # verification stays a P1 blocker (unavailable), never a
+            # silent demotion to evidence-unavailability
             reason = (
                 "BLOCKING_MANDATORY_VERIFICATION_PENDING"
                 if verification.status == VerificationStatus.pending
+                else "MANDATORY_VERIFICATION_UNAVAILABLE"
+                if verification.status == VerificationStatus.unavailable
                 else "MANDATORY_VERIFICATION_FAILED"
             )
             items.append(AttentionItem(
