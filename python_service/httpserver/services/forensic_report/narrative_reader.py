@@ -77,7 +77,9 @@ def read_narrative_version_strict(
     if (
         row["scope_type"] != "task"
         or row["scope_id"] != task_id
-        or row["report_kind"] != "llm_generation"
+        or row["report_kind"] not in (
+            "llm_generation", "agent_aware_generation"
+        )
     ):
         # Opaque miss: cross-task ids and deterministic snapshot ids look
         # exactly like "not found" -- no scope information is disclosed.
@@ -87,7 +89,7 @@ def read_narrative_version_strict(
     writer = GenerationReportWriter(report_root)
     try:
         manifest_payload = writer.read_manifest(task_id, report_id)
-        manifest = GenerationReportManifest.model_validate(manifest_payload)
+        manifest = _validate_manifest_payload(manifest_payload)
     except (OSError, ValueError, KeyError) as exc:
         raise EvidenceStoreError("report narrative record is unavailable") from exc
     if (
@@ -97,3 +99,22 @@ def read_narrative_version_strict(
     ):
         raise EvidenceStoreError("report narrative record is unavailable")
     return version, manifest
+
+
+def _validate_manifest_payload(manifest_payload: dict):
+    """Schema-dispatch on the persisted manifest bytes (P7B §54/§56).
+
+    v1/v2 manifests keep validating against the strict v1 model; the
+    P7B agent-aware V3 manifest validates against its own model.  An
+    unknown schema_version fails closed.  The shared identity contract
+    (report_id/task_id/scope_id + sections/citations surface) is
+    identical across versions, so callers keep one code path.
+    """
+    schema_version = str(manifest_payload.get("schema_version", ""))
+    if schema_version == "3.0":
+        from ..report_runtime.report_publication import (
+            GenerationReportManifestV3,
+        )
+
+        return GenerationReportManifestV3.model_validate(manifest_payload)
+    return GenerationReportManifest.model_validate(manifest_payload)
