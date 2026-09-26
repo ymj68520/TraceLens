@@ -161,10 +161,16 @@ class RetrievalPlanError(ValueError):
 
 
 def _anchor_kind(ref: str, context: ReportPlanningContextV1) -> str:
-    """Classify one anchor ref against the frozen context (§22 priority)."""
+    """Classify one anchor ref against the frozen context (§22 priority).
+
+    Only ``finding:`` / ``event:<event_id>@v<N>`` / ``sa_`` prefixes are
+    semantic anchors; evidence keys use the real key grammar (``file:`` /
+    ``cluster:v1:...``), and any unknown ref shape falls back to report
+    evidence (checked against the closed vocabulary later).
+    """
     if ref.startswith("finding:"):
         return "accepted_finding"
-    if ref.startswith("event:"):
+    if ref.startswith("event:") and "@v" in ref:
         return "accepted_event"
     if ref.startswith("sa_"):
         return "accepted_analysis"
@@ -212,35 +218,37 @@ class DeterministicReportRetrievalPlanner:
 
         # §23 accepted-only semantic basis: findings must be accepted in
         # the frozen context; events pinned by exact version; analyses by
-        # accepted status at context build time.
+        # accepted status at context build time.  Only real semantic
+        # anchors (accepted_event pins use the ``event:<id>@v<N>`` ref
+        # form; evidence keys never carry an ``@v`` pin) qualify.
         semantic_refs: list[str] = []
         for ref in chapter_spec.required_anchor_refs:
-            if ref.startswith("finding:"):
+            kind = _anchor_kind(ref, context)
+            if kind == "accepted_finding":
                 if context.finding_review_status(ref) != "accepted":
                     raise RetrievalPlanError(
                         "semantic_ref_not_accepted",
                         f"chapter anchors an unaccepted finding: {ref}",
                     )
                 semantic_refs.append(ref)
-            elif ref.startswith("event:"):
-                semantic_refs.append(ref)
-            elif ref.startswith("sa_"):
+            elif kind in ("accepted_event", "accepted_analysis"):
                 semantic_refs.append(ref)
         # report evidence is context, not semantic basis (§40)
         semantic_refs = sorted(set(semantic_refs))
 
         expansions: list[DeterministicExpansionV1] = []
         for index, ref in enumerate(semantic_refs):
-            if ref.startswith("finding:"):
-                kind = "finding_evidence_provenance"
-            elif ref.startswith("event:"):
-                kind = "event_evidence_links"
+            kind = _anchor_kind(ref, context)
+            if kind == "accepted_finding":
+                expansion_kind = "finding_evidence_provenance"
+            elif kind == "accepted_event":
+                expansion_kind = "event_evidence_links"
             else:
-                kind = "analysis_evidence_refs"
+                expansion_kind = "analysis_evidence_refs"
             expansions.append(
                 DeterministicExpansionV1(
                     expansion_id=f"exp_{chapter_spec.chapter_id}_{index}",
-                    expansion_kind=kind,
+                    expansion_kind=expansion_kind,
                     basis_ref=ref,
                 )
             )
@@ -306,7 +314,7 @@ class DeterministicReportRetrievalPlanner:
                     f"finding anchor is not accepted: {ref}",
                 )
             return
-        if ref.startswith("event:"):
+        if _anchor_kind(ref, context) == "accepted_event":
             if context.accepted_event(ref) is None:
                 raise RetrievalPlanError(
                     "unknown_anchor", f"unknown event anchor: {ref}"
