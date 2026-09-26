@@ -291,11 +291,11 @@ def retry_chapter_generation(
                (generation_id, task_id, investigation_id, finalization_id,
                 outline_id, outline_revision, chapter_id, chapter_spec_hash,
                 context_pack_id, context_pack_hash, retrieval_plan_id,
-                generation_mode, narrative_policy_version,
+                admission_id, generation_mode, narrative_policy_version,
                 output_contract_version, prompt_version, input_hash,
                 attempt_no, retry_of_generation_id, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                       ?, ?, 'admitted', ?)""",
+                       ?, ?, ?, 'admitted', ?)""",
             (
                 new_id,
                 row["task_id"],
@@ -308,6 +308,7 @@ def retry_chapter_generation(
                 row["context_pack_id"],
                 row["context_pack_hash"],
                 row["retrieval_plan_id"],
+                row.get("admission_id"),
                 row["generation_mode"],
                 narrative_policy_version,
                 row["output_contract_version"],

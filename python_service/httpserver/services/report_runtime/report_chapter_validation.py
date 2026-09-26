@@ -154,7 +154,7 @@ def validate_chapter_draft(
     # 3. chapter/spec/context_pack identity
     if generation_input.context_pack_id != context_pack.context_pack_id or (
         generation_input.context_pack_hash != context_pack.input_hash
-    ):
+    ) or context_pack.chapter_spec_hash != generation_input.chapter_spec_hash:
         raise ChapterValidationError(
             "context_pack_mismatch", "generation input pins another pack"
         )

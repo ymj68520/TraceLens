@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .canonical import sha256_hex
-from .report_ledger import ChapterDigestV1, ReportAssertionLedgerV1
+from .report_ledger import ChapterDigestV1, ReportAssertionLedgerV1, run_deterministic_consistency
 from ..forensic_report.models import CitationManifestEntry, StructuredReportSection
 
 MANIFEST_V3_SCHEMA_VERSION = "3.0"
@@ -202,6 +202,11 @@ class PrevalidatedReportPublicationAdapter:
         digests: list[ChapterDigestV1],
         review_ids: tuple[str, ...],
         review_hashes: tuple[str, ...],
+        review_status: str = "pass",
+        evidence_digests: dict[str, str] | None = None,
+        chapter_spec_hashes: tuple[str, ...] = (),
+        context_pack_ids: tuple[str, ...] = (),
+        context_pack_hashes: tuple[str, ...] = (),
         model: str,
         prompt_version: str,
     ) -> tuple[str, str]:
@@ -216,6 +221,25 @@ class PrevalidatedReportPublicationAdapter:
             CHAPTER_OUTPUT_CONTRACT_VERSION,
         )
 
+        if review_status != "pass":
+            raise ValueError("report publication requires a passing consistency review")
+        if not drafts or not digests or not review_ids or not review_hashes:
+            raise ValueError("publication requires validated chapters, digests and review")
+        if len(drafts) != len(digests):
+            raise ValueError("draft/digest count mismatch")
+        if tuple(draft.chapter_id for draft in drafts) != tuple(digest.chapter_id for digest in digests):
+            raise ValueError("draft/digest chapter identity mismatch")
+        evidence_digests = evidence_digests or {}
+        consistency_issues = run_deterministic_consistency(
+            ledger,
+            digests=digests,
+            evidence_digests=evidence_digests,
+            finalization_id=ledger.finalization_id,
+            outline_id=ledger.outline_id,
+            outline_revision=ledger.outline_revision,
+        )
+        if consistency_issues:
+            raise ValueError("deterministic consistency failed before publication")
         sections = render_sections_from_drafts(
             drafts, chapter_titles=chapter_titles
         )
@@ -227,9 +251,9 @@ class PrevalidatedReportPublicationAdapter:
             outline_id=ledger.outline_id,
             outline_revision=ledger.outline_revision,
             chapter_ids=tuple(draft.chapter_id for draft in drafts),
-            chapter_spec_hashes=(),
-            context_pack_ids=(),
-            context_pack_hashes=(),
+            chapter_spec_hashes=chapter_spec_hashes,
+            context_pack_ids=context_pack_ids,
+            context_pack_hashes=context_pack_hashes,
             chapter_generation_ids=ledger.chapter_generation_ids,
             chapter_output_hashes=output_hashes,
             chapter_digest_ids=tuple(digest.digest_id for digest in digests),

@@ -2,7 +2,15 @@
 
 # Chapter Writer / Assertion Ledger / Consistency Review / Immutable Publication
 
-Status: **PASS / FROZEN** after the regression gate recorded below.
+Status: **HARDENING / NOT YET FROZEN**.
+
+The initial P7B implementation exposed hard-gate gaps during a post-freeze
+read-only audit: publication did not enforce a passing consistency review,
+retry dropped admission binding, pack/spec/finalization identity checks were
+incomplete, synthesis ceiling trusted caller-provided class mappings, and V3
+provenance omitted exact pack/spec hashes. The prior PASS/FROZEN claim is
+withdrawn until these fixes have their dedicated tests and a new full gate.
+
 
 ## 1. Baseline / branch / commits
 
@@ -259,3 +267,29 @@ PHASE 7 OVERALL: PASS / FROZEN
 P7 frozen HEAD = <final P7B commit after this document>
 ```
 
+
+## 14. Post-freeze audit corrections
+
+The initial P7B implementation exposed hard-gate gaps during a post-freeze
+read-only audit: publication did not enforce a passing consistency review,
+retry dropped admission binding, pack/spec/finalization identity checks were
+incomplete, synthesis ceiling trusted caller-provided class mappings, and V3
+provenance omitted exact pack/spec hashes. The prior PASS/FROZEN claim is
+withdrawn until these fixes have their dedicated tests and a new full gate.
+
+The audit fixes now in the working tree:
+
+- publication rejects missing/non-pass review, validates deterministic
+  consistency, requires non-empty validated chapter/digest/review sets;
+- retries copy `admission_id` and terminal chapter writes revalidate the exact
+  durable admission;
+- dispatch/validation bind `context_pack.chapter_spec_hash` to the exact
+  ChapterSpec, and supplied admissions must match finalization id/hash;
+- synthesis ceiling derives assertion classes from the immutable Ledger rather
+  than trusting a caller map;
+- V3 provenance accepts exact chapter spec hashes, pack ids and pack hashes;
+- P7B report schema migrates `admission_id` additively for existing P7A stores.
+
+Focused tests remain green after these changes (`11 passed`). A new final
+regression gate and completion commit are still required before P7B can be
+called PASS/FROZEN.

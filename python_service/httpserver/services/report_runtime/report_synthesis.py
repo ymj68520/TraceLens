@@ -173,11 +173,20 @@ def validate_synthesis_assertion(
                 "synthesis citation must be one of its evidence refs",
             )
     if assertion.assertion_class in STRENGTH:
+        derived_classes = {
+            item.assertion_id: item.assertion_class
+            for item in ledger.assertions
+        }
         classes = [
-            ledger_classes.get(ref)
+            derived_classes.get(ref)
             for ref in assertion.basis_refs
-            if ledger_classes.get(ref) in STRENGTH
+            if derived_classes.get(ref) in STRENGTH
         ]
+        if len(classes) != len(assertion.basis_refs):
+            raise SynthesisCeilingError(
+                "basis_class_missing",
+                "every synthesis basis must have a ledger assertion class",
+            )
         if classes:
             ceiling = min(STRENGTH[cls] for cls in classes)
             if STRENGTH[assertion.assertion_class] > ceiling:

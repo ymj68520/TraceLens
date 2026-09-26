@@ -177,8 +177,15 @@ def commit_report_chapter_dispatch(
     pack = context_pack
     spec = chapter_spec
     if admission is not None:
-        if admission.task_id != pack.task_id or admission.investigation_id != pack.investigation_id:
-            raise ChapterDispatchError("admission_mismatch", "admission does not match pack")
+        if (
+            admission.task_id != pack.task_id
+            or admission.investigation_id != pack.investigation_id
+            or admission.finalization_id != pack.finalization_id
+            or admission.finalization_record_hash != pack.finalization_record_hash
+        ):
+            raise ChapterDispatchError(
+                "admission_mismatch", "admission does not match the frozen pack"
+            )
         repository.verify_report_runtime_admission(admission)
     # identity cross-checks before any write
     if pack.chapter_id != spec.chapter_id:
@@ -188,7 +195,7 @@ def commit_report_chapter_dispatch(
         )
     if pack.outline_id != spec.outline_id or (
         pack.outline_revision != spec.outline_revision
-    ):
+    ) or pack.chapter_spec_hash != spec.input_hash:
         raise ChapterDispatchError(
             "identity_mismatch",
             "context pack and chapter spec belong to different outlines",
