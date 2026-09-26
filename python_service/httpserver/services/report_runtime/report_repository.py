@@ -274,6 +274,19 @@ class ReportRuntimeRepository:
                 END;
                 """
             )
+            # P7B additive migration for P7A-created stores.
+            columns = {
+                row[1]
+                for row in conn.execute(
+                    "PRAGMA table_info(report_chapter_generations)"
+                )
+            }
+            if "admission_id" not in columns:
+                conn.execute(
+                    "ALTER TABLE report_chapter_generations "
+                    "ADD COLUMN admission_id TEXT"
+                )
+            conn.commit()
             # ordering_hint ships in the P7A-1 base schema (one store
             # generation; no migration path needed for planning rows).
 
