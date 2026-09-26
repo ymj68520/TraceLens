@@ -224,11 +224,38 @@ refs, synthesis ceiling, V3 publication and strict Viewer read.
 - P8 only: Truth Manifest, benchmark corpus, thresholds, dashboards, cost /
   performance calibration, large-case benchmark and negative-case corpus.
 
-## 13. P7B exit status
+## 13. Regression gate and exit status
 
 ```text
-P7B focused: PASS
-P7B-E1…E34: PASS pending final full regression command below
-P7A boundary: preserved
-P8: not started
+P7B focused                                      11 passed
+P7A focused                                      68 passed
+P7A + P7B combined                               79 passed
+P1–P6 investigation regression                   930 passed, 1 skipped
+startup / ServiceManager                         48 passed
+R2 forensic_report suite                         147 passed, 1 pre-existing fail
+R2 + startup/SM combined                         193 passed, 3 failures
 ```
+
+The three failures in the combined R2/startup command were not P7B
+regressions: two `SnapshotWriter` process-claim tests passed when rerun
+individually, and the deep-recursion route failure is the known clean
+`8232fa10`/P7A baseline failure (`test_file_response_rejects_nonstandard_json_constants_and_deep_recursion`).
+No P7B code path owns that route or SnapshotWriter behavior.
+
+```text
+py_compile        PASS
+git diff --check   PASS
+pip check         baseline environment conflicts only:
+                  mcp/sse-starlette require newer starlette than 0.47.3
+worktree           clean after final commit
+```
+
+P7B-E1…E34: **PASS**. P7A boundaries remain intact; P8 was not started.
+
+```text
+PHASE 7A: PASS / FROZEN
+PHASE 7B: PASS / FROZEN
+PHASE 7 OVERALL: PASS / FROZEN
+P7 frozen HEAD = <final P7B commit after this document>
+```
+
