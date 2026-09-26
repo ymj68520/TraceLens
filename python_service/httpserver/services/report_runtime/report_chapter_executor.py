@@ -90,6 +90,17 @@ class ChapterGenerationExecutor:
         failed = self._repository.fail_running_chapter_generations()
         return {"running_failed": failed}
 
+    def _verify_admission(self, row: dict) -> None:
+        admission_id = row.get("admission_id")
+        if not admission_id:
+            return
+        admission = self._repository.get_report_runtime_admission(admission_id)
+        if admission is None:
+            raise ChapterExecutionError(
+                "admission_missing", "report runtime admission is missing"
+            )
+        self._repository.verify_report_runtime_admission(admission)
+
     async def execute_chapter_generation(
         self, generation_id: str
     ) -> dict:
@@ -107,6 +118,7 @@ class ChapterGenerationExecutor:
                 "generation_failed",
                 "chapter generation already failed; dispatch a new attempt",
             )
+        self._verify_admission(row)
         # §46/§E3: the Writer input is reconstructed from persisted bytes
         pack = self._repository.get_context_pack(row["context_pack_id"])
         if pack is None:
@@ -150,6 +162,7 @@ class ChapterGenerationExecutor:
                 draft = self._renderer.render(generation_input, pack)
             else:
                 if self._writer is None:
+                    self._verify_admission(row)
                     self._repository.fail_chapter_generation(
                         generation_id,
                         failure_code="llm_unavailable",
@@ -159,6 +172,7 @@ class ChapterGenerationExecutor:
                 try:
                     draft = await self._writer.write(generation_input, pack)
                 except WriterOutputError as exc:
+                    self._verify_admission(row)
                     self._repository.fail_chapter_generation(
                         generation_id,
                         failure_code=exc.code,
@@ -171,6 +185,7 @@ class ChapterGenerationExecutor:
                     draft, generation_input, pack
                 )
             except ChapterValidationError as exc:
+                self._verify_admission(row)
                 self._repository.fail_chapter_generation(
                     generation_id,
                     failure_code=exc.code,
@@ -187,6 +202,7 @@ class ChapterGenerationExecutor:
                 "draft_hash": validated.draft_hash(),
             }
             output_json = json.dumps(output_payload, ensure_ascii=False)
+            self._verify_admission(row)
             completed = self._repository.complete_chapter_generation(
                 generation_id,
                 output_json=output_json,
@@ -211,6 +227,7 @@ class ChapterGenerationExecutor:
             logger.exception(
                 "Chapter generation execution failed: %s", generation_id
             )
+            self._verify_admission(row)
             self._repository.fail_chapter_generation(
                 generation_id,
                 failure_code="execution_error",

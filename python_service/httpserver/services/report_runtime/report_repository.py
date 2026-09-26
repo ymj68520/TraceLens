@@ -138,6 +138,7 @@ class ReportRuntimeRepository:
                     context_pack_id TEXT NOT NULL,
                     context_pack_hash TEXT NOT NULL,
                     retrieval_plan_id TEXT NOT NULL,
+                    admission_id TEXT,
                     generation_mode TEXT NOT NULL CHECK(generation_mode IN
                         ('deterministic', 'evidence_narrative', 'synthesis')),
                     narrative_policy_version TEXT NOT NULL,
@@ -312,6 +313,16 @@ class ReportRuntimeRepository:
             if row
             else None
         )
+
+    def verify_report_runtime_admission(
+        self, admission: ReportRuntimeAdmissionV1
+    ) -> None:
+        """Fail closed if the exact durable admission was altered or lost."""
+        stored = self.get_report_runtime_admission(admission.admission_id)
+        if stored is None or stored.input_hash != admission.input_hash:
+            raise ValueError("report runtime admission is stale or missing")
+        if stored.model_dump(mode="json") != admission.model_dump(mode="json"):
+            raise ValueError("report runtime admission payload mismatch")
 
     # -- outline versions ----------------------------------------------------
 

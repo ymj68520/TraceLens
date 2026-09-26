@@ -126,6 +126,7 @@ def new_chapter_generation_input(
     chapter_spec,
     narrative_policy: NarrativePolicyV1,
     prompt_version: str,
+    admission=None,
 ) -> ChapterGenerationInputV1:
     """Assemble the frozen Writer input from a persisted pack + spec."""
     return ChapterGenerationInputV1(
@@ -160,6 +161,7 @@ def commit_report_chapter_dispatch(
     retrieval_plan,
     narrative_policy: NarrativePolicyV1,
     prompt_version: str,
+    admission=None,
 ) -> ChapterGenerationInputV1:
     """§5/§6 persist-before-generate, in ONE transaction:
 
@@ -174,6 +176,10 @@ def commit_report_chapter_dispatch(
 
     pack = context_pack
     spec = chapter_spec
+    if admission is not None:
+        if admission.task_id != pack.task_id or admission.investigation_id != pack.investigation_id:
+            raise ChapterDispatchError("admission_mismatch", "admission does not match pack")
+        repository.verify_report_runtime_admission(admission)
     # identity cross-checks before any write
     if pack.chapter_id != spec.chapter_id:
         raise ChapterDispatchError(
@@ -270,11 +276,11 @@ def commit_report_chapter_dispatch(
                        (generation_id, task_id, investigation_id,
                         finalization_id, outline_id, outline_revision,
                         chapter_id, chapter_spec_hash, context_pack_id,
-                        context_pack_hash, retrieval_plan_id,
+                        context_pack_hash, retrieval_plan_id, admission_id,
                         generation_mode, narrative_policy_version,
                         output_contract_version, prompt_version, input_hash,
                         attempt_no, status, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                ?, 1, 'admitted', ?)""",
                     (
                         generated_input.generation_id,
@@ -288,6 +294,7 @@ def commit_report_chapter_dispatch(
                         pack.context_pack_id,
                         pack.input_hash,
                         retrieval_plan.retrieval_plan_id,
+                        admission.admission_id if admission is not None else None,
                         spec.generation_mode,
                         narrative_policy.policy_version,
                         CHAPTER_OUTPUT_CONTRACT_VERSION,
