@@ -1,0 +1,58 @@
+{
+  "manifest_version": "benchmark-corpus-manifest:v1",
+  "corpus_id": "corpus-agent-v0-canary",
+  "version": "1",
+  "development_cases": [],
+  "calibration_cases": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "case_hash": "8dde849ecb3353bfedd32be2b03138ec3175a74e1b0322772fd5241c8455a90b",
+      "truth_manifest_id": "tman:1dc32b5eae701a1cc0b51c4e",
+      "truth_manifest_hash": "1dc32b5eae701a1cc0b51c4e321b46a66b5deb906345f67fd05d205222fbd008",
+      "dataset_hash": "5cc92859bf1e0fe13cc787a185a35a698ed7d9bb8e1e0b21f391822dca197955",
+      "tier": "T1",
+      "negative_dimensions": []
+    }
+  ],
+  "acceptance_cases": [
+    {
+      "case_id": "t1-usb-collector",
+      "case_hash": "8e02165da0bc62a9368e21908cdd916435fc02ddd0e736ca95ef5e1b4ec97c25",
+      "truth_manifest_id": "tman:c2f151e5ff96e455bcfd71a5",
+      "truth_manifest_hash": "c2f151e5ff96e455bcfd71a52a0439b3c8369a6795da11eb9c13d2c84c65740d",
+      "dataset_hash": "dc015b118e5ca91fc4a4273a25fc548bc348c0ea4d7baa04fb3e86208e0aa975",
+      "tier": "T1",
+      "negative_dimensions": []
+    }
+  ],
+  "stress_cases": [],
+  "freeze_commit": "dbb1cb30",
+  "selection_rationale": "Canary-phase corpus freeze for P8B §58: one T1 calibration case (t1-fraud-script-usb) for baseline measurement and one disjoint T1 holdout case (t1-usb-collector) sealed until the calibration profile freezes. Both are real single-device Windows cases derived from task fa516141 with independently authored truth. Multi-device/noise/negative-dimension cases are a follow-up corpus version and are listed as known exclusions; this corpus is NOT the final acceptance corpus.",
+  "coverage_matrix": {
+    "single_device_clear": true,
+    "single_device_noisy": false,
+    "multi_source_correlation": false,
+    "cross_device_relation": false,
+    "evidence_absent_indeterminate": false,
+    "analyst_note_misleading": false,
+    "case_context_misleading": false,
+    "same_username_identity_trap": false,
+    "same_ip_identity_trap": false,
+    "temporal_causality_trap": false,
+    "malicious_intent_trap": false,
+    "review_pending_vs_accepted": false,
+    "graph_optional_failure": false,
+    "report_citation_ceiling": false,
+    "provider_tool_failure": false
+  },
+  "known_exclusions": [
+    "multi-source correlation cases",
+    "same-username / same-IP identity-trap cases",
+    "temporal-causality trap cases",
+    "T4 large-volume stress cases"
+  ],
+  "truth_review_status": "single-reviewer",
+  "calibration_profile_hash": null,
+  "input_hash": "faafdbd41ef103268cdd504b33725b81a1c9654307b9a81f198bea4ed46976c1",
+  "created_at": "2026-09-27T12:30:22.286099+00:00"
+}

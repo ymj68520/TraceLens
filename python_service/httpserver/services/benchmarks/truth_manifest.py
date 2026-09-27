@@ -185,6 +185,10 @@ class ReachabilityManifestV1(BaseModel):
     def _derive(cls, data):
         if not isinstance(data, dict):
             return data
+        # defaulted-field normalization keeps input_hash IDEMPOTENT (P7B
+        # discipline): a JSON replay must hash the same payload as the
+        # first build.
+        data.setdefault("reachability_version", "reachability-manifest:v1")
         data["records"] = tuple(
             sorted(
                 (

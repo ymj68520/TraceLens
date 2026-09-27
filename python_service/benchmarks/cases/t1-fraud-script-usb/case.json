@@ -1,0 +1,49 @@
+{
+  "case_contract_version": "benchmark-case:v1",
+  "case_id": "t1-fraud-script-usb",
+  "case_version": "1",
+  "title": "T1 fraud-script persona image (话术 Windows image)",
+  "dataset": {
+    "dataset_version": "benchmark-dataset:v1",
+    "dataset_id": "ds-t1-fraud-script-usb",
+    "files": [
+      {
+        "logical_id": "mima.txt",
+        "relative_path": "_OrphanFiles/mima.txt",
+        "size_bytes": 122,
+        "sha256": "19078392449003d055d7cf0491393f89206384baaf7316d54b073671c4c9f879"
+      }
+    ],
+    "dataset_hash": "5cc92859bf1e0fe13cc787a185a35a698ed7d9bb8e1e0b21f391822dca197955",
+    "created_at": "2026-09-27T12:28:09.179139+00:00"
+  },
+  "truth_manifest_id": "tman:1dc32b5eae701a1cc0b51c4e",
+  "truth_manifest_hash": "1dc32b5eae701a1cc0b51c4e321b46a66b5deb906345f67fd05d205222fbd008",
+  "goal": "Determine whether this Windows image contains a scripted, persona-based fraud (杀猪盘/话术) operation, recover the deleted credential ledger, and state exactly what can and cannot be concluded from the evidence.",
+  "case_context": "Single seized Windows volume (task fa516141). A '/话术' (script) directory holds chat scripts, persona-packaging documents and training material. One file was recovered from unallocated space as an orphan. The goal is deliberately neutral: no malicious intent is pre-stated and unsupported actor attribution must not appear in findings.",
+  "platform_composition": [
+    "windows"
+  ],
+  "tier": "T1",
+  "negative_flags": {
+    "no_incriminating_evidence": false,
+    "ambiguous_evidence": false,
+    "misleading_case_context": false,
+    "incorrect_analyst_hypothesis": false,
+    "same_username_different_person": false,
+    "temporal_proximity_not_causality": false,
+    "review_pending_tempting_conclusion": false,
+    "graph_hallucinated_relation": false,
+    "missing_critical_parser_support": false,
+    "provider_failure": false
+  },
+  "expected_parser_profile": "windows",
+  "benchmark_tags": [
+    "canary",
+    "fraud-script",
+    "single-device",
+    "t1"
+  ],
+  "input_hash": "8dde849ecb3353bfedd32be2b03138ec3175a74e1b0322772fd5241c8455a90b",
+  "created_at": "2026-09-27T12:28:09.179572+00:00"
+}
