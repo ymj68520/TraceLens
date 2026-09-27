@@ -74,7 +74,6 @@ class FakeSettings:
         self.llm_api_key = "sk-secret-test-key"
         self.llm_text_model = "deepseek-flash"
         self.llm_thinking_mode = "disabled"
-        self.llm_thinking_body = {"thinking": {"type": "disabled"}}
         self.llm_timeout_seconds = 30.0
         self.llm_text_temperature = 0.2
         self.llm_text_max_tokens = 4096
@@ -173,7 +172,7 @@ def test_existing_config_converted_correctly():
     config = resolve_adapter_config(FakeSettings())
     assert config.model_name == "deepseek-flash"
     assert config.base_url == "https://api.deepseek.com/v1"
-    assert config.thinking_extra_body == {"thinking": {"type": "disabled"}}
+    assert config.reasoning_effort == "none"
     assert config.max_tokens == 4096
 
 
@@ -233,9 +232,16 @@ def test_provider_profile_options_centralized():
     assert profile["openai_chat_supports_multiple_system_messages"] is False
 
 
-def test_thinking_quirk_rides_extra_body():
+def test_thinking_disabled_maps_to_reasoning_effort_none():
+    """LLM_THINKING_MODE=disabled rides the OpenAI-standard
+    ``openai_reasoning_effort`` setting, never a ``thinking`` body field —
+    providers that reject ``thinking`` (e.g. MiMo chat completions) 400 on it."""
     model = build_chat_model(FakeSettings())
-    assert model.settings["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert model.settings.get("openai_reasoning_effort") == "none"
+    assert "extra_body" not in model.settings
+    # empty mode sends no effort at all (provider default reasoning)
+    model_default = build_chat_model(FakeSettings(llm_thinking_mode=""))
+    assert "openai_reasoning_effort" not in model_default.settings
 
 
 def test_adapter_creation_does_not_start_request():

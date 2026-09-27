@@ -159,7 +159,6 @@ class FakeSettings:
     llm_api_key = "test-key"
     llm_text_model = "offline-model"
     llm_thinking_mode = ""
-    llm_thinking_body = {}
     llm_timeout_seconds = 5.0
     llm_text_temperature = None
     llm_text_max_tokens = None
@@ -240,7 +239,7 @@ def _make_envelope(
             model_dump=lambda: {
                 "base_url": "http://localhost:9/v1",
                 "model_name": "offline-model",
-                "thinking_extra_body": {},
+                "reasoning_effort": None,
             }
         )
     )

@@ -70,7 +70,7 @@ class ModelAdapterConfig(BaseModel):
 
     base_url: str
     model_name: str
-    thinking_extra_body: Mapping[str, Any] = {}
+    reasoning_effort: Optional[str] = None
     timeout_seconds: Optional[float] = None
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
@@ -95,10 +95,18 @@ def resolve_adapter_config(settings: Any) -> ModelAdapterConfig:
     base_url = getattr(settings, "llm_text_base_url", None)
     endpoint = getattr(settings, "llm_endpoint", None)
     model_name = getattr(settings, "llm_text_model", None)
+    # LLM_THINKING_MODE is a DeepSeek-shaped top-level ``thinking`` body
+    # field. The PydanticAI chat path has no such field; the OpenAI-standard
+    # equivalent is ``openai_reasoning_effort``. ``disabled`` maps to "none"
+    # (reasoning off, temperature honored); ``enabled`` is not representable
+    # on the chat path, so it degrades to no explicit effort (provider
+    # default) and raises nothing.
+    thinking_mode = (getattr(settings, "llm_thinking_mode", "") or "").strip().lower()
+    reasoning_effort: Optional[str] = "none" if thinking_mode == "disabled" else None
     return ModelAdapterConfig(
         base_url=derive_openai_base_url(base_url or "", endpoint or ""),
         model_name=model_name,  # type: ignore[arg-type]
-        thinking_extra_body=dict(getattr(settings, "llm_thinking_body", {}) or {}),
+        reasoning_effort=reasoning_effort,
         timeout_seconds=getattr(settings, "llm_timeout_seconds", None),
         temperature=getattr(settings, "llm_text_temperature", None),
         max_tokens=getattr(settings, "llm_text_max_tokens", None),
@@ -131,10 +139,10 @@ def build_chat_model(settings: Any, *, model_name: Optional[str] = None) -> Open
         model_settings["temperature"] = config.temperature
     if config.max_tokens is not None:
         model_settings["max_tokens"] = config.max_tokens
-    if config.thinking_extra_body:
-        # DeepSeek thinking quirk (LLM_THINKING_MODE) rides as top-level body
-        # field via extra_body, matching llm_service.py's `**llm_thinking_body`.
-        model_settings["extra_body"] = dict(config.thinking_extra_body)
+    if config.reasoning_effort is not None:
+        # DeepSeek-style LLM_THINKING_MODE=disabled maps to the OpenAI-standard
+        # reasoning_effort ("none"): reasoning off, temperature honored.
+        model_settings["openai_reasoning_effort"] = config.reasoning_effort
 
     # Mirror llm_service semantics: only send auth when a key exists. The
     # OpenAI SDK requires a non-empty string, so local no-key deployments get

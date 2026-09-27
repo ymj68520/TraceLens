@@ -387,7 +387,6 @@ class OfflineSpecialistDispatcher:
                     llm_api_key="k",
                     llm_text_model="offline",
                     llm_thinking_mode="",
-                    llm_thinking_body={},
                     llm_timeout_seconds=5.0,
                     llm_text_temperature=None,
                     llm_text_max_tokens=None,
