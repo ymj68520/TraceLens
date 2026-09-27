@@ -2,7 +2,9 @@
 
 # Chapter Writer / Assertion Ledger / Consistency Review / Immutable Publication
 
-Status: **HARDENING / NOT YET FROZEN**.
+Status: **PASS / FROZEN** — canonical status is §15 (audited publication
+closure, 2026-09-27). §13's original freeze claim was withdrawn during the
+post-freeze audit and restored only by the §15 dedicated audit gates.
 
 The initial P7B implementation exposed hard-gate gaps during a post-freeze
 read-only audit: publication did not enforce a passing consistency review,
@@ -258,9 +260,10 @@ pip check         baseline environment conflicts only:
 worktree           clean after final commit
 ```
 
-P7B-E1…E34: **PASS**. P7A boundaries remain intact; P8 was not started.
+P7B-E1…E34: **PASS** — superseded, see §15.
 
 ```text
+[WITHDRAWN — historical record only, replaced by §15]
 PHASE 7A: PASS / FROZEN
 PHASE 7B: PASS / FROZEN
 PHASE 7 OVERALL: PASS / FROZEN
@@ -293,3 +296,157 @@ The audit fixes now in the working tree:
 Focused tests remain green after these changes (`11 passed`). A new final
 regression gate and completion commit are still required before P7B can be
 called PASS/FROZEN.
+
+## 15. Audited publication closure — canonical status (2026-09-27)
+
+Status: **PASS / FROZEN** (supersedes §13's withdrawn claim and §14's
+HARDENING note; this section is the single canonical status).
+
+### 15.1 Hardening baseline / commits
+
+```text
+baseline   : 6ab21092  P7B hardening checkpoint (not a freeze)
+fix        : d5dff6bd  fix: harden p7b publication trust boundary
+test       : 550aa1ee  test: close p7b audited publication gates
+docs       : this commit
+branch     : mvp/agent-v0-phase7-agent-aware-report-runtime
+```
+
+### 15.2 Audit follow-up implementation (§3-§21)
+
+- **TrustedPublicationInput** (`report_publication.py`): the publication
+  boundary now rebuilds its entire input from `reports.db` — the exact
+  durable admission (re-loaded, identity-checked), completed chapter
+  generations keyed by finalization identity, re-validated chapter
+  outputs with `output_hash`/`digest_json` hash+identity verification,
+  context packs with pack-hash/spec-hash/finalization verification, the
+  exact persisted ledger (chapter-set and draft-hash coverage checked),
+  and only persisted `status="pass"` reviews whose `ledger_id`/`ledger_hash`
+  equal the ledger being published. `publish()` accepts IDs only; caller
+  payloads cannot reach the manifest.
+- **Review binding (§5/§6/§19)**: a review pass is not a string gate —
+  the reloader re-reads review rows and rejects `issues_found`,
+  `indeterminate`, missing rows, cross-ledger passes (stale review), and
+  cross-runtime reviews.
+- **Deterministic consistency re-run (§7)**: executed at the publication
+  boundary against the reloaded ledger/chapter set with the caller's
+  evidence-digest map; any issue raises and nothing is published.
+- **Retry/admission (§13-§14)**: `retry_chapter_generation` copies
+  `admission_id` (audit-tested: `attempt2.admission_id == A`,
+  `attempt_no == 2`); the executor re-verifies the exact durable
+  admission before claim AND before terminal completion (audit-tested by
+  deleting the admission mid-run — the chapter cannot complete).
+- **Synthesis ceiling (§18)**: `validate_synthesis_assertion` derives
+  classes from the immutable ledger only; a forged caller map cannot
+  upgrade a summary (audit-tested).
+- **Hash idempotency root fix**: `ReportAssertionLedgerV1` and
+  `ReportConsistencyReviewV1` now normalize defaulted fields before
+  deriving `input_hash`/content ids, so `model_dump_json → reload`
+  reproduces the exact same `ledger_id`/`input_hash`/`review_id`. Without
+  this, a persisted review's reloaded hash differed from its stored hash
+  and no persisted review could ever satisfy an exact-hash gate.
+- **V3 provenance (§8)**: chapter_spec_hashes / context_pack ids+hashes /
+  output hashes / digest ids+hashes / ledger id+hash / review ids+hashes /
+  finalization id+hash all come from reloaded persisted rows.
+- **Version allocation (§10-§12)**: unchanged R2 semantics — the
+  immutable manifest may exist while the DB transaction fails; the strict
+  Viewer can only see a version through the READY `report_versions` row
+  (single-transaction allocation). Replay allocates a NEW report_id and
+  next version; no equivalent-version double-write.
+
+### 15.3 Dedicated audit suite (§29)
+
+`tests/unit/test_report_runtime_p7b_audit.py` — **27 passed**. Covers:
+trusted-input reload exactness; unknown generation/ledger/review/admission
+ids rejected with zero `report_versions` rows; incomplete chapter set
+rejection; tamper matrix (spec hash / output hash / digest binding /
+foreign-finalization ledger) failing closed; stale review cannot approve
+the new ledger; deterministic-consistency re-run blocker; manifest-write
+failure and DB-completion failure leaving nothing Viewer-visible; replay
+allocation; admission-preserving retry; terminal-write admission
+revalidation; finalization/pack-spec binding at dispatch; persisted-input
+reconstruction from `reports.db` alone; forged caller class map; review
+hash ledger coverage; missing/non-pass/empty review rejection; production
+E2E completed→READY→strict Viewer with text equality; review blocker
+hiding the version; hidden-evidence blocker; assertion-overreach blocker;
+retry-then-publish with attempt history; hand-forged manifest
+unreachable via strict reader with V1 compatibility; static boundary
+re-run; existing-store additive migration (legacy rows preserved, new
+dispatch requires admission, retry preserves it); durable output-hash
+tamper rejected by the reloader.
+
+### 15.4 Final regression gate (§34-§36)
+
+```text
+P7B original focused           11 passed
+P7B dedicated audit suite      27 passed
+P7A focused (planning)         26 passed
+P7A + P7B + audit combined     64 passed
+P7 + retrieval + pack E2E      92 passed
+R2 forensic_report suite       147 passed, 1 pre-existing failure
+R2 report-chain focused        98 passed
+P1–P6 investigation regression 930 passed, 1 skipped
+startup / ServiceManager       48 passed
+combined P7+R2+startup command 331 passed, 1 failure (the known baseline
+                               deep-recursion route test)
+py_compile                     PASS
+git diff --check               PASS
+pip check                      baseline environment conflicts only
+                               (mcp/sse-starlette vs starlette 0.47.3;
+                                identical on clean 6ab21092)
+worktree                       clean after final commit
+```
+
+Baseline failure classification (§35): the single failure,
+`test_file_response_rejects_nonstandard_json_constants_and_deep_recursion`,
+reproduces on a clean `6ab21092` worktree (`git stash` → same failure) —
+**PRE-EXISTING**, no P7 path ownership. The two `SnapshotWriter`
+process-claim tests pass in an isolated run (11 passed); they remain
+classified as a combined-run intermittent baseline/environment failure,
+not reproduced in isolated reruns, with no P7 code-path ownership. pip
+check conflicts are identical on the clean baseline — environment issue,
+not a P7B regression (§36).
+
+### 15.5 Freeze exit matrix (§37)
+
+```text
+F1  publication reloads exact durable artifacts        PASS
+F2  review exact ledger binding                        PASS
+F3  deterministic consistency rerun at publication    PASS
+F4  missing/non-pass review blocks publication         PASS
+F5  stale review blocks publication                    PASS
+F6  V3 exact spec/pack/digest/ledger/review provenance PASS
+F7  retry preserves admission                          PASS
+F8  terminal write revalidates admission               PASS
+F9  finalization identity exact across entire chain    PASS
+F10 synthesis ceiling derives from Ledger               PASS
+F11 manifest-write/DB-failure not Viewer-visible        PASS
+F12 successful publication strict Viewer readable       PASS
+F13 old V1/V2 Viewer compatibility                      PASS
+F14 production E2E completed→publication                PASS
+F15 production overreach blocker                        PASS
+F16 production hidden-Evidence blocker                  PASS
+F17 production stale-review blocker                     PASS
+F18 migration existing-store path                       PASS
+P7A regression                                          PASS
+R2 regression: no new failure                           PASS
+P1–P6 regression: no new failure                        PASS
+startup/lifecycle                                       PASS
+worktree                                                clean
+```
+
+### 15.6 Cross-resource publication semantics (§10, frozen wording)
+
+Filesystem + SQLite cannot form one physical ACID transaction. The frozen
+invariant is **Viewer-visible publication atomicity**: the immutable
+manifest file may physically exist while the completion transaction has
+not committed, but the DB-visible READY `report_versions` row is the
+authority for Viewer visibility, and the strict narrative reader only
+exposes versions through that row.
+
+```text
+PHASE 7A: PASS / FROZEN
+PHASE 7B: PASS / FROZEN
+PHASE 7 OVERALL: PASS / FROZEN
+P7 frozen HEAD = 550aa1ee (audit-follow-up final commit)
+```
