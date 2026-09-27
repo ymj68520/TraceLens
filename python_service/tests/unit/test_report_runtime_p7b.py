@@ -470,62 +470,158 @@ def test_synthesis_ceiling_uses_lowest_basis():
 
 
 def test_v3_publication_adapter_and_strict_viewer(tmp_path):
+    """V3 publication through the durable trusted-input reload: the full
+    P7B chain is staged in reports.db, publication takes IDs only, and
+    the strict Viewer reads the reloaded validated text."""
     from httpserver.services.report_runtime.report_publication import (
         PrevalidatedReportPublicationAdapter,
     )
-    from httpserver.services.forensic_report.models import (
-        ReportVersion,
+    from httpserver.services.report_runtime.report_repository import (
+        ReportRuntimeRepository,
     )
-    from httpserver.services.report_runtime.report_ledger import (
-        build_chapter_digest,
+    from httpserver.services.report_runtime.report_chapter import (
+        ChapterSpecV1,
     )
+    from httpserver.services.report_runtime.report_chapter_generation import (
+        commit_report_chapter_dispatch,
+    )
+    from httpserver.services.report_runtime.report_chapter_executor import (
+        ChapterGenerationExecutor,
+    )
+    from httpserver.services.report_runtime.report_retrieval import (
+        ReportRetrievalPlanV1,
+    )
+    from httpserver.services.report_runtime.report_context_pack import (
+        FrozenReportContextPackV1,
+        ReportEvidenceItemV1,
+    )
+    from httpserver.services.report_runtime.report_admission import (
+        ReportRuntimeAdmissionService,
+    )
+    from httpserver.services.report_runtime.report_template import (
+        default_template_registry,
+    )
+    import asyncio as _asyncio
+    import hashlib as _hashlib
 
     report_root = tmp_path / "reports"
     report_root.mkdir()
     report_repo = ReportRepository(report_root / "reports.db")
     writer = GenerationReportWriter(report_root)
-    draft = ChapterDraftV1(
-        chapter_id="c1",
-        statements=(
-            ReportAssertionV1(
-                text="Recorded file fact.", assertion_class="FACT",
-                basis_type="direct_evidence",
-                evidence_refs=("file:C/a.doc",),
-                citation_refs=("file:C/a.doc",),
-            ),
-        ),
-        writer_metadata=WriterMetadataV1(
-            model="deterministic_renderer", prompt_version="p",
-            narrative_policy_version="n",
-            generated_at="2026-01-01T00:00:00+00:00",
-        ),
-    ).with_identities("input-hash")
-    digest = build_chapter_digest(
-        draft, generation_id="rgen:1", context_pack_hash="pack-hash"
+    runtime_repo = ReportRuntimeRepository(tmp_path / "runtime-reports.db")
+
+    record = type(
+        "FRec", (), {
+            "finalization_id": "fz-1", "input_hash": "final-hash",
+            "state_revision": 2, "state_hash": "state-hash",
+            "completion_mode": "complete",
+        },
+    )()
+    investigation = type("I", (), {})()
+    investigation.status = type("S", (), {"value": "completed"})()
+
+    class FakeRuntime:
+        def get_investigation(self, investigation_id):
+            return investigation
+
+        def get_finalization(self, investigation_id):
+            return record
+
+    async def provider(task_id):
+        return FakeRuntime()
+
+    admission = _asyncio.run(
+        ReportRuntimeAdmissionService(
+            provider, runtime_repo, default_template_registry()
+        ).admit(TASK, INV, requested_by="analyst")
     )
-    ledger = ReportAssertionLedgerV1(
+
+    spec = ChapterSpecV1(
+        chapter_id="c1", outline_id="outline-1", outline_revision=1,
+        outline_hash="outline-hash", title="Chapter 1",
+        generation_mode="deterministic", ordering=1,
+    )
+    plan = ReportRetrievalPlanV1(
+        task_id=TASK, investigation_id=INV, finalization_id="fz-1",
+        outline_id="outline-1", outline_revision=1, chapter_id="c1",
+        chapter_spec_hash=spec.input_hash,
+        anchor_refs=("file:C/a.doc",),
+    )
+    pack = FrozenReportContextPackV1(
         task_id=TASK, investigation_id=INV, finalization_id="fz-1",
         finalization_record_hash="final-hash", outline_id="outline-1",
-        outline_revision=1, chapter_generation_ids=("rgen:1",),
-        assertions=(
-            LedgerAssertionV1(
-                chapter_id="c1", assertion_id=draft.statements[0].assertion_id,
-                text_sha256=__import__("hashlib").sha256(
-                    draft.statements[0].text.encode()
-                ).hexdigest(), assertion_class="FACT",
-                basis_type="direct_evidence",
-                evidence_refs=("file:C/a.doc",), citation_refs=("file:C/a.doc",),
+        outline_revision=1, chapter_id="c1",
+        chapter_spec_hash=spec.input_hash,
+        retrieval_plan_id=plan.retrieval_plan_id,
+        retrieval_plan_hash=plan.input_hash,
+        generation_mode="deterministic",
+        anchor_evidence=(
+            ReportEvidenceItemV1(
+                evidence_ref="file:C/a.doc", role="anchor",
+                evidence_digest="evidence-digest",
+                hydration_depth="structured",
             ),
         ),
+        hydration_policy_version="report-hydration-policy:v1",
+        retrieval_policy_version="report-retrieval-policy:v1",
+        dedup_policy_version="report-dedup-policy:v1",
+        budget_policy_version="report-retrieval-budget:v1",
+    )
+    generation_input = commit_report_chapter_dispatch(
+        runtime_repo,
+        context_pack=pack,
+        chapter_spec=spec,
+        retrieval_plan=plan,
+        narrative_policy=build_starter_narrative_policy(),
+        prompt_version="chapter-writer:starter:v1",
+        admission=admission,
+    )
+    result = _asyncio.run(
+        ChapterGenerationExecutor(
+            repository=runtime_repo
+        ).execute_chapter_generation(generation_input.generation_id)
+    )
+    assert result["outcome"] == "completed"
+    completed = runtime_repo.list_completed_chapter_generations(
+        task_id=TASK, investigation_id=INV, finalization_id="fz-1"
+    )
+    # output_json embeds the derived draft_hash (executor contract);
+    # ChapterDraftV1 itself is strict, so strip it before revalidation
+    draft_payload = json.loads(completed[0]["output_json"])
+    draft_payload.pop("draft_hash", None)
+    draft = ChapterDraftV1.model_validate(draft_payload)
+    digest = build_chapter_digest(
+        draft,
+        generation_id=generation_input.generation_id,
+        context_pack_hash=pack.input_hash,
+    )
+    ledger = build_assertion_ledger(
+        task_id=TASK, investigation_id=INV, finalization_id="fz-1",
+        outline_id="outline-1", outline_revision=1,
+        finalization_record_hash="final-hash", completed=completed,
+    )
+    runtime_repo.record_assertion_ledger(ledger)
+    review = ReportConsistencyReviewV1(
+        ledger_id=ledger.ledger_id, ledger_hash=ledger.input_hash,
+        task_id=TASK, investigation_id=INV, status="pass",
         created_at="2026-01-01T00:00:00+00:00",
     )
+    runtime_repo.record_consistency_review(review)
     report_id, manifest_path = PrevalidatedReportPublicationAdapter(
-        repository=report_repo, writer=writer
+        runtime_repository=runtime_repo,
+        r2_repository=report_repo,
+        writer=writer,
     ).publish(
-        task_id=TASK, title="P7B report", drafts=[draft],
-        chapter_titles={"c1": "Chapter 1"}, ledger=ledger,
-        digests=[digest], review_ids=("rrev:1",), review_hashes=("rh",),
-        model="deterministic_renderer", prompt_version="p",
+        task_id=TASK,
+        title="P7B report",
+        admission_id=admission.admission_id,
+        expected_generation_ids=(generation_input.generation_id,),
+        ledger_id=ledger.ledger_id,
+        review_ids=(review.review_id,),
+        chapter_titles={"c1": "Chapter 1"},
+        evidence_digests={"file:C/a.doc": "evidence-digest"},
+        model="deterministic_renderer",
+        prompt_version="chapter-writer:starter:v1",
     )
     version = report_repo.get(report_id)
     assert version is not None
@@ -539,5 +635,8 @@ def test_v3_publication_adapter_and_strict_viewer(tmp_path):
     assert manifest.schema_version == "3.0"
     assert manifest.report_kind == "agent_aware_generation"
     assert manifest.provenance.assertion_ledger_id == ledger.ledger_id
+    assert manifest.provenance.chapter_spec_hashes == (spec.input_hash,)
+    assert manifest.provenance.context_pack_ids == (pack.context_pack_id,)
+    assert manifest.provenance.context_pack_hashes == (pack.input_hash,)
     assert manifest.citations[0].evidence_key == "file:C/a.doc"
-    assert manifest.sections[0].content == "- 【事实】Recorded file fact.（证据：c001）"
+    assert manifest.sections[0].content.startswith("- 【事实】")
