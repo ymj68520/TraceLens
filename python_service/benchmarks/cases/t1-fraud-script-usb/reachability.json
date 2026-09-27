@@ -5,7 +5,7 @@
     {
       "truth_evidence_id": "TE-1",
       "resolved_evidence_keys": [
-        "file:/$OrphanFiles/mima.txt"
+        "file:/data/入金记录.txt"
       ],
       "parser_reachable": true,
       "agent_discoverable": true,
@@ -15,7 +15,7 @@
     {
       "truth_evidence_id": "TE-2",
       "resolved_evidence_keys": [
-        "file:/话术/包装例1.docx"
+        "file:/README.md"
       ],
       "parser_reachable": true,
       "agent_discoverable": true,
@@ -25,7 +25,7 @@
     {
       "truth_evidence_id": "TE-3",
       "resolved_evidence_keys": [
-        "file:/话术/7要素.docx"
+        "file:/data/客户清单.csv"
       ],
       "parser_reachable": true,
       "agent_discoverable": true,
@@ -35,7 +35,7 @@
     {
       "truth_evidence_id": "TE-4",
       "resolved_evidence_keys": [
-        "file:/话术/拒绝视频话术.txt"
+        "file:/话术/开场白.txt"
       ],
       "parser_reachable": true,
       "agent_discoverable": true,
@@ -45,17 +45,7 @@
     {
       "truth_evidence_id": "TE-5",
       "resolved_evidence_keys": [
-        "file:/话术/聊天话术1.docx"
-      ],
-      "parser_reachable": true,
-      "agent_discoverable": true,
-      "status": "resolved",
-      "unavailable_reason": ""
-    },
-    {
-      "truth_evidence_id": "TE-6",
-      "resolved_evidence_keys": [
-        "file:/话术/老师包装.txt"
+        "file:/话术/应对拒绝.txt"
       ],
       "parser_reachable": true,
       "agent_discoverable": true,
@@ -63,6 +53,6 @@
       "unavailable_reason": ""
     }
   ],
-  "input_hash": "f8cb31a8fe5b3bd62fd27d9b9af76a9c08a6d518858f90d53724f8c9a961670e",
-  "created_at": "2026-09-27T12:27:36.649440+00:00"
+  "input_hash": "30e3b580418753797fb95f98a8fc09a3f71d8685ee7ed8ab78f89ec5e4b35ea5",
+  "created_at": "2026-09-27T14:43:57.772302+00:00"
 }

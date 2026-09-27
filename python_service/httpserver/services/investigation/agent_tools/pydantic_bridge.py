@@ -17,11 +17,13 @@ from pydantic import TypeAdapter
 from pydantic_core import SchemaValidator
 
 from pydantic_ai import Agent, InlineDefsJsonSchemaTransformer
+from pydantic_ai.exceptions import ToolFailed
 from pydantic_ai.tools import RunContext, ToolDefinition
 from pydantic_ai.toolsets.abstract import AbstractToolset, ToolsetTool
 
 from .context import ForensicToolContext
 from .definitions import ForensicToolDefinition, ToolAccess
+from .errors import ToolExecutionError
 
 
 @runtime_checkable
@@ -118,7 +120,16 @@ class ForensicToolset(AbstractToolset):
         # scope, budget and duplicate guards before the domain adapter runs.
         if hasattr(tool_args, "model_dump"):
             tool_args = tool_args.model_dump()
-        return await self._registry.execute(self._context, name, tool_args)
+        try:
+            return await self._registry.execute(self._context, name, tool_args)
+        except ToolExecutionError as exc:
+            # A rejected registry step (bad input, budget/duplicate guard, a
+            # domain adapter error) is a MODEL-correctable condition: report
+            # it as a failed tool result the model can read and adapt to,
+            # instead of aborting the whole delegation.  The registry error
+            # stays the machine contract; pydantic-ai turns ToolFailed into
+            # a failed tool return after retries are exhausted.
+            raise ToolFailed(f"{exc.code.value}: {exc}") from exc
 
 
 def build_pydantic_toolset(

@@ -217,6 +217,19 @@ class SpecialistContextPack(BaseModel):
                 ),
             ),
             (
+                "L1b_result_identity",
+                canonical_state_json(
+                    {
+                        "delegation_id": self.delegation_id or "",
+                        "question_id": self.question_id or "",
+                        "echo_rule": (
+                            "the structured result MUST repeat these two "
+                            "values verbatim in delegation_id / question_id"
+                        ),
+                    }
+                ),
+            ),
+            (
                 "L2_profile",
                 canonical_state_json(self.profile.model_dump()),
             ),

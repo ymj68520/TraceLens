@@ -198,6 +198,21 @@ def build_get_evidence_tool(
         content = None
         if args.hydration_level == "preview":
             raw = resolved.get("content")
+            if not isinstance(raw, str):
+                # the workbench resolver resolves file content through
+                # bounded_content (files carry only content_path); the
+                # preview promise requires actually reading the bounded text
+                resolver = getattr(
+                    services.investigation_service, "_evidence_resolver", None
+                )
+                bounded = getattr(resolver, "bounded_content", None)
+                if bounded is not None:
+                    try:
+                        raw = await bounded(resolved)
+                    except Exception:  # noqa: BLE001 - preview is best-effort
+                        raw = await bounded(
+                            type("_R", (), {"evidence_type": resolved.get("evidence_type"), "content": None, "content_path": resolved.get("content_path")})()
+                        )
             if isinstance(raw, str):
                 content = raw[: config.max_preview_chars]
         output = GetEvidenceOutput(

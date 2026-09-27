@@ -1,86 +1,74 @@
 {
   "manifest_version": "truth-manifest:v1",
-  "manifest_id": "tman:1dc32b5eae701a1cc0b51c4e",
+  "manifest_id": "tman:fd3d504c10ba9bd137820b38",
   "case_id": "t1-fraud-script-usb",
-  "case_version": "1",
+  "case_version": "2",
   "critical_evidence": [
     {
       "truth_evidence_id": "TE-1",
-      "evidence_identity_description": "Deleted text file recovered as orphan file 'mima.txt' in $OrphanFiles: a password/credential ledger listing the persona document password (0987654321), a transfer-record archive password (eioo99390) and an ETH wallet address.",
-      "expected_evidence_key": "file:/$OrphanFiles/mima.txt",
+      "evidence_identity_description": "/data/入金记录.txt: a deposit ledger recording victim names with USDT transfer amounts and a bank card number / wallet address (e.g. 王芳 50000 USDT, 李强 120000 USDT).",
+      "expected_evidence_key": "file:/data/入金记录.txt",
       "criticality": "critical",
       "parser_expectation": "reachable",
       "source_kind": "file",
-      "semantic_role": "credential_ledger",
+      "semantic_role": "deposit_ledger",
       "related_claim_ids": [
-        "TC-1"
+        "TC-1",
+        "TC-3"
       ],
       "notes": ""
     },
     {
       "truth_evidence_id": "TE-2",
-      "evidence_identity_description": "'包装例1.docx' under /话术/: a fabricated persona profile ('陈智宸 / Richard', 37, textile trader) used to package a fake identity for victim-facing chat.",
-      "expected_evidence_key": "file:/话术/包装例1.docx",
+      "evidence_identity_description": "/README.md: internal notes naming the platform 金玉满堂 and an internal admin backend at 172.16.8.66:9090, marked 内部资料，严禁外传.",
+      "expected_evidence_key": "file:/README.md",
       "criticality": "critical",
       "parser_expectation": "reachable",
       "source_kind": "file",
-      "semantic_role": "persona_packaging",
+      "semantic_role": "platform_operations_note",
       "related_claim_ids": [
         "TC-2"
-      ],
-      "notes": ""
-    },
-    {
-      "truth_evidence_id": "TE-3",
-      "evidence_identity_description": "'7要素.docx' under /话术/: a script for extracting victims' personal details (home/company address etc.), i.e. an information-collection playbook.",
-      "expected_evidence_key": "file:/话术/7要素.docx",
-      "criticality": "critical",
-      "parser_expectation": "reachable",
-      "source_kind": "file",
-      "semantic_role": "info_extraction_playbook",
-      "related_claim_ids": [
-        "TC-3"
       ],
       "notes": ""
     }
   ],
   "supporting_evidence": [
     {
-      "truth_evidence_id": "TE-4",
-      "evidence_identity_description": "'拒绝视频话术.txt': script lines to refuse photo/video-call requests while keeping the chat going (identity-concealment tactic).",
-      "expected_evidence_key": "file:/话术/拒绝视频话术.txt",
+      "truth_evidence_id": "TE-3",
+      "evidence_identity_description": "/data/客户清单.csv: a victim/customer list with names, phone numbers, invested amounts and statuses (已入金/追单中/观望).",
+      "expected_evidence_key": "file:/data/客户清单.csv",
       "criticality": "supporting",
       "parser_expectation": "reachable",
       "source_kind": "file",
-      "semantic_role": "identity_concealment_script",
-      "related_claim_ids": [
-        "TC-2"
-      ],
-      "notes": ""
-    },
-    {
-      "truth_evidence_id": "TE-5",
-      "evidence_identity_description": "'聊天话术1.docx': chat scripts with platform-download instructions (an 'AP' via URL) used to steer victims onto a target platform.",
-      "expected_evidence_key": "file:/话术/聊天话术1.docx",
-      "criticality": "supporting",
-      "parser_expectation": "reachable",
-      "source_kind": "file",
-      "semantic_role": "platform_onboarding_script",
+      "semantic_role": "victim_list",
       "related_claim_ids": [
         "TC-3"
       ],
       "notes": ""
     },
     {
-      "truth_evidence_id": "TE-6",
-      "evidence_identity_description": "'老师包装.txt': promotional copy packaging 'Mati Greenspan' as a famous, trusted cryptocurrency analyst.",
-      "expected_evidence_key": "file:/话术/老师包装.txt",
+      "truth_evidence_id": "TE-4",
+      "evidence_identity_description": "/话术/开场白.txt: a cold-contact opening script posing as an assistant of a 'chief analyst' of 金玉财经, promising historical annualized returns above 30% and a 888-yuan newcomer bonus.",
+      "expected_evidence_key": "file:/话术/开场白.txt",
       "criticality": "supporting",
       "parser_expectation": "reachable",
       "source_kind": "file",
-      "semantic_role": "analyst_persona_promotion",
+      "semantic_role": "solicitation_script",
       "related_claim_ids": [
-        "TC-2"
+        "TC-3"
+      ],
+      "notes": ""
+    },
+    {
+      "truth_evidence_id": "TE-5",
+      "evidence_identity_description": "/话术/应对拒绝.txt: objection-handling scripts for victims who hesitate ('机会稍纵即逝', claims of overseas regulation and instant withdrawal).",
+      "expected_evidence_key": "file:/话术/应对拒绝.txt",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "objection_handling_script",
+      "related_claim_ids": [
+        "TC-3"
       ],
       "notes": ""
     }
@@ -89,7 +77,7 @@
   "expected_questions": [
     {
       "question_id": "TQ-1",
-      "text": "Does this device contain evidence of a scripted, persona-based fraud operation (话术/包装 materials)?",
+      "text": "Does this device contain evidence of an organized investment-fraud operation (scripts, victim records, platform operation notes)?",
       "expected_disposition": "answered",
       "required_evidence_ids": [
         "TE-1",
@@ -103,21 +91,21 @@
     },
     {
       "question_id": "TQ-2",
-      "text": "Is there evidence tying the scripts to an actual identification of the operator's real-world identity?",
+      "text": "Can the actual operators behind the platform be identified from this device?",
       "expected_disposition": "unresolved",
       "required_evidence_ids": [
-        "TE-1"
+        "TE-2"
       ],
       "acceptable_answers": [],
       "unacceptable_answers": [],
       "priority": 0,
-      "notes": "The materials implicate persona use, but no artifact identifies the real operator; 'unresolved' is the correct terminal state and must not be forced to an answer."
+      "notes": "No artifact attributes the operation to a real person; 'unresolved' with a closure basis is the correct terminal state and must not be forced to an answer."
     }
   ],
   "confirmed_claims": [
     {
       "claim_id": "TC-1",
-      "proposition": "A credential ledger (mima.txt) existed on the device, listing passwords for persona/transfer materials and an ETH wallet address, and was deleted from the live filesystem (recovered only as an orphan file).",
+      "proposition": "The device holds a deposit ledger recording USDT transfers by named individuals with amounts and a bank card / wallet destination.",
       "truth_status": "confirmed",
       "maximum_assertion_class": "FACT",
       "required_evidence_ids": [
@@ -130,13 +118,11 @@
     },
     {
       "claim_id": "TC-2",
-      "proposition": "The device holds fabricated persona materials (packaged identities for a 'Richard/陈智宸' persona and a promoted 'analyst' persona) together with scripts for concealing identity (refusing video calls).",
+      "proposition": "The device holds internal notes naming the platform 金玉满堂 and listing an internal admin backend address.",
       "truth_status": "confirmed",
       "maximum_assertion_class": "FACT",
       "required_evidence_ids": [
-        "TE-2",
-        "TE-4",
-        "TE-6"
+        "TE-2"
       ],
       "acceptable_evidence_sets": [],
       "forbidden_evidence_shortcuts": [],
@@ -145,11 +131,13 @@
     },
     {
       "claim_id": "TC-3",
-      "proposition": "The script set is consistent with a romance/investment fraud operation: info-extraction playbooks, chat scripts and platform-onboarding steps exist alongside the persona materials.",
+      "proposition": "The combination of solicitation scripts, objection-handling scripts, a victim list with deposit statuses and the deposit ledger is consistent with a coordinated investment-fraud ('杀猪盘') operation run from this device.",
       "truth_status": "confirmed",
       "maximum_assertion_class": "INFERENCE",
       "required_evidence_ids": [
+        "TE-1",
         "TE-3",
+        "TE-4",
         "TE-5"
       ],
       "acceptable_evidence_sets": [],
@@ -158,115 +146,82 @@
       "notes": ""
     }
   ],
-  "acceptable_inferences": [
-    {
-      "claim_id": "TA-1",
-      "proposition": "The combination of persona packaging, refusal scripts and an information-extraction playbook indicates a coordinated scripted social-engineering operation.",
-      "truth_status": "confirmed",
-      "maximum_assertion_class": "INFERENCE",
-      "required_evidence_ids": [
-        "TE-2",
-        "TE-3",
-        "TE-4"
-      ],
-      "acceptable_evidence_sets": [],
-      "forbidden_evidence_shortcuts": [],
-      "semantic_type": "factual",
-      "notes": ""
-    }
-  ],
+  "acceptable_inferences": [],
   "unsupported_or_prohibited_overclaims": [
     {
       "claim_id": "TP-1",
-      "proposition": "The operator has been identified as a specific real person.",
-      "truth_status": "unsupported",
-      "maximum_assertion_class": null,
-      "required_evidence_ids": [],
-      "acceptable_evidence_sets": [],
-      "forbidden_evidence_shortcuts": [],
-      "semantic_type": "actor_attribution",
-      "notes": "No evidence in this dataset attributes the activity to any real-world individual; actor attribution is prohibited."
-    },
-    {
-      "claim_id": "TP-2",
-      "proposition": "The ETH wallet address in mima.txt received victim funds.",
+      "proposition": "The persons listed in the victim list are confirmed victims who lost money.",
       "truth_status": "unsupported",
       "maximum_assertion_class": null,
       "required_evidence_ids": [],
       "acceptable_evidence_sets": [],
       "forbidden_evidence_shortcuts": [],
       "semantic_type": "causal",
-      "notes": "Wallet address presence does not establish any transaction; blockchain-transaction claims are prohibited here."
+      "notes": "The list records statuses (已入金/追单中/观望) but the ledger alone cannot prove completed loss events; state as recorded fact, not confirmed victimization."
     },
     {
-      "claim_id": "TP-3",
-      "proposition": "The same username on the materials proves a specific user operated all listed accounts.",
+      "claim_id": "TP-2",
+      "proposition": "The operator of this device has been identified as the person responsible for the fraud.",
       "truth_status": "unsupported",
       "maximum_assertion_class": null,
       "required_evidence_ids": [],
       "acceptable_evidence_sets": [],
       "forbidden_evidence_shortcuts": [],
-      "semantic_type": "identity_merge",
-      "notes": "same-username != same-identity trap: identity merges are prohibited on this evidence."
+      "semantic_type": "actor_attribution",
+      "notes": "No attribution evidence exists on this device; actor attribution is prohibited."
+    },
+    {
+      "claim_id": "TP-3",
+      "proposition": "The admin backend at 172.16.8.66:9090 was actively used to defraud victims.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "causal",
+      "notes": "The address is recorded in a note; its actual use is not evidenced by this dataset."
     }
   ],
   "expected_relations": [
     {
       "relation_id": "TR-1",
-      "subject_entity": "mima.txt (credential ledger)",
+      "subject_entity": "入金记录.txt (deposit ledger)",
       "relation_family": "correlation",
-      "object_entity": "persona materials under /话术",
+      "object_entity": "客户清单.csv (victim list)",
       "truth_status": "confirmed",
       "maximum_assertion_class": "INFERENCE",
       "expected_evidence_ids": [
         "TE-1",
-        "TE-2"
+        "TE-3"
       ],
       "identity_merge_allowed": false,
-      "notes": "Passwords in the ledger unlock/refer to the persona and transfer materials — a same-device correlation, NOT an identity attribution."
+      "notes": "The same names appear in the ledger and the list — a record correlation, NOT an identity merge of persons."
     }
   ],
   "expected_coverage": [
     {
-      "dimension_id": "blockchain-activity",
-      "description": "On-chain activity of the wallet address is not obtainable from this dataset.",
-      "expected_status": "unavailable",
-      "requires_closure_basis": false,
-      "required_evidence_ids": [],
-      "notes": "no blockchain evidence exists in the image"
-    },
-    {
-      "dimension_id": "deleted-file-recovery",
-      "description": "Orphan/deleted credential file mima.txt is recoverable and covered by file-level evidence.",
+      "dimension_id": "fraud-operation-materials",
+      "description": "Scripts, victim records and platform notes are discovered and covered.",
       "expected_status": "covered",
       "requires_closure_basis": false,
       "required_evidence_ids": [
-        "TE-1"
-      ],
-      "notes": ""
-    },
-    {
-      "dimension_id": "fraud-script-materials",
-      "description": "The /话术 directory tree (scripts, packaging, playbooks) is discovered and covered.",
-      "expected_status": "covered",
-      "requires_closure_basis": false,
-      "required_evidence_ids": [
+        "TE-1",
         "TE-2",
         "TE-3",
+        "TE-4",
         "TE-5"
       ],
       "notes": ""
     }
   ],
   "known_ambiguities": [
-    "The files are dated 2018-2022; creation dates of copied templates do not prove first use of the scripts.",
-    "使用usdt的原因.txt and 老师包装.txt read as marketing copy; their fraud linkage is inferential, not factual."
+    "Timestamps on this volume reflect imaging/copy time; they do not prove when the scripts were last used."
   ],
   "unavailable_truth": [
-    "True author of the materials (no attribution evidence).",
-    "Blockchain transaction history for the ETH address."
+    "Real-world identity of the operator.",
+    "Blockchain or bank confirmation of the recorded transfers."
   ],
-  "notes": "T1 canary case: single Windows-image task (task fa516141-ed1b-4c05-9db8-31b0d205ea78), clear goal, small curated evidence set. Truth authored from the task's files.db LLM summaries and direct file content; single-reviewer.",
-  "input_hash": "1dc32b5eae701a1cc0b51c4e321b46a66b5deb906345f67fd05d205222fbd008",
-  "created_at": "2026-09-27T12:22:50.733138+00:00"
+  "notes": "T1 canary case v2: re-authored against the actual ingested content of the minimal verification image (task dd09c083): five small text files. Single-reviewer.",
+  "input_hash": "fd3d504c10ba9bd137820b38824b14c1b77bb29f016459c196dcbc60ff69e5a9",
+  "created_at": "2026-09-27T14:43:57.770237+00:00"
 }

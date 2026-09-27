@@ -1,15 +1,15 @@
 {
   "manifest_version": "benchmark-corpus-manifest:v1",
   "corpus_id": "corpus-agent-v0-canary",
-  "version": "1",
+  "version": "2",
   "development_cases": [],
   "calibration_cases": [
     {
       "case_id": "t1-fraud-script-usb",
-      "case_hash": "8dde849ecb3353bfedd32be2b03138ec3175a74e1b0322772fd5241c8455a90b",
-      "truth_manifest_id": "tman:1dc32b5eae701a1cc0b51c4e",
-      "truth_manifest_hash": "1dc32b5eae701a1cc0b51c4e321b46a66b5deb906345f67fd05d205222fbd008",
-      "dataset_hash": "5cc92859bf1e0fe13cc787a185a35a698ed7d9bb8e1e0b21f391822dca197955",
+      "case_hash": "877b171b12b9f06d8c2ba68551e702461b3d33b3251a47d5b18b0e069ea22f39",
+      "truth_manifest_id": "tman:fd3d504c10ba9bd137820b38",
+      "truth_manifest_hash": "fd3d504c10ba9bd137820b38824b14c1b77bb29f016459c196dcbc60ff69e5a9",
+      "dataset_hash": "071f01f1a197a71b68e93d51917c8381b6832b68c4d39fe5ea131ffaf5f000c9",
       "tier": "T1",
       "negative_dimensions": []
     }
@@ -26,8 +26,8 @@
     }
   ],
   "stress_cases": [],
-  "freeze_commit": "dbb1cb30",
-  "selection_rationale": "Canary-phase corpus freeze for P8B §58: one T1 calibration case (t1-fraud-script-usb) for baseline measurement and one disjoint T1 holdout case (t1-usb-collector) sealed until the calibration profile freezes. Both are real single-device Windows cases derived from task fa516141 with independently authored truth. Multi-device/noise/negative-dimension cases are a follow-up corpus version and are listed as known exclusions; this corpus is NOT the final acceptance corpus.",
+  "freeze_commit": "e4854057",
+  "selection_rationale": "Canary-phase corpus freeze v2 for P8B §58: calibration case t1-fraud-script-usb re-authored (v2) to match the actual ingested content of the minimal verification image; holdout case t1-usb-collector unchanged and sealed until the calibration profile freezes. NOT the final acceptance corpus.",
   "coverage_matrix": {
     "single_device_clear": true,
     "single_device_noisy": false,
@@ -53,6 +53,6 @@
   ],
   "truth_review_status": "single-reviewer",
   "calibration_profile_hash": null,
-  "input_hash": "faafdbd41ef103268cdd504b33725b81a1c9654307b9a81f198bea4ed46976c1",
-  "created_at": "2026-09-27T12:30:22.286099+00:00"
+  "input_hash": "9d63e905f70ad644f6c57d9cc07b0fd309e9298ff64caa8e7c49c3222089704f",
+  "created_at": "2026-09-27T14:45:20.200185+00:00"
 }
