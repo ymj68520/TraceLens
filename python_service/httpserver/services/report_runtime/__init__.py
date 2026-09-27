@@ -94,6 +94,9 @@ from .report_publication import (
     GenerationReportManifestV3,
     ManifestProvenanceV3,
     PrevalidatedReportPublicationAdapter,
+    PublicationTrustError,
+    TrustedPublicationInput,
+    build_trusted_publication_input,
 )
 
 __all__ = [
@@ -162,4 +165,7 @@ __all__ = [
     "GenerationReportManifestV3",
     "ManifestProvenanceV3",
     "PrevalidatedReportPublicationAdapter",
+    "PublicationTrustError",
+    "TrustedPublicationInput",
+    "build_trusted_publication_input",
 ]

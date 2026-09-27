@@ -192,6 +192,9 @@ class ReportAssertionLedgerV1(BaseModel):
                 data.get("semantic_basis_index", {}).items()
             )
         }
+        # defaulted field normalization keeps the derived hash IDEMPOTENT:
+        # a JSON reload must see the same payload keys as the first build.
+        data.setdefault("finalization_record_hash", "")
         if not data.get("created_at"):
             data["created_at"] = datetime.now(timezone.utc).isoformat()
         payload = {
@@ -469,6 +472,13 @@ class ReportConsistencyReviewV1(BaseModel):
         data["missing_limitation_notes"] = tuple(
             sorted(set(data.get("missing_limitation_notes", ())))
         )
+        # defaulted field normalization keeps the derived hash IDEMPOTENT:
+        # a JSON reload must see the same payload keys as the first build.
+        data.setdefault("affected_chapter_ids", ())
+        data.setdefault("affected_assertion_ids", ())
+        data.setdefault("model", "")
+        data.setdefault("prompt_version", CONSISTENCY_REVIEWER_PROMPT_VERSION)
+        data.setdefault("model_config_hash", "")
         if not data.get("created_at"):
             data["created_at"] = datetime.now(timezone.utc).isoformat()
         payload = {

@@ -720,5 +720,57 @@ class ReportRuntimeRepository:
                 ),
             )
 
+    def get_assertion_ledger(self, ledger_id: str):
+        """Reload one exact persisted ledger row (payload re-validated)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT payload_json FROM report_assertion_ledgers "
+                "WHERE ledger_id = ?",
+                (ledger_id,),
+            ).fetchone()
+        from .report_ledger import ReportAssertionLedgerV1
+
+        return (
+            ReportAssertionLedgerV1.model_validate_json(row["payload_json"])
+            if row
+            else None
+        )
+
+    def get_consistency_review(self, review_id: str):
+        """Reload one exact persisted consistency review row."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT payload_json FROM report_consistency_reviews "
+                "WHERE review_id = ?",
+                (review_id,),
+            ).fetchone()
+        from .report_ledger import ReportConsistencyReviewV1
+
+        return (
+            ReportConsistencyReviewV1.model_validate_json(row["payload_json"])
+            if row
+            else None
+        )
+
+    def list_completed_chapter_generations(
+        self,
+        *,
+        task_id: str,
+        investigation_id: str,
+        finalization_id: str,
+    ) -> list[dict]:
+        """Completed chapter generation rows bound to ONE finalization
+        identity, ordered by chapter_id/generation_id (deterministic
+        publication order)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM report_chapter_generations "
+                "WHERE task_id = ? AND investigation_id = ? "
+                "AND finalization_id = ? "
+                "AND status = 'completed' ORDER BY chapter_id, generation_id",
+                (task_id, investigation_id, finalization_id),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
 
 __all__ = ["REPORT_RUNTIME_SCHEMA_VERSION", "ReportRuntimeRepository"]
