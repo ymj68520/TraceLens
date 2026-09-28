@@ -1,5 +1,16 @@
 # TraceLens 第六阶段 6C：受控发布准备与现场预演
 
+## 后续只读依赖修复候选
+
+03fcb281 的实际服务部署揭示：AI disabled/read-only 启动不创建二次分析执行器，
+但 workbench 读侧仍依赖该执行器，历史 v7 overview 返回500。
+新候选把摘要/详情/版本列表/单条分析 GET 改为 `InvestigationReadService` 的只读投影，
+底层继续使用严格 `InvestigationGraphReader`。写侧仍保留原执行器、鉴权及状态边界。
+不会开启AI、重放作业、恢复旧报告生成，或普通请求迁移v7。
+新增真实 ServiceManager 初始化回归，不再用一个总是存在 executor 的 mock manager
+掩盖 disabled + v7 组合；最终必须在实际新进程上再次验证。
+旧候选、实际失败记录、351份状态备份和维护配置保留；原工作区未整理或重置。
+
 ## 2026-09-28：固定候选收口（非生产切换）
 
 本轮候选位于受限持久目录 `/root/tracelens-releases/6c-freeze-20260928-bgDIFC`，

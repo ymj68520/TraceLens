@@ -17,7 +17,7 @@ import asyncio
 
 from ..evidence.exceptions import EvidenceNotFoundError
 from .graph_reader import InvestigationGraphReader
-from .models import AnalysisClaim, EvidenceSnapshot, EvidenceSummary
+from .models import AnalysisClaim, EvidenceSnapshot, EvidenceSummary, SecondaryAnalysis
 from .paths import investigation_db_path_for_task
 
 
@@ -45,6 +45,18 @@ class InvestigationReadService:
         if reader is None:
             return []
         return await asyncio.to_thread(reader.list_evidence)
+
+    async def get_analysis(self, task_id: str, analysis_id: str) -> SecondaryAnalysis | None:
+        reader = await self._reader_for(task_id)
+        return None if reader is None else await asyncio.to_thread(reader.get_analysis, analysis_id)
+
+    async def list_analyses(self, task_id: str, evidence_key: str) -> list[SecondaryAnalysis]:
+        reader = await self._reader_for(task_id)
+        return [] if reader is None else await asyncio.to_thread(reader.list_analyses, evidence_key)
+
+    async def list_all_analyses(self, task_id: str) -> dict[str, list[SecondaryAnalysis]]:
+        reader = await self._reader_for(task_id)
+        return {} if reader is None else await asyncio.to_thread(reader.list_all_analyses)
 
     async def get_snapshot(
         self, task_id: str, evidence_key: str

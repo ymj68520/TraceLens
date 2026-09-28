@@ -30,7 +30,10 @@ def _manager():
     seed.bootstrap = AsyncMock(return_value={})
     manager.investigation_seed_service = seed
     manager.investigation_read_service = Mock(
-        list_evidence=AsyncMock(return_value=[])
+        list_evidence=AsyncMock(return_value=[]),
+        list_all_analyses=AsyncMock(return_value={}),
+        list_analyses=AsyncMock(return_value=[]),
+        get_analysis=AsyncMock(return_value=None),
     )
     manager.investigation_event_service = Mock(
         list_events=AsyncMock(
@@ -122,8 +125,7 @@ def test_overview_uses_single_bulk_analysis_read():
             ]
         )
     )
-    manager.secondary_analysis_executor = Mock(
-        list_all_analyses=AsyncMock(
+    manager.investigation_read_service.list_all_analyses = AsyncMock(
             return_value={
                 "file:/case/a.txt": [Mock(analysis_id="a1", model_dump=lambda mode="json": {})],
                 "file:/case/b.txt": [
@@ -132,13 +134,12 @@ def test_overview_uses_single_bulk_analysis_read():
                 ],
             }
         )
-    )
     response = _client(manager).get("/api/investigation/workbench/T1")
     assert response.status_code == 200
     body = response.json()
     # analyses 跟随 evidence 顺序；同 key 内保持 version-desc 批量读给的顺序
     assert [item["id"] for item in body["analyses"]] == ["a1", "b2", "b1"]
-    manager.secondary_analysis_executor.list_all_analyses.assert_awaited_once_with("T1")
+    manager.investigation_read_service.list_all_analyses.assert_awaited_once_with("T1")
     manager.secondary_analysis_executor.list_analyses.assert_not_called()
 
 

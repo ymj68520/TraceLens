@@ -164,7 +164,7 @@ async def _overview(task_id: str, manager) -> dict[str, Any]:
     graph = await manager.investigation_graph_service.get_graph(task_id)
     # 单次批量读取按 evidence_key 分组，取代逐 evidence 打开一次
     # SQLite 连接的 N+1（大任务上曾把 overview 拖到 90s+）。
-    analyses_by_key = await manager.secondary_analysis_executor.list_all_analyses(
+    analyses_by_key = await manager.investigation_read_service.list_all_analyses(
         task_id
     )
     analyses: list[Any] = []
@@ -415,7 +415,7 @@ async def workbench_evidence_detail(task_id: str, evidence_key: str = Query(...)
     try:
         resolved = await EvidenceResolver(manager.cpp_backend).resolve_evidence(task_id, evidence_key)
         snapshot = await manager.investigation_read_service.get_snapshot(task_id, resolved.evidence_key)
-        analyses = await manager.secondary_analysis_executor.list_analyses(task_id, resolved.evidence_key)
+        analyses = await manager.investigation_read_service.list_analyses(task_id, resolved.evidence_key)
         report_items = await manager.report_evidence_service.list(task_id)
         report_item = next((item for item in report_items if item.evidence_key == resolved.evidence_key), None)
         return {"success": True, "evidence": _evidence_detail(resolved, snapshot, analyses, report_item)}
@@ -494,7 +494,7 @@ async def workbench_start_analysis(
 @router.get("/{task_id}/analysis-jobs/{job_id}")
 async def workbench_analysis_job(task_id: str, job_id: str, manager=Depends(_manager)):
     try:
-        analysis = await manager.secondary_analysis_executor.get_analysis(task_id, job_id)
+        analysis = await manager.investigation_read_service.get_analysis(task_id, job_id)
         if analysis is None:
             raise EvidenceNotFoundError("analysis not found")
         return {"success": True, "job": _analysis_view(analysis)}
@@ -506,7 +506,7 @@ async def workbench_analysis_job(task_id: str, job_id: str, manager=Depends(_man
 async def workbench_analysis_versions(task_id: str, evidence_key: str = Query(...), manager=Depends(_manager)):
     try:
         parsed = parse_evidence_key(evidence_key)
-        analyses = await manager.secondary_analysis_executor.list_analyses(task_id, parsed.canonical_key)
+        analyses = await manager.investigation_read_service.list_analyses(task_id, parsed.canonical_key)
         return {"success": True, "versions": [_analysis_view(item) for item in analyses]}
     except Exception as exc:
         raise _error(exc) from exc

@@ -114,6 +114,14 @@ class CreateAnalysisRequest(BaseModel):
     )
 
 
+def get_investigation_read_service() -> InvestigationReadService:
+    """Read historical findings without starting optional executors/recovery."""
+    try:
+        return get_service_manager().investigation_read_service
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="investigation read service is unavailable") from exc
+
+
 def get_secondary_analysis_executor() -> SecondaryAnalysisExecutor:
     """Resolve the ready executor through ServiceManager."""
     try:
@@ -201,10 +209,15 @@ async def review_analysis(
 async def get_analysis(
     analysis_id: str,
     task_id: str = Query(..., min_length=1),
-    executor: SecondaryAnalysisExecutor = Depends(get_secondary_analysis_executor),
+    service: InvestigationReadService = Depends(get_investigation_read_service),
 ) -> SecondaryAnalysis:
     """Query a single analysis from SQLite (DB is source of truth)."""
-    analysis = await executor.get_analysis(task_id, analysis_id)
+    try:
+        analysis = await service.get_analysis(task_id, analysis_id)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="analysis not found") from exc
+    except EvidenceStoreError as exc:
+        raise _store_http_error(exc) from exc
     if analysis is None:
         raise HTTPException(status_code=404, detail="analysis not found")
     return analysis
@@ -215,7 +228,7 @@ async def list_analyses(
     task_id: str = Query(..., min_length=1),
     evidence_key: str = Query(..., min_length=1),
     status: Optional[str] = Query(None),
-    executor: SecondaryAnalysisExecutor = Depends(get_secondary_analysis_executor),
+    service: InvestigationReadService = Depends(get_investigation_read_service),
 ) -> list[SecondaryAnalysis]:
     """List analyses for an evidence. Uses parse_evidence_key (no resolve).
 
@@ -228,7 +241,12 @@ async def list_analyses(
     except InvalidEvidenceKeyError as exc:
         raise HTTPException(status_code=400, detail="invalid evidence key") from exc
 
-    analyses = await executor.list_analyses(task_id, parsed.canonical_key)
+    try:
+        analyses = await service.list_analyses(task_id, parsed.canonical_key)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="task not found") from exc
+    except EvidenceStoreError as exc:
+        raise _store_http_error(exc) from exc
     if status is not None:
         try:
             status_enum = SecondaryAnalysisStatus(status)
@@ -465,17 +483,6 @@ async def list_event_refreshes(
 # ---------------------------------------------------------------------------
 # Workbench read routes (C9a) -- strictly read-only projections
 # ---------------------------------------------------------------------------
-
-def get_investigation_read_service() -> InvestigationReadService:
-    """Resolve the read-only Workbench data service via ServiceManager."""
-    try:
-        return get_service_manager().investigation_read_service
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="investigation read service is unavailable",
-        ) from exc
-
 
 @router.get("/evidence", response_model=list[EvidenceSummary])
 async def list_investigation_evidence(

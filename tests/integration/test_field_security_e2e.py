@@ -336,6 +336,35 @@ def run(binary: Path, *, systemd: bool = False, release_root: Path | None = None
                 package_path = root / "synthetic-delivery"
                 build_package(output=package_path, task=task)
                 assert verify_package(package_path)["valid"] is True
+                # Actual release initialization has no secondary executor in
+                # disabled mode. A separate synthetic historical Task must
+                # still browse its v7 store through read-only projections.
+                code, legacy_created = request(cpp_base, "/api/tasks", method="POST", token=token,
+                    data={"image_path": str(logical), "android_source": "dir",
+                          "scenarios": ["android"], "platform_analyze": True})
+                assert code == 201
+                legacy_id = legacy_created['id']
+                legacy_deadline = time.monotonic() + 120
+                while time.monotonic() < legacy_deadline:
+                    _, legacy_task = request(cpp_base, '/api/tasks/' + legacy_id, token=token)
+                    if str(legacy_task.get('status','')).lower() in {'completed','failed'}:
+                        break
+                    time.sleep(.1)
+                assert str(legacy_task['status']).lower() == 'completed'
+                from httpserver.services.investigation.repository import InvestigationRepository
+                legacy_db = Path(legacy_task['output_files_db']).parent / 'investigation.db'
+                old = InvestigationRepository.__new__(InvestigationRepository)
+                old.db_path, old.task_id, old.existing_only = legacy_db, legacy_id, False
+                old._initialize_v7_atomically()
+                import hashlib
+                legacy_before = hashlib.sha256(legacy_db.read_bytes()).hexdigest()
+                code, overview = request(python_base, '/api/investigation/workbench/' + legacy_id, token=token)
+                assert code == 200 and overview['read_only'] and overview['store_schema_version'] == 7
+                assert overview['analyses'] == []
+                code, versions = request(python_base, '/api/investigation/workbench/' + legacy_id
+                    + '/evidence/analysis?evidence_key=file%3A%2Fsynthetic.txt', token=token)
+                assert code == 200 and versions['versions'] == []
+                assert hashlib.sha256(legacy_db.read_bytes()).hexdigest() == legacy_before
                 check_file = root / "field-check.env"
                 check_file.write_text("\n".join((
                     "TRACELENS_FIELD_AUTH=enabled", "TRACELENS_REQUIRE_FIELD_AUTH=1",
@@ -399,6 +428,8 @@ def run(binary: Path, *, systemd: bool = False, release_root: Path | None = None
                         "html_report_records": records["total"], "synthetic_task_artifacts": counts,
                         "package_valid": True, "outbound_policy": "disabled",
                         "isolated_code_loaded": True, "ipv6_direct": "NOT_LISTENING",
+                        "actual_disabled_manager_v7_overview": 200,
+                        "actual_disabled_manager_history_versions": 200,
                         "os_egress_process_scope": "VERIFIED_UNIT" if systemd else "ISOLATED_NETNS_ONLY",
                         "auth_service_unavailable": 503}
             finally:

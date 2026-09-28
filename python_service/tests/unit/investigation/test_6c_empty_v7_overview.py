@@ -14,7 +14,7 @@ async def test_empty_v7_overview_declares_readonly_without_writes(tmp_path):
     task = {'id':'synthetic-v7','output_files_db':str(tmp_path/'files.db')}
     manager = SimpleNamespace(
         cpp_backend=SimpleNamespace(get_task=AsyncMock(return_value=task)),
-        investigation_read_service=SimpleNamespace(list_evidence=AsyncMock(return_value=[])),
+        investigation_read_service=SimpleNamespace(list_evidence=AsyncMock(return_value=[]),list_all_analyses=AsyncMock(return_value={})),
         investigation_event_service=SimpleNamespace(list_events=AsyncMock(return_value=[]),event_time_bounds=AsyncMock(return_value={})),
         report_evidence_service=SimpleNamespace(list=AsyncMock(return_value=[])),
         investigation_graph_service=SimpleNamespace(get_graph=AsyncMock(return_value={})),
