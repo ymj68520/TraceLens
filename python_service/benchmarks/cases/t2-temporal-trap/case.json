@@ -27,7 +27,7 @@
       }
     ],
     "dataset_hash": "95816de840e121b307dca0c68da0b242c2f57593e45281123ca5fc0484cf4c7d",
-    "created_at": "2026-09-28T00:58:43.994539+00:00"
+    "created_at": "2026-09-28T02:49:34.256572+00:00"
   },
   "truth_manifest_id": "tman:PLACEHOLDER",
   "truth_manifest_hash": "77694d90d115fb512888b1393bee7f8162e187d9d0d41b7331f8e3c6a8317d22",
@@ -56,6 +56,6 @@
     "t2",
     "temporal-trap"
   ],
-  "input_hash": "a035b2f9b27cbafdae2c10d26f7bc6bf101249485e923a859be5c7cd20fa3eae",
+  "input_hash": "41362f57fa21d926601f7670ee6a015bbfc39134501e6900b50bd4e84f488d0f",
   "created_at": "2026-09-28T01:00:00+00:00"
 }

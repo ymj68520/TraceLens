@@ -1,0 +1,38 @@
+{
+  "reachability_version": "reachability-manifest:v1",
+  "case_id": "t2-identity-trap",
+  "records": [
+    {
+      "truth_evidence_id": "TE-1",
+      "resolved_evidence_keys": [
+        "file:/logs/app1.log"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "TE-2",
+      "resolved_evidence_keys": [
+        "file:/logs/app2.log"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "TE-3",
+      "resolved_evidence_keys": [
+        "file:/README.txt"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    }
+  ],
+  "input_hash": "b4a11e1182d3d8b54ec6a34266785d15bfc017ff673d5e51ab6c735c1a593ee9",
+  "created_at": "2026-09-28T02:49:34.251818+00:00"
+}

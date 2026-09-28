@@ -1,0 +1,38 @@
+{
+  "reachability_version": "reachability-manifest:v1",
+  "case_id": "t2-temporal-trap",
+  "records": [
+    {
+      "truth_evidence_id": "TE-1",
+      "resolved_evidence_keys": [
+        "file:/chat/wangfang.log"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "TE-2",
+      "resolved_evidence_keys": [
+        "file:/chat/zhangming.log"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "TE-3",
+      "resolved_evidence_keys": [
+        "file:/README.txt"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    }
+  ],
+  "input_hash": "d3d7beed549e1a0c07777417be0335bd9012e4de29870930bb1f55f3c1a4f05b",
+  "created_at": "2026-09-28T02:49:34.257269+00:00"
+}
