@@ -1,0 +1,161 @@
+{
+  "report_version": "a1-canary-report:v1",
+  "branch": "mvp/agent-v0-supervisor-integration-v2",
+  "model": "MiMo-V2.6-Flash (frozen reference config, hcnsec-cloud)",
+  "contract": {
+    "v1_reference_runs": 24,
+    "v2_canary_runs": 8,
+    "run_matrix": "8 calibration cases x 1 repeat (spec §38)"
+  },
+  "identity_plumbing_invalid_rate": {
+    "structural_identity_codes_v1": {
+      "count": 6,
+      "total_events": 16,
+      "distribution": {
+        "PLAN_ATTENTION_HASH_MISMATCH": 1,
+        "INTEGRATION_PROPOSAL_REF_UNRESOLVED": 1,
+        "INTEGRATION_IDENTITY_MISMATCH": 2,
+        "COVERAGE_DIMENSION_NOT_FOUND": 1,
+        "INTEGRATION_EVIDENCE_REF_INVALID": 1
+      }
+    },
+    "structural_identity_codes_v2": {
+      "count": 0,
+      "note": "the §28-predicted structural class (BASIS_REF_UNKNOWN, EVIDENCE_REF_*, IDENTITY_MISMATCH, COVERAGE_DIMENSION_NOT_FOUND, PROPOSAL_REF_UNRESOLVED) is ZERO"
+    },
+    "handle_layer_codes_v2": {
+      "count": 3,
+      "distribution": {
+        "HANDLE_KIND_MISMATCH": 3,
+        "QUESTION_DISPOSITION_REQUIRED": 3,
+        "QUESTION_CLOSURE_BASIS_REQUIRED": 3
+      },
+      "classification": "identity-ADJACENT: the model selected a handle of the wrong kind (fail-closed at the resolver, no canonical damage); counted AGAINST the §39 gate"
+    },
+    "semantic_codes_v2": {
+      "count": 6,
+      "distribution": {
+        "QUESTION_DISPOSITION_REQUIRED": 3,
+        "QUESTION_CLOSURE_BASIS_REQUIRED": 3
+      },
+      "note": "preserved by design (§28): semantic gates must remain visible"
+    }
+  },
+  "functional_outcome": {
+    "v1_reference": {
+      "finalization_pass": 7,
+      "runs": 24,
+      "case_outcome_success": 0,
+      "runs_with_integrated_delegation": 0
+    },
+    "v2_canary": {
+      "finalization_pass": 2,
+      "runs": 8,
+      "case_outcome_success": 0,
+      "runs_with_integrated_delegation": 0
+    }
+  },
+  "per_runs": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "delegations": 0,
+      "delegations_integrated": 0,
+      "rejection_codes": [],
+      "wall_ms_total": 362416,
+      "timeout": false
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "delegations": 1,
+      "delegations_integrated": 0,
+      "rejection_codes": [],
+      "wall_ms_total": 900134,
+      "timeout": true
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "delegations": 1,
+      "delegations_integrated": 0,
+      "rejection_codes": [
+        "HANDLE_KIND_MISMATCH"
+      ],
+      "wall_ms_total": 523260,
+      "timeout": false
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "delegations": 1,
+      "delegations_integrated": 0,
+      "rejection_codes": [],
+      "wall_ms_total": 900157,
+      "timeout": true
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "delegations": 1,
+      "delegations_integrated": 0,
+      "rejection_codes": [
+        "HANDLE_KIND_MISMATCH"
+      ],
+      "wall_ms_total": 377579,
+      "timeout": false
+    },
+    {
+      "case_id": "t2-report-citation",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "delegations": 0,
+      "delegations_integrated": 0,
+      "rejection_codes": [],
+      "wall_ms_total": 6363,
+      "timeout": false
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "delegations": 1,
+      "delegations_integrated": 0,
+      "rejection_codes": [
+        "HANDLE_KIND_MISMATCH"
+      ],
+      "wall_ms_total": 89244,
+      "timeout": false
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "delegations": 1,
+      "delegations_integrated": 0,
+      "rejection_codes": [
+        "QUESTION_DISPOSITION_REQUIRED",
+        "QUESTION_CLOSURE_BASIS_REQUIRED",
+        "QUESTION_DISPOSITION_REQUIRED",
+        "QUESTION_CLOSURE_BASIS_REQUIRED",
+        "QUESTION_DISPOSITION_REQUIRED",
+        "QUESTION_CLOSURE_BASIS_REQUIRED"
+      ],
+      "wall_ms_total": 200856,
+      "timeout": false
+    }
+  ],
+  "gate_39_verdict": {
+    "passed": false,
+    "rationale": "the §28 structural identity class went 6 events/24 runs -> 0 (the architectural hypothesis is confirmed for TRANSCRIPTION burden), but 3/8 canary runs failed on HANDLE_KIND_MISMATCH — an identity-ADJACENT interface error — and the functional outcome did not move (0/8 integrated delegations, 0 case success, finalization-pass 2/8 vs reference 7/24).  Identity-plumbing errors have NOT approached ~0 under the honest accounting that includes the handle layer.",
+    "freeze_commit": "WITHHELD (§43: only a real canary pass produces the freeze commit)"
+  },
+  "next_step_per_spec_40": "residual failures split handle-kind (3) vs semantic closure (6): semantic discipline dominates.  Combined with the 4-model qualification result, the evidence now points at true model capability limits of the flash class on the frozen investigation contract — reasoning-class models or a Supervisor-role-capable model are the next lever (§40), NOT further interface surgery and NEVER gate relaxation.",
+  "production_changes": [],
+  "holdout": "SEALED / NEVER RUN"
+}

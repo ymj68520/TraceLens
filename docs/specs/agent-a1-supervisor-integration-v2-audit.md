@@ -297,3 +297,40 @@ citation boundary, fail-closed everywhere. The LLM still cannot invent
 Evidence, choose task identity, bypass scope, lower verification, accept/
 reject findings, or bypass finalization — it stops having to transcribe
 machine identity strings (§45).
+
+---
+
+## 6. §38 A1 canary outcome (2026-09-28) — §39 GATE NOT PASSED, freeze withheld
+
+MiMo-V2.6-Flash, frozen reference config, contract v2, 8 calibration cases × 1.
+Artifacts: `benchmarks/results/agent-v0/a1-canary/` (runs + `a1-canary-report.v1.json`).
+
+| metric | v1 reference (24 runs) | v2 canary (8 runs) |
+|---|---|---|
+| §28 structural identity events | 6 (`PLAN_ATTENTION_HASH_MISMATCH` 1, `INTEGRATION_IDENTITY_MISMATCH` 2, `INTEGRATION_EVIDENCE_REF_INVALID` 1, `INTEGRATION_PROPOSAL_REF_UNRESOLVED` 1, `COVERAGE_DIMENSION_NOT_FOUND` 1) | **0** |
+| handle-layer events (`HANDLE_KIND_MISMATCH`) | n/a | 3 (3 runs, fail-closed at resolver) |
+| semantic events (disposition/closure) | 10 | 6 (1 run) |
+| finalization pass | 7/24 | 2/8 (both empty-investigation gate-passes) |
+| runs with an integrated delegation | 0/24 | 0/8 |
+| case outcome success | 0/24 | 0/8 |
+
+Reading: the transcription hypothesis is CONFIRMED for the structural class
+(6 → 0) — removing machine-identity echo eliminated exactly the predicted
+codes.  The hypothesis is INCOMPLETE for the interface as a whole: the model
+now fumbles handle-kind selection (3/8 runs, new fail-closed
+`HANDLE_KIND_MISMATCH`), and functional completion did not move.  Two of the
+five failed runs were 900 s run timeouts (long cycling), one failed purely on
+semantic closure discipline.
+
+**§39 verdict: NOT PASSED** — identity-plumbing errors have not approached ~0
+once the handle layer is honestly included.  **No A1-5 freeze commit.**  The
+v2 contract remains available behind
+`AGENT_SUPERVISOR_CONTRACT_VERSION=v2` (default stays `v1`; the frozen P8B
+baseline semantics are untouched).
+
+**§40 next lever**: residual failures split handle-kind (3) vs semantic
+closure (6) — semantic discipline dominates, and the 4-model qualification
+result stands.  Conclusion: flash-class models cannot currently drive the
+frozen investigation contract even without transcription burden; the next
+lever is a reasoning-class / Supervisor-capable model (or a higher-level
+architecture revision), never gate relaxation.
