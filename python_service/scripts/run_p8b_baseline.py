@@ -799,6 +799,34 @@ def _persist(out_dir: Path, outcome: dict) -> None:
         )
 
 
+def _extract_trajectory_digest(task_store: Path, out_dir: Path) -> None:
+    """Persist the run's rejection reason codes (§11) from the durable
+    trajectory before post_snapshot_cleanup removes the store."""
+    import sqlite3
+
+    try:
+        conn = sqlite3.connect(task_store)
+        rows = conn.execute(
+            "select payload_json from agent_trajectory_events "
+            "where event_type in "
+            "('transition_decision_rejected','integration_decision_rejected') "
+            "order by seq"
+        ).fetchall()
+        conn.close()
+        reasons = []
+        for (payload,) in rows:
+            try:
+                p = json.loads(payload)
+            except Exception:
+                continue
+            reasons.extend(p.get("violation_codes", []))
+        (out_dir / "trajectory_digest.json").write_text(
+            json.dumps(reasons), encoding="utf-8"
+        )
+    except Exception:
+        pass  # diagnostic only — never fail a run over its digest
+
+
 def _cleanup_task(task_id: str) -> bool:
     """B3.5 §18 post_snapshot_cleanup: delete the benchmark-created task
     through the normal task lifecycle API AFTER snapshot+result persistence
@@ -916,6 +944,14 @@ def main(argv=None) -> int:
                 )
                 continue
             _persist(out_dir, outcome)
+            # B3.5 measurement hygiene: extract the trajectory digest (§11
+            # reason-level rejection codes) BEFORE any §18 cleanup deletes
+            # the source task store.
+            task_store = Path(
+                provision["record"]["extraction_directory"]
+            ).parent / "investigation.db"
+            if task_store.is_file():
+                _extract_trajectory_digest(task_store, out_dir)
             if outcome["status"] == "completed":
                 result = outcome["result"]
                 gates = all(

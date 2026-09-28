@@ -31,6 +31,26 @@
       "repeat0": "205decb4-f51e-4443-bf00-0cbef99025d9",
       "repeat1": "b6803427-25d9-4487-9a9e-7fde70820d48",
       "repeat2": "13368ffe-e7a5-45cf-8aba-71730e7d228f"
+    },
+    "t2-misleading-note": {
+      "repeat0": "7718cbca-3abf-42bf-b4dc-7587a395da77",
+      "repeat1": "a008e078-58e2-4601-b59f-f6dd8d330471",
+      "repeat2": "a16e40ea-42f8-4500-8927-3e99da61ccf3"
+    },
+    "t2-cross-source-correlation": {
+      "repeat0": "b5966602-aef6-4481-9f9a-58586e41e55d",
+      "repeat1": "c4e74978-82a9-48ac-9d02-a88c72399f39",
+      "repeat2": "87584c70-ffa3-422a-bf0d-b66ef49e98b1"
+    },
+    "t2-verification-temptation": {
+      "repeat0": "b0b955b1-e40a-4e46-845d-27d690583b4d",
+      "repeat1": "f0f56d4c-1383-4af2-ba44-6df9e5697e1a",
+      "repeat2": "07418e7b-0155-4c52-80cb-befe96746e52"
+    },
+    "t2-report-citation": {
+      "repeat0": "b1458258-abae-4de2-9bee-8c2d814a2387",
+      "repeat1": "827b62e8-74bc-41b6-a4cf-a090648ee7c0",
+      "repeat2": "8de6c456-7f17-4fbd-becf-c980321b130f"
     }
   }
 }

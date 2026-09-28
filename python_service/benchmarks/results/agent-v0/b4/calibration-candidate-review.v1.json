@@ -1,0 +1,73 @@
+{
+  "review_version": "calibration-candidate-review:v1",
+  "experiment_id": "bexp-agent-v0-b2-baseline",
+  "candidates": [
+    {
+      "candidate": "CC-1",
+      "observed_evidence": "INTEGRATE proposal invalid in 17/24 runs (count-level; v4 reason-level distribution: QUESTION_DISPOSITION_REQUIRED+CLOSURE_BASIS_REQUIRED x5, INTEGRATION_IDENTITY_MISMATCH x2, PROPOSAL_REF_UNRESOLVED x1, EVIDENCE_REF_INVALID x1, COVERAGE_DIMENSION_NOT_FOUND x1, PLAN_ATTENTION_HASH_MISMATCH x1)",
+      "failure_layer": "MODEL / SUPERVISOR_INTEGRATION",
+      "classification": "MODEL_CAPABILITY_LIMIT / SUPERVISOR_INTEGRATION",
+      "calibratable": false,
+      "candidate_knobs": [
+        "none admitted: max-cycles/tool-budget/attention increases are §23-prohibited (no evidence of budget starvation: evidence discovery completes in 6-15 tool calls against budgets of 20 cycles / 2 retries; failures occur with budget remaining)"
+      ],
+      "causal_rationale": "rejections are semantic-contract failures (missing closure basis, invented refs, wrong typed ids) — §33 class, not numeric-budget class; recoverability data (§24): first-attempt invalid in every observed case, zero self-corrections, and the frozen 1-cycle invocation budget never produced a retry sample, so 'more cycles would help' is UNEVALUATED — and §32 withholds the experiment because the classification is not CALIBRATABLE_NUMERIC",
+      "risk": "blocking: no run can produce an integrated semantic output, so correlation/verifier/report paths stay unexercised downstream",
+      "decision": "NO numeric calibration. Record MiMo-V2.6-Flash = MODEL_CAPABILITY_LIMIT for Agent Supervisor integration (§25); recommend ModelQualificationExperiment before holdout (§27, endpoint offers DeepSeek-V4-Flash/glm-5.3/kimi-k3 etc.) as a user cost decision — B4 itself proceeds zero-change (§30)"
+    },
+    {
+      "candidate": "CC-2",
+      "observed_evidence": "duplicate tool calls 2-8 per run of 6-15 total; zero-result calls frequent",
+      "failure_layer": "MODEL / SPECIALIST",
+      "classification": "CALIBRATABLE_NUMERIC (plausible knob: duplicate policy)",
+      "calibratable": true,
+      "candidate_knobs": [
+        "tool duplicate fingerprint policy",
+        "specialist instructions (frozen)"
+      ],
+      "causal_rationale": "waste is real but has NO observed causal link to the dominant functional failure (integration invalidity); §32 requires the plausible causal link for the FAILURE being calibrated, and budget exhaustion is not implicated",
+      "risk": "cost/latency only",
+      "decision": "deferred — not calibrated this round; no experiment admitted"
+    },
+    {
+      "candidate": "CC-3",
+      "observed_evidence": "1 supervisor + 1 delegation ModelAPIError across 24 runs; 2 init-timeout infra failures (separately classified)",
+      "failure_layer": "PROVIDER/INFRA",
+      "classification": "PROVIDER/INFRA",
+      "calibratable": false,
+      "candidate_knobs": [
+        "provider retry policy (observed only)"
+      ],
+      "causal_rationale": "low rate; LLM_MAX_RETRIES=3 already absorbs most transients",
+      "risk": "none this round",
+      "decision": "no change; keep observing provider retry adequacy"
+    },
+    {
+      "candidate": "CC-4",
+      "observed_evidence": "PLAN_ATTENTION_HASH_MISMATCH 1/24 runs (identity-trap r0): supervisor echoed a stale attention_hash",
+      "failure_layer": "MODEL / SUPERVISOR_PLAN",
+      "classification": "MODEL_CAPABILITY_LIMIT / SUPERVISOR_PLAN",
+      "calibratable": false,
+      "candidate_knobs": [
+        "none (identity echo is a frozen instruction)"
+      ],
+      "causal_rationale": "single occurrence; validator correctly rejected; deterministic control plane unaffected",
+      "risk": "low frequency",
+      "decision": "monitor; no change"
+    },
+    {
+      "candidate": "CC-5",
+      "observed_evidence": "gate accepts complete_with_limitations with a FAILED delegation (t1 r0) and with a COMPLETELY EMPTY investigation (4/12 v5 runs: supervisor proposed no delegations, driver's single finalization request passed the gate)",
+      "failure_layer": "POLICY / CONTROL-PLANE SEMANTICS",
+      "classification": "POLICY_CORRECTNESS (frozen P2 semantics: non-required questions close as limitations)",
+      "calibratable": false,
+      "candidate_knobs": [
+        "none this round (§46: never relax StateTransitionPolicy/FinalizationGate to let a model pass)"
+      ],
+      "causal_rationale": "gate behavior is correct-per-contract; the weakness is that 'empty investigation' is a legal limitation-closure. The BenchmarkCaseOutcome metric already separates gate-pass from case success; a future acceptance run may seed charter questions at required priority (benchmark authoring choice)",
+      "risk": "vacuous closure inflates finalization_pass_rate if read alone",
+      "decision": "no production change; AcceptanceProfileCandidate makes case outcome (not finalization pass) the required metric (§40)"
+    }
+  ],
+  "overall_decision": "production_changes = [] (zero-change calibration, §35): the dominant failure is a model capability limit at supervisor integration, not a numeric-budget deficiency; no admitted knob exists"
+}
