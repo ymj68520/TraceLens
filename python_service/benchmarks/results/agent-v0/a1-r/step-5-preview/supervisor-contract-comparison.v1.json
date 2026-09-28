@@ -1,0 +1,341 @@
+{
+  "artifact_version": "SupervisorContractComparisonV1",
+  "experiment_id": "a1-r-r1-supervisor-contract-comparison",
+  "model": {
+    "provider": "hcnsec-cloud",
+    "requested_model": "step-5-preview",
+    "api_reported_model": "step-5-preview",
+    "reasoning_configuration": {
+      "mode": "provider default (normal chat configuration; no reasoning/thinking field sent — the model produces reasoning tokens by default)",
+      "measured_reasoning_tokens_on_probe": 0,
+      "probe_latency_s": 10.3,
+      "note": "provider does not itemize reasoning tokens; deliberation capability observed behaviourally (multi-step puzzle + typed agent loop)"
+    },
+    "temperature": 0.7,
+    "max_tokens": 16384,
+    "timeout_seconds": 120
+  },
+  "runtime_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+  "experiment_axis": "AGENT_SUPERVISOR_CONTRACT_VERSION v1 vs v2 ONLY (same model/config/corpus/policies; interleaved case-major order)",
+  "v1": {
+    "runs": [
+      {
+        "case_id": "t1-fraud-script-usb",
+        "rejection_codes": [],
+        "status": "completed",
+        "terminal_status": "completed",
+        "finalization_pass": true,
+        "delegations": 0,
+        "delegations_integrated": 0,
+        "delegation_statuses": [],
+        "semantic_output_available": false,
+        "dispositioned_questions": [],
+        "tool_calls": 0,
+        "wall_s": 3.9,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "critical_recall": "0/2",
+        "run_id": "brun:7e2ef6198c5a7ab04212277a"
+      },
+      {
+        "case_id": "t2-cross-source-correlation",
+        "rejection_codes": [],
+        "status": "completed",
+        "terminal_status": "completed",
+        "finalization_pass": true,
+        "delegations": 0,
+        "delegations_integrated": 0,
+        "delegation_statuses": [],
+        "semantic_output_available": false,
+        "dispositioned_questions": [],
+        "tool_calls": 0,
+        "wall_s": 170.3,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "critical_recall": "0/2",
+        "run_id": "brun:6a06a1994a4dbec74105e3cb"
+      },
+      {
+        "case_id": "t2-identity-trap",
+        "rejection_codes": [],
+        "status": "runner_failed",
+        "failure_reason": "Exceeded maximum output retries (1)",
+        "run_id": "brun:875ab2e800b6443d883f228e"
+      },
+      {
+        "case_id": "t2-misleading-note",
+        "rejection_codes": [
+          "QUESTION_DISPOSITION_REQUIRED",
+          "QUESTION_CLOSURE_BASIS_REQUIRED"
+        ],
+        "status": "completed",
+        "terminal_status": "failed",
+        "finalization_pass": false,
+        "delegations": 1,
+        "delegations_integrated": 0,
+        "delegation_statuses": [
+          "completed"
+        ],
+        "semantic_output_available": false,
+        "dispositioned_questions": [],
+        "tool_calls": 12,
+        "wall_s": 152.4,
+        "tokens_in": 58865,
+        "tokens_out": 6487,
+        "critical_recall": "1/1",
+        "run_id": "brun:b2ef9fc38fb330e8f8761ca3"
+      },
+      {
+        "case_id": "t2-no-evidence",
+        "rejection_codes": [],
+        "status": "completed",
+        "terminal_status": "completed",
+        "finalization_pass": true,
+        "delegations": 0,
+        "delegations_integrated": 0,
+        "delegation_statuses": [],
+        "semantic_output_available": false,
+        "dispositioned_questions": [],
+        "tool_calls": 0,
+        "wall_s": 11.5,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "critical_recall": "n/a (zero critical)",
+        "run_id": "brun:22b7d6810bc42d2d77dcdda4"
+      },
+      {
+        "case_id": "t2-report-citation",
+        "rejection_codes": [],
+        "status": "runner_failed",
+        "failure_reason": "Exceeded maximum output retries (1)",
+        "run_id": "brun:b69f13ade85154448c994520"
+      },
+      {
+        "case_id": "t2-temporal-trap",
+        "rejection_codes": [
+          "INTEGRATION_FINDING_REF_UNRESOLVED"
+        ],
+        "status": "completed",
+        "terminal_status": "failed",
+        "finalization_pass": false,
+        "delegations": 1,
+        "delegations_integrated": 0,
+        "delegation_statuses": [
+          "completed"
+        ],
+        "semantic_output_available": false,
+        "dispositioned_questions": [],
+        "tool_calls": 11,
+        "wall_s": 533.1,
+        "tokens_in": 79690,
+        "tokens_out": 16998,
+        "critical_recall": "2/2",
+        "run_id": "brun:c0d2914b4b3ed2a71d3cea72"
+      },
+      {
+        "case_id": "t2-verification-temptation",
+        "rejection_codes": [],
+        "status": "runner_failed",
+        "failure_reason": "Exceeded maximum output retries (1)",
+        "run_id": "brun:928a7eb7ec7bf7194a29fc1e"
+      }
+    ],
+    "summary": {
+      "runs_total": 8,
+      "runs_completed": 5,
+      "runs_runner_failed": 3,
+      "finalization_pass": 3,
+      "runs_with_integrated_delegation": 0,
+      "total_integrated_delegations": 0,
+      "total_delegations": 2,
+      "semantic_output_available_runs": 0,
+      "P_identity_plumbing_events": 1,
+      "H_handle_events": 0,
+      "S_semantic_events": 2,
+      "other_events": 0,
+      "rejection_code_distribution": {
+        "QUESTION_DISPOSITION_REQUIRED": 1,
+        "QUESTION_CLOSURE_BASIS_REQUIRED": 1,
+        "INTEGRATION_FINDING_REF_UNRESOLVED": 1
+      },
+      "wall_s_median": 152.4,
+      "tokens_out_total": 23485,
+      "tokens_in_total": 138555
+    }
+  },
+  "v2": {
+    "runs": [
+      {
+        "case_id": "t1-fraud-script-usb",
+        "rejection_codes": [],
+        "status": "runner_failed",
+        "failure_reason": "Request timed out.",
+        "run_id": "brun:5314a6f116eb6b6b29f8e020"
+      },
+      {
+        "case_id": "t2-cross-source-correlation",
+        "rejection_codes": [],
+        "status": "runner_failed",
+        "failure_reason": "Exceeded maximum output retries (1)",
+        "run_id": "brun:29b78281960193ae802b38e2"
+      },
+      {
+        "case_id": "t2-identity-trap",
+        "rejection_codes": [
+          "EVIDENCE_REF_CROSS_TASK",
+          "EVIDENCE_REF_CROSS_TASK",
+          "EVIDENCE_REF_CROSS_TASK",
+          "EVIDENCE_REF_CROSS_TASK"
+        ],
+        "status": "completed",
+        "terminal_status": "failed",
+        "finalization_pass": false,
+        "delegations": 1,
+        "delegations_integrated": 0,
+        "delegation_statuses": [
+          "completed"
+        ],
+        "semantic_output_available": false,
+        "dispositioned_questions": [],
+        "tool_calls": 14,
+        "wall_s": 368.7,
+        "tokens_in": 78699,
+        "tokens_out": 11196,
+        "critical_recall": "2/2",
+        "run_id": "brun:78532fca1bf1d02efbe74e3f"
+      },
+      {
+        "case_id": "t2-misleading-note",
+        "rejection_codes": [],
+        "status": "runner_failed",
+        "failure_reason": "Exceeded maximum output retries (1)",
+        "run_id": "brun:09d4c20d9ebb26e3bb85aad3"
+      },
+      {
+        "case_id": "t2-no-evidence",
+        "rejection_codes": [],
+        "status": "runner_failed",
+        "failure_reason": "Exceeded maximum output retries (1)",
+        "run_id": "brun:3fc055fe68927156b518986e"
+      },
+      {
+        "case_id": "t2-report-citation",
+        "rejection_codes": [],
+        "status": "runner_failed",
+        "failure_reason": "Exceeded maximum output retries (1)",
+        "run_id": "brun:c650e8ea01bfd19bf7d4bb1c"
+      },
+      {
+        "case_id": "t2-temporal-trap",
+        "rejection_codes": [
+          "EVIDENCE_REF_CROSS_TASK",
+          "EVIDENCE_REF_CROSS_TASK",
+          "EVIDENCE_REF_CROSS_TASK"
+        ],
+        "status": "completed",
+        "terminal_status": "failed",
+        "finalization_pass": false,
+        "delegations": 1,
+        "delegations_integrated": 0,
+        "delegation_statuses": [
+          "completed"
+        ],
+        "semantic_output_available": false,
+        "dispositioned_questions": [],
+        "tool_calls": 11,
+        "wall_s": 252.0,
+        "tokens_in": 61636,
+        "tokens_out": 8530,
+        "critical_recall": "2/2",
+        "run_id": "brun:0e3de2da69516f19567167aa"
+      },
+      {
+        "case_id": "t2-verification-temptation",
+        "rejection_codes": [],
+        "status": "completed",
+        "terminal_status": "completed",
+        "finalization_pass": true,
+        "delegations": 1,
+        "delegations_integrated": 0,
+        "delegation_statuses": [
+          "failed"
+        ],
+        "semantic_output_available": false,
+        "dispositioned_questions": [],
+        "tool_calls": 14,
+        "wall_s": 129.8,
+        "tokens_in": 58601,
+        "tokens_out": 6352,
+        "critical_recall": "1/1",
+        "run_id": "brun:f67146f45f096102107d3fa3"
+      }
+    ],
+    "summary": {
+      "runs_total": 8,
+      "runs_completed": 3,
+      "runs_runner_failed": 5,
+      "finalization_pass": 1,
+      "runs_with_integrated_delegation": 0,
+      "total_integrated_delegations": 0,
+      "total_delegations": 3,
+      "semantic_output_available_runs": 0,
+      "P_identity_plumbing_events": 7,
+      "H_handle_events": 0,
+      "S_semantic_events": 0,
+      "other_events": 0,
+      "rejection_code_distribution": {
+        "EVIDENCE_REF_CROSS_TASK": 7
+      },
+      "wall_s_median": 252.0,
+      "tokens_out_total": 26078,
+      "tokens_in_total": 198936
+    }
+  },
+  "hard_gates": {
+    "all_passed": true,
+    "violations": [],
+    "note": "§23 inline watch: no structural violation across all 16 runs + diagnostics"
+  },
+  "implementation_defect_tripwire": {
+    "triggered": true,
+    "rule": "§8: any canonical identity plumbing failure under v2 = A1 IMPLEMENTATION DEFECT, STOP"
+  },
+  "disposition": {
+    "value": "MODEL_CAPABILITY_DOMINANT",
+    "rationale": "under the same reasoning-model candidate, both contracts produce 0 integrated delegations and 0 case outcomes; 7/16 runs die at supervisor structured-output validity before any contract discrimination; under v2 the handle layer shows ZERO handle failures (H=0) and ZERO canonical identity echo failures, so the interface is no longer the visible limiter — model output reliability and upstream grounding are.  H2 (interaction too demanding) is NOT supported as the primary limiter; H1 (model capability) is supported at this endpoint's ceiling.",
+    "caveats": [
+      "reasoning-grade coverage was partial: the only explicit-reasoning candidate (Qwen3.8-27B, 454 reasoning tokens) was disqualified at the production specialist layer (16/16 agent_output_invalid, tool-arg schema discipline); the selected model (step-5-preview) exposes no reasoning-token accounting",
+      "endpoint channel churn observed mid-experiment (kimi-k3 403, glm-5.3 unresponsive, longcat-2.0 503, DeepSeek-V4-Pro mis-parsed as Flash-Vision-Exp)",
+      "v2 structural goal from A1 CONFIRMED again under a stronger model: canonical identity echo failures = 0"
+    ],
+    "next_step": "per §19: do NOT switch models again.  A2 (Semantic Action Decomposition) is the recorded next direction ONLY IF a genuinely reasoning-grade model becomes available on some endpoint; with the current population even A2 has no qualified executor.  P8B remains BLOCKED; holdout remains SEALED."
+  },
+  "created_at": "2026-09-29T00:00:00+00:00",
+  "p_h_s_decomposition": {
+    "note": "§8 tripwire fired on 7 EVIDENCE_REF_CROSS_TASK events under v2. Decomposition with evidence BEFORE pulling the STOP lever:",
+    "v2_P_event_decomposition": {
+      "canonical_identity_echo_codes (PLAN/INTEGRATION_IDENTITY_MISMATCH, ATTENTION_HASH, SOURCE_RESULT_*, BASIS_REF_UNKNOWN, FINDING/PROPOSAL_REF_UNRESOLVED, COVERAGE_DIMENSION_NOT_FOUND)": 0,
+      "EVIDENCE_REF_CROSS_TASK": 7
+    },
+    "evidence_ref_cross_task_cause_analysis": {
+      "mechanism": "the v2 binding table exposes EXACTLY the fresh delegation results' evidence refs as E-handles; the resolver structurally cannot emit a ref outside that domain; the model's selections therefore resolved faithfully to specialist-cited refs, which the StateTransitionPolicy grounding layer then rejected because the refs have no rows in evidence_snapshots (verified on a preserved store: specialist cited file:/README.txt, file:/logs/app1.log, file:/logs/app2.log; table empty; policy fail-closed with EVIDENCE_REF_CROSS_TASK)",
+      "classification": "G — grounding rejections of UPSTREAM-invalid refs (specialist-layer citation integrity), NOT supervisor identity transcription; the handle system performed exactly as designed",
+      "spec_letter_note": "§8 lists EVIDENCE_REF_CROSS_TASK as v1-typical; the v1-typical CAUSE (supervisor mis-transcription) is absent under v2.  Recorded as tripwire-reviewed with evidence; per §16 R1 ends anyway (v2 integrated delegations = 0/8 -> NO R2)."
+    },
+    "H_under_v2": 0,
+    "S_under_v1": 2
+  },
+  "runner_output_failures": {
+    "v1": {
+      "count": 3,
+      "reason": "Exceeded maximum output retries (supervisor structured output invalid repeatedly)"
+    },
+    "v2": {
+      "count": 4,
+      "reason": "3x output retries + 1x request timeout"
+    },
+    "note": "the model's dominant failure mode is producing valid supervisor structured output AT ALL, under both contracts"
+  }
+}

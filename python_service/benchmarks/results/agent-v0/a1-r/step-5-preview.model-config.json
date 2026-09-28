@@ -1,0 +1,11 @@
+{
+  "candidate_id": "step-5-preview",
+  "provider": "hcnsec-cloud",
+  "requested_model_id": "step-5-preview",
+  "api_reported_model_id": "step-5-preview",
+  "overrides": {
+    "llm_text_model": "step-5-preview",
+    "llm_text_temperature": 0.7,
+    "llm_thinking_mode": ""
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "candidate_id": "qwen3.8-27b",
+  "provider": "hcnsec-cloud",
+  "requested_model_id": "Qwen3.8-27B",
+  "api_reported_model_id": "self-dploy/Qwen3.8-27B",
+  "overrides": {
+    "llm_text_model": "Qwen3.8-27B",
+    "llm_text_temperature": 0.7,
+    "llm_thinking_mode": ""
+  }
+}
