@@ -49,6 +49,20 @@ std::vector<wchar_t> getWideArgs(int argc, char* argv[]) {
  */
 int main(int argc, char* argv[]) {
     using namespace forensics;
+    const auto printVersion = [] {
+        std::cout << "Forensic Image Analyzer v1.0" << std::endl;
+        std::cout << "Using The Sleuth Kit 4.14.0" << std::endl;
+        std::cout << "Release: " << TRACELENS_RELEASE_ID << std::endl;
+        std::cout << "Source commit: " << TRACELENS_SOURCE_COMMIT << std::endl;
+        std::cout << "Source SHA-256: " << TRACELENS_SOURCE_SHA256 << std::endl;
+    };
+    // Metadata probes must not create directories, read .env or initialize
+    // an audit database in an immutable candidate package.
+    if (argc == 2) {
+        const std::string flag(argv[1]);
+        if (flag == "--version" || flag == "-v") { printVersion(); return 0; }
+        if (flag == "--help" || flag == "-h") { CommandLineParser::printUsage(argv[0]); return 0; }
+    }
 
     // Initialize PathManager first (needed for config path resolution)
     PathManager::instance().initialize(argv[0]);
@@ -94,11 +108,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (cmdArgs.show_version) {
-        std::cout << "Forensic Image Analyzer v1.0" << std::endl;
-        std::cout << "Using The Sleuth Kit 4.14.0" << std::endl;
-        std::cout << "Release: " << TRACELENS_RELEASE_ID << std::endl;
-        std::cout << "Source commit: " << TRACELENS_SOURCE_COMMIT << std::endl;
-        std::cout << "Source SHA-256: " << TRACELENS_SOURCE_SHA256 << std::endl;
+        printVersion();
         return 0;
     }
 
