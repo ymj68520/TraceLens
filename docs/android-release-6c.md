@@ -18,6 +18,8 @@
 - CMake 由固定输入生成编译身份头，`--version` 与受保护接口返回编译时的 commit、
   源码 SHA-256 和 release ID；Python 导入包内生成身份，前端 manifest 对应同一 commit。
   原失败根因是 dirty 源码继续变化而构建缓存仍保留配置时的旧身份，并非同一份输入。
+- 空 build 首次配置还暴露固定系统 Asio 头缺 `<utility>` 的兼容前提；旧缓存曾提供该
+  编译选项。候选 CMake 显式声明，不升级依赖，不在系统头上打补丁，失败构建日志保留。
 - `prepare_field_drill.py --freeze --wheelhouse ...` 是明确区别于旧演练 symlink 的冻结模式：
   新建 venv，从带哈希 wheelhouse 完全离线安装并 `pip check`，不得回退旧环境或公网。
 - 现有 AOSP 工具曾把原开发目录的 `liblp.so` 绝对路径写入 DT_NEEDED；同一已验收源版本

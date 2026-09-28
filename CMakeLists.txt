@@ -596,6 +596,11 @@ else()
 endif()
 
 add_executable(forensic_analyzer src/main.cpp ${LIB_SOURCES})
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  # The accepted system Asio header uses std::exchange without including
+  # <utility>. Declare its prerequisite explicitly; never inherit old cache flags.
+  target_compile_options(forensic_analyzer PRIVATE -include utility)
+endif()
 set(TRACELENS_RELEASE_ID "UNFROZEN_WORKTREE" CACHE STRING "Baked field release identity")
 set(TRACELENS_SOURCE_COMMIT "UNFROZEN_WORKTREE" CACHE STRING "Fixed source commit for this build")
 set(TRACELENS_SOURCE_SHA256 "UNFROZEN_WORKTREE" CACHE STRING "Fixed source input fingerprint")
