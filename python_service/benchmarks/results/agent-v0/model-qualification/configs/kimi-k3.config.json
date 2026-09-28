@@ -1,0 +1,54 @@
+{
+  "config_schema": "ModelQualificationConfigV1",
+  "provider": "hcnsec-cloud",
+  "endpoint_base_url": "https://api.hcnsec.cn",
+  "runtime_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed",
+  "pre_calibration_profile_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+  "frozen_from_env": {
+    "max_tokens": 16384,
+    "timeout_seconds": 120,
+    "context_window_tokens": 131072,
+    "tool_registry": "frozen production read-only registry",
+    "prompts_policies": "frozen production modules (runtime commit binding above)"
+  },
+  "created_at": "2026-09-28T00:00:00+00:00",
+  "candidate_id": "kimi-k3",
+  "role": "q1_candidate",
+  "requested_model_id": "kimi-k3",
+  "api_reported_model_id": "k3",
+  "overrides": {
+    "llm_text_model": "kimi-k3",
+    "llm_text_temperature": 1,
+    "llm_thinking_mode": ""
+  },
+  "compatibility_encoding": {
+    "temperature": 1,
+    "reasoning_effort": null,
+    "source": "PROVIDER-REQUIRED compatibility encoding (§3): endpoint 400s on temperature!=1 for kimi-k3.  Not a tuned parameter."
+  },
+  "compatibility_probes": [
+    {
+      "probe": "normal_chat_temp0.7",
+      "http": 400,
+      "error": "field Temperature invalid, only 1 is allowed for this model"
+    },
+    {
+      "probe": "temp1_normal_chat",
+      "http": 200,
+      "latency_s": 4.7,
+      "reported_model": "k3",
+      "json_ok": true
+    }
+  ],
+  "effective_adapter_config": {
+    "base_url": "https://api.hcnsec.cn/v1",
+    "model_name": "kimi-k3",
+    "reasoning_effort": null,
+    "timeout_seconds": 120,
+    "temperature": 1,
+    "max_tokens": 16384
+  },
+  "adapter_config_hash": "9804f57c218f7480b7db41cf6e943dbf5f9a2db6c03c5208046683321bb7bc73"
+}

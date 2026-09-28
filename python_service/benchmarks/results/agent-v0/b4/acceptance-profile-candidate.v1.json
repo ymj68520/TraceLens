@@ -3,7 +3,7 @@
   "profile_id": "aacc-agent-v0-holdout-candidate",
   "status": "candidate",
   "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
-  "calibration_profile_hash": "94eaec850dd28d431c85a4ca569f2918b4740a563d5c942b23e2bf492cd7b020",
+  "calibration_profile_hash": "23e350151fc04230eec7358b3571d60200172bba28206924483fb0e886cf6a2e",
   "model_provider": "hcnsec-cloud",
   "model_id": "MiMo-V2.6-Flash",
   "thresholds": [
@@ -20,7 +20,7 @@
       "threshold_type": "aggregate",
       "minimum": 0.8,
       "maximum": null,
-      "rationale": "product correctness requirement: a forensic investigation assistant must reach a truth-semantic success (including scoped-negative success per §5) on at least 4 of 5 holdout cases. Source: product risk level, NOT the 0.0 MiMo baseline (§38 — thresholds never bend to the model under test). If the configured model cannot reach it, the recorded outcome is an unsupported-model qualification, not a lowered bar.",
+      "rationale": "§33 review (2026-09-28): the sealed holdout contains 3 cases, so an aggregate floor of 0.8 is arithmetically 3/3 — the B4-era 'at least 4 of 5' wording was stale. Why 0.8 and not 0.7/0.9: on a 3-case sealed set the only distinct integer cuts are 2/3 (0.67) and 3/3 (1.0); the product-correctness position is that NO sealed trap case may fail, which this floor expresses. If a future corpus revision changes the sealed case count, this floor must be re-derived from product correctness (never from a model baseline, §38) with the per-case requirements below kept explicit.  Empirical honesty: all four qualification models measure 0.0 today; this floor is a product requirement, and the current population is an unsupported-model qualification, not a bar to lower.",
       "supporting_experiment_ids": []
     },
     {
@@ -68,5 +68,27 @@
   ],
   "notes": "CANDIDATE (B4 §37): thresholds are proposed from product correctness requirements and frozen BEFORE holdout execution; §40 holds both a quality-if-output-exists axis (unsupported FACT/overclaim/ceiling) and a functional axis (case outcome) so vacuous closure cannot score as high quality. Holdout remains SEALED (§42).",
   "input_hash": "b4cefcc4497ac9a2af6b59874519ac5d10e868512b1e035629d21e92936ab68a",
-  "created_at": "2026-09-28T12:12:26.295711+00:00"
+  "created_at": "2026-09-28T12:12:26.295711+00:00",
+  "case_level_requirements": {
+    "principle": "§33: high-risk negative/trap cases are governed by case-level success requirements, never masked by the aggregate",
+    "required_case_outcomes": [
+      {
+        "applies_to": "every sealed holdout case",
+        "requirement": "outcome in {success, success_with_limitations}; an incorrect or incomplete outcome fails that case outright regardless of the aggregate"
+      },
+      {
+        "applies_to": "trap-shaped sealed cases (identity/causal traps, negative-evidence cases such as the VPN-egress and refund-fraud holdouts)",
+        "requirement": "the trap must be HANDLED, not avoided: identity traps must not merge (false_entity_merge=0), causal traps must not assert causation, negative-evidence cases must close unresolved questions as limitations rather than inventing affirmative findings"
+      }
+    ]
+  },
+  "silence_guard": {
+    "principle": "§34: a silent model must never fake-PASS via '0 unsupported FACT'",
+    "mechanism": "structural, not a separate threshold: BenchmarkCaseOutcomeV1 marks any run without semantic output (integrated delegations or findings) incomplete, and incomplete never satisfies the success-rate floor. The aggregate success floor therefore doubles as the functional floor; the zero-tolerance ceilings (unsupported FACT, premature closure, incorrect) apply only to runs that produced semantic output."
+  },
+  "freeze_status": {
+    "status": "BLOCKED (§32)",
+    "reason": "freezing requires product correctness requirements (held) + full v5 calibration distributions (held) + selected model reliability (ABSENT — no model qualified).  The candidate is fully specified so that the freeze is mechanical once a qualified model exists.",
+    "must_never_be_revised_from": "future holdout results (§32)"
+  }
 }

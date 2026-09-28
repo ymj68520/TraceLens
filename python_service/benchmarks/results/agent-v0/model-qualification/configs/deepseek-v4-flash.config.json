@@ -1,0 +1,62 @@
+{
+  "config_schema": "ModelQualificationConfigV1",
+  "provider": "hcnsec-cloud",
+  "endpoint_base_url": "https://api.hcnsec.cn",
+  "runtime_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed",
+  "pre_calibration_profile_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+  "frozen_from_env": {
+    "max_tokens": 16384,
+    "timeout_seconds": 120,
+    "context_window_tokens": 131072,
+    "tool_registry": "frozen production read-only registry",
+    "prompts_policies": "frozen production modules (runtime commit binding above)"
+  },
+  "created_at": "2026-09-28T00:00:00+00:00",
+  "candidate_id": "deepseek-v4-flash",
+  "role": "q1_candidate",
+  "requested_model_id": "DeepSeek-V4-Flash",
+  "api_reported_model_id": "self-dploy/DeepSeek-V4-Flash",
+  "overrides": {
+    "llm_text_model": "DeepSeek-V4-Flash",
+    "llm_text_temperature": 0.7,
+    "llm_thinking_mode": ""
+  },
+  "compatibility_encoding": {
+    "reasoning_effort": null,
+    "source": "provider default (normal chat configuration, §4)"
+  },
+  "compatibility_probes": [
+    {
+      "probe": "normal_chat",
+      "http": 200,
+      "latency_s": 3.2,
+      "reported_model": "self-dploy/DeepSeek-V4-Flash",
+      "json_ok": true
+    },
+    {
+      "probe": "json_object",
+      "http": 200,
+      "latency_s": 1.2,
+      "reported_model": "self-dploy/DeepSeek-V4-Flash",
+      "json_ok": true
+    },
+    {
+      "probe": "reasoning_effort_none",
+      "http": 200,
+      "latency_s": 1.2,
+      "reported_model": "self-dploy/DeepSeek-V4-Flash",
+      "json_ok": true
+    }
+  ],
+  "effective_adapter_config": {
+    "base_url": "https://api.hcnsec.cn/v1",
+    "model_name": "DeepSeek-V4-Flash",
+    "reasoning_effort": null,
+    "timeout_seconds": 120,
+    "temperature": 0.7,
+    "max_tokens": 16384
+  },
+  "adapter_config_hash": "bd142d9d7c3017bdf96ccd9a35843a091dd499b387236af073d712c50412bbff"
+}

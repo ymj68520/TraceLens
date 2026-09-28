@@ -187,7 +187,31 @@ def _provision_fresh_task(case_id: str, repeat: str) -> dict:
 
 # -- per-run execution (reuses the canary-proven wiring) --------------------
 
-def _run_one(case_id: str, repeat: str, fresh_task_id: str) -> dict:
+class _ModelOverrideSettings:
+    """Benchmark-harness settings view overriding ONLY the experiment axis
+    allowed by the model-qualification spec (§3): provider/model identity
+    plus the provider-required compatibility encoding (temperature /
+    thinking fields).  Every other attribute resolves to the frozen
+    production configuration."""
+
+    def __init__(self, inner, overrides: dict):
+        self._inner = inner
+        self._overrides = overrides
+
+    def __getattr__(self, name):
+        if name in self._overrides:
+            return self._overrides[name]
+        return getattr(self._inner, name)
+
+
+def _run_one(
+    case_id: str,
+    repeat: str,
+    fresh_task_id: str,
+    model_config: dict | None = None,
+    configuration_id: str = "bconf-b2-baseline-full",
+    configuration_label: str = "b2-baseline-full-architecture",
+) -> dict:
     """Execute ONE benchmark repetition on the pre-provisioned fresh task.
 
     Returns {"status", "run_manifest"|"failure", "result", "snapshot"}.
@@ -214,6 +238,8 @@ def _run_one(case_id: str, repeat: str, fresh_task_id: str) -> dict:
     from httpserver.config import Settings
 
     settings = Settings(_env_file=str(REPO_ROOT / ".env"))
+    if model_config is not None:
+        settings = _ModelOverrideSettings(settings, model_config["overrides"])
     case_payload = json.loads(
         (case_dir / "case.json").read_text(encoding="utf-8")
     )
@@ -226,21 +252,26 @@ def _run_one(case_id: str, repeat: str, fresh_task_id: str) -> dict:
     )
 
     git_commit, git_branch = current_git_identity(REPO_ROOT)
+    thinking_mode = settings.llm_thinking_mode
     model = ModelIdentityV1(
-        provider="hcnsec-cloud",
+        provider=(
+            model_config["provider"] if model_config else "hcnsec-cloud"
+        ),
         model_id=settings.llm_text_model,
         generation_params={
             "temperature": settings.llm_text_temperature,
             "max_tokens": settings.llm_text_max_tokens,
-            "thinking_mode": settings.llm_thinking_mode,
-            "reasoning_effort": "none",
+            "thinking_mode": thinking_mode,
+            # Mirror the adapter derivation exactly: disabled -> "none",
+            # anything else -> the field is simply not sent.
+            "reasoning_effort": "none" if thinking_mode == "disabled" else None,
         },
         context_window_tokens=settings.llm_context_length,
         request_date="2026-09-28",
     )
     configuration = BenchmarkConfigurationV1(
-        configuration_id="bconf-b2-baseline-full",
-        label="b2-baseline-full-architecture",
+        configuration_id=configuration_id,
+        label=configuration_label,
         model_provider=model.provider,
         model_id=model.model_id,
         generation_params={"repeat": 1, "timeout_seconds": 900},
@@ -602,7 +633,10 @@ def _execute_with_wiring(
                 )
             specialist = SpecialistDelegationExecutor(
                 cpp_backend=alias_backend,
-                settings=manager.settings,
+                # The wired (possibly model-overridden) settings — the
+                # specialist must run the SAME model identity as the
+                # supervisor in a qualification run.
+                settings=settings,
                 tool_services=tool_services,
                 registry_builder=lambda runtime, observation_sink=None: (
                     build_read_only_registry(
@@ -659,7 +693,8 @@ def _execute_with_wiring(
 
             try:
                 context = build_final_review_context(payload)
-                settings = manager.settings
+                # The wired settings (possibly model-overridden): the
+                # verifier must run the SAME model identity.
                 model = build_chat_model(settings)
             except Exception as exc:
                 return {
@@ -856,9 +891,53 @@ def main(argv=None) -> int:
         "persistence and evaluate-only reproduction (§20: never on "
         "incomplete artifacts)",
     )
+    parser.add_argument(
+        "--model-config",
+        help="ModelQualificationConfigV1 artifact path; overrides ONLY the "
+        "provider/model identity + provider-required compatibility "
+        "encoding (§3/§4).  Omit for the frozen MiMo baseline config.",
+    )
+    parser.add_argument(
+        "--corpus",
+        help="corpus JSON path (default: corpus-agent-v0-b2.v1.json)",
+    )
+    parser.add_argument(
+        "--results-root",
+        help="results root (default: benchmarks/results/agent-v0/baseline)",
+    )
+    parser.add_argument(
+        "--experiment-file",
+        help="experiment identity file (default: baseline-experiment.json)",
+    )
+    parser.add_argument(
+        "--configuration-id",
+        default="bconf-b2-baseline-full",
+        help="BenchmarkConfigurationV1.configuration_id for these runs",
+    )
+    parser.add_argument(
+        "--configuration-label",
+        default="b2-baseline-full-architecture",
+    )
     args = parser.parse_args(argv)
 
-    corpus = json.loads(CORPUS_FILE.read_text(encoding="utf-8"))
+    model_config = None
+    if args.model_config:
+        model_config = json.loads(
+            Path(args.model_config).read_text(encoding="utf-8")
+        )
+    corpus_file = (
+        Path(args.corpus) if args.corpus else CORPUS_FILE
+    )
+    results_root = (
+        Path(args.results_root) if args.results_root else BASELINE_ROOT
+    )
+    experiment_file = (
+        Path(args.experiment_file)
+        if args.experiment_file
+        else EXPERIMENT_FILE
+    )
+
+    corpus = json.loads(corpus_file.read_text(encoding="utf-8"))
     case_ids = [
         ref["case_id"] for ref in corpus["calibration_cases"]
     ]
@@ -867,11 +946,16 @@ def main(argv=None) -> int:
 
     # §7 BaselineExperimentV1 identity (idempotent file)
     experiment = {
-        "experiment_id": "bexp-agent-v0-b2-baseline",
+        "experiment_id": (
+            f"bexp-agent-v0-{model_config['candidate_id']}"
+            if model_config
+            else "bexp-agent-v0-b2-baseline"
+        ),
         "code_commit": None,  # filled on first write
         "production_runtime_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed",
         "pre_calibration_profile_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
         "runtime_baseline_file": "benchmarks/profiles/precalibration-runtime-baseline.v1.json",
+        "model_config_file": args.model_config,
         "corpus_id": corpus["corpus_id"],
         "corpus_hash": corpus["input_hash"],
         "repeat_policy": "3 fresh repeats per calibration case (Flash-class model; expand to 5 only on high variance)",
@@ -881,9 +965,9 @@ def main(argv=None) -> int:
         "started_at": None,
         "fresh_task_ids": {},
     }
-    if EXPERIMENT_FILE.exists():
+    if experiment_file.exists():
         experiment.update(
-            json.loads(EXPERIMENT_FILE.read_text(encoding="utf-8"))
+            json.loads(experiment_file.read_text(encoding="utf-8"))
         )
     else:
         import subprocess
@@ -897,7 +981,7 @@ def main(argv=None) -> int:
             ).stdout.strip()
         )
         experiment["started_at"] = "2026-09-28T01:10:00+00:00"
-    EXPERIMENT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    experiment_file.parent.mkdir(parents=True, exist_ok=True)
 
     failures = 0
     for case_id in case_ids:
@@ -905,7 +989,7 @@ def main(argv=None) -> int:
             args.repeat_start, args.repeat_start + args.repeats
         ):
             tag = f"repeat{repeat}"
-            out_dir = BASELINE_ROOT / case_id / tag
+            out_dir = results_root / case_id / tag
             if (out_dir / "result.json").exists() or (
                 out_dir / "failure.json"
             ).exists():
@@ -920,12 +1004,19 @@ def main(argv=None) -> int:
             experiment["fresh_task_ids"].setdefault(case_id, {})[tag] = (
                 fresh_task_id
             )
-            EXPERIMENT_FILE.write_text(
+            experiment_file.write_text(
                 json.dumps(experiment, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
             try:
-                outcome = _run_one(case_id, tag, fresh_task_id)
+                outcome = _run_one(
+                    case_id,
+                    tag,
+                    fresh_task_id,
+                    model_config=model_config,
+                    configuration_id=args.configuration_id,
+                    configuration_label=args.configuration_label,
+                )
             except Exception as exc:
                 import traceback
 
@@ -1037,7 +1128,7 @@ def main(argv=None) -> int:
                         print(f"       [cleanup] task {fresh_task_id} delete FAILED; kept for analysis")
                 else:
                     print(f"       [cleanup] SKIPPED: evaluate-only hash mismatch")
-    EXPERIMENT_FILE.write_text(
+    experiment_file.write_text(
         json.dumps(experiment, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
