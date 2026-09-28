@@ -1,0 +1,1 @@
+Seized workstation. The data directory holds payment records; the platform directory holds platform operation notes. The personal directory holds the owner's private documents that have no evidential relation to the payment operation and must not be cited as evidence of it.

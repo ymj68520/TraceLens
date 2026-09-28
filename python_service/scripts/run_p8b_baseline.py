@@ -44,6 +44,10 @@ IMAGES = {
     "t2-identity-trap": PYTHON_SERVICE_ROOT / "benchmarks" / "images" / "t2-identity-trap.img",
     "t2-no-evidence": PYTHON_SERVICE_ROOT / "benchmarks" / "images" / "t2-no-evidence.img",
     "t2-temporal-trap": PYTHON_SERVICE_ROOT / "benchmarks" / "images" / "t2-temporal-trap.img",
+    "t2-misleading-note": PYTHON_SERVICE_ROOT / "benchmarks" / "images" / "t2-misleading-note.img",
+    "t2-cross-source-correlation": PYTHON_SERVICE_ROOT / "benchmarks" / "images" / "t2-cross-source.img",
+    "t2-verification-temptation": PYTHON_SERVICE_ROOT / "benchmarks" / "images" / "t2-verify-temptation.img",
+    "t2-report-citation": PYTHON_SERVICE_ROOT / "benchmarks" / "images" / "t2-report-citation.img",
 }
 
 # case id -> seed questions (public surface only; never truth content)
@@ -69,6 +73,27 @@ SEED_QUESTIONS = {
         "the timeline support any interaction, causation, or shared "
         "intent with the recovered third-party log? State exactly what "
         "the evidence supports.",
+    ),
+    "t2-misleading-note": (
+        "An analyst hypothesized that employee lihua exported the "
+        "customer database on 2024-05-10. Verify this hypothesis "
+        "against the recorded evidence and establish who or what "
+        "actually performed the export.",
+    ),
+    "t2-cross-source-correlation": (
+        "Which CRM orders are confirmed by the payment processor's "
+        "settlement log, by what linkage, and which log entries must "
+        "stay separate from the CRM orders?",
+    ),
+    "t2-verification-temptation": (
+        "What did the device owner's account state about their role, "
+        "and at exactly what assertion strength can the owner's actual "
+        "role be stated given the corroboration available?",
+    ),
+    "t2-report-citation": (
+        "What evidence of a payment-collection operation does this "
+        "device hold, and which documents must stay out of that "
+        "evidentiary chain?",
     ),
 }
 
@@ -616,6 +641,75 @@ def _execute_with_wiring(
                 )
             return summaries
 
+        # B3.5 §15: inject the SAME lazy final-review runner the production
+        # ServiceManager uses, so the SemanticVerifier path can genuinely
+        # execute when the supervisor proposes finalization.  This is
+        # benchmark-harness wiring to a production component; no production
+        # code changes.
+        def _final_review_runner(payload):
+            from httpserver.services.investigation.agent_model_adapter import (
+                build_chat_model,
+            )
+            from httpserver.services.investigation.agent_verification import (
+                FinalSemanticReviewContextV1,
+                SemanticVerifierAgent,
+                VerifierFailure,
+                build_final_review_context,
+            )
+
+            try:
+                context = build_final_review_context(payload)
+                settings = manager.settings
+                model = build_chat_model(settings)
+            except Exception as exc:
+                return {
+                    "status": "unavailable",
+                    "failure_code": "runtime_unavailable",
+                    "detail": f"{type(exc).__name__}: {exc}"[:300],
+                }
+
+            agent = SemanticVerifierAgent(
+                mode=__import__(
+                    "httpserver.services.investigation.agent_verification",
+                    fromlist=["SemanticVerificationMode"],
+                ).SemanticVerificationMode.finalization_review,
+                model=model,
+                model_name=getattr(model, "model_name", None),
+            )
+
+            async def _run():
+                outcome = await agent.run(context)
+                if isinstance(outcome, VerifierFailure):
+                    return {
+                        "status": "unavailable",
+                        "failure_code": outcome.failure_code.value,
+                        "detail": outcome.detail[:300],
+                        "input_hash": context.input_hash,
+                    }
+                validator = __import__(
+                    "httpserver.services.investigation.agent_verification",
+                    fromlist=["FinalSemanticReviewValidator"],
+                ).FinalSemanticReviewValidator()
+                violations = validator.validate(outcome, context=context)
+                if violations:
+                    return {
+                        "status": "unavailable",
+                        "failure_code": "output_invalid",
+                        "detail": ",".join(violations)[:300],
+                        "input_hash": context.input_hash,
+                    }
+                return {
+                    "status": outcome.status,
+                    "issues": list(outcome.issues),
+                    "affected_refs": list(outcome.affected_refs),
+                    "result_ref": (
+                        f"{outcome.verification_id}:{outcome.input_hash[:24]}"
+                    ),
+                    "input_hash": context.input_hash,
+                }
+
+            return _run()
+
         orchestrator = AgentOrchestrator(
             alias_backend,
             supervisor=supervisor,
@@ -624,6 +718,7 @@ def _execute_with_wiring(
                 if globals().get("ABLATION_DISABLE_DISPATCHER")
                 else dispatcher
             ),
+            final_review_runner=_final_review_runner,
         )
         await orchestrator.initialize()
 

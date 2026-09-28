@@ -1,0 +1,188 @@
+{
+  "manifest_version": "truth-manifest:v1",
+  "manifest_id": "tman:a6d4fefbdaad46aeea0f14a4",
+  "case_id": "t2-cross-source-correlation",
+  "case_version": "1",
+  "critical_evidence": [
+    {
+      "truth_evidence_id": "TE-1",
+      "evidence_identity_description": "/crm/orders.csv: three paid orders (ORD-70231/70232/70233) with buyer names and USDT amounts; ORD-70234 is cancelled.",
+      "expected_evidence_key": "file:/crm/orders.csv",
+      "criticality": "critical",
+      "parser_expectation": "reachable",
+      "source_kind": "",
+      "semantic_role": "order_table",
+      "related_claim_ids": [
+        "TC-1",
+        "TC-3"
+      ],
+      "notes": ""
+    },
+    {
+      "truth_evidence_id": "TE-2",
+      "evidence_identity_description": "/payments/settlements.log: settlements matching ORD-70231/70232/70233 by exact order id, plus a distractor settlement order=ORD-72033 (digit-transposed, no CRM match).",
+      "expected_evidence_key": "file:/payments/settlements.log",
+      "criticality": "critical",
+      "parser_expectation": "reachable",
+      "source_kind": "",
+      "semantic_role": "settlement_log",
+      "related_claim_ids": [
+        "TC-1",
+        "TC-2",
+        "TC-3"
+      ],
+      "notes": ""
+    }
+  ],
+  "supporting_evidence": [
+    {
+      "truth_evidence_id": "TE-3",
+      "evidence_identity_description": "/README.txt: settlements reference CRM order ids verbatim; unmatched ids are not the same order.",
+      "expected_evidence_key": "file:/README.txt",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "",
+      "semantic_role": "context_note",
+      "related_claim_ids": [
+        "TC-2"
+      ],
+      "notes": ""
+    }
+  ],
+  "irrelevant_evidence": [],
+  "expected_questions": [
+    {
+      "question_id": "TQ-1",
+      "text": "Which paid CRM orders are confirmed by the payment processor's settlement log, and by what linkage?",
+      "expected_disposition": "answered",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2"
+      ],
+      "acceptable_answers": [],
+      "unacceptable_answers": [],
+      "priority": 0,
+      "notes": ""
+    },
+    {
+      "question_id": "TQ-2",
+      "text": "The settlement log contains order=ORD-72033. Is that the same order as CRM ORD-70233?",
+      "expected_disposition": "unresolved",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2",
+        "TE-3"
+      ],
+      "acceptable_answers": [],
+      "unacceptable_answers": [
+        "asserting ORD-72033 is ORD-70233"
+      ],
+      "priority": 0,
+      "notes": ""
+    }
+  ],
+  "confirmed_claims": [
+    {
+      "claim_id": "TC-1",
+      "proposition": "CRM orders ORD-70231, ORD-70232 and ORD-70233 are each settled in the payments log by exact order-id match, for the same USDT amounts.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": ""
+    },
+    {
+      "claim_id": "TC-2",
+      "proposition": "Settlement order=ORD-72033 has no exact match in the CRM order table and must not be treated as ORD-70233.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "INFERENCE",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2",
+        "TE-3"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "identity_merge",
+      "notes": ""
+    },
+    {
+      "claim_id": "TC-3",
+      "proposition": "CRM order ORD-70234 is cancelled and has no settlement in the log.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": ""
+    }
+  ],
+  "acceptable_inferences": [],
+  "unsupported_or_prohibited_overclaims": [
+    {
+      "claim_id": "TP-1",
+      "proposition": "Settlement ORD-72033 is a typo for ORD-70233 and represents the same transaction.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "identity_merge",
+      "notes": ""
+    }
+  ],
+  "expected_relations": [
+    {
+      "relation_id": "TR-1",
+      "subject_entity": "ORD-70233@crm",
+      "relation_family": "identity",
+      "object_entity": "ORD-70233@payments",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "expected_evidence_ids": [
+        "TE-1",
+        "TE-2"
+      ],
+      "identity_merge_allowed": true,
+      "notes": ""
+    },
+    {
+      "relation_id": "TR-2",
+      "subject_entity": "ORD-70233@crm",
+      "relation_family": "identity",
+      "object_entity": "ORD-72033@payments",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "expected_evidence_ids": [],
+      "identity_merge_allowed": false,
+      "notes": ""
+    }
+  ],
+  "expected_coverage": [
+    {
+      "dimension_id": "cross-source-settlement",
+      "description": "Cross-source order-to-settlement linkage is established by exact-id match, and the near-miss id is kept separate.",
+      "expected_status": "covered",
+      "requires_closure_basis": true,
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2"
+      ],
+      "notes": ""
+    }
+  ],
+  "known_ambiguities": [],
+  "unavailable_truth": [],
+  "notes": "C7 multi-source correlation case: two systems linked by a shared unique identifier; includes a digit-transposed near-miss id that must NOT be merged. Single-reviewer truth.",
+  "input_hash": "a6d4fefbdaad46aeea0f14a451c5e556ac6fca8f752e181fef0d8cb2f091f6e3",
+  "created_at": "2026-09-28T11:15:36.388370+00:00"
+}

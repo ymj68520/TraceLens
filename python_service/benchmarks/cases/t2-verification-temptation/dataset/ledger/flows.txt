@@ -1,0 +1,3 @@
+2024-07-01 in 40000 USDT wallet-A
+2024-07-02 out 39000 USDT wallet-B
+2024-07-05 out 950 USDT wallet-C

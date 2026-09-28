@@ -1,0 +1,1 @@
+Seized laptop of linan. The VPN directory holds the laptop's own session log; the exchange directory holds a log recovered from the same volume belonging to an exchange record set. A shared egress IP proves only that traffic transited the same VPN server, not that the accounts are one person.

@@ -1,0 +1,3 @@
+refund_id,order_id,customer,amount
+RF-9001,ORD-55101, customerA,1200
+RF-9002,ORD-55102, customerB,3400

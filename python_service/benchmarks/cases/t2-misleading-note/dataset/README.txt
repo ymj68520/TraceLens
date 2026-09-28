@@ -1,0 +1,1 @@
+Seized application server. The export directory holds the application log; the scheduler directory holds the job definition. svc_export is a dedicated non-interactive service account used by scheduled jobs.

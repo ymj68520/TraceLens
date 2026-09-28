@@ -1,0 +1,28 @@
+{
+  "reachability_version": "reachability-manifest:v1",
+  "case_id": "t3-holdout-refund-fraud",
+  "records": [
+    {
+      "truth_evidence_id": "TE-1",
+      "resolved_evidence_keys": [
+        "file:/shop/refunds.csv"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "TE-2",
+      "resolved_evidence_keys": [
+        "file:/finance/payouts.log"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    }
+  ],
+  "input_hash": "d5b76f60d0939239876a84e949e53179c6382bc13a0d0c5987618ba8e6619627",
+  "created_at": "2026-09-28T11:15:36.807165+00:00"
+}

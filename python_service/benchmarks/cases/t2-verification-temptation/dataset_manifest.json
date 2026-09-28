@@ -1,0 +1,26 @@
+{
+  "dataset_version": "benchmark-dataset:v1",
+  "dataset_id": "ds-t2-verification-temptation",
+  "files": [
+    {
+      "logical_id": "README",
+      "relative_path": "README.txt",
+      "size_bytes": 264,
+      "sha256": "48d7fa36a99fcb03b825129b1fab720c725ebc9e9671cd891d90fdf0765bf01e"
+    },
+    {
+      "logical_id": "account-main",
+      "relative_path": "chat/account_main.log",
+      "size_bytes": 198,
+      "sha256": "cffe7e493e95cf4c3cca1724ac287b5fb41cd3c4ba7c1c8d8915822899eb69d7"
+    },
+    {
+      "logical_id": "flows",
+      "relative_path": "ledger/flows.txt",
+      "size_bytes": 102,
+      "sha256": "ddda12e12a6894047a874da0c0312f49e78ea53f4045544b653c38cf27c04070"
+    }
+  ],
+  "dataset_hash": "2d54a16a60492e9edbf294597dc0017e1150e6af092b2b97eb245ac5b794b480",
+  "created_at": "2026-09-28T11:15:36.494829+00:00"
+}

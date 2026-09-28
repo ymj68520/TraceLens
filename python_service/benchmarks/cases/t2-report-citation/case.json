@@ -1,0 +1,66 @@
+{
+  "case_contract_version": "benchmark-case:v1",
+  "case_id": "t2-report-citation",
+  "case_version": "1",
+  "title": "T2 report citation discipline: irrelevant personal file (citatfs)",
+  "dataset": {
+    "dataset_version": "benchmark-dataset:v1",
+    "dataset_id": "ds-t2-report-citation",
+    "files": [
+      {
+        "logical_id": "README",
+        "relative_path": "README.txt",
+        "size_bytes": 274,
+        "sha256": "fa4466c96ba0009742ec12565250d3a94c975584c3ac4b4038bc4600c16a3237"
+      },
+      {
+        "logical_id": "体检报告",
+        "relative_path": "personal/体检报告.txt",
+        "size_bytes": 136,
+        "sha256": "a1a5204ae7afa75c49ae3e597a6b8f4b8d10b7933777374139299499b59e547c"
+      },
+      {
+        "logical_id": "收款记录",
+        "relative_path": "data/收款记录.txt",
+        "size_bytes": 147,
+        "sha256": "5fb5a4914e8380733b723e3bc29cfc653462d2e3e94e9bf93f2f6607bb21474c"
+      },
+      {
+        "logical_id": "说明",
+        "relative_path": "platform/说明.txt",
+        "size_bytes": 113,
+        "sha256": "1790402bc8f3e9326028d86dc3304b64905e2b76478dd9ac59da505fdb3d235f"
+      }
+    ],
+    "dataset_hash": "b608dd887b5cb437751b44b9f00ba287c3bb8fdf4a403611f28a1c05712a2796",
+    "created_at": "2026-09-28T11:15:36.605318+00:00"
+  },
+  "truth_manifest_id": "tman:61a28a665e33e7187f3d9e13",
+  "truth_manifest_hash": "61a28a665e33e7187f3d9e136a7f168ca771919b0605c0e70385d99a5619999f",
+  "goal": "Establish the evidentiary chain for the payment-collection operation and state which documents fall outside it.",
+  "case_context": "A seized workstation with payment records, platform operation notes, and the owner's private documents.",
+  "platform_composition": [
+    "linux"
+  ],
+  "tier": "T2",
+  "negative_flags": {
+    "no_incriminating_evidence": false,
+    "ambiguous_evidence": false,
+    "misleading_case_context": false,
+    "incorrect_analyst_hypothesis": false,
+    "same_username_different_person": false,
+    "temporal_proximity_not_causality": false,
+    "review_pending_tempting_conclusion": false,
+    "graph_hallucinated_relation": false,
+    "missing_critical_parser_support": false,
+    "provider_failure": false
+  },
+  "expected_parser_profile": "linux",
+  "benchmark_tags": [
+    "citation",
+    "report-path",
+    "t2"
+  ],
+  "input_hash": "3966a333470550d28bdeba3ddf9bbbe185a7cec9ac9a305661a05ea46040066b",
+  "created_at": "2026-09-28T11:15:36.605283+00:00"
+}

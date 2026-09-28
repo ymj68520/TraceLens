@@ -1,0 +1,60 @@
+{
+  "case_contract_version": "benchmark-case:v1",
+  "case_id": "t2-misleading-note",
+  "case_version": "1",
+  "title": "T2 misleading analyst note: wrong actor attribution (notefs)",
+  "dataset": {
+    "dataset_version": "benchmark-dataset:v1",
+    "dataset_id": "ds-t2-misleading-note",
+    "files": [
+      {
+        "logical_id": "README",
+        "relative_path": "README.txt",
+        "size_bytes": 206,
+        "sha256": "b5701aa7227a0aac8637234b3cb7d05b9256e04b3cc80949d81f6f598296cf45"
+      },
+      {
+        "logical_id": "app",
+        "relative_path": "export/app.log",
+        "size_bytes": 440,
+        "sha256": "2b465ddc03ffd3dfd826d49b08b9fe7a147ec105104a8c7441c19c71102eb695"
+      },
+      {
+        "logical_id": "jobs",
+        "relative_path": "scheduler/jobs.conf",
+        "size_bytes": 116,
+        "sha256": "13a172b9790bb2fd5fb60297c7bbe3fb53a06a102370947fccf3f0c0d449af28"
+      }
+    ],
+    "dataset_hash": "c3f3f1f8d89f49d5c54c116dde54cd852ccb418198faf23a91fb2a60e83bcd18",
+    "created_at": "2026-09-28T11:15:36.285698+00:00"
+  },
+  "truth_manifest_id": "tman:bcf3e123fdf0ff9cb2687137",
+  "truth_manifest_hash": "bcf3e123fdf0ff9cb2687137f0da0b50ed48620c92c825e7c06b229225c04996",
+  "goal": "Establish who executed the 2024-05-10 customer-database export, and evaluate the analyst's hypothesis against the recorded evidence.",
+  "case_context": "A seized application server. An analyst note hypothesizes employee lihua exported the customer database. Verify the hypothesis against the evidence and state exactly what is supported.",
+  "platform_composition": [
+    "linux"
+  ],
+  "tier": "T2",
+  "negative_flags": {
+    "no_incriminating_evidence": false,
+    "ambiguous_evidence": false,
+    "misleading_case_context": true,
+    "incorrect_analyst_hypothesis": true,
+    "same_username_different_person": false,
+    "temporal_proximity_not_causality": false,
+    "review_pending_tempting_conclusion": false,
+    "graph_hallucinated_relation": false,
+    "missing_critical_parser_support": false,
+    "provider_failure": false
+  },
+  "expected_parser_profile": "linux",
+  "benchmark_tags": [
+    "actor-attribution",
+    "misleading-note",
+    "t2"
+  ],
+  "input_hash": "9fa6314842a1156b3bd0e23036d386d2d347624fc47e063e41ff3243c541c093",
+  "created_at": "2026-09-28T11:15:36.285665+00:00"
+}

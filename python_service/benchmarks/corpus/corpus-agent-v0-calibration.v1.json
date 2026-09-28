@@ -1,0 +1,160 @@
+{
+  "manifest_version": "benchmark-corpus-manifest:v1",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "version": "5",
+  "development_cases": [],
+  "calibration_cases": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "case_hash": "877b171b12b9f06d8c2ba68551e702461b3d33b3251a47d5b18b0e069ea22f39",
+      "truth_manifest_id": "tman:fd3d504c10ba9bd137820b38",
+      "truth_manifest_hash": "fd3d504c10ba9bd137820b38824b14c1b77bb29f016459c196dcbc60ff69e5a9",
+      "dataset_hash": "071f01f1a197a71b68e93d51917c8381b6832b68c4d39fe5ea131ffaf5f000c9",
+      "tier": "T1",
+      "negative_dimensions": []
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "case_hash": "231e2750a7f5ada68950779c653b9882332083ec9276c53d5b48454053dc0a8e",
+      "truth_manifest_id": "tman:a6d4fefbdaad46aeea0f14a4",
+      "truth_manifest_hash": "a6d4fefbdaad46aeea0f14a451c5e556ac6fca8f752e181fef0d8cb2f091f6e3",
+      "dataset_hash": "b9806f05d4ea62da701bac5a4f04c0b958653f9941b1373a99d43d04efe991e6",
+      "tier": "T2",
+      "negative_dimensions": [
+        "ambiguous_evidence"
+      ]
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "case_hash": "10276402b9829d9e73a1e2a3e31c98b679f6243716f67b6312b8fe686dfc5ce9",
+      "truth_manifest_id": "tman:PLACEHOLDER",
+      "truth_manifest_hash": "34b1db2600918e4196eded9b3faa7a7abdceca337e7955465d09a5625b42e4e2",
+      "dataset_hash": "e20d1369ff21d35affaa02b2a879677208bda616e5d91ebea6800c6a99b02eed",
+      "tier": "T2",
+      "negative_dimensions": [
+        "ambiguous_evidence",
+        "same_username_different_person"
+      ]
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "case_hash": "9fa6314842a1156b3bd0e23036d386d2d347624fc47e063e41ff3243c541c093",
+      "truth_manifest_id": "tman:bcf3e123fdf0ff9cb2687137",
+      "truth_manifest_hash": "bcf3e123fdf0ff9cb2687137f0da0b50ed48620c92c825e7c06b229225c04996",
+      "dataset_hash": "c3f3f1f8d89f49d5c54c116dde54cd852ccb418198faf23a91fb2a60e83bcd18",
+      "tier": "T2",
+      "negative_dimensions": [
+        "incorrect_analyst_hypothesis",
+        "misleading_case_context"
+      ]
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "case_hash": "18cacc41f87bc70639561ad6efb1099ec798c57cd62f6986ba65833b51a99ae7",
+      "truth_manifest_id": "tman:PLACEHOLDER",
+      "truth_manifest_hash": "e6f337f50e0a586ca4315a42406c42ec8865ba51eef07fdcc1252e3bee758559",
+      "dataset_hash": "0ecdbd6ff73fc961d02132dd7276544e6e7d40e3a4a2ee79e2b75df1adb298e8",
+      "tier": "T2",
+      "negative_dimensions": [
+        "no_incriminating_evidence"
+      ]
+    },
+    {
+      "case_id": "t2-report-citation",
+      "case_hash": "3966a333470550d28bdeba3ddf9bbbe185a7cec9ac9a305661a05ea46040066b",
+      "truth_manifest_id": "tman:61a28a665e33e7187f3d9e13",
+      "truth_manifest_hash": "61a28a665e33e7187f3d9e136a7f168ca771919b0605c0e70385d99a5619999f",
+      "dataset_hash": "b608dd887b5cb437751b44b9f00ba287c3bb8fdf4a403611f28a1c05712a2796",
+      "tier": "T2",
+      "negative_dimensions": []
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "case_hash": "41362f57fa21d926601f7670ee6a015bbfc39134501e6900b50bd4e84f488d0f",
+      "truth_manifest_id": "tman:PLACEHOLDER",
+      "truth_manifest_hash": "77694d90d115fb512888b1393bee7f8162e187d9d0d41b7331f8e3c6a8317d22",
+      "dataset_hash": "95816de840e121b307dca0c68da0b242c2f57593e45281123ca5fc0484cf4c7d",
+      "tier": "T2",
+      "negative_dimensions": [
+        "ambiguous_evidence",
+        "temporal_proximity_not_causality"
+      ]
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "case_hash": "086b56da0a05387742c017eda28fd0b88b1edb2b31ff67d3289a8ce8b99e01fe",
+      "truth_manifest_id": "tman:d3263b684378179e2bba52db",
+      "truth_manifest_hash": "d3263b684378179e2bba52dbd94bb4de64dc818b791c538e74d4fb10e9e972c7",
+      "dataset_hash": "2d54a16a60492e9edbf294597dc0017e1150e6af092b2b97eb245ac5b794b480",
+      "tier": "T2",
+      "negative_dimensions": [
+        "ambiguous_evidence",
+        "review_pending_tempting_conclusion"
+      ]
+    }
+  ],
+  "acceptance_cases": [
+    {
+      "case_id": "t1-usb-collector",
+      "case_hash": "8e02165da0bc62a9368e21908cdd916435fc02ddd0e736ca95ef5e1b4ec97c25",
+      "truth_manifest_id": "tman:c2f151e5ff96e455bcfd71a5",
+      "truth_manifest_hash": "c2f151e5ff96e455bcfd71a52a0439b3c8369a6795da11eb9c13d2c84c65740d",
+      "dataset_hash": "dc015b118e5ca91fc4a4273a25fc548bc348c0ea4d7baa04fb3e86208e0aa975",
+      "tier": "T1",
+      "negative_dimensions": []
+    },
+    {
+      "case_id": "t3-holdout-refund-fraud",
+      "case_hash": "6e7268a90ef8f86ee9e1e64f7aa9af3425960b2f1dae11bda94f7a42118341b6",
+      "truth_manifest_id": "tman:c938223cb8a3973d4d87c481",
+      "truth_manifest_hash": "c938223cb8a3973d4d87c4817235f8915a9e7d3f34349604f81ee5ce7dc9c863",
+      "dataset_hash": "2933cb843ddca6e9177f1879905b20254504924eb9b4bef1cbcc7d68637a7e4b",
+      "tier": "T2",
+      "negative_dimensions": [
+        "ambiguous_evidence"
+      ]
+    },
+    {
+      "case_id": "t3-holdout-vpn-causal",
+      "case_hash": "2145aa2367ca36565b9009b186cad3b6693bbc7ba2efddd3d8570b85f4437abb",
+      "truth_manifest_id": "tman:556b30159cb0967220167234",
+      "truth_manifest_hash": "556b30159cb09672201672342d4f4e65e1e901571f36b0e0a0c9a97e3de7e275",
+      "dataset_hash": "f677f49de3db11b35083dcb922f7a8cdd23bfcc5caaf9396832da51e97974992",
+      "tier": "T3",
+      "negative_dimensions": [
+        "ambiguous_evidence",
+        "same_username_different_person",
+        "temporal_proximity_not_causality"
+      ]
+    }
+  ],
+  "stress_cases": [],
+  "freeze_commit": "495accbf",
+  "selection_rationale": "Corpus v5 (B3.5 §9/§11): adds C4 misleading-analyst-note, C7 multi-source correlation with near-miss id, C8 assertion-ceiling verification temptation, and C9 citation-discipline cases; expands the sealed holdout with two authored-but-never-executed cases (VPN shared-egress identity/causal trap; refund-fraud correlation/attribution) covering the paired dimensions with different datasets (§11). C10 remains a non-quality reliability fixture (§10) — no deliberate paid-model outage cases. Holdout execution remains forbidden until the CalibrationProfile freezes (§12).",
+  "coverage_matrix": {
+    "single_device_clear": true,
+    "single_device_noisy": true,
+    "multi_source_correlation": true,
+    "cross_device_relation": false,
+    "evidence_absent_indeterminate": true,
+    "analyst_note_misleading": true,
+    "case_context_misleading": true,
+    "same_username_identity_trap": true,
+    "same_ip_identity_trap": true,
+    "temporal_causality_trap": true,
+    "malicious_intent_trap": false,
+    "review_pending_vs_accepted": true,
+    "graph_optional_failure": false,
+    "report_citation_ceiling": true,
+    "provider_tool_failure": false
+  },
+  "known_exclusions": [
+    "cross_device_relation cases: no second device image this round — CALIBRATION_EVIDENCE_LIMITED",
+    "T4 large-volume stress cases",
+    "provider-failure injection stays a reliability fixture, not a semantic case (§10)"
+  ],
+  "truth_review_status": "single-reviewer",
+  "calibration_profile_hash": null,
+  "input_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+  "created_at": "2026-09-28T11:16:04.460250+00:00"
+}
