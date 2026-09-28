@@ -1,0 +1,327 @@
+{
+  "report_version": "ablation-report:v1",
+  "experiment_id": "bexp-agent-v0-b2-baseline",
+  "repeat_policy": "3 fresh repeats per case per stage",
+  "stages": {
+    "B2_baseline_full": {
+      "summary": {
+        "runs": 12,
+        "functional_completion": {
+          "complete_with_limitations": 3,
+          "finalization_denied": 9
+        },
+        "completion_rate": 0.25,
+        "mean_tool_calls": 9,
+        "mean_zero_result": 2.8,
+        "input_tokens_total": 210113,
+        "output_tokens_total": 8103,
+        "wall_ms_median": 115716.0,
+        "mean_discovered_evidence": null
+      },
+      "per_case": {
+        "t1-fraud-script-usb": {
+          "runs": 3,
+          "functional_completion": {
+            "complete_with_limitations": 1,
+            "finalization_denied": 2
+          },
+          "completion_rate": 0.333,
+          "mean_tool_calls": 12,
+          "mean_zero_result": 4.3,
+          "input_tokens_total": 55997,
+          "output_tokens_total": 1947,
+          "wall_ms_median": 314543
+        },
+        "t2-identity-trap": {
+          "runs": 3,
+          "functional_completion": {
+            "complete_with_limitations": 1,
+            "finalization_denied": 2
+          },
+          "completion_rate": 0.333,
+          "mean_tool_calls": 5.7,
+          "mean_zero_result": 1.7,
+          "input_tokens_total": 44297,
+          "output_tokens_total": 1413,
+          "wall_ms_median": 92605
+        },
+        "t2-no-evidence": {
+          "runs": 3,
+          "functional_completion": {
+            "finalization_denied": 3
+          },
+          "completion_rate": 0.0,
+          "mean_tool_calls": 8.3,
+          "mean_zero_result": 3,
+          "input_tokens_total": 55558,
+          "output_tokens_total": 3039,
+          "wall_ms_median": 112411
+        },
+        "t2-temporal-trap": {
+          "runs": 3,
+          "functional_completion": {
+            "finalization_denied": 2,
+            "complete_with_limitations": 1
+          },
+          "completion_rate": 0.333,
+          "mean_tool_calls": 10,
+          "mean_zero_result": 2.3,
+          "input_tokens_total": 54261,
+          "output_tokens_total": 1704,
+          "wall_ms_median": 185407
+        }
+      }
+    },
+    "A0_non_agent_baseline": {
+      "summary": {
+        "runs": 12,
+        "functional_completion": {
+          "complete_with_limitations": 12
+        },
+        "completion_rate": 1.0,
+        "mean_tool_calls": 0,
+        "mean_zero_result": 0,
+        "input_tokens_total": 0,
+        "output_tokens_total": 0,
+        "wall_ms_median": 549.5,
+        "mean_discovered_evidence": 0.0
+      },
+      "per_case": {
+        "t1-fraud-script-usb": {
+          "runs": 3,
+          "functional_completion": {
+            "complete_with_limitations": 3
+          },
+          "completion_rate": 1.0,
+          "mean_tool_calls": 0,
+          "mean_zero_result": 0,
+          "input_tokens_total": 0,
+          "output_tokens_total": 0,
+          "wall_ms_median": 511
+        },
+        "t2-identity-trap": {
+          "runs": 3,
+          "functional_completion": {
+            "complete_with_limitations": 3
+          },
+          "completion_rate": 1.0,
+          "mean_tool_calls": 0,
+          "mean_zero_result": 0,
+          "input_tokens_total": 0,
+          "output_tokens_total": 0,
+          "wall_ms_median": 553
+        },
+        "t2-no-evidence": {
+          "runs": 3,
+          "functional_completion": {
+            "complete_with_limitations": 3
+          },
+          "completion_rate": 1.0,
+          "mean_tool_calls": 0,
+          "mean_zero_result": 0,
+          "input_tokens_total": 0,
+          "output_tokens_total": 0,
+          "wall_ms_median": 550
+        },
+        "t2-temporal-trap": {
+          "runs": 3,
+          "functional_completion": {
+            "complete_with_limitations": 3
+          },
+          "completion_rate": 1.0,
+          "mean_tool_calls": 0,
+          "mean_zero_result": 0,
+          "input_tokens_total": 0,
+          "output_tokens_total": 0,
+          "wall_ms_median": 548
+        }
+      }
+    },
+    "A1_supervisor_only": {
+      "summary": {
+        "runs": 12,
+        "functional_completion": {
+          "finalization_denied": 11,
+          "complete_with_limitations": 1
+        },
+        "completion_rate": 0.083,
+        "mean_tool_calls": 0,
+        "mean_zero_result": 0,
+        "input_tokens_total": 0,
+        "output_tokens_total": 0,
+        "wall_ms_median": 22423.0,
+        "mean_discovered_evidence": 0.0
+      },
+      "per_case": {
+        "t1-fraud-script-usb": {
+          "runs": 3,
+          "functional_completion": {
+            "finalization_denied": 3
+          },
+          "completion_rate": 0.0,
+          "mean_tool_calls": 0,
+          "mean_zero_result": 0,
+          "input_tokens_total": 0,
+          "output_tokens_total": 0,
+          "wall_ms_median": 24747
+        },
+        "t2-identity-trap": {
+          "runs": 3,
+          "functional_completion": {
+            "finalization_denied": 2,
+            "complete_with_limitations": 1
+          },
+          "completion_rate": 0.333,
+          "mean_tool_calls": 0,
+          "mean_zero_result": 0,
+          "input_tokens_total": 0,
+          "output_tokens_total": 0,
+          "wall_ms_median": 21578
+        },
+        "t2-no-evidence": {
+          "runs": 3,
+          "functional_completion": {
+            "finalization_denied": 3
+          },
+          "completion_rate": 0.0,
+          "mean_tool_calls": 0,
+          "mean_zero_result": 0,
+          "input_tokens_total": 0,
+          "output_tokens_total": 0,
+          "wall_ms_median": 30507
+        },
+        "t2-temporal-trap": {
+          "runs": 3,
+          "functional_completion": {
+            "finalization_denied": 3
+          },
+          "completion_rate": 0.0,
+          "mean_tool_calls": 0,
+          "mean_zero_result": 0,
+          "input_tokens_total": 0,
+          "output_tokens_total": 0,
+          "wall_ms_median": 22407
+        }
+      }
+    },
+    "A2_supervisor_plus_specialist": {
+      "summary": {
+        "runs": 12,
+        "functional_completion": {
+          "complete_with_limitations": 3,
+          "finalization_denied": 9
+        },
+        "completion_rate": 0.25,
+        "mean_tool_calls": 7.7,
+        "mean_zero_result": 2.6,
+        "input_tokens_total": 240258,
+        "output_tokens_total": 10098,
+        "wall_ms_median": 236759.0,
+        "mean_discovered_evidence": null
+      },
+      "per_case": {
+        "t1-fraud-script-usb": {
+          "runs": 3,
+          "functional_completion": {
+            "complete_with_limitations": 1,
+            "finalization_denied": 2
+          },
+          "completion_rate": 0.333,
+          "mean_tool_calls": 6.7,
+          "mean_zero_result": 2.3,
+          "input_tokens_total": 52260,
+          "output_tokens_total": 3674,
+          "wall_ms_median": 151611
+        },
+        "t2-identity-trap": {
+          "runs": 3,
+          "functional_completion": {
+            "finalization_denied": 3
+          },
+          "completion_rate": 0.0,
+          "mean_tool_calls": 9.7,
+          "mean_zero_result": 4,
+          "input_tokens_total": 71098,
+          "output_tokens_total": 2067,
+          "wall_ms_median": 249297
+        },
+        "t2-no-evidence": {
+          "runs": 3,
+          "functional_completion": {
+            "complete_with_limitations": 2,
+            "finalization_denied": 1
+          },
+          "completion_rate": 0.667,
+          "mean_tool_calls": 4,
+          "mean_zero_result": 1.3,
+          "input_tokens_total": 50834,
+          "output_tokens_total": 2034,
+          "wall_ms_median": 224221
+        },
+        "t2-temporal-trap": {
+          "runs": 3,
+          "functional_completion": {
+            "finalization_denied": 3
+          },
+          "completion_rate": 0.0,
+          "mean_tool_calls": 10.3,
+          "mean_zero_result": 2.7,
+          "input_tokens_total": 66066,
+          "output_tokens_total": 2323,
+          "wall_ms_median": 538567
+        }
+      }
+    }
+  },
+  "deltas": {
+    "A2_minus_A1": {
+      "completion_rate_delta": 0.167,
+      "input_tokens_delta": 240258,
+      "output_tokens_delta": 10098,
+      "wall_ms_median_delta": 214336
+    },
+    "A2_minus_A0": {
+      "completion_rate_delta": -0.75,
+      "input_tokens_delta": 240258,
+      "output_tokens_delta": 10098,
+      "wall_ms_median_delta": 236210
+    },
+    "A1_minus_A0": {
+      "completion_rate_delta": -0.917,
+      "input_tokens_delta": 0,
+      "output_tokens_delta": 0,
+      "wall_ms_median_delta": 21874
+    }
+  },
+  "not_separately_runnable": {
+    "A3": {
+      "stage": "A3",
+      "status": "NOT_SEPARABLY_RUNNABLE",
+      "reason": "correlation stage is policy-frozen inside the production execution path; no runtime toggle exists on the benchmark seam",
+      "recorded_at": "2026-09-28"
+    },
+    "A4": {
+      "stage": "A4",
+      "status": "NOT_SEPARABLY_RUNNABLE",
+      "reason": "semantic verifier stage is policy-frozen inside the production execution path (best_effort final review unavailable marker); no runtime toggle exists on the benchmark seam",
+      "recorded_at": "2026-09-28"
+    },
+    "A5": {
+      "stage": "A5",
+      "status": "NOT_SEPARABLY_RUNNABLE",
+      "reason": "graph stage requires runtime wiring changes (prohibited by the §0 freeze); Neo4j reachable = environment eligible for a future run",
+      "recorded_at": "2026-09-28"
+    },
+    "A6": {
+      "stage": "A6",
+      "status": "NOT_SEPARABLY_RUNNABLE",
+      "reason": "report stage requires runtime wiring changes (prohibited by the §0 freeze)",
+      "recorded_at": "2026-09-28"
+    }
+  },
+  "notes": [
+    "A2 wiring equals the B2 baseline executor seams (supervisor+dispatcher); B2_baseline_full numbers come from the B2 measurement phase for cross-checking.",
+    "A3 (correlation) / A4 (semantic verifier) / A5 (graph) / A6 (report) have no runtime toggle on the production benchmark seam; running them would require runtime changes prohibited by the §0 freeze. Recorded NOT_SEPARABLY_RUNNABLE.",
+    "A0 completion_rate=1.0 is a MEASUREMENT ARTIFACT: with no supervisor, the deterministic control plane immediately finalizes an EMPTY investigation (0 tool calls, 0 discovered evidence, all charter questions still open) as complete_with_limitations. The §15 functional-completion metric measures gate-passing, not investigative substance; A0 rows carry semantic_output_available=false effectively. Compare stages on evidence-discovery and tool activity, not on completion rate alone."
+  ]
+}

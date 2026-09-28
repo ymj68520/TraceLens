@@ -1,0 +1,36 @@
+{
+  "experiment_id": "bexp-agent-v0-b2-baseline",
+  "code_commit": "f141dc628477eb63f17dbecf701d5dc4996bf6ba",
+  "production_runtime_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed",
+  "pre_calibration_profile_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
+  "runtime_baseline_file": "benchmarks/profiles/precalibration-runtime-baseline.v1.json",
+  "corpus_id": "corpus-agent-v0-b2",
+  "corpus_hash": "237d40c1f56ab78f2b842861f905291c0bf10b37013949991e474949b29c95f8",
+  "repeat_policy": "3 fresh repeats per calibration case (Flash-class model; expand to 5 only on high variance)",
+  "cache_policy": "cold",
+  "graph_mode": "none",
+  "report_mode": "disabled",
+  "started_at": "2026-09-28T01:10:00+00:00",
+  "fresh_task_ids": {
+    "t1-fraud-script-usb": {
+      "repeat0": "d0987602-289b-4135-ae99-ebc10cfae32b",
+      "repeat1": "6bd18639-aec1-4a77-beb0-82a2257050e9",
+      "repeat2": "e9b6be85-dc8d-4858-8998-9e15d66705b5"
+    },
+    "t2-identity-trap": {
+      "repeat0": "4874011c-3b0e-4118-9bd9-e24ad494b2a1",
+      "repeat1": "c11a6514-e1f5-4c69-ae92-1edb6c4a77ef",
+      "repeat2": "49c9fcdc-3e0b-459f-8e55-7dbfb7086e81"
+    },
+    "t2-no-evidence": {
+      "repeat0": "a2705dd2-56d8-494c-a4b5-5e3384588f95",
+      "repeat1": "7f8e00a8-79f9-4f4c-a9ef-34a41f394500",
+      "repeat2": "14af706c-5c9c-452a-b1d3-68a3add67505"
+    },
+    "t2-temporal-trap": {
+      "repeat0": "205decb4-f51e-4443-bf00-0cbef99025d9",
+      "repeat1": "b6803427-25d9-4487-9a9e-7fde70820d48",
+      "repeat2": "13368ffe-e7a5-45cf-8aba-71730e7d228f"
+    }
+  }
+}
